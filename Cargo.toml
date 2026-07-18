@@ -1,9 +1,9 @@
 [package]
 name = "landin-compiler"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "MIT"
-description = "Landin programming language compiler (stage 1 — HIR data structures + name resolution, in progress)"
+description = "Landin programming language compiler (stage 1 — HIR lowering complete, name resolution next)"
 repository = "https://github.com/landin-lang/main"
 keywords = ["compiler", "language", "systems-programming"]
 categories = ["compilers"]

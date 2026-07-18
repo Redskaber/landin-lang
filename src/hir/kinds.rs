@@ -17,14 +17,67 @@
 //! lowering; Stage 1.3 populates `Res`; Stage 2 populates `InferTy`.
 
 use crate::ast::{
-    Abi, Attr, BindingMode, GenericArgs, Ident, Lifetime, MacroDelim, Mutability, Path,
-    PathLeading, RangeEnd, SelfKind, Visibility,
+    Abi, Attr, BindingMode, GenericArgs, Ident, Lifetime, MacroDelim, Mutability, PathLeading,
+    RangeEnd, SelfKind, Visibility,
 };
 use crate::lexer::Symbol;
 use crate::session::Span;
 
 // Re-export the ID types for convenience.
 pub use crate::hir::id::{DefId, HirId, ItemLocalId, OwnerId};
+
+// =====================================================================
+// HIR Crate — top-level container
+// =====================================================================
+
+/// The HIR crate: top-level container for all lowered items and bodies.
+///
+/// Per 06-mir.md §3, the HIR crate is a flat map of `DefId -> OwnerNode`
+/// plus a separate map of `BodyId -> Body`. This separation allows
+/// name resolution (Stage 1.3) and type inference (Stage 2) to iterate
+/// owners first, then lazily descend into bodies.
+#[derive(Debug, Clone, Default)]
+pub struct HirCrate {
+    /// All owner nodes, keyed by DefId. Insertion order is preserved
+    /// (using a Vec + linear lookup for Stage 1.2; can swap to FxHashMap
+    /// later without API change).
+    pub owners: Vec<(DefId, OwnerNode)>,
+    /// All bodies, keyed by BodyId. A body is the expression tree of
+    /// a fn/const/static.
+    pub bodies: Vec<(BodyId, Body)>,
+}
+
+impl HirCrate {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Look up an owner node by DefId.
+    pub fn owner(&self, def_id: DefId) -> Option<&OwnerNode> {
+        self.owners
+            .iter()
+            .find(|(d, _)| *d == def_id)
+            .map(|(_, n)| n)
+    }
+
+    /// Look up a body by BodyId.
+    pub fn body(&self, body_id: BodyId) -> Option<&Body> {
+        self.bodies
+            .iter()
+            .find(|(b, _)| *b == body_id)
+            .map(|(_, b)| b)
+    }
+
+    /// Total number of owner nodes.
+    pub fn owner_count(&self) -> usize {
+        self.owners.len()
+    }
+
+    /// Total number of bodies.
+    pub fn body_count(&self) -> usize {
+        self.bodies.len()
+    }
+}
 
 // =====================================================================
 // Owner nodes (top-level items)
@@ -231,7 +284,7 @@ pub struct HirAssocConst {
 pub struct HirImpl {
     pub hir_id: HirId,
     pub generics: HirGenerics,
-    pub of_trait: Option<Path>,
+    pub of_trait: Option<HirPath>,
     pub self_ty: HirTy,
     pub items: Vec<HirImplItem>,
     pub attrs: Vec<Attr>,
@@ -288,11 +341,11 @@ pub struct HirUse {
 #[derive(Debug, Clone)]
 pub enum HirUseTree {
     Path {
-        prefix: Path,
+        prefix: HirPath,
         children: Vec<HirUseTree>,
     },
-    Leaf(Path, Option<Ident>),
-    Glob(Path),
+    Leaf(HirPath, Option<Ident>),
+    Glob(HirPath),
 }
 
 // =====================================================================
@@ -359,7 +412,7 @@ pub enum HirTypeBound {
 #[derive(Debug, Clone)]
 pub struct HirTraitBound {
     pub hir_id: HirId,
-    pub path: Path,
+    pub path: HirPath,
     pub span: Span,
 }
 
