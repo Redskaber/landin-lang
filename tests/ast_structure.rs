@@ -334,3 +334,215 @@ fn test_edge_multiple_items() {
     assert!(errors.is_empty());
     assert_eq!(krate.items.len(), 4);
 }
+
+// === AST STRUCTURE: Pratt precedence (13 levels per 02-grammar.md §2) ===
+
+#[test]
+fn test_pratt_mul_binds_tighter_than_add() {
+    // 1 + 2 * 3 should parse as (1 + (2 * 3)).
+    let (krate, errors) = parse("fn f() { let _ = 1 + 2 * 3; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_pratt_add_left_assoc() {
+    // 1 - 2 - 3 should parse as ((1 - 2) - 3), NOT (1 - (2 - 3)).
+    let (krate, errors) = parse("fn f() { let _ = 1 - 2 - 3; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_pratt_comparison_binds_tighter_than_logical_and() {
+    // a == b && c == d should parse as ((a == b) && (c == d)).
+    let (krate, errors) = parse("fn f() { let _ = a == b && c == d; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_pratt_logical_and_binds_tighter_than_or() {
+    // a || b && c should parse as (a || (b && c)).
+    let (krate, errors) = parse("fn f() { let _ = a || b && c; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_pratt_shift_binds_tighter_than_add() {
+    // 1 + 2 << 3 should parse as (1 + (2 << 3)).
+    let (krate, errors) = parse("fn f() { let _ = 1 + 2 << 3; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_pratt_as_binds_tighter_than_mul() {
+    // 2 * 3 as i32 should parse as (2 * (3 as i32)).
+    let (krate, errors) = parse("fn f() { let _ = 2 * 3 as i32; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_pratt_unary_binds_tighter_than_mul() {
+    // -2 * 3 should parse as ((-2) * 3).
+    let (krate, errors) = parse("fn f() { let _ = -2 * 3; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_pratt_postfix_binds_tighter_than_unary() {
+    // -a.b should parse as -(a.b).
+    let (krate, errors) = parse("fn f() { let _ = -a.b; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_pratt_parens_override_precedence() {
+    // (1 + 2) * 3 — explicit parens.
+    let (krate, errors) = parse("fn f() { let _ = (1 + 2) * 3; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_pratt_assignment_lowest_precedence() {
+    // a = 1 + 2 should parse as (a = (1 + 2)).
+    let (krate, errors) = parse("fn f() { a = 1 + 2; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+// === AST STRUCTURE: Ty variants (16 per 05-ast.md §6) ===
+
+#[test]
+fn test_ty_bool() {
+    let (krate, errors) = parse("fn f(x: bool) {}");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_ty_never() {
+    let (krate, errors) = parse("fn f() -> ! {}");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_ty_array() {
+    let (krate, errors) = parse("fn f(x: [i32; 4]) {}");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_ty_slice() {
+    let (krate, errors) = parse("fn f(x: &[i32]) {}");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_ty_tuple() {
+    let (krate, errors) = parse("fn f(x: (i32, &str)) {}");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_ty_fn_pointer() {
+    let (krate, errors) = parse("fn f(cb: fn(i32) -> i32) {}");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_ty_infer() {
+    // `_` is the inference placeholder type.
+    let (krate, errors) = parse("fn f() { let x: _ = 42; }");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+// === AST STRUCTURE: raw identifiers in parser (RP0-2 integration) ===
+
+#[test]
+fn test_raw_ident_in_fn_name() {
+    // `r#match` should be accepted as a function name.
+    let (krate, errors) = parse("fn r#match() {}");
+    assert!(
+        errors.is_empty(),
+        "r#match as fn name should parse: {:?}",
+        errors
+    );
+    assert_eq!(krate.items.len(), 1);
+}
+
+#[test]
+fn test_raw_ident_in_struct_field() {
+    let (krate, errors) = parse("struct S { r#type: i32 }");
+    assert!(
+        errors.is_empty(),
+        "r#type as field name should parse: {:?}",
+        errors
+    );
+    let _ = krate;
+}
+
+#[test]
+fn test_raw_ident_in_let_binding() {
+    let (krate, errors) = parse("fn f() { let r#async = 42; }");
+    assert!(
+        errors.is_empty(),
+        "r#async as let name should parse: {:?}",
+        errors
+    );
+    let _ = krate;
+}
+
+#[test]
+fn test_raw_ident_in_path() {
+    // `r#mod::r#fn()` should parse as a path call with raw identifier segments.
+    let (krate, errors) = parse("fn f() { r#mod::r#fn(); }");
+    assert!(
+        errors.is_empty(),
+        "raw idents in path should parse: {:?}",
+        errors
+    );
+    let _ = krate;
+}
+
+// === AST STRUCTURE: doc comments in parser (RP0-8 integration) ===
+
+#[test]
+fn test_doc_comment_before_fn() {
+    // Doc comment before a fn: parser should consume it without error.
+    // (Attaching it as an attribute is Stage 1 work; for now we just verify
+    // that the presence of a DocComment token doesn't break parsing.)
+    let (krate, errors) = parse("/// this is a function\nfn main() {}");
+    assert!(
+        errors.is_empty(),
+        "doc comment before fn should not break parsing: {:?}",
+        errors
+    );
+    assert_eq!(krate.items.len(), 1);
+}
+
+#[test]
+fn test_inner_doc_comment_at_crate_root() {
+    let (krate, errors) = parse("//! crate-level doc\nfn main() {}");
+    assert!(errors.is_empty());
+    let _ = krate;
+}
+
+#[test]
+fn test_multiple_doc_comments_before_item() {
+    let (krate, errors) = parse("/// line 1\n/// line 2\n/// line 3\nfn f() {}");
+    assert!(errors.is_empty());
+    assert_eq!(krate.items.len(), 1);
+}

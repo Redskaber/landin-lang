@@ -10,6 +10,7 @@ fn lex(src: &str) -> Vec<TokenKind> {
         .collect()
 }
 
+#[allow(dead_code)]
 fn lex_count(src: &str) -> usize {
     lex(src).len() - 1 // exclude Eof
 }
@@ -654,14 +655,48 @@ fn test_regression_empty_bin_literal() {
 
 #[test]
 fn test_regression_doc_comment_outer() {
-    // RP0-8: /// doc comment should not break lexing
+    // RP0-8 fix: `///` is an outer doc comment and should be tokenized as
+    // `DocComment(_, false)` rather than silently skipped.
     let tokens = lex("/// doc comment\n42");
-    assert_eq!(tokens[0], TokenKind::IntLit(42, None));
+    assert_eq!(
+        tokens.len(),
+        3,
+        "expected DocComment + IntLit + Eof, got {:?}",
+        tokens
+    );
+    match &tokens[0] {
+        TokenKind::DocComment(_, is_inner) => {
+            assert!(!*is_inner, "outer doc comment should have is_inner=false");
+        }
+        other => panic!("expected DocComment, got {:?}", other),
+    }
+    assert_eq!(tokens[1], TokenKind::IntLit(42, None));
 }
 
 #[test]
 fn test_regression_doc_comment_inner() {
+    // RP0-8 fix: `//!` is an inner doc comment and should be tokenized as
+    // `DocComment(_, true)` rather than silently skipped.
     let tokens = lex("//! inner doc\n42");
+    assert_eq!(
+        tokens.len(),
+        3,
+        "expected DocComment + IntLit + Eof, got {:?}",
+        tokens
+    );
+    match &tokens[0] {
+        TokenKind::DocComment(_, is_inner) => {
+            assert!(*is_inner, "inner doc comment should have is_inner=true");
+        }
+        other => panic!("expected DocComment, got {:?}", other),
+    }
+    assert_eq!(tokens[1], TokenKind::IntLit(42, None));
+}
+
+#[test]
+fn test_regression_doc_comment_4slashes_is_not_doc() {
+    // Per 02-grammar.md §1.12: `////` is a regular line comment, NOT a doc comment.
+    let tokens = lex("//// not a doc\n42");
     assert_eq!(tokens[0], TokenKind::IntLit(42, None));
 }
 
@@ -713,4 +748,176 @@ fn test_char_unicode_escape() {
 fn test_raw_string_multiple_hashes() {
     let tokens = lex("r##\"content\"##");
     assert!(matches!(tokens[0], TokenKind::RawStrLit(_, 2)));
+}
+
+// === RP0-1 REGRESSION: pure-suffix float literals ===
+
+#[test]
+fn test_rp0_1_pure_suffix_f32() {
+    // RP0-1 fix: `1f32` must produce FloatLit(1.0, Some(F32)), not IntLit + error.
+    let tokens = lex("1f32");
+    assert_eq!(tokens.len(), 2, "expected FloatLit + Eof, got {:?}", tokens);
+    match tokens[0] {
+        TokenKind::FloatLit(v, Some(landin_compiler::lexer::token::FloatTy::F32)) => {
+            assert_eq!(v, 1.0);
+        }
+        ref other => panic!("expected FloatLit(1.0, Some(F32)), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_rp0_1_pure_suffix_f64() {
+    let tokens = lex("42f64");
+    match tokens[0] {
+        TokenKind::FloatLit(v, Some(landin_compiler::lexer::token::FloatTy::F64)) => {
+            assert_eq!(v, 42.0);
+        }
+        ref other => panic!("expected FloatLit(42.0, Some(F64)), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_rp0_1_pure_suffix_no_error() {
+    let (_tokens, errors) = {
+        let mut interner = Rodeo::new();
+        landin_compiler::lexer::tokenize("1f32 2f64", &mut interner)
+    };
+    assert!(
+        errors.is_empty(),
+        "pure-suffix floats must not produce errors: {:?}",
+        errors
+    );
+}
+
+// === RP0-2 REGRESSION: raw identifiers ===
+
+#[test]
+fn test_rp0_2_raw_ident_basic() {
+    let tokens = lex("r#foo");
+    assert_eq!(tokens.len(), 2);
+    assert!(matches!(tokens[0], TokenKind::RawIdent(_)));
+}
+
+#[test]
+fn test_rp0_2_raw_ident_escapes_keyword() {
+    // `r#match` is the canonical use case for raw identifiers.
+    let tokens = lex("r#match");
+    assert!(matches!(tokens[0], TokenKind::RawIdent(_)));
+}
+
+#[test]
+fn test_rp0_2_raw_ident_no_error() {
+    let (_tokens, errors) = {
+        let mut interner = Rodeo::new();
+        landin_compiler::lexer::tokenize("r#foo r#bar", &mut interner)
+    };
+    assert!(
+        errors.is_empty(),
+        "raw identifiers must not produce errors: {:?}",
+        errors
+    );
+}
+
+#[test]
+fn test_rp0_2_raw_ident_underscore_prefix() {
+    // r#_foo is a valid raw identifier (underscore is a valid ident-start).
+    let tokens = lex("r#_foo");
+    assert!(matches!(tokens[0], TokenKind::RawIdent(_)));
+}
+
+#[test]
+fn test_rp0_2_raw_string_with_hashes_still_works() {
+    // r#"..."# must NOT be mis-dispatched as a raw identifier.
+    let tokens = lex("r#\"raw\"#");
+    assert!(matches!(tokens[0], TokenKind::RawStrLit(_, 1)));
+}
+
+#[test]
+fn test_rp0_2_raw_string_three_hashes_still_works() {
+    let tokens = lex("r###\"raw\"###");
+    assert!(matches!(tokens[0], TokenKind::RawStrLit(_, 3)));
+}
+
+// === RP0-4 REGRESSION: empty hex/oct/bin literals ===
+
+#[test]
+fn test_rp0_4_empty_hex_reports_error() {
+    let (tokens, errors) = {
+        let mut interner = Rodeo::new();
+        let r = landin_compiler::lexer::tokenize("0x", &mut interner);
+        r
+    };
+    assert!(!errors.is_empty(), "0x with no digits must error");
+    // Recovery: token should still be produced (IntLit(0, None)) so parser can continue.
+    assert!(matches!(tokens[0].kind, TokenKind::IntLit(0, None)));
+}
+
+#[test]
+fn test_rp0_4_empty_oct_reports_error() {
+    let (_tokens, errors) = {
+        let mut interner = Rodeo::new();
+        landin_compiler::lexer::tokenize("0o", &mut interner)
+    };
+    assert!(!errors.is_empty(), "0o with no digits must error");
+}
+
+#[test]
+fn test_rp0_4_empty_bin_reports_error() {
+    let (_tokens, errors) = {
+        let mut interner = Rodeo::new();
+        landin_compiler::lexer::tokenize("0b", &mut interner)
+    };
+    assert!(!errors.is_empty(), "0b with no digits must error");
+}
+
+#[test]
+fn test_rp0_4_nonempty_hex_still_works() {
+    let tokens = lex("0xff");
+    assert_eq!(tokens[0], TokenKind::IntLit(255, None));
+}
+
+// === RP0-8 REGRESSION: doc comments ===
+
+#[test]
+fn test_rp0_8_doc_outer_body() {
+    let (tokens, _errors) = {
+        let mut interner = Rodeo::new();
+        let r = landin_compiler::lexer::tokenize("/// hello world\n", &mut interner);
+        (r.0, r.1)
+    };
+    match &tokens[0].kind {
+        TokenKind::DocComment(sym, is_inner) => {
+            assert!(!*is_inner);
+            // The leading single space is stripped; the body should be "hello world".
+            // We can't easily resolve the symbol here without keeping the interner alive,
+            // so just check the token kind.
+            let _ = sym;
+        }
+        other => panic!("expected DocComment, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_rp0_8_doc_inner_body() {
+    let tokens = lex("//! module doc\n");
+    match &tokens[0] {
+        TokenKind::DocComment(_, is_inner) => assert!(*is_inner),
+        other => panic!("expected DocComment, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_rp0_8_doc_comment_followed_by_item() {
+    // Doc comment + a real item: ensure both tokens are produced in order.
+    let tokens = lex("/// docs\nfn main() {}");
+    assert!(matches!(tokens[0], TokenKind::DocComment(_, false)));
+    assert_eq!(tokens[1], TokenKind::KwFn);
+}
+
+#[test]
+fn test_rp0_8_multiple_doc_comments() {
+    let tokens = lex("/// line 1\n/// line 2\nfn f();");
+    assert!(matches!(tokens[0], TokenKind::DocComment(_, false)));
+    assert!(matches!(tokens[1], TokenKind::DocComment(_, false)));
+    assert_eq!(tokens[2], TokenKind::KwFn);
 }

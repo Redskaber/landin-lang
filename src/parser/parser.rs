@@ -86,9 +86,34 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Expect an identifier (either `Ident` or `RawIdent`).
+    ///
+    /// Per 02-grammar.md §1.2, raw identifiers are accepted in all name
+    /// positions (function names, struct field names, let-binding names, etc.).
+    /// Returns the consumed `Ident` (with span) and advances past the token.
+    fn expect_ident(&mut self, what: &str) -> Ident {
+        let span = self.current_span();
+        match self.peek() {
+            TokenKind::Ident(_) | TokenKind::RawIdent(_) => {
+                let ident = self.ident_from_token();
+                self.bump();
+                ident
+            }
+            _ => {
+                self.errors.push(crate::parser::ParseError::new(
+                    format!("expected {what}, found {}", self.peek()),
+                    span,
+                ));
+                Ident::new(Spur::default(), span)
+            }
+        }
+    }
+
     fn ident_from_token(&self) -> Ident {
         match &self.tokens[self.pos].kind {
-            TokenKind::Ident(sym) => Ident::new(*sym, self.current_span()),
+            TokenKind::Ident(sym) | TokenKind::RawIdent(sym) => {
+                Ident::new(*sym, self.current_span())
+            }
             _ => Ident::new(Spur::default(), self.current_span()),
         }
     }
@@ -107,6 +132,18 @@ impl<'a> Parser<'a> {
     pub fn parse_crate(&mut self) -> Crate {
         let mut items = Vec::new();
         while *self.peek() != TokenKind::Eof {
+            // Skip doc comments at item position.
+            //
+            // Per 05-ast.md §10, doc comments should attach to the next item
+            // as attributes. Proper attachment requires the attribute system
+            // (Stage 1, Month 3). For Stage 0 we accept and discard them so
+            // that the presence of doc comments doesn't break parsing.
+            //
+            // Inner doc comments (`//!`) at crate root are likewise skipped.
+            if matches!(self.peek(), TokenKind::DocComment(_, _)) {
+                self.bump();
+                continue;
+            }
             match self.parse_item() {
                 Some(item) => items.push(item),
                 None => {
@@ -208,8 +245,8 @@ impl<'a> Parser<'a> {
 
     fn parse_fn(&mut self) -> FnDecl {
         self.bump(); // fn
-        let _name = self.ident_from_token();
-        self.expect(&TokenKind::Ident(Symbol::default()), "function name");
+        let name = self.expect_ident("function name");
+        let _ = name; // name is captured into FnDecl later (TODO: thread it through)
         let generics = self.parse_generics();
         self.expect(&TokenKind::LParen, "`(`");
         let inputs = self.parse_params();
@@ -939,6 +976,7 @@ impl<'a> Parser<'a> {
         if !matches!(
             self.peek(),
             TokenKind::Ident(_)
+                | TokenKind::RawIdent(_)
                 | TokenKind::KwSelf_
                 | TokenKind::KwSelfType
                 | TokenKind::KwCrate

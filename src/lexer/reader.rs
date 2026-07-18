@@ -67,6 +67,12 @@ impl<'a> Lexer<'a> {
     }
 
     /// Skip whitespace and comments.
+    ///
+    /// Stops at the first character that should begin a real token, INCLUDING
+    /// doc comments (`///` and `//!`). Doc comments are tokenized as
+    /// `TokenKind::DocComment` so that the parser/attribute system can attach
+    /// them to items. Per 02-grammar.md §1.12, `////` and `//!/` are regular
+    /// line comments (not doc comments) because the 4th byte is `/`.
     fn skip_trivia(&mut self) {
         loop {
             match self.peek() {
@@ -74,7 +80,17 @@ impl<'a> Lexer<'a> {
                     self.bump();
                 }
                 Some(b'/') if self.peek_at(1) == Some(b'/') => {
-                    // Line comment
+                    // Check whether this is a doc comment.
+                    // `///` and `//!` are doc comments only if NOT followed by
+                    // another `/` (so `////` and `//!/` are regular comments).
+                    let third = self.peek_at(2);
+                    let fourth = self.peek_at(3);
+                    let is_doc = matches!(third, Some(b'/') | Some(b'!')) && fourth != Some(b'/');
+                    if is_doc {
+                        // Stop trivia so next_token can dispatch to lex_doc_comment.
+                        break;
+                    }
+                    // Regular line comment: skip to end of line.
                     while let Some(b) = self.peek() {
                         if b == b'\n' {
                             break;
@@ -138,6 +154,15 @@ impl<'a> Lexer<'a> {
             b'0'..=b'9' => self.lex_number(start),
             b'"' => self.lex_string(start),
             b'\'' => self.lex_char_or_lifetime(start),
+            // Doc comment: `///` (outer) or `//!` (inner).
+            // Detected here (after skip_trivia stopped on it) rather than inside
+            // skip_trivia because we want a real Token, not trivia.
+            b'/' if self.peek_at(1) == Some(b'/')
+                && matches!(self.peek_at(2), Some(b'/') | Some(b'!'))
+                && self.peek_at(3) != Some(b'/') =>
+            {
+                self.lex_doc_comment(start)
+            }
             // Byte string: b"..."
             b'b' if self.peek_at(1) == Some(b'"') => self.lex_byte_string(start),
             // Byte literal: b'...'
@@ -150,6 +175,11 @@ impl<'a> Lexer<'a> {
             }
             // Raw string: r"..."
             b'r' if self.peek_at(1) == Some(b'"') => self.lex_raw_string(start, 0),
+            // Raw identifier: r#name (r# followed by an identifier-start character)
+            // MUST come before raw string with hashes (r#"...")
+            b'r' if self.peek_at(1) == Some(b'#') && is_ident_start_byte(self.peek_at(2)) => {
+                self.lex_raw_identifier(start)
+            }
             // Raw string with hashes: r#"..."#
             b'r' if self.peek_at(1) == Some(b'#') => self.lex_raw_string_hash(start),
             // Identifiers (including b and r when not followed by " or # or ')
@@ -264,11 +294,109 @@ impl<'a> Lexer<'a> {
                 });
                 self.bump();
                 // Return Eof to let outer loop continue (avoid recursion)
-                return Token {
+                Token {
                     kind: TokenKind::Eof,
                     span: self.span_from(start),
-                };
+                }
             }
+        }
+    }
+
+    /// Lex a doc comment: `/// text` (outer) or `//! text` (inner).
+    ///
+    /// Per 02-grammar.md §1.12: produces a `TokenKind::DocComment(symbol, is_inner)`
+    /// where `is_inner` is `true` for `//!` and `false` for `///`.
+    ///
+    /// The symbol contains the comment body (text after `/// ` or `//! ` with
+    /// leading horizontal whitespace stripped). The trailing newline is NOT
+    /// included. Block doc comments (`/** ... */` and `/*! ... */`) are
+    /// out of scope for Stage 0 and will be added in Stage 1 (attribute system).
+    ///
+    /// Pre-condition: the lexer is positioned at the first `/` of `///` or `//!`,
+    /// and the 4th byte is NOT `/` (so this is a real doc comment, not `////`).
+    fn lex_doc_comment(&mut self, start: BytePos) -> Token {
+        // Consume the `//` prefix.
+        self.bump(); // /
+        self.bump(); // /
+                     // Determine whether this is an inner doc comment.
+        let is_inner = match self.peek() {
+            Some(b'!') => {
+                self.bump();
+                true
+            }
+            Some(b'/') => {
+                self.bump();
+                false
+            }
+            _ => unreachable!(
+                "lex_doc_comment called without /// or //! prefix (dispatch invariant)"
+            ),
+        };
+        // Skip a single leading space (the conventional `/// text` form).
+        // Additional leading whitespace is preserved in the symbol so that
+        // indentation-sensitive tools (rustdoc-style) can see it.
+        if self.peek() == Some(b' ') {
+            self.bump();
+        }
+        // Read the comment body until end of line (NOT including the newline).
+        let body_start = self.pos;
+        while let Some(b) = self.peek() {
+            if b == b'\n' {
+                break;
+            }
+            self.bump();
+        }
+        let body = &self.src[body_start as usize..self.pos as usize];
+        let sym = self.interner.get_or_intern(body);
+        Token {
+            kind: TokenKind::DocComment(sym, is_inner),
+            span: self.span_from(start),
+        }
+    }
+
+    /// Lex a raw identifier: `r#name`.
+    ///
+    /// Per 02-grammar.md §1.2: `r#` followed by an identifier-start character
+    /// produces a `RawIdent` token (escapes reserved keywords so they can be
+    /// used as ordinary identifiers, e.g. `r#match`, `r#fn`).
+    ///
+    /// Dispatch is in `next_token`: only `r#` + ident-start byte reaches here.
+    /// `r#"..."#` (raw string) and `r#` followed by other characters are
+    /// handled by separate dispatch arms.
+    fn lex_raw_identifier(&mut self, start: BytePos) -> Token {
+        self.bump(); // r
+        self.bump(); // #
+        let name_start = self.pos;
+        // ASCII fast path
+        while let Some(b) = self.peek() {
+            if b.is_ascii_alphanumeric() || b == b'_' {
+                self.bump();
+            } else {
+                break;
+            }
+        }
+        // UTF-8 continuation (r#日本語 allowed)
+        if let Some(b) = self.peek() {
+            if !b.is_ascii() {
+                let rest = &self.src[self.pos as usize..];
+                let mut chars = rest.char_indices();
+                while let Some((_, c)) = chars.next() {
+                    if unicode_xid::UnicodeXID::is_xid_continue(c) {
+                        self.pos += c.len_utf8() as u32;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        // Note: `r#self`, `r#Self`, `r#crate`, `r#super`, `r#_` are rejected by Rust,
+        // but per 02-grammar.md §1.2 we accept any identifier form here; name resolution
+        // (Stage 1) will enforce the additional constraints.
+        let text = &self.src[name_start as usize..self.pos as usize];
+        let sym = self.interner.get_or_intern(text);
+        Token {
+            kind: TokenKind::RawIdent(sym),
+            span: self.span_from(start),
         }
     }
 
@@ -1359,4 +1487,17 @@ impl<'a> Lexer<'a> {
             }
         }
     }
+}
+
+/// Check if a byte can start an identifier (ASCII fast path).
+///
+/// Per 02-grammar.md §1.2: an identifier starts with `XID_Start` (Unicode)
+/// or `_`. The ASCII subset is `[a-zA-Z_]`. Non-ASCII `XID_Start` characters
+/// are validated by the unicode-xid crate inside `lex_ident` / `lex_raw_identifier`.
+///
+/// This helper is used by the dispatch in `next_token` to distinguish `r#name`
+/// (raw identifier) from `r#"..."#` (raw string) and `r'...'` (none — `r` is
+/// treated as identifier).
+fn is_ident_start_byte(b: Option<u8>) -> bool {
+    matches!(b, Some(c) if c.is_ascii_alphabetic() || c == b'_')
 }
