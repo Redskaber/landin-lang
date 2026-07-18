@@ -1,8 +1,8 @@
 # Landin Stage 0 测试指南
 
 > **范围**：Stage 0 前端（Lexer + Parser + AST）测试方法论
-> **测试规模**：187 个（lexer 79 + parser 80 + ast_structure 28）
-> **最后更新**：S0-REV-6（2025）
+> **测试规模**：375 个（lexer 109 + parser 85 + ast_structure 149 + hir_structure 20 + lib 12）
+> **最后更新**：Stage 1.1（2025）
 
 ---
 

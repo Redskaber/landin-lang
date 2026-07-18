@@ -8,6 +8,21 @@ use crate::lexer::token::*;
 use crate::session::Span;
 use lasso::{Rodeo, Spur};
 
+/// Context in which a path is being parsed. Determines whether bare `<...>`
+/// generic args are accepted (Type/Pattern) or whether turbofish `::<...>`
+/// is required (Expr).
+///
+/// Rationale: in expression position, `a < b` is a comparison, not
+/// `a::<b>` (generic args on a value-path). To get generic args in expr
+/// position, the user must write the turbofish form `a::<b>`. In type
+/// position there is no ambiguity — `<` is always generic args.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PathContext {
+    Type,
+    Expr,
+    Pattern,
+}
+
 pub struct Parser<'a> {
     tokens: Vec<Token>,
     pos: usize,
@@ -440,15 +455,28 @@ impl<'a> Parser<'a> {
                     && matches!(self.peek_at(1), TokenKind::KwSelf_ | TokenKind::KwMut));
             if is_self_param {
                 let span = self.current_span();
-                // Handle &self / &mut self
-                if *self.peek() == TokenKind::And {
+                // Track the receiver kind: by-value vs by-ref, and mutability.
+                let mut self_kind = SelfKind::Value(Mutability::Immutable);
+                let binding_mut = if *self.peek() == TokenKind::And {
                     self.bump(); // &
-                    if *self.peek() == TokenKind::KwMut {
+                    let ref_mut = if *self.peek() == TokenKind::KwMut {
                         self.bump();
-                    }
+                        Mutability::Mutable
+                    } else {
+                        Mutability::Immutable
+                    };
+                    self_kind = SelfKind::Ref(ref_mut);
+                    // For `&self` / `&mut self`, the binding itself is
+                    // immutable (you can't reassign `self` even with `&mut self`).
+                    Mutability::Immutable
                 } else if *self.peek() == TokenKind::KwMut {
                     self.bump();
-                }
+                    self_kind = SelfKind::Value(Mutability::Mutable);
+                    Mutability::Mutable
+                } else {
+                    // bare `self` — by-value, immutable binding
+                    Mutability::Immutable
+                };
                 self.bump(); // self
                              // self: Type form (rare; usually just `self` or `&self`)
                 let ty = if *self.peek() == TokenKind::Colon {
@@ -471,7 +499,7 @@ impl<'a> Parser<'a> {
                     )
                 };
                 let pat = Pat::Ident(
-                    BindingMode::ByValue,
+                    BindingMode::ByValue(binding_mut),
                     Ident::new(Spur::default(), span),
                     None,
                 );
@@ -480,6 +508,7 @@ impl<'a> Parser<'a> {
                     ty,
                     attrs: Vec::new(),
                     is_self: true,
+                    self_kind: Some(self_kind),
                     span,
                 });
             } else {
@@ -492,6 +521,7 @@ impl<'a> Parser<'a> {
                     ty,
                     attrs: Vec::new(),
                     is_self: false,
+                    self_kind: None,
                     span,
                 });
             }
@@ -1390,6 +1420,30 @@ impl<'a> Parser<'a> {
     // --- Paths ---
 
     fn parse_path(&mut self) -> Path {
+        self.parse_path_with_ctx(PathContext::Type)
+    }
+
+    /// Parse a path in expression position. Differs from `parse_path` in that
+    /// generic args are only accepted when introduced by the turbofish `::<>`
+    /// syntax — bare `Vec<i32>` in expression position would be ambiguous
+    /// with comparison (`a < b`), so we require `Vec::<i32>` instead.
+    fn parse_path_in_expr(&mut self) -> Path {
+        self.parse_path_with_ctx(PathContext::Expr)
+    }
+
+    /// Parse a path in pattern position. Like Type, bare `<...>` generic args
+    /// are accepted (no ambiguity with comparison in pattern context).
+    /// Kept as a separate method to make call-site intent clear and to allow
+    /// future divergence (e.g., pattern paths may eventually forbid certain
+    /// generic arg forms like assoc type bindings).
+    fn parse_path_in_pat(&mut self) -> Path {
+        self.parse_path_with_ctx(PathContext::Pattern)
+    }
+
+    /// The context in which a path is being parsed. Determines whether
+    /// bare `<...>` generic args are accepted (Type/Pattern) or whether
+    /// turbofish `::<...>` is required (Expr).
+    fn parse_path_with_ctx(&mut self, ctx: PathContext) -> Path {
         let span = self.current_span();
         let leading = match self.peek() {
             TokenKind::PathSep => {
@@ -1462,7 +1516,10 @@ impl<'a> Parser<'a> {
         let mut segments = Vec::new();
         let ident = self.ident_from_token();
         self.bump();
-        let args = self.try_parse_generic_args();
+        let args = match ctx {
+            PathContext::Type | PathContext::Pattern => self.try_parse_generic_args(),
+            PathContext::Expr => self.try_parse_turbofish_or_generic_args(),
+        };
         segments.push(PathSegment { ident, args });
 
         while *self.peek() == TokenKind::PathSep {
@@ -1474,7 +1531,10 @@ impl<'a> Parser<'a> {
             self.bump();
             let ident = self.ident_from_token();
             self.bump();
-            let args = self.try_parse_generic_args();
+            let args = match ctx {
+                PathContext::Type | PathContext::Pattern => self.try_parse_generic_args(),
+                PathContext::Expr => self.try_parse_turbofish_or_generic_args(),
+            };
             segments.push(PathSegment { ident, args });
         }
 
@@ -1483,6 +1543,30 @@ impl<'a> Parser<'a> {
             leading,
             span: Span::new(span.lo, self.current_span().hi),
         }
+    }
+
+    /// Parse generic arguments `<...>` after a path segment, if present.
+    /// Returns None if no `<` is present.
+    ///
+    /// Per 02-grammar.md §3.3: `Vec<i32>`, `HashMap<K, V>`, `Foo<'a, T>`,
+    /// `Iterator<Item = i32>` (assoc type).
+    ///
+    /// Disambiguation: `<` could be a comparison operator (`a < b`). We use a
+    /// heuristic: only treat as generic args if the next token after `<` is
+    /// an identifier, raw identifier, lifetime, `>` (empty generics, rare),
+    /// `?` (Sized/`?Sized`), or a type keyword. If it's a numeric literal,
+    /// string literal, or anything else, we treat `<` as comparison.
+    /// In expression position, generic args must be introduced with the
+    /// turbofish syntax `::<...>`. This method peeks for `::` `<` and, if
+    /// present, consumes the `::` and delegates to `try_parse_generic_args`.
+    /// Returns `None` if no turbofish is present (the `<` if any is left for
+    /// the caller to interpret as a comparison operator).
+    fn try_parse_turbofish_or_generic_args(&mut self) -> Option<GenericArgs> {
+        if *self.peek() == TokenKind::PathSep && *self.peek_at(1) == TokenKind::Lt {
+            self.bump(); // ::
+            return self.try_parse_generic_args();
+        }
+        None
     }
 
     /// Parse generic arguments `<...>` after a path segment, if present.
@@ -1601,7 +1685,7 @@ impl<'a> Parser<'a> {
             TokenKind::KwMut => {
                 self.bump();
                 let ident = self.expect_ident("pattern binding name");
-                Pat::Ident(BindingMode::ByValue, ident, None)
+                Pat::Ident(BindingMode::ByValue(Mutability::Mutable), ident, None)
             }
             TokenKind::KwRef => {
                 self.bump();
@@ -1724,7 +1808,7 @@ impl<'a> Parser<'a> {
             | TokenKind::KwSuper
             | TokenKind::PathSep => {
                 // Try path pattern (might be TupleStruct or Struct)
-                let path = self.parse_path();
+                let path = self.parse_path_in_pat();
                 let pat = match self.peek() {
                     TokenKind::LParen => {
                         // Tuple struct pattern: Path(pat, pat, ...)
@@ -1756,7 +1840,14 @@ impl<'a> Parser<'a> {
                                 (self.parse_pat(), false)
                             } else {
                                 // Shorthand: `field` means `field: field`
-                                (Pat::Ident(BindingMode::ByValue, field_ident, None), true)
+                                (
+                                    Pat::Ident(
+                                        BindingMode::ByValue(Mutability::Immutable),
+                                        field_ident,
+                                        None,
+                                    ),
+                                    true,
+                                )
                             };
                             let f_span = self.current_span();
                             fields.push(PatField {
@@ -1772,7 +1863,19 @@ impl<'a> Parser<'a> {
                         self.expect(&TokenKind::RBrace, "`}`");
                         Pat::Struct(path, fields, has_rest, span)
                     }
-                    _ => Pat::Path(path, span),
+                    _ => {
+                        // Lower single-segment no-leading paths (bare identifiers)
+                        // to Pat::Ident. This is the common case: `let x = ...`,
+                        // `match v { foo => ... }`. Multi-segment paths or paths
+                        // with leading (:: / crate:: / etc.) stay as Pat::Path
+                        // (e.g., unit-variant patterns like `None`, `Foo::Bar`).
+                        if path.segments.len() == 1 && path.leading == PathLeading::None {
+                            let ident = path.segments[0].ident;
+                            Pat::Ident(BindingMode::ByValue(Mutability::Immutable), ident, None)
+                        } else {
+                            Pat::Path(path, span)
+                        }
+                    }
                 };
                 // `ident @ pat` binding
                 if *self.peek() == TokenKind::At {
@@ -1784,11 +1887,15 @@ impl<'a> Parser<'a> {
                         if p.segments.len() == 1 && p.leading == PathLeading::None {
                             let ident = p.segments[0].ident;
                             return Pat::Ident(
-                                BindingMode::ByValue,
+                                BindingMode::ByValue(Mutability::Immutable),
                                 ident,
                                 Some(Box::new(sub_pat)),
                             );
                         }
+                    }
+                    // If we already lowered to Pat::Ident, attach the sub-pattern.
+                    if let Pat::Ident(mode, ident, None) = pat {
+                        return Pat::Ident(mode, ident, Some(Box::new(sub_pat)));
                     }
                     // Fall back: keep the original pat, ignore the @ subpat (with error)
                     self.errors.push(crate::parser::ParseError::new(
@@ -1809,7 +1916,7 @@ impl<'a> Parser<'a> {
                 // Default: treat as identifier pattern (recovery)
                 let ident = self.ident_from_token();
                 self.bump();
-                Pat::Ident(BindingMode::ByValue, ident, None)
+                Pat::Ident(BindingMode::ByValue(Mutability::Immutable), ident, None)
             }
         }
     }
@@ -2242,6 +2349,9 @@ impl<'a> Parser<'a> {
                         TokenKind::Ident(_) => {
                             let ident = self.ident_from_token();
                             self.bump();
+                            // Check for turbofish: `method::<i32>` (generic
+                            // args on a method call). Per Round 8c fix.
+                            let generic_args = self.try_parse_turbofish_or_generic_args();
                             // Check for method call
                             if *self.peek() == TokenKind::LParen {
                                 self.bump();
@@ -2257,7 +2367,7 @@ impl<'a> Parser<'a> {
                                     receiver: Box::new(expr),
                                     method: ident,
                                     args,
-                                    generic_args: None,
+                                    generic_args,
                                     span,
                                 };
                             } else {
@@ -2566,6 +2676,7 @@ impl<'a> Parser<'a> {
                             ty: ty.unwrap_or(Ty::Infer(span)),
                             attrs: Vec::new(),
                             is_self: false,
+                            self_kind: None,
                             span,
                         });
                         if !self.eat(&TokenKind::Comma) {
@@ -2602,6 +2713,7 @@ impl<'a> Parser<'a> {
                             ty: ty.unwrap_or(Ty::Infer(span)),
                             attrs: Vec::new(),
                             is_self: false,
+                            self_kind: None,
                             span,
                         });
                         if !self.eat(&TokenKind::Comma) {
@@ -2620,8 +2732,8 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 // Path expression — possibly struct literal `Foo { x: 1, y: 2 }`
-                // or macro call `ident!(...)`.
-                let path = self.parse_path();
+                // or macro call `ident!(...)`, or turbofish `Vec::<i32>()`.
+                let path = self.parse_path_in_expr();
                 let path_span = span;
                 // Macro call: `!` followed by `(`/`{`/`[`
                 if *self.peek() == TokenKind::Not

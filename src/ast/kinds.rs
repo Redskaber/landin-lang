@@ -111,12 +111,42 @@ pub enum Abi {
     System,
 }
 
+/// The kind of `self` receiver in a method signature.
+///
+/// Per 04-ownership-borrowing.md §2.3, the receiver kind determines:
+/// - whether the method is callable on `&T`, `&mut T`, or `T`
+/// - the auto-ref / auto-deref coercion applied at call sites
+/// - the implicit lifetime elision rule 3 (output lifetime defaults to
+///   the receiver's lifetime)
+///
+/// Stage 0 v0.1.4 lost this information for the shorthand forms
+/// (`&self`, `&mut self`, `self`, `mut self`) — all produced byte-identical
+/// `Param` nodes with only `is_self: true`. Stage 1.1 fixes this by carrying
+/// a `SelfKind` payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelfKind {
+    /// `self` or `mut self` — by-value receiver.
+    /// The `Mutability` reflects whether the binding itself is `mut`
+    /// (allowing the method body to reassign `self`).
+    Value(Mutability),
+    /// `&self` or `&mut self` — by-reference receiver.
+    /// The `Mutability` reflects whether the borrow is mutable.
+    Ref(Mutability),
+}
+
 #[derive(Debug, Clone)]
 pub struct Param {
     pub pat: Pat,
     pub ty: Ty,
     pub attrs: Vec<Attr>,
+    /// `true` iff this param is a `self` shorthand (`self`, `mut self`,
+    /// `&self`, `&mut self`). When true, `self_kind` is `Some(_)`.
     pub is_self: bool,
+    /// The kind of self receiver, if `is_self` is true. `None` for
+    /// non-self params. Use this instead of inspecting `ty`/`pat` to
+    /// determine the receiver kind — the `ty` for shorthand self params
+    /// is a placeholder `Path` with `Spur::default()` segment.
+    pub self_kind: Option<SelfKind>,
     pub span: Span,
 }
 
@@ -323,7 +353,15 @@ pub struct PatField {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BindingMode {
-    ByValue,
+    /// By-value binding. The `Mutability` reflects whether the binding is
+    /// declared `mut` (allowing reassignment) or immutable.
+    /// `let x = ...` → `ByValue(Immutable)`
+    /// `let mut x = ...` → `ByValue(Mutable)`
+    /// `mut x` in a pattern → `ByValue(Mutable)`
+    ByValue(Mutability),
+    /// By-reference binding via the `ref` keyword.
+    /// `ref x` → `ByRef(Immutable)`
+    /// `ref mut x` → `ByRef(Mutable)`
     ByRef(Mutability),
 }
 

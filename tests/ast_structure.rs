@@ -1750,3 +1750,335 @@ fn test_regression_attr_after_vis_parses() {
     );
     let _ = krate;
 }
+
+// === Stage 1.1 Round 2: AST schema fix regression tests ===
+
+#[test]
+fn test_self_kind_value_param() {
+    // `self` (by value, immutable binding)
+    let (krate, errors) = parse("impl Foo { fn bar(self) {} }");
+    assert!(errors.is_empty());
+    match &krate.items[0].kind {
+        ItemKind::Impl(impl_decl) => match &impl_decl.items[0].kind {
+            ItemKind::Fn(fn_decl) => {
+                let p = &fn_decl.sig.inputs[0];
+                assert!(p.is_self, "should be self param");
+                assert_eq!(
+                    p.self_kind,
+                    Some(SelfKind::Value(Mutability::Immutable)),
+                    "bare `self` should be Value(Immutable)"
+                );
+            }
+            other => panic!("expected Fn, got {:?}", other),
+        },
+        other => panic!("expected Impl, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_self_kind_value_mut_param() {
+    // `mut self` (by value, mutable binding)
+    let (krate, errors) = parse("impl Foo { fn bar(mut self) {} }");
+    assert!(errors.is_empty());
+    match &krate.items[0].kind {
+        ItemKind::Impl(impl_decl) => match &impl_decl.items[0].kind {
+            ItemKind::Fn(fn_decl) => {
+                let p = &fn_decl.sig.inputs[0];
+                assert!(p.is_self);
+                assert_eq!(
+                    p.self_kind,
+                    Some(SelfKind::Value(Mutability::Mutable)),
+                    "`mut self` should be Value(Mutable)"
+                );
+            }
+            other => panic!("expected Fn, got {:?}", other),
+        },
+        other => panic!("expected Impl, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_self_kind_ref_param() {
+    // `&self` (by reference, immutable borrow)
+    let (krate, errors) = parse("impl Foo { fn bar(&self) {} }");
+    assert!(errors.is_empty());
+    match &krate.items[0].kind {
+        ItemKind::Impl(impl_decl) => match &impl_decl.items[0].kind {
+            ItemKind::Fn(fn_decl) => {
+                let p = &fn_decl.sig.inputs[0];
+                assert!(p.is_self);
+                assert_eq!(
+                    p.self_kind,
+                    Some(SelfKind::Ref(Mutability::Immutable)),
+                    "`&self` should be Ref(Immutable)"
+                );
+            }
+            other => panic!("expected Fn, got {:?}", other),
+        },
+        other => panic!("expected Impl, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_self_kind_ref_mut_param() {
+    // `&mut self` (by reference, mutable borrow)
+    let (krate, errors) = parse("impl Foo { fn bar(&mut self) {} }");
+    assert!(errors.is_empty());
+    match &krate.items[0].kind {
+        ItemKind::Impl(impl_decl) => match &impl_decl.items[0].kind {
+            ItemKind::Fn(fn_decl) => {
+                let p = &fn_decl.sig.inputs[0];
+                assert!(p.is_self);
+                assert_eq!(
+                    p.self_kind,
+                    Some(SelfKind::Ref(Mutability::Mutable)),
+                    "`&mut self` should be Ref(Mutable)"
+                );
+            }
+            other => panic!("expected Fn, got {:?}", other),
+        },
+        other => panic!("expected Impl, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_self_kind_distinct() {
+    // Verify all 4 self kinds produce distinct AST representations.
+    let cases: [(&str, SelfKind); 4] = [
+        (
+            "impl F { fn a(self) {} }",
+            SelfKind::Value(Mutability::Immutable),
+        ),
+        (
+            "impl F { fn b(mut self) {} }",
+            SelfKind::Value(Mutability::Mutable),
+        ),
+        (
+            "impl F { fn c(&self) {} }",
+            SelfKind::Ref(Mutability::Immutable),
+        ),
+        (
+            "impl F { fn d(&mut self) {} }",
+            SelfKind::Ref(Mutability::Mutable),
+        ),
+    ];
+    for (src, expected) in cases.iter() {
+        let (krate, errors) = parse(src);
+        assert!(
+            errors.is_empty(),
+            "parse failed for {:?}: {:?}",
+            src,
+            errors
+        );
+        match &krate.items[0].kind {
+            ItemKind::Impl(impl_decl) => match &impl_decl.items[0].kind {
+                ItemKind::Fn(fn_decl) => {
+                    let p = &fn_decl.sig.inputs[0];
+                    assert_eq!(p.self_kind, Some(*expected), "mismatch for {:?}", src);
+                }
+                other => panic!("expected Fn, got {:?}", other),
+            },
+            other => panic!("expected Impl, got {:?}", other),
+        }
+    }
+}
+
+#[test]
+fn test_binding_mode_by_value_immutable() {
+    // `let x = ...` should produce BindingMode::ByValue(Immutable)
+    let (krate, errors) = parse("fn f() { let x = 1; }");
+    assert!(errors.is_empty());
+    let fn_decl = match &krate.items[0].kind {
+        ItemKind::Fn(f) => f,
+        _ => panic!("expected Fn"),
+    };
+    let body = fn_decl.body.as_ref().unwrap();
+    match &body.stmts[0] {
+        Stmt::Local(local) => match &local.pat {
+            Pat::Ident(mode, _, _) => {
+                assert_eq!(*mode, BindingMode::ByValue(Mutability::Immutable));
+            }
+            other => panic!("expected Ident pat, got {:?}", other),
+        },
+        other => panic!("expected Local stmt, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_binding_mode_by_value_mutable() {
+    // `let mut x = ...` should produce BindingMode::ByValue(Mutable)
+    let (krate, errors) = parse("fn f() { let mut x = 1; }");
+    assert!(errors.is_empty());
+    let fn_decl = match &krate.items[0].kind {
+        ItemKind::Fn(f) => f,
+        _ => panic!("expected Fn"),
+    };
+    let body = fn_decl.body.as_ref().unwrap();
+    match &body.stmts[0] {
+        Stmt::Local(local) => match &local.pat {
+            Pat::Ident(mode, _, _) => {
+                assert_eq!(*mode, BindingMode::ByValue(Mutability::Mutable));
+            }
+            other => panic!("expected Ident pat, got {:?}", other),
+        },
+        other => panic!("expected Local stmt, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_binding_mode_by_ref_immutable() {
+    // `let ref x = ...` should produce BindingMode::ByRef(Immutable)
+    let (krate, errors) = parse("fn f() { let ref x = 1; }");
+    assert!(errors.is_empty());
+    let fn_decl = match &krate.items[0].kind {
+        ItemKind::Fn(f) => f,
+        _ => panic!("expected Fn"),
+    };
+    let body = fn_decl.body.as_ref().unwrap();
+    match &body.stmts[0] {
+        Stmt::Local(local) => match &local.pat {
+            Pat::Ident(mode, _, _) => {
+                assert_eq!(*mode, BindingMode::ByRef(Mutability::Immutable));
+            }
+            other => panic!("expected Ident pat, got {:?}", other),
+        },
+        other => panic!("expected Local stmt, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_binding_mode_by_ref_mutable() {
+    // `let ref mut x = ...` should produce BindingMode::ByRef(Mutable)
+    let (krate, errors) = parse("fn f() { let ref mut x = 1; }");
+    assert!(errors.is_empty());
+    let fn_decl = match &krate.items[0].kind {
+        ItemKind::Fn(f) => f,
+        _ => panic!("expected Fn"),
+    };
+    let body = fn_decl.body.as_ref().unwrap();
+    match &body.stmts[0] {
+        Stmt::Local(local) => match &local.pat {
+            Pat::Ident(mode, _, _) => {
+                assert_eq!(*mode, BindingMode::ByRef(Mutability::Mutable));
+            }
+            other => panic!("expected Ident pat, got {:?}", other),
+        },
+        other => panic!("expected Local stmt, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_generic_args_not_misparsed_as_comparison() {
+    // Round 2c: `a < b` in expression position must parse as comparison,
+    // NOT as `a::<b>` (generic args on a value path).
+    let (krate, errors) = parse("fn f() { let _ = a < b; }");
+    assert!(errors.is_empty());
+    let init = first_let_init(&krate);
+    match init {
+        Expr::Binary { op, lhs, rhs, .. } => {
+            assert_eq!(*op, BinOp::Lt, "top-level op should be Lt (comparison)");
+            // lhs and rhs should both be paths (a and b), not generic args
+            match lhs.as_ref() {
+                Expr::Path(_, p, _) => {
+                    assert_eq!(p.segments.len(), 1, "lhs should be single-segment path `a`");
+                    assert!(
+                        p.segments[0].args.is_none(),
+                        "lhs should have no generic args"
+                    );
+                }
+                other => panic!("expected Path lhs, got {:?}", other),
+            }
+            match rhs.as_ref() {
+                Expr::Path(_, p, _) => {
+                    assert_eq!(p.segments.len(), 1, "rhs should be single-segment path `b`");
+                    assert!(
+                        p.segments[0].args.is_none(),
+                        "rhs should have no generic args"
+                    );
+                }
+                other => panic!("expected Path rhs, got {:?}", other),
+            }
+        }
+        other => panic!("expected Binary expr (Lt), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_turbofish_in_expression_position() {
+    // `Vec::<i32>` in expression position should parse with generic args.
+    let (krate, errors) = parse("fn f() { let _ = Vec::<i32>; }");
+    assert!(errors.is_empty(), "turbofish should parse: {:?}", errors);
+    let init = first_let_init(&krate);
+    match init {
+        Expr::Path(_, p, _) => {
+            assert_eq!(p.segments.len(), 1, "should be single-segment path");
+            assert!(
+                p.segments[0].args.is_some(),
+                "should have generic args from turbofish"
+            );
+        }
+        other => panic!("expected Path with turbofish, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_generic_args_in_type_position_still_works() {
+    // `Vec<i32>` in type position (no turbofish required) should parse with
+    // generic args captured on the path segment.
+    let (krate, errors) = parse("fn f(x: Vec<i32>) {}");
+    assert!(errors.is_empty());
+    // Walk to the Param.ty and verify it has generic args.
+    match &krate.items[0].kind {
+        ItemKind::Fn(fn_decl) => {
+            assert!(!fn_decl.sig.inputs.is_empty(), "should have one param");
+            let param = &fn_decl.sig.inputs[0];
+            match &param.ty {
+                Ty::Path(_, path, _) => {
+                    assert_eq!(
+                        path.segments.len(),
+                        1,
+                        "should be single-segment path `Vec`"
+                    );
+                    let args = &path.segments[0].args;
+                    assert!(args.is_some(), "Vec should have generic args");
+                    // The single arg should be i32
+                    if let Some(GenericArgs::AngleBracketed(args)) = args {
+                        assert_eq!(args.len(), 1, "Vec should have exactly 1 generic arg");
+                        match &args[0] {
+                            GenericArg::Type(Ty::Int(IntTy::I32, _)) => {}
+                            other => panic!("expected i32 type arg, got {:?}", other),
+                        }
+                    }
+                }
+                other => panic!("expected Path ty, got {:?}", other),
+            }
+        }
+        other => panic!("expected Fn, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_turbofish_in_method_call() {
+    // `foo.method::<i32>()` should parse as a method call with turbofish
+    // captured in `MethodCall.generic_args`. Per Round 8c fix.
+    let (krate, errors) = parse("fn f() { foo.method::<i32>(); }");
+    assert!(
+        errors.is_empty(),
+        "method turbofish should parse: {:?}",
+        errors
+    );
+    let fn_decl = match &krate.items[0].kind {
+        ItemKind::Fn(f) => f,
+        _ => panic!("expected Fn"),
+    };
+    let body = fn_decl.body.as_ref().expect("body");
+    match &body.stmts[0] {
+        Stmt::Expr(Expr::MethodCall { generic_args, .. }, true) => {
+            assert!(
+                generic_args.is_some(),
+                "MethodCall.generic_args should be Some for `::<i32>`"
+            );
+        }
+        other => panic!("expected MethodCall with turbofish, got {:?}", other),
+    }
+}
