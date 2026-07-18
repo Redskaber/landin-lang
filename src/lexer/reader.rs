@@ -261,6 +261,13 @@ impl<'a> Lexer<'a> {
                     span: self.span_from(start),
                 }
             }
+            b'@' => {
+                self.bump();
+                Token {
+                    kind: TokenKind::At,
+                    span: self.span_from(start),
+                }
+            }
             b'?' => {
                 self.bump();
                 Token {
@@ -379,8 +386,8 @@ impl<'a> Lexer<'a> {
         if let Some(b) = self.peek() {
             if !b.is_ascii() {
                 let rest = &self.src[self.pos as usize..];
-                let mut chars = rest.char_indices();
-                while let Some((_, c)) = chars.next() {
+                let chars = rest.char_indices();
+                for (_, c) in chars {
                     if unicode_xid::UnicodeXID::is_xid_continue(c) {
                         self.pos += c.len_utf8() as u32;
                     } else {
@@ -414,8 +421,8 @@ impl<'a> Lexer<'a> {
         if let Some(b) = self.peek() {
             if !b.is_ascii() {
                 let rest = &self.src[self.pos as usize..];
-                let mut chars = rest.char_indices();
-                while let Some((_, c)) = chars.next() {
+                let chars = rest.char_indices();
+                for (_, c) in chars {
                     if unicode_xid::UnicodeXID::is_xid_continue(c) {
                         self.pos += c.len_utf8() as u32;
                     } else {
@@ -455,7 +462,7 @@ impl<'a> Lexer<'a> {
 
         // Decimal integer or float
         // First: check for leading zero (invalid per 02-grammar.md §1.5)
-        if self.peek() == Some(b'0') && self.peek_at(1).map_or(false, |b| b.is_ascii_digit()) {
+        if self.peek() == Some(b'0') && self.peek_at(1).is_some_and(|b| b.is_ascii_digit()) {
             self.errors.push(LexError {
                 message: "leading zeros not allowed in decimal integer".into(),
                 span: Span::new(start, start + 1),
@@ -473,7 +480,7 @@ impl<'a> Lexer<'a> {
 
         // Check for float: . followed by digit, or e/E
         let mut is_float = false;
-        if self.peek() == Some(b'.') && self.peek_at(1).map_or(false, |b| b.is_ascii_digit()) {
+        if self.peek() == Some(b'.') && self.peek_at(1).is_some_and(|b| b.is_ascii_digit()) {
             is_float = true;
             self.bump(); // .
             while let Some(b) = self.peek() {
@@ -789,8 +796,13 @@ impl<'a> Lexer<'a> {
                 }
             }
         }
-        // Content is between buf_start and pos-1 (excluding closing ")
-        let content = &self.src[buf_start as usize..(self.pos - 1) as usize];
+        // Content is between buf_start and pos-1 (excluding closing ").
+        // Guard against the unterminated-string case where we broke out of
+        // the loop without consuming the closing quote — in that case
+        // `self.pos` may equal `buf_start`, and slicing `[buf_start..pos-1]`
+        // would panic with "byte range starts at X but ends at X-1".
+        let content_end = self.pos.saturating_sub(1).max(buf_start);
+        let content = &self.src[buf_start as usize..content_end as usize];
         let sym = self.interner.get_or_intern(content);
         Token {
             kind: TokenKind::RawStrLit(sym, 0),

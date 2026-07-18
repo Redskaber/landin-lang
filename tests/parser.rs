@@ -497,7 +497,7 @@ fn test_error_recovery_continues_after_error() {
     // After an error, parser should continue and find next item
     let (krate, _errors) = parse("fn f( {} fn g() {}");
     assert!(
-        krate.items.len() >= 1,
+        !krate.items.is_empty(),
         "expected at least 1 item after error recovery"
     );
 }

@@ -1,0 +1,19 @@
+//! PASS
+//! category: patterns
+//! description: enum with struct variant and match
+enum Shape {
+    Circle(f64),
+    Rectangle(f64, f64),
+    Triangle { a: f64, b: f64, c: f64 },
+}
+
+fn area(s: Shape) -> f64 {
+    match s {
+        Shape::Circle(r) => 3.14159 * r * r,
+        Shape::Rectangle(w, h) => w * h,
+        Shape::Triangle { a, b, c } => {
+            let s = (a + b + c) / 2.0;
+            (s * (s - a) * (s - b) * (s - c)).sqrt()
+        }
+    }
+}

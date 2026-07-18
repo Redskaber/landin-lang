@@ -1,0 +1,6 @@
+//! FAIL
+//! category: error-recovery
+//! description: empty hex literal must error
+//! error_pattern: hexadecimal literal has no digits
+//! source: RP0-4 regression
+0x

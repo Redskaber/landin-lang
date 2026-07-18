@@ -145,6 +145,8 @@ pub enum TokenKind {
     Dot,       // .
     /// `#` for attributes
     Hash,
+    /// `@` for pattern binding (`ident @ pat`)
+    At,
 
     // --- Special ---
     /// Doc comment: /// or //!
@@ -337,6 +339,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Colon => write!(f, "`:`"),
             TokenKind::Dot => write!(f, "`.`"),
             TokenKind::Hash => write!(f, "`#`"),
+            TokenKind::At => write!(f, "`@`"),
             TokenKind::Underscore => write!(f, "`_`"),
             _ => write!(f, "token"),
         }

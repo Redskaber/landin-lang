@@ -35,11 +35,34 @@ pub enum ItemKind {
     Use(UseDecl),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Visibility {
     Public,
     Private,
+    /// `pub(crate)`, `pub(super)`, `pub(in path)` — restricted visibility.
+    /// The path is `crate`/`super`/`self` for the shorthand forms, or a
+    /// full path for `pub(in path)`.
+    PubRestricted(Path),
 }
+
+impl PartialEq for Visibility {
+    /// Two visibilities are equal iff they're the same variant. For
+    /// `PubRestricted`, we compare structurally by segment count and
+    /// leading — full path equality would require Symbol equality which
+    /// is already Eq.
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Visibility::Public, Visibility::Public) => true,
+            (Visibility::Private, Visibility::Private) => true,
+            (Visibility::PubRestricted(a), Visibility::PubRestricted(b)) => {
+                a.leading == b.leading && a.segments.len() == b.segments.len()
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Visibility {}
 
 #[derive(Debug, Clone)]
 pub struct Attr {
@@ -66,6 +89,7 @@ pub struct AttrArg {
 
 #[derive(Debug, Clone)]
 pub struct FnDecl {
+    pub ident: Ident,
     pub sig: FnSig,
     pub body: Option<Block>,
     pub generics: Generics,
@@ -92,6 +116,7 @@ pub struct Param {
     pub pat: Pat,
     pub ty: Ty,
     pub attrs: Vec<Attr>,
+    pub is_self: bool,
     pub span: Span,
 }
 
@@ -435,8 +460,27 @@ pub enum Expr {
         fields: Vec<ExprField>,
         span: Span,
     },
+    /// Macro call: `ident!(...)` / `ident!{...}` / `ident![...]`.
+    /// For Stage 0 we capture the delimiters and inner token spans but do not
+    /// parse the inner tokens as expressions — that is macro expansion work
+    /// (Stage 4). The path is the macro name (e.g. `println`).
+    MacroCall {
+        path: Path,
+        /// The delimiter kind: `(`, `{`, or `[`.
+        delim: MacroDelim,
+        /// Inner token stream as a sequence of tokens (raw, not parsed).
+        /// For Stage 0 we leave this empty — Stage 4 macro expansion will fill it.
+        span: Span,
+    },
     Unsafe(Block, Span),
     Unit(Span),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MacroDelim {
+    Paren,
+    Brace,
+    Bracket,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -578,8 +622,13 @@ pub struct TraitDecl {
 
 #[derive(Debug, Clone)]
 pub enum TraitItem {
-    Fn(FnSig, Option<Block>),
+    /// A trait method: `fn foo(...);` or `fn foo(...) { default_body }`.
+    /// Carries the method name (Ident), per-method generics, signature, and
+    /// optional default body.
+    Fn(Ident, Generics, FnSig, Option<Block>),
+    /// An associated type: `type Item;`, `type Item: Bound;`, `type Item = T;`.
     Type(Ident, Vec<TypeBound>, Option<Ty>),
+    /// An associated constant: `const X: i32;` or `const X: i32 = 42;`.
     Const(Ident, Ty, Option<Expr>),
 }
 
@@ -609,8 +658,15 @@ pub struct ExternBlock {
 
 #[derive(Debug, Clone)]
 pub enum ModDecl {
-    Inline(Vec<Item>, Span),
-    Loaded(Span),
+    Inline {
+        ident: Ident,
+        items: Vec<Item>,
+        span: Span,
+    },
+    Loaded {
+        ident: Ident,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone)]

@@ -532,14 +532,32 @@ fn test_error_unterminated_string() {
 
 #[test]
 fn test_error_multiple_errors() {
-    let (_tokens, errors) = {
+    // `@ @ @ 42` is now a valid token sequence (At + At + At + IntLit) since
+    // Round 2c added the `@` token for pattern binding. The lexer should
+    // produce all 4 tokens without error. (Semantic validity of `@` outside
+    // a pattern is checked by the parser, not the lexer.)
+    let (tokens, errors) = {
         let mut interner = Rodeo::new();
         landin_compiler::lexer::tokenize("@ @ @ 42", &mut interner)
     };
     assert!(
-        errors.len() >= 3,
-        "should report at least 3 errors, got {}",
-        errors.len()
+        errors.is_empty(),
+        "lexer should accept `@` as a token now: {:?}",
+        errors
+    );
+    assert_eq!(
+        tokens.len(),
+        5,
+        "expected 4 tokens + Eof, got {}",
+        tokens.len()
+    );
+    assert!(
+        tokens
+            .iter()
+            .filter(|t| matches!(t.kind, TokenKind::At))
+            .count()
+            == 3,
+        "should have 3 At tokens"
     );
 }
 
@@ -844,8 +862,8 @@ fn test_rp0_2_raw_string_three_hashes_still_works() {
 fn test_rp0_4_empty_hex_reports_error() {
     let (tokens, errors) = {
         let mut interner = Rodeo::new();
-        let r = landin_compiler::lexer::tokenize("0x", &mut interner);
-        r
+
+        landin_compiler::lexer::tokenize("0x", &mut interner)
     };
     assert!(!errors.is_empty(), "0x with no digits must error");
     // Recovery: token should still be produced (IntLit(0, None)) so parser can continue.

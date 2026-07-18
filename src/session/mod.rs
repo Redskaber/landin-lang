@@ -63,6 +63,12 @@ impl Span {
         self.hi - self.lo
     }
 
+    /// Returns true if this span has zero length (`lo == hi`).
+    /// Required by clippy::len_without_is_empty whenever `len` is defined.
+    pub fn is_empty(self) -> bool {
+        self.lo == self.hi
+    }
+
     pub fn contains(self, pos: BytePos) -> bool {
         self.lo <= pos && pos < self.hi
     }

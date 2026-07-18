@@ -1,0 +1,5 @@
+//! PASS
+//! category: literals
+//! description: decimal integer literal
+//! source: lexer regression
+fn f() { let _ = 42; }

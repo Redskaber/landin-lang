@@ -1,0 +1,5 @@
+//! PASS
+//! category: literals
+//! description: float with f32 suffix
+//! source: RP0-1 regression
+fn f() { let _ = 1f32; }

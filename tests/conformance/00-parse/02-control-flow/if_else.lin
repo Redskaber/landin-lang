@@ -1,0 +1,4 @@
+//! PASS
+//! category: control-flow
+//! description: simple if expression with block
+fn f() { if true { 1 } else { 2 } }
