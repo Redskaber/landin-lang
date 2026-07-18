@@ -1,0 +1,23 @@
+[package]
+name = "landin-compiler"
+version = "0.1.2"
+edition = "2021"
+license = "MIT"
+description = "Landin programming language compiler (stage 0)"
+
+[[bin]]
+name = "landin-stage0"
+path = "src/bin/main.rs"
+
+[lib]
+name = "landin_compiler"
+path = "src/lib.rs"
+
+[dependencies]
+la-arena = "0.3"
+lasso = "0.7"
+unicode-xid = "0.2"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+expect-test = "1.5"
