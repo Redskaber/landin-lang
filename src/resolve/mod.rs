@@ -9,7 +9,9 @@
 pub mod error;
 pub mod module_tree;
 pub mod resolver;
+pub mod scope;
 
 pub use error::ResolveError;
 pub use module_tree::{DefKind, ModuleNode};
 pub use resolver::{resolve_crate, Resolver};
+pub use scope::{Scope, ScopeKind, ScopeStack};

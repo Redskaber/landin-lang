@@ -2662,9 +2662,13 @@ impl<'a> Parser<'a> {
                 self.bump(); // | or ||
                 let mut params = Vec::new();
                 if !is_double {
-                    // Single |: parse params until closing |
+                    // Single |: parse params until closing |.
+                    // IMPORTANT: use parse_pat_no_or (NOT parse_pat) so that
+                    // `|` inside a pattern is NOT interpreted as an or-pattern
+                    // separator. Without this, `|x| x` gets misparsed as
+                    // `|(x | x)|` (or-pattern), consuming the closing `|`.
                     while !matches!(self.peek(), TokenKind::Or | TokenKind::Eof) {
-                        let pat = self.parse_pat();
+                        let pat = self.parse_pat_no_or();
                         let ty = if *self.peek() == TokenKind::Colon {
                             self.bump();
                             Some(self.parse_ty())
@@ -2701,7 +2705,7 @@ impl<'a> Parser<'a> {
                 let mut params = Vec::new();
                 if !is_double {
                     while !matches!(self.peek(), TokenKind::Or | TokenKind::Eof) {
-                        let pat = self.parse_pat();
+                        let pat = self.parse_pat_no_or();
                         let ty = if *self.peek() == TokenKind::Colon {
                             self.bump();
                             Some(self.parse_ty())

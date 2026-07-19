@@ -6,17 +6,22 @@ use crate::ast::PathLeading;
 use crate::hir::*;
 use crate::resolve::error::ResolveError;
 use crate::resolve::module_tree::{DefKind, ModuleNode, UseDecl};
+use crate::resolve::scope::{ScopeKind, ScopeStack};
 use crate::session::Span;
 use lasso::{Rodeo, Spur};
 use std::collections::HashMap;
 
-/// The name resolver. Holds the module tree, DefKind map, and errors.
+/// The name resolver. Holds the module tree, DefKind map, scope stack,
+/// and errors.
 #[derive(Default)]
 pub struct Resolver {
     /// Module tree: crate root → nested mods.
     module_tree: ModuleNode,
     /// Map from DefId → DefKind (for namespace disambiguation).
     def_kinds: HashMap<DefId, DefKind>,
+    /// Scope stack for local variable resolution (Stage 1.4).
+    /// `None` when not inside a body (e.g., during module tree construction).
+    scopes: Option<ScopeStack>,
     /// Errors encountered (non-fatal).
     errors: Vec<ResolveError>,
 }
@@ -26,6 +31,7 @@ impl Resolver {
         Self {
             module_tree: ModuleNode::new(),
             def_kinds: HashMap::new(),
+            scopes: None,
             errors: Vec::new(),
         }
     }
@@ -279,7 +285,7 @@ impl Resolver {
         path.res = self.resolve_path(path, interner);
     }
 
-    /// Core path resolution: look up a HirPath in the module tree.
+    /// Core path resolution: look up a HirPath in the module tree + scope chain.
     fn resolve_path(&self, path: &HirPath, interner: &Rodeo) -> Res {
         if path.segments.is_empty() {
             return Res::Err;
@@ -290,20 +296,26 @@ impl Resolver {
             let seg = &path.segments[0];
             let name = interner.resolve(&seg.ident.name);
 
+            // Stage 1.4: Check local scope FIRST (before module-level items).
+            // Locals shadow items (e.g., `let i32 = 42;` shadows the `i32` type —
+            // though that's unusual, the resolution order is: local → primitive → item).
+            if let Some(scopes) = &self.scopes {
+                if let Some(hir_id) = scopes.lookup(seg.ident.name) {
+                    return Res::Local(hir_id);
+                }
+            }
+
             // Primitive types.
             if let Some(prim) = lookup_prim_ty(name) {
                 return Res::PrimTy(prim);
             }
 
-            // Self type keyword — check by interner lookup since "Self"
-            // may not have been interned in a fresh Rodeo.
+            // Self type keyword.
             if let Some(self_spur) = interner.get("Self") {
                 if seg.ident.name == self_spur {
                     return Res::SelfTy;
                 }
             }
-            // Also check by string in case interner has "Self" under a
-            // different Spur (shouldn't happen, but be safe).
             if name == "Self" {
                 return Res::SelfTy;
             }
@@ -318,7 +330,7 @@ impl Resolver {
                 return Res::Def(def_id);
             }
 
-            // Not found — could be a local (Stage 1.4) or a genuine error.
+            // Not found.
             return Res::Err;
         }
 
@@ -348,16 +360,76 @@ impl Resolver {
     }
 
     // ================================================================
-    // Body + expression resolution
+    // Body + expression resolution (Stage 1.4: with scope tracking)
     // ================================================================
 
     fn resolve_body(&mut self, body: &mut Body, interner: &Rodeo) {
+        // Create a Fn scope for the body.
+        self.scopes = Some(ScopeStack::new(ScopeKind::Fn));
+
+        // Register fn params as bindings in the Fn scope.
         for param in &mut body.params {
+            self.collect_pat_bindings(&param.pat);
             if let Some(ty) = &mut param.ty {
                 self.resolve_ty_paths(ty, interner);
             }
         }
+
+        // Resolve the body expression with scope tracking.
         self.resolve_expr(&mut body.value, interner);
+
+        // Pop the Fn scope.
+        self.scopes = None;
+    }
+
+    /// Collect all identifier bindings from a pattern into the current scope.
+    fn collect_pat_bindings(&mut self, pat: &HirPat) {
+        match &pat.kind {
+            HirPatKind::Ident(_mode, ident, sub) => {
+                if let Some(scopes) = &mut self.scopes {
+                    scopes.insert(ident.name, pat.hir_id);
+                }
+                if let Some(sub) = sub {
+                    self.collect_pat_bindings(sub);
+                }
+            }
+            HirPatKind::Struct(_path, fields, _rest) => {
+                for f in fields {
+                    self.collect_pat_bindings(&f.pat);
+                }
+            }
+            HirPatKind::TupleStruct(_path, pats) => {
+                for p in pats {
+                    self.collect_pat_bindings(p);
+                }
+            }
+            HirPatKind::Tuple(pats) => {
+                for p in pats {
+                    self.collect_pat_bindings(p);
+                }
+            }
+            HirPatKind::Slice(pats, rest) => {
+                for p in pats {
+                    self.collect_pat_bindings(p);
+                }
+                if let Some(r) = rest {
+                    self.collect_pat_bindings(r);
+                }
+            }
+            HirPatKind::Or(pats) => {
+                // All alternatives in an or-pattern bind the same names.
+                // For Stage 1.4, we just collect from the first alternative
+                // (all alternatives should bind the same set in valid Rust).
+                if let Some(first) = pats.first() {
+                    self.collect_pat_bindings(first);
+                }
+            }
+            HirPatKind::Ref(pat, _) => {
+                self.collect_pat_bindings(pat);
+            }
+            HirPatKind::Lit(_) | HirPatKind::Path(_) | HirPatKind::Wild | HirPatKind::Rest => {}
+            HirPatKind::Range(_, _, _) => {}
+        }
     }
 
     fn resolve_expr(&mut self, expr: &mut HirExpr, interner: &Rodeo) {
@@ -409,22 +481,64 @@ impl Resolver {
             HirExprKind::Match { expr, arms } => {
                 self.resolve_expr(expr, interner);
                 for arm in arms {
+                    // Push a MatchArm scope for pattern bindings.
+                    if let Some(scopes) = &mut self.scopes {
+                        scopes.push(ScopeKind::MatchArm);
+                    }
+                    self.collect_pat_bindings(&arm.pat);
                     if let Some(g) = &mut arm.guard {
                         self.resolve_expr(g, interner);
                     }
                     self.resolve_expr(&mut arm.body, interner);
+                    // Pop the MatchArm scope.
+                    if let Some(scopes) = &mut self.scopes {
+                        scopes.pop();
+                    }
                 }
             }
-            HirExprKind::Loop { body } => self.resolve_block(body, interner),
+            HirExprKind::Loop { body } => {
+                if let Some(scopes) = &mut self.scopes {
+                    scopes.push(ScopeKind::Loop);
+                }
+                self.resolve_block(body, interner);
+                if let Some(scopes) = &mut self.scopes {
+                    scopes.pop();
+                }
+            }
             HirExprKind::While { cond, body } => {
                 self.resolve_expr(cond, interner);
+                if let Some(scopes) = &mut self.scopes {
+                    scopes.push(ScopeKind::Loop);
+                }
                 self.resolve_block(body, interner);
+                if let Some(scopes) = &mut self.scopes {
+                    scopes.pop();
+                }
             }
-            HirExprKind::For { iter, body, .. } => {
+            HirExprKind::For { pat, iter, body } => {
                 self.resolve_expr(iter, interner);
+                if let Some(scopes) = &mut self.scopes {
+                    scopes.push(ScopeKind::Loop);
+                }
+                self.collect_pat_bindings(pat);
                 self.resolve_block(body, interner);
+                if let Some(scopes) = &mut self.scopes {
+                    scopes.pop();
+                }
             }
-            HirExprKind::Closure { body, .. } => self.resolve_expr(body, interner),
+            HirExprKind::Closure { params, body, .. } => {
+                // Push a Closure scope for closure params.
+                if let Some(scopes) = &mut self.scopes {
+                    scopes.push(ScopeKind::Closure);
+                }
+                for param in params {
+                    self.collect_pat_bindings(&param.pat);
+                }
+                self.resolve_expr(body, interner);
+                if let Some(scopes) = &mut self.scopes {
+                    scopes.pop();
+                }
+            }
             HirExprKind::Return { expr } | HirExprKind::Break { expr } => {
                 if let Some(e) = expr {
                     self.resolve_expr(e, interner);
@@ -463,15 +577,29 @@ impl Resolver {
     }
 
     fn resolve_block(&mut self, block: &mut HirBlock, interner: &Rodeo) {
+        // Push a Block scope for let bindings.
+        if let Some(scopes) = &mut self.scopes {
+            scopes.push(ScopeKind::Block);
+        }
+
         for stmt in &mut block.stmts {
             match stmt {
                 HirStmt::Local(local) => {
+                    // Resolve the type annotation (if any) BEFORE registering
+                    // the binding — the type is looked up in the current scope.
                     if let Some(ty) = &mut local.ty {
                         self.resolve_ty_paths(ty, interner);
                     }
+                    // Resolve the init expression BEFORE registering the binding.
+                    // This prevents forward references: `let x = x;` should resolve
+                    // the `x` on the right to an OUTER binding (or Err if none),
+                    // NOT to the binding being created.
                     if let Some(init) = &mut local.init {
                         self.resolve_expr(init, interner);
                     }
+                    // NOW register the binding in the current scope.
+                    // After this point, references to the name resolve to this binding.
+                    self.collect_pat_bindings(&local.pat);
                 }
                 HirStmt::Expr(e, _) => self.resolve_expr(e, interner),
                 _ => {}
@@ -479,6 +607,11 @@ impl Resolver {
         }
         if let Some(expr) = &mut block.expr {
             self.resolve_expr(expr, interner);
+        }
+
+        // Pop the Block scope.
+        if let Some(scopes) = &mut self.scopes {
+            scopes.pop();
         }
     }
 
