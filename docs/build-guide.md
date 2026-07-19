@@ -11,7 +11,7 @@
 ### 1.1 Rust 工具链
 
 | 组件 | 最低版本 | 推荐版本 |
-| --- | --- | --- |
+|---|---|---|
 | rustc | 1.70.0 | 1.75+（稳定通道） |
 | cargo | 1.70.0 | 1.75+ |
 | Rust edition | 2021 | 2021 |
@@ -66,7 +66,6 @@ cargo build
 ```
 
 产物：
-
 - 二进制：`target/debug/landin-stage0`
 - 库：`target/debug/liblandin_compiler.rlib`
 
@@ -77,7 +76,6 @@ cargo build --release
 ```
 
 产物：
-
 - 二进制：`target/release/landin-stage0`
 - 库：`target/release/liblandin_compiler.rlib`
 
@@ -125,7 +123,7 @@ landin-stage0 <FILE> [--emit-tokens] [--emit-ast]
 ### 3.2 选项说明
 
 | 选项 | 说明 |
-| --- | --- |
+|---|---|
 | `<FILE>` | 必需。输入的 `.lin` 源文件路径 |
 | `--emit-tokens` | 仅输出 token 流（debug 用），不继续 parse |
 | `--emit-ast` | 输出 AST 摘要（item 列表），不继续到后续阶段 |
@@ -189,7 +187,6 @@ $ echo $?
 ```
 
 退出码：
-
 - `0`：成功（无 lex/parse 错误）
 - `1`：有 lex/parse 错误
 - `2`：文件读取失败
@@ -383,7 +380,6 @@ cargo doc --open    # 生成文档并在浏览器打开
 ### 6.1 编译错误：`error: linking with cc failed`
 
 缺少 C 编译器。安装：
-
 - Linux (Debian/Ubuntu)：`sudo apt install build-essential`
 - Linux (Fedora/RHEL)：`sudo dnf install gcc`
 - macOS：`xcode-select --install`
@@ -464,7 +460,6 @@ Stage 0 是开发阶段，不发布到 crates.io 或 GitHub Releases。仅在本
 ### 7.2 v0.1 发布（月 12+）
 
 v0.1 = Stage 0 完整 + conformance 通过。届时会：
-
 - GitHub Release
 - crates.io 发布（landin-compiler + landin-stage0）
 - 预编译二进制（Linux/macOS/Windows）

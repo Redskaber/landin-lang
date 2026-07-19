@@ -12,7 +12,6 @@
 ## Scope
 
 Stage 1.3 handles **module-level** resolution only:
-
 - Top-level item registration (fn/const/static/struct/enum/trait/impl/type/mod/use)
 - `use` declaration resolution (simple `use a::b::c;`, glob `use a::*;`,
   group `use a::{b, c};`, alias `use a::b as c;`)
@@ -26,7 +25,6 @@ Stage 1.3 handles **module-level** resolution only:
 - Prelude injection (implicit `use std::prelude::v1::*`)
 
 **NOT in scope** (deferred to Stage 1.4 — scope-based resolution):
-
 - `let` binding resolution within function bodies
 - Closure parameter resolution
 - Match arm pattern binding resolution
@@ -112,7 +110,6 @@ pub struct ResolveError {
 #### B1. Build module tree from HIR crate
 
 Walk all owners in the HIR crate and build the module tree:
-
 - Crate root: all top-level items
 - `mod foo { ... }`: create child module `foo`, recursively walk its items
 - `mod foo;` (out-of-line): create placeholder child module `foo`
@@ -129,7 +126,6 @@ for namespace disambiguation during path resolution.
 #### C1. Process `use` declarations
 
 For each `HirUse` in the module tree:
-
 - `UseTree::Leaf(path, alias)` — resolve `path` to a `DefId`, then
   import the name (alias or last segment) into the current module's
   appropriate namespace
@@ -190,7 +186,6 @@ in the HIR crate and call `resolve_path` to fill in `res`.
 
 After resolution, verify that each resolved `DefId` is visible from
 the current module:
-
 - `pub` → visible everywhere
 - `pub(crate)` → visible within the crate
 - `pub(super)` → visible in parent module
@@ -200,7 +195,6 @@ the current module:
 #### E2. Duplicate definition detection
 
 During module tree construction, detect:
-
 - Two items with the same name in the same namespace → error
 - Two glob imports that bring in the same name → ambiguous (error
   only if both are used)
@@ -208,11 +202,9 @@ During module tree construction, detect:
 #### E3. Prelude injection
 
 Before processing user `use` declarations, inject an implicit:
-
 ```landin
 use std::prelude::v1::*;
 ```
-
 at the crate root. For Stage 1.3, we don't have a std crate yet, so
 this is a no-op placeholder — but the infrastructure is in place for
 Stage 5.

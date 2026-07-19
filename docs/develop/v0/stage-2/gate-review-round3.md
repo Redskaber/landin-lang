@@ -5,7 +5,7 @@
 > **Verdict**: ✅ **APPROVED** — All soundness holes closed; Stage 3 may begin
 > **Previous**: Round 2 found 5 P0 + G6 → Stage 2.4e fixed → APPROVED
 > **This round**: Round 3 expanded negative-case audit found 7 new issues
-> → Stage 2.4f fixed all → APPROVED
+>                → Stage 2.4f fixed all → APPROVED
 
 ---
 
@@ -29,16 +29,13 @@ found 7 new soundness issues (G7-G13). Stage 2.4f fixed all 7.
 Per Round 2's recommendation, the Stage Committee Process was updated:
 
 ### §9.1 强制负向测试 (v3.1)
-
 - Each sub-stage must include ≥3 negative-case integration tests
 - (was: ≥1 negative case, which was insufficient)
 
 ### §9.1.1 负向测试最小覆盖矩阵 (v3.1 new)
-
 Required coverage for compiler project:
-
 | Category | Example | Must detect |
-| ---------- | --------- | ------------- |
+|----------|---------|-------------|
 | Type mismatch | `let x: bool = 42;` | typeck |
 | Borrow conflict | `&mut x; &mut x;` | borrowck |
 | Use-after-move | `let t = s; let u = s;` | borrowck |
@@ -56,7 +53,7 @@ QA must verify ≥6 of 7 categories covered before committee vote.
 The expanded 44-case audit (in `examples/round3_audit.rs`) found:
 
 | ID | Severity | Issue | Status |
-| ---- | ---------- | ------- | -------- |
+|----|----------|-------|--------|
 | G7 | P0 | `bool_plus_bool` — Bool not arithmetic, silently accepted | ✅ Fixed |
 | G8 | P0 | `negate_bool` — `-true` silently accepted | ✅ Fixed |
 | G9 | P0 | `array_type_mismatch` — `[1, true]` elem types not unified | ✅ Fixed |
@@ -66,7 +63,6 @@ The expanded 44-case audit (in `examples/round3_audit.rs`) found:
 | G13 | P1 | `deref_null_ish` — raw ptr deref false positive | ⚠️ Stage 3 (raw ptr type parsing) |
 
 ### Root cause
-
 Round 2's fixes were *reactive* — they addressed specific missed cases
 but didn't add *general type-system strictness*. Round 3 found that
 the type checker was too permissive in several fundamental ways:
@@ -83,38 +79,32 @@ the type checker was too permissive in several fundamental ways:
 ## Stage 2.4f Fixes
 
 ### G7+G8: Arithmetic/Unary operand type checking
-
 - **Location**: `src/typeck/checker.rs` `infer_rvalue`
 - **Fix**: Added `is_arithmetic_ty`, `is_negatable_ty`, `is_notable_ty`, `is_shift_count_ty` helpers. Arithmetic ops (Add/Sub/Mul/Div/Rem) now require Int/Uint/Float. Unary `-` requires negatable. Unary `!` requires notable (Bool or Int).
 - **Impact**: `true + false`, `-true`, `!1.5` now correctly error.
 
 ### G9: Array element type unification
-
 - **Location**: `src/typeck/checker.rs` `infer_rvalue` for `AggregateKind::Array`
 - **Fix**: Each element's type is now unified with the array's declared element type. Mismatches produce type errors.
 - **Impact**: `[1, true, 2]` now correctly errors.
 
 ### G10: Call non-function detection (post-defaulting)
-
 - **Location**: `src/typeck/checker.rs` `post_check_terminator` (new Phase 5)
 - **Fix**: After `default_unresolved` + writeback, re-scan Call terminators. If func_ty is not FnDef/FnPtr/Error, emit "expected function" error.
 - **Why post-defaulting**: In Phase 1, `let x = 1; x();` has func_ty = Infer (unresolved). Only after defaulting does x resolve to Int(I32), allowing the check to fire.
 - **Impact**: `let x = 1; x();` now correctly errors.
 
 ### G11: If/While condition must be bool
-
 - **Location**: `src/typeck/checker.rs` `check_terminator` for `SwitchInt`
 - **Fix**: If any target value is `ConstVal::Bool(_)`, the SwitchInt came from an if/while condition — require discr to unify with Bool. Otherwise (match on int), allow any int-like type.
 - **Impact**: `if 42 { ... }` and `while 42 { ... }` now correctly error.
 
 ### G12: `&mut` requires mutable place
-
 - **Location**: `src/borrowck/mod.rs` `check_rvalue` for `Rvalue::Ref`
 - **Fix**: When creating a `&mut` borrow, check that the borrowed place's local is declared `mut`. If not, emit `BorrowErrorKind::BorrowImmutable`.
 - **Impact**: `let x = 1; let r = &mut x;` now correctly errors.
 
 ### G13: Raw ptr deref false positive (Stage 3)
-
 - **Issue**: `let p: *i32 = 0 as *i32; let x = *p;` produces false errors.
 - **Root cause**: Parser doesn't correctly parse `*i32` as a raw pointer type (treats `*` as deref operator). The type Path for `i32` ends up with empty segments → Res::Err → G4 scan reports "cannot find type".
 - **Status**: Deferred to Stage 3 (raw ptr type parsing requires parser work).
@@ -125,15 +115,12 @@ the type checker was too permissive in several fundamental ways:
 ## Test Results
 
 ### Existing test suite
-
 - **644 → 654 tests** (+10 new G7 negative tests in `tests/negative_cases.rs`)
 - **0 failed, 1 ignored** (Stage 3: NLL in loops)
 - **0 warnings, fmt + clippy clean**
 
 ### Expanded negative-case audit (`examples/round3_audit.rs`)
-
 44 cases covering:
-
 - Type system (12 cases): arithmetic, unary, array, char, float, negate, not
 - Borrow checker (7 cases): double mut, shared-then-mut, assign-borrowed, move-borrowed, use-after-move, borrow-after-move
 - Mutability (3 cases): assign immutable, assign mutable, mut-borrow immutable
@@ -146,7 +133,6 @@ the type checker was too permissive in several fundamental ways:
 **Result**: 44/44 OK, 0 missed, 0 false positives
 
 ### Audit example (`examples/stage2_4d_audit.rs`)
-
 - **13/15 clean** (2 intentional error demos: type mismatch + lex error)
 
 ---
@@ -154,7 +140,7 @@ the type checker was too permissive in several fundamental ways:
 ## §9.1.1 Negative-Test Coverage Matrix
 
 | Category | Covered? | Test |
-| ---------- | ---------- | ------ |
+|----------|----------|------|
 | Type mismatch | ✅ | `g5_let_ascription_mismatch_detected` |
 | Borrow conflict | ✅ | `g2_double_mut_borrow_detected` |
 | Use-after-move | ✅ | `g6_use_after_move_str_detected` |
@@ -170,7 +156,7 @@ the type checker was too permissive in several fundamental ways:
 ## Committee Vote (5 roles — Round 3)
 
 | Role | Weight | Vote | Reason |
-| ------ | -------- | ------ | -------- |
+|------|--------|------|--------|
 | Compiler Engineer (Architect) | 2.0 | **APPROVED** | All G7-G12 fixed. Type system now enforces arithmetic operand types, array elem consistency, call target types, if/while bool conditions, mut-borrow mutability. Remaining (G13 raw ptr) is Stage 3 parser work. |
 | Soundness Reviewer | 1.5 | **APPROVED** | The type system is now fundamentally sound for the supported feature set. All 7 negative-test categories covered. No more "silently accepts invalid programs" holes. |
 | Testing & QA Lead | 1.0 | **APPROVED** | 44-case expanded audit passes 100%. §9.1.1 matrix 7/7 covered. Process v3.1 negative-test requirement met. |
@@ -186,7 +172,7 @@ the type checker was too permissive in several fundamental ways:
 ## Final Stage 2.x Status
 
 | Metric | Round 1 | Round 2 | Round 3 |
-| -------- | --------- | --------- | --------- |
+|--------|---------|---------|---------|
 | P0 blockers | 5 | 0 (fixed) | 0 |
 | P1 issues | 6 | 1 (G6) | 0 |
 | New findings | — | — | 7 (G7-G13, all fixed except G13 Stage 3) |
@@ -215,13 +201,12 @@ the type checker was too permissive in several fundamental ways:
 ## Process Calibration Data (for §7)
 
 | Stage | Round | P0 | P1 | Neg coverage | Lesson |
-| ------- | ------- | ---- | ---- | -------------- | -------- |
+|-------|-------|----|----|--------------|--------|
 | 2.x | R1 | 5 | 6 | 31% | Existing tests 100% positive — false security |
 | 2.x | R2 | 0 | 1 | 95% | Negative tests added; 1 NLL loop limitation |
 | 2.x | R3 | 0 | 0 | 100% | Expanded audit found 7 more type-system holes |
 
 **Key lesson**: Even after Round 2's negative tests, Round 3's *expanded* audit found 7 more issues. This suggests future stages should:
-
 1. Start with negative tests from day 1 (not as afterthought)
 2. Use progressively larger negative-case audits at each gate review
 3. Cover all 7 categories in §9.1.1 matrix

@@ -22,7 +22,7 @@ lex error included to demonstrate the new error display.
 ## P0 Blockers — All 17 Fixed
 
 | P0 | Description | Fix Commit | Status |
-| ---- | ------------- | ----------- | -------- |
+|----|-------------|-----------|--------|
 | P0-1 | 14 expr kinds dropped to Error | 94797f4 (2.4b) | ✅ |
 | P0-2 | TyVid(0) sharing | ee5520f (2.4a) | ✅ |
 | P0-3 | Array lengths hardcoded Uint(0) | 3da47e0 (2.4c) | ✅ |
@@ -46,7 +46,7 @@ lex error included to demonstrate the new error display.
 ## P1 Issues — 6 of 8 Fixed
 
 | P1 | Description | Fix Commit | Status |
-| ---- | ------------- | ----------- | -------- |
+|----|-------------|-----------|--------|
 | P1-1 | Short-circuit And/Or (was BitAnd/BitOr) | 0e9a6fb (2.4d) | ✅ |
 | P1-2 | String/byte literals mistyped as i32 | 0e9a6fb (2.4d) | ✅ |
 | P1-3 | HirTy.inferred never populated | 2e96616 (2.4d) | ✅ |
@@ -99,7 +99,6 @@ The single error case is an intentional lex error
 
 - **error_case_lex** — Unterminated string literal. The error is
   correctly detected and displayed with a source snippet:
-
   ```
   error: 1 error(s)
     [lex] unterminated string literal
@@ -115,19 +114,16 @@ The single error case is an intentional lex error
 ### Driver (P0-13)
 
 `src/driver.rs` is the single entry point that wires:
-
 ```
 lexer → parser → HIR lower → resolve → MIR lower → typeck → borrowck
 ```
 
 Public API:
-
 - `compile(src: &str) -> CompileResult`
 - `compile_expect_ok(src) -> CompileResult` (panics on error)
 - `compile_expect_errors(src) -> CompileResult` (panics if no error)
 
 `CompileResult` exposes:
-
 - `hir: Option<HirCrate>`
 - `mirs: Vec<MirBody>` (with resolved types in local_decls)
 - `typeck_results: Vec<TypeckResults>` (per-body)
@@ -137,7 +133,6 @@ Public API:
 ### TypeckResults (P1-3)
 
 `TypeckResults` captures per-body resolved types:
-
 - `local_types: HashMap<LocalId, Ty>`
 - `hir_types: HashMap<HirId, Ty>` (Stage 3 will populate via hir_to_local)
 
@@ -146,7 +141,6 @@ This lets downstream consumers consult types without re-running typeck.
 ### User-facing error display (P1-4)
 
 `CompileErrors::format_for_user(src: Option<&str>)` renders errors with:
-
 - Category prefix (`[lex]`, `[parse]`, `[resolve]`, `[typeck]`, `[borrowck]`)
 - Error message
 - Source snippet with line number and `^` underline
@@ -155,7 +149,6 @@ This lets downstream consumers consult types without re-running typeck.
 
 Added `StatementKind::StorageLive(LocalId)`, `StorageDead(LocalId)`,
 and `Deinit(Lvalue)`. MIR lower emits `StorageLive` for:
-
 - The return local at function entry
 - Each fn param at function entry
 - Each `let` binding at the `let` statement
@@ -175,7 +168,6 @@ Comparison and bitwise ops do NOT emit Asserts (they can't overflow).
 
 `&&` and `||` are now lowered to control flow via `lower_short_circuit`,
 which produces 5 basic blocks:
-
 ```
 bb0:        switchInt(lhs) → {true: eval_rhs, _: short_circuit}
 short_circuit: result = (op == Or); goto cont
@@ -261,7 +253,7 @@ of `Operand::Copy` (correctly handles non-Copy types like Str).
 ## Version History
 
 | Version | Date | Changes |
-| --------- | ------ | --------- |
+|---------|------|---------|
 | v0.4.0 | 2026-07-19 (start) | Stage 2.3 NLL borrow checker (541 tests, 17 P0 blockers found) |
 | v0.4.1 | 2026-07-19 (2.4a) | TyVid fix + process v3.0 (542 tests, 1/17 P0 fixed) |
 | v0.4.2 | 2026-07-19 (2.4b) | 14 missing expr lowering + 4 typeck fixes (545 tests, 6/17 P0 fixed) |

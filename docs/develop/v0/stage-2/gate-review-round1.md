@@ -23,7 +23,6 @@ actually check anything on real programs.
 ## P0 Blockers (17 items)
 
 ### MIR Lowering (6 P0)
-
 1. **14 expression kinds dropped to `TyKind::Error`** — Field, Index, Loop,
    While, For, Closure, MethodCall, Cast, AddrOf, Range, Array, Repeat,
    Struct, MacroCall, Unsafe, Try, Break, Continue
@@ -36,27 +35,24 @@ actually check anything on real programs.
 6. **Deref lowered as bitwise NOT** — `*p` produces `!p`
 
 ### Type Check (7 P0)
-
-1. **`unify_resolved` missing 6 type kinds** — Adt, FnDef, FnPtr, Closure,
+7. **`unify_resolved` missing 6 type kinds** — Adt, FnDef, FnPtr, Closure,
    Param, RawPtr all fall to mismatch error
-2. **`bind_int_var_to_uint` hardcodes `i32`** — uint types silently corrupted
-3. **Union-find doesn't propagate** — TyVar×TyVar merge is shallow
-4. **`Terminator::Call` type checking discards everything** — `let _func_ty`
-5. **`BinaryOp` discards RHS type** — `1 + true` accepted
-6. **Resolved types not written back** — `mir.local_decls[i].ty` stays Infer
-7. **`check_crate` never called** — no driver wires the pipeline
+8. **`bind_int_var_to_uint` hardcodes `i32`** — uint types silently corrupted
+9. **Union-find doesn't propagate** — TyVar×TyVar merge is shallow
+10. **`Terminator::Call` type checking discards everything** — `let _func_ty`
+11. **`BinaryOp` discards RHS type** — `1 + true` accepted
+12. **Resolved types not written back** — `mir.local_decls[i].ty` stays Infer
+13. **`check_crate` never called** — no driver wires the pipeline
 
 ### Borrow Check (4 P0)
-
-1. **Single-pass, no dataflow** — unsound on loops
-2. **`place_path` collapses projections** — `a.x` == `a.y` (false positives)
-3. **Borrows never expire** — "NLL" is actually lexical scope
-4. **`Operand::Copy` doesn't check Copy-ness** — non-Copy types silently copied
+14. **Single-pass, no dataflow** — unsound on loops
+15. **`place_path` collapses projections** — `a.x` == `a.y` (false positives)
+16. **Borrows never expire** — "NLL" is actually lexical scope
+17. **`Operand::Copy` doesn't check Copy-ness** — non-Copy types silently copied
 
 ---
 
 ## P1 Issues (8 items)
-
 - Short-circuit And/Or not implemented (BitAnd/BitOr)
 - String/byte literals mistyped as i32
 - `HirTy.inferred` never populated
@@ -77,13 +73,11 @@ type checking, which depends on borrow checking, which depends on the
 driver wiring them together.
 
 Each committee vote verified:
-
 - ✅ The sub-stage's own code compiles
 - ✅ The sub-stage's own tests pass
 - ✅ fmt + clippy clean
 
 But missed:
-
 - ❌ Does the sub-stage work when fed real source code?
 - ❌ Does the sub-stage produce output that the next stage can consume?
 - ❌ Are the "P3 debt" items actually P0 in disguise?
@@ -93,7 +87,6 @@ But missed:
 ## Remediation Plan: Stage 2.4
 
 ### Stage 2.4a — Core Type Infrastructure (3-5 days)
-
 - Fix `TyVid(0)` sharing: allocate fresh TyVid per local/temp
 - Write resolved types back to `mir.local_decls[i].ty`
 - Populate `HirTy.inferred` with resolved types
@@ -102,7 +95,6 @@ But missed:
 - Add 10+ integration tests on real source
 
 ### Stage 2.4b — Lowering Completeness (3-5 days)
-
 - Implement 14 missing HIR→MIR expression lowering kinds
 - Add projection construction (Field/Index/Deref)
 - Fix Deref (not bitwise NOT)
@@ -114,7 +106,6 @@ But missed:
 - Add `BinaryOp` RHS type checking
 
 ### Stage 2.4c — Borrow Check Correctness (3-5 days)
-
 - Implement field-sensitive `PlacePath` (LocalId + Vec<ProjectionElem>)
 - Implement fixpoint dataflow for borrow checking
 - Implement borrow expiry (last-use tracking, basic NLL)
@@ -122,7 +113,6 @@ But missed:
 - Add 10+ borrowck integration tests on real source
 
 ### Stage 2.4d — Final Gate Review
-
 - Re-run this full audit
 - Require ≥30 integration tests on real source
 - Require fibonacci + struct borrows + closures + loops to type-check

@@ -16,7 +16,6 @@ cargo test
 ```
 
 预期输出：
-
 ```
 running 79 tests
 test test_int_dec_basic ... ok
@@ -97,7 +96,7 @@ landin-stage0/
 ### 2.2 文件职责
 
 | 文件 | 职责 | 测试类型 |
-| --- | --- | --- |
+|---|---|---|
 | `tests/lexer.rs` | 验证 lexer 输出的 `TokenKind` 正确性 | 精确 token 断言 + 模式断言 |
 | `tests/parser.rs` | 验证 parser 不报错 / 报错行为 | smoke test（`assert_no_errors` / `assert_has_errors`） |
 | `tests/ast_structure.rs` | 验证 parser 产生的 AST 节点结构正确 | 结构断言（`match` + `assert_eq!`）+ P0 回归测试 |
@@ -227,7 +226,7 @@ test_<category>_<feature>[_<variant>]
 ### 4.2 分类前缀
 
 | 前缀 | 适用范围 | 示例 |
-| --- | --- | --- |
+|---|---|---|
 | `test_int_` | 整数字面量 | `test_int_dec_basic` / `test_int_hex` / `test_int_oct` |
 | `test_float_` | 浮点字面量 | `test_float_basic` / `test_float_exp` / `test_float_suffix_f32` |
 | `test_char_` | 字符字面量 | `test_char_basic` / `test_char_escape_newline` |
@@ -338,7 +337,7 @@ fn main() {
 ### 5.4 Header 字段完整清单
 
 | 字段 | 必需 | 说明 |
-| --- | --- | --- |
+|---|---|---|
 | `CATEGORY` | ✅ | parse / typecheck / borrowck / codegen / e2e / soundness / stdlib / integration |
 | `DESCRIPTION` | ✅ | 测试描述 |
 | `EXPECTED` | ✅ | `compile_ok` / `compile_error` / `run_ok` / `run_panic` |
@@ -368,7 +367,7 @@ fn main() {
 ### 6.1 当前测试质量
 
 | 维度 | 当前状态 | 目标 |
-| --- | --- | --- |
+|---|---|---|
 | Token 精确断言 | 88 处 | 维持 |
 | Token 模式断言 | 45 处 | 维持 |
 | AST 结构断言 | 8 处 | ≥ 50 处（覆盖 28 Expr + 16 Ty + 12 Pat） |

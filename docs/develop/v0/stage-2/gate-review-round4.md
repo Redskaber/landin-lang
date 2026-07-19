@@ -5,7 +5,7 @@
 > **Verdict**: ✅ **APPROVED** — All soundness holes closed; Stage 3 may begin
 > **Previous**: Round 3 found 7 issues → Stage 2.4f fixed → APPROVED
 > **This round**: Round 4 used 41-case §9.3.1-compliant audit, found 3 new issues
-> → Stage 2.4g fixed 2 (1 is Stage 3) → APPROVED
+>                → Stage 2.4g fixed 2 (1 is Stage 3) → APPROVED
 
 ---
 
@@ -33,9 +33,7 @@ inference requires TraitResolver).
 ## Process Update: v3.1 → v3.2
 
 ### §9.3.1 扩展负向审计要求 (v3.2 new)
-
 Per Round 3's recommendation, the process now requires:
-
 - ≥30-case negative audit at each phase gate
 - 4 groups: 10 single-stmt + 10 multi-stmt + 5 complex + 5 error recovery
 - All 7 §9.1.1 categories must be covered
@@ -49,7 +47,7 @@ Round 4's audit (`examples/round4_audit.rs`) has 41 cases — satisfies §9.3.1.
 ## Round 4 Findings
 
 | ID | Severity | Issue | Status |
-| ---- | ---------- | ------- | -------- |
+|----|----------|-------|--------|
 | G8 | P0 | `!3.14` not rejected — FloatVar allowed in is_notable_ty | ✅ Fixed |
 | G9b | P0 | `-(1, 2)` not rejected — operand not resolved before type check | ✅ Fixed |
 | G10b | P1 | closure arg count not checked | ⚠️ Stage 3 (closure type inference) |
@@ -71,14 +69,12 @@ remaining holes:
    returned true (deferred). The check passed incorrectly.
 
 ### G8 fix
-
 - **Location**: `src/typeck/checker.rs` `is_notable_ty`
 - **Fix**: Changed `Infer(_)` to `Infer(TyVar(_)) | Infer(IntVar(_))` —
   explicitly exclude `FloatVar` since it can only resolve to Float.
 - **Impact**: `!3.14` now correctly errors.
 
 ### G9b fix
-
 - **Location**: `src/typeck/checker.rs` `infer_rvalue` for `UnaryOp` and `BinaryOp`
 - **Fix**: Added `self.unify.resolve(...)` before passing operand types
   to `is_arithmetic_ty` / `is_negatable_ty` / `is_notable_ty`. This
@@ -87,7 +83,6 @@ remaining holes:
   where operands are TyVar-bound-to-non-arithmetic.
 
 ### G10b (Stage 3)
-
 - **Issue**: `apply(|a, b| a + b, 1)` — closure has 2 params but fn sig expects 1.
 - **Root cause**: Closures are lowered to fresh Infer vars without
   unifying against the expected fn signature. The Call type checker
@@ -99,13 +94,11 @@ remaining holes:
 ## Test Results
 
 ### Existing test suite
-
 - **654 → 658 tests** (+4 G8 negative tests in `tests/negative_cases.rs`)
 - **0 failed, 2 ignored** (Stage 3: NLL in loops + closure arg count)
 - **0 warnings, fmt + clippy clean**
 
 ### Round 4 audit (`examples/round4_audit.rs`) — §9.3.1 compliant
-
 - **41 cases total** (requirement: ≥30)
   - 10 single-statement (Group A)
   - 10 multi-statement/multi-function (Group B)
@@ -116,11 +109,9 @@ remaining holes:
 - **§9.1.1 coverage: 7/7 categories** ✅
 
 ### Round 3 audit (`examples/round3_audit.rs`) — regression check
-
 - **44/44 OK, 0 missed, 0 false positives** (no regression from G8/G9b fixes)
 
 ### Audit example (`examples/stage2_4d_audit.rs`)
-
 - **13/15 clean** (2 intentional error demos)
 
 ---
@@ -128,7 +119,7 @@ remaining holes:
 ## §9.1.1 Negative-Test Coverage Matrix
 
 | Category | Covered? | Test (Round 4) |
-| ---------- | ---------- | ---------------- |
+|----------|----------|----------------|
 | Type mismatch | ✅ | b01_let_ascription_mismatch |
 | Borrow conflict | ✅ | b04_double_mut_borrow |
 | Use-after-move | ✅ | b03_use_after_move_str |
@@ -144,7 +135,7 @@ remaining holes:
 ## §9.3.1 Compliance Check
 
 | Requirement | Status |
-| ------------- | -------- |
+|-------------|--------|
 | ≥30 cases | ✅ 41 cases |
 | 10 single-stmt negative | ✅ 10 (Group A) |
 | 10 multi-stmt negative | ✅ 10 (Group B) |
@@ -161,7 +152,7 @@ remaining holes:
 ## Committee Vote (5 roles — Round 4)
 
 | Role | Weight | Vote | Reason |
-| ------ | -------- | ------ | -------- |
+|------|--------|------|--------|
 | Compiler Engineer (Architect) | 2.0 | **APPROVED** | G8 and G9b fixed. The resolve-before-check pattern is now consistently applied in infer_rvalue. Remaining (G10b closure) is Stage 3. |
 | Soundness Reviewer | 1.5 | **APPROVED** | The FloatVar exclusion in is_notable_ty closes the last type-system strictness hole for unary ops. The resolve-before-check fix prevents TyVar-deferred types from bypassing arithmetic/negation checks. |
 | Testing & QA Lead | 1.0 | **APPROVED** | §9.3.1 compliant (41 cases, 4 groups, 7/7 categories). Round 3 audit still passes (no regression). 2 Stage 3 limitations properly documented as ignored. |
@@ -177,7 +168,7 @@ remaining holes:
 ## Final Stage 2.x Status (4 rounds)
 
 | Metric | R1 | R2 | R3 | R4 |
-| -------- | ---- | ---- | ---- | ---- |
+|--------|----|----|----|----|
 | P0 blockers | 5 | 0 | 0 | 0 |
 | P1 issues | 6 | 1 | 0 | 1 (Stage 3) |
 | New findings | — | — | 7 | 3 (2 fixed, 1 Stage 3) |
@@ -209,7 +200,7 @@ remaining holes:
 ## Process Calibration Data (for §7)
 
 | Stage | Round | P0 | P1 | Audit size | Lesson |
-| ------- | ------- | ---- | ---- | ----------- | -------- |
+|-------|-------|----|----|-----------|--------|
 | 2.x | R1 | 5 | 6 | 13 | Existing tests 100% positive — false security |
 | 2.x | R2 | 0 | 1 | 20 | Negative tests added; 1 NLL loop limitation |
 | 2.x | R3 | 0 | 0 | 44 | Expanded audit found 7 type-system holes |
@@ -218,7 +209,6 @@ remaining holes:
 **Key lesson from R4**: Even with R3's 44-case audit, R4 found 2 more
 issues by testing *edge cases of the fixes* (FloatVar vs IntVar, resolve
 timing). This suggests:
-
 1. Each round should test *the fixes from the previous round* for edge cases
 2. Type-system strictness checks need resolve-before-check pattern
 3. InferVar subtypes (TyVar vs IntVar vs FloatVar) need separate handling

@@ -14,7 +14,7 @@
 ### 1.1 Lexer（02-grammar.md §1）
 
 | 章节 | 项目 | 状态 | 备注 |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | §1.1 | 源字符集（UTF-8、CRLF 归一化、BOM 拒绝） | ⚠️ 部分 | CRLF 仅外部跳过；string 内部未归一化；BOM 仅报泛化错误（P1） |
 | §1.2 | 标识符（ASCII + Unicode XID）+ raw identifier | ✅ | `lex_ident` 双路径（ASCII 快 + UTF-8 慢）；**`r#name` 通过 `lex_raw_identifier` 正确产生 `RawIdent` token** |
 | §1.3 | 关键字（38 个严格/弱保留 + 2 个 async/await） | ✅ | `keyword_from_str` 38 项；14 个弱保留未覆盖（P1） |
@@ -34,8 +34,8 @@
 ### 1.2 Parser（02-grammar.md §2-3）
 
 | 章节 | 项目 | 状态 | 备注 |
-| --- | --- | --- | --- |
-| §2 | Pratt 优先级表（13 级） | ✅ | `=` / ` | | ` / `&&` / `==` `!=` `<` `>` `<=` `>=` / `\|` `^` `&` / `<<` `>>` / `+` `-` / `*` `/` `%` / `as` / unary / postfix；10 个 Pratt 优先级结构断言测试覆盖 |
+|---|---|---|---|
+| §2 | Pratt 优先级表（13 级） | ✅ | `=` / `||` / `&&` / `==` `!=` `<` `>` `<=` `>=` / `\|` `^` `&` / `<<` `>>` / `+` `-` / `*` `/` `%` / `as` / unary / postfix；10 个 Pratt 优先级结构断言测试覆盖 |
 | §3.1 | 11 个 item 类型 | ✅ | 全部识别（trait body 简化跳过） |
 | §3.2 | 表达式（28 种） | ⚠️ 90% | struct literal / if let / while let / macro call 缺失（Stage 1） |
 | §3.3 | 模式（12 种 variant 定义，3 种构造） | ⚠️ 25% | 只构造 Wild/Ident/Ref；Struct/Tuple/Or/Lit/Path/Range 等未构造（Stage 1） |
@@ -52,7 +52,7 @@
 ### 1.3 AST（05-ast.md §2-§11）
 
 | 章节 | 项目 | 状态 | 备注 |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | §2 | Span / BytePos / FileId | ⚠️ | Span 仅 `lo`/`hi`（无 file_id，月 3+ 加） |
 | §3 | Ident（Symbol + Span） | ✅ | lasso interner |
 | §4 | Path / PathSegment / PathLeading | ⚠️ | `PathLeading::Crate/Super/Self_` 未构造；RawIdent 已支持 |
@@ -75,7 +75,7 @@
 ### 2.1 当前测试规模
 
 | 文件 | 测试数 | 文件行数 | 测试类型 |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `tests/lexer.rs` | 109 | 826 | 精确 token + 模式断言 + RP0-1/2/4/8 回归 |
 | `tests/parser.rs` | 85 | 379 | 87.5% smoke test + 12.5% 错误检测 |
 | `tests/ast_structure.rs` | 51 | 513 | AST 结构断言 + P0 回归 + Pratt 优先级 + Ty variant + RawIdent 集成 + DocComment 集成 |
@@ -84,7 +84,7 @@
 ### 2.2 蓝图 §9.5 分布对比
 
 | 子类 | 蓝图要求 | 当前实际 | 差距 |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | 字面量 | 30 | 35 | +5 |
 | 运算符 | 25 | 25 | 0 |
 | 控制流 | 30 | 15 | -15 |
@@ -104,7 +104,7 @@
 ### 2.3 测试质量
 
 | 维度 | 当前状态 |
-| --- | --- |
+|---|---|
 | Token 精确断言（`assert_eq!(token, ...)`） | 95 处 |
 | Token 模式断言（`matches!(token, ...)`） | 52 处 |
 | AST 结构断言（items.len / variant kind） | 23 处 |
@@ -125,7 +125,7 @@
 ✅ **全部 4 个 RP0 已修复**：
 
 | # | 缺陷 | v0.1.2 状态 | v0.1.3 修复 |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | RP0-1 | `1f32` 纯后缀浮点损坏 | ⚠️ 实际已在 v0.1.2 代码中修复但 status 文档未更新 | ✅ 已确认 + 3 个回归测试覆盖 |
 | RP0-2 | `r#name` raw identifier 不支持 | ❌ lexer 报错，RawIdent variant 死代码 | ✅ 新增 `lex_raw_identifier` 方法 + 6 个回归测试 + parser 在 name 位置接受 |
 | RP0-4 | `0x` / `0o` / `0b` 空字面量未报错 | ⚠️ 实际已在 v0.1.2 代码中修复但 status 文档未更新 | ✅ 已确认 + 4 个回归测试覆盖 |
@@ -166,7 +166,7 @@
 ### 4.1 月 2 验收标准
 
 | 标准 | 状态 | 证据 |
-| --- | --- | --- |
+|---|---|---|
 | Lexer ~1,500 行 | ✅ | 1115 行（reader 1023 + token 353 + mod 39） |
 | Parser ~4,000 行 | ⚠️ | 1473 行（精简但完整；蓝图允许缩减） |
 | AST 定义 ~2,500 行 | ⚠️ | 619 行（精简但完整） |
@@ -177,7 +177,7 @@
 ### 4.2 Stage 0 整体验收（v0.1 = Stage 0 完整 + conformance 通过）
 
 | 标准 | 状态 |
-| --- | --- |
+|---|---|
 | Lexer/Parser/AST/HIR/Typeck/Borrowck/MIR/Codegen/Stdlib 全部完成 | ⚠️ 仅前端闭合 |
 | Conformance 5000 测试通过 | ❌ — Stage 1 建立 |
 | v0.1 发布 | ❌ — 仍在月 2 末（前端闭合），尚需月 3-月 12 |
@@ -215,7 +215,6 @@
 ### 6.1 Stage 0 前端（月 2）
 
 **主体功能满足验收标准**：
-
 - ✅ 全部 token 类型覆盖（13/13 章节）
 - ✅ 全部 item 类型识别
 - ✅ 基本表达式/类型/模式

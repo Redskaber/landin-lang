@@ -13,7 +13,6 @@
 ## Scope
 
 Stage 2.2 handles:
-
 - Type inference engine (unification table, constraint collection)
 - Walking MIR bodies to collect type constraints
 - Unifying inference variables to concrete types
@@ -23,7 +22,6 @@ Stage 2.2 handles:
 - Populating `Ty.inferred` on all `HirTy` nodes
 
 **NOT in scope** (deferred):
-
 - Full trait coherence checking (Stage 2.3+)
 - Associated type projection (Stage 2.3+)
 - Generic monomorphization (Stage 3)
@@ -68,7 +66,6 @@ pub struct TypeError {
 #### A3. Unification algorithm
 
 `unify(a: Ty, b: Ty) -> Result<(), TypeError>`:
-
 - If both are `Infer(TyVar(v))`: unify the two variables
 - If one is `Infer(var)`: bind var to the other type
 - If both are concrete with same kind: recursively unify sub-types
@@ -93,7 +90,6 @@ pub struct TypeChecker {
 #### B2. `check_body(Body) -> Vec<TypeError>`
 
 Walk each MIR body:
-
 1. Assign types to locals from their declarations
 2. Walk each basic block in order
 3. For each `Statement::Assign(place, rvalue)`:
@@ -128,7 +124,6 @@ any remaining `FloatVar` defaults to `f64`.
 #### C6. `TraitResolver` — check trait bounds
 
 For each generic param with bounds (`T: Clone`):
-
 - Record the bound as an obligation
 - During type inference, when a concrete type is assigned to T,
   check if the type implements the trait
@@ -138,7 +133,6 @@ For each generic param with bounds (`T: Clone`):
 #### C7. Method lookup
 
 When resolving `HirExprKind::MethodCall`:
-
 - Look up the method in the receiver type's impl blocks
 - For Stage 2.2: simple name-based lookup (no trait methods yet)
 

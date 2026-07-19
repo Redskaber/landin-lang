@@ -1,8 +1,8 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 3.6 (effective from Stage 3.7)
-> **Supersedes**: v3.5
+> **Version**: 3.7 (effective from Stage 3.8)
+> **Supersedes**: v3.6
 > **Purpose**: Formalize the multi-round review process with dynamic
 > adaptive mechanisms, weighted voting, defect-level governance,
 > **cross-stage integration verification**, and data-driven continuous
@@ -26,7 +26,6 @@
 保证每个子任务可单独审查、修正和追溯。
 
 每个 MUV 必须包含：
-
 - 明确的输入条件（前置依赖）
 - 明确的输出物（代码/测试/文档）
 - 明确的验收标准（可量化）
@@ -39,7 +38,6 @@
 ### 3.1 复杂度预评估（启动前）
 
 由 AI Agent 基于以下三项指标预估子任务的问题复杂度等级：
-
 - **代码变动量**（新增/修改 LOC）
 - **依赖风险**（跨模块耦合度、接口变更影响面）
 - **历史缺陷密度**（同类任务在之前阶段的 P0/P1 发现率）
@@ -83,7 +81,6 @@
 > 但从未验证子阶段之间的集成。每个子阶段都是"孤立正确"但"集成失败"。
 
 **规则**：
-
 1. 每个被标记为 P3 的技术债，在退出内循环前必须由**架构师角色**
    确认其真实等级。如果该 P3 会影响下一阶段的正确性，则**升级为 P0/P1**，
    强制在本阶段修复。
@@ -125,7 +122,6 @@
 ### 5.3 Git Commit 规范
 
 团队外循环投票**通过**后，方可进入下一阶段。同步执行标准 Git Commit，包含：
-
 - **消息头**（类型 + 范围）：`feat(stageX.Y): 简述`
 - **主体**（变更摘要）
 - **脚注**（**强制包含**）：
@@ -148,7 +144,6 @@
 ## 7. 迭代与自我进化
 
 每个阶段结束后，由 Agent 统计：
-
 - 预估等级与实际轮次的偏差；
 - P0/P1/P2 发现密度与分布；
 - **P3→P0/P1 误分类率**（新增 v3.0，来自 Stage 2.x 教训）；
@@ -176,7 +171,6 @@
 | **Stage 2.x 门审查** | — | 1 | **17** | 8 | — | **❌ 未通过** | **集成失败：17 P0 全部来自子阶段间的衔接** |
 
 **校准结论（v3.0）**：
-
 - L2 基准轮次区间维持 4~9 轮（实际 7~9 轮，符合）
 - L3 基准轮次区间调整为 8~15 轮（Stage 0 v0.1.4 验证了 9 轮的必要性）
 - **P3 误分类率**：Stage 2.x 中 17 个 P3 中有 17 个实际为 P0/P1（100% 误分类率）
@@ -239,7 +233,7 @@
 对于编译器项目，以下错误类别每个都至少要有 1 个负向集成测试：
 
 | 类别 | 示例 | 必须检测的错误 |
-| ------ | ------ | ---------------- |
+|------|------|----------------|
 | 类型不匹配 | `let x: bool = 42;` | typeck: mismatched types |
 | 借用冲突 | `let r1 = &mut x; let r2 = &mut x;` | borrowck: borrow conflict |
 | Use-after-move | `let t = s; let u = s;` (Str) | borrowck: use of moved value |
@@ -257,7 +251,7 @@
 每个子阶段在委员会投票前，**必须**回答以下问题（由 QA 角色审核）：
 
 | # | 问题 | 通过条件 |
-| --- | --- | --- |
+|---|---|---|
 | Q1 | 本子阶段的输出是否包含 placeholder/stub？ | 如是，列出所有 placeholder + 标注真实等级（P0/P1/P2/P3） |
 | Q2 | 下一阶段能否直接消费本子阶段的输出？ | 如否，列出阻断原因 + 修复计划 |
 | Q3 | 是否有端到端测试覆盖从源码到本子阶段输出的完整路径？ | 如否，补充至少 1 个 |
@@ -282,13 +276,11 @@
 > **根因教训**（来自 Stage 2.x 三轮审查）：
 > Round 2 加了 19 个负向测试（覆盖 95%），但 Round 3 用 44-case
 > 扩展审计又发现 7 个新 soundness holes。这说明：
->
 > - 负向测试数量不是关键，**覆盖广度**才是关键
 > - 每轮审查应该用**比上一轮更大**的审计集
 > - 单语句测试不够，需要**复杂程序集成测试**
 
 **规则**：
-
 1. 每个阶段门审查（§9.3）**必须**使用一个 **≥30 case 的负向审计集**，
    覆盖 §9.1.1 矩阵的全部 7 类错误。
 2. 审计集**必须**包含至少：
@@ -308,13 +300,11 @@ NEEDS REVISION，不允许进入委员会投票阶段。
 > Round 3 的 44-case 审计通过后，Round 4 通过测试 *上轮修复的边界
 > case* 又发现 2 个 P0（FloatVar vs IntVar 区分、resolve-before-check
 > 时机）。这说明：
->
 > - 修复本身可能引入新的边界 case bug
 > - 类型系统修复需要测试 *InferVar 子类型* 的区分（TyVar/IntVar/FloatVar）
 > - resolve/unify 时机敏感的修复需要测试 *绑定前后* 的行为
 
 **规则**：
-
 1. 每个阶段门审查（§9.3）的审计集**必须**包含至少 **5 个"上轮修复
    边界 case"测试**，专门测试上一轮修复可能引入的边界情况。
 2. 边界 case 测试应覆盖：
@@ -338,7 +328,6 @@ NEEDS REVISION，不允许进入委员会投票阶段。
 > 边际价值低于进入下一阶段的边际价值。
 
 **规则**：
-
 1. 如果一轮审查发现 **0 个新 P0/P1 问题**，且所有 §9.3.1/§9.3.2
    要求满足，则该阶段视为**审查收敛**。
 2. 审查收敛后，**下一轮审查可经委员会批准跳过**（需要 ≥4/5 角色同意）。
@@ -370,6 +359,7 @@ NEEDS REVISION，不允许进入委员会投票阶段。
 | v3.4 | Stage 2.4i | **收益递减规则** (§9.3.3) — 来自 Round 5 教训：60-case+15-deep 审计发现 0 新问题；定义审查收敛 + Stage 3 启动条件，防止无限审计循环 |
 | v3.5 | Stage 3.6 | **文档同步规则** (§11) — 每次更新必须同步 docs/ + Cargo.toml + README |
 | v3.6 | Stage 3.7 | **Author 标注** — 所有项目文档必须标注 author: redskaber |
+| v3.7 | Stage 3.8 | **文档组织结构规则** (§12) — docs/{agent-team,develop,lang-design} 三级目录 + 格式规范 |
 
 ---
 
@@ -383,7 +373,7 @@ NEEDS REVISION，不允许进入委员会投票阶段。
 每次代码更新（含子阶段提交）**必须**同步以下文档：
 
 | 文档 | 更新时机 | 更新内容 |
-| ------ | --------- | --------- |
+|------|---------|---------|
 | `Cargo.toml` | 每次版本变更 | version 字段 |
 | `README.md` | 每次重大变更 | 项目概述、构建说明、特性列表 |
 | `docs/development-log.md` | 每次子阶段完成 | 新增开发日志条目 |
@@ -403,11 +393,127 @@ NEEDS REVISION，不允许进入委员会投票阶段。
 ### 11.3 审查检查
 
 在委员会投票前，QA 角色必须验证：
-
 1. `Cargo.toml` 的 version 是否与最新 commit 一致
 2. `README.md` 的特性列表是否反映当前代码能力
 3. `RELEASE_NOTES.md` 是否有本次变更的条目
 4. 新增模块是否有对应文档
+
+**未通过则触发 NEEDS REVISION。**
+
+---
+
+## 12. 文档组织结构规则（v3.7 新增）
+
+> **目的**：建立清晰的文档层级和命名规范，确保开发者能快速定位
+> 任何阶段的任何文档。文档是项目的"记忆"，组织混乱的文档等于
+> 没有文档。
+
+### 12.1 顶层目录结构
+
+```
+docs/
+├── agent-team/          # Agent 团队角色定义与协作规范
+│   ├── roles.md         # 9 类 25 个 Agent 角色定义
+│   └── workflow.md      # Agent 间协作流程
+├── develop/             # 开发文档（按版本 → 阶段 → 任务三级组织）
+│   └── v0/              # 大版本 v0（Stage 0-5 都在 v0 下）
+│       ├── stage-0/     # Stage 0：Lexer + Parser + AST
+│       ├── stage-1/     # Stage 1：HIR + Name Resolution
+│       ├── stage-2/     # Stage 2：MIR + Typeck + Borrowck
+│       ├── stage-3/     # Stage 3：LLVM Codegen
+│       └── ...
+├── lang-design/         # 语言设计文档
+│   ├── 01-lexer.md      # 词法分析设计
+│   ├── 02-ast.md        # AST 设计
+│   ├── 03-type-system.md # 类型系统设计
+│   ├── 04-ownership.md  # 所有权与借用设计
+│   ├── 05-hir.md        # HIR 设计
+│   ├── 06-mir.md        # MIR 设计
+│   ├── 07-codegen.md    # LLVM codegen 设计
+│   └── ...
+├── stage-committee-process.md  # 本文件（流程管控）
+├── build-guide.md       # 构建指南
+└── testing-guide.md     # 测试指南
+```
+
+### 12.2 开发文档层级
+
+开发文档按 **大版本 → 阶段 → 任务** 三级组织：
+
+```
+docs/develop/v0/
+├── stage-0/
+│   ├── plan.md          # 阶段计划（MUV 拆分、验收标准）
+│   ├── status.md        # 阶段状态报告
+│   ├── dev-log.md       # 开发日志（按轮次记录）
+│   └── gate-review.md   # 阶段门审查报告
+├── stage-1/
+│   ├── plan.md
+│   ├── ...
+│   └── gate-review.md
+├── stage-2/
+│   ├── plan.md
+│   ├── gate-review-round1.md   # 多轮审查按 roundN 编号
+│   ├── gate-review-round2.md
+│   └── ...
+└── stage-3/
+    ├── plan.md
+    ├── dev-log.md
+    └── ...
+```
+
+**命名规则**：
+- `plan.md` — 阶段计划
+- `status.md` — 阶段状态
+- `dev-log.md` — 开发日志
+- `gate-review.md` — 门审查报告（单轮）
+- `gate-review-roundN.md` — 门审查报告（多轮，N=1,2,3...）
+- `task-{name}.md` — 具体任务文档（如果阶段复杂，按 MUV 拆分）
+
+### 12.3 语言设计文档
+
+语言设计文档按编号组织，反映设计顺序：
+
+```
+docs/lang-design/
+├── 00-overview.md       # 语言概览
+├── 01-lexer.md          # 词法分析
+├── 02-parser.md         # 语法分析
+├── 03-ast.md            # AST 结构
+├── 04-type-system.md    # 类型系统
+├── 05-ownership.md      # 所有权与借用
+├── 06-hir.md            # HIR 设计
+├── 07-mir.md            # MIR 设计
+├── 08-codegen.md        # LLVM codegen
+├── 09-stdlib.md         # 标准库
+├── 10-toolchain.md      # 工具链
+└── 11-bootstrap.md      # 自举策略
+```
+
+### 12.4 文档格式规范
+
+1. **所有文档必须使用 Markdown 格式**（.md 文件）
+2. **每个文档必须有标题**（# 开头）
+3. **每个文档必须有元数据头**：
+   ```markdown
+   # 文档标题
+   
+   > **Author**: redskaber
+   > **Date**: YYYY-MM-DD
+   > **Version**: vX.Y
+   > **Status**: Draft / Active / Archived
+   ```
+4. **代码块必须标注语言**：<code>```rust</code>, <code>```llvm</code>, <code>```bash</code>
+5. **表格必须对齐**，使用 GitHub Flavored Markdown 表格语法
+6. **交叉引用使用相对路径**：`[Stage 2 计划](../develop/v0/stage-2/plan.md)`
+
+### 12.5 文档审查检查（补充 §11.3）
+
+在委员会投票前，QA 角色还需验证：
+5. 文档是否放在正确的 `docs/develop/v0/stage-N/` 目录下
+6. 新文档是否有元数据头（Author/Date/Version/Status）
+7. 代码块是否标注了语言
+8. 文档在 GitHub/编辑器中是否正确渲染（无断裂的 Markdown）
 
 **未通过则触发 NEEDS REVISION。**
 

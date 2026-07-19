@@ -23,38 +23,32 @@ missed), Stage 2.4e performed targeted fixes. Round 2 re-audits confirms:
 ## Fixes Applied in Stage 2.4e
 
 ### G1: HirId mismatch (P0 — fixed)
-
 - **Fix**: `lower_block` now uses `local.pat.hir_id` (matching resolver's `pat.hir_id`) instead of `local.hir_id`. Also fixed `HirParam` and closure params.
 - **Impact**: All let-bound variables now correctly resolve in Path expressions. 6+ missed negative cases now detected.
 - **Commit**: This round.
 
 ### G2: NLL kill timing (P0 — fixed)
-
 - **Fix 1**: `kill_expired_borrows` now runs at the *start* of the next statement (not immediately after `check_statement`). This ensures the borrow stays alive during the statement that performs the last read.
 - **Fix 2**: Added `transfer_borrow_ref` to `BorrowSet`. When `r = Move(ref_temp)` is processed, the borrow's `ref_local` is transferred from `ref_temp` to `r`. This correctly tracks the borrow's lifetime through the let binding.
 - **Impact**: `let r = &x; x = 2;` now correctly errors (assign to borrowed).
 - **Commit**: This round.
 
 ### G3: Call type checking (P0 — fixed)
-
 - **Fix**: Added `fn_sigs: HashMap<DefId, Sig>` to `TypeChecker`. Populated by `populate_fn_sigs(hir)` which walks all `HirItem::Fn` and extracts their signatures. In `check_terminator` for `Call`, if `func_ty` is `FnDef(def_id, _)`, the sig is looked up and used to verify arg count + types + return type.
 - **Impact**: `add(1)` where `fn add(a, b)` now correctly errors (wrong arg count).
 - **Commit**: This round.
 
 ### G4: Undefined function detection (P0 — fixed)
-
 - **Fix**: Added `scan_for_unresolved_paths` to the driver. After name resolution, walks all HIR expressions/types and emits a resolve error for any `Path` with `Res::Unknown` or `Res::Err`. Pattern scanning is temporarily disabled (enum variants aren't resolved until Stage 3).
 - **Impact**: `undefined_fn()` now correctly errors.
 - **Commit**: This round.
 
 ### G5: Mutability tracking (P0 — fixed)
-
 - **Fix**: Added `new_local_with_mut` to `MirBody` and `MirLowerCtxt`. `lower_block` now extracts mutability from the pattern's `BindingMode` and passes it to `new_local_with_mut`. `check_place_write` in borrowck tracks `initialized: HashSet<LocalId>` and rejects reassignment of immutable locals. Added `BorrowErrorKind::AssignImmutable`. Result locals (if/match) and return local are created as Mutable (assigned multiple times by compiler).
 - **Impact**: `let x = 1; x = 2;` now correctly errors. `let mut x = 1; x = 2;` compiles cleanly.
 - **Commit**: This round.
 
 ### G6: Use-after-move on Str (P1 — fixed, side-effect of G1)
-
 - **Fix**: G1's HirId fix means Str-typed locals now correctly resolve. The existing Copy-ness check (`ty_is_copy(Str) == false`) now fires on `let t = s; let u = s;`.
 - **Impact**: `let s = "hi"; let t = s; let u = s;` now correctly errors.
 - **Commit**: This round.
@@ -64,7 +58,6 @@ missed), Stage 2.4e performed targeted fixes. Round 2 re-audits confirms:
 ## Test Results
 
 ### Existing test suite
-
 - **625 → 644 tests** (+19 new negative-case tests in `tests/negative_cases.rs`)
 - **0 failed, 1 ignored** (Stage 3 limitation: NLL in loops)
 - **0 warnings, fmt + clippy clean**
@@ -72,7 +65,7 @@ missed), Stage 2.4e performed targeted fixes. Round 2 re-audits confirms:
 ### Negative-case coverage
 
 | Case | Round 1 | Round 2 |
-| ------ | --------- | --------- |
+|------|---------|---------|
 | move_str_use_after_move | MISSED | ✅ OK |
 | mut_borrow_then_shared | MISSED | ✅ OK |
 | double_mut_borrow | MISSED | ✅ OK |
@@ -94,7 +87,6 @@ missed), Stage 2.4e performed targeted fixes. Round 2 re-audits confirms:
 **Score**: 12/13 → 13/13 (excluding Stage 3 limitation) or 12/13 (including).
 
 ### Audit example (15 programs)
-
 - **13/15 clean** (was 13/15, but with different errors)
 - **2 intentional error demos**: `error_case_type_mismatch` (let ascription) + `error_case_lex` (unterminated string)
 
@@ -103,7 +95,7 @@ missed), Stage 2.4e performed targeted fixes. Round 2 re-audits confirms:
 ## §9.2 "Isolated Correct" Defense — 5 Questions (Re-audit)
 
 | # | Question | Round 1 | Round 2 |
-| --- | ---------- | --------- | --------- |
+|---|----------|---------|---------|
 | Q1 | Output contains placeholder/stub? | YES (P1 G7-G9, G11) | YES (same — Stage 3) |
 | Q2 | Next stage can consume output? | PARTIAL (G1 broken) | ✅ YES (G1 fixed) |
 | Q3 | End-to-end test coverage? | PARTIAL (9/13 missed) | ✅ YES (19/20 negative cases) |
@@ -117,7 +109,7 @@ missed), Stage 2.4e performed targeted fixes. Round 2 re-audits confirms:
 ## §9.1 Integration Test Requirements (Re-audit)
 
 | Requirement | Round 1 | Round 2 |
-| ------------- | --------- | --------- |
+|-------------|---------|---------|
 | ≥1 positive integration test | ✅ 13 programs | ✅ 13 programs |
 | ≥1 negative integration test | ❌ 4/13 detected | ✅ 19/20 detected |
 | ≥1 cross-stage consumption test | ✅ TypeckResults + StorageLive | ✅ Same |
@@ -129,7 +121,7 @@ missed), Stage 2.4e performed targeted fixes. Round 2 re-audits confirms:
 ## Committee Vote (5 roles — Round 2)
 
 | Role | Weight | Round 1 | Round 2 | Reason |
-| ------ | -------- | --------- | --------- | -------- |
+|------|--------|---------|---------|--------|
 | Compiler Engineer (Architect) | 2.0 | NEEDS REVISION | **APPROVED** | All 5 P0 fixed. G1 (HirId), G2 (NLL timing), G3 (Call typeck), G4 (undefined names), G5 (mutability) all working. Remaining items (G7-G11) are Stage 3 features, not blockers. |
 | Soundness Reviewer | 1.5 | NEEDS REVISION | **APPROVED** | Soundness holes closed: local vars resolve, borrows tracked correctly through ref_temp moves, immutable vars can't be reassigned, fn sigs enforced. The 1 remaining (loop NLL) is a known Stage 3 limitation, not a soundness hole for straight-line code. |
 | Testing & QA Lead | 1.0 | NEEDS REVISION | **APPROVED** | 19 new negative-case tests added. Coverage now balanced (positive + negative). Audit example + negative_cases.rs provide comprehensive regression protection. |
@@ -182,7 +174,7 @@ missed), Stage 2.4e performed targeted fixes. Round 2 re-audits confirms:
 ## Process Metrics (for §7 calibration)
 
 | Metric | Round 1 | Round 2 |
-| -------- | --------- | --------- |
+|--------|---------|---------|
 | P0 found | 5 | 0 (all fixed) |
 | P1 found | 6 | 0 (G6 fixed; G7-G11 are Stage 3) |
 | Negative case coverage | 4/13 (31%) | 19/20 (95%) |

@@ -21,9 +21,7 @@ lost). Stage 2 borrow-check cannot tell an immutable-method-receiver from a
 mutable one.
 
 **Fix**:
-
 1. Define new enum in `src/ast/kinds.rs`:
-
    ```rust
    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
    pub enum SelfKind {
@@ -31,7 +29,6 @@ mutable one.
        Ref(Mutability),    // &self / &mut self
    }
    ```
-
 2. Add `pub self_kind: Option<SelfKind>` to `Param` (Some iff `is_self`).
 3. Update `parse_params` to populate `self_kind` from the detected
    `&` / `mut` info.
@@ -45,7 +42,6 @@ mutable one.
 immutable bindings.
 
 **Fix**:
-
 1. Change `BindingMode::ByValue` to `BindingMode::ByValue(Mutability)`.
 2. Update all 4 construction sites in `parse_pat_no_or`:
    - `KwMut` arm → `ByValue(Mutability::Mutable)`
@@ -67,7 +63,6 @@ is misparsed as `Path(a::<b>)` because the heuristic accepts `Ident` after
 `<`.
 
 **Fix**:
-
 1. Add `fn try_parse_generic_args_in_type(&mut self) -> Option<GenericArgs>`
    that always tries to parse generic args (the current behavior).
 2. Add `fn try_parse_generic_args_in_expr(&mut self) -> Option<GenericArgs>`
@@ -173,7 +168,6 @@ pub enum HirItem {
 ```
 
 Each variant carries:
-
 - `hir_id: HirId` (or `owner: OwnerId` for top-level)
 - `ident: Ident` (preserved from AST)
 - `vis: Visibility` (preserved)
@@ -206,7 +200,6 @@ pub struct HirParam {
 #### C3. `HirExpr` / `HirStmt` / `HirPat` / `HirTy` / `HirPath`
 
 Each is structurally similar to the AST counterpart but:
-
 - Every node carries `hir_id: HirId`
 - `HirTy` has an `inferred: Option<InferTy>` placeholder for Stage 2
 - `HirPath` carries `res: Option<Res>` (resolution result; `None` until

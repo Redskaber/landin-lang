@@ -165,7 +165,6 @@ Each variant gets a fresh `HirId` and is converted to the corresponding
 `HirExprKind` variant. Recursive calls lower sub-expressions.
 
 Notable cases:
-
 - `Expr::Path` → `HirExprKind::Path(HirPath)` with `res: Res::Unknown`
 - `Expr::Lit` → `HirExprKind::Lit(HirLitKind)` (convert `ast::LitKind` → `HirLitKind`)
 - `Expr::Block` → `HirExprKind::Block(HirBlock)`
@@ -184,7 +183,6 @@ Notable cases:
 #### C4. `lower_pat` — 12 pattern variants
 
 Each variant gets a fresh `HirId`. Notable:
-
 - `Pat::Ident(mode, ident, sub)` → `HirPatKind::Ident(mode, ident, sub.map(lower_pat))`
 - `Pat::Struct(path, fields, rest)` → lower path + each field
 - `Pat::TupleStruct(path, pats)` → lower path + each sub-pat
@@ -194,7 +192,6 @@ Each variant gets a fresh `HirId`. Notable:
 
 Each variant gets a fresh `HirId` + `inferred: None` (set by Stage 2).
 Notable:
-
 - `Ty::Ref(lt, mut, ty)` → `HirTyKind::Ref(lt, mut, lower_ty(ty))`
 - `Ty::Path(qself, path, span)` → `HirTyKind::Path(HirQSelf { ty: qself.ty.map(lower_ty), position: qself.position }, lower_path(path))`
 - `Ty::ImplTrait(bounds)` → `HirTyKind::ImplTrait(lower_bounds(bounds))`

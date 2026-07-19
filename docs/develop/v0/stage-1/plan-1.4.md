@@ -13,7 +13,6 @@
 ## Scope
 
 Stage 1.4 handles **scope-based** resolution within bodies:
-
 - `let` binding registration + reference resolution → `Res::Local(HirId)`
 - Closure parameter resolution (`|x| x + 1`)
 - Match arm pattern binding (`Some(x) => x`)
@@ -25,7 +24,6 @@ Stage 1.4 handles **scope-based** resolution within bodies:
 - `super`/`crate`/`self::` path prefixes in value position
 
 **NOT in scope** (deferred to later stages):
-
 - Lifetime resolution (`'a` in scope)
 - Label resolution (`'lbl:` for loop/break)
 - Unused variable warnings (P1, lint pass)
@@ -82,7 +80,6 @@ impl ScopeStack {
 
 Walk a `HirPat` and collect all identifier bindings into the current
 scope. Handles:
-
 - `Pat::Ident(_, ident, _)` → bind `ident`
 - `Pat::Struct(fields)` → bind each field's sub-pattern
 - `Pat::TupleStruct(pats)` → bind each sub-pattern
@@ -97,7 +94,6 @@ scope. Handles:
 #### C1. `resolve_body_with_scopes`
 
 Replace the current `resolve_body` with a version that:
-
 1. Creates a Fn scope
 2. Registers all fn params as bindings
 3. Walks the body expression with scope tracking
@@ -105,7 +101,6 @@ Replace the current `resolve_body` with a version that:
 #### C2. `resolve_expr_with_scopes` — updated expression walker
 
 Key changes from Stage 1.3's `resolve_expr`:
-
 - `HirExprKind::Block`: push Block scope, walk stmts, pop
 - `HirStmt::Local`: first resolve the init expr (so forward refs fail),
   then collect pat bindings into current scope
@@ -120,7 +115,6 @@ Key changes from Stage 1.3's `resolve_expr`:
 #### C3. `resolve_path_with_scope`
 
 Updated path resolution:
-
 1. Single-segment, no leading: check local scope first → `Res::Local(HirId)`.
    If not found, fall back to module tree (Stage 1.3 behavior).
 2. `self` in value position → resolve to the self param's HirId.
