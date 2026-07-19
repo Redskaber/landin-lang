@@ -42,8 +42,8 @@ impl TextEmitter {
 
 impl Emitter for TextEmitter {
     fn emit_header(&mut self) {
-        self.line("; Landin compiler v0.8.3 — LLVM IR output");
-        self.line("; Stage 3.18 codegen");
+        self.line("; Landin compiler v0.8.4 — LLVM IR output");
+        self.line("; Stage 3.19 codegen");
         self.line("target triple = \"x86_64-unknown-linux-gnu\"");
         self.line("target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"");
         self.line("");
@@ -53,7 +53,7 @@ impl Emitter for TextEmitter {
         self.line(&format!("declare {}", signature));
     }
 
-    fn begin_function(&mut self, name: &str, params: &[(EmitType, &str)], ret: EmitType) {
+    fn emit_function_begin(&mut self, name: &str, params: &[(EmitType, &str)], ret: EmitType) {
         let ret_str = emit_type_to_llvm_str(ret);
         let param_strs: Vec<String> = params
             .iter()
@@ -70,29 +70,22 @@ impl Emitter for TextEmitter {
         self.local_ptrs.clear();
     }
 
-    fn end_function(&mut self) {
+    fn emit_function_end(&mut self) {
         self.line("}");
-        // Per design doc §3.3: add function attributes
-        // nounwind: Landin MVP doesn't support unwinding
-        // norecurse: simplified (would need analysis)
         self.line("");
     }
 
-    fn emit_constant(&mut self, val: &ConstVal) -> EmitValue {
+    fn emit_const(&mut self, val: &ConstVal) -> EmitValue {
         match val {
             ConstVal::Int(n) => format!("{}", n),
             ConstVal::Uint(n) => format!("{}", n),
             ConstVal::Bool(b) => format!("{}", if *b { 1 } else { 0 }),
-            // LLVM requires float constants to have a hex or decimal representation
-            // that includes a decimal point or exponent. Use the hex format
-            // for precision: 0xK<16-hex-digits> for f64.
             ConstVal::Float(f) => {
                 if *f == 0.0 {
                     "0.000000e+00".to_string()
                 } else if *f == 1.0 {
                     "1.000000e+00".to_string()
                 } else {
-                    // Use %e format for scientific notation (LLVM accepts this)
                     format!("{:e}", f)
                 }
             }
@@ -102,7 +95,7 @@ impl Emitter for TextEmitter {
         }
     }
 
-    fn emit_binary_op(
+    fn emit_binop(
         &mut self,
         op: BinOp,
         ty: EmitType,
@@ -115,16 +108,14 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_unary_op(&mut self, op: UnOp, ty: EmitType, operand: &EmitValue) -> EmitValue {
+    fn emit_unop(&mut self, op: UnOp, ty: EmitType, operand: &EmitValue) -> EmitValue {
         let r = self.fresh();
         match op {
             UnOp::Neg => {
                 let ty_str = emit_type_to_llvm_str(ty);
                 if ty == EmitType::F64 || ty == EmitType::F32 {
-                    // Float negation: use fneg (LLVM 8+)
                     self.line(&format!("  %v{} = fneg {} {}", r, ty_str, operand));
                 } else {
-                    // Integer negation: 0 - x
                     self.line(&format!("  %v{} = sub {} 0, {}", r, ty_str, operand));
                 }
             }
@@ -136,7 +127,7 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_return(&mut self, ty: EmitType, val: Option<&EmitValue>) {
+    fn emit_ret(&mut self, ty: EmitType, val: Option<&EmitValue>) {
         let ty_str = emit_type_to_llvm_str(ty);
         match val {
             Some(v) => self.line(&format!("  ret {} {}", ty_str, v)),
@@ -166,19 +157,37 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_branch(&mut self, label: &str) {
+    fn emit_br(&mut self, label: &str) {
         self.line(&format!("  br label %{}", label));
     }
 
-    fn emit_cond_branch(&mut self, cond: &EmitValue, then_label: &str, else_label: &str) {
+    fn emit_br_cond(&mut self, cond: &EmitValue, then_label: &str, else_label: &str) {
         self.line(&format!(
             "  br i1 {}, label %{}, label %{}",
             cond, then_label, else_label
         ));
     }
 
-    fn begin_block(&mut self, label: &str) {
+    fn emit_block(&mut self, label: &str) {
         self.line(&format!("{}:", label));
+    }
+
+    fn emit_switch(
+        &mut self,
+        discr: &EmitValue,
+        discr_ty: EmitType,
+        cases: &[(i128, String)],
+        default_label: &str,
+    ) {
+        let ty_str = emit_type_to_llvm_str(discr_ty);
+        self.line(&format!(
+            "  switch {} {}, label %{} [",
+            ty_str, discr, default_label
+        ));
+        for (val, label) in cases {
+            self.line(&format!("    {} {}, label %{}", ty_str, val, label));
+        }
+        self.line("  ]");
     }
 
     fn emit_call(&mut self, fn_name: &str, args: &[EmitValue], ret_ty: EmitType) -> EmitValue {
@@ -194,30 +203,6 @@ impl Emitter for TextEmitter {
             r, ret_str, fn_name, args_str
         ));
         format!("%v{}", r)
-    }
-
-    fn local_ptr(&self, local_id: u32) -> Option<&EmitValue> {
-        self.local_ptrs.get(&local_id)
-    }
-
-    fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue) {
-        self.local_ptrs.insert(local_id, ptr);
-    }
-
-    fn get_local_ptr(&self, local_id: u32) -> Option<&EmitValue> {
-        self.local_ptrs.get(&local_id)
-    }
-
-    fn set_local(&mut self, local_id: u32, val: EmitValue) {
-        self.locals.insert(local_id, val);
-    }
-
-    fn get_local(&self, local_id: u32) -> Option<&EmitValue> {
-        self.locals.get(&local_id)
-    }
-
-    fn output(&self) -> &str {
-        &self.output
     }
 
     fn emit_icmp(&mut self, op: &str, ty: EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
@@ -240,28 +225,15 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_zext_i1_to_i32(&mut self, val: &EmitValue) -> EmitValue {
+    fn emit_zext(&mut self, src: EmitType, dst: EmitType, val: &EmitValue) -> EmitValue {
         let r = self.fresh();
-        self.line(&format!("  %v{} = zext i1 {} to i32", r, val));
-        format!("%v{}", r)
-    }
-
-    fn emit_switch_typed(
-        &mut self,
-        discr: &EmitValue,
-        discr_ty: EmitType,
-        cases: &[(i128, String)],
-        default_label: &str,
-    ) {
-        let ty_str = emit_type_to_llvm_str(discr_ty);
+        let src_str = emit_type_to_llvm_str(src);
+        let dst_str = emit_type_to_llvm_str(dst);
         self.line(&format!(
-            "  switch {} {}, label %{} [",
-            ty_str, discr, default_label
+            "  %v{} = zext {} {} to {}",
+            r, src_str, val, dst_str
         ));
-        for (val, label) in cases {
-            self.line(&format!("    {} {}, label %{}", ty_str, val, label));
-        }
-        self.line("  ]");
+        format!("%v{}", r)
     }
 
     fn emit_cast(&mut self, src: EmitType, dst: EmitType, val: &EmitValue) -> EmitValue {
@@ -343,5 +315,25 @@ impl Emitter for TextEmitter {
             r, ty_str, agg, index
         ));
         format!("%v{}", r)
+    }
+
+    fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue) {
+        self.local_ptrs.insert(local_id, ptr);
+    }
+
+    fn get_local_ptr(&self, local_id: u32) -> Option<&EmitValue> {
+        self.local_ptrs.get(&local_id)
+    }
+
+    fn set_local(&mut self, local_id: u32, val: EmitValue) {
+        self.locals.insert(local_id, val);
+    }
+
+    fn get_local(&self, local_id: u32) -> Option<&EmitValue> {
+        self.locals.get(&local_id)
+    }
+
+    fn output(&self) -> &str {
+        &self.output
     }
 }

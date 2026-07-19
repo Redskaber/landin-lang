@@ -101,7 +101,7 @@ fn codegen_function(
 
     let param_refs: Vec<(EmitType, &str)> = params.iter().map(|(t, n)| (*t, n.as_str())).collect();
 
-    emitter.begin_function(name, &param_refs, ret_ty);
+    emitter.emit_function_begin(name, &param_refs, ret_ty);
 
     // Emit allocas for all locals at function entry
     // Per design doc §4.1: each MIR Local maps to an LLVM alloca with proper type
@@ -125,7 +125,7 @@ fn codegen_function(
     // Walk basic blocks
     for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
         let label = format!("bb{}", bb_idx);
-        emitter.begin_block(&label);
+        emitter.emit_block(&label);
 
         for stmt in &bb.statements {
             codegen_statement(emitter, mir, stmt);
@@ -133,7 +133,7 @@ fn codegen_function(
         codegen_terminator(emitter, mir, &bb.terminator, ret_ty, fn_names);
     }
 
-    emitter.end_function();
+    emitter.emit_function_end();
 }
 
 /// Generate code for a single MIR statement.
@@ -242,7 +242,7 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
                     } else {
                         emitter.emit_icmp("eq", ty, &a_val, &b_val)
                     };
-                    emitter.emit_zext_i1_to_i32(&cmp)
+                    emitter.emit_zext(EmitType::I1, EmitType::I32, &cmp)
                 }
                 BinOp::Ne => {
                     let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
@@ -250,7 +250,7 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
                     } else {
                         emitter.emit_icmp("ne", ty, &a_val, &b_val)
                     };
-                    emitter.emit_zext_i1_to_i32(&cmp)
+                    emitter.emit_zext(EmitType::I1, EmitType::I32, &cmp)
                 }
                 BinOp::Lt => {
                     let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
@@ -258,7 +258,7 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
                     } else {
                         emitter.emit_icmp("slt", ty, &a_val, &b_val)
                     };
-                    emitter.emit_zext_i1_to_i32(&cmp)
+                    emitter.emit_zext(EmitType::I1, EmitType::I32, &cmp)
                 }
                 BinOp::Le => {
                     let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
@@ -266,7 +266,7 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
                     } else {
                         emitter.emit_icmp("sle", ty, &a_val, &b_val)
                     };
-                    emitter.emit_zext_i1_to_i32(&cmp)
+                    emitter.emit_zext(EmitType::I1, EmitType::I32, &cmp)
                 }
                 BinOp::Gt => {
                     let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
@@ -274,7 +274,7 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
                     } else {
                         emitter.emit_icmp("sgt", ty, &a_val, &b_val)
                     };
-                    emitter.emit_zext_i1_to_i32(&cmp)
+                    emitter.emit_zext(EmitType::I1, EmitType::I32, &cmp)
                 }
                 BinOp::Ge => {
                     let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
@@ -282,10 +282,10 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
                     } else {
                         emitter.emit_icmp("sge", ty, &a_val, &b_val)
                     };
-                    emitter.emit_zext_i1_to_i32(&cmp)
+                    emitter.emit_zext(EmitType::I1, EmitType::I32, &cmp)
                 }
                 // Arithmetic ops — use detected type (fadd for float, add for int)
-                _ => emitter.emit_binary_op(*op, ty, &a_val, &b_val),
+                _ => emitter.emit_binop(*op, ty, &a_val, &b_val),
             }
         }
 
@@ -293,7 +293,7 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
             let val = codegen_operand(emitter, mir, operand);
             // Detect type from operand (float neg uses fneg, int neg uses sub)
             let ty = detect_operand_type(mir, operand).unwrap_or(EmitType::I32);
-            emitter.emit_unary_op(*op, ty, &val)
+            emitter.emit_unop(*op, ty, &val)
         }
 
         Rvalue::Ref(_, _borrow_kind, lv) => {
@@ -355,7 +355,7 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
 /// Generate code for an operand.
 fn codegen_operand(emitter: &mut dyn Emitter, _mir: &MirBody, op: &Operand) -> EmitValue {
     match op {
-        Operand::Constant(c) => emitter.emit_constant(&c.val),
+        Operand::Constant(c) => emitter.emit_const(&c.val),
         Operand::Copy(lv) | Operand::Move(lv) => codegen_lvalue_load(emitter, lv),
     }
 }
@@ -459,14 +459,14 @@ fn codegen_terminator(
             // - bool: ret i1 %val
             // - unit (): ret void
             if ret_ty == EmitType::Void {
-                emitter.emit_return(ret_ty, None);
+                emitter.emit_ret(ret_ty, None);
             } else {
                 let ret_val = if let Some(ptr) = emitter.get_local_ptr(0).cloned() {
                     Some(emitter.emit_load(ret_ty, &ptr))
                 } else {
                     emitter.get_local(0).cloned()
                 };
-                emitter.emit_return(ret_ty, ret_val.as_ref());
+                emitter.emit_ret(ret_ty, ret_val.as_ref());
             }
         }
 
@@ -475,7 +475,7 @@ fn codegen_terminator(
         }
 
         Terminator::Goto(target) => {
-            emitter.emit_branch(&format!("bb{}", target.0));
+            emitter.emit_br(&format!("bb{}", target.0));
         }
 
         Terminator::SwitchInt {
@@ -498,7 +498,7 @@ fn codegen_terminator(
                     .map(|(_, bb)| bb.0)
                     .unwrap_or(otherwise.0);
                 let false_bb = otherwise.0;
-                emitter.emit_cond_branch(
+                emitter.emit_br_cond(
                     &discr_val,
                     &format!("bb{}", true_bb),
                     &format!("bb{}", false_bb),
@@ -515,12 +515,7 @@ fn codegen_terminator(
                         _ => None,
                     })
                     .collect();
-                emitter.emit_switch_typed(
-                    &discr_val,
-                    discr_ty,
-                    &cases,
-                    &format!("bb{}", otherwise.0),
-                );
+                emitter.emit_switch(&discr_val, discr_ty, &cases, &format!("bb{}", otherwise.0));
             }
         }
 
@@ -605,7 +600,7 @@ fn codegen_terminator(
 
             // Branch to continuation block
             if let Some(cont) = target {
-                emitter.emit_branch(&format!("bb{}", cont.0));
+                emitter.emit_br(&format!("bb{}", cont.0));
             }
         }
 
@@ -621,9 +616,9 @@ fn codegen_terminator(
             // Generate panic block label
             let panic_label = format!("panic_assert_{}", target.0);
             // br i1 cond, label %target, label %panic
-            emitter.emit_cond_branch(&cond_val, &format!("bb{}", target.0), &panic_label);
+            emitter.emit_br_cond(&cond_val, &format!("bb{}", target.0), &panic_label);
             // Panic block
-            emitter.begin_block(&panic_label);
+            emitter.emit_block(&panic_label);
             match msg {
                 crate::mir::body::AssertMessage::Overflow(op) => {
                     // call void @__landin_panic_overflow(i32 op_code, i32 0, i32 0)
@@ -662,7 +657,7 @@ fn codegen_terminator(
             // For MVP, primitives don't need drop — just branch to target.
             // Full drop glue generation is a future stage.
             let _ = place;
-            emitter.emit_branch(&format!("bb{}", target.0));
+            emitter.emit_br(&format!("bb{}", target.0));
         }
     }
 }

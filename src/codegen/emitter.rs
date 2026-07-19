@@ -1,38 +1,27 @@
 //! Emitter trait: abstracts the codegen backend.
 //!
-//! This trait decouples the MIR → IR translation logic from the specific
-//! backend (text .ll, inkwell, Cranelift). The translation walks MIR and
-//! calls Emitter methods; the backend implements those methods.
-//!
-//! Design principle (per DeepSeek's feedback):
-//!   "先设计一套中间表示，让 .ll 文本生成和未来的 Inkwell 生成都
-//!    依赖于这套 IR，这样迁移时只替换最底层的 Emitter。"
-//!
-//! We use MIR itself as the "middle IR" — no need for a separate MLIR-like
-//! Operation layer. The Emitter trait is the abstraction boundary.
+//! Naming conventions (per §14 review):
+//! - All IR-producing methods use `emit_` prefix
+//! - State query methods use `get_` / `set_` prefix
+//! - Function/block scope methods use `emit_` prefix for consistency
+//! - No redundant suffixes (e.g. `_typed` when there's only one variant)
+//! - `local_ptr` removed — `get_local_ptr` is the only accessor
 
 use crate::mir::lvalue::{BinOp, UnOp};
 use crate::mir::ty::ConstVal;
 
 /// A value produced by the emitter — opaque to the translation layer.
-///
-/// For the text backend, this is a String like "42" or "%v1".
-/// For inkwell, this would be IntValue/FloatValue/etc.
-/// For Cranelift, this would be cranelift_codegen::ir::Value.
 pub type EmitValue = String;
 
 /// The type of a value — used to select the right instruction.
-///
-/// For the text backend, this maps to LLVM type strings ("i32", "i1", etc.).
-/// For inkwell, this would map to inkwell::types::IntType/etc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmitType {
     I32,
     I64,
-    I1, // bool
+    I1,
     F64,
     F32,
-    I8, // char
+    I8,
     Ptr,
     Void,
     Tuple,
@@ -40,24 +29,37 @@ pub enum EmitType {
 }
 
 /// Abstract emitter trait.
+///
+/// Naming conventions:
+/// - `emit_*`: produces IR instructions, may return EmitValue
+/// - `get_*` / `set_*`: queries or updates emitter state
+/// - `emit_declare_*`: module-level declarations
 pub trait Emitter {
+    // === Module-level ===
+
     /// Emit module header (target triple, datalayout).
     fn emit_header(&mut self);
 
     /// Emit an external function declaration.
     fn emit_declare(&mut self, signature: &str);
 
+    // === Function scope ===
+
     /// Begin a new function definition.
-    fn begin_function(&mut self, name: &str, params: &[(EmitType, &str)], ret: EmitType);
+    fn emit_function_begin(&mut self, name: &str, params: &[(EmitType, &str)], ret: EmitType);
 
     /// End the current function definition.
-    fn end_function(&mut self);
+    fn emit_function_end(&mut self);
+
+    // === Constants ===
 
     /// Emit a constant value and return its handle.
-    fn emit_constant(&mut self, val: &ConstVal) -> EmitValue;
+    fn emit_const(&mut self, val: &ConstVal) -> EmitValue;
+
+    // === Arithmetic ===
 
     /// Emit a binary operation and return the result value.
-    fn emit_binary_op(
+    fn emit_binop(
         &mut self,
         op: BinOp,
         ty: EmitType,
@@ -66,13 +68,35 @@ pub trait Emitter {
     ) -> EmitValue;
 
     /// Emit a unary operation and return the result value.
-    fn emit_unary_op(&mut self, op: UnOp, ty: EmitType, operand: &EmitValue) -> EmitValue;
+    fn emit_unop(&mut self, op: UnOp, ty: EmitType, operand: &EmitValue) -> EmitValue;
+
+    // === Control flow ===
 
     /// Emit a return instruction.
-    fn emit_return(&mut self, ty: EmitType, val: Option<&EmitValue>);
+    fn emit_ret(&mut self, ty: EmitType, val: Option<&EmitValue>);
 
     /// Emit an unreachable instruction.
     fn emit_unreachable(&mut self);
+
+    /// Emit an unconditional branch to a label.
+    fn emit_br(&mut self, label: &str);
+
+    /// Emit a conditional branch.
+    fn emit_br_cond(&mut self, cond: &EmitValue, then_label: &str, else_label: &str);
+
+    /// Begin a new basic block with the given label.
+    fn emit_block(&mut self, label: &str);
+
+    /// Emit a switch instruction (typed: i32 or i64).
+    fn emit_switch(
+        &mut self,
+        discr: &EmitValue,
+        discr_ty: EmitType,
+        cases: &[(i128, String)],
+        default_label: &str,
+    );
+
+    // === Memory ===
 
     /// Allocate stack space for a local variable.
     fn emit_alloca(&mut self, ty: EmitType, name: &str) -> EmitValue;
@@ -83,61 +107,33 @@ pub trait Emitter {
     /// Load a value from a pointer.
     fn emit_load(&mut self, ty: EmitType, ptr: &EmitValue) -> EmitValue;
 
-    /// Emit a branch to a named label.
-    fn emit_branch(&mut self, label: &str);
-
-    /// Emit a conditional branch.
-    fn emit_cond_branch(&mut self, cond: &EmitValue, then_label: &str, else_label: &str);
-
-    /// Begin a new basic block with the given label.
-    fn begin_block(&mut self, label: &str);
+    // === Calls ===
 
     /// Emit a function call.
     fn emit_call(&mut self, fn_name: &str, args: &[EmitValue], ret_ty: EmitType) -> EmitValue;
 
-    /// Get a reference to a local variable (for load/store).
-    /// Returns the value handle for the local's address.
-    fn local_ptr(&self, local_id: u32) -> Option<&EmitValue>;
+    // === Comparisons ===
 
-    /// Store a local's pointer handle (alloca result).
-    fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue);
-
-    /// Get a local's pointer handle.
-    fn get_local_ptr(&self, local_id: u32) -> Option<&EmitValue>;
-
-    /// Store a local's value handle (for later lookups).
-    fn set_local(&mut self, local_id: u32, val: EmitValue);
-
-    /// Get a local's stored value handle.
-    fn get_local(&self, local_id: u32) -> Option<&EmitValue>;
-
-    /// Emit a comparison (icmp) and return the i1 result.
+    /// Emit an integer comparison (icmp).
     fn emit_icmp(&mut self, op: &str, ty: EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
 
-    /// Emit a float comparison (fcmp) and return the i1 result.
+    /// Emit a float comparison (fcmp).
     fn emit_fcmp(&mut self, op: &str, ty: EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
 
-    /// Emit a zext (zero extend) from i1 to i32.
-    fn emit_zext_i1_to_i32(&mut self, val: &EmitValue) -> EmitValue;
+    // === Type conversions ===
 
-    /// Emit a typed switch instruction (i32 or i64 based on discr_ty).
-    fn emit_switch_typed(
-        &mut self,
-        discr: &EmitValue,
-        discr_ty: EmitType,
-        cases: &[(i128, String)],
-        default_label: &str,
-    );
+    /// Emit a zero-extend (zext) from one type to another.
+    fn emit_zext(&mut self, src: EmitType, dst: EmitType, val: &EmitValue) -> EmitValue;
 
-    /// Emit a type cast (trunc/sext/zext/sitofp/fptosi).
+    /// Emit a type cast (trunc/sext/zext/sitofp/fptosi/fpext/fptrunc).
     fn emit_cast(&mut self, src: EmitType, dst: EmitType, val: &EmitValue) -> EmitValue;
 
+    // === Aggregates ===
+
     /// Emit a getelementptr for struct field access.
-    /// Returns a pointer to the field.
     fn emit_gep_field(&mut self, base_ptr: &EmitValue, field_index: u32) -> EmitValue;
 
     /// Emit a getelementptr for array index access.
-    /// Returns a pointer to the element.
     fn emit_gep_index(&mut self, base_ptr: &EmitValue, index: &EmitValue) -> EmitValue;
 
     /// Emit a PHI node for merging values from multiple predecessor blocks.
@@ -155,9 +151,29 @@ pub trait Emitter {
     /// Emit extractvalue for tuple/struct field extraction.
     fn emit_extractvalue(&mut self, agg_ty: EmitType, agg: &EmitValue, index: u32) -> EmitValue;
 
+    // === Local state ===
+
+    /// Store a local's pointer handle (alloca result).
+    fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue);
+
+    /// Get a local's pointer handle.
+    fn get_local_ptr(&self, local_id: u32) -> Option<&EmitValue>;
+
+    /// Store a local's value handle (for later lookups).
+    fn set_local(&mut self, local_id: u32, val: EmitValue);
+
+    /// Get a local's stored value handle.
+    fn get_local(&self, local_id: u32) -> Option<&EmitValue>;
+
+    // === Output ===
+
     /// Return the accumulated output (for text backends).
     fn output(&self) -> &str;
 }
+
+// ================================================================
+// Type mapping helpers
+// ================================================================
 
 /// Map a MIR Ty to an EmitType.
 pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
@@ -167,8 +183,8 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
             EmitType::I64
         }
         TyKind::Int(crate::ast::IntTy::I128) | TyKind::Uint(crate::ast::UintTy::U128) => {
-            EmitType::I64
-        } // simplified
+            EmitType::I64 // simplified
+        }
         TyKind::Int(_) | TyKind::Uint(_) => EmitType::I32,
         TyKind::Bool => EmitType::I1,
         TyKind::Float(crate::ast::FloatTy::F32) => EmitType::F32,
@@ -187,10 +203,9 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
     }
 }
 
-/// Map a BinOp + EmitType to the LLVM instruction string (for text backend).
+/// Map a BinOp + EmitType to the LLVM instruction string.
 pub fn binop_to_llvm_str(op: BinOp, ty: EmitType) -> &'static str {
     match (op, ty) {
-        // Integer arithmetic
         (BinOp::Add, EmitType::I32) => "add nsw i32",
         (BinOp::Add, EmitType::I64) => "add nsw i64",
         (BinOp::Sub, EmitType::I32) => "sub nsw i32",
@@ -201,7 +216,6 @@ pub fn binop_to_llvm_str(op: BinOp, ty: EmitType) -> &'static str {
         (BinOp::Div, EmitType::I64) => "sdiv i64",
         (BinOp::Rem, EmitType::I32) => "srem i32",
         (BinOp::Rem, EmitType::I64) => "srem i64",
-        // Float arithmetic
         (BinOp::Add, EmitType::F64) => "fadd double",
         (BinOp::Add, EmitType::F32) => "fadd float",
         (BinOp::Sub, EmitType::F64) => "fsub double",
@@ -212,7 +226,6 @@ pub fn binop_to_llvm_str(op: BinOp, ty: EmitType) -> &'static str {
         (BinOp::Div, EmitType::F32) => "fdiv float",
         (BinOp::Rem, EmitType::F64) => "frem double",
         (BinOp::Rem, EmitType::F32) => "frem float",
-        // Bitwise
         (BinOp::BitAnd, EmitType::I32) => "and i32",
         (BinOp::BitAnd, EmitType::I1) => "and i1",
         (BinOp::BitOr, EmitType::I32) => "or i32",
