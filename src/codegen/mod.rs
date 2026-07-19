@@ -317,14 +317,16 @@ fn codegen_terminator(
                     &format!("bb{}", false_bb),
                 );
             } else {
-                // Integer switch: use LLVM switch instruction
-                // For simplicity, emit a series of conditional branches
-                // (a real impl would use LLVM's switch instruction)
-                let current = discr_val.clone();
-                let _ = current;
-                // Simplified: just branch to otherwise for now
-                // (proper switch implementation is Stage 3.3)
-                emitter.emit_branch(&format!("bb{}", otherwise.0));
+                // Integer switch: emit LLVM switch instruction
+                let cases: Vec<(i128, String)> = targets
+                    .iter()
+                    .filter_map(|(val, bb)| match val {
+                        ConstVal::Int(n) => Some((*n as i128, format!("bb{}", bb.0))),
+                        ConstVal::Uint(n) => Some((*n as i128, format!("bb{}", bb.0))),
+                        _ => None,
+                    })
+                    .collect();
+                emitter.emit_switch(&discr_val, &cases, &format!("bb{}", otherwise.0));
             }
         }
 

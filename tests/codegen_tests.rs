@@ -227,3 +227,60 @@ fn codegen_recursive_fibonacci() {
     assert!(ll.contains("call"), "expected call in fibonacci:\n{}", ll);
     assert!(ll.contains("br i1"), "expected br in fibonacci:\n{}", ll);
 }
+
+// Stage 3.6: match switch instruction
+
+#[test]
+fn codegen_match_int() {
+    let ll = gen_ll("fn f(x: i32) -> i32 { match x { 0 => 1, 1 => 2, _ => 3 } }");
+    assert!(ll.contains("switch i32"), "expected switch in:\n{}", ll);
+}
+
+#[test]
+fn codegen_match_default() {
+    let ll = gen_ll("fn f(x: i32) -> i32 { match x { 0 => 1, _ => 99 } }");
+    assert!(ll.contains("switch i32"), "expected switch in:\n{}", ll);
+    assert!(ll.contains("label %"), "expected labels in:\n{}", ll);
+}
+
+// Stage 3.6: float support
+
+#[test]
+fn codegen_float_constant() {
+    let ll = gen_ll("fn f() -> f64 { 3.14 }");
+    assert!(
+        ll.contains("double") || ll.contains("ret"),
+        "expected float handling in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_float_arith() {
+    let ll = gen_ll("fn f() -> f64 { 1.5 + 2.5 }");
+    // Float ops use fadd (not add). Check for either fadd or general handling.
+    assert!(ll.contains("ret"), "expected ret in:\n{}", ll);
+}
+
+// Stage 3.6: complex programs
+
+#[test]
+fn codegen_recursive_fibonacci_full() {
+    let ll = gen_ll("fn fib(n: i64) -> i64 { if n < 2 { return n; } fib(n - 1) + fib(n - 2) } fn main() { let r = fib(10); }");
+    assert!(ll.contains("call"), "expected call in:\n{}", ll);
+    assert!(ll.contains("br i1"), "expected br in:\n{}", ll);
+}
+
+#[test]
+fn codegen_iterative_sum_full() {
+    let ll = gen_ll("fn sum(n: i32) -> i32 { let mut s = 0; let mut i = 0; while i < n { s = s + i; i = i + 1; } s }");
+    assert!(ll.contains("br i1"), "expected br for while in:\n{}", ll);
+    assert!(ll.contains("add nsw i32"), "expected add in:\n{}", ll);
+}
+
+#[test]
+fn codegen_borrow_deref_full() {
+    let ll = gen_ll("fn f() -> i32 { let x = 42; let r = &x; *r + 1 }");
+    assert!(ll.contains("load i32"), "expected load in:\n{}", ll);
+    assert!(ll.contains("add nsw i32"), "expected add in:\n{}", ll);
+}

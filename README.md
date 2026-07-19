@@ -4,96 +4,108 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** Stage 1.1 (HIR data structures) complete; Stage 1.2 (AST→HIR
-> lowering) in progress. Stage 0 (front-end: lexer + parser + AST) is
-> complete at v0.1.4.
+> **Status:** Stage 0-2 complete (lexer, parser, HIR, name resolution, MIR,
+> type checking, borrow checking). Stage 3 (LLVM codegen) in progress —
+> the compiler can now generate LLVM IR text from Landin source.
 
 ## Quick start
 
 ```bash
-# Build the Stage 0 compiler
+# Build the compiler
 cargo build --release
 
-# Tokenize a Landin source file
+# Compile a Landin source file (tokens/AST only — Stage 0 CLI)
 ./target/release/landin-stage0 --emit-tokens path/to/file.ln
-
-# Print the AST
 ./target/release/landin-stage0 --emit-ast path/to/file.ln
+
+# Compile to LLVM IR (via the driver API)
+# See examples/ for usage
 ```
+
+## Architecture
+
+```
+source → lexer → parser → AST → HIR → resolve → MIR → typeck → borrowck → codegen → .ll
+```
+
+| Stage | Module | Status |
+| ------- | -------- | -------- |
+| 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete (245 tests) |
+| 1 | `hir/`, `resolve/` | ✅ Complete (451 tests) |
+| 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete (673 tests, 6 rounds of review) |
+| 3 | `codegen/` | 🔄 In progress (26 tests, LLVM IR text output) |
+
+## Codegen capabilities (Stage 3)
+
+| Feature | Example | LLVM IR |
+| --------- | --------- | --------- |
+| Function definition | `fn add(a: i32, b: i32) -> i32 { a + b }` | `define i32 @fn_0(i32 %arg0, i32 %arg1)` |
+| Parameter passing | `add(3, 4)` | `call i32 @fn_0(i32 3, i32 4)` |
+| Return | `42` | `ret i32 %v` |
+| Arithmetic | `1 + 2 * 3` | `mul nsw i32`, `add nsw i32` |
+| Comparison | `a > b` | `icmp sgt i32`, `zext i1` |
+| Unary | `-x`, `!flag` | `sub i32 0`, `xor i32 -1` |
+| Variables | `let x = 42;` | `alloca i32`, `store i32 42` |
+| Control flow | `if a > b { 1 } else { 2 }` | `br i1 %cond, label %bb1, label %bb2` |
+| Loops | `while i < 10 { ... }` | `br label %loop` |
+| Borrow | `&x` | `store i32* %loc_x` |
+| Deref | `*r` | `load i32, %ptr` |
+| Recursive calls | `fib(n-1) + fib(n-2)` | `call i32 @fn_0(i32 %v)` |
 
 ## Project layout
 
 ```
 landin-stage0/
-├── Cargo.toml              Package manifest (v0.2.0)
+├── Cargo.toml              Package manifest (v0.7.1)
 ├── src/
-│   ├── lexer/              Hand-written character-level lexer (1415 lines)
-│   ├── parser/             Recursive-descent + Pratt parser (1530 lines)
-│   ├── ast/                AST node definitions (620 lines)
-│   ├── hir/                HIR data structures (Stage 1.1 — ~810 lines)
-│   ├── session/            Span, FileId, SourceMap
-│   ├── diagnostics/        Diagnostic buffer
+│   ├── lexer/              Lexer (109 tests)
+│   ├── parser/             Recursive-descent + Pratt parser (85 tests)
+│   ├── ast/                AST node definitions (149 tests)
+│   ├── hir/                HIR + lowering + name resolution (451 tests)
+│   ├── resolve/            Module + scope name resolution
+│   ├── mir/                MIR types + HIR→MIR lowering
+│   ├── typeck/             Type inference + unification
+│   ├── borrowck/           NLL borrow checker
+│   ├── codegen/            LLVM IR codegen (Emitter trait + TextEmitter)
+│   ├── driver.rs           Full pipeline driver
 │   └── bin/                CLI entry point
 ├── tests/
-│   ├── lexer.rs            109 lexer tests (token-level + RP0 regression)
-│   ├── parser.rs           85 parser tests (smoke + error-detection)
-│   ├── ast_structure.rs    149 AST structural + Pratt + Round 8 regression
-│   └── hir_structure.rs    20 HIR construction + Debug round-trip tests
-├── tests/conformance/      Conformance suite skeleton (8 .lin tests + runner)
+│   ├── codegen_tests.rs    26 codegen tests
+│   ├── negative_cases.rs   33 negative-case tests (7/7 categories)
+│   ├── deep_inspection.rs  15 structural verification tests
+│   └── ...                 Lexer, parser, HIR, MIR, typeck tests
+├── examples/
+│   ├── stage2_4d_audit.rs  15-program audit
+│   ├── round3-6_audit.rs   Multi-round negative-case audits
+│   └── cross_stage_audit.rs 51-case cross-stage audit
 └── docs/
-    ├── build-guide.md      Build & test instructions
-    ├── testing-guide.md    Test methodology
-    ├── stage0-status.md    Stage 0 status report (v0.1.4)
-    ├── stage-1.1-plan.md   Stage 1.1 task breakdown
-    ├── stage-committee-process.md  Stage Committee voting rules
-    └── development-log.md  S0-REV-7 + Stage 1.1 development log
+    ├── stage-3-plan.md     Stage 3 plan
+    ├── stage-committee-process.md  Process v3.5 (with §11 doc sync)
+    └── ...                 Gate review reports, development logs
 ```
 
 ## Testing
 
 ```bash
-# Run all 375 tests
+# Run all 699 tests
 cargo test
 
-# Run with format + lint enforcement
+# Format + lint
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
-cargo test
 ```
-
-## Language coverage (Stage 0)
-
-- ✅ **Lexer**: literals (int/float/char/str/byte/raw), identifiers, raw
-  identifiers (`r#match`), doc comments (`///` `//!`), 38 keywords, all
-  operators with maximal munch
-- ✅ **Parser**: all 11 item kinds (fn/const/static/struct/enum/trait/impl/
-  type/extern/mod/use), 28 expression kinds, 12 pattern kinds, 16 type kinds,
-  generic bounds (`T: Clone + Default`), where clauses, trait items, generic
-  args in paths (`Vec<i32>`), `impl Trait` / `dyn Trait`, `pub(crate)` /
-  `pub(in path)`, use groups/globs/aliases, struct literals, macro calls
-  (`println!(...)`), `move` closures, `unsafe fn`, attribute parsing
-  (`#[derive(Debug)]`)
-- ✅ **AST**: complete node definitions with span tracking
-
-See `docs/stage0-status.md` for the full feature matrix and known limitations.
 
 ## Roadmap
 
-- **Stage 0** (Months 1-2): front-end closure — IN PROGRESS
-- **Stage 1** (Months 3-4): HIR + name resolution — IN PROGRESS (1.1 HIR skeleton done)
-- **Stage 2** (Months 5-7): type check + borrow check (NLL on MIR)
-- **Stage 3** (Months 8-9): LLVM codegen
-- **Stage 4** (Month 10): macro system + attributes
-- **Stage 5** (Months 11-12): mini-cargo + stdlib MVP
+- **Stage 0** ✅ Front-end (lexer + parser + AST)
+- **Stage 1** ✅ HIR + name resolution
+- **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review)
+- **Stage 3** 🔄 LLVM codegen (MVP complete, improving)
+- **Stage 4** Macro system + attributes
+- **Stage 5** Mini-cargo + stdlib MVP
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting
 
 ## License
 
 MIT (see `LICENSE`).
-
-## Contributing
-
-This is a single-developer project at present. The contribution workflow will
-be formalized when Stage 1 begins. For now, please open an issue to discuss
-any changes.

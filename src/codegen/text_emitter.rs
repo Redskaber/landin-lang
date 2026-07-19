@@ -202,4 +202,15 @@ impl Emitter for TextEmitter {
         self.line(&format!("  %v{} = zext i1 {} to i32", r, val));
         format!("%v{}", r)
     }
+
+    fn emit_switch(&mut self, discr: &EmitValue, cases: &[(i128, String)], default_label: &str) {
+        self.line(&format!(
+            "  switch i32 {}, label %{} [",
+            discr, default_label
+        ));
+        for (val, label) in cases {
+            self.line(&format!("    i32 {}, label %{}", val, label));
+        }
+        self.line("  ]");
+    }
 }
