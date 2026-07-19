@@ -15,3 +15,4 @@ pub mod mir;
 pub mod parser;
 pub mod resolve;
 pub mod session;
+pub mod typeck;
