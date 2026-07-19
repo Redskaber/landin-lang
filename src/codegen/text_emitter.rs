@@ -256,4 +256,16 @@ impl Emitter for TextEmitter {
         ));
         format!("%v{}", r)
     }
+
+    fn emit_phi(&mut self, ty: EmitType, incoming: &[(EmitValue, String)]) -> EmitValue {
+        let r = self.fresh();
+        let ty_str = emit_type_to_llvm_str(ty);
+        let incoming_str = incoming
+            .iter()
+            .map(|(val, label)| format!("[ {}, %{} ]", val, label))
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.line(&format!("  %v{} = phi {} {}", r, ty_str, incoming_str));
+        format!("%v{}", r)
+    }
 }

@@ -10,7 +10,6 @@
 ## v0.7.4 — Stage 3.9: Imported user-provided documentation (process v3.7)
 
 ### Added — agent-team/ (12 new documents)
-
 - `00-requirement-history.md` — Requirements evolution history
 - `01-agent-team-overview.md` — Agent team structure overview
 - `02-agent-roles-detail.md` — Detailed role definitions (25 roles)
@@ -25,7 +24,6 @@
 - `README.md` — Agent team index
 
 ### Added — lang-design/ (20 new documents)
-
 - `01-language-specification.md` — Full language specification
 - `02-grammar.md` — Grammar definition (EBNF)
 - `03-type-system.md` — Type system design
@@ -50,13 +48,11 @@
 - `README.md` — Language design index
 
 ### Changed
-
 - Consolidated uploaded docs into our v0/stage-N structure
 - Removed duplicate flat docs/develop/ files (kept v0/stage-N/ versions)
 - Process docs restored to v3.7
 
 ### Document count
-
 - docs/agent-team/: 12 files (was 2)
 - docs/lang-design/: 22 files (was 2)
 - docs/develop/v0/stage-N/: 18 files (unchanged)
@@ -67,7 +63,6 @@
 ## v0.7.3 — Stage 3.8: Doc reorganization (process v3.7)
 
 ### Added
-
 - Process v3.7 §12: Document organization structure rules
 
 ---
@@ -75,7 +70,6 @@
 ## v0.7.2 — Stage 3.7: Author + cast codegen (process v3.6)
 
 ### Added
-
 - Author "redskaber" added to all project documents
 - Cast codegen (sext/zext/trunc/sitofp/fptosi/fpext/fptrunc)
 
@@ -84,7 +78,6 @@
 ## v0.7.1 — Stage 3.5: Parameter passing + doc sync (process v3.5)
 
 ### Added
-
 - Parameter passing: `fn add(a: i32, b: i32) -> i32 { a + b }` generates
   `define i32 @fn_0(i32 %arg0, i32 %arg1)` with params stored to alloca slots
 
@@ -93,7 +86,6 @@
 ## v0.5.0 — Stage 3.1-3.4: LLVM codegen MVP
 
 ### Added
-
 - `src/codegen/` module with Emitter trait + TextEmitter
 - LLVM IR text output (.ll)
 
@@ -102,7 +94,6 @@
 ## v0.4.9 — Stage 0-2 OFFICIAL FINAL
 
 ### Summary
-
 - Stage 0 (lexer/parser): 245 tests, 0 issues
 - Stage 1 (HIR/resolve): 451 tests, 0 issues  
 - Stage 2 (MIR/typeck/borrowck): 673 tests, 0 issues
@@ -113,7 +104,7 @@
 ## Process version history
 
 | Version | Change |
-| --------- | -------- |
+|---------|--------|
 | v1.0 | Initial 5-role + voting + 4-7 rounds |
 | v2.0 | Dynamic rounds + defect grading + weighted voting |
 | v3.0 | Integration verification + P3 reclassification + gate review |

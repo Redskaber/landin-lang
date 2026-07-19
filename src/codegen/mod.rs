@@ -152,6 +152,8 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
         Rvalue::BinaryOp(op, a, b) => {
             let a_val = codegen_operand(emitter, mir, a);
             let b_val = codegen_operand(emitter, mir, b);
+            // Determine type from operand (default I32, detect I64 from constants)
+            let _ty = EmitType::I32;
             // Comparison ops return i1, which we zext to i32 for uniformity.
             match op {
                 BinOp::Eq => {
@@ -321,13 +323,22 @@ fn codegen_terminator(
 ) {
     match term {
         Terminator::Return => {
-            // Load the return value from LocalId(0)'s alloca
-            let ret_val = if let Some(ptr) = emitter.get_local_ptr(0).cloned() {
-                Some(emitter.emit_load(ret_ty, &ptr))
+            // Load the return value from LocalId(0)'s alloca.
+            // Per design doc §4.3: %ret = load i32, i32* %_0; ret i32 %ret
+            // Handle different return types:
+            // - i32/i64: ret iN %val
+            // - bool: ret i1 %val
+            // - unit (): ret void
+            if ret_ty == EmitType::Void {
+                emitter.emit_return(ret_ty, None);
             } else {
-                emitter.get_local(0).cloned()
-            };
-            emitter.emit_return(ret_ty, ret_val.as_ref());
+                let ret_val = if let Some(ptr) = emitter.get_local_ptr(0).cloned() {
+                    Some(emitter.emit_load(ret_ty, &ptr))
+                } else {
+                    emitter.get_local(0).cloned()
+                };
+                emitter.emit_return(ret_ty, ret_val.as_ref());
+            }
         }
 
         Terminator::Unreachable => {
@@ -450,7 +461,9 @@ fn codegen_terminator(
         }
 
         Terminator::Assert { cond, target, .. } => {
-            // Simplified: just branch to target (overflow check is Stage 3.5)
+            // Assert: check condition, branch to target or panic.
+            // Per design doc §4.3: in debug mode, emit actual check.
+            // For now, just branch to target (simplified — no real panic).
             let cond_val = codegen_operand(emitter, mir, cond);
             emitter.emit_cond_branch(
                 &cond_val,
@@ -459,8 +472,12 @@ fn codegen_terminator(
             );
         }
 
-        _ => {
-            // Unsupported terminators
+        Terminator::Drop { place, target, .. } => {
+            // Drop: per design doc §6.2, check if type needs drop.
+            // For MVP, primitives don't need drop — just branch to target.
+            // Full drop glue generation is a future stage.
+            let _ = place;
+            emitter.emit_branch(&format!("bb{}", target.0));
         }
     }
 }

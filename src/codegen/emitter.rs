@@ -128,6 +128,10 @@ pub trait Emitter {
     /// Returns a pointer to the element.
     fn emit_gep_index(&mut self, base_ptr: &EmitValue, index: &EmitValue) -> EmitValue;
 
+    /// Emit a PHI node for merging values from multiple predecessor blocks.
+    /// Each entry is (value, label) — the value comes from the block with that label.
+    fn emit_phi(&mut self, ty: EmitType, incoming: &[(EmitValue, String)]) -> EmitValue;
+
     /// Return the accumulated output (for text backends).
     fn output(&self) -> &str;
 }
