@@ -1,148 +1,173 @@
-# Landin Stage Committee — Process & Voting Rules
+# 项目阶段推进与质量管控流程（Agent Groups）
 
-> **Version**: 1.0 (effective from Stage 1.1)
-> **Purpose**: Formalize the multi-round review process for stage progression
-> with explicit voting mechanism, role responsibilities, and acceptance gates.
+> **Version**: 2.0 (effective from Stage 2.0)
+> **Supersedes**: Stage Committee Process v1.0
+> **Purpose**: Formalize the multi-round review process with dynamic
+> adaptive mechanisms, weighted voting, defect-level governance, and
+> data-driven continuous improvement.
 
 ---
 
-## 1. Stage Committee Members (5 voting roles)
+## 1. 总体原则
 
-Each role has a distinct review focus. A stage may only progress to the next
-when ALL members vote APPROVED or APPROVED WITH MINOR CONCERNS, with at most
-2 minor concerns total.
+- 采用 **"小步快跑 + 深度验证"** 方式，确保每个阶段产出在精度与深度上满足目标。
+- 引入**动态自适应机制**与**分级治理策略**，兼顾质量与效率。
+- **数据驱动**：所有轮次与决策基于量化指标，而非主观感受。
 
-| # | Role | Focus Area | Key Questions |
-| --- | ------ | ------------ | --------------- |
-| 1 | **Compiler Engineer** | Parser/lexer/codegen correctness, AST/IR data flow, span tracking | Does the code compile clean? Are spans preserved? Any silent data loss? Any infinite-loop risks? |
-| 2 | **Type System Theorist** | Type inference readiness, generics, lifetimes, trait resolution | Does the IR preserve all type info needed for Stage 2 typeck? Are generic args / where clauses / associated types captured? |
-| 3 | **Soundness Reviewer** | Memory safety, `unsafe` tracking, borrow-check readiness | Can the IR mislead Stage 2 borrowck? Are `unsafe` blocks/fns/raw ptrs distinguishable? Any `panic!()` reachable from user input? |
-| 4 | **Testing & QA Lead** | Test coverage, structural assertions, conformance, property tests | Are tests real structural walks (not smoke)? Are error-message-content + span-correctness tests present? Is conformance suite growing? |
-| 5 | **Tooling & DX Lead** | CI, cargo fmt, cargo clippy, docs, build system, dev ergonomics | Is `cargo fmt --check` clean? Is `cargo clippy --all-targets -- -D warnings` clean? Are docs synchronized? Does CI cover push + PR? |
-
-## 2. Voting Rules
-
-Each member casts one of three votes:
-
-- **APPROVED** — No concerns; the work is ready.
-- **APPROVED WITH MINOR CONCERNS** — Acceptable, but with up to 2 specific
-  minor issues that should be tracked (P2 level — cosmetic, doc drift, etc.).
-- **NEEDS REVISION** — One or more P0/P1 issues block progression.
-
-### Acceptance Gate
-
-A stage may progress to the next stage iff:
-
-1. **Zero** NEEDS REVISION votes (unanimous approval required), AND
-2. **At most 2** APPROVED WITH MINOR CONCERNS votes (otherwise too many minor
-   issues accumulate), AND
-3. The minor concerns are documented in the worklog with a target resolution
-   stage.
-
-If the gate is NOT met, the work returns to the implementer for another
-review-refine cycle (Round N+1) targeting the specific objections.
-
-## 3. Per-Stage Process (mandatory rounds)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Round 1: Internal task breakdown                            │
-│   - Read prior stage's worklog                              │
-│   - Decompose stage into 10-15 atomic tasks                 │
-│   - Define acceptance criteria per task                     │
-│   - Output: TODO list + task brief                          │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Rounds 2-N: Implementation                                  │
-│   - Implement tasks in dependency order                    │
-│   - Run cargo test + clippy + fmt after each batch         │
-│   - Document deviations from plan                          │
-│   - N is typically 3-4 rounds                              │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Round N+1: Self-critical review                             │
-│   - Walk through each implemented task                     │
-│   - Identify gaps, regressions, doc drift                  │
-│   - Run all 5 reviewer perspectives in advance             │
-│   - If gaps found → another implementation round           │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│ Round N+2: Stage Committee review                           │
-│   - Launch 5 parallel subagents (one per role)             │
-│   - Each produces VERDICT + findings with severity         │
-│   - Tally votes per §2 rules                               │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-        ┌───────────────────┴───────────────────┐
-        │                                       │
-   [GATE MET]                             [GATE NOT MET]
-        │                                       │
-        ↓                                       ↓
-┌─────────────────────┐            ┌─────────────────────────┐
-│ Round N+3: Commit   │            │ Round N+3: Refine       │
-│  - Bump version     │            │  - Fix P0/P1 issues     │
-│  - Update worklog   │            │  - Add regression tests │
-│  - git commit       │            │  - Re-run self-review   │
-│  - Start next stage │            │  - Re-submit to Cmte    │
-└─────────────────────┘            └─────────────────────────┘
-```
-
-### Mandatory minimum: 4 rounds, maximum: 7 rounds
-
-- **Minimum 4 rounds**: 1 plan + 2 impl + 1 committee review
-- **Maximum 7 rounds**: 1 plan + 4 impl/refine + 1 self-review + 1 committee
-- If the gate is not met after 7 rounds, escalate to user (likely scope
-  mismatch — the stage may need to be split smaller)
-
-## 4. Worklog Protocol
-
-Each round appends a section to `/home/z/my-project/worklog.md`:
-
-```markdown
 ---
-Task ID: stage-X.Y-round-N
-Agent: <agent name / role>
-Task: <what this round accomplished>
 
-Work Log:
-- <concrete step 1>
-- <concrete step 2>
+## 2. 阶段内任务拆分
 
-Stage Summary:
-- <key results>
-- <test count + warnings>
-- <vote tally if committee round>
-```
+将阶段目标拆解为可独立验证的最小工作单元（MUV，Minimum Verifiable Unit），
+保证每个子任务可单独审查、修正和追溯。
 
-## 5. Stage Numbering
+每个 MUV 必须包含：
 
-- **Stage 0.x** — Front-end (lexer/parser/AST) — COMPLETE at v0.1.4
-- **Stage 1.x** — HIR + Name Resolution (this stage)
-  - 1.1 — HIR data structures + deferred AST schema fixes
-  - 1.2 — AST → HIR lowering
-  - 1.3 — Module-level name resolution
-  - 1.4 — Scope-based name resolution
-- **Stage 2.x** — Type check + Borrow check (NLL on MIR)
-- **Stage 3.x** — LLVM codegen
-- **Stage 4.x** — Macro system + attributes
-- **Stage 5.x** — mini-cargo + stdlib MVP
+- 明确的输入条件（前置依赖）
+- 明确的输出物（代码/测试/文档）
+- 明确的验收标准（可量化）
 
-Each sub-stage (1.1, 1.2, etc.) goes through the full multi-round process
-independently. A sub-stage passes the gate → bump patch version → start next.
+---
 
-## 6. Version Policy
+## 3. 审查‑修订内循环（动态轮次）
 
-- `v0.1.x` — Stage 0 (front-end)
-- `v0.2.x` — Stage 1 (HIR + name resolution)
-- `v0.3.x` — Stage 2 (typeck + borrowck)
-- ...
-- `v1.0` — All stages complete + conformance suite passing
+### 3.1 复杂度预评估（启动前）
 
-Each sub-stage that passes the gate increments the patch version
-(e.g. v0.2.0 → v0.2.1 after Stage 1.1).
+由 AI Agent 基于以下三项指标预估子任务的问题复杂度等级：
+
+- **代码变动量**（新增/修改 LOC）
+- **依赖风险**（跨模块耦合度、接口变更影响面）
+- **历史缺陷密度**（同类任务在之前阶段的 P0/P1 发现率）
+
+| 等级 | 描述 | 基准轮次区间 |
+| :---: | :--- | :---: |
+| L1 | 低复杂度（文档/配置/样式调整） | 2 ~ 4 轮 |
+| L2 | 中复杂度（常规业务逻辑增改） | 4 ~ 9 轮 |
+| L3 | 高复杂度（核心架构/跨模块变更） | 8 ~ 15 轮 |
+
+### 3.2 执行中的动态调整
+
+- 若循环过程中新发现的 P0/P1 级问题数量超出预期，或修复后引发二次缺陷，
+  Agent 可将轮次上限自动上浮 30%~50%，并记录调整理由。
+- 若连续 2 轮仅发现 P3 级轻微问题，Agent 可提前终止循环（无需达到下限轮次）。
+
+### 3.3 退出内循环的硬性标准
+
+- 所有 P0（致命）与 P1（严重）级别缺陷必须清零。
+- 产出物完整、一致，足以支撑下一阶段开展。
+- `cargo build` 0 warnings，`cargo clippy --all-targets -- -D warnings` 通过，
+  `cargo fmt --check` 通过。
+
+---
+
+## 4. 缺陷等级划分
+
+| 等级 | 名称 | 定义（举例） | 处理要求 |
+| :---: | :--- | :--- | :--- |
+| P0 | 致命 | 系统崩溃、核心流程中断、安全数据泄露、编译器 panic | 强制修复，阻塞退出 |
+| P1 | 严重 | 主要功能缺失、严重性能卡顿、API 接口错误、数据丢失 | 强制修复，阻塞退出 |
+| P2 | 一般 | 非核心功能异常、边界条件错误、文案重大歧义 | 修复；若遗留需在团队讨论中申报并获 95% 同意，可带技术债进入下一阶段 |
+| P3 | 优化 | 代码风格、文档措辞、非关键性能优化 | 不阻塞，直接记录为技术延伸，后续迭代处理 |
+
+---
+
+## 5. 团队准入讨论（外循环与二次内循环联动）
+
+### 5.1 角色与权重
+
+| 角色 | 职责 | 权重系数 | 特殊权限 |
+| :--- | :--- | :---: | :--- |
+| 架构师/技术负责人 | 把控技术方向与架构一致性 | 2 票 | 拥有一票否决权（反对即触发二次内循环） |
+| 核心开发工程师 | 评估代码实现与可维护性 | 1.5 票 | — |
+| 质量保证 | 验证测试覆盖与功能符合度 | 1 票 | — |
+| 产品/业务代表 | 确认需求实现与用户体验 | 1 票 | 仅对需求偏差有否决权（触发二次内循环） |
+
+> 注：对于 Landin 编译器项目，"产品/业务代表" 角色由 **Type System Theorist**
+> 担任（确认类型系统语义正确性），因为编译器没有传统意义上的"用户"。
+
+### 5.2 外循环准入与二次触发规则
+
+- **加权总通过率 ≥ 95%** 视为阶段准入通过。
+  - 总权重 = 2 + 1.5 + 1 + 1 = 5.5
+  - 通过需要 ≥ 5.225 票（即最多 0.275 票反对，约等于 0 反对）
+  - 实践中：全员 APPROVED 或 APPROVED WITH MINOR CONCERNS（P3 级）
+- **若未通过（反对票超标）**：
+  - 不直接退回起点，而是**触发"二次内循环"**。
+  - 外循环必须输出**书面定向修正意见**（架构师指出架构缺陷 / QA 指出漏测场景 / 产品指出需求偏差）。
+  - Agent 携带该书面意见进入二次内循环，进行**靶向精准修复**，完成后再次提交外循环投票。
+- **硬性退回条件（仅限极端情况）**：
+  - 架构师投反对票且修正意见指向**不可逆的设计致命伤**；
+  - 非架构师累积反对加权票数超过总权重的 40%（即 > 2.2 票）。
+- **循环上限**：二次内循环最多触发 **2 次**。若仍未通过，升级至**技术委员会**仲裁。
+
+### 5.3 Git Commit 规范
+
+团队外循环投票**通过**后，方可进入下一阶段。同步执行标准 Git Commit，包含：
+
+- **消息头**（类型 + 范围）：`feat(stageX.Y): 简述`
+- **主体**（变更摘要）
+- **脚注**（**强制包含**）：
+  - 关联需求编号（Stage plan 文档引用）
+  - 遗留债务清单（如有，列出 P2/P3 项 + 目标解决阶段）
+  - 本次内循环/二次内循环轮次记录
+  - Committee 投票结果（如 "5/0 APPROVED"）
+
+---
+
+## 6. 紧急通道（Expedited Lane）
+
+- 针对线上 P0 级紧急漏洞或致命阻断，允许**架构师 + 产品经理**双重签署后，
+  **跳过预评估与外循环投票**，直接进入内循环修复。
+- 修复完成后，**事后 24 小时内**必须补齐完整的审计日志（预评估模拟数据 + 修复轮次记录），
+  并纳入下一阶段的复杂度校准数据池。
+
+---
+
+## 7. 迭代与自我进化
+
+每个阶段结束后，由 Agent 统计：
+
+- 预估等级与实际轮次的偏差；
+- P0/P1/P2 发现密度与分布；
+- 外循环否决票的集中领域（架构/测试/需求）；
+- 紧急通道触发频次。
+
+以上数据作为**下一阶段复杂度预评估（三项指标）的校准依据**，实现流程的持续优化。
+
+### 历史阶段数据（校准基线）
+
+| 阶段 | 预估等级 | 实际轮次 | P0 | P1 | P2 | 外循环结果 | 偏差分析 |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- | :--- |
+| Stage 0 v0.1.3 | L2 | 7 | 4→0 | 11→0 | ~15 | 3 NEEDS REVISION → 全通过 | 轮次符合 L2 上限 |
+| Stage 0 v0.1.4 | L3 | 9 | 7→0 | 15→0 | ~20 | 2 NEEDS REVISION → 全通过 | 轮次符合 L3 下限 |
+| Stage 1.1 | L2 | 9 | 0 | 6→0 | ~10 | 2 NEEDS REVISION → 全通过 | 偏高：HIR 设计需要更多审查 |
+| Stage 1.2 | L2 | 7 | 0 | 0 | ~5 | 一次通过 | 偏低：lowering 是机械性工作 |
+| Stage 1.3 | L2 | 8 | 0 | 2→0 | ~8 | 一次通过 | 符合预期 |
+| Stage 1.4 | L2 | 7 | 1→0 | 2→0 | ~5 | 一次通过 | 偏低：闭包 bug 意外简单 |
+
+**校准结论**：
+
+- L2 基准轮次区间维持 4~9 轮（实际 7~9 轮，符合）
+- L3 基准轮次区间调整为 8~15 轮（Stage 0 v0.1.4 验证了 9 轮的必要性）
+- Stage 2（typeck + borrowck）预评估为 **L3**（核心架构变更）
+
+---
+
+## 8. Stage Committee 成员映射
+
+对于 Landin 编译器项目，5 个委员会角色映射到上述权重体系：
+
+| 流程角色 | Landin 实现 | 权重 |
+| :--- | :--- | :---: |
+| 架构师/技术负责人 | **Compiler Engineer** | 2 票 |
+| 核心开发工程师 | **Soundness Reviewer** | 1.5 票 |
+| 质量保证 | **Testing & QA Lead** | 1 票 |
+| 产品/业务代表 | **Type System Theorist** | 1 票 |
+| （附加） | **Tooling & DX Lead** | 1 祧 |
+
+> Tooling & DX Lead 的 1 票不参与加权通过率计算（因为流程规定 4 个角色），
+> 但其 NEEDS REVISION 投票仍会触发二次内循环。实际效果：5 票中任何 1 票
+> 反对即触发二次内循环（严格模式），与 v1.0 流程一致。
 
 ---
 
