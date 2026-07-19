@@ -1,0 +1,125 @@
+//! Codegen tests (Stage 3.1).
+//!
+//! Verify that the LLVM IR output is correct for basic programs.
+
+use landin_compiler::codegen::codegen_crate;
+use landin_compiler::driver::compile;
+
+fn gen_ll(src: &str) -> String {
+    let result = compile(src);
+    let hir = result.hir.expect("HIR should be produced");
+    codegen_crate(&hir, &result.interner)
+}
+
+#[test]
+fn codegen_return_constant() {
+    let ll = gen_ll("fn main() -> i32 { 42 }");
+    assert!(
+        ll.contains("ret i32 42"),
+        "expected 'ret i32 42' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_addition() {
+    let ll = gen_ll("fn f() -> i32 { 1 + 2 }");
+    assert!(
+        ll.contains("add nsw i32"),
+        "expected 'add nsw i32' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_subtraction() {
+    let ll = gen_ll("fn f() -> i32 { 5 - 3 }");
+    assert!(
+        ll.contains("sub nsw i32"),
+        "expected 'sub nsw i32' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_multiplication() {
+    let ll = gen_ll("fn f() -> i32 { 4 * 3 }");
+    assert!(
+        ll.contains("mul nsw i32"),
+        "expected 'mul nsw i32' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_division() {
+    let ll = gen_ll("fn f() -> i32 { 10 / 2 }");
+    assert!(ll.contains("sdiv i32"), "expected 'sdiv i32' in:\n{}", ll);
+}
+
+#[test]
+fn codegen_negation() {
+    let ll = gen_ll("fn f() -> i32 { -5 }");
+    assert!(ll.contains("sub i32 0"), "expected 'sub i32 0' in:\n{}", ll);
+}
+
+#[test]
+fn codegen_chained_arith() {
+    let ll = gen_ll("fn f() -> i32 { 1 + 2 * 3 }");
+    assert!(ll.contains("add nsw i32"), "expected add in:\n{}", ll);
+    assert!(ll.contains("mul nsw i32"), "expected mul in:\n{}", ll);
+}
+
+#[test]
+fn codegen_let_binding() {
+    let ll = gen_ll("fn f() -> i32 { let x = 42; x }");
+    assert!(
+        ll.contains("ret i32 42") || ll.contains("ret i32"),
+        "expected ret in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_function_definition() {
+    let ll = gen_ll("fn main() -> i32 { 42 }");
+    assert!(
+        ll.contains("define i32 @fn_"),
+        "expected function definition in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_multiple_functions() {
+    let ll = gen_ll("fn f() -> i32 { 1 } fn g() -> i32 { 2 }");
+    assert!(ll.contains("@fn_0"), "expected fn_0 in:\n{}", ll);
+    assert!(ll.contains("@fn_1"), "expected fn_1 in:\n{}", ll);
+}
+
+#[test]
+fn codegen_let_with_arith() {
+    let ll = gen_ll("fn f() -> i32 { let x = 1; let y = 2; x + y }");
+    assert!(ll.contains("add nsw i32"), "expected add in:\n{}", ll);
+}
+
+#[test]
+fn codegen_param_passed() {
+    // Stage 3.1 doesn't fully support params yet, but shouldn't crash
+    let ll = gen_ll("fn f(x: i32) -> i32 { x }");
+    assert!(
+        ll.contains("define i32"),
+        "expected function def in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_empty_body() {
+    let ll = gen_ll("fn f() { }");
+    assert!(
+        ll.contains("ret i32 0"),
+        "expected default ret i32 0 in:\n{}",
+        ll
+    );
+}

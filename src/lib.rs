@@ -1,14 +1,13 @@
 //! Landin Compiler
 //!
-//! Stage 0 (v0.1.x): Lexer + Parser + AST — COMPLETE at v0.1.4
-//! Stage 1 (v0.2.x): HIR + Name Resolution — IN PROGRESS
-//!   1.1: HIR data structures (this version)
-//!   1.2: AST → HIR lowering (next)
-//!   1.3: Module-level name resolution
-//!   1.4: Scope-based name resolution
+//! Stage 0 (v0.1.x): Lexer + Parser + AST — COMPLETE
+//! Stage 1 (v0.2.x): HIR + Name Resolution — COMPLETE
+//! Stage 2 (v0.4.x): MIR + Typeck + Borrowck — COMPLETE
+//! Stage 3 (v0.5.x): LLVM codegen — IN PROGRESS
 
 pub mod ast;
 pub mod borrowck;
+pub mod codegen;
 pub mod diagnostics;
 pub mod driver;
 pub mod hir;
