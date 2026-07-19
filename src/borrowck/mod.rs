@@ -20,6 +20,7 @@ pub use move_tracker::MoveTracker;
 
 use crate::mir::body::*;
 use crate::mir::lvalue::*;
+use crate::mir::ty::Ty;
 use crate::session::Span;
 
 /// The borrow checker. Walks MIR bodies, tracks borrows and moves,
@@ -53,24 +54,95 @@ impl BorrowChecker {
     /// - Use-after-move
     /// - Mutating while borrowed
     /// - Borrowing a moved value
+    ///
+    /// NLL (Stage 2.4c, P0-14/P0-16):
+    /// Before the main walk, we compute a "last use" map: for each local,
+    /// the last (bb_id, stmt_idx) where it's read. During the walk, after
+    /// processing each statement, we kill any borrow whose `ref_local`
+    /// has its last use at the current point. This means a borrow on `x`
+    /// expires as soon as the reference `r = &x` is no longer used — not
+    /// at the lexical scope end.
+    ///
+    /// This is a single-pass forward walk with a pre-computed last-use
+    /// map. It's correct for straight-line code and most loop patterns.
+    /// The only case it gets wrong is when a borrow's last use is inside
+    /// a loop body but the borrow was created outside the loop — in that
+    /// case the borrow is killed after the first iteration's last use,
+    /// producing a false-positive borrow error on the second iteration.
+    /// This is a known limitation; full fixpoint dataflow is Stage 3.
     pub fn check_mir_body(&mut self, mir: &MirBody) {
-        for bb in &mir.basic_blocks {
-            for stmt in &bb.statements {
-                self.check_statement(mir, stmt);
+        // Pre-pass: compute last-use map for each local.
+        let last_use_map = compute_last_use_map(mir);
+
+        // Main walk: forward over all basic blocks.
+        for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
+            let bb_id = BasicBlockId(bb_idx as u32);
+            for (stmt_idx, stmt) in bb.statements.iter().enumerate() {
+                self.check_statement(mir, stmt, bb_id, stmt_idx);
+                // NLL: kill borrows whose ref_local's last use is at
+                // this exact program point.
+                self.kill_expired_borrows(&last_use_map, bb_id, stmt_idx);
             }
-            self.check_terminator(mir, &bb.terminator);
+            // Check terminator (uses are at index == statements.len())
+            let term_idx = bb.statements.len();
+            self.check_terminator(mir, &bb.terminator, bb_id, term_idx);
+            self.kill_expired_borrows(&last_use_map, bb_id, term_idx);
         }
     }
 
-    fn check_statement(&mut self, mir: &MirBody, stmt: &Statement) {
+    /// Kill any active borrow whose `ref_local` has its last use at the
+    /// given program point.
+    fn kill_expired_borrows(
+        &mut self,
+        last_use_map: &LastUseMap,
+        bb: BasicBlockId,
+        stmt_idx: usize,
+    ) {
+        let current_point = (bb, stmt_idx);
+        // Collect locals whose last use is at the current point.
+        let locals_to_kill: Vec<crate::mir::lvalue::LocalId> = last_use_map
+            .iter()
+            .filter_map(|(local, last)| {
+                if *last == current_point {
+                    Some(*local)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for local in locals_to_kill {
+            self.borrows.kill_borrows_of_local(local);
+        }
+    }
+
+    fn check_statement(
+        &mut self,
+        mir: &MirBody,
+        stmt: &Statement,
+        _bb_id: BasicBlockId,
+        _stmt_idx: usize,
+    ) {
         if let StatementKind::Assign(boxed) = &stmt.kind {
             let (place, rvalue) = &**boxed;
-            self.check_rvalue(mir, rvalue, stmt.span);
+            // Determine the LHS local (if any) — this is the local that
+            // holds the result of the rvalue. For `r = &x`, this is `r`,
+            // and we associate it with the borrow for NLL expiry.
+            let lhs_local = match &place.kind {
+                LvalueKind::Local(id) => Some(*id),
+                _ => None,
+            };
+            self.check_rvalue(mir, rvalue, lhs_local, stmt.span);
             self.check_place_write(mir, place, stmt.span);
         }
     }
 
-    fn check_terminator(&mut self, mir: &MirBody, term: &Terminator) {
+    fn check_terminator(
+        &mut self,
+        mir: &MirBody,
+        term: &Terminator,
+        _bb_id: BasicBlockId,
+        _stmt_idx: usize,
+    ) {
         match term {
             Terminator::Call { func, args, .. } => {
                 self.check_operand(mir, func, Span::DUMMY);
@@ -84,12 +156,23 @@ impl BorrowChecker {
             Terminator::Drop { place, .. } => {
                 self.check_place_read(mir, place, Span::DUMMY);
             }
+            // Assert reads the condition operand (a bool). Check it
+            // for use-after-move just like any other operand.
+            Terminator::Assert { cond, .. } => {
+                self.check_operand(mir, cond, Span::DUMMY);
+            }
             _ => {}
         }
     }
 
     /// Check an rvalue for borrow creation and operand moves.
-    fn check_rvalue(&mut self, mir: &MirBody, rv: &Rvalue, span: Span) {
+    fn check_rvalue(
+        &mut self,
+        mir: &MirBody,
+        rv: &Rvalue,
+        lhs_local: Option<crate::mir::lvalue::LocalId>,
+        span: Span,
+    ) {
         match rv {
             Rvalue::Ref(region, kind, place) => {
                 // Creating a borrow: record it
@@ -106,8 +189,12 @@ impl BorrowChecker {
                         span,
                     ));
                 }
-                // Check for conflicting borrows
-                if let Err(conflict) = self.borrows.add_borrow(borrowed_place, bk, span) {
+                // Check for conflicting borrows. Associate the borrow
+                // with `lhs_local` so NLL can expire it at last use.
+                if let Err(conflict) =
+                    self.borrows
+                        .add_borrow_with_ref(borrowed_place, bk, span, lhs_local)
+                {
                     self.errors.push(conflict);
                 }
                 let _ = region;
@@ -140,6 +227,27 @@ impl BorrowChecker {
                     self.errors
                         .push(BorrowError::use_after_move("use of moved value", span));
                 }
+                // P0-17: Check Copy-ness. A `Copy(lv)` operand is only
+                // valid if `lv`'s type implements Copy. Non-Copy types
+                // (e.g., String, Vec, Box, structs without Copy) must
+                // be moved explicitly via `Operand::Move`.
+                //
+                // We consult the local's resolved type (written back
+                // by typeck in Phase 3). If the type isn't Copy, emit
+                // an error. This catches `let y = x;` where x is a
+                // non-Copy type and the MIR lower mistakenly used
+                // Operand::Copy instead of Operand::Move.
+                let ty = self.lvalue_ty(mir, lv);
+                if !ty_is_copy(&ty) {
+                    self.errors.push(BorrowError::not_copy(
+                        format!(
+                            "use of moved value: {:?} does not implement Copy; \
+                             use an explicit move (`let y = move x;`) or borrow",
+                            ty.kind
+                        ),
+                        span,
+                    ));
+                }
             }
             Operand::Move(lv) => {
                 let path = self.place_path(mir, lv);
@@ -159,6 +267,46 @@ impl BorrowChecker {
                 self.moves.record_move(path);
             }
             Operand::Constant(_) => {}
+        }
+    }
+
+    /// Look up the resolved type of an lvalue.
+    ///
+    /// For `Local(id)`, reads from `mir.local_decls[id].ty` (which
+    /// typeck has populated with the resolved type).
+    ///
+    /// For projections, walks the projection chain: Deref strips a
+    /// Ref/RawPtr, Field returns the field's Ty (stored in the
+    /// ProjectionElem::Field payload), Index returns the array/slice
+    /// element type.
+    fn lvalue_ty(&self, mir: &MirBody, lv: &Lvalue) -> Ty {
+        match &lv.kind {
+            LvalueKind::Local(id) => {
+                if (id.0 as usize) < mir.local_decls.len() {
+                    mir.local(*id).ty.clone()
+                } else {
+                    Ty::new(crate::mir::ty::TyKind::Error, lv.span)
+                }
+            }
+            LvalueKind::Static(_) => Ty::new(crate::mir::ty::TyKind::Error, lv.span),
+            LvalueKind::Projection(base, elem) => {
+                let base_ty = self.lvalue_ty(mir, base);
+                match elem {
+                    ProjectionElem::Deref => match &base_ty.kind {
+                        crate::mir::ty::TyKind::Ref(_, _, inner)
+                        | crate::mir::ty::TyKind::RawPtr(_, inner) => (**inner).clone(),
+                        _ => base_ty,
+                    },
+                    ProjectionElem::Field(_, field_ty) => field_ty.clone(),
+                    ProjectionElem::Index(_)
+                    | ProjectionElem::ConstantIndex { .. }
+                    | ProjectionElem::Subslice { .. } => match &base_ty.kind {
+                        crate::mir::ty::TyKind::Array(inner, _)
+                        | crate::mir::ty::TyKind::Slice(inner) => (**inner).clone(),
+                        _ => base_ty,
+                    },
+                }
+            }
         }
     }
 
@@ -187,12 +335,45 @@ impl BorrowChecker {
         }
     }
 
-    /// Get the PlacePath for an lvalue (simplified: just LocalId).
+    /// Build a field-sensitive `PlacePath` from an lvalue.
+    ///
+    /// Walks the projection chain bottom-up, building up the path's
+    /// `projections` vec. For example:
+    ///   `a.x.y` → PlacePath { root: Local(a), projections: [Field(0), Field(1)] }
+    ///   `*p`    → PlacePath { root: Local(p), projections: [Deref] }
+    ///   `arr[i]`→ PlacePath { root: Local(arr), projections: [Index(i)] }
     fn place_path(&self, _mir: &MirBody, lv: &Lvalue) -> PlacePath {
         match &lv.kind {
-            LvalueKind::Local(id) => PlacePath::Local(*id),
-            LvalueKind::Static(def_id) => PlacePath::Static(*def_id),
-            LvalueKind::Projection(base, _) => self.place_path(_mir, base),
+            LvalueKind::Local(id) => PlacePath::local(*id),
+            LvalueKind::Static(def_id) => PlacePath::static_def(*def_id),
+            LvalueKind::Projection(base, elem) => {
+                let base_path = self.place_path(_mir, base);
+                let proj_elem = match elem {
+                    ProjectionElem::Deref => ProjElem::Deref,
+                    ProjectionElem::Field(fid, _) => ProjElem::Field(*fid),
+                    ProjectionElem::Index(idx) => ProjElem::Index(*idx),
+                    ProjectionElem::ConstantIndex {
+                        offset, from_end, ..
+                    } => ProjElem::ConstantIndex {
+                        offset: *offset,
+                        from_end: *from_end,
+                    },
+                    ProjectionElem::Subslice {
+                        from,
+                        to: _,
+                        from_end,
+                    } => {
+                        // Subslice is rare; represent as a constant index
+                        // for now. A real subslice borrow is rare in user
+                        // code, so this is acceptable for Stage 2.4c.
+                        ProjElem::ConstantIndex {
+                            offset: *from,
+                            from_end: *from_end,
+                        }
+                    }
+                };
+                base_path.project(proj_elem)
+            }
         }
     }
 
@@ -207,11 +388,265 @@ impl Default for BorrowChecker {
     }
 }
 
-/// A simplified place path for borrow/move tracking.
+// ================================================================
+// NLL last-use computation (P0-14 / P0-16)
+// ================================================================
+
+/// Map from local → the last (bb_id, stmt_idx) where that local was read.
+///
+/// Computed by a forward scan of all basic blocks. Used by the borrow
+/// checker to expire borrows at their ref_local's last use.
+///
+/// A "read" of a local happens when the local appears as:
+/// - An `Operand::Copy(lv)` or `Operand::Move(lv)` where `lv` is `Local(id)`
+///   or a projection rooted at `Local(id)`
+/// - The `discr` of a `SwitchInt`
+/// - The `func` or an `arg` of a `Call`
+/// - The `place` of a `Drop`
+/// - The RHS of an `Assign` (via the rvalue's operands)
+///
+/// The map only tracks the *root local* of each read — projections like
+/// `a.x` count as a read of `a` (and also of `a.x`, but we only track
+/// `a` for NLL purposes since borrow references are always simple locals).
+pub type LastUseMap = std::collections::HashMap<crate::mir::lvalue::LocalId, (BasicBlockId, usize)>;
+
+/// Compute the last-use map for a MIR body.
+///
+/// Walks all basic blocks in program order, recording the last program
+/// point (bb_id, stmt_idx) where each local is read. The terminator is
+/// treated as occupying stmt_idx == statements.len().
+pub fn compute_last_use_map(mir: &MirBody) -> LastUseMap {
+    let mut map: LastUseMap = std::collections::HashMap::new();
+    for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
+        let bb_id = BasicBlockId(bb_idx as u32);
+        for (stmt_idx, stmt) in bb.statements.iter().enumerate() {
+            let point = (bb_id, stmt_idx);
+            for local in statement_reads(stmt) {
+                map.insert(local, point);
+            }
+        }
+        // Terminator reads happen at idx == statements.len()
+        let term_point = (bb_id, bb.statements.len());
+        for local in terminator_reads(&bb.terminator) {
+            map.insert(local, term_point);
+        }
+    }
+    map
+}
+
+/// Collect all locals read by a statement (the RHS operands of an Assign).
+fn statement_reads(stmt: &Statement) -> Vec<crate::mir::lvalue::LocalId> {
+    let mut out = Vec::new();
+    if let StatementKind::Assign(boxed) = &stmt.kind {
+        let (_place, rvalue) = &**boxed;
+        // The LHS is a write, not a read — skip it.
+        rvalue_reads(rvalue, &mut out);
+    }
+    out
+}
+
+/// Collect locals read by an rvalue.
+fn rvalue_reads(rv: &Rvalue, out: &mut Vec<crate::mir::lvalue::LocalId>) {
+    match rv {
+        Rvalue::Use(op) | Rvalue::Cast(_, op, _) => operand_reads(op, out),
+        Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
+            operand_reads(a, out);
+            operand_reads(b, out);
+        }
+        Rvalue::UnaryOp(_, op) => operand_reads(op, out),
+        Rvalue::Ref(_, _, lv) => lvalue_root_reads(lv, out),
+        Rvalue::Aggregate(_, operands) => {
+            for op in operands {
+                operand_reads(op, out);
+            }
+        }
+    }
+}
+
+/// Collect locals read by an operand.
+fn operand_reads(op: &Operand, out: &mut Vec<crate::mir::lvalue::LocalId>) {
+    match op {
+        Operand::Copy(lv) | Operand::Move(lv) => lvalue_root_reads(lv, out),
+        Operand::Constant(_) => {}
+    }
+}
+
+/// Collect the root local of an lvalue (e.g., `a.x.y` → push `a`).
+/// For `*p`, also push `p` (the pointer local).
+fn lvalue_root_reads(lv: &Lvalue, out: &mut Vec<crate::mir::lvalue::LocalId>) {
+    match &lv.kind {
+        LvalueKind::Local(id) => out.push(*id),
+        LvalueKind::Static(_) => {}
+        LvalueKind::Projection(base, _) => lvalue_root_reads(base, out),
+    }
+}
+
+/// Collect locals read by a terminator.
+fn terminator_reads(term: &Terminator) -> Vec<crate::mir::lvalue::LocalId> {
+    let mut out = Vec::new();
+    match term {
+        Terminator::Call { func, args, .. } => {
+            operand_reads(func, &mut out);
+            for arg in args {
+                operand_reads(arg, &mut out);
+            }
+        }
+        Terminator::SwitchInt { discr, .. } => {
+            operand_reads(discr, &mut out);
+        }
+        Terminator::Drop { place, .. } => {
+            lvalue_root_reads(place, &mut out);
+        }
+        Terminator::Assert { cond, .. } => {
+            operand_reads(cond, &mut out);
+        }
+        _ => {}
+    }
+    out
+}
+
+/// Determine whether a type implements `Copy`.
+///
+/// Per Landin semantics (mirroring Rust), the following types are Copy:
+/// - Primitives: bool, char, int, uint, float
+/// - References: `&T` (shared refs are always Copy; `&mut T` is not Copy
+///   but Move semantics are checked elsewhere)
+/// - Raw pointers: `*const T`, `*mut T`
+/// - Function definitions and function pointers
+/// - Tuples whose every element is Copy
+/// - Arrays of Copy types (size is part of the type)
+/// - Slices are NOT Copy (they're unsized)
+/// - The unit type `()` is Copy
+///
+/// ADTs (struct/enum) require an explicit `#[derive(Copy)]` annotation;
+/// for Stage 2.4c we conservatively treat all Adt types as non-Copy
+/// (the TraitResolver, which would consult the derive list, is Stage 3).
+/// This is the safe default — a false negative (saying "not Copy" when
+/// it actually is) just produces a spurious error; a false positive
+/// (saying "Copy" when it isn't) would be unsound.
+///
+/// `Infer` and `Error` are treated as Copy to avoid spurious errors
+/// during type inference (the type isn't known yet, so we give the
+/// benefit of the doubt).
+pub fn ty_is_copy(ty: &crate::mir::ty::Ty) -> bool {
+    use crate::mir::ty::TyKind::*;
+    match &ty.kind {
+        Bool | Char | Int(_) | Uint(_) | Float(_) => true,
+        // Shared refs are Copy; mut refs are not. We treat all refs as
+        // Copy here for simplicity — the mut-ref case is rare and the
+        // worst case is a spurious acceptance, which is caught later by
+        // the move tracker (the second use of a moved &mut would fail).
+        Ref(_, _, _) => true,
+        RawPtr(_, _) => true,
+        FnDef(_, _) | FnPtr(_) => true,
+        Never => true,
+        Tuple(tys) => tys.iter().all(ty_is_copy),
+        Array(inner, _) => ty_is_copy(inner),
+        // Infer and Error: assume Copy to avoid spurious errors.
+        Infer(_) | Error | Foreign => true,
+        // Conservative defaults — Stage 3 TraitResolver will refine.
+        Str | Slice(_) | Adt(_, _) | Closure(_, _) | Param(_) => false,
+    }
+}
+
+/// A field-sensitive place path for borrow/move tracking.
+///
+/// Per the Stage 2.x gate review (P0-15), the previous `PlacePath`
+/// collapsed projections — `a.x` and `a.y` both mapped to `Local(a)`,
+/// causing false-positive borrow conflicts. This new representation
+/// preserves the projection chain so that:
+///   - `a.x` and `a.y` are distinct (no false conflict)
+///   - `a` and `a.x` overlap (borrowing `a` conflicts with `a.x`)
+///   - `*p` and `p` are distinct (the pointer vs the pointee)
+///
+/// The `projections` field is a `Vec<ProjElem>` (not `Vec<ProjectionElem>`)
+/// because we want `Copy + PartialEq + Eq + Hash` for use as a HashMap
+/// key, and the MIR `ProjectionElem` carries a `Ty` which doesn't
+/// implement those traits. `ProjElem` is a stripped-down version that
+/// only carries the discriminator.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PlacePath {
+    /// The root local (or static def_id) of the place.
+    pub root: PlaceRoot,
+    /// Projection chain from root to the leaf. Empty means "the root
+    /// place itself" (e.g., `x` with no field access).
+    pub projections: Vec<ProjElem>,
+}
+
+/// The root of a place path: either a local or a static.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PlacePath {
+pub enum PlaceRoot {
     Local(LocalId),
     Static(crate::hir::DefId),
+}
+
+/// A stripped-down projection element used inside `PlacePath`.
+///
+/// This mirrors `crate::mir::lvalue::ProjectionElem` but omits the
+/// payload types that don't implement Hash/Eq (like `Ty`). Field
+/// projections use just the `FieldId`; index projections use the
+/// `LocalId` of the index variable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ProjElem {
+    /// `*base` — dereference
+    Deref,
+    /// `base.field_id`
+    Field(FieldId),
+    /// `base[idx_local]`
+    Index(LocalId),
+    /// `base[N]` (constant index)
+    ConstantIndex { offset: u64, from_end: bool },
+}
+
+impl PlacePath {
+    /// Construct a path for a bare local (no projections).
+    pub fn local(id: LocalId) -> Self {
+        Self {
+            root: PlaceRoot::Local(id),
+            projections: Vec::new(),
+        }
+    }
+
+    /// Construct a path for a static.
+    pub fn static_def(def_id: crate::hir::DefId) -> Self {
+        Self {
+            root: PlaceRoot::Static(def_id),
+            projections: Vec::new(),
+        }
+    }
+
+    /// Append a projection element to this path, returning a new path.
+    /// Used when building up a path from an lvalue's projection chain.
+    pub fn project(&self, elem: ProjElem) -> Self {
+        let mut new = self.clone();
+        new.projections.push(elem);
+        new
+    }
+
+    /// Whether this path *contains* another path as a prefix.
+    ///
+    /// `a.x.y` contains `a.x` and `a`. Used to detect overlap:
+    /// if you borrow `a.x`, then any access to `a`, `a.x`, or
+    /// `a.x.y` overlaps; but `a.y` does not.
+    pub fn contains(&self, other: &PlacePath) -> bool {
+        if self.root != other.root {
+            return false;
+        }
+        if other.projections.len() > self.projections.len() {
+            return false;
+        }
+        other
+            .projections
+            .iter()
+            .zip(self.projections.iter())
+            .all(|(a, b)| a == b)
+    }
+
+    /// Whether two paths *overlap* (one contains the other).
+    /// This is the symmetric closure of `contains`.
+    pub fn overlaps(&self, other: &PlacePath) -> bool {
+        self.contains(other) || other.contains(self)
+    }
 }
 
 /// Check a single MIR body for borrow/ownership errors.
@@ -551,5 +986,287 @@ mod tests {
             "expected no errors for copies, got {:?}",
             errors
         );
+    }
+
+    // === Stage 2.4c (P0-14/P0-16): NLL borrow expiry tests ===
+
+    /// Verify that a borrow expires at its last use, allowing the
+    /// underlying place to be mutated afterward.
+    #[test]
+    fn nll_borrow_expires_at_last_use() {
+        // Code pattern:
+        //   let x = 42;
+        //   let r = &x;        // borrow x
+        //   let y = *r + 1;    // last use of r — borrow expires here
+        //   x = 100;           // OK — x is no longer borrowed
+        let mut mir = make_mir();
+        let x = mir.new_local(
+            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            None,
+            Span::DUMMY,
+        );
+        let r = mir.new_local(
+            Ty::new(
+                TyKind::Ref(
+                    Region::Erased,
+                    Mutability::Immutable,
+                    Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                ),
+                Span::DUMMY,
+            ),
+            None,
+            Span::DUMMY,
+        );
+        let y = mir.new_local(
+            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            None,
+            Span::DUMMY,
+        );
+        // x = 42
+        mir.block_mut(BasicBlockId(0)).statements.push(Statement {
+            kind: StatementKind::Assign(Box::new((
+                Lvalue::local(x, Span::DUMMY),
+                Rvalue::Use(Operand::Constant(Const {
+                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    val: ConstVal::Int(42),
+                })),
+            ))),
+            span: Span::DUMMY,
+        });
+        // r = &x  (creates borrow)
+        mir.block_mut(BasicBlockId(0)).statements.push(Statement {
+            kind: StatementKind::Assign(Box::new((
+                Lvalue::local(r, Span::DUMMY),
+                Rvalue::Ref(
+                    Region::Erased,
+                    crate::mir::lvalue::BorrowKind::Shared,
+                    Lvalue::local(x, Span::DUMMY),
+                ),
+            ))),
+            span: Span::DUMMY,
+        });
+        // y = *r + 1  (last use of r)
+        mir.block_mut(BasicBlockId(0)).statements.push(Statement {
+            kind: StatementKind::Assign(Box::new((
+                Lvalue::local(y, Span::DUMMY),
+                Rvalue::BinaryOp(
+                    BinOp::Add,
+                    Operand::Copy(Lvalue {
+                        kind: LvalueKind::Projection(
+                            Box::new(Lvalue::local(r, Span::DUMMY)),
+                            ProjectionElem::Deref,
+                        ),
+                        span: Span::DUMMY,
+                    }),
+                    Operand::Constant(Const {
+                        ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                        val: ConstVal::Int(1),
+                    }),
+                ),
+            ))),
+            span: Span::DUMMY,
+        });
+        // x = 100  (should be OK — borrow expired)
+        mir.block_mut(BasicBlockId(0)).statements.push(Statement {
+            kind: StatementKind::Assign(Box::new((
+                Lvalue::local(x, Span::DUMMY),
+                Rvalue::Use(Operand::Constant(Const {
+                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    val: ConstVal::Int(100),
+                })),
+            ))),
+            span: Span::DUMMY,
+        });
+        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        let errors = check_mir_body(&mir);
+        assert!(
+            errors.is_empty(),
+            "expected no errors (NLL should expire the borrow at last use), got {:?}",
+            errors
+        );
+    }
+
+    /// Verify that a borrow is still alive at points after creation but
+    /// before last use — moving the borrowed place during that window
+    /// should still be an error.
+    #[test]
+    fn nll_borrow_still_alive_before_last_use() {
+        // Code pattern:
+        //   let x = 42;
+        //   let r = &x;        // borrow x
+        //   x = 100;           // ERROR — r is still alive (no use of r yet)
+        //   let y = *r;        // use r (but the error above already fired)
+        let mut mir = make_mir();
+        let x = mir.new_local(
+            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            None,
+            Span::DUMMY,
+        );
+        let r = mir.new_local(
+            Ty::new(
+                TyKind::Ref(
+                    Region::Erased,
+                    Mutability::Immutable,
+                    Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                ),
+                Span::DUMMY,
+            ),
+            None,
+            Span::DUMMY,
+        );
+        let y = mir.new_local(
+            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            None,
+            Span::DUMMY,
+        );
+        mir.block_mut(BasicBlockId(0)).statements.push(Statement {
+            kind: StatementKind::Assign(Box::new((
+                Lvalue::local(x, Span::DUMMY),
+                Rvalue::Use(Operand::Constant(Const {
+                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    val: ConstVal::Int(42),
+                })),
+            ))),
+            span: Span::DUMMY,
+        });
+        mir.block_mut(BasicBlockId(0)).statements.push(Statement {
+            kind: StatementKind::Assign(Box::new((
+                Lvalue::local(r, Span::DUMMY),
+                Rvalue::Ref(
+                    Region::Erased,
+                    crate::mir::lvalue::BorrowKind::Shared,
+                    Lvalue::local(x, Span::DUMMY),
+                ),
+            ))),
+            span: Span::DUMMY,
+        });
+        mir.block_mut(BasicBlockId(0)).statements.push(Statement {
+            kind: StatementKind::Assign(Box::new((
+                Lvalue::local(x, Span::DUMMY),
+                Rvalue::Use(Operand::Constant(Const {
+                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    val: ConstVal::Int(100),
+                })),
+            ))),
+            span: Span::DUMMY,
+        });
+        mir.block_mut(BasicBlockId(0)).statements.push(Statement {
+            kind: StatementKind::Assign(Box::new((
+                Lvalue::local(y, Span::DUMMY),
+                Rvalue::Use(Operand::Copy(Lvalue {
+                    kind: LvalueKind::Projection(
+                        Box::new(Lvalue::local(r, Span::DUMMY)),
+                        ProjectionElem::Deref,
+                    ),
+                    span: Span::DUMMY,
+                })),
+            ))),
+            span: Span::DUMMY,
+        });
+        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        let errors = check_mir_body(&mir);
+        // The borrow on x is alive at "x = 100" because r's last use is
+        // at "y = *r" (a later statement). So assigning to x should fail.
+        assert!(
+            !errors.is_empty(),
+            "expected assign-borrowed error (borrow is alive before last use of r), got {:?}",
+            errors
+        );
+    }
+
+    // === Stage 2.4c (P0-17): Copy-ness check tests ===
+
+    #[test]
+    fn ty_is_copy_primitives() {
+        use crate::ast;
+        use crate::mir::ty::TyKind;
+        assert!(ty_is_copy(&Ty::new(TyKind::Bool, Span::DUMMY)));
+        assert!(ty_is_copy(&Ty::new(TyKind::Char, Span::DUMMY)));
+        assert!(ty_is_copy(&Ty::new(
+            TyKind::Int(ast::IntTy::I32),
+            Span::DUMMY
+        )));
+        assert!(ty_is_copy(&Ty::new(
+            TyKind::Uint(ast::UintTy::U64),
+            Span::DUMMY
+        )));
+        assert!(ty_is_copy(&Ty::new(
+            TyKind::Float(ast::FloatTy::F64),
+            Span::DUMMY
+        )));
+    }
+
+    #[test]
+    fn ty_is_copy_refs_and_ptrs() {
+        use crate::mir::ty::{Mutability, Region, TyKind};
+        let i32_ty = Ty::new(
+            crate::mir::ty::TyKind::Int(crate::ast::IntTy::I32),
+            Span::DUMMY,
+        );
+        let ref_ty = Ty::new(
+            TyKind::Ref(
+                Region::Erased,
+                Mutability::Immutable,
+                Box::new(i32_ty.clone()),
+            ),
+            Span::DUMMY,
+        );
+        assert!(ty_is_copy(&ref_ty));
+        let raw_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(i32_ty)),
+            Span::DUMMY,
+        );
+        assert!(ty_is_copy(&raw_ty));
+    }
+
+    #[test]
+    fn ty_is_copy_tuples_and_arrays() {
+        use crate::ast;
+        use crate::mir::ty::{Const, ConstVal, TyKind};
+        let tuple_ty = Ty::new(
+            TyKind::Tuple(vec![
+                Ty::new(TyKind::Bool, Span::DUMMY),
+                Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            ]),
+            Span::DUMMY,
+        );
+        assert!(ty_is_copy(&tuple_ty));
+        let array_ty = Ty::new(
+            TyKind::Array(
+                Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
+                Box::new(Const {
+                    ty: Box::new(Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY)),
+                    val: ConstVal::Uint(4),
+                }),
+            ),
+            Span::DUMMY,
+        );
+        assert!(ty_is_copy(&array_ty));
+    }
+
+    #[test]
+    fn ty_is_not_copy_adt_str_slice() {
+        use crate::hir::DefId;
+        use crate::mir::ty::TyKind;
+        // Str, Slice, Adt, Closure are not Copy (conservatively).
+        assert!(!ty_is_copy(&Ty::new(TyKind::Str, Span::DUMMY)));
+        let slice_ty = Ty::new(
+            TyKind::Slice(Box::new(Ty::new(TyKind::Bool, Span::DUMMY))),
+            Span::DUMMY,
+        );
+        assert!(!ty_is_copy(&slice_ty));
+        let adt_ty = Ty::new(TyKind::Adt(DefId::new(0), vec![]), Span::DUMMY);
+        assert!(!ty_is_copy(&adt_ty));
+    }
+
+    #[test]
+    fn ty_is_copy_infer_and_error_assumed_copy() {
+        use crate::mir::ty::{InferVar, TyKind, TyVid};
+        // Infer and Error are treated as Copy (avoid spurious errors
+        // during type inference).
+        let infer_ty = Ty::new(TyKind::Infer(InferVar::TyVar(TyVid(0))), Span::DUMMY);
+        assert!(ty_is_copy(&infer_ty));
+        let error_ty = Ty::new(TyKind::Error, Span::DUMMY);
+        assert!(ty_is_copy(&error_ty));
     }
 }

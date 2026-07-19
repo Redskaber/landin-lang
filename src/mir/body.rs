@@ -90,6 +90,18 @@ pub enum StatementKind {
     Assign(Box<(Lvalue, Rvalue)>),
     /// No-op (placeholder, for debugging).
     Nop,
+    /// Mark a local as live — it's now safe to use.
+    /// Emitted at the start of a local's scope (e.g., at the `let`).
+    /// Codegen uses this to know when to allocate stack space.
+    StorageLive(LocalId),
+    /// Mark a local as dead — its storage can be reclaimed.
+    /// Emitted at the end of a local's scope (or its last use, under NLL).
+    /// Codegen uses this to know when to run destructors / free stack space.
+    StorageDead(LocalId),
+    /// Run the destructor for the value at `place`. Used for explicit
+    /// `drop(x)` calls (not for scope-end cleanup, which uses StorageDead).
+    /// Distinct from Terminator::Drop (which is for control-flow drops).
+    Deinit(Lvalue),
 }
 
 /// A MIR terminator: the last instruction in a basic block.

@@ -10,6 +10,7 @@
 pub mod ast;
 pub mod borrowck;
 pub mod diagnostics;
+pub mod driver;
 pub mod hir;
 pub mod lexer;
 pub mod mir;

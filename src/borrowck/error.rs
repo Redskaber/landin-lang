@@ -22,12 +22,23 @@ pub enum BorrowErrorKind {
     BorrowConflict,
     /// Borrowing a moved value.
     BorrowMoved,
+    /// Using `Operand::Copy` on a type that does not implement Copy.
+    /// The MIR lower should have used `Operand::Move` instead.
+    NotCopy,
 }
 
 impl BorrowError {
     pub fn new(message: &str, span: Span, kind: BorrowErrorKind) -> Self {
         Self {
             message: message.to_string(),
+            span,
+            kind,
+        }
+    }
+
+    pub fn new_owned(message: String, span: Span, kind: BorrowErrorKind) -> Self {
+        Self {
+            message,
             span,
             kind,
         }
@@ -51,6 +62,13 @@ impl BorrowError {
 
     pub fn borrow_moved(message: &str, span: Span) -> Self {
         Self::new(message, span, BorrowErrorKind::BorrowMoved)
+    }
+
+    /// Construct a NotCopy error. Used when `Operand::Copy` is applied
+    /// to a type that doesn't implement Copy (e.g., a struct without
+    /// `#[derive(Copy)]`, a `Vec`, a `String`, a `Box`).
+    pub fn not_copy(message: String, span: Span) -> Self {
+        Self::new_owned(message, span, BorrowErrorKind::NotCopy)
     }
 }
 

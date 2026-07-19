@@ -249,3 +249,156 @@ fn errors_are_collected() {
     assert_eq!(errors.len(), 1);
     assert!(!t.has_errors()); // taken
 }
+
+// === Stage 2.4c: Union-find propagation regression tests ===
+// These test that binding one variable propagates to all variables
+// unified with it (the "shallow merge" bug from gate review P0-9).
+
+#[test]
+fn unify_two_int_vars_propagates() {
+    let mut t = UnificationTable::new();
+    let v1 = t.new_int_var();
+    let v2 = t.new_int_var();
+    let ty1 = Ty::new(TyKind::Infer(InferVar::IntVar(v1)), Span::DUMMY);
+    let ty2 = Ty::new(TyKind::Infer(InferVar::IntVar(v2)), Span::DUMMY);
+    // Unify two unbound int vars — should create a link
+    assert!(t.unify(&ty1, &ty2).is_ok());
+    // Bind one to i64
+    assert!(t.unify(&ty1, &ty_int(ast::IntTy::I64)).is_ok());
+    // The other should resolve to i64 via the link
+    let resolved = t.resolve(&ty2);
+    assert!(
+        matches!(resolved.kind, TyKind::Int(ast::IntTy::I64)),
+        "expected i64, got {:?}",
+        resolved.kind
+    );
+}
+
+#[test]
+fn unify_two_float_vars_propagates() {
+    let mut t = UnificationTable::new();
+    let v1 = t.new_float_var();
+    let v2 = t.new_float_var();
+    let ty1 = Ty::new(TyKind::Infer(InferVar::FloatVar(v1)), Span::DUMMY);
+    let ty2 = Ty::new(TyKind::Infer(InferVar::FloatVar(v2)), Span::DUMMY);
+    assert!(t.unify(&ty1, &ty2).is_ok());
+    assert!(t.unify(&ty1, &ty_float(ast::FloatTy::F32)).is_ok());
+    let resolved = t.resolve(&ty2);
+    assert!(
+        matches!(resolved.kind, TyKind::Float(ast::FloatTy::F32)),
+        "expected f32, got {:?}",
+        resolved.kind
+    );
+}
+
+#[test]
+fn unify_int_var_chain_propagates() {
+    let mut t = UnificationTable::new();
+    let v1 = t.new_int_var();
+    let v2 = t.new_int_var();
+    let v3 = t.new_int_var();
+    let ty1 = Ty::new(TyKind::Infer(InferVar::IntVar(v1)), Span::DUMMY);
+    let ty2 = Ty::new(TyKind::Infer(InferVar::IntVar(v2)), Span::DUMMY);
+    let ty3 = Ty::new(TyKind::Infer(InferVar::IntVar(v3)), Span::DUMMY);
+    // Chain: v1 ~ v2 ~ v3
+    assert!(t.unify(&ty1, &ty2).is_ok());
+    assert!(t.unify(&ty2, &ty3).is_ok());
+    // Bind v3 to i32 — v1 and v2 should also resolve to i32
+    assert!(t.unify(&ty3, &ty_int(ast::IntTy::I32)).is_ok());
+    assert!(matches!(t.resolve(&ty1).kind, TyKind::Int(ast::IntTy::I32)));
+    assert!(matches!(t.resolve(&ty2).kind, TyKind::Int(ast::IntTy::I32)));
+}
+
+#[test]
+fn unify_ty_var_chain_propagates() {
+    let mut t = UnificationTable::new();
+    let v1 = t.new_ty_var();
+    let v2 = t.new_ty_var();
+    let v3 = t.new_ty_var();
+    let ty1 = Ty::new(TyKind::Infer(InferVar::TyVar(v1)), Span::DUMMY);
+    let ty2 = Ty::new(TyKind::Infer(InferVar::TyVar(v2)), Span::DUMMY);
+    let ty3 = Ty::new(TyKind::Infer(InferVar::TyVar(v3)), Span::DUMMY);
+    // Chain: v1 ~ v2 ~ v3
+    assert!(t.unify(&ty1, &ty2).is_ok());
+    assert!(t.unify(&ty2, &ty3).is_ok());
+    // Bind v3 to bool — v1 and v2 should also resolve to bool
+    assert!(t.unify(&ty3, &ty_bool()).is_ok());
+    assert!(matches!(t.resolve(&ty1).kind, TyKind::Bool));
+    assert!(matches!(t.resolve(&ty2).kind, TyKind::Bool));
+}
+
+// === Stage 2.4c: Type writeback regression tests ===
+// Verify that resolved types are written back to local_decls.
+
+use landin_compiler::hir::lower::lower_crate;
+use landin_compiler::lexer::tokenize;
+use landin_compiler::mir::body::MirBody;
+use landin_compiler::mir::lower::lower_hir_body_to_mir_full;
+use landin_compiler::mir::ty::InferVar;
+use landin_compiler::parser::Parser;
+use landin_compiler::resolve::resolve_crate;
+use lasso::Rodeo;
+
+#[test]
+fn type_writeback_resolves_infer_var() {
+    // After typeck, the local decl's ty should be the resolved
+    // concrete type, not an Infer var.
+    let src = "fn f() { let x = 42; }";
+    let mut interner = Rodeo::new();
+    interner.get_or_intern("Self");
+    interner.get_or_intern("self");
+    interner.get_or_intern("crate");
+    interner.get_or_intern("super");
+    let (tokens, _) = tokenize(src, &mut interner);
+    let mut parser = Parser::new(tokens, &interner);
+    let krate = parser.parse_crate();
+    assert!(parser.into_errors().is_empty(), "parse errors");
+    let mut hir = lower_crate(&krate, &interner);
+    let _ = resolve_crate(&mut hir, &mut interner);
+
+    let (mut mir, lower_unify) = lower_hir_body_to_mir_full(&hir.bodies[0].1, &interner, None);
+    let mut tc = landin_compiler::typeck::TypeChecker::with_unify(lower_unify);
+    tc.check_mir_body(&mut mir);
+    let errors: Vec<_> = tc.into_errors();
+    assert!(errors.is_empty(), "typeck errors: {:?}", errors);
+
+    // At least one local should now have a concrete Int type (the
+    // temp holding 42). Look for any local with a non-Infer type.
+    let has_concrete_int = mir
+        .local_decls
+        .iter()
+        .any(|ld| matches!(&ld.ty.kind, landin_compiler::mir::ty::TyKind::Int(_)));
+    assert!(
+        has_concrete_int,
+        "expected at least one local with concrete Int type after writeback"
+    );
+}
+
+#[test]
+fn type_writeback_defaults_unresolved_int_to_i32() {
+    // Locals with unconstrained int inference vars should default to i32.
+    let mut mir = MirBody::new(Span::DUMMY);
+    let _ = mir.new_block();
+    let temp = mir.new_local(
+        Ty::new(
+            TyKind::Infer(InferVar::IntVar(landin_compiler::mir::ty::IntVid(0))),
+            Span::DUMMY,
+        ),
+        None,
+        Span::DUMMY,
+    );
+    // No statements — the IntVar stays unresolved. typeck should default
+    // it to i32.
+    // We need to also allocate the IntVar in the unification table.
+    // The simplest way: call the type checker manually.
+    let mut tc = landin_compiler::typeck::TypeChecker::new();
+    // Allocate the IntVar properly so the unification table knows about it.
+    let _ = tc.unify.new_int_var(); // IntVid(0)
+    tc.check_mir_body(&mut mir);
+    let resolved = &mir.local(temp).ty;
+    assert!(
+        matches!(resolved.kind, TyKind::Int(ast::IntTy::I32)),
+        "expected default i32, got {:?}",
+        resolved.kind
+    );
+}

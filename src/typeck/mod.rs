@@ -10,6 +10,6 @@ pub mod checker;
 pub mod error;
 pub mod unify;
 
-pub use checker::{check_crate, check_mir_body, TypeChecker};
+pub use checker::{check_crate, check_mir_body, TypeChecker, TypeckResults};
 pub use error::TypeError;
 pub use unify::UnificationTable;

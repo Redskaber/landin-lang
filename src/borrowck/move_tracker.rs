@@ -57,7 +57,7 @@ mod tests {
     use crate::mir::lvalue::LocalId;
 
     fn place(n: u32) -> PlacePath {
-        PlacePath::Local(LocalId(n))
+        PlacePath::local(LocalId(n))
     }
 
     #[test]
