@@ -35,14 +35,15 @@ pub enum EmitType {
     I8, // char
     Ptr,
     Void,
+    Tuple,
+    Array,
 }
 
 /// Abstract emitter trait.
-///
-/// Each method corresponds to one LLVM IR construct. The translation
-/// layer (codegen.rs) calls these methods without knowing whether
-/// the output is text, inkwell IR, or something else.
 pub trait Emitter {
+    /// Emit module header (target triple, datalayout).
+    fn emit_header(&mut self);
+
     /// Begin a new function definition.
     fn begin_function(&mut self, name: &str, params: &[(EmitType, &str)], ret: EmitType);
 
@@ -110,6 +111,9 @@ pub trait Emitter {
     /// Emit a comparison (icmp) and return the i1 result.
     fn emit_icmp(&mut self, op: &str, ty: EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
 
+    /// Emit a float comparison (fcmp) and return the i1 result.
+    fn emit_fcmp(&mut self, op: &str, ty: EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
+
     /// Emit a zext (zero extend) from i1 to i32.
     fn emit_zext_i1_to_i32(&mut self, val: &EmitValue) -> EmitValue;
 
@@ -153,6 +157,7 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
 /// Map a BinOp + EmitType to the LLVM instruction string (for text backend).
 pub fn binop_to_llvm_str(op: BinOp, ty: EmitType) -> &'static str {
     match (op, ty) {
+        // Integer arithmetic
         (BinOp::Add, EmitType::I32) => "add nsw i32",
         (BinOp::Add, EmitType::I64) => "add nsw i64",
         (BinOp::Sub, EmitType::I32) => "sub nsw i32",
@@ -163,6 +168,18 @@ pub fn binop_to_llvm_str(op: BinOp, ty: EmitType) -> &'static str {
         (BinOp::Div, EmitType::I64) => "sdiv i64",
         (BinOp::Rem, EmitType::I32) => "srem i32",
         (BinOp::Rem, EmitType::I64) => "srem i64",
+        // Float arithmetic
+        (BinOp::Add, EmitType::F64) => "fadd double",
+        (BinOp::Add, EmitType::F32) => "fadd float",
+        (BinOp::Sub, EmitType::F64) => "fsub double",
+        (BinOp::Sub, EmitType::F32) => "fsub float",
+        (BinOp::Mul, EmitType::F64) => "fmul double",
+        (BinOp::Mul, EmitType::F32) => "fmul float",
+        (BinOp::Div, EmitType::F64) => "fdiv double",
+        (BinOp::Div, EmitType::F32) => "fdiv float",
+        (BinOp::Rem, EmitType::F64) => "frem double",
+        (BinOp::Rem, EmitType::F32) => "frem float",
+        // Bitwise
         (BinOp::BitAnd, EmitType::I32) => "and i32",
         (BinOp::BitAnd, EmitType::I1) => "and i1",
         (BinOp::BitOr, EmitType::I32) => "or i32",
@@ -186,5 +203,7 @@ pub fn emit_type_to_llvm_str(ty: EmitType) -> &'static str {
         EmitType::I8 => "i8",
         EmitType::Ptr => "i32*",
         EmitType::Void => "void",
+        EmitType::Tuple => "{ i32 }",
+        EmitType::Array => "[10 x i32]",
     }
 }

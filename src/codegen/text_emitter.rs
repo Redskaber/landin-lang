@@ -41,6 +41,14 @@ impl TextEmitter {
 }
 
 impl Emitter for TextEmitter {
+    fn emit_header(&mut self) {
+        self.line("; Landin compiler v0.7.7 — LLVM IR output");
+        self.line("; Stage 3.12 codegen");
+        self.line("target triple = \"x86_64-unknown-linux-gnu\"");
+        self.line("target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"");
+        self.line("");
+    }
+
     fn begin_function(&mut self, name: &str, params: &[(EmitType, &str)], ret: EmitType) {
         let ret_str = emit_type_to_llvm_str(ret);
         let param_strs: Vec<String> = params
@@ -192,6 +200,16 @@ impl Emitter for TextEmitter {
         let ty_str = emit_type_to_llvm_str(ty);
         self.line(&format!(
             "  %v{} = icmp {} {} {}, {}",
+            r, op, ty_str, lhs, rhs
+        ));
+        format!("%v{}", r)
+    }
+
+    fn emit_fcmp(&mut self, op: &str, ty: EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
+        let r = self.fresh();
+        let ty_str = emit_type_to_llvm_str(ty);
+        self.line(&format!(
+            "  %v{} = fcmp {} {} {}, {}",
             r, op, ty_str, lhs, rhs
         ));
         format!("%v{}", r)

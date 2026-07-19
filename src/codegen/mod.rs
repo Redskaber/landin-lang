@@ -18,6 +18,8 @@ use lasso::Rodeo;
 /// Generate LLVM IR text for a crate.
 pub fn codegen_crate(hir: &HirCrate, interner: &Rodeo) -> String {
     let mut emitter = TextEmitter::new();
+    // Emit LLVM module header
+    emitter.emit_header();
     codegen_crate_with_emitter(hir, interner, &mut emitter);
     emitter.output().to_string()
 }
@@ -152,36 +154,62 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
         Rvalue::BinaryOp(op, a, b) => {
             let a_val = codegen_operand(emitter, mir, a);
             let b_val = codegen_operand(emitter, mir, b);
-            // Determine type from operand (default I32, detect I64 from constants)
-            let _ty = EmitType::I32;
+            // Detect type from operands (float vs int, i32 vs i64)
+            let ty = detect_operand_type(mir, a)
+                .or(detect_operand_type(mir, b))
+                .unwrap_or(EmitType::I32);
             // Comparison ops return i1, which we zext to i32 for uniformity.
             match op {
                 BinOp::Eq => {
-                    let cmp = emitter.emit_icmp("eq", EmitType::I32, &a_val, &b_val);
+                    let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
+                        emitter.emit_fcmp("oeq", ty, &a_val, &b_val)
+                    } else {
+                        emitter.emit_icmp("eq", ty, &a_val, &b_val)
+                    };
                     emitter.emit_zext_i1_to_i32(&cmp)
                 }
                 BinOp::Ne => {
-                    let cmp = emitter.emit_icmp("ne", EmitType::I32, &a_val, &b_val);
+                    let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
+                        emitter.emit_fcmp("one", ty, &a_val, &b_val)
+                    } else {
+                        emitter.emit_icmp("ne", ty, &a_val, &b_val)
+                    };
                     emitter.emit_zext_i1_to_i32(&cmp)
                 }
                 BinOp::Lt => {
-                    let cmp = emitter.emit_icmp("slt", EmitType::I32, &a_val, &b_val);
+                    let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
+                        emitter.emit_fcmp("olt", ty, &a_val, &b_val)
+                    } else {
+                        emitter.emit_icmp("slt", ty, &a_val, &b_val)
+                    };
                     emitter.emit_zext_i1_to_i32(&cmp)
                 }
                 BinOp::Le => {
-                    let cmp = emitter.emit_icmp("sle", EmitType::I32, &a_val, &b_val);
+                    let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
+                        emitter.emit_fcmp("ole", ty, &a_val, &b_val)
+                    } else {
+                        emitter.emit_icmp("sle", ty, &a_val, &b_val)
+                    };
                     emitter.emit_zext_i1_to_i32(&cmp)
                 }
                 BinOp::Gt => {
-                    let cmp = emitter.emit_icmp("sgt", EmitType::I32, &a_val, &b_val);
+                    let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
+                        emitter.emit_fcmp("ogt", ty, &a_val, &b_val)
+                    } else {
+                        emitter.emit_icmp("sgt", ty, &a_val, &b_val)
+                    };
                     emitter.emit_zext_i1_to_i32(&cmp)
                 }
                 BinOp::Ge => {
-                    let cmp = emitter.emit_icmp("sge", EmitType::I32, &a_val, &b_val);
+                    let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
+                        emitter.emit_fcmp("oge", ty, &a_val, &b_val)
+                    } else {
+                        emitter.emit_icmp("sge", ty, &a_val, &b_val)
+                    };
                     emitter.emit_zext_i1_to_i32(&cmp)
                 }
-                // Arithmetic ops
-                _ => emitter.emit_binary_op(*op, EmitType::I32, &a_val, &b_val),
+                // Arithmetic ops — use detected type (fadd for float, add for int)
+                _ => emitter.emit_binary_op(*op, ty, &a_val, &b_val),
             }
         }
 
@@ -478,6 +506,31 @@ fn codegen_terminator(
             // Full drop glue generation is a future stage.
             let _ = place;
             emitter.emit_branch(&format!("bb{}", target.0));
+        }
+    }
+}
+
+/// Detect the EmitType of an operand by examining its source.
+///
+/// For constants: checks ConstVal variant (Float → F64, Int → I32).
+/// For locals: looks up local_decls and maps the Ty.
+/// Returns None if the type can't be determined (defaults to I32).
+fn detect_operand_type(mir: &MirBody, op: &Operand) -> Option<EmitType> {
+    match op {
+        Operand::Constant(c) => match &c.val {
+            ConstVal::Float(_) => Some(EmitType::F64),
+            ConstVal::Bool(_) => Some(EmitType::I1),
+            ConstVal::Char(_) => Some(EmitType::I8),
+            _ => Some(EmitType::I32),
+        },
+        Operand::Copy(lv) | Operand::Move(lv) => {
+            if let LvalueKind::Local(id) = &lv.kind {
+                mir.local_decls
+                    .get(id.0 as usize)
+                    .map(|ld| emitter::mir_type_to_emit_type(&ld.ty))
+            } else {
+                None
+            }
         }
     }
 }
