@@ -434,8 +434,11 @@ impl TypeChecker {
         match rv {
             Rvalue::Use(operand) => self.infer_operand(mir, operand),
             Rvalue::BinaryOp(op, a, b) => {
-                let a_ty = self.infer_operand(mir, a);
-                let b_ty = self.infer_operand(mir, b);
+                // G8 fix (Stage 2.4g): resolve operands before type checking,
+                // so TyVar bound to concrete types (Bool, Str, Tuple) is
+                // correctly rejected by is_arithmetic_ty etc.
+                let a_ty = self.unify.resolve(&self.infer_operand(mir, a));
+                let b_ty = self.unify.resolve(&self.infer_operand(mir, b));
                 // Unify lhs and rhs types (they must match for arithmetic)
                 match op {
                     BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
@@ -499,11 +502,13 @@ impl TypeChecker {
                 Ty::new(TyKind::Error, Span::DUMMY) // Range type (Stage 3)
             }
             Rvalue::UnaryOp(op, operand) => {
-                let inner_ty = self.infer_operand(mir, operand);
+                let inner_ty = self.unify.resolve(&self.infer_operand(mir, operand));
                 match op {
                     UnOp::Not => {
                         // !bool → bool, !int → int
                         // G7 fix: !str, !float, !tuple are errors.
+                        // G8 fix (Stage 2.4g): resolve before checking,
+                        // so TyVar bound to Tuple/Float is correctly rejected.
                         if !is_notable_ty(&inner_ty) {
                             self.errors.push(TypeError::new(
                                 format!(
@@ -518,6 +523,7 @@ impl TypeChecker {
                     UnOp::Neg => {
                         // -int → int, -float → float
                         // G7 fix: -bool, -str, -tuple are errors.
+                        // G8 fix (Stage 2.4g): resolve before checking.
                         if !is_negatable_ty(&inner_ty) {
                             self.errors.push(TypeError::new(
                                 format!(
@@ -630,11 +636,20 @@ fn is_negatable_ty(ty: &Ty) -> bool {
 
 /// Whether a type can be used with `!` (bitwise NOT).
 ///
-/// Bool, Int, Uint, Infer, Error are notable. Float, Str, Tuple are not.
+/// Bool, Int, Uint, IntVar, TyVar, Error are notable.
+/// Float, FloatVar, Str, Tuple are NOT notable.
+///
+/// G8 fix (Stage 2.4g): `!3.14` should error. FloatVar is excluded
+/// because it can only resolve to Float (which is not notable).
 fn is_notable_ty(ty: &Ty) -> bool {
     matches!(
         &ty.kind,
-        TyKind::Bool | TyKind::Int(_) | TyKind::Uint(_) | TyKind::Infer(_) | TyKind::Error
+        TyKind::Bool
+            | TyKind::Int(_)
+            | TyKind::Uint(_)
+            | TyKind::Infer(InferVar::TyVar(_))
+            | TyKind::Infer(InferVar::IntVar(_))
+            | TyKind::Error
     )
 }
 

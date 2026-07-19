@@ -374,3 +374,76 @@ fn g7_not_bool_ok() {
         "expected 0 errors for !Bool"
     );
 }
+
+// =====================================================================
+// G8 (Stage 2.4g): Resolve-before-check for type system strictness
+// =====================================================================
+
+#[test]
+fn g8_not_float_detected() {
+    // !3.14 should error (Float is not notable).
+    // G8 fix: FloatVar is now excluded from is_notable_ty, and
+    // infer_rvalue resolves the operand type before checking.
+    let src = "fn f() { !3.14; }";
+    let result = compile(src);
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for !Float"
+    );
+}
+
+#[test]
+fn g8_negate_tuple_detected() {
+    // -(1, 2) should error (Tuple is not negatable).
+    // G8 fix: infer_rvalue now resolves operand type before checking
+    // is_negatable_ty, so TyVar bound to Tuple is correctly rejected.
+    let src = "fn f() { -(1, 2); }";
+    let result = compile(src);
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for -Tuple"
+    );
+}
+
+#[test]
+fn g8_negate_float_ok() {
+    // -3.14 is OK (Float is negatable).
+    let src = "fn f() { -3.14; }";
+    let result = compile(src);
+    assert_eq!(
+        result.errors.total_count(),
+        0,
+        "expected 0 errors for -Float"
+    );
+}
+
+#[test]
+fn g8_not_bool_ok() {
+    // !true is OK (Bool is notable).
+    let src = "fn f() { !true; }";
+    let result = compile(src);
+    assert_eq!(
+        result.errors.total_count(),
+        0,
+        "expected 0 errors for !Bool"
+    );
+}
+
+// =====================================================================
+// Stage 3 limitations (documented as ignored)
+// =====================================================================
+
+#[test]
+#[ignore = "Stage 3: closure type inference (param count not checked)"]
+fn closure_wrong_arg_count_stage3_limitation() {
+    // apply(|a, b| a + b, 1) — closure has 2 params, fn sig expects 1.
+    // Currently missed because closure types aren't inferred against
+    // the expected fn signature. Stage 3 (TraitResolver) will fix.
+    let src =
+        "fn apply(f: fn(i32) -> i32, x: i32) -> i32 { f(x) } fn main() { apply(|a, b| a + b, 1); }";
+    let result = compile(src);
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for closure arg count (currently missed — Stage 3)"
+    );
+}
