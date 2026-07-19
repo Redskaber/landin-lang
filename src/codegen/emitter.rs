@@ -107,6 +107,12 @@ pub trait Emitter {
     /// Get a local's stored value handle.
     fn get_local(&self, local_id: u32) -> Option<&EmitValue>;
 
+    /// Emit a comparison (icmp) and return the i1 result.
+    fn emit_icmp(&mut self, op: &str, ty: EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
+
+    /// Emit a zext (zero extend) from i1 to i32.
+    fn emit_zext_i1_to_i32(&mut self, val: &EmitValue) -> EmitValue;
+
     /// Return the accumulated output (for text backends).
     fn output(&self) -> &str;
 }

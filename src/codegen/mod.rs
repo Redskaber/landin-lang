@@ -156,18 +156,44 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
         Rvalue::BinaryOp(op, a, b) => {
             let a_val = codegen_operand(emitter, mir, a);
             let b_val = codegen_operand(emitter, mir, b);
-            let ty = EmitType::I32;
-            emitter.emit_binary_op(*op, ty, &a_val, &b_val)
+            // Comparison ops return i1, which we zext to i32 for uniformity.
+            match op {
+                BinOp::Eq => {
+                    let cmp = emitter.emit_icmp("eq", EmitType::I32, &a_val, &b_val);
+                    emitter.emit_zext_i1_to_i32(&cmp)
+                }
+                BinOp::Ne => {
+                    let cmp = emitter.emit_icmp("ne", EmitType::I32, &a_val, &b_val);
+                    emitter.emit_zext_i1_to_i32(&cmp)
+                }
+                BinOp::Lt => {
+                    let cmp = emitter.emit_icmp("slt", EmitType::I32, &a_val, &b_val);
+                    emitter.emit_zext_i1_to_i32(&cmp)
+                }
+                BinOp::Le => {
+                    let cmp = emitter.emit_icmp("sle", EmitType::I32, &a_val, &b_val);
+                    emitter.emit_zext_i1_to_i32(&cmp)
+                }
+                BinOp::Gt => {
+                    let cmp = emitter.emit_icmp("sgt", EmitType::I32, &a_val, &b_val);
+                    emitter.emit_zext_i1_to_i32(&cmp)
+                }
+                BinOp::Ge => {
+                    let cmp = emitter.emit_icmp("sge", EmitType::I32, &a_val, &b_val);
+                    emitter.emit_zext_i1_to_i32(&cmp)
+                }
+                // Arithmetic ops
+                _ => emitter.emit_binary_op(*op, EmitType::I32, &a_val, &b_val),
+            }
         }
 
         Rvalue::UnaryOp(op, operand) => {
             let val = codegen_operand(emitter, mir, operand);
-            let ty = EmitType::I32;
-            emitter.emit_unary_op(*op, ty, &val)
+            emitter.emit_unary_op(*op, EmitType::I32, &val)
         }
 
         Rvalue::Ref(_, _borrow_kind, lv) => {
-            // &x → get the alloca pointer of x
+            // &x → return the alloca pointer of x (the address)
             if let LvalueKind::Local(id) = &lv.kind {
                 if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
                     return ptr;
@@ -193,34 +219,52 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
 fn codegen_operand(emitter: &mut dyn Emitter, _mir: &MirBody, op: &Operand) -> EmitValue {
     match op {
         Operand::Constant(c) => emitter.emit_constant(&c.val),
-        Operand::Copy(lv) | Operand::Move(lv) => {
-            if let LvalueKind::Local(id) = &lv.kind {
-                // Try direct value first (from set_local)
-                if let Some(val) = emitter.get_local(id.0).cloned() {
-                    // Check if it's a simple constant (no load needed)
-                    if !val.starts_with('%') {
-                        return val;
-                    }
+        Operand::Copy(lv) | Operand::Move(lv) => codegen_lvalue_load(emitter, lv),
+    }
+}
+
+/// Load a value from an lvalue (place expression).
+///
+/// For Local(id): load from the alloca slot.
+/// For Projection(base, Deref): load the pointer from base, then load through it.
+/// For other projections: simplified to 0.
+fn codegen_lvalue_load(emitter: &mut dyn Emitter, lv: &Lvalue) -> EmitValue {
+    match &lv.kind {
+        LvalueKind::Local(id) => {
+            // Try direct value first (from set_local)
+            if let Some(val) = emitter.get_local(id.0).cloned() {
+                // Check if it's a simple constant (no load needed)
+                if !val.starts_with('%') {
+                    return val;
                 }
-                // Load from alloca slot
-                if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
-                    return emitter.emit_load(EmitType::I32, &ptr);
+            }
+            // Load from alloca slot
+            if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
+                return emitter.emit_load(EmitType::I32, &ptr);
+            }
+            "0".to_string()
+        }
+        LvalueKind::Projection(base, elem) => {
+            match elem {
+                ProjectionElem::Deref => {
+                    // *ptr: first load the pointer value from base,
+                    // then load the value through that pointer.
+                    let ptr_val = codegen_lvalue_load(emitter, base);
+                    // ptr_val is now an i32* (pointer to the value)
+                    emitter.emit_load(EmitType::I32, &ptr_val)
                 }
-                "0".to_string()
-            } else if let LvalueKind::Projection(base, elem) = &lv.kind {
-                // *ptr → load from the pointer
-                if matches!(elem, ProjectionElem::Deref) {
-                    if let LvalueKind::Local(id) = &base.kind {
-                        if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
-                            return emitter.emit_load(EmitType::I32, &ptr);
-                        }
-                    }
+                ProjectionElem::Field(_, _) => {
+                    // Field access: simplified (would need getelementptr)
+                    "0".to_string()
                 }
-                "0".to_string()
-            } else {
-                "0".to_string()
+                ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
+                    // Array index: simplified (would need getelementptr)
+                    "0".to_string()
+                }
+                _ => "0".to_string(),
             }
         }
+        LvalueKind::Static(_) => "0".to_string(),
     }
 }
 
@@ -295,13 +339,40 @@ fn codegen_terminator(
             destination,
             target,
         } => {
-            // Resolve the function name from the func operand
-            let fn_name = if let Operand::Constant(c) = func {
-                if let ConstVal::Uint(n) = &c.val {
-                    let idx = *n as usize;
-                    fn_names.get(idx).cloned()
+            // Resolve the function name from the func operand.
+            // The func operand is a Constant with FnDef type.
+            // Its ConstVal::Uint(n) holds the DefId.
+            // We match it against the fn_names list (which is indexed
+            // by body index, and body index == def_id for top-level fns).
+            let fn_name = if let Operand::Copy(lv) | Operand::Move(lv) = func {
+                // The func is loaded from a local that holds a FnDef value.
+                // We need to check the local's type to find the DefId.
+                if let LvalueKind::Local(id) = &lv.kind {
+                    let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| &ld.ty);
+                    if let Some(ty) = local_ty {
+                        if let crate::mir::ty::TyKind::FnDef(def_id, _) = &ty.kind {
+                            let idx = def_id.as_u32() as usize;
+                            fn_names.get(idx).cloned()
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 } else {
                     None
+                }
+            } else if let Operand::Constant(c) = func {
+                match &c.val {
+                    ConstVal::Uint(n) => {
+                        let idx = *n as usize;
+                        fn_names.get(idx).cloned()
+                    }
+                    ConstVal::Int(n) => {
+                        let idx = *n as usize;
+                        fn_names.get(idx).cloned()
+                    }
+                    _ => None,
                 }
             } else {
                 None
@@ -315,6 +386,7 @@ fn codegen_terminator(
             let ret_val = if let Some(ref name) = fn_name {
                 emitter.emit_call(name, &arg_vals, EmitType::I32)
             } else {
+                // Unresolved call — emit a placeholder
                 "0".to_string()
             };
 

@@ -125,3 +125,56 @@ fn codegen_empty_body() {
         ll
     );
 }
+
+// Stage 3.3: comparison ops
+
+#[test]
+fn codegen_equality() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a == b }");
+    assert!(ll.contains("icmp eq"), "expected icmp eq in:\n{}", ll);
+}
+
+#[test]
+fn codegen_less_than() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a < b }");
+    assert!(ll.contains("icmp slt"), "expected icmp slt in:\n{}", ll);
+}
+
+#[test]
+fn codegen_greater_than() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a > b }");
+    assert!(ll.contains("icmp sgt"), "expected icmp sgt in:\n{}", ll);
+}
+
+#[test]
+fn codegen_zext() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a == b }");
+    assert!(ll.contains("zext i1"), "expected zext i1 in:\n{}", ll);
+}
+
+// Stage 3.3: borrow + deref
+
+#[test]
+fn codegen_borrow_deref() {
+    let ll = gen_ll("fn f() -> i32 { let x = 42; let r = &x; *r }");
+    // Should have load through a pointer (double load)
+    assert!(ll.contains("load i32"), "expected load i32 in:\n{}", ll);
+}
+
+#[test]
+fn codegen_if_else() {
+    let ll = gen_ll("fn f(x: i32) -> i32 { if x > 0 { 1 } else { 2 } }");
+    assert!(ll.contains("br i1"), "expected br i1 in:\n{}", ll);
+}
+
+#[test]
+fn codegen_while_loop() {
+    let ll = gen_ll("fn f() -> i32 { let mut i = 0; while i < 10 { i = i + 1; } i }");
+    assert!(ll.contains("br i1"), "expected br i1 for while in:\n{}", ll);
+}
+
+#[test]
+fn codegen_function_call() {
+    let ll = gen_ll("fn g(a: i32) -> i32 { a } fn f() -> i32 { g(42) }");
+    assert!(ll.contains("call"), "expected call in:\n{}", ll);
+}

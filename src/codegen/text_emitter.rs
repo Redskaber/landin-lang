@@ -186,4 +186,20 @@ impl Emitter for TextEmitter {
     fn output(&self) -> &str {
         &self.output
     }
+
+    fn emit_icmp(&mut self, op: &str, ty: EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
+        let r = self.fresh();
+        let ty_str = emit_type_to_llvm_str(ty);
+        self.line(&format!(
+            "  %v{} = icmp {} {} {}, {}",
+            r, op, ty_str, lhs, rhs
+        ));
+        format!("%v{}", r)
+    }
+
+    fn emit_zext_i1_to_i32(&mut self, val: &EmitValue) -> EmitValue {
+        let r = self.fresh();
+        self.line(&format!("  %v{} = zext i1 {} to i32", r, val));
+        format!("%v{}", r)
+    }
 }
