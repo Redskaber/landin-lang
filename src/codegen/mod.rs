@@ -56,10 +56,18 @@ fn codegen_function(
     param_count: usize,
 ) {
     // Determine return type
+    // Per design doc §2.1: unit () maps to void return.
     let ret_ty = if mir.local_decls.is_empty() {
-        EmitType::I32
+        EmitType::Void
     } else {
-        emitter::mir_type_to_emit_type(&mir.local_decls[0].ty)
+        let ty = emitter::mir_type_to_emit_type(&mir.local_decls[0].ty);
+        // Unit type (empty tuple) → void return
+        if matches!(&mir.local_decls[0].ty.kind, crate::mir::ty::TyKind::Tuple(tys) if tys.is_empty())
+        {
+            EmitType::Void
+        } else {
+            ty
+        }
     };
 
     // Build param list: LocalId(1)..LocalId(param_count) are fn params.
@@ -115,33 +123,82 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement)
         StatementKind::Assign(boxed) => {
             let (place, rvalue) = &**boxed;
             let val = codegen_rvalue(emitter, mir, rvalue);
-            // Store the result value to the local's alloca slot
-            if let LvalueKind::Local(id) = &place.kind {
-                let default_ty = crate::mir::ty::Ty::new(
-                    crate::mir::ty::TyKind::Int(crate::ast::IntTy::I32),
-                    crate::session::Span::DUMMY,
-                );
-                let local_ty = mir
-                    .local_decls
-                    .get(id.0 as usize)
-                    .map(|ld| &ld.ty)
-                    .unwrap_or(&default_ty);
-                let ty = emitter::mir_type_to_emit_type(local_ty);
-                // Also track the value directly for simple cases
-                emitter.set_local(id.0, val.clone());
-                // Store to alloca slot if we have one
-                if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
-                    emitter.emit_store(ty, &val, &ptr);
+            // Store the result value to the place.
+            // For Local(id): store to alloca slot.
+            // For Projection(base, Field): store via GEP.
+            // For Projection(base, Index): store via GEP.
+            // For Projection(base, Deref): store through pointer.
+            match &place.kind {
+                LvalueKind::Local(id) => {
+                    let default_ty = crate::mir::ty::Ty::new(
+                        crate::mir::ty::TyKind::Int(crate::ast::IntTy::I32),
+                        crate::session::Span::DUMMY,
+                    );
+                    let local_ty = mir
+                        .local_decls
+                        .get(id.0 as usize)
+                        .map(|ld| &ld.ty)
+                        .unwrap_or(&default_ty);
+                    let ty = emitter::mir_type_to_emit_type(local_ty);
+                    emitter.set_local(id.0, val.clone());
+                    if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
+                        emitter.emit_store(ty, &val, &ptr);
+                    }
+                }
+                LvalueKind::Projection(base, elem) => {
+                    // Write to a projection (field/index/deref)
+                    let ty = EmitType::I32; // simplified
+                    match elem {
+                        ProjectionElem::Deref => {
+                            // *ptr = val: load pointer from base, store through it
+                            let ptr_val = codegen_lvalue_load(emitter, base);
+                            emitter.emit_store(ty, &val, &ptr_val);
+                        }
+                        ProjectionElem::Field(field_id, _) => {
+                            // struct.field = val: GEP + store
+                            let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                                emitter
+                                    .get_local_ptr(id.0)
+                                    .cloned()
+                                    .unwrap_or_else(|| "0".to_string())
+                            } else {
+                                codegen_lvalue_load(emitter, base)
+                            };
+                            let field_ptr = emitter.emit_gep_field(&base_ptr, field_id.0);
+                            emitter.emit_store(ty, &val, &field_ptr);
+                        }
+                        ProjectionElem::Index(idx) => {
+                            // arr[idx] = val: GEP + store
+                            let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                                emitter
+                                    .get_local_ptr(id.0)
+                                    .cloned()
+                                    .unwrap_or_else(|| "0".to_string())
+                            } else {
+                                codegen_lvalue_load(emitter, base)
+                            };
+                            let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
+                                v
+                            } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
+                                emitter.emit_load(EmitType::I32, &ptr)
+                            } else {
+                                "0".to_string()
+                            };
+                            let elem_ptr = emitter.emit_gep_index(&base_ptr, &idx_val);
+                            emitter.emit_store(ty, &val, &elem_ptr);
+                        }
+                        _ => {}
+                    }
+                }
+                LvalueKind::Static(_) => {
+                    // Static writes not yet supported
                 }
             }
         }
         StatementKind::StorageLive(id) => {
-            // alloca was already emitted at function entry
             let _ = id;
         }
-        StatementKind::StorageDead(_) => {
-            // No-op in LLVM (memory freed at function end)
-        }
+        StatementKind::StorageDead(_) => {}
         StatementKind::Nop | StatementKind::Deinit(_) => {}
     }
 }
@@ -215,7 +272,9 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
 
         Rvalue::UnaryOp(op, operand) => {
             let val = codegen_operand(emitter, mir, operand);
-            emitter.emit_unary_op(*op, EmitType::I32, &val)
+            // Detect type from operand (float neg uses fneg, int neg uses sub)
+            let ty = detect_operand_type(mir, operand).unwrap_or(EmitType::I32);
+            emitter.emit_unary_op(*op, ty, &val)
         }
 
         Rvalue::Ref(_, _borrow_kind, lv) => {

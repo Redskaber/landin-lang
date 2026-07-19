@@ -119,9 +119,10 @@ fn codegen_param_passed() {
 #[test]
 fn codegen_empty_body() {
     let ll = gen_ll("fn f() { }");
+    // Empty body (unit return) → ret void (per design doc §2.1)
     assert!(
-        ll.contains("ret i32 0") || ll.contains("ret i32 %v"),
-        "expected ret i32 in:\n{}",
+        ll.contains("ret void") || ll.contains("ret i32 0") || ll.contains("ret i32 %v"),
+        "expected ret in:\n{}",
         ll
     );
 }
