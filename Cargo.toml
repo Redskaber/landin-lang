@@ -1,6 +1,6 @@
 [package]
 name = "landin-compiler"
-version = "0.7.8"
+version = "0.7.9"
 edition = "2021"
 license = "MIT"
 description = "Landin programming language compiler — Stage 0-2 complete, Stage 3 codegen in progress"

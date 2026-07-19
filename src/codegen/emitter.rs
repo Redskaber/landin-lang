@@ -133,8 +133,19 @@ pub trait Emitter {
     fn emit_gep_index(&mut self, base_ptr: &EmitValue, index: &EmitValue) -> EmitValue;
 
     /// Emit a PHI node for merging values from multiple predecessor blocks.
-    /// Each entry is (value, label) — the value comes from the block with that label.
     fn emit_phi(&mut self, ty: EmitType, incoming: &[(EmitValue, String)]) -> EmitValue;
+
+    /// Emit insertvalue for tuple/struct construction.
+    fn emit_insertvalue(
+        &mut self,
+        agg_ty: EmitType,
+        agg: &EmitValue,
+        val: &EmitValue,
+        index: u32,
+    ) -> EmitValue;
+
+    /// Emit extractvalue for tuple/struct field extraction.
+    fn emit_extractvalue(&mut self, agg_ty: EmitType, agg: &EmitValue, index: u32) -> EmitValue;
 
     /// Return the accumulated output (for text backends).
     fn output(&self) -> &str;
@@ -144,13 +155,27 @@ pub trait Emitter {
 pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
     use crate::mir::ty::TyKind;
     match &ty.kind {
+        TyKind::Int(crate::ast::IntTy::I64) | TyKind::Uint(crate::ast::UintTy::U64) => {
+            EmitType::I64
+        }
+        TyKind::Int(crate::ast::IntTy::I128) | TyKind::Uint(crate::ast::UintTy::U128) => {
+            EmitType::I64
+        } // simplified
         TyKind::Int(_) | TyKind::Uint(_) => EmitType::I32,
         TyKind::Bool => EmitType::I1,
         TyKind::Float(crate::ast::FloatTy::F32) => EmitType::F32,
         TyKind::Float(_) => EmitType::F64,
         TyKind::Char => EmitType::I8,
         TyKind::Ref(_, _, _) | TyKind::RawPtr(_, _) => EmitType::Ptr,
-        _ => EmitType::I32, // default
+        TyKind::Tuple(tys) => {
+            if tys.is_empty() {
+                EmitType::Void
+            } else {
+                EmitType::Tuple
+            }
+        }
+        TyKind::Array(_, _) => EmitType::Array,
+        _ => EmitType::I32,
     }
 }
 

@@ -289,12 +289,35 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
 
         Rvalue::Aggregate(AggregateKind::Tuple, operands) => {
             if operands.is_empty() {
+                // Unit type → return 0 (void functions don't use this)
                 "0".to_string()
-            } else {
+            } else if operands.len() == 1 {
+                // Single-element tuple: just return the element
                 codegen_operand(emitter, mir, &operands[0])
+            } else {
+                // Multi-element tuple: use insertvalue to build aggregate
+                // Start with undef, insert each element
+                let mut agg = "undef".to_string();
+                for (i, op) in operands.iter().enumerate() {
+                    let val = codegen_operand(emitter, mir, op);
+                    agg = emitter.emit_insertvalue(EmitType::Tuple, &agg, &val, i as u32);
+                }
+                agg
             }
         }
-        Rvalue::Aggregate(_, _) => "0".to_string(),
+        Rvalue::Aggregate(AggregateKind::Array(_), operands) => {
+            // Array literal: [a, b, c] → build via insertvalue on [N x i32]
+            if operands.is_empty() {
+                "0".to_string()
+            } else {
+                let mut agg = "undef".to_string();
+                for (i, op) in operands.iter().enumerate() {
+                    let val = codegen_operand(emitter, mir, op);
+                    agg = emitter.emit_insertvalue(EmitType::Array, &agg, &val, i as u32);
+                }
+                agg
+            }
+        }
 
         Rvalue::Cast(_, op, target_ty) => {
             // Cast: convert operand to target type.

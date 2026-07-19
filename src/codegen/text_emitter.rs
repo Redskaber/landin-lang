@@ -76,7 +76,19 @@ impl Emitter for TextEmitter {
             ConstVal::Int(n) => format!("{}", n),
             ConstVal::Uint(n) => format!("{}", n),
             ConstVal::Bool(b) => format!("{}", if *b { 1 } else { 0 }),
-            ConstVal::Float(f) => format!("{}", f),
+            // LLVM requires float constants to have a hex or decimal representation
+            // that includes a decimal point or exponent. Use the hex format
+            // for precision: 0xK<16-hex-digits> for f64.
+            ConstVal::Float(f) => {
+                if *f == 0.0 {
+                    "0.000000e+00".to_string()
+                } else if *f == 1.0 {
+                    "1.000000e+00".to_string()
+                } else {
+                    // Use %e format for scientific notation (LLVM accepts this)
+                    format!("{:e}", f)
+                }
+            }
             ConstVal::Char(c) => format!("{}", *c as u32),
             ConstVal::Str(_) => "0".to_string(),
             ConstVal::Unevaluated => "0".to_string(),
@@ -284,6 +296,32 @@ impl Emitter for TextEmitter {
             .collect::<Vec<_>>()
             .join(", ");
         self.line(&format!("  %v{} = phi {} {}", r, ty_str, incoming_str));
+        format!("%v{}", r)
+    }
+
+    fn emit_insertvalue(
+        &mut self,
+        agg_ty: EmitType,
+        agg: &EmitValue,
+        val: &EmitValue,
+        index: u32,
+    ) -> EmitValue {
+        let r = self.fresh();
+        let ty_str = emit_type_to_llvm_str(agg_ty);
+        self.line(&format!(
+            "  %v{} = insertvalue {} {}, i32 {}, {}",
+            r, ty_str, agg, val, index
+        ));
+        format!("%v{}", r)
+    }
+
+    fn emit_extractvalue(&mut self, agg_ty: EmitType, agg: &EmitValue, index: u32) -> EmitValue {
+        let r = self.fresh();
+        let ty_str = emit_type_to_llvm_str(agg_ty);
+        self.line(&format!(
+            "  %v{} = extractvalue {} {}, {}",
+            r, ty_str, agg, index
+        ));
         format!("%v{}", r)
     }
 }
