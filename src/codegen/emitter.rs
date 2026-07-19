@@ -120,6 +120,14 @@ pub trait Emitter {
     /// Emit a type cast (trunc/sext/zext/sitofp/fptosi).
     fn emit_cast(&mut self, src: EmitType, dst: EmitType, val: &EmitValue) -> EmitValue;
 
+    /// Emit a getelementptr for struct field access.
+    /// Returns a pointer to the field.
+    fn emit_gep_field(&mut self, base_ptr: &EmitValue, field_index: u32) -> EmitValue;
+
+    /// Emit a getelementptr for array index access.
+    /// Returns a pointer to the element.
+    fn emit_gep_index(&mut self, base_ptr: &EmitValue, index: &EmitValue) -> EmitValue;
+
     /// Return the accumulated output (for text backends).
     fn output(&self) -> &str;
 }

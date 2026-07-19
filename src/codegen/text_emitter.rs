@@ -238,4 +238,22 @@ impl Emitter for TextEmitter {
         ));
         format!("%v{}", r)
     }
+
+    fn emit_gep_field(&mut self, base_ptr: &EmitValue, field_index: u32) -> EmitValue {
+        let r = self.fresh();
+        self.line(&format!(
+            "  %v{} = getelementptr inbounds {{ i32, i32 }}, {{ i32, i32 }}* {}, i32 0, i32 {}",
+            r, base_ptr, field_index
+        ));
+        format!("%v{}", r)
+    }
+
+    fn emit_gep_index(&mut self, base_ptr: &EmitValue, index: &EmitValue) -> EmitValue {
+        let r = self.fresh();
+        self.line(&format!(
+            "  %v{} = getelementptr inbounds [10 x i32], [10 x i32]* {}, i32 0, i32 {}",
+            r, base_ptr, index
+        ));
+        format!("%v{}", r)
+    }
 }

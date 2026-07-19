@@ -256,16 +256,53 @@ fn codegen_lvalue_load(emitter: &mut dyn Emitter, lv: &Lvalue) -> EmitValue {
                     // *ptr: first load the pointer value from base,
                     // then load the value through that pointer.
                     let ptr_val = codegen_lvalue_load(emitter, base);
-                    // ptr_val is now an i32* (pointer to the value)
                     emitter.emit_load(EmitType::I32, &ptr_val)
                 }
-                ProjectionElem::Field(_, _) => {
-                    // Field access: simplified (would need getelementptr)
-                    "0".to_string()
+                ProjectionElem::Field(field_id, _) => {
+                    // struct field access: getelementptr + load
+                    let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                        emitter
+                            .get_local_ptr(id.0)
+                            .cloned()
+                            .unwrap_or_else(|| "0".to_string())
+                    } else {
+                        codegen_lvalue_load(emitter, base)
+                    };
+                    let field_ptr = emitter.emit_gep_field(&base_ptr, field_id.0);
+                    emitter.emit_load(EmitType::I32, &field_ptr)
                 }
-                ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
-                    // Array index: simplified (would need getelementptr)
-                    "0".to_string()
+                ProjectionElem::Index(idx) => {
+                    // array index: getelementptr + load
+                    let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                        emitter
+                            .get_local_ptr(id.0)
+                            .cloned()
+                            .unwrap_or_else(|| "0".to_string())
+                    } else {
+                        codegen_lvalue_load(emitter, base)
+                    };
+                    let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
+                        v
+                    } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
+                        emitter.emit_load(EmitType::I32, &ptr)
+                    } else {
+                        "0".to_string()
+                    };
+                    let elem_ptr = emitter.emit_gep_index(&base_ptr, &idx_val);
+                    emitter.emit_load(EmitType::I32, &elem_ptr)
+                }
+                ProjectionElem::ConstantIndex { offset, .. } => {
+                    // constant index: getelementptr with constant
+                    let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                        emitter
+                            .get_local_ptr(id.0)
+                            .cloned()
+                            .unwrap_or_else(|| "0".to_string())
+                    } else {
+                        codegen_lvalue_load(emitter, base)
+                    };
+                    let elem_ptr = emitter.emit_gep_index(&base_ptr, &offset.to_string());
+                    emitter.emit_load(EmitType::I32, &elem_ptr)
                 }
                 _ => "0".to_string(),
             }
