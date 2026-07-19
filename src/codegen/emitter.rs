@@ -120,10 +120,6 @@ pub trait Emitter {
     /// Emit a zext (zero extend) from i1 to i32.
     fn emit_zext_i1_to_i32(&mut self, val: &EmitValue) -> EmitValue;
 
-    /// Emit a switch instruction (for match on integers).
-    /// Each case is (value, label). The default label is used for `_`.
-    fn emit_switch(&mut self, discr: &EmitValue, cases: &[(i128, String)], default_label: &str);
-
     /// Emit a typed switch instruction (i32 or i64 based on discr_ty).
     fn emit_switch_typed(
         &mut self,

@@ -42,8 +42,8 @@ impl TextEmitter {
 
 impl Emitter for TextEmitter {
     fn emit_header(&mut self) {
-        self.line("; Landin compiler v0.8.1 — LLVM IR output");
-        self.line("; Stage 3.16 codegen");
+        self.line("; Landin compiler v0.8.3 — LLVM IR output");
+        self.line("; Stage 3.18 codegen");
         self.line("target triple = \"x86_64-unknown-linux-gnu\"");
         self.line("target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"");
         self.line("");
@@ -244,17 +244,6 @@ impl Emitter for TextEmitter {
         let r = self.fresh();
         self.line(&format!("  %v{} = zext i1 {} to i32", r, val));
         format!("%v{}", r)
-    }
-
-    fn emit_switch(&mut self, discr: &EmitValue, cases: &[(i128, String)], default_label: &str) {
-        self.line(&format!(
-            "  switch i32 {}, label %{} [",
-            discr, default_label
-        ));
-        for (val, label) in cases {
-            self.line(&format!("    i32 {}, label %{}", val, label));
-        }
-        self.line("  ]");
     }
 
     fn emit_switch_typed(

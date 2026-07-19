@@ -1,8 +1,8 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 3.8 (effective from Stage 3.10)
-> **Supersedes**: v3.7
+> **Version**: 3.9 (effective from Stage 3.18)
+> **Supersedes**: v3.8
 > **Purpose**: Formalize the multi-round review process with dynamic
 > adaptive mechanisms, weighted voting, defect-level governance,
 > **cross-stage integration verification**, and data-driven continuous
@@ -372,6 +372,7 @@ NEEDS REVISION，不允许进入委员会投票阶段。
 | v3.6 | Stage 3.7 | **Author 标注** — 所有项目文档必须标注 author: redskaber |
 | v3.7 | Stage 3.8 | **文档组织结构规则** (§12) — docs/{agent-team,develop,lang-design} 三级目录 + 格式规范 |
 | v3.8 | Stage 3.10 | **文档优先查询规则** (§13) — 获取用户问题和准备推进项目时必须先查 docs/ |
+| v3.9 | Stage 3.18 | **开发阶段变动规则** (§14) — 早期开发阶段不需要向后兼容，鼓励大胆重构 |
 
 ---
 
@@ -595,6 +596,49 @@ docs/lang-design/
    `docs/lang-design/` 中创建或更新对应的设计文档。
 
 **未查询文档直接执行的任务，QA 角色可触发 NEEDS REVISION。**
+
+---
+
+## 14. 开发阶段变动规则（v3.9 新增）
+
+> **背景**：Landin 编译器当前处于 **早期开发阶段**（Stage 0-3），
+> 代码变动频繁而且大量。在此阶段，**不需要考虑向后兼容**。
+>
+> 这意味着：
+>
+> - 可以自由重命名、删除、重构公共 API
+> - 可以破坏性地修改数据结构
+> - 可以移除旧代码而不保留 deprecated 标记
+> - 可以删除不再使用的测试（但必须同步删除对应的代码）
+>
+> **当项目进入 v1.0 稳定阶段后**，本规则将失效，届时需要遵循
+> 语义化版本（SemVer）和向后兼容承诺。
+
+### 14.1 适用范围
+
+本规则适用于：
+
+- `src/` 下的所有模块（编译器内部 API）
+- `tests/` 下的测试代码
+- `docs/` 下的设计文档
+- `examples/` 下的示例代码
+
+### 14.2 不适用范围
+
+- `Cargo.toml` 的 `name` 和 `edition` 字段（不可变）
+- `LICENSE` 文件（不可变）
+- 已发布的 crate（目前无已发布版本，N/A）
+
+### 14.3 重构指导原则
+
+1. **大胆重构**：如果发现更好的设计，直接改，不要为了"兼容旧代码"
+   而保留过时的实现。
+2. **删除优于注释**：不再使用的代码直接删除，不要注释掉保留。
+   Git 历史会记录删除前的版本。
+3. **测试随代码变**：重构代码时同步更新测试。删除代码时同步删除测试。
+4. **文档随代码变**：重构后立即更新设计文档（per §11）。
+5. **一步到位**：不要分多步"渐进迁移"——在早期阶段，一步到位的
+   重构比渐进迁移更高效。
 
 ---
 
