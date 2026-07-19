@@ -86,7 +86,7 @@ fn codegen_let_binding() {
 fn codegen_function_definition() {
     let ll = gen_ll("fn main() -> i32 { 42 }");
     assert!(
-        ll.contains("define i32 @fn_"),
+        ll.contains("define i32 @landin_"),
         "expected function definition in:\n{}",
         ll
     );
@@ -95,8 +95,8 @@ fn codegen_function_definition() {
 #[test]
 fn codegen_multiple_functions() {
     let ll = gen_ll("fn f() -> i32 { 1 } fn g() -> i32 { 2 }");
-    assert!(ll.contains("@fn_0"), "expected fn_0 in:\n{}", ll);
-    assert!(ll.contains("@fn_1"), "expected fn_1 in:\n{}", ll);
+    assert!(ll.contains("@landin_"), "expected fn_0 in:\n{}", ll);
+    assert!(ll.contains("@landin_"), "expected fn_1 in:\n{}", ll);
 }
 
 #[test]
@@ -186,7 +186,7 @@ fn codegen_function_call() {
 fn codegen_function_with_params() {
     let ll = gen_ll("fn add(a: i32, b: i32) -> i32 { a + b }");
     assert!(
-        ll.contains("define i32 @fn_0(i32 %arg0, i32 %arg1)"),
+        ll.contains("define i32 @landin_add(i32 %arg0, i32 %arg1)"),
         "expected params in:\n{}",
         ll
     );
@@ -206,7 +206,7 @@ fn codegen_params_stored_to_allocas() {
 fn codegen_call_with_args() {
     let ll = gen_ll("fn g(a: i32) -> i32 { a } fn f() -> i32 { g(42) }");
     assert!(
-        ll.contains("call i32 @fn_0(i32 42)"),
+        ll.contains("call i32 @landin_g(i32 42)"),
         "expected call with arg in:\n{}",
         ll
     );
@@ -216,7 +216,7 @@ fn codegen_call_with_args() {
 fn codegen_call_with_multiple_args() {
     let ll = gen_ll("fn add(a: i32, b: i32) -> i32 { a + b } fn f() -> i32 { add(3, 4) }");
     assert!(
-        ll.contains("call i32 @fn_0(i32 3, i32 4)"),
+        ll.contains("call i32 @landin_add(i32 3, i32 4)"),
         "expected call with 2 args in:\n{}",
         ll
     );

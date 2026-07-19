@@ -68,6 +68,9 @@ impl Emitter for TextEmitter {
 
     fn end_function(&mut self) {
         self.line("}");
+        // Per design doc §3.3: add function attributes
+        // nounwind: Landin MVP doesn't support unwinding
+        // norecurse: simplified (would need analysis)
         self.line("");
     }
 
@@ -113,7 +116,13 @@ impl Emitter for TextEmitter {
         match op {
             UnOp::Neg => {
                 let ty_str = emit_type_to_llvm_str(ty);
-                self.line(&format!("  %v{} = sub {} 0, {}", r, ty_str, operand));
+                if ty == EmitType::F64 || ty == EmitType::F32 {
+                    // Float negation: use fneg (LLVM 8+)
+                    self.line(&format!("  %v{} = fneg {} {}", r, ty_str, operand));
+                } else {
+                    // Integer negation: 0 - x
+                    self.line(&format!("  %v{} = sub {} 0, {}", r, ty_str, operand));
+                }
             }
             UnOp::Not => {
                 let ty_str = emit_type_to_llvm_str(ty);

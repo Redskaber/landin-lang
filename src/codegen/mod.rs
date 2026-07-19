@@ -26,16 +26,29 @@ pub fn codegen_crate(hir: &HirCrate, interner: &Rodeo) -> String {
 
 /// Generate LLVM IR for a crate using any Emitter backend.
 pub fn codegen_crate_with_emitter(hir: &HirCrate, interner: &Rodeo, emitter: &mut dyn Emitter) {
-    // Collect function names first (for call resolution)
+    // Collect function names from HIR (use actual fn names, not fn_0/fn_1)
+    // Per design doc §3.1: function names map to LLVM function names.
+    // We use the DefId as index and look up the HIR fn name.
     let fn_names: Vec<String> = hir
         .bodies
         .iter()
         .enumerate()
-        .map(|(i, _)| format!("fn_{}", i))
+        .map(|(i, _)| {
+            // Try to find the fn name from HIR owners
+            for (def_id, owner) in &hir.owners {
+                if def_id.as_u32() as usize == i {
+                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
+                        let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
+                        return format!("landin_{}", name);
+                    }
+                }
+            }
+            format!("fn_{}", i)
+        })
         .collect();
 
     for (idx, (_, body)) in hir.bodies.iter().enumerate() {
-        let fn_name = format!("fn_{}", idx);
+        let fn_name = fn_names[idx].clone();
         let return_ty = crate::driver::owner_return_ty_for_body(hir, body);
         let param_count = body.params.len();
         let (mut mir, unify) =
