@@ -1,5 +1,7 @@
 # Landin
 
+**Author**: redskaber
+
 A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.

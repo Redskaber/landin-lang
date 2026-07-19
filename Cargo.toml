@@ -1,12 +1,13 @@
 [package]
 name = "landin-compiler"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2021"
 license = "MIT"
 description = "Landin programming language compiler — Stage 0-2 complete, Stage 3 codegen in progress"
-repository = "https://github.com/redskaber/landin-lang/main"
+repository = "https://github.com/landin-lang/main"
+authors = ["redskaber"]
 keywords = ["compiler", "language", "systems-programming"]
-categories = ["redskaber"]
+categories = ["compilers"]
 
 [[bin]]
 name = "landin-stage0"

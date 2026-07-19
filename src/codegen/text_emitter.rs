@@ -213,4 +213,29 @@ impl Emitter for TextEmitter {
         }
         self.line("  ]");
     }
+
+    fn emit_cast(&mut self, src: EmitType, dst: EmitType, val: &EmitValue) -> EmitValue {
+        let r = self.fresh();
+        let src_str = emit_type_to_llvm_str(src);
+        let dst_str = emit_type_to_llvm_str(dst);
+        let op = match (src, dst) {
+            (a, b) if a == b => return val.clone(),
+            (EmitType::I32, EmitType::I64) => "sext",
+            (EmitType::I1, EmitType::I32) => "zext",
+            (EmitType::I64, EmitType::I32) => "trunc",
+            (EmitType::I32, EmitType::I1) => "trunc",
+            (EmitType::I32, EmitType::F64) | (EmitType::I64, EmitType::F64) => "sitofp",
+            (EmitType::I32, EmitType::F32) | (EmitType::I64, EmitType::F32) => "sitofp",
+            (EmitType::F64, EmitType::I32) | (EmitType::F64, EmitType::I64) => "fptosi",
+            (EmitType::F32, EmitType::I32) | (EmitType::F32, EmitType::I64) => "fptosi",
+            (EmitType::F64, EmitType::F32) => "fptrunc",
+            (EmitType::F32, EmitType::F64) => "fpext",
+            _ => "bitcast",
+        };
+        self.line(&format!(
+            "  %v{} = {} {} {} to {}",
+            r, op, src_str, val, dst_str
+        ));
+        format!("%v{}", r)
+    }
 }

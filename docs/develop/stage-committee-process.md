@@ -1,7 +1,8 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
-> **Version**: 3.0 (effective from Stage 2.4)
-> **Supersedes**: v2.0
+> **Author**: redskaber
+> **Version**: 3.6 (effective from Stage 3.7)
+> **Supersedes**: v3.5
 > **Purpose**: Formalize the multi-round review process with dynamic
 > adaptive mechanisms, weighted voting, defect-level governance,
 > **cross-stage integration verification**, and data-driven continuous
@@ -368,6 +369,7 @@ NEEDS REVISION，不允许进入委员会投票阶段。
 | v3.3 | Stage 2.4h | **上轮修复边界 case 测试** (§9.3.2) — 来自 Round 4 教训：Round 3 修复后边界 case (FloatVar vs IntVar、resolve 时机) 仍有 2 个 P0；要求每轮 ≥5 个边界 case 测试 |
 | v3.4 | Stage 2.4i | **收益递减规则** (§9.3.3) — 来自 Round 5 教训：60-case+15-deep 审计发现 0 新问题；定义审查收敛 + Stage 3 启动条件，防止无限审计循环 |
 | v3.5 | Stage 3.6 | **文档同步规则** (§11) — 每次更新必须同步 docs/ + Cargo.toml + README |
+| v3.6 | Stage 3.7 | **Author 标注** — 所有项目文档必须标注 author: redskaber |
 
 ---
 

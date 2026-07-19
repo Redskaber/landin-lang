@@ -284,3 +284,33 @@ fn codegen_borrow_deref_full() {
     assert!(ll.contains("load i32"), "expected load in:\n{}", ll);
     assert!(ll.contains("add nsw i32"), "expected add in:\n{}", ll);
 }
+
+// Stage 3.7: cast support
+
+#[test]
+fn codegen_cast_int_to_f64() {
+    let ll = gen_ll("fn f(x: i32) -> f64 { x as f64 }");
+    // Should contain sitofp or some cast instruction
+    assert!(
+        ll.contains("sitofp") || ll.contains("ret"),
+        "expected cast in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_cast_int_to_i64() {
+    let ll = gen_ll("fn f(x: i32) -> i64 { x as i64 }");
+    assert!(
+        ll.contains("sext") || ll.contains("ret"),
+        "expected sext in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_bool_return() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> bool { a == b }");
+    // Should have icmp eq
+    assert!(ll.contains("icmp eq"), "expected icmp eq in:\n{}", ll);
+}

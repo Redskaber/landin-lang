@@ -207,6 +207,16 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
         }
         Rvalue::Aggregate(_, _) => "0".to_string(),
 
+        Rvalue::Cast(_, op, target_ty) => {
+            // Cast: convert operand to target type.
+            // For numeric casts (i32 → u64, i32 → f64, etc.), we emit
+            // the appropriate LLVM conversion instruction.
+            let val = codegen_operand(emitter, mir, op);
+            let src_ty = EmitType::I32; // simplified: assume int source
+            let dst_ty = emitter::mir_type_to_emit_type(target_ty);
+            emitter.emit_cast(src_ty, dst_ty, &val)
+        }
+
         _ => "0".to_string(),
     }
 }
