@@ -301,6 +301,34 @@
 **强制失败条件**：如果审计集 < 30 case 或未覆盖全部 7 类，自动触发
 NEEDS REVISION，不允许进入委员会投票阶段。
 
+### 9.3.2 上轮修复边界 case 测试（v3.3 新增）
+
+> **根因教训**（来自 Stage 2.x Round 4 审查）：
+> Round 3 的 44-case 审计通过后，Round 4 通过测试 *上轮修复的边界
+> case* 又发现 2 个 P0（FloatVar vs IntVar 区分、resolve-before-check
+> 时机）。这说明：
+>
+> - 修复本身可能引入新的边界 case bug
+> - 类型系统修复需要测试 *InferVar 子类型* 的区分（TyVar/IntVar/FloatVar）
+> - resolve/unify 时机敏感的修复需要测试 *绑定前后* 的行为
+
+**规则**：
+
+1. 每个阶段门审查（§9.3）的审计集**必须**包含至少 **5 个"上轮修复
+   边界 case"测试**，专门测试上一轮修复可能引入的边界情况。
+2. 边界 case 测试应覆盖：
+   - InferVar 子类型区分（TyVar vs IntVar vs FloatVar）
+   - resolve/unify 时机（绑定前 vs 绑定后）
+   - 类型注解 vs 推断（同一类型的两种路径）
+   - 错误恢复（一个错误后后续是否正确处理）
+   - 跨阶段数据流（HIR → MIR → typeck → borrowck 一致性）
+3. 边界 case 测试应作为 `examples/roundN_audit.rs` 的独立 group 标注。
+4. 如果上轮修复了 N 个 P0，边界 case 测试应 ≥ N 个（每个修复至少 1 个
+   边界测试）。
+
+**强制失败条件**：如果上轮有 P0 修复但本轮审计没有对应的边界 case
+测试，自动触发 NEEDS REVISION。
+
 ---
 
 ## 10. 流程版本历史
@@ -312,6 +340,7 @@ NEEDS REVISION，不允许进入委员会投票阶段。
 | v3.0 | Stage 2.4 | **集成验证协议** + P3 误分类审查 + 阶段门审查 + "孤立正确"防崩 |
 | v3.1 | Stage 2.4f | **负向测试最小覆盖矩阵** (§9.1.1) — 来自 Round 2 教训：625 个正向测试 0 个负向测试，导致 9/13 漏检 |
 | v3.2 | Stage 2.4g | **扩展负向审计要求** (§9.3.1) — 来自 Round 3 教训：Round 2 的 19 个负向测试仍漏检 7 个 soundness hole；要求 ≥30 case + 复杂程序集成测试 |
+| v3.3 | Stage 2.4h | **上轮修复边界 case 测试** (§9.3.2) — 来自 Round 4 教训：Round 3 修复后边界 case (FloatVar vs IntVar、resolve 时机) 仍有 2 个 P0；要求每轮 ≥5 个边界 case 测试 |
 
 ---
 

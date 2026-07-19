@@ -37,7 +37,7 @@ actually check anything on real programs.
 
 ### Type Check (7 P0)
 
-7. **`unify_resolved` missing 6 type kinds** — Adt, FnDef, FnPtr, Closure,
+1. **`unify_resolved` missing 6 type kinds** — Adt, FnDef, FnPtr, Closure,
    Param, RawPtr all fall to mismatch error
 2. **`bind_int_var_to_uint` hardcodes `i32`** — uint types silently corrupted
 3. **Union-find doesn't propagate** — TyVar×TyVar merge is shallow
@@ -48,7 +48,7 @@ actually check anything on real programs.
 
 ### Borrow Check (4 P0)
 
-14. **Single-pass, no dataflow** — unsound on loops
+1. **Single-pass, no dataflow** — unsound on loops
 2. **`place_path` collapses projections** — `a.x` == `a.y` (false positives)
 3. **Borrows never expire** — "NLL" is actually lexical scope
 4. **`Operand::Copy` doesn't check Copy-ness** — non-Copy types silently copied
