@@ -44,6 +44,9 @@ pub trait Emitter {
     /// Emit module header (target triple, datalayout).
     fn emit_header(&mut self);
 
+    /// Emit an external function declaration.
+    fn emit_declare(&mut self, signature: &str);
+
     /// Begin a new function definition.
     fn begin_function(&mut self, name: &str, params: &[(EmitType, &str)], ret: EmitType);
 

@@ -18,8 +18,11 @@ use lasso::Rodeo;
 /// Generate LLVM IR text for a crate.
 pub fn codegen_crate(hir: &HirCrate, interner: &Rodeo) -> String {
     let mut emitter = TextEmitter::new();
-    // Emit LLVM module header
     emitter.emit_header();
+    // Emit external function declarations (per design doc §4.5, §10.2)
+    emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
+    emitter.emit_declare("void @__landin_panic_bounds_check(i64 %index, i64 %len)");
+    emitter.emit_declare("void @__landin_panic_div_by_zero()");
     codegen_crate_with_emitter(hir, interner, &mut emitter);
     emitter.output().to_string()
 }
@@ -583,16 +586,52 @@ fn codegen_terminator(
             }
         }
 
-        Terminator::Assert { cond, target, .. } => {
-            // Assert: check condition, branch to target or panic.
-            // Per design doc §4.3: in debug mode, emit actual check.
-            // For now, just branch to target (simplified — no real panic).
+        Terminator::Assert {
+            cond, target, msg, ..
+        } => {
+            // Per design doc §4.3 + §4.5:
+            // Assert checks condition; on failure, calls panic and unreachable.
+            // cond is always `true` (placeholder from MIR lower).
+            // For real overflow checks, we'd use llvm.sadd.with.overflow etc.
+            // For Stage 3.16: emit the check pattern but skip actual panic.
             let cond_val = codegen_operand(emitter, mir, cond);
-            emitter.emit_cond_branch(
-                &cond_val,
-                &format!("bb{}", target.0),
-                &format!("bb{}", target.0),
-            );
+            // Generate panic block label
+            let panic_label = format!("panic_assert_{}", target.0);
+            // br i1 cond, label %target, label %panic
+            emitter.emit_cond_branch(&cond_val, &format!("bb{}", target.0), &panic_label);
+            // Panic block
+            emitter.begin_block(&panic_label);
+            match msg {
+                crate::mir::body::AssertMessage::Overflow(op) => {
+                    // call void @__landin_panic_overflow(i32 op_code, i32 0, i32 0)
+                    let op_code: i32 = match op {
+                        BinOp::Add => 0,
+                        BinOp::Sub => 1,
+                        BinOp::Mul => 2,
+                        BinOp::Div => 3,
+                        BinOp::Rem => 4,
+                        BinOp::Shl => 5,
+                        BinOp::Shr => 6,
+                        _ => 99,
+                    };
+                    let _ = emitter.emit_call(
+                        "__landin_panic_overflow",
+                        &[op_code.to_string(), "0".to_string(), "0".to_string()],
+                        EmitType::Void,
+                    );
+                }
+                crate::mir::body::AssertMessage::DivisionByZero => {
+                    let _ = emitter.emit_call("__landin_panic_div_by_zero", &[], EmitType::Void);
+                }
+                crate::mir::body::AssertMessage::BoundsCheck => {
+                    let _ = emitter.emit_call(
+                        "__landin_panic_bounds_check",
+                        &["0".to_string(), "0".to_string()],
+                        EmitType::Void,
+                    );
+                }
+            }
+            emitter.emit_unreachable();
         }
 
         Terminator::Drop { place, target, .. } => {

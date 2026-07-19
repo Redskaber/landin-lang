@@ -42,11 +42,15 @@ impl TextEmitter {
 
 impl Emitter for TextEmitter {
     fn emit_header(&mut self) {
-        self.line("; Landin compiler v0.7.7 — LLVM IR output");
-        self.line("; Stage 3.12 codegen");
+        self.line("; Landin compiler v0.8.1 — LLVM IR output");
+        self.line("; Stage 3.16 codegen");
         self.line("target triple = \"x86_64-unknown-linux-gnu\"");
         self.line("target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"");
         self.line("");
+    }
+
+    fn emit_declare(&mut self, signature: &str) {
+        self.line(&format!("declare {}", signature));
     }
 
     fn begin_function(&mut self, name: &str, params: &[(EmitType, &str)], ret: EmitType) {
