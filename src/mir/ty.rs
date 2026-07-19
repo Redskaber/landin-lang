@@ -117,7 +117,10 @@ pub struct Const {
 pub enum ConstVal {
     Int(u128),
     Uint(u128),
+    Float(f64),
     Bool(bool),
+    Char(char),
+    Str(crate::lexer::Symbol),
     /// Unevaluated (needs const evaluation, Stage 3+)
     Unevaluated,
 }

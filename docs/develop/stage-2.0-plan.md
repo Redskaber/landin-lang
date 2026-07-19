@@ -15,6 +15,7 @@ Stage 2.0 is too large for a single pass. Per the "小步快跑" principle,
 it is split into 3 sub-stages:
 
 ### Stage 2.1 — MIR Data Structures + HIR→MIR Lowering
+
 - Define MIR node types (BasicBlock, Statement, Terminator, Operand, Rvalue, Lvalue)
 - Implement HIR→MIR lowering (control flow graph construction)
 - MIR type representation (Ty with inference variables)
@@ -23,6 +24,7 @@ it is split into 3 sub-stages:
 - **Rounds**: 4~9
 
 ### Stage 2.2 — Type Inference + Trait Resolution
+
 - Type inference engine (unification, Hindley-Milner + constraints)
 - Trait resolution (method dispatch, associated types, where clause obligations)
 - Generic monomorphization
@@ -32,6 +34,7 @@ it is split into 3 sub-stages:
 - **Rounds**: 8~15
 
 ### Stage 2.3 — NLL Borrow Check
+
 - Borrow checker on MIR (non-lexical lifetimes)
 - Move tracking (use-after-move detection)
 - Lifetime inference (region inference)
@@ -119,6 +122,7 @@ pub enum Operand { Copy(Lvalue), Move(Lvalue), Constant(Const), }
 #### B1. `lower_hir_to_mir` — entry point
 
 Walk each HIR body and construct a MIR body:
+
 1. Assign LocalIds to fn params + local variables
 2. Build control flow graph (basic blocks + terminators)
 3. Lower expressions to Rvalues/Operands
@@ -137,6 +141,7 @@ Walk each HIR body and construct a MIR body:
 #### B3. Pattern → SwitchInt lowering
 
 Match expressions are lowered to `SwitchInt` terminators:
+
 - Literal patterns → constant targets
 - Wildcard → `otherwise` target
 - Struct/tuple patterns → temporary + field projections
