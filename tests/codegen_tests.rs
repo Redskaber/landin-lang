@@ -178,3 +178,52 @@ fn codegen_function_call() {
     let ll = gen_ll("fn g(a: i32) -> i32 { a } fn f() -> i32 { g(42) }");
     assert!(ll.contains("call"), "expected call in:\n{}", ll);
 }
+
+// Stage 3.5: parameter passing
+
+#[test]
+fn codegen_function_with_params() {
+    let ll = gen_ll("fn add(a: i32, b: i32) -> i32 { a + b }");
+    assert!(
+        ll.contains("define i32 @fn_0(i32 %arg0, i32 %arg1)"),
+        "expected params in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_params_stored_to_allocas() {
+    let ll = gen_ll("fn f(x: i32) -> i32 { x }");
+    assert!(
+        ll.contains("store i32 %arg0, %loc_1"),
+        "expected param store in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_call_with_args() {
+    let ll = gen_ll("fn g(a: i32) -> i32 { a } fn f() -> i32 { g(42) }");
+    assert!(
+        ll.contains("call i32 @fn_0(i32 42)"),
+        "expected call with arg in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_call_with_multiple_args() {
+    let ll = gen_ll("fn add(a: i32, b: i32) -> i32 { a + b } fn f() -> i32 { add(3, 4) }");
+    assert!(
+        ll.contains("call i32 @fn_0(i32 3, i32 4)"),
+        "expected call with 2 args in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_recursive_fibonacci() {
+    let ll = gen_ll("fn fib(n: i64) -> i64 { if n < 2 { return n; } fib(n - 1) + fib(n - 2) }");
+    assert!(ll.contains("call"), "expected call in fibonacci:\n{}", ll);
+    assert!(ll.contains("br i1"), "expected br in fibonacci:\n{}", ll);
+}

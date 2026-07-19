@@ -35,12 +35,13 @@ pub fn codegen_crate_with_emitter(hir: &HirCrate, interner: &Rodeo, emitter: &mu
     for (idx, (_, body)) in hir.bodies.iter().enumerate() {
         let fn_name = format!("fn_{}", idx);
         let return_ty = crate::driver::owner_return_ty_for_body(hir, body);
+        let param_count = body.params.len();
         let (mut mir, unify) =
             crate::mir::lower::lower_hir_body_to_mir_full(body, interner, return_ty);
         let mut tc = crate::typeck::TypeChecker::with_unify(unify);
         tc.populate_fn_sigs(hir);
         tc.check_mir_body(&mut mir);
-        codegen_function(emitter, &fn_name, &mir, &fn_names, hir);
+        codegen_function(emitter, &fn_name, &mir, &fn_names, param_count);
     }
 }
 
@@ -50,7 +51,7 @@ fn codegen_function(
     name: &str,
     mir: &MirBody,
     fn_names: &[String],
-    hir: &HirCrate,
+    param_count: usize,
 ) {
     // Determine return type
     let ret_ty = if mir.local_decls.is_empty() {
@@ -59,42 +60,37 @@ fn codegen_function(
         emitter::mir_type_to_emit_type(&mir.local_decls[0].ty)
     };
 
-    // Determine params: locals 1..N where N = number of fn params.
-    // We detect params by checking which locals have StorageLive at entry
-    // AND are not the return local (LocalId(0)).
-    let params: Vec<(EmitType, String)> = Vec::new();
-    for (i, _ld) in mir.local_decls.iter().enumerate().skip(1) {
-        // Heuristic: if the local decl has a name or is early, treat as param.
-        // A proper impl would track which locals are params from MIR lower.
-        // For now, we check if StorageLive appears at entry for this local.
-        let is_param = mir
-            .basic_blocks
-            .first()
-            .map(|bb| {
-                bb.statements.iter().any(|s| {
-                matches!(&s.kind, StatementKind::StorageLive(LocalId(n)) if *n as usize == i)
-            })
-            })
-            .unwrap_or(false);
-        if is_param && i <= 10 {
-            // Only treat first few as params (avoid treating all StorageLive as params)
-            // This is a simplification — proper param detection needs MIR lower changes.
-        }
-        // For Stage 3.2: skip param detection, use no params.
-        // Params will be properly handled when we wire the fn sig.
-        let _ = is_param;
-    }
+    // Build param list: LocalId(1)..LocalId(param_count) are fn params.
+    let params: Vec<(EmitType, String)> = (0..param_count)
+        .map(|i| {
+            let local_idx = i + 1;
+            let ty = mir
+                .local_decls
+                .get(local_idx)
+                .map(|ld| emitter::mir_type_to_emit_type(&ld.ty))
+                .unwrap_or(EmitType::I32);
+            (ty, format!("%arg{}", i))
+        })
+        .collect();
 
     let param_refs: Vec<(EmitType, &str)> = params.iter().map(|(t, n)| (*t, n.as_str())).collect();
 
     emitter.begin_function(name, &param_refs, ret_ty);
 
-    // Emit allocas for all locals at function entry (Stage 3.2)
+    // Emit allocas for all locals at function entry
     for (i, ld) in mir.local_decls.iter().enumerate() {
         let ty = emitter::mir_type_to_emit_type(&ld.ty);
         let ptr_name = format!("%loc_{}", i);
         let ptr = emitter.emit_alloca(ty, &ptr_name);
         emitter.set_local_ptr(i as u32, ptr);
+    }
+
+    // Store params into their alloca slots
+    for (i, (ty, arg_name)) in params.iter().enumerate() {
+        let local_idx = (i + 1) as u32;
+        if let Some(ptr) = emitter.get_local_ptr(local_idx).cloned() {
+            emitter.emit_store(*ty, arg_name, &ptr);
+        }
     }
 
     // Walk basic blocks
@@ -105,7 +101,7 @@ fn codegen_function(
         for stmt in &bb.statements {
             codegen_statement(emitter, mir, stmt);
         }
-        codegen_terminator(emitter, mir, &bb.terminator, ret_ty, fn_names, hir);
+        codegen_terminator(emitter, mir, &bb.terminator, ret_ty, fn_names);
     }
 
     emitter.end_function();
@@ -275,7 +271,6 @@ fn codegen_terminator(
     term: &Terminator,
     ret_ty: EmitType,
     fn_names: &[String],
-    _hir: &HirCrate,
 ) {
     match term {
         Terminator::Return => {
