@@ -104,11 +104,14 @@ fn codegen_function(
     emitter.begin_function(name, &param_refs, ret_ty);
 
     // Emit allocas for all locals at function entry
+    // Per design doc §4.1: each MIR Local maps to an LLVM alloca with proper type
     for (i, ld) in mir.local_decls.iter().enumerate() {
         let ty = emitter::mir_type_to_emit_type(&ld.ty);
         let ptr_name = format!("%loc_{}", i);
         let ptr = emitter.emit_alloca(ty, &ptr_name);
         emitter.set_local_ptr(i as u32, ptr);
+        // Also set the local's value to the pointer for ref types
+        // (so &local returns the alloca pointer directly)
     }
 
     // Store params into their alloca slots
@@ -502,6 +505,8 @@ fn codegen_terminator(
                 );
             } else {
                 // Integer switch: emit LLVM switch instruction
+                // Detect discr type (i32 vs i64) from operand
+                let discr_ty = detect_operand_type(mir, discr).unwrap_or(EmitType::I32);
                 let cases: Vec<(i128, String)> = targets
                     .iter()
                     .filter_map(|(val, bb)| match val {
@@ -510,7 +515,12 @@ fn codegen_terminator(
                         _ => None,
                     })
                     .collect();
-                emitter.emit_switch(&discr_val, &cases, &format!("bb{}", otherwise.0));
+                emitter.emit_switch_typed(
+                    &discr_val,
+                    discr_ty,
+                    &cases,
+                    &format!("bb{}", otherwise.0),
+                );
             }
         }
 
@@ -565,7 +575,16 @@ fn codegen_terminator(
                 .collect();
 
             let ret_val = if let Some(ref name) = fn_name {
-                emitter.emit_call(name, &arg_vals, EmitType::I32)
+                // Detect return type from destination local's type
+                let call_ret_ty = if let LvalueKind::Local(id) = &destination.kind {
+                    mir.local_decls
+                        .get(id.0 as usize)
+                        .map(|ld| emitter::mir_type_to_emit_type(&ld.ty))
+                        .unwrap_or(EmitType::I32)
+                } else {
+                    EmitType::I32
+                };
+                emitter.emit_call(name, &arg_vals, call_ret_ty)
             } else {
                 // Unresolved call — emit a placeholder
                 "0".to_string()
@@ -573,10 +592,14 @@ fn codegen_terminator(
 
             // Store result to destination
             if let LvalueKind::Local(id) = &destination.kind {
-                let ty = EmitType::I32;
+                let dest_ty = mir
+                    .local_decls
+                    .get(id.0 as usize)
+                    .map(|ld| emitter::mir_type_to_emit_type(&ld.ty))
+                    .unwrap_or(EmitType::I32);
                 emitter.set_local(id.0, ret_val.clone());
                 if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
-                    emitter.emit_store(ty, &ret_val, &ptr);
+                    emitter.emit_store(dest_ty, &ret_val, &ptr);
                 }
             }
 

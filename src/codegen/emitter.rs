@@ -124,6 +124,15 @@ pub trait Emitter {
     /// Each case is (value, label). The default label is used for `_`.
     fn emit_switch(&mut self, discr: &EmitValue, cases: &[(i128, String)], default_label: &str);
 
+    /// Emit a typed switch instruction (i32 or i64 based on discr_ty).
+    fn emit_switch_typed(
+        &mut self,
+        discr: &EmitValue,
+        discr_ty: EmitType,
+        cases: &[(i128, String)],
+        default_label: &str,
+    );
+
     /// Emit a type cast (trunc/sext/zext/sitofp/fptosi).
     fn emit_cast(&mut self, src: EmitType, dst: EmitType, val: &EmitValue) -> EmitValue;
 

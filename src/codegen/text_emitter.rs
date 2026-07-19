@@ -257,6 +257,24 @@ impl Emitter for TextEmitter {
         self.line("  ]");
     }
 
+    fn emit_switch_typed(
+        &mut self,
+        discr: &EmitValue,
+        discr_ty: EmitType,
+        cases: &[(i128, String)],
+        default_label: &str,
+    ) {
+        let ty_str = emit_type_to_llvm_str(discr_ty);
+        self.line(&format!(
+            "  switch {} {}, label %{} [",
+            ty_str, discr, default_label
+        ));
+        for (val, label) in cases {
+            self.line(&format!("    {} {}, label %{}", ty_str, val, label));
+        }
+        self.line("  ]");
+    }
+
     fn emit_cast(&mut self, src: EmitType, dst: EmitType, val: &EmitValue) -> EmitValue {
         let r = self.fresh();
         let src_str = emit_type_to_llvm_str(src);
