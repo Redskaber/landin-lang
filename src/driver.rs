@@ -262,6 +262,12 @@ pub fn compile(src: &str) -> CompileResult {
     // === Stage 1: Name resolution ===
     errors.resolve = resolve_crate(&mut hir, &mut interner);
 
+    // === Stage 1.5: G4 fix — scan HIR for unresolved paths ===
+    // After name resolution, any Path with Res::Unknown or Res::Err
+    // indicates an undefined name (e.g., `undefined_fn()`). Emit a
+    // resolve error for each.
+    scan_for_unresolved_paths(&hir, &mut errors);
+
     // === Stage 2: MIR lowering + typeck + borrowck (per body) ===
     let mut mirs = Vec::with_capacity(hir.bodies.len());
     let mut typeck_results = Vec::with_capacity(hir.bodies.len());
@@ -284,6 +290,9 @@ pub fn compile(src: &str) -> CompileResult {
 
         // Type check (writes resolved types back into local_decls)
         let mut tc = typeck::TypeChecker::with_unify(lower_unify);
+        // G3 fix: populate fn_sigs so Call type checking can verify
+        // arg count and types against the declared fn signature.
+        tc.populate_fn_sigs(&hir);
         tc.check_mir_body(&mut mir);
         let (type_errors, body_results) = tc.into_results();
         errors.typeck.extend(type_errors);
@@ -323,6 +332,196 @@ fn owner_return_ty(owner: &OwnerNode) -> Option<crate::hir::HirTy> {
         OwnerNode::Item(HirItem::Static(s)) => Some(s.ty.clone()),
         // Impl/trait items and foreign items: Stage 3.
         _ => None,
+    }
+}
+
+/// G4 fix: Scan HIR for unresolved paths after name resolution.
+///
+/// Any `HirPath` with `Res::Unknown` or `Res::Err` indicates an undefined
+/// name (e.g., calling `undefined_fn()` or referring to an undefined
+/// variable). Emit a resolve error for each.
+///
+/// Without this scan, undefined names silently fall through to
+/// `Ty::Error` in MIR lower, which typeck treats as "always succeeds"
+/// (intentional error recovery). The result: typos in function names
+/// go undetected.
+fn scan_for_unresolved_paths(hir: &HirCrate, errors: &mut CompileErrors) {
+    for (_, body) in &hir.bodies {
+        scan_expr_for_unresolved(&body.value, errors);
+        for param in &body.params {
+            if let Some(ty) = &param.ty {
+                scan_ty_for_unresolved(ty, errors);
+            }
+            scan_pat_for_unresolved(&param.pat, errors);
+        }
+    }
+}
+
+fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErrors) {
+    use crate::hir::{HirExprKind, Res};
+    match &expr.kind {
+        HirExprKind::Path(p) => {
+            if matches!(p.res, Res::Unknown | Res::Err) {
+                errors.resolve.push(crate::resolve::ResolveError::new(
+                    "cannot find value in this scope".to_string(),
+                    p.span,
+                ));
+            }
+        }
+        HirExprKind::Block(b) => {
+            for stmt in &b.stmts {
+                use crate::hir::HirStmt;
+                match stmt {
+                    HirStmt::Local(local) => {
+                        if let Some(init) = &local.init {
+                            scan_expr_for_unresolved(init, errors);
+                        }
+                        if let Some(ty) = &local.ty {
+                            scan_ty_for_unresolved(ty, errors);
+                        }
+                    }
+                    HirStmt::Expr(e, _) => scan_expr_for_unresolved(e, errors),
+                    _ => {}
+                }
+            }
+            if let Some(e) = &b.expr {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
+        HirExprKind::Binary { lhs, rhs, .. } => {
+            scan_expr_for_unresolved(lhs, errors);
+            scan_expr_for_unresolved(rhs, errors);
+        }
+        HirExprKind::Unary { expr: inner, .. } => {
+            scan_expr_for_unresolved(inner, errors);
+        }
+        HirExprKind::Call { func, args, .. } => {
+            scan_expr_for_unresolved(func, errors);
+            for a in args {
+                scan_expr_for_unresolved(a, errors);
+            }
+        }
+        HirExprKind::MethodCall { receiver, args, .. } => {
+            scan_expr_for_unresolved(receiver, errors);
+            for a in args {
+                scan_expr_for_unresolved(a, errors);
+            }
+        }
+        HirExprKind::Field { receiver, .. } => {
+            scan_expr_for_unresolved(receiver, errors);
+        }
+        HirExprKind::Index {
+            receiver, index, ..
+        } => {
+            scan_expr_for_unresolved(receiver, errors);
+            scan_expr_for_unresolved(index, errors);
+        }
+        HirExprKind::If {
+            cond, then, else_, ..
+        } => {
+            scan_expr_for_unresolved(cond, errors);
+            for stmt in &then.stmts {
+                use crate::hir::HirStmt;
+                if let HirStmt::Expr(e, _) = stmt {
+                    scan_expr_for_unresolved(e, errors);
+                }
+            }
+            if let Some(e) = &then.expr {
+                scan_expr_for_unresolved(e, errors);
+            }
+            if let Some(e) = else_ {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
+        HirExprKind::Match {
+            expr: scrutinee,
+            arms,
+            ..
+        } => {
+            scan_expr_for_unresolved(scrutinee, errors);
+            for arm in arms {
+                scan_pat_for_unresolved(&arm.pat, errors);
+                scan_expr_for_unresolved(&arm.body, errors);
+            }
+        }
+        HirExprKind::Return { expr: Some(e), .. } => scan_expr_for_unresolved(e, errors),
+        HirExprKind::Assign { lhs, rhs, .. } => {
+            scan_expr_for_unresolved(lhs, errors);
+            scan_expr_for_unresolved(rhs, errors);
+        }
+        HirExprKind::Tuple { elems, .. } => {
+            for e in elems {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
+        HirExprKind::Array { elems, .. } => {
+            for e in elems {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
+        HirExprKind::Struct { fields, .. } => {
+            for f in fields {
+                if let Some(e) = &f.expr {
+                    scan_expr_for_unresolved(e, errors);
+                }
+            }
+        }
+        HirExprKind::Cast {
+            expr: inner, ty, ..
+        } => {
+            scan_expr_for_unresolved(inner, errors);
+            scan_ty_for_unresolved(ty, errors);
+        }
+        HirExprKind::AddrOf { expr: inner, .. } => {
+            scan_expr_for_unresolved(inner, errors);
+        }
+        HirExprKind::Loop { body, .. } | HirExprKind::While { body, .. } => {
+            for stmt in &body.stmts {
+                use crate::hir::HirStmt;
+                if let HirStmt::Expr(e, _) = stmt {
+                    scan_expr_for_unresolved(e, errors);
+                }
+            }
+            if let Some(e) = &body.expr {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
+        HirExprKind::Closure { body, .. } => scan_expr_for_unresolved(body, errors),
+        // Lit, Unit, Break, Continue, Try, Unsafe, MacroCall, Range, Repeat — no paths
+        _ => {}
+    }
+}
+
+fn scan_pat_for_unresolved(_pat: &crate::hir::HirPat, _errors: &mut CompileErrors) {
+    // G4 fix: temporarily disabled for patterns. Enum variant patterns
+    // (e.g., `Circle(r)` in `match s { Circle(r) => ... }`) are not yet
+    // resolved by the resolver (Stage 3 work), so they appear as
+    // Res::Unknown. Reporting them as errors would break all enum match
+    // tests. Stage 3 will add proper enum variant resolution and re-enable
+    // pattern scanning.
+}
+
+fn scan_ty_for_unresolved(ty: &crate::hir::HirTy, errors: &mut CompileErrors) {
+    use crate::hir::{HirTyKind, Res};
+    match &ty.kind {
+        HirTyKind::Path(_, p) => {
+            if matches!(p.res, Res::Unknown | Res::Err) {
+                errors.resolve.push(crate::resolve::ResolveError::new(
+                    "cannot find type in this scope".to_string(),
+                    ty.span,
+                ));
+            }
+        }
+        HirTyKind::Ref(_, _, inner)
+        | HirTyKind::Ptr(_, inner)
+        | HirTyKind::Slice(inner)
+        | HirTyKind::Array(inner, _) => scan_ty_for_unresolved(inner, errors),
+        HirTyKind::Tuple(tys) => {
+            for t in tys {
+                scan_ty_for_unresolved(t, errors);
+            }
+        }
+        _ => {}
     }
 }
 

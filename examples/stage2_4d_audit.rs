@@ -23,9 +23,9 @@ const PROGRAMS: &[(&str, &str)] = &[
         "iterative_fibonacci",
         r#"
         fn fib(n: i32) -> i32 {
-            let a = 0;
-            let b = 1;
-            let i = 0;
+            let mut a = 0;
+            let mut b = 1;
+            let mut i = 0;
             while i < n {
                 let t = a + b;
                 a = b;
@@ -127,10 +127,10 @@ const PROGRAMS: &[(&str, &str)] = &[
         "nested_loops",
         r#"
         fn matrix_sum(rows: i32, cols: i32) -> i32 {
-            let i = 0;
-            let sum = 0;
+            let mut i = 0;
+            let mut sum = 0;
             while i < rows {
-                let j = 0;
+                let mut j = 0;
                 while j < cols {
                     sum = sum + i * j;
                     j = j + 1;

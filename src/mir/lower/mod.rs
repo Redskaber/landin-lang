@@ -76,6 +76,22 @@ impl<'a> MirLowerCtxt<'a> {
         local_id
     }
 
+    /// Allocate a new local with explicit mutability and register it
+    /// in the local_map. G5 fix: used by `let mut x = ...` lowering.
+    pub fn new_local_with_mut(
+        &mut self,
+        hir_id: HirId,
+        ty: Ty,
+        name: Option<crate::lexer::Symbol>,
+        mutability: crate::mir::ty::Mutability,
+    ) -> LocalId {
+        let local_id = self
+            .mir
+            .new_local_with_mut(ty, name, Span::DUMMY, mutability);
+        self.local_map.insert(hir_id, local_id);
+        local_id
+    }
+
     /// Look up the MIR LocalId for a HirId.
     pub fn local_of(&self, hir_id: HirId) -> Option<LocalId> {
         self.local_map.get(&hir_id).copied()
@@ -368,7 +384,14 @@ pub fn lower_hir_body_to_mir_full(
         Some(t) => lower_hir_ty_to_mir_ty(t),
         None => cx.fresh_infer_ty(Span::DUMMY),
     };
-    let return_local = cx.mir.new_local(return_mir_ty, None, Span::DUMMY);
+    // G5 fix: return_local is assigned multiple times (once per Return
+    // terminator path + once at function end), so it must be Mutable.
+    let return_local = cx.mir.new_local_with_mut(
+        return_mir_ty,
+        None,
+        Span::DUMMY,
+        crate::mir::ty::Mutability::Mutable,
+    );
     debug_assert_eq!(return_local, LocalId(0));
     // StorageLive for the return local at function entry.
     cx.mir
@@ -385,7 +408,7 @@ pub fn lower_hir_body_to_mir_full(
             Some(t) => lower_hir_ty_to_mir_ty(t),
             None => cx.fresh_infer_ty(Span::DUMMY),
         };
-        let param_local = cx.new_local(param.hir_id, ty, None);
+        let param_local = cx.new_local(param.pat.hir_id, ty, None);
         // StorageLive for each parameter at function entry.
         cx.mir
             .block_mut(cx.current_block)
@@ -459,7 +482,7 @@ fn const_eval_array_len(expr: &HirExpr, span: Span) -> Const {
 }
 
 /// Lower a HIR type to a MIR type.
-fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
+pub fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
     let span = ty.span;
     match &ty.kind {
         HirTyKind::Bool => Ty::new(TyKind::Bool, span),
@@ -873,7 +896,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             // Register closure params as locals
             for param in params {
                 let ty = cx.fresh_infer_ty(param.pat.span);
-                cx.new_local(param.hir_id, ty, None);
+                cx.new_local(param.pat.hir_id, ty, None);
             }
             // Lower closure body
             lower_expr_to_operand(cx, body)
@@ -1115,7 +1138,12 @@ fn lower_short_circuit(
     let result_true_block = cx.new_block();
     let result_false_block = cx.new_block();
     let cont_block = cx.new_block();
-    let result_local = cx.mir.new_local(Ty::new(TyKind::Bool, span), None, span);
+    let result_local = cx.mir.new_local_with_mut(
+        Ty::new(TyKind::Bool, span),
+        None,
+        span,
+        crate::mir::ty::Mutability::Mutable,
+    );
 
     // bb_curr: switchInt(lhs) → {true: eval_rhs, _: short_circuit}
     // For `&&`: short-circuit value is `false` (if lhs is false, result is false).
@@ -1206,6 +1234,29 @@ fn lower_deref_expr(cx: &mut MirLowerCtxt, inner: &HirExpr, span: Span) -> Local
     cx.eval_rvalue_to_temp(Rvalue::Use(Operand::Copy(proj)), result_ty, span)
 }
 
+/// Extract the mutability from a pattern's BindingMode.
+///
+/// G5 fix (Stage 2.4e): For `let mut x = ...`, the pattern is
+/// `HirPatKind::Ident(ByValue(Mutable), ...)`. This helper extracts
+/// the `Mutable` and returns it as a MIR `Mutability`.
+///
+/// For non-Ident patterns (Wild, Tuple, Struct, etc.), returns Immutable
+/// (the default — these patterns don't directly bind a single local).
+fn pat_mutability(pat: &HirPat) -> crate::mir::ty::Mutability {
+    use crate::ast::BindingMode;
+    use crate::hir::HirPatKind;
+    use crate::mir::ty::Mutability;
+    match &pat.kind {
+        HirPatKind::Ident(
+            BindingMode::ByValue(ast::Mutability::Mutable)
+            | BindingMode::ByRef(ast::Mutability::Mutable),
+            _,
+            _,
+        ) => Mutability::Mutable,
+        _ => Mutability::Immutable,
+    }
+}
+
 /// Lower a HIR block to MIR. Processes statements in order and
 /// evaluates the trailing expression (if any). Returns the LocalId
 /// of the block's result value.
@@ -1225,7 +1276,21 @@ fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                         Some(t) => lower_hir_ty_to_mir_ty(t),
                         None => cx.fresh_infer_ty(local.span),
                     };
-                    let local_id = cx.new_local(local.hir_id, ty, None);
+                    // G1 fix (Stage 2.4e): use `local.pat.hir_id` (not
+                    // `local.hir_id`) as the local_map key. The resolver
+                    // inserts bindings into the scope keyed by `pat.hir_id`,
+                    // so Path expressions resolve to `pat.hir_id`. Using
+                    // `local.hir_id` would create a mismatch and cause all
+                    // let-bound variables to be unresolvable in Path
+                    // expressions.
+                    //
+                    // G5 fix (Stage 2.4e): extract mutability from the
+                    // pattern's BindingMode. `let mut x = ...` produces
+                    // `ByValue(Mutable)`. Without this, all locals are
+                    // immutable and the borrow checker can't catch
+                    // `let x = 1; x = 2;`.
+                    let mutability = pat_mutability(&local.pat);
+                    let local_id = cx.new_local_with_mut(local.pat.hir_id, ty, None, mutability);
                     // Emit StorageLive to mark the local as in-scope.
                     // Codegen uses this to allocate stack space.
                     cx.mir
@@ -1253,7 +1318,10 @@ fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                         Some(t) => lower_hir_ty_to_mir_ty(t),
                         None => cx.fresh_infer_ty(local.span),
                     };
-                    let local_id = cx.new_local(local.hir_id, ty, None);
+                    // G1 fix: use pat.hir_id (see comment above).
+                    // G5 fix: extract mutability.
+                    let mutability = pat_mutability(&local.pat);
+                    let local_id = cx.new_local_with_mut(local.pat.hir_id, ty, None, mutability);
                     // Emit StorageLive even for uninit locals (codegen
                     // still needs to allocate stack space).
                     cx.mir
@@ -1304,7 +1372,9 @@ fn lower_if(
     let else_block = cx.new_block();
     let cont_block = cx.new_block();
     let result_ty = cx.fresh_infer_ty(span);
-    let result_local = cx.mir.new_local(result_ty, None, span);
+    let result_local =
+        cx.mir
+            .new_local_with_mut(result_ty, None, span, crate::mir::ty::Mutability::Mutable);
 
     // Terminate current block: switchInt(cond) { 1 => then, _ => else }
     cx.terminate(Terminator::SwitchInt {
@@ -1357,7 +1427,9 @@ fn lower_match(cx: &mut MirLowerCtxt, scrutinee: &HirExpr, arms: &[HirArm], span
     let scrut_local = lower_expr_to_operand(cx, scrutinee);
     let cont_block = cx.new_block();
     let result_ty = cx.fresh_infer_ty(span);
-    let result_local = cx.mir.new_local(result_ty, None, span);
+    let result_local =
+        cx.mir
+            .new_local_with_mut(result_ty, None, span, crate::mir::ty::Mutability::Mutable);
 
     // Collect targets: (constant, arm_block) pairs
     let mut targets: Vec<(ConstVal, BasicBlockId)> = Vec::new();

@@ -41,11 +41,26 @@ impl MirBody {
 
     /// Allocate a new local variable and return its ID.
     pub fn new_local(&mut self, ty: Ty, name: Option<crate::lexer::Symbol>, span: Span) -> LocalId {
+        self.new_local_with_mut(ty, name, span, Mutability::Immutable)
+    }
+
+    /// Allocate a new local variable with explicit mutability.
+    ///
+    /// G5 fix (Stage 2.4e): Used by `let mut x = ...` lowering to mark
+    /// the local as mutable. The borrow checker checks this field in
+    /// `check_place_write` to reject writes to immutable locals.
+    pub fn new_local_with_mut(
+        &mut self,
+        ty: Ty,
+        name: Option<crate::lexer::Symbol>,
+        span: Span,
+        mutability: Mutability,
+    ) -> LocalId {
         let id = LocalId(self.local_decls.len() as u32);
         self.local_decls.push(LocalDecl {
             ty,
             name,
-            mutability: Mutability::Immutable,
+            mutability,
             source_info: span,
         });
         id

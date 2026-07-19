@@ -25,6 +25,12 @@ pub enum BorrowErrorKind {
     /// Using `Operand::Copy` on a type that does not implement Copy.
     /// The MIR lower should have used `Operand::Move` instead.
     NotCopy,
+    /// G5 fix (Stage 2.4e): Assigning to an immutable variable after
+    /// its initial binding. `let x = 1; x = 2;` triggers this.
+    AssignImmutable,
+    /// G7 fix (Stage 2.4f): Borrowing an immutable variable as mutable.
+    /// `let x = 1; let r = &mut x;` triggers this.
+    BorrowImmutable,
 }
 
 impl BorrowError {

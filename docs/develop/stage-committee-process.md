@@ -221,13 +221,35 @@
      → 经过 Parse → AST → HIR → Resolve → MIR → TypeCheck，断言
      所有 `TyKind` 不为 `Error`，所有 `Res` 不为 `Unknown`。
 
-2. **负向集成测试**（≥1 个）：使用包含已知错误的源码，运行完整流水线，
-   断言正确的错误被检测到。
+2. **负向集成测试**（≥3 个，**v3.1 强制要求**）：使用包含已知错误的
+   源码，运行完整流水线，断言正确的错误被检测到。
    - 示例：`fn f() { let x: bool = 42; }` → TypeCheck 应报 type mismatch。
+   - **每类错误至少 1 个负向测试**：类型不匹配、借用冲突、move-after-borrow、
+     未定义名称、参数个数错误、不可变重赋值等。
+   - **历史教训**（来自 Stage 2.x Round 2 审查）：现有 625 测试 100%
+     偏向正向 case，导致 9/13 负向用例漏检。**负向测试不是可选项**。
 
 3. **跨阶段消费测试**（≥1 个）：验证当前子阶段的输出可被下一阶段正确消费。
    - 示例：MIR lowering 的输出（`MirBody`）被 TypeChecker 消费后，
      `local_decls[i].ty` 中的 `Infer` 变量应被解析为具体类型。
+
+### 9.1.1 负向测试最小覆盖矩阵（v3.1 新增）
+
+对于编译器项目，以下错误类别每个都至少要有 1 个负向集成测试：
+
+| 类别 | 示例 | 必须检测的错误 |
+| ------ | ------ | ---------------- |
+| 类型不匹配 | `let x: bool = 42;` | typeck: mismatched types |
+| 借用冲突 | `let r1 = &mut x; let r2 = &mut x;` | borrowck: borrow conflict |
+| Use-after-move | `let t = s; let u = s;` (Str) | borrowck: use of moved value |
+| 未定义名称 | `undefined_fn();` | resolve: cannot find value |
+| 参数个数错误 | `add(1)` where `fn add(a, b)` | typeck: wrong arg count |
+| 不可变重赋值 | `let x = 1; x = 2;` | borrowck: assign to immutable |
+| 返回类型错误 | `fn f() -> bool { 42 }` | typeck: return type mismatch |
+| 死代码/不可达 | (可选) | (可选) warning |
+
+**审查规则**：在委员会投票前，QA 角色必须验证以上 7 类至少有 6 类被
+负向测试覆盖。否则触发 NEEDS REVISION。
 
 ### 9.2 "孤立正确"防剧行动项
 
@@ -263,6 +285,7 @@
 | v1.0 | Stage 1.1 | 初始流程：5 角色 + 投票规则 + 4-7 轮 |
 | v2.0 | Stage 2.0 | 动态自适应轮次 + 缺陷分级 + 加权投票 + 紧急通道 |
 | v3.0 | Stage 2.4 | **集成验证协议** + P3 误分类审查 + 阶段门审查 + "孤立正确"防崩 |
+| v3.1 | Stage 2.4f | **负向测试最小覆盖矩阵** (§9.1.1) — 来自 Round 2 教训：625 个正向测试 0 个负向测试，导致 9/13 漏检 |
 
 ---
 

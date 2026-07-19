@@ -158,6 +158,29 @@ impl BorrowSet {
         self.borrows.retain(|b| b.ref_local != Some(local));
     }
 
+    /// Transfer all borrows whose `ref_local` is `from` to `to`.
+    ///
+    /// G2+ fix (Stage 2.4e): When MIR lower produces:
+    ///   tmp = &x        (ref_local = tmp)
+    ///   r = Move(tmp)   (transfer ref_local to r)
+    /// we need to update the borrow's ref_local from `tmp` to `r`,
+    /// so NLL tracks `r`'s lifetime (not `tmp`'s).
+    ///
+    /// Without this transfer, NLL would kill the borrow after `tmp`'s
+    /// last use (which is the Move), causing subsequent borrows on `x`
+    /// to incorrectly succeed.
+    pub fn transfer_borrow_ref(
+        &mut self,
+        from: crate::mir::lvalue::LocalId,
+        to: crate::mir::lvalue::LocalId,
+    ) {
+        for b in self.borrows.iter_mut() {
+            if b.ref_local == Some(from) {
+                b.ref_local = Some(to);
+            }
+        }
+    }
+
     /// Remove all borrows whose place *exactly matches* `place` (no
     /// overlap semantics — only the exact path). Called when a borrow
     /// expires (NLL last-use, Stage 2.4c-d).

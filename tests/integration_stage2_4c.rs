@@ -32,9 +32,9 @@ fn integration_recursive_fibonacci() {
 fn integration_iterative_fibonacci() {
     let src = r#"
         fn fib(n: i32) -> i32 {
-            let a = 0;
-            let b = 1;
-            let i = 0;
+            let mut a = 0;
+            let mut b = 1;
+            let mut i = 0;
             while i < n {
                 let t = a + b;
                 a = b;
@@ -101,7 +101,7 @@ fn integration_simple_closure() {
 fn integration_while_loop() {
     let src = r#"
         fn count(limit: i32) -> i32 {
-            let n = 0;
+            let mut n = 0;
             while n < limit {
                 n = n + 1;
             }
@@ -122,7 +122,7 @@ fn integration_loop_break() {
     // treats `while` as an expression).
     let src = r#"
         fn find_first(limit: i32) -> i32 {
-            let i = 0;
+            let mut i = 0;
             while i < limit {
                 if i == 42 {
                     return i;

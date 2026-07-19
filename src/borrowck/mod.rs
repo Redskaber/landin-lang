@@ -15,7 +15,7 @@ pub mod error;
 pub mod move_tracker;
 
 pub use borrow_set::{Borrow, BorrowKind as BkKind, BorrowSet};
-pub use error::BorrowError;
+pub use error::{BorrowError, BorrowErrorKind};
 pub use move_tracker::MoveTracker;
 
 use crate::mir::body::*;
@@ -32,6 +32,11 @@ pub struct BorrowChecker {
     moves: MoveTracker,
     /// Errors found during checking (non-fatal).
     errors: Vec<BorrowError>,
+    /// G5 fix (Stage 2.4e): Set of locals that have been initialized
+    /// (assigned at least once). Used to distinguish `let x = 1;` (init,
+    /// allowed even for immutable locals) from `x = 2;` (reassignment,
+    /// rejected for immutable locals).
+    initialized: std::collections::HashSet<crate::mir::lvalue::LocalId>,
 }
 
 impl BorrowChecker {
@@ -40,6 +45,7 @@ impl BorrowChecker {
             borrows: BorrowSet::new(),
             moves: MoveTracker::new(),
             errors: Vec::new(),
+            initialized: std::collections::HashSet::new(),
         }
     }
 
@@ -72,19 +78,39 @@ impl BorrowChecker {
     /// This is a known limitation; full fixpoint dataflow is Stage 3.
     pub fn check_mir_body(&mut self, mir: &MirBody) {
         // Pre-pass: compute last-use map for each local.
+        // G2 fix (Stage 2.4e): The last-use map records the program point
+        // where each local is *read*. The borrow should be killed *after*
+        // that statement completes — i.e., at the start of the *next*
+        // statement. This ensures that within the statement that performs
+        // the last read, the borrow is still alive, so any write to the
+        // borrowed place within that same statement is correctly flagged.
+        //
+        // Concretely: if local `r`'s last use is at (bb, stmt_idx), we kill
+        // the borrow at the start of processing (bb, stmt_idx + 1) — BEFORE
+        // check_statement runs for that next statement.
         let last_use_map = compute_last_use_map(mir);
 
         // Main walk: forward over all basic blocks.
         for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
             let bb_id = BasicBlockId(bb_idx as u32);
-            for (stmt_idx, stmt) in bb.statements.iter().enumerate() {
-                self.check_statement(mir, stmt, bb_id, stmt_idx);
-                // NLL: kill borrows whose ref_local's last use is at
-                // this exact program point.
-                self.kill_expired_borrows(&last_use_map, bb_id, stmt_idx);
+            let stmt_count = bb.statements.len();
+            for stmt_idx in 0..stmt_count {
+                // Kill borrows whose ref_local's last use was at the
+                // PREVIOUS statement (stmt_idx - 1). This ensures the
+                // borrow stays alive during the statement that performs
+                // the last read.
+                if stmt_idx > 0 {
+                    self.kill_expired_borrows(&last_use_map, bb_id, stmt_idx - 1);
+                }
+                self.check_statement(mir, &bb.statements[stmt_idx], bb_id, stmt_idx);
+            }
+            // After the last statement, kill borrows whose last use was
+            // at the last statement.
+            if stmt_count > 0 {
+                self.kill_expired_borrows(&last_use_map, bb_id, stmt_count - 1);
             }
             // Check terminator (uses are at index == statements.len())
-            let term_idx = bb.statements.len();
+            let term_idx = stmt_count;
             self.check_terminator(mir, &bb.terminator, bb_id, term_idx);
             self.kill_expired_borrows(&last_use_map, bb_id, term_idx);
         }
@@ -182,6 +208,21 @@ impl BorrowChecker {
                     crate::mir::lvalue::BorrowKind::Mut => BkKind::Mut,
                     crate::mir::lvalue::BorrowKind::Raw => BkKind::Raw,
                 };
+                // G7 fix (Stage 2.4f): `&mut x` requires x to be mutable.
+                // If x is an immutable local, emit an error.
+                if bk == BkKind::Mut {
+                    if let LvalueKind::Local(id) = &place.kind {
+                        let is_mutable =
+                            mir.local(*id).mutability == crate::mir::ty::Mutability::Mutable;
+                        if !is_mutable {
+                            self.errors.push(BorrowError::new(
+                                "cannot borrow as mutable: variable is not declared `mut`",
+                                span,
+                                BorrowErrorKind::BorrowImmutable,
+                            ));
+                        }
+                    }
+                }
                 // Check if the place is already moved
                 if self.moves.is_moved(&borrowed_place) {
                     self.errors.push(BorrowError::use_after_move(
@@ -200,6 +241,21 @@ impl BorrowChecker {
                 let _ = region;
             }
             Rvalue::Use(op) | Rvalue::Cast(_, op, _) => {
+                // G2+ fix (Stage 2.4e): If the operand is a Move of a
+                // ref_temp (i.e., a local that holds a borrow), transfer
+                // the borrow's ref_local to the LHS. This handles the
+                // common pattern `let r = &x;` where MIR lower produces:
+                //   tmp = &x       (ref_local = tmp)
+                //   r = Move(tmp)  (transfer ref_local to r)
+                // Without this transfer, NLL would track tmp's lifetime
+                // instead of r's, causing borrows to expire too early.
+                if let Operand::Move(lv) = op {
+                    if let LvalueKind::Local(ref_local_src) = lv.kind {
+                        if let Some(lhs) = lhs_local {
+                            self.borrows.transfer_borrow_ref(ref_local_src, lhs);
+                        }
+                    }
+                }
                 self.check_operand(mir, op, span);
             }
             Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
@@ -310,7 +366,8 @@ impl BorrowChecker {
         }
     }
 
-    /// Check a write to a place: ensure it's not borrowed.
+    /// Check a write to a place: ensure it's not borrowed, and (G5 fix)
+    /// ensure it's not a reassignment of an immutable local.
     fn check_place_write(&mut self, mir: &MirBody, lv: &Lvalue, span: Span) {
         let path = self.place_path(mir, lv);
         // Writing to a place that is borrowed is an error
@@ -321,6 +378,23 @@ impl BorrowChecker {
                     span,
                 ));
             }
+        }
+        // G5 fix (Stage 2.4e): Mutability check.
+        // If the LHS is a local that has already been initialized,
+        // and the local is declared immutable, reject the assignment.
+        // The first write (initialization) is always allowed.
+        if let LvalueKind::Local(id) = &lv.kind {
+            let is_init = self.initialized.contains(id);
+            let is_mutable = mir.local(*id).mutability == crate::mir::ty::Mutability::Mutable;
+            if is_init && !is_mutable {
+                self.errors.push(BorrowError::new(
+                    "cannot assign twice to immutable variable",
+                    span,
+                    BorrowErrorKind::AssignImmutable,
+                ));
+            }
+            // Mark as initialized (idempotent — re-init after move is OK).
+            self.initialized.insert(*id);
         }
         // Writing re-initializes a moved place
         self.moves.un_move(&path);
@@ -995,15 +1069,16 @@ mod tests {
     #[test]
     fn nll_borrow_expires_at_last_use() {
         // Code pattern:
-        //   let x = 42;
+        //   let mut x = 42;
         //   let r = &x;        // borrow x
         //   let y = *r + 1;    // last use of r — borrow expires here
-        //   x = 100;           // OK — x is no longer borrowed
+        //   x = 100;           // OK — x is no longer borrowed (and x is mut)
         let mut mir = make_mir();
-        let x = mir.new_local(
+        let x = mir.new_local_with_mut(
             Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
             None,
             Span::DUMMY,
+            crate::mir::ty::Mutability::Mutable,
         );
         let r = mir.new_local(
             Ty::new(

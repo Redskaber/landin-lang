@@ -63,6 +63,11 @@ pub struct TypeChecker {
     /// Note: this is currently empty because MIR lower doesn't expose
     /// its local_map. Stage 3 will wire this up properly.
     hir_to_local: std::collections::HashMap<crate::hir::HirId, LocalId>,
+    /// G3 fix (Stage 2.4e): Map from DefId → fn signature.
+    /// Populated by `populate_fn_sigs` from the HIR crate before
+    /// type-checking bodies. Used by Call type checking to verify
+    /// arg count and arg/return types.
+    fn_sigs: std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
 }
 
 impl TypeChecker {
@@ -72,6 +77,7 @@ impl TypeChecker {
             errors: Vec::new(),
             results: TypeckResults::new(),
             hir_to_local: std::collections::HashMap::new(),
+            fn_sigs: std::collections::HashMap::new(),
         }
     }
 
@@ -87,6 +93,44 @@ impl TypeChecker {
             errors: Vec::new(),
             results: TypeckResults::new(),
             hir_to_local: std::collections::HashMap::new(),
+            fn_sigs: std::collections::HashMap::new(),
+        }
+    }
+
+    /// G3 fix: Populate the fn_sigs map from a HIR crate.
+    ///
+    /// Walks all owner nodes; for each `HirItem::Fn`, extracts the fn
+    /// signature (param types + return type) and stores it keyed by
+    /// the fn's DefId. The Call type checker then looks up the sig
+    /// to verify arg count and types.
+    pub fn populate_fn_sigs(&mut self, hir: &HirCrate) {
+        use crate::hir::{HirFnRetTy, HirItem, OwnerNode};
+        for (def_id, owner) in &hir.owners {
+            if let OwnerNode::Item(HirItem::Fn(f)) = owner {
+                let inputs: Vec<Ty> = f
+                    .sig
+                    .inputs
+                    .iter()
+                    .map(|p| {
+                        p.ty.as_ref()
+                            .map(crate::mir::lower::lower_hir_ty_to_mir_ty)
+                            .unwrap_or_else(|| Ty::new(TyKind::Error, p.span))
+                    })
+                    .collect();
+                let output = match &f.sig.output {
+                    HirFnRetTy::Ty(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
+                    HirFnRetTy::Default(_) => Ty::new(TyKind::Tuple(vec![]), f.span),
+                };
+                self.fn_sigs.insert(
+                    *def_id,
+                    crate::mir::ty::Sig {
+                        inputs,
+                        output: Box::new(output),
+                        abi: f.sig.abi,
+                        is_unsafe: f.sig.is_unsafe,
+                    },
+                );
+            }
         }
     }
 
@@ -142,6 +186,38 @@ impl TypeChecker {
                 self.results.hir_types.insert(*hir_id, ty.ty.clone());
             }
         }
+
+        // Phase 5 (G7 fix, Stage 2.4f): Post-defaulting Call check.
+        // After default_unresolved + writeback, re-scan Call terminators
+        // to catch "call non-function" errors that couldn't be detected
+        // in Phase 1 (when func_ty was still an unresolved Infer var).
+        // Example: `let x = 1; x();` — x resolves to Int(I32) after
+        // defaulting, so the Call check can now reject it.
+        for bb in &mir.basic_blocks {
+            let term = bb.terminator.clone();
+            self.post_check_terminator(mir, &term);
+        }
+    }
+
+    /// Post-defaulting terminator check. Runs after Phase 3 (writeback)
+    /// so all types are resolved. Catches errors that depend on
+    /// defaulting (e.g., `let x = 1; x();` where x defaults to i32).
+    fn post_check_terminator(&mut self, mir: &MirBody, term: &Terminator) {
+        if let Terminator::Call { func, .. } = term {
+            let func_ty = self.unify.resolve(&self.infer_operand(mir, func));
+            // G7 fix: if func is neither FnDef nor FnPtr (after defaulting),
+            // emit an error. Infer should be resolved by now; if it's still
+            // Infer, it means no constraint was applied (rare).
+            if !matches!(
+                &func_ty.kind,
+                TyKind::FnDef(_, _) | TyKind::FnPtr(_) | TyKind::Error
+            ) {
+                self.errors.push(TypeError::new(
+                    format!("expected function, found {:?}", func_ty.kind),
+                    Span::DUMMY,
+                ));
+            }
+        }
     }
 
     /// Check a single MIR statement (Assign or Nop).
@@ -177,16 +253,47 @@ impl TypeChecker {
                 ..
             } => {
                 // Infer func type
-                let func_ty = self.infer_operand(mir, func);
+                let func_ty = self.unify.resolve(&self.infer_operand(mir, func));
                 // Infer arg types and collect them
                 let arg_tys: Vec<Ty> = args
                     .iter()
-                    .map(|arg| self.infer_operand(mir, arg))
+                    .map(|arg| self.unify.resolve(&self.infer_operand(mir, arg)))
                     .collect();
                 // Infer destination type
-                let dest_ty = self.infer_lvalue(mir, destination);
+                let dest_ty = self.unify.resolve(&self.infer_lvalue(mir, destination));
 
-                // If func is a FnPtr, unify args with inputs and dest with output
+                // G3 fix (Stage 2.4e): If func is a FnDef(def_id, _),
+                // look up the fn signature from fn_sigs and verify:
+                //   1. arg count matches
+                //   2. each arg type unifies with the corresponding input
+                //   3. destination type unifies with the return type
+                if let TyKind::FnDef(def_id, _) = &func_ty.kind {
+                    if let Some(sig) = self.fn_sigs.get(def_id).cloned() {
+                        if arg_tys.len() != sig.inputs.len() {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "this function takes {} argument(s) but {} were supplied",
+                                    sig.inputs.len(),
+                                    arg_tys.len()
+                                ),
+                                Span::DUMMY,
+                            ));
+                        } else {
+                            for (arg_ty, input_ty) in arg_tys.iter().zip(sig.inputs.iter()) {
+                                if let Err(e) = self.unify.unify(arg_ty, input_ty) {
+                                    self.errors.push(*e);
+                                }
+                            }
+                        }
+                        if let Err(e) = self.unify.unify(&dest_ty, &sig.output) {
+                            self.errors.push(*e);
+                        }
+                    }
+                    // If fn_sigs doesn't have the DefId (e.g., external fn),
+                    // skip type checking — codegen will handle it.
+                }
+
+                // If func is a FnPtr, unify args with inputs and dest with output.
                 if let TyKind::FnPtr(sig) = &func_ty.kind {
                     // Unify each arg with the corresponding input
                     for (arg_ty, input_ty) in arg_tys.iter().zip(sig.inputs.iter()) {
@@ -199,28 +306,54 @@ impl TypeChecker {
                         self.errors.push(*e);
                     }
                 }
+
+                // G7 fix (Stage 2.4f): if func is neither FnDef nor FnPtr
+                // (e.g., calling an Int, Bool, Str, Tuple), emit an error.
+                // Infer and Error are deferred (might resolve to a fn type).
+                if !matches!(
+                    &func_ty.kind,
+                    TyKind::FnDef(_, _) | TyKind::FnPtr(_) | TyKind::Infer(_) | TyKind::Error
+                ) {
+                    self.errors.push(TypeError::new(
+                        format!("expected function, found {:?}", func_ty.kind),
+                        Span::DUMMY,
+                    ));
+                }
             }
-            Terminator::SwitchInt { discr, .. } => {
+            Terminator::SwitchInt { discr, targets, .. } => {
                 // The discriminant must be an integer or bool
                 let discr_ty = self.infer_operand(mir, discr);
-                // Check that it's int-like (int, uint, bool, or infer var)
-                match &discr_ty.kind {
-                    TyKind::Int(_) | TyKind::Uint(_) | TyKind::Bool => {}
-                    TyKind::Infer(InferVar::IntVar(_)) => {}
-                    TyKind::Infer(InferVar::TyVar(_)) => {
-                        // Unbound variable — unify with i32 as default
-                        let i32_ty = Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY);
-                        let _ = self.unify.unify(&discr_ty, &i32_ty);
+                // G7 fix (Stage 2.4f): if any target is ConstVal::Bool(_),
+                // this SwitchInt came from an `if` or `while` condition,
+                // and the discriminant must be bool (not just any int).
+                let requires_bool = targets
+                    .iter()
+                    .any(|(val, _)| matches!(val, ConstVal::Bool(_)));
+                if requires_bool {
+                    let bool_ty = Ty::new(TyKind::Bool, Span::DUMMY);
+                    if let Err(e) = self.unify.unify(&discr_ty, &bool_ty) {
+                        self.errors.push(*e);
                     }
-                    TyKind::Error => {}
-                    _ => {
-                        self.errors.push(TypeError::new(
-                            format!(
-                                "expected integer or bool for switch, found {:?}",
-                                discr_ty.kind
-                            ),
-                            Span::DUMMY,
-                        ));
+                } else {
+                    // Match on integer — check that it's int-like.
+                    match &discr_ty.kind {
+                        TyKind::Int(_) | TyKind::Uint(_) | TyKind::Bool => {}
+                        TyKind::Infer(InferVar::IntVar(_)) => {}
+                        TyKind::Infer(InferVar::TyVar(_)) => {
+                            // Unbound variable — unify with i32 as default
+                            let i32_ty = Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY);
+                            let _ = self.unify.unify(&discr_ty, &i32_ty);
+                        }
+                        TyKind::Error => {}
+                        _ => {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "expected integer or bool for switch, found {:?}",
+                                    discr_ty.kind
+                                ),
+                                Span::DUMMY,
+                            ));
+                        }
                     }
                 }
             }
@@ -312,8 +445,48 @@ impl TypeChecker {
                         }
                         Ty::new(TyKind::Bool, Span::DUMMY)
                     }
-                    // Arithmetic: unify a and b, return same type
-                    _ => {
+                    // Bitwise ops: Bool or integer types only.
+                    BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => {
+                        if let Err(e) = self.unify.unify(&a_ty, &b_ty) {
+                            self.errors.push(*e);
+                        }
+                        // Result type matches operand type (Bool or Int).
+                        a_ty
+                    }
+                    // Shifts: lhs can be int, rhs must be int (not bool).
+                    BinOp::Shl | BinOp::Shr => {
+                        if !is_shift_count_ty(&b_ty) {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "shift count must be an integer type, found {:?}",
+                                    b_ty.kind
+                                ),
+                                Span::DUMMY,
+                            ));
+                        }
+                        a_ty
+                    }
+                    // Arithmetic: lhs and rhs must be Int/Uint/Float.
+                    // G7 fix (Stage 2.4f): reject Bool, Str, Tuple, etc.
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
+                        if !is_arithmetic_ty(&a_ty) {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "cannot apply arithmetic to {:?} (expected integer or float)",
+                                    a_ty.kind
+                                ),
+                                Span::DUMMY,
+                            ));
+                        }
+                        if !is_arithmetic_ty(&b_ty) {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "cannot apply arithmetic to {:?} (expected integer or float)",
+                                    b_ty.kind
+                                ),
+                                Span::DUMMY,
+                            ));
+                        }
                         if let Err(e) = self.unify.unify(&a_ty, &b_ty) {
                             self.errors.push(*e);
                         }
@@ -330,10 +503,30 @@ impl TypeChecker {
                 match op {
                     UnOp::Not => {
                         // !bool → bool, !int → int
+                        // G7 fix: !str, !float, !tuple are errors.
+                        if !is_notable_ty(&inner_ty) {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "cannot apply `!` to {:?} (expected bool or integer)",
+                                    inner_ty.kind
+                                ),
+                                Span::DUMMY,
+                            ));
+                        }
                         inner_ty
                     }
                     UnOp::Neg => {
                         // -int → int, -float → float
+                        // G7 fix: -bool, -str, -tuple are errors.
+                        if !is_negatable_ty(&inner_ty) {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "cannot apply unary `-` to {:?} (expected integer or float)",
+                                    inner_ty.kind
+                                ),
+                                Span::DUMMY,
+                            ));
+                        }
                         inner_ty
                     }
                 }
@@ -359,16 +552,30 @@ impl TypeChecker {
                         .collect();
                     Ty::new(TyKind::Tuple(elem_tys), Span::DUMMY)
                 }
-                AggregateKind::Array(elem_ty) => Ty::new(
-                    TyKind::Array(
-                        Box::new(elem_ty.clone()),
-                        Box::new(Const {
-                            ty: Box::new(Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY)),
-                            val: ConstVal::Uint(operands.len() as u128),
-                        }),
-                    ),
-                    Span::DUMMY,
-                ),
+                AggregateKind::Array(elem_ty) => {
+                    // G7 fix (Stage 2.4f): unify each element's type with
+                    // the array's declared element type. This catches
+                    // `[1, true]` (Int + Bool mismatch).
+                    for op in operands {
+                        let op_ty = self.infer_operand(mir, op);
+                        if let Err(e) = self.unify.unify(&op_ty, elem_ty) {
+                            self.errors.push(*e);
+                        }
+                    }
+                    Ty::new(
+                        TyKind::Array(
+                            Box::new(elem_ty.clone()),
+                            Box::new(Const {
+                                ty: Box::new(Ty::new(
+                                    TyKind::Uint(ast::UintTy::Usize),
+                                    Span::DUMMY,
+                                )),
+                                val: ConstVal::Uint(operands.len() as u128),
+                            }),
+                        ),
+                        Span::DUMMY,
+                    )
+                }
                 _ => Ty::new(TyKind::Error, Span::DUMMY),
             },
         }
@@ -401,6 +608,44 @@ impl Default for TypeChecker {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Whether a type can be used in arithmetic ops (Add/Sub/Mul/Div/Rem).
+///
+/// G7 fix (Stage 2.4f): Bool, Str, Tuple, Array, etc. are NOT arithmetic.
+/// Int, Uint, Float, and Infer (deferred) are.
+fn is_arithmetic_ty(ty: &Ty) -> bool {
+    matches!(
+        &ty.kind,
+        TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_) | TyKind::Infer(_) | TyKind::Error
+    )
+}
+
+/// Whether a type can be negated with unary `-`.
+///
+/// Int, Uint, Float, Infer, Error are negatable. Bool, Str, Tuple are not.
+fn is_negatable_ty(ty: &Ty) -> bool {
+    is_arithmetic_ty(ty)
+}
+
+/// Whether a type can be used with `!` (bitwise NOT).
+///
+/// Bool, Int, Uint, Infer, Error are notable. Float, Str, Tuple are not.
+fn is_notable_ty(ty: &Ty) -> bool {
+    matches!(
+        &ty.kind,
+        TyKind::Bool | TyKind::Int(_) | TyKind::Uint(_) | TyKind::Infer(_) | TyKind::Error
+    )
+}
+
+/// Whether a type can be used as a shift count (rhs of Shl/Shr).
+///
+/// Int, Uint, Infer, Error are valid. Bool, Float, Str are not.
+fn is_shift_count_ty(ty: &Ty) -> bool {
+    matches!(
+        &ty.kind,
+        TyKind::Int(_) | TyKind::Uint(_) | TyKind::Infer(_) | TyKind::Error
+    )
 }
 
 /// Check a single MIR body for type errors.
