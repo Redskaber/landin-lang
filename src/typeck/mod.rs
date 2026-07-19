@@ -6,8 +6,10 @@
 //!
 //! Public entry point: [`check_crate`].
 
+pub mod checker;
 pub mod error;
 pub mod unify;
 
+pub use checker::{check_crate, check_mir_body, TypeChecker};
 pub use error::TypeError;
 pub use unify::UnificationTable;
