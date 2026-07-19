@@ -8,6 +8,7 @@
 //!   1.4: Scope-based name resolution
 
 pub mod ast;
+pub mod borrowck;
 pub mod diagnostics;
 pub mod hir;
 pub mod lexer;
