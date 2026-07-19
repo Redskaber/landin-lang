@@ -326,13 +326,32 @@ fn owner_return_ty(owner: &OwnerNode) -> Option<crate::hir::HirTy> {
     match owner {
         OwnerNode::Item(HirItem::Fn(f)) => match &f.sig.output {
             HirFnRetTy::Ty(t) => Some(t.clone()),
-            HirFnRetTy::Default(_) => None, // default is `()` — let inference handle it
+            HirFnRetTy::Default(_) => None,
         },
         OwnerNode::Item(HirItem::Const(c)) => Some(c.ty.clone()),
         OwnerNode::Item(HirItem::Static(s)) => Some(s.ty.clone()),
-        // Impl/trait items and foreign items: Stage 3.
         _ => None,
     }
+}
+
+/// Public wrapper for codegen to get the return type of a body's owner.
+pub fn owner_return_ty_for_body(
+    hir: &HirCrate,
+    body: &crate::hir::Body,
+) -> Option<crate::hir::HirTy> {
+    // Find the owner by matching body's hir_id
+    for (_, owner) in &hir.owners {
+        if let OwnerNode::Item(HirItem::Fn(f)) = owner {
+            if let Some(body_id) = &f.body {
+                // Check if this body belongs to this fn by comparing
+                // the body's hir_id owner with the fn's def_id
+                if body.hir_id.owner == body_id.owner.0 {
+                    return owner_return_ty(owner);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// G4 fix: Scan HIR for unresolved paths after name resolution.
