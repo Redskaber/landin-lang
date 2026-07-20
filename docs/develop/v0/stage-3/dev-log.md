@@ -661,6 +661,73 @@
   updated to assert the new correct layout (was: asserted old buggy
   `{ i32, i32 }`; now: asserts `{ i32, i32, i64 }`).
 
+### Stage 3.49 — L13 fat pointer closure (v0.8.6, process v3.13)
+- **Problem**: `&str` and `&[T]` references were represented as thin
+  pointers (`i8*` for `&str`, `T*` for `&[T]`) — losing the length
+  component. This made it impossible to recover the length of a `&str`
+  after passing it to a function (the callee only sees the `i8*`).
+  Carried as L13 debt since Stage 3.27 (18 rounds). While technically
+  a "simplification" rather than a soundness bug, it blocks any
+  meaningful string/slice processing (e.g., `str::len()`, bounds checks
+  on `&[T]`, `memcmp`-based comparison).
+- **Root cause** (per §15 — root cause): `mir_type_to_emit_type` for
+  `Ref(_, _, Str)` and `Ref(_, _, Slice(T))` mapped to thin pointers
+  (`Ptr(I8)` / `Ptr(T)`). The fat pointer representation (`{ ptr, len }`)
+  was documented as "deferred" in Stage 3.27/3.28 but never implemented.
+- **Approach chosen** (per §15 — 最优 > 最小): `{ ptr, len }` struct
+  representation, matching rustc's fat pointer ABI. The fat pointer is
+  `EmitType::Struct(vec![Ptr(elem), I64])`. This is the architecturally
+  correct representation — all references to unsized types (`str`, `[T]`)
+  carry both data pointer and length. Rejected alternatives:
+  - "Two separate params (ptr, len) at call sites": ABI-incompatible
+    with `&str` as struct field or enum payload.
+  - "Keep thin ptr, add separate length param only when needed":
+    requires whole-program analysis to determine which calls need length.
+  - "Defer to Stage 4": violates §15.1 — the debt has been carried 18
+    rounds, and every new feature (closures, traits) would build on top
+    of the wrong ABI.
+- **Fix** (3 source files):
+  1. `src/codegen/emitter.rs` — added `fat_ptr_type(elem) -> EmitType`
+     helper returning `Struct(vec![Ptr(elem), I64])`. Updated
+     `mir_type_to_emit_type` for `Ref(_, _, Str)` → `fat_ptr_type(I8)`
+     and `Ref(_, _, Slice(T))` → `fat_ptr_type(mir_type_to_emit_type(T))`.
+     Added `emit_and` and `emit_or` to the Emitter trait (for fat pointer
+     eq/ne comparison).
+  2. `src/codegen/mod.rs` — `mir_type_to_emit_type_with_layouts`:
+     same fat pointer mapping (recursing with `_with_layouts` for nested
+     Adts in the pointee). `codegen_operand` for `ConstVal::Str`: now
+     emits a fat pointer value via two `insertvalue` (ptr at field 0,
+     len at field 1). `BinaryOp::Eq`/`Ne`: special-cased for fat pointers
+     — extract ptr and len from both operands, compare each, AND/OR the
+     results (LLVM `icmp` can't compare aggregate types directly).
+  3. `src/codegen/text_emitter.rs` — implemented `emit_and` and `emit_or`
+     (`and ty lhs, rhs` / `or ty lhs, rhs`).
+- **Result**:
+  - `fn greet(s: &str)` → `define void @greet({ i8*, i64 } %arg0)` (was
+    `i8* %arg0`). The callee can now recover the string length.
+  - `"hello"` literal → `insertvalue { i8*, i64 } undef, i8* %ptr, 0`
+    then `insertvalue { i8*, i64 } %v, i64 5, 1` (was: just `i8* %ptr`).
+  - `s == "hello"` → `extractvalue` ptr/len from both, `icmp eq i8*` +
+    `icmp eq i64` + `and i1` (was: invalid `icmp eq { i8*, i64 }`).
+  - `struct Msg { text: &str }` → `{ { i8*, i64 } }` (was `{ i8* }`).
+  - `&str` in tuple, enum payload, nested struct: all correctly nest
+    the fat pointer.
+- **Comparison semantics**: fat pointer `==`/`!=` is bitwise (ptr + len),
+  not content comparison. `"abc" == "abc"` returns true only if they're
+  the same deduped global. Content comparison (memcmp) is deferred —
+  requires a runtime function, which Landin doesn't have yet. This
+  preserves the existing (unsound) thin-pointer comparison behavior
+  while making it valid LLVM.
+- 12 new tests: fat ptr param/return/local layout (3), length field
+  (3: 5/0/6-byte), construction (1), struct field (1), call ABI (2),
+  comparison eq/ne (2), tuple nesting (1), thin ptr regression (1).
+- Updated 6 existing tests that asserted old `i8*` representation → now
+  assert `{ i8*, i64 }`. Updated R14 (3 cases) and R15 (1 case) audit
+  scripts similarly.
+- Total: 881 → 893. (3 source files modified; 0 typeck/borrowck changes.)
+- Gate review Round 16 (R16) — 30 audit cases (8 regression + 14 fat
+  pointer coverage + 8 edge cases), all passed; audit CONVERGED at
+  round 16 per §9.3.3.
 
 ## Test Progression
 
@@ -692,3 +759,4 @@
 | v0.8.6 (3.46) | 855 | +13 (L14+L9 full integer type support: i8/i16/i32/i64/i128/usize/isize) |
 | v0.8.6 (3.47) | 869 | +14 (L-PIPE-1 closure via AdtLayout side-table on MirBody, per §16) |
 | v0.8.6 (3.48) | 881 | +12 (L-ENUM-UNION + L-ENUM-BINDING closure: flat enum storage layout + pattern binding extraction)
+| v0.8.6 (3.49) | 893 | +12 (L13 fat pointer closure: &str/&[T] now { ptr, len } struct, not thin pointer)

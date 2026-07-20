@@ -11,7 +11,7 @@
 | Stage 0 (lexer/parser/AST) | 245 | ~100% | ✅ Complete |
 | Stage 1 (HIR/resolve) | 451 | ~100% | ✅ Complete |
 | Stage 2 (MIR/typeck/borrowck) | 673 | ~100% | ✅ Complete |
-| Stage 3 (codegen) | 881 | ~98% | 🔄 In progress |
+| Stage 3 (codegen) | 893 | ~99% | 🔄 In progress |
 
 ## Stage 3 Test Breakdown
 
@@ -38,8 +38,9 @@
 | 3.46 | L14 + L9 full integer types (i8/i16/i32/i64/i128/usize/isize) | 13 | ✅ |
 | 3.47 | L-PIPE-1 closure via AdtLayout side-table on MirBody (per §16) | 14 | ✅ |
 | 3.48 | L-ENUM-UNION + L-ENUM-BINDING closure: flat enum storage + pattern binding extraction | 12 | ✅ |
-| **Total codegen** | | **208** | ✅ |
-| Gate audits R1-R15 | Audit cases | 470 cumulative | ✅ |
+| 3.49 | L13 fat pointer closure: &str/&[T] now { ptr, len } struct, not thin pointer | 12 | ✅ |
+| **Total codegen** | | **220** | ✅ |
+| Gate audits R1-R16 | Audit cases | 500 cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 
@@ -52,7 +53,7 @@
 | ~~L9~~ | ~~i128/u128~~ | CLOSED in Stage 3.46 ✅ |
 | ~~L10~~ | ~~Float bitwise ops~~ | CLOSED in Stage 3.45 ✅ |
 | ~~L11~~ | ~~Shift-count overflow~~ | CLOSED in Stage 3.43 ✅ |
-| L13 | Fat pointers | Simplification | Stage 4 |
+| ~~L13~~ | ~~Fat pointers~~ | CLOSED in Stage 3.49 ✅ |
 | ~~L14~~ | ~~i16/u16 → i32~~ | CLOSED in Stage 3.46 ✅ |
 | ~~L15~~ | ~~String-as-function-arg~~ | CLOSED in Stage 3.42 ✅ |
 | ~~L-ENUM-UNION~~ | ~~Enum union payload~~ | CLOSED in Stage 3.48 ✅ |

@@ -176,6 +176,14 @@ pub trait Emitter {
     fn emit_fcmp(&mut self, op: &str, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue)
         -> EmitValue;
 
+    /// Stage 3.49 (L13 closure): Emit a bitwise AND (`and ty lhs, rhs`).
+    /// Used for fat-pointer equality comparison (AND of ptr-eq and len-eq).
+    fn emit_and(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
+
+    /// Stage 3.49 (L13 closure): Emit a bitwise OR (`or ty lhs, rhs`).
+    /// Used for fat-pointer inequality comparison (OR of ptr-ne and len-ne).
+    fn emit_or(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
+
     // === Type conversions ===
 
     /// Emit a zero-extend (zext) from one type to another.
@@ -276,6 +284,20 @@ pub trait Emitter {
 ///
 /// Stage 3.21: now produces proper `Struct` / `Array` / `Ptr` variants
 /// (was hardcoded to `Tuple` / `Array` / `Ptr` opaque).
+/// Stage 3.49 (L13 closure): Construct the EmitType for a fat pointer
+/// (`{ ptr_to_elem, i64 }`). Used for `&str` and `&[T]` references,
+/// which carry both a data pointer and a length.
+///
+/// Per §15 (最优 > 最小): fat pointers are the architecturally correct
+/// representation for references to unsized types (`str`, `[T]`). The
+/// previous thin-pointer model (Stage 3.27/3.28) lost the length
+/// component, making it impossible to recover the length of a `&str`
+/// after passing it to a function — a soundness/completeness gap
+/// carried as L13 debt since Stage 3.27 (18 rounds).
+pub fn fat_ptr_type(elem: EmitType) -> EmitType {
+    EmitType::Struct(vec![EmitType::ptr_to(elem), EmitType::I64])
+}
+
 pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
     use crate::mir::ty::TyKind;
     match &ty.kind {
@@ -304,25 +326,20 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         TyKind::Float(_) => EmitType::F64,
         TyKind::Char => EmitType::I8,
         TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
-            // Stage 3.42: &str (Ref to Str) maps to i8* (not i8**).
-            // Str is unsized — &str is a pointer to the bytes, same as Str.
-            if matches!(inner.kind, TyKind::Str) {
-                EmitType::ptr_to(EmitType::I8)
-            } else {
-                EmitType::ptr_to(mir_type_to_emit_type(inner))
+            // Stage 3.49 (L13 closure): `&str` and `&[T]` are fat pointers
+            // `{ ptr, len }`. Other references remain thin pointers.
+            match &inner.kind {
+                TyKind::Str => fat_ptr_type(EmitType::I8),
+                TyKind::Slice(elem) => fat_ptr_type(mir_type_to_emit_type(elem)),
+                _ => EmitType::ptr_to(mir_type_to_emit_type(inner)),
             }
         }
-        // Stage 3.27: `Str` is a built-in unsized type — its `&str` reference
-        // is a fat pointer (ptr+len). For now we model `Str` itself as
-        // `Ptr(I8)` so a `&str` value (which is what codegen actually emits
-        // for a string literal — see codegen_operand) maps to a usable
-        // pointer type. Full fat-pointer (ptr+len) representation is deferred.
+        // Stage 3.49: `Str` and `Slice(T)` are unsized types — they cannot
+        // appear as values, only behind a reference (`&str`, `&[T]`). We
+        // keep their direct EmitType as thin pointers for internal use
+        // (e.g., global string types), but the reference type is now a
+        // fat pointer (see the Ref case above).
         TyKind::Str => EmitType::ptr_to(EmitType::I8),
-        // Stage 3.28: `Slice(T)` is unsized; its `&[T]` reference is a fat
-        // pointer. We model `Slice(T)` itself as `Ptr(T)` so a byte-string
-        // literal (`b"..."` which has type `&[u8; N]` but is lowered as
-        // `Slice(u8)` with `ConstVal::Str`) maps to a `u8*` pointer.
-        // Full fat-pointer + length representation is deferred.
         TyKind::Slice(elem) => EmitType::ptr_to(mir_type_to_emit_type(elem)),
         TyKind::Tuple(tys) => {
             if tys.is_empty() {

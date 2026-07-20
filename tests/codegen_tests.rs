@@ -757,13 +757,25 @@ fn codegen_string_literal_emits_global() {
 #[test]
 fn codegen_string_literal_gep_to_i8_ptr() {
     let ll = gen_ll("fn f() { let s = \"hi\"; }");
-    // The literal's value should be a GEP that produces an i8*.
+    // Stage 3.49 (L13): the literal's value is now a fat pointer
+    // `{ i8*, i64 }`. The GEP still produces an i8* (stored at field 0
+    // of the fat pointer via insertvalue).
     assert!(
         ll.contains("getelementptr inbounds ([2 x i8], [2 x i8]* @.str.0, i32 0, i32 0)"),
         "expected GEP to i8* in:\n{}",
         ll
     );
-    assert!(ll.contains("store i8*"), "expected 'store i8*' in:\n{}", ll);
+    // The fat pointer is built via insertvalue: ptr at 0, len at 1.
+    assert!(
+        ll.contains("insertvalue { i8*, i64 } undef, i8*"),
+        "expected fat pointer insertvalue (ptr) in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("i64 2, 1"),
+        "expected fat pointer insertvalue (len=2) in:\n{}",
+        ll
+    );
 }
 
 #[test]
@@ -1768,14 +1780,15 @@ fn codegen_enum_match_non_exhaustive_default() {
 #[test]
 fn codegen_str_as_function_arg() {
     let ll = gen_ll("fn greet(s: &str) { } fn f() { greet(\"hello\") }");
+    // Stage 3.49 (L13): &str param is now a fat pointer `{ i8*, i64 }`.
     assert!(
-        ll.contains("define void @landin_greet(i8* %arg0)"),
-        "expected &str param as i8* in:\n{}",
+        ll.contains("define void @landin_greet({ i8*, i64 } %arg0)"),
+        "expected &str param as fat pointer in:\n{}",
         ll
     );
     assert!(
-        ll.contains("call void @landin_greet(i8*"),
-        "expected call with i8* arg in:\n{}",
+        ll.contains("call void @landin_greet({ i8*, i64 }"),
+        "expected call with fat pointer arg in:\n{}",
         ll
     );
 }
@@ -1794,9 +1807,10 @@ fn codegen_str_comparison() {
 #[test]
 fn codegen_str_param_type() {
     let ll = gen_ll("fn f(s: &str) { }");
+    // Stage 3.49 (L13): &str param is now a fat pointer `{ i8*, i64 }`.
     assert!(
-        ll.contains("define void @landin_f(i8* %arg0)"),
-        "expected &str param as i8* in:\n{}",
+        ll.contains("define void @landin_f({ i8*, i64 } %arg0)"),
+        "expected &str param as fat pointer in:\n{}",
         ll
     );
 }
@@ -1804,10 +1818,10 @@ fn codegen_str_param_type() {
 #[test]
 fn codegen_str_return_type() {
     let ll = gen_ll("fn f() -> &str { \"hello\" }");
-    // &str return type should be i8*.
+    // Stage 3.49 (L13): &str return type is now a fat pointer `{ i8*, i64 }`.
     assert!(
-        ll.contains("define i8* @landin_f()"),
-        "expected &str return as i8* in:\n{}",
+        ll.contains("define { i8*, i64 } @landin_f()"),
+        "expected &str return as fat pointer in:\n{}",
         ll
     );
 }
@@ -1828,9 +1842,10 @@ fn codegen_str_in_struct() {
 #[test]
 fn codegen_str_multiple_args() {
     let ll = gen_ll("fn cat(a: &str, b: &str) { } fn f() { cat(\"hello\", \"world\") }");
+    // Stage 3.49 (L13): two &str params → two fat pointers.
     assert!(
-        ll.contains("define void @landin_cat(i8* %arg0, i8* %arg1)"),
-        "expected two &str params as i8* in:\n{}",
+        ll.contains("define void @landin_cat({ i8*, i64 } %arg0, { i8*, i64 } %arg1)"),
+        "expected two &str params as fat pointers in:\n{}",
         ll
     );
 }
@@ -2313,13 +2328,14 @@ fn codegen_adt_layout_struct_with_i128_field() {
 
 #[test]
 fn codegen_adt_layout_struct_with_ref_field() {
-    // &str field — AdtLayout field type is Ref(_, _, Str) → i8*.
+    // &str field — AdtLayout field type is Ref(_, _, Str) → fat pointer
+    // `{ i8*, i64 }` (Stage 3.49 L13 closure).
     // Per §16 closure: codegen must NOT call lower_hir_ty_to_mir_ty from
     // codegen — the field type is already a MIR Ty in AdtLayout.
     let ll = gen_ll("struct Wrap { s: &str } fn f(w: Wrap) { }");
     assert!(
-        ll.contains("{ i8* }"),
-        "expected &str field as i8* in AdtLayout in:\n{}",
+        ll.contains("{ { i8*, i64 } }"),
+        "expected &str field as fat pointer in AdtLayout in:\n{}",
         ll
     );
 }
@@ -2518,6 +2534,149 @@ fn codegen_enum_union_match_returns_correct_value() {
     assert!(
         some_arm_loads_payload,
         "expected Some arm to load payload from enum storage in:\n{}",
+        ll
+    );
+}
+
+// ============================================================================
+// Stage 3.49 (L13 closure) — Fat pointer tests for &str and &[T]
+// ============================================================================
+
+#[test]
+fn codegen_fat_ptr_str_param_layout() {
+    // &str param is now { i8*, i64 } (fat pointer), not i8* (thin pointer).
+    let ll = gen_ll("fn f(s: &str) { }");
+    assert!(
+        ll.contains("define void @landin_f({ i8*, i64 } %arg0)"),
+        "expected &str param as fat pointer in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_return_layout() {
+    let ll = gen_ll("fn f() -> &str { \"hello\" }");
+    assert!(
+        ll.contains("define { i8*, i64 } @landin_f()"),
+        "expected &str return as fat pointer in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_literal_has_length() {
+    // The fat pointer's length field must be the actual byte count.
+    let ll = gen_ll("fn f() -> &str { \"hello\" }");
+    // "hello" is 5 bytes → insertvalue { i8*, i64 } %v, i64 5, 1
+    assert!(
+        ll.contains("i64 5, 1"),
+        "expected fat pointer length 5 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_literal_empty() {
+    // Empty string "" has length 0.
+    let ll = gen_ll("fn f() -> &str { \"\" }");
+    assert!(
+        ll.contains("i64 0, 1"),
+        "expected fat pointer length 0 for empty string in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_literal_unicode_length() {
+    // Unicode: "héllo" is h(1) + é(2) + l(1) + l(1) + o(1) = 6 bytes (UTF-8).
+    let ll = gen_ll("fn f() -> &str { \"héllo\" }");
+    assert!(
+        ll.contains("i64 6, 1"),
+        "expected fat pointer length 6 for héllo (UTF-8) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_in_struct_field() {
+    // &str field in struct → { { i8*, i64 } }
+    let ll = gen_ll("struct Msg { text: &str } fn f(m: Msg) { }");
+    assert!(
+        ll.contains("{ { i8*, i64 } }"),
+        "expected &str struct field as fat pointer in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_comparison_eq() {
+    // s == "hello" should extract ptr and len from both, compare each.
+    let ll = gen_ll("fn f(s: &str) -> bool { s == \"hello\" }");
+    assert!(
+        ll.contains("extractvalue { i8*, i64 }")
+            && ll.contains("icmp eq i8*")
+            && ll.contains("icmp eq i64"),
+        "expected fat pointer eq to extract and compare both fields in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("and i1"),
+        "expected AND of ptr-eq and len-eq in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_comparison_ne() {
+    // s != "hello" should compare both fields with OR.
+    let ll = gen_ll("fn f(s: &str) -> bool { s != \"hello\" }");
+    assert!(
+        ll.contains("or i1"),
+        "expected OR of ptr-ne and len-ne in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_call_passes_fat_pointer() {
+    // greet("hello") should pass the fat pointer { i8*, i64 } to greet.
+    let ll = gen_ll("fn greet(s: &str) { } fn f() { greet(\"hello\") }");
+    assert!(
+        ll.contains("call void @landin_greet({ i8*, i64 }"),
+        "expected call with fat pointer arg in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_multiple_args() {
+    // Two &str params → two fat pointers.
+    let ll = gen_ll("fn cat(a: &str, b: &str) { } fn f() { cat(\"hello\", \"world\") }");
+    assert!(
+        ll.contains("define void @landin_cat({ i8*, i64 } %arg0, { i8*, i64 } %arg1)"),
+        "expected two &str params as fat pointers in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_alloca_layout() {
+    // Local of type &str should alloca { i8*, i64 }.
+    let ll = gen_ll("fn f() { let s = \"hello\"; }");
+    assert!(
+        ll.contains("alloca { i8*, i64 }"),
+        "expected &str local alloca as fat pointer in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_str_no_thin_pointer_in_param() {
+    // Regression: ensure no `i8* %arg0` (thin pointer) appears for &str params.
+    let ll = gen_ll("fn f(s: &str) { }");
+    assert!(
+        !ll.contains("define void @landin_f(i8* %arg0)"),
+        "should NOT have thin i8* param for &str in:\n{}",
         ll
     );
 }

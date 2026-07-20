@@ -299,6 +299,22 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
+    /// Stage 3.49 (L13 closure): bitwise AND for fat-pointer eq comparison.
+    fn emit_and(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
+        let r = self.fresh();
+        let ty_str = emit_type_to_llvm_str(ty);
+        self.line(&format!("  %v{} = and {} {}, {}", r, ty_str, lhs, rhs));
+        format!("%v{}", r)
+    }
+
+    /// Stage 3.49 (L13 closure): bitwise OR for fat-pointer ne comparison.
+    fn emit_or(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
+        let r = self.fresh();
+        let ty_str = emit_type_to_llvm_str(ty);
+        self.line(&format!("  %v{} = or {} {}, {}", r, ty_str, lhs, rhs));
+        format!("%v{}", r)
+    }
+
     fn emit_zext(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue {
         let r = self.fresh();
         let src_str = emit_type_to_llvm_str(src);

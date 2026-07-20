@@ -63,7 +63,7 @@ fn main() {
         Case { name: "r01_struct_param", src: "struct Point { x: i32, y: i32 } fn f(p: Point) -> i32 { p.x }", expect_all: &["define i32 @landin_f({ i32, i32 } %arg0)"], expect_none: &[], desc: "R14 r01: struct param from AdtLayout" },
         Case { name: "r02_nested_struct", src: "struct Inner { v: i32 } struct Outer { i: Inner } fn f(o: Outer) -> i32 { 0 }", expect_all: &["{ { i32 } }"], expect_none: &[], desc: "R14 r02: nested struct AdtLayout recursion" },
         Case { name: "r03_struct_i128_field", src: "struct Big { v: i128 } fn f(b: Big) -> i128 { b.v }", expect_all: &["{ i128 }"], expect_none: &[], desc: "R14 r03: i128 field preserved" },
-        Case { name: "r04_struct_ref_str_field", src: "struct Wrap { s: &str } fn f(w: Wrap) { }", expect_all: &["{ i8* }"], expect_none: &[], desc: "R14 r04: &str field via AdtLayout (no codegen→HIR call)" },
+        Case { name: "r04_struct_ref_str_field", src: "struct Wrap { s: &str } fn f(w: Wrap) { }", expect_all: &["{ { i8*, i64 } }"], expect_none: &[], desc: "R14 r04: &str field via AdtLayout (Stage 3.49: fat pointer; no codegen→HIR call)" },
         Case { name: "r05_const_value", src: "const MAX: i32 = 100; fn f() -> i32 { MAX }", expect_all: &["store i32 100"], expect_none: &[], desc: "R14 r05: const value inlined" },
         Case { name: "r06_i16_arith", src: "fn f(a: i16, b: i16) -> i16 { a + b }", expect_all: &["add nsw i16", "llvm.sadd.with.overflow.i16"], expect_none: &[], desc: "R14 r06: i16 arithmetic + overflow check" },
         Case { name: "r07_div_zero", src: "fn f(a: i32, b: i32) -> i32 { a / b }", expect_all: &["icmp eq", "__landin_panic_div_by_zero"], expect_none: &[], desc: "R14 r07: div-by-zero runtime check" },

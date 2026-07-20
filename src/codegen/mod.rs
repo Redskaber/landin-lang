@@ -5,7 +5,9 @@
 pub mod emitter;
 pub mod text_emitter;
 
-pub use emitter::{emit_type_to_llvm_str, mir_type_to_emit_type, EmitType, EmitValue, Emitter};
+pub use emitter::{
+    emit_type_to_llvm_str, fat_ptr_type, mir_type_to_emit_type, EmitType, EmitValue, Emitter,
+};
 pub use text_emitter::TextEmitter;
 
 use crate::hir::HirCrate;
@@ -242,11 +244,16 @@ pub fn mir_type_to_emit_type_with_layouts(
             EmitType::array_of(mir_type_to_emit_type_with_layouts(elem, layouts), n)
         }
         TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
-            // Stage 3.42: &str (Ref to Str) maps to i8* (not i8**).
-            if matches!(inner.kind, TyKind::Str) {
-                EmitType::ptr_to(EmitType::I8)
-            } else {
-                EmitType::ptr_to(mir_type_to_emit_type_with_layouts(inner, layouts))
+            // Stage 3.49 (L13 closure): `&str` and `&[T]` are fat pointers
+            // `{ ptr, len }`. Other references remain thin pointers.
+            // Recurse with `_with_layouts` so the pointee (if it's an Adt)
+            // resolves its layout correctly.
+            match &inner.kind {
+                TyKind::Str => crate::codegen::fat_ptr_type(EmitType::I8),
+                TyKind::Slice(elem) => {
+                    crate::codegen::fat_ptr_type(mir_type_to_emit_type_with_layouts(elem, layouts))
+                }
+                _ => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(inner, layouts)),
             }
         }
         TyKind::Slice(elem) => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(elem, layouts)),
@@ -372,9 +379,42 @@ fn codegen_rvalue(
             let ty = detect_operand_type(mir, a, layouts)
                 .or(detect_operand_type(mir, b, layouts))
                 .unwrap_or(EmitType::I32);
+
+            // Stage 3.49 (L13 closure): fat pointers (`{ ptr, len }`) cannot
+            // be compared with a single `icmp` — LLVM icmp doesn't support
+            // aggregate types. For `==`/`!=`, we compare both fields:
+            //   eq = (a.ptr == b.ptr) & (a.len == b.len)
+            //   ne = (a.ptr != b.ptr) | (a.len != b.len)
+            // This is a bitwise comparison, not content comparison —
+            // `"abc" == "abc"` returns true only if they're the same
+            // global (deduped) or same allocation. Content comparison
+            // (memcmp) is deferred to a future stage (requires a runtime
+            // function).
+            let is_fat_ptr = match &ty {
+                EmitType::Struct(fields) if fields.len() == 2 => {
+                    fields[0].is_ptr() && fields[1] == EmitType::I64
+                }
+                _ => false,
+            };
+
             match op {
                 BinOp::Eq => {
-                    let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
+                    let cmp = if is_fat_ptr {
+                        // Extract ptr (field 0) and len (field 1) from both,
+                        // compare each, AND the results.
+                        let a_ptr = emitter.emit_extractvalue(&ty, &a_val, 0);
+                        let a_len = emitter.emit_extractvalue(&ty, &a_val, 1);
+                        let b_ptr = emitter.emit_extractvalue(&ty, &b_val, 0);
+                        let b_len = emitter.emit_extractvalue(&ty, &b_val, 1);
+                        let ptr_eq = emitter.emit_icmp(
+                            "eq",
+                            &EmitType::ptr_to(EmitType::I8),
+                            &a_ptr,
+                            &b_ptr,
+                        );
+                        let len_eq = emitter.emit_icmp("eq", &EmitType::I64, &a_len, &b_len);
+                        emitter.emit_and(&EmitType::I1, &ptr_eq, &len_eq)
+                    } else if ty == EmitType::F64 || ty == EmitType::F32 {
                         emitter.emit_fcmp("oeq", &ty, &a_val, &b_val)
                     } else {
                         emitter.emit_icmp("eq", &ty, &a_val, &b_val)
@@ -382,7 +422,20 @@ fn codegen_rvalue(
                     emitter.emit_zext(&EmitType::I1, &EmitType::I32, &cmp)
                 }
                 BinOp::Ne => {
-                    let cmp = if ty == EmitType::F64 || ty == EmitType::F32 {
+                    let cmp = if is_fat_ptr {
+                        let a_ptr = emitter.emit_extractvalue(&ty, &a_val, 0);
+                        let a_len = emitter.emit_extractvalue(&ty, &a_val, 1);
+                        let b_ptr = emitter.emit_extractvalue(&ty, &b_val, 0);
+                        let b_len = emitter.emit_extractvalue(&ty, &b_val, 1);
+                        let ptr_ne = emitter.emit_icmp(
+                            "ne",
+                            &EmitType::ptr_to(EmitType::I8),
+                            &a_ptr,
+                            &b_ptr,
+                        );
+                        let len_ne = emitter.emit_icmp("ne", &EmitType::I64, &a_len, &b_len);
+                        emitter.emit_or(&EmitType::I1, &ptr_ne, &len_ne)
+                    } else if ty == EmitType::F64 || ty == EmitType::F32 {
                         emitter.emit_fcmp("one", &ty, &a_val, &b_val)
                     } else {
                         emitter.emit_icmp("ne", &ty, &a_val, &b_val)
@@ -609,10 +662,37 @@ fn codegen_operand(
                     .unwrap_or(b"\0");
                 let global_name = emitter.emit_string_global(bytes);
                 let n = bytes.len();
-                format!(
+                // Stage 3.49 (L13 closure): emit a fat pointer
+                // `{ i8*, i64 }` (or `{ T*, i64 }` for byte strings) instead
+                // of just the thin `i8*` pointer. The fat pointer carries
+                // the length, so callees can recover it.
+                //
+                // The constant's type (`c.ty`) tells us whether this is a
+                // `&str` (Ref to Str) or a `&[u8]` (Slice(u8) — actually
+                // MIR lower produces Slice(u8) directly for byte strings,
+                // not a Ref to Slice, but codegen treats both as fat ptrs).
+                //
+                // For `&str`: fat_ptr = `{ i8*, i64 }`, ptr = GEP to global,
+                //   len = byte count.
+                // For `&[u8]` (Slice(u8) const): same layout, same emission.
+                //
+                // We compute the fat pointer's EmitType from the constant's
+                // declared type, then `insertvalue` the ptr and len.
+                let fat_ty = mir_type_to_emit_type_with_layouts(&c.ty, layouts);
+                let ptr_val = format!(
                     "getelementptr inbounds ([{} x i8], [{} x i8]* @{}, i32 0, i32 0)",
                     n, n, global_name
-                )
+                );
+                // insertvalue { i8*, i64 } undef, i8* %ptr, 0
+                let with_ptr = emitter.emit_insertvalue(
+                    &fat_ty,
+                    &"undef".to_string(),
+                    &EmitType::ptr_to(EmitType::I8),
+                    &ptr_val,
+                    0,
+                );
+                // insertvalue { i8*, i64 } %with_ptr, i64 N, 1
+                emitter.emit_insertvalue(&fat_ty, &with_ptr, &EmitType::I64, &n.to_string(), 1)
             }
             _ => emitter.emit_const(&c.val),
         },

@@ -49,6 +49,11 @@ LLVM codegen → 目标文件（.o / .obj）
 
 ### 2.2 复合类型
 
+> **Stage 3.49 (L13 closure)**: `&str` 和 `&[T]` 的 fat pointer 表示
+> (`{ ptr, len }`) 已在 Stage 3.49 实现。之前 Stage 3.27/3.28 用 thin
+> pointer 简化（L13 debt），现已闭合。`&dyn Trait` 的 vtable fat pointer
+> 仍待 Stage 5 trait dispatch 实现时加入。
+
 | Landin 类型 | LLVM IR 类型 |
 | --- | --- |
 | `&T` | `{ T*, i64 }` 或 `T*`（若 T: Sized） |
