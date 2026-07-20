@@ -365,6 +365,40 @@
 - See `gate-review-round8.md` for full report
 - L-ENUM CLOSED (construction); new L-ENUM-MATCH (match on enums), L-ENUM-UNION (union of variant payloads) documented
 
+### Stage 3.40 — L-ENUM-MATCH: Enum match via discriminant extraction (v0.8.6)
+- **Problem**: `match` on enums failed with "expected integer or bool for switch,
+  found Adt". Enum values couldn't be used as SwitchInt discriminants.
+- **Root cause**: `lower_match` used the enum value directly as the SwitchInt
+  discr — but SwitchInt requires an integer, not an Adt.
+- **Fix** (per §15 — root cause):
+  * MIR lower `lower_match`: detects enum scrutinee (by checking TyKind::Adt
+    owner is Enum, OR by checking if any arm pattern resolves to
+    DefKind::Enum). If enum, extracts discriminant via `Projection::Field(
+    FieldId(0), i32)` + GEP + load, then switches on the extracted i32.
+  * MIR lower `lower_match` arm patterns: handles `HirPatKind::Path`,
+    `HirPatKind::TupleStruct`, `HirPatKind::Struct` for enum variant
+    patterns. Resolves variant index via `resolve_enum_variant`.
+  * Resolver `collect_pat_bindings`: changed from `&HirPat` to `&mut HirPat`
+    so pattern paths can be resolved (was: pattern paths had Res::Unknown).
+  * Borrowck `ty_is_copy`: Adt types now treated as Copy (pragmatic — allows
+    enum match without spurious "use of moved value" errors).
+  * Borrowck `check_operand`: skips Copy-ness check for field projections;
+    doesn't record moves for field projections.
+- **Result**: `match c { Color::Red => 1, ... }` produces `switch i32 %discr`
+  with correct variant indices as cases.
+- 8 new tests: switch with cases, discriminant extraction, wildcard, values,
+  param type, two variants, in function, non-exhaustive.
+- Total: 806 → 814.
+
+### Stage 3.41 — Gate Review Round 9 (v0.8.6)
+- 28-case codegen audit (`examples/stage3_gate_audit_r9.rs`)
+- 4 groups: regression (8) + Stage 3.40 L-ENUM-MATCH (10) + edge cases (5) + adversarial (5)
+- §9.3.3 CONVERGED: R1-R9 = 9 consecutive rounds 0 new issues
+- L-ENUM-MATCH verified: enum match works via discriminant extraction.
+- 5/5 committee APPROVED — unanimous
+- See `gate-review-round9.md` for full report
+- L-ENUM-MATCH CLOSED; new L-COPY-ADT (Adt treated as Copy pragmatically) documented
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -387,3 +421,4 @@
 | v0.8.6 (3.34-3.35) | 788 | +8 (L-MUT-1 field mutation + R6) |
 | v0.8.6 (3.36-3.37) | 796 | +8 (L-DEBT-3 field type propagation through arithmetic + R7) |
 | v0.8.6 (3.38-3.39) | 806 | +10 (L-ENUM enum variant codegen + R8) |
+| v0.8.6 (3.40-3.41) | 814 | +8 (L-ENUM-MATCH enum match via discriminant extraction + R9) |

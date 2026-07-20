@@ -1978,6 +1978,50 @@ fn lower_match(cx: &mut MirLowerCtxt, scrutinee: &HirExpr, arms: &[HirArm], span
         cx.mir
             .new_local_with_mut(result_ty, None, span, crate::mir::ty::Mutability::Mutable);
 
+    // Stage 3.40 (L-ENUM-MATCH): Check if the scrutinee is an enum type.
+    // If so, extract the discriminant (field 0 of the enum struct) and
+    // switch on that instead of the enum value itself.
+    //
+    // We check both the MIR local type AND the HIR enum owners — the
+    // local type may be Infer (if typeck hasn't resolved it yet at lower
+    // time) but the HIR owner can tell us it's an enum.
+    let scrut_ty = cx
+        .mir
+        .local_decls
+        .get(scrut_local.0 as usize)
+        .map(|ld| ld.ty.clone())
+        .unwrap_or_else(|| Ty::new(TyKind::Error, span));
+    let is_enum = matches!(&scrut_ty.kind, TyKind::Adt(def_id, _) if cx.hir.and_then(|h| h.owner(*def_id)).is_some_and(|o| {
+        matches!(o, crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_)))
+    }));
+    // Also check: if any arm pattern is an enum variant path, treat as enum.
+    let has_enum_pat = arms.iter().any(|arm| {
+        matches!(&arm.pat.kind, HirPatKind::Path(p) | HirPatKind::TupleStruct(p, _) | HirPatKind::Struct(p, _, _)
+            if matches!(p.res, Res::Def(_, crate::resolve::DefKind::Enum)))
+    });
+    let is_enum = is_enum || has_enum_pat;
+
+    // If enum, extract discriminant: discr = scrut.0 (field 0 of the struct).
+    let switch_discr = if is_enum {
+        // Create a temp local for the extracted discriminant.
+        let discr_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), span);
+        let discr_local = cx.mir.new_local(discr_ty.clone(), None, span);
+        cx.push_assign(
+            Lvalue::local(discr_local, span),
+            Rvalue::Use(Operand::Move(Lvalue {
+                kind: LvalueKind::Projection(
+                    Box::new(Lvalue::local(scrut_local, scrutinee.span)),
+                    ProjectionElem::Field(FieldId(0), discr_ty.clone()),
+                ),
+                span,
+            })),
+            span,
+        );
+        Operand::Copy(Lvalue::local(discr_local, span))
+    } else {
+        Operand::Copy(Lvalue::local(scrut_local, scrutinee.span))
+    };
+
     // Collect targets: (constant, arm_block) pairs
     let mut targets: Vec<(ConstVal, BasicBlockId)> = Vec::new();
     let mut arm_blocks: Vec<BasicBlockId> = Vec::new();
@@ -1999,18 +2043,65 @@ fn lower_match(cx: &mut MirLowerCtxt, scrutinee: &HirExpr, arms: &[HirArm], span
             }
         }
 
-        // Non-literal patterns (Wild, Ident, etc.) → go to otherwise
-        // For Stage 2.1b, we treat them all as "otherwise"
-        // The first non-literal arm becomes the otherwise target
-        if targets.is_empty() {
-            // If no literal targets yet, this arm is the otherwise
-            // We'll set it as the otherwise block
+        // Stage 3.40 (L-ENUM-MATCH): Handle enum variant patterns.
+        // `Color::Red` → HirPatKind::Path(path) where path resolves to enum.
+        // `Opt::Some(x)` → HirPatKind::TupleStruct(path, sub_pats).
+        // Resolve the variant index and use it as the switch target.
+        if is_enum {
+            let variant_idx = match &arm.pat.kind {
+                HirPatKind::Path(path) => {
+                    // Unit variant pattern: `Color::Red`
+                    if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
+                        if path.segments.len() >= 2 {
+                            resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
+                                .map(|(idx, _)| idx)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                HirPatKind::TupleStruct(path, _) => {
+                    // Tuple variant pattern: `Opt::Some(x)`
+                    if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
+                        if path.segments.len() >= 2 {
+                            resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
+                                .map(|(idx, _)| idx)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                HirPatKind::Struct(path, _, _) => {
+                    // Struct variant pattern: `Shape::Circle { r: x }`
+                    if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
+                        if path.segments.len() >= 2 {
+                            resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
+                                .map(|(idx, _)| idx)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some(idx) = variant_idx {
+                targets.push((ConstVal::Uint(idx as u128), arm_block));
+                continue;
+            }
         }
+
+        // Non-literal patterns (Wild, Ident, etc.) → go to otherwise
     }
 
     // Terminate current block with SwitchInt
     cx.terminate(Terminator::SwitchInt {
-        discr: Operand::Copy(Lvalue::local(scrut_local, scrutinee.span)),
+        discr: switch_discr,
         targets: targets.clone(),
         otherwise: otherwise_block,
     });

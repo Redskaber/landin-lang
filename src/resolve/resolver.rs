@@ -380,7 +380,7 @@ impl Resolver {
 
         // Register fn params as bindings in the Fn scope.
         for param in &mut body.params {
-            self.collect_pat_bindings(&param.pat);
+            self.collect_pat_bindings(&mut param.pat, interner);
             if let Some(ty) = &mut param.ty {
                 self.resolve_ty_paths(ty, interner);
             }
@@ -394,51 +394,55 @@ impl Resolver {
     }
 
     /// Collect all identifier bindings from a pattern into the current scope.
-    fn collect_pat_bindings(&mut self, pat: &HirPat) {
-        match &pat.kind {
+    /// Stage 3.40 (L-ENUM-MATCH): also resolve pattern paths (e.g.,
+    /// `Color::Red` in `match c { Color::Red => ... }`).
+    fn collect_pat_bindings(&mut self, pat: &mut HirPat, interner: &Rodeo) {
+        match &mut pat.kind {
             HirPatKind::Ident(_mode, ident, sub) => {
                 if let Some(scopes) = &mut self.scopes {
                     scopes.insert(ident.name, pat.hir_id);
                 }
                 if let Some(sub) = sub {
-                    self.collect_pat_bindings(sub);
+                    self.collect_pat_bindings(sub, interner);
                 }
             }
-            HirPatKind::Struct(_path, fields, _rest) => {
+            HirPatKind::Struct(path, fields, _rest) => {
+                self.resolve_hir_path(path, interner);
                 for f in fields {
-                    self.collect_pat_bindings(&f.pat);
+                    self.collect_pat_bindings(&mut f.pat, interner);
                 }
             }
-            HirPatKind::TupleStruct(_path, pats) => {
+            HirPatKind::TupleStruct(path, pats) => {
+                self.resolve_hir_path(path, interner);
                 for p in pats {
-                    self.collect_pat_bindings(p);
+                    self.collect_pat_bindings(p, interner);
                 }
             }
             HirPatKind::Tuple(pats) => {
                 for p in pats {
-                    self.collect_pat_bindings(p);
+                    self.collect_pat_bindings(p, interner);
                 }
             }
             HirPatKind::Slice(pats, rest) => {
                 for p in pats {
-                    self.collect_pat_bindings(p);
+                    self.collect_pat_bindings(p, interner);
                 }
                 if let Some(r) = rest {
-                    self.collect_pat_bindings(r);
+                    self.collect_pat_bindings(r, interner);
                 }
             }
             HirPatKind::Or(pats) => {
-                // All alternatives in an or-pattern bind the same names.
-                // For Stage 1.4, we just collect from the first alternative
-                // (all alternatives should bind the same set in valid Rust).
-                if let Some(first) = pats.first() {
-                    self.collect_pat_bindings(first);
+                if let Some(first) = pats.first_mut() {
+                    self.collect_pat_bindings(first, interner);
                 }
             }
             HirPatKind::Ref(pat, _) => {
-                self.collect_pat_bindings(pat);
+                self.collect_pat_bindings(pat, interner);
             }
-            HirPatKind::Lit(_) | HirPatKind::Path(_) | HirPatKind::Wild | HirPatKind::Rest => {}
+            HirPatKind::Path(path) => {
+                self.resolve_hir_path(path, interner);
+            }
+            HirPatKind::Lit(_) | HirPatKind::Wild | HirPatKind::Rest => {}
             HirPatKind::Range(_, _, _) => {}
         }
     }
@@ -496,7 +500,7 @@ impl Resolver {
                     if let Some(scopes) = &mut self.scopes {
                         scopes.push(ScopeKind::MatchArm);
                     }
-                    self.collect_pat_bindings(&arm.pat);
+                    self.collect_pat_bindings(&mut arm.pat, interner);
                     if let Some(g) = &mut arm.guard {
                         self.resolve_expr(g, interner);
                     }
@@ -531,7 +535,7 @@ impl Resolver {
                 if let Some(scopes) = &mut self.scopes {
                     scopes.push(ScopeKind::Loop);
                 }
-                self.collect_pat_bindings(pat);
+                self.collect_pat_bindings(pat, interner);
                 self.resolve_block(body, interner);
                 if let Some(scopes) = &mut self.scopes {
                     scopes.pop();
@@ -543,7 +547,7 @@ impl Resolver {
                     scopes.push(ScopeKind::Closure);
                 }
                 for param in params {
-                    self.collect_pat_bindings(&param.pat);
+                    self.collect_pat_bindings(&mut param.pat, interner);
                 }
                 self.resolve_expr(body, interner);
                 if let Some(scopes) = &mut self.scopes {
@@ -610,7 +614,7 @@ impl Resolver {
                     }
                     // NOW register the binding in the current scope.
                     // After this point, references to the name resolve to this binding.
-                    self.collect_pat_bindings(&local.pat);
+                    self.collect_pat_bindings(&mut local.pat, interner);
                 }
                 HirStmt::Expr(e, _) => self.resolve_expr(e, interner),
                 _ => {}

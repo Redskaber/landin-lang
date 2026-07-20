@@ -1636,3 +1636,129 @@ fn codegen_enum_with_i64_payload() {
         ll
     );
 }
+
+// Stage 3.40: L-ENUM-MATCH — Enum match via discriminant extraction
+
+#[test]
+fn codegen_enum_match_unit_variants() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f(c: Color) -> i32 { match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3 } }");
+    assert!(
+        ll.contains("switch i32"),
+        "expected 'switch i32' for enum match in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("i32 0, label %bb"),
+        "expected case 0 (Red) in switch in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("i32 1, label %bb"),
+        "expected case 1 (Green) in switch in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("i32 2, label %bb"),
+        "expected case 2 (Blue) in switch in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_match_discriminant_extraction() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f(c: Color) -> i32 { match c { Color::Red => 1, _ => 0 } }");
+    // Should have GEP to extract discriminant (field 0 of the enum struct).
+    assert!(
+        ll.contains("getelementptr inbounds { i32 }, { i32 }*"),
+        "expected GEP for discriminant extraction in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("load i32"),
+        "expected 'load i32' for discriminant in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_match_with_wildcard() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f(c: Color) -> i32 { match c { Color::Red => 1, _ => 99 } }");
+    assert!(
+        ll.contains("switch i32"),
+        "expected 'switch i32' in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("i32 0, label %bb"),
+        "expected case 0 (Red) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_match_returns_correct_values() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f(c: Color) -> i32 { match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3 } }");
+    // Each arm should store its value.
+    assert!(
+        ll.contains("store i32 1"),
+        "expected 'store i32 1' (Red) in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("store i32 2"),
+        "expected 'store i32 2' (Green) in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("store i32 3"),
+        "expected 'store i32 3' (Blue) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_match_param_type() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f(c: Color) -> i32 { match c { Color::Red => 1, _ => 0 } }");
+    // Function should take { i32 } param (enum type).
+    assert!(
+        ll.contains("define i32 @landin_f({ i32 } %arg0)"),
+        "expected enum param type in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_match_two_variants() {
+    let ll = gen_ll("enum Opt { Some(i32), None } fn f(o: Opt) -> i32 { match o { Opt::Some(x) => x, Opt::None => 0 } }");
+    assert!(
+        ll.contains("switch i32"),
+        "expected 'switch i32' for two-variant enum match in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_match_in_function() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn classify(c: Color) -> i32 { match c { Color::Red => 100, Color::Green => 200, Color::Blue => 300 } } fn f() -> i32 { classify(Color::Red) }");
+    assert!(
+        ll.contains("switch i32"),
+        "expected 'switch i32' in classify function in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("call i32 @landin_classify"),
+        "expected 'call i32 @landin_classify' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_match_non_exhaustive_default() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f(c: Color) -> i32 { match c { Color::Red => 1, _ => 0 } }");
+    // Should have a default (otherwise) label.
+    assert!(
+        ll.contains("label %bb") && ll.contains("switch i32"),
+        "expected switch with default label in:\n{}",
+        ll
+    );
+}
