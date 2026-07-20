@@ -212,6 +212,18 @@ pub trait Emitter {
         index: &EmitValue,
     ) -> EmitValue;
 
+    /// Stage 3.51: Emit a getelementptr for element access via a raw
+    /// element pointer (not an array pointer). Used for slice indexing
+    /// where the data pointer is `T*` (not `[N x T]*`).
+    ///
+    /// Emits: `%r = getelementptr inbounds <elem_ty>, <elem_ty>* %base, i32 %idx`
+    fn emit_gep_index_ptr(
+        &mut self,
+        base_ptr: &EmitValue,
+        elem_ty: &EmitType,
+        index: &EmitValue,
+    ) -> EmitValue;
+
     /// Emit a PHI node for merging values from multiple predecessor blocks.
     fn emit_phi(&mut self, ty: &EmitType, incoming: &[(EmitValue, String)]) -> EmitValue;
 

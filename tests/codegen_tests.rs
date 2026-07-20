@@ -2817,3 +2817,135 @@ fn codegen_byte_string_no_invalid_insertvalue() {
         ll
     );
 }
+
+// ============================================================================
+// Stage 3.51 — Slice indexing fix (fat pointer data pointer dereference)
+// ============================================================================
+
+#[test]
+fn codegen_slice_index_loads_element_not_pointer() {
+    // s[0] where s: &[i32] should load the i32 element, not the i32* pointer.
+    // Was (Stage 3.49-3.50 bug): GEP into the fat pointer struct at field 0,
+    // then load i32* as i32 — wrong value (pointer bits reinterpreted as int).
+    let ll = gen_ll("fn f(s: &[i32]) -> i32 { s[0] }");
+    // Should GEP into the fat pointer struct to get the data pointer (field 0),
+    // then GEP into the data pointer at index 0, then load i32.
+    assert!(
+        ll.contains("getelementptr inbounds { i32*, i64 }, { i32*, i64 }*"),
+        "expected GEP to fat pointer field 0 in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("getelementptr inbounds i32, i32*"),
+        "expected GEP into data pointer (i32*) for slice indexing in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("load i32"),
+        "expected load i32 (the element) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_constant_index() {
+    // s[1] with constant index should also work via fat pointer unwrap.
+    let ll = gen_ll("fn f(s: &[i32]) -> i32 { s[1] }");
+    assert!(
+        ll.contains("getelementptr inbounds i32, i32*"),
+        "expected GEP into data pointer for constant index in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_variable_index() {
+    // s[i] with variable index.
+    let ll = gen_ll("fn f(s: &[i32], i: i32) -> i32 { s[i] }");
+    assert!(
+        ll.contains("getelementptr inbounds i32, i32*"),
+        "expected GEP into data pointer for variable index in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_u8_element() {
+    // &[u8] slice indexing — element is u8 (i8 in LLVM).
+    let ll = gen_ll("fn f(s: &[u8]) -> u8 { s[0] }");
+    assert!(
+        ll.contains("getelementptr inbounds i8, i8*"),
+        "expected GEP into i8* data pointer for &[u8] in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("load i8"),
+        "expected load i8 (u8 element) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_i64_element() {
+    // &[i64] slice indexing — element is i64.
+    let ll = gen_ll("fn f(s: &[i64]) -> i64 { s[0] }");
+    assert!(
+        ll.contains("getelementptr inbounds i64, i64*"),
+        "expected GEP into i64* data pointer for &[i64] in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_f64_element() {
+    // &[f64] slice indexing — element is f64 (double in LLVM).
+    let ll = gen_ll("fn f(s: &[f64]) -> f64 { s[0] }");
+    assert!(
+        ll.contains("getelementptr inbounds double, double*"),
+        "expected GEP into double* data pointer for &[f64] in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_in_function() {
+    // Slice indexing in a more complex function context.
+    let ll = gen_ll("fn sum(s: &[i32]) -> i32 { s[0] + s[1] }");
+    // Should have two GEPs into the data pointer.
+    let count = ll.matches("getelementptr inbounds i32, i32*").count();
+    assert!(
+        count >= 2,
+        "expected at least 2 GEPs into i32* for s[0] + s[1] in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_array_index_still_uses_array_gep() {
+    // Regression: [T; N] array indexing should still use array-style GEP
+    // (getelementptr [N x T], [N x T]*), not the slice-style pointer GEP.
+    let ll = gen_ll("fn f(a: [i32; 3]) -> i32 { a[1] }");
+    assert!(
+        ll.contains("getelementptr inbounds [3 x i32], [3 x i32]*"),
+        "expected array-style GEP for [i32; 3] indexing in:\n{}",
+        ll
+    );
+    // Should NOT use the slice-style pointer GEP for arrays.
+    assert!(
+        !ll.contains("getelementptr inbounds i32, i32*"),
+        "should NOT use pointer-style GEP for array indexing in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_no_invalid_array_gep() {
+    // Regression: slice indexing should NOT produce invalid [0 x T] array GEP.
+    // (Stage 3.51 first attempt used [0 x i32] which is invalid LLVM.)
+    let ll = gen_ll("fn f(s: &[i32]) -> i32 { s[0] }");
+    assert!(
+        !ll.contains("[0 x i32]"),
+        "should NOT have invalid [0 x i32] array type in:\n{}",
+        ll
+    );
+}

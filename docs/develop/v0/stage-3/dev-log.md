@@ -790,6 +790,65 @@
   string + comparison coverage + 8 edge cases), all passed; audit
   CONVERGED at round 17 per §9.3.3.
 
+### Stage 3.51 — Slice indexing fix (fat pointer data pointer dereference) (v0.8.6, process v3.13)
+- **Problem (P0 soundness)**: `s[0]` where `s: &[i32]` produced wrong
+  values. The `Index`/`ConstantIndex` projection codegen GEP'd directly
+  into the fat pointer struct (`{ i32*, i64 }`) at field 0, then loaded
+  the result as `i32`. This loaded the **data pointer** (`i32*`) and
+  reinterpreted its bits as an `i32` element — silently wrong.
+- **Root cause** (per §15 — root cause): The `Index`/`ConstantIndex`
+  handlers in `codegen_lvalue_load_typed` and `codegen_statement` used
+  `detect_lvalue_storage_type(base)` to get the array type for GEP.
+  For `[T; N]` arrays, this returns `Array(T, N)` — correct, GEP into
+  the array storage. But for `&[T]` slices (fat pointers), this returns
+  `Struct([Ptr(T), I64])` — the fat pointer struct, NOT the array. GEP
+  into the struct at index 0 gives the data pointer field, not an element.
+- **Fix** (3 source files):
+  1. `src/codegen/mod.rs` — new `unwrap_fat_ptr_for_index` helper:
+     detects if `storage_ty` is a fat pointer (`{ ptr, len }` struct).
+     If so, GEPs to field 0 to get the data pointer, returns
+     `(data_ptr, Some(pointee_ty))`. If not (array case), returns
+     `(base_ptr, None)` unchanged.
+  2. `src/codegen/mod.rs` — all 3 `Index`/`ConstantIndex` projection
+     sites (load path × 2, store path × 1) now call
+     `unwrap_fat_ptr_for_index` and dispatch: fat pointer →
+     `emit_gep_index_ptr`, array → `emit_gep_index`.
+  3. `src/codegen/emitter.rs` + `text_emitter.rs` — new
+     `emit_gep_index_ptr` method: emits
+     `getelementptr inbounds <elem_ty>, <elem_ty>* %base, i32 %idx`
+     (single-step GEP into a raw element pointer, no array wrapper).
+     This is the correct GEP form for slice data pointers (`T*`), as
+     opposed to `emit_gep_index` which emits
+     `getelementptr inbounds [N x T], [N x T]* %base, i32 0, i32 %idx`
+     (two-step GEP into an array pointer).
+- **Result**:
+  - `s[0]` where `s: &[i32]`:
+    ```
+    %v2 = getelementptr inbounds { i32*, i64 }, { i32*, i64 }* %loc_1, i32 0, i32 0
+        ; GEP to fat pointer field 0 (data pointer)
+    %v3 = getelementptr inbounds i32, i32* %v2, i32 0
+        ; GEP into data pointer at index 0 (element)
+    %v4 = load i32, %v3
+        ; load the actual i32 element
+    ```
+  - `a[1]` where `a: [i32; 3]` (array, unchanged):
+    ```
+    %v2 = getelementptr inbounds [3 x i32], [3 x i32]* %loc_1, i32 0, i32 1
+    %v3 = load i32, %v2
+    ```
+- **Design note**: the first implementation attempt used a `[0 x T]`
+  array type to wrap the slice data pointer for `emit_gep_index`. This
+  is invalid LLVM (array length must be > 0). The fix adds a separate
+  `emit_gep_index_ptr` method that emits the correct single-step GEP
+  for raw element pointers.
+- 9 new tests: slice indexing for i32/u8/i64/f64/bool elements (5),
+  constant/variable index (2), array regression (2), no-invalid-zero-array (1),
+  multiple accesses (2), slice in struct/if/match (3).
+- Total: 902 → 911. (3 source files modified; 0 typeck/borrowck changes.)
+- Gate review Round 18 (R18) — 30 audit cases (8 regression + 14 slice
+  indexing coverage + 8 edge cases), all passed; audit CONVERGED at
+  round 18 per §9.3.3.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -822,3 +881,4 @@
 | v0.8.6 (3.48) | 881 | +12 (L-ENUM-UNION + L-ENUM-BINDING closure: flat enum storage layout + pattern binding extraction)
 | v0.8.6 (3.49) | 893 | +12 (L13 fat pointer closure: &str/&[T] now { ptr, len } struct, not thin pointer)
 | v0.8.6 (3.50) | 902 | +10 (byte string fat pointer fix + comparison pointee type fix)
+| v0.8.6 (3.51) | 911 | +9 (slice indexing fix: fat pointer data pointer dereference)

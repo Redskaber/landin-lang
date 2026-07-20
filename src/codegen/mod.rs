@@ -347,7 +347,15 @@ fn codegen_statement(
                             } else {
                                 "0".to_string()
                             };
-                            let elem_ptr = emitter.emit_gep_index(&base_ptr, &array_ty, &idx_val);
+                            // Stage 3.51: same fat pointer unwrap as the load path.
+                            let (gep_base, pointee_opt) =
+                                unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
+                            let elem_ptr = match pointee_opt {
+                                Some(elem_ty) => {
+                                    emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &idx_val)
+                                }
+                                None => emitter.emit_gep_index(&gep_base, &array_ty, &idx_val),
+                            };
                             emitter.emit_store(&ty, &val, &elem_ptr);
                         }
                         _ => {}
@@ -737,6 +745,45 @@ fn detect_lvalue_type(
     }
 }
 
+/// Stage 3.51: If `storage_ty` is a fat pointer (`{ ptr, len }` struct),
+/// load the data pointer from field 0 and return `(data_ptr, pointee_ty)`.
+/// Otherwise, return `(base_ptr, None)` (array case — caller uses
+/// `emit_gep_index` with the array type directly).
+///
+/// This is used by `Index`/`ConstantIndex` projections to handle the
+/// difference between:
+///   - `[T; N]` array: `storage_ty = Array(T, N)`, GEP directly into the
+///     array storage at `base_ptr` using `emit_gep_index`.
+///   - `&[T]` slice (fat pointer): `storage_ty = Struct([Ptr(T), I64])`,
+///     must first load `Ptr(T)` from field 0 of the fat pointer, then GEP
+///     into the data pointer using `emit_gep_index_ptr`.
+///
+/// Returns `(gep_base, pointee_ty_opt)`:
+/// - For arrays: `(base_ptr, None)` — caller uses `emit_gep_index`.
+/// - For fat pointers: `(data_ptr, Some(pointee_ty))` — caller uses
+///   `emit_gep_index_ptr`.
+fn unwrap_fat_ptr_for_index(
+    emitter: &mut dyn Emitter,
+    base_ptr: &str,
+    storage_ty: &EmitType,
+) -> (String, Option<EmitType>) {
+    match storage_ty {
+        EmitType::Struct(fields) if fields.len() == 2 => {
+            let is_fat_ptr = fields[0].is_ptr() && fields[1] == EmitType::I64;
+            if is_fat_ptr {
+                // Fat pointer: load the data pointer from field 0.
+                let base_ptr_owned = base_ptr.to_string();
+                let data_ptr = emitter.emit_gep_field(&base_ptr_owned, storage_ty, 0);
+                let pointee_ty = fields[0].pointee();
+                (data_ptr, Some(pointee_ty))
+            } else {
+                (base_ptr.to_string(), None)
+            }
+        }
+        _ => (base_ptr.to_string(), None),
+    }
+}
+
 #[allow(clippy::only_used_in_recursion)]
 fn codegen_lvalue_load_typed(
     emitter: &mut dyn Emitter,
@@ -804,7 +851,17 @@ fn codegen_lvalue_load_typed(
                 } else {
                     "0".to_string()
                 };
-                let elem_ptr = emitter.emit_gep_index(&base_ptr, &array_ty, &idx_val);
+                // Stage 3.51: if the storage type is a fat pointer ({ ptr, len }),
+                // we need to load the data pointer from field 0 first, then GEP
+                // into the data pointer (not the fat pointer struct). Was: GEP
+                // directly into the fat pointer struct, which loaded the pointer
+                // field instead of the element.
+                let (gep_base, pointee_opt) =
+                    unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
+                let elem_ptr = match pointee_opt {
+                    Some(elem_ty) => emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &idx_val),
+                    None => emitter.emit_gep_index(&gep_base, &array_ty, &idx_val),
+                };
                 emitter.emit_load(&ty, &elem_ptr)
             }
             ProjectionElem::ConstantIndex { offset, .. } => {
@@ -818,7 +875,15 @@ fn codegen_lvalue_load_typed(
                     codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
                 };
                 let array_ty = detect_lvalue_storage_type(mir, base, layouts);
-                let elem_ptr = emitter.emit_gep_index(&base_ptr, &array_ty, &offset.to_string());
+                // Stage 3.51: same fat pointer unwrap as Index.
+                let (gep_base, pointee_opt) =
+                    unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
+                let elem_ptr = match pointee_opt {
+                    Some(elem_ty) => {
+                        emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &offset.to_string())
+                    }
+                    None => emitter.emit_gep_index(&gep_base, &array_ty, &offset.to_string()),
+                };
                 emitter.emit_load(&ty, &elem_ptr)
             }
             _ => "0".to_string(),

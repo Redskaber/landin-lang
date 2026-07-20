@@ -383,6 +383,23 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
+    /// Stage 3.51: GEP into a raw element pointer (for slice indexing).
+    fn emit_gep_index_ptr(
+        &mut self,
+        base_ptr: &EmitValue,
+        elem_ty: &EmitType,
+        index: &EmitValue,
+    ) -> EmitValue {
+        let r = self.fresh();
+        let elem_str = emit_type_to_llvm_str(elem_ty);
+        let ptr_str = format!("{}*", elem_str);
+        self.line(&format!(
+            "  %v{} = getelementptr inbounds {}, {} {}, i32 {}",
+            r, elem_str, ptr_str, base_ptr, index
+        ));
+        format!("%v{}", r)
+    }
+
     fn emit_phi(&mut self, ty: &EmitType, incoming: &[(EmitValue, String)]) -> EmitValue {
         let r = self.fresh();
         let ty_str = emit_type_to_llvm_str(ty);
