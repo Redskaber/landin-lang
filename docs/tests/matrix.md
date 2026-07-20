@@ -11,7 +11,7 @@
 | Stage 0 (lexer/parser/AST) | 245 | ~100% | ✅ Complete |
 | Stage 1 (HIR/resolve) | 451 | ~100% | ✅ Complete |
 | Stage 2 (MIR/typeck/borrowck) | 673 | ~100% | ✅ Complete |
-| Stage 3 (codegen) | 893 | ~99% | 🔄 In progress |
+| Stage 3 (codegen) | 902 | ~99% | 🔄 In progress |
 
 ## Stage 3 Test Breakdown
 
@@ -39,8 +39,9 @@
 | 3.47 | L-PIPE-1 closure via AdtLayout side-table on MirBody (per §16) | 14 | ✅ |
 | 3.48 | L-ENUM-UNION + L-ENUM-BINDING closure: flat enum storage + pattern binding extraction | 12 | ✅ |
 | 3.49 | L13 fat pointer closure: &str/&[T] now { ptr, len } struct, not thin pointer | 12 | ✅ |
-| **Total codegen** | | **220** | ✅ |
-| Gate audits R1-R16 | Audit cases | 500 cumulative | ✅ |
+| 3.50 | Byte string fat pointer fix + comparison pointee type fix (Stage 3.49 latent bugs) | 10 | ✅ |
+| **Total codegen** | | **230** | ✅ |
+| Gate audits R1-R17 | Audit cases | 530 cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

@@ -390,11 +390,18 @@ fn codegen_rvalue(
             // global (deduped) or same allocation. Content comparison
             // (memcmp) is deferred to a future stage (requires a runtime
             // function).
-            let is_fat_ptr = match &ty {
+            //
+            // Stage 3.50: extract the actual pointee type from the fat
+            // pointer's field 0 (was: hardcoded `i8*` in Stage 3.49, which
+            // was technically valid for `&str` but wrong for `&[T]` where
+            // T ≠ u8 — would produce `icmp eq i8*` for an `i32*` value,
+            // which is a type mismatch in typed-pointer LLVM).
+            let (is_fat_ptr, ptr_field_ty) = match &ty {
                 EmitType::Struct(fields) if fields.len() == 2 => {
-                    fields[0].is_ptr() && fields[1] == EmitType::I64
+                    let is_fp = fields[0].is_ptr() && fields[1] == EmitType::I64;
+                    (is_fp, fields[0].clone())
                 }
-                _ => false,
+                _ => (false, EmitType::I32),
             };
 
             match op {
@@ -406,12 +413,7 @@ fn codegen_rvalue(
                         let a_len = emitter.emit_extractvalue(&ty, &a_val, 1);
                         let b_ptr = emitter.emit_extractvalue(&ty, &b_val, 0);
                         let b_len = emitter.emit_extractvalue(&ty, &b_val, 1);
-                        let ptr_eq = emitter.emit_icmp(
-                            "eq",
-                            &EmitType::ptr_to(EmitType::I8),
-                            &a_ptr,
-                            &b_ptr,
-                        );
+                        let ptr_eq = emitter.emit_icmp("eq", &ptr_field_ty, &a_ptr, &b_ptr);
                         let len_eq = emitter.emit_icmp("eq", &EmitType::I64, &a_len, &b_len);
                         emitter.emit_and(&EmitType::I1, &ptr_eq, &len_eq)
                     } else if ty == EmitType::F64 || ty == EmitType::F32 {
@@ -427,12 +429,7 @@ fn codegen_rvalue(
                         let a_len = emitter.emit_extractvalue(&ty, &a_val, 1);
                         let b_ptr = emitter.emit_extractvalue(&ty, &b_val, 0);
                         let b_len = emitter.emit_extractvalue(&ty, &b_val, 1);
-                        let ptr_ne = emitter.emit_icmp(
-                            "ne",
-                            &EmitType::ptr_to(EmitType::I8),
-                            &a_ptr,
-                            &b_ptr,
-                        );
+                        let ptr_ne = emitter.emit_icmp("ne", &ptr_field_ty, &a_ptr, &b_ptr);
                         let len_ne = emitter.emit_icmp("ne", &EmitType::I64, &a_len, &b_len);
                         emitter.emit_or(&EmitType::I1, &ptr_ne, &len_ne)
                     } else if ty == EmitType::F64 || ty == EmitType::F32 {

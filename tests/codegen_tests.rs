@@ -1011,6 +1011,7 @@ fn codegen_i8_type_maps_to_i8() {
 #[test]
 fn codegen_byte_string_in_function_with_other_locals() {
     // Byte string + int local — types should be distinct.
+    // Stage 3.50: byte string local is now a fat pointer `{ i8*, i64 }`.
     let ll = gen_ll("fn f() -> i32 { let b = b\"hi\"; let n = 42; n }");
     assert!(
         ll.contains("[2 x i8] c\"hi\""),
@@ -1018,8 +1019,8 @@ fn codegen_byte_string_in_function_with_other_locals() {
         ll
     );
     assert!(
-        ll.contains("alloca i8*"),
-        "expected i8* alloca for byte string local in:\n{}",
+        ll.contains("alloca { i8*, i64 }"),
+        "expected fat pointer alloca for byte string local in:\n{}",
         ll
     );
     assert!(
@@ -2677,6 +2678,142 @@ fn codegen_fat_ptr_str_no_thin_pointer_in_param() {
     assert!(
         !ll.contains("define void @landin_f(i8* %arg0)"),
         "should NOT have thin i8* param for &str in:\n{}",
+        ll
+    );
+}
+
+// ============================================================================
+// Stage 3.50 — Byte string fat pointer fix + codegen hardening
+// ============================================================================
+
+#[test]
+fn codegen_byte_string_fat_pointer_layout() {
+    // b"hello" should produce a fat pointer { i8*, i64 } with len=5.
+    // Was (Stage 3.49 regression): produced Slice(u8) → thin i8* pointer,
+    // then tried insertvalue i8* undef, i64 5, 1 — invalid LLVM.
+    // Fix (Stage 3.50): MIR lower now produces Ref(_, _, Slice(u8)) for
+    // byte strings, so codegen produces a proper fat pointer.
+    let ll = gen_ll("fn f() { let b = b\"hello\"; }");
+    assert!(
+        ll.contains("alloca { i8*, i64 }"),
+        "expected fat pointer alloca for byte string in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("insertvalue { i8*, i64 } undef, i8*"),
+        "expected fat pointer insertvalue for byte string in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("i64 5, 1"),
+        "expected fat pointer length 5 for b\"hello\" in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_fat_pointer_empty() {
+    // b"" should produce a fat pointer with len=0.
+    let ll = gen_ll("fn f() { let b = b\"\"; }");
+    assert!(
+        ll.contains("i64 0, 1"),
+        "expected fat pointer length 0 for empty byte string in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_as_function_arg() {
+    // Byte string passed as &[u8] param should use fat pointer ABI.
+    let ll = gen_ll("fn f(b: &[u8]) { } fn g() { f(b\"hello\") }");
+    assert!(
+        ll.contains("define void @landin_f({ i8*, i64 } %arg0)"),
+        "expected &[u8] param as fat pointer in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("call void @landin_f({ i8*, i64 }"),
+        "expected call with fat pointer for byte string in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_comparison_eq() {
+    // Comparing two byte strings should use fat pointer comparison.
+    let ll = gen_ll("fn f(a: &[u8], b: &[u8]) -> bool { a == b }");
+    assert!(
+        ll.contains("extractvalue { i8*, i64 }"),
+        "expected extractvalue for byte string comparison in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("and i1"),
+        "expected AND for byte string eq comparison in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fat_ptr_comparison_uses_correct_pointee_type() {
+    // Stage 3.50: fat pointer comparison should use the actual pointee
+    // type (not hardcoded i8*). For &[u8], the pointee is u8 (i8 in LLVM),
+    // so icmp eq i8* is correct. But the code should derive it from the
+    // fat pointer's field 0 type, not hardcode it.
+    // We verify by checking the IR produces valid icmp with the right type.
+    let ll = gen_ll("fn f(a: &str, b: &str) -> bool { a == b }");
+    // The ptr comparison should use i8* (the pointee of &str's fat ptr).
+    assert!(
+        ll.contains("icmp eq i8*"),
+        "expected icmp eq i8* for &str comparison in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_dedup_with_str() {
+    // b"hello" and "hello" share the same global (same bytes).
+    let ll = gen_ll("fn f() { let s = \"hello\"; let b = b\"hello\"; }");
+    let count = ll
+        .matches("@.str.0 = private unnamed_addr constant [5 x i8] c\"hello\"")
+        .count();
+    assert_eq!(
+        count, 1,
+        "expected exactly 1 hello global (dedup), got {} in:\n{}",
+        count, ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_in_struct_field() {
+    // &[u8] field in struct → { { i8*, i64 } }
+    let ll = gen_ll("struct Msg { data: &[u8] } fn f(m: Msg) { }");
+    assert!(
+        ll.contains("{ { i8*, i64 } }"),
+        "expected &[u8] struct field as fat pointer in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_return_type() {
+    // fn returning &[u8] should return a fat pointer.
+    let ll = gen_ll("fn f() -> &[u8] { b\"hello\" }");
+    assert!(
+        ll.contains("define { i8*, i64 } @landin_f()"),
+        "expected &[u8] return as fat pointer in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_no_invalid_insertvalue() {
+    // Regression: ensure no `insertvalue i8* undef, i64` (invalid — i8*
+    // has no field 1). The fat pointer type must be { i8*, i64 }.
+    let ll = gen_ll("fn f() { let b = b\"hi\"; }");
+    assert!(
+        !ll.contains("insertvalue i8* undef, i64"),
+        "should NOT have invalid insertvalue i8* (thin ptr) in:\n{}",
         ll
     );
 }

@@ -266,20 +266,32 @@ impl<'a> MirLowerCtxt<'a> {
                 )
             }
             HirLitKind::ByteStr(sym) => {
-                // `[u8; N]` — we don't know N at this point without
-                // computing the byte length. For Stage 2.4d, represent
-                // as Slice(u8) which is close enough for typeck
-                // (codegen will need the real array type — Stage 3).
+                // `b"..."` has type `&'static [u8; N]` in Rust, but Landin
+                // models it as `&'static [u8]` (a reference to a slice).
+                //
+                // Stage 3.49 (L13 closure): the type must be `Ref(_, _, Slice(u8))`
+                // so codegen produces a fat pointer `{ i8*, i64 }` (data ptr + length).
+                // Was (Stage 2.4d-3.48): produced `Slice(u8)` directly, which codegen
+                // mapped to a thin `i8*` pointer — losing the length and producing
+                // invalid IR when `ConstVal::Str` tried to `insertvalue` into it.
                 let elem_ty = Ty::new(TyKind::Uint(ast::UintTy::U8), Span::DUMMY);
                 let slice_ty = Ty::new(TyKind::Slice(Box::new(elem_ty)), Span::DUMMY);
+                let ref_slice_ty = Ty::new(
+                    TyKind::Ref(
+                        crate::mir::ty::Region::Erased,
+                        crate::mir::ty::Mutability::Immutable,
+                        Box::new(slice_ty),
+                    ),
+                    Span::DUMMY,
+                );
                 (
                     Const {
-                        ty: Box::new(slice_ty.clone()),
+                        ty: Box::new(ref_slice_ty.clone()),
                         // Reuse Str variant — codegen will interpret
-                        // the symbol as bytes when the type is Slice(u8).
+                        // the symbol as bytes when the type is Ref(_, _, Slice(u8)).
                         val: ConstVal::Str(*sym),
                     },
-                    slice_ty,
+                    ref_slice_ty,
                 )
             }
             HirLitKind::Byte(b) => (

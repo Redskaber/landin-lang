@@ -729,6 +729,67 @@
   pointer coverage + 8 edge cases), all passed; audit CONVERGED at
   round 16 per §9.3.3.
 
+### Stage 3.50 — Byte string fat pointer fix + comparison pointee type fix (v0.8.6, process v3.13)
+- **Problem (two bugs found during Stage 3.49 review)**:
+  1. **Byte string regression (P0 soundness)**: `b"hello"` produced
+     `Slice(u8)` type in MIR (from Stage 2.4d lower), which codegen
+     mapped to thin `i8*` pointer. But Stage 3.49's `ConstVal::Str`
+     handler tried to `insertvalue` a length into the thin pointer —
+     producing invalid LLVM (`insertvalue i8* undef, i64 5, 1` — i8*
+     has no field 1). This was a regression introduced by Stage 3.49's
+     fat pointer change: before Stage 3.49, `ConstVal::Str` returned a
+     thin `i8*` and worked. After Stage 3.49, it tries to build a fat
+     pointer but `Slice(u8)` maps to thin `i8*`, not `{ i8*, i64 }`.
+  2. **Fat pointer comparison hardcoded pointee type (latent bug)**:
+     Stage 3.49's `BinaryOp::Eq`/`Ne` for fat pointers hardcoded
+     `EmitType::ptr_to(EmitType::I8)` for the ptr comparison. This is
+     correct for `&str` (pointee is `i8`), but wrong for `&[T]` where
+     `T ≠ u8` — would produce `icmp eq i8*` for an `i32*` value, which
+     is a type mismatch in typed-pointer LLVM.
+- **Root cause** (per §15 — root cause):
+  1. For byte strings: MIR lower (`src/mir/lower/mod.rs` line 268)
+     produced `TyKind::Slice(Box::new(elem_ty))` for `b"..."` — the
+     type is `Slice(u8)`, not `Ref(_, _, Slice(u8))`. But `&[u8]`
+     (a reference to a slice) is `Ref(_, _, Slice(u8))`. The lower
+     was treating the literal as the slice itself, not a reference
+     to it. Codegen's `mir_type_to_emit_type(Slice(u8))` returns
+     thin `Ptr(I8)`, while `mir_type_to_emit_type(Ref(_, _, Slice(u8)))`
+     returns fat `{ Ptr(I8), I64 }`.
+  2. For comparison: the `is_fat_ptr` check identified the struct as
+     a fat pointer but discarded the actual field types. The ptr field's
+     type (field 0) was available but not used — instead `i8*` was
+     hardcoded.
+- **Fix** (2 source files):
+  1. `src/mir/lower/mod.rs` — `HirLitKind::ByteStr` handling: now
+     produces `Ref(_, _, Slice(u8))` (a reference to a slice) instead
+     of `Slice(u8)` (the slice itself). This matches Rust's semantics:
+     `b"hello"` has type `&'static [u8; N]` which coerces to
+     `&'static [u8]`. Codegen now sees `Ref(_, _, Slice(u8))` →
+     `fat_ptr_type(I8)` → `{ i8*, i64 }`.
+  2. `src/codegen/mod.rs` — `BinaryOp::Eq`/`Ne` fat pointer comparison:
+     extract `ptr_field_ty` from the fat pointer's `Struct(fields[0])`
+     instead of hardcoding `EmitType::ptr_to(EmitType::I8)`. Use
+     `ptr_field_ty` in the `icmp` call for the ptr comparison.
+- **Result**:
+  - `b"hello"` → `alloca { i8*, i64 }`, `insertvalue { i8*, i64 } undef,
+    i8* %ptr, 0`, `insertvalue { i8*, i64 } %v, i64 5, 1` — valid fat
+    pointer. No more invalid `insertvalue i8* undef, i64 5, 1`.
+  - `a == b` on `&[u8]` → `icmp eq i8*` (correct — the fat pointer's
+    field 0 is `Ptr(I8)` for `&[u8]`). For `&[i32]` it would be
+    `icmp eq i32*` (derived from field 0, not hardcoded).
+  - Byte string dedup with str: `b"hello"` and `"hello"` share the
+    same global (same bytes), verified by `b11_bstr_dedup_with_str`.
+- 10 new tests: byte string fat pointer layout (3), param/return/call
+  ABI (3), struct/tuple nesting (2), comparison (2), dedup (1),
+  invalid insertvalue regression (1), pointee type derivation (2).
+- Updated 1 existing test: `codegen_byte_string_in_function_with_other_locals`
+  — was asserting `alloca i8*` (thin pointer), now asserts
+  `alloca { i8*, i64 }` (fat pointer).
+- Total: 893 → 902. (2 source files modified; 0 typeck/borrowck changes.)
+- Gate review Round 17 (R17) — 30 audit cases (8 regression + 14 byte
+  string + comparison coverage + 8 edge cases), all passed; audit
+  CONVERGED at round 17 per §9.3.3.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -760,3 +821,4 @@
 | v0.8.6 (3.47) | 869 | +14 (L-PIPE-1 closure via AdtLayout side-table on MirBody, per §16) |
 | v0.8.6 (3.48) | 881 | +12 (L-ENUM-UNION + L-ENUM-BINDING closure: flat enum storage layout + pattern binding extraction)
 | v0.8.6 (3.49) | 893 | +12 (L13 fat pointer closure: &str/&[T] now { ptr, len } struct, not thin pointer)
+| v0.8.6 (3.50) | 902 | +10 (byte string fat pointer fix + comparison pointee type fix)
