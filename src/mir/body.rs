@@ -158,10 +158,18 @@ pub enum Terminator {
 }
 
 /// Assert message for runtime checks.
+///
+/// Stage 3.24: `Overflow` now carries the original `lhs` and `rhs` operands
+/// (per design doc `06-mir.md` §"AssertMessage"). Codegen uses these to emit
+/// `llvm.{sadd,ssub,smul}.with.overflow.*` intrinsics and branch on the
+/// extracted overflow flag.
+///
+/// Stage 3.25: `DivisionByZero` now carries the divisor operand so codegen
+/// can emit `icmp eq divisor, 0` and branch to a panic block.
 #[derive(Debug, Clone)]
 pub enum AssertMessage {
-    Overflow(BinOp),
-    DivisionByZero,
+    Overflow(BinOp, Operand, Operand),
+    DivisionByZero(Operand),
     BoundsCheck,
 }
 

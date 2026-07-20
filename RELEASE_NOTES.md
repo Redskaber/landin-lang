@@ -3,11 +3,11 @@
 **Author**: redskaber
 **Current version**: v0.8.6
 **Date**: 2026-07-20
-**Test count**: 725 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 739 tests passing, 0 warnings, fmt + clippy clean
 
 ---
 
-## v0.8.6 — Stage 3.21 + 3.22 + Gate Review Round 1 (process v3.7)
+## v0.8.6 — Stage 3.21–3.26 (typed codegen + real runtime checks + 2 gate review rounds)
 
 ### Stage 3.21 — Typed aggregate codegen
 - `EmitType` now carries full structure: `Struct(Vec<EmitType>)`, `Array(Box<EmitType>, u64)`,
@@ -17,7 +17,6 @@
 - `emit_insertvalue` now takes `val_ty: &EmitType` for the inserted value.
 - `emit_call` now takes `args: &[(EmitType, &EmitValue)]` — typed call args
   (was hardcoded `i32` for every arg).
-- New `detect_lvalue_storage_type` helper walks projection chains.
 - 10 new tests.
 
 ### Stage 3.22 — Block-scoped local value cache
@@ -27,24 +26,42 @@
   (alloca handles) persist. Within-block constant shortcut still works.
 - 6 new tests verifying if-else / match / while merge correctness.
 
-### Stage 3.23 — Gate Review Round 1
-- 38-case codegen audit (`examples/stage3_gate_audit.rs`)
-- 5 groups: single-stmt / multi-stmt / complex / edge cases / robustness
-- §9.3.1 ≥30 cases ✅, §9.3.2 ≥5 edge cases ✅
-- 5/5 committee APPROVED — unanimous
-- See `docs/develop/v0/stage-3/gate-review-round1.md`
+### Stage 3.24 — Real overflow checks
+- **Bug fix**: `Assert` for overflow used `cond = Bool(true)` placeholder — overflow
+  checks never fired. `a + b` silently wrapped on overflow (UB in safe Landin).
+- **Fix**: Extended `AssertMessage::Overflow` to carry lhs/rhs operands.
+  Codegen emits `llvm.{sadd,ssub,smul}.with.overflow.{i32,i64}`, extracts the i1
+  overflow flag via `extractvalue`, inverts with `xor i1 ..., -1`, and branches
+  to a panic block on overflow.
+- 8 new tests.
+
+### Stage 3.25 — Real div-by-zero checks
+- **Bug fix**: Div/Rem had no divisor==0 check. `a / 0` invoked LLVM `sdiv` —
+  undefined behavior on zero divisor.
+- **Fix**: Extended `AssertMessage::DivisionByZero` to carry the divisor operand.
+  Codegen emits `icmp eq <divisor>, 0` and branches to a panic block on true.
+  MIR lower now emits `DivisionByZero(rhs)` for Div/Rem (was wrongly emitting
+  `Overflow(op)` which fell back to "no check").
+- 6 new tests.
+
+### Stage 3.23 + 3.26 — Gate Reviews Round 1 + Round 2
+- R1: 38-case audit (`examples/stage3_gate_audit.rs`), 5/5 APPROVED
+- R2: 43-case audit (`examples/stage3_gate_audit_r2.rs`), 5/5 APPROVED
+- §9.3.3 CONVERGED: 2 consecutive rounds with 0 new issues
+- L6 (overflow) + L7 (div-by-zero) CLOSED; remaining items are optimizations
+  (L1 PHI, L10 float-bitwise) or new features (L2 ADT, L3 closures, L4 strings, L5 traits)
 
 ### Changed
 - `Cargo.toml`: v0.8.5 → v0.8.6
-- `src/codegen/emitter.rs`: EmitType refactor + new helpers (`pointee`, `is_ptr`,
-  `ptr_to`, `struct_of`, `array_of`, `llvm_ptr_str`)
-- `src/codegen/text_emitter.rs`: updated all `emit_*` impls for new signatures;
-  `emit_block` now clears locals cache
-- `src/codegen/mod.rs`: passes types through to all emitter calls
-- `tests/codegen_tests.rs`: +16 tests
-- `examples/stage3_gate_audit.rs`: new (38-case audit)
-- `docs/develop/v0/stage-3/dev-log.md`: 3.21, 3.22, 3.23 entries + test table
-- `docs/develop/v0/stage-3/gate-review-round1.md`: new (full gate review report)
+- `src/codegen/emitter.rs`: EmitType refactor + new `emit_checked_binop` trait method
+- `src/codegen/text_emitter.rs`: updated impls + `emit_checked_binop` + block-scoped cache
+- `src/codegen/mod.rs`: real overflow + div-by-zero check emission
+- `src/mir/body.rs`: `AssertMessage::Overflow(BinOp, Operand, Operand)` + `DivisionByZero(Operand)`
+- `src/mir/lower/mod.rs`: `emit_overflow_assert` passes lhs/rhs; new `emit_div_by_zero_assert`
+- `tests/codegen_tests.rs`: +30 tests (total 66)
+- `tests/deep_inspection.rs`, `tests/integration_stage2_4c.rs`, `examples/round5_deep.rs`: updated pattern matches
+- `examples/stage3_gate_audit.rs`, `examples/stage3_gate_audit_r2.rs`: new audit tools
+- `docs/develop/v0/stage-3/{dev-log.md, gate-review-round1.md, gate-review-round2.md}`: full reports
 
 ---
 

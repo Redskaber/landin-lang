@@ -124,7 +124,7 @@ fn main() {
             matches!(
                 &bb.terminator,
                 Terminator::Assert {
-                    msg: AssertMessage::Overflow(BinOp::Add),
+                    msg: AssertMessage::Overflow(BinOp::Add, _, _),
                     ..
                 }
             )

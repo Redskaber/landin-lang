@@ -220,6 +220,21 @@ pub trait Emitter {
     /// Emit extractvalue for tuple/struct field extraction.
     fn emit_extractvalue(&mut self, agg_ty: &EmitType, agg: &EmitValue, index: u32) -> EmitValue;
 
+    /// Emit a checked-binary-op intrinsic call (e.g.
+    /// `llvm.sadd.with.overflow.i32`) and return the aggregate result
+    /// `{T, i1}`. Caller then `extractvalue`s index 1 for the overflow flag.
+    ///
+    /// Stage 3.24: only Add/Sub/Mul on i32/i64 are supported (matching
+    /// the LLVM intrinsic family). Other ops return `undef` of the right
+    /// aggregate type with i1 = 0 (i.e., assume no overflow).
+    fn emit_checked_binop(
+        &mut self,
+        op: BinOp,
+        ty: &EmitType,
+        lhs: &EmitValue,
+        rhs: &EmitValue,
+    ) -> EmitValue;
+
     // === Local state ===
 
     /// Store a local's pointer handle (alloca result).

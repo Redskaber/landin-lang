@@ -634,12 +634,51 @@ fn codegen_terminator(
         Terminator::Assert {
             cond, target, msg, ..
         } => {
-            let cond_val = codegen_operand(emitter, mir, cond);
+            // Stage 3.24: real overflow check via llvm.{sadd,ssub,smul}.with.overflow.
+            // The MIR's `cond` field is a placeholder (Bool(true)) — for Overflow
+            // messages we ignore it and compute the real overflow flag from the
+            // lhs/rhs operands stored in the message.
             let panic_label = format!("panic_assert_{}", target.0);
-            emitter.emit_br_cond(&cond_val, &format!("bb{}", target.0), &panic_label);
+            match msg {
+                crate::mir::body::AssertMessage::Overflow(op, lhs, rhs) => {
+                    // Detect operand type (must be int — only ints overflow-check).
+                    let op_ty = detect_operand_type(mir, lhs)
+                        .or(detect_operand_type(mir, rhs))
+                        .unwrap_or(EmitType::I32);
+                    let lhs_val = codegen_operand(emitter, mir, lhs);
+                    let rhs_val = codegen_operand(emitter, mir, rhs);
+                    let agg = emitter.emit_checked_binop(*op, &op_ty, &lhs_val, &rhs_val);
+                    let agg_ty = EmitType::struct_of(vec![op_ty.clone(), EmitType::I1]);
+                    let overflow_flag = emitter.emit_extractvalue(&agg_ty, &agg, 1);
+                    // If overflow_flag is FALSE (no overflow), branch to target.
+                    // If TRUE (overflow), branch to panic block.
+                    // i.e. `br i1 (xor overflow_flag, true), label %target, label %panic`
+                    let inverted = emitter.emit_unop(
+                        crate::mir::lvalue::UnOp::Not,
+                        &EmitType::I1,
+                        &overflow_flag,
+                    );
+                    emitter.emit_br_cond(&inverted, &format!("bb{}", target.0), &panic_label);
+                }
+                crate::mir::body::AssertMessage::DivisionByZero(rhs) => {
+                    // Stage 3.25: emit `icmp eq rhs, 0`; if true → panic,
+                    // if false → continue to target.
+                    let rhs_val = codegen_operand(emitter, mir, rhs);
+                    let rhs_ty = detect_operand_type(mir, rhs).unwrap_or(EmitType::I32);
+                    let is_zero = emitter.emit_icmp("eq", &rhs_ty, &rhs_val, &"0".to_string());
+                    // is_zero == true means divisor is zero → panic.
+                    // br i1 is_zero, label %panic, label %target
+                    emitter.emit_br_cond(&is_zero, &panic_label, &format!("bb{}", target.0));
+                }
+                crate::mir::body::AssertMessage::BoundsCheck => {
+                    let cond_val = codegen_operand(emitter, mir, cond);
+                    emitter.emit_br_cond(&cond_val, &format!("bb{}", target.0), &panic_label);
+                }
+            }
+            // Emit the panic block (unconditional — only reached on overflow).
             emitter.emit_block(&panic_label);
             match msg {
-                crate::mir::body::AssertMessage::Overflow(op) => {
+                crate::mir::body::AssertMessage::Overflow(op, _, _) => {
                     let op_code: i32 = match op {
                         BinOp::Add => 0,
                         BinOp::Sub => 1,
@@ -663,7 +702,7 @@ fn codegen_terminator(
                         &EmitType::Void,
                     );
                 }
-                crate::mir::body::AssertMessage::DivisionByZero => {
+                crate::mir::body::AssertMessage::DivisionByZero(_) => {
                     let _ = emitter.emit_call("__landin_panic_div_by_zero", &[], &EmitType::Void);
                 }
                 crate::mir::body::AssertMessage::BoundsCheck => {

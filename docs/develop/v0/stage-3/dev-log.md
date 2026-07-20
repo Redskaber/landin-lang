@@ -101,6 +101,50 @@
 - 5/5 committee APPROVED — unanimous
 - See `gate-review-round1.md` for full report
 
+### Stage 3.24 — Real overflow checks (v0.8.6)
+- **Problem**: `Assert` terminator for overflow used `cond = Bool(true)` placeholder
+  — overflow checks never fired. `a + b` silently wrapped on overflow (UB in safe Landin).
+- **Fix**:
+  * Extended `AssertMessage::Overflow` from `Overflow(BinOp)` to
+    `Overflow(BinOp, Operand, Operand)` — now carries lhs and rhs operands
+    (per design doc `06-mir.md`).
+  * Modified `emit_overflow_assert` in MIR lower to pass lhs/rhs.
+  * Added `Emitter::emit_checked_binop` trait method.
+  * `TextEmitter::emit_checked_binop` emits:
+    - Add → `llvm.sadd.with.overflow.{i32,i64}`
+    - Sub → `llvm.ssub.with.overflow.{i32,i64}`
+    - Mul → `llvm.smul.with.overflow.{i32,i64}`
+    - Others → fallback `{T, i1} undef` with i1 = 0 (no overflow)
+  * Codegen: `extractvalue` index 1 from `{T, i1}` aggregate, invert with
+    `xor i1 flag, -1`, branch: no-overflow → target, overflow → panic block.
+  * Panic block calls `__landin_panic_overflow(op, 0, 0)` + `unreachable`.
+- 8 new tests covering: add/sub/mul on i32, i64, branch to panic, no-check for
+  comparisons/bitwise/floats, overflow in loops, chained arith.
+- Total: 725 → 733.
+
+### Stage 3.25 — Real div-by-zero checks (v0.8.6)
+- **Problem**: Div/Rem operations had no runtime check for divisor == 0.
+  `a / 0` invoked LLVM's `sdiv` instruction — undefined behavior on zero divisor.
+- **Fix**:
+  * Extended `AssertMessage::DivisionByZero` from `DivisionByZero` to
+    `DivisionByZero(Operand)` — now carries the divisor operand.
+  * Added `emit_div_by_zero_assert` in MIR lower, emitted for `Div` and `Rem`
+    ops (replaces the wrong `Overflow(op)` for these ops).
+  * Codegen: `icmp eq <divisor>, 0`; if true → panic block; if false → target.
+  * Panic block calls `__landin_panic_div_by_zero()` + `unreachable`.
+- 6 new tests covering: div/rem on i32, div on i64, no-check for add, panic
+  unreachable, div in loop with overflow check, mixed arith (add+div).
+- Total: 733 → 739.
+
+### Stage 3.26 — Gate Review Round 2 (v0.8.6)
+- 43-case codegen audit (`examples/stage3_gate_audit_r2.rs`)
+- 5 groups: regression (15) + Stage 3.24 (10) + Stage 3.25 (8) + edge cases (5) + adversarial (5)
+- §9.3.1 ≥30 cases ✅, §9.3.2 ≥5 edge cases ✅
+- §9.3.3 CONVERGED: R1=38/38 + R2=43/43 = 2 consecutive rounds 0 new issues
+- 5/5 committee APPROVED — unanimous
+- See `gate-review-round2.md` for full report
+- L6 (overflow) + L7 (div-by-zero) CLOSED; L1-L5, L8-L11 remain (optimizations / new features)
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -115,5 +159,6 @@
 | v0.7.4 | 709 | 0 (doc import) |
 | v0.8.4 | 709 | 0 (3.10–3.19 incremental hardening) |
 | v0.8.5 | 709 | 0 (3.20 typed-load refactor) |
-| **v0.8.6** | **725** | **+16 (3.21 typed aggregates + 3.22 block-scoped cache)** |
+| v0.8.6 (3.21-3.23) | 725 | +16 (typed aggregates + block-scoped cache + R1) |
+| **v0.8.6 (3.24-3.26)** | **739** | **+14 (real overflow + div-by-zero checks + R2)** |
 

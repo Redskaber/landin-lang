@@ -364,6 +364,44 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
+    fn emit_checked_binop(
+        &mut self,
+        op: BinOp,
+        ty: &EmitType,
+        lhs: &EmitValue,
+        rhs: &EmitValue,
+    ) -> EmitValue {
+        // Stage 3.24: emit `llvm.{sadd,ssub,smul}.with.overflow.{i32,i64}`.
+        // Returns `{ T, i1 }` — caller extracts index 1 for the overflow flag.
+        let elem_str = emit_type_to_llvm_str(ty);
+        let intrinsic = match (op, ty) {
+            (BinOp::Add, EmitType::I32) => "llvm.sadd.with.overflow.i32",
+            (BinOp::Add, EmitType::I64) => "llvm.sadd.with.overflow.i64",
+            (BinOp::Sub, EmitType::I32) => "llvm.ssub.with.overflow.i32",
+            (BinOp::Sub, EmitType::I64) => "llvm.ssub.with.overflow.i64",
+            (BinOp::Mul, EmitType::I32) => "llvm.smul.with.overflow.i32",
+            (BinOp::Mul, EmitType::I64) => "llvm.smul.with.overflow.i64",
+            // Unsupported op or type — fall back to "no overflow".
+            // Synthesize `{ T, i1 } undef` with the overflow flag zeroed.
+            _ => {
+                let r = self.fresh();
+                let agg_str = format!("{{ {}, i1 }}", elem_str);
+                self.line(&format!(
+                    "  %v{} = insertvalue {} undef, {} 0, 1",
+                    r, agg_str, elem_str
+                ));
+                return format!("%v{}", r);
+            }
+        };
+        let r = self.fresh();
+        let agg_str = format!("{{ {}, i1 }}", elem_str);
+        self.line(&format!(
+            "  %v{} = call {} @{}({} {}, {} {})",
+            r, agg_str, intrinsic, elem_str, lhs, elem_str, rhs
+        ));
+        format!("%v{}", r)
+    }
+
     fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue) {
         self.local_ptrs.insert(local_id, ptr);
     }

@@ -546,3 +546,197 @@ fn codegen_if_else_with_arith() {
         ll
     );
 }
+
+// Stage 3.24: real overflow checks via llvm.{sadd,ssub,smul}.with.overflow
+
+#[test]
+fn codegen_overflow_check_add() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a + b }");
+    assert!(
+        ll.contains("llvm.sadd.with.overflow.i32"),
+        "expected llvm.sadd.with.overflow.i32 in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("extractvalue { i32, i1 }"),
+        "expected extractvalue of overflow flag in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_overflow_check_sub() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a - b }");
+    assert!(
+        ll.contains("llvm.ssub.with.overflow.i32"),
+        "expected llvm.ssub.with.overflow.i32 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_overflow_check_mul() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a * b }");
+    assert!(
+        ll.contains("llvm.smul.with.overflow.i32"),
+        "expected llvm.smul.with.overflow.i32 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_overflow_check_i64() {
+    let ll = gen_ll("fn f(a: i64, b: i64) -> i64 { a + b }");
+    assert!(
+        ll.contains("llvm.sadd.with.overflow.i64"),
+        "expected llvm.sadd.with.overflow.i64 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_overflow_check_branch_to_panic() {
+    // The overflow flag should be inverted and branched on:
+    // `br i1 (xor flag, -1), label %bb_target, label %panic`
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a + b }");
+    assert!(
+        ll.contains("xor i1"),
+        "expected xor i1 (inverted overflow flag) in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("panic_assert_"),
+        "expected panic block label in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_overflow_no_check_for_comparison() {
+    // Comparisons can't overflow — should NOT have any overflow intrinsic.
+    let ll = gen_ll("fn f(a: i32, b: i32) -> bool { a == b }");
+    assert!(
+        !ll.contains("llvm.sadd.with.overflow"),
+        "should NOT have overflow check for comparison in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("llvm.ssub.with.overflow"),
+        "should NOT have overflow check for comparison in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_overflow_panic_block_calls_panic_fn() {
+    // The panic block should call __landin_panic_overflow and end with unreachable.
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a + b }");
+    assert!(
+        ll.contains("call void @__landin_panic_overflow"),
+        "expected panic call in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("unreachable"),
+        "expected unreachable after panic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_overflow_check_in_loop() {
+    // Overflow checks should work inside loops too.
+    let ll = gen_ll("fn f(n: i32) -> i32 { let mut s = 0; let mut i = 0; while i < n { s = s + i; i = i + 1; } s }");
+    // Should have at least 2 overflow checks (s + i and i + 1).
+    let count = ll.matches("llvm.sadd.with.overflow.i32").count();
+    assert!(
+        count >= 2,
+        "expected ≥2 overflow checks in loop, got {} in:\n{}",
+        count,
+        ll
+    );
+}
+
+// Stage 3.25: real div-by-zero checks
+
+#[test]
+fn codegen_div_zero_check_div() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a / b }");
+    // Should emit `icmp eq <divisor>, 0` and branch to panic.
+    assert!(
+        ll.contains("icmp eq"),
+        "expected icmp eq for div-by-zero check in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("panic_assert_"),
+        "expected panic block for div-by-zero in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_div_zero_check_rem() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a % b }");
+    assert!(
+        ll.contains("icmp eq"),
+        "expected icmp eq for rem-by-zero check in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_div_zero_panic_calls_panic_fn() {
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a / b }");
+    assert!(
+        ll.contains("call void @__landin_panic_div_by_zero"),
+        "expected panic call in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("unreachable"),
+        "expected unreachable after div-by-zero panic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_div_zero_check_i64() {
+    let ll = gen_ll("fn f(a: i64, b: i64) -> i64 { a / b }");
+    // Should check `icmp eq i64 <divisor>, 0`.
+    assert!(
+        ll.contains("icmp eq i64"),
+        "expected icmp eq i64 for div-by-zero check in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_no_div_zero_check_for_add() {
+    // Add doesn't need a div-by-zero check.
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a + b }");
+    // Add should NOT have a div-by-zero check (it has an overflow check instead).
+    // Check for the actual call (not the module-level `declare` line).
+    assert!(
+        !ll.contains("call void @__landin_panic_div_by_zero"),
+        "should NOT have div-by-zero check for add in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_div_zero_check_in_loop() {
+    // Div-by-zero checks should work inside loops too.
+    let ll = gen_ll("fn f(n: i32) -> i32 { let mut s = 10; let mut i = 1; while i < n { s = s / i; i = i + 1; } s }");
+    assert!(
+        ll.contains("icmp eq"),
+        "expected div-by-zero check in loop in:\n{}",
+        ll
+    );
+    // Should also have overflow check for `i + 1`.
+    assert!(
+        ll.contains("llvm.sadd.with.overflow.i32"),
+        "expected overflow check for i + 1 in:\n{}",
+        ll
+    );
+}

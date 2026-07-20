@@ -117,14 +117,14 @@ fn deep_assert_overflow_for_addition() {
         matches!(
             &bb.terminator,
             Terminator::Assert {
-                msg: AssertMessage::Overflow(BinOp::Add),
+                msg: AssertMessage::Overflow(BinOp::Add, _, _),
                 ..
             }
         )
     });
     assert!(
         has_overflow_assert,
-        "expected Assert(Overflow(Add)) for `a + b`"
+        "expected Assert(Overflow(Add, _, _)) for `a + b`"
     );
 }
 

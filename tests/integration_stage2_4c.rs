@@ -652,7 +652,7 @@ fn integration_storage_live_emitted_for_let_bindings() {
 
 #[test]
 fn integration_assert_emitted_for_addition() {
-    // `a + b` should emit an Assert(Overflow(Add)) terminator.
+    // `a + b` should emit an Assert(Overflow(Add, _, _)) terminator.
     let src = "fn add(a: i32, b: i32) -> i32 { a + b }";
     let result = compile_expect_ok(src);
     let mir = &result.mirs[0];
@@ -660,7 +660,7 @@ fn integration_assert_emitted_for_addition() {
         matches!(
             &bb.terminator,
             landin_compiler::mir::body::Terminator::Assert {
-                msg: landin_compiler::mir::body::AssertMessage::Overflow(_),
+                msg: landin_compiler::mir::body::AssertMessage::Overflow(_, _, _),
                 ..
             }
         )
@@ -681,7 +681,9 @@ fn integration_assert_emitted_for_subtraction() {
             &bb.terminator,
             landin_compiler::mir::body::Terminator::Assert {
                 msg: landin_compiler::mir::body::AssertMessage::Overflow(
-                    landin_compiler::mir::lvalue::BinOp::Sub
+                    landin_compiler::mir::lvalue::BinOp::Sub,
+                    _,
+                    _
                 ),
                 ..
             }
@@ -689,7 +691,7 @@ fn integration_assert_emitted_for_subtraction() {
     });
     assert!(
         has_overflow_assert,
-        "expected Overflow(Sub) Assert for `a - b`"
+        "expected Overflow(Sub, _, _) Assert for `a - b`"
     );
 }
 
@@ -703,7 +705,7 @@ fn integration_no_assert_for_comparison() {
         matches!(
             &bb.terminator,
             landin_compiler::mir::body::Terminator::Assert {
-                msg: landin_compiler::mir::body::AssertMessage::Overflow(_),
+                msg: landin_compiler::mir::body::AssertMessage::Overflow(..),
                 ..
             }
         )
