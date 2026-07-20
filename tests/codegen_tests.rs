@@ -1508,3 +1508,131 @@ fn codegen_field_arithmetic_in_loop() {
         ll
     );
 }
+
+// Stage 3.38: L-ENUM — Enum variant codegen
+
+#[test]
+fn codegen_enum_unit_variant() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f() { let c = Color::Red; }");
+    // Should emit { i32 } struct with discriminant 0 (Red).
+    assert!(
+        ll.contains("insertvalue { i32 } undef, i32 0, 0"),
+        "expected 'insertvalue {{ i32 }} undef, i32 0, 0' (discriminant 0 = Red) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_unit_variant_second() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f() { let c = Color::Green; }");
+    // Green is variant index 1.
+    assert!(
+        ll.contains("insertvalue { i32 } undef, i32 1, 0"),
+        "expected 'insertvalue {{ i32 }} undef, i32 1, 0' (discriminant 1 = Green) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_unit_variant_third() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f() { let c = Color::Blue; }");
+    // Blue is variant index 2.
+    assert!(
+        ll.contains("insertvalue { i32 } undef, i32 2, 0"),
+        "expected 'insertvalue {{ i32 }} undef, i32 2, 0' (discriminant 2 = Blue) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_tuple_variant() {
+    let ll = gen_ll("enum Opt { Some(i32), None } fn f() { let o = Opt::Some(42); }");
+    // Should emit { i32, i32 } struct: discriminant 0 (Some) + payload 42.
+    assert!(
+        ll.contains("insertvalue { i32, i32 } undef, i32 0, 0"),
+        "expected discriminant insertvalue in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("insertvalue { i32, i32 } %v1, i32 42, 1"),
+        "expected payload insertvalue in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_tuple_variant_none() {
+    let ll = gen_ll("enum Opt { Some(i32), None } fn f() { let o = Opt::None; }");
+    // None is variant index 1 — discriminant = 1, no payload.
+    assert!(
+        ll.contains("insertvalue { i32 } undef, i32 1, 0")
+            || ll.contains("insertvalue { i32, i32 } undef, i32 1, 0"),
+        "expected discriminant 1 (None) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_alloca_type() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f() { let c = Color::Red; }");
+    // Enum local should have alloca { i32 } (discriminant only).
+    assert!(
+        ll.contains("alloca { i32 }"),
+        "expected 'alloca {{ i32 }}' for enum local in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_tuple_variant_alloca_type() {
+    let ll = gen_ll("enum Opt { Some(i32), None } fn f() { let o = Opt::Some(42); }");
+    // Enum with tuple variant should have alloca { i32, i32 }.
+    assert!(
+        ll.contains("alloca { i32, i32 }"),
+        "expected 'alloca {{ i32, i32 }}' for enum with tuple variant in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_variant_store_correct_type() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f() { let c = Color::Red; }");
+    // Store should be 'store { i32 }', not 'store i32'.
+    assert!(
+        ll.contains("store { i32 }"),
+        "expected 'store {{ i32 }}' for enum variant in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_multiple_enum_variants() {
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f() { let a = Color::Red; let b = Color::Green; let c = Color::Blue; }");
+    // All three discriminants should appear.
+    assert!(
+        ll.contains("i32 0, 0"),
+        "expected discriminant 0 (Red) in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("i32 1, 0"),
+        "expected discriminant 1 (Green) in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("i32 2, 0"),
+        "expected discriminant 2 (Blue) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_with_i64_payload() {
+    let ll = gen_ll("enum Opt { Some(i64), None } fn f() { let o = Opt::Some(42); }");
+    // Payload is i64 — struct should be { i32, i64 }.
+    assert!(
+        ll.contains("insertvalue { i32, i64 }"),
+        "expected '{{ i32, i64 }}' struct type for i64 payload in:\n{}",
+        ll
+    );
+}

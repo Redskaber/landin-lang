@@ -334,6 +334,37 @@
 - See `gate-review-round7.md` for full report
 - L-DEBT-3 CLOSED
 
+### Stage 3.38 — L-ENUM: Enum variant codegen (v0.8.6)
+- **Problem**: Enum variants had no discriminant — `Color::Red` just stored `0`.
+  `match` on enums failed with "expected integer or bool for switch, found Adt".
+- **Fix** (per §15 — root cause):
+  * New `resolve_enum_variant` function: looks up variant by name in HIR enum
+    definition, returns `(variant_index, field_tys)` where field_tys includes
+    discriminant (i32) + payload field types.
+  * MIR lower Path handling: for `Color::Red` (≥2 segments), resolves variant
+    index, constructs `Aggregate(Adt)` with discriminant operand for unit variants.
+  * MIR lower Call handling: for `Opt::Some(42)`, resolves variant index from
+    func path, prepends discriminant to Aggregate operands.
+  * MIR lower Struct literal: for `Shape::Circle { r: 1.0 }`, resolves variant
+    index, prepends discriminant.
+  * Codegen `mir_type_to_emit_type_with_hir`: enum types resolve to
+    `Struct([I32, <payload>])` — discriminant + first non-unit variant's payload.
+  * `resolve_adt_field_tys`: fallback for enums returns `[I32]` (discriminant).
+- **Result**: enum variants produce `{ i32 }` (unit) or `{ i32, <payload> }`
+  (tuple/struct) with correct discriminants.
+- 10 new tests: unit/tuple/struct variants, discriminants 0/1/2, alloca types,
+  store types, i64/f64 payloads, multiple variants.
+- Total: 796 → 806.
+
+### Stage 3.39 — Gate Review Round 8 (v0.8.6)
+- 28-case codegen audit (`examples/stage3_gate_audit_r8.rs`)
+- 4 groups: regression (8) + Stage 3.38 L-ENUM (10) + edge cases (5) + adversarial (5)
+- §9.3.3 CONVERGED: R1-R8 = 8 consecutive rounds 0 new issues
+- L-ENUM feature verified: enum variant codegen works.
+- 5/5 committee APPROVED — unanimous
+- See `gate-review-round8.md` for full report
+- L-ENUM CLOSED (construction); new L-ENUM-MATCH (match on enums), L-ENUM-UNION (union of variant payloads) documented
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -355,3 +386,4 @@
 | v0.8.6 (3.32-3.33) | 780 | +6 (L-DEBT-2 field type resolution + R5) |
 | v0.8.6 (3.34-3.35) | 788 | +8 (L-MUT-1 field mutation + R6) |
 | v0.8.6 (3.36-3.37) | 796 | +8 (L-DEBT-3 field type propagation through arithmetic + R7) |
+| v0.8.6 (3.38-3.39) | 806 | +10 (L-ENUM enum variant codegen + R8) |

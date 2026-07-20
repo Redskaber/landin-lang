@@ -546,7 +546,33 @@ pub fn mir_type_to_emit_type_with_hir(ty: &crate::mir::ty::Ty, hir: &HirCrate) -
                     EmitType::Struct(field_tys)
                 }
             }
-            // Enum, union, etc. — Stage 3.31+ work.
+            // Stage 3.38 (L-ENUM): Enum type → { i32 discriminant, <payload> }.
+            // The payload is the field types of the first non-unit variant.
+            // For unit-only enums, the type is just { i32 }.
+            // This is a simplification — a proper implementation would use
+            // a union of all variant payloads (L-ENUM-UNION).
+            Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e))) => {
+                let mut field_tys = vec![EmitType::I32]; // discriminant
+                                                         // Find the first variant with payload fields.
+                for variant in &e.variants {
+                    let payload: Vec<EmitType> = match &variant.data {
+                        crate::hir::HirVariantData::Unit(_) => vec![],
+                        crate::hir::HirVariantData::Tuple(fields, _) => fields
+                            .iter()
+                            .map(|f| hir_ty_to_emit_type(&f.ty, hir))
+                            .collect(),
+                        crate::hir::HirVariantData::Struct(fields, _) => fields
+                            .iter()
+                            .map(|f| hir_ty_to_emit_type(&f.ty, hir))
+                            .collect(),
+                    };
+                    if !payload.is_empty() {
+                        field_tys.extend(payload);
+                        break;
+                    }
+                }
+                EmitType::Struct(field_tys)
+            }
             _ => EmitType::I32,
         },
         // For non-Adt types, delegate to the HIR-agnostic version.

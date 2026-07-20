@@ -101,15 +101,29 @@ fn main() {
     for c in cases {
         let (ok, msg) = run_case(c);
         println!("{:35} {}", c.name, msg);
-        if ok { pass += 1; } else { fail += 1; failures.push(c.name); }
+        if ok {
+            pass += 1;
+        } else {
+            fail += 1;
+            failures.push(c.name);
+        }
     }
 
     println!("\n=== Stage 3 Gate Audit Round 7 Summary ===");
     println!("    Total: {}  Pass: {}  Fail: {}", cases.len(), pass, fail);
-    if !failures.is_empty() { println!("    Failed cases: {:?}", failures); }
+    if !failures.is_empty() {
+        println!("    Failed cases: {:?}", failures);
+    }
     if fail == 0 {
-        println!("\n✅ AUDIT PASSED — 0 codegen defects found in {} cases.", cases.len());
-        println!("   R1-R7: 38/38, 43/43, 43/43, 37/37, 30/30, 30/30, {}/{} — all OK.", pass, cases.len());
+        println!(
+            "\n✅ AUDIT PASSED — 0 codegen defects found in {} cases.",
+            cases.len()
+        );
+        println!(
+            "   R1-R7: 38/38, 43/43, 43/43, 37/37, 30/30, 30/30, {}/{} — all OK.",
+            pass,
+            cases.len()
+        );
         println!("   Per §9.3.3, audit CONVERGED (7 rounds, 0 new issues each).");
         println!("   §15.4 verified: L-DEBT-3 root cause fixed (field types propagate through arithmetic).");
     } else {

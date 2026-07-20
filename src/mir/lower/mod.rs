@@ -661,12 +661,55 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                         // used as the `func` of a Call expression, the Call
                         // lower will check the operand's type and dispatch to
                         // Aggregate(Adt) instead of emitting a real Call.
+                        //
+                        // Stage 3.38 (L-ENUM): For enum variant paths like
+                        // `Color::Red`, the path has 2 segments. The second
+                        // segment is the variant name. We look it up in the
+                        // HIR enum definition to get the variant index.
+                        // For unit variants (no args), we construct the
+                        // Aggregate directly here.
+                        if def_kind == crate::resolve::DefKind::Enum && path.segments.len() >= 2 {
+                            let variant_name = &path.segments[1].ident.name;
+                            if let Some((variant_idx, field_tys)) =
+                                resolve_enum_variant(cx, def_id, variant_name)
+                            {
+                                // Check if this is a unit variant (field_tys
+                                // has only the discriminant).
+                                if field_tys.len() == 1 {
+                                    // Unit variant — construct directly with
+                                    // discriminant operand.
+                                    let adt_ty =
+                                        Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
+                                    let discr = Operand::Constant(Const {
+                                        ty: Box::new(Ty::new(
+                                            TyKind::Int(crate::ast::IntTy::I32),
+                                            Span::DUMMY,
+                                        )),
+                                        val: ConstVal::Uint(variant_idx as u128),
+                                    });
+                                    return cx.eval_rvalue_to_temp(
+                                        Rvalue::Aggregate(
+                                            AggregateKind::Adt(
+                                                def_id,
+                                                variant_idx,
+                                                Vec::new(),
+                                                field_tys,
+                                            ),
+                                            vec![discr],
+                                        ),
+                                        adt_ty,
+                                        expr.span,
+                                    );
+                                }
+                                // Non-unit variant — the path is the ctor,
+                                // which will be used in a Call expression.
+                                // Fall through to create the Adt-typed operand.
+                            }
+                        }
                         let adt_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
                         return cx.eval_rvalue_to_temp(
                             Rvalue::Use(Operand::Constant(Const {
                                 ty: Box::new(adt_ty.clone()),
-                                // Placeholder value — codegen doesn't read it
-                                // for ADT ctors (it uses the args directly).
                                 val: ConstVal::Uint(def_id.as_u32() as u128),
                             })),
                             adt_ty,
@@ -790,8 +833,6 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
 
             if is_adt_ctor {
                 // Struct/enum ctor: lower as Aggregate(Adt, operands).
-                // The destination local's type will be inferred by typeck
-                // to match the ADT type (the func operand's type).
                 let func_local_decl = cx
                     .mir
                     .local_decls
@@ -801,17 +842,50 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                     TyKind::Adt(def_id, substs) => (*def_id, substs.clone()),
                     _ => unreachable!("checked is_adt_ctor above"),
                 };
-                // Stage 3.30 (per §16): resolve field types from HIR here
-                // so codegen doesn't have to re-query HIR. The field_tys
-                // are sunk into AggregateKind::Adt.
-                let field_tys = resolve_adt_field_tys(cx, adt_def_id);
+                // Stage 3.38 (L-ENUM): For enum variant ctors (e.g.,
+                // `Opt::Some(42)`), resolve the variant index and field
+                // types from the HIR enum definition. The func expression
+                // is a Path like `Opt::Some` — check its HIR to find the
+                // variant name.
+                let (variant_idx, field_tys) = if let HirExprKind::Path(path) = &func.kind {
+                    if path.segments.len() >= 2 {
+                        if let Some((idx, tys)) =
+                            resolve_enum_variant(cx, adt_def_id, &path.segments[1].ident.name)
+                        {
+                            (idx, tys)
+                        } else {
+                            (0, resolve_adt_field_tys(cx, adt_def_id))
+                        }
+                    } else {
+                        (0, resolve_adt_field_tys(cx, adt_def_id))
+                    }
+                } else {
+                    (0, resolve_adt_field_tys(cx, adt_def_id))
+                };
+                // For enum variants, the Aggregate operands need to include
+                // the discriminant as the first element. For structs,
+                // variant_idx = 0 and field_tys are the struct's fields.
+                let mut all_operands = Vec::new();
+                if variant_idx > 0
+                    || (cx.hir.and_then(|h| h.owner(adt_def_id)).is_some_and(|o| {
+                        matches!(o, crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_)))
+                    }))
+                {
+                    // Enum variant — prepend discriminant.
+                    let discr = Operand::Constant(Const {
+                        ty: Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+                        val: ConstVal::Uint(variant_idx as u128),
+                    });
+                    all_operands.push(discr);
+                }
+                all_operands.extend(arg_operands);
                 let dest_ty = Ty::new(TyKind::Adt(adt_def_id, adt_substs), expr.span);
                 let dest = cx.mir.new_local(dest_ty, None, expr.span);
                 cx.push_assign(
                     Lvalue::local(dest, expr.span),
                     Rvalue::Aggregate(
-                        AggregateKind::Adt(adt_def_id, 0, Vec::new(), field_tys),
-                        arg_operands,
+                        AggregateKind::Adt(adt_def_id, variant_idx, Vec::new(), field_tys),
+                        all_operands,
                     ),
                     expr.span,
                 );
@@ -1182,8 +1256,8 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 .collect();
             // Stage 3.30 (per §15): if the path resolves to a known struct
             // DefId, use AggregateKind::Adt (the proper representation).
-            // Otherwise fall back to Tuple (legacy path — should not happen
-            // after Stage 3.30 since resolver now sets DefKind::Struct).
+            // Stage 3.38 (L-ENUM): also handle enum struct variants
+            // (e.g., `Shape::Circle { r: 1.0 }`).
             if let Res::Def(def_id, DefKind::Struct) = path.res {
                 let field_tys = resolve_adt_field_tys(cx, def_id);
                 let struct_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
@@ -1195,6 +1269,32 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                     struct_ty,
                     expr.span,
                 );
+            }
+            // Stage 3.38 (L-ENUM): Enum struct variant (e.g., `Shape::Circle { r: 1.0 }`).
+            if let Res::Def(def_id, DefKind::Enum) = path.res {
+                if path.segments.len() >= 2 {
+                    let variant_name = &path.segments[1].ident.name;
+                    if let Some((variant_idx, field_tys)) =
+                        resolve_enum_variant(cx, def_id, variant_name)
+                    {
+                        // Prepend discriminant to the operands.
+                        let discr = Operand::Constant(Const {
+                            ty: Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+                            val: ConstVal::Uint(variant_idx as u128),
+                        });
+                        let mut all_operands = vec![discr];
+                        all_operands.extend(operands);
+                        let enum_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
+                        return cx.eval_rvalue_to_temp(
+                            Rvalue::Aggregate(
+                                AggregateKind::Adt(def_id, variant_idx, Vec::new(), field_tys),
+                                all_operands,
+                            ),
+                            enum_ty,
+                            expr.span,
+                        );
+                    }
+                }
             }
             // Fallback (path didn't resolve to a struct — error recovery).
             let struct_ty = cx.fresh_infer_ty(expr.span);
@@ -1413,9 +1513,67 @@ fn resolve_adt_field_tys(cx: &MirLowerCtxt, def_id: crate::hir::DefId) -> Vec<Ty
             .iter()
             .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
             .collect(),
-        // Enum variant field types: Stage 3.31+ work.
+        // Stage 3.38 (L-ENUM): Enum variant field types.
+        // For enums, the field_tys include a discriminant (i32) as the
+        // first element, followed by the variant's payload field types.
+        // This is called with def_id = enum_def_id and variant_index = 0
+        // (from the Call/Struct paths that don't yet resolve variant).
+        // The variant-aware version is `resolve_enum_variant_field_tys`.
+        Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_))) => {
+            // Fallback: return just the discriminant (unit variant).
+            vec![Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)]
+        }
         _ => Vec::new(),
     }
+}
+
+/// Stage 3.38 (L-ENUM): Resolve the variant index and field types for an
+/// enum variant construction.
+///
+/// Given an enum DefId and a variant name, looks up the variant in the HIR
+/// enum definition. Returns:
+///   - `Some((variant_index, field_tys))` where field_tys includes the
+///     discriminant (i32) as the first element, followed by the variant's
+///     payload field types.
+///   - `None` if the variant isn't found.
+///
+/// Per §16: MIR lower reads HIR (allowed — data flows downstream). The
+/// resolved field_tys are sunk into `AggregateKind::Adt` so codegen reads
+/// from MIR.
+fn resolve_enum_variant(
+    cx: &MirLowerCtxt,
+    enum_def_id: crate::hir::DefId,
+    variant_name: &crate::lexer::Symbol,
+) -> Option<(u32, Vec<Ty>)> {
+    let hir = cx.hir?;
+    let owner = hir.owner(enum_def_id)?;
+    let enum_def = match owner {
+        crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => e,
+        _ => return None,
+    };
+    for (i, variant) in enum_def.variants.iter().enumerate() {
+        if variant.ident.name == *variant_name {
+            // Found the variant. Build field_tys: [discriminant, payload...]
+            let mut field_tys = vec![Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)];
+            match &variant.data {
+                crate::hir::HirVariantData::Unit(_) => {
+                    // No payload — just the discriminant.
+                }
+                crate::hir::HirVariantData::Tuple(fields, _) => {
+                    for f in fields {
+                        field_tys.push(lower_hir_ty_to_mir_ty(&f.ty));
+                    }
+                }
+                crate::hir::HirVariantData::Struct(fields, _) => {
+                    for f in fields {
+                        field_tys.push(lower_hir_ty_to_mir_ty(&f.ty));
+                    }
+                }
+            }
+            return Some((i as u32, field_tys));
+        }
+    }
+    None
 }
 
 /// Whether a HIR binary op can overflow (and thus needs an Assert check).
