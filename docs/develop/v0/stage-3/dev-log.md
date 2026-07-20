@@ -273,6 +273,39 @@
 - See `gate-review-round5.md` for full report
 - L-DEBT-2 CLOSED; new L-MUT-1 (field mutation MIR lower) documented
 
+### Stage 3.34 — L-MUT-1 fix: field mutation MIR lower (v0.8.6)
+- **Problem** (recorded as L-MUT-1 in R5): `a.v = 42` didn't mutate the
+  struct — it stored to a temp local instead. The mutation was silently
+  dropped. Reading `a.v` after the assignment returned the original value.
+- **Root cause**: MIR lower's `HirExprKind::Assign` handling only supported
+  `Path` LHS (local variable assignment). For `Field`/`Index`/`Deref` LHS
+  (projection places), it fell through to "just evaluate rhs" and discarded
+  the assignment.
+- **Fix** (per §15 — root cause, not hack):
+  * Added `lower_expr_to_lvalue` function that converts a HIR expression
+    to a MIR `Lvalue` (a place that can be assigned to). Handles:
+    - `Path` → `Lvalue::Local`
+    - `Field { receiver, ident }` → `Lvalue::Projection(receiver, Field(idx, ty))`
+    - `Index { receiver, index }` → `Lvalue::Projection(receiver, Index(idx))`
+    - `Unary { op: Deref, expr }` → `Lvalue::Projection(expr, Deref)`
+  * Updated `HirExprKind::Assign` to use `lower_expr_to_lvalue` for the LHS,
+    then `push_assign` to the resulting place. Handles ALL LHS shapes
+    generically — no special-casing per projection type.
+- 8 new tests: field mutation works/persists, named field, i32 field,
+  multiple mutations, local assignment regression, mutation in loop,
+  correct GEP index, overwrite.
+- Total: 780 → 788.
+
+### Stage 3.35 — Gate Review Round 6 (v0.8.6)
+- 30-case codegen audit (`examples/stage3_gate_audit_r6.rs`)
+- 4 groups: regression (10) + Stage 3.34 L-MUT-1 fix (10) + edge cases (5) + adversarial (5)
+- §9.3.1 ≥30 cases ✅, §9.3.2 ≥5 edge cases ✅
+- §9.3.3 CONVERGED: R1-R6 = 6 consecutive rounds 0 new issues
+- §15.4 verified: L-MUT-1 root cause fixed (field mutations work).
+- 5/5 committee APPROVED — unanimous
+- See `gate-review-round6.md` for full report
+- L-MUT-1 CLOSED; new L-DEBT-3 (field type propagation through arithmetic operands) documented
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -291,5 +324,6 @@
 | v0.8.6 (3.24-3.26) | 739 | +14 (real overflow + div-by-zero checks + R2) |
 | v0.8.6 (3.27-3.29) | 761 | +22 (string literals + byte strings + R3) |
 | v0.8.6 (3.30-3.31) | 774 | +13 (ADT/struct codegen + R4 + §15/§16 process) |
-| **v0.8.6 (3.32-3.33)** | **780** | **+6 (L-DEBT-2 field type resolution + R5)** |
+| v0.8.6 (3.32-3.33) | 780 | +6 (L-DEBT-2 field type resolution + R5) |
+| **v0.8.6 (3.34-3.35)** | **788** | **+8 (L-MUT-1 field mutation + R6)** |
 

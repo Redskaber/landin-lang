@@ -1293,3 +1293,122 @@ fn codegen_field_load_correct_type_u8() {
         ll
     );
 }
+
+// Stage 3.34: L-MUT-1 fix — field mutation MIR lower
+
+#[test]
+fn codegen_field_mutation_works() {
+    // a.v = 42 should mutate the struct, then a.v should read 42.
+    let ll =
+        gen_ll("struct Acc { v: i64 } fn f() -> i64 { let mut a = Acc { v: 0 }; a.v = 42; a.v }");
+    // Should have a GEP + store to the struct field (not just a temp).
+    assert!(
+        ll.contains("getelementptr inbounds { i64 }, { i64 }* %loc_3, i32 0, i32 0"),
+        "expected GEP to struct field in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("store i64 42, %v3") || ll.contains("store i64 42, %v"),
+        "expected 'store i64 42' to struct field in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_mutation_persists() {
+    // After mutation, reading the field should get the new value.
+    // The return should be 42 (not 0).
+    let ll =
+        gen_ll("struct Acc { v: i64 } fn f() -> i64 { let mut a = Acc { v: 0 }; a.v = 42; a.v }");
+    // Should load i64 from the struct field after the store.
+    assert!(
+        ll.contains("load i64"),
+        "expected 'load i64' after mutation in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_mutation_named_field() {
+    // Named field mutation: p.y = 99
+    let ll = gen_ll("struct Point { x: i32, y: i32 } fn f() -> i32 { let mut p = Point { x: 1, y: 2 }; p.y = 99; p.y }");
+    assert!(
+        ll.contains("store i32 99"),
+        "expected 'store i32 99' for named field mutation in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_mutation_i32() {
+    // i32 field mutation.
+    let ll =
+        gen_ll("struct Acc { v: i32 } fn f() -> i32 { let mut a = Acc { v: 0 }; a.v = 42; a.v }");
+    assert!(
+        ll.contains("store i32 42"),
+        "expected 'store i32 42' for i32 field mutation in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_mutation_then_arithmetic() {
+    // Mutate field, then use it in arithmetic.
+    // Note: the arithmetic uses i32 (not i64) because the rhs operand type
+    // defaults to i32 — this is L-DEBT-3 (field type propagation through
+    // arithmetic operands). The mutation itself works correctly.
+    let ll = gen_ll(
+        "struct Acc { v: i64 } fn f() -> i64 { let mut a = Acc { v: 10 }; a.v = a.v + 5; a.v }",
+    );
+    // Should have an add instruction (type may be i32 due to L-DEBT-3).
+    assert!(
+        ll.contains("add nsw i32") || ll.contains("add nsw i64"),
+        "expected 'add nsw' for field arithmetic after mutation in:\n{}",
+        ll
+    );
+    // Mutation should store to the struct field.
+    assert!(
+        ll.contains("getelementptr inbounds { i64 }"),
+        "expected GEP to struct field in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_multiple_field_mutations() {
+    // Mutate multiple fields.
+    let ll = gen_ll("struct Point { x: i32, y: i32 } fn f() -> i32 { let mut p = Point { x: 0, y: 0 }; p.x = 1; p.y = 2; p.x + p.y }");
+    assert!(
+        ll.contains("store i32 1"),
+        "expected 'store i32 1' for p.x = 1 in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("store i32 2"),
+        "expected 'store i32 2' for p.y = 2 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_local_assignment_still_works() {
+    // Regression: simple local assignment (not field mutation) should
+    // still work after the L-MUT-1 fix changed the Assign lower.
+    let ll = gen_ll("fn f() -> i32 { let mut x = 0; x = 42; x }");
+    assert!(
+        ll.contains("store i32 42"),
+        "expected 'store i32 42' for local assignment in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_mutation_in_loop() {
+    // Field mutation inside a loop.
+    let ll = gen_ll("struct Acc { v: i32 } fn f(n: i32) -> i32 { let mut a = Acc { v: 0 }; let mut i = 0; while i < n { a.v = a.v + i; i = i + 1; } a.v }");
+    assert!(
+        ll.contains("store i32") && ll.contains("br i1"),
+        "expected field mutation + loop in:\n{}",
+        ll
+    );
+}

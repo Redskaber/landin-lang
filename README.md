@@ -8,7 +8,7 @@ predictable performance.
 
 > **Status:** Stage 0-2 complete (lexer, parser, HIR, name resolution, MIR,
 > type checking, borrow checking). Stage 3 (LLVM codegen) in progress —
-> v0.8.6, 780 tests passing, 5 gate review rounds passed (audit CONVERGED).
+> v0.8.6, 788 tests passing, 6 gate review rounds passed (audit CONVERGED).
 > Process v3.11 (§15 最优 > 最小 + §16 阶段间接口隔离).
 
 ## Quick start
@@ -36,7 +36,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete (245 tests) |
 | 1 | `hir/`, `resolve/` | ✅ Complete (451 tests) |
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete (673 tests, 6 rounds of review) |
-| 3 | `codegen/` | 🔄 In progress (107 tests, LLVM IR text output) |
+| 3 | `codegen/` | 🔄 In progress (115 tests, LLVM IR text output) |
 
 ## Codegen capabilities (Stage 3)
 

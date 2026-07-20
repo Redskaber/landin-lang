@@ -564,6 +564,72 @@ pub fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
     }
 }
 
+/// Lower a HIR expression to a MIR Lvalue (a place that can be assigned to).
+///
+/// Stage 3.34 (L-MUT-1 fix): used by `HirExprKind::Assign` to lower the LHS
+/// into a place. Handles:
+///   - `Path` (local variable) → `Lvalue::Local`
+///   - `Field { receiver, ident }` → `Lvalue::Projection(receiver, Field(idx, ty))`
+///   - `Index { receiver, index }` → `Lvalue::Projection(receiver, Index(idx_local))`
+///   - `Unary { op: Deref, expr }` → `Lvalue::Projection(expr, Deref)`
+///
+/// For other expression kinds (which can't be assigned to), falls back to
+/// a fresh local — typeck should catch the "assignment to non-place" error.
+fn lower_expr_to_lvalue(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lvalue {
+    match &expr.kind {
+        HirExprKind::Path(path) => {
+            if let Res::Local(hir_id) = path.res {
+                if let Some(local_id) = cx.local_of(hir_id) {
+                    return Lvalue::local(local_id, expr.span);
+                }
+            }
+            // Fallback: fresh local (error recovery).
+            let ty = cx.fresh_infer_ty(expr.span);
+            let local = cx.mir.new_local(ty, None, expr.span);
+            Lvalue::local(local, expr.span)
+        }
+        HirExprKind::Field { receiver, ident } => {
+            let base = lower_expr_to_lvalue(cx, receiver);
+            let field_index = resolve_field_index(cx, receiver, &ident.name);
+            let field_ty = resolve_field_type(cx, receiver, field_index)
+                .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
+            Lvalue {
+                kind: LvalueKind::Projection(
+                    Box::new(base),
+                    ProjectionElem::Field(FieldId(field_index), field_ty),
+                ),
+                span: expr.span,
+            }
+        }
+        HirExprKind::Index {
+            receiver, index, ..
+        } => {
+            let base = lower_expr_to_lvalue(cx, receiver);
+            let idx_local = lower_expr_to_operand(cx, index);
+            Lvalue {
+                kind: LvalueKind::Projection(Box::new(base), ProjectionElem::Index(idx_local)),
+                span: expr.span,
+            }
+        }
+        HirExprKind::Unary {
+            op, expr: inner, ..
+        } if *op == HirUnaryOp::Deref => {
+            let base = lower_expr_to_lvalue(cx, inner);
+            Lvalue {
+                kind: LvalueKind::Projection(Box::new(base), ProjectionElem::Deref),
+                span: expr.span,
+            }
+        }
+        // Other expression kinds can't be assigned to — return a fresh
+        // local as error recovery. typeck should catch this.
+        _ => {
+            let ty = cx.fresh_infer_ty(expr.span);
+            let local = cx.mir.new_local(ty, None, expr.span);
+            Lvalue::local(local, expr.span)
+        }
+    }
+}
+
 /// Lower a HIR expression to a MIR Operand (a value that can be used
 /// as an argument to a binary op, call, etc.).
 ///
@@ -791,20 +857,20 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
         }
         HirExprKind::Assign { lhs, rhs, .. } => {
             let rhs_local = lower_expr_to_operand(cx, rhs);
-            // If lhs is a Path to a local, assign directly
-            if let HirExprKind::Path(path) = &lhs.kind {
-                if let Res::Local(hir_id) = path.res {
-                    if let Some(dest) = cx.local_of(hir_id) {
-                        cx.push_assign(
-                            Lvalue::local(dest, lhs.span),
-                            Rvalue::Use(Operand::Copy(Lvalue::local(rhs_local, rhs.span))),
-                            expr.span,
-                        );
-                        return rhs_local;
-                    }
-                }
-            }
-            // Fallback: just evaluate rhs
+            // Stage 3.34 (L-MUT-1 fix): handle assignment LHS that are
+            // projections (field access, index, deref). Was: only handled
+            // `Path` LHS — `a.v = 42` fell through to "just evaluate rhs"
+            // and silently dropped the mutation.
+            //
+            // Per §15: root-cause fix (handle all LHS shapes in the Assign
+            // lower), not a hack (e.g., special-casing field mutation in
+            // codegen).
+            let lhs_lvalue = lower_expr_to_lvalue(cx, lhs);
+            cx.push_assign(
+                lhs_lvalue,
+                Rvalue::Use(Operand::Copy(Lvalue::local(rhs_local, rhs.span))),
+                expr.span,
+            );
             rhs_local
         }
         HirExprKind::Tuple { elems, .. } => {
