@@ -7,6 +7,13 @@ use std::collections::HashMap;
 
 pub struct TextEmitter {
     output: String,
+    /// Accumulated module-level global definitions (emitted at end of module).
+    /// Stage 3.27: holds string-literal globals.
+    globals: Vec<String>,
+    /// Deduplication map: byte content → global name. Stage 3.27.
+    string_globals: HashMap<Vec<u8>, String>,
+    /// Counter for generating unique global names. Stage 3.27.
+    next_str: u32,
     next_val: u32,
     locals: HashMap<u32, EmitValue>,
     local_ptrs: HashMap<u32, EmitValue>,
@@ -22,6 +29,9 @@ impl TextEmitter {
     pub fn new() -> Self {
         Self {
             output: String::new(),
+            globals: Vec::new(),
+            string_globals: HashMap::new(),
+            next_str: 0,
             next_val: 1,
             locals: HashMap::new(),
             local_ptrs: HashMap::new(),
@@ -37,6 +47,21 @@ impl TextEmitter {
     fn line(&mut self, text: &str) {
         self.output.push_str(text);
         self.output.push('\n');
+    }
+
+    /// Return the full module text: function bodies followed by accumulated
+    /// module-level globals (string constants). Stage 3.27.
+    pub fn output_with_globals(&self) -> String {
+        let mut out = String::with_capacity(self.output.len() + 1024);
+        out.push_str(&self.output);
+        if !self.globals.is_empty() {
+            out.push_str("; --- Module-level string constants ---\n");
+            for g in &self.globals {
+                out.push_str(g);
+                out.push('\n');
+            }
+        }
+        out
     }
 }
 
@@ -90,7 +115,25 @@ impl Emitter for TextEmitter {
                 }
             }
             ConstVal::Char(c) => format!("{}", *c as u32),
-            ConstVal::Str(_) => "0".to_string(),
+            // Stage 3.27: emit a module-level global and return its name.
+            // The caller will treat the value as a `i8*` (pointer to the
+            // first byte of the global). Full &str fat-pointer (ptr+len)
+            // representation is deferred — Stage 3.27 just gives the ptr.
+            ConstVal::Str(sym) => {
+                // The symbol's bytes are looked up by the codegen translation
+                // layer (which has the interner) and passed to
+                // `emit_string_global`. By the time we get here, the value
+                // has already been turned into a global name and stored in
+                // `string_globals` under the symbol's key. We can't call
+                // `emit_string_global` from here because we don't have the
+                // bytes — the codegen layer intercepts Str before calling
+                // emit_const.
+                //
+                // Fallback: if emit_const is called directly with Str,
+                // emit a placeholder zero pointer.
+                let _ = sym;
+                "0".to_string()
+            }
             ConstVal::Unevaluated => "0".to_string(),
         }
     }
@@ -402,6 +445,40 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
+    fn emit_string_global(&mut self, bytes: &[u8]) -> EmitValue {
+        // Stage 3.27: dedupe by content. Same bytes → same global.
+        if let Some(name) = self.string_globals.get(bytes) {
+            return name.clone();
+        }
+        let name = format!(".str.{}", self.next_str);
+        self.next_str += 1;
+        // LLVM c"..." literal: bytes are printed as `c` + quoted string with
+        // `\NN` hex escapes for non-printable bytes. We always emit the bytes
+        // verbatim (using `\NN` for non-ASCII / control chars to be safe).
+        let mut literal = String::from("c\"");
+        for &b in bytes {
+            match b {
+                // Printable ASCII except `"` and `\` (those need escaping).
+                b' '..=b'~' if b != b'"' && b != b'\\' => literal.push(b as char),
+                _ => literal.push_str(&format!("\\{:02X}", b)),
+            }
+        }
+        literal.push('"');
+        let global_def = format!(
+            "@{} = private unnamed_addr constant [{} x i8] {}",
+            name,
+            bytes.len(),
+            literal
+        );
+        self.globals.push(global_def);
+        self.string_globals.insert(bytes.to_vec(), name.clone());
+        // Return the global's *name*; callers reference it as `@.str.N`.
+        // The pointer-typed value is `getelementptr inbounds ([N x i8], [N x i8]* @.str.N, i32 0, i32 0)`.
+        // To keep the API simple we return the name and let the codegen
+        // translation layer emit the GEP if it needs an `i8*`.
+        name
+    }
+
     fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue) {
         self.local_ptrs.insert(local_id, ptr);
     }
@@ -419,6 +496,12 @@ impl Emitter for TextEmitter {
     }
 
     fn output(&self) -> &str {
+        // Note: globals are emitted at the END of the module (after all
+        // functions). The codegen_crate entry point calls `output()` to
+        // get the function bodies, then separately calls `globals_output()`
+        // to get the trailing globals. To keep backward compatibility, we
+        // return just the function bodies here. See `output_with_globals()`
+        // for the combined output.
         &self.output
     }
 }

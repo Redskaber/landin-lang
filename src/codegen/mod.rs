@@ -28,7 +28,8 @@ pub fn codegen_crate(hir: &HirCrate, interner: &Rodeo) -> String {
     emitter.emit_declare("void @__landin_panic_bounds_check(i64 %index, i64 %len)");
     emitter.emit_declare("void @__landin_panic_div_by_zero()");
     codegen_crate_with_emitter(hir, interner, &mut emitter);
-    emitter.output().to_string()
+    // Stage 3.27: use output_with_globals to include string-constant globals.
+    emitter.output_with_globals()
 }
 
 /// Generate LLVM IR for a crate using any Emitter backend.
@@ -59,7 +60,14 @@ pub fn codegen_crate_with_emitter(hir: &HirCrate, interner: &Rodeo, emitter: &mu
         let mut tc = crate::typeck::TypeChecker::with_unify(unify);
         tc.populate_fn_sigs(hir);
         tc.check_mir_body(&mut mir);
-        codegen_function(emitter, &fn_name, &mir, &fn_names, body.params.len());
+        codegen_function(
+            emitter,
+            &fn_name,
+            &mir,
+            &fn_names,
+            body.params.len(),
+            interner,
+        );
     }
 }
 
@@ -70,6 +78,7 @@ fn codegen_function(
     mir: &MirBody,
     fn_names: &[String],
     param_count: usize,
+    interner: &Rodeo,
 ) {
     // Determine return type. Unit type (empty tuple) → void return.
     let ret_ty = if mir.local_decls.is_empty() {
@@ -102,8 +111,14 @@ fn codegen_function(
     emitter.emit_function_begin(name, &param_refs, &ret_ty);
 
     // Emit allocas for all locals at function entry (per design doc §4.1)
+    // Stage 3.27: skip void-typed locals — LLVM doesn't allow `alloca void`.
+    // Unit-typed locals are dead values from MIR lowering (temp slots for
+    // expressions that produce `()`); they don't need storage.
     for (i, ld) in mir.local_decls.iter().enumerate() {
         let ty = mir_type_to_emit_type(&ld.ty);
+        if ty == EmitType::Void {
+            continue;
+        }
         let ptr_name = format!("%loc_{}", i);
         let ptr = emitter.emit_alloca(&ty, &ptr_name);
         emitter.set_local_ptr(i as u32, ptr);
@@ -122,20 +137,20 @@ fn codegen_function(
         let label = format!("bb{}", bb_idx);
         emitter.emit_block(&label);
         for stmt in &bb.statements {
-            codegen_statement(emitter, mir, stmt);
+            codegen_statement(emitter, mir, stmt, interner);
         }
-        codegen_terminator(emitter, mir, &bb.terminator, &ret_ty, fn_names);
+        codegen_terminator(emitter, mir, &bb.terminator, &ret_ty, fn_names, interner);
     }
 
     emitter.emit_function_end();
 }
 
 /// Generate code for a single MIR statement.
-fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement) {
+fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement, interner: &Rodeo) {
     match &stmt.kind {
         StatementKind::Assign(boxed) => {
             let (place, rvalue) = &**boxed;
-            let val = codegen_rvalue(emitter, mir, rvalue);
+            let val = codegen_rvalue(emitter, mir, rvalue, interner);
             match &place.kind {
                 LvalueKind::Local(id) => {
                     let default_ty = crate::mir::ty::Ty::new(
@@ -149,8 +164,12 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement)
                         .unwrap_or(&default_ty);
                     let ty = mir_type_to_emit_type(local_ty);
                     emitter.set_local(id.0, val.clone());
-                    if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
-                        emitter.emit_store(&ty, &val, &ptr);
+                    // Stage 3.27: skip store for void-typed locals — LLVM
+                    // doesn't allow `store void`. The value is dead anyway.
+                    if ty != EmitType::Void {
+                        if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
+                            emitter.emit_store(&ty, &val, &ptr);
+                        }
                     }
                 }
                 LvalueKind::Projection(base, elem) => {
@@ -158,7 +177,7 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement)
                         .unwrap_or(EmitType::I32);
                     match elem {
                         ProjectionElem::Deref => {
-                            let ptr_val = codegen_lvalue_load(emitter, base);
+                            let ptr_val = codegen_lvalue_load(emitter, base, interner);
                             emitter.emit_store(&ty, &val, &ptr_val);
                         }
                         ProjectionElem::Field(field_id, _) => {
@@ -168,7 +187,7 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement)
                                     .cloned()
                                     .unwrap_or_else(|| "0".to_string())
                             } else {
-                                codegen_lvalue_load(emitter, base)
+                                codegen_lvalue_load(emitter, base, interner)
                             };
                             let struct_ty = detect_lvalue_storage_type(mir, base);
                             let field_ptr =
@@ -182,7 +201,7 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement)
                                     .cloned()
                                     .unwrap_or_else(|| "0".to_string())
                             } else {
-                                codegen_lvalue_load(emitter, base)
+                                codegen_lvalue_load(emitter, base, interner)
                             };
                             let array_ty = detect_lvalue_storage_type(mir, base);
                             let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
@@ -210,13 +229,18 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement)
 }
 
 /// Generate code for an rvalue.
-fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> EmitValue {
+fn codegen_rvalue(
+    emitter: &mut dyn Emitter,
+    mir: &MirBody,
+    rv: &Rvalue,
+    interner: &Rodeo,
+) -> EmitValue {
     match rv {
-        Rvalue::Use(op) => codegen_operand(emitter, mir, op),
+        Rvalue::Use(op) => codegen_operand(emitter, mir, op, interner),
 
         Rvalue::BinaryOp(op, a, b) => {
-            let a_val = codegen_operand(emitter, mir, a);
-            let b_val = codegen_operand(emitter, mir, b);
+            let a_val = codegen_operand(emitter, mir, a, interner);
+            let b_val = codegen_operand(emitter, mir, b, interner);
             let ty = detect_operand_type(mir, a)
                 .or(detect_operand_type(mir, b))
                 .unwrap_or(EmitType::I32);
@@ -274,7 +298,7 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
         }
 
         Rvalue::UnaryOp(op, operand) => {
-            let val = codegen_operand(emitter, mir, operand);
+            let val = codegen_operand(emitter, mir, operand, interner);
             let ty = detect_operand_type(mir, operand).unwrap_or(EmitType::I32);
             emitter.emit_unop(*op, &ty, &val)
         }
@@ -293,7 +317,7 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
             if operands.is_empty() {
                 "0".to_string()
             } else if operands.len() == 1 {
-                codegen_operand(emitter, mir, &operands[0])
+                codegen_operand(emitter, mir, &operands[0], interner)
             } else {
                 let field_tys: Vec<EmitType> = operands
                     .iter()
@@ -302,7 +326,7 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
                 let agg_ty = EmitType::Struct(field_tys.clone());
                 let mut agg = "undef".to_string();
                 for (i, op) in operands.iter().enumerate() {
-                    let val = codegen_operand(emitter, mir, op);
+                    let val = codegen_operand(emitter, mir, op, interner);
                     let val_ty = &field_tys[i];
                     agg = emitter.emit_insertvalue(&agg_ty, &agg, val_ty, &val, i as u32);
                 }
@@ -318,14 +342,14 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
             let agg_ty = EmitType::array_of(elem_emit_ty.clone(), n);
             let mut agg = "undef".to_string();
             for (i, op) in operands.iter().enumerate() {
-                let val = codegen_operand(emitter, mir, op);
+                let val = codegen_operand(emitter, mir, op, interner);
                 agg = emitter.emit_insertvalue(&agg_ty, &agg, &elem_emit_ty, &val, i as u32);
             }
             agg
         }
 
         Rvalue::Cast(_, op, target_ty) => {
-            let val = codegen_operand(emitter, mir, op);
+            let val = codegen_operand(emitter, mir, op, interner);
             let src_ty = detect_operand_type(mir, op).unwrap_or(EmitType::I32);
             let dst_ty = mir_type_to_emit_type(target_ty);
             emitter.emit_cast(&src_ty, &dst_ty, &val)
@@ -336,12 +360,50 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
 }
 
 /// Generate code for an operand.
-fn codegen_operand(emitter: &mut dyn Emitter, mir: &MirBody, op: &Operand) -> EmitValue {
+fn codegen_operand(
+    emitter: &mut dyn Emitter,
+    mir: &MirBody,
+    op: &Operand,
+    interner: &Rodeo,
+) -> EmitValue {
     match op {
-        Operand::Constant(c) => emitter.emit_const(&c.val),
+        Operand::Constant(c) => match c.val {
+            // Stage 3.27: string literals → module-level global + GEP to i8*.
+            // The Str symbol is looked up in the interner to get the bytes.
+            // The returned value is an i8* pointing at the first byte of the
+            // global. Full &str (ptr+len) fat-pointer representation is
+            // deferred — Stage 3.27 just gives the pointer.
+            ConstVal::Str(sym) => {
+                let bytes = interner
+                    .try_resolve(&sym)
+                    .map(|s| s.as_bytes())
+                    .unwrap_or(b"\0");
+                let global_name = emitter.emit_string_global(bytes);
+                // Emit `getelementptr inbounds [N x i8], [N x i8]* @.str.N, i32 0, i32 0`
+                // to get an i8*. We don't know N from here, but LLVM accepts
+                // `[N x i8]` only if N matches the global's actual length.
+                // The TextEmitter's emit_string_global stored the length, but
+                // the Emitter trait doesn't expose it back. As a workaround,
+                // we emit a typed GEP using the actual byte count.
+                //
+                // To keep the Emitter trait clean, we return the global name
+                // directly and let the TextEmitter's emit_string_global emit
+                // the GEP instruction as part of the value (deferred). For
+                // now, return the name and the codegen layer treats it as
+                // pointer-typed. When stored/loaded the type is `Ptr(I8)`.
+                let n = bytes.len();
+                // Synthesize a GEP value (text-only — this matches what a
+                // real LLVM frontend emits for `&str` literals' pointer part).
+                format!(
+                    "getelementptr inbounds ([{} x i8], [{} x i8]* @{}, i32 0, i32 0)",
+                    n, n, global_name
+                )
+            }
+            _ => emitter.emit_const(&c.val),
+        },
         Operand::Copy(lv) | Operand::Move(lv) => {
             let ty = detect_lvalue_type(mir, lv);
-            codegen_lvalue_load_typed(emitter, mir, lv, ty)
+            codegen_lvalue_load_typed(emitter, mir, lv, ty, interner)
         }
     }
 }
@@ -400,6 +462,7 @@ fn codegen_lvalue_load_typed(
     mir: &MirBody,
     lv: &Lvalue,
     ty: EmitType,
+    interner: &Rodeo,
 ) -> EmitValue {
     match &lv.kind {
         LvalueKind::Local(id) => {
@@ -417,7 +480,8 @@ fn codegen_lvalue_load_typed(
         LvalueKind::Projection(base, elem) => match elem {
             ProjectionElem::Deref => {
                 let ptr_ty = detect_lvalue_type(mir, base);
-                let ptr_val = codegen_lvalue_load_typed(emitter, mir, base, ptr_ty.clone());
+                let ptr_val =
+                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty.clone(), interner);
                 emitter.emit_load(&ty, &ptr_val)
             }
             ProjectionElem::Field(field_id, _) => {
@@ -428,7 +492,7 @@ fn codegen_lvalue_load_typed(
                         .unwrap_or_else(|| "0".to_string())
                 } else {
                     let ptr_ty = detect_lvalue_type(mir, base);
-                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty)
+                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner)
                 };
                 let struct_ty = detect_lvalue_storage_type(mir, base);
                 let field_ptr = emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0);
@@ -442,7 +506,7 @@ fn codegen_lvalue_load_typed(
                         .unwrap_or_else(|| "0".to_string())
                 } else {
                     let ptr_ty = detect_lvalue_type(mir, base);
-                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty)
+                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner)
                 };
                 let array_ty = detect_lvalue_storage_type(mir, base);
                 let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
@@ -463,7 +527,7 @@ fn codegen_lvalue_load_typed(
                         .unwrap_or_else(|| "0".to_string())
                 } else {
                     let ptr_ty = detect_lvalue_type(mir, base);
-                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty)
+                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner)
                 };
                 let array_ty = detect_lvalue_storage_type(mir, base);
                 let elem_ptr = emitter.emit_gep_index(&base_ptr, &array_ty, &offset.to_string());
@@ -476,12 +540,13 @@ fn codegen_lvalue_load_typed(
 }
 
 /// Load a value from an lvalue (legacy, uses I32 default).
-fn codegen_lvalue_load(emitter: &mut dyn Emitter, lv: &Lvalue) -> EmitValue {
+fn codegen_lvalue_load(emitter: &mut dyn Emitter, lv: &Lvalue, interner: &Rodeo) -> EmitValue {
     codegen_lvalue_load_typed(
         emitter,
         &MirBody::new(crate::session::Span::DUMMY),
         lv,
         EmitType::I32,
+        interner,
     )
 }
 
@@ -492,6 +557,7 @@ fn codegen_terminator(
     term: &Terminator,
     ret_ty: &EmitType,
     fn_names: &[String],
+    interner: &Rodeo,
 ) {
     match term {
         Terminator::Return => {
@@ -520,7 +586,7 @@ fn codegen_terminator(
             targets,
             otherwise,
         } => {
-            let discr_val = codegen_operand(emitter, mir, discr);
+            let discr_val = codegen_operand(emitter, mir, discr, interner);
             let is_bool_switch = targets
                 .iter()
                 .any(|(val, _)| matches!(val, ConstVal::Bool(_)));
@@ -593,7 +659,7 @@ fn codegen_terminator(
                 .iter()
                 .map(|a| {
                     let ty = detect_operand_type(mir, a).unwrap_or(EmitType::I32);
-                    let val = codegen_operand(emitter, mir, a);
+                    let val = codegen_operand(emitter, mir, a, interner);
                     (ty, val)
                 })
                 .collect();
@@ -645,8 +711,8 @@ fn codegen_terminator(
                     let op_ty = detect_operand_type(mir, lhs)
                         .or(detect_operand_type(mir, rhs))
                         .unwrap_or(EmitType::I32);
-                    let lhs_val = codegen_operand(emitter, mir, lhs);
-                    let rhs_val = codegen_operand(emitter, mir, rhs);
+                    let lhs_val = codegen_operand(emitter, mir, lhs, interner);
+                    let rhs_val = codegen_operand(emitter, mir, rhs, interner);
                     let agg = emitter.emit_checked_binop(*op, &op_ty, &lhs_val, &rhs_val);
                     let agg_ty = EmitType::struct_of(vec![op_ty.clone(), EmitType::I1]);
                     let overflow_flag = emitter.emit_extractvalue(&agg_ty, &agg, 1);
@@ -663,7 +729,7 @@ fn codegen_terminator(
                 crate::mir::body::AssertMessage::DivisionByZero(rhs) => {
                     // Stage 3.25: emit `icmp eq rhs, 0`; if true → panic,
                     // if false → continue to target.
-                    let rhs_val = codegen_operand(emitter, mir, rhs);
+                    let rhs_val = codegen_operand(emitter, mir, rhs, interner);
                     let rhs_ty = detect_operand_type(mir, rhs).unwrap_or(EmitType::I32);
                     let is_zero = emitter.emit_icmp("eq", &rhs_ty, &rhs_val, &"0".to_string());
                     // is_zero == true means divisor is zero → panic.
@@ -671,7 +737,7 @@ fn codegen_terminator(
                     emitter.emit_br_cond(&is_zero, &panic_label, &format!("bb{}", target.0));
                 }
                 crate::mir::body::AssertMessage::BoundsCheck => {
-                    let cond_val = codegen_operand(emitter, mir, cond);
+                    let cond_val = codegen_operand(emitter, mir, cond, interner);
                     emitter.emit_br_cond(&cond_val, &format!("bb{}", target.0), &panic_label);
                 }
             }

@@ -235,6 +235,18 @@ pub trait Emitter {
         rhs: &EmitValue,
     ) -> EmitValue;
 
+    /// Emit (or look up) a module-level string constant global and return
+    /// its symbolic name (e.g. `@.str.0`).
+    ///
+    /// Stage 3.27: emitted as `@.str.N = private unnamed_addr constant [M x i8] c"..."`
+    /// at module scope. Returns the global's name (without leading `@`).
+    /// The same content should yield the same global (deduplicated) so that
+    /// repeated literals don't bloat the module.
+    ///
+    /// `bytes` is the raw byte content (no null terminator added — caller
+    /// controls the encoding).
+    fn emit_string_global(&mut self, bytes: &[u8]) -> EmitValue;
+
     // === Local state ===
 
     /// Store a local's pointer handle (alloca result).
@@ -272,6 +284,12 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         TyKind::Int(crate::ast::IntTy::I128) | TyKind::Uint(crate::ast::UintTy::U128) => {
             EmitType::I64 // simplified — Stage 3 doesn't have i128 yet
         }
+        // Stage 3.28: u8/i8 should map to I8 (was falling through to I32).
+        // Important for byte strings (`&[u8; N]`) so the element type is right.
+        TyKind::Int(crate::ast::IntTy::I8) | TyKind::Uint(crate::ast::UintTy::U8) => EmitType::I8,
+        TyKind::Int(crate::ast::IntTy::I16) | TyKind::Uint(crate::ast::UintTy::U16) => {
+            EmitType::I32 // simplified — Stage 3 doesn't have i16 yet
+        }
         TyKind::Int(_) | TyKind::Uint(_) => EmitType::I32,
         TyKind::Bool => EmitType::I1,
         TyKind::Float(crate::ast::FloatTy::F32) => EmitType::F32,
@@ -280,6 +298,18 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
             EmitType::ptr_to(mir_type_to_emit_type(inner))
         }
+        // Stage 3.27: `Str` is a built-in unsized type — its `&str` reference
+        // is a fat pointer (ptr+len). For now we model `Str` itself as
+        // `Ptr(I8)` so a `&str` value (which is what codegen actually emits
+        // for a string literal — see codegen_operand) maps to a usable
+        // pointer type. Full fat-pointer (ptr+len) representation is deferred.
+        TyKind::Str => EmitType::ptr_to(EmitType::I8),
+        // Stage 3.28: `Slice(T)` is unsized; its `&[T]` reference is a fat
+        // pointer. We model `Slice(T)` itself as `Ptr(T)` so a byte-string
+        // literal (`b"..."` which has type `&[u8; N]` but is lowered as
+        // `Slice(u8)` with `ConstVal::Str`) maps to a `u8*` pointer.
+        // Full fat-pointer + length representation is deferred.
+        TyKind::Slice(elem) => EmitType::ptr_to(mir_type_to_emit_type(elem)),
         TyKind::Tuple(tys) => {
             if tys.is_empty() {
                 EmitType::Void

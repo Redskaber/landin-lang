@@ -145,6 +145,54 @@
 - See `gate-review-round2.md` for full report
 - L6 (overflow) + L7 (div-by-zero) CLOSED; L1-L5, L8-L11 remain (optimizations / new features)
 
+### Stage 3.27 — String literal codegen (v0.8.6)
+- **Problem**: `ConstVal::Str(sym)` hardcoded to emit `"0"` (null pointer).
+  Any program using string literals produced broken IR — bytes were lost.
+- **Fix**:
+  * Added `Emitter::emit_string_global(bytes)` trait method.
+  * `TextEmitter` accumulates string globals in `Vec<String>`, dedupes via
+    `HashMap<Vec<u8>, String>`. Same content → same global name.
+  * Globals emitted at module end via `output_with_globals()`.
+  * Each global: `@.str.N = private unnamed_addr constant [M x i8] c"..."`.
+  * Byte content escaped: printable ASCII verbatim; everything else as
+    `\NN` hex (tab → `\09`, newline → `\0A`, quote → `\22`, backslash → `\5C`,
+    non-ASCII → UTF-8 bytes hex-escaped).
+  * `codegen_operand` for `ConstVal::Str`: looks up bytes via interner
+    (now threaded through all codegen functions), emits global, returns
+    `getelementptr inbounds ([N x i8], [N x i8]* @.str.N, i32 0, i32 0)` (i8*).
+  * `TyKind::Str` maps to `EmitType::ptr_to(EmitType::I8)` (was `I32`).
+  * Side fix: skip `alloca`/`store` for void-typed locals (was producing
+    invalid `alloca void` / `store void` for unit-typed MIR temp slots).
+- 13 new tests: global emission, GEP, dedup, distinct, escapes (tab/newline/
+  quote/backslash), Unicode UTF-8, empty, cross-function dedup, no-void-alloca.
+- Total: 739 → 752.
+
+### Stage 3.28 — Byte string literal codegen (v0.8.6)
+- **Problem**: `b"..."` literals lowered as `Slice(u8)` with `ConstVal::Str`,
+  but `Slice` wasn't handled by `mir_type_to_emit_type` (fell through to `I32`),
+  and `u8` itself also fell through to `I32`. Result: byte strings got the
+  same broken treatment as string literals, AND `u8`-typed locals had wrong type.
+- **Fix**:
+  * `TyKind::Slice(elem)` maps to `EmitType::ptr_to(mir_type_to_emit_type(elem))`
+    (was `I32`). `Slice(u8)` → `Ptr(I8)` → `i8*`.
+  * `TyKind::Int(I8)` and `TyKind::Uint(U8)` map to `EmitType::I8` (was `I32`).
+  * `TyKind::Int(I16)` / `Uint(U16)` explicitly map to `I32` (Stage 3 simplification).
+  * Byte strings share the same global format as string literals and dedup
+    across both (`"hello"` and `b"hello"` → one global).
+- 9 new tests: byte string global, GEP, dedup with str, escape, empty,
+  u8/i8 type mapping, byte string with other locals.
+- Total: 752 → 761.
+
+### Stage 3.29 — Gate Review Round 3 (v0.8.6)
+- 43-case codegen audit (`examples/stage3_gate_audit_r3.rs`)
+- 5 groups: regression (15) + Stage 3.27 strings (10) + Stage 3.28 bytestrings (8)
+  + edge cases (5) + adversarial (5)
+- §9.3.1 ≥30 cases ✅, §9.3.2 ≥5 edge cases ✅
+- §9.3.3 CONVERGED: R1=38/38 + R2=43/43 + R3=43/43 = 3 consecutive rounds 0 new issues
+- 5/5 committee APPROVED — unanimous
+- See `gate-review-round3.md` for full report
+- L4 (string literals) + L12 (u8/i8 type) CLOSED; new L13 (fat ptr), L14 (i16), L15 (str-as-arg) documented
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -160,5 +208,6 @@
 | v0.8.4 | 709 | 0 (3.10–3.19 incremental hardening) |
 | v0.8.5 | 709 | 0 (3.20 typed-load refactor) |
 | v0.8.6 (3.21-3.23) | 725 | +16 (typed aggregates + block-scoped cache + R1) |
-| **v0.8.6 (3.24-3.26)** | **739** | **+14 (real overflow + div-by-zero checks + R2)** |
+| v0.8.6 (3.24-3.26) | 739 | +14 (real overflow + div-by-zero checks + R2) |
+| **v0.8.6 (3.27-3.29)** | **761** | **+22 (string literals + byte strings + R3)** |
 

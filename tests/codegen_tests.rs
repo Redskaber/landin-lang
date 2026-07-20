@@ -740,3 +740,279 @@ fn codegen_div_zero_check_in_loop() {
         ll
     );
 }
+
+// Stage 3.27: string literal codegen
+
+#[test]
+fn codegen_string_literal_emits_global() {
+    let ll = gen_ll("fn f() { let s = \"hello\"; }");
+    // Should emit a private unnamed_addr global with the bytes.
+    assert!(
+        ll.contains("@.str.0 = private unnamed_addr constant [5 x i8] c\"hello\""),
+        "expected string global in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_string_literal_gep_to_i8_ptr() {
+    let ll = gen_ll("fn f() { let s = \"hi\"; }");
+    // The literal's value should be a GEP that produces an i8*.
+    assert!(
+        ll.contains("getelementptr inbounds ([2 x i8], [2 x i8]* @.str.0, i32 0, i32 0)"),
+        "expected GEP to i8* in:\n{}",
+        ll
+    );
+    assert!(ll.contains("store i8*"), "expected 'store i8*' in:\n{}", ll);
+}
+
+#[test]
+fn codegen_string_literal_dedup() {
+    // Same string twice should produce only ONE global.
+    let ll = gen_ll("fn f() { let a = \"hello\"; let b = \"hello\"; }");
+    let count = ll
+        .matches("@.str.0 = private unnamed_addr constant [5 x i8] c\"hello\"")
+        .count();
+    assert_eq!(
+        count, 1,
+        "expected exactly 1 hello global, got {} in:\n{}",
+        count, ll
+    );
+    // Should NOT have a @.str.1 (no second global needed).
+    assert!(
+        !ll.contains("@.str.1"),
+        "should NOT have @.str.1 (dedup) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_string_literal_distinct() {
+    // Two different strings should produce TWO globals.
+    let ll = gen_ll("fn f() { let a = \"hello\"; let b = \"world\"; }");
+    assert!(
+        ll.contains("@.str.0 = private unnamed_addr constant [5 x i8] c\"hello\""),
+        "expected hello global in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("@.str.1 = private unnamed_addr constant [5 x i8] c\"world\""),
+        "expected world global in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_string_literal_escape_tab() {
+    let ll = gen_ll("fn f() { let s = \"a\\tb\"; }");
+    // \t → \09 in LLVM c"..." literal.
+    assert!(
+        ll.contains("c\"a\\09b\""),
+        "expected \\\\09 escape for tab in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_string_literal_escape_newline() {
+    let ll = gen_ll("fn f() { let s = \"a\\nb\"; }");
+    // \n → \0A
+    assert!(
+        ll.contains("c\"a\\0Ab\""),
+        "expected \\\\0A escape for newline in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_string_literal_escape_quote() {
+    let ll = gen_ll("fn f() { let s = \"a\\\"b\"; }");
+    // " → \22
+    assert!(
+        ll.contains("c\"a\\22b\""),
+        "expected \\\\22 escape for quote in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_string_literal_escape_backslash() {
+    let ll = gen_ll("fn f() { let s = \"a\\\\b\"; }");
+    // \\ → \5C
+    assert!(
+        ll.contains("c\"a\\5Cb\""),
+        "expected \\\\5C escape for backslash in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_string_literal_unicode_utf8() {
+    // é (U+00E9) → UTF-8 bytes C3 A9.
+    let ll = gen_ll("fn f() { let s = \"\\u{e9}\"; }");
+    assert!(
+        ll.contains("c\"\\C3\\A9\""),
+        "expected UTF-8 bytes \\\\C3\\\\A9 for é in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_string_literal_correct_length() {
+    // Length in [N x i8] should match the byte count, not char count.
+    // "é" is 1 char but 2 UTF-8 bytes.
+    let ll = gen_ll("fn f() { let s = \"\\u{e9}\"; }");
+    assert!(
+        ll.contains("[2 x i8]"),
+        "expected [2 x i8] for UTF-8 é in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_string_literal_empty() {
+    let ll = gen_ll("fn f() { let s = \"\"; }");
+    assert!(
+        ll.contains("[0 x i8] c\"\""),
+        "expected empty string global in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_no_alloca_void_for_unit_locals() {
+    // Stage 3.27 fix: void-typed locals should NOT produce `alloca void`.
+    let ll = gen_ll("fn f() { let s = \"hi\"; }");
+    assert!(
+        !ll.contains("alloca void"),
+        "should NOT have 'alloca void' in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("store void"),
+        "should NOT have 'store void' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_string_literal_multiple_functions() {
+    // Strings used in different functions should still dedup to the same global.
+    let ll = gen_ll("fn f() { let _ = \"shared\"; } fn g() { let _ = \"shared\"; }");
+    let count = ll.matches("\"shared\"").count();
+    assert_eq!(
+        count, 1,
+        "expected 1 'shared' global, got {} in:\n{}",
+        count, ll
+    );
+}
+
+// Stage 3.28: byte string literal codegen
+
+#[test]
+fn codegen_byte_string_literal_emits_global() {
+    let ll = gen_ll("fn f() { let b = b\"hello\"; }");
+    // Byte strings share the same global format as string literals
+    // (LLVM doesn't distinguish i8 from u8).
+    assert!(
+        ll.contains("@.str.0 = private unnamed_addr constant [5 x i8] c\"hello\""),
+        "expected byte string global in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_literal_gep_to_i8_ptr() {
+    let ll = gen_ll("fn f() { let b = b\"hi\"; }");
+    assert!(
+        ll.contains("getelementptr inbounds ([2 x i8], [2 x i8]* @.str.0, i32 0, i32 0)"),
+        "expected GEP to i8* for byte string in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_literal_dedup_with_str() {
+    // b"hello" and "hello" should share the same global (same bytes).
+    let ll = gen_ll("fn f() { let s = \"hello\"; let b = b\"hello\"; }");
+    let count = ll.matches("[5 x i8] c\"hello\"").count();
+    assert_eq!(
+        count, 1,
+        "expected 1 hello global (str + bytestr dedup), got {} in:\n{}",
+        count, ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_literal_escape() {
+    // b"a\nb" → bytes [0x61, 0x0A, 0x62]
+    let ll = gen_ll("fn f() { let b = b\"a\\nb\"; }");
+    assert!(
+        ll.contains("c\"a\\0Ab\""),
+        "expected \\\\0A escape for newline in byte string in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_literal_empty() {
+    let ll = gen_ll("fn f() { let b = b\"\"; }");
+    assert!(
+        ll.contains("[0 x i8] c\"\""),
+        "expected empty byte string global in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_literal_correct_length() {
+    // b"abc" → 3 bytes
+    let ll = gen_ll("fn f() { let b = b\"abc\"; }");
+    assert!(
+        ll.contains("[3 x i8]"),
+        "expected [3 x i8] for b\"abc\" in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_u8_type_maps_to_i8() {
+    // Stage 3.28: u8 should map to LLVM i8 (was I32 before).
+    let ll = gen_ll("fn f(x: u8) -> u8 { x }");
+    assert!(
+        ll.contains("define i8 @landin_f(i8 %arg0)"),
+        "expected i8 param/return type for u8 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_i8_type_maps_to_i8() {
+    let ll = gen_ll("fn f(x: i8) -> i8 { x }");
+    assert!(
+        ll.contains("define i8 @landin_f(i8 %arg0)"),
+        "expected i8 param/return type for i8 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_in_function_with_other_locals() {
+    // Byte string + int local — types should be distinct.
+    let ll = gen_ll("fn f() -> i32 { let b = b\"hi\"; let n = 42; n }");
+    assert!(
+        ll.contains("[2 x i8] c\"hi\""),
+        "expected byte string global in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("alloca i8*"),
+        "expected i8* alloca for byte string local in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("alloca i32"),
+        "expected i32 alloca for int local in:\n{}",
+        ll
+    );
+}

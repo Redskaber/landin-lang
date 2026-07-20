@@ -3,11 +3,11 @@
 **Author**: redskaber
 **Current version**: v0.8.6
 **Date**: 2026-07-20
-**Test count**: 739 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 761 tests passing, 0 warnings, fmt + clippy clean
 
 ---
 
-## v0.8.6 — Stage 3.21–3.26 (typed codegen + real runtime checks + 2 gate review rounds)
+## v0.8.6 — Stage 3.21–3.29 (typed codegen + runtime checks + string literals + 3 gate review rounds)
 
 ### Stage 3.21 — Typed aggregate codegen
 - `EmitType` now carries full structure: `Struct(Vec<EmitType>)`, `Array(Box<EmitType>, u64)`,
@@ -15,16 +15,14 @@
 - `emit_type_to_llvm_str` returns `String` (was `&'static str`).
 - `emit_gep_field` / `emit_gep_index` now take the actual struct/array type.
 - `emit_insertvalue` now takes `val_ty: &EmitType` for the inserted value.
-- `emit_call` now takes `args: &[(EmitType, &EmitValue)]` — typed call args
-  (was hardcoded `i32` for every arg).
+- `emit_call` now takes `args: &[(EmitType, &EmitValue)]` — typed call args.
 - 10 new tests.
 
 ### Stage 3.22 — Block-scoped local value cache
 - **Bug fix**: `if x > 0 { 1 } else { 2 }` previously returned `2` regardless of `x`,
   because `TextEmitter::locals` cached the most-recent assignment across block boundaries.
-- **Fix**: `emit_block` now clears `self.locals` at each block boundary. `local_ptrs`
-  (alloca handles) persist. Within-block constant shortcut still works.
-- 6 new tests verifying if-else / match / while merge correctness.
+- **Fix**: `emit_block` now clears `self.locals` at each block boundary.
+- 6 new tests.
 
 ### Stage 3.24 — Real overflow checks
 - **Bug fix**: `Assert` for overflow used `cond = Bool(true)` placeholder — overflow
@@ -36,32 +34,59 @@
 - 8 new tests.
 
 ### Stage 3.25 — Real div-by-zero checks
-- **Bug fix**: Div/Rem had no divisor==0 check. `a / 0` invoked LLVM `sdiv` —
-  undefined behavior on zero divisor.
+- **Bug fix**: Div/Rem had no divisor==0 check. `a / 0` invoked LLVM `sdiv` — UB.
 - **Fix**: Extended `AssertMessage::DivisionByZero` to carry the divisor operand.
   Codegen emits `icmp eq <divisor>, 0` and branches to a panic block on true.
-  MIR lower now emits `DivisionByZero(rhs)` for Div/Rem (was wrongly emitting
-  `Overflow(op)` which fell back to "no check").
 - 6 new tests.
 
-### Stage 3.23 + 3.26 — Gate Reviews Round 1 + Round 2
+### Stage 3.27 — String literal codegen
+- **Bug fix**: `ConstVal::Str(sym)` hardcoded to emit `"0"` (null pointer).
+  Any program using string literals produced broken IR — bytes were lost.
+- **Fix**: Added `Emitter::emit_string_global(bytes)` trait method.
+  `TextEmitter` accumulates + dedupes string globals, emits them at module
+  end via `output_with_globals()`. Each global:
+  `@.str.N = private unnamed_addr constant [M x i8] c"..."`.
+  Bytes escaped: printable ASCII verbatim; everything else as `\NN` hex.
+  `codegen_operand` for `ConstVal::Str`: looks up bytes via interner (now
+  threaded through all codegen functions), emits global, returns GEP → i8*.
+  `TyKind::Str` maps to `EmitType::ptr_to(EmitType::I8)`.
+  Side fix: skip `alloca`/`store` for void-typed locals (was producing
+  invalid `alloca void` / `store void`).
+- 13 new tests.
+
+### Stage 3.28 — Byte string literal codegen
+- **Bug fix**: `b"..."` literals lowered as `Slice(u8)` with `ConstVal::Str`,
+  but `Slice` wasn't handled by `mir_type_to_emit_type` (fell through to `I32`),
+  and `u8` itself also fell through to `I32`. Wrong types everywhere.
+- **Fix**: `TyKind::Slice(elem)` → `Ptr(mir_type_to_emit_type(elem))`.
+  `TyKind::Int(I8)` / `Uint(U8)` → `EmitType::I8`.
+  `TyKind::Int(I16)` / `Uint(U16)` → `I32` (Stage 3 simplification).
+  Byte strings share the same global format as string literals and dedup
+  across both.
+- 9 new tests.
+
+### Stage 3.23 + 3.26 + 3.29 — Gate Reviews Round 1 + 2 + 3
 - R1: 38-case audit (`examples/stage3_gate_audit.rs`), 5/5 APPROVED
 - R2: 43-case audit (`examples/stage3_gate_audit_r2.rs`), 5/5 APPROVED
-- §9.3.3 CONVERGED: 2 consecutive rounds with 0 new issues
-- L6 (overflow) + L7 (div-by-zero) CLOSED; remaining items are optimizations
-  (L1 PHI, L10 float-bitwise) or new features (L2 ADT, L3 closures, L4 strings, L5 traits)
+- R3: 43-case audit (`examples/stage3_gate_audit_r3.rs`), 5/5 APPROVED
+- §9.3.3 CONVERGED: 3 consecutive rounds with 0 new issues
+- L4 (string literals) + L6 (overflow) + L7 (div-by-zero) + L12 (u8/i8 type) CLOSED.
+  Remaining: L1 PHI, L2 ADT, L3 closures, L5 traits, L8 lli verification,
+  L9 i128, L10 float-bitwise, L11 shift-count, L13 fat pointers, L14 i16, L15 str-as-arg.
 
 ### Changed
 - `Cargo.toml`: v0.8.5 → v0.8.6
-- `src/codegen/emitter.rs`: EmitType refactor + new `emit_checked_binop` trait method
-- `src/codegen/text_emitter.rs`: updated impls + `emit_checked_binop` + block-scoped cache
-- `src/codegen/mod.rs`: real overflow + div-by-zero check emission
+- `src/codegen/emitter.rs`: EmitType refactor + `emit_checked_binop` + `emit_string_global`
+- `src/codegen/text_emitter.rs`: updated impls + `emit_checked_binop` + `emit_string_global`
+  + `output_with_globals()` + block-scoped cache
+- `src/codegen/mod.rs`: real overflow + div-by-zero check emission + string literal codegen
+  + interner threaded through all codegen functions + skip void-typed allocas
 - `src/mir/body.rs`: `AssertMessage::Overflow(BinOp, Operand, Operand)` + `DivisionByZero(Operand)`
 - `src/mir/lower/mod.rs`: `emit_overflow_assert` passes lhs/rhs; new `emit_div_by_zero_assert`
-- `tests/codegen_tests.rs`: +30 tests (total 66)
+- `tests/codegen_tests.rs`: +52 tests (total 88)
 - `tests/deep_inspection.rs`, `tests/integration_stage2_4c.rs`, `examples/round5_deep.rs`: updated pattern matches
-- `examples/stage3_gate_audit.rs`, `examples/stage3_gate_audit_r2.rs`: new audit tools
-- `docs/develop/v0/stage-3/{dev-log.md, gate-review-round1.md, gate-review-round2.md}`: full reports
+- `examples/stage3_gate_audit.rs`, `_r2.rs`, `_r3.rs`: new audit tools
+- `docs/develop/v0/stage-3/{dev-log.md, gate-review-round1.md, gate-review-round2.md, gate-review-round3.md}`: full reports
 
 ---
 
