@@ -91,7 +91,7 @@ fn main() {
         // I.9 — enum struct variant
         Case { name: "i13_enum_struct_variant", src: "enum E { Empty, Point { x: i32, y: i32 } } fn f(e: E) -> i32 { 0 }", expect_all: &["{ i32, i32, i32 }"], expect_none: &[], desc: "Stage 3.47 §16: enum struct-variant = { i32, i32, i32 } (discr + 2 fields)" },
         // I.10 — AdtLayout::Enum preserves ALL variants' payloads (forward-compat with L-ENUM-UNION)
-        Case { name: "i14_enum_multiple_variants", src: "enum E { A, B(i32), C(i64) } fn f(e: E) -> i32 { 0 }", expect_all: &["{ i32, i32 }"], expect_none: &[], desc: "Stage 3.47 §16: enum with multiple variants uses first non-empty payload (Stage 3.38 behavior preserved)" },
+        Case { name: "i14_enum_multiple_variants", src: "enum E { A, B(i32), C(i64) } fn f(e: E) -> i32 { 0 }", expect_all: &["{ i32, i32, i64 }"], expect_none: &[], desc: "Stage 3.47 §16: enum with multiple variants uses first non-empty payload (Stage 3.38 behavior preserved). Stage 3.48 update: layout is now { i32, i32, i64 } (all payloads flattened — L-ENUM-UNION fix)." },
 
         // Group E: §9.3.2 edge cases (8) — Stage 3.47 L-PIPE-1 boundary cases
         Case { name: "e01_empty_struct", src: "struct Empty; fn f() -> i32 { 0 }", expect_all: &[], expect_none: &[], desc: "Stage 3.47 edge: empty struct (no field_tys, no alloca needed)" },

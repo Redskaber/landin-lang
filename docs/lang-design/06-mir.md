@@ -824,6 +824,93 @@ variant 的 payload（而非仅第一个非空），为 Stage 4 的 L-ENUM-UNION
 
 ---
 
+## 12.2 Enum 存储布局：扁平化设计（Stage 3.48 新增）
+
+Stage 3.48 闭合了 L-ENUM-UNION（enum 存储布局 soundness bug）和
+L-ENUM-BINDING（pattern 绑定不提取 payload 的隐藏 P0 bug）。
+
+### 扁平化布局规则
+
+`mir_type_to_emit_type_with_layouts` 对 `AdtLayout::Enum` 的处理改为
+**扁平化所有非空 variant 的 payload 字段**到存储结构：
+
+```
+Storage = { discriminant, variant_0_field_0, ..., variant_0_field_N-1,
+                         variant_1_field_0, ..., variant_1_field_M-1,
+                         ... }
+```
+
+其中 unit variant 不贡献任何字段。具体分三种情况：
+
+| Case | 描述 | 存储布局 | 示例 |
+|------|------|---------|------|
+| A | 所有 variant 都是 unit | `{ discr }` | `enum Color { Red, Green, Blue }` → `{ i32 }` |
+| B | 恰好一个非空 variant | `{ discr, payload_fields... }` | `enum Opt { None, Some(i32) }` → `{ i32, i32 }` |
+| C | ≥2 个非空 variant | `{ discr, v0_fields..., v1_fields..., ... }` | `enum E { A, B(i32), C(i64) }` → `{ i32, i32, i64 }` |
+
+Case A/B 的布局与 Stage 3.38-3.47 完全一致（无回归）。Case C 是
+Stage 3.48 的 soundness 修复——之前 `{ i32, i32 }` 只为 B 的 i32
+分配空间，写入 C 的 i64 会越界破坏相邻栈内存。
+
+### variant_idx → field_idx 映射
+
+扁平化布局下，`variant_idx` 不直接对应 `field_idx`。映射公式：
+
+```
+field_idx(variant_V, field_F) = 1 + sum(field_counts of variants 0..V-1) + F
+```
+
+其中 `1` 是 discriminant 占用的 field 0。MIR lower 的
+`compute_enum_payload_starting_idx` 函数从 HIR 计算这个偏移（per §16.2.1
+数据下行允许），生成 `ProjectionElem::Field(field_idx, field_ty)` 投影。
+Codegen 直接读 MIR 投影，不查 HIR。
+
+### Pattern 绑定提取（L-ENUM-BINDING 修复）
+
+Stage 3.40 引入 enum match 时，`collect_pat_bindings_for_mir` 只为
+`Ident` 子模式分配 local，但**未生成任何投影**把 enum 的 payload
+赋给 binding local——导致 `Opt::Some(x) => x` 的 `x` 读取未初始化内存
+（隐藏 P0 soundness bug，持续 5 轮审查未被发现，因为现有测试只断言
+`switch i32` 存在而未验证 binding 实际接收 payload）。
+
+Stage 3.48 新增 `lower_enum_variant_pattern_bindings` 函数，对
+`TupleStruct`/`Struct` 模式：
+
+1. 通过 `resolve_enum_variant` 从 HIR 解析 variant_idx 和 field_tys
+2. 通过 `compute_enum_payload_starting_idx` 计算扁平 field_idx
+3. 为每个 `Ident` 子模式生成 `binding = Copy(scrut.Field(field_idx, field_ty))`
+
+该函数在 match arm lowering 的两个路径（arm block 和 otherwise block）
+都调用，与 `collect_pat_bindings_for_mir` 并列。
+
+### 设计选择：扁平布局 vs rustc-style union struct
+
+| 方案 | 优点 | 缺点 | 选择 |
+|------|------|------|------|
+| **扁平布局**（已选） | 所有投影单层级 `Field(N, ty) on Local`，与 Case A/B 一致，codegen 无需重构 | 多 variant 时存储略浪费（每个 variant 的 slot 按自身大小，非 max） | ✅ Stage 3.48 |
+| 最大宽度整数 | 简单 | 仅适用同类型整数 payload，混合类型（i32 + f64）失效 | ❌ |
+| 字节数组 `[N x i8]` | 通用 | 丢失类型信息，所有访问需 bitcast | ❌ |
+| rustc-style union struct（per-variant slot） | 类型精确 | 需要嵌套 `Field(Field(Local))` 投影，codegen 当前不支持嵌套 Field（会把中间值当指针 GEP） | ❌（需 codegen 重构） |
+
+扁平布局的取舍：用少量存储浪费换取 codegen 的简洁性和与 Case A/B 的
+一致性。未来若需精确布局（如对齐优化），可在 Stage 4+ 引入 rustc-style
+union struct 并重构 codegen 的嵌套 Field 支持。
+
+---
+
+## 12.3 嵌套 Adt 递归（Stage 3.48 修复）
+
+Stage 3.48 还修复了 `mir_type_to_emit_type_with_layouts` 的一个
+**遗留 bug**：对 `Tuple/Array/Ref/RawPtr/Slice` 类型，原本 fall through
+到 `mir_type_to_emit_type`（不带 layouts），导致嵌套 Adt（如 `(E, i32)`
+或 `&MyStruct`）会折叠为 I32。
+
+修复后，所有容器类型都递归调用 `_with_layouts`，确保嵌套 Adt 的
+storage layout 正确解析。该 bug 由 R15 audit 的 `e07_enum_in_tuple`
+case 暴露。
+
+---
+
 ## 13. MIR 大小估算
 
 对一个典型函数（~50 行 HIR）：

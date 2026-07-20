@@ -579,6 +579,88 @@
   coverage + 8 edge cases), all passed; audit CONVERGED at round 14 per
   §9.3.3. Process v3.13 first applied (new §18 doc-sync rule).
 
+### Stage 3.48 — L-ENUM-UNION + L-ENUM-BINDING closure (v0.8.6, process v3.13)
+- **Problem (two bugs)**:
+  1. **L-ENUM-UNION (soundness)**: enum storage layout used "first non-empty
+     variant payload" (Stage 3.38 behavior). For `enum E { A, B(i32), C(i64) }`,
+     storage was `{ i32, i32 }` (discr + B's i32). Constructing `E::C(42)`
+     would write the i64 payload into the i32 slot — **silent memory
+     corruption** (writing 8 bytes into a 4-byte slot, overflowing into
+     adjacent stack memory).
+  2. **L-ENUM-BINDING (P0 soundness, hidden)**: `Opt::Some(x) => x` pattern
+     matching allocated a local for `x` but **never assigned it** — the
+     binding read uninitialized memory. Pre-existing since Stage 3.40
+     (L-ENUM-MATCH), never caught because the existing test
+     `codegen_enum_match_two_variants` only asserted `switch i32` is
+     present, not that the binding actually receives the payload.
+- **Root cause** (per §15 — root cause):
+  1. For L-ENUM-UNION: `mir_type_to_emit_type_with_layouts` for
+     `AdtLayout::Enum` only included the first non-empty variant's payload
+     fields. The `AdtLayout::Enum { variant_payloads }` already stored ALL
+     variants' payloads (per Stage 3.47's forward-compatible design), but
+     codegen was discarding them.
+  2. For L-ENUM-BINDING: `collect_pat_bindings_for_mir` allocated locals
+     for `Ident` sub-patterns but generated no projection to extract the
+     enum's payload. The binding local was created with a fresh inferred
+     type, never written to.
+- **Approach chosen** (per §15 — 最优 > 最小): **flat layout** —
+  flatten ALL non-empty variants' payload fields into the storage struct.
+  Rejected alternatives:
+  - "Largest payload width" (Approach B): only works for same-kind integer
+    payloads, breaks for mixed types (i32 + f64).
+  - "Byte array [N x i8]" (Approach C): loses type info for codegen.
+  - "Union struct with per-variant slots" (Approach D, rustc-style): would
+    require nested `Field(Field(Local))` projections which codegen doesn't
+    handle correctly (loads intermediate as value, not pointer).
+  Flat layout keeps all projections single-level (`Field(N, ty)` on Local),
+  matching the existing Case A/B behavior and avoiding codegen rework.
+- **Fix**:
+  1. `src/codegen/mod.rs` — `mir_type_to_emit_type_with_layouts` for
+     `AdtLayout::Enum`: flatten ALL variants' payload fields into storage
+     (was: only first non-empty). Storage is now:
+     - Case A (all unit): `{ discr }` (unchanged)
+     - Case B (one non-empty): `{ discr, payload_fields... }` (unchanged)
+     - Case C (≥2 non-empty): `{ discr, variant_0_fields..., variant_1_fields..., ... }`
+       (NEW — soundness fix; unit variants contribute no fields)
+  2. `src/codegen/mod.rs` — `Rvalue::Aggregate(Adt(...))` codegen: for
+     enum variants, compute the starting field_idx in the flat layout
+     (`1 + sum(field_counts of variants 0..V-1)`) and insert each operand
+     at the correct offset. Discriminant goes at field 0.
+  3. `src/codegen/mod.rs` — `mir_type_to_emit_type_with_layouts` for
+     `Tuple/Array/Ref/RawPtr/Slice`: recurse with `_with_layouts` (was:
+     fell through to `mir_type_to_emit_type` which doesn't know about
+     AdtLayouts). Fixes a pre-existing bug where nested Adts (e.g., enum
+     inside a tuple) collapsed to I32. Exposed by the e07_enum_in_tuple
+     audit case.
+  4. `src/mir/lower/mod.rs` — new `lower_enum_variant_pattern_bindings`
+     function: for `TupleStruct`/`Struct` patterns on enum variants,
+     resolve variant_idx + field_tys from HIR, compute the flat field_idx,
+     generate `binding_local = Copy(scrut.Field(field_idx, field_ty))`
+     assignments. Called alongside `collect_pat_bindings_for_mir` in both
+     arm and otherwise-block lowering paths.
+  5. `src/mir/lower/mod.rs` — new `compute_enum_payload_starting_idx`
+     helper: computes `1 + sum(field_counts of variants 0..V-1)` from HIR.
+     Per §16: reads HIR (allowed — data flows downstream per §16.2.1).
+- **Result**:
+  - `enum E { A, B(i32), C(i64) }` storage is now `{ i32, i32, i64 }`
+    (was `{ i32, i32 }` — soundness bug).
+  - `E::C(42)` construction: `insertvalue { i32, i32, i64 } undef, i32 2, 0`
+    (discr=2) then `insertvalue { i32, i32, i64 } %v1, i64 42, 2` (payload
+    at field 2, past B's i32 slot at field 1).
+  - `match e { E::C(x) => x, _ => 0 }` extracts i64 from field 2 via
+    `getelementptr { i32, i32, i64 }, { i32, i32, i64 }* %loc_1, 0, 2`,
+    loads it, stores to `x`'s local. The arm body `x` now reads the actual
+    payload, not uninitialized memory.
+- 12 new tests: Case C layout/ctor (3), Case C match extraction (2),
+  L-ENUM-BINDING verification (1), multi-field variant (2), mixed types
+  (1), struct variant binding (1), Case A/B regression (2).
+- Total: 869 → 881. (2 source files modified; 0 typeck/borrowck changes.)
+- Gate review Round 15 (R15) — 30 audit cases (8 regression + 14 L-ENUM-UNION
+  + L-ENUM-BINDING coverage + 8 edge cases), all passed; audit CONVERGED
+  at round 15 per §9.3.3. R14 audit case `i14_enum_multiple_variants`
+  updated to assert the new correct layout (was: asserted old buggy
+  `{ i32, i32 }`; now: asserts `{ i32, i32, i64 }`).
+
 
 ## Test Progression
 
@@ -609,3 +691,4 @@
 | v0.8.6 (3.45) | 842 | +6 (L10 float bitwise ops via cast to int) |
 | v0.8.6 (3.46) | 855 | +13 (L14+L9 full integer type support: i8/i16/i32/i64/i128/usize/isize) |
 | v0.8.6 (3.47) | 869 | +14 (L-PIPE-1 closure via AdtLayout side-table on MirBody, per §16) |
+| v0.8.6 (3.48) | 881 | +12 (L-ENUM-UNION + L-ENUM-BINDING closure: flat enum storage layout + pattern binding extraction)

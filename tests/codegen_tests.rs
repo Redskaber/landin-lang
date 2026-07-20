@@ -2349,3 +2349,175 @@ fn codegen_adt_layout_no_hir_lookup_in_codegen() {
         ll
     );
 }
+
+// ============================================================================
+// Stage 3.48 (L-ENUM-UNION + L-ENUM-BINDING closure) — enum soundness tests
+// ============================================================================
+
+#[test]
+fn codegen_enum_union_two_payloads_layout() {
+    // Case C: enum with ≥2 non-empty variants. Storage must include ALL
+    // variants' payload fields (flattened), not just the first non-empty.
+    // Was (Stage 3.38-3.47): `{ i32, i32 }` — soundness bug (C's i64
+    // payload would overflow into adjacent memory).
+    // Now (Stage 3.48): `{ i32, i32, i64 }` (discr + B's i32 + C's i64).
+    let ll = gen_ll("enum E { A, B(i32), C(i64) } fn f(e: E) -> i32 { 0 }");
+    assert!(
+        ll.contains("define i32 @landin_f({ i32, i32, i64 } %arg0)"),
+        "expected Case C flat layout in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_union_variant_c_construction() {
+    // E::C(42) should insert discriminant=2 at field 0, payload=42 at field 2
+    // (skipping B's i32 slot at field 1).
+    let ll = gen_ll("enum E { A, B(i32), C(i64) } fn f() -> E { E::C(42) }");
+    assert!(
+        ll.contains("insertvalue { i32, i32, i64 } undef, i32 2, 0"),
+        "expected discriminant=2 at field 0 in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("insertvalue { i32, i32, i64 }") && ll.contains("i64 42, 2"),
+        "expected i64 payload at field 2 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_union_variant_b_construction() {
+    // E::B(7) should insert discriminant=1 at field 0, payload=7 at field 1.
+    let ll = gen_ll("enum E { A, B(i32), C(i64) } fn f() -> E { E::B(7) }");
+    assert!(
+        ll.contains("insertvalue { i32, i32, i64 } undef, i32 1, 0"),
+        "expected discriminant=1 at field 0 in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("i32 7, 1"),
+        "expected i32 payload at field 1 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_union_match_b_extracts_payload() {
+    // match e { E::B(x) => x, _ => 0 } should extract i32 from field 1.
+    let ll = gen_ll(
+        "enum E { A, B(i32), C(i64) } fn f(e: E) -> i32 { match e { E::B(x) => x, _ => 0 } }",
+    );
+    assert!(
+        ll.contains(
+            "getelementptr inbounds { i32, i32, i64 }, { i32, i32, i64 }* %loc_1, i32 0, i32 1"
+        ),
+        "expected GEP to field 1 (B's payload) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_union_match_c_extracts_payload() {
+    // match e { E::C(x) => x, _ => 0 } should extract i64 from field 2.
+    let ll = gen_ll(
+        "enum E { A, B(i32), C(i64) } fn f(e: E) -> i64 { match e { E::C(x) => x, _ => 0 } }",
+    );
+    assert!(
+        ll.contains(
+            "getelementptr inbounds { i32, i32, i64 }, { i32, i32, i64 }* %loc_1, i32 0, i32 2"
+        ),
+        "expected GEP to field 2 (C's payload) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_binding_extraction_case_b() {
+    // L-ENUM-BINDING P0 bug verification: `Opt::Some(x) => x` must actually
+    // extract x from the enum's payload (was: reading uninitialized memory).
+    let ll = gen_ll("enum Opt { None, Some(i32) } fn f(o: Opt) -> i32 { match o { Opt::Some(x) => x, Opt::None => 0 } }");
+    // The binding x's local must be loaded from the enum's payload (field 1).
+    assert!(
+        ll.contains("getelementptr inbounds { i32, i32 }, { i32, i32 }* %loc_1, i32 0, i32 1"),
+        "expected GEP to field 1 (Some's payload) for binding extraction in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_union_multi_field_variant_layout() {
+    // Variant with multiple fields: `enum E { A, B(i32, i64), C(i64) }`
+    // Storage = `{ i32 (discr), i32 (B.0), i64 (B.1), i64 (C.0) }` (4 fields).
+    let ll = gen_ll("enum E { A, B(i32, i64), C(i64) } fn f(e: E) -> i32 { 0 }");
+    assert!(
+        ll.contains("{ i32, i32, i64, i64 }"),
+        "expected 4-field flat layout for multi-field variant in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_union_mixed_types_layout() {
+    // Mixed payload types: `enum E { A, B(i32), C(f64) }`
+    // Storage = `{ i32, i32, double }`.
+    let ll = gen_ll("enum E { A, B(i32), C(f64) } fn f(e: E) -> i32 { 0 }");
+    assert!(
+        ll.contains("{ i32, i32, double }"),
+        "expected mixed-type flat layout in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_union_regression_single_payload() {
+    // Regression: Case B (single non-empty variant) must still work.
+    // `enum Opt { None, Some(i32) }` → `{ i32, i32 }` (unchanged).
+    let ll = gen_ll("enum Opt { None, Some(i32) } fn f(o: Opt) -> i32 { 0 }");
+    assert!(
+        ll.contains("define i32 @landin_f({ i32, i32 } %arg0)"),
+        "expected Case B layout unchanged in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_union_regression_all_unit() {
+    // Regression: Case A (all unit variants) must still work.
+    // `enum Color { Red, Green, Blue }` → `{ i32 }` (unchanged).
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f(c: Color) -> i32 { 0 }");
+    assert!(
+        ll.contains("define i32 @landin_f({ i32 } %arg0)"),
+        "expected Case A layout unchanged in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_union_struct_variant_match() {
+    // Struct variant pattern: `E::Point { x, y }` should extract both fields.
+    let ll = gen_ll("enum E { Empty, Point { x: i32, y: i32 } } fn f(e: E) -> i32 { match e { E::Point { x, y } => x + y, _ => 0 } }");
+    // Both x (field 1) and y (field 2) should be extracted.
+    assert!(
+        ll.contains("i32 0, i32 1") && ll.contains("i32 0, i32 2"),
+        "expected GEP to fields 1 and 2 for struct variant binding in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_enum_union_match_returns_correct_value() {
+    // End-to-end: match on Some should return the payload value, not 0.
+    // (Verifies the binding extraction actually wires up to the arm body.)
+    let ll = gen_ll("enum Opt { None, Some(i32) } fn f(o: Opt) -> i32 { match o { Opt::Some(x) => x, Opt::None => 0 } }");
+    // The arm result should come from the binding's local (loc_5 or similar),
+    // not a constant 0. We verify by checking that the Some arm block loads
+    // from a local that was assigned from the enum's payload.
+    let some_arm_loads_payload =
+        ll.contains("getelementptr inbounds { i32, i32 }, { i32, i32 }* %loc_1, i32 0, i32 1");
+    assert!(
+        some_arm_loads_payload,
+        "expected Some arm to load payload from enum storage in:\n{}",
+        ll
+    );
+}

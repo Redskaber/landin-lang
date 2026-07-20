@@ -158,10 +158,20 @@ fn codegen_function(
 /// from MIR, eliminating the cross-stage HIR lookup that was carried as
 /// L-PIPE-1 debt since Stage 3.30.
 ///
-/// Behavior preserves Stage 3.38 enum semantics: for enums, the storage
-/// layout is `{discriminant, first_non_empty_variant_payload}` (the first
-/// non-unit variant's payload). The full `variant_payloads` vector is
-/// preserved in `AdtLayout::Enum` for Stage 4's L-ENUM-UNION fix.
+/// Stage 3.48 (L-ENUM-UNION closure): enum storage layout now flattens
+/// ALL non-empty variants' payload fields into the storage struct (was:
+/// only the first non-empty variant's payload, a soundness bug for enums
+/// with ≥2 non-empty variants of different widths). Layout is now:
+///   - Case A (all unit variants): `{ discr }`
+///   - Case B (exactly one non-empty variant): `{ discr, payload_fields... }`
+///   - Case C (≥2 non-empty variants): `{ discr, variant_0_fields..., variant_1_fields..., ... }`
+///     (unit variants contribute no fields; this is the soundness fix)
+///
+/// The flat layout means `variant_idx` does NOT directly map to `field_idx`
+/// in the storage. The mapping is:
+///   `field_idx(variant_V, field_F) = 1 + sum(field_counts of variants 0..V-1) + F`
+/// This is computed in the `Aggregate(Adt(...))` codegen and in MIR lower's
+/// pattern-binding projection generation.
 pub fn mir_type_to_emit_type_with_layouts(
     ty: &crate::mir::ty::Ty,
     layouts: &crate::mir::body::AdtLayouts,
@@ -189,16 +199,16 @@ pub fn mir_type_to_emit_type_with_layouts(
                 discriminant_ty,
                 variant_payloads,
             }) => {
-                // Preserve Stage 3.38 behavior: first non-empty variant payload.
-                // Recurse with `layouts` for the same reason as Struct.
+                // Stage 3.48 (L-ENUM-UNION): flatten ALL non-empty variants'
+                // payload fields into the storage struct. This fixes the
+                // soundness bug where `enum E { A, B(i32), C(i64) }` only
+                // allocated i32 storage for C's i64 payload.
                 let mut field_tys =
                     vec![mir_type_to_emit_type_with_layouts(discriminant_ty, layouts)];
-                if let Some(first) = variant_payloads.iter().find(|v| !v.is_empty()) {
-                    field_tys.extend(
-                        first
-                            .iter()
-                            .map(|t| mir_type_to_emit_type_with_layouts(t, layouts)),
-                    );
+                for payload in variant_payloads {
+                    for t in payload {
+                        field_tys.push(mir_type_to_emit_type_with_layouts(t, layouts));
+                    }
                 }
                 EmitType::Struct(field_tys)
             }
@@ -207,6 +217,39 @@ pub fn mir_type_to_emit_type_with_layouts(
             // behavior for tests that don't exercise Adt codegen).
             None => EmitType::I32,
         },
+        // Stage 3.48: recurse into Tuple/Array/Ref/RawPtr/Slice with `_with_layouts`
+        // so nested Adts (e.g., enum inside a tuple, struct inside an array)
+        // resolve their layouts correctly. Was: fell through to
+        // `mir_type_to_emit_type` which doesn't know about AdtLayouts, causing
+        // nested Adts to collapse to I32 (pre-existing bug exposed by the
+        // e07_enum_in_tuple audit case).
+        TyKind::Tuple(tys) => {
+            if tys.is_empty() {
+                EmitType::Void
+            } else {
+                EmitType::Struct(
+                    tys.iter()
+                        .map(|t| mir_type_to_emit_type_with_layouts(t, layouts))
+                        .collect(),
+                )
+            }
+        }
+        TyKind::Array(elem, len) => {
+            let n = match &len.val {
+                ConstVal::Int(n) | ConstVal::Uint(n) => *n as u64,
+                _ => 0,
+            };
+            EmitType::array_of(mir_type_to_emit_type_with_layouts(elem, layouts), n)
+        }
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
+            // Stage 3.42: &str (Ref to Str) maps to i8* (not i8**).
+            if matches!(inner.kind, TyKind::Str) {
+                EmitType::ptr_to(EmitType::I8)
+            } else {
+                EmitType::ptr_to(mir_type_to_emit_type_with_layouts(inner, layouts))
+            }
+        }
+        TyKind::Slice(elem) => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(elem, layouts)),
         _ => mir_type_to_emit_type(ty),
     }
 }
@@ -441,26 +484,104 @@ fn codegen_rvalue(
             }
             agg
         }
-        Rvalue::Aggregate(AggregateKind::Adt(_def_id, _variant, _substs, field_tys), operands) => {
+        Rvalue::Aggregate(AggregateKind::Adt(def_id, variant, _substs, field_tys), operands) => {
             if operands.is_empty() {
                 return "0".to_string();
             }
-            let field_tys: Vec<EmitType> = if field_tys.is_empty() {
-                operands
-                    .iter()
-                    .map(|op| detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32))
-                    .collect()
+            // Stage 3.48 (L-ENUM-UNION): for enum variants, compute the
+            // correct starting field_idx in the flat storage layout.
+            // The storage is `{ discr, variant_0_fields..., variant_1_fields..., ... }`
+            // (flattened — unit variants contribute no fields). The starting
+            // field_idx for variant V's payload = 1 + sum(field_counts of
+            // variants 0..V-1) — but only counting this variant's own fields
+            // starting from that offset. (See `mir_type_to_emit_type_with_layouts`
+            // for the layout definition.)
+            //
+            // For struct (AdtLayout::Struct), variant_idx is always 0 and the
+            // storage is just the struct's fields (no discriminant). The legacy
+            // path (no AdtLayout) also treats it as a flat struct.
+            use crate::mir::body::AdtLayout;
+
+            let layout = layouts.get(def_id);
+            let is_enum = matches!(layout, Some(AdtLayout::Enum { .. }));
+
+            if is_enum {
+                // Enum variant construction.
+                // Look up the full storage type from the Adt layout.
+                let storage_ty = mir_type_to_emit_type_with_layouts(
+                    &crate::mir::ty::Ty::new(
+                        crate::mir::ty::TyKind::Adt(*def_id, Vec::new()),
+                        crate::session::Span::DUMMY,
+                    ),
+                    layouts,
+                );
+                // Compute the starting field_idx for this variant's payload.
+                // = 1 (for discriminant) + sum(field_counts of variants 0..V-1)
+                let variant_idx = *variant;
+                let starting_field_idx = if let Some(AdtLayout::Enum {
+                    variant_payloads, ..
+                }) = layout
+                {
+                    let mut idx = 1u32; // skip discriminant
+                    for (i, payload) in variant_payloads.iter().enumerate() {
+                        if i as u32 >= variant_idx {
+                            break;
+                        }
+                        idx += payload.len() as u32;
+                    }
+                    idx
+                } else {
+                    1 // fallback (shouldn't reach here for enum)
+                };
+
+                let mut agg = "undef".to_string();
+                // Operand 0 is always the discriminant (prepended by MIR lower
+                // for enum variants — see `lower_expr_to_operand`'s Call path).
+                // Insert it at field 0 of the storage.
+                let discr_op = &operands[0];
+                let discr_val = codegen_operand(emitter, mir, discr_op, interner, layouts);
+                let discr_ty = detect_operand_type(mir, discr_op, layouts).unwrap_or(EmitType::I32);
+                agg = emitter.emit_insertvalue(&storage_ty, &agg, &discr_ty, &discr_val, 0);
+
+                // Remaining operands are the variant's payload fields, inserted
+                // starting at `starting_field_idx`.
+                // `field_tys` from AggregateKind includes the discriminant as
+                // element 0 (per `resolve_enum_variant`), so payload field i
+                // is at `field_tys[i+1]`.
+                for (i, op) in operands.iter().enumerate().skip(1) {
+                    let val = codegen_operand(emitter, mir, op, interner, layouts);
+                    // field_tys[i] is this operand's type (field_tys[0]=discr,
+                    // field_tys[1]=payload_field_0, ...).
+                    let val_ty = field_tys
+                        .get(i)
+                        .map(mir_type_to_emit_type)
+                        .unwrap_or_else(|| {
+                            detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32)
+                        });
+                    let target_idx = starting_field_idx + (i as u32 - 1);
+                    agg = emitter.emit_insertvalue(&storage_ty, &agg, &val_ty, &val, target_idx);
+                }
+                agg
             } else {
-                field_tys.iter().map(mir_type_to_emit_type).collect()
-            };
-            let agg_ty = EmitType::Struct(field_tys.clone());
-            let mut agg = "undef".to_string();
-            for (i, op) in operands.iter().enumerate() {
-                let val = codegen_operand(emitter, mir, op, interner, layouts);
-                let val_ty = field_tys.get(i).cloned().unwrap_or(EmitType::I32);
-                agg = emitter.emit_insertvalue(&agg_ty, &agg, &val_ty, &val, i as u32);
+                // Struct construction (or test-context fallback without layout).
+                // Legacy path: flat struct, operands at 0..N.
+                let field_tys: Vec<EmitType> = if field_tys.is_empty() {
+                    operands
+                        .iter()
+                        .map(|op| detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32))
+                        .collect()
+                } else {
+                    field_tys.iter().map(mir_type_to_emit_type).collect()
+                };
+                let agg_ty = EmitType::Struct(field_tys.clone());
+                let mut agg = "undef".to_string();
+                for (i, op) in operands.iter().enumerate() {
+                    let val = codegen_operand(emitter, mir, op, interner, layouts);
+                    let val_ty = field_tys.get(i).cloned().unwrap_or(EmitType::I32);
+                    agg = emitter.emit_insertvalue(&agg_ty, &agg, &val_ty, &val, i as u32);
+                }
+                agg
             }
-            agg
         }
         Rvalue::Cast(_, op, target_ty) => {
             let val = codegen_operand(emitter, mir, op, interner, layouts);
