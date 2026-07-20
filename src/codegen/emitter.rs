@@ -27,14 +27,15 @@ pub type EmitValue = String;
 /// layouts can be fully represented. Callers pass `&EmitType` to emitters.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EmitType {
+    I1,
+    I8,
+    I16,
     I32,
     I64,
-    I1,
-    F64,
+    I128,
     F32,
-    I8,
-    /// Typed pointer to a pointee. Falls back to opaque `i8*` when the
-    /// pointee is unknown (kept for legacy callers).
+    F64,
+    /// Typed pointer to a pointee.
     Ptr(Box<EmitType>),
     /// Opaque pointer — no pointee info available.
     OpaquePtr,
@@ -278,18 +279,25 @@ pub trait Emitter {
 pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
     use crate::mir::ty::TyKind;
     match &ty.kind {
+        TyKind::Int(crate::ast::IntTy::I8) | TyKind::Uint(crate::ast::UintTy::U8) => EmitType::I8,
+        TyKind::Int(crate::ast::IntTy::I16) | TyKind::Uint(crate::ast::UintTy::U16) => {
+            EmitType::I16
+        }
+        TyKind::Int(crate::ast::IntTy::I32) | TyKind::Uint(crate::ast::UintTy::U32) => {
+            EmitType::I32
+        }
         TyKind::Int(crate::ast::IntTy::I64) | TyKind::Uint(crate::ast::UintTy::U64) => {
             EmitType::I64
         }
         TyKind::Int(crate::ast::IntTy::I128) | TyKind::Uint(crate::ast::UintTy::U128) => {
-            EmitType::I64 // simplified — Stage 3 doesn't have i128 yet
+            EmitType::I128
         }
-        // Stage 3.28: u8/i8 should map to I8 (was falling through to I32).
-        // Important for byte strings (`&[u8; N]`) so the element type is right.
-        TyKind::Int(crate::ast::IntTy::I8) | TyKind::Uint(crate::ast::UintTy::U8) => EmitType::I8,
-        TyKind::Int(crate::ast::IntTy::I16) | TyKind::Uint(crate::ast::UintTy::U16) => {
-            EmitType::I32 // simplified — Stage 3 doesn't have i16 yet
+        TyKind::Int(crate::ast::IntTy::Isize) | TyKind::Uint(crate::ast::UintTy::Usize) => {
+            EmitType::I64
         }
+        // All explicit IntTy/UintTy variants are covered above.
+        // This catch-all is unreachable but kept for safety.
+        #[allow(unreachable_patterns)]
         TyKind::Int(_) | TyKind::Uint(_) => EmitType::I32,
         TyKind::Bool => EmitType::I1,
         TyKind::Float(crate::ast::FloatTy::F32) => EmitType::F32,
@@ -336,18 +344,28 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
 }
 
 /// Map a BinOp + EmitType to the LLVM instruction string.
+///
+/// Stage 3.46: generic integer type support — generates the instruction
+/// with the correct type suffix for all integer widths (i8/i16/i32/i64/i128).
 pub fn binop_to_llvm_str(op: BinOp, ty: &EmitType) -> String {
+    let ty_str = emit_type_to_llvm_str(ty);
+    let is_int = matches!(
+        ty,
+        EmitType::I1
+            | EmitType::I8
+            | EmitType::I16
+            | EmitType::I32
+            | EmitType::I64
+            | EmitType::I128
+    );
     match (op, ty) {
-        (BinOp::Add, EmitType::I32) => "add nsw i32".into(),
-        (BinOp::Add, EmitType::I64) => "add nsw i64".into(),
-        (BinOp::Sub, EmitType::I32) => "sub nsw i32".into(),
-        (BinOp::Sub, EmitType::I64) => "sub nsw i64".into(),
-        (BinOp::Mul, EmitType::I32) => "mul nsw i32".into(),
-        (BinOp::Mul, EmitType::I64) => "mul nsw i64".into(),
-        (BinOp::Div, EmitType::I32) => "sdiv i32".into(),
-        (BinOp::Div, EmitType::I64) => "sdiv i64".into(),
-        (BinOp::Rem, EmitType::I32) => "srem i32".into(),
-        (BinOp::Rem, EmitType::I64) => "srem i64".into(),
+        // Integer arithmetic
+        (BinOp::Add, _) if is_int => format!("add nsw {}", ty_str),
+        (BinOp::Sub, _) if is_int => format!("sub nsw {}", ty_str),
+        (BinOp::Mul, _) if is_int => format!("mul nsw {}", ty_str),
+        (BinOp::Div, _) if is_int => format!("sdiv {}", ty_str),
+        (BinOp::Rem, _) if is_int => format!("srem {}", ty_str),
+        // Float arithmetic
         (BinOp::Add, EmitType::F64) => "fadd double".into(),
         (BinOp::Add, EmitType::F32) => "fadd float".into(),
         (BinOp::Sub, EmitType::F64) => "fsub double".into(),
@@ -358,21 +376,12 @@ pub fn binop_to_llvm_str(op: BinOp, ty: &EmitType) -> String {
         (BinOp::Div, EmitType::F32) => "fdiv float".into(),
         (BinOp::Rem, EmitType::F64) => "frem double".into(),
         (BinOp::Rem, EmitType::F32) => "frem float".into(),
-        (BinOp::BitAnd, EmitType::I32) => "and i32".into(),
-        (BinOp::BitAnd, EmitType::I1) => "and i1".into(),
-        (BinOp::BitAnd, EmitType::I64) => "and i64".into(),
-        (BinOp::BitOr, EmitType::I32) => "or i32".into(),
-        (BinOp::BitOr, EmitType::I1) => "or i1".into(),
-        (BinOp::BitOr, EmitType::I64) => "or i64".into(),
-        (BinOp::BitXor, EmitType::I32) => "xor i32".into(),
-        (BinOp::BitXor, EmitType::I1) => "xor i1".into(),
-        (BinOp::BitXor, EmitType::I64) => "xor i64".into(),
-        (BinOp::Shl, EmitType::I32) => "shl i32".into(),
-        (BinOp::Shl, EmitType::I64) => "shl i64".into(),
-        (BinOp::Shr, EmitType::I32) => "ashr i32".into(),
-        (BinOp::Shr, EmitType::I64) => "ashr i64".into(),
-        // Floats don't have bitwise ops; bitcast to int of same width then back.
-        // For Stage 3 we just fall back to the int form (caller should avoid this).
+        // Bitwise (all integer types)
+        (BinOp::BitAnd, _) if is_int => format!("and {}", ty_str),
+        (BinOp::BitOr, _) if is_int => format!("or {}", ty_str),
+        (BinOp::BitXor, _) if is_int => format!("xor {}", ty_str),
+        (BinOp::Shl, _) if is_int => format!("shl {}", ty_str),
+        (BinOp::Shr, _) if is_int => format!("ashr {}", ty_str),
         _ => "add i32".into(),
     }
 }
@@ -383,12 +392,14 @@ pub fn binop_to_llvm_str(op: BinOp, ty: &EmitType) -> String {
 /// array layouts must be rendered dynamically from their element types.
 pub fn emit_type_to_llvm_str(ty: &EmitType) -> String {
     match ty {
+        EmitType::I1 => "i1".into(),
+        EmitType::I8 => "i8".into(),
+        EmitType::I16 => "i16".into(),
         EmitType::I32 => "i32".into(),
         EmitType::I64 => "i64".into(),
-        EmitType::I1 => "i1".into(),
-        EmitType::F64 => "double".into(),
+        EmitType::I128 => "i128".into(),
         EmitType::F32 => "float".into(),
-        EmitType::I8 => "i8".into(),
+        EmitType::F64 => "double".into(),
         EmitType::Ptr(pointee) => format!("{}*", emit_type_to_llvm_str(pointee)),
         EmitType::OpaquePtr => "i32*".into(),
         EmitType::Void => "void".into(),

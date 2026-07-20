@@ -2093,3 +2093,137 @@ fn codegen_int_bitand_unchanged() {
         ll
     );
 }
+
+// Stage 3.46: L14+L9 — Full integer type support
+
+#[test]
+fn codegen_i16_param() {
+    let ll = gen_ll("fn f(x: i16) -> i16 { x }");
+    assert!(
+        ll.contains("define i16 @landin_f(i16 %arg0)"),
+        "expected i16 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_u16_param() {
+    let ll = gen_ll("fn f(x: u16) -> u16 { x }");
+    assert!(
+        ll.contains("define i16 @landin_f(i16 %arg0)"),
+        "expected i16 for u16 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_u32_param() {
+    let ll = gen_ll("fn f(x: u32) -> u32 { x }");
+    assert!(
+        ll.contains("define i32 @landin_f(i32 %arg0)"),
+        "expected i32 for u32 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_usize_param() {
+    let ll = gen_ll("fn f(x: usize) -> usize { x }");
+    assert!(
+        ll.contains("define i64 @landin_f(i64 %arg0)"),
+        "expected i64 for usize in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_isize_param() {
+    let ll = gen_ll("fn f(x: isize) -> isize { x }");
+    assert!(
+        ll.contains("define i64 @landin_f(i64 %arg0)"),
+        "expected i64 for isize in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_i128_param() {
+    let ll = gen_ll("fn f(x: i128) -> i128 { x }");
+    assert!(
+        ll.contains("define i128 @landin_f(i128 %arg0)"),
+        "expected i128 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_i16_arith() {
+    let ll = gen_ll("fn f(a: i16, b: i16) -> i16 { a + b }");
+    assert!(
+        ll.contains("add nsw i16"),
+        "expected 'add nsw i16' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_i128_arith() {
+    let ll = gen_ll("fn f(a: i128, b: i128) -> i128 { a + b }");
+    assert!(
+        ll.contains("add nsw i128"),
+        "expected 'add nsw i128' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_usize_arith() {
+    let ll = gen_ll("fn f(a: usize, b: usize) -> usize { a + b }");
+    assert!(
+        ll.contains("add nsw i64"),
+        "expected 'add nsw i64' for usize in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_i16_overflow_check() {
+    let ll = gen_ll("fn f(a: i16, b: i16) -> i16 { a + b }");
+    // Should check overflow with i16 intrinsic.
+    assert!(
+        ll.contains("llvm.sadd.with.overflow.i16"),
+        "expected i16 overflow check in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_i128_overflow_check() {
+    let ll = gen_ll("fn f(a: i128, b: i128) -> i128 { a + b }");
+    assert!(
+        ll.contains("llvm.sadd.with.overflow.i128"),
+        "expected i128 overflow check in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_i16_shift_overflow() {
+    let ll = gen_ll("fn f(a: i16) -> i16 { a << 2 }");
+    // Should check against 16 (i16 bit width).
+    assert!(
+        ll.contains("icmp uge") && ll.contains("16"),
+        "expected shift check 16 for i16 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_i128_shift_overflow() {
+    let ll = gen_ll("fn f(a: i128) -> i128 { a << 2 }");
+    assert!(
+        ll.contains("icmp uge") && ll.contains("128"),
+        "expected shift check 128 for i128 in:\n{}",
+        ll
+    );
+}

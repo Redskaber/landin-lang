@@ -418,12 +418,21 @@ impl Emitter for TextEmitter {
         // Returns `{ T, i1 }` — caller extracts index 1 for the overflow flag.
         let elem_str = emit_type_to_llvm_str(ty);
         let intrinsic = match (op, ty) {
+            (BinOp::Add, EmitType::I8) => "llvm.sadd.with.overflow.i8",
+            (BinOp::Add, EmitType::I16) => "llvm.sadd.with.overflow.i16",
             (BinOp::Add, EmitType::I32) => "llvm.sadd.with.overflow.i32",
             (BinOp::Add, EmitType::I64) => "llvm.sadd.with.overflow.i64",
+            (BinOp::Add, EmitType::I128) => "llvm.sadd.with.overflow.i128",
+            (BinOp::Sub, EmitType::I8) => "llvm.ssub.with.overflow.i8",
+            (BinOp::Sub, EmitType::I16) => "llvm.ssub.with.overflow.i16",
             (BinOp::Sub, EmitType::I32) => "llvm.ssub.with.overflow.i32",
             (BinOp::Sub, EmitType::I64) => "llvm.ssub.with.overflow.i64",
+            (BinOp::Sub, EmitType::I128) => "llvm.ssub.with.overflow.i128",
+            (BinOp::Mul, EmitType::I8) => "llvm.smul.with.overflow.i8",
+            (BinOp::Mul, EmitType::I16) => "llvm.smul.with.overflow.i16",
             (BinOp::Mul, EmitType::I32) => "llvm.smul.with.overflow.i32",
             (BinOp::Mul, EmitType::I64) => "llvm.smul.with.overflow.i64",
+            (BinOp::Mul, EmitType::I128) => "llvm.smul.with.overflow.i128",
             // Unsupported op or type — fall back to "no overflow".
             // Synthesize `{ T, i1 } undef` with the overflow flag zeroed.
             _ => {

@@ -484,6 +484,31 @@
 - 6 new tests: float bitand/bitor/bitxor, cast usage, return type, int regression.
 - Total: 836 → 842.
 
+### Stage 3.46 — L14+L9: Full integer type support (v0.8.6)
+- **Problem**: i16/u16 mapped to I32 (wrong LLVM type). i128/u128 mapped to I64
+  (truncated). usize/isize mapped to I32 (should be I64 on 64-bit). Integer
+  arithmetic on these types used wrong instruction width. Overflow checks
+  only worked for i32/i64.
+- **Root cause**: `EmitType` didn't have I16/I128 variants. `mir_type_to_emit_type`
+  mapped i16→I32, i128→I64. `binop_to_llvm_str` only had I32/I64 entries.
+  `emit_checked_binop` only had I32/I64 intrinsics.
+- **Fix** (per §15 — root cause):
+  1. Added `EmitType::I16` and `EmitType::I128` variants.
+  2. `mir_type_to_emit_type`: i16/u16→I16, i128/u128→I128, isize/usize→I64.
+  3. `binop_to_llvm_str`: rewrote to use generic `format!("add nsw {}", ty_str)`
+     for all integer types (i8/i16/i32/i64/i128) instead of hardcoded entries.
+  4. `emit_checked_binop`: added I8/I16/I128 intrinsic entries.
+  5. `detect_operand_type`: use constant's declared type (not just value kind).
+  6. `hir_ty_to_emit_type`: added I16/I128/isize/usize mappings.
+  7. Shift overflow: I16→16 bits, I128→128 bits.
+- **Result**: `fn f(a: i16, b: i16) -> i16 { a + b }` now produces
+  `add nsw i16` with `llvm.sadd.with.overflow.i16` overflow check.
+- 13 new tests: i16/u16/u32/usize/isize/i128 params, i16/i128/usize arith,
+  i16/i128 overflow check, i16/i128 shift overflow.
+- Total: 842 → 855. (code refactored: `src/codegen/mod.rs` rewritten cleanly)
+- Gate review Round 13 (R13) — 30 audit cases (8 regression + 14 integer type
+  coverage + 8 edge cases), all passed; audit CONVERGED at round 13 per §9.3.3.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -511,3 +536,4 @@
 | v0.8.6 (3.43) | 828 | +8 (L11 shift-count overflow check via icmp uge) |
 | v0.8.6 (3.44) | 836 | +8 (const/static value resolution — inline initializer) |
 | v0.8.6 (3.45) | 842 | +6 (L10 float bitwise ops via cast to int) |
+| v0.8.6 (3.46) | 855 | +13 (L14+L9 full integer type support: i8/i16/i32/i64/i128/usize/isize) |

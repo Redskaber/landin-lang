@@ -3,11 +3,11 @@
 **Author**: redskaber
 **Current version**: v0.8.6
 **Date**: 2026-07-20
-**Test count**: 842 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 855 tests passing, 0 warnings, fmt + clippy clean
 
 ---
 
-## v0.8.6 — Stage 3.21–3.45 (typed codegen + runtime checks + literals + ADT structs + field type resolution + field mutation + 6 gate review rounds)
+## v0.8.6 — Stage 3.21–3.46 (typed codegen + runtime checks + literals + ADT structs + field type resolution + field mutation + 6 gate review rounds)
 
 ### Stage 3.21 — Typed aggregate codegen
 - `EmitType` now carries full structure: `Struct(Vec<EmitType>)`, `Array(Box<EmitType>, u64)`,
