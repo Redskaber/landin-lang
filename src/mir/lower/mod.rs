@@ -733,22 +733,96 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                         );
                     }
                     _ => {
-                        // Default: treat as FnDef (covers Fn, Const, Static,
-                        // etc. — the typeck/codegen layers handle the
-                        // FnDef-typed operand correctly for fn calls;
-                        // Const/Static are still placeholders).
-                        let fndef_ty = Ty::new(TyKind::FnDef(def_id, Vec::new()), expr.span);
-                        return cx.eval_rvalue_to_temp(
-                            Rvalue::Use(Operand::Constant(Const {
-                                ty: Box::new(fndef_ty.clone()),
-                                // ConstVal::Unit doesn't exist; use Uint(0) as a
-                                // placeholder. The actual fn pointer is resolved
-                                // at codegen time.
-                                val: ConstVal::Uint(def_id.as_u32() as u128),
-                            })),
-                            fndef_ty,
-                            expr.span,
-                        );
+                        // Stage 3.44: Handle Const and Static references.
+                        // Per §15: root-cause fix — dispatch on DefKind
+                        // instead of treating everything as FnDef.
+                        match def_kind {
+                            crate::resolve::DefKind::Const | crate::resolve::DefKind::Static => {
+                                // Look up the const/static's value from HIR.
+                                // For Stage 3.44, we evaluate the initializer
+                                // expression and produce a constant operand.
+                                if let Some(hir_crate) = cx.hir {
+                                    if let Some(crate::hir::OwnerNode::Item(item)) =
+                                        hir_crate.owner(def_id)
+                                    {
+                                        match item {
+                                            crate::hir::HirItem::Const(c) => {
+                                                // Lower the const's body expression to get its value.
+                                                if let Some(body) = hir_crate.body(c.body) {
+                                                    let const_local =
+                                                        lower_expr_to_operand(cx, &body.value);
+                                                    let ld = cx
+                                                        .mir
+                                                        .local_decls
+                                                        .get(const_local.0 as usize);
+                                                    if let Some(ld) = ld {
+                                                        return cx.eval_rvalue_to_temp(
+                                                            Rvalue::Use(Operand::Copy(
+                                                                Lvalue::local(
+                                                                    const_local,
+                                                                    expr.span,
+                                                                ),
+                                                            )),
+                                                            ld.ty.clone(),
+                                                            expr.span,
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                            crate::hir::HirItem::Static(s) => {
+                                                // Statics are like consts but with a fixed memory location.
+                                                // For Stage 3.44, treat same as const.
+                                                if let Some(body) = hir_crate.body(s.body) {
+                                                    let static_local =
+                                                        lower_expr_to_operand(cx, &body.value);
+                                                    let ld = cx
+                                                        .mir
+                                                        .local_decls
+                                                        .get(static_local.0 as usize);
+                                                    if let Some(ld) = ld {
+                                                        return cx.eval_rvalue_to_temp(
+                                                            Rvalue::Use(Operand::Copy(
+                                                                Lvalue::local(
+                                                                    static_local,
+                                                                    expr.span,
+                                                                ),
+                                                            )),
+                                                            ld.ty.clone(),
+                                                            expr.span,
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                                // Fallback: treat as FnDef (error recovery).
+                                let fndef_ty =
+                                    Ty::new(TyKind::FnDef(def_id, Vec::new()), expr.span);
+                                return cx.eval_rvalue_to_temp(
+                                    Rvalue::Use(Operand::Constant(Const {
+                                        ty: Box::new(fndef_ty.clone()),
+                                        val: ConstVal::Uint(def_id.as_u32() as u128),
+                                    })),
+                                    fndef_ty,
+                                    expr.span,
+                                );
+                            }
+                            _ => {
+                                // Default: treat as FnDef (covers Fn, etc.).
+                                let fndef_ty =
+                                    Ty::new(TyKind::FnDef(def_id, Vec::new()), expr.span);
+                                return cx.eval_rvalue_to_temp(
+                                    Rvalue::Use(Operand::Constant(Const {
+                                        ty: Box::new(fndef_ty.clone()),
+                                        val: ConstVal::Uint(def_id.as_u32() as u128),
+                                    })),
+                                    fndef_ty,
+                                    expr.span,
+                                );
+                            }
+                        }
                     }
                 }
             }

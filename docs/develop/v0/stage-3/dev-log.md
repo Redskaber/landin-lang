@@ -443,6 +443,26 @@
   panic block, branch direction, shift in loop, no LLVM intrinsic for shifts.
 - Total: 820 → 828.
 
+### Stage 3.44 — Const/Static value resolution (v0.8.6)
+- **Problem**: `const MAX: i32 = 100; fn f() -> i32 { MAX }` produced a
+  typeck error "mismatched types: expected Int(I32), found FnDef". Const
+  and Static references were treated as FnDef (function pointers).
+- **Root cause**: MIR lower's Path handling fell through to the default
+  case which created `TyKind::FnDef` for ALL non-Struct/Enum DefKinds,
+  including Const and Static.
+- **Fix** (per §15 — root cause): in the default case, dispatch on
+  `DefKind`:
+  - `Const`/`Static`: look up the const/static's HIR body, lower its
+    initializer expression to a MIR operand, and return it with the
+    correct type (from the local decl). This inlines the const's value
+    at the reference site.
+  - Other (Fn, etc.): unchanged (FnDef).
+- **Result**: `const MAX: i32 = 100; fn f() -> i32 { MAX }` now produces
+  `store i32 100` and `ret i32 %v1` — the const's value is inlined.
+- 8 new tests: const value, const in arithmetic, static value, no FnDef
+  type, const i64, const bool, multiple consts, const in if.
+- Total: 828 → 836.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -468,3 +488,4 @@
 | v0.8.6 (3.40-3.41) | 814 | +8 (L-ENUM-MATCH enum match via discriminant extraction + R9) |
 | v0.8.6 (3.42) | 820 | +6 (&str type fix: string literals now have type &'static str) |
 | v0.8.6 (3.43) | 828 | +8 (L11 shift-count overflow check via icmp uge) |
+| v0.8.6 (3.44) | 836 | +8 (const/static value resolution — inline initializer) |

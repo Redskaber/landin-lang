@@ -1938,3 +1938,87 @@ fn codegen_shift_no_llvm_intrinsic() {
         ll
     );
 }
+
+// Stage 3.44: Const and Static value resolution
+
+#[test]
+fn codegen_const_value() {
+    let ll = gen_ll("const MAX: i32 = 100; fn f() -> i32 { MAX }");
+    assert!(
+        ll.contains("store i32 100"),
+        "expected 'store i32 100' for const MAX in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_const_in_arithmetic() {
+    let ll = gen_ll("const BASE: i32 = 10; fn f(x: i32) -> i32 { x + BASE }");
+    assert!(
+        ll.contains("add nsw i32") && ll.contains("10"),
+        "expected const BASE (10) used in arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_static_value() {
+    let ll = gen_ll("static COUNTER: i32 = 42; fn f() -> i32 { COUNTER }");
+    assert!(
+        ll.contains("store i32 42"),
+        "expected 'store i32 42' for static COUNTER in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_const_no_fndef_type() {
+    let ll = gen_ll("const MAX: i32 = 100; fn f() -> i32 { MAX }");
+    // Should NOT have FnDef type — const should resolve to its value.
+    assert!(
+        !ll.contains("FnDef"),
+        "should NOT have FnDef for const in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_const_i64() {
+    let ll = gen_ll("const BIG: i64 = 999; fn f() -> i64 { BIG }");
+    assert!(
+        ll.contains("999"),
+        "expected '999' for const BIG in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_const_bool() {
+    let ll = gen_ll("const FLAG: bool = true; fn f() -> bool { FLAG }");
+    assert!(
+        ll.contains("ret i1"),
+        "expected 'ret i1' for const bool in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_multiple_consts() {
+    let ll = gen_ll("const A: i32 = 1; const B: i32 = 2; fn f() -> i32 { A + B }");
+    assert!(
+        ll.contains("add nsw i32"),
+        "expected add for A + B in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_const_in_if() {
+    let ll =
+        gen_ll("const LIMIT: i32 = 100; fn f(x: i32) -> i32 { if x > LIMIT { 1 } else { 0 } }");
+    assert!(
+        ll.contains("icmp sgt") && ll.contains("100"),
+        "expected const LIMIT (100) in comparison in:\n{}",
+        ll
+    );
+}
