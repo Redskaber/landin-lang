@@ -463,6 +463,27 @@
   type, const i64, const bool, multiple consts, const in if.
 - Total: 828 → 836.
 
+### Stage 3.45 — L10 fix: Float bitwise ops via cast (v0.8.6)
+- **Problem**: Float bitwise ops (`&`, `|`, `^` on `f64`/`f32`) produced
+  no operation — `emit_binop` fell through to the default `"add i32"` which
+  is wrong. The result was silently incorrect.
+- **Root cause**: `binop_to_llvm_str` doesn't have entries for
+  `BitAnd/BitOr/BitXor` on `F64/F32`. LLVM doesn't support `and double, double`.
+- **Fix** (per §15 — root cause): in codegen's `BinaryOp` handler, add a
+  special case for `BitAnd/BitOr/BitXor` on float types:
+  - Cast float → int (`fptosi double → i64`)
+  - Do the bitwise op on int (`and i64`)
+  - Cast int → float (`sitofp i64 → double`)
+- **Result**: `a & b` on f64 now produces:
+  ```
+  %v5 = fptosi double %v3 to i64
+  %v6 = fptosi double %v4 to i64
+  %v7 = and i64 %v5, %v6
+  %v8 = sitofp i64 %v7 to double
+  ```
+- 6 new tests: float bitand/bitor/bitxor, cast usage, return type, int regression.
+- Total: 836 → 842.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -489,3 +510,4 @@
 | v0.8.6 (3.42) | 820 | +6 (&str type fix: string literals now have type &'static str) |
 | v0.8.6 (3.43) | 828 | +8 (L11 shift-count overflow check via icmp uge) |
 | v0.8.6 (3.44) | 836 | +8 (const/static value resolution — inline initializer) |
+| v0.8.6 (3.45) | 842 | +6 (L10 float bitwise ops via cast to int) |

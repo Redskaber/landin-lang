@@ -336,6 +336,23 @@ fn codegen_rvalue(
                     };
                     emitter.emit_zext(&EmitType::I1, &EmitType::I32, &cmp)
                 }
+                // Stage 3.45 (L10 fix): Float bitwise ops (BitAnd/BitOr/BitXor)
+                // need bitcast to int, operate, bitcast back. LLVM doesn't
+                // support `and double, double` — convert to i64, do the
+                // bitwise op, then convert back.
+                BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor
+                    if ty == EmitType::F64 || ty == EmitType::F32 =>
+                {
+                    let int_ty = if ty == EmitType::F64 {
+                        EmitType::I64
+                    } else {
+                        EmitType::I32
+                    };
+                    let a_int = emitter.emit_cast(&ty, &int_ty, &a_val);
+                    let b_int = emitter.emit_cast(&ty, &int_ty, &b_val);
+                    let result_int = emitter.emit_binop(*op, &int_ty, &a_int, &b_int);
+                    emitter.emit_cast(&int_ty, &ty, &result_int)
+                }
                 _ => emitter.emit_binop(*op, &ty, &a_val, &b_val),
             }
         }

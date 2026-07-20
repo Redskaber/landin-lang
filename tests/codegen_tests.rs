@@ -2022,3 +2022,74 @@ fn codegen_const_in_if() {
         ll
     );
 }
+
+// Stage 3.45: L10 fix — Float bitwise ops via bitcast
+
+#[test]
+fn codegen_float_bitand() {
+    let ll = gen_ll("fn f(a: f64, b: f64) -> f64 { a & b }");
+    // Should bitcast to i64, do `and i64`, bitcast back to double.
+    assert!(
+        ll.contains("and i64"),
+        "expected 'and i64' for float bitwise AND in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_float_bitor() {
+    let ll = gen_ll("fn f(a: f64, b: f64) -> f64 { a | b }");
+    assert!(
+        ll.contains("or i64"),
+        "expected 'or i64' for float bitwise OR in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_float_bitxor() {
+    let ll = gen_ll("fn f(a: f64, b: f64) -> f64 { a ^ b }");
+    assert!(
+        ll.contains("xor i64"),
+        "expected 'xor i64' for float bitwise XOR in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_float_bitand_uses_cast() {
+    let ll = gen_ll("fn f(a: f64, b: f64) -> f64 { a & b }");
+    // Should have cast instructions (double → i64 and i64 → double).
+    // emit_cast uses sitofp/fptosi for float↔int, not bitcast.
+    assert!(
+        ll.contains("fptosi") && ll.contains("sitofp"),
+        "expected 'fptosi' + 'sitofp' for float bitwise op in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_float_bitand_returns_double() {
+    let ll = gen_ll("fn f(a: f64, b: f64) -> f64 { a & b }");
+    assert!(
+        ll.contains("ret double"),
+        "expected 'ret double' for float bitwise result in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_int_bitand_unchanged() {
+    // Regression: int bitwise ops should still work directly (no bitcast).
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a & b }");
+    assert!(
+        ll.contains("and i32"),
+        "expected 'and i32' for int bitwise AND in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("bitcast"),
+        "should NOT have bitcast for int bitwise in:\n{}",
+        ll
+    );
+}

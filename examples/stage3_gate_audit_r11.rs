@@ -24,15 +24,27 @@ fn run_case(c: &Case) -> (bool, String) {
     if let Some(hir) = result.hir.as_ref() {
         let ll = codegen_crate(hir, &result.interner);
         let mut missing = Vec::new();
-        for s in c.expect_all { if !ll.contains(s) { missing.push(*s); } }
+        for s in c.expect_all {
+            if !ll.contains(s) {
+                missing.push(*s);
+            }
+        }
         let mut forbidden = Vec::new();
-        for s in c.expect_none { if ll.contains(s) { forbidden.push(*s); } }
+        for s in c.expect_none {
+            if ll.contains(s) {
+                forbidden.push(*s);
+            }
+        }
         if missing.is_empty() && forbidden.is_empty() {
             (true, format!("OK   — {}", c.desc))
         } else {
             let mut msg = format!("FAIL — {}", c.desc);
-            if !missing.is_empty() { msg.push_str(&format!("\n       missing: {:?}", missing)); }
-            if !forbidden.is_empty() { msg.push_str(&format!("\n       forbidden-found: {:?}", forbidden)); }
+            if !missing.is_empty() {
+                msg.push_str(&format!("\n       missing: {:?}", missing));
+            }
+            if !forbidden.is_empty() {
+                msg.push_str(&format!("\n       forbidden-found: {:?}", forbidden));
+            }
             (false, msg)
         }
     } else {
@@ -78,14 +90,24 @@ fn main() {
     for c in cases {
         let (ok, msg) = run_case(c);
         println!("{:35} {}", c.name, msg);
-        if ok { pass += 1; } else { fail += 1; failures.push(c.name); }
+        if ok {
+            pass += 1;
+        } else {
+            fail += 1;
+            failures.push(c.name);
+        }
     }
 
     println!("\n=== Stage 3 Gate Audit Round 11 Summary ===");
     println!("    Total: {}  Pass: {}  Fail: {}", cases.len(), pass, fail);
-    if !failures.is_empty() { println!("    Failed cases: {:?}", failures); }
+    if !failures.is_empty() {
+        println!("    Failed cases: {:?}", failures);
+    }
     if fail == 0 {
-        println!("\n✅ AUDIT PASSED — 0 codegen defects found in {} cases.", cases.len());
+        println!(
+            "\n✅ AUDIT PASSED — 0 codegen defects found in {} cases.",
+            cases.len()
+        );
         println!("   R1-R11: ..., 28, 28, {}/{} — all OK.", pass, cases.len());
         println!("   Per §9.3.3, audit CONVERGED (11 rounds, 0 new issues each).");
         println!("   Stage 3.44 (const/static value resolution) verified.");
