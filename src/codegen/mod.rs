@@ -166,7 +166,9 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement)
                 }
                 LvalueKind::Projection(base, elem) => {
                     // Write to a projection (field/index/deref)
-                    let ty = EmitType::I32; // simplified
+                    // Detect type from the rvalue or local_decls
+                    let ty = detect_operand_type(mir, &Operand::Copy(place.clone()))
+                        .unwrap_or(EmitType::I32);
                     match elem {
                         ProjectionElem::Deref => {
                             // *ptr = val: load pointer from base, store through it
@@ -340,10 +342,8 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
 
         Rvalue::Cast(_, op, target_ty) => {
             // Cast: convert operand to target type.
-            // For numeric casts (i32 → u64, i32 → f64, etc.), we emit
-            // the appropriate LLVM conversion instruction.
             let val = codegen_operand(emitter, mir, op);
-            let src_ty = EmitType::I32; // simplified: assume int source
+            let src_ty = detect_operand_type(mir, op).unwrap_or(EmitType::I32);
             let dst_ty = emitter::mir_type_to_emit_type(target_ty);
             emitter.emit_cast(src_ty, dst_ty, &val)
         }
@@ -353,93 +353,136 @@ fn codegen_rvalue(emitter: &mut dyn Emitter, mir: &MirBody, rv: &Rvalue) -> Emit
 }
 
 /// Generate code for an operand.
-fn codegen_operand(emitter: &mut dyn Emitter, _mir: &MirBody, op: &Operand) -> EmitValue {
+fn codegen_operand(emitter: &mut dyn Emitter, mir: &MirBody, op: &Operand) -> EmitValue {
     match op {
         Operand::Constant(c) => emitter.emit_const(&c.val),
-        Operand::Copy(lv) | Operand::Move(lv) => codegen_lvalue_load(emitter, lv),
+        Operand::Copy(lv) | Operand::Move(lv) => {
+            let ty = detect_lvalue_type(mir, lv);
+            codegen_lvalue_load_typed(emitter, mir, lv, ty)
+        }
     }
 }
 
-/// Load a value from an lvalue (place expression).
-///
-/// For Local(id): load from the alloca slot.
-/// For Projection(base, Deref): load the pointer from base, then load through it.
-/// For other projections: simplified to 0.
-fn codegen_lvalue_load(emitter: &mut dyn Emitter, lv: &Lvalue) -> EmitValue {
+/// Detect the EmitType of an lvalue by examining its source.
+#[allow(clippy::only_used_in_recursion)]
+fn detect_lvalue_type(mir: &MirBody, lv: &Lvalue) -> EmitType {
+    match &lv.kind {
+        LvalueKind::Local(id) => mir
+            .local_decls
+            .get(id.0 as usize)
+            .map(|ld| emitter::mir_type_to_emit_type(&ld.ty))
+            .unwrap_or(EmitType::I32),
+        LvalueKind::Projection(base, elem) => {
+            match elem {
+                ProjectionElem::Deref => {
+                    // *ptr: type is the pointee type
+                    // For now, detect from base's type (which is a ref/ptr)
+                    let base_ty = detect_lvalue_type(mir, base);
+                    // Simplified: if base is Ptr, pointee is I32
+                    if base_ty == EmitType::Ptr {
+                        EmitType::I32
+                    } else {
+                        base_ty
+                    }
+                }
+                ProjectionElem::Field(_, field_ty) => emitter::mir_type_to_emit_type(field_ty),
+                ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
+                    // Array element: type is the element type (I32 for now)
+                    EmitType::I32
+                }
+                _ => EmitType::I32,
+            }
+        }
+        LvalueKind::Static(_) => EmitType::I32,
+    }
+}
+
+/// Load a value from an lvalue with a known type.
+#[allow(clippy::only_used_in_recursion)]
+fn codegen_lvalue_load_typed(
+    emitter: &mut dyn Emitter,
+    mir: &MirBody,
+    lv: &Lvalue,
+    ty: EmitType,
+) -> EmitValue {
     match &lv.kind {
         LvalueKind::Local(id) => {
             // Try direct value first (from set_local)
             if let Some(val) = emitter.get_local(id.0).cloned() {
-                // Check if it's a simple constant (no load needed)
                 if !val.starts_with('%') {
                     return val;
                 }
             }
-            // Load from alloca slot
             if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
-                return emitter.emit_load(EmitType::I32, &ptr);
+                return emitter.emit_load(ty, &ptr);
             }
             "0".to_string()
         }
-        LvalueKind::Projection(base, elem) => {
-            match elem {
-                ProjectionElem::Deref => {
-                    // *ptr: first load the pointer value from base,
-                    // then load the value through that pointer.
-                    let ptr_val = codegen_lvalue_load(emitter, base);
-                    emitter.emit_load(EmitType::I32, &ptr_val)
-                }
-                ProjectionElem::Field(field_id, _) => {
-                    // struct field access: getelementptr + load
-                    let base_ptr = if let LvalueKind::Local(id) = &base.kind {
-                        emitter
-                            .get_local_ptr(id.0)
-                            .cloned()
-                            .unwrap_or_else(|| "0".to_string())
-                    } else {
-                        codegen_lvalue_load(emitter, base)
-                    };
-                    let field_ptr = emitter.emit_gep_field(&base_ptr, field_id.0);
-                    emitter.emit_load(EmitType::I32, &field_ptr)
-                }
-                ProjectionElem::Index(idx) => {
-                    // array index: getelementptr + load
-                    let base_ptr = if let LvalueKind::Local(id) = &base.kind {
-                        emitter
-                            .get_local_ptr(id.0)
-                            .cloned()
-                            .unwrap_or_else(|| "0".to_string())
-                    } else {
-                        codegen_lvalue_load(emitter, base)
-                    };
-                    let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
-                        v
-                    } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
-                        emitter.emit_load(EmitType::I32, &ptr)
-                    } else {
-                        "0".to_string()
-                    };
-                    let elem_ptr = emitter.emit_gep_index(&base_ptr, &idx_val);
-                    emitter.emit_load(EmitType::I32, &elem_ptr)
-                }
-                ProjectionElem::ConstantIndex { offset, .. } => {
-                    // constant index: getelementptr with constant
-                    let base_ptr = if let LvalueKind::Local(id) = &base.kind {
-                        emitter
-                            .get_local_ptr(id.0)
-                            .cloned()
-                            .unwrap_or_else(|| "0".to_string())
-                    } else {
-                        codegen_lvalue_load(emitter, base)
-                    };
-                    let elem_ptr = emitter.emit_gep_index(&base_ptr, &offset.to_string());
-                    emitter.emit_load(EmitType::I32, &elem_ptr)
-                }
-                _ => "0".to_string(),
+        LvalueKind::Projection(base, elem) => match elem {
+            ProjectionElem::Deref => {
+                let ptr_val = codegen_lvalue_load_typed(emitter, mir, base, EmitType::Ptr);
+                emitter.emit_load(ty, &ptr_val)
             }
-        }
+            ProjectionElem::Field(field_id, _) => {
+                let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                    emitter
+                        .get_local_ptr(id.0)
+                        .cloned()
+                        .unwrap_or_else(|| "0".to_string())
+                } else {
+                    codegen_lvalue_load_typed(emitter, mir, base, EmitType::Ptr)
+                };
+                let field_ptr = emitter.emit_gep_field(&base_ptr, field_id.0);
+                emitter.emit_load(ty, &field_ptr)
+            }
+            ProjectionElem::Index(idx) => {
+                let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                    emitter
+                        .get_local_ptr(id.0)
+                        .cloned()
+                        .unwrap_or_else(|| "0".to_string())
+                } else {
+                    codegen_lvalue_load_typed(emitter, mir, base, EmitType::Ptr)
+                };
+                let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
+                    v
+                } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
+                    emitter.emit_load(EmitType::I32, &ptr)
+                } else {
+                    "0".to_string()
+                };
+                let elem_ptr = emitter.emit_gep_index(&base_ptr, &idx_val);
+                emitter.emit_load(ty, &elem_ptr)
+            }
+            ProjectionElem::ConstantIndex { offset, .. } => {
+                let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                    emitter
+                        .get_local_ptr(id.0)
+                        .cloned()
+                        .unwrap_or_else(|| "0".to_string())
+                } else {
+                    codegen_lvalue_load_typed(emitter, mir, base, EmitType::Ptr)
+                };
+                let elem_ptr = emitter.emit_gep_index(&base_ptr, &offset.to_string());
+                emitter.emit_load(ty, &elem_ptr)
+            }
+            _ => "0".to_string(),
+        },
         LvalueKind::Static(_) => "0".to_string(),
     }
+}
+
+/// Load a value from an lvalue (legacy, uses I32 default).
+fn codegen_lvalue_load(emitter: &mut dyn Emitter, lv: &Lvalue) -> EmitValue {
+    // For backward compat within this module — delegates to typed version
+    // with I32 as default. Callers that know the type should use
+    // codegen_lvalue_load_typed instead.
+    codegen_lvalue_load_typed(
+        emitter,
+        &MirBody::new(crate::session::Span::DUMMY),
+        lv,
+        EmitType::I32,
+    )
 }
 
 /// Generate code for a terminator.
