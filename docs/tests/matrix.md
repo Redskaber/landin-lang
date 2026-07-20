@@ -2,7 +2,7 @@
 
 > **Author**: redskaber
 > **Date**: 2026-07-20
-> **Process**: v3.12 (§17)
+> **Process**: v3.13 (§17 + §18)
 
 ## Current Status
 
@@ -11,7 +11,7 @@
 | Stage 0 (lexer/parser/AST) | 245 | ~100% | ✅ Complete |
 | Stage 1 (HIR/resolve) | 451 | ~100% | ✅ Complete |
 | Stage 2 (MIR/typeck/borrowck) | 673 | ~100% | ✅ Complete |
-| Stage 3 (codegen) | 855 | ~97% | 🔄 In progress |
+| Stage 3 (codegen) | 869 | ~98% | 🔄 In progress |
 
 ## Stage 3 Test Breakdown
 
@@ -36,8 +36,9 @@
 | 3.44 | Const/Static value resolution | 8 | ✅ |
 | 3.45 | L10 float bitwise ops via cast | 6 | ✅ |
 | 3.46 | L14 + L9 full integer types (i8/i16/i32/i64/i128/usize/isize) | 13 | ✅ |
-| **Total codegen** | | **182** | ✅ |
-| Gate audits R1-R13 | Audit cases | 410 cumulative | ✅ |
+| 3.47 | L-PIPE-1 closure via AdtLayout side-table on MirBody (per §16) | 14 | ✅ |
+| **Total codegen** | | **196** | ✅ |
+| Gate audits R1-R14 | Audit cases | 440 cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 
@@ -53,6 +54,6 @@
 | L13 | Fat pointers | Simplification | Stage 4 |
 | ~~L14~~ | ~~i16/u16 → i32~~ | CLOSED in Stage 3.46 ✅ |
 | ~~L15~~ | ~~String-as-function-arg~~ | CLOSED in Stage 3.42 ✅ |
-| L-ENUM-UNION | Enum union payload | Simplification | Stage 4 |
+| L-ENUM-UNION | Enum union payload | Simplification (data-ready: AdtLayout::Enum stores all variant payloads) | Stage 4 |
 | L-COPY-ADT | Proper Copy trait | Needs TraitResolver | Stage 5 |
-| L-PIPE-1 | HIR lookup for Adt storage | Per §16.2.1 allowed | Stage 4 |
+| ~~L-PIPE-1~~ | ~~HIR lookup for Adt storage~~ | CLOSED in Stage 3.47 ✅ |

@@ -509,6 +509,77 @@
 - Gate review Round 13 (R13) — 30 audit cases (8 regression + 14 integer type
   coverage + 8 edge cases), all passed; audit CONVERGED at round 13 per §9.3.3.
 
+### Stage 3.47 — L-PIPE-1 closure via AdtLayout side-table (v0.8.6, process v3.13)
+- **Problem**: codegen read HIR `owners` to resolve `TyKind::Adt(def_id, _)`
+  storage layouts via `mir_type_to_emit_type_with_hir`. This pipeline-coupling
+  debt (L-PIPE-1, carried since Stage 3.30) violated §16.3 (no cross-stage
+  internal-API access). Stage 3.42 silently extended the debt by adding a
+  §16.3.1-violating call from codegen to `crate::mir::lower::lower_hir_ty_to_mir_ty`
+  inside `hir_ty_to_emit_type`'s Ref/Ptr case. Stage 3.46 added a DRY
+  divergence between `hir_ty_to_emit_type` (codegen) and
+  `lower_hir_ty_to_mir_ty` (MIR lower) — both mapped integer widths, but
+  only one was updated for i16/i128.
+- **Root cause** (per §15 — root cause): `TyKind::Adt(def_id, substs)` doesn't
+  carry the storage layout, forcing every downstream consumer (codegen) to
+  re-query HIR. The fix is to **sink** the layout into MIR as a side-table
+  on `MirBody`, mirroring rustc's `AdtDef` pattern.
+- **Approach chosen** (per §15 — 最优 > 最小): Option B — side-table
+  `adt_layouts: HashMap<DefId, AdtLayout>` on `MirBody`. Touches only 3
+  source files (`mir/body.rs`, `mir/lower/mod.rs`, `codegen/mod.rs`),
+  meeting §16.5.1 ≤3-file in-stage-fix threshold. Option A (extend
+  `TyKind::Adt` with `Rc<AdtLayout>`) was rejected because it would touch
+  ≥10 pattern-match sites across typeck/borrowck, ballooning scope.
+- **Fix**:
+  1. `src/mir/body.rs`: added `AdtLayout` enum (`Struct { field_tys }` /
+     `Enum { discriminant_ty, variant_payloads }`) and `AdtLayouts` HashMap
+     type. Added `adt_layouts: AdtLayouts` field to `MirBody`, initialized
+     empty in `MirBody::new` (zero changes to 14+ existing call-sites).
+     Added `register_adt_layout` method. `Enum` carries ALL variants' payloads
+     (forward-compatible with Stage 4's L-ENUM-UNION fix — codegen can switch
+     from "first non-empty payload" to "union of all payloads" with zero
+     MIR data-structure change).
+  2. `src/mir/lower/mod.rs`: added `populate_adt_layouts` post-pass at end of
+     `lower_hir_body_to_mir_full`. Walks all `local_decls` and all
+     `AggregateKind::Adt` field_tys in Assign statements, collecting every
+     `TyKind::Adt(def_id, _)` DefId. For each, builds an `AdtLayout` from
+     HIR (allowed — data flows downstream per §16.2.1) and inserts it into
+     `mir.adt_layouts`. Recursively registers nested Adts (e.g.,
+     `struct Outer { i: Inner }` registers both Outer and Inner).
+     Uses Entry API (clippy-compliant).
+  3. `src/codegen/mod.rs`: replaced `mir_type_to_emit_type_with_hir(ty, hir)`
+     with `mir_type_to_emit_type_with_layouts(ty, &mir.adt_layouts)`.
+     **Removed** `hir_ty_to_emit_type` entirely (was the §16.3.1-violating
+     function that called `lower_hir_ty_to_mir_ty` from codegen). Updated
+     all 15+ internal call sites to take `layouts: &AdtLayouts` instead of
+     `hir: &HirCrate`. Cleaned up `codegen_lvalue_load` (no longer
+     fabricates a fake `MirBody::new(Span::DUMMY)` — passes caller's `mir`
+     through directly).
+- **Hidden debts also closed** (per §15.2.1):
+  * Stage 3.38 silent L-PIPE-1 extension: codegen reading HIR for enum
+    storage (added in Stage 3.38 without re-recording the debt) — CLOSED.
+  * Stage 3.42 §16.3.1 violation: codegen calling
+    `crate::mir::lower::lower_hir_ty_to_mir_ty` from inside
+    `hir_ty_to_emit_type`'s Ref/Ptr case — CLOSED (function removed).
+  * Stage 3.46 DRY divergence: `hir_ty_to_emit_type` and
+    `lower_hir_ty_to_mir_ty` both mapped integer widths but diverged —
+    CLOSED (only one source of truth remains).
+  * Stage 3.30 `codegen_lvalue_load` MirBody::new hack — CLOSED.
+- **Result**: codegen no longer reads HIR for ADT storage. The only HIR
+  access remaining in codegen is in `codegen_crate_with_emitter`, which
+  uses HIR for the fn-name table and to invoke `lower_hir_body_to_mir_full`
+  + `check_mir_body_with_hir` (these are §16.2.1 "data flows downstream"
+  and §16.6.1 "driver-layer" uses, not L-PIPE-1 violations).
+- 14 new tests: 4 in `mir/body.rs` (AdtLayout construction, idempotency,
+  enum variant payloads, empty init), 10 in `tests/codegen_tests.rs`
+  (struct/enum param/return/local, nested struct, i128 field, &str field,
+  two structs in one fn, tuple struct, struct mutation, root-cause
+  verification).
+- Total: 855 → 869. (3 source files modified; 0 typeck/borrowck changes.)
+- Gate review Round 14 (R14) — 30 audit cases (8 regression + 14 L-PIPE-1
+  coverage + 8 edge cases), all passed; audit CONVERGED at round 14 per
+  §9.3.3. Process v3.13 first applied (new §18 doc-sync rule).
+
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -537,3 +608,4 @@
 | v0.8.6 (3.44) | 836 | +8 (const/static value resolution — inline initializer) |
 | v0.8.6 (3.45) | 842 | +6 (L10 float bitwise ops via cast to int) |
 | v0.8.6 (3.46) | 855 | +13 (L14+L9 full integer type support: i8/i16/i32/i64/i128/usize/isize) |
+| v0.8.6 (3.47) | 869 | +14 (L-PIPE-1 closure via AdtLayout side-table on MirBody, per §16) |

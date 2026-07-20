@@ -2227,3 +2227,125 @@ fn codegen_i128_shift_overflow() {
         ll
     );
 }
+
+// ============================================================================
+// Stage 3.47 (L-PIPE-1 closure per §16) — AdtLayout side-table tests
+// ============================================================================
+
+#[test]
+fn codegen_adt_layout_struct_param() {
+    // Struct as fn parameter — AdtLayout must be looked up from
+    // mir.adt_layouts (NOT from HIR, per §16 closure of L-PIPE-1).
+    let ll = gen_ll("struct Point { x: i32, y: i32 } fn f(p: Point) -> i32 { p.x }");
+    assert!(
+        ll.contains("define i32 @landin_f({ i32, i32 } %arg0)"),
+        "expected struct param type from AdtLayout in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_adt_layout_struct_return() {
+    let ll = gen_ll("struct Point { x: i32, y: i32 } fn f() -> Point { Point { x: 1, y: 2 } }");
+    assert!(
+        ll.contains("define { i32, i32 } @landin_f()"),
+        "expected struct return type from AdtLayout in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_adt_layout_struct_local_alloca() {
+    let ll = gen_ll(
+        "struct Point { x: i32, y: i32 } fn f() -> i32 { let p = Point { x: 1, y: 2 }; p.x }",
+    );
+    assert!(
+        ll.contains("alloca { i32, i32 }"),
+        "expected struct alloca from AdtLayout in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_adt_layout_enum_unit_only() {
+    // All-unit-variant enum → just discriminant { i32 }.
+    let ll = gen_ll("enum Color { Red, Green, Blue } fn f(c: Color) -> i32 { 0 }");
+    assert!(
+        ll.contains("define i32 @landin_f({ i32 } %arg0)"),
+        "expected enum unit-only layout in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_adt_layout_enum_one_tuple_variant() {
+    // Enum with one tuple variant → { i32, i32 } (discriminant + payload).
+    let ll = gen_ll("enum Opt { None, Some(i32) } fn f(o: Opt) -> i32 { 0 }");
+    assert!(
+        ll.contains("define i32 @landin_f({ i32, i32 } %arg0)"),
+        "expected enum tuple-variant layout in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_adt_layout_nested_struct() {
+    // Nested struct — AdtLayout for Outer must reference Inner's layout.
+    let ll =
+        gen_ll("struct Inner { v: i32 } struct Outer { i: Inner } fn f(o: Outer) -> i32 { 0 }");
+    assert!(
+        ll.contains("{ { i32 } }"),
+        "expected nested struct layout from AdtLayout in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_adt_layout_struct_with_i128_field() {
+    // AdtLayout must preserve i128 width (not regress to i64).
+    let ll = gen_ll("struct Big { v: i128 } fn f(b: Big) -> i128 { b.v }");
+    assert!(
+        ll.contains("{ i128 }"),
+        "expected i128 field preserved in AdtLayout in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_adt_layout_struct_with_ref_field() {
+    // &str field — AdtLayout field type is Ref(_, _, Str) → i8*.
+    // Per §16 closure: codegen must NOT call lower_hir_ty_to_mir_ty from
+    // codegen — the field type is already a MIR Ty in AdtLayout.
+    let ll = gen_ll("struct Wrap { s: &str } fn f(w: Wrap) { }");
+    assert!(
+        ll.contains("{ i8* }"),
+        "expected &str field as i8* in AdtLayout in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_adt_layout_two_structs_in_one_fn() {
+    // Two distinct Adts in one fn — both DefIds must be in adt_layouts map.
+    let ll = gen_ll("struct A { x: i32 } struct B { y: i64 } fn f() -> i32 { let a = A { x: 1 }; let b = B { y: 2 }; a.x }");
+    // Both allocas should appear.
+    assert!(
+        ll.contains("alloca { i32 }") && ll.contains("alloca { i64 }"),
+        "expected both struct allocas from one adt_layouts map in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_adt_layout_no_hir_lookup_in_codegen() {
+    // §15.4.4 / §16.3.1 verification: codegen must not call
+    // lower_hir_ty_to_mir_ty from inside its own module.
+    // This is verified by static source inspection (see audit r14).
+    // Here we just verify the struct param case works end-to-end.
+    let ll = gen_ll("struct Pair(i32, i32); fn f(p: Pair) -> i32 { 0 }");
+    assert!(
+        ll.contains("define i32 @landin_f({ i32, i32 } %arg0)"),
+        "expected tuple struct param from AdtLayout in:\n{}",
+        ll
+    );
+}

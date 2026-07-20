@@ -8,8 +8,9 @@ predictable performance.
 
 > **Status:** Stage 0-2 complete (lexer, parser, HIR, name resolution, MIR,
 > type checking, borrow checking). Stage 3 (LLVM codegen) in progress —
-> v0.8.6, 855 tests passing, 13 gate review rounds passed (audit CONVERGED).
-> Process v3.12 (§15 最优 > 最小 + §16 阶段间接口隔离 + §17 测试矩阵全覆盖).
+> v0.8.6, 869 tests passing, 14 gate review rounds passed (audit CONVERGED).
+> Process v3.13 (§15 最优 > 最小 + §16 阶段间接口隔离 + §17 测试矩阵全覆盖
+> + §18 轮次完成文档同步).
 
 ## Quick start
 
@@ -103,7 +104,7 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
 - **Stage 1** ✅ HIR + name resolution
 - **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review)
-- **Stage 3** 🔄 LLVM codegen (MVP complete, 13 gate review rounds CONVERGED)
+- **Stage 3** 🔄 LLVM codegen (MVP complete, 14 gate review rounds CONVERGED, L-PIPE-1 closed)
 - **Stage 4** Macro system + attributes
 - **Stage 5** Mini-cargo + stdlib MVP
 - **v0.1** = Stage 0 + conformance suite

@@ -3,11 +3,45 @@
 //! Per 06-mir.md, a MIR body is a control flow graph (CFG) of basic
 //! blocks. Each block contains a sequence of statements followed by
 //! a terminator.
+//!
+//! Stage 3.47 (per §16 — 阶段间接口隔离): `MirBody` now carries an
+//! `adt_layouts` side-table mapping `DefId → AdtLayout`. This lets codegen
+//! resolve `TyKind::Adt(def_id, _)` to its storage layout **without reading
+//! HIR** — closing the L-PIPE-1 pipeline-coupling debt carried since
+//! Stage 3.30.
 
 use crate::mir::lvalue::*;
 use crate::mir::ty::*;
 use crate::session::Span;
 use std::collections::HashMap;
+
+/// Stage 3.47 (L-PIPE-1 closure): Storage layout of an ADT
+/// (struct or enum), computed once by MIR lower and consumed by codegen.
+///
+/// Per §16 (阶段间接口隔离): MIR lower reads HIR (data flows downstream —
+/// allowed), and **sinks** the resulting layout into `MirBody::adt_layouts`.
+/// Codegen then reads the layout from MIR — no HIR lookup needed.
+///
+/// `Enum` carries *all* variants' payload types (not just the first non-unit),
+/// so the future L-ENUM-UNION fix in Stage 4 can switch codegen from
+/// "first non-unit payload" to "union of all payloads" with **zero MIR data
+/// structure change** (forward-compatible design per §15.2.1).
+#[derive(Debug, Clone)]
+pub enum AdtLayout {
+    /// Struct layout: ordered field types.
+    Struct { field_tys: Vec<Ty> },
+    /// Enum layout: discriminant type + per-variant payload types.
+    /// `variant_payloads[i]` is the payload of variant `i` (empty for unit
+    /// variants). Codegen currently uses the first non-empty payload (Stage
+    /// 3.38 behavior); Stage 4's L-ENUM-UNION will use the union.
+    Enum {
+        discriminant_ty: Ty,
+        variant_payloads: Vec<Vec<Ty>>,
+    },
+}
+
+/// Side-table mapping ADT `DefId` → `AdtLayout`, stored on `MirBody`.
+pub type AdtLayouts = HashMap<crate::hir::DefId, AdtLayout>;
 
 /// A MIR body: the CFG representation of a function body.
 #[derive(Debug, Clone)]
@@ -18,6 +52,10 @@ pub struct MirBody {
     pub local_decls: Vec<LocalDecl>,
     /// Span of the function body (for error reporting).
     pub span: Span,
+    /// Stage 3.47 (L-PIPE-1): ADT layouts sunk from HIR by MIR lower.
+    /// Consumed by codegen to avoid HIR lookup (per §16).
+    /// Empty in test contexts where MIR bodies are constructed without HIR.
+    pub adt_layouts: AdtLayouts,
 }
 
 impl MirBody {
@@ -26,6 +64,7 @@ impl MirBody {
             basic_blocks: Vec::new(),
             local_decls: Vec::new(),
             span,
+            adt_layouts: AdtLayouts::new(),
         }
     }
 
@@ -79,6 +118,14 @@ impl MirBody {
     /// Get a local declaration by ID.
     pub fn local(&self, id: LocalId) -> &LocalDecl {
         &self.local_decls[id.0 as usize]
+    }
+
+    /// Stage 3.47 (L-PIPE-1): Record an ADT's storage layout.
+    /// Called by MIR lower when it constructs a `TyKind::Adt(def_id, _)`.
+    /// Idempotent: if the same `def_id` is registered twice with the same
+    /// layout, the second call is a no-op.
+    pub fn register_adt_layout(&mut self, def_id: crate::hir::DefId, layout: AdtLayout) {
+        self.adt_layouts.entry(def_id).or_insert(layout);
     }
 }
 
@@ -285,6 +332,88 @@ mod tests {
                 assert_eq!(*otherwise, bb2);
             }
             _ => panic!("expected SwitchInt"),
+        }
+    }
+
+    // Stage 3.47 (L-PIPE-1) tests — verify the new adt_layouts side-table
+    // is correctly initialized and populated.
+
+    #[test]
+    fn mir_body_adt_layouts_starts_empty() {
+        // New MirBody should have an empty adt_layouts (no HIR sunk yet).
+        let body = MirBody::new(Span::DUMMY);
+        assert!(body.adt_layouts.is_empty());
+    }
+
+    #[test]
+    fn mir_body_register_adt_layout_struct() {
+        // Register a struct layout; should be retrievable.
+        let mut body = MirBody::new(Span::DUMMY);
+        let def_id = crate::hir::DefId::new(42);
+        let layout = AdtLayout::Struct {
+            field_tys: vec![
+                Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+                Ty::new(TyKind::Int(ast::IntTy::I64), Span::DUMMY),
+            ],
+        };
+        body.register_adt_layout(def_id, layout);
+        assert_eq!(body.adt_layouts.len(), 1);
+        match &body.adt_layouts[&def_id] {
+            AdtLayout::Struct { field_tys } => {
+                assert_eq!(field_tys.len(), 2);
+                assert!(matches!(field_tys[0].kind, TyKind::Int(ast::IntTy::I32)));
+                assert!(matches!(field_tys[1].kind, TyKind::Int(ast::IntTy::I64)));
+            }
+            AdtLayout::Enum { .. } => panic!("expected Struct layout"),
+        }
+    }
+
+    #[test]
+    fn mir_body_register_adt_layout_enum() {
+        // Register an enum layout with multiple variants.
+        let mut body = MirBody::new(Span::DUMMY);
+        let def_id = crate::hir::DefId::new(7);
+        let layout = AdtLayout::Enum {
+            discriminant_ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            variant_payloads: vec![
+                vec![],                                                   // unit variant
+                vec![Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)], // Some(i32)
+            ],
+        };
+        body.register_adt_layout(def_id, layout);
+        match &body.adt_layouts[&def_id] {
+            AdtLayout::Enum {
+                discriminant_ty,
+                variant_payloads,
+            } => {
+                assert_eq!(variant_payloads.len(), 2);
+                assert!(variant_payloads[0].is_empty());
+                assert_eq!(variant_payloads[1].len(), 1);
+                assert!(matches!(discriminant_ty.kind, TyKind::Int(ast::IntTy::I32)));
+            }
+            AdtLayout::Struct { .. } => panic!("expected Enum layout"),
+        }
+    }
+
+    #[test]
+    fn mir_body_register_adt_layout_idempotent() {
+        // Registering the same def_id twice should not overwrite.
+        let mut body = MirBody::new(Span::DUMMY);
+        let def_id = crate::hir::DefId::new(1);
+        let layout1 = AdtLayout::Struct {
+            field_tys: vec![Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)],
+        };
+        let layout2 = AdtLayout::Struct {
+            field_tys: vec![
+                Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+                Ty::new(TyKind::Int(ast::IntTy::I64), Span::DUMMY),
+            ],
+        };
+        body.register_adt_layout(def_id, layout1);
+        body.register_adt_layout(def_id, layout2); // should be ignored
+        match &body.adt_layouts[&def_id] {
+            AdtLayout::Struct { field_tys } => assert_eq!(field_tys.len(), 1), // layout1 won
+            _ => panic!(),
         }
     }
 }

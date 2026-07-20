@@ -1,16 +1,41 @@
 # Codegen Struct/ADT Tests
 
 > **Author**: redskaber
-> **Corresponds to**: `tests/codegen_tests.rs` (Stage 3.21-3.36)
-> **Cross-ref**: `docs/develop/v0/stage-3/dev-log.md` Stage 3.21-3.36
+> **Corresponds to**: `tests/codegen_tests.rs` (Stage 3.21-3.47)
+> **Cross-ref**: `docs/develop/v0/stage-3/dev-log.md` Stage 3.21-3.47
 
 ## Test Target
 
 Verify struct/ADT codegen: typed aggregates, block-scoped cache, struct
 construction, field access, field mutation, field type resolution, field
-type propagation through arithmetic.
+type propagation through arithmetic, and (Stage 3.47) **AdtLayout
+side-table**-driven type resolution per §16 (no codegen→HIR lookup).
 
-## Covered Scenarios
+## Stage 3.47 — AdtLayout Side-Table Coverage (L-PIPE-1 closure)
+
+Stage 3.47 closed L-PIPE-1 by introducing `AdtLayout` / `AdtLayouts` on
+`MirBody`. Codegen now resolves `TyKind::Adt(def_id, _)` storage layouts
+via `mir.adt_layouts` (populated by MIR lower) instead of reading HIR.
+The following 10 new tests verify this:
+
+| Scenario | Test Function | Status |
+|----------|--------------|--------|
+| Struct param from AdtLayout | codegen_adt_layout_struct_param | PASS |
+| Struct return from AdtLayout | codegen_adt_layout_struct_return | PASS |
+| Struct local alloca from AdtLayout | codegen_adt_layout_struct_local_alloca | PASS |
+| Struct with i128 field (no width regression) | codegen_adt_layout_struct_with_i128_field | PASS |
+| Struct with &str field (no codegen→MIR-lower call) | codegen_adt_layout_struct_with_ref_field | PASS |
+| Nested struct AdtLayout recursion | codegen_adt_layout_nested_struct | PASS |
+| Two distinct Adts in one fn | codegen_adt_layout_two_structs_in_one_fn | PASS |
+| Tuple struct ctor uses AdtLayout | codegen_adt_layout_no_hir_lookup_in_codegen | PASS |
+| (MirBody AdtLayout init) | mir_body_adt_layouts_starts_empty | PASS |
+| (MirBody AdtLayout struct register) | mir_body_register_adt_layout_struct | PASS |
+| (MirBody AdtLayout enum register) | mir_body_register_adt_layout_enum | PASS |
+| (MirBody AdtLayout idempotent) | mir_body_register_adt_layout_idempotent | PASS |
+
+**Stage 3.47 expected**: 14 | **Actual**: 14 | **Coverage**: 100%
+
+## Covered Scenarios (Stage 3.21-3.36)
 
 | Scenario | Test Function | Status |
 |----------|--------------|--------|
@@ -70,4 +95,12 @@ type propagation through arithmetic.
 | Field arith i32 regression | codegen_field_arith_i32 | PASS |
 | Chained field arith | codegen_field_arithmetic_chained | PASS |
 
-**Expected**: 55 | **Actual**: 55 | **Coverage**: 100%
+**Stage 3.21-3.36 expected**: 55 | **Actual**: 55 | **Coverage**: 100%
+
+## Cumulative Coverage
+
+| Stage | Tests | Coverage |
+|-------|-------|----------|
+| 3.21-3.36 (typed aggregates + field ops) | 55 | 100% |
+| 3.47 (AdtLayout side-table, L-PIPE-1) | 14 | 100% |
+| **Total struct/ADT codegen tests** | **69** | **100%** |

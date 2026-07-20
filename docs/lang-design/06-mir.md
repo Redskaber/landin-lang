@@ -26,6 +26,12 @@ struct Body {
     arg_count: usize,
     spread_arg: Option<Local>,    // v0.2: 外部 ABI
     span: Span,
+    /// Stage 3.47 (L-PIPE-1 closure per §16): ADT layouts sunk from HIR.
+    /// Maps DefId → AdtLayout for every `TyKind::Adt(def_id, _)` referenced
+    /// by this body's locals or `AggregateKind::Adt` field_tys. Populated
+    /// by MIR lower at the end of `lower_hir_body_to_mir_full`. Consumed
+    /// by codegen to resolve ADT storage layouts **without reading HIR**.
+    adt_layouts: HashMap<DefId, AdtLayout>,
 }
 
 type BasicBlock = u32;
@@ -55,6 +61,24 @@ struct SourceInfo {
 struct SourceScopeData {
     span: Span,
     parent_scope: Option<SourceScope>,
+}
+
+/// Stage 3.47 (L-PIPE-1 closure per §16): Storage layout of an ADT
+/// (struct or enum), computed once by MIR lower (reading HIR — allowed
+/// per §16.2.1, data flows downstream) and consumed by codegen (reading
+/// MIR — no HIR lookup, closing L-PIPE-1).
+///
+/// `Enum` carries *all* variants' payload types (not just the first
+/// non-unit), so the future L-ENUM-UNION fix in Stage 4 can switch
+/// codegen from "first non-empty payload" to "union of all payloads"
+/// with **zero MIR data-structure change** (forward-compatible design
+/// per §15.2.1).
+enum AdtLayout {
+    Struct { field_tys: Vec<Ty> },
+    Enum {
+        discriminant_ty: Ty,
+        variant_payloads: Vec<Vec<Ty>>,
+    },
 }
 ```
 
@@ -770,6 +794,33 @@ struct BorrowAnalysis {
 | Rvalue::AddressOf | 已删除（改 RawPtr） | **RawPtr(RawPtrKind, Place)**（v1.2 修正） | 与 rustc 一致 |
 | Rvalue::NullaryOp | 已删除（改 intrinsic） | **删除**（v1.2 修正） | rustc 已移除，SizeOf/AlignOf 改 intrinsic |
 | Operand | 4 种 | **3 种**（无 RuntimeChecks） | RuntimeChecks 推 v0.2 |
+| `AdtLayout` side-table | 无（rustc 用 `Ty::Adt(AdtDef, Substs)` 内嵌） | **有**（`Body::adt_layouts: HashMap<DefId, AdtLayout>`，Stage 3.47 新增） | Landin 的 `TyKind::Adt(DefId, Vec<Ty>)` 不携带 layout，故 side-table 下沉；与 rustc `AdtDef` 等价但解耦 |
+
+---
+
+## 12.1 AdtLayout 设计说明（Stage 3.47 新增）
+
+Landin 的 `TyKind::Adt(DefId, Substs)` 在 Stage 3.30 引入时不携带
+storage layout 信息，导致 codegen 必须回查 HIR 才能解析 struct/enum
+的 LLVM 存储类型——形成 L-PIPE-1 管道耦合债（持续 14 轮审查至
+Stage 3.47 闭合）。
+
+Stage 3.47 引入 `AdtLayout` side-table（`Body::adt_layouts`），由
+MIR lower 在 `lower_hir_body_to_mir_full` 末尾通过 `populate_adt_layouts`
+后处理一次性下沉。Codegen 通过 `mir_type_to_emit_type_with_layouts(ty,
+&mir.adt_layouts)` 解析 `TyKind::Adt(def_id, _)`，**不再读 HIR**。
+
+设计选择（Option B 而非 Option A）的理由见
+`docs/develop/v0/stage-3/gate-review-round14.md` §3 — 简言之，Option A
+（修改 `TyKind::Adt` 加 `Rc<AdtLayout>` 字段）会触及 typeck/borrowck
+≥10 个 pattern-match 点，超出 §16.5.1 ≤3 文件 in-stage-fix 阈值；
+Option B（side-table）只触 3 文件且 `Ty` 类型签名不变，零 typeck/
+borrowck 影响。
+
+`AdtLayout::Enum { variant_payloads: Vec<Vec<Ty>> }` 故意存储**全部**
+variant 的 payload（而非仅第一个非空），为 Stage 4 的 L-ENUM-UNION
+修复做前向兼容——届时 codegen 只需把 `first non-empty payload` 改为
+`union of all payloads`，MIR 数据结构无需变动（per §15.2.1 消除根因）。
 
 ---
 
