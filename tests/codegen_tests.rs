@@ -1834,3 +1834,107 @@ fn codegen_str_multiple_args() {
         ll
     );
 }
+
+// Stage 3.43: L11 fix — Shift-count overflow check
+
+#[test]
+fn codegen_shift_left_overflow_check() {
+    let ll = gen_ll("fn f(a: i32) -> i32 { a << 2 }");
+    // Should emit icmp uge to check shift_count >= 32.
+    assert!(
+        ll.contains("icmp uge"),
+        "expected 'icmp uge' for shift overflow check in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("32"),
+        "expected bit width 32 in shift check in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_shift_right_overflow_check() {
+    let ll = gen_ll("fn f(a: i32) -> i32 { a >> 2 }");
+    assert!(
+        ll.contains("icmp uge"),
+        "expected 'icmp uge' for shift overflow check in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_shift_i64_overflow_check() {
+    let ll = gen_ll("fn f(a: i64) -> i64 { a << 2 }");
+    // Should check against 64 for i64.
+    assert!(
+        ll.contains("icmp uge") && ll.contains("64"),
+        "expected 'icmp uge' with 64 for i64 shift in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_shift_no_overflow_for_comparison() {
+    // Comparisons don't get shift checks.
+    let ll = gen_ll("fn f(a: i32, b: i32) -> bool { a == b }");
+    assert!(
+        !ll.contains("icmp uge"),
+        "should NOT have shift check for comparison in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_shift_overflow_panic_block() {
+    let ll = gen_ll("fn f(a: i32) -> i32 { a << 2 }");
+    assert!(
+        ll.contains("panic_assert_"),
+        "expected panic block for shift overflow in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("call void @__landin_panic_overflow"),
+        "expected panic call for shift overflow in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_shift_overflow_branch_direction() {
+    // If shift_count >= bit_width → panic. If < → continue.
+    let ll = gen_ll("fn f(a: i32) -> i32 { a << 2 }");
+    // br i1 is_overflow, label %panic, label %target
+    assert!(
+        ll.contains("br i1") && ll.contains("panic_assert_"),
+        "expected branch to panic on shift overflow in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_shift_in_loop() {
+    let ll = gen_ll("fn f(n: i32) -> i32 { let mut s = 0; let mut i = 0; while i < n { s = s << 1; i = i + 1; } s }");
+    assert!(
+        ll.contains("icmp uge") && ll.contains("br i1"),
+        "expected shift overflow check in loop in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_shift_no_llvm_intrinsic() {
+    // Shifts should NOT use llvm.sadd/ssub/smul.with.overflow (those are
+    // for Add/Sub/Mul). They use icmp uge instead.
+    let ll = gen_ll("fn f(a: i32) -> i32 { a << 2 }");
+    assert!(
+        !ll.contains("llvm.sadd.with.overflow"),
+        "should NOT use sadd intrinsic for shift in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("llvm.smul.with.overflow"),
+        "should NOT use smul intrinsic for shift in:\n{}",
+        ll
+    );
+}

@@ -425,6 +425,24 @@
   accept both `Str` and `Ref(_, _, Str)` types.
 - Total: 814 → 820.
 
+### Stage 3.43 — L11 fix: Shift-count overflow check (v0.8.6)
+- **Problem**: Shift operations (`<<`, `>>`) used the fallback
+  `{T, i1} undef` with i1=0 (no overflow) — shift overflow checks never
+  fired. `a << 100` on i32 would silently produce UB instead of panicking.
+- **Root cause**: `emit_checked_binop` doesn't have LLVM intrinsics for
+  shifts (there's no `llvm.shl.with.overflow`). The fallback path returned
+  i1=0, so the Assert always passed.
+- **Fix** (per §15 — root cause): in codegen's `AssertMessage::Overflow`
+  handler, dispatch on the BinOp:
+  - `Shl`/`Shr`: emit `icmp uge shift_count, bit_width` (e.g., `icmp uge i32 %rhs, 32`
+    for i32). If true → panic block. If false → target.
+  - `Add`/`Sub`/`Mul`: use `llvm.{sadd,ssub,smul}.with.overflow` (unchanged).
+- **Result**: `a << 2` now produces `%v5 = icmp uge i32 2, 32` + `br i1 %v5, label %panic, label %bb1`.
+  Shifts with count >= bit width will panic.
+- 8 new tests: shl/shr overflow check, i64 bit width, no check for comparisons,
+  panic block, branch direction, shift in loop, no LLVM intrinsic for shifts.
+- Total: 820 → 828.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -449,3 +467,4 @@
 | v0.8.6 (3.38-3.39) | 806 | +10 (L-ENUM enum variant codegen + R8) |
 | v0.8.6 (3.40-3.41) | 814 | +8 (L-ENUM-MATCH enum match via discriminant extraction + R9) |
 | v0.8.6 (3.42) | 820 | +6 (&str type fix: string literals now have type &'static str) |
+| v0.8.6 (3.43) | 828 | +8 (L11 shift-count overflow check via icmp uge) |

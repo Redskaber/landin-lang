@@ -11,7 +11,7 @@
 | Stage 0 (lexer/parser/AST) | 245 | ~100% | ✅ Complete |
 | Stage 1 (HIR/resolve) | 451 | ~100% | ✅ Complete |
 | Stage 2 (MIR/typeck/borrowck) | 673 | ~100% | ✅ Complete |
-| Stage 3 (codegen) | 814 | ~95% | 🔄 In progress |
+| Stage 3 (codegen) | 828 | ~96% | 🔄 In progress |
 
 ## Stage 3 Test Breakdown
 
@@ -31,7 +31,9 @@
 | 3.36 | Field type propagation | 8 | ✅ |
 | 3.38 | Enum variant codegen | 10 | ✅ |
 | 3.40 | Enum match | 8 | ✅ |
-| **Total codegen** | | **141** | ✅ |
+| 3.42 | &str type fix | 6 | ✅ |
+| 3.43 | Shift overflow check | 8 | ✅ |
+| **Total codegen** | | **155** | ✅ |
 | Gate audits R1-R9 | Audit cases | 315 cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
@@ -44,10 +46,10 @@
 | L8 | lli execution verification | Env lacks LLVM tools | When available |
 | L9 | i128/u128 | Simplified to i64 | Stage 4 |
 | L10 | Float bitwise ops | Edge case | Stage 4 |
-| L11 | Shift-count overflow | Edge case | Stage 4 |
+| ~~L11~~ | ~~Shift-count overflow~~ | CLOSED in Stage 3.43 ✅ |
 | L13 | Fat pointers | Simplification | Stage 4 |
 | L14 | i16/u16 → i32 | Simplification | Stage 4 |
-| L15 | String-as-function-arg | Requires L13 | Stage 4 |
+| ~~L15~~ | ~~String-as-function-arg~~ | CLOSED in Stage 3.42 ✅ |
 | L-ENUM-UNION | Enum union payload | Simplification | Stage 4 |
 | L-COPY-ADT | Proper Copy trait | Needs TraitResolver | Stage 5 |
 | L-PIPE-1 | HIR lookup for Adt storage | Per §16.2.1 allowed | Stage 4 |

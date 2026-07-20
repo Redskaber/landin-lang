@@ -929,18 +929,52 @@ fn codegen_terminator(
                         .unwrap_or(EmitType::I32);
                     let lhs_val = codegen_operand(emitter, mir, lhs, interner, hir);
                     let rhs_val = codegen_operand(emitter, mir, rhs, interner, hir);
-                    let agg = emitter.emit_checked_binop(*op, &op_ty, &lhs_val, &rhs_val);
-                    let agg_ty = EmitType::struct_of(vec![op_ty.clone(), EmitType::I1]);
-                    let overflow_flag = emitter.emit_extractvalue(&agg_ty, &agg, 1);
-                    // If overflow_flag is FALSE (no overflow), branch to target.
-                    // If TRUE (overflow), branch to panic block.
-                    // i.e. `br i1 (xor overflow_flag, true), label %target, label %panic`
-                    let inverted = emitter.emit_unop(
-                        crate::mir::lvalue::UnOp::Not,
-                        &EmitType::I1,
-                        &overflow_flag,
-                    );
-                    emitter.emit_br_cond(&inverted, &format!("bb{}", target.0), &panic_label);
+
+                    // Stage 3.43 (L11 fix): For Shl/Shr, the overflow
+                    // condition is shift_count >= bit_width_of_type.
+                    // LLVM doesn't have checked-shift intrinsics, so we
+                    // emit an explicit `icmp uge rhs, bit_width` check.
+                    // For Add/Sub/Mul, we use llvm.{sadd,ssub,smul}.with.overflow.
+                    match op {
+                        crate::mir::lvalue::BinOp::Shl | crate::mir::lvalue::BinOp::Shr => {
+                            // Determine bit width from the type.
+                            let bit_width: u32 = match op_ty {
+                                EmitType::I32 => 32,
+                                EmitType::I64 => 64,
+                                EmitType::I8 => 8,
+                                EmitType::I1 => 1,
+                                _ => 32,
+                            };
+                            // overflow if rhs >= bit_width
+                            // icmp uge rhs, bit_width
+                            let width_str = bit_width.to_string();
+                            let is_overflow =
+                                emitter.emit_icmp("uge", &op_ty, &rhs_val, &width_str);
+                            // is_overflow == true → panic
+                            // br i1 is_overflow, label %panic, label %target
+                            emitter.emit_br_cond(
+                                &is_overflow,
+                                &panic_label,
+                                &format!("bb{}", target.0),
+                            );
+                        }
+                        _ => {
+                            // Add/Sub/Mul: use LLVM checked intrinsics.
+                            let agg = emitter.emit_checked_binop(*op, &op_ty, &lhs_val, &rhs_val);
+                            let agg_ty = EmitType::struct_of(vec![op_ty.clone(), EmitType::I1]);
+                            let overflow_flag = emitter.emit_extractvalue(&agg_ty, &agg, 1);
+                            let inverted = emitter.emit_unop(
+                                crate::mir::lvalue::UnOp::Not,
+                                &EmitType::I1,
+                                &overflow_flag,
+                            );
+                            emitter.emit_br_cond(
+                                &inverted,
+                                &format!("bb{}", target.0),
+                                &panic_label,
+                            );
+                        }
+                    }
                 }
                 crate::mir::body::AssertMessage::DivisionByZero(rhs) => {
                     // Stage 3.25: emit `icmp eq rhs, 0`; if true → panic,
