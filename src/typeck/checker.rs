@@ -188,8 +188,20 @@ impl TypeChecker {
         // local_decls have resolved types — so a `Projection(Local(id),
         // Field(field_id, field_ty))` can now look up the struct's field
         // type via the local's resolved Adt type + HIR struct definition.
+        //
+        // Stage 3.36 (L-DEBT-3 fix): after writing back field_tys, also
+        // re-resolve local_decls that hold field-load results. The field
+        // type may differ from the defaulted type (e.g., field is i64 but
+        // IntVar defaulted to i32). We walk Assigns: for any
+        // `loc_X = Use(Copy(Projection(base, Field(field_id, _))))`, set
+        // loc_X.ty to the field's resolved type.
         if let Some(hir_crate) = hir {
             self.writeback_field_types(mir, hir_crate);
+            // Stage 3.36: walk Assigns and fix local_decls that hold
+            // field-load results. The local was unified with field_ty
+            // (which may have defaulted to i32), but the actual field
+            // type is i64. Overwrite the local's type with the field type.
+            self.writeback_field_load_locals(mir, hir_crate);
         }
 
         // Phase 4: Populate TypeckResults for downstream consumers.
@@ -234,6 +246,125 @@ impl TypeChecker {
     /// Per §16: typeck reads HIR here (allowed — data flows downstream).
     /// The resolved type is sunk into MIR's `ProjectionElem::Field` so
     /// codegen reads it from MIR (no cross-stage call).
+    /// Stage 3.36 (L-DEBT-3 fix): Walk Assigns and fix local_decls that hold
+    /// field-load results.
+    ///
+    /// For `loc_X = Use(Copy(Projection(base, Field(field_id, _))))`, the
+    /// local loc_X was unified with field_ty during Phase 1. By Phase 3.5,
+    /// field_ty may have been bound to a different type via default_unresolved
+    /// (e.g., i32 when the field is actually i64). This method overwrites
+    /// loc_X.ty with the field's resolved type from the struct definition.
+    fn writeback_field_load_locals(&mut self, mir: &mut MirBody, hir: &HirCrate) {
+        use crate::mir::lvalue::{LvalueKind, Operand, ProjectionElem, Rvalue};
+        // First pass: fix locals that directly hold field-load results.
+        // loc_X = Use(Copy/Move(Projection(base, Field(field_id, _))))
+        // → loc_X.ty = field's resolved type.
+        for bb in &mir.basic_blocks {
+            for stmt in &bb.statements {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let LvalueKind::Local(dest_id) = &place.kind {
+                        if let Rvalue::Use(op) = rvalue {
+                            let lv = match op {
+                                Operand::Copy(lv) | Operand::Move(lv) => lv,
+                                _ => continue,
+                            };
+                            if let LvalueKind::Projection(
+                                base,
+                                ProjectionElem::Field(field_id, _),
+                            ) = &lv.kind
+                            {
+                                let base_ty = self.resolve_lvalue_for_writeback(mir, base);
+                                if let TyKind::Adt(def_id, _) = &base_ty.kind {
+                                    if let Some(crate::hir::OwnerNode::Item(
+                                        crate::hir::HirItem::Struct(s),
+                                    )) = hir.owner(*def_id)
+                                    {
+                                        if let Some(f) = s.fields.get(field_id.0 as usize) {
+                                            let field_ty =
+                                                crate::mir::lower::lower_hir_ty_to_mir_ty(&f.ty);
+                                            if let Some(dest_local) =
+                                                mir.local_decls.get_mut(dest_id.0 as usize)
+                                            {
+                                                dest_local.ty = field_ty.clone();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Second pass: fix BinaryOp results that use field-load locals.
+        // loc_X = BinaryOp(op, Copy(loc_A), Copy(loc_B))
+        // → if loc_A or loc_B has a resolved concrete type (from first pass),
+        //   set loc_X.ty to that type.
+        // This propagates field types through arithmetic.
+        for bb in &mir.basic_blocks {
+            for stmt in &bb.statements {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let LvalueKind::Local(dest_id) = &place.kind {
+                        if let Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) = rvalue {
+                            // Resolve operand types from local_decls (post-first-pass).
+                            let a_ty = self.resolve_operand_for_writeback(mir, a);
+                            let b_ty = self.resolve_operand_for_writeback(mir, b);
+                            let result_ty = if is_concrete_int_or_float(&a_ty) {
+                                Some(a_ty)
+                            } else if is_concrete_int_or_float(&b_ty) {
+                                Some(b_ty)
+                            } else {
+                                None
+                            };
+                            if let Some(ty) = result_ty {
+                                if let Some(dest_local) =
+                                    mir.local_decls.get_mut(dest_id.0 as usize)
+                                {
+                                    dest_local.ty = ty;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Resolve an operand's type for the writeback pass (reads local_decls
+    /// which have been fixed by the first pass of writeback_field_load_locals).
+    fn resolve_operand_for_writeback(&self, mir: &MirBody, op: &crate::mir::lvalue::Operand) -> Ty {
+        use crate::mir::lvalue::Operand;
+        match op {
+            Operand::Copy(lv) | Operand::Move(lv) => self.resolve_lvalue_for_writeback(mir, lv),
+            Operand::Constant(c) => c.ty.as_ref().clone(),
+        }
+    }
+
+    /// Resolve an lvalue's type for the writeback pass (post-Phase 3, so
+    /// local_decls have resolved types).
+    fn resolve_lvalue_for_writeback(&self, mir: &MirBody, lv: &crate::mir::lvalue::Lvalue) -> Ty {
+        use crate::mir::lvalue::LvalueKind;
+        match &lv.kind {
+            LvalueKind::Local(id) => mir
+                .local_decls
+                .get(id.0 as usize)
+                .map(|ld| ld.ty.clone())
+                .unwrap_or_else(|| Ty::new(TyKind::Error, lv.span)),
+            LvalueKind::Projection(base, elem) => {
+                let base_ty = self.resolve_lvalue_for_writeback(mir, base);
+                match elem {
+                    crate::mir::lvalue::ProjectionElem::Field(_field_id, field_ty) => {
+                        field_ty.clone()
+                    }
+                    _ => base_ty,
+                }
+            }
+            LvalueKind::Static(_) => Ty::new(TyKind::Error, lv.span),
+        }
+    }
+
     fn writeback_field_types(&mut self, mir: &mut MirBody, hir: &HirCrate) {
         // Collect (bb_idx, stmt_idx, new_place, new_rvalue) updates.
         // We clone the Assign's place + rvalue, mutate the clones to
@@ -252,8 +383,10 @@ impl TypeChecker {
                     let (place, rvalue) = &**boxed;
                     let mut new_place = place.clone();
                     let mut new_rvalue = rvalue.clone();
-                    let place_changed = writeback_field_types_in_lvalue(&mut new_place, mir, hir);
-                    let rvalue_changed = writeback_field_types_in_rvalue(&mut new_rvalue, mir, hir);
+                    let place_changed =
+                        writeback_field_types_in_lvalue(&mut new_place, mir, hir, &mut self.unify);
+                    let rvalue_changed =
+                        writeback_field_types_in_rvalue(&mut new_rvalue, mir, hir, &mut self.unify);
                     if place_changed || rvalue_changed {
                         updates.push((
                             bb_idx,
@@ -315,11 +448,12 @@ impl TypeChecker {
             lv: &mut crate::mir::lvalue::Lvalue,
             mir: &MirBody,
             hir: &HirCrate,
+            unify: &mut crate::typeck::unify::UnificationTable,
         ) -> bool {
             use crate::mir::lvalue::{LvalueKind, ProjectionElem};
             match &mut lv.kind {
                 LvalueKind::Projection(base, elem) => {
-                    let mut changed = writeback_field_types_in_lvalue(base, mir, hir);
+                    let mut changed = writeback_field_types_in_lvalue(base, mir, hir, unify);
                     if let ProjectionElem::Field(field_id, field_ty) = elem {
                         let base_ty = resolve_lvalue_type(base, mir, hir);
                         if let TyKind::Adt(def_id, _) = &base_ty.kind {
@@ -329,6 +463,35 @@ impl TypeChecker {
                             {
                                 if let Some(f) = s.fields.get(field_id.0 as usize) {
                                     let resolved = crate::mir::lower::lower_hir_ty_to_mir_ty(&f.ty);
+                                    // Stage 3.36 (L-DEBT-3 fix): bind field_ty's
+                                    // inference variable to the resolved type
+                                    // (was: only overwrote field_ty). This
+                                    // propagates the field type to any locals
+                                    // that were unified with field_ty during
+                                    // Phase 1.
+                                    //
+                                    // We use bind (not unify) because the TyVar
+                                    // may have been unified with an IntVar
+                                    // during Phase 1 (e.g., `a.v + 5` unifies
+                                    // a.v's TyVar with the literal 5's IntVar).
+                                    // By Phase 3.5, default_unresolved has
+                                    // already bound the IntVar to i32, so
+                                    // unify would fail (i32 ≠ i64). Instead,
+                                    // we resolve field_ty to find what it's
+                                    // bound to, then bind THAT to the resolved
+                                    // type.
+                                    let current = unify.resolve(field_ty);
+                                    match &current.kind {
+                                        TyKind::Infer(InferVar::TyVar(vid)) => {
+                                            unify.bind_ty_var(*vid, resolved.clone());
+                                        }
+                                        TyKind::Infer(InferVar::IntVar(vid)) => {
+                                            if let TyKind::Int(int_ty) = &resolved.kind {
+                                                unify.bind_int_var(*vid, *int_ty);
+                                            }
+                                        }
+                                        _ => {}
+                                    }
                                     *field_ty = resolved;
                                     changed = true;
                                 }
@@ -345,35 +508,37 @@ impl TypeChecker {
             rv: &mut crate::mir::lvalue::Rvalue,
             mir: &MirBody,
             hir: &HirCrate,
+            unify: &mut crate::typeck::unify::UnificationTable,
         ) -> bool {
             use crate::mir::lvalue::Rvalue;
             match rv {
-                Rvalue::Use(op) => writeback_field_types_in_operand(op, mir, hir),
+                Rvalue::Use(op) => writeback_field_types_in_operand(op, mir, hir, unify),
                 Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
-                    writeback_field_types_in_operand(a, mir, hir)
-                        | writeback_field_types_in_operand(b, mir, hir)
+                    writeback_field_types_in_operand(a, mir, hir, unify)
+                        | writeback_field_types_in_operand(b, mir, hir, unify)
                 }
-                Rvalue::UnaryOp(_, op) => writeback_field_types_in_operand(op, mir, hir),
-                Rvalue::Cast(_, op, _) => writeback_field_types_in_operand(op, mir, hir),
+                Rvalue::UnaryOp(_, op) => writeback_field_types_in_operand(op, mir, hir, unify),
+                Rvalue::Cast(_, op, _) => writeback_field_types_in_operand(op, mir, hir, unify),
                 Rvalue::Aggregate(_, operands) => {
                     let mut changed = false;
                     for op in operands {
-                        changed |= writeback_field_types_in_operand(op, mir, hir);
+                        changed |= writeback_field_types_in_operand(op, mir, hir, unify);
                     }
                     changed
                 }
-                Rvalue::Ref(_, _, lv) => writeback_field_types_in_lvalue(lv, mir, hir),
+                Rvalue::Ref(_, _, lv) => writeback_field_types_in_lvalue(lv, mir, hir, unify),
             }
         }
         fn writeback_field_types_in_operand(
             op: &mut crate::mir::lvalue::Operand,
             mir: &MirBody,
             hir: &HirCrate,
+            unify: &mut crate::typeck::unify::UnificationTable,
         ) -> bool {
             use crate::mir::lvalue::Operand;
             match op {
                 Operand::Copy(lv) | Operand::Move(lv) => {
-                    writeback_field_types_in_lvalue(lv, mir, hir)
+                    writeback_field_types_in_lvalue(lv, mir, hir, unify)
                 }
                 _ => false,
             }
@@ -820,6 +985,17 @@ fn is_arithmetic_ty(ty: &Ty) -> bool {
     matches!(
         &ty.kind,
         TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_) | TyKind::Infer(_) | TyKind::Error
+    )
+}
+
+/// Stage 3.36 (L-DEBT-3 fix): whether a type is a concrete Int/Uint/Float
+/// (not Infer, not Error, not Bool, not Str, etc.). Used by
+/// `writeback_field_load_locals` to decide if a BinaryOp operand's type
+/// should propagate to the result.
+fn is_concrete_int_or_float(ty: &Ty) -> bool {
+    matches!(
+        &ty.kind,
+        TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_)
     )
 }
 

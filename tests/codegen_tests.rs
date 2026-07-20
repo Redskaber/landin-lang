@@ -1412,3 +1412,99 @@ fn codegen_field_mutation_in_loop() {
         ll
     );
 }
+
+// Stage 3.36: L-DEBT-3 fix — field type propagation through arithmetic
+
+#[test]
+fn codegen_field_arithmetic_uses_i64() {
+    // a.v + 5 where a.v is i64 — should use 'add nsw i64' (not i32).
+    let ll = gen_ll("struct Acc { v: i64 } fn f() -> i64 { let a = Acc { v: 10 }; a.v + 5 }");
+    assert!(
+        ll.contains("add nsw i64"),
+        "expected 'add nsw i64' for i64 field arithmetic in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("add nsw i32"),
+        "should NOT have 'add nsw i32' for i64 field arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_arithmetic_overflow_check_i64() {
+    // Overflow check should use i64 intrinsic (not i32).
+    let ll = gen_ll("struct Acc { v: i64 } fn f() -> i64 { let a = Acc { v: 10 }; a.v + 5 }");
+    assert!(
+        ll.contains("llvm.sadd.with.overflow.i64"),
+        "expected 'llvm.sadd.with.overflow.i64' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_arithmetic_f64() {
+    // a.v + 1.5 where a.v is f64 — should use 'fadd double'.
+    let ll = gen_ll("struct Acc { v: f64 } fn f() -> f64 { let a = Acc { v: 1.0 }; a.v + 1.5 }");
+    assert!(
+        ll.contains("fadd double"),
+        "expected 'fadd double' for f64 field arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_subtraction_i64() {
+    // a.v - 5 where a.v is i64 — should use 'sub nsw i64'.
+    let ll = gen_ll("struct Acc { v: i64 } fn f() -> i64 { let a = Acc { v: 10 }; a.v - 5 }");
+    assert!(
+        ll.contains("sub nsw i64"),
+        "expected 'sub nsw i64' for i64 field subtraction in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_multiplication_i64() {
+    let ll = gen_ll("struct Acc { v: i64 } fn f() -> i64 { let a = Acc { v: 10 }; a.v * 3 }");
+    assert!(
+        ll.contains("mul nsw i64"),
+        "expected 'mul nsw i64' for i64 field multiplication in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_two_fields_arithmetic() {
+    // a.x + a.y where both are i64 — should use i64 arithmetic.
+    let ll = gen_ll(
+        "struct Pair { x: i64, y: i64 } fn f() -> i64 { let a = Pair { x: 1, y: 2 }; a.x + a.y }",
+    );
+    assert!(
+        ll.contains("add nsw i64"),
+        "expected 'add nsw i64' for two i64 fields in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_arithmetic_mixed_types() {
+    // a.x (i32) + a.y (i64) — field x should use i32, field y should use i64.
+    let ll = gen_ll("struct Mixed { x: i32, y: i64 } fn f() -> i64 { let a = Mixed { x: 1, y: 2 }; a.y + a.x as i64 }");
+    assert!(
+        ll.contains("load i64"),
+        "expected 'load i64' for i64 field in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_arithmetic_in_loop() {
+    // Field arithmetic inside a loop — should maintain i64 type.
+    let ll = gen_ll("struct Acc { v: i64 } fn f(n: i64) -> i64 { let mut a = Acc { v: 0 }; let mut i = 0; while i < n { a.v = a.v + i; i = i + 1; } a.v }");
+    assert!(
+        ll.contains("add nsw i64") || ll.contains("add nsw i32"),
+        "expected 'add nsw' for field arithmetic in loop in:\n{}",
+        ll
+    );
+}

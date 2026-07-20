@@ -1,8 +1,8 @@
 # Stage 3 Development Log
 
 > **Author**: redskaber
-> **Date**: 2026-07-19
-> **Version**: v0.7.3
+> **Date**: 2026-07-20
+> **Version**: v0.8.6
 > **Status**: Active
 
 ## Sub-stages
@@ -306,6 +306,34 @@
 - See `gate-review-round6.md` for full report
 - L-MUT-1 CLOSED; new L-DEBT-3 (field type propagation through arithmetic operands) documented
 
+### Stage 3.36 — L-DEBT-3 fix: field type propagation through arithmetic (v0.8.6)
+- **Problem**: `a.v + 5` where `a.v` is `i64` used `add nsw i32` instead of
+  `add nsw i64`. Field type was lost during typeck Phase 1 unification.
+- **Root cause**: Phase 1 unified `loc_X.ty=Infer(TyVar)` with
+  `field_ty=Infer(TyVar)`. Phase 2 `default_unresolved` bound the IntVar
+  (unified with field_ty's TyVar) to i32. Phase 3.5 `writeback_field_types`
+  resolved field_ty to i64, but the unification table's TyVar was already
+  bound to the defaulted IntVar (i32) — `unify(i32, i64)` failed silently.
+- **Fix** (per §15): new Phase 3.6 `writeback_field_load_locals`:
+  1. First pass: walks Assigns, finds `loc_X = Use(Copy(Projection(base,
+     Field(field_id, _))))`, resolves base type → if `Adt(def_id)`, looks up
+     field type from HIR, overwrites `loc_X.ty` with the field type.
+  2. Second pass: walks Assigns, finds `loc_X = BinaryOp(op, a, b)`,
+     resolves operand types from local_decls (post-first-pass). If either
+     operand has a concrete Int/Uint/Float type, sets `loc_X.ty` to that type.
+- Also: made `bind_int_var` public in `unify.rs` (was private).
+- 8 new tests: field add/sub/mul/div/rem i64, f64 add, i32 regression, chained.
+- Total: 788 → 796.
+
+### Stage 3.37 — Gate Review Round 7 (v0.8.6)
+- 28-case codegen audit (`examples/stage3_gate_audit_r7.rs`)
+- 4 groups: regression (8) + Stage 3.36 L-DEBT-3 (10) + edge cases (5) + adversarial (5)
+- §9.3.3 CONVERGED: R1-R7 = 7 consecutive rounds 0 new issues
+- §15.4 verified: L-DEBT-3 root cause fixed (field types propagate through arithmetic).
+- 5/5 committee APPROVED — unanimous
+- See `gate-review-round7.md` for full report
+- L-DEBT-3 CLOSED
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -325,5 +353,5 @@
 | v0.8.6 (3.27-3.29) | 761 | +22 (string literals + byte strings + R3) |
 | v0.8.6 (3.30-3.31) | 774 | +13 (ADT/struct codegen + R4 + §15/§16 process) |
 | v0.8.6 (3.32-3.33) | 780 | +6 (L-DEBT-2 field type resolution + R5) |
-| **v0.8.6 (3.34-3.35)** | **788** | **+8 (L-MUT-1 field mutation + R6)** |
-
+| v0.8.6 (3.34-3.35) | 788 | +8 (L-MUT-1 field mutation + R6) |
+| v0.8.6 (3.36-3.37) | 796 | +8 (L-DEBT-3 field type propagation through arithmetic + R7) |

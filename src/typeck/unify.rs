@@ -487,7 +487,7 @@ impl UnificationTable {
         self.ty_vars.insert(vid, Some(ty));
     }
 
-    fn bind_int_var(&mut self, vid: IntVid, i: IntTy) {
+    pub fn bind_int_var(&mut self, vid: IntVid, i: IntTy) {
         let root = self.int_var_root(vid);
         self.int_vars.insert(root, IntVarBinding::Bound(i));
     }
