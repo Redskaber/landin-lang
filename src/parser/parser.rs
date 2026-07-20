@@ -26,7 +26,11 @@ enum PathContext {
 pub struct Parser<'a> {
     tokens: Vec<Token>,
     pos: usize,
-    interner: &'a Rodeo,
+    /// Stage 3.30: changed from `&'a Rodeo` to `&'a mut Rodeo` so the
+    /// parser can intern tuple-field indices (`p.0`, `p.1`) — was using
+    /// `Spur::default()` which lost the index. Per §15, this is a root-cause
+    /// fix (not a workaround).
+    interner: &'a mut Rodeo,
     errors: Vec<crate::parser::ParseError>,
     /// When true, `parse_primary_expr` will NOT try to parse a `{` following
     /// a path as a struct literal. This is set to `true` while parsing the
@@ -36,7 +40,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: Vec<Token>, interner: &'a Rodeo) -> Self {
+    pub fn new(tokens: Vec<Token>, interner: &'a mut Rodeo) -> Self {
         Self {
             tokens,
             pos: 0,
@@ -2378,12 +2382,23 @@ impl<'a> Parser<'a> {
                                 };
                             }
                         }
-                        TokenKind::IntLit(_, _) => {
-                            // Tuple field access: t.0
+                        TokenKind::IntLit(value, _) => {
+                            // Tuple field access: t.0, t.1, etc.
+                            // Stage 3.30 fix: intern the integer as a string
+                            // so MIR lower can recover the field index via
+                            // `name_str.parse::<u32>()`. Was: used
+                            // `Spur::default()` (lost the index entirely —
+                            // all tuple field accesses resolved to field 0).
+                            //
+                            // Clone the value to release the immutable borrow
+                            // from `self.peek()` before calling `self.bump()`.
+                            let value: u128 = *value;
                             self.bump();
+                            let field_name = format!("{}", value);
+                            let field_spur = self.interner.get_or_intern(field_name.as_str());
                             expr = Expr::Field {
                                 receiver: Box::new(expr),
-                                ident: Ident::new(Spur::default(), span),
+                                ident: Ident::new(field_spur, span),
                                 span,
                             };
                         }

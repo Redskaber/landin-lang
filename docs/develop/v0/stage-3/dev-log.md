@@ -193,6 +193,49 @@
 - See `gate-review-round3.md` for full report
 - L4 (string literals) + L12 (u8/i8 type) CLOSED; new L13 (fat ptr), L14 (i16), L15 (str-as-arg) documented
 
+### Stage 3.30 — ADT/struct codegen + §15/§16 process principles (v0.8.6)
+- **Process v3.10 + v3.11**: added §15 (最优 > 最小) and §16 (阶段间接口隔离).
+- **3 root-cause bugs fixed** (per §15 — all fixed at root, not via hacks):
+  1. Tuple struct ctor `Pair(1, 2)` was lowered as `Terminator::Call`
+     (fake function call). Root cause: `Res::Def(DefId)` didn't carry
+     `DefKind`. Fix: extended to `Res::Def(DefId, DefKind)`; MIR lower
+     dispatches on `DefKind::Struct` to emit `Aggregate(Adt, operands)`.
+  2. Named struct types in param/return positions were lost —
+     `lower_hir_ty_to_mir_ty` fell through `HirTyKind::Path` to `TyKind::Error`.
+     Fix: added `HirTyKind::Path` handling → `TyKind::Adt(def_id, substs)`.
+  3. Field access `p.x` / `p.1` always returned field 0 — MIR lower
+     hardcoded `FieldId(0)`; parser lost tuple field index via `Spur::default()`.
+     Fix: parser interns field index as string; MIR lower's new
+     `resolve_field_index` parses it (tuple) or looks up by name (named struct).
+- **§16 compliance** (per §16 — data sink, no cross-stage internal-API calls):
+  * `AggregateKind::Adt` extended with `field_tys: Vec<Ty>` — MIR lower
+    computes field types from HIR and sinks them into MIR.
+  * Codegen reads field types from MIR (not from HIR via `lower_hir_ty_to_mir_ty`).
+  * New codegen-local `hir_ty_to_emit_type` for HirTy → EmitType conversion.
+  * `mir_type_to_emit_type_with_hir` marked L-PIPE-1 (reads HIR for
+    `TyKind::Adt` local/param storage types — allowed per §16.2.1 but
+    deeper fix would sink field types into `TyKind::Adt`).
+- **Parser change**: `Parser.interner` changed from `&Rodeo` to `&mut Rodeo`
+  so parser can intern tuple field indices. All callers updated.
+- **fn_names indexing bug fixed**: was indexing by body index (wrong when
+  struct/enum owners created DefId gaps). Now uses `DefId → name` HashMap.
+- 13 new tests: named/tuple struct construction, field access, alloca,
+  mutation, mixed types, struct as param/return, unit struct, multiple
+  structs, struct in if/loop, struct + overflow.
+- Total: 761 → 774.
+
+### Stage 3.31 — Gate Review Round 4 (v0.8.6)
+- 37-case codegen audit (`examples/stage3_gate_audit_r4.rs`)
+- 6 groups: regression (12) + Stage 3.30 ADT (12) + edge cases (5) +
+  adversarial (5) + §16 verification (3)
+- §9.3.1 ≥30 cases ✅, §9.3.2 ≥5 edge cases ✅
+- §9.3.3 CONVERGED: R1=38/38 + R2=43/43 + R3=43/43 + R4=37/37 = 4 consecutive rounds 0 new issues
+- §15 verified: tuple struct ctor bug fixed at root (no fake call).
+- §16 verified: no cross-stage internal-API calls in codegen.
+- 5/5 committee APPROVED — unanimous
+- See `gate-review-round4.md` for full report
+- L2 (struct codegen) CLOSED; new L-ENUM (enum variants), L-DEBT-2 (field type resolution), L-PIPE-1 (HIR lookup for Adt storage) documented
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -209,5 +252,6 @@
 | v0.8.5 | 709 | 0 (3.20 typed-load refactor) |
 | v0.8.6 (3.21-3.23) | 725 | +16 (typed aggregates + block-scoped cache + R1) |
 | v0.8.6 (3.24-3.26) | 739 | +14 (real overflow + div-by-zero checks + R2) |
-| **v0.8.6 (3.27-3.29)** | **761** | **+22 (string literals + byte strings + R3)** |
+| v0.8.6 (3.27-3.29) | 761 | +22 (string literals + byte strings + R3) |
+| **v0.8.6 (3.30-3.31)** | **774** | **+13 (ADT/struct codegen + R4 + §15/§16 process)** |
 

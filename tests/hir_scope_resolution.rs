@@ -14,7 +14,7 @@ fn parse_lower_resolve(src: &str) -> (HirCrate, Rodeo) {
     interner.get_or_intern("crate");
     interner.get_or_intern("super");
     let (tokens, _) = tokenize(src, &mut interner);
-    let mut parser = Parser::new(tokens, &interner);
+    let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty());
     let mut hir = lower_crate(&krate, &interner);
@@ -195,7 +195,7 @@ fn local_shadows_fn() {
 fn fn_call_when_no_local() {
     let (hir, int) = parse_lower_resolve("fn foo() {} fn main() { foo() }");
     assert!(
-        matches!(find_res(&hir, &int, "foo"), Some(Res::Def(_))),
+        matches!(find_res(&hir, &int, "foo"), Some(Res::Def(_, _))),
         "should resolve to Def when no local"
     );
 }

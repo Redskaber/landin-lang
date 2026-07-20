@@ -1016,3 +1016,202 @@ fn codegen_byte_string_in_function_with_other_locals() {
         ll
     );
 }
+
+// Stage 3.30: ADT / struct codegen (per §15 optimal fix)
+
+#[test]
+fn codegen_named_struct_construction() {
+    let ll = gen_ll(
+        "struct Point { x: i32, y: i32 } fn f() -> i32 { let p = Point { x: 1, y: 2 }; p.x }",
+    );
+    // Should emit insertvalue with the struct's field types.
+    assert!(
+        ll.contains("insertvalue { i32, i32 } undef, i32 1, 0"),
+        "expected typed insertvalue for struct field 0 in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("insertvalue { i32, i32 } %v1, i32 2, 1"),
+        "expected typed insertvalue for struct field 1 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_named_struct_field_access() {
+    let ll = gen_ll(
+        "struct Point { x: i32, y: i32 } fn f() -> i32 { let p = Point { x: 1, y: 2 }; p.x }",
+    );
+    // Field access should use typed GEP with the struct type.
+    assert!(
+        ll.contains("getelementptr inbounds { i32, i32 }, { i32, i32 }* %loc_"),
+        "expected typed GEP for struct field access in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_named_struct_alloca_has_struct_type() {
+    let ll = gen_ll(
+        "struct Point { x: i32, y: i32 } fn f() -> i32 { let p = Point { x: 1, y: 2 }; p.x }",
+    );
+    // The struct-typed local should have `alloca { i32, i32 }`, not `alloca i32`.
+    assert!(
+        ll.contains("alloca { i32, i32 }"),
+        "expected 'alloca {{ i32, i32 }}' for struct local in:\n{}",
+        ll
+    );
+    // The struct local is typically %loc_3 or %loc_4. Verify it's not i32.
+    assert!(
+        !ll.contains("%loc_3 = alloca i32\n"),
+        "struct local %loc_3 should NOT be 'alloca i32' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_tuple_struct_construction() {
+    // Stage 3.30 critical test: tuple struct ctor `Pair(1, 2)` must lower
+    // as Aggregate(Adt), NOT as Terminator::Call. Before §15 fix, this
+    // produced `call i32 @fn_0(i32 1, i32 2)` — a fake call to a non-existent
+    // function. After the fix, it produces insertvalue.
+    let ll = gen_ll("struct Pair(i32, i64); fn f() -> i64 { let p = Pair(1, 2); p.0 }");
+    assert!(
+        ll.contains("insertvalue { i32, i64 } undef, i32 1, 0"),
+        "expected typed insertvalue for tuple struct field 0 in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("insertvalue { i32, i64 } %v1, i64 2, 1"),
+        "expected typed insertvalue for tuple struct field 1 in:\n{}",
+        ll
+    );
+    // Should NOT have a call instruction (the old bug).
+    assert!(
+        !ll.contains("call i32 @fn_0") && !ll.contains("call i64 @fn_0"),
+        "should NOT have fake 'call' for tuple struct ctor (old bug) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_tuple_struct_field_access() {
+    let ll = gen_ll("struct Pair(i32, i64); fn f() -> i64 { let p = Pair(1, 2); p.1 }");
+    // p.1 should GEP into { i32, i64 } and load i64.
+    assert!(
+        ll.contains("getelementptr inbounds { i32, i64 }, { i32, i64 }*"),
+        "expected typed GEP for tuple struct field access in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("load i64"),
+        "expected 'load i64' for the i64 field in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_tuple_struct_no_fake_function() {
+    // The struct name should NOT appear as a function definition.
+    let ll = gen_ll("struct Pair(i32, i32); fn f() -> i32 { let p = Pair(1, 2); p.0 }");
+    // There should be exactly ONE function definition: landin_f.
+    let fn_count = ll.matches("define ").count();
+    assert_eq!(
+        fn_count, 1,
+        "expected exactly 1 function definition, got {} in:\n{}",
+        fn_count, ll
+    );
+    assert!(
+        ll.contains("define i32 @landin_f"),
+        "expected 'define i32 @landin_f' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_struct_with_mixed_field_types() {
+    let ll = gen_ll("struct Mixed { a: i32, b: f64, c: bool } fn f() -> f64 { let m = Mixed { a: 1, b: 2.5, c: true }; m.b }");
+    // Should emit { i32, double, i1 } struct type.
+    assert!(
+        ll.contains("{ i32, double, i1 }"),
+        "expected '{{ i32, double, i1 }}' struct type in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_struct_returned_from_function() {
+    // Struct returned from a function — ret should use the struct type.
+    let ll = gen_ll("struct Point { x: i32, y: i32 } fn make() -> Point { Point { x: 1, y: 2 } } fn f() -> i32 { let p = make(); p.x }");
+    // The make() function should have return type { i32, i32 }.
+    assert!(
+        ll.contains("define { i32, i32 } @landin_make"),
+        "expected 'define {{ i32, i32 }} @landin_make' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_struct_passed_to_function() {
+    // Struct passed as function argument — call should use typed arg.
+    let ll = gen_ll("struct Point { x: i32, y: i32 } fn get_x(p: Point) -> i32 { p.x } fn f() -> i32 { get_x(Point { x: 1, y: 2 }) }");
+    // get_x should take a { i32, i32 } param.
+    assert!(
+        ll.contains("define i32 @landin_get_x({ i32, i32 } %arg0)"),
+        "expected 'define i32 @landin_get_x({{ i32, i32 }} %arg0)' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_unit_struct() {
+    let ll = gen_ll("struct Unit; fn f() { let _u = Unit; }");
+    // Should compile without crashing. Unit struct has no fields.
+    assert!(
+        ll.contains("ret void"),
+        "expected 'ret void' for unit struct function in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_empty_struct() {
+    let ll = gen_ll("struct Empty { } fn f() { let _e = Empty { }; }");
+    assert!(
+        ll.contains("ret void"),
+        "expected 'ret void' for empty struct function in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_struct_field_mutation() {
+    // Mutating a struct field via p.x = ... should use GEP + store.
+    let ll = gen_ll("struct Point { x: i32, y: i32 } fn f() -> i32 { let mut p = Point { x: 1, y: 2 }; p.x = 42; p.x }");
+    assert!(
+        ll.contains("getelementptr inbounds { i32, i32 }"),
+        "expected typed GEP for struct field mutation in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("store i32 42"),
+        "expected 'store i32 42' for field mutation in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_multiple_structs_distinct_types() {
+    // Two different structs should produce distinct LLVM struct types.
+    let ll = gen_ll("struct A { x: i32 } struct B { y: i64, z: i64 } fn f() -> i64 { let a = A { x: 1 }; let b = B { y: 2, z: 3 }; b.y }");
+    assert!(
+        ll.contains("{ i32 }") || ll.contains("alloca i32"),
+        "expected A's field type in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("{ i64, i64 }"),
+        "expected '{{ i64, i64 }}' for B in:\n{}",
+        ll
+    );
+}

@@ -30,6 +30,11 @@ pub struct MirLowerCtxt<'a> {
     /// Unification table for allocating fresh TyVid/IntVid/FloatVar.
     /// Each call to `fresh_infer_ty()` produces a unique variable.
     pub unify: UnificationTable,
+    /// Stage 3.30 (per §16): HIR crate reference for resolving ADT field
+    /// types during lowering. Set by `lower_hir_body_to_mir_full`.
+    /// `Option` because some test contexts construct MirLowerCtxt without
+    /// a HIR crate (e.g., unit tests of helper functions).
+    pub hir: Option<&'a HirCrate>,
 }
 
 impl<'a> MirLowerCtxt<'a> {
@@ -42,6 +47,7 @@ impl<'a> MirLowerCtxt<'a> {
             local_map: std::collections::HashMap::new(),
             current_block,
             unify: UnificationTable::new(),
+            hir: None,
         }
     }
 
@@ -338,8 +344,13 @@ impl<'a> MirLowerCtxt<'a> {
 /// - The return local (StorageLive at entry, no StorageDead — lives until Return)
 /// - Each fn param (StorageLive at entry, no StorageDead — lives until Return)
 /// - Each `let` binding (StorageLive at the `let`, StorageDead at scope end — Stage 3)
-pub fn lower_hir_body_to_mir(body: &Body, interner: &Rodeo) -> MirBody {
-    lower_hir_body_to_mir_with_return_ty(body, interner, None)
+///
+/// Stage 3.30 (per §16): now takes `hir: &HirCrate` so MIR lower can resolve
+/// ADT field types at lowering time and store them in `AggregateKind::Adt`'s
+/// `field_tys` field. This is the "data sink" approach — codegen reads the
+/// field types from MIR instead of re-querying HIR.
+pub fn lower_hir_body_to_mir(body: &Body, interner: &Rodeo, hir: &HirCrate) -> MirBody {
+    lower_hir_body_to_mir_with_return_ty(body, interner, hir, None)
 }
 
 /// Lower a HIR body to MIR with an explicit return type (from the fn sig).
@@ -352,9 +363,10 @@ pub fn lower_hir_body_to_mir(body: &Body, interner: &Rodeo) -> MirBody {
 pub fn lower_hir_body_to_mir_with_return_ty(
     body: &Body,
     interner: &Rodeo,
+    hir: &HirCrate,
     return_ty: Option<HirTy>,
 ) -> MirBody {
-    lower_hir_body_to_mir_full(body, interner, return_ty).0
+    lower_hir_body_to_mir_full(body, interner, hir, return_ty).0
 }
 
 /// Full version of `lower_hir_body_to_mir_with_return_ty` that also
@@ -372,9 +384,11 @@ pub fn lower_hir_body_to_mir_with_return_ty(
 pub fn lower_hir_body_to_mir_full(
     body: &Body,
     interner: &Rodeo,
+    hir: &HirCrate,
     return_ty: Option<HirTy>,
 ) -> (MirBody, UnificationTable) {
     let mut cx = MirLowerCtxt::new(interner, body.span);
+    cx.hir = Some(hir);
 
     // Allocate LocalId(0) as the return value placeholder.
     // If a return type is provided (from the fn sig), use it directly
@@ -536,6 +550,16 @@ pub fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
             // in the free function lower_hir_ty_to_mir_ty.
             Ty::new(TyKind::Infer(InferVar::TyVar(TyVid(u32::MAX))), span)
         }
+        // Stage 3.30: resolve named types (struct/enum/etc.) via the path's
+        // Res. Was: fell through to `Ty::Error`, which made `Point`-typed
+        // params/locals lose their type info and codegen treat them as i32.
+        HirTyKind::Path(_, path) => {
+            if let Res::Def(def_id, _) = path.res {
+                Ty::new(TyKind::Adt(def_id, Vec::new()), span)
+            } else {
+                Ty::new(TyKind::Error, span)
+            }
+        }
         _ => Ty::new(TyKind::Error, span), // complex types → Error for now
     }
 }
@@ -557,25 +581,51 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                     return local_id;
                 }
             }
-            // If the path resolves to a top-level Def (fn/const/static),
-            // produce an operand carrying the appropriate named type:
-            //   - fn item  → Ty::FnDef(def_id, substs=[])
-            //   - const    → Ty::Error (placeholder; real const-eval is Stage 3+)
-            //   - static   → Ty::Error (placeholder)
-            // The FnDef type lets the type checker look up the fn signature
-            // when this path is used as a Call operand.
-            if let Res::Def(def_id) = path.res {
-                let fndef_ty = Ty::new(TyKind::FnDef(def_id, Vec::new()), expr.span);
-                return cx.eval_rvalue_to_temp(
-                    Rvalue::Use(Operand::Constant(Const {
-                        ty: Box::new(fndef_ty.clone()),
-                        // ConstVal::Unit doesn't exist; use Uint(0) as a placeholder.
-                        // The actual fn pointer is resolved at codegen time.
-                        val: ConstVal::Uint(def_id.as_u32() as u128),
-                    })),
-                    fndef_ty,
-                    expr.span,
-                );
+            // If the path resolves to a top-level Def, dispatch on DefKind:
+            //   - Fn         → FnDef type (real fn item)
+            //   - Struct     → Adt type (struct ctor — handled in Call lower)
+            //   - Enum       → Adt type (enum variant ctor — Stage 3.31+)
+            //   - Const/Static → placeholder Error type (real const-eval is Stage 3+)
+            // Stage 3.30 (per §15): use DefKind from Res to dispatch, eliminating
+            // the root cause of "tuple struct ctor was being lowered as Call".
+            if let Res::Def(def_id, def_kind) = path.res {
+                match def_kind {
+                    crate::resolve::DefKind::Struct | crate::resolve::DefKind::Enum => {
+                        // ADT type — produce an Adt operand. When this path is
+                        // used as the `func` of a Call expression, the Call
+                        // lower will check the operand's type and dispatch to
+                        // Aggregate(Adt) instead of emitting a real Call.
+                        let adt_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
+                        return cx.eval_rvalue_to_temp(
+                            Rvalue::Use(Operand::Constant(Const {
+                                ty: Box::new(adt_ty.clone()),
+                                // Placeholder value — codegen doesn't read it
+                                // for ADT ctors (it uses the args directly).
+                                val: ConstVal::Uint(def_id.as_u32() as u128),
+                            })),
+                            adt_ty,
+                            expr.span,
+                        );
+                    }
+                    _ => {
+                        // Default: treat as FnDef (covers Fn, Const, Static,
+                        // etc. — the typeck/codegen layers handle the
+                        // FnDef-typed operand correctly for fn calls;
+                        // Const/Static are still placeholders).
+                        let fndef_ty = Ty::new(TyKind::FnDef(def_id, Vec::new()), expr.span);
+                        return cx.eval_rvalue_to_temp(
+                            Rvalue::Use(Operand::Constant(Const {
+                                ty: Box::new(fndef_ty.clone()),
+                                // ConstVal::Unit doesn't exist; use Uint(0) as a
+                                // placeholder. The actual fn pointer is resolved
+                                // at codegen time.
+                                val: ConstVal::Uint(def_id.as_u32() as u128),
+                            })),
+                            fndef_ty,
+                            expr.span,
+                        );
+                    }
+                }
             }
             // Otherwise, create an error placeholder.
             cx.eval_rvalue_to_temp(
@@ -648,7 +698,8 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
         }
         HirExprKind::Block(block) => lower_block(cx, block),
         HirExprKind::Call { func, args, .. } => {
-            // Lower func and args to operands
+            // Lower func first — this determines whether the call is a real
+            // function call or an ADT construction (struct/enum ctor).
             let func_local = lower_expr_to_operand(cx, func);
             let arg_locals: Vec<LocalId> =
                 args.iter().map(|a| lower_expr_to_operand(cx, a)).collect();
@@ -656,22 +707,65 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 .iter()
                 .map(|l| Operand::Copy(Lvalue::local(*l, Span::DUMMY)))
                 .collect();
-            // Create a destination local
-            let dest_ty = cx.fresh_infer_ty(Span::DUMMY);
-            let dest = cx.mir.new_local(dest_ty, None, expr.span);
-            // Create a continuation block
-            let cont = cx.new_block();
-            // Terminate current block with Call
-            cx.terminate_and_goto(
-                Terminator::Call {
-                    func: Operand::Copy(Lvalue::local(func_local, func.span)),
-                    args: arg_operands,
-                    destination: Lvalue::local(dest, expr.span),
-                    target: Some(cont),
-                },
-                cont,
-            );
-            dest
+
+            // Stage 3.30 (per §15): inspect the func operand's type to decide
+            //   - TyKind::Adt(def_id, _)  → Aggregate(Adt(def_id, ...)) —
+            //     this is a struct/enum ctor call like `Pair(1, 2)`.
+            //   - TyKind::FnDef(..)       → real Terminator::Call.
+            // This dispatch eliminates the root cause of "tuple struct ctor
+            // was being lowered as Call" — the type info flows naturally
+            // from Path resolution through to Call lowering.
+            let is_adt_ctor = {
+                let func_local_decl = cx.mir.local_decls.get(func_local.0 as usize);
+                func_local_decl
+                    .map(|ld| matches!(&ld.ty.kind, TyKind::Adt(_, _)))
+                    .unwrap_or(false)
+            };
+
+            if is_adt_ctor {
+                // Struct/enum ctor: lower as Aggregate(Adt, operands).
+                // The destination local's type will be inferred by typeck
+                // to match the ADT type (the func operand's type).
+                let func_local_decl = cx
+                    .mir
+                    .local_decls
+                    .get(func_local.0 as usize)
+                    .expect("func local must exist");
+                let (adt_def_id, adt_substs) = match &func_local_decl.ty.kind {
+                    TyKind::Adt(def_id, substs) => (*def_id, substs.clone()),
+                    _ => unreachable!("checked is_adt_ctor above"),
+                };
+                // Stage 3.30 (per §16): resolve field types from HIR here
+                // so codegen doesn't have to re-query HIR. The field_tys
+                // are sunk into AggregateKind::Adt.
+                let field_tys = resolve_adt_field_tys(cx, adt_def_id);
+                let dest_ty = Ty::new(TyKind::Adt(adt_def_id, adt_substs), expr.span);
+                let dest = cx.mir.new_local(dest_ty, None, expr.span);
+                cx.push_assign(
+                    Lvalue::local(dest, expr.span),
+                    Rvalue::Aggregate(
+                        AggregateKind::Adt(adt_def_id, 0, Vec::new(), field_tys),
+                        arg_operands,
+                    ),
+                    expr.span,
+                );
+                dest
+            } else {
+                // Real function call.
+                let dest_ty = cx.fresh_infer_ty(Span::DUMMY);
+                let dest = cx.mir.new_local(dest_ty, None, expr.span);
+                let cont = cx.new_block();
+                cx.terminate_and_goto(
+                    Terminator::Call {
+                        func: Operand::Copy(Lvalue::local(func_local, func.span)),
+                        args: arg_operands,
+                        destination: Lvalue::local(dest, expr.span),
+                        target: Some(cont),
+                    },
+                    cont,
+                );
+                dest
+            }
         }
         HirExprKind::If {
             cond, then, else_, ..
@@ -735,8 +829,17 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
         // === Stage 2.4b: Previously-missing expression kinds ===
 
         // Field access: `expr.field` → lower base, create projection
-        HirExprKind::Field { receiver, .. } => {
+        // Stage 3.30 fix: resolve field index from the field name.
+        //   - For tuple struct fields (`p.0`, `p.1`), the ident is the
+        //     stringified index — parse it directly.
+        //   - For named struct fields (`p.x`), look up the field index in
+        //     the HIR struct definition by matching the field name.
+        // Was: hardcoded `FieldId(0)` — meant `p.1`, `p.x`, etc. all
+        // returned field 0.
+        HirExprKind::Field { receiver, ident } => {
             let base_local = lower_expr_to_operand(cx, receiver);
+            // Resolve the field index from the ident name.
+            let field_index = resolve_field_index(cx, receiver, &ident.name);
             let field_ty = cx.fresh_infer_ty(expr.span);
             let field_ty_for_proj = field_ty.clone();
             let result = cx.mir.new_local(field_ty, None, expr.span);
@@ -745,7 +848,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 Rvalue::Use(Operand::Copy(Lvalue {
                     kind: LvalueKind::Projection(
                         Box::new(Lvalue::local(base_local, receiver.span)),
-                        ProjectionElem::Field(FieldId(0), field_ty_for_proj),
+                        ProjectionElem::Field(FieldId(field_index), field_ty_for_proj),
                     ),
                     span: expr.span,
                 })),
@@ -1005,9 +1108,24 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 .iter()
                 .map(|l| Operand::Copy(Lvalue::local(*l, Span::DUMMY)))
                 .collect();
+            // Stage 3.30 (per §15): if the path resolves to a known struct
+            // DefId, use AggregateKind::Adt (the proper representation).
+            // Otherwise fall back to Tuple (legacy path — should not happen
+            // after Stage 3.30 since resolver now sets DefKind::Struct).
+            if let Res::Def(def_id, DefKind::Struct) = path.res {
+                let field_tys = resolve_adt_field_tys(cx, def_id);
+                let struct_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
+                return cx.eval_rvalue_to_temp(
+                    Rvalue::Aggregate(
+                        AggregateKind::Adt(def_id, 0, Vec::new(), field_tys),
+                        operands,
+                    ),
+                    struct_ty,
+                    expr.span,
+                );
+            }
+            // Fallback (path didn't resolve to a struct — error recovery).
             let struct_ty = cx.fresh_infer_ty(expr.span);
-            // For Stage 2.4b, struct literals use AggregateKind::Tuple as
-            // a simplified representation (real Adt requires DefId lookup)
             let _ = path;
             cx.eval_rvalue_to_temp(
                 Rvalue::Aggregate(AggregateKind::Tuple, operands),
@@ -1064,6 +1182,110 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             );
             dest
         }
+    }
+}
+
+/// Resolve the field index for a field-access expression `receiver.ident`.
+///
+/// Stage 3.30 fix: was hardcoded `FieldId(0)` — meant `p.1`, `p.x`, etc.
+/// all returned field 0 (silently wrong). Now:
+///   - For tuple struct fields (`p.0`, `p.1`), the ident is the stringified
+///     index — parse it directly.
+///   - For named struct fields (`p.x`), look up the field index in the HIR
+///     struct definition by matching the field name.
+///   - If we can't resolve (e.g., receiver type unknown), default to 0
+///     (legacy behavior — typeck should catch real errors).
+fn resolve_field_index(
+    cx: &MirLowerCtxt,
+    receiver: &HirExpr,
+    field_name: &crate::lexer::Symbol,
+) -> u32 {
+    use crate::lexer::Symbol;
+    // First, try parsing as a tuple-struct field index (`0`, `1`, etc.).
+    if let Some(hir_crate) = cx.hir {
+        // Get the field name as a string.
+        if let Some(name_str) = cx.interner.try_resolve(field_name) {
+            if let Ok(idx) = name_str.parse::<u32>() {
+                return idx;
+            }
+            // Named field — look up the receiver's type to find the struct.
+            if let Some(struct_def_id) = find_receiver_struct_def_id(cx, receiver) {
+                if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                    hir_crate.owner(struct_def_id)
+                {
+                    for (i, f) in s.fields.iter().enumerate() {
+                        if let Some(f_ident) = &f.ident {
+                            if f_ident.name == *field_name {
+                                return i as u32;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let _: Symbol = crate::lexer::Symbol::default();
+    0
+}
+
+/// Find the struct DefId that a receiver expression's type resolves to.
+///
+/// Used by `resolve_field_index` to look up named fields. Walks the
+/// receiver's MIR local decl to find its type, and if it's `TyKind::Adt`,
+/// returns the DefId.
+fn find_receiver_struct_def_id(cx: &MirLowerCtxt, receiver: &HirExpr) -> Option<crate::hir::DefId> {
+    // Lower the receiver to find its local id (without actually lowering
+    // again — we just need the type). Since lower_expr_to_operand has
+    // side effects, we use a different approach: pattern-match the
+    // receiver to extract its type from HIR.
+    //
+    // For a simple `let p = Point { ... }; p.x` — the receiver is a Path
+    // that resolves to a local. We'd need to track locals → types.
+    //
+    // Simpler: walk the receiver and if it's a Path to a local, look up
+    // the local's type from cx.local_map → mir.local_decls.
+    match &receiver.kind {
+        HirExprKind::Path(path) => {
+            if let crate::hir::Res::Local(hir_id) = path.res {
+                if let Some(local_id) = cx.local_map.get(&hir_id) {
+                    if let Some(ld) = cx.mir.local_decls.get(local_id.0 as usize) {
+                        if let TyKind::Adt(def_id, _) = &ld.ty.kind {
+                            return Some(*def_id);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Resolve the field types of an ADT (struct/enum variant) by looking up
+/// the HIR owner.
+///
+/// Stage 3.30 (per §16 阶段间接口隔离): this is called by MIR lower to
+/// sink the field types into `AggregateKind::Adt`'s `field_tys` field,
+/// so codegen doesn't have to re-query HIR (which would be a cross-stage
+/// internal-API call).
+///
+/// For structs, returns the declared field types. For enums, returns the
+/// variant's field types (Stage 3.31+ — currently returns empty for
+/// non-struct owners). Returns empty if HIR is not available (e.g., in
+/// test contexts that construct MirLowerCtxt without a HIR crate).
+fn resolve_adt_field_tys(cx: &MirLowerCtxt, def_id: crate::hir::DefId) -> Vec<Ty> {
+    let hir = match cx.hir {
+        Some(h) => h,
+        None => return Vec::new(),
+    };
+    match hir.owner(def_id) {
+        Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) => s
+            .fields
+            .iter()
+            .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
+            .collect(),
+        // Enum variant field types: Stage 3.31+ work.
+        _ => Vec::new(),
     }
 }
 

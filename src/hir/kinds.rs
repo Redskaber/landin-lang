@@ -25,6 +25,8 @@ use crate::session::Span;
 
 // Re-export the ID types for convenience.
 pub use crate::hir::id::{DefId, HirId, ItemLocalId, OwnerId};
+// Stage 3.30: import DefKind so Res::Def can carry it (per §15 optimal fix).
+pub use crate::resolve::DefKind;
 
 // =====================================================================
 // HIR Crate — top-level container
@@ -508,7 +510,13 @@ pub enum Res {
     /// A local variable binding.
     Local(HirId),
     /// A top-level definition (fn/struct/enum/trait/etc.).
-    Def(DefId),
+    ///
+    /// Stage 3.30 (v3.10 process): now carries `DefKind` so downstream
+    /// passes (MIR lower, typeck, codegen) can distinguish fn calls from
+    /// struct ctors from enum variant ctors without re-querying HIR.
+    /// This is the optimal fix per §15 — eliminates the root cause of
+    /// "tuple struct ctor `Pair(1,2)` was being lowered as `Call`".
+    Def(DefId, DefKind),
     /// A primitive type (i32, bool, etc.).
     PrimTy(PrimTy),
     /// The `Self` type of the current impl.

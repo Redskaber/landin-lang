@@ -3,11 +3,11 @@
 **Author**: redskaber
 **Current version**: v0.8.6
 **Date**: 2026-07-20
-**Test count**: 761 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 774 tests passing, 0 warnings, fmt + clippy clean
 
 ---
 
-## v0.8.6 — Stage 3.21–3.29 (typed codegen + runtime checks + string literals + 3 gate review rounds)
+## v0.8.6 — Stage 3.21–3.31 (typed codegen + runtime checks + literals + ADT structs + 4 gate review rounds)
 
 ### Stage 3.21 — Typed aggregate codegen
 - `EmitType` now carries full structure: `Struct(Vec<EmitType>)`, `Array(Box<EmitType>, u64)`,
@@ -19,8 +19,7 @@
 - 10 new tests.
 
 ### Stage 3.22 — Block-scoped local value cache
-- **Bug fix**: `if x > 0 { 1 } else { 2 }` previously returned `2` regardless of `x`,
-  because `TextEmitter::locals` cached the most-recent assignment across block boundaries.
+- **Bug fix**: `if x > 0 { 1 } else { 2 }` previously returned `2` regardless of `x`.
 - **Fix**: `emit_block` now clears `self.locals` at each block boundary.
 - 6 new tests.
 
@@ -36,57 +35,72 @@
 ### Stage 3.25 — Real div-by-zero checks
 - **Bug fix**: Div/Rem had no divisor==0 check. `a / 0` invoked LLVM `sdiv` — UB.
 - **Fix**: Extended `AssertMessage::DivisionByZero` to carry the divisor operand.
-  Codegen emits `icmp eq <divisor>, 0` and branches to a panic block on true.
 - 6 new tests.
 
 ### Stage 3.27 — String literal codegen
 - **Bug fix**: `ConstVal::Str(sym)` hardcoded to emit `"0"` (null pointer).
-  Any program using string literals produced broken IR — bytes were lost.
-- **Fix**: Added `Emitter::emit_string_global(bytes)` trait method.
-  `TextEmitter` accumulates + dedupes string globals, emits them at module
-  end via `output_with_globals()`. Each global:
-  `@.str.N = private unnamed_addr constant [M x i8] c"..."`.
-  Bytes escaped: printable ASCII verbatim; everything else as `\NN` hex.
-  `codegen_operand` for `ConstVal::Str`: looks up bytes via interner (now
-  threaded through all codegen functions), emits global, returns GEP → i8*.
-  `TyKind::Str` maps to `EmitType::ptr_to(EmitType::I8)`.
-  Side fix: skip `alloca`/`store` for void-typed locals (was producing
-  invalid `alloca void` / `store void`).
+- **Fix**: Added `Emitter::emit_string_global(bytes)`; globals deduped via
+  `HashMap<Vec<u8>, String>`. Side fix: skip `alloca`/`store` for void-typed locals.
 - 13 new tests.
 
 ### Stage 3.28 — Byte string literal codegen
-- **Bug fix**: `b"..."` literals lowered as `Slice(u8)` with `ConstVal::Str`,
-  but `Slice` wasn't handled by `mir_type_to_emit_type` (fell through to `I32`),
-  and `u8` itself also fell through to `I32`. Wrong types everywhere.
-- **Fix**: `TyKind::Slice(elem)` → `Ptr(mir_type_to_emit_type(elem))`.
-  `TyKind::Int(I8)` / `Uint(U8)` → `EmitType::I8`.
-  `TyKind::Int(I16)` / `Uint(U16)` → `I32` (Stage 3 simplification).
-  Byte strings share the same global format as string literals and dedup
-  across both.
+- **Bug fix**: `b"..."` literals and `u8`/`i8` types fell through to `I32`.
+- **Fix**: `TyKind::Slice(elem)` → `Ptr(...)`. `u8`/`i8` → `EmitType::I8`.
 - 9 new tests.
 
-### Stage 3.23 + 3.26 + 3.29 — Gate Reviews Round 1 + 2 + 3
-- R1: 38-case audit (`examples/stage3_gate_audit.rs`), 5/5 APPROVED
-- R2: 43-case audit (`examples/stage3_gate_audit_r2.rs`), 5/5 APPROVED
-- R3: 43-case audit (`examples/stage3_gate_audit_r3.rs`), 5/5 APPROVED
-- §9.3.3 CONVERGED: 3 consecutive rounds with 0 new issues
-- L4 (string literals) + L6 (overflow) + L7 (div-by-zero) + L12 (u8/i8 type) CLOSED.
-  Remaining: L1 PHI, L2 ADT, L3 closures, L5 traits, L8 lli verification,
-  L9 i128, L10 float-bitwise, L11 shift-count, L13 fat pointers, L14 i16, L15 str-as-arg.
+### Stage 3.30 — ADT/struct codegen + §15/§16 process principles
+- **Process v3.10 + v3.11**: added §15 (最优 > 最小) and §16 (阶段间接口隔离).
+- **3 root-cause bugs fixed** (per §15):
+  1. Tuple struct ctor `Pair(1, 2)` was lowered as `Terminator::Call` (fake
+     function call). Fix: extended `Res::Def` to `Res::Def(DefId, DefKind)`;
+     MIR lower dispatches on `DefKind::Struct` to emit `Aggregate(Adt, operands)`.
+  2. Named struct types in param/return positions were lost. Fix: added
+     `HirTyKind::Path` handling → `TyKind::Adt(def_id, substs)`.
+  3. Field access `p.x` / `p.1` always returned field 0. Fix: parser interns
+     field index as string; MIR lower's `resolve_field_index` parses it.
+- **§16 compliance**: `AggregateKind::Adt` extended with `field_tys: Vec<Ty>`
+  (data sink). Codegen reads field types from MIR, not from HIR via
+  cross-stage internal-API calls.
+- **Parser change**: `Parser.interner` changed from `&Rodeo` to `&mut Rodeo`.
+- **fn_names indexing bug fixed**: now uses `DefId → name` HashMap.
+- 13 new tests.
+
+### Stage 3.23 + 3.26 + 3.29 + 3.31 — Gate Reviews Round 1 + 2 + 3 + 4
+- R1: 38-case audit, 5/5 APPROVED
+- R2: 43-case audit, 5/5 APPROVED
+- R3: 43-case audit, 5/5 APPROVED
+- R4: 37-case audit, 5/5 APPROVED
+- §9.3.3 CONVERGED: 4 consecutive rounds with 0 new issues
+- §15 verified in R4: tuple struct ctor bug fixed at root (no fake call).
+- §16 verified in R4: no cross-stage internal-API calls in codegen.
+- L2 (struct codegen) + L4 (string literals) + L6 (overflow) + L7 (div-by-zero)
+  + L12 (u8/i8 type) CLOSED. Remaining: L1 PHI, L3 closures, L5 traits,
+  L8 lli, L9 i128, L10 float-bitwise, L11 shift-count, L13 fat pointers,
+  L14 i16, L15 str-as-arg, L-ENUM enum variants, L-DEBT-2 field type resolution,
+  L-PIPE-1 HIR lookup for Adt storage.
 
 ### Changed
 - `Cargo.toml`: v0.8.5 → v0.8.6
 - `src/codegen/emitter.rs`: EmitType refactor + `emit_checked_binop` + `emit_string_global`
 - `src/codegen/text_emitter.rs`: updated impls + `emit_checked_binop` + `emit_string_global`
   + `output_with_globals()` + block-scoped cache
-- `src/codegen/mod.rs`: real overflow + div-by-zero check emission + string literal codegen
-  + interner threaded through all codegen functions + skip void-typed allocas
+- `src/codegen/mod.rs`: real overflow + div-by-zero + string literal + ADT/struct codegen
+  + `mir_type_to_emit_type_with_hir` + `hir_ty_to_emit_type` + `fn_name_by_def_id` HashMap
 - `src/mir/body.rs`: `AssertMessage::Overflow(BinOp, Operand, Operand)` + `DivisionByZero(Operand)`
-- `src/mir/lower/mod.rs`: `emit_overflow_assert` passes lhs/rhs; new `emit_div_by_zero_assert`
-- `tests/codegen_tests.rs`: +52 tests (total 88)
-- `tests/deep_inspection.rs`, `tests/integration_stage2_4c.rs`, `examples/round5_deep.rs`: updated pattern matches
-- `examples/stage3_gate_audit.rs`, `_r2.rs`, `_r3.rs`: new audit tools
-- `docs/develop/v0/stage-3/{dev-log.md, gate-review-round1.md, gate-review-round2.md, gate-review-round3.md}`: full reports
+- `src/mir/lower/mod.rs`: `emit_overflow_assert` passes lhs/rhs; `emit_div_by_zero_assert`;
+  `resolve_field_index`; `resolve_adt_field_tys`; `HirTyKind::Path` → `TyKind::Adt`;
+  Call dispatches on `TyKind::Adt` vs `TyKind::FnDef`; `MirLowerCtxt.hir` field
+- `src/mir/lvalue.rs`: `AggregateKind::Adt` extended with `field_tys: Vec<Ty>`
+- `src/hir/kinds.rs`: `Res::Def(DefId, DefKind)`; re-export `DefKind`
+- `src/resolve/resolver.rs`: populates `DefKind` in `Res::Def`
+- `src/parser/parser.rs`: `interner: &mut Rodeo`; interns tuple field indices
+- `src/driver.rs`: passes `&mut interner` to Parser; passes `&hir` to MIR lower
+- `src/typeck/checker.rs`, `src/borrowck/mod.rs`: pass `hir` to MIR lower
+- `tests/codegen_tests.rs`: +65 tests (total 101)
+- `tests/hir_resolution.rs`, `tests/hir_structure.rs`, etc.: updated `Res::Def(_, _)` patterns
+- `examples/stage3_gate_audit.rs`, `_r2.rs`, `_r3.rs`, `_r4.rs`: 4 audit tools
+- `docs/develop/v0/stage-3/{dev-log.md, gate-review-round1.md, ..., gate-review-round4.md}`
+- `docs/stage-committee-process.md`: §15 (最优 > 最小) + §16 (阶段间接口隔离)
 
 ---
 

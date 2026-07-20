@@ -243,7 +243,7 @@ pub fn compile(src: &str) -> CompileResult {
     }
 
     // === Stage 0: Parse ===
-    let mut parser = Parser::new(tokens, &interner);
+    let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     errors.parse = parser.into_errors();
     if !errors.parse.is_empty() {
@@ -286,7 +286,7 @@ pub fn compile(src: &str) -> CompileResult {
         // We also get back the unify table that MIR lower used to allocate
         // IntVar/FloatVar for unsuffixed literals. The type checker needs
         // this table to properly default unresolved vars (i32/f64).
-        let (mut mir, lower_unify) = lower_hir_body_to_mir_full(body, &interner, return_ty);
+        let (mut mir, lower_unify) = lower_hir_body_to_mir_full(body, &interner, &hir, return_ty);
 
         // Type check (writes resolved types back into local_decls)
         let mut tc = typeck::TypeChecker::with_unify(lower_unify);

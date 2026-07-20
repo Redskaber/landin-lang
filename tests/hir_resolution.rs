@@ -21,7 +21,7 @@ fn parse_lower_resolve(src: &str) -> HirCrate {
     interner.get_or_intern("super");
 
     let (tokens, _) = tokenize(src, &mut interner);
-    let mut parser = Parser::new(tokens, &interner);
+    let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
     let mut hir = lower_crate(&krate, &interner);
@@ -91,7 +91,7 @@ fn struct_name_resolves_to_def() {
     let ty = f.sig.inputs[0].ty.as_ref().unwrap();
     if let HirTyKind::Path(_, p) = &ty.kind {
         assert!(
-            matches!(p.res, Res::Def(_)),
+            matches!(p.res, Res::Def(_, _)),
             "expected Def, got {:?}",
             p.res
         );
@@ -113,7 +113,7 @@ fn enum_name_resolves_to_def() {
     };
     let ty = f.sig.inputs[0].ty.as_ref().unwrap();
     if let HirTyKind::Path(_, p) = &ty.kind {
-        assert!(matches!(p.res, Res::Def(_)));
+        assert!(matches!(p.res, Res::Def(_, _)));
     }
 }
 
@@ -136,7 +136,7 @@ fn trait_name_resolves_to_def() {
     let bound = &tp.bounds[0];
     if let HirTypeBound::Trait(tb) = bound {
         assert!(
-            matches!(tb.path.res, Res::Def(_)),
+            matches!(tb.path.res, Res::Def(_, _)),
             "expected Clone to resolve"
         );
     }
@@ -155,7 +155,7 @@ fn type_alias_resolves_to_def() {
     };
     let ty = f.sig.inputs[0].ty.as_ref().unwrap();
     if let HirTyKind::Path(_, p) = &ty.kind {
-        assert!(matches!(p.res, Res::Def(_)));
+        assert!(matches!(p.res, Res::Def(_, _)));
     }
 }
 
@@ -170,7 +170,7 @@ fn fn_call_path_resolves() {
                 if let HirStmt::Expr(expr, _) = stmt {
                     if let HirExprKind::Call { func, .. } = &expr.kind {
                         if let HirExprKind::Path(p) = &func.kind {
-                            return matches!(p.res, Res::Def(_));
+                            return matches!(p.res, Res::Def(_, _));
                         }
                     }
                 }
@@ -192,7 +192,7 @@ fn fn_ref_path_resolves() {
                 if let HirStmt::Local(local) = stmt {
                     if let Some(init) = &local.init {
                         if let HirExprKind::Path(p) = &init.kind {
-                            return matches!(p.res, Res::Def(_));
+                            return matches!(p.res, Res::Def(_, _));
                         }
                     }
                 }
@@ -253,7 +253,7 @@ fn struct_literal_path_resolves() {
                 if let HirStmt::Local(local) = stmt {
                     if let Some(init) = &local.init {
                         if let HirExprKind::Struct { path, .. } = &init.kind {
-                            return matches!(path.res, Res::Def(_));
+                            return matches!(path.res, Res::Def(_, _));
                         }
                     }
                 }
@@ -282,7 +282,7 @@ fn where_clause_bound_resolves() {
     assert_eq!(f.generics.where_clause.len(), 1);
     let bound = &f.generics.where_clause[0].bounds[0];
     if let HirTypeBound::Trait(tb) = bound {
-        assert!(matches!(tb.path.res, Res::Def(_)));
+        assert!(matches!(tb.path.res, Res::Def(_, _)));
     }
 }
 

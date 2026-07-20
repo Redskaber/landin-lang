@@ -528,7 +528,7 @@ fn hir_ty_uint_with_suffix() {
 #[test]
 fn res_variants_distinct() {
     let local = Res::Local(HirId::new(DefId(0), ItemLocalId(1)));
-    let def = Res::Def(DefId(5));
+    let def = Res::Def(DefId(5), DefKind::Fn);
     let prim = Res::PrimTy(PrimTy::I32);
     let self_ty = Res::SelfTy;
     let unknown = Res::Unknown;

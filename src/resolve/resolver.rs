@@ -322,12 +322,21 @@ impl Resolver {
 
             // Value namespace (fn, const, static).
             if let Some(def_id) = self.module_tree.lookup_value(seg.ident.name) {
-                return Res::Def(def_id);
+                // Stage 3.30: look up DefKind from the def_kinds table so
+                // downstream passes (MIR lower, codegen) can distinguish
+                // fn calls from struct ctors without re-querying HIR.
+                let kind = self.def_kinds.get(&def_id).copied().unwrap_or(DefKind::Fn);
+                return Res::Def(def_id, kind);
             }
 
             // Type namespace (struct, enum, trait, type alias, mod).
             if let Some(def_id) = self.module_tree.lookup_type(seg.ident.name) {
-                return Res::Def(def_id);
+                let kind = self
+                    .def_kinds
+                    .get(&def_id)
+                    .copied()
+                    .unwrap_or(DefKind::Struct);
+                return Res::Def(def_id, kind);
             }
 
             // Not found.
@@ -347,7 +356,9 @@ impl Resolver {
             // the first segment and return — full multi-level resolution
             // (e.g., `std::io::Read`) requires cross-crate resolution which
             // is Stage 5+ work.
-            return Res::Def(def_id);
+            // Stage 3.30: include DefKind (per §15).
+            let kind = self.def_kinds.get(&def_id).copied().unwrap_or(DefKind::Mod);
+            return Res::Def(def_id, kind);
         }
 
         // Check if first segment is a primitive type (e.g., `i32::MAX`).

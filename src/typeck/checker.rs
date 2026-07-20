@@ -684,7 +684,7 @@ pub fn check_mir_body(mir: &mut MirBody) -> Vec<TypeError> {
 pub fn check_crate(hir: &HirCrate, interner: &Rodeo) -> Vec<TypeError> {
     let mut all_errors = Vec::new();
     for (_, body) in &hir.bodies {
-        let mut mir = crate::mir::lower::lower_hir_body_to_mir(body, interner);
+        let mut mir = crate::mir::lower::lower_hir_body_to_mir(body, interner, hir);
         let mut tc = TypeChecker::new();
         tc.check_mir_body(&mut mir);
         all_errors.extend(tc.into_errors());

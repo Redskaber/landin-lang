@@ -10,7 +10,7 @@ fn parse(
 ) {
     let mut interner = Rodeo::new();
     let (tokens, _) = tokenize(src, &mut interner);
-    let mut parser = Parser::new(tokens, &interner);
+    let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     let errors = parser.into_errors();
     (krate, errors)

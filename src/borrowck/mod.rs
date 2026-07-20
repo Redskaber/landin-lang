@@ -735,7 +735,7 @@ pub fn check_mir_body(mir: &MirBody) -> Vec<BorrowError> {
 pub fn check_crate(hir: &crate::hir::HirCrate, interner: &lasso::Rodeo) -> Vec<BorrowError> {
     let mut all_errors = Vec::new();
     for (_, body) in &hir.bodies {
-        let mir = crate::mir::lower::lower_hir_body_to_mir(body, interner);
+        let mir = crate::mir::lower::lower_hir_body_to_mir(body, interner, hir);
         all_errors.extend(check_mir_body(&mir));
     }
     all_errors

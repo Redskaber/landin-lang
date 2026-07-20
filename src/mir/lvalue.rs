@@ -152,7 +152,19 @@ pub enum AggregateKind {
     /// `[a, b, c]` — array
     Array(Ty),
     /// `Foo { x: 1, y: 2 }` — struct/enum variant
-    Adt(crate::hir::DefId, u32 /* variant index */, SubstsRef),
+    ///
+    /// Stage 3.30 (per §16 阶段间接口隔离): the 4th field `field_tys`
+    /// carries the LLVM-relevant field types of the variant. This is a
+    /// "data sink" — MIR lower (Stage 2.1) computes the field types from
+    /// HIR and stores them here so codegen (Stage 3) doesn't have to
+    /// re-query HIR or call `lower_hir_ty_to_mir_ty` (which would be a
+    /// cross-stage internal-API call, violating §16).
+    Adt(
+        crate::hir::DefId,
+        u32, /* variant index */
+        SubstsRef,
+        Vec<Ty>, /* field types of this variant */
+    ),
     /// `Foo(a, b)` — closure
     Closure(crate::hir::DefId, SubstsRef),
 }

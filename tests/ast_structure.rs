@@ -11,7 +11,7 @@ fn parse(
 ) {
     let mut interner = Rodeo::new();
     let (tokens, _) = tokenize(src, &mut interner);
-    let mut parser = Parser::new(tokens, &interner);
+    let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     let errors = parser.into_errors();
     (krate, errors)
@@ -235,7 +235,7 @@ fn test_regression_empty_token_stream() {
     // Empty token stream should not panic
     let mut interner = Rodeo::new();
     let (tokens, _) = tokenize("", &mut interner);
-    let mut parser = Parser::new(tokens, &interner);
+    let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     assert!(krate.items.is_empty());
 }

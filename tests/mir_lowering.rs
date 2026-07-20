@@ -18,7 +18,7 @@ fn lower_to_mir(src: &str) -> Vec<MirBody> {
     interner.get_or_intern("crate");
     interner.get_or_intern("super");
     let (tokens, _) = tokenize(src, &mut interner);
-    let mut parser = Parser::new(tokens, &interner);
+    let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
     let mut hir = lower_crate(&krate, &interner);
@@ -26,7 +26,7 @@ fn lower_to_mir(src: &str) -> Vec<MirBody> {
     // Lower each body to MIR
     hir.bodies
         .iter()
-        .map(|(_, body)| lower_hir_body_to_mir(body, &interner))
+        .map(|(_, body)| lower_hir_body_to_mir(body, &interner, &hir))
         .collect()
 }
 

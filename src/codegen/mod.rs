@@ -34,29 +34,46 @@ pub fn codegen_crate(hir: &HirCrate, interner: &Rodeo) -> String {
 
 /// Generate LLVM IR for a crate using any Emitter backend.
 pub fn codegen_crate_with_emitter(hir: &HirCrate, interner: &Rodeo, emitter: &mut dyn Emitter) {
-    // Collect function names from HIR (use actual fn names, not fn_0/fn_1)
+    // Collect function names from HIR.
+    // Stage 3.30 fix: previously matched by `def_id.as_u32() == body_index`,
+    // which was wrong because DefId and body index are different spaces
+    // (struct/enum/trait owners have DefIds but no bodies, creating gaps).
+    // Now we look up the fn owner whose `body` field matches the current
+    // BodyId, then use that owner's ident for the function name.
     let fn_names: Vec<String> = hir
         .bodies
         .iter()
-        .enumerate()
-        .map(|(i, _)| {
-            for (def_id, owner) in &hir.owners {
-                if def_id.as_u32() as usize == i {
-                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
+        .map(|(body_id, _)| {
+            for (_def_id, owner) in &hir.owners {
+                if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
+                    if f.body == Some(*body_id) {
                         let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
                         return format!("landin_{}", name);
                     }
                 }
             }
-            format!("fn_{}", i)
+            format!("fn_{}", body_id.owner.0.as_u32())
         })
         .collect();
+
+    // Stage 3.30 fix: build a DefId → fn_name map so Call terminators can
+    // resolve fn names by DefId (was: indexed by body index, which is a
+    // different space — struct/enum/trait owners have DefIds but no bodies,
+    // creating gaps that misaligned the index).
+    let mut fn_name_by_def_id: std::collections::HashMap<crate::hir::DefId, String> =
+        std::collections::HashMap::new();
+    for (def_id, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
+            let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
+            fn_name_by_def_id.insert(*def_id, format!("landin_{}", name));
+        }
+    }
 
     for (idx, (_, body)) in hir.bodies.iter().enumerate() {
         let fn_name = fn_names[idx].clone();
         let return_ty = crate::driver::owner_return_ty_for_body(hir, body);
         let (mut mir, unify) =
-            crate::mir::lower::lower_hir_body_to_mir_full(body, interner, return_ty);
+            crate::mir::lower::lower_hir_body_to_mir_full(body, interner, hir, return_ty);
         let mut tc = crate::typeck::TypeChecker::with_unify(unify);
         tc.populate_fn_sigs(hir);
         tc.check_mir_body(&mut mir);
@@ -64,9 +81,10 @@ pub fn codegen_crate_with_emitter(hir: &HirCrate, interner: &Rodeo, emitter: &mu
             emitter,
             &fn_name,
             &mir,
-            &fn_names,
+            &fn_name_by_def_id,
             body.params.len(),
             interner,
+            hir,
         );
     }
 }
@@ -76,9 +94,10 @@ fn codegen_function(
     emitter: &mut dyn Emitter,
     name: &str,
     mir: &MirBody,
-    fn_names: &[String],
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
     param_count: usize,
     interner: &Rodeo,
+    hir: &HirCrate,
 ) {
     // Determine return type. Unit type (empty tuple) → void return.
     let ret_ty = if mir.local_decls.is_empty() {
@@ -86,7 +105,9 @@ fn codegen_function(
     } else {
         match &mir.local_decls[0].ty.kind {
             crate::mir::ty::TyKind::Tuple(tys) if tys.is_empty() => EmitType::Void,
-            _ => mir_type_to_emit_type(&mir.local_decls[0].ty),
+            // Stage 3.30: use _with_hir so ADT-typed return values get
+            // their full struct type.
+            _ => mir_type_to_emit_type_with_hir(&mir.local_decls[0].ty, hir),
         }
     };
 
@@ -97,7 +118,7 @@ fn codegen_function(
             let ty = mir
                 .local_decls
                 .get(local_idx)
-                .map(|ld| mir_type_to_emit_type(&ld.ty))
+                .map(|ld| mir_type_to_emit_type_with_hir(&ld.ty, hir))
                 .unwrap_or(EmitType::I32);
             (ty, format!("%arg{}", i))
         })
@@ -114,8 +135,11 @@ fn codegen_function(
     // Stage 3.27: skip void-typed locals — LLVM doesn't allow `alloca void`.
     // Unit-typed locals are dead values from MIR lowering (temp slots for
     // expressions that produce `()`); they don't need storage.
+    // Stage 3.30: use mir_type_to_emit_type_with_hir so ADT-typed locals
+    // get their full struct type (was: fell through to I32, producing
+    // `alloca i32` for a struct-typed local — type mismatch on store).
     for (i, ld) in mir.local_decls.iter().enumerate() {
-        let ty = mir_type_to_emit_type(&ld.ty);
+        let ty = mir_type_to_emit_type_with_hir(&ld.ty, hir);
         if ty == EmitType::Void {
             continue;
         }
@@ -137,20 +161,34 @@ fn codegen_function(
         let label = format!("bb{}", bb_idx);
         emitter.emit_block(&label);
         for stmt in &bb.statements {
-            codegen_statement(emitter, mir, stmt, interner);
+            codegen_statement(emitter, mir, stmt, interner, hir);
         }
-        codegen_terminator(emitter, mir, &bb.terminator, &ret_ty, fn_names, interner);
+        codegen_terminator(
+            emitter,
+            mir,
+            &bb.terminator,
+            &ret_ty,
+            fn_name_by_def_id,
+            interner,
+            hir,
+        );
     }
 
     emitter.emit_function_end();
 }
 
 /// Generate code for a single MIR statement.
-fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement, interner: &Rodeo) {
+fn codegen_statement(
+    emitter: &mut dyn Emitter,
+    mir: &MirBody,
+    stmt: &Statement,
+    interner: &Rodeo,
+    hir: &HirCrate,
+) {
     match &stmt.kind {
         StatementKind::Assign(boxed) => {
             let (place, rvalue) = &**boxed;
-            let val = codegen_rvalue(emitter, mir, rvalue, interner);
+            let val = codegen_rvalue(emitter, mir, rvalue, interner, hir);
             match &place.kind {
                 LvalueKind::Local(id) => {
                     let default_ty = crate::mir::ty::Ty::new(
@@ -162,7 +200,9 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement,
                         .get(id.0 as usize)
                         .map(|ld| &ld.ty)
                         .unwrap_or(&default_ty);
-                    let ty = mir_type_to_emit_type(local_ty);
+                    // Stage 3.30: use _with_hir so ADT-typed locals get
+                    // their full struct type for the store.
+                    let ty = mir_type_to_emit_type_with_hir(local_ty, hir);
                     emitter.set_local(id.0, val.clone());
                     // Stage 3.27: skip store for void-typed locals — LLVM
                     // doesn't allow `store void`. The value is dead anyway.
@@ -173,11 +213,11 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement,
                     }
                 }
                 LvalueKind::Projection(base, elem) => {
-                    let ty = detect_operand_type(mir, &Operand::Copy(place.clone()))
+                    let ty = detect_operand_type(mir, &Operand::Copy(place.clone()), hir)
                         .unwrap_or(EmitType::I32);
                     match elem {
                         ProjectionElem::Deref => {
-                            let ptr_val = codegen_lvalue_load(emitter, base, interner);
+                            let ptr_val = codegen_lvalue_load(emitter, base, interner, hir);
                             emitter.emit_store(&ty, &val, &ptr_val);
                         }
                         ProjectionElem::Field(field_id, _) => {
@@ -187,9 +227,9 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement,
                                     .cloned()
                                     .unwrap_or_else(|| "0".to_string())
                             } else {
-                                codegen_lvalue_load(emitter, base, interner)
+                                codegen_lvalue_load(emitter, base, interner, hir)
                             };
-                            let struct_ty = detect_lvalue_storage_type(mir, base);
+                            let struct_ty = detect_lvalue_storage_type_with_hir(mir, base, hir);
                             let field_ptr =
                                 emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0);
                             emitter.emit_store(&ty, &val, &field_ptr);
@@ -201,9 +241,9 @@ fn codegen_statement(emitter: &mut dyn Emitter, mir: &MirBody, stmt: &Statement,
                                     .cloned()
                                     .unwrap_or_else(|| "0".to_string())
                             } else {
-                                codegen_lvalue_load(emitter, base, interner)
+                                codegen_lvalue_load(emitter, base, interner, hir)
                             };
-                            let array_ty = detect_lvalue_storage_type(mir, base);
+                            let array_ty = detect_lvalue_storage_type_with_hir(mir, base, hir);
                             let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
                                 v
                             } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
@@ -234,15 +274,16 @@ fn codegen_rvalue(
     mir: &MirBody,
     rv: &Rvalue,
     interner: &Rodeo,
+    hir: &HirCrate,
 ) -> EmitValue {
     match rv {
-        Rvalue::Use(op) => codegen_operand(emitter, mir, op, interner),
+        Rvalue::Use(op) => codegen_operand(emitter, mir, op, interner, hir),
 
         Rvalue::BinaryOp(op, a, b) => {
-            let a_val = codegen_operand(emitter, mir, a, interner);
-            let b_val = codegen_operand(emitter, mir, b, interner);
-            let ty = detect_operand_type(mir, a)
-                .or(detect_operand_type(mir, b))
+            let a_val = codegen_operand(emitter, mir, a, interner, hir);
+            let b_val = codegen_operand(emitter, mir, b, interner, hir);
+            let ty = detect_operand_type(mir, a, hir)
+                .or(detect_operand_type(mir, b, hir))
                 .unwrap_or(EmitType::I32);
             match op {
                 BinOp::Eq => {
@@ -298,8 +339,8 @@ fn codegen_rvalue(
         }
 
         Rvalue::UnaryOp(op, operand) => {
-            let val = codegen_operand(emitter, mir, operand, interner);
-            let ty = detect_operand_type(mir, operand).unwrap_or(EmitType::I32);
+            let val = codegen_operand(emitter, mir, operand, interner, hir);
+            let ty = detect_operand_type(mir, operand, hir).unwrap_or(EmitType::I32);
             emitter.emit_unop(*op, &ty, &val)
         }
 
@@ -317,16 +358,16 @@ fn codegen_rvalue(
             if operands.is_empty() {
                 "0".to_string()
             } else if operands.len() == 1 {
-                codegen_operand(emitter, mir, &operands[0], interner)
+                codegen_operand(emitter, mir, &operands[0], interner, hir)
             } else {
                 let field_tys: Vec<EmitType> = operands
                     .iter()
-                    .map(|op| detect_operand_type(mir, op).unwrap_or(EmitType::I32))
+                    .map(|op| detect_operand_type(mir, op, hir).unwrap_or(EmitType::I32))
                     .collect();
                 let agg_ty = EmitType::Struct(field_tys.clone());
                 let mut agg = "undef".to_string();
                 for (i, op) in operands.iter().enumerate() {
-                    let val = codegen_operand(emitter, mir, op, interner);
+                    let val = codegen_operand(emitter, mir, op, interner, hir);
                     let val_ty = &field_tys[i];
                     agg = emitter.emit_insertvalue(&agg_ty, &agg, val_ty, &val, i as u32);
                 }
@@ -342,15 +383,46 @@ fn codegen_rvalue(
             let agg_ty = EmitType::array_of(elem_emit_ty.clone(), n);
             let mut agg = "undef".to_string();
             for (i, op) in operands.iter().enumerate() {
-                let val = codegen_operand(emitter, mir, op, interner);
+                let val = codegen_operand(emitter, mir, op, interner, hir);
                 agg = emitter.emit_insertvalue(&agg_ty, &agg, &elem_emit_ty, &val, i as u32);
             }
             agg
         }
 
+        // Stage 3.30: ADT construction (struct/enum ctor).
+        // Per §16 阶段间接口隔离: field types are sunk into
+        // `AggregateKind::Adt(def_id, variant, substs, field_tys)` by MIR
+        // lower. Codegen reads them from MIR — does NOT re-query HIR or
+        // call `lower_hir_ty_to_mir_ty` (which would be a cross-stage
+        // internal-API call).
+        Rvalue::Aggregate(AggregateKind::Adt(_def_id, _variant, _substs, field_tys), operands) => {
+            if operands.is_empty() {
+                return "0".to_string();
+            }
+            // Use the field types from MIR (sunk by MIR lower per §16).
+            // Fallback to operand inference if MIR lower couldn't resolve
+            // them (e.g., enum variants not yet supported).
+            let field_tys: Vec<EmitType> = if field_tys.is_empty() {
+                operands
+                    .iter()
+                    .map(|op| detect_operand_type(mir, op, hir).unwrap_or(EmitType::I32))
+                    .collect()
+            } else {
+                field_tys.iter().map(mir_type_to_emit_type).collect()
+            };
+            let agg_ty = EmitType::Struct(field_tys.clone());
+            let mut agg = "undef".to_string();
+            for (i, op) in operands.iter().enumerate() {
+                let val = codegen_operand(emitter, mir, op, interner, hir);
+                let val_ty = field_tys.get(i).cloned().unwrap_or(EmitType::I32);
+                agg = emitter.emit_insertvalue(&agg_ty, &agg, &val_ty, &val, i as u32);
+            }
+            agg
+        }
+
         Rvalue::Cast(_, op, target_ty) => {
-            let val = codegen_operand(emitter, mir, op, interner);
-            let src_ty = detect_operand_type(mir, op).unwrap_or(EmitType::I32);
+            let val = codegen_operand(emitter, mir, op, interner, hir);
+            let src_ty = detect_operand_type(mir, op, hir).unwrap_or(EmitType::I32);
             let dst_ty = mir_type_to_emit_type(target_ty);
             emitter.emit_cast(&src_ty, &dst_ty, &val)
         }
@@ -365,6 +437,7 @@ fn codegen_operand(
     mir: &MirBody,
     op: &Operand,
     interner: &Rodeo,
+    hir: &HirCrate,
 ) -> EmitValue {
     match op {
         Operand::Constant(c) => match c.val {
@@ -402,34 +475,34 @@ fn codegen_operand(
             _ => emitter.emit_const(&c.val),
         },
         Operand::Copy(lv) | Operand::Move(lv) => {
-            let ty = detect_lvalue_type(mir, lv);
-            codegen_lvalue_load_typed(emitter, mir, lv, ty, interner)
+            let ty = detect_lvalue_type(mir, lv, hir);
+            codegen_lvalue_load_typed(emitter, mir, lv, ty, interner, hir)
         }
     }
 }
 
 /// Detect the EmitType of an lvalue by examining its source.
 #[allow(clippy::only_used_in_recursion)]
-fn detect_lvalue_type(mir: &MirBody, lv: &Lvalue) -> EmitType {
+fn detect_lvalue_type(mir: &MirBody, lv: &Lvalue, hir: &HirCrate) -> EmitType {
     match &lv.kind {
         LvalueKind::Local(id) => mir
             .local_decls
             .get(id.0 as usize)
-            .map(|ld| mir_type_to_emit_type(&ld.ty))
+            .map(|ld| mir_type_to_emit_type_with_hir(&ld.ty, hir))
             .unwrap_or(EmitType::I32),
         LvalueKind::Projection(base, elem) => match elem {
             ProjectionElem::Deref => {
-                let base_ty = detect_lvalue_type(mir, base);
+                let base_ty = detect_lvalue_type(mir, base, hir);
                 if base_ty.is_ptr() {
                     base_ty.pointee()
                 } else {
                     base_ty
                 }
             }
-            ProjectionElem::Field(_, field_ty) => mir_type_to_emit_type(field_ty),
+            ProjectionElem::Field(_, field_ty) => mir_type_to_emit_type_with_hir(field_ty, hir),
             ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
                 // Element type: detect from the array's element type via storage.
-                let storage = detect_lvalue_storage_type(mir, base);
+                let storage = detect_lvalue_storage_type_with_hir(mir, base, hir);
                 match storage {
                     EmitType::Array(elem, _) => *elem,
                     _ => EmitType::I32,
@@ -441,16 +514,108 @@ fn detect_lvalue_type(mir: &MirBody, lv: &Lvalue) -> EmitType {
     }
 }
 
-/// Detect the *storage* type of an lvalue — i.e., the type of the alloca
-/// it ultimately reads from. Used to render GEP base types correctly.
-fn detect_lvalue_storage_type(mir: &MirBody, lv: &Lvalue) -> EmitType {
+/// Map a MIR Ty to an EmitType, resolving `TyKind::Adt` via HIR lookup.
+///
+/// Stage 3.30 (per §16): `mir_type_to_emit_type` (in emitter.rs) doesn't have
+/// access to HIR, so it falls back to `I32` for `TyKind::Adt`. This helper
+/// takes a HIR crate reference and resolves ADTs to their struct field types,
+/// producing correct `{ i32, i64, ... }` LLVM struct types.
+///
+/// §16 compliance note: this function reads HIR (allowed per §16.2.1 — reading
+/// upstream data structures) but does NOT call `crate::mir::lower::`
+/// functions. The HirTy → EmitType conversion is done locally via
+/// `hir_ty_to_emit_type` to avoid cross-stage internal-API calls.
+/// Marked L-PIPE-1: the root-cause fix would be to sink field types into
+/// `TyKind::Adt` itself (or have typeck write them back to `LocalDecl.ty`),
+/// eliminating the HIR lookup entirely.
+pub fn mir_type_to_emit_type_with_hir(ty: &crate::mir::ty::Ty, hir: &HirCrate) -> EmitType {
+    use crate::mir::ty::TyKind;
+    match &ty.kind {
+        TyKind::Adt(def_id, _substs) => match hir.owner(*def_id) {
+            Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) => {
+                let field_tys: Vec<EmitType> = s
+                    .fields
+                    .iter()
+                    .map(|f| hir_ty_to_emit_type(&f.ty, hir))
+                    .collect();
+                if field_tys.is_empty() {
+                    EmitType::Void
+                } else {
+                    EmitType::Struct(field_tys)
+                }
+            }
+            // Enum, union, etc. — Stage 3.31+ work.
+            _ => EmitType::I32,
+        },
+        // For non-Adt types, delegate to the HIR-agnostic version.
+        _ => mir_type_to_emit_type(ty),
+    }
+}
+
+/// Map a HIR Ty directly to an EmitType (local to codegen, no MIR lower call).
+///
+/// Stage 3.30 (per §16): this is the codegen-local HirTy → EmitType
+/// conversion. It mirrors `lower_hir_ty_to_mir_ty` + `mir_type_to_emit_type`
+/// but does so without calling into MIR lower (which would be a cross-stage
+/// internal-API call per §16.3).
+fn hir_ty_to_emit_type(ty: &crate::hir::HirTy, hir: &HirCrate) -> EmitType {
+    use crate::hir::HirTyKind;
+    match &ty.kind {
+        HirTyKind::Bool => EmitType::I1,
+        HirTyKind::Char => EmitType::I8,
+        HirTyKind::Int(crate::ast::IntTy::I8) | HirTyKind::Uint(crate::ast::UintTy::U8) => {
+            EmitType::I8
+        }
+        HirTyKind::Int(crate::ast::IntTy::I64) | HirTyKind::Uint(crate::ast::UintTy::U64) => {
+            EmitType::I64
+        }
+        HirTyKind::Int(_) | HirTyKind::Uint(_) => EmitType::I32,
+        HirTyKind::Float(crate::ast::FloatTy::F32) => EmitType::F32,
+        HirTyKind::Float(_) => EmitType::F64,
+        HirTyKind::Tuple(tys) => {
+            if tys.is_empty() {
+                EmitType::Void
+            } else {
+                EmitType::Struct(tys.iter().map(|t| hir_ty_to_emit_type(t, hir)).collect())
+            }
+        }
+        HirTyKind::Array(elem, _) => {
+            // Array length not needed for EmitType::Array if we use a
+            // placeholder; but emit_type_to_llvm_str needs the length.
+            // For now, fall back to the element type (caller should handle
+            // arrays via mir_type_to_emit_type which has the length).
+            hir_ty_to_emit_type(elem, hir)
+        }
+        HirTyKind::Slice(elem) => EmitType::ptr_to(hir_ty_to_emit_type(elem, hir)),
+        HirTyKind::Ref(_, _, inner) | HirTyKind::Ptr(_, inner) => {
+            EmitType::ptr_to(hir_ty_to_emit_type(inner, hir))
+        }
+        HirTyKind::Path(_, path) => {
+            // Resolve path to a struct DefId and recurse via
+            // mir_type_to_emit_type_with_hir.
+            if let crate::hir::Res::Def(def_id, _) = path.res {
+                let mir_ty = crate::mir::ty::Ty::new(
+                    crate::mir::ty::TyKind::Adt(def_id, Vec::new()),
+                    ty.span,
+                );
+                return mir_type_to_emit_type_with_hir(&mir_ty, hir);
+            }
+            EmitType::I32
+        }
+        _ => EmitType::I32,
+    }
+}
+
+/// Detect the *storage* type of an lvalue, resolving ADTs via HIR.
+/// Used to render GEP base types correctly for struct field access.
+fn detect_lvalue_storage_type_with_hir(mir: &MirBody, lv: &Lvalue, hir: &HirCrate) -> EmitType {
     match &lv.kind {
         LvalueKind::Local(id) => mir
             .local_decls
             .get(id.0 as usize)
-            .map(|ld| mir_type_to_emit_type(&ld.ty))
+            .map(|ld| mir_type_to_emit_type_with_hir(&ld.ty, hir))
             .unwrap_or(EmitType::I32),
-        LvalueKind::Projection(base, _) => detect_lvalue_storage_type(mir, base),
+        LvalueKind::Projection(base, _) => detect_lvalue_storage_type_with_hir(mir, base, hir),
         LvalueKind::Static(_) => EmitType::I32,
     }
 }
@@ -463,6 +628,7 @@ fn codegen_lvalue_load_typed(
     lv: &Lvalue,
     ty: EmitType,
     interner: &Rodeo,
+    hir: &HirCrate,
 ) -> EmitValue {
     match &lv.kind {
         LvalueKind::Local(id) => {
@@ -479,9 +645,9 @@ fn codegen_lvalue_load_typed(
         }
         LvalueKind::Projection(base, elem) => match elem {
             ProjectionElem::Deref => {
-                let ptr_ty = detect_lvalue_type(mir, base);
+                let ptr_ty = detect_lvalue_type(mir, base, hir);
                 let ptr_val =
-                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty.clone(), interner);
+                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty.clone(), interner, hir);
                 emitter.emit_load(&ty, &ptr_val)
             }
             ProjectionElem::Field(field_id, _) => {
@@ -491,10 +657,10 @@ fn codegen_lvalue_load_typed(
                         .cloned()
                         .unwrap_or_else(|| "0".to_string())
                 } else {
-                    let ptr_ty = detect_lvalue_type(mir, base);
-                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner)
+                    let ptr_ty = detect_lvalue_type(mir, base, hir);
+                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner, hir)
                 };
-                let struct_ty = detect_lvalue_storage_type(mir, base);
+                let struct_ty = detect_lvalue_storage_type_with_hir(mir, base, hir);
                 let field_ptr = emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0);
                 emitter.emit_load(&ty, &field_ptr)
             }
@@ -505,10 +671,10 @@ fn codegen_lvalue_load_typed(
                         .cloned()
                         .unwrap_or_else(|| "0".to_string())
                 } else {
-                    let ptr_ty = detect_lvalue_type(mir, base);
-                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner)
+                    let ptr_ty = detect_lvalue_type(mir, base, hir);
+                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner, hir)
                 };
-                let array_ty = detect_lvalue_storage_type(mir, base);
+                let array_ty = detect_lvalue_storage_type_with_hir(mir, base, hir);
                 let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
                     v
                 } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
@@ -526,10 +692,10 @@ fn codegen_lvalue_load_typed(
                         .cloned()
                         .unwrap_or_else(|| "0".to_string())
                 } else {
-                    let ptr_ty = detect_lvalue_type(mir, base);
-                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner)
+                    let ptr_ty = detect_lvalue_type(mir, base, hir);
+                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner, hir)
                 };
-                let array_ty = detect_lvalue_storage_type(mir, base);
+                let array_ty = detect_lvalue_storage_type_with_hir(mir, base, hir);
                 let elem_ptr = emitter.emit_gep_index(&base_ptr, &array_ty, &offset.to_string());
                 emitter.emit_load(&ty, &elem_ptr)
             }
@@ -540,13 +706,19 @@ fn codegen_lvalue_load_typed(
 }
 
 /// Load a value from an lvalue (legacy, uses I32 default).
-fn codegen_lvalue_load(emitter: &mut dyn Emitter, lv: &Lvalue, interner: &Rodeo) -> EmitValue {
+fn codegen_lvalue_load(
+    emitter: &mut dyn Emitter,
+    lv: &Lvalue,
+    interner: &Rodeo,
+    hir: &HirCrate,
+) -> EmitValue {
     codegen_lvalue_load_typed(
         emitter,
         &MirBody::new(crate::session::Span::DUMMY),
         lv,
         EmitType::I32,
         interner,
+        hir,
     )
 }
 
@@ -556,8 +728,9 @@ fn codegen_terminator(
     mir: &MirBody,
     term: &Terminator,
     ret_ty: &EmitType,
-    fn_names: &[String],
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
     interner: &Rodeo,
+    hir: &HirCrate,
 ) {
     match term {
         Terminator::Return => {
@@ -586,7 +759,7 @@ fn codegen_terminator(
             targets,
             otherwise,
         } => {
-            let discr_val = codegen_operand(emitter, mir, discr, interner);
+            let discr_val = codegen_operand(emitter, mir, discr, interner, hir);
             let is_bool_switch = targets
                 .iter()
                 .any(|(val, _)| matches!(val, ConstVal::Bool(_)));
@@ -603,7 +776,7 @@ fn codegen_terminator(
                     &format!("bb{}", false_bb),
                 );
             } else {
-                let discr_ty = detect_operand_type(mir, discr).unwrap_or(EmitType::I32);
+                let discr_ty = detect_operand_type(mir, discr, hir).unwrap_or(EmitType::I32);
                 let cases: Vec<(i128, String)> = targets
                     .iter()
                     .filter_map(|(val, bb)| match val {
@@ -622,13 +795,15 @@ fn codegen_terminator(
             destination,
             target,
         } => {
+            // Stage 3.30 fix: resolve fn name by DefId via the DefId→name map
+            // (was: indexed by body index, which was wrong when struct/enum
+            // owners created gaps in the DefId space).
             let fn_name = if let Operand::Copy(lv) | Operand::Move(lv) = func {
                 if let LvalueKind::Local(id) = &lv.kind {
                     let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| &ld.ty);
                     if let Some(ty) = local_ty {
                         if let crate::mir::ty::TyKind::FnDef(def_id, _) = &ty.kind {
-                            let idx = def_id.as_u32() as usize;
-                            fn_names.get(idx).cloned()
+                            fn_name_by_def_id.get(def_id).cloned()
                         } else {
                             None
                         }
@@ -641,12 +816,12 @@ fn codegen_terminator(
             } else if let Operand::Constant(c) = func {
                 match &c.val {
                     ConstVal::Uint(n) => {
-                        let idx = *n as usize;
-                        fn_names.get(idx).cloned()
+                        let def_id = crate::hir::DefId(*n as u32);
+                        fn_name_by_def_id.get(&def_id).cloned()
                     }
                     ConstVal::Int(n) => {
-                        let idx = *n as usize;
-                        fn_names.get(idx).cloned()
+                        let def_id = crate::hir::DefId(*n as u32);
+                        fn_name_by_def_id.get(&def_id).cloned()
                     }
                     _ => None,
                 }
@@ -658,8 +833,8 @@ fn codegen_terminator(
             let arg_pairs: Vec<(EmitType, EmitValue)> = args
                 .iter()
                 .map(|a| {
-                    let ty = detect_operand_type(mir, a).unwrap_or(EmitType::I32);
-                    let val = codegen_operand(emitter, mir, a, interner);
+                    let ty = detect_operand_type(mir, a, hir).unwrap_or(EmitType::I32);
+                    let val = codegen_operand(emitter, mir, a, interner, hir);
                     (ty, val)
                 })
                 .collect();
@@ -670,7 +845,7 @@ fn codegen_terminator(
                 let call_ret_ty = if let LvalueKind::Local(id) = &destination.kind {
                     mir.local_decls
                         .get(id.0 as usize)
-                        .map(|ld| mir_type_to_emit_type(&ld.ty))
+                        .map(|ld| mir_type_to_emit_type_with_hir(&ld.ty, hir))
                         .unwrap_or(EmitType::I32)
                 } else {
                     EmitType::I32
@@ -684,7 +859,7 @@ fn codegen_terminator(
                 let dest_ty = mir
                     .local_decls
                     .get(id.0 as usize)
-                    .map(|ld| mir_type_to_emit_type(&ld.ty))
+                    .map(|ld| mir_type_to_emit_type_with_hir(&ld.ty, hir))
                     .unwrap_or(EmitType::I32);
                 emitter.set_local(id.0, ret_val.clone());
                 if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
@@ -708,11 +883,11 @@ fn codegen_terminator(
             match msg {
                 crate::mir::body::AssertMessage::Overflow(op, lhs, rhs) => {
                     // Detect operand type (must be int — only ints overflow-check).
-                    let op_ty = detect_operand_type(mir, lhs)
-                        .or(detect_operand_type(mir, rhs))
+                    let op_ty = detect_operand_type(mir, lhs, hir)
+                        .or(detect_operand_type(mir, rhs, hir))
                         .unwrap_or(EmitType::I32);
-                    let lhs_val = codegen_operand(emitter, mir, lhs, interner);
-                    let rhs_val = codegen_operand(emitter, mir, rhs, interner);
+                    let lhs_val = codegen_operand(emitter, mir, lhs, interner, hir);
+                    let rhs_val = codegen_operand(emitter, mir, rhs, interner, hir);
                     let agg = emitter.emit_checked_binop(*op, &op_ty, &lhs_val, &rhs_val);
                     let agg_ty = EmitType::struct_of(vec![op_ty.clone(), EmitType::I1]);
                     let overflow_flag = emitter.emit_extractvalue(&agg_ty, &agg, 1);
@@ -729,15 +904,15 @@ fn codegen_terminator(
                 crate::mir::body::AssertMessage::DivisionByZero(rhs) => {
                     // Stage 3.25: emit `icmp eq rhs, 0`; if true → panic,
                     // if false → continue to target.
-                    let rhs_val = codegen_operand(emitter, mir, rhs, interner);
-                    let rhs_ty = detect_operand_type(mir, rhs).unwrap_or(EmitType::I32);
+                    let rhs_val = codegen_operand(emitter, mir, rhs, interner, hir);
+                    let rhs_ty = detect_operand_type(mir, rhs, hir).unwrap_or(EmitType::I32);
                     let is_zero = emitter.emit_icmp("eq", &rhs_ty, &rhs_val, &"0".to_string());
                     // is_zero == true means divisor is zero → panic.
                     // br i1 is_zero, label %panic, label %target
                     emitter.emit_br_cond(&is_zero, &panic_label, &format!("bb{}", target.0));
                 }
                 crate::mir::body::AssertMessage::BoundsCheck => {
-                    let cond_val = codegen_operand(emitter, mir, cond, interner);
+                    let cond_val = codegen_operand(emitter, mir, cond, interner, hir);
                     emitter.emit_br_cond(&cond_val, &format!("bb{}", target.0), &panic_label);
                 }
             }
@@ -794,7 +969,7 @@ fn codegen_terminator(
 }
 
 /// Detect the EmitType of an operand by examining its source.
-fn detect_operand_type(mir: &MirBody, op: &Operand) -> Option<EmitType> {
+fn detect_operand_type(mir: &MirBody, op: &Operand, hir: &HirCrate) -> Option<EmitType> {
     match op {
         Operand::Constant(c) => match &c.val {
             ConstVal::Float(_) => Some(EmitType::F64),
@@ -806,9 +981,9 @@ fn detect_operand_type(mir: &MirBody, op: &Operand) -> Option<EmitType> {
             if let LvalueKind::Local(id) = &lv.kind {
                 mir.local_decls
                     .get(id.0 as usize)
-                    .map(|ld| mir_type_to_emit_type(&ld.ty))
+                    .map(|ld| mir_type_to_emit_type_with_hir(&ld.ty, hir))
             } else {
-                Some(detect_lvalue_type(mir, lv))
+                Some(detect_lvalue_type(mir, lv, hir))
             }
         }
     }

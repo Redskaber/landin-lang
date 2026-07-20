@@ -48,7 +48,7 @@ fn main() {
     }
 
     // Parse
-    let mut parser = Parser::new(tokens, &interner);
+    let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     let parse_errors = parser.into_errors();
 
