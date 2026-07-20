@@ -1215,3 +1215,81 @@ fn codegen_multiple_structs_distinct_types() {
         ll
     );
 }
+
+// Stage 3.32: L-DEBT-2 fix — field type resolution through projections
+
+#[test]
+fn codegen_field_load_correct_type_i64() {
+    // p.1 where field 1 is i64 — load should be 'load i64', not 'load i32'.
+    let ll = gen_ll("struct Pair(i32, i64); fn f() -> i64 { let p = Pair(1, 2); p.1 }");
+    assert!(
+        ll.contains("load i64, %v4") || ll.contains("load i64, %v"),
+        "expected 'load i64' for i64 field access in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("load i32, %v4"),
+        "should NOT have 'load i32' for i64 field in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_load_correct_type_f64() {
+    // Field of type f64 — load should be 'load double'.
+    let ll = gen_ll(
+        "struct Mixed { a: i32, b: f64 } fn f() -> f64 { let m = Mixed { a: 1, b: 2.5 }; m.b }",
+    );
+    assert!(
+        ll.contains("load double"),
+        "expected 'load double' for f64 field in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_load_correct_type_bool() {
+    // Field of type bool — load should be 'load i1'.
+    let ll = gen_ll("struct Flags { active: bool, count: i32 } fn f() -> bool { let f = Flags { active: true, count: 5 }; f.active }");
+    assert!(
+        ll.contains("load i1"),
+        "expected 'load i1' for bool field in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_named_field_load_correct_type() {
+    // Named field access (not tuple) — p.y where y is i32.
+    let ll = gen_ll(
+        "struct Point { x: i32, y: i32 } fn f() -> i32 { let p = Point { x: 1, y: 2 }; p.y }",
+    );
+    // Should GEP to field 1 (y) and load i32.
+    assert!(
+        ll.contains("getelementptr inbounds { i32, i32 }, { i32, i32 }*") && ll.contains("i32 1"),
+        "expected GEP to field 1 (y) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_load_in_arithmetic() {
+    // Field value used in arithmetic — type must propagate correctly.
+    let ll = gen_ll("struct Acc { v: i64 } fn f(a: Acc, b: Acc) -> i64 { a.v + b.v }");
+    assert!(
+        ll.contains("add nsw i64"),
+        "expected 'add nsw i64' for i64 field arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_field_load_correct_type_u8() {
+    // Field of type u8 — load should be 'load i8'.
+    let ll = gen_ll("struct Byte { v: u8 } fn f() -> u8 { let b = Byte { v: 65 }; b.v }");
+    assert!(
+        ll.contains("load i8"),
+        "expected 'load i8' for u8 field in:\n{}",
+        ll
+    );
+}

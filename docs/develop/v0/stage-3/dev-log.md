@@ -236,6 +236,43 @@
 - See `gate-review-round4.md` for full report
 - L2 (struct codegen) CLOSED; new L-ENUM (enum variants), L-DEBT-2 (field type resolution), L-PIPE-1 (HIR lookup for Adt storage) documented
 
+### Stage 3.32 — L-DEBT-2 fix: field type resolution through projections (v0.8.6)
+- **Problem** (recorded as L-DEBT-2 in R4): `p.1` where field 1 is `i64`
+  loaded as `i32`. The GEP index was correct (1), but the load type used
+  the unresolved `field_ty` (a `fresh_infer_ty` that defaulted to `i32`).
+- **Root cause**: typeck's `infer_projection` returned `field_ty.clone()`
+  for `ProjectionElem::Field(_, field_ty)` — but `field_ty` was a
+  `fresh_infer_ty` allocated by MIR lower and never resolved to the actual
+  struct field type.
+- **Fix** (per §15 — root cause, not hack):
+  1. typeck `infer_rvalue` handles `AggregateKind::Adt` — unifies each
+     operand with the corresponding `field_tys` entry (sunk into MIR per
+     §16 in Stage 3.30), returns `TyKind::Adt(def_id, substs)`. Was: fell
+     through to `TyKind::Error`.
+  2. typeck Phase 3.5 `writeback_field_types` — after Phase 3 (local types
+     resolved), walks all statements and for each
+     `ProjectionElem::Field(field_id, field_ty)`: resolves the base type →
+     if `Adt(def_id, _)`, looks up the field type from HIR and updates
+     `field_ty` in place. Per §16: typeck reads HIR (allowed); resolved
+     type sunk into MIR so codegen reads from MIR.
+  3. MIR lower `resolve_field_index` fallback scan — when the receiver's
+     type can't be resolved at lower time (e.g., `let m = Mixed { ... }; m.b`),
+     scan all HIR struct owners for one with a matching field name.
+- **New API**: `TypeChecker::check_mir_body_with_hir(mir, hir)`. Legacy
+  `check_mir_body(mir)` delegates with `None`.
+- 6 new tests: field load i64/f64/bool/u8, field in arithmetic, named field.
+- Total: 774 → 780.
+
+### Stage 3.33 — Gate Review Round 5 (v0.8.6)
+- 30-case codegen audit (`examples/stage3_gate_audit_r5.rs`)
+- 4 groups: regression (10) + Stage 3.32 L-DEBT-2 fix (10) + edge cases (5) + adversarial (5)
+- §9.3.1 ≥30 cases ✅, §9.3.2 ≥5 edge cases ✅
+- §9.3.3 CONVERGED: R1-R5 = 5 consecutive rounds 0 new issues
+- §15.4 verified: L-DEBT-2 root cause fixed (field types resolve correctly).
+- 5/5 committee APPROVED — unanimous
+- See `gate-review-round5.md` for full report
+- L-DEBT-2 CLOSED; new L-MUT-1 (field mutation MIR lower) documented
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -253,5 +290,6 @@
 | v0.8.6 (3.21-3.23) | 725 | +16 (typed aggregates + block-scoped cache + R1) |
 | v0.8.6 (3.24-3.26) | 739 | +14 (real overflow + div-by-zero checks + R2) |
 | v0.8.6 (3.27-3.29) | 761 | +22 (string literals + byte strings + R3) |
-| **v0.8.6 (3.30-3.31)** | **774** | **+13 (ADT/struct codegen + R4 + §15/§16 process)** |
+| v0.8.6 (3.30-3.31) | 774 | +13 (ADT/struct codegen + R4 + §15/§16 process) |
+| **v0.8.6 (3.32-3.33)** | **780** | **+6 (L-DEBT-2 field type resolution + R5)** |
 

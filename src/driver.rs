@@ -293,7 +293,9 @@ pub fn compile(src: &str) -> CompileResult {
         // G3 fix: populate fn_sigs so Call type checking can verify
         // arg count and types against the declared fn signature.
         tc.populate_fn_sigs(&hir);
-        tc.check_mir_body(&mut mir);
+        // Stage 3.32 (L-DEBT-2 fix): pass hir so typeck can resolve ADT
+        // field types in projections during writeback.
+        tc.check_mir_body_with_hir(&mut mir, Some(&hir));
         let (type_errors, body_results) = tc.into_results();
         errors.typeck.extend(type_errors);
         typeck_results.push(body_results);

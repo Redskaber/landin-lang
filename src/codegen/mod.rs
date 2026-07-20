@@ -76,7 +76,9 @@ pub fn codegen_crate_with_emitter(hir: &HirCrate, interner: &Rodeo, emitter: &mu
             crate::mir::lower::lower_hir_body_to_mir_full(body, interner, hir, return_ty);
         let mut tc = crate::typeck::TypeChecker::with_unify(unify);
         tc.populate_fn_sigs(hir);
-        tc.check_mir_body(&mut mir);
+        // Stage 3.32 (L-DEBT-2 fix): pass hir so typeck resolves ADT field
+        // types in projections during writeback.
+        tc.check_mir_body_with_hir(&mut mir, Some(hir));
         codegen_function(
             emitter,
             &fn_name,

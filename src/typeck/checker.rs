@@ -148,6 +148,18 @@ impl TypeChecker {
     /// `mir.local_decls[i].ty` so that downstream consumers (borrowck,
     /// codegen) see concrete types instead of inference variables.
     pub fn check_mir_body(&mut self, mir: &mut MirBody) {
+        self.check_mir_body_with_hir(mir, None);
+    }
+
+    /// Stage 3.32 (L-DEBT-2 fix): check_mir_body with HIR access.
+    ///
+    /// When `hir` is `Some`, typeck can resolve ADT field types during
+    /// Phase 3.5 (projection field_ty writeback). Without HIR, field
+    /// projections keep their `fresh_infer_ty` placeholder (which defaults
+    /// to i32 after `default_unresolved`) — this was the L-DEBT-2 bug.
+    ///
+    /// Per §16: typeck reading HIR is allowed (data flows downstream).
+    pub fn check_mir_body_with_hir(&mut self, mir: &mut MirBody, hir: Option<&HirCrate>) {
         // Phase 1: Walk basic blocks in order, collecting constraints.
         let bb_count = mir.basic_blocks.len();
         for bb_id in 0..bb_count {
@@ -169,6 +181,15 @@ impl TypeChecker {
         // Phase 3: Write resolved types back into local_decls.
         for local in mir.local_decls.iter_mut() {
             local.ty = self.unify.resolve(&local.ty);
+        }
+
+        // Phase 3.5 (Stage 3.32, L-DEBT-2 fix): Write resolved field types
+        // back into ProjectionElem::Field(_, field_ty). After Phase 3,
+        // local_decls have resolved types — so a `Projection(Local(id),
+        // Field(field_id, field_ty))` can now look up the struct's field
+        // type via the local's resolved Adt type + HIR struct definition.
+        if let Some(hir_crate) = hir {
+            self.writeback_field_types(mir, hir_crate);
         }
 
         // Phase 4: Populate TypeckResults for downstream consumers.
@@ -196,6 +217,166 @@ impl TypeChecker {
         for bb in &mir.basic_blocks {
             let term = bb.terminator.clone();
             self.post_check_terminator(mir, &term);
+        }
+    }
+
+    /// Stage 3.32 (L-DEBT-2 fix): Writeback field types in projections.
+    ///
+    /// After Phase 3 (local_decls have resolved types), walk all statements
+    /// and for each `Projection(Local(id), Field(field_id, field_ty))`:
+    ///   1. Resolve the local's type → if `Adt(def_id, _)`, look up the
+    ///      struct's field type at `field_id` from HIR.
+    ///   2. Update `field_ty` in place to the resolved type.
+    ///
+    /// This fixes the L-DEBT-2 bug where `p.1` (field 1 is i64) loaded as
+    /// i32 because `field_ty` was a `fresh_infer_ty` that defaulted to i32.
+    ///
+    /// Per §16: typeck reads HIR here (allowed — data flows downstream).
+    /// The resolved type is sunk into MIR's `ProjectionElem::Field` so
+    /// codegen reads it from MIR (no cross-stage call).
+    fn writeback_field_types(&mut self, mir: &mut MirBody, hir: &HirCrate) {
+        // Collect (bb_idx, stmt_idx, new_place, new_rvalue) updates.
+        // We clone the Assign's place + rvalue, mutate the clones to
+        // resolve field_tys, then write back. This avoids borrow conflicts
+        // between reading local_decls (immutable) and mutating statements
+        // (mutable).
+        let mut updates: Vec<(
+            usize,
+            usize,
+            Option<crate::mir::lvalue::Lvalue>,
+            Option<crate::mir::lvalue::Rvalue>,
+        )> = Vec::new();
+        for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
+            for (stmt_idx, stmt) in bb.statements.iter().enumerate() {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    let mut new_place = place.clone();
+                    let mut new_rvalue = rvalue.clone();
+                    let place_changed = writeback_field_types_in_lvalue(&mut new_place, mir, hir);
+                    let rvalue_changed = writeback_field_types_in_rvalue(&mut new_rvalue, mir, hir);
+                    if place_changed || rvalue_changed {
+                        updates.push((
+                            bb_idx,
+                            stmt_idx,
+                            if place_changed { Some(new_place) } else { None },
+                            if rvalue_changed {
+                                Some(new_rvalue)
+                            } else {
+                                None
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+        // Apply updates.
+        for (bb_idx, stmt_idx, new_place, new_rvalue) in updates {
+            if let Some(bb) = mir.basic_blocks.get_mut(bb_idx) {
+                if let Some(stmt) = bb.statements.get_mut(stmt_idx) {
+                    if let StatementKind::Assign(boxed) = &mut stmt.kind {
+                        let (place, rvalue) = &mut **boxed;
+                        if let Some(np) = new_place {
+                            *place = np;
+                        }
+                        if let Some(nr) = new_rvalue {
+                            *rvalue = nr;
+                        }
+                    }
+                }
+            }
+        }
+        fn resolve_lvalue_type(
+            lv: &crate::mir::lvalue::Lvalue,
+            mir: &MirBody,
+            hir: &HirCrate,
+        ) -> Ty {
+            use crate::mir::lvalue::LvalueKind;
+            let _ = hir;
+            match &lv.kind {
+                LvalueKind::Local(id) => mir
+                    .local_decls
+                    .get(id.0 as usize)
+                    .map(|ld| ld.ty.clone())
+                    .unwrap_or_else(|| Ty::new(TyKind::Error, lv.span)),
+                LvalueKind::Projection(base, elem) => {
+                    let base_ty = resolve_lvalue_type(base, mir, hir);
+                    match elem {
+                        crate::mir::lvalue::ProjectionElem::Field(_field_id, field_ty) => {
+                            field_ty.clone()
+                        }
+                        _ => base_ty,
+                    }
+                }
+                LvalueKind::Static(_) => Ty::new(TyKind::Error, lv.span),
+            }
+        }
+        /// Returns true if any field_ty was updated.
+        fn writeback_field_types_in_lvalue(
+            lv: &mut crate::mir::lvalue::Lvalue,
+            mir: &MirBody,
+            hir: &HirCrate,
+        ) -> bool {
+            use crate::mir::lvalue::{LvalueKind, ProjectionElem};
+            match &mut lv.kind {
+                LvalueKind::Projection(base, elem) => {
+                    let mut changed = writeback_field_types_in_lvalue(base, mir, hir);
+                    if let ProjectionElem::Field(field_id, field_ty) = elem {
+                        let base_ty = resolve_lvalue_type(base, mir, hir);
+                        if let TyKind::Adt(def_id, _) = &base_ty.kind {
+                            if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(
+                                s,
+                            ))) = hir.owner(*def_id)
+                            {
+                                if let Some(f) = s.fields.get(field_id.0 as usize) {
+                                    let resolved = crate::mir::lower::lower_hir_ty_to_mir_ty(&f.ty);
+                                    *field_ty = resolved;
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                    changed
+                }
+                _ => false,
+            }
+        }
+        /// Walk an rvalue and resolve field_tys in any lvalues it contains.
+        fn writeback_field_types_in_rvalue(
+            rv: &mut crate::mir::lvalue::Rvalue,
+            mir: &MirBody,
+            hir: &HirCrate,
+        ) -> bool {
+            use crate::mir::lvalue::Rvalue;
+            match rv {
+                Rvalue::Use(op) => writeback_field_types_in_operand(op, mir, hir),
+                Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
+                    writeback_field_types_in_operand(a, mir, hir)
+                        | writeback_field_types_in_operand(b, mir, hir)
+                }
+                Rvalue::UnaryOp(_, op) => writeback_field_types_in_operand(op, mir, hir),
+                Rvalue::Cast(_, op, _) => writeback_field_types_in_operand(op, mir, hir),
+                Rvalue::Aggregate(_, operands) => {
+                    let mut changed = false;
+                    for op in operands {
+                        changed |= writeback_field_types_in_operand(op, mir, hir);
+                    }
+                    changed
+                }
+                Rvalue::Ref(_, _, lv) => writeback_field_types_in_lvalue(lv, mir, hir),
+            }
+        }
+        fn writeback_field_types_in_operand(
+            op: &mut crate::mir::lvalue::Operand,
+            mir: &MirBody,
+            hir: &HirCrate,
+        ) -> bool {
+            use crate::mir::lvalue::Operand;
+            match op {
+                Operand::Copy(lv) | Operand::Move(lv) => {
+                    writeback_field_types_in_lvalue(lv, mir, hir)
+                }
+                _ => false,
+            }
         }
     }
 
@@ -581,6 +762,21 @@ impl TypeChecker {
                         ),
                         Span::DUMMY,
                     )
+                }
+                // Stage 3.32 (L-DEBT-2 fix): AggregateKind::Adt now carries
+                // field_tys (per §16 data sink from Stage 3.30). Use them
+                // to unify each operand with its declared field type, and
+                // return the Adt type.
+                AggregateKind::Adt(def_id, _variant, _substs, field_tys) => {
+                    for (i, op) in operands.iter().enumerate() {
+                        let op_ty = self.infer_operand(mir, op);
+                        if let Some(field_ty) = field_tys.get(i) {
+                            if let Err(e) = self.unify.unify(&op_ty, field_ty) {
+                                self.errors.push(*e);
+                            }
+                        }
+                    }
+                    Ty::new(TyKind::Adt(*def_id, _substs.clone()), Span::DUMMY)
                 }
                 _ => Ty::new(TyKind::Error, Span::DUMMY),
             },

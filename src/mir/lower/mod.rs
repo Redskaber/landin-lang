@@ -836,11 +836,17 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
         //     the HIR struct definition by matching the field name.
         // Was: hardcoded `FieldId(0)` — meant `p.1`, `p.x`, etc. all
         // returned field 0.
+        // Stage 3.32 fix (L-DEBT-2): resolve the field's actual type from
+        // the struct definition and put it in ProjectionElem::Field (was:
+        // fresh_infer_ty — typeck never resolved it, so codegen loaded
+        // i32 even for i64 fields).
         HirExprKind::Field { receiver, ident } => {
             let base_local = lower_expr_to_operand(cx, receiver);
             // Resolve the field index from the ident name.
             let field_index = resolve_field_index(cx, receiver, &ident.name);
-            let field_ty = cx.fresh_infer_ty(expr.span);
+            // Stage 3.32: resolve the field's actual type from the struct def.
+            let field_ty = resolve_field_type(cx, receiver, field_index)
+                .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
             let field_ty_for_proj = field_ty.clone();
             let result = cx.mir.new_local(field_ty, None, expr.span);
             cx.push_assign(
@@ -1185,6 +1191,30 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
     }
 }
 
+/// Resolve the type of a specific field of a struct, given the receiver
+/// expression and the field index.
+///
+/// Stage 3.32 (L-DEBT-2 fix): looks up the receiver's struct DefId (via
+/// `find_receiver_struct_def_id`), then reads the field's type from the
+/// HIR struct definition. Returns `None` if the receiver isn't a struct
+/// or the field index is out of bounds — caller falls back to
+/// `fresh_infer_ty`.
+///
+/// Per §16: this is MIR lower reading HIR (allowed — data flows downstream).
+/// The resolved type is sunk into `ProjectionElem::Field(_, field_ty)` so
+/// codegen reads it from MIR.
+fn resolve_field_type(cx: &MirLowerCtxt, receiver: &HirExpr, field_index: u32) -> Option<Ty> {
+    let hir = cx.hir?;
+    let struct_def_id = find_receiver_struct_def_id(cx, receiver)?;
+    let owner = hir.owner(struct_def_id)?;
+    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner {
+        let field = s.fields.get(field_index as usize)?;
+        Some(lower_hir_ty_to_mir_ty(&field.ty))
+    } else {
+        None
+    }
+}
+
 /// Resolve the field index for a field-access expression `receiver.ident`.
 ///
 /// Stage 3.30 fix: was hardcoded `FieldId(0)` — meant `p.1`, `p.x`, etc.
@@ -1195,6 +1225,11 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
 ///     struct definition by matching the field name.
 ///   - If we can't resolve (e.g., receiver type unknown), default to 0
 ///     (legacy behavior — typeck should catch real errors).
+///   - Stage 3.32 fix: if the receiver's type can't be resolved (e.g.,
+///     `let m = Mixed { ... }; m.b` — m's type is Infer(TyVar) at lower
+///     time), scan all HIR struct owners for one that has a field with
+///     the given name. If exactly one match is found, use it. This is
+///     O(structs × fields) but correct for typical crates.
 fn resolve_field_index(
     cx: &MirLowerCtxt,
     receiver: &HirExpr,
@@ -1208,7 +1243,7 @@ fn resolve_field_index(
             if let Ok(idx) = name_str.parse::<u32>() {
                 return idx;
             }
-            // Named field — look up the receiver's type to find the struct.
+            // Named field — try to find the receiver's struct def_id.
             if let Some(struct_def_id) = find_receiver_struct_def_id(cx, receiver) {
                 if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
                     hir_crate.owner(struct_def_id)
@@ -1220,6 +1255,34 @@ fn resolve_field_index(
                             }
                         }
                     }
+                }
+            }
+            // Stage 3.32: receiver type not resolved yet. Scan all struct
+            // owners for one with a matching field name.
+            let mut found: Option<(u32,)> = None;
+            let mut ambiguous = false;
+            for (_def_id, owner) in &hir_crate.owners {
+                if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner {
+                    for (i, f) in s.fields.iter().enumerate() {
+                        if let Some(f_ident) = &f.ident {
+                            if f_ident.name == *field_name {
+                                if found.is_some() {
+                                    ambiguous = true;
+                                } else {
+                                    found = Some((i as u32,));
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                if ambiguous {
+                    break;
+                }
+            }
+            if let Some((idx,)) = found {
+                if !ambiguous {
+                    return idx;
                 }
             }
         }
