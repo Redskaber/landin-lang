@@ -296,7 +296,13 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
         TyKind::Float(_) => EmitType::F64,
         TyKind::Char => EmitType::I8,
         TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => {
-            EmitType::ptr_to(mir_type_to_emit_type(inner))
+            // Stage 3.42: &str (Ref to Str) maps to i8* (not i8**).
+            // Str is unsized — &str is a pointer to the bytes, same as Str.
+            if matches!(inner.kind, TyKind::Str) {
+                EmitType::ptr_to(EmitType::I8)
+            } else {
+                EmitType::ptr_to(mir_type_to_emit_type(inner))
+            }
         }
         // Stage 3.27: `Str` is a built-in unsized type — its `&str` reference
         // is a fat pointer (ptr+len). For now we model `Str` itself as

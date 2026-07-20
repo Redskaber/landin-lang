@@ -242,13 +242,29 @@ impl<'a> MirLowerCtxt<'a> {
                 },
                 Ty::new(TyKind::Char, Span::DUMMY),
             ),
-            HirLitKind::Str(sym) => (
-                Const {
-                    ty: Box::new(Ty::new(TyKind::Str, Span::DUMMY)),
-                    val: ConstVal::Str(*sym),
-                },
-                Ty::new(TyKind::Str, Span::DUMMY),
-            ),
+            HirLitKind::Str(sym) => {
+                // Stage 3.42: String literals have type &'static str,
+                // not str (which is unsized). Was: TyKind::Str — caused
+                // type mismatches when passing strings to functions
+                // expecting &str, and string comparison failed.
+                // Per §15: root-cause fix (correct the type at the source).
+                let str_ty = Ty::new(TyKind::Str, Span::DUMMY);
+                let ref_str_ty = Ty::new(
+                    TyKind::Ref(
+                        Region::Static,
+                        crate::mir::ty::Mutability::Immutable,
+                        Box::new(str_ty),
+                    ),
+                    Span::DUMMY,
+                );
+                (
+                    Const {
+                        ty: Box::new(ref_str_ty.clone()),
+                        val: ConstVal::Str(*sym),
+                    },
+                    ref_str_ty,
+                )
+            }
             HirLitKind::ByteStr(sym) => {
                 // `[u8; N]` — we don't know N at this point without
                 // computing the byte length. For Stage 2.4d, represent
@@ -553,13 +569,13 @@ pub fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
         // Stage 3.30: resolve named types (struct/enum/etc.) via the path's
         // Res. Was: fell through to `Ty::Error`, which made `Point`-typed
         // params/locals lose their type info and codegen treat them as i32.
-        HirTyKind::Path(_, path) => {
-            if let Res::Def(def_id, _) = path.res {
-                Ty::new(TyKind::Adt(def_id, Vec::new()), span)
-            } else {
-                Ty::new(TyKind::Error, span)
-            }
-        }
+        // Stage 3.42: also handle PrimTy::Str → TyKind::Str (was: fell
+        // through to Error, breaking `&str` type annotations).
+        HirTyKind::Path(_, path) => match path.res {
+            Res::Def(def_id, _) => Ty::new(TyKind::Adt(def_id, Vec::new()), span),
+            Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),
+            _ => Ty::new(TyKind::Error, span),
+        },
         _ => Ty::new(TyKind::Error, span), // complex types → Error for now
     }
 }

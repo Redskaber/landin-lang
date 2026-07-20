@@ -616,7 +616,20 @@ fn hir_ty_to_emit_type(ty: &crate::hir::HirTy, hir: &HirCrate) -> EmitType {
         }
         HirTyKind::Slice(elem) => EmitType::ptr_to(hir_ty_to_emit_type(elem, hir)),
         HirTyKind::Ref(_, _, inner) | HirTyKind::Ptr(_, inner) => {
-            EmitType::ptr_to(hir_ty_to_emit_type(inner, hir))
+            // Stage 3.42: convert the full HIR Ref type to a MIR Ref type,
+            // then use mir_type_to_emit_type. This correctly handles &str
+            // (Ref to Str) → Ptr(I8) = i8* via the special case in emitter.rs
+            // that checks for Ref(_, _, Str).
+            let mir_inner = crate::mir::lower::lower_hir_ty_to_mir_ty(inner);
+            let mir_ref = crate::mir::ty::Ty::new(
+                crate::mir::ty::TyKind::Ref(
+                    crate::mir::ty::Region::Erased,
+                    crate::mir::ty::Mutability::Immutable,
+                    Box::new(mir_inner),
+                ),
+                ty.span,
+            );
+            mir_type_to_emit_type(&mir_ref)
         }
         HirTyKind::Path(_, path) => {
             // Resolve path to a struct DefId and recurse via

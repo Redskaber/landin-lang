@@ -210,13 +210,15 @@ fn deep_path_resolves_to_local() {
 fn deep_string_literal_has_str_type() {
     let result = compile("fn f() { let s = \"hello\"; }");
     let mir = &result.mirs[0];
-    let has_str = mir
-        .local_decls
-        .iter()
-        .any(|ld| matches!(&ld.ty.kind, TyKind::Str));
+    // Stage 3.42: string literals now have type &'static str (Ref to Str),
+    // not Str. Check for either Str or Ref(_, _, Str).
+    let has_str = mir.local_decls.iter().any(|ld| {
+        matches!(&ld.ty.kind, TyKind::Str)
+            || matches!(&ld.ty.kind, TyKind::Ref(_, _, inner) if matches!(inner.kind, TyKind::Str))
+    });
     assert!(
         has_str,
-        "expected at least one Str-typed local from string literal"
+        "expected at least one Str-typed or &str-typed local from string literal"
     );
 }
 

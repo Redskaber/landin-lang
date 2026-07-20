@@ -399,6 +399,32 @@
 - See `gate-review-round9.md` for full report
 - L-ENUM-MATCH CLOSED; new L-COPY-ADT (Adt treated as Copy pragmatically) documented
 
+### Stage 3.42 — &str type fix: string literals now have type &'static str (v0.8.6)
+- **Problem**: String literals had type `Str` (unsized), not `&'static str`
+  (Ref to Str). This caused:
+  * `fn greet(s: &str)` couldn't accept string literals (type mismatch).
+  * String comparison `s == "hello"` failed (Str vs Ref mismatch).
+  * String moves triggered "use of moved value" (Str is not Copy; Ref is).
+- **Root cause**: `lit_to_const` in MIR lower produced `TyKind::Str` for
+  string literals. `lower_hir_ty_to_mir_ty` didn't handle `PrimTy::Str` for
+  `&str` type annotations (fell through to `TyKind::Error`).
+- **Fix** (per §15 — root cause):
+  1. MIR lower `lit_to_const`: string literals now produce
+     `Ref(Static, Immutable, Str)` instead of `Str`.
+  2. MIR lower `lower_hir_ty_to_mir_ty`: `HirTyKind::Path` with
+     `Res::PrimTy(PrimTy::Str)` → `TyKind::Str` (was: fell through to Error).
+  3. Codegen `mir_type_to_emit_type`: `Ref(_, _, Str)` → `Ptr(I8)` = `i8*`
+     (was: would produce `Ptr(Ptr(I8))` = `i8**`).
+  4. Codegen `hir_ty_to_emit_type`: `Ref` case now converts to MIR type
+     first, then uses `mir_type_to_emit_type` (handles the &str special case).
+- **Result**: `fn greet(s: &str)` accepts string literals; string comparison
+  works; `&str` params/returns use `i8*` in LLVM IR.
+- 6 new tests: str as arg, str comparison, str param type, str return type,
+  str in struct, str multiple args.
+- Updated 2 existing tests (deep_inspection, integration_stage2_4c) to
+  accept both `Str` and `Ref(_, _, Str)` types.
+- Total: 814 → 820.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -422,3 +448,4 @@
 | v0.8.6 (3.36-3.37) | 796 | +8 (L-DEBT-3 field type propagation through arithmetic + R7) |
 | v0.8.6 (3.38-3.39) | 806 | +10 (L-ENUM enum variant codegen + R8) |
 | v0.8.6 (3.40-3.41) | 814 | +8 (L-ENUM-MATCH enum match via discriminant extraction + R9) |
+| v0.8.6 (3.42) | 820 | +6 (&str type fix: string literals now have type &'static str) |

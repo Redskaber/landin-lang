@@ -1762,3 +1762,75 @@ fn codegen_enum_match_non_exhaustive_default() {
         ll
     );
 }
+
+// Stage 3.42: &str type fix — string literals now have type &'static str
+
+#[test]
+fn codegen_str_as_function_arg() {
+    let ll = gen_ll("fn greet(s: &str) { } fn f() { greet(\"hello\") }");
+    assert!(
+        ll.contains("define void @landin_greet(i8* %arg0)"),
+        "expected &str param as i8* in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("call void @landin_greet(i8*"),
+        "expected call with i8* arg in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_comparison() {
+    let ll = gen_ll("fn f(s: &str) -> bool { s == \"hello\" }");
+    // Should compile without errors and produce some IR.
+    assert!(
+        ll.contains("ret i1") || ll.contains("ret i32"),
+        "expected return in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_param_type() {
+    let ll = gen_ll("fn f(s: &str) { }");
+    assert!(
+        ll.contains("define void @landin_f(i8* %arg0)"),
+        "expected &str param as i8* in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_return_type() {
+    let ll = gen_ll("fn f() -> &str { \"hello\" }");
+    // &str return type should be i8*.
+    assert!(
+        ll.contains("define i8* @landin_f()"),
+        "expected &str return as i8* in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_in_struct() {
+    let ll = gen_ll(
+        "struct Msg { text: &str } fn f(m: Msg) { } fn g() { let m = Msg { text: \"hi\" }; f(m); }",
+    );
+    // Should compile without errors.
+    assert!(
+        ll.contains("define") && !ll.contains("error"),
+        "expected clean compilation in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_multiple_args() {
+    let ll = gen_ll("fn cat(a: &str, b: &str) { } fn f() { cat(\"hello\", \"world\") }");
+    assert!(
+        ll.contains("define void @landin_cat(i8* %arg0, i8* %arg1)"),
+        "expected two &str params as i8* in:\n{}",
+        ll
+    );
+}

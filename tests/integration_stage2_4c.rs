@@ -517,14 +517,14 @@ fn integration_string_literal_has_str_type() {
     "#;
     let result = compile_expect_ok(src);
     let mir = &result.mirs[0];
-    // At least one local should have Str type (the temp holding "hello").
-    let has_str = mir
-        .local_decls
-        .iter()
-        .any(|ld| matches!(&ld.ty.kind, landin_compiler::mir::ty::TyKind::Str));
+    // Stage 3.42: string literals now have type &'static str (Ref to Str).
+    let has_str = mir.local_decls.iter().any(|ld| {
+        matches!(&ld.ty.kind, landin_compiler::mir::ty::TyKind::Str)
+            || matches!(&ld.ty.kind, landin_compiler::mir::ty::TyKind::Ref(_, _, inner) if matches!(inner.kind, landin_compiler::mir::ty::TyKind::Str))
+    });
     assert!(
         has_str,
-        "expected at least one Str-typed local after typeck, got: {:?}",
+        "expected at least one Str-typed or &str-typed local after typeck, got: {:?}",
         mir.local_decls
             .iter()
             .map(|ld| &ld.ty.kind)
@@ -555,15 +555,18 @@ fn integration_string_literal_in_expression() {
     "#;
     let result = compile_expect_ok(src);
     let mir = &result.mirs[0];
-    // Should have at least 2 Str-typed locals
+    // Stage 3.42: string literals now have type &'static str (Ref to Str).
     let str_count = mir
         .local_decls
         .iter()
-        .filter(|ld| matches!(&ld.ty.kind, landin_compiler::mir::ty::TyKind::Str))
+        .filter(|ld| {
+            matches!(&ld.ty.kind, landin_compiler::mir::ty::TyKind::Str)
+                || matches!(&ld.ty.kind, landin_compiler::mir::ty::TyKind::Ref(_, _, inner) if matches!(inner.kind, landin_compiler::mir::ty::TyKind::Str))
+        })
         .count();
     assert!(
         str_count >= 2,
-        "expected at least 2 Str locals, got {} (locals: {:?})",
+        "expected at least 2 Str or &str locals, got {} (locals: {:?})",
         str_count,
         mir.local_decls
             .iter()
