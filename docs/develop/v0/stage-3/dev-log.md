@@ -54,6 +54,53 @@
 - Created lang-design design documents
 - Created agent-team role definitions
 
+### Stage 3.9 — Imported documentation (v0.7.4)
+- Process v3.7 final form
+- Imported agent-team/ (12 docs) + lang-design/ (22 docs)
+- Total docs: 56 (was 25)
+
+### Stage 3.10 – 3.19 — Incremental codegen hardening (v0.8.0 → v0.8.4)
+- 3.10: Drop terminator
+- 3.11: Assert + panic stubs (overflow / div-by-zero / bounds-check)
+- 3.12: External function declarations
+- 3.13: PHI node support in Emitter trait
+- 3.14: insertvalue / extractvalue for tuples
+- 3.15: Array aggregate via insertvalue
+- 3.16: Assert message routing (Overflow(op) / DivisionByZero / BoundsCheck)
+- 3.17: GEP field + GEP index helpers
+- 3.18: Typed load helpers (detect_lvalue_type, detect_operand_type)
+- 3.19: Emitter API rename (emit_* / get_* / set_* prefix convention)
+
+### Stage 3.20 — Typed load refactor (v0.8.5)
+- codegen_lvalue_load_typed takes explicit EmitType (was hardcoded I32)
+- detect_lvalue_type recurses through Projection::Field / Deref / Index
+- detect_operand_type handles Constant (Float → F64, Bool → I1, Char → I8)
+
+### Stage 3.21 — Typed aggregate codegen (v0.8.6)
+- **Problem**: EmitType::Tuple hardcoded to `{ i32 }`, EmitType::Array to `[10 x i32]`,
+  Ptr to opaque `i32*`, emit_call hardcoded all args as i32.
+- **Fix**: EmitType now carries full structure (Struct/Array/Ptr variants);
+  emit_type_to_llvm_str returns String; emit_gep_field/index take the actual
+  base type; emit_insertvalue takes val_ty; emit_call takes (EmitType, &EmitValue)
+  pairs; new detect_lvalue_storage_type helper.
+- 10 new tests (tuple mixed types, array of i64, typed call args, typed GEP).
+- Total: 709 → 719.
+
+### Stage 3.22 — Block-scoped local value cache (v0.8.6)
+- **Problem**: TextEmitter::locals cached values across block boundaries,
+  causing `if x > 0 { 1 } else { 2 }` to return `2` regardless of `x`.
+- **Fix**: emit_block clears self.locals at each block boundary; local_ptrs
+  persist. Within-block constant shortcut still works.
+- 6 new tests (if-else merge correctness, nested if, match, while, if-with-arith).
+- Total: 719 → 725.
+
+### Stage 3.23 — Gate Review Round 1 (v0.8.6)
+- 38-case codegen audit (`examples/stage3_gate_audit.rs`)
+- 5 groups: single-stmt / multi-stmt / complex / edge cases / robustness
+- §9.3.1 ≥30 cases ✅, §9.3.2 ≥5 edge cases ✅
+- 5/5 committee APPROVED — unanimous
+- See `gate-review-round1.md` for full report
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -65,3 +112,8 @@
 | v0.7.1 | 706 | +7 (match, float, complex) |
 | v0.7.2 | 709 | +3 (cast, bool return) |
 | v0.7.3 | 709 | 0 (doc reorg) |
+| v0.7.4 | 709 | 0 (doc import) |
+| v0.8.4 | 709 | 0 (3.10–3.19 incremental hardening) |
+| v0.8.5 | 709 | 0 (3.20 typed-load refactor) |
+| **v0.8.6** | **725** | **+16 (3.21 typed aggregates + 3.22 block-scoped cache)** |
+

@@ -315,3 +315,234 @@ fn codegen_bool_return() {
     // Should have icmp eq
     assert!(ll.contains("icmp eq"), "expected icmp eq in:\n{}", ll);
 }
+
+// Stage 3.21: typed aggregate + typed call args
+
+#[test]
+fn codegen_tuple_of_two_distinct_types() {
+    // (i32, f64) — should emit `{ i32, double }`, NOT hardcoded `{ i32 }`.
+    let ll = gen_ll("fn f() -> f64 { let t = (1, 2.5); t.1 }");
+    assert!(
+        ll.contains("{ i32, double }"),
+        "expected '{{ i32, double }}' struct type in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_tuple_of_three_types() {
+    // (i32, f64, bool) — should emit `{ i32, double, i1 }`.
+    let ll = gen_ll("fn f() -> bool { let t = (1, 2.5, true); t.2 }");
+    assert!(
+        ll.contains("{ i32, double, i1 }"),
+        "expected '{{ i32, double, i1 }}' struct type in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_array_of_i32_correct_length() {
+    // [1, 2, 3] — should emit `[3 x i32]`, NOT hardcoded `[10 x i32]`.
+    let ll = gen_ll("fn f() -> i32 { let a = [1, 2, 3]; a.0 }");
+    assert!(
+        ll.contains("[3 x i32]"),
+        "expected '[3 x i32]' array type in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("[10 x i32]"),
+        "should NOT have hardcoded '[10 x i32]' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_array_of_i64_correct_length() {
+    // [1i64, 2, 3] — should emit `[3 x i64]`.
+    let ll = gen_ll("fn f() -> i64 { let a: [i64; 3] = [1, 2, 3]; a.0 }");
+    assert!(
+        ll.contains("[3 x i64]"),
+        "expected '[3 x i64]' array type in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_typed_call_args_i64() {
+    // call with i64 arg should produce `call i64 @landin_g(i64 42)` — not `i32 42`.
+    let ll = gen_ll("fn g(a: i64) -> i64 { a } fn f() -> i64 { g(42) }");
+    assert!(
+        ll.contains("call i64 @landin_g(i64 42)"),
+        "expected typed i64 call arg in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_typed_call_args_mixed() {
+    // call with mixed types should produce typed args
+    let ll = gen_ll("fn g(a: i32, b: i64) -> i64 { b } fn f() -> i64 { g(1, 2) }");
+    assert!(
+        ll.contains("call i64 @landin_g(i32 1, i64 2)"),
+        "expected typed mixed call args in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_typed_ptr_to_i32() {
+    // &x where x: i32 — pointer should be `i32*` (was `i32*` before too, but
+    // now via typed Ptr(I32) variant). The deref should `load i32, i32*`.
+    let ll = gen_ll("fn f() -> i32 { let x = 42; let r = &x; *r }");
+    assert!(
+        ll.contains("alloca i32"),
+        "expected 'alloca i32' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_array_gep_uses_correct_type() {
+    // Indexing a [3 x i32] array should GEP into [3 x i32], not [10 x i32].
+    let ll = gen_ll("fn f() -> i32 { let a = [10, 20, 30]; let i = 1; a[i] }");
+    assert!(
+        ll.contains("[3 x i32]"),
+        "expected '[3 x i32]' in GEP in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("[10 x i32]"),
+        "should NOT have hardcoded '[10 x i32]' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_tuple_field_access_via_gep() {
+    // Tuple field access should use the actual tuple type in GEP.
+    let ll = gen_ll("fn f() -> f64 { let t = (1, 2.5); t.1 }");
+    // GEP should reference `{ i32, double }` (not hardcoded `{ i32, i32 }`).
+    assert!(
+        ll.contains("getelementptr inbounds { i32, double }"),
+        "expected typed GEP for {{ i32, double }} in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_insertvalue_with_typed_field() {
+    // Building a tuple via insertvalue should preserve field types.
+    let ll = gen_ll("fn f() -> f64 { let t = (1, 2.5); t.1 }");
+    // insertvalue should reference `{ i32, double }` and insert `double` value.
+    assert!(
+        ll.contains("insertvalue { i32, double }"),
+        "expected typed insertvalue in:\n{}",
+        ll
+    );
+}
+
+// Stage 3.22: block-scoped local value cache (correctness for if/match/while joins)
+
+#[test]
+fn codegen_if_else_merge_correct_value() {
+    // Regression: bb3 must load the merged value from the result slot,
+    // NOT leak the most-recent store (was returning 2 always).
+    let ll = gen_ll("fn f(x: i32) -> i32 { if x > 0 { 1 } else { 2 } }");
+    // The return must come from a load (either of the result slot or
+    // via a phi), NOT a hardcoded constant.
+    assert!(
+        ll.contains("ret i32 %v"),
+        "expected 'ret i32 %v' (loaded value, not constant) in:\n{}",
+        ll
+    );
+    // Should NOT have "ret i32 2" (the bug was returning the false-branch value).
+    assert!(
+        !ll.contains("ret i32 2"),
+        "should NOT return hardcoded 2 in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_if_else_stores_to_result_slot() {
+    // Both branches should store to the same result slot (loc_4 typically).
+    let ll = gen_ll("fn f(x: i32) -> i32 { if x > 0 { 1 } else { 2 } }");
+    // Count store i32 1 and store i32 2 — both must be present.
+    let has_one = ll.contains("store i32 1,");
+    let has_two = ll.contains("store i32 2,");
+    assert!(
+        has_one && has_two,
+        "expected both 'store i32 1' and 'store i32 2' in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_nested_if_correctness() {
+    // Nested if: result must come from a load, not a leaked constant.
+    let ll = gen_ll("fn f(x: i32) -> i32 { if x > 0 { if x > 10 { 100 } else { 1 } } else { 2 } }");
+    assert!(
+        ll.contains("ret i32 %v"),
+        "expected loaded return value in nested if:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_match_correctness() {
+    // Match expressions lower to SwitchInt; the merge block must load correctly.
+    let ll = gen_ll("fn f(x: i32) -> i32 { match x { 0 => 10, 1 => 20, _ => 30 } }");
+    assert!(
+        ll.contains("ret i32 %v"),
+        "expected loaded return value in match:\n{}",
+        ll
+    );
+    // All three arms' constants should appear.
+    assert!(
+        ll.contains("store i32 10"),
+        "missing arm 0 value in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("store i32 20"),
+        "missing arm 1 value in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("store i32 30"),
+        "missing default arm value in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_while_loop_correctness() {
+    // While loop: after the loop, reading the counter must load from alloca.
+    let ll = gen_ll("fn f() -> i32 { let mut i = 0; while i < 10 { i = i + 1; } i }");
+    assert!(
+        ll.contains("ret i32 %v"),
+        "expected loaded return value after while:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_if_else_with_arith() {
+    // If branches with arithmetic — result must be loaded, not constant-leaked.
+    let ll = gen_ll("fn f(x: i32) -> i32 { if x > 0 { x + 1 } else { x - 1 } }");
+    assert!(
+        ll.contains("ret i32 %v"),
+        "expected loaded return value in if-with-arith:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("add nsw i32"),
+        "expected add in true branch:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("sub nsw i32"),
+        "expected sub in false branch:\n{}",
+        ll
+    );
+}

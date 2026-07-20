@@ -42,8 +42,8 @@ impl TextEmitter {
 
 impl Emitter for TextEmitter {
     fn emit_header(&mut self) {
-        self.line("; Landin compiler v0.8.4 — LLVM IR output");
-        self.line("; Stage 3.19 codegen");
+        self.line("; Landin compiler v0.8.6 — LLVM IR output");
+        self.line("; Stage 3.21 codegen (typed aggregates + typed call args)");
         self.line("target triple = \"x86_64-unknown-linux-gnu\"");
         self.line("target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"");
         self.line("");
@@ -53,11 +53,11 @@ impl Emitter for TextEmitter {
         self.line(&format!("declare {}", signature));
     }
 
-    fn emit_function_begin(&mut self, name: &str, params: &[(EmitType, &str)], ret: EmitType) {
+    fn emit_function_begin(&mut self, name: &str, params: &[(EmitType, &str)], ret: &EmitType) {
         let ret_str = emit_type_to_llvm_str(ret);
         let param_strs: Vec<String> = params
             .iter()
-            .map(|(ty, name)| format!("{} {}", emit_type_to_llvm_str(*ty), name))
+            .map(|(ty, name)| format!("{} {}", emit_type_to_llvm_str(ty), name))
             .collect();
         self.line(&format!(
             "define {} @{}({}) {{",
@@ -98,7 +98,7 @@ impl Emitter for TextEmitter {
     fn emit_binop(
         &mut self,
         op: BinOp,
-        ty: EmitType,
+        ty: &EmitType,
         lhs: &EmitValue,
         rhs: &EmitValue,
     ) -> EmitValue {
@@ -108,12 +108,12 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_unop(&mut self, op: UnOp, ty: EmitType, operand: &EmitValue) -> EmitValue {
+    fn emit_unop(&mut self, op: UnOp, ty: &EmitType, operand: &EmitValue) -> EmitValue {
         let r = self.fresh();
         match op {
             UnOp::Neg => {
                 let ty_str = emit_type_to_llvm_str(ty);
-                if ty == EmitType::F64 || ty == EmitType::F32 {
+                if *ty == EmitType::F64 || *ty == EmitType::F32 {
                     self.line(&format!("  %v{} = fneg {} {}", r, ty_str, operand));
                 } else {
                     self.line(&format!("  %v{} = sub {} 0, {}", r, ty_str, operand));
@@ -127,7 +127,7 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_ret(&mut self, ty: EmitType, val: Option<&EmitValue>) {
+    fn emit_ret(&mut self, ty: &EmitType, val: Option<&EmitValue>) {
         let ty_str = emit_type_to_llvm_str(ty);
         match val {
             Some(v) => self.line(&format!("  ret {} {}", ty_str, v)),
@@ -139,18 +139,18 @@ impl Emitter for TextEmitter {
         self.line("  unreachable");
     }
 
-    fn emit_alloca(&mut self, ty: EmitType, name: &str) -> EmitValue {
+    fn emit_alloca(&mut self, ty: &EmitType, name: &str) -> EmitValue {
         let ty_str = emit_type_to_llvm_str(ty);
         self.line(&format!("  {} = alloca {}", name, ty_str));
         name.to_string()
     }
 
-    fn emit_store(&mut self, ty: EmitType, val: &EmitValue, ptr: &EmitValue) {
+    fn emit_store(&mut self, ty: &EmitType, val: &EmitValue, ptr: &EmitValue) {
         let ty_str = emit_type_to_llvm_str(ty);
         self.line(&format!("  store {} {}, {}", ty_str, val, ptr));
     }
 
-    fn emit_load(&mut self, ty: EmitType, ptr: &EmitValue) -> EmitValue {
+    fn emit_load(&mut self, ty: &EmitType, ptr: &EmitValue) -> EmitValue {
         let r = self.fresh();
         let ty_str = emit_type_to_llvm_str(ty);
         self.line(&format!("  %v{} = load {}, {}", r, ty_str, ptr));
@@ -170,12 +170,20 @@ impl Emitter for TextEmitter {
 
     fn emit_block(&mut self, label: &str) {
         self.line(&format!("{}:", label));
+        // Stage 3.22: invalidate the local value cache at block boundaries.
+        // Values assigned in a predecessor block must be reloaded from their
+        // alloca slots — otherwise we'd leak the most-recent assignment into
+        // successor blocks, which is unsound for if/match/while joins where
+        // a local takes different values along different predecessors.
+        // `local_ptrs` (the alloca handles) are NOT cleared — they persist
+        // for the whole function.
+        self.locals.clear();
     }
 
     fn emit_switch(
         &mut self,
         discr: &EmitValue,
-        discr_ty: EmitType,
+        discr_ty: &EmitType,
         cases: &[(i128, String)],
         default_label: &str,
     ) {
@@ -190,22 +198,39 @@ impl Emitter for TextEmitter {
         self.line("  ]");
     }
 
-    fn emit_call(&mut self, fn_name: &str, args: &[EmitValue], ret_ty: EmitType) -> EmitValue {
+    fn emit_call(
+        &mut self,
+        fn_name: &str,
+        args: &[(EmitType, &EmitValue)],
+        ret_ty: &EmitType,
+    ) -> EmitValue {
         let r = self.fresh();
         let ret_str = emit_type_to_llvm_str(ret_ty);
         let args_str = args
             .iter()
-            .map(|a| format!("i32 {}", a))
+            .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
             .collect::<Vec<_>>()
             .join(", ");
-        self.line(&format!(
-            "  %v{} = call {} @{}({})",
-            r, ret_str, fn_name, args_str
-        ));
-        format!("%v{}", r)
+        // For void calls we don't assign a result register.
+        if *ret_ty == EmitType::Void {
+            self.line(&format!("  call void @{}({})", fn_name, args_str));
+            "0".to_string()
+        } else {
+            self.line(&format!(
+                "  %v{} = call {} @{}({})",
+                r, ret_str, fn_name, args_str
+            ));
+            format!("%v{}", r)
+        }
     }
 
-    fn emit_icmp(&mut self, op: &str, ty: EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
+    fn emit_icmp(
+        &mut self,
+        op: &str,
+        ty: &EmitType,
+        lhs: &EmitValue,
+        rhs: &EmitValue,
+    ) -> EmitValue {
         let r = self.fresh();
         let ty_str = emit_type_to_llvm_str(ty);
         self.line(&format!(
@@ -215,7 +240,13 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_fcmp(&mut self, op: &str, ty: EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
+    fn emit_fcmp(
+        &mut self,
+        op: &str,
+        ty: &EmitType,
+        lhs: &EmitValue,
+        rhs: &EmitValue,
+    ) -> EmitValue {
         let r = self.fresh();
         let ty_str = emit_type_to_llvm_str(ty);
         self.line(&format!(
@@ -225,7 +256,7 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_zext(&mut self, src: EmitType, dst: EmitType, val: &EmitValue) -> EmitValue {
+    fn emit_zext(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue {
         let r = self.fresh();
         let src_str = emit_type_to_llvm_str(src);
         let dst_str = emit_type_to_llvm_str(dst);
@@ -236,7 +267,7 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_cast(&mut self, src: EmitType, dst: EmitType, val: &EmitValue) -> EmitValue {
+    fn emit_cast(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue {
         let r = self.fresh();
         let src_str = emit_type_to_llvm_str(src);
         let dst_str = emit_type_to_llvm_str(dst);
@@ -261,25 +292,39 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_gep_field(&mut self, base_ptr: &EmitValue, field_index: u32) -> EmitValue {
+    fn emit_gep_field(
+        &mut self,
+        base_ptr: &EmitValue,
+        struct_ty: &EmitType,
+        field_index: u32,
+    ) -> EmitValue {
         let r = self.fresh();
+        let struct_str = emit_type_to_llvm_str(struct_ty);
+        let ptr_str = format!("{}*", struct_str);
         self.line(&format!(
-            "  %v{} = getelementptr inbounds {{ i32, i32 }}, {{ i32, i32 }}* {}, i32 0, i32 {}",
-            r, base_ptr, field_index
+            "  %v{} = getelementptr inbounds {}, {} {}, i32 0, i32 {}",
+            r, struct_str, ptr_str, base_ptr, field_index
         ));
         format!("%v{}", r)
     }
 
-    fn emit_gep_index(&mut self, base_ptr: &EmitValue, index: &EmitValue) -> EmitValue {
+    fn emit_gep_index(
+        &mut self,
+        base_ptr: &EmitValue,
+        array_ty: &EmitType,
+        index: &EmitValue,
+    ) -> EmitValue {
         let r = self.fresh();
+        let array_str = emit_type_to_llvm_str(array_ty);
+        let ptr_str = format!("{}*", array_str);
         self.line(&format!(
-            "  %v{} = getelementptr inbounds [10 x i32], [10 x i32]* {}, i32 0, i32 {}",
-            r, base_ptr, index
+            "  %v{} = getelementptr inbounds {}, {} {}, i32 0, i32 {}",
+            r, array_str, ptr_str, base_ptr, index
         ));
         format!("%v{}", r)
     }
 
-    fn emit_phi(&mut self, ty: EmitType, incoming: &[(EmitValue, String)]) -> EmitValue {
+    fn emit_phi(&mut self, ty: &EmitType, incoming: &[(EmitValue, String)]) -> EmitValue {
         let r = self.fresh();
         let ty_str = emit_type_to_llvm_str(ty);
         let incoming_str = incoming
@@ -293,26 +338,28 @@ impl Emitter for TextEmitter {
 
     fn emit_insertvalue(
         &mut self,
-        agg_ty: EmitType,
+        agg_ty: &EmitType,
         agg: &EmitValue,
+        val_ty: &EmitType,
         val: &EmitValue,
         index: u32,
     ) -> EmitValue {
         let r = self.fresh();
-        let ty_str = emit_type_to_llvm_str(agg_ty);
+        let agg_str = emit_type_to_llvm_str(agg_ty);
+        let val_str = emit_type_to_llvm_str(val_ty);
         self.line(&format!(
-            "  %v{} = insertvalue {} {}, i32 {}, {}",
-            r, ty_str, agg, val, index
+            "  %v{} = insertvalue {} {}, {} {}, {}",
+            r, agg_str, agg, val_str, val, index
         ));
         format!("%v{}", r)
     }
 
-    fn emit_extractvalue(&mut self, agg_ty: EmitType, agg: &EmitValue, index: u32) -> EmitValue {
+    fn emit_extractvalue(&mut self, agg_ty: &EmitType, agg: &EmitValue, index: u32) -> EmitValue {
         let r = self.fresh();
-        let ty_str = emit_type_to_llvm_str(agg_ty);
+        let agg_str = emit_type_to_llvm_str(agg_ty);
         self.line(&format!(
             "  %v{} = extractvalue {} {}, {}",
-            r, ty_str, agg, index
+            r, agg_str, agg, index
         ));
         format!("%v{}", r)
     }

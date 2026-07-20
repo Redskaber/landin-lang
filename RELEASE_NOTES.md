@@ -1,9 +1,50 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.7.4
-**Date**: 2026-07-19
-**Test count**: 709 tests passing, 0 warnings, fmt + clippy clean
+**Current version**: v0.8.6
+**Date**: 2026-07-20
+**Test count**: 725 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.8.6 — Stage 3.21 + 3.22 + Gate Review Round 1 (process v3.7)
+
+### Stage 3.21 — Typed aggregate codegen
+- `EmitType` now carries full structure: `Struct(Vec<EmitType>)`, `Array(Box<EmitType>, u64)`,
+  `Ptr(Box<EmitType>)` (was hardcoded `{ i32 }` / `[10 x i32]` / opaque `i32*`).
+- `emit_type_to_llvm_str` returns `String` (was `&'static str`).
+- `emit_gep_field` / `emit_gep_index` now take the actual struct/array type.
+- `emit_insertvalue` now takes `val_ty: &EmitType` for the inserted value.
+- `emit_call` now takes `args: &[(EmitType, &EmitValue)]` — typed call args
+  (was hardcoded `i32` for every arg).
+- New `detect_lvalue_storage_type` helper walks projection chains.
+- 10 new tests.
+
+### Stage 3.22 — Block-scoped local value cache
+- **Bug fix**: `if x > 0 { 1 } else { 2 }` previously returned `2` regardless of `x`,
+  because `TextEmitter::locals` cached the most-recent assignment across block boundaries.
+- **Fix**: `emit_block` now clears `self.locals` at each block boundary. `local_ptrs`
+  (alloca handles) persist. Within-block constant shortcut still works.
+- 6 new tests verifying if-else / match / while merge correctness.
+
+### Stage 3.23 — Gate Review Round 1
+- 38-case codegen audit (`examples/stage3_gate_audit.rs`)
+- 5 groups: single-stmt / multi-stmt / complex / edge cases / robustness
+- §9.3.1 ≥30 cases ✅, §9.3.2 ≥5 edge cases ✅
+- 5/5 committee APPROVED — unanimous
+- See `docs/develop/v0/stage-3/gate-review-round1.md`
+
+### Changed
+- `Cargo.toml`: v0.8.5 → v0.8.6
+- `src/codegen/emitter.rs`: EmitType refactor + new helpers (`pointee`, `is_ptr`,
+  `ptr_to`, `struct_of`, `array_of`, `llvm_ptr_str`)
+- `src/codegen/text_emitter.rs`: updated all `emit_*` impls for new signatures;
+  `emit_block` now clears locals cache
+- `src/codegen/mod.rs`: passes types through to all emitter calls
+- `tests/codegen_tests.rs`: +16 tests
+- `examples/stage3_gate_audit.rs`: new (38-case audit)
+- `docs/develop/v0/stage-3/dev-log.md`: 3.21, 3.22, 3.23 entries + test table
+- `docs/develop/v0/stage-3/gate-review-round1.md`: new (full gate review report)
 
 ---
 
@@ -115,3 +156,4 @@
 | v3.5 | Documentation sync rules (§11) |
 | v3.6 | Author标注规则 |
 | v3.7 | 文档组织结构规则 (§12) |
+| v3.8 | (Pending) Stage 3 gate review convergence rule for codegen |

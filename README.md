@@ -8,7 +8,7 @@ predictable performance.
 
 > **Status:** Stage 0-2 complete (lexer, parser, HIR, name resolution, MIR,
 > type checking, borrow checking). Stage 3 (LLVM codegen) in progress —
-> the compiler can now generate LLVM IR text from Landin source.
+> v0.8.6, 725 tests passing, 38-case gate audit passed (Round 1).
 
 ## Quick start
 
@@ -35,7 +35,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete (245 tests) |
 | 1 | `hir/`, `resolve/` | ✅ Complete (451 tests) |
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete (673 tests, 6 rounds of review) |
-| 3 | `codegen/` | 🔄 In progress (26 tests, LLVM IR text output) |
+| 3 | `codegen/` | 🔄 In progress (52 tests, LLVM IR text output) |
 
 ## Codegen capabilities (Stage 3)
 
@@ -58,7 +58,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 
 ```
 landin-stage0/
-├── Cargo.toml              Package manifest (v0.7.1)
+├── Cargo.toml              Package manifest (v0.8.6)
 ├── src/
 │   ├── lexer/              Lexer (109 tests)
 │   ├── parser/             Recursive-descent + Pratt parser (85 tests)
