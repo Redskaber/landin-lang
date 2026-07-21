@@ -1,9 +1,9 @@
 [package]
 name = "landin-compiler"
-version = "0.8.10"
+version = "0.8.11"
 edition = "2021"
 license = "MIT"
-description = "Landin programming language compiler — Stage 0-3 complete (lexer, parser, HIR, MIR, typeck, borrowck, LLVM codegen) + Stage 3.63-3.66 cross-stage naming standardization + Lvalue→Place rename + unsafe impl/trait + use resolution"
+description = "Landin programming language compiler — Stage 0-3 complete (lexer, parser, HIR, MIR, typeck, borrowck, LLVM codegen) + Stage 3.63-3.67 cross-stage naming standardization + P2 cleanup (Lvalue→Place, unsafe impl/trait, use resolution, body owner context, &Rodeo, Span::DUMMY)"
 repository = "https://github.com/landin-lang/main"
 authors = ["redskaber"]
 keywords = ["compiler", "language", "systems-programming"]

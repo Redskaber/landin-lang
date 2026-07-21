@@ -25,7 +25,7 @@ fn parse_lower_resolve(src: &str) -> HirCrate {
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
     let mut hir = lower_crate(&krate, &interner);
-    let _ = resolve_crate(&mut hir, &mut interner);
+    let _ = resolve_crate(&mut hir, &interner);
     hir
 }
 
@@ -384,7 +384,7 @@ fn parse_lower_resolve_with_errors(
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
     let mut hir = lower_crate(&krate, &interner);
-    let errors = resolve_crate(&mut hir, &mut interner);
+    let errors = resolve_crate(&mut hir, &interner);
     (hir, errors)
 }
 

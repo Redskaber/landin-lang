@@ -281,7 +281,7 @@ pub fn compile(src: &str) -> CompileResult {
     let mut hir = lower_crate(&krate, &interner);
 
     // === Stage 1: Name resolution ===
-    errors.resolve = resolve_crate(&mut hir, &mut interner);
+    errors.resolve = resolve_crate(&mut hir, &interner);
 
     // === Stage 1.5: G4 fix — scan HIR for unresolved paths ===
     // After name resolution, any Path with Res::Unknown or Res::Err

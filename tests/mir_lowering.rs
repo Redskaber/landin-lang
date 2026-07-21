@@ -22,7 +22,7 @@ fn lower_to_mir(src: &str) -> Vec<MirBody> {
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
     let mut hir = lower_crate(&krate, &interner);
-    let _ = resolve_crate(&mut hir, &mut interner);
+    let _ = resolve_crate(&mut hir, &interner);
     // Lower each body to MIR
     hir.bodies
         .iter()

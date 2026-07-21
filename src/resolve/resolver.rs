@@ -369,14 +369,35 @@ impl Resolver {
     // ================================================================
 
     fn resolve_all_paths(&mut self, hir: &mut HirCrate, interner: &Rodeo) {
+        // Stage 3.67: Build a map from owner DefId → HirSelfKind so that
+        // body resolution can know whether it's inside a trait or impl.
+        // Previously (Stage 3.66), only owner-level paths got the
+        // accurate HirSelfKind; body-level `Self` always defaulted to
+        // Impl. Now we thread the owner context into body resolution too.
+        let mut owner_self_kind: HashMap<crate::hir::DefId, crate::hir::HirSelfKind> =
+            HashMap::new();
+        for (_, node) in &hir.owners {
+            if let OwnerNode::Item(item) = node {
+                let (owner_def_id, kind) = match item {
+                    HirItem::Trait(t) => (t.hir_id.owner, crate::hir::HirSelfKind::Trait),
+                    HirItem::Impl(i) => (i.hir_id.owner, crate::hir::HirSelfKind::Impl),
+                    _ => continue,
+                };
+                owner_self_kind.insert(owner_def_id, kind);
+            }
+        }
+
         // Walk all owners.
         for (_, node) in hir.owners.iter_mut() {
             self.resolve_owner_paths(node, interner);
         }
-        // Walk all bodies.
+        // Walk all bodies — set owner context from the map.
         for (_, body) in hir.bodies.iter_mut() {
+            self.current_self_kind = owner_self_kind.get(&body.hir_id.owner).copied();
             self.resolve_body(body, interner);
         }
+        // Reset after all bodies.
+        self.current_self_kind = None;
     }
 
     fn resolve_owner_paths(&mut self, node: &mut OwnerNode, interner: &Rodeo) {
@@ -921,20 +942,12 @@ fn lookup_prim_ty(name: &str) -> Option<PrimTy> {
 /// Returns a list of resolution errors (non-fatal; the HIR is still
 /// mutated with best-effort Res values).
 ///
-/// Takes `&mut Rodeo` to pre-intern keyword strings ("Self", "self",
-/// "crate", "super") that the parser looks up via `interner.get()`
-/// but never interns itself (because the parser only has `&Rodeo`).
-pub fn resolve_crate(hir: &mut HirCrate, interner: &mut Rodeo) -> Vec<ResolveError> {
-    // Pre-intern keyword strings that the parser looks up but doesn't intern.
-    // The parser's `ident_from_token` for KwSelfType/KwSelf_/KwCrate/KwSuper
-    // calls `interner.get("Self")` etc. — if these strings haven't been
-    // interned yet, the lookup returns None and the ident falls back to
-    // Spur::default(), losing the keyword information.
-    interner.get_or_intern("Self");
-    interner.get_or_intern("self");
-    interner.get_or_intern("crate");
-    interner.get_or_intern("super");
-
+/// Stage 3.67: now takes `&Rodeo` (was `&mut Rodeo`). The lexer now
+/// interns keyword strings ("Self", "self", "crate", "super") at
+/// tokenization time, so the resolver no longer needs to pre-intern
+/// them. This eliminates the `&mut Rodeo` smell — the resolver is now
+/// a pure read-only consumer of the interner.
+pub fn resolve_crate(hir: &mut HirCrate, interner: &Rodeo) -> Vec<ResolveError> {
     let mut resolver = Resolver::new();
     resolver.resolve(hir, interner);
     resolver.into_errors()

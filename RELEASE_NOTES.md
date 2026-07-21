@@ -1,9 +1,93 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.8.10
+**Current version**: v0.8.11
 **Date**: 2026-07-22
 **Test count**: 983 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.8.11 — Stage 3.67 (P2 cleanup: body owner context, &Rodeo, Span::DUMMY)
+
+### Overview
+
+Continuation of the §21 cross-stage audit follow-up. This round addresses
+3 more P2 cleanup items: threading owner context into body resolution
+(completes the `HirSelfKind` work from Stage 3.66), eliminating the
+`&mut Rodeo` smell in `resolve_crate`, and fixing the 11 `Span::DUMMY`
+placeholders in `parser.rs`. 983 tests pass (unchanged — pure refactoring).
+0 clippy warnings. fmt clean.
+
+### P2 fix #1: Body owner context threading for accurate `HirSelfKind`
+
+**Previously** (Stage 3.66): The resolver set `current_self_kind` when
+resolving Trait/Impl **item** paths (supertraits, self_ty), but body
+resolution happened in a separate loop without owner context. So
+`fn bar(x: Self) {}` inside an impl always got `HirSelfKind::Impl`
+(which happened to be correct for impls), but `fn bar(x: Self) {}`
+inside a trait would also get `HirSelfKind::Impl` (wrong — should be
+`HirSelfKind::Trait`).
+
+**Now** (Stage 3.67):
+- `resolve_all_paths` builds a `HashMap<DefId, HirSelfKind>` mapping
+  trait/impl owner DefIds to their `HirSelfKind`
+- When iterating bodies, it looks up `body.hir_id.owner` in the map
+  and sets `current_self_kind` before calling `resolve_body`
+- `resolve_path` now produces accurate `HirSelfKind` at both owner
+  AND body levels
+
+### P2 fix #2: `&mut Rodeo` → `&Rodeo` in `resolve_crate`
+
+**Previously**: `resolve_crate` took `&mut Rodeo` to pre-intern keyword
+strings ("Self", "self", "crate", "super") that the parser looks up via
+`interner.get()` but the lexer never interned (because keyword tokens
+are returned as `TokenKind::Kw*` without interning the string).
+
+**Now** (Stage 3.67):
+- The lexer now interns keyword strings at tokenization time
+  (`self.interner.get_or_intern(text)` before returning `Token { kind: kw, span }`)
+- `resolve_crate` signature changed from `&mut Rodeo` to `&Rodeo`
+- All callers updated (driver.rs + 4 test files)
+- The resolver is now a pure read-only consumer of the interner
+
+### P2 fix #3: `Span::DUMMY` placeholders fixed in parser.rs
+
+**Previously**: 11 occurrences of `Span::DUMMY` in `parser.rs` for the
+`span` field of top-level declaration structs (`ConstDecl`, `StaticDecl`,
+`StructDecl`, `EnumDecl`, `ImplDecl`, `TypeAliasDecl`). These spans were
+placeholder values that didn't point to any source location.
+
+**Now** (Stage 3.67):
+- Each `parse_*` function captures `let kw_span = self.current_span()`
+  before `self.bump()` (which consumes the keyword token)
+- The struct constructor uses `span: kw_span` instead of `span: Span::DUMMY`
+- All 11 placeholders replaced with the keyword's actual span
+
+### Verification
+
+- `cargo test`: **983 passed, 0 failed, 2 ignored** (unchanged — pure refactoring)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 audit tests pass
+
+### Files touched
+
+- `src/resolve/resolver.rs` — body owner context map + `resolve_crate` signature change
+- `src/lexer/reader.rs` — intern keyword strings at tokenization time
+- `src/parser/parser.rs` — 11 `Span::DUMMY` → `kw_span` (keyword span capture)
+- `src/driver.rs` — `resolve_crate(&mut hir, &interner)` (was `&mut interner`)
+- `tests/mir_lowering.rs` — same caller update
+- `tests/hir_scope_resolution.rs` — same caller update
+- `tests/hir_resolution.rs` — same caller update
+- `tests/typeck_tests.rs` — same caller update
+
+### Remaining P2/P3 items (deferred to Stage 4+)
+
+- `HirParam` duplication between `HirFnSig.inputs` and `Body.params`
+- Visibility checking (Stage 1.3 Phase E1)
+- Prelude injection (Stage 1.3 Phase E3)
+- AST enum naming standardization (Expr/Ty/Pat direct vs ItemKind wrapper)
 
 ---
 

@@ -16,6 +16,10 @@
 //!   Stage 3.66 (v0.8.10): Lvalue → Place rename (167+ refs, aligns with design
 //!     doc 06-mir.md §4 + borrowck vocabulary) + resolver owner context threading
 //!     for accurate HirSelfKind (Trait vs Impl).
+//!   Stage 3.67 (v0.8.11): P2 cleanup — body owner context threading (body-level
+//!     HirSelfKind accurate) + &mut Rodeo → &Rodeo in resolve_crate (lexer now
+//!     interns keywords) + Span::DUMMY placeholders fixed (11 occurrences in
+//!     parser.rs → keyword spans).
 //!   Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
 //!   deferred to Stage 4+.
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.

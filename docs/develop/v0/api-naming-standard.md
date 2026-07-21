@@ -581,3 +581,30 @@ calls it `Place`), eliminates vocabulary mismatch with borrowck internals
 **Test impact**: 0 (983/983 tests pass — pure refactoring, no test changes).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.4 (Stage 3.67, 2026-07-22)
+
+P2 cleanup round. Completes the `HirSelfKind` work from Stage 3.66
+(body-level context threading), eliminates the `&mut Rodeo` smell in
+`resolve_crate`, and fixes 11 `Span::DUMMY` placeholders in `parser.rs`.
+
+**Fixes applied in this round**:
+1. `src/resolve/resolver.rs`: `resolve_all_paths` builds
+   `HashMap<DefId, HirSelfKind>` and sets `current_self_kind` before
+   each `resolve_body` call — body-level `Self` resolution now accurate
+2. `src/resolve/resolver.rs`: `resolve_crate` signature changed from
+   `&mut Rodeo` to `&Rodeo` (resolver is now pure read-only consumer)
+3. `src/lexer/reader.rs`: lexer now interns keyword strings at
+   tokenization time (`self.interner.get_or_intern(text)` before
+   returning keyword tokens) — eliminates the need for resolver to
+   pre-intern keywords
+4. `src/parser/parser.rs`: 11 `Span::DUMMY` placeholders replaced with
+   `kw_span` (keyword span captured before `self.bump()` in
+   `parse_const`, `parse_static`, `parse_struct`, `parse_enum`,
+   `parse_impl`, `parse_type_alias`)
+5. `src/driver.rs` + 4 test files: `resolve_crate(&mut hir, &interner)`
+   (was `&mut interner`)
+
+**Test impact**: 0 (983/983 tests pass — pure refactoring).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

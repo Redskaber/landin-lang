@@ -453,6 +453,12 @@ impl<'a> Lexer<'a> {
 
         // Check for keywords
         if let Some(kw) = keyword_from_str(text) {
+            // Stage 3.67: intern the keyword string so downstream passes
+            // (parser, resolver) can look it up via `interner.get("self")`
+            // etc. Previously the resolver had to pre-intern these strings
+            // (taking `&mut Rodeo`); now the lexer does it at the source.
+            // This eliminates the `&mut Rodeo` smell in `resolve_crate`.
+            self.interner.get_or_intern(text);
             return Token { kind: kw, span };
         }
 

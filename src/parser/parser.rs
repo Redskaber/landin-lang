@@ -705,6 +705,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_const(&mut self) -> ConstDecl {
+        let kw_span = self.current_span(); // Stage 3.67: capture `const` keyword span
         self.bump(); // const
         let ident = self.ident_from_token();
         self.bump(); // ident
@@ -719,11 +720,12 @@ impl<'a> Parser<'a> {
             expr,
             is_const: true,
             is_mut: false,
-            span: Span::DUMMY,
+            span: kw_span,
         }
     }
 
     fn parse_static(&mut self) -> StaticDecl {
+        let kw_span = self.current_span(); // Stage 3.67: capture `static` keyword span
         self.bump(); // static
         let is_mut = self.eat(&TokenKind::KwMut);
         let ident = self.ident_from_token();
@@ -739,11 +741,12 @@ impl<'a> Parser<'a> {
             expr,
             is_const: false,
             is_mut,
-            span: Span::DUMMY,
+            span: kw_span,
         }
     }
 
     fn parse_struct(&mut self) -> StructDecl {
+        let kw_span = self.current_span(); // Stage 3.67: capture `struct` keyword span
         self.bump(); // struct
         let ident = self.ident_from_token();
         self.bump(); // ident
@@ -816,16 +819,17 @@ impl<'a> Parser<'a> {
             generics: Generics {
                 params: generics,
                 where_clause,
-                span: Span::DUMMY,
+                span: kw_span,
             },
             fields,
             is_unit,
             is_tuple,
-            span: Span::DUMMY,
+            span: kw_span,
         }
     }
 
     fn parse_enum(&mut self) -> EnumDecl {
+        let kw_span = self.current_span(); // Stage 3.67: capture `enum` keyword span
         self.bump(); // enum
         let ident = self.ident_from_token();
         self.bump();
@@ -896,10 +900,10 @@ impl<'a> Parser<'a> {
             generics: Generics {
                 params: generics,
                 where_clause,
-                span: Span::DUMMY,
+                span: kw_span,
             },
             variants,
-            span: Span::DUMMY,
+            span: kw_span,
         }
     }
 
@@ -1003,6 +1007,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_impl(&mut self, is_unsafe: bool) -> ImplDecl {
+        let kw_span = self.current_span(); // Stage 3.67: capture `impl` keyword span
         self.bump(); // impl
         let generics = self.parse_generics();
         let self_ty = self.parse_ty();
@@ -1029,17 +1034,18 @@ impl<'a> Parser<'a> {
             generics: Generics {
                 params: generics,
                 where_clause,
-                span: Span::DUMMY,
+                span: kw_span,
             },
             of_trait,
             self_ty,
             items,
             is_unsafe,
-            span: Span::DUMMY,
+            span: kw_span,
         }
     }
 
     fn parse_type_alias(&mut self) -> TypeAliasDecl {
+        let kw_span = self.current_span(); // Stage 3.67: capture `type` keyword span
         self.bump(); // type
         let ident = self.ident_from_token();
         self.bump();
@@ -1053,10 +1059,10 @@ impl<'a> Parser<'a> {
             generics: Generics {
                 params: generics,
                 where_clause,
-                span: Span::DUMMY,
+                span: kw_span,
             },
             ty,
-            span: Span::DUMMY,
+            span: kw_span,
         }
     }
 

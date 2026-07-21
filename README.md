@@ -8,13 +8,11 @@ predictable performance.
 
 > **Status:** Stage 0-3 complete (lexer, parser, HIR, name resolution, MIR,
 > type checking, borrow checking, LLVM codegen). All soundness-critical
-> limitations closed. v0.8.10, 983 tests passing, 34 gate review rounds
+> limitations closed. v0.8.11, 983 tests passing, 35 gate review rounds
 > passed (audit CONVERGED). Process v3.15 (§15-§24).
-> Stage 3.63 (v0.8.7): cross-stage naming standardization per §21 audit.
-> Stage 3.64 (v0.8.8): P2 ergonomics + use declaration resolution.
-> Stage 3.65 (v0.8.9): P2 architectural fixes (unsafe impl/trait, Res::SelfTy).
-> Stage 3.66 (v0.8.10): Lvalue→Place rename (167+ refs) + resolver owner
-> context threading for accurate HirSelfKind (Trait vs Impl).
+> Stage 3.63-3.66: cross-stage naming standardization + P2 fixes.
+> Stage 3.67 (v0.8.11): P2 cleanup — body owner context threading,
+> &mut Rodeo → &Rodeo, Span::DUMMY placeholders fixed.
 > Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
 > deferred to Stage 4+.
 
@@ -144,7 +142,7 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
 - **Stage 1** ✅ HIR + name resolution (Stage 3.64: `use` declaration resolution; Stage 3.65: `unsafe impl/trait` AST fields + `Res::SelfTy` discrimination)
 - **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review; Stage 3.65: `lower_body` aliases; Stage 3.66: `Lvalue`→`Place` rename)
-- **Stage 3** ✅ LLVM codegen (COMPLETE — 34 gate review rounds CONVERGED, §16 compliant pipeline, all soundness-critical limitations closed; Stage 3.63-3.66 cross-stage naming standardization + P2 fixes + Lvalue→Place rename)
+- **Stage 3** ✅ LLVM codegen (COMPLETE — 35 gate review rounds CONVERGED, §16 compliant pipeline, all soundness-critical limitations closed; Stage 3.63-3.67 cross-stage naming standardization + P2 fixes + cleanup)
 - **Stage 4** Macro system + attributes + closures (L3) + PHI optimization (L1)
 - **Stage 5** Mini-cargo + stdlib MVP + trait dispatch (L5)
 - **v0.1** = Stage 0 + conformance suite

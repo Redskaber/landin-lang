@@ -789,3 +789,105 @@ enum naming). Stage 3 is fully COMPLETE and ready for Stage 4.
 **Stage 3.66 completed**: 2026-07-22
 **Process version**: v3.15
 **Package**: `landin-stage0-v0.8.10-stage3.66-lvalue-to-place-r34`
+
+---
+
+## 10. Stage 3.67 Update — P2 Cleanup: Body Owner Context, &Rodeo, Span::DUMMY (2026-07-22)
+
+> Continuation of the §21 cross-stage audit follow-up. This round
+> addresses 3 more P2 cleanup items: threading owner context into body
+> resolution (completes the `HirSelfKind` work from Stage 3.66),
+> eliminating the `&mut Rodeo` smell in `resolve_crate`, and fixing the
+> 11 `Span::DUMMY` placeholders in `parser.rs`.
+
+### 10.1 Stage 3.67 Fixes Applied
+
+| # | Priority | Stage | Fix | Impact |
+|---|----------|-------|-----|--------|
+| 1 | P2 | 1 | Body owner context threading — `resolve_all_paths` builds `HashMap<DefId, HirSelfKind>`; sets `current_self_kind` before each `resolve_body` call | **Body-level `HirSelfKind` now accurate** — `fn bar(x: Self) {}` inside a trait gets `Trait`, inside an impl gets `Impl` |
+| 2 | P2 | 1 | `&mut Rodeo` → `&Rodeo` in `resolve_crate` — lexer now interns keyword strings at tokenization time | **Resolver is pure read-only consumer** — eliminates the `&mut Rodeo` smell; the lexer is the single source of truth for keyword interning |
+| 3 | P2 | 0 | `Span::DUMMY` placeholders fixed — 11 occurrences in `parser.rs` replaced with keyword spans | **Better error reporting** — top-level declarations (const, static, struct, enum, impl, type alias) now carry their keyword's span instead of a dummy |
+
+### 10.2 Body Owner Context Threading Details
+
+**Previously** (Stage 3.66): The resolver set `current_self_kind` when
+resolving Trait/Impl **item** paths (supertraits, self_ty), but body
+resolution happened in a separate loop without owner context. So
+`fn bar(x: Self) {}` inside an impl always got `HirSelfKind::Impl`
+(which happened to be correct for impls), but `fn bar(x: Self) {}`
+inside a trait would also get `HirSelfKind::Impl` (wrong — should be
+`HirSelfKind::Trait`).
+
+**Now** (Stage 3.67):
+- `resolve_all_paths` builds a `HashMap<DefId, HirSelfKind>` mapping
+  trait/impl owner DefIds to their `HirSelfKind` (Trait or Impl)
+- When iterating bodies, it looks up `body.hir_id.owner` in the map
+  and sets `current_self_kind` before calling `resolve_body`
+- `resolve_path` now produces accurate `HirSelfKind` at both owner
+  AND body levels
+
+### 10.3 `&mut Rodeo` → `&Rodeo` Details
+
+**Previously**: `resolve_crate` took `&mut Rodeo` to pre-intern keyword
+strings ("Self", "self", "crate", "super") that the parser looks up via
+`interner.get()` but the lexer never interned (because keyword tokens
+are returned as `TokenKind::Kw*` without interning the string).
+
+**Now** (Stage 3.67):
+- The lexer now interns keyword strings at tokenization time
+  (`self.interner.get_or_intern(text)` before returning `Token { kind: kw, span }`)
+- `resolve_crate` signature changed from `&mut Rodeo` to `&Rodeo`
+- All callers updated (driver.rs + 4 test files)
+- The resolver is now a pure read-only consumer of the interner
+
+### 10.4 `Span::DUMMY` Fix Details
+
+**Previously**: 11 occurrences of `Span::DUMMY` in `parser.rs` for the
+`span` field of top-level declaration structs (`ConstDecl`, `StaticDecl`,
+`StructDecl`, `EnumDecl`, `ImplDecl`, `TypeAliasDecl`). These spans were
+placeholder values that didn't point to any source location, making
+error messages less useful.
+
+**Now** (Stage 3.67):
+- Each `parse_*` function captures `let kw_span = self.current_span()`
+  before `self.bump()` (which consumes the keyword token)
+- The struct constructor uses `span: kw_span` instead of `span: Span::DUMMY`
+- All 11 placeholders replaced with the keyword's actual span
+
+### 10.5 Stage 3.67 Verification
+
+- `cargo test`: **983 passed, 0 failed, 2 ignored** (unchanged — pure refactoring)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 audit tests pass
+
+### 10.6 Stage 3.67 Remaining P2/P3 Items (Deferred to Stage 4+)
+
+| Priority | Stage | Item | Reason for deferral |
+|----------|-------|------|---------------------|
+| P2 | 0 | AST enum naming standardization (Expr/Ty/Pat direct vs ItemKind wrapper) | Larger refactor; defer to dedicated cleanup round |
+| P2 | 1 | `HirParam` duplication between `HirFnSig.inputs` and `Body.params` | Touches multiple downstream modules (MIR lower, typeck) |
+| P2 | 1 | Visibility checking (Stage 1.3 Phase E1) | Feature work; depends on `use` resolution (done in Stage 3.64) |
+| P2 | 1 | Prelude injection (Stage 1.3 Phase E3) | Placeholder for Stage 5 std crate |
+
+### 10.7 Stage 3.67 Verdict
+
+✅ **PASS** — 3 P2 cleanup items completed. 983 tests pass (unchanged —
+pure refactoring). 0 clippy warnings. fmt clean. §16 compliance maintained.
+
+The body owner context threading completes the `HirSelfKind` work —
+`Self` resolution is now accurate at both owner and body levels. The
+`&mut Rodeo` → `&Rodeo` change makes the resolver a pure read-only
+consumer. The `Span::DUMMY` fix improves error reporting for top-level
+declarations.
+
+**Only 4 P2 items remain** (AST enum naming, HirParam dedup, visibility
+checking, prelude injection) — all are feature work or larger refactors
+appropriate for Stage 4. Stage 3 is fully COMPLETE.
+
+---
+
+**Stage 3.67 completed**: 2026-07-22
+**Process version**: v3.15
+**Package**: `landin-stage0-v0.8.11-stage3.67-p2-cleanup-r35`
