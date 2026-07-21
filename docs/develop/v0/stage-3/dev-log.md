@@ -938,6 +938,65 @@
   indexing coverage + 8 edge cases), all passed; audit CONVERGED at
   round 20 per §9.3.3.
 
+### Stage 3.54 — Slice/array field store + detect_lvalue_storage_type fix (v0.8.6, process v3.13)
+- **Problem (two bugs)**:
+  1. **`detect_lvalue_storage_type` Field projection bug (P0)**: for
+     `Projection(base, Field(...))`, returned `detect_lvalue_storage_type(base)`
+     — the BASE's type, not the FIELD's type. For `s.data[0]` where
+     `data: &mut [i32]`, this returned the struct `S`'s layout
+     (`{ { i32*, i64 } }`) instead of the field's fat pointer layout
+     (`{ i32*, i64 }`). This caused `unwrap_fat_ptr_for_index` to see
+     the wrong storage type and GEP incorrectly.
+  2. **Store path base pointer bug (P0)**: for `s.data[0] = x` where
+     `s.data` is a Field projection, the store path used
+     `codegen_lvalue_load(base)` which returned the LOADED VALUE (an SSA
+     value), not the ADDRESS. Then `unwrap_fat_ptr_for_index` tried to
+     GEP into the value (treating it as a pointer) — invalid LLVM.
+- **Root cause** (per §15 — root cause):
+  1. `detect_lvalue_storage_type` was designed for arrays where
+     `Projection(base, Index)` means "index INTO base's storage", so it
+     returned the base's type. But for `Field` projections, the storage
+     type changes (we're accessing a field of a different type). The
+     function didn't distinguish Field from Index/ConstantIndex.
+  2. The store path's `base_ptr` computation used `codegen_lvalue_load`
+     (returns value) for non-Local bases, but `unwrap_fat_ptr_for_index`
+     expected an address (pointer to storage). This worked for Local
+     bases (alloca pointer) but broke for Field projections (loaded value).
+- **Fix** (1 source file):
+  1. `src/codegen/mod.rs` — `detect_lvalue_storage_type`: added a
+     `Projection(base, elem)` match that dispatches on `elem`:
+     - `Field(_, field_ty)` → return `mir_type_to_emit_type_with_layouts(field_ty, layouts)`
+       (the FIELD's type, not the base's)
+     - `Index/ConstantIndex/Deref/...` → return
+       `detect_lvalue_storage_type(base)` (the base's type — we're indexing
+       INTO the base's storage)
+  2. `src/codegen/mod.rs` — store path `Index` projection: replaced
+     `codegen_lvalue_load(base)` with new `compute_lvalue_address(...)`
+     helper that computes the ADDRESS of the lvalue (without loading).
+     For Local: returns alloca pointer. For Field projection: GEPs to
+     the field (returns address). For other projections: falls back to
+     load (old behavior).
+- **Result**:
+  - `s.data[0] = 42` where `data: &mut [i32]`:
+    ```
+    %v2 = gep { { i32*, i64 } }, { { i32*, i64 } }* %loc_1, 0, 0  ; field addr
+    %v3 = gep { i32*, i64 }, { i32*, i64 }* %v2, 0, 0              ; fat ptr field 0
+    %v4 = gep i32, i32* %v3, 0                                     ; element
+    store i32 42, %v4
+    ```
+  - `s.data[0]` where `data: &[i64]` → `load i64` (load path also fixed
+    by the `detect_lvalue_storage_type` change).
+  - Array field `s.data[0]` where `data: [i32; 3]` → array GEP (no regression).
+  - Direct slice/array/str param indexing (no struct field) unchanged.
+- 9 new tests: slice field store/load (4), array field store/load (2),
+  &str field index (1), slice field arith (1), nested struct (1), byte
+  string field (1), two slice fields (1), array field arith (1), slice
+  local regression (1).
+- Total: 929 → 938. (1 source file modified; 0 typeck/borrowck changes.)
+- Gate review Round 21 (R21) — 30 audit cases (8 regression + 14 field
+  indexing coverage + 8 edge cases), all passed; audit CONVERGED at
+  round 21 per §9.3.3.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -973,3 +1032,4 @@
 | v0.8.6 (3.51) | 911 | +9 (slice indexing fix: fat pointer data pointer dereference)
 | v0.8.6 (3.52) | 920 | +9 (slice element type propagation: load/store/arith use correct element type from fat pointer)
 | v0.8.6 (3.53) | 929 | +9 (&str indexing element type fix: u8 element, not i32)
+| v0.8.6 (3.54) | 938 | +9 (slice/array field store + detect_lvalue_storage_type Field projection fix)

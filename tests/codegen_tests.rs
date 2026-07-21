@@ -3191,3 +3191,142 @@ fn codegen_byte_string_index() {
         ll
     );
 }
+
+// ============================================================================
+// Stage 3.54 — Slice/array field store + detect_lvalue_storage_type fix
+// ============================================================================
+
+#[test]
+fn codegen_slice_field_store_correct() {
+    // s.data[0] = 42 where data: &mut [i32] — should GEP to field, then
+    // GEP to fat pointer field 0 (data ptr), then GEP to element, then store.
+    // Was (Stage 3.53 latent): detect_lvalue_storage_type returned the struct
+    // type instead of the field type, causing wrong GEP.
+    let ll = gen_ll("struct S { data: &mut [i32] } fn f(s: S) { s.data[0] = 42; }");
+    // Should have: GEP to struct field, GEP to fat ptr field 0, GEP to element
+    assert!(
+        ll.contains("getelementptr inbounds { i32*, i64 }, { i32*, i64 }*"),
+        "expected GEP to fat pointer field 0 in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("getelementptr inbounds i32, i32*"),
+        "expected GEP to element via data pointer in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("store i32 42"),
+        "expected store i32 42 to element in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_field_load_correct() {
+    // s.data[0] where data: &[i64] — should load fat pointer from field,
+    // then dereference data pointer.
+    let ll = gen_ll("struct S { data: &[i64] } fn f(s: S) -> i64 { s.data[0] }");
+    assert!(
+        ll.contains("load i64"),
+        "expected load i64 for &[i64] field element in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("getelementptr inbounds i64, i64*"),
+        "expected GEP to i64 element via data pointer in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_array_field_store_correct() {
+    // s.data[0] = 42 where data: [i32; 3] — array field store.
+    let ll = gen_ll("struct S { data: [i32; 3] } fn f(s: S) { s.data[0] = 42; }");
+    assert!(
+        ll.contains("getelementptr inbounds [3 x i32], [3 x i32]*"),
+        "expected array GEP for [i32; 3] field store in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("store i32 42"),
+        "expected store i32 42 to array element in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_array_field_load_correct() {
+    // s.data[1] where data: [i64; 4] — array field load.
+    let ll = gen_ll("struct S { data: [i64; 4] } fn f(s: S) -> i64 { s.data[1] }");
+    assert!(
+        ll.contains("getelementptr inbounds [4 x i64], [4 x i64]*"),
+        "expected array GEP for [i64; 4] field load in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("load i64"),
+        "expected load i64 for array field element in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_field_index() {
+    // s.text[0] where text: &str — index into &str field.
+    let ll = gen_ll("struct S { text: &str } fn f(s: S) -> i32 { s.text[0] }");
+    assert!(
+        ll.contains("load i8"),
+        "expected load i8 for &str field element in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("getelementptr inbounds i8, i8*"),
+        "expected GEP to i8 element via data pointer in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_field_arith() {
+    // s.data[0] + s.data[1] where data: &[i64]
+    let ll = gen_ll("struct S { data: &[i64] } fn f(s: S) -> i64 { s.data[0] + s.data[1] }");
+    assert!(
+        ll.contains("add nsw i64"),
+        "expected add nsw i64 for &[i64] field arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_nested_struct_slice_field() {
+    // Nested struct: Outer.inner.data[0] where data: &[i32]
+    let ll = gen_ll("struct Inner { data: &[i32] } struct Outer { inner: Inner } fn f(o: Outer) -> i32 { o.inner.data[0] }");
+    assert!(
+        ll.contains("load i32"),
+        "expected load i32 for nested struct slice field in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_field_store_i64() {
+    // s.data[0] = 42 where data: &mut [i64] — store i64.
+    let ll = gen_ll("struct S { data: &mut [i64] } fn f(s: S) { s.data[0] = 42; }");
+    assert!(
+        ll.contains("store i64 42"),
+        "expected store i64 42 for &mut [i64] field element in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_local_regression() {
+    // Regression: direct slice param indexing (no struct field) should
+    // still work after the detect_lvalue_storage_type change.
+    let ll = gen_ll("fn f(s: &[i32]) -> i32 { s[0] }");
+    assert!(
+        ll.contains("load i32"),
+        "expected load i32 for direct &[i32] param (regression) in:\n{}",
+        ll
+    );
+}

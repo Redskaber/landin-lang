@@ -272,7 +272,20 @@ fn detect_lvalue_storage_type(
             .get(id.0 as usize)
             .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
             .unwrap_or(EmitType::I32),
-        LvalueKind::Projection(base, _) => detect_lvalue_storage_type(mir, base, layouts),
+        // Stage 3.54: for Field projection, return the FIELD's type (not the
+        // base's type). Was: returned detect_lvalue_storage_type(base), which
+        // gave the struct type instead of the field type — causing
+        // unwrap_fat_ptr_for_index to see the struct layout instead of the
+        // fat pointer layout when indexing a struct field that contains a
+        // slice/array.
+        LvalueKind::Projection(base, elem) => match elem {
+            ProjectionElem::Field(_, field_ty) => {
+                mir_type_to_emit_type_with_layouts(field_ty, layouts)
+            }
+            // For Index/ConstantIndex/Deref, the storage type is the base's
+            // storage type (we're indexing INTO the base's storage).
+            _ => detect_lvalue_storage_type(mir, base, layouts),
+        },
         LvalueKind::Static(_) => EmitType::I32,
     }
 }
@@ -331,14 +344,21 @@ fn codegen_statement(
                             emitter.emit_store(&ty, &val, &field_ptr);
                         }
                         ProjectionElem::Index(idx) => {
-                            let base_ptr = if let LvalueKind::Local(id) = &base.kind {
-                                emitter
-                                    .get_local_ptr(id.0)
-                                    .cloned()
-                                    .unwrap_or_else(|| "0".to_string())
-                            } else {
-                                codegen_lvalue_load(emitter, mir, base, interner, layouts)
-                            };
+                            // Stage 3.54: for the store path, when the base
+                            // is a projection (e.g., `s.data` where `data` is
+                            // a field), we need the ADDRESS of the base, not
+                            // its loaded value. Was: `codegen_lvalue_load`
+                            // returned the loaded fat pointer value, then
+                            // `unwrap_fat_ptr_for_index` tried to GEP into
+                            // the value (treating it as a pointer) — invalid.
+                            //
+                            // Fix: if the base is a Local, use its alloca
+                            // pointer (address). If the base is a Projection,
+                            // compute the address by GEP-ing to the field
+                            // (without loading). This matches the load path's
+                            // behavior where `base_ptr` is always an address.
+                            let base_ptr =
+                                compute_lvalue_address(emitter, mir, base, interner, layouts);
                             let array_ty = detect_lvalue_storage_type(mir, base, layouts);
                             let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
                                 v
@@ -754,6 +774,45 @@ fn detect_lvalue_type(
             _ => EmitType::I32,
         },
         LvalueKind::Static(_) => EmitType::I32,
+    }
+}
+
+/// Stage 3.54: Compute the ADDRESS of an lvalue (without loading its value).
+/// Used by the store path's Index projection to get a pointer to the base
+/// storage (e.g., the address of a struct field containing a fat pointer),
+/// so that `unwrap_fat_ptr_for_index` can GEP into the storage correctly.
+///
+/// For a Local: returns the alloca pointer.
+/// For a Projection(Local, Field): GEPs to the field, returns the field's address.
+/// For deeper projections: recurses (best-effort — complex cases may fall back
+/// to loading, which is the old behavior).
+fn compute_lvalue_address(
+    emitter: &mut dyn Emitter,
+    mir: &MirBody,
+    lv: &Lvalue,
+    _interner: &Rodeo,
+    layouts: &crate::mir::body::AdtLayouts,
+) -> String {
+    match &lv.kind {
+        LvalueKind::Local(id) => emitter
+            .get_local_ptr(id.0)
+            .cloned()
+            .unwrap_or_else(|| "0".to_string()),
+        LvalueKind::Projection(base, elem) => match elem {
+            ProjectionElem::Field(field_id, _) => {
+                let base_addr = compute_lvalue_address(emitter, mir, base, _interner, layouts);
+                let struct_ty = detect_lvalue_storage_type(mir, base, layouts);
+                emitter.emit_gep_field(&base_addr, &struct_ty, field_id.0)
+            }
+            // For other projection types, fall back to the load path
+            // (loads the value — old behavior, may not work for fat pointers
+            // in store position, but preserves existing behavior for non-fat-ptr cases).
+            _ => {
+                let ptr_ty = detect_lvalue_type(mir, lv, layouts);
+                codegen_lvalue_load_typed(emitter, mir, lv, ptr_ty, _interner, layouts)
+            }
+        },
+        LvalueKind::Static(_) => "0".to_string(),
     }
 }
 
