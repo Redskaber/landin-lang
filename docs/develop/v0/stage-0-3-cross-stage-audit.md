@@ -679,3 +679,113 @@ Stage 4 priority.
 **Stage 3.65 completed**: 2026-07-22
 **Process version**: v3.15
 **Package**: `landin-stage0-v0.8.9-stage3.65-p2-arch-fixes-r33`
+
+---
+
+## 9. Stage 3.66 Update — Lvalue→Place Rename + Resolver Owner Context (2026-07-22)
+
+> Continuation of the §21 cross-stage audit follow-up. This round
+> completes the largest remaining P2 item: the `Lvalue` → `Place` rename
+> (167+ references across 7+ files). Also threads owner context through
+> the resolver for accurate `HirSelfKind` (Trait vs Impl).
+
+### 9.1 Stage 3.66 Fixes Applied
+
+| # | Priority | Stage | Fix | Impact |
+|---|----------|-------|-----|--------|
+| 1 | P2 | 2 | `Lvalue` → `Place` + `LvalueKind` → `PlaceKind` rename (167+75+79+123 = hundreds of refs across 7+ files); file `src/mir/lvalue.rs` → `src/mir/place.rs` | **Aligns implementation with design doc** (06-mir.md §4) + eliminates vocabulary mismatch with borrowck (`PlacePath`/`PlaceRoot`) + matches modern rustc (post-RFC-1211) |
+| 2 | P2 | 1 | Resolver owner context threading — new `current_self_kind: Option<HirSelfKind>` field; set to `Trait`/`Impl` when resolving trait/impl item paths; `resolve_path` uses it for `Self` | **Accurate `HirSelfKind`** at owner level (trait supertraits, impl self_ty); body-level still defaults to `Impl` (Stage 4) |
+
+### 9.2 `Lvalue` → `Place` Rename Details
+
+**Previously**: The MIR type for addressable memory locations was named
+`Lvalue` (legacy rustc name from pre-RFC-1211 era). The design doc
+(06-mir.md §4) calls it `Place`. The borrowck internals already used
+`PlacePath` and `PlaceRoot` — so the codebase had mixed vocabulary.
+
+**Now** (Stage 3.66):
+- Type: `mir::lvalue::Lvalue` → `mir::place::Place`
+- Enum: `mir::lvalue::LvalueKind` → `mir::place::PlaceKind`
+- File: `src/mir/lvalue.rs` → `src/mir/place.rs`
+- Module: `pub mod lvalue` → `pub mod place` in `src/mir/mod.rs`
+- All module paths: `crate::mir::lvalue::` → `crate::mir::place::`
+- All function names (examples):
+  - `lower_expr_to_lvalue` → `lower_expr_to_place`
+  - `detect_lvalue_type` → `detect_place_type`
+  - `detect_lvalue_storage_type` → `detect_place_storage_type`
+  - `compute_lvalue_address` → `compute_place_address`
+  - `codegen_lvalue_load` → `codegen_place_load`
+  - `codegen_lvalue_load_typed` → `codegen_place_load_typed`
+  - `resolve_lvalue_for_writeback` → `resolve_place_for_writeback`
+  - `infer_lvalue` → `infer_place`
+  - `lvalue_ty` → `place_ty`
+  - `lvalue_root_reads` → `place_root_reads`
+- All variable names: `lhs_lvalue` → `lhs_place`, etc.
+- All doc comments: "lvalue" → "place" (where referring to the concept)
+
+**Scope**: 167 `Lvalue` + 75 `LvalueKind` + 79 `lvalue` (lowercase) + 123
+`Lvalue::` references = **hundreds of replacements across 7+ source files
++ test files + example files**.
+
+### 9.3 Resolver Owner Context Threading Details
+
+**Previously** (Stage 3.65): `Res::SelfTy(HirSelfKind)` was added, but
+the resolver always defaulted to `HirSelfKind::Impl` — it didn't track
+whether `Self` appeared inside a trait declaration or an impl block.
+
+**Now** (Stage 3.66):
+- New `current_self_kind: Option<HirSelfKind>` field on `Resolver`
+- Set to `Some(HirSelfKind::Trait)` when resolving `HirItem::Trait` paths
+  (supertraits, associated type bounds)
+- Set to `Some(HirSelfKind::Impl)` when resolving `HirItem::Impl` paths
+  (self_ty, of_trait)
+- Reset to `None` after each item
+- `resolve_path` uses `current_self_kind.unwrap_or(HirSelfKind::Impl)`
+  when resolving the `Self` keyword
+
+**Limitation**: Body-level `Self` resolution (e.g., `fn bar(x: Self) {}`
+inside an impl) still defaults to `Impl` because body resolution happens
+in a separate loop that doesn't carry owner context. Threading owner
+context into body resolution is Stage 4 work.
+
+### 9.4 Stage 3.66 Verification
+
+- `cargo test`: **983 passed, 0 failed, 2 ignored** (unchanged — pure refactoring)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 audit tests pass
+
+### 9.5 Stage 3.66 Remaining P2/P3 Items (Deferred to Stage 4+)
+
+| Priority | Stage | Item | Reason for deferral |
+|----------|-------|------|---------------------|
+| P2 | 0 | `Span::DUMMY` placeholders fix (11 occurrences in parser.rs) | Touches parser internals; needs careful span threading |
+| P2 | 0 | AST enum naming standardization (Expr/Ty/Pat direct vs ItemKind wrapper) | Larger refactor; defer to dedicated cleanup round |
+| P2 | 1 | `HirParam` duplication between `HirFnSig.inputs` and `Body.params` | Touches multiple downstream modules (MIR lower, typeck) |
+| P2 | 1 | Visibility checking (Stage 1.3 Phase E1) | Depends on `use` resolution (done in Stage 3.64); can implement in Stage 4 |
+| P2 | 1 | Prelude injection (Stage 1.3 Phase E3) | Placeholder for Stage 5 std crate |
+| P2 | 1 | Thread owner context into body resolution for body-level `HirSelfKind` | Requires body→owner mapping; Stage 4 |
+| P2 | 1 | `&mut Rodeo` smell in `resolve_crate` | Cross-stage concern; parser should intern keywords itself |
+
+### 9.6 Stage 3.66 Verdict
+
+✅ **PASS** — The largest remaining P2 item (`Lvalue` → `Place` rename)
+is complete. 983 tests pass (unchanged — pure refactoring). 0 clippy
+warnings. fmt clean. §16 compliance maintained.
+
+The `Lvalue` → `Place` rename eliminates the last major vocabulary
+mismatch between the MIR implementation and the design doc / borrowck
+internals. The resolver owner context threading makes `HirSelfKind`
+accurate at the owner level (trait supertraits, impl self_ty).
+
+**All major P2 naming/architectural items from the §21 audit are now
+closed.** The remaining P2 items are feature work (visibility checking,
+prelude injection, HirParam dedup) or minor cleanup (Span::DUMMY, AST
+enum naming). Stage 3 is fully COMPLETE and ready for Stage 4.
+
+---
+
+**Stage 3.66 completed**: 2026-07-22
+**Process version**: v3.15
+**Package**: `landin-stage0-v0.8.10-stage3.66-lvalue-to-place-r34`

@@ -54,7 +54,7 @@ impl MoveTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::lvalue::LocalId;
+    use crate::mir::place::LocalId;
 
     fn place(n: u32) -> PlacePath {
         PlacePath::local(LocalId(n))

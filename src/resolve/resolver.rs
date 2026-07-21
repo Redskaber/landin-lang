@@ -22,6 +22,11 @@ pub struct Resolver {
     /// Scope stack for local variable resolution (Stage 1.4).
     /// `None` when not inside a body (e.g., during module tree construction).
     scopes: Option<ScopeStack>,
+    /// Stage 3.66: Current owner context for `Self` resolution.
+    /// `None` at crate level; `Some(Trait)` inside a trait declaration;
+    /// `Some(Impl)` inside an impl block. Used by `resolve_path` to produce
+    /// accurate `Res::SelfTy(HirSelfKind)`.
+    current_self_kind: Option<crate::hir::HirSelfKind>,
     /// Errors encountered (non-fatal).
     errors: Vec<ResolveError>,
 }
@@ -32,6 +37,7 @@ impl Resolver {
             module_tree: ModuleNode::new(),
             def_kinds: HashMap::new(),
             scopes: None,
+            current_self_kind: None,
             errors: Vec::new(),
         }
     }
@@ -418,19 +424,27 @@ impl Resolver {
                 }
             }
             HirItem::Trait(t) => {
+                // Stage 3.66: set owner context so `Self` in supertrait bounds
+                // resolves to `HirSelfKind::Trait`.
+                self.current_self_kind = Some(crate::hir::HirSelfKind::Trait);
                 self.resolve_generics_paths(&mut t.generics, interner);
                 for bound in &mut t.supertraits {
                     if let HirTypeBound::Trait(tb) = bound {
                         self.resolve_hir_path(&mut tb.path, interner);
                     }
                 }
+                self.current_self_kind = None;
             }
             HirItem::Impl(i) => {
+                // Stage 3.66: set owner context so `Self` in self_ty / of_trait
+                // resolves to `HirSelfKind::Impl`.
+                self.current_self_kind = Some(crate::hir::HirSelfKind::Impl);
                 self.resolve_generics_paths(&mut i.generics, interner);
                 self.resolve_ty_paths(&mut i.self_ty, interner);
                 if let Some(trait_path) = &mut i.of_trait {
                     self.resolve_hir_path(trait_path, interner);
                 }
+                self.current_self_kind = None;
             }
             HirItem::TypeAlias(t) => {
                 self.resolve_generics_paths(&mut t.generics, interner);
@@ -530,16 +544,25 @@ impl Resolver {
 
             // Self type keyword.
             // Stage 3.65: now carries HirSelfKind to distinguish trait-Self
-            // from impl-Self. The resolver doesn't yet track owner context
-            // (trait vs impl) — defaults to Impl. A follow-up round can
-            // thread the owner kind through to make this precise.
+            // from impl-Self.
+            // Stage 3.66: uses `current_self_kind` context (set by
+            // `resolve_item_paths` when entering Trait/Impl items) to
+            // produce the accurate variant. Defaults to `Impl` when no
+            // owner context is active (e.g., body-level resolution —
+            // threading owner context into body resolution is Stage 4).
             if let Some(self_spur) = interner.get("Self") {
                 if seg.ident.name == self_spur {
-                    return Res::SelfTy(crate::hir::HirSelfKind::Impl);
+                    return Res::SelfTy(
+                        self.current_self_kind
+                            .unwrap_or(crate::hir::HirSelfKind::Impl),
+                    );
                 }
             }
             if name == "Self" {
-                return Res::SelfTy(crate::hir::HirSelfKind::Impl);
+                return Res::SelfTy(
+                    self.current_self_kind
+                        .unwrap_or(crate::hir::HirSelfKind::Impl),
+                );
             }
 
             // Value namespace (fn, const, static).

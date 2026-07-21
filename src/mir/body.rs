@@ -10,7 +10,7 @@
 //! HIR** — closing the L-PIPE-1 pipeline-coupling debt carried since
 //! Stage 3.30.
 
-use crate::mir::lvalue::*;
+use crate::mir::place::*;
 use crate::mir::ty::*;
 use crate::session::Span;
 use std::collections::HashMap;
@@ -139,7 +139,7 @@ pub struct BasicBlock {
     pub terminator: Terminator,
 }
 
-/// A MIR statement: `Lvalue = Rvalue`.
+/// A MIR statement: `Place = Rvalue`.
 #[derive(Debug, Clone)]
 pub struct Statement {
     pub kind: StatementKind,
@@ -149,7 +149,7 @@ pub struct Statement {
 #[derive(Debug, Clone)]
 pub enum StatementKind {
     /// `place = rvalue`
-    Assign(Box<(Lvalue, Rvalue)>),
+    Assign(Box<(Place, Rvalue)>),
     /// No-op (placeholder, for debugging).
     Nop,
     /// Mark a local as live — it's now safe to use.
@@ -163,7 +163,7 @@ pub enum StatementKind {
     /// Run the destructor for the value at `place`. Used for explicit
     /// `drop(x)` calls (not for scope-end cleanup, which uses StorageDead).
     /// Distinct from Terminator::Drop (which is for control-flow drops).
-    Deinit(Lvalue),
+    Deinit(Place),
 }
 
 /// A MIR terminator: the last instruction in a basic block.
@@ -184,7 +184,7 @@ pub enum Terminator {
     Unreachable,
     /// Drop a value (run its destructor).
     Drop {
-        place: Lvalue,
+        place: Place,
         target: BasicBlockId,
         unwind: Option<BasicBlockId>,
     },
@@ -192,7 +192,7 @@ pub enum Terminator {
     Call {
         func: Operand,
         args: Vec<Operand>,
-        destination: Lvalue,
+        destination: Place,
         target: Option<BasicBlockId>,
     },
     /// Assert a boolean condition (for overflow checks, Stage 3+).
@@ -281,7 +281,7 @@ mod tests {
         // Add: local = 42
         body.block_mut(bb).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(local, Span::DUMMY),
+                Place::local(local, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
                     val: ConstVal::Int(42),
@@ -320,7 +320,7 @@ mod tests {
             Span::DUMMY,
         );
         body.block_mut(bb0).terminator = Terminator::SwitchInt {
-            discr: Operand::Copy(Lvalue::local(discr_local, Span::DUMMY)),
+            discr: Operand::Copy(Place::local(discr_local, Span::DUMMY)),
             targets: vec![(ConstVal::Int(1), bb1)],
             otherwise: bb2,
         };

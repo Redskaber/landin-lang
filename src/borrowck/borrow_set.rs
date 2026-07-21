@@ -13,11 +13,11 @@
 
 use crate::borrowck::error::BorrowError;
 use crate::borrowck::PlacePath;
-use crate::mir::lvalue::BorrowKind;
+use crate::mir::place::BorrowKind;
 use crate::session::Span;
 
 // Stage 3.63 (cross-stage naming standardization): `BorrowKind` is now
-// imported from `crate::mir::lvalue` as the single source of truth.
+// imported from `crate::mir::place` as the single source of truth.
 // The former duplicate `borrowck::borrow_set::BorrowKind` (with its
 // `BkKind` alias in `borrowck::mod`) has been removed — DRY restored.
 
@@ -33,7 +33,7 @@ pub struct Borrow {
     /// The local that holds the borrow reference (e.g., `r` in `r = &x`).
     /// Used by NLL to kill the borrow when `ref_local` is last used.
     /// `None` for borrows where the LHS wasn't a simple local (rare).
-    pub ref_local: Option<crate::mir::lvalue::LocalId>,
+    pub ref_local: Option<crate::mir::place::LocalId>,
 }
 
 /// The set of active borrows. Stores borrows in a flat `Vec` so we can
@@ -81,7 +81,7 @@ impl BorrowSet {
         place: PlacePath,
         kind: BorrowKind,
         span: Span,
-        ref_local: Option<crate::mir::lvalue::LocalId>,
+        ref_local: Option<crate::mir::place::LocalId>,
     ) -> Result<(), BorrowError> {
         if kind != BorrowKind::Raw {
             for b in self.borrows.iter() {
@@ -149,7 +149,7 @@ impl BorrowSet {
 
     /// Remove all borrows whose `ref_local` matches the given local.
     /// Called by NLL when the borrow reference's last use is reached.
-    pub fn kill_borrows_of_local(&mut self, local: crate::mir::lvalue::LocalId) {
+    pub fn kill_borrows_of_local(&mut self, local: crate::mir::place::LocalId) {
         self.borrows.retain(|b| b.ref_local != Some(local));
     }
 
@@ -166,8 +166,8 @@ impl BorrowSet {
     /// to incorrectly succeed.
     pub fn transfer_borrow_ref(
         &mut self,
-        from: crate::mir::lvalue::LocalId,
-        to: crate::mir::lvalue::LocalId,
+        from: crate::mir::place::LocalId,
+        to: crate::mir::place::LocalId,
     ) {
         for b in self.borrows.iter_mut() {
             if b.ref_local == Some(from) {
@@ -186,7 +186,7 @@ impl BorrowSet {
     /// Remove all borrows whose place is *rooted* at the given local
     /// (i.e., the borrow is on `local` itself or any projection of it).
     /// Used when a local goes out of scope.
-    pub fn clear_borrows_on_local(&mut self, local: crate::mir::lvalue::LocalId) {
+    pub fn clear_borrows_on_local(&mut self, local: crate::mir::place::LocalId) {
         self.borrows.retain(|b| match b.place.root {
             crate::borrowck::PlaceRoot::Local(l) => l != local,
             _ => true,
@@ -218,7 +218,7 @@ impl BorrowSet {
 mod tests {
     use super::*;
     use crate::borrowck::{PlaceRoot, ProjElem};
-    use crate::mir::lvalue::{FieldId, LocalId};
+    use crate::mir::place::{FieldId, LocalId};
 
     fn local_place(n: u32) -> PlacePath {
         PlacePath::local(LocalId(n))

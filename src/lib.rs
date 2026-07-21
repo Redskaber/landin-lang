@@ -13,6 +13,9 @@
 //!   Stage 3.65 (v0.8.9): P2 architectural fixes
 //!     (unsafe impl/trait AST+HIR+parser + Res::SelfTy HirSelfKind discrimination +
 //!      lower_body aliases + mir_type_to_emit_type documentation).
+//!   Stage 3.66 (v0.8.10): Lvalue → Place rename (167+ refs, aligns with design
+//!     doc 06-mir.md §4 + borrowck vocabulary) + resolver owner context threading
+//!     for accurate HirSelfKind (Trait vs Impl).
 //!   Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
 //!   deferred to Stage 4+.
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.

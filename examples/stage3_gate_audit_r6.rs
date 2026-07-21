@@ -190,7 +190,7 @@ fn main() {
             name: "m07_local_assignment_regression",
             src: "fn f() -> i32 { let mut x = 0; x = 42; x }",
             // Regression: simple local assignment should still work after
-            // the L-MUT-1 fix changed the Assign lower to use lower_expr_to_lvalue.
+            // the L-MUT-1 fix changed the Assign lower to use lower_expr_to_place.
             expect_all: &["store i32 42"],
             expect_none: &[],
             desc: "Stage 3.34 regression: local assignment still works",

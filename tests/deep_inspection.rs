@@ -15,7 +15,7 @@
 
 use landin_compiler::driver::compile;
 use landin_compiler::mir::body::{AssertMessage, StatementKind, Terminator};
-use landin_compiler::mir::lvalue::{BinOp, LocalId};
+use landin_compiler::mir::place::{BinOp, LocalId};
 use landin_compiler::mir::ty::TyKind;
 
 // =====================================================================

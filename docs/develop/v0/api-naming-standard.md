@@ -545,3 +545,39 @@ with the pre-existing `ast::SelfKind` enum (method receiver kinds).
 `test_safe_impl_and_trait_have_is_unsafe_false`).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.3 (Stage 3.66, 2026-07-22)
+
+The big rename round. Completes the largest remaining P2 item from the
+§21 audit: `Lvalue` → `Place` (167+ references across 7+ files). Also
+threads owner context through the resolver for accurate `HirSelfKind`.
+
+**Fixes applied in this round**:
+1. `src/mir/lvalue.rs` → `src/mir/place.rs` (file renamed)
+2. `src/mir/mod.rs`: `pub mod lvalue` → `pub mod place`; `pub use lvalue::{...}` → `pub use place::{...}`
+3. Type rename: `Lvalue` → `Place` (167 refs)
+4. Enum rename: `LvalueKind` → `PlaceKind` (75 refs)
+5. All `crate::mir::lvalue::` module paths → `crate::mir::place::`
+6. All function names renamed (examples):
+   - `lower_expr_to_lvalue` → `lower_expr_to_place`
+   - `detect_lvalue_type` → `detect_place_type`
+   - `detect_lvalue_storage_type` → `detect_place_storage_type`
+   - `compute_lvalue_address` → `compute_place_address`
+   - `codegen_lvalue_load` / `_typed` → `codegen_place_load` / `_typed`
+   - `resolve_lvalue_for_writeback` → `resolve_place_for_writeback`
+   - `infer_lvalue` → `infer_place`
+   - `lvalue_ty` → `place_ty`
+   - `lvalue_root_reads` → `place_root_reads`
+7. All variable names: `lhs_lvalue` → `lhs_place`, etc.
+8. All doc comments: "lvalue" → "place" (where referring to the concept)
+9. `src/resolve/resolver.rs`: new `current_self_kind: Option<HirSelfKind>`
+   field; set to `Trait`/`Impl` when resolving trait/impl item paths;
+   `resolve_path` uses it for `Self` resolution
+
+**Why this matters**: Aligns implementation with design doc (06-mir.md §4
+calls it `Place`), eliminates vocabulary mismatch with borrowck internals
+(`PlacePath`, `PlaceRoot`), and matches modern rustc naming (post-RFC-1211).
+
+**Test impact**: 0 (983/983 tests pass — pure refactoring, no test changes).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

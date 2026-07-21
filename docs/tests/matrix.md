@@ -56,8 +56,9 @@
 | 3.63 | Cross-stage naming standardization per §21 audit (9 P1 + 1 P2 fixes; pure refactoring) | 0 | ✅ |
 | 3.64 | P2 ergonomics fixes (6 Error trait impls, Emitter re-export, emit_output rename, orphaned doc cleanup) + use declaration resolution (Stage 1.3 Phase C — previously stub) | +5 | ✅ |
 | 3.65 | P2 architectural fixes: unsafe impl/trait AST+HIR+parser + Res::SelfTy HirSelfKind discrimination + lower_body aliases + mir_type_to_emit_type docs | +1 | ✅ |
+| 3.66 | Lvalue→Place rename (167+ refs across 7+ files) + resolver owner context threading for accurate HirSelfKind (Trait vs Impl) | 0 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R33 | Audit cases | 716+ cumulative | ✅ |
+| Gate audits R1-R34 | Audit cases | 716+ cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

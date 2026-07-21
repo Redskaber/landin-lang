@@ -294,7 +294,7 @@ fn main() {
         Case {
             name: "e05_struct_in_struct_field_access",
             // Nested struct field access (Stage 3.30 should handle via
-            // detect_lvalue_storage_type_with_hir recursion).
+            // detect_place_storage_type_with_hir recursion).
             src: "struct Inner { v: i32 } struct Outer { inner: Inner } fn f() -> i32 { let o = Outer { inner: Inner { v: 42 } }; o.inner.v }",
             expect_all: &["getelementptr inbounds { { i32 } }"],
             expect_none: &[],

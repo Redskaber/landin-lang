@@ -15,16 +15,16 @@ pub mod error;
 pub mod move_tracker;
 
 // Stage 3.63 (cross-stage naming standardization): `BorrowKind` is now
-// re-exported from `crate::mir::lvalue` (single source of truth). The
+// re-exported from `crate::mir::place` (single source of truth). The
 // former `BkKind` alias has been removed.
 pub use borrow_set::{Borrow, BorrowSet};
 pub use error::{BorrowError, BorrowErrorKind};
 pub use move_tracker::MoveTracker;
-// Re-export BorrowKind from mir::lvalue so callers can `use borrowck::BorrowKind`.
-pub use crate::mir::lvalue::BorrowKind;
+// Re-export BorrowKind from mir::place so callers can `use borrowck::BorrowKind`.
+pub use crate::mir::place::BorrowKind;
 
 use crate::mir::body::*;
-use crate::mir::lvalue::*;
+use crate::mir::place::*;
 use crate::mir::ty::Ty;
 use crate::session::Span;
 
@@ -41,7 +41,7 @@ pub struct BorrowChecker {
     /// (assigned at least once). Used to distinguish `let x = 1;` (init,
     /// allowed even for immutable locals) from `x = 2;` (reassignment,
     /// rejected for immutable locals).
-    initialized: std::collections::HashSet<crate::mir::lvalue::LocalId>,
+    initialized: std::collections::HashSet<crate::mir::place::LocalId>,
 }
 
 impl BorrowChecker {
@@ -131,7 +131,7 @@ impl BorrowChecker {
     ) {
         let current_point = (bb, stmt_idx);
         // Collect locals whose last use is at the current point.
-        let locals_to_kill: Vec<crate::mir::lvalue::LocalId> = last_use_map
+        let locals_to_kill: Vec<crate::mir::place::LocalId> = last_use_map
             .iter()
             .filter_map(|(local, last)| {
                 if *last == current_point {
@@ -159,7 +159,7 @@ impl BorrowChecker {
             // holds the result of the rvalue. For `r = &x`, this is `r`,
             // and we associate it with the borrow for NLL expiry.
             let lhs_local = match &place.kind {
-                LvalueKind::Local(id) => Some(*id),
+                PlaceKind::Local(id) => Some(*id),
                 _ => None,
             };
             self.check_rvalue(mir, rvalue, lhs_local, stmt.span);
@@ -201,13 +201,13 @@ impl BorrowChecker {
         &mut self,
         mir: &MirBody,
         rv: &Rvalue,
-        lhs_local: Option<crate::mir::lvalue::LocalId>,
+        lhs_local: Option<crate::mir::place::LocalId>,
         span: Span,
     ) {
         match rv {
             Rvalue::Ref(region, kind, place) => {
                 // Creating a borrow: record it.
-                // Stage 3.63: `kind` is already `mir::lvalue::BorrowKind` —
+                // Stage 3.63: `kind` is already `mir::place::BorrowKind` —
                 // the former manual conversion to a parallel `BkKind` enum
                 // has been eliminated (BorrowKind is now unified).
                 let borrowed_place = self.place_path(mir, place);
@@ -215,7 +215,7 @@ impl BorrowChecker {
                 // G7 fix (Stage 2.4f): `&mut x` requires x to be mutable.
                 // If x is an immutable local, emit an error.
                 if bk == BorrowKind::Mut {
-                    if let LvalueKind::Local(id) = &place.kind {
+                    if let PlaceKind::Local(id) = &place.kind {
                         let is_mutable =
                             mir.local(*id).mutability == crate::mir::ty::Mutability::Mutable;
                         if !is_mutable {
@@ -254,7 +254,7 @@ impl BorrowChecker {
                 // Without this transfer, NLL would track tmp's lifetime
                 // instead of r's, causing borrows to expire too early.
                 if let Operand::Move(lv) = op {
-                    if let LvalueKind::Local(ref_local_src) = lv.kind {
+                    if let PlaceKind::Local(ref_local_src) = lv.kind {
                         if let Some(lhs) = lhs_local {
                             self.borrows.transfer_borrow_ref(ref_local_src, lhs);
                         }
@@ -308,9 +308,9 @@ impl BorrowChecker {
                 // discriminant is always i32, which is Copy).
                 let is_field_projection = matches!(
                     &lv.kind,
-                    LvalueKind::Projection(_, ProjectionElem::Field(_, _))
+                    PlaceKind::Projection(_, ProjectionElem::Field(_, _))
                 );
-                let ty = self.lvalue_ty(mir, lv);
+                let ty = self.place_ty(mir, lv);
                 if !ty_is_copy(&ty) && !is_field_projection {
                     self.errors.push(BorrowError::not_copy(
                         format!(
@@ -343,7 +343,7 @@ impl BorrowChecker {
                 // to work without spurious "use of moved value" errors.
                 let is_field_projection = matches!(
                     &lv.kind,
-                    LvalueKind::Projection(_, ProjectionElem::Field(_, _))
+                    PlaceKind::Projection(_, ProjectionElem::Field(_, _))
                 );
                 if !is_field_projection {
                     self.moves.record_move(path);
@@ -353,7 +353,7 @@ impl BorrowChecker {
         }
     }
 
-    /// Look up the resolved type of an lvalue.
+    /// Look up the resolved type of a place.
     ///
     /// For `Local(id)`, reads from `mir.local_decls[id].ty` (which
     /// typeck has populated with the resolved type).
@@ -362,18 +362,18 @@ impl BorrowChecker {
     /// Ref/RawPtr, Field returns the field's Ty (stored in the
     /// ProjectionElem::Field payload), Index returns the array/slice
     /// element type.
-    fn lvalue_ty(&self, mir: &MirBody, lv: &Lvalue) -> Ty {
+    fn place_ty(&self, mir: &MirBody, lv: &Place) -> Ty {
         match &lv.kind {
-            LvalueKind::Local(id) => {
+            PlaceKind::Local(id) => {
                 if (id.0 as usize) < mir.local_decls.len() {
                     mir.local(*id).ty.clone()
                 } else {
                     Ty::new(crate::mir::ty::TyKind::Error, lv.span)
                 }
             }
-            LvalueKind::Static(_) => Ty::new(crate::mir::ty::TyKind::Error, lv.span),
-            LvalueKind::Projection(base, elem) => {
-                let base_ty = self.lvalue_ty(mir, base);
+            PlaceKind::Static(_) => Ty::new(crate::mir::ty::TyKind::Error, lv.span),
+            PlaceKind::Projection(base, elem) => {
+                let base_ty = self.place_ty(mir, base);
                 match elem {
                     ProjectionElem::Deref => match &base_ty.kind {
                         crate::mir::ty::TyKind::Ref(_, _, inner)
@@ -395,7 +395,7 @@ impl BorrowChecker {
 
     /// Check a write to a place: ensure it's not borrowed, and (G5 fix)
     /// ensure it's not a reassignment of an immutable local.
-    fn check_place_write(&mut self, mir: &MirBody, lv: &Lvalue, span: Span) {
+    fn check_place_write(&mut self, mir: &MirBody, lv: &Place, span: Span) {
         let path = self.place_path(mir, lv);
         // Writing to a place that is borrowed is an error
         if let Some(bk) = self.borrows.borrow_kind(&path) {
@@ -410,7 +410,7 @@ impl BorrowChecker {
         // If the LHS is a local that has already been initialized,
         // and the local is declared immutable, reject the assignment.
         // The first write (initialization) is always allowed.
-        if let LvalueKind::Local(id) = &lv.kind {
+        if let PlaceKind::Local(id) = &lv.kind {
             let is_init = self.initialized.contains(id);
             let is_mutable = mir.local(*id).mutability == crate::mir::ty::Mutability::Mutable;
             if is_init && !is_mutable {
@@ -428,7 +428,7 @@ impl BorrowChecker {
     }
 
     /// Check a read from a place: ensure it's not moved.
-    fn check_place_read(&mut self, mir: &MirBody, lv: &Lvalue, span: Span) {
+    fn check_place_read(&mut self, mir: &MirBody, lv: &Place, span: Span) {
         let path = self.place_path(mir, lv);
         if self.moves.is_moved(&path) {
             self.errors
@@ -436,18 +436,18 @@ impl BorrowChecker {
         }
     }
 
-    /// Build a field-sensitive `PlacePath` from an lvalue.
+    /// Build a field-sensitive `PlacePath` from a place.
     ///
     /// Walks the projection chain bottom-up, building up the path's
     /// `projections` vec. For example:
     ///   `a.x.y` → PlacePath { root: Local(a), projections: [Field(0), Field(1)] }
     ///   `*p`    → PlacePath { root: Local(p), projections: [Deref] }
     ///   `arr[i]`→ PlacePath { root: Local(arr), projections: [Index(i)] }
-    fn place_path(&self, _mir: &MirBody, lv: &Lvalue) -> PlacePath {
+    fn place_path(&self, _mir: &MirBody, lv: &Place) -> PlacePath {
         match &lv.kind {
-            LvalueKind::Local(id) => PlacePath::local(*id),
-            LvalueKind::Static(def_id) => PlacePath::static_def(*def_id),
-            LvalueKind::Projection(base, elem) => {
+            PlaceKind::Local(id) => PlacePath::local(*id),
+            PlaceKind::Static(def_id) => PlacePath::static_def(*def_id),
+            PlaceKind::Projection(base, elem) => {
                 let base_path = self.place_path(_mir, base);
                 let proj_elem = match elem {
                     ProjectionElem::Deref => ProjElem::Deref,
@@ -509,7 +509,7 @@ impl Default for BorrowChecker {
 /// The map only tracks the *root local* of each read — projections like
 /// `a.x` count as a read of `a` (and also of `a.x`, but we only track
 /// `a` for NLL purposes since borrow references are always simple locals).
-pub type LastUseMap = std::collections::HashMap<crate::mir::lvalue::LocalId, (BasicBlockId, usize)>;
+pub type LastUseMap = std::collections::HashMap<crate::mir::place::LocalId, (BasicBlockId, usize)>;
 
 /// Compute the last-use map for a MIR body.
 ///
@@ -536,7 +536,7 @@ pub fn compute_last_use_map(mir: &MirBody) -> LastUseMap {
 }
 
 /// Collect all locals read by a statement (the RHS operands of an Assign).
-fn statement_reads(stmt: &Statement) -> Vec<crate::mir::lvalue::LocalId> {
+fn statement_reads(stmt: &Statement) -> Vec<crate::mir::place::LocalId> {
     let mut out = Vec::new();
     if let StatementKind::Assign(boxed) = &stmt.kind {
         let (_place, rvalue) = &**boxed;
@@ -547,7 +547,7 @@ fn statement_reads(stmt: &Statement) -> Vec<crate::mir::lvalue::LocalId> {
 }
 
 /// Collect locals read by an rvalue.
-fn rvalue_reads(rv: &Rvalue, out: &mut Vec<crate::mir::lvalue::LocalId>) {
+fn rvalue_reads(rv: &Rvalue, out: &mut Vec<crate::mir::place::LocalId>) {
     match rv {
         Rvalue::Use(op) | Rvalue::Cast(_, op, _) => operand_reads(op, out),
         Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
@@ -555,7 +555,7 @@ fn rvalue_reads(rv: &Rvalue, out: &mut Vec<crate::mir::lvalue::LocalId>) {
             operand_reads(b, out);
         }
         Rvalue::UnaryOp(_, op) => operand_reads(op, out),
-        Rvalue::Ref(_, _, lv) => lvalue_root_reads(lv, out),
+        Rvalue::Ref(_, _, lv) => place_root_reads(lv, out),
         Rvalue::Aggregate(_, operands) => {
             for op in operands {
                 operand_reads(op, out);
@@ -565,25 +565,25 @@ fn rvalue_reads(rv: &Rvalue, out: &mut Vec<crate::mir::lvalue::LocalId>) {
 }
 
 /// Collect locals read by an operand.
-fn operand_reads(op: &Operand, out: &mut Vec<crate::mir::lvalue::LocalId>) {
+fn operand_reads(op: &Operand, out: &mut Vec<crate::mir::place::LocalId>) {
     match op {
-        Operand::Copy(lv) | Operand::Move(lv) => lvalue_root_reads(lv, out),
+        Operand::Copy(lv) | Operand::Move(lv) => place_root_reads(lv, out),
         Operand::Constant(_) => {}
     }
 }
 
-/// Collect the root local of an lvalue (e.g., `a.x.y` → push `a`).
+/// Collect the root local of a place (e.g., `a.x.y` → push `a`).
 /// For `*p`, also push `p` (the pointer local).
-fn lvalue_root_reads(lv: &Lvalue, out: &mut Vec<crate::mir::lvalue::LocalId>) {
+fn place_root_reads(lv: &Place, out: &mut Vec<crate::mir::place::LocalId>) {
     match &lv.kind {
-        LvalueKind::Local(id) => out.push(*id),
-        LvalueKind::Static(_) => {}
-        LvalueKind::Projection(base, _) => lvalue_root_reads(base, out),
+        PlaceKind::Local(id) => out.push(*id),
+        PlaceKind::Static(_) => {}
+        PlaceKind::Projection(base, _) => place_root_reads(base, out),
     }
 }
 
 /// Collect locals read by a terminator.
-fn terminator_reads(term: &Terminator) -> Vec<crate::mir::lvalue::LocalId> {
+fn terminator_reads(term: &Terminator) -> Vec<crate::mir::place::LocalId> {
     let mut out = Vec::new();
     match term {
         Terminator::Call { func, args, .. } => {
@@ -596,7 +596,7 @@ fn terminator_reads(term: &Terminator) -> Vec<crate::mir::lvalue::LocalId> {
             operand_reads(discr, &mut out);
         }
         Terminator::Drop { place, .. } => {
-            lvalue_root_reads(place, &mut out);
+            place_root_reads(place, &mut out);
         }
         Terminator::Assert { cond, .. } => {
             operand_reads(cond, &mut out);
@@ -689,7 +689,7 @@ pub enum PlaceRoot {
 
 /// A stripped-down projection element used inside `PlacePath`.
 ///
-/// This mirrors `crate::mir::lvalue::ProjectionElem` but omits the
+/// This mirrors `crate::mir::place::ProjectionElem` but omits the
 /// payload types that don't implement Hash/Eq (like `Ty`). Field
 /// projections use just the `FieldId`; index projections use the
 /// `LocalId` of the index variable.
@@ -723,7 +723,7 @@ impl PlacePath {
     }
 
     /// Append a projection element to this path, returning a new path.
-    /// Used when building up a path from an lvalue's projection chain.
+    /// Used when building up a path from a place's projection chain.
     pub fn project(&self, elem: ProjElem) -> Self {
         let mut new = self.clone();
         new.projections.push(elem);
@@ -808,7 +808,7 @@ mod tests {
         );
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(x, Span::DUMMY),
+                Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
                     val: ConstVal::Int(42),
@@ -818,8 +818,8 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(y, Span::DUMMY),
-                Rvalue::Use(Operand::Copy(Lvalue::local(x, Span::DUMMY))),
+                Place::local(y, Span::DUMMY),
+                Rvalue::Use(Operand::Copy(Place::local(x, Span::DUMMY))),
             ))),
             span: Span::DUMMY,
         });
@@ -849,16 +849,16 @@ mod tests {
         // y = move x
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(y, Span::DUMMY),
-                Rvalue::Use(Operand::Move(Lvalue::local(x, Span::DUMMY))),
+                Place::local(y, Span::DUMMY),
+                Rvalue::Use(Operand::Move(Place::local(x, Span::DUMMY))),
             ))),
             span: Span::DUMMY,
         });
         // z = copy x  <-- use after move!
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(z, Span::DUMMY),
-                Rvalue::Use(Operand::Copy(Lvalue::local(x, Span::DUMMY))),
+                Place::local(z, Span::DUMMY),
+                Rvalue::Use(Operand::Copy(Place::local(x, Span::DUMMY))),
             ))),
             span: Span::DUMMY,
         });
@@ -895,11 +895,11 @@ mod tests {
         // r = &x
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(r, Span::DUMMY),
+                Place::local(r, Span::DUMMY),
                 Rvalue::Ref(
                     Region::Erased,
-                    crate::mir::lvalue::BorrowKind::Shared,
-                    Lvalue::local(x, Span::DUMMY),
+                    crate::mir::place::BorrowKind::Shared,
+                    Place::local(x, Span::DUMMY),
                 ),
             ))),
             span: Span::DUMMY,
@@ -907,8 +907,8 @@ mod tests {
         // y = move x  <-- move while borrowed!
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(y, Span::DUMMY),
-                Rvalue::Use(Operand::Move(Lvalue::local(x, Span::DUMMY))),
+                Place::local(y, Span::DUMMY),
+                Rvalue::Use(Operand::Move(Place::local(x, Span::DUMMY))),
             ))),
             span: Span::DUMMY,
         });
@@ -940,11 +940,11 @@ mod tests {
         // r = &x
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(r, Span::DUMMY),
+                Place::local(r, Span::DUMMY),
                 Rvalue::Ref(
                     Region::Erased,
-                    crate::mir::lvalue::BorrowKind::Shared,
-                    Lvalue::local(x, Span::DUMMY),
+                    crate::mir::place::BorrowKind::Shared,
+                    Place::local(x, Span::DUMMY),
                 ),
             ))),
             span: Span::DUMMY,
@@ -952,7 +952,7 @@ mod tests {
         // x = 42  <-- assign while borrowed!
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(x, Span::DUMMY),
+                Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
                     val: ConstVal::Int(42),
@@ -988,11 +988,11 @@ mod tests {
         // r1 = &mut x
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(r1, Span::DUMMY),
+                Place::local(r1, Span::DUMMY),
                 Rvalue::Ref(
                     Region::Erased,
-                    crate::mir::lvalue::BorrowKind::Mut,
-                    Lvalue::local(x, Span::DUMMY),
+                    crate::mir::place::BorrowKind::Mut,
+                    Place::local(x, Span::DUMMY),
                 ),
             ))),
             span: Span::DUMMY,
@@ -1026,15 +1026,15 @@ mod tests {
         // y = move x
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(y, Span::DUMMY),
-                Rvalue::Use(Operand::Move(Lvalue::local(x, Span::DUMMY))),
+                Place::local(y, Span::DUMMY),
+                Rvalue::Use(Operand::Move(Place::local(x, Span::DUMMY))),
             ))),
             span: Span::DUMMY,
         });
         // x = 42  (re-initialize after move — OK)
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(x, Span::DUMMY),
+                Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
                     val: ConstVal::Int(42),
@@ -1045,8 +1045,8 @@ mod tests {
         // z = copy x  (OK — x was re-initialized)
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(z, Span::DUMMY),
-                Rvalue::Use(Operand::Copy(Lvalue::local(x, Span::DUMMY))),
+                Place::local(z, Span::DUMMY),
+                Rvalue::Use(Operand::Copy(Place::local(x, Span::DUMMY))),
             ))),
             span: Span::DUMMY,
         });
@@ -1080,16 +1080,16 @@ mod tests {
         // y = copy x  (Copy type — not moved)
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(y, Span::DUMMY),
-                Rvalue::Use(Operand::Copy(Lvalue::local(x, Span::DUMMY))),
+                Place::local(y, Span::DUMMY),
+                Rvalue::Use(Operand::Copy(Place::local(x, Span::DUMMY))),
             ))),
             span: Span::DUMMY,
         });
         // z = copy x  (OK — x was copied, not moved)
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(z, Span::DUMMY),
-                Rvalue::Use(Operand::Copy(Lvalue::local(x, Span::DUMMY))),
+                Place::local(z, Span::DUMMY),
+                Rvalue::Use(Operand::Copy(Place::local(x, Span::DUMMY))),
             ))),
             span: Span::DUMMY,
         });
@@ -1140,7 +1140,7 @@ mod tests {
         // x = 42
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(x, Span::DUMMY),
+                Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
                     val: ConstVal::Int(42),
@@ -1151,11 +1151,11 @@ mod tests {
         // r = &x  (creates borrow)
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(r, Span::DUMMY),
+                Place::local(r, Span::DUMMY),
                 Rvalue::Ref(
                     Region::Erased,
-                    crate::mir::lvalue::BorrowKind::Shared,
-                    Lvalue::local(x, Span::DUMMY),
+                    crate::mir::place::BorrowKind::Shared,
+                    Place::local(x, Span::DUMMY),
                 ),
             ))),
             span: Span::DUMMY,
@@ -1163,12 +1163,12 @@ mod tests {
         // y = *r + 1  (last use of r)
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(y, Span::DUMMY),
+                Place::local(y, Span::DUMMY),
                 Rvalue::BinaryOp(
                     BinOp::Add,
-                    Operand::Copy(Lvalue {
-                        kind: LvalueKind::Projection(
-                            Box::new(Lvalue::local(r, Span::DUMMY)),
+                    Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(r, Span::DUMMY)),
                             ProjectionElem::Deref,
                         ),
                         span: Span::DUMMY,
@@ -1184,7 +1184,7 @@ mod tests {
         // x = 100  (should be OK — borrow expired)
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(x, Span::DUMMY),
+                Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
                     val: ConstVal::Int(100),
@@ -1236,7 +1236,7 @@ mod tests {
         );
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(x, Span::DUMMY),
+                Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
                     val: ConstVal::Int(42),
@@ -1246,18 +1246,18 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(r, Span::DUMMY),
+                Place::local(r, Span::DUMMY),
                 Rvalue::Ref(
                     Region::Erased,
-                    crate::mir::lvalue::BorrowKind::Shared,
-                    Lvalue::local(x, Span::DUMMY),
+                    crate::mir::place::BorrowKind::Shared,
+                    Place::local(x, Span::DUMMY),
                 ),
             ))),
             span: Span::DUMMY,
         });
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(x, Span::DUMMY),
+                Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
                     val: ConstVal::Int(100),
@@ -1267,10 +1267,10 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(y, Span::DUMMY),
-                Rvalue::Use(Operand::Copy(Lvalue {
-                    kind: LvalueKind::Projection(
-                        Box::new(Lvalue::local(r, Span::DUMMY)),
+                Place::local(y, Span::DUMMY),
+                Rvalue::Use(Operand::Copy(Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(r, Span::DUMMY)),
                         ProjectionElem::Deref,
                     ),
                     span: Span::DUMMY,

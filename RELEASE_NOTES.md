@@ -1,9 +1,108 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.8.9
+**Current version**: v0.8.10
 **Date**: 2026-07-22
 **Test count**: 983 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.8.10 — Stage 3.66 (Lvalue→Place rename + resolver owner context threading)
+
+### Overview
+
+Continuation of the §21 cross-stage audit follow-up. Stage 3.65 closed 4
+P2 architectural fixes. This round (Stage 3.66) completes the largest
+remaining P2 item: the `Lvalue` → `Place` rename (167+ references across
+7+ files), aligning the implementation with the design doc (06-mir.md §4)
+and the borrowck internal vocabulary (`PlacePath`, `PlaceRoot`). Also
+threads owner context through the resolver for accurate `HirSelfKind`
+(Trait vs Impl). 983 tests pass (unchanged — pure refactoring). 0 clippy
+warnings. fmt clean.
+
+### P2 fix #1: `Lvalue` → `Place` rename (the big one)
+
+**Previously**: The MIR type for addressable memory locations was named
+`Lvalue` (legacy rustc name from pre-RFC-1211 era). The design doc
+(06-mir.md §4) calls it `Place`. The borrowck internals already used
+`PlacePath` and `PlaceRoot` — so the codebase had mixed vocabulary.
+
+**Now** (Stage 3.66):
+- `mir::lvalue::Lvalue` → `mir::place::Place` (type renamed + file renamed)
+- `mir::lvalue::LvalueKind` → `mir::place::PlaceKind`
+- `src/mir/lvalue.rs` → `src/mir/place.rs` (file renamed)
+- `pub mod lvalue` → `pub mod place` in `src/mir/mod.rs`
+- `pub use lvalue::{...}` → `pub use place::{...}` in `src/mir/mod.rs`
+- All `crate::mir::lvalue::` module paths → `crate::mir::place::`
+- All function names: `lower_expr_to_lvalue` → `lower_expr_to_place`,
+  `detect_lvalue_type` → `detect_place_type`,
+  `detect_lvalue_storage_type` → `detect_place_storage_type`,
+  `compute_lvalue_address` → `compute_place_address`,
+  `codegen_lvalue_load` → `codegen_place_load`,
+  `codegen_lvalue_load_typed` → `codegen_place_load_typed`,
+  `resolve_lvalue_for_writeback` → `resolve_place_for_writeback`,
+  `infer_lvalue` → `infer_place`,
+  `lvalue_ty` → `place_ty`,
+  `lvalue_root_reads` → `place_root_reads`, etc.
+- All variable names: `lhs_lvalue` → `lhs_place`, etc.
+- All doc comments: "lvalue" → "place" (where referring to the concept)
+
+**Scope**: 167 `Lvalue` + 75 `LvalueKind` + 79 `lvalue` (lowercase) + 123
+`Lvalue::` constructor/method references = **hundreds of replacements
+across 7+ source files + test files + example files**.
+
+**Why this matters**: Aligns implementation with design doc, eliminates
+vocabulary mismatch between MIR (`Lvalue`) and borrowck (`PlacePath`),
+and matches modern rustc naming (post-RFC-1211).
+
+### P2 fix #2: Resolver owner context threading for accurate `HirSelfKind`
+
+**Previously** (Stage 3.65): `Res::SelfTy(HirSelfKind)` was added, but
+the resolver always defaulted to `HirSelfKind::Impl` — it didn't track
+whether `Self` appeared inside a trait declaration or an impl block.
+
+**Now** (Stage 3.66):
+- New `current_self_kind: Option<HirSelfKind>` field on `Resolver`
+- Set to `Some(HirSelfKind::Trait)` when resolving `HirItem::Trait` paths
+- Set to `Some(HirSelfKind::Impl)` when resolving `HirItem::Impl` paths
+- Reset to `None` after each item
+- `resolve_path` uses `current_self_kind.unwrap_or(HirSelfKind::Impl)`
+  when resolving the `Self` keyword
+
+**Limitation**: Body-level `Self` resolution (e.g., `fn bar(x: Self) {}`
+inside an impl) still defaults to `Impl` because body resolution happens
+in a separate loop that doesn't carry owner context. Threading owner
+context into body resolution is Stage 4 work.
+
+### Verification
+
+- `cargo test`: **983 passed, 0 failed, 2 ignored** (unchanged — pure refactoring)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 audit tests pass
+
+### Files touched
+
+- `src/mir/lvalue.rs` → `src/mir/place.rs` (file renamed + all type/function/variable names)
+- `src/mir/mod.rs` — module path + re-export updated
+- `src/mir/lower/mod.rs` — all `Lvalue` → `Place`, function names renamed
+- `src/typeck/checker.rs` — all `Lvalue` → `Place`, function names renamed
+- `src/borrowck/mod.rs` — all `Lvalue` → `Place`, function names renamed
+- `src/codegen/mod.rs` — all `Lvalue` → `Place`, function names renamed
+- `src/resolve/resolver.rs` — `current_self_kind` field + context threading
+- `tests/codegen_tests.rs` — all `Lvalue` → `Place` (test helpers)
+- `tests/*.rs` — all `Lvalue` → `Place` (test assertions)
+- `examples/*.rs` — all `Lvalue` → `Place` (example code + comments)
+
+### Remaining P2/P3 items (deferred to Stage 4+)
+
+- `HirParam` duplication between `HirFnSig.inputs` and `Body.params`
+- Visibility checking (Stage 1.3 Phase E1)
+- Prelude injection (Stage 1.3 Phase E3)
+- Thread owner context into body resolution for body-level `HirSelfKind`
+- `Span::DUMMY` placeholders fix (11 occurrences in parser.rs)
+- AST enum naming standardization (Expr/Ty/Pat direct vs ItemKind wrapper)
 
 ---
 

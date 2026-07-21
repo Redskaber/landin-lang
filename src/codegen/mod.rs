@@ -40,7 +40,7 @@ pub use emitter::{
 pub use text_emitter::TextEmitter;
 
 use crate::mir::body::*;
-use crate::mir::lvalue::*;
+use crate::mir::place::*;
 use crate::mir::ty::ConstVal;
 use lasso::Rodeo;
 
@@ -287,32 +287,32 @@ pub fn mir_type_to_emit_type_with_layouts(
     }
 }
 
-fn detect_lvalue_storage_type(
+fn detect_place_storage_type(
     mir: &MirBody,
-    lv: &Lvalue,
+    lv: &Place,
     layouts: &crate::mir::body::AdtLayouts,
 ) -> EmitType {
     match &lv.kind {
-        LvalueKind::Local(id) => mir
+        PlaceKind::Local(id) => mir
             .local_decls
             .get(id.0 as usize)
             .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
             .unwrap_or(EmitType::I32),
         // Stage 3.54: for Field projection, return the FIELD's type (not the
-        // base's type). Was: returned detect_lvalue_storage_type(base), which
+        // base's type). Was: returned detect_place_storage_type(base), which
         // gave the struct type instead of the field type — causing
         // unwrap_fat_ptr_for_index to see the struct layout instead of the
         // fat pointer layout when indexing a struct field that contains a
         // slice/array.
-        LvalueKind::Projection(base, elem) => match elem {
+        PlaceKind::Projection(base, elem) => match elem {
             ProjectionElem::Field(_, field_ty) => {
                 mir_type_to_emit_type_with_layouts(field_ty, layouts)
             }
             // For Index/ConstantIndex/Deref, the storage type is the base's
             // storage type (we're indexing INTO the base's storage).
-            _ => detect_lvalue_storage_type(mir, base, layouts),
+            _ => detect_place_storage_type(mir, base, layouts),
         },
-        LvalueKind::Static(_) => EmitType::I32,
+        PlaceKind::Static(_) => EmitType::I32,
     }
 }
 
@@ -328,7 +328,7 @@ fn codegen_statement(
             let (place, rvalue) = &**boxed;
             let val = codegen_rvalue(emitter, mir, rvalue, interner, layouts);
             match &place.kind {
-                LvalueKind::Local(id) => {
+                PlaceKind::Local(id) => {
                     let default_ty = crate::mir::ty::Ty::new(
                         crate::mir::ty::TyKind::Int(crate::ast::IntTy::I32),
                         crate::session::Span::DUMMY,
@@ -346,25 +346,24 @@ fn codegen_statement(
                         }
                     }
                 }
-                LvalueKind::Projection(base, elem) => {
+                PlaceKind::Projection(base, elem) => {
                     let ty = detect_operand_type(mir, &Operand::Copy(place.clone()), layouts)
                         .unwrap_or(EmitType::I32);
                     match elem {
                         ProjectionElem::Deref => {
-                            let ptr_val =
-                                codegen_lvalue_load(emitter, mir, base, interner, layouts);
+                            let ptr_val = codegen_place_load(emitter, mir, base, interner, layouts);
                             emitter.emit_store(&ty, &val, &ptr_val);
                         }
                         ProjectionElem::Field(field_id, _) => {
-                            let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                            let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                                 emitter
                                     .get_local_ptr(id.0)
                                     .cloned()
                                     .unwrap_or_else(|| "0".to_string())
                             } else {
-                                codegen_lvalue_load(emitter, mir, base, interner, layouts)
+                                codegen_place_load(emitter, mir, base, interner, layouts)
                             };
-                            let struct_ty = detect_lvalue_storage_type(mir, base, layouts);
+                            let struct_ty = detect_place_storage_type(mir, base, layouts);
                             let field_ptr =
                                 emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0);
                             emitter.emit_store(&ty, &val, &field_ptr);
@@ -373,7 +372,7 @@ fn codegen_statement(
                             // Stage 3.54: for the store path, when the base
                             // is a projection (e.g., `s.data` where `data` is
                             // a field), we need the ADDRESS of the base, not
-                            // its loaded value. Was: `codegen_lvalue_load`
+                            // its loaded value. Was: `codegen_place_load`
                             // returned the loaded fat pointer value, then
                             // `unwrap_fat_ptr_for_index` tried to GEP into
                             // the value (treating it as a pointer) — invalid.
@@ -384,8 +383,8 @@ fn codegen_statement(
                             // (without loading). This matches the load path's
                             // behavior where `base_ptr` is always an address.
                             let base_ptr =
-                                compute_lvalue_address(emitter, mir, base, interner, layouts);
-                            let array_ty = detect_lvalue_storage_type(mir, base, layouts);
+                                compute_place_address(emitter, mir, base, interner, layouts);
+                            let array_ty = detect_place_storage_type(mir, base, layouts);
                             let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
                                 v
                             } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
@@ -407,7 +406,7 @@ fn codegen_statement(
                         _ => {}
                     }
                 }
-                LvalueKind::Static(_) => {}
+                PlaceKind::Static(_) => {}
             }
         }
         StatementKind::StorageLive(id) => {
@@ -547,7 +546,7 @@ fn codegen_rvalue(
             emitter.emit_unop(*op, &ty, &val)
         }
         Rvalue::Ref(_, _borrow_kind, lv) => {
-            if let LvalueKind::Local(id) = &lv.kind {
+            if let PlaceKind::Local(id) = &lv.kind {
                 if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
                     return ptr;
                 }
@@ -748,27 +747,27 @@ fn codegen_operand(
             _ => emitter.emit_const(&c.val),
         },
         Operand::Copy(lv) | Operand::Move(lv) => {
-            let ty = detect_lvalue_type(mir, lv, layouts);
-            codegen_lvalue_load_typed(emitter, mir, lv, ty, interner, layouts)
+            let ty = detect_place_type(mir, lv, layouts);
+            codegen_place_load_typed(emitter, mir, lv, ty, interner, layouts)
         }
     }
 }
 
 #[allow(clippy::only_used_in_recursion)]
-fn detect_lvalue_type(
+fn detect_place_type(
     mir: &MirBody,
-    lv: &Lvalue,
+    lv: &Place,
     layouts: &crate::mir::body::AdtLayouts,
 ) -> EmitType {
     match &lv.kind {
-        LvalueKind::Local(id) => mir
+        PlaceKind::Local(id) => mir
             .local_decls
             .get(id.0 as usize)
             .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
             .unwrap_or(EmitType::I32),
-        LvalueKind::Projection(base, elem) => match elem {
+        PlaceKind::Projection(base, elem) => match elem {
             ProjectionElem::Deref => {
-                let base_ty = detect_lvalue_type(mir, base, layouts);
+                let base_ty = detect_place_type(mir, base, layouts);
                 if base_ty.is_ptr() {
                     base_ty.pointee()
                 } else {
@@ -779,7 +778,7 @@ fn detect_lvalue_type(
                 mir_type_to_emit_type_with_layouts(field_ty, layouts)
             }
             ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
-                let storage = detect_lvalue_storage_type(mir, base, layouts);
+                let storage = detect_place_storage_type(mir, base, layouts);
                 match storage {
                     EmitType::Array(elem, _) => *elem,
                     // Stage 3.52: fat pointer (&[T] slice) — extract the
@@ -799,11 +798,11 @@ fn detect_lvalue_type(
             }
             _ => EmitType::I32,
         },
-        LvalueKind::Static(_) => EmitType::I32,
+        PlaceKind::Static(_) => EmitType::I32,
     }
 }
 
-/// Stage 3.54: Compute the ADDRESS of an lvalue (without loading its value).
+/// Stage 3.54: Compute the ADDRESS of a place (without loading its value).
 /// Used by the store path's Index projection to get a pointer to the base
 /// storage (e.g., the address of a struct field containing a fat pointer),
 /// so that `unwrap_fat_ptr_for_index` can GEP into the storage correctly.
@@ -812,33 +811,33 @@ fn detect_lvalue_type(
 /// For a Projection(Local, Field): GEPs to the field, returns the field's address.
 /// For deeper projections: recurses (best-effort — complex cases may fall back
 /// to loading, which is the old behavior).
-fn compute_lvalue_address(
+fn compute_place_address(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
-    lv: &Lvalue,
+    lv: &Place,
     _interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
 ) -> String {
     match &lv.kind {
-        LvalueKind::Local(id) => emitter
+        PlaceKind::Local(id) => emitter
             .get_local_ptr(id.0)
             .cloned()
             .unwrap_or_else(|| "0".to_string()),
-        LvalueKind::Projection(base, elem) => match elem {
+        PlaceKind::Projection(base, elem) => match elem {
             ProjectionElem::Field(field_id, _) => {
-                let base_addr = compute_lvalue_address(emitter, mir, base, _interner, layouts);
-                let struct_ty = detect_lvalue_storage_type(mir, base, layouts);
+                let base_addr = compute_place_address(emitter, mir, base, _interner, layouts);
+                let struct_ty = detect_place_storage_type(mir, base, layouts);
                 emitter.emit_gep_field(&base_addr, &struct_ty, field_id.0)
             }
             // For other projection types, fall back to the load path
             // (loads the value — old behavior, may not work for fat pointers
             // in store position, but preserves existing behavior for non-fat-ptr cases).
             _ => {
-                let ptr_ty = detect_lvalue_type(mir, lv, layouts);
-                codegen_lvalue_load_typed(emitter, mir, lv, ptr_ty, _interner, layouts)
+                let ptr_ty = detect_place_type(mir, lv, layouts);
+                codegen_place_load_typed(emitter, mir, lv, ptr_ty, _interner, layouts)
             }
         },
-        LvalueKind::Static(_) => "0".to_string(),
+        PlaceKind::Static(_) => "0".to_string(),
     }
 }
 
@@ -882,16 +881,16 @@ fn unwrap_fat_ptr_for_index(
 }
 
 #[allow(clippy::only_used_in_recursion)]
-fn codegen_lvalue_load_typed(
+fn codegen_place_load_typed(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
-    lv: &Lvalue,
+    lv: &Place,
     ty: EmitType,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
 ) -> EmitValue {
     match &lv.kind {
-        LvalueKind::Local(id) => {
+        PlaceKind::Local(id) => {
             if let Some(val) = emitter.get_local(id.0).cloned() {
                 if !val.starts_with('%') {
                     return val;
@@ -903,44 +902,38 @@ fn codegen_lvalue_load_typed(
                 "0".to_string()
             }
         }
-        LvalueKind::Projection(base, elem) => match elem {
+        PlaceKind::Projection(base, elem) => match elem {
             ProjectionElem::Deref => {
-                let ptr_ty = detect_lvalue_type(mir, base, layouts);
-                let ptr_val = codegen_lvalue_load_typed(
-                    emitter,
-                    mir,
-                    base,
-                    ptr_ty.clone(),
-                    interner,
-                    layouts,
-                );
+                let ptr_ty = detect_place_type(mir, base, layouts);
+                let ptr_val =
+                    codegen_place_load_typed(emitter, mir, base, ptr_ty.clone(), interner, layouts);
                 emitter.emit_load(&ty, &ptr_val)
             }
             ProjectionElem::Field(field_id, _) => {
-                let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                     emitter
                         .get_local_ptr(id.0)
                         .cloned()
                         .unwrap_or_else(|| "0".to_string())
                 } else {
-                    let ptr_ty = detect_lvalue_type(mir, base, layouts);
-                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
+                    let ptr_ty = detect_place_type(mir, base, layouts);
+                    codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
                 };
-                let struct_ty = detect_lvalue_storage_type(mir, base, layouts);
+                let struct_ty = detect_place_storage_type(mir, base, layouts);
                 let field_ptr = emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0);
                 emitter.emit_load(&ty, &field_ptr)
             }
             ProjectionElem::Index(idx) => {
-                let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                     emitter
                         .get_local_ptr(id.0)
                         .cloned()
                         .unwrap_or_else(|| "0".to_string())
                 } else {
-                    let ptr_ty = detect_lvalue_type(mir, base, layouts);
-                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
+                    let ptr_ty = detect_place_type(mir, base, layouts);
+                    codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
                 };
-                let array_ty = detect_lvalue_storage_type(mir, base, layouts);
+                let array_ty = detect_place_storage_type(mir, base, layouts);
                 let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
                     v
                 } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
@@ -962,16 +955,16 @@ fn codegen_lvalue_load_typed(
                 emitter.emit_load(&ty, &elem_ptr)
             }
             ProjectionElem::ConstantIndex { offset, .. } => {
-                let base_ptr = if let LvalueKind::Local(id) = &base.kind {
+                let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                     emitter
                         .get_local_ptr(id.0)
                         .cloned()
                         .unwrap_or_else(|| "0".to_string())
                 } else {
-                    let ptr_ty = detect_lvalue_type(mir, base, layouts);
-                    codegen_lvalue_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
+                    let ptr_ty = detect_place_type(mir, base, layouts);
+                    codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
                 };
-                let array_ty = detect_lvalue_storage_type(mir, base, layouts);
+                let array_ty = detect_place_storage_type(mir, base, layouts);
                 // Stage 3.51: same fat pointer unwrap as Index.
                 let (gep_base, pointee_opt) =
                     unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
@@ -985,26 +978,26 @@ fn codegen_lvalue_load_typed(
             }
             _ => "0".to_string(),
         },
-        LvalueKind::Static(_) => "0".to_string(),
+        PlaceKind::Static(_) => "0".to_string(),
     }
 }
 
-fn codegen_lvalue_load(
+fn codegen_place_load(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
-    lv: &Lvalue,
+    lv: &Place,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
 ) -> EmitValue {
     // Stage 3.47 (L-PIPE-1 closure): previously this fabricated a fake
-    // `MirBody::new(Span::DUMMY)` to satisfy `codegen_lvalue_load_typed`'s
+    // `MirBody::new(Span::DUMMY)` to satisfy `codegen_place_load_typed`'s
     // `&MirBody` parameter (which was needed to access local_decls for type
     // info). Now we pass the caller's `mir` reference through directly —
     // no fake MirBody needed. The `EmitType::I32` placeholder is the
-    // historical default for untyped lvalue loads (used when the caller
+    // historical default for untyped place loads (used when the caller
     // doesn't know the type ahead of time). The typed path
-    // (`codegen_lvalue_load_typed`) is preferred when the type is known.
-    codegen_lvalue_load_typed(emitter, mir, lv, EmitType::I32, interner, layouts)
+    // (`codegen_place_load_typed`) is preferred when the type is known.
+    codegen_place_load_typed(emitter, mir, lv, EmitType::I32, interner, layouts)
 }
 
 fn codegen_terminator(
@@ -1076,7 +1069,7 @@ fn codegen_terminator(
             target,
         } => {
             let fn_name = if let Operand::Copy(lv) | Operand::Move(lv) = func {
-                if let LvalueKind::Local(id) = &lv.kind {
+                if let PlaceKind::Local(id) = &lv.kind {
                     let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| &ld.ty);
                     if let Some(ty) = local_ty {
                         if let crate::mir::ty::TyKind::FnDef(def_id, _) = &ty.kind {
@@ -1116,7 +1109,7 @@ fn codegen_terminator(
                 arg_pairs.iter().map(|(t, v)| (t.clone(), v)).collect();
 
             let ret_val = if let Some(ref name) = fn_name {
-                let call_ret_ty = if let LvalueKind::Local(id) = &destination.kind {
+                let call_ret_ty = if let PlaceKind::Local(id) = &destination.kind {
                     mir.local_decls
                         .get(id.0 as usize)
                         .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
@@ -1129,7 +1122,7 @@ fn codegen_terminator(
                 "0".to_string()
             };
 
-            if let LvalueKind::Local(id) = &destination.kind {
+            if let PlaceKind::Local(id) = &destination.kind {
                 let dest_ty = mir
                     .local_decls
                     .get(id.0 as usize)
@@ -1156,7 +1149,7 @@ fn codegen_terminator(
                     let lhs_val = codegen_operand(emitter, mir, lhs, interner, layouts);
                     let rhs_val = codegen_operand(emitter, mir, rhs, interner, layouts);
                     match op {
-                        crate::mir::lvalue::BinOp::Shl | crate::mir::lvalue::BinOp::Shr => {
+                        crate::mir::place::BinOp::Shl | crate::mir::place::BinOp::Shr => {
                             let bit_width: u32 = match op_ty {
                                 EmitType::I8 => 8,
                                 EmitType::I16 => 16,
@@ -1179,7 +1172,7 @@ fn codegen_terminator(
                             let agg_ty = EmitType::struct_of(vec![op_ty.clone(), EmitType::I1]);
                             let overflow_flag = emitter.emit_extractvalue(&agg_ty, &agg, 1);
                             let inverted = emitter.emit_unop(
-                                crate::mir::lvalue::UnOp::Not,
+                                crate::mir::place::UnOp::Not,
                                 &EmitType::I1,
                                 &overflow_flag,
                             );
@@ -1273,12 +1266,12 @@ fn detect_operand_type(
             }
         }
         Operand::Copy(lv) | Operand::Move(lv) => {
-            if let LvalueKind::Local(id) = &lv.kind {
+            if let PlaceKind::Local(id) = &lv.kind {
                 mir.local_decls
                     .get(id.0 as usize)
                     .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
             } else {
-                Some(detect_lvalue_type(mir, lv, layouts))
+                Some(detect_place_type(mir, lv, layouts))
             }
         }
     }

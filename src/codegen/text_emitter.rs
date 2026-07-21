@@ -1,7 +1,7 @@
 //! Text emitter: implements Emitter trait by generating LLVM IR text (.ll).
 
 use crate::codegen::emitter::*;
-use crate::mir::lvalue::{BinOp, UnOp};
+use crate::mir::place::{BinOp, UnOp};
 use crate::mir::ty::ConstVal;
 use std::collections::HashMap;
 

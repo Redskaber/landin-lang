@@ -5,7 +5,7 @@
 //! Purpose: Phase gate audit for Stage 3.54. Verifies that indexing a
 //! struct field of type slice, array, or string reference correctly
 //! GEPs through the struct field to the storage, then to the element.
-//! Was: detect_lvalue_storage_type returned the struct type instead of
+//! Was: detect_place_storage_type returned the struct type instead of
 //! the field type for Field projections, causing wrong GEP in store path.
 //!
 //! Author: redskaber

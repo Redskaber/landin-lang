@@ -8,7 +8,7 @@
 use crate::ast;
 use crate::hir::*;
 use crate::mir::body::*;
-use crate::mir::lvalue::*;
+use crate::mir::place::*;
 use crate::mir::ty::*;
 use crate::session::Span;
 use crate::typeck::unify::UnificationTable;
@@ -120,7 +120,7 @@ impl<'a> MirLowerCtxt<'a> {
     }
 
     /// Push a statement onto the current block.
-    pub fn push_assign(&mut self, place: Lvalue, rvalue: Rvalue, span: Span) {
+    pub fn push_assign(&mut self, place: Place, rvalue: Rvalue, span: Span) {
         self.mir
             .block_mut(self.current_block)
             .statements
@@ -144,7 +144,7 @@ impl<'a> MirLowerCtxt<'a> {
     /// Allocate a temporary local and assign the given rvalue to it.
     pub fn eval_rvalue_to_temp(&mut self, rvalue: Rvalue, ty: Ty, span: Span) -> LocalId {
         let temp = self.mir.new_local(ty, None, span);
-        self.push_assign(Lvalue::local(temp, span), rvalue, span);
+        self.push_assign(Place::local(temp, span), rvalue, span);
         temp
     }
 
@@ -466,8 +466,8 @@ pub fn lower_hir_body_to_mir_full(
 
     // Assign the value to the return local.
     cx.push_assign(
-        Lvalue::local(return_local, Span::DUMMY),
-        Rvalue::Use(Operand::Copy(Lvalue::local(value_local, Span::DUMMY))),
+        Place::local(return_local, Span::DUMMY),
+        Rvalue::Use(Operand::Copy(Place::local(value_local, Span::DUMMY))),
         body.span,
     );
 
@@ -641,37 +641,37 @@ pub fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
     }
 }
 
-/// Lower a HIR expression to a MIR Lvalue (a place that can be assigned to).
+/// Lower a HIR expression to a MIR Place (a place that can be assigned to).
 ///
 /// Stage 3.34 (L-MUT-1 fix): used by `HirExprKind::Assign` to lower the LHS
 /// into a place. Handles:
-///   - `Path` (local variable) → `Lvalue::Local`
-///   - `Field { receiver, ident }` → `Lvalue::Projection(receiver, Field(idx, ty))`
-///   - `Index { receiver, index }` → `Lvalue::Projection(receiver, Index(idx_local))`
-///   - `Unary { op: Deref, expr }` → `Lvalue::Projection(expr, Deref)`
+///   - `Path` (local variable) → `Place::Local`
+///   - `Field { receiver, ident }` → `Place::Projection(receiver, Field(idx, ty))`
+///   - `Index { receiver, index }` → `Place::Projection(receiver, Index(idx_local))`
+///   - `Unary { op: Deref, expr }` → `Place::Projection(expr, Deref)`
 ///
 /// For other expression kinds (which can't be assigned to), falls back to
 /// a fresh local — typeck should catch the "assignment to non-place" error.
-fn lower_expr_to_lvalue(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lvalue {
+fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Place {
     match &expr.kind {
         HirExprKind::Path(path) => {
             if let Res::Local(hir_id) = path.res {
                 if let Some(local_id) = cx.local_of(hir_id) {
-                    return Lvalue::local(local_id, expr.span);
+                    return Place::local(local_id, expr.span);
                 }
             }
             // Fallback: fresh local (error recovery).
             let ty = cx.fresh_infer_ty(expr.span);
             let local = cx.mir.new_local(ty, None, expr.span);
-            Lvalue::local(local, expr.span)
+            Place::local(local, expr.span)
         }
         HirExprKind::Field { receiver, ident } => {
-            let base = lower_expr_to_lvalue(cx, receiver);
+            let base = lower_expr_to_place(cx, receiver);
             let field_index = resolve_field_index(cx, receiver, &ident.name);
             let field_ty = resolve_field_type(cx, receiver, field_index)
                 .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
-            Lvalue {
-                kind: LvalueKind::Projection(
+            Place {
+                kind: PlaceKind::Projection(
                     Box::new(base),
                     ProjectionElem::Field(FieldId(field_index), field_ty),
                 ),
@@ -681,19 +681,19 @@ fn lower_expr_to_lvalue(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lvalue {
         HirExprKind::Index {
             receiver, index, ..
         } => {
-            let base = lower_expr_to_lvalue(cx, receiver);
+            let base = lower_expr_to_place(cx, receiver);
             let idx_local = lower_expr_to_operand(cx, index);
-            Lvalue {
-                kind: LvalueKind::Projection(Box::new(base), ProjectionElem::Index(idx_local)),
+            Place {
+                kind: PlaceKind::Projection(Box::new(base), ProjectionElem::Index(idx_local)),
                 span: expr.span,
             }
         }
         HirExprKind::Unary {
             op, expr: inner, ..
         } if *op == HirUnaryOp::Deref => {
-            let base = lower_expr_to_lvalue(cx, inner);
-            Lvalue {
-                kind: LvalueKind::Projection(Box::new(base), ProjectionElem::Deref),
+            let base = lower_expr_to_place(cx, inner);
+            Place {
+                kind: PlaceKind::Projection(Box::new(base), ProjectionElem::Deref),
                 span: expr.span,
             }
         }
@@ -702,7 +702,7 @@ fn lower_expr_to_lvalue(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lvalue {
         _ => {
             let ty = cx.fresh_infer_ty(expr.span);
             let local = cx.mir.new_local(ty, None, expr.span);
-            Lvalue::local(local, expr.span)
+            Place::local(local, expr.span)
         }
     }
 }
@@ -819,7 +819,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                                                     if let Some(ld) = ld {
                                                         return cx.eval_rvalue_to_temp(
                                                             Rvalue::Use(Operand::Copy(
-                                                                Lvalue::local(
+                                                                Place::local(
                                                                     const_local,
                                                                     expr.span,
                                                                 ),
@@ -843,7 +843,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                                                     if let Some(ld) = ld {
                                                         return cx.eval_rvalue_to_temp(
                                                             Rvalue::Use(Operand::Copy(
-                                                                Lvalue::local(
+                                                                Place::local(
                                                                     static_local,
                                                                     expr.span,
                                                                 ),
@@ -907,8 +907,8 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             let rhs_local = lower_expr_to_operand(cx, rhs);
             let mir_op = MirLowerCtxt::lower_bin_op(*op);
             let binop_ty = cx.fresh_infer_ty(expr.span);
-            let lhs_operand = Operand::Copy(Lvalue::local(lhs_local, lhs.span));
-            let rhs_operand = Operand::Copy(Lvalue::local(rhs_local, rhs.span));
+            let lhs_operand = Operand::Copy(Place::local(lhs_local, lhs.span));
+            let rhs_operand = Operand::Copy(Place::local(rhs_local, rhs.span));
             let result = cx.eval_rvalue_to_temp(
                 Rvalue::BinaryOp(mir_op, lhs_operand.clone(), rhs_operand.clone()),
                 binop_ty,
@@ -948,10 +948,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             let mir_op = MirLowerCtxt::lower_un_op(*op);
             let unary_ty = cx.fresh_infer_ty(expr.span);
             cx.eval_rvalue_to_temp(
-                Rvalue::UnaryOp(
-                    mir_op,
-                    Operand::Copy(Lvalue::local(inner_local, inner.span)),
-                ),
+                Rvalue::UnaryOp(mir_op, Operand::Copy(Place::local(inner_local, inner.span))),
                 unary_ty,
                 expr.span,
             )
@@ -965,7 +962,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 args.iter().map(|a| lower_expr_to_operand(cx, a)).collect();
             let arg_operands: Vec<Operand> = arg_locals
                 .iter()
-                .map(|l| Operand::Copy(Lvalue::local(*l, Span::DUMMY)))
+                .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
                 .collect();
 
             // Stage 3.30 (per §15): inspect the func operand's type to decide
@@ -1033,7 +1030,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 let dest_ty = Ty::new(TyKind::Adt(adt_def_id, adt_substs), expr.span);
                 let dest = cx.mir.new_local(dest_ty, None, expr.span);
                 cx.push_assign(
-                    Lvalue::local(dest, expr.span),
+                    Place::local(dest, expr.span),
                     Rvalue::Aggregate(
                         AggregateKind::Adt(adt_def_id, variant_idx, Vec::new(), field_tys),
                         all_operands,
@@ -1048,9 +1045,9 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 let cont = cx.new_block();
                 cx.terminate_and_goto(
                     Terminator::Call {
-                        func: Operand::Copy(Lvalue::local(func_local, func.span)),
+                        func: Operand::Copy(Place::local(func_local, func.span)),
                         args: arg_operands,
-                        destination: Lvalue::local(dest, expr.span),
+                        destination: Place::local(dest, expr.span),
                         target: Some(cont),
                     },
                     cont,
@@ -1070,8 +1067,8 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             if let Some(ret) = ret_expr {
                 let ret_local = lower_expr_to_operand(cx, ret);
                 cx.push_assign(
-                    Lvalue::local(LocalId(0), Span::DUMMY),
-                    Rvalue::Use(Operand::Copy(Lvalue::local(ret_local, ret.span))),
+                    Place::local(LocalId(0), Span::DUMMY),
+                    Rvalue::Use(Operand::Copy(Place::local(ret_local, ret.span))),
                     expr.span,
                 );
             }
@@ -1090,10 +1087,10 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             // Per §15: root-cause fix (handle all LHS shapes in the Assign
             // lower), not a hack (e.g., special-casing field mutation in
             // codegen).
-            let lhs_lvalue = lower_expr_to_lvalue(cx, lhs);
+            let lhs_place = lower_expr_to_place(cx, lhs);
             cx.push_assign(
-                lhs_lvalue,
-                Rvalue::Use(Operand::Copy(Lvalue::local(rhs_local, rhs.span))),
+                lhs_place,
+                Rvalue::Use(Operand::Copy(Place::local(rhs_local, rhs.span))),
                 expr.span,
             );
             rhs_local
@@ -1103,7 +1100,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 elems.iter().map(|e| lower_expr_to_operand(cx, e)).collect();
             let operands: Vec<Operand> = elem_locals
                 .iter()
-                .map(|l| Operand::Copy(Lvalue::local(*l, Span::DUMMY)))
+                .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
                 .collect();
             let tuple_ty = cx.fresh_infer_ty(expr.span);
             cx.eval_rvalue_to_temp(
@@ -1141,10 +1138,10 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             let field_ty_for_proj = field_ty.clone();
             let result = cx.mir.new_local(field_ty, None, expr.span);
             cx.push_assign(
-                Lvalue::local(result, expr.span),
-                Rvalue::Use(Operand::Copy(Lvalue {
-                    kind: LvalueKind::Projection(
-                        Box::new(Lvalue::local(base_local, receiver.span)),
+                Place::local(result, expr.span),
+                Rvalue::Use(Operand::Copy(Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(base_local, receiver.span)),
                         ProjectionElem::Field(FieldId(field_index), field_ty_for_proj),
                     ),
                     span: expr.span,
@@ -1170,10 +1167,10 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
             let result = cx.mir.new_local(elem_ty, None, expr.span);
             cx.push_assign(
-                Lvalue::local(result, expr.span),
-                Rvalue::Use(Operand::Copy(Lvalue {
-                    kind: LvalueKind::Projection(
-                        Box::new(Lvalue::local(base_local, receiver.span)),
+                Place::local(result, expr.span),
+                Rvalue::Use(Operand::Copy(Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(base_local, receiver.span)),
                         ProjectionElem::Index(index_local),
                     ),
                     span: expr.span,
@@ -1191,12 +1188,12 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
         } => {
             let inner_local = lower_expr_to_operand(cx, inner);
             let bk = match mutability {
-                crate::ast::Mutability::Mutable => crate::mir::lvalue::BorrowKind::Mut,
-                crate::ast::Mutability::Immutable => crate::mir::lvalue::BorrowKind::Shared,
+                crate::ast::Mutability::Mutable => crate::mir::place::BorrowKind::Mut,
+                crate::ast::Mutability::Immutable => crate::mir::place::BorrowKind::Shared,
             };
             let ref_ty = cx.fresh_infer_ty(expr.span);
             cx.eval_rvalue_to_temp(
-                Rvalue::Ref(Region::Erased, bk, Lvalue::local(inner_local, inner.span)),
+                Rvalue::Ref(Region::Erased, bk, Place::local(inner_local, inner.span)),
                 ref_ty,
                 expr.span,
             )
@@ -1211,7 +1208,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             cx.eval_rvalue_to_temp(
                 Rvalue::Cast(
                     CastKind::Numeric,
-                    Operand::Copy(Lvalue::local(inner_local, inner.span)),
+                    Operand::Copy(Place::local(inner_local, inner.span)),
                     target_ty.clone(),
                 ),
                 target_ty,
@@ -1261,7 +1258,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             cx.current_block = cond_block;
             let cond_local = lower_expr_to_operand(cx, cond);
             cx.terminate(Terminator::SwitchInt {
-                discr: Operand::Copy(Lvalue::local(cond_local, cond.span)),
+                discr: Operand::Copy(Place::local(cond_local, cond.span)),
                 targets: vec![(ConstVal::Bool(true), body_block)],
                 otherwise: exit_block,
             });
@@ -1293,7 +1290,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             // For Stage 2.4b, we just check if iter is truthy
             cx.current_block = cond_block;
             cx.terminate(Terminator::SwitchInt {
-                discr: Operand::Copy(Lvalue::local(iter_local, iter.span)),
+                discr: Operand::Copy(Place::local(iter_local, iter.span)),
                 targets: vec![(ConstVal::Bool(true), body_block)],
                 otherwise: exit_block,
             });
@@ -1345,10 +1342,10 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             // For Stage 2.4b, ranges are represented as a tuple (start, end)
             let mut operands = Vec::new();
             if let Some(s) = start_local {
-                operands.push(Operand::Copy(Lvalue::local(s, Span::DUMMY)));
+                operands.push(Operand::Copy(Place::local(s, Span::DUMMY)));
             }
             if let Some(e) = end_local {
-                operands.push(Operand::Copy(Lvalue::local(e, Span::DUMMY)));
+                operands.push(Operand::Copy(Place::local(e, Span::DUMMY)));
             }
             cx.eval_rvalue_to_temp(
                 Rvalue::Aggregate(AggregateKind::Tuple, operands),
@@ -1363,7 +1360,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 elems.iter().map(|e| lower_expr_to_operand(cx, e)).collect();
             let operands: Vec<Operand> = elem_locals
                 .iter()
-                .map(|l| Operand::Copy(Lvalue::local(*l, Span::DUMMY)))
+                .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
                 .collect();
             let elem_ty = cx.fresh_infer_ty(expr.span);
             let elem_ty_for_agg = elem_ty.clone();
@@ -1394,7 +1391,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             cx.eval_rvalue_to_temp(
                 Rvalue::Aggregate(
                     AggregateKind::Array(elem_ty),
-                    vec![Operand::Copy(Lvalue::local(elem_local, elem.span))],
+                    vec![Operand::Copy(Place::local(elem_local, elem.span))],
                 ),
                 Ty::new(TyKind::Error, expr.span), // simplified
                 expr.span,
@@ -1410,7 +1407,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 .collect();
             let operands: Vec<Operand> = field_locals
                 .iter()
-                .map(|l| Operand::Copy(Lvalue::local(*l, Span::DUMMY)))
+                .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
                 .collect();
             // Stage 3.30 (per §15): if the path resolves to a known struct
             // DefId, use AggregateKind::Adt (the proper representation).
@@ -1488,11 +1485,11 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             let arg_locals: Vec<LocalId> =
                 args.iter().map(|a| lower_expr_to_operand(cx, a)).collect();
             let arg_operands: Vec<Operand> =
-                std::iter::once(Operand::Copy(Lvalue::local(recv_local, receiver.span)))
+                std::iter::once(Operand::Copy(Place::local(recv_local, receiver.span)))
                     .chain(
                         arg_locals
                             .iter()
-                            .map(|l| Operand::Copy(Lvalue::local(*l, Span::DUMMY))),
+                            .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY))),
                     )
                     .collect();
             let dest_ty = cx.fresh_infer_ty(expr.span);
@@ -1505,7 +1502,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                         val: ConstVal::Int(0),
                     }), // placeholder func
                     args: arg_operands,
-                    destination: Lvalue::local(dest, expr.span),
+                    destination: Place::local(dest, expr.span),
                     target: Some(cont),
                 },
                 cont,
@@ -2049,7 +2046,7 @@ fn lower_short_circuit(
         _ => unreachable!("lower_short_circuit called with non-And/Or op"),
     };
     cx.terminate(Terminator::SwitchInt {
-        discr: Operand::Copy(Lvalue::local(lhs_local, lhs.span)),
+        discr: Operand::Copy(Place::local(lhs_local, lhs.span)),
         targets: vec![(ConstVal::Bool(true), true_target)],
         otherwise: false_target,
     });
@@ -2060,7 +2057,7 @@ fn lower_short_circuit(
     cx.current_block = short_circuit_block;
     let short_val = matches!(op, HirBinOp::Or);
     cx.push_assign(
-        Lvalue::local(result_local, span),
+        Place::local(result_local, span),
         Rvalue::Use(Operand::Constant(Const {
             ty: Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
             val: ConstVal::Bool(short_val),
@@ -2073,7 +2070,7 @@ fn lower_short_circuit(
     cx.current_block = eval_rhs_block;
     let rhs_local = lower_expr_to_operand(cx, rhs);
     cx.terminate(Terminator::SwitchInt {
-        discr: Operand::Copy(Lvalue::local(rhs_local, rhs.span)),
+        discr: Operand::Copy(Place::local(rhs_local, rhs.span)),
         targets: vec![(ConstVal::Bool(true), result_true_block)],
         otherwise: result_false_block,
     });
@@ -2081,7 +2078,7 @@ fn lower_short_circuit(
     // result_true_block: result = true; goto cont
     cx.current_block = result_true_block;
     cx.push_assign(
-        Lvalue::local(result_local, span),
+        Place::local(result_local, span),
         Rvalue::Use(Operand::Constant(Const {
             ty: Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
             val: ConstVal::Bool(true),
@@ -2093,7 +2090,7 @@ fn lower_short_circuit(
     // result_false_block: result = false; goto cont
     cx.current_block = result_false_block;
     cx.push_assign(
-        Lvalue::local(result_local, span),
+        Place::local(result_local, span),
         Rvalue::Use(Operand::Constant(Const {
             ty: Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
             val: ConstVal::Bool(false),
@@ -2111,16 +2108,16 @@ fn lower_short_circuit(
 ///
 /// `*p` reads the value at the place `Projection(p, Deref)`. We:
 /// 1. Lower `inner` to a local (the pointer/reference value)
-/// 2. Construct `Lvalue::Projection(local, Deref)`
+/// 2. Construct `Place::Projection(local, Deref)`
 /// 3. Assign `result = Use(Copy(projection))` to a fresh temp
 ///
 /// The temp's type is left as a fresh inference variable — typeck will
 /// unify it with the pointee type via `infer_projection(Deref)`.
 fn lower_deref_expr(cx: &mut MirLowerCtxt, inner: &HirExpr, span: Span) -> LocalId {
     let inner_local = lower_expr_to_operand(cx, inner);
-    let proj = Lvalue {
-        kind: LvalueKind::Projection(
-            Box::new(Lvalue::local(inner_local, inner.span)),
+    let proj = Place {
+        kind: PlaceKind::Projection(
+            Box::new(Place::local(inner_local, inner.span)),
             ProjectionElem::Deref,
         ),
         span,
@@ -2202,8 +2199,8 @@ fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                     // checker's Copy-ness check on non-Copy types (e.g.,
                     // `let s = "hello"` where s : Str — Str is not Copy).
                     cx.push_assign(
-                        Lvalue::local(local_id, local.span),
-                        Rvalue::Use(Operand::Move(Lvalue::local(init_local, init.span))),
+                        Place::local(local_id, local.span),
+                        Rvalue::Use(Operand::Move(Place::local(init_local, init.span))),
                         local.span,
                     );
                 } else {
@@ -2273,7 +2270,7 @@ fn lower_if(
 
     // Terminate current block: switchInt(cond) { 1 => then, _ => else }
     cx.terminate(Terminator::SwitchInt {
-        discr: Operand::Copy(Lvalue::local(cond_local, cond.span)),
+        discr: Operand::Copy(Place::local(cond_local, cond.span)),
         targets: vec![(ConstVal::Bool(true), then_block)],
         otherwise: else_block,
     });
@@ -2282,8 +2279,8 @@ fn lower_if(
     cx.current_block = then_block;
     let then_result = lower_block(cx, then);
     cx.push_assign(
-        Lvalue::local(result_local, span),
-        Rvalue::Use(Operand::Copy(Lvalue::local(then_result, then.span))),
+        Place::local(result_local, span),
+        Rvalue::Use(Operand::Copy(Place::local(then_result, then.span))),
         then.span,
     );
     cx.terminate(Terminator::Goto(cont_block));
@@ -2293,14 +2290,14 @@ fn lower_if(
     if let Some(else_expr) = else_ {
         let else_result = lower_expr_to_operand(cx, else_expr);
         cx.push_assign(
-            Lvalue::local(result_local, span),
-            Rvalue::Use(Operand::Copy(Lvalue::local(else_result, else_expr.span))),
+            Place::local(result_local, span),
+            Rvalue::Use(Operand::Copy(Place::local(else_result, else_expr.span))),
             else_expr.span,
         );
     } else {
         // No else → unit
         cx.push_assign(
-            Lvalue::local(result_local, span),
+            Place::local(result_local, span),
             Rvalue::Aggregate(AggregateKind::Tuple, vec![]),
             span,
         );
@@ -2355,19 +2352,19 @@ fn lower_match(cx: &mut MirLowerCtxt, scrutinee: &HirExpr, arms: &[HirArm], span
         let discr_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), span);
         let discr_local = cx.mir.new_local(discr_ty.clone(), None, span);
         cx.push_assign(
-            Lvalue::local(discr_local, span),
-            Rvalue::Use(Operand::Move(Lvalue {
-                kind: LvalueKind::Projection(
-                    Box::new(Lvalue::local(scrut_local, scrutinee.span)),
+            Place::local(discr_local, span),
+            Rvalue::Use(Operand::Move(Place {
+                kind: PlaceKind::Projection(
+                    Box::new(Place::local(scrut_local, scrutinee.span)),
                     ProjectionElem::Field(FieldId(0), discr_ty.clone()),
                 ),
                 span,
             })),
             span,
         );
-        Operand::Copy(Lvalue::local(discr_local, span))
+        Operand::Copy(Place::local(discr_local, span))
     } else {
-        Operand::Copy(Lvalue::local(scrut_local, scrutinee.span))
+        Operand::Copy(Place::local(scrut_local, scrutinee.span))
     };
 
     // Collect targets: (constant, arm_block) pairs
@@ -2470,8 +2467,8 @@ fn lower_match(cx: &mut MirLowerCtxt, scrutinee: &HirExpr, arms: &[HirArm], span
         // Lower the arm body
         let arm_result = lower_expr_to_operand(cx, &arm.body);
         cx.push_assign(
-            Lvalue::local(result_local, span),
-            Rvalue::Use(Operand::Copy(Lvalue::local(arm_result, arm.body.span))),
+            Place::local(result_local, span),
+            Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
             arm.span,
         );
         cx.terminate(Terminator::Goto(cont_block));
@@ -2488,8 +2485,8 @@ fn lower_match(cx: &mut MirLowerCtxt, scrutinee: &HirExpr, arms: &[HirArm], span
             lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
             let arm_result = lower_expr_to_operand(cx, &arm.body);
             cx.push_assign(
-                Lvalue::local(result_local, span),
-                Rvalue::Use(Operand::Copy(Lvalue::local(arm_result, arm.body.span))),
+                Place::local(result_local, span),
+                Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
                 arm.span,
             );
             break;
@@ -2587,10 +2584,10 @@ fn lower_enum_variant_pattern_bindings(cx: &mut MirLowerCtxt, scrut_local: Local
                             cx.local_map.insert(sub_pat.hir_id, binding_local);
                             // Generate: binding_local = Copy(scrut.Field(field_idx, field_ty))
                             cx.push_assign(
-                                Lvalue::local(binding_local, sub_pat.span),
-                                Rvalue::Use(Operand::Copy(Lvalue {
-                                    kind: LvalueKind::Projection(
-                                        Box::new(Lvalue::local(scrut_local, span)),
+                                Place::local(binding_local, sub_pat.span),
+                                Rvalue::Use(Operand::Copy(Place {
+                                    kind: PlaceKind::Projection(
+                                        Box::new(Place::local(scrut_local, span)),
                                         ProjectionElem::Field(FieldId(field_idx), field_ty),
                                     ),
                                     span: sub_pat.span,
@@ -2654,10 +2651,10 @@ fn lower_enum_variant_pattern_bindings(cx: &mut MirLowerCtxt, scrut_local: Local
                                             cx.local_map
                                                 .insert(field_pat.pat.hir_id, binding_local);
                                             cx.push_assign(
-                                                Lvalue::local(binding_local, field_pat.pat.span),
-                                                Rvalue::Use(Operand::Copy(Lvalue {
-                                                    kind: LvalueKind::Projection(
-                                                        Box::new(Lvalue::local(scrut_local, span)),
+                                                Place::local(binding_local, field_pat.pat.span),
+                                                Rvalue::Use(Operand::Copy(Place {
+                                                    kind: PlaceKind::Projection(
+                                                        Box::new(Place::local(scrut_local, span)),
                                                         ProjectionElem::Field(
                                                             FieldId(field_idx),
                                                             field_ty,

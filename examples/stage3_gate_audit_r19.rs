@@ -4,7 +4,7 @@
 //!
 //! Purpose: Phase gate audit for Stage 3.52 — slice element type
 //! propagation fix. Verifies that `s[i]` where `s: &[T]` produces the
-//! correct element type for load/store/arithmetic (was: `detect_lvalue_type`
+//! correct element type for load/store/arithmetic (was: `detect_place_type`
 //! fell through to I32 fallback, and MIR lower used a fresh infer var
 //! that typeck defaulted to i32 — causing `s[0]` on `&[i64]` to
 //! `load i32` instead of `load i64`).

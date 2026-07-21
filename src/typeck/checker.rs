@@ -11,7 +11,7 @@
 use crate::ast;
 use crate::hir::HirCrate;
 use crate::mir::body::*;
-use crate::mir::lvalue::*;
+use crate::mir::place::*;
 use crate::mir::ty::*;
 use crate::session::Span;
 use crate::typeck::error::TypeError;
@@ -165,8 +165,8 @@ impl TypeChecker {
         let mut updates: Vec<(
             usize,
             usize,
-            Option<crate::mir::lvalue::Lvalue>,
-            Option<crate::mir::lvalue::Rvalue>,
+            Option<crate::mir::place::Place>,
+            Option<crate::mir::place::Rvalue>,
         )> = Vec::new();
         for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
             for (stmt_idx, stmt) in bb.statements.iter().enumerate() {
@@ -174,7 +174,7 @@ impl TypeChecker {
                     let (place, rvalue) = &**boxed;
                     let mut new_place = place.clone();
                     let mut new_rvalue = rvalue.clone();
-                    let place_changed = writeback_field_types_in_lvalue_with_table(
+                    let place_changed = writeback_field_types_in_place_with_table(
                         &mut new_place,
                         mir,
                         table,
@@ -217,40 +217,40 @@ impl TypeChecker {
             }
         }
 
-        fn resolve_lvalue_type_with_table(lv: &crate::mir::lvalue::Lvalue, mir: &MirBody) -> Ty {
-            use crate::mir::lvalue::LvalueKind;
+        fn resolve_place_type_with_table(lv: &crate::mir::place::Place, mir: &MirBody) -> Ty {
+            use crate::mir::place::PlaceKind;
             match &lv.kind {
-                LvalueKind::Local(id) => mir
+                PlaceKind::Local(id) => mir
                     .local_decls
                     .get(id.0 as usize)
                     .map(|ld| ld.ty.clone())
                     .unwrap_or_else(|| Ty::new(TyKind::Error, lv.span)),
-                LvalueKind::Projection(base, elem) => {
-                    let _base_ty = resolve_lvalue_type_with_table(base, mir);
+                PlaceKind::Projection(base, elem) => {
+                    let _base_ty = resolve_place_type_with_table(base, mir);
                     match elem {
-                        crate::mir::lvalue::ProjectionElem::Field(_field_id, field_ty) => {
+                        crate::mir::place::ProjectionElem::Field(_field_id, field_ty) => {
                             field_ty.clone()
                         }
                         _ => Ty::new(TyKind::Error, lv.span),
                     }
                 }
-                LvalueKind::Static(_) => Ty::new(TyKind::Error, lv.span),
+                PlaceKind::Static(_) => Ty::new(TyKind::Error, lv.span),
             }
         }
 
-        fn writeback_field_types_in_lvalue_with_table(
-            lv: &mut crate::mir::lvalue::Lvalue,
+        fn writeback_field_types_in_place_with_table(
+            lv: &mut crate::mir::place::Place,
             mir: &MirBody,
             table: &FieldTyTable,
             unify: &mut crate::typeck::unify::UnificationTable,
         ) -> bool {
-            use crate::mir::lvalue::{LvalueKind, ProjectionElem};
+            use crate::mir::place::{PlaceKind, ProjectionElem};
             match &mut lv.kind {
-                LvalueKind::Projection(base, elem) => {
+                PlaceKind::Projection(base, elem) => {
                     let mut changed =
-                        writeback_field_types_in_lvalue_with_table(base, mir, table, unify);
+                        writeback_field_types_in_place_with_table(base, mir, table, unify);
                     if let ProjectionElem::Field(field_id, field_ty) = elem {
-                        let base_ty = resolve_lvalue_type_with_table(base, mir);
+                        let base_ty = resolve_place_type_with_table(base, mir);
                         if let TyKind::Adt(def_id, _) = &base_ty.kind {
                             if let Some(fields) = table.get_struct_fields(def_id) {
                                 if let Some(resolved) = fields.get(field_id.0 as usize) {
@@ -279,12 +279,12 @@ impl TypeChecker {
         }
 
         fn writeback_field_types_in_rvalue_with_table(
-            rv: &mut crate::mir::lvalue::Rvalue,
+            rv: &mut crate::mir::place::Rvalue,
             mir: &MirBody,
             table: &FieldTyTable,
             unify: &mut crate::typeck::unify::UnificationTable,
         ) -> bool {
-            use crate::mir::lvalue::Rvalue;
+            use crate::mir::place::Rvalue;
             match rv {
                 Rvalue::Use(op) => {
                     writeback_field_types_in_operand_with_table(op, mir, table, unify)
@@ -308,21 +308,21 @@ impl TypeChecker {
                     changed
                 }
                 Rvalue::Ref(_, _, lv) => {
-                    writeback_field_types_in_lvalue_with_table(lv, mir, table, unify)
+                    writeback_field_types_in_place_with_table(lv, mir, table, unify)
                 }
             }
         }
 
         fn writeback_field_types_in_operand_with_table(
-            op: &mut crate::mir::lvalue::Operand,
+            op: &mut crate::mir::place::Operand,
             mir: &MirBody,
             table: &FieldTyTable,
             unify: &mut crate::typeck::unify::UnificationTable,
         ) -> bool {
-            use crate::mir::lvalue::Operand;
+            use crate::mir::place::Operand;
             match op {
                 Operand::Copy(lv) | Operand::Move(lv) => {
-                    writeback_field_types_in_lvalue_with_table(lv, mir, table, unify)
+                    writeback_field_types_in_place_with_table(lv, mir, table, unify)
                 }
                 _ => false,
             }
@@ -331,23 +331,21 @@ impl TypeChecker {
 
     /// Stage 3.60: Writeback field-load locals using FieldTyTable instead of HIR.
     fn writeback_field_load_locals_with_table(&mut self, mir: &mut MirBody, table: &FieldTyTable) {
-        use crate::mir::lvalue::{LvalueKind, Operand, ProjectionElem, Rvalue};
+        use crate::mir::place::{Operand, PlaceKind, ProjectionElem, Rvalue};
         for bb in &mir.basic_blocks {
             for stmt in &bb.statements {
                 if let StatementKind::Assign(boxed) = &stmt.kind {
                     let (place, rvalue) = &**boxed;
-                    if let LvalueKind::Local(dest_id) = &place.kind {
+                    if let PlaceKind::Local(dest_id) = &place.kind {
                         if let Rvalue::Use(op) = rvalue {
                             let lv = match op {
                                 Operand::Copy(lv) | Operand::Move(lv) => lv,
                                 _ => continue,
                             };
-                            if let LvalueKind::Projection(
-                                base,
-                                ProjectionElem::Field(field_id, _),
-                            ) = &lv.kind
+                            if let PlaceKind::Projection(base, ProjectionElem::Field(field_id, _)) =
+                                &lv.kind
                             {
-                                let base_ty = self.resolve_lvalue_for_writeback(mir, base);
+                                let base_ty = self.resolve_place_for_writeback(mir, base);
                                 if let TyKind::Adt(def_id, _) = &base_ty.kind {
                                     if let Some(fields) = table.get_struct_fields(def_id) {
                                         if let Some(field_ty) = fields.get(field_id.0 as usize) {
@@ -370,7 +368,7 @@ impl TypeChecker {
             for stmt in &bb.statements {
                 if let StatementKind::Assign(boxed) = &stmt.kind {
                     let (place, rvalue) = &**boxed;
-                    if let LvalueKind::Local(dest_id) = &place.kind {
+                    if let PlaceKind::Local(dest_id) = &place.kind {
                         if let Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) = rvalue {
                             let a_ty = self.resolve_operand_for_writeback(mir, a);
                             let b_ty = self.resolve_operand_for_writeback(mir, b);
@@ -396,7 +394,7 @@ impl TypeChecker {
     }
 
     /// Check a single MIR body. Walks all basic blocks, infers types
-    /// for rvalues, and unifies with lvalue types.
+    /// for rvalues, and unifies with place types.
     ///
     /// After inference, writes the resolved types back into
     /// `mir.local_decls[i].ty` so that downstream consumers (borrowck,
@@ -413,34 +411,34 @@ impl TypeChecker {
 
     /// Resolve an operand's type for the writeback pass (reads local_decls
     /// which have been fixed by the first pass of writeback_field_load_locals).
-    fn resolve_operand_for_writeback(&self, mir: &MirBody, op: &crate::mir::lvalue::Operand) -> Ty {
-        use crate::mir::lvalue::Operand;
+    fn resolve_operand_for_writeback(&self, mir: &MirBody, op: &crate::mir::place::Operand) -> Ty {
+        use crate::mir::place::Operand;
         match op {
-            Operand::Copy(lv) | Operand::Move(lv) => self.resolve_lvalue_for_writeback(mir, lv),
+            Operand::Copy(lv) | Operand::Move(lv) => self.resolve_place_for_writeback(mir, lv),
             Operand::Constant(c) => c.ty.as_ref().clone(),
         }
     }
 
-    /// Resolve an lvalue's type for the writeback pass (post-Phase 3, so
+    /// Resolve a place's type for the writeback pass (post-Phase 3, so
     /// local_decls have resolved types).
-    fn resolve_lvalue_for_writeback(&self, mir: &MirBody, lv: &crate::mir::lvalue::Lvalue) -> Ty {
-        use crate::mir::lvalue::LvalueKind;
+    fn resolve_place_for_writeback(&self, mir: &MirBody, lv: &crate::mir::place::Place) -> Ty {
+        use crate::mir::place::PlaceKind;
         match &lv.kind {
-            LvalueKind::Local(id) => mir
+            PlaceKind::Local(id) => mir
                 .local_decls
                 .get(id.0 as usize)
                 .map(|ld| ld.ty.clone())
                 .unwrap_or_else(|| Ty::new(TyKind::Error, lv.span)),
-            LvalueKind::Projection(base, elem) => {
-                let base_ty = self.resolve_lvalue_for_writeback(mir, base);
+            PlaceKind::Projection(base, elem) => {
+                let base_ty = self.resolve_place_for_writeback(mir, base);
                 match elem {
-                    crate::mir::lvalue::ProjectionElem::Field(_field_id, field_ty) => {
+                    crate::mir::place::ProjectionElem::Field(_field_id, field_ty) => {
                         field_ty.clone()
                     }
                     _ => base_ty,
                 }
             }
-            LvalueKind::Static(_) => Ty::new(TyKind::Error, lv.span),
+            PlaceKind::Static(_) => Ty::new(TyKind::Error, lv.span),
         }
     }
 
@@ -470,7 +468,7 @@ impl TypeChecker {
         match &stmt.kind {
             StatementKind::Assign(boxed) => {
                 let (place, rvalue) = &**boxed;
-                let place_ty = self.infer_lvalue(mir, place);
+                let place_ty = self.infer_place(mir, place);
                 let rvalue_ty = self.infer_rvalue(mir, rvalue);
                 // Stage 3.58: implicit coercion — if place expects Int/Uint
                 // and rvalue is Bool or a narrower integer, allow it (zext).
@@ -525,7 +523,7 @@ impl TypeChecker {
                     .map(|arg| self.unify.resolve(&self.infer_operand(mir, arg)))
                     .collect();
                 // Infer destination type
-                let dest_ty = self.unify.resolve(&self.infer_lvalue(mir, destination));
+                let dest_ty = self.unify.resolve(&self.infer_place(mir, destination));
 
                 // G3 fix (Stage 2.4e): If func is a FnDef(def_id, _),
                 // look up the fn signature from fn_sigs and verify:
@@ -624,7 +622,7 @@ impl TypeChecker {
             }
             Terminator::Drop { place, .. } => {
                 // Just infer the place type (no constraint to check)
-                let _ = self.infer_lvalue(mir, place);
+                let _ = self.infer_place(mir, place);
             }
             Terminator::Assert { cond, .. } => {
                 // The condition must be a bool. We don't enforce this
@@ -645,22 +643,22 @@ impl TypeChecker {
         }
     }
 
-    /// Infer the type of an lvalue (place expression).
-    fn infer_lvalue(&self, mir: &MirBody, lv: &Lvalue) -> Ty {
+    /// Infer the type of a place (place expression).
+    fn infer_place(&self, mir: &MirBody, lv: &Place) -> Ty {
         match &lv.kind {
-            LvalueKind::Local(id) => {
+            PlaceKind::Local(id) => {
                 if (id.0 as usize) < mir.local_decls.len() {
                     mir.local(*id).ty.clone()
                 } else {
                     Ty::new(TyKind::Error, lv.span)
                 }
             }
-            LvalueKind::Static(_) => {
+            PlaceKind::Static(_) => {
                 // Static type would come from the HIR; for now, Error
                 Ty::new(TyKind::Error, lv.span)
             }
-            LvalueKind::Projection(base, elem) => {
-                let base_ty = self.infer_lvalue(mir, base);
+            PlaceKind::Projection(base, elem) => {
+                let base_ty = self.infer_place(mir, base);
                 self.infer_projection(&base_ty, elem)
             }
         }
@@ -803,7 +801,7 @@ impl TypeChecker {
                 }
             }
             Rvalue::Ref(_, borrow_kind, lv) => {
-                let inner_ty = self.infer_lvalue(mir, lv);
+                let inner_ty = self.infer_place(mir, lv);
                 let mutability = match borrow_kind {
                     BorrowKind::Shared => Mutability::Immutable,
                     BorrowKind::Mut => Mutability::Mutable,
@@ -870,7 +868,7 @@ impl TypeChecker {
     /// Infer the type of an operand.
     fn infer_operand(&self, mir: &MirBody, op: &Operand) -> Ty {
         match op {
-            Operand::Copy(lv) | Operand::Move(lv) => self.infer_lvalue(mir, lv),
+            Operand::Copy(lv) | Operand::Move(lv) => self.infer_place(mir, lv),
             Operand::Constant(c) => c.ty.as_ref().clone(),
         }
     }
@@ -1096,7 +1094,7 @@ mod tests {
         );
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(temp, Span::DUMMY),
+                Place::local(temp, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
                     val: ConstVal::Int(42),
@@ -1106,8 +1104,8 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(return_local, Span::DUMMY),
-                Rvalue::Use(Operand::Copy(Lvalue::local(temp, Span::DUMMY))),
+                Place::local(return_local, Span::DUMMY),
+                Rvalue::Use(Operand::Copy(Place::local(temp, Span::DUMMY))),
             ))),
             span: Span::DUMMY,
         });
@@ -1133,7 +1131,7 @@ mod tests {
         let dest = mir.new_local(Ty::new(TyKind::Bool, Span::DUMMY), None, Span::DUMMY);
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(dest, Span::DUMMY),
+                Place::local(dest, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
                     val: ConstVal::Int(42),
@@ -1163,11 +1161,11 @@ mod tests {
         );
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(result, Span::DUMMY),
+                Place::local(result, Span::DUMMY),
                 Rvalue::BinaryOp(
                     BinOp::Eq,
-                    Operand::Copy(Lvalue::local(a, Span::DUMMY)),
-                    Operand::Copy(Lvalue::local(b, Span::DUMMY)),
+                    Operand::Copy(Place::local(a, Span::DUMMY)),
+                    Operand::Copy(Place::local(b, Span::DUMMY)),
                 ),
             ))),
             span: Span::DUMMY,
@@ -1204,11 +1202,11 @@ mod tests {
         );
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(dest, Span::DUMMY),
+                Place::local(dest, Span::DUMMY),
                 Rvalue::Ref(
                     Region::Erased,
                     BorrowKind::Shared,
-                    Lvalue::local(src, Span::DUMMY),
+                    Place::local(src, Span::DUMMY),
                 ),
             ))),
             span: Span::DUMMY,
@@ -1245,12 +1243,12 @@ mod tests {
         let b = mir.new_local(Ty::new(TyKind::Bool, Span::DUMMY), None, Span::DUMMY);
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
-                Lvalue::local(dest, Span::DUMMY),
+                Place::local(dest, Span::DUMMY),
                 Rvalue::Aggregate(
                     AggregateKind::Tuple,
                     vec![
-                        Operand::Copy(Lvalue::local(a, Span::DUMMY)),
-                        Operand::Copy(Lvalue::local(b, Span::DUMMY)),
+                        Operand::Copy(Place::local(a, Span::DUMMY)),
+                        Operand::Copy(Place::local(b, Span::DUMMY)),
                     ],
                 ),
             ))),
@@ -1277,7 +1275,7 @@ mod tests {
         let bb1 = mir.new_block();
         let bb2 = mir.new_block();
         mir.block_mut(BasicBlockId(0)).terminator = Terminator::SwitchInt {
-            discr: Operand::Copy(Lvalue::local(discr, Span::DUMMY)),
+            discr: Operand::Copy(Place::local(discr, Span::DUMMY)),
             targets: vec![(ConstVal::Int(1), bb1)],
             otherwise: bb2,
         };
@@ -1310,7 +1308,7 @@ mod tests {
         let bb1 = mir.new_block();
         let bb2 = mir.new_block();
         mir.block_mut(BasicBlockId(0)).terminator = Terminator::SwitchInt {
-            discr: Operand::Copy(Lvalue::local(discr, Span::DUMMY)),
+            discr: Operand::Copy(Place::local(discr, Span::DUMMY)),
             targets: vec![(ConstVal::Int(1), bb1)],
             otherwise: bb2,
         };

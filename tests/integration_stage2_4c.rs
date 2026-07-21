@@ -588,7 +588,7 @@ fn integration_storage_live_emitted_for_return_local() {
         matches!(
             s.kind,
             landin_compiler::mir::body::StatementKind::StorageLive(
-                landin_compiler::mir::lvalue::LocalId(0)
+                landin_compiler::mir::place::LocalId(0)
             )
         )
     });
@@ -610,7 +610,7 @@ fn integration_storage_live_emitted_for_params() {
         matches!(
             s.kind,
             landin_compiler::mir::body::StatementKind::StorageLive(
-                landin_compiler::mir::lvalue::LocalId(1)
+                landin_compiler::mir::place::LocalId(1)
             )
         )
     });
@@ -618,7 +618,7 @@ fn integration_storage_live_emitted_for_params() {
         matches!(
             s.kind,
             landin_compiler::mir::body::StatementKind::StorageLive(
-                landin_compiler::mir::lvalue::LocalId(2)
+                landin_compiler::mir::place::LocalId(2)
             )
         )
     });
@@ -684,7 +684,7 @@ fn integration_assert_emitted_for_subtraction() {
             &bb.terminator,
             landin_compiler::mir::body::Terminator::Assert {
                 msg: landin_compiler::mir::body::AssertMessage::Overflow(
-                    landin_compiler::mir::lvalue::BinOp::Sub,
+                    landin_compiler::mir::place::BinOp::Sub,
                     _,
                     _
                 ),
@@ -729,7 +729,7 @@ fn integration_typeck_results_populated() {
     assert_eq!(result.typeck_results.len(), 1);
     let body_results = &result.typeck_results[0];
     // LocalId(0) is the return local; its type should be resolved (not Infer).
-    let return_ty = body_results.local_type(landin_compiler::mir::lvalue::LocalId(0));
+    let return_ty = body_results.local_type(landin_compiler::mir::place::LocalId(0));
     assert!(return_ty.is_some(), "expected return local type");
     // Note: the return type may be Infer if the fn signature isn't yet
     // unified with the body's value. For Stage 2.4d, we just verify
@@ -741,7 +741,7 @@ fn integration_typeck_results_populated() {
     );
     // LocalId(1) is the param `x`; its type should be Int(I32) (params
     // have explicit type annotations that are lowered directly).
-    let param_ty = body_results.local_type(landin_compiler::mir::lvalue::LocalId(1));
+    let param_ty = body_results.local_type(landin_compiler::mir::place::LocalId(1));
     assert!(param_ty.is_some(), "expected param local type");
     assert!(
         matches!(
@@ -1058,7 +1058,7 @@ fn integration_storage_dead_skips_return_local() {
             matches!(
                 s.kind,
                 landin_compiler::mir::body::StatementKind::StorageDead(
-                    landin_compiler::mir::lvalue::LocalId(0)
+                    landin_compiler::mir::place::LocalId(0)
                 )
             )
         });

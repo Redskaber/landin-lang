@@ -3201,14 +3201,14 @@ fn codegen_byte_string_index() {
 }
 
 // ============================================================================
-// Stage 3.54 — Slice/array field store + detect_lvalue_storage_type fix
+// Stage 3.54 — Slice/array field store + detect_place_storage_type fix
 // ============================================================================
 
 #[test]
 fn codegen_slice_field_store_correct() {
     // s.data[0] = 42 where data: &mut [i32] — should GEP to field, then
     // GEP to fat pointer field 0 (data ptr), then GEP to element, then store.
-    // Was (Stage 3.53 latent): detect_lvalue_storage_type returned the struct
+    // Was (Stage 3.53 latent): detect_place_storage_type returned the struct
     // type instead of the field type, causing wrong GEP.
     let ll = gen_ll("struct S { data: &mut [i32] } fn f(s: S) { s.data[0] = 42; }");
     // Should have: GEP to struct field, GEP to fat ptr field 0, GEP to element
@@ -3330,7 +3330,7 @@ fn codegen_slice_field_store_i64() {
 #[test]
 fn codegen_slice_local_regression() {
     // Regression: direct slice param indexing (no struct field) should
-    // still work after the detect_lvalue_storage_type change.
+    // still work after the detect_place_storage_type change.
     let ll = gen_ll("fn f(s: &[i32]) -> i32 { s[0] }");
     assert!(
         ll.contains("load i32"),

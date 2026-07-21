@@ -15,7 +15,7 @@
 //! `emit_type_to_llvm_str` returns `String` (was `&'static str`) so that
 //! dynamic struct/array layouts can be rendered.
 
-use crate::mir::lvalue::{BinOp, UnOp};
+use crate::mir::place::{BinOp, UnOp};
 use crate::mir::ty::ConstVal;
 
 /// A value produced by the emitter — opaque to the translation layer.
