@@ -11,7 +11,18 @@ pub mod lower;
 pub mod lvalue;
 pub mod ty;
 
-pub use body::*;
+// Stage 3.57 (P0-3 fix): explicit re-exports instead of `pub use *::*;`
+// to prevent accidental leakage of internal types.
+pub use body::{
+    AdtLayout, AdtLayouts, AssertMessage, BasicBlock, BasicBlockId, LocalDecl, MirBody, Statement,
+    StatementKind, Terminator, VisibleNames,
+};
 pub use lower::{lower_hir_body_to_mir, MirLowerCtxt};
-pub use lvalue::*;
-pub use ty::*;
+pub use lvalue::{
+    AggregateKind, BinOp, BorrowKind, CastKind, FieldId, LocalId, Lvalue, LvalueKind, Operand,
+    ProjectionElem, RangeOp, Rvalue, UnOp,
+};
+pub use ty::{
+    Const, ConstVal, FloatVid, InferVar, IntVid, Mutability, ParamTy, Region, RegionVid, Sig,
+    SubstsRef, Ty, TyKind, TyVid,
+};

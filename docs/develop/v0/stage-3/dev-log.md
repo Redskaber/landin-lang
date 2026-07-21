@@ -1079,6 +1079,49 @@
   architecture coverage + 8 edge cases), all passed; audit CONVERGED at
   round 23 per §9.3.3.
 
+### Stage 3.57 — Phase B-D: error path coverage + glob exports + Emitter tests + pipeline hardening (v0.8.6, process v3.13)
+- **Problem (4 issues from Plan agent audit)**:
+  1. **P1: gen_ll swallows compile errors** — `gen_ll` never checked
+     `result.has_errors()`. If upstream produced type/resolve/borrow errors,
+     codegen tests still got IR back and could pass on substring matches.
+     Zero tests verified error-path behavior.
+  2. **P2: Glob exports in hir/mod.rs and mir/mod.rs** — `pub use kinds::*;`
+     and `pub use body::*; pub use lvalue::*; pub use ty::*;` blindly
+     re-exported 80+ types, leaking internal implementation details as
+     public API.
+  3. **P3: Emitter trait had zero direct tests** — 30-method trait with
+     exactly 1 impl (TextEmitter), no trait conformance test.
+  4. **P5: body_metas loop duplicated fn_name_by_def_id lookup** — O(n²)
+     inner scan per body.
+- **Fix** (4 source files + tests):
+  1. `tests/codegen_tests.rs` — `gen_ll` now asserts `!result.has_errors()`
+     before codegen. Added `gen_ll_unchecked` for tests that intentionally
+     feed broken source. Added 6 error-path tests (parse error, undefined fn,
+     type mismatch, multiple errors, valid program no errors, complex program
+     no errors). Found 12 pre-existing tests with silent typeck errors
+     (comparison results typed as Bool not i32, &str indexing typed as u8 not
+     i32) — switched to `gen_ll_unchecked` and documented as known typeck
+     coercion gap.
+  2. `src/hir/mod.rs` — replaced `pub use kinds::*;` with explicit list of
+     58 types. `src/mir/mod.rs` — replaced 3 `pub use *::*;` globs with
+     explicit lists (11 body types, 13 lvalue types, 13 ty types).
+  3. `src/codegen/emitter.rs` — added 6 unit tests: trait conformance
+     (TextEmitter implements Emitter), type string roundtrips, fat_ptr_type
+     shape, mir_type_to_emit_type, EmitType helpers, TextEmitter output.
+  4. (P5 deferred — body_metas dedup is low-impact, not worth the risk.)
+- **Discovered typeck coercion gaps** (documented, not fixed in this stage):
+  - `a == b` (i32 comparison) → typeck reports type mismatch (Bool vs i32).
+    Codegen emits correct IR via gen_ll_unchecked, but typeck should coerce
+    Bool to i32 in expression context. Pre-existing, affects 4 tests.
+  - `s[0]` on `&str` → typeck reports type mismatch (u8 vs i32). Codegen
+    emits correct IR, but typeck should coerce u8 to i32 when the return
+    type is i32. Pre-existing, affects 8 tests.
+  These are typeck coercion issues, not codegen bugs. Fixing them requires
+  adding implicit coercion rules to the type checker (Stage 2 territory).
+- 12 new tests: 6 error-path + 6 Emitter trait.
+- Total: 953 → 965. (4 source files modified; 0 typeck/borrowck changes.)
+- Gate review Round 24 (R24) — audit pending.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -1117,3 +1160,4 @@
 | v0.8.6 (3.54) | 938 | +9 (slice/array field store + detect_lvalue_storage_type Field projection fix)
 | v0.8.6 (3.55) | 947 | +9 (void function return type fix: void fn emits define void + ret void, not body value type) |
 | v0.8.6 (3.56) | 953 | +6 (Phase A §16 refactoring: codegen as pure MIR consumer, no re-lowering) |
+| v0.8.6 (3.57) | 965 | +12 (Phase B-D: error path coverage + glob exports cleanup + Emitter trait tests)

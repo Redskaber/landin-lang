@@ -14,7 +14,18 @@ pub mod lower;
 pub mod map;
 
 // Re-export the most-used types at the module root for convenience.
+// Stage 3.57 (P0-3 fix): explicit list instead of `pub use kinds::*;`
+// to prevent accidental leakage of internal types.
 pub use id::{DefId, DefIdCounter, HirId, ItemLocalId, ItemLocalIdCounter, OwnerId};
-pub use kinds::*;
+pub use kinds::{
+    Body, BodyId, DefKind, HirArm, HirAssocConst, HirAssocType, HirBinOp, HirBlock, HirConst,
+    HirCrate, HirEnum, HirExpr, HirExprField, HirExprKind, HirExternBlock, HirFieldDef, HirFn,
+    HirFnRetTy, HirFnSig, HirForeignItem, HirGenericParam, HirGenerics, HirImpl, HirImplItem,
+    HirItem, HirLifetimeParam, HirLitKind, HirLocal, HirMod, HirModKind, HirParam, HirPat,
+    HirPatField, HirPatKind, HirPath, HirPathSegment, HirQSelf, HirStatic, HirStmt, HirStruct,
+    HirTrait, HirTraitBound, HirTraitItem, HirTy, HirTyKind, HirTypeAlias, HirTypeBound,
+    HirTypeParam, HirUnaryOp, HirUse, HirUseTree, HirVariant, HirVariantData, HirWherePredicate,
+    InferTy, InferTyCounter, OwnerNode, PrimTy, Res,
+};
 pub use lower::{lower_crate, LowerCtxt, LowerError};
 pub use map::{DefIdMap, DefIdSet, HirIdMap, HirIdSet};

@@ -448,3 +448,95 @@ pub fn emit_type_to_llvm_str(ty: &EmitType) -> String {
 pub fn llvm_ptr_str(ty: &EmitType) -> String {
     format!("{}*", emit_type_to_llvm_str(ty))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::codegen::TextEmitter;
+
+    /// Stage 3.57 (P1-5): Verify TextEmitter implements the Emitter trait.
+    /// This is a compile-time check — if Emitter trait changes and
+    /// TextEmitter doesn't keep up, this test fails to compile.
+    #[test]
+    fn text_emitter_satisfies_emitter_trait() {
+        let _: &dyn Emitter = &TextEmitter::new();
+    }
+
+    /// Stage 3.57: Verify emit_type_to_llvm_str roundtrips for key types.
+    #[test]
+    fn emit_type_to_llvm_str_roundtrips() {
+        assert_eq!(emit_type_to_llvm_str(&EmitType::I32), "i32");
+        assert_eq!(emit_type_to_llvm_str(&EmitType::I64), "i64");
+        assert_eq!(emit_type_to_llvm_str(&EmitType::F64), "double");
+        assert_eq!(emit_type_to_llvm_str(&EmitType::Void), "void");
+        assert_eq!(
+            emit_type_to_llvm_str(&EmitType::Struct(vec![EmitType::I32, EmitType::I64])),
+            "{ i32, i64 }"
+        );
+        assert_eq!(
+            emit_type_to_llvm_str(&EmitType::Array(Box::new(EmitType::I8), 5)),
+            "[5 x i8]"
+        );
+    }
+
+    /// Stage 3.57: Verify fat_ptr_type produces the correct { Ptr, I64 } shape.
+    #[test]
+    fn fat_ptr_type_correct_shape() {
+        let fp = fat_ptr_type(EmitType::I8);
+        match fp {
+            EmitType::Struct(fields) => {
+                assert_eq!(fields.len(), 2);
+                assert!(fields[0].is_ptr());
+                assert_eq!(fields[1], EmitType::I64);
+            }
+            _ => panic!("expected Struct, got {:?}", fp),
+        }
+    }
+
+    /// Stage 3.57: Verify mir_type_to_emit_type for basic types.
+    #[test]
+    fn mir_type_to_emit_type_correct() {
+        let i32_ty = crate::mir::ty::Ty::new(
+            crate::mir::ty::TyKind::Int(crate::ast::IntTy::I32),
+            crate::session::Span::DUMMY,
+        );
+        assert_eq!(mir_type_to_emit_type(&i32_ty), EmitType::I32);
+
+        let f64_ty = crate::mir::ty::Ty::new(
+            crate::mir::ty::TyKind::Float(crate::ast::FloatTy::F64),
+            crate::session::Span::DUMMY,
+        );
+        assert_eq!(mir_type_to_emit_type(&f64_ty), EmitType::F64);
+    }
+
+    /// Stage 3.57: Verify EmitType helper methods (ptr_to, pointee, is_ptr).
+    #[test]
+    fn emit_type_helpers() {
+        let ptr = EmitType::ptr_to(EmitType::I32);
+        assert!(ptr.is_ptr());
+        assert_eq!(ptr.pointee(), EmitType::I32);
+
+        let struct_ty = EmitType::struct_of(vec![EmitType::I32, EmitType::I64]);
+        assert!(!struct_ty.is_ptr());
+
+        let arr = EmitType::array_of(EmitType::I8, 10);
+        match arr {
+            EmitType::Array(elem, len) => {
+                assert_eq!(*elem, EmitType::I8);
+                assert_eq!(len, 10);
+            }
+            _ => panic!("expected Array"),
+        }
+    }
+
+    /// Stage 3.57: Verify TextEmitter produces non-empty output.
+    #[test]
+    fn text_emitter_produces_output() {
+        let mut emitter = TextEmitter::new();
+        emitter.emit_header();
+        emitter.emit_declare("void @test()");
+        let output = emitter.output_with_globals();
+        assert!(!output.is_empty());
+        assert!(output.contains("target triple"));
+    }
+}
