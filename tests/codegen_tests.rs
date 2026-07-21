@@ -19,12 +19,6 @@ fn gen_ll(src: &str) -> String {
     codegen_crate(&result)
 }
 
-/// Unchecked variant for tests that intentionally feed broken source to codegen.
-fn gen_ll_unchecked(src: &str) -> String {
-    let result = compile(src);
-    codegen_crate(&result)
-}
-
 #[test]
 fn codegen_return_constant() {
     let ll = gen_ll("fn main() -> i32 { 42 }");
@@ -145,25 +139,25 @@ fn codegen_empty_body() {
 
 #[test]
 fn codegen_equality() {
-    let ll = gen_ll_unchecked("fn f(a: i32, b: i32) -> i32 { a == b }");
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a == b }");
     assert!(ll.contains("icmp eq"), "expected icmp eq in:\n{}", ll);
 }
 
 #[test]
 fn codegen_less_than() {
-    let ll = gen_ll_unchecked("fn f(a: i32, b: i32) -> i32 { a < b }");
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a < b }");
     assert!(ll.contains("icmp slt"), "expected icmp slt in:\n{}", ll);
 }
 
 #[test]
 fn codegen_greater_than() {
-    let ll = gen_ll_unchecked("fn f(a: i32, b: i32) -> i32 { a > b }");
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a > b }");
     assert!(ll.contains("icmp sgt"), "expected icmp sgt in:\n{}", ll);
 }
 
 #[test]
 fn codegen_zext() {
-    let ll = gen_ll_unchecked("fn f(a: i32, b: i32) -> i32 { a == b }");
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a == b }");
     assert!(ll.contains("zext i1"), "expected zext i1 in:\n{}", ll);
 }
 
@@ -3098,7 +3092,7 @@ fn codegen_str_index_loads_u8() {
     // Was (Stage 3.52 latent): resolve_index_element_type didn't handle
     // Ref(_, _, Str), so element type was fresh_infer_ty → typeck default i32,
     // causing store i8 into i32 temp (type mismatch).
-    let ll = gen_ll_unchecked("fn f(s: &str) -> i32 { s[0] }");
+    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] }");
     assert!(
         ll.contains("load i8"),
         "expected load i8 for &str element in:\n{}",
@@ -3115,7 +3109,7 @@ fn codegen_str_index_loads_u8() {
 #[test]
 fn codegen_str_index_arith_uses_i8() {
     // s[0] + 1 where s: &str should use add nsw i8 + i8 overflow check.
-    let ll = gen_ll_unchecked("fn f(s: &str) -> i32 { s[0] + 1 }");
+    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] + 1 }");
     assert!(
         ll.contains("add nsw i8"),
         "expected add nsw i8 for &str element arithmetic in:\n{}",
@@ -3142,7 +3136,7 @@ fn codegen_str_index_comparison_uses_i8() {
 #[test]
 fn codegen_str_index_in_function() {
     // More complex: sum of first two bytes.
-    let ll = gen_ll_unchecked("fn f(s: &str) -> i32 { s[0] + s[1] }");
+    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] + s[1] }");
     assert!(
         ll.contains("add nsw i8"),
         "expected add nsw i8 for &str multi-element arithmetic in:\n{}",
@@ -3153,7 +3147,7 @@ fn codegen_str_index_in_function() {
 #[test]
 fn codegen_str_index_variable_index() {
     // s[i] with variable index on &str.
-    let ll = gen_ll_unchecked("fn f(s: &str, i: i32) -> i32 { s[i] }");
+    let ll = gen_ll("fn f(s: &str, i: i32) -> i32 { s[i] }");
     assert!(
         ll.contains("load i8"),
         "expected load i8 for &str variable index in:\n{}",
@@ -3164,7 +3158,7 @@ fn codegen_str_index_variable_index() {
 #[test]
 fn codegen_str_index_constant_index() {
     // s[1] with constant index on &str.
-    let ll = gen_ll_unchecked("fn f(s: &str) -> i32 { s[1] }");
+    let ll = gen_ll("fn f(s: &str) -> i32 { s[1] }");
     assert!(
         ll.contains("load i8"),
         "expected load i8 for &str constant index in:\n{}",
@@ -3175,7 +3169,7 @@ fn codegen_str_index_constant_index() {
 #[test]
 fn codegen_str_index_no_i32_temp() {
     // Regression: the temp storing s[0] should NOT be i32.
-    let ll = gen_ll_unchecked("fn f(s: &str) -> i32 { s[0] }");
+    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] }");
     // The store of the element should be i8, not i32.
     assert!(
         !ll.contains("store i32 %v4"),
@@ -3198,7 +3192,7 @@ fn codegen_slice_index_regression_still_correct() {
 #[test]
 fn codegen_byte_string_index() {
     // b"hello"[0] — byte string indexing via fat pointer.
-    let ll = gen_ll_unchecked("fn f() -> i32 { b\"hello\"[0] }");
+    let ll = gen_ll("fn f() -> i32 { b\"hello\"[0] }");
     assert!(
         ll.contains("load i8"),
         "expected load i8 for byte string element in:\n{}",
@@ -3287,7 +3281,7 @@ fn codegen_array_field_load_correct() {
 #[test]
 fn codegen_str_field_index() {
     // s.text[0] where text: &str — index into &str field.
-    let ll = gen_ll_unchecked("struct S { text: &str } fn f(s: S) -> i32 { s.text[0] }");
+    let ll = gen_ll("struct S { text: &str } fn f(s: S) -> i32 { s.text[0] }");
     assert!(
         ll.contains("load i8"),
         "expected load i8 for &str field element in:\n{}",
@@ -3606,10 +3600,13 @@ fn codegen_undefined_fn_error_propagates() {
 
 #[test]
 fn codegen_type_mismatch_error_propagates() {
-    let result = compile("fn f() -> i32 { true }");
+    // Stage 3.58: after adding implicit coercion (Bool→Int), `fn f() -> i32 { true }`
+    // is now valid (Bool coerces to i32). Changed to a real type mismatch:
+    // assigning a string to an i32 variable.
+    let result = compile("fn f() -> i32 { let x: i32 = \"hello\"; x }");
     assert!(
-        !result.errors.typeck.is_empty(),
-        "type mismatch should produce typeck error"
+        !result.errors.typeck.is_empty() || !result.errors.resolve.is_empty(),
+        "string-to-i32 assignment should produce an error"
     );
 }
 

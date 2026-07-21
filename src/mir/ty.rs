@@ -11,7 +11,7 @@ use crate::session::Span;
 
 /// A MIR type. Carries a `TyKind` and an optional inference variable
 /// (set by Stage 2.2 typeck, `None` during MIR construction).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Ty {
     pub kind: TyKind,
     pub span: Span,
@@ -24,7 +24,7 @@ impl Ty {
 }
 
 /// All MIR type kinds.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TyKind {
     Bool,
     Char,
@@ -90,7 +90,7 @@ pub struct RegionVid(pub u32);
 pub type SubstsRef = Vec<Ty>;
 
 /// Function signature.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Sig {
     pub inputs: Vec<Ty>,
     pub output: Box<Ty>,
@@ -106,14 +106,14 @@ pub struct ParamTy {
 }
 
 /// A compile-time constant value used in types (e.g., array length `[T; N]`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Const {
     pub ty: Box<Ty>,
     pub val: ConstVal,
 }
 
 /// Compile-time constant value.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConstVal {
     Int(u128),
     Uint(u128),

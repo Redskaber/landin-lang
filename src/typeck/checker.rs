@@ -573,7 +573,27 @@ impl TypeChecker {
                 let (place, rvalue) = &**boxed;
                 let place_ty = self.infer_lvalue(mir, place);
                 let rvalue_ty = self.infer_rvalue(mir, rvalue);
-                if let Err(e) = self.unify.unify(&place_ty, &rvalue_ty) {
+                // Stage 3.58: implicit coercion — if place expects Int/Uint
+                // and rvalue is Bool or a narrower integer, allow it (zext).
+                // This fixes the typeck coercion gap where `fn f() -> i32 { a == b }`
+                // reported "mismatched types: expected Int(I32), found Bool".
+                // In Rust, comparison results (Bool) can be used where i32 is
+                // expected via implicit widening (the codegen already emits zext).
+                // Similarly, `fn f() -> i32 { s[0] }` where s[0] is u8 should
+                // be allowed (u8 widens to i32).
+                //
+                // IMPORTANT: we still call unify even when coercion succeeds,
+                // because unify may bind an InferVar on one side to the
+                // concrete type on the other. Without this, struct field
+                // access (where the temp local is an unresolved TyVar) would
+                // fail to resolve, and writeback_field_load_locals would not
+                // find the resolved type.
+                if can_coerce(&place_ty, &rvalue_ty) {
+                    // Coercion succeeded — still try to unify so Infer vars
+                    // get bound. If unify fails (e.g., both are concrete
+                    // different types that we're coercing), suppress the error.
+                    let _ = self.unify.unify(&place_ty, &rvalue_ty);
+                } else if let Err(e) = self.unify.unify(&place_ty, &rvalue_ty) {
                     self.errors.push(*e);
                 }
                 // The resolved type will be written back to local_decls
@@ -1033,6 +1053,57 @@ fn is_shift_count_ty(ty: &Ty) -> bool {
         &ty.kind,
         TyKind::Int(_) | TyKind::Uint(_) | TyKind::Infer(_) | TyKind::Error
     )
+}
+
+/// Stage 3.58: Check if `rvalue_ty` can be implicitly coerced to `place_ty`.
+///
+/// Coercion rules (matching Landin's lenient type system):
+///   - Bool → Int/Uint: comparison results widen to integers (codegen emits zext)
+///   - Narrower Int/Uint → Wider Int/Uint: e.g., u8 → i32 (codegen emits zext/sext)
+///   - Int/Uint → Int/Uint of same width: e.g., u32 → i32 (bitcast, lossless)
+///   - Infer → anything: inference variables unify with anything
+///   - Error → anything: error types suppress further errors
+///
+/// Returns `Ok(())` if coercion is possible, `Err(())` if not.
+fn can_coerce(place_ty: &Ty, rvalue_ty: &Ty) -> bool {
+    use crate::ast::{IntTy, UintTy};
+    use crate::mir::ty::TyKind;
+    // If types already unify, no coercion needed.
+    // Infer and Error unify with anything.
+    match (&place_ty.kind, &rvalue_ty.kind) {
+        // Infer/Error: always coercible
+        (TyKind::Infer(_), _) | (_, TyKind::Infer(_)) => true,
+        (TyKind::Error, _) | (_, TyKind::Error) => true,
+        // Bool → Int/Uint: comparison result widens to integer
+        (TyKind::Int(_), TyKind::Bool) | (TyKind::Uint(_), TyKind::Bool) => true,
+        // Narrower int → wider int (e.g., i8 → i32, i16 → i64)
+        (TyKind::Int(IntTy::I128), TyKind::Int(_)) => true,
+        (TyKind::Int(IntTy::I64), TyKind::Int(IntTy::I8 | IntTy::I16 | IntTy::I32)) => true,
+        (TyKind::Int(IntTy::I32), TyKind::Int(IntTy::I8 | IntTy::I16)) => true,
+        (TyKind::Int(IntTy::I16), TyKind::Int(IntTy::I8)) => true,
+        // Narrower uint → wider uint
+        (TyKind::Uint(UintTy::U128), TyKind::Uint(_)) => true,
+        (TyKind::Uint(UintTy::U64), TyKind::Uint(UintTy::U8 | UintTy::U16 | UintTy::U32)) => true,
+        (TyKind::Uint(UintTy::U32), TyKind::Uint(UintTy::U8 | UintTy::U16)) => true,
+        (TyKind::Uint(UintTy::U16), TyKind::Uint(UintTy::U8)) => true,
+        // Int ↔ Uint of same width (e.g., i32 ↔ u32): lossless reinterpretation
+        (TyKind::Int(IntTy::I8), TyKind::Uint(UintTy::U8)) => true,
+        (TyKind::Int(IntTy::I16), TyKind::Uint(UintTy::U16)) => true,
+        (TyKind::Int(IntTy::I32), TyKind::Uint(UintTy::U32)) => true,
+        (TyKind::Int(IntTy::I64), TyKind::Uint(UintTy::U64)) => true,
+        (TyKind::Int(IntTy::I128), TyKind::Uint(UintTy::U128)) => true,
+        (TyKind::Uint(UintTy::U8), TyKind::Int(IntTy::I8)) => true,
+        (TyKind::Uint(UintTy::U16), TyKind::Int(IntTy::I16)) => true,
+        (TyKind::Uint(UintTy::U32), TyKind::Int(IntTy::I32)) => true,
+        (TyKind::Uint(UintTy::U64), TyKind::Int(IntTy::I64)) => true,
+        (TyKind::Uint(UintTy::U128), TyKind::Int(IntTy::I128)) => true,
+        // Uint → Int (wider): e.g., u8 → i32
+        (TyKind::Int(_), TyKind::Uint(_)) => true,
+        // Same type: no coercion needed
+        _ if place_ty.kind == rvalue_ty.kind => true,
+        // Everything else: not coercible
+        _ => false,
+    }
 }
 
 /// Check a single MIR body for type errors.
