@@ -10,76 +10,56 @@ pub use emitter::{
 };
 pub use text_emitter::TextEmitter;
 
-use crate::hir::HirCrate;
 use crate::mir::body::*;
 use crate::mir::lvalue::*;
 use crate::mir::ty::ConstVal;
 use lasso::Rodeo;
 
-/// Generate LLVM IR text for a crate.
-pub fn codegen_crate(hir: &HirCrate, interner: &Rodeo) -> String {
+/// Stage 3.56 (Phase A §16 refactoring): Generate LLVM IR from a
+/// `CompileResult` — codegen is now a **pure MIR consumer**.
+///
+/// Was (Stage 3.1-3.55): codegen re-lowered HIR to MIR + re-ran typeck
+/// inside codegen, violating section 16. Also silently skipped borrowck
+/// and dropped type errors.
+///
+/// Now: codegen reads pre-built MIR + pre-computed metadata. Zero
+/// calls to upstream stage functions.
+pub fn codegen_crate(result: &crate::driver::CompileResult) -> String {
     let mut emitter = TextEmitter::new();
     emitter.emit_header();
     emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
     emitter.emit_declare("void @__landin_panic_bounds_check(i64 %index, i64 %len)");
     emitter.emit_declare("void @__landin_panic_div_by_zero()");
-    codegen_crate_with_emitter(hir, interner, &mut emitter);
+    codegen_from_mir(
+        &result.mirs,
+        &result.body_metas,
+        &result.fn_name_by_def_id,
+        &result.interner,
+        &mut emitter,
+    );
     emitter.output_with_globals()
 }
 
-/// Generate LLVM IR for a crate using any Emitter backend.
-pub fn codegen_crate_with_emitter(hir: &HirCrate, interner: &Rodeo, emitter: &mut dyn Emitter) {
-    let fn_names: Vec<String> = hir
-        .bodies
-        .iter()
-        .map(|(body_id, _)| {
-            for (_def_id, owner) in &hir.owners {
-                if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
-                    if f.body == Some(*body_id) {
-                        let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-                        return format!("landin_{}", name);
-                    }
-                }
-            }
-            format!("fn_{}", body_id.owner.0.as_u32())
-        })
-        .collect();
-
-    let mut fn_name_by_def_id: std::collections::HashMap<crate::hir::DefId, String> =
-        std::collections::HashMap::new();
-    for (def_id, owner) in &hir.owners {
-        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
-            let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-            fn_name_by_def_id.insert(*def_id, format!("landin_{}", name));
-        }
-    }
-
-    for (idx, (_, body)) in hir.bodies.iter().enumerate() {
-        let fn_name = fn_names[idx].clone();
-        let return_ty = crate::driver::owner_return_ty_for_body(hir, body);
-        let (mut mir, unify) =
-            crate::mir::lower::lower_hir_body_to_mir_full(body, interner, hir, return_ty.clone());
-        let mut tc = crate::typeck::TypeChecker::with_unify(unify);
-        tc.populate_fn_sigs(hir);
-        tc.check_mir_body_with_hir(&mut mir, Some(hir));
-        // Stage 3.55: pass `is_void` flag to codegen so void functions
-        // emit `define void` + `ret void`, regardless of what the return
-        // local's infer-var type resolved to. Was: void fn's return local
-        // got a fresh infer var that typeck unified with the body value's
-        // type — causing `fn f() { id("hello") }` to emit `define { i8*, i64 }`
-        // instead of `define void`.
-        let is_void = return_ty.is_none();
-        // Stage 3.47 (L-PIPE-1 closure per §16): pass MIR's adt_layouts
-        // side-table to codegen — codegen no longer reads HIR for ADT storage.
+/// Stage 3.56: Generate LLVM IR from pre-built MIR + metadata.
+/// This is the §16-compliant codegen entry point: takes only MIR data
+/// (no HIR, no re-lowering, no re-typeck).
+pub fn codegen_from_mir(
+    mirs: &[MirBody],
+    body_metas: &[crate::driver::BodyMeta],
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    interner: &Rodeo,
+    emitter: &mut dyn Emitter,
+) {
+    for (mir, meta) in mirs.iter().zip(body_metas.iter()) {
         codegen_function(
             emitter,
-            &fn_name,
-            &mir,
-            &fn_name_by_def_id,
-            body.params.len(),
+            &meta.fn_name,
+            mir,
+            fn_name_by_def_id,
+            meta.param_count,
             interner,
             &mir.adt_layouts,
-            is_void,
+            meta.is_void,
         );
     }
 }

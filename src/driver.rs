@@ -207,11 +207,44 @@ pub struct CompileResult {
     pub errors: CompileErrors,
     /// The interner used during compilation. Useful for debugging.
     pub interner: Rodeo,
+    /// Stage 3.56 (Phase A §16 refactoring): pre-computed function name
+    /// map for call resolution. Maps DefId → "landin_<name>".
+    /// Built once during compile() so codegen doesn't need to re-scan HIR.
+    pub fn_name_by_def_id: std::collections::HashMap<crate::hir::DefId, String>,
+    /// Stage 3.56: per-body metadata parallel to `mirs`.
+    /// Each entry: (fn_name, is_void, param_count).
+    pub body_metas: Vec<BodyMeta>,
+}
+
+/// Stage 3.56: Per-body metadata for codegen.
+/// Pre-computed during compile() so codegen is a pure MIR consumer.
+#[derive(Debug, Clone)]
+pub struct BodyMeta {
+    /// The function name (e.g., "landin_f") for `define @landin_f`.
+    pub fn_name: String,
+    /// Whether the function has no return type (void).
+    pub is_void: bool,
+    /// Number of parameters.
+    pub param_count: usize,
 }
 
 impl CompileResult {
     pub fn has_errors(&self) -> bool {
         !self.errors.is_empty()
+    }
+
+    /// Stage 3.56: Create a CompileResult with empty metadata fields.
+    /// Used by early-return paths (lex/parse errors) where no MIR is produced.
+    fn empty(interner: Rodeo, errors: CompileErrors) -> Self {
+        Self {
+            hir: None,
+            mirs: Vec::new(),
+            typeck_results: Vec::new(),
+            errors,
+            interner,
+            fn_name_by_def_id: std::collections::HashMap::new(),
+            body_metas: Vec::new(),
+        }
     }
 }
 
@@ -233,13 +266,7 @@ pub fn compile(src: &str) -> CompileResult {
     let (tokens, lex_errors) = tokenize(src, &mut interner);
     errors.lex = lex_errors;
     if !errors.lex.is_empty() {
-        return CompileResult {
-            hir: None,
-            mirs: Vec::new(),
-            typeck_results: Vec::new(),
-            errors,
-            interner,
-        };
+        return CompileResult::empty(interner, errors);
     }
 
     // === Stage 0: Parse ===
@@ -247,13 +274,7 @@ pub fn compile(src: &str) -> CompileResult {
     let krate = parser.parse_crate();
     errors.parse = parser.into_errors();
     if !errors.parse.is_empty() {
-        return CompileResult {
-            hir: None,
-            mirs: Vec::new(),
-            typeck_results: Vec::new(),
-            errors,
-            interner,
-        };
+        return CompileResult::empty(interner, errors);
     }
 
     // === Stage 1: HIR lowering ===
@@ -308,12 +329,57 @@ pub fn compile(src: &str) -> CompileResult {
         mirs.push(mir);
     }
 
+    // Stage 3.56 (Phase A §16 refactoring): pre-compute codegen metadata
+    // so codegen becomes a pure MIR consumer (no re-lowering, no re-typeck).
+    // Per §16.2.1: this is "data flows downstream" — the driver (orchestrator)
+    // builds the metadata and passes it as data, not as HIR references.
+    let mut fn_name_by_def_id: std::collections::HashMap<crate::hir::DefId, String> =
+        std::collections::HashMap::new();
+    for (def_id, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
+            let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
+            fn_name_by_def_id.insert(*def_id, format!("landin_{}", name));
+        }
+    }
+
+    // Build per-body metadata (parallel to mirs).
+    let body_metas: Vec<BodyMeta> = hir
+        .bodies
+        .iter()
+        .map(|(body_id, body)| {
+            // Find the fn name for this body.
+            let fn_name = hir
+                .owners
+                .iter()
+                .find_map(|(_, owner)| {
+                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
+                        if f.body == Some(*body_id) {
+                            let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
+                            return Some(format!("landin_{}", name));
+                        }
+                    }
+                    None
+                })
+                .unwrap_or_else(|| format!("fn_{}", body_id.owner.0.as_u32()));
+            // Check if void (no return type).
+            let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
+            let is_void = return_ty.is_none();
+            BodyMeta {
+                fn_name,
+                is_void,
+                param_count: body.params.len(),
+            }
+        })
+        .collect();
+
     CompileResult {
         hir: Some(hir),
         mirs,
         typeck_results,
         errors,
         interner,
+        fn_name_by_def_id,
+        body_metas,
     }
 }
 

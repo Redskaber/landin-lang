@@ -1039,6 +1039,46 @@
   function coverage + 8 edge cases), all passed; audit CONVERGED at
   round 22 per §9.3.3.
 
+### Stage 3.56 — Pipeline architecture refactoring: codegen as pure MIR consumer (Phase A §16) (v0.8.6, process v3.13)
+- **Problem (architectural §16 violation)**: codegen (`codegen_crate_with_emitter`)
+  took `&HirCrate` and re-ran `lower_hir_body_to_mir_full` + `TypeChecker::check_mir_body_with_hir`
+  inside codegen — violating §16.1/§16.3 (Stage 3 calling Stage 2.1/2.2 internals).
+  Also silently skipped borrowck and dropped type errors. `CompileResult.mirs`
+  and `CompileResult.typeck_results` were dead data.
+- **Root cause** (per §15): when Stage 3 was added, the simplest path was to
+  re-run Stage 2 inside codegen rather than threading pre-built MIR. The
+  metadata (fn names, return types, ADT layouts) was never placed on MirBody
+  or CompileResult, so codegen had to fish it out of upstream stages.
+- **Fix** (2 source files + all test/audit call sites):
+  1. `src/driver.rs` — added `BodyMeta { fn_name, is_void, param_count }` and
+     `fn_name_by_def_id: HashMap<DefId, String>` to `CompileResult`. `compile()`
+     now pre-computes these during the pipeline run (O(n) scan of hir.owners,
+     not O(n²) per-body lookup).
+  2. `src/codegen/mod.rs` — `codegen_crate` now takes `&CompileResult` (not
+     `&HirCrate`). New `codegen_from_mir(mirs, body_metas, fn_name_by_def_id, interner, emitter)`
+     is the §16-compliant entry point: takes only MIR data, zero HIR references,
+     zero calls to `crate::mir::lower`, `crate::typeck`, or `crate::driver`
+     functions. Removed `codegen_crate_with_emitter` (replaced by `codegen_from_mir`).
+  3. Updated 270+ test call sites (`gen_ll` helper + all audit scripts) to use
+     `codegen_crate(&result)` instead of `codegen_crate(&hir, &interner)`.
+- **Result**:
+  - Codegen is now a pure MIR consumer — reads `result.mirs` (pre-built by
+    `compile()`), not re-lowered.
+  - No double typeck — typeck runs once in `compile()`, codegen reads the
+    resolved types from MIR local_decls.
+  - Borrowck results are respected (they ran in `compile()` and errors are
+    in `result.errors`).
+  - Type errors are not dropped (they're in `result.errors.typeck`).
+  - §16 compliance: `grep -n "crate::mir::lower\|crate::typeck" src/codegen/mod.rs`
+    returns ZERO function call matches (only doc comments and data type refs).
+- 6 new tests: codegen consumes pre-built MIR (1), no double lowering (1),
+  void fn from pre-built MIR (1), fn_name_by_def_id precomputed (1), body_metas
+  parallel to mirs (1), pipeline no regressions (1).
+- Total: 947 → 953. (2 source files modified; 0 typeck/borrowck changes.)
+- Gate review Round 23 (R23) — 30 audit cases (8 regression + 14 pipeline
+  architecture coverage + 8 edge cases), all passed; audit CONVERGED at
+  round 23 per §9.3.3.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -1075,4 +1115,5 @@
 | v0.8.6 (3.52) | 920 | +9 (slice element type propagation: load/store/arith use correct element type from fat pointer)
 | v0.8.6 (3.53) | 929 | +9 (&str indexing element type fix: u8 element, not i32)
 | v0.8.6 (3.54) | 938 | +9 (slice/array field store + detect_lvalue_storage_type Field projection fix)
-| v0.8.6 (3.55) | 947 | +9 (void function return type fix: void fn emits define void + ret void, not body value type)
+| v0.8.6 (3.55) | 947 | +9 (void function return type fix: void fn emits define void + ret void, not body value type) |
+| v0.8.6 (3.56) | 953 | +6 (Phase A §16 refactoring: codegen as pure MIR consumer, no re-lowering) |

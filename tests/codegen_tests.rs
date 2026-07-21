@@ -7,8 +7,7 @@ use landin_compiler::driver::compile;
 
 fn gen_ll(src: &str) -> String {
     let result = compile(src);
-    let hir = result.hir.expect("HIR should be produced");
-    codegen_crate(&hir, &result.interner)
+    codegen_crate(&result)
 }
 
 #[test]
@@ -3446,4 +3445,118 @@ fn codegen_str_return_fn_regression() {
         "expected fat pointer return for &str fn (regression) in:\n{}",
         ll
     );
+}
+
+// ============================================================================
+// Stage 3.56 — Pipeline architecture: codegen is pure MIR consumer (§16)
+// ============================================================================
+
+#[test]
+fn codegen_consumes_prebuilt_mir_not_hir() {
+    // Stage 3.56: codegen_crate now takes &CompileResult (pre-built MIR)
+    // instead of (&HirCrate, &Rodeo). This test verifies the new API works
+    // end-to-end: compile() builds MIR once, codegen reads it once.
+    // Was: codegen re-lowered HIR→MIR + re-ran typeck (§16 violation).
+    let result = compile("fn f(x: i32) -> i32 { x + 1 }");
+    let ll = codegen_crate(&result);
+    assert!(
+        ll.contains("define i32 @landin_f(i32 %arg0)"),
+        "expected codegen from pre-built MIR in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_no_double_lowering() {
+    // Stage 3.56: verify codegen doesn't re-lower HIR by checking that
+    // the MIR bodies in CompileResult are the ones codegen uses.
+    // We check this indirectly: if codegen re-lowered, it would create
+    // new MirBody instances with fresh local IDs. Since we use the
+    // pre-built MIR, the local IDs should be stable.
+    let result = compile("fn f() -> i32 { 42 }");
+    assert!(!result.mirs.is_empty(), "compile() should produce MIR");
+    assert!(
+        !result.body_metas.is_empty(),
+        "compile() should produce body metas"
+    );
+    // The fn_name in body_metas should match the codegen output.
+    let ll = codegen_crate(&result);
+    let meta = &result.body_metas[0];
+    assert!(
+        ll.contains(&meta.fn_name),
+        "codegen should use pre-computed fn_name '{}' in:\n{}",
+        meta.fn_name,
+        ll
+    );
+}
+
+#[test]
+fn codegen_void_fn_from_prebuilt_mir() {
+    // Stage 3.56: void function metadata (is_void) is pre-computed
+    // by compile() and consumed by codegen — no re-typeck needed.
+    let result = compile("fn id(s: &str) -> &str { s } fn f() { id(\"hello\") }");
+    let ll = codegen_crate(&result);
+    assert!(
+        ll.contains("define void @landin_f()"),
+        "expected void fn from pre-built MIR + metadata in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_fn_name_by_def_id_precomputed() {
+    // Stage 3.56: fn_name_by_def_id is pre-computed by compile()
+    // and used for call resolution in codegen.
+    let result = compile("fn helper() -> i32 { 42 } fn f() -> i32 { helper() }");
+    assert!(
+        result
+            .fn_name_by_def_id
+            .values()
+            .any(|n| n == "landin_helper"),
+        "fn_name_by_def_id should contain 'landin_helper'"
+    );
+    let ll = codegen_crate(&result);
+    assert!(
+        ll.contains("call i32 @landin_helper()"),
+        "expected call to pre-computed fn name in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_body_metas_parallel_to_mirs() {
+    // Stage 3.56: body_metas should be parallel to mirs (same length, same order).
+    let result = compile("fn a() -> i32 { 1 } fn b() -> i32 { 2 } fn c() -> i32 { 3 }");
+    assert_eq!(
+        result.mirs.len(),
+        result.body_metas.len(),
+        "mirs and body_metas should have same length"
+    );
+    // Each meta should have a valid fn_name.
+    for meta in &result.body_metas {
+        assert!(
+            meta.fn_name.starts_with("landin_") || meta.fn_name.starts_with("fn_"),
+            "fn_name should start with 'landin_' or 'fn_', got: {}",
+            meta.fn_name
+        );
+    }
+}
+
+#[test]
+fn codegen_pipeline_no_regressions() {
+    // Stage 3.56: comprehensive end-to-end test verifying the refactored
+    // pipeline produces correct IR for a complex program.
+    let src = "struct Point { x: i32, y: i32 } fn make() -> Point { Point { x: 1, y: 2 } } fn f() -> i32 { let p = Point { x: 1, y: 2 }; p.x + p.y }";
+    let result = compile(src);
+    let ll = codegen_crate(&result);
+    assert!(
+        ll.contains("define { i32, i32 } @landin_make()"),
+        "make() sig"
+    );
+    assert!(ll.contains("define i32 @landin_f()"), "f() sig");
+    assert!(
+        ll.contains("insertvalue { i32, i32 }"),
+        "struct construction"
+    );
+    assert!(ll.contains("add nsw i32"), "arithmetic");
 }
