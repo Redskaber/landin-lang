@@ -1068,8 +1068,6 @@ fn is_shift_count_ty(ty: &Ty) -> bool {
 fn can_coerce(place_ty: &Ty, rvalue_ty: &Ty) -> bool {
     use crate::ast::{IntTy, UintTy};
     use crate::mir::ty::TyKind;
-    // If types already unify, no coercion needed.
-    // Infer and Error unify with anything.
     match (&place_ty.kind, &rvalue_ty.kind) {
         // Infer/Error: always coercible
         (TyKind::Infer(_), _) | (_, TyKind::Infer(_)) => true,
@@ -1097,8 +1095,18 @@ fn can_coerce(place_ty: &Ty, rvalue_ty: &Ty) -> bool {
         (TyKind::Uint(UintTy::U32), TyKind::Int(IntTy::I32)) => true,
         (TyKind::Uint(UintTy::U64), TyKind::Int(IntTy::I64)) => true,
         (TyKind::Uint(UintTy::U128), TyKind::Int(IntTy::I128)) => true,
-        // Uint → Int (wider): e.g., u8 → i32
-        (TyKind::Int(_), TyKind::Uint(_)) => true,
+        // Stage 3.59: Uint → wider Int (only widening, NOT narrowing).
+        // Was: `(TyKind::Int(_), TyKind::Uint(_)) => true` which accepted
+        // lossy narrowings like `i8 ← u64`. Now: explicit widening arms.
+        (TyKind::Int(IntTy::I16), TyKind::Uint(UintTy::U8)) => true,
+        (TyKind::Int(IntTy::I32), TyKind::Uint(UintTy::U8 | UintTy::U16)) => true,
+        (TyKind::Int(IntTy::I64), TyKind::Uint(UintTy::U8 | UintTy::U16 | UintTy::U32)) => true,
+        (
+            TyKind::Int(IntTy::I128),
+            TyKind::Uint(UintTy::U8 | UintTy::U16 | UintTy::U32 | UintTy::U64),
+        ) => true,
+        // Stage 3.59: f32 → f64 widening (lossless)
+        (TyKind::Float(crate::ast::FloatTy::F64), TyKind::Float(crate::ast::FloatTy::F32)) => true,
         // Same type: no coercion needed
         _ if place_ty.kind == rvalue_ty.kind => true,
         // Everything else: not coercible

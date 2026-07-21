@@ -1155,6 +1155,39 @@
 - Total: 965 tests pass (unchanged from 3.57, but all now use strict `gen_ll`).
 - (3 source files modified; 2 test files updated.)
 
+### Stage 3.59 — Cross-stage audit: coercion fix + f32→f64 + scan_for_unresolved_paths (v0.8.6, process v3.13)
+- **Problem (deep cross-stage audit by Plan agent identified 5 issues)**:
+  1. **P0: `can_coerce` Uint→Int wildcard accepted lossy narrowings** —
+     `(TyKind::Int(_), TyKind::Uint(_)) => true` accepted ALL Uint→Int,
+     including `i8 ← u64` (lossy truncation + sign flip). Silent miscompilation.
+  2. **P1: `can_coerce` missing f32→f64 widening** — `let x: f64 = 3.14_f32;`
+     was rejected with type-mismatch error. Valid Rust, false-negative.
+  3. **P2: `scan_for_unresolved_paths` already comprehensive** — Plan agent
+     flagged this as incomplete, but on inspection the HEAD version handles
+     all major `HirExprKind` variants (If, Match, Loop, Closure, Assign, etc.).
+     No fix needed — false alarm.
+  4. **P3: typeck→HIR leak (`check_mir_body_with_hir`)** — typeck reads HIR
+     for ADT field types during writeback. Documented as known architectural
+     debt (same pattern as the codegen→HIR leak fixed in 3.56, but lower
+     priority since typeck is Stage 2, not Stage 3).
+  5. **P4: Emitter trait bloat (36 methods, 1 impl)** — documented as known
+     debt. Low priority, no correctness impact.
+- **Fix** (1 source file + 1 test file):
+  1. `src/typeck/checker.rs` — replaced the wildcard
+     `(TyKind::Int(_), TyKind::Uint(_)) => true` with 4 explicit widening
+     arms: `i16←u8`, `i32←u8|u16`, `i64←u8|u16|u32`, `i128←u8|u16|u32|u64`.
+     Added `f32→f64` widening arm.
+  2. `tests/codegen_tests.rs` — 7 new tests: f32→f64, u8→i32, reject u64→i8,
+     reject u128→i8, u32→i64, comparison regression, str index regression.
+- **Result**:
+  - `fn f(x: u64) -> i8 { x }` → typeck error (was: silently accepted).
+  - `fn f(x: f32) -> f64 { x }` → no error (was: type-mismatch error).
+  - All existing tests still pass (no regression).
+- 7 new tests: coercion f32→f64 (1), u8→i32 (1), reject lossy (2), widening (1),
+  regression (2).
+- Total: 965 → 972. (1 source file modified; 1 test file updated.)
+- Gate review Round 26 (R26) — R23 audit re-verified 30/30, all 972 tests pass.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -1195,3 +1228,4 @@
 | v0.8.6 (3.56) | 953 | +6 (Phase A §16 refactoring: codegen as pure MIR consumer, no re-lowering) |
 | v0.8.6 (3.57) | 965 | +12 (Phase B-D: error path coverage + glob exports cleanup + Emitter trait tests)
 | v0.8.6 (3.58) | 965 | +0 (typeck implicit coercion: Bool→Int, narrower→wider integers; all gen_ll_unchecked eliminated)
+| v0.8.6 (3.59) | 972 | +7 (cross-stage audit: coercion fix — reject lossy Uint→Int narrowing + add f32→f64 widening)

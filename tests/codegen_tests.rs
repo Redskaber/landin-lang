@@ -3628,3 +3628,69 @@ fn codegen_error_free_for_complex_program() {
         result.errors.format_for_user(Some(src))
     );
 }
+
+// ============================================================================
+// Stage 3.59 — Coercion fix tests (Issue #1 + #3)
+// ============================================================================
+
+#[test]
+fn codegen_coercion_f32_to_f64() {
+    // Stage 3.59: f32 → f64 widening should be allowed (was missing).
+    let result = compile("fn f(x: f32) -> f64 { x }");
+    assert!(
+        !result.has_errors(),
+        "f32 → f64 widening should not error:\n{}",
+        result
+            .errors
+            .format_for_user(Some("fn f(x: f32) -> f64 { x }"))
+    );
+}
+
+#[test]
+fn codegen_coercion_u8_to_i32() {
+    // Stage 3.59: u8 → i32 widening should still work (was already working).
+    let result = compile("fn f(x: u8) -> i32 { x }");
+    assert!(!result.has_errors(), "u8 → i32 should not error");
+}
+
+#[test]
+fn codegen_coercion_reject_lossy_narrowing() {
+    // Stage 3.59: u64 → i8 should be REJECTED (lossy narrowing).
+    // Was: silently accepted via `(TyKind::Int(_), TyKind::Uint(_)) => true`.
+    let result = compile("fn f(x: u64) -> i8 { x }");
+    assert!(
+        result.has_errors(),
+        "u64 → i8 lossy narrowing should produce typeck error"
+    );
+}
+
+#[test]
+fn codegen_coercion_reject_u128_to_i8() {
+    // Stage 3.59: u128 → i8 should be REJECTED.
+    let result = compile("fn f(x: u128) -> i8 { x }");
+    assert!(
+        result.has_errors(),
+        "u128 → i8 lossy narrowing should produce typeck error"
+    );
+}
+
+#[test]
+fn codegen_coercion_allow_u32_to_i64() {
+    // Stage 3.59: u32 → i64 widening should be allowed.
+    let result = compile("fn f(x: u32) -> i64 { x }");
+    assert!(!result.has_errors(), "u32 → i64 widening should not error");
+}
+
+#[test]
+fn codegen_coercion_comparison_still_works() {
+    // Regression: comparison results (Bool) should still coerce to i32.
+    let result = compile("fn f(a: i32, b: i32) -> i32 { a == b }");
+    assert!(!result.has_errors(), "comparison → i32 should not error");
+}
+
+#[test]
+fn codegen_coercion_str_index_still_works() {
+    // Regression: &str indexing (u8) should still coerce to i32.
+    let result = compile("fn f(s: &str) -> i32 { s[0] }");
+    assert!(!result.has_errors(), "u8 → i32 should not error");
+}
