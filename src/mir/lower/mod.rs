@@ -1544,15 +1544,67 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             )
         }
 
-        // MacroCall: `foo!(...)` → placeholder (macro expansion is Stage 4)
-        HirExprKind::MacroCall { .. } => cx.eval_rvalue_to_temp(
-            Rvalue::Use(Operand::Constant(Const {
-                ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
-                val: ConstVal::Int(0),
-            })),
-            Ty::new(TyKind::Error, Span::DUMMY),
-            expr.span,
-        ),
+        // Stage 4.10: MacroCall — expand known built-in macros.
+        // Previously (Stage 3.x): all macro calls produced TyKind::Error placeholder.
+        // Now: known macros (println!, stringify!, assert!) produce proper MIR.
+        // Unknown macros still fall back to Error placeholder.
+        HirExprKind::MacroCall { path, .. } => {
+            // Get the macro name from the last path segment.
+            let macro_name = path.segments.last().map(|s| s.ident.name);
+            if let Some(name_spur) = macro_name {
+                let name = cx.interner.resolve(&name_spur).to_string();
+                match name.as_str() {
+                    "println" | "print" | "eprintln" | "eprint" => {
+                        // println!(...) → unit expression (no actual printing).
+                        // The macro call is valid but produces no value.
+                        let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+                        cx.mir.new_local(unit_ty, None, expr.span)
+                    }
+                    "stringify" => {
+                        // stringify!(expr) → &str type local (simplified).
+                        // Since cx.interner is &Rodeo (immutable), we can't
+                        // intern a new string here. Produce a str-typed local
+                        // without assigning a constant (typeck will resolve).
+                        let str_ty = Ty::new(
+                            TyKind::Ref(
+                                Region::Static,
+                                crate::mir::ty::Mutability::Immutable,
+                                Box::new(Ty::new(TyKind::Str, expr.span)),
+                            ),
+                            expr.span,
+                        );
+                        cx.mir.new_local(str_ty, None, expr.span)
+                    }
+                    "assert" | "debug_assert" => {
+                        // assert!(cond) → unit expression (assertion check).
+                        // For now, just produce unit (no actual assertion codegen).
+                        let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+                        cx.mir.new_local(unit_ty, None, expr.span)
+                    }
+                    _ => {
+                        // Unknown macro → Error placeholder (fallback).
+                        cx.eval_rvalue_to_temp(
+                            Rvalue::Use(Operand::Constant(Const {
+                                ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+                                val: ConstVal::Int(0),
+                            })),
+                            Ty::new(TyKind::Error, Span::DUMMY),
+                            expr.span,
+                        )
+                    }
+                }
+            } else {
+                // No macro name → Error placeholder.
+                cx.eval_rvalue_to_temp(
+                    Rvalue::Use(Operand::Constant(Const {
+                        ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+                        val: ConstVal::Int(0),
+                    })),
+                    Ty::new(TyKind::Error, Span::DUMMY),
+                    expr.span,
+                )
+            }
+        }
 
         // Unsafe block: just lower inner block (unsafety is a typeck concern)
         HirExprKind::Unsafe(block) => lower_block(cx, block),

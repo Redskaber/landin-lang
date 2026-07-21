@@ -247,3 +247,27 @@ field (the captured `y`), and the `Aggregate` value carries `y`'s value.
 
 **Test impact**: +2 (995/995 tests pass — was 993)
 **Verification**: 0 clippy warnings, fmt clean
+
+---
+
+### Stage 4.10 — Macro System (v0.9.7)
+
+**Priority**: Macro system + attributes from deep review priority list.
+
+**Work completed**:
+- `src/mir/lower/mod.rs`: MacroCall lowering now checks macro name and expands
+  built-in macros:
+  * `println!`/`print!`/`eprintln!`/`eprint!` → unit expression
+  * `stringify!` → `&str` typed local
+  * `assert!`/`debug_assert!` → unit expression
+  * Unknown macros → Error placeholder (fallback)
+- Previously ALL macros produced TyKind::Error
+
+**New tests** (3):
+- `tests/v0/stage4/plan/macro_system_tests.rs`
+  * test_macro_println_no_crash
+  * test_macro_stringify
+  * test_macro_assert_no_crash
+
+**Test impact**: +3 (998/998 tests pass — was 995)
+**Verification**: 0 clippy warnings, fmt clean

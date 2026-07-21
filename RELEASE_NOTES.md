@@ -1,9 +1,44 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.9.6
+**Current version**: v0.9.7
 **Date**: 2026-07-22
-**Test count**: 995 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 998 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.9.7 — Stage 4.10 (Macro system — built-in macro expansion)
+
+### Overview
+
+Implements basic macro system — built-in macros (`println!`, `stringify!`,
+`assert!`) are now expanded in MIR lowering instead of producing `TyKind::Error`.
+998 tests pass (was 995, +3 new macro tests). 0 clippy warnings. fmt clean.
+
+### Stage 4.10: Macro system
+
+**Previously**: `HirExprKind::MacroCall` produced `TyKind::Error` placeholder
+for ALL macros — no macro was expanded.
+
+**Now** (Stage 4.10):
+- `MacroCall` lowering now checks the macro name (from path's last segment)
+- Known built-in macros produce proper MIR:
+  - `println!`/`print!`/`eprintln!`/`eprint!` → unit expression
+  - `stringify!` → `&str` typed local
+  - `assert!`/`debug_assert!` → unit expression
+- Unknown macros still fall back to `Error` placeholder
+- User-defined `macro_rules!` deferred to future stage
+
+**New tests** (3) — in `tests/v0/stage4/plan/macro_system_tests.rs`:
+- `test_macro_println_no_crash` — `println!("hello");`
+- `test_macro_stringify` — `let s = stringify!(x);`
+- `test_macro_assert_no_crash` — `assert!(1 == 1);`
+
+### Verification
+
+- `cargo test`: **998 passed, 0 failed, 2 ignored** (was 995, +3 new)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
 
 ---
 

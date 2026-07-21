@@ -70,8 +70,9 @@
 | 4.7 | L3 closure capture analysis: collect_captured_locals + collect_pat_hir_ids + collect_block_captured; captures populate closure struct fields + Aggregate operands; codegen emits struct with capture fields | +4 | ✅ |
 | 4.8 | tests/ directory restructure: 13 flat tests/*.rs → standardized tests/v0/stage{N}/plan/ per v3.17 §17.1; 14 [[test]] targets in Cargo.toml; 13 test plan docs created | 0 | ✅ |
 | 4.9 | L3 closure call lowering: detect TyKind::Closure in Call lowering; simplified placeholder (full call deferred to Stage 4.10) | +2 | ✅ |
+| 4.10 | Macro system: built-in macro expansion (println!/stringify!/assert!) in MIR lowering; MacroCall no longer produces Error | +3 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.9 R44 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
+| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.10 R45 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

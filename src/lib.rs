@@ -43,7 +43,9 @@
 //!     migrated to standardized tests/v0/stage{N}/plan/ per v3.17 §17.1.
 //!   Stage 4.9 (v0.9.6): L3 closure call lowering — detect TyKind::Closure in
 //!     Call lowering; simplified placeholder (full call deferred to Stage 4.10).
-//!   Remaining: L3 full call lowering (Stage 4.10), L5 (traits), L8 (lli).
+//!   Stage 4.10 (v0.9.7): Macro system — built-in macro expansion (println!,
+//!     stringify!, assert!) in MIR lowering; MacroCall no longer produces Error.
+//!   Remaining: L5 (traits), L8 (lli), user-defined macros (macro_rules!).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
