@@ -1247,6 +1247,35 @@
 - Total: 972 → 977. (2 source files modified; 1 process doc updated.)
 - Gate review Round 29 (R29) — §21 audit re-verified, all 977 tests pass.
 
+### Stage 3.62 — Stage 3 收尾: dead code cleanup + naming standardization + Stage 3 Complete (v0.8.6, process v3.14)
+- **Problem**: Stage 3 audit identified remaining cleanup items:
+  1. typeck had 5 dead HIR-reading methods (~400 lines of dead code)
+  2. lib.rs/README/Cargo.toml still said "Stage 3 IN PROGRESS"
+  3. Stage 3 not formally marked as Complete in matrix
+- **Fix** (5 files):
+  1. `src/typeck/checker.rs` — replaced `populate_fn_sigs` body with
+     deprecated no-op (was: full HIR scan). Replaced `check_mir_body_with_hir`
+     body with deprecated delegation to `check_mir_body_with_tables`. Removed
+     `writeback_field_load_locals` (old HIR version, ~80 lines). Removed
+     `writeback_field_types` (old HIR version, ~180 lines). Replaced
+     `check_crate` with deprecated stub. Fixed `check_mir_body` to call
+     `check_mir_body_with_tables` directly (was: called deprecated
+     `check_mir_body_with_hir`). **Net reduction: ~387 lines** (1707→1320).
+  2. `src/lib.rs` — updated Stage 3 status to "COMPLETE", version range
+     to v0.8.x, listed remaining deferred limitations.
+  3. `README.md` — updated status to "Stage 0-3 complete", Stage 3 marked
+     ✅, removed "in progress" wording.
+  4. `Cargo.toml` — updated description to "Stage 0-3 complete".
+  5. `docs/tests/matrix.md` — Stage 3 status changed from 🔄 to ✅.
+- **Result**:
+  - typeck checker.rs: 1707 → 1320 lines (−387, −23%)
+  - typeck HIR references: 10 → 4 (only in deprecated stubs, not active code)
+  - Zero warnings, zero deprecated calls in active code paths
+  - Stage 3 formally marked Complete
+- Total: 977 tests pass (unchanged — pure cleanup, no behavior change).
+- (5 files modified; 0 test files changed.)
+- Gate review Round 30 (R30) — Stage 3 final review, all 977 tests pass.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -1290,3 +1319,4 @@
 | v0.8.6 (3.59) | 972 | +7 (cross-stage audit: coercion fix — reject lossy Uint→Int narrowing + add f32→f64 widening)
 | v0.8.6 (3.60) | 972 | +0 (typeck §16 compliance: FieldTyTable + FnSigTable eliminate typeck→HIR leak)
 | v0.8.6 (3.61) | 977 | +5 (§21 audit: lib.rs API surface + audit verification tests + process v3.14)
+| v0.8.6 (3.62) | 977 | +0 (Stage 3 收尾: dead code cleanup ~387 lines + naming standardization + Stage 3 Complete)

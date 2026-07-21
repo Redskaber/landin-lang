@@ -6,11 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** Stage 0-2 complete (lexer, parser, HIR, name resolution, MIR,
-> type checking, borrow checking). Stage 3 (LLVM codegen) in progress —
-> v0.8.6, 977 tests passing, 29 gate review rounds passed (audit CONVERGED).
-> Process v3.14 (§15 最优 > 最小 + §16 阶段间接口隔离 + §17 测试矩阵全覆盖
-> + §18 轮次完成文档同步).
+> **Status:** Stage 0-3 complete (lexer, parser, HIR, name resolution, MIR,
+> type checking, borrow checking, LLVM codegen). All soundness-critical
+> limitations closed. v0.8.6, 977 tests passing, 30 gate review rounds
+> passed (audit CONVERGED). Process v3.14 (§15-§21).
+> Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
+> deferred to Stage 4+.
 
 ## Quick start
 
@@ -104,7 +105,7 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
 - **Stage 1** ✅ HIR + name resolution
 - **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review)
-- **Stage 3** 🔄 LLVM codegen (MVP complete, 29 gate review rounds CONVERGED, Phase A-D: codegen as pure MIR consumer, error paths, glob exports, Emitter tests, L-PIPE-1 + L-ENUM-UNION + L-ENUM-BINDING + L13 fat ptr + slice/str indexing + void fn fix closed)
+- **Stage 3** ✅ LLVM codegen (COMPLETE — 30 gate review rounds CONVERGED, §16 compliant pipeline, all soundness-critical limitations closed)
 - **Stage 4** Macro system + attributes
 - **Stage 5** Mini-cargo + stdlib MVP
 - **v0.1** = Stage 0 + conformance suite
