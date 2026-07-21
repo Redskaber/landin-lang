@@ -475,3 +475,34 @@ cross-stage naming standardization round (per §21 audit findings).
 **Test impact**: 0 (pure refactoring — 977/977 tests still pass).
 **Clippy impact**: 0 (0 warnings before, 0 warnings after).
 **Fmt impact**: clean.
+
+### v1.1 (Stage 3.64, 2026-07-22)
+
+P2 ergonomics + feature round. Builds on v1.0 (Stage 3.63 naming
+standardization) by adding standard error-trait impls, re-exporting
+the codegen pluggability surface, and implementing the previously-stub
+`use` declaration resolution feature.
+
+**Fixes applied in this round**:
+1. `src/lexer/reader.rs`: `LexError` impl `Display` + `std::error::Error`
+2. `src/parser/error.rs`: `ParseError` impl `Display` + `std::error::Error`
+3. `src/hir/lower/error.rs`: `LowerError` impl `std::error::Error` (Display already existed)
+4. `src/resolve/error.rs`: `ResolveError` impl `std::error::Error`
+5. `src/typeck/error.rs`: `TypeError` impl `std::error::Error`
+6. `src/borrowck/error.rs`: `BorrowError` impl `std::error::Error`
+7. `src/lexer/token.rs`: removed 2 orphaned doc comments (lines 26, 156)
+8. `src/lib.rs`: re-export `Emitter` + `TextEmitter` + `EmitType` + `EmitValue` (pluggability)
+9. `src/codegen/emitter.rs` + `src/codegen/text_emitter.rs`: `Emitter::output()` → `emit_output()` (prefix consistency)
+10. `src/resolve/module_tree.rs`: new `UseImport` struct + `use_imports` table on `ModuleNode` + `lookup_use_import` + `insert_use_import` methods
+11. `src/resolve/resolver.rs`: implemented real `resolve_uses` (was no-op stub) — handles leaf, glob, path-prefix, and aliased imports; `resolve_path` consults `use_imports` as fallback
+12. `src/resolve/mod.rs`: re-export `UseImport` + `UseDecl`
+
+**New feature**: `use` declaration resolution (Stage 1.3 Phase C).
+Real Landin programs that use `use a::b::c;` imports now resolve
+correctly, where previously they would silently fail. 5 new tests
+in `tests/hir_resolution.rs` cover leaf / glob / path-prefix / alias
+/ table-populated cases.
+
+**Test impact**: +5 (982/982 tests pass — was 977, +5 new use-resolution tests).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

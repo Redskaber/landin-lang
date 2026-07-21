@@ -13,6 +13,22 @@ pub struct LexError {
     pub span: Span,
 }
 
+// Stage 3.64 (P2 fix): implement `Display` + `std::error::Error` for `LexError`
+// so it integrates with the standard Rust error-handling ecosystem
+// (`?` propagation, `anyhow::Error`, `Box<dyn Error>`, etc.). Previously
+// only carried a `message: String + span: Span` shape with no trait impls.
+impl std::fmt::Display for LexError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[lex error at {}] {}", self.span, self.message)
+    }
+}
+
+impl std::error::Error for LexError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
 /// The lexer: converts source text to tokens.
 pub struct Lexer<'a> {
     src: &'a str,

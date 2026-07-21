@@ -27,3 +27,12 @@ impl std::fmt::Display for LowerError {
         write!(f, "lower error: {} at {}", self.message, self.span)
     }
 }
+
+// Stage 3.64 (P2 fix): implement `std::error::Error` for `LowerError`
+// to complete the standard error-ecosystem integration. `Display` was
+// already implemented; this adds the marker trait.
+impl std::error::Error for LowerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}

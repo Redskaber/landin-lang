@@ -9,10 +9,10 @@
 | Stage | Tests | Coverage | Status |
 |-------|-------|----------|--------|
 | Stage 0 (lexer/parser/AST) | 343 | ~100% | ✅ Complete |
-| Stage 1 (HIR/resolve) | 108 | ~100% | ✅ Complete |
+| Stage 1 (HIR/resolve) | 113 (+5 use resolution in Stage 3.64) | ~100% | ✅ Complete |
 | Stage 2 (MIR/typeck/borrowck) | 168 | ~100% | ✅ Complete |
 | Stage 3 (codegen) | 294 + 5 §21 audit | ~99% | ✅ Complete |
-| **Total** | **977** | ~99% | ✅ Stage 0-3 complete |
+| **Total** | **982** | ~99% | ✅ Stage 0-3 complete |
 
 ## Stage 3 Test Breakdown
 
@@ -54,8 +54,9 @@
 | 3.61 | section 21 audit: lib.rs API surface + audit verification tests + process v3.14 | 5 | ✅ |
 | 3.62 | Stage 3 收尾: dead code cleanup (~387 lines) + naming standardization + Stage 3 Complete | 0 | ✅ |
 | 3.63 | Cross-stage naming standardization per §21 audit (9 P1 + 1 P2 fixes; pure refactoring) | 0 | ✅ |
+| 3.64 | P2 ergonomics fixes (6 Error trait impls, Emitter re-export, emit_output rename, orphaned doc cleanup) + use declaration resolution (Stage 1.3 Phase C — previously stub) | +5 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R31 | Audit cases | 716+ cumulative | ✅ |
+| Gate audits R1-R32 | Audit cases | 716+ cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

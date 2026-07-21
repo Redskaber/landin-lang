@@ -15,6 +15,34 @@ pub use crate::hir::DefKind;
 use lasso::Spur;
 use std::collections::HashMap;
 
+/// A pending use declaration awaiting resolution.
+#[derive(Debug, Clone)]
+pub struct UseDecl {
+    /// The use tree to resolve.
+    pub tree: crate::hir::HirUseTree,
+    /// Visibility of this use.
+    pub vis: Visibility,
+    /// The span of the `use` keyword (for error reporting).
+    pub span: crate::session::Span,
+}
+
+/// A resolved use import (Stage 3.64).
+///
+/// After `resolve_uses` runs, every `use a::b::c;` (leaf) or
+/// `use a::b::*;` (glob) declaration is registered here so that
+/// `resolve_path` can find imported names.
+#[derive(Debug, Clone, Copy)]
+pub struct UseImport {
+    /// The DefId that this import points to.
+    pub target: DefId,
+    /// The DefKind of the target (Fn/Const/Static/Struct/Enum/Trait/TypeAlias/Mod).
+    pub kind: DefKind,
+    /// Whether this is a glob import (`use a::b::*;`). Glob imports
+    /// are lower priority than explicit leaf imports — a leaf import
+    /// shadows a glob import with the same name.
+    pub is_glob: bool,
+}
+
 /// A node in the module tree. Represents one module (the crate root
 /// or a `mod foo { ... }` block).
 #[derive(Debug, Clone, Default)]
@@ -29,17 +57,10 @@ pub struct ModuleNode {
     pub use_decls: Vec<UseDecl>,
     /// Whether this module's use declarations have been processed.
     pub uses_resolved: bool,
-}
-
-/// A pending use declaration awaiting resolution.
-#[derive(Debug, Clone)]
-pub struct UseDecl {
-    /// The use tree to resolve.
-    pub tree: crate::hir::HirUseTree,
-    /// Visibility of this use.
-    pub vis: Visibility,
-    /// The span of the `use` keyword (for error reporting).
-    pub span: crate::session::Span,
+    /// Resolved use imports (Stage 3.64). Keyed by the imported name.
+    /// Both value-namespace and type-namespace imports land here —
+    /// the `kind` field disambiguates.
+    pub use_imports: HashMap<Spur, UseImport>,
 }
 
 impl ModuleNode {
@@ -55,6 +76,14 @@ impl ModuleNode {
     /// Look up a name in the type namespace.
     pub fn lookup_type(&self, name: Spur) -> Option<DefId> {
         self.type_ns.get(&name).copied()
+    }
+
+    /// Stage 3.64: Look up a name in the use-imports table.
+    /// Returns the resolved `UseImport` if found. Callers should
+    /// prefer leaf imports (is_glob=false) over glob imports when
+    /// both exist for the same name.
+    pub fn lookup_use_import(&self, name: Spur) -> Option<UseImport> {
+        self.use_imports.get(&name).copied()
     }
 
     /// Insert a definition into the appropriate namespace.
@@ -74,6 +103,34 @@ impl ModuleNode {
         // Some definitions (impl) are in neither namespace — they're
         // looked up via the self_ty + trait path. Skip insertion.
         Ok(())
+    }
+
+    /// Stage 3.64: Insert a use import. Leaf imports (is_glob=false)
+    /// overwrite glob imports; glob imports don't overwrite leaf imports.
+    /// Two leaf imports with the same name produce an ambiguity error
+    /// (handled by the caller via `insert_use_import_ambiguity`).
+    pub fn insert_use_import(&mut self, name: Spur, import: UseImport) -> Result<(), UseImport> {
+        match self.use_imports.get(&name) {
+            // No existing import — insert.
+            None => {
+                self.use_imports.insert(name, import);
+                Ok(())
+            }
+            // Existing leaf import — error (caller will report ambiguity).
+            Some(existing) if !existing.is_glob => Err(*existing),
+            // Existing glob import — new import wins if it's a leaf.
+            Some(_) => {
+                if !import.is_glob {
+                    self.use_imports.insert(name, import);
+                    Ok(())
+                } else {
+                    // Two globs — keep the first, but don't error (globs
+                    // are often re-exports; ambiguity is detected at
+                    // use-site, not at import-site).
+                    Ok(())
+                }
+            }
+        }
     }
 
     /// Get a child module by name.

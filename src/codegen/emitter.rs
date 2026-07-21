@@ -285,7 +285,12 @@ pub trait Emitter {
     // === Output ===
 
     /// Return the accumulated output (for text backends).
-    fn output(&self) -> &str;
+    ///
+    /// Stage 3.64 (P3 fix): renamed from `output()` to `emit_output()`
+    /// for prefix consistency with the other `emit_*` trait methods.
+    /// The old name was the only state-query method without an `emit_*`
+    /// prefix, breaking the convention.
+    fn emit_output(&self) -> &str;
 }
 
 // ================================================================

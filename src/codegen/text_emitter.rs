@@ -537,9 +537,9 @@ impl Emitter for TextEmitter {
         self.locals.get(&local_id)
     }
 
-    fn output(&self) -> &str {
+    fn emit_output(&self) -> &str {
         // Note: globals are emitted at the END of the module (after all
-        // functions). The codegen_crate entry point calls `output()` to
+        // functions). The codegen_crate entry point calls `emit_output()` to
         // get the function bodies, then separately calls `globals_output()`
         // to get the trailing globals. To keep backward compatibility, we
         // return just the function bodies here. See `output_with_globals()`

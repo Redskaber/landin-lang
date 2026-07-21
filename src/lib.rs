@@ -1,11 +1,14 @@
 //! Landin Compiler
 //!
 //! Stage 0 (v0.1.x): Lexer + Parser + AST — COMPLETE
-//! Stage 1 (v0.2.x): HIR + Name Resolution — COMPLETE
+//! Stage 1 (v0.2.x): HIR + Name Resolution — COMPLETE (Stage 3.64: `use` decl resolution)
 //! Stage 2 (v0.4.x): MIR + Typeck + Borrowck — COMPLETE
 //! Stage 3 (v0.8.x): LLVM Codegen — COMPLETE (soundness-critical limitations closed)
 //!   Stage 3.63 (v0.8.7): cross-stage naming standardization per §21 audit
 //!     (9 P1 naming fixes + 1 P2 architectural fix; pure refactoring).
+//!   Stage 3.64 (v0.8.8): P2 ergonomics fixes + use declaration resolution
+//!     (6 Error trait impls + Emitter re-export + emit_output rename +
+//!      basic use resolution: leaf/glob/path-prefix/alias).
 //!   Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
 //!   deferred to Stage 4+.
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
@@ -25,5 +28,8 @@ pub mod typeck;
 
 // Stage 3.61: Clear public API surface — re-export the intended entry points.
 // Stage 3.63: Naming standardized per docs/develop/v0/api-naming-standard.md.
-pub use codegen::codegen_crate;
+// Stage 3.64: Re-export codegen Emitter trait + impls for pluggability
+// (allows third-party LLVM-IR backends to implement `Emitter` and call
+// `codegen_from_mir` directly).
+pub use codegen::{codegen_crate, EmitType, EmitValue, Emitter, TextEmitter};
 pub use driver::{compile, CompileErrors, CompileResult};

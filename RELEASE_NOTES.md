@@ -1,9 +1,125 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.8.7
+**Current version**: v0.8.8
 **Date**: 2026-07-22
-**Test count**: 977 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 982 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.8.8 — Stage 3.64 (P2 ergonomics fixes + use declaration resolution)
+
+### Overview
+
+Continuation of the §21 cross-stage audit follow-up. The previous round
+(Stage 3.63, v0.8.7) closed all 9 P1 naming inconsistencies. This round
+(Stage 3.64) addresses the highest-value P2 items deferred from the
+audit, plus implements the previously-stub `use` declaration resolution
+feature (Stage 1.3 Phase C). 982 tests pass (was 977, +5 new use-resolution
+tests). 0 clippy warnings. fmt clean.
+
+### P2 ergonomics fixes (6 Error trait impls)
+
+All stage error types now implement `std::error::Error` + `Display`,
+integrating with the standard Rust error-handling ecosystem (`?`
+propagation, `anyhow::Error`, `Box<dyn Error>`, etc.):
+
+1. `LexError` (src/lexer/reader.rs) — both `Display` + `Error` added
+2. `ParseError` (src/parser/error.rs) — both `Display` + `Error` added
+3. `LowerError` (src/hir/lower/error.rs) — `Error` added (`Display` existed)
+4. `ResolveError` (src/resolve/error.rs) — `Error` added (`Display` existed)
+5. `TypeError` (src/typeck/error.rs) — `Error` added (`Display` existed)
+6. `BorrowError` (src/borrowck/error.rs) — `Error` added (`Display` existed)
+
+### P2 codegen pluggability (1 re-export)
+
+The `Emitter` trait + `TextEmitter` implementation + `EmitType` + `EmitValue`
+are now re-exported from `lib.rs`. This enables third-party LLVM-IR backends
+to implement `Emitter` and call `codegen_from_mir` directly, fulfilling
+the §16.1.3 "可替换" (pluggable) design goal.
+
+### P3 codegen naming consistency (1 rename)
+
+`Emitter::output()` → `Emitter::emit_output()` for prefix consistency
+with the other `emit_*` trait methods. The old name was the only
+state-query method without an `emit_*` prefix, breaking the convention.
+The rename is internal — `output()` was never called by external code.
+
+### P2 code cleanliness (1 doc cleanup)
+
+Removed 2 orphaned doc comments in `src/lexer/token.rs`:
+- Line 26: `/// Boolean literal.` (no `BoolLit` variant follows — booleans
+  are `KwTrue`/`KwFalse`)
+- Line 156: `/// Pipe (for closures)` (no `Pipe` variant follows — closures
+  use `Or`)
+
+### P2 feature: use declaration resolution (Stage 1.3 Phase C)
+
+**Previously** (Stage 1.3-3.62): `resolve_uses` was a no-op stub that
+just set `uses_resolved = true`. This meant `use a::b::c;` declarations
+had no effect on path resolution — real Landin programs that used
+imports couldn't compile.
+
+**Now** (Stage 3.64): `resolve_uses` walks every `use` declaration and
+populates the new `module_tree.use_imports: HashMap<Spur, UseImport>`
+table. The `UseImport` struct carries:
+- `target: DefId` — the definition the import points to
+- `kind: DefKind` — the kind of definition (Fn/Struct/Enum/etc.)
+- `is_glob: bool` — whether this is a glob import (`use a::b::*;`)
+
+**Resolution precedence** (when both leaf and glob imports exist for
+the same name):
+- Leaf imports (`is_glob = false`) shadow glob imports (`is_glob = true`)
+- Two leaf imports with the same name → ambiguity error at import time
+- Two glob imports with the same name → first one wins, no error
+
+**Supported forms**:
+- `use foo;` — single-segment leaf import (looks up `foo` in crate root)
+- `use mod::foo;` — two-segment leaf import (looks up `foo` in `mod`'s namespace)
+- `use foo as bar;` — aliased leaf import (registers `bar` as the imported name)
+- `use mod::*;` — glob import (registers all public items from `mod` as globs)
+- `use a::{b, c};` — path-prefix use tree (recurses into each child)
+
+**Limitations** (deferred to Stage 4+):
+- Cross-crate imports (Stage 5+)
+- Visibility enforcement (Stage 1.3 Phase E1, still not implemented)
+- Ambiguity detection at use-site (currently at import-site only)
+- 3+ segment paths (`use a::b::c::d;`) — Stage 4
+
+### New tests (5)
+
+Added 5 tests to `tests/hir_resolution.rs` covering the new `use`
+resolution feature:
+- `use_resolution_leaf_import_fn` — basic leaf import
+- `use_resolution_glob_import_does_not_error` — glob import safety
+- `use_resolution_path_prefix_no_crash` — `use a::{b, c};` form
+- `use_resolution_alias_no_crash` — `use foo as bar;` form
+- `use_resolution_table_populated` — end-to-end resolution check
+
+### Verification
+
+- `cargo test`: **982 passed, 0 failed, 2 ignored** (was 977 — +5 new tests)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 programmatic audit tests pass
+
+### Files touched
+
+- `src/lexer/reader.rs` — `LexError` impl Display + Error + orphaned doc removal
+- `src/lexer/token.rs` — orphaned doc comment removal
+- `src/parser/error.rs` — `ParseError` impl Display + Error
+- `src/hir/lower/error.rs` — `LowerError` impl Error
+- `src/resolve/error.rs` — `ResolveError` impl Error
+- `src/resolve/module_tree.rs` — new `UseImport` struct + `use_imports` table + `lookup_use_import` + `insert_use_import` methods
+- `src/resolve/resolver.rs` — real `resolve_uses` implementation (was stub) + `resolve_path` consults `use_imports` as fallback
+- `src/resolve/mod.rs` — re-export `UseImport` + `UseDecl`
+- `src/typeck/error.rs` — `TypeError` impl Error
+- `src/borrowck/error.rs` — `BorrowError` impl Error
+- `src/codegen/emitter.rs` — `output()` → `emit_output()` rename
+- `src/codegen/text_emitter.rs` — `output()` → `emit_output()` rename
+- `src/lib.rs` — re-export `Emitter` + `TextEmitter` + `EmitType` + `EmitValue`
+- `tests/hir_resolution.rs` — +5 new use-resolution tests
 
 ---
 

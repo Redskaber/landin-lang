@@ -53,3 +53,10 @@ impl std::fmt::Display for TypeError {
         write!(f, "type error: {} at {}", self.message, self.span)
     }
 }
+
+// Stage 3.64 (P2 fix): implement `std::error::Error` for `TypeError`.
+impl std::error::Error for TypeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}

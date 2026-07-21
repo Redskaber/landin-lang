@@ -23,7 +23,6 @@ pub enum TokenKind {
     IntLit(u128, Option<IntTy>),
     /// Float literal: value + optional suffix.
     FloatLit(f64, Option<FloatTy>),
-    /// Boolean literal.
     /// Character literal.
     CharLit(char),
     /// String literal (interned).
@@ -153,7 +152,6 @@ pub enum TokenKind {
     DocComment(Symbol, bool /* true = inner */),
     /// Underscore wildcard
     Underscore,
-    /// Pipe (for closures)
     /// End of file.
     Eof,
 }

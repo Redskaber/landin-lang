@@ -27,3 +27,10 @@ impl std::fmt::Display for ResolveError {
         write!(f, "resolve error: {} at {}", self.message, self.span)
     }
 }
+
+// Stage 3.64 (P2 fix): implement `std::error::Error` for `ResolveError`.
+impl std::error::Error for ResolveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
