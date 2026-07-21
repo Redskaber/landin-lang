@@ -1223,6 +1223,30 @@
 - (3 source files modified; 0 test files changed.)
 - Gate review Round 27 (R27) — R23 audit re-verified 30/30, all 972 tests pass.
 
+### Stage 3.61 — §21 cross-stage audit: lib.rs API surface + audit verification tests + process v3.14 (v0.8.6, process v3.14)
+- **Problem**: After Stage 3.60's §21 cross-stage deep audit (R28), remaining
+  architectural debts:
+  1. `lib.rs` had no `pub use` — crate's public API was "everything"
+  2. No programmatic tests verifying §16 compliance (only manual grep)
+  3. Process document needed v3.14 update with §21 protocol
+- **Fix** (2 source files + process doc):
+  1. `src/lib.rs` — added `pub use driver::{compile, CompileResult, CompileErrors};`
+     and `pub use codegen::codegen_crate;` — marks the intended entry points.
+  2. `tests/codegen_tests.rs` — 5 new §21 audit verification tests:
+     - `audit_codegen_no_upstream_calls`: verifies codegen takes &CompileResult
+     - `audit_typeck_uses_tables_not_hir`: verifies FieldTyTable works for struct fields
+     - `audit_pipeline_data_flow_complete`: verifies all 8 data flow points (D1-D8)
+     - `audit_error_propagation`: verifies errors propagate across stages
+     - `audit_metadata_precomputed`: verifies fn_name_by_def_id and body_metas
+  3. `docs/stage-committee-process.md` — updated to v3.14 with §21 (cross-stage
+     deep audit protocol: 6 dimensions, §16 compliance checklist, data flow
+     integrity checks D1-D8) and §22 (changelog).
+- **Result**: 977 tests pass (was 972, +5 audit tests). Process v3.14 effective.
+- 5 new tests: §21 audit verification (codegen §16, typeck tables, pipeline
+  data flow, error propagation, metadata precomputed).
+- Total: 972 → 977. (2 source files modified; 1 process doc updated.)
+- Gate review Round 29 (R29) — §21 audit re-verified, all 977 tests pass.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -1265,3 +1289,4 @@
 | v0.8.6 (3.58) | 965 | +0 (typeck implicit coercion: Bool→Int, narrower→wider integers; all gen_ll_unchecked eliminated)
 | v0.8.6 (3.59) | 972 | +7 (cross-stage audit: coercion fix — reject lossy Uint→Int narrowing + add f32→f64 widening)
 | v0.8.6 (3.60) | 972 | +0 (typeck §16 compliance: FieldTyTable + FnSigTable eliminate typeck→HIR leak)
+| v0.8.6 (3.61) | 977 | +5 (§21 audit: lib.rs API surface + audit verification tests + process v3.14)

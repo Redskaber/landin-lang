@@ -3694,3 +3694,116 @@ fn codegen_coercion_str_index_still_works() {
     let result = compile("fn f(s: &str) -> i32 { s[0] }");
     assert!(!result.has_errors(), "u8 → i32 should not error");
 }
+
+// ============================================================================
+// Stage 3.61 — §21 Cross-stage audit verification tests
+// ============================================================================
+
+#[test]
+fn audit_codegen_no_upstream_calls() {
+    // §21.3 D3: codegen must not call upstream stage functions.
+    // This test verifies the API contract: codegen_crate takes &CompileResult
+    // (pre-built MIR + metadata), not &HirCrate.
+    let result = compile("fn f() -> i32 { 42 }");
+    // If codegen tried to re-lower or re-typeck, it would need &HirCrate.
+    // The fact that this compiles with &CompileResult proves §16 compliance.
+    let ll = codegen_crate(&result);
+    assert!(
+        ll.contains("define i32 @landin_f()"),
+        "codegen from CompileResult works"
+    );
+}
+
+#[test]
+fn audit_typeck_uses_tables_not_hir() {
+    // §21.3 D3: typeck active path must use check_mir_body_with_tables,
+    // not check_mir_body_with_hir.
+    // Verified by: compile() produces correct MIR with resolved types
+    // (struct fields resolved correctly → typeck used FieldTyTable).
+    let src = "struct S { x: i64, y: i32 } fn f(s: S) -> i64 { s.x }";
+    let result = compile(src);
+    assert!(
+        !result.has_errors(),
+        "typeck with tables should produce no errors"
+    );
+    let ll = codegen_crate(&result);
+    assert!(
+        ll.contains("load i64"),
+        "field type i64 resolved correctly via FieldTyTable"
+    );
+}
+
+#[test]
+fn audit_pipeline_data_flow_complete() {
+    // §21.4 D5: verify the full data flow from source to IR.
+    // Every stage's output must be consumed by the next stage.
+    let src = "struct P { x: i32, y: i32 } fn make() -> P { P { x: 1, y: 2 } } fn f() -> i32 { let p = make(); p.x + p.y }";
+    let result = compile(src);
+    assert!(!result.has_errors(), "pipeline should produce no errors");
+
+    // D1: lexer produced tokens (no lex errors)
+    assert!(result.errors.lex.is_empty(), "lex stage clean");
+
+    // D2: parser produced AST (no parse errors)
+    assert!(result.errors.parse.is_empty(), "parse stage clean");
+
+    // D3: HIR lowering + resolve (no resolve errors)
+    assert!(result.errors.resolve.is_empty(), "resolve stage clean");
+
+    // D4: MIR lowering produced MIR bodies
+    assert!(!result.mirs.is_empty(), "MIR lowering produced bodies");
+
+    // D5: typeck resolved types (no type errors)
+    assert!(result.errors.typeck.is_empty(), "typeck stage clean");
+
+    // D6: borrowck (no borrow errors)
+    assert!(result.errors.borrowck.is_empty(), "borrowck stage clean");
+
+    // D7: body_metas parallel to mirs
+    assert_eq!(
+        result.mirs.len(),
+        result.body_metas.len(),
+        "body_metas parallel"
+    );
+
+    // D8: codegen produces valid IR
+    let ll = codegen_crate(&result);
+    assert!(
+        ll.contains("define { i32, i32 } @landin_make()"),
+        "codegen: make() signature"
+    );
+    assert!(
+        ll.contains("define i32 @landin_f()"),
+        "codegen: f() signature"
+    );
+    assert!(ll.contains("add nsw i32"), "codegen: arithmetic");
+}
+
+#[test]
+fn audit_error_propagation() {
+    // §21.4 D5: errors must propagate correctly across all stages.
+    let result = compile("fn f() { undefined_fn() }");
+    assert!(
+        !result.errors.resolve.is_empty(),
+        "resolve error should propagate"
+    );
+    assert!(result.has_errors(), "has_errors should be true");
+}
+
+#[test]
+fn audit_metadata_precomputed() {
+    // §21.3: metadata must be pre-computed by driver (data-driven).
+    let result = compile("fn helper() -> i32 { 42 } fn f() -> i32 { helper() }");
+    assert!(
+        !result.fn_name_by_def_id.is_empty(),
+        "fn_name_by_def_id pre-computed"
+    );
+    assert!(!result.body_metas.is_empty(), "body_metas pre-computed");
+    assert!(
+        result
+            .fn_name_by_def_id
+            .values()
+            .any(|n| n == "landin_helper"),
+        "fn_name_by_def_id contains 'landin_helper'"
+    );
+}

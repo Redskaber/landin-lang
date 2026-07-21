@@ -11,7 +11,7 @@
 | Stage 0 (lexer/parser/AST) | 245 | ~100% | ✅ Complete |
 | Stage 1 (HIR/resolve) | 451 | ~100% | ✅ Complete |
 | Stage 2 (MIR/typeck/borrowck) | 673 | ~100% | ✅ Complete |
-| Stage 3 (codegen) | 972 | ~99% | 🔄 In progress |
+| Stage 3 (codegen) | 977 | ~99% | 🔄 In progress |
 
 ## Stage 3 Test Breakdown
 
@@ -50,8 +50,9 @@
 | 3.58 | Typeck implicit coercion: Bool→Int, narrower→wider integers; all gen_ll_unchecked eliminated | 0 | ✅ |
 | 3.59 | Cross-stage audit: coercion fix (reject lossy Uint→Int narrowing) + f32→f64 widening | 7 | ✅ |
 | 3.60 | Typeck section 16 compliance: FieldTyTable + FnSigTable eliminate typeck→HIR leak | 0 | ✅ |
+| 3.61 | section 21 audit: lib.rs API surface + audit verification tests + process v3.14 | 5 | ✅ |
 | **Total codegen** | | **300** | | | ✅ |
-| Gate audits R1-R28 | Audit cases | 716 cumulative | ✅ |
+| Gate audits R1-R29 | Audit cases | 716 cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

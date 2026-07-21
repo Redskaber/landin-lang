@@ -17,3 +17,7 @@ pub mod parser;
 pub mod resolve;
 pub mod session;
 pub mod typeck;
+
+// Stage 3.61: Clear public API surface — re-export the intended entry points.
+pub use codegen::codegen_crate;
+pub use driver::{compile, CompileErrors, CompileResult};
