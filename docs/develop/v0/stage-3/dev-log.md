@@ -1320,3 +1320,83 @@
 | v0.8.6 (3.60) | 972 | +0 (typeck §16 compliance: FieldTyTable + FnSigTable eliminate typeck→HIR leak)
 | v0.8.6 (3.61) | 977 | +5 (§21 audit: lib.rs API surface + audit verification tests + process v3.14)
 | v0.8.6 (3.62) | 977 | +0 (Stage 3 收尾: dead code cleanup ~387 lines + naming standardization + Stage 3 Complete)
+
+---
+
+## Retroactive Updates (Stage 3.63-3.69 + Stage 4.1-4.4)
+
+Stage 3 received the following improvements after the initial Stage 3.62
+completion, as part of cross-stage naming standardization + P2 fixes +
+deep review follow-up:
+
+### Stage 3.63 — Cross-Stage Naming Standardization (v0.8.7)
+- 9 P1 naming fixes: glob→explicit (lexer+ast), `LowerCtxt`→`HirLowerCtxt`,
+  `check_crate` deprecation, `BorrowKind` unified, `lower_hir_body_to_mir_full`
+  re-export, `parser::parse_crate` free fn, `fat_ptr_type`→`emit_fat_ptr_type`
+- 1 P2 architectural fix: `DefKind` moved from `resolve::module_tree` to
+  `hir::kinds`
+- Process v3.15 (§23 API naming standardization protocol)
+- 977 tests (unchanged — pure refactoring)
+
+### Stage 3.64 — P2 Ergonomics + Use Resolution (v0.8.8)
+- 6 Error trait impls: `LexError`/`ParseError`/`LowerError`/`ResolveError`/
+  `TypeError`/`BorrowError` now implement `std::error::Error` + `Display`
+- `Emitter` trait + `TextEmitter` + `EmitType` + `EmitValue` re-exported
+  from `lib.rs` (pluggability)
+- `Emitter::output()` → `emit_output()` (prefix consistency)
+- `use` declaration resolution implemented (was no-op stub) — leaf/glob/
+  path-prefix/alias imports
+- 982 tests (+5 use resolution tests)
+
+### Stage 3.65 — P2 Architectural Fixes (v0.8.9)
+- `unsafe impl`/`unsafe trait` AST+HIR+parser support (closes Stage 1.0
+  soundness debt) — `is_unsafe: bool` added to `ImplDecl`/`TraitDecl`/
+  `HirImpl`/`HirTrait`
+- `Res::SelfTy` trait/impl discrimination — new `HirSelfKind` enum (Trait/Impl)
+- `lower_body` + `lower_body_full` convenience aliases
+- `mir_type_to_emit_type` documentation (legacy vs canonical)
+- 983 tests (+1 safe impl/trait test)
+
+### Stage 3.66 — Lvalue→Place Rename (v0.8.10)
+- `Lvalue` → `Place` (167 refs) + `LvalueKind` → `PlaceKind` (75 refs)
+- File `src/mir/lvalue.rs` → `src/mir/place.rs`
+- All function/variable names renamed (lower_expr_to_place, detect_place_type,
+  codegen_place_load, etc.)
+- Resolver owner context threading for accurate `HirSelfKind` (Trait vs Impl)
+- 983 tests (unchanged — pure refactoring)
+
+### Stage 3.67 — P2 Cleanup (v0.8.11)
+- Body owner context threading — body-level `HirSelfKind` now accurate
+- `&mut Rodeo` → `&Rodeo` in `resolve_crate` (lexer now interns keywords)
+- 11 `Span::DUMMY` placeholders fixed in `parser.rs` → keyword spans
+- 983 tests (unchanged — pure refactoring)
+
+### Stage 3.68 — Visibility Checking Infrastructure (v0.8.12)
+- `def_visibility` map + `check_visibility` hook (stub, ready for Stage 4)
+- Visibility metadata collection for all item kinds
+- 984 tests (+1 visibility metadata test)
+
+### Stage 3.69 — Process v3.16 + Deep Review (v0.8.13)
+- Process v3.16: §25 阶段末尾深度审查协议 (7-dimension review)
+- Stage 0-3 deep review: GO-WITH-CONDITIONS for Stage 4
+- 984 tests (unchanged — pure process/doc work)
+
+### Stage 4.1-4.4 (v0.9.0-0.9.1) — see `docs/develop/v0/stage-4/dev-log.md`
+- Stage 4.1: Nested module support (recursive `build_module_tree`)
+- Stage 4.2: L1 PHI optimization CLOSED (design decision: rely on LLVM `mem2reg`)
+- Stage 4.3: Visibility enforcement activation (`check_visibility` implemented)
+- Stage 4.4: L3 closure lowering (`AggregateKind::Closure` + `TyKind::Closure`)
+- 989 tests (+3 nested modules + 2 closure lowering)
+
+---
+
+## Final Stage 3 Status
+
+- **Test count**: 977 → 989 (Stage 3.63-3.69 added 7 tests; Stage 4.1-4.4
+  added 5 tests — but those are tracked in Stage 4 dev-log)
+- **Architecture**: §16 compliant — codegen + typeck are pure MIR consumers
+- **Naming**: standardized per `api-naming-standard.md` v1.5
+- **Process**: v3.16 (§25 deep review protocol)
+- **Limitations**: L1 CLOSED (design decision); L3 IN PROGRESS (Stage 4.4);
+  L5/L8/L-COPY-ADT deferred to Stage 4+/5
+

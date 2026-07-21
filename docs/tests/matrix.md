@@ -64,8 +64,9 @@
 | 4.2 | L1 PHI optimization CLOSED: design decision to rely on LLVM mem2reg (standard approach, documented in codegen/mod.rs) | 0 | ✅ |
 | 4.3 | Visibility enforcement activation: check_visibility implements pub/private/pub-restricted checks (same-crate access allowed; cross-module deferred) | 0 | ✅ |
 | 4.4 | L3 closure lowering: AggregateKind::Closure + TyKind::Closure → empty struct; capture analysis deferred to Stage 4.5 | +2 | ✅ |
+| 4.5 | Complete dev-logs for all stages: Stage 1 + Stage 2 + Stage 4 dev-logs created; Stage 0 + Stage 3 dev-logs updated with retroactive entries | 0 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.4 R39 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
+| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.5 R40 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

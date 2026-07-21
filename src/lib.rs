@@ -31,6 +31,9 @@
 //!     implements pub/private/pub-restricted checks) + L3 closure lowering
 //!     (AggregateKind::Closure + TyKind::Closure → empty struct; capture analysis
 //!     deferred to Stage 4.5).
+//!   Stage 4.5 (v0.9.2): Complete dev-logs for all stages (Stage 1 + Stage 2 +
+//!     Stage 4 dev-logs created; Stage 0 + Stage 3 dev-logs updated with
+//!     retroactive entries).
 //!   Remaining: L3 capture analysis (Stage 4.5), L5 (traits), L8 (lli).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 

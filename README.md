@@ -6,12 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** Stage 0-3 complete + Stage 4 in progress. v0.9.1, 989 tests passing,
-> 39 review rounds (36 gate + 1 deep review + Stage 4.1-4.4).
+> **Status:** Stage 0-3 complete + Stage 4 in progress. v0.9.2, 989 tests passing,
+> 40 review rounds (36 gate + 1 deep review + Stage 4.1-4.5).
 > Process v3.16 (§15-§26, including §25 阶段末尾深度审查协议).
-> Stage 4.1: Nested module support ✅; Stage 4.2: L1 PHI CLOSED ✅;
-> Stage 4.3: Visibility enforcement activated ✅; Stage 4.4: L3 closure lowering ✅.
-> Next: L3 capture analysis (Stage 4.5), macro system, benchmark suite.
+> Stage 4.1: Nested modules ✅; 4.2: L1 PHI CLOSED ✅; 4.3: visibility ✅;
+> 4.4: closure lowering ✅; 4.5: complete dev-logs for all stages ✅.
+> Next: L3 capture analysis (Stage 4.6), macro system, benchmark suite.
 
 ## Quick start
 

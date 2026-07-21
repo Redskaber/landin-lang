@@ -1,8 +1,29 @@
 # Landin Stage 0 开发日志
 
-> **版本**：v0.1.3
-> **状态**：Stage 0 前端闭合完成（0 P0 残留 / 0 警告 / 245 测试通过），准备进入月 3 HIR + Name Resolution
-> **最后更新**：S0-REV-7 闭合审查（2025）
+> **版本**：v0.9.1 (Stage 3.63-3.67 retroactive updates)
+> **状态**：Stage 0 前端闭合完成（0 P0 残留 / 0 警告 / 344 测试通过）
+> **最后更新**：2026-07-22 (Stage 3.67 — lexer keyword interning + Span::DUMMY fix)
+
+---
+
+## Retroactive Updates (Stage 3.63-3.67)
+
+Stage 0 received the following improvements during Stage 3.63-3.67
+(cross-stage naming standardization + P2 cleanup):
+
+- **Stage 3.63**: `src/lexer/mod.rs` + `src/ast/mod.rs` converted from glob
+  (`pub use X::*;`) to explicit re-export lists (completes the Stage 3.57
+  P0-3 fix). Added `parser::parse_crate` free function wrapper.
+- **Stage 3.64**: `LexError` + `ParseError` now implement `Display` +
+  `std::error::Error` (integrates with standard Rust error-handling ecosystem).
+  Removed 2 orphaned doc comments in `src/lexer/token.rs`.
+- **Stage 3.67**: Lexer now interns keyword strings at tokenization time
+  (eliminates `&mut Rodeo` smell in `resolve_crate`). Fixed 11 `Span::DUMMY`
+  placeholders in `parser.rs` — top-level declarations now carry their
+  keyword's actual span.
+
+**Test count**: 245 → 344 (+99 tests added during Stage 1-3 work + 1 unsafe
+impl/trait test in Stage 3.65)
 
 ---
 

@@ -1,9 +1,81 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.9.1
+**Current version**: v0.9.2
 **Date**: 2026-07-22
 **Test count**: 989 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.9.2 — Stage 4.5 (Complete dev-logs for all stages)
+
+### Overview
+
+This release completes the development log documentation for all stages.
+Previously, Stage 1, Stage 2, and Stage 4 were missing `dev-log.md` files,
+and Stage 0/3 dev-logs were missing retroactive update entries for
+Stage 3.63-3.69 + Stage 4.1-4.4 work. This release creates all missing
+dev-logs and updates existing ones. 989 tests pass (unchanged — pure
+documentation work). 0 clippy warnings. fmt clean.
+
+### Documentation completed
+
+**New dev-logs created**:
+- `docs/develop/v0/stage-1/dev-log.md` — Stage 1 (HIR + Name Resolution)
+  development log covering sub-stages 1.1-1.4 + retroactive updates from
+  Stage 3.63-3.68 + Stage 4.1/4.3
+- `docs/develop/v0/stage-2/dev-log.md` — Stage 2 (MIR + Typeck + Borrowck)
+  development log covering sub-stages 2.1-2.4 + retroactive updates from
+  Stage 3.63-3.66 + Stage 4.4
+- `docs/develop/v0/stage-4/dev-log.md` — Stage 4 development log covering
+  sub-stages 4.1-4.4 + next priorities
+
+**Existing dev-logs updated**:
+- `docs/develop/v0/stage-0/dev-log.md` — added "Retroactive Updates" section
+  documenting Stage 3.63-3.67 improvements (glob→explicit, Error trait impls,
+  keyword interning, Span::DUMMY fix)
+- `docs/develop/v0/stage-3/dev-log.md` — appended "Retroactive Updates"
+  section documenting Stage 3.63-3.69 + Stage 4.1-4.4 work
+
+### Dev-log structure (now complete for all stages)
+
+```
+docs/develop/v0/
+├── stage-0/
+│   ├── dev-log.md       ✅ (updated with retroactive entries)
+│   └── status.md
+├── stage-1/
+│   ├── dev-log.md       ✅ (NEW — created in Stage 4.5)
+│   ├── plan-1.1.md
+│   ├── plan-1.2.md
+│   ├── plan-1.3.md
+│   └── plan-1.4.md
+├── stage-2/
+│   ├── dev-log.md       ✅ (NEW — created in Stage 4.5)
+│   ├── gate-review-*.md (6 rounds)
+│   └── plan-*.md
+├── stage-3/
+│   ├── dev-log.md       ✅ (updated with retroactive entries)
+│   ├── deep-review-r37.md
+│   └── gate-review-*.md (30 rounds)
+└── stage-4/
+    └── dev-log.md       ✅ (NEW — created in Stage 4.5)
+```
+
+### Verification
+
+- `cargo test`: **989 passed, 0 failed, 2 ignored** (unchanged)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance: all 8 §21.3 checklist items green
+
+### Files touched
+
+- `docs/develop/v0/stage-1/dev-log.md` — NEW
+- `docs/develop/v0/stage-2/dev-log.md` — NEW
+- `docs/develop/v0/stage-4/dev-log.md` — NEW
+- `docs/develop/v0/stage-0/dev-log.md` — updated (retroactive entries)
+- `docs/develop/v0/stage-3/dev-log.md` — updated (retroactive entries)
 
 ---
 
