@@ -51,7 +51,7 @@
 | 3.59 | Cross-stage audit: coercion fix (reject lossy Uint→Int narrowing) + f32→f64 widening | 7 | ✅ |
 | 3.60 | Typeck section 16 compliance: FieldTyTable + FnSigTable eliminate typeck→HIR leak | 0 | ✅ |
 | **Total codegen** | | **300** | | | ✅ |
-| Gate audits R1-R27 | Audit cases | 716 cumulative | ✅ |
+| Gate audits R1-R28 | Audit cases | 716 cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

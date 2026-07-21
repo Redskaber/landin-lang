@@ -1,8 +1,8 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 3.13 (effective from Stage 3.47)
-> **Supersedes**: v3.12 (preserved verbatim — see §19.2 for v3.12→v3.13 diff)
+> **Version**: 3.14 (effective from Stage 3.60)
+> **Supersedes**: v3.13 (preserved verbatim — see §19.2 for v3.13→v3.14 diff)
 > **Purpose**: 为 Agent Group 提供清晰、严格、高效、可协调的阶段推进与质量管控 SOP。
 > 让任何 Agent（主 Agent / 子 Agent / 跨会话 Agent）拿到本文档即可：
 > 1. **清晰**：知道每个阶段、每轮、每个角色的输入/输出/验收标准；
@@ -422,6 +422,7 @@ NEEDS REVISION，不允许进入委员会投票阶段。
 | v3.11 | Stage 3.30 | **阶段间接口隔离原则** (§16) — 来自 Stage 3.30 教训：codegen 直接调用 MIR lower 的 `lower_hir_ty_to_mir_ty` 是跨阶段耦合；要求通过数据结构传递类型信息，禁止跨阶段调用内部接口 |
 | v3.12 | Stage 3.42 | **测试矩阵全覆盖原则** (§17) — 测试代码与测试文档分层组织、相互印证；每进入下一阶段之前测试矩阵需满足近 100% 覆盖率 |
 | **v3.13** | **Stage 3.47** | **轮次完成文档同步规则** (§18) — 来自 Stage 3.46 教训：dev-log.md 已记录 3.46 实现但 gate-review-round13.md 缺失，文档不完整；要求每轮完成 stage/plan/task/review 时**同步**更新或新建 `docs/develop/` 与 `docs/tests/` 下对应文档。同时重排文档结构添加 §0 导航、§20 角色映射、§18.4 worklog 协议、§19 变更日志 |
+| **v3.14** | **Stage 3.60** | **跨阶段深度审查协议** (§21) — 来自 Stage 3.56-3.60 跨阶段架构重构经验：完成所有 stage review 后需要执行架构级审计，覆盖阶段内/间路径、高内聚低耦合、可插拔、数据流校验、路径缺漏。新增 §21（6 维度审查 + §16 合规验证清单 + 数据流完整性校验 D1-D8）+ §22 变更日志 |
 
 ---
 
@@ -1271,6 +1272,176 @@ v3.13 完整保留 v3.12 的全部规则内容，100% 覆盖。具体覆盖矩�
 
 ---
 
+## 21. 跨阶段深度审查协议（v3.14 新增）
+
+> **目的**：当完成项目对应阶段的所有 stage review 之后，必须执行一次
+> 跨阶段深度审查，确保编译流水线的架构完整性。这不是常规的 gate review
+> （§9.3），而是一次**架构级审计**，覆盖阶段内路径、阶段间路径、管道
+> 数据流、接口隔离等维度。
+>
+> **触发时机**：当一个大阶段（如 Stage 3）的所有子阶段完成后，或当
+> 用户明确要求"跨阶段审查"时。
+>
+> **执行者**：ARCH-A 主导，QA-A 验证，REV-A 审查。
+
+### 21.1 审查维度
+
+跨阶段深度审查覆盖以下 6 个维度：
+
+| # | 维度 | 审查内容 | 验证方法 |
+|---|------|---------|---------|
+| D1 | 阶段内路径覆盖 | 每个阶段内部的所有代码路径是否完整覆盖 | 检查测试矩阵 §17，确认每个功能点都有测试 |
+| D2 | 阶段间路径覆盖 | 阶段之间的数据流路径是否完整 | 检查 driver.rs 中每个阶段交接点，确认数据正确传递 |
+| D3 | 高内聚低耦合 | 每个阶段是否高内聚（职责单一）、低耦合（通过数据契约交互） | grep 检查跨阶段函数调用，确认零违规 |
+| D4 | 可插拔可替换 | 每个阶段是否可被等价实现替换 | 检查是否有 trait 接口，是否有数据驱动的元数据传递 |
+| D5 | 数据流校验 | 所有数据流路径是否正确传递，无丢失或损坏 | 检查 CompileResult 的字段是否被正确填充和消费 |
+| D6 | 路径缺漏补充 | 是否存在未覆盖的代码路径或数据流 | 检查错误处理路径、边界条件、特殊类型 |
+
+### 21.2 审查执行协议
+
+```text
+跨阶段深度审查
+    │
+    ▼
+1. ARCH-A 审查管道架构（D1-D6）
+    │  ├─ 检查 driver.rs 中每个阶段交接点
+    │  ├─ grep 跨阶段函数调用（§16 违规）
+    │  ├─ 检查 CompileResult 字段填充和消费
+    │  └─ 检查错误传播路径
+    │
+    ▼
+2. QA-A 验证测试覆盖（D1, D6）
+    │  ├─ 检查 matrix.md 覆盖率
+    │  ├─ 检查负向测试矩阵 §9.1.1
+    │  └─ 检查错误路径测试覆盖
+    │
+    ▼
+3. REV-A 审查接口隔离（D3, D4）
+    │  ├─ 检查每个阶段的 pub API 是否清晰
+    │  ├─ 检查是否有反向依赖（下游→上游）
+    │  └─ 检查是否数据驱动（元数据预计算）
+    │
+    ▼
+4. 发现问题 → 修复 → 重新验证
+    │
+    ▼
+5. 输出审查报告（gate-review-roundN.md）
+```
+
+### 21.3 §16 合规验证清单
+
+跨阶段审查必须验证以下 §16 合规项：
+
+| 检查项 | 验证方法 | 通过标准 |
+|--------|---------|---------|
+| codegen 不调用 mir::lower | `grep "crate::mir::lower" src/codegen/` | 零匹配（注释除外） |
+| codegen 不调用 typeck | `grep "crate::typeck" src/codegen/` | 零匹配（注释除外） |
+| codegen 不调用 driver | `grep "crate::driver" src/codegen/` | 零匹配（数据类型引用除外） |
+| typeck 不直接读 HIR | 检查活跃代码路径 | 零 `&HirCrate` 参数 |
+| driver 是唯一 HIR 读者 | 检查所有阶段的入口 | 只有 driver 直接读 HIR |
+| 元数据预计算 | 检查 CompileResult 字段 | body_metas, fn_name_by_def_id, FieldTyTable 均预计算 |
+| 无 glob exports | `grep "pub use.*::\*" src/hir/mod.rs src/mir/mod.rs` | 零匹配 |
+| 错误路径覆盖 | gen_ll 检查 has_errors() | 零 gen_ll_unchecked 调用 |
+
+### 21.4 数据流完整性校验
+
+跨阶段审查必须验证以下数据流路径：
+
+```text
+source text
+    │
+    ▼ [D1] tokenize → Vec<Token>
+    │  数据：tokens, interner
+    │  校验：tokens 非空，interner 已 intern 所有标识符
+    │
+    ▼ [D2] parse_crate → Crate<ast::Item>
+    │  数据：AST
+    │  校验：AST 结构完整，无解析错误
+    │
+    ▼ [D3] lower_crate → HirCrate
+    │  数据：HIR (owners, bodies, interner)
+    │  校验：每个 fn owner 有对应 body
+    │
+    ▼ [D4] resolve_crate → mutates HIR (Res on paths)
+    │  数据：HIR with resolved paths
+    │  校验：无 Res::Unknown（scan_for_unresolved_paths 检查）
+    │
+    ▼ [D5] lower_hir_body_to_mir_full → MirBody + UnificationTable
+    │  数据：MIR (basic_blocks, local_decls, adt_layouts)
+    │  校验：local_decls[0] 是返回值，params 在 local_decls[1..N]
+    │
+    ▼ [D6] TypeChecker::check_mir_body_with_tables → mutates MIR (resolved types)
+    │  数据：MIR with resolved types, FieldTyTable, FnSigTable
+    │  校验：所有 Infer 变量已解析（default_unresolved 后无 Infer）
+    │
+    ▼ [D7] BorrowChecker::check_mir_body → borrow errors
+    │  数据：MIR (unchanged), borrow errors
+    │  校验：borrow errors 已收集到 CompileErrors
+    │
+    ▼ [D8] codegen_crate → LLVM IR String
+    │  数据：CompileResult (mirs, body_metas, fn_name_by_def_id, interner)
+    │  校验：IR 输出包含所有函数定义，无 undef 值
+```
+
+### 21.5 审查输出
+
+跨阶段审查输出以下文档：
+
+1. **审查报告**：`docs/develop/v0/stage-N/gate-review-roundM.md`，包含：
+   - 6 个维度的审查结果
+   - §16 合规验证清单
+   - 数据流完整性校验结果
+   - 发现的问题列表（P0/P1/P2）
+   - 修复方案和验证结果
+
+2. **更新 matrix.md**：添加审查轮次和测试数
+
+3. **更新 dev-log.md**：添加审查阶段的开发日志
+
+### 21.6 审查频率
+
+- **常规**：每个大阶段（Stage 0/1/2/3/4/5）完成后执行一次
+- **强制**：当用户明确要求"跨阶段审查"时
+- **可选**：当连续 3 轮 gate review 收敛后（§9.3.3），可在下一轮加入跨阶段审查维度
+
+### 21.7 与 §9.3 阶段门审查的关系
+
+跨阶段深度审查（§21）是阶段门审查（§9.3）的**超集**：
+
+- §9.3 检查**单阶段**的正确性（30+ 审计 case）
+- §21 检查**跨阶段**的架构完整性（6 维度 + §16 合规 + 数据流校验）
+- §21 可以在 §9.3 收敛后执行，也可以与之合并
+
+### 21.8 审查完成标准
+
+跨阶段审查完成需满足：
+
+1. 6 个维度全部通过（D1-D6）
+2. §16 合规验证清单全部 ✅
+3. 数据流完整性校验全部通过
+4. 发现的问题全部修复（P0/P1 必须修复，P2 可记录为技术债）
+5. 所有测试通过（cargo test 0 failures）
+6. clippy 0 warnings，fmt 通过
+
+---
+
+## 22. 变更日志 v3.13 → v3.14
+
+### 22.1 新增内容
+
+| 项目 | 内容 |
+|------|------|
+| §21 跨阶段深度审查协议 | 6 维度审查（阶段内/间路径、高内聚低耦合、可插拔、数据流、路径缺漏） |
+| §21.3 §16 合规验证清单 | 8 项检查（codegen/typeck/driver 隔离、glob exports、错误路径） |
+| §21.4 数据流完整性校验 | 8 个数据流交接点（D1-D8）的校验方法 |
+| §22 变更日志 | v3.13→v3.14 覆盖确认 |
+
+### 22.2 v3.13 → v3.14 覆盖确认
+
+v3.14 完整保留 v3.13 的全部规则内容，100% 覆盖。新增 §21 / §22。
+
+---
+
 **This document is the single source of truth for the Landin development
-process. All agents (main + subagents) must follow it. v3.13 effective
-from Stage 3.47.**
+process. All agents (main + subagents) must follow it. v3.14 effective
+from Stage 3.60.**
