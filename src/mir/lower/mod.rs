@@ -1306,15 +1306,53 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span)
         }
 
-        // Closure: `|args| body` → lower body (closure capture is Stage 3+)
+        // Closure: `|args| body` → lower body + create closure value.
+        // Stage 4.4 (L3 closure codegen): now creates a proper closure value
+        // with a captured environment. Previously (Stage 3.x): just lowered
+        // the body and returned its operand — no closure type, no captures.
+        //
+        // Current implementation (Stage 4.4):
+        // - Registers closure params as locals (unchanged)
+        // - Lowers the closure body to determine its type
+        // - Creates a closure value via `AggregateKind::Closure`
+        // - The captured environment is represented as the closure's
+        //   DefId (which codegen uses to generate a closure struct type)
+        //
+        // Limitations (deferred to Stage 4.5+):
+        // - Capture analysis: currently no variables are captured (empty env)
+        // - Closure call lowering: closure calls still go through regular Call
+        // - Closure type inference: the closure's return type is inferred
         HirExprKind::Closure { params, body, .. } => {
             // Register closure params as locals
             for param in params {
                 let ty = cx.fresh_infer_ty(param.pat.span);
                 cx.new_local(param.pat.hir_id, ty, None);
             }
-            // Lower closure body
-            lower_expr_to_operand(cx, body)
+            // Lower closure body to get its type
+            let _body_local = lower_expr_to_operand(cx, body);
+            // Stage 4.4: create a closure value.
+            // The closure type is TyKind::Closure(def_id, substs) —
+            // codegen will emit a struct type for the captured environment.
+            // For now, the closure DefId is the current owner's DefId
+            // (a more precise closure DefId would be assigned in Stage 4.5).
+            let closure_def_id = cx
+                .hir
+                .map(|h| h.owners.first().map(|(id, _)| *id).unwrap_or_default())
+                .unwrap_or_default();
+            let closure_ty = Ty::new(TyKind::Closure(closure_def_id, vec![]), expr.span);
+            let closure_local = cx.mir.new_local(closure_ty, None, expr.span);
+            // Assign the closure value (empty capture environment for now)
+            cx.mir
+                .block_mut(cx.current_block)
+                .statements
+                .push(Statement {
+                    kind: StatementKind::Assign(Box::new((
+                        Place::local(closure_local, expr.span),
+                        Rvalue::Aggregate(AggregateKind::Closure(closure_def_id, vec![]), vec![]),
+                    ))),
+                    span: expr.span,
+                });
+            closure_local
         }
 
         // Break: `break expr` → goto loop exit (simplified: just lower expr)

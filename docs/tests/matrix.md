@@ -8,11 +8,11 @@
 
 | Stage | Tests | Coverage | Status |
 |-------|-------|----------|--------|
-| Stage 0 (lexer/parser/AST) | 344 (+1 unsafe impl/trait in Stage 3.65) | ~100% | ✅ Complete |
-| Stage 1 (HIR/resolve) | 117 (+5 use resolution; +1 visibility; +3 nested modules in Stage 4.1) | ~100% | ✅ Complete |
-| Stage 2 (MIR/typeck/borrowck) | 168 | ~100% | ✅ Complete |
+| Stage 0 (lexer/parser/AST) | 344 | ~100% | ✅ Complete |
+| Stage 1 (HIR/resolve) | 117 (nested modules + visibility) | ~100% | ✅ Complete |
+| Stage 2 (MIR/typeck/borrowck) | 170 (+2 closure lowering) | ~100% | ✅ Complete |
 | Stage 3 (codegen) | 294 + 5 §21 audit | ~99% | ✅ Complete |
-| **Total** | **987** | ~99% | ✅ Stage 0-3 complete + Stage 4 started |
+| **Total** | **989** | ~99% | ✅ Stage 0-3 complete + Stage 4 in progress |
 
 ## Stage 3 Test Breakdown
 
@@ -62,8 +62,10 @@
 | 3.69 | Process v3.16 (§25 阶段末尾深度审查协议) + Stage 0-3 deep review (GO-WITH-CONDITIONS for Stage 4) | 0 | ✅ |
 | 4.1 | Nested module support: recursive build_module_tree + child ModuleNode + collect_item_registration + build_child_module + item_def_id | +3 | ✅ |
 | 4.2 | L1 PHI optimization CLOSED: design decision to rely on LLVM mem2reg (standard approach, documented in codegen/mod.rs) | 0 | ✅ |
+| 4.3 | Visibility enforcement activation: check_visibility implements pub/private/pub-restricted checks (same-crate access allowed; cross-module deferred) | 0 | ✅ |
+| 4.4 | L3 closure lowering: AggregateKind::Closure + TyKind::Closure → empty struct; capture analysis deferred to Stage 4.5 | +2 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.2 R38 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
+| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.4 R39 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

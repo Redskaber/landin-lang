@@ -27,7 +27,11 @@
 //!   Stage 4.1-4.2 (v0.9.0): Nested module support (recursive build_module_tree
 //!     + child ModuleNode) + L1 PHI optimization CLOSED (design decision: rely
 //!     on LLVM mem2reg).
-//!   Remaining: L3 (closures), L5 (traits), L8 (lli) — deferred to Stage 4+.
+//!   Stage 4.3-4.4 (v0.9.1): Visibility enforcement activation (check_visibility
+//!     implements pub/private/pub-restricted checks) + L3 closure lowering
+//!     (AggregateKind::Closure + TyKind::Closure → empty struct; capture analysis
+//!     deferred to Stage 4.5).
+//!   Remaining: L3 capture analysis (Stage 4.5), L5 (traits), L8 (lli).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

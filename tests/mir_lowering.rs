@@ -289,3 +289,45 @@ fn mir_basic_block_terminators_valid() {
     let last = mir.basic_blocks.last().unwrap();
     assert!(matches!(last.terminator, Terminator::Return));
 }
+
+// =================================================================
+// Stage 4.4: Closure lowering tests
+// =================================================================
+
+#[test]
+fn closure_lowers_to_aggregate() {
+    // Stage 4.4: verify that a closure expression lowers to an
+    // AggregateKind::Closure value (not just the body's return value).
+    use landin_compiler::mir::place::Rvalue;
+    use landin_compiler::mir::body::StatementKind;
+
+    let src = "fn main() { let f = |x: i32| x + 1; }";
+    let result = landin_compiler::compile(src);
+    // The closure should produce at least one Assign with Aggregate(Closure(...))
+    let has_closure_aggregate = result.mirs.iter().any(|mir| {
+        mir.basic_blocks.iter().any(|bb| {
+            bb.statements.iter().any(|stmt| {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    if let Rvalue::Aggregate(kind, _) = &(**boxed).1 {
+                        return matches!(
+                            kind,
+                            landin_compiler::mir::place::AggregateKind::Closure(_, _)
+                        );
+                    }
+                }
+                false
+            })
+        })
+    });
+    assert!(
+        has_closure_aggregate,
+        "closure should lower to AggregateKind::Closure"
+    );
+}
+
+#[test]
+fn closure_no_crash_on_complex_body() {
+    // Stage 4.4: verify closure with if-expression body doesn't crash.
+    let result = landin_compiler::compile("fn main() { let f = |x: i32| { if x > 0 { x } else { 0 } }; }");
+    assert!(!result.mirs.is_empty(), "should produce MIR");
+}

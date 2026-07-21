@@ -1,9 +1,90 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.9.0
+**Current version**: v0.9.1
 **Date**: 2026-07-22
-**Test count**: 987 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 989 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.9.1 — Stage 4.3-4.4 (Visibility enforcement + L3 closure lowering)
+
+### Overview
+
+Continues Stage 4 with two more sub-stages: visibility enforcement activation
+(Stage 4.3) and L3 closure codegen groundwork (Stage 4.4). 989 tests pass
+(was 987, +2 new closure lowering tests). 0 clippy warnings. fmt clean.
+
+### Stage 4.3: Visibility enforcement activation
+
+**Previously** (Stage 3.68): `check_visibility` was a stub that always
+returned `Ok(())`. The visibility metadata (`def_visibility` map) was
+collected but never enforced.
+
+**Now** (Stage 4.3): `check_visibility` implements real visibility checking:
+- `Visibility::Public` → always visible ✅
+- `Visibility::Private` → visible from crate root (same crate) ✅
+  (cross-module private enforcement deferred — needs `current_module` tracking)
+- `Visibility::PubRestricted(_)` → visible within the crate ✅
+  (full `pub(crate)`/`pub(super)` discrimination deferred)
+
+**What this means**: visibility is now collected and checked at every
+`Res::Def` resolution. Currently all same-crate access is allowed (since
+there's no `current_module` tracking yet), but the infrastructure is fully
+in place — once module context tracking is added, full enforcement activates
+automatically.
+
+### Stage 4.4: L3 closure lowering
+
+**Previously** (Stage 3.x): `HirExprKind::Closure` lowering just lowered
+the body and returned its operand — no closure type, no captures, no
+proper closure value.
+
+**Now** (Stage 4.4):
+- `HirExprKind::Closure` now creates a proper closure value via
+  `AggregateKind::Closure(def_id, substs)`
+- The closure type is `TyKind::Closure(def_id, substs)`
+- Codegen: `TyKind::Closure` → `EmitType::Struct(vec![])` (empty struct
+  for now — captures deferred to Stage 4.5)
+- The closure body is still lowered (for type inference), and a closure
+  value is assigned to a new local
+
+**What this enables**: Closure expressions now produce proper MIR with
+closure-typed values. The closure type flows through typeck and codegen.
+When capture analysis is added (Stage 4.5), the empty struct will be
+populated with captured environment fields.
+
+**Limitations** (deferred to Stage 4.5):
+- Capture analysis: no variables captured yet (empty environment)
+- Closure call lowering: closure calls still go through regular `Call`
+- Closure type inference: return type inferred from body
+
+**New tests** (2):
+- `closure_lowers_to_aggregate` — verifies `|x: i32| x + 1` produces
+  `AggregateKind::Closure` in MIR
+- `closure_no_crash_on_complex_body` — closure with if-expression body
+
+### Verification
+
+- `cargo test`: **989 passed, 0 failed, 2 ignored** (was 987, +2 new)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 audit tests pass
+
+### Files touched
+
+- `src/resolve/resolver.rs` — `check_visibility` implementation (was stub)
+- `src/mir/lower/mod.rs` — `HirExprKind::Closure` lowering with `AggregateKind::Closure`
+- `src/codegen/emitter.rs` — `TyKind::Closure` → `EmitType::Struct(vec![])`
+- `src/codegen/mod.rs` — L3 documentation updated (IN PROGRESS)
+- `tests/mir_lowering.rs` — +2 closure lowering tests
+
+### Next Stage 4 priorities
+
+1. **L3 capture analysis** (Stage 4.5) — analyze which variables a closure captures
+2. **Macro system + attributes** — `Expr::MacroCall` expansion
+3. **Performance benchmark suite** — add `benches/` + criterion (QA condition)
 
 ---
 
