@@ -170,3 +170,26 @@ populated with captured environment fields.
 
 **Last updated**: 2026-07-22 (Stage 4.4)
 **Process version**: v3.16
+
+---
+
+### Stage 4.6 — Process v3.17 + 三阶段文档协议执行 (v0.9.3)
+
+**Priority**: User requested process doc update + standardized tests/ directory.
+
+**Work completed**:
+- Process doc `docs/stage-committee-process.md` updated v3.16 → v3.17:
+  - §17 refactored: "测试目录标准化与三阶段文档协议" (was "测试矩阵全覆盖原则")
+  - §17.1: standardized `tests/` directory structure (forced `tests/v0/stage-N/plan/` + `tests/v0/stage-N/gate/`)
+  - §17.2: standardized `docs/tests/` directory structure
+  - §17.3: three-phase documentation protocol (开发轮/审查轮/深度审查轮)
+  - §17.4-§17.6: coverage requirements + migration strategy + doc format standard
+  - §18 refactored: "轮次文档同步执行规则" (integrated with §17.3)
+  - §27: changelog v3.16→v3.17
+- Stage 4.6 三阶段文档协议执行:
+  - 时期 1 (开发轮): `plan-4.md` + `tests/v0/stage4/plan/stage4_features.md`
+  - 时期 2 (审查轮): `gate-review-round1.md` + `tests/v0/stage4/gate/gate-review-round1.md`
+  - 目录标准化: `tests/v0/stage4/plan/` + `tests/v0/stage4/gate/` + `docs/tests/v0/stage4/plan/` + `docs/tests/v0/stage4/gate/`
+
+**Test impact**: 0 (pure process/doc work)
+**Verification**: 989 tests pass, 0 clippy warnings, fmt clean

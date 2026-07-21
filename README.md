@@ -6,12 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** Stage 0-3 complete + Stage 4 in progress. v0.9.2, 989 tests passing,
-> 40 review rounds (36 gate + 1 deep review + Stage 4.1-4.5).
-> Process v3.16 (§15-§26, including §25 阶段末尾深度审查协议).
+> **Status:** Stage 0-3 complete + Stage 4 in progress. v0.9.3, 989 tests passing,
+> 41 review rounds (36 gate + 1 deep review + Stage 4.1-4.6).
+> Process v3.17 (§15-§27, including §17 三阶段文档协议 + §25 深度审查).
 > Stage 4.1: Nested modules ✅; 4.2: L1 PHI CLOSED ✅; 4.3: visibility ✅;
-> 4.4: closure lowering ✅; 4.5: complete dev-logs for all stages ✅.
-> Next: L3 capture analysis (Stage 4.6), macro system, benchmark suite.
+> 4.4: closure lowering ✅; 4.5: dev-logs ✅; 4.6: Process v3.17 ✅.
+> Next: L3 capture analysis (Stage 4.7), macro system, benchmark suite.
 
 ## Quick start
 
@@ -140,7 +140,7 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 1** ✅ HIR + name resolution (Stage 3.64: `use` declaration resolution; Stage 3.65: `unsafe impl/trait` AST fields + `Res::SelfTy` discrimination)
 - **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review; Stage 3.65: `lower_body` aliases; Stage 3.66: `Lvalue`→`Place` rename)
 - **Stage 3** ✅ LLVM codegen (COMPLETE — 37 review rounds, §16 compliant, all soundness-critical limitations closed; Stage 3.63-3.69 naming standardization + P2 fixes + deep review)
-- **Stage 4** 🔄 In progress (4.1: nested modules ✅; 4.2: L1 PHI CLOSED ✅; 4.3: visibility ✅; 4.4: closure lowering ✅; next: capture analysis, macro system)
+- **Stage 4** 🔄 In progress (4.1: nested modules ✅; 4.2: L1 PHI CLOSED ✅; 4.3: visibility ✅; 4.4: closure lowering ✅; 4.5: dev-logs ✅; 4.6: Process v3.17 ✅; next: capture analysis, macro system)
 - **Stage 5** Mini-cargo + stdlib MVP + trait dispatch (L5)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting

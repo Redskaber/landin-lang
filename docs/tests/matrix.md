@@ -2,7 +2,7 @@
 
 > **Author**: redskaber
 > **Date**: 2026-07-22
-> **Process**: v3.16 (§17 + §18 + §21 + §23 + §25)
+> **Process**: v3.17 (§17 三阶段文档协议 + §18 轮次文档同步 + §21 跨阶段审查 + §23 命名标准 + §25 深度审查)
 
 ## Current Status
 
@@ -65,8 +65,9 @@
 | 4.3 | Visibility enforcement activation: check_visibility implements pub/private/pub-restricted checks (same-crate access allowed; cross-module deferred) | 0 | ✅ |
 | 4.4 | L3 closure lowering: AggregateKind::Closure + TyKind::Closure → empty struct; capture analysis deferred to Stage 4.5 | +2 | ✅ |
 | 4.5 | Complete dev-logs for all stages: Stage 1 + Stage 2 + Stage 4 dev-logs created; Stage 0 + Stage 3 dev-logs updated with retroactive entries | 0 | ✅ |
+| 4.6 | Process v3.17: §17 测试目录标准化与三阶段文档协议 + tests/ 标准化目录结构 + Stage 4 plan/test-plan/gate-review 文档补齐 | 0 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.5 R40 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
+| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.6 R41 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

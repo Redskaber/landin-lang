@@ -1,9 +1,76 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.9.2
+**Current version**: v0.9.3
 **Date**: 2026-07-22
 **Test count**: 989 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.9.3 — Stage 4.6 (Process v3.17: 三阶段文档协议 + tests/ 标准化)
+
+### Overview
+
+This release updates the process document to v3.17, introducing the
+"三阶段文档协议" (three-phase documentation protocol) that standardizes
+when to create plan/test-plan/gate-review documents. Also standardizes the
+`tests/` directory structure. 989 tests pass (unchanged — pure process/doc
+work). 0 clippy warnings. fmt clean.
+
+### Process v3.17: §17 测试目录标准化与三阶段文档协议
+
+**Refactored §17** (was "测试矩阵全覆盖原则") → "测试目录标准化与三阶段文档协议":
+
+1. **§17.1 标准化 tests/ 目录结构** — 强制 `tests/v0/stage-N/plan/` +
+   `tests/v0/stage-N/gate/` 结构；现有扁平 `tests/*.rs` 迁移到 `tests/legacy/`
+2. **§17.2 标准化 docs/tests/ 目录结构** — 双向印证规则
+3. **§17.3 三阶段文档协议** (核心):
+   - **时期 1 (开发轮)**: `plan-<子阶段>.md` + `dev-log.md` + `tests/plan/<功能点>.md` + `tests/v0/stage-N/plan/<功能点>_tests.rs`
+   - **时期 2 (审查轮)**: `gate-review-round<N>.md` + `tests/gate/gate-review-round<N>.md` + `examples/stageN_gate_audit_r<N>.rs`
+   - **时期 3 (深度审查轮)**: `deep-review-round<N>.md` + `tests/gate/deep-review-round<N>.md` + `dev-log.md` 总结
+4. **§17.4 测试矩阵覆盖率要求** (保留 v3.12)
+5. **§17.5 迁移策略** — 现有扁平测试迁移到 `tests/legacy/`
+6. **§17.6 测试文档格式标准** — 统一 Markdown 模板
+
+**Refactored §18** (was "轮次完成文档同步规则") → "轮次文档同步执行规则":
+- §18.1-§18.3 整合为 §17.3 的快速参考
+- §18.4 worklog 协议保留不变
+
+**Added §27** 变更日志 v3.16→v3.17
+
+### Stage 4.6: 三阶段文档协议执行
+
+按 v3.17 §17.3 协议，为 Stage 4.1-4.5 补齐文档：
+
+**时期 1 (开发轮) 文档**:
+- `docs/develop/v0/stage-4/plan-4.md` — Stage 4 开发计划（子阶段拆分 + MUV + 验收标准）
+- `docs/tests/v0/stage4/plan/stage4_features.md` — Stage 4 测试计划（嵌套模块 + 闭包 lowering）
+
+**时期 2 (审查轮) 文档**:
+- `docs/develop/v0/stage-4/gate-review-round1.md` — Stage 4.1-4.5 审查复盘
+- `docs/tests/v0/stage4/gate/gate-review-round1.md` — Stage 4.1-4.5 测试审查报告
+
+**目录结构标准化**:
+- `tests/v0/stage4/plan/` — 创建
+- `tests/v0/stage4/gate/` — 创建
+- `docs/tests/v0/stage4/plan/` — 创建
+- `docs/tests/v0/stage4/gate/` — 创建
+
+### Verification
+
+- `cargo test`: **989 passed, 0 failed, 2 ignored** (unchanged)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance: all 8 §21.3 checklist items green
+
+### Files touched
+
+- `docs/stage-committee-process.md` — v3.16 → v3.17 (§17 重构 + §18 整合 + §27 新增)
+- `docs/develop/v0/stage-4/plan-4.md` — NEW (开发计划)
+- `docs/develop/v0/stage-4/gate-review-round1.md` — NEW (审查复盘)
+- `docs/tests/v0/stage4/plan/stage4_features.md` — NEW (测试计划)
+- `docs/tests/v0/stage4/gate/gate-review-round1.md` — NEW (测试审查报告)
+- `tests/v0/stage4/plan/` + `tests/v0/stage4/gate/` — NEW directories
 
 ---
 

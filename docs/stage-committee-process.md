@@ -1,8 +1,8 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 3.16 (effective from Stage 3.69)
-> **Supersedes**: v3.15 (preserved verbatim — see §26.2 for v3.15→v3.16 diff)
+> **Version**: 3.17 (effective from Stage 4.6)
+> **Supersedes**: v3.16 (preserved verbatim — see §27.2 for v3.16→v3.17 diff)
 > **Purpose**: 为 Agent Group 提供清晰、严格、高效、可协调的阶段推进与质量管控 SOP。
 > 让任何 Agent（主 Agent / 子 Agent / 跨会话 Agent）拿到本文档即可：
 > 1. **清晰**：知道每个阶段、每轮、每个角色的输入/输出/验收标准；
@@ -912,189 +912,268 @@ docs/lang-design/
 
 ---
 
-## 17. 测试矩阵全覆盖原则（v3.12）
+## 17. 测试目录标准化与三阶段文档协议（v3.17 重构）
 
-> **背景**：随着项目规模增长，测试代码和测试文档的组织变得关键。
-> Stage 3 已有 814 个测试，但测试目录是扁平的（`tests/*.rs`），
-> 没有按版本/阶段/任务分层组织。测试文档也缺失——没有与 `docs/develop/`
-> 相互印证的 `docs/tests/` 目录。这导致：
-> - 难以追踪"某个阶段的某个任务有哪些测试"
-> - 难以验证"进入下一阶段前测试矩阵是否近 100% 覆盖"
-> - 测试代码与开发文档脱节
+> **背景**：v3.12 引入了测试矩阵全覆盖原则，v3.13 引入了轮次文档同步规则。
+> 但实践中发现：
+> - 测试目录 `tests/` 仍是扁平结构（`tests/*.rs`），未按 `tests/v0/stage-N/`
+>   分层组织——§17.1 的规则未强制执行
+> - 测试文档 `docs/tests/v0/stage-N/` 只有 Stage 3 的 3 个文件，其他阶段缺失
+> - 每轮更新缺少对应的 plan/test-plan/gate-review 文档——用户多次指出补齐
+> - 阶段末尾缺少统一的"复盘 + 深度审查"协议
+>
+> **v3.17 重构**：将 §17 + §18 合并为统一的"三阶段文档协议"，明确：
+> 1. **阶段开始→末尾（开发轮）**：每轮创建 plan + test-plan + 测试代码
+> 2. **阶段末尾（审查轮）**：每轮创建 gate-review + test-gate-review + 审计脚本
+> 3. **阶段完成（深度审查轮）**：执行 §25 深度审查，输出 deep-review 报告
+>
+> 同时标准化 `tests/` 目录结构，强制按 `tests/v0/stage-N/plan/` 组织。
 
-### 17.1 测试代码目录结构
+### 17.1 标准化 tests/ 目录结构（v3.17 强制）
 
-测试代码按三层组织，与 `docs/develop/v0/stage-N/` 相互印证：
+测试代码按"大版本/阶段/轮次类型"三层组织，与 `docs/develop/` 和 `docs/tests/`
+双向印证：
 
 ```
 tests/
-├── v0/                          # 大版本（v0, v1, ...）
-│   ├── stage0/                  # 版本阶段（stage0, stage1, ...）
-│   │   ├── plan/                # 阶段内计划任务
-│   │   │   ├── lexer_tests.rs   # 与 docs/tests/v0/stage0/plan/lexer.md 印证
+├── v0/                              # 大版本（v0, v1, ...）
+│   ├── stage0/                      # 阶段（stage0, stage1, ...）
+│   │   ├── plan/                    # 开发轮测试（对应 docs/tests/v0/stage0/plan/）
+│   │   │   ├── lexer_tests.rs       # 与 docs/tests/v0/stage0/plan/lexer.md 印证
 │   │   │   └── parser_tests.rs
-│   │   └── task/                # 阶段内细分任务（如果复杂测试任务可继续细分）
-│   │       └── ...
+│   │   └── gate/                    # 审查轮测试（对应 docs/tests/v0/stage0/gate/）
+│   │       └── gate_review_r1.rs    # 与 docs/tests/v0/stage0/gate/gate-review-round1.md 印证
 │   ├── stage1/
 │   │   ├── plan/
-│   │   └── task/
+│   │   └── gate/
 │   ├── stage2/
-│   └── stage3/
-│       ├── plan/
-│       │   ├── codegen_basic.rs
-│       │   ├── codegen_overflow.rs
-│       │   └── codegen_enum.rs
-│       └── task/
-│           └── ...
-├── conformance/                 # 跨阶段一致性测试（保留原位）
-└── common/                      # 共享测试辅助（mod.rs 等）
+│   │   ├── plan/
+│   │   └── gate/
+│   ├── stage3/
+│   │   ├── plan/
+│   │   │   ├── codegen_basic.rs
+│   │   │   ├── codegen_overflow.rs
+│   │   │   └── codegen_enum.rs
+│   │   └── gate/
+│   └── stage4/
+│       ├── plan/                    # Stage 4 开发轮测试
+│       └── gate/                    # Stage 4 审查轮测试
+├── common/                          # 共享测试辅助（mod.rs, helpers）
+└── legacy/                          # 迁移期保留的扁平测试（逐步迁移到 v0/stage-N/）
+    ├── lexer.rs
+    ├── parser.rs
+    └── ...
 ```
 
-**规则**：
-- `tests/v0/stage-N/plan/` 对应 `docs/tests/v0/stage-N/plan/` 的测试计划文档。
-- `tests/v0/stage-N/task/` 对应细分测试任务（如果 plan 级测试太复杂）。
-- 现有的扁平 `tests/*.rs` 在迁移期间保持可用（通过 `mod` 重导出）。
-- 新增测试必须按此结构放置。
+**强制规则**：
+1. **新测试必须按 `tests/v0/stage-N/plan/` 或 `tests/v0/stage-N/gate/` 放置**
+   — 不允许直接添加到 `tests/` 根目录。
+2. **现有扁平 `tests/*.rs` 迁移到 `tests/legacy/`** — 通过 `mod` 重导出保持
+   可用，逐步迁移到新结构。
+3. **每个测试文件必须有对应的 `docs/tests/v0/stage-N/` 文档** — 双向印证。
+4. **`tests/common/` 放共享辅助** — 如 `mod.rs`、`helpers.rs`、测试工具函数。
 
-### 17.2 测试文档目录结构
+### 17.2 标准化 docs/tests/ 目录结构（v3.17 强制）
 
-测试文档与开发文档相互印证：
+测试文档与开发文档双向印证：
 
 ```
 docs/tests/
-├── README.md                    # 测试文档索引
-├── v0/                          # 大版本
-│   ├── stage0/                  # 版本阶段
-│   │   ├── plan/                # 阶段内计划测试任务
-│   │   │   ├── lexer.md         # lexer 测试计划（与 tests/v0/stage0/plan/lexer_tests.rs 印证）
-│   │   │   └── parser.md
-│   │   └── task/                # 细分测试任务
-│   ├── stage1/
-│   ├── stage2/
-│   └── stage3/
-│       ├── plan/
-│       │   ├── codegen_basic.md
-│       │   ├── codegen_overflow.md
-│       │   └── codegen_enum.md
-│       └── task/
-└── matrix.md                    # 全局测试矩阵（覆盖率追踪）
+├── README.md                        # 测试文档索引
+├── matrix.md                        # 全局测试矩阵（覆盖率追踪）
+└── v0/                              # 大版本
+    ├── stage0/
+    │   ├── plan/                    # 开发轮测试计划
+    │   │   ├── lexer.md             # 与 tests/v0/stage0/plan/lexer_tests.rs 印证
+    │   │   └── parser.md
+    │   └── gate/                    # 审查轮测试报告
+    │       └── gate-review-round1.md
+    ├── stage1/
+    │   ├── plan/
+    │   └── gate/
+    ├── stage2/
+    │   ├── plan/
+    │   └── gate/
+    ├── stage3/
+    │   ├── plan/
+    │   │   ├── codegen_basic.md
+    │   │   ├── codegen_overflow.md
+    │   │   └── codegen_enum.md
+    │   └── gate/
+    └── stage4/
+        ├── plan/
+        └── gate/
 ```
 
-**规则**：
-- 每个测试文档记录：测试目标、覆盖的场景、对应的测试代码文件、
-  预期测试数量、实际测试数量、覆盖率状态。
-- `matrix.md` 汇总所有阶段的测试覆盖率，作为阶段门审查的输入。
+**强制规则**：
+1. **每个测试代码文件必须有对应的测试文档** — `tests/v0/stage-N/plan/X.rs`
+   ↔ `docs/tests/v0/stage-N/plan/X.md`。
+2. **测试文档必须包含**：测试目标、覆盖场景、对应代码文件、预期/实际测试数、
+   覆盖率状态。
+3. **`matrix.md` 汇总所有阶段覆盖率** — 阶段门审查的输入。
 
-### 17.3 测试矩阵覆盖率要求
+### 17.3 三阶段文档协议（v3.17 核心）
+
+每个阶段的完整生命周期分为三个时期，每个时期有不同的文档要求：
+
+#### 时期 1：阶段开始→末尾（开发轮）
+
+**触发**：每轮代码更新（实现新功能、修复 limitation、重构）。
+
+**必须创建/更新的文档**：
+
+| 文档 | 路径 | 内容 |
+|------|------|------|
+| **开发计划** | `docs/develop/v0/stage-N/plan-<子阶段>.md` | 本轮开发目标、MUV 拆分、复杂度预评估 |
+| **开发日志** | `docs/develop/v0/stage-N/dev-log.md` | 本轮开发日志条目（问题/根因/修复/测试数） |
+| **测试计划** | `docs/tests/v0/stage-N/plan/<功能点>.md` | 测试目标、覆盖场景、预期测试数 |
+| **测试代码** | `tests/v0/stage-N/plan/<功能点>_tests.rs` | 实际测试代码 |
+| **测试矩阵** | `docs/tests/matrix.md` | 更新测试数、覆盖率 |
+| **worklog** | `/home/z/my-project/worklog.md` | 追加本轮 Task ID / Work Log / Stage Summary |
+
+**命名约定**：
+- 开发计划：`plan-4.1.md`（子阶段号）、`plan-4.2.md`、...
+- 测试计划：`nested_modules.md`、`closure_lowering.md`（功能点名）
+- 测试代码：`nested_modules_tests.rs`、`closure_lowering_tests.rs`
+
+#### 时期 2：阶段末尾（审查轮 — review / gate）
+
+**触发**：每轮 gate review、收敛轮、审查轮。
+
+**必须创建/更新的文档**：
+
+| 文档 | 路径 | 内容 |
+|------|------|------|
+| **审查复盘** | `docs/develop/v0/stage-N/gate-review-round<N>.md` | 审计设计、执行、结果、投票、Limitation、结论 |
+| **审查测试报告** | `docs/tests/v0/stage-N/gate/gate-review-round<N>.md` | 审计 case 覆盖、测试结果、覆盖率验证 |
+| **审计脚本** | `examples/stageN_gate_audit_r<N>.rs` | ≥30 case 审计脚本（可重运行） |
+| **测试矩阵** | `docs/tests/matrix.md` | 更新累计审计 case 数 |
+| **worklog** | `/home/z/my-project/worklog.md` | 追加本轮审查记录 |
+
+**命名约定**：
+- 审查复盘：`gate-review-round1.md`、`gate-review-round2.md`、...
+- 审查测试报告：`gate-review-round1.md`（与开发侧对应）
+- 审计脚本：`stage4_gate_audit_r1.rs`、`stage4_gate_audit_r2.rs`、...
+
+#### 时期 3：阶段完成（深度审查轮 — 完成 review/gate 之后）
+
+**触发**：阶段所有子阶段完成、连续收敛后、进入下一大阶段前。
+
+**必须创建/更新的文档**：
+
+| 文档 | 路径 | 内容 |
+|------|------|------|
+| **深度审查报告** | `docs/develop/v0/stage-N/deep-review-round<N>.md` | §25 七维度审查（D1-D7）+ 委员会投票 + 行动计划 |
+| **深度审查测试** | `docs/tests/v0/stage-N/gate/deep-review-round<N>.md` | 跨阶段测试覆盖验证 + 回归验证 + 下一阶段就绪度测试 |
+| **dev-log 总结** | `docs/develop/v0/stage-N/dev-log.md` | 阶段总结条目 |
+| **测试矩阵** | `docs/tests/matrix.md` | 最终覆盖率确认 |
+| **worklog** | `/home/z/my-project/worklog.md` | 追加深度审查记录 |
+
+**深度审查内容**（per §25）：
+- 分析"当前架构是否足够支撑进入下一阶段"
+- 识别技术债并制定偿还计划
+- 评估下一阶段就绪度
+- 委员会投票：GO / GO-WITH-CONDITIONS / NO-GO
+
+### 17.4 测试矩阵覆盖率要求（保留 v3.12）
 
 **每进入下一阶段之前，测试矩阵需要满足近 100% 覆盖率。**
 
 具体含义：
 1. **功能覆盖率**：当前阶段计划的所有功能点都有对应的测试。
-   - 每个 plan/task 文档中列出的功能点 → 至少 1 个测试。
-   - 如果某个功能点没有测试，必须在文档中标记为 `UNTESTED` 并说明原因。
 2. **回归覆盖率**：之前阶段的测试仍然通过（无回归）。
-   - 每轮 gate review 的 Group R（Regression）验证此点。
 3. **边界覆盖率**：每个功能点至少有 1 个边界 case 测试。
-   - §9.3.2 要求的 ≥5 个边界 case 测试。
 4. **负向覆盖率**：§9.1.1 负向测试矩阵的 7 个类别都有覆盖。
 5. **审计覆盖率**：§9.3.1 要求的 ≥30 case 审计每轮通过。
 
 **"近 100%"** 的含义：允许 ≤5% 的功能点标记为 `DEFERRED`（有明确的
 推迟理由和计划），但不允许 `UNTESTED`（没有测试且没有推迟理由）。
 
-### 17.4 测试矩阵与阶段门审查的关系
-
-阶段门审查（§9.3）时，reviewer 必须：
-1. 检查 `docs/tests/v0/stage-N/` 下的测试文档是否完整。
-2. 检查 `tests/v0/stage-N/` 下的测试代码是否与文档一致。
-3. 检查 `matrix.md` 中当前阶段的覆盖率是否 ≥95%。
-4. 如果覆盖率 <95%，门审查不予通过（NEEDS REVISION）。
-
-### 17.5 迁移策略
+### 17.5 迁移策略（v3.17）
 
 对于现有的扁平 `tests/*.rs`：
-1. **不立即删除**——通过 `mod` 重导出保持可用。
-2. **新测试按新结构放置**——`tests/v0/stage3/plan/`。
-3. **逐步迁移**——每个 stage 闭合时，将该 stage 的测试迁移到新结构。
-4. **迁移完成标志**——`tests/*.rs` 中不再有该 stage 的直接测试文件。
+1. **v3.17 立即生效**：新测试必须按 `tests/v0/stage-N/plan/` 放置。
+2. **现有扁平文件迁移到 `tests/legacy/`**：通过 `mod` 重导出保持可用。
+3. **逐步迁移**：每个 stage 闭合时，将该 stage 的测试迁移到新结构。
+4. **迁移完成标志**：`tests/legacy/` 中不再有该 stage 的直接测试文件。
 
-### 17.6 实施要求
+### 17.6 测试文档格式标准
 
-1. **每次新增测试时**：同时在 `docs/tests/v0/stage-N/plan/` 下创建或
-   更新对应的测试文档。
-2. **每次闭合阶段时**：更新 `docs/tests/matrix.md` 中的覆盖率。
-3. **每次 gate review 时**：reviewer 检查测试矩阵覆盖率。
-4. **测试文档格式**：使用 Markdown，包含以下字段：
-   - 测试目标
-   - 覆盖场景列表（每个场景 → 测试函数名 → 状态：PASS/FAIL/DEFERRED）
-   - 对应的测试代码文件路径
-   - 预期测试数量 / 实际测试数量
-   - 覆盖率百分比
+每个测试文档（`docs/tests/v0/stage-N/plan/X.md`）必须包含：
+
+```markdown
+# <功能点> 测试计划
+
+> **阶段**: Stage N.M
+> **对应代码**: tests/v0/stage-N/plan/X_tests.rs
+> **状态**: ✅ Complete / 🔄 In Progress / ⏳ Deferred
+
+## 1. 测试目标
+<一句话描述本测试文件验证什么>
+
+## 2. 覆盖场景
+
+| 场景 | 测试函数名 | 状态 | 说明 |
+|------|-----------|------|------|
+| 正常用法 | test_X_basic | ✅ PASS | ... |
+| 边界 case | test_X_edge | ✅ PASS | ... |
+| 错误 case | test_X_error | ✅ PASS | ... |
+
+## 3. 测试统计
+- 预期测试数: N
+- 实际测试数: N
+- 覆盖率: 100%
+
+## 4. 依赖
+- <前置条件、依赖的模块等>
+```
 
 ---
 
-## 18. 轮次完成文档同步规则（v3.13 新增）
+## 18. 轮次文档同步执行规则（v3.17 整合）
 
-> **背景**：Stage 3.46 在 `dev-log.md` 中记录了实现，但 `gate-review-round13.md`
-> 缺失——直到用户主动指出才补齐。这违反了 §11（文档同步）的精神，但 §11
-> 只规定了"每次代码更新"需同步，没有覆盖"每轮次完成"的全套文档同步要求。
-> Stage 3 累计 13 轮审查，每轮都可能涉及 stage / plan / task / review 四类
-> 工作单元的任何一种，缺乏明确的"轮次完成检查清单"导致文档不一致风险随
-> 轮次累积。
+> **v3.17 重构说明**：§18 的"轮次完成文档清单"已整合到 §17.3 三阶段文档协议。
+> 本节保留作为执行规则的快速参考 + worklog 协议（多 Agent 协作）。
 >
-> **核心规则**：**每轮完成任何阶段单元（stage / plan / task / review）时，
-> 必须在退出内循环前同步更新或新建 `docs/develop/` 与 `docs/tests/` 下对应
-> 文档**。这是退出内循环的硬性标准（见 §3.3.7）。
+> **核心规则**：**每轮完成任何阶段单元时，必须按 §17.3 三阶段文档协议
+> 同步更新或新建对应文档**。这是退出内循环的硬性标准（见 §3.3.7/§3.3.8）。
 
-### 18.1 轮次完成文档清单
+### 18.1 快速参考：三时期文档清单（per §17.3）
 
-每轮完成时，下表所有"必更新"项必须检查并更新；"按需"项视变更内容而定。
+| 时期 | 触发 | 必须创建/更新的文档 |
+|------|------|-------------------|
+| **开发轮** | 每轮代码更新 | `plan-<子阶段>.md` + `dev-log.md` + `tests/plan/<功能点>.md` + `tests/v0/stage-N/plan/<功能点>_tests.rs` + `matrix.md` + `worklog.md` |
+| **审查轮** | gate review / 收敛轮 | `gate-review-round<N>.md` + `tests/gate/gate-review-round<N>.md` + `examples/stageN_gate_audit_r<N>.rs` + `matrix.md` + `worklog.md` |
+| **深度审查轮** | 阶段完成 / 阶段切换 | `deep-review-round<N>.md` + `tests/gate/deep-review-round<N>.md` + `dev-log.md` 总结 + `matrix.md` + `worklog.md` |
 
-| 文档路径 | 触发条件 | 必更新 / 按需 | 更新内容 |
-|---------|---------|--------------|---------|
-| `docs/develop/v0/stage-N/dev-log.md` | 每轮 | **必更新** | 新增本轮开发日志条目（问题/根因/修复/测试数） |
-| `docs/develop/v0/stage-N/gate-review-roundN.md` | 每轮（含审查轮） | **必更新** | 新建本轮审查报告（审计设计/执行/结果/投票/Limitation/结论） |
-| `docs/develop/v0/stage-N/plan.md` | 阶段计划变更 | 按需 | 子阶段拆分、MUV 调整、复杂度预评估修正 |
-| `docs/develop/v0/stage-N/status.md` | 阶段状态变更 | 按需 | 阶段进度、阻塞项、风险 |
-| `docs/tests/matrix.md` | 测试数量 / 覆盖率变化 | **必更新** | Stage N 测试数、Limitation 状态、累计审计 case 数 |
-| `docs/tests/v0/stage-N/plan/*.md` | 新增功能点 | **必更新**（当新增 ≥1 个测试） | 新增功能点的测试目标/场景/代码路径/数量 |
-| `docs/lang-design/NN-*.md` | 设计变更 | 按需 | 数据结构 / 类型 / 接口 / 语义 |
-| `Cargo.toml` | 版本字段变更 | 按需 | `version` 字段 |
-| `README.md` | 测试数 / 阶段状态 / 流程版本 | **必更新** | 顶部 status 行、Roadmap、Codegen capabilities |
-| `examples/stage3_gate_audit_rN.rs` | 审查轮 | **必更新** | 新建本轮审计脚本（≥30 case） |
-| `examples/roundN_audit.rs` | 通用审查轮 | 按需 | 非 Stage 3 的审查脚本 |
-| `/home/z/my-project/worklog.md` | 每轮 | **必更新** | 追加本轮 Task ID / Agent / Work Log / Stage Summary |
+### 18.2 通用必更新项（所有轮次）
 
-### 18.2 轮次类型与必更新项对照
+无论哪种轮次，以下文档**必须**更新：
 
-不同类型的轮次触发不同的必更新项：
+| 文档 | 更新内容 |
+|------|---------|
+| `docs/tests/matrix.md` | 测试数、覆盖率、Limitation 状态 |
+| `README.md` | 顶部 status 行、Roadmap |
+| `/home/z/my-project/worklog.md` | 追加本轮 Task ID / Work Log / Stage Summary |
+| `Cargo.toml` | `version` 字段（如版本号变更） |
 
-| 轮次类型 | 必更新文档 | 示例 |
-|---------|-----------|------|
-| **开发轮**（实现新功能/修复 limitation） | dev-log + matrix + tests/plan + worklog + README | Stage 3.46 实现 L14+L9 闭合 |
-| **审查轮**（gate review） | gate-review-roundN + audit script + matrix + worklog | Stage 3.46 的 R13 审查 |
-| **计划轮**（plan 调整） | plan.md + status.md + worklog | Stage 3 开始时的 plan.md |
-| **重构轮**（不改变外部行为） | dev-log + lang-design（如涉及设计）+ worklog | Stage 3.4 Emitter Trait 重构 |
-| **文档轮**（纯文档更新） | 对应文档 + worklog | 本文档（流程文档 v3.13） |
-
-### 18.3 文档完成检查清单（QA 角色投票前必查）
+### 18.3 QA 检查清单（投票前必查）
 
 QA 角色在投票前**必须**完成以下检查，全部 ✅ 方可投 APPROVED：
 
 ```text
+□ §17.3 三阶段文档协议已执行（开发轮/审查轮/深度审查轮对应文档已创建）
 □ docs/develop/v0/stage-N/dev-log.md 有本轮新增条目
-□ docs/develop/v0/stage-N/gate-review-roundN.md 已创建并完整填写
 □ docs/tests/matrix.md 测试数 / 覆盖率 / Limitation 状态已更新
-□ docs/tests/v0/stage-N/plan/ 下相关测试计划文档已更新（如本轮有新功能点）
-□ examples/stage3_gate_audit_rN.rs 已创建（审查轮）
+□ docs/tests/v0/stage-N/ 下测试文档已更新（如本轮有新功能点）
+□ tests/v0/stage-N/ 下测试代码已放置（如本轮有新测试）
 □ README.md 顶部状态行已更新（测试数、审查轮次、流程版本）
 □ worklog.md 已追加本轮 Task ID / Agent / Work Log / Stage Summary
 □ Cargo.toml version 字段已更新（如版本号变更）
 □ docs/lang-design/NN-*.md 已更新（如本轮涉及设计变更）
 ```
 
-**未通过则触发 NEEDS REVISION**（per §3.3.7）。
+**未通过则触发 NEEDS REVISION**（per §3.3.7/§3.3.8）。
 
 ### 18.4 Worklog 协议（多 Agent 协作）
 
@@ -1815,6 +1894,39 @@ v3.16 完整保留 v3.15 的全部规则内容，100% 覆盖。新增 §25 / §2
 
 ---
 
+## 27. 变更日志 v3.16 → v3.17
+
+### 27.1 重构内容
+
+| 项目 | 变更类型 | 内容 |
+|------|---------|------|
+| §17 测试矩阵全覆盖原则 | **重构** → §17 测试目录标准化与三阶段文档协议 | 合并旧 §17 + §18.1-§18.3 为统一的"三阶段文档协议"（开发轮/审查轮/深度审查轮）；新增 `tests/` 标准化目录结构（`tests/v0/stage-N/plan/` + `tests/v0/stage-N/gate/`）；新增 `docs/tests/` 标准化目录结构；新增测试文档格式标准 |
+| §18 轮次完成文档同步规则 | **整合** → §18 轮次文档同步执行规则 | §18.1-§18.3 整合为 §17.3 三阶段文档协议的快速参考；保留 §18.4 worklog 协议不变 |
+| §3.3 退出硬性标准 | 更新 | 引用 §17.3 三阶段文档协议（开发轮/审查轮/深度审查轮） |
+
+### 27.2 v3.16 → v3.17 覆盖确认
+
+v3.17 完整保留 v3.16 的全部规则内容，100% 覆盖。重构 §17 + §18 + 新增 §27。
+具体修改：
+
+| v3.16 章节 | v3.17 对应章节 | 覆盖状态 |
+|-----------|--------------|---------|
+| §1 总体原则 | §1（原样保留） | ✅ 100% |
+| §3.3 退出硬性标准 | §3.3（引用 §17.3 更新） | ✅ 100% + 增强 |
+| §17 测试矩阵全覆盖原则 | §17 测试目录标准化与三阶段文档协议（重构） | ✅ 100% + 增强 |
+| §18 轮次完成文档同步规则 | §18 轮次文档同步执行规则（整合） | ✅ 100% + 增强 |
+| §2, §4-§16, §19-§26（全部内容） | §2, §4-§16, §19-§26（原样保留） | ✅ 100% |
+| — | §27 变更日志 v3.16→v3.17 | **新增** |
+
+**关键改进**：
+1. **三阶段文档协议**（§17.3）—— 明确开发轮/审查轮/深度审查轮的文档要求
+2. **`tests/` 标准化**（§17.1）—— 强制 `tests/v0/stage-N/plan/` + `tests/v0/stage-N/gate/` 结构
+3. **`docs/tests/` 标准化**（§17.2）—— 双向印证规则
+4. **测试文档格式标准**（§17.6）—— 统一 Markdown 模板
+5. **迁移策略**（§17.5）—— 现有扁平 `tests/*.rs` 迁移到 `tests/legacy/`
+
+---
+
 **This document is the single source of truth for the Landin development
-process. All agents (main + subagents) must follow it. v3.16 effective
-from Stage 3.69.**
+process. All agents (main + subagents) must follow it. v3.17 effective
+from Stage 4.6.**
