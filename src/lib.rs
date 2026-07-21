@@ -41,7 +41,9 @@
 //!     closure struct fields + Aggregate operands.
 //!   Stage 4.8 (v0.9.5): tests/ directory restructure — all 13 flat test files
 //!     migrated to standardized tests/v0/stage{N}/plan/ per v3.17 §17.1.
-//!   Remaining: L3 call lowering (Stage 4.9), L5 (traits), L8 (lli).
+//!   Stage 4.9 (v0.9.6): L3 closure call lowering — detect TyKind::Closure in
+//!     Call lowering; simplified placeholder (full call deferred to Stage 4.10).
+//!   Remaining: L3 full call lowering (Stage 4.10), L5 (traits), L8 (lli).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

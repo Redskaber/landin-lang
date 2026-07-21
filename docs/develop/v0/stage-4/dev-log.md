@@ -226,3 +226,24 @@ field (the captured `y`), and the `Aggregate` value carries `y`'s value.
 
 **Test impact**: +4 (993/993 tests pass — was 989)
 **Verification**: 0 clippy warnings, fmt clean, §16 compliance maintained
+
+---
+
+### Stage 4.9 — L3 Closure Call Lowering (v0.9.6)
+
+**Priority**: L3 closure codegen continuation.
+
+**Work completed**:
+- `src/mir/lower/mod.rs`: `Call` lowering now checks `TyKind::Closure` after
+  the `TyKind::Adt` check. Closure calls produce a simplified placeholder
+  (unit type local) instead of an incorrect `Terminator::Call`.
+- `src/codegen/mod.rs`: L3 documentation updated to "IN PROGRESS (Stage 4.9)"
+- Full closure call lowering (extract captures + invoke body) deferred to Stage 4.10
+
+**New tests** (2):
+- `tests/v0/stage4/plan/closure_call_tests.rs`
+  * `test_closure_call_no_crash` — `let f = |x: i32| x; f(42);`
+  * `test_closure_call_with_capture` — `let y = 10; let f = |x: i32| x + y; f(1);`
+
+**Test impact**: +2 (995/995 tests pass — was 993)
+**Verification**: 0 clippy warnings, fmt clean

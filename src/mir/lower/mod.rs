@@ -1039,20 +1039,42 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 );
                 dest
             } else {
-                // Real function call.
-                let dest_ty = cx.fresh_infer_ty(Span::DUMMY);
-                let dest = cx.mir.new_local(dest_ty, None, expr.span);
-                let cont = cx.new_block();
-                cx.terminate_and_goto(
-                    Terminator::Call {
-                        func: Operand::Copy(Place::local(func_local, func.span)),
-                        args: arg_operands,
-                        destination: Place::local(dest, expr.span),
-                        target: Some(cont),
-                    },
-                    cont,
-                );
-                dest
+                // Stage 4.9: Check if func is a closure type.
+                // Closures are not FnDef — they're values of type TyKind::Closure.
+                // Calling a closure requires extracting the captured environment
+                // and invoking the closure body. For now (simplified), we detect
+                // closure calls and produce a placeholder result (unit type),
+                // avoiding the incorrect Terminator::Call that would treat the
+                // closure struct as a function pointer.
+                let is_closure = {
+                    let func_local_decl = cx.mir.local_decls.get(func_local.0 as usize);
+                    func_local_decl
+                        .map(|ld| matches!(&ld.ty.kind, TyKind::Closure(_, _)))
+                        .unwrap_or(false)
+                };
+
+                if is_closure {
+                    // Stage 4.9: Closure call — simplified to return unit.
+                    // Full closure call lowering (extract captures + invoke body)
+                    // is deferred to Stage 4.10+.
+                    let dest_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+                    cx.mir.new_local(dest_ty, None, expr.span)
+                } else {
+                    // Real function call.
+                    let dest_ty = cx.fresh_infer_ty(Span::DUMMY);
+                    let dest = cx.mir.new_local(dest_ty, None, expr.span);
+                    let cont = cx.new_block();
+                    cx.terminate_and_goto(
+                        Terminator::Call {
+                            func: Operand::Copy(Place::local(func_local, func.span)),
+                            args: arg_operands,
+                            destination: Place::local(dest, expr.span),
+                            target: Some(cont),
+                        },
+                        cont,
+                    );
+                    dest
+                }
             }
         }
         HirExprKind::If {

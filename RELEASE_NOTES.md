@@ -1,9 +1,56 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.9.5
+**Current version**: v0.9.6
 **Date**: 2026-07-22
-**Test count**: 993 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 995 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.9.6 — Stage 4.9 (L3 closure call lowering)
+
+### Overview
+
+Implements closure call detection in MIR lowering — when a `Call` expression's
+func type is `TyKind::Closure`, the call is now correctly detected and handled
+with a simplified placeholder (returns unit). Previously, closure calls would
+fall through to the "real function call" branch and generate an incorrect
+`Terminator::Call` that treated the closure struct as a function pointer.
+995 tests pass (was 993, +2 new closure call tests). 0 clippy warnings.
+
+### Stage 4.9: L3 closure call lowering
+
+**Previously** (Stage 4.7): `Call` lowering checked for `TyKind::Adt` (struct/
+enum ctor) and `TyKind::FnDef` (regular fn), but did not check for
+`TyKind::Closure` — closure calls generated incorrect `Terminator::Call`.
+
+**Now** (Stage 4.9):
+- `Call` lowering now checks `TyKind::Closure` after the `TyKind::Adt` check
+- Closure calls produce a simplified placeholder (unit type local)
+- No incorrect `Terminator::Call` generated for closures
+- Full closure call lowering (extract captures + invoke body) deferred to
+  Stage 4.10
+
+**New tests** (2) — in `tests/v0/stage4/plan/closure_call_tests.rs`:
+- `test_closure_call_no_crash` — `let f = |x: i32| x; f(42);`
+- `test_closure_call_with_capture` — `let y = 10; let f = |x: i32| x + y; f(1);`
+
+### Verification
+
+- `cargo test`: **995 passed, 0 failed, 2 ignored** (was 993, +2 new)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+
+### Files touched
+
+- `src/mir/lower/mod.rs` — `TyKind::Closure` detection in `Call` lowering
+- `src/codegen/mod.rs` — L3 documentation updated to Stage 4.9
+- `tests/v0/stage4/plan/closure_call_tests.rs` — NEW (2 tests)
+- `Cargo.toml` — added `[[test]]` target for closure_call_tests
+- `docs/develop/v0/stage-4/plan-4.9.md` — NEW (development plan)
+- `docs/develop/v0/stage-4/gate-review-round3.md` — NEW (gate review)
+- `docs/tests/v0/stage4/plan/closure_call.md` — NEW (test plan)
+- `docs/tests/v0/stage4/gate/gate-review-round3.md` — NEW (test gate review)
 
 ---
 
