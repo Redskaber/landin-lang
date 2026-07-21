@@ -290,33 +290,65 @@ pub fn compile(src: &str) -> CompileResult {
     scan_for_unresolved_paths(&hir, &mut errors);
 
     // === Stage 2: MIR lowering + typeck + borrowck (per body) ===
+    // Stage 3.60: Pre-compute FieldTyTable and FnSigTable from HIR so typeck
+    // doesn't need to read HIR directly (per section 16 — data flows downstream).
+    let mut field_ty_table = typeck::FieldTyTable::default();
+    for (def_id, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner {
+            let fields: Vec<crate::mir::ty::Ty> = s
+                .fields
+                .iter()
+                .map(|f| crate::mir::lower::lower_hir_ty_to_mir_ty(&f.ty))
+                .collect();
+            field_ty_table.struct_fields.insert(*def_id, fields);
+        }
+    }
+
+    let mut fn_sig_table = typeck::FnSigTable::default();
+    for (def_id, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
+            use crate::hir::HirFnRetTy;
+            let inputs: Vec<crate::mir::ty::Ty> = f
+                .sig
+                .inputs
+                .iter()
+                .map(|p| {
+                    p.ty.as_ref()
+                        .map(crate::mir::lower::lower_hir_ty_to_mir_ty)
+                        .unwrap_or_else(|| {
+                            crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
+                        })
+                })
+                .collect();
+            let output = match &f.sig.output {
+                HirFnRetTy::Ty(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
+                HirFnRetTy::Default(_) => {
+                    crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Tuple(vec![]), f.span)
+                }
+            };
+            fn_sig_table.sigs.insert(
+                *def_id,
+                crate::mir::ty::Sig {
+                    inputs,
+                    output: Box::new(output),
+                    abi: f.sig.abi,
+                    is_unsafe: f.sig.is_unsafe,
+                },
+            );
+        }
+    }
+
     let mut mirs = Vec::with_capacity(hir.bodies.len());
     let mut typeck_results = Vec::with_capacity(hir.bodies.len());
     for (body_id, body) in &hir.bodies {
-        // Look up the owner node to get the fn signature's return type.
-        // For fn items, the return type comes from `HirFn.sig.output`.
-        // For const/static, the type comes from `HirConst.ty` / `HirStatic.ty`.
-        // For closures, there's no declared return type (inference only).
         let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
 
-        // Lower HIR → MIR. If we found a return type, pass it so the
-        // return local gets the declared type instead of a fresh Infer var.
-        // This lets typeck unify the body's value with the declared type,
-        // catching mismatches like `fn f() -> i32 { true }`.
-        //
-        // We also get back the unify table that MIR lower used to allocate
-        // IntVar/FloatVar for unsuffixed literals. The type checker needs
-        // this table to properly default unresolved vars (i32/f64).
         let (mut mir, lower_unify) = lower_hir_body_to_mir_full(body, &interner, &hir, return_ty);
 
-        // Type check (writes resolved types back into local_decls)
+        // Stage 3.60: typeck uses pre-computed tables instead of HIR.
         let mut tc = typeck::TypeChecker::with_unify(lower_unify);
-        // G3 fix: populate fn_sigs so Call type checking can verify
-        // arg count and types against the declared fn signature.
-        tc.populate_fn_sigs(&hir);
-        // Stage 3.32 (L-DEBT-2 fix): pass hir so typeck can resolve ADT
-        // field types in projections during writeback.
-        tc.check_mir_body_with_hir(&mut mir, Some(&hir));
+        tc.fn_sigs = fn_sig_table.sigs.clone();
+        tc.check_mir_body_with_tables(&mut mir, Some(&field_ty_table));
         let (type_errors, body_results) = tc.into_results();
         errors.typeck.extend(type_errors);
         typeck_results.push(body_results);

@@ -1188,6 +1188,41 @@
 - Total: 965 → 972. (1 source file modified; 1 test file updated.)
 - Gate review Round 26 (R26) — R23 audit re-verified 30/30, all 972 tests pass.
 
+### Stage 3.60 — Typeck §16 compliance: FieldTyTable + FnSigTable (eliminate typeck→HIR leak) (v0.8.6, process v3.13)
+- **Problem (architectural §16 violation)**: typeck's `check_mir_body_with_hir`
+  received `Option<&HirCrate>` and read HIR directly during Phase 3.5
+  (writeback field types). This was the same pattern that was fixed for
+  codegen in Stage 3.56 — typeck should be a pure MIR consumer, not reading HIR.
+  Also `populate_fn_sigs(&hir)` scanned HIR owners to build fn signature map.
+- **Root cause** (per §15): when typeck was written, the simplest path was to
+  pass HIR directly. The required metadata (struct field types, fn signatures)
+  was never pre-computed as data, so typeck had to fish it out of HIR.
+- **Fix** (3 source files):
+  1. `src/typeck/checker.rs` — new `FieldTyTable` struct (maps struct DefId
+     → ordered field types as MIR Ty). New `FnSigTable` struct (maps fn DefId
+     → MIR Sig). New `check_mir_body_with_tables(mir, Option<&FieldTyTable>)`
+     method that replaces `check_mir_body_with_hir`. New
+     `writeback_field_types_with_table` and `writeback_field_load_locals_with_table`
+     that use `FieldTyTable` instead of HIR. Made `fn_sigs` field `pub` so
+     driver can set it directly from `FnSigTable`.
+  2. `src/typeck/mod.rs` — export `FieldTyTable` and `FnSigTable`.
+  3. `src/driver.rs` — pre-compute `FieldTyTable` (iterate `hir.owners` for
+     structs, lower field types to MIR Ty) and `FnSigTable` (iterate for fns,
+     build Sig). Pass `field_ty_table` to `check_mir_body_with_tables`.
+     Set `tc.fn_sigs` directly from `fn_sig_table.sigs`.
+- **Result**:
+  - `driver.rs` no longer calls `tc.check_mir_body_with_hir(&mut mir, Some(&hir))`
+    — now calls `tc.check_mir_body_with_tables(&mut mir, Some(&field_ty_table))`.
+  - `driver.rs` no longer calls `tc.populate_fn_sigs(&hir)` — sets
+    `tc.fn_sigs` directly from pre-computed data.
+  - Typeck's active code path (via `check_mir_body_with_tables`) reads zero
+    HIR. The old `check_mir_body_with_hir` method is kept for backward
+    compatibility but not called by the driver.
+  - All 972 tests pass with identical IR output.
+- Total: 972 tests pass (unchanged — pure refactoring, no behavior change).
+- (3 source files modified; 0 test files changed.)
+- Gate review Round 27 (R27) — R23 audit re-verified 30/30, all 972 tests pass.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -1229,3 +1264,4 @@
 | v0.8.6 (3.57) | 965 | +12 (Phase B-D: error path coverage + glob exports cleanup + Emitter trait tests)
 | v0.8.6 (3.58) | 965 | +0 (typeck implicit coercion: Bool→Int, narrower→wider integers; all gen_ll_unchecked eliminated)
 | v0.8.6 (3.59) | 972 | +7 (cross-stage audit: coercion fix — reject lossy Uint→Int narrowing + add f32→f64 widening)
+| v0.8.6 (3.60) | 972 | +0 (typeck §16 compliance: FieldTyTable + FnSigTable eliminate typeck→HIR leak)

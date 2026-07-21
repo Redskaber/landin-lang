@@ -64,10 +64,9 @@ pub struct TypeChecker {
     /// its local_map. Stage 3 will wire this up properly.
     hir_to_local: std::collections::HashMap<crate::hir::HirId, LocalId>,
     /// G3 fix (Stage 2.4e): Map from DefId → fn signature.
-    /// Populated by `populate_fn_sigs` from the HIR crate before
-    /// type-checking bodies. Used by Call type checking to verify
-    /// arg count and arg/return types.
-    fn_sigs: std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
+    /// Populated by `populate_fn_sigs` or set directly by the driver
+    /// (Stage 3.60: from pre-computed FnSigTable).
+    pub fn_sigs: std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
 }
 
 impl TypeChecker {
@@ -139,6 +138,294 @@ impl TypeChecker {
     /// write resolved types back to HIR nodes via HirId lookup.
     pub fn register_hir_to_local(&mut self, hir_id: crate::hir::HirId, local_id: LocalId) {
         self.hir_to_local.insert(hir_id, local_id);
+    }
+
+    /// Stage 3.60: Check a MIR body using pre-computed data tables instead
+    /// of HIR. This is the section-16-compliant entry point — typeck
+    /// receives data (FieldTyTable), not HIR references.
+    ///
+    /// The `field_ty_table` is built by the driver from HIR before calling
+    /// typeck. It maps struct DefIds to their field types, so typeck can
+    /// resolve ADT field types during writeback without reading HIR.
+    pub fn check_mir_body_with_tables(
+        &mut self,
+        mir: &mut MirBody,
+        field_ty_table: Option<&FieldTyTable>,
+    ) {
+        // Phase 1: Walk basic blocks in order, collecting constraints.
+        let bb_count = mir.basic_blocks.len();
+        for bb_id in 0..bb_count {
+            let bb_id = BasicBlockId(bb_id as u32);
+            let statements: Vec<Statement> = mir.block(bb_id).statements.to_vec();
+            for stmt in &statements {
+                self.check_statement(mir, stmt);
+            }
+            let terminator = mir.block(bb_id).terminator.clone();
+            self.check_terminator(mir, &terminator);
+        }
+
+        // Phase 2: Default unresolved int/float variables.
+        self.unify.default_unresolved();
+
+        // Phase 3: Write resolved types back into local_decls.
+        for local in mir.local_decls.iter_mut() {
+            local.ty = self.unify.resolve(&local.ty);
+        }
+
+        // Phase 3.5: Writeback field types using the pre-computed table.
+        if let Some(table) = field_ty_table {
+            self.writeback_field_types_with_table(mir, table);
+            self.writeback_field_load_locals_with_table(mir, table);
+        }
+
+        // Phase 4: Populate TypeckResults.
+        for (idx, local) in mir.local_decls.iter().enumerate() {
+            self.results
+                .local_types
+                .insert(LocalId(idx as u32), local.ty.clone());
+        }
+
+        // Phase 5: Post-defaulting terminator check.
+        for bb_id in 0..bb_count {
+            let bb_id = BasicBlockId(bb_id as u32);
+            let term = mir.block(bb_id).terminator.clone();
+            self.post_check_terminator(mir, &term);
+        }
+    }
+
+    /// Stage 3.60: Writeback field types using FieldTyTable instead of HIR.
+    fn writeback_field_types_with_table(&mut self, mir: &mut MirBody, table: &FieldTyTable) {
+        let mut updates: Vec<(
+            usize,
+            usize,
+            Option<crate::mir::lvalue::Lvalue>,
+            Option<crate::mir::lvalue::Rvalue>,
+        )> = Vec::new();
+        for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
+            for (stmt_idx, stmt) in bb.statements.iter().enumerate() {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    let mut new_place = place.clone();
+                    let mut new_rvalue = rvalue.clone();
+                    let place_changed = writeback_field_types_in_lvalue_with_table(
+                        &mut new_place,
+                        mir,
+                        table,
+                        &mut self.unify,
+                    );
+                    let rvalue_changed = writeback_field_types_in_rvalue_with_table(
+                        &mut new_rvalue,
+                        mir,
+                        table,
+                        &mut self.unify,
+                    );
+                    if place_changed || rvalue_changed {
+                        updates.push((
+                            bb_idx,
+                            stmt_idx,
+                            if place_changed { Some(new_place) } else { None },
+                            if rvalue_changed {
+                                Some(new_rvalue)
+                            } else {
+                                None
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+        for (bb_idx, stmt_idx, new_place, new_rvalue) in updates {
+            if let Some(bb) = mir.basic_blocks.get_mut(bb_idx) {
+                if let Some(stmt) = bb.statements.get_mut(stmt_idx) {
+                    if let StatementKind::Assign(boxed) = &mut stmt.kind {
+                        let (place, rvalue) = &mut **boxed;
+                        if let Some(np) = new_place {
+                            *place = np;
+                        }
+                        if let Some(nr) = new_rvalue {
+                            *rvalue = nr;
+                        }
+                    }
+                }
+            }
+        }
+
+        fn resolve_lvalue_type_with_table(lv: &crate::mir::lvalue::Lvalue, mir: &MirBody) -> Ty {
+            use crate::mir::lvalue::LvalueKind;
+            match &lv.kind {
+                LvalueKind::Local(id) => mir
+                    .local_decls
+                    .get(id.0 as usize)
+                    .map(|ld| ld.ty.clone())
+                    .unwrap_or_else(|| Ty::new(TyKind::Error, lv.span)),
+                LvalueKind::Projection(base, elem) => {
+                    let _base_ty = resolve_lvalue_type_with_table(base, mir);
+                    match elem {
+                        crate::mir::lvalue::ProjectionElem::Field(_field_id, field_ty) => {
+                            field_ty.clone()
+                        }
+                        _ => Ty::new(TyKind::Error, lv.span),
+                    }
+                }
+                LvalueKind::Static(_) => Ty::new(TyKind::Error, lv.span),
+            }
+        }
+
+        fn writeback_field_types_in_lvalue_with_table(
+            lv: &mut crate::mir::lvalue::Lvalue,
+            mir: &MirBody,
+            table: &FieldTyTable,
+            unify: &mut crate::typeck::unify::UnificationTable,
+        ) -> bool {
+            use crate::mir::lvalue::{LvalueKind, ProjectionElem};
+            match &mut lv.kind {
+                LvalueKind::Projection(base, elem) => {
+                    let mut changed =
+                        writeback_field_types_in_lvalue_with_table(base, mir, table, unify);
+                    if let ProjectionElem::Field(field_id, field_ty) = elem {
+                        let base_ty = resolve_lvalue_type_with_table(base, mir);
+                        if let TyKind::Adt(def_id, _) = &base_ty.kind {
+                            if let Some(fields) = table.get_struct_fields(def_id) {
+                                if let Some(resolved) = fields.get(field_id.0 as usize) {
+                                    let current = unify.resolve(field_ty);
+                                    match &current.kind {
+                                        TyKind::Infer(InferVar::TyVar(vid)) => {
+                                            unify.bind_ty_var(*vid, resolved.clone());
+                                        }
+                                        TyKind::Infer(InferVar::IntVar(vid)) => {
+                                            if let TyKind::Int(int_ty) = &resolved.kind {
+                                                unify.bind_int_var(*vid, *int_ty);
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                    *field_ty = resolved.clone();
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                    changed
+                }
+                _ => false,
+            }
+        }
+
+        fn writeback_field_types_in_rvalue_with_table(
+            rv: &mut crate::mir::lvalue::Rvalue,
+            mir: &MirBody,
+            table: &FieldTyTable,
+            unify: &mut crate::typeck::unify::UnificationTable,
+        ) -> bool {
+            use crate::mir::lvalue::Rvalue;
+            match rv {
+                Rvalue::Use(op) => {
+                    writeback_field_types_in_operand_with_table(op, mir, table, unify)
+                }
+                Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
+                    writeback_field_types_in_operand_with_table(a, mir, table, unify)
+                        | writeback_field_types_in_operand_with_table(b, mir, table, unify)
+                }
+                Rvalue::UnaryOp(_, op) => {
+                    writeback_field_types_in_operand_with_table(op, mir, table, unify)
+                }
+                Rvalue::Cast(_, op, _) => {
+                    writeback_field_types_in_operand_with_table(op, mir, table, unify)
+                }
+                Rvalue::Aggregate(_, operands) => {
+                    let mut changed = false;
+                    for op in operands {
+                        changed |=
+                            writeback_field_types_in_operand_with_table(op, mir, table, unify);
+                    }
+                    changed
+                }
+                Rvalue::Ref(_, _, lv) => {
+                    writeback_field_types_in_lvalue_with_table(lv, mir, table, unify)
+                }
+            }
+        }
+
+        fn writeback_field_types_in_operand_with_table(
+            op: &mut crate::mir::lvalue::Operand,
+            mir: &MirBody,
+            table: &FieldTyTable,
+            unify: &mut crate::typeck::unify::UnificationTable,
+        ) -> bool {
+            use crate::mir::lvalue::Operand;
+            match op {
+                Operand::Copy(lv) | Operand::Move(lv) => {
+                    writeback_field_types_in_lvalue_with_table(lv, mir, table, unify)
+                }
+                _ => false,
+            }
+        }
+    }
+
+    /// Stage 3.60: Writeback field-load locals using FieldTyTable instead of HIR.
+    fn writeback_field_load_locals_with_table(&mut self, mir: &mut MirBody, table: &FieldTyTable) {
+        use crate::mir::lvalue::{LvalueKind, Operand, ProjectionElem, Rvalue};
+        for bb in &mir.basic_blocks {
+            for stmt in &bb.statements {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let LvalueKind::Local(dest_id) = &place.kind {
+                        if let Rvalue::Use(op) = rvalue {
+                            let lv = match op {
+                                Operand::Copy(lv) | Operand::Move(lv) => lv,
+                                _ => continue,
+                            };
+                            if let LvalueKind::Projection(
+                                base,
+                                ProjectionElem::Field(field_id, _),
+                            ) = &lv.kind
+                            {
+                                let base_ty = self.resolve_lvalue_for_writeback(mir, base);
+                                if let TyKind::Adt(def_id, _) = &base_ty.kind {
+                                    if let Some(fields) = table.get_struct_fields(def_id) {
+                                        if let Some(field_ty) = fields.get(field_id.0 as usize) {
+                                            if let Some(dest_local) =
+                                                mir.local_decls.get_mut(dest_id.0 as usize)
+                                            {
+                                                dest_local.ty = field_ty.clone();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Second pass: fix BinaryOp results.
+        for bb in &mir.basic_blocks {
+            for stmt in &bb.statements {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let LvalueKind::Local(dest_id) = &place.kind {
+                        if let Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) = rvalue {
+                            let a_ty = self.resolve_operand_for_writeback(mir, a);
+                            let b_ty = self.resolve_operand_for_writeback(mir, b);
+                            let result_ty = if is_concrete_int_or_float(&a_ty) {
+                                Some(a_ty)
+                            } else if is_concrete_int_or_float(&b_ty) {
+                                Some(b_ty)
+                            } else {
+                                None
+                            };
+                            if let Some(ty) = result_ty {
+                                if let Some(dest_local) =
+                                    mir.local_decls.get_mut(dest_id.0 as usize)
+                                {
+                                    dest_local.ty = ty;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Check a single MIR body. Walks all basic blocks, infers types
@@ -1006,6 +1293,37 @@ fn is_arithmetic_ty(ty: &Ty) -> bool {
         &ty.kind,
         TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_) | TyKind::Infer(_) | TyKind::Error
     )
+}
+
+/// Stage 3.60: Pre-computed ADT field type table.
+/// Built by the driver from HIR (data flows downstream per section 16.2.1).
+/// Replaces `check_mir_body_with_hir`'s HIR reference with a pure data
+/// structure — typeck no longer reads HIR directly.
+#[derive(Debug, Clone, Default)]
+pub struct FieldTyTable {
+    /// Maps struct DefId to ordered field types (as MIR Ty).
+    pub struct_fields: std::collections::HashMap<crate::hir::DefId, Vec<Ty>>,
+}
+
+impl FieldTyTable {
+    /// Look up the field types for a struct by DefId.
+    pub fn get_struct_fields(&self, def_id: &crate::hir::DefId) -> Option<&[Ty]> {
+        self.struct_fields.get(def_id).map(|v| v.as_slice())
+    }
+}
+
+/// Stage 3.60: Pre-computed function signatures.
+/// Built by the driver from HIR, replacing `populate_fn_sigs(&hir)`.
+#[derive(Debug, Clone, Default)]
+pub struct FnSigTable {
+    /// Maps fn DefId to MIR-level signature.
+    pub sigs: std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
+}
+
+impl FnSigTable {
+    pub fn get(&self, def_id: &crate::hir::DefId) -> Option<&crate::mir::ty::Sig> {
+        self.sigs.get(def_id)
+    }
 }
 
 /// Stage 3.36 (L-DEBT-3 fix): whether a type is a concrete Int/Uint/Float

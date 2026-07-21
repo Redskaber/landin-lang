@@ -49,8 +49,9 @@
 | 3.57 | Phase B-D: error path coverage + glob exports cleanup + Emitter trait tests | 12 | ✅ |
 | 3.58 | Typeck implicit coercion: Bool→Int, narrower→wider integers; all gen_ll_unchecked eliminated | 0 | ✅ |
 | 3.59 | Cross-stage audit: coercion fix (reject lossy Uint→Int narrowing) + f32→f64 widening | 7 | ✅ |
+| 3.60 | Typeck section 16 compliance: FieldTyTable + FnSigTable eliminate typeck→HIR leak | 0 | ✅ |
 | **Total codegen** | | **300** | | | ✅ |
-| Gate audits R1-R26 | Audit cases | 716 cumulative | ✅ |
+| Gate audits R1-R27 | Audit cases | 716 cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 
