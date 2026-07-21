@@ -1,9 +1,59 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.9.7
+**Current version**: v0.9.8
 **Date**: 2026-07-22
-**Test count**: 998 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 998 tests + 5 benchmarks passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.9.8 — Stage 4.11 (Benchmark suite + ADR docs)
+
+### Overview
+
+Closes the deep review R37 GO-WITH-CONDITIONS conditions by adding a performance
+benchmark suite (5 benchmarks) and Architecture Decision Records (ADR-001 to
+ADR-007). 998 tests + 5 benchmarks pass. 0 clippy warnings. fmt clean.
+
+### Stage 4.11: Benchmark suite
+
+**New** `benches/compile_bench.rs` — 5 lightweight benchmarks using `std::time::Instant`:
+- `bench_compile_small` — `fn main() {}`
+- `bench_compile_medium` — struct + fns + control flow
+- `bench_compile_closure` — closures with captures
+- `bench_compile_macros` — println!/stringify!/assert!
+- `bench_compile_nested_modules` — `mod inner { pub fn f() {} }`
+
+Registered as `[[bench]]` target in `Cargo.toml`. No external dependencies.
+
+### Stage 4.11: Architecture Decision Records (ADR)
+
+**New** `docs/develop/v0/architecture-decisions.md` — 7 ADRs documenting key
+design decisions:
+- **ADR-001**: HirParam duplication (accepted, matches rustc)
+- **ADR-002**: Emitter trait 36 methods (decompose when 2nd backend added)
+- **ADR-003**: L1 PHI optimization — rely on LLVM mem2reg (CLOSED)
+- **ADR-004**: Visibility enforcement — same-crate access (full enforcement deferred)
+- **ADR-005**: Closure capture — Copy mode (move/borrow deferred)
+- **ADR-006**: Closure call — simplified placeholder (full lowering deferred)
+- **ADR-007**: Built-in macro expansion — MIR lowering stage (user-defined deferred)
+
+### Deep review R37 conditions status
+
+| Condition | Status |
+|-----------|--------|
+| Add benchmark suite (QA-A) | ✅ CLOSED (Stage 4.11) |
+| Create ADR docs (D7) | ✅ CLOSED (Stage 4.11) |
+| Review HirParam duplication | ✅ CLOSED (ADR-001, accepted Stage 3.65) |
+
+**All R37 conditions are now CLOSED.**
+
+### Verification
+
+- `cargo test`: **998 passed, 0 failed, 2 ignored**
+- `cargo test --bench compile_bench`: **5 passed, 0 failed**
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
 
 ---
 

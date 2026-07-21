@@ -45,6 +45,9 @@
 //!     Call lowering; simplified placeholder (full call deferred to Stage 4.10).
 //!   Stage 4.10 (v0.9.7): Macro system — built-in macro expansion (println!,
 //!     stringify!, assert!) in MIR lowering; MacroCall no longer produces Error.
+//!   Stage 4.11 (v0.9.8): Performance benchmark suite (benches/compile_bench.rs,
+//!     5 benchmarks) + Architecture Decision Records (ADR-001 to ADR-007).
+//!     Closes deep review R37 conditions (QA benchmark + D7 documentation).
 //!   Remaining: L5 (traits), L8 (lli), user-defined macros (macro_rules!).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 

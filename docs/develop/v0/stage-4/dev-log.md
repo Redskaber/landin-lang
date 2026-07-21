@@ -271,3 +271,26 @@ field (the captured `y`), and the `Aggregate` value carries `y`'s value.
 
 **Test impact**: +3 (998/998 tests pass — was 995)
 **Verification**: 0 clippy warnings, fmt clean
+
+---
+
+### Stage 4.11 — Benchmark Suite + ADR Docs (v0.9.8)
+
+**Priority**: Closes deep review R37 GO-WITH-CONDITIONS conditions.
+
+**Work completed**:
+- `benches/compile_bench.rs` — 5 lightweight benchmarks (small/medium/closure/macros/nested_modules)
+  using std::time::Instant (no external dependencies)
+- `docs/develop/v0/architecture-decisions.md` — 7 ADRs:
+  * ADR-001: HirParam duplication (accepted)
+  * ADR-002: Emitter trait 36 methods (decompose later)
+  * ADR-003: L1 PHI — rely on LLVM mem2reg (CLOSED)
+  * ADR-004: Visibility — same-crate access (deferred)
+  * ADR-005: Closure capture — Copy mode (deferred)
+  * ADR-006: Closure call — simplified placeholder (deferred)
+  * ADR-007: Built-in macro expansion — MIR lowering stage (deferred)
+
+**R37 conditions status**: All 3 conditions CLOSED ✅
+
+**Test impact**: +5 benchmarks (998 tests + 5 benchmarks)
+**Verification**: 0 clippy warnings, fmt clean
