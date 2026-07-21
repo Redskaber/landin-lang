@@ -298,8 +298,8 @@ fn mir_basic_block_terminators_valid() {
 fn closure_lowers_to_aggregate() {
     // Stage 4.4: verify that a closure expression lowers to an
     // AggregateKind::Closure value (not just the body's return value).
-    use landin_compiler::mir::place::Rvalue;
     use landin_compiler::mir::body::StatementKind;
+    use landin_compiler::mir::place::Rvalue;
 
     let src = "fn main() { let f = |x: i32| x + 1; }";
     let result = landin_compiler::compile(src);
@@ -328,6 +328,7 @@ fn closure_lowers_to_aggregate() {
 #[test]
 fn closure_no_crash_on_complex_body() {
     // Stage 4.4: verify closure with if-expression body doesn't crash.
-    let result = landin_compiler::compile("fn main() { let f = |x: i32| { if x > 0 { x } else { 0 } }; }");
+    let result =
+        landin_compiler::compile("fn main() { let f = |x: i32| { if x > 0 { x } else { 0 } }; }");
     assert!(!result.mirs.is_empty(), "should produce MIR");
 }

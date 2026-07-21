@@ -36,7 +36,10 @@
 //!     retroactive entries).
 //!   Stage 4.6 (v0.9.3): Process v3.17 — §17 测试目录标准化与三阶段文档协议
 //!     (开发轮/审查轮/深度审查轮) + standardized tests/ directory structure.
-//!   Remaining: L3 capture analysis (Stage 4.7), L5 (traits), L8 (lli).
+//!   Stage 4.7 (v0.9.4): L3 closure capture analysis — collect_captured_locals
+//!     detects external variables referenced in closure body; captures populate
+//!     closure struct fields + Aggregate operands.
+//!   Remaining: L3 call lowering (Stage 4.8), L5 (traits), L8 (lli).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

@@ -1306,49 +1306,72 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span)
         }
 
-        // Closure: `|args| body` → lower body + create closure value.
-        // Stage 4.4 (L3 closure codegen): now creates a proper closure value
-        // with a captured environment. Previously (Stage 3.x): just lowered
-        // the body and returned its operand — no closure type, no captures.
+        // Closure: `|args| body` → lower body + create closure value with captures.
+        // Stage 4.4 (L3 closure codegen): creates a proper closure value.
+        // Stage 4.7 (L3 capture analysis): now detects and captures external variables.
         //
-        // Current implementation (Stage 4.4):
+        // Current implementation (Stage 4.7):
         // - Registers closure params as locals (unchanged)
-        // - Lowers the closure body to determine its type
-        // - Creates a closure value via `AggregateKind::Closure`
-        // - The captured environment is represented as the closure's
-        //   DefId (which codegen uses to generate a closure struct type)
+        // - Collects captured locals (external variables referenced in body)
+        // - Lowers the closure body
+        // - Creates a closure value via `AggregateKind::Closure` with captured operands
+        // - The closure type carries capture field types in substs
         //
-        // Limitations (deferred to Stage 4.5+):
-        // - Capture analysis: currently no variables are captured (empty env)
+        // Capture analysis:
+        // - Walks the closure body to find `HirExprKind::Path` with `Res::Local(hir_id)`
+        // - Filters out closure params (those hir_ids just registered)
+        // - Remaining locals are "captured" — their values become closure env fields
+        //
+        // Limitations (deferred to Stage 4.8+):
         // - Closure call lowering: closure calls still go through regular Call
-        // - Closure type inference: the closure's return type is inferred
+        // - Capture mode (move vs borrow): currently always Copy
+        // - Nested closures: not yet handled
         HirExprKind::Closure { params, body, .. } => {
-            // Register closure params as locals
+            // Register closure params as locals + collect their hir_ids
+            let mut param_hir_ids: std::collections::HashSet<HirId> =
+                std::collections::HashSet::new();
             for param in params {
                 let ty = cx.fresh_infer_ty(param.pat.span);
                 cx.new_local(param.pat.hir_id, ty, None);
+                // Collect all hir_ids from the pattern (ident, tuple, etc.)
+                collect_pat_hir_ids(&param.pat, &mut param_hir_ids);
             }
-            // Lower closure body to get its type
+
+            // Stage 4.7: Collect captured locals — external variables referenced in body
+            let mut captured: Vec<(HirId, LocalId)> = Vec::new();
+            let mut seen: std::collections::HashSet<HirId> = std::collections::HashSet::new();
+            collect_captured_locals(cx, body, &param_hir_ids, &mut captured, &mut seen);
+
+            // Lower closure body
             let _body_local = lower_expr_to_operand(cx, body);
-            // Stage 4.4: create a closure value.
-            // The closure type is TyKind::Closure(def_id, substs) —
-            // codegen will emit a struct type for the captured environment.
-            // For now, the closure DefId is the current owner's DefId
-            // (a more precise closure DefId would be assigned in Stage 4.5).
+
+            // Stage 4.7: Build capture field types + operands
+            let mut capture_tys: Vec<Ty> = Vec::new();
+            let mut capture_operands: Vec<Operand> = Vec::new();
+            for (_hir_id, local_id) in &captured {
+                let ty = cx.mir.local(*local_id).ty.clone();
+                capture_tys.push(ty);
+                capture_operands.push(Operand::Copy(Place::local(*local_id, expr.span)));
+            }
+
+            // Create closure value with captures
             let closure_def_id = cx
                 .hir
                 .map(|h| h.owners.first().map(|(id, _)| *id).unwrap_or_default())
                 .unwrap_or_default();
-            let closure_ty = Ty::new(TyKind::Closure(closure_def_id, vec![]), expr.span);
+            let closure_ty = Ty::new(TyKind::Closure(closure_def_id, capture_tys), expr.span);
             let closure_local = cx.mir.new_local(closure_ty, None, expr.span);
-            // Assign the closure value (empty capture environment for now)
+            // Assign the closure value with captured operands
             cx.mir
                 .block_mut(cx.current_block)
                 .statements
                 .push(Statement {
                     kind: StatementKind::Assign(Box::new((
                         Place::local(closure_local, expr.span),
-                        Rvalue::Aggregate(AggregateKind::Closure(closure_def_id, vec![]), vec![]),
+                        Rvalue::Aggregate(
+                            AggregateKind::Closure(closure_def_id, vec![]),
+                            capture_operands,
+                        ),
                     ))),
                     span: expr.span,
                 });
@@ -2764,4 +2787,221 @@ fn compute_enum_payload_starting_idx(
         idx += field_count as u32;
     }
     idx
+}
+
+// ================================================================
+// Stage 4.7: Closure capture analysis helpers
+// ================================================================
+
+/// Collect all HirIds from a pattern (for identifying closure params).
+fn collect_pat_hir_ids(pat: &HirPat, out: &mut std::collections::HashSet<HirId>) {
+    match &pat.kind {
+        HirPatKind::Ident(_, _, sub) => {
+            out.insert(pat.hir_id);
+            if let Some(s) = sub {
+                collect_pat_hir_ids(s, out);
+            }
+        }
+        HirPatKind::Struct(_, fields, _) => {
+            for f in fields {
+                collect_pat_hir_ids(&f.pat, out);
+            }
+        }
+        HirPatKind::TupleStruct(_, pats) => {
+            for p in pats {
+                collect_pat_hir_ids(p, out);
+            }
+        }
+        HirPatKind::Tuple(pats) => {
+            for p in pats {
+                collect_pat_hir_ids(p, out);
+            }
+        }
+        HirPatKind::Slice(pats, rest) => {
+            for p in pats {
+                collect_pat_hir_ids(p, out);
+            }
+            if let Some(r) = rest {
+                collect_pat_hir_ids(r, out);
+            }
+        }
+        HirPatKind::Or(pats) => {
+            for p in pats {
+                collect_pat_hir_ids(p, out);
+            }
+        }
+        HirPatKind::Ref(p, _) => {
+            collect_pat_hir_ids(p, out);
+        }
+        HirPatKind::Path(_)
+        | HirPatKind::Lit(_)
+        | HirPatKind::Wild
+        | HirPatKind::Rest
+        | HirPatKind::Range(_, _, _) => {}
+    }
+}
+
+/// Stage 4.7: Walk a HirExpr tree and collect all external locals that are
+/// referenced (via `HirExprKind::Path` with `Res::Local`) but not in
+/// `param_hir_ids` (i.e., not closure parameters).
+fn collect_captured_locals(
+    cx: &MirLowerCtxt,
+    expr: &HirExpr,
+    param_hir_ids: &std::collections::HashSet<HirId>,
+    captured: &mut Vec<(HirId, LocalId)>,
+    seen: &mut std::collections::HashSet<HirId>,
+) {
+    match &expr.kind {
+        HirExprKind::Path(path) => {
+            if let Res::Local(hir_id) = path.res {
+                if !param_hir_ids.contains(&hir_id) && !seen.contains(&hir_id) {
+                    if let Some(local_id) = cx.local_of(hir_id) {
+                        seen.insert(hir_id);
+                        captured.push((hir_id, local_id));
+                    }
+                }
+            }
+        }
+        HirExprKind::Call { func, args } => {
+            collect_captured_locals(cx, func, param_hir_ids, captured, seen);
+            for a in args {
+                collect_captured_locals(cx, a, param_hir_ids, captured, seen);
+            }
+        }
+        HirExprKind::MethodCall { receiver, args, .. } => {
+            collect_captured_locals(cx, receiver, param_hir_ids, captured, seen);
+            for a in args {
+                collect_captured_locals(cx, a, param_hir_ids, captured, seen);
+            }
+        }
+        HirExprKind::Field { receiver, .. } => {
+            collect_captured_locals(cx, receiver, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Index { receiver, index } => {
+            collect_captured_locals(cx, receiver, param_hir_ids, captured, seen);
+            collect_captured_locals(cx, index, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Unary { expr, .. } => {
+            collect_captured_locals(cx, expr, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Binary { lhs, rhs, .. } => {
+            collect_captured_locals(cx, lhs, param_hir_ids, captured, seen);
+            collect_captured_locals(cx, rhs, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Assign { lhs, rhs, .. } => {
+            collect_captured_locals(cx, lhs, param_hir_ids, captured, seen);
+            collect_captured_locals(cx, rhs, param_hir_ids, captured, seen);
+        }
+        HirExprKind::AddrOf { expr, .. } => {
+            collect_captured_locals(cx, expr, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Cast { expr, .. } => {
+            collect_captured_locals(cx, expr, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Try { expr } => {
+            collect_captured_locals(cx, expr, param_hir_ids, captured, seen);
+        }
+        HirExprKind::If { cond, then, else_ } => {
+            collect_captured_locals(cx, cond, param_hir_ids, captured, seen);
+            collect_block_captured(cx, then, param_hir_ids, captured, seen);
+            if let Some(e) = else_ {
+                collect_captured_locals(cx, e, param_hir_ids, captured, seen);
+            }
+        }
+        HirExprKind::Match { expr, arms } => {
+            collect_captured_locals(cx, expr, param_hir_ids, captured, seen);
+            for arm in arms {
+                collect_captured_locals(cx, &arm.body, param_hir_ids, captured, seen);
+            }
+        }
+        HirExprKind::Block(b) => {
+            collect_block_captured(cx, b, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Loop { body } => {
+            collect_block_captured(cx, body, param_hir_ids, captured, seen);
+        }
+        HirExprKind::While { cond, body } => {
+            collect_captured_locals(cx, cond, param_hir_ids, captured, seen);
+            collect_block_captured(cx, body, param_hir_ids, captured, seen);
+        }
+        HirExprKind::For { iter, body, .. } => {
+            collect_captured_locals(cx, iter, param_hir_ids, captured, seen);
+            collect_block_captured(cx, body, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Closure { body, .. } => {
+            collect_captured_locals(cx, body, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Return { expr } => {
+            if let Some(e) = expr {
+                collect_captured_locals(cx, e, param_hir_ids, captured, seen);
+            }
+        }
+        HirExprKind::Break { expr, .. } => {
+            if let Some(e) = expr {
+                collect_captured_locals(cx, e, param_hir_ids, captured, seen);
+            }
+        }
+        HirExprKind::Continue
+        | HirExprKind::Lit(_)
+        | HirExprKind::Unit
+        | HirExprKind::MacroCall { .. } => {}
+        HirExprKind::Range { start, end, .. } => {
+            if let Some(s) = start {
+                collect_captured_locals(cx, s, param_hir_ids, captured, seen);
+            }
+            if let Some(e) = end {
+                collect_captured_locals(cx, e, param_hir_ids, captured, seen);
+            }
+        }
+        HirExprKind::Tuple { elems } => {
+            for e in elems {
+                collect_captured_locals(cx, e, param_hir_ids, captured, seen);
+            }
+        }
+        HirExprKind::Array { elems } => {
+            for e in elems {
+                collect_captured_locals(cx, e, param_hir_ids, captured, seen);
+            }
+        }
+        HirExprKind::Repeat { elem, count } => {
+            collect_captured_locals(cx, elem, param_hir_ids, captured, seen);
+            collect_captured_locals(cx, count, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Struct { fields, .. } => {
+            for f in fields {
+                if let Some(e) = &f.expr {
+                    collect_captured_locals(cx, e, param_hir_ids, captured, seen);
+                }
+            }
+        }
+        HirExprKind::Unsafe(b) => {
+            collect_block_captured(cx, b, param_hir_ids, captured, seen);
+        }
+    }
+}
+
+/// Helper: walk a HirBlock's statements + final expr for captured locals.
+fn collect_block_captured(
+    cx: &MirLowerCtxt,
+    block: &HirBlock,
+    param_hir_ids: &std::collections::HashSet<HirId>,
+    captured: &mut Vec<(HirId, LocalId)>,
+    seen: &mut std::collections::HashSet<HirId>,
+) {
+    for stmt in &block.stmts {
+        match stmt {
+            HirStmt::Local(local) => {
+                if let Some(init) = &local.init {
+                    collect_captured_locals(cx, init, param_hir_ids, captured, seen);
+                }
+            }
+            HirStmt::Expr(expr, _) => {
+                collect_captured_locals(cx, expr, param_hir_ids, captured, seen);
+            }
+            HirStmt::Semi | HirStmt::Empty(_) => {}
+        }
+    }
+    if let Some(expr) = &block.expr {
+        collect_captured_locals(cx, expr, param_hir_ids, captured, seen);
+    }
 }

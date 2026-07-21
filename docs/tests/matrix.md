@@ -10,9 +10,10 @@
 |-------|-------|----------|--------|
 | Stage 0 (lexer/parser/AST) | 344 | ~100% | ✅ Complete |
 | Stage 1 (HIR/resolve) | 117 (nested modules + visibility) | ~100% | ✅ Complete |
-| Stage 2 (MIR/typeck/borrowck) | 170 (+2 closure lowering) | ~100% | ✅ Complete |
+| Stage 2 (MIR/typeck/borrowck) | 170 | ~100% | ✅ Complete |
 | Stage 3 (codegen) | 294 + 5 §21 audit | ~99% | ✅ Complete |
-| **Total** | **989** | ~99% | ✅ Stage 0-3 complete + Stage 4 in progress |
+| Stage 4 (nested modules + closures) | 4 (closure capture) | ~100% | 🔄 In progress |
+| **Total** | **993** | ~99% | ✅ Stage 0-3 complete + Stage 4 in progress |
 
 ## Stage 3 Test Breakdown
 
@@ -66,8 +67,9 @@
 | 4.4 | L3 closure lowering: AggregateKind::Closure + TyKind::Closure → empty struct; capture analysis deferred to Stage 4.5 | +2 | ✅ |
 | 4.5 | Complete dev-logs for all stages: Stage 1 + Stage 2 + Stage 4 dev-logs created; Stage 0 + Stage 3 dev-logs updated with retroactive entries | 0 | ✅ |
 | 4.6 | Process v3.17: §17 测试目录标准化与三阶段文档协议 + tests/ 标准化目录结构 + Stage 4 plan/test-plan/gate-review 文档补齐 | 0 | ✅ |
+| 4.7 | L3 closure capture analysis: collect_captured_locals + collect_pat_hir_ids + collect_block_captured; captures populate closure struct fields + Aggregate operands; codegen emits struct with capture fields | +4 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.6 R41 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
+| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.7 R42 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

@@ -20,7 +20,7 @@
 //! | ID | Description | Target |
 //! |----|-------------|--------|
 //! | L1 | PHI node optimization — **CLOSED in Stage 4.2** (design decision: rely on LLVM `mem2reg` rather than emitting PHI directly; documented below) | ✅ |
-//! | L3 | Closure codegen — **IN PROGRESS (Stage 4.4)**: closure type lowering + `AggregateKind::Closure` + `TyKind::Closure` → empty struct. Capture analysis + call lowering deferred to Stage 4.5. | Stage 4.5 |
+//! | L3 | Closure codegen — **IN PROGRESS (Stage 4.7)**: closure type lowering + `AggregateKind::Closure` + `TyKind::Closure` → struct with captures. Capture analysis done (Stage 4.7); call lowering deferred to Stage 4.8. | Stage 4.8 |
 //! | L5 | Trait dispatch (vtable generation, dyn fat pointers) | Stage 5 |
 //! | L8 | `lli` execution verification (env constraint — no `lli` in test sandbox) | Stage 4 |
 //! | L-COPY-ADT | Proper Copy trait (current borrowck pragmatically treats Adt as Copy) | Stage 5 |

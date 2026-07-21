@@ -392,11 +392,12 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
             };
             EmitType::array_of(mir_type_to_emit_type(elem), n)
         }
-        // Stage 4.4 (L3): Closure type — emit as an empty struct for now
-        // (no captures yet). When capture analysis is implemented (Stage 4.5),
-        // this will become a struct with the captured environment fields.
-        // The closure's call function is emitted separately by codegen_function.
-        TyKind::Closure(_, _) => EmitType::Struct(vec![]),
+        // Stage 4.7 (L3): Closure type — emit as a struct with captured fields.
+        // The substs vector carries the capture field types.
+        TyKind::Closure(_, substs) => {
+            let fields: Vec<EmitType> = substs.iter().map(mir_type_to_emit_type).collect();
+            EmitType::Struct(fields)
+        }
         // Fns/ADTs/etc. — Stage 3 treats as opaque i32 placeholder.
         _ => EmitType::I32,
     }

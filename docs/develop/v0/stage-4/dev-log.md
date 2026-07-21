@@ -193,3 +193,36 @@ populated with captured environment fields.
 
 **Test impact**: 0 (pure process/doc work)
 **Verification**: 989 tests pass, 0 clippy warnings, fmt clean
+
+---
+
+### Stage 4.7 — L3 Closure Capture Analysis (v0.9.4)
+
+**Priority**: From deep review D4 — L3 closure codegen (high user value).
+
+**Work completed**:
+- New `collect_captured_locals` function — walks closure body's `HirExpr` tree
+  to find all `HirExprKind::Path` with `Res::Local(hir_id)`, filters out closure
+  params, collects remaining external variable references
+- New `collect_pat_hir_ids` helper — extracts all HirIds from closure parameter
+  patterns (identifies which locals are params, not captures)
+- New `collect_block_captured` helper — walks block statements + final expr
+- Modified closure lowering:
+  - Capture field types → `TyKind::Closure(def_id, capture_tys)` substs
+  - Capture values → `Aggregate(Closure, capture_operands)` operands
+- Modified codegen emitter:
+  - `TyKind::Closure(_, substs)` → `EmitType::Struct(fields)` where fields are
+    capture types (was empty struct in Stage 4.4)
+
+**What this means**: Closures now properly "close over" their environment.
+`let y = 10; let f = |x: i32| x + y;` produces a closure struct with one
+field (the captured `y`), and the `Aggregate` value carries `y`'s value.
+
+**New tests** (4) — in standardized `tests/v0/stage4/plan/` directory:
+- `test_closure_no_captures` — `|x: i32| x + 1` → empty env
+- `test_closure_captures_one_var` — `let y = 10; |x: i32| x + y` → 1 capture
+- `test_closure_captures_multiple_vars` — 2 captures
+- `test_closure_params_not_captured` — params excluded from captures
+
+**Test impact**: +4 (993/993 tests pass — was 989)
+**Verification**: 0 clippy warnings, fmt clean, §16 compliance maintained

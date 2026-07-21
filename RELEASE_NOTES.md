@@ -1,9 +1,79 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.9.3
+**Current version**: v0.9.4
 **Date**: 2026-07-22
-**Test count**: 989 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 993 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.9.4 — Stage 4.7 (L3 closure capture analysis)
+
+### Overview
+
+Implements closure capture analysis — the core L3 feature that detects which
+external variables a closure references and populates the closure's capture
+environment struct with those variables. 993 tests pass (was 989, +4 new
+capture analysis tests). 0 clippy warnings. fmt clean.
+
+### Stage 4.7: L3 closure capture analysis
+
+**Previously** (Stage 4.4): closure lowering created `AggregateKind::Closure`
+with an empty capture environment — no variables were captured.
+
+**Now** (Stage 4.7):
+- New `collect_captured_locals` function — walks the closure body's `HirExpr`
+  tree, finds all `HirExprKind::Path` with `Res::Local(hir_id)`, filters out
+  closure params, and collects the remaining external variable references
+- New `collect_pat_hir_ids` helper — extracts all HirIds from closure
+  parameter patterns (to identify which locals are params, not captures)
+- New `collect_block_captured` helper — walks block statements + final expr
+- Modified closure lowering:
+  - Capture field types → `TyKind::Closure(def_id, capture_tys)` substs
+  - Capture values → `Aggregate(Closure, capture_operands)` operands
+- Modified codegen emitter:
+  - `TyKind::Closure(_, substs)` → `EmitType::Struct(fields)` where fields
+    are the capture types (was empty struct in Stage 4.4)
+
+**What this means**: Closures now properly "close over" their environment.
+`let y = 10; let f = |x: i32| x + y;` produces a closure struct with one
+field (the captured `y`), and the `Aggregate` value carries `y`'s value.
+
+**New tests** (4) — in standardized `tests/v0/stage4/plan/` directory:
+- `test_closure_no_captures` — `|x: i32| x + 1` → empty env
+- `test_closure_captures_one_var` — `let y = 10; |x: i32| x + y` → 1 capture
+- `test_closure_captures_multiple_vars` — 2 captures
+- `test_closure_params_not_captured` — params excluded from captures
+
+**Limitations** (deferred to Stage 4.8+):
+- Closure call lowering: closure calls still go through regular `Call`
+- Capture mode: currently always Copy (move/borrow discrimination deferred)
+- Nested closures: captures bubble up but not fully tested
+
+### Verification
+
+- `cargo test`: **993 passed, 0 failed, 2 ignored** (was 989, +4 new)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance: all 8 §21.3 checklist items green
+
+### Files touched
+
+- `src/mir/lower/mod.rs` — `collect_captured_locals` + `collect_pat_hir_ids` + `collect_block_captured` + modified closure lowering
+- `src/codegen/emitter.rs` — `TyKind::Closure` → struct with capture fields
+- `src/codegen/mod.rs` — L3 documentation updated to Stage 4.7
+- `tests/v0/stage4/plan/closure_capture_tests.rs` — NEW (4 tests, standardized directory)
+- `Cargo.toml` — added `[[test]]` target for standardized test path
+- `docs/develop/v0/stage-4/plan-4.7.md` — NEW (development plan)
+- `docs/develop/v0/stage-4/gate-review-round2.md` — NEW (gate review)
+- `docs/tests/v0/stage4/plan/closure_capture.md` — NEW (test plan, updated to complete)
+- `docs/tests/v0/stage4/gate/gate-review-round2.md` — NEW (test gate review)
+
+### Next Stage 4 priorities
+
+1. **L3 closure call lowering** (Stage 4.8) — closure calls via closure-specific mechanism
+2. **Macro system + attributes** (Stage 4.9) — `Expr::MacroCall` expansion
+3. **Performance benchmark suite** (Stage 4.10) — add `benches/` + criterion
 
 ---
 
