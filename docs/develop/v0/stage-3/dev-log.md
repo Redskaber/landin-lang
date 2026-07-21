@@ -900,6 +900,44 @@
   type propagation + 8 edge cases), all passed; audit CONVERGED at
   round 19 per §9.3.3.
 
+### Stage 3.53 — &str indexing element type fix (v0.8.6, process v3.13)
+- **Problem (P0 soundness)**: `s[0]` where `s: &str` produced
+  `store i8 %v4, %loc_3` but `loc_3` was typed `i32` (the temp local's
+  type) — type mismatch in typed-pointer LLVM. The `load i8` was correct
+  (Stage 3.51's GEP fix worked for `&str`), but the temp local storing
+  `s[0]` was typed `i32` because `resolve_index_element_type` didn't
+  handle `Ref(_, _, Str)`.
+- **Root cause** (per §15 — root cause): Stage 3.52's
+  `resolve_index_element_type` handled `Ref(_, _, Slice(T))` → T,
+  `Ref(_, _, Array(T, _))` → T, but NOT `Ref(_, _, Str)`. The inner type
+  `Str` fell through to `None` → `fresh_infer_ty` → typeck default `i32`.
+  So the temp local for `s[0]` on `&str` was typed `i32`, not `u8`/`i8`.
+- **Fix** (1 source file):
+  1. `src/mir/lower/mod.rs` — `resolve_index_element_type`: added a
+     `TyKind::Str` arm in the `Ref(_, _, inner)` match that returns
+     `u8` (the element type of `&str`, matching Rust's `str::as_bytes`
+     semantics). Per §16: reads MIR local_decls only (data flows
+     downstream per §16.2.1). No HIR lookup.
+- **Result**:
+  - `s[0]` where `s: &str` → `load i8` + `store i8` (was: `load i8` +
+    `store i32` — type mismatch).
+  - `s[0] + 1` where `s: &str` → `add nsw i8` + `llvm.sadd.with.overflow.i8`
+    (was: `add nsw i32` + i32 overflow check — wrong width).
+  - `s[0] > s[1]` where `s: &str` → `icmp sgt i8` (was: `icmp sgt i32`).
+  - `match s[0] { 65 => 1, _ => 0 }` → `switch i8` (was: would have been
+    `switch i32` if the temp was i32 — now correctly i8).
+  - `s[0]` returned from `fn f(s: &str) -> i32` → i8 widened to i32 for
+    the return (correct — the return type is i32, the element is u8).
+  - `b"hello"[0]` → `load i8` (byte string indexing via fat pointer —
+    Stage 3.50 + 3.53 together complete the byte string indexing story).
+- 9 new tests: &str index load (1), no-i32-temp regression (1), arith (2),
+  comparison (1), variable/constant index (2), subtraction (1), byte
+  string index (1), slice regression (2).
+- Total: 920 → 929. (1 source file modified; 0 typeck/borrowck changes.)
+- Gate review Round 20 (R20) — 30 audit cases (8 regression + 14 &str
+  indexing coverage + 8 edge cases), all passed; audit CONVERGED at
+  round 20 per §9.3.3.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -934,3 +972,4 @@
 | v0.8.6 (3.50) | 902 | +10 (byte string fat pointer fix + comparison pointee type fix)
 | v0.8.6 (3.51) | 911 | +9 (slice indexing fix: fat pointer data pointer dereference)
 | v0.8.6 (3.52) | 920 | +9 (slice element type propagation: load/store/arith use correct element type from fat pointer)
+| v0.8.6 (3.53) | 929 | +9 (&str indexing element type fix: u8 element, not i32)

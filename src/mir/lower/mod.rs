@@ -1792,9 +1792,14 @@ fn resolve_index_element_type(cx: &MirLowerCtxt, base_local: LocalId) -> Option<
     let base_ty = cx.mir.local_decls.get(base_local.0 as usize)?.ty.clone();
     match &base_ty.kind {
         // `&[T]` — fat pointer to slice
+        // `&str` — fat pointer to str (element is u8)
         TyKind::Ref(_, _, inner) => match &inner.kind {
             TyKind::Slice(elem) => Some((**elem).clone()),
             TyKind::Array(elem, _) => Some((**elem).clone()),
+            // Stage 3.53: `&str` indexing → element is u8 (like `&[u8]`).
+            // Was: fell through to None → fresh_infer_ty → typeck default i32,
+            // causing `s[0]` on `&str` to store i8 into an i32 temp (type mismatch).
+            TyKind::Str => Some(Ty::new(TyKind::Uint(ast::UintTy::U8), Span::DUMMY)),
             _ => None,
         },
         // `[T; N]` — array

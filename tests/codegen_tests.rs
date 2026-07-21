@@ -3073,3 +3073,121 @@ fn codegen_slice_index_comparison_correct_type() {
         ll
     );
 }
+
+// ============================================================================
+// Stage 3.53 — &str indexing element type fix (u8, not i32)
+// ============================================================================
+
+#[test]
+fn codegen_str_index_loads_u8() {
+    // s[0] where s: &str should load i8 (u8), not i32.
+    // Was (Stage 3.52 latent): resolve_index_element_type didn't handle
+    // Ref(_, _, Str), so element type was fresh_infer_ty → typeck default i32,
+    // causing store i8 into i32 temp (type mismatch).
+    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] }");
+    assert!(
+        ll.contains("load i8"),
+        "expected load i8 for &str element in:\n{}",
+        ll
+    );
+    // The temp storing s[0] should be i8, not i32.
+    assert!(
+        ll.contains("store i8"),
+        "expected store i8 for &str element temp in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_index_arith_uses_i8() {
+    // s[0] + 1 where s: &str should use add nsw i8 + i8 overflow check.
+    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] + 1 }");
+    assert!(
+        ll.contains("add nsw i8"),
+        "expected add nsw i8 for &str element arithmetic in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("llvm.sadd.with.overflow.i8"),
+        "expected i8 overflow check for &str element arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_index_comparison_uses_i8() {
+    // s[0] > s[1] where s: &str should use icmp sgt i8.
+    let ll = gen_ll("fn f(s: &str) -> bool { s[0] > s[1] }");
+    assert!(
+        ll.contains("icmp sgt i8"),
+        "expected icmp sgt i8 for &str element comparison in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_index_in_function() {
+    // More complex: sum of first two bytes.
+    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] + s[1] }");
+    assert!(
+        ll.contains("add nsw i8"),
+        "expected add nsw i8 for &str multi-element arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_index_variable_index() {
+    // s[i] with variable index on &str.
+    let ll = gen_ll("fn f(s: &str, i: i32) -> i32 { s[i] }");
+    assert!(
+        ll.contains("load i8"),
+        "expected load i8 for &str variable index in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_index_constant_index() {
+    // s[1] with constant index on &str.
+    let ll = gen_ll("fn f(s: &str) -> i32 { s[1] }");
+    assert!(
+        ll.contains("load i8"),
+        "expected load i8 for &str constant index in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_index_no_i32_temp() {
+    // Regression: the temp storing s[0] should NOT be i32.
+    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] }");
+    // The store of the element should be i8, not i32.
+    assert!(
+        !ll.contains("store i32 %v4"),
+        "should NOT store i32 for &str element temp in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_regression_still_correct() {
+    // Regression: &[i64] slice indexing should still work (Stage 3.52).
+    let ll = gen_ll("fn f(s: &[i64]) -> i64 { s[0] }");
+    assert!(
+        ll.contains("load i64"),
+        "expected load i64 for &[i64] element (Stage 3.52 regression) in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_byte_string_index() {
+    // b"hello"[0] — byte string indexing via fat pointer.
+    let ll = gen_ll("fn f() -> i32 { b\"hello\"[0] }");
+    assert!(
+        ll.contains("load i8"),
+        "expected load i8 for byte string element in:\n{}",
+        ll
+    );
+}
