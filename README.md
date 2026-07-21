@@ -6,12 +6,11 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** Stage 0-3 complete + Stage 4 in progress. v0.9.4, 993 tests passing,
-> 42 review rounds (36 gate + 1 deep review + Stage 4.1-4.7).
-> Process v3.17 (§15-§27, including §17 三阶段文档协议 + §25 深度审查).
-> Stage 4.1-4.6: modules + PHI + visibility + closure lowering + dev-logs + v3.17.
-> Stage 4.7: L3 closure capture analysis ✅ (captures populate struct fields).
-> Next: L3 call lowering (Stage 4.8), macro system, benchmark suite.
+> **Status:** Stage 0-3 complete + Stage 4 in progress. v0.9.5, 993 tests passing,
+> 43 review rounds. Process v3.17 (§15-§27).
+> Stage 4.1-4.7: modules + PHI + visibility + closure lowering + capture analysis.
+> Stage 4.8: tests/ directory restructured to standardized tests/v0/stage{N}/plan/.
+> Next: L3 call lowering (Stage 4.9), macro system, benchmark suite.
 
 ## Quick start
 

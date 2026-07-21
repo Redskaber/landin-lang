@@ -39,7 +39,9 @@
 //!   Stage 4.7 (v0.9.4): L3 closure capture analysis — collect_captured_locals
 //!     detects external variables referenced in closure body; captures populate
 //!     closure struct fields + Aggregate operands.
-//!   Remaining: L3 call lowering (Stage 4.8), L5 (traits), L8 (lli).
+//!   Stage 4.8 (v0.9.5): tests/ directory restructure — all 13 flat test files
+//!     migrated to standardized tests/v0/stage{N}/plan/ per v3.17 §17.1.
+//!   Remaining: L3 call lowering (Stage 4.9), L5 (traits), L8 (lli).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

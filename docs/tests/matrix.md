@@ -68,8 +68,9 @@
 | 4.5 | Complete dev-logs for all stages: Stage 1 + Stage 2 + Stage 4 dev-logs created; Stage 0 + Stage 3 dev-logs updated with retroactive entries | 0 | ✅ |
 | 4.6 | Process v3.17: §17 测试目录标准化与三阶段文档协议 + tests/ 标准化目录结构 + Stage 4 plan/test-plan/gate-review 文档补齐 | 0 | ✅ |
 | 4.7 | L3 closure capture analysis: collect_captured_locals + collect_pat_hir_ids + collect_block_captured; captures populate closure struct fields + Aggregate operands; codegen emits struct with capture fields | +4 | ✅ |
+| 4.8 | tests/ directory restructure: 13 flat tests/*.rs → standardized tests/v0/stage{N}/plan/ per v3.17 §17.1; 14 [[test]] targets in Cargo.toml; 13 test plan docs created | 0 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.7 R42 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
+| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.8 R43 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

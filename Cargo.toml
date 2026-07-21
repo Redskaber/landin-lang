@@ -1,6 +1,6 @@
 [package]
 name = "landin-compiler"
-version = "0.9.4"
+version = "0.9.5"
 edition = "2021"
 license = "MIT"
 description = "Landin programming language compiler — Stage 0-3 complete + Stage 4.1-4.6 (nested modules + L1 PHI design decision + visibility enforcement + L3 closure lowering + dev-logs + Process v3.17 three-phase doc protocol) + standardized tests/ directory"
@@ -17,6 +17,66 @@ path = "src/bin/main.rs"
 name = "landin_compiler"
 path = "src/lib.rs"
 
+# Stage 4.8: standardized test directory structure per v3.17 §17.1
+# All test files are under tests/v0/stage{N}/plan/
+
+# Stage 0 tests
+[[test]]
+name = "lexer_tests"
+path = "tests/v0/stage0/plan/lexer_tests.rs"
+
+[[test]]
+name = "parser_tests"
+path = "tests/v0/stage0/plan/parser_tests.rs"
+
+[[test]]
+name = "ast_structure_tests"
+path = "tests/v0/stage0/plan/ast_structure_tests.rs"
+
+# Stage 1 tests
+[[test]]
+name = "hir_structure_tests"
+path = "tests/v0/stage1/plan/hir_structure_tests.rs"
+
+[[test]]
+name = "hir_lowering_tests"
+path = "tests/v0/stage1/plan/hir_lowering_tests.rs"
+
+[[test]]
+name = "hir_resolution_tests"
+path = "tests/v0/stage1/plan/hir_resolution_tests.rs"
+
+[[test]]
+name = "hir_scope_resolution_tests"
+path = "tests/v0/stage1/plan/hir_scope_resolution_tests.rs"
+
+# Stage 2 tests
+[[test]]
+name = "mir_lowering_tests"
+path = "tests/v0/stage2/plan/mir_lowering_tests.rs"
+
+[[test]]
+name = "typeck_tests"
+path = "tests/v0/stage2/plan/typeck_tests.rs"
+
+[[test]]
+name = "integration_tests"
+path = "tests/v0/stage2/plan/integration_tests.rs"
+
+[[test]]
+name = "negative_cases_tests"
+path = "tests/v0/stage2/plan/negative_cases_tests.rs"
+
+# Stage 3 tests
+[[test]]
+name = "codegen_tests"
+path = "tests/v0/stage3/plan/codegen_tests.rs"
+
+[[test]]
+name = "deep_inspection_tests"
+path = "tests/v0/stage3/plan/deep_inspection_tests.rs"
+
+# Stage 4 tests
 [[test]]
 name = "closure_capture_tests"
 path = "tests/v0/stage4/plan/closure_capture_tests.rs"
