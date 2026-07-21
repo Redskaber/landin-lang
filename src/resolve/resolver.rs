@@ -59,80 +59,33 @@ impl Resolver {
     // ================================================================
     // Phase 1: Build module tree
     // ================================================================
+    //
+    // Stage 4.1: now recursively processes nested inline modules.
+    // Previously (Stage 1.3-3.68): all items were registered at the
+    // crate root level — `ModuleNode.children` was never populated.
+    // Now: when we encounter `HirItem::Mod` with `HirModKind::Inline(items)`,
+    // we recurse into the items and register them in a child ModuleNode.
 
     fn build_module_tree(&mut self, hir: &HirCrate, interner: &Rodeo) {
-        // Collect registrations from all owners, then insert into module tree.
-        // This avoids borrow conflicts (collecting first, then mutating).
+        // Collect top-level registrations + use decls + nested module children.
         let mut registrations: Vec<(DefId, DefKind, Spur)> = Vec::new();
         let mut use_decls: Vec<UseDecl> = Vec::new();
+        let mut nested_children: Vec<(Spur, ModuleNode)> = Vec::new();
 
         for (def_id, node) in &hir.owners {
             if let OwnerNode::Item(item) = node {
-                match item {
-                    HirItem::Fn(f) => {
-                        registrations.push((*def_id, DefKind::Fn, f.ident.name));
-                        self.def_kinds.insert(*def_id, DefKind::Fn);
-                        self.def_visibility.insert(*def_id, f.vis.clone());
-                    }
-                    HirItem::Const(c) => {
-                        registrations.push((*def_id, DefKind::Const, c.ident.name));
-                        self.def_kinds.insert(*def_id, DefKind::Const);
-                        self.def_visibility.insert(*def_id, c.vis.clone());
-                    }
-                    HirItem::Static(s) => {
-                        registrations.push((*def_id, DefKind::Static, s.ident.name));
-                        self.def_kinds.insert(*def_id, DefKind::Static);
-                        self.def_visibility.insert(*def_id, s.vis.clone());
-                    }
-                    HirItem::Struct(s) => {
-                        registrations.push((*def_id, DefKind::Struct, s.ident.name));
-                        self.def_kinds.insert(*def_id, DefKind::Struct);
-                        self.def_visibility.insert(*def_id, s.vis.clone());
-                    }
-                    HirItem::Enum(e) => {
-                        registrations.push((*def_id, DefKind::Enum, e.ident.name));
-                        self.def_kinds.insert(*def_id, DefKind::Enum);
-                        self.def_visibility.insert(*def_id, e.vis.clone());
-                    }
-                    HirItem::Trait(t) => {
-                        registrations.push((*def_id, DefKind::Trait, t.ident.name));
-                        self.def_kinds.insert(*def_id, DefKind::Trait);
-                        self.def_visibility.insert(*def_id, t.vis.clone());
-                    }
-                    HirItem::Impl(_) => {
-                        self.def_kinds.insert(*def_id, DefKind::Impl);
-                    }
-                    HirItem::TypeAlias(t) => {
-                        registrations.push((*def_id, DefKind::TypeAlias, t.ident.name));
-                        self.def_kinds.insert(*def_id, DefKind::TypeAlias);
-                        self.def_visibility.insert(*def_id, t.vis.clone());
-                    }
-                    HirItem::ExternBlock(_) => {
-                        self.def_kinds.insert(*def_id, DefKind::ExternFn);
-                    }
-                    HirItem::Mod(m) => {
-                        registrations.push((*def_id, DefKind::Mod, m.ident.name));
-                        self.def_kinds.insert(*def_id, DefKind::Mod);
-                        self.def_visibility.insert(*def_id, m.vis.clone());
-                    }
-                    HirItem::Use(u) => {
-                        use_decls.push(UseDecl {
-                            tree: u.tree.clone(),
-                            vis: u.vis.clone(),
-                            span: u.span,
-                        });
-                        self.def_kinds.insert(*def_id, DefKind::Use);
-                        self.def_visibility.insert(*def_id, u.vis.clone());
-                    }
-                }
+                self.collect_item_registration(
+                    *def_id,
+                    item,
+                    &mut registrations,
+                    &mut use_decls,
+                    &mut nested_children,
+                    interner,
+                );
             }
         }
 
-        // Insert registrations into the module tree.
-        // Note: we don't filter by Spur::default() because the first
-        // interned symbol gets Spur(0) which equals Spur::default().
-        // Items without names (impl/extern) are never added to
-        // `registrations`, so all entries here have real names.
+        // Insert top-level registrations into the crate-root module tree.
         for (def_id, kind, name) in registrations {
             if let Err(existing) = self.module_tree.insert(name, def_id, kind) {
                 let name_str = interner.resolve(&name).to_string();
@@ -146,8 +99,152 @@ impl Resolver {
             }
         }
 
+        // Insert nested module children.
+        for (name, child) in nested_children {
+            self.module_tree.children.insert(name, child);
+        }
+
         // Store use declarations for later processing.
         self.module_tree.use_decls.extend(use_decls);
+    }
+
+    /// Stage 4.1: Collect an item's registration into the appropriate
+    /// `registrations` / `use_decls` / `nested_children` vectors.
+    /// For inline modules, recursively build a child `ModuleNode`.
+    fn collect_item_registration(
+        &mut self,
+        def_id: DefId,
+        item: &HirItem,
+        registrations: &mut Vec<(DefId, DefKind, Spur)>,
+        use_decls: &mut Vec<UseDecl>,
+        nested_children: &mut Vec<(Spur, ModuleNode)>,
+        interner: &Rodeo,
+    ) {
+        match item {
+            HirItem::Fn(f) => {
+                registrations.push((def_id, DefKind::Fn, f.ident.name));
+                self.def_kinds.insert(def_id, DefKind::Fn);
+                self.def_visibility.insert(def_id, f.vis.clone());
+            }
+            HirItem::Const(c) => {
+                registrations.push((def_id, DefKind::Const, c.ident.name));
+                self.def_kinds.insert(def_id, DefKind::Const);
+                self.def_visibility.insert(def_id, c.vis.clone());
+            }
+            HirItem::Static(s) => {
+                registrations.push((def_id, DefKind::Static, s.ident.name));
+                self.def_kinds.insert(def_id, DefKind::Static);
+                self.def_visibility.insert(def_id, s.vis.clone());
+            }
+            HirItem::Struct(s) => {
+                registrations.push((def_id, DefKind::Struct, s.ident.name));
+                self.def_kinds.insert(def_id, DefKind::Struct);
+                self.def_visibility.insert(def_id, s.vis.clone());
+            }
+            HirItem::Enum(e) => {
+                registrations.push((def_id, DefKind::Enum, e.ident.name));
+                self.def_kinds.insert(def_id, DefKind::Enum);
+                self.def_visibility.insert(def_id, e.vis.clone());
+            }
+            HirItem::Trait(t) => {
+                registrations.push((def_id, DefKind::Trait, t.ident.name));
+                self.def_kinds.insert(def_id, DefKind::Trait);
+                self.def_visibility.insert(def_id, t.vis.clone());
+            }
+            HirItem::Impl(_) => {
+                self.def_kinds.insert(def_id, DefKind::Impl);
+            }
+            HirItem::TypeAlias(t) => {
+                registrations.push((def_id, DefKind::TypeAlias, t.ident.name));
+                self.def_kinds.insert(def_id, DefKind::TypeAlias);
+                self.def_visibility.insert(def_id, t.vis.clone());
+            }
+            HirItem::ExternBlock(_) => {
+                self.def_kinds.insert(def_id, DefKind::ExternFn);
+            }
+            HirItem::Mod(m) => {
+                registrations.push((def_id, DefKind::Mod, m.ident.name));
+                self.def_kinds.insert(def_id, DefKind::Mod);
+                self.def_visibility.insert(def_id, m.vis.clone());
+                // Stage 4.1: recursively build child module for inline mods.
+                if let HirModKind::Inline(items) = &m.kind {
+                    let child = self.build_child_module(items, interner);
+                    nested_children.push((m.ident.name, child));
+                }
+            }
+            HirItem::Use(u) => {
+                use_decls.push(UseDecl {
+                    tree: u.tree.clone(),
+                    vis: u.vis.clone(),
+                    span: u.span,
+                });
+                self.def_kinds.insert(def_id, DefKind::Use);
+                self.def_visibility.insert(def_id, u.vis.clone());
+            }
+        }
+    }
+
+    /// Stage 4.1: Recursively build a child `ModuleNode` for an inline
+    /// module's items. Handles arbitrarily deep nesting.
+    fn build_child_module(&mut self, items: &[HirItem], interner: &Rodeo) -> ModuleNode {
+        let mut child = ModuleNode::new();
+        let mut child_registrations: Vec<(DefId, DefKind, Spur)> = Vec::new();
+        let mut child_use_decls: Vec<UseDecl> = Vec::new();
+        let mut child_nested: Vec<(Spur, ModuleNode)> = Vec::new();
+
+        // We need the DefId for each item, but inline module items don't
+        // carry their own DefId in the HirItem. We look them up from
+        // the def_kinds map by matching on the item's HirId.
+        // Actually — the items in HirModKind::Inline are the same HirItem
+        // values that were stored in hir.owners via store_owner. Their
+        // HirId.owner is the DefId. So we can extract it from each item.
+        for item in items {
+            let def_id = self.item_def_id(item);
+            self.collect_item_registration(
+                def_id,
+                item,
+                &mut child_registrations,
+                &mut child_use_decls,
+                &mut child_nested,
+                interner,
+            );
+        }
+
+        for (def_id, kind, name) in child_registrations {
+            if let Err(existing) = child.insert(name, def_id, kind) {
+                let name_str = interner.resolve(&name).to_string();
+                self.errors.push(ResolveError::new(
+                    format!(
+                        "duplicate definition for `{}` (also defined at {:?})",
+                        name_str, existing
+                    ),
+                    Span::DUMMY,
+                ));
+            }
+        }
+        for (name, grandchild) in child_nested {
+            child.children.insert(name, grandchild);
+        }
+        child.use_decls.extend(child_use_decls);
+        child
+    }
+
+    /// Stage 4.1: Extract the DefId from a HirItem by reading its
+    /// `hir_id.owner` field. Every HirItem variant has a `hir_id`.
+    fn item_def_id(&self, item: &HirItem) -> DefId {
+        match item {
+            HirItem::Fn(f) => f.hir_id.owner,
+            HirItem::Const(c) => c.hir_id.owner,
+            HirItem::Static(s) => s.hir_id.owner,
+            HirItem::Struct(s) => s.hir_id.owner,
+            HirItem::Enum(e) => e.hir_id.owner,
+            HirItem::Trait(t) => t.hir_id.owner,
+            HirItem::Impl(i) => i.hir_id.owner,
+            HirItem::TypeAlias(t) => t.hir_id.owner,
+            HirItem::ExternBlock(eb) => eb.hir_id.owner,
+            HirItem::Mod(m) => m.hir_id.owner,
+            HirItem::Use(u) => u.hir_id.owner,
+        }
     }
 
     // ================================================================

@@ -1,9 +1,9 @@
 [package]
 name = "landin-compiler"
-version = "0.8.13"
+version = "0.9.0"
 edition = "2021"
 license = "MIT"
-description = "Landin programming language compiler — Stage 0-3 complete (lexer, parser, HIR, MIR, typeck, borrowck, LLVM codegen) + Stage 3.63-3.68 cross-stage naming standardization + Process v3.16 (§25 deep review protocol) + Stage 0-3 deep review (GO-WITH-CONDITIONS for Stage 4)"
+description = "Landin programming language compiler — Stage 0-3 complete + Stage 4.1-4.2 (nested module support + L1 PHI design decision) + Process v3.16 (§25 deep review protocol)"
 repository = "https://github.com/landin-lang/main"
 authors = ["redskaber"]
 keywords = ["compiler", "language", "systems-programming"]

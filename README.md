@@ -6,15 +6,16 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** Stage 0-3 complete (lexer, parser, HIR, name resolution, MIR,
-> type checking, borrow checking, LLVM codegen). All soundness-critical
-> limitations closed. v0.8.13, 984 tests passing, 37 review rounds passed
-> (audit CONVERGED + deep review GO-WITH-CONDITIONS for Stage 4).
+> **Status:** Stage 0-3 complete + Stage 4 started. v0.9.0, 987 tests passing,
+> 38 review rounds (36 gate + 1 deep review + Stage 4.1-4.2).
 > Process v3.16 (§15-§26, including §25 阶段末尾深度审查协议).
 > Stage 3.63-3.68: cross-stage naming standardization + P2 fixes.
-> Stage 3.69 (v0.8.13): Process v3.16 + Stage 0-3 deep review.
-> Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
-> deferred to Stage 4+.
+> Stage 3.69: Process v3.16 + deep review (GO-WITH-CONDITIONS for Stage 4).
+> Stage 4.1 (v0.9.0): Nested module support — recursive `build_module_tree`
+> + child `ModuleNode` (unblocks visibility enforcement).
+> Stage 4.2 (v0.9.0): L1 PHI optimization CLOSED — design decision to rely
+> on LLVM `mem2reg` (standard approach used by Clang/rustc).
+> Remaining: L3 (closures), L5 (traits), L8 (lli) — in progress.
 
 ## Quick start
 
@@ -39,7 +40,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | Stage | Module | Status |
 | ------- | -------- | -------- |
 | 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete (344 tests — +1 unsafe impl/trait test in Stage 3.65) |
-| 1 | `hir/`, `resolve/` | ✅ Complete (114 tests — +5 use resolution in Stage 3.64; Stage 3.65: unsafe fields + HirSelfKind; Stage 3.68: visibility metadata) |
+| 1 | `hir/`, `resolve/` | ✅ Complete (117 tests — +5 use resolution; +1 visibility; +3 nested modules in Stage 4.1) |
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete (168 tests, 6 rounds; Stage 3.65: lower_body aliases; Stage 3.66: Lvalue→Place rename) |
 | 3 | `codegen/` | ✅ Complete (294 tests + 5 §21 audit tests, LLVM IR text output; Stage 3.65: mir_type_to_emit_type docs) |
 
@@ -142,8 +143,8 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
 - **Stage 1** ✅ HIR + name resolution (Stage 3.64: `use` declaration resolution; Stage 3.65: `unsafe impl/trait` AST fields + `Res::SelfTy` discrimination)
 - **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review; Stage 3.65: `lower_body` aliases; Stage 3.66: `Lvalue`→`Place` rename)
-- **Stage 3** ✅ LLVM codegen (COMPLETE — 37 review rounds (36 gate + 1 deep review), §16 compliant pipeline, all soundness-critical limitations closed; Stage 3.63-3.68 cross-stage naming standardization + P2 fixes + cleanup + visibility infrastructure; Stage 3.69 Process v3.16 + deep review GO-WITH-CONDITIONS for Stage 4)
-- **Stage 4** Macro system + attributes + closures (L3) + PHI optimization (L1)
+- **Stage 3** ✅ LLVM codegen (COMPLETE — 37 review rounds, §16 compliant, all soundness-critical limitations closed; Stage 3.63-3.69 naming standardization + P2 fixes + deep review)
+- **Stage 4** 🔄 In progress (Stage 4.1: nested modules ✅; Stage 4.2: L1 PHI design decision ✅; next: L3 closures, macro system)
 - **Stage 5** Mini-cargo + stdlib MVP + trait dispatch (L5)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting

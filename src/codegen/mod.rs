@@ -19,11 +19,41 @@
 //!
 //! | ID | Description | Target |
 //! |----|-------------|--------|
-//! | L1 | PHI node optimization (IR quality; codegen emits alloca+load/store, relies on LLVM `mem2reg`) | Stage 4 |
+//! | L1 | PHI node optimization — **CLOSED in Stage 4.2** (design decision: rely on LLVM `mem2reg` rather than emitting PHI directly; documented below) | ✅ |
 //! | L3 | Closure codegen (closure type lowering + capture codegen) | Stage 4 |
 //! | L5 | Trait dispatch (vtable generation, dyn fat pointers) | Stage 5 |
 //! | L8 | `lli` execution verification (env constraint — no `lli` in test sandbox) | Stage 4 |
 //! | L-COPY-ADT | Proper Copy trait (current borrowck pragmatically treats Adt as Copy) | Stage 5 |
+//!
+//! ## L1 PHI optimization — design decision (Stage 4.2)
+//!
+//! **Decision**: Landin codegen emits `alloca` + `load` + `store` for all
+//! locals, and relies on LLVM's `mem2reg` optimization pass to produce SSA
+//! form with PHI nodes. This is the **standard approach** used by Clang,
+//! rustc, and most LLVM frontends.
+//!
+//! **Rationale**:
+//! 1. `mem2reg` is a well-tested LLVM pass that produces optimal SSA form
+//! 2. Implementing PHI emission manually would duplicate `mem2reg` logic
+//!    and risk correctness bugs
+//! 3. The current `alloca`-based IR is **correct** — it produces valid
+//!    LLVM IR that any LLVM toolchain can optimize
+//! 4. The IR quality concern is **non-blocking** — `opt -mem2reg` or
+//!    `lli` (which runs default passes) produces optimal code
+//!
+//! **What was considered and rejected**: Emitting PHI nodes directly in
+//! `codegen_function` by tracking SSA values per basic block. This would
+//! require:
+//! - A per-block value mapping (local → SSA value)
+//! - PHI node insertion at block joins
+//! - Dominance frontier computation
+//! - Handling of partially-defined variables
+//!
+//! This is essentially reimplementing `mem2reg` in Rust — high effort,
+//! high risk, low benefit over just running `opt -mem2reg`.
+//!
+//! **Conclusion**: L1 is **CLOSED** as a design decision. The `alloca`-
+//! based IR is the intended design, not a limitation to be fixed.
 //!
 //! ## Architectural debt (tracked, not blocking)
 //!

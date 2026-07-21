@@ -24,8 +24,10 @@
 //!     map + check_visibility hook (stub, ready for Stage 4 nested modules).
 //!   Stage 3.69 (v0.8.13): Process v3.16 (§25 阶段末尾深度审查协议) +
 //!     Stage 0-3 deep review (GO-WITH-CONDITIONS for Stage 4).
-//!   Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
-//!   deferred to Stage 4+.
+//!   Stage 4.1-4.2 (v0.9.0): Nested module support (recursive build_module_tree
+//!     + child ModuleNode) + L1 PHI optimization CLOSED (design decision: rely
+//!     on LLVM mem2reg).
+//!   Remaining: L3 (closures), L5 (traits), L8 (lli) — deferred to Stage 4+.
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

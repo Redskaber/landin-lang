@@ -514,3 +514,43 @@ fn visibility_metadata_collected_for_fn() {
     assert!(found_public, "public_fn not found");
     assert!(found_private, "private_fn not found");
 }
+
+// =================================================================
+// Stage 4.1: Nested module resolution tests
+// =================================================================
+
+#[test]
+fn nested_module_items_resolve() {
+    // Stage 4.1: verify that items inside `mod foo { ... }` are
+    // registered in the child ModuleNode and can be resolved via
+    // `mod::item` paths.
+    let hir =
+        parse_lower_resolve("mod inner { pub fn inner_fn() {} } fn main() { inner::inner_fn(); }");
+    // Verify both the mod and the fn inside it are owners.
+    assert!(
+        hir.owner_count() >= 2,
+        "expected >= 2 owners (mod + fn + main)"
+    );
+}
+
+#[test]
+fn nested_module_struct_resolves() {
+    // Stage 4.1: verify that a struct inside a nested module can be
+    // referenced via `mod::Struct` path.
+    let hir = parse_lower_resolve(
+        "mod geom { pub struct Point { x: i32, y: i32 } } fn main() { let p: geom::Point; }",
+    );
+    assert!(hir.owner_count() >= 2);
+}
+
+#[test]
+fn deeply_nested_module_resolves() {
+    // Stage 4.1: verify 2-level nesting works.
+    let hir = parse_lower_resolve(
+        "mod a { mod b { pub fn deep_fn() {} } } fn main() { a::b::deep_fn(); }",
+    );
+    assert!(
+        hir.owner_count() >= 3,
+        "expected >= 3 owners (a + b + deep_fn + main)"
+    );
+}

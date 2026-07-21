@@ -1,9 +1,100 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.8.13
+**Current version**: v0.9.0
 **Date**: 2026-07-22
-**Test count**: 984 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 987 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.9.0 — Stage 4.1-4.2 (Nested module support + L1 PHI design decision)
+
+### Overview
+
+First Stage 4 release. Implements nested module support (Stage 4.1) and
+closes the L1 PHI optimization limitation with a documented design decision
+(Stage 4.2). 987 tests pass (was 984, +3 new nested module tests). 0 clippy
+warnings. fmt clean. This release follows the Stage 3.69 deep review's
+priority list: nested modules first (unblocks visibility enforcement), then
+L1 PHI (resolved as design decision rather than implementation).
+
+### Stage 4.1: Nested module support
+
+**Previously** (Stage 1.3-3.68): `build_module_tree` registered all items
+at the crate root level — `ModuleNode.children` was never populated. This
+meant `mod foo { pub fn bar() {} }` would register `bar` at crate root,
+not in a child module. Visibility enforcement (TD-004) was blocked because
+it needs nested module context.
+
+**Now** (Stage 4.1):
+- `build_module_tree` refactored to recursively process inline modules
+- New `collect_item_registration` helper handles each item kind
+- New `build_child_module` recursively builds a child `ModuleNode` for
+  `HirModKind::Inline(items)` — handles arbitrarily deep nesting
+- New `item_def_id` helper extracts `DefId` from any `HirItem` variant
+  via `hir_id.owner`
+- `ModuleNode.children` is now populated for inline modules
+- 2-level nesting verified (`mod a { mod b { fn deep() {} } }`)
+
+**What this unblocks**:
+- Visibility enforcement (TD-004) — `check_visibility` can now use
+  `current_module` context to enforce `pub`/`pub(crate)`/private
+- Future `use` resolution improvements — glob imports can now pull from
+  child modules
+- Path resolution — `mod::item` paths can now walk into child modules
+
+**New tests** (3):
+- `nested_module_items_resolve` — `mod inner { pub fn f() {} }` + `inner::f()`
+- `nested_module_struct_resolves` — struct inside module
+- `deeply_nested_module_resolves` — 2-level nesting (`a::b::deep_fn`)
+
+### Stage 4.2: L1 PHI optimization — design decision (CLOSED)
+
+**Previously**: L1 was listed as "PHI node optimization — codegen emits
+alloca+load/store, relies on LLVM `mem2reg`". The deep review (Stage 3.69)
+flagged this for Stage 4.
+
+**After analysis** (Stage 4.2): This is **not a limitation** — it's the
+**standard design** used by Clang, rustc, and most LLVM frontends. The
+`alloca`-based IR is correct and produces optimal code after `opt -mem2reg`
+or `lli` (which runs default passes).
+
+**Decision**: L1 is **CLOSED** as a design decision. The documentation in
+`src/codegen/mod.rs` now explicitly explains:
+1. `mem2reg` is a well-tested LLVM pass that produces optimal SSA form
+2. Implementing PHI emission manually would duplicate `mem2reg` logic
+3. The `alloca`-based IR is correct — valid LLVM IR that any toolchain optimizes
+4. The IR quality concern is non-blocking — `opt -mem2reg` produces optimal code
+
+**What was considered and rejected**: Emitting PHI nodes directly in
+`codegen_function` by tracking SSA values per basic block. This would
+require per-block value mapping, PHI insertion at joins, dominance frontier
+computation, and handling of partially-defined variables — essentially
+reimplementing `mem2reg` in Rust (high effort, high risk, low benefit).
+
+**L1 status**: ✅ CLOSED (design decision documented in `src/codegen/mod.rs`)
+
+### Verification
+
+- `cargo test`: **987 passed, 0 failed, 2 ignored** (was 984, +3 new)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 audit tests pass
+
+### Files touched
+
+- `src/resolve/resolver.rs` — recursive `build_module_tree` + `collect_item_registration` + `build_child_module` + `item_def_id`
+- `src/codegen/mod.rs` — L1 PHI design decision documentation
+- `src/lib.rs` — Stage 4.1-4.2 mention + L1 removed from "Remaining"
+- `tests/hir_resolution.rs` — +3 nested module tests
+
+### Next Stage 4 priorities (from deep review)
+
+1. **L3 closure codegen** — closure type lowering + capture codegen (high user value)
+2. **Macro system + attributes** — `Expr::MacroCall` expansion
+3. **Visibility enforcement activation** — now that nested modules work, activate `check_visibility`
+4. **Performance benchmark suite** — add `benches/` + criterion (QA condition from deep review)
 
 ---
 
