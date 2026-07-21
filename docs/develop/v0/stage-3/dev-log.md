@@ -849,6 +849,57 @@
   indexing coverage + 8 edge cases), all passed; audit CONVERGED at
   round 18 per §9.3.3.
 
+### Stage 3.52 — Slice element type propagation fix (v0.8.6, process v3.13)
+- **Problem (P0 soundness)**: `s[0]` where `s: &[i64]` produced
+  `load i32` instead of `load i64` — type mismatch in typed-pointer LLVM.
+  Slice element arithmetic (`s[0] + s[1]` on `&[i64]`) used `add nsw i32`
+  and `llvm.sadd.with.overflow.i32` instead of i64 — silently wrong
+  overflow detection and truncation. Two bugs:
+  1. **codegen `detect_lvalue_type`**: for `Index`/`ConstantIndex`
+     projections, checked `EmitType::Array(elem, _) => *elem` but fell
+     through to `I32` for fat pointers (`Struct([Ptr(T), I64])`). The
+     element type was not extracted from the fat pointer's field 0.
+  2. **MIR lower `Index` expression**: used `cx.fresh_infer_ty()` for the
+     element type (a fresh inference variable), which typeck defaulted to
+     `i32`. The temp local storing `s[0]` was typed `i32`, so the store
+     truncated the i64 value to i32.
+- **Root cause** (per §15 — root cause): Stage 3.51 fixed the GEP (data
+  pointer dereference) but didn't fix the element type detection. The
+  `detect_lvalue_type` and MIR lower `Index` paths were independent —
+  fixing one without the other left the type mismatch. The root cause
+  is that slice indexing touches THREE layers (MIR lower type, codegen
+  GEP, codegen load type), and Stage 3.51 only fixed the middle one.
+- **Fix** (2 source files):
+  1. `src/codegen/mod.rs` — `detect_lvalue_type` for `Index`/`ConstantIndex`:
+     added a `Struct(fields)` arm that checks for fat pointer shape
+     (`fields.len() == 2 && fields[0].is_ptr() && fields[1] == I64`)
+     and returns `fields[0].pointee()` (the element type). Falls through
+     to `I32` only for non-fat-pointer, non-array cases.
+  2. `src/mir/lower/mod.rs` — `Index` expression lowering: replaced
+     `cx.fresh_infer_ty()` with `resolve_index_element_type(cx, base_local)`,
+     which inspects the base's MIR type to compute the element type:
+       - `&[T]` (Ref to Slice(T)) → T
+       - `[T; N]` (Array(T, _)) → T
+       - `&[T; N]` (Ref to Array(T, _)) → T
+     Falls back to `fresh_infer_ty` if the base type can't be resolved
+     (preserves old behavior for test contexts).
+     Per §16: reads MIR local_decls only (data flows downstream per
+     §16.2.1 — MIR lower reads its own body). No HIR lookup.
+- **Result**:
+  - `s[0]` where `s: &[i64]` → `load i64` (was: `load i32`).
+  - `s[0] + s[1]` where `s: &[i64]` → `add nsw i64` + `llvm.sadd.with.overflow.i64`
+    (was: `add nsw i32` + i32 overflow check — wrong width, truncation).
+  - `s[0] = 42` where `s: &mut [i64]` → `store i64 42` (was: `store i32 42`).
+  - `s[0] > s[1]` where `s: &[i64]` → `icmp sgt i64` (was: `icmp sgt i32`).
+  - Array indexing `[i64; 3]` unchanged (no regression — already used
+    `resolve_index_element_type`'s Array arm).
+- 9 new tests: i64/i32/i128/f64 load type (4), i64/i32/f64 arithmetic (3),
+  i64 store (1), i64 comparison (1), array regression (1).
+- Total: 911 → 920. (2 source files modified; 0 typeck/borrowck changes.)
+- Gate review Round 19 (R19) — 30 audit cases (8 regression + 14 element
+  type propagation + 8 edge cases), all passed; audit CONVERGED at
+  round 19 per §9.3.3.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -882,3 +933,4 @@
 | v0.8.6 (3.49) | 893 | +12 (L13 fat pointer closure: &str/&[T] now { ptr, len } struct, not thin pointer)
 | v0.8.6 (3.50) | 902 | +10 (byte string fat pointer fix + comparison pointee type fix)
 | v0.8.6 (3.51) | 911 | +9 (slice indexing fix: fat pointer data pointer dereference)
+| v0.8.6 (3.52) | 920 | +9 (slice element type propagation: load/store/arith use correct element type from fat pointer)

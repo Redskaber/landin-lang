@@ -2949,3 +2949,127 @@ fn codegen_slice_index_no_invalid_array_gep() {
         ll
     );
 }
+
+// ============================================================================
+// Stage 3.52 — Slice element type propagation fix
+// ============================================================================
+
+#[test]
+fn codegen_slice_index_i64_correct_load_type() {
+    // s[0] where s: &[i64] should load i64 (was: load i32 — type mismatch).
+    let ll = gen_ll("fn f(s: &[i64]) -> i64 { s[0] }");
+    assert!(
+        ll.contains("load i64"),
+        "expected load i64 for &[i64] element in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("load i32"),
+        "should NOT have load i32 for &[i64] element in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_i32_correct_load_type() {
+    // s[0] where s: &[i32] should load i32.
+    let ll = gen_ll("fn f(s: &[i32]) -> i32 { s[0] }");
+    assert!(
+        ll.contains("load i32"),
+        "expected load i32 for &[i32] element in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_arith_uses_correct_width() {
+    // s[0] + s[1] where s: &[i64] should use add nsw i64 + i64 overflow check.
+    let ll = gen_ll("fn f(s: &[i64]) -> i64 { s[0] + s[1] }");
+    assert!(
+        ll.contains("add nsw i64"),
+        "expected add nsw i64 for &[i64] arithmetic in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("llvm.sadd.with.overflow.i64"),
+        "expected i64 overflow check for &[i64] arithmetic in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("add nsw i32"),
+        "should NOT have add nsw i32 for &[i64] arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_arith_i32_correct() {
+    // s[0] + s[1] where s: &[i32] should use add nsw i32.
+    let ll = gen_ll("fn f(s: &[i32]) -> i32 { s[0] + s[1] }");
+    assert!(
+        ll.contains("add nsw i32"),
+        "expected add nsw i32 for &[i32] arithmetic in:\n{}",
+        ll
+    );
+    assert!(
+        !ll.contains("add nsw i64"),
+        "should NOT have add nsw i64 for &[i32] arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_f64_arith_correct() {
+    // s[0] + s[1] where s: &[f64] should use fadd double.
+    let ll = gen_ll("fn f(s: &[f64]) -> f64 { s[0] + s[1] }");
+    assert!(
+        ll.contains("fadd double"),
+        "expected fadd double for &[f64] arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_store_correct_type() {
+    // s[0] = 42 where s: &mut [i64] should store i64.
+    let ll = gen_ll("fn f(s: &mut [i64]) { s[0] = 42; }");
+    // The store to the slice element should be i64.
+    assert!(
+        ll.contains("store i64 42"),
+        "expected store i64 42 for &mut [i64] element in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_array_index_arith_correct_width() {
+    // Regression: [i64; N] array arithmetic should still use i64.
+    let ll = gen_ll("fn f(a: [i64; 3]) -> i64 { a[0] + a[1] }");
+    assert!(
+        ll.contains("add nsw i64"),
+        "expected add nsw i64 for [i64; 3] arithmetic in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_i128_element() {
+    // &[i128] slice indexing — element is i128.
+    let ll = gen_ll("fn f(s: &[i128]) -> i128 { s[0] }");
+    assert!(
+        ll.contains("load i128"),
+        "expected load i128 for &[i128] element in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_slice_index_comparison_correct_type() {
+    // s[0] > s[1] where s: &[i64] should use icmp sgt i64.
+    let ll = gen_ll("fn f(s: &[i64]) -> bool { s[0] > s[1] }");
+    assert!(
+        ll.contains("icmp sgt i64"),
+        "expected icmp sgt i64 for &[i64] comparison in:\n{}",
+        ll
+    );
+}

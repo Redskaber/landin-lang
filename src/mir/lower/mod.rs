@@ -1126,7 +1126,14 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
         } => {
             let base_local = lower_expr_to_operand(cx, receiver);
             let index_local = lower_expr_to_operand(cx, index);
-            let elem_ty = cx.fresh_infer_ty(expr.span);
+            // Stage 3.52: compute the element type from the receiver's type,
+            // instead of using a fresh infer var (which typeck defaults to
+            // i32). For `&[T]` (fat pointer), elem_ty = T. For `[T; N]`,
+            // elem_ty = T. Falls back to fresh infer var if the receiver's
+            // type can't be resolved (preserves old behavior for test
+            // contexts).
+            let elem_ty = resolve_index_element_type(cx, base_local)
+                .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
             let result = cx.mir.new_local(elem_ty, None, expr.span);
             cx.push_assign(
                 Lvalue::local(result, expr.span),
@@ -1766,6 +1773,35 @@ impl AdtLayoutExt for crate::mir::body::AdtLayout {
             }
         }
         out
+    }
+}
+
+/// Stage 3.52: Resolve the element type of an index expression `base[idx]`
+/// by inspecting the base's MIR type. For:
+///   - `&[T]` (Ref to Slice(T)): elem_ty = T
+///   - `[T; N]` (Array(T, _)): elem_ty = T
+///   - `&[T; N]` (Ref to Array(T, _)): elem_ty = T
+///
+/// Returns `None` if the base's type can't be resolved (e.g., fresh infer
+/// var in test contexts). The caller falls back to a fresh infer var in
+/// that case, preserving the old behavior.
+///
+/// Per §16 (阶段间接口隔离): reads MIR local_decls only (data flows
+/// downstream per §16.2.1 — MIR lower reads its own body). No HIR lookup.
+fn resolve_index_element_type(cx: &MirLowerCtxt, base_local: LocalId) -> Option<Ty> {
+    let base_ty = cx.mir.local_decls.get(base_local.0 as usize)?.ty.clone();
+    match &base_ty.kind {
+        // `&[T]` — fat pointer to slice
+        TyKind::Ref(_, _, inner) => match &inner.kind {
+            TyKind::Slice(elem) => Some((**elem).clone()),
+            TyKind::Array(elem, _) => Some((**elem).clone()),
+            _ => None,
+        },
+        // `[T; N]` — array
+        TyKind::Array(elem, _) => Some((**elem).clone()),
+        // `&[T; N]` — array reference (thin pointer to array)
+        TyKind::Slice(elem) => Some((**elem).clone()),
+        _ => None,
     }
 }
 

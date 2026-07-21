@@ -11,7 +11,7 @@
 | Stage 0 (lexer/parser/AST) | 245 | ~100% | ✅ Complete |
 | Stage 1 (HIR/resolve) | 451 | ~100% | ✅ Complete |
 | Stage 2 (MIR/typeck/borrowck) | 673 | ~100% | ✅ Complete |
-| Stage 3 (codegen) | 911 | ~99% | 🔄 In progress |
+| Stage 3 (codegen) | 920 | ~99% | 🔄 In progress |
 
 ## Stage 3 Test Breakdown
 
@@ -41,8 +41,9 @@
 | 3.49 | L13 fat pointer closure: &str/&[T] now { ptr, len } struct, not thin pointer | 12 | ✅ |
 | 3.50 | Byte string fat pointer fix + comparison pointee type fix (Stage 3.49 latent bugs) | 10 | ✅ |
 | 3.51 | Slice indexing fix: fat pointer data pointer dereference (Stage 3.49 latent P0) | 9 | ✅ |
-| **Total codegen** | | **239** | ✅ |
-| Gate audits R1-R18 | Audit cases | 560 cumulative | ✅ |
+| 3.52 | Slice element type propagation: load/store/arith use correct element type from fat pointer | 9 | ✅ |
+| **Total codegen** | | **248** | ✅ |
+| Gate audits R1-R19 | Audit cases | 590 cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

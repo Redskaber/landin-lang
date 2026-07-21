@@ -736,6 +736,18 @@ fn detect_lvalue_type(
                 let storage = detect_lvalue_storage_type(mir, base, layouts);
                 match storage {
                     EmitType::Array(elem, _) => *elem,
+                    // Stage 3.52: fat pointer (&[T] slice) — extract the
+                    // pointee type from field 0 of the fat pointer struct.
+                    // Was (Stage 3.51 bug): fell through to I32 fallback,
+                    // causing `s[0]` on `&[i64]` to `load i32` instead of
+                    // `load i64` — type mismatch in typed-pointer LLVM.
+                    EmitType::Struct(fields)
+                        if fields.len() == 2
+                            && fields[0].is_ptr()
+                            && fields[1] == EmitType::I64 =>
+                    {
+                        fields[0].pointee()
+                    }
                     _ => EmitType::I32,
                 }
             }
