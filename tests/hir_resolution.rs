@@ -457,3 +457,60 @@ fn use_resolution_table_populated() {
         bar_errors
     );
 }
+
+// =================================================================
+// Stage 3.68: visibility metadata collection tests
+// =================================================================
+
+#[test]
+fn visibility_metadata_collected_for_fn() {
+    // Stage 3.68: verify that the resolver collects visibility metadata
+    // for each definition. This is the infrastructure for visibility
+    // checking (the actual check is a stub until nested modules are
+    // supported in Stage 4).
+    use landin_compiler::ast::Visibility;
+    use landin_compiler::resolve::Resolver;
+
+    let mut interner = Rodeo::new();
+    interner.get_or_intern("Self");
+    interner.get_or_intern("self");
+    interner.get_or_intern("crate");
+    interner.get_or_intern("super");
+
+    let src = "pub fn public_fn() {} fn private_fn() {}";
+    let (tokens, _) = tokenize(src, &mut interner);
+    let mut parser = Parser::new(tokens, &mut interner);
+    let krate = parser.parse_crate();
+    assert!(parser.into_errors().is_empty(), "parse errors");
+    let mut hir = lower_crate(&krate, &interner);
+
+    let mut resolver = Resolver::new();
+    resolver.resolve(&mut hir, &interner);
+
+    // Find the two fn DefIds and check their visibility.
+    let mut found_public = false;
+    let mut found_private = false;
+    for (def_id, node) in &hir.owners {
+        if let OwnerNode::Item(HirItem::Fn(f)) = node {
+            let vis = resolver.def_visibility(*def_id);
+            // Check by the interned name
+            let name = interner.resolve(&f.ident.name);
+            if name == "public_fn" {
+                assert!(
+                    matches!(vis, Some(Visibility::Public)),
+                    "public_fn should be Public"
+                );
+                found_public = true;
+            }
+            if name == "private_fn" {
+                assert!(
+                    matches!(vis, Some(Visibility::Private)),
+                    "private_fn should be Private"
+                );
+                found_private = true;
+            }
+        }
+    }
+    assert!(found_public, "public_fn not found");
+    assert!(found_private, "private_fn not found");
+}

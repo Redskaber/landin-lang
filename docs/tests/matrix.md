@@ -9,10 +9,10 @@
 | Stage | Tests | Coverage | Status |
 |-------|-------|----------|--------|
 | Stage 0 (lexer/parser/AST) | 344 (+1 unsafe impl/trait in Stage 3.65) | ~100% | ✅ Complete |
-| Stage 1 (HIR/resolve) | 113 (+5 use resolution in Stage 3.64) | ~100% | ✅ Complete |
+| Stage 1 (HIR/resolve) | 114 (+5 use resolution in Stage 3.64; +1 visibility in Stage 3.68) | ~100% | ✅ Complete |
 | Stage 2 (MIR/typeck/borrowck) | 168 | ~100% | ✅ Complete |
 | Stage 3 (codegen) | 294 + 5 §21 audit | ~99% | ✅ Complete |
-| **Total** | **983** | ~99% | ✅ Stage 0-3 complete |
+| **Total** | **984** | ~99% | ✅ Stage 0-3 complete |
 
 ## Stage 3 Test Breakdown
 
@@ -58,8 +58,9 @@
 | 3.65 | P2 architectural fixes: unsafe impl/trait AST+HIR+parser + Res::SelfTy HirSelfKind discrimination + lower_body aliases + mir_type_to_emit_type docs | +1 | ✅ |
 | 3.66 | Lvalue→Place rename (167+ refs across 7+ files) + resolver owner context threading for accurate HirSelfKind (Trait vs Impl) | 0 | ✅ |
 | 3.67 | P2 cleanup: body owner context threading (body-level HirSelfKind accurate) + &mut Rodeo→&Rodeo in resolve_crate (lexer interns keywords) + Span::DUMMY placeholders fixed (11 in parser.rs) | 0 | ✅ |
+| 3.68 | Visibility checking infrastructure: def_visibility map + check_visibility hook (stub, ready for Stage 4 nested modules) + visibility metadata collection | +1 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R35 | Audit cases | 716+ cumulative | ✅ |
+| Gate audits R1-R36 | Audit cases | 716+ cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

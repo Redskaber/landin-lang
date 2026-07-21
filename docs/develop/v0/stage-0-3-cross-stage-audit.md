@@ -891,3 +891,76 @@ appropriate for Stage 4. Stage 3 is fully COMPLETE.
 **Stage 3.67 completed**: 2026-07-22
 **Process version**: v3.15
 **Package**: `landin-stage0-v0.8.11-stage3.67-p2-cleanup-r35`
+
+---
+
+## 11. Stage 3.68 Update — Visibility Checking Infrastructure (2026-07-22)
+
+> Continuation of the §21 cross-stage audit follow-up. This round
+> implements the visibility checking infrastructure (Stage 1.3 Phase E1
+> groundwork): a `def_visibility` map and a `check_visibility` hook.
+
+### 11.1 Stage 3.68 Fixes Applied
+
+| # | Priority | Stage | Fix | Impact |
+|---|----------|-------|-----|--------|
+| 1 | P2 | 1 | Visibility checking infrastructure — `def_visibility: HashMap<DefId, Visibility>` map + `check_visibility` hook + public accessor | **Lays groundwork for Stage 4 visibility enforcement** — metadata is collected, hook is in place, actual check is a stub until nested modules are supported |
+
+### 11.2 Visibility Checking Infrastructure Details
+
+**Previously**: The resolver collected `DefKind` metadata but not
+`Visibility`. Path resolution never checked whether a definition was
+accessible from the current context — private items were accessible
+from anywhere.
+
+**Now** (Stage 3.68):
+- New `def_visibility: HashMap<DefId, Visibility>` field on `Resolver`
+- Populated during `build_module_tree` — each item's `vis` field is
+  recorded (Fn, Const, Static, Struct, Enum, Trait, TypeAlias, Mod, Use)
+- New `check_visibility(def_id, span)` method — called from `resolve_path`
+  when resolving to `Res::Def` in both value and type namespaces
+- Currently a stub (returns `Ok(())`) because the module tree is flat
+- Public `def_visibility(def_id)` accessor for testing
+
+**Why stub?** The module tree is currently flat — all items are at the
+crate root level. Visibility checking only matters when items are in
+nested modules (`mod foo { fn bar() {} }`). Once Stage 4 adds nested
+module support, `check_visibility` will enforce:
+- `pub` items visible from anywhere
+- `pub(crate)` items visible within the crate
+- `pub(super)` items visible in parent module
+- private items visible only within their defining module
+
+### 11.3 Stage 3.68 Verification
+
+- `cargo test`: **984 passed, 0 failed, 2 ignored** (was 983, +1 new
+  `visibility_metadata_collected_for_fn` test)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 audit tests pass
+
+### 11.4 Stage 3.68 Remaining P2/P3 Items (Deferred to Stage 4+)
+
+| Priority | Stage | Item | Reason for deferral |
+|----------|-------|------|---------------------|
+| P2 | 0 | AST enum naming standardization (Expr/Ty/Pat direct vs ItemKind wrapper) | Larger refactor; defer to dedicated cleanup round |
+| P2 | 1 | `HirParam` duplication between `HirFnSig.inputs` and `Body.params` | Touches multiple downstream modules (MIR lower, typeck); accepted as design choice for now |
+| P2 | 1 | Full visibility enforcement (infrastructure done in Stage 3.68) | Needs nested module support — Stage 4 |
+| P2 | 1 | Prelude injection (Stage 1.3 Phase E3) | Placeholder for Stage 5 std crate |
+
+### 11.5 Stage 3.68 Verdict
+
+✅ **PASS** — Visibility checking infrastructure completed. 984 tests
+pass (was 983, +1 new). 0 clippy warnings. fmt clean. §16 compliance
+maintained.
+
+The visibility metadata collection and `check_visibility` hook lay the
+groundwork for Stage 4 visibility enforcement. The stub returns Ok for
+now — real enforcement will activate when nested modules are supported.
+
+---
+
+**Stage 3.68 completed**: 2026-07-22
+**Process version**: v3.15
+**Package**: `landin-stage0-v0.8.12-stage3.68-p2-features-r36`

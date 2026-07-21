@@ -19,6 +19,12 @@ pub struct Resolver {
     module_tree: ModuleNode,
     /// Map from DefId → DefKind (for namespace disambiguation).
     def_kinds: HashMap<DefId, DefKind>,
+    /// Stage 3.68: Map from DefId → Visibility (for visibility checking).
+    /// Populated during `build_module_tree`. Currently used for infrastructure
+    /// only — the actual visibility check is a stub since the module tree is
+    /// flat (all items at crate root). Once nested modules are supported
+    /// (Stage 4), `check_visibility` will enforce access rules.
+    def_visibility: HashMap<DefId, crate::ast::Visibility>,
     /// Scope stack for local variable resolution (Stage 1.4).
     /// `None` when not inside a body (e.g., during module tree construction).
     scopes: Option<ScopeStack>,
@@ -36,6 +42,7 @@ impl Resolver {
         Self {
             module_tree: ModuleNode::new(),
             def_kinds: HashMap::new(),
+            def_visibility: HashMap::new(),
             scopes: None,
             current_self_kind: None,
             errors: Vec::new(),
@@ -65,26 +72,32 @@ impl Resolver {
                     HirItem::Fn(f) => {
                         registrations.push((*def_id, DefKind::Fn, f.ident.name));
                         self.def_kinds.insert(*def_id, DefKind::Fn);
+                        self.def_visibility.insert(*def_id, f.vis.clone());
                     }
                     HirItem::Const(c) => {
                         registrations.push((*def_id, DefKind::Const, c.ident.name));
                         self.def_kinds.insert(*def_id, DefKind::Const);
+                        self.def_visibility.insert(*def_id, c.vis.clone());
                     }
                     HirItem::Static(s) => {
                         registrations.push((*def_id, DefKind::Static, s.ident.name));
                         self.def_kinds.insert(*def_id, DefKind::Static);
+                        self.def_visibility.insert(*def_id, s.vis.clone());
                     }
                     HirItem::Struct(s) => {
                         registrations.push((*def_id, DefKind::Struct, s.ident.name));
                         self.def_kinds.insert(*def_id, DefKind::Struct);
+                        self.def_visibility.insert(*def_id, s.vis.clone());
                     }
                     HirItem::Enum(e) => {
                         registrations.push((*def_id, DefKind::Enum, e.ident.name));
                         self.def_kinds.insert(*def_id, DefKind::Enum);
+                        self.def_visibility.insert(*def_id, e.vis.clone());
                     }
                     HirItem::Trait(t) => {
                         registrations.push((*def_id, DefKind::Trait, t.ident.name));
                         self.def_kinds.insert(*def_id, DefKind::Trait);
+                        self.def_visibility.insert(*def_id, t.vis.clone());
                     }
                     HirItem::Impl(_) => {
                         self.def_kinds.insert(*def_id, DefKind::Impl);
@@ -92,6 +105,7 @@ impl Resolver {
                     HirItem::TypeAlias(t) => {
                         registrations.push((*def_id, DefKind::TypeAlias, t.ident.name));
                         self.def_kinds.insert(*def_id, DefKind::TypeAlias);
+                        self.def_visibility.insert(*def_id, t.vis.clone());
                     }
                     HirItem::ExternBlock(_) => {
                         self.def_kinds.insert(*def_id, DefKind::ExternFn);
@@ -99,6 +113,7 @@ impl Resolver {
                     HirItem::Mod(m) => {
                         registrations.push((*def_id, DefKind::Mod, m.ident.name));
                         self.def_kinds.insert(*def_id, DefKind::Mod);
+                        self.def_visibility.insert(*def_id, m.vis.clone());
                     }
                     HirItem::Use(u) => {
                         use_decls.push(UseDecl {
@@ -107,6 +122,7 @@ impl Resolver {
                             span: u.span,
                         });
                         self.def_kinds.insert(*def_id, DefKind::Use);
+                        self.def_visibility.insert(*def_id, u.vis.clone());
                     }
                 }
             }
@@ -592,6 +608,8 @@ impl Resolver {
                 // downstream passes (MIR lower, codegen) can distinguish
                 // fn calls from struct ctors without re-querying HIR.
                 let kind = self.def_kinds.get(&def_id).copied().unwrap_or(DefKind::Fn);
+                // Stage 3.68: visibility check (stub — currently always Ok).
+                let _ = self.check_visibility(def_id, path.span);
                 return Res::Def(def_id, kind);
             }
 
@@ -602,6 +620,8 @@ impl Resolver {
                     .get(&def_id)
                     .copied()
                     .unwrap_or(DefKind::Struct);
+                // Stage 3.68: visibility check (stub — currently always Ok).
+                let _ = self.check_visibility(def_id, path.span);
                 return Res::Def(def_id, kind);
             }
 
@@ -911,6 +931,34 @@ impl Resolver {
 
     pub fn into_errors(self) -> Vec<ResolveError> {
         self.errors
+    }
+
+    /// Stage 3.68: Check if a definition is visible from the current context.
+    ///
+    /// Currently a stub — always returns `Ok(())` because the module tree is
+    /// flat (all items at crate root level). Once nested modules are supported
+    /// (Stage 4), this will enforce:
+    /// - `pub` items are visible from anywhere
+    /// - `pub(crate)` items are visible within the crate
+    /// - `pub(super)` items are visible in the parent module
+    /// - private items are visible only within their defining module
+    ///
+    /// The visibility metadata is already collected in `def_visibility` —
+    /// this method is the hook where the check will be enforced.
+    fn check_visibility(
+        &self,
+        _def_id: crate::hir::DefId,
+        _span: Span,
+    ) -> Result<(), ResolveError> {
+        // Stage 3.68: stub — all items currently visible (flat module tree).
+        // Stage 4 will implement real visibility checking using `def_visibility`
+        // and a `current_module` context tracker.
+        Ok(())
+    }
+
+    /// Stage 3.68: Public accessor for the visibility map (for testing).
+    pub fn def_visibility(&self, def_id: crate::hir::DefId) -> Option<&crate::ast::Visibility> {
+        self.def_visibility.get(&def_id)
     }
 }
 

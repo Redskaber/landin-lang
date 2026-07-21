@@ -608,3 +608,27 @@ P2 cleanup round. Completes the `HirSelfKind` work from Stage 3.66
 **Test impact**: 0 (983/983 tests pass — pure refactoring).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.5 (Stage 3.68, 2026-07-22)
+
+Visibility checking infrastructure round. Lays the groundwork for
+Stage 1.3 Phase E1 (visibility enforcement) by collecting visibility
+metadata and adding a check hook.
+
+**Fixes applied in this round**:
+1. `src/resolve/resolver.rs`: new `def_visibility: HashMap<DefId, Visibility>`
+   field on `Resolver` — populated during `build_module_tree` for all
+   item kinds (Fn, Const, Static, Struct, Enum, Trait, TypeAlias, Mod, Use)
+2. `src/resolve/resolver.rs`: new `check_visibility(def_id, span)` method
+   — called from `resolve_path` when resolving to `Res::Def` in both
+   value and type namespaces. Currently a stub (returns `Ok(())`) —
+   real enforcement deferred to Stage 4 (needs nested module support)
+3. `src/resolve/resolver.rs`: public `def_visibility(def_id)` accessor
+   for testing
+4. `tests/hir_resolution.rs`: +1 new test
+   `visibility_metadata_collected_for_fn` — verifies `pub fn` →
+   `Visibility::Public`, `fn` → `Visibility::Private`
+
+**Test impact**: +1 (984/984 tests pass — was 983).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

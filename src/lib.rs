@@ -20,6 +20,8 @@
 //!     HirSelfKind accurate) + &mut Rodeo → &Rodeo in resolve_crate (lexer now
 //!     interns keywords) + Span::DUMMY placeholders fixed (11 occurrences in
 //!     parser.rs → keyword spans).
+//!   Stage 3.68 (v0.8.12): Visibility checking infrastructure — def_visibility
+//!     map + check_visibility hook (stub, ready for Stage 4 nested modules).
 //!   Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
 //!   deferred to Stage 4+.
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.

@@ -1,9 +1,72 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.8.11
+**Current version**: v0.8.12
 **Date**: 2026-07-22
-**Test count**: 983 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 984 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.8.12 — Stage 3.68 (Visibility checking infrastructure)
+
+### Overview
+
+Continuation of the §21 cross-stage audit follow-up. This round implements
+the visibility checking infrastructure (Stage 1.3 Phase E1 groundwork):
+a `def_visibility` map that records each definition's visibility, and a
+`check_visibility` hook called during path resolution. The actual check
+is a stub (returns Ok) because the module tree is currently flat — once
+nested modules are supported in Stage 4, the check will enforce
+`pub`/`pub(crate)`/`pub(super)`/private access rules. 984 tests pass
+(was 983, +1 new visibility metadata test). 0 clippy warnings. fmt clean.
+
+### P2 fix: Visibility checking infrastructure
+
+**Previously**: The resolver collected `DefKind` metadata but not
+`Visibility`. Path resolution never checked whether a definition was
+accessible from the current context — private items were accessible
+from anywhere.
+
+**Now** (Stage 3.68):
+- New `def_visibility: HashMap<DefId, Visibility>` field on `Resolver`
+- Populated during `build_module_tree` — each item's `vis` field is
+  recorded (Fn, Const, Static, Struct, Enum, Trait, TypeAlias, Mod, Use)
+- New `check_visibility(def_id, span)` method — called from `resolve_path`
+  when resolving to `Res::Def`. Currently a stub (returns `Ok(())`) because
+  the module tree is flat. Once nested modules are supported (Stage 4),
+  this will enforce:
+  - `pub` items visible from anywhere
+  - `pub(crate)` items visible within the crate
+  - `pub(super)` items visible in parent module
+  - private items visible only within their defining module
+- Public `def_visibility(def_id)` accessor for testing
+
+### New test (1)
+
+Added `visibility_metadata_collected_for_fn` to `tests/hir_resolution.rs`:
+- Verifies that `pub fn public_fn() {}` gets `Visibility::Public`
+- Verifies that `fn private_fn() {}` gets `Visibility::Private`
+- Uses the public `def_visibility` accessor
+
+### Verification
+
+- `cargo test`: **984 passed, 0 failed, 2 ignored** (was 983, +1 new)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 audit tests pass
+
+### Files touched
+
+- `src/resolve/resolver.rs` — `def_visibility` map + `check_visibility` hook + public accessor + visibility metadata collection in `build_module_tree` + visibility check calls in `resolve_path`
+- `tests/hir_resolution.rs` — +1 new visibility metadata test
+
+### Remaining P2/P3 items (deferred to Stage 4+)
+
+- AST enum naming standardization (Expr/Ty/Pat direct vs ItemKind wrapper)
+- `HirParam` duplication between `HirFnSig.inputs` and `Body.params`
+- Full visibility enforcement (infrastructure done in Stage 3.68; needs nested modules)
+- Prelude injection (Stage 1.3 Phase E3)
 
 ---
 

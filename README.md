@@ -8,11 +8,11 @@ predictable performance.
 
 > **Status:** Stage 0-3 complete (lexer, parser, HIR, name resolution, MIR,
 > type checking, borrow checking, LLVM codegen). All soundness-critical
-> limitations closed. v0.8.11, 983 tests passing, 35 gate review rounds
+> limitations closed. v0.8.12, 984 tests passing, 36 gate review rounds
 > passed (audit CONVERGED). Process v3.15 (§15-§24).
-> Stage 3.63-3.66: cross-stage naming standardization + P2 fixes.
-> Stage 3.67 (v0.8.11): P2 cleanup — body owner context threading,
-> &mut Rodeo → &Rodeo, Span::DUMMY placeholders fixed.
+> Stage 3.63-3.67: cross-stage naming standardization + P2 fixes + cleanup.
+> Stage 3.68 (v0.8.12): Visibility checking infrastructure (def_visibility
+> map + check_visibility hook, ready for Stage 4 nested modules).
 > Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
 > deferred to Stage 4+.
 
@@ -39,7 +39,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | Stage | Module | Status |
 | ------- | -------- | -------- |
 | 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete (344 tests — +1 unsafe impl/trait test in Stage 3.65) |
-| 1 | `hir/`, `resolve/` | ✅ Complete (113 tests — +5 use resolution in Stage 3.64; Stage 3.65: unsafe fields + HirSelfKind) |
+| 1 | `hir/`, `resolve/` | ✅ Complete (114 tests — +5 use resolution in Stage 3.64; Stage 3.65: unsafe fields + HirSelfKind; Stage 3.68: visibility metadata) |
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete (168 tests, 6 rounds; Stage 3.65: lower_body aliases; Stage 3.66: Lvalue→Place rename) |
 | 3 | `codegen/` | ✅ Complete (294 tests + 5 §21 audit tests, LLVM IR text output; Stage 3.65: mir_type_to_emit_type docs) |
 
@@ -142,7 +142,7 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
 - **Stage 1** ✅ HIR + name resolution (Stage 3.64: `use` declaration resolution; Stage 3.65: `unsafe impl/trait` AST fields + `Res::SelfTy` discrimination)
 - **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review; Stage 3.65: `lower_body` aliases; Stage 3.66: `Lvalue`→`Place` rename)
-- **Stage 3** ✅ LLVM codegen (COMPLETE — 35 gate review rounds CONVERGED, §16 compliant pipeline, all soundness-critical limitations closed; Stage 3.63-3.67 cross-stage naming standardization + P2 fixes + cleanup)
+- **Stage 3** ✅ LLVM codegen (COMPLETE — 36 gate review rounds CONVERGED, §16 compliant pipeline, all soundness-critical limitations closed; Stage 3.63-3.68 cross-stage naming standardization + P2 fixes + cleanup + visibility infrastructure)
 - **Stage 4** Macro system + attributes + closures (L3) + PHI optimization (L1)
 - **Stage 5** Mini-cargo + stdlib MVP + trait dispatch (L5)
 - **v0.1** = Stage 0 + conformance suite
