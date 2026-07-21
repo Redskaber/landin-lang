@@ -8,11 +8,11 @@ predictable performance.
 
 > **Status:** Stage 0-3 complete (lexer, parser, HIR, name resolution, MIR,
 > type checking, borrow checking, LLVM codegen). All soundness-critical
-> limitations closed. v0.8.12, 984 tests passing, 36 gate review rounds
-> passed (audit CONVERGED). Process v3.15 (§15-§24).
-> Stage 3.63-3.67: cross-stage naming standardization + P2 fixes + cleanup.
-> Stage 3.68 (v0.8.12): Visibility checking infrastructure (def_visibility
-> map + check_visibility hook, ready for Stage 4 nested modules).
+> limitations closed. v0.8.13, 984 tests passing, 37 review rounds passed
+> (audit CONVERGED + deep review GO-WITH-CONDITIONS for Stage 4).
+> Process v3.16 (§15-§26, including §25 阶段末尾深度审查协议).
+> Stage 3.63-3.68: cross-stage naming standardization + P2 fixes.
+> Stage 3.69 (v0.8.13): Process v3.16 + Stage 0-3 deep review.
 > Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
 > deferred to Stage 4+.
 
@@ -142,7 +142,7 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
 - **Stage 1** ✅ HIR + name resolution (Stage 3.64: `use` declaration resolution; Stage 3.65: `unsafe impl/trait` AST fields + `Res::SelfTy` discrimination)
 - **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review; Stage 3.65: `lower_body` aliases; Stage 3.66: `Lvalue`→`Place` rename)
-- **Stage 3** ✅ LLVM codegen (COMPLETE — 36 gate review rounds CONVERGED, §16 compliant pipeline, all soundness-critical limitations closed; Stage 3.63-3.68 cross-stage naming standardization + P2 fixes + cleanup + visibility infrastructure)
+- **Stage 3** ✅ LLVM codegen (COMPLETE — 37 review rounds (36 gate + 1 deep review), §16 compliant pipeline, all soundness-critical limitations closed; Stage 3.63-3.68 cross-stage naming standardization + P2 fixes + cleanup + visibility infrastructure; Stage 3.69 Process v3.16 + deep review GO-WITH-CONDITIONS for Stage 4)
 - **Stage 4** Macro system + attributes + closures (L3) + PHI optimization (L1)
 - **Stage 5** Mini-cargo + stdlib MVP + trait dispatch (L5)
 - **v0.1** = Stage 0 + conformance suite

@@ -2,7 +2,7 @@
 
 > **Author**: redskaber
 > **Date**: 2026-07-22
-> **Process**: v3.15 (§17 + §18 + §21 + §23)
+> **Process**: v3.16 (§17 + §18 + §21 + §23 + §25)
 
 ## Current Status
 
@@ -59,8 +59,9 @@
 | 3.66 | Lvalue→Place rename (167+ refs across 7+ files) + resolver owner context threading for accurate HirSelfKind (Trait vs Impl) | 0 | ✅ |
 | 3.67 | P2 cleanup: body owner context threading (body-level HirSelfKind accurate) + &mut Rodeo→&Rodeo in resolve_crate (lexer interns keywords) + Span::DUMMY placeholders fixed (11 in parser.rs) | 0 | ✅ |
 | 3.68 | Visibility checking infrastructure: def_visibility map + check_visibility hook (stub, ready for Stage 4 nested modules) + visibility metadata collection | +1 | ✅ |
+| 3.69 | Process v3.16 (§25 阶段末尾深度审查协议) + Stage 0-3 deep review (GO-WITH-CONDITIONS for Stage 4) | 0 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R36 | Audit cases | 716+ cumulative | ✅ |
+| Gate audits R1-R36 + Deep review R37 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

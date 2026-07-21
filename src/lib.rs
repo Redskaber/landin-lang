@@ -22,6 +22,8 @@
 //!     parser.rs → keyword spans).
 //!   Stage 3.68 (v0.8.12): Visibility checking infrastructure — def_visibility
 //!     map + check_visibility hook (stub, ready for Stage 4 nested modules).
+//!   Stage 3.69 (v0.8.13): Process v3.16 (§25 阶段末尾深度审查协议) +
+//!     Stage 0-3 deep review (GO-WITH-CONDITIONS for Stage 4).
 //!   Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
 //!   deferred to Stage 4+.
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.

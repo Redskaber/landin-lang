@@ -1,9 +1,76 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.8.12
+**Current version**: v0.8.13
 **Date**: 2026-07-22
 **Test count**: 984 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.8.13 — Stage 3.69 (Process v3.16 + Stage 0-3 deep review)
+
+### Overview
+
+This round updates the process document to v3.16 (adding §25 阶段末尾深度审查
+协议) and executes the first deep review per the new protocol. The deep review
+analyzes Stage 0-3 across 7 dimensions (architecture health, tech debt, test
+coverage, next-stage readiness, design soundness, performance, documentation)
+and concludes **GO-WITH-CONDITIONS** for entering Stage 4. 984 tests pass
+(unchanged — pure documentation + process work). 0 clippy warnings. fmt clean.
+
+### Process v3.16: §25 阶段末尾深度审查协议
+
+**New section §25** added to `docs/stage-committee-process.md`:
+
+- **7 review dimensions** (D1-D7):
+  - D1: 架构健康度 (architecture health)
+  - D2: 技术债清单 (tech debt inventory)
+  - D3: 测试覆盖深度 (test coverage depth)
+  - D4: 下一阶段就绪度 (next-stage readiness)
+  - D5: 设计合理性 (design soundness)
+  - D6: 性能与可扩展性 (performance & scalability)
+  - D7: 文档与知识传承 (documentation & knowledge transfer)
+
+- **Trigger points**: stage-end review / gate / convergence round / stage transition
+- **Output**: `deep-review-roundN.md` report with 7-dimension analysis + committee vote + action plan
+- **Relationship to §9.3/§21**: §25 is the superset — includes §9.3 (round correctness) + §21 (cross-stage integrity) + adds D4 (forward-looking readiness) and D2 (tech debt inventory)
+
+- **Also updated**: §1 总体原则 (added 9th principle) + §3.3 退出硬性标准 (added 8th requirement)
+
+### Stage 0-3 Deep Review (Round 37)
+
+**Output**: `docs/develop/v0/stage-3/deep-review-r37.md`
+
+**Committee vote**: 5/5 GO (1 GO-WITH-CONDITIONS) → **GO-WITH-CONDITIONS**
+
+**Key findings**:
+- 0 P0 / 0 P1 blockers
+- 5 P2 tech debt items (all with repayment plans, none blocking Stage 4)
+- Architecture health: excellent (§16 compliant, naming standardized)
+- Test coverage: ~99% (984 tests, 7 negative categories covered)
+- Next-stage readiness: ✅ ready (AST/HIR infrastructure for closures/macros exists)
+- Conditions for Stage 4: add benchmark suite, create ADR docs, review HirParam duplication
+
+**Stage 4 priority tasks** (from deep review):
+1. L3 closure codegen (high user value)
+2. L1 PHI optimization (IR quality)
+3. Nested module support (unblocks visibility enforcement)
+4. Macro system + attributes (new feature)
+5. Performance benchmark suite (QA condition)
+
+### Verification
+
+- `cargo test`: **984 passed, 0 failed, 2 ignored** (unchanged)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 audit tests pass
+
+### Files touched
+
+- `docs/stage-committee-process.md` — v3.15 → v3.16 (added §25 + §26 + §1/§3.3 enhancements)
+- `docs/develop/v0/stage-3/deep-review-r37.md` — new deep review report
+- `README.md` / `RELEASE_NOTES.md` / `Cargo.toml` / `src/lib.rs` / `docs/tests/matrix.md` — version + status updates
 
 ---
 
