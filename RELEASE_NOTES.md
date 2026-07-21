@@ -1,9 +1,98 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.8.6
-**Date**: 2026-07-20
-**Test count**: 855 tests passing, 0 warnings, fmt + clippy clean
+**Current version**: v0.8.7
+**Date**: 2026-07-22
+**Test count**: 977 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.8.7 — Stage 3.63 (cross-stage naming standardization per §21 audit)
+
+### Overview
+
+End-of-Stage-3 cross-stage deep audit (§21 of process v3.14) executed by
+4 Stage Audit subagents (Stage 0/1/2/3) coordinated by main agent.
+Audit identified 0 P0 / 9 P1 / 15 P2 / 19 P3 issues across the four
+stages. All 9 P1 naming inconsistencies fixed in this round; 1 high-value
+P2 architectural fix also applied. Pure refactoring — 977/977 tests
+remain green, 0 clippy warnings, fmt clean.
+
+### P1 naming fixes (9)
+
+1. **Stage 0 — glob → explicit re-exports**: `src/lexer/mod.rs` and
+   `src/ast/mod.rs` converted from `pub use X::*;` to explicit lists.
+   Completes the Stage 3.57 P0-3 fix that previously only covered
+   `src/hir/mod.rs` and `src/mir/mod.rs`.
+2. **Stage 1 — `LowerCtxt` → `HirLowerCtxt`**: renamed across 9 files in
+   `src/hir/lower/` + `src/hir/mod.rs`. Establishes parity with
+   `MirLowerCtxt` (Stage 2).
+3. **Stage 2 — `check_crate` deprecation drift fixed**: `typeck::check_crate`
+   and `borrowck::check_crate` both marked `#[deprecated(note = "...")]`
+   pointing to §16-compliant replacements. The Stage 3.62 worklog had
+   claimed deprecation but the code showed full working implementations
+   — process-vs-code drift now corrected.
+4. **Stage 2 — `typeck/mod.rs` doc-comment updated**: now points to
+   `TypeChecker::check_mir_body_with_tables` as the canonical
+   §16-compliant entry point (was pointing to deprecated `check_crate`).
+5. **Stage 2 — `BorrowKind` unified**: removed duplicate
+   `borrowck::borrow_set::BorrowKind` (was aliased as `BkKind`). Single
+   source of truth now in `mir::lvalue::BorrowKind` (added `Hash` to
+   derive list). 6-line manual conversion code in `borrowck::check_rvalue`
+   eliminated. `borrowck::mod.rs` re-exports from `crate::mir::lvalue`
+   for backwards compatibility.
+6. **Stage 2 — canonical entry points re-exported**: `mir/mod.rs` now
+   re-exports `lower_hir_body_to_mir_full` and
+   `lower_hir_body_to_mir_with_return_ty` (previously only
+   `lower_hir_body_to_mir` was). The `_full` variant is what the driver
+   actually uses.
+7. **Stage 0 — `parser::parse_crate` free function added**: wraps
+   `Parser::new(...).parse_crate()` + `into_errors()`. Aligns parser
+   entry style with `lexer::tokenize`, `hir::lower::lower_crate`,
+   `resolve::resolve_crate`, `codegen::codegen_crate`.
+8. **Stage 3 — `fat_ptr_type` → `emit_fat_ptr_type`**: prefix consistency
+   with the `mir_type_to_emit_type` / `emit_type_to_llvm_str` translation
+   ladder.
+9. **Stage 3 — `codegen/mod.rs` module docs expanded**: now includes
+   status (Stage 3 COMPLETE), §16 compliance note, Stage 3.46/3.63
+   history, open limitations table (L1/L3/L5/L8/L-COPY-ADT with target
+   stages), and architectural debt note (Emitter trait bloat — 36 methods,
+   1 implementation).
+
+### P2 architectural fix (1)
+
+10. **Stage 1 — `DefKind` moved from `resolve::module_tree` to `hir::kinds`**:
+    `DefKind` is consumed by `Res::Def(DefId, DefKind)` — a HIR type — so
+    its architectural home is `hir::kinds`, not `resolve::module_tree`.
+    The move aligns the dependency direction: `resolve` depends on `hir`,
+    not vice versa. `resolve::module_tree` and `resolve::mod.rs` now
+    import + re-export from `crate::hir::DefKind` for backwards compatibility.
+
+### Process v3.15 (§23 naming standardization protocol)
+
+- New §23 added to `docs/stage-committee-process.md`: codifies the API
+  naming conventions established by Stage 3.63.
+- §22 changelog updated (v3.14 → v3.15 coverage confirmation).
+- Effective from Stage 3.63.
+
+### New documents
+
+- `docs/develop/v0/stage-0-3-cross-stage-audit.md` — full §21 audit
+  report (D1-D6 dimensions + §16 compliance + data flow + per-stage
+  findings + standardization summary + test verification).
+- `docs/develop/v0/api-naming-standard.md` — Stage 0-3 API naming
+  standard (entry-point convention, context type convention, type prefix
+  convention, re-export convention, single source of truth, deprecation
+  convention, function naming conventions, error type convention,
+  enforcement).
+
+### Verification
+
+- `cargo test`: **977 passed, 0 failed, 2 ignored** (unchanged from baseline)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- 5 §21 programmatic audit tests all pass
 
 ---
 

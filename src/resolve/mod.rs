@@ -12,6 +12,10 @@ pub mod resolver;
 pub mod scope;
 
 pub use error::ResolveError;
-pub use module_tree::{DefKind, ModuleNode};
+pub use module_tree::ModuleNode;
 pub use resolver::{resolve_crate, Resolver};
 pub use scope::{Scope, ScopeKind, ScopeStack};
+// Stage 3.63: `DefKind` is now defined in `crate::hir::kinds` and re-exported
+// from `crate::hir`. Re-export here too for backwards compatibility with
+// callers that historically used `crate::resolve::DefKind`.
+pub use crate::hir::DefKind;

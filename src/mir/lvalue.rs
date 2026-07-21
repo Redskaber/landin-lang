@@ -123,7 +123,11 @@ pub enum RangeOp {
 }
 
 /// Kind of borrow.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Stage 3.63 (cross-stage naming standardization): This is the single
+/// source of truth for `BorrowKind` across the codebase. The former
+/// duplicate in `borrowck::borrow_set` has been removed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BorrowKind {
     /// `&T`
     Shared,

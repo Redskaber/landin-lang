@@ -1,8 +1,8 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 3.14 (effective from Stage 3.60)
-> **Supersedes**: v3.13 (preserved verbatim — see §19.2 for v3.13→v3.14 diff)
+> **Version**: 3.15 (effective from Stage 3.63)
+> **Supersedes**: v3.14 (preserved verbatim — see §22.2 for v3.14→v3.15 diff)
 > **Purpose**: 为 Agent Group 提供清晰、严格、高效、可协调的阶段推进与质量管控 SOP。
 > 让任何 Agent（主 Agent / 子 Agent / 跨会话 Agent）拿到本文档即可：
 > 1. **清晰**：知道每个阶段、每轮、每个角色的输入/输出/验收标准；
@@ -1442,6 +1442,147 @@ v3.14 完整保留 v3.13 的全部规则内容，100% 覆盖。新增 §21 / §2
 
 ---
 
+## 23. API 命名标准化协议（v3.15 新增）
+
+> **目的**：把 Stage 3.63 跨阶段 audit（§21）发现的 9 个 P1 命名
+> 不一致问题固化为本流程的硬性规则，避免未来回归。
+>
+> **触发时机**：任何对 `src/` 下文件的修改都必须遵守本节规则。
+>
+> **执行者**：所有开发 Agent；REV-A 在代码审查时强制检查。
+>
+> **完整规则文档**：`docs/develop/v0/api-naming-standard.md`
+> （本节是流程层的引用，完整规则以该文档为准）。
+
+### 23.1 必须遵守的命名规则
+
+1. **入口函数模式**：每个阶段必须暴露一个自由函数入口，模式为
+   `<verb>_<noun>(<data>: &<Type>, ...) -> <ReturnType>`。需要状态
+   访问的调用者可以使用 struct 方法变体。
+   - ✅ `lexer::tokenize(src, &mut interner)`
+   - ✅ `parser::parse_crate(tokens, &mut interner)` （Stage 3.63 添加）
+   - ✅ `hir::lower::lower_crate(&ast, &interner)`
+   - ✅ `resolve::resolve_crate(&mut hir, &mut interner)`
+   - ✅ `mir::lower::lower_hir_body_to_mir_full(...)`
+   - ✅ `codegen::codegen_crate(&CompileResult)`
+   - ❌ 不允许只有 struct 方法入口（除非有明确的状态需求，如
+     `TypeChecker::check_mir_body_with_tables` 需要 unify 表状态）
+
+2. **上下文类型命名**：
+   - lowering 上下文：`<Stage>LowerCtxt<'a>` 模式
+     - ✅ `HirLowerCtxt`（Stage 3.63 从 `LowerCtxt` 重命名）
+     - ✅ `MirLowerCtxt`
+   - 分析上下文：`<Stage>Checker` 或 `<Stage>Resolver` 模式（-er 后缀）
+     - ✅ `TypeChecker`、`BorrowChecker`、`Resolver`、`Lexer`、`Parser`
+   - 可插拔 trait：`<Verb>er` 模式
+     - ✅ `Emitter` trait + `TextEmitter` 实现
+
+3. **类型前缀**：参考 `api-naming-standard.md` §4。
+   - HIR 类型统一 `Hir` 前缀（`HirItem`、`HirExpr`、`HirCrate` 等）
+   - MIR 类型仅在需要时加 `Mir` 前缀（`MirBody`、`MirLowerCtxt`），
+     其他依赖模块路径限定（`mir::Ty`、`mir::Sig`）
+   - Codegen 类型统一 `Emit` 前缀（`Emitter`、`EmitType`、`EmitValue`）
+   - 跨阶段共享的 ID 类型无前缀（`HirId`、`DefId`、`BodyId` 等）
+
+4. **Re-export 风格**：每个阶段模块的 `mod.rs` **必须**使用显式
+   re-export 列表，**禁止** glob（`pub use X::*;`）。
+   - ✅ `pub use kinds::{Type1, Type2, Type3};`
+   - ❌ `pub use kinds::*;`
+   - 每个 explicit re-export 列表前必须有注释说明约定
+
+5. **单一真理源（DRY）**：跨阶段消费的类型必须有且仅有一处定义。
+   跨阶段 re-export 通过 `pub use` 允许（用于向后兼容），但定义
+   必须位于架构上正确的模块。
+   - ✅ `DefKind` 定义在 `hir::kinds`（架构归属：被 HIR 类型
+     `Res::Def(DefId, DefKind)` 消费），`resolve::module_tree` 通过
+     `pub use crate::hir::DefKind;` re-export（Stage 3.63 修复）
+   - ✅ `BorrowKind` 定义在 `mir::lvalue`，`borrowck::mod` 通过
+     `pub use crate::mir::lvalue::BorrowKind;` re-export
+     （Stage 3.63 修复 — 移除了 `borrowck::borrow_set::BorrowKind`
+     重复定义和 `BkKind` 别名）
+
+6. **弃用约定**：违反 §16（接口隔离）的遗留入口必须标记
+   `#[deprecated(note = "...")]`，note 必须指向 §16 合规的替代方案。
+   - ✅ `#[deprecated(note = "Use TypeChecker::check_mir_body_with_tables (§16-compliant) or driver::compile instead")]`
+   - 模块 re-export deprecated 项时必须用 `#[allow(deprecated)]` 包裹
+
+7. **函数命名前缀**：
+   - `lex_`：lexer 内部（`lex_ident`、`lex_number`）
+   - `parse_`：parser 内部（`parse_crate`、`parse_expr`）
+   - `lower_`：lowering（`lower_crate`、`lower_body`、`lower_hir_ty_to_mir_ty`）
+   - `resolve_`：name resolution（`resolve_path`、`resolve_uses`）
+   - `check_`：type/borrow checking（`check_mir_body_with_tables`）
+   - `emit_`：codegen（`emit_header`、`emit_fat_ptr_type`）
+   - `codegen_`：codegen 顶层入口（`codegen_crate`）
+
+8. **错误类型**：所有错误类型使用 `Error` 后缀
+   （`LexError`、`ParseError`、`LowerError`、`ResolveError`、`TypeError`、
+   `BorrowError`）。结构共享 `{ message: String, span: Span }` 最小形态。
+
+### 23.2 审查检查清单
+
+REV-A 在代码审查时必须验证以下项目：
+
+- [ ] 没有新增 `pub use X::*;` glob
+- [ ] 没有新增缺少正确阶段前缀的类型
+- [ ] 没有新增缺少正确后缀（`Ctxt` / `-er`）的上下文类型
+- [ ] 没有新增违反自由函数模式的入口
+- [ ] 没有新增跨模块重复定义的类型（违反 DRY）
+- [ ] 没有新增 `#[deprecated]` 但缺少 `note = "..."` 的项
+- [ ] 如果移动了类型定义，旧模块必须 re-export 用于向后兼容
+
+### 23.3 违反后果
+
+- **第一次违反**：REV-A 投 NEEDS REVISION，列出违反的规则编号
+- **第二次违反**（同一 Agent 在同一阶段）：升级为 P2 缺陷，记录到
+  risk-register
+- **累计三次违反**：触发 §5.2 硬性退回条件，升级技术委员会仲裁
+
+### 23.4 §21 audit 中的命名审查
+
+每次 §21 跨阶段深度审查必须包含命名标准化审查维度：
+
+- 检查所有 `src/*/mod.rs` 是否使用 explicit re-export（无 glob）
+- 检查所有阶段入口是否符合自由函数模式
+- 检查所有上下文类型是否符合 `Ctxt` / `-er` 后缀约定
+- 检查所有跨阶段共享类型是否符合 DRY（单一真理源）
+- 检查所有 deprecated 项是否标记 `note = "..."` 指向替代方案
+
+审查结果记录在 `gate-review-roundN.md` 中，违反项标记为
+`L-NAMING-N`（命名债务），按 §4 缺陷等级评估优先级。
+
+### 23.5 与 `api-naming-standard.md` 的关系
+
+- `api-naming-standard.md` 是命名规则的**完整文档**（包含所有细节、
+  示例、change log）
+- 本节（§23）是**流程层的引用**，把命名规则纳入流程强制检查范围
+- 两者必须保持同步：任何对 `api-naming-standard.md` 的修改必须
+  同步反映到本节；反之亦然
+
+---
+
+## 24. 变更日志 v3.14 → v3.15
+
+### 24.1 新增内容
+
+| 项目 | 内容 |
+|------|------|
+| §23 API 命名标准化协议 | 8 条硬性命名规则 + 审查检查清单 + 违反后果 + §21 audit 命名审查维度 |
+| §24 变更日志 | v3.14→v3.15 覆盖确认 |
+
+### 24.2 v3.14 → v3.15 覆盖确认
+
+v3.15 完整保留 v3.14 的全部规则内容，100% 覆盖。新增 §23 / §24。
+具体修改：
+
+| v3.14 章节 | v3.15 对应章节 | 覆盖状态 |
+|-----------|--------------|---------|
+| §1-§22（全部内容） | §1-§22（原样保留） | ✅ 100% |
+| — | §23 API 命名标准化协议 | **新增** |
+| — | §24 变更日志 v3.14→v3.15 | **新增** |
+
+---
+
 **This document is the single source of truth for the Landin development
-process. All agents (main + subagents) must follow it. v3.14 effective
-from Stage 3.60.**
+process. All agents (main + subagents) must follow it. v3.15 effective
+from Stage 3.63.**

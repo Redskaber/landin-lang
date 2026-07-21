@@ -8,57 +8,12 @@
 
 use crate::ast::Visibility;
 use crate::hir::DefId;
+// Stage 3.63 (cross-stage naming standardization): `DefKind` is now
+// imported from `crate::hir::DefKind` (its architectural home). The
+// former local definition has been removed — DRY restored.
+pub use crate::hir::DefKind;
 use lasso::Spur;
 use std::collections::HashMap;
-
-/// The kind of a definition. Used for namespace disambiguation during
-/// path resolution (e.g., `Foo` could be a struct type or a struct
-/// constructor function — the DefKind tells us which).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DefKind {
-    Fn,
-    Const,
-    Static,
-    Struct,
-    Enum,
-    Trait,
-    Impl,
-    TypeAlias,
-    Mod,
-    Use,
-    ExternFn,
-    ExternStatic,
-    ExternType,
-}
-
-impl DefKind {
-    /// Returns `true` if this definition lives in the value namespace
-    /// (fn, const, static, extern fn, extern static).
-    pub fn is_value(self) -> bool {
-        matches!(
-            self,
-            DefKind::Fn
-                | DefKind::Const
-                | DefKind::Static
-                | DefKind::ExternFn
-                | DefKind::ExternStatic
-        )
-    }
-
-    /// Returns `true` if this definition lives in the type namespace
-    /// (struct, enum, trait, type alias, mod, extern type).
-    pub fn is_type(self) -> bool {
-        matches!(
-            self,
-            DefKind::Struct
-                | DefKind::Enum
-                | DefKind::Trait
-                | DefKind::TypeAlias
-                | DefKind::Mod
-                | DefKind::ExternType
-        )
-    }
-}
 
 /// A node in the module tree. Represents one module (the crate root
 /// or a `mod foo { ... }` block).

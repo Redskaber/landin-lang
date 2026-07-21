@@ -2,10 +2,10 @@
 
 use crate::ast;
 use crate::hir::kinds::*;
-use crate::hir::lower::cx::LowerCtxt;
+use crate::hir::lower::cx::HirLowerCtxt;
 use crate::hir::lower::ty;
 
-pub fn lower_generics(cx: &mut LowerCtxt, generics: &ast::Generics) -> HirGenerics {
+pub fn lower_generics(cx: &mut HirLowerCtxt, generics: &ast::Generics) -> HirGenerics {
     HirGenerics {
         params: generics
             .params
@@ -21,7 +21,7 @@ pub fn lower_generics(cx: &mut LowerCtxt, generics: &ast::Generics) -> HirGeneri
     }
 }
 
-pub fn lower_generic_param(cx: &mut LowerCtxt, param: &ast::GenericParam) -> HirGenericParam {
+pub fn lower_generic_param(cx: &mut HirLowerCtxt, param: &ast::GenericParam) -> HirGenericParam {
     match param {
         ast::GenericParam::Lifetime(lp) => HirGenericParam::Lifetime(HirLifetimeParam {
             hir_id: cx.fresh_hir_id(),
@@ -39,11 +39,11 @@ pub fn lower_generic_param(cx: &mut LowerCtxt, param: &ast::GenericParam) -> Hir
     }
 }
 
-pub fn lower_type_bounds(cx: &mut LowerCtxt, bounds: &[ast::TypeBound]) -> Vec<HirTypeBound> {
+pub fn lower_type_bounds(cx: &mut HirLowerCtxt, bounds: &[ast::TypeBound]) -> Vec<HirTypeBound> {
     bounds.iter().map(|b| lower_type_bound(cx, b)).collect()
 }
 
-pub fn lower_type_bound(cx: &mut LowerCtxt, bound: &ast::TypeBound) -> HirTypeBound {
+pub fn lower_type_bound(cx: &mut HirLowerCtxt, bound: &ast::TypeBound) -> HirTypeBound {
     match bound {
         ast::TypeBound::Trait(tb) => HirTypeBound::Trait(HirTraitBound {
             hir_id: cx.fresh_hir_id(),
@@ -54,7 +54,10 @@ pub fn lower_type_bound(cx: &mut LowerCtxt, bound: &ast::TypeBound) -> HirTypeBo
     }
 }
 
-pub fn lower_where_predicate(cx: &mut LowerCtxt, pred: &ast::WherePredicate) -> HirWherePredicate {
+pub fn lower_where_predicate(
+    cx: &mut HirLowerCtxt,
+    pred: &ast::WherePredicate,
+) -> HirWherePredicate {
     HirWherePredicate {
         hir_id: cx.fresh_hir_id(),
         lifetime: pred.lifetime.clone(),
@@ -64,7 +67,7 @@ pub fn lower_where_predicate(cx: &mut LowerCtxt, pred: &ast::WherePredicate) -> 
     }
 }
 
-pub fn lower_use_tree(cx: &mut LowerCtxt, tree: &ast::UseTree) -> HirUseTree {
+pub fn lower_use_tree(cx: &mut HirLowerCtxt, tree: &ast::UseTree) -> HirUseTree {
     match tree {
         ast::UseTree::Path { prefix, children } => HirUseTree::Path {
             prefix: crate::hir::lower::path::lower_path(cx, prefix),

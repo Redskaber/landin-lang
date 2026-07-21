@@ -8,8 +8,10 @@ predictable performance.
 
 > **Status:** Stage 0-3 complete (lexer, parser, HIR, name resolution, MIR,
 > type checking, borrow checking, LLVM codegen). All soundness-critical
-> limitations closed. v0.8.6, 977 tests passing, 30 gate review rounds
-> passed (audit CONVERGED). Process v3.14 (§15-§21).
+> limitations closed. v0.8.7, 977 tests passing, 31 gate review rounds
+> passed (audit CONVERGED). Process v3.15 (§15-§23).
+> Stage 3.63 (this release): cross-stage naming standardization per §21 audit
+> (9 P1 + 1 P2 fixes; pure refactoring — 0 test regressions).
 > Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
 > deferred to Stage 4+.
 
@@ -35,10 +37,27 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 
 | Stage | Module | Status |
 | ------- | -------- | -------- |
-| 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete (245 tests) |
-| 1 | `hir/`, `resolve/` | ✅ Complete (451 tests) |
-| 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete (673 tests, 6 rounds of review) |
-| 3 | `codegen/` | 🔄 In progress (182 tests, LLVM IR text output) |
+| 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete (343 tests) |
+| 1 | `hir/`, `resolve/` | ✅ Complete (108 tests) |
+| 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete (168 tests, 6 rounds of review) |
+| 3 | `codegen/` | ✅ Complete (294 tests + 5 §21 audit tests, LLVM IR text output) |
+
+## API surface (Stage 3.63 naming standard)
+
+The compiler exposes a clean, §16-compliant public API. See
+`docs/develop/v0/api-naming-standard.md` for the full standard.
+
+| Stage | Entry point | Style |
+|-------|-------------|-------|
+| 0 lexer | `lexer::tokenize(src, &mut interner)` | free fn |
+| 0 parser | `parser::parse_crate(tokens, &mut interner)` | free fn (Stage 3.63 added) |
+| 1.2 HIR lower | `hir::lower::lower_crate(&ast, &interner)` | free fn |
+| 1.3 resolve | `resolve::resolve_crate(&mut hir, &mut interner)` | free fn |
+| 2.1 MIR lower | `mir::lower::lower_hir_body_to_mir_full(...)` | free fn |
+| 2.2 typeck | `TypeChecker::check_mir_body_with_tables(...)` | method (§16-compliant) |
+| 2.3 borrowck | `BorrowChecker::check_mir_body(&mir)` | method |
+| 3 codegen | `codegen::codegen_crate(&CompileResult)` | free fn (§16-compliant) |
+| — driver | `driver::compile(src)` | sole orchestrator |
 
 ## Codegen capabilities (Stage 3)
 
@@ -92,7 +111,7 @@ landin-stage0/
 ## Testing
 
 ```bash
-# Run all 699 tests
+# Run all 977 tests
 cargo test
 
 # Format + lint
@@ -105,9 +124,9 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
 - **Stage 1** ✅ HIR + name resolution
 - **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review)
-- **Stage 3** ✅ LLVM codegen (COMPLETE — 30 gate review rounds CONVERGED, §16 compliant pipeline, all soundness-critical limitations closed)
-- **Stage 4** Macro system + attributes
-- **Stage 5** Mini-cargo + stdlib MVP
+- **Stage 3** ✅ LLVM codegen (COMPLETE — 31 gate review rounds CONVERGED, §16 compliant pipeline, all soundness-critical limitations closed; Stage 3.63 cross-stage naming standardization per §21 audit)
+- **Stage 4** Macro system + attributes + closures (L3) + PHI optimization (L1)
+- **Stage 5** Mini-cargo + stdlib MVP + trait dispatch (L5)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting
 

@@ -25,8 +25,62 @@ use crate::session::Span;
 
 // Re-export the ID types for convenience.
 pub use crate::hir::id::{DefId, HirId, ItemLocalId, OwnerId};
-// Stage 3.30: import DefKind so Res::Def can carry it (per §15 optimal fix).
-pub use crate::resolve::DefKind;
+
+// Stage 3.63 (cross-stage naming standardization): `DefKind` is now
+// defined here in `hir::kinds` (its architectural home — it's consumed
+// by `Res::Def(DefId, DefKind)` which is a HIR type). The former
+// definition in `resolve::module_tree` has been removed; `resolve::*`
+// now imports `DefKind` from here. This aligns the dependency direction:
+// `resolve` depends on `hir`, not vice versa.
+
+/// The kind of a definition. Used for namespace disambiguation during
+/// path resolution (e.g., `Foo` could be a struct type or a struct
+/// constructor function — the DefKind tells us which).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefKind {
+    Fn,
+    Const,
+    Static,
+    Struct,
+    Enum,
+    Trait,
+    Impl,
+    TypeAlias,
+    Mod,
+    Use,
+    ExternFn,
+    ExternStatic,
+    ExternType,
+}
+
+impl DefKind {
+    /// Returns `true` if this definition lives in the value namespace
+    /// (fn, const, static, extern fn, extern static).
+    pub fn is_value(self) -> bool {
+        matches!(
+            self,
+            DefKind::Fn
+                | DefKind::Const
+                | DefKind::Static
+                | DefKind::ExternFn
+                | DefKind::ExternStatic
+        )
+    }
+
+    /// Returns `true` if this definition lives in the type namespace
+    /// (struct, enum, trait, type alias, mod, extern type).
+    pub fn is_type(self) -> bool {
+        matches!(
+            self,
+            DefKind::Struct
+                | DefKind::Enum
+                | DefKind::Trait
+                | DefKind::TypeAlias
+                | DefKind::Mod
+                | DefKind::ExternType
+        )
+    }
+}
 
 // =====================================================================
 // HIR Crate — top-level container

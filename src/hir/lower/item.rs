@@ -3,12 +3,12 @@
 use crate::ast::{self, Visibility};
 use crate::hir::kinds::*;
 use crate::hir::lower::body;
-use crate::hir::lower::cx::LowerCtxt;
+use crate::hir::lower::cx::HirLowerCtxt;
 use crate::hir::lower::generics;
 use crate::hir::lower::ty;
 use crate::session::Span;
 
-impl<'a> LowerCtxt<'a> {
+impl<'a> HirLowerCtxt<'a> {
     /// Lower an AST item to a HIR owner node and store it.
     pub fn lower_item(&mut self, ast_item: &ast::Item) {
         let def_id = self.enter_owner();

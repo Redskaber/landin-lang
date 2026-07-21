@@ -1054,14 +1054,17 @@ pub fn check_mir_body(mir: &mut MirBody) -> Vec<TypeError> {
     tc.into_errors()
 }
 
-/// Check all MIR bodies in a HIR crate for type errors.
+/// Stage 3.63: Deprecated legacy entry point. The driver now uses
+/// `TypeChecker::check_mir_body_with_tables` directly (§16-compliant).
 ///
-/// This is the main entry point for the type checking pass. It:
-/// 1. Lowers each HIR body to MIR (if not already done)
-/// 2. Runs the type checker on each MIR body
-/// 3. Collects all type errors
-///
-/// Returns a list of all type errors found across all bodies.
+/// This free function is retained for backwards compatibility with older
+/// callers that pass a `HirCrate`. It internally re-lowers HIR to MIR and
+/// runs typeck without `FieldTyTable` — the §16-violating pattern that
+/// Stage 3.60 eliminated. New code should use the driver or
+/// `TypeChecker::check_mir_body_with_tables` directly.
+#[deprecated(
+    note = "Use TypeChecker::check_mir_body_with_tables (§16-compliant) or driver::compile instead"
+)]
 pub fn check_crate(hir: &HirCrate, interner: &Rodeo) -> Vec<TypeError> {
     let mut all_errors = Vec::new();
     for (_, body) in &hir.bodies {

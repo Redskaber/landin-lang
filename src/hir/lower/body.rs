@@ -2,12 +2,12 @@
 
 use crate::ast::{self, BinOp, Expr, LitKind, Stmt, UnaryOp};
 use crate::hir::kinds::*;
-use crate::hir::lower::cx::LowerCtxt;
+use crate::hir::lower::cx::HirLowerCtxt;
 use crate::hir::lower::pat;
 use crate::hir::lower::ty;
 use crate::session::Span;
 
-impl<'a> LowerCtxt<'a> {
+impl<'a> HirLowerCtxt<'a> {
     /// Lower a fn body (Block) to a HIR Body and store it.
     pub fn lower_body_internal(&mut self, block: &ast::Block, params: Vec<HirParam>) -> BodyId {
         let body = lower_body(self, block, params);
@@ -16,7 +16,7 @@ impl<'a> LowerCtxt<'a> {
 }
 
 /// Lower an AST Block to a HIR Body. The Body's `value` is a Block expression.
-pub fn lower_body(cx: &mut LowerCtxt, block: &ast::Block, params: Vec<HirParam>) -> Body {
+pub fn lower_body(cx: &mut HirLowerCtxt, block: &ast::Block, params: Vec<HirParam>) -> Body {
     let hir_id = cx.fresh_hir_id();
     let value = lower_block_expr(cx, block);
     Body {
@@ -28,7 +28,11 @@ pub fn lower_body(cx: &mut LowerCtxt, block: &ast::Block, params: Vec<HirParam>)
 }
 
 /// Lower a single expression as a Body (for const/static initializers).
-pub fn lower_body_from_expr(cx: &mut LowerCtxt, expr: &ast::Expr, params: Vec<HirParam>) -> BodyId {
+pub fn lower_body_from_expr(
+    cx: &mut HirLowerCtxt,
+    expr: &ast::Expr,
+    params: Vec<HirParam>,
+) -> BodyId {
     let hir_id = cx.fresh_hir_id();
     let value = lower_expr(cx, expr);
     let span = expr_span(expr);
@@ -77,7 +81,7 @@ fn expr_span(expr: &ast::Expr) -> Span {
     }
 }
 
-fn lower_block_expr(cx: &mut LowerCtxt, block: &ast::Block) -> HirExpr {
+fn lower_block_expr(cx: &mut HirLowerCtxt, block: &ast::Block) -> HirExpr {
     let hir_id = cx.fresh_hir_id();
     let stmts: Vec<HirStmt> = block.stmts.iter().map(|s| lower_stmt(cx, s)).collect();
     let expr = block.expr.as_ref().map(|e| Box::new(lower_expr(cx, e)));
@@ -93,7 +97,7 @@ fn lower_block_expr(cx: &mut LowerCtxt, block: &ast::Block) -> HirExpr {
     }
 }
 
-fn lower_stmt(cx: &mut LowerCtxt, stmt: &Stmt) -> HirStmt {
+fn lower_stmt(cx: &mut HirLowerCtxt, stmt: &Stmt) -> HirStmt {
     match stmt {
         Stmt::Local(local) => HirStmt::Local(Box::new(HirLocal {
             hir_id: cx.fresh_hir_id(),
@@ -109,7 +113,7 @@ fn lower_stmt(cx: &mut LowerCtxt, stmt: &Stmt) -> HirStmt {
 }
 
 /// Lower an AST expression to HIR.
-pub fn lower_expr(cx: &mut LowerCtxt, expr: &Expr) -> HirExpr {
+pub fn lower_expr(cx: &mut HirLowerCtxt, expr: &Expr) -> HirExpr {
     let hir_id = cx.fresh_hir_id();
     let span = expr_span(expr);
     let kind = match expr {
@@ -273,7 +277,7 @@ pub fn lower_expr(cx: &mut LowerCtxt, expr: &Expr) -> HirExpr {
     HirExpr { hir_id, kind, span }
 }
 
-fn lower_block(cx: &mut LowerCtxt, block: &ast::Block) -> HirBlock {
+fn lower_block(cx: &mut HirLowerCtxt, block: &ast::Block) -> HirBlock {
     let hir_id = cx.fresh_hir_id();
     let stmts: Vec<HirStmt> = block.stmts.iter().map(|s| lower_stmt(cx, s)).collect();
     let expr = block.expr.as_ref().map(|e| Box::new(lower_expr(cx, e)));

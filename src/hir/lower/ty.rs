@@ -2,11 +2,11 @@
 
 use crate::ast::{self};
 use crate::hir::kinds::*;
-use crate::hir::lower::cx::LowerCtxt;
+use crate::hir::lower::cx::HirLowerCtxt;
 use crate::hir::lower::path;
 use crate::session::Span;
 
-pub fn lower_ty(cx: &mut LowerCtxt, ty: &ast::Ty) -> HirTy {
+pub fn lower_ty(cx: &mut HirLowerCtxt, ty: &ast::Ty) -> HirTy {
     let hir_id = cx.fresh_hir_id();
     let span = ty_span(ty);
     let kind = match ty {

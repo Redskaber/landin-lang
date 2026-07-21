@@ -1,12 +1,41 @@
 //! LLVM IR codegen: MIR → LLVM IR via Emitter trait.
 //!
+//! ## Status
+//!
+//! Stage 3 (v0.8.x) is COMPLETE. `codegen_crate` is §16-compliant —
+//! it takes a `&CompileResult` (pre-built MIR + pre-computed metadata)
+//! and makes zero upstream function calls (no `crate::mir::lower`,
+//! no `crate::typeck`, no `crate::driver` beyond type-only references).
+//!
 //! Stage 3.46 (v0.8.6): full integer type support (i8/i16/i32/i64/i128).
+//! Stage 3.63 (cross-stage naming standardization): `fat_ptr_type` →
+//! `emit_fat_ptr_type` for prefix consistency with the
+//! `mir_type_to_emit_type` / `emit_type_to_llvm_str` translation ladder.
+//!
+//! ## Open limitations (deferred to Stage 4+)
+//!
+//! All soundness-critical limitations are CLOSED. The 5 remaining open
+//! limitations are soundness-non-critical and explicitly deferred:
+//!
+//! | ID | Description | Target |
+//! |----|-------------|--------|
+//! | L1 | PHI node optimization (IR quality; codegen emits alloca+load/store, relies on LLVM `mem2reg`) | Stage 4 |
+//! | L3 | Closure codegen (closure type lowering + capture codegen) | Stage 4 |
+//! | L5 | Trait dispatch (vtable generation, dyn fat pointers) | Stage 5 |
+//! | L8 | `lli` execution verification (env constraint — no `lli` in test sandbox) | Stage 4 |
+//! | L-COPY-ADT | Proper Copy trait (current borrowck pragmatically treats Adt as Copy) | Stage 5 |
+//!
+//! ## Architectural debt (tracked, not blocking)
+//!
+//! - **Emitter trait bloat**: 36 methods, 1 implementation (`TextEmitter`).
+//!   Decompose into sub-traits (`EmitterArith`, `EmitterMemory`, etc.)
+//!   when adding a second backend. Stage 3.59 Issue #5.
 
 pub mod emitter;
 pub mod text_emitter;
 
 pub use emitter::{
-    emit_type_to_llvm_str, fat_ptr_type, mir_type_to_emit_type, EmitType, EmitValue, Emitter,
+    emit_fat_ptr_type, emit_type_to_llvm_str, mir_type_to_emit_type, EmitType, EmitValue, Emitter,
 };
 pub use text_emitter::TextEmitter;
 
@@ -239,10 +268,10 @@ pub fn mir_type_to_emit_type_with_layouts(
             // Recurse with `_with_layouts` so the pointee (if it's an Adt)
             // resolves its layout correctly.
             match &inner.kind {
-                TyKind::Str => crate::codegen::fat_ptr_type(EmitType::I8),
-                TyKind::Slice(elem) => {
-                    crate::codegen::fat_ptr_type(mir_type_to_emit_type_with_layouts(elem, layouts))
-                }
+                TyKind::Str => crate::codegen::emit_fat_ptr_type(EmitType::I8),
+                TyKind::Slice(elem) => crate::codegen::emit_fat_ptr_type(
+                    mir_type_to_emit_type_with_layouts(elem, layouts),
+                ),
                 _ => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(inner, layouts)),
             }
         }

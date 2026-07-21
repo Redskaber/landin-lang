@@ -14,7 +14,7 @@ use lasso::Rodeo;
 /// - A stack of previous owners (for nested owner lowering, e.g. trait items)
 /// - The HIR crate being built (owners + bodies)
 /// - Errors encountered (non-fatal)
-pub struct LowerCtxt<'a> {
+pub struct HirLowerCtxt<'a> {
     pub interner: &'a Rodeo,
     pub def_id_counter: DefIdCounter,
     /// Per-owner ItemLocalId counter; reset when entering a new owner.
@@ -30,7 +30,7 @@ pub struct LowerCtxt<'a> {
     pub errors: Vec<LowerError>,
 }
 
-impl<'a> LowerCtxt<'a> {
+impl<'a> HirLowerCtxt<'a> {
     pub fn new(interner: &'a Rodeo) -> Self {
         Self {
             interner,
@@ -138,7 +138,7 @@ mod tests {
     fn enter_exit_owner_basic() {
         let mut interner = Rodeo::new();
         let _ = &mut interner;
-        let mut cx = LowerCtxt::new(&interner);
+        let mut cx = HirLowerCtxt::new(&interner);
         assert_eq!(cx.current_owner(), None);
 
         let d1 = cx.enter_owner();
@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn store_body_and_owner() {
         let interner = Rodeo::new();
-        let mut cx = LowerCtxt::new(&interner);
+        let mut cx = HirLowerCtxt::new(&interner);
 
         let d = cx.enter_owner();
         let hir_id = cx.owner_hir_id();

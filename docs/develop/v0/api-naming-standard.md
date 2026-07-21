@@ -1,0 +1,477 @@
+# Landin Compiler API Naming Standard (Stage 0-3)
+
+> **Effective from**: Stage 3.63 (2026-07-22)
+> **Process ref**: stage-committee-process.md v3.15 §23
+> **Scope**: All Rust source under `src/`, all stages (0-3 + future 4+)
+> **Purpose**: Single source of truth for naming conventions across the
+> Landin compiler pipeline. Any new code MUST conform to this standard;
+> any deviation MUST be documented in the worklog with a justification.
+
+---
+
+## 1. Why a Standard?
+
+The Landin compiler grew organically across 30+ gate review rounds and
+4 stages. As a result, naming conventions drifted:
+
+- Some stage modules used glob re-exports (`pub use X::*;`) while others
+  used explicit lists. (Stage 3.57 fixed hir/mir; Stage 3.63 fixed ast/lexer.)
+- The HIR lowering context was named `LowerCtxt` while the MIR lowering
+  context was named `MirLowerCtxt` — asymmetric prefixes. (Stage 3.63
+  renamed `LowerCtxt` → `HirLowerCtxt`.)
+- `BorrowKind` was defined twice — in `mir::lvalue` and `borrowck::borrow_set`
+  — with a manual conversion function and a `BkKind` alias. (Stage 3.63
+  unified to a single definition in `mir::lvalue`.)
+- `DefKind` was defined in `resolve::module_tree` but consumed by the HIR
+  type `Res::Def(DefId, DefKind)` — backwards dependency direction.
+  (Stage 3.63 moved `DefKind` to `hir::kinds`.)
+- `check_crate` was claimed deprecated in the Stage 3.62 worklog but the
+  code showed full working implementations — process-vs-code drift.
+  (Stage 3.63 marked both `typeck::check_crate` and `borrowck::check_crate`
+  as `#[deprecated]` with notes pointing to §16-compliant replacements.)
+- `fat_ptr_type` lacked the `emit_` prefix used by sibling translation
+  functions. (Stage 3.63 renamed to `emit_fat_ptr_type`.)
+
+This document captures the conventions established by the Stage 3.63
+cross-stage naming standardization round (per §21 audit findings) so
+that future contributors don't reintroduce these inconsistencies.
+
+---
+
+## 2. Entry-Point Convention
+
+### 2.1 Free-function pattern
+
+Each stage exposes a **free-function entry point** with the pattern:
+
+```rust
+pub fn <verb>_<noun>(<data>: &<Type>, ...) -> <ReturnType>
+```
+
+Where:
+- `<verb>` is the stage's primary action: `tokenize`, `parse`, `lower`,
+  `resolve`, `check`, `codegen`.
+- `<noun>` is the data being processed: `src`, `crate`, `body`, `mir`.
+- The first parameter is always the **data being consumed** (not a context).
+
+### 2.2 Canonical entry points (Stage 0-3)
+
+| Stage | Entry | Signature |
+|-------|-------|-----------|
+| 0 lexer | `lexer::tokenize` | `(src: &str, interner: &mut Rodeo) -> (Vec<Token>, Vec<LexError>)` |
+| 0 parser | `parser::parse_crate` | `(tokens: Vec<Token>, interner: &mut Rodeo) -> (Crate, Vec<ParseError>)` |
+| 1.2 HIR lower | `hir::lower::lower_crate` | `(ast: &ast::Crate, interner: &Rodeo) -> HirCrate` |
+| 1.3 resolve | `resolve::resolve_crate` | `(hir: &mut HirCrate, interner: &mut Rodeo) -> Vec<ResolveError>` |
+| 2.1 MIR lower | `mir::lower::lower_hir_body_to_mir_full` | `(body: &Body, interner: &Rodeo, hir: &HirCrate, ret_ty: Option<Ty>) -> (MirBody, UnificationTable)` |
+| 2.2 typeck | `TypeChecker::check_mir_body_with_tables` | `(&mut self, mir: &mut MirBody, field_ty_table: Option<&FieldTyTable>)` — **§16-compliant canonical** |
+| 2.3 borrowck | `BorrowChecker::check_mir_body` | `(&mut self, mir: &MirBody)` |
+| 3 codegen | `codegen::codegen_crate` | `(result: &CompileResult) -> String` — **§16-compliant** |
+
+### 2.3 When to use struct-based entry instead
+
+Use the struct-based variant when the operation requires **heavy mutable
+state** that's expensive to reconstruct:
+
+- `Lexer<'a>` — holds `&mut Rodeo`, position, error buffer
+- `Parser` — holds `&mut Rodeo`, token cursor, error buffer, no-struct-literal flag
+- `HirLowerCtxt<'a>` — holds def_id counter, owner stack, body/owner storage
+- `MirLowerCtxt<'a>` — holds local_map, current_block, unification table
+- `TypeChecker` — holds unification table, fn_sigs map, results
+- `BorrowChecker` — holds borrow_set, move_tracker, initialized set
+
+In all cases, the struct's primary method follows the `<verb>_<noun>`
+pattern (e.g. `Parser::parse_crate`, `TypeChecker::check_mir_body_with_tables`).
+
+### 2.4 Driver is the orchestrator
+
+The driver (`src/driver.rs`) is the **sole orchestrator** that calls all
+stage entry points in order. It is the only module allowed to read HIR
+directly (per §16.6 exception). Downstream consumers should use
+`driver::compile` rather than reaching into individual stages.
+
+```rust
+// Canonical usage
+use landin_compiler::{compile, codegen_crate};
+
+let result = compile(src)?;
+if !result.errors.has_errors() {
+    let ir = codegen_crate(&result);
+    println!("{ir}");
+}
+```
+
+---
+
+## 3. Context Type Convention
+
+### 3.1 Naming pattern
+
+Context types (stateful objects that drive a stage) follow these patterns:
+
+| Role | Pattern | Examples |
+|------|---------|----------|
+| Lexer / parser | `<Verb>er` (single-word OK) | `Lexer`, `Parser` |
+| Lowering context | `<Stage>LowerCtxt<'a>` | `HirLowerCtxt`, `MirLowerCtxt` |
+| Analysis context | `<Stage>Checker` / `<Stage>Resolver` | `TypeChecker`, `BorrowChecker`, `Resolver` |
+| Trait (pluggable) | `<Verb>er` (trait) | `Emitter` |
+
+### 3.2 The `Ctxt` vs `-er` split
+
+The split is intentional:
+- `Ctxt` suffix → ephemeral context that exists only during the lowering
+  pass. Built fresh per call, discarded when lowering completes.
+- `-er` suffix → stateful agent that may carry over results (e.g.
+  `TypeChecker.results`, `BorrowChecker.borrows`).
+
+### 3.3 Prefix rules
+
+- **HIR lowering context**: `HirLowerCtxt` (NOT `LowerCtxt`) — the `Hir`
+  prefix is required for parity with `MirLowerCtxt`.
+- **MIR lowering context**: `MirLowerCtxt` (NOT `LowerCtxt`) — the `Mir`
+  prefix is required.
+- **Type/Borrow checkers**: no prefix — `TypeChecker`, `BorrowChecker`
+  are unambiguous because they live under `typeck::` / `borrowck::` module paths.
+- **Resolver**: no prefix — `Resolver` lives under `resolve::`.
+
+---
+
+## 4. Type Prefix Convention
+
+### 4.1 Per-stage prefixes
+
+| Stage | Prefix | When to use |
+|-------|--------|-------------|
+| AST | (none) | All AST node types: `Crate`, `Item`, `ItemKind`, `Ty`, `Pat`, `Expr`, `Stmt` |
+| Lexer | (none) | All token types: `Token`, `TokenKind`, `IntTy`, `FloatTy` |
+| HIR | `Hir` | All HIR node types: `HirItem`, `HirExpr`/`HirExprKind`, `HirTy`/`HirTyKind`, `HirCrate`, `HirPath`, etc. |
+| HIR IDs | (none, infrastructure) | `HirId`, `DefId`, `BodyId`, `OwnerId`, `ItemLocalId` — shared across stages |
+| Resolve | (none) | `Resolver`, `ResolveError`, `Scope`, `ScopeKind`, `ModuleNode` |
+| MIR | `Mir` (when needed) | `MirBody`, `MirLowerCtxt` — most MIR types (`Ty`, `TyKind`, `Sig`, `BasicBlock`, `Statement`) rely on `mir::` qualification |
+| Typeck | (none) | `TypeChecker`, `TypeckResults`, `TypeError`, `FieldTyTable`, `FnSigTable`, `UnificationTable` |
+| Borrowck | (none) | `BorrowChecker`, `BorrowSet`, `BorrowError`, `MoveTracker`, `PlacePath` |
+| Codegen | `Emit` | `Emitter`, `TextEmitter`, `EmitType`, `EmitValue` |
+
+### 4.2 When to add a prefix
+
+Add a stage prefix when:
+1. The type might be confused with a similar type from another stage
+   (e.g. `HirExpr` vs AST `Expr`, `MirBody` vs HIR `Body`).
+2. The type is re-exported at the crate root or used widely outside its
+   defining module.
+
+Don't add a prefix when:
+1. The type is unambiguous within its module path (e.g. `typeck::TypeChecker`
+   doesn't need to be `TypeckTypeChecker`).
+2. The type is infrastructure shared across stages (`Span`, `DefId`, `HirId`).
+
+### 4.3 ID types (infrastructure)
+
+ID types (`HirId`, `DefId`, `BodyId`, `OwnerId`, `ItemLocalId`, `LocalId`,
+`BasicBlockId`, `FieldId`) live in their respective stage modules but are
+intentionally prefixless or use the stage prefix only when needed for
+disambiguation. They are considered infrastructure (per §16.2.3).
+
+---
+
+## 5. Re-Export Convention
+
+### 5.1 Explicit lists, no globs
+
+**Every stage module's `mod.rs` uses an explicit re-export list.** Glob
+re-exports (`pub use X::*;`) are FORBIDDEN.
+
+**Rationale**: Glob re-exports leak internal types unintentionally, make
+the public API surface undiscoverable, and create maintenance hazards
+(adding a private type to a `kinds.rs` module would silently become public).
+
+### 5.2 Required comment
+
+Every explicit re-export list must be preceded by a comment explaining
+the convention. Use this template:
+
+```rust
+// Stage 3.57 (P0-3 fix) / Stage 3.63 (cross-stage naming standardization):
+// explicit re-exports instead of `pub use *::*;` to prevent accidental
+// leakage of internal types.
+pub use kinds::{
+    Type1, Type2, Type3,
+};
+```
+
+### 5.3 Backwards-compatibility re-exports
+
+When a type is moved to a new architectural home (e.g. `DefKind` moved
+from `resolve::module_tree` to `hir::kinds`), the old module MUST
+re-export the type for backwards compatibility:
+
+```rust
+// In src/resolve/mod.rs
+// Stage 3.63: `DefKind` is now defined in `crate::hir::kinds`.
+// Re-export here for backwards compatibility with callers that
+// historically used `crate::resolve::DefKind`.
+pub use crate::hir::DefKind;
+```
+
+### 5.4 Current state (post-Stage-3.63)
+
+All stage `mod.rs` files use explicit re-export lists:
+
+| File | Re-export count |
+|------|----------------|
+| `src/ast/mod.rs` | 62 types |
+| `src/lexer/mod.rs` | 6 types |
+| `src/parser/mod.rs` | 2 types + 1 free fn |
+| `src/hir/mod.rs` | ~40 types |
+| `src/resolve/mod.rs` | ~6 types |
+| `src/mir/mod.rs` | ~30 types |
+| `src/typeck/mod.rs` | ~7 types |
+| `src/borrowck/mod.rs` | ~6 types |
+| `src/codegen/mod.rs` | ~6 types |
+
+---
+
+## 6. Single Source of Truth (DRY)
+
+### 6.1 Rule
+
+When a type is consumed across multiple stages, it has **exactly one
+definition**. Cross-stage re-exports via `pub use` are allowed for
+backwards compatibility, but the definition lives in the architecturally
+correct module.
+
+### 6.2 Architectural dependency direction
+
+The pipeline's dependency direction is:
+
+```
+session (infrastructure)
+   ↑
+ast, lexer  ← stage 0
+   ↑
+hir (incl. DefKind, Res)  ← stage 1
+   ↑
+resolve  ← stage 1.3 (reads hir)
+   ↑
+mir  ← stage 2 (reads hir)
+   ↑
+typeck  ← stage 2 (reads mir)
+   ↑
+borrowck  ← stage 2 (reads mir)
+   ↑
+codegen  ← stage 3 (reads mir + driver::CompileResult)
+   ↑
+driver  ← sole orchestrator, sole hir reader
+```
+
+A type defined in stage N may be re-exported from stage N+1 for
+convenience, but the **definition** must stay in stage N. Violations
+of this rule create circular dependencies and are tracked as
+`L-PIPE-N` (pipeline coupling debt) per §16.3.
+
+### 6.3 Current DRY-correct types (post-Stage-3.63)
+
+| Type | Defined in | Re-exported from | Notes |
+|------|-----------|------------------|-------|
+| `Span`, `BytePos` | `session::mod` | all stages via `crate::session::` | Infrastructure |
+| `DefId`, `HirId`, `BodyId`, `OwnerId`, `ItemLocalId` | `hir::id` | `hir::mod`, `resolve::mod` | Infrastructure |
+| `DefKind` | `hir::kinds` | `resolve::mod` (backwards compat) | Stage 3.63 moved |
+| `BorrowKind` | `mir::lvalue` | `borrowck::mod` (backwards compat) | Stage 3.63 unified |
+| `Ty`, `TyKind`, `Sig`, `Const`, `Region`, `Mutability` | `mir::ty` | `mir::mod` | Stage 2 types |
+| `MirBody`, `BasicBlock`, `Statement`, `Terminator` | `mir::body` | `mir::mod` | Stage 2 types |
+| `Lvalue`, `Operand`, `Rvalue`, `AggregateKind`, `BinOp`, `UnOp` | `mir::lvalue` | `mir::mod` | Stage 2 types |
+
+---
+
+## 7. Deprecation Convention
+
+### 7.1 When to deprecate
+
+Mark a function `#[deprecated]` when:
+1. It violates §16 (interface isolation) — e.g. it takes `&HirCrate` and
+   re-lowers internally.
+2. It has been superseded by a §16-compliant replacement.
+3. The driver-based orchestration makes it redundant.
+
+### 7.2 Deprecation attribute format
+
+```rust
+#[deprecated(note = "Use <Replacement> (§16-compliant) or driver::compile instead")]
+pub fn legacy_function(...) -> ... { ... }
+```
+
+The note MUST:
+1. Name the canonical replacement (function path or `driver::compile`).
+2. Mention `§16-compliant` if applicable.
+3. Be a single sentence.
+
+### 7.3 Module re-export of deprecated items
+
+When a module re-exports a deprecated item, the re-export must be
+wrapped in `#[allow(deprecated)]`:
+
+```rust
+// Stage 3.63: `check_crate` and `check_mir_body_with_hir` are kept as
+// deprecated legacy entry points for backwards compatibility.
+#[allow(deprecated)]
+pub use checker::{
+    check_crate, check_mir_body, FieldTyTable, FnSigTable, TypeChecker, TypeckResults,
+};
+```
+
+### 7.4 Current deprecated items (post-Stage-3.63)
+
+| Function | Deprecated in | Replacement |
+|----------|--------------|-------------|
+| `typeck::TypeChecker::populate_fn_sigs` | Stage 3.62 | Set `tc.fn_sigs` directly from `FnSigTable` |
+| `typeck::TypeChecker::check_mir_body_with_hir` | Stage 3.62 | `TypeChecker::check_mir_body_with_tables` |
+| `typeck::check_crate` | Stage 3.63 | `TypeChecker::check_mir_body_with_tables` or `driver::compile` |
+| `borrowck::check_crate` | Stage 3.63 | `BorrowChecker::check_mir_body` or `driver::compile` |
+
+---
+
+## 8. Function Naming Conventions
+
+### 8.1 Verb prefixes
+
+| Prefix | Meaning | Examples |
+|--------|---------|----------|
+| `lex_` | Lexer internal: scan a specific token kind | `lex_ident`, `lex_number`, `lex_doc_comment` |
+| `parse_` | Parser internal: parse a specific grammar construct | `parse_crate`, `parse_expr`, `parse_ty`, `parse_path_with_ctx` |
+| `lower_` | Lowering: convert from one IR to another | `lower_crate`, `lower_body`, `lower_expr`, `lower_hir_ty_to_mir_ty` |
+| `resolve_` | Name resolution: look up a path | `resolve_path`, `resolve_crate`, `resolve_uses` |
+| `check_` | Type/borrow checking: walk + verify | `check_mir_body_with_tables`, `check_statement`, `check_terminator` |
+| `emit_` | Codegen: emit LLVM IR construct | `emit_header`, `emit_declare`, `emit_fat_ptr_type` |
+| `codegen_` | Codegen: top-level entry | `codegen_crate`, `codegen_from_mir` |
+| `mir_type_to_emit_type` | Translation ladder: MIR → Emit | (long form, explicit) |
+| `emit_type_to_llvm_str` | Translation ladder: Emit → LLVM | (long form, explicit) |
+
+### 8.2 Translation function ladder
+
+The codegen stage has a 3-step translation ladder:
+1. `mir_type_to_emit_type` / `mir_type_to_emit_type_with_layouts` — MIR `Ty` → `EmitType`
+2. `emit_type_to_llvm_str` — `EmitType` → LLVM IR type string
+3. `emit_fat_ptr_type` — Helper constructor for fat-pointer `EmitType`s (Stage 3.63 renamed from `fat_ptr_type`)
+
+All three prefixes (`mir_`, `emit_`, `llvm_`) coexist intentionally —
+each indicates which IR the function translates **from** or **to**.
+
+### 8.3 Helper verbs (lex/parse internal)
+
+- `peek` — look at the next token without consuming
+- `bump` — consume the next token, return it
+- `eat` — consume a specific token kind if it matches; return bool
+- `expect` — consume a specific token kind or error
+- `is_at_end` — check if input is exhausted
+
+These are stage-internal; not part of any public API.
+
+---
+
+## 9. Error Type Convention
+
+### 9.1 Suffix
+
+All error types use the `Error` suffix:
+
+| Stage | Error types |
+|-------|-------------|
+| 0 lexer | `LexError` |
+| 0 parser | `ParseError` |
+| 1 HIR | `LowerError` |
+| 1 resolve | `ResolveError` |
+| 2 typeck | `TypeError` |
+| 2 borrowck | `BorrowError`, `BorrowErrorKind` |
+
+### 9.2 Structure
+
+All error types share the same minimal shape:
+
+```rust
+pub struct <Stage>Error {
+    pub message: String,
+    pub span: Span,
+}
+```
+
+Additional context (e.g. `BorrowErrorKind` for borrowck error categorization)
+is added as needed. All error types should implement `Display` (most do;
+P2 item to add `std::error::Error` trait impls).
+
+### 9.3 Error collection
+
+Errors are non-fatal — each stage collects a `Vec<<Stage>Error>` and
+continues processing. The driver aggregates all errors into
+`CompileErrors` and reports them at the end.
+
+---
+
+## 10. Enforcement
+
+### 10.1 CI checks
+
+The following CI checks enforce this standard:
+
+1. **`cargo fmt --check`** — enforces formatting (catches typos in type names).
+2. **`cargo clippy --all-targets`** — 0 warnings required (catches unused
+   imports, dead code, naming-convention violations).
+3. **`cargo test`** — 977+ tests must pass (includes 5 §21 audit tests
+   that verify §16 compliance programmatically).
+4. **§21 audit** (per stage-committee-process.md §21) — runs at the end
+   of each major stage; verifies the conventions in this document.
+
+### 10.2 Manual review checklist
+
+Before merging any change to `src/`, the reviewer verifies:
+
+- [ ] No new `pub use X::*;` globs added (use explicit lists).
+- [ ] No new types without the correct stage prefix (per §4).
+- [ ] No new context types without the correct suffix (`Ctxt` / `-er` per §3).
+- [ ] No new entry points that violate the free-function pattern (per §2).
+- [ ] No new types duplicated across modules (per §6 — single source of truth).
+- [ ] No new `#[deprecated]` without a `note = "..."` pointing to the replacement.
+- [ ] If a type is moved, the old module re-exports it for backwards compat.
+
+### 10.3 Process integration
+
+This standard is referenced by:
+- `docs/stage-committee-process.md` v3.15 §23 (naming standardization protocol)
+- `docs/develop/v0/stage-0-3-cross-stage-audit.md` (Stage 3.63 audit report)
+- §21 cross-stage audit checklist (per §21.3)
+
+Any deviation from this standard MUST be:
+1. Documented in the worklog with a justification.
+2. Tracked as `L-NAMING-N` (naming debt) in the gate review.
+3. Fixed in the next standardization round.
+
+---
+
+## 11. Change Log
+
+### v1.0 (Stage 3.63, 2026-07-22)
+
+Initial version. Captures the conventions established by the Stage 3.63
+cross-stage naming standardization round (per §21 audit findings).
+
+**Fixes applied in this round**:
+1. `src/lexer/mod.rs`: glob → explicit list (6 types)
+2. `src/ast/mod.rs`: glob → explicit list (62 types)
+3. `src/hir/lower/*.rs`: `LowerCtxt` → `HirLowerCtxt` (9 files)
+4. `src/typeck/checker.rs`: `check_crate` marked `#[deprecated]`
+5. `src/borrowck/mod.rs`: `check_crate` marked `#[deprecated]`
+6. `src/typeck/mod.rs`: doc-comment updated to point to canonical entry
+7. `src/mir/lvalue.rs` + `src/borrowck/borrow_set.rs`: `BorrowKind` unified
+   (single source of truth in `mir::lvalue`; duplicate + `BkKind` alias removed)
+8. `src/mir/mod.rs`: `lower_hir_body_to_mir_full` + `_with_return_ty` added
+   to re-exports
+9. `src/parser/mod.rs`: `parser::parse_crate` free function added
+10. `src/codegen/emitter.rs` + `src/codegen/mod.rs`: `fat_ptr_type` → `emit_fat_ptr_type`
+11. `src/codegen/mod.rs`: module docs expanded with status, §16 compliance,
+    open limitations table, architectural debt
+12. `src/hir/kinds.rs`: `DefKind` moved here from `resolve::module_tree`
+    (aligns dependency direction)
+13. `src/resolve/module_tree.rs` + `src/resolve/mod.rs`: import `DefKind`
+    from `hir::kinds` (backwards compat re-export preserved)
+
+**Test impact**: 0 (pure refactoring — 977/977 tests still pass).
+**Clippy impact**: 0 (0 warnings before, 0 warnings after).
+**Fmt impact**: clean.

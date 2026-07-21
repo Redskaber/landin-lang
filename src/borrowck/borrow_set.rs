@@ -13,18 +13,13 @@
 
 use crate::borrowck::error::BorrowError;
 use crate::borrowck::PlacePath;
+use crate::mir::lvalue::BorrowKind;
 use crate::session::Span;
 
-/// Kind of borrow.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BorrowKind {
-    /// `&T` — shared, immutable borrow
-    Shared,
-    /// `&mut T` — exclusive, mutable borrow
-    Mut,
-    /// `&raw const T` / `&raw mut T` — raw pointer (no aliasing rules)
-    Raw,
-}
+// Stage 3.63 (cross-stage naming standardization): `BorrowKind` is now
+// imported from `crate::mir::lvalue` as the single source of truth.
+// The former duplicate `borrowck::borrow_set::BorrowKind` (with its
+// `BkKind` alias in `borrowck::mod`) has been removed — DRY restored.
 
 /// A borrow record.
 #[derive(Debug, Clone)]

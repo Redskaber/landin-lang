@@ -15,7 +15,7 @@ pub mod pat;
 pub mod path;
 pub mod ty;
 
-pub use cx::LowerCtxt;
+pub use cx::HirLowerCtxt;
 pub use error::LowerError;
 
 use crate::ast;
@@ -33,7 +33,7 @@ use lasso::Rodeo;
 /// `InferTy` fields on all `HirTy` nodes are set to `None`; the Stage 2
 /// type checker will fill them in.
 pub fn lower_crate(ast: &ast::Crate, interner: &Rodeo) -> HirCrate {
-    let mut cx = LowerCtxt::new(interner);
+    let mut cx = HirLowerCtxt::new(interner);
     for item in &ast.items {
         cx.lower_item(item);
     }

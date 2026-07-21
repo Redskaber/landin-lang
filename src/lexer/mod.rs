@@ -7,7 +7,11 @@ pub mod reader;
 pub mod token;
 
 pub use reader::{LexError, Lexer};
-pub use token::*;
+// Stage 3.63 (cross-stage naming standardization): explicit list instead of
+// `pub use token::*;` to prevent accidental leakage of internal types.
+// Matches the same pattern already established in src/hir/mod.rs and
+// src/mir/mod.rs (Stage 3.57 P0-3 fix).
+pub use token::{keyword_from_str, FloatTy, IntTy, Symbol, Token, TokenKind};
 
 /// Collect all tokens from source.
 pub fn tokenize(src: &str, interner: &mut lasso::Rodeo) -> (Vec<Token>, Vec<LexError>) {

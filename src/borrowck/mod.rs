@@ -14,9 +14,14 @@ pub mod borrow_set;
 pub mod error;
 pub mod move_tracker;
 
-pub use borrow_set::{Borrow, BorrowKind as BkKind, BorrowSet};
+// Stage 3.63 (cross-stage naming standardization): `BorrowKind` is now
+// re-exported from `crate::mir::lvalue` (single source of truth). The
+// former `BkKind` alias has been removed.
+pub use borrow_set::{Borrow, BorrowSet};
 pub use error::{BorrowError, BorrowErrorKind};
 pub use move_tracker::MoveTracker;
+// Re-export BorrowKind from mir::lvalue so callers can `use borrowck::BorrowKind`.
+pub use crate::mir::lvalue::BorrowKind;
 
 use crate::mir::body::*;
 use crate::mir::lvalue::*;
@@ -201,16 +206,15 @@ impl BorrowChecker {
     ) {
         match rv {
             Rvalue::Ref(region, kind, place) => {
-                // Creating a borrow: record it
+                // Creating a borrow: record it.
+                // Stage 3.63: `kind` is already `mir::lvalue::BorrowKind` —
+                // the former manual conversion to a parallel `BkKind` enum
+                // has been eliminated (BorrowKind is now unified).
                 let borrowed_place = self.place_path(mir, place);
-                let bk = match kind {
-                    crate::mir::lvalue::BorrowKind::Shared => BkKind::Shared,
-                    crate::mir::lvalue::BorrowKind::Mut => BkKind::Mut,
-                    crate::mir::lvalue::BorrowKind::Raw => BkKind::Raw,
-                };
+                let bk = *kind;
                 // G7 fix (Stage 2.4f): `&mut x` requires x to be mutable.
                 // If x is an immutable local, emit an error.
-                if bk == BkKind::Mut {
+                if bk == BorrowKind::Mut {
                     if let LvalueKind::Local(id) = &place.kind {
                         let is_mutable =
                             mir.local(*id).mutability == crate::mir::ty::Mutability::Mutable;
@@ -326,7 +330,7 @@ impl BorrowChecker {
                 }
                 // Check if borrowed
                 if let Some(bk) = self.borrows.borrow_kind(&path) {
-                    if bk == BkKind::Shared || bk == BkKind::Mut {
+                    if bk == BorrowKind::Shared || bk == BorrowKind::Mut {
                         self.errors.push(BorrowError::move_borrowed(
                             "cannot move borrowed value",
                             span,
@@ -395,7 +399,7 @@ impl BorrowChecker {
         let path = self.place_path(mir, lv);
         // Writing to a place that is borrowed is an error
         if let Some(bk) = self.borrows.borrow_kind(&path) {
-            if bk == BkKind::Shared || bk == BkKind::Mut {
+            if bk == BorrowKind::Shared || bk == BorrowKind::Mut {
                 self.errors.push(BorrowError::assign_borrowed(
                     "cannot assign to borrowed value",
                     span,
@@ -760,7 +764,14 @@ pub fn check_mir_body(mir: &MirBody) -> Vec<BorrowError> {
     bc.into_errors()
 }
 
-/// Check all MIR bodies derived from a HIR crate.
+/// Stage 3.63: Deprecated legacy entry point. The driver now uses
+/// `BorrowChecker::check_mir_body` directly per §16 interface isolation.
+///
+/// This free function is retained for backwards compatibility with older
+/// callers that pass a `HirCrate`. It internally re-lowers HIR to MIR —
+/// the §16-violating pattern that the driver-based orchestration eliminated.
+/// New code should use the driver or `BorrowChecker::check_mir_body` directly.
+#[deprecated(note = "Use BorrowChecker::check_mir_body (§16-compliant) or driver::compile instead")]
 pub fn check_crate(hir: &crate::hir::HirCrate, interner: &lasso::Rodeo) -> Vec<BorrowError> {
     let mut all_errors = Vec::new();
     for (_, body) in &hir.bodies {

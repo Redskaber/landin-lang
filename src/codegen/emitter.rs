@@ -306,7 +306,7 @@ pub trait Emitter {
 /// component, making it impossible to recover the length of a `&str`
 /// after passing it to a function — a soundness/completeness gap
 /// carried as L13 debt since Stage 3.27 (18 rounds).
-pub fn fat_ptr_type(elem: EmitType) -> EmitType {
+pub fn emit_fat_ptr_type(elem: EmitType) -> EmitType {
     EmitType::Struct(vec![EmitType::ptr_to(elem), EmitType::I64])
 }
 
@@ -341,8 +341,8 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
             // Stage 3.49 (L13 closure): `&str` and `&[T]` are fat pointers
             // `{ ptr, len }`. Other references remain thin pointers.
             match &inner.kind {
-                TyKind::Str => fat_ptr_type(EmitType::I8),
-                TyKind::Slice(elem) => fat_ptr_type(mir_type_to_emit_type(elem)),
+                TyKind::Str => emit_fat_ptr_type(EmitType::I8),
+                TyKind::Slice(elem) => emit_fat_ptr_type(mir_type_to_emit_type(elem)),
                 _ => EmitType::ptr_to(mir_type_to_emit_type(inner)),
             }
         }
@@ -479,10 +479,10 @@ mod tests {
         );
     }
 
-    /// Stage 3.57: Verify fat_ptr_type produces the correct { Ptr, I64 } shape.
+    /// Stage 3.57: Verify emit_fat_ptr_type produces the correct { Ptr, I64 } shape.
     #[test]
     fn fat_ptr_type_correct_shape() {
-        let fp = fat_ptr_type(EmitType::I8);
+        let fp = emit_fat_ptr_type(EmitType::I8);
         match fp {
             EmitType::Struct(fields) => {
                 assert_eq!(fields.len(), 2);

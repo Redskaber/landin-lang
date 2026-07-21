@@ -1,9 +1,11 @@
 # Landin Stage 0 状态报告
 
-> **版本**：v0.1.3
-> **审查轮次**：S0-REV-7（Stage 0 闭合审查，2025）
-> **状态**：Stage 0 前端完整闭合；0 P0 残留；245/245 测试通过；0 编译警告
-> **测试**：245/245 通过（lexer 109 + parser 85 + ast_structure 51）
+> **版本**：v0.8.7（Stage 3.63 cross-stage naming standardization effective）
+> **审查轮次**：S0-REV-7（Stage 0 闭合审查，2025）+ Stage 3.63 §21 cross-stage audit (2026-07-22)
+> **状态**：Stage 0 前端完整闭合；0 P0 残留；343/343 测试通过；0 编译警告；0 clippy 警告
+> **测试**：343/343 通过（lexer 109 + parser 85 + ast_structure 149）
+> **Stage 3.63 修复**：`src/lexer/mod.rs` + `src/ast/mod.rs` 从 glob 改为显式 re-export；
+> 新增 `parser::parse_crate` 自由函数入口
 
 ---
 

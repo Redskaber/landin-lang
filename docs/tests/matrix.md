@@ -1,17 +1,18 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-07-20
-> **Process**: v3.13 (§17 + §18)
+> **Date**: 2026-07-22
+> **Process**: v3.15 (§17 + §18 + §21 + §23)
 
 ## Current Status
 
 | Stage | Tests | Coverage | Status |
 |-------|-------|----------|--------|
-| Stage 0 (lexer/parser/AST) | 245 | ~100% | ✅ Complete |
-| Stage 1 (HIR/resolve) | 451 | ~100% | ✅ Complete |
-| Stage 2 (MIR/typeck/borrowck) | 673 | ~100% | ✅ Complete |
-| Stage 3 (codegen) | 977 | ~99% | ✅ Complete |
+| Stage 0 (lexer/parser/AST) | 343 | ~100% | ✅ Complete |
+| Stage 1 (HIR/resolve) | 108 | ~100% | ✅ Complete |
+| Stage 2 (MIR/typeck/borrowck) | 168 | ~100% | ✅ Complete |
+| Stage 3 (codegen) | 294 + 5 §21 audit | ~99% | ✅ Complete |
+| **Total** | **977** | ~99% | ✅ Stage 0-3 complete |
 
 ## Stage 3 Test Breakdown
 
@@ -52,8 +53,9 @@
 | 3.60 | Typeck section 16 compliance: FieldTyTable + FnSigTable eliminate typeck→HIR leak | 0 | ✅ |
 | 3.61 | section 21 audit: lib.rs API surface + audit verification tests + process v3.14 | 5 | ✅ |
 | 3.62 | Stage 3 收尾: dead code cleanup (~387 lines) + naming standardization + Stage 3 Complete | 0 | ✅ |
-| **Total codegen** | | **300** | | | ✅ |
-| Gate audits R1-R30 | Audit cases | 716 cumulative | ✅ |
+| 3.63 | Cross-stage naming standardization per §21 audit (9 P1 + 1 P2 fixes; pure refactoring) | 0 | ✅ |
+| **Total codegen** | | **294 + 5 §21 audit** | ✅ |
+| Gate audits R1-R31 | Audit cases | 716+ cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

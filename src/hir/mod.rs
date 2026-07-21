@@ -27,5 +27,5 @@ pub use kinds::{
     HirTypeParam, HirUnaryOp, HirUse, HirUseTree, HirVariant, HirVariantData, HirWherePredicate,
     InferTy, InferTyCounter, OwnerNode, PrimTy, Res,
 };
-pub use lower::{lower_crate, LowerCtxt, LowerError};
+pub use lower::{lower_crate, HirLowerCtxt, LowerError};
 pub use map::{DefIdMap, DefIdSet, HirIdMap, HirIdSet};
