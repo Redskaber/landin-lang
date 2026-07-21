@@ -3330,3 +3330,120 @@ fn codegen_slice_local_regression() {
         ll
     );
 }
+
+// ============================================================================
+// Stage 3.55 — Void function return type fix (P0 correctness)
+// ============================================================================
+
+#[test]
+fn codegen_void_fn_emits_void() {
+    // fn f() { ... } should emit `define void @landin_f()` not `define <ty>`.
+    // Was (Stage 3.54 latent): void fn's return local got a fresh infer var
+    // that typeck unified with the body value's type — causing wrong return type.
+    let ll = gen_ll("fn id(s: &str) -> &str { s } fn f() { id(\"hello\") }");
+    assert!(
+        ll.contains("define void @landin_f()"),
+        "expected void return type for void fn in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_void_fn_ret_void() {
+    // Void fn should `ret void`, not `ret <ty> %val`.
+    let ll = gen_ll("fn id(s: &str) -> &str { s } fn f() { id(\"hello\") }");
+    // Find the f function's ret
+    let in_f = ll.split("define void @landin_f()").nth(1).unwrap_or("");
+    assert!(
+        in_f.contains("ret void"),
+        "expected ret void for void fn in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_void_fn_no_value_return() {
+    // Void fn that calls a non-void fn should still be void.
+    let ll = gen_ll("fn g() -> i32 { 42 } fn f() { g(); }");
+    assert!(
+        ll.contains("define void @landin_f()"),
+        "expected void return for fn calling i32 fn in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_void_fn_empty_body() {
+    // Empty void fn: fn f() { }
+    let ll = gen_ll("fn f() { }");
+    assert!(
+        ll.contains("define void @landin_f()"),
+        "expected void return for empty fn in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_nonvoid_fn_still_correct() {
+    // Regression: non-void fn should still have its return type.
+    let ll = gen_ll("fn f() -> i32 { 42 }");
+    assert!(
+        ll.contains("define i32 @landin_f()"),
+        "expected i32 return for non-void fn in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_void_fn_with_str_return() {
+    // Void fn that has a &str expression body (discarded).
+    let ll = gen_ll("fn f() { \"hello\" }");
+    assert!(
+        ll.contains("define void @landin_f()"),
+        "expected void return for fn with str body in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_void_fn_with_arith() {
+    // Void fn with arithmetic expression body (discarded).
+    let ll = gen_ll("fn f() { 1 + 2 }");
+    assert!(
+        ll.contains("define void @landin_f()"),
+        "expected void return for fn with arith body in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_void_fn_call_chain() {
+    // Multiple void fns calling each other.
+    let ll = gen_ll("fn a() { } fn b() { a(); } fn c() { b(); }");
+    assert!(
+        ll.contains("define void @landin_a()"),
+        "expected void for a() in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("define void @landin_b()"),
+        "expected void for b() in:\n{}",
+        ll
+    );
+    assert!(
+        ll.contains("define void @landin_c()"),
+        "expected void for c() in:\n{}",
+        ll
+    );
+}
+
+#[test]
+fn codegen_str_return_fn_regression() {
+    // Regression: fn returning &str should still return fat pointer.
+    let ll = gen_ll("fn f() -> &str { \"hello\" }");
+    assert!(
+        ll.contains("define { i8*, i64 } @landin_f()"),
+        "expected fat pointer return for &str fn (regression) in:\n{}",
+        ll
+    );
+}

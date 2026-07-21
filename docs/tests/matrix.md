@@ -11,7 +11,7 @@
 | Stage 0 (lexer/parser/AST) | 245 | ~100% | ✅ Complete |
 | Stage 1 (HIR/resolve) | 451 | ~100% | ✅ Complete |
 | Stage 2 (MIR/typeck/borrowck) | 673 | ~100% | ✅ Complete |
-| Stage 3 (codegen) | 938 | ~99% | 🔄 In progress |
+| Stage 3 (codegen) | 947 | ~99% | 🔄 In progress |
 
 ## Stage 3 Test Breakdown
 
@@ -44,8 +44,9 @@
 | 3.52 | Slice element type propagation: load/store/arith use correct element type from fat pointer | 9 | ✅ |
 | 3.53 | &str indexing element type fix: u8 element, not i32 (Stage 3.52 latent) | 9 | ✅ |
 | 3.54 | Slice/array field store + detect_lvalue_storage_type Field projection fix | 9 | ✅ |
-| **Total codegen** | | **266** | ✅ |
-| Gate audits R1-R21 | Audit cases | 650 cumulative | ✅ |
+| 3.55 | Void function return type fix: void fn emits define void + ret void (P0 correctness) | 9 | ✅ |
+| **Total codegen** | | **275** | ✅ |
+| Gate audits R1-R22 | Audit cases | 680 cumulative | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

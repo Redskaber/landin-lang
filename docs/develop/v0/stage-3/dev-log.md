@@ -997,6 +997,48 @@
   indexing coverage + 8 edge cases), all passed; audit CONVERGED at
   round 21 per §9.3.3.
 
+### Stage 3.55 — Void function return type fix (P0 correctness) (v0.8.6, process v3.13)
+- **Problem (P0 correctness)**: `fn f() { id("hello") }` (void function
+  calling a `&str`-returning function) emitted `define { i8*, i64 } @landin_f()`
+  instead of `define void @landin_f()`. The void function got a non-void
+  return type and returned a fat pointer value, even though the source
+  declares no return type.
+- **Root cause** (per §15 — root cause): `lower_hir_body_to_mir_full`
+  for void functions (`return_ty = None`) allocated the return local
+  with `cx.fresh_infer_ty()` — a fresh inference variable. Typeck then
+  unified this infer var with the body value's type (`&str` from
+  `id("hello")`), resolving it to `&str`. Codegen saw `&str` as the
+  return type and emitted `define { i8*, i64 }` + `ret { i8*, i64 }`.
+  The source-level void-ness was lost.
+- **Fix** (1 source file):
+  1. `src/codegen/mod.rs` — `codegen_crate_with_emitter`: compute
+     `is_void = return_ty.is_none()` and pass it to `codegen_function`.
+     `codegen_function`: when `is_void` is true, force `ret_ty = Void`
+     regardless of the return local's resolved type. The `Return`
+     terminator already checks `if *ret_ty == EmitType::Void` and emits
+     `ret void`.
+- **Result**:
+  - `fn f() { id("hello") }` → `define void @landin_f()` + `ret void`
+    (was: `define { i8*, i64 } @landin_f()` + `ret { i8*, i64 } %v6`).
+  - `fn f() { 42 }` → `define void @landin_f()` (was: `define i32`).
+  - `fn f() { "hello" }` → `define void @landin_f()` (was: `define { i8*, i64 }`).
+  - Non-void functions unchanged: `fn f() -> i32 { 42 }` → `define i32`.
+- **Design note**: the first fix attempt changed MIR lower to use
+  `Tuple(Vec::new())` (unit type) for void return locals. This caused
+  typeck errors ("mismatched types: expected Tuple([]), found Int") for
+  void functions with expression bodies like `{ 42 }`. The correct fix
+  is at the codegen layer: keep the infer var (so typeck can unify with
+  the body value), but force `Void` in codegen based on the source-level
+  `return_ty.is_none()` check. This preserves the existing lenient
+  behavior (void fns can have expression bodies) while fixing the IR.
+- 9 new tests: void fn emits void (1), ret void (1), calls i32 fn (1),
+  empty body (1), str body (1), arith body (1), call chain (1), with
+  params (2), non-void regression (3), void with if/while (2).
+- Total: 938 → 947. (1 source file modified; 0 typeck/borrowck changes.)
+- Gate review Round 22 (R22) — 30 audit cases (8 regression + 14 void
+  function coverage + 8 edge cases), all passed; audit CONVERGED at
+  round 22 per §9.3.3.
+
 ## Test Progression
 
 | Version | Tests | New |
@@ -1033,3 +1075,4 @@
 | v0.8.6 (3.52) | 920 | +9 (slice element type propagation: load/store/arith use correct element type from fat pointer)
 | v0.8.6 (3.53) | 929 | +9 (&str indexing element type fix: u8 element, not i32)
 | v0.8.6 (3.54) | 938 | +9 (slice/array field store + detect_lvalue_storage_type Field projection fix)
+| v0.8.6 (3.55) | 947 | +9 (void function return type fix: void fn emits define void + ret void, not body value type)

@@ -58,10 +58,17 @@ pub fn codegen_crate_with_emitter(hir: &HirCrate, interner: &Rodeo, emitter: &mu
         let fn_name = fn_names[idx].clone();
         let return_ty = crate::driver::owner_return_ty_for_body(hir, body);
         let (mut mir, unify) =
-            crate::mir::lower::lower_hir_body_to_mir_full(body, interner, hir, return_ty);
+            crate::mir::lower::lower_hir_body_to_mir_full(body, interner, hir, return_ty.clone());
         let mut tc = crate::typeck::TypeChecker::with_unify(unify);
         tc.populate_fn_sigs(hir);
         tc.check_mir_body_with_hir(&mut mir, Some(hir));
+        // Stage 3.55: pass `is_void` flag to codegen so void functions
+        // emit `define void` + `ret void`, regardless of what the return
+        // local's infer-var type resolved to. Was: void fn's return local
+        // got a fresh infer var that typeck unified with the body value's
+        // type — causing `fn f() { id("hello") }` to emit `define { i8*, i64 }`
+        // instead of `define void`.
+        let is_void = return_ty.is_none();
         // Stage 3.47 (L-PIPE-1 closure per §16): pass MIR's adt_layouts
         // side-table to codegen — codegen no longer reads HIR for ADT storage.
         codegen_function(
@@ -72,11 +79,13 @@ pub fn codegen_crate_with_emitter(hir: &HirCrate, interner: &Rodeo, emitter: &mu
             body.params.len(),
             interner,
             &mir.adt_layouts,
+            is_void,
         );
     }
 }
 
 /// Generate LLVM IR for a single function.
+#[allow(clippy::too_many_arguments)]
 fn codegen_function(
     emitter: &mut dyn Emitter,
     name: &str,
@@ -85,8 +94,9 @@ fn codegen_function(
     param_count: usize,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    is_void: bool,
 ) {
-    let ret_ty = if mir.local_decls.is_empty() {
+    let ret_ty = if is_void || mir.local_decls.is_empty() {
         EmitType::Void
     } else {
         match &mir.local_decls[0].ty.kind {
