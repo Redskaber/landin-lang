@@ -1702,9 +1702,20 @@ fn test_regression_unsafe_impl_parses() {
     // Round 8e / P1-2 soundness: `unsafe impl Trait for T {}` used to be
     // rejected. Now it parses (with the unsafe qualifier dropped — Stage 1.0
     // will add the AST field).
+    // Stage 3.65 update: the `is_unsafe` field now exists and is propagated.
     let (krate, errors) = parse("unsafe impl Send for Foo {}");
     assert!(errors.is_empty(), "unsafe impl should parse: {:?}", errors);
     assert_eq!(krate.items.len(), 1);
+    // Stage 3.65: verify is_unsafe is propagated
+    match &krate.items[0].kind {
+        landin_compiler::ast::ItemKind::Impl(impl_decl) => {
+            assert!(
+                impl_decl.is_unsafe,
+                "unsafe impl should have is_unsafe=true"
+            );
+        }
+        other => panic!("expected Impl, got {:?}", other),
+    }
 }
 
 #[test]
@@ -1712,6 +1723,46 @@ fn test_regression_unsafe_trait_parses() {
     let (krate, errors) = parse("unsafe trait Foo {}");
     assert!(errors.is_empty(), "unsafe trait should parse: {:?}", errors);
     assert_eq!(krate.items.len(), 1);
+    // Stage 3.65: verify is_unsafe is propagated
+    match &krate.items[0].kind {
+        landin_compiler::ast::ItemKind::Trait(trait_decl) => {
+            assert!(
+                trait_decl.is_unsafe,
+                "unsafe trait should have is_unsafe=true"
+            );
+        }
+        other => panic!("expected Trait, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_safe_impl_and_trait_have_is_unsafe_false() {
+    // Stage 3.65: regular (non-unsafe) impl and trait should have is_unsafe=false.
+    let (krate, errors) = parse("impl Foo for Bar {} trait Baz {}");
+    assert!(
+        errors.is_empty(),
+        "safe impl+trait should parse: {:?}",
+        errors
+    );
+    assert_eq!(krate.items.len(), 2);
+    match &krate.items[0].kind {
+        landin_compiler::ast::ItemKind::Impl(impl_decl) => {
+            assert!(
+                !impl_decl.is_unsafe,
+                "safe impl should have is_unsafe=false"
+            );
+        }
+        other => panic!("expected Impl, got {:?}", other),
+    }
+    match &krate.items[1].kind {
+        landin_compiler::ast::ItemKind::Trait(trait_decl) => {
+            assert!(
+                !trait_decl.is_unsafe,
+                "safe trait should have is_unsafe=false"
+            );
+        }
+        other => panic!("expected Trait, got {:?}", other),
+    }
 }
 
 #[test]

@@ -315,6 +315,26 @@ pub fn emit_fat_ptr_type(elem: EmitType) -> EmitType {
     EmitType::Struct(vec![EmitType::ptr_to(elem), EmitType::I64])
 }
 
+/// Translate a MIR `Ty` to an `EmitType` (legacy fallback, no ADT layouts).
+///
+/// **Stage 3.65 (P2 fix)**: This is the legacy variant that does NOT have
+/// access to `AdtLayouts`. For `TyKind::Adt` it falls back to `I32` (wrong
+/// for any struct/enum with real payload). The canonical entry point is
+/// `codegen::mir_type_to_emit_type_with_layouts` which takes `&AdtLayouts`
+/// and resolves ADT layouts correctly per §16 (reads `MirBody::adt_layouts`
+/// side-table — no HIR access).
+///
+/// **When to use which**:
+/// - Inside `codegen_function` (where `MirBody` is available): always use
+///   `mir_type_to_emit_type_with_layouts`.
+/// - In tests / standalone helpers where no `MirBody` is available and
+///   the type is known to be primitive: `mir_type_to_emit_type` is OK.
+///
+/// The two functions are kept separate (rather than unified with
+/// `Option<&AdtLayouts>`) because the `_with_layouts` variant recurses
+/// into nested ADTs/arrays/refs, while this one doesn't — unifying them
+/// would require threading layouts through every recursion, which is
+/// already done correctly in the `_with_layouts` variant.
 pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
     use crate::mir::ty::TyKind;
     match &ty.kind {

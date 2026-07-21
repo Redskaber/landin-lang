@@ -22,8 +22,8 @@ pub use kinds::{
     HirCrate, HirEnum, HirExpr, HirExprField, HirExprKind, HirExternBlock, HirFieldDef, HirFn,
     HirFnRetTy, HirFnSig, HirForeignItem, HirGenericParam, HirGenerics, HirImpl, HirImplItem,
     HirItem, HirLifetimeParam, HirLitKind, HirLocal, HirMod, HirModKind, HirParam, HirPat,
-    HirPatField, HirPatKind, HirPath, HirPathSegment, HirQSelf, HirStatic, HirStmt, HirStruct,
-    HirTrait, HirTraitBound, HirTraitItem, HirTy, HirTyKind, HirTypeAlias, HirTypeBound,
+    HirPatField, HirPatKind, HirPath, HirPathSegment, HirQSelf, HirSelfKind, HirStatic, HirStmt,
+    HirStruct, HirTrait, HirTraitBound, HirTraitItem, HirTy, HirTyKind, HirTypeAlias, HirTypeBound,
     HirTypeParam, HirUnaryOp, HirUse, HirUseTree, HirVariant, HirVariantData, HirWherePredicate,
     InferTy, InferTyCounter, OwnerNode, PrimTy, Res,
 };

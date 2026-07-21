@@ -193,6 +193,13 @@ fn codegen_function(
 ///   `field_idx(variant_V, field_F) = 1 + sum(field_counts of variants 0..V-1) + F`
 /// This is computed in the `Aggregate(Adt(...))` codegen and in MIR lower's
 /// pattern-binding projection generation.
+/// **Stage 3.65 (P2 fix)**: This is the **canonical** §16-compliant
+/// MIR→EmitType translation. It resolves `TyKind::Adt` via
+/// `MirBody::adt_layouts` (the side-table populated by MIR lower per
+/// §16 — no HIR access). Use this everywhere a `MirBody` is available.
+///
+/// The legacy `mir_type_to_emit_type` (no layouts) is kept only for
+/// tests/standalone helpers where the type is known to be primitive.
 pub fn mir_type_to_emit_type_with_layouts(
     ty: &crate::mir::ty::Ty,
     layouts: &crate::mir::body::AdtLayouts,

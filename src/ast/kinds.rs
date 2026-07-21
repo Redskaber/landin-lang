@@ -655,6 +655,10 @@ pub struct TraitDecl {
     pub generics: Generics,
     pub supertraits: Vec<TypeBound>,
     pub items: Vec<TraitItem>,
+    /// Stage 3.65: `unsafe trait Foo { ... }` — indicates the trait is
+    /// unsafe to implement (implementors must use `unsafe impl`).
+    /// Previously dropped by the parser (Stage 1.0 debt).
+    pub is_unsafe: bool,
     pub span: Span,
 }
 
@@ -676,6 +680,10 @@ pub struct ImplDecl {
     pub of_trait: Option<Path>,
     pub self_ty: Ty,
     pub items: Vec<Item>,
+    /// Stage 3.65: `unsafe impl Trait for T { ... }` — indicates the
+    /// implementor asserts the unsafe preconditions of an `unsafe trait`.
+    /// Previously dropped by the parser (Stage 1.0 debt).
+    pub is_unsafe: bool,
     pub span: Span,
 }
 

@@ -506,3 +506,42 @@ in `tests/hir_resolution.rs` cover leaf / glob / path-prefix / alias
 **Test impact**: +5 (982/982 tests pass — was 977, +5 new use-resolution tests).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.2 (Stage 3.65, 2026-07-22)
+
+P2 architectural fixes round. Builds on v1.1 (Stage 3.64) by closing
+the `unsafe impl/trait` AST debt, adding `Res::SelfTy` trait/impl
+discrimination, and providing `lower_body` short-form aliases.
+
+**Fixes applied in this round**:
+1. `src/ast/kinds.rs`: added `is_unsafe: bool` to `ImplDecl` and `TraitDecl`
+2. `src/hir/kinds.rs`: added `is_unsafe: bool` to `HirImpl` and `HirTrait`;
+   added new `HirSelfKind` enum (`Trait`/`Impl`); `Res::SelfTy` now carries
+   `HirSelfKind`
+3. `src/parser/parser.rs`: `parse_impl` and `parse_trait` now take
+   `is_unsafe: bool`; the `KwUnsafe` + `KwImpl`/`KwTrait` match arms now
+   pass `true` (previously dropped the qualifier)
+4. `src/hir/lower/item.rs`: `lower_trait` and `lower_impl` now propagate
+   `is_unsafe` from AST to HIR
+5. `src/hir/mod.rs`: re-export `HirSelfKind`
+6. `src/resolve/resolver.rs`: `Res::SelfTy` construction now passes
+   `HirSelfKind::Impl` (defaults to Impl; threading owner context is Stage 4)
+7. `src/mir/lower/mod.rs`: added `lower_body` + `lower_body_full` short-form
+   aliases per `api-naming-standard.md` §2.2 verb_noun convention
+8. `src/mir/mod.rs`: re-export `lower_body` + `lower_body_full`
+9. `src/codegen/emitter.rs` + `src/codegen/mod.rs`: documented
+   `mir_type_to_emit_type` (legacy fallback) vs
+   `mir_type_to_emit_type_with_layouts` (canonical §16-compliant) with
+   "When to use which" guidance
+
+**New types**: `hir::HirSelfKind` (`Trait` / `Impl`) — discriminant for
+`Res::SelfTy`. Named `HirSelfKind` (not `SelfKind`) to avoid collision
+with the pre-existing `ast::SelfKind` enum (method receiver kinds).
+
+**New functions**: `mir::lower::lower_body`, `mir::lower::lower_body_full`
+— short-form aliases for `lower_hir_body_to_mir` / `_full`.
+
+**Test impact**: +1 (983/983 tests pass — was 982, +1 new
+`test_safe_impl_and_trait_have_is_unsafe_false`).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

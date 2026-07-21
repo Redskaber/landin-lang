@@ -8,13 +8,17 @@ predictable performance.
 
 > **Status:** Stage 0-3 complete (lexer, parser, HIR, name resolution, MIR,
 > type checking, borrow checking, LLVM codegen). All soundness-critical
-> limitations closed. v0.8.8, 982 tests passing, 32 gate review rounds
+> limitations closed. v0.8.9, 983 tests passing, 33 gate review rounds
 > passed (audit CONVERGED). Process v3.15 (§15-§24).
 > Stage 3.63 (v0.8.7): cross-stage naming standardization per §21 audit
 > (9 P1 + 1 P2 fixes; pure refactoring).
 > Stage 3.64 (v0.8.8): P2 ergonomics fixes (6 Error trait impls, Emitter
 > re-export, emit_output rename) + use declaration resolution (Stage 1.3
 > Phase C — previously a no-op stub; +5 new tests).
+> Stage 3.65 (v0.8.9): P2 architectural fixes — `unsafe impl/trait` AST+
+> HIR+parser support (closes Stage 1.0 soundness debt), `Res::SelfTy`
+> trait/impl discrimination (`HirSelfKind`), `lower_body` aliases,
+> `mir_type_to_emit_type` documentation (+1 new test).
 > Remaining: L1 (PHI optimization), L3 (closures), L5 (traits), L8 (lli) —
 > deferred to Stage 4+.
 
@@ -40,12 +44,12 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 
 | Stage | Module | Status |
 | ------- | -------- | -------- |
-| 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete (343 tests) |
-| 1 | `hir/`, `resolve/` | ✅ Complete (113 tests — +5 use resolution tests in Stage 3.64) |
-| 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete (168 tests, 6 rounds of review) |
-| 3 | `codegen/` | ✅ Complete (294 tests + 5 §21 audit tests, LLVM IR text output) |
+| 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete (344 tests — +1 unsafe impl/trait test in Stage 3.65) |
+| 1 | `hir/`, `resolve/` | ✅ Complete (113 tests — +5 use resolution in Stage 3.64; Stage 3.65: unsafe fields + HirSelfKind) |
+| 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete (168 tests, 6 rounds of review; Stage 3.65: lower_body aliases) |
+| 3 | `codegen/` | ✅ Complete (294 tests + 5 §21 audit tests, LLVM IR text output; Stage 3.65: mir_type_to_emit_type docs) |
 
-## API surface (Stage 3.63-3.64 naming standard)
+## API surface (Stage 3.63-3.65 naming standard)
 
 The compiler exposes a clean, §16-compliant public API. See
 `docs/develop/v0/api-naming-standard.md` for the full standard.
@@ -56,7 +60,7 @@ The compiler exposes a clean, §16-compliant public API. See
 | 0 parser | `parser::parse_crate(tokens, &mut interner)` | free fn (Stage 3.63 added) |
 | 1.2 HIR lower | `hir::lower::lower_crate(&ast, &interner)` | free fn |
 | 1.3 resolve | `resolve::resolve_crate(&mut hir, &mut interner)` | free fn (Stage 3.64: `use` decl resolution) |
-| 2.1 MIR lower | `mir::lower::lower_hir_body_to_mir_full(...)` | free fn |
+| 2.1 MIR lower | `mir::lower::lower_body(...)` / `lower_body_full(...)` | free fn (Stage 3.65 aliases) |
 | 2.2 typeck | `TypeChecker::check_mir_body_with_tables(...)` | method (§16-compliant) |
 | 2.3 borrowck | `BorrowChecker::check_mir_body(&mir)` | method |
 | 3 codegen | `codegen::codegen_crate(&CompileResult)` | free fn (§16-compliant) |
@@ -131,7 +135,7 @@ landin-stage0/
 ## Testing
 
 ```bash
-# Run all 982 tests
+# Run all 983 tests
 cargo test
 
 # Format + lint
@@ -142,10 +146,10 @@ cargo clippy --all-targets -- -D warnings
 ## Roadmap
 
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
-- **Stage 1** ✅ HIR + name resolution (Stage 3.64: `use` declaration resolution)
-- **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review)
-- **Stage 3** ✅ LLVM codegen (COMPLETE — 32 gate review rounds CONVERGED, §16 compliant pipeline, all soundness-critical limitations closed; Stage 3.63 cross-stage naming standardization per §21 audit; Stage 3.64 P2 ergonomics + use resolution)
-- **Stage 4** Macro system + attributes + closures (L3) + PHI optimization (L1)
+- **Stage 1** ✅ HIR + name resolution (Stage 3.64: `use` declaration resolution; Stage 3.65: `unsafe impl/trait` AST fields + `Res::SelfTy` discrimination)
+- **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review; Stage 3.65: `lower_body` aliases)
+- **Stage 3** ✅ LLVM codegen (COMPLETE — 33 gate review rounds CONVERGED, §16 compliant pipeline, all soundness-critical limitations closed; Stage 3.63 cross-stage naming standardization; Stage 3.64 P2 ergonomics + use resolution; Stage 3.65 P2 architectural fixes)
+- **Stage 4** Macro system + attributes + closures (L3) + PHI optimization (L1) + `Lvalue`→`Place` rename (167 refs, dedicated round)
 - **Stage 5** Mini-cargo + stdlib MVP + trait dispatch (L5)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting

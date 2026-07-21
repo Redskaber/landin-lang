@@ -313,6 +313,8 @@ pub struct HirTrait {
     pub items: Vec<HirTraitItem>,
     pub vis: Visibility,
     pub attrs: Vec<Attr>,
+    /// Stage 3.65: `unsafe trait Foo { ... }` — propagated from AST `TraitDecl.is_unsafe`.
+    pub is_unsafe: bool,
     pub span: Span,
 }
 
@@ -344,6 +346,8 @@ pub struct HirImpl {
     pub self_ty: HirTy,
     pub items: Vec<HirImplItem>,
     pub attrs: Vec<Attr>,
+    /// Stage 3.65: `unsafe impl Trait for T { ... }` — propagated from AST `ImplDecl.is_unsafe`.
+    pub is_unsafe: bool,
     pub span: Span,
 }
 
@@ -573,14 +577,43 @@ pub enum Res {
     Def(DefId, DefKind),
     /// A primitive type (i32, bool, etc.).
     PrimTy(PrimTy),
-    /// The `Self` type of the current impl.
-    SelfTy,
+    /// The `Self` type of the current trait or impl.
+    ///
+    /// Stage 3.65: now carries `HirSelfKind` to distinguish:
+    /// - `Trait` — `Self` inside a trait declaration refers to the trait's
+    ///   Self type (which is the implementor's type).
+    /// - `Impl` — `Self` inside an impl block refers to the impl's self_ty.
+    ///
+    /// This distinction matters for type-checking (e.g., whether `Self` can
+    /// be assumed to satisfy the trait's supertraits).
+    SelfTy(HirSelfKind),
     /// The `self` value of the current method.
     SelfCtor,
     /// A lifetime.
     Lifetime,
     /// An error recovery — name resolution failed.
     Err,
+}
+
+/// Stage 3.65: Discriminant for `Res::SelfTy` — distinguishes trait-Self
+/// from impl-Self.
+///
+/// This matters for type-checking:
+/// - In a trait declaration, `Self` is abstract — it can be any type that
+///   implements the trait. The trait's supertraits are *bounds* on `Self`,
+///   not facts.
+/// - In an impl block, `Self` is concrete — it's the impl's `self_ty`.
+///   The trait's supertraits are *facts* (proven by the impl).
+///
+/// Named `HirSelfKind` (not `SelfKind`) to avoid collision with the
+/// pre-existing `ast::SelfKind` enum (which discriminates `self`/`&self`/
+/// `&mut self`/`self: Self` method receivers — a different concept).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HirSelfKind {
+    /// `Self` inside a trait declaration — abstract, satisfies supertrait bounds.
+    Trait,
+    /// `Self` inside an impl block — concrete, equals `impl self_ty`.
+    Impl,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

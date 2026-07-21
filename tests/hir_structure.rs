@@ -107,6 +107,7 @@ fn hir_trait_construction() {
         items: vec![],
         vis: landin_compiler::ast::Visibility::Public,
         attrs: vec![],
+        is_unsafe: false,
         span: Span::DUMMY,
     };
     let item = HirItem::Trait(trait_decl);
@@ -130,6 +131,7 @@ fn hir_impl_construction() {
         },
         items: vec![],
         attrs: vec![],
+        is_unsafe: false,
         span: Span::DUMMY,
     };
     let item = HirItem::Impl(impl_decl);
@@ -530,7 +532,7 @@ fn res_variants_distinct() {
     let local = Res::Local(HirId::new(DefId(0), ItemLocalId(1)));
     let def = Res::Def(DefId(5), DefKind::Fn);
     let prim = Res::PrimTy(PrimTy::I32);
-    let self_ty = Res::SelfTy;
+    let self_ty = Res::SelfTy(landin_compiler::hir::HirSelfKind::Impl);
     let unknown = Res::Unknown;
     let err = Res::Err;
     assert_ne!(local, def);

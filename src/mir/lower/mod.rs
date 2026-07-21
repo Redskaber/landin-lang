@@ -513,6 +513,40 @@ pub fn lower_hir_body_to_mir_full(
     (cx.mir, unify)
 }
 
+// ================================================================
+// Stage 3.65: convenience aliases
+// ================================================================
+//
+// Per `docs/develop/v0/api-naming-standard.md` §2.2, each stage should
+// expose a `<verb>_<noun>` free-function entry point. The MIR lower
+// stage historically used the verbose `lower_hir_body_to_mir_*` names
+// (which are explicit but break the verb-object pattern set by
+// `lower_crate` / `resolve_crate` / `codegen_crate`). These thin
+// wrappers provide the short form without removing the long form.
+
+/// Stage 3.65: convenience alias for `lower_hir_body_to_mir`.
+///
+/// Mirrors the entry-point style of `hir::lower::lower_crate` (verb_noun).
+/// The long-form `lower_hir_body_to_mir` remains available for callers
+/// who prefer the explicit name.
+pub fn lower_body(body: &Body, interner: &Rodeo, hir: &HirCrate) -> MirBody {
+    lower_hir_body_to_mir(body, interner, hir)
+}
+
+/// Stage 3.65: convenience alias for `lower_hir_body_to_mir_full`.
+///
+/// Returns both the `MirBody` and the `UnificationTable` (the latter is
+/// passed to `TypeChecker::with_unify` so typeck can resolve inference
+/// variables created during lowering).
+pub fn lower_body_full(
+    body: &Body,
+    interner: &Rodeo,
+    hir: &HirCrate,
+    return_ty: Option<HirTy>,
+) -> (MirBody, UnificationTable) {
+    lower_hir_body_to_mir_full(body, interner, hir, return_ty)
+}
+
 /// Best-effort const-eval for array length expressions.
 ///
 /// Stage 2.4c only handles literal integer expressions (e.g., `[T; 4]`).

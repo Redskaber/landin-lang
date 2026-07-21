@@ -1,9 +1,136 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.8.8
+**Current version**: v0.8.9
 **Date**: 2026-07-22
-**Test count**: 982 tests passing, 0 warnings, fmt + clippy clean
+**Test count**: 983 tests passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.8.9 — Stage 3.65 (P2 architectural fixes: unsafe impl/trait, Res::SelfTy, lower_body aliases)
+
+### Overview
+
+Continuation of the §21 cross-stage audit follow-up. Stage 3.63 closed
+all 9 P1 naming issues. Stage 3.64 closed 5 P2 ergonomics fixes + the
+`use` declaration resolution feature. This round (Stage 3.65) addresses
+the next batch of P2 architectural items: `unsafe impl/trait` AST fields
+(closes a Stage 1.0 soundness debt), `Res::SelfTy` trait/impl
+discrimination, `lower_body` short-form aliases, and `mir_type_to_emit_type`
+documentation unification. 983 tests pass (was 982, +1 new). 0 clippy
+warnings. fmt clean.
+
+### P2 fix #1: `unsafe impl`/`unsafe trait` AST + HIR + parser support
+
+**Closes a Stage 1.0 soundness debt**: the parser previously accepted
+`unsafe impl` and `unsafe trait` syntax but silently dropped the `unsafe`
+qualifier — the AST `ImplDecl` and `TraitDecl` structs had no `is_unsafe`
+field.
+
+**Now**:
+- `ast::ImplDecl` has `is_unsafe: bool`
+- `ast::TraitDecl` has `is_unsafe: bool`
+- `hir::HirImpl` has `is_unsafe: bool` (propagated from AST)
+- `hir::HirTrait` has `is_unsafe: bool` (propagated from AST)
+- `parser::parse_impl(is_unsafe: bool)` and `parser::parse_trait(is_unsafe: bool)` now take the flag
+- The item-dispatch match arms for `KwUnsafe` + `KwImpl` / `KwTrait` now pass `true`
+
+**Why this matters**:
+- `unsafe trait Foo {}` declares a trait that is unsafe to implement
+  (implementors must use `unsafe impl`).
+- `unsafe impl Foo for Bar {}` asserts that the implementor has verified
+  the unsafe preconditions.
+- Without the `is_unsafe` field, the compiler couldn't distinguish safe
+  from unsafe impls/traits — a soundness gap.
+
+### P2 fix #2: `Res::SelfTy` trait/impl discrimination
+
+**Previously**: `Res::SelfTy` was a single variant with no payload. The
+resolver couldn't distinguish `Self` inside a trait declaration (abstract
+— `Self` is the implementor's type, supertraits are bounds) from `Self`
+inside an impl block (concrete — `Self` equals `impl self_ty`, supertraits
+are facts).
+
+**Now**:
+- New `hir::HirSelfKind` enum with `Trait` and `Impl` variants
+- `Res::SelfTy(HirSelfKind)` — now carries the discriminator
+- Resolver currently defaults to `HirSelfKind::Impl` (threading owner
+  context through the resolver is Stage 4 work)
+
+**Named `HirSelfKind` (not `SelfKind`)** to avoid collision with the
+pre-existing `ast::SelfKind` enum (which discriminates method receivers:
+`self`/`&self`/`&mut self`/`self: Self` — a different concept).
+
+### P2 fix #3: `lower_body` + `lower_body_full` convenience aliases
+
+Per `api-naming-standard.md` §2.2, each stage should expose a
+`<verb>_<noun>` free-function entry point. The MIR lower stage
+historically used the verbose `lower_hir_body_to_mir_*` names. These
+thin wrappers provide the short form:
+
+- `mir::lower::lower_body(body, interner, hir) -> MirBody` — alias for `lower_hir_body_to_mir`
+- `mir::lower::lower_body_full(body, interner, hir, return_ty) -> (MirBody, UnificationTable)` — alias for `lower_hir_body_to_mir_full`
+
+Both re-exported from `mir::mod`. The long-form names remain available
+for callers who prefer the explicit form.
+
+### P2 fix #4: `mir_type_to_emit_type` documentation unification
+
+Documented the relationship between the two MIR→EmitType translation functions:
+
+- `mir_type_to_emit_type(ty)` — **legacy fallback** (no `AdtLayouts`; falls
+  back to `I32` for `TyKind::Adt`). OK for tests/standalone helpers where
+  the type is known primitive.
+- `mir_type_to_emit_type_with_layouts(ty, layouts)` — **canonical
+  §16-compliant** (resolves `TyKind::Adt` via `MirBody::adt_layouts`
+  side-table, no HIR access). Use everywhere a `MirBody` is available.
+
+Added "When to use which" guidance to prevent misuse.
+
+### New test (1)
+
+Added `test_safe_impl_and_trait_have_is_unsafe_false` to
+`tests/ast_structure.rs` — verifies that regular (non-unsafe) impl and
+trait get `is_unsafe=false`. Existing
+`test_regression_unsafe_impl_parses` and
+`test_regression_unsafe_trait_parses` updated to verify `is_unsafe=true`.
+
+### Verification
+
+- `cargo test`: **983 passed, 0 failed, 2 ignored** (was 982, +1 new)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items green
+- All 5 §21 audit tests pass
+
+### Files touched
+
+- `src/ast/kinds.rs` — added `is_unsafe: bool` to `ImplDecl` and `TraitDecl`
+- `src/hir/kinds.rs` — added `is_unsafe: bool` to `HirImpl` and `HirTrait`;
+  added `HirSelfKind` enum; `Res::SelfTy` now carries `HirSelfKind`
+- `src/hir/mod.rs` — re-export `HirSelfKind`
+- `src/hir/lower/item.rs` — propagate `is_unsafe` from AST to HIR
+- `src/parser/parser.rs` — `parse_impl`/`parse_trait` take `is_unsafe` flag
+- `src/resolve/resolver.rs` — `Res::SelfTy` construction passes `HirSelfKind::Impl`
+- `src/mir/lower/mod.rs` — added `lower_body` + `lower_body_full` aliases
+- `src/mir/mod.rs` — re-export `lower_body` + `lower_body_full`
+- `src/codegen/emitter.rs` — documented `mir_type_to_emit_type` (legacy)
+- `src/codegen/mod.rs` — documented `mir_type_to_emit_type_with_layouts` (canonical)
+- `tests/ast_structure.rs` — +1 new test + 2 updated tests
+- `tests/hir_structure.rs` — updated `Res::SelfTy` test to use `HirSelfKind::Impl`
+- `tests/hir_resolution.rs` — updated `self_type_resolves` to use `matches!(Res::SelfTy(_))`
+
+### Deferred to Stage 4+
+
+- **`Lvalue` → `Place` rename**: 167 references across 7 files (much more
+  than the audit's ~50 estimate). Needs dedicated round with careful
+  regression testing.
+- `HirParam` duplication between `HirFnSig.inputs` and `Body.params`
+- Visibility checking (Stage 1.3 Phase E1)
+- Prelude injection (Stage 1.3 Phase E3)
+- Thread owner context (trait vs impl) through resolver for accurate `HirSelfKind`
+- `Span::DUMMY` placeholders fix (11 occurrences in parser.rs)
+- AST enum naming standardization (Expr/Ty/Pat direct vs ItemKind wrapper)
 
 ---
 

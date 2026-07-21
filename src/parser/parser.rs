@@ -267,8 +267,8 @@ impl<'a> Parser<'a> {
             TokenKind::KwStatic => ItemKind::Static(self.parse_static()),
             TokenKind::KwStruct => ItemKind::Struct(self.parse_struct()),
             TokenKind::KwEnum => ItemKind::Enum(self.parse_enum()),
-            TokenKind::KwTrait => ItemKind::Trait(self.parse_trait()),
-            TokenKind::KwImpl => ItemKind::Impl(self.parse_impl()),
+            TokenKind::KwTrait => ItemKind::Trait(self.parse_trait(false)),
+            TokenKind::KwImpl => ItemKind::Impl(self.parse_impl(false)),
             TokenKind::KwType => ItemKind::TypeAlias(self.parse_type_alias()),
             TokenKind::KwExtern => ItemKind::ExternBlock(self.parse_extern_block_or_fn()),
             TokenKind::KwMod => ItemKind::Mod(self.parse_mod()),
@@ -279,18 +279,18 @@ impl<'a> Parser<'a> {
                 ItemKind::Fn(self.parse_fn(true, Abi::Landin))
             }
             // unsafe impl — `unsafe impl Trait for T {}`
-            // The AST doesn't have an `is_unsafe` field on ImplDecl yet (Stage 1.0
-            // work); for Stage 0 we accept and parse the impl, dropping the
-            // `unsafe` qualifier. Stage 1 will extend the AST.
+            // Stage 3.65: now propagates `is_unsafe` to the AST `ImplDecl`
+            // (previously dropped — Stage 1.0 debt).
             TokenKind::KwUnsafe if matches!(self.peek_at(1), TokenKind::KwImpl) => {
                 self.bump(); // consume `unsafe`
-                ItemKind::Impl(self.parse_impl())
+                ItemKind::Impl(self.parse_impl(true))
             }
             // unsafe trait — `unsafe trait Foo { ... }`
-            // Same caveat: AST lacks is_unsafe on TraitDecl; Stage 1 will extend.
+            // Stage 3.65: now propagates `is_unsafe` to the AST `TraitDecl`
+            // (previously dropped — Stage 1.0 debt).
             TokenKind::KwUnsafe if matches!(self.peek_at(1), TokenKind::KwTrait) => {
                 self.bump(); // consume `unsafe`
-                ItemKind::Trait(self.parse_trait())
+                ItemKind::Trait(self.parse_trait(true))
             }
             _ => {
                 self.errors.push(crate::parser::ParseError::new(
@@ -903,7 +903,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_trait(&mut self) -> TraitDecl {
+    fn parse_trait(&mut self, is_unsafe: bool) -> TraitDecl {
         self.bump(); // trait
         let ident = self.expect_ident("trait name");
         let generics = self.parse_generics();
@@ -997,11 +997,12 @@ impl<'a> Parser<'a> {
             },
             supertraits,
             items,
+            is_unsafe,
             span: self.current_span(),
         }
     }
 
-    fn parse_impl(&mut self) -> ImplDecl {
+    fn parse_impl(&mut self, is_unsafe: bool) -> ImplDecl {
         self.bump(); // impl
         let generics = self.parse_generics();
         let self_ty = self.parse_ty();
@@ -1033,6 +1034,7 @@ impl<'a> Parser<'a> {
             of_trait,
             self_ty,
             items,
+            is_unsafe,
             span: Span::DUMMY,
         }
     }

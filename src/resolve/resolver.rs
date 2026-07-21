@@ -529,13 +529,17 @@ impl Resolver {
             }
 
             // Self type keyword.
+            // Stage 3.65: now carries HirSelfKind to distinguish trait-Self
+            // from impl-Self. The resolver doesn't yet track owner context
+            // (trait vs impl) — defaults to Impl. A follow-up round can
+            // thread the owner kind through to make this precise.
             if let Some(self_spur) = interner.get("Self") {
                 if seg.ident.name == self_spur {
-                    return Res::SelfTy;
+                    return Res::SelfTy(crate::hir::HirSelfKind::Impl);
                 }
             }
             if name == "Self" {
-                return Res::SelfTy;
+                return Res::SelfTy(crate::hir::HirSelfKind::Impl);
             }
 
             // Value namespace (fn, const, static).

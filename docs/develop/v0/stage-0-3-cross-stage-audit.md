@@ -568,3 +568,114 @@ Stage 4 (macro system + attributes + closures + PHI optimization).**
 **Stage 3.64 completed**: 2026-07-22
 **Process version**: v3.15
 **Package**: `landin-stage0-v0.8.8-stage3.64-p2-fixes-r32`
+
+---
+
+## 8. Stage 3.65 Update — P2 Architectural Fixes (2026-07-22)
+
+> Continuation of the §21 cross-stage audit follow-up. Stage 3.63 closed
+> all 9 P1 naming issues. Stage 3.64 closed 5 P2 ergonomics fixes + the
+> `use` declaration resolution feature. This round (Stage 3.65) addresses
+> the next batch of P2 architectural items: `unsafe impl/trait` AST
+> fields, `Res::SelfTy` trait/impl discrimination, `lower_body` alias,
+> and `mir_type_to_emit_type` documentation unification.
+
+### 8.1 Stage 3.65 Fixes Applied
+
+| # | Priority | Stage | Fix | Impact |
+|---|----------|-------|-----|--------|
+| 1 | P2 | 1 | `unsafe impl`/`unsafe trait` AST + HIR + parser support — added `is_unsafe: bool` to `ImplDecl` (AST), `TraitDecl` (AST), `HirImpl` (HIR), `HirTrait` (HIR); parser now propagates the `unsafe` qualifier instead of dropping it | **Soundness-critical** — `unsafe` is now first-class in the AST/HR; previously the parser silently dropped it (Stage 1.0 debt) |
+| 2 | P2 | 1 | `Res::SelfTy` trait/impl discrimination — added `HirSelfKind` enum (`Trait`/`Impl`); `Res::SelfTy` now carries `HirSelfKind` | Type system correctness foundation — distinguishes abstract trait-Self from concrete impl-Self. (Resolver defaults to `Impl` for now; threading owner context is Stage 4.) |
+| 3 | P2 | 2 | `lower_body` + `lower_body_full` convenience aliases — short-form wrappers for `lower_hir_body_to_mir` / `_full` per `api-naming-standard.md` §2.2 verb_noun convention | API ergonomics — aligns MIR lower entry-point style with `lower_crate` / `resolve_crate` / `codegen_crate` |
+| 4 | P2 | 3 | Documented `mir_type_to_emit_type` (legacy fallback) vs `mir_type_to_emit_type_with_layouts` (canonical §16-compliant) — added "When to use which" guidance | API clarity — prevents misuse of the legacy variant in codegen paths where `AdtLayouts` is available |
+
+### 8.2 `unsafe impl`/`unsafe trait` Details
+
+**Previously** (Stage 1.0-3.64): The parser accepted `unsafe impl` and
+`unsafe trait` syntax but **silently dropped the `unsafe` qualifier** —
+the AST `ImplDecl` and `TraitDecl` structs had no `is_unsafe` field.
+This was a known Stage 1.0 debt documented in the Stage 1.1 worklog.
+
+**Now** (Stage 3.65):
+- `ast::ImplDecl` has `is_unsafe: bool`
+- `ast::TraitDecl` has `is_unsafe: bool`
+- `hir::HirImpl` has `is_unsafe: bool` (propagated from AST)
+- `hir::HirTrait` has `is_unsafe: bool` (propagated from AST)
+- `parser::parse_impl(is_unsafe: bool)` and `parser::parse_trait(is_unsafe: bool)` now take the flag
+- The item-dispatch match arms for `KwUnsafe` + `KwImpl` / `KwTrait` now pass `true`
+
+**Why this matters**:
+- `unsafe trait Foo {}` declares a trait that is unsafe to implement
+  (implementors must use `unsafe impl`). Without the `is_unsafe` field,
+  the compiler couldn't enforce this.
+- `unsafe impl Foo for Bar {}` asserts that the implementor has verified
+  the unsafe preconditions. Without the field, the compiler couldn't
+  distinguish safe impls from unsafe impls.
+
+**Tests added**: `test_safe_impl_and_trait_have_is_unsafe_false` —
+verifies that regular (non-unsafe) impl/trait get `is_unsafe=false`.
+Existing `test_regression_unsafe_impl_parses` and
+`test_regression_unsafe_trait_parses` updated to verify `is_unsafe=true`.
+
+### 8.3 `Res::SelfTy` Discrimination Details
+
+**Previously** (Stage 1.1-3.64): `Res::SelfTy` was a single variant
+with no payload. The resolver couldn't distinguish `Self` inside a
+trait declaration (abstract — `Self` is the implementor's type, and
+the trait's supertraits are *bounds* on `Self`) from `Self` inside an
+impl block (concrete — `Self` equals the impl's `self_ty`, and the
+trait's supertraits are *facts*).
+
+**Now** (Stage 3.65):
+- New `hir::HirSelfKind` enum with `Trait` and `Impl` variants
+- `Res::SelfTy(HirSelfKind)` — now carries the discriminator
+- Resolver currently defaults to `HirSelfKind::Impl` (threading owner
+  context through the resolver is Stage 4 work)
+
+**Named `HirSelfKind` (not `SelfKind`)** to avoid collision with the
+pre-existing `ast::SelfKind` enum (which discriminates `self`/`&self`/
+`&mut self`/`self: Self` method receivers — a different concept).
+
+### 8.4 Stage 3.65 Verification
+
+- `cargo test`: **983 passed, 0 failed, 2 ignored** (was 982, +1 new
+  `test_safe_impl_and_trait_have_is_unsafe_false` test)
+- `cargo clippy --all-targets`: **0 warnings, 0 errors**
+- `cargo fmt --check`: **clean**
+- §16 compliance re-verified: all 8 §21.3 checklist items still green
+- All 5 §21 audit tests pass
+
+### 8.5 Stage 3.65 Remaining P2/P3 Items (Deferred to Stage 4+)
+
+| Priority | Stage | Item | Reason for deferral |
+|----------|-------|------|---------------------|
+| P2 | 0 | `Span::DUMMY` placeholders fix (11 occurrences in parser.rs) | Touches parser internals; needs careful span threading |
+| P2 | 0 | AST enum naming standardization (Expr/Ty/Pat direct vs ItemKind wrapper) | Larger refactor; defer to dedicated cleanup round |
+| P2 | 1 | `HirParam` duplication between `HirFnSig.inputs` and `Body.params` | Touches multiple downstream modules (MIR lower, typeck) |
+| P2 | 1 | Visibility checking (Stage 1.3 Phase E1) | Depends on `use` resolution (done in Stage 3.64); can implement in Stage 4 |
+| P2 | 1 | Prelude injection (Stage 1.3 Phase E3) | Placeholder for Stage 5 std crate |
+| P2 | 1 | `&mut Rodeo` smell in `resolve_crate` | Cross-stage concern; parser should intern keywords itself |
+| P2 | 1 | Thread owner context (trait vs impl) through resolver for accurate `HirSelfKind` | Resolver refactor; Stage 4 |
+| **P2** | **2** | **`Lvalue` → `Place` rename** | **167 references across 7 files (much more than audit's ~50 estimate). Needs dedicated round with careful regression testing. Deferred to Stage 4.** |
+| P2 | 3 | Standardize translation-function prefixes (`mir_`, `emit_`, `llvm_`) via documentation | Documentation-only; partially done in Stage 3.65 |
+
+### 8.6 Stage 3.65 Verdict
+
+✅ **PASS** — 4 P2 architectural fixes completed. 983 tests pass (was 982,
++1 new). 0 clippy warnings. fmt clean. §16 compliance maintained.
+
+The most significant fix is `unsafe impl`/`unsafe trait` — this closes a
+Stage 1.0 soundness debt where the parser silently dropped the `unsafe`
+qualifier. The `Res::SelfTy` discrimination lays the foundation for
+correct trait-Self vs impl-Self type checking in Stage 4.
+
+**The `Lvalue` → `Place` rename was deferred** — at 167 references
+(audit estimated ~50), it's too large for a batch round and needs a
+dedicated refactor with careful regression testing. Documented as
+Stage 4 priority.
+
+---
+
+**Stage 3.65 completed**: 2026-07-22
+**Process version**: v3.15
+**Package**: `landin-stage0-v0.8.9-stage3.65-p2-arch-fixes-r33`

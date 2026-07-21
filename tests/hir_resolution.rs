@@ -216,7 +216,8 @@ fn self_type_resolves() {
                 if let Some(ty) = &p.ty {
                     if let HirTyKind::Path(_, path) = &ty.kind {
                         if path.segments.len() == 1 {
-                            return path.res == Res::SelfTy;
+                            // Stage 3.65: Res::SelfTy now carries HirSelfKind.
+                            return matches!(path.res, Res::SelfTy(_));
                         }
                     }
                 }

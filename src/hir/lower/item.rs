@@ -303,6 +303,7 @@ impl<'a> HirLowerCtxt<'a> {
             items,
             vis,
             attrs,
+            is_unsafe: t.is_unsafe,
             span,
         }
     }
@@ -444,6 +445,7 @@ impl<'a> HirLowerCtxt<'a> {
             self_ty,
             items,
             attrs,
+            is_unsafe: i.is_unsafe,
             span,
         }
     }
