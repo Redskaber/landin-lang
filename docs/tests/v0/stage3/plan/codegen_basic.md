@@ -1,7 +1,7 @@
 # Codegen Basic Tests
 
 > **Author**: redskaber
-> **Corresponds to**: `tests/codegen_tests.rs` (Stage 3.1-3.7)
+> **Corresponds to**: `tests/v0/stage3/plan/codegen_tests.rs` (Stage 3.1-3.7)
 > **Cross-ref**: `docs/develop/v0/stage-3/dev-log.md` Stage 3.1-3.7
 
 ## Test Target

@@ -58,7 +58,7 @@ missed), Stage 2.4e performed targeted fixes. Round 2 re-audits confirms:
 ## Test Results
 
 ### Existing test suite
-- **625 → 644 tests** (+19 new negative-case tests in `tests/negative_cases.rs`)
+- **625 → 644 tests** (+19 new negative-case tests in `tests/v0/stage2/plan/negative_cases_tests.rs`)
 - **0 failed, 1 ignored** (Stage 3 limitation: NLL in loops)
 - **0 warnings, fmt + clippy clean**
 
@@ -162,7 +162,7 @@ missed), Stage 2.4e performed targeted fixes. Round 2 re-audits confirms:
 - [x] G6 (use-after-move) fixed
 - [x] 19/20 negative cases detected (1 Stage 3 limitation)
 - [x] 644 tests passing, 0 warnings, fmt + clippy clean
-- [x] Negative-case test suite added (`tests/negative_cases.rs`)
+- [x] Negative-case test suite added (`tests/v0/stage2/plan/negative_cases_tests.rs`)
 - [x] §9.1 integration test requirements met
 - [x] §9.2 "isolated correct" Q2, Q3 pass
 - [x] 5-role committee unanimous APPROVED

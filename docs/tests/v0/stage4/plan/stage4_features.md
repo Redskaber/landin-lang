@@ -1,7 +1,7 @@
 # Stage 4 测试计划：嵌套模块 + 闭包 lowering
 
 > **阶段**: Stage 4.1-4.4
-> **对应代码**: tests/v0/stage4/plan/stage4_tests.rs (新建) + tests/hir_resolution.rs (追加) + tests/mir_lowering.rs (追加)
+> **对应代码**: tests/v0/stage4/plan/stage4_tests.rs (新建) + tests/v0/stage1/plan/hir_resolution_tests.rs (追加) + tests/v0/stage2/plan/mir_lowering_tests.rs (追加)
 > **状态**: ✅ Complete
 
 ## 1. 测试目标
@@ -40,8 +40,8 @@
 
 ## 5. 测试代码位置
 
-- `tests/hir_resolution.rs` — 3 个嵌套模块测试（追加到现有文件）
-- `tests/mir_lowering.rs` — 2 个闭包 lowering 测试（追加到现有文件）
+- `tests/v0/stage1/plan/hir_resolution_tests.rs` — 3 个嵌套模块测试（追加到现有文件）
+- `tests/v0/stage2/plan/mir_lowering_tests.rs` — 2 个闭包 lowering 测试（追加到现有文件）
 
 **注**: 按 v3.17 §17.1，新测试应放置在 `tests/v0/stage4/plan/`，但本轮
 测试已追加到现有文件（迁移期）。后续新测试将按新结构放置。

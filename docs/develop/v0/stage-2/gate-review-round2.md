@@ -206,7 +206,7 @@ Per §9.3, the audit:
 - G7-G9, G11: deferred to Stage 3 (require TraitResolver, const-eval, region inference)
 
 ### Stage 2.4e-7: Negative-case test suite
-- Add `tests/negative_cases.rs` with all 13 negative cases from this audit
+- Add `tests/v0/stage2/plan/negative_cases_tests.rs` with all 13 negative cases from this audit
 
 ---
 

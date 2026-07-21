@@ -171,9 +171,9 @@ Stage 4.4 (closure lowering).
 
 | Test file | Count | Scope |
 |-----------|-------|-------|
-| `tests/mir_lowering.rs` | 22 | HIR→MIR lowering + closure (Stage 4.4) |
-| `tests/typeck_tests.rs` | 26 | Type inference + unification + coercion |
-| `tests/integration_stage2_4c.rs` | 20 | End-to-end pipeline |
+| `tests/v0/stage2/plan/mir_lowering_tests.rs` | 22 | HIR→MIR lowering + closure (Stage 4.4) |
+| `tests/v0/stage2/plan/typeck_tests.rs` | 26 | Type inference + unification + coercion |
+| `tests/v0/stage2/plan/integration_tests.rs` | 20 | End-to-end pipeline |
 | Inline lib tests | 102 | body.rs + place.rs + ty.rs + checker.rs + unify.rs + borrowck |
 | **Total** | **170** | |
 

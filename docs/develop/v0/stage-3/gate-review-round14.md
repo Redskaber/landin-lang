@@ -194,7 +194,7 @@ payloads, so the codegen change is a one-liner.
 | `mir_body_register_adt_layout_enum` | enum layout with multiple variants |
 | `mir_body_register_adt_layout_idempotent` | duplicate registration is a no-op |
 
-#### `tests/codegen_tests.rs` (10 integration tests)
+#### `tests/v0/stage3/plan/codegen_tests.rs` (10 integration tests)
 
 | Test | Asserts |
 |------|---------|
@@ -227,7 +227,7 @@ payloads, so the codegen change is a one-liner.
 | **Total** | **30** | ✅ ≥30 per §9.3.1 |
 
 All Stage 3.47 codegen tests are cross-verified by the audit's `I` group
-(per §17.2 — tests/codegen_tests.rs ↔ examples/stage3_gate_audit_r14.rs).
+(per §17.2 — tests/v0/stage3/plan/codegen_tests.rs ↔ examples/stage3_gate_audit_r14.rs).
 
 ---
 

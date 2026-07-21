@@ -10,9 +10,9 @@
 
 | 测试 | 文件 | 结果 |
 |------|------|------|
-| nested_module_items_resolve | tests/hir_resolution.rs | ✅ PASS |
-| nested_module_struct_resolves | tests/hir_resolution.rs | ✅ PASS |
-| deeply_nested_module_resolves | tests/hir_resolution.rs | ✅ PASS |
+| nested_module_items_resolve | tests/v0/stage1/plan/hir_resolution_tests.rs | ✅ PASS |
+| nested_module_struct_resolves | tests/v0/stage1/plan/hir_resolution_tests.rs | ✅ PASS |
+| deeply_nested_module_resolves | tests/v0/stage1/plan/hir_resolution_tests.rs | ✅ PASS |
 
 **覆盖率**: 3/3 = 100%
 
@@ -32,8 +32,8 @@
 
 | 测试 | 文件 | 结果 |
 |------|------|------|
-| closure_lowers_to_aggregate | tests/mir_lowering.rs | ✅ PASS |
-| closure_no_crash_on_complex_body | tests/mir_lowering.rs | ✅ PASS |
+| closure_lowers_to_aggregate | tests/v0/stage2/plan/mir_lowering_tests.rs | ✅ PASS |
+| closure_no_crash_on_complex_body | tests/v0/stage2/plan/mir_lowering_tests.rs | ✅ PASS |
 
 **覆盖率**: 2/2 = 100%
 

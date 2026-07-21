@@ -184,7 +184,7 @@ patch the match table per-type.
 
 All Stage 3.46 codegen tests (`codegen_i16_*` … `codegen_i128_*`) are also
 covered by the audit's `I` group, providing cross-verification between
-`tests/codegen_tests.rs` and `examples/stage3_gate_audit_r13.rs` (per §17.2).
+`tests/v0/stage3/plan/codegen_tests.rs` and `examples/stage3_gate_audit_r13.rs` (per §17.2).
 
 ---
 

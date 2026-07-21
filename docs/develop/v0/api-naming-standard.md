@@ -500,7 +500,7 @@ the codegen pluggability surface, and implementing the previously-stub
 **New feature**: `use` declaration resolution (Stage 1.3 Phase C).
 Real Landin programs that use `use a::b::c;` imports now resolve
 correctly, where previously they would silently fail. 5 new tests
-in `tests/hir_resolution.rs` cover leaf / glob / path-prefix / alias
+in `tests/v0/stage1/plan/hir_resolution_tests.rs` cover leaf / glob / path-prefix / alias
 / table-populated cases.
 
 **Test impact**: +5 (982/982 tests pass — was 977, +5 new use-resolution tests).
@@ -625,7 +625,7 @@ metadata and adding a check hook.
    real enforcement deferred to Stage 4 (needs nested module support)
 3. `src/resolve/resolver.rs`: public `def_visibility(def_id)` accessor
    for testing
-4. `tests/hir_resolution.rs`: +1 new test
+4. `tests/v0/stage1/plan/hir_resolution_tests.rs`: +1 new test
    `visibility_metadata_collected_for_fn` — verifies `pub fn` →
    `Visibility::Public`, `fn` → `Visibility::Private`
 

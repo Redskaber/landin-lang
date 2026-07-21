@@ -81,9 +81,9 @@ impl/trait test in Stage 3.65)
 - **Diagnostics**（`src/diagnostics/`）：占位
 - **CLI**（`src/bin/main.rs`，74 行）：`--emit-tokens` / `--emit-ast` 选项
 - **测试**：
-  - `tests/lexer.rs`：109 测试（字面量 35 + 运算符 25 + 关键字 5 + 标识符 5 + 注释 5 + 错误恢复 5 + 标点 5 + RP0-1/2/4/8 回归 24）
-  - `tests/parser.rs`：85 测试（声明 15 + 控制流 15 + 表达式 20 + 类型 10 + 复杂程序 10 + 错误恢复 10 + 边界 5）
-  - `tests/ast_structure.rs`：51 测试（含 P0 回归 + AST 结构断言 + 10 Pratt 优先级 + 7 Ty variant + 4 RawIdent 集成 + 3 DocComment 集成 + 边界 case）
+  - `tests/v0/stage0/plan/lexer_tests.rs`：109 测试（字面量 35 + 运算符 25 + 关键字 5 + 标识符 5 + 注释 5 + 错误恢复 5 + 标点 5 + RP0-1/2/4/8 回归 24）
+  - `tests/v0/stage0/plan/parser_tests.rs`：85 测试（声明 15 + 控制流 15 + 表达式 20 + 类型 10 + 复杂程序 10 + 错误恢复 10 + 边界 5）
+  - `tests/v0/stage0/plan/ast_structure_tests.rs`：51 测试（含 P0 回归 + AST 结构断言 + 10 Pratt 优先级 + 7 Ty variant + 4 RawIdent 集成 + 3 DocComment 集成 + 边界 case）
   - **总计 245 测试通过**（截至 S0-REV-7）
 
 ### 3.3 测试数量对比
@@ -150,7 +150,7 @@ impl/trait test in Stage 3.65)
   - **RP0 修复**：8 个中 **5 个完全修复**（RP0-3/5/6/7 + 部分 RP0-8 文档清理），**3 个未修复**（RP0-1/2/4 + RP0-8 死代码）
   - **S0-REV-5 P0 修复**：7 个全部修复（LBrace 贪婪、parse_path、closure `||`、基本类型、`&self`/`&mut self`、空 token stream、RBrace 死循环）
   - **新增 ast_structure.rs**：28 个测试，包含 P0 回归测试和 AST 结构断言
-  - **新发现**：`tests/ast_structure.rs:203-205` 有重复 `#[test]` attribute；`Cargo.toml` 版本仍为 0.1.0
+  - **新发现**：`tests/v0/stage0/plan/ast_structure_tests.rs:203-205` 有重复 `#[test]` attribute；`Cargo.toml` 版本仍为 0.1.0
 - **结论**：Stage 0 前端**主体功能满足验收**，残留 4 个非阻塞 P0 可在月 3 期间清理；文档标准化完成
 
 ### 4.7 S0-REV-7（v0.1.3，本轮）：Stage 0 前端闭合审查
@@ -160,7 +160,7 @@ impl/trait test in Stage 3.65)
   - ✅ **RP0-2 修复**：新增 `lex_raw_identifier` 方法 + dispatch arm `b'r' if peek_at(1) == '#' && is_ident_start_byte(peek_at(2))`；parser 新增 `expect_ident` helper 接受 `Ident | RawIdent`；6 个回归测试覆盖
   - ✅ **RP0-4 验证**：通过 probe 测试确认 v0.1.2 代码已正确报错；新增 4 个回归测试固化
   - ✅ **RP0-8 修复**：新增 `lex_doc_comment` 方法 + `skip_trivia` 在 `///`/`//!`（4th byte != `/`）处停止；dispatch arm 在 `b'/'` + `//` + (`/` 或 `!`) + 非 `/` 时调用 `lex_doc_comment`；parser 在 `parse_crate` 中自动跳过 DocComment token；7 个回归测试覆盖
-  - ✅ **重复 `#[test]` attribute** 删除（`tests/ast_structure.rs:203-205`）
+  - ✅ **重复 `#[test]` attribute** 删除（`tests/v0/stage0/plan/ast_structure_tests.rs:203-205`）
   - ✅ **Cargo.toml 版本号** 0.1.2 → 0.1.3
   - ✅ **12 个编译警告** 全部清理：`lex_count` 加 `#[allow(dead_code)]`；10 处 `let (krate, ...)` → `let (_krate, ...)`；1 处重复 `#[test]` 删除
 - **测试扩展**：

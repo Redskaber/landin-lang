@@ -151,7 +151,7 @@ bb0:
 | **Compiler Engineer** | APPROVED | `Res::Def(DefId, DefKind)` is the right shape — `DefKind` flows naturally from resolver through HIR to MIR lower. No `unsafe`. The `&mut Rodeo` change to Parser was necessary for interning field indices. |
 | **Type System Theorist** | APPROVED | `DefKind` correctly distinguishes value-namespace (Fn, Const, Static) from type-namespace (Struct, Enum, Trait) definitions. `TyKind::Adt` now properly represents struct types in MIR. Field index resolution is sound. |
 | **Soundness Reviewer** | APPROVED | No new soundness holes. The field-index bug (always returning field 0) was a silent correctness issue — now fixed. The `&mut Rodeo` change is safe (interner is still only mutated during parse, frozen after). |
-| **Testing & QA Lead** | APPROVED | 37-case audit covers regression + new features + edge cases + adversarial + §16 verification. 13 new tests in `tests/codegen_tests.rs`. 774 total tests pass, 0 regressions. §15/§16 compliance explicitly verified. |
+| **Testing & QA Lead** | APPROVED | 37-case audit covers regression + new features + edge cases + adversarial + §16 verification. 13 new tests in `tests/v0/stage3/plan/codegen_tests.rs`. 774 total tests pass, 0 regressions. §15/§16 compliance explicitly verified. |
 | **Tooling & DX Lead** | APPROVED | 0 clippy warnings, 0 fmt diffs. Four audit scripts now (R1-R4). `mir_type_to_emit_type_with_hir` and `hir_ty_to_emit_type` are documented with §16 compliance notes. L-PIPE-1 debt explicitly recorded. |
 
 **Result**: 5/5 APPROVED — UNANIMOUS. Stage 3 gate review Round 4 PASSED.

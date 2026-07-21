@@ -289,7 +289,7 @@ pub enum PrimTy {
 
 ### Phase D — Tests + docs
 
-#### D1. HIR unit tests (30+ tests in `tests/hir_structure.rs`)
+#### D1. HIR unit tests (30+ tests in `tests/v0/stage1/plan/hir_structure_tests.rs`)
 
 - 5 tests: `HirId` / `DefId` / `ItemLocalId` construction, equality, ordering
 - 5 tests: `HirIdMap` / `HirIdSet` insertion, lookup, iteration
@@ -298,7 +298,7 @@ pub enum PrimTy {
 - 5 tests: `Body` construction with params + value
 - 5 tests: `HirExpr` / `HirPat` / `HirTy` representative variant construction
 
-#### D2. AST regression tests (12 tests in `tests/ast_structure.rs`)
+#### D2. AST regression tests (12 tests in `tests/v0/stage0/plan/ast_structure_tests.rs`)
 
 - 4 tests for A1 (self kind preservation)
 - 3 tests for A2 (binding mode mutability preservation)

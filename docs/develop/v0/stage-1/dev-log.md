@@ -141,10 +141,10 @@ test + 3 nested module tests = 26 tests
 
 | Test file | Count | Scope |
 |-----------|-------|-------|
-| `tests/hir_structure.rs` | 20 | HIR node construction + ID system |
-| `tests/hir_lowering.rs` | 36 | AST → HIR lowering |
-| `tests/hir_resolution.rs` | 26 | Module-level + use + visibility + nested modules |
-| `tests/hir_scope_resolution.rs` | 17 | Scope-based local resolution |
+| `tests/v0/stage1/plan/hir_structure_tests.rs` | 20 | HIR node construction + ID system |
+| `tests/v0/stage1/plan/hir_lowering_tests.rs` | 36 | AST → HIR lowering |
+| `tests/v0/stage1/plan/hir_resolution_tests.rs` | 26 | Module-level + use + visibility + nested modules |
+| `tests/v0/stage1/plan/hir_scope_resolution_tests.rs` | 17 | Scope-based local resolution |
 | Inline lib tests | 18 | id.rs + kinds.rs + map.rs + scope.rs |
 | **Total** | **117** | |
 

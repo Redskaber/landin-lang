@@ -112,7 +112,7 @@ bb1:
 | **Compiler Engineer** | APPROVED | MIR shape change is backward-compatible (Assert cond field preserved as placeholder; codegen ignores it for Overflow/DivisionByZero). All call sites updated. No `unsafe`, no panics. |
 | **Type System Theorist** | APPROVED | `Overflow(op, lhs, rhs)` and `DivisionByZero(rhs)` now carry the data codegen needs. Type-checking semantics unchanged — Assert is still a terminator with a `cond: Operand` field. |
 | **Soundness Reviewer** | APPROVED | **Critical correctness fix.** Before: `a + b` silently wrapped on overflow (UB in safe Landin). After: panics on overflow. Same for `a / 0` (was UB, now panics). Closes a real soundness hole. |
-| **Testing & QA Lead** | APPROVED | 43-case audit covers regression + new features + edge cases + adversarial. 14 new tests in `tests/codegen_tests.rs`. 739 total tests pass, 0 regressions. |
+| **Testing & QA Lead** | APPROVED | 43-case audit covers regression + new features + edge cases + adversarial. 14 new tests in `tests/v0/stage3/plan/codegen_tests.rs`. 739 total tests pass, 0 regressions. |
 | **Tooling & DX Lead** | APPROVED | 0 clippy warnings, 0 fmt diffs. Two new audit scripts (`stage3_gate_audit.rs` for R1, `stage3_gate_audit_r2.rs` for R2) — both reproducible. |
 
 **Result**: 5/5 APPROVED — UNANIMOUS. Stage 3 gate review Round 2 PASSED.

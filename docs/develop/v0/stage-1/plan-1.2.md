@@ -237,13 +237,13 @@ bounds and defaults preserved.
 #### E1. Integration test: all 245 parse cases lower without panic
 
 ```rust
-// tests/hir_lowering.rs
+// tests/v0/stage1/plan/hir_lowering_tests.rs
 #[test]
 fn all_parse_cases_lower() {
     let cases = [
         "fn main() {}",
         "struct Point { x: i32, y: i32 }",
-        // ... 245 cases from tests/parser.rs + tests/ast_structure.rs
+        // ... 245 cases from tests/v0/stage0/plan/parser_tests.rs + tests/v0/stage0/plan/ast_structure_tests.rs
     ];
     for src in cases {
         let (krate, errors) = parse(src);

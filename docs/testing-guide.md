@@ -97,9 +97,9 @@ landin-stage0/
 
 | 文件 | 职责 | 测试类型 |
 |---|---|---|
-| `tests/lexer.rs` | 验证 lexer 输出的 `TokenKind` 正确性 | 精确 token 断言 + 模式断言 |
-| `tests/parser.rs` | 验证 parser 不报错 / 报错行为 | smoke test（`assert_no_errors` / `assert_has_errors`） |
-| `tests/ast_structure.rs` | 验证 parser 产生的 AST 节点结构正确 | 结构断言（`match` + `assert_eq!`）+ P0 回归测试 |
+| `tests/v0/stage0/plan/lexer_tests.rs` | 验证 lexer 输出的 `TokenKind` 正确性 | 精确 token 断言 + 模式断言 |
+| `tests/v0/stage0/plan/parser_tests.rs` | 验证 parser 不报错 / 报错行为 | smoke test（`assert_no_errors` / `assert_has_errors`） |
+| `tests/v0/stage0/plan/ast_structure_tests.rs` | 验证 parser 产生的 AST 节点结构正确 | 结构断言（`match` + `assert_eq!`）+ P0 回归测试 |
 
 ### 2.3 不使用内部测试
 
@@ -116,7 +116,7 @@ Stage 0 不在 `src/` 内部写 `#[cfg(test)] mod tests`。所有测试为集成
 ### 3.1 Lexer 测试模板
 
 ```rust
-// tests/lexer.rs
+// tests/v0/stage0/plan/lexer_tests.rs
 
 #[test]
 fn test_my_new_token() {
@@ -145,7 +145,7 @@ fn test_my_invalid_input_reports_error() {
 ### 3.2 Parser 测试模板
 
 ```rust
-// tests/parser.rs
+// tests/v0/stage0/plan/parser_tests.rs
 
 #[test]
 fn test_my_new_construct_parses() {
@@ -163,7 +163,7 @@ fn test_my_invalid_construct_errors() {
 ### 3.3 AST 结构断言测试模板（推荐）
 
 ```rust
-// tests/ast_structure.rs
+// tests/v0/stage0/plan/ast_structure_tests.rs
 
 #[test]
 fn test_my_construct_ast_structure() {
@@ -201,7 +201,7 @@ fn test_my_construct_ast_structure() {
 ### 3.4 P0 回归测试模板
 
 ```rust
-// tests/ast_structure.rs
+// tests/v0/stage0/plan/ast_structure_tests.rs
 
 #[test]
 fn test_regression_my_p0_fix() {

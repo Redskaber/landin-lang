@@ -115,7 +115,7 @@ the type checker was too permissive in several fundamental ways:
 ## Test Results
 
 ### Existing test suite
-- **644 → 654 tests** (+10 new G7 negative tests in `tests/negative_cases.rs`)
+- **644 → 654 tests** (+10 new G7 negative tests in `tests/v0/stage2/plan/negative_cases_tests.rs`)
 - **0 failed, 1 ignored** (Stage 3: NLL in loops)
 - **0 warnings, fmt + clippy clean**
 

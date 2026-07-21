@@ -94,7 +94,7 @@ remaining holes:
 ## Test Results
 
 ### Existing test suite
-- **654 → 658 tests** (+4 G8 negative tests in `tests/negative_cases.rs`)
+- **654 → 658 tests** (+4 G8 negative tests in `tests/v0/stage2/plan/negative_cases_tests.rs`)
 - **0 failed, 2 ignored** (Stage 3: NLL in loops + closure arg count)
 - **0 warnings, fmt + clippy clean**
 

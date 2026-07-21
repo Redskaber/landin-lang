@@ -142,8 +142,8 @@ populated with captured environment fields.
 
 | Test file | Count | Scope |
 |-----------|-------|-------|
-| `tests/hir_resolution.rs` | +3 | Nested module resolution (Stage 4.1) |
-| `tests/mir_lowering.rs` | +2 | Closure lowering (Stage 4.4) |
+| `tests/v0/stage1/plan/hir_resolution_tests.rs` | +3 | Nested module resolution (Stage 4.1) |
+| `tests/v0/stage2/plan/mir_lowering_tests.rs` | +2 | Closure lowering (Stage 4.4) |
 | **Stage 4 total** | **+5** | |
 
 ## Next Stage 4 Priorities (from deep review)

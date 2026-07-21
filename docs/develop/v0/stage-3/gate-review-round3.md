@@ -125,7 +125,7 @@ bb0:
 | **Compiler Engineer** | APPROVED | Interner threading is clean (passed via &Rodeo through all codegen functions). Global dedup uses `HashMap<Vec<u8>, String>` — O(1) lookup, no quadratic blowup. No `unsafe`. |
 | **Type System Theorist** | APPROVED | `Str` and `Slice(T)` modeling as `Ptr(...)` is a sound simplification — loses the length component of the fat pointer, but no type-confusion. `u8`/`i8` mapping to `I8` is correct. |
 | **Soundness Reviewer** | APPROVED | No new soundness holes. The "no alloca void" fix closes an invalid-LLVM-IR hole that was always present (just happened to not crash on prior test inputs). String globals are `private unnamed_addr` — correct for literal immutability. |
-| **Testing & QA Lead** | APPROVED | 43-case audit covers regression + new features + edge cases + adversarial. 22 new tests in `tests/codegen_tests.rs` (13 for 3.27 + 9 for 3.28). 761 total tests pass, 0 regressions. |
+| **Testing & QA Lead** | APPROVED | 43-case audit covers regression + new features + edge cases + adversarial. 22 new tests in `tests/v0/stage3/plan/codegen_tests.rs` (13 for 3.27 + 9 for 3.28). 761 total tests pass, 0 regressions. |
 | **Tooling & DX Lead** | APPROVED | 0 clippy warnings, 0 fmt diffs. Three audit scripts now (`stage3_gate_audit.rs`, `_r2.rs`, `_r3.rs`) — reproducible. `output_with_globals()` API is clean and backward-compatible (`output()` still returns just function bodies for any future backend that doesn't need globals). |
 
 **Result**: 5/5 APPROVED — UNANIMOUS. Stage 3 gate review Round 3 PASSED.

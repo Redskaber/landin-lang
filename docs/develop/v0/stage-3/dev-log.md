@@ -570,7 +570,7 @@
   + `check_mir_body_with_hir` (these are §16.2.1 "data flows downstream"
   and §16.6.1 "driver-layer" uses, not L-PIPE-1 violations).
 - 14 new tests: 4 in `mir/body.rs` (AdtLayout construction, idempotency,
-  enum variant payloads, empty init), 10 in `tests/codegen_tests.rs`
+  enum variant payloads, empty init), 10 in `tests/v0/stage3/plan/codegen_tests.rs`
   (struct/enum param/return/local, nested struct, i128 field, &str field,
   two structs in one fn, tuple struct, struct mutation, root-cause
   verification).
@@ -1094,7 +1094,7 @@
   4. **P5: body_metas loop duplicated fn_name_by_def_id lookup** — O(n²)
      inner scan per body.
 - **Fix** (4 source files + tests):
-  1. `tests/codegen_tests.rs` — `gen_ll` now asserts `!result.has_errors()`
+  1. `tests/v0/stage3/plan/codegen_tests.rs` — `gen_ll` now asserts `!result.has_errors()`
      before codegen. Added `gen_ll_unchecked` for tests that intentionally
      feed broken source. Added 6 error-path tests (parse error, undefined fn,
      type mismatch, multiple errors, valid program no errors, complex program
@@ -1139,12 +1139,12 @@
      with error reporting.
   2. `src/mir/ty.rs` — added `PartialEq` derive to `Ty`, `TyKind`, `Sig`,
      `Const`, `ConstVal` (needed for `can_coerce`'s `==` comparison).
-  3. `tests/codegen_tests.rs` — removed `gen_ll_unchecked` (no longer needed);
+  3. `tests/v0/stage3/plan/codegen_tests.rs` — removed `gen_ll_unchecked` (no longer needed);
      all 12 previously-broken tests now use `gen_ll` and pass cleanly.
-  4. `tests/negative_cases.rs` — updated 3 tests that expected `fn f() -> bool { 42 }`
+  4. `tests/v0/stage2/plan/negative_cases_tests.rs` — updated 3 tests that expected `fn f() -> bool { 42 }`
      to error (now valid via Int→Bool coercion). Changed to string/bool mismatch
      which is genuinely not coercible.
-  5. `tests/integration_stage2_4c.rs` — updated 2 tests similarly.
+  5. `tests/v0/stage2/plan/integration_tests.rs` — updated 2 tests similarly.
 - **Result**:
   - `fn f(a: i32, b: i32) -> i32 { a == b }` — no typeck error (Bool coerces to i32).
   - `fn f(s: &str) -> i32 { s[0] }` — no typeck error (u8 coerces to i32).
@@ -1177,7 +1177,7 @@
      `(TyKind::Int(_), TyKind::Uint(_)) => true` with 4 explicit widening
      arms: `i16←u8`, `i32←u8|u16`, `i64←u8|u16|u32`, `i128←u8|u16|u32|u64`.
      Added `f32→f64` widening arm.
-  2. `tests/codegen_tests.rs` — 7 new tests: f32→f64, u8→i32, reject u64→i8,
+  2. `tests/v0/stage3/plan/codegen_tests.rs` — 7 new tests: f32→f64, u8→i32, reject u64→i8,
      reject u128→i8, u32→i64, comparison regression, str index regression.
 - **Result**:
   - `fn f(x: u64) -> i8 { x }` → typeck error (was: silently accepted).
@@ -1232,7 +1232,7 @@
 - **Fix** (2 source files + process doc):
   1. `src/lib.rs` — added `pub use driver::{compile, CompileResult, CompileErrors};`
      and `pub use codegen::codegen_crate;` — marks the intended entry points.
-  2. `tests/codegen_tests.rs` — 5 new §21 audit verification tests:
+  2. `tests/v0/stage3/plan/codegen_tests.rs` — 5 new §21 audit verification tests:
      - `audit_codegen_no_upstream_calls`: verifies codegen takes &CompileResult
      - `audit_typeck_uses_tables_not_hir`: verifies FieldTyTable works for struct fields
      - `audit_pipeline_data_flow_complete`: verifies all 8 data flow points (D1-D8)

@@ -78,9 +78,9 @@
 
 | 文件 | 测试数 | 文件行数 | 测试类型 |
 |---|---|---|---|
-| `tests/lexer.rs` | 109 | 826 | 精确 token + 模式断言 + RP0-1/2/4/8 回归 |
-| `tests/parser.rs` | 85 | 379 | 87.5% smoke test + 12.5% 错误检测 |
-| `tests/ast_structure.rs` | 51 | 513 | AST 结构断言 + P0 回归 + Pratt 优先级 + Ty variant + RawIdent 集成 + DocComment 集成 |
+| `tests/v0/stage0/plan/lexer_tests.rs` | 109 | 826 | 精确 token + 模式断言 + RP0-1/2/4/8 回归 |
+| `tests/v0/stage0/plan/parser_tests.rs` | 85 | 379 | 87.5% smoke test + 12.5% 错误检测 |
+| `tests/v0/stage0/plan/ast_structure_tests.rs` | 51 | 513 | AST 结构断言 + P0 回归 + Pratt 优先级 + Ty variant + RawIdent 集成 + DocComment 集成 |
 | **总计** | **245** | **1718** | **超过 200 目标 22.5%** |
 
 ### 2.2 蓝图 §9.5 分布对比
@@ -192,7 +192,7 @@
 
 ### 5.1 立即修复 — 全部完成 ✅
 
-1. ✅ **`tests/ast_structure.rs:203-205`** 重复 `#[test]` attribute 已删除
+1. ✅ **`tests/v0/stage0/plan/ast_structure_tests.rs:203-205`** 重复 `#[test]` attribute 已删除
 2. ✅ **`Cargo.toml` 版本号** 已从 0.1.2 升到 0.1.3
 3. ✅ **RP0-1**（`1f32`）— lexer 正确产生 FloatLit
 4. ✅ **RP0-2**（raw identifier）— lexer 产生 RawIdent token + parser 在 name 位置接受

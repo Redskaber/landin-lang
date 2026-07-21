@@ -101,7 +101,7 @@ store i64 42, %v3                              ; ← mutation works now
 | **Compiler Engineer** | APPROVED | `lower_expr_to_lvalue` is a clean addition — mirrors rustc's `Place` conversion. The `Box::new` for Projection base is correct (matches `LvalueKind::Projection(Box<Lvalue>, ...)` shape). All projection types handled generically. |
 | **Type System Theorist** | APPROVED | Field mutation now correctly targets `Projection(base, Field(idx, ty))`. The `resolve_field_index` and `resolve_field_type` helpers are reused from Stage 3.30/3.32 — consistent with §16 (no duplication). |
 | **Soundness Reviewer** | APPROVED | No new soundness holes. The L-MUT-1 fix closes a silent correctness issue (mutations were dropped — programs would produce wrong results without any error). Field mutation is fundamental to mutable state. |
-| **Testing & QA Lead** | APPROVED | 30-case audit covers regression + new features + edge cases + adversarial. 8 new tests in `tests/codegen_tests.rs`. §15.4 root-cause verification (e01_mutation_not_dropped) explicitly confirms the old bug's symptom is gone. 788 total tests pass, 0 regressions. |
+| **Testing & QA Lead** | APPROVED | 30-case audit covers regression + new features + edge cases + adversarial. 8 new tests in `tests/v0/stage3/plan/codegen_tests.rs`. §15.4 root-cause verification (e01_mutation_not_dropped) explicitly confirms the old bug's symptom is gone. 788 total tests pass, 0 regressions. |
 | **Tooling & DX Lead** | APPROVED | 0 clippy warnings, 0 fmt diffs. Six audit scripts now (R1-R6). `lower_expr_to_lvalue` documented with Stage 3.34 note. L-MUT-1 CLOSED; L-DEBT-3 (field type propagation through arithmetic operands) newly recorded. |
 
 **Result**: 5/5 APPROVED — UNANIMOUS. Stage 3 gate review Round 6 PASSED.

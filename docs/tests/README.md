@@ -62,15 +62,19 @@ tests/
 │   │   └── deep_inspection_tests.rs  (15 tests)
 │   └── stage4/plan/
 │       └── closure_capture_tests.rs  (4 tests)
-└── common/                           (共享测试辅助 — 待填充)
+└── common/                           (shared test helpers — tests/common/mod.rs)
 ```
 
 ## Migration History
 
-- **Stage 4.8 (v0.9.5)**: All 13 flat `tests/*.rs` files migrated to standardized
-  `tests/v0/stage{N}/plan/` directory structure per v3.17 §17.1. Each test file
-  registered as explicit `[[test]]` target in `Cargo.toml`. All 993 tests pass
-  after migration.
+- **Stage 4.8 (v0.9.5)**: Full restructure — all 13 flat `tests/*.rs` files
+  migrated to standardized `tests/v0/stage{N}/plan/` per v3.17 §17.1.
+  - 0 flat .rs files remain in tests/ root
+  - 0 empty directories
+  - `tests/common/mod.rs` shared helper module created
+  - 27 markdown files updated with new test paths
+  - 14 `[[test]]` targets in Cargo.toml
+  - 993 tests pass (100% coverage of original)
 
 ## Total Test Count
 

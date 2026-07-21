@@ -7,70 +7,64 @@
 
 ---
 
-## v0.9.5 — Stage 4.8 (tests/ directory restructure)
+## v0.9.5 — Stage 4.8 (tests/ directory full restructure)
 
 ### Overview
 
-Restructures the entire `tests/` directory from flat `tests/*.rs` (13 files)
-to the standardized `tests/v0/stage{N}/plan/` hierarchy per v3.17 §17.1.
-All 993 tests pass after migration. 0 clippy warnings. fmt clean. All test
-files registered as explicit `[[test]]` targets in `Cargo.toml`.
+Full restructure of `tests/` directory — all 13 flat `tests/*.rs` files migrated
+to standardized `tests/v0/stage{N}/plan/` hierarchy per v3.17 §17.1. **Zero flat
+files remain in tests/ root.** Added `tests/common/mod.rs` shared test helpers.
+All doc references to old flat paths updated. 993 tests pass (100% coverage).
+0 clippy warnings. fmt clean.
 
-### Migration details
+### What was cleaned up
 
-**Before** (13 flat files in `tests/` root):
+1. **0 flat .rs files in tests/ root** — all 13 migrated to standardized paths
+2. **0 empty directories** — removed `tests/v0/stage4/gate/` (was empty)
+3. **tests/common/mod.rs** — NEW shared test helper module (`compile_src`, `compile_silent`, `has_errors`, `error_count`)
+4. **All doc references updated** — 27 markdown files had old flat paths (e.g., `tests/lexer.rs`) updated to new standardized paths (e.g., `tests/v0/stage0/plan/lexer_tests.rs`)
+5. **14 explicit `[[test]]` targets** in Cargo.toml — all test files registered
+
+### Final tests/ directory structure
+
 ```
-tests/ast_structure.rs
-tests/codegen_tests.rs
-tests/deep_inspection.rs
-tests/hir_lowering.rs
-tests/hir_resolution.rs
-tests/hir_scope_resolution.rs
-tests/hir_structure.rs
-tests/integration_stage2_4c.rs
-tests/lexer.rs
-tests/mir_lowering.rs
-tests/negative_cases.rs
-tests/parser.rs
-tests/typeck_tests.rs
+tests/
+├── common/
+│   └── mod.rs                        (shared test helpers)
+├── conformance/                      (conformance test suite — .lin files)
+│   ├── 00-parse/
+│   ├── README.md
+│   └── run_all.py
+└── v0/
+    ├── stage0/plan/
+    │   ├── lexer_tests.rs            (109 tests)
+    │   ├── parser_tests.rs           (85 tests)
+    │   └── ast_structure_tests.rs    (150 tests)
+    ├── stage1/plan/
+    │   ├── hir_structure_tests.rs    (20 tests)
+    │   ├── hir_lowering_tests.rs     (36 tests)
+    │   ├── hir_resolution_tests.rs   (26 tests)
+    │   └── hir_scope_resolution_tests.rs (17 tests)
+    ├── stage2/plan/
+    │   ├── mir_lowering_tests.rs     (22 tests)
+    │   ├── typeck_tests.rs           (26 tests)
+    │   ├── integration_tests.rs      (58 tests)
+    │   └── negative_cases_tests.rs   (35 tests)
+    ├── stage3/plan/
+    │   ├── codegen_tests.rs          (294 tests)
+    │   └── deep_inspection_tests.rs  (15 tests)
+    └── stage4/plan/
+        └── closure_capture_tests.rs  (4 tests)
 ```
-
-**After** (14 files in standardized `tests/v0/stage{N}/plan/`):
-```
-tests/v0/stage0/plan/lexer_tests.rs           (109 tests)
-tests/v0/stage0/plan/parser_tests.rs          (85 tests)
-tests/v0/stage0/plan/ast_structure_tests.rs   (150 tests)
-tests/v0/stage1/plan/hir_structure_tests.rs   (20 tests)
-tests/v0/stage1/plan/hir_lowering_tests.rs    (36 tests)
-tests/v0/stage1/plan/hir_resolution_tests.rs  (26 tests)
-tests/v0/stage1/plan/hir_scope_resolution_tests.rs (17 tests)
-tests/v0/stage2/plan/mir_lowering_tests.rs    (22 tests)
-tests/v0/stage2/plan/typeck_tests.rs          (26 tests)
-tests/v0/stage2/plan/integration_tests.rs     (58 tests)
-tests/v0/stage2/plan/negative_cases_tests.rs  (35 tests)
-tests/v0/stage3/plan/codegen_tests.rs         (294 tests)
-tests/v0/stage3/plan/deep_inspection_tests.rs (15 tests)
-tests/v0/stage4/plan/closure_capture_tests.rs (4 tests)
-```
-
-**Cargo.toml**: 14 explicit `[[test]]` targets added.
-
-### Test documentation created
-
-13 new test plan documents created in `docs/tests/v0/stage{N}/plan/`:
-- `docs/tests/v0/stage0/plan/{lexer,parser,ast_structure}.md`
-- `docs/tests/v0/stage1/plan/{hir_structure,hir_lowering,hir_resolution,hir_scope_resolution}.md`
-- `docs/tests/v0/stage2/plan/{mir_lowering,typeck,integration,negative_cases}.md`
-- `docs/tests/v0/stage3/plan/{codegen,deep_inspection}.md`
-
-`docs/tests/README.md` updated with full directory structure + migration history.
 
 ### Verification
 
-- `cargo test`: **993 passed, 0 failed, 2 ignored** (unchanged)
+- `cargo test`: **993 passed, 0 failed, 2 ignored** (100% coverage of original)
 - `cargo clippy --all-targets`: **0 warnings, 0 errors**
 - `cargo fmt --check`: **clean**
-- §16 compliance: all 8 §21.3 checklist items green
+- 0 flat .rs files in tests/ root
+- 0 empty directories
+- 14 [[test]] targets in Cargo.toml
 
 ---
 

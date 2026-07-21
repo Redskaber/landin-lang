@@ -1,7 +1,7 @@
 # Codegen Enum Tests
 
 > **Author**: redskaber
-> **Corresponds to**: `tests/codegen_tests.rs` (Stage 3.38-3.48)
+> **Corresponds to**: `tests/v0/stage3/plan/codegen_tests.rs` (Stage 3.38-3.48)
 > **Cross-ref**: `docs/develop/v0/stage-3/dev-log.md` Stage 3.38-3.48
 
 ## Test Target

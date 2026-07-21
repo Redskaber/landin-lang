@@ -13,7 +13,7 @@
 
 Round 5 conducted the most thorough audit yet, with three test layers:
 1. **60-case functional audit** (`examples/round5_audit.rs`) — §9.3.1 + §9.3.2 compliant
-2. **15-case deep inspection** (`tests/deep_inspection.rs`) — verifies output structure
+2. **15-case deep inspection** (`tests/v0/stage3/plan/deep_inspection_tests.rs`) — verifies output structure
 3. **All previous round audits re-run** — no regression
 
 **Result: 0 new issues found.** All Round 4 fixes (G8 FloatVar, G9b
@@ -58,7 +58,7 @@ Round 5's audit (`examples/round5_audit.rs`) has 10 edge case tests
 - **Group E (10 cases)**: Positive regression
 - **Group G (10 cases)**: Cross-stage integration smoke tests
 
-### Layer 2: Deep inspection (15 tests, `tests/deep_inspection.rs`)
+### Layer 2: Deep inspection (15 tests, `tests/v0/stage3/plan/deep_inspection_tests.rs`)
 Verifies *output structure*, not just "no errors":
 - typeck writeback (i32, bool)
 - StorageLive (return, params)
@@ -99,7 +99,7 @@ All deep inspection tests pass:
 ## Test Results
 
 ### Existing test suite
-- **658 → 673 tests** (+15 deep inspection in `tests/deep_inspection.rs`)
+- **658 → 673 tests** (+15 deep inspection in `tests/v0/stage3/plan/deep_inspection_tests.rs`)
 - **0 failed, 2 ignored** (Stage 3: NLL in loops + closure arg count)
 - **0 warnings, fmt + clippy clean**
 
@@ -109,7 +109,7 @@ All deep inspection tests pass:
 - **§9.3.2 edge case tests: 10** (requirement ≥5) ✅
 - **§9.3.1: 60 cases, 6 groups, all compliant** ✅
 
-### Deep inspection (`tests/deep_inspection.rs`)
+### Deep inspection (`tests/v0/stage3/plan/deep_inspection_tests.rs`)
 - **15/15 PASS, 0 FAIL**
 
 ### Previous round regression

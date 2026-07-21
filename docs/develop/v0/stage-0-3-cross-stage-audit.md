@@ -130,11 +130,11 @@ source text
 - **Error paths**: All `gen_ll` test helpers strictly check `has_errors()`
   before consuming IR. Zero `gen_ll_unchecked` calls in source or tests.
 - **Negative tests**: §9.1.1 negative test matrix complete (7 categories covered
-  in tests/negative_cases.rs).
+  in tests/v0/stage2/plan/negative_cases_tests.rs).
 - **Coercion edge cases**: `can_coerce` covers widening (u8→i32, f32→f64),
   same-width Int↔Uint, Bool→Int. Lossy narrowings (u64→i8) correctly rejected
   (Stage 3.59 P0 fix).
-- **§21 audit tests**: 5 programmatic tests in tests/codegen_tests.rs verify
+- **§21 audit tests**: 5 programmatic tests in tests/v0/stage3/plan/codegen_tests.rs verify
   §16 compliance at runtime (audit_codegen_no_upstream_calls,
   audit_typeck_uses_tables_not_hir, audit_pipeline_data_flow_complete,
   audit_error_propagation, audit_metadata_precomputed).
@@ -416,7 +416,7 @@ $ rg "\bLowerCtxt\b" src/hir/               → 0 matches (all renamed) ✅
 $ cargo test --test codegen_tests           → 294/294 pass ✅
 ```
 
-The 5 §21 audit tests in `tests/codegen_tests.rs` all pass:
+The 5 §21 audit tests in `tests/v0/stage3/plan/codegen_tests.rs` all pass:
 - `audit_codegen_no_upstream_calls` ✅
 - `audit_typeck_uses_tables_not_hir` ✅
 - `audit_pipeline_data_flow_complete` ✅

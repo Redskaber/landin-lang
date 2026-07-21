@@ -9,7 +9,8 @@ predictable performance.
 > **Status:** Stage 0-3 complete + Stage 4 in progress. v0.9.5, 993 tests passing,
 > 43 review rounds. Process v3.17 (§15-§27).
 > Stage 4.1-4.7: modules + PHI + visibility + closure lowering + capture analysis.
-> Stage 4.8: tests/ directory restructured to standardized tests/v0/stage{N}/plan/.
+> Stage 4.8: tests/ directory fully restructured — 0 flat files, 14 standardized
+> test files in tests/v0/stage{N}/plan/ + tests/common/mod.rs shared helpers.
 > Next: L3 call lowering (Stage 4.9), macro system, benchmark suite.
 
 ## Quick start
