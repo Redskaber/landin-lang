@@ -3600,3 +3600,38 @@ Stage Summary:
 - TraitResolver summary() for diagnostics + debugging.
 - 984 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.17+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.17-r66
+Agent: Super Z (main)
+Task: Stage 5.17 — vtable method resolution + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.15 / 984 tests / Stage 5.16 complete (TraitResolver summary)
+
+Stage 5.17: Vtable method resolution
+- src/traits/mod.rs: 3 new query methods on TraitResolver:
+  * resolve_vtable_method(trait, ty, method) -> Option<&str> — resolve to LLVM symbol
+  * vtable_method_names(trait, ty) -> Vec<&str> — all method symbols
+  * vtable_has_method(trait, ty, method) -> bool — vtable has method?
+- tests/v0/stage5/plan/vtable_method_resolve_tests.rs: 8 new tests
+- tests/all_tests.rs: added vtable_method_resolve_tests module (35 mods)
+- Cargo.toml: version 0.11.15 → 0.11.16
+
+§17.3 三阶段文档协议执行 (v3.20):
+- 时期 1: plan-5.17.md + vtable_method_resolve.md + vtable_method_resolve_tests.rs
+- 时期 2: gate-review-round17.md + test gate-review-round17.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.17 entry appended
+- README.md: updated to v0.11.16
+
+CI/CD Verification (§1.2 交付前验收, ACTUAL RUN):
+- cargo test: 992 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.17 PASSED — CI/CD all green per §1.2.
+- Vtable method resolution: single-entry-point for method dispatch.
+- 992 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.18+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

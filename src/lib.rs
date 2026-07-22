@@ -122,7 +122,11 @@
 //!     `summary(&Rodeo) -> String` method generates human-readable state
 //!     report (trait/impl/type/vtable/builtin counts + per-trait methods/
 //!     supertraits + per-type impl list). For diagnostics + debugging.
-//!   Next: Stage 5.17+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.17 (v0.11.16): Vtable method resolution —
+//!     `resolve_vtable_method()` + `vtable_method_names()` +
+//!     `vtable_has_method()` for single-entry-point method dispatch
+//!     resolution (combines find_vtable + entry lookup).
+//!   Next: Stage 5.18+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

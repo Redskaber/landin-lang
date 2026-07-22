@@ -139,3 +139,6 @@ mod trait_hierarchy_tests;
 
 #[path = "v0/stage5/plan/trait_summary_tests.rs"]
 mod trait_summary_tests;
+
+#[path = "v0/stage5/plan/vtable_method_resolve_tests.rs"]
+mod vtable_method_resolve_tests;

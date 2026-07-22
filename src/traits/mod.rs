@@ -430,6 +430,66 @@ impl TraitResolver {
             .unwrap_or(0)
     }
 
+    /// Stage 5.17: Resolve a vtable method to its concrete LLVM symbol name.
+    ///
+    /// Given `(trait_spur, type_spur, method_spur)`, looks up the vtable
+    /// for `(trait, type)` and finds the entry whose `method_name` matches
+    /// `method_spur`. Returns the resolved `fn_name` (e.g. `landin_S_bar`).
+    ///
+    /// Returns `None` if:
+    /// - No vtable exists for `(trait, type)` (no `impl Trait for Type`)
+    /// - The trait doesn't declare the method
+    /// - The method isn't in the vtable entries
+    ///
+    /// This is the single entry point for vtable method resolution — it
+    /// combines `find_vtable` + entry lookup in one call.
+    ///
+    /// Per API-naming-standard §3: `resolve_vtable_method` follows
+    /// `resolve_<noun>_<noun>` pattern for resolution queries returning
+    /// the resolved value.
+    pub fn resolve_vtable_method(
+        &self,
+        trait_name: Spur,
+        self_ty_name: Spur,
+        method_name: Spur,
+    ) -> Option<&str> {
+        let vtable = self.find_vtable(trait_name, self_ty_name)?;
+        vtable
+            .entries
+            .iter()
+            .find(|e| e.method_name == method_name)
+            .map(|e| e.fn_name.as_str())
+    }
+
+    /// Stage 5.17: Get all method symbol names from a vtable
+    /// (by trait + type). Returns an empty Vec if no vtable exists.
+    ///
+    /// Per API-naming-standard §3: `vtable_method_names` follows
+    /// `<noun>_<noun>_<noun>` pattern for collection-returning queries.
+    pub fn vtable_method_names(&self, trait_name: Spur, self_ty_name: Spur) -> Vec<&str> {
+        if let Some(vtable) = self.find_vtable(trait_name, self_ty_name) {
+            vtable.entries.iter().map(|e| e.fn_name.as_str()).collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Stage 5.17: Check if a vtable has a method entry
+    /// (by trait + type + method name).
+    ///
+    /// Per API-naming-standard §3: `vtable_has_method` follows
+    /// `<noun>_<verb>_<noun>` pattern for boolean queries, consistent
+    /// with `trait_has_method`.
+    pub fn vtable_has_method(
+        &self,
+        trait_name: Spur,
+        self_ty_name: Spur,
+        method_name: Spur,
+    ) -> bool {
+        self.resolve_vtable_method(trait_name, self_ty_name, method_name)
+            .is_some()
+    }
+
     /// Check if a type implements a trait (by name).
     pub fn implements(&self, trait_name: Spur, self_ty_name: Spur) -> bool {
         self.find_impl(trait_name, self_ty_name).is_some()

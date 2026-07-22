@@ -381,3 +381,22 @@ query methods read data only.
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ summary reads TraitResolver data only.
 **API naming**: ✅ `summary` noun naming (output content).
+
+### Stage 5.17 — Vtable Method Resolution (v0.11.16)
+
+**Priority**: Single-entry-point method dispatch resolution.
+
+**Work completed**:
+- src/traits/mod.rs: 3 new query methods on TraitResolver:
+  * `resolve_vtable_method(trait, ty, method) -> Option<&str>` — resolve to LLVM symbol
+  * `vtable_method_names(trait, ty) -> Vec<&str>` — all method symbols
+  * `vtable_has_method(trait, ty, method) -> bool` — vtable has method?
+- tests/v0/stage5/plan/vtable_method_resolve_tests.rs: 8 new tests
+- tests/all_tests.rs: added vtable_method_resolve_tests module (35 mods)
+- Cargo.toml: version 0.11.15 → 0.11.16
+
+**Test impact**: +8 (992 — was 984)
+**Verification**: cargo clean + cargo test (992 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ all new methods read TraitResolver data only.
+**API naming**: ✅ `resolve_<noun>_<noun>` + `<noun>_<noun>_<noun>` + `<noun>_<verb>_<noun>`.
