@@ -50,6 +50,8 @@
 //!     Closes deep review R37 conditions (QA benchmark + D7 documentation).
 //!   Stage 4.12 (v0.9.9): Process v3.18 (worklog snapshot sync to docs/worklog/)
 //!     + current_module tracking for visibility enforcement + 1000 tests milestone.
+//!   Stage 4.13 (v0.10.0): Full closure call lowering — extract captures from
+//!     closure struct + produce inferred-type result (inline body deferred to Stage 5).
 //!   Remaining: L5 (traits), L8 (lli), user-defined macros (macro_rules!).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 

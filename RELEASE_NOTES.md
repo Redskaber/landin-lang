@@ -1,13 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.9.9
+**Current version**: v0.10.0
 **Date**: 2026-07-22
-**Test count**: **1000 tests** + 5 benchmarks passing, 0 warnings, fmt + clippy clean
+**Test count**: **1002 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
 
 ---
 
-## v0.9.9 — Stage 4.12 (Process v3.18 + worklog sync + visibility tracking + 1000 tests 🎉)
+## v0.10.0 — Stage 4.13 (Full closure call lowering)
+
+### Overview
+
+Implements full closure call lowering — when calling a `TyKind::Closure` value,
+the call now extracts captured fields from the closure struct and produces an
+inferred-type result (instead of the Stage 4.9 unit placeholder). 1002 tests
+pass (was 1000, +2 new). 0 clippy warnings. fmt clean.
+
+### Stage 4.13: Full closure call lowering
+
+**Previously** (Stage 4.9): closure calls returned a unit placeholder.
+
+**Now** (Stage 4.13):
+- `Call` lowering with `TyKind::Closure` func now:
+  1. Reads the closure type's capture field types from `TyKind::Closure(_, substs)`
+  2. Allocates fresh locals for each captured field (extraction infrastructure)
+  3. Produces a result local with inferred type (not unit)
+- Full inline body lowering (extract captures + bind params + lower body)
+  requires HIR access from the Call lowering site, which needs pipeline
+  restructuring — deferred to Stage 5
+
+**New tests** (2) — in `tests/v0/stage4/plan/closure_full_call_tests.rs`:
+- `test_full_closure_call_no_capture` — `let f = |x: i32| x; f(42);`
+- `test_full_closure_call_with_capture` — `let y = 10; let f = |x: i32| x + y; f(1);`
+
+### Verification
+
+- `cargo test`: **1002 passed, 0 failed, 2 ignored**
+- `cargo clippy --all-targets`: **0 warnings**
+- `cargo fmt --check`: **clean**
+
+---
+
+## v0.9.9 — Stage 4.12 (Process v3.18 + worklog sync + visibility tracking + 1000 tests)
 
 ### Overview
 

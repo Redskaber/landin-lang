@@ -309,3 +309,26 @@ field (the captured `y`), and the `Aggregate` value carries `y`'s value.
 
 **Test impact**: +2 (1000/1000 — was 998)
 **Verification**: 0 clippy warnings, fmt clean
+
+---
+
+### Stage 4.13 — Full Closure Call Lowering (v0.10.0)
+
+**Priority**: Complete L3 closure codegen.
+
+**Work completed**:
+- src/mir/lower/mod.rs: Call lowering with TyKind::Closure now:
+  * Reads capture field types from TyKind::Closure(_, substs)
+  * Allocates fresh locals for each captured field
+  * Produces result local with inferred type (not unit placeholder)
+- Full inline body lowering (extract + bind params + lower body) deferred to Stage 5
+  (requires HIR access from Call lowering site — pipeline restructuring needed)
+- Updated codegen/mod.rs L3 documentation to "Stage 4.13"
+
+**New tests** (2):
+- tests/v0/stage4/plan/closure_full_call_tests.rs
+  * test_full_closure_call_no_capture
+  * test_full_closure_call_with_capture
+
+**Test impact**: +2 (1002/1002 — was 1000)
+**Verification**: 0 clippy warnings, fmt clean

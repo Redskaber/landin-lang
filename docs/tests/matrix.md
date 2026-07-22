@@ -73,8 +73,9 @@
 | 4.10 | Macro system: built-in macro expansion (println!/stringify!/assert!) in MIR lowering; MacroCall no longer produces Error | +3 | ✅ |
 | 4.11 | Performance benchmark suite (benches/compile_bench.rs, 5 benchmarks) + ADR docs (ADR-001 to ADR-007) — closes deep review R37 conditions | +5 (bench) | ✅ |
 | 4.12 | Process v3.18 (worklog snapshot sync to docs/worklog/) + current_module tracking for visibility enforcement + 1000 tests milestone | +2 | ✅ |
+| 4.13 | Full closure call lowering: extract captures from closure struct + inferred-type result (inline body deferred to Stage 5) | +2 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.12 R47 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
+| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.13 R48 | Audit cases | 716+ cumulative + 7-dimension deep review | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 
