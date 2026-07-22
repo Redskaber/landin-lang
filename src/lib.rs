@@ -65,7 +65,9 @@
 //!   Stage 5.4 (v0.11.3): DefId→name reverse map in TraitResolver —
 //!     `type_by_def_id` populated for struct/enum/trait; `is_copy()` and
 //!     `implements_by_def_id()` query methods; full Copy detection activated.
-//!   Next: Stage 5.5+ (vtable generation, stdlib MVP, mini-cargo).
+//!   Stage 5.5 (v0.11.4): Vtable data structures — `VtableEntry` + `Vtable`
+//!     + `find_vtable()` query; vtables built during collect() for each trait impl.
+//!   Next: Stage 5.6+ (codegen vtable emission, stdlib MVP, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

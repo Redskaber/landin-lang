@@ -1010,14 +1010,40 @@ impl<'a> Parser<'a> {
         let kw_span = self.current_span(); // Stage 3.67: capture `impl` keyword span
         self.bump(); // impl
         let generics = self.parse_generics();
-        let self_ty = self.parse_ty();
-        let of_trait = if *self.peek() == TokenKind::KwFor {
-            self.bump();
-            let path = self.parse_path();
-            Some(path)
+
+        // Stage 5.5 audit fix: correctly distinguish self_ty from of_trait.
+        //
+        // Grammar (per docs/lang-design/02-grammar.md §174):
+        //   impl generic_params? type "for" type where_clause? "{" impl_item* "}"
+        //   impl generic_params? type where_clause? "{" impl_item* "}"   (inherent impl)
+        //
+        // Semantics (matches Rust): `impl Trait for SelfType` — the FIRST
+        // type is the trait, the SECOND type (after `for`) is the self type.
+        // For inherent impls (`impl SelfType { ... }`), there is only one
+        // type and it is the self type.
+        //
+        // BUG (fixed here): previously the parser unconditionally assigned
+        // the first parsed type to `self_ty` and the second (after `for`)
+        // to `of_trait`, which is backwards for trait impls. This caused
+        // TraitResolver to build vtables with swapped keys and broke
+        // `find_vtable(trait, self_ty)` lookups (test_vtable_query failure).
+        //
+        // Fix: peek ahead. If `for` follows the first type, the first type
+        // is the trait; otherwise it is the self type (inherent impl).
+        let first_ty = self.parse_ty();
+        let (of_trait, self_ty) = if *self.peek() == TokenKind::KwFor {
+            // `impl <first_ty=Trait> for <self_ty> { ... }`
+            // first_ty is a path to the trait — convert it to a Path.
+            // parse_ty returns a Ty::Path for simple paths; extract it.
+            let trait_path = ty_to_path(first_ty);
+            self.bump(); // for
+            let self_ty = self.parse_ty();
+            (Some(trait_path), self_ty)
         } else {
-            None
+            // `impl <self_ty> { ... }` (inherent impl)
+            (None, first_ty)
         };
+
         let where_clause = self.parse_where_clause();
         self.expect(&TokenKind::LBrace, "`{`");
         let mut items = Vec::new();
@@ -3006,6 +3032,40 @@ impl<'a> Parser<'a> {
                 | TokenKind::KwSuper
                 | TokenKind::KwMove // for `move ||` closure
         )
+    }
+}
+
+/// Stage 5.5 audit fix: extract a `Path` from a `Ty::Path`.
+///
+/// Used by `parse_impl` to convert the first parsed type (the trait path)
+/// into a `Path` for `ImplDecl.of_trait`. For non-path types (e.g. `impl
+/// (i32) for Foo` — which is invalid syntax), returns a dummy path; the
+/// caller's `expect(LBrace)` will then fail with a clear error.
+fn ty_to_path(ty: Ty) -> Path {
+    match ty {
+        Ty::Path(_qself, path, _span) => path,
+        // Non-path types in trait position are invalid; return a dummy so
+        // parsing continues and produces a parse error at the expected `{`.
+        other => Path {
+            segments: vec![],
+            leading: PathLeading::None,
+            span: match &other {
+                Ty::Bool(s)
+                | Ty::Char(s)
+                | Ty::Never(s)
+                | Ty::Infer(s)
+                | Ty::Slice(_, s)
+                | Ty::Array(_, _, s)
+                | Ty::Ref(_, _, _, s)
+                | Ty::Ptr(_, _, s) => *s,
+                Ty::Int(_, s) | Ty::Uint(_, s) | Ty::Float(_, s) => *s,
+                Ty::Tuple(_, s) => *s,
+                Ty::FnPtr { span: s, .. } => *s,
+                Ty::TraitObject { span: s, .. } => *s,
+                Ty::ImplTrait(_, s) => *s,
+                Ty::Path(_, _, s) => *s,
+            },
+        },
     }
 }
 

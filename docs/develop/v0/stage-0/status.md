@@ -144,7 +144,7 @@
 - `PathLeading::Crate/Super/Self_` variant 未构造
 - 顶层声明 span = `Span::DUMMY`（P1-16）
 - closure `move` 关键字未支持
-- 14 个 P1 细节项（详见 `docs/development-log.md` §5.2.2）
+- 14 个 P1 细节项（详见 `docs/develop/v0/stage-0/dev-log.md` §5.2.2 — was `docs/development-log.md`, reorganized per v3.17 §17）
 
 ### 3.3 Stage 0 范围外（推迟到 Stage 1+ HIR 阶段）
 

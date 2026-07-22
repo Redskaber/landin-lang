@@ -300,8 +300,10 @@ field (the captured `y`), and the `Aggregate` value carries `y`'s value.
 ### Stage 4.12 — Process v3.18 + Visibility Tracking + 1000 Tests (v0.9.9)
 
 **Work completed**:
-- Process v3.18: §18.4.0 worklog snapshot sync to `docs/worklog/`
-- 5 historical worklog snapshots created (R42-R46)
+- Process v3.18: §18.4.0 worklog mirror sync to `docs/worklog.md` (single file)
+  - Originally specified `docs/worklog/` directory; corrected to single-file
+    mirror in Stage 5.5 audit (per §18.4.0 final wording)
+  - Legacy `docs/worklog/` directory (R42-R47 snapshots) removed
 - `current_module: Option<Spur>` field on Resolver (Stage 4.12)
 - `check_visibility` updated to reference `current_module`
 - `current_module()` public accessor for testing

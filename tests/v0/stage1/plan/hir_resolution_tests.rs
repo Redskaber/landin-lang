@@ -301,10 +301,8 @@ fn no_unknown_after_resolution() {
 
 fn check_expr(expr: &HirExpr, found: &mut bool) {
     match &expr.kind {
-        HirExprKind::Path(p) => {
-            if p.res == Res::Unknown {
-                *found = true;
-            }
+        HirExprKind::Path(p) if p.res == Res::Unknown => {
+            *found = true;
         }
         HirExprKind::Block(b) => {
             for s in &b.stmts {

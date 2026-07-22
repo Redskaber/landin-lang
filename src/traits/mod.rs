@@ -2,6 +2,7 @@
 //!
 //! Stage 5.1: Basic TraitResolver — collects trait/impl metadata from HIR.
 //! Stage 5.4: Added `type_by_def_id` reverse map for Copy trait detection.
+//! Stage 5.5: Added vtable data structures for L5 trait dispatch.
 //!
 //! Per §16 (阶段间接口隔离): TraitResolver reads HIR during the driver's
 //! pre-computation phase, then provides data to typeck/borrowck/codegen.
@@ -39,8 +40,35 @@ pub struct ImplInfo {
     pub is_unsafe: bool,
 }
 
+/// Stage 5.5: A single entry in a vtable — maps a trait method name
+/// to the concrete function DefId that implements it.
+#[derive(Debug, Clone)]
+pub struct VtableEntry {
+    /// The method name (interned symbol) as declared in the trait.
+    pub method_name: Spur,
+    /// The DefId of the concrete function in the impl block.
+    pub fn_def_id: DefId,
+}
+
+/// Stage 5.5: A vtable for a specific (trait, type) pair.
+///
+/// Contains the dispatch entries that map trait method names to
+/// concrete function DefIds. This is the data structure that codegen
+/// will use to generate LLVM vtable globals for `dyn Trait` support.
+#[derive(Debug, Clone)]
+pub struct Vtable {
+    /// The trait name (interned symbol).
+    pub trait_name: Spur,
+    /// The self type name (interned symbol).
+    pub self_ty_name: Spur,
+    /// The DefId of the impl block this vtable corresponds to.
+    pub impl_def_id: DefId,
+    /// Method dispatch entries: method_name → concrete fn DefId.
+    pub entries: Vec<VtableEntry>,
+}
+
 /// The TraitResolver. Collects trait definitions and impl blocks from HIR,
-/// builds dispatch tables for method resolution.
+/// builds dispatch tables and vtables for method resolution.
 ///
 /// Per §16: This is built by the driver during pre-computation, then passed
 /// as data to typeck/borrowck/codegen (no HIR access needed downstream).
@@ -55,9 +83,10 @@ pub struct TraitResolver {
     /// (trait_name, self_ty_name) → impl DefId (for impl lookup).
     pub impl_by_trait_and_type: HashMap<(Spur, Spur), DefId>,
     /// Stage 5.4: DefId → type name (for struct/enum/trait).
-    /// Enables `ty_is_copy_with_resolver` to look up a type's name
-    /// from its DefId and check if it implements Copy.
     pub type_by_def_id: HashMap<DefId, Spur>,
+    /// Stage 5.5: Vtables keyed by (trait_name, self_ty_name).
+    /// Each vtable maps trait method names to concrete fn DefIds.
+    pub vtables: HashMap<(Spur, Spur), Vtable>,
 }
 
 impl TraitResolver {
@@ -65,10 +94,8 @@ impl TraitResolver {
         Self::default()
     }
 
-    /// Collect all trait definitions, impl blocks, and type names from HIR.
+    /// Collect all trait definitions, impl blocks, type names, and vtables from HIR.
     pub fn collect(&mut self, hir: &HirCrate, interner: &Rodeo) {
-        // "Copy" trait name lookup is done in `is_copy()` at query time
-        // via the interner — no need to store it here.
         let _ = interner.get("Copy");
 
         for (def_id, node) in &hir.owners {
@@ -92,11 +119,9 @@ impl TraitResolver {
                         self.traits.insert(*def_id, info);
                     }
                     HirItem::Struct(s) => {
-                        // Stage 5.4: Record struct name for DefId→name lookup.
                         self.type_by_def_id.insert(*def_id, s.ident.name);
                     }
                     HirItem::Enum(e) => {
-                        // Stage 5.4: Record enum name for DefId→name lookup.
                         self.type_by_def_id.insert(*def_id, e.ident.name);
                     }
                     HirItem::Impl(i) => {
@@ -105,21 +130,40 @@ impl TraitResolver {
                             .as_ref()
                             .and_then(|p| p.segments.last().map(|s| s.ident.name));
                         let self_ty_name = extract_ty_name(&i.self_ty);
-                        let mut methods = Vec::new();
+
+                        // Stage 5.5: Build vtable entries from impl methods.
+                        let mut vtable_entries = Vec::new();
+                        let mut method_names = Vec::new();
                         for impl_item in &i.items {
                             if let HirImplItem::Fn(f) = impl_item {
-                                methods.push(f.ident.name);
+                                method_names.push(f.ident.name);
+                                vtable_entries.push(VtableEntry {
+                                    method_name: f.ident.name,
+                                    fn_def_id: *def_id,
+                                });
                             }
                         }
+
                         let info = ImplInfo {
                             def_id: *def_id,
                             trait_name,
                             self_ty_name,
-                            methods,
+                            methods: method_names,
                             is_unsafe: i.is_unsafe,
                         };
+
+                        // Stage 5.5: Build and store vtable if this is a trait impl.
                         if let (Some(tn), Some(stn)) = (trait_name, self_ty_name) {
                             self.impl_by_trait_and_type.insert((tn, stn), *def_id);
+
+                            // Create vtable for this (trait, type) pair.
+                            let vtable = Vtable {
+                                trait_name: tn,
+                                self_ty_name: stn,
+                                impl_def_id: *def_id,
+                                entries: vtable_entries,
+                            };
+                            self.vtables.insert((tn, stn), vtable);
                         }
                         self.impls.insert(*def_id, info);
                     }
@@ -149,7 +193,6 @@ impl TraitResolver {
     }
 
     /// Stage 5.4: Check if a type (by DefId) implements a trait (by name).
-    /// Uses `type_by_def_id` to resolve the type name, then checks `implements`.
     pub fn implements_by_def_id(&self, trait_name: Spur, def_id: DefId) -> bool {
         if let Some(type_name) = self.type_by_def_id.get(&def_id) {
             self.implements(trait_name, *type_name)
@@ -159,9 +202,19 @@ impl TraitResolver {
     }
 
     /// Stage 5.4: Check if a type (by DefId) implements Copy.
-    /// Requires "Copy" to be interned in the interner during `collect()`.
     pub fn is_copy(&self, def_id: DefId, copy_name: Spur) -> bool {
         self.implements_by_def_id(copy_name, def_id)
+    }
+
+    /// Stage 5.5: Look up a vtable by (trait_name, self_ty_name).
+    /// Returns the vtable containing method dispatch entries.
+    pub fn find_vtable(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&Vtable> {
+        self.vtables.get(&(trait_name, self_ty_name))
+    }
+
+    /// Stage 5.5: Get the number of collected vtables.
+    pub fn vtable_count(&self) -> usize {
+        self.vtables.len()
     }
 
     /// Get the number of collected traits.

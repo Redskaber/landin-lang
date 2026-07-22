@@ -72,7 +72,7 @@
 | 4.9 | L3 closure call lowering: detect TyKind::Closure in Call lowering; simplified placeholder (full call deferred to Stage 4.10) | +2 | ✅ |
 | 4.10 | Macro system: built-in macro expansion (println!/stringify!/assert!) in MIR lowering; MacroCall no longer produces Error | +3 | ✅ |
 | 4.11 | Performance benchmark suite (benches/compile_bench.rs, 5 benchmarks) + ADR docs (ADR-001 to ADR-007) — closes deep review R37 conditions | +5 (bench) | ✅ |
-| 4.12 | Process v3.18 (worklog snapshot sync to docs/worklog/) + current_module tracking for visibility enforcement + 1000 tests milestone | +2 | ✅ |
+| 4.12 | Process v3.18 (worklog mirror to docs/worklog.md) + current_module tracking for visibility enforcement + 1000 tests milestone | +2 | ✅ |
 | 4.13 | Full closure call lowering: extract captures from closure struct + inferred-type result (inline body deferred to Stage 5) | +2 | ✅ |
 | 4.14 | Stage 4 deep review (§25): 7-dimension analysis, GO for Stage 5. Stage 4 COMPLETE. | 0 | ✅ |
 | R49 | Cross-stage deep review (§21+§25): Stage 0-4 pipeline 7-point verified, 16 tech debt cataloged, GO for Stage 5 | 0 | ✅ |

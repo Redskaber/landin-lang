@@ -131,7 +131,7 @@ Per §9.3, the audit:
 - **Fix**: Hook into StorageDead statements to clear borrows on the dead local.
 
 ### G14 (P3): Audit count off by 1
-- **Location**: `docs/stage-2.4d-gate-review.md`
+- **Location**: `docs/develop/v0/stage-2/gate-review-final.md` (was `docs/stage-2.4d-gate-review.md`, reorganized per v3.17 §17)
 - **Symptom**: Document says "14/15 programs compile cleanly" but actual is "13/15".
 - **Fix**: Update doc.
 

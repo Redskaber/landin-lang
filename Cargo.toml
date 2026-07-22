@@ -1,13 +1,17 @@
 [package]
 name = "landin-compiler"
-version = "0.11.3"
+version = "0.11.4"
 edition = "2021"
 license = "MIT"
-description = "Landin programming language compiler — Stage 0-3 complete + Stage 4.1-4.6 (nested modules + L1 PHI design decision + visibility enforcement + L3 closure lowering + dev-logs + Process v3.17 three-phase doc protocol) + standardized tests/ directory"
+description = "Landin programming language compiler — Stage 0-4 complete + Stage 5.1-5.5 (TraitResolver + driver integration + Copy detection + DefId→name + vtable data structures) + standardized tests/ directory"
 repository = "https://github.com/landin-lang/main"
 authors = ["redskaber"]
 keywords = ["compiler", "language", "systems-programming"]
 categories = ["compilers"]
+# Stage 5.5 refactor: disable auto-discovery so only the unified
+# `all_tests` target is built. Individual test files live under
+# tests/v0/stage{N}/plan/ and are included via #[path] in all_tests.rs.
+autotests = false
 
 [[bin]]
 name = "landin-stage0"
@@ -17,102 +21,11 @@ path = "src/bin/main.rs"
 name = "landin_compiler"
 path = "src/lib.rs"
 
-# Stage 4.8: standardized test directory structure per v3.17 §17.1
-# All test files are under tests/v0/stage{N}/plan/
-
-# Stage 0 tests
+# Unified test entry point — includes all tests/v0/stage{N}/plan/*.rs
+# files via #[path] mod declarations. See tests/all_tests.rs.
 [[test]]
-name = "lexer_tests"
-path = "tests/v0/stage0/plan/lexer_tests.rs"
-
-[[test]]
-name = "parser_tests"
-path = "tests/v0/stage0/plan/parser_tests.rs"
-
-[[test]]
-name = "ast_structure_tests"
-path = "tests/v0/stage0/plan/ast_structure_tests.rs"
-
-# Stage 1 tests
-[[test]]
-name = "hir_structure_tests"
-path = "tests/v0/stage1/plan/hir_structure_tests.rs"
-
-[[test]]
-name = "hir_lowering_tests"
-path = "tests/v0/stage1/plan/hir_lowering_tests.rs"
-
-[[test]]
-name = "hir_resolution_tests"
-path = "tests/v0/stage1/plan/hir_resolution_tests.rs"
-
-[[test]]
-name = "hir_scope_resolution_tests"
-path = "tests/v0/stage1/plan/hir_scope_resolution_tests.rs"
-
-# Stage 2 tests
-[[test]]
-name = "mir_lowering_tests"
-path = "tests/v0/stage2/plan/mir_lowering_tests.rs"
-
-[[test]]
-name = "typeck_tests"
-path = "tests/v0/stage2/plan/typeck_tests.rs"
-
-[[test]]
-name = "integration_tests"
-path = "tests/v0/stage2/plan/integration_tests.rs"
-
-[[test]]
-name = "negative_cases_tests"
-path = "tests/v0/stage2/plan/negative_cases_tests.rs"
-
-# Stage 3 tests
-[[test]]
-name = "codegen_tests"
-path = "tests/v0/stage3/plan/codegen_tests.rs"
-
-[[test]]
-name = "deep_inspection_tests"
-path = "tests/v0/stage3/plan/deep_inspection_tests.rs"
-
-# Stage 4 tests
-[[test]]
-name = "closure_capture_tests"
-path = "tests/v0/stage4/plan/closure_capture_tests.rs"
-
-[[test]]
-name = "closure_call_tests"
-path = "tests/v0/stage4/plan/closure_call_tests.rs"
-
-[[test]]
-name = "macro_system_tests"
-path = "tests/v0/stage4/plan/macro_system_tests.rs"
-
-[[test]]
-name = "visibility_tests"
-path = "tests/v0/stage4/plan/visibility_tests.rs"
-
-[[test]]
-name = "closure_full_call_tests"
-path = "tests/v0/stage4/plan/closure_full_call_tests.rs"
-
-# Stage 5 tests
-[[test]]
-name = "trait_resolver_tests"
-path = "tests/v0/stage5/plan/trait_resolver_tests.rs"
-
-[[test]]
-name = "trait_integration_tests"
-path = "tests/v0/stage5/plan/trait_integration_tests.rs"
-
-[[test]]
-name = "ty_is_copy_tests"
-path = "tests/v0/stage5/plan/ty_is_copy_tests.rs"
-
-[[test]]
-name = "def_id_name_map_tests"
-path = "tests/v0/stage5/plan/def_id_name_map_tests.rs"
+name = "all_tests"
+path = "tests/all_tests.rs"
 
 # Stage 4.11: Performance benchmark suite
 [[bench]]

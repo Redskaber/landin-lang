@@ -1,8 +1,8 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 3.18 (effective from Stage 4.12)
-> **Supersedes**: v3.17 (preserved verbatim — see §28.2 for v3.17→v3.18 diff)
+> **Version**: 3.19 (effective from Stage 5.5)
+> **Supersedes**: v3.18 (preserved verbatim — see §28.2 for v3.18→v3.19 diff)
 > **Purpose**: 为 Agent Group 提供清晰、严格、高效、可协调的阶段推进与质量管控 SOP。
 > 让任何 Agent（主 Agent / 子 Agent / 跨会话 Agent）拿到本文档即可：
 > 1. **清晰**：知道每个阶段、每轮、每个角色的输入/输出/验收标准；
@@ -1075,7 +1075,69 @@ docs/tests/
 - 评估下一阶段就绪度
 - 委员会投票：GO / GO-WITH-CONDITIONS / NO-GO
 
-### 17.4 测试矩阵覆盖率要求（保留 v3.12）
+### 17.4 标准化 examples/ 目录结构（v3.19 强制）
+
+**examples/ 的定位**：可运行的演示程序（`cargo run --example <name>`），
+用于 (a) 展示 compiler 公共 API 用法、(b) 阶段审查时的手动审计脚本。
+**不是**测试套件——测试归 `tests/`（§17.1），审查归 `docs/develop/`。
+
+#### 17.4.1 目录结构
+
+```
+examples/
+├── README.md                        # 索引 + 运行说明
+├── usage/                           # API 用法演示（长期保留）
+│   ├── basic_compile.rs             # compile() + codegen_crate() 基本用法
+│   ├── struct_codegen.rs            # 结构体 codegen 演示
+│   └── ...
+└── audit/                           # 阶段审查脚本（历史归档，不再扩展）
+    ├── stage3_gate_audit_r1.rs      # Stage 3 gate review round 1
+    ├── stage3_gate_audit_r23.rs     # 最后一轮（保留最新 + 关键轮次）
+    └── ...
+```
+
+#### 17.4.2 强制规则
+
+1. **新 example 必须按 `examples/usage/` 或 `examples/audit/` 放置** —
+   不允许直接添加到 `examples/` 根目录。
+2. **每个 example 必须有 `//!` 顶部文档注释** — 说明用途、运行方式、
+   对应的阶段/轮次。
+3. **`examples/usage/` 的 example 必须使用当前公共 API** — 编译失败
+   的 example 视为 P1 缺陷（API 变更后必须同步更新）。
+4. **`examples/audit/` 的 example 是历史归档** — 审查轮次结束后不再
+   维护，但保留作为历史参考；若 API 变更导致编译失败，标记为
+   `#[allow(dead_code)]` 或移到 `examples/audit/legacy/`。
+5. **`examples/README.md` 必须索引所有 example** — 按类别列出 +
+   运行命令 + 简要说明。
+
+#### 17.4.3 命名规范
+
+| 类别 | 命名 | 示例 |
+|------|------|------|
+| API 用法 | `<feature>.rs` | `struct_codegen.rs`, `closure_demo.rs` |
+| 阶段审查 | `stage<N>_gate_audit_r<R>.rs` | `stage3_gate_audit_r23.rs` |
+| 跨阶段审查 | `cross_stage_audit.rs` | — |
+| 轮次审查 | `round<N>_audit.rs` | `round5_audit.rs` |
+
+#### 17.4.4 与 tests/ 的区别
+
+| 维度 | `tests/` | `examples/` |
+|------|----------|-------------|
+| 目的 | 自动化测试（CI 运行） | 手动演示 / 审计脚本 |
+| 运行方式 | `cargo test` | `cargo run --example <name>` |
+| 失败后果 | 阻断合并 | 不阻断（但 P1 缺陷需修复） |
+| 文档要求 | `docs/tests/` 双向印证 | `examples/README.md` 索引 |
+| API 变更 | 必须同步更新 | `usage/` 必须更新；`audit/` 可归档 |
+
+#### 17.4.5 维护策略
+
+1. **API 变更时**：必须检查 `examples/usage/` 是否编译失败；失败则
+   立即修复（与 `src/` 改动同一轮次完成）。
+2. **阶段闭合时**：该阶段的所有 `audit/` 脚本归档，不再维护。
+3. **定期清理**：`audit/` 中超过 5 轮的中间审查脚本可移到
+   `examples/audit/legacy/`，只保留最新 + 关键轮次。
+
+### 17.5 测试矩阵覆盖率要求（保留 v3.12）
 
 **每进入下一阶段之前，测试矩阵需要满足近 100% 覆盖率。**
 
@@ -1089,7 +1151,7 @@ docs/tests/
 **"近 100%"** 的含义：允许 ≤5% 的功能点标记为 `DEFERRED`（有明确的
 推迟理由和计划），但不允许 `UNTESTED`（没有测试且没有推迟理由）。
 
-### 17.5 迁移策略（v3.17）
+### 17.6 迁移策略（v3.17）
 
 对于现有的扁平 `tests/*.rs`：
 1. **v3.17 立即生效**：新测试必须按 `tests/v0/stage-N/plan/` 放置。
@@ -1097,7 +1159,7 @@ docs/tests/
 3. **逐步迁移**：每个 stage 闭合时，将该 stage 的测试迁移到新结构。
 4. **迁移完成标志**：`tests/legacy/` 中不再有该 stage 的直接测试文件。
 
-### 17.6 测试文档格式标准
+### 17.7 测试文档格式标准
 
 每个测试文档（`docs/tests/v0/stage-N/plan/X.md`）必须包含：
 

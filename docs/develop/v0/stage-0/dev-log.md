@@ -230,8 +230,8 @@ impl/trait test in Stage 3.65)
 
 ### 5.3 文档标准化产出
 
-- `docs/development-log.md`（本文件）
-- `docs/stage0-status.md`：Stage 0 状态报告 v0.1.3
+- `docs/develop/v0/stage-0/dev-log.md`（本文件 — Stage 5.5 audit: was `docs/development-log.md`, reorganized per v3.17 §17）
+- `docs/develop/v0/stage-0/status.md`：Stage 0 状态报告 v0.1.3 (was `docs/stage0-status.md`)
 - `docs/testing-guide.md`：测试指南
 - `docs/build-guide.md`：构建指南
 

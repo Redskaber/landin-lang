@@ -1,9 +1,45 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.3
+**Current version**: v0.11.4
 **Date**: 2026-07-22
-**Test count**: **1013 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+**Test count**: 1013+ tests (3 new vtable tests pending env verification) + 5 benchmarks
+
+---
+
+## v0.11.4 — Stage 5.5 (vtable generation — L5 trait dispatch foundation)
+
+### Overview
+
+Adds vtable data structures to TraitResolver — `VtableEntry` and `Vtable` types
+that map trait method names to concrete function DefIds. Vtables are built
+during `collect()` for each `impl Trait for Type`. This is the foundation for
+L5 trait dispatch (`dyn Trait` dynamic dispatch via vtable indirection).
+
+**Note**: Rust toolchain unavailable in current environment. Code changes are
+based on existing patterns. Verification pending environment restoration.
+
+### Stage 5.5: Vtable data structures
+
+**New types** (`src/traits/mod.rs`):
+- `VtableEntry` — single dispatch entry: `method_name: Spur` → `fn_def_id: DefId`
+- `Vtable` — complete vtable: `trait_name`, `self_ty_name`, `impl_def_id`, `entries: Vec<VtableEntry>`
+
+**TraitResolver** changes:
+- New `vtables: HashMap<(Spur, Spur), Vtable>` field — keyed by (trait_name, type_name)
+- `collect()` now builds vtables for each `impl Trait for Type` block
+- New query methods: `find_vtable(trait_name, type_name)`, `vtable_count()`
+
+**New tests** (3) — in `tests/v0/stage5/plan/vtable_tests.rs`:
+- `test_vtable_built_for_impl` — `impl Foo for S` → vtable exists
+- `test_no_vtable_without_impl` — no impl → no vtable
+- `test_vtable_multiple_impls` — 2 impls → 2 vtables
+
+### Verification (pending env restoration)
+
+- `cargo fmt --check`: pending
+- `cargo test`: pending (expected 1016 passed)
+- `cargo clippy --all-targets`: pending
 
 ---
 
@@ -297,17 +333,24 @@ pass (was 1000, +2 new). 0 clippy warnings. fmt clean.
 
 ### Overview
 
-Updates process to v3.18 (worklog snapshot sync to `docs/worklog/`), adds
+Updates process to v3.18 (worklog mirror to `docs/worklog.md`), adds
 `current_module` tracking for visibility enforcement, and reaches the **1000
 tests milestone**. 1000 tests + 5 benchmarks pass. 0 clippy warnings. fmt clean.
 
-### Process v3.18: Worklog snapshot sync
+### Process v3.18: Worklog mirror sync
 
-New §18.4.0 — every round must sync worklog to `docs/worklog/worklog-round<NN>.md`:
-- Worklog snapshots live alongside dev/test docs in the project tree
-- Each round creates a standalone snapshot file
-- `docs/worklog/README.md` indexes all snapshots
-- 5 historical snapshots created (R42-R46) + R47 (this round)
+New §18.4.0 — every round must mirror worklog to `docs/worklog.md` (single
+file, not a directory):
+- `docs/worklog.md` is a complete mirror of `/home/z/my-project/worklog.md`
+- Each round overwrites `docs/worklog.md` with the latest complete worklog
+- Ensures worklog lives alongside dev/test docs in the project tree
+
+> **Note (Stage 5.5 audit)**: v3.18 originally specified a `docs/worklog/`
+> directory with per-round snapshot files. This was later corrected to a
+> single `docs/worklog.md` file (per §18.4.0 final wording) — the
+> directory approach created redundant per-round files; the single-file
+> mirror is simpler and matches the spec's intent of "complete mirror".
+> The legacy `docs/worklog/` directory has been removed.
 
 ### Stage 4.12: current_module tracking
 

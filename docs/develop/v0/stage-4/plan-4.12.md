@@ -8,8 +8,13 @@
 ## 1. 目标
 
 1. 实现 `current_module` 跟踪——激活完整可见性强制（`pub`/`pub(crate)`/`pub(super)`/private）
-2. 更新流程文档至 v3.18（worklog 快照同步）
-3. 创建 `docs/worklog/` 目录结构 + 历史快照
+2. 更新流程文档至 v3.18（worklog 镜像同步到 `docs/worklog.md` 单一文件）
+3. 同步 `docs/worklog.md`（与 `/home/z/my-project/worklog.md` 完全一致的镜像）
+
+> **Note (Stage 5.5 audit)**: 原始 4.12 计划使用 `docs/worklog/` 目录 + 每轮
+> 独立快照文件。后修正为 `docs/worklog.md` 单一文件镜像（per §18.4.0 final
+> wording）——目录方式产生冗余的 per-round 文件，单文件镜像更简洁且符合 spec
+> "完整镜像"的意图。legacy `docs/worklog/` 目录已移除。
 
 ## 2. 背景
 

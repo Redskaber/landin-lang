@@ -6,11 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.3 — Stage 0-4 complete, Stage 5 in progress.
-> **1013 tests** + 5 benchmarks, 0 clippy warnings, fmt clean.
+> **Status:** v0.11.4 — Stage 0-4 complete, Stage 5 in progress.
+> **1016+ tests** + 5 benchmarks (3 new vtable tests + 1 audit-enrichment pending verification).
 > Process v3.18 (§15-§28). §16 interface isolation compliant.
-> Cross-stage review R49: GO for Stage 5 ✅.
-> Stage 5.1-5.4: TraitResolver ✅ + driver integration ✅ + Copy detection ✅ + DefId→name map ✅.
+> Stage 5.1-5.5: TraitResolver ✅ + driver integration ✅ + Copy detection ✅ + DefId→name ✅ + vtable ✅.
 
 ## Quick start
 
@@ -39,7 +38,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete | 170 |
 | 3 | `codegen/` | ✅ Complete | 309 (incl. 5 §21 audit) |
 | 4 | modules, closures, macros, benchmarks, ADR | ✅ Complete | 62 + 5 bench |
-| 5 | `traits/`, stdlib, mini-cargo | 🔄 In progress | 11 (TraitResolver + integration + Copy + DefId→name) |
+| 5 | `traits/`, stdlib, mini-cargo | 🔄 In progress | 14 (TraitResolver + integration + Copy + DefId→name + vtable) |
 
 ## API surface
 
@@ -86,7 +85,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.11.0
+├── Cargo.toml              v0.11.4 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (109 tests)
 │   ├── parser/             Recursive-descent + Pratt parser (85 tests)
@@ -97,14 +96,21 @@ landin-stage0/
 │   ├── typeck/             Type inference + unification (26 tests)
 │   ├── borrowck/           NLL borrow checker (26 tests)
 │   ├── codegen/            LLVM IR codegen via Emitter trait (294 tests)
-│   ├── traits/             TraitResolver — trait/impl collection (Stage 5.1)
+│   ├── traits/             TraitResolver — trait/impl/vtable (Stage 5.1-5.5)
 │   ├── driver.rs           Full pipeline driver
 │   └── bin/                CLI entry point
-├── tests/v0/stage{0-5}/    Standardized test directory (v3.17 §17.1)
+├── tests/
+│   ├── all_tests.rs        Unified entry point (23 #[path] mod declarations)
+│   ├── common/mod.rs       Shared test helpers
+│   ├── conformance/        .lin conformance suite + run_all.py
+│   └── v0/stage{0-5}/plan/ Standardized test files (v3.17 §17.1)
 ├── benches/                Performance benchmarks (5 benchmarks)
-├── examples/               Audit scripts + usage examples
+├── examples/               API demos + historical audit scripts (v3.19 §17.4)
+│   ├── usage/              Maintained API demos (MUST compile with current API)
+│   ├── audit/              Archived stage gate review scripts (historical)
+│   └── README.md           Index + run instructions
 └── docs/
-    ├── stage-committee-process.md  Process v3.18
+    ├── stage-committee-process.md  Process v3.19
     ├── develop/v0/                 Dev logs + ADR + deep reviews
     ├── tests/                      Test plans + matrix
     └── worklog.md                  Worklog mirror (v3.18 §18.4.0)
@@ -112,9 +118,18 @@ landin-stage0/
 
 ## Testing
 
+The test suite uses a **unified entry point** (`tests/all_tests.rs`) that
+pulls in every test file under `tests/v0/stage{N}/plan/` via `#[path] mod`
+declarations. `Cargo.toml` sets `autotests = false` so only this single
+target is built — keeping `Cargo.toml` compact (one `[[test]]` entry, not
+19+) and producing a single test binary for faster incremental compilation.
+
 ```bash
-# Run all 1013 tests
+# Run all tests (1017 expected — 1013 baseline + 3 vtable + 1 audit)
 cargo test
+
+# Run a single module (e.g. only lexer tests)
+cargo test --test all_tests -- lexer_tests
 
 # Run benchmarks
 cargo test --bench compile_bench -- --nocapture
@@ -124,6 +139,9 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 ```
 
+To add a new test file: drop it under `tests/v0/stage{N}/plan/`, then add
+one `#[path]` line to `tests/all_tests.rs` — no `Cargo.toml` edit needed.
+
 ## Roadmap
 
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
@@ -131,7 +149,7 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 2** ✅ MIR + type check + borrow check (NLL, closures, coercion matrix)
 - **Stage 3** ✅ LLVM codegen (§16 compliant, all soundness-critical limitations closed, L1 CLOSED)
 - **Stage 4** ✅ COMPLETE (13 sub-stages: modules + PHI + visibility + closures + macros + benchmarks + ADR + v3.18)
-- **Stage 5** 🔄 In progress (5.1: TraitResolver ✅; 5.2: Driver integration ✅; 5.3: ty_is_copy_with_resolver ✅; 5.4: DefId→name map ✅; next: vtable, stdlib)
+- **Stage 5** 🔄 In progress (5.1: TraitResolver ✅; 5.2: Driver integration ✅; 5.3: ty_is_copy_with_resolver ✅; 5.4: DefId→name map ✅; 5.5: vtable ✅; next: codegen vtable emission, stdlib)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting
 
