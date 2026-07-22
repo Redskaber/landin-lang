@@ -3449,3 +3449,39 @@ Stage Summary:
 - New ty_is_copy_unified() entry point for new code.
 - 954 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.13+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.13-r62
+Agent: Super Z (main)
+Task: Stage 5.13 — trait impl statistics + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.11 / 954 tests / Stage 5.12 complete (Copy unification)
+
+Stage 5.13: Trait impl statistics
+- src/traits/mod.rs: 4 new query methods on TraitResolver:
+  * impl_count_for_type(def_id) -> usize — count impls for a type
+  * impl_count_for_trait(trait_spur) -> usize — count impls for a trait
+  * builtin_trait_count() -> usize — count builtin traits
+  * traits_for_type(def_id) -> Vec<Spur> — list trait names a type implements
+- tests/v0/stage5/plan/trait_impl_stats_tests.rs: 7 new tests
+- tests/all_tests.rs: added trait_impl_stats_tests module (31 mods)
+- Cargo.toml: version 0.11.11 → 0.11.12
+
+§17.3 三阶段文档协议执行 (v3.20):
+- 时期 1: plan-5.13.md + trait_impl_stats.md + trait_impl_stats_tests.rs
+- 时期 2: gate-review-round13.md + test gate-review-round13.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.13 entry appended
+- README.md: updated to v0.11.12
+
+CI/CD Verification (§1.2 交付前验收, ACTUAL RUN):
+- cargo test: 961 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.13 PASSED — CI/CD all green per §1.2.
+- 4 new trait impl statistics methods for diagnostics + typeck.
+- 961 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.14+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

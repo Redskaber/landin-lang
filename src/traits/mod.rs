@@ -441,6 +441,71 @@ impl TraitResolver {
     pub fn type_count(&self) -> usize {
         self.type_by_def_id.len()
     }
+
+    /// Stage 5.13: Get the number of trait impls for a specific type
+    /// (by DefId). Counts how many `impl Trait for <Type>` blocks exist
+    /// for the given type.
+    ///
+    /// Useful for diagnostics ("type S implements N traits") and for
+    /// typeck trait-bound solving.
+    ///
+    /// Per API-naming-standard §3: `impl_count_` prefix consistent with
+    /// `impl_count()`; `_for_type` suffix specifies the dimension.
+    pub fn impl_count_for_type(&self, def_id: DefId) -> usize {
+        // Look up the type name, then count impls where self_ty_name matches.
+        if let Some(&type_name) = self.type_by_def_id.get(&def_id) {
+            self.impls
+                .values()
+                .filter(|impl_info| impl_info.self_ty_name == Some(type_name))
+                .count()
+        } else {
+            0
+        }
+    }
+
+    /// Stage 5.13: Get the number of impls for a specific trait (by Spur).
+    /// Counts how many `impl <Trait> for Type` blocks exist for the given
+    /// trait.
+    ///
+    /// Useful for diagnostics ("trait Foo has N implementations") and for
+    /// coherence checking.
+    ///
+    /// Per API-naming-standard §3: `impl_count_` prefix; `_for_trait` suffix.
+    pub fn impl_count_for_trait(&self, trait_spur: Spur) -> usize {
+        self.impls
+            .values()
+            .filter(|impl_info| impl_info.trait_name == Some(trait_spur))
+            .count()
+    }
+
+    /// Stage 5.13: Get the number of builtin traits registered.
+    /// Equivalent to `builtin_traits.len()`.
+    pub fn builtin_trait_count(&self) -> usize {
+        self.builtin_traits.len()
+    }
+
+    /// Stage 5.13: Get all trait names (Spurs) that a type implements.
+    /// Returns a Vec of trait name Spurs for which `impl <Trait> for <Type>`
+    /// exists.
+    ///
+    /// Per API-naming-standard §3: `traits_for_type` follows the
+    /// `<noun>_for_<noun>` pattern for query methods returning collections.
+    pub fn traits_for_type(&self, def_id: DefId) -> Vec<Spur> {
+        if let Some(&type_name) = self.type_by_def_id.get(&def_id) {
+            self.impls
+                .values()
+                .filter_map(|impl_info| {
+                    if impl_info.self_ty_name == Some(type_name) {
+                        impl_info.trait_name
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
 }
 
 /// Best-effort extraction of a type name from a HirTy.

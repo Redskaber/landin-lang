@@ -106,7 +106,11 @@
 //!     `ty_is_copy_with_resolver` primitive branches now delegate to
 //!     `is_primitive_copy_kind()` (single source of truth); new
 //!     `ty_is_copy_unified()` entry point (preferred for new code).
-//!   Next: Stage 5.13+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.13 (v0.11.12): Trait impl statistics —
+//!     `impl_count_for_type()` + `impl_count_for_trait()` +
+//!     `builtin_trait_count()` + `traits_for_type()` query methods for
+//!     diagnostics and typeck trait-bound solving.
+//!   Next: Stage 5.14+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

@@ -297,3 +297,23 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ pure consumer, no HIR access.
 **API naming**: ✅ `ty_is_copy_unified` follows `ty_is_copy_` prefix + `_unified` suffix.
+
+### Stage 5.13 — Trait Impl Statistics (v0.11.12)
+
+**Priority**: Add trait impl counting + listing for diagnostics and typeck.
+
+**Work completed**:
+- src/traits/mod.rs: 4 new query methods on TraitResolver:
+  * `impl_count_for_type(def_id) -> usize` — count impls for a type
+  * `impl_count_for_trait(trait_spur) -> usize` — count impls for a trait
+  * `builtin_trait_count() -> usize` — count builtin traits
+  * `traits_for_type(def_id) -> Vec<Spur>` — list trait names a type implements
+- tests/v0/stage5/plan/trait_impl_stats_tests.rs: 7 new tests
+- tests/all_tests.rs: added trait_impl_stats_tests module (31 mods)
+- Cargo.toml: version 0.11.11 → 0.11.12
+
+**Test impact**: +7 (961 — was 954)
+**Verification**: cargo clean + cargo test (961 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ all new methods read TraitResolver data only.
+**API naming**: ✅ `impl_count_for_*` + `builtin_trait_count` + `traits_for_type`.

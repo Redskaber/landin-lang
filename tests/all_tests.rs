@@ -127,3 +127,6 @@ mod primitive_copy_tests;
 
 #[path = "v0/stage5/plan/copy_unification_tests.rs"]
 mod copy_unification_tests;
+
+#[path = "v0/stage5/plan/trait_impl_stats_tests.rs"]
+mod trait_impl_stats_tests;
