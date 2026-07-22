@@ -2690,3 +2690,46 @@ Stage Summary:
 - README.md fully restructured.
 - 1005 tests pass. 0 clippy warnings. fmt clean.
 - Next: Stage 5.2+ (vtable generation, stdlib MVP, mini-cargo).
+
+---
+Task ID: stage5.2-r51
+Agent: Super Z (main)
+Task: Stage 5.2 — TraitResolver driver integration + fmt fix + package
+
+Work Log:
+- Baseline: v0.11.0 / 1005 tests / Stage 5.1 complete.
+- User reported cargo fmt --check failures in src/traits/mod.rs + tests.
+
+Fixes:
+- cargo fmt applied — all formatting issues resolved (zero diff on --check)
+- src/traits/mod.rs: method chain formatting + insert formatting fixed
+- tests/v0/stage5/plan/trait_resolver_tests.rs: import ordering + line wrapping fixed
+
+Stage 5.2: TraitResolver driver integration
+- src/driver.rs: CompileResult now has `trait_resolver: TraitResolver` field
+- compile() builds TraitResolver via `collect(&hir, &interner)` after resolve
+- CompileResult::empty() initializes empty TraitResolver for error paths
+- Downstream stages can access trait/impl data via result.trait_resolver (§16 compliant)
+
+New tests (2):
+- tests/v0/stage5/plan/trait_integration_tests.rs
+  * test_trait_resolver_in_compile_result: CompileResult has populated TraitResolver
+  * test_trait_resolver_empty_for_no_traits: empty when no traits
+- Cargo.toml: added [[test]] target
+
+§17.3 三阶段文档协议执行 (v3.18 含 docs/worklog.md 同步):
+- 时期 1: plan-5.2.md + trait_integration_tests.rs
+- 时期 2: gate-review-round2.md + test gate-review-round2.md
+- docs/worklog.md: synced
+
+Verification:
+- cargo fmt --check: **clean (zero diff)** ✅
+- cargo test: 1007 passed, 0 failed, 2 ignored (was 1005, +2)
+- cargo clippy --all-targets: 0 warnings
+- §16 compliance: all 8 §21.3 checklist items green
+
+Stage Summary:
+- Stage 5.2 (TraitResolver integration + fmt fix) PASSED.
+- 1007 tests pass. 0 clippy warnings. **fmt clean (zero diff)** ✅.
+- TraitResolver now accessible via CompileResult.trait_resolver.
+- Next: Stage 5.3+ (vtable generation, stdlib MVP, mini-cargo).

@@ -58,7 +58,9 @@
 //!     verification, 16 tech debt items cataloged, GO for Stage 5.
 //!   Stage 5.1 (v0.11.0): TraitResolver — collect trait definitions + impl blocks +
 //!     build dispatch tables (ImplMap + MethodMap). `src/traits/mod.rs` created.
-//!   Next: Stage 5.2+ (vtable generation, stdlib MVP, mini-cargo).
+//!   Stage 5.2 (v0.11.1): TraitResolver integrated into driver pipeline —
+//!     CompileResult.trait_resolver populated; fmt issues fixed.
+//!   Next: Stage 5.3+ (vtable generation, stdlib MVP, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

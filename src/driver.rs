@@ -214,6 +214,10 @@ pub struct CompileResult {
     /// Stage 3.56: per-body metadata parallel to `mirs`.
     /// Each entry: (fn_name, is_void, param_count).
     pub body_metas: Vec<BodyMeta>,
+    /// Stage 5.2: TraitResolver — pre-computed trait/impl dispatch tables.
+    /// Built during compile() so downstream (typeck, borrowck, codegen)
+    /// can query trait implementations without reading HIR.
+    pub trait_resolver: crate::traits::TraitResolver,
 }
 
 /// Stage 3.56: Per-body metadata for codegen.
@@ -244,6 +248,7 @@ impl CompileResult {
             interner,
             fn_name_by_def_id: std::collections::HashMap::new(),
             body_metas: Vec::new(),
+            trait_resolver: crate::traits::TraitResolver::new(),
         }
     }
 }
@@ -404,6 +409,11 @@ pub fn compile(src: &str) -> CompileResult {
         })
         .collect();
 
+    // Stage 5.2: Build TraitResolver — collect trait definitions + impl blocks.
+    // Per §16: pre-computed by driver, passed as data to downstream stages.
+    let mut trait_resolver = crate::traits::TraitResolver::new();
+    trait_resolver.collect(&hir, &interner);
+
     CompileResult {
         hir: Some(hir),
         mirs,
@@ -412,6 +422,7 @@ pub fn compile(src: &str) -> CompileResult {
         interner,
         fn_name_by_def_id,
         body_metas,
+        trait_resolver,
     }
 }
 

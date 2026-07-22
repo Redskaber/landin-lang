@@ -5,11 +5,11 @@
 //!
 //! Per stage-committee-process.md v3.18 §17.1, new tests in tests/v0/stage5/plan/.
 
-use landin_compiler::TraitResolver;
 use landin_compiler::hir::lower::lower_crate;
 use landin_compiler::lexer::tokenize;
 use landin_compiler::parser::Parser;
 use landin_compiler::resolve::resolve_crate;
+use landin_compiler::TraitResolver;
 use lasso::Rodeo;
 
 fn parse_lower_resolve(src: &str) -> landin_compiler::hir::HirCrate {
@@ -37,9 +37,8 @@ fn test_trait_collected() {
 
 #[test]
 fn test_impl_collected() {
-    let hir = parse_lower_resolve(
-        "trait Foo { fn bar(); } struct S; impl Foo for S { fn bar() {} }",
-    );
+    let hir =
+        parse_lower_resolve("trait Foo { fn bar(); } struct S; impl Foo for S { fn bar() {} }");
     let mut resolver = TraitResolver::new();
     resolver.collect(&hir, &Rodeo::new());
     assert_eq!(resolver.trait_count(), 1, "should collect 1 trait");

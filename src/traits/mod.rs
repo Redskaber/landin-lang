@@ -82,10 +82,10 @@ impl TraitResolver {
                         self.traits.insert(*def_id, info);
                     }
                     HirItem::Impl(i) => {
-                        let trait_name =
-                            i.of_trait
-                                .as_ref()
-                                .and_then(|p| p.segments.last().map(|s| s.ident.name));
+                        let trait_name = i
+                            .of_trait
+                            .as_ref()
+                            .and_then(|p| p.segments.last().map(|s| s.ident.name));
                         let self_ty_name = extract_ty_name(&i.self_ty);
                         let mut methods = Vec::new();
                         for impl_item in &i.items {
@@ -101,8 +101,7 @@ impl TraitResolver {
                             is_unsafe: i.is_unsafe,
                         };
                         if let (Some(tn), Some(stn)) = (trait_name, self_ty_name) {
-                            self.impl_by_trait_and_type
-                                .insert((tn, stn), *def_id);
+                            self.impl_by_trait_and_type.insert((tn, stn), *def_id);
                         }
                         self.impls.insert(*def_id, info);
                     }

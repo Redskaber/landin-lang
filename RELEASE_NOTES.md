@@ -1,9 +1,46 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.0
+**Current version**: v0.11.1
 **Date**: 2026-07-22
-**Test count**: **1005 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+**Test count**: **1007 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.11.1 — Stage 5.2 (TraitResolver driver integration + fmt fix)
+
+### Overview
+
+Integrates TraitResolver into the driver pipeline — `CompileResult.trait_resolver`
+is now populated during `compile()`. Also fixes `cargo fmt` issues from v0.11.0.
+1007 tests pass (was 1005, +2 new). 0 clippy warnings. **fmt clean (zero diff)**.
+
+### Stage 5.2: Driver integration
+
+- `src/driver.rs`: `CompileResult` now has `trait_resolver: TraitResolver` field
+- `compile()` builds TraitResolver via `collect(&hir, &interner)` after resolve
+- `CompileResult::empty()` initializes empty TraitResolver for error paths
+- Downstream stages (typeck, borrowck, codegen) can now access trait/impl data
+  via `result.trait_resolver` without reading HIR (§16 compliant)
+
+### fmt fix
+
+Fixed `cargo fmt --check` issues in:
+- `src/traits/mod.rs` — method chain formatting + insert formatting
+- `tests/v0/stage5/plan/trait_resolver_tests.rs` — import ordering + line wrapping
+
+### New tests (2)
+
+- `tests/v0/stage5/plan/trait_integration_tests.rs`:
+  - `test_trait_resolver_in_compile_result` — verifies CompileResult has populated TraitResolver
+  - `test_trait_resolver_empty_for_no_traits` — verifies empty when no traits
+
+### Verification
+
+- `cargo fmt --check`: **clean (zero diff)** ✅
+- `cargo test`: **1007 passed, 0 failed, 2 ignored**
+- `cargo clippy --all-targets`: **0 warnings**
+- §16 compliance: all 8 §21.3 checklist items green
 
 ---
 

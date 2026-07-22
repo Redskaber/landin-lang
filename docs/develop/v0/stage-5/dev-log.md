@@ -30,3 +30,17 @@ cross-stage deep review R49 (GO for Stage 5).
 
 **Test impact**: +3 (1005/1005 — was 1002)
 **Verification**: 0 clippy warnings, fmt clean
+
+### Stage 5.2 — TraitResolver Driver Integration + fmt Fix (v0.11.1)
+
+**Priority**: Integrate TraitResolver into pipeline + fix fmt issues.
+
+**Work completed**:
+- src/driver.rs: CompileResult now has `trait_resolver: TraitResolver` field
+- compile() builds TraitResolver via `collect(&hir, &interner)` after resolve
+- CompileResult::empty() initializes empty TraitResolver
+- Fixed cargo fmt issues in src/traits/mod.rs + tests/v0/stage5/plan/trait_resolver_tests.rs
+- 2 new integration tests in tests/v0/stage5/plan/trait_integration_tests.rs
+
+**Test impact**: +2 (1007/1007 — was 1005)
+**Verification**: 0 clippy warnings, **fmt clean (zero diff)** ✅
