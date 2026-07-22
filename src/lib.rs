@@ -52,7 +52,9 @@
 //!     + current_module tracking for visibility enforcement + 1000 tests milestone.
 //!   Stage 4.13 (v0.10.0): Full closure call lowering — extract captures from
 //!     closure struct + produce inferred-type result (inline body deferred to Stage 5).
-//!   Remaining: L5 (traits), L8 (lli), user-defined macros (macro_rules!).
+//!   Stage 4.14 (v0.10.1): Stage 4 deep review (§25) — 7-dimension analysis,
+//!     GO for Stage 5. Stage 4 COMPLETE.
+//!   Next: Stage 5 (Mini-cargo + stdlib MVP + trait dispatch).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

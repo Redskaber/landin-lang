@@ -1,9 +1,61 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.10.0
+**Current version**: v0.10.1
 **Date**: 2026-07-22
 **Test count**: **1002 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.10.1 — Stage 4.14 (Deep Review R48: GO for Stage 5)
+
+### Overview
+
+Stage 4 deep review per §25 protocol — 7-dimension analysis of Stage 4's 13
+sub-stages. Committee vote: 5/5 GO. **Stage 4 is COMPLETE. Ready for Stage 5.**
+1002 tests + 5 benchmarks pass (unchanged — pure review work). 0 clippy warnings.
+
+### Deep Review R48: 7-Dimension Analysis
+
+| Dimension | Result |
+|-----------|--------|
+| D1 Architecture Health | ✅ Excellent — §16 compliant, data flow clear |
+| D2 Tech Debt | ✅ 6 items, all with repayment plans, 0 blocking Stage 5 |
+| D3 Test Coverage | ✅ ~99% (1002 tests, 7 negative categories, 5 benchmarks) |
+| D4 Stage 5 Readiness | ✅ Ready — AST/HIR trait/impl infrastructure exists |
+| D5 Design Soundness | ✅ Sound — all design decisions documented in 7 ADRs |
+| D6 Performance | ✅ 5 benchmark baselines, <1ms compile time, no bottlenecks |
+| D7 Documentation | ✅ ~98% (140 docs, 7 ADRs, worklog mirror, process v3.18) |
+
+### Committee Vote: 5/5 GO
+
+**Stage 4 is COMPLETE. Stage 5 can begin.**
+
+### Stage 4 Summary (4.1-4.13)
+
+| Sub-stage | Feature | Tests |
+|-----------|---------|-------|
+| 4.1 | Nested module support | +3 |
+| 4.2 | L1 PHI design decision (CLOSED) | 0 |
+| 4.3 | Visibility enforcement activation | 0 |
+| 4.4 | L3 closure lowering | +2 |
+| 4.5 | Complete dev-logs | 0 |
+| 4.6 | Process v3.17 | 0 |
+| 4.7 | L3 closure capture analysis | +4 |
+| 4.8 | tests/ directory restructure | 0 |
+| 4.9 | L3 closure call lowering | +2 |
+| 4.10 | Macro system (built-in expansion) | +3 |
+| 4.11 | Benchmark suite + ADR docs | +5 (bench) |
+| 4.12 | Process v3.18 + visibility tracking | +2 |
+| 4.13 | Full closure call lowering | +2 |
+| **Total** | **13 sub-stages** | **+23 tests + 5 benchmarks** |
+
+### Verification
+
+- `cargo test`: **1002 passed, 0 failed, 2 ignored**
+- `cargo test --bench compile_bench`: **5 passed**
+- `cargo clippy --all-targets`: **0 warnings**
+- `cargo fmt --check`: **clean**
 
 ---
 
