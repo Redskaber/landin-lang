@@ -3526,3 +3526,41 @@ Stage Summary:
 - 5 new trait method query methods for method resolution + vtable lookup.
 - 969 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.15+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.15-r64
+Agent: Super Z (main)
+Task: Stage 5.15 — trait hierarchy (supertraits) + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.13 / 969 tests / Stage 5.14 complete (trait method query API)
+
+Stage 5.15: Trait hierarchy (supertraits)
+- src/traits/mod.rs: new `supertraits: Vec<Spur>` field on TraitInfo
+  * Populated in collect() from HirTrait.supertraits (Vec<HirTypeBound>)
+  * Extracts last path segment name Spur from each HirTypeBound::Trait
+- src/traits/mod.rs: 3 new query methods:
+  * trait_supertraits(trait_spur) -> Option<&Vec<Spur>>
+  * trait_has_supertrait(trait_spur, super_spur) -> bool
+  * supertrait_count_for_trait(trait_spur) -> usize
+- tests/v0/stage5/plan/trait_hierarchy_tests.rs: 8 new tests
+- tests/all_tests.rs: added trait_hierarchy_tests module (33 mods)
+- Cargo.toml: version 0.11.13 → 0.11.14
+
+§17.3 三阶段文档协议执行 (v3.20):
+- 时期 1: plan-5.15.md + trait_hierarchy.md + trait_hierarchy_tests.rs
+- 时期 2: gate-review-round15.md + test gate-review-round15.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.15 entry appended
+- README.md: updated to v0.11.14
+
+CI/CD Verification (§1.2 交付前验收, ACTUAL RUN):
+- cargo test: 977 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.15 PASSED — CI/CD all green per §1.2.
+- Trait hierarchy (supertraits) collected + queryable.
+- 977 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.16+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

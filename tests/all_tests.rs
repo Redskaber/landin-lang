@@ -133,3 +133,6 @@ mod trait_impl_stats_tests;
 
 #[path = "v0/stage5/plan/trait_method_query_tests.rs"]
 mod trait_method_query_tests;
+
+#[path = "v0/stage5/plan/trait_hierarchy_tests.rs"]
+mod trait_hierarchy_tests;

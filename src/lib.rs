@@ -114,7 +114,11 @@
 //!     `trait_methods()` + `impl_methods()` + `trait_has_method()` +
 //!     `traits_with_method()` + `method_count_for_trait()` for method
 //!     resolution and vtable method lookup.
-//!   Next: Stage 5.15+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.15 (v0.11.14): Trait hierarchy (supertraits) —
+//!     `TraitInfo.supertraits` field populated from `HirTrait.supertraits`;
+//!     `trait_supertraits()` + `trait_has_supertrait()` +
+//!     `supertrait_count_for_trait()` query methods for hierarchy traversal.
+//!   Next: Stage 5.16+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

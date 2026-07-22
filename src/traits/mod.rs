@@ -31,6 +31,10 @@ pub struct TraitInfo {
     pub methods: Vec<Spur>,
     /// Whether this is an unsafe trait.
     pub is_unsafe: bool,
+    /// Stage 5.15: Supertrait names (interned symbols) — traits that this
+    /// trait requires `Self` to also implement (e.g. `trait Foo: Bar` →
+    /// supertraits = [Bar_spur]). Extracted from `HirTrait.supertraits`.
+    pub supertraits: Vec<Spur>,
 }
 
 /// An impl block collected by TraitResolver.
@@ -225,11 +229,27 @@ impl TraitResolver {
                                 methods.push(f.ident.name);
                             }
                         }
+                        // Stage 5.15: Collect supertrait names from
+                        // HirTrait.supertraits (Vec<HirTypeBound>).
+                        // Each HirTypeBound::Trait(HirTraitBound) has a
+                        // HirPath; extract the last segment's name Spur.
+                        let supertraits: Vec<Spur> = t
+                            .supertraits
+                            .iter()
+                            .filter_map(|bound| {
+                                if let HirTypeBound::Trait(tb) = bound {
+                                    tb.path.segments.last().map(|s| s.ident.name)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
                         let info = TraitInfo {
                             def_id: *def_id,
                             name: t.ident.name,
                             methods,
                             is_unsafe: t.is_unsafe,
+                            supertraits,
                         };
                         self.trait_by_name.insert(t.ident.name, *def_id);
                         self.type_by_def_id.insert(*def_id, t.ident.name);
@@ -374,6 +394,40 @@ impl TraitResolver {
     /// `impl_count_for_trait` (Stage 5.13).
     pub fn method_count_for_trait(&self, trait_name: Spur) -> usize {
         self.trait_methods(trait_name).map(|m| m.len()).unwrap_or(0)
+    }
+
+    /// Stage 5.15: Get the supertrait names of a trait (by Spur).
+    /// Returns `None` if the trait is not found.
+    ///
+    /// Per API-naming-standard §3: `trait_supertraits` follows
+    /// `<noun>_<noun>` pattern, consistent with `trait_methods`.
+    pub fn trait_supertraits(&self, trait_name: Spur) -> Option<&Vec<Spur>> {
+        self.find_trait(trait_name).map(|t| &t.supertraits)
+    }
+
+    /// Stage 5.15: Check if a trait has a specific supertrait.
+    /// Returns `false` if the trait is not found or doesn't have the supertrait.
+    ///
+    /// Per API-naming-standard §3: `trait_has_supertrait` follows
+    /// `<noun>_<verb>_<noun>` pattern, consistent with `trait_has_method`.
+    pub fn trait_has_supertrait(&self, trait_name: Spur, supertrait_name: Spur) -> bool {
+        if let Some(supertraits) = self.trait_supertraits(trait_name) {
+            supertraits.contains(&supertrait_name)
+        } else {
+            false
+        }
+    }
+
+    /// Stage 5.15: Get the supertrait count for a trait (by Spur).
+    /// Returns 0 if the trait is not found.
+    ///
+    /// Per API-naming-standard §3: `supertrait_count_for_trait` follows
+    /// `<noun>_count_for_<noun>` pattern, consistent with
+    /// `method_count_for_trait`.
+    pub fn supertrait_count_for_trait(&self, trait_name: Spur) -> usize {
+        self.trait_supertraits(trait_name)
+            .map(|s| s.len())
+            .unwrap_or(0)
     }
 
     /// Check if a type implements a trait (by name).

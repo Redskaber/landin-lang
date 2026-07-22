@@ -338,3 +338,26 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ all new methods read TraitResolver data only.
 **API naming**: ✅ `<noun>_<noun>` + `<noun>_<verb>_<noun>` + `<noun>_with_<noun>` + `<noun>_count_for_<noun>`.
+
+### Stage 5.15 — Trait Hierarchy / Supertraits (v0.11.14)
+
+**Priority**: Collect + query supertrait information for trait hierarchy traversal.
+
+**Work completed**:
+- src/traits/mod.rs: new `supertraits: Vec<Spur>` field on TraitInfo
+  * Populated in collect() from HirTrait.supertraits (Vec<HirTypeBound>)
+  * Extracts last path segment name Spur from each HirTypeBound::Trait
+- src/traits/mod.rs: 3 new query methods:
+  * `trait_supertraits(trait_spur) -> Option<&Vec<Spur>>`
+  * `trait_has_supertrait(trait_spur, super_spur) -> bool`
+  * `supertrait_count_for_trait(trait_spur) -> usize`
+- tests/v0/stage5/plan/trait_hierarchy_tests.rs: 8 new tests
+- tests/all_tests.rs: added trait_hierarchy_tests module (33 mods)
+- Cargo.toml: version 0.11.13 → 0.11.14
+
+**Test impact**: +8 (977 — was 969)
+**Verification**: cargo clean + cargo test (977 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ supertraits collected in collect() (driver phase),
+query methods read data only.
+**API naming**: ✅ `<noun>_<noun>` + `<noun>_<verb>_<noun>` + `<noun>_count_for_<noun>`.
