@@ -65,7 +65,8 @@ pub mod emitter;
 pub mod text_emitter;
 
 pub use emitter::{
-    emit_fat_ptr_type, emit_type_to_llvm_str, mir_type_to_emit_type, EmitType, EmitValue, Emitter,
+    emit_dyn_trait_ptr_type, emit_fat_ptr_type, emit_type_to_llvm_str, mir_type_to_emit_type,
+    EmitType, EmitValue, Emitter,
 };
 pub use text_emitter::TextEmitter;
 
@@ -107,6 +108,12 @@ pub fn codegen_crate(result: &crate::driver::CompileResult) -> String {
     // HIR access). The fn_name strings are already resolved at collect
     // time, so no further upstream lookup is needed here.
     emit_vtables(&result.trait_resolver, &result.interner, &mut emitter);
+    // Stage 5.7: emit `dyn Trait` fat-pointer constant globals for every
+    // (trait, type) pair. Each fat pointer is `{ ptr, ptr }` (data + vtable),
+    // referencing the vtable globals emitted above. This is the foundation
+    // for `dyn Trait` value construction — future stages will use these
+    // globals when lowering `dyn Trait` locals.
+    emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, &mut emitter);
     emitter.output_with_globals()
 }
 
@@ -142,6 +149,43 @@ pub fn emit_vtables(
             vtable.entries.iter().map(|e| e.fn_name.clone()).collect();
 
         emitter.emit_vtable_global(&global_name, &method_symbols);
+    }
+}
+
+/// Stage 5.7: Emit `dyn Trait` fat-pointer constant globals for every
+/// (trait, type) pair in `TraitResolver.vtables`.
+///
+/// Each `dyn Trait` fat pointer becomes a module-level global:
+///
+/// ```text
+/// @.dynptr.<trait>.<type> = private unnamed_addr constant
+///     { ptr, ptr } { ptr @.data.<type>, ptr @.vtable.<trait>.<type> }
+/// ```
+///
+/// The fat pointer is `{ ptr (data), ptr (vtable) }` — the data pointer
+/// references a per-type data global (`@.data.<type>`), and the vtable
+/// pointer references the vtable global emitted by `emit_vtables` (Stage 5.6).
+///
+/// Per API-naming-standard §3: `emit_` prefix consistent with
+/// `emit_vtables`, `emit_fat_ptr_type`, etc.
+///
+/// Per §16: takes `&TraitResolver` (pre-built data) + `&Rodeo` (interner)
+/// — no HIR access.
+pub fn emit_dyn_trait_ptrs(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    emitter: &mut dyn Emitter,
+) {
+    for (trait_name, self_ty_name) in trait_resolver.vtables.keys() {
+        let trait_str = interner.try_resolve(trait_name).unwrap_or("Trait");
+        let type_str = interner.try_resolve(self_ty_name).unwrap_or("Type");
+
+        // Global names: matches the naming convention from emit_vtables.
+        let dynptr_name = format!(".dynptr.{}.{}", trait_str, type_str);
+        let data_symbol = format!(".data.{}", type_str);
+        let vtable_symbol = format!(".vtable.{}.{}", trait_str, type_str);
+
+        emitter.emit_dyn_trait_const(&dynptr_name, &data_symbol, &vtable_symbol);
     }
 }
 

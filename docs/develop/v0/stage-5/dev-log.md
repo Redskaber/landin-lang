@@ -149,3 +149,27 @@ that were 100% duplicates of the organized `tests/v0/stage{N}/plan/` files.
 **Test impact**: +3 (922 expected — was 919)
 **§16 compliance**: ✅ codegen is still a pure MIR/TraitResolver consumer.
 **API naming**: ✅ all new APIs follow api-naming-standard §3.
+
+### Stage 5.7 — dyn Trait Fat-Pointer Construction (v0.11.6)
+
+**Priority**: L5 trait dispatch foundation — construct `dyn Trait` fat pointers.
+
+**Work completed**:
+- src/codegen/emitter.rs: new `pub fn emit_dyn_trait_ptr_type()` returning
+  `EmitType::Struct([OpaquePtr, OpaquePtr])` (data + vtable, both opaque)
+- src/codegen/emitter.rs: new `Emitter::emit_dyn_trait_const` trait method
+  * Signature: `(global_name, data_symbol, vtable_symbol) -> EmitValue`
+- src/codegen/text_emitter.rs: TextEmitter implements `emit_dyn_trait_const`
+  * Emits `@.dynptr.<trait>.<type> = private unnamed_addr constant { ptr, ptr } { ptr @.data.<type>, ptr @.vtable.<trait>.<type> }`
+- src/codegen/mod.rs: new `pub fn emit_dyn_trait_ptrs(trait_resolver, interner, emitter)`
+  * Iterates `trait_resolver.vtables.keys()`, calls `emit_dyn_trait_const` per pair
+- src/codegen/mod.rs: `codegen_crate` calls `emit_dyn_trait_ptrs` after `emit_vtables`
+- src/lib.rs: re-export `emit_dyn_trait_ptr_type` + `emit_dyn_trait_ptrs`
+- 4 new tests in tests/v0/stage5/plan/dyn_trait_ptr_tests.rs
+
+**TD-014 status**: partial CLOSE → further CLOSE — vtable + codegen + dyn fat
+pointer all in place; MIR→codegen dyn value wiring deferred to Stage 5.8+.
+
+**Test impact**: +4 (926 expected — was 922)
+**§16 compliance**: ✅ codegen is still a pure MIR/TraitResolver consumer.
+**API naming**: ✅ all new APIs follow api-naming-standard §3.

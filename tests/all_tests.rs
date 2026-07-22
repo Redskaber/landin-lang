@@ -109,3 +109,6 @@ mod vtable_tests;
 
 #[path = "v0/stage5/plan/vtable_codegen_tests.rs"]
 mod vtable_codegen_tests;
+
+#[path = "v0/stage5/plan/dyn_trait_ptr_tests.rs"]
+mod dyn_trait_ptr_tests;

@@ -551,6 +551,31 @@ impl Emitter for TextEmitter {
         global_name.to_string()
     }
 
+    fn emit_dyn_trait_const(
+        &mut self,
+        global_name: &str,
+        data_symbol: &str,
+        vtable_symbol: &str,
+    ) -> EmitValue {
+        // Stage 5.7: emit a `dyn Trait` fat-pointer constant global.
+        //
+        // Layout (e.g. dyn Foo for type S, with data global @.data.S and
+        // vtable global @.vtable.Foo.S):
+        //   @.dynptr.Foo.S = private unnamed_addr constant
+        //       { ptr, ptr } { ptr @.data.S, ptr @.vtable.Foo.S }
+        //
+        // The fat pointer is { ptr (data), ptr (vtable) } — both opaque
+        // because the concrete type is erased at the `dyn` boundary.
+        let init = format!(
+            "{{ ptr, ptr }} {{ ptr @{}, ptr @{} }}",
+            data_symbol, vtable_symbol
+        );
+        let global_def = format!("@{} = private unnamed_addr constant {}", global_name, init);
+        self.globals.push(global_def);
+        // Return the global's name (without leading `@`).
+        global_name.to_string()
+    }
+
     fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue) {
         self.local_ptrs.insert(local_id, ptr);
     }

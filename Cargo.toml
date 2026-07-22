@@ -1,9 +1,9 @@
 [package]
 name = "landin-compiler"
-version = "0.11.5"
+version = "0.11.6"
 edition = "2021"
 license = "MIT"
-description = "Landin programming language compiler — Stage 0-4 complete + Stage 5.1-5.6 (TraitResolver + driver integration + Copy detection + DefId→name + vtable data structures + vtable codegen emission) + standardized tests/ directory"
+description = "Landin programming language compiler — Stage 0-4 complete + Stage 5.1-5.7 (TraitResolver + driver integration + Copy detection + DefId→name + vtable data structures + vtable codegen emission + dyn Trait fat-pointer construction) + standardized tests/ directory"
 repository = "https://github.com/landin-lang/main"
 authors = ["redskaber"]
 keywords = ["compiler", "language", "systems-programming"]

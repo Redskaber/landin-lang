@@ -74,7 +74,14 @@
 //!     extended to emit impl method bodies with matching naming. L5 trait
 //!     dispatch foundation in place; `dyn Trait` fat-pointer construction
 //!     deferred to Stage 5.7+.
-//!   Next: Stage 5.7+ (dyn Trait fat-pointer construction, stdlib MVP, mini-cargo).
+//!   Stage 5.7 (v0.11.6): `dyn Trait` fat-pointer construction —
+//!     `emit_dyn_trait_ptr_type()` returns `{ ptr, ptr }` EmitType;
+//!     `Emitter::emit_dyn_trait_const()` emits `@.dynptr.<trait>.<type>`
+//!     globals referencing data + vtable; `codegen::emit_dyn_trait_ptrs()`
+//!     iterates TraitResolver to emit all dyn fat pointers. Foundation for
+//!     `dyn Trait` value lowering; actual MIR→codegen wiring of `dyn` locals
+//!     deferred to Stage 5.8+.
+//!   Next: Stage 5.8+ (dyn Trait MIR lowering, stdlib MVP, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -96,6 +103,9 @@ pub mod typeck;
 // Stage 3.64: Re-export codegen Emitter trait + impls for pluggability
 // (allows third-party LLVM-IR backends to implement `Emitter` and call
 // `codegen_from_mir` directly).
-pub use codegen::{codegen_crate, emit_vtables, EmitType, EmitValue, Emitter, TextEmitter};
+pub use codegen::{
+    codegen_crate, emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_vtables, EmitType, EmitValue,
+    Emitter, TextEmitter,
+};
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use traits::{extract_impl_self_ty_name, TraitResolver};

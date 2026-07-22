@@ -289,6 +289,32 @@ pub trait Emitter {
     /// `emit_string_global` and other module-level emission methods.
     fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue;
 
+    /// Stage 5.7: Emit a `dyn Trait` fat-pointer constant global.
+    ///
+    /// Emits (at module scope):
+    /// ```text
+    /// @.dynptr.<trait>.<type> = private unnamed_addr constant
+    ///     { ptr, ptr } { ptr @<data_global>, ptr @.vtable.<trait>.<type> }
+    /// ```
+    ///
+    /// The fat pointer is a `{ ptr, ptr }` struct: the first `ptr` is the
+    /// data pointer (pointing at a concrete value), the second `ptr` is the
+    /// vtable pointer (pointing at the `@.vtable.<trait>.<type>` global
+    /// emitted by `emit_vtable_global` in Stage 5.6).
+    ///
+    /// This is the foundation for `dyn Trait` values — when codegen sees a
+    /// `dyn Trait` local, it can reference this global (or construct an
+    /// equivalent inline `{ ptr, ptr }` value) to represent the trait object.
+    ///
+    /// Per API-naming-standard §3: uses the `emit_` prefix consistent with
+    /// `emit_vtable_global` and `emit_string_global`.
+    fn emit_dyn_trait_const(
+        &mut self,
+        global_name: &str,
+        data_symbol: &str,
+        vtable_symbol: &str,
+    ) -> EmitValue;
+
     // === Local state ===
 
     /// Store a local's pointer handle (alloca result).
@@ -334,6 +360,24 @@ pub trait Emitter {
 /// carried as L13 debt since Stage 3.27 (18 rounds).
 pub fn emit_fat_ptr_type(elem: EmitType) -> EmitType {
     EmitType::Struct(vec![EmitType::ptr_to(elem), EmitType::I64])
+}
+
+/// Stage 5.7: Construct the `EmitType` for a `dyn Trait` fat pointer
+/// (`{ ptr, ptr }`). The first `ptr` is the data pointer (pointing at
+/// the concrete value on the stack/heap), the second `ptr` is the
+/// vtable pointer (pointing at the `@.vtable.<trait>.<type>` global
+/// emitted by `emit_vtables` in Stage 5.6).
+///
+/// Unlike `emit_fat_ptr_type` (which is `{ ptr, i64 }` for `&str`/`&[T]`
+/// — pointer + length), a `dyn Trait` fat pointer is `{ ptr, ptr }` —
+/// pointer + vtable. Both components are opaque pointers because the
+/// concrete type is erased at the `dyn` boundary.
+///
+/// Per §15 (最优 > 最小): this is the architecturally correct
+/// representation for trait objects, matching rustc's layout. Future
+/// stages will use this when lowering `dyn Trait` values to LLVM IR.
+pub fn emit_dyn_trait_ptr_type() -> EmitType {
+    EmitType::Struct(vec![EmitType::OpaquePtr, EmitType::OpaquePtr])
 }
 
 /// Translate a MIR `Ty` to an `EmitType` (legacy fallback, no ADT layouts).
