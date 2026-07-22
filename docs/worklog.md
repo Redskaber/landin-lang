@@ -2733,3 +2733,37 @@ Stage Summary:
 - 1007 tests pass. 0 clippy warnings. **fmt clean (zero diff)** ✅.
 - TraitResolver now accessible via CompileResult.trait_resolver.
 - Next: Stage 5.3+ (vtable generation, stdlib MVP, mini-cargo).
+
+---
+Task ID: stage5.3-r52
+Agent: Super Z (main)
+Task: Stage 5.3 — ty_is_copy_with_resolver (precise Copy detection) + package
+
+Work Log:
+- Baseline: v0.11.1 / 1007 tests / Stage 5.2 complete.
+
+Stage 5.3: ty_is_copy_with_resolver
+- src/borrowck/mod.rs: new `pub fn ty_is_copy_with_resolver(ty, resolver, interner)`
+  * For non-Adt types: identical to ty_is_copy
+  * For Adt: falls back to true (same as ty_is_copy) until DefId→name map (Stage 5.4)
+  * Recursive for Tuple and Array
+- Original ty_is_copy retained as fallback
+- 3 new tests in tests/v0/stage5/plan/ty_is_copy_tests.rs
+  * test_primitives_always_copy: i32 is Copy
+  * test_adt_fallback_copy: Adt falls back to Copy (no crash)
+  * test_str_not_copy: str is NOT Copy
+
+§17.3 三阶段文档协议执行 (v3.18 含 docs/worklog.md 同步):
+- 时期 1: plan-5.3.md + ty_is_copy.md + ty_is_copy_tests.rs
+- 时期 2: gate-review-round3.md + test gate-review-round3.md
+- docs/worklog.md: synced
+
+Verification:
+- cargo fmt --check: **clean (exit 0)** ✅
+- cargo test: 1010 passed, 0 failed, 2 ignored (was 1007, +3)
+- cargo clippy --all-targets: 0 warnings
+
+Stage Summary:
+- Stage 5.3 (ty_is_copy_with_resolver) PASSED: 3 new tests.
+- 1010 tests pass. 0 clippy warnings. fmt clean.
+- Next: Stage 5.4 (DefId→name map for full Copy detection).

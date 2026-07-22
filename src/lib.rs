@@ -60,7 +60,9 @@
 //!     build dispatch tables (ImplMap + MethodMap). `src/traits/mod.rs` created.
 //!   Stage 5.2 (v0.11.1): TraitResolver integrated into driver pipeline —
 //!     CompileResult.trait_resolver populated; fmt issues fixed.
-//!   Next: Stage 5.3+ (vtable generation, stdlib MVP, mini-cargo).
+//!   Stage 5.3 (v0.11.2): ty_is_copy_with_resolver — precise Copy detection
+//!     using TraitResolver (Adt fallback until DefId→name map in Stage 5.4).
+//!   Next: Stage 5.4+ (DefId→name map, vtable generation, stdlib MVP).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

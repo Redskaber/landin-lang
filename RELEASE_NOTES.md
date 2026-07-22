@@ -1,9 +1,40 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.1
+**Current version**: v0.11.2
 **Date**: 2026-07-22
-**Test count**: **1007 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+**Test count**: **1010 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.11.2 — Stage 5.3 (ty_is_copy_with_resolver — precise Copy detection)
+
+### Overview
+
+Adds `ty_is_copy_with_resolver` function to borrowck — the precise version of
+`ty_is_copy` that accepts a TraitResolver for future Copy trait detection.
+Currently falls back to `true` for Adt types (full detection needs DefId→name
+map, deferred to Stage 5.4). 1010 tests pass (was 1007, +3 new). fmt clean.
+
+### Stage 5.3: ty_is_copy_with_resolver
+
+- `src/borrowck/mod.rs`: new `pub fn ty_is_copy_with_resolver(ty, resolver, interner)`
+  - For non-Adt types: identical behavior to `ty_is_copy`
+  - For `TyKind::Adt`: falls back to `true` (same as `ty_is_copy`) until
+    DefId→name map is available in TraitResolver (Stage 5.4)
+  - Recursive for `Tuple` and `Array`
+- Original `ty_is_copy` retained as fallback (no resolver needed)
+
+**New tests** (3) — in `tests/v0/stage5/plan/ty_is_copy_tests.rs`:
+- `test_primitives_always_copy` — i32 is Copy with/without resolver
+- `test_adt_fallback_copy` — Adt falls back to Copy (no crash)
+- `test_str_not_copy` — str is NOT Copy with/without resolver
+
+### Verification
+
+- `cargo fmt --check`: **clean (exit 0)** ✅
+- `cargo test`: **1010 passed, 0 failed, 2 ignored**
+- `cargo clippy --all-targets`: **0 warnings**
 
 ---
 

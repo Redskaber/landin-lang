@@ -6,11 +6,11 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.1 — Stage 0-4 complete, Stage 5 in progress.
-> **1007 tests** + 5 benchmarks, 0 clippy warnings, fmt clean.
+> **Status:** v0.11.2 — Stage 0-4 complete, Stage 5 in progress.
+> **1010 tests** + 5 benchmarks, 0 clippy warnings, fmt clean.
 > Process v3.18 (§15-§28). §16 interface isolation compliant.
 > Cross-stage review R49: GO for Stage 5 ✅.
-> Stage 5.1: TraitResolver ✅. Stage 5.2: Driver integration ✅.
+> Stage 5.1: TraitResolver ✅. 5.2: Driver integration ✅. 5.3: ty_is_copy_with_resolver ✅.
 
 ## Quick start
 
@@ -39,7 +39,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete | 170 |
 | 3 | `codegen/` | ✅ Complete | 309 (incl. 5 §21 audit) |
 | 4 | modules, closures, macros, benchmarks, ADR | ✅ Complete | 62 + 5 bench |
-| 5 | `traits/`, stdlib, mini-cargo | 🔄 In progress | 5 (TraitResolver + integration) |
+| 5 | `traits/`, stdlib, mini-cargo | 🔄 In progress | 8 (TraitResolver + integration + ty_is_copy) |
 
 ## API surface
 
@@ -113,7 +113,7 @@ landin-stage0/
 ## Testing
 
 ```bash
-# Run all 1007 tests
+# Run all 1010 tests
 cargo test
 
 # Run benchmarks
@@ -131,7 +131,7 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 2** ✅ MIR + type check + borrow check (NLL, closures, coercion matrix)
 - **Stage 3** ✅ LLVM codegen (§16 compliant, all soundness-critical limitations closed, L1 CLOSED)
 - **Stage 4** ✅ COMPLETE (13 sub-stages: modules + PHI + visibility + closures + macros + benchmarks + ADR + v3.18)
-- **Stage 5** 🔄 In progress (5.1: TraitResolver ✅; 5.2: Driver integration ✅; next: vtable, stdlib, mini-cargo)
+- **Stage 5** 🔄 In progress (5.1: TraitResolver ✅; 5.2: Driver integration ✅; 5.3: ty_is_copy_with_resolver ✅; next: DefId→name map, vtable, stdlib)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting
 

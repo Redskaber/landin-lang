@@ -44,3 +44,18 @@ cross-stage deep review R49 (GO for Stage 5).
 
 **Test impact**: +2 (1007/1007 — was 1005)
 **Verification**: 0 clippy warnings, **fmt clean (zero diff)** ✅
+
+### Stage 5.3 — ty_is_copy_with_resolver (v0.11.2)
+
+**Priority**: Precise Copy detection using TraitResolver.
+
+**Work completed**:
+- src/borrowck/mod.rs: new `ty_is_copy_with_resolver(ty, resolver, interner)` function
+  * For non-Adt types: identical to ty_is_copy
+  * For Adt: falls back to true (same as ty_is_copy) until DefId→name map (Stage 5.4)
+  * Recursive for Tuple and Array
+- Original `ty_is_copy` retained as fallback (no resolver needed)
+- 3 new tests in tests/v0/stage5/plan/ty_is_copy_tests.rs
+
+**Test impact**: +3 (1010/1010 — was 1007)
+**Verification**: 0 clippy warnings, **fmt clean (exit 0)** ✅
