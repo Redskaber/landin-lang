@@ -121,3 +121,6 @@ mod builtin_copy_activation_tests;
 
 #[path = "v0/stage5/plan/builtin_clone_drop_tests.rs"]
 mod builtin_clone_drop_tests;
+
+#[path = "v0/stage5/plan/primitive_copy_tests.rs"]
+mod primitive_copy_tests;

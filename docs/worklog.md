@@ -3373,3 +3373,40 @@ Stage Summary:
 - builtin Clone/Drop activation + generic implements_builtin_trait() added.
 - 943 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.11+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.11-r60
+Agent: Super Z (main)
+Task: Stage 5.11 — primitive Copy auto-detection + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.9 / 943 tests / Stage 5.10 complete (builtin Clone/Drop)
+
+Stage 5.11: Primitive Copy auto-detection
+- src/traits/mod.rs: new BUILTIN_PRIMITIVE_COPY_KINDS constant (10 TyKinds)
+- src/traits/mod.rs: new is_primitive_copy_kind(kind_name: &str) -> bool free fn
+  * String-based check (avoids traits↔mir circular dep)
+  * Strips "(...)" suffix: "Int(I32)" → "Int" → true
+- src/lib.rs: re-export is_primitive_copy_kind + BUILTIN_PRIMITIVE_COPY_KINDS
+- tests/v0/stage5/plan/primitive_copy_tests.rs: 6 new tests
+- tests/all_tests.rs: added primitive_copy_tests module (29 mods)
+- Cargo.toml: version 0.11.9 → 0.11.10
+
+§17.3 三阶段文档协议执行 (v3.20):
+- 时期 1: plan-5.11.md + primitive_copy.md + primitive_copy_tests.rs
+- 时期 2: gate-review-round11.md + test gate-review-round11.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.11 entry appended
+- README.md: updated to v0.11.10
+
+CI/CD Verification (§1.2 交付前验收, ACTUAL RUN):
+- cargo test: 949 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.11 PASSED — CI/CD all green per §1.2.
+- Primitive Copy auto-detection: 10 always-Copy TyKinds extracted as
+  queryable constant + function.
+- 949 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.12+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

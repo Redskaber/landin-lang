@@ -98,7 +98,11 @@
 //!     `implements_builtin_trait(def_id, trait_name_str, interner)` for
 //!     any builtin trait by name. Process spec v3.20 (§0.2 task routing +
 //!     §1.1 env check + §1.2 acceptance check + §1.3 spec evolution).
-//!   Next: Stage 5.11+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.11 (v0.11.10): Primitive Copy auto-detection —
+//!     `BUILTIN_PRIMITIVE_COPY_KINDS` constant (10 always-Copy TyKinds) +
+//!     `is_primitive_copy_kind()` free function (string-based check, avoids
+//!     mir↔traits circular dep). Foundation for stdlib MVP auto-Copy.
+//!   Next: Stage 5.12+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -126,5 +130,6 @@ pub use codegen::{
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use traits::{
-    extract_impl_self_ty_name, TraitResolver, BUILTIN_DEF_ID_BASE, BUILTIN_TRAIT_NAMES,
+    extract_impl_self_ty_name, is_primitive_copy_kind, TraitResolver, BUILTIN_DEF_ID_BASE,
+    BUILTIN_PRIMITIVE_COPY_KINDS, BUILTIN_TRAIT_NAMES,
 };

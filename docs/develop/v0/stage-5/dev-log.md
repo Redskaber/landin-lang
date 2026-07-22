@@ -254,3 +254,24 @@ cargo clippy --all-targets (0 warnings) — all green ✅
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ all new methods read TraitResolver data only.
 **API naming**: ✅ `is_*_builtin` + `implements_builtin_trait` follow §23.
+
+### Stage 5.11 — Primitive Copy Auto-Detection (v0.11.10)
+
+**Priority**: Extract primitive Copy knowledge into queryable constant + function.
+
+**Work completed**:
+- src/traits/mod.rs: new `BUILTIN_PRIMITIVE_COPY_KINDS` constant (10 always-Copy
+  TyKinds: Bool, Char, Int, Uint, Float, Never, Ref, RawPtr, FnDef, FnPtr)
+- src/traits/mod.rs: new `is_primitive_copy_kind(kind_name: &str) -> bool` free fn
+  * String-based check (avoids traits↔mir circular dep)
+  * Strips "(...)" suffix: "Int(I32)" → "Int" → true
+- src/lib.rs: re-export `is_primitive_copy_kind` + `BUILTIN_PRIMITIVE_COPY_KINDS`
+- tests/v0/stage5/plan/primitive_copy_tests.rs: 6 new tests
+- tests/all_tests.rs: added primitive_copy_tests module (29 mods)
+- Cargo.toml: version 0.11.9 → 0.11.10
+
+**Test impact**: +6 (949 — was 943)
+**Verification**: cargo clean + cargo test (949 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ pure constant + function, no HIR access.
+**API naming**: ✅ SCREAMING_SNAKE_CASE constant + `is_` + `_kind` suffix.

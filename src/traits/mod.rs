@@ -135,6 +135,38 @@ pub const BUILTIN_TRAIT_NAMES: &[&str] = &[
 /// the need to synthesize fake HIR nodes for builtin traits.
 pub const BUILTIN_DEF_ID_BASE: u32 = u32::MAX;
 
+/// Stage 5.11: Primitive types that are always `Copy` (and `Clone`).
+///
+/// These are the MIR `TyKind` variant names (as strings) that are
+/// intrinsically Copy — the compiler does not require (and does not accept)
+/// `impl Copy for i32` because these types are Copy by language definition.
+///
+/// Used by `is_primitive_copy_kind()` to check if a MIR `TyKind` is Copy
+/// without consulting the trait resolver. This is the foundation for the
+/// stdlib MVP's auto-Copy for primitives.
+///
+/// Per §15 (最优 > 最小): this list is the architecturally correct set of
+/// always-Copy primitive types, matching rustc's behavior. Non-Copy types
+/// (str, slices, closures, type params) are excluded.
+pub const BUILTIN_PRIMITIVE_COPY_KINDS: &[&str] = &[
+    "Bool", "Char", "Int", "Uint", "Float", "Never", "Ref", "RawPtr", "FnDef", "FnPtr",
+];
+
+/// Stage 5.11: Check if a MIR `TyKind` variant name (from `Debug`) is a
+/// primitive type that is always Copy.
+///
+/// This is a string-based check because `TyKind` is defined in `mir::ty`,
+/// and we want to avoid a circular dependency between `traits` and `mir`.
+/// The caller formats the `TyKind` variant name and passes it here.
+///
+/// Per API-naming-standard §3: `is_` prefix for boolean query, `_kind`
+/// suffix to distinguish from DefId-based `is_copy_builtin`.
+pub fn is_primitive_copy_kind(kind_name: &str) -> bool {
+    // Strip tuple fields: "Int(I32)" → "Int"
+    let base = kind_name.split('(').next().unwrap_or(kind_name);
+    BUILTIN_PRIMITIVE_COPY_KINDS.contains(&base)
+}
+
 impl TraitResolver {
     pub fn new() -> Self {
         Self::default()
