@@ -400,3 +400,24 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ all new methods read TraitResolver data only.
 **API naming**: ✅ `resolve_<noun>_<noun>` + `<noun>_<noun>_<noun>` + `<noun>_<verb>_<noun>`.
+
+### Stage 5.18 — Trait Coherence Checking (v0.11.17)
+
+**Priority**: Detect conflicting impls (multiple `impl Trait for Type` for same pair).
+
+**Work completed**:
+- src/traits/mod.rs: new `CoherenceError` struct (trait_name, self_ty_name, impl_def_ids)
+- src/traits/mod.rs: 3 new query methods on TraitResolver:
+  * `check_coherence() -> Vec<CoherenceError>` — detect all conflicting pairs
+  * `has_coherence_error(trait, ty) -> bool` — check specific pair
+  * `coherence_error_count() -> usize` — count of conflicting pairs
+- src/lib.rs: re-export `CoherenceError`
+- tests/v0/stage5/plan/trait_coherence_tests.rs: 7 new tests
+- tests/all_tests.rs: added trait_coherence_tests module (36 mods)
+- Cargo.toml: version 0.11.16 → 0.11.17
+
+**Test impact**: +7 (999 — was 992)
+**Verification**: cargo clean + cargo test (999 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ all new methods read TraitResolver data only.
+**API naming**: ✅ `CoherenceError` + `check_coherence` + `has_coherence_error` + `coherence_error_count`.

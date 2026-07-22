@@ -142,3 +142,6 @@ mod trait_summary_tests;
 
 #[path = "v0/stage5/plan/vtable_method_resolve_tests.rs"]
 mod vtable_method_resolve_tests;
+
+#[path = "v0/stage5/plan/trait_coherence_tests.rs"]
+mod trait_coherence_tests;

@@ -126,7 +126,11 @@
 //!     `resolve_vtable_method()` + `vtable_method_names()` +
 //!     `vtable_has_method()` for single-entry-point method dispatch
 //!     resolution (combines find_vtable + entry lookup).
-//!   Next: Stage 5.18+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.18 (v0.11.17): Trait coherence checking —
+//!     `CoherenceError` struct + `check_coherence()` +
+//!     `has_coherence_error()` + `coherence_error_count()` for detecting
+//!     conflicting impls (multiple `impl Trait for Type` for same pair).
+//!   Next: Stage 5.19+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -154,6 +158,6 @@ pub use codegen::{
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use traits::{
-    extract_impl_self_ty_name, is_primitive_copy_kind, TraitResolver, BUILTIN_DEF_ID_BASE,
-    BUILTIN_PRIMITIVE_COPY_KINDS, BUILTIN_TRAIT_NAMES,
+    extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, TraitResolver,
+    BUILTIN_DEF_ID_BASE, BUILTIN_PRIMITIVE_COPY_KINDS, BUILTIN_TRAIT_NAMES,
 };

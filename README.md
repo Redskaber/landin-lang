@@ -6,10 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.16 — Stage 0-4 complete, Stage 5 in progress.
-> **992 tests** + 5 benchmarks. 0 clippy warnings. fmt clean.
+> **Status:** v0.11.17 — Stage 0-4 complete, Stage 5 in progress.
+> **999 tests** + 5 benchmarks. 0 clippy warnings. fmt clean.
 > Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5.1-5.17: TraitResolver ✅ + driver integration ✅ + Copy detection ✅ + DefId→name ✅ + vtable ✅ + vtable codegen ✅ + dyn Trait fat-pointer ✅ + stdlib MVP ✅ + builtin Copy/Clone/Drop ✅ + primitive Copy auto-detect ✅ + Copy unification ✅ + trait impl statistics ✅ + trait method query API ✅ + trait hierarchy/supertraits ✅ + TraitResolver summary ✅ + vtable method resolution ✅.
+> Stage 5.1-5.18: TraitResolver ✅ + driver integration ✅ + Copy detection ✅ + DefId→name ✅ + vtable ✅ + vtable codegen ✅ + dyn Trait fat-pointer ✅ + stdlib MVP ✅ + builtin Copy/Clone/Drop ✅ + primitive Copy auto-detect ✅ + Copy unification ✅ + trait impl statistics ✅ + trait method query API ✅ + trait hierarchy/supertraits ✅ + TraitResolver summary ✅ + vtable method resolution ✅ + trait coherence checking ✅.
 
 ## Quick start
 
@@ -38,7 +38,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete | 170 |
 | 3 | `codegen/` | ✅ Complete | 309 (incl. 5 §21 audit) |
 | 4 | modules, closures, macros, benchmarks, ADR | ✅ Complete | 62 + 5 bench |
-| 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | 🔄 In progress | 87 (TraitResolver + integration + Copy + DefId→name + vtable + vtable codegen + dyn fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution) |
+| 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | 🔄 In progress | 94 (TraitResolver + integration + Copy + DefId→name + vtable + vtable codegen + dyn fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking) |
 
 ## API surface
 
@@ -85,7 +85,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.11.16 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.11.17 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (109 tests)
 │   ├── parser/             Recursive-descent + Pratt parser (85 tests)
@@ -96,11 +96,11 @@ landin-stage0/
 │   ├── typeck/             Type inference + unification (26 tests)
 │   ├── borrowck/           NLL borrow checker (26 tests)
 │   ├── codegen/            LLVM IR codegen via Emitter trait (294 tests)
-│   ├── traits/             TraitResolver + vtable method resolution (Stage 5.1-5.17)
+│   ├── traits/             TraitResolver + vtable method resolution + coherence (Stage 5.1-5.18)
 │   ├── driver.rs           Full pipeline driver
 │   └── bin/                CLI entry point
 ├── tests/
-│   ├── all_tests.rs        Unified entry point (35 #[path] mod declarations)
+│   ├── all_tests.rs        Unified entry point (36 #[path] mod declarations)
 │   ├── common/mod.rs       Shared test helpers
 │   ├── conformance/        .lin conformance suite + run_all.py
 │   └── v0/stage{0-5}/plan/ Standardized test files (v3.17 §17.1)
@@ -149,7 +149,7 @@ one `#[path]` line to `tests/all_tests.rs` — no `Cargo.toml` edit needed.
 - **Stage 2** ✅ MIR + type check + borrow check (NLL, closures, coercion matrix)
 - **Stage 3** ✅ LLVM codegen (§16 compliant, all soundness-critical limitations closed, L1 CLOSED)
 - **Stage 4** ✅ COMPLETE (13 sub-stages: modules + PHI + visibility + closures + macros + benchmarks + ADR + v3.18)
-- **Stage 5** 🔄 In progress (5.1: TraitResolver ✅; 5.2: Driver integration ✅; 5.3: ty_is_copy_with_resolver ✅; 5.4: DefId→name map ✅; 5.5: vtable ✅; 5.6: vtable codegen ✅; 5.7: dyn Trait fat-pointer ✅; 5.8: stdlib MVP ✅; 5.9: builtin Copy activation ✅; 5.10: builtin Clone/Drop + spec v3.20 ✅; 5.11: primitive Copy auto-detect ✅; 5.12: Copy unification ✅; 5.13: trait impl statistics ✅; 5.14: trait method query API ✅; 5.15: trait hierarchy/supertraits ✅; 5.16: TraitResolver summary ✅; 5.17: vtable method resolution ✅; next: dyn Trait MIR lowering, full stdlib, mini-cargo)
+- **Stage 5** 🔄 In progress (5.1: TraitResolver ✅; 5.2: Driver integration ✅; 5.3: ty_is_copy_with_resolver ✅; 5.4: DefId→name map ✅; 5.5: vtable ✅; 5.6: vtable codegen ✅; 5.7: dyn Trait fat-pointer ✅; 5.8: stdlib MVP ✅; 5.9: builtin Copy activation ✅; 5.10: builtin Clone/Drop + spec v3.20 ✅; 5.11: primitive Copy auto-detect ✅; 5.12: Copy unification ✅; 5.13: trait impl statistics ✅; 5.14: trait method query API ✅; 5.15: trait hierarchy/supertraits ✅; 5.16: TraitResolver summary ✅; 5.17: vtable method resolution ✅; 5.18: trait coherence checking ✅; next: dyn Trait MIR lowering, full stdlib, mini-cargo)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting
 

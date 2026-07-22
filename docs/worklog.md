@@ -3635,3 +3635,40 @@ Stage Summary:
 - Vtable method resolution: single-entry-point for method dispatch.
 - 992 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.18+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.18-r67
+Agent: Super Z (main)
+Task: Stage 5.18 — trait coherence checking + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.16 / 992 tests / Stage 5.17 complete (vtable method resolution)
+
+Stage 5.18: Trait coherence checking
+- src/traits/mod.rs: new CoherenceError struct (trait_name, self_ty_name, impl_def_ids)
+- src/traits/mod.rs: 3 new query methods on TraitResolver:
+  * check_coherence() -> Vec<CoherenceError> — detect all conflicting pairs
+  * has_coherence_error(trait, ty) -> bool — check specific pair
+  * coherence_error_count() -> usize — count of conflicting pairs
+- src/lib.rs: re-export CoherenceError
+- tests/v0/stage5/plan/trait_coherence_tests.rs: 7 new tests
+- tests/all_tests.rs: added trait_coherence_tests module (36 mods)
+- Cargo.toml: version 0.11.16 → 0.11.17
+
+§17.3 三阶段文档协议执行 (v3.20):
+- 时期 1: plan-5.18.md + trait_coherence.md + trait_coherence_tests.rs
+- 时期 2: gate-review-round18.md + test gate-review-round18.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.18 entry appended
+- README.md: updated to v0.11.17
+
+CI/CD Verification (§1.2 交付前验收, ACTUAL RUN):
+- cargo test: 999 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.18 PASSED — CI/CD all green per §1.2.
+- Trait coherence checking: detect conflicting impls (multiple impl Trait for Type).
+- 999 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.19+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

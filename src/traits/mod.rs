@@ -171,6 +171,23 @@ pub fn is_primitive_copy_kind(kind_name: &str) -> bool {
     BUILTIN_PRIMITIVE_COPY_KINDS.contains(&base)
 }
 
+/// Stage 5.18: A trait coherence error — detected when multiple `impl`
+/// blocks exist for the same `(trait, type)` pair. In Rust this is a
+/// hard error ("conflicting implementations"). Landin Stage 5.18 detects
+/// it post-collection; the driver can report it as a compilation error.
+///
+/// Per API-naming-standard §3: `CoherenceError` follows the `<Noun>Error`
+/// pattern consistent with `TypeError`, `BorrowError`, etc.
+#[derive(Debug, Clone)]
+pub struct CoherenceError {
+    /// The trait name (interned symbol) with conflicting impls.
+    pub trait_name: Spur,
+    /// The self type name (interned symbol) with conflicting impls.
+    pub self_ty_name: Spur,
+    /// The DefIds of all impl blocks for this (trait, type) pair.
+    pub impl_def_ids: Vec<DefId>,
+}
+
 impl TraitResolver {
     pub fn new() -> Self {
         Self::default()
@@ -750,6 +767,72 @@ impl TraitResolver {
         }
 
         out
+    }
+
+    /// Stage 5.18: Check trait coherence — detect conflicting impls
+    /// (multiple `impl Trait for Type` for the same `(trait, type)` pair).
+    ///
+    /// In Rust, this is a hard error ("conflicting implementations of
+    /// trait"). Landin Stage 5.18 detects it post-collection by scanning
+    /// all impls and grouping by `(trait_name, self_ty_name)`. Any group
+    /// with >1 impl is a coherence error.
+    ///
+    /// Returns a Vec of `CoherenceError` — one per conflicting pair.
+    /// Empty Vec means no coherence violations.
+    ///
+    /// Per API-naming-standard §3: `check_coherence` follows
+    /// `check_<noun>` pattern consistent with `check_visibility`.
+    pub fn check_coherence(&self) -> Vec<CoherenceError> {
+        use std::collections::HashMap as StdHashMap;
+
+        // Group impl DefIds by (trait_name, self_ty_name)
+        let mut groups: StdHashMap<(Spur, Spur), Vec<DefId>> = StdHashMap::new();
+        for impl_info in self.impls.values() {
+            if let (Some(trait_name), Some(self_ty_name)) =
+                (impl_info.trait_name, impl_info.self_ty_name)
+            {
+                groups
+                    .entry((trait_name, self_ty_name))
+                    .or_default()
+                    .push(impl_info.def_id);
+            }
+        }
+
+        // Any group with >1 impl is a coherence error
+        groups
+            .into_iter()
+            .filter(|(_, def_ids)| def_ids.len() > 1)
+            .map(
+                |((trait_name, self_ty_name), impl_def_ids)| CoherenceError {
+                    trait_name,
+                    self_ty_name,
+                    impl_def_ids,
+                },
+            )
+            .collect()
+    }
+
+    /// Stage 5.18: Check if a specific (trait, type) pair has conflicting
+    /// impls. Returns `true` if >1 impl exists for this pair.
+    ///
+    /// Per API-naming-standard §3: `has_coherence_error` follows
+    /// `has_<noun>` pattern for boolean queries.
+    pub fn has_coherence_error(&self, trait_name: Spur, self_ty_name: Spur) -> bool {
+        let count = self
+            .impls
+            .values()
+            .filter(|i| i.trait_name == Some(trait_name) && i.self_ty_name == Some(self_ty_name))
+            .count();
+        count > 1
+    }
+
+    /// Stage 5.18: Get the coherence error count (number of (trait, type)
+    /// pairs with conflicting impls).
+    ///
+    /// Per API-naming-standard §3: `coherence_error_count` follows
+    /// `<noun>_count` pattern consistent with `trait_count` / `impl_count`.
+    pub fn coherence_error_count(&self) -> usize {
+        self.check_coherence().len()
     }
 }
 
