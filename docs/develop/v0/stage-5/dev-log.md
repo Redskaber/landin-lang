@@ -317,3 +317,24 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ all new methods read TraitResolver data only.
 **API naming**: ✅ `impl_count_for_*` + `builtin_trait_count` + `traits_for_type`.
+
+### Stage 5.14 — Trait Method Query API (v0.11.13)
+
+**Priority**: Add trait method query methods for method resolution + vtable lookup.
+
+**Work completed**:
+- src/traits/mod.rs: 5 new query methods on TraitResolver:
+  * `trait_methods(trait_spur) -> Option<&Vec<Spur>>` — trait declared methods
+  * `impl_methods(trait_spur, ty_spur) -> Option<&Vec<Spur>>` — impl methods
+  * `trait_has_method(trait_spur, method_spur) -> bool` — trait declares method?
+  * `traits_with_method(method_spur) -> Vec<Spur>` — traits declaring a method
+  * `method_count_for_trait(trait_spur) -> usize` — method count for a trait
+- tests/v0/stage5/plan/trait_method_query_tests.rs: 8 new tests
+- tests/all_tests.rs: added trait_method_query_tests module (32 mods)
+- Cargo.toml: version 0.11.12 → 0.11.13
+
+**Test impact**: +8 (969 — was 961)
+**Verification**: cargo clean + cargo test (969 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ all new methods read TraitResolver data only.
+**API naming**: ✅ `<noun>_<noun>` + `<noun>_<verb>_<noun>` + `<noun>_with_<noun>` + `<noun>_count_for_<noun>`.

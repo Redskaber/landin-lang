@@ -3485,3 +3485,44 @@ Stage Summary:
 - 4 new trait impl statistics methods for diagnostics + typeck.
 - 961 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.14+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.14-r63
+Agent: Super Z (main)
+Task: Stage 5.14 — trait method query API + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.12 / 961 tests / Stage 5.13 complete (trait impl statistics)
+
+Stage 5.14: Trait method query API
+- src/traits/mod.rs: 5 new query methods on TraitResolver:
+  * trait_methods(trait_spur) -> Option<&Vec<Spur>> — trait declared methods
+  * impl_methods(trait_spur, ty_spur) -> Option<&Vec<Spur>> — impl methods
+  * trait_has_method(trait_spur, method_spur) -> bool — trait declares method?
+  * traits_with_method(method_spur) -> Vec<Spur> — traits declaring a method
+  * method_count_for_trait(trait_spur) -> usize — method count for a trait
+- tests/v0/stage5/plan/trait_method_query_tests.rs: 8 new tests
+  * Fixed 2 test issues during dev: Spur::From<u32> not implemented (used
+    interned "main" instead); "baz" not interned when not used (used "Foo"
+    spur for the negative case)
+- tests/all_tests.rs: added trait_method_query_tests module (32 mods)
+- Cargo.toml: version 0.11.12 → 0.11.13
+
+§17.3 三阶段文档协议执行 (v3.20):
+- 时期 1: plan-5.14.md + trait_method_query.md + trait_method_query_tests.rs
+- 时期 2: gate-review-round14.md + test gate-review-round14.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.14 entry appended
+- README.md: updated to v0.11.13
+
+CI/CD Verification (§1.2 交付前验收, ACTUAL RUN):
+- cargo clean: 1559 files removed (581.0MiB) ✅
+- cargo test: 969 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.14 PASSED — CI/CD all green per §1.2.
+- 5 new trait method query methods for method resolution + vtable lookup.
+- 969 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.15+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

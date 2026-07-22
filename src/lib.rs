@@ -110,7 +110,11 @@
 //!     `impl_count_for_type()` + `impl_count_for_trait()` +
 //!     `builtin_trait_count()` + `traits_for_type()` query methods for
 //!     diagnostics and typeck trait-bound solving.
-//!   Next: Stage 5.14+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.14 (v0.11.13): Trait method query API —
+//!     `trait_methods()` + `impl_methods()` + `trait_has_method()` +
+//!     `traits_with_method()` + `method_count_for_trait()` for method
+//!     resolution and vtable method lookup.
+//!   Next: Stage 5.15+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

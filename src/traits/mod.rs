@@ -316,6 +316,66 @@ impl TraitResolver {
             .and_then(|id| self.impls.get(id))
     }
 
+    /// Stage 5.14: Get the method names declared in a trait (by Spur).
+    /// Returns `None` if the trait is not found.
+    ///
+    /// Per API-naming-standard §3: `trait_methods` follows `<noun>_<noun>`
+    /// pattern for query methods returning collections.
+    pub fn trait_methods(&self, trait_name: Spur) -> Option<&Vec<Spur>> {
+        self.find_trait(trait_name).map(|t| &t.methods)
+    }
+
+    /// Stage 5.14: Get the method names implemented in an impl block
+    /// (by trait_name + self_ty_name). Returns `None` if no impl found.
+    ///
+    /// Per API-naming-standard §3: `impl_methods` follows `<noun>_<noun>`
+    /// pattern; parallels `trait_methods`.
+    pub fn impl_methods(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&Vec<Spur>> {
+        self.find_impl(trait_name, self_ty_name).map(|i| &i.methods)
+    }
+
+    /// Stage 5.14: Check if a trait declares a method (by name).
+    /// Returns `false` if the trait is not found or doesn't declare the method.
+    ///
+    /// Per API-naming-standard §3: `trait_has_method` follows
+    /// `<noun>_<verb>_<noun>` pattern for boolean queries.
+    pub fn trait_has_method(&self, trait_name: Spur, method_name: Spur) -> bool {
+        if let Some(methods) = self.trait_methods(trait_name) {
+            methods.contains(&method_name)
+        } else {
+            false
+        }
+    }
+
+    /// Stage 5.14: Find all traits that declare a method (by name).
+    /// Returns a Vec of trait name Spurs. Useful for method resolution
+    /// when the method name is known but the trait is not.
+    ///
+    /// Per API-naming-standard §3: `traits_with_method` follows
+    /// `<noun>_with_<noun>` pattern for collection-returning queries.
+    pub fn traits_with_method(&self, method_name: Spur) -> Vec<Spur> {
+        self.traits
+            .values()
+            .filter_map(|t| {
+                if t.methods.contains(&method_name) {
+                    Some(t.name)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Stage 5.14: Get the method count for a trait (by Spur).
+    /// Returns 0 if the trait is not found.
+    ///
+    /// Per API-naming-standard §3: `method_count_for_trait` follows
+    /// `<noun>_count_for_<noun>` pattern, consistent with
+    /// `impl_count_for_trait` (Stage 5.13).
+    pub fn method_count_for_trait(&self, trait_name: Spur) -> usize {
+        self.trait_methods(trait_name).map(|m| m.len()).unwrap_or(0)
+    }
+
     /// Check if a type implements a trait (by name).
     pub fn implements(&self, trait_name: Spur, self_ty_name: Spur) -> bool {
         self.find_impl(trait_name, self_ty_name).is_some()
