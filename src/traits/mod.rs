@@ -3,6 +3,10 @@
 //! Stage 5.1: Basic TraitResolver — collects trait/impl metadata from HIR.
 //! Stage 5.4: Added `type_by_def_id` reverse map for Copy trait detection.
 //! Stage 5.5: Added vtable data structures for L5 trait dispatch.
+//! Stage 5.6: VtableEntry now carries the resolved LLVM symbol name (`fn_name`)
+//!            so codegen can emit vtable globals without re-walking HIR.
+//!            Naming convention: `landin_<SelfType>_<method>` (matches the
+//!            symbol codegen emits for impl method bodies via driver body_metas).
 //!
 //! Per §16 (阶段间接口隔离): TraitResolver reads HIR during the driver's
 //! pre-computation phase, then provides data to typeck/borrowck/codegen.
@@ -41,13 +45,24 @@ pub struct ImplInfo {
 }
 
 /// Stage 5.5: A single entry in a vtable — maps a trait method name
-/// to the concrete function DefId that implements it.
+/// to the concrete function that implements it.
+///
+/// Stage 5.6: `fn_def_id` (which previously held the *impl block's* DefId,
+/// not the per-method DefId, since HIR doesn't give a separate DefId to
+/// impl methods) has been replaced by `fn_name: String` — the resolved
+/// LLVM symbol name (e.g. `landin_S_bar`). This lets codegen emit vtable
+/// globals without consulting `fn_name_by_def_id` (which only covers
+/// top-level fns) or re-walking HIR (which would violate §16).
 #[derive(Debug, Clone)]
 pub struct VtableEntry {
     /// The method name (interned symbol) as declared in the trait.
     pub method_name: Spur,
-    /// The DefId of the concrete function in the impl block.
-    pub fn_def_id: DefId,
+    /// Stage 5.6: The resolved LLVM symbol name for the concrete impl
+    /// method (e.g. `landin_S_bar`). Computed at collect time using the
+    /// `landin_<SelfType>_<method>` convention; matches the symbol that
+    /// codegen emits for the impl method body (per Stage 5.6 body_metas
+    /// extension in driver.rs).
+    pub fn_name: String,
 }
 
 /// Stage 5.5: A vtable for a specific (trait, type) pair.
@@ -131,15 +146,27 @@ impl TraitResolver {
                             .and_then(|p| p.segments.last().map(|s| s.ident.name));
                         let self_ty_name = extract_ty_name(&i.self_ty);
 
+                        // Stage 5.6: resolve the self type's string form up front
+                        // so vtable entries can carry the LLVM symbol name
+                        // (`landin_<SelfType>_<method>`). This matches the naming
+                        // that driver.rs's body_metas now uses for impl method
+                        // bodies, so the vtable's symbol references resolve
+                        // correctly at link time.
+                        let self_ty_str = self_ty_name
+                            .and_then(|s| interner.try_resolve(&s))
+                            .unwrap_or("Type");
+
                         // Stage 5.5: Build vtable entries from impl methods.
                         let mut vtable_entries = Vec::new();
                         let mut method_names = Vec::new();
                         for impl_item in &i.items {
                             if let HirImplItem::Fn(f) = impl_item {
+                                let method_str =
+                                    interner.try_resolve(&f.ident.name).unwrap_or("fn");
                                 method_names.push(f.ident.name);
                                 vtable_entries.push(VtableEntry {
                                     method_name: f.ident.name,
-                                    fn_def_id: *def_id,
+                                    fn_name: format!("landin_{}_{}", self_ty_str, method_str),
                                 });
                             }
                         }
@@ -231,6 +258,15 @@ impl TraitResolver {
     pub fn type_count(&self) -> usize {
         self.type_by_def_id.len()
     }
+}
+
+/// Best-effort extraction of a type name from a HirTy.
+///
+/// Stage 5.6: promoted to `pub` so the driver can reuse the same name
+/// resolution that TraitResolver uses for vtable entries (avoids the
+/// driver and TraitResolver drifting apart on naming convention).
+pub fn extract_impl_self_ty_name(ty: &HirTy) -> Option<Spur> {
+    extract_ty_name(ty)
 }
 
 /// Best-effort extraction of a type name from a HirTy.

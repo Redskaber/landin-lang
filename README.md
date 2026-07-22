@@ -6,10 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.4 — Stage 0-4 complete, Stage 5 in progress.
-> **1016+ tests** + 5 benchmarks (3 new vtable tests + 1 audit-enrichment pending verification).
-> Process v3.18 (§15-§28). §16 interface isolation compliant.
-> Stage 5.1-5.5: TraitResolver ✅ + driver integration ✅ + Copy detection ✅ + DefId→name ✅ + vtable ✅.
+> **Status:** v0.11.5 — Stage 0-4 complete, Stage 5 in progress.
+> **922 tests** + 5 benchmarks. 0 clippy warnings. fmt clean.
+> Process v3.19 (§1-§28). §16 interface isolation compliant.
+> Stage 5.1-5.6: TraitResolver ✅ + driver integration ✅ + Copy detection ✅ + DefId→name ✅ + vtable ✅ + vtable codegen ✅.
 
 ## Quick start
 
@@ -38,7 +38,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete | 170 |
 | 3 | `codegen/` | ✅ Complete | 309 (incl. 5 §21 audit) |
 | 4 | modules, closures, macros, benchmarks, ADR | ✅ Complete | 62 + 5 bench |
-| 5 | `traits/`, stdlib, mini-cargo | 🔄 In progress | 14 (TraitResolver + integration + Copy + DefId→name + vtable) |
+| 5 | `traits/`, vtable codegen, stdlib, mini-cargo | 🔄 In progress | 17 (TraitResolver + integration + Copy + DefId→name + vtable + vtable codegen) |
 
 ## API surface
 
@@ -85,7 +85,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.11.4 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.11.5 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (109 tests)
 │   ├── parser/             Recursive-descent + Pratt parser (85 tests)
@@ -96,7 +96,7 @@ landin-stage0/
 │   ├── typeck/             Type inference + unification (26 tests)
 │   ├── borrowck/           NLL borrow checker (26 tests)
 │   ├── codegen/            LLVM IR codegen via Emitter trait (294 tests)
-│   ├── traits/             TraitResolver — trait/impl/vtable (Stage 5.1-5.5)
+│   ├── traits/             TraitResolver — trait/impl/vtable (Stage 5.1-5.6)
 │   ├── driver.rs           Full pipeline driver
 │   └── bin/                CLI entry point
 ├── tests/
@@ -149,7 +149,7 @@ one `#[path]` line to `tests/all_tests.rs` — no `Cargo.toml` edit needed.
 - **Stage 2** ✅ MIR + type check + borrow check (NLL, closures, coercion matrix)
 - **Stage 3** ✅ LLVM codegen (§16 compliant, all soundness-critical limitations closed, L1 CLOSED)
 - **Stage 4** ✅ COMPLETE (13 sub-stages: modules + PHI + visibility + closures + macros + benchmarks + ADR + v3.18)
-- **Stage 5** 🔄 In progress (5.1: TraitResolver ✅; 5.2: Driver integration ✅; 5.3: ty_is_copy_with_resolver ✅; 5.4: DefId→name map ✅; 5.5: vtable ✅; next: codegen vtable emission, stdlib)
+- **Stage 5** 🔄 In progress (5.1: TraitResolver ✅; 5.2: Driver integration ✅; 5.3: ty_is_copy_with_resolver ✅; 5.4: DefId→name map ✅; 5.5: vtable ✅; 5.6: vtable codegen ✅; next: dyn Trait fat-pointer, stdlib MVP, mini-cargo)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting
 

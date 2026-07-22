@@ -96,7 +96,53 @@ pub fn codegen_crate(result: &crate::driver::CompileResult) -> String {
         &result.interner,
         &mut emitter,
     );
+    // Stage 5.6: emit vtable globals for all (trait, type) pairs collected
+    // by TraitResolver. Each vtable is a constant array of opaque function
+    // pointers, one per trait method, pointing at the concrete impl method
+    // symbol (`landin_<Type>_<method>`). This is the L5 trait dispatch
+    // foundation — future stages will use these globals when constructing
+    // `dyn Trait` fat pointers.
+    //
+    // Per §16: codegen reads the pre-built TraitResolver (data only, no
+    // HIR access). The fn_name strings are already resolved at collect
+    // time, so no further upstream lookup is needed here.
+    emit_vtables(&result.trait_resolver, &result.interner, &mut emitter);
     emitter.output_with_globals()
+}
+
+/// Stage 5.6: Emit LLVM IR vtable globals for every (trait, type) pair in
+/// `TraitResolver.vtables`.
+///
+/// Each vtable becomes a module-level global:
+///
+/// ```text
+/// @.vtable.<trait>.<type> = private unnamed_addr constant
+///     [N x ptr] [ptr @landin_<Type>_<m1>, ...]
+/// ```
+///
+/// Per API-naming-standard §3: `emit_` prefix consistent with the rest of
+/// the codegen module (`emit_fat_ptr_type`, `emit_type_to_llvm_str`, etc.).
+///
+/// Per §16: takes `&TraitResolver` (pre-built data) + `&Rodeo` (interner,
+/// for symbol resolution) — no HIR access.
+pub fn emit_vtables(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    emitter: &mut dyn Emitter,
+) {
+    for ((trait_name, self_ty_name), vtable) in &trait_resolver.vtables {
+        // Build the global name: `.vtable.<trait>.<type>`.
+        // LLVM global names use `.` as a private-name separator.
+        let trait_str = interner.try_resolve(trait_name).unwrap_or("Trait");
+        let type_str = interner.try_resolve(self_ty_name).unwrap_or("Type");
+        let global_name = format!(".vtable.{}.{}", trait_str, type_str);
+
+        // Collect the resolved method symbol names from VtableEntry.
+        let method_symbols: Vec<String> =
+            vtable.entries.iter().map(|e| e.fn_name.clone()).collect();
+
+        emitter.emit_vtable_global(&global_name, &method_symbols);
+    }
 }
 
 /// Stage 3.56: Generate LLVM IR from pre-built MIR + metadata.

@@ -521,6 +521,36 @@ impl Emitter for TextEmitter {
         name
     }
 
+    fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue {
+        // Stage 5.6: emit a vtable as a constant global array of opaque
+        // function pointers. Uses LLVM 15+ opaque pointer type (`ptr`).
+        //
+        // Layout (e.g. trait Foo with method `bar` impl'd for type S):
+        //   @.vtable.Foo.S = private unnamed_addr constant [1 x ptr] [ptr @landin_S_bar]
+        //
+        // We do NOT dedupe: each (trait, type) pair is distinct by name,
+        // and the caller (codegen `emit_vtables`) already guarantees a
+        // unique global_name per vtable. If `method_symbols` is empty we
+        // still emit the global as a zero-size array so downstream stages
+        // can reference it unconditionally.
+
+        // Build the LLVM initializer expression.
+        let init = if method_symbols.is_empty() {
+            "zeroinitializer".to_string()
+        } else {
+            let entries: Vec<String> = method_symbols
+                .iter()
+                .map(|sym| format!("ptr @{}", sym))
+                .collect();
+            format!("[{} x ptr] [{}]", method_symbols.len(), entries.join(", "))
+        };
+
+        let global_def = format!("@{} = private unnamed_addr constant {}", global_name, init);
+        self.globals.push(global_def);
+        // Return the global's name (without leading `@`).
+        global_name.to_string()
+    }
+
     fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue) {
         self.local_ptrs.insert(local_id, ptr);
     }

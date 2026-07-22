@@ -268,6 +268,27 @@ pub trait Emitter {
     /// controls the encoding).
     fn emit_string_global(&mut self, bytes: &[u8]) -> EmitValue;
 
+    /// Stage 5.6: Emit a vtable as a module-level constant global.
+    ///
+    /// Emits (at module scope):
+    /// ```text
+    /// @.vtable.<trait>.<type> = private unnamed_addr constant
+    ///     [N x ptr] [ptr @landin_<Type>_<m1>, ptr @landin_<Type>_<m2>, ...]
+    /// ```
+    ///
+    /// The vtable is an array of opaque `ptr` (opaque pointer type, LLVM 15+).
+    /// Each entry is a `ptr` reference to the concrete impl method symbol.
+    /// The caller (codegen `emit_vtables`) computes the global name from
+    /// `(trait_name, self_ty_name)` and passes the resolved symbol names.
+    ///
+    /// Returns the global's symbolic name (e.g. `.vtable.Foo.S`) so callers
+    /// can reference it later (e.g. for `dyn Trait` fat-pointer construction
+    /// in a future stage).
+    ///
+    /// Per API-naming-standard §3: uses the `emit_` prefix consistent with
+    /// `emit_string_global` and other module-level emission methods.
+    fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue;
+
     // === Local state ===
 
     /// Store a local's pointer handle (alloca result).

@@ -122,3 +122,30 @@ that were 100% duplicates of the organized `tests/v0/stage{N}/plan/` files.
 **Test impact**: 0 (1017 tests unchanged — pure infrastructure refactor)
 **§16 compliance**: ✅ (no source code changes)
 **API naming**: N/A (no API changes)
+
+### Stage 5.6 — Vtable Codegen Emission (v0.11.5)
+
+**Priority**: L5 trait dispatch foundation — emit vtable as LLVM IR global.
+
+**Work completed**:
+- src/traits/mod.rs: `VtableEntry.fn_def_id` replaced by `fn_name: String`
+  * Resolved at collect time as `landin_<Type>_<method>`
+  * Self-contained vtable entry — codegen needs no upstream lookup
+  * Per §15 (最优 > 最小): cleaner than threading fn_name_by_def_id through
+- src/traits/mod.rs: `extract_impl_self_ty_name` promoted to `pub`
+- src/driver.rs: `body_metas` population extended (HirItem::Impl branch)
+  * Impl method bodies now emitted as `landin_<Type>_<method>`
+- src/codegen/emitter.rs: `Emitter::emit_vtable_global` trait method
+- src/codegen/text_emitter.rs: TextEmitter implements `emit_vtable_global`
+  * Emits `@.vtable.<trait>.<type> = private unnamed_addr constant [N x ptr] [ptr @sym1, ...]`
+- src/codegen/mod.rs: new `pub fn emit_vtables(trait_resolver, interner, emitter)`
+- src/codegen/mod.rs: `codegen_crate` calls `emit_vtables` after `codegen_from_mir`
+- src/lib.rs: re-export `emit_vtables` + `extract_impl_self_ty_name`
+- 3 new tests in tests/v0/stage5/plan/vtable_codegen_tests.rs
+
+**TD-014 status**: 🔄 → partial CLOSE — vtable data + codegen emission done;
+`dyn Trait` fat-pointer construction deferred to Stage 5.7+.
+
+**Test impact**: +3 (922 expected — was 919)
+**§16 compliance**: ✅ codegen is still a pure MIR/TraitResolver consumer.
+**API naming**: ✅ all new APIs follow api-naming-standard §3.

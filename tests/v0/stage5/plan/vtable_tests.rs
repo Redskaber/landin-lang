@@ -83,7 +83,15 @@ fn test_vtable_query() {
         "first entry method_name should be 'bar'"
     );
     assert_eq!(
+        vtable.entries[0].fn_name, "landin_S_bar",
+        "first entry fn_name should be 'landin_S_bar'"
+    );
+    assert_eq!(
         vtable.entries[1].method_name, baz_spur,
         "second entry method_name should be 'baz'"
+    );
+    assert_eq!(
+        vtable.entries[1].fn_name, "landin_S_baz",
+        "second entry fn_name should be 'landin_S_baz'"
     );
 }

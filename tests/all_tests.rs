@@ -106,3 +106,6 @@ mod def_id_name_map_tests;
 
 #[path = "v0/stage5/plan/vtable_tests.rs"]
 mod vtable_tests;
+
+#[path = "v0/stage5/plan/vtable_codegen_tests.rs"]
+mod vtable_codegen_tests;

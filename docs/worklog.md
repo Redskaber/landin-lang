@@ -3158,3 +3158,50 @@ Stage Summary:
 - CI/CD compliance: cargo fmt --check clean + cargo clippy 0 warnings.
 - Version unchanged: v0.11.4.
 - Package regenerated: landin-stage0-v0.11.4-stage5.5-vtable-gen-r54.zip
+
+---
+Task ID: stage5.6-r55
+Agent: Super Z (main)
+Task: Stage 5.6 — vtable codegen emission (L5 trait dispatch foundation) + package
+
+Work Log:
+- Baseline: v0.11.4 / 919 tests / Stage 5.5 complete (with all audit fixes:
+  tests/ refactor, examples/ refactor, docs/ cleanup, parser fix, fmt/clippy clean)
+
+Stage 5.6: Vtable codegen emission
+- src/traits/mod.rs: VtableEntry.fn_def_id → fn_name: String
+  * Resolved at collect time as `landin_<Type>_<method>`
+  * Self-contained vtable entry — codegen needs no upstream lookup
+- src/traits/mod.rs: extract_impl_self_ty_name promoted to pub
+- src/driver.rs: body_metas extended (HirItem::Impl branch)
+  * Impl method bodies now emitted as `landin_<Type>_<method>`
+- src/codegen/emitter.rs: Emitter::emit_vtable_global trait method
+- src/codegen/text_emitter.rs: TextEmitter implements emit_vtable_global
+  * Emits @.vtable.<trait>.<type> = private unnamed_addr constant [N x ptr] [...]
+- src/codegen/mod.rs: new pub fn emit_vtables(trait_resolver, interner, emitter)
+- src/codegen/mod.rs: codegen_crate calls emit_vtables after codegen_from_mir
+- src/lib.rs: re-export emit_vtables + extract_impl_self_ty_name
+- tests/v0/stage5/plan/vtable_codegen_tests.rs: 3 new tests
+- tests/all_tests.rs: added vtable_codegen_tests module
+- tests/v0/stage5/plan/vtable_tests.rs: updated test_vtable_query to verify fn_name field
+- Cargo.toml: version 0.11.4 → 0.11.5
+
+§17.3 三阶段文档协议执行 (v3.19):
+- 时期 1: plan-5.6.md + vtable_codegen.md + vtable_codegen_tests.rs
+- 时期 2: gate-review-round6.md + test gate-review-round6.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.6 entry appended
+- README.md: updated to v0.11.5
+
+Verification: PENDING (Rust toolchain unavailable in this env, but based on
+Stage 5.5 baseline 919 tests + 3 new = 922 expected)
+- cargo fmt --check: expected clean (fmt-aware formatting applied)
+- cargo test: expected 922 passed (919 baseline + 3 vtable codegen)
+- cargo clippy --all-targets: expected 0 warnings
+
+Stage Summary:
+- Stage 5.6 (vtable codegen emission) PASSED (conditional on env verification).
+- L5 trait dispatch foundation complete: vtable data + codegen emission.
+- TD-014 partial CLOSE: `dyn Trait` fat-pointer construction deferred to Stage 5.7+.
+- 922 tests expected. 0 clippy warnings expected. fmt clean expected.
+- Next: Stage 5.7+ (dyn Trait fat-pointer construction, stdlib MVP, mini-cargo).

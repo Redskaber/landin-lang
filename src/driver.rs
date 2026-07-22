@@ -380,6 +380,11 @@ pub fn compile(src: &str) -> CompileResult {
     }
 
     // Build per-body metadata (parallel to mirs).
+    //
+    // Stage 5.6: extend fn_name resolution to cover impl method bodies so
+    // vtable entries (which reference `landin_<SelfType>_<method>`) point
+    // at the actual emitted LLVM symbol. Previously impl methods fell back
+    // to `fn_<owner_id>` which made vtable references dangling.
     let body_metas: Vec<BodyMeta> = hir
         .bodies
         .iter()
@@ -388,14 +393,34 @@ pub fn compile(src: &str) -> CompileResult {
             let fn_name = hir
                 .owners
                 .iter()
-                .find_map(|(_, owner)| {
-                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
-                        if f.body == Some(*body_id) {
-                            let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-                            return Some(format!("landin_{}", name));
-                        }
+                .find_map(|(_, owner)| match owner {
+                    // Top-level fn: `landin_<name>`.
+                    crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f))
+                        if f.body == Some(*body_id) =>
+                    {
+                        let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
+                        Some(format!("landin_{}", name))
                     }
-                    None
+                    // Stage 5.6: impl method body: `landin_<SelfType>_<method>`.
+                    // Matches the naming used by TraitResolver for vtable entries.
+                    crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(i)) => {
+                        for impl_item in &i.items {
+                            if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                                if f.body == Some(*body_id) {
+                                    let method =
+                                        interner.try_resolve(&f.ident.name).unwrap_or("fn");
+                                    let self_ty_name =
+                                        crate::traits::extract_impl_self_ty_name(&i.self_ty);
+                                    let type_str = self_ty_name
+                                        .and_then(|s| interner.try_resolve(&s))
+                                        .unwrap_or("Type");
+                                    return Some(format!("landin_{}_{}", type_str, method));
+                                }
+                            }
+                        }
+                        None
+                    }
+                    _ => None,
                 })
                 .unwrap_or_else(|| format!("fn_{}", body_id.owner.0.as_u32()));
             // Check if void (no return type).
