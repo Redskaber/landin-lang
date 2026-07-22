@@ -2767,3 +2767,45 @@ Stage Summary:
 - Stage 5.3 (ty_is_copy_with_resolver) PASSED: 3 new tests.
 - 1010 tests pass. 0 clippy warnings. fmt clean.
 - Next: Stage 5.4 (DefId→name map for full Copy detection).
+
+---
+Task ID: stage5.4-r53
+Agent: Super Z (main)
+Task: Stage 5.4 — DefId→name reverse map + full Copy detection + package
+
+Work Log:
+- Baseline: v0.11.2 / 1010 tests / Stage 5.3 complete.
+
+Stage 5.4: DefId→name reverse map + full Copy detection
+- src/traits/mod.rs: added `type_by_def_id: HashMap<DefId, Spur>` field
+  * Populated for struct/enum/trait during collect()
+  * New query methods: implements_by_def_id(), is_copy(), type_count()
+- src/borrowck/mod.rs: ty_is_copy_with_resolver Adt branch now fully active
+  * Looks up type name via type_by_def_id
+  * Checks resolver.is_copy(def_id, copy_name) — returns false if no Copy impl
+  * Falls back to true if "Copy" not interned (conservative)
+- Fixed clippy warning (unused variable copy_name)
+- Fixed fmt issues (assert_eq! line wrapping)
+
+TD-016 CLOSED: Copy detection now uses TraitResolver instead of treating all Adt as Copy.
+
+New tests (3) — in tests/v0/stage5/plan/def_id_name_map_tests.rs:
+- test_type_by_def_id_populated: struct names collected
+- test_copy_detection_with_impl: impl Copy for S detected
+- test_copy_detection_without_impl: no Copy impl → not Copy
+
+§17.3 三阶段文档协议执行 (v3.18 含 docs/worklog.md 同步):
+- 时期 1: plan-5.4.md + def_id_name_map_tests.rs
+- 时期 2: gate-review-round4.md + test gate-review-round4.md
+- docs/worklog.md: synced
+
+Verification:
+- cargo fmt --check: **clean (exit 0)** ✅
+- cargo test: 1013 passed, 0 failed, 2 ignored (was 1010, +3)
+- cargo clippy --all-targets: 0 warnings
+
+Stage Summary:
+- Stage 5.4 (DefId→name map + full Copy detection) PASSED: 3 new tests.
+- TD-016 CLOSED: Copy detection now uses TraitResolver.
+- 1013 tests pass. 0 clippy warnings. fmt clean.
+- Next: Stage 5.5+ (vtable generation, stdlib MVP, mini-cargo).

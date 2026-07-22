@@ -62,7 +62,10 @@
 //!     CompileResult.trait_resolver populated; fmt issues fixed.
 //!   Stage 5.3 (v0.11.2): ty_is_copy_with_resolver — precise Copy detection
 //!     using TraitResolver (Adt fallback until DefId→name map in Stage 5.4).
-//!   Next: Stage 5.4+ (DefId→name map, vtable generation, stdlib MVP).
+//!   Stage 5.4 (v0.11.3): DefId→name reverse map in TraitResolver —
+//!     `type_by_def_id` populated for struct/enum/trait; `is_copy()` and
+//!     `implements_by_def_id()` query methods; full Copy detection activated.
+//!   Next: Stage 5.5+ (vtable generation, stdlib MVP, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

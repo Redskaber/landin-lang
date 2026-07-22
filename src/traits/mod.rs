@@ -1,6 +1,7 @@
 //! Trait resolution: collect trait definitions + impl blocks + build dispatch tables.
 //!
 //! Stage 5.1: Basic TraitResolver — collects trait/impl metadata from HIR.
+//! Stage 5.4: Added `type_by_def_id` reverse map for Copy trait detection.
 //!
 //! Per §16 (阶段间接口隔离): TraitResolver reads HIR during the driver's
 //! pre-computation phase, then provides data to typeck/borrowck/codegen.
@@ -53,6 +54,10 @@ pub struct TraitResolver {
     pub trait_by_name: HashMap<Spur, DefId>,
     /// (trait_name, self_ty_name) → impl DefId (for impl lookup).
     pub impl_by_trait_and_type: HashMap<(Spur, Spur), DefId>,
+    /// Stage 5.4: DefId → type name (for struct/enum/trait).
+    /// Enables `ty_is_copy_with_resolver` to look up a type's name
+    /// from its DefId and check if it implements Copy.
+    pub type_by_def_id: HashMap<DefId, Spur>,
 }
 
 impl TraitResolver {
@@ -60,8 +65,12 @@ impl TraitResolver {
         Self::default()
     }
 
-    /// Collect all trait definitions and impl blocks from HIR.
-    pub fn collect(&mut self, hir: &HirCrate, _interner: &Rodeo) {
+    /// Collect all trait definitions, impl blocks, and type names from HIR.
+    pub fn collect(&mut self, hir: &HirCrate, interner: &Rodeo) {
+        // "Copy" trait name lookup is done in `is_copy()` at query time
+        // via the interner — no need to store it here.
+        let _ = interner.get("Copy");
+
         for (def_id, node) in &hir.owners {
             if let OwnerNode::Item(item) = node {
                 match item {
@@ -79,7 +88,16 @@ impl TraitResolver {
                             is_unsafe: t.is_unsafe,
                         };
                         self.trait_by_name.insert(t.ident.name, *def_id);
+                        self.type_by_def_id.insert(*def_id, t.ident.name);
                         self.traits.insert(*def_id, info);
+                    }
+                    HirItem::Struct(s) => {
+                        // Stage 5.4: Record struct name for DefId→name lookup.
+                        self.type_by_def_id.insert(*def_id, s.ident.name);
+                    }
+                    HirItem::Enum(e) => {
+                        // Stage 5.4: Record enum name for DefId→name lookup.
+                        self.type_by_def_id.insert(*def_id, e.ident.name);
                     }
                     HirItem::Impl(i) => {
                         let trait_name = i
@@ -130,6 +148,22 @@ impl TraitResolver {
         self.find_impl(trait_name, self_ty_name).is_some()
     }
 
+    /// Stage 5.4: Check if a type (by DefId) implements a trait (by name).
+    /// Uses `type_by_def_id` to resolve the type name, then checks `implements`.
+    pub fn implements_by_def_id(&self, trait_name: Spur, def_id: DefId) -> bool {
+        if let Some(type_name) = self.type_by_def_id.get(&def_id) {
+            self.implements(trait_name, *type_name)
+        } else {
+            false
+        }
+    }
+
+    /// Stage 5.4: Check if a type (by DefId) implements Copy.
+    /// Requires "Copy" to be interned in the interner during `collect()`.
+    pub fn is_copy(&self, def_id: DefId, copy_name: Spur) -> bool {
+        self.implements_by_def_id(copy_name, def_id)
+    }
+
     /// Get the number of collected traits.
     pub fn trait_count(&self) -> usize {
         self.traits.len()
@@ -138,6 +172,11 @@ impl TraitResolver {
     /// Get the number of collected impls.
     pub fn impl_count(&self) -> usize {
         self.impls.len()
+    }
+
+    /// Stage 5.4: Get the number of collected type names.
+    pub fn type_count(&self) -> usize {
+        self.type_by_def_id.len()
     }
 }
 

@@ -59,3 +59,23 @@ cross-stage deep review R49 (GO for Stage 5).
 
 **Test impact**: +3 (1010/1010 — was 1007)
 **Verification**: 0 clippy warnings, **fmt clean (exit 0)** ✅
+
+### Stage 5.4 — DefId→name Reverse Map + Full Copy Detection (v0.11.3)
+
+**Priority**: Complete Copy trait detection — close TD-016.
+
+**Work completed**:
+- src/traits/mod.rs: added `type_by_def_id: HashMap<DefId, Spur>` field
+  * Populated for struct/enum/trait during `collect()`
+  * New query methods: `implements_by_def_id()`, `is_copy()`, `type_count()`
+- src/borrowck/mod.rs: `ty_is_copy_with_resolver` Adt branch now fully active
+  * Looks up type name via `type_by_def_id`
+  * Checks `resolver.is_copy(def_id, copy_name)` — returns false if no Copy impl
+  * Falls back to true if "Copy" not interned (conservative)
+- 3 new tests in tests/v0/stage5/plan/def_id_name_map_tests.rs
+
+**TD-016 status**: ✅ CLOSED — Copy detection now uses TraitResolver instead of
+treating all Adt as Copy.
+
+**Test impact**: +3 (1013/1013 — was 1010)
+**Verification**: 0 clippy warnings, **fmt clean (exit 0)** ✅

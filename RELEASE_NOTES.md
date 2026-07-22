@@ -1,9 +1,50 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.2
+**Current version**: v0.11.3
 **Date**: 2026-07-22
-**Test count**: **1010 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+**Test count**: **1013 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.11.3 — Stage 5.4 (DefId→name reverse map + full Copy detection)
+
+### Overview
+
+Adds `type_by_def_id` reverse map to TraitResolver — enables full Copy trait
+detection by looking up type names from DefIds. `ty_is_copy_with_resolver` now
+checks for `impl Copy` instead of treating all Adt types as Copy. Closes TD-016.
+1013 tests pass (was 1010, +3 new). fmt clean. 0 clippy warnings.
+
+### Stage 5.4: DefId→name map + full Copy detection
+
+**TraitResolver** (`src/traits/mod.rs`):
+- New `type_by_def_id: HashMap<DefId, Spur>` field — maps DefId → type name
+- Populated during `collect()` for struct/enum/trait items
+- New query methods:
+  - `implements_by_def_id(trait_name, def_id)` — check trait impl by DefId
+  - `is_copy(def_id, copy_name)` — check Copy impl by DefId
+  - `type_count()` — number of collected type names
+
+**borrowck** (`src/borrowck/mod.rs`):
+- `ty_is_copy_with_resolver` Adt branch now fully active:
+  - Looks up type name via `resolver.type_by_def_id`
+  - Checks `resolver.is_copy(def_id, copy_name)` — returns `false` if no Copy impl
+  - Falls back to `true` if "Copy" not interned (conservative, no false negatives)
+
+**TD-016 CLOSED**: Copy detection no longer treats all Adt as Copy — it now
+checks for actual `impl Copy` via TraitResolver.
+
+**New tests** (3) — in `tests/v0/stage5/plan/def_id_name_map_tests.rs`:
+- `test_type_by_def_id_populated` — struct names collected in type_by_def_id
+- `test_copy_detection_with_impl` — `impl Copy for S` detected
+- `test_copy_detection_without_impl` — no Copy impl → not Copy
+
+### Verification
+
+- `cargo fmt --check`: **clean (exit 0)** ✅
+- `cargo test`: **1013 passed, 0 failed, 2 ignored**
+- `cargo clippy --all-targets`: **0 warnings**
 
 ---
 
