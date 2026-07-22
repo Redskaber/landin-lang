@@ -2809,3 +2809,23 @@ Stage Summary:
 - TD-016 CLOSED: Copy detection now uses TraitResolver.
 - 1013 tests pass. 0 clippy warnings. fmt clean.
 - Next: Stage 5.5+ (vtable generation, stdlib MVP, mini-cargo).
+
+---
+Task ID: stage5.4-audit-r53
+Agent: Super Z (main)
+Task: Stage 5.4 audit — fix missing test plan doc + repackage
+
+Work Log:
+- Audit discovered Stage 5.4 package was missing test plan doc
+  `docs/tests/v0/stage5/plan/def_id_name_map.md` (per §17.3 时期 1
+  three-phase doc protocol: plan + code + test plan all required)
+- Created the missing test plan doc covering:
+  * 3 test scenarios (type_by_def_id populated / Copy impl detected / no impl fallback)
+  * §17 test matrix alignment (unit / integration / negative)
+  * TD-016 closure evidence table
+- Repackaged zip + tar.gz with the fix
+
+Stage Summary:
+- Stage 5.4 package now §17.3 compliant (all 3 doc phases present).
+- No code/test changes — only the missing test plan doc was added.
+- Package: landin-stage0-v0.11.3-stage5.4-defid-name-copy-r53.{zip,tar.gz}
