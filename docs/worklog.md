@@ -2643,3 +2643,50 @@ Stage Summary:
 - Cross-stage deep review R49 PASSED: GO for Stage 5.
 - Pipeline 7-point verified, 16 tech debt cataloged, 0 blockers.
 - Stage 0-4 all COMPLETE. Stage 5 can begin.
+
+---
+Task ID: stage5.1-r50
+Agent: Super Z (main)
+Task: Stage 5.1 — TraitResolver (trait/impl collection + dispatch tables) + README restructure + package
+
+Work Log:
+- Baseline: v0.10.2 / 1002 tests / Stage 0-4 complete, cross-stage review R49 GO.
+
+Stage 5.1: TraitResolver
+- NEW src/traits/mod.rs — TraitResolver module
+  * TraitInfo: def_id, name, methods, is_unsafe
+  * ImplInfo: def_id, trait_name, self_ty_name, methods, is_unsafe
+  * TraitResolver: collects from HIR, builds dispatch tables
+    - trait_by_name: Spur → DefId
+    - impl_by_trait_and_type: (trait_name, self_ty_name) → DefId
+  * Query methods: find_trait, find_impl, implements, trait_count, impl_count
+  * Per §16: built by driver, passed as data downstream
+- src/lib.rs: added `pub mod traits` + `pub use traits::TraitResolver`
+- 3 new tests in tests/v0/stage5/plan/trait_resolver_tests.rs
+- Fixed clippy warning (unused import `compile`)
+
+README.md restructured:
+- Complete rewrite with v0.11.0 status
+- Updated architecture table (Stage 0-5 with test counts)
+- Updated API surface (added TraitResolver)
+- Updated codegen capabilities (closures, macros, nested modules, overflow)
+- Updated project layout (traits/ module, standardized tests/, benches/)
+- Updated testing (1005 tests)
+- Updated roadmap (Stage 5 in progress)
+- New documentation section
+
+§17.3 三阶段文档协议执行 (v3.18 含 docs/worklog.md 同步):
+- 时期 1: plan-5.1.md + trait_resolver.md + trait_resolver_tests.rs
+- 时期 2: gate-review-round1.md + test gate-review-round1.md
+- docs/worklog.md: synced
+
+Verification:
+- cargo test: 1005 passed, 0 failed, 2 ignored (was 1002, +3)
+- cargo clippy --all-targets: 0 warnings
+- cargo fmt --check: clean
+
+Stage Summary:
+- Stage 5.1 (TraitResolver) PASSED: 3 new tests, trait/impl collection + dispatch tables.
+- README.md fully restructured.
+- 1005 tests pass. 0 clippy warnings. fmt clean.
+- Next: Stage 5.2+ (vtable generation, stdlib MVP, mini-cargo).

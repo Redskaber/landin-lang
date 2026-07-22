@@ -56,7 +56,9 @@
 //!     GO for Stage 5. Stage 4 COMPLETE.
 //!   Cross-stage (v0.10.2): Stage 0-4 deep review (§21+§25) — pipeline 7-point
 //!     verification, 16 tech debt items cataloged, GO for Stage 5.
-//!   Next: Stage 5 (Mini-cargo + stdlib MVP + trait dispatch).
+//!   Stage 5.1 (v0.11.0): TraitResolver — collect trait definitions + impl blocks +
+//!     build dispatch tables (ImplMap + MethodMap). `src/traits/mod.rs` created.
+//!   Next: Stage 5.2+ (vtable generation, stdlib MVP, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -70,6 +72,7 @@ pub mod mir;
 pub mod parser;
 pub mod resolve;
 pub mod session;
+pub mod traits;
 pub mod typeck;
 
 // Stage 3.61: Clear public API surface — re-export the intended entry points.
@@ -79,3 +82,4 @@ pub mod typeck;
 // `codegen_from_mir` directly).
 pub use codegen::{codegen_crate, EmitType, EmitValue, Emitter, TextEmitter};
 pub use driver::{compile, CompileErrors, CompileResult};
+pub use traits::TraitResolver;

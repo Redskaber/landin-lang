@@ -6,10 +6,11 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** Stage 0-4 complete + Stage 5 next. v0.10.2, **1002 tests** + 5 benchmarks,
-> 50 review rounds. Process v3.18 (§15-§28).
-> Cross-stage deep review R49: pipeline 7-point verified, 16 tech debt cataloged, **GO for Stage 5** ✅.
-> Stage 0-4 all COMPLETE. Next: Stage 5 (Mini-cargo + stdlib MVP + trait dispatch).
+> **Status:** v0.11.0 — Stage 0-4 complete, Stage 5 in progress.
+> **1005 tests** + 5 benchmarks, 0 clippy warnings, fmt clean.
+> Process v3.18 (§15-§28). §16 interface isolation compliant.
+> Cross-stage review R49: GO for Stage 5 ✅.
+> Stage 5.1: TraitResolver ✅ (trait/impl collection + dispatch tables).
 
 ## Quick start
 
@@ -31,101 +32,92 @@ cargo build --release
 source → lexer → parser → AST → HIR → resolve → MIR → typeck → borrowck → codegen → .ll
 ```
 
-| Stage | Module | Status |
-| ------- | -------- | -------- |
-| 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete (344 tests — +1 unsafe impl/trait test in Stage 3.65) |
-| 1 | `hir/`, `resolve/` | ✅ Complete (117 tests — nested modules + visibility enforcement) |
-| 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete (170 tests + 4 closure capture in Stage 4.7) |
-| 3 | `codegen/` | ✅ Complete (294 tests + 5 §21 audit tests, LLVM IR text output; Stage 3.65: mir_type_to_emit_type docs) |
+| Stage | Module | Status | Tests |
+| ----- | -------- | -------- | ----- |
+| 0 | `lexer/`, `parser/`, `ast/` | ✅ Complete | 344 |
+| 1 | `hir/`, `resolve/` | ✅ Complete | 117 |
+| 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete | 170 |
+| 3 | `codegen/` | ✅ Complete | 309 (incl. 5 §21 audit) |
+| 4 | modules, closures, macros, benchmarks, ADR | ✅ Complete | 62 + 5 bench |
+| 5 | `traits/`, stdlib, mini-cargo | 🔄 In progress | 3 (TraitResolver) |
 
-## API surface (Stage 3.63-3.66 naming standard)
+## API surface
 
-The compiler exposes a clean, §16-compliant public API. See
-`docs/develop/v0/api-naming-standard.md` for the full standard.
+Clean, §16-compliant public API. See `docs/develop/v0/api-naming-standard.md`.
 
-| Stage | Entry point | Style |
-|-------|-------------|-------|
-| 0 lexer | `lexer::tokenize(src, &mut interner)` | free fn |
-| 0 parser | `parser::parse_crate(tokens, &mut interner)` | free fn (Stage 3.63 added) |
-| 1.2 HIR lower | `hir::lower::lower_crate(&ast, &interner)` | free fn |
-| 1.3 resolve | `resolve::resolve_crate(&mut hir, &mut interner)` | free fn (Stage 3.64: `use` decl resolution) |
-| 2.1 MIR lower | `mir::lower::lower_body(...)` / `lower_body_full(...)` | free fn (Stage 3.65 aliases) |
-| 2.2 typeck | `TypeChecker::check_mir_body_with_tables(...)` | method (§16-compliant) |
-| 2.3 borrowck | `BorrowChecker::check_mir_body(&mir)` | method |
-| 3 codegen | `codegen::codegen_crate(&CompileResult)` | free fn (§16-compliant) |
-| 3 codegen (pluggable) | `codegen::{Emitter, TextEmitter, EmitType, EmitValue}` | trait + impls (Stage 3.64 re-export) |
-| — driver | `driver::compile(src)` | sole orchestrator |
+| Entry point | Style |
+|-------------|-------|
+| `lexer::tokenize(src, &mut interner)` | free fn |
+| `parser::parse_crate(tokens, &mut interner)` | free fn |
+| `hir::lower::lower_crate(&ast, &interner)` | free fn |
+| `resolve::resolve_crate(&mut hir, &interner)` | free fn |
+| `mir::lower::lower_body(...)` / `lower_body_full(...)` | free fn |
+| `TypeChecker::check_mir_body_with_tables(...)` | method (§16) |
+| `BorrowChecker::check_mir_body(&mir)` | method |
+| `codegen::codegen_crate(&CompileResult)` | free fn (§16) |
+| `codegen::{Emitter, TextEmitter, EmitType, EmitValue}` | trait + impls |
+| `traits::TraitResolver` | struct (Stage 5.1) |
+| `driver::compile(src)` | sole orchestrator |
 
-### Error types (Stage 3.64)
+## Error types
 
 All error types implement `std::error::Error` + `Display`:
 
-| Stage | Error type |
-|-------|------------|
-| 0 lexer | `LexError` |
-| 0 parser | `ParseError` |
-| 1.2 HIR lower | `LowerError` |
-| 1.3 resolve | `ResolveError` |
-| 2 typeck | `TypeError` |
-| 2 borrowck | `BorrowError` |
+`LexError` · `ParseError` · `LowerError` · `ResolveError` · `TypeError` · `BorrowError`
 
-This means they integrate with `?` propagation, `anyhow::Error`, `Box<dyn Error>`,
-and the rest of the standard Rust error-handling ecosystem.
-
-## Codegen capabilities (Stage 3)
+## Codegen capabilities
 
 | Feature | Example | LLVM IR |
 | --------- | --------- | --------- |
-| Function definition | `fn add(a: i32, b: i32) -> i32 { a + b }` | `define i32 @fn_0(i32 %arg0, i32 %arg1)` |
-| Parameter passing | `add(3, 4)` | `call i32 @fn_0(i32 3, i32 4)` |
-| Return | `42` | `ret i32 %v` |
+| Function definition | `fn add(a: i32, b: i32) -> i32 { a + b }` | `define i32 @fn_0(...)` |
 | Arithmetic | `1 + 2 * 3` | `mul nsw i32`, `add nsw i32` |
-| Comparison | `a > b` | `icmp sgt i32`, `zext i1` |
-| Unary | `-x`, `!flag` | `sub i32 0`, `xor i32 -1` |
 | Variables | `let x = 42;` | `alloca i32`, `store i32 42` |
-| Control flow | `if a > b { 1 } else { 2 }` | `br i1 %cond, label %bb1, label %bb2` |
+| Control flow | `if a > b { 1 } else { 2 }` | `br i1 %cond, ...` |
 | Loops | `while i < 10 { ... }` | `br label %loop` |
-| Borrow | `&x` | `store i32* %loc_x` |
-| Deref | `*r` | `load i32, %ptr` |
-| Recursive calls | `fib(n-1) + fib(n-2)` | `call i32 @fn_0(i32 %v)` |
+| Borrow/Deref | `&x` / `*r` | `store` / `load` |
+| Structs | `struct Point { x: i32, y: i32 }` | `{ i32, i32 }` |
+| Enums | `enum Color { Red, Green, Blue }` | `{ i32 }` (discriminant) |
+| Closures | `\|x\| x + y` | `{ capture_fields }` struct |
+| Macros | `println!("hello")` | unit (built-in expansion) |
+| Nested modules | `mod inner { pub fn f() {} }` | recursive module tree |
+| Overflow check | `a + b` | `call @__landin_panic_overflow` |
 
 ## Project layout
 
 ```
 landin-stage0/
-├── Cargo.toml              Package manifest (v0.8.6)
+├── Cargo.toml              v0.11.0
 ├── src/
-│   ├── lexer/              Lexer (109 tests)
+│   ├── lexer/              Hand-written lexer (109 tests)
 │   ├── parser/             Recursive-descent + Pratt parser (85 tests)
-│   ├── ast/                AST node definitions (149 tests)
-│   ├── hir/                HIR + lowering + name resolution (451 tests)
-│   ├── resolve/            Module + scope name resolution
-│   ├── mir/                MIR types + HIR→MIR lowering
-│   ├── typeck/             Type inference + unification
-│   ├── borrowck/           NLL borrow checker
-│   ├── codegen/            LLVM IR codegen (Emitter trait + TextEmitter)
+│   ├── ast/                AST node definitions (150 tests)
+│   ├── hir/                HIR + lowering (56 tests)
+│   ├── resolve/            Name resolution + scope + visibility (43 tests)
+│   ├── mir/                MIR types + HIR→MIR lowering (22 tests)
+│   ├── typeck/             Type inference + unification (26 tests)
+│   ├── borrowck/           NLL borrow checker (26 tests)
+│   ├── codegen/            LLVM IR codegen via Emitter trait (294 tests)
+│   ├── traits/             TraitResolver — trait/impl collection (Stage 5.1)
 │   ├── driver.rs           Full pipeline driver
 │   └── bin/                CLI entry point
-├── tests/
-│   ├── codegen_tests.rs    26 codegen tests
-│   ├── negative_cases.rs   33 negative-case tests (7/7 categories)
-│   ├── deep_inspection.rs  15 structural verification tests
-│   └── ...                 Lexer, parser, HIR, MIR, typeck tests
-├── examples/
-│   ├── stage2_4d_audit.rs  15-program audit
-│   ├── round3-6_audit.rs   Multi-round negative-case audits
-│   └── cross_stage_audit.rs 51-case cross-stage audit
+├── tests/v0/stage{0-5}/    Standardized test directory (v3.17 §17.1)
+├── benches/                Performance benchmarks (5 benchmarks)
+├── examples/               Audit scripts + usage examples
 └── docs/
-    ├── stage-3-plan.md     Stage 3 plan
-    ├── stage-committee-process.md  Process v3.5 (with §11 doc sync)
-    └── ...                 Gate review reports, development logs
+    ├── stage-committee-process.md  Process v3.18
+    ├── develop/v0/                 Dev logs + ADR + deep reviews
+    ├── tests/                      Test plans + matrix
+    └── worklog.md                  Worklog mirror (v3.18 §18.4.0)
 ```
 
 ## Testing
 
 ```bash
-# Run all 983 tests
+# Run all 1005 tests
 cargo test
+
+# Run benchmarks
+cargo test --bench compile_bench -- --nocapture
 
 # Format + lint
 cargo fmt --check
@@ -135,13 +127,22 @@ cargo clippy --all-targets -- -D warnings
 ## Roadmap
 
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
-- **Stage 1** ✅ HIR + name resolution (Stage 3.64: `use` declaration resolution; Stage 3.65: `unsafe impl/trait` AST fields + `Res::SelfTy` discrimination)
-- **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review; Stage 3.65: `lower_body` aliases; Stage 3.66: `Lvalue`→`Place` rename)
-- **Stage 3** ✅ LLVM codegen (COMPLETE — 37 review rounds, §16 compliant, all soundness-critical limitations closed; Stage 3.63-3.69 naming standardization + P2 fixes + deep review)
-- **Stage 4** ✅ COMPLETE (13 sub-stages: modules + PHI + visibility + closures + macros + benchmarks + ADR + v3.18; deep review R48: GO for Stage 5)
-- **Stage 5** Mini-cargo + stdlib MVP + trait dispatch (L5) — NEXT
+- **Stage 1** ✅ HIR + name resolution (use resolution, nested modules, visibility, unsafe impl/trait)
+- **Stage 2** ✅ MIR + type check + borrow check (NLL, closures, coercion matrix)
+- **Stage 3** ✅ LLVM codegen (§16 compliant, all soundness-critical limitations closed, L1 CLOSED)
+- **Stage 4** ✅ COMPLETE (13 sub-stages: modules + PHI + visibility + closures + macros + benchmarks + ADR + v3.18)
+- **Stage 5** 🔄 In progress (5.1: TraitResolver ✅; next: vtable, stdlib, mini-cargo)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting
+
+## Documentation
+
+- `docs/stage-committee-process.md` — Process SOP v3.18 (§1-§28)
+- `docs/develop/v0/api-naming-standard.md` — API naming standard v1.5
+- `docs/develop/v0/architecture-decisions.md` — 7 Architecture Decision Records
+- `docs/develop/v0/stage-{0..5}/` — Per-stage dev logs + gate reviews + plans
+- `docs/tests/` — Test plans + matrix + README
+- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0)
 
 ## License
 

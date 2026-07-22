@@ -1,9 +1,56 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.10.2
+**Current version**: v0.11.0
 **Date**: 2026-07-22
-**Test count**: **1002 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+**Test count**: **1005 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.11.0 — Stage 5.1 (TraitResolver — trait/impl collection + dispatch tables)
+
+### Overview
+
+First Stage 5 release. Implements TraitResolver — collects trait definitions
+and impl blocks from HIR, builds dispatch tables for method resolution.
+1005 tests pass (was 1002, +3 new). 0 clippy warnings. fmt clean. README.md
+fully restructured and updated.
+
+### Stage 5.1: TraitResolver
+
+**New** `src/traits/mod.rs` — TraitResolver module:
+- `TraitInfo` — trait definition metadata (def_id, name, methods, is_unsafe)
+- `ImplInfo` — impl block metadata (def_id, trait_name, self_ty_name, methods, is_unsafe)
+- `TraitResolver` — collects from HIR, builds:
+  - `trait_by_name` — Spur → DefId lookup
+  - `impl_by_trait_and_type` — (trait_name, self_ty_name) → DefId lookup
+- Query methods: `find_trait`, `find_impl`, `implements`, `trait_count`, `impl_count`
+- Per §16: built by driver during pre-computation, passed as data downstream
+
+**Public API**: `pub use traits::TraitResolver` added to `lib.rs`
+
+**New tests** (3) — in `tests/v0/stage5/plan/trait_resolver_tests.rs`:
+- `test_trait_collected` — `trait Foo { fn bar(); }` collected
+- `test_impl_collected` — `impl Foo for S { fn bar() {} }` collected
+- `test_method_dispatch_table` — dispatch table has correct entry
+
+### README.md restructured
+
+Complete rewrite of README.md with:
+- Updated status (v0.11.0, 1005 tests, Stage 5 in progress)
+- Updated architecture table (Stage 0-5 with test counts)
+- Updated API surface (added TraitResolver)
+- Updated codegen capabilities table (closures, macros, nested modules, overflow)
+- Updated project layout (traits/ module, standardized tests/ structure, benches/)
+- Updated testing section (1005 tests)
+- Updated roadmap (Stage 5 in progress)
+- New documentation section
+
+### Verification
+
+- `cargo test`: **1005 passed, 0 failed, 2 ignored**
+- `cargo clippy --all-targets`: **0 warnings**
+- `cargo fmt --check`: **clean**
 
 ---
 

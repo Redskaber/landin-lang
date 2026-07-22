@@ -76,8 +76,9 @@
 | 4.13 | Full closure call lowering: extract captures from closure struct + inferred-type result (inline body deferred to Stage 5) | +2 | ✅ |
 | 4.14 | Stage 4 deep review (§25): 7-dimension analysis, GO for Stage 5. Stage 4 COMPLETE. | 0 | ✅ |
 | R49 | Cross-stage deep review (§21+§25): Stage 0-4 pipeline 7-point verified, 16 tech debt cataloged, GO for Stage 5 | 0 | ✅ |
-| **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R36 + Deep reviews R37/R48/R49 + Stage 4.1-4.14 | Audit cases | 716+ cumulative + 3 deep reviews | ✅ |
+| 5.1 | TraitResolver: collect trait definitions + impl blocks + build dispatch tables (ImplMap + MethodMap); src/traits/mod.rs created | +3 | ✅ |
+| **Total** | | **294 + 5 §21 audit + 3 trait** | ✅ |
+| Gate audits R1-R36 + Deep reviews R37/R48/R49 + Stage 4.1-4.14 + Stage 5.1 | Audit cases | 716+ cumulative + 3 deep reviews | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 
