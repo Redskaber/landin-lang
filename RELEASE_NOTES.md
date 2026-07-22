@@ -1,9 +1,53 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.10.1
+**Current version**: v0.10.2
 **Date**: 2026-07-22
 **Test count**: **1002 tests** + 5 benchmarks, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.10.2 — Cross-Stage Deep Review R49 (Stage 0-4, §21+§25)
+
+### Overview
+
+Cross-stage deep review of all 5 stages (Stage 0-4) per §21 (跨阶段深度审查) +
+§25 (阶段末尾深度审查). Reviews the complete compilation pipeline, architecture
+health, tech debt inventory, and Stage 5 readiness. Committee vote: 5/5 GO.
+1002 tests + 5 benchmarks pass (unchanged — pure review). 0 clippy warnings.
+
+### Cross-Stage Review: 7 Pipeline Handoff Points
+
+All 7 pipeline handoff points verified ✅:
+1. lexer→parser (Vec<Token>)
+2. parser→HIR lower (ast::Crate)
+3. HIR lower→resolve (HirCrate)
+4. resolve→MIR lower (HirCrate mutated)
+5. MIR lower→typeck (MirBody + UnificationTable)
+6. typeck→borrowck (MirBody mutated)
+7. borrowck→codegen (CompileResult)
+
+### §16 Compliance: 8/8 ✅
+
+All 8 interface-isolation checklist items pass.
+
+### Tech Debt Inventory: 16 items
+
+All 16 tech debt items (TD-001 to TD-016) have repayment plans. 0 items block Stage 5.
+
+### Committee Vote: 5/5 GO
+
+**Stage 0-4 all COMPLETE. Stage 5 can begin.**
+
+### Output
+
+- `docs/develop/v0/stage-0-4-cross-stage-deep-review-r49.md` — full cross-stage review
+
+### Verification
+
+- `cargo test`: **1002 passed, 0 failed, 2 ignored**
+- `cargo clippy --all-targets`: **0 warnings**
+- `cargo fmt --check`: **clean**
 
 ---
 

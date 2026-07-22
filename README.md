@@ -6,11 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** Stage 0-4 complete + Stage 5 next. v0.10.1, **1002 tests** + 5 benchmarks,
-> 49 review rounds (48 gate + 2 deep review). Process v3.18 (§15-§28).
-> Stage 4: 13 sub-stages complete (modules + PHI + visibility + closures + macro system
-> + benchmarks + ADR + v3.18). Deep review R48: **GO for Stage 5** ✅.
-> Stage 4 is COMPLETE. Next: Stage 5 (Mini-cargo + stdlib MVP + trait dispatch).
+> **Status:** Stage 0-4 complete + Stage 5 next. v0.10.2, **1002 tests** + 5 benchmarks,
+> 50 review rounds. Process v3.18 (§15-§28).
+> Cross-stage deep review R49: pipeline 7-point verified, 16 tech debt cataloged, **GO for Stage 5** ✅.
+> Stage 0-4 all COMPLETE. Next: Stage 5 (Mini-cargo + stdlib MVP + trait dispatch).
 
 ## Quick start
 

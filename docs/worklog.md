@@ -2609,3 +2609,37 @@ Stage Summary:
 - Stage 4 deep review PASSED: GO for Stage 5.
 - Stage 4 is COMPLETE: 13 sub-stages, 1002 tests, 0 warnings, §16 compliant.
 - Stage 5 can begin: TraitResolver + stdlib + mini-cargo.
+
+---
+Task ID: cross-stage-r49
+Agent: Super Z (main)
+Task: Cross-stage deep review (Stage 0-4, §21+§25) — pipeline, architecture, tech debt, optimization points + package
+
+Work Log:
+- Baseline: v0.10.1 / 1002 tests / Stage 0-4 complete.
+- Per §21 (跨阶段深度审查) + §25 (阶段末尾深度审查), execute cross-stage review.
+
+Cross-stage review R49:
+- Pipeline 7 handoff points all verified ✅
+- §16 compliance 8/8 ✅
+- 16 tech debt items cataloged (TD-001 to TD-016), all with repayment plans, 0 blocking Stage 5
+- Per-stage analysis (Stage 0-4): each stage's strengths, issues, optimization points, timing
+- Optimization recommendations:
+  * High priority (Stage 5 early): file splits (mir/lower 3124 LOC + parser 3052 LOC + resolver 1131 LOC) + closure inline + strict visibility
+  * Medium priority (Stage 5 mid): TraitResolver + stdlib MVP + AST naming unification
+  * Low priority (Stage 5+): NLL fixpoint + region inference + user macros + Emitter decomposition + lli
+
+Committee vote: 5/5 GO → Stage 0-4 all COMPLETE, Stage 5 can begin.
+
+Output: docs/develop/v0/stage-0-4-cross-stage-deep-review-r49.md (full cross-stage report)
+
+Verification:
+- cargo test: 1002 passed, 0 failed, 2 ignored (unchanged — pure review)
+- cargo clippy --all-targets: 0 warnings
+- cargo fmt --check: clean
+- docs/worklog.md: synced
+
+Stage Summary:
+- Cross-stage deep review R49 PASSED: GO for Stage 5.
+- Pipeline 7-point verified, 16 tech debt cataloged, 0 blockers.
+- Stage 0-4 all COMPLETE. Stage 5 can begin.

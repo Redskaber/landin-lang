@@ -54,6 +54,8 @@
 //!     closure struct + produce inferred-type result (inline body deferred to Stage 5).
 //!   Stage 4.14 (v0.10.1): Stage 4 deep review (§25) — 7-dimension analysis,
 //!     GO for Stage 5. Stage 4 COMPLETE.
+//!   Cross-stage (v0.10.2): Stage 0-4 deep review (§21+§25) — pipeline 7-point
+//!     verification, 16 tech debt items cataloged, GO for Stage 5.
 //!   Next: Stage 5 (Mini-cargo + stdlib MVP + trait dispatch).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 

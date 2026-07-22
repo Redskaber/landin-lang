@@ -75,8 +75,9 @@
 | 4.12 | Process v3.18 (worklog snapshot sync to docs/worklog/) + current_module tracking for visibility enforcement + 1000 tests milestone | +2 | ✅ |
 | 4.13 | Full closure call lowering: extract captures from closure struct + inferred-type result (inline body deferred to Stage 5) | +2 | ✅ |
 | 4.14 | Stage 4 deep review (§25): 7-dimension analysis, GO for Stage 5. Stage 4 COMPLETE. | 0 | ✅ |
+| R49 | Cross-stage deep review (§21+§25): Stage 0-4 pipeline 7-point verified, 16 tech debt cataloged, GO for Stage 5 | 0 | ✅ |
 | **Total codegen** | | **294 + 5 §21 audit** | ✅ |
-| Gate audits R1-R36 + Deep review R37 + Stage 4.1-4.14 R48 (deep review R48) | Audit cases | 716+ cumulative + 2 deep reviews | ✅ |
+| Gate audits R1-R36 + Deep reviews R37/R48/R49 + Stage 4.1-4.14 | Audit cases | 716+ cumulative + 3 deep reviews | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 
