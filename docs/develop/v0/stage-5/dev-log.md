@@ -421,3 +421,22 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ all new methods read TraitResolver data only.
 **API naming**: ✅ `CoherenceError` + `check_coherence` + `has_coherence_error` + `coherence_error_count`.
+
+### Stage 5.19 — Trait Impl Completeness Check (v0.11.18) — 1000+ tests milestone 🎉
+
+**Priority**: Detect incomplete impls (trait methods not implemented).
+
+**Work completed**:
+- src/traits/mod.rs: 3 new query methods on TraitResolver:
+  * `impl_covers_trait(trait, ty) -> bool` — impl covers all trait methods?
+  * `missing_impl_methods(trait, ty) -> Vec<Spur>` — missing method names
+  * `missing_method_count(trait, ty) -> usize` — missing method count
+- tests/v0/stage5/plan/impl_completeness_tests.rs: 8 new tests
+- tests/all_tests.rs: added impl_completeness_tests module (37 mods)
+- Cargo.toml: version 0.11.17 → 0.11.18
+
+**Test impact**: +8 (1007 — was 999) — **1000+ tests milestone** 🎉
+**Verification**: cargo clean + cargo test (1007 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ all new methods read TraitResolver data only.
+**API naming**: ✅ `impl_covers_trait` + `missing_impl_methods` + `missing_method_count`.

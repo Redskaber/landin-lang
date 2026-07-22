@@ -834,6 +834,63 @@ impl TraitResolver {
     pub fn coherence_error_count(&self) -> usize {
         self.check_coherence().len()
     }
+
+    /// Stage 5.19: Check if an impl covers all methods declared by the trait.
+    ///
+    /// Given `(trait_spur, type_spur)`, compares the methods implemented
+    /// in the impl block against the methods declared in the trait. Returns
+    /// `true` if all trait methods are implemented.
+    ///
+    /// Returns `false` if:
+    /// - No impl exists for `(trait, type)`
+    /// - The impl is missing one or more trait methods
+    ///
+    /// Per API-naming-standard §3: `impl_covers_trait` follows
+    /// `<noun>_<verb>_<noun>` pattern for boolean queries.
+    pub fn impl_covers_trait(&self, trait_name: Spur, self_ty_name: Spur) -> bool {
+        let trait_methods = match self.trait_methods(trait_name) {
+            Some(m) => m,
+            None => return false,
+        };
+        let impl_methods = match self.impl_methods(trait_name, self_ty_name) {
+            Some(m) => m,
+            None => return false,
+        };
+        // Every trait method must be in the impl methods
+        trait_methods.iter().all(|tm| impl_methods.contains(tm))
+    }
+
+    /// Stage 5.19: Get the trait methods missing from an impl.
+    ///
+    /// Returns a Vec of method name Spurs that are declared in the trait
+    /// but not implemented in the impl block. Empty Vec means the impl
+    /// is complete (or no trait/impl exists).
+    ///
+    /// Per API-naming-standard §3: `missing_impl_methods` follows
+    /// `<adjective>_<noun>_<noun>` pattern for collection-returning queries.
+    pub fn missing_impl_methods(&self, trait_name: Spur, self_ty_name: Spur) -> Vec<Spur> {
+        let trait_methods = match self.trait_methods(trait_name) {
+            Some(m) => m,
+            None => return Vec::new(),
+        };
+        let impl_methods = match self.impl_methods(trait_name, self_ty_name) {
+            Some(m) => m,
+            None => return Vec::new(),
+        };
+        trait_methods
+            .iter()
+            .filter(|tm| !impl_methods.contains(tm))
+            .copied()
+            .collect()
+    }
+
+    /// Stage 5.19: Get the count of missing methods in an impl.
+    ///
+    /// Per API-naming-standard §3: `missing_method_count` follows
+    /// `<noun>_count` pattern consistent with `method_count_for_trait`.
+    pub fn missing_method_count(&self, trait_name: Spur, self_ty_name: Spur) -> usize {
+        self.missing_impl_methods(trait_name, self_ty_name).len()
+    }
 }
 
 /// Best-effort extraction of a type name from a HirTy.

@@ -130,7 +130,11 @@
 //!     `CoherenceError` struct + `check_coherence()` +
 //!     `has_coherence_error()` + `coherence_error_count()` for detecting
 //!     conflicting impls (multiple `impl Trait for Type` for same pair).
-//!   Next: Stage 5.19+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.19 (v0.11.18): Trait impl completeness check —
+//!     `impl_covers_trait()` + `missing_impl_methods()` +
+//!     `missing_method_count()` for detecting incomplete impls (missing
+//!     methods that the trait declares but the impl doesn't provide).
+//!   Next: Stage 5.20+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
