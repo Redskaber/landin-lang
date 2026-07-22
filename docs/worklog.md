@@ -3564,3 +3564,39 @@ Stage Summary:
 - Trait hierarchy (supertraits) collected + queryable.
 - 977 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.16+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.16-r65
+Agent: Super Z (main)
+Task: Stage 5.16 — TraitResolver summary + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.14 / 977 tests / Stage 5.15 complete (trait hierarchy)
+
+Stage 5.16: TraitResolver summary
+- src/traits/mod.rs: new `summary(&Rodeo) -> String` method on TraitResolver
+  * Header: trait/impl/type/vtable/builtin counts
+  * Per-trait: name + method count + supertrait count (+ supertrait names)
+  * Per-type: name + impl count (+ implemented trait names)
+  * Skips builtin trait DefIds from Types section
+- tests/v0/stage5/plan/trait_summary_tests.rs: 7 new tests
+- tests/all_tests.rs: added trait_summary_tests module (34 mods)
+- Cargo.toml: version 0.11.14 → 0.11.15
+
+§17.3 三阶段文档协议执行 (v3.20):
+- 时期 1: plan-5.16.md + trait_summary.md + trait_summary_tests.rs
+- 时期 2: gate-review-round16.md + test gate-review-round16.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.16 entry appended
+- README.md: updated to v0.11.15
+
+CI/CD Verification (§1.2 交付前验收, ACTUAL RUN):
+- cargo test: 984 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.16 PASSED — CI/CD all green per §1.2.
+- TraitResolver summary() for diagnostics + debugging.
+- 984 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.17+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

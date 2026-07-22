@@ -620,6 +620,77 @@ impl TraitResolver {
             Vec::new()
         }
     }
+
+    /// Stage 5.16: Generate a human-readable summary of the TraitResolver
+    /// state. Useful for diagnostics, debugging, and error messages.
+    ///
+    /// The summary includes:
+    /// - Trait count + impl count + type count + vtable count + builtin count
+    /// - Per-trait: name, method count, supertrait count
+    /// - Per-type: name, impl count, implemented trait names
+    ///
+    /// Per API-naming-standard §3: `summary` is a noun naming the output
+    /// (the summary string); consistent with Rust convention for
+    /// human-readable output methods (e.g. `to_string`).
+    pub fn summary(&self, interner: &Rodeo) -> String {
+        let mut out = String::new();
+        out.push_str(&format!(
+            "TraitResolver summary:\n  traits: {}\n  impls: {}\n  types: {}\n  vtables: {}\n  builtin_traits: {}\n",
+            self.trait_count(),
+            self.impl_count(),
+            self.type_count(),
+            self.vtable_count(),
+            self.builtin_trait_count()
+        ));
+
+        // Per-trait details
+        if !self.traits.is_empty() {
+            out.push_str("\n  Traits:\n");
+            for trait_info in self.traits.values() {
+                let name = interner.try_resolve(&trait_info.name).unwrap_or("?");
+                let method_count = trait_info.methods.len();
+                let supertrait_count = trait_info.supertraits.len();
+                out.push_str(&format!(
+                    "    {}: {} methods, {} supertraits",
+                    name, method_count, supertrait_count
+                ));
+                if !trait_info.supertraits.is_empty() {
+                    let supers: Vec<&str> = trait_info
+                        .supertraits
+                        .iter()
+                        .map(|s| interner.try_resolve(s).unwrap_or("?"))
+                        .collect();
+                    out.push_str(&format!(" ({})", supers.join(", ")));
+                }
+                out.push('\n');
+            }
+        }
+
+        // Per-type impl details
+        if !self.type_by_def_id.is_empty() {
+            out.push_str("\n  Types:\n");
+            for (&def_id, &name_spur) in &self.type_by_def_id {
+                // Skip builtin trait DefIds (they're in the reserved range)
+                if def_id.0 > BUILTIN_DEF_ID_BASE - BUILTIN_TRAIT_NAMES.len() as u32 {
+                    continue;
+                }
+                let name = interner.try_resolve(&name_spur).unwrap_or("?");
+                let impl_count = self.impl_count_for_type(def_id);
+                out.push_str(&format!("    {}: {} impls", name, impl_count));
+                if impl_count > 0 {
+                    let traits: Vec<String> = self
+                        .traits_for_type(def_id)
+                        .iter()
+                        .map(|s| interner.try_resolve(s).unwrap_or("?").to_string())
+                        .collect();
+                    out.push_str(&format!(" ({})", traits.join(", ")));
+                }
+                out.push('\n');
+            }
+        }
+
+        out
+    }
 }
 
 /// Best-effort extraction of a type name from a HirTy.

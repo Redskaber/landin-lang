@@ -118,7 +118,11 @@
 //!     `TraitInfo.supertraits` field populated from `HirTrait.supertraits`;
 //!     `trait_supertraits()` + `trait_has_supertrait()` +
 //!     `supertrait_count_for_trait()` query methods for hierarchy traversal.
-//!   Next: Stage 5.16+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.16 (v0.11.15): TraitResolver summary —
+//!     `summary(&Rodeo) -> String` method generates human-readable state
+//!     report (trait/impl/type/vtable/builtin counts + per-trait methods/
+//!     supertraits + per-type impl list). For diagnostics + debugging.
+//!   Next: Stage 5.17+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

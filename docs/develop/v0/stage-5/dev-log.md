@@ -361,3 +361,23 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ supertraits collected in collect() (driver phase),
 query methods read data only.
 **API naming**: ✅ `<noun>_<noun>` + `<noun>_<verb>_<noun>` + `<noun>_count_for_<noun>`.
+
+### Stage 5.16 — TraitResolver Summary (v0.11.15)
+
+**Priority**: Add human-readable state report for diagnostics + debugging.
+
+**Work completed**:
+- src/traits/mod.rs: new `summary(&Rodeo) -> String` method on TraitResolver
+  * Header: trait/impl/type/vtable/builtin counts
+  * Per-trait: name + method count + supertrait count (+ supertrait names)
+  * Per-type: name + impl count (+ implemented trait names)
+  * Skips builtin trait DefIds from Types section
+- tests/v0/stage5/plan/trait_summary_tests.rs: 7 new tests
+- tests/all_tests.rs: added trait_summary_tests module (34 mods)
+- Cargo.toml: version 0.11.14 → 0.11.15
+
+**Test impact**: +7 (984 — was 977)
+**Verification**: cargo clean + cargo test (984 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ summary reads TraitResolver data only.
+**API naming**: ✅ `summary` noun naming (output content).
