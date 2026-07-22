@@ -275,3 +275,25 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ pure constant + function, no HIR access.
 **API naming**: ✅ SCREAMING_SNAKE_CASE constant + `is_` + `_kind` suffix.
+
+### Stage 5.12 — Copy Detection Unification (v0.11.11)
+
+**Priority**: Wire `is_primitive_copy_kind()` into `ty_is_copy_with_resolver`.
+
+**Work completed**:
+- src/borrowck/mod.rs: `ty_is_copy_with_resolver` primitive branches refactored
+  * Old: `Bool | Char | Int(_) | ... => true` (hardcoded)
+  * New: `... => is_primitive_copy_kind(&format!("{:?}", ty.kind))` (delegated)
+  * Match still handles Tuple/Array (recursive) + Adt (resolver) + Str/Slice/etc.
+- src/borrowck/mod.rs: new `ty_is_copy_unified()` entry point
+  * Delegates to `ty_is_copy_with_resolver`
+  * Preferred entry for new code (explicit "unified" intent)
+- tests/v0/stage5/plan/copy_unification_tests.rs: 5 new tests
+- tests/all_tests.rs: added copy_unification_tests module (30 mods)
+- Cargo.toml: version 0.11.10 → 0.11.11
+
+**Test impact**: +5 (954 — was 949)
+**Verification**: cargo clean + cargo test (954 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ pure consumer, no HIR access.
+**API naming**: ✅ `ty_is_copy_unified` follows `ty_is_copy_` prefix + `_unified` suffix.

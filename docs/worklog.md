@@ -3410,3 +3410,42 @@ Stage Summary:
   queryable constant + function.
 - 949 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.12+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.12-r61
+Agent: Super Z (main)
+Task: Stage 5.12 — Copy detection unification + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.10 / 949 tests / Stage 5.11 complete (primitive Copy auto-detect)
+
+Stage 5.12: Copy detection unification
+- src/borrowck/mod.rs: ty_is_copy_with_resolver primitive branches refactored
+  * Old: Bool | Char | Int(_) | ... => true (hardcoded)
+  * New: ... => is_primitive_copy_kind(&format!("{:?}", ty.kind)) (delegated)
+  * Match still handles Tuple/Array (recursive) + Adt (resolver) + Str/Slice/etc.
+- src/borrowck/mod.rs: new ty_is_copy_unified() entry point
+  * Delegates to ty_is_copy_with_resolver
+  * Preferred entry for new code (explicit "unified" intent)
+- tests/v0/stage5/plan/copy_unification_tests.rs: 5 new tests
+- tests/all_tests.rs: added copy_unification_tests module (30 mods)
+- Cargo.toml: version 0.11.10 → 0.11.11
+
+§17.3 三阶段文档协议执行 (v3.20):
+- 时期 1: plan-5.12.md + copy_unification.md + copy_unification_tests.rs
+- 时期 2: gate-review-round12.md + test gate-review-round12.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.12 entry appended
+- README.md: updated to v0.11.11
+
+CI/CD Verification (§1.2 交付前验收, ACTUAL RUN):
+- cargo test: 954 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.12 PASSED — CI/CD all green per §1.2.
+- Copy detection unified: single source of truth via is_primitive_copy_kind().
+- New ty_is_copy_unified() entry point for new code.
+- 954 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.13+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

@@ -124,3 +124,6 @@ mod builtin_clone_drop_tests;
 
 #[path = "v0/stage5/plan/primitive_copy_tests.rs"]
 mod primitive_copy_tests;
+
+#[path = "v0/stage5/plan/copy_unification_tests.rs"]
+mod copy_unification_tests;

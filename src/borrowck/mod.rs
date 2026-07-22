@@ -660,6 +660,11 @@ pub fn ty_is_copy(ty: &crate::mir::ty::Ty) -> bool {
 /// found, the type is NOT Copy.
 ///
 /// For non-Adt types, behavior is identical to `ty_is_copy`.
+///
+/// Stage 5.12: Primitive branches now delegate to `is_primitive_copy_kind()`
+/// for consistency — single source of truth for which TyKinds are always Copy.
+/// The match still handles Tuple/Array (recursive) and Adt (resolver query)
+/// which `is_primitive_copy_kind` cannot (it's string-based, no recursion).
 pub fn ty_is_copy_with_resolver(
     ty: &crate::mir::ty::Ty,
     resolver: &crate::traits::TraitResolver,
@@ -667,11 +672,19 @@ pub fn ty_is_copy_with_resolver(
 ) -> bool {
     use crate::mir::ty::TyKind::*;
     match &ty.kind {
-        Bool | Char | Int(_) | Uint(_) | Float(_) => true,
-        Ref(_, _, _) => true,
-        RawPtr(_, _) => true,
-        FnDef(_, _) | FnPtr(_) => true,
-        Never => true,
+        // Stage 5.12: delegate primitive Copy check to the unified helper.
+        // is_primitive_copy_kind returns true for Bool/Char/Int/Uint/Float/
+        // Never/Ref/RawPtr/FnDef/FnPtr — matching the old hardcoded branches.
+        Bool
+        | Char
+        | Int(_)
+        | Uint(_)
+        | Float(_)
+        | Ref(_, _, _)
+        | RawPtr(_, _)
+        | FnDef(_, _)
+        | FnPtr(_)
+        | Never => crate::traits::is_primitive_copy_kind(&format!("{:?}", ty.kind)),
         Tuple(tys) => tys
             .iter()
             .all(|t| ty_is_copy_with_resolver(t, resolver, interner)),
@@ -685,6 +698,25 @@ pub fn ty_is_copy_with_resolver(
         Adt(def_id, _) => resolver.is_copy_builtin(*def_id, interner),
         Str | Slice(_) | Closure(_, _) | Param(_) => false,
     }
+}
+
+/// Stage 5.12: Unified Copy check — single entry point that combines
+/// primitive Copy detection (via `is_primitive_copy_kind`) with resolver-
+/// based Copy detection (via `is_copy_builtin`).
+///
+/// This is the preferred Copy-detection entry point for new code. It
+/// delegates to `ty_is_copy_with_resolver` (which now uses
+/// `is_primitive_copy_kind` for primitives) and is kept as a separate
+/// name to make the "unified" intent explicit.
+///
+/// Per API-naming-standard §3: `ty_is_copy_` prefix consistent with
+/// `ty_is_copy` / `ty_is_copy_with_resolver`; `_unified` suffix distinguishes.
+pub fn ty_is_copy_unified(
+    ty: &crate::mir::ty::Ty,
+    resolver: &crate::traits::TraitResolver,
+    interner: &lasso::Rodeo,
+) -> bool {
+    ty_is_copy_with_resolver(ty, resolver, interner)
 }
 
 /// A field-sensitive place path for borrow/move tracking.

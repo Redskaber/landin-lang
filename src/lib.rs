@@ -102,7 +102,11 @@
 //!     `BUILTIN_PRIMITIVE_COPY_KINDS` constant (10 always-Copy TyKinds) +
 //!     `is_primitive_copy_kind()` free function (string-based check, avoids
 //!     mir↔traits circular dep). Foundation for stdlib MVP auto-Copy.
-//!   Next: Stage 5.12+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.12 (v0.11.11): Copy detection unification —
+//!     `ty_is_copy_with_resolver` primitive branches now delegate to
+//!     `is_primitive_copy_kind()` (single source of truth); new
+//!     `ty_is_copy_unified()` entry point (preferred for new code).
+//!   Next: Stage 5.13+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
