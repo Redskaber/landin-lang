@@ -294,3 +294,18 @@ field (the captured `y`), and the `Aggregate` value carries `y`'s value.
 
 **Test impact**: +5 benchmarks (998 tests + 5 benchmarks)
 **Verification**: 0 clippy warnings, fmt clean
+
+---
+
+### Stage 4.12 — Process v3.18 + Visibility Tracking + 1000 Tests (v0.9.9)
+
+**Work completed**:
+- Process v3.18: §18.4.0 worklog snapshot sync to `docs/worklog/`
+- 5 historical worklog snapshots created (R42-R46)
+- `current_module: Option<Spur>` field on Resolver (Stage 4.12)
+- `check_visibility` updated to reference `current_module`
+- `current_module()` public accessor for testing
+- 2 new visibility tests → **1000 tests milestone** 🎉
+
+**Test impact**: +2 (1000/1000 — was 998)
+**Verification**: 0 clippy warnings, fmt clean

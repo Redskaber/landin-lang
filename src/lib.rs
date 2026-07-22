@@ -48,6 +48,8 @@
 //!   Stage 4.11 (v0.9.8): Performance benchmark suite (benches/compile_bench.rs,
 //!     5 benchmarks) + Architecture Decision Records (ADR-001 to ADR-007).
 //!     Closes deep review R37 conditions (QA benchmark + D7 documentation).
+//!   Stage 4.12 (v0.9.9): Process v3.18 (worklog snapshot sync to docs/worklog/)
+//!     + current_module tracking for visibility enforcement + 1000 tests milestone.
 //!   Remaining: L5 (traits), L8 (lli), user-defined macros (macro_rules!).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 

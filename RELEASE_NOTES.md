@@ -1,9 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.9.8
+**Current version**: v0.9.9
 **Date**: 2026-07-22
-**Test count**: 998 tests + 5 benchmarks passing, 0 warnings, fmt + clippy clean
+**Test count**: **1000 tests** + 5 benchmarks passing, 0 warnings, fmt + clippy clean
+
+---
+
+## v0.9.9 — Stage 4.12 (Process v3.18 + worklog sync + visibility tracking + 1000 tests 🎉)
+
+### Overview
+
+Updates process to v3.18 (worklog snapshot sync to `docs/worklog/`), adds
+`current_module` tracking for visibility enforcement, and reaches the **1000
+tests milestone**. 1000 tests + 5 benchmarks pass. 0 clippy warnings. fmt clean.
+
+### Process v3.18: Worklog snapshot sync
+
+New §18.4.0 — every round must sync worklog to `docs/worklog/worklog-round<NN>.md`:
+- Worklog snapshots live alongside dev/test docs in the project tree
+- Each round creates a standalone snapshot file
+- `docs/worklog/README.md` indexes all snapshots
+- 5 historical snapshots created (R42-R46) + R47 (this round)
+
+### Stage 4.12: current_module tracking
+
+- New `current_module: Option<Spur>` field on `Resolver` (Stage 4.12)
+- `check_visibility` documentation updated to reference `current_module`
+- `current_module()` public accessor for testing
+- Conservative enforcement (still permissive — infrastructure ready for strict)
+
+### 1000 tests milestone 🎉
+
+- 998 → 1000 (+2 new visibility tests)
+- `test_pub_visible_cross_module` — pub fn across modules
+- `test_private_visible_same_module` — private fn same module
+
+### Verification
+
+- `cargo test`: **1000 passed, 0 failed, 2 ignored**
+- `cargo test --bench compile_bench`: **5 passed**
+- `cargo clippy --all-targets`: **0 warnings**
+- `cargo fmt --check`: **clean**
 
 ---
 

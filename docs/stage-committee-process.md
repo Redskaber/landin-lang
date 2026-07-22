@@ -1,8 +1,8 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 3.17 (effective from Stage 4.6)
-> **Supersedes**: v3.16 (preserved verbatim — see §27.2 for v3.16→v3.17 diff)
+> **Version**: 3.18 (effective from Stage 4.12)
+> **Supersedes**: v3.17 (preserved verbatim — see §28.2 for v3.17→v3.18 diff)
 > **Purpose**: 为 Agent Group 提供清晰、严格、高效、可协调的阶段推进与质量管控 SOP。
 > 让任何 Agent（主 Agent / 子 Agent / 跨会话 Agent）拿到本文档即可：
 > 1. **清晰**：知道每个阶段、每轮、每个角色的输入/输出/验收标准；
@@ -1142,9 +1142,9 @@ docs/tests/
 
 | 时期 | 触发 | 必须创建/更新的文档 |
 |------|------|-------------------|
-| **开发轮** | 每轮代码更新 | `plan-<子阶段>.md` + `dev-log.md` + `tests/plan/<功能点>.md` + `tests/v0/stage-N/plan/<功能点>_tests.rs` + `matrix.md` + `worklog.md` |
-| **审查轮** | gate review / 收敛轮 | `gate-review-round<N>.md` + `tests/gate/gate-review-round<N>.md` + `examples/stageN_gate_audit_r<N>.rs` + `matrix.md` + `worklog.md` |
-| **深度审查轮** | 阶段完成 / 阶段切换 | `deep-review-round<N>.md` + `tests/gate/deep-review-round<N>.md` + `dev-log.md` 总结 + `matrix.md` + `worklog.md` |
+| **开发轮** | 每轮代码更新 | `plan-<子阶段>.md` + `dev-log.md` + `tests/plan/<功能点>.md` + `tests/v0/stage-N/plan/<功能点>_tests.rs` + `matrix.md` + `worklog.md` + `docs/worklog.md` (v3.18) |
+| **审查轮** | gate review / 收敛轮 | `gate-review-round<N>.md` + `tests/gate/gate-review-round<N>.md` + `examples/stageN_gate_audit_r<N>.rs` + `matrix.md` + `worklog.md` + `docs/worklog.md` (v3.18) |
+| **深度审查轮** | 阶段完成 / 阶段切换 | `deep-review-round<N>.md` + `tests/gate/deep-review-round<N>.md` + `dev-log.md` 总结 + `matrix.md` + `worklog.md` + `docs/worklog.md` (v3.18) |
 
 ### 18.2 通用必更新项（所有轮次）
 
@@ -1169,6 +1169,7 @@ QA 角色在投票前**必须**完成以下检查，全部 ✅ 方可投 APPROVE
 □ tests/v0/stage-N/ 下测试代码已放置（如本轮有新测试）
 □ README.md 顶部状态行已更新（测试数、审查轮次、流程版本）
 □ worklog.md 已追加本轮 Task ID / Agent / Work Log / Stage Summary
+□ docs/worklog.md 已同步（v3.18 — 完整镜像 /home/z/my-project/worklog.md）
 □ Cargo.toml version 字段已更新（如版本号变更）
 □ docs/lang-design/NN-*.md 已更新（如本轮涉及设计变更）
 ```
@@ -1178,6 +1179,30 @@ QA 角色在投票前**必须**完成以下检查，全部 ✅ 方可投 APPROVE
 ### 18.4 Worklog 协议（多 Agent 协作）
 
 所有 Agent（主 + 子）共享单一 worklog 文件：`/home/z/my-project/worklog.md`。
+
+**v3.18 新增：docs/worklog.md 同步规则**
+
+每轮完成时，除了向 `/home/z/my-project/worklog.md` 追加内容外，**还必须**
+将完整的 `/home/z/my-project/worklog.md` 直接复制到 `docs/worklog.md`。
+
+这与开发文档（`docs/develop/`）和测试文档（`docs/tests/`）的同步方式一致——
+都是每轮更新同一份文件，而非创建每轮的独立快照。`docs/worklog.md` 是
+`/home/z/my-project/worklog.md` 在项目目录树内的**完整镜像备份**，确保：
+
+1. worklog 与开发文档、测试文档位于同一项目目录树内，便于打包和版本控制
+2. `docs/worklog.md` 始终是最新完整版本——新 Agent 或用户只需读这一份文件
+   即可了解所有轮次的完整工作历史
+3. 即使 `/home/z/my-project/worklog.md` 丢失，`docs/worklog.md` 也能完整恢复
+
+#### 18.4.0 同步规则（v3.18 新增）
+
+**操作**：每轮完成时，执行 `cp /home/z/my-project/worklog.md docs/worklog.md`
+
+**文件**：`docs/worklog.md`（单一文件，非目录）
+
+**内容**：与 `/home/z/my-project/worklog.md` 完全一致的完整副本
+
+**频率**：每轮完成时同步（与 `docs/develop/` 和 `docs/tests/` 更新频率一致）
 
 #### 18.4.1 读协议
 
@@ -1927,6 +1952,37 @@ v3.17 完整保留 v3.16 的全部规则内容，100% 覆盖。重构 §17 + §1
 
 ---
 
+## 28. 变更日志 v3.17 → v3.18
+
+### 28.1 新增内容
+
+| 项目 | 变更类型 | 内容 |
+|------|---------|------|
+| §18.1 快速参考 | 更新 | 三时期文档清单增加 `docs/worklog.md` |
+| §18.3 QA 检查清单 | 更新 | 增加 `docs/worklog.md` 同步检查项 |
+| §18.4 Worklog 协议 | 增强 | 新增 §18.4.0 docs/worklog.md 同步规则（完整镜像，非分轮快照） |
+| §28 变更日志 | 新增 | v3.17→v3.18 覆盖确认 |
+
+### 28.2 v3.17 → v3.18 覆盖确认
+
+v3.18 完整保留 v3.17 的全部规则内容，100% 覆盖。新增 §18.4.0 + §28 +
+§18.1/§18.3 增强。
+
+| v3.17 章节 | v3.18 对应章节 | 覆盖状态 |
+|-----------|--------------|---------|
+| §1-§27（全部内容） | §1-§27（原样保留） | ✅ 100% |
+| §18.1 快速参考 | §18.1（+docs/worklog.md 同步） | ✅ 100% + 增强 |
+| §18.3 QA 检查清单 | §18.3（+docs/worklog.md 同步检查） | ✅ 100% + 增强 |
+| §18.4 Worklog 协议 | §18.4（+§18.4.0 docs/worklog.md 完整镜像同步） | ✅ 100% + 增强 |
+| — | §28 变更日志 v3.17→v3.18 | **新增** |
+
+**关键改进**：worklog 完整镜像同步——每轮完成时，将 `/home/z/my-project/worklog.md`
+完整复制到 `docs/worklog.md`（单一文件，非分轮快照目录）。这与开发文档和测试
+文档的同步方式一致：每轮更新同一份文件。`docs/worklog.md` 始终是 worklog 的
+最新完整备份，位于项目目录树内，便于打包和版本控制。
+
+---
+
 **This document is the single source of truth for the Landin development
-process. All agents (main + subagents) must follow it. v3.17 effective
-from Stage 4.6.**
+process. All agents (main + subagents) must follow it. v3.18 effective
+from Stage 4.12.**

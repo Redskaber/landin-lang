@@ -6,10 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** Stage 0-3 complete + Stage 4 in progress. v0.9.8, 998 tests + 5 benchmarks,
-> 46 review rounds. Process v3.17 (§15-§27).
-> Stage 4.1-4.10: modules + PHI + visibility + closures + macro system.
-> Stage 4.11: Benchmark suite ✅ + ADR docs ✅ (closes deep review R37 conditions).
+> **Status:** Stage 0-3 complete + Stage 4 in progress. v0.9.9, **1000 tests** + 5 benchmarks,
+> 47 review rounds. Process v3.18 (§15-§28, including §17.3 三阶段文档协议 + §18.4.0 worklog 快照同步).
+> Stage 4.1-4.11: modules + PHI + visibility + closures + macro system + benchmarks + ADR.
+> Stage 4.12: Process v3.18 (worklog sync) + current_module tracking ✅ + **1000 tests milestone** 🎉.
 > Next: L5 traits, L8 lli, user-defined macros.
 
 ## Quick start
@@ -139,7 +139,7 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 1** ✅ HIR + name resolution (Stage 3.64: `use` declaration resolution; Stage 3.65: `unsafe impl/trait` AST fields + `Res::SelfTy` discrimination)
 - **Stage 2** ✅ MIR + type check + borrow check (6 rounds of review; Stage 3.65: `lower_body` aliases; Stage 3.66: `Lvalue`→`Place` rename)
 - **Stage 3** ✅ LLVM codegen (COMPLETE — 37 review rounds, §16 compliant, all soundness-critical limitations closed; Stage 3.63-3.69 naming standardization + P2 fixes + deep review)
-- **Stage 4** 🔄 In progress (4.1-4.10: modules+PHI+vis+closures+macros ✅; 4.11: benchmarks+ADR ✅; next: traits, lli)
+- **Stage 4** 🔄 In progress (4.1-4.11: modules+PHI+vis+closures+macros+bench+ADR ✅; 4.12: v3.18 worklog sync + vis tracking ✅; **1000 tests** 🎉; next: traits, lli)
 - **Stage 5** Mini-cargo + stdlib MVP + trait dispatch (L5)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting

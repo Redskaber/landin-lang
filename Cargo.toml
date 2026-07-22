@@ -1,6 +1,6 @@
 [package]
 name = "landin-compiler"
-version = "0.9.8"
+version = "0.9.9"
 edition = "2021"
 license = "MIT"
 description = "Landin programming language compiler — Stage 0-3 complete + Stage 4.1-4.6 (nested modules + L1 PHI design decision + visibility enforcement + L3 closure lowering + dev-logs + Process v3.17 three-phase doc protocol) + standardized tests/ directory"
@@ -88,6 +88,10 @@ path = "tests/v0/stage4/plan/closure_call_tests.rs"
 [[test]]
 name = "macro_system_tests"
 path = "tests/v0/stage4/plan/macro_system_tests.rs"
+
+[[test]]
+name = "visibility_tests"
+path = "tests/v0/stage4/plan/visibility_tests.rs"
 
 # Stage 4.11: Performance benchmark suite
 [[bench]]
