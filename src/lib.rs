@@ -87,7 +87,18 @@
 //!     Clone, Drop, Sized, Send, Sync, etc. without user `trait Copy {}`
 //!     definition. `is_builtin_trait()` + `find_builtin_trait()` query
 //!     methods added.
-//!   Next: Stage 5.9+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.9 (v0.11.8): Builtin Copy activation — `is_copy_builtin()`
+//!     method on TraitResolver (looks up builtin Copy automatically, no
+//!     Spur parameter needed); `ty_is_copy_with_resolver` Adt branch now
+//!     uses `is_copy_builtin()` with correct `false` fallback (was unsound
+//!     `true`). `impl Copy for S` now works without `trait Copy {}`.
+//!   Stage 5.10 (v0.11.9): Builtin Clone/Drop activation + generic
+//!     `implements_builtin_trait()` — `is_clone_builtin()` +
+//!     `is_drop_builtin()` methods (parallel to `is_copy_builtin`); generic
+//!     `implements_builtin_trait(def_id, trait_name_str, interner)` for
+//!     any builtin trait by name. Process spec v3.20 (§0.2 task routing +
+//!     §1.1 env check + §1.2 acceptance check + §1.3 spec evolution).
+//!   Next: Stage 5.11+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

@@ -1,7 +1,12 @@
 //! Stage 5.3: ty_is_copy_with_resolver tests
 //!
 //! Tests that ty_is_copy_with_resolver correctly handles primitives
-//! and Adt types (with fallback for now — full Copy detection deferred).
+//! and Adt types.
+//!
+//! Stage 5.9 update: the old `test_adt_fallback_copy` asserted the unsound
+//! fallback behavior (Adt treated as Copy when no `impl Copy` exists).
+//! Stage 5.9 fixed this — Adt without `impl Copy` is now correctly NOT
+//! Copy. The test has been updated to reflect the sound behavior.
 
 use landin_compiler::borrowck::{ty_is_copy, ty_is_copy_with_resolver};
 use landin_compiler::mir::ty::{Ty, TyKind};
@@ -21,18 +26,30 @@ fn test_primitives_always_copy() {
     );
 }
 
+/// Stage 5.9: Adt without `impl Copy` should NOT be Copy.
+///
+/// The old test (Stage 5.3) asserted `true` because the resolver fell back
+/// to `true` when "Copy" wasn't interned. Stage 5.9 fixes this to `false`
+/// (sound) — only types with an explicit `impl Copy for <Type>` are Copy.
+/// This test uses an empty TraitResolver (no builtin registration), so
+/// `is_copy_builtin` returns `false` (defensive fallback).
 #[test]
-fn test_adt_fallback_copy() {
+fn test_adt_without_copy_impl_not_copy() {
     let adt_ty = Ty::new(
         TyKind::Adt(landin_compiler::hir::DefId(0), vec![]),
         Span::DUMMY,
     );
     let resolver = TraitResolver::new();
     let interner = Rodeo::new();
-    assert!(ty_is_copy(&adt_ty), "Adt should be Copy (fallback)");
+    // ty_is_copy (legacy, no resolver) still returns true for Adt — it
+    // doesn't consult the resolver at all and treats all Adt as Copy.
+    // This is the legacy behavior kept for backward compat.
+    assert!(ty_is_copy(&adt_ty), "legacy ty_is_copy treats Adt as Copy");
+    // ty_is_copy_with_resolver (Stage 5.9) correctly returns false —
+    // no `impl Copy` exists for this DefId.
     assert!(
-        ty_is_copy_with_resolver(&adt_ty, &resolver, &interner),
-        "Adt should be Copy (resolver fallback — full detection deferred to Stage 5.4)"
+        !ty_is_copy_with_resolver(&adt_ty, &resolver, &interner),
+        "Adt without impl Copy should NOT be Copy (Stage 5.9 soundness fix)"
     );
 }
 

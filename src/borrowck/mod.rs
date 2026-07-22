@@ -677,17 +677,12 @@ pub fn ty_is_copy_with_resolver(
             .all(|t| ty_is_copy_with_resolver(t, resolver, interner)),
         Array(inner, _) => ty_is_copy_with_resolver(inner, resolver, interner),
         Infer(_) | Error | Foreign => true,
-        // Stage 5.4: Use TraitResolver to check for Copy impl.
-        // Look up type name via type_by_def_id, then check is_copy().
-        Adt(def_id, _) => {
-            if let Some(copy_name) = interner.get("Copy") {
-                resolver.is_copy(*def_id, copy_name)
-            } else {
-                // "Copy" not interned — no Copy trait defined.
-                // Fall back to true (conservative).
-                true
-            }
-        }
+        // Stage 5.9: Use TraitResolver to check for Copy impl via the
+        // builtin Copy trait. Stage 5.8 ensures "Copy" is always interned,
+        // and Stage 5.9's is_copy_builtin() handles the lookup cleanly.
+        // Old fallback of `true` (treating all Adt as Copy) was unsound —
+        // now correctly returns false if no `impl Copy for <Type>` exists.
+        Adt(def_id, _) => resolver.is_copy_builtin(*def_id, interner),
         Str | Slice(_) | Closure(_, _) | Param(_) => false,
     }
 }

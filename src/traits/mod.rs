@@ -303,6 +303,87 @@ impl TraitResolver {
         self.implements_by_def_id(copy_name, def_id)
     }
 
+    /// Stage 5.9: Check if a type (by DefId) implements the builtin Copy
+    /// trait. Unlike `is_copy()`, this does NOT require the caller to pass
+    /// the Copy Spur — it looks up the builtin Copy trait from
+    /// `builtin_traits` automatically.
+    ///
+    /// This is the preferred Copy-detection entry point for downstream
+    /// stages (borrowck, typeck) because it works regardless of whether
+    /// the user defined `trait Copy {}` — the builtin registration (Stage
+    /// 5.8) ensures "Copy" is always interned and recognized.
+    ///
+    /// Returns `false` if:
+    /// - The builtin Copy trait is not registered (shouldn't happen after
+    ///   Stage 5.8, but defensive).
+    /// - The type's DefId is not in `type_by_def_id`.
+    /// - The type does not have an `impl Copy for <Type>` block.
+    pub fn is_copy_builtin(&self, def_id: DefId, interner: &Rodeo) -> bool {
+        // Look up the builtin Copy Spur. After Stage 5.8, "Copy" is always
+        // interned by register_builtin_traits, so interner.get("Copy")
+        // returns Some.
+        if let Some(copy_name) = interner.get("Copy") {
+            self.is_copy(def_id, copy_name)
+        } else {
+            // Defensive: if "Copy" is not interned (e.g. register_builtin_traits
+            // wasn't called), fall back to false. This is safer than the old
+            // fallback of true (which was unsound — it treated all Adt as Copy).
+            false
+        }
+    }
+
+    /// Stage 5.10: Check if a type (by DefId) implements the builtin Clone
+    /// trait. Follows the same pattern as `is_copy_builtin()` — looks up
+    /// "Clone" from the interner automatically (no caller-supplied Spur).
+    ///
+    /// Returns `false` if "Clone" is not interned or the type has no
+    /// `impl Clone for <Type>` block.
+    pub fn is_clone_builtin(&self, def_id: DefId, interner: &Rodeo) -> bool {
+        if let Some(clone_name) = interner.get("Clone") {
+            self.implements_by_def_id(clone_name, def_id)
+        } else {
+            false
+        }
+    }
+
+    /// Stage 5.10: Check if a type (by DefId) implements the builtin Drop
+    /// trait. Follows the same pattern as `is_copy_builtin()`.
+    ///
+    /// Returns `false` if "Drop" is not interned or the type has no
+    /// `impl Drop for <Type>` block.
+    pub fn is_drop_builtin(&self, def_id: DefId, interner: &Rodeo) -> bool {
+        if let Some(drop_name) = interner.get("Drop") {
+            self.implements_by_def_id(drop_name, def_id)
+        } else {
+            false
+        }
+    }
+
+    /// Stage 5.10: Generic builtin trait check — checks if a type implements
+    /// any builtin trait by name. This is the generic form of
+    /// `is_copy_builtin` / `is_clone_builtin` / `is_drop_builtin`.
+    ///
+    /// `trait_name` is the string name of the builtin trait (e.g. "Send",
+    /// "Sync", "Sized"). The trait must be in `BUILTIN_TRAIT_NAMES` and
+    /// registered via `register_builtin_traits()`.
+    ///
+    /// Returns `false` if:
+    /// - The trait name is not interned.
+    /// - The type's DefId is not in `type_by_def_id`.
+    /// - The type does not have an `impl <Trait> for <Type>` block.
+    pub fn implements_builtin_trait(
+        &self,
+        def_id: DefId,
+        trait_name: &str,
+        interner: &Rodeo,
+    ) -> bool {
+        if let Some(trait_spur) = interner.get(trait_name) {
+            self.implements_by_def_id(trait_spur, def_id)
+        } else {
+            false
+        }
+    }
+
     /// Stage 5.5: Look up a vtable by (trait_name, self_ty_name).
     /// Returns the vtable containing method dispatch entries.
     pub fn find_vtable(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&Vtable> {

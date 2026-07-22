@@ -3287,3 +3287,89 @@ Stage Summary:
   Sized, Send, Sync, Unpin, Fn, FnMut, FnOnce) without user definition.
 - 931 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.9+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.9-r58
+Agent: Super Z (main)
+Task: Stage 5.9 — builtin Copy activation + soundness fix + CI/CD verification + package
+
+Work Log:
+- Baseline: v0.11.7 / 931 tests / Stage 5.8 complete (stdlib MVP)
+
+Stage 5.9: Builtin Copy activation + soundness fix
+- src/traits/mod.rs: new is_copy_builtin(def_id, &Rodeo) -> bool method
+  * Auto-looks up builtin Copy Spur (no caller-supplied param)
+  * Defensive fallback: false (was unsound true)
+- src/borrowck/mod.rs: ty_is_copy_with_resolver Adt branch simplified
+  * Old: if let Some(copy) = interner.get("Copy") { is_copy } else { true } (unsound)
+  * New: resolver.is_copy_builtin(*def_id, interner)
+  * SOUNDNESS FIX: Adt without impl Copy now correctly returns false
+- tests/v0/stage5/plan/ty_is_copy_tests.rs: test_adt_fallback_copy renamed
+  to test_adt_without_copy_impl_not_copy; assertion true → false
+- tests/v0/stage5/plan/builtin_copy_activation_tests.rs: 5 new tests
+- tests/all_tests.rs: added builtin_copy_activation_tests module (27 mods)
+- Cargo.toml: version 0.11.7 → 0.11.8
+
+§17.3 三阶段文档协议执行 (v3.19):
+- 时期 1: plan-5.9.md + builtin_copy_activation.md + builtin_copy_activation_tests.rs
+- 时期 2: gate-review-round9.md + test gate-review-round9.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.9 entry appended
+- README.md: updated to v0.11.8
+
+CI/CD Verification (ACTUAL RUN):
+- cargo clean: 1651 files removed (697.7MiB) ✅
+- cargo test: 936 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.9 (builtin Copy activation + soundness fix) PASSED — CI/CD all green.
+- impl Copy for S now works without `trait Copy {}` (builtin activation).
+- Soundness fix: Adt without impl Copy → NOT Copy (was unsound true).
+- 936 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.10+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.10-r59
+Agent: Super Z (main)
+Task: Stage 5.10 — builtin Clone/Drop activation + generic builtin trait check + spec v3.20 evolution + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.8 / 936 tests / Stage 5.9 complete (builtin Copy activation)
+
+Process spec v3.19 → v3.20 evolution (per user request):
+- §0.2 任务类型精确路由（8 种任务 → 必读章节表）
+- §1.1 环境工具检查与准备（工具缺失时查找+安装流程 + 必需工具表）
+- §1.2 交付前验收检查（cargo clean+test+fmt+clippy 验收流程 + 禁止项）
+- §1.3 Spec 持续演进原则（演进触发 + 5 原则 + 反臃肿检查 + 版本管理）
+- §28.3 变更日志 v3.19→v3.20（覆盖确认）
+
+Stage 5.10: Builtin Clone/Drop activation + generic builtin trait check
+- src/traits/mod.rs: new is_clone_builtin(def_id, &Rodeo) -> bool
+- src/traits/mod.rs: new is_drop_builtin(def_id, &Rodeo) -> bool
+- src/traits/mod.rs: new implements_builtin_trait(def_id, trait_name_str, &Rodeo) -> bool
+  * Generic form — works for any builtin trait by name (Send/Sync/Sized/etc.)
+- tests/v0/stage5/plan/builtin_clone_drop_tests.rs: 7 new tests
+- tests/all_tests.rs: added builtin_clone_drop_tests module (28 mods)
+- Cargo.toml: version 0.11.8 → 0.11.9
+
+§17.3 三阶段文档协议执行 (v3.20):
+- 时期 1: plan-5.10.md + builtin_clone_drop.md + builtin_clone_drop_tests.rs
+- 时期 2: gate-review-round10.md + test gate-review-round10.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.10 entry appended
+- README.md: updated to v0.11.9
+
+CI/CD Verification (§1.2 交付前验收, ACTUAL RUN):
+- cargo clean: 511 files removed (282.5MiB) ✅
+- cargo test: 943 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.10 PASSED — CI/CD all green per §1.2.
+- Process spec evolved v3.19 → v3.20 (§0.2 routing + §1.1 env + §1.2 acceptance + §1.3 spec evolution).
+- builtin Clone/Drop activation + generic implements_builtin_trait() added.
+- 943 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.11+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

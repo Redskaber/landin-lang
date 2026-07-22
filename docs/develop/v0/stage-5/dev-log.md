@@ -201,3 +201,56 @@ cargo clippy --all-targets (0 warnings) — all green ✅
 **§16 compliance**: ✅ register_builtin_traits is called by driver; downstream
 stages read builtin_traits as data.
 **API naming**: ✅ SCREAMING_SNAKE_CASE constants + snake_case methods + is_/find_ prefixes.
+
+### Stage 5.9 — Builtin Copy Activation + Soundness Fix (v0.11.8)
+
+**Priority**: Activate builtin Copy trait + fix unsound Adt fallback.
+
+**Work completed**:
+- src/traits/mod.rs: new `is_copy_builtin(&self, def_id, &Rodeo) -> bool` method
+  * Looks up builtin Copy Spur automatically (no caller-supplied Spur)
+  * Defensive fallback: `false` (was unsound `true` in old code)
+- src/borrowck/mod.rs: `ty_is_copy_with_resolver` Adt branch simplified
+  * Old: `if let Some(copy_name) = interner.get("Copy") { is_copy(...) } else { true }`
+  * New: `resolver.is_copy_builtin(*def_id, interner)`
+  * Soundness fix: Adt without `impl Copy` now correctly returns `false`
+- tests/v0/stage5/plan/ty_is_copy_tests.rs: updated `test_adt_fallback_copy`
+  → `test_adt_without_copy_impl_not_copy` (asserts `false` not `true`)
+- tests/v0/stage5/plan/builtin_copy_activation_tests.rs: 5 new tests
+- tests/all_tests.rs: added builtin_copy_activation_tests module
+- Cargo.toml: version 0.11.7 → 0.11.8
+
+**Soundness fix**: The old `ty_is_copy_with_resolver` Adt branch fell back to
+`true` when "Copy" wasn't interned — treating ALL Adt as Copy. Stage 5.9 fixes
+this to `false`. Only types with explicit `impl Copy for <Type>` are Copy.
+
+**Test impact**: +5 (936 — was 931), +1 test updated (soundness assertion)
+**Verification**: cargo clean + cargo test (936 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅
+**§16 compliance**: ✅ is_copy_builtin reads builtin_traits as data.
+**API naming**: ✅ `is_copy_builtin` follows `is_` prefix + `_builtin` suffix.
+
+### Stage 5.10 — Builtin Clone/Drop Activation + Generic Builtin Trait Check + Spec v3.20 (v0.11.9)
+
+**Priority**: Extend builtin trait activation to Clone/Drop + generic check + spec evolution.
+
+**Work completed**:
+- src/traits/mod.rs: new `is_clone_builtin(def_id, &Rodeo) -> bool` method
+- src/traits/mod.rs: new `is_drop_builtin(def_id, &Rodeo) -> bool` method
+- src/traits/mod.rs: new `implements_builtin_trait(def_id, trait_name_str, &Rodeo) -> bool`
+  generic method — works for any builtin trait by name (Send/Sync/Sized/etc.)
+- docs/stage-committee-process.md: updated to v3.20
+  * §0.2 任务类型精确路由（8 种任务 → 必读章节）
+  * §1.1 环境工具检查与准备（工具缺失时查找+安装）
+  * §1.2 交付前验收检查（cargo clean+test+fmt+clippy 全绿）
+  * §1.3 Spec 持续演进原则（精要化，反臃肿）
+  * §28.3 变更日志 v3.19→v3.20
+- tests/v0/stage5/plan/builtin_clone_drop_tests.rs: 7 new tests
+- tests/all_tests.rs: added builtin_clone_drop_tests module (28 mods)
+- Cargo.toml: version 0.11.8 → 0.11.9
+
+**Test impact**: +7 (943 — was 936)
+**Verification**: cargo clean + cargo test (943 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ all new methods read TraitResolver data only.
+**API naming**: ✅ `is_*_builtin` + `implements_builtin_trait` follow §23.
