@@ -81,7 +81,13 @@
 //!     iterates TraitResolver to emit all dyn fat pointers. Foundation for
 //!     `dyn Trait` value lowering; actual MIR→codegen wiring of `dyn` locals
 //!     deferred to Stage 5.8+.
-//!   Next: Stage 5.8+ (dyn Trait MIR lowering, stdlib MVP, mini-cargo).
+//!   Stage 5.8 (v0.11.7): Standard trait registry (stdlib MVP) —
+//!     `BUILTIN_TRAIT_NAMES` constant + `register_builtin_traits()` method +
+//!     `BuiltinTraits` map on TraitResolver; compiler now recognizes Copy,
+//!     Clone, Drop, Sized, Send, Sync, etc. without user `trait Copy {}`
+//!     definition. `is_builtin_trait()` + `find_builtin_trait()` query
+//!     methods added.
+//!   Next: Stage 5.9+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -108,4 +114,6 @@ pub use codegen::{
     Emitter, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
-pub use traits::{extract_impl_self_ty_name, TraitResolver};
+pub use traits::{
+    extract_impl_self_ty_name, TraitResolver, BUILTIN_DEF_ID_BASE, BUILTIN_TRAIT_NAMES,
+};

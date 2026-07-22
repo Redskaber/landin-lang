@@ -173,3 +173,31 @@ pointer all in place; MIR→codegen dyn value wiring deferred to Stage 5.8+.
 **Test impact**: +4 (926 expected — was 922)
 **§16 compliance**: ✅ codegen is still a pure MIR/TraitResolver consumer.
 **API naming**: ✅ all new APIs follow api-naming-standard §3.
+
+### Stage 5.8 — Standard Trait Registry / stdlib MVP (v0.11.7)
+
+**Priority**: Make compiler recognize builtin standard traits automatically.
+
+**Work completed**:
+- src/traits/mod.rs: new `BUILTIN_TRAIT_NAMES` constant (10 traits: Copy,
+  Clone, Drop, Sized, Send, Sync, Unpin, Fn, FnMut, FnOnce)
+- src/traits/mod.rs: new `BUILTIN_DEF_ID_BASE` constant (u32::MAX)
+- src/traits/mod.rs: new `builtin_traits: HashMap<Spur, DefId>` field on
+  TraitResolver
+- src/traits/mod.rs: new `register_builtin_traits(&mut Rodeo)` method —
+  interns all builtin trait names + assigns reserved DefIds (u32::MAX
+  downward) + registers in trait_by_name/type_by_def_id
+- src/traits/mod.rs: new `is_builtin_trait(name) -> bool` query
+- src/traits/mod.rs: new `find_builtin_trait(name) -> Option<DefId>` query
+- src/driver.rs: calls `register_builtin_traits(&mut interner)` before
+  `collect()` (needs &mut Rodeo)
+- src/lib.rs: re-export `BUILTIN_TRAIT_NAMES` + `BUILTIN_DEF_ID_BASE`
+- tests/v0/stage5/plan/builtin_traits_tests.rs: 5 new tests
+- tests/all_tests.rs: added builtin_traits_tests module
+
+**Test impact**: +5 (931 — was 926)
+**Verification**: cargo clean + cargo test (931 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅
+**§16 compliance**: ✅ register_builtin_traits is called by driver; downstream
+stages read builtin_traits as data.
+**API naming**: ✅ SCREAMING_SNAKE_CASE constants + snake_case methods + is_/find_ prefixes.

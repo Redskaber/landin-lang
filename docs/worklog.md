@@ -3244,3 +3244,46 @@ Stage Summary:
 - TD-014 further CLOSE: MIR→codegen dyn value wiring deferred to Stage 5.8+.
 - 926 tests expected. 0 clippy warnings expected. fmt clean expected.
 - Next: Stage 5.8+ (dyn Trait MIR lowering, stdlib MVP, mini-cargo).
+
+---
+Task ID: stage5.8-r57
+Agent: Super Z (main)
+Task: Stage 5.8 — standard trait registry (stdlib MVP) + CI/CD verification + package
+
+Work Log:
+- Baseline: v0.11.6 / 926 tests / Stage 5.7 complete (dyn Trait fat-pointer)
+- Installed Rust toolchain (rustc 1.97.1) + rustfmt + clippy in this env
+
+Stage 5.8: Standard trait registry (stdlib MVP)
+- src/traits/mod.rs: new BUILTIN_TRAIT_NAMES constant (10 traits)
+- src/traits/mod.rs: new BUILTIN_DEF_ID_BASE constant (u32::MAX)
+- src/traits/mod.rs: new builtin_traits: HashMap<Spur, DefId> field
+- src/traits/mod.rs: new register_builtin_traits(&mut Rodeo) method
+  * Interns all builtin trait names + assigns reserved DefIds
+  * Registers in trait_by_name (via entry().or_insert) + type_by_def_id
+- src/traits/mod.rs: new is_builtin_trait() + find_builtin_trait() queries
+- src/driver.rs: calls register_builtin_traits before collect()
+- src/lib.rs: re-export BUILTIN_TRAIT_NAMES + BUILTIN_DEF_ID_BASE
+- tests/v0/stage5/plan/builtin_traits_tests.rs: 5 new tests
+- tests/all_tests.rs: added builtin_traits_tests module
+- Cargo.toml: version 0.11.6 → 0.11.7
+
+§17.3 三阶段文档协议执行 (v3.19):
+- 时期 1: plan-5.8.md + builtin_traits.md + builtin_traits_tests.rs
+- 时期 2: gate-review-round8.md + test gate-review-round8.md
+- docs/worklog.md: synced
+- dev-log.md: Stage 5.8 entry appended
+- README.md: updated to v0.11.7
+
+CI/CD Verification (ACTUAL RUN, not pending):
+- cargo clean: 1790 files removed (801.4MiB) ✅
+- cargo test: 931 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.8 (standard trait registry / stdlib MVP) PASSED — CI/CD all green.
+- Compiler now recognizes 10 builtin standard traits (Copy, Clone, Drop,
+  Sized, Send, Sync, Unpin, Fn, FnMut, FnOnce) without user definition.
+- 931 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.9+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

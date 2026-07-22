@@ -7,6 +7,10 @@
 //!            so codegen can emit vtable globals without re-walking HIR.
 //!            Naming convention: `landin_<SelfType>_<method>` (matches the
 //!            symbol codegen emits for impl method bodies via driver body_metas).
+//! Stage 5.8: Added `BuiltinTraits` registry — the compiler now recognizes
+//!            standard traits (Copy, Clone, Drop, Sized, etc.) automatically,
+//!            without requiring the user to define `trait Copy {}`. This is
+//!            the stdlib MVP foundation.
 //!
 //! Per §16 (阶段间接口隔离): TraitResolver reads HIR during the driver's
 //! pre-computation phase, then provides data to typeck/borrowck/codegen.
@@ -102,15 +106,81 @@ pub struct TraitResolver {
     /// Stage 5.5: Vtables keyed by (trait_name, self_ty_name).
     /// Each vtable maps trait method names to concrete fn DefIds.
     pub vtables: HashMap<(Spur, Spur), Vtable>,
+    /// Stage 5.8: Builtin traits registry — standard traits recognized by
+    /// the compiler without user definition (Copy, Clone, Drop, Sized, etc.).
+    /// Maps the interned trait name to its builtin DefId (a reserved DefId
+    /// in the BUILTIN range, e.g. DefId(u32::MAX - N)).
+    pub builtin_traits: HashMap<Spur, DefId>,
 }
+
+/// Stage 5.8: The set of builtin trait names recognized by the compiler.
+///
+/// These are standard library traits that the compiler knows about
+/// intrinsically — users do not need to define `trait Copy {}` for the
+/// compiler to detect Copy impls. The names are interned during
+/// `register_builtin_traits` and stored in `TraitResolver.builtin_traits`.
+///
+/// Per §15 (最优 > 最小): this is the stdlib MVP foundation — a full stdlib
+/// crate would provide actual implementations, but for now the compiler
+/// just needs to *recognize* these trait names so that `is_copy()` and
+/// future trait checks work without user boilerplate.
+pub const BUILTIN_TRAIT_NAMES: &[&str] = &[
+    "Copy", "Clone", "Drop", "Sized", "Send", "Sync", "Unpin", "Fn", "FnMut", "FnOnce",
+];
+
+/// Stage 5.8: Reserved DefId base for builtin traits.
+///
+/// Builtin traits get DefIds in the high range (u32::MAX downward) so they
+/// never collide with user-defined items (which start from 0). This avoids
+/// the need to synthesize fake HIR nodes for builtin traits.
+pub const BUILTIN_DEF_ID_BASE: u32 = u32::MAX;
 
 impl TraitResolver {
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Stage 5.8: Register builtin standard traits (Copy, Clone, Drop, etc.)
+    /// in the resolver so the compiler recognizes them without user
+    /// definition. Called by `collect()` before walking HIR.
+    ///
+    /// Each builtin trait is assigned a reserved DefId in the high range
+    /// (BUILTIN_DEF_ID_BASE downward) and interned into the interner.
+    /// User-defined traits with the same name take precedence — if the
+    /// user defines `trait Copy {}`, that trait's DefId replaces the
+    /// builtin in `trait_by_name` (but `builtin_traits` still records
+    /// the builtin DefId for reference).
+    pub fn register_builtin_traits(&mut self, interner: &mut Rodeo) {
+        for (idx, &name) in BUILTIN_TRAIT_NAMES.iter().enumerate() {
+            let spur = interner.get_or_intern(name);
+            // Reserved DefId: u32::MAX, u32::MAX-1, u32::MAX-2, ...
+            let def_id = DefId::new(BUILTIN_DEF_ID_BASE - idx as u32);
+            self.builtin_traits.insert(spur, def_id);
+            // Also register in trait_by_name so find_trait() works.
+            // User-defined traits will overwrite this during collect().
+            self.trait_by_name.entry(spur).or_insert(def_id);
+            // Register the name in type_by_def_id so implements_by_def_id
+            // can resolve the trait name.
+            self.type_by_def_id.insert(def_id, spur);
+        }
+    }
+
+    /// Stage 5.8: Check if a trait name (Spur) refers to a builtin trait.
+    pub fn is_builtin_trait(&self, name: Spur) -> bool {
+        self.builtin_traits.contains_key(&name)
+    }
+
+    /// Stage 5.8: Get the builtin DefId for a builtin trait name.
+    pub fn find_builtin_trait(&self, name: Spur) -> Option<DefId> {
+        self.builtin_traits.get(&name).copied()
+    }
+
     /// Collect all trait definitions, impl blocks, type names, and vtables from HIR.
     pub fn collect(&mut self, hir: &HirCrate, interner: &Rodeo) {
+        // Stage 5.8: Builtin traits are registered by the driver before
+        // collect() is called (via register_builtin_traits), because that
+        // method needs &mut Rodeo while collect() takes &Rodeo. Here we
+        // just ensure "Copy" is interned for the legacy lookup path.
         let _ = interner.get("Copy");
 
         for (def_id, node) in &hir.owners {

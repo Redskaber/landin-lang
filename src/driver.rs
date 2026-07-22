@@ -437,6 +437,15 @@ pub fn compile(src: &str) -> CompileResult {
     // Stage 5.2: Build TraitResolver — collect trait definitions + impl blocks.
     // Per §16: pre-computed by driver, passed as data to downstream stages.
     let mut trait_resolver = crate::traits::TraitResolver::new();
+    // Stage 5.8: Register builtin standard traits (Copy, Clone, Drop, etc.)
+    // before collect() so the compiler recognizes them without user
+    // definition. Needs &mut interner (collect() only takes &Rodeo).
+    // We clone the interner to get a mutable handle, register, then the
+    // original interner is used for collect() and stored in CompileResult.
+    // NOTE: interner is already &mut here (line 267: `let mut interner`),
+    // but by this point several borrows have happened. We use a direct
+    // mutable call since interner is still owned.
+    trait_resolver.register_builtin_traits(&mut interner);
     trait_resolver.collect(&hir, &interner);
 
     CompileResult {
