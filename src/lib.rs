@@ -188,7 +188,7 @@ pub use codegen::{
     Emitter, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
-pub use stdlib::{default_prelude, register_stdlib, StdlibPrelude};
+pub use stdlib::{default_prelude, register_stdlib, StdlibLayer, StdlibPrelude};
 pub use traits::{
     extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, ImplValidationReport,
     IncompleteImpl, TraitResolver, BUILTIN_DEF_ID_BASE, BUILTIN_PRIMITIVE_COPY_KINDS,

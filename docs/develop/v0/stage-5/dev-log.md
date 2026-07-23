@@ -621,3 +621,23 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **Test impact**: +9 (1058 — was 1049)
 **Verification**: cargo clean + cargo test (1058 passed) + cargo fmt (clean) +
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+
+### Stage 5.29 — Stdlib Layer Query + Docs Supplement (v0.11.26)
+
+**Priority**: Add StdlibLayer enum + supplement all missing test docs.
+
+**Work completed**:
+- src/stdlib.rs: new StdlibLayer enum (Core/Alloc/None)
+- src/stdlib.rs: new layer_for_name() + names_for_layer() on StdlibPrelude
+- src/lib.rs: re-export StdlibLayer
+- tests/v0/stage5/plan/stdlib_layer_tests.rs: 7 new tests
+- tests/all_tests.rs: added stdlib_layer_tests module (44 mods)
+- Cargo.toml: version 0.11.25 → 0.11.26
+
+Docs supplement (all missing docs/tests/v0/stage5/ created):
+- Test gate reviews: round 23, 24, 25, 26, 28 (5 files)
+- Test plans: mini_cargo, stdlib_mvp, driver_stdlib, stdlib_alloc, trait_integration (5 files)
+- New: plan-5.29.md, gate-review-round29.md, stdlib_layer.md, test gate-review-round29.md
+
+**Test impact**: +7
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

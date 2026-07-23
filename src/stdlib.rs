@@ -165,6 +165,48 @@ impl StdlibPrelude {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Stage 5.29: Get the layer of a stdlib name.
+    ///
+    /// Returns the `StdlibLayer` for a given name — `Core` for primitives,
+    /// `Alloc` for heap types, `None` for unknown names.
+    ///
+    /// Per API-naming-standard §3: `layer_for_name` follows
+    /// `<noun>_for_<noun>` pattern for query methods.
+    pub fn layer_for_name(&self, name: &str) -> StdlibLayer {
+        if STDLIB_CORE_TYPES.contains(&name) {
+            StdlibLayer::Core
+        } else if STDLIB_ALLOC_TYPES.contains(&name) {
+            StdlibLayer::Alloc
+        } else {
+            StdlibLayer::None
+        }
+    }
+
+    /// Stage 5.29: Get all names in a specific layer.
+    ///
+    /// Per API-naming-standard §3: `names_for_layer` follows
+    /// `<noun>_for_<noun>` pattern.
+    pub fn names_for_layer(&self, layer: StdlibLayer) -> Vec<&'static str> {
+        match layer {
+            StdlibLayer::Core => STDLIB_CORE_TYPES.to_vec(),
+            StdlibLayer::Alloc => STDLIB_ALLOC_TYPES.to_vec(),
+            StdlibLayer::None => Vec::new(),
+        }
+    }
+}
+
+/// Stage 5.29: Stdlib layer — distinguishes core/alloc/std layers.
+///
+/// Per API-naming-standard §3: `StdlibLayer` follows `<Noun><Noun>` pattern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StdlibLayer {
+    /// Core layer — primitive types + marker/ops/convert/iter traits.
+    Core,
+    /// Alloc layer — heap types (Box/Vec/String/...) + fmt/Deref traits.
+    Alloc,
+    /// Not a stdlib item.
+    None,
 }
 
 /// Stage 5.25: Register all stdlib types + traits in the interner.
