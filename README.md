@@ -6,10 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.28 — Stage 0-4 complete, Stage 5 in progress.
+> **Status:** v0.11.28 — Stage 0-4 complete, Stage 5 in progress (deep review #3 PASS — GO).
 > **1081 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
 > Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5.1-5.31: 31 sub-stages done. Stdlib core+alloc+std + facade complete. Deep review #2: GO.
+> Stage 5.1-5.31: 31 sub-stages done. Stdlib core+alloc+std+facade complete. Deep review #3: GO.
 > Next: dyn Trait MIR lowering, stdlib crate compilation.
 
 ## Quick start
@@ -150,7 +150,7 @@ one `#[path]` line to `tests/all_tests.rs` — no `Cargo.toml` edit needed.
 - **Stage 2** ✅ MIR + type check + borrow check (NLL, closures, coercion matrix)
 - **Stage 3** ✅ LLVM codegen (§16 compliant, all soundness-critical limitations closed, L1 CLOSED)
 - **Stage 4** ✅ COMPLETE (13 sub-stages: modules + PHI + visibility + closures + macros + benchmarks + ADR + v3.18)
-- **Stage 5** 🔄 In progress (5.1-5.31 done; stdlib core+alloc+std+facade complete; next: dyn Trait MIR lowering, stdlib crate compilation)
+- **Stage 5** 🔄 In progress (5.1-5.31 done + deep review #3 GO; next: dyn Trait MIR lowering, stdlib crate compilation)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting
 
