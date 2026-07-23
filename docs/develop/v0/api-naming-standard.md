@@ -1462,3 +1462,62 @@ no circular dependency.
 **Test impact**: +12 (1334 → 1346).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.22 (Stage 5.52, 2026-07-23)
+
+Stage 5.52 codegen trait-dispatch emission summary round. Adds the
+**codegen counterpart** of Stage 5.42's `stdlib_vtable_emission_summary()`,
+computed directly from `TraitResolver`.
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `CodegenTraitDispatchEmissionSummary` | struct (in `codegen`) | `<Noun><Noun><Noun><Noun><Noun>` |
+| `build_trait_dispatch_emission_summary` | free fn (in `codegen`) | `<verb>_<noun>_<noun>_<noun>_<noun>` |
+
+**Field naming (6 fields, all §23-compliant)**:
+
+| Field | Type | Naming pattern |
+|-------|------|----------------|
+| `vtable_count` | `u32` | `<noun>_<noun>` |
+| `dynptr_count` | `u32` | `<noun>_<noun>` |
+| `total_global_count` | `u32` | `<adj>_<noun>_<noun>` |
+| `trait_names` | `Vec<String>` | `<noun>_<noun>` |
+| `type_names` | `Vec<String>` | `<noun>_<noun>` |
+| `total_method_slots` | `u32` | `<adj>_<noun>_<noun>` |
+
+**Design decisions**:
+1. **codegen counterpart of Stage 5.42**: Stage 5.42 added
+   `stdlib_vtable_emission_summary()` (computed from `StdlibVtableEmission`
+   list, for stdlib API layer), Stage 5.52 adds
+   `build_trait_dispatch_emission_summary()` (computed directly from
+   `TraitResolver`, for codegen diagnostic layer). The two are complementary
+   — different input sources, different use cases, but same aggregate-statistics
+   purpose.
+2. **`Codegen` prefix** (not `Stdlib`): distinguishes from Stage 5.42's
+   `StdlibVtableEmissionSummary`. Makes the layer (codegen vs stdlib) explicit
+   in the type name. Consistent with the `Stdlib*` / `Codegen*` prefix
+   convention.
+3. **`String` (not `&'static str`)** for `trait_names` / `type_names`:
+   unlike stdlib summary (which uses `&'static str` for stdlib-registered
+   trait names), codegen summary uses `String` because trait/type names come
+   from the interner at runtime (user-defined traits/types), not from static
+   stdlib tables.
+4. **`build_` prefix** (not `emit_`): indicates a constructor function
+   (input data → output data, no side effects). Consistent with Stage 5.46's
+   `build_vtable_global_specs()` and Stage 5.49's `build_dynptr_global_specs()`.
+5. **`_summary` suffix**: indicates the function returns a summary struct
+   (not individual specs). Consistent with Stage 5.42's
+   `stdlib_vtable_emission_summary()`.
+6. **Deduplication**: `trait_names` and `type_names` are deduplicated — same
+   trait on multiple types produces one trait name; same type with multiple
+   traits produces one type name. This avoids double-counting in diagnostics.
+
+**§16 compliance**: function takes `&TraitResolver` + `&Rodeo` (same as
+`emit_vtables()`), returns `CodegenTraitDispatchEmissionSummary`. No
+`mir::ty` / `Emitter` reference, no circular dependency.
+
+**Test impact**: +14 (1346 → 1360).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

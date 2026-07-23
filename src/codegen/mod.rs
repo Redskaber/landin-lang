@@ -1960,3 +1960,110 @@ pub fn emit_vtables_and_dynptrs_from_resolver(
     // Then emit dynptr globals (Stage 5.50 orchestrator).
     emit_dynptrs_from_resolver(trait_resolver, interner, emitter);
 }
+
+// ============================================================================
+// Stage 5.52: Codegen trait-dispatch emission summary
+//
+// Project-level aggregate statistics for trait-dispatch global emission.
+// Counts vtable + dynptr globals, collects deduplicated trait/type names,
+// sums total method slots. This is the **codegen counterpart** of Stage
+// 5.42's `stdlib_vtable_emission_summary()`, but computed from
+// `TraitResolver` rather than from a list of `StdlibVtableEmission`.
+//
+// Stage 5.53 will use this for codegen diagnostic output ("emit N vtable
+// globals, M dynptr globals, K total method slots").
+//
+// Per API-naming-standard §3:
+//   - `CodegenTraitDispatchEmissionSummary` follows
+//     `<Noun><Noun><Noun><Noun><Noun>` pattern.
+//   - `build_trait_dispatch_emission_summary` follows
+//     `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
+//
+// Per §16: takes `&TraitResolver` + `&Rodeo` (same as `emit_vtables()`),
+// returns `CodegenTraitDispatchEmissionSummary`. No `mir::ty` / `Emitter`
+// reference, no circular dependency.
+// ============================================================================
+
+/// Stage 5.52: Project-level trait-dispatch emission statistics.
+///
+/// Aggregates vtable + dynptr global counts, deduplicated trait/type names,
+/// and total method slots from `TraitResolver.vtables`. Useful for:
+/// - Codegen diagnostics ("emit N vtable globals, M dynptr globals")
+/// - Detecting trait-dispatch bloat (large `total_method_slots`)
+/// - Identifying trait-heavy code (many distinct `trait_names`)
+///
+/// Per API-naming-standard §3: `CodegenTraitDispatchEmissionSummary` follows
+/// `<Noun><Noun><Noun><Noun><Noun>` pattern. Field names follow
+/// `<noun>_<noun>` / `<adj>_<noun>_<noun>` patterns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodegenTraitDispatchEmissionSummary {
+    /// Number of vtable globals to emit (= `TraitResolver.vtables.len()`).
+    pub vtable_count: u32,
+    /// Number of dynptr globals to emit (= `TraitResolver.vtables.len()`,
+    /// one dynptr per (trait, type) pair).
+    pub dynptr_count: u32,
+    /// Total global count (`vtable_count + dynptr_count`).
+    pub total_global_count: u32,
+    /// Deduplicated list of trait names involved (resolved via interner,
+    /// or "Trait" default if unresolved).
+    pub trait_names: Vec<String>,
+    /// Deduplicated list of type names involved (resolved via interner,
+    /// or "Type" default if unresolved).
+    pub type_names: Vec<String>,
+    /// Sum of `vtable.entries.len()` across all vtables — total method
+    /// slots across all vtable globals.
+    pub total_method_slots: u32,
+}
+
+/// Stage 5.52: Build a project-level trait-dispatch emission summary from
+/// `TraitResolver.vtables`.
+///
+/// Given a `&TraitResolver` + `&Rodeo`, returns a
+/// `CodegenTraitDispatchEmissionSummary` aggregating vtable + dynptr global
+/// counts, deduplicated trait/type names, and total method slots.
+///
+/// Empty `TraitResolver.vtables` returns a summary with all-zero counts and
+/// empty name lists.
+///
+/// Per API-naming-standard §3: `build_trait_dispatch_emission_summary`
+/// follows `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn build_trait_dispatch_emission_summary(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+) -> CodegenTraitDispatchEmissionSummary {
+    let vtable_count = trait_resolver.vtables.len() as u32;
+    let dynptr_count = vtable_count; // one dynptr per (trait, type) pair
+    let total_global_count = vtable_count + dynptr_count;
+
+    let mut trait_names: Vec<String> = Vec::new();
+    let mut type_names: Vec<String> = Vec::new();
+    let mut total_method_slots: u32 = 0;
+
+    for ((trait_name, self_ty_name), vtable) in &trait_resolver.vtables {
+        let trait_str = interner
+            .try_resolve(trait_name)
+            .unwrap_or("Trait")
+            .to_string();
+        let type_str = interner
+            .try_resolve(self_ty_name)
+            .unwrap_or("Type")
+            .to_string();
+
+        if !trait_names.contains(&trait_str) {
+            trait_names.push(trait_str);
+        }
+        if !type_names.contains(&type_str) {
+            type_names.push(type_str);
+        }
+        total_method_slots += vtable.entries.len() as u32;
+    }
+
+    CodegenTraitDispatchEmissionSummary {
+        vtable_count,
+        dynptr_count,
+        total_global_count,
+        trait_names,
+        type_names,
+        total_method_slots,
+    }
+}

@@ -232,3 +232,6 @@ mod codegen_dynptr_orchestrator_tests;
 
 #[path = "v0/stage5/plan/codegen_combined_orchestrator_tests.rs"]
 mod codegen_combined_orchestrator_tests;
+
+#[path = "v0/stage5/plan/codegen_trait_dispatch_summary_tests.rs"]
+mod codegen_trait_dispatch_summary_tests;

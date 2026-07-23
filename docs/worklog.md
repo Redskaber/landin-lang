@@ -4892,3 +4892,47 @@ Stage Summary:
   emit_vtables(r,i,e) + emit_dyn_trait_ptrs(r,i,e).
 - Next: Stage 5.52+ (codegen trait-dispatch emission refactor — driver
   delegation + TextEmitter delegation, then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.52-r101
+Agent: Super Z (main)
+Task: Stage 5.52 — codegen trait-dispatch emission summary + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.47 / 1346 tests (Stage 5.51 complete)
+
+Stage 5.52: Codegen trait-dispatch emission summary
+- src/codegen/mod.rs: new CodegenTraitDispatchEmissionSummary struct (6 fields)
+- src/codegen/mod.rs: new free function build_trait_dispatch_emission_summary(&TraitResolver, &Rodeo) -> CodegenTraitDispatchEmissionSummary
+  * codegen counterpart of Stage 5.42's stdlib_vtable_emission_summary()
+  * computed directly from TraitResolver (not from StdlibVtableEmission list)
+- src/lib.rs: re-export CodegenTraitDispatchEmissionSummary + build_trait_dispatch_emission_summary + Stage 5.52 history comment
+- tests/v0/stage5/plan/codegen_trait_dispatch_summary_tests.rs: 14 new tests
+- tests/all_tests.rs: added codegen_trait_dispatch_summary_tests module (66 mods)
+- Cargo.toml: version 0.11.47 → 0.11.48
+
+Docs:
+- plan-5.52.md / gate-review-round52.md / codegen_trait_dispatch_summary_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (838.6 MiB removed) ✅
+- cargo test: 1360 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.52 PASSED — CI/CD all green per §1.2.
+- CodegenTraitDispatchEmissionSummary (6 fields) + build_trait_dispatch_emission_summary() added.
+- codegen counterpart of Stage 5.42's stdlib_vtable_emission_summary() —
+  computed directly from TraitResolver for codegen diagnostic layer.
+- §16 compliance: function takes &TraitResolver + &Rodeo, returns
+  CodegenTraitDispatchEmissionSummary. No mir::ty / Emitter reference.
+- §23 compliance: CodegenTraitDispatchEmissionSummary follows
+  <Noun><Noun><Noun><Noun><Noun>; build_trait_dispatch_emission_summary follows
+  <verb>_<noun>_<noun>_<noun>_<noun>. Codegen prefix distinguishes from
+  StdlibVtableEmissionSummary.
+- Stage 5.53 can now use this summary for codegen diagnostic output
+  ("emit N vtable globals, M dynptr globals, K total method slots").
+- Next: Stage 5.53+ (codegen trait-dispatch emission refactor — driver
+  delegation + TextEmitter delegation, then dyn Trait MIR lowering).

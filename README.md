@@ -6,10 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.47 — Stage 0-4 complete, Stage 5 in progress.
-> **1346 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
+> **Status:** v0.11.48 — Stage 0-4 complete, Stage 5 in progress.
+> **1360 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
 > Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5.1-5.51: 51 sub-stages done. Stdlib core+alloc+std+facade+type resolution+layout+trait method signatures+vtable slot layout+vtable byte size+vtable construction planner+vtable symbol name planner+vtable emission plan+vtable emission summary+codegen vtable emission helper+codegen vtable global text bridge+codegen vtable emission batch helper+codegen vtable spec builder+codegen vtable emission orchestrator+codegen dynptr global text helper+codegen dynptr spec builder+codegen dynptr emission orchestrator+codegen vtable+dynptr combined emission orchestrator complete. Deep review #4: GO.
+> Stage 5.1-5.52: 52 sub-stages done. Stdlib core+alloc+std+facade+type resolution+layout+trait method signatures+vtable slot layout+vtable byte size+vtable construction planner+vtable symbol name planner+vtable emission plan+vtable emission summary+codegen vtable emission helper+codegen vtable global text bridge+codegen vtable emission batch helper+codegen vtable spec builder+codegen vtable emission orchestrator+codegen dynptr global text helper+codegen dynptr spec builder+codegen dynptr emission orchestrator+codegen vtable+dynptr combined emission orchestrator+codegen trait-dispatch emission summary complete. Deep review #4: GO.
 > Next: codegen trait-dispatch emission refactor (driver delegation + TextEmitter delegation), dyn Trait MIR lowering.
 
 ## Quick start
@@ -39,7 +39,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete | 170 |
 | 3 | `codegen/` | ✅ Complete | 309 (incl. 5 §21 audit) |
 | 4 | modules, closures, macros, benchmarks, ADR | ✅ Complete | 62 + 5 bench |
-| 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | 🔄 In progress | 351 (TraitResolver + integration + Copy + DefId→name + vtable + vtable codegen + dyn fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report + stdlib facade + stdlib type resolution + stdlib type layout + stdlib trait method signatures + stdlib vtable slot layout + stdlib vtable byte size + stdlib vtable construction planner + stdlib vtable symbol name planner + stdlib vtable emission plan + stdlib vtable emission summary + codegen vtable emission helper + codegen vtable global text bridge + codegen vtable emission batch helper + codegen vtable spec builder + codegen vtable emission orchestrator + codegen dynptr global text helper + codegen dynptr spec builder + codegen dynptr emission orchestrator + codegen vtable+dynptr combined emission orchestrator) |
+| 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | 🔄 In progress | 365 (TraitResolver + integration + Copy + DefId→name + vtable + vtable codegen + dyn fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report + stdlib facade + stdlib type resolution + stdlib type layout + stdlib trait method signatures + stdlib vtable slot layout + stdlib vtable byte size + stdlib vtable construction planner + stdlib vtable symbol name planner + stdlib vtable emission plan + stdlib vtable emission summary + codegen vtable emission helper + codegen vtable global text bridge + codegen vtable emission batch helper + codegen vtable spec builder + codegen vtable emission orchestrator + codegen dynptr global text helper + codegen dynptr spec builder + codegen dynptr emission orchestrator + codegen vtable+dynptr combined emission orchestrator + codegen trait-dispatch emission summary) |
 
 ## API surface
 

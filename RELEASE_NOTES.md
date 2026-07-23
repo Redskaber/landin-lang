@@ -1,9 +1,76 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.47
+**Current version**: v0.11.48
 **Date**: 2026-07-23
-**Test count**: 1346 tests + 5 benchmarks
+**Test count**: 1360 tests + 5 benchmarks
+
+---
+
+## v0.11.48 — Stage 5.52 (Codegen trait-dispatch emission summary)
+
+### Overview
+
+codegen counterpart of Stage 5.42's `stdlib_vtable_emission_summary()`.
+Project-level aggregate statistics for trait-dispatch global emission,
+computed directly from `TraitResolver.vtables`. Stage 5.53 will use this
+for codegen diagnostic output ("emit N vtable globals, M dynptr globals,
+K total method slots").
+
+### New type
+
+- `CodegenTraitDispatchEmissionSummary` — 6 fields:
+  - `vtable_count: u32` / `dynptr_count: u32` / `total_global_count: u32`
+  - `trait_names: Vec<String>` / `type_names: Vec<String>` (deduplicated)
+  - `total_method_slots: u32`
+
+### New API
+
+- `build_trait_dispatch_emission_summary(&TraitResolver, &Rodeo) -> CodegenTraitDispatchEmissionSummary`
+  (in `src/codegen/mod.rs`) — computes vtable_count, dynptr_count,
+  total_global_count, deduplicated trait/type names, and total_method_slots
+  from `TraitResolver.vtables`.
+
+### Design highlights
+
+1. **codegen counterpart of Stage 5.42**: Stage 5.42 added
+   `stdlib_vtable_emission_summary()` (computed from `StdlibVtableEmission`
+   list), Stage 5.52 adds `build_trait_dispatch_emission_summary()` (computed
+   directly from `TraitResolver`). The two are complementary — stdlib version
+   for stdlib API layer, codegen version for codegen diagnostic layer.
+2. **Project-level aggregate**: one call returns vtable + dynptr + total
+   global counts, deduplicated trait/type names, total method slots.
+3. **`String` (not `&'static str`)**: unlike stdlib summary (which uses
+   `&'static str` for stdlib-registered trait names), codegen summary uses
+   `String` because trait/type names come from the interner at runtime
+   (user-defined traits/types), not from static stdlib tables.
+
+### §16 / §23 compliance
+
+- Function takes `&TraitResolver` + `&Rodeo` (same as `emit_vtables()`),
+  returns `CodegenTraitDispatchEmissionSummary`. No `mir::ty` / `Emitter`
+  reference, no circular dependency.
+- `CodegenTraitDispatchEmissionSummary` follows §23
+  `<Noun><Noun><Noun><Noun><Noun>`; `build_trait_dispatch_emission_summary`
+  follows `<verb>_<noun>_<noun>_<noun>_<noun>`. The `Codegen` prefix
+  distinguishes from stdlib's `StdlibVtableEmissionSummary` (Stage 5.42).
+  The `build_` prefix indicates a constructor function (no side effects).
+
+### Test impact
+
++14 tests (1346 → 1360) — covers empty/single/multi + field correctness
+(vtable_count/dynptr_count/total_global_count/trait_names_dedup/
+type_names_dedup/total_method_slots) + unresolved interner + no-side-effects
++ real-scenario + struct semantics.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (838.6 MiB removed)
+cargo test: 1360 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
