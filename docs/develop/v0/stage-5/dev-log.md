@@ -641,3 +641,22 @@ Docs supplement (all missing docs/tests/v0/stage5/ created):
 
 **Test impact**: +7
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.30 — Stdlib Std Layer (v0.11.27)
+
+**Priority**: Extend stdlib to std layer (OS types + I/O traits + Result/Option).
+
+**Work completed**:
+- src/stdlib.rs: new constants:
+  * STDLIB_STD_TYPES (26: File/Path/TcpStream/Thread/Mutex/Result/Option/...)
+  * STDLIB_STD_TRAITS (6: Read/Write/Seek/BufRead/Error/Termination)
+- src/stdlib.rs: StdlibLayer::Std variant added
+- src/stdlib.rs: all_stdlib_type_names() + all_stdlib_trait_names()
+  + register_stdlib() + layer_for_name() + names_for_layer() extended
+- src/lib.rs: doc comment updated
+- tests/v0/stage5/plan/stdlib_std_tests.rs: 8 new tests
+- tests/all_tests.rs: added stdlib_std_tests module (45 mods)
+- Cargo.toml: version 0.11.26 → 0.11.27
+
+**Test impact**: +8
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

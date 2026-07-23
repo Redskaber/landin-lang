@@ -4034,3 +4034,38 @@ Stage Summary:
 - StdlibLayer enum + layer query methods added.
 - All missing docs/tests/v0/stage5/ documents supplemented (10 files).
 - Next: Stage 5.30+ (dyn Trait MIR lowering, full stdlib std layer).
+
+---
+Task ID: stage5.30-r79
+Agent: Super Z (main)
+Task: Stage 5.30 — stdlib std layer + docs + RELEASE_NOTES + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.26 / 1065 tests (Stage 5.29 complete)
+
+Stage 5.30: Stdlib std layer
+- src/stdlib.rs: new STDLIB_STD_TYPES (26 types) + STDLIB_STD_TRAITS (6 traits)
+- src/stdlib.rs: StdlibLayer::Std variant + layer_for_name/names_for_layer extended
+- src/stdlib.rs: all_stdlib_type_names/all_stdlib_trait_names/register_stdlib extended
+- src/lib.rs: doc comment updated
+- tests/v0/stage5/plan/stdlib_std_tests.rs: 8 new tests
+- tests/all_tests.rs: added stdlib_std_tests module (45 mods)
+- Cargo.toml: version 0.11.26 → 0.11.27
+
+Docs:
+- docs/develop/v0/stage-5/plan-5.30.md
+- docs/develop/v0/stage-5/gate-review-round30.md
+- docs/tests/v0/stage5/plan/stdlib_std.md
+- docs/tests/v0/stage5/gate/gate-review-round30.md
+- RELEASE_NOTES.md: Stage 5.30 entry appended
+- README.md: updated to v0.11.27
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo test: (see output) ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.30 PASSED — CI/CD all green per §1.2.
+- Stdlib now has core + alloc + std layers (56+ types, 40+ traits).
+- Next: Stage 5.31+ (dyn Trait MIR lowering, stdlib facade crate).

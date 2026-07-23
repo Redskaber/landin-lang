@@ -55,6 +55,41 @@ pub const STDLIB_ALLOC_TRAITS: &[&str] = &[
     "Hash",
 ];
 
+/// Stage 5.30: Std-layer type names — OS-dependent I/O + threading types.
+pub const STDLIB_STD_TYPES: &[&str] = &[
+    "File",
+    "Dir",
+    "Path",
+    "PathBuf",
+    "OpenOptions",
+    "TcpStream",
+    "TcpListener",
+    "UdpSocket",
+    "Thread",
+    "JoinHandle",
+    "Mutex",
+    "Condvar",
+    "Command",
+    "ExitStatus",
+    "OsStr",
+    "OsString",
+    "Stdin",
+    "Stdout",
+    "Stderr",
+    "BufReader",
+    "BufWriter",
+    "Result",
+    "Option",
+    "Some",
+    "None",
+    "Ok",
+    "Err",
+];
+
+/// Stage 5.30: Std-layer trait names — I/O + error handling traits.
+pub const STDLIB_STD_TRAITS: &[&str] =
+    &["Read", "Write", "Seek", "BufRead", "Error", "Termination"];
+
 /// Stage 5.25: Core marker trait names (beyond BUILTIN_TRAIT_NAMES).
 ///
 /// These are additional traits in `core::marker` that the compiler
@@ -106,7 +141,7 @@ pub const STDLIB_ITER_TRAITS: &[&str] = &[
     "ExactSizeIterator",
 ];
 
-/// Stage 5.25: All stdlib trait names (marker + ops + convert + iter + alloc).
+/// Stage 5.25: All stdlib trait names (marker + ops + convert + iter + alloc + std).
 pub fn all_stdlib_trait_names() -> Vec<&'static str> {
     let mut names: Vec<&'static str> = Vec::new();
     names.extend_from_slice(STDLIB_MARKER_TRAITS);
@@ -114,15 +149,17 @@ pub fn all_stdlib_trait_names() -> Vec<&'static str> {
     names.extend_from_slice(STDLIB_CONVERT_TRAITS);
     names.extend_from_slice(STDLIB_ITER_TRAITS);
     names.extend_from_slice(STDLIB_ALLOC_TRAITS);
+    names.extend_from_slice(STDLIB_STD_TRAITS);
     names.sort();
     names.dedup();
     names
 }
 
-/// Stage 5.25: All stdlib type names (core primitives + alloc types).
+/// Stage 5.25: All stdlib type names (core + alloc + std).
 pub fn all_stdlib_type_names() -> Vec<&'static str> {
     let mut names = STDLIB_CORE_TYPES.to_vec();
     names.extend_from_slice(STDLIB_ALLOC_TYPES);
+    names.extend_from_slice(STDLIB_STD_TYPES);
     names
 }
 
@@ -178,6 +215,8 @@ impl StdlibPrelude {
             StdlibLayer::Core
         } else if STDLIB_ALLOC_TYPES.contains(&name) {
             StdlibLayer::Alloc
+        } else if STDLIB_STD_TYPES.contains(&name) {
+            StdlibLayer::Std
         } else {
             StdlibLayer::None
         }
@@ -191,6 +230,7 @@ impl StdlibPrelude {
         match layer {
             StdlibLayer::Core => STDLIB_CORE_TYPES.to_vec(),
             StdlibLayer::Alloc => STDLIB_ALLOC_TYPES.to_vec(),
+            StdlibLayer::Std => STDLIB_STD_TYPES.to_vec(),
             StdlibLayer::None => Vec::new(),
         }
     }
@@ -205,6 +245,8 @@ pub enum StdlibLayer {
     Core,
     /// Alloc layer — heap types (Box/Vec/String/...) + fmt/Deref traits.
     Alloc,
+    /// Stage 5.30: Std layer — OS-dependent types (File/Path/TcpStream/...) + I/O traits.
+    Std,
     /// Not a stdlib item.
     None,
 }
@@ -227,7 +269,11 @@ pub fn register_stdlib(interner: &mut Rodeo) {
     for &name in STDLIB_ALLOC_TYPES {
         interner.get_or_intern(name);
     }
-    // Register ops/convert/iter/alloc traits
+    // Stage 5.30: Register std types
+    for &name in STDLIB_STD_TYPES {
+        interner.get_or_intern(name);
+    }
+    // Register ops/convert/iter/alloc/std traits
     for name in all_stdlib_trait_names() {
         interner.get_or_intern(name);
     }

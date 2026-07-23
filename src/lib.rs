@@ -158,7 +158,13 @@
 //!     `STDLIB_ALLOC_TRAITS` (Display/Debug/Deref/Default/Hash) added;
 //!     `register_stdlib()` + `all_stdlib_type_names()` +
 //!     `all_stdlib_trait_names()` + `StdlibPrelude` extended.
-//!   Next: Stage 5.29+ (dyn Trait MIR lowering, full stdlib std layer).
+//!   Stage 5.30 (v0.11.27): Stdlib std layer —
+//!     `STDLIB_STD_TYPES` (File/Path/TcpStream/Thread/Mutex/Result/Option/...)
+//!     + `STDLIB_STD_TRAITS` (Read/Write/Seek/Error/Termination) added;
+//!     `StdlibLayer::Std` variant added; `register_stdlib()` +
+//!     `all_stdlib_type_names()` + `all_stdlib_trait_names()` +
+//!     `layer_for_name()` + `names_for_layer()` extended.
+//!   Next: Stage 5.31+ (dyn Trait MIR lowering, stdlib facade crate).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

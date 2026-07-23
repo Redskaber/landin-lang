@@ -1779,3 +1779,42 @@ remain green, 0 clippy warnings, fmt clean.
 | v3.6 | Author标注规则 |
 | v3.7 | 文档组织结构规则 (§12) |
 | v3.8 | (Pending) Stage 3 gate review convergence rule for codegen |
+
+---
+
+## v0.11.27 — Stage 5.30 (Stdlib std layer)
+
+### Overview
+
+Extends the standard library to the `std` layer — adds OS-dependent types
+(File/Path/TcpStream/Thread/Mutex/Result/Option/...) and I/O traits
+(Read/Write/Seek/Error/Termination). The `StdlibLayer` enum now has a `Std`
+variant for querying which layer a type belongs to.
+
+### New constants
+
+- `STDLIB_STD_TYPES` (26 types): File, Dir, Path, PathBuf, OpenOptions,
+  TcpStream, TcpListener, UdpSocket, Thread, JoinHandle, Mutex, Condvar,
+  Command, ExitStatus, OsStr, OsString, Stdin, Stdout, Stderr, BufReader,
+  BufWriter, Result, Option, Some, None, Ok, Err
+- `STDLIB_STD_TRAITS` (6 traits): Read, Write, Seek, BufRead, Error,
+  Termination
+
+### Extended APIs
+
+- `StdlibLayer::Std` variant added
+- `all_stdlib_type_names()` / `all_stdlib_trait_names()` include std items
+- `register_stdlib()` interns std types + traits
+- `layer_for_name()` / `names_for_layer()` support `Std` layer
+
+### Test impact
+
++8 tests (1065 → 1073)
+
+### Verification
+
+```
+cargo test: 1073 passed, 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings
+```
