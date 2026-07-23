@@ -1479,3 +1479,59 @@ pub fn emit_vtable_global_from_emission(emission: &crate::stdlib::StdlibVtableEm
         emission.global_name, init
     )
 }
+
+/// Stage 5.44: Build the LLVM IR text for one vtable global from raw
+/// `(global_name, method_symbols)` parameters.
+///
+/// This is the **bridge function** between Stage 5.43's
+/// `emit_vtable_global_from_emission()` (high-level, takes
+/// `StdlibVtableEmission`) and the future Stage 5.45 refactor where
+/// `TextEmitter::emit_vtable_global()` will delegate here.
+///
+/// Parameter signature matches `TextEmitter::emit_vtable_global()` exactly
+/// — `(global_name: &str, method_symbols: &[String])` — so the Stage 5.45
+/// delegation is a trivial body change.
+///
+/// Produces a line like:
+/// ```text
+/// @<global_name> = private unnamed_addr constant [N x ptr] [ptr @sym1, ptr @sym2, ...]
+/// ```
+///
+/// Edge cases:
+/// - `method_symbols.is_empty()` → `... constant zeroinitializer`
+/// - `method_symbols = ["null", ...]` → `ptr null` literal (no `@` prefix)
+///
+/// Per API-naming-standard §3: `emit_vtable_global_text` follows
+/// `<verb>_<noun>_<adj>_<noun>` pattern. The `_text` suffix indicates the
+/// function returns LLVM IR text (String), distinguishing it from the
+/// trait method's side-effect version.
+///
+/// Per §16: pure function, input `(&str, &[String])`, output `String`. No
+/// `mir::ty` / `traits::TraitResolver` / `Emitter` / `StdlibVtableEmission`
+/// reference, no circular dependency.
+pub fn emit_vtable_global_text(global_name: &str, method_symbols: &[String]) -> String {
+    // Build the LLVM initializer expression.
+    //
+    // Stage 5.44: handles `"null"` strings in `method_symbols` → `ptr null`
+    // literal (no `@` prefix). This matches the behavior of
+    // `emit_vtable_global_from_emission()` (Stage 5.43) and prepares for
+    // Stage 5.45 where `TextEmitter::emit_vtable_global()` will delegate
+    // here.
+    let init = if method_symbols.is_empty() {
+        "zeroinitializer".to_string()
+    } else {
+        let entries: Vec<String> = method_symbols
+            .iter()
+            .map(|sym| {
+                if sym == "null" {
+                    "ptr null".to_string()
+                } else {
+                    format!("ptr @{}", sym)
+                }
+            })
+            .collect();
+        format!("[{} x ptr] [{}]", method_symbols.len(), entries.join(", "))
+    };
+
+    format!("@{} = private unnamed_addr constant {}", global_name, init)
+}

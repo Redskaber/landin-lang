@@ -208,3 +208,6 @@ mod stdlib_vtable_emission_summary_tests;
 
 #[path = "v0/stage5/plan/codegen_vtable_emission_helper_tests.rs"]
 mod codegen_vtable_emission_helper_tests;
+
+#[path = "v0/stage5/plan/codegen_vtable_global_text_tests.rs"]
+mod codegen_vtable_global_text_tests;

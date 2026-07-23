@@ -1,9 +1,70 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.39
+**Current version**: v0.11.40
 **Date**: 2026-07-23
-**Test count**: 1249 tests + 5 benchmarks
+**Test count**: 1261 tests + 5 benchmarks
+
+---
+
+## v0.11.40 — Stage 5.44 (Codegen vtable global text bridge)
+
+### Overview
+
+Bridge function between Stage 5.43's high-level
+`emit_vtable_global_from_emission()` and Stage 5.45's
+`TextEmitter::emit_vtable_global()` delegation refactor. The new free
+function `emit_vtable_global_text()` has the **exact same parameter
+signature** as the trait method — making Stage 5.45's delegation a trivial
+body change.
+
+### New API
+
+- `emit_vtable_global_text(global_name: &str, method_symbols: &[String]) -> String`
+  (in `src/codegen/mod.rs`) — bridge free function. Handles `"null"` string
+  → `ptr null` literal (consistent with Stage 5.43). Byte-for-byte
+  identical to `TextEmitter::emit_vtable_global()` on non-null paths.
+
+### Design highlights
+
+1. **Bridge strategy**: Stage 5.43 high-level (emission) → Stage 5.44
+   low-level (text) → Stage 5.45 delegation (TextEmitter delegates here).
+   Three-step refactor, each independently reviewable.
+2. **Parameter signature match**: `emit_vtable_global_text(global_name,
+   method_symbols)` matches `TextEmitter::emit_vtable_global()` exactly —
+   Stage 5.45 delegation is a trivial body change, no call-site updates.
+3. **"null" handling consistency**: both Stage 5.43 and 5.44 free functions
+   handle `"null"` → `ptr null`. TextEmitter's current path doesn't (would
+   emit `ptr @null`), but `emit_vtables()` never passes "null" — only real
+   symbols. Stage 5.45 delegation will fix this latent bug.
+4. **Divergence documentation**: `test_emit_vtable_global_text_null_path_diverges_from_text_emitter`
+   explicitly documents the free fn vs TextEmitter divergence on the null
+   path — known issue that Stage 5.45 will resolve.
+
+### §16 / §23 compliance
+
+- Pure function, input `(&str, &[String])`, output `String`. No `mir::ty` /
+  `traits::TraitResolver` / `Emitter` / `StdlibVtableEmission` reference,
+  no circular dependency.
+- `emit_vtable_global_text` follows §23 `<verb>_<noun>_<adj>_<noun>` pattern.
+  The `_text` suffix indicates the function returns LLVM IR text (String),
+  distinguishing it from the trait method's side-effect version.
+
+### Test impact
+
++12 tests (1249 → 1261) — covers basic emission (2-symbol/empty/single/multi)
++ null handling (single + mixed) + format components (global_name/array/
+no-leading-@) + **two cross-check tests** (non-null + empty paths) +
+**one divergence-documenting test** (null path).
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (936.4 MiB removed)
+cargo test: 1261 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

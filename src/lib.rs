@@ -248,7 +248,15 @@
 //!     NOT modify existing emission path (`emit_vtables()` +
 //!     `TextEmitter::emit_vtable_global()` unchanged). Stage 5.44+ will
 //!     refactor `TextEmitter::emit_vtable_global()` to delegate here.
-//!   Next: Stage 5.44+ (codegen vtable emission refactor, dyn Trait MIR lowering).
+//!   Stage 5.44 (v0.11.40): Codegen vtable global text bridge — new free fn
+//!     `emit_vtable_global_text(global_name, method_symbols) -> String` in
+//!     `src/codegen/mod.rs` — bridge function with the **exact same
+//!     parameter signature** as `TextEmitter::emit_vtable_global()`. Sits
+//!     between Stage 5.43's high-level `emit_vtable_global_from_emission()`
+//!     and Stage 5.45's `TextEmitter::emit_vtable_global()` delegation
+//!     refactor. Handles "null" symbol → `ptr null` literal.
+//!   Next: Stage 5.45+ (codegen vtable emission refactor — TextEmitter delegation,
+//!     then dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -275,7 +283,7 @@ pub mod typeck;
 pub use cargo::{build_project, BuildConfig, BuildResult, ProjectManifest};
 pub use codegen::{
     codegen_crate, emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_vtable_global_from_emission,
-    emit_vtables, EmitType, EmitValue, Emitter, TextEmitter,
+    emit_vtable_global_text, emit_vtables, EmitType, EmitValue, Emitter, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{

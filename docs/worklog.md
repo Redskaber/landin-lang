@@ -4571,3 +4571,47 @@ Stage Summary:
   codegen module.
 - Next: Stage 5.44+ (codegen vtable emission refactor — TextEmitter delegation,
   then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.44-r93
+Agent: Super Z (main)
+Task: Stage 5.44 — codegen vtable global text bridge + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.39 / 1249 tests (Stage 5.43 complete)
+
+Stage 5.44: Codegen vtable global text bridge
+- src/codegen/mod.rs: new free function emit_vtable_global_text(global_name, method_symbols) -> String
+  * Exact same parameter signature as TextEmitter::emit_vtable_global()
+  * Handles "null" string → ptr null literal (consistent with Stage 5.43)
+  * Byte-for-byte identical to TextEmitter on non-null paths
+- src/lib.rs: re-export emit_vtable_global_text + Stage 5.44 history comment
+- tests/v0/stage5/plan/codegen_vtable_global_text_tests.rs: 12 new tests
+  (incl. 2 cross-check tests + 1 divergence-documenting test)
+- tests/all_tests.rs: added codegen_vtable_global_text_tests module (58 mods)
+- Cargo.toml: version 0.11.39 → 0.11.40
+
+Docs:
+- plan-5.44.md / gate-review-round44.md / codegen_vtable_global_text_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (936.4 MiB removed) ✅
+- cargo test: 1261 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.44 PASSED — CI/CD all green per §1.2.
+- emit_vtable_global_text() bridge free function added to src/codegen/mod.rs.
+- Bridge strategy: 5.43 high-level (emission) → 5.44 low-level (text) →
+  5.45 delegation (TextEmitter delegates here).
+- Parameter signature matches TextEmitter::emit_vtable_global() exactly —
+  Stage 5.45 delegation is a trivial body change.
+- "null" handling consistent with Stage 5.43; divergence from TextEmitter
+  current path documented in test (Stage 5.45 will fix by delegation).
+- §16 compliance: pure function, no mir::ty / traits::TraitResolver /
+  Emitter / StdlibVtableEmission reference.
+- §23 compliance: emit_vtable_global_text follows <verb>_<noun>_<adj>_<noun>.
+- Next: Stage 5.45+ (codegen vtable emission refactor — TextEmitter delegation,
+  then dyn Trait MIR lowering).

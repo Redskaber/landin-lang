@@ -1173,3 +1173,62 @@ consistent with the rest of the codegen module (`emit_vtables`,
 
 **Test impact**: +13 (1236 → 1249)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.44 — Codegen Vtable Global Text Bridge (v0.11.40)
+
+**Priority**: Bridge function between Stage 5.43's
+`emit_vtable_global_from_emission()` (high-level API) and Stage 5.45's
+`TextEmitter::emit_vtable_global()` delegation refactor. Same parameter
+signature as the trait method — Stage 5.45 delegation becomes a trivial
+body change.
+
+**Work completed**:
+- src/codegen/mod.rs: new free function
+  `emit_vtable_global_text(global_name: &str, method_symbols: &[String]) -> String`
+  * **Exact same parameter signature** as `TextEmitter::emit_vtable_global()`
+  * Handles `"null"` string → `ptr null` literal (consistent with Stage 5.43)
+  * Byte-for-byte identical to TextEmitter on non-null paths (cross-check tests)
+- src/lib.rs: re-export `emit_vtable_global_text` from codegen
+  + Stage 5.44 history comment
+- tests/v0/stage5/plan/codegen_vtable_global_text_tests.rs: 12 new tests
+  covering basic emission (2-symbol/empty/single/multi) + null handling
+  (single + mixed) + format components (global_name/array/no-leading-@)
+  + **two cross-check tests** (non-null + empty paths) +
+  **one divergence-documenting test** (null path: free fn correct, TextEmitter
+  current path incorrect — Stage 5.45 will fix by delegation)
+- tests/all_tests.rs: added codegen_vtable_global_text_tests module
+  (58 mods total)
+- Cargo.toml: version 0.11.39 → 0.11.40
+
+**Design highlights**:
+- **Bridge function strategy**: Stage 5.43 added high-level
+  `emit_vtable_global_from_emission(&StdlibVtableEmission)`. Stage 5.44
+  adds low-level `emit_vtable_global_text(&str, &[String])` matching the
+  trait method signature. Stage 5.45 will:
+  1. Make `emit_vtable_global_from_emission()` internally call
+     `emit_vtable_global_text()` (extracting global_name + method_symbols
+     from the emission struct)
+  2. Make `TextEmitter::emit_vtable_global()` delegate to
+     `emit_vtable_global_text()` (trivial body change, same signature)
+  This eliminates three duplicated LLVM IR formatting paths.
+- **"null" handling consistency**: both Stage 5.43 and 5.44 free functions
+  handle `"null"` → `ptr null`. TextEmitter's current path doesn't (it
+  would emit `ptr @null`), but `emit_vtables()` never passes "null" —
+  only real symbols from `VtableEntry.fn_name`. Stage 5.45 delegation
+  will fix this latent bug.
+- **Divergence documentation**: `test_emit_vtable_global_text_null_path_diverges_from_text_emitter`
+  explicitly documents the free fn vs TextEmitter divergence on the null
+  path. This is not a failure — it's a known issue that Stage 5.45 will
+  resolve.
+
+**§16 interface isolation**: pure function, input `(&str, &[String])`,
+output `String`. No `mir::ty` / `traits::TraitResolver` / `Emitter` /
+`StdlibVtableEmission` reference, no circular dependency.
+
+**§23 API naming**: `emit_vtable_global_text` follows
+`<verb>_<noun>_<adj>_<noun>` pattern. The `_text` suffix indicates the
+function returns LLVM IR text (String), distinguishing it from the trait
+method's side-effect version.
+
+**Test impact**: +12 (1249 → 1261)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

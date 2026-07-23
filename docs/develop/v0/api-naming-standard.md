@@ -1050,3 +1050,57 @@ trait reference, no circular dependency.
 **Test impact**: +13 (1236 → 1249).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.14 (Stage 5.44, 2026-07-23)
+
+Stage 5.44 codegen vtable global text bridge round. Adds the bridge
+function between Stage 5.43's high-level `emit_vtable_global_from_emission()`
+and Stage 5.45's `TextEmitter::emit_vtable_global()` delegation refactor.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_vtable_global_text` | free fn (in `codegen`) | `<verb>_<noun>_<adj>_<noun>` |
+
+**Design decisions**:
+1. **Bridge function strategy**: Stage 5.43 added high-level
+   `emit_vtable_global_from_emission(&StdlibVtableEmission)`. Stage 5.44
+   adds low-level `emit_vtable_global_text(&str, &[String])` with the
+   **exact same parameter signature** as `TextEmitter::emit_vtable_global()`.
+   Stage 5.45 will:
+   - Make `emit_vtable_global_from_emission()` internally call
+     `emit_vtable_global_text()` (extracting fields from the emission struct)
+   - Make `TextEmitter::emit_vtable_global()` delegate to
+     `emit_vtable_global_text()` (trivial body change, same signature)
+   Three-step refactor, each independently reviewable.
+2. **`_text` suffix**: distinguishes this free function (returns LLVM IR
+   text as `String`) from the trait method `emit_vtable_global` (side
+   effect: pushes to `self.globals`). When Stage 5.45 makes the trait
+   method delegate here, the naming asymmetry will visually remind readers
+   that the free function is the "pure" version.
+3. **Parameter signature match with trait method**: `emit_vtable_global_text(
+   global_name: &str, method_symbols: &[String])` matches
+   `Emitter::emit_vtable_global(&self, global_name: &str, method_symbols:
+   &[String])` exactly (minus `&self`). This makes Stage 5.45 delegation
+   a one-line body change: `self.globals.push(emit_vtable_global_text(
+   global_name, method_symbols)); global_name.to_string()`.
+4. **"null" handling consistency**: both Stage 5.43 and 5.44 free functions
+   handle `"null"` → `ptr null`. TextEmitter's current path doesn't (would
+   emit `ptr @null`), but `emit_vtables()` never passes "null" — only real
+   symbols from `VtableEntry.fn_name`. Stage 5.45 delegation will fix this
+   latent bug as a side effect.
+5. **Divergence documentation test**:
+   `test_emit_vtable_global_text_null_path_diverges_from_text_emitter`
+   explicitly documents that the free fn handles null correctly while
+   TextEmitter's current path doesn't. This is not a failure — it's a
+   known issue that Stage 5.45 will resolve. Documenting it in a test
+   ensures we don't forget.
+
+**§16 compliance**: pure function, input `(&str, &[String])`, output
+`String`. No `mir::ty` / `traits::TraitResolver` / `Emitter` /
+`StdlibVtableEmission` reference, no circular dependency.
+
+**Test impact**: +12 (1249 → 1261).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
