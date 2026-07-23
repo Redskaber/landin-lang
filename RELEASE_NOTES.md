@@ -1,9 +1,112 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.4
-**Date**: 2026-07-22
-**Test count**: 1013+ tests (3 new vtable tests pending env verification) + 5 benchmarks
+**Current version**: v0.11.32
+**Date**: 2026-07-23
+**Test count**: 1130 tests + 5 benchmarks
+
+---
+
+## v0.11.32 — Stage 5.36 (Stdlib trait method signatures)
+
+### Overview
+
+Adds static method-signature registry for builtin stdlib traits —
+`StdlibTraitMethod` + `StdlibSelfKind` + 25+ const method tables +
+5 free-function query APIs. This is the prereq for dyn Trait MIR lowering
+(TD-014 partial close) and typeck trait-bound solving: callers can now query
+"what methods does trait T declare, with what self-kind, parameter count,
+return type kind, and unsafe-ness" without re-parsing trait declarations.
+
+### New types
+
+- `StdlibSelfKind` — receiver kind enum (SelfByValue / SelfByRef /
+  SelfByMutRef / NoSelf) — determines vtable `self` ABI.
+- `StdlibTraitMethod` — single trait method signature struct
+  (name / self_kind / param_count / return_kind / is_unsafe) +
+  `has_self()` helper.
+
+### Registered trait tables (25+ traits)
+
+- **Markers** (empty `Some(&[])` vs `None`): Copy/Send/Sync/Sized/Unpin/Eq
+- **Core traits**: Clone(2) / Drop(1) / Default(1) / Display(1) / Debug(1) /
+  PartialEq(2) / PartialOrd(1) / Ord(1) / Hash(1) / Deref(1) / DerefMut(1) /
+  IntoIterator(1) / Iterator(1)
+- **I/O**: Read(1) / Write(1)
+- **Unary ops**: Neg(1) / Not(1)
+- **Binary arithmetic** (each per-op const table): Add/Sub/Mul/Div/Rem/
+  BitAnd/BitOr/BitXor/Shl/Shr — each 1 method
+- **Assign ops** (each per-op const table): AddAssign/.../ShrAssign — each 1 method
+
+### New APIs
+
+- `stdlib_trait_methods(trait_name) -> Option<&'static [StdlibTraitMethod]>`
+- `stdlib_trait_method_count(trait_name) -> Option<usize>`
+- `find_stdlib_trait_method(trait_name, method_name) -> Option<&'static StdlibTraitMethod>`
+- `is_stdlib_trait_method(trait_name, method_name) -> bool`
+- `stdlib_traits_with_method(method_name) -> Vec<&'static str>` (reverse query)
+
+### Design highlights
+
+1. Per-op const tables (Add/Sub/Mul/...) instead of shared placeholder with
+   runtime name override — ensures `StdlibTraitMethod.name` always matches
+   the trait's actual method name.
+2. `stdlib_traits_with_method()` uses a local `ALL_REGISTERED_TRAITS` constant
+   — keeps `stdlib.rs` self-contained per §16 (no backwards dependency on
+   the `traits` module).
+3. Markers return `Some(&[])` (not `None`) so callers can distinguish
+   "trait in registry but no methods" from "trait not in registry at all".
+
+### §16 / §23 compliance
+
+- `StdlibTraitMethod` uses `StdlibTypeKind` (stdlib-internal) — no `mir::ty`
+  reference, no circular dependency.
+- All 7 new public symbols follow API-naming-standard §23:
+  `<Noun><Noun><Noun>` for types, `<noun>_<noun>` / `find_<noun>_<noun>` /
+  `is_<noun>_<noun>` / `<noun>_<noun>_with_<noun>` for functions.
+
+### Test impact
+
++24 tests (1106 → 1130) — covers all registered traits + edge cases
+(unknown traits, marker emptiness, arithmetic exact-match, reverse queries,
+helper methods).
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (918 MiB removed)
+cargo test: 1130 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+---
+
+## v0.11.31 — Stage 5.35 (Stdlib type layout)
+
+### Overview
+
+Adds primitive type layout queries: `type_size_bytes()`,
+`type_alignment_bytes()`, `is_zero_sized_type()`, `type_description()`.
+
+### New API
+
+- `type_size_bytes(name: &str) -> Option<u64>` — size in bytes
+- `type_alignment_bytes(name: &str) -> Option<u64>` — alignment in bytes
+- `is_zero_sized_type(name: &str) -> bool` — ZST check
+- `type_description(name: &str) -> Option<&'static str>` — human-readable desc
+
+### Test impact
+
++7 tests (1099 → 1106)
+
+### Verification
+
+```
+cargo test: 1106 passed, 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings
+```
 
 ---
 

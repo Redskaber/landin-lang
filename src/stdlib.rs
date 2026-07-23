@@ -583,3 +583,514 @@ pub fn type_description(name: &str) -> Option<&'static str> {
         StdlibTypeKind::Unknown => None,
     }
 }
+
+// ============================================================================
+// Stage 5.36: Stdlib trait method signatures
+//
+// Provides a static registry of method signatures for each builtin stdlib
+// trait, so that downstream stages (typeck trait-bound solving, dyn Trait
+// MIR lowering, vtable codegen) can query "what methods does trait T
+// declare, with what self-kind, parameter count, and return type?"
+// without re-parsing trait declarations.
+//
+// Per API-naming-standard §3:
+//   - `StdlibTraitMethod` follows `<Noun><Noun><Noun>` pattern.
+//   - `StdlibSelfKind` follows `<Noun><Noun><Noun>` pattern.
+//   - Query functions follow `<noun>_<noun>` / `<noun>_<noun>_<noun>` /
+//     `find_<noun>_<noun>` / `is_<noun>_<noun>` patterns.
+//
+// Per §16: uses `StdlibTypeKind` (stdlib-internal), no `mir::ty` reference,
+// so no circular dependency.
+// ============================================================================
+
+/// Stage 5.36: Receiver kind for a trait method.
+///
+/// Determines how `self` is passed in the vtable function signature.
+///
+/// Per API-naming-standard §3: `StdlibSelfKind` follows `<Noun><Noun><Noun>`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StdlibSelfKind {
+    /// `fn(self, ...) -> ...` — by value.
+    SelfByValue,
+    /// `fn(&self, ...) -> ...` — shared reference.
+    SelfByRef,
+    /// `fn(&mut self, ...) -> ...` — mutable reference.
+    SelfByMutRef,
+    /// Associated function (no `self` parameter).
+    NoSelf,
+}
+
+/// Stage 5.36: A single trait method signature in the stdlib registry.
+///
+/// Each entry maps a `(trait_name, method_name)` pair to its signature
+/// metadata: receiver kind, parameter count (excluding `self`), return
+/// type kind, and whether the method is `unsafe`.
+///
+/// Per API-naming-standard §3: `StdlibTraitMethod` follows
+/// `<Noun><Noun><Noun>` pattern. Field names follow `<noun>_<noun>` /
+/// `is_<adj>` patterns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StdlibTraitMethod {
+    /// Method name (e.g. "clone", "fmt", "next").
+    pub name: &'static str,
+    /// How `self` is received.
+    pub self_kind: StdlibSelfKind,
+    /// Number of parameters excluding `self` (e.g. `fn eq(&self, other: &Self)`
+    /// has `param_count == 1`).
+    pub param_count: u32,
+    /// Return type kind.
+    pub return_kind: StdlibTypeKind,
+    /// Whether the method is `unsafe fn`.
+    pub is_unsafe: bool,
+}
+
+impl StdlibTraitMethod {
+    /// Convenience: returns true if the method takes `self` (any kind).
+    pub fn has_self(&self) -> bool {
+        !matches!(self.self_kind, StdlibSelfKind::NoSelf)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Static method registry — keyed by trait name.
+//
+// Marker traits (Copy/Send/Sync/Sized/Unpin) intentionally return
+// `Some(&[])` (non-None but zero entries), so callers can distinguish
+// "trait is in the stdlib registry but has no methods" from
+// "trait is not a stdlib trait at all" (None).
+// ---------------------------------------------------------------------------
+
+/// Stage 5.36: Marker-trait method table — empty (no methods).
+const MARKER_METHODS: &[StdlibTraitMethod] = &[];
+
+/// Stage 5.36: Clone method table.
+const CLONE_METHODS: &[StdlibTraitMethod] = &[
+    StdlibTraitMethod {
+        name: "clone",
+        self_kind: StdlibSelfKind::SelfByRef,
+        param_count: 0,
+        return_kind: StdlibTypeKind::AllocType, // Self (placeholder: AllocType for Adt-like)
+        is_unsafe: false,
+    },
+    StdlibTraitMethod {
+        name: "clone_from",
+        self_kind: StdlibSelfKind::SelfByMutRef,
+        param_count: 1, // source: &Self
+        return_kind: StdlibTypeKind::Unit,
+        is_unsafe: false,
+    },
+];
+
+/// Stage 5.36: Drop method table.
+const DROP_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "drop",
+    self_kind: StdlibSelfKind::SelfByMutRef,
+    param_count: 0,
+    return_kind: StdlibTypeKind::Unit,
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Default method table.
+const DEFAULT_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "default",
+    self_kind: StdlibSelfKind::NoSelf,
+    param_count: 0,
+    return_kind: StdlibTypeKind::AllocType, // Self
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Display method table.
+const DISPLAY_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "fmt",
+    self_kind: StdlibSelfKind::SelfByRef,
+    param_count: 1,                       // f: &mut Formatter
+    return_kind: StdlibTypeKind::StdType, // Result<(), Error> → StdType
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Debug method table (same shape as Display).
+const DEBUG_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "fmt",
+    self_kind: StdlibSelfKind::SelfByRef,
+    param_count: 1,
+    return_kind: StdlibTypeKind::StdType,
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: PartialEq method table.
+const PARTIAL_EQ_METHODS: &[StdlibTraitMethod] = &[
+    StdlibTraitMethod {
+        name: "eq",
+        self_kind: StdlibSelfKind::SelfByRef,
+        param_count: 1, // other: &Self
+        return_kind: StdlibTypeKind::Bool,
+        is_unsafe: false,
+    },
+    StdlibTraitMethod {
+        name: "ne",
+        self_kind: StdlibSelfKind::SelfByRef,
+        param_count: 1,
+        return_kind: StdlibTypeKind::Bool,
+        is_unsafe: false,
+    },
+];
+
+/// Stage 5.36: PartialOrd method table.
+const PARTIAL_ORD_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "partial_cmp",
+    self_kind: StdlibSelfKind::SelfByRef,
+    param_count: 1,                       // other: &Self
+    return_kind: StdlibTypeKind::StdType, // Option<Ordering>
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Ord method table.
+const ORD_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "cmp",
+    self_kind: StdlibSelfKind::SelfByRef,
+    param_count: 1,                       // other: &Self
+    return_kind: StdlibTypeKind::StdType, // Ordering
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Hash method table.
+const HASH_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "hash",
+    self_kind: StdlibSelfKind::SelfByRef,
+    param_count: 1, // state: &mut Hasher
+    return_kind: StdlibTypeKind::Unit,
+    is_unsafe: false,
+}];
+// ---------------------------------------------------------------------------
+// Per-trait arithmetic tables (each StdlibTraitMethod.name is correct).
+// ---------------------------------------------------------------------------
+
+/// Stage 5.36: Method-name override for arithmetic binary traits.
+///
+/// Each of Add/Sub/Mul/Div/Rem shares the shape
+/// `fn(self, rhs: Rhs) -> Self::Output` but differs in the method name.
+/// This constant maps trait_name → method_name so that diagnostics and
+/// reverse queries can answer "what method name does trait Add declare?".
+pub const ARITH_OP_METHOD_NAMES: &[(&str, &str)] = &[
+    ("Add", "add"),
+    ("Sub", "sub"),
+    ("Mul", "mul"),
+    ("Div", "div"),
+    ("Rem", "rem"),
+    ("BitAnd", "bitand"),
+    ("BitOr", "bitor"),
+    ("BitXor", "bitxor"),
+    ("Shl", "shl"),
+    ("Shr", "shr"),
+];
+
+/// Stage 5.36: Method-name override for arithmetic assign traits.
+pub const ARITH_ASSIGN_METHOD_NAMES: &[(&str, &str)] = &[
+    ("AddAssign", "add_assign"),
+    ("SubAssign", "sub_assign"),
+    ("MulAssign", "mul_assign"),
+    ("DivAssign", "div_assign"),
+    ("RemAssign", "rem_assign"),
+    ("BitAndAssign", "bitand_assign"),
+    ("BitOrAssign", "bitor_assign"),
+    ("BitXorAssign", "bitxor_assign"),
+    ("ShlAssign", "shl_assign"),
+    ("ShrAssign", "shr_assign"),
+];
+
+// Per-op static tables — built at compile time so each method's `name`
+// field is correct (not "add" with a runtime override).
+macro_rules! arith_binary_table {
+    ($const_name:ident, $method_name:literal) => {
+        const $const_name: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+            name: $method_name,
+            self_kind: StdlibSelfKind::SelfByValue,
+            param_count: 1,                         // rhs: Rhs
+            return_kind: StdlibTypeKind::AllocType, // Self::Output (Adt-like)
+            is_unsafe: false,
+        }];
+    };
+}
+
+arith_binary_table!(ADD_METHODS, "add");
+arith_binary_table!(SUB_METHODS, "sub");
+arith_binary_table!(MUL_METHODS, "mul");
+arith_binary_table!(DIV_METHODS, "div");
+arith_binary_table!(REM_METHODS, "rem");
+arith_binary_table!(BITAND_METHODS, "bitand");
+arith_binary_table!(BITOR_METHODS, "bitor");
+arith_binary_table!(BITXOR_METHODS, "bitxor");
+arith_binary_table!(SHL_METHODS, "shl");
+arith_binary_table!(SHR_METHODS, "shr");
+
+macro_rules! arith_assign_table {
+    ($const_name:ident, $method_name:literal) => {
+        const $const_name: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+            name: $method_name,
+            self_kind: StdlibSelfKind::SelfByMutRef,
+            param_count: 1, // rhs: Rhs
+            return_kind: StdlibTypeKind::Unit,
+            is_unsafe: false,
+        }];
+    };
+}
+
+arith_assign_table!(ADD_ASSIGN_METHODS, "add_assign");
+arith_assign_table!(SUB_ASSIGN_METHODS, "sub_assign");
+arith_assign_table!(MUL_ASSIGN_METHODS, "mul_assign");
+arith_assign_table!(DIV_ASSIGN_METHODS, "div_assign");
+arith_assign_table!(REM_ASSIGN_METHODS, "rem_assign");
+arith_assign_table!(BITAND_ASSIGN_METHODS, "bitand_assign");
+arith_assign_table!(BITOR_ASSIGN_METHODS, "bitor_assign");
+arith_assign_table!(BITXOR_ASSIGN_METHODS, "bitxor_assign");
+arith_assign_table!(SHL_ASSIGN_METHODS, "shl_assign");
+arith_assign_table!(SHR_ASSIGN_METHODS, "shr_assign");
+
+/// Stage 5.36: Neg (unary minus) method table.
+const NEG_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "neg",
+    self_kind: StdlibSelfKind::SelfByValue,
+    param_count: 0,
+    return_kind: StdlibTypeKind::AllocType, // Self
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Not (logical/bitwise NOT) method table.
+const NOT_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "not",
+    self_kind: StdlibSelfKind::SelfByValue,
+    param_count: 0,
+    return_kind: StdlibTypeKind::AllocType,
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Deref method table.
+const DEREF_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "deref",
+    self_kind: StdlibSelfKind::SelfByRef,
+    param_count: 0,
+    return_kind: StdlibTypeKind::AllocType, // &Self::Target
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: DerefMut method table.
+const DEREF_MUT_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "deref_mut",
+    self_kind: StdlibSelfKind::SelfByMutRef,
+    param_count: 0,
+    return_kind: StdlibTypeKind::AllocType, // &mut Self::Target
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: IntoIterator method table.
+const INTO_ITERATOR_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "into_iter",
+    self_kind: StdlibSelfKind::SelfByValue,
+    param_count: 0,
+    return_kind: StdlibTypeKind::AllocType, // Self::IntoIter
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Iterator method table.
+const ITERATOR_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "next",
+    self_kind: StdlibSelfKind::SelfByMutRef,
+    param_count: 0,
+    return_kind: StdlibTypeKind::StdType, // Option<Self::Item>
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Read method table.
+const READ_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "read",
+    self_kind: StdlibSelfKind::SelfByMutRef,
+    param_count: 1,                       // buf: &mut [u8]
+    return_kind: StdlibTypeKind::StdType, // Result<usize>
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Write method table.
+const WRITE_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
+    name: "write",
+    self_kind: StdlibSelfKind::SelfByMutRef,
+    param_count: 1,                       // buf: &[u8]
+    return_kind: StdlibTypeKind::StdType, // Result<usize>
+    is_unsafe: false,
+}];
+
+/// Stage 5.36: Lookup the method slice for a stdlib trait by name.
+///
+/// Returns:
+/// - `Some(&[])` for marker traits (Copy/Send/Sync/Sized/Unpin/Eq) — they
+///   are in the registry but have no methods.
+/// - `Some(&[...])` for traits with known method signatures.
+/// - `None` for traits that are not in the stdlib trait registry.
+///
+/// Per API-naming-standard §3: `stdlib_trait_methods` follows
+/// `<noun>_<noun>_<noun>` pattern (stdlib-scoped free-function query).
+pub fn stdlib_trait_methods(trait_name: &str) -> Option<&'static [StdlibTraitMethod]> {
+    match trait_name {
+        // Markers — in registry, no methods
+        "Copy" | "Send" | "Sync" | "Sized" | "Unpin" | "Eq" => Some(MARKER_METHODS),
+        // Core traits
+        "Clone" => Some(CLONE_METHODS),
+        "Drop" => Some(DROP_METHODS),
+        "Default" => Some(DEFAULT_METHODS),
+        "Display" => Some(DISPLAY_METHODS),
+        "Debug" => Some(DEBUG_METHODS),
+        "PartialEq" => Some(PARTIAL_EQ_METHODS),
+        "PartialOrd" => Some(PARTIAL_ORD_METHODS),
+        "Ord" => Some(ORD_METHODS),
+        "Hash" => Some(HASH_METHODS),
+        "Deref" => Some(DEREF_METHODS),
+        "DerefMut" => Some(DEREF_MUT_METHODS),
+        "IntoIterator" => Some(INTO_ITERATOR_METHODS),
+        "Iterator" => Some(ITERATOR_METHODS),
+        // I/O traits
+        "Read" => Some(READ_METHODS),
+        "Write" => Some(WRITE_METHODS),
+        // Unary ops
+        "Neg" => Some(NEG_METHODS),
+        "Not" => Some(NOT_METHODS),
+        // Arithmetic binary ops — each trait has its own per-op table
+        "Add" => Some(ADD_METHODS),
+        "Sub" => Some(SUB_METHODS),
+        "Mul" => Some(MUL_METHODS),
+        "Div" => Some(DIV_METHODS),
+        "Rem" => Some(REM_METHODS),
+        "BitAnd" => Some(BITAND_METHODS),
+        "BitOr" => Some(BITOR_METHODS),
+        "BitXor" => Some(BITXOR_METHODS),
+        "Shl" => Some(SHL_METHODS),
+        "Shr" => Some(SHR_METHODS),
+        // Arithmetic assign ops
+        "AddAssign" => Some(ADD_ASSIGN_METHODS),
+        "SubAssign" => Some(SUB_ASSIGN_METHODS),
+        "MulAssign" => Some(MUL_ASSIGN_METHODS),
+        "DivAssign" => Some(DIV_ASSIGN_METHODS),
+        "RemAssign" => Some(REM_ASSIGN_METHODS),
+        "BitAndAssign" => Some(BITAND_ASSIGN_METHODS),
+        "BitOrAssign" => Some(BITOR_ASSIGN_METHODS),
+        "BitXorAssign" => Some(BITXOR_ASSIGN_METHODS),
+        "ShlAssign" => Some(SHL_ASSIGN_METHODS),
+        "ShrAssign" => Some(SHR_ASSIGN_METHODS),
+        // Not registered (Fn/FnMut/FnOnce/From/Into/AsRef/...) → None
+        _ => None,
+    }
+}
+
+/// Stage 5.36: Get the method count for a stdlib trait.
+///
+/// Returns `Some(n)` if the trait is in the registry (n may be 0 for
+/// marker traits), `None` if the trait is not a stdlib trait.
+///
+/// Per API-naming-standard §3: `stdlib_trait_method_count` follows
+/// `<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_trait_method_count(trait_name: &str) -> Option<usize> {
+    stdlib_trait_methods(trait_name).map(|m| m.len())
+}
+
+/// Stage 5.36: Find a specific method by name in a stdlib trait.
+///
+/// Returns `Some(&StdlibTraitMethod)` if the trait is registered and
+/// contains a method with the given name, `None` otherwise.
+///
+/// Per API-naming-standard §3: `find_stdlib_trait_method` follows
+/// `find_<noun>_<noun>_<noun>` pattern.
+pub fn find_stdlib_trait_method(
+    trait_name: &str,
+    method_name: &str,
+) -> Option<&'static StdlibTraitMethod> {
+    stdlib_trait_methods(trait_name)?
+        .iter()
+        .find(|m| m.name == method_name)
+}
+
+/// Stage 5.36: Check whether a (trait, method) pair exists in the stdlib registry.
+///
+/// Per API-naming-standard §3: `is_stdlib_trait_method` follows
+/// `is_<noun>_<noun>_<noun>` pattern.
+pub fn is_stdlib_trait_method(trait_name: &str, method_name: &str) -> bool {
+    find_stdlib_trait_method(trait_name, method_name).is_some()
+}
+
+/// Stage 5.36: Reverse query — find all stdlib traits that declare a method
+/// with the given name.
+///
+/// Useful for diagnostics (e.g. "method `clone` is declared by traits: Clone").
+///
+/// Iterates the complete set of trait names that are registered in
+/// `stdlib_trait_methods()` (which is a superset of
+/// `all_stdlib_trait_names()` — it also includes builtin marker traits
+/// like Copy/Clone/Drop that live in `traits::builtin::BUILTIN_TRAIT_NAMES`
+/// but are duplicated here so `stdlib.rs` stays self-contained per §16).
+///
+/// Per API-naming-standard §3: `stdlib_traits_with_method` follows
+/// `<noun>_<noun>_with_<noun>` pattern.
+pub fn stdlib_traits_with_method(method_name: &str) -> Vec<&'static str> {
+    /// Complete list of trait names that have entries in
+    /// `stdlib_trait_methods()`'s match table.
+    ///
+    /// Kept in this module (not imported from `traits::builtin`) so that
+    /// `stdlib.rs` stays self-contained per §16 (no backwards dependency
+    /// on the `traits` module). Synchronized with the match arms in
+    /// `stdlib_trait_methods`.
+    const ALL_REGISTERED_TRAITS: &[&str] = &[
+        // Markers (no methods)
+        "Copy",
+        "Send",
+        "Sync",
+        "Sized",
+        "Unpin",
+        "Eq",
+        // Core traits
+        "Clone",
+        "Drop",
+        "Default",
+        "Display",
+        "Debug",
+        "PartialEq",
+        "PartialOrd",
+        "Ord",
+        "Hash",
+        "Deref",
+        "DerefMut",
+        "IntoIterator",
+        "Iterator",
+        // I/O traits
+        "Read",
+        "Write",
+        // Unary ops
+        "Neg",
+        "Not",
+        // Arithmetic binary ops
+        "Add",
+        "Sub",
+        "Mul",
+        "Div",
+        "Rem",
+        "BitAnd",
+        "BitOr",
+        "BitXor",
+        "Shl",
+        "Shr",
+        // Arithmetic assign ops
+        "AddAssign",
+        "SubAssign",
+        "MulAssign",
+        "DivAssign",
+        "RemAssign",
+        "BitAndAssign",
+        "BitOrAssign",
+        "BitXorAssign",
+        "ShlAssign",
+        "ShrAssign",
+    ];
+    let mut out: Vec<&'static str> = Vec::new();
+    for &trait_name in ALL_REGISTERED_TRAITS {
+        if find_stdlib_trait_method(trait_name, method_name).is_some() {
+            out.push(trait_name);
+        }
+    }
+    out
+}

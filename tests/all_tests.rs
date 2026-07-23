@@ -184,3 +184,6 @@ mod stdlib_type_resolve_tests;
 
 #[path = "v0/stage5/plan/stdlib_layout_tests.rs"]
 mod stdlib_layout_tests;
+
+#[path = "v0/stage5/plan/stdlib_trait_method_tests.rs"]
+mod stdlib_trait_method_tests;

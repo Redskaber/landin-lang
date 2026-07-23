@@ -180,7 +180,17 @@
 //!   Stage 5.35 (v0.11.31): Stdlib type layout —
 //!     `type_size_bytes()` + `type_alignment_bytes()` + `is_zero_sized_type()`
 //!     + `type_description()` for primitive type size/alignment/ZST/desc.
-//!   Next: Stage 5.36+ (dyn Trait MIR lowering, stdlib crate compilation).
+//!   Stage 5.36 (v0.11.32): Stdlib trait method signatures —
+//!     `StdlibTraitMethod` + `StdlibSelfKind` (4 receiver kinds) +
+//!     static method tables for 25+ stdlib traits (markers empty, Clone 2
+//!     methods, Drop/Default/Display/Debug/PartialEq/PartialOrd/Ord/Hash/
+//!     Deref/DerefMut/IntoIterator/Iterator/Read/Write/Neg/Not + 10 binary
+//!     arithmetic ops + 10 assign ops) + `stdlib_trait_methods()` +
+//!     `stdlib_trait_method_count()` + `find_stdlib_trait_method()` +
+//!     `is_stdlib_trait_method()` + `stdlib_traits_with_method()` for
+//!     trait-method signature queries — prereq for dyn Trait MIR lowering
+//!     and typeck trait-bound solving.
+//!   Next: Stage 5.37+ (dyn Trait MIR lowering, stdlib crate compilation).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -211,10 +221,11 @@ pub use codegen::{
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{
-    default_prelude, integer_bit_width, is_float_type, is_primitive_type, is_signed_integer,
-    is_unsigned_integer, is_zero_sized_type, register_stdlib, resolve_stdlib_type,
-    type_alignment_bytes, type_description, type_size_bytes, StdlibFacade, StdlibLayer,
-    StdlibPrelude, StdlibTypeKind,
+    default_prelude, find_stdlib_trait_method, integer_bit_width, is_float_type, is_primitive_type,
+    is_signed_integer, is_stdlib_trait_method, is_unsigned_integer, is_zero_sized_type,
+    register_stdlib, resolve_stdlib_type, stdlib_trait_method_count, stdlib_trait_methods,
+    stdlib_traits_with_method, type_alignment_bytes, type_description, type_size_bytes,
+    StdlibFacade, StdlibLayer, StdlibPrelude, StdlibSelfKind, StdlibTraitMethod, StdlibTypeKind,
 };
 pub use traits::{
     extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, ImplValidationReport,

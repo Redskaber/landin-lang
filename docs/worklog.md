@@ -4213,3 +4213,49 @@ Stage Summary:
 - Stage 5.35 PASSED — CI/CD all green per §1.2.
 - Stdlib type layout: size/alignment/ZST/description queries added.
 - Next: Stage 5.36+ (dyn Trait MIR lowering, stdlib crate compilation).
+
+---
+Task ID: stage5.36-r85
+Agent: Super Z (main)
+Task: Stage 5.36 — stdlib trait method signatures + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.31 / 1106 tests (Stage 5.35 complete)
+
+Stage 5.36: Stdlib trait method signatures
+- src/stdlib.rs: new StdlibSelfKind enum (4 variants)
+- src/stdlib.rs: new StdlibTraitMethod struct + has_self() helper
+- src/stdlib.rs: 25+ static method tables (one const per trait):
+  * MARKER_METHODS (empty) — for Copy/Send/Sync/Sized/Unpin/Eq
+  * CLONE/DROP/DEFAULT/DISPLAY/DEBUG/PARTIAL_EQ/PARTIAL_ORD/ORD/HASH/
+    DEREF/DEREF_MUT/INTO_ITERATOR/ITERATOR/READ/WRITE/NEG/NOT
+  * 10 per-op binary arith tables (Add/Sub/Mul/Div/Rem/BitAnd/BitOr/BitXor/Shl/Shr)
+  * 10 per-op assign tables (AddAssign/.../ShrAssign)
+  * ARITH_OP_METHOD_NAMES + ARITH_ASSIGN_METHOD_NAMES diagnostics constants
+- src/stdlib.rs: 5 new free-function query APIs:
+  * stdlib_trait_methods / stdlib_trait_method_count
+  * find_stdlib_trait_method / is_stdlib_trait_method
+  * stdlib_traits_with_method (reverse query)
+- src/lib.rs: re-export all new APIs + Stage 5.36 history comment
+- tests/v0/stage5/plan/stdlib_trait_method_tests.rs: 24 new tests
+- tests/all_tests.rs: added stdlib_trait_method_tests module (50 mods)
+- Cargo.toml: version 0.11.31 → 0.11.32
+
+Docs:
+- plan-5.36.md / gate-review-round36.md / stdlib_trait_method_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (918 MiB removed) ✅
+- cargo test: 1130 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.36 PASSED — CI/CD all green per §1.2.
+- StdlibTraitMethod + StdlibSelfKind + 5 query APIs added.
+- 25+ trait method tables registered (markers + core + I/O + unary + binary arith + assign ops).
+- §16 compliance: stdlib.rs stays self-contained (uses StdlibTypeKind, not mir::ty).
+- §23 compliance: all 7 new public symbols follow API naming standard.
+- Foundation for Stage 5.37+ (dyn Trait MIR lowering) and Stage 5.38+ (typeck trait-bound solving).
+- Next: Stage 5.37+ (dyn Trait MIR lowering, stdlib crate compilation).

@@ -632,3 +632,43 @@ metadata and adding a check hook.
 **Test impact**: +1 (984/984 tests pass — was 983).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.6 (Stage 5.36, 2026-07-23)
+
+Stage 5.36 stdlib trait method signatures round. Adds the first stdlib-scoped
+public API surface since v1.5: a static method-signature registry for builtin
+traits, exposed via 5 free-function query APIs.
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `StdlibTraitMethod` | struct | `<Noun><Noun><Noun>` |
+| `StdlibSelfKind` | enum | `<Noun><Noun><Noun>` |
+| `stdlib_trait_methods` | free fn | `<noun>_<noun>_<noun>` |
+| `stdlib_trait_method_count` | free fn | `<noun>_<noun>_<noun>_<noun>` |
+| `find_stdlib_trait_method` | free fn | `find_<noun>_<noun>_<noun>` |
+| `is_stdlib_trait_method` | free fn | `is_<noun>_<noun>_<noun>` |
+| `stdlib_traits_with_method` | free fn | `<noun>_<noun>_with_<noun>` |
+
+**Field naming**: `name` / `self_kind` / `param_count` / `return_kind` /
+`is_unsafe` — all follow `<noun>_<noun>` or `is_<adj>` patterns.
+
+**Design decisions**:
+1. Per-op const tables (Add/Sub/Mul/...) instead of shared placeholder with
+   runtime name override — ensures `StdlibTraitMethod.name` field always
+   matches the trait's actual method name. Avoids the smell of returning a
+   `&StdlibTraitMethod` whose `.name` doesn't match the queried method name.
+2. `stdlib_traits_with_method()` uses a local `ALL_REGISTERED_TRAITS` const
+   (mirrors the match arms in `stdlib_trait_methods()`) instead of importing
+   `traits::builtin::BUILTIN_TRAIT_NAMES` — keeps `stdlib.rs` self-contained
+   per §16 (no backwards dependency on the `traits` module).
+3. Markers return `Some(&[])` (not `None`) so callers can distinguish
+   "trait in registry but no methods" from "trait not in registry at all".
+
+**§16 compliance**: `StdlibTraitMethod` uses `StdlibTypeKind` (stdlib-internal)
+— no `mir::ty` reference, no circular dependency.
+
+**Test impact**: +24 (1106 → 1130).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

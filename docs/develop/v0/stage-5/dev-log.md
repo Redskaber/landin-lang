@@ -740,3 +740,61 @@ Docs supplement (all missing docs/tests/v0/stage5/ created):
 
 **Test impact**: +7
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.36 — Stdlib Trait Method Signatures (v0.11.32)
+
+**Priority**: Register static method signature tables for builtin stdlib traits
+— prereq for dyn Trait MIR lowering (TD-014 partial close) and typeck trait
+bound solving.
+
+**Work completed**:
+- src/stdlib.rs: new `StdlibSelfKind` enum (4 variants: SelfByValue /
+  SelfByRef / SelfByMutRef / NoSelf)
+- src/stdlib.rs: new `StdlibTraitMethod` struct (name / self_kind /
+  param_count / return_kind / is_unsafe) + `has_self()` helper method
+- src/stdlib.rs: 25+ static method tables (one const per trait):
+  * MARKER_METHODS (empty) — for Copy/Send/Sync/Sized/Unpin/Eq
+  * CLONE_METHODS (2) / DROP_METHODS (1) / DEFAULT_METHODS (1)
+  * DISPLAY_METHODS / DEBUG_METHODS (1 each, both `fmt`)
+  * PARTIAL_EQ_METHODS (2) / PARTIAL_ORD_METHODS (1) / ORD_METHODS (1)
+  * HASH_METHODS (1) / DEREF_METHODS (1) / DEREF_MUT_METHODS (1)
+  * INTO_ITERATOR_METHODS (1) / ITERATOR_METHODS (1)
+  * READ_METHODS (1) / WRITE_METHODS (1)
+  * NEG_METHODS (1) / NOT_METHODS (1)
+  * 10 per-op binary arith tables: ADD/SUB/MUL/DIV/REM/BITAND/BITOR/BITXOR/SHL/SHR
+  * 10 per-op assign tables: ADD_ASSIGN/.../SHR_ASSIGN
+  * ARITH_OP_METHOD_NAMES + ARITH_ASSIGN_METHOD_NAMES constants (for diagnostics)
+- src/stdlib.rs: 5 new free-function query APIs:
+  * `stdlib_trait_methods(trait_name) -> Option<&'static [StdlibTraitMethod]>`
+  * `stdlib_trait_method_count(trait_name) -> Option<usize>`
+  * `find_stdlib_trait_method(trait_name, method_name) -> Option<&'static StdlibTraitMethod>`
+  * `is_stdlib_trait_method(trait_name, method_name) -> bool`
+  * `stdlib_traits_with_method(method_name) -> Vec<&'static str>` (reverse query)
+- src/lib.rs: re-export all new APIs (StdlibSelfKind + StdlibTraitMethod +
+  5 query functions) + Stage 5.36 history comment
+- tests/v0/stage5/plan/stdlib_trait_method_tests.rs: 24 new tests covering
+  all registered traits + edge cases + reverse queries + helper methods
+- tests/all_tests.rs: added stdlib_trait_method_tests module (50 mods total)
+- Cargo.toml: version 0.11.31 → 0.11.32
+
+**Design highlights**:
+- Per-op const tables (Add/Sub/Mul/...) instead of shared "Add" placeholder
+  with runtime name override — ensures `StdlibTraitMethod.name` field always
+  matches the trait's actual method name.
+- `stdlib_traits_with_method()` uses a local `ALL_REGISTERED_TRAITS` constant
+  (mirrors the match arms in `stdlib_trait_methods()`) instead of importing
+  `traits::builtin::BUILTIN_TRAIT_NAMES` — keeps `stdlib.rs` self-contained
+  per §16 (no backwards dependency on the traits module).
+- Markers return `Some(&[])` (not `None`) so callers can distinguish
+  "trait in registry but no methods" from "trait not in registry at all".
+
+**§16 interface isolation**: `StdlibTraitMethod` uses `StdlibTypeKind` (stdlib-
+internal) — no `mir::ty` reference, no circular dependency.
+
+**§23 API naming**: all 7 new public symbols comply (StdlibTraitMethod +
+StdlibSelfKind follow `<Noun><Noun><Noun>`; 5 free functions follow
+`<noun>_<noun>` / `find_<noun>_<noun>` / `is_<noun>_<noun>` /
+`<noun>_<noun>_with_<noun>`).
+
+**Test impact**: +24 (1106 → 1130)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
