@@ -383,7 +383,12 @@
 //!     `Vec<DynTraitFatPtr>` from `TraitResolver.vtables`. Connects
 //!     Stage 5.61's MIR representation with the trait implementation
 //!     data source. Foundation for Stage 5.63+ actual MIR lowering.
-//!   Next: Stage 5.63+ (dyn Trait value construction in MIR lowering).
+//!   Stage 5.63 (v0.11.59): emit_dyn_trait_fat_ptr_text — conversion
+//!     function in `src/mir/dyn_trait.rs` that converts `DynTraitFatPtr`
+//!     to LLVM IR text (String). Delegates to Stage 5.48's
+//!     `emit_dynptr_global_text()`. Bridges MIR representation with
+//!     codegen output.
+//!   Next: Stage 5.64+ (dyn Trait value construction in MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

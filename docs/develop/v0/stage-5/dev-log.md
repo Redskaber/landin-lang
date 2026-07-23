@@ -1982,3 +1982,19 @@ representation) with TraitResolver (trait implementation data source).
 
 **Test impact**: +8 (1451 → 1459)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.63 — emit_dyn_trait_fat_ptr_text (v0.11.59)
+
+**Priority**: Conversion function bridging DynTraitFatPtr (MIR) with codegen
+text output. Delegates to Stage 5.48 emit_dynptr_global_text().
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new free function `emit_dyn_trait_fat_ptr_text()`
+- src/mir/mod.rs: re-export
+- src/lib.rs: Stage 5.63 history comment
+- tests/v0/stage5/plan/dyn_trait_fat_ptr_text_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_fat_ptr_text_tests module (77 mods)
+- Cargo.toml: version 0.11.58 → 0.11.59
+
+**Test impact**: +8 (1459 → 1467)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

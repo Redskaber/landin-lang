@@ -40,4 +40,6 @@ pub use ty::{
 
 // Stage 5.61: dyn Trait fat pointer MIR representation
 // Stage 5.62: bridge function from TraitResolver
-pub use dyn_trait::{build_dyn_trait_fat_ptrs_from_resolver, DynTraitFatPtr};
+pub use dyn_trait::{
+    build_dyn_trait_fat_ptrs_from_resolver, emit_dyn_trait_fat_ptr_text, DynTraitFatPtr,
+};

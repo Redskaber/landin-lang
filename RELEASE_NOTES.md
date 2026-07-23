@@ -1,9 +1,33 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.58
+**Current version**: v0.11.59
 **Date**: 2026-07-23
-**Test count**: 1459 tests + 5 benchmarks
+**Test count**: 1467 tests + 5 benchmarks
+
+---
+
+## v0.11.59 — Stage 5.63 (emit_dyn_trait_fat_ptr_text)
+
+### Overview
+
+Conversion function bridging `DynTraitFatPtr` (MIR representation, Stage 5.61)
+with codegen text output. Delegates to Stage 5.48's
+`emit_dynptr_global_text()`. Takes a `DynTraitFatPtr` and returns the LLVM IR
+text for the corresponding dynptr global.
+
+### New API
+
+- `emit_dyn_trait_fat_ptr_text(&DynTraitFatPtr) -> String` (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (868.5 MiB removed)
+cargo test: 1467 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

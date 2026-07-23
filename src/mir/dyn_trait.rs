@@ -127,3 +127,39 @@ pub fn build_dyn_trait_fat_ptrs_from_resolver(
     }
     fat_ptrs
 }
+
+// ============================================================================
+// Stage 5.63: Convert DynTraitFatPtr to LLVM IR text
+//
+// Bridges Stage 5.61's DynTraitFatPtr (MIR representation) with Stage 5.48's
+// emit_dynptr_global_text() (codegen text output). This is the conversion
+// function that Stage 5.64+ MIR lowering will call to generate LLVM IR text
+// from a DynTraitFatPtr.
+//
+// Per API-naming-standard §3: `emit_dyn_trait_fat_ptr_text` follows
+// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
+//
+// Per §16: takes `&DynTraitFatPtr`, returns `String`. Calls
+// `crate::codegen::emit_dynptr_global_text()` (one-way: mir → codegen,
+// no circular dependency).
+// ============================================================================
+
+/// Stage 5.63: Convert a `DynTraitFatPtr` to LLVM IR text.
+///
+/// Produces a line like:
+/// ```text
+/// @.dynptr.<trait>.<type> = private unnamed_addr constant
+///     { ptr, ptr } { ptr @.data.<type>, ptr @.vtable.<trait>.<type> }
+/// ```
+///
+/// Internally delegates to Stage 5.48's `emit_dynptr_global_text()`.
+///
+/// Per API-naming-standard §3: `emit_dyn_trait_fat_ptr_text` follows
+/// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn emit_dyn_trait_fat_ptr_text(fat_ptr: &DynTraitFatPtr) -> String {
+    crate::codegen::emit_dynptr_global_text(
+        &fat_ptr.dynptr_symbol,
+        &fat_ptr.data_symbol,
+        &fat_ptr.vtable_symbol,
+    )
+}
