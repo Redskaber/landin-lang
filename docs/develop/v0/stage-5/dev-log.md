@@ -440,3 +440,26 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ all new methods read TraitResolver data only.
 **API naming**: ✅ `impl_covers_trait` + `missing_impl_methods` + `missing_method_count`.
+
+### Stage 5.20 — Trait Impl Validation Report (v0.11.19)
+
+**Priority**: Aggregate coherence + completeness into single validation pass.
+
+**Work completed**:
+- src/traits/mod.rs: 2 new structs:
+  * `IncompleteImpl` — trait_name, self_ty_name, missing_methods
+  * `ImplValidationReport` — coherence_errors, incomplete_impls, is_valid
+- src/traits/mod.rs: 3 new query methods:
+  * `validate_impls() -> ImplValidationReport` — single-pass validation
+  * `impls_are_valid() -> bool` — all valid?
+  * `all_impls_complete() -> bool` — all complete?
+- src/lib.rs: re-export `ImplValidationReport` + `IncompleteImpl`
+- tests/v0/stage5/plan/impl_validation_tests.rs: 9 new tests
+- tests/all_tests.rs: added impl_validation_tests module (38 mods)
+- Cargo.toml: version 0.11.18 → 0.11.19
+
+**Test impact**: +9 (1016 — was 1007)
+**Verification**: cargo clean + cargo test (1016 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ all new methods read TraitResolver data only.
+**API naming**: ✅ `validate_impls` + `impls_are_valid` + `all_impls_complete`.

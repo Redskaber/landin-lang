@@ -188,6 +188,40 @@ pub struct CoherenceError {
     pub impl_def_ids: Vec<DefId>,
 }
 
+/// Stage 5.20: An incomplete impl — a `impl Trait for Type` block that
+/// is missing one or more methods declared by the trait.
+///
+/// Per API-naming-standard §3: `IncompleteImpl` follows the `<Adj><Noun>`
+/// pattern consistent with `CoherenceError`.
+#[derive(Debug, Clone)]
+pub struct IncompleteImpl {
+    /// The trait name (interned symbol).
+    pub trait_name: Spur,
+    /// The self type name (interned symbol).
+    pub self_ty_name: Spur,
+    /// Method names (interned symbols) declared in the trait but not
+    /// implemented in the impl block.
+    pub missing_methods: Vec<Spur>,
+}
+
+/// Stage 5.20: A comprehensive validation report for all trait impls.
+///
+/// Aggregates coherence errors (Stage 5.18) and incomplete impls (Stage
+/// 5.19) into a single report. The driver can call `validate_impls()`
+/// once after `collect()` to get all validation issues.
+///
+/// Per API-naming-standard §3: `ImplValidationReport` follows the
+/// `<Noun>ValidationReport` pattern.
+#[derive(Debug, Clone)]
+pub struct ImplValidationReport {
+    /// Coherence errors — conflicting impls for the same (trait, type).
+    pub coherence_errors: Vec<CoherenceError>,
+    /// Incomplete impls — impls missing one or more trait methods.
+    pub incomplete_impls: Vec<IncompleteImpl>,
+    /// Overall validity: true if no coherence errors AND no incomplete impls.
+    pub is_valid: bool,
+}
+
 impl TraitResolver {
     pub fn new() -> Self {
         Self::default()
@@ -890,6 +924,71 @@ impl TraitResolver {
     /// `<noun>_count` pattern consistent with `method_count_for_trait`.
     pub fn missing_method_count(&self, trait_name: Spur, self_ty_name: Spur) -> usize {
         self.missing_impl_methods(trait_name, self_ty_name).len()
+    }
+
+    /// Stage 5.20: Validate all trait impls — runs coherence check (Stage
+    /// 5.18) + completeness check (Stage 5.19) across all impls and
+    /// returns a single `ImplValidationReport`.
+    ///
+    /// This is the single entry point for "are all impls OK?" — the driver
+    /// can call this once after `collect()` to get a comprehensive report.
+    ///
+    /// Per API-naming-standard §3: `validate_impls` follows `validate_<noun>`
+    /// pattern consistent with `check_coherence` (verb-first for action methods).
+    pub fn validate_impls(&self) -> ImplValidationReport {
+        let coherence_errors = self.check_coherence();
+
+        // Check completeness for every (trait, type) pair that has an impl
+        let mut incomplete_impls: Vec<IncompleteImpl> = Vec::new();
+        for impl_info in self.impls.values() {
+            if let (Some(trait_name), Some(self_ty_name)) =
+                (impl_info.trait_name, impl_info.self_ty_name)
+            {
+                let missing = self.missing_impl_methods(trait_name, self_ty_name);
+                if !missing.is_empty() {
+                    incomplete_impls.push(IncompleteImpl {
+                        trait_name,
+                        self_ty_name,
+                        missing_methods: missing,
+                    });
+                }
+            }
+        }
+
+        let is_valid = coherence_errors.is_empty() && incomplete_impls.is_empty();
+
+        ImplValidationReport {
+            coherence_errors,
+            incomplete_impls,
+            is_valid,
+        }
+    }
+
+    /// Stage 5.20: Quick boolean check — are all impls valid (no coherence
+    /// errors + no incomplete impls)?
+    ///
+    /// Per API-naming-standard §3: `impls_are_valid` follows
+    /// `<noun>_are_<adj>` pattern for boolean aggregate queries.
+    pub fn impls_are_valid(&self) -> bool {
+        self.coherence_error_count() == 0 && self.all_impls_complete()
+    }
+
+    /// Stage 5.20: Check if all impls are complete (no missing methods).
+    /// Returns `false` if any impl is missing trait methods.
+    ///
+    /// Per API-naming-standard §3: `all_impls_complete` follows
+    /// `all_<noun>_<adj>` pattern for boolean aggregate queries.
+    pub fn all_impls_complete(&self) -> bool {
+        for impl_info in self.impls.values() {
+            if let (Some(trait_name), Some(self_ty_name)) =
+                (impl_info.trait_name, impl_info.self_ty_name)
+            {
+                if !self.impl_covers_trait(trait_name, self_ty_name) {
+                    return false;
+                }
+            }
+        }
+        true
     }
 }
 

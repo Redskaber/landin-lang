@@ -134,7 +134,11 @@
 //!     `impl_covers_trait()` + `missing_impl_methods()` +
 //!     `missing_method_count()` for detecting incomplete impls (missing
 //!     methods that the trait declares but the impl doesn't provide).
-//!   Next: Stage 5.20+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.20 (v0.11.19): Trait impl validation report —
+//!     `ImplValidationReport` + `IncompleteImpl` structs +
+//!     `validate_impls()` + `impls_are_valid()` + `all_impls_complete()`
+//!     for single-pass validation of all impls (coherence + completeness).
+//!   Next: Stage 5.21+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -162,6 +166,7 @@ pub use codegen::{
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use traits::{
-    extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, TraitResolver,
-    BUILTIN_DEF_ID_BASE, BUILTIN_PRIMITIVE_COPY_KINDS, BUILTIN_TRAIT_NAMES,
+    extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, ImplValidationReport,
+    IncompleteImpl, TraitResolver, BUILTIN_DEF_ID_BASE, BUILTIN_PRIMITIVE_COPY_KINDS,
+    BUILTIN_TRAIT_NAMES,
 };
