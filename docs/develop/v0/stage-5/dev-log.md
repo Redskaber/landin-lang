@@ -1633,3 +1633,63 @@ The `build_` prefix indicates a constructor function (no side effects).
 
 **Test impact**: +14 (1346 → 1360)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.53 — Codegen Trait-Dispatch Emission Plan (Final Aggregate) (v0.11.49)
+
+**Priority**: Final aggregate API that returns vtable_specs + dynptr_specs +
+summary in one call. Composes Stage 5.46 + Stage 5.49 + Stage 5.52 builders.
+Stage 5.54 driver refactor will call this plan once.
+
+**Work completed**:
+- src/codegen/mod.rs: new `CodegenTraitDispatchEmissionPlan` struct
+  (3 fields: vtable_specs + dynptr_specs + summary)
+- src/codegen/mod.rs: new free function
+  `build_trait_dispatch_emission_plan(&TraitResolver, &Rodeo) -> CodegenTraitDispatchEmissionPlan`
+  * Composes `build_vtable_global_specs()` (Stage 5.46) +
+    `build_dynptr_global_specs()` (Stage 5.49) +
+    `build_trait_dispatch_emission_summary()` (Stage 5.52)
+  * Single source of truth — no duplicated logic
+  * Behavior identical to three separate calls (verified by cross-check test)
+- src/lib.rs: re-export `CodegenTraitDispatchEmissionPlan` +
+  `build_trait_dispatch_emission_plan` from codegen + Stage 5.53 history
+  comment
+- tests/v0/stage5/plan/codegen_trait_dispatch_plan_tests.rs: 12 new tests
+  covering empty/single/multi + field correctness (vtable_specs/dynptr_specs/
+  summary) + **behavior-equivalence cross-check** + no-side-effects +
+  real-scenario + unresolved-interner + struct semantics
+- tests/all_tests.rs: added codegen_trait_dispatch_plan_tests module
+  (67 mods total)
+- Cargo.toml: version 0.11.48 → 0.11.49
+
+**Design highlights**:
+- **Final aggregate API**: `build_trait_dispatch_emission_plan()` is the
+  one-call API that returns everything codegen needs to emit all
+  trait-dispatch globals. Stage 5.54 driver refactor becomes:
+  ```rust
+  let plan = build_trait_dispatch_emission_plan(resolver, interner);
+  for spec in &plan.vtable_specs { emitter.emit_vtable_global(...); }
+  for spec in &plan.dynptr_specs { emitter.emit_dyn_trait_const(...); }
+  println!("emit {} globals, {} method slots",
+           plan.summary.total_global_count, plan.summary.total_method_slots);
+  ```
+- **Compositional**: internally calls Stage 5.46 + Stage 5.49 + Stage 5.52
+  builders. Single source of truth — if any underlying builder changes
+  behavior, the plan automatically inherits the change.
+- **Behavior equivalence**: `test_build_trait_dispatch_emission_plan_match_separate_calls`
+  calls both the plan and the three separate builders on the same inputs,
+  asserts fields are identical (summary direct equality, specs set equality
+  due to HashMap order). Safety net for Stage 5.54 driver refactor.
+
+**§16 interface isolation**: function takes `&TraitResolver` + `&Rodeo` (same
+as `emit_vtables()`), returns `CodegenTraitDispatchEmissionPlan`. No
+`mir::ty` / `Emitter` reference, no circular dependency.
+
+**§23 API naming**: `CodegenTraitDispatchEmissionPlan` follows
+`<Noun><Noun><Noun><Noun><Noun>`; `build_trait_dispatch_emission_plan`
+follows `<verb>_<noun>_<noun>_<noun>_<noun>`. The `Codegen` prefix
+distinguishes from stdlib's `StdlibVtablePlan` (Stage 5.39). The `build_`
+prefix indicates a constructor function (no side effects). `_plan` suffix
+indicates the function returns a plan struct (not individual specs).
+
+**Test impact**: +12 (1360 → 1372)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

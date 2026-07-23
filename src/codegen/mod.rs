@@ -2067,3 +2067,80 @@ pub fn build_trait_dispatch_emission_summary(
         total_method_slots,
     }
 }
+
+// ============================================================================
+// Stage 5.53: Codegen trait-dispatch emission plan (final aggregate)
+//
+// Single-call API that returns EVERYTHING codegen needs to emit all
+// trait-dispatch globals:
+//   - vtable_specs (from Stage 5.46 build_vtable_global_specs)
+//   - dynptr_specs (from Stage 5.49 build_dynptr_global_specs)
+//   - summary (from Stage 5.52 build_trait_dispatch_emission_summary)
+//
+// This is the **final aggregate API** — Stage 5.54 driver refactor will call
+// this plan once, then iterate vtable_specs + dynptr_specs to emit globals,
+// and use summary for diagnostic output.
+//
+// Per API-naming-standard §3:
+//   - `CodegenTraitDispatchEmissionPlan` follows
+//     `<Noun><Noun><Noun><Noun><Noun>` pattern.
+//   - `build_trait_dispatch_emission_plan` follows
+//     `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
+//
+// Per §16: takes `&TraitResolver` + `&Rodeo` (same as `emit_vtables()`),
+// returns `CodegenTraitDispatchEmissionPlan`. No `mir::ty` / `Emitter`
+// reference, no circular dependency.
+// ============================================================================
+
+/// Stage 5.53: Everything codegen needs to emit all trait-dispatch globals
+/// in one struct.
+///
+/// Combines:
+/// - `vtable_specs` (from Stage 5.46 `build_vtable_global_specs()`)
+/// - `dynptr_specs` (from Stage 5.49 `build_dynptr_global_specs()`)
+/// - `summary` (from Stage 5.52 `build_trait_dispatch_emission_summary()`)
+///
+/// Stage 5.54 driver refactor will call `build_trait_dispatch_emission_plan()`
+/// once, then iterate `vtable_specs` + `dynptr_specs` to emit globals, and
+/// use `summary` for diagnostic output.
+///
+/// Per API-naming-standard §3: `CodegenTraitDispatchEmissionPlan` follows
+/// `<Noun><Noun><Noun><Noun><Noun>` pattern. Field names follow
+/// `<noun>_<noun>` / `<noun>` patterns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodegenTraitDispatchEmissionPlan {
+    /// Vtable global specs — one per (trait, type) pair in
+    /// `TraitResolver.vtables`. Used by codegen to emit `@.vtable.*` globals.
+    pub vtable_specs: Vec<StdlibVtableGlobalSpec>,
+    /// Dynptr global specs — one per (trait, type) pair. Used by codegen to
+    /// emit `@.dynptr.*` globals.
+    pub dynptr_specs: Vec<StdlibDynptrGlobalSpec>,
+    /// Project-level summary — counts + deduplicated names + total slots.
+    /// Used by codegen for diagnostic output.
+    pub summary: CodegenTraitDispatchEmissionSummary,
+}
+
+/// Stage 5.53: Build a complete trait-dispatch emission plan from
+/// `TraitResolver.vtables`.
+///
+/// Given a `&TraitResolver` + `&Rodeo`, returns a
+/// `CodegenTraitDispatchEmissionPlan` containing:
+/// - `vtable_specs` (from `build_vtable_global_specs()` — Stage 5.46)
+/// - `dynptr_specs` (from `build_dynptr_global_specs()` — Stage 5.49)
+/// - `summary` (from `build_trait_dispatch_emission_summary()` — Stage 5.52)
+///
+/// This is the **final aggregate API** — one call returns everything codegen
+/// needs to emit all trait-dispatch globals.
+///
+/// Per API-naming-standard §3: `build_trait_dispatch_emission_plan` follows
+/// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn build_trait_dispatch_emission_plan(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+) -> CodegenTraitDispatchEmissionPlan {
+    CodegenTraitDispatchEmissionPlan {
+        vtable_specs: build_vtable_global_specs(trait_resolver, interner),
+        dynptr_specs: build_dynptr_global_specs(trait_resolver, interner),
+        summary: build_trait_dispatch_emission_summary(trait_resolver, interner),
+    }
+}

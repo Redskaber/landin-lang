@@ -316,7 +316,17 @@
 //!     free fn in `src/codegen/mod.rs`. **codegen counterpart** of Stage
 //!     5.42's `stdlib_vtable_emission_summary()`, but computed from
 //!     TraitResolver. Stage 5.53 will use this for codegen diagnostic output.
-//!   Next: Stage 5.53+ (codegen trait-dispatch emission refactor — driver
+//!   Stage 5.53 (v0.11.49): Codegen trait-dispatch emission plan (final
+//!     aggregate) — new `CodegenTraitDispatchEmissionPlan` struct
+//!     (vtable_specs + dynptr_specs + summary) +
+//!     `build_trait_dispatch_emission_plan(&TraitResolver, &Rodeo)` free fn
+//!     in `src/codegen/mod.rs`. **Final aggregate API** — one call returns
+//!     everything codegen needs to emit all trait-dispatch globals. Composes
+//!     Stage 5.46 `build_vtable_global_specs()` + Stage 5.49
+//!     `build_dynptr_global_specs()` + Stage 5.52
+//!     `build_trait_dispatch_emission_summary()`. Stage 5.54 driver refactor
+//!     will call this plan once.
+//!   Next: Stage 5.54+ (codegen trait-dispatch emission refactor — driver
 //!     delegation + TextEmitter delegation, then dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
@@ -343,12 +353,14 @@ pub mod typeck;
 // `codegen_from_mir` directly).
 pub use cargo::{build_project, BuildConfig, BuildResult, ProjectManifest};
 pub use codegen::{
-    build_dynptr_global_specs, build_trait_dispatch_emission_summary, build_vtable_global_specs,
-    codegen_crate, emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_dynptr_global_text,
+    build_dynptr_global_specs, build_trait_dispatch_emission_plan,
+    build_trait_dispatch_emission_summary, build_vtable_global_specs, codegen_crate,
+    emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_dynptr_global_text,
     emit_dynptrs_from_resolver, emit_vtable_global_from_emission, emit_vtable_global_text,
     emit_vtable_globals_batch, emit_vtables, emit_vtables_and_dynptrs_from_resolver,
-    emit_vtables_from_resolver, CodegenTraitDispatchEmissionSummary, EmitType, EmitValue, Emitter,
-    StdlibDynptrGlobalSpec, StdlibVtableGlobalSpec, TextEmitter,
+    emit_vtables_from_resolver, CodegenTraitDispatchEmissionPlan,
+    CodegenTraitDispatchEmissionSummary, EmitType, EmitValue, Emitter, StdlibDynptrGlobalSpec,
+    StdlibVtableGlobalSpec, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{

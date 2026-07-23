@@ -1521,3 +1521,60 @@ computed directly from `TraitResolver`.
 **Test impact**: +14 (1346 → 1360).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.23 (Stage 5.53, 2026-07-23)
+
+Stage 5.53 codegen trait-dispatch emission plan (final aggregate) round.
+Adds the **final aggregate API** that returns vtable_specs + dynptr_specs +
+summary in one call. Composes Stage 5.46 + Stage 5.49 + Stage 5.52 builders.
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `CodegenTraitDispatchEmissionPlan` | struct (in `codegen`) | `<Noun><Noun><Noun><Noun><Noun>` |
+| `build_trait_dispatch_emission_plan` | free fn (in `codegen`) | `<verb>_<noun>_<noun>_<noun>_<noun>` |
+
+**Field naming (3 fields, all §23-compliant)**:
+
+| Field | Type | Naming pattern |
+|-------|------|----------------|
+| `vtable_specs` | `Vec<StdlibVtableGlobalSpec>` | `<noun>_<noun>` |
+| `dynptr_specs` | `Vec<StdlibDynptrGlobalSpec>` | `<noun>_<noun>` |
+| `summary` | `CodegenTraitDispatchEmissionSummary` | `<noun>` |
+
+**Design decisions**:
+1. **Final aggregate API**: `build_trait_dispatch_emission_plan()` is the
+   one-call API that returns everything codegen needs to emit all
+   trait-dispatch globals. Stage 5.54 driver refactor becomes a clean 4-liner:
+   build plan, iterate vtable_specs, iterate dynptr_specs, print summary.
+2. **Compositional**: internally calls Stage 5.46 `build_vtable_global_specs()`
+   + Stage 5.49 `build_dynptr_global_specs()` + Stage 5.52
+   `build_trait_dispatch_emission_summary()`. Single source of truth — no
+   duplicated logic. If any underlying builder changes behavior, the plan
+   automatically inherits the change.
+3. **`Codegen` prefix** (not `Stdlib`): distinguishes from stdlib's
+   `StdlibVtablePlan` (Stage 5.39). Makes the layer (codegen vs stdlib)
+   explicit in the type name. Consistent with the `Stdlib*` / `Codegen*`
+   prefix convention.
+4. **`build_` prefix** (not `emit_`): indicates a constructor function
+   (input data → output data, no side effects). Consistent with Stage 5.46's
+   `build_vtable_global_specs()` and Stage 5.49's `build_dynptr_global_specs()`.
+5. **`_plan` suffix**: indicates the function returns a plan struct (not
+   individual specs). Consistent with Stage 5.39's `stdlib_vtable_plan()`.
+   The plan struct is the natural unit for "everything needed to do X" —
+   caller gets one value, accesses fields, doesn't need to coordinate
+   multiple separate calls.
+6. **Behavior-equivalence cross-check test**:
+   `test_build_trait_dispatch_emission_plan_match_separate_calls` calls both
+   the plan and the three separate builders on the same inputs, asserts
+   fields are identical (summary direct equality, specs set equality due to
+   HashMap order). Safety net for Stage 5.54 driver refactor.
+
+**§16 compliance**: function takes `&TraitResolver` + `&Rodeo` (same as
+`emit_vtables()`), returns `CodegenTraitDispatchEmissionPlan`. No
+`mir::ty` / `Emitter` reference, no circular dependency.
+
+**Test impact**: +12 (1360 → 1372).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

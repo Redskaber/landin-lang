@@ -4936,3 +4936,51 @@ Stage Summary:
   ("emit N vtable globals, M dynptr globals, K total method slots").
 - Next: Stage 5.53+ (codegen trait-dispatch emission refactor — driver
   delegation + TextEmitter delegation, then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.53-r102
+Agent: Super Z (main)
+Task: Stage 5.53 — codegen trait-dispatch emission plan (final aggregate) + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.48 / 1360 tests (Stage 5.52 complete)
+
+Stage 5.53: Codegen trait-dispatch emission plan (final aggregate)
+- src/codegen/mod.rs: new CodegenTraitDispatchEmissionPlan struct (3 fields: vtable_specs + dynptr_specs + summary)
+- src/codegen/mod.rs: new free function build_trait_dispatch_emission_plan(&TraitResolver, &Rodeo) -> CodegenTraitDispatchEmissionPlan
+  * Composes Stage 5.46 + Stage 5.49 + Stage 5.52 builders
+  * Single source of truth — no duplicated logic
+  * Behavior identical to three separate calls (verified by cross-check test)
+- src/lib.rs: re-export CodegenTraitDispatchEmissionPlan + build_trait_dispatch_emission_plan + Stage 5.53 history comment
+- tests/v0/stage5/plan/codegen_trait_dispatch_plan_tests.rs: 12 new tests
+  (incl. behavior-equivalence cross-check + real-scenario)
+- tests/all_tests.rs: added codegen_trait_dispatch_plan_tests module (67 mods)
+- Cargo.toml: version 0.11.48 → 0.11.49
+
+Docs:
+- plan-5.53.md / gate-review-round53.md / codegen_trait_dispatch_plan_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (967.6 MiB removed) ✅
+- cargo test: 1372 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.53 PASSED — CI/CD all green per §1.2.
+- CodegenTraitDispatchEmissionPlan (3 fields) + build_trait_dispatch_emission_plan() added.
+- Final aggregate API — one call returns vtable_specs + dynptr_specs + summary.
+- Composes Stage 5.46 + Stage 5.49 + Stage 5.52 builders — single source of truth.
+- Cross-check test guarantees behavior equivalence with separate calls —
+  safety net for Stage 5.54 driver refactor.
+- §16 compliance: function takes &TraitResolver + &Rodeo, returns
+  CodegenTraitDispatchEmissionPlan. No mir::ty / Emitter reference.
+- §23 compliance: CodegenTraitDispatchEmissionPlan follows
+  <Noun><Noun><Noun><Noun><Noun>; build_trait_dispatch_emission_plan follows
+  <verb>_<noun>_<noun>_<noun>_<noun>.
+- Stage 5.54 can now refactor driver to call plan once, then iterate
+  vtable_specs + dynptr_specs to emit globals, and use summary for
+  diagnostic output.
+- Next: Stage 5.54+ (codegen trait-dispatch emission refactor — driver
+  delegation + TextEmitter delegation, then dyn Trait MIR lowering).
