@@ -1896,3 +1896,22 @@ paths; fixes latent null-handling bug.
 
 **Test impact**: +10 (1408 → 1418)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.58 — TextEmitter::emit_dyn_trait_const Delegation (v0.11.54)
+
+**Priority**: Second existing-path modification. Replaces
+`TextEmitter::emit_dyn_trait_const()` method body with delegation to Stage
+5.48's `emit_dynptr_global_text()` free function. Behavior-equivalent (all
+paths byte-for-byte identical).
+
+**Work completed**:
+- src/codegen/text_emitter.rs: `TextEmitter::emit_dyn_trait_const()` method
+  body replaced with `crate::codegen::emit_dynptr_global_text()` delegation.
+  Old inline `format!` logic removed.
+- src/lib.rs: Stage 5.58 history comment
+- tests/v0/stage5/plan/text_emitter_dynptr_delegation_tests.rs: 10 new tests
+- tests/all_tests.rs: added text_emitter_dynptr_delegation_tests module (72 mods)
+- Cargo.toml: version 0.11.53 → 0.11.54
+
+**Test impact**: +10 (1418 → 1428)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

@@ -1,9 +1,36 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.53
+**Current version**: v0.11.54
 **Date**: 2026-07-23
-**Test count**: 1418 tests + 5 benchmarks
+**Test count**: 1428 tests + 5 benchmarks
+
+---
+
+## v0.11.54 — Stage 5.58 (TextEmitter::emit_dyn_trait_const delegation)
+
+### Overview
+
+Second existing-path modification. Replaces
+`TextEmitter::emit_dyn_trait_const()` method body with delegation to Stage
+5.48's `emit_dynptr_global_text()` free function. Behavior-equivalent (all
+paths byte-for-byte identical). No regression — all 1418 existing tests pass
++ 10 new = 1428 total.
+
+### Modified code
+
+- `src/codegen/text_emitter.rs`: `TextEmitter::emit_dyn_trait_const()` method
+  body replaced with `crate::codegen::emit_dynptr_global_text()` delegation.
+  Old inline `format!` logic removed.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (926.7 MiB removed)
+cargo test: 1428 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

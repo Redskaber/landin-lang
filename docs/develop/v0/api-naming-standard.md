@@ -1757,3 +1757,27 @@ trait method body.
 **Test impact**: +10 (1408 → 1418).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.28 (Stage 5.58, 2026-07-23)
+
+Stage 5.58 TextEmitter::emit_dyn_trait_const delegation round. Second
+existing-path modification — replaces trait method body with delegation to
+a free function.
+
+**No new public symbols** — only modifies existing `TextEmitter::emit_dyn_trait_const()`
+trait method body.
+
+**Design decisions**:
+1. **Second existing-path modification**: follows the same pattern as Stage
+   5.57 (vtable delegation). `TextEmitter::emit_dyn_trait_const()` method
+   body replaced with delegation to Stage 5.48's `emit_dynptr_global_text()`.
+2. **Behavior equivalence (all paths)**: dynptr globals have no null-handling
+   issue (unlike vtable globals), so all paths are byte-for-byte identical
+   to the old inline code.
+3. **No regression**: all 1418 existing tests pass + 10 new = 1428 total.
+4. **§16 compliance**: `TextEmitter` calls `crate::codegen::emit_dynptr_global_text()`
+   (same-module free function). No cross-module dependency issue.
+
+**Test impact**: +10 (1418 → 1428).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

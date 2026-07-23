@@ -5163,3 +5163,37 @@ Stage Summary:
 - §23 compliance: no new API (only modifies existing trait method body).
 - Next: Stage 5.58+ (TextEmitter::emit_dyn_trait_const delegation,
   emit_vtables/emit_dyn_trait_ptrs delegation, then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.58-r107
+Agent: Super Z (main)
+Task: Stage 5.58 — TextEmitter::emit_dyn_trait_const delegation + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.53 / 1418 tests (Stage 5.57 complete)
+
+Stage 5.58: TextEmitter::emit_dyn_trait_const delegation (second existing-path modification)
+- src/codegen/text_emitter.rs: TextEmitter::emit_dyn_trait_const() method body
+  replaced with delegation to crate::codegen::emit_dynptr_global_text() (Stage 5.48)
+- src/lib.rs: Stage 5.58 history comment
+- tests/v0/stage5/plan/text_emitter_dynptr_delegation_tests.rs: 10 new tests
+- tests/all_tests.rs: added text_emitter_dynptr_delegation_tests module (72 mods)
+- Cargo.toml: version 0.11.53 → 0.11.54
+
+Docs:
+- plan-5.58.md / gate-review-round58.md / text_emitter_dynptr_delegation_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (926.7 MiB removed) ✅
+- cargo test: 1428 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.58 PASSED — CI/CD all green per §1.2.
+- Second existing-path modification — TextEmitter::emit_dyn_trait_const() delegates to
+  emit_dynptr_global_text() (Stage 5.48). Behavior-equivalent (all paths).
+- No regression — all 1418 existing tests pass + 10 new = 1428 total.
+- Next: Stage 5.59+ (emit_vtables/emit_dyn_trait_ptrs delegation,
+  then dyn Trait MIR lowering).

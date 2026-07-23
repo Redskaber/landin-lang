@@ -356,8 +356,13 @@
 //!     `emit_vtable_global_text()` free function. Behavior-equivalent on
 //!     non-null paths (14 cross-check tests); fixes latent null-handling
 //!     bug (old inline code emitted `ptr @null`, new code emits `ptr null`).
-//!   Next: Stage 5.58+ (TextEmitter::emit_dyn_trait_const delegation,
-//!     emit_vtables/emit_dyn_trait_ptrs delegation, then dyn Trait MIR lowering).
+//!   Stage 5.58 (v0.11.54): TextEmitter::emit_dyn_trait_const delegation —
+//!     `TextEmitter::emit_dyn_trait_const()` method body replaced with
+//!     delegation to Stage 5.48's `emit_dynptr_global_text()` free function.
+//!     Behavior-equivalent (all paths byte-for-byte identical). Second
+//!     existing-path modification.
+//!   Next: Stage 5.59+ (emit_vtables/emit_dyn_trait_ptrs delegation,
+//!     then dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
