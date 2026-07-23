@@ -1859,3 +1859,59 @@ pub fn build_dynptr_global_specs(
     }
     specs
 }
+
+// ============================================================================
+// Stage 5.50: Codegen dynptr emission orchestrator
+//
+// Composes Stage 5.49's `build_dynptr_global_specs()` + per-spec
+// `Emitter::emit_dyn_trait_const()` calls. This is the "pure-function +
+// side-effect" combination version of `emit_dyn_trait_ptrs()` current
+// inline loop.
+//
+// This is the **dynptr counterpart** of Stage 5.47's
+// `emit_vtables_from_resolver()`. Stage 5.51 will refactor
+// `emit_dyn_trait_ptrs()` to delegate to this orchestrator — its body
+// becomes a one-liner.
+//
+// Per API-naming-standard §3: `emit_dynptrs_from_resolver` follows
+// `<verb>_<noun>_<prep>_<noun>` pattern. The `emit_` prefix indicates
+// side-effect (push to emitter). `_from_resolver` indicates the input source.
+// Naming symmetric with Stage 5.47's `emit_vtables_from_resolver`
+// (vtables → dynptrs).
+//
+// Per §16: takes `&TraitResolver` + `&Rodeo` + `&mut dyn Emitter` (same as
+// `emit_dyn_trait_ptrs()`). No `mir::ty` reference, no circular dependency.
+// ============================================================================
+
+/// Stage 5.50: Emit `dyn Trait` fat-pointer globals by composing
+/// `build_dynptr_global_specs()` + per-spec `Emitter::emit_dyn_trait_const()`
+/// calls.
+///
+/// This is the **orchestrator** that combines:
+/// 1. Stage 5.49's `build_dynptr_global_specs()` — construct spec list
+/// 2. Per-spec `Emitter::emit_dyn_trait_const()` — push IR to emitter
+///
+/// Behavior is **identical** to `emit_dyn_trait_ptrs()` (Stage 5.7) current
+/// inline loop — verified by `test_emit_dynptrs_from_resolver_match_emit_dyn_trait_ptrs`.
+///
+/// Stage 5.51 will refactor `emit_dyn_trait_ptrs()` to delegate to this
+/// orchestrator:
+/// ```text
+/// pub fn emit_dyn_trait_ptrs(resolver, interner, emitter) {
+///     emit_dynptrs_from_resolver(resolver, interner, emitter)
+/// }
+/// ```
+///
+/// Per API-naming-standard §3: `emit_dynptrs_from_resolver` follows
+/// `<verb>_<noun>_<prep>_<noun>` pattern. Naming symmetric with Stage 5.47's
+/// `emit_vtables_from_resolver` (vtables → dynptrs).
+pub fn emit_dynptrs_from_resolver(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    emitter: &mut dyn Emitter,
+) {
+    let specs = build_dynptr_global_specs(trait_resolver, interner);
+    for spec in &specs {
+        emitter.emit_dyn_trait_const(&spec.global_name, &spec.data_symbol, &spec.vtable_symbol);
+    }
+}

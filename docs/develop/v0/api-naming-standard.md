@@ -1365,3 +1365,50 @@ the spec-construction logic currently inlined in `emit_dyn_trait_ptrs()`
 **Test impact**: +12 (1310 → 1322).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.20 (Stage 5.50, 2026-07-23)
+
+Stage 5.50 codegen dynptr emission orchestrator round. Adds the **dynptr
+counterpart** of Stage 5.47's `emit_vtables_from_resolver()`. Orchestrator
+that composes Stage 5.49's `build_dynptr_global_specs()` + per-spec
+`Emitter::emit_dyn_trait_const()` calls.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_dynptrs_from_resolver` | free fn (in `codegen`) | `<verb>_<noun>_<prep>_<noun>` |
+
+**Design decisions**:
+1. **dynptr counterpart of Stage 5.47**: Stage 5.47 added
+   `emit_vtables_from_resolver()` (vtable orchestrator), Stage 5.50 adds
+   `emit_dynptrs_from_resolver()` (dynptr orchestrator). Naming symmetric
+   (vtables → dynptrs), design pattern identical — both are "pure-function +
+   side-effect combination" versions of `emit_*()` current inline loops,
+   both take `(&TraitResolver, &Rodeo, &mut dyn Emitter)`.
+2. **`emit_` prefix** (not `build_`): indicates side-effect (push to emitter).
+   Consistent with Stage 5.47's `emit_vtables_from_resolver()`. Distinguishes
+   from Stage 5.49's `build_dynptr_global_specs()` (pure function, no side
+   effects).
+3. **`_from_resolver` suffix**: indicates the input source (TraitResolver).
+   Consistent with Stage 5.47's `emit_vtables_from_resolver()`.
+4. **Same input parameters as `emit_dyn_trait_ptrs()`**: takes
+   `&TraitResolver` + `&Rodeo` + `&mut dyn Emitter` (identical signature
+   minus the name). Stage 5.51 delegation is a trivial one-liner body change:
+   ```rust
+   pub fn emit_dyn_trait_ptrs(resolver, interner, emitter) {
+       emit_dynptrs_from_resolver(resolver, interner, emitter)
+   }
+   ```
+5. **Behavior-equivalence cross-check tests**:
+   `test_emit_dynptrs_from_resolver_match_emit_dyn_trait_ptrs` + `_multi`
+   call both `emit_dyn_trait_ptrs()` and `emit_dynptrs_from_resolver()` on
+   the same TraitResolver + interner + TextEmitter, assert outputs are
+   identical. Safety net for Stage 5.51 delegation refactor.
+
+**§16 compliance**: function takes `&TraitResolver` + `&Rodeo` + `&mut dyn Emitter`
+(same as `emit_dyn_trait_ptrs()`). No `mir::ty` reference, no circular dependency.
+
+**Test impact**: +12 (1322 → 1334).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

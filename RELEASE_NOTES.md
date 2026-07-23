@@ -1,9 +1,68 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.45
+**Current version**: v0.11.46
 **Date**: 2026-07-23
-**Test count**: 1322 tests + 5 benchmarks
+**Test count**: 1334 tests + 5 benchmarks
+
+---
+
+## v0.11.46 — Stage 5.50 (Codegen dynptr emission orchestrator)
+
+### Overview
+
+dynptr counterpart of Stage 5.47's `emit_vtables_from_resolver()`. Orchestrator
+that composes Stage 5.49's `build_dynptr_global_specs()` + per-spec
+`Emitter::emit_dyn_trait_const()` calls. Behavior identical to
+`emit_dyn_trait_ptrs()` (Stage 5.7) inline loop — verified by two
+behavior-equivalence cross-check tests. Stage 5.51 will refactor
+`emit_dyn_trait_ptrs()` to delegate to this orchestrator (one-liner body).
+
+### New API
+
+- `emit_dynptrs_from_resolver(&TraitResolver, &Rodeo, &mut dyn Emitter)` (in
+  `src/codegen/mod.rs`) — orchestrator. Same input parameters as
+  `emit_dyn_trait_ptrs()`. Internally calls `build_dynptr_global_specs()` then
+  `Emitter::emit_dyn_trait_const()` per spec.
+
+### Design highlights
+
+1. **dynptr counterpart of Stage 5.47**: Stage 5.47 added
+   `emit_vtables_from_resolver()` (vtable orchestrator), Stage 5.50 adds
+   `emit_dynptrs_from_resolver()` (dynptr orchestrator). Naming symmetric
+   (vtables → dynptrs), design pattern identical.
+2. **Orchestrator pattern**: composes the pure-function builder (Stage 5.49)
+   + the side-effect emitter calls. This is the "pure + side-effect
+   combination" version of `emit_dyn_trait_ptrs()` current inline loop.
+3. **Behavior equivalence**: `test_emit_dynptrs_from_resolver_match_emit_dyn_trait_ptrs`
+   + `_multi` call both `emit_dyn_trait_ptrs()` and
+   `emit_dynptrs_from_resolver()` on the same inputs, assert outputs are
+   identical. Safety net for Stage 5.51 delegation refactor.
+
+### §16 / §23 compliance
+
+- Function takes `&TraitResolver` + `&Rodeo` + `&mut dyn Emitter` (same as
+  `emit_dyn_trait_ptrs()`). No `mir::ty` reference, no circular dependency.
+- `emit_dynptrs_from_resolver` follows §23 `<verb>_<noun>_<prep>_<noun>`
+  pattern. Naming symmetric with Stage 5.47's `emit_vtables_from_resolver`
+  (vtables → dynptrs). The `emit_` prefix indicates side-effect (push to
+  emitter). `_from_resolver` indicates the input source.
+
+### Test impact
+
++12 tests (1322 → 1334) — covers empty/single/multi + **two behavior-equivalence
+cross-checks** (single + multi vtable) + no-side-effects + unresolved-interner
++ emitter-called-correctly + count-matches-vtables + composes-build-and-emit +
+deterministic-count + real-scenario.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (831.6 MiB removed)
+cargo test: 1334 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

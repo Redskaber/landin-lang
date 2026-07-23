@@ -292,9 +292,17 @@
 //!     `build_vtable_global_specs()`. Stage 5.50 will refactor
 //!     `emit_dyn_trait_ptrs()` to call this builder + per-spec
 //!     `Emitter::emit_dyn_trait_const()` calls.
-//!   Next: Stage 5.50+ (codegen vtable + dynptr emission refactor —
-//!     TextEmitter delegation + emit_vtables/emit_dyn_trait_ptrs delegation,
-//!     then dyn Trait MIR lowering).
+//!   Stage 5.50 (v0.11.46): Codegen dynptr emission orchestrator — new
+//!     free fn `emit_dynptrs_from_resolver(&TraitResolver, &Rodeo, &mut dyn Emitter)`
+//!     in `src/codegen/mod.rs`. Composes Stage 5.49's
+//!     `build_dynptr_global_specs()` + per-spec `Emitter::emit_dyn_trait_const()`
+//!     calls. Behavior identical to `emit_dyn_trait_ptrs()` (Stage 5.7) inline
+//!     loop — verified by cross-check test. **dynptr counterpart** of Stage
+//!     5.47's `emit_vtables_from_resolver()`. Stage 5.51 will refactor
+//!     `emit_dyn_trait_ptrs()` to delegate to this orchestrator (one-liner body).
+//!   Next: Stage 5.51+ (codegen vtable + dynptr emission refactor — TextEmitter
+//!     delegation + emit_vtables/emit_dyn_trait_ptrs delegation, then dyn
+//!     Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -321,9 +329,10 @@ pub mod typeck;
 pub use cargo::{build_project, BuildConfig, BuildResult, ProjectManifest};
 pub use codegen::{
     build_dynptr_global_specs, build_vtable_global_specs, codegen_crate, emit_dyn_trait_ptr_type,
-    emit_dyn_trait_ptrs, emit_dynptr_global_text, emit_vtable_global_from_emission,
-    emit_vtable_global_text, emit_vtable_globals_batch, emit_vtables, emit_vtables_from_resolver,
-    EmitType, EmitValue, Emitter, StdlibDynptrGlobalSpec, StdlibVtableGlobalSpec, TextEmitter,
+    emit_dyn_trait_ptrs, emit_dynptr_global_text, emit_dynptrs_from_resolver,
+    emit_vtable_global_from_emission, emit_vtable_global_text, emit_vtable_globals_batch,
+    emit_vtables, emit_vtables_from_resolver, EmitType, EmitValue, Emitter, StdlibDynptrGlobalSpec,
+    StdlibVtableGlobalSpec, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{
