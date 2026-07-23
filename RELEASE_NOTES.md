@@ -1,9 +1,80 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.44
+**Current version**: v0.11.45
 **Date**: 2026-07-23
-**Test count**: 1310 tests + 5 benchmarks
+**Test count**: 1322 tests + 5 benchmarks
+
+---
+
+## v0.11.45 — Stage 5.49 (Codegen dynptr spec builder)
+
+### Overview
+
+dynptr counterpart of Stage 5.46's `build_vtable_global_specs()`. Pure-function
+extraction of the spec-construction logic currently inlined in
+`emit_dyn_trait_ptrs()` (Stage 5.7). Stage 5.50 will refactor
+`emit_dyn_trait_ptrs()` to call this builder + per-spec
+`Emitter::emit_dyn_trait_const()` calls.
+
+### New type
+
+- `StdlibDynptrGlobalSpec` — packages `(global_name: String, data_symbol:
+  String, vtable_symbol: String)` — the three inputs needed by
+  `emit_dynptr_global_text()` (Stage 5.48). dynptr counterpart of Stage 5.45's
+  `StdlibVtableGlobalSpec`. Derives `PartialEq`/`Eq` for test assertions.
+
+### New API
+
+- `build_dynptr_global_specs(&TraitResolver, &Rodeo) -> Vec<StdlibDynptrGlobalSpec>`
+  (in `src/codegen/mod.rs`) — pure-function extraction. For each
+  `(trait_name, self_ty_name)` key in `trait_resolver.vtables`, constructs a
+  `StdlibDynptrGlobalSpec` with `global_name` (`.dynptr.<trait>.<type>`) +
+  `data_symbol` (`.data.<type>`) + `vtable_symbol` (`.vtable.<trait>.<type>`).
+
+### Design highlights
+
+1. **dynptr counterpart of Stage 5.46**: Stage 5.46 added
+   `build_vtable_global_specs()` (vtable spec builder), Stage 5.49 adds
+   `build_dynptr_global_specs()` (dynptr spec builder). Naming symmetric
+   (vtable → dynptr), design pattern identical.
+2. **StdlibDynptrGlobalSpec struct**: packages the three inputs needed by
+   `emit_dynptr_global_text()` (Stage 5.48). dynptr counterpart of Stage 5.45's
+   `StdlibVtableGlobalSpec`.
+3. **Byte-for-byte equivalence**: `test_build_dynptr_global_specs_match_emit_dyn_trait_ptrs`
+   manually inlines the `emit_dyn_trait_ptrs()` construction logic and asserts
+   set equality with the builder output. Safety net for Stage 5.50 refactor.
+4. **Integration test**: `test_build_dynptr_global_specs_then_emit` verifies
+   that `build_dynptr_global_specs()` + `emit_dynptr_global_text()` (Stage 5.48)
+   produces the complete LLVM IR line — this is the Stage 5.50 refactored flow.
+
+### §16 / §23 compliance
+
+- Function takes `&TraitResolver` + `&Rodeo` (same as `emit_dyn_trait_ptrs()`),
+  returns `Vec<StdlibDynptrGlobalSpec>`. No `mir::ty` / `Emitter` reference,
+  no circular dependency.
+- `StdlibDynptrGlobalSpec` follows §23 `<Noun><Noun><Noun><Noun>`;
+  `build_dynptr_global_specs` follows `<verb>_<noun>_<adj>_<noun>`. Naming
+  symmetric with Stage 5.46's `build_vtable_global_specs` /
+  `StdlibVtableGlobalSpec` (vtable → dynptr). The `build_` prefix indicates a
+  constructor function (no side effects).
+
+### Test impact
+
++12 tests (1310 → 1322) — covers empty/single/multi + format components
+(global_name/data_symbol/vtable_symbol) + unresolved interner +
+no-side-effects + determinism + **match-emit_dyn_trait_ptrs-inline
+cross-check** + build+emit integration + real-scenario simulation
+(S impls Clone+Drop+Display).
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (828.0 MiB removed)
+cargo test: 1322 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

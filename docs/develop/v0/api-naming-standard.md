@@ -1306,3 +1306,62 @@ counterpart** of Stage 5.44's `emit_vtable_global_text()`.
 **Test impact**: +12 (1298 → 1310).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.19 (Stage 5.49, 2026-07-23)
+
+Stage 5.49 codegen dynptr spec builder round. Adds the **dynptr counterpart**
+of Stage 5.46's `build_vtable_global_specs()`. Pure-function extraction of
+the spec-construction logic currently inlined in `emit_dyn_trait_ptrs()`
+(Stage 5.7).
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `StdlibDynptrGlobalSpec` | struct (in `codegen`) | `<Noun><Noun><Noun><Noun>` |
+| `build_dynptr_global_specs` | free fn (in `codegen`) | `<verb>_<noun>_<adj>_<noun>` |
+
+**Field naming (3 fields, all §23-compliant)**:
+
+| Field | Type | Naming pattern |
+|-------|------|----------------|
+| `global_name` | `String` | `<noun>_<noun>` |
+| `data_symbol` | `String` | `<noun>_<noun>` |
+| `vtable_symbol` | `String` | `<noun>_<noun>` |
+
+**Design decisions**:
+1. **dynptr counterpart of Stage 5.46**: Stage 5.46 added
+   `build_vtable_global_specs()` (vtable spec builder), Stage 5.49 adds
+   `build_dynptr_global_specs()` (dynptr spec builder). Naming symmetric
+   (vtable → dynptr), design pattern identical — both are pure-function
+   extractions of `emit_*()` inline construction logic, both take
+   `(&TraitResolver, &Rodeo)`, both return `Vec<Stdlib*GlobalSpec>`.
+2. **`StdlibDynptrGlobalSpec` struct** (dynptr counterpart of Stage 5.45's
+   `StdlibVtableGlobalSpec`): packages the three inputs needed by
+   `emit_dynptr_global_text()` (Stage 5.48) — `(global_name, data_symbol,
+   vtable_symbol)`. The vtable counterpart packages `(global_name,
+   method_symbols)` — different fields because vtable and dynptr globals
+   have different LLVM IR shapes.
+3. **`build_` prefix** (not `emit_`): indicates a constructor function
+   (input data → output data, no side effects). Consistent with Stage 5.46's
+   `build_vtable_global_specs()`. Distinguishes from the `emit_*` family
+   which produce side effects (push to emitter).
+4. **`_specs` (plural)**: indicates multiple specs returned. Consistent
+   with the plural/singular convention across the codegen vtable+dynptr API
+   family.
+5. **Symmetric naming convention** across the codegen dyn API family:
+   - vtable: `StdlibVtableGlobalSpec` (5.45) + `build_vtable_global_specs` (5.46)
+   - dynptr: `StdlibDynptrGlobalSpec` (5.49) + `build_dynptr_global_specs` (5.49)
+   - The `Vtable`/`Dynptr` noun in the type/fn name makes the global kind
+     explicit, avoiding ambiguity.
+6. **Byte-for-byte equivalence**: `test_build_dynptr_global_specs_match_emit_dyn_trait_ptrs`
+   manually inlines the `emit_dyn_trait_ptrs()` construction logic and asserts
+   set equality with the builder output. Safety net for Stage 5.50 refactor.
+
+**§16 compliance**: function takes `&TraitResolver` + `&Rodeo` (same as
+`emit_dyn_trait_ptrs()`), returns `Vec<StdlibDynptrGlobalSpec>`. No
+`mir::ty` / `Emitter` reference, no circular dependency.
+
+**Test impact**: +12 (1310 → 1322).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

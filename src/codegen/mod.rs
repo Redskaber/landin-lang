@@ -1769,3 +1769,93 @@ pub fn emit_dynptr_global_text(
     );
     format!("@{} = private unnamed_addr constant {}", global_name, init)
 }
+
+// ============================================================================
+// Stage 5.49: Codegen dynptr spec builder
+//
+// Pure free function that extracts the "construct dynptr spec list" logic
+// from `emit_dyn_trait_ptrs()` into a standalone function. Takes
+// `&TraitResolver` + `&Rodeo` (same inputs as `emit_dyn_trait_ptrs()`),
+// returns `Vec<StdlibDynptrGlobalSpec>`.
+//
+// This is the **dynptr counterpart** of Stage 5.46's
+// `build_vtable_global_specs()`. Stage 5.50 will refactor
+// `emit_dyn_trait_ptrs()` to call this builder + per-spec
+// `Emitter::emit_dyn_trait_const()` calls.
+//
+// Per API-naming-standard §3: `build_dynptr_global_specs` follows
+// `<verb>_<noun>_<adj>_<noun>` pattern. The `build_` prefix indicates a
+// constructor function (input data → output data, no side effects).
+// Naming symmetric with Stage 5.46's `build_vtable_global_specs` (vtable → dynptr).
+//
+// Per §16: takes `&TraitResolver` + `&Rodeo` (same as `emit_dyn_trait_ptrs()`),
+// returns `Vec<StdlibDynptrGlobalSpec>`. No `mir::ty` / `Emitter` reference,
+// no circular dependency.
+// ============================================================================
+
+/// Stage 5.49: Specification for one `dyn Trait` fat-pointer global — the
+/// inputs needed by `emit_dynptr_global_text()` (Stage 5.48) packaged as a
+/// struct for batch processing.
+///
+/// This is the **dynptr counterpart** of Stage 5.45's
+/// `StdlibVtableGlobalSpec`. Codegen constructs a
+/// `Vec<StdlibDynptrGlobalSpec>` (one per (trait, type) pair in
+/// `TraitResolver.vtables`), then in Stage 5.50 will call
+/// `emit_dynptr_global_text()` per spec to generate all IR lines.
+///
+/// Per API-naming-standard §3: `StdlibDynptrGlobalSpec` follows
+/// `<Noun><Noun><Noun><Noun>` pattern. Naming symmetric with
+/// `StdlibVtableGlobalSpec` (vtable → dynptr). Field names follow
+/// `<noun>_<noun>` pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StdlibDynptrGlobalSpec {
+    /// LLVM global name (e.g. `.dynptr.Foo.S` — without leading `@`).
+    pub global_name: String,
+    /// Data symbol (e.g. `.data.S` — references the per-type data global).
+    pub data_symbol: String,
+    /// Vtable symbol (e.g. `.vtable.Foo.S` — references the vtable global).
+    pub vtable_symbol: String,
+}
+
+/// Stage 5.49: Build the list of `StdlibDynptrGlobalSpec` from
+/// `TraitResolver.vtables`.
+///
+/// For each `(trait_name, self_ty_name)` key in `trait_resolver.vtables`,
+/// constructs a `StdlibDynptrGlobalSpec` with:
+/// - `global_name = format!(".dynptr.{trait_str}.{type_str}")`
+/// - `data_symbol = format!(".data.{type_str}")`
+/// - `vtable_symbol = format!(".vtable.{trait_str}.{type_str}")`
+///
+/// where `trait_str = interner.try_resolve(trait_name).unwrap_or("Trait")`
+/// and `type_str = interner.try_resolve(self_ty_name).unwrap_or("Type")`.
+///
+/// This is the **pure-function extraction** of the spec-construction logic
+/// currently inlined in `emit_dyn_trait_ptrs()` (Stage 5.7). Stage 5.50
+/// will refactor `emit_dyn_trait_ptrs()` to call this builder + per-spec
+/// `Emitter::emit_dyn_trait_const()` calls.
+///
+/// Per API-naming-standard §3: `build_dynptr_global_specs` follows
+/// `<verb>_<noun>_<adj>_<noun>` pattern. Naming symmetric with Stage 5.46's
+/// `build_vtable_global_specs` (vtable → dynptr).
+pub fn build_dynptr_global_specs(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+) -> Vec<StdlibDynptrGlobalSpec> {
+    let mut specs: Vec<StdlibDynptrGlobalSpec> = Vec::new();
+    for (trait_name, self_ty_name) in trait_resolver.vtables.keys() {
+        // Global names: matches the naming convention from emit_vtables.
+        let trait_str = interner.try_resolve(trait_name).unwrap_or("Trait");
+        let type_str = interner.try_resolve(self_ty_name).unwrap_or("Type");
+
+        let global_name = format!(".dynptr.{trait_str}.{type_str}");
+        let data_symbol = format!(".data.{type_str}");
+        let vtable_symbol = format!(".vtable.{trait_str}.{type_str}");
+
+        specs.push(StdlibDynptrGlobalSpec {
+            global_name,
+            data_symbol,
+            vtable_symbol,
+        });
+    }
+    specs
+}

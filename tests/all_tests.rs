@@ -223,3 +223,6 @@ mod codegen_vtable_orchestrator_tests;
 
 #[path = "v0/stage5/plan/codegen_dynptr_text_tests.rs"]
 mod codegen_dynptr_text_tests;
+
+#[path = "v0/stage5/plan/codegen_dynptr_spec_builder_tests.rs"]
+mod codegen_dynptr_spec_builder_tests;

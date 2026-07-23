@@ -4793,3 +4793,56 @@ Stage Summary:
   emit_vtable_global_text.
 - Next: Stage 5.49+ (codegen vtable + dynptr emission refactor — TextEmitter
   delegation, then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.49-r98
+Agent: Super Z (main)
+Task: Stage 5.49 — codegen dynptr spec builder + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.44 / 1310 tests (Stage 5.48 complete)
+
+Stage 5.49: Codegen dynptr spec builder
+- src/codegen/mod.rs: new StdlibDynptrGlobalSpec struct (global_name + data_symbol + vtable_symbol)
+  * dynptr counterpart of Stage 5.45's StdlibVtableGlobalSpec
+- src/codegen/mod.rs: new free function build_dynptr_global_specs(&TraitResolver, &Rodeo) -> Vec<StdlibDynptrGlobalSpec>
+  * Pure-function extraction of emit_dyn_trait_ptrs() inline construction logic
+  * Same input parameters as emit_dyn_trait_ptrs() (minus emitter)
+  * Byte-for-byte identical output (verified by cross-check test)
+  * dynptr counterpart of Stage 5.46's build_vtable_global_specs()
+- src/lib.rs: re-export StdlibDynptrGlobalSpec + build_dynptr_global_specs + Stage 5.49 history comment
+- tests/v0/stage5/plan/codegen_dynptr_spec_builder_tests.rs: 12 new tests
+  (incl. match-emit_dyn_trait_ptrs-inline cross-check + build+emit integration +
+  real-scenario simulation with Clone+Drop+Display)
+- tests/all_tests.rs: added codegen_dynptr_spec_builder_tests module (63 mods)
+- Cargo.toml: version 0.11.44 → 0.11.45
+
+Docs:
+- plan-5.49.md / gate-review-round49.md / codegen_dynptr_spec_builder_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (828.0 MiB removed) ✅
+- cargo test: 1322 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.49 PASSED — CI/CD all green per §1.2.
+- StdlibDynptrGlobalSpec struct + build_dynptr_global_specs() free function added.
+- dynptr counterpart of Stage 5.46's build_vtable_global_specs() — naming
+  symmetric, design pattern identical.
+- Pure-function extraction of emit_dyn_trait_ptrs() inline construction logic.
+- Cross-check test guarantees byte-for-byte equivalence with emit_dyn_trait_ptrs()
+  current inline construction — safety net for Stage 5.50 refactor.
+- §16 compliance: function takes &TraitResolver + &Rodeo (same as
+  emit_dyn_trait_ptrs), returns Vec<StdlibDynptrGlobalSpec>. No mir::ty / Emitter
+  reference.
+- §23 compliance: StdlibDynptrGlobalSpec follows <Noun><Noun><Noun><Noun>;
+  build_dynptr_global_specs follows <verb>_<noun>_<adj>_<noun>; naming symmetric
+  with vtable counterparts.
+- Stage 5.50 can now refactor emit_dyn_trait_ptrs() to call
+  build_dynptr_global_specs() + per-spec Emitter::emit_dyn_trait_const().
+- Next: Stage 5.50+ (codegen vtable + dynptr emission refactor — TextEmitter
+  delegation + emit_vtables/emit_dyn_trait_ptrs delegation, then dyn Trait
+  MIR lowering).
