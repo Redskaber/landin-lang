@@ -190,3 +190,6 @@ mod stdlib_trait_method_tests;
 
 #[path = "v0/stage5/plan/stdlib_vtable_layout_tests.rs"]
 mod stdlib_vtable_layout_tests;
+
+#[path = "v0/stage5/plan/stdlib_vtable_size_tests.rs"]
+mod stdlib_vtable_size_tests;

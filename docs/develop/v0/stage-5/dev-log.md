@@ -847,3 +847,47 @@ follows `<Noun><Noun><Noun>`; 5 free functions follow `<noun>_<noun>_<noun>`
 
 **Test impact**: +22 (1130 → 1152)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.38 — Stdlib Vtable Byte Size + Pointer-Width Layout (v0.11.34)
+
+**Priority**: Translate vtable slot indices into byte offsets — the form
+codegen actually needs for LLVM IR emission. Adds pointer-width-aware
+vtable size and method-offset calculators.
+
+**Work completed**:
+- src/stdlib.rs: new `StdlibPointerWidth` enum (Pointer32 / Pointer64)
+- src/stdlib.rs: new `byte_size()` const method on `StdlibPointerWidth`
+  (returns 4 / 8)
+- src/stdlib.rs: 3 new free-function query APIs:
+  * `stdlib_pointer_width_bytes(width) -> u32` — free fn form of byte_size
+  * `stdlib_vtable_byte_size(trait, width) -> Option<u64>` — total vtable bytes
+  * `stdlib_vtable_method_offset(trait, method, width) -> Option<u64>` — method byte offset
+- src/lib.rs: re-export all new APIs + Stage 5.38 history comment
+- tests/v0/stage5/plan/stdlib_vtable_size_tests.rs: 20 new tests covering
+  pointer width / vtable_byte_size (incl. markers) / method_offset
+  (incl. arith/marker/unknown) / cross-check offset < total
+- tests/all_tests.rs: added stdlib_vtable_size_tests module (52 mods total)
+- Cargo.toml: version 0.11.33 → 0.11.34
+
+**Design highlights**:
+- `byte_size()` is `const fn` — can be used in const context (codegen can
+  pre-compute fixed vtable sizes at compile time).
+- Three-state return (Some(0) / Some(n) / None) consistent with Stage 5.37
+  — codegen distinguishes "0-byte vtable" (marker) from "trait unknown".
+- Compositional: `vtable_byte_size` and `method_offset` build on Stage 5.37
+  `slot_count` and `slot_index` — single source of truth for slot numbering.
+- Cross-check test verifies the core safety invariant
+  `method_offset < vtable_byte_size` across 7 (trait, method) pairs ×
+  2 pointer widths — this is what typeck will enforce in Stage 5.40+.
+
+**§16 interface isolation**: All new APIs use only `StdlibPointerWidth`
+(stdlib-internal) + existing `stdlib_vtable_slot_count` /
+`stdlib_trait_method_index`. No `mir::ty` / `codegen::EmitType` reference,
+no circular dependency.
+
+**§23 API naming**: All 5 new public symbols comply (StdlibPointerWidth
+follows `<Noun><Noun><Noun>`; variants Pointer32/Pointer64 follow
+`<Noun><Digits>`; 3 free functions follow `<noun>_<noun>_<noun>_<noun>`).
+
+**Test impact**: +20 (1152 → 1172)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

@@ -4300,3 +4300,46 @@ Stage Summary:
 - Last static-prep step before dyn Trait MIR lowering — codegen can now
   compute vtable element count + method call byte offsets.
 - Next: Stage 5.38+ (dyn Trait MIR lowering, stdlib crate compilation).
+
+---
+Task ID: stage5.38-r87
+Agent: Super Z (main)
+Task: Stage 5.38 — stdlib vtable byte size + pointer-width layout + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.33 / 1152 tests (Stage 5.37 complete)
+
+Stage 5.38: Stdlib vtable byte size + pointer-width-aware layout helpers
+- src/stdlib.rs: new StdlibPointerWidth enum (Pointer32 / Pointer64)
+- src/stdlib.rs: new byte_size() const method (returns 4 / 8)
+- src/stdlib.rs: 3 new free-function query APIs:
+  * stdlib_pointer_width_bytes(width) -> u32
+  * stdlib_vtable_byte_size(trait, width) -> Option<u64>
+  * stdlib_vtable_method_offset(trait, method, width) -> Option<u64>
+- src/lib.rs: re-export all new APIs + Stage 5.38 history comment
+- tests/v0/stage5/plan/stdlib_vtable_size_tests.rs: 20 new tests
+- tests/all_tests.rs: added stdlib_vtable_size_tests module (52 mods)
+- Cargo.toml: version 0.11.33 → 0.11.34
+
+Docs:
+- plan-5.38.md / gate-review-round38.md / stdlib_vtable_size_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (911.7 MiB removed) ✅
+- cargo test: 1172 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.38 PASSED — CI/CD all green per §1.2.
+- StdlibPointerWidth + byte_size() + 3 query APIs added.
+- Codegen can now compute vtable alloca size and method-call byte offset
+  in target-pointer-width-aware form — the last arithmetic helper before
+  dyn Trait MIR lowering.
+- §16 compliance: all new APIs use StdlibPointerWidth (stdlib-internal),
+  no mir::ty / codegen::EmitType reference.
+- §23 compliance: all 5 new public symbols follow API naming standard.
+- Cross-check test verifies method_offset < vtable_byte_size invariant
+  across 7 (trait, method) pairs × 2 widths — what typeck will enforce.
+- Next: Stage 5.39+ (dyn Trait MIR lowering, stdlib crate compilation).

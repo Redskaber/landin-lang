@@ -198,7 +198,14 @@
 //!     dyn Trait MIR lowering (codegen will use these to emit
 //!     `@.vtable.<trait>.<type>` globals with the correct element count
 //!     and compute method call byte offsets).
-//!   Next: Stage 5.38+ (dyn Trait MIR lowering, stdlib crate compilation).
+//!   Stage 5.38 (v0.11.34): Stdlib vtable byte size + pointer-width-aware
+//!     layout helpers — `StdlibPointerWidth` enum (Pointer32/Pointer64) +
+//!     `byte_size()` method + `stdlib_pointer_width_bytes()` +
+//!     `stdlib_vtable_byte_size(trait, width)` +
+//!     `stdlib_vtable_method_offset(trait, method, width)` for translating
+//!     slot indices into byte offsets that codegen can directly use in
+//!     `alloca` / `getelementptr` calculations.
+//!   Next: Stage 5.39+ (dyn Trait MIR lowering, stdlib crate compilation).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -231,11 +238,13 @@ pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{
     default_prelude, find_stdlib_trait_method, integer_bit_width, is_float_type, is_primitive_type,
     is_signed_integer, is_stdlib_marker_trait, is_stdlib_trait_method, is_unsigned_integer,
-    is_zero_sized_type, register_stdlib, resolve_stdlib_type, stdlib_trait_method_count,
-    stdlib_trait_method_index, stdlib_trait_methods, stdlib_traits_with_method,
-    stdlib_traits_with_vtable, stdlib_vtable_layout, stdlib_vtable_slot_count,
+    is_zero_sized_type, register_stdlib, resolve_stdlib_type, stdlib_pointer_width_bytes,
+    stdlib_trait_method_count, stdlib_trait_method_index, stdlib_trait_methods,
+    stdlib_traits_with_method, stdlib_traits_with_vtable, stdlib_vtable_byte_size,
+    stdlib_vtable_layout, stdlib_vtable_method_offset, stdlib_vtable_slot_count,
     type_alignment_bytes, type_description, type_size_bytes, StdlibFacade, StdlibLayer,
-    StdlibPrelude, StdlibSelfKind, StdlibTraitMethod, StdlibTypeKind, StdlibVtableSlot,
+    StdlibPointerWidth, StdlibPrelude, StdlibSelfKind, StdlibTraitMethod, StdlibTypeKind,
+    StdlibVtableSlot,
 };
 pub use traits::{
     extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, ImplValidationReport,

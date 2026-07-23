@@ -1286,3 +1286,102 @@ pub fn stdlib_traits_with_vtable() -> Vec<&'static str> {
     }
     out
 }
+
+// ============================================================================
+// Stage 5.38: Stdlib vtable byte size + pointer-width-aware layout helpers
+//
+// Translates vtable slot indices into byte offsets — the form codegen
+// actually needs for LLVM IR emission:
+//   - `alloca [n × i8]` size = `stdlib_vtable_byte_size(trait, width)`
+//   - `getelementptr i8, ptr @vtable, i64 offset` offset
+//     = `stdlib_vtable_method_offset(trait, method, width)`
+//
+// Per API-naming-standard §3:
+//   - `StdlibPointerWidth` follows `<Noun><Noun><Noun>` pattern.
+//   - Variants `Pointer32` / `Pointer64` follow `<Noun><Digits>` pattern.
+//   - Query functions follow `<noun>_<noun>_<noun>_<noun>` pattern.
+//
+// Per §16: uses only `StdlibPointerWidth` (stdlib-internal) + already-existing
+// `stdlib_vtable_slot_count` / `stdlib_trait_method_index`. No `mir::ty` /
+// `codegen::EmitType` reference, so no circular dependency.
+// ============================================================================
+
+/// Stage 5.38: Target pointer width — determines vtable slot byte size.
+///
+/// Each vtable slot is one function pointer; its byte size equals the
+/// target's pointer width.
+///
+/// Per API-naming-standard §3: `StdlibPointerWidth` follows
+/// `<Noun><Noun><Noun>` pattern. Variants follow `<Noun><Digits>` pattern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StdlibPointerWidth {
+    /// 32-bit target — 4 bytes per pointer slot.
+    Pointer32,
+    /// 64-bit target — 8 bytes per pointer slot.
+    Pointer64,
+}
+
+impl StdlibPointerWidth {
+    /// Stage 5.38: Get the byte size of a single pointer slot for this width.
+    ///
+    /// Returns 4 for `Pointer32`, 8 for `Pointer64`.
+    ///
+    /// Per API-naming-standard §3: `byte_size` method follows
+    /// `<noun>_<noun>` pattern.
+    pub const fn byte_size(self) -> u32 {
+        match self {
+            StdlibPointerWidth::Pointer32 => 4,
+            StdlibPointerWidth::Pointer64 => 8,
+        }
+    }
+}
+
+/// Stage 5.38: Free-function form of `StdlibPointerWidth::byte_size`.
+///
+/// Returns the byte size of a single pointer slot for the given width.
+/// Convenience for callers that don't hold a `StdlibPointerWidth` value.
+///
+/// Per API-naming-standard §3: `stdlib_pointer_width_bytes` follows
+/// `<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_pointer_width_bytes(width: StdlibPointerWidth) -> u32 {
+    width.byte_size()
+}
+
+/// Stage 5.38: Get the total byte size of a trait's vtable.
+///
+/// Returns `slot_count × pointer_width_bytes`. Specifically:
+/// - `Some(0)` for marker traits (Copy/Send/Sync/Sized/Unpin/Eq).
+/// - `Some(n × width)` for traits with `n` declared methods.
+/// - `None` for traits not in the stdlib registry.
+///
+/// Codegen uses this to size `alloca` / `getelementptr` calculations
+/// involving the vtable global.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_byte_size` follows
+/// `<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_vtable_byte_size(trait_name: &str, width: StdlibPointerWidth) -> Option<u64> {
+    let slot_count = stdlib_vtable_slot_count(trait_name)?;
+    Some(slot_count as u64 * width.byte_size() as u64)
+}
+
+/// Stage 5.38: Get the byte offset of a method within a trait's vtable.
+///
+/// Returns `slot_index × pointer_width_bytes` if the (trait, method) pair
+/// is registered. Returns `None` if:
+/// - the trait is not registered
+/// - the trait is a marker (no slots at all)
+/// - the method name doesn't match any method in the trait
+///
+/// Codegen uses this to emit
+/// `getelementptr i8, ptr @vtable, i64 <offset>` for dyn Trait method calls.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_method_offset` follows
+/// `<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_vtable_method_offset(
+    trait_name: &str,
+    method_name: &str,
+    width: StdlibPointerWidth,
+) -> Option<u64> {
+    let slot_index = stdlib_trait_method_index(trait_name, method_name)?;
+    Some(slot_index as u64 * width.byte_size() as u64)
+}

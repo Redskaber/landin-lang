@@ -718,3 +718,49 @@ dependency.
 **Test impact**: +22 (1130 → 1152).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.8 (Stage 5.38, 2026-07-23)
+
+Stage 5.38 stdlib vtable byte size + pointer-width-aware layout round.
+Adds the final arithmetic helper API surface before dyn Trait MIR
+lowering — translates slot indices into byte offsets that codegen can
+directly use in LLVM IR emission.
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `StdlibPointerWidth` | enum | `<Noun><Noun><Noun>` |
+| `StdlibPointerWidth::Pointer32` | variant | `<Noun><Digits>` |
+| `StdlibPointerWidth::Pointer64` | variant | `<Noun><Digits>` |
+| `StdlibPointerWidth::byte_size` | method (const fn) | `<noun>_<noun>` |
+| `stdlib_pointer_width_bytes` | free fn | `<noun>_<noun>_<noun>_<noun>` |
+| `stdlib_vtable_byte_size` | free fn | `<noun>_<noun>_<noun>_<noun>` |
+| `stdlib_vtable_method_offset` | free fn | `<noun>_<noun>_<noun>_<noun>` |
+
+**Design decisions**:
+1. `StdlibPointerWidth` is an enum, not a `u32` raw width — gives type
+   safety (callers can't pass 5 or 16 by accident) and lets the compiler
+   exhaustively match in `byte_size()`.
+2. `byte_size()` is `const fn` — usable in const context for compile-time
+   fixed vtable size computation (e.g. `const CLONE_VTABLE_SIZE_64: u64 =
+   stdlib_vtable_byte_size("Clone", StdlibPointerWidth::Pointer64).unwrap();`).
+3. Three-state return consistent with Stage 5.37:
+   `Some(0)` (marker) / `Some(n)` (registered with n bytes) / `None`
+   (unknown trait) — codegen distinguishes "skip vtable" from "trait
+   doesn't exist".
+4. Compositional design — `vtable_byte_size` and `method_offset` build
+   on Stage 5.37's `slot_count` and `slot_index` rather than recomputing.
+   Single source of truth for slot numbering.
+5. Cross-check test in `stdlib_vtable_size_tests.rs` verifies
+   `method_offset < vtable_byte_size` across 7 (trait, method) pairs ×
+   2 pointer widths — this is the core safety invariant typeck will
+   enforce at runtime in Stage 5.40+.
+
+**§16 compliance**: All new APIs use only `StdlibPointerWidth` (stdlib-
+internal) + existing `stdlib_vtable_slot_count` / `stdlib_trait_method_index`.
+No `mir::ty` / `codegen::EmitType` reference, no circular dependency.
+
+**Test impact**: +20 (1152 → 1172).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

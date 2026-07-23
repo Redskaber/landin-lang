@@ -1,9 +1,74 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.33
+**Current version**: v0.11.34
 **Date**: 2026-07-23
-**Test count**: 1152 tests + 5 benchmarks
+**Test count**: 1172 tests + 5 benchmarks
+
+---
+
+## v0.11.34 — Stage 5.38 (Stdlib vtable byte size + pointer-width layout)
+
+### Overview
+
+Translates vtable slot indices into byte offsets — the form codegen
+actually needs for LLVM IR emission. Adds pointer-width-aware vtable
+size and method-offset calculators. This is the last arithmetic helper
+before dyn Trait MIR lowering (Stage 5.39+).
+
+### New type
+
+- `StdlibPointerWidth` — target pointer width enum:
+  - `Pointer32` → 4 bytes/slot (32-bit target)
+  - `Pointer64` → 8 bytes/slot (64-bit target)
+  - `byte_size()` const method — returns 4 / 8
+
+### New APIs
+
+- `stdlib_pointer_width_bytes(width) -> u32` — free fn form of byte_size
+- `stdlib_vtable_byte_size(trait, width) -> Option<u64>` — total vtable bytes
+  (= `slot_count × pointer_width_bytes`)
+- `stdlib_vtable_method_offset(trait, method, width) -> Option<u64>` —
+  method byte offset (= `slot_index × pointer_width_bytes`)
+
+### Design highlights
+
+1. **`byte_size()` is `const fn`** — can be used in const context for
+   compile-time fixed vtable size computation.
+2. **Three-state return** (consistent with Stage 5.37):
+   - `Some(0)` — marker trait (registered, no methods, 0-byte vtable)
+   - `Some(n)` — trait with n bytes vtable
+   - `None` — trait not in registry
+3. **Compositional**: `vtable_byte_size` and `method_offset` build on
+   Stage 5.37 `slot_count` and `slot_index` — single source of truth.
+4. **Cross-check test**: verifies `method_offset < vtable_byte_size`
+   across 7 (trait, method) pairs × 2 pointer widths — the core safety
+   invariant typeck will enforce in Stage 5.40+.
+
+### §16 / §23 compliance
+
+- All new APIs use only `StdlibPointerWidth` (stdlib-internal) + existing
+  `stdlib_vtable_slot_count` / `stdlib_trait_method_index`. No `mir::ty` /
+  `codegen::EmitType` reference, no circular dependency.
+- All 5 new public symbols follow API-naming-standard §23:
+  `StdlibPointerWidth` follows `<Noun><Noun><Noun>`; variants
+  `Pointer32`/`Pointer64` follow `<Noun><Digits>`; 3 free functions follow
+  `<noun>_<noun>_<noun>_<noun>`.
+
+### Test impact
+
++20 tests (1152 → 1172) — covers pointer width / vtable_byte_size (incl.
+markers) / method_offset (incl. arith/marker/unknown) / cross-check
+offset < total.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (911.7 MiB removed)
+cargo test: 1172 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
