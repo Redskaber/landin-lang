@@ -3910,3 +3910,34 @@ Stage Summary:
 - Stdlib MVP: core types + ops/convert/iter traits + prelude + register_stdlib().
 - 1041 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.26+ (dyn Trait MIR lowering, full stdlib crate).
+
+---
+Task ID: stage5.26-r75
+Agent: Super Z (main)
+Task: Stage 5.26 — driver stdlib integration + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.23 / 1041 tests / Stage 5.25 complete (stdlib MVP)
+
+Stage 5.26: Driver stdlib integration
+- src/driver.rs: new `stdlib_prelude: StdlibPrelude` field on CompileResult
+  * empty() path uses default_prelude()
+  * Normal path uses default_prelude()
+- src/driver.rs: register_stdlib(&mut interner) called after register_builtin_traits
+  and before collect() — ensures all stdlib types + traits interned
+- src/lib.rs: doc comment updated
+- tests/v0/stage5/plan/driver_stdlib_tests.rs: 8 new tests
+- tests/all_tests.rs: added driver_stdlib_tests module (42 mods)
+- Cargo.toml: version 0.11.23 → 0.11.24
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo test: 1049 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.26 PASSED — CI/CD all green per §1.2.
+- Driver now auto-registers all stdlib types + traits in interner.
+- CompileResult.stdlib_prelude available for downstream stages.
+- 1049 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.27+ (dyn Trait MIR lowering, full stdlib crate).

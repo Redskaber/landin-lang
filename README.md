@@ -6,10 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.23 — Stage 0-4 complete, Stage 5 in progress.
-> **1041 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
+> **Status:** v0.11.24 — Stage 0-4 complete, Stage 5 in progress.
+> **1049 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
 > Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5.1-5.25: trait infra ✅ + driver validation ✅ + traits split ✅ + mini-cargo ✅ + stdlib MVP ✅. Deep review: GO.
+> Stage 5.1-5.26: trait infra ✅ + driver validation ✅ + traits split ✅ + mini-cargo ✅ + stdlib MVP ✅ + driver stdlib integration ✅. Deep review: GO.
 > Next: dyn Trait MIR lowering, full stdlib crate.
 
 ## Quick start
@@ -86,7 +86,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.11.23 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.11.24 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (109 tests)
 │   ├── parser/             Recursive-descent + Pratt parser (85 tests)
@@ -101,7 +101,7 @@ landin-stage0/
 │   ├── driver.rs           Full pipeline driver
 │   └── bin/                CLI entry point
 ├── tests/
-│   ├── all_tests.rs        Unified entry point (41 #[path] mod declarations)
+│   ├── all_tests.rs        Unified entry point (42 #[path] mod declarations)
 │   ├── common/mod.rs       Shared test helpers
 │   ├── conformance/        .lin conformance suite + run_all.py
 │   └── v0/stage{0-5}/plan/ Standardized test files (v3.17 §17.1)
@@ -150,7 +150,7 @@ one `#[path]` line to `tests/all_tests.rs` — no `Cargo.toml` edit needed.
 - **Stage 2** ✅ MIR + type check + borrow check (NLL, closures, coercion matrix)
 - **Stage 3** ✅ LLVM codegen (§16 compliant, all soundness-critical limitations closed, L1 CLOSED)
 - **Stage 4** ✅ COMPLETE (13 sub-stages: modules + PHI + visibility + closures + macros + benchmarks + ADR + v3.18)
-- **Stage 5** 🔄 In progress (5.1-5.25 done; next: dyn Trait MIR lowering, full stdlib crate)
+- **Stage 5** 🔄 In progress (5.1-5.26 done; next: dyn Trait MIR lowering, full stdlib crate)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting
 

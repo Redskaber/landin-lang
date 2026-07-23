@@ -150,7 +150,10 @@
 //!     str/()/Never) + ops traits (Add/Sub/Mul/.../PartialEq/Ord/...) +
 //!     convert traits (From/Into/AsRef/...) + iter traits (Iterator/...) +
 //!     `StdlibPrelude` + `register_stdlib()` + `default_prelude()`.
-//!   Next: Stage 5.26+ (dyn Trait MIR lowering, full stdlib crate).
+//!   Stage 5.26 (v0.11.24): Driver stdlib integration —
+//!     `register_stdlib()` wired into driver; `CompileResult.stdlib_prelude`
+//!     field added; all stdlib types + traits auto-interned.
+//!   Next: Stage 5.27+ (dyn Trait MIR lowering, full stdlib crate).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

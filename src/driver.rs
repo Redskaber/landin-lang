@@ -223,6 +223,10 @@ pub struct CompileResult {
     /// Built during compile() so downstream (typeck, borrowck, codegen)
     /// can query trait implementations without reading HIR.
     pub trait_resolver: crate::traits::TraitResolver,
+    /// Stage 5.26: Stdlib prelude — types + traits auto-registered by the
+    /// compiler. Available for downstream stages to query which names are
+    /// stdlib-provided (vs user-defined).
+    pub stdlib_prelude: crate::stdlib::StdlibPrelude,
 }
 
 /// Stage 3.56: Per-body metadata for codegen.
@@ -254,6 +258,7 @@ impl CompileResult {
             fn_name_by_def_id: std::collections::HashMap::new(),
             body_metas: Vec::new(),
             trait_resolver: crate::traits::TraitResolver::new(),
+            stdlib_prelude: crate::stdlib::default_prelude(),
         }
     }
 }
@@ -451,6 +456,10 @@ pub fn compile(src: &str) -> CompileResult {
     // but by this point several borrows have happened. We use a direct
     // mutable call since interner is still owned.
     trait_resolver.register_builtin_traits(&mut interner);
+    // Stage 5.26: Register stdlib types + traits in the interner.
+    // This ensures all core types (i32, bool, str, etc.) and stdlib traits
+    // (Add, From, Iterator, etc.) are interned before compilation.
+    crate::stdlib::register_stdlib(&mut interner);
     trait_resolver.collect(&hir, &interner);
 
     // Stage 5.22: Validate all trait impls (coherence + completeness).
@@ -492,6 +501,7 @@ pub fn compile(src: &str) -> CompileResult {
         fn_name_by_def_id,
         body_metas,
         trait_resolver,
+        stdlib_prelude: crate::stdlib::default_prelude(),
     }
 }
 

@@ -566,3 +566,22 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ register_stdlib uses &mut Rodeo only.
 **API naming**: ✅ SCREAMING_SNAKE_CASE constants + `<Noun><Noun>` types + `register_<noun>` / `<adj>_<noun>` functions.
+
+### Stage 5.26 — Driver Stdlib Integration (v0.11.24)
+
+**Priority**: Wire register_stdlib() into driver + add CompileResult.stdlib_prelude.
+
+**Work completed**:
+- src/driver.rs: new `stdlib_prelude: StdlibPrelude` field on CompileResult
+  * `empty()` path uses `default_prelude()`
+  * Normal path uses `default_prelude()`
+- src/driver.rs: `register_stdlib(&mut interner)` called after `register_builtin_traits`
+  and before `collect()`
+- src/lib.rs: doc comment updated
+- tests/v0/stage5/plan/driver_stdlib_tests.rs: 8 new tests
+- tests/all_tests.rs: added driver_stdlib_tests module (42 mods)
+- Cargo.toml: version 0.11.23 → 0.11.24
+
+**Test impact**: +8 (1049 — was 1041)
+**Verification**: cargo clean + cargo test (1049 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
