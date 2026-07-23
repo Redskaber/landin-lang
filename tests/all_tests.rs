@@ -151,3 +151,6 @@ mod impl_completeness_tests;
 
 #[path = "v0/stage5/plan/impl_validation_tests.rs"]
 mod impl_validation_tests;
+
+#[path = "v0/stage5/plan/driver_validation_tests.rs"]
+mod driver_validation_tests;

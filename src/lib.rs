@@ -138,7 +138,10 @@
 //!     `ImplValidationReport` + `IncompleteImpl` structs +
 //!     `validate_impls()` + `impls_are_valid()` + `all_impls_complete()`
 //!     for single-pass validation of all impls (coherence + completeness).
-//!   Next: Stage 5.21+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.22 (v0.11.20): Driver validation integration —
+//!     `validate_impls()` wired into driver; `CompileErrors.trait_errors`
+//!     field added; coherence + completeness errors reported to user.
+//!   Next: Stage 5.23+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

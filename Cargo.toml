@@ -1,9 +1,9 @@
 [package]
 name = "landin-compiler"
-version = "0.11.19"
+version = "0.11.20"
 edition = "2021"
 license = "MIT"
-description = "Landin programming language compiler — Stage 0-4 complete + Stage 5.1-5.20 (TraitResolver + driver integration + Copy detection + DefId→name + vtable + vtable codegen + dyn Trait fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report) + standardized tests/ directory"
+description = "Landin programming language compiler — Stage 0-4 complete + Stage 5.1-5.22 (TraitResolver + driver integration + Copy detection + DefId→name + vtable + vtable codegen + dyn Trait fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report + driver validation integration) + standardized tests/ directory"
 repository = "https://github.com/landin-lang/main"
 authors = ["redskaber"]
 keywords = ["compiler", "language", "systems-programming"]

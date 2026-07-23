@@ -482,3 +482,21 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 
 **Test impact**: 0 (deep review — no code changes)
 **§25 compliance**: ✅ 7-dimension analysis + tech debt catalog + GO/NO-GO
+
+### Stage 5.22 — Driver Validation Integration (v0.11.20)
+
+**Priority**: Wire validate_impls() into driver (deep review r70 P2 action item).
+
+**Work completed**:
+- src/driver.rs: new `trait_errors: Vec<String>` field on CompileErrors
+  * is_empty() + total_count() updated to include trait_errors
+- src/driver.rs: validate_impls() called after collect()
+  * Coherence errors formatted as "conflicting implementations of trait `T` for type `S` (N impl blocks)"
+  * Completeness errors formatted as "impl `T` for `S` is missing method(s): baz"
+- tests/v0/stage5/plan/driver_validation_tests.rs: 7 new tests
+- tests/all_tests.rs: added driver_validation_tests module (39 mods)
+- Cargo.toml: version 0.11.19 → 0.11.20
+
+**Test impact**: +7 (1023 — was 1016)
+**Verification**: cargo clean + cargo test (1023 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)

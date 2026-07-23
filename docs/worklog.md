@@ -3783,3 +3783,32 @@ Stage Summary:
 - 20 sub-stages completed (5.1-5.20), 112 Stage 5 tests, 1016 total tests.
 - 0 P0/P1 blockers. 3 P2 tech debt items with repayment plans.
 - Trait infrastructure ready for dyn Trait MIR lowering (Stage 5.22+).
+
+---
+Task ID: stage5.22-r71
+Agent: Super Z (main)
+Task: Stage 5.22 — driver validation integration + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.19 / 1016 tests / Stage 5.21 deep review (GO)
+
+Stage 5.22: Driver validation integration (deep review r70 P2 action item)
+- src/driver.rs: new `trait_errors: Vec<String>` field on CompileErrors
+  * is_empty() + total_count() updated to include trait_errors
+- src/driver.rs: validate_impls() called after collect()
+  * Coherence errors → "conflicting implementations of trait `T` for type `S`"
+  * Completeness errors → "impl `T` for `S` is missing method(s): baz"
+- tests/v0/stage5/plan/driver_validation_tests.rs: 7 new tests
+- tests/all_tests.rs: added driver_validation_tests module (39 mods)
+- Cargo.toml: version 0.11.19 → 0.11.20
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo test: 1023 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.22 PASSED — CI/CD all green per §1.2.
+- Driver now reports trait coherence + completeness errors to user.
+- 1023 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.23+ (dyn Trait MIR lowering, full stdlib, mini-cargo).

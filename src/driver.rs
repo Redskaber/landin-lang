@@ -60,6 +60,9 @@ pub struct CompileErrors {
     pub typeck: Vec<TypeError>,
     /// Borrow errors (non-fatal — MIR is still produced).
     pub borrowck: Vec<BorrowError>,
+    /// Stage 5.22: Trait coherence/completeness errors (non-fatal —
+    /// compilation continues but the user should fix these).
+    pub trait_errors: Vec<String>,
 }
 
 impl CompileErrors {
@@ -69,6 +72,7 @@ impl CompileErrors {
             && self.resolve.is_empty()
             && self.typeck.is_empty()
             && self.borrowck.is_empty()
+            && self.trait_errors.is_empty()
     }
 
     pub fn total_count(&self) -> usize {
@@ -77,6 +81,7 @@ impl CompileErrors {
             + self.resolve.len()
             + self.typeck.len()
             + self.borrowck.len()
+            + self.trait_errors.len()
     }
 
     pub fn has_fatal(&self) -> bool {
@@ -447,6 +452,36 @@ pub fn compile(src: &str) -> CompileResult {
     // mutable call since interner is still owned.
     trait_resolver.register_builtin_traits(&mut interner);
     trait_resolver.collect(&hir, &interner);
+
+    // Stage 5.22: Validate all trait impls (coherence + completeness).
+    // Per deep review r70 action item: wire validate_impls() into driver.
+    // Non-fatal — compilation continues, but errors are reported.
+    let validation_report = trait_resolver.validate_impls();
+    for ce in &validation_report.coherence_errors {
+        let trait_str = interner.try_resolve(&ce.trait_name).unwrap_or("?");
+        let type_str = interner.try_resolve(&ce.self_ty_name).unwrap_or("?");
+        errors.trait_errors.push(format!(
+            "conflicting implementations of trait `{}` for type `{}` ({} impl blocks)",
+            trait_str,
+            type_str,
+            ce.impl_def_ids.len()
+        ));
+    }
+    for inc in &validation_report.incomplete_impls {
+        let trait_str = interner.try_resolve(&inc.trait_name).unwrap_or("?");
+        let type_str = interner.try_resolve(&inc.self_ty_name).unwrap_or("?");
+        let missing: Vec<&str> = inc
+            .missing_methods
+            .iter()
+            .map(|s| interner.try_resolve(s).unwrap_or("?"))
+            .collect();
+        errors.trait_errors.push(format!(
+            "impl `{}` for `{}` is missing method(s): {}",
+            trait_str,
+            type_str,
+            missing.join(", ")
+        ));
+    }
 
     CompileResult {
         hir: Some(hir),
