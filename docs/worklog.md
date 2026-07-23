@@ -4388,3 +4388,50 @@ Stage Summary:
 - Markers (Copy/Send/Sync/Sized/Unpin/Eq) return empty plan, vacuously
   complete — consistent with Stage 5.37/5.38 three-state convention.
 - Next: Stage 5.40+ (dyn Trait MIR lowering, stdlib crate compilation).
+
+---
+Task ID: stage5.40-r89
+Agent: Super Z (main)
+Task: Stage 5.40 — stdlib vtable symbol name planner + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.35 / 1190 tests (Stage 5.39 complete)
+
+Stage 5.40: Stdlib vtable symbol name planner
+- src/stdlib.rs: 5 new free-function symbol-name planners:
+  * stdlib_vtable_global_name(trait, type) -> String
+  * stdlib_dynptr_global_name(trait, type) -> String
+  * stdlib_data_global_name(type) -> String
+  * stdlib_impl_method_symbol(type, method) -> String
+  * stdlib_vtable_method_symbols(trait, type, provided) -> Option<Vec<String>>
+- src/lib.rs: re-export all new APIs + Stage 5.40 history comment
+- tests/v0/stage5/plan/stdlib_vtable_symbol_tests.rs: 16 new tests
+  (incl. 2 codegen-format cross-check tests verifying byte-for-byte
+  equivalence with existing codegen format! calls)
+- tests/all_tests.rs: added stdlib_vtable_symbol_tests module (54 mods)
+- Cargo.toml: version 0.11.35 → 0.11.36
+
+Docs:
+- plan-5.40.md / gate-review-round40.md / stdlib_vtable_symbol_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (921.7 MiB removed) ✅
+- cargo test: 1206 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.40 PASSED — CI/CD all green per §1.2.
+- 5 new symbol-name planner APIs added, strictly matching existing codegen
+  format! conventions byte-for-byte (verified by cross-check tests).
+- stdlib_vtable_method_symbols combines Stage 5.39 plan + impl symbol
+  formatting into the exact Vec<String> codegen needs to emit
+  @.vtable.<trait>.<type> globals.
+- §16 compliance: all new APIs input &str, output String/Vec<String>,
+  no mir::ty / codegen::EmitType / traits::TraitResolver reference.
+- §23 compliance: all 5 new public symbols follow API naming standard.
+- Stage 5.41+ can now refactor codegen to replace inline format! calls
+  with these planner functions — behavior-equivalent, string logic
+  centralized for future naming convention changes.
+- Next: Stage 5.41+ (codegen vtable emission refactor, dyn Trait MIR lowering).

@@ -196,3 +196,6 @@ mod stdlib_vtable_size_tests;
 
 #[path = "v0/stage5/plan/stdlib_vtable_plan_tests.rs"]
 mod stdlib_vtable_plan_tests;
+
+#[path = "v0/stage5/plan/stdlib_vtable_symbol_tests.rs"]
+mod stdlib_vtable_symbol_tests;

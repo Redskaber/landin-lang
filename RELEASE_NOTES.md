@@ -1,9 +1,74 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.35
+**Current version**: v0.11.36
 **Date**: 2026-07-23
-**Test count**: 1190 tests + 5 benchmarks
+**Test count**: 1206 tests + 5 benchmarks
+
+---
+
+## v0.11.36 — Stage 5.40 (Stdlib vtable symbol name planner)
+
+### Overview
+
+Extracts LLVM symbol-name formatting logic from codegen into pure stdlib
+functions. The 5 new planners **strictly reproduce** the existing codegen
+`format!()` conventions byte-for-byte (verified by cross-check tests), so
+Stage 5.41+ can refactor codegen to call these functions instead of inlining
+`format!` — behavior-equivalent but string logic centralized for future
+naming convention changes (e.g. adding module-path prefixes).
+
+### New APIs
+
+- `stdlib_vtable_global_name(trait, type) -> String` — `.vtable.<trait>.<type>`
+- `stdlib_dynptr_global_name(trait, type) -> String` — `.dynptr.<trait>.<type>`
+- `stdlib_data_global_name(type) -> String` — `.data.<type>`
+- `stdlib_impl_method_symbol(type, method) -> String` — `landin_<type>_<method>`
+- `stdlib_vtable_method_symbols(trait, type, provided) -> Option<Vec<String>>`
+  — full ordered symbol list combining Stage 5.39 plan + impl symbol
+  formatting; `provided=false` → `"null"` string for codegen to emit literally
+
+### Design highlights
+
+1. **Byte-for-byte equivalence with codegen**: each function's output
+   matches the corresponding codegen `format!` call exactly. Two tests
+   (`test_stdlib_vtable_global_name_match_codegen` and
+   `test_stdlib_vtable_method_symbols_match_codegen_format`) explicitly
+   cross-check by formatting the same string via `format!()` and asserting
+   equality — guarantees Stage 5.41+ refactor is behavior-equivalent.
+2. **`stdlib_vtable_method_symbols` composition**: combines Stage 5.39 plan
+   + impl symbol formatting in one call. Codegen consumes the returned
+   `Vec<String>` directly to emit
+   `@.vtable.<trait>.<type> = ... [n x ptr] [...]`.
+3. **Markers return `Some(vec![])`** — consistent with Stage 5.37/5.38/5.39
+   three-state convention.
+4. **Extra provided names silently ignored** — same tolerant design as
+   Stage 5.39.
+
+### §16 / §23 compliance
+
+- All new APIs input `&str`, output `String` / `Vec<String>`. No `mir::ty` /
+  `codegen::EmitType` / `traits::TraitResolver` reference, no circular
+  dependency. Pure functions, callable from any stage.
+- All 5 new public symbols follow API-naming-standard §23: 4 follow
+  `<noun>_<noun>_<adj>_<noun>` (global_name variants + impl_method_symbol),
+  1 follows `<noun>_<noun>_<noun>_<noun>` (vtable_method_symbols).
+
+### Test impact
+
++16 tests (1190 → 1206) — covers single-string generation /
+vtable_method_symbols (complete/partial/marker/unknown/arith/extra-ignored)
+/ **codegen-format cross-checks** (verify byte-for-byte equivalence with
+existing codegen `format!` calls).
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (921.7 MiB removed)
+cargo test: 1206 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

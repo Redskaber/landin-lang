@@ -947,3 +947,56 @@ patterns — including the 5-noun `stdlib_vtable_plan_entry_count`).
 
 **Test impact**: +18 (1172 → 1190)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.40 — Stdlib Vtable Symbol Name Planner (v0.11.36)
+
+**Priority**: Extract LLVM symbol-name formatting logic from codegen into
+pure stdlib functions. Stage 5.41+ will replace codegen's inline `format!`
+calls with these planner functions — behavior-equivalent but string logic
+centralized for future naming convention changes.
+
+**Work completed**:
+- src/stdlib.rs: 5 new free-function symbol-name planners:
+  * `stdlib_vtable_global_name(trait, type) -> String` — `.vtable.<trait>.<type>`
+  * `stdlib_dynptr_global_name(trait, type) -> String` — `.dynptr.<trait>.<type>`
+  * `stdlib_data_global_name(type) -> String` — `.data.<type>`
+  * `stdlib_impl_method_symbol(type, method) -> String` — `landin_<type>_<method>`
+  * `stdlib_vtable_method_symbols(trait, type, provided) -> Option<Vec<String>>`
+    — full ordered symbol list combining Stage 5.39 plan + impl symbol
+    formatting; `provided=false` → "null" string for codegen to emit literally
+- src/lib.rs: re-export all new APIs + Stage 5.40 history comment
+- tests/v0/stage5/plan/stdlib_vtable_symbol_tests.rs: 16 new tests covering
+  single-string generation / vtable_method_symbols (complete/partial/marker/
+  unknown/arith/extra-ignored) / **codegen-format cross-checks** (verify
+  byte-for-byte equivalence with existing codegen `format!` calls)
+- tests/all_tests.rs: added stdlib_vtable_symbol_tests module (54 mods total)
+- Cargo.toml: version 0.11.35 → 0.11.36
+
+**Design highlights**:
+- Strict byte-for-byte reproduction of existing codegen conventions:
+  * `stdlib_vtable_global_name` matches `src/codegen/mod.rs:145`
+  * `stdlib_dynptr_global_name` matches `src/codegen/mod.rs:184`
+  * `stdlib_data_global_name` matches `src/codegen/text_emitter.rs:565`
+  * `stdlib_impl_method_symbol` matches `src/traits/resolver.rs:235`
+- Two tests (`test_stdlib_vtable_global_name_match_codegen` and
+  `test_stdlib_vtable_method_symbols_match_codegen_format`) explicitly
+  cross-check by formatting the same string via `format!()` and asserting
+  equality — guarantees Stage 5.41+ refactor will be behavior-equivalent.
+- `stdlib_vtable_method_symbols` combines Stage 5.39 plan + impl symbol
+  formatting: `provided=true` → `landin_<type>_<method>`,
+  `provided=false` → `"null"` string. Codegen consumes the list directly
+  to emit `@.vtable.<trait>.<type> = ... [n x ptr] [...]`.
+- Markers (Copy/Send/Sync/Sized/Unpin/Eq) return `Some(vec![])` —
+  consistent with Stage 5.37/5.38/5.39 three-state convention.
+- Extra provided names silently ignored — same tolerant design as Stage 5.39.
+
+**§16 interface isolation**: All new APIs input `&str`, output `String` /
+`Vec<String>`. No `mir::ty` / `codegen::EmitType` / `traits::TraitResolver`
+reference, no circular dependency. Pure functions, callable from any stage.
+
+**§23 API naming**: All 5 new public symbols comply — 4 follow
+`<noun>_<noun>_<adj>_<noun>` pattern (global_name variants + impl_method_symbol),
+1 follows `<noun>_<noun>_<noun>_<noun>` pattern (vtable_method_symbols).
+
+**Test impact**: +16 (1190 → 1206)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

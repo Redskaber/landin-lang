@@ -214,7 +214,17 @@
 //!     method signatures + slot indexing + impl coverage into a single
 //!     ordered plan that codegen can consume in one pass (no need to
 //!     re-derive slot order or provided-checking at codegen time).
-//!   Next: Stage 5.40+ (dyn Trait MIR lowering, stdlib crate compilation).
+//!   Stage 5.40 (v0.11.36): Stdlib vtable symbol name planner —
+//!     `stdlib_vtable_global_name(trait, type)` +
+//!     `stdlib_dynptr_global_name(trait, type)` +
+//!     `stdlib_data_global_name(type)` +
+//!     `stdlib_impl_method_symbol(type, method)` +
+//!     `stdlib_vtable_method_symbols(trait, type, provided)` for
+//!     extracting LLVM symbol-name formatting logic from codegen into
+//!     pure stdlib functions (matches existing codegen `format!` calls
+//!     byte-for-byte — Stage 5.41+ will replace codegen's `format!`
+//!     with these planner functions, behavior-equivalent).
+//!   Next: Stage 5.41+ (codegen vtable emission refactor, dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -247,15 +257,16 @@ pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{
     default_prelude, find_stdlib_trait_method, integer_bit_width, is_float_type, is_primitive_type,
     is_signed_integer, is_stdlib_marker_trait, is_stdlib_trait_method, is_unsigned_integer,
-    is_zero_sized_type, register_stdlib, resolve_stdlib_type, stdlib_pointer_width_bytes,
+    is_zero_sized_type, register_stdlib, resolve_stdlib_type, stdlib_data_global_name,
+    stdlib_dynptr_global_name, stdlib_impl_method_symbol, stdlib_pointer_width_bytes,
     stdlib_trait_method_count, stdlib_trait_method_index, stdlib_trait_methods,
     stdlib_traits_with_method, stdlib_traits_with_vtable, stdlib_vtable_byte_size,
-    stdlib_vtable_layout, stdlib_vtable_method_offset, stdlib_vtable_plan,
-    stdlib_vtable_plan_entry_count, stdlib_vtable_plan_is_complete,
-    stdlib_vtable_plan_missing_methods, stdlib_vtable_slot_count, type_alignment_bytes,
-    type_description, type_size_bytes, StdlibFacade, StdlibLayer, StdlibPointerWidth,
-    StdlibPrelude, StdlibSelfKind, StdlibTraitMethod, StdlibTypeKind, StdlibVtablePlan,
-    StdlibVtablePlanEntry, StdlibVtableSlot,
+    stdlib_vtable_global_name, stdlib_vtable_layout, stdlib_vtable_method_offset,
+    stdlib_vtable_method_symbols, stdlib_vtable_plan, stdlib_vtable_plan_entry_count,
+    stdlib_vtable_plan_is_complete, stdlib_vtable_plan_missing_methods, stdlib_vtable_slot_count,
+    type_alignment_bytes, type_description, type_size_bytes, StdlibFacade, StdlibLayer,
+    StdlibPointerWidth, StdlibPrelude, StdlibSelfKind, StdlibTraitMethod, StdlibTypeKind,
+    StdlibVtablePlan, StdlibVtablePlanEntry, StdlibVtableSlot,
 };
 pub use traits::{
     extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, ImplValidationReport,

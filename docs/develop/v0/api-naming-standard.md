@@ -828,3 +828,53 @@ impl coverage into a single ordered plan codegen can consume in one pass.
 **Test impact**: +18 (1172 → 1190).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.10 (Stage 5.40, 2026-07-23)
+
+Stage 5.40 stdlib vtable symbol name planner round. Extracts LLVM
+symbol-name formatting logic from codegen into pure stdlib functions —
+the last static-prep step before codegen vtable emission refactor
+(Stage 5.41+).
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_vtable_global_name` | free fn | `<noun>_<noun>_<adj>_<noun>` |
+| `stdlib_dynptr_global_name` | free fn | `<noun>_<noun>_<adj>_<noun>` |
+| `stdlib_data_global_name` | free fn | `<noun>_<noun>_<adj>_<noun>` |
+| `stdlib_impl_method_symbol` | free fn | `<noun>_<noun>_<noun>_<noun>` |
+| `stdlib_vtable_method_symbols` | free fn | `<noun>_<noun>_<noun>_<noun>` |
+
+**Design decisions**:
+1. **Byte-for-byte equivalence with codegen**: each function's output
+   matches the corresponding codegen `format!()` call exactly. Two tests
+   (`test_stdlib_vtable_global_name_match_codegen` and
+   `test_stdlib_vtable_method_symbols_match_codegen_format`) explicitly
+   cross-check by formatting the same string via `format!()` and asserting
+   equality — guarantees Stage 5.41+ refactor is behavior-equivalent.
+2. **No new types** — all 5 new symbols are free functions returning
+   `String` / `Vec<String>`. There's no need for a `StdlibVtableSymbol`
+   struct because the output is consumed directly by codegen as LLVM IR
+   text (no further structured querying needed).
+3. **`stdlib_vtable_method_symbols` composition**: combines Stage 5.39
+   `stdlib_vtable_plan()` + `stdlib_impl_method_symbol()` per-entry, with
+   `provided=false` → `"null"` literal string. Codegen consumes the
+   returned `Vec<String>` directly to emit
+   `@.vtable.<trait>.<type> = ... [n x ptr] [...]`.
+4. **Markers return `Some(vec![])`** — consistent with Stage 5.37/5.38/5.39
+   three-state convention.
+5. **Extra provided names silently ignored** — same tolerant design as
+   Stage 5.39 (impls may implement multiple traits' methods).
+6. **`global_name` vs `symbol`**: the `_global_name` suffix is used for
+   LLVM globals (`@.vtable.*`, `@.dynptr.*`, `@.data.*`), while `_symbol`
+   is used for function symbols (`landin_*`). This matches existing
+   codegen vocabulary and avoids ambiguity.
+
+**§16 compliance**: All new APIs input `&str`, output `String` /
+`Vec<String>`. No `mir::ty` / `codegen::EmitType` / `traits::TraitResolver`
+reference, no circular dependency. Pure functions, callable from any stage.
+
+**Test impact**: +16 (1190 → 1206).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

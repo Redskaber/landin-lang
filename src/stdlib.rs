@@ -1606,3 +1606,108 @@ pub fn stdlib_vtable_plan_is_complete(plan: &StdlibVtablePlan) -> bool {
 pub fn stdlib_vtable_plan_missing_methods(plan: &StdlibVtablePlan) -> Vec<&'static str> {
     plan.missing_methods()
 }
+
+// ============================================================================
+// Stage 5.40: Stdlib vtable symbol name planner
+//
+// Extracts the LLVM symbol-name formatting logic that codegen currently
+// inlines via `format!()` calls into pure stdlib functions. Stage 5.41+
+// will replace codegen's `format!` calls with these planner functions —
+// behavior-equivalent, but string logic centralized for future naming
+// convention changes (e.g. adding module-path prefixes).
+//
+// Existing codegen conventions (must match byte-for-byte):
+//   - impl method symbol: `format!("landin_{}_{}", type, method)` → `landin_S_bar`
+//   - vtable global name: `format!(".vtable.{}.{}", trait, type)` → `.vtable.Foo.S`
+//   - dynptr global name: `format!(".dynptr.{}.{}", trait, type)` → `.dynptr.Foo.S`
+//   - data global name:   `format!(".data.{}", type)`              → `.data.S`
+//
+// Per API-naming-standard §3:
+//   - All 5 new functions follow `<noun>_<noun>_<adj>_<noun>` or
+//     `<noun>_<noun>_<noun>_<noun>` patterns.
+//
+// Per §16: pure functions, input &str, output String / Vec<String> — no
+// mir::ty / codegen::EmitType / traits::TraitResolver reference, no
+// circular dependency.
+// ============================================================================
+
+/// Stage 5.40: Build the LLVM global name for a trait's vtable.
+///
+/// Returns `format!(".vtable.{}.{}", trait_name, type_name)` — e.g.
+/// `.vtable.Foo.S`. This matches the existing codegen convention in
+/// `src/codegen/mod.rs:145` byte-for-byte.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_global_name` follows
+/// `<noun>_<noun>_<adj>_<noun>` pattern.
+pub fn stdlib_vtable_global_name(trait_name: &str, type_name: &str) -> String {
+    format!(".vtable.{trait_name}.{type_name}")
+}
+
+/// Stage 5.40: Build the LLVM global name for a (trait, type) dyn pointer.
+///
+/// Returns `format!(".dynptr.{}.{}", trait_name, type_name)` — e.g.
+/// `.dynptr.Foo.S`. Matches `src/codegen/mod.rs:184` byte-for-byte.
+///
+/// Per API-naming-standard §3: `stdlib_dynptr_global_name` follows
+/// `<noun>_<noun>_<adj>_<noun>` pattern.
+pub fn stdlib_dynptr_global_name(trait_name: &str, type_name: &str) -> String {
+    format!(".dynptr.{trait_name}.{type_name}")
+}
+
+/// Stage 5.40: Build the LLVM global name for a type's data global.
+///
+/// Returns `format!(".data.{}", type_name)` — e.g. `.data.S`. Matches
+/// the codegen convention referenced in `src/codegen/mod.rs:162` and
+/// `src/codegen/text_emitter.rs:565`.
+///
+/// Per API-naming-standard §3: `stdlib_data_global_name` follows
+/// `<noun>_<noun>_<adj>_<noun>` pattern.
+pub fn stdlib_data_global_name(type_name: &str) -> String {
+    format!(".data.{type_name}")
+}
+
+/// Stage 5.40: Build the LLVM symbol name for an impl method.
+///
+/// Returns `format!("landin_{}_{}", type_name, method_name)` — e.g.
+/// `landin_S_bar`. Matches `src/traits/resolver.rs:235` byte-for-byte.
+///
+/// Per API-naming-standard §3: `stdlib_impl_method_symbol` follows
+/// `<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_impl_method_symbol(type_name: &str, method_name: &str) -> String {
+    format!("landin_{type_name}_{method_name}")
+}
+
+/// Stage 5.40: Build the ordered list of LLVM symbol strings for a vtable.
+///
+/// Given a (trait, type, provided_methods) triple, returns `Some(Vec<String>)`
+/// where each entry corresponds to a vtable slot in slot-index order:
+/// - `provided=true`  → `stdlib_impl_method_symbol(type, method)` (e.g. `landin_S_clone`)
+/// - `provided=false` → `"null"` (codegen emits this literally as the null pointer)
+///
+/// Returns `None` if the trait is not in the stdlib registry. Markers
+/// (Copy/Send/Sync/Sized/Unpin/Eq) return `Some(vec![])` (empty vtable).
+///
+/// Codegen consumes this list directly to emit
+/// `@.vtable.<trait>.<type> = private unnamed_addr constant [n x ptr] [...]`.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_method_symbols` follows
+/// `<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_vtable_method_symbols(
+    trait_name: &str,
+    type_name: &str,
+    provided_method_names: &[&str],
+) -> Option<Vec<String>> {
+    let plan = stdlib_vtable_plan(trait_name, provided_method_names)?;
+    Some(
+        plan.entries
+            .iter()
+            .map(|entry| {
+                if entry.provided {
+                    stdlib_impl_method_symbol(type_name, entry.method_name)
+                } else {
+                    "null".to_string()
+                }
+            })
+            .collect(),
+    )
+}
