@@ -1,9 +1,71 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.50
+**Current version**: v0.11.51
 **Date**: 2026-07-23
-**Test count**: 1384 tests + 5 benchmarks
+**Test count**: 1396 tests + 5 benchmarks
+
+---
+
+## v0.11.51 — Stage 5.55 (Codegen trait-dispatch emission text batch — plan-based)
+
+### Overview
+
+plan-based counterpart of Stage 5.45's `emit_vtable_globals_batch()`, extended
+to vtable + dynptr. Generates all LLVM IR text WITHOUT needing an Emitter
+trait object — useful for testing and future codegen paths that push
+pre-formatted text.
+
+### New API
+
+- `emit_trait_dispatch_globals_text_batch(&CodegenTraitDispatchEmissionPlan) -> Vec<String>`
+  (in `src/codegen/mod.rs`) — plan-based text batch. Iterates
+  `plan.vtable_specs` → `emit_vtable_global_text()` (Stage 5.44), then
+  `plan.dynptr_specs` → `emit_dynptr_global_text()` (Stage 5.48). No Emitter
+  needed.
+
+### Design highlights
+
+1. **plan-based counterpart of Stage 5.45**: Stage 5.45 added
+   `emit_vtable_globals_batch()` (vtable only, input
+   `&[StdlibVtableGlobalSpec]`), Stage 5.55 adds
+   `emit_trait_dispatch_globals_text_batch()` (vtable + dynptr, input
+   `&CodegenTraitDispatchEmissionPlan`). Both return `Vec<String>` — no
+   Emitter needed.
+2. **No Emitter needed**: the function works without any `Emitter` trait
+   object. Useful for testing (assert IR text directly), future codegen
+   paths (push pre-formatted text to emitter.globals), and diagnostics
+   (inspect IR lines before emission).
+3. **Behavior equivalence**: `test_emit_trait_dispatch_globals_text_batch_match_orchestrator`
+   calls both the text batch and the orchestrator (Stage 5.54, via Emitter)
+   on the same plan, asserts each text line appears in the emitter output.
+
+### §16 / §23 compliance
+
+- Function takes `&CodegenTraitDispatchEmissionPlan`, returns `Vec<String>`.
+  No `mir::ty` / `Emitter` / `TraitResolver` / `Rodeo` reference, no
+  circular dependency.
+- `emit_trait_dispatch_globals_text_batch` follows §23
+  `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern. The `_text_batch`
+  suffix indicates LLVM IR text batch (no Emitter). Consistent with Stage
+  5.45's `emit_vtable_globals_batch` naming.
+
+### Test impact
+
++12 tests (1384 → 1396) — covers empty/single/multi + **behavior-equivalence
+cross-check** + no-side-effects + vtable/dynptr line correctness +
+count-matches + order (vtable before dynptr) + real-scenario +
+no-emitter-needed + determinism.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (974.9 MiB removed)
+cargo test: 1396 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+  (fixed 1 doc_lazy_continuation warning)
+```
 
 ---
 

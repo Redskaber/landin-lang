@@ -1627,3 +1627,51 @@ circular dependency.
 **Test impact**: +12 (1372 → 1384).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.25 (Stage 5.55, 2026-07-23)
+
+Stage 5.55 codegen trait-dispatch emission text batch (plan-based) round.
+Adds the **plan-based counterpart** of Stage 5.45's
+`emit_vtable_globals_batch()`, extended to vtable + dynptr. Generates all
+LLVM IR text WITHOUT needing an Emitter.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_trait_dispatch_globals_text_batch` | free fn (in `codegen`) | `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` |
+
+**Design decisions**:
+1. **plan-based counterpart of Stage 5.45**: Stage 5.45 added
+   `emit_vtable_globals_batch()` (vtable only, input
+   `&[StdlibVtableGlobalSpec]`), Stage 5.55 adds
+   `emit_trait_dispatch_globals_text_batch()` (vtable + dynptr, input
+   `&CodegenTraitDispatchEmissionPlan`). Both return `Vec<String>` — no
+   Emitter needed. The `_text_batch` suffix is consistent across both.
+2. **`emit_` prefix** (not `build_`): indicates the function produces output
+   (LLVM IR text), even though it has no side effects (no Emitter push).
+   This is a slight naming tension — `emit_` usually implies side effects,
+   but here it means "produce IR text". The `_text` suffix clarifies that
+   the output is text (not emitter mutation). Alternative `build_*_text_batch`
+   was considered but rejected for consistency with Stage 5.45's
+   `emit_vtable_globals_batch` naming.
+3. **No Emitter needed**: the function works without any `Emitter` trait
+   object. Useful for:
+   - Testing (assert IR text directly, no Emitter construction)
+   - Future codegen paths that push pre-formatted text to emitter.globals
+   - Diagnostics (inspect IR lines before emission)
+4. **Behavior-equivalence cross-check test**:
+   `test_emit_trait_dispatch_globals_text_batch_match_orchestrator` calls
+   both the text batch and the orchestrator (Stage 5.54, via Emitter) on
+   the same plan, asserts each text line appears in the emitter output.
+5. **Order guarantee**: vtable lines first, then dynptr lines (matching
+   Stage 5.54 order).
+
+**§16 compliance**: function takes `&CodegenTraitDispatchEmissionPlan`,
+returns `Vec<String>`. No `mir::ty` / `Emitter` / `TraitResolver` / `Rodeo`
+reference, no circular dependency.
+
+**Test impact**: +12 (1384 → 1396).
+**Clippy impact**: 0 (0 warnings; fixed 1 `doc_lazy_continuation` by
+rephrasing "vtable + dynptr" → "vtable and dynptr" in doc comment).
+**Fmt impact**: clean.

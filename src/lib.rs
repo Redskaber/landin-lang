@@ -335,7 +335,14 @@
 //!     `emit_vtables_and_dynptrs_from_resolver()` (Stage 5.51) when given
 //!     the plan from the same resolver. Stage 5.55 driver refactor will
 //!     call `build_trait_dispatch_emission_plan()` + this orchestrator.
-//!   Next: Stage 5.55+ (codegen trait-dispatch emission refactor — driver
+//!   Stage 5.55 (v0.11.51): Codegen trait-dispatch emission text batch
+//!     (plan-based) — new free fn
+//!     `emit_trait_dispatch_globals_text_batch(&CodegenTraitDispatchEmissionPlan) -> Vec<String>`
+//!     in `src/codegen/mod.rs`. **plan-based counterpart** of Stage 5.45's
+//!     `emit_vtable_globals_batch()`, extended to vtable + dynptr. Generates
+//!     all LLVM IR text WITHOUT needing an Emitter trait object — useful for
+//!     testing + future codegen paths that push pre-formatted text.
+//!   Next: Stage 5.56+ (codegen trait-dispatch emission refactor — driver
 //!     delegation + TextEmitter delegation, then dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
@@ -366,8 +373,9 @@ pub use codegen::{
     build_trait_dispatch_emission_summary, build_vtable_global_specs, codegen_crate,
     emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_dynptr_global_text,
     emit_dynptrs_from_resolver, emit_trait_dispatch_globals_from_plan,
-    emit_vtable_global_from_emission, emit_vtable_global_text, emit_vtable_globals_batch,
-    emit_vtables, emit_vtables_and_dynptrs_from_resolver, emit_vtables_from_resolver,
+    emit_trait_dispatch_globals_text_batch, emit_vtable_global_from_emission,
+    emit_vtable_global_text, emit_vtable_globals_batch, emit_vtables,
+    emit_vtables_and_dynptrs_from_resolver, emit_vtables_from_resolver,
     CodegenTraitDispatchEmissionPlan, CodegenTraitDispatchEmissionSummary, EmitType, EmitValue,
     Emitter, StdlibDynptrGlobalSpec, StdlibVtableGlobalSpec, TextEmitter,
 };

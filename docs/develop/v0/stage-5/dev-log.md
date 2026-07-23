@@ -1754,3 +1754,57 @@ source (plan, not resolver — distinguishes from Stage 5.51's
 
 **Test impact**: +12 (1372 → 1384)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.55 — Codegen Trait-Dispatch Emission Text Batch (Plan-Based) (v0.11.51)
+
+**Priority**: plan-based counterpart of Stage 5.45's
+`emit_vtable_globals_batch()`, extended to vtable + dynptr. Generates all
+LLVM IR text WITHOUT needing an Emitter trait object — useful for testing
+and future codegen paths that push pre-formatted text.
+
+**Work completed**:
+- src/codegen/mod.rs: new free function
+  `emit_trait_dispatch_globals_text_batch(&CodegenTraitDispatchEmissionPlan) -> Vec<String>`
+  * plan-based text batch — no Emitter needed
+  * Iterates plan.vtable_specs → emit_vtable_global_text() (Stage 5.44)
+  * Iterates plan.dynptr_specs → emit_dynptr_global_text() (Stage 5.48)
+  * Output matches emit_trait_dispatch_globals_from_plan() (Stage 5.54) IR
+- src/lib.rs: re-export `emit_trait_dispatch_globals_text_batch` from codegen
+  + Stage 5.55 history comment
+- tests/v0/stage5/plan/codegen_text_batch_tests.rs: 12 new tests covering
+  empty/single/multi + **behavior-equivalence cross-check** +
+  no-side-effects + vtable/dynptr line correctness + count-matches +
+  order (vtable before dynptr) + real-scenario + no-emitter-needed +
+  determinism
+- tests/all_tests.rs: added codegen_text_batch_tests module (69 mods total)
+- Cargo.toml: version 0.11.50 → 0.11.51
+
+**Design highlights**:
+- **plan-based counterpart of Stage 5.45**: Stage 5.45 added
+  `emit_vtable_globals_batch()` (vtable only, input `&[StdlibVtableGlobalSpec]`),
+  Stage 5.55 adds `emit_trait_dispatch_globals_text_batch()` (vtable + dynptr,
+  input `&CodegenTraitDispatchEmissionPlan`). Both return `Vec<String>` —
+  no Emitter needed.
+- **No Emitter needed**: the function works without any `Emitter` trait
+  object. Useful for:
+  - Testing (assert IR text directly, no Emitter construction)
+  - Future codegen paths that push pre-formatted text to emitter.globals
+  - Diagnostics (inspect IR lines before emission)
+- **Behavior equivalence**: `test_emit_trait_dispatch_globals_text_batch_match_orchestrator`
+  calls both the text batch and the orchestrator (Stage 5.54, via Emitter)
+  on the same plan, asserts each text line appears in the emitter output.
+- **Order guarantee**: vtable lines first, then dynptr lines (matching
+  Stage 5.54 order).
+
+**§16 interface isolation**: function takes `&CodegenTraitDispatchEmissionPlan`,
+returns `Vec<String>`. No `mir::ty` / `Emitter` / `TraitResolver` / `Rodeo`
+reference, no circular dependency.
+
+**§23 API naming**: `emit_trait_dispatch_globals_text_batch` follows
+`<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern. The `_text_batch` suffix
+indicates LLVM IR text batch (no Emitter). Consistent with Stage 5.45's
+`emit_vtable_globals_batch` naming.
+
+**Test impact**: +12 (1384 → 1396)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+  (fixed 1 doc_lazy_continuation warning by rephrasing "vtable + dynptr" → "vtable and dynptr")

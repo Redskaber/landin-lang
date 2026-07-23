@@ -2191,3 +2191,66 @@ pub fn emit_trait_dispatch_globals_from_plan(
         emitter.emit_dyn_trait_const(&spec.global_name, &spec.data_symbol, &spec.vtable_symbol);
     }
 }
+
+// ============================================================================
+// Stage 5.55: Codegen trait-dispatch emission text batch (plan-based)
+//
+// Text-based batch generation of all trait-dispatch globals (vtable + dynptr)
+// WITHOUT needing an `Emitter` trait object. This is the **plan-based
+// counterpart** of Stage 5.45's `emit_vtable_globals_batch()`, extended to
+// both vtable + dynptr globals.
+//
+// Useful for:
+// - Testing (assert IR text directly, no Emitter construction needed)
+// - Future codegen paths that push pre-formatted text to emitter.globals
+// - Diagnostics (inspect the IR lines before emission)
+//
+// Per API-naming-standard §3: `emit_trait_dispatch_globals_text_batch`
+// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern. The
+// `_text_batch` suffix indicates LLVM IR text batch (no Emitter).
+//
+// Per §16: takes `&CodegenTraitDispatchEmissionPlan`, returns `Vec<String>`.
+// No `mir::ty` / `Emitter` / `TraitResolver` / `Rodeo` reference, no
+// circular dependency.
+// ============================================================================
+
+/// Stage 5.55: Generate LLVM IR text for all trait-dispatch globals (vtable
+/// and dynptr) from a pre-built `CodegenTraitDispatchEmissionPlan`, WITHOUT
+/// needing an `Emitter` trait object.
+///
+/// This is the **plan-based counterpart** of Stage 5.45's
+/// `emit_vtable_globals_batch()`, extended to both vtable + dynptr globals.
+/// Each output element is one LLVM IR line (one global definition).
+///
+/// Returns `Vec<String>` where:
+/// - First N elements are vtable global definitions (from `plan.vtable_specs`)
+/// - Next M elements are dynptr global definitions (from `plan.dynptr_specs`)
+/// - N == M == `plan.vtable_specs.len()` (one vtable + one dynptr per spec)
+///
+/// Each vtable line is identical to what `emit_vtable_global_text()` (Stage
+/// 5.44) produces. Each dynptr line is identical to what
+/// `emit_dynptr_global_text()` (Stage 5.48) produces.
+///
+/// Per API-naming-standard §3: `emit_trait_dispatch_globals_text_batch`
+/// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn emit_trait_dispatch_globals_text_batch(
+    plan: &CodegenTraitDispatchEmissionPlan,
+) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    // Vtable global IR text (Stage 5.44)
+    for spec in &plan.vtable_specs {
+        lines.push(emit_vtable_global_text(
+            &spec.global_name,
+            &spec.method_symbols,
+        ));
+    }
+    // Dynptr global IR text (Stage 5.48)
+    for spec in &plan.dynptr_specs {
+        lines.push(emit_dynptr_global_text(
+            &spec.global_name,
+            &spec.data_symbol,
+            &spec.vtable_symbol,
+        ));
+    }
+    lines
+}
