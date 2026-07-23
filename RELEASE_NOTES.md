@@ -1,9 +1,44 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.55
+**Current version**: v0.11.56
 **Date**: 2026-07-23
-**Test count**: 1435 tests + 5 benchmarks
+**Test count**: 1442 tests + 5 benchmarks
+
+---
+
+## v0.11.56 — Stage 5.60 (emit_dyn_trait_ptrs delegation — final existing-path modification)
+
+### Overview
+
+**Fourth and final existing-path modification**. `emit_dyn_trait_ptrs()`
+function body replaced with one-liner delegation to `emit_dynptrs_from_resolver()`
+(Stage 5.50). Codegen trait-dispatch emission logic now **fully centralized**
+in free functions — `TextEmitter` + `emit_vtables()` + `emit_dyn_trait_ptrs()`
+all delegate. **Ready for dyn Trait MIR lowering — the core Stage 5 goal.**
+
+### Modified code
+
+- `src/codegen/mod.rs`: `emit_dyn_trait_ptrs()` body replaced with delegation
+  to `emit_dynptrs_from_resolver()`. Old inline loop (Stage 5.7) removed.
+
+### Milestone: Codegen delegation complete (5.57-5.60)
+
+| Stage | Modified function | Delegates to |
+|-------|-------------------|-------------|
+| 5.57 | `TextEmitter::emit_vtable_global()` | `emit_vtable_global_text()` (5.44) |
+| 5.58 | `TextEmitter::emit_dyn_trait_const()` | `emit_dynptr_global_text()` (5.48) |
+| 5.59 | `emit_vtables()` | `emit_vtables_from_resolver()` (5.47) |
+| 5.60 | `emit_dyn_trait_ptrs()` | `emit_dynptrs_from_resolver()` (5.50) |
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (932.1 MiB removed)
+cargo test: 1442 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

@@ -1795,3 +1795,29 @@ equivalent (verified by Stage 5.47 cross-check tests). No regression.
 **Test impact**: +7 (1428 → 1435).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.30 (Stage 5.60, 2026-07-23)
+
+Stage 5.60 emit_dyn_trait_ptrs delegation round. **Fourth and final
+existing-path modification**. Codegen delegation complete.
+
+**No new public symbols** — only modifies existing `emit_dyn_trait_ptrs()`
+function body.
+
+**Design decisions**: Same pattern as Stage 5.57/5.58/5.59 — one-liner
+delegation to a free function (Stage 5.50 `emit_dynptrs_from_resolver()`).
+Behavior-equivalent (verified by Stage 5.50 cross-check tests). No regression.
+
+**Milestone**: Codegen trait-dispatch emission delegation complete (5.57-5.60).
+All four existing codegen paths now delegate to free functions:
+- `TextEmitter::emit_vtable_global()` → `emit_vtable_global_text()` (5.44)
+- `TextEmitter::emit_dyn_trait_const()` → `emit_dynptr_global_text()` (5.48)
+- `emit_vtables()` → `emit_vtables_from_resolver()` (5.47)
+- `emit_dyn_trait_ptrs()` → `emit_dynptrs_from_resolver()` (5.50)
+
+Codegen trait-dispatch emission logic is **fully centralized** in free functions.
+`TextEmitter` and `emit_*()` are now thin wrappers that delegate + push.
+
+**Test impact**: +7 (1435 → 1442).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

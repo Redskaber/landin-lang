@@ -256,3 +256,6 @@ mod text_emitter_dynptr_delegation_tests;
 
 #[path = "v0/stage5/plan/emit_vtables_delegation_tests.rs"]
 mod emit_vtables_delegation_tests;
+
+#[path = "v0/stage5/plan/emit_dyn_trait_ptrs_delegation_tests.rs"]
+mod emit_dyn_trait_ptrs_delegation_tests;

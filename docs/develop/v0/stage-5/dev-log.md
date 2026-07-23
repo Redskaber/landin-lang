@@ -1930,3 +1930,20 @@ replaced with one-liner delegation to `emit_vtables_from_resolver()` (Stage 5.47
 
 **Test impact**: +7 (1428 → 1435)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.60 — emit_dyn_trait_ptrs Delegation (v0.11.56)
+
+**Priority**: **Fourth and final existing-path modification**. `emit_dyn_trait_ptrs()`
+function body replaced with one-liner delegation to `emit_dynptrs_from_resolver()`
+(Stage 5.50). Codegen trait-dispatch emission logic now **fully centralized** in
+free functions. Ready for dyn Trait MIR lowering.
+
+**Work completed**:
+- src/codegen/mod.rs: `emit_dyn_trait_ptrs()` body replaced with delegation
+- src/lib.rs: Stage 5.60 history comment
+- tests/v0/stage5/plan/emit_dyn_trait_ptrs_delegation_tests.rs: 7 new tests
+- tests/all_tests.rs: added emit_dyn_trait_ptrs_delegation_tests module (74 mods)
+- Cargo.toml: version 0.11.55 → 0.11.56
+
+**Test impact**: +7 (1435 → 1442)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

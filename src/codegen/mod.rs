@@ -168,17 +168,11 @@ pub fn emit_dyn_trait_ptrs(
     interner: &Rodeo,
     emitter: &mut dyn Emitter,
 ) {
-    for (trait_name, self_ty_name) in trait_resolver.vtables.keys() {
-        let trait_str = interner.try_resolve(trait_name).unwrap_or("Trait");
-        let type_str = interner.try_resolve(self_ty_name).unwrap_or("Type");
-
-        // Global names: matches the naming convention from emit_vtables.
-        let dynptr_name = format!(".dynptr.{}.{}", trait_str, type_str);
-        let data_symbol = format!(".data.{}", type_str);
-        let vtable_symbol = format!(".vtable.{}.{}", trait_str, type_str);
-
-        emitter.emit_dyn_trait_const(&dynptr_name, &data_symbol, &vtable_symbol);
-    }
+    // Stage 5.60: delegate to emit_dynptrs_from_resolver() (Stage 5.50).
+    // The old inline loop (Stage 5.7) has been replaced with a one-liner
+    // delegation. Behavior is identical — verified by
+    // test_emit_dynptrs_from_resolver_match_emit_dyn_trait_ptrs (Stage 5.50).
+    emit_dynptrs_from_resolver(trait_resolver, interner, emitter)
 }
 
 /// Stage 3.56: Generate LLVM IR from pre-built MIR + metadata.

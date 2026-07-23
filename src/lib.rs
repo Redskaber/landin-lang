@@ -365,7 +365,14 @@
 //!     function body replaced with one-liner delegation to
 //!     `emit_vtables_from_resolver()` (Stage 5.47). Third existing-path
 //!     modification. Behavior-equivalent (verified by Stage 5.47 cross-check).
-//!   Next: Stage 5.60+ (emit_dyn_trait_ptrs delegation, then dyn Trait MIR lowering).
+//!   Stage 5.60 (v0.11.56): emit_dyn_trait_ptrs delegation —
+//!     `emit_dyn_trait_ptrs()` function body replaced with one-liner
+//!     delegation to `emit_dynptrs_from_resolver()` (Stage 5.50). **Fourth
+//!     and final existing-path modification**. Codegen trait-dispatch
+//!     emission logic now fully centralized in free functions —
+//!     `TextEmitter` + `emit_vtables()` + `emit_dyn_trait_ptrs()` all
+//!     delegate to free functions. Ready for dyn Trait MIR lowering.
+//!   Next: Stage 5.61+ (dyn Trait MIR lowering — the core Stage 5 goal).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
