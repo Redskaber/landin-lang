@@ -1,10 +1,13 @@
-//! Standard library MVP — core type definitions + prelude registration.
+//! Standard library MVP — core + alloc type definitions + prelude registration.
 //!
 //! Stage 5.25: Implements the `core` layer of Landin's three-layer stdlib
 //! (core / alloc / std). This module provides:
-//! - `StdlibTypes` — registry of core type names (i32, bool, str, etc.)
 //! - `StdlibPrelude` — prelude items auto-imported into every Landin module
 //! - `register_stdlib()` — register all stdlib types/traits in the interner
+//!
+//! Stage 5.28: Added `alloc` layer types (Box/Vec/String/HashMap/Rc/Arc)
+//! and `fmt` traits (Display/Debug/Write). Extended `register_stdlib()` and
+//! `StdlibPrelude` to include alloc-layer items.
 //!
 //! Per §16: stdlib registration happens in the driver (pre-compilation),
 //! using the interner. No HIR access needed.
@@ -21,6 +24,35 @@ use lasso::Rodeo;
 pub const STDLIB_CORE_TYPES: &[&str] = &[
     "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "f32", "f64", "bool",
     "char", "str", "()", "Never",
+];
+
+/// Stage 5.28: Alloc-layer type names — heap-allocated collection types.
+pub const STDLIB_ALLOC_TYPES: &[&str] = &[
+    "Box",
+    "Vec",
+    "String",
+    "HashMap",
+    "BTreeMap",
+    "HashSet",
+    "BTreeSet",
+    "Rc",
+    "Arc",
+    "Cell",
+    "RefCell",
+    "LinkedList",
+    "VecDeque",
+];
+
+/// Stage 5.28: Alloc-layer trait names — formatting + smart-pointer traits.
+pub const STDLIB_ALLOC_TRAITS: &[&str] = &[
+    "Display",
+    "Debug",
+    "Write",
+    "Formatter",
+    "Deref",
+    "DerefMut",
+    "Default",
+    "Hash",
 ];
 
 /// Stage 5.25: Core marker trait names (beyond BUILTIN_TRAIT_NAMES).
@@ -74,25 +106,24 @@ pub const STDLIB_ITER_TRAITS: &[&str] = &[
     "ExactSizeIterator",
 ];
 
-/// Stage 5.25: All stdlib trait names (marker + ops + convert + iter).
-///
-/// This is the union of STDLIB_MARKER_TRAITS + STDLIB_OPS_TRAITS +
-/// STDLIB_CONVERT_TRAITS + STDLIB_ITER_TRAITS, minus items already in
-/// BUILTIN_TRAIT_NAMES (to avoid duplication).
+/// Stage 5.25: All stdlib trait names (marker + ops + convert + iter + alloc).
 pub fn all_stdlib_trait_names() -> Vec<&'static str> {
     let mut names: Vec<&'static str> = Vec::new();
     names.extend_from_slice(STDLIB_MARKER_TRAITS);
     names.extend_from_slice(STDLIB_OPS_TRAITS);
     names.extend_from_slice(STDLIB_CONVERT_TRAITS);
     names.extend_from_slice(STDLIB_ITER_TRAITS);
+    names.extend_from_slice(STDLIB_ALLOC_TRAITS);
     names.sort();
     names.dedup();
     names
 }
 
-/// Stage 5.25: All stdlib type names (core primitives).
+/// Stage 5.25: All stdlib type names (core primitives + alloc types).
 pub fn all_stdlib_type_names() -> Vec<&'static str> {
-    STDLIB_CORE_TYPES.to_vec()
+    let mut names = STDLIB_CORE_TYPES.to_vec();
+    names.extend_from_slice(STDLIB_ALLOC_TYPES);
+    names
 }
 
 /// Stage 5.25: Stdlib prelude — items auto-imported into every module.
@@ -150,7 +181,11 @@ pub fn register_stdlib(interner: &mut Rodeo) {
     for &name in STDLIB_CORE_TYPES {
         interner.get_or_intern(name);
     }
-    // Register ops/convert/iter traits
+    // Stage 5.28: Register alloc types
+    for &name in STDLIB_ALLOC_TYPES {
+        interner.get_or_intern(name);
+    }
+    // Register ops/convert/iter/alloc traits
     for name in all_stdlib_trait_names() {
         interner.get_or_intern(name);
     }

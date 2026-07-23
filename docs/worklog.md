@@ -3973,3 +3973,33 @@ Stage Summary:
 - 0 P0/P1 blockers. 2 P2 tech debt items with repayment plans.
 - Trait + vtable + stdlib + cargo infrastructure ready for dyn Trait MIR lowering.
 - r70→r76 progress: 6 new sub-stages (5.22-5.26 + 5.27 deep review).
+
+---
+Task ID: stage5.28-r77
+Agent: Super Z (main)
+Task: Stage 5.28 — stdlib alloc layer + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.24 / 1049 tests / Stage 5.27 deep review #2 (GO)
+
+Stage 5.28: Stdlib alloc layer
+- src/stdlib.rs: new constants:
+  * STDLIB_ALLOC_TYPES (13: Box/Vec/String/HashMap/BTreeMap/HashSet/BTreeSet/Rc/Arc/Cell/RefCell/LinkedList/VecDeque)
+  * STDLIB_ALLOC_TRAITS (8: Display/Debug/Write/Formatter/Deref/DerefMut/Default/Hash)
+- src/stdlib.rs: extended all_stdlib_type_names() + all_stdlib_trait_names()
+  + register_stdlib() to include alloc items
+- src/lib.rs: doc comment updated
+- tests/v0/stage5/plan/stdlib_alloc_tests.rs: 9 new tests
+- tests/all_tests.rs: added stdlib_alloc_tests module (43 mods)
+- Cargo.toml: version 0.11.24 → 0.11.25
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo test: 1058 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.28 PASSED — CI/CD all green per §1.2.
+- Stdlib now has core + alloc layers (30 types + 35+ traits).
+- 1058 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.29+ (dyn Trait MIR lowering, full stdlib std layer).

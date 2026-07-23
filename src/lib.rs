@@ -153,7 +153,12 @@
 //!   Stage 5.26 (v0.11.24): Driver stdlib integration —
 //!     `register_stdlib()` wired into driver; `CompileResult.stdlib_prelude`
 //!     field added; all stdlib types + traits auto-interned.
-//!   Next: Stage 5.27+ (dyn Trait MIR lowering, full stdlib crate).
+//!   Stage 5.28 (v0.11.25): Stdlib alloc layer —
+//!     `STDLIB_ALLOC_TYPES` (Box/Vec/String/HashMap/Rc/Arc/...) +
+//!     `STDLIB_ALLOC_TRAITS` (Display/Debug/Deref/Default/Hash) added;
+//!     `register_stdlib()` + `all_stdlib_type_names()` +
+//!     `all_stdlib_trait_names()` + `StdlibPrelude` extended.
+//!   Next: Stage 5.29+ (dyn Trait MIR lowering, full stdlib std layer).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

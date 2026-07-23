@@ -163,3 +163,6 @@ mod stdlib_mvp_tests;
 
 #[path = "v0/stage5/plan/driver_stdlib_tests.rs"]
 mod driver_stdlib_tests;
+
+#[path = "v0/stage5/plan/stdlib_alloc_tests.rs"]
+mod stdlib_alloc_tests;

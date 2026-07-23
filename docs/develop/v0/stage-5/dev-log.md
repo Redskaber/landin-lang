@@ -602,3 +602,22 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 - Verdict: ✅ GO — 0 P0/P1; trait+vtable+stdlib+cargo infra ready
 
 **Test impact**: 0 (deep review — no code changes)
+
+### Stage 5.28 — Stdlib Alloc Layer (v0.11.25)
+
+**Priority**: Extend stdlib to alloc layer (heap types + fmt/Deref traits).
+
+**Work completed**:
+- src/stdlib.rs: new constants:
+  * STDLIB_ALLOC_TYPES (13: Box/Vec/String/HashMap/BTreeMap/HashSet/BTreeSet/Rc/Arc/Cell/RefCell/LinkedList/VecDeque)
+  * STDLIB_ALLOC_TRAITS (8: Display/Debug/Write/Formatter/Deref/DerefMut/Default/Hash)
+- src/stdlib.rs: extended all_stdlib_type_names() + all_stdlib_trait_names()
+  + register_stdlib() to include alloc items
+- src/lib.rs: doc comment updated
+- tests/v0/stage5/plan/stdlib_alloc_tests.rs: 9 new tests
+- tests/all_tests.rs: added stdlib_alloc_tests module (43 mods)
+- Cargo.toml: version 0.11.24 → 0.11.25
+
+**Test impact**: +9 (1058 — was 1049)
+**Verification**: cargo clean + cargo test (1058 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
