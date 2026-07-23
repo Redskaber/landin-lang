@@ -891,3 +891,59 @@ follows `<Noun><Noun><Noun>`; variants Pointer32/Pointer64 follow
 
 **Test impact**: +20 (1152 → 1172)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.39 — Stdlib Vtable Construction Planner (v0.11.35)
+
+**Priority**: Combine trait method signatures (Stage 5.36) + slot indexing
+(Stage 5.37) + impl coverage into a single ordered vtable plan that codegen
+can consume in one pass — the "last mile" static planner before dyn Trait
+codegen.
+
+**Work completed**:
+- src/stdlib.rs: new `StdlibVtablePlanEntry` struct (slot_index +
+  method_name + provided) — one entry per vtable slot
+- src/stdlib.rs: new `StdlibVtablePlan` struct (trait_name + entries Vec)
+  with `is_complete()` + `missing_methods()` methods
+- src/stdlib.rs: 4 new free-function query APIs:
+  * `stdlib_vtable_plan(trait, provided_methods) -> Option<StdlibVtablePlan>`
+  * `stdlib_vtable_plan_entry_count(trait) -> Option<u32>`
+  * `stdlib_vtable_plan_is_complete(&plan) -> bool`
+  * `stdlib_vtable_plan_missing_methods(&plan) -> Vec<&'static str>`
+- src/lib.rs: re-export all new APIs + Stage 5.39 history comment
+- tests/v0/stage5/plan/stdlib_vtable_plan_tests.rs: 18 new tests covering
+  plan construction (complete/partial/marker/unknown) / extra-names-ignored
+  / entry_count / is_complete / missing_methods / determinism / struct
+  semantics / slot ordering
+- tests/all_tests.rs: added stdlib_vtable_plan_tests module (53 mods total)
+- Cargo.toml: version 0.11.34 → 0.11.35
+
+**Design highlights**:
+- `stdlib_vtable_plan(trait, provided_methods)` merges three pieces of
+  static info into one ordered plan: trait method signatures (5.36) +
+  slot indexing (5.37) + impl coverage. Codegen consumes the plan in one
+  pass — no need to re-derive slot order or provided-checking.
+- `provided` flag per entry: codegen sees `provided=true` → fill slot with
+  `@landin_<Type>_<method>` symbol; `provided=false` → fill with `null`
+  or panic stub.
+- Markers return empty plan with `is_complete() == true` (vacuously
+  complete) — consistent with Stage 5.37/5.38 three-state convention.
+- Extra names in `provided_method_names` silently ignored (tolerant
+  design — impl may implement multiple traits' methods).
+- `StdlibVtablePlan` derives PartialEq/Eq — usable for test assertions
+  and future plan-cache deduplication.
+- `stdlib_vtable_plan_entry_count()` is a non-allocating shortcut for
+  `stdlib_vtable_slot_count()` (avoids constructing the entries Vec when
+  only the count is needed).
+
+**§16 interface isolation**: `StdlibVtablePlan` / `StdlibVtablePlanEntry`
+use only `&'static str` + `Vec<>` + scalars — no `mir::ty` /
+`codegen::EmitType` / `traits::TraitResolver` reference, no circular dep.
+
+**§23 API naming**: All 6 new public symbols comply (StdlibVtablePlan +
+StdlibVtablePlanEntry follow `<Noun><Noun><Noun>` [+`<Noun>`]; 4 free
+functions follow `<noun>_<noun>_<noun>` / `<noun>_<noun>_<noun>_<noun>_<noun>`
+/ `<noun>_<noun>_<noun>_<adj>` / `<noun>_<noun>_<noun>_<adj>_<noun>`
+patterns — including the 5-noun `stdlib_vtable_plan_entry_count`).
+
+**Test impact**: +18 (1172 → 1190)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

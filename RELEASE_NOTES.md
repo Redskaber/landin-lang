@@ -1,9 +1,78 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.34
+**Current version**: v0.11.35
 **Date**: 2026-07-23
-**Test count**: 1172 tests + 5 benchmarks
+**Test count**: 1190 tests + 5 benchmarks
+
+---
+
+## v0.11.35 — Stage 5.39 (Stdlib vtable construction planner)
+
+### Overview
+
+Combines trait method signatures (Stage 5.36) + slot indexing (Stage 5.37)
++ impl coverage into a single ordered "vtable plan" that codegen can
+consume in one pass — the "last mile" static planner before dyn Trait
+codegen (Stage 5.40+).
+
+### New types
+
+- `StdlibVtablePlanEntry` — one vtable slot: `slot_index: u32` +
+  `method_name: &'static str` + `provided: bool`.
+- `StdlibVtablePlan` — complete plan: `trait_name: &'static str` +
+  `entries: Vec<StdlibVtablePlanEntry>` + `is_complete()` method +
+  `missing_methods()` method.
+
+### New APIs
+
+- `stdlib_vtable_plan(trait, provided_methods) -> Option<StdlibVtablePlan>`
+- `stdlib_vtable_plan_entry_count(trait) -> Option<u32>` (non-allocating)
+- `stdlib_vtable_plan_is_complete(&plan) -> bool`
+- `stdlib_vtable_plan_missing_methods(&plan) -> Vec<&'static str>`
+
+### Design highlights
+
+1. **plan = trait 声明 ∩ impl 覆盖**: `stdlib_vtable_plan(trait, provided)`
+   merges three pieces of static info into one ordered plan. Codegen
+   consumes the plan in one pass — no slot-order re-derivation or
+   provided-checking at codegen time.
+2. **`provided` flag per entry**: codegen sees `provided=true` → fill slot
+   with `@landin_<Type>_<method>` symbol; `provided=false` → fill with
+   `null` or panic stub.
+3. **Markers return empty plan** with `is_complete() == true` (vacuously
+   complete) — consistent with Stage 5.37/5.38 three-state convention.
+4. **Extra names silently ignored**: `provided_method_names` may include
+   method names not in the trait declaration — they don't affect the plan
+   (tolerant design for impls that implement multiple traits).
+5. **`StdlibVtablePlan` derives PartialEq/Eq** — usable for test assertions
+   and future plan-cache deduplication.
+6. **`stdlib_vtable_plan_entry_count()` non-allocating**: shortcut for
+   `stdlib_vtable_slot_count()` — avoids constructing the entries Vec
+   when only the count is needed.
+
+### §16 / §23 compliance
+
+- `StdlibVtablePlan` / `StdlibVtablePlanEntry` use only `&'static str` +
+  `Vec<>` + scalars — no `mir::ty` / `codegen::EmitType` /
+  `traits::TraitResolver` reference, no circular dependency.
+- All 6 new public symbols follow API-naming-standard §23 — including
+  the 5-noun function `stdlib_vtable_plan_entry_count`.
+
+### Test impact
+
++18 tests (1172 → 1190) — covers plan construction (complete/partial/
+marker/unknown) / extra-names-ignored / entry_count / is_complete /
+missing_methods / determinism / struct semantics / slot ordering.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (916.7 MiB removed)
+cargo test: 1190 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

@@ -205,7 +205,16 @@
 //!     `stdlib_vtable_method_offset(trait, method, width)` for translating
 //!     slot indices into byte offsets that codegen can directly use in
 //!     `alloca` / `getelementptr` calculations.
-//!   Next: Stage 5.39+ (dyn Trait MIR lowering, stdlib crate compilation).
+//!   Stage 5.39 (v0.11.35): Stdlib vtable construction planner —
+//!     `StdlibVtablePlanEntry` + `StdlibVtablePlan` structs +
+//!     `stdlib_vtable_plan(trait, provided_methods)` +
+//!     `stdlib_vtable_plan_entry_count(trait)` +
+//!     `stdlib_vtable_plan_is_complete(&plan)` +
+//!     `stdlib_vtable_plan_missing_methods(&plan)` for combining trait
+//!     method signatures + slot indexing + impl coverage into a single
+//!     ordered plan that codegen can consume in one pass (no need to
+//!     re-derive slot order or provided-checking at codegen time).
+//!   Next: Stage 5.40+ (dyn Trait MIR lowering, stdlib crate compilation).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -241,10 +250,12 @@ pub use stdlib::{
     is_zero_sized_type, register_stdlib, resolve_stdlib_type, stdlib_pointer_width_bytes,
     stdlib_trait_method_count, stdlib_trait_method_index, stdlib_trait_methods,
     stdlib_traits_with_method, stdlib_traits_with_vtable, stdlib_vtable_byte_size,
-    stdlib_vtable_layout, stdlib_vtable_method_offset, stdlib_vtable_slot_count,
-    type_alignment_bytes, type_description, type_size_bytes, StdlibFacade, StdlibLayer,
-    StdlibPointerWidth, StdlibPrelude, StdlibSelfKind, StdlibTraitMethod, StdlibTypeKind,
-    StdlibVtableSlot,
+    stdlib_vtable_layout, stdlib_vtable_method_offset, stdlib_vtable_plan,
+    stdlib_vtable_plan_entry_count, stdlib_vtable_plan_is_complete,
+    stdlib_vtable_plan_missing_methods, stdlib_vtable_slot_count, type_alignment_bytes,
+    type_description, type_size_bytes, StdlibFacade, StdlibLayer, StdlibPointerWidth,
+    StdlibPrelude, StdlibSelfKind, StdlibTraitMethod, StdlibTypeKind, StdlibVtablePlan,
+    StdlibVtablePlanEntry, StdlibVtableSlot,
 };
 pub use traits::{
     extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, ImplValidationReport,

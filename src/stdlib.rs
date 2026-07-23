@@ -1385,3 +1385,224 @@ pub fn stdlib_vtable_method_offset(
     let slot_index = stdlib_trait_method_index(trait_name, method_name)?;
     Some(slot_index as u64 * width.byte_size() as u64)
 }
+
+// ============================================================================
+// Stage 5.39: Stdlib vtable construction planner
+//
+// Combines trait method signatures (Stage 5.36) + slot indexing (Stage 5.37)
+// + an impl's provided method names into a single ordered "vtable plan" that
+// codegen can consume in one pass:
+//   - For each plan entry: if `provided`, emit `@landin_<Type>_<method>` symbol
+//   - If `!provided`, emit `null` or a panic stub
+//
+// This avoids codegen re-deriving slot order / provided-checking logic —
+// the planner does it once, purely, with no side effects.
+//
+// Per API-naming-standard §3:
+//   - `StdlibVtablePlan` / `StdlibVtablePlanEntry` follow
+//     `<Noun><Noun><Noun>` / `<Noun><Noun><Noun><Noun>` patterns.
+//   - Query functions follow `<noun>_<noun>_<noun>` /
+//     `<noun>_<noun>_<noun>_<noun>_<noun>` / `<noun>_<noun>_<noun>_<adj>` /
+//     `<noun>_<noun>_<noun>_<adj>_<noun>` patterns.
+//
+// Per §16: uses only `&'static str` + `Vec<>` + scalars — no `mir::ty` /
+// `codegen::EmitType` / `traits::TraitResolver` reference, no circular dep.
+// ============================================================================
+
+/// Stage 5.39: A single entry in a vtable construction plan.
+///
+/// Combines a vtable slot index (from Stage 5.37) with the trait-declared
+/// method name and a flag indicating whether the impl provides that method.
+///
+/// Codegen consumes this directly: `provided=true` → fill slot with the
+/// impl method's LLVM symbol; `provided=false` → fill with `null` or a
+/// panic stub.
+///
+/// Per API-naming-standard §3: `StdlibVtablePlanEntry` follows
+/// `<Noun><Noun><Noun><Noun>` pattern. Field names follow `<noun>_<noun>` /
+/// `<adj>` patterns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StdlibVtablePlanEntry {
+    /// 0-based vtable slot index (from `stdlib_trait_method_index`).
+    pub slot_index: u32,
+    /// Trait-declared method name at this slot.
+    pub method_name: &'static str,
+    /// Whether the impl provides a method with this name.
+    pub provided: bool,
+}
+
+/// Stage 5.39: A complete vtable construction plan for a (trait, impl) pair.
+///
+/// Contains the trait name + an ordered list of `StdlibVtablePlanEntry`.
+/// The list is ordered by `slot_index` (0, 1, 2, ...) and is deterministic.
+///
+/// Per API-naming-standard §3: `StdlibVtablePlan` follows
+/// `<Noun><Noun><Noun>` pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StdlibVtablePlan {
+    /// The trait this vtable is for.
+    pub trait_name: &'static str,
+    /// Ordered vtable slot entries.
+    pub entries: Vec<StdlibVtablePlanEntry>,
+}
+
+impl StdlibVtablePlan {
+    /// Stage 5.39: Check if the plan is complete (all slots provided).
+    ///
+    /// Returns `true` if every entry has `provided == true`. Markers
+    /// (empty plan) are vacuously complete.
+    ///
+    /// Per API-naming-standard §3: `stdlib_vtable_plan_is_complete` (free
+    /// fn form) follows `<noun>_<noun>_<noun>_<adj>` pattern. This method
+    /// form follows `<noun>_<adj>` pattern.
+    pub fn is_complete(&self) -> bool {
+        self.entries.iter().all(|e| e.provided)
+    }
+
+    /// Stage 5.39: Get the list of method names not provided by the impl.
+    ///
+    /// Returns trait-declared method names where `provided == false`,
+    /// in slot-index order. Empty if the plan is complete.
+    ///
+    /// Per API-naming-standard §3: `stdlib_vtable_plan_missing_methods`
+    /// (free fn form) follows `<noun>_<noun>_<noun>_<adj>_<noun>` pattern.
+    /// This method form follows `<adj>_<noun>` pattern (missing_methods).
+    pub fn missing_methods(&self) -> Vec<&'static str> {
+        self.entries
+            .iter()
+            .filter(|e| !e.provided)
+            .map(|e| e.method_name)
+            .collect()
+    }
+}
+
+/// Stage 5.39: Build a vtable construction plan for a (trait, impl) pair.
+///
+/// Given a trait name and a slice of method names the impl provides,
+/// returns `Some(StdlibVtablePlan)` with one entry per trait-declared
+/// method (in slot-index order). Each entry's `provided` flag is set
+/// based on whether `provided_method_names` contains the method name.
+///
+/// Returns:
+/// - `Some(plan)` with `entries: vec![]` for marker traits (no methods).
+/// - `Some(plan)` with `entries: [...]` for traits with methods.
+/// - `None` for traits not in the stdlib registry.
+///
+/// Extra names in `provided_method_names` that don't match any
+/// trait-declared method are silently ignored (they don't affect the plan).
+///
+/// Per API-naming-standard §3: `stdlib_vtable_plan` follows
+/// `<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_vtable_plan(
+    trait_name: &str,
+    provided_method_names: &[&str],
+) -> Option<StdlibVtablePlan> {
+    // Look up the static trait name. For marker traits and known traits,
+    // we need to return a `&'static str` for `StdlibVtablePlan.trait_name`.
+    // Use the `ALL_REGISTERED_TRAITS` list to validate.
+    let static_trait_name: &'static str = {
+        /// Local copy of the registered-traits list (same as in
+        /// `stdlib_traits_with_method` / `stdlib_traits_with_vtable` —
+        /// duplicated per §16 to keep stdlib.rs self-contained).
+        const ALL_REGISTERED_TRAITS: &[&str] = &[
+            "Copy",
+            "Send",
+            "Sync",
+            "Sized",
+            "Unpin",
+            "Eq",
+            "Clone",
+            "Drop",
+            "Default",
+            "Display",
+            "Debug",
+            "PartialEq",
+            "PartialOrd",
+            "Ord",
+            "Hash",
+            "Deref",
+            "DerefMut",
+            "IntoIterator",
+            "Iterator",
+            "Read",
+            "Write",
+            "Neg",
+            "Not",
+            "Add",
+            "Sub",
+            "Mul",
+            "Div",
+            "Rem",
+            "BitAnd",
+            "BitOr",
+            "BitXor",
+            "Shl",
+            "Shr",
+            "AddAssign",
+            "SubAssign",
+            "MulAssign",
+            "DivAssign",
+            "RemAssign",
+            "BitAndAssign",
+            "BitOrAssign",
+            "BitXorAssign",
+            "ShlAssign",
+            "ShrAssign",
+        ];
+        ALL_REGISTERED_TRAITS
+            .iter()
+            .copied()
+            .find(|&n| n == trait_name)?
+    };
+
+    let methods = stdlib_trait_methods(static_trait_name)?;
+    let entries = methods
+        .iter()
+        .enumerate()
+        .map(|(idx, m)| StdlibVtablePlanEntry {
+            slot_index: idx as u32,
+            method_name: m.name,
+            provided: provided_method_names.contains(&m.name),
+        })
+        .collect();
+    Some(StdlibVtablePlan {
+        trait_name: static_trait_name,
+        entries,
+    })
+}
+
+/// Stage 5.39: Get the total entry count for a trait's vtable plan.
+///
+/// Returns `Some(n)` where `n` equals `stdlib_vtable_slot_count(trait_name)`
+/// (one entry per slot). Returns `None` for unknown traits.
+///
+/// This is a convenience wrapper — `stdlib_vtable_plan(trait, &[])?.entries.len()`
+/// gives the same answer, but this fn avoids allocating the entries Vec.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_plan_entry_count` follows
+/// `<noun>_<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_vtable_plan_entry_count(trait_name: &str) -> Option<u32> {
+    stdlib_vtable_slot_count(trait_name)
+}
+
+/// Stage 5.39: Free-function form of `StdlibVtablePlan::is_complete`.
+///
+/// Returns `true` if all entries in the plan have `provided == true`.
+/// Markers (empty plan) are vacuously complete.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_plan_is_complete` follows
+/// `<noun>_<noun>_<noun>_<adj>` pattern.
+pub fn stdlib_vtable_plan_is_complete(plan: &StdlibVtablePlan) -> bool {
+    plan.is_complete()
+}
+
+/// Stage 5.39: Free-function form of `StdlibVtablePlan::missing_methods`.
+///
+/// Returns trait-declared method names where `provided == false`, in
+/// slot-index order. Empty if the plan is complete.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_plan_missing_methods` follows
+/// `<noun>_<noun>_<noun>_<adj>_<noun>` pattern.
+pub fn stdlib_vtable_plan_missing_methods(plan: &StdlibVtablePlan) -> Vec<&'static str> {
+    plan.missing_methods()
+}

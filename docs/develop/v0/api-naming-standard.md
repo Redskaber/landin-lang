@@ -764,3 +764,67 @@ No `mir::ty` / `codegen::EmitType` reference, no circular dependency.
 **Test impact**: +20 (1152 → 1172).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.9 (Stage 5.39, 2026-07-23)
+
+Stage 5.39 stdlib vtable construction planner round. Adds the "last mile"
+static planner that combines trait method signatures + slot indexing +
+impl coverage into a single ordered plan codegen can consume in one pass.
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `StdlibVtablePlanEntry` | struct | `<Noun><Noun><Noun><Noun>` |
+| `StdlibVtablePlan` | struct | `<Noun><Noun><Noun>` |
+| `StdlibVtablePlan::is_complete` | method | `<noun>_<adj>` |
+| `StdlibVtablePlan::missing_methods` | method | `<adj>_<noun>` |
+| `stdlib_vtable_plan` | free fn | `<noun>_<noun>_<noun>` |
+| `stdlib_vtable_plan_entry_count` | free fn | `<noun>_<noun>_<noun>_<noun>_<noun>` |
+| `stdlib_vtable_plan_is_complete` | free fn | `<noun>_<noun>_<noun>_<adj>` |
+| `stdlib_vtable_plan_missing_methods` | free fn | `<noun>_<noun>_<noun>_<adj>_<noun>` |
+
+**Field naming**: `slot_index` (`<noun>_<noun>`) + `method_name`
+(`<noun>_<noun>`) + `provided` (`<adj>`, bool field) + `trait_name`
+(`<noun>_<noun>`) + `entries` (`<noun>`) — all comply.
+
+**Design decisions**:
+1. `StdlibVtablePlan` is a plain struct (not an enum) — the plan either
+   exists (`Some(plan)`) or the trait is unknown (`None`). This keeps the
+   return type simple and avoids a 4-variant enum where 3 variants would
+   be redundant with the `entries.is_empty()` + `is_complete()` checks.
+2. `provided: bool` per entry — simple flag, not an enum like
+   `ProvidedKind::Yes/No/Inherited`. Dyn Trait codegen only needs to know
+   "do I emit the impl symbol or a null/stub?" — a bool captures this
+   exactly. Inherited methods (from supertraits) are not modeled here
+   because Landin's stdlib traits don't have inheritance (markers don't
+   declare methods; Eq is empty).
+3. Markers return empty plan with `is_complete() == true` (vacuously
+   complete) — consistent with Stage 5.37/5.38's three-state convention
+   where markers are `Some` with zero slots, not `None`.
+4. Extra names in `provided_method_names` silently ignored (tolerant
+   design) — an impl block may declare methods for multiple traits, and
+   the caller may pass the union without filtering. Strictness would
+   force callers to pre-filter, which is error-prone.
+5. `StdlibVtablePlan` derives `PartialEq`/`Eq` — usable for test
+   assertions and future plan-cache deduplication (codegen may memoize
+   plans per (trait, impl_type) pair).
+6. `stdlib_vtable_plan_entry_count()` is a non-allocating shortcut —
+   delegates to `stdlib_vtable_slot_count()` without constructing the
+   entries Vec. Useful when only the count is needed (e.g. pre-sizing
+   buffers).
+7. **5-noun function name** `stdlib_vtable_plan_entry_count` — long but
+   unambiguous. The pattern `<noun>_<noun>_<noun>_<noun>_<noun>` is
+   permitted by §23 when each noun adds a meaningful scope qualifier
+   (stdlib → vtable → plan → entry → count). Splitting into a method
+   (`plan.entry_count()`) was considered but rejected because the query
+   doesn't require a `StdlibVtablePlan` value — it answers "how many
+   entries *would* a plan for this trait have?"
+
+**§16 compliance**: `StdlibVtablePlan` / `StdlibVtablePlanEntry` use only
+`&'static str` + `Vec<>` + scalars — no `mir::ty` / `codegen::EmitType` /
+`traits::TraitResolver` reference, no circular dependency.
+
+**Test impact**: +18 (1172 → 1190).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

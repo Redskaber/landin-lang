@@ -4343,3 +4343,48 @@ Stage Summary:
 - Cross-check test verifies method_offset < vtable_byte_size invariant
   across 7 (trait, method) pairs × 2 widths — what typeck will enforce.
 - Next: Stage 5.39+ (dyn Trait MIR lowering, stdlib crate compilation).
+
+---
+Task ID: stage5.39-r88
+Agent: Super Z (main)
+Task: Stage 5.39 — stdlib vtable construction planner + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.34 / 1172 tests (Stage 5.38 complete)
+
+Stage 5.39: Stdlib vtable construction planner
+- src/stdlib.rs: new StdlibVtablePlanEntry struct (slot_index + method_name + provided)
+- src/stdlib.rs: new StdlibVtablePlan struct (trait_name + entries) + is_complete() + missing_methods() methods
+- src/stdlib.rs: 4 new free-function query APIs:
+  * stdlib_vtable_plan(trait, provided_methods) -> Option<StdlibVtablePlan>
+  * stdlib_vtable_plan_entry_count(trait) -> Option<u32>
+  * stdlib_vtable_plan_is_complete(&plan) -> bool
+  * stdlib_vtable_plan_missing_methods(&plan) -> Vec<&'static str>
+- src/lib.rs: re-export all new APIs + Stage 5.39 history comment
+- tests/v0/stage5/plan/stdlib_vtable_plan_tests.rs: 18 new tests
+- tests/all_tests.rs: added stdlib_vtable_plan_tests module (53 mods)
+- Cargo.toml: version 0.11.34 → 0.11.35
+
+Docs:
+- plan-5.39.md / gate-review-round39.md / stdlib_vtable_plan_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (916.7 MiB removed) ✅
+- cargo test: 1190 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.39 PASSED — CI/CD all green per §1.2.
+- StdlibVtablePlan + StdlibVtablePlanEntry + 4 query APIs added.
+- Codegen can now call stdlib_vtable_plan() once and consume the ordered
+  entries directly — no slot-order re-derivation or provided-checking at
+  codegen time.
+- §16 compliance: plan types use only &'static str + Vec + scalars, no
+  mir::ty / codegen::EmitType / traits::TraitResolver reference.
+- §23 compliance: all 6 new public symbols follow API naming standard
+  (including 5-noun function stdlib_vtable_plan_entry_count).
+- Markers (Copy/Send/Sync/Sized/Unpin/Eq) return empty plan, vacuously
+  complete — consistent with Stage 5.37/5.38 three-state convention.
+- Next: Stage 5.40+ (dyn Trait MIR lowering, stdlib crate compilation).
