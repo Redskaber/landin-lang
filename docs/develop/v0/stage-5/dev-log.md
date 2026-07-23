@@ -1966,3 +1966,19 @@ fat pointer pair. Foundation for Stage 5.62+ actual MIR lowering logic.
 
 **Test impact**: +9 (1442 → 1451)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.62 — build_dyn_trait_fat_ptrs_from_resolver (v0.11.58)
+
+**Priority**: Bridge function connecting Stage 5.61's DynTraitFatPtr (MIR
+representation) with TraitResolver (trait implementation data source).
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new free function `build_dyn_trait_fat_ptrs_from_resolver()`
+- src/mir/mod.rs: re-export
+- src/lib.rs: Stage 5.62 history comment
+- tests/v0/stage5/plan/dyn_trait_fat_ptr_builder_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_fat_ptr_builder_tests module (76 mods)
+- Cargo.toml: version 0.11.57 → 0.11.58
+
+**Test impact**: +8 (1451 → 1459)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

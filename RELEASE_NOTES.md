@@ -1,9 +1,35 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.57
+**Current version**: v0.11.58
 **Date**: 2026-07-23
-**Test count**: 1451 tests + 5 benchmarks
+**Test count**: 1459 tests + 5 benchmarks
+
+---
+
+## v0.11.58 — Stage 5.62 (build_dyn_trait_fat_ptrs_from_resolver)
+
+### Overview
+
+Bridge function connecting Stage 5.61's `DynTraitFatPtr` (MIR representation)
+with `TraitResolver` (trait implementation data source). For each (trait, type)
+pair in `TraitResolver.vtables`, constructs a `DynTraitFatPtr` with resolved
+names and auto-computed LLVM symbols. Foundation for Stage 5.63+ actual MIR
+lowering.
+
+### New API
+
+- `build_dyn_trait_fat_ptrs_from_resolver(&TraitResolver, &Rodeo) -> Vec<DynTraitFatPtr>`
+  (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (866.0 MiB removed)
+cargo test: 1459 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

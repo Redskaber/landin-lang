@@ -1866,3 +1866,21 @@ Trait MIR lowering** — the core Stage 5 goal.
 **Test impact**: +9 (1442 → 1451).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.32 (Stage 5.62, 2026-07-23)
+
+Stage 5.62 build_dyn_trait_fat_ptrs_from_resolver round. Bridge function
+connecting DynTraitFatPtr (MIR) with TraitResolver (data source).
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `build_dyn_trait_fat_ptrs_from_resolver` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` |
+
+**Design decisions**: Same `build_*_from_resolver` pattern as Stage 5.46/5.49.
+Bridges MIR representation with resolver data. §16 compliant (no circular dep).
+
+**Test impact**: +8 (1451 → 1459).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

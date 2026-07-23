@@ -262,3 +262,6 @@ mod emit_dyn_trait_ptrs_delegation_tests;
 
 #[path = "v0/stage5/plan/dyn_trait_fat_ptr_tests.rs"]
 mod dyn_trait_fat_ptr_tests;
+
+#[path = "v0/stage5/plan/dyn_trait_fat_ptr_builder_tests.rs"]
+mod dyn_trait_fat_ptr_builder_tests;

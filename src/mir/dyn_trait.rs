@@ -85,3 +85,45 @@ impl DynTraitFatPtr {
         )
     }
 }
+
+// ============================================================================
+// Stage 5.62: Bridge function — build DynTraitFatPtr list from TraitResolver
+//
+// Bridges Stage 5.61's DynTraitFatPtr (MIR representation) with
+// TraitResolver (trait implementation data source). For each (trait, type)
+// pair in TraitResolver.vtables, constructs a DynTraitFatPtr with the
+// resolved trait/type names and auto-computed LLVM symbols.
+//
+// Per API-naming-standard §3: `build_dyn_trait_fat_ptrs_from_resolver`
+// follows `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+//
+// Per §16: takes `&TraitResolver` + `&Rodeo`, returns `Vec<DynTraitFatPtr>`.
+// No `mir::ty` / `codegen` reference, no circular dependency.
+// ============================================================================
+
+/// Stage 5.62: Build a list of `DynTraitFatPtr` from `TraitResolver.vtables`.
+///
+/// For each `(trait_name, self_ty_name)` key in `trait_resolver.vtables`,
+/// constructs a `DynTraitFatPtr` with:
+/// - `trait_name` resolved via interner (or "Trait" default)
+/// - `type_name` resolved via interner (or "Type" default)
+/// - LLVM symbols auto-computed by `DynTraitFatPtr::new()`
+///
+/// This is the **bridge function** between the MIR-level `DynTraitFatPtr`
+/// (Stage 5.61) and `TraitResolver` (the source of truth for trait impls).
+/// Stage 5.63+ MIR lowering will call this to get the fat pointer list.
+///
+/// Per API-naming-standard §3: `build_dyn_trait_fat_ptrs_from_resolver`
+/// follows `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub fn build_dyn_trait_fat_ptrs_from_resolver(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &lasso::Rodeo,
+) -> Vec<DynTraitFatPtr> {
+    let mut fat_ptrs: Vec<DynTraitFatPtr> = Vec::new();
+    for (trait_name, self_ty_name) in trait_resolver.vtables.keys() {
+        let trait_str = interner.try_resolve(trait_name).unwrap_or("Trait");
+        let type_str = interner.try_resolve(self_ty_name).unwrap_or("Type");
+        fat_ptrs.push(DynTraitFatPtr::new(trait_str, type_str));
+    }
+    fat_ptrs
+}

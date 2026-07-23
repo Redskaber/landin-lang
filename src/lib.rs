@@ -378,7 +378,12 @@
 //!     constructor + `is_marker()` method. **Start of dyn Trait MIR
 //!     lowering** — the core Stage 5 goal. Foundation for Stage 5.62+
 //!     actual MIR lowering logic.
-//!   Next: Stage 5.62+ (dyn Trait value construction in MIR lowering).
+//!   Stage 5.62 (v0.11.58): build_dyn_trait_fat_ptrs_from_resolver —
+//!     bridge function in `src/mir/dyn_trait.rs` that constructs
+//!     `Vec<DynTraitFatPtr>` from `TraitResolver.vtables`. Connects
+//!     Stage 5.61's MIR representation with the trait implementation
+//!     data source. Foundation for Stage 5.63+ actual MIR lowering.
+//!   Next: Stage 5.63+ (dyn Trait value construction in MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
