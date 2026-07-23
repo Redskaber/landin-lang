@@ -1915,3 +1915,18 @@ paths byte-for-byte identical).
 
 **Test impact**: +10 (1418 → 1428)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.59 — emit_vtables Delegation (v0.11.55)
+
+**Priority**: Third existing-path modification. `emit_vtables()` function body
+replaced with one-liner delegation to `emit_vtables_from_resolver()` (Stage 5.47).
+
+**Work completed**:
+- src/codegen/mod.rs: `emit_vtables()` body replaced with delegation
+- src/lib.rs: Stage 5.59 history comment
+- tests/v0/stage5/plan/emit_vtables_delegation_tests.rs: 7 new tests
+- tests/all_tests.rs: added emit_vtables_delegation_tests module (73 mods)
+- Cargo.toml: version 0.11.54 → 0.11.55
+
+**Test impact**: +7 (1428 → 1435)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

@@ -1,9 +1,34 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.54
+**Current version**: v0.11.55
 **Date**: 2026-07-23
-**Test count**: 1428 tests + 5 benchmarks
+**Test count**: 1435 tests + 5 benchmarks
+
+---
+
+## v0.11.55 — Stage 5.59 (emit_vtables delegation)
+
+### Overview
+
+Third existing-path modification. `emit_vtables()` function body replaced with
+one-liner delegation to `emit_vtables_from_resolver()` (Stage 5.47).
+Behavior-equivalent. No regression — all 1428 existing tests pass + 7 new =
+1435 total.
+
+### Modified code
+
+- `src/codegen/mod.rs`: `emit_vtables()` body replaced with delegation to
+  `emit_vtables_from_resolver()`. Old inline loop (Stage 5.6) removed.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (1.0 GiB removed)
+cargo test: 1435 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

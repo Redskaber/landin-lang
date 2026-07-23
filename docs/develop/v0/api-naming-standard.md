@@ -1781,3 +1781,17 @@ trait method body.
 **Test impact**: +10 (1418 → 1428).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.29 (Stage 5.59, 2026-07-23)
+
+Stage 5.59 emit_vtables delegation round. Third existing-path modification.
+
+**No new public symbols** — only modifies existing `emit_vtables()` function body.
+
+**Design decisions**: Same pattern as Stage 5.57/5.58 — one-liner delegation
+to a free function (Stage 5.47 `emit_vtables_from_resolver()`). Behavior-
+equivalent (verified by Stage 5.47 cross-check tests). No regression.
+
+**Test impact**: +7 (1428 → 1435).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

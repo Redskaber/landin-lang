@@ -361,8 +361,11 @@
 //!     delegation to Stage 5.48's `emit_dynptr_global_text()` free function.
 //!     Behavior-equivalent (all paths byte-for-byte identical). Second
 //!     existing-path modification.
-//!   Next: Stage 5.59+ (emit_vtables/emit_dyn_trait_ptrs delegation,
-//!     then dyn Trait MIR lowering).
+//!   Stage 5.59 (v0.11.55): emit_vtables delegation — `emit_vtables()`
+//!     function body replaced with one-liner delegation to
+//!     `emit_vtables_from_resolver()` (Stage 5.47). Third existing-path
+//!     modification. Behavior-equivalent (verified by Stage 5.47 cross-check).
+//!   Next: Stage 5.60+ (emit_dyn_trait_ptrs delegation, then dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

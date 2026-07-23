@@ -137,19 +137,11 @@ pub fn emit_vtables(
     interner: &Rodeo,
     emitter: &mut dyn Emitter,
 ) {
-    for ((trait_name, self_ty_name), vtable) in &trait_resolver.vtables {
-        // Build the global name: `.vtable.<trait>.<type>`.
-        // LLVM global names use `.` as a private-name separator.
-        let trait_str = interner.try_resolve(trait_name).unwrap_or("Trait");
-        let type_str = interner.try_resolve(self_ty_name).unwrap_or("Type");
-        let global_name = format!(".vtable.{}.{}", trait_str, type_str);
-
-        // Collect the resolved method symbol names from VtableEntry.
-        let method_symbols: Vec<String> =
-            vtable.entries.iter().map(|e| e.fn_name.clone()).collect();
-
-        emitter.emit_vtable_global(&global_name, &method_symbols);
-    }
+    // Stage 5.59: delegate to emit_vtables_from_resolver() (Stage 5.47).
+    // The old inline loop (Stage 5.6) has been replaced with a one-liner
+    // delegation. Behavior is identical — verified by
+    // test_emit_vtables_from_resolver_match_emit_vtables (Stage 5.47).
+    emit_vtables_from_resolver(trait_resolver, interner, emitter)
 }
 
 /// Stage 5.7: Emit `dyn Trait` fat-pointer constant globals for every
