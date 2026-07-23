@@ -4259,3 +4259,44 @@ Stage Summary:
 - §23 compliance: all 7 new public symbols follow API naming standard.
 - Foundation for Stage 5.37+ (dyn Trait MIR lowering) and Stage 5.38+ (typeck trait-bound solving).
 - Next: Stage 5.37+ (dyn Trait MIR lowering, stdlib crate compilation).
+
+---
+Task ID: stage5.37-r86
+Agent: Super Z (main)
+Task: Stage 5.37 — stdlib vtable slot layout + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.32 / 1130 tests (Stage 5.36 complete)
+
+Stage 5.37: Stdlib vtable slot layout
+- src/stdlib.rs: new StdlibVtableSlot struct (slot_index + method ref)
+- src/stdlib.rs: 5 new free-function query APIs:
+  * stdlib_trait_method_index(trait, method) -> Option<u32>
+  * stdlib_vtable_layout(trait) -> Option<Vec<StdlibVtableSlot>>
+  * stdlib_vtable_slot_count(trait) -> Option<u32>
+  * is_stdlib_marker_trait(trait) -> bool
+  * stdlib_traits_with_vtable() -> Vec<&'static str>
+- src/lib.rs: re-export all new APIs + Stage 5.37 history comment
+- tests/v0/stage5/plan/stdlib_vtable_layout_tests.rs: 22 new tests
+- tests/all_tests.rs: added stdlib_vtable_layout_tests module (51 mods)
+- Cargo.toml: version 0.11.32 → 0.11.33
+
+Docs:
+- plan-5.37.md / gate-review-round37.md / stdlib_vtable_layout_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (907.8 MiB removed) ✅
+- cargo test: 1152 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.37 PASSED — CI/CD all green per §1.2.
+- StdlibVtableSlot + 5 query APIs added.
+- Deterministic vtable slot indexing for all 37 stdlib traits with methods.
+- §16 compliance: StdlibVtableSlot uses StdlibTraitMethod (stdlib-internal), no mir::ty reference.
+- §23 compliance: all 6 new public symbols follow API naming standard.
+- Last static-prep step before dyn Trait MIR lowering — codegen can now
+  compute vtable element count + method call byte offsets.
+- Next: Stage 5.38+ (dyn Trait MIR lowering, stdlib crate compilation).

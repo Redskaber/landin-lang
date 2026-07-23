@@ -1,9 +1,76 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.32
+**Current version**: v0.11.33
 **Date**: 2026-07-23
-**Test count**: 1130 tests + 5 benchmarks
+**Test count**: 1152 tests + 5 benchmarks
+
+---
+
+## v0.11.33 — Stage 5.37 (Stdlib vtable slot layout)
+
+### Overview
+
+Adds deterministic vtable slot indexing for stdlib traits — the last
+static-prep step before dyn Trait MIR lowering. Codegen will call these
+queries to determine:
+- `@.vtable.<trait>.<type>` global's element count (= `stdlib_vtable_slot_count`)
+- the byte offset of a method call (= `stdlib_trait_method_index × pointer_size`)
+
+This step only adds query APIs — no codegen changes. Dyn Trait MIR lowering
+follows in Stage 5.38+.
+
+### New type
+
+- `StdlibVtableSlot` — single vtable slot description:
+  `slot_index: u32` + `method: &'static StdlibTraitMethod`
+  (zero-copy ref to existing static table).
+
+### New APIs
+
+- `stdlib_trait_method_index(trait, method) -> Option<u32>` — slot index
+- `stdlib_vtable_layout(trait) -> Option<Vec<StdlibVtableSlot>>` — full layout
+- `stdlib_vtable_slot_count(trait) -> Option<u32>` — total slot count
+- `is_stdlib_marker_trait(trait) -> bool` — marker check (registered + 0 methods)
+- `stdlib_traits_with_vtable() -> Vec<&'static str>` — all traits with ≥1 slot
+
+### Design highlights
+
+1. **Deterministic slot indexing**: slot index comes from
+   `stdlib_trait_methods()` slice position (0-based), not HashMap iteration
+   — same trait always returns same slot order.
+2. **Three return states for `slot_count`**:
+   - `Some(0)` — marker trait (registered, no methods)
+   - `Some(n)` — trait with n methods
+   - `None` — trait not in registry at all
+3. **`is_stdlib_marker_trait`** returns false for unknown traits (not
+   registered ≠ marker).
+4. **`stdlib_traits_with_vtable()`** excludes markers — codegen doesn't need
+   to emit empty vtable globals for marker traits.
+
+### §16 / §23 compliance
+
+- `StdlibVtableSlot` uses `StdlibTraitMethod` (stdlib-internal) — no
+  `mir::ty` / `codegen::EmitType` reference, no circular dependency.
+- All 6 new public symbols follow API-naming-standard §23:
+  `<Noun><Noun><Noun>` for types, `<noun>_<noun>_<noun>` /
+  `<noun>_<noun>_<noun>_<noun>` / `is_<noun>_<adj>_<noun>` /
+  `<noun>_<noun>_with_<noun>` for functions.
+
+### Test impact
+
++22 tests (1130 → 1152) — covers method_index queries / vtable_layout
+(incl. determinism check) / slot_count / marker detection /
+traits_with_vtable filtering / StdlibVtableSlot struct.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (907.8 MiB removed)
+cargo test: 1152 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

@@ -672,3 +672,49 @@ traits, exposed via 5 free-function query APIs.
 **Test impact**: +24 (1106 → 1130).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.7 (Stage 5.37, 2026-07-23)
+
+Stage 5.37 stdlib vtable slot layout round. Adds the final static-prep API
+surface for dyn Trait MIR lowering — deterministic vtable slot indexing
+for stdlib traits.
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `StdlibVtableSlot` | struct | `<Noun><Noun><Noun>` |
+| `stdlib_trait_method_index` | free fn | `<noun>_<noun>_<noun>_<noun>` |
+| `stdlib_vtable_layout` | free fn | `<noun>_<noun>_<noun>` |
+| `stdlib_vtable_slot_count` | free fn | `<noun>_<noun>_<noun>_<noun>` |
+| `is_stdlib_marker_trait` | free fn | `is_<noun>_<adj>_<noun>` |
+| `stdlib_traits_with_vtable` | free fn | `<noun>_<noun>_with_<noun>` |
+
+**Field naming**: `slot_index` (`<noun>_<noun>`) + `method` (`<noun>`) —
+both comply.
+
+**Design decisions**:
+1. Slot index derived from `stdlib_trait_methods()` slice position (0-based)
+   — not from a HashMap — so the same trait always returns the same slot
+   order. Determinism is required for codegen: the vtable global's element
+   count and the method-call byte offset must be stable across runs.
+2. Three distinct return states for `stdlib_vtable_slot_count`:
+   - `Some(0)` — marker trait (registered, no methods)
+   - `Some(n)` — trait with n methods
+   - `None` — trait not in registry at all
+   This trichotomy lets codegen distinguish "skip emitting vtable" (marker)
+   from "trait doesn't exist" (unknown).
+3. `is_stdlib_marker_trait` returns false for unknown traits. Not registered
+   ≠ marker — keeping these distinct avoids accidental "treat unknown as
+   marker" bugs in codegen.
+4. `StdlibVtableSlot` carries `&'static StdlibTraitMethod` (zero-copy ref
+   to the existing static table) — no allocation per query, no lifetime
+   management burden on callers.
+
+**§16 compliance**: `StdlibVtableSlot` uses `StdlibTraitMethod` (stdlib-
+internal) — no `mir::ty` / `codegen::EmitType` reference, no circular
+dependency.
+
+**Test impact**: +22 (1130 → 1152).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

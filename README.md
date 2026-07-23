@@ -6,10 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.32 — Stage 0-4 complete, Stage 5 in progress.
-> **1130 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
+> **Status:** v0.11.33 — Stage 0-4 complete, Stage 5 in progress.
+> **1152 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
 > Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5.1-5.36: 36 sub-stages done. Stdlib core+alloc+std+facade+type resolution+layout+trait method signatures complete. Deep review #3: GO.
+> Stage 5.1-5.37: 37 sub-stages done. Stdlib core+alloc+std+facade+type resolution+layout+trait method signatures+vtable slot layout complete. Deep review #3: GO.
 > Next: dyn Trait MIR lowering, stdlib crate compilation.
 
 ## Quick start
@@ -39,7 +39,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete | 170 |
 | 3 | `codegen/` | ✅ Complete | 309 (incl. 5 §21 audit) |
 | 4 | modules, closures, macros, benchmarks, ADR | ✅ Complete | 62 + 5 bench |
-| 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | 🔄 In progress | 135 (TraitResolver + integration + Copy + DefId→name + vtable + vtable codegen + dyn fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report + stdlib facade + stdlib type resolution + stdlib type layout + stdlib trait method signatures) |
+| 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | 🔄 In progress | 157 (TraitResolver + integration + Copy + DefId→name + vtable + vtable codegen + dyn fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report + stdlib facade + stdlib type resolution + stdlib type layout + stdlib trait method signatures + stdlib vtable slot layout) |
 
 ## API surface
 

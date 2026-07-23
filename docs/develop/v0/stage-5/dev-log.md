@@ -798,3 +798,52 @@ StdlibSelfKind follow `<Noun><Noun><Noun>`; 5 free functions follow
 
 **Test impact**: +24 (1106 → 1130)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.37 — Stdlib Vtable Slot Layout (v0.11.33)
+
+**Priority**: Add deterministic vtable slot indexing for stdlib traits —
+the last static-prep step before dyn Trait MIR lowering. Codegen will use
+these queries to emit `@.vtable.<trait>.<type>` globals with the correct
+element count and compute method call byte offsets.
+
+**Work completed**:
+- src/stdlib.rs: new `StdlibVtableSlot` struct (slot_index: u32 +
+  method: &'static StdlibTraitMethod) — describes one vtable slot
+- src/stdlib.rs: 5 new free-function query APIs:
+  * `stdlib_trait_method_index(trait, method) -> Option<u32>` — slot index
+  * `stdlib_vtable_layout(trait) -> Option<Vec<StdlibVtableSlot>>` — full layout
+  * `stdlib_vtable_slot_count(trait) -> Option<u32>` — total slot count
+  * `is_stdlib_marker_trait(trait) -> bool` — marker check (registered + 0 methods)
+  * `stdlib_traits_with_vtable() -> Vec<&'static str>` — all traits with ≥1 slot
+- src/lib.rs: re-export all new APIs + Stage 5.37 history comment
+- tests/v0/stage5/plan/stdlib_vtable_layout_tests.rs: 22 new tests covering
+  method_index queries / vtable_layout (incl. determinism) / slot_count /
+  marker detection / traits_with_vtable filtering / StdlibVtableSlot struct
+- tests/all_tests.rs: added stdlib_vtable_layout_tests module (51 mods total)
+- Cargo.toml: version 0.11.32 → 0.11.33
+
+**Design highlights**:
+- Slot index derived from `stdlib_trait_methods()` slice position (0-based),
+  not from a HashMap — deterministic for the lifetime of the process.
+- Three distinct return states for `stdlib_vtable_slot_count`:
+  * `Some(0)` — marker trait (registered, no methods)
+  * `Some(n)` — trait with n methods
+  * `None` — trait not in registry at all
+- `is_stdlib_marker_trait` returns false for unknown traits (not registered
+  ≠ marker).
+- `stdlib_traits_with_vtable()` excludes markers — codegen doesn't need to
+  emit empty vtable globals for marker traits.
+- `StdlibVtableSlot` carries `&'static StdlibTraitMethod` (zero-copy ref to
+  the existing static table) — no allocation per query.
+
+**§16 interface isolation**: `StdlibVtableSlot` uses `StdlibTraitMethod`
+(stdlib-internal) — no `mir::ty` / `codegen::EmitType` reference, no
+circular dependency.
+
+**§23 API naming**: all 6 new public symbols comply (StdlibVtableSlot
+follows `<Noun><Noun><Noun>`; 5 free functions follow `<noun>_<noun>_<noun>`
+/ `<noun>_<noun>_<noun>_<noun>` / `is_<noun>_<adj>_<noun>` /
+`<noun>_<noun>_with_<noun>`).
+
+**Test impact**: +22 (1130 → 1152)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

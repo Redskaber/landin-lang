@@ -1094,3 +1094,195 @@ pub fn stdlib_traits_with_method(method_name: &str) -> Vec<&'static str> {
     }
     out
 }
+
+// ============================================================================
+// Stage 5.37: Stdlib vtable slot layout
+//
+// Assigns each stdlib trait's methods a deterministic 0-based vtable slot
+// index, based on the order returned by `stdlib_trait_methods()`. This is
+// the last static-prep step before dyn Trait MIR lowering — codegen will
+// call these queries to determine:
+//   - `@.vtable.<trait>.<type>` global's element count (= slot_count)
+//   - the byte offset of a method call (= slot_index × pointer_size)
+//
+// Per API-naming-standard §3:
+//   - `StdlibVtableSlot` follows `<Noun><Noun><Noun>` pattern.
+//   - Query functions follow `<noun>_<noun>_<noun>` /
+//     `<noun>_<noun>_<noun>_<noun>` / `is_<noun>_<adj>_<noun>` /
+//     `<noun>_<noun>_with_<noun>` patterns.
+//
+// Per §16: uses `StdlibTraitMethod` (stdlib-internal), no `mir::ty` /
+// `codegen::EmitType` reference, so no circular dependency.
+// ============================================================================
+
+/// Stage 5.37: A single vtable slot description — slot index + method ref.
+///
+/// Each entry in a trait's vtable layout maps a 0-based index to the
+/// corresponding method signature. The index determines the method's
+/// byte offset in the vtable global (`index × pointer_size`).
+///
+/// Per API-naming-standard §3: `StdlibVtableSlot` follows
+/// `<Noun><Noun><Noun>` pattern. Field names follow `<noun>_<noun>` /
+/// `<noun>` patterns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StdlibVtableSlot {
+    /// 0-based vtable slot index.
+    pub slot_index: u32,
+    /// Reference to the method signature at this slot.
+    pub method: &'static StdlibTraitMethod,
+}
+
+/// Stage 5.37: Look up the vtable slot index for a specific (trait, method) pair.
+///
+/// Returns:
+/// - `Some(slot_index)` if the trait is registered and contains the method.
+/// - `None` if the trait is not registered, or the trait is a marker (no
+///   methods), or the method name doesn't match any method in the trait.
+///
+/// The slot index is the position of the method in
+/// `stdlib_trait_methods(trait_name)` — deterministic for the lifetime of
+/// the process (does not depend on HashMap iteration order).
+///
+/// Per API-naming-standard §3: `stdlib_trait_method_index` follows
+/// `<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_trait_method_index(trait_name: &str, method_name: &str) -> Option<u32> {
+    let methods = stdlib_trait_methods(trait_name)?;
+    methods
+        .iter()
+        .position(|m| m.name == method_name)
+        .map(|idx| idx as u32)
+}
+
+/// Stage 5.37: Get the complete vtable slot layout for a stdlib trait.
+///
+/// Returns `Some(Vec<StdlibVtableSlot>)` for any registered trait (including
+/// markers, which return an empty Vec), or `None` for unknown traits.
+///
+/// The returned Vec is ordered by `slot_index` (0, 1, 2, ...) and is
+/// deterministic — repeated calls with the same trait name return the
+/// same ordering.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_layout` follows
+/// `<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_vtable_layout(trait_name: &str) -> Option<Vec<StdlibVtableSlot>> {
+    let methods = stdlib_trait_methods(trait_name)?;
+    Some(
+        methods
+            .iter()
+            .enumerate()
+            .map(|(idx, m)| StdlibVtableSlot {
+                slot_index: idx as u32,
+                method: m,
+            })
+            .collect(),
+    )
+}
+
+/// Stage 5.37: Get the total number of vtable slots for a stdlib trait.
+///
+/// Returns:
+/// - `Some(0)` for marker traits (Copy/Send/Sync/Sized/Unpin/Eq).
+/// - `Some(n)` for traits with `n` declared methods.
+/// - `None` for traits that are not in the stdlib registry.
+///
+/// This is the value codegen uses to determine the element count of
+/// `@.vtable.<trait>.<type>` global.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_slot_count` follows
+/// `<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_vtable_slot_count(trait_name: &str) -> Option<u32> {
+    stdlib_trait_methods(trait_name).map(|m| m.len() as u32)
+}
+
+/// Stage 5.37: Check whether a trait is a marker trait (declares no methods).
+///
+/// Returns `true` only for traits that are registered in the stdlib
+/// registry AND have zero methods (Copy/Send/Sync/Sized/Unpin/Eq).
+/// Returns `false` for:
+/// - Traits with methods (Clone/Drop/Add/...)
+/// - Traits not in the stdlib registry (BogusTrait/From/Into/...)
+///
+/// Per API-naming-standard §3: `is_stdlib_marker_trait` follows
+/// `is_<noun>_<adj>_<noun>` pattern.
+pub fn is_stdlib_marker_trait(trait_name: &str) -> bool {
+    matches!(
+        stdlib_trait_methods(trait_name),
+        Some(methods) if methods.is_empty()
+    )
+}
+
+/// Stage 5.37: Get all stdlib traits that have at least one vtable slot
+/// (i.e. declare at least one method).
+///
+/// Marker traits (Copy/Send/Sync/Sized/Unpin/Eq) are excluded — they
+/// have empty vtables and don't need a global emitted.
+///
+/// Useful for codegen: iterate this list to know which traits need
+/// `@.vtable.<trait>.<type>` globals emitted for each impl.
+///
+/// Per API-naming-standard §3: `stdlib_traits_with_vtable` follows
+/// `<noun>_<noun>_with_<noun>` pattern.
+pub fn stdlib_traits_with_vtable() -> Vec<&'static str> {
+    /// Complete list of trait names registered in `stdlib_trait_methods()`.
+    /// (Same list as in `stdlib_traits_with_method` — duplicated locally
+    /// so each function is self-contained per §16.)
+    const ALL_REGISTERED_TRAITS: &[&str] = &[
+        // Markers (no methods — will be filtered out by slot_count > 0)
+        "Copy",
+        "Send",
+        "Sync",
+        "Sized",
+        "Unpin",
+        "Eq",
+        // Core traits
+        "Clone",
+        "Drop",
+        "Default",
+        "Display",
+        "Debug",
+        "PartialEq",
+        "PartialOrd",
+        "Ord",
+        "Hash",
+        "Deref",
+        "DerefMut",
+        "IntoIterator",
+        "Iterator",
+        // I/O traits
+        "Read",
+        "Write",
+        // Unary ops
+        "Neg",
+        "Not",
+        // Arithmetic binary ops
+        "Add",
+        "Sub",
+        "Mul",
+        "Div",
+        "Rem",
+        "BitAnd",
+        "BitOr",
+        "BitXor",
+        "Shl",
+        "Shr",
+        // Arithmetic assign ops
+        "AddAssign",
+        "SubAssign",
+        "MulAssign",
+        "DivAssign",
+        "RemAssign",
+        "BitAndAssign",
+        "BitOrAssign",
+        "BitXorAssign",
+        "ShlAssign",
+        "ShrAssign",
+    ];
+    let mut out: Vec<&'static str> = Vec::new();
+    for &trait_name in ALL_REGISTERED_TRAITS {
+        // Include only traits with at least one method slot.
+        if matches!(stdlib_vtable_slot_count(trait_name), Some(n) if n > 0) {
+            out.push(trait_name);
+        }
+    }
+    out
+}
