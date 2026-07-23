@@ -5123,3 +5123,43 @@ Stage Summary:
 - Stage 5.57 can now refactor driver to one-liner using this convenience entry.
 - Next: Stage 5.57+ (codegen trait-dispatch emission refactor — driver
   delegation + TextEmitter delegation, then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.57-r106
+Agent: Super Z (main)
+Task: Stage 5.57 — TextEmitter::emit_vtable_global delegation + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.52 / 1408 tests (Stage 5.56 complete)
+
+Stage 5.57: TextEmitter::emit_vtable_global delegation (FIRST EXISTING-PATH MODIFICATION)
+- src/codegen/text_emitter.rs: TextEmitter::emit_vtable_global() method body replaced
+  with delegation to crate::codegen::emit_vtable_global_text() (Stage 5.44)
+  * Behavior-equivalent on non-null paths (14 cross-check tests)
+  * Fixes latent null-handling bug (ptr @null → ptr null)
+- src/lib.rs: Stage 5.57 history comment
+- tests/v0/stage5/plan/text_emitter_vtable_delegation_tests.rs: 10 new tests
+  (incl. null bug fix test + no-regression test + match-free-fn test)
+- tests/all_tests.rs: added text_emitter_vtable_delegation_tests module (71 mods)
+- Cargo.toml: version 0.11.52 → 0.11.53
+
+Docs:
+- plan-5.57.md / gate-review-round57.md / text_emitter_vtable_delegation_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (945.8 MiB removed) ✅
+- cargo test: 1418 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.57 PASSED — CI/CD all green per §1.2.
+- **FIRST EXISTING-PATH MODIFICATION** in Stage 5 — TextEmitter::emit_vtable_global()
+  method body replaced with delegation to emit_vtable_global_text() (Stage 5.44).
+- Behavior-equivalent on non-null paths; fixes latent null-handling bug.
+- No regression — all 1408 existing tests pass + 10 new = 1418 total.
+- §16 compliance: TextEmitter calls same-module free function.
+- §23 compliance: no new API (only modifies existing trait method body).
+- Next: Stage 5.58+ (TextEmitter::emit_dyn_trait_const delegation,
+  emit_vtables/emit_dyn_trait_ptrs delegation, then dyn Trait MIR lowering).

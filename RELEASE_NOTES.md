@@ -1,9 +1,60 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.52
+**Current version**: v0.11.53
 **Date**: 2026-07-23
-**Test count**: 1408 tests + 5 benchmarks
+**Test count**: 1418 tests + 5 benchmarks
+
+---
+
+## v0.11.53 — Stage 5.57 (TextEmitter::emit_vtable_global delegation)
+
+### Overview
+
+**First existing-path modification** in Stage 5. Replaces
+`TextEmitter::emit_vtable_global()` method body with delegation to Stage 5.44's
+`emit_vtable_global_text()` free function. Behavior-equivalent on non-null
+paths (14 cross-check tests); fixes latent null-handling bug (old inline code
+emitted `ptr @null`, new code emits `ptr null`).
+
+### Modified code
+
+- `src/codegen/text_emitter.rs`: `TextEmitter::emit_vtable_global()` method body
+  replaced with `crate::codegen::emit_vtable_global_text(global_name, method_symbols)`
+  delegation. Old inline `format!` + `zeroinitializer` logic removed.
+
+### Design highlights
+
+1. **First existing-path modification**: 5.36-5.56 all added parallel free
+   functions without touching existing code. Stage 5.57 is the first to
+   modify an existing trait method body.
+2. **Behavior equivalence (non-null paths)**: byte-for-byte identical to old
+   inline code. Guaranteed by Stage 5.44's 14 cross-check tests.
+3. **Null-handling bug fix**: old inline code emitted `ptr @null` for "null"
+   strings; free function correctly emits `ptr null`.
+4. **No regression**: all 1408 existing tests pass + 10 new = 1418 total.
+
+### §16 / §23 compliance
+
+- `TextEmitter` calls `crate::codegen::emit_vtable_global_text()` (same-module
+  free function). No cross-module dependency issue.
+- No new API — only modifies existing trait method body.
+
+### Test impact
+
++10 tests (1408 → 1418) — covers basic delegation + empty/single/multi +
+**null bug fix** + **no-regression** (emit_vtables still works) +
+**match-free-fn** (delegated output == free function output) + emitter globals
++ return value + real scenario.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (945.8 MiB removed)
+cargo test: 1418 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

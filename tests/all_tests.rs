@@ -247,3 +247,6 @@ mod codegen_text_batch_tests;
 
 #[path = "v0/stage5/plan/codegen_text_batch_from_resolver_tests.rs"]
 mod codegen_text_batch_from_resolver_tests;
+
+#[path = "v0/stage5/plan/text_emitter_vtable_delegation_tests.rs"]
+mod text_emitter_vtable_delegation_tests;

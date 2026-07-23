@@ -1722,3 +1722,38 @@ no circular dependency.
 **Test impact**: +12 (1396 → 1408).
 **Clippy impact**: 0 (0 warnings; fixed 1 unused import).
 **Fmt impact**: clean.
+
+### v1.27 (Stage 5.57, 2026-07-23)
+
+Stage 5.57 TextEmitter::emit_vtable_global delegation round. **First
+existing-path modification** in Stage 5 — replaces trait method body with
+delegation to a free function.
+
+**No new public symbols** — only modifies existing `TextEmitter::emit_vtable_global()`
+trait method body.
+
+**Design decisions**:
+1. **First existing-path modification**: 5.36-5.56 all added parallel free
+   functions without touching existing code. Stage 5.57 is the first to
+   modify an existing trait method body — replacing inline `format!` logic
+   with a delegation call to Stage 5.44's `emit_vtable_global_text()`.
+2. **Behavior equivalence (non-null paths)**: the delegated free function
+   produces byte-for-byte identical IR to the old inline code on non-null
+   paths. Guaranteed by Stage 5.44's 14 cross-check tests.
+3. **Null-handling bug fix**: the old inline code would emit `ptr @null` for
+   "null" strings (because it unconditionally prepended `@` to every symbol).
+   The free function correctly detects "null" and emits `ptr null` (no `@`).
+   This is a latent bug fix — `emit_vtables()` never passes "null" symbols
+   (only real symbols from `VtableEntry.fn_name`), so the bug was never
+   triggered in practice. But the delegation makes the code correct for all
+   inputs.
+4. **No regression**: all 1408 existing tests pass + 10 new = 1418 total.
+   `test_text_emitter_vtable_global_delegation_no_regression` explicitly
+   verifies that `emit_vtables()` (which internally calls
+   `emit_vtable_global()`) still produces correct output after delegation.
+5. **§16 compliance**: `TextEmitter` calls `crate::codegen::emit_vtable_global_text()`
+   (same-module free function). No cross-module dependency issue.
+
+**Test impact**: +10 (1408 → 1418).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

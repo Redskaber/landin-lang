@@ -350,8 +350,14 @@
 //!     step). Composes Stage 5.53 `build_trait_dispatch_emission_plan()` +
 //!     Stage 5.55 `emit_trait_dispatch_globals_text_batch()`. Final piece
 //!     before Stage 5.57 driver delegation.
-//!   Next: Stage 5.57+ (codegen trait-dispatch emission refactor — driver
-//!     delegation + TextEmitter delegation, then dyn Trait MIR lowering).
+//!   Stage 5.57 (v0.11.53): TextEmitter::emit_vtable_global delegation —
+//!     **first existing-path modification**. `TextEmitter::emit_vtable_global()`
+//!     method body replaced with delegation to Stage 5.44's
+//!     `emit_vtable_global_text()` free function. Behavior-equivalent on
+//!     non-null paths (14 cross-check tests); fixes latent null-handling
+//!     bug (old inline code emitted `ptr @null`, new code emits `ptr null`).
+//!   Next: Stage 5.58+ (TextEmitter::emit_dyn_trait_const delegation,
+//!     emit_vtables/emit_dyn_trait_ptrs delegation, then dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

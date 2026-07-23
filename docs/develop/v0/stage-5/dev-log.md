@@ -1853,3 +1853,46 @@ The `_from_resolver` suffix indicates the input source (resolver, not plan).
 **Test impact**: +12 (1396 → 1408)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
   (fixed 1 unused import warning)
+
+### Stage 5.57 — TextEmitter::emit_vtable_global Delegation (v0.11.53)
+
+**Priority**: **First existing-path modification** in Stage 5. Replaces
+`TextEmitter::emit_vtable_global()` method body with delegation to Stage 5.44's
+`emit_vtable_global_text()` free function. Behavior-equivalent on non-null
+paths; fixes latent null-handling bug.
+
+**Work completed**:
+- src/codegen/text_emitter.rs: `TextEmitter::emit_vtable_global()` method body
+  replaced with `crate::codegen::emit_vtable_global_text(global_name, method_symbols)`
+  delegation. Old inline `format!` + `zeroinitializer` logic removed.
+- src/lib.rs: Stage 5.57 history comment
+- tests/v0/stage5/plan/text_emitter_vtable_delegation_tests.rs: 10 new tests
+  covering basic delegation + empty/single/multi + **null bug fix** +
+  **no-regression** (emit_vtables still works) + **match-free-fn** (delegated
+  output == free function output) + emitter globals + return value + real scenario
+- tests/all_tests.rs: added text_emitter_vtable_delegation_tests module (71 mods)
+- Cargo.toml: version 0.11.52 → 0.11.53
+
+**Design highlights**:
+- **First existing-path modification**: 5.36-5.56 all added parallel free functions
+  without touching existing code. Stage 5.57 is the first to modify an existing
+  trait method body — replacing inline `format!` logic with a delegation call.
+- **Behavior equivalence (non-null paths)**: the delegated free function produces
+  byte-for-byte identical IR to the old inline code on non-null paths. This is
+  guaranteed by Stage 5.44's 14 cross-check tests.
+- **Null-handling bug fix**: the old inline code would emit `ptr @null` for
+  "null" strings (because it unconditionally prepended `@` to every symbol).
+  The free function correctly detects "null" and emits `ptr null` (no `@`).
+  `test_text_emitter_vtable_global_delegation_null` verifies this fix.
+- **No regression**: all 1408 existing tests pass + 10 new tests = 1418 total.
+  `test_text_emitter_vtable_global_delegation_no_regression` explicitly verifies
+  that `emit_vtables()` (which internally calls `emit_vtable_global()`) still
+  produces correct output after delegation.
+
+**§16 interface isolation**: `TextEmitter` calls `crate::codegen::emit_vtable_global_text()`
+(same-module free function). No cross-module dependency issue.
+
+**§23 API naming**: no new API — only modifies existing trait method body.
+
+**Test impact**: +10 (1408 → 1418)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

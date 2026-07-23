@@ -522,8 +522,10 @@ impl Emitter for TextEmitter {
     }
 
     fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue {
-        // Stage 5.6: emit a vtable as a constant global array of opaque
-        // function pointers. Uses LLVM 15+ opaque pointer type (`ptr`).
+        // Stage 5.57: delegate to emit_vtable_global_text() (Stage 5.44 free function).
+        // This also fixes the latent null-handling bug — the old inline code (Stage
+        // 5.6) would emit `ptr @null` for "null" strings, while the free function
+        // correctly emits `ptr null`.
         //
         // Layout (e.g. trait Foo with method `bar` impl'd for type S):
         //   @.vtable.Foo.S = private unnamed_addr constant [1 x ptr] [ptr @landin_S_bar]
@@ -533,19 +535,7 @@ impl Emitter for TextEmitter {
         // unique global_name per vtable. If `method_symbols` is empty we
         // still emit the global as a zero-size array so downstream stages
         // can reference it unconditionally.
-
-        // Build the LLVM initializer expression.
-        let init = if method_symbols.is_empty() {
-            "zeroinitializer".to_string()
-        } else {
-            let entries: Vec<String> = method_symbols
-                .iter()
-                .map(|sym| format!("ptr @{}", sym))
-                .collect();
-            format!("[{} x ptr] [{}]", method_symbols.len(), entries.join(", "))
-        };
-
-        let global_def = format!("@{} = private unnamed_addr constant {}", global_name, init);
+        let global_def = crate::codegen::emit_vtable_global_text(global_name, method_symbols);
         self.globals.push(global_def);
         // Return the global's name (without leading `@`).
         global_name.to_string()
