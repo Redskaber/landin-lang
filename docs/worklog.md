@@ -4435,3 +4435,46 @@ Stage Summary:
   with these planner functions — behavior-equivalent, string logic
   centralized for future naming convention changes.
 - Next: Stage 5.41+ (codegen vtable emission refactor, dyn Trait MIR lowering).
+
+---
+Task ID: stage5.41-r90
+Agent: Super Z (main)
+Task: Stage 5.41 — stdlib vtable emission plan (aggregate) + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.36 / 1206 tests (Stage 5.40 complete)
+
+Stage 5.41: Stdlib vtable emission plan (aggregate)
+- src/stdlib.rs: new StdlibVtableEmission struct (9 fields)
+- src/stdlib.rs: 2 new free-function query APIs:
+  * stdlib_vtable_emission(trait, type, provided) -> Option<StdlibVtableEmission>
+  * stdlib_vtable_emissions_for_traits(traits, type, provided) -> Vec<StdlibVtableEmission>
+- src/lib.rs: re-export all new APIs + Stage 5.41 history comment
+- tests/v0/stage5/plan/stdlib_vtable_emission_tests.rs: 17 new tests
+- tests/all_tests.rs: added stdlib_vtable_emission_tests module (55 mods)
+- Cargo.toml: version 0.11.36 → 0.11.37
+
+Docs:
+- plan-5.41.md / gate-review-round41.md / stdlib_vtable_emission_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (801.5 MiB removed) ✅
+- cargo test: 1223 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.41 PASSED — CI/CD all green per §1.2.
+- StdlibVtableEmission (9 fields) + 2 query APIs added.
+- Single-call aggregate: codegen 5.42+ will call stdlib_vtable_emission()
+  once and consume the struct fields directly — no more 5 separate stdlib
+  calls per vtable.
+- Batch query for multi-trait impls (Clone + Drop + Display on same type).
+- §16 compliance: struct uses only String + Vec<String> + scalars, no
+  mir::ty / codegen::EmitType / traits::TraitResolver reference.
+- §23 compliance: all 3 new public symbols + 9 field names follow API
+  naming standard.
+- Stage 5.42+ can now refactor codegen to a single stdlib_vtable_emission()
+  call per vtable — simpler codegen, centralized stdlib logic.
+- Next: Stage 5.42+ (codegen vtable emission refactor, dyn Trait MIR lowering).

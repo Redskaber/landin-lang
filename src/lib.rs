@@ -224,7 +224,16 @@
 //!     pure stdlib functions (matches existing codegen `format!` calls
 //!     byte-for-byte — Stage 5.41+ will replace codegen's `format!`
 //!     with these planner functions, behavior-equivalent).
-//!   Next: Stage 5.41+ (codegen vtable emission refactor, dyn Trait MIR lowering).
+//!   Stage 5.41 (v0.11.37): Stdlib vtable emission plan (aggregate) —
+//!     `StdlibVtableEmission` struct (trait_name + type_name +
+//!     global_name + method_symbols + slot_count + byte_size_32/64 +
+//!     is_marker + is_complete) + `stdlib_vtable_emission(trait, type,
+//!     provided)` + `stdlib_vtable_emissions_for_traits(traits, type,
+//!     provided)` for single-call aggregation of everything codegen
+//!     needs to emit `@.vtable.<trait>.<type>` global. Stage 5.42+
+//!     will replace codegen's 5 separate stdlib calls with one
+//!     `stdlib_vtable_emission()` call — codegen becomes simpler.
+//!   Next: Stage 5.42+ (codegen vtable emission refactor, dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -261,11 +270,12 @@ pub use stdlib::{
     stdlib_dynptr_global_name, stdlib_impl_method_symbol, stdlib_pointer_width_bytes,
     stdlib_trait_method_count, stdlib_trait_method_index, stdlib_trait_methods,
     stdlib_traits_with_method, stdlib_traits_with_vtable, stdlib_vtable_byte_size,
-    stdlib_vtable_global_name, stdlib_vtable_layout, stdlib_vtable_method_offset,
-    stdlib_vtable_method_symbols, stdlib_vtable_plan, stdlib_vtable_plan_entry_count,
-    stdlib_vtable_plan_is_complete, stdlib_vtable_plan_missing_methods, stdlib_vtable_slot_count,
-    type_alignment_bytes, type_description, type_size_bytes, StdlibFacade, StdlibLayer,
-    StdlibPointerWidth, StdlibPrelude, StdlibSelfKind, StdlibTraitMethod, StdlibTypeKind,
+    stdlib_vtable_emission, stdlib_vtable_emissions_for_traits, stdlib_vtable_global_name,
+    stdlib_vtable_layout, stdlib_vtable_method_offset, stdlib_vtable_method_symbols,
+    stdlib_vtable_plan, stdlib_vtable_plan_entry_count, stdlib_vtable_plan_is_complete,
+    stdlib_vtable_plan_missing_methods, stdlib_vtable_slot_count, type_alignment_bytes,
+    type_description, type_size_bytes, StdlibFacade, StdlibLayer, StdlibPointerWidth,
+    StdlibPrelude, StdlibSelfKind, StdlibTraitMethod, StdlibTypeKind, StdlibVtableEmission,
     StdlibVtablePlan, StdlibVtablePlanEntry, StdlibVtableSlot,
 };
 pub use traits::{

@@ -1711,3 +1711,188 @@ pub fn stdlib_vtable_method_symbols(
             .collect(),
     )
 }
+
+// ============================================================================
+// Stage 5.41: Stdlib vtable emission plan (aggregate structure)
+//
+// Single-call aggregate that returns everything codegen needs to emit
+// `@.vtable.<trait>.<type>` global:
+//   - global_name (".vtable.<trait>.<type>")
+//   - method_symbols (Vec<String> — "landin_T_m" or "null" per slot)
+//   - slot_count (u32)
+//   - byte_size_32 / byte_size_64 (u64 — for 32/64-bit targets)
+//   - is_marker (true if slot_count == 0)
+//   - is_complete (true if all slots provided)
+//
+// Stage 5.42+ will replace codegen's inline format! calls + separate stdlib
+// queries with a single `stdlib_vtable_emission()` call that returns this
+// struct. Codegen becomes simpler: one function call, one struct, direct
+// field access.
+//
+// Per API-naming-standard §3:
+//   - `StdlibVtableEmission` follows `<Noun><Noun><Noun>` pattern.
+//   - Query functions follow `<noun>_<noun>_<noun>` /
+//     `<noun>_<noun>_<noun>_<prep>_<noun>` patterns.
+//
+// Per §16: uses only String + Vec<String> + scalars — no `mir::ty` /
+// `codegen::EmitType` / `traits::TraitResolver` reference, no circular dep.
+// ============================================================================
+
+/// Stage 5.41: Everything codegen needs to emit one `@.vtable.<trait>.<type>` global.
+///
+/// Returned by `stdlib_vtable_emission()`. Codegen consumes this struct
+/// directly to emit the vtable global — no need to call 5 separate stdlib
+/// functions.
+///
+/// Per API-naming-standard §3: `StdlibVtableEmission` follows
+/// `<Noun><Noun><Noun>` pattern. Field names follow `<noun>_<noun>` /
+/// `<noun>_<noun>_<digits>` / `is_<adj>` patterns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StdlibVtableEmission {
+    /// The trait this vtable is for (static string from the stdlib registry).
+    pub trait_name: &'static str,
+    /// The implementing type name (caller-provided).
+    pub type_name: String,
+    /// LLVM global name: `format!(".vtable.{trait}.{type}")`.
+    pub global_name: String,
+    /// Ordered method symbol list — each entry is either
+    /// `format!("landin_{type}_{method}")` (provided) or `"null"` (missing).
+    /// Codegen emits this directly as the `[n x ptr] [...]` initializer.
+    pub method_symbols: Vec<String>,
+    /// Number of vtable slots (= `method_symbols.len()`).
+    pub slot_count: u32,
+    /// Vtable byte size on a 32-bit target (= `slot_count × 4`).
+    pub byte_size_32: u64,
+    /// Vtable byte size on a 64-bit target (= `slot_count × 8`).
+    pub byte_size_64: u64,
+    /// `true` if the trait is a marker (0 slots — empty vtable).
+    pub is_marker: bool,
+    /// `true` if all slots are provided (no "null" entries).
+    pub is_complete: bool,
+}
+
+/// Stage 5.41: Build a complete vtable emission plan for a (trait, type) pair.
+///
+/// Given a trait name, type name, and the method names the impl provides,
+/// returns `Some(StdlibVtableEmission)` containing everything codegen needs
+/// to emit the `@.vtable.<trait>.<type>` global in one pass:
+/// - `global_name` (from `stdlib_vtable_global_name`)
+/// - `method_symbols` (from `stdlib_vtable_method_symbols`)
+/// - `slot_count` (= `method_symbols.len()`)
+/// - `byte_size_32` / `byte_size_64` (= `slot_count × 4` / `× 8`)
+/// - `is_marker` (`true` if `slot_count == 0`)
+/// - `is_complete` (`true` if no "null" entries)
+///
+/// Returns `None` if the trait is not in the stdlib registry.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_emission` follows
+/// `<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_vtable_emission(
+    trait_name: &str,
+    type_name: &str,
+    provided_method_names: &[&str],
+) -> Option<StdlibVtableEmission> {
+    // Resolve the static trait name (mirrors stdlib_vtable_plan logic).
+    /// Local copy of the registered-traits list (same as in
+    /// `stdlib_vtable_plan` — duplicated per §16 to keep stdlib.rs
+    /// self-contained).
+    const ALL_REGISTERED_TRAITS: &[&str] = &[
+        "Copy",
+        "Send",
+        "Sync",
+        "Sized",
+        "Unpin",
+        "Eq",
+        "Clone",
+        "Drop",
+        "Default",
+        "Display",
+        "Debug",
+        "PartialEq",
+        "PartialOrd",
+        "Ord",
+        "Hash",
+        "Deref",
+        "DerefMut",
+        "IntoIterator",
+        "Iterator",
+        "Read",
+        "Write",
+        "Neg",
+        "Not",
+        "Add",
+        "Sub",
+        "Mul",
+        "Div",
+        "Rem",
+        "BitAnd",
+        "BitOr",
+        "BitXor",
+        "Shl",
+        "Shr",
+        "AddAssign",
+        "SubAssign",
+        "MulAssign",
+        "DivAssign",
+        "RemAssign",
+        "BitAndAssign",
+        "BitOrAssign",
+        "BitXorAssign",
+        "ShlAssign",
+        "ShrAssign",
+    ];
+    let static_trait_name: &'static str = ALL_REGISTERED_TRAITS
+        .iter()
+        .copied()
+        .find(|&n| n == trait_name)?;
+
+    let global_name = stdlib_vtable_global_name(static_trait_name, type_name);
+    let method_symbols =
+        stdlib_vtable_method_symbols(static_trait_name, type_name, provided_method_names)?;
+    let slot_count = method_symbols.len() as u32;
+    let byte_size_32 = slot_count as u64 * 4;
+    let byte_size_64 = slot_count as u64 * 8;
+    let is_marker = slot_count == 0;
+    let is_complete = !method_symbols.iter().any(|s| s == "null");
+
+    Some(StdlibVtableEmission {
+        trait_name: static_trait_name,
+        type_name: type_name.to_string(),
+        global_name,
+        method_symbols,
+        slot_count,
+        byte_size_32,
+        byte_size_64,
+        is_marker,
+        is_complete,
+    })
+}
+
+/// Stage 5.41: Build vtable emission plans for multiple traits on one type.
+///
+/// Given a slice of trait names, a type name, and the impl's provided method
+/// names, returns a `Vec<StdlibVtableEmission>` — one per trait that is
+/// registered in the stdlib registry. Unknown traits are silently skipped
+/// (no `None` entries in the Vec).
+///
+/// Useful for codegen when a single type implements multiple stdlib traits
+/// (e.g. `struct S` impls `Clone + Drop + Display`).
+///
+/// Per API-naming-standard §3: `stdlib_vtable_emissions_for_traits` follows
+/// `<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub fn stdlib_vtable_emissions_for_traits(
+    trait_names: &[&str],
+    type_name: &str,
+    provided_method_names: &[&str],
+) -> Vec<StdlibVtableEmission> {
+    let mut out: Vec<StdlibVtableEmission> = Vec::new();
+    for &trait_name in trait_names {
+        if let Some(emission) = stdlib_vtable_emission(trait_name, type_name, provided_method_names)
+        {
+            out.push(emission);
+        }
+        // Unknown traits are silently skipped — caller may pass a list
+        // containing non-stdlib traits (e.g. user-defined traits).
+    }
+    out
+}

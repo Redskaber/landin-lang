@@ -878,3 +878,67 @@ reference, no circular dependency. Pure functions, callable from any stage.
 **Test impact**: +16 (1190 → 1206).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.11 (Stage 5.41, 2026-07-23)
+
+Stage 5.41 stdlib vtable emission plan (aggregate) round. Adds a single-call
+aggregate struct that returns everything codegen needs to emit one
+`@.vtable.<trait>.<type>` global. Stage 5.42+ will replace codegen's 5
+separate stdlib calls with one `stdlib_vtable_emission()` call.
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `StdlibVtableEmission` | struct | `<Noun><Noun><Noun>` |
+| `stdlib_vtable_emission` | free fn | `<noun>_<noun>_<noun>` |
+| `stdlib_vtable_emissions_for_traits` | free fn | `<noun>_<noun>_<noun>_<prep>_<noun>` |
+
+**Field naming (9 fields, all §23-compliant)**:
+
+| Field | Type | Naming pattern |
+|-------|------|----------------|
+| `trait_name` | `&'static str` | `<noun>_<noun>` |
+| `type_name` | `String` | `<noun>_<noun>` |
+| `global_name` | `String` | `<noun>_<noun>` |
+| `method_symbols` | `Vec<String>` | `<noun>_<noun>` |
+| `slot_count` | `u32` | `<noun>_<noun>` |
+| `byte_size_32` | `u64` | `<noun>_<noun>_<digits>` |
+| `byte_size_64` | `u64` | `<noun>_<noun>_<digits>` |
+| `is_marker` | `bool` | `is_<adj>` |
+| `is_complete` | `bool` | `is_<adj>` |
+
+**Design decisions**:
+1. **Aggregate struct, not multiple return values**: a 9-field struct is
+   clearer than a 9-tuple and lets codegen use field names
+   (`e.global_name`, `e.byte_size_64`) instead of positional access
+   (`e.3`, `e.6`). Future field additions are non-breaking (callers using
+   field names don't need to change).
+2. **`byte_size_32` / `byte_size_64` rather than a single `byte_size` +
+   `StdlibPointerWidth` parameter**: pre-computes both widths so codegen
+   can pick the right one based on target without re-calling. Avoids
+   passing the width through every call site.
+3. **`is_marker` + `is_complete` as precomputed bools**: codegen often
+   needs to skip markers or warn on incomplete impls — precomputing these
+   flags avoids re-deriving from `slot_count` / `method_symbols` at every
+   consumer site.
+4. **Batch query `stdlib_vtable_emissions_for_traits`** uses the
+   `<noun>_<noun>_<noun>_<prep>_<noun>` pattern
+   (`emissions_for_traits`). The `for_traits` preposition phrase makes
+   the "batch over a trait list" semantics explicit, distinguishing it
+   from the singular `stdlib_vtable_emission`.
+5. **Unknown traits silently skipped in batch**: the caller may pass a
+   mixed list of stdlib trait names + user-defined trait names (which
+   aren't in the stdlib registry). Strictness here would force callers
+   to pre-filter, which is error-prone.
+6. **`StdlibVtableEmission` derives `PartialEq`/`Eq`**: usable for test
+   assertions and future emission-cache deduplication (codegen may
+   memoize emissions per (trait, impl_type) pair).
+
+**§16 compliance**: struct uses only `&'static str` + `String` +
+`Vec<String>` + scalars — no `mir::ty` / `codegen::EmitType` /
+`traits::TraitResolver` reference, no circular dependency.
+
+**Test impact**: +17 (1206 → 1223).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

@@ -1,9 +1,75 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.36
+**Current version**: v0.11.37
 **Date**: 2026-07-23
-**Test count**: 1206 tests + 5 benchmarks
+**Test count**: 1223 tests + 5 benchmarks
+
+---
+
+## v0.11.37 — Stage 5.41 (Stdlib vtable emission plan — aggregate)
+
+### Overview
+
+Single-call aggregate that returns everything codegen needs to emit
+`@.vtable.<trait>.<type>` global. Stage 5.42+ will replace codegen's 5
+separate stdlib calls with one `stdlib_vtable_emission()` call — codegen
+becomes simpler: one function call, one struct, direct field access.
+
+### New type
+
+- `StdlibVtableEmission` — 9 fields:
+  - `trait_name: &'static str` / `type_name: String`
+  - `global_name: String` (`.vtable.<trait>.<type>`)
+  - `method_symbols: Vec<String>` (`landin_T_m` or `"null"` per slot)
+  - `slot_count: u32`
+  - `byte_size_32: u64` / `byte_size_64: u64`
+  - `is_marker: bool` / `is_complete: bool`
+
+### New APIs
+
+- `stdlib_vtable_emission(trait, type, provided) -> Option<StdlibVtableEmission>`
+  — single-call aggregate
+- `stdlib_vtable_emissions_for_traits(traits, type, provided) -> Vec<StdlibVtableEmission>`
+  — batch query for one type implementing multiple traits
+
+### Design highlights
+
+1. **Single-call aggregate**: `stdlib_vtable_emission()` returns all 9 fields
+   in one struct. Stage 5.42+ codegen becomes a one-liner:
+   `let e = stdlib_vtable_emission(trait, type, provided)?;` then directly
+   use `e.global_name`, `e.method_symbols`, `e.byte_size_64`, etc.
+2. **Compositional**: internally calls Stage 5.40 `stdlib_vtable_global_name()`
+   + `stdlib_vtable_method_symbols()`. Single source of truth.
+3. **Batch query** for multi-trait impls (common case: `struct S` impls
+   Clone + Drop + Display). Unknown traits silently skipped.
+4. **Markers included** in batch results with `is_marker=true` — codegen
+   can decide whether to skip empty vtable emission.
+5. **`StdlibVtableEmission` derives `PartialEq`/`Eq`** — test assertions +
+   future emission-cache deduplication.
+
+### §16 / §23 compliance
+
+- Struct uses only `&'static str` + `String` + `Vec<String>` + scalars —
+  no `mir::ty` / `codegen::EmitType` / `traits::TraitResolver` reference,
+  no circular dependency.
+- All 3 new public symbols + 9 field names follow API-naming-standard §23.
+
+### Test impact
+
++17 tests (1206 → 1223) — covers single-emission construction
+(complete/partial/marker/unknown/arith) / field correctness
+(global_name/byte_sizes/is_complete/is_marker) / batch query
+(multi-trait/filters-unknown/empty/includes-markers) / struct semantics.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (801.5 MiB removed)
+cargo test: 1223 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

@@ -1000,3 +1000,60 @@ reference, no circular dependency. Pure functions, callable from any stage.
 
 **Test impact**: +16 (1190 → 1206)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.41 — Stdlib Vtable Emission Plan (Aggregate) (v0.11.37)
+
+**Priority**: Single-call aggregate that returns everything codegen needs
+to emit `@.vtable.<trait>.<type>` global. Stage 5.42+ will replace codegen's
+5 separate stdlib calls with one `stdlib_vtable_emission()` call — codegen
+becomes simpler.
+
+**Work completed**:
+- src/stdlib.rs: new `StdlibVtableEmission` struct (9 fields: trait_name +
+  type_name + global_name + method_symbols + slot_count + byte_size_32 +
+  byte_size_64 + is_marker + is_complete)
+- src/stdlib.rs: 2 new free-function query APIs:
+  * `stdlib_vtable_emission(trait, type, provided) -> Option<StdlibVtableEmission>`
+    — single-call aggregate (combines Stage 5.40 global_name +
+    method_symbols + Stage 5.37/5.38 slot_count/byte_size)
+  * `stdlib_vtable_emissions_for_traits(traits, type, provided) -> Vec<StdlibVtableEmission>`
+    — batch query for one type implementing multiple traits; unknown
+    traits silently skipped
+- src/lib.rs: re-export all new APIs + Stage 5.41 history comment
+- tests/v0/stage5/plan/stdlib_vtable_emission_tests.rs: 17 new tests covering
+  single-emission construction (complete/partial/marker/unknown/arith) /
+  field correctness (global_name/byte_sizes/is_complete/is_marker) /
+  batch query (multi-trait/filters-unknown/empty/includes-markers) /
+  struct semantics (PartialEq/Eq/field access)
+- tests/all_tests.rs: added stdlib_vtable_emission_tests module (55 mods total)
+- Cargo.toml: version 0.11.36 → 0.11.37
+
+**Design highlights**:
+- Single-call aggregate: `stdlib_vtable_emission()` returns all 9 fields
+  codegen needs in one struct. Stage 5.42+ codegen refactor becomes a
+  one-liner: `let e = stdlib_vtable_emission(trait, type, provided)?;`
+  then directly use `e.global_name`, `e.method_symbols`, `e.byte_size_64`,
+  etc.
+- Compositional: internally calls Stage 5.40 `stdlib_vtable_global_name()` +
+  `stdlib_vtable_method_symbols()`. Single source of truth — no duplicated
+  formatting logic.
+- Batch query `stdlib_vtable_emissions_for_traits()` for one type
+  implementing multiple traits (common case: `struct S` impls Clone + Drop
+  + Display). Unknown traits silently skipped — caller may pass user-defined
+  trait names mixed with stdlib names.
+- Markers included in batch results with `is_marker=true` — codegen can
+  decide whether to skip empty vtable emission.
+- `StdlibVtableEmission` derives `PartialEq`/`Eq` — usable for test
+  assertions and future emission-cache deduplication.
+
+**§16 interface isolation**: struct uses only `&'static str` + `String` +
+`Vec<String>` + scalars — no `mir::ty` / `codegen::EmitType` /
+`traits::TraitResolver` reference, no circular dependency.
+
+**§23 API naming**: All 3 new public symbols comply (StdlibVtableEmission
+follows `<Noun><Noun><Noun>`; 2 free functions follow `<noun>_<noun>_<noun>`
+and `<noun>_<noun>_<noun>_<prep>_<noun>`). All 9 field names comply
+(`<noun>_<noun>` / `<noun>_<noun>_<digits>` / `is_<adj>`).
+
+**Test impact**: +17 (1206 → 1223)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
