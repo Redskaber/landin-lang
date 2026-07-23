@@ -1412,3 +1412,53 @@ that composes Stage 5.49's `build_dynptr_global_specs()` + per-spec
 **Test impact**: +12 (1322 → 1334).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.21 (Stage 5.51, 2026-07-23)
+
+Stage 5.51 codegen vtable + dynptr combined emission orchestrator round.
+Adds the **single entry point** for emitting all trait-dispatch globals
+(vtable + dynptr) in one call.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_vtables_and_dynptrs_from_resolver` | free fn (in `codegen`) | `<verb>_<noun>_<conj>_<noun>_<prep>_<noun>` |
+
+**Design decisions**:
+1. **`_and_` conjunction** connects the two noun phrases (vtables + dynptrs).
+   This is the first codegen API name to use `_and_` — justified because the
+   function genuinely does two distinct things (emit vtable globals AND emit
+   dynptr globals), and the name makes this explicit. Alternative
+   `emit_trait_dispatch_globals_from_resolver` was considered but rejected
+   because "trait_dispatch_globals" is vaguer than "vtables_and_dynptrs".
+2. **`emit_` prefix** consistent with the rest of the codegen orchestrator
+   family (`emit_vtables_from_resolver`, `emit_dynptrs_from_resolver`).
+   Indicates side-effect (push to emitter).
+3. **`_from_resolver` suffix** consistent with Stage 5.47 + Stage 5.50
+   orchestrators. Indicates the input source (TraitResolver).
+4. **Compositional**: internally calls Stage 5.47 `emit_vtables_from_resolver()`
+   + Stage 5.50 `emit_dynptrs_from_resolver()`. Single source of truth — no
+   duplicated logic. If the underlying orchestrators change behavior, the
+   combined orchestrator automatically inherits the change.
+5. **Behavior-equivalence cross-check test**:
+   `test_emit_vtables_and_dynptrs_match_separate_calls` calls both the
+   combined orchestrator and the separate `emit_vtables()` +
+   `emit_dyn_trait_ptrs()` pair on the same inputs, asserts outputs are
+   identical. Safety net for Stage 5.52 driver refactor.
+6. **Order guarantee**: vtable globals emitted before dynptr globals (because
+   `emit_vtables_from_resolver` is called first). This matches the existing
+   driver call order. Verified by `test_emit_vtables_and_dynptrs_order`.
+7. **Counting subtlety in tests**: `@.vtable.` appears both in vtable global
+   definitions AND in dynptr initializers (`ptr @.vtable.X.Y`). Tests count
+   global *definitions* (lines starting with `@.vtable.` + `private
+   unnamed_addr constant`) rather than raw substring matches, to avoid
+   double-counting.
+
+**§16 compliance**: function takes `&TraitResolver` + `&Rodeo` + `&mut dyn Emitter`
+(same as `emit_vtables()` + `emit_dyn_trait_ptrs()`). No `mir::ty` reference,
+no circular dependency.
+
+**Test impact**: +12 (1334 → 1346).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

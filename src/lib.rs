@@ -300,9 +300,17 @@
 //!     loop — verified by cross-check test. **dynptr counterpart** of Stage
 //!     5.47's `emit_vtables_from_resolver()`. Stage 5.51 will refactor
 //!     `emit_dyn_trait_ptrs()` to delegate to this orchestrator (one-liner body).
-//!   Next: Stage 5.51+ (codegen vtable + dynptr emission refactor — TextEmitter
-//!     delegation + emit_vtables/emit_dyn_trait_ptrs delegation, then dyn
-//!     Trait MIR lowering).
+//!   Stage 5.51 (v0.11.47): Codegen vtable + dynptr combined emission
+//!     orchestrator — new free fn
+//!     `emit_vtables_and_dynptrs_from_resolver(&TraitResolver, &Rodeo, &mut dyn Emitter)`
+//!     in `src/codegen/mod.rs`. Composes Stage 5.47's
+//!     `emit_vtables_from_resolver()` + Stage 5.50's
+//!     `emit_dynptrs_from_resolver()`. **Single entry point** for codegen to
+//!     emit all trait-dispatch globals (vtable + dynptr). Stage 5.52 will
+//!     refactor driver/codegen to call this combined orchestrator instead of
+//!     separately calling `emit_vtables()` + `emit_dyn_trait_ptrs()`.
+//!   Next: Stage 5.52+ (codegen trait-dispatch emission refactor — driver
+//!     delegation + TextEmitter delegation, then dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -331,8 +339,8 @@ pub use codegen::{
     build_dynptr_global_specs, build_vtable_global_specs, codegen_crate, emit_dyn_trait_ptr_type,
     emit_dyn_trait_ptrs, emit_dynptr_global_text, emit_dynptrs_from_resolver,
     emit_vtable_global_from_emission, emit_vtable_global_text, emit_vtable_globals_batch,
-    emit_vtables, emit_vtables_from_resolver, EmitType, EmitValue, Emitter, StdlibDynptrGlobalSpec,
-    StdlibVtableGlobalSpec, TextEmitter,
+    emit_vtables, emit_vtables_and_dynptrs_from_resolver, emit_vtables_from_resolver, EmitType,
+    EmitValue, Emitter, StdlibDynptrGlobalSpec, StdlibVtableGlobalSpec, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{

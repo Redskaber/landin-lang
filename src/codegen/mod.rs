@@ -1915,3 +1915,48 @@ pub fn emit_dynptrs_from_resolver(
         emitter.emit_dyn_trait_const(&spec.global_name, &spec.data_symbol, &spec.vtable_symbol);
     }
 }
+
+// ============================================================================
+// Stage 5.51: Codegen vtable + dynptr combined emission orchestrator
+//
+// Single entry point that composes Stage 5.47's `emit_vtables_from_resolver()`
+// + Stage 5.50's `emit_dynptrs_from_resolver()`. Emits ALL trait-dispatch
+// globals (vtable + dynptr) in one call.
+//
+// Stage 5.52 will refactor driver/codegen to call this combined orchestrator
+// instead of separately calling `emit_vtables()` + `emit_dyn_trait_ptrs()`.
+//
+// Per API-naming-standard §3: `emit_vtables_and_dynptrs_from_resolver`
+// follows `<verb>_<noun>_<conj>_<noun>_<prep>_<noun>` pattern. The `_and_`
+// conjunction connects the two noun phrases (vtables + dynptrs).
+//
+// Per §16: takes `&TraitResolver` + `&Rodeo` + `&mut dyn Emitter` (same as
+// `emit_vtables()` + `emit_dyn_trait_ptrs()`). No `mir::ty` reference, no
+// circular dependency.
+// ============================================================================
+
+/// Stage 5.51: Emit ALL trait-dispatch globals (vtable + dynptr) by composing
+/// `emit_vtables_from_resolver()` (Stage 5.47) + `emit_dynptrs_from_resolver()`
+/// (Stage 5.50).
+///
+/// This is the **single entry point** for codegen to emit all trait-dispatch
+/// globals. Stage 5.52 will refactor driver/codegen to call this combined
+/// orchestrator instead of separately calling `emit_vtables()` +
+/// `emit_dyn_trait_ptrs()`.
+///
+/// Behavior is **identical** to calling `emit_vtables()` + `emit_dyn_trait_ptrs()`
+/// separately — verified by `test_emit_vtables_and_dynptrs_match_separate_calls`.
+///
+/// Per API-naming-standard §3: `emit_vtables_and_dynptrs_from_resolver`
+/// follows `<verb>_<noun>_<conj>_<noun>_<prep>_<noun>` pattern. The `_and_`
+/// conjunction connects the two noun phrases (vtables + dynptrs).
+pub fn emit_vtables_and_dynptrs_from_resolver(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    emitter: &mut dyn Emitter,
+) {
+    // Emit vtable globals first (Stage 5.47 orchestrator).
+    emit_vtables_from_resolver(trait_resolver, interner, emitter);
+    // Then emit dynptr globals (Stage 5.50 orchestrator).
+    emit_dynptrs_from_resolver(trait_resolver, interner, emitter);
+}

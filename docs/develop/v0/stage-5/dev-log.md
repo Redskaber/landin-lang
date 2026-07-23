@@ -1512,3 +1512,63 @@ constructor function (input data → output data, no side effects).
 
 **Test impact**: +12 (1310 → 1322)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.51 — Codegen Vtable + Dynptr Combined Emission Orchestrator (v0.11.47)
+
+**Priority**: Single entry point that composes Stage 5.47's
+`emit_vtables_from_resolver()` + Stage 5.50's `emit_dynptrs_from_resolver()`.
+Emits ALL trait-dispatch globals (vtable + dynptr) in one call. Stage 5.52
+will refactor driver/codegen to call this combined orchestrator instead of
+separately calling `emit_vtables()` + `emit_dyn_trait_ptrs()`.
+
+**Work completed**:
+- src/codegen/mod.rs: new free function
+  `emit_vtables_and_dynptrs_from_resolver(&TraitResolver, &Rodeo, &mut dyn Emitter)`
+  * Composes `emit_vtables_from_resolver()` (Stage 5.47) +
+    `emit_dynptrs_from_resolver()` (Stage 5.50)
+  * Behavior identical to calling `emit_vtables()` + `emit_dyn_trait_ptrs()`
+    separately (verified by cross-check test)
+  * Single entry point for all trait-dispatch global emission
+- src/lib.rs: re-export `emit_vtables_and_dynptrs_from_resolver` from codegen
+  + Stage 5.51 history comment
+- tests/v0/stage5/plan/codegen_combined_orchestrator_tests.rs: 12 new tests
+  covering empty/single/multi + **behavior-equivalence cross-check** +
+  no-side-effects + real-scenario + unresolved-interner +
+  emitter-called-correctly + count-matches + composes-both +
+  deterministic-count + order (vtable before dynptr)
+- tests/all_tests.rs: added codegen_combined_orchestrator_tests module
+  (65 mods total)
+- Cargo.toml: version 0.11.46 → 0.11.47
+
+**Design highlights**:
+- **Single entry point**: `emit_vtables_and_dynptrs_from_resolver()` is the
+  one-call API for emitting all trait-dispatch globals. Stage 5.52 driver
+  refactor becomes a one-liner: replace `emit_vtables(r,i,e); emit_dyn_trait_ptrs(r,i,e);`
+  with `emit_vtables_and_dynptrs_from_resolver(r,i,e);`.
+- **Compositional**: internally calls Stage 5.47 + Stage 5.50 orchestrators.
+  Single source of truth — no duplicated logic.
+- **Behavior equivalence**: `test_emit_vtables_and_dynptrs_match_separate_calls`
+  calls both the combined orchestrator and the separate `emit_vtables()` +
+  `emit_dyn_trait_ptrs()` pair on the same inputs, asserts outputs are
+  identical. Safety net for Stage 5.52 driver refactor.
+- **Order guarantee**: vtable globals are emitted before dynptr globals
+  (because `emit_vtables_from_resolver` is called first). This matches the
+  existing `emit_vtables()` + `emit_dyn_trait_ptrs()` call order in driver.
+  Verified by `test_emit_vtables_and_dynptrs_order`.
+- **Counting subtlety**: `@.vtable.` appears both in vtable global definitions
+  AND in dynptr initializers (`ptr @.vtable.X.Y`). Tests count global
+  *definitions* (lines starting with `@.vtable.` + `private unnamed_addr
+  constant`) rather than raw `@.vtable.` substring matches.
+
+**§16 interface isolation**: function takes `&TraitResolver` + `&Rodeo` +
+`&mut dyn Emitter` (same as `emit_vtables()` + `emit_dyn_trait_ptrs()`). No
+`mir::ty` reference, no circular dependency.
+
+**§23 API naming**: `emit_vtables_and_dynptrs_from_resolver` follows
+`<verb>_<noun>_<conj>_<noun>_<prep>_<noun>` pattern. The `_and_` conjunction
+connects the two noun phrases (vtables + dynptrs). The `emit_` prefix
+indicates side-effect (push to emitter). `_from_resolver` indicates the
+input source.
+
+**Test impact**: +12 (1334 → 1346)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

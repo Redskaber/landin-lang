@@ -4846,3 +4846,49 @@ Stage Summary:
 - Next: Stage 5.50+ (codegen vtable + dynptr emission refactor — TextEmitter
   delegation + emit_vtables/emit_dyn_trait_ptrs delegation, then dyn Trait
   MIR lowering).
+
+---
+Task ID: stage5.51-r100
+Agent: Super Z (main)
+Task: Stage 5.51 — codegen vtable+dynptr combined emission orchestrator + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.46 / 1334 tests (Stage 5.50 complete)
+
+Stage 5.51: Codegen vtable + dynptr combined emission orchestrator
+- src/codegen/mod.rs: new free function emit_vtables_and_dynptrs_from_resolver(&TraitResolver, &Rodeo, &mut dyn Emitter)
+  * Composes emit_vtables_from_resolver() (Stage 5.47) + emit_dynptrs_from_resolver() (Stage 5.50)
+  * Behavior identical to calling emit_vtables() + emit_dyn_trait_ptrs() separately
+  * Single entry point for all trait-dispatch global emission
+- src/lib.rs: re-export emit_vtables_and_dynptrs_from_resolver + Stage 5.51 history comment
+- tests/v0/stage5/plan/codegen_combined_orchestrator_tests.rs: 12 new tests
+  (incl. behavior-equivalence cross-check + order test + count test)
+- tests/all_tests.rs: added codegen_combined_orchestrator_tests module (65 mods)
+- Cargo.toml: version 0.11.46 → 0.11.47
+
+Docs:
+- plan-5.51.md / gate-review-round51.md / codegen_combined_orchestrator_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (1023.3 MiB removed) ✅
+- cargo test: 1346 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.51 PASSED — CI/CD all green per §1.2.
+- emit_vtables_and_dynptrs_from_resolver() combined orchestrator added.
+- Single entry point for all trait-dispatch global emission (vtable + dynptr).
+- Composes Stage 5.47 + Stage 5.50 orchestrators — single source of truth.
+- Cross-check test guarantees behavior equivalence with separate calls —
+  safety net for Stage 5.52 driver refactor.
+- §16 compliance: same inputs as emit_vtables() + emit_dyn_trait_ptrs(),
+  no mir::ty reference.
+- §23 compliance: emit_vtables_and_dynptrs_from_resolver follows
+  <verb>_<noun>_<conj>_<noun>_<prep>_<noun> pattern.
+- Stage 5.52 can now refactor driver to one-liner:
+  emit_vtables_and_dynptrs_from_resolver(r, i, e) replacing
+  emit_vtables(r,i,e) + emit_dyn_trait_ptrs(r,i,e).
+- Next: Stage 5.52+ (codegen trait-dispatch emission refactor — driver
+  delegation + TextEmitter delegation, then dyn Trait MIR lowering).

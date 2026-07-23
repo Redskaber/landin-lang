@@ -1,9 +1,71 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.46
+**Current version**: v0.11.47
 **Date**: 2026-07-23
-**Test count**: 1334 tests + 5 benchmarks
+**Test count**: 1346 tests + 5 benchmarks
+
+---
+
+## v0.11.47 — Stage 5.51 (Codegen vtable + dynptr combined emission orchestrator)
+
+### Overview
+
+Single entry point that composes Stage 5.47's `emit_vtables_from_resolver()`
++ Stage 5.50's `emit_dynptrs_from_resolver()`. Emits ALL trait-dispatch
+globals (vtable + dynptr) in one call. Stage 5.52 will refactor driver/codegen
+to call this combined orchestrator instead of separately calling
+`emit_vtables()` + `emit_dyn_trait_ptrs()`.
+
+### New API
+
+- `emit_vtables_and_dynptrs_from_resolver(&TraitResolver, &Rodeo, &mut dyn Emitter)`
+  (in `src/codegen/mod.rs`) — combined orchestrator. Same input parameters as
+  `emit_vtables()` + `emit_dyn_trait_ptrs()`. Internally calls
+  `emit_vtables_from_resolver()` then `emit_dynptrs_from_resolver()`.
+
+### Design highlights
+
+1. **Single entry point**: `emit_vtables_and_dynptrs_from_resolver()` is the
+   one-call API for emitting all trait-dispatch globals. Stage 5.52 driver
+   refactor becomes a one-liner: replace `emit_vtables(r,i,e); emit_dyn_trait_ptrs(r,i,e);`
+   with `emit_vtables_and_dynptrs_from_resolver(r,i,e);`.
+2. **Compositional**: internally calls Stage 5.47 + Stage 5.50 orchestrators.
+   Single source of truth — no duplicated logic.
+3. **Behavior equivalence**: `test_emit_vtables_and_dynptrs_match_separate_calls`
+   calls both the combined orchestrator and the separate `emit_vtables()` +
+   `emit_dyn_trait_ptrs()` pair on the same inputs, asserts outputs are
+   identical. Safety net for Stage 5.52 driver refactor.
+4. **Order guarantee**: vtable globals are emitted before dynptr globals
+   (because `emit_vtables_from_resolver` is called first). Verified by
+   `test_emit_vtables_and_dynptrs_order`.
+
+### §16 / §23 compliance
+
+- Function takes `&TraitResolver` + `&Rodeo` + `&mut dyn Emitter` (same as
+  `emit_vtables()` + `emit_dyn_trait_ptrs()`). No `mir::ty` reference, no
+  circular dependency.
+- `emit_vtables_and_dynptrs_from_resolver` follows §23
+  `<verb>_<noun>_<conj>_<noun>_<prep>_<noun>` pattern. The `_and_` conjunction
+  connects the two noun phrases (vtables + dynptrs). The `emit_` prefix
+  indicates side-effect (push to emitter). `_from_resolver` indicates the
+  input source.
+
+### Test impact
+
++12 tests (1334 → 1346) — covers empty/single/multi + **behavior-equivalence
+cross-check** + no-side-effects + real-scenario + unresolved-interner +
+emitter-called-correctly + count-matches + composes-both + deterministic-count
++ order (vtable before dynptr).
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (1023.3 MiB removed)
+cargo test: 1346 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
