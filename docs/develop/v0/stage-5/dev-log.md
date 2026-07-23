@@ -694,3 +694,19 @@ Docs supplement (all missing docs/tests/v0/stage5/ created):
 - Verdict: ✅ GO — 0 P0/P1; trait+vtable+stdlib+cargo+facade infra ready
 
 **Test impact**: 0 (deep review — no code changes)
+
+### Stage 5.33 — Stdlib Facade Driver Integration (v0.11.29)
+
+**Priority**: Wire StdlibFacade into CompileResult + driver.
+
+**Work completed**:
+- src/driver.rs: new `stdlib_facade: StdlibFacade` field on CompileResult
+  * empty() path uses StdlibFacade::default()
+  * Normal path uses StdlibFacade::default()
+- src/lib.rs: doc comment updated
+- tests/v0/stage5/plan/facade_integration_tests.rs: 7 new tests
+- tests/all_tests.rs: added facade_integration_tests module (47 mods)
+- Cargo.toml: version 0.11.28 → 0.11.29
+
+**Test impact**: +7
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

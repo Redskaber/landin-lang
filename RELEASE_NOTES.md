@@ -1885,3 +1885,29 @@ cargo test: 1081 passed, 0 failed, 2 ignored
 cargo fmt --check: clean
 cargo clippy --all-targets: 0 warnings
 ```
+
+---
+
+## v0.11.29 — Stage 5.33 (Stdlib facade driver integration)
+
+### Overview
+
+Wires `StdlibFacade` into the driver pipeline. `CompileResult.stdlib_facade`
+is now available for downstream stages to query aggregate stdlib statistics
+(type_count, trait_count, layer_count, is_stdlib_name, summary).
+
+### New API
+
+- `CompileResult.stdlib_facade: StdlibFacade` field
+
+### Test impact
+
++7 tests (1081 → 1088)
+
+### Verification
+
+```
+cargo test: 1088 passed, 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings
+```

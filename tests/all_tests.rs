@@ -175,3 +175,6 @@ mod stdlib_std_tests;
 
 #[path = "v0/stage5/plan/stdlib_facade_tests.rs"]
 mod stdlib_facade_tests;
+
+#[path = "v0/stage5/plan/facade_integration_tests.rs"]
+mod facade_integration_tests;

@@ -168,7 +168,10 @@
 //!     `StdlibFacade` struct: `type_count()` + `trait_count()` +
 //!     `type_count_for_layer()` + `layer_count()` + `is_stdlib_name()` +
 //!     `summary()` for aggregate stdlib statistics + queries.
-//!   Next: Stage 5.32+ (dyn Trait MIR lowering, stdlib crate compilation).
+//!   Stage 5.33 (v0.11.29): Stdlib facade integration —
+//!     `CompileResult.stdlib_facade` field added; `StdlibFacade` available
+//!     to downstream stages for aggregate stdlib statistics + queries.
+//!   Next: Stage 5.34+ (dyn Trait MIR lowering, stdlib crate compilation).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

@@ -4123,3 +4123,34 @@ Stage Summary:
 - 31 sub-stages completed (5.1-5.31), 177 Stage 5 tests, 1081 total tests.
 - 0 P0/P1 blockers. 2 P2 tech debt items with repayment plans.
 - Infrastructure ready for dyn Trait MIR lowering (Stage 5.33+).
+
+---
+Task ID: stage5.33-r82
+Agent: Super Z (main)
+Task: Stage 5.33 — stdlib facade driver integration + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.28 / 1081 tests (Stage 5.32 deep review #3 GO)
+
+Stage 5.33: Stdlib facade driver integration
+- src/driver.rs: new `stdlib_facade: StdlibFacade` field on CompileResult
+  * empty() path uses StdlibFacade::default()
+  * Normal path uses StdlibFacade::default()
+- src/lib.rs: doc comment updated
+- tests/v0/stage5/plan/facade_integration_tests.rs: 7 new tests
+- tests/all_tests.rs: added facade_integration_tests module (47 mods)
+- Cargo.toml: version 0.11.28 → 0.11.29
+
+Docs:
+- plan-5.33.md / gate-review-round33.md / facade_integration.md / test gate-review-round33.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo test: (see output) ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.33 PASSED — CI/CD all green per §1.2.
+- CompileResult.stdlib_facade available for downstream stages.
+- Next: Stage 5.34+ (dyn Trait MIR lowering, stdlib crate compilation).

@@ -227,6 +227,10 @@ pub struct CompileResult {
     /// compiler. Available for downstream stages to query which names are
     /// stdlib-provided (vs user-defined).
     pub stdlib_prelude: crate::stdlib::StdlibPrelude,
+    /// Stage 5.33: Stdlib facade — aggregate statistics + layer queries.
+    /// Built from stdlib_prelude; provides type_count, trait_count,
+    /// layer_count, is_stdlib_name, summary.
+    pub stdlib_facade: crate::stdlib::StdlibFacade,
 }
 
 /// Stage 3.56: Per-body metadata for codegen.
@@ -259,6 +263,7 @@ impl CompileResult {
             body_metas: Vec::new(),
             trait_resolver: crate::traits::TraitResolver::new(),
             stdlib_prelude: crate::stdlib::default_prelude(),
+            stdlib_facade: crate::stdlib::StdlibFacade::default(),
         }
     }
 }
@@ -502,6 +507,7 @@ pub fn compile(src: &str) -> CompileResult {
         body_metas,
         trait_resolver,
         stdlib_prelude: crate::stdlib::default_prelude(),
+        stdlib_facade: crate::stdlib::StdlibFacade::default(),
     }
 }
 
