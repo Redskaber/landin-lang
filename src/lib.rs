@@ -141,11 +141,16 @@
 //!   Stage 5.22 (v0.11.20): Driver validation integration —
 //!     `validate_impls()` wired into driver; `CompileErrors.trait_errors`
 //!     field added; coherence + completeness errors reported to user.
-//!   Next: Stage 5.23+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+//!   Stage 5.24 (v0.11.22): Mini-cargo MVP —
+//!     `ProjectManifest` + `BuildConfig` + `BuildResult` structs +
+//!     `parse_manifest()` + `load_manifest()` + `build_project()` for
+//!     project-level build orchestration via public `compile()` API.
+//!   Next: Stage 5.25+ (dyn Trait MIR lowering, full stdlib).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
 pub mod borrowck;
+pub mod cargo;
 pub mod codegen;
 pub mod diagnostics;
 pub mod driver;
@@ -163,6 +168,7 @@ pub mod typeck;
 // Stage 3.64: Re-export codegen Emitter trait + impls for pluggability
 // (allows third-party LLVM-IR backends to implement `Emitter` and call
 // `codegen_from_mir` directly).
+pub use cargo::{build_project, BuildConfig, BuildResult, ProjectManifest};
 pub use codegen::{
     codegen_crate, emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_vtables, EmitType, EmitValue,
     Emitter, TextEmitter,

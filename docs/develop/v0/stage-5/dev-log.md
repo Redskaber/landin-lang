@@ -517,3 +517,26 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **TD-NEW-1**: ✅ CLOSED
 **Verification**: cargo clean + cargo test (1023 passed) + cargo fmt (clean) +
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+
+### Stage 5.24 — Mini-Cargo MVP (v0.11.22)
+
+**Priority**: Implement `landinc` — Landin package manager + build tool MVP.
+
+**Work completed**:
+- src/cargo.rs: new module with:
+  * ProjectManifest — parse landin.toml (name/version/edition/src_dir/entry_point/target_dir)
+  * BuildConfig — optimization/emit_llvm/output_name
+  * BuildResult — success/error_count/files_compiled/llvm_ir/errors
+  * parse_manifest(content) / load_manifest(path)
+  * build_project(manifest, config) — compile entry point via public compile() API
+- src/lib.rs: added `pub mod cargo` + re-exports
+- tests/v0/stage5/plan/mini_cargo_tests.rs: 8 new tests
+- tests/all_tests.rs: added mini_cargo_tests module (40 mods)
+- Cargo.toml: version 0.11.21 → 0.11.22
+- Fixed: clippy warning (BuildConfig manual Default → derive)
+
+**Test impact**: +8 (1031 — was 1023)
+**Verification**: cargo clean + cargo test (1031 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ build_project uses only public compile() + codegen_crate().
+**API naming**: ✅ `ProjectManifest` + `BuildConfig` + `BuildResult` + `parse_manifest` + `build_project`.

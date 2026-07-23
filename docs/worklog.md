@@ -3842,3 +3842,36 @@ Stage Summary:
 - 1023 tests pass (unchanged). fmt clean. 0 clippy warnings.
 - Deep review r70 P2 action items: all CLOSED (validate_impls + traits split).
 - Next: Stage 5.24+ (dyn Trait MIR lowering, full stdlib, mini-cargo).
+
+---
+Task ID: stage5.24-r73
+Agent: Super Z (main)
+Task: Stage 5.24 — mini-cargo MVP + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.21 / 1023 tests / Stage 5.23 complete (traits/mod.rs split)
+
+Stage 5.24: Mini-cargo MVP
+- src/cargo.rs: new module with:
+  * ProjectManifest — parse landin.toml (name/version/edition/src_dir/entry_point/target_dir)
+  * BuildConfig — optimization/emit_llvm/output_name
+  * BuildResult — success/error_count/files_compiled/llvm_ir/errors
+  * parse_manifest(content) / load_manifest(path)
+  * build_project(manifest, config) — compile entry point via public compile() API
+- src/lib.rs: added pub mod cargo + re-exports
+- tests/v0/stage5/plan/mini_cargo_tests.rs: 8 new tests
+- tests/all_tests.rs: added mini_cargo_tests module (40 mods)
+- Cargo.toml: version 0.11.21 → 0.11.22
+- Fixed: clippy warning (BuildConfig manual Default → derive)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: 1129 files removed (484.1MiB) ✅
+- cargo test: 1031 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.24 PASSED — CI/CD all green per §1.2.
+- Mini-cargo MVP: ProjectManifest + BuildConfig + BuildResult + build_project().
+- 1031 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.25+ (dyn Trait MIR lowering, full stdlib).
