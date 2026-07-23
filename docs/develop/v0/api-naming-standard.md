@@ -1914,3 +1914,18 @@ Stage 5.63. **Dyn Trait fat ptr infrastructure complete (5.61-5.64)**.
 **Test impact**: +8 (1467 → 1475).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.35 (Stage 5.65, 2026-07-23)
+
+Stage 5.65 emit_dyn_trait_fat_ptrs_text_batch_from_resolver round.
+Convenience entry point composing Stage 5.62 + 5.64.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_dyn_trait_fat_ptrs_text_batch_from_resolver` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` |
+
+**Test impact**: +8 (1475 → 1483).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

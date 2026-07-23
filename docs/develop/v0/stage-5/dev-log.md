@@ -2014,3 +2014,19 @@ Dyn Trait fat ptr infrastructure complete (5.61-5.64).
 
 **Test impact**: +8 (1467 → 1475)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.65 — emit_dyn_trait_fat_ptrs_text_batch_from_resolver (v0.11.61)
+
+**Priority**: Convenience entry point composing Stage 5.62 + 5.64. One call
+from resolver to all dyn Trait fat ptr IR text.
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `emit_dyn_trait_fat_ptrs_text_batch_from_resolver()`
+- src/mir/mod.rs: re-export
+- src/lib.rs: Stage 5.65 history comment
+- tests/v0/stage5/plan/dyn_trait_fat_ptr_from_resolver_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_fat_ptr_from_resolver_tests module (79 mods)
+- Cargo.toml: version 0.11.60 → 0.11.61
+
+**Test impact**: +8 (1475 → 1483)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

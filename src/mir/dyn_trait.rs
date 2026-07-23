@@ -187,3 +187,31 @@ pub fn emit_dyn_trait_fat_ptr_text(fat_ptr: &DynTraitFatPtr) -> String {
 pub fn emit_dyn_trait_fat_ptrs_text_batch(fat_ptrs: &[DynTraitFatPtr]) -> Vec<String> {
     fat_ptrs.iter().map(emit_dyn_trait_fat_ptr_text).collect()
 }
+
+// ============================================================================
+// Stage 5.65: Convenience entry point — resolver → all fat ptr IR text in one call
+//
+// Composes Stage 5.62's build_dyn_trait_fat_ptrs_from_resolver() + Stage 5.64's
+// emit_dyn_trait_fat_ptrs_text_batch(). Single function from resolver to all
+// dyn Trait fat ptr LLVM IR text.
+//
+// Per API-naming-standard §3: `emit_dyn_trait_fat_ptrs_text_batch_from_resolver`
+// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+// ============================================================================
+
+/// Stage 5.65: Generate LLVM IR text for all dyn Trait fat pointers directly
+/// from `(&TraitResolver, &Rodeo)` in one call — **convenience entry point**.
+///
+/// Internally:
+/// 1. `build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner)` (Stage 5.62)
+/// 2. `emit_dyn_trait_fat_ptrs_text_batch(&fat_ptrs)` (Stage 5.64)
+///
+/// Per API-naming-standard §3: `emit_dyn_trait_fat_ptrs_text_batch_from_resolver`
+/// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub fn emit_dyn_trait_fat_ptrs_text_batch_from_resolver(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &lasso::Rodeo,
+) -> Vec<String> {
+    let fat_ptrs = build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner);
+    emit_dyn_trait_fat_ptrs_text_batch(&fat_ptrs)
+}

@@ -5393,3 +5393,34 @@ Stage Summary:
   - 5.64: emit_dyn_trait_fat_ptrs_text_batch() (batch version)
 - Ready for MIR lowering integration (Stage 5.65+).
 - Next: Stage 5.65+ (dyn Trait value construction in MIR lowering).
+
+---
+Task ID: stage5.65-r114
+Agent: Super Z (main)
+Task: Stage 5.65 — emit_dyn_trait_fat_ptrs_text_batch_from_resolver + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.60 / 1475 tests (Stage 5.64 complete)
+
+Stage 5.65: emit_dyn_trait_fat_ptrs_text_batch_from_resolver (convenience entry)
+- src/mir/dyn_trait.rs: new free function emit_dyn_trait_fat_ptrs_text_batch_from_resolver()
+  * Composes Stage 5.62 build_dyn_trait_fat_ptrs_from_resolver() + Stage 5.64 emit_dyn_trait_fat_ptrs_text_batch()
+  * One call from resolver to all dyn Trait fat ptr IR text
+- src/mir/mod.rs: re-export
+- src/lib.rs: Stage 5.65 history comment
+- tests/v0/stage5/plan/dyn_trait_fat_ptr_from_resolver_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_fat_ptr_from_resolver_tests module (79 mods)
+- Cargo.toml: version 0.11.60 → 0.11.61
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (996.4 MiB removed) ✅
+- cargo test: 1483 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.65 PASSED — CI/CD all green per §1.2.
+- Convenience entry point: resolver → all dyn Trait fat ptr IR text in one call.
+- Composes Stage 5.62 + 5.64. Single source of truth.
+- Dyn Trait fat ptr infrastructure fully complete with convenience entry.
+- Next: Stage 5.66+ (dyn Trait value construction in MIR lowering).

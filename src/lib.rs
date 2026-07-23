@@ -392,7 +392,10 @@
 //!     version of Stage 5.63, converts `&[DynTraitFatPtr]` to
 //!     `Vec<String>`. All dyn Trait fat ptr infrastructure complete —
 //!     ready for MIR lowering integration.
-//!   Next: Stage 5.65+ (dyn Trait value construction in MIR lowering).
+//!   Stage 5.65 (v0.11.61): emit_dyn_trait_fat_ptrs_text_batch_from_resolver
+//!     — convenience entry point composing Stage 5.62 + 5.64. One call
+//!     from resolver to all dyn Trait fat ptr IR text.
+//!   Next: Stage 5.66+ (dyn Trait value construction in MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

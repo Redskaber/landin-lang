@@ -1,9 +1,32 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.60
+**Current version**: v0.11.61
 **Date**: 2026-07-23
-**Test count**: 1475 tests + 5 benchmarks
+**Test count**: 1483 tests + 5 benchmarks
+
+---
+
+## v0.11.61 — Stage 5.65 (emit_dyn_trait_fat_ptrs_text_batch_from_resolver)
+
+### Overview
+
+Convenience entry point composing Stage 5.62 + 5.64. One call from
+`(&TraitResolver, &Rodeo)` to `Vec<String>` (all dyn Trait fat ptr LLVM IR
+text). No Emitter needed — useful for testing and future codegen integration.
+
+### New API
+
+- `emit_dyn_trait_fat_ptrs_text_batch_from_resolver(&TraitResolver, &Rodeo) -> Vec<String>` (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (996.4 MiB removed)
+cargo test: 1483 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
