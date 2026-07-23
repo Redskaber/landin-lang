@@ -1156,3 +1156,51 @@ reference, no circular dependency.
 **Test impact**: +12 (1261 → 1273).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.16 (Stage 5.46, 2026-07-23)
+
+Stage 5.46 codegen vtable spec builder round. Pure-function extraction of
+the spec-construction logic currently inlined in `emit_vtables()` (Stage 5.6).
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `build_vtable_global_specs` | free fn (in `codegen`) | `<verb>_<noun>_<adj>_<noun>` |
+
+**Design decisions**:
+1. **`build_` prefix** (not `emit_`): indicates a constructor function
+   (input data → output data, no side effects). This distinguishes it from
+   the `emit_*` family which produce LLVM IR text or push to an emitter.
+   `build_vtable_global_specs()` returns `Vec<StdlibVtableGlobalSpec>` —
+   no IR text, no emitter mutation.
+2. **`_specs` (plural)**: indicates multiple specs returned. Consistent
+   with the plural/singular convention across the codegen vtable API
+   family (`emit_vtable_global_text` singular vs `emit_vtable_globals_batch`
+   plural).
+3. **Same input parameters as `emit_vtables()`**: takes `&TraitResolver` +
+   `&Rodeo` (minus emitter). This makes Stage 5.47 delegation a trivial
+   body change — `emit_vtables()` will become:
+   ```rust
+   let specs = build_vtable_global_specs(trait_resolver, interner);
+   let ir_lines = emit_vtable_globals_batch(&specs);
+   for line in ir_lines { emitter.emit_raw_global(&line); }
+   ```
+4. **Byte-for-byte equivalence**: `test_build_vtable_global_specs_match_emit_vtables_inline`
+   manually inlines the `emit_vtables()` construction logic and asserts
+   set equality with the builder output. Safety net for Stage 5.47 refactor.
+5. **HashMap order non-determinism**: `TraitResolver.vtables` is a HashMap,
+   so iteration order is non-deterministic. Tests use set comparison
+   (`.contains()` / `.iter().any()`) instead of positional assertions.
+   The builder itself preserves HashMap iteration order (no sorting) —
+   Stage 5.47's `emit_vtables()` refactor will inherit this
+   non-determinism, which is acceptable because LLVM IR global definitions
+   can appear in any order.
+
+**§16 compliance**: function takes `&TraitResolver` + `&Rodeo` (same as
+`emit_vtables()`), returns `Vec<StdlibVtableGlobalSpec>`. No `mir::ty` /
+`Emitter` reference, no circular dependency.
+
+**Test impact**: +12 (1273 → 1285).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

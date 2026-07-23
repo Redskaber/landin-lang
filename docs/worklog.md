@@ -4658,3 +4658,48 @@ Stage Summary:
   call batch helper, and push all IR lines to emitter in one pass.
 - Next: Stage 5.46+ (codegen vtable emission refactor — emit_vtables
   delegation + TextEmitter delegation, then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.46-r95
+Agent: Super Z (main)
+Task: Stage 5.46 — codegen vtable spec builder + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.41 / 1273 tests (Stage 5.45 complete)
+
+Stage 5.46: Codegen vtable spec builder
+- src/codegen/mod.rs: new free function build_vtable_global_specs(&TraitResolver, &Rodeo) -> Vec<StdlibVtableGlobalSpec>
+  * Pure-function extraction of emit_vtables() inline construction logic
+  * Same input parameters as emit_vtables() (minus emitter)
+  * Byte-for-byte identical output (verified by cross-check test)
+- src/lib.rs: re-export build_vtable_global_specs + Stage 5.46 history comment
+- tests/v0/stage5/plan/codegen_vtable_spec_builder_tests.rs: 12 new tests
+  (incl. match-emit_vtables-inline cross-check + build+batch integration +
+  real-scenario simulation with Clone+Drop+Display)
+- tests/all_tests.rs: added codegen_vtable_spec_builder_tests module (60 mods)
+- Cargo.toml: version 0.11.41 → 0.11.42
+
+Docs:
+- plan-5.46.md / gate-review-round46.md / codegen_vtable_spec_builder_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (759.5 MiB removed) ✅
+- cargo test: 1285 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.46 PASSED — CI/CD all green per §1.2.
+- build_vtable_global_specs() pure free function added to src/codegen/mod.rs.
+- Pure-function extraction of emit_vtables() inline construction logic.
+- Cross-check test guarantees byte-for-byte equivalence with emit_vtables()
+  current inline construction — safety net for Stage 5.47 refactor.
+- §16 compliance: function takes &TraitResolver + &Rodeo (same as emit_vtables),
+  returns Vec<StdlibVtableGlobalSpec>. No mir::ty / Emitter reference.
+- §23 compliance: build_vtable_global_specs follows <verb>_<noun>_<adj>_<noun>;
+  build_ prefix indicates constructor (no side effects).
+- Stage 5.47 can now refactor emit_vtables() to call build_vtable_global_specs()
+  + emit_vtable_globals_batch() + push all IR lines to emitter in one pass.
+- Next: Stage 5.47+ (codegen vtable emission refactor — emit_vtables delegation
+  + TextEmitter delegation, then dyn Trait MIR lowering).

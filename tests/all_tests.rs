@@ -214,3 +214,6 @@ mod codegen_vtable_global_text_tests;
 
 #[path = "v0/stage5/plan/codegen_vtable_batch_tests.rs"]
 mod codegen_vtable_batch_tests;
+
+#[path = "v0/stage5/plan/codegen_vtable_spec_builder_tests.rs"]
+mod codegen_vtable_spec_builder_tests;

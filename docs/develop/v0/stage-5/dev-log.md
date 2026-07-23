@@ -1287,3 +1287,56 @@ from Stage 5.44's `emit_vtable_global_text` (singular).
 
 **Test impact**: +12 (1261 → 1273)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.46 — Codegen Vtable Spec Builder (v0.11.42)
+
+**Priority**: Pure-function extraction of the spec-construction logic
+currently inlined in `emit_vtables()` (Stage 5.6). Stage 5.47 will refactor
+`emit_vtables()` to call this builder + `emit_vtable_globals_batch()` +
+push all IR lines to emitter in one pass.
+
+**Work completed**:
+- src/codegen/mod.rs: new free function
+  `build_vtable_global_specs(&TraitResolver, &Rodeo) -> Vec<StdlibVtableGlobalSpec>`
+  * Pure-function extraction of `emit_vtables()` inline construction logic
+  * Same input parameters as `emit_vtables()` (minus emitter)
+  * Byte-for-byte identical output (verified by cross-check test)
+- src/lib.rs: re-export `build_vtable_global_specs` from codegen
+  + Stage 5.46 history comment
+- tests/v0/stage5/plan/codegen_vtable_spec_builder_tests.rs: 12 new tests
+  covering empty/single/multi + format components + unresolved interner +
+  no-side-effects + determinism + **match-emit_vtables-inline cross-check** +
+  build+batch integration + empty entries + real-scenario simulation
+- tests/all_tests.rs: added codegen_vtable_spec_builder_tests module
+  (60 mods total)
+- Cargo.toml: version 0.11.41 → 0.11.42
+
+**Design highlights**:
+- **Pure-function extraction**: `build_vtable_global_specs()` takes the same
+  inputs as `emit_vtables()` (`&TraitResolver` + `&Rodeo`) but returns
+  `Vec<StdlibVtableGlobalSpec>` instead of pushing to an emitter. This
+  separates "construct spec list" from "emit IR text" — Stage 5.47 will
+  compose them: `build_vtable_global_specs()` → `emit_vtable_globals_batch()`
+  → push to emitter.
+- **Byte-for-byte equivalence**: `test_build_vtable_global_specs_match_emit_vtables_inline`
+  manually inlines the `emit_vtables()` construction logic and asserts set
+  equality with the builder output. Safety net for Stage 5.47 refactor.
+- **HashMap order non-determinism**: `TraitResolver.vtables` is a HashMap,
+  so iteration order is non-deterministic. Tests use set comparison
+  (`.contains()` / `.iter().any()`) instead of positional assertions for
+  multi-vtable cases.
+- **Unresolved interner test**: constructs a vtable with Spurs from one
+  Rodeo, then queries with a *fresh* Rodeo that doesn't know those Spurs —
+  verifies the `"Trait"`/`"Type"` default fallback path.
+
+**§16 interface isolation**: function takes `&TraitResolver` + `&Rodeo`
+(same as `emit_vtables()`), returns `Vec<StdlibVtableGlobalSpec>`. No
+`mir::ty` / `Emitter` reference, no circular dependency.
+
+**§23 API naming**: `build_vtable_global_specs` follows
+`<verb>_<noun>_<adj>_<noun>` pattern. The `build_` prefix indicates a
+constructor function (input data → output data, no side effects). `_specs`
+(plural) indicates multiple specs returned.
+
+**Test impact**: +12 (1273 → 1285)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

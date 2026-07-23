@@ -1,9 +1,70 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.41
+**Current version**: v0.11.42
 **Date**: 2026-07-23
-**Test count**: 1273 tests + 5 benchmarks
+**Test count**: 1285 tests + 5 benchmarks
+
+---
+
+## v0.11.42 — Stage 5.46 (Codegen vtable spec builder)
+
+### Overview
+
+Pure-function extraction of the spec-construction logic currently inlined
+in `emit_vtables()` (Stage 5.6). The new free function
+`build_vtable_global_specs()` takes the same inputs as `emit_vtables()`
+(`&TraitResolver` + `&Rodeo`) and returns `Vec<StdlibVtableGlobalSpec>`.
+Stage 5.47 will refactor `emit_vtables()` to call this builder +
+`emit_vtable_globals_batch()` + push all IR lines to emitter in one pass.
+
+### New API
+
+- `build_vtable_global_specs(&TraitResolver, &Rodeo) -> Vec<StdlibVtableGlobalSpec>`
+  (in `src/codegen/mod.rs`) — pure-function extraction. For each
+  `((trait_name, self_ty_name), vtable)` in `trait_resolver.vtables`,
+  constructs a `StdlibVtableGlobalSpec` with `global_name` (`.vtable.<trait>.<type>`)
+  + `method_symbols` (from `VtableEntry.fn_name`).
+
+### Design highlights
+
+1. **Pure-function extraction**: separates "construct spec list" from
+   "emit IR text". Stage 5.47 will compose them: `build_vtable_global_specs()`
+   → `emit_vtable_globals_batch()` → push to emitter.
+2. **Byte-for-byte equivalence**: `test_build_vtable_global_specs_match_emit_vtables_inline`
+   manually inlines the `emit_vtables()` construction logic and asserts
+   set equality with the builder output. Safety net for Stage 5.47 refactor.
+3. **HashMap order non-determinism**: `TraitResolver.vtables` is a HashMap,
+   so tests use set comparison (`.contains()` / `.iter().any()`) instead
+   of positional assertions for multi-vtable cases.
+4. **Unresolved interner test**: constructs a vtable with Spurs from one
+   Rodeo, then queries with a *fresh* Rodeo — verifies the `"Trait"`/`"Type"`
+   default fallback path.
+
+### §16 / §23 compliance
+
+- Function takes `&TraitResolver` + `&Rodeo` (same as `emit_vtables()`),
+  returns `Vec<StdlibVtableGlobalSpec>`. No `mir::ty` / `Emitter` reference,
+  no circular dependency.
+- `build_vtable_global_specs` follows §23 `<verb>_<noun>_<adj>_<noun>` pattern.
+  The `build_` prefix indicates a constructor function (input data → output
+  data, no side effects). `_specs` (plural) indicates multiple specs returned.
+
+### Test impact
+
++12 tests (1273 → 1285) — covers empty/single/multi + format components +
+unresolved interner + no-side-effects + determinism + **match-emit_vtables-inline
+cross-check** + build+batch integration + empty entries + real-scenario
+simulation (S impls Clone+Drop+Display).
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (759.5 MiB removed)
+cargo test: 1285 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

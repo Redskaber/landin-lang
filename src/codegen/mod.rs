@@ -1595,3 +1595,64 @@ pub fn emit_vtable_globals_batch(specs: &[StdlibVtableGlobalSpec]) -> Vec<String
         .map(|spec| emit_vtable_global_text(&spec.global_name, &spec.method_symbols))
         .collect()
 }
+
+// ============================================================================
+// Stage 5.46: Codegen vtable spec builder
+//
+// Pure free function that extracts the "construct spec list" logic from
+// `emit_vtables()` into a standalone function. Takes `&TraitResolver` +
+// `&Rodeo` (same inputs as `emit_vtables()`), returns
+// `Vec<StdlibVtableGlobalSpec>`.
+//
+// Stage 5.47 will refactor `emit_vtables()` to call this builder +
+// `emit_vtable_globals_batch()` + push all IR lines to emitter in one pass.
+//
+// Per API-naming-standard §3: `build_vtable_global_specs` follows
+// `<verb>_<noun>_<adj>_<noun>` pattern. The `build_` prefix indicates a
+// constructor function (input data → output data, no side effects).
+//
+// Per §16: takes `&TraitResolver` + `&Rodeo` (same as `emit_vtables()`),
+// returns `Vec<StdlibVtableGlobalSpec>`. No `mir::ty` / `Emitter` reference,
+// no circular dependency.
+// ============================================================================
+
+/// Stage 5.46: Build the list of `StdlibVtableGlobalSpec` from
+/// `TraitResolver.vtables`.
+///
+/// For each `((trait_name, self_ty_name), vtable)` entry in
+/// `trait_resolver.vtables`, constructs a `StdlibVtableGlobalSpec` with:
+/// - `global_name = format!(".vtable.{trait_str}.{type_str}")`
+///   where `trait_str = interner.try_resolve(trait_name).unwrap_or("Trait")`
+///   and `type_str = interner.try_resolve(self_ty_name).unwrap_or("Type")`
+/// - `method_symbols = vtable.entries.iter().map(|e| e.fn_name.clone()).collect()`
+///
+/// This is the **pure-function extraction** of the spec-construction logic
+/// currently inlined in `emit_vtables()` (Stage 5.6). Stage 5.47 will
+/// refactor `emit_vtables()` to call this builder + `emit_vtable_globals_batch()`
+/// + push all IR lines to emitter in one pass.
+///
+/// Per API-naming-standard §3: `build_vtable_global_specs` follows
+/// `<verb>_<noun>_<adj>_<noun>` pattern.
+pub fn build_vtable_global_specs(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+) -> Vec<StdlibVtableGlobalSpec> {
+    let mut specs: Vec<StdlibVtableGlobalSpec> = Vec::new();
+    for ((trait_name, self_ty_name), vtable) in &trait_resolver.vtables {
+        // Build the global name: `.vtable.<trait>.<type>`.
+        // LLVM global names use `.` as a private-name separator.
+        let trait_str = interner.try_resolve(trait_name).unwrap_or("Trait");
+        let type_str = interner.try_resolve(self_ty_name).unwrap_or("Type");
+        let global_name = format!(".vtable.{trait_str}.{type_str}");
+
+        // Collect the resolved method symbol names from VtableEntry.
+        let method_symbols: Vec<String> =
+            vtable.entries.iter().map(|e| e.fn_name.clone()).collect();
+
+        specs.push(StdlibVtableGlobalSpec {
+            global_name,
+            method_symbols,
+        });
+    }
+    specs
+}
