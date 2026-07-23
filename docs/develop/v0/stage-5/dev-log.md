@@ -500,3 +500,20 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **Test impact**: +7 (1023 — was 1016)
 **Verification**: cargo clean + cargo test (1023 passed) + cargo fmt (clean) +
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+
+### Stage 5.23 — traits/mod.rs Split (v0.11.21)
+
+**Priority**: Split 1010-LOC mod.rs into sub-modules (deep review r70 TD-NEW-1).
+
+**Work completed**:
+- src/traits/vtable.rs: VtableEntry + Vtable structs (30 lines)
+- src/traits/builtin.rs: BUILTIN_TRAIT_NAMES + constants + is_primitive_copy_kind (23 lines)
+- src/traits/resolver.rs: TraitInfo + ImplInfo + TraitResolver + error types + all methods (903 lines)
+- src/traits/mod.rs: thin re-export module (24 lines)
+- Fixed: duplicate Vtable import + missing Default derive + missing builtin imports
+- Cargo.toml: version 0.11.20 → 0.11.21
+
+**Test impact**: 0 (1023 — pure refactoring)
+**TD-NEW-1**: ✅ CLOSED
+**Verification**: cargo clean + cargo test (1023 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)

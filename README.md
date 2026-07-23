@@ -6,10 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.20 — Stage 0-4 complete, Stage 5 in progress.
+> **Status:** v0.11.21 — Stage 0-4 complete, Stage 5 in progress.
 > **1023 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
 > Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5.1-5.22: trait infra complete ✅ + driver validation ✅. Deep review: GO.
+> Stage 5.1-5.23: trait infra complete ✅ + driver validation ✅ + traits/mod.rs split ✅. Deep review: GO.
 > Next: dyn Trait MIR lowering, full stdlib, mini-cargo.
 
 ## Quick start
@@ -86,7 +86,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.11.20 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.11.21 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (109 tests)
 │   ├── parser/             Recursive-descent + Pratt parser (85 tests)
@@ -97,7 +97,7 @@ landin-stage0/
 │   ├── typeck/             Type inference + unification (26 tests)
 │   ├── borrowck/           NLL borrow checker (26 tests)
 │   ├── codegen/            LLVM IR codegen via Emitter trait (294 tests)
-│   ├── traits/             TraitResolver + vtable + coherence + completeness + validation (Stage 5.1-5.20)
+│   ├── traits/             TraitResolver (mod.rs→vtable.rs+builtin.rs+resolver.rs) (Stage 5.1-5.23)
 │   ├── driver.rs           Full pipeline driver
 │   └── bin/                CLI entry point
 ├── tests/
@@ -150,7 +150,7 @@ one `#[path]` line to `tests/all_tests.rs` — no `Cargo.toml` edit needed.
 - **Stage 2** ✅ MIR + type check + borrow check (NLL, closures, coercion matrix)
 - **Stage 3** ✅ LLVM codegen (§16 compliant, all soundness-critical limitations closed, L1 CLOSED)
 - **Stage 4** ✅ COMPLETE (13 sub-stages: modules + PHI + visibility + closures + macros + benchmarks + ADR + v3.18)
-- **Stage 5** 🔄 In progress (5.1-5.22 done; next: dyn Trait MIR lowering, full stdlib, mini-cargo)
+- **Stage 5** 🔄 In progress (5.1-5.23 done; next: dyn Trait MIR lowering, full stdlib, mini-cargo)
 - **v0.1** = Stage 0 + conformance suite
 - **v0.3** = self-hosting
 
