@@ -4615,3 +4615,46 @@ Stage Summary:
 - §23 compliance: emit_vtable_global_text follows <verb>_<noun>_<adj>_<noun>.
 - Next: Stage 5.45+ (codegen vtable emission refactor — TextEmitter delegation,
   then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.45-r94
+Agent: Super Z (main)
+Task: Stage 5.45 — codegen vtable emission batch helper + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.40 / 1261 tests (Stage 5.44 complete)
+
+Stage 5.45: Codegen vtable emission batch helper
+- src/codegen/mod.rs: new StdlibVtableGlobalSpec struct (global_name + method_symbols)
+- src/codegen/mod.rs: new free function emit_vtable_globals_batch(&[StdlibVtableGlobalSpec]) -> Vec<String>
+- src/lib.rs: re-export StdlibVtableGlobalSpec + emit_vtable_globals_batch + Stage 5.45 history comment
+- tests/v0/stage5/plan/codegen_vtable_batch_tests.rs: 12 new tests
+  (incl. batch==individual cross-check + dedup-not-required + real-vtables simulation)
+- tests/all_tests.rs: added codegen_vtable_batch_tests module (59 mods)
+- Cargo.toml: version 0.11.40 → 0.11.41
+
+Docs:
+- plan-5.45.md / gate-review-round45.md / codegen_vtable_batch_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (938.7 MiB removed) ✅
+- cargo test: 1273 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.45 PASSED — CI/CD all green per §1.2.
+- StdlibVtableGlobalSpec struct + emit_vtable_globals_batch() free fn added.
+- Batch version of Stage 5.44's emit_vtable_global_text() — one call generates
+  all vtable IR lines.
+- Cross-check test guarantees batch == individual calls (safety net for
+  Stage 5.46 refactor).
+- §16 compliance: struct uses only String + Vec<String>, no mir::ty /
+  traits::TraitResolver / Emitter / StdlibVtableEmission reference.
+- §23 compliance: StdlibVtableGlobalSpec follows <Noun><Noun><Noun><Noun>;
+  emit_vtable_globals_batch follows <verb>_<noun>_<adj>_<noun>.
+- Stage 5.46 can now refactor emit_vtables() to construct spec list once,
+  call batch helper, and push all IR lines to emitter in one pass.
+- Next: Stage 5.46+ (codegen vtable emission refactor — emit_vtables
+  delegation + TextEmitter delegation, then dyn Trait MIR lowering).

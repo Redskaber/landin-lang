@@ -255,8 +255,15 @@
 //!     between Stage 5.43's high-level `emit_vtable_global_from_emission()`
 //!     and Stage 5.45's `TextEmitter::emit_vtable_global()` delegation
 //!     refactor. Handles "null" symbol → `ptr null` literal.
-//!   Next: Stage 5.45+ (codegen vtable emission refactor — TextEmitter delegation,
-//!     then dyn Trait MIR lowering).
+//!   Stage 5.45 (v0.11.41): Codegen vtable emission batch helper — new
+//!     `StdlibVtableGlobalSpec` struct (global_name + method_symbols) +
+//!     `emit_vtable_globals_batch(&[StdlibVtableGlobalSpec]) -> Vec<String>`
+//!     free fn in `src/codegen/mod.rs`. Batch version of Stage 5.44's
+//!     `emit_vtable_global_text()`. Prepares for Stage 5.46 refactor where
+//!     `emit_vtables()` will construct spec list once, call batch helper,
+//!     and push all IR lines to emitter in one pass.
+//!   Next: Stage 5.46+ (codegen vtable emission refactor — emit_vtables
+//!     delegation + TextEmitter delegation, then dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -283,7 +290,8 @@ pub mod typeck;
 pub use cargo::{build_project, BuildConfig, BuildResult, ProjectManifest};
 pub use codegen::{
     codegen_crate, emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_vtable_global_from_emission,
-    emit_vtable_global_text, emit_vtables, EmitType, EmitValue, Emitter, TextEmitter,
+    emit_vtable_global_text, emit_vtable_globals_batch, emit_vtables, EmitType, EmitValue, Emitter,
+    StdlibVtableGlobalSpec, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{

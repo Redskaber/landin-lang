@@ -1232,3 +1232,58 @@ method's side-effect version.
 
 **Test impact**: +12 (1249 → 1261)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.45 — Codegen Vtable Emission Batch Helper (v0.11.41)
+
+**Priority**: Batch version of Stage 5.44's `emit_vtable_global_text()` —
+takes a slice of `StdlibVtableGlobalSpec` and returns `Vec<String>`. Prepares
+for Stage 5.46 refactor where `emit_vtables()` will construct spec list
+once, call batch helper, and push all IR lines to emitter in one pass.
+
+**Work completed**:
+- src/codegen/mod.rs: new `StdlibVtableGlobalSpec` struct (global_name +
+  method_symbols) — packages the inputs for `emit_vtable_global_text()` as
+  a struct for batch processing
+- src/codegen/mod.rs: new free function
+  `emit_vtable_globals_batch(&[StdlibVtableGlobalSpec]) -> Vec<String>`
+  — batch version; iterates specs and calls `emit_vtable_global_text()`
+  per spec, collecting results
+- src/lib.rs: re-export `StdlibVtableGlobalSpec` + `emit_vtable_globals_batch`
+  + Stage 5.45 history comment
+- tests/v0/stage5/plan/codegen_vtable_batch_tests.rs: 12 new tests covering
+  empty input / single / multi / **batch==individual cross-check** /
+  order preservation / marker / null / mixed / struct semantics /
+  real-vtables simulation / dedup-not-required
+- tests/all_tests.rs: added codegen_vtable_batch_tests module (59 mods total)
+- Cargo.toml: version 0.11.40 → 0.11.41
+
+**Design highlights**:
+- **Batch vs individual**: `emit_vtable_globals_batch()` is the batch
+  counterpart of Stage 5.44's `emit_vtable_global_text()`. Codegen's
+  `emit_vtables()` currently loops over TraitResolver.vtables and calls
+  `emitter.emit_vtable_global()` per iteration — Stage 5.46 will refactor
+  to construct a `Vec<StdlibVtableGlobalSpec>` once, call batch helper,
+  and push all IR lines to emitter in one pass.
+- **StdlibVtableGlobalSpec struct**: packages `(global_name,
+  method_symbols)` as a struct rather than taking two parallel slices.
+  This is more idiomatic Rust and lets callers construct the spec list
+  with `vec![...]` syntax. Derives PartialEq/Eq for test assertions.
+- **Order preserved, no dedup**: output order matches input order; duplicate
+  specs produce duplicate IR lines. Deduplication is the caller's
+  responsibility — `emit_vtables()` achieves uniqueness via
+  TraitResolver.vtables HashMap keys.
+- **Cross-check test**: `test_emit_vtable_globals_batch_matches_individual`
+  verifies batch output == calling `emit_vtable_global_text()` per spec
+  and collecting. Safety net for Stage 5.46 refactor.
+
+**§16 interface isolation**: struct uses only String + Vec<String> — no
+`mir::ty` / `traits::TraitResolver` / `Emitter` / `StdlibVtableEmission`
+reference, no circular dependency.
+
+**§23 API naming**: `StdlibVtableGlobalSpec` follows `<Noun><Noun><Noun><Noun>`;
+`emit_vtable_globals_batch` follows `<verb>_<noun>_<adj>_<noun>`. The
+`_batch` suffix indicates batch version; `_globals` (plural) distinguishes
+from Stage 5.44's `emit_vtable_global_text` (singular).
+
+**Test impact**: +12 (1261 → 1273)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

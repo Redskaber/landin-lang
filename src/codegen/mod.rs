@@ -1535,3 +1535,63 @@ pub fn emit_vtable_global_text(global_name: &str, method_symbols: &[String]) -> 
 
     format!("@{} = private unnamed_addr constant {}", global_name, init)
 }
+
+// ============================================================================
+// Stage 5.45: Codegen vtable emission batch helper
+//
+// Batch version of `emit_vtable_global_text()` (Stage 5.44). Takes a slice
+// of `StdlibVtableGlobalSpec` and returns `Vec<String>` — one LLVM IR line
+// per spec. Prepares for Stage 5.46 refactor where `emit_vtables()` will
+// construct the spec list once, call this batch helper, and push all IR
+// lines to the emitter in one pass.
+//
+// Per API-naming-standard §3:
+//   - `StdlibVtableGlobalSpec` follows `<Noun><Noun><Noun><Noun>` pattern.
+//   - `emit_vtable_globals_batch` follows `<verb>_<noun>_<adj>_<noun>`
+//     pattern. `_batch` suffix indicates batch version; `_globals` (plural)
+//     distinguishes from Stage 5.44's `emit_vtable_global_text` (singular).
+//
+// Per §16: uses only String + Vec<String> — no `mir::ty` /
+// `traits::TraitResolver` / `Emitter` / `StdlibVtableEmission` reference,
+// no circular dependency.
+// ============================================================================
+
+/// Stage 5.45: Specification for one vtable global — the inputs needed by
+/// `emit_vtable_global_text()` packaged as a struct for batch processing.
+///
+/// Codegen constructs a `Vec<StdlibVtableGlobalSpec>` (one per (trait, type)
+/// pair in `TraitResolver.vtables`), then calls
+/// `emit_vtable_globals_batch()` to generate all IR lines in one pass.
+///
+/// Per API-naming-standard §3: `StdlibVtableGlobalSpec` follows
+/// `<Noun><Noun><Noun><Noun>` pattern. Field names follow `<noun>_<noun>`
+/// pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StdlibVtableGlobalSpec {
+    /// LLVM global name (e.g. `.vtable.Clone.S` — without leading `@`).
+    pub global_name: String,
+    /// Ordered method symbol list — each entry is either a real symbol
+    /// (e.g. `landin_S_clone`) or the literal `"null"` for missing slots.
+    pub method_symbols: Vec<String>,
+}
+
+/// Stage 5.45: Build LLVM IR text for multiple vtable globals in one call.
+///
+/// Given a slice of `StdlibVtableGlobalSpec`, returns `Vec<String>` where
+/// each element is one vtable global definition (one LLVM IR line). The
+/// output order matches the input order — no sorting or deduplication.
+///
+/// Each output line is identical to what `emit_vtable_global_text()` (Stage
+/// 5.44) produces for the corresponding spec — verified by
+/// `test_emit_vtable_globals_batch_matches_individual`.
+///
+/// Empty input returns an empty Vec.
+///
+/// Per API-naming-standard §3: `emit_vtable_globals_batch` follows
+/// `<verb>_<noun>_<adj>_<noun>` pattern.
+pub fn emit_vtable_globals_batch(specs: &[StdlibVtableGlobalSpec]) -> Vec<String> {
+    specs
+        .iter()
+        .map(|spec| emit_vtable_global_text(&spec.global_name, &spec.method_symbols))
+        .collect()
+}

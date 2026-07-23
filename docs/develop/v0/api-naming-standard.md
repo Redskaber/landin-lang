@@ -1104,3 +1104,55 @@ and Stage 5.45's `TextEmitter::emit_vtable_global()` delegation refactor.
 **Test impact**: +12 (1249 → 1261).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.15 (Stage 5.45, 2026-07-23)
+
+Stage 5.45 codegen vtable emission batch helper round. Adds the batch
+version of Stage 5.44's `emit_vtable_global_text()` — takes a slice of
+`StdlibVtableGlobalSpec` and returns `Vec<String>`.
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `StdlibVtableGlobalSpec` | struct (in `codegen`) | `<Noun><Noun><Noun><Noun>` |
+| `emit_vtable_globals_batch` | free fn (in `codegen`) | `<verb>_<noun>_<adj>_<noun>` |
+
+**Field naming (2 fields, all §23-compliant)**:
+
+| Field | Type | Naming pattern |
+|-------|------|----------------|
+| `global_name` | `String` | `<noun>_<noun>` |
+| `method_symbols` | `Vec<String>` | `<noun>_<noun>` |
+
+**Design decisions**:
+1. **Batch vs individual**: `emit_vtable_globals_batch()` is the batch
+   counterpart of Stage 5.44's `emit_vtable_global_text()`. Avoids per-
+   iteration function call overhead in `emit_vtables()` loop (Stage 5.46
+   refactor will construct spec list once, call batch helper, push all IR
+   lines to emitter in one pass).
+2. **`StdlibVtableGlobalSpec` struct** (not two parallel slices): packages
+   `(global_name, method_symbols)` as a struct. More idiomatic Rust —
+   callers construct spec list with `vec![StdlibVtableGlobalSpec { ... }, ...]`
+   syntax. Derives `PartialEq`/`Eq` for test assertions.
+3. **`_batch` suffix** indicates batch version; `_globals` (plural)
+   distinguishes from Stage 5.44's `emit_vtable_global_text` (singular).
+   Consistent plural/singular convention across the codegen vtable API
+   family.
+4. **Order preserved, no dedup**: output order matches input order;
+   duplicate specs produce duplicate IR lines. Dedup is caller's
+   responsibility — `emit_vtables()` achieves uniqueness via
+   TraitResolver.vtables HashMap keys. Adding dedup here would be
+   over-engineering (O(n²) or HashMap allocation) for a responsibility
+   that already belongs to the caller.
+5. **Cross-check test**: `test_emit_vtable_globals_batch_matches_individual`
+   verifies batch output == calling `emit_vtable_global_text()` per spec
+   and collecting. Safety net for Stage 5.46 refactor.
+
+**§16 compliance**: struct uses only `String` + `Vec<String>` — no
+`mir::ty` / `traits::TraitResolver` / `Emitter` / `StdlibVtableEmission`
+reference, no circular dependency.
+
+**Test impact**: +12 (1261 → 1273).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
