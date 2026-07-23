@@ -4703,3 +4703,46 @@ Stage Summary:
   + emit_vtable_globals_batch() + push all IR lines to emitter in one pass.
 - Next: Stage 5.47+ (codegen vtable emission refactor — emit_vtables delegation
   + TextEmitter delegation, then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.47-r96
+Agent: Super Z (main)
+Task: Stage 5.47 — codegen vtable emission orchestrator + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.42 / 1285 tests (Stage 5.46 complete)
+
+Stage 5.47: Codegen vtable emission orchestrator
+- src/codegen/mod.rs: new free function emit_vtables_from_resolver(&TraitResolver, &Rodeo, &mut dyn Emitter)
+  * Composes build_vtable_global_specs() + per-spec Emitter::emit_vtable_global()
+  * Behavior identical to emit_vtables() (verified by 2 cross-check tests)
+- src/lib.rs: re-export emit_vtables_from_resolver + Stage 5.47 history comment
+- tests/v0/stage5/plan/codegen_vtable_orchestrator_tests.rs: 13 new tests
+  (incl. 2 behavior-equivalence cross-checks: single + multi vtable)
+- tests/all_tests.rs: added codegen_vtable_orchestrator_tests module (61 mods)
+- Cargo.toml: version 0.11.42 → 0.11.43
+
+Docs:
+- plan-5.47.md / gate-review-round47.md / codegen_vtable_orchestrator_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (822.9 MiB removed) ✅
+- cargo test: 1298 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅ (修复了 1 个 unused import)
+
+Stage Summary:
+- Stage 5.47 PASSED — CI/CD all green per §1.2.
+- emit_vtables_from_resolver() orchestrator free function added to src/codegen/mod.rs.
+- Composes Stage 5.46 build_vtable_global_specs() + per-spec Emitter::emit_vtable_global().
+- Two behavior-equivalence cross-check tests guarantee identical output to
+  emit_vtables() (Stage 5.6) — safety net for Stage 5.48 delegation refactor.
+- §16 compliance: same inputs as emit_vtables() (&TraitResolver + &Rodeo +
+  &mut dyn Emitter), no mir::ty reference.
+- §23 compliance: emit_vtables_from_resolver follows <verb>_<noun>_<prep>_<noun>;
+  emit_ prefix indicates side-effect (push to emitter).
+- Stage 5.48 can now refactor emit_vtables() to one-liner delegation:
+  `emit_vtables_from_resolver(trait_resolver, interner, emitter)`.
+- Next: Stage 5.48+ (codegen vtable emission refactor — emit_vtables delegation
+  + TextEmitter delegation, then dyn Trait MIR lowering).

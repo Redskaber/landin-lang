@@ -269,7 +269,14 @@
 //!     5.6). Stage 5.47 will refactor `emit_vtables()` to call this builder
 //!     + `emit_vtable_globals_batch()` + push all IR lines to emitter in
 //!     one pass.
-//!   Next: Stage 5.47+ (codegen vtable emission refactor — emit_vtables
+//!   Stage 5.47 (v0.11.43): Codegen vtable emission orchestrator — new
+//!     free fn `emit_vtables_from_resolver(&TraitResolver, &Rodeo, &mut dyn Emitter)`
+//!     in `src/codegen/mod.rs`. Composes Stage 5.46's
+//!     `build_vtable_global_specs()` + per-spec `Emitter::emit_vtable_global()`
+//!     calls. Behavior identical to `emit_vtables()` (Stage 5.6) inline loop
+//!     — verified by cross-check test. Stage 5.48 will refactor `emit_vtables()`
+//!     to delegate to this orchestrator (one-liner body).
+//!   Next: Stage 5.48+ (codegen vtable emission refactor — emit_vtables
 //!     delegation + TextEmitter delegation, then dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
@@ -298,7 +305,8 @@ pub use cargo::{build_project, BuildConfig, BuildResult, ProjectManifest};
 pub use codegen::{
     build_vtable_global_specs, codegen_crate, emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs,
     emit_vtable_global_from_emission, emit_vtable_global_text, emit_vtable_globals_batch,
-    emit_vtables, EmitType, EmitValue, Emitter, StdlibVtableGlobalSpec, TextEmitter,
+    emit_vtables, emit_vtables_from_resolver, EmitType, EmitValue, Emitter, StdlibVtableGlobalSpec,
+    TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{

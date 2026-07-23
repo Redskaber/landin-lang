@@ -1,9 +1,69 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.42
+**Current version**: v0.11.43
 **Date**: 2026-07-23
-**Test count**: 1285 tests + 5 benchmarks
+**Test count**: 1298 tests + 5 benchmarks
+
+---
+
+## v0.11.43 — Stage 5.47 (Codegen vtable emission orchestrator)
+
+### Overview
+
+Orchestrator that composes Stage 5.46's `build_vtable_global_specs()` +
+per-spec `Emitter::emit_vtable_global()` calls. Behavior identical to
+`emit_vtables()` (Stage 5.6) inline loop — verified by two behavior-equivalence
+cross-check tests. Stage 5.48 will refactor `emit_vtables()` to delegate to
+this orchestrator (one-liner body).
+
+### New API
+
+- `emit_vtables_from_resolver(&TraitResolver, &Rodeo, &mut dyn Emitter)` (in
+  `src/codegen/mod.rs`) — orchestrator. Same input parameters as
+  `emit_vtables()`. Internally calls `build_vtable_global_specs()` then
+  `Emitter::emit_vtable_global()` per spec.
+
+### Design highlights
+
+1. **Orchestrator pattern**: composes the pure-function builder (Stage 5.46)
+   + the side-effect emitter calls. This is the "pure + side-effect
+   combination" version of `emit_vtables()` current inline loop.
+2. **Behavior equivalence**: `test_emit_vtables_from_resolver_match_emit_vtables`
+   + `_multi` call both `emit_vtables()` and `emit_vtables_from_resolver()`
+   on the same inputs, assert outputs are identical. Safety net for Stage
+   5.48 delegation refactor.
+3. **Not using batch helper this round**: `Emitter::emit_vtable_global()`
+   currently receives `(global_name, method_symbols)`, not pre-formatted IR
+   text. Stage 5.48 will delegate `TextEmitter::emit_vtable_global()` to
+   `emit_vtable_global_text()` (Stage 5.44), after which the orchestrator
+   can use `emit_vtable_globals_batch()` (Stage 5.45) for direct IR text
+   push.
+
+### §16 / §23 compliance
+
+- Function takes `&TraitResolver` + `&Rodeo` + `&mut dyn Emitter` (same as
+  `emit_vtables()`). No `mir::ty` reference, no circular dependency.
+- `emit_vtables_from_resolver` follows §23 `<verb>_<noun>_<prep>_<noun>`
+  pattern. The `emit_` prefix indicates side-effect (push to emitter).
+  `_from_resolver` indicates the input source.
+
+### Test impact
+
++13 tests (1285 → 1298) — covers empty/single/multi + **two behavior-equivalence
+cross-checks** (single + multi vtable) + no-side-effects + empty-entries +
+unresolved-interner + emitter-called-correctly + count-matches-vtables +
+composes-build-and-emit + deterministic-count + real-scenario.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (822.9 MiB removed)
+cargo test: 1298 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+  (fixed 1 unused import warning)
+```
 
 ---
 

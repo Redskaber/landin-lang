@@ -1204,3 +1204,53 @@ the spec-construction logic currently inlined in `emit_vtables()` (Stage 5.6).
 **Test impact**: +12 (1273 → 1285).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.17 (Stage 5.47, 2026-07-23)
+
+Stage 5.47 codegen vtable emission orchestrator round. Adds the orchestrator
+that composes Stage 5.46's `build_vtable_global_specs()` + per-spec
+`Emitter::emit_vtable_global()` calls. Behavior identical to `emit_vtables()`
+(Stage 5.6) inline loop.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_vtables_from_resolver` | free fn (in `codegen`) | `<verb>_<noun>_<prep>_<noun>` |
+
+**Design decisions**:
+1. **`emit_` prefix** (not `build_`): indicates side-effect (push to emitter).
+   This distinguishes it from Stage 5.46's `build_vtable_global_specs()`
+   (pure function, no side effects). The orchestrator is the "pure + side-effect
+   combination" version of `emit_vtables()` current inline loop.
+2. **`_from_resolver` suffix**: indicates the input source (TraitResolver).
+   Consistent with the `_from_emission` suffix in Stage 5.43's
+   `emit_vtable_global_from_emission()`. The `_from_*` convention makes the
+   input type explicit in the function name.
+3. **Same input parameters as `emit_vtables()`**: takes `&TraitResolver` +
+   `&Rodeo` + `&mut dyn Emitter` (identical signature minus the name). This
+   makes Stage 5.48 delegation a trivial one-liner body change:
+   ```rust
+   pub fn emit_vtables(resolver, interner, emitter) {
+       emit_vtables_from_resolver(resolver, interner, emitter)
+   }
+   ```
+4. **Not using batch helper this round**: `Emitter::emit_vtable_global()`
+   currently receives `(global_name, method_symbols)`, not pre-formatted IR
+   text. Stage 5.48 will delegate `TextEmitter::emit_vtable_global()` to
+   `emit_vtable_global_text()` (Stage 5.44), after which the orchestrator
+   can use `emit_vtable_globals_batch()` (Stage 5.45) for direct IR text
+   push. For now, the orchestrator uses the existing trait method signature
+   to maintain behavior equivalence.
+5. **Behavior-equivalence cross-check tests**:
+   `test_emit_vtables_from_resolver_match_emit_vtables` + `_multi` call
+   both `emit_vtables()` and `emit_vtables_from_resolver()` on the same
+   TraitResolver + interner + TextEmitter, assert outputs are identical.
+   Safety net for Stage 5.48 delegation refactor.
+
+**§16 compliance**: function takes `&TraitResolver` + `&Rodeo` + `&mut dyn Emitter`
+(same as `emit_vtables()`). No `mir::ty` reference, no circular dependency.
+
+**Test impact**: +13 (1285 → 1298).
+**Clippy impact**: 0 (0 warnings; fixed 1 unused import).
+**Fmt impact**: clean.

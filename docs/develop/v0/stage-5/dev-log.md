@@ -1340,3 +1340,61 @@ constructor function (input data → output data, no side effects). `_specs`
 
 **Test impact**: +12 (1273 → 1285)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.47 — Codegen Vtable Emission Orchestrator (v0.11.43)
+
+**Priority**: Orchestrator that composes Stage 5.46's
+`build_vtable_global_specs()` + per-spec `Emitter::emit_vtable_global()`
+calls. Behavior identical to `emit_vtables()` (Stage 5.6) inline loop.
+Stage 5.48 will refactor `emit_vtables()` to delegate to this orchestrator
+(one-liner body).
+
+**Work completed**:
+- src/codegen/mod.rs: new free function
+  `emit_vtables_from_resolver(&TraitResolver, &Rodeo, &mut dyn Emitter)`
+  * Composes `build_vtable_global_specs()` + per-spec `Emitter::emit_vtable_global()`
+  * Behavior identical to `emit_vtables()` (verified by 2 cross-check tests)
+  * Same input parameters as `emit_vtables()`
+- src/lib.rs: re-export `emit_vtables_from_resolver` from codegen
+  + Stage 5.47 history comment
+- tests/v0/stage5/plan/codegen_vtable_orchestrator_tests.rs: 13 new tests
+  covering empty/single/multi + **two behavior-equivalence cross-checks**
+  (single + multi vtable) + no-side-effects + empty-entries +
+  unresolved-interner + emitter-called-correctly + count-matches-vtables +
+  composes-build-and-emit + deterministic-count + real-scenario
+- tests/all_tests.rs: added codegen_vtable_orchestrator_tests module
+  (61 mods total)
+- Cargo.toml: version 0.11.42 → 0.11.43
+
+**Design highlights**:
+- **Orchestrator pattern**: `emit_vtables_from_resolver()` composes the
+  pure-function builder (Stage 5.46) + the side-effect emitter calls. This
+  is the "pure + side-effect combination" version of `emit_vtables()`
+  current inline loop.
+- **Behavior equivalence**: `test_emit_vtables_from_resolver_match_emit_vtables`
+  + `_multi` call both `emit_vtables()` and `emit_vtables_from_resolver()`
+  on the same TraitResolver + interner + TextEmitter, assert outputs are
+  identical. Safety net for Stage 5.48 delegation refactor.
+- **Not using batch helper this round**: `Emitter::emit_vtable_global()`
+  currently receives `(global_name, method_symbols)`, not pre-formatted IR
+  text. Stage 5.48 will delegate `TextEmitter::emit_vtable_global()` to
+  `emit_vtable_global_text()` (Stage 5.44), after which the orchestrator
+  can use `emit_vtable_globals_batch()` (Stage 5.45) for direct IR text
+  push. For now, the orchestrator uses the existing trait method signature.
+- **HashMap order non-determinism**: `TraitResolver.vtables` is a HashMap,
+  so multi-vtable tests use count comparison + set membership rather than
+  positional assertions. The behavior-equivalence cross-check works because
+  both `emit_vtables()` and `emit_vtables_from_resolver()` iterate the same
+  HashMap in the same order within a single test run.
+
+**§16 interface isolation**: function takes `&TraitResolver` + `&Rodeo` +
+`&mut dyn Emitter` (same as `emit_vtables()`). No `mir::ty` reference, no
+circular dependency.
+
+**§23 API naming**: `emit_vtables_from_resolver` follows
+`<verb>_<noun>_<prep>_<noun>` pattern. The `emit_` prefix indicates
+side-effect (push to emitter). `_from_resolver` indicates the input source.
+
+**Test impact**: +13 (1285 → 1298)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+  (修复了 1 个 unused import 警告)

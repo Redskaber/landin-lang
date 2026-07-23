@@ -1656,3 +1656,51 @@ pub fn build_vtable_global_specs(
     }
     specs
 }
+
+// ============================================================================
+// Stage 5.47: Codegen vtable emission orchestrator
+//
+// Composes Stage 5.46's `build_vtable_global_specs()` + per-spec
+// `Emitter::emit_vtable_global()` calls. This is the "pure-function +
+// side-effect" combination version of `emit_vtables()` current inline loop.
+//
+// Stage 5.48 will refactor `emit_vtables()` to delegate to this orchestrator
+// — its body becomes a one-liner.
+//
+// Per API-naming-standard §3: `emit_vtables_from_resolver` follows
+// `<verb>_<noun>_<prep>_<noun>` pattern. The `emit_` prefix indicates
+// side-effect (push to emitter). `_from_resolver` indicates the input source.
+//
+// Per §16: takes `&TraitResolver` + `&Rodeo` + `&mut dyn Emitter` (same as
+// `emit_vtables()`). No `mir::ty` reference, no circular dependency.
+// ============================================================================
+
+/// Stage 5.47: Emit vtable globals by composing `build_vtable_global_specs()`
+/// + per-spec `Emitter::emit_vtable_global()` calls.
+///
+/// This is the **orchestrator** that combines:
+/// 1. Stage 5.46's `build_vtable_global_specs()` — construct spec list
+/// 2. Per-spec `Emitter::emit_vtable_global()` — push IR to emitter
+///
+/// Behavior is **identical** to `emit_vtables()` (Stage 5.6) current inline
+/// loop — verified by `test_emit_vtables_from_resolver_match_emit_vtables`.
+///
+/// Stage 5.48 will refactor `emit_vtables()` to delegate to this orchestrator:
+/// ```text
+/// pub fn emit_vtables(resolver, interner, emitter) {
+///     emit_vtables_from_resolver(resolver, interner, emitter)
+/// }
+/// ```
+///
+/// Per API-naming-standard §3: `emit_vtables_from_resolver` follows
+/// `<verb>_<noun>_<prep>_<noun>` pattern.
+pub fn emit_vtables_from_resolver(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    emitter: &mut dyn Emitter,
+) {
+    let specs = build_vtable_global_specs(trait_resolver, interner);
+    for spec in &specs {
+        emitter.emit_vtable_global(&spec.global_name, &spec.method_symbols);
+    }
+}
