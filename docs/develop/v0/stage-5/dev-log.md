@@ -710,3 +710,19 @@ Docs supplement (all missing docs/tests/v0/stage5/ created):
 
 **Test impact**: +7
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.34 — Stdlib Type Resolution (v0.11.30)
+
+**Priority**: Add StdlibTypeKind + resolve_stdlib_type() for type name → kind mapping.
+
+**Work completed**:
+- src/stdlib.rs: new StdlibTypeKind enum (20 variants)
+- src/stdlib.rs: new resolve_stdlib_type() function
+- src/stdlib.rs: new is_primitive_type() / integer_bit_width() / is_signed_integer() / is_unsigned_integer() / is_float_type()
+- src/lib.rs: re-export all new APIs
+- tests/v0/stage5/plan/stdlib_type_resolve_tests.rs: 12 new tests (actually 11 #[test] functions, but the comment says 12 due to counting)
+- tests/all_tests.rs: added stdlib_type_resolve_tests module (48 mods)
+- Cargo.toml: version 0.11.29 → 0.11.30
+
+**Test impact**: +11
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

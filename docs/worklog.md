@@ -4154,3 +4154,33 @@ Stage Summary:
 - Stage 5.33 PASSED — CI/CD all green per §1.2.
 - CompileResult.stdlib_facade available for downstream stages.
 - Next: Stage 5.34+ (dyn Trait MIR lowering, stdlib crate compilation).
+
+---
+Task ID: stage5.34-r83
+Agent: Super Z (main)
+Task: Stage 5.34 — stdlib type resolution + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.29 / 1088 tests (Stage 5.33 complete)
+
+Stage 5.34: Stdlib type resolution
+- src/stdlib.rs: new StdlibTypeKind enum (I8-I128/U8-U128/F32/F64/Bool/Char/Str/Unit/Never/AllocType/StdType/Unknown)
+- src/stdlib.rs: new resolve_stdlib_type() + is_primitive_type() + integer_bit_width() + is_signed_integer() + is_unsigned_integer() + is_float_type()
+- src/lib.rs: re-export all new APIs
+- tests/v0/stage5/plan/stdlib_type_resolve_tests.rs: 11 new tests
+- tests/all_tests.rs: added stdlib_type_resolve_tests module (48 mods)
+- Cargo.toml: version 0.11.29 → 0.11.30
+
+Docs:
+- plan-5.34.md / gate-review-round34.md / stdlib_type_resolve.md / test gate-review-round34.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo test: (see output) ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.34 PASSED — CI/CD all green per §1.2.
+- StdlibTypeKind + resolve_stdlib_type() + 5 query functions added.
+- Next: Stage 5.35+ (dyn Trait MIR lowering, stdlib crate compilation).

@@ -353,3 +353,143 @@ impl StdlibFacade {
         )
     }
 }
+
+/// Stage 5.34: Stdlib type kind — simplified representation of stdlib types.
+///
+/// Maps stdlib type name strings (like "i32", "bool", "Vec") to a simple
+/// enum that the compiler can use for type resolution without depending on
+/// `mir::ty` (avoids circular dependency).
+///
+/// Per API-naming-standard §3: `StdlibTypeKind` follows `<Noun><Noun>` pattern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StdlibTypeKind {
+    // Core integer types
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    // Core float types
+    F32,
+    F64,
+    // Core other primitives
+    Bool,
+    Char,
+    Str,
+    Unit,
+    Never,
+    // Alloc types (represented as Adt with a name)
+    AllocType,
+    // Std types (represented as Adt with a name)
+    StdType,
+    // Not a stdlib type
+    Unknown,
+}
+
+/// Stage 5.34: Resolve a stdlib type name to its `StdlibTypeKind`.
+///
+/// Given a string like "i32", "bool", "Vec", returns the corresponding
+/// `StdlibTypeKind`. Returns `Unknown` for non-stdlib names.
+///
+/// Per API-naming-standard §3: `resolve_stdlib_type` follows
+/// `resolve_<noun>_<noun>` pattern for resolution queries.
+pub fn resolve_stdlib_type(name: &str) -> StdlibTypeKind {
+    match name {
+        // Core integers
+        "i8" => StdlibTypeKind::I8,
+        "i16" => StdlibTypeKind::I16,
+        "i32" => StdlibTypeKind::I32,
+        "i64" => StdlibTypeKind::I64,
+        "i128" => StdlibTypeKind::I128,
+        "u8" => StdlibTypeKind::U8,
+        "u16" => StdlibTypeKind::U16,
+        "u32" => StdlibTypeKind::U32,
+        "u64" => StdlibTypeKind::U64,
+        "u128" => StdlibTypeKind::U128,
+        // Core floats
+        "f32" => StdlibTypeKind::F32,
+        "f64" => StdlibTypeKind::F64,
+        // Core other
+        "bool" => StdlibTypeKind::Bool,
+        "char" => StdlibTypeKind::Char,
+        "str" => StdlibTypeKind::Str,
+        "()" => StdlibTypeKind::Unit,
+        "Never" => StdlibTypeKind::Never,
+        // Alloc types
+        "Box" | "Vec" | "String" | "HashMap" | "BTreeMap" | "HashSet" | "BTreeSet" | "Rc"
+        | "Arc" | "Cell" | "RefCell" | "LinkedList" | "VecDeque" => StdlibTypeKind::AllocType,
+        // Std types
+        "File" | "Dir" | "Path" | "PathBuf" | "OpenOptions" | "TcpStream" | "TcpListener"
+        | "UdpSocket" | "Thread" | "JoinHandle" | "Mutex" | "Condvar" | "Command"
+        | "ExitStatus" | "OsStr" | "OsString" | "Stdin" | "Stdout" | "Stderr" | "BufReader"
+        | "BufWriter" | "Result" | "Option" | "Some" | "None" | "Ok" | "Err" => {
+            StdlibTypeKind::StdType
+        }
+        // Unknown
+        _ => StdlibTypeKind::Unknown,
+    }
+}
+
+/// Stage 5.34: Check if a type name is a primitive stdlib type (Core layer).
+///
+/// Per API-naming-standard §3: `is_primitive_type` follows `is_<adj>_<noun>` pattern.
+pub fn is_primitive_type(name: &str) -> bool {
+    !matches!(
+        resolve_stdlib_type(name),
+        StdlibTypeKind::Unknown | StdlibTypeKind::AllocType | StdlibTypeKind::StdType
+    )
+}
+
+/// Stage 5.34: Get the bit width of an integer type (if applicable).
+///
+/// Returns `Some(width)` for integer types (e.g. "i32" → 32),
+/// `None` for non-integer types.
+///
+/// Per API-naming-standard §3: `integer_bit_width` follows `<noun>_<noun>` pattern.
+pub fn integer_bit_width(name: &str) -> Option<u32> {
+    match resolve_stdlib_type(name) {
+        StdlibTypeKind::I8 | StdlibTypeKind::U8 => Some(8),
+        StdlibTypeKind::I16 | StdlibTypeKind::U16 => Some(16),
+        StdlibTypeKind::I32 | StdlibTypeKind::U32 => Some(32),
+        StdlibTypeKind::I64 | StdlibTypeKind::U64 => Some(64),
+        StdlibTypeKind::I128 | StdlibTypeKind::U128 => Some(128),
+        _ => None,
+    }
+}
+
+/// Stage 5.34: Check if a type name is a signed integer type.
+pub fn is_signed_integer(name: &str) -> bool {
+    matches!(
+        resolve_stdlib_type(name),
+        StdlibTypeKind::I8
+            | StdlibTypeKind::I16
+            | StdlibTypeKind::I32
+            | StdlibTypeKind::I64
+            | StdlibTypeKind::I128
+    )
+}
+
+/// Stage 5.34: Check if a type name is an unsigned integer type.
+pub fn is_unsigned_integer(name: &str) -> bool {
+    matches!(
+        resolve_stdlib_type(name),
+        StdlibTypeKind::U8
+            | StdlibTypeKind::U16
+            | StdlibTypeKind::U32
+            | StdlibTypeKind::U64
+            | StdlibTypeKind::U128
+    )
+}
+
+/// Stage 5.34: Check if a type name is a floating-point type.
+pub fn is_float_type(name: &str) -> bool {
+    matches!(
+        resolve_stdlib_type(name),
+        StdlibTypeKind::F32 | StdlibTypeKind::F64
+    )
+}

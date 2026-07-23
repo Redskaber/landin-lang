@@ -1911,3 +1911,36 @@ cargo test: 1088 passed, 0 failed, 2 ignored
 cargo fmt --check: clean
 cargo clippy --all-targets: 0 warnings
 ```
+
+---
+
+## v0.11.30 — Stage 5.34 (Stdlib type resolution)
+
+### Overview
+
+Adds `StdlibTypeKind` enum and `resolve_stdlib_type()` function for mapping
+stdlib type name strings (like "i32", "bool", "Vec") to a simple enum
+representation, without depending on `mir::ty` (avoids circular dependency).
+
+### New API
+
+- `StdlibTypeKind` enum (20 variants: I8-I128, U8-U128, F32, F64, Bool,
+  Char, Str, Unit, Never, AllocType, StdType, Unknown)
+- `resolve_stdlib_type(name: &str) -> StdlibTypeKind`
+- `is_primitive_type(name: &str) -> bool`
+- `integer_bit_width(name: &str) -> Option<u32>`
+- `is_signed_integer(name: &str) -> bool`
+- `is_unsigned_integer(name: &str) -> bool`
+- `is_float_type(name: &str) -> bool`
+
+### Test impact
+
++11 tests (1088 → 1099)
+
+### Verification
+
+```
+cargo test: 1099 passed, 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings
+```

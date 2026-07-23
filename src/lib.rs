@@ -171,7 +171,13 @@
 //!   Stage 5.33 (v0.11.29): Stdlib facade integration —
 //!     `CompileResult.stdlib_facade` field added; `StdlibFacade` available
 //!     to downstream stages for aggregate stdlib statistics + queries.
-//!   Next: Stage 5.34+ (dyn Trait MIR lowering, stdlib crate compilation).
+//!   Stage 5.34 (v0.11.30): Stdlib type resolution —
+//!     `StdlibTypeKind` enum (I8-I128/U8-U128/F32/F64/Bool/Char/Str/Unit/
+//!     Never/AllocType/StdType/Unknown) + `resolve_stdlib_type()` +
+//!     `is_primitive_type()` + `integer_bit_width()` + `is_signed_integer()`
+//!     + `is_unsigned_integer()` + `is_float_type()` for type name → kind
+//!     mapping without mir::ty circular dependency.
+//!   Next: Stage 5.35+ (dyn Trait MIR lowering, stdlib crate compilation).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -201,7 +207,11 @@ pub use codegen::{
     Emitter, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
-pub use stdlib::{default_prelude, register_stdlib, StdlibFacade, StdlibLayer, StdlibPrelude};
+pub use stdlib::{
+    default_prelude, integer_bit_width, is_float_type, is_primitive_type, is_signed_integer,
+    is_unsigned_integer, register_stdlib, resolve_stdlib_type, StdlibFacade, StdlibLayer,
+    StdlibPrelude, StdlibTypeKind,
+};
 pub use traits::{
     extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, ImplValidationReport,
     IncompleteImpl, TraitResolver, BUILTIN_DEF_ID_BASE, BUILTIN_PRIMITIVE_COPY_KINDS,
