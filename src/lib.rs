@@ -177,7 +177,10 @@
 //!     `is_primitive_type()` + `integer_bit_width()` + `is_signed_integer()`
 //!     + `is_unsigned_integer()` + `is_float_type()` for type name → kind
 //!     mapping without mir::ty circular dependency.
-//!   Next: Stage 5.35+ (dyn Trait MIR lowering, stdlib crate compilation).
+//!   Stage 5.35 (v0.11.31): Stdlib type layout —
+//!     `type_size_bytes()` + `type_alignment_bytes()` + `is_zero_sized_type()`
+//!     + `type_description()` for primitive type size/alignment/ZST/desc.
+//!   Next: Stage 5.36+ (dyn Trait MIR lowering, stdlib crate compilation).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -209,7 +212,8 @@ pub use codegen::{
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{
     default_prelude, integer_bit_width, is_float_type, is_primitive_type, is_signed_integer,
-    is_unsigned_integer, register_stdlib, resolve_stdlib_type, StdlibFacade, StdlibLayer,
+    is_unsigned_integer, is_zero_sized_type, register_stdlib, resolve_stdlib_type,
+    type_alignment_bytes, type_description, type_size_bytes, StdlibFacade, StdlibLayer,
     StdlibPrelude, StdlibTypeKind,
 };
 pub use traits::{

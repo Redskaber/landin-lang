@@ -4184,3 +4184,32 @@ Stage Summary:
 - Stage 5.34 PASSED — CI/CD all green per §1.2.
 - StdlibTypeKind + resolve_stdlib_type() + 5 query functions added.
 - Next: Stage 5.35+ (dyn Trait MIR lowering, stdlib crate compilation).
+
+---
+Task ID: stage5.35-r84
+Agent: Super Z (main)
+Task: Stage 5.35 — stdlib type layout + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.30 / 1099 tests (Stage 5.34 complete)
+
+Stage 5.35: Stdlib type layout
+- src/stdlib.rs: new type_size_bytes() + type_alignment_bytes() + is_zero_sized_type() + type_description()
+- src/lib.rs: re-export all new APIs
+- tests/v0/stage5/plan/stdlib_layout_tests.rs: 7 new tests
+- tests/all_tests.rs: added stdlib_layout_tests module (49 mods)
+- Cargo.toml: version 0.11.30 → 0.11.31
+
+Docs:
+- plan-5.35.md / gate-review-round35.md / stdlib_layout.md / test gate-review-round35.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo test: (see output) ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.35 PASSED — CI/CD all green per §1.2.
+- Stdlib type layout: size/alignment/ZST/description queries added.
+- Next: Stage 5.36+ (dyn Trait MIR lowering, stdlib crate compilation).

@@ -493,3 +493,93 @@ pub fn is_float_type(name: &str) -> bool {
         StdlibTypeKind::F32 | StdlibTypeKind::F64
     )
 }
+
+/// Stage 5.35: Get the size in bytes of a primitive stdlib type.
+///
+/// Returns `Some(bytes)` for primitive types with known sizes:
+/// - i8/u8/bool → 1
+/// - i16/u16 → 2
+/// - i32/u32/f32/char → 4
+/// - i64/u64/f64 → 8
+/// - i128/u128 → 16
+/// - () (unit) → 0
+/// - Never → 0 (uninhabited)
+///
+/// Returns `None` for str (unsized), alloc types, std types, and unknowns.
+///
+/// Per API-naming-standard §3: `type_size_bytes` follows `<noun>_<noun>`
+/// pattern for data-access queries.
+pub fn type_size_bytes(name: &str) -> Option<u64> {
+    match resolve_stdlib_type(name) {
+        StdlibTypeKind::I8 | StdlibTypeKind::U8 | StdlibTypeKind::Bool => Some(1),
+        StdlibTypeKind::I16 | StdlibTypeKind::U16 => Some(2),
+        StdlibTypeKind::I32 | StdlibTypeKind::U32 | StdlibTypeKind::F32 | StdlibTypeKind::Char => {
+            Some(4)
+        }
+        StdlibTypeKind::I64 | StdlibTypeKind::U64 | StdlibTypeKind::F64 => Some(8),
+        StdlibTypeKind::I128 | StdlibTypeKind::U128 => Some(16),
+        StdlibTypeKind::Unit | StdlibTypeKind::Never => Some(0),
+        // Str is unsized, alloc/std types have variable size
+        StdlibTypeKind::Str
+        | StdlibTypeKind::AllocType
+        | StdlibTypeKind::StdType
+        | StdlibTypeKind::Unknown => None,
+    }
+}
+
+/// Stage 5.35: Get the alignment in bytes of a primitive stdlib type.
+///
+/// Alignment matches size for primitives (natural alignment).
+/// Returns `None` for unsized/unknown types.
+///
+/// Per API-naming-standard §3: `type_alignment_bytes` follows
+/// `<noun>_<noun>` pattern.
+pub fn type_alignment_bytes(name: &str) -> Option<u64> {
+    type_size_bytes(name)
+}
+
+/// Stage 5.35: Check if a type is zero-sized (ZST).
+///
+/// Returns `true` for `()` and `Never` (size == 0).
+///
+/// Per API-naming-standard §3: `is_zero_sized_type` follows
+/// `is_<adj>_<noun>` pattern.
+pub fn is_zero_sized_type(name: &str) -> bool {
+    matches!(
+        resolve_stdlib_type(name),
+        StdlibTypeKind::Unit | StdlibTypeKind::Never
+    )
+}
+
+/// Stage 5.35: Get a human-readable description of a stdlib type.
+///
+/// Returns a string like "32-bit signed integer", "64-bit float",
+/// "boolean", "UTF-8 string slice (unsized)", etc.
+/// Returns `None` for unknown types.
+///
+/// Per API-naming-standard §3: `type_description` follows
+/// `<noun>_<noun>` pattern for accessor functions returning descriptions.
+pub fn type_description(name: &str) -> Option<&'static str> {
+    match resolve_stdlib_type(name) {
+        StdlibTypeKind::I8 => Some("8-bit signed integer"),
+        StdlibTypeKind::I16 => Some("16-bit signed integer"),
+        StdlibTypeKind::I32 => Some("32-bit signed integer"),
+        StdlibTypeKind::I64 => Some("64-bit signed integer"),
+        StdlibTypeKind::I128 => Some("128-bit signed integer"),
+        StdlibTypeKind::U8 => Some("8-bit unsigned integer"),
+        StdlibTypeKind::U16 => Some("16-bit unsigned integer"),
+        StdlibTypeKind::U32 => Some("32-bit unsigned integer"),
+        StdlibTypeKind::U64 => Some("64-bit unsigned integer"),
+        StdlibTypeKind::U128 => Some("128-bit unsigned integer"),
+        StdlibTypeKind::F32 => Some("32-bit floating point"),
+        StdlibTypeKind::F64 => Some("64-bit floating point"),
+        StdlibTypeKind::Bool => Some("boolean"),
+        StdlibTypeKind::Char => Some("Unicode scalar value (4 bytes)"),
+        StdlibTypeKind::Str => Some("UTF-8 string slice (unsized)"),
+        StdlibTypeKind::Unit => Some("unit type (zero-sized)"),
+        StdlibTypeKind::Never => Some("never type (uninhabited, zero-sized)"),
+        StdlibTypeKind::AllocType => Some("alloc-layer heap type"),
+        StdlibTypeKind::StdType => Some("std-layer OS-dependent type"),
+        StdlibTypeKind::Unknown => None,
+    }
+}

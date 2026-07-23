@@ -1944,3 +1944,31 @@ cargo test: 1099 passed, 0 failed, 2 ignored
 cargo fmt --check: clean
 cargo clippy --all-targets: 0 warnings
 ```
+
+---
+
+## v0.11.31 — Stage 5.35 (Stdlib type layout)
+
+### Overview
+
+Adds primitive type layout queries: `type_size_bytes()`,
+`type_alignment_bytes()`, `is_zero_sized_type()`, `type_description()`.
+
+### New API
+
+- `type_size_bytes(name: &str) -> Option<u64>` — size in bytes
+- `type_alignment_bytes(name: &str) -> Option<u64>` — alignment in bytes
+- `is_zero_sized_type(name: &str) -> bool` — ZST check
+- `type_description(name: &str) -> Option<&'static str>` — human-readable desc
+
+### Test impact
+
++7 tests (1099 → 1106)
+
+### Verification
+
+```
+cargo test: 1106 passed, 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings
+```

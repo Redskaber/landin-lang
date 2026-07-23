@@ -726,3 +726,17 @@ Docs supplement (all missing docs/tests/v0/stage5/ created):
 
 **Test impact**: +11
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.35 — Stdlib Type Layout (v0.11.31)
+
+**Priority**: Add type_size_bytes + type_alignment_bytes + is_zero_sized_type + type_description.
+
+**Work completed**:
+- src/stdlib.rs: new type_size_bytes() / type_alignment_bytes() / is_zero_sized_type() / type_description()
+- src/lib.rs: re-export all new APIs
+- tests/v0/stage5/plan/stdlib_layout_tests.rs: 7 new tests
+- tests/all_tests.rs: added stdlib_layout_tests module (49 mods)
+- Cargo.toml: version 0.11.30 → 0.11.31
+
+**Test impact**: +7
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
