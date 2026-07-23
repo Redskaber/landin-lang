@@ -1818,3 +1818,30 @@ cargo test: 1073 passed, 0 failed, 2 ignored
 cargo fmt --check: clean
 cargo clippy --all-targets: 0 warnings
 ```
+
+---
+
+## v0.11.28 — Stage 5.31 (Stdlib facade)
+
+### Overview
+
+Adds `StdlibFacade` — a unified interface for querying stdlib composition:
+total type/trait counts, per-layer counts, and name membership queries.
+
+### New API
+
+- `StdlibFacade` struct with `from_prelude()`, `type_count()`,
+  `trait_count()`, `type_count_for_layer()`, `layer_count()`,
+  `is_stdlib_name()`, `summary()`
+
+### Test impact
+
++8 tests (1073 → 1081)
+
+### Verification
+
+```
+cargo test: 1081 passed, 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings
+```

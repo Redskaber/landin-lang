@@ -286,3 +286,70 @@ pub fn register_stdlib(interner: &mut Rodeo) {
 pub fn default_prelude() -> StdlibPrelude {
     StdlibPrelude::default()
 }
+
+/// Stage 5.31: Stdlib facade — aggregate statistics + layer queries.
+///
+/// Provides a unified interface for querying stdlib composition: how many
+/// types/traits per layer, total counts, and whether a name is stdlib-provided.
+///
+/// Per API-naming-standard §3: `StdlibFacade` follows `<Noun><Noun>` pattern;
+/// methods use `<noun>_count` / `<noun>_for_<noun>` patterns.
+#[derive(Debug, Clone)]
+pub struct StdlibFacade {
+    /// The prelude backing this facade.
+    pub prelude: StdlibPrelude,
+}
+
+impl Default for StdlibFacade {
+    fn default() -> Self {
+        Self {
+            prelude: default_prelude(),
+        }
+    }
+}
+
+impl StdlibFacade {
+    /// Stage 5.31: Create a new StdlibFacade from a prelude.
+    pub fn from_prelude(prelude: StdlibPrelude) -> Self {
+        Self { prelude }
+    }
+
+    /// Stage 5.31: Get the total type count across all layers.
+    pub fn type_count(&self) -> usize {
+        all_stdlib_type_names().len()
+    }
+
+    /// Stage 5.31: Get the total trait count across all layers.
+    pub fn trait_count(&self) -> usize {
+        all_stdlib_trait_names().len()
+    }
+
+    /// Stage 5.31: Get the type count for a specific layer.
+    pub fn type_count_for_layer(&self, layer: StdlibLayer) -> usize {
+        self.prelude.names_for_layer(layer).len()
+    }
+
+    /// Stage 5.31: Get the number of stdlib layers (always 3: Core, Alloc, Std).
+    pub fn layer_count(&self) -> usize {
+        3
+    }
+
+    /// Stage 5.31: Check if a name is stdlib-provided (any layer).
+    pub fn is_stdlib_name(&self, name: &str) -> bool {
+        self.prelude.layer_for_name(name) != StdlibLayer::None
+            || all_stdlib_trait_names().contains(&name)
+    }
+
+    /// Stage 5.31: Get a summary string of the facade state.
+    pub fn summary(&self) -> String {
+        format!(
+            "StdlibFacade:\n  layers: {}\n  total types: {}\n  total traits: {}\n  core types: {}\n  alloc types: {}\n  std types: {}\n",
+            self.layer_count(),
+            self.type_count(),
+            self.trait_count(),
+            self.type_count_for_layer(StdlibLayer::Core),
+            self.type_count_for_layer(StdlibLayer::Alloc),
+            self.type_count_for_layer(StdlibLayer::Std),
+        )
+    }
+}

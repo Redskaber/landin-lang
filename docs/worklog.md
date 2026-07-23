@@ -4069,3 +4069,33 @@ Stage Summary:
 - Stage 5.30 PASSED — CI/CD all green per §1.2.
 - Stdlib now has core + alloc + std layers (56+ types, 40+ traits).
 - Next: Stage 5.31+ (dyn Trait MIR lowering, stdlib facade crate).
+
+---
+Task ID: stage5.31-r80
+Agent: Super Z (main)
+Task: Stage 5.31 — stdlib facade + docs + RELEASE_NOTES + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.27 / 1073 tests (Stage 5.30 complete)
+
+Stage 5.31: Stdlib facade
+- src/stdlib.rs: new StdlibFacade struct (from_prelude + type_count + trait_count
+  + type_count_for_layer + layer_count + is_stdlib_name + summary)
+- src/lib.rs: re-export StdlibFacade
+- tests/v0/stage5/plan/stdlib_facade_tests.rs: 8 new tests
+- tests/all_tests.rs: added stdlib_facade_tests module (46 mods)
+- Cargo.toml: version 0.11.27 → 0.11.28
+
+Docs:
+- plan-5.31.md / gate-review-round31.md / stdlib_facade.md / test gate-review-round31.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo test: (see output) ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.31 PASSED — CI/CD all green per §1.2.
+- StdlibFacade: unified stdlib statistics + layer queries.
+- Next: Stage 5.32+ (dyn Trait MIR lowering, stdlib crate compilation).

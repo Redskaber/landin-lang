@@ -164,7 +164,11 @@
 //!     `StdlibLayer::Std` variant added; `register_stdlib()` +
 //!     `all_stdlib_type_names()` + `all_stdlib_trait_names()` +
 //!     `layer_for_name()` + `names_for_layer()` extended.
-//!   Next: Stage 5.31+ (dyn Trait MIR lowering, stdlib facade crate).
+//!   Stage 5.31 (v0.11.28): Stdlib facade —
+//!     `StdlibFacade` struct: `type_count()` + `trait_count()` +
+//!     `type_count_for_layer()` + `layer_count()` + `is_stdlib_name()` +
+//!     `summary()` for aggregate stdlib statistics + queries.
+//!   Next: Stage 5.32+ (dyn Trait MIR lowering, stdlib crate compilation).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -194,7 +198,7 @@ pub use codegen::{
     Emitter, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
-pub use stdlib::{default_prelude, register_stdlib, StdlibLayer, StdlibPrelude};
+pub use stdlib::{default_prelude, register_stdlib, StdlibFacade, StdlibLayer, StdlibPrelude};
 pub use traits::{
     extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, ImplValidationReport,
     IncompleteImpl, TraitResolver, BUILTIN_DEF_ID_BASE, BUILTIN_PRIMITIVE_COPY_KINDS,

@@ -660,3 +660,20 @@ Docs supplement (all missing docs/tests/v0/stage5/ created):
 
 **Test impact**: +8
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.31 — Stdlib Facade (v0.11.28)
+
+**Priority**: Unified stdlib statistics + layer query interface.
+
+**Work completed**:
+- src/stdlib.rs: new StdlibFacade struct with:
+  * from_prelude() / type_count() / trait_count()
+  * type_count_for_layer() / layer_count()
+  * is_stdlib_name() / summary()
+- src/lib.rs: re-export StdlibFacade
+- tests/v0/stage5/plan/stdlib_facade_tests.rs: 8 new tests
+- tests/all_tests.rs: added stdlib_facade_tests module (46 mods)
+- Cargo.toml: version 0.11.27 → 0.11.28
+
+**Test impact**: +8
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
