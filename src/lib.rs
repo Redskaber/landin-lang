@@ -240,7 +240,15 @@
 //!     `stdlib_vtable_emission_summary(&[StdlibVtableEmission])` for
 //!     project-level vtable statistics. §25 deep review #4 triggered
 //!     (Stage 5.33-5.42 = 10 sub-stages since review #3).
-//!   Next: Stage 5.43+ (codegen vtable emission refactor, dyn Trait MIR lowering).
+//!   Stage 5.43 (v0.11.39): Codegen vtable emission helper — new free fn
+//!     `emit_vtable_global_from_emission(&StdlibVtableEmission) -> String`
+//!     in `src/codegen/mod.rs` — pure-function counterpart of
+//!     `TextEmitter::emit_vtable_global()` producing byte-for-byte identical
+//!     LLVM IR. **First Stage 5 sub-stage modifying codegen** — but does
+//!     NOT modify existing emission path (`emit_vtables()` +
+//!     `TextEmitter::emit_vtable_global()` unchanged). Stage 5.44+ will
+//!     refactor `TextEmitter::emit_vtable_global()` to delegate here.
+//!   Next: Stage 5.44+ (codegen vtable emission refactor, dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -266,8 +274,8 @@ pub mod typeck;
 // `codegen_from_mir` directly).
 pub use cargo::{build_project, BuildConfig, BuildResult, ProjectManifest};
 pub use codegen::{
-    codegen_crate, emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_vtables, EmitType, EmitValue,
-    Emitter, TextEmitter,
+    codegen_crate, emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_vtable_global_from_emission,
+    emit_vtables, EmitType, EmitValue, Emitter, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{

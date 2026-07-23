@@ -1,9 +1,71 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.38
+**Current version**: v0.11.39
 **Date**: 2026-07-23
-**Test count**: 1236 tests + 5 benchmarks
+**Test count**: 1249 tests + 5 benchmarks
+
+---
+
+## v0.11.39 — Stage 5.43 (Codegen vtable emission helper)
+
+### Overview
+
+**First Stage 5 sub-stage modifying `src/codegen/`** — adds new free function
+`emit_vtable_global_from_emission()` that produces LLVM IR text from a
+`StdlibVtableEmission`. **Does NOT modify existing emission path** —
+`emit_vtables()` + `TextEmitter::emit_vtable_global()` unchanged. "先并行、
+后委托" strategy: Stage 5.44+ will refactor `TextEmitter::emit_vtable_global()`
+to delegate here, eliminating the duplicated LLVM IR formatting logic.
+
+### New API
+
+- `emit_vtable_global_from_emission(&StdlibVtableEmission) -> String` (in
+  `src/codegen/mod.rs`) — pure-function counterpart of
+  `TextEmitter::emit_vtable_global()`. Produces byte-for-byte identical
+  LLVM IR on non-null paths. Extra: handles `"null"` string → `ptr null`
+  literal (for missing slots from `stdlib_vtable_method_symbols()`).
+
+### Design highlights
+
+1. **"先并行、后委托" strategy**: new function exists in parallel to
+   `TextEmitter::emit_vtable_global()` — no existing path modified. Makes
+   the change independently reviewable and revertable.
+2. **"null" handling**: detects `"null"` strings in `method_symbols` and
+   emits `ptr null` (no `@` prefix). `TextEmitter::emit_vtable_global()`
+   doesn't need this because `emit_vtables()` only passes real symbols —
+   but the new function is designed to consume `StdlibVtableEmission`
+   directly, which may contain "null" entries.
+3. **Cross-check tests**: `test_emit_vtable_global_from_emission_match_text_emitter`
+   + `_marker` variant construct `StdlibVtableEmission` with real symbols,
+   call both the free function and `TextEmitter::emit_vtable_global()`,
+   assert free fn output appears verbatim in TextEmitter output. Safety
+   net for Stage 5.44+ refactor.
+
+### §16 / §23 compliance
+
+- Function takes `&StdlibVtableEmission` (stdlib-internal type), returns
+  `String`. No `mir::ty` / `traits::TraitResolver` / `Emitter` reference,
+  no circular dependency.
+- `emit_vtable_global_from_emission` follows §23
+  `<verb>_<noun>_<adj>_<prep>_<noun>` pattern. The `emit_` prefix is
+  consistent with the rest of the codegen module.
+
+### Test impact
+
++13 tests (1236 → 1249) — covers basic emission (Clone/Drop/Copy-marker/
+Clone-partial/Add/PartialEq) + format components (global_name/array/
+entries/null/zeroinitializer) + **two cross-check tests** verifying
+byte-for-byte equivalence with `TextEmitter::emit_vtable_global()`.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (952.7 MiB removed)
+cargo test: 1249 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

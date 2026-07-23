@@ -4524,3 +4524,50 @@ Stage Summary:
   stdlib_vtable_emission_summary() — replaces inline format! + enables
   diagnostic output.
 - Next: Stage 5.43+ (codegen vtable emission refactor, dyn Trait MIR lowering).
+
+---
+Task ID: stage5.43-r92
+Agent: Super Z (main)
+Task: Stage 5.43 — codegen vtable emission helper + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.38 / 1236 tests (Stage 5.42 complete + deep review #4 GO)
+
+Stage 5.43: Codegen vtable emission helper (first codegen modification in Stage 5)
+- src/codegen/mod.rs: new free function emit_vtable_global_from_emission(&StdlibVtableEmission) -> String
+  * Pure-function counterpart of TextEmitter::emit_vtable_global()
+  * Byte-for-byte identical LLVM IR (verified by cross-check tests)
+  * Handles "null" string → ptr null literal (TextEmitter current path doesn't)
+- src/lib.rs: re-export emit_vtable_global_from_emission + Stage 5.43 history comment
+- tests/v0/stage5/plan/codegen_vtable_emission_helper_tests.rs: 13 new tests
+  (incl. 2 cross-check tests verifying byte-for-byte equivalence with
+  TextEmitter::emit_vtable_global())
+- tests/all_tests.rs: added codegen_vtable_emission_helper_tests module (57 mods)
+- Cargo.toml: version 0.11.38 → 0.11.39
+
+Docs:
+- plan-5.43.md / gate-review-round43.md / codegen_vtable_emission_helper_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (952.7 MiB removed) ✅
+- cargo test: 1249 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.43 PASSED — CI/CD all green per §1.2.
+- emit_vtable_global_from_emission() free function added to src/codegen/mod.rs.
+- **First Stage 5 sub-stage modifying codegen** — but does NOT modify existing
+  emission path (emit_vtables + TextEmitter::emit_vtable_global unchanged).
+- "先并行、后委托" strategy: Stage 5.44+ will refactor TextEmitter to delegate
+  here, eliminating duplicated LLVM IR formatting logic.
+- Cross-check tests guarantee byte-for-byte equivalence with TextEmitter on
+  non-null + marker paths — safety net for Stage 5.44+ refactor.
+- §16 compliance: function takes &StdlibVtableEmission (stdlib-internal),
+  returns String. No mir::ty / traits::TraitResolver / Emitter reference.
+- §23 compliance: emit_vtable_global_from_emission follows
+  <verb>_<noun>_<adj>_<prep>_<noun> pattern, emit_ prefix consistent with
+  codegen module.
+- Next: Stage 5.44+ (codegen vtable emission refactor — TextEmitter delegation,
+  then dyn Trait MIR lowering).

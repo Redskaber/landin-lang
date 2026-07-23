@@ -1001,3 +1001,52 @@ review #3 at Stage 5.32). 7-dimension audit in
 **Clippy impact**: 0 (0 warnings; fixed 1 `cloned_ref_to_slice_refs`
 warning in test).
 **Fmt impact**: clean.
+
+### v1.13 (Stage 5.43, 2026-07-23)
+
+Stage 5.43 codegen vtable emission helper round. **First Stage 5 sub-stage
+modifying `src/codegen/`** — adds a new free function that produces LLVM IR
+text from a `StdlibVtableEmission`.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_vtable_global_from_emission` | free fn (in `codegen`) | `<verb>_<noun>_<adj>_<prep>_<noun>` |
+
+**Design decisions**:
+1. **`emit_` prefix** consistent with the rest of the codegen module
+   (`emit_vtables`, `emit_dyn_trait_ptrs`, `emit_fat_ptr_type`,
+   `emit_fat_ptr_type`). All codegen free functions that produce LLVM IR
+   text use this prefix.
+2. **`_from_emission` suffix** distinguishes this from the existing
+   `emit_vtable_global` (a method on the `Emitter` trait). The suffix
+   makes the input type explicit — callers know they need to pass a
+   `StdlibVtableEmission`, not a `(global_name, method_symbols)` pair.
+3. **"先并行、后委托" strategy**: the new function exists in parallel to
+   `TextEmitter::emit_vtable_global()` — no existing path modified. This
+   makes the change independently reviewable and revertable. Stage 5.44+
+   will refactor `TextEmitter::emit_vtable_global()` to delegate here,
+   eliminating the duplicated LLVM IR formatting logic.
+4. **"null" handling**: the new function detects `"null"` strings in
+   `method_symbols` and emits `ptr null` (no `@` prefix). This is needed
+   because `StdlibVtableEmission.method_symbols` may contain `"null"`
+   entries (from `stdlib_vtable_method_symbols()` for missing slots),
+   while `TextEmitter::emit_vtable_global()` is only called with real
+   symbols (from `emit_vtables()` → `VtableEntry.fn_name`). The new
+   function is designed to consume `StdlibVtableEmission` directly, so
+   it must handle the "null" case.
+5. **Cross-check tests**: `test_emit_vtable_global_from_emission_match_text_emitter`
+   + `_marker` variant construct `StdlibVtableEmission` with real symbols,
+   call both the free function and `TextEmitter::emit_vtable_global()`,
+   assert free fn output appears verbatim in TextEmitter output. This is
+   the safety net for Stage 5.44+ refactor — guarantees behavior
+   equivalence when `TextEmitter::emit_vtable_global()` delegates here.
+
+**§16 compliance**: function takes `&StdlibVtableEmission` (stdlib-internal
+type), returns `String`. No `mir::ty` / `traits::TraitResolver` / `Emitter`
+trait reference, no circular dependency.
+
+**Test impact**: +13 (1236 → 1249).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

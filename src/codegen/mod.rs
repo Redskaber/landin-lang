@@ -1396,3 +1396,86 @@ fn detect_operand_type(
         }
     }
 }
+
+// ============================================================================
+// Stage 5.43: Codegen vtable emission helper (pure free function)
+//
+// New free function `emit_vtable_global_from_emission()` that takes a
+// `&StdlibVtableEmission` and returns the LLVM IR text for one vtable global.
+// This is the **pure-function counterpart** of
+// `TextEmitter::emit_vtable_global()` — produces byte-for-byte identical
+// IR, but doesn't require an `Emitter` trait object.
+//
+// This is the first Stage 5 sub-stage that modifies `src/codegen/`, but
+// it does NOT modify the existing emission path:
+//   - `emit_vtables()` (Stage 5.6) continues to iterate TraitResolver.vtables
+//   - `TextEmitter::emit_vtable_global()` (Stage 5.6) continues to push to
+//     `self.globals`
+//
+// The new function is parallel — Stage 5.44+ will refactor
+// `TextEmitter::emit_vtable_global()` to delegate here, eliminating the
+// duplicated LLVM IR formatting logic.
+//
+// Per API-naming-standard §3: `emit_vtable_global_from_emission` follows
+// `<verb>_<noun>_<adj>_<prep>_<noun>` pattern. The `emit_` prefix is
+// consistent with the rest of the codegen module (`emit_vtables`,
+// `emit_dyn_trait_ptrs`, `emit_fat_ptr_type`).
+//
+// Per §16: takes `&StdlibVtableEmission` (stdlib-internal type) and returns
+// `String`. No `mir::ty` / `traits::TraitResolver` / `Emitter` reference,
+// no circular dependency.
+// ============================================================================
+
+/// Stage 5.43: Build the LLVM IR text for one vtable global from a
+/// `StdlibVtableEmission`.
+///
+/// Produces a line like:
+/// ```text
+/// @.vtable.<trait>.<type> = private unnamed_addr constant [N x ptr] [ptr @sym1, ptr @sym2, ...]
+/// ```
+///
+/// Edge cases:
+/// - `method_symbols.is_empty()` (marker trait) → `... constant zeroinitializer`
+/// - `method_symbols = ["null", ...]` → `ptr null` literal in the initializer
+///
+/// The output is **byte-for-byte identical** to what
+/// `TextEmitter::emit_vtable_global()` produces — verified by
+/// `test_emit_vtable_global_from_emission_match_text_emitter` in
+/// `tests/v0/stage5/plan/codegen_vtable_emission_helper_tests.rs`.
+///
+/// Per API-naming-standard §3: `emit_vtable_global_from_emission` follows
+/// `<verb>_<noun>_<adj>_<prep>_<noun>` pattern.
+pub fn emit_vtable_global_from_emission(emission: &crate::stdlib::StdlibVtableEmission) -> String {
+    // Build the LLVM initializer expression — mirrors
+    // TextEmitter::emit_vtable_global (text_emitter.rs:538-546).
+    //
+    // Stage 5.43: the `method_symbols` entries may be either:
+    //   - a real symbol name like "landin_S_clone" → emit as `ptr @landin_S_clone`
+    //   - the literal string "null" (from `stdlib_vtable_method_symbols` when
+    //     a slot is not provided) → emit as `ptr null` (no `@` prefix)
+    let init = if emission.method_symbols.is_empty() {
+        "zeroinitializer".to_string()
+    } else {
+        let entries: Vec<String> = emission
+            .method_symbols
+            .iter()
+            .map(|sym| {
+                if sym == "null" {
+                    "ptr null".to_string()
+                } else {
+                    format!("ptr @{}", sym)
+                }
+            })
+            .collect();
+        format!(
+            "[{} x ptr] [{}]",
+            emission.method_symbols.len(),
+            entries.join(", ")
+        )
+    };
+
+    format!(
+        "@{} = private unnamed_addr constant {}",
+        emission.global_name, init
+    )
+}
