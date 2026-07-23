@@ -1,9 +1,9 @@
 [package]
 name = "landin-compiler"
-version = "0.11.43"
+version = "0.11.44"
 edition = "2021"
 license = "MIT"
-description = "Landin programming language compiler — Stage 0-4 complete + Stage 5.1-5.47 (TraitResolver + driver integration + Copy detection + DefId→name + vtable + vtable codegen + dyn Trait fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report + driver validation integration + traits/mod.rs split + mini-cargo MVP + stdlib layout + stdlib trait method signatures + stdlib vtable slot layout + stdlib vtable byte size + stdlib vtable construction planner + stdlib vtable symbol name planner + stdlib vtable emission plan + stdlib vtable emission summary + codegen vtable emission helper + codegen vtable global text bridge + codegen vtable emission batch helper + codegen vtable spec builder + codegen vtable emission orchestrator) + standardized tests/ directory"
+description = "Landin programming language compiler — Stage 0-4 complete + Stage 5.1-5.48 (TraitResolver + driver integration + Copy detection + DefId→name + vtable + vtable codegen + dyn Trait fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report + driver validation integration + traits/mod.rs split + mini-cargo MVP + stdlib layout + stdlib trait method signatures + stdlib vtable slot layout + stdlib vtable byte size + stdlib vtable construction planner + stdlib vtable symbol name planner + stdlib vtable emission plan + stdlib vtable emission summary + codegen vtable emission helper + codegen vtable global text bridge + codegen vtable emission batch helper + codegen vtable spec builder + codegen vtable emission orchestrator + codegen dynptr global text helper) + standardized tests/ directory"
 repository = "https://github.com/landin-lang/main"
 authors = ["redskaber"]
 keywords = ["compiler", "language", "systems-programming"]

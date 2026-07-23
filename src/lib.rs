@@ -276,8 +276,15 @@
 //!     calls. Behavior identical to `emit_vtables()` (Stage 5.6) inline loop
 //!     — verified by cross-check test. Stage 5.48 will refactor `emit_vtables()`
 //!     to delegate to this orchestrator (one-liner body).
-//!   Next: Stage 5.48+ (codegen vtable emission refactor — emit_vtables
-//!     delegation + TextEmitter delegation, then dyn Trait MIR lowering).
+//!   Stage 5.48 (v0.11.44): Codegen dynptr global text helper — new free fn
+//!     `emit_dynptr_global_text(global_name, data_symbol, vtable_symbol) -> String`
+//!     in `src/codegen/mod.rs`. Pure-function counterpart of
+//!     `TextEmitter::emit_dyn_trait_const()` producing byte-for-byte identical
+//!     LLVM IR. **dynptr counterpart** of Stage 5.44's
+//!     `emit_vtable_global_text()`. Stage 5.49 will refactor
+//!     `TextEmitter::emit_dyn_trait_const()` to delegate here.
+//!   Next: Stage 5.49+ (codegen vtable + dynptr emission refactor —
+//!     TextEmitter delegation, then dyn Trait MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -304,9 +311,9 @@ pub mod typeck;
 pub use cargo::{build_project, BuildConfig, BuildResult, ProjectManifest};
 pub use codegen::{
     build_vtable_global_specs, codegen_crate, emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs,
-    emit_vtable_global_from_emission, emit_vtable_global_text, emit_vtable_globals_batch,
-    emit_vtables, emit_vtables_from_resolver, EmitType, EmitValue, Emitter, StdlibVtableGlobalSpec,
-    TextEmitter,
+    emit_dynptr_global_text, emit_vtable_global_from_emission, emit_vtable_global_text,
+    emit_vtable_globals_batch, emit_vtables, emit_vtables_from_resolver, EmitType, EmitValue,
+    Emitter, StdlibVtableGlobalSpec, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{

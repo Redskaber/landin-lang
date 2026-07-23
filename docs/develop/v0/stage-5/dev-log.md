@@ -1398,3 +1398,56 @@ side-effect (push to emitter). `_from_resolver` indicates the input source.
 **Test impact**: +13 (1285 → 1298)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
   (修复了 1 个 unused import 警告)
+
+### Stage 5.48 — Codegen Dynptr Global Text Helper (v0.11.44)
+
+**Priority**: dynptr counterpart of Stage 5.44's `emit_vtable_global_text()`.
+Pure free function `emit_dynptr_global_text()` with the **exact same
+parameter signature** as `TextEmitter::emit_dyn_trait_const()`. Stage 5.49
+will refactor `TextEmitter::emit_dyn_trait_const()` to delegate here.
+
+**Work completed**:
+- src/codegen/mod.rs: new free function
+  `emit_dynptr_global_text(global_name, data_symbol, vtable_symbol) -> String`
+  * Pure-function counterpart of `TextEmitter::emit_dyn_trait_const()`
+  * Produces byte-for-byte identical LLVM IR (verified by cross-check test)
+  * dynptr counterpart of Stage 5.44's `emit_vtable_global_text()`
+- src/lib.rs: re-export `emit_dynptr_global_text` from codegen
+  + Stage 5.48 history comment
+- tests/v0/stage5/plan/codegen_dynptr_text_tests.rs: 12 new tests covering
+  basic emission (Foo+S / Display+Vec) + format components (global_name /
+  data_symbol / vtable_symbol / no-leading-@ / struct-type / full-format) +
+  **cross-check test** verifying byte-for-byte equivalence with
+  `TextEmitter::emit_dyn_trait_const()` + real-scenario (S impls Clone+Drop)
+  + multi-constants independence
+- tests/all_tests.rs: added codegen_dynptr_text_tests module (62 mods total)
+- Cargo.toml: version 0.11.43 → 0.11.44
+
+**Design highlights**:
+- **dynptr counterpart of Stage 5.44**: Stage 5.44 added
+  `emit_vtable_global_text()` (vtable global pure function), Stage 5.48
+  adds `emit_dynptr_global_text()` (dynptr global pure function). Naming
+  symmetric (vtable → dynptr), design pattern identical.
+- **Parameter signature match with trait method**:
+  `emit_dynptr_global_text(global_name, data_symbol, vtable_symbol)` matches
+  `Emitter::emit_dyn_trait_const(&self, global_name, data_symbol,
+  vtable_symbol)` exactly (minus `&self`). Stage 5.49 delegation is a
+  one-line body change: `self.globals.push(emit_dynptr_global_text(
+  global_name, data_symbol, vtable_symbol)); global_name.to_string()`.
+- **Cross-check test**: `test_emit_dynptr_global_text_match_text_emitter`
+  constructs (global_name, data_symbol, vtable_symbol), calls both the free
+  function and `TextEmitter::emit_dyn_trait_const()`, asserts free fn output
+  appears verbatim in TextEmitter output. Safety net for Stage 5.49 refactor.
+
+**§16 interface isolation**: pure function, input `(&str, &str, &str)`,
+output `String`. No `mir::ty` / `traits::TraitResolver` / `Emitter` /
+`StdlibVtableEmission` reference, no circular dependency.
+
+**§23 API naming**: `emit_dynptr_global_text` follows
+`<verb>_<noun>_<adj>_<noun>` pattern. The `_text` suffix indicates the
+function returns LLVM IR text (String), distinguishing it from the trait
+method's side-effect version. Naming symmetric with Stage 5.44's
+`emit_vtable_global_text` (vtable → dynptr).
+
+**Test impact**: +12 (1298 → 1310)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

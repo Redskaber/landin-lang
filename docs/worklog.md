@@ -4746,3 +4746,50 @@ Stage Summary:
   `emit_vtables_from_resolver(trait_resolver, interner, emitter)`.
 - Next: Stage 5.48+ (codegen vtable emission refactor — emit_vtables delegation
   + TextEmitter delegation, then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.48-r97
+Agent: Super Z (main)
+Task: Stage 5.48 — codegen dynptr global text helper + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.43 / 1298 tests (Stage 5.47 complete)
+
+Stage 5.48: Codegen dynptr global text helper
+- src/codegen/mod.rs: new free function emit_dynptr_global_text(global_name, data_symbol, vtable_symbol) -> String
+  * Pure-function counterpart of TextEmitter::emit_dyn_trait_const()
+  * Produces byte-for-byte identical LLVM IR (verified by cross-check test)
+  * dynptr counterpart of Stage 5.44's emit_vtable_global_text()
+- src/lib.rs: re-export emit_dynptr_global_text + Stage 5.48 history comment
+- tests/v0/stage5/plan/codegen_dynptr_text_tests.rs: 12 new tests
+  (incl. cross-check test verifying byte-for-byte equivalence with
+  TextEmitter::emit_dyn_trait_const())
+- tests/all_tests.rs: added codegen_dynptr_text_tests module (62 mods)
+- Cargo.toml: version 0.11.43 → 0.11.44
+
+Docs:
+- plan-5.48.md / gate-review-round48.md / codegen_dynptr_text_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (969.6 MiB removed) ✅
+- cargo test: 1310 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.48 PASSED — CI/CD all green per §1.2.
+- emit_dynptr_global_text() free function added to src/codegen/mod.rs.
+- dynptr counterpart of Stage 5.44's emit_vtable_global_text() — naming
+  symmetric, design pattern identical.
+- Parameter signature matches TextEmitter::emit_dyn_trait_const() exactly —
+  Stage 5.49 delegation is a one-line body change.
+- Cross-check test guarantees byte-for-byte equivalence with TextEmitter —
+  safety net for Stage 5.49 refactor.
+- §16 compliance: pure function, input (&str, &str, &str), output String.
+  No mir::ty / traits::TraitResolver / Emitter / StdlibVtableEmission reference.
+- §23 compliance: emit_dynptr_global_text follows <verb>_<noun>_<adj>_<noun>;
+  _text suffix indicates LLVM IR text return; naming symmetric with
+  emit_vtable_global_text.
+- Next: Stage 5.49+ (codegen vtable + dynptr emission refactor — TextEmitter
+  delegation, then dyn Trait MIR lowering).

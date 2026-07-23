@@ -1,9 +1,71 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.43
+**Current version**: v0.11.44
 **Date**: 2026-07-23
-**Test count**: 1298 tests + 5 benchmarks
+**Test count**: 1310 tests + 5 benchmarks
+
+---
+
+## v0.11.44 — Stage 5.48 (Codegen dynptr global text helper)
+
+### Overview
+
+dynptr counterpart of Stage 5.44's `emit_vtable_global_text()`. Pure free
+function `emit_dynptr_global_text()` with the **exact same parameter
+signature** as `TextEmitter::emit_dyn_trait_const()` — making Stage 5.49's
+delegation a trivial body change. Produces byte-for-byte identical LLVM IR
+(verified by cross-check test).
+
+### New API
+
+- `emit_dynptr_global_text(global_name: &str, data_symbol: &str, vtable_symbol: &str) -> String`
+  (in `src/codegen/mod.rs`) — pure-function counterpart of
+  `TextEmitter::emit_dyn_trait_const()`. Produces:
+  ```text
+  @<global_name> = private unnamed_addr constant
+      { ptr, ptr } { ptr @<data_symbol>, ptr @<vtable_symbol> }
+  ```
+
+### Design highlights
+
+1. **dynptr counterpart of Stage 5.44**: Stage 5.44 added
+   `emit_vtable_global_text()` (vtable global pure function), Stage 5.48
+   adds `emit_dynptr_global_text()` (dynptr global pure function). Naming
+   symmetric (vtable → dynptr), design pattern identical.
+2. **Parameter signature match with trait method**: matches
+   `Emitter::emit_dyn_trait_const()` exactly (minus `&self`). Stage 5.49
+   delegation is a one-line body change.
+3. **Cross-check test**: `test_emit_dynptr_global_text_match_text_emitter`
+   verifies byte-for-byte equivalence with `TextEmitter::emit_dyn_trait_const()`.
+   Safety net for Stage 5.49 refactor.
+
+### §16 / §23 compliance
+
+- Pure function, input `(&str, &str, &str)`, output `String`. No `mir::ty` /
+  `traits::TraitResolver` / `Emitter` / `StdlibVtableEmission` reference,
+  no circular dependency.
+- `emit_dynptr_global_text` follows §23 `<verb>_<noun>_<adj>_<noun>` pattern.
+  The `_text` suffix indicates the function returns LLVM IR text (String),
+  distinguishing it from the trait method's side-effect version. Naming
+  symmetric with Stage 5.44's `emit_vtable_global_text` (vtable → dynptr).
+
+### Test impact
+
++12 tests (1298 → 1310) — covers basic emission (Foo+S / Display+Vec) +
+format components (global_name / data_symbol / vtable_symbol / no-leading-@
+/ struct-type / full-format) + **cross-check test** verifying byte-for-byte
+equivalence with `TextEmitter::emit_dyn_trait_const()` + real-scenario
+(S impls Clone+Drop) + multi-constants independence.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (969.6 MiB removed)
+cargo test: 1310 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

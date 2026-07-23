@@ -1254,3 +1254,55 @@ that composes Stage 5.46's `build_vtable_global_specs()` + per-spec
 **Test impact**: +13 (1285 → 1298).
 **Clippy impact**: 0 (0 warnings; fixed 1 unused import).
 **Fmt impact**: clean.
+
+### v1.18 (Stage 5.48, 2026-07-23)
+
+Stage 5.48 codegen dynptr global text helper round. Adds the **dynptr
+counterpart** of Stage 5.44's `emit_vtable_global_text()`.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_dynptr_global_text` | free fn (in `codegen`) | `<verb>_<noun>_<adj>_<noun>` |
+
+**Design decisions**:
+1. **dynptr counterpart of Stage 5.44**: Stage 5.44 added
+   `emit_vtable_global_text()` (vtable global pure function), Stage 5.48
+   adds `emit_dynptr_global_text()` (dynptr global pure function). Naming
+   symmetric (vtable → dynptr), design pattern identical — both are
+   pure-function counterparts of `TextEmitter` trait methods, both take
+   the same parameters as the trait method (minus `&self`), both produce
+   byte-for-byte identical LLVM IR.
+2. **`_text` suffix** consistent with Stage 5.44's `emit_vtable_global_text`.
+   Indicates the function returns LLVM IR text as `String`, distinguishing
+   it from the trait method's side-effect version
+   (`TextEmitter::emit_dyn_trait_const` pushes to `self.globals`).
+3. **Parameter signature match with trait method**:
+   `emit_dynptr_global_text(global_name, data_symbol, vtable_symbol)` matches
+   `Emitter::emit_dyn_trait_const(&self, global_name, data_symbol,
+   vtable_symbol)` exactly (minus `&self`). Stage 5.49 delegation is a
+   one-line body change:
+   ```rust
+   fn emit_dyn_trait_const(&mut self, global_name, data_symbol, vtable_symbol) -> EmitValue {
+       self.globals.push(emit_dynptr_global_text(global_name, data_symbol, vtable_symbol));
+       global_name.to_string()
+   }
+   ```
+4. **Cross-check test**: `test_emit_dynptr_global_text_match_text_emitter`
+   constructs (global_name, data_symbol, vtable_symbol), calls both the free
+   function and `TextEmitter::emit_dyn_trait_const()`, asserts free fn output
+   appears verbatim in TextEmitter output. Safety net for Stage 5.49 refactor.
+5. **Symmetric naming convention** across the codegen dyn API family:
+   - `emit_vtable_global_text` (Stage 5.44) — vtable global IR text
+   - `emit_dynptr_global_text` (Stage 5.48) — dynptr global IR text
+   - Future: `emit_vtable_global_from_emission` / `emit_dynptr_global_from_emission`
+     if needed for high-level API symmetry
+
+**§16 compliance**: pure function, input `(&str, &str, &str)`, output
+`String`. No `mir::ty` / `traits::TraitResolver` / `Emitter` /
+`StdlibVtableEmission` reference, no circular dependency.
+
+**Test impact**: +12 (1298 → 1310).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

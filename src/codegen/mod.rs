@@ -1704,3 +1704,68 @@ pub fn emit_vtables_from_resolver(
         emitter.emit_vtable_global(&spec.global_name, &spec.method_symbols);
     }
 }
+
+// ============================================================================
+// Stage 5.48: Codegen dynptr global text helper
+//
+// Pure free function `emit_dynptr_global_text()` that takes
+// `(global_name, data_symbol, vtable_symbol)` — the **exact same parameter
+// signature** as `TextEmitter::emit_dyn_trait_const()` — and returns the
+// LLVM IR text for one dyn Trait fat-pointer global.
+//
+// This is the **dynptr counterpart** of Stage 5.44's
+// `emit_vtable_global_text()`. Stage 5.49 will refactor
+// `TextEmitter::emit_dyn_trait_const()` to delegate here (trivial body
+// change, same signature).
+//
+// Per API-naming-standard §3: `emit_dynptr_global_text` follows
+// `<verb>_<noun>_<adj>_<noun>` pattern. The `_text` suffix indicates the
+// function returns LLVM IR text (String), distinguishing it from the trait
+// method's side-effect version. Naming symmetric with Stage 5.44's
+// `emit_vtable_global_text` (vtable → dynptr).
+//
+// Per §16: pure function, input `(&str, &str, &str)`, output `String`. No
+// `mir::ty` / `traits::TraitResolver` / `Emitter` / `StdlibVtableEmission`
+// reference, no circular dependency.
+// ============================================================================
+
+/// Stage 5.48: Build the LLVM IR text for one `dyn Trait` fat-pointer global
+/// from raw `(global_name, data_symbol, vtable_symbol)` parameters.
+///
+/// This is the **dynptr counterpart** of Stage 5.44's
+/// `emit_vtable_global_text()`. Parameter signature matches
+/// `TextEmitter::emit_dyn_trait_const()` exactly — Stage 5.49 delegation
+/// is a trivial body change.
+///
+/// Produces a line like:
+/// ```text
+/// @<global_name> = private unnamed_addr constant
+///     { ptr, ptr } { ptr @<data_symbol>, ptr @<vtable_symbol> }
+/// ```
+///
+/// Example:
+/// ```text
+/// @.dynptr.Foo.S = private unnamed_addr constant
+///     { ptr, ptr } { ptr @.data.S, ptr @.vtable.Foo.S }
+/// ```
+///
+/// The output is **byte-for-byte identical** to what
+/// `TextEmitter::emit_dyn_trait_const()` produces — verified by
+/// `test_emit_dynptr_global_text_match_text_emitter` in
+/// `tests/v0/stage5/plan/codegen_dynptr_text_tests.rs`.
+///
+/// Per API-naming-standard §3: `emit_dynptr_global_text` follows
+/// `<verb>_<noun>_<adj>_<noun>` pattern.
+pub fn emit_dynptr_global_text(
+    global_name: &str,
+    data_symbol: &str,
+    vtable_symbol: &str,
+) -> String {
+    // Build the LLVM initializer — mirrors
+    // TextEmitter::emit_dyn_trait_const (text_emitter.rs:569-572).
+    let init = format!(
+        "{{ ptr, ptr }} {{ ptr @{}, ptr @{} }}",
+        data_symbol, vtable_symbol
+    );
+    format!("@{} = private unnamed_addr constant {}", global_name, init)
+}
