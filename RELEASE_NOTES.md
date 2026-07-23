@@ -1,9 +1,71 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.49
+**Current version**: v0.11.50
 **Date**: 2026-07-23
-**Test count**: 1372 tests + 5 benchmarks
+**Test count**: 1384 tests + 5 benchmarks
+
+---
+
+## v0.11.50 — Stage 5.54 (Codegen trait-dispatch emission orchestrator — plan-based)
+
+### Overview
+
+First **plan-based orchestrator** — takes a `&CodegenTraitDispatchEmissionPlan`
+(Stage 5.53) + `&mut dyn Emitter`, emits all trait-dispatch globals by
+iterating the plan's vtable_specs + dynptr_specs. Behavior identical to
+`emit_vtables_and_dynptrs_from_resolver()` (Stage 5.51) when given the plan
+from the same resolver. Stage 5.55 driver refactor will call
+`build_trait_dispatch_emission_plan()` + this orchestrator.
+
+### New API
+
+- `emit_trait_dispatch_globals_from_plan(&CodegenTraitDispatchEmissionPlan, &mut dyn Emitter)`
+  (in `src/codegen/mod.rs`) — plan-based orchestrator. Iterates
+  `plan.vtable_specs` → `emitter.emit_vtable_global()`, then
+  `plan.dynptr_specs` → `emitter.emit_dyn_trait_const()`.
+
+### Design highlights
+
+1. **First plan-based orchestrator**: previous orchestrators (Stage 5.47,
+   5.50, 5.51) take `(&TraitResolver, &Rodeo, &mut dyn Emitter)` — they
+   combine "build specs" + "emit" in one call. Stage 5.54 takes
+   `(&CodegenTraitDispatchEmissionPlan, &mut dyn Emitter)` — it separates
+   "build plan" (Stage 5.53) from "emit from plan". This separation lets
+   callers inspect/modify the plan before emission.
+2. **Behavior equivalence**: `test_emit_trait_dispatch_globals_from_plan_match_resolver_orchestrator`
+   calls both the plan-based orchestrator and the resolver-based orchestrator
+   (Stage 5.51) on the same resolver, asserts outputs are identical. Safety
+   net for Stage 5.55 driver refactor.
+3. **Order guarantee**: vtable globals emitted before dynptr globals.
+   Matches Stage 5.51 order.
+
+### §16 / §23 compliance
+
+- Function takes `&CodegenTraitDispatchEmissionPlan` + `&mut dyn Emitter`.
+  No `mir::ty` / `TraitResolver` / `Rodeo` reference, no circular dependency.
+  The plan-based signature decouples the orchestrator from the resolver.
+- `emit_trait_dispatch_globals_from_plan` follows §23
+  `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern. The `emit_` prefix
+  indicates side-effect (push to emitter). `_from_plan` indicates the input
+  source (plan, not resolver — distinguishes from Stage 5.51's
+  `emit_vtables_and_dynptrs_from_resolver`).
+
+### Test impact
+
++12 tests (1372 → 1384) — covers empty/single/multi + **behavior-equivalence
+cross-check** + no-side-effects + vtable/dynptr emission correctness +
+count-matches + order (vtable before dynptr) + real-scenario + composition
++ determinism.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (970.5 MiB removed)
+cargo test: 1384 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

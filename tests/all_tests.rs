@@ -238,3 +238,6 @@ mod codegen_trait_dispatch_summary_tests;
 
 #[path = "v0/stage5/plan/codegen_trait_dispatch_plan_tests.rs"]
 mod codegen_trait_dispatch_plan_tests;
+
+#[path = "v0/stage5/plan/codegen_plan_orchestrator_tests.rs"]
+mod codegen_plan_orchestrator_tests;

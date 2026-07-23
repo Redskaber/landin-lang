@@ -1578,3 +1578,52 @@ summary in one call. Composes Stage 5.46 + Stage 5.49 + Stage 5.52 builders.
 **Test impact**: +12 (1360 → 1372).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.24 (Stage 5.54, 2026-07-23)
+
+Stage 5.54 codegen trait-dispatch emission orchestrator (plan-based) round.
+Adds the **first plan-based orchestrator** — consumes a
+`CodegenTraitDispatchEmissionPlan` (Stage 5.53) rather than a resolver.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_trait_dispatch_globals_from_plan` | free fn (in `codegen`) | `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` |
+
+**Design decisions**:
+1. **First plan-based orchestrator**: previous orchestrators (Stage 5.47,
+   5.50, 5.51) take `(&TraitResolver, &Rodeo, &mut dyn Emitter)` — they
+   combine "build specs" + "emit" in one call. Stage 5.54 takes
+   `(&CodegenTraitDispatchEmissionPlan, &mut dyn Emitter)` — it separates
+   "build plan" (Stage 5.53) from "emit from plan". This separation lets
+   callers inspect/modify the plan before emission (e.g. for diagnostics,
+   caching, or partial emission).
+2. **`emit_` prefix** (not `build_`): indicates side-effect (push to emitter).
+   Consistent with Stage 5.47/5.50/5.51 orchestrators.
+3. **`_from_plan` suffix** (not `_from_resolver`): indicates the input source
+   is a plan (not a resolver). Distinguishes from Stage 5.51's
+   `emit_vtables_and_dynptrs_from_resolver`. The `_from_*` convention makes
+   the input type explicit in the function name.
+4. **`_globals` (plural)** in the function name: indicates multiple globals
+   are emitted (vtable + dynptr). Consistent with the plural/singular
+   convention.
+5. **Decoupling from resolver**: the plan-based signature
+   `(&CodegenTraitDispatchEmissionPlan, &mut dyn Emitter)` decouples the
+   orchestrator from `TraitResolver` / `Rodeo`. Callers can construct plans
+   from any source (not just TraitResolver) — e.g. from a cached plan, from
+   a deserialized plan, or from a test fixture. This is a design improvement
+   over resolver-based orchestrators.
+6. **Behavior-equivalence cross-check test**:
+   `test_emit_trait_dispatch_globals_from_plan_match_resolver_orchestrator`
+   calls both the plan-based orchestrator and the resolver-based orchestrator
+   (Stage 5.51) on the same resolver, asserts outputs are identical. Safety
+   net for Stage 5.55 driver refactor.
+
+**§16 compliance**: function takes `&CodegenTraitDispatchEmissionPlan` +
+`&mut dyn Emitter`. No `mir::ty` / `TraitResolver` / `Rodeo` reference, no
+circular dependency.
+
+**Test impact**: +12 (1372 → 1384).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

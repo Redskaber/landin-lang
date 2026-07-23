@@ -1693,3 +1693,64 @@ indicates the function returns a plan struct (not individual specs).
 
 **Test impact**: +12 (1360 → 1372)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.54 — Codegen Trait-Dispatch Emission Orchestrator (Plan-Based) (v0.11.50)
+
+**Priority**: First **plan-based orchestrator** — takes a
+`&CodegenTraitDispatchEmissionPlan` (Stage 5.53) + `&mut dyn Emitter`, emits
+all trait-dispatch globals by iterating the plan's vtable_specs +
+dynptr_specs. Stage 5.55 driver refactor will call
+`build_trait_dispatch_emission_plan()` + this orchestrator.
+
+**Work completed**:
+- src/codegen/mod.rs: new free function
+  `emit_trait_dispatch_globals_from_plan(&CodegenTraitDispatchEmissionPlan, &mut dyn Emitter)`
+  * First plan-based orchestrator — consumes a plan, not a resolver
+  * Iterates plan.vtable_specs → emitter.emit_vtable_global()
+  * Iterates plan.dynptr_specs → emitter.emit_dyn_trait_const()
+  * Behavior identical to emit_vtables_and_dynptrs_from_resolver() (Stage 5.51)
+    when given the plan from the same resolver
+- src/lib.rs: re-export `emit_trait_dispatch_globals_from_plan` from codegen
+  + Stage 5.54 history comment
+- tests/v0/stage5/plan/codegen_plan_orchestrator_tests.rs: 12 new tests
+  covering empty/single/multi + **behavior-equivalence cross-check** +
+  no-side-effects + vtable/dynptr emission correctness + count-matches +
+  order (vtable before dynptr) + real-scenario + composition + determinism
+- tests/all_tests.rs: added codegen_plan_orchestrator_tests module
+  (68 mods total)
+- Cargo.toml: version 0.11.49 → 0.11.50
+
+**Design highlights**:
+- **First plan-based orchestrator**: previous orchestrators (Stage 5.47,
+  5.50, 5.51) take `(&TraitResolver, &Rodeo, &mut dyn Emitter)` — they
+  combine "build specs" + "emit" in one call. Stage 5.54 takes
+  `(&CodegenTraitDispatchEmissionPlan, &mut dyn Emitter)` — it separates
+  "build plan" (Stage 5.53) from "emit from plan". This separation lets
+  callers inspect/modify the plan before emission (e.g. for diagnostics,
+  caching, or partial emission).
+- **Behavior equivalence**: `test_emit_trait_dispatch_globals_from_plan_match_resolver_orchestrator`
+  calls both the plan-based orchestrator and the resolver-based orchestrator
+  (Stage 5.51) on the same resolver, asserts outputs are identical. Safety
+  net for Stage 5.55 driver refactor.
+- **Order guarantee**: vtable globals emitted before dynptr globals (vtable_specs
+  iterated first). Matches Stage 5.51 order. Verified by
+  `test_emit_trait_dispatch_globals_from_plan_order`.
+- **Counting subtlety**: `@.vtable.` appears both in vtable global definitions
+  AND in dynptr initializers. Tests count global *definitions* (lines starting
+  with `@.vtable.` + `private unnamed_addr constant`) rather than raw
+  substring matches.
+
+**§16 interface isolation**: function takes `&CodegenTraitDispatchEmissionPlan`
++ `&mut dyn Emitter`. No `mir::ty` / `TraitResolver` / `Rodeo` reference, no
+circular dependency. The plan-based signature decouples the orchestrator
+from the resolver — callers can construct plans from any source (not just
+TraitResolver).
+
+**§23 API naming**: `emit_trait_dispatch_globals_from_plan` follows
+`<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern. The `emit_` prefix
+indicates side-effect (push to emitter). `_from_plan` indicates the input
+source (plan, not resolver — distinguishes from Stage 5.51's
+`emit_vtables_and_dynptrs_from_resolver`).
+
+**Test impact**: +12 (1372 → 1384)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

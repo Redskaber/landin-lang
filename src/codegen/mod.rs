@@ -2144,3 +2144,50 @@ pub fn build_trait_dispatch_emission_plan(
         summary: build_trait_dispatch_emission_summary(trait_resolver, interner),
     }
 }
+
+// ============================================================================
+// Stage 5.54: Codegen trait-dispatch emission orchestrator (plan-based)
+//
+// First **plan-based orchestrator** — takes a `&CodegenTraitDispatchEmissionPlan`
+// (from Stage 5.53) + `&mut dyn Emitter`, emits all trait-dispatch globals
+// (vtable + dynptr) by iterating the plan's specs.
+//
+// Stage 5.55 driver refactor will call `build_trait_dispatch_emission_plan()`
+// + this orchestrator, replacing separate `emit_vtables()` +
+// `emit_dyn_trait_ptrs()` calls.
+//
+// Per API-naming-standard §3: `emit_trait_dispatch_globals_from_plan`
+// follows `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern. The `_from_plan`
+// suffix indicates the input source (plan, not resolver).
+//
+// Per §16: takes `&CodegenTraitDispatchEmissionPlan` + `&mut dyn Emitter`. No
+// `mir::ty` / `TraitResolver` / `Rodeo` reference, no circular dependency.
+// ============================================================================
+
+/// Stage 5.54: Emit all trait-dispatch globals (vtable + dynptr) from a
+/// pre-built `CodegenTraitDispatchEmissionPlan`.
+///
+/// This is the **first plan-based orchestrator**. Stage 5.55 driver refactor
+/// will call `build_trait_dispatch_emission_plan()` (Stage 5.53) + this
+/// orchestrator, replacing separate `emit_vtables()` + `emit_dyn_trait_ptrs()`
+/// calls.
+///
+/// Behavior is **identical** to `emit_vtables_and_dynptrs_from_resolver()`
+/// (Stage 5.51) when given the plan from the same resolver — verified by
+/// `test_emit_trait_dispatch_globals_from_plan_match_resolver_orchestrator`.
+///
+/// Per API-naming-standard §3: `emit_trait_dispatch_globals_from_plan`
+/// follows `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub fn emit_trait_dispatch_globals_from_plan(
+    plan: &CodegenTraitDispatchEmissionPlan,
+    emitter: &mut dyn Emitter,
+) {
+    // Emit vtable globals first (matching emit_vtables order).
+    for spec in &plan.vtable_specs {
+        emitter.emit_vtable_global(&spec.global_name, &spec.method_symbols);
+    }
+    // Then emit dynptr globals (matching emit_dyn_trait_ptrs order).
+    for spec in &plan.dynptr_specs {
+        emitter.emit_dyn_trait_const(&spec.global_name, &spec.data_symbol, &spec.vtable_symbol);
+    }
+}
