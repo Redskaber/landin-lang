@@ -145,7 +145,12 @@
 //!     `ProjectManifest` + `BuildConfig` + `BuildResult` structs +
 //!     `parse_manifest()` + `load_manifest()` + `build_project()` for
 //!     project-level build orchestration via public `compile()` API.
-//!   Next: Stage 5.25+ (dyn Trait MIR lowering, full stdlib).
+//!   Stage 5.25 (v0.11.23): Stdlib MVP —
+//!     `src/stdlib.rs` module: core types (i8-i128/u8-u128/f32/f64/bool/char/
+//!     str/()/Never) + ops traits (Add/Sub/Mul/.../PartialEq/Ord/...) +
+//!     convert traits (From/Into/AsRef/...) + iter traits (Iterator/...) +
+//!     `StdlibPrelude` + `register_stdlib()` + `default_prelude()`.
+//!   Next: Stage 5.26+ (dyn Trait MIR lowering, full stdlib crate).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;
@@ -160,6 +165,7 @@ pub mod mir;
 pub mod parser;
 pub mod resolve;
 pub mod session;
+pub mod stdlib;
 pub mod traits;
 pub mod typeck;
 
@@ -174,6 +180,7 @@ pub use codegen::{
     Emitter, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
+pub use stdlib::{default_prelude, register_stdlib, StdlibPrelude};
 pub use traits::{
     extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, ImplValidationReport,
     IncompleteImpl, TraitResolver, BUILTIN_DEF_ID_BASE, BUILTIN_PRIMITIVE_COPY_KINDS,

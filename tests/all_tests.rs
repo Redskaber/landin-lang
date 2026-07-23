@@ -157,3 +157,6 @@ mod driver_validation_tests;
 
 #[path = "v0/stage5/plan/mini_cargo_tests.rs"]
 mod mini_cargo_tests;
+
+#[path = "v0/stage5/plan/stdlib_mvp_tests.rs"]
+mod stdlib_mvp_tests;

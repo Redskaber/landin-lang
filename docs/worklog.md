@@ -3875,3 +3875,38 @@ Stage Summary:
 - Mini-cargo MVP: ProjectManifest + BuildConfig + BuildResult + build_project().
 - 1031 tests pass. fmt clean. 0 clippy warnings.
 - Next: Stage 5.25+ (dyn Trait MIR lowering, full stdlib).
+
+---
+Task ID: stage5.25-r74
+Agent: Super Z (main)
+Task: Stage 5.25 — stdlib MVP + CI/CD verification
+
+Work Log:
+- Baseline: v0.11.22 / 1031 tests / Stage 5.24 complete (mini-cargo MVP)
+
+Stage 5.25: Stdlib MVP (core layer)
+- src/stdlib.rs: new module with:
+  * STDLIB_CORE_TYPES (17 types: i8-i128/u8-u128/f32/f64/bool/char/str/()/Never)
+  * STDLIB_OPS_TRAITS (Add/Sub/Mul/.../PartialEq/Ord/Index/Range/...)
+  * STDLIB_CONVERT_TRAITS (From/Into/TryFrom/AsRef/AsMut)
+  * STDLIB_ITER_TRAITS (Iterator/IntoIterator/FromIterator/...)
+  * all_stdlib_trait_names() + all_stdlib_type_names()
+  * StdlibPrelude struct (types + traits, with contains/len/is_empty)
+  * register_stdlib(&mut Rodeo) — intern all stdlib names
+  * default_prelude() — get default StdlibPrelude
+- src/lib.rs: added pub mod stdlib + re-exports
+- tests/v0/stage5/plan/stdlib_mvp_tests.rs: 10 new tests
+- tests/all_tests.rs: added stdlib_mvp_tests module (41 mods)
+- Cargo.toml: version 0.11.22 → 0.11.23
+- Fixed: str Sized error (for &name → for name), unused import (StdlibPrelude)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo test: 1041 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings (exit 0) ✅
+
+Stage Summary:
+- Stage 5.25 PASSED — CI/CD all green per §1.2.
+- Stdlib MVP: core types + ops/convert/iter traits + prelude + register_stdlib().
+- 1041 tests pass. fmt clean. 0 clippy warnings.
+- Next: Stage 5.26+ (dyn Trait MIR lowering, full stdlib crate).

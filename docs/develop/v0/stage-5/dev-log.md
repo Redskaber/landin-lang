@@ -540,3 +540,29 @@ cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
 **§16 compliance**: ✅ build_project uses only public compile() + codegen_crate().
 **API naming**: ✅ `ProjectManifest` + `BuildConfig` + `BuildResult` + `parse_manifest` + `build_project`.
+
+### Stage 5.25 — Stdlib MVP (v0.11.23)
+
+**Priority**: Implement core layer of Landin's three-layer stdlib.
+
+**Work completed**:
+- src/stdlib.rs: new module with:
+  * STDLIB_CORE_TYPES (17 types: i8-i128/u8-u128/f32/f64/bool/char/str/()/Never)
+  * STDLIB_OPS_TRAITS (Add/Sub/Mul/.../PartialEq/Ord/Index/Range/...)
+  * STDLIB_CONVERT_TRAITS (From/Into/TryFrom/AsRef/AsMut)
+  * STDLIB_ITER_TRAITS (Iterator/IntoIterator/FromIterator/...)
+  * all_stdlib_trait_names() + all_stdlib_type_names()
+  * StdlibPrelude struct (types + traits, with contains/len/is_empty)
+  * register_stdlib(&mut Rodeo) — intern all stdlib names
+  * default_prelude() — get default StdlibPrelude
+- src/lib.rs: added pub mod stdlib + re-exports
+- tests/v0/stage5/plan/stdlib_mvp_tests.rs: 10 new tests
+- tests/all_tests.rs: added stdlib_mvp_tests module (41 mods)
+- Cargo.toml: version 0.11.22 → 0.11.23
+- Fixed: str Sized error (for &name → for name), unused import (StdlibPrelude)
+
+**Test impact**: +10 (1041 — was 1031)
+**Verification**: cargo clean + cargo test (1041 passed) + cargo fmt (clean) +
+cargo clippy --all-targets (0 warnings) — all green ✅ (per §1.2)
+**§16 compliance**: ✅ register_stdlib uses &mut Rodeo only.
+**API naming**: ✅ SCREAMING_SNAKE_CASE constants + `<Noun><Noun>` types + `register_<noun>` / `<adj>_<noun>` functions.
