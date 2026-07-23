@@ -1896,3 +1896,98 @@ pub fn stdlib_vtable_emissions_for_traits(
     }
     out
 }
+
+// ============================================================================
+// Stage 5.42: Stdlib vtable emission summary (project-level aggregate stats)
+//
+// Aggregates a list of `StdlibVtableEmission` into project-level statistics:
+// total emissions, marker count, complete/incomplete counts, total slots,
+// total byte sizes (32/64-bit), and deduplicated trait names.
+//
+// This is the last static-analysis step before codegen modification
+// (Stage 5.43+). Codegen will call this after collecting all emissions to
+// emit a diagnostic line like "emit N vtables, M bytes total" — useful for
+// debugging vtable bloat.
+//
+// Per API-naming-standard §3:
+//   - `StdlibVtableEmissionSummary` follows `<Noun><Noun><Noun><Noun>` pattern.
+//   - `stdlib_vtable_emission_summary` follows `<noun>_<noun>_<noun>_<noun>`
+//     pattern.
+//
+// Per §16: uses only &'static str + Vec + scalars — no `mir::ty` /
+// `codegen::EmitType` / `traits::TraitResolver` reference, no circular dep.
+// ============================================================================
+
+/// Stage 5.42: Project-level vtable emission statistics.
+///
+/// Aggregates a list of `StdlibVtableEmission` into summary counts and
+/// totals. Useful for:
+/// - Codegen diagnostics ("emit N vtables, M bytes total")
+/// - Detecting vtable bloat (large `total_byte_size_64`)
+/// - Finding incomplete impls (`incomplete_count > 0`)
+/// - Identifying marker-heavy code (`marker_count` high relative to
+///   `total_emissions`)
+///
+/// Per API-naming-standard §3: `StdlibVtableEmissionSummary` follows
+/// `<Noun><Noun><Noun><Noun>` pattern. Field names follow
+/// `<adj>_<noun>` / `<noun>_<noun>` / `<noun>_<noun>_<digits>` patterns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StdlibVtableEmissionSummary {
+    /// Total number of emissions in the input list.
+    pub total_emissions: u32,
+    /// Number of emissions that are markers (slot_count == 0).
+    pub marker_count: u32,
+    /// Number of emissions where all slots are provided (is_complete == true).
+    pub complete_count: u32,
+    /// Number of emissions with at least one missing slot (is_complete == false).
+    pub incomplete_count: u32,
+    /// Sum of `slot_count` across all emissions.
+    pub total_slots: u32,
+    /// Sum of `byte_size_32` across all emissions.
+    pub total_byte_size_32: u64,
+    /// Sum of `byte_size_64` across all emissions.
+    pub total_byte_size_64: u64,
+    /// Deduplicated list of trait names involved in the emissions.
+    pub trait_names: Vec<&'static str>,
+}
+
+/// Stage 5.42: Build a project-level summary from a list of vtable emissions.
+///
+/// Given a slice of `StdlibVtableEmission`, returns a
+/// `StdlibVtableEmissionSummary` aggregating total counts, slot totals,
+/// byte-size totals (32/64-bit), and deduplicated trait names.
+///
+/// Empty input returns a summary with all-zero counts and empty `trait_names`.
+///
+/// Per API-naming-standard §3: `stdlib_vtable_emission_summary` follows
+/// `<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn stdlib_vtable_emission_summary(
+    emissions: &[StdlibVtableEmission],
+) -> StdlibVtableEmissionSummary {
+    let total_emissions = emissions.len() as u32;
+    let marker_count = emissions.iter().filter(|e| e.is_marker).count() as u32;
+    let complete_count = emissions.iter().filter(|e| e.is_complete).count() as u32;
+    let incomplete_count = total_emissions - complete_count;
+    let total_slots: u32 = emissions.iter().map(|e| e.slot_count).sum();
+    let total_byte_size_32: u64 = emissions.iter().map(|e| e.byte_size_32).sum();
+    let total_byte_size_64: u64 = emissions.iter().map(|e| e.byte_size_64).sum();
+
+    // Deduplicate trait names while preserving first-seen order.
+    let mut trait_names: Vec<&'static str> = Vec::new();
+    for e in emissions {
+        if !trait_names.contains(&e.trait_name) {
+            trait_names.push(e.trait_name);
+        }
+    }
+
+    StdlibVtableEmissionSummary {
+        total_emissions,
+        marker_count,
+        complete_count,
+        incomplete_count,
+        total_slots,
+        total_byte_size_32,
+        total_byte_size_64,
+        trait_names,
+    }
+}

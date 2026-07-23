@@ -202,3 +202,6 @@ mod stdlib_vtable_symbol_tests;
 
 #[path = "v0/stage5/plan/stdlib_vtable_emission_tests.rs"]
 mod stdlib_vtable_emission_tests;
+
+#[path = "v0/stage5/plan/stdlib_vtable_emission_summary_tests.rs"]
+mod stdlib_vtable_emission_summary_tests;

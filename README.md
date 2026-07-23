@@ -6,10 +6,10 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.37 — Stage 0-4 complete, Stage 5 in progress.
-> **1223 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
+> **Status:** v0.11.38 — Stage 0-4 complete, Stage 5 in progress.
+> **1236 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
 > Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5.1-5.41: 41 sub-stages done. Stdlib core+alloc+std+facade+type resolution+layout+trait method signatures+vtable slot layout+vtable byte size+vtable construction planner+vtable symbol name planner+vtable emission plan complete. Deep review #3: GO.
+> Stage 5.1-5.42: 42 sub-stages done. Stdlib core+alloc+std+facade+type resolution+layout+trait method signatures+vtable slot layout+vtable byte size+vtable construction planner+vtable symbol name planner+vtable emission plan+vtable emission summary complete. Deep review #4: GO.
 > Next: codegen vtable emission refactor, dyn Trait MIR lowering.
 
 ## Quick start
@@ -39,7 +39,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete | 170 |
 | 3 | `codegen/` | ✅ Complete | 309 (incl. 5 §21 audit) |
 | 4 | modules, closures, macros, benchmarks, ADR | ✅ Complete | 62 + 5 bench |
-| 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | 🔄 In progress | 228 (TraitResolver + integration + Copy + DefId→name + vtable + vtable codegen + dyn fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report + stdlib facade + stdlib type resolution + stdlib type layout + stdlib trait method signatures + stdlib vtable slot layout + stdlib vtable byte size + stdlib vtable construction planner + stdlib vtable symbol name planner + stdlib vtable emission plan) |
+| 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | 🔄 In progress | 241 (TraitResolver + integration + Copy + DefId→name + vtable + vtable codegen + dyn fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report + stdlib facade + stdlib type resolution + stdlib type layout + stdlib trait method signatures + stdlib vtable slot layout + stdlib vtable byte size + stdlib vtable construction planner + stdlib vtable symbol name planner + stdlib vtable emission plan + stdlib vtable emission summary) |
 
 ## API surface
 

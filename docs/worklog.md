@@ -4478,3 +4478,49 @@ Stage Summary:
 - Stage 5.42+ can now refactor codegen to a single stdlib_vtable_emission()
   call per vtable — simpler codegen, centralized stdlib logic.
 - Next: Stage 5.42+ (codegen vtable emission refactor, dyn Trait MIR lowering).
+
+---
+Task ID: stage5.42-r91
+Agent: Super Z (main)
+Task: Stage 5.42 — stdlib vtable emission summary + §25 deep review #4 + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.37 / 1223 tests (Stage 5.41 complete)
+
+Stage 5.42: Stdlib vtable emission summary + deep review #4
+- src/stdlib.rs: new StdlibVtableEmissionSummary struct (8 fields)
+- src/stdlib.rs: 1 new free-function query API:
+  * stdlib_vtable_emission_summary(&[StdlibVtableEmission]) -> StdlibVtableEmissionSummary
+- src/lib.rs: re-export all new APIs + Stage 5.42 history comment
+- tests/v0/stage5/plan/stdlib_vtable_emission_summary_tests.rs: 13 new tests
+- tests/all_tests.rs: added stdlib_vtable_emission_summary_tests module (56 mods)
+- Cargo.toml: version 0.11.37 → 0.11.38
+- §25 deep review #4 triggered (10 sub-stages since review #3)
+
+Docs:
+- plan-5.42.md / gate-review-round42.md / stdlib_vtable_emission_summary_tests.md
+- deep-review-r91.md (§25 7-dimension deep review #4)
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (929.7 MiB removed) ✅
+- cargo test: 1236 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅ (修复了 1 个 cloned_ref_to_slice_refs 警告)
+
+Stage Summary:
+- Stage 5.42 PASSED — CI/CD all green per §1.2.
+- StdlibVtableEmissionSummary (8 fields) + 1 query API added.
+- §25 deep review #4 PASS (5/5 GO) — Stage 5 static infrastructure complete.
+- Full vtable static-planning chain (5.36-5.42, 7 sub-stages) complete:
+  trait method signatures → slot layout → byte offset → construction plan →
+  symbol name → emission aggregate → project-level summary.
+- 0 P0 / 0 P1 / 2 P2 blockers (TD-011 mir/lower 3124 LOC, TD-015 region inference).
+- §16 compliance: struct uses only &'static str + Vec + scalars, no mir::ty /
+  codegen::EmitType / traits::TraitResolver reference.
+- §23 compliance: all 2 new public symbols + 8 field names follow API naming
+  standard.
+- Stage 5.43+ can now refactor codegen to use stdlib_vtable_emission() +
+  stdlib_vtable_emission_summary() — replaces inline format! + enables
+  diagnostic output.
+- Next: Stage 5.43+ (codegen vtable emission refactor, dyn Trait MIR lowering).

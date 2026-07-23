@@ -1,9 +1,81 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.37
+**Current version**: v0.11.38
 **Date**: 2026-07-23
-**Test count**: 1223 tests + 5 benchmarks
+**Test count**: 1236 tests + 5 benchmarks
+
+---
+
+## v0.11.38 — Stage 5.42 (Stdlib vtable emission summary + deep review #4)
+
+### Overview
+
+Adds project-level vtable emission statistics — the last static-analysis step
+before codegen modification. Also triggers §25 deep review #4 (10 sub-stages
+since review #3). The full vtable static-planning chain (Stages 5.36-5.42,
+7 sub-stages) is now complete: trait method signatures → slot layout → byte
+offset → construction plan → symbol name → emission aggregate → project
+summary.
+
+### New type
+
+- `StdlibVtableEmissionSummary` — 8 fields:
+  - `total_emissions: u32` / `marker_count: u32`
+  - `complete_count: u32` / `incomplete_count: u32`
+  - `total_slots: u32`
+  - `total_byte_size_32: u64` / `total_byte_size_64: u64`
+  - `trait_names: Vec<&'static str>` (deduplicated, first-seen order)
+
+### New API
+
+- `stdlib_vtable_emission_summary(&[StdlibVtableEmission]) -> StdlibVtableEmissionSummary`
+  — aggregates total counts, slot totals, byte-size totals (32/64-bit), and
+  deduplicated trait names.
+
+### Design highlights
+
+1. **Project-level aggregate**: one call returns everything codegen needs
+   for diagnostic output ("emit N vtables, M bytes total") + typeck needs
+   for incompleteness detection (`incomplete_count > 0`).
+2. **`trait_names` dedup preserves first-seen order** — deterministic
+   diagnostic output.
+3. **Compositional**: builds on Stage 5.41 `StdlibVtableEmission` — single
+   source of truth.
+
+### §25 Deep Review #4 (5/5 GO)
+
+- `docs/develop/v0/stage-5/deep-review-r91.md` created
+- 7 dimensions audited: architecture / tech debt / tests / readiness /
+  design / performance / docs
+- 0 P0 / 0 P1 / 2 P2 blockers (TD-011 mir/lower 3124 LOC, TD-015 region
+  inference — both deferred to Stage 6+)
+- Verdict: ✅ GO — Stage 5 static infrastructure complete, ready for
+  codegen vtable emission refactor (Stage 5.43)
+
+### §16 / §23 compliance
+
+- Struct uses only `&'static str` + `Vec<>` + scalars — no `mir::ty` /
+  `codegen::EmitType` / `traits::TraitResolver` reference, no circular
+  dependency.
+- All 2 new public symbols + 8 field names follow API-naming-standard §23.
+
+### Test impact
+
++13 tests (1223 → 1236) — covers empty input / single complete / single
+marker / multi-mixed / total_slots / byte_sizes / trait_names dedup + order
+/ incomplete_count / marker_count / complete_count / struct Eq /
+from-real-emissions.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (929.7 MiB removed)
+cargo test: 1236 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+  (fixed 1 cloned_ref_to_slice_refs warning in test)
+```
 
 ---
 

@@ -942,3 +942,62 @@ separate stdlib calls with one `stdlib_vtable_emission()` call.
 **Test impact**: +17 (1206 → 1223).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.12 (Stage 5.42, 2026-07-23)
+
+Stage 5.42 stdlib vtable emission summary round. Adds project-level
+aggregate statistics — the last static-analysis step before codegen
+modification. Triggers §25 deep review #4 (10 sub-stages since review #3).
+
+**New public symbols (all §23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `StdlibVtableEmissionSummary` | struct | `<Noun><Noun><Noun><Noun>` |
+| `stdlib_vtable_emission_summary` | free fn | `<noun>_<noun>_<noun>_<noun>` |
+
+**Field naming (8 fields, all §23-compliant)**:
+
+| Field | Type | Naming pattern |
+|-------|------|----------------|
+| `total_emissions` | `u32` | `<adj>_<noun>` |
+| `marker_count` | `u32` | `<noun>_<noun>` |
+| `complete_count` | `u32` | `<adj>_<noun>` |
+| `incomplete_count` | `u32` | `<adj>_<noun>` |
+| `total_slots` | `u32` | `<adj>_<noun>` |
+| `total_byte_size_32` | `u64` | `<adj>_<noun>_<noun>_<digits>` |
+| `total_byte_size_64` | `u64` | `<adj>_<noun>_<noun>_<digits>` |
+| `trait_names` | `Vec<&'static str>` | `<noun>_<noun>` |
+
+**Design decisions**:
+1. **Project-level aggregate, not per-emission**: this struct summarizes a
+   *list* of emissions, not a single one. The `total_*` prefix on count
+   fields makes this unambiguous (`total_emissions` vs `emission_count`
+   which could be misread as "count of one emission").
+2. **`total_byte_size_32` / `total_byte_size_64`** (with `total_` prefix)
+   distinguishes from Stage 5.41's per-emission `byte_size_32` / `byte_size_64`.
+   Consistent prefix convention: aggregated fields get `total_` prefix.
+3. **`trait_names` dedup preserves first-seen order**: deterministic output
+   for diagnostics. Alternative would be alphabetical sort, but first-seen
+   order preserves the caller's intent (e.g. if caller passes traits in
+   impl-declaration order, the summary reflects that).
+4. **No new query function for individual stats**: the summary struct is
+   cheap to construct (O(n) once) and all fields are public — callers
+   access fields directly (`s.total_slots`, `s.incomplete_count`). Adding
+   per-field query functions would be over-engineering.
+5. **`StdlibVtableEmissionSummary` derives `PartialEq`/`Eq`**: usable for
+   test assertions and future summary-cache deduplication.
+
+**§16 compliance**: struct uses only `&'static str` + `Vec<>` + scalars —
+no `mir::ty` / `codegen::EmitType` / `traits::TraitResolver` reference,
+no circular dependency.
+
+**§25 deep review #4**: triggered at this stage (10 sub-stages since
+review #3 at Stage 5.32). 7-dimension audit in
+`docs/develop/v0/stage-5/deep-review-r91.md`. Verdict: 5/5 GO, 0 P0/P1,
+2 P2 blockers deferred to Stage 6+.
+
+**Test impact**: +13 (1223 → 1236).
+**Clippy impact**: 0 (0 warnings; fixed 1 `cloned_ref_to_slice_refs`
+warning in test).
+**Fmt impact**: clean.

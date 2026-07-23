@@ -1057,3 +1057,61 @@ and `<noun>_<noun>_<noun>_<prep>_<noun>`). All 9 field names comply
 
 **Test impact**: +17 (1206 → 1223)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.42 — Stdlib Vtable Emission Summary + Deep Review #4 (v0.11.38)
+
+**Priority**: Add project-level vtable emission statistics (the last
+static-analysis step before codegen modification). Triggers §25 deep
+review #4 (Stage 5.33-5.42 = 10 sub-stages since review #3).
+
+**Work completed**:
+- src/stdlib.rs: new `StdlibVtableEmissionSummary` struct (8 fields:
+  total_emissions + marker_count + complete_count + incomplete_count +
+  total_slots + total_byte_size_32 + total_byte_size_64 + trait_names)
+- src/stdlib.rs: 1 new free-function query API:
+  * `stdlib_vtable_emission_summary(&[StdlibVtableEmission]) -> StdlibVtableEmissionSummary`
+    — aggregates total counts, slot totals, byte-size totals (32/64-bit),
+    and deduplicated trait names (first-seen order preserved)
+- src/lib.rs: re-export all new APIs + Stage 5.42 history comment
+- tests/v0/stage5/plan/stdlib_vtable_emission_summary_tests.rs: 13 new tests
+  covering empty input / single complete / single marker / multi-mixed /
+  total_slots / byte_sizes / trait_names dedup + order / incomplete_count /
+  marker_count / complete_count / struct Eq / from-real-emissions
+- tests/all_tests.rs: added stdlib_vtable_emission_summary_tests module
+  (56 mods total)
+- Cargo.toml: version 0.11.37 → 0.11.38
+
+**Deep review #4 (§25 7-dimension)**:
+- `docs/develop/v0/stage-5/deep-review-r91.md` created
+- 7 dimensions audited: architecture / tech debt / tests / readiness /
+  design / performance / docs
+- 0 P0 / 0 P1 / 2 P2 blockers
+- 5/5 GO — Stage 5 static infrastructure complete, ready for codegen
+  vtable emission refactor (Stage 5.43)
+
+**Design highlights**:
+- Project-level aggregate: one call returns total counts + slot totals +
+  byte-size totals + deduplicated trait names. Codegen uses this for
+  diagnostic output ("emit N vtables, M bytes total").
+- `trait_names` dedup preserves first-seen order — deterministic output
+  for diagnostics.
+- Compositional: builds on Stage 5.41 `StdlibVtableEmission` — single
+  source of truth, no duplicated logic.
+
+**§16 interface isolation**: struct uses only `&'static str` + `Vec<>` +
+scalars — no `mir::ty` / `codegen::EmitType` / `traits::TraitResolver`
+reference, no circular dependency.
+
+**§23 API naming**: Both new public symbols comply
+(`StdlibVtableEmissionSummary` follows `<Noun><Noun><Noun><Noun>`;
+`stdlib_vtable_emission_summary` follows `<noun>_<noun>_<noun>_<noun>`).
+All 8 field names comply.
+
+**Test impact**: +13 (1223 → 1236)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+  (修复了 1 个 clippy 警告: cloned_ref_to_slice_refs in test)
+
+**Deep review impact**: 0 code changes (review only)
+
+**Verdict**: ✅ GO — 0 P0/P1; full vtable static-planning chain (5.36-5.42)
+complete; codegen vtable emission refactor ready for Stage 5.43.
