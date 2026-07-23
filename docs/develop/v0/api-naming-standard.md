@@ -1821,3 +1821,48 @@ Codegen trait-dispatch emission logic is **fully centralized** in free functions
 **Test impact**: +7 (1435 → 1442).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.31 (Stage 5.61, 2026-07-23)
+
+Stage 5.61 DynTraitFatPtr MIR-level representation round. **Start of dyn
+Trait MIR lowering** — the core Stage 5 goal.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `DynTraitFatPtr` | struct (in `mir`) | `<Noun><Noun><Noun>` |
+
+**Field naming (5 fields, all §23-compliant)**:
+
+| Field | Type | Naming pattern |
+|-------|------|----------------|
+| `trait_name` | `String` | `<noun>_<noun>` |
+| `type_name` | `String` | `<noun>_<noun>` |
+| `data_symbol` | `String` | `<noun>_<noun>` |
+| `vtable_symbol` | `String` | `<noun>_<noun>` |
+| `dynptr_symbol` | `String` | `<noun>_<noun>` |
+
+**Design decisions**:
+1. **New MIR module**: `src/mir/dyn_trait.rs` — first new file in the `mir/`
+   module since Stage 3. Placed alongside `ty.rs`, `place.rs`, `body.rs`.
+2. **`DynTraitFatPtr` follows `<Noun><Noun><Noun>`**: `Dyn` (qualifier) +
+   `Trait` (domain) + `FatPtr` (kind). Consistent with Rust's own
+   `DynTrait` naming + the "FatPtr" terminology used in the codegen module
+   (`emit_fat_ptr_type`).
+3. **`new()` constructor auto-computes LLVM symbols**: the constructor takes
+   `(trait_name, type_name)` and computes `data_symbol`, `vtable_symbol`,
+   `dynptr_symbol` using the same naming convention as the codegen module.
+   This avoids duplication — callers don't need to know the LLVM symbol
+   format.
+4. **`is_marker()` method**: checks if the trait is a marker (Copy/Send/
+   Sync/Sized/Unpin/Eq). Marker traits have empty vtables. Uses the same
+   marker list as `stdlib::is_stdlib_marker_trait()`.
+5. **§16 compliance**: uses only `String` — no `mir::ty` / `codegen::EmitType`
+   / `traits::TraitResolver` reference, no circular dependency. The struct
+   is a pure data type that can be constructed and queried without any
+   dependency on other compiler stages.
+
+**Test impact**: +9 (1442 → 1451).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

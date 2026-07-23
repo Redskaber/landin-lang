@@ -5266,3 +5266,38 @@ Stage Summary:
   in free functions. TextEmitter + emit_vtables + emit_dyn_trait_ptrs all
   delegate. Ready for dyn Trait MIR lowering — the core Stage 5 goal.
 - Next: Stage 5.61+ (dyn Trait MIR lowering).
+
+---
+Task ID: stage5.61-r110
+Agent: Super Z (main)
+Task: Stage 5.61 — DynTraitFatPtr MIR-level representation + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.56 / 1442 tests (Stage 5.60 complete — codegen delegation done)
+
+Stage 5.61: DynTraitFatPtr MIR-level representation (START OF DYN TRAIT MIR LOWERING)
+- src/mir/dyn_trait.rs: new DynTraitFatPtr struct (5 fields) + new() + is_marker()
+- src/mir/mod.rs: added pub mod dyn_trait + re-export DynTraitFatPtr
+- src/lib.rs: Stage 5.61 history comment
+- tests/v0/stage5/plan/dyn_trait_fat_ptr_tests.rs: 9 new tests
+- tests/all_tests.rs: added dyn_trait_fat_ptr_tests module (75 mods)
+- Cargo.toml: version 0.11.56 → 0.11.57
+
+Docs:
+- plan-5.61.md / gate-review-round61.md / dyn_trait_fat_ptr_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (863.5 MiB removed) ✅
+- cargo test: 1451 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.61 PASSED — CI/CD all green per §1.2.
+- **START OF DYN TRAIT MIR LOWERING** — the core Stage 5 goal.
+- DynTraitFatPtr struct in src/mir/dyn_trait.rs — MIR-level (data, vtable) pair.
+- Foundation for Stage 5.62+ actual MIR lowering logic.
+- §16 compliance: uses only String, no mir::ty / codegen / traits reference.
+- §23 compliance: DynTraitFatPtr follows <Noun><Noun><Noun>.
+- Next: Stage 5.62+ (dyn Trait value construction in MIR lowering).

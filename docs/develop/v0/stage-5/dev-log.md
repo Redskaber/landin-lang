@@ -1947,3 +1947,22 @@ free functions. Ready for dyn Trait MIR lowering.
 
 **Test impact**: +7 (1435 → 1442)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.61 — DynTraitFatPtr MIR-Level Representation (v0.11.57)
+
+**Priority**: **Start of dyn Trait MIR lowering** — the core Stage 5 goal.
+First step: MIR-level `DynTraitFatPtr` struct representing the (data, vtable)
+fat pointer pair. Foundation for Stage 5.62+ actual MIR lowering logic.
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `DynTraitFatPtr` struct (5 fields: trait_name +
+  type_name + data_symbol + vtable_symbol + dynptr_symbol) + `new()` constructor
+  + `is_marker()` method
+- src/mir/mod.rs: added `pub mod dyn_trait` + re-export `DynTraitFatPtr`
+- src/lib.rs: Stage 5.61 history comment
+- tests/v0/stage5/plan/dyn_trait_fat_ptr_tests.rs: 9 new tests
+- tests/all_tests.rs: added dyn_trait_fat_ptr_tests module (75 mods)
+- Cargo.toml: version 0.11.56 → 0.11.57
+
+**Test impact**: +9 (1442 → 1451)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

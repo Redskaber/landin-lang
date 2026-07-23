@@ -1,9 +1,36 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.56
+**Current version**: v0.11.57
 **Date**: 2026-07-23
-**Test count**: 1442 tests + 5 benchmarks
+**Test count**: 1451 tests + 5 benchmarks
+
+---
+
+## v0.11.57 — Stage 5.61 (DynTraitFatPtr MIR-level representation)
+
+### Overview
+
+**Start of dyn Trait MIR lowering** — the core Stage 5 goal. First step:
+MIR-level `DynTraitFatPtr` struct representing the (data, vtable) fat pointer
+pair. New file `src/mir/dyn_trait.rs`. Foundation for Stage 5.62+ actual
+MIR lowering logic.
+
+### New type
+
+- `DynTraitFatPtr` (in `src/mir/dyn_trait.rs`) — 5 fields:
+  `trait_name` / `type_name` / `data_symbol` / `vtable_symbol` / `dynptr_symbol`.
+  Methods: `new(trait_name, type_name)` constructor (auto-computes LLVM symbols),
+  `is_marker()` marker trait check.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (863.5 MiB removed)
+cargo test: 1451 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

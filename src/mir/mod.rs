@@ -7,6 +7,7 @@
 //! - Stage 3: LLVM codegen (MIR → LLVM IR)
 
 pub mod body;
+pub mod dyn_trait;
 pub mod lower;
 pub mod place;
 pub mod ty;
@@ -36,3 +37,6 @@ pub use ty::{
     Const, ConstVal, FloatVid, InferVar, IntVid, Mutability, ParamTy, Region, RegionVid, Sig,
     SubstsRef, Ty, TyKind, TyVid,
 };
+
+// Stage 5.61: dyn Trait fat pointer MIR representation
+pub use dyn_trait::DynTraitFatPtr;

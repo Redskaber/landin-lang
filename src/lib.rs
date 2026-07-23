@@ -372,7 +372,13 @@
 //!     emission logic now fully centralized in free functions —
 //!     `TextEmitter` + `emit_vtables()` + `emit_dyn_trait_ptrs()` all
 //!     delegate to free functions. Ready for dyn Trait MIR lowering.
-//!   Next: Stage 5.61+ (dyn Trait MIR lowering — the core Stage 5 goal).
+//!   Stage 5.61 (v0.11.57): DynTraitFatPtr MIR-level representation —
+//!     new `DynTraitFatPtr` struct in `src/mir/dyn_trait.rs` (trait_name +
+//!     type_name + data_symbol + vtable_symbol + dynptr_symbol) + `new()`
+//!     constructor + `is_marker()` method. **Start of dyn Trait MIR
+//!     lowering** — the core Stage 5 goal. Foundation for Stage 5.62+
+//!     actual MIR lowering logic.
+//!   Next: Stage 5.62+ (dyn Trait value construction in MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

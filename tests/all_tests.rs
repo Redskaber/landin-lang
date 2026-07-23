@@ -259,3 +259,6 @@ mod emit_vtables_delegation_tests;
 
 #[path = "v0/stage5/plan/emit_dyn_trait_ptrs_delegation_tests.rs"]
 mod emit_dyn_trait_ptrs_delegation_tests;
+
+#[path = "v0/stage5/plan/dyn_trait_fat_ptr_tests.rs"]
+mod dyn_trait_fat_ptr_tests;
