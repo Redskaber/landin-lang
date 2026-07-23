@@ -388,7 +388,11 @@
 //!     to LLVM IR text (String). Delegates to Stage 5.48's
 //!     `emit_dynptr_global_text()`. Bridges MIR representation with
 //!     codegen output.
-//!   Next: Stage 5.64+ (dyn Trait value construction in MIR lowering).
+//!   Stage 5.64 (v0.11.60): emit_dyn_trait_fat_ptrs_text_batch — batch
+//!     version of Stage 5.63, converts `&[DynTraitFatPtr]` to
+//!     `Vec<String>`. All dyn Trait fat ptr infrastructure complete —
+//!     ready for MIR lowering integration.
+//!   Next: Stage 5.65+ (dyn Trait value construction in MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

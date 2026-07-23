@@ -163,3 +163,27 @@ pub fn emit_dyn_trait_fat_ptr_text(fat_ptr: &DynTraitFatPtr) -> String {
         &fat_ptr.vtable_symbol,
     )
 }
+
+// ============================================================================
+// Stage 5.64: Batch version of emit_dyn_trait_fat_ptr_text
+//
+// Batch-converts a list of DynTraitFatPtr to Vec<String> (LLVM IR text).
+// This is the batch counterpart of Stage 5.63's emit_dyn_trait_fat_ptr_text().
+//
+// Per API-naming-standard §3: `emit_dyn_trait_fat_ptrs_text_batch` follows
+// `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern.
+// ============================================================================
+
+/// Stage 5.64: Batch-convert a list of `DynTraitFatPtr` to LLVM IR text.
+///
+/// For each `DynTraitFatPtr` in the input slice, calls
+/// `emit_dyn_trait_fat_ptr_text()` (Stage 5.63) and collects the results.
+///
+/// Returns `Vec<String>` where each element is one dynptr global definition.
+/// Empty input returns an empty Vec.
+///
+/// Per API-naming-standard §3: `emit_dyn_trait_fat_ptrs_text_batch` follows
+/// `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn emit_dyn_trait_fat_ptrs_text_batch(fat_ptrs: &[DynTraitFatPtr]) -> Vec<String> {
+    fat_ptrs.iter().map(emit_dyn_trait_fat_ptr_text).collect()
+}

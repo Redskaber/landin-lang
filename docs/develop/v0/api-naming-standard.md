@@ -1899,3 +1899,18 @@ DynTraitFatPtr (MIR) with codegen text output.
 **Test impact**: +8 (1459 → 1467).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.34 (Stage 5.64, 2026-07-23)
+
+Stage 5.64 emit_dyn_trait_fat_ptrs_text_batch round. Batch version of
+Stage 5.63. **Dyn Trait fat ptr infrastructure complete (5.61-5.64)**.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_dyn_trait_fat_ptrs_text_batch` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` |
+
+**Test impact**: +8 (1467 → 1475).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

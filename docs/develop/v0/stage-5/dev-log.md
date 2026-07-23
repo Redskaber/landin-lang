@@ -1998,3 +1998,19 @@ text output. Delegates to Stage 5.48 emit_dynptr_global_text().
 
 **Test impact**: +8 (1459 → 1467)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.64 — emit_dyn_trait_fat_ptrs_text_batch (v0.11.60)
+
+**Priority**: Batch version of Stage 5.63. `&[DynTraitFatPtr]` → `Vec<String>`.
+Dyn Trait fat ptr infrastructure complete (5.61-5.64).
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `emit_dyn_trait_fat_ptrs_text_batch()`
+- src/mir/mod.rs: re-export
+- src/lib.rs: Stage 5.64 history comment
+- tests/v0/stage5/plan/dyn_trait_fat_ptr_batch_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_fat_ptr_batch_tests module (78 mods)
+- Cargo.toml: version 0.11.59 → 0.11.60
+
+**Test impact**: +8 (1467 → 1475)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

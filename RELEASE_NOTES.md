@@ -1,9 +1,32 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.59
+**Current version**: v0.11.60
 **Date**: 2026-07-23
-**Test count**: 1467 tests + 5 benchmarks
+**Test count**: 1475 tests + 5 benchmarks
+
+---
+
+## v0.11.60 — Stage 5.64 (emit_dyn_trait_fat_ptrs_text_batch)
+
+### Overview
+
+Batch version of Stage 5.63's `emit_dyn_trait_fat_ptr_text()`. Converts
+`&[DynTraitFatPtr]` to `Vec<String>` (all LLVM IR text). **Dyn Trait fat
+ptr infrastructure complete (5.61-5.64)** — ready for MIR lowering integration.
+
+### New API
+
+- `emit_dyn_trait_fat_ptrs_text_batch(&[DynTraitFatPtr]) -> Vec<String>` (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (994.7 MiB removed)
+cargo test: 1475 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
