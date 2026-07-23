@@ -1,9 +1,65 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.51
+**Current version**: v0.11.52
 **Date**: 2026-07-23
-**Test count**: 1396 tests + 5 benchmarks
+**Test count**: 1408 tests + 5 benchmarks
+
+---
+
+## v0.11.52 — Stage 5.56 (Codegen trait-dispatch emission text batch from resolver)
+
+### Overview
+
+**Convenience entry point** — one call from `(&TraitResolver, &Rodeo)` to
+`Vec<String>` (all trait-dispatch global IR text). Composes Stage 5.53
+`build_trait_dispatch_emission_plan()` + Stage 5.55
+`emit_trait_dispatch_globals_text_batch()`. Final piece before Stage 5.57
+driver delegation — codegen can call this single function to get all
+trait-dispatch IR text without needing an Emitter or a separate plan step.
+
+### New API
+
+- `emit_trait_dispatch_globals_text_batch_from_resolver(&TraitResolver, &Rodeo) -> Vec<String>`
+  (in `src/codegen/mod.rs`) — convenience entry. Internally:
+  1. `build_trait_dispatch_emission_plan(trait_resolver, interner)` (Stage 5.53)
+  2. `emit_trait_dispatch_globals_text_batch(&plan)` (Stage 5.55)
+
+### Design highlights
+
+1. **Convenience entry point**: single function from resolver to all IR text.
+   Stage 5.57 driver refactor becomes a one-liner.
+2. **Two behavior-equivalence cross-checks**:
+   - vs `emit_vtables()` + `emit_dyn_trait_ptrs()` (via Emitter) — verifies
+     the convenience entry produces the same IR as the existing codegen path
+   - vs `emit_trait_dispatch_globals_text_batch()` (plan-based, Stage 5.55) —
+     verifies the convenience entry matches the two-step plan+batch approach
+3. **No Emitter needed**: works without any Emitter trait object.
+
+### §16 / §23 compliance
+
+- Function takes `&TraitResolver` + `&Rodeo` (same as `emit_vtables()`),
+  returns `Vec<String>`. No `mir::ty` / `Emitter` reference, no circular
+  dependency.
+- `emit_trait_dispatch_globals_text_batch_from_resolver` follows §23
+  `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern. The
+  `_from_resolver` suffix indicates the input source (resolver, not plan).
+
+### Test impact
+
++12 tests (1396 → 1408) — covers empty/single/multi + **two behavior-equivalence
+cross-checks** + no-side-effects + no-emitter-needed + vtable/dynptr order +
+count-matches + real-scenario + determinism.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (1.0 GiB removed)
+cargo test: 1408 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+  (fixed 1 unused import warning)
+```
 
 ---
 

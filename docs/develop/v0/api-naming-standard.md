@@ -1675,3 +1675,50 @@ reference, no circular dependency.
 **Clippy impact**: 0 (0 warnings; fixed 1 `doc_lazy_continuation` by
 rephrasing "vtable + dynptr" → "vtable and dynptr" in doc comment).
 **Fmt impact**: clean.
+
+### v1.26 (Stage 5.56, 2026-07-23)
+
+Stage 5.56 codegen trait-dispatch emission text batch from resolver round.
+Adds the **convenience entry point** — one call from resolver to all
+trait-dispatch IR text.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_trait_dispatch_globals_text_batch_from_resolver` | free fn (in `codegen`) | `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` |
+
+**Design decisions**:
+1. **Convenience entry point**: single function from `(&TraitResolver, &Rodeo)`
+   to `Vec<String>`. Composes Stage 5.53 `build_trait_dispatch_emission_plan()`
+   + Stage 5.55 `emit_trait_dispatch_globals_text_batch()`. Callers who don't
+   need to inspect the plan can use this one-liner instead of the two-step
+   approach.
+2. **`_from_resolver` suffix** (not `_from_plan`): indicates the input source
+   is a resolver (not a plan). Distinguishes from Stage 5.55's
+   `emit_trait_dispatch_globals_text_batch` (plan-based). The `_from_*`
+   convention makes the input type explicit in the function name.
+3. **Naming tension with `_from_resolver` suffix**: the function name is long
+   (`emit_trait_dispatch_globals_text_batch_from_resolver` — 7 words). This is
+   justified because:
+   - Each word adds a meaningful scope qualifier (emit → trait_dispatch →
+     globals → text → batch → from → resolver)
+   - Shorter alternatives (`emit_all_trait_dispatch_text(r, i)` or
+     `emit_trait_dispatch_text(r, i)`) were considered but rejected for
+     consistency with the Stage 5.55 naming pattern
+4. **Two behavior-equivalence cross-check tests**:
+   - `test_match_separate_emit_vtables_and_dyn_trait_ptrs` — vs existing
+     `emit_vtables()` + `emit_dyn_trait_ptrs()` via Emitter
+   - `test_match_plan_based_text_batch` — vs Stage 5.55 plan-based approach
+   Both verify the convenience entry produces identical IR to alternative paths.
+5. **No Emitter needed**: works without any Emitter trait object. The
+   `_text_batch` suffix (consistent with Stage 5.45 + Stage 5.55) indicates
+   this.
+
+**§16 compliance**: function takes `&TraitResolver` + `&Rodeo` (same as
+`emit_vtables()`), returns `Vec<String>`. No `mir::ty` / `Emitter` reference,
+no circular dependency.
+
+**Test impact**: +12 (1396 → 1408).
+**Clippy impact**: 0 (0 warnings; fixed 1 unused import).
+**Fmt impact**: clean.

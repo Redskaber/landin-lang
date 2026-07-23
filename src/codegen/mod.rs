@@ -2254,3 +2254,49 @@ pub fn emit_trait_dispatch_globals_text_batch(
     }
     lines
 }
+
+// ============================================================================
+// Stage 5.56: Codegen trait-dispatch emission text batch from resolver
+//
+// **Convenience entry point** — one call from `(&TraitResolver, &Rodeo)`
+// to `Vec<String>` (all trait-dispatch global IR text). Composes Stage 5.53's
+// `build_trait_dispatch_emission_plan()` + Stage 5.55's
+// `emit_trait_dispatch_globals_text_batch()`.
+//
+// This is the final piece before Stage 5.57 driver delegation — codegen can
+// call this single function to get all trait-dispatch IR text without
+// needing an Emitter or a separate plan-building step.
+//
+// Per API-naming-standard §3: `emit_trait_dispatch_globals_text_batch_from_resolver`
+// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+//
+// Per §16: takes `&TraitResolver` + `&Rodeo` (same as `emit_vtables()`),
+// returns `Vec<String>`. No `mir::ty` / `Emitter` reference, no circular
+// dependency.
+// ============================================================================
+
+/// Stage 5.56: Generate LLVM IR text for all trait-dispatch globals (vtable
+/// and dynptr) directly from `(&TraitResolver, &Rodeo)` in one call —
+/// **convenience entry point** combining plan-building + text-batch generation.
+///
+/// This is the final piece before Stage 5.57 driver delegation. Codegen can
+/// call this single function to get all trait-dispatch IR text without
+/// needing an Emitter or a separate plan-building step.
+///
+/// Internally:
+/// 1. `build_trait_dispatch_emission_plan(trait_resolver, interner)` (Stage 5.53)
+/// 2. `emit_trait_dispatch_globals_text_batch(&plan)` (Stage 5.55)
+///
+/// Behavior is **identical** to calling `emit_vtables()` +
+/// `emit_dyn_trait_ptrs()` separately — verified by
+/// `test_match_separate_emit_vtables_and_dyn_trait_ptrs`.
+///
+/// Per API-naming-standard §3: `emit_trait_dispatch_globals_text_batch_from_resolver`
+/// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub fn emit_trait_dispatch_globals_text_batch_from_resolver(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+) -> Vec<String> {
+    let plan = build_trait_dispatch_emission_plan(trait_resolver, interner);
+    emit_trait_dispatch_globals_text_batch(&plan)
+}

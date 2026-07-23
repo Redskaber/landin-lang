@@ -1808,3 +1808,48 @@ indicates LLVM IR text batch (no Emitter). Consistent with Stage 5.45's
 **Test impact**: +12 (1384 → 1396)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
   (fixed 1 doc_lazy_continuation warning by rephrasing "vtable + dynptr" → "vtable and dynptr")
+
+### Stage 5.56 — Codegen Trait-Dispatch Emission Text Batch from Resolver (v0.11.52)
+
+**Priority**: Convenience entry point — one call from `(&TraitResolver, &Rodeo)`
+to `Vec<String>` (all trait-dispatch global IR text). Composes Stage 5.53 +
+Stage 5.55. Final piece before Stage 5.57 driver delegation.
+
+**Work completed**:
+- src/codegen/mod.rs: new free function
+  `emit_trait_dispatch_globals_text_batch_from_resolver(&TraitResolver, &Rodeo) -> Vec<String>`
+  * Convenience entry — no Emitter, no separate plan step
+  * Composes build_trait_dispatch_emission_plan() (Stage 5.53) +
+    emit_trait_dispatch_globals_text_batch() (Stage 5.55)
+  * Behavior identical to emit_vtables() + emit_dyn_trait_ptrs() (verified by cross-check)
+- src/lib.rs: re-export + Stage 5.56 history comment
+- tests/v0/stage5/plan/codegen_text_batch_from_resolver_tests.rs: 12 new tests
+  covering empty/single/multi + **two behavior-equivalence cross-checks**
+  (vs separate emit_vtables+emit_dyn_trait_ptrs + vs plan-based text batch) +
+  no-side-effects + no-emitter-needed + vtable/dynptr order + count-matches +
+  real-scenario + determinism
+- tests/all_tests.rs: added codegen_text_batch_from_resolver_tests module (70 mods)
+- Cargo.toml: version 0.11.51 → 0.11.52
+
+**Design highlights**:
+- **Convenience entry point**: single function from resolver to all IR text.
+  Stage 5.57 driver refactor becomes a one-liner:
+  `let ir_lines = emit_trait_dispatch_globals_text_batch_from_resolver(r, i);`
+- **Two behavior-equivalence cross-checks**:
+  1. vs `emit_vtables()` + `emit_dyn_trait_ptrs()` (via Emitter) — verifies
+     the convenience entry produces the same IR as the existing codegen path
+  2. vs `emit_trait_dispatch_globals_text_batch()` (plan-based, Stage 5.55) —
+     verifies the convenience entry matches the two-step plan+batch approach
+- **No Emitter needed**: works without any Emitter trait object.
+
+**§16 interface isolation**: function takes `&TraitResolver` + `&Rodeo` (same
+as `emit_vtables()`), returns `Vec<String>`. No `mir::ty` / `Emitter`
+reference, no circular dependency.
+
+**§23 API naming**: `emit_trait_dispatch_globals_text_batch_from_resolver`
+follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+The `_from_resolver` suffix indicates the input source (resolver, not plan).
+
+**Test impact**: +12 (1396 → 1408)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+  (fixed 1 unused import warning)

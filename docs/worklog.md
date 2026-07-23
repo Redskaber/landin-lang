@@ -5080,3 +5080,46 @@ Stage Summary:
   emitter.globals, or use it for testing without Emitter construction.
 - Next: Stage 5.56+ (codegen trait-dispatch emission refactor — driver
   delegation + TextEmitter delegation, then dyn Trait MIR lowering).
+
+---
+Task ID: stage5.56-r105
+Agent: Super Z (main)
+Task: Stage 5.56 — codegen trait-dispatch emission text batch from resolver + docs + RELEASE_NOTES + CI/CD
+
+Work Log:
+- Baseline: v0.11.51 / 1396 tests (Stage 5.55 complete)
+
+Stage 5.56: Codegen trait-dispatch emission text batch from resolver
+- src/codegen/mod.rs: new free function emit_trait_dispatch_globals_text_batch_from_resolver(&TraitResolver, &Rodeo) -> Vec<String>
+  * Convenience entry — no Emitter, no separate plan step
+  * Composes build_trait_dispatch_emission_plan() (Stage 5.53) +
+    emit_trait_dispatch_globals_text_batch() (Stage 5.55)
+- src/lib.rs: re-export + Stage 5.56 history comment
+- tests/v0/stage5/plan/codegen_text_batch_from_resolver_tests.rs: 12 new tests
+  (incl. two behavior-equivalence cross-checks)
+- tests/all_tests.rs: added codegen_text_batch_from_resolver_tests module (70 mods)
+- Cargo.toml: version 0.11.51 → 0.11.52
+
+Docs:
+- plan-5.56.md / gate-review-round56.md / codegen_text_batch_from_resolver_tests.md
+- dev-log.md / worklog.md / RELEASE_NOTES.md / README.md / api-naming-standard.md updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (1.0 GiB removed) ✅
+- cargo test: 1408 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅ (fixed 1 unused import)
+
+Stage Summary:
+- Stage 5.56 PASSED — CI/CD all green per §1.2.
+- emit_trait_dispatch_globals_text_batch_from_resolver() convenience entry added.
+- One call from resolver to all trait-dispatch IR text (no Emitter, no plan step).
+- Two behavior-equivalence cross-checks guarantee consistency with both
+  existing codegen path and plan-based approach — safety net for Stage 5.57.
+- §16 compliance: takes &TraitResolver + &Rodeo, returns Vec<String>.
+  No mir::ty / Emitter reference.
+- §23 compliance: emit_trait_dispatch_globals_text_batch_from_resolver follows
+  <verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>.
+- Stage 5.57 can now refactor driver to one-liner using this convenience entry.
+- Next: Stage 5.57+ (codegen trait-dispatch emission refactor — driver
+  delegation + TextEmitter delegation, then dyn Trait MIR lowering).
