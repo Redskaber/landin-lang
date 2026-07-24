@@ -1,9 +1,40 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.93
+**Current version**: v0.11.94
 **Date**: 2026-07-24
-**Test count**: 1867 tests + 5 benchmarks
+**Test count**: 1874 tests + 5 benchmarks
+
+---
+
+## v0.11.94 — Stage 5.98 (stdlib_trait_methods_by_is_unsafe reverse query)
+
+### Overview
+
+Add reverse query `stdlib_trait_methods_by_is_unsafe` — given an is_unsafe flag,
+find all (trait, method) pairs. **Completes the reverse query series** (3 dimensions:
+self_kind/return_kind/is_unsafe).
+
+### New API
+
+- `stdlib_trait_methods_by_is_unsafe(is_unsafe: bool) -> Vec<(&'static str, &'static str)>` — free fn (in `src/stdlib.rs`)
+
+### Reverse query series complete
+
+| Stage | Query | Dimension |
+|-------|-------|-----------|
+| 5.95 | stdlib_trait_methods_by_self_kind | self_kind |
+| 5.96 | stdlib_trait_methods_by_return_kind | return_kind |
+| 5.98 | stdlib_trait_methods_by_is_unsafe | is_unsafe |
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (565.2 MiB removed)
+cargo test: 1874 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

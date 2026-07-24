@@ -361,3 +361,6 @@ mod stdlib_trait_methods_by_self_kind_tests;
 
 #[path = "v0/stage5/plan/stdlib_trait_methods_by_return_kind_tests.rs"]
 mod stdlib_trait_methods_by_return_kind_tests;
+
+#[path = "v0/stage5/plan/stdlib_trait_methods_by_is_unsafe_tests.rs"]
+mod stdlib_trait_methods_by_is_unsafe_tests;

@@ -2820,3 +2820,26 @@ Stage 5.97 Deep Review #7 round. §25 阶段末尾深度审查，覆盖 Stage 5.
 **Test impact**: 0 (documentation-only stage).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.68 (Stage 5.98, 2026-07-24)
+
+Stage 5.98 stdlib_trait_methods_by_is_unsafe reverse query round. Add reverse
+query returning all (trait, method) pairs matching a given is_unsafe flag.
+**Completes the reverse query series** (3 dimensions: self_kind/return_kind/is_unsafe).
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_trait_methods_by_is_unsafe` | free fn (in `stdlib`) | `<noun>×3_<prep>_<is_adj>` (plural) |
+
+**Design decisions**:
+1. **Completes reverse query series** — 3 dimensions: self_kind (v1.65),
+   return_kind (v1.66), is_unsafe (v1.68). All 3 are reverse queries filtering
+   by a specific StdlibTraitMethod field.
+2. **§16 compliance** — pure read, reuses `STDLIB_TRAITS` +
+   `stdlib_trait_methods`, no new dependencies.
+
+**Test impact**: +7 (1867 → 1874).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

@@ -6719,3 +6719,27 @@ Stage Summary:
 - 0 P0 / 0 P1 / 3 P2 阻塞项.
 - Documentation-only stage (no code changes).
 - Next: Stage 5.98+ — user-defined trait dyn support (TD-018), or Stage 6 planning.
+
+---
+Task ID: stage5.98-r147
+Agent: Super Z (main)
+Task: Stage 5.98 — stdlib_trait_methods_by_is_unsafe reverse query + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.93 / 1867 tests (Stage 5.97 complete)
+- Implemented stdlib_trait_methods_by_is_unsafe() in src/stdlib.rs
+- Re-exported from src/lib.rs
+- Added 7 tests in tests/v0/stage5/plan/stdlib_trait_methods_by_is_unsafe_tests.rs
+- Bumped Cargo.toml version 0.11.93 → 0.11.94
+- Updated all docs (plan-5.98.md, gate-review-round98.md, dev-log.md,
+  api-naming-standard.md v1.68, RELEASE_NOTES.md, README.md, docs/worklog.md)
+- Ran full CI/CD: cargo clean + cargo test (1874 passed) + cargo fmt +
+  cargo clippy --all-targets — all green ✅
+
+Stage Summary:
+- Stage 5.98 PASSED. CI/CD all green per §1.2.
+- New API: stdlib_trait_methods_by_is_unsafe — reverse query by is_unsafe.
+- 🎉 Reverse query series COMPLETE: 3 dimensions (self_kind/return_kind/is_unsafe).
+- 7 new tests, 0 clippy warnings, fmt clean.
+- §16 + §23 compliant.
+- Next: Stage 5.99+ — user-defined trait dyn support (TD-018), or Stage 6 planning.

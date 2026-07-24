@@ -2821,3 +2821,24 @@ return_kind, find all (trait, method) pairs with that return type. Complements
 
 **Test impact**: 0 (no code changes, documentation-only stage)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.98 — stdlib_trait_methods_by_is_unsafe reverse query (v0.11.94)
+
+**Priority**: Add reverse query `stdlib_trait_methods_by_is_unsafe` — given an
+is_unsafe flag, find all (trait, method) pairs. Completes the reverse query
+series (self_kind/return_kind/is_unsafe).
+
+**Work completed**:
+- src/stdlib.rs: new `stdlib_trait_methods_by_is_unsafe(is_unsafe: bool) -> Vec<(&'static str, &'static str)>` function
+  * §23 compliant: `<noun>×3_<prep>_<is_adj>` (plural, _by_is_unsafe suffix)
+- src/lib.rs: re-export stdlib_trait_methods_by_is_unsafe
+- tests/v0/stage5/plan/stdlib_trait_methods_by_is_unsafe_tests.rs: 7 new tests
+  covering: 2 non-empty/empty (false/true), 2 contains (Clone/Drop),
+  1 consistency (all match), 1 coverage (both cover all), 1 robustness
+- tests/all_tests.rs: added stdlib_trait_methods_by_is_unsafe_tests module (109 mods)
+- Cargo.toml: version 0.11.93 → 0.11.94 (description extended)
+
+**Test impact**: +7 (1867 → 1874)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Reverse query series complete**: 3 dimensions (self_kind/return_kind/is_unsafe).
