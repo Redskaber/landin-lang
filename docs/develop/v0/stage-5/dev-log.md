@@ -3000,3 +3000,29 @@ from mir/lower/mod.rs into mir/lower/field_resolution.rs.
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
 
 **TD-011 cumulative**: 5 splits, -894 LOC (-26.7%). mod.rs now 2452 LOC (was 3346).
+
+### Stage 6.6 — mir/lower control_flow split (TD-011 step 6) (v0.12.5)
+
+**Priority**: Continue TD-011 repayment — extract control flow lowering functions
+from mir/lower/mod.rs into mir/lower/control_flow.rs. **🎉 mod.rs below 2000 LOC!**
+
+**Work completed**:
+- Created src/mir/lower/control_flow.rs (462 LOC) with 5 extracted functions:
+  * lower_short_circuit (pub(crate))
+  * lower_deref_expr (pub(crate))
+  * lower_block (pub(crate))
+  * lower_if (pub(crate))
+  * lower_match (pub(crate))
+- src/mir/lower/mod.rs:
+  * Added `mod control_flow;` declaration
+  * Updated all call sites with `control_flow::` prefix
+  * LOC reduced: 2452 → 1980 (-472 LOC, -19.2%)
+  * Restored original function bodies from git (simplified versions had bugs)
+  * Fixed 2 doc comment warnings
+- Cargo.toml: version 0.12.4 → 0.12.5
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**🎉 MILESTONE: mir/lower/mod.rs below 2000 LOC!**
+TD-011 cumulative: 6 splits, -1366 LOC (-40.8%). mod.rs now 1980 LOC (was 3346).

@@ -6899,3 +6899,29 @@ Stage Summary:
 - 1881 tests pass unchanged (behavior-equivalent).
 - 0 clippy warnings, fmt clean.
 - Next: Stage 6.6+ — continue mir/lower split (control flow lowering).
+
+---
+Task ID: stage6.6-r154
+Agent: Super Z (main)
+Task: Stage 6.6 — mir/lower control_flow split (TD-011 step 6) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.12.4 / 1881 tests (Stage 6.5 complete)
+- Created src/mir/lower/control_flow.rs (462 LOC) with 5 extracted functions
+- Updated mod.rs: added mod declaration, updated call sites, removed 5 functions (-472 LOC)
+- Restored original function bodies from git (simplified versions had bugs)
+- Fixed 2 doc comment warnings
+- Bumped Cargo.toml version 0.12.4 → 0.12.5
+- Updated all docs (gate-review-6.6.md, dev-log.md, api-naming-standard.md v1.75,
+  RELEASE_NOTES.md, README.md, docs/worklog.md)
+- Ran full CI/CD: cargo clean + cargo test (1881 passed) + cargo fmt +
+  cargo clippy --all-targets — all green ✅
+
+Stage Summary:
+- Stage 6.6 PASSED — CI/CD all green per §1.2.
+- mir/lower/mod.rs: 2452 → 1980 LOC (-472 LOC, -19.2%)
+- 🎉 MILESTONE: mod.rs below 2000 LOC!
+- TD-011 cumulative: -1366 LOC (-40.8%) across 6 splits
+- 1881 tests pass unchanged (behavior-equivalent).
+- 0 clippy warnings, fmt clean.
+- Next: Stage 6.7+ — Region inference (TD-015), user-defined trait dyn (TD-018).

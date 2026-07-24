@@ -2954,3 +2954,19 @@ extract field resolution helper functions into mir/lower/field_resolution.rs.
 **Test impact**: 0 (behavior-equivalent).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.75 (Stage 6.6, 2026-07-24)
+
+Stage 6.6 mir/lower control_flow split round. Continue TD-011 repayment —
+extract control flow lowering functions into mir/lower/control_flow.rs.
+**🎉 mod.rs below 2000 LOC!**
+
+**New public symbols**: None (internal refactoring, behavior-equivalent).
+
+**Changes**:
+- `lower_short_circuit`, `lower_deref_expr`, `lower_block`, `lower_if`,
+  `lower_match`: `fn` → `pub(crate) fn` in new control_flow.rs module
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

@@ -1,9 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.12.4
+**Current version**: v0.12.5
 **Date**: 2026-07-24
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.12.5 — Stage 6.6 (mir/lower control_flow split — TD-011 step 6)
+
+### Overview
+
+Continue TD-011 repayment — extract control flow lowering functions (~472 LOC)
+from `mir/lower/mod.rs` (2452 LOC) into `mir/lower/control_flow.rs` (462 LOC).
+**🎉 mir/lower/mod.rs is now below 2000 LOC!**
+
+### Changes
+
+- Created `src/mir/lower/control_flow.rs` with 5 extracted functions:
+  `lower_short_circuit`, `lower_deref_expr`, `lower_block`, `lower_if`, `lower_match`
+- `mir/lower/mod.rs`: 2452 → 1980 LOC (-472 LOC, -19.2%)
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### TD-011 cumulative progress
+
+| Split | Module | LOC extracted | mod.rs after |
+|-------|--------|--------------|--------------|
+| 6.1 | adt_layout.rs | 153 | 3193 |
+| 6.2 | closure_capture.rs | 158 | 3035 |
+| 6.3 | pattern_bindings.rs | 305 | 2730 |
+| 6.4 | overflow_assert.rs | 74 | 2656 |
+| 6.5 | field_resolution.rs | 204 | 2452 |
+| 6.6 | control_flow.rs | 472 | 1980 |
+| **Total** | **6 modules** | **1366 LOC** | **1980 (was 3346, -40.8%)** |
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (569.6 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
