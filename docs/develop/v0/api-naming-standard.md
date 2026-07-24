@@ -2843,3 +2843,27 @@ query returning all (trait, method) pairs matching a given is_unsafe flag.
 **Test impact**: +7 (1867 → 1874).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.69 (Stage 5.99, 2026-07-24)
+
+Stage 5.99 stdlib_trait_methods_by_param_count reverse query round. **Stage 5
+final sub-stage.** Add the fourth and final reverse query dimension —
+param_count. Completes the reverse query series (4 dimensions).
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_trait_methods_by_param_count` | free fn (in `stdlib`) | `<noun>×3_<prep>_<noun>×2` (plural) |
+
+**Design decisions**:
+1. **Fourth and final reverse query** — completes the series: self_kind (v1.65),
+   return_kind (v1.66), is_unsafe (v1.68), param_count (v1.69). All 4 queryable
+   StdlibTraitMethod fields now have reverse queries.
+2. **§16 compliance** — pure read, reuses `STDLIB_TRAITS` + `stdlib_trait_methods`.
+
+**🎉 Stage 5 Complete (5.1-5.99, 99 sub-stages)**
+
+**Test impact**: +7 (1874 → 1881).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

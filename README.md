@@ -6,12 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.94 — Stage 0-4 complete, Stage 5 in progress.
-> **1874 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 109 test modules!
+> **Status:** v0.11.95 — Stage 0-5 complete (Stage 5: 99 sub-stages done!).
+> **1881 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 110 test modules!
 > Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5.1-5.98: 98 sub-stages done. Deep Review #7: GO (TD-014 + TD-016 CLOSED).
+> Stage 5.1-5.99: 99 sub-stages done. 7 deep reviews all GO (TD-014 + TD-016 CLOSED).
 > 🎉 dyn Trait pipeline ACTIVE + stdlib query API fully covered (forward + reverse + semantic groups).
-> Next: Stage 5.99+ — user-defined trait dyn support, or begin Stage 6 planning.
+> Next: Stage 6 — mir/lower split (TD-011), Region inference (TD-015), user-defined trait dyn (TD-018).
 
 ## Quick start
 

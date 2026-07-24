@@ -6743,3 +6743,36 @@ Stage Summary:
 - 7 new tests, 0 clippy warnings, fmt clean.
 - §16 + §23 compliant.
 - Next: Stage 5.99+ — user-defined trait dyn support (TD-018), or Stage 6 planning.
+
+---
+Task ID: stage5.99-r148
+Agent: Super Z (main)
+Task: Stage 5.99 — stdlib_trait_methods_by_param_count + Stage 5 finale + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.94 / 1874 tests (Stage 5.98 complete)
+- Implemented stdlib_trait_methods_by_param_count() in src/stdlib.rs
+- Re-exported from src/lib.rs
+- Added 7 tests in tests/v0/stage5/plan/stdlib_trait_methods_by_param_count_tests.rs
+- Bumped Cargo.toml version 0.11.94 → 0.11.95
+- Updated all docs (plan-5.99.md, gate-review-round99.md, dev-log.md,
+  api-naming-standard.md v1.69, RELEASE_NOTES.md, README.md, docs/worklog.md)
+- Ran full CI/CD: cargo clean + cargo test (1881 passed) + cargo fmt +
+  cargo clippy --all-targets — all green ✅
+
+Stage Summary:
+- Stage 5.99 PASSED — CI/CD all green per §1.2.
+- New API: stdlib_trait_methods_by_param_count — 4th and final reverse query.
+- 🎉🎉🎉 STAGE 5 COMPLETE (5.1-5.99, 99 sub-stages)! 🎉🎉🎉
+- Reverse query series COMPLETE: 4 dimensions (self_kind/return_kind/is_unsafe/param_count).
+- stdlib trait method query API fully covered:
+  - Forward: find + 5 field accessors
+  - Reverse: 4 dimensions
+  - Semantic groups: 5 categories
+  - Statistics: count + all_traits
+  - Membership: is_stdlib_trait + is_stdlib_trait_method + is_stdlib_marker_trait
+- 1881 tests, 110 test modules, 0 clippy warnings, fmt clean.
+- 7 deep reviews all PASS.
+- TD-014 + TD-016 CLOSED.
+- Next: Stage 6 — mir/lower split (TD-011), Region inference (TD-015),
+  user-defined trait dyn (TD-018).

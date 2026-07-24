@@ -1,9 +1,49 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.94
+**Current version**: v0.11.95
 **Date**: 2026-07-24
-**Test count**: 1874 tests + 5 benchmarks
+**Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.11.95 — Stage 5.99 (stdlib_trait_methods_by_param_count — Stage 5 最终子阶段)
+
+### Overview
+
+Add the fourth and final reverse query dimension —
+`stdlib_trait_methods_by_param_count`. **Completes the reverse query series**
+(4 dimensions: self_kind/return_kind/is_unsafe/param_count). This is the
+**final sub-stage of Stage 5** (5.1-5.99, 99 sub-stages).
+
+### New API
+
+- `stdlib_trait_methods_by_param_count(param_count: u32) -> Vec<(&'static str, &'static str)>` — free fn (in `src/stdlib.rs`)
+
+### 🎉 Stage 5 Complete (5.1-5.99, 99 sub-stages)
+
+**Core achievements**:
+- dyn Trait MIR lowering → codegen pipeline end-to-end activation (5.1-5.80)
+- TD-014 (trait dispatch vtable) CLOSED (5.80)
+- TD-016 (return type I32 placeholder) CLOSED (5.82)
+- 7 deep reviews all PASS
+- stdlib trait method query API fully covered:
+  - **Forward**: find_stdlib_trait_method + 5 field accessors
+  - **Reverse**: 4 dimensions (self_kind/return_kind/is_unsafe/param_count)
+  - **Semantic groups**: 5 categories (marker/arithmetic/core/io/unary)
+  - **Statistics**: stdlib_trait_count + stdlib_all_traits
+  - **Membership**: is_stdlib_trait + is_stdlib_trait_method + is_stdlib_marker_trait
+
+**Metrics**: 1881 tests, 110 test modules, 0 clippy warnings, fmt clean.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (783.1 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

@@ -2842,3 +2842,37 @@ series (self_kind/return_kind/is_unsafe).
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
 
 **Reverse query series complete**: 3 dimensions (self_kind/return_kind/is_unsafe).
+
+### Stage 5.99 — stdlib_trait_methods_by_param_count reverse query (v0.11.95) — Stage 5 最终子阶段
+
+**Priority**: Add the fourth and final reverse query dimension —
+`stdlib_trait_methods_by_param_count`. Completes the reverse query series
+(4 dimensions: self_kind/return_kind/is_unsafe/param_count).
+
+**Work completed**:
+- src/stdlib.rs: new `stdlib_trait_methods_by_param_count(param_count: u32) -> Vec<(&'static str, &'static str)>` function
+  * §23 compliant: `<noun>×3_<prep>_<noun>×2` (plural, _by_param_count suffix)
+- src/lib.rs: re-export stdlib_trait_methods_by_param_count
+- tests/v0/stage5/plan/stdlib_trait_methods_by_param_count_tests.rs: 7 new tests
+  covering: 2 non-empty (0/1 params), 2 contains (Drop/Display), 1 empty (99 params),
+  1 consistency (all match), 1 robustness (no side effects)
+- tests/all_tests.rs: added stdlib_trait_methods_by_param_count_tests module (110 mods)
+- Cargo.toml: version 0.11.94 → 0.11.95 (description extended)
+
+**Test impact**: +7 (1874 → 1881)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**🎉 Stage 5.99 — Stage 5 最终子阶段完成！**
+
+Stage 5 总结 (5.1-5.99, 99 个子阶段):
+- dyn Trait MIR lowering → codegen pipeline 端到端激活 (5.1-5.80)
+- TD-014 (trait dispatch vtable) CLOSED (5.80)
+- TD-016 (return type I32 placeholder) CLOSED (5.82)
+- 7 次深度审查全部 PASS (r91/r100/r110/r120)
+- stdlib trait method 查询 API 全面覆盖:
+  - 正向查询: find + 5 字段访问器
+  - 反向查询: 4 维度 (self_kind/return_kind/is_unsafe/param_count)
+  - 语义分组: 5 categories (marker/arithmetic/core/io/unary)
+  - 统计查询: count + all_traits
+  - 成员查询: is_stdlib_trait + is_stdlib_trait_method + is_stdlib_marker_trait
+- 1881 tests, 110 test modules, 0 clippy warnings, fmt clean

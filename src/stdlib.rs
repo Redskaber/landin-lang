@@ -1356,6 +1356,34 @@ pub fn stdlib_trait_methods_by_is_unsafe(is_unsafe: bool) -> Vec<(&'static str, 
     out
 }
 
+/// Stage 5.99: Find all stdlib trait methods with a given parameter count.
+///
+/// Returns a `Vec<(&'static str, &'static str)>` of `(trait_name, method_name)`
+/// pairs for every stdlib trait method whose `param_count` matches the given
+/// `param_count`. This is a **reverse query** — given a param count, find all
+/// matching methods. Complements `stdlib_trait_method_param_count` (Stage 5.94,
+/// forward query for a single method's param_count).
+///
+/// This is the **fourth and final** reverse query dimension, completing the
+/// reverse query series (self_kind/return_kind/is_unsafe/param_count).
+///
+/// Per API-naming-standard §3: `stdlib_trait_methods_by_param_count` follows
+/// the `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` pattern (plural), mirroring
+/// `stdlib_trait_methods_by_self_kind` from v1.65.
+pub fn stdlib_trait_methods_by_param_count(param_count: u32) -> Vec<(&'static str, &'static str)> {
+    let mut out: Vec<(&'static str, &'static str)> = Vec::new();
+    for &trait_name in STDLIB_TRAITS {
+        if let Some(methods) = stdlib_trait_methods(trait_name) {
+            for method in methods {
+                if method.param_count == param_count {
+                    out.push((trait_name, method.name));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Stage 5.37: Get the complete vtable slot layout for a stdlib trait.
 ///
 /// Returns `Some(Vec<StdlibVtableSlot>)` for any registered trait (including
