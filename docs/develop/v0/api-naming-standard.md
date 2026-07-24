@@ -2648,3 +2648,27 @@ across 5 categories now have batch query functions.
 **Test impact**: +21 (1791 → 1812).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.61 (Stage 5.91, 2026-07-24)
+
+Stage 5.91 Deep Review #6 round. §25 阶段末尾深度审查，覆盖 Stage 5.81-5.90
+（10 个子阶段）。Documentation-only stage — 无新代码，无新公开符号。
+
+**审查范围**: v1.51-v1.60 共 10 个版本条目（Stage 5.81-5.90），所有新符号 §23 合规。
+
+**审查结论**: 5/5 GO → PASS
+
+**关键发现**:
+1. 🎉 dyn Trait 类型精化完成 (TD-016 CLOSED)
+2. 🎉 语义分组查询系列完成 (5 categories, 43 traits)
+3. 0 P0 / 0 P1 / 3 P2 阻塞项
+4. §16/§23 完全合规
+5. 测试覆盖 1812（+175 since r100, +10.7%）
+6. CI/CD 持续零警告、零错误、fmt 清洁
+
+**新增技术债**:
+- TD-018 (P3): dyn Trait 仅支持 stdlib traits — Stage 6+ 扩展到用户自定义 trait
+
+**Test impact**: 0 (documentation-only stage).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
