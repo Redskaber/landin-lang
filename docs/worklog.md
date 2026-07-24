@@ -6590,3 +6590,47 @@ Stage Summary:
 - 12 new tests, 0 clippy warnings, fmt clean.
 - §16 + §23 compliant.
 - Next: Stage 5.94+ — user-defined trait dyn support (TD-018), or Stage 6 planning.
+
+---
+Task ID: stage5.94-r143
+Agent: Super Z (main)
+Task: Stage 5.94 — stdlib_trait_method remaining field accessors + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.89 / 1832 tests (Stage 5.93 complete)
+
+Stage 5.94: stdlib_trait_method_self_kind + stdlib_trait_method_param_count + stdlib_trait_method_is_unsafe
+- src/stdlib.rs:
+  * Added stdlib_trait_method_self_kind(trait, method) -> Option<StdlibSelfKind>
+  * Added stdlib_trait_method_param_count(trait, method) -> Option<u32>
+  * Added stdlib_trait_method_is_unsafe(trait, method) -> Option<bool>
+  * All thin wrappers over find_stdlib_trait_method().map(|m| m.field)
+  * §23 compliant: <noun>_<noun>_<noun>_<noun>_<noun> / is_<adj> for is_unsafe
+- src/lib.rs: re-export all 3 accessors
+- tests/v0/stage5/plan/stdlib_trait_method_accessors_2_tests.rs: 14 new tests
+  covering: 4 self_kind, 4 param_count, 3 is_unsafe, 3 consistency
+- tests/all_tests.rs: added stdlib_trait_method_accessors_2_tests module (106 mods)
+- Cargo.toml: version 0.11.89 → 0.11.90 (description extended)
+- docs/develop/v0/stage-5/plan-5.94.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round94.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.94 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.64 entry appended
+- RELEASE_NOTES.md: v0.11.90 section prepended, header bumped
+- README.md: status line updated (94 sub-stages, 1846 tests, 106 modules)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (562.7 MiB removed) ✅
+- cargo test: 1846 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.94 PASSED — CI/CD all green per §1.2.
+- New API: stdlib_trait_method_self_kind + stdlib_trait_method_param_count + stdlib_trait_method_is_unsafe.
+- 🎉 MILESTONE: Full StdlibTraitMethod field accessor coverage complete!
+  - 5 queryable fields all have dedicated accessors
+  - 5.93: return_kind, param_kinds
+  - 5.94: self_kind, param_count, is_unsafe
+- 14 new tests, 0 clippy warnings, fmt clean.
+- §16 + §23 compliant.
+- Next: Stage 5.95+ — user-defined trait dyn support (TD-018), or Stage 6 planning.

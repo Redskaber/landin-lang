@@ -1,9 +1,57 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.89
+**Current version**: v0.11.90
 **Date**: 2026-07-24
-**Test count**: 1832 tests + 5 benchmarks
+**Test count**: 1846 tests + 5 benchmarks
+
+---
+
+## v0.11.90 — Stage 5.94 (stdlib_trait_method remaining field accessors)
+
+### Overview
+
+Add 3 remaining field accessors (self_kind, param_count, is_unsafe) to
+complete full `StdlibTraitMethod` field accessor coverage. Stage 5.93 added
+return_kind + param_kinds; this stage adds the remaining 3.
+
+### New API
+
+- `stdlib_trait_method_self_kind(trait, method) -> Option<StdlibSelfKind>` — free fn (in `src/stdlib.rs`)
+- `stdlib_trait_method_param_count(trait, method) -> Option<u32>` — free fn (in `src/stdlib.rs`)
+- `stdlib_trait_method_is_unsafe(trait, method) -> Option<bool>` — free fn (in `src/stdlib.rs`)
+
+### Milestone
+
+**🎉 Full StdlibTraitMethod field accessor coverage complete!**
+
+All 5 queryable fields (self_kind/param_count/return_kind/param_kinds/is_unsafe)
+now have dedicated convenience accessors.
+
+| Stage | Accessors |
+|-------|-----------|
+| 5.93 | return_kind, param_kinds |
+| 5.94 | self_kind, param_count, is_unsafe |
+| **Total** | **5 field accessors** |
+
+### §23 compliance
+
+`<noun>_<noun>_<noun>_<noun>_<noun>` — mirrors `stdlib_trait_method_return_kind`
+from v1.63. `is_unsafe` uses `is_<adj>` pattern per §8.1.
+
+### §16 compliance
+
+Pure read functions. Thin wrappers over `find_stdlib_trait_method` — no new
+dependencies.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (562.7 MiB removed)
+cargo test: 1846 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

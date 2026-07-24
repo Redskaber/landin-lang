@@ -2730,3 +2730,31 @@ pattern with one-step `stdlib_trait_method_<field>(...)` calls.
 
 **Test impact**: +12 (1820 → 1832)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.94 — stdlib_trait_method remaining field accessors (v0.11.90)
+
+**Priority**: Add 3 remaining field accessors (self_kind, param_count, is_unsafe)
+to complete full StdlibTraitMethod field accessor coverage. Stage 5.93 added
+return_kind + param_kinds; this stage adds the remaining 3.
+
+**Work completed**:
+- src/stdlib.rs:
+  * Added `stdlib_trait_method_self_kind(trait, method) -> Option<StdlibSelfKind>`
+  * Added `stdlib_trait_method_param_count(trait, method) -> Option<u32>`
+  * Added `stdlib_trait_method_is_unsafe(trait, method) -> Option<bool>`
+  * All thin wrappers over find_stdlib_trait_method().map(|m| m.field)
+  * §23 compliant: `<noun>_<noun>_<noun>_<noun>_<noun>` / `is_<adj>` for is_unsafe
+- src/lib.rs: re-export all 3 accessors
+- tests/v0/stage5/plan/stdlib_trait_method_accessors_2_tests.rs: 14 new tests
+  covering: 4 self_kind tests (Clone/Drop/Default/Foo), 4 param_count tests
+  (Drop/Display/Clone/Foo), 3 is_unsafe tests (Drop/Clone/Foo), 3 consistency
+  tests (matches find_stdlib_trait_method for 10+6+8 trait/method pairs)
+- tests/all_tests.rs: added stdlib_trait_method_accessors_2_tests module (106 mods)
+- Cargo.toml: version 0.11.89 → 0.11.90 (description extended)
+
+**Test impact**: +14 (1832 → 1846)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Milestone**: Full StdlibTraitMethod field accessor coverage complete!
+All 5 queryable fields (self_kind/param_count/return_kind/param_kinds/is_unsafe)
+now have dedicated convenience accessors. (name is a query parameter, not a field accessor.)

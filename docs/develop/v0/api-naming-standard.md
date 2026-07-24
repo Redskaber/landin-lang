@@ -2727,3 +2727,34 @@ functions for direct field access on stdlib trait methods.
 **Test impact**: +12 (1820 → 1832).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.64 (Stage 5.94, 2026-07-24)
+
+Stage 5.94 stdlib_trait_method remaining field accessors round. Add 3
+remaining field accessors (self_kind, param_count, is_unsafe) to complete
+full StdlibTraitMethod field accessor coverage.
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_trait_method_self_kind` | free fn (in `stdlib`) | `<noun>_<noun>_<noun>_<noun>_<noun>` |
+| `stdlib_trait_method_param_count` | free fn (in `stdlib`) | `<noun>_<noun>_<noun>_<noun>_<noun>` |
+| `stdlib_trait_method_is_unsafe` | free fn (in `stdlib`) | `<noun>_<noun>_<noun>_<noun>_<is_adj>` |
+
+**Design decisions**:
+1. **3 remaining accessors** — self_kind, param_count, is_unsafe complete
+   the set of 5 queryable StdlibTraitMethod fields. (name is a query
+   parameter, not a field accessor.)
+2. **`is_unsafe` uses `is_<adj>` pattern** — per §8.1 helper-verb convention.
+   Consistent with existing `is_unsafe` field name and other `is_` queries.
+3. **Thin wrappers** — all 3 are `find_stdlib_trait_method(...).map(|m| m.field)`.
+   Consistent with Stage 5.93's return_kind/param_kinds design.
+4. **§16 compliance** — pure read, thin wrappers, no new dependencies.
+
+**Milestone**: Full StdlibTraitMethod field accessor coverage complete.
+All 5 queryable fields now have dedicated convenience accessors.
+
+**Test impact**: +14 (1832 → 1846).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

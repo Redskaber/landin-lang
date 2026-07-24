@@ -1218,6 +1218,48 @@ pub fn stdlib_trait_method_param_kinds(
     find_stdlib_trait_method(trait_name, method_name).map(|m| m.param_kinds)
 }
 
+/// Stage 5.94: Get the `self` receiver kind of a stdlib trait method.
+///
+/// Convenience accessor — equivalent to
+/// `find_stdlib_trait_method(trait_name, method_name).map(|m| m.self_kind)`
+/// but more readable at call sites.
+///
+/// Per API-naming-standard §3: `stdlib_trait_method_self_kind` follows
+/// the `<noun>_<noun>_<noun>_<noun>_<noun>` pattern, mirroring
+/// `stdlib_trait_method_return_kind` from v1.63.
+pub fn stdlib_trait_method_self_kind(
+    trait_name: &str,
+    method_name: &str,
+) -> Option<StdlibSelfKind> {
+    find_stdlib_trait_method(trait_name, method_name).map(|m| m.self_kind)
+}
+
+/// Stage 5.94: Get the parameter count of a stdlib trait method.
+///
+/// Convenience accessor — equivalent to
+/// `find_stdlib_trait_method(trait_name, method_name).map(|m| m.param_count)`
+/// but more readable at call sites.
+///
+/// Per API-naming-standard §3: `stdlib_trait_method_param_count` follows
+/// the `<noun>_<noun>_<noun>_<noun>_<noun>` pattern, mirroring
+/// `stdlib_trait_method_return_kind` from v1.63.
+pub fn stdlib_trait_method_param_count(trait_name: &str, method_name: &str) -> Option<u32> {
+    find_stdlib_trait_method(trait_name, method_name).map(|m| m.param_count)
+}
+
+/// Stage 5.94: Check whether a stdlib trait method is `unsafe`.
+///
+/// Convenience accessor — equivalent to
+/// `find_stdlib_trait_method(trait_name, method_name).map(|m| m.is_unsafe)`
+/// but more readable at call sites.
+///
+/// Per API-naming-standard §3 + §8.1: `stdlib_trait_method_is_unsafe`
+/// follows the `<noun>_<noun>_<noun>_<noun>_<is_adj>` pattern
+/// (`is_` prefix per §8.1 helper-verb convention).
+pub fn stdlib_trait_method_is_unsafe(trait_name: &str, method_name: &str) -> Option<bool> {
+    find_stdlib_trait_method(trait_name, method_name).map(|m| m.is_unsafe)
+}
+
 /// Stage 5.37: Get the complete vtable slot layout for a stdlib trait.
 ///
 /// Returns `Some(Vec<StdlibVtableSlot>)` for any registered trait (including
