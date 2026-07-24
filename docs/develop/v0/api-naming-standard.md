@@ -2923,3 +2923,18 @@ extract pattern binding functions into mir/lower/pattern_bindings.rs.
 **Test impact**: 0 (behavior-equivalent).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.73 (Stage 6.4, 2026-07-24)
+
+Stage 6.4 mir/lower overflow_assert split round. Continue TD-011 repayment —
+extract overflow/assert helper functions into mir/lower/overflow_assert.rs.
+
+**New public symbols**: None (internal refactoring, behavior-equivalent).
+
+**Changes**:
+- `is_overflowable_op`, `emit_overflow_assert`, `emit_div_by_zero_assert`:
+  `fn` → `pub(crate) fn` in new overflow_assert.rs module
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

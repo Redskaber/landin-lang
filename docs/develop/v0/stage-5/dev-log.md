@@ -2955,3 +2955,25 @@ from mir/lower/mod.rs into mir/lower/pattern_bindings.rs.
 | 6.2 | closure_capture.rs | 158 | 3035 |
 | 6.3 | pattern_bindings.rs | 305 | 2730 |
 | **Total** | **3 modules** | **616 LOC** | **2730 (was 3346, -18.4%)** |
+
+### Stage 6.4 — mir/lower overflow_assert split (TD-011 step 4) (v0.12.3)
+
+**Priority**: Continue TD-011 repayment — extract overflow/assert helper functions
+from mir/lower/mod.rs into mir/lower/overflow_assert.rs.
+
+**Work completed**:
+- Created src/mir/lower/overflow_assert.rs (94 LOC) with 3 extracted functions:
+  * is_overflowable_op (pub(crate))
+  * emit_overflow_assert (pub(crate))
+  * emit_div_by_zero_assert (pub(crate))
+- src/mir/lower/mod.rs:
+  * Added `mod overflow_assert;` declaration
+  * Updated 3 call sites with `overflow_assert::` prefix
+  * LOC reduced: 2730 → 2656 (-74 LOC, -2.7%)
+  * Fixed HirBinOp import (crate::ast → crate::hir)
+- Cargo.toml: version 0.12.2 → 0.12.3
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-011 cumulative**: 4 splits, -690 LOC (-20.6%). mod.rs now 2656 LOC (was 3346).

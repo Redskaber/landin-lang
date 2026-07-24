@@ -6852,3 +6852,27 @@ Stage Summary:
 - 1881 tests pass unchanged (behavior-equivalent).
 - 0 clippy warnings, fmt clean.
 - Next: Stage 6.4+ — continue mir/lower split.
+
+---
+Task ID: stage6.4-r152
+Agent: Super Z (main)
+Task: Stage 6.4 — mir/lower overflow_assert split (TD-011 step 4) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.12.2 / 1881 tests (Stage 6.3 complete)
+- Created src/mir/lower/overflow_assert.rs (94 LOC) with 3 extracted functions
+- Updated mod.rs: added mod declaration, updated 3 call sites, removed 3 functions (-74 LOC)
+- Fixed HirBinOp import (crate::ast → crate::hir)
+- Bumped Cargo.toml version 0.12.2 → 0.12.3
+- Updated all docs (gate-review-6.4.md, dev-log.md, api-naming-standard.md v1.73,
+  RELEASE_NOTES.md, README.md, docs/worklog.md)
+- Ran full CI/CD: cargo clean + cargo test (1881 passed) + cargo fmt +
+  cargo clippy --all-targets — all green ✅
+
+Stage Summary:
+- Stage 6.4 PASSED — CI/CD all green per §1.2.
+- mir/lower/mod.rs: 2730 → 2656 LOC (-74 LOC, -2.7%)
+- TD-011 cumulative: -690 LOC (-20.6%) across 4 splits
+- 1881 tests pass unchanged (behavior-equivalent).
+- 0 clippy warnings, fmt clean.
+- Next: Stage 6.5+ — continue mir/lower split (control flow lowering, field resolution).

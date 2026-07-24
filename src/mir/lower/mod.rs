@@ -19,6 +19,7 @@ use lasso::Rodeo;
 
 mod adt_layout;
 mod closure_capture;
+mod overflow_assert;
 mod pattern_bindings;
 
 /// Lowering context for HIR→MIR conversion.
@@ -1100,13 +1101,18 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             //   - Div/Rem: emit DivisionByZero(rhs) check (divisor == 0)
             //   - Add/Sub/Mul/Shl/Shr: emit Overflow(op, lhs, rhs) check
             // Codegen turns these into real LLVM intrinsics / icmp branches.
-            if is_overflowable_op(*op) {
+            if overflow_assert::is_overflowable_op(*op) {
                 match *op {
                     HirBinOp::Div | HirBinOp::Rem => {
-                        emit_div_by_zero_assert(cx, result, rhs_operand.clone(), expr.span);
+                        overflow_assert::emit_div_by_zero_assert(
+                            cx,
+                            result,
+                            rhs_operand.clone(),
+                            expr.span,
+                        );
                     }
                     _ => {
-                        emit_overflow_assert(
+                        overflow_assert::emit_overflow_assert(
                             cx,
                             result,
                             mir_op,
@@ -2174,86 +2180,6 @@ pub(crate) fn resolve_enum_variant(
         }
     }
     None
-}
-
-/// Whether a HIR binary op can overflow (and thus needs an Assert check).
-///
-/// Comparison ops (Eq/Ne/Lt/Le/Gt/Ge) and bitwise ops (BitAnd/BitOr/BitXor)
-/// cannot overflow. Arithmetic (Add/Sub/Mul/Div/Rem) and shift ops
-/// (Shl/Shr) can.
-fn is_overflowable_op(op: HirBinOp) -> bool {
-    matches!(
-        op,
-        HirBinOp::Add
-            | HirBinOp::Sub
-            | HirBinOp::Mul
-            | HirBinOp::Div
-            | HirBinOp::Rem
-            | HirBinOp::Shl
-            | HirBinOp::Shr
-    )
-}
-
-/// Emit an `Assert` terminator that checks for arithmetic overflow.
-///
-/// Stage 3.24: now carries `lhs` and `rhs` operands in the `Overflow` message
-/// so codegen can emit `llvm.{sadd,ssub,smul}.with.overflow.*` intrinsics and
-/// branch on the real overflow flag. The `cond` field of the Assert remains
-/// `Bool(true)` for backward compatibility with typeck/borrowck (which treat
-/// the Assert as a normal terminator) — codegen ignores `cond` for Overflow
-/// messages and uses the operands directly.
-///
-/// The Assert is emitted as the terminator of the current block, and
-/// a fresh continuation block is created for the rest of the code.
-fn emit_overflow_assert(
-    cx: &mut MirLowerCtxt,
-    result: LocalId,
-    op: BinOp,
-    lhs: Operand,
-    rhs: Operand,
-    span: Span,
-) {
-    let cont = cx.new_block();
-    cx.terminate_and_goto(
-        Terminator::Assert {
-            // Backward-compat placeholder: codegen computes the real
-            // overflow flag from `lhs` and `rhs` in the Overflow message.
-            cond: Operand::Constant(Const {
-                ty: Box::new(Ty::new(TyKind::Bool, span)),
-                val: ConstVal::Bool(true),
-            }),
-            expected: true,
-            target: cont,
-            msg: crate::mir::body::AssertMessage::Overflow(op, lhs, rhs),
-        },
-        cont,
-    );
-    // Silence unused warning for `result` — kept for API stability.
-    let _ = result;
-}
-
-/// Emit an `Assert` terminator that checks for division by zero.
-///
-/// Stage 3.25: emitted for `Div` and `Rem` operations. The `rhs` operand
-/// is stored in the `DivisionByZero` message so codegen can emit
-/// `icmp eq rhs, 0` and branch to a panic block on true.
-///
-/// `result` is unused (kept for API symmetry with `emit_overflow_assert`).
-fn emit_div_by_zero_assert(cx: &mut MirLowerCtxt, result: LocalId, rhs: Operand, span: Span) {
-    let cont = cx.new_block();
-    cx.terminate_and_goto(
-        Terminator::Assert {
-            cond: Operand::Constant(Const {
-                ty: Box::new(Ty::new(TyKind::Bool, span)),
-                val: ConstVal::Bool(true),
-            }),
-            expected: true,
-            target: cont,
-            msg: crate::mir::body::AssertMessage::DivisionByZero(rhs),
-        },
-        cont,
-    );
-    let _ = result;
 }
 
 /// Lower a short-circuit `&&` / `||` expression to MIR control flow.

@@ -1,9 +1,43 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.12.2
+**Current version**: v0.12.3
 **Date**: 2026-07-24
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.12.3 — Stage 6.4 (mir/lower overflow_assert split — TD-011 step 4)
+
+### Overview
+
+Continue TD-011 repayment — extract overflow/assert helper functions (~80 LOC)
+from `mir/lower/mod.rs` (2730 LOC) into `mir/lower/overflow_assert.rs` (94 LOC).
+
+### Changes
+
+- Created `src/mir/lower/overflow_assert.rs` with 3 extracted functions
+- `mir/lower/mod.rs`: 2730 → 2656 LOC (-74 LOC, -2.7%)
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### TD-011 cumulative progress
+
+| Split | Module | LOC extracted | mod.rs after |
+|-------|--------|--------------|--------------|
+| 6.1 | adt_layout.rs | 153 | 3193 |
+| 6.2 | closure_capture.rs | 158 | 3035 |
+| 6.3 | pattern_bindings.rs | 305 | 2730 |
+| 6.4 | overflow_assert.rs | 74 | 2656 |
+| **Total** | **4 modules** | **690 LOC** | **2656 (was 3346, -20.6%)** |
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (635.1 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
