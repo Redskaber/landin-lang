@@ -6803,3 +6803,27 @@ Stage Summary:
 - §16 compliant (single-direction dependencies).
 - Next: Stage 6.2+ — continue mir/lower split (pattern bindings, closure capture,
   control flow lowering groups), Region inference (TD-015), user-defined trait dyn (TD-018).
+
+---
+Task ID: stage6.2-r150
+Agent: Super Z (main)
+Task: Stage 6.2 — mir/lower closure_capture split (TD-011 step 2) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.12.0 / 1881 tests (Stage 6.1 complete)
+- Created src/mir/lower/closure_capture.rs (175 LOC) with 2 extracted functions
+- Updated mod.rs: added mod closure_capture, updated call site, removed 2 functions (-158 LOC)
+- Fixed dangling doc comment at file end
+- Bumped Cargo.toml version 0.12.0 → 0.12.1
+- Updated all docs (plan-6.2.md, gate-review-6.2.md, dev-log.md,
+  api-naming-standard.md v1.71, RELEASE_NOTES.md, README.md, docs/worklog.md)
+- Ran full CI/CD: cargo clean + cargo test (1881 passed) + cargo fmt +
+  cargo clippy --all-targets — all green ✅
+
+Stage Summary:
+- Stage 6.2 PASSED — CI/CD all green per §1.2.
+- mir/lower/mod.rs: 3193 → 3035 LOC (-158 LOC, -4.9%)
+- TD-011 cumulative: -311 LOC (-9.3%) across 2 splits (adt_layout + closure_capture)
+- 1881 tests pass unchanged (behavior-equivalent).
+- 0 clippy warnings, fmt clean.
+- Next: Stage 6.3+ — continue mir/lower split.

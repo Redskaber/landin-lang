@@ -2890,3 +2890,19 @@ mir/lower/adt_layout.rs.
 **Test impact**: 0 (behavior-equivalent).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.71 (Stage 6.2, 2026-07-24)
+
+Stage 6.2 mir/lower closure_capture split round. Continue TD-011 repayment —
+extract closure capture functions into mir/lower/closure_capture.rs.
+
+**New public symbols**: None (internal refactoring, behavior-equivalent).
+
+**Changes**:
+- `collect_captured_locals`: `fn` → `pub(crate) fn` in new closure_capture.rs
+- `collect_block_captured`: `fn` → `pub(crate) fn` in new closure_capture.rs
+- No new public API — pure internal module reorganization
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

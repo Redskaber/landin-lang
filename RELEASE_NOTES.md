@@ -1,9 +1,41 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.12.0
+**Current version**: v0.12.1
 **Date**: 2026-07-24
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.12.1 — Stage 6.2 (mir/lower closure_capture split — TD-011 step 2)
+
+### Overview
+
+Continue TD-011 repayment — extract closure capture functions (~158 LOC)
+from `mir/lower/mod.rs` (3193 LOC) into `mir/lower/closure_capture.rs` (175 LOC).
+
+### Changes
+
+- Created `src/mir/lower/closure_capture.rs` with 2 extracted functions
+- `mir/lower/mod.rs`: 3193 → 3035 LOC (-158 LOC, -4.9%)
+- Behavior-equivalent refactoring — all 1881 tests pass unchanged
+
+### TD-011 cumulative progress
+
+| Split | Module | LOC extracted | mod.rs after |
+|-------|--------|--------------|--------------|
+| 6.1 | adt_layout.rs | 153 | 3193 |
+| 6.2 | closure_capture.rs | 158 | 3035 |
+| **Total** | **2 modules** | **311 LOC** | **3035 (was 3346, -9.3%)** |
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (566.8 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

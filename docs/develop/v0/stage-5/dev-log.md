@@ -2901,3 +2901,26 @@ extracting ADT layout functions into a dedicated `mir/lower/adt_layout.rs` modul
 
 **TD-011 progress**: First split complete. mir/lower/mod.rs now 3193 LOC (was 3346).
 Target: continue splitting in Stage 6.2+ until below 2000 LOC.
+
+### Stage 6.2 — mir/lower closure_capture split (TD-011 step 2) (v0.12.1)
+
+**Priority**: Continue TD-011 repayment — extract closure capture functions
+from mir/lower/mod.rs into mir/lower/closure_capture.rs.
+
+**Work completed**:
+- Created src/mir/lower/closure_capture.rs (175 LOC) with 2 extracted functions:
+  * collect_captured_locals (pub(crate))
+  * collect_block_captured (pub(crate))
+- src/mir/lower/mod.rs:
+  * Added `mod closure_capture;` declaration
+  * Updated call site: `collect_captured_locals(...)` → `closure_capture::collect_captured_locals(...)`
+  * Removed the 2 functions + doc comment (~163 LOC removed)
+  * LOC reduced: 3193 → 3035 (-158 LOC, -4.9%)
+  * Fixed dangling doc comment at file end
+- Cargo.toml: version 0.12.0 → 0.12.1
+
+**Test impact**: 0 (behavior-equivalent refactoring, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-011 progress**: Second split complete. mir/lower/mod.rs now 3035 LOC (was 3346 originally).
+Two splits so far: adt_layout (-153) + closure_capture (-158) = -311 LOC total (-9.3%).
