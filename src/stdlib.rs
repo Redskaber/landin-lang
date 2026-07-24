@@ -775,9 +775,9 @@ const DEFAULT_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
 const DISPLAY_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     name: "fmt",
     self_kind: StdlibSelfKind::SelfByRef,
-    param_count: 1,                       // f: &mut Formatter
-    return_kind: StdlibTypeKind::StdType, // Result<(), Error> → StdType
-    param_kinds: &[StdlibTypeKind::AllocType],
+    param_count: 1,                          // f: &mut Formatter
+    return_kind: StdlibTypeKind::StdType,    // Result<(), Error> → StdType
+    param_kinds: &[StdlibTypeKind::StdType], // Stage 5.92: Formatter is std type
     is_unsafe: false,
 }];
 
@@ -787,7 +787,7 @@ const DEBUG_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByRef,
     param_count: 1,
     return_kind: StdlibTypeKind::StdType,
-    param_kinds: &[StdlibTypeKind::AllocType],
+    param_kinds: &[StdlibTypeKind::StdType], // Stage 5.92: Formatter is std type
     is_unsafe: false,
 }];
 
@@ -837,7 +837,7 @@ const HASH_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByRef,
     param_count: 1, // state: &mut Hasher
     return_kind: StdlibTypeKind::Unit,
-    param_kinds: &[StdlibTypeKind::AllocType],
+    param_kinds: &[StdlibTypeKind::StdType], // Stage 5.92: Hasher is std type
     is_unsafe: false,
 }];
 // ---------------------------------------------------------------------------

@@ -2672,3 +2672,30 @@ Stage 5.91 Deep Review #6 round. §25 阶段末尾深度审查，覆盖 Stage 5.
 **Test impact**: 0 (documentation-only stage).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.62 (Stage 5.92, 2026-07-24)
+
+Stage 5.92 param_kinds data accuracy refinement round. Fix Stage 5.84's
+param_kinds data for 3 methods whose parameters are std types (Formatter,
+Hasher) rather than `&Self`. No new public symbols — data-only correction.
+
+**New public symbols**: None (data-only refinement).
+
+**Corrections**:
+- Display::fmt: param_kinds [AllocType] → [StdType] (Formatter is std type)
+- Debug::fmt: param_kinds [AllocType] → [StdType] (Formatter is std type)
+- Hash::hash: param_kinds [AllocType] → [StdType] (Hasher is std type)
+
+**Design decisions**:
+1. **Data accuracy** — Stage 5.84's Python script defaulted all param types
+   to `AllocType`. This is correct for `&Self` params but wrong for std type
+   params (Formatter, Hasher). This stage fixes the 3 affected methods.
+2. **No API changes** — only static table data correction. No new symbols,
+   no breaking changes.
+3. **§16 compliance** — only data correction, no new dependencies.
+4. **Backward compatible** — param_count unchanged, only param_kinds values
+   are more precise. All existing tests pass unchanged.
+
+**Test impact**: +8 (1812 → 1820).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

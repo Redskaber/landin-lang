@@ -2681,3 +2681,29 @@ covering all stdlib trait categories.
 
 **Test impact**: 0 (no code changes, documentation-only stage)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.92 — param_kinds data accuracy refinement (v0.11.88)
+
+**Priority**: Refine Stage 5.84's param_kinds data accuracy. The Stage 5.84
+Python script defaulted all param types to `AllocType`, but this is incorrect
+for methods whose parameters are std types (Formatter, Hasher) rather than
+`&Self`.
+
+**Work completed**:
+- src/stdlib.rs: fixed 3 method entries:
+  * Display::fmt: param_kinds [AllocType] → [StdType] (Formatter is std type)
+  * Debug::fmt: param_kinds [AllocType] → [StdType] (Formatter is std type)
+  * Hash::hash: param_kinds [AllocType] → [StdType] (Hasher is std type)
+- tests/v0/stage5/plan/stdlib_param_kinds_accuracy_tests.rs: 8 new tests
+  covering: 3 refined methods (Display::fmt/Debug::fmt/Hash::hash → StdType),
+  4 unchanged methods (Clone::clone_from/PartialEq::eq/PartialOrd::partial_cmp/
+  Ord::cmp → AllocType), 1 consistency test (param_count matches param_kinds.len)
+- tests/all_tests.rs: added stdlib_param_kinds_accuracy_tests module (104 mods)
+- Cargo.toml: version 0.11.87 → 0.11.88 (description extended)
+
+**Test impact**: +8 (1812 → 1820)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Data accuracy**: Methods with &Self params (clone_from/eq/ne/partial_cmp/cmp)
+correctly use AllocType. Methods with std type params (fmt→Formatter, hash→Hasher)
+now correctly use StdType.

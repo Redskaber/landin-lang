@@ -6513,3 +6513,40 @@ Stage Summary:
 - Documentation-only stage (no code changes).
 - Next: Stage 5.92+ — user-defined trait dyn support (TD-018), or Stage 6
   planning (mir/lower split TD-011, Region inference TD-015).
+
+---
+Task ID: stage5.92-r141
+Agent: Super Z (main)
+Task: Stage 5.92 — param_kinds data accuracy refinement + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.87 / 1812 tests (Stage 5.91 complete)
+
+Stage 5.92: param_kinds data accuracy refinement
+- src/stdlib.rs: fixed 3 method entries:
+  * Display::fmt: param_kinds [AllocType] → [StdType] (Formatter is std type)
+  * Debug::fmt: param_kinds [AllocType] → [StdType] (Formatter is std type)
+  * Hash::hash: param_kinds [AllocType] → [StdType] (Hasher is std type)
+- tests/v0/stage5/plan/stdlib_param_kinds_accuracy_tests.rs: 8 new tests
+  covering: 3 refined methods, 4 unchanged methods, 1 consistency test
+- tests/all_tests.rs: added stdlib_param_kinds_accuracy_tests module (104 mods)
+- Cargo.toml: version 0.11.87 → 0.11.88 (description extended)
+- docs/develop/v0/stage-5/plan-5.92.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round92.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.92 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.62 entry appended
+- RELEASE_NOTES.md: v0.11.88 section prepended, header bumped
+- README.md: status line updated (92 sub-stages, 1820 tests, 104 modules)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (561.5 MiB removed) ✅
+- cargo test: 1820 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.92 PASSED — CI/CD all green per §1.2.
+- param_kinds data accuracy refined: 3 methods fixed (fmt/fmt/hash).
+- 8 new tests, 0 clippy warnings, fmt clean.
+- §16 compliant (data-only correction, no new dependencies).
+- Next: Stage 5.93+ — user-defined trait dyn support (TD-018), or Stage 6 planning.

@@ -1,9 +1,43 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.87
+**Current version**: v0.11.88
 **Date**: 2026-07-24
-**Test count**: 1812 tests + 5 benchmarks
+**Test count**: 1820 tests + 5 benchmarks
+
+---
+
+## v0.11.88 — Stage 5.92 (param_kinds data accuracy refinement)
+
+### Overview
+
+Refine Stage 5.84's `param_kinds` data accuracy. The Stage 5.84 Python script
+defaulted all param types to `AllocType`, but this is incorrect for methods
+whose parameters are std types (Formatter, Hasher) rather than `&Self`.
+
+### Fixed methods
+
+| Method | Before | After | Reason |
+|--------|--------|-------|--------|
+| Display::fmt | [AllocType] | [StdType] | Formatter is std type |
+| Debug::fmt | [AllocType] | [StdType] | Formatter is std type |
+| Hash::hash | [AllocType] | [StdType] | Hasher is std type |
+
+Other methods (Clone::clone_from, PartialEq::eq/ne, PartialOrd::partial_cmp,
+Ord::cmp) correctly use `AllocType` for their `&Self` parameters — unchanged.
+
+### §16 compliance
+
+Only static table data correction — no new dependencies, no API changes.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (561.5 MiB removed)
+cargo test: 1820 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
