@@ -5547,3 +5547,36 @@ Stage Summary:
   - 5.68: fat ptrs → method call list (via stdlib index)
   - 5.69: method call list → batch IR text
 - Next: Stage 5.70+ (dyn Trait method call MIR lowering integration).
+
+---
+Task ID: stage5.70-r119
+Agent: Super Z (main)
+Task: Stage 5.70 — emit_dyn_trait_method_calls_text_batch_from_resolver + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.65 / 1521 tests (Stage 5.69 complete)
+
+Stage 5.70: emit_dyn_trait_method_calls_text_batch_from_resolver (convenience entry)
+- src/mir/dyn_trait.rs: new free function emit_dyn_trait_method_calls_text_batch_from_resolver()
+  * Composes Stage 5.62 (build fat ptrs from resolver) + Stage 5.68 (build method calls from fat ptrs) + Stage 5.69 (batch method call IR text)
+  * One call from resolver to all dyn Trait method call IR text
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_method_call_from_resolver_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_method_call_from_resolver_tests module (84 mods)
+- Cargo.toml: version 0.11.65 → 0.11.66
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (1006.1 MiB removed) ✅
+- cargo test: 1529 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.70 PASSED — CI/CD all green per §1.2.
+- Convenience entry point: resolver → all dyn Trait method call IR text in one call.
+- **Dyn Trait MIR infrastructure FULLY COMPLETE (5.61-5.70)**:
+  - Value representation (5.61-5.65): DynTraitFatPtr + resolver bridge + IR text conversion + batch + convenience
+  - Method call representation (5.66): DynTraitMethodCall struct
+  - Method call lowering (5.67-5.70): single IR text + stdlib bridge + batch + convenience
+- All infrastructure ready for MIR lowering integration (Stage 5.71+).
+- Next: Stage 5.71+ (dyn Trait method call MIR lowering integration in mir/lower/).

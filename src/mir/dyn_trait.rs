@@ -451,3 +451,32 @@ pub fn build_dyn_trait_method_calls_from_fat_ptrs(
 pub fn emit_dyn_trait_method_calls_text_batch(calls: &[DynTraitMethodCall]) -> Vec<String> {
     calls.iter().map(emit_dyn_trait_method_call_text).collect()
 }
+
+// ============================================================================
+// Stage 5.70: emit_dyn_trait_method_calls_text_batch_from_resolver
+//
+// Convenience entry point composing Stage 5.62 + 5.68 + 5.69. One call
+// from resolver to all dyn Trait method call IR text.
+//
+// Per API-naming-standard §3: `emit_dyn_trait_method_calls_text_batch_from_resolver`
+// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+// ============================================================================
+
+/// Stage 5.70: Generate LLVM IR text for all dyn Trait method calls directly
+/// from `(&TraitResolver, &Rodeo)` in one call — **convenience entry point**.
+///
+/// Internally:
+/// 1. `build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner)` (Stage 5.62)
+/// 2. `build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs)` (Stage 5.68)
+/// 3. `emit_dyn_trait_method_calls_text_batch(&calls)` (Stage 5.69)
+///
+/// Per API-naming-standard §3: `emit_dyn_trait_method_calls_text_batch_from_resolver`
+/// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub fn emit_dyn_trait_method_calls_text_batch_from_resolver(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &lasso::Rodeo,
+) -> Vec<String> {
+    let fat_ptrs = build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner);
+    let calls = build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs);
+    emit_dyn_trait_method_calls_text_batch(&calls)
+}

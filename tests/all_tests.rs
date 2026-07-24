@@ -286,3 +286,6 @@ mod dyn_trait_method_call_builder_tests;
 
 #[path = "v0/stage5/plan/dyn_trait_method_call_batch_tests.rs"]
 mod dyn_trait_method_call_batch_tests;
+
+#[path = "v0/stage5/plan/dyn_trait_method_call_from_resolver_tests.rs"]
+mod dyn_trait_method_call_from_resolver_tests;

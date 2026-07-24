@@ -1989,3 +1989,18 @@ Stage 5.67.
 **Test impact**: +8 (1513 → 1521).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.40 (Stage 5.70, 2026-07-24)
+
+Stage 5.70 emit_dyn_trait_method_calls_text_batch_from_resolver round.
+Convenience entry point composing Stage 5.62 + 5.68 + 5.69.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_dyn_trait_method_calls_text_batch_from_resolver` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` |
+
+**Test impact**: +8 (1521 → 1529).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

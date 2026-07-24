@@ -2091,3 +2091,18 @@ DynTraitMethodCall to LLVM IR text for vtable indirect call.
 
 **Test impact**: +8 (1513 → 1521)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.70 — emit_dyn_trait_method_calls_text_batch_from_resolver (v0.11.66)
+
+**Priority**: Convenience entry point composing Stage 5.62 + 5.68 + 5.69.
+One call from resolver to all dyn Trait method call IR text.
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `emit_dyn_trait_method_calls_text_batch_from_resolver()`
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_method_call_from_resolver_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_method_call_from_resolver_tests module (84 mods)
+- Cargo.toml: version 0.11.65 → 0.11.66
+
+**Test impact**: +8 (1521 → 1529)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

@@ -1,9 +1,32 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.65
+**Current version**: v0.11.66
 **Date**: 2026-07-24
-**Test count**: 1521 tests + 5 benchmarks
+**Test count**: 1529 tests + 5 benchmarks
+
+---
+
+## v0.11.66 — Stage 5.70 (emit_dyn_trait_method_calls_text_batch_from_resolver)
+
+### Overview
+
+Convenience entry point composing Stage 5.62 + 5.68 + 5.69. One call from
+`(&TraitResolver, &Rodeo)` to `Vec<String>` (all dyn Trait method call LLVM IR
+text). **Dyn Trait MIR infrastructure fully complete (5.61-5.70)**.
+
+### New API
+
+- `emit_dyn_trait_method_calls_text_batch_from_resolver(&TraitResolver, &Rodeo) -> Vec<String>` (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (1006.1 MiB removed)
+cargo test: 1529 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
