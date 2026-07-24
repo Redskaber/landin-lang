@@ -2333,3 +2333,29 @@ complete the pipeline:
 **Test impact**: +11 (1626 → 1637).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.51 (Stage 5.81, 2026-07-24)
+
+Stage 5.81 Deep Review #5 round. §25 阶段末尾深度审查，覆盖 Stage 5.43-5.80
+（38 个子阶段）。Documentation-only stage — 无新代码，无新公开符号。
+
+**审查范围**: v1.44-v1.50 共 7 个版本条目（Stage 5.74-5.80），所有新符号 §23 合规。
+
+**审查结论**: 5/5 GO → PASS
+
+**关键发现**:
+1. 🎉 dyn Trait MIR lowering → codegen pipeline 端到端激活
+2. TD-014（L5 trait dispatch vtable）正式 CLOSE
+3. 0 P0 / 0 P1 / 3 P2 阻塞项
+4. §16/§23 完全合规
+5. 测试覆盖 1637（+401 since r91, +32.4%）
+6. CI/CD 持续零警告、零错误、fmt 清洁
+
+**新增技术债**:
+- TD-016 (P3): dyn Trait return type I32 placeholder — 未来 stage 扩展
+  DynTraitMethodCall 加 return_ty 字段
+- TD-017 (P3): codegen/mod.rs 2398 LOC — Stage 6+ 视增长情况拆分
+
+**Test impact**: 0 (documentation-only stage).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

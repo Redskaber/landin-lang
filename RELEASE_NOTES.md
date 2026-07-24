@@ -1,9 +1,65 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.76
+**Current version**: v0.11.77
 **Date**: 2026-07-24
 **Test count**: 1637 tests + 5 benchmarks
+
+---
+
+## v0.11.77 — Stage 5.81 (Deep Review #5)
+
+### Overview
+
+§25 阶段末尾深度审查 #5，覆盖 Stage 5.43-5.80（38 个子阶段，自上次深度审查
+#4 r91 以来）。七维度审查确认 dyn Trait MIR lowering → codegen pipeline 端到端
+激活，TD-014 正式 CLOSE。
+
+### Documentation-only stage
+
+本 stage 无代码变更，仅执行深度审查 + 文档更新 + 版本 bump。
+
+### Deep Review #5 findings
+
+**5/5 GO → PASS**
+
+1. **🎉 dyn Trait MIR lowering → codegen pipeline 端到端激活**
+2. **TD-014（L5 trait dispatch vtable）正式 CLOSE**
+3. 0 P0 / 0 P1 / 3 P2 阻塞项
+4. §16/§23 完全合规
+5. 测试覆盖 1637（+401 since r91, +32.4%）
+6. CI/CD 持续零警告、零错误、fmt 清洁
+
+### Seven-dimension audit summary
+
+| 维度 | 结论 |
+|------|------|
+| D1 架构健康度 | 三层架构演进（codegen 重构 + MIR 基础设施 + 集成层）✅ |
+| D2 技术债 | TD-014 CLOSE，新增 TD-016/TD-017 (P3) ✅ |
+| D3 API 命名 | v1.44-v1.50 共 7 个版本条目，所有新符号 §23 合规 ✅ |
+| D4 接口隔离 | 依赖图单向无循环，side-table 模式 §16 合规 ✅ |
+| D5 测试覆盖 | 1637 tests (+401 since r91, +32.4%)，94 mods ✅ |
+| D6 文档完整性 | 38 个 plan + 38 个 gate review + 五重记录 ✅ |
+| D7 CI/CD | 持续零警告、零错误、fmt 清洁 ✅ |
+
+### Action plan
+
+| 优先级 | 行动 | 目标阶段 |
+|--------|------|---------|
+| P2 | mir/lower/mod.rs 拆分（TD-011, 3346 LOC） | Stage 6 早期 |
+| P3 | dyn Trait return type 精化（TD-016） | Stage 5.82+ |
+| P3 | 更深端到端集成测试 | Stage 5.82+ |
+| P3 | codegen/mod.rs 拆分（TD-017） | Stage 6+ |
+| P2 | Region inference（TD-015） | Stage 6+ |
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean
+cargo test: 1637 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
