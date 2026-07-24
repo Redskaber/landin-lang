@@ -2804,3 +2804,20 @@ return_kind, find all (trait, method) pairs with that return type. Complements
 
 **Test impact**: +10 (1857 → 1867)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.97 — Deep Review #7 (§25, v0.11.93)
+
+**Priority**: §25 阶段末尾深度审查 #7，覆盖 Stage 5.91-5.96（6 个子阶段）。
+
+**Work completed**:
+- docs/develop/v0/stage-5/deep-review-r120.md: 创建七维度审查报告
+- docs/develop/v0/stage-5/plan-5.97.md: 创建 stage plan
+- Cargo.toml: version 0.11.92 → 0.11.93 (description extended)
+
+**关键发现**:
+- 🎉 stdlib trait method 查询 API 全面覆盖完成
+- 0 P0 / 0 P1 / 3 P2 阻塞项
+- 5/5 GO → PASS
+
+**Test impact**: 0 (no code changes, documentation-only stage)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

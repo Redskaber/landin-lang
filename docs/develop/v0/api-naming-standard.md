@@ -2807,3 +2807,16 @@ with `stdlib_trait_methods_by_self_kind` (v1.65, by self_kind).
 **Test impact**: +10 (1857 → 1867).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.67 (Stage 5.97, 2026-07-24)
+
+Stage 5.97 Deep Review #7 round. §25 阶段末尾深度审查，覆盖 Stage 5.91-5.96
+（6 个子阶段）。Documentation-only stage — 无新代码，无新公开符号。
+
+**审查结论**: 5/5 GO → PASS
+
+**关键发现**: stdlib trait method 查询 API 全面覆盖完成。
+
+**Test impact**: 0 (documentation-only stage).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
