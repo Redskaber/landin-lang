@@ -1959,3 +1959,18 @@ Trait method call lowering.
 **Test impact**: +10 (1493 → 1503).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.38 (Stage 5.68, 2026-07-24)
+
+Stage 5.68 build_dyn_trait_method_calls_from_fat_ptrs round. Bridge function
+connecting stdlib trait method index with DynTraitMethodCall.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `build_dyn_trait_method_calls_from_fat_ptrs` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` |
+
+**Test impact**: +10 (1503 → 1513).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

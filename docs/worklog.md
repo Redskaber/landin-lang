@@ -5487,3 +5487,33 @@ Stage Summary:
 - emit_dyn_trait_method_call_text() — first substantive dyn Trait method call lowering.
 - Generates LLVM IR: getelementptr + load + call for vtable indirect dispatch.
 - Next: Stage 5.68+ (dyn Trait method call MIR lowering integration).
+
+---
+Task ID: stage5.68-r117
+Agent: Super Z (main)
+Task: Stage 5.68 — build_dyn_trait_method_calls_from_fat_ptrs + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.63 / 1503 tests (Stage 5.67 complete)
+
+Stage 5.68: build_dyn_trait_method_calls_from_fat_ptrs (bridge stdlib with MIR method call)
+- src/mir/dyn_trait.rs: new build_dyn_trait_method_calls_from_fat_ptrs() function
+  * Uses stdlib_trait_methods() (Stage 5.36) + stdlib_trait_method_index() (Stage 5.37)
+  * Constructs DynTraitMethodCall for each method of each fat ptr's trait
+  * Silently skips unregistered traits
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_method_call_builder_tests.rs: 10 new tests
+- tests/all_tests.rs: added dyn_trait_method_call_builder_tests module (82 mods)
+- Cargo.toml: version 0.11.63 → 0.11.64
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (1002.6 MiB removed) ✅
+- cargo test: 1513 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.68 PASSED — CI/CD all green per §1.2.
+- Bridge function: stdlib trait method index → DynTraitMethodCall list.
+- Connects Stage 5.36-5.37 (stdlib queries) with Stage 5.66 (MIR method call).
+- Next: Stage 5.69+ (dyn Trait method call MIR lowering integration).

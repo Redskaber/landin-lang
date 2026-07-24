@@ -373,3 +373,56 @@ pub fn emit_dyn_trait_method_call_text(call: &DynTraitMethodCall) -> String {
 
     lines.join("\n")
 }
+
+// ============================================================================
+// Stage 5.68: build_dyn_trait_method_calls_from_fat_ptrs
+//
+// Bridge function connecting stdlib trait method index (Stage 5.36-5.37)
+// with DynTraitMethodCall (Stage 5.66 MIR representation). For each fat
+// pointer, looks up the trait's methods via stdlib_trait_methods() and
+// constructs DynTraitMethodCall for each method with its slot index.
+//
+// Per API-naming-standard §3: `build_dyn_trait_method_calls_from_fat_ptrs`
+// follows `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` pattern.
+// ============================================================================
+
+/// Stage 5.68: Build a list of `DynTraitMethodCall` from `&[DynTraitFatPtr]`
+/// using the stdlib trait method index.
+///
+/// For each fat pointer:
+/// 1. Looks up the trait's methods via `stdlib_trait_methods()` (Stage 5.36)
+/// 2. For each method, gets the slot index via `stdlib_trait_method_index()` (Stage 5.37)
+/// 3. Constructs a `DynTraitMethodCall` with the fat ptr's trait/type names,
+///    method name, slot index, and parameter count
+///
+/// Traits not in the stdlib registry are silently skipped (their methods
+/// would need to be resolved from user-defined trait definitions, which is
+/// a future stage).
+///
+/// Per API-naming-standard §3: `build_dyn_trait_method_calls_from_fat_ptrs`
+/// follows `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` pattern.
+pub fn build_dyn_trait_method_calls_from_fat_ptrs(
+    fat_ptrs: &[DynTraitFatPtr],
+) -> Vec<DynTraitMethodCall> {
+    let mut calls: Vec<DynTraitMethodCall> = Vec::new();
+    for fp in fat_ptrs {
+        // Look up trait methods from stdlib registry (Stage 5.36)
+        if let Some(methods) = crate::stdlib::stdlib_trait_methods(&fp.trait_name) {
+            for method in methods {
+                // Get slot index (Stage 5.37)
+                if let Some(slot_index) =
+                    crate::stdlib::stdlib_trait_method_index(&fp.trait_name, method.name)
+                {
+                    calls.push(DynTraitMethodCall::from_fat_ptr(
+                        fp,
+                        method.name,
+                        slot_index,
+                        method.param_count,
+                    ));
+                }
+            }
+        }
+        // Traits not in stdlib registry are silently skipped
+    }
+    calls
+}

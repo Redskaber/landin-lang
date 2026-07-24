@@ -1,9 +1,34 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.63
+**Current version**: v0.11.64
 **Date**: 2026-07-24
-**Test count**: 1503 tests + 5 benchmarks
+**Test count**: 1513 tests + 5 benchmarks
+
+---
+
+## v0.11.64 — Stage 5.68 (build_dyn_trait_method_calls_from_fat_ptrs)
+
+### Overview
+
+Bridge function connecting stdlib trait method index (Stage 5.36-5.37) with
+`DynTraitMethodCall` (Stage 5.66 MIR representation). For each `DynTraitFatPtr`,
+looks up the trait's methods via `stdlib_trait_methods()` and constructs
+`DynTraitMethodCall` for each method with its slot index.
+
+### New API
+
+- `build_dyn_trait_method_calls_from_fat_ptrs(&[DynTraitFatPtr]) -> Vec<DynTraitMethodCall>`
+  (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (1002.6 MiB removed)
+cargo test: 1513 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

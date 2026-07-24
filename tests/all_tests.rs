@@ -280,3 +280,6 @@ mod dyn_trait_method_call_tests;
 
 #[path = "v0/stage5/plan/dyn_trait_method_call_text_tests.rs"]
 mod dyn_trait_method_call_text_tests;
+
+#[path = "v0/stage5/plan/dyn_trait_method_call_builder_tests.rs"]
+mod dyn_trait_method_call_builder_tests;

@@ -2062,3 +2062,18 @@ DynTraitMethodCall to LLVM IR text for vtable indirect call.
 
 **Test impact**: +10 (1493 → 1503)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.68 — build_dyn_trait_method_calls_from_fat_ptrs (v0.11.64)
+
+**Priority**: Bridge function connecting stdlib trait method index (Stage
+5.36-5.37) with DynTraitMethodCall (Stage 5.66 MIR representation).
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `build_dyn_trait_method_calls_from_fat_ptrs()` function
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_method_call_builder_tests.rs: 10 new tests
+- tests/all_tests.rs: added dyn_trait_method_call_builder_tests module (82 mods)
+- Cargo.toml: version 0.11.63 → 0.11.64
+
+**Test impact**: +10 (1503 → 1513)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
