@@ -2867,3 +2867,26 @@ param_count. Completes the reverse query series (4 dimensions).
 **Test impact**: +7 (1874 → 1881).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.70 (Stage 6.1, 2026-07-24)
+
+Stage 6.1 mir/lower ADT layout split round. **Stage 6 begins!** First TD-011
+repayment step — extract ADT layout functions from mir/lower/mod.rs into
+mir/lower/adt_layout.rs.
+
+**New public symbols**: None (internal refactoring, behavior-equivalent).
+
+**Changes**:
+- `lower_hir_ty_to_mir_ty`: `pub fn` → `pub(crate) fn` (needed by adt_layout.rs)
+- `populate_adt_layouts`: `fn` → `pub(crate) fn` in new adt_layout.rs module
+- No new public API — pure internal module reorganization
+
+**Design decisions**:
+1. **Behavior-equivalent refactoring** — all 1881 tests pass unchanged
+2. **§16 compliance** — adt_layout.rs has single-direction dependencies
+3. **pub(crate) visibility** — `lower_hir_ty_to_mir_ty` only needs to be
+   accessible within the crate (from adt_layout.rs), not externally
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

@@ -1,9 +1,39 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.95
+**Current version**: v0.12.0
 **Date**: 2026-07-24
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.12.0 — Stage 6.1 (mir/lower ADT layout split — TD-011 first step)
+
+### Overview
+
+**Stage 6 begins!** First step in repaying TD-011 (mir/lower/mod.rs split).
+Extracted ADT layout functions (~153 LOC) from `mir/lower/mod.rs` (3346 LOC)
+into a dedicated `mir/lower/adt_layout.rs` module (147 LOC).
+
+### Changes
+
+- Created `src/mir/lower/adt_layout.rs` with 4 extracted functions
+- `mir/lower/mod.rs`: 3346 → 3193 LOC (-153 LOC, -4.6%)
+- `lower_hir_ty_to_mir_ty`: `pub fn` → `pub(crate) fn`
+- Behavior-equivalent refactoring — all 1881 tests pass unchanged
+
+### §16 compliance
+
+`adt_layout.rs` depends on `mir::body`, `mir::place`, `mir::ty`, `hir`, `session` — all single-direction. No circular dependencies.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (784.7 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

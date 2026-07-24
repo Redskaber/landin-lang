@@ -2876,3 +2876,28 @@ Stage 5 总结 (5.1-5.99, 99 个子阶段):
   - 统计查询: count + all_traits
   - 成员查询: is_stdlib_trait + is_stdlib_trait_method + is_stdlib_marker_trait
 - 1881 tests, 110 test modules, 0 clippy warnings, fmt clean
+
+### Stage 6.1 — mir/lower ADT layout split (TD-011 first step) (v0.12.0)
+
+**Priority**: Begin TD-011 repayment — split mir/lower/mod.rs (3346 LOC) by
+extracting ADT layout functions into a dedicated `mir/lower/adt_layout.rs` module.
+
+**Work completed**:
+- Created src/mir/lower/adt_layout.rs (147 LOC) with 4 extracted functions:
+  * populate_adt_layouts (pub(crate))
+  * collect_adt_def_ids (private)
+  * build_adt_layout (private)
+  * AdtLayoutExt trait + impl (private)
+- src/mir/lower/mod.rs:
+  * Added `mod adt_layout;` declaration
+  * Changed `lower_hir_ty_to_mir_ty` from `pub fn` to `pub(crate) fn`
+  * Updated call site: `populate_adt_layouts(...)` → `adt_layout::populate_adt_layouts(...)`
+  * Removed the 4 functions + their doc comments (~153 LOC removed)
+  * LOC reduced: 3346 → 3193 (-153 LOC, -4.6%)
+- Cargo.toml: version 0.11.95 → 0.12.0 (Stage 6 begins, major version bump)
+
+**Test impact**: 0 (behavior-equivalent refactoring, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-011 progress**: First split complete. mir/lower/mod.rs now 3193 LOC (was 3346).
+Target: continue splitting in Stage 6.2+ until below 2000 LOC.

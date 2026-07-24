@@ -6776,3 +6776,30 @@ Stage Summary:
 - TD-014 + TD-016 CLOSED.
 - Next: Stage 6 — mir/lower split (TD-011), Region inference (TD-015),
   user-defined trait dyn (TD-018).
+
+---
+Task ID: stage6.1-r149
+Agent: Super Z (main)
+Task: Stage 6.1 — mir/lower ADT layout split (TD-011 first step) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.95 / 1881 tests (Stage 5.99 complete, Stage 5 done)
+- Created src/mir/lower/adt_layout.rs (147 LOC) with 4 extracted functions
+- Updated src/mir/lower/mod.rs: added mod adt_layout, changed lower_hir_ty_to_mir_ty
+  to pub(crate), updated call site, removed 4 functions (-153 LOC)
+- Fixed Span import issue (from crate::mir::ty to crate::session)
+- Bumped Cargo.toml version 0.11.95 → 0.12.0 (Stage 6 begins, major version bump)
+- Updated all docs (plan-6.1.md, gate-review-6.1.md, dev-log.md,
+  api-naming-standard.md v1.70, RELEASE_NOTES.md, README.md, docs/worklog.md)
+- Ran full CI/CD: cargo clean + cargo test (1881 passed) + cargo fmt +
+  cargo clippy --all-targets — all green ✅
+
+Stage Summary:
+- Stage 6.1 PASSED — CI/CD all green per §1.2.
+- 🎉 Stage 6 begins! TD-011 first split complete.
+- mir/lower/mod.rs: 3346 → 3193 LOC (-153 LOC, -4.6%)
+- Behavior-equivalent refactoring — all 1881 tests pass unchanged.
+- 0 clippy warnings, fmt clean.
+- §16 compliant (single-direction dependencies).
+- Next: Stage 6.2+ — continue mir/lower split (pattern bindings, closure capture,
+  control flow lowering groups), Region inference (TD-015), user-defined trait dyn (TD-018).

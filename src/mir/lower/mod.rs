@@ -17,6 +17,8 @@ use crate::session::Span;
 use crate::typeck::unify::UnificationTable;
 use lasso::Rodeo;
 
+mod adt_layout;
+
 /// Lowering context for HIR→MIR conversion.
 ///
 /// Holds the MIR body being built, a local-variable map (HIR HirId →
@@ -612,7 +614,7 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     //   - Direct `TyKind::Adt(def_id, …)` construction in lower_expr paths
     //     (struct/enum literals, Call→Aggregate rewrite)
     //   - Field types sunk into `AggregateKind::Adt`
-    populate_adt_layouts(&mut cx.mir, hir);
+    adt_layout::populate_adt_layouts(&mut cx.mir, hir);
 
     // Extract the unify table before consuming cx.
     let unify = std::mem::take(&mut cx.unify);
@@ -679,7 +681,7 @@ fn const_eval_array_len(expr: &HirExpr, span: Span) -> Const {
 }
 
 /// Lower a HIR type to a MIR type.
-pub fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
+pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
     let span = ty.span;
     match &ty.kind {
         HirTyKind::Bool => Ty::new(TyKind::Bool, span),
@@ -2052,161 +2054,6 @@ fn find_receiver_struct_def_id(cx: &MirLowerCtxt, receiver: &HirExpr) -> Option<
 /// sink the field types into `AggregateKind::Adt`'s `field_tys` field,
 /// so codegen doesn't have to re-query HIR (which would be a cross-stage
 /// internal-API call).
-/// Stage 3.47 (L-PIPE-1 closure per §16): Walk all `local_decls` in the
-/// MIR body and register an `AdtLayout` for every `TyKind::Adt(def_id, _)`
-/// encountered, including those nested inside Tuple/Array/Ref/etc.
-///
-/// This is the "data sink" step: MIR lower has read HIR (allowed per §16.2.1
-/// — data flows downstream), and now writes the resolved ADT layouts back
-/// into `MirBody::adt_layouts` so codegen can read them **without touching
-/// HIR** (closing the L-PIPE-1 pipeline-coupling debt).
-///
-/// Recursion: when registering a struct's layout, also recursively register
-/// any of its field types that are themselves Adts (handles `struct Outer {
-/// i: Inner }`). Cycle detection is not needed — Landin forbids recursive
-/// struct types at the type-system level (no `Box` yet), so the recursion
-/// terminates.
-fn populate_adt_layouts(mir: &mut MirBody, hir: &HirCrate) {
-    // Collect all DefIds referenced by any local's type (top-level scan).
-    // We collect first, then register, to avoid borrow conflicts while
-    // iterating `mir.local_decls` and mutating `mir.adt_layouts` simultaneously.
-    let mut def_ids_to_register: Vec<crate::hir::DefId> = Vec::new();
-    for ld in &mir.local_decls {
-        collect_adt_def_ids(&ld.ty, &mut def_ids_to_register);
-    }
-
-    // Also walk AggregateKind::Adt field_tys in every Assign statement
-    // (these are the sunk field types per Stage 3.30 §16.5.3).
-    for bb in &mir.basic_blocks {
-        for stmt in &bb.statements {
-            if let StatementKind::Assign(boxed) = &stmt.kind {
-                let (_, rvalue) = &**boxed;
-                if let Rvalue::Aggregate(AggregateKind::Adt(_, _, _, field_tys), _) = rvalue {
-                    for ft in field_tys {
-                        collect_adt_def_ids(ft, &mut def_ids_to_register);
-                    }
-                }
-            }
-        }
-    }
-
-    // Register each unique DefId using the Entry API (clippy-compliant:
-    // avoids contains_key+insert race-condition warning). Dedup is
-    // automatic because Entry::Vacant only fires for missing keys.
-    for def_id in def_ids_to_register {
-        if let std::collections::hash_map::Entry::Vacant(e) = mir.adt_layouts.entry(def_id) {
-            if let Some(layout) = build_adt_layout(def_id, hir) {
-                // Recursively register nested Adts in the layout's field types.
-                // We do this *after* inserting the current layout to break
-                // potential cycles (even though Landin doesn't allow them yet).
-                let nested: Vec<crate::hir::DefId> = layout.field_def_ids();
-                e.insert(layout);
-                // Register each nested Adt (one level deep — Landin forbids
-                // recursive types at the type-system level, so this is enough
-                // for `struct Outer { i: Inner }`).
-                for nested_id in nested {
-                    if let std::collections::hash_map::Entry::Vacant(ne) =
-                        mir.adt_layouts.entry(nested_id)
-                    {
-                        if let Some(nested_layout) = build_adt_layout(nested_id, hir) {
-                            ne.insert(nested_layout);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Walk a `Ty` and collect every `TyKind::Adt(def_id, _)` DefId into `out`.
-/// Recurses into Tuple, Array, Ref, RawPtr, Slice.
-fn collect_adt_def_ids(ty: &Ty, out: &mut Vec<crate::hir::DefId>) {
-    match &ty.kind {
-        TyKind::Adt(def_id, _) => out.push(*def_id),
-        TyKind::Tuple(tys) => {
-            for t in tys {
-                collect_adt_def_ids(t, out);
-            }
-        }
-        TyKind::Array(elem, _) => collect_adt_def_ids(elem, out),
-        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => collect_adt_def_ids(inner, out),
-        TyKind::Slice(elem) => collect_adt_def_ids(elem, out),
-        _ => {}
-    }
-}
-
-/// Build an `AdtLayout` for the given DefId by reading HIR.
-/// Returns `None` if the DefId doesn't resolve to a struct or enum.
-fn build_adt_layout(
-    def_id: crate::hir::DefId,
-    hir: &HirCrate,
-) -> Option<crate::mir::body::AdtLayout> {
-    use crate::mir::body::AdtLayout;
-    let owner = hir.owner(def_id)?;
-    match owner {
-        crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) => {
-            let field_tys = s
-                .fields
-                .iter()
-                .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
-                .collect();
-            Some(AdtLayout::Struct { field_tys })
-        }
-        crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => {
-            let discriminant_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
-            let variant_payloads: Vec<Vec<Ty>> = e
-                .variants
-                .iter()
-                .map(|variant| match &variant.data {
-                    crate::hir::HirVariantData::Unit(_) => Vec::new(),
-                    crate::hir::HirVariantData::Tuple(fields, _) => fields
-                        .iter()
-                        .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
-                        .collect(),
-                    crate::hir::HirVariantData::Struct(fields, _) => fields
-                        .iter()
-                        .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
-                        .collect(),
-                })
-                .collect();
-            Some(AdtLayout::Enum {
-                discriminant_ty,
-                variant_payloads,
-            })
-        }
-        _ => None,
-    }
-}
-
-/// Extension method on AdtLayout to extract nested Adt DefIds (for recursion).
-trait AdtLayoutExt {
-    fn field_def_ids(&self) -> Vec<crate::hir::DefId>;
-}
-
-impl AdtLayoutExt for crate::mir::body::AdtLayout {
-    fn field_def_ids(&self) -> Vec<crate::hir::DefId> {
-        use crate::mir::body::AdtLayout;
-        let mut out = Vec::new();
-        match self {
-            AdtLayout::Struct { field_tys } => {
-                for t in field_tys {
-                    collect_adt_def_ids(t, &mut out);
-                }
-            }
-            AdtLayout::Enum {
-                variant_payloads, ..
-            } => {
-                for payload in variant_payloads {
-                    for t in payload {
-                        collect_adt_def_ids(t, &mut out);
-                    }
-                }
-            }
-        }
-        out
-    }
-}
-
 /// Stage 3.52: Resolve the element type of an index expression `base[idx]`
 /// by inspecting the base's MIR type. For:
 ///   - `&[T]` (Ref to Slice(T)): elem_ty = T
