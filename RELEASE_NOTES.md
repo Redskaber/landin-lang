@@ -1,9 +1,54 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.82
+**Current version**: v0.11.83
 **Date**: 2026-07-24
-**Test count**: 1731 tests + 5 benchmarks
+**Test count**: 1749 tests + 5 benchmarks
+
+---
+
+## v0.11.83 — Stage 5.87 (stdlib_marker_traits query)
+
+### Overview
+
+Add `stdlib_marker_traits()` — batch query returning all stdlib marker trait
+names (Copy/Send/Sync/Sized/Unpin/Eq). Symmetric with `stdlib_traits_with_vtable`
+(returns traits with methods). Complements the single-trait `is_stdlib_marker_trait`
+with a batch query.
+
+### New API
+
+- `stdlib_marker_traits() -> Vec<&'static str>` — free fn (in `src/stdlib.rs`)
+
+### Behavior
+
+- Returns 6 marker traits: Copy/Send/Sync/Sized/Unpin/Eq
+- Implementation: `STDLIB_TRAITS.iter().filter(is_stdlib_marker_trait).collect()`
+- Marker traits have no methods (empty vtables)
+
+### §23 compliance
+
+`<noun>_<noun>_<noun>` (plural) — mirrors `stdlib_traits_with_vtable` from v1.7.
+Both are "return subset of traits matching filter" queries.
+
+### §16 compliance
+
+Pure read function. Reuses existing `STDLIB_TRAITS` + `is_stdlib_marker_trait` —
+no new dependencies. Data flow stays within `stdlib`.
+
+### Milestone
+
+**100 test modules!** Stage 5 test infrastructure reaches 100 modules
+(98 → 100 with this stage's additions).
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (557.4 MiB removed)
+cargo test: 1749 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

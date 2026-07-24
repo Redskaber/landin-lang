@@ -6298,3 +6298,47 @@ Stage Summary:
 - §16 + §23 compliant.
 - Next: Stage 5.87+ — user-defined trait dyn support, or Stage 6 planning
   (mir/lower split TD-011, Region inference TD-015).
+
+---
+Task ID: stage5.87-r136
+Agent: Super Z (main)
+Task: Stage 5.87 — stdlib_marker_traits query + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.82 / 1731 tests (Stage 5.86 complete)
+
+Stage 5.87: stdlib_marker_traits — marker trait batch query
+- src/stdlib.rs: new `stdlib_marker_traits() -> Vec<&'static str>` function
+  * Returns all 6 marker traits: Copy/Send/Sync/Sized/Unpin/Eq
+  * Implementation: filter STDLIB_TRAITS by is_stdlib_marker_trait
+  * §23 compliant: `<noun>_<noun>_<noun>` (plural, mirrors stdlib_traits_with_vtable)
+- src/lib.rs: re-export stdlib_marker_traits
+- tests/v0/stage5/plan/stdlib_marker_traits_tests.rs: 18 new tests
+  covering: 7 contains tests (Copy/Send/Sync/Sized/Unpin/Eq + non-empty),
+  4 exclusion tests (no Clone/Drop/Foo/Add), 1 count test (==6),
+  4 consistency tests (with is_stdlib_marker_trait, all_traits, with_vtable,
+  markers+vtable==all), 2 robustness tests (no side effects, no duplicates)
+- tests/all_tests.rs: added stdlib_marker_traits_tests module (100 mods!)
+- Cargo.toml: version 0.11.82 → 0.11.83 (description extended)
+- docs/develop/v0/stage-5/plan-5.87.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round87.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.87 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.57 entry appended
+- RELEASE_NOTES.md: v0.11.83 section prepended, header bumped
+- README.md: status line updated (87 sub-stages, 1749 tests, 100 modules!)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (557.4 MiB removed) ✅
+- cargo test: 1749 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.87 PASSED — CI/CD all green per §1.2.
+- New API: stdlib_marker_traits — marker trait batch query.
+- Symmetric with stdlib_traits_with_vtable (returns traits with methods).
+- 18 new tests, 0 clippy warnings, fmt clean.
+- 🎉 MILESTONE: 100 test modules!
+- §16 + §23 compliant.
+- Next: Stage 5.88+ — user-defined trait dyn support, or Stage 6 planning
+  (mir/lower split TD-011, Region inference TD-015).

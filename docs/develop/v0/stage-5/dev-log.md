@@ -2539,3 +2539,28 @@ and `stdlib_traits_with_vtable`.
 **Refactoring bonus**: Eliminated ~110 lines of duplicated `ALL_REGISTERED_TRAITS`
 constant definitions (2 copies × ~55 lines each). Now single source of truth
 at module level.
+
+### Stage 5.87 — stdlib_marker_traits query (v0.11.83)
+
+**Priority**: Add `stdlib_marker_traits()` — batch query returning all stdlib
+marker trait names (Copy/Send/Sync/Sized/Unpin/Eq). Symmetric with
+`stdlib_traits_with_vtable` (returns traits with methods).
+
+**Work completed**:
+- src/stdlib.rs: new `stdlib_marker_traits() -> Vec<&'static str>` function
+  * Returns all 6 marker traits: Copy/Send/Sync/Sized/Unpin/Eq
+  * Implementation: filter STDLIB_TRAITS by is_stdlib_marker_trait
+  * §23 compliant: `<noun>_<noun>_<noun>` (plural, mirrors stdlib_traits_with_vtable)
+- src/lib.rs: re-export stdlib_marker_traits
+- tests/v0/stage5/plan/stdlib_marker_traits_tests.rs: 18 new tests
+  covering: 7 contains tests (Copy/Send/Sync/Sized/Unpin/Eq + non-empty),
+  4 exclusion tests (no Clone/Drop/Foo/Add), 1 count test (==6),
+  4 consistency tests (with is_stdlib_marker_trait, all_traits, with_vtable,
+  markers+vtable==all), 2 robustness tests (no side effects, no duplicates)
+- tests/all_tests.rs: added stdlib_marker_traits_tests module (100 mods)
+- Cargo.toml: version 0.11.82 → 0.11.83 (description extended)
+
+**Test impact**: +18 (1731 → 1749)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Milestone**: 100 test modules! Stage 5 test infrastructure continues to grow.

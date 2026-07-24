@@ -1329,6 +1329,28 @@ pub fn stdlib_all_traits() -> Vec<&'static str> {
     STDLIB_TRAITS.to_vec()
 }
 
+/// Stage 5.87: Return all stdlib marker trait names.
+///
+/// Returns a `Vec<&'static str>` containing the names of all stdlib marker
+/// traits: Copy/Send/Sync/Sized/Unpin/Eq. Marker traits have no methods
+/// (empty vtables) and are used for compile-time type constraints rather
+/// than runtime dispatch.
+///
+/// This is the batch query complement to `is_stdlib_marker_trait` (which
+/// checks a single trait). Symmetric with `stdlib_traits_with_vtable`
+/// (which returns traits **with** methods).
+///
+/// Per API-naming-standard §3: `stdlib_marker_traits` follows the
+/// `<noun>_<noun>_<noun>` pattern (plural noun), mirroring
+/// `stdlib_traits_with_vtable` from v1.7.
+pub fn stdlib_marker_traits() -> Vec<&'static str> {
+    STDLIB_TRAITS
+        .iter()
+        .copied()
+        .filter(|&name| is_stdlib_marker_trait(name))
+        .collect()
+}
+
 // ============================================================================
 // Stage 5.38: Stdlib vtable byte size + pointer-width-aware layout helpers
 //

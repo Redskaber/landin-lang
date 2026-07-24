@@ -334,3 +334,6 @@ mod is_stdlib_trait_tests;
 
 #[path = "v0/stage5/plan/stdlib_trait_count_tests.rs"]
 mod stdlib_trait_count_tests;
+
+#[path = "v0/stage5/plan/stdlib_marker_traits_tests.rs"]
+mod stdlib_marker_traits_tests;

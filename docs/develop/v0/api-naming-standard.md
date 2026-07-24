@@ -2525,3 +2525,32 @@ duplicated `ALL_REGISTERED_TRAITS` constant to module level as `STDLIB_TRAITS`.
 **Test impact**: +17 (1714 → 1731).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.57 (Stage 5.87, 2026-07-24)
+
+Stage 5.87 stdlib_marker_traits query round. Add batch query returning all
+stdlib marker trait names (Copy/Send/Sync/Sized/Unpin/Eq). Symmetric with
+`stdlib_traits_with_vtable` (returns traits with methods).
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_marker_traits` | free fn (in `stdlib`) | `<noun>_<noun>_<noun>` (plural) |
+
+**Design decisions**:
+1. **Plural noun naming** — `stdlib_marker_traits` mirrors `stdlib_traits_with_vtable`
+   (v1.7). Both are "return subset of traits matching filter" queries using
+   the `<noun>_<noun>_<noun>` plural pattern.
+2. **Batch complement to single-trait query** — `is_stdlib_marker_trait`
+   (v1.6) checks one trait; `stdlib_marker_traits` returns all markers at once.
+3. **Implementation** — filter `STDLIB_TRAITS` (Stage 5.86 module constant)
+   by `is_stdlib_marker_trait`. Pure functional, no side effects.
+4. **§16 compliance** — pure read, reuses existing `STDLIB_TRAITS` +
+   `is_stdlib_marker_trait`, no new dependencies.
+5. **Milestone** — this stage brings the test module count to 100
+   (98 → 100 with this stage's 2 new test modules).
+
+**Test impact**: +18 (1731 → 1749).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
