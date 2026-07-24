@@ -40,6 +40,7 @@ pub use ty::{
 
 // Stage 5.61: dyn Trait fat pointer MIR representation
 // Stage 5.62: bridge function from TraitResolver
+// Stage 5.75: single-point lookup API for mir/lower integration
 pub use dyn_trait::{
     build_dyn_trait_fat_ptrs_from_resolver, build_dyn_trait_method_calls_from_fat_ptrs,
     build_dyn_trait_mir_plan, build_dyn_trait_mir_plan_from_resolver, build_dyn_trait_mir_summary,
@@ -47,5 +48,6 @@ pub use dyn_trait::{
     emit_dyn_trait_fat_ptrs_text_batch, emit_dyn_trait_fat_ptrs_text_batch_from_resolver,
     emit_dyn_trait_method_call_text, emit_dyn_trait_method_calls_text_batch,
     emit_dyn_trait_method_calls_text_batch_from_resolver, emit_dyn_trait_mir_plan_text,
-    DynTraitFatPtr, DynTraitMIRPlan, DynTraitMIRSummary, DynTraitMethodCall,
+    find_dyn_trait_method_call_in_plan, DynTraitFatPtr, DynTraitMIRPlan, DynTraitMIRSummary,
+    DynTraitMethodCall,
 };

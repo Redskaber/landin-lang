@@ -2165,3 +2165,27 @@ summary. Symmetric with codegen's CodegenTraitDispatchEmissionPlan (Stage 5.53).
 
 **Test impact**: +8 (1555 → 1563)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.75 — find_dyn_trait_method_call_in_plan (v0.11.71)
+
+**Priority**: FIRST query API on DynTraitMIRPlan — single-point lookup of a
+DynTraitMethodCall by (trait_name, type_name, method_name). All prior APIs
+(5.61-5.74) were whole-plan builders / emitters; 5.75 enables `mir/lower/`
+to look up the specific method call representation when lowering a HIR
+`receiver.method(args)` expression whose receiver has dyn Trait type.
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `find_dyn_trait_method_call_in_plan()` function
+  * Pure read function: `(&DynTraitMIRPlan, &str, &str, &str) -> Option<&DynTraitMethodCall>`
+  * First match wins; case-sensitive exact string equality on all 3 fields
+  * Returns None for empty plan or no match
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_method_call_in_plan_tests.rs: 12 new tests
+  covering: empty plan, single exact match, single mismatches (trait/type/method),
+  multiple calls (match second/last), no match, case sensitivity, multi-method
+  same trait/type, returned-reference correctness, no-side-effects idempotence
+- tests/all_tests.rs: added dyn_trait_method_call_in_plan_tests module (89 mods)
+- Cargo.toml: version 0.11.70 → 0.11.71
+
+**Test impact**: +12 (1563 → 1575)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

@@ -1,9 +1,53 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.70
+**Current version**: v0.11.71
 **Date**: 2026-07-24
-**Test count**: 1563 tests + 5 benchmarks
+**Test count**: 1575 tests + 5 benchmarks
+
+---
+
+## v0.11.71 — Stage 5.75 (find_dyn_trait_method_call_in_plan)
+
+### Overview
+
+FIRST query API on `DynTraitMIRPlan` — single-point lookup of a
+`DynTraitMethodCall` by `(trait_name, type_name, method_name)`. All prior
+dyn Trait MIR APIs (5.61-5.74) were whole-plan builders / emitters; Stage
+5.75 is the first single-point lookup, enabling `mir/lower/` to look up
+the specific method call representation when lowering a HIR
+`receiver.method(args)` expression whose receiver has `dyn Trait` type.
+
+### New API
+
+- `find_dyn_trait_method_call_in_plan(&DynTraitMIRPlan, &str, &str, &str) -> Option<&DynTraitMethodCall>` (in `src/mir/dyn_trait.rs`)
+
+### Match semantics
+
+- All three components must match **exactly** (byte-for-byte string equality)
+- Case-sensitive: `"Display"` does not match `"display"`
+- First match wins when multiple entries share the same triple
+- Returns `None` for an empty plan or no match
+
+### §23 compliance
+
+`find_<noun>_<noun>_<noun>_<prep>_<noun>` — helper-verb `find_` prefix per
+§8.1, mirroring `find_stdlib_trait_method` from v1.6.
+
+### §16 compliance
+
+Pure read function. Input `&DynTraitMIRPlan` + 3 `&str`, output
+`Option<&DynTraitMethodCall>`. No mutation, no side effects, no new
+dependencies. Data flow stays within `mir::dyn_trait`.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (619.5 MiB removed)
+cargo test: 1575 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

@@ -693,3 +693,79 @@ pub fn emit_dyn_trait_mir_plan_text(plan: &DynTraitMIRPlan) -> String {
 
     sections.join("\n\n")
 }
+
+// ============================================================================
+// Stage 5.75: find_dyn_trait_method_call_in_plan
+//
+// Single-point lookup API — given (trait_name, type_name, method_name),
+// return the matching &DynTraitMethodCall from a DynTraitMIRPlan.
+//
+// This is the FIRST query API on DynTraitMIRPlan — all prior APIs (5.61-5.74)
+// were whole-plan builders / emitters. Stage 5.75 enables mir/lower/ to look
+// up the specific method call representation when lowering a HIR
+// `receiver.method(args)` expression whose receiver has dyn Trait type.
+//
+// Per API-naming-standard §3 + §8.1: `find_dyn_trait_method_call_in_plan`
+// follows the `find_<noun>_<noun>_<noun>_<prep>_<noun>` pattern (helper-verb
+// `find_` prefix per §8.1, mirroring `find_stdlib_trait_method` from v1.6).
+// ============================================================================
+
+/// Stage 5.75: Find the `DynTraitMethodCall` in a `DynTraitMIRPlan` matching
+/// the given `(trait_name, type_name, method_name)` triple.
+///
+/// Returns a reference to the first matching entry in `plan.method_calls`,
+/// or `None` if no entry matches.
+///
+/// # Match semantics
+///
+/// - All three components must match **exactly** (byte-for-byte string
+///   equality). Matching is case-sensitive: `"Display"` does not match
+///   `"display"`.
+/// - Returns the **first** match when multiple entries share the same
+///   `(trait, type, method)` triple (this is uncommon but possible if
+///   upstream construction produces duplicates).
+/// - Returns `None` for an empty `plan.method_calls`.
+///
+/// # Use case
+///
+/// This is the lookup entry point that `mir/lower/` will call when lowering
+/// a HIR `receiver.method(args)` expression whose receiver has `dyn Trait`
+/// type — the lowering walks the plan, finds the matching
+/// `DynTraitMethodCall`, and uses its `slot_index` + `param_count` to emit
+/// the vtable indirect call.
+///
+/// # §16 compliance
+///
+/// Pure read function: input `&DynTraitMIRPlan` + 3 `&str`, output
+/// `Option<&DynTraitMethodCall>`. No mutation, no side effects, no new
+/// dependencies. Data flow stays within `mir::dyn_trait`.
+///
+/// # Example
+///
+/// ```ignore
+/// use landin_compiler::{
+///     build_dyn_trait_mir_plan_from_resolver,
+///     find_dyn_trait_method_call_in_plan,
+/// };
+///
+/// let plan = build_dyn_trait_mir_plan_from_resolver(&resolver, &interner);
+/// if let Some(call) = find_dyn_trait_method_call_in_plan(
+///     &plan, "Display", "Vec", "fmt") {
+///     // call.slot_index + call.param_count give vtable layout info
+/// }
+/// ```
+///
+/// Per API-naming-standard §3 + §8.1: `find_dyn_trait_method_call_in_plan`
+/// follows the `find_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub fn find_dyn_trait_method_call_in_plan<'a>(
+    plan: &'a DynTraitMIRPlan,
+    trait_name: &str,
+    type_name: &str,
+    method_name: &str,
+) -> Option<&'a DynTraitMethodCall> {
+    plan.method_calls.iter().find(|call| {
+        call.trait_name == trait_name
+            && call.type_name == type_name
+            && call.method_name == method_name
+    })
+}

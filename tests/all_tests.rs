@@ -301,3 +301,6 @@ mod dyn_trait_mir_plan_tests;
 
 #[path = "v0/stage5/plan/dyn_trait_mir_plan_text_tests.rs"]
 mod dyn_trait_mir_plan_text_tests;
+
+#[path = "v0/stage5/plan/dyn_trait_method_call_in_plan_tests.rs"]
+mod dyn_trait_method_call_in_plan_tests;

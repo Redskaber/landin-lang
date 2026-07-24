@@ -5705,3 +5705,49 @@ Stage Summary:
   - Plan: DynTraitMIRPlan (5.73)
   - Complete IR: emit_dyn_trait_mir_plan_text (5.74)
 - Next: Stage 5.75+ (dyn Trait method call MIR lowering integration in mir/lower/).
+
+---
+Task ID: stage5.75-r124
+Agent: Super Z (main)
+Task: Stage 5.75 — find_dyn_trait_method_call_in_plan + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.70 / 1563 tests (Stage 5.74 complete)
+
+Stage 5.75: find_dyn_trait_method_call_in_plan (FIRST single-point query API on DynTraitMIRPlan)
+- src/mir/dyn_trait.rs: new find_dyn_trait_method_call_in_plan() function
+  * Signature: (&DynTraitMIRPlan, &str, &str, &str) -> Option<&DynTraitMethodCall>
+  * First-match-wins; case-sensitive exact string equality on all 3 fields
+  * Returns None for empty plan or no match
+  * Pure read function (§16); helper-verb `find_` prefix per §8.1
+- src/mir/mod.rs: re-export (added find_dyn_trait_method_call_in_plan)
+- tests/v0/stage5/plan/dyn_trait_method_call_in_plan_tests.rs: 12 new tests
+  * Empty plan, single exact match, single trait/type/method mismatches,
+    multiple calls (match second/last), no match, case sensitivity,
+    multi-method same trait/type, returned-reference correctness, no-side-effects
+- tests/all_tests.rs: added dyn_trait_method_call_in_plan_tests module (89 mods)
+- Cargo.toml: version 0.11.70 → 0.11.71 (description extended)
+- docs/develop/v0/stage-5/plan-5.75.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round75.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.75 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.45 entry appended
+- RELEASE_NOTES.md: v0.11.71 section prepended, header bumped
+- README.md: status line + Stage 5 row test count + sub-stage list updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (619.5 MiB removed) ✅
+- cargo test: 1575 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.75 PASSED — CI/CD all green per §1.2.
+- find_dyn_trait_method_call_in_plan(): FIRST single-point query API on DynTraitMIRPlan.
+- All prior dyn Trait MIR APIs (5.61-5.74) were whole-plan builders / emitters;
+  5.75 is the first lookup, enabling mir/lower/ to look up the specific method
+  call representation when lowering a HIR `receiver.method(args)` expression
+  whose receiver has dyn Trait type.
+- **Dyn Trait MIR infrastructure now has both bulk-emission (5.74) AND
+  single-point lookup (5.75)** — ready for mir/lower/ integration in 5.76+.
+- Next: Stage 5.76+ — first mir/lower/ integration: hook the lookup into the
+  HirExprKind::MethodCall branch (currently uses Error placeholder func).

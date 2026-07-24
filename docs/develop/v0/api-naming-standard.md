@@ -2065,3 +2065,39 @@ Stage 5.74 emit_dyn_trait_mir_plan_text round. Complete IR text generator.
 **Test impact**: +8 (1555 → 1563).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.45 (Stage 5.75, 2026-07-24)
+
+Stage 5.75 find_dyn_trait_method_call_in_plan round. FIRST query API on
+`DynTraitMIRPlan` — single-point lookup of a `DynTraitMethodCall` by
+`(trait_name, type_name, method_name)`. All prior dyn Trait MIR APIs
+(5.61-5.74) were whole-plan builders / emitters; Stage 5.75 is the first
+single-point lookup, enabling `mir/lower/` integration.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `find_dyn_trait_method_call_in_plan` | free fn (in `mir`) | `find_<noun>_<noun>_<noun>_<prep>_<noun>` |
+
+**Design decisions**:
+1. Helper-verb `find_` prefix per §8.1, mirroring `find_stdlib_trait_method`
+   from v1.6 (Stage 5.36) — establishes the same "lookup-style" convention
+   across stdlib + mir layers.
+2. First-match-wins semantics — when multiple `DynTraitMethodCall` entries
+   share the same `(trait, type, method)` triple, the first one is returned.
+   This is uncommon (upstream construction normally produces unique triples)
+   but is documented and tested.
+3. Case-sensitive exact string equality — no fuzzy matching, no normalization.
+   This matches the strictness of `find_stdlib_trait_method` and avoids
+   silent type-resolution surprises at MIR-lower time.
+4. Pure read function: `(&DynTraitMIRPlan, &str, &str, &str) ->
+   Option<&DynTraitMethodCall>`. No mutation, no side effects. §16-compliant:
+   data flow stays entirely within `mir::dyn_trait`.
+
+**§16 compliance**: Pure read; no new dependencies introduced. The function
+lives in `src/mir/dyn_trait.rs` alongside the `DynTraitMIRPlan` it queries.
+
+**Test impact**: +12 (1563 → 1575).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
