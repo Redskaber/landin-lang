@@ -2623,3 +2623,34 @@ started in 5.88.
 - 5.88: stdlib_arithmetic_traits (20 arithmetic)
 - 5.89: stdlib_core_traits (13 core) ← this stage
 - Future: io/unary categories
+
+### Stage 5.90 — stdlib_io_traits + stdlib_unary_traits semantic group queries (v0.11.86)
+
+**Priority**: Add two small semantic group queries — stdlib_io_traits (Read/Write)
+and stdlib_unary_traits (Neg/Not). Completes the semantic category series
+covering all stdlib trait categories.
+
+**Work completed**:
+- src/stdlib.rs:
+  * Added `stdlib_io_traits() -> Vec<&'static str>` (returns ["Read", "Write"])
+  * Added `stdlib_unary_traits() -> Vec<&'static str>` (returns ["Neg", "Not"])
+  * Both use local `&'static` slice consts
+  * §23 compliant: `<noun>_<adj>_<noun>` (plural)
+- src/lib.rs: re-export stdlib_io_traits + stdlib_unary_traits
+- tests/v0/stage5/plan/stdlib_io_unary_traits_tests.rs: 21 new tests
+  covering: 8 io_traits tests (non-empty/Read/Write/count=2/no Copy/no Foo/
+  subset of all/disjoint from markers), 8 unary_traits tests (non-empty/
+  Neg/Not/count=2/no Copy/no Add/subset of all/disjoint from arithmetic),
+  5 robustness tests (no side effects × 2, no duplicates × 2, io ∩ unary == ∅)
+- tests/all_tests.rs: added stdlib_io_unary_traits_tests module (103 mods)
+- Cargo.toml: version 0.11.85 → 0.11.86 (description extended)
+
+**Test impact**: +21 (1791 → 1812)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Semantic group series COMPLETE**:
+- 5.87: stdlib_marker_traits (6 markers)
+- 5.88: stdlib_arithmetic_traits (20 arithmetic)
+- 5.89: stdlib_core_traits (13 core)
+- 5.90: stdlib_io_traits (2 io) + stdlib_unary_traits (2 unary) ← this stage
+- Total: 43 traits covered by semantic group queries (6+20+13+2+2)

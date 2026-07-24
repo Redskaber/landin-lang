@@ -2616,3 +2616,35 @@ lifecycle/formatting/comparison/dereference/iteration).
 **Test impact**: +22 (1769 → 1791).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.60 (Stage 5.90, 2026-07-24)
+
+Stage 5.90 stdlib_io_traits + stdlib_unary_traits semantic group queries round.
+Two small semantic category queries — io (Read/Write) and unary (Neg/Not).
+**Completes the semantic category series** covering all stdlib trait categories.
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_io_traits` | free fn (in `stdlib`) | `<noun>_<adj>_<noun>` (plural) |
+| `stdlib_unary_traits` | free fn (in `stdlib`) | `<noun>_<adj>_<noun>` (plural) |
+
+**Design decisions**:
+1. **Two small categories in one stage** — io (2 traits) and unary (2 traits)
+   are both small enough to combine. Completes the semantic series efficiently.
+2. **`<noun>_<adj>_<noun>` plural naming** — mirrors `stdlib_core_traits` (v1.59)
+   and `stdlib_arithmetic_traits` (v1.58). All semantic group queries use the
+   same pattern for consistency.
+3. **Fixed `&'static` slices** — `IO_TRAITS: &[&str] = &["Read", "Write"]` and
+   `UNARY_TRAITS: &[&str] = &["Neg", "Not"]`. Consistent with prior stages.
+4. **§16 compliance** — pure read, `&'static` slices, no new dependencies.
+5. **Semantic series complete** — 5 categories (marker/arithmetic/core/io/unary)
+   covering 43 traits total. All stdlib traits now have semantic group coverage.
+
+**Milestone**: Semantic group query series COMPLETE. All 43 stdlib traits
+across 5 categories now have batch query functions.
+
+**Test impact**: +21 (1791 → 1812).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

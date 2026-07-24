@@ -1441,6 +1441,44 @@ pub fn stdlib_core_traits() -> Vec<&'static str> {
     CORE_TRAITS.to_vec()
 }
 
+/// Stage 5.90: Return all stdlib I/O trait names.
+///
+/// Returns a `Vec<&'static str>` containing the names of all stdlib I/O
+/// traits: Read, Write. These traits provide byte-stream I/O operations
+/// for types that support reading from / writing to byte streams.
+///
+/// This is a **semantic group query** — returns traits that share a
+/// semantic category (I/O). Useful for:
+/// - Detecting which types support I/O operations
+/// - Codegen decisions about I/O method emission
+///
+/// Per API-naming-standard §3: `stdlib_io_traits` follows the
+/// `<noun>_<adj>_<noun>` pattern (plural), mirroring
+/// `stdlib_core_traits` from v1.59.
+pub fn stdlib_io_traits() -> Vec<&'static str> {
+    const IO_TRAITS: &[&str] = &["Read", "Write"];
+    IO_TRAITS.to_vec()
+}
+
+/// Stage 5.90: Return all stdlib unary operator trait names.
+///
+/// Returns a `Vec<&'static str>` containing the names of all stdlib unary
+/// operator traits: Neg, Not. These traits provide unary arithmetic
+/// operations (`-x` for Neg, `!x` for Not).
+///
+/// This is a **semantic group query** — returns traits that share a
+/// semantic category (unary operators). Useful for:
+/// - Operator overloading detection for unary ops
+/// - Type inference assistance ("does this type support negation?")
+///
+/// Per API-naming-standard §3: `stdlib_unary_traits` follows the
+/// `<noun>_<adj>_<noun>` pattern (plural), mirroring
+/// `stdlib_arithmetic_traits` from v1.58.
+pub fn stdlib_unary_traits() -> Vec<&'static str> {
+    const UNARY_TRAITS: &[&str] = &["Neg", "Not"];
+    UNARY_TRAITS.to_vec()
+}
+
 // ============================================================================
 // Stage 5.38: Stdlib vtable byte size + pointer-width-aware layout helpers
 //

@@ -6428,3 +6428,47 @@ Stage Summary:
 - §16 + §23 compliant.
 - Semantic group series: markers (5.87) + arithmetic (5.88) + core (5.89).
 - Next: Stage 5.90+ — more semantic group queries (io/unary), or Stage 6 planning.
+
+---
+Task ID: stage5.90-r139
+Agent: Super Z (main)
+Task: Stage 5.90 — stdlib_io_traits + stdlib_unary_traits + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.85 / 1791 tests (Stage 5.89 complete)
+
+Stage 5.90: stdlib_io_traits + stdlib_unary_traits — semantic group series complete
+- src/stdlib.rs:
+  * Added `stdlib_io_traits() -> Vec<&'static str>` (returns ["Read", "Write"])
+  * Added `stdlib_unary_traits() -> Vec<&'static str>` (returns ["Neg", "Not"])
+  * Both use local `&'static` slice consts
+  * §23 compliant: `<noun>_<adj>_<noun>` (plural)
+- src/lib.rs: re-export stdlib_io_traits + stdlib_unary_traits
+- tests/v0/stage5/plan/stdlib_io_unary_traits_tests.rs: 21 new tests
+  covering: 8 io_traits tests, 8 unary_traits tests, 5 robustness tests
+  (no side effects × 2, no duplicates × 2, io ∩ unary == ∅)
+- tests/all_tests.rs: added stdlib_io_unary_traits_tests module (103 mods)
+- Cargo.toml: version 0.11.85 → 0.11.86 (description extended)
+- docs/develop/v0/stage-5/plan-5.90.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round90.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.90 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.60 entry appended
+- RELEASE_NOTES.md: v0.11.86 section prepended, header bumped
+- README.md: status line updated (90 sub-stages, 1812 tests, semantic series complete)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (560.4 MiB removed) ✅
+- cargo test: 1812 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.90 PASSED — CI/CD all green per §1.2.
+- New API: stdlib_io_traits + stdlib_unary_traits.
+- 🎉 MILESTONE: Semantic group query series COMPLETE!
+  - 5 categories: marker (6) + arithmetic (20) + core (13) + io (2) + unary (2)
+  - 43 traits total covered by semantic group queries
+- 21 new tests, 0 clippy warnings, fmt clean.
+- §16 + §23 compliant.
+- Next: Stage 5.91+ — user-defined trait dyn support, or Stage 6 planning
+  (mir/lower split TD-011, Region inference TD-015).

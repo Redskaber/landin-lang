@@ -1,9 +1,59 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.85
+**Current version**: v0.11.86
 **Date**: 2026-07-24
-**Test count**: 1791 tests + 5 benchmarks
+**Test count**: 1812 tests + 5 benchmarks
+
+---
+
+## v0.11.86 — Stage 5.90 (stdlib_io_traits + stdlib_unary_traits)
+
+### Overview
+
+Add two small semantic group queries — `stdlib_io_traits()` (Read/Write) and
+`stdlib_unary_traits()` (Neg/Not). **Completes the semantic category series**
+covering all stdlib trait categories (43 traits across 5 categories).
+
+### New API
+
+- `stdlib_io_traits() -> Vec<&'static str>` — free fn (in `src/stdlib.rs`)
+- `stdlib_unary_traits() -> Vec<&'static str>` — free fn (in `src/stdlib.rs`)
+
+### Behavior
+
+- `stdlib_io_traits`: returns ["Read", "Write"]
+- `stdlib_unary_traits`: returns ["Neg", "Not"]
+
+### Semantic group series complete
+
+| Stage | Query | Count |
+|-------|-------|-------|
+| 5.87 | stdlib_marker_traits | 6 |
+| 5.88 | stdlib_arithmetic_traits | 20 |
+| 5.89 | stdlib_core_traits | 13 |
+| 5.90 | stdlib_io_traits + stdlib_unary_traits | 4 |
+| **Total** | **5 categories** | **43 traits** |
+
+All stdlib traits now have semantic group query coverage.
+
+### §23 compliance
+
+`<noun>_<adj>_<noun>` (plural) — mirrors `stdlib_core_traits` from v1.59.
+
+### §16 compliance
+
+Pure read functions. Uses `&'static` slices — no new dependencies. Data flow
+stays within `stdlib`.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (560.4 MiB removed)
+cargo test: 1812 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

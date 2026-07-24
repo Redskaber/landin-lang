@@ -343,3 +343,6 @@ mod stdlib_arithmetic_traits_tests;
 
 #[path = "v0/stage5/plan/stdlib_core_traits_tests.rs"]
 mod stdlib_core_traits_tests;
+
+#[path = "v0/stage5/plan/stdlib_io_unary_traits_tests.rs"]
+mod stdlib_io_unary_traits_tests;
