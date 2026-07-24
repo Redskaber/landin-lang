@@ -480,3 +480,80 @@ pub fn emit_dyn_trait_method_calls_text_batch_from_resolver(
     let calls = build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs);
     emit_dyn_trait_method_calls_text_batch(&calls)
 }
+
+// ============================================================================
+// Stage 5.71: DynTraitMIRSummary — project-level summary of dyn Trait MIR data
+//
+// Aggregates fat ptr count + method call count + total slots + deduplicated
+// trait/type names from the two MIR data structures.
+//
+// Per API-naming-standard §3: `DynTraitMIRSummary` follows
+// `<Noun><Noun><Noun><Noun>` pattern. `build_dyn_trait_mir_summary` follows
+// `<verb>_<noun>_<noun>_<noun>` pattern.
+// ============================================================================
+
+/// Stage 5.71: Project-level summary of dyn Trait MIR data.
+///
+/// Aggregates fat ptr count, method call count, total vtable slots, and
+/// deduplicated trait/type names from `DynTraitFatPtr` + `DynTraitMethodCall`
+/// lists. Useful for:
+/// - Driver diagnostics ("N dyn Trait fat pointers, M method calls, K slots")
+/// - Detecting dyn Trait bloat (large method_call_count)
+/// - Identifying trait-heavy code (many distinct trait_names)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DynTraitMIRSummary {
+    /// Number of dyn Trait fat pointers.
+    pub fat_ptr_count: u32,
+    /// Number of dyn Trait method calls.
+    pub method_call_count: u32,
+    /// Total vtable slots across all method calls (sum of unique slot indices + 1).
+    pub total_slots: u32,
+    /// Deduplicated trait names involved.
+    pub trait_names: Vec<String>,
+    /// Deduplicated type names involved.
+    pub type_names: Vec<String>,
+}
+
+/// Stage 5.71: Build a project-level dyn Trait MIR summary from fat ptrs +
+/// method calls.
+///
+/// Per API-naming-standard §3: `build_dyn_trait_mir_summary` follows
+/// `<verb>_<noun>_<noun>_<noun>` pattern.
+pub fn build_dyn_trait_mir_summary(
+    fat_ptrs: &[DynTraitFatPtr],
+    method_calls: &[DynTraitMethodCall],
+) -> DynTraitMIRSummary {
+    let fat_ptr_count = fat_ptrs.len() as u32;
+    let method_call_count = method_calls.len() as u32;
+
+    // total_slots: max slot_index + 1 across all method calls (or 0 if no calls)
+    let total_slots = method_calls
+        .iter()
+        .map(|c| c.slot_index + 1)
+        .max()
+        .unwrap_or(0);
+
+    // Deduplicate trait_names from fat_ptrs
+    let mut trait_names: Vec<String> = Vec::new();
+    for fp in fat_ptrs {
+        if !trait_names.contains(&fp.trait_name) {
+            trait_names.push(fp.trait_name.clone());
+        }
+    }
+
+    // Deduplicate type_names from fat_ptrs
+    let mut type_names: Vec<String> = Vec::new();
+    for fp in fat_ptrs {
+        if !type_names.contains(&fp.type_name) {
+            type_names.push(fp.type_name.clone());
+        }
+    }
+
+    DynTraitMIRSummary {
+        fat_ptr_count,
+        method_call_count,
+        total_slots,
+        trait_names,
+        type_names,
+    }
+}

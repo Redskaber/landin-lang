@@ -2004,3 +2004,18 @@ Convenience entry point composing Stage 5.62 + 5.68 + 5.69.
 **Test impact**: +8 (1521 → 1529).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.41 (Stage 5.71, 2026-07-24)
+
+Stage 5.71 DynTraitMIRSummary round. Project-level summary of dyn Trait MIR data.
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `DynTraitMIRSummary` | struct (in `mir`) | `<Noun><Noun><Noun><Noun>` |
+| `build_dyn_trait_mir_summary` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>` |
+
+**Test impact**: +9 (1529 → 1538).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

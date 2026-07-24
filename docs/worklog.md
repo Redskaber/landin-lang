@@ -5580,3 +5580,30 @@ Stage Summary:
   - Method call lowering (5.67-5.70): single IR text + stdlib bridge + batch + convenience
 - All infrastructure ready for MIR lowering integration (Stage 5.71+).
 - Next: Stage 5.71+ (dyn Trait method call MIR lowering integration in mir/lower/).
+
+---
+Task ID: stage5.71-r120
+Agent: Super Z (main)
+Task: Stage 5.71 — DynTraitMIRSummary + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.66 / 1529 tests (Stage 5.70 complete)
+
+Stage 5.71: DynTraitMIRSummary (project-level dyn Trait MIR data summary)
+- src/mir/dyn_trait.rs: new DynTraitMIRSummary struct (5 fields) + build_dyn_trait_mir_summary() function
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_mir_summary_tests.rs: 9 new tests
+- tests/all_tests.rs: added dyn_trait_mir_summary_tests module (85 mods)
+- Cargo.toml: version 0.11.66 → 0.11.67
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (645.6 MiB removed) ✅
+- cargo test: 1538 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.71 PASSED — CI/CD all green per §1.2.
+- DynTraitMIRSummary: project-level dyn Trait MIR data summary.
+- Aggregates: fat_ptr_count + method_call_count + total_slots + dedup trait/type names.
+- Next: Stage 5.72+ (dyn Trait method call MIR lowering integration).

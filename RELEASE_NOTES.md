@@ -1,9 +1,33 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.66
+**Current version**: v0.11.67
 **Date**: 2026-07-24
-**Test count**: 1529 tests + 5 benchmarks
+**Test count**: 1538 tests + 5 benchmarks
+
+---
+
+## v0.11.67 — Stage 5.71 (DynTraitMIRSummary)
+
+### Overview
+
+Project-level summary of dyn Trait MIR data. `DynTraitMIRSummary` struct
+aggregates: fat ptr count + method call count + total vtable slots +
+deduplicated trait/type names. Useful for driver diagnostics and detecting
+dyn Trait bloat.
+
+### New API
+
+- `DynTraitMIRSummary` struct (5 fields) + `build_dyn_trait_mir_summary(&[DynTraitFatPtr], &[DynTraitMethodCall]) -> DynTraitMIRSummary` (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (645.6 MiB removed)
+cargo test: 1538 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

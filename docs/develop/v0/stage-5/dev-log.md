@@ -2106,3 +2106,18 @@ One call from resolver to all dyn Trait method call IR text.
 
 **Test impact**: +8 (1521 → 1529)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.71 — DynTraitMIRSummary (v0.11.67)
+
+**Priority**: Project-level summary of dyn Trait MIR data. Aggregates fat ptr
+count + method call count + total slots + deduplicated trait/type names.
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `DynTraitMIRSummary` struct (5 fields) + `build_dyn_trait_mir_summary()` function
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_mir_summary_tests.rs: 9 new tests
+- tests/all_tests.rs: added dyn_trait_mir_summary_tests module (85 mods)
+- Cargo.toml: version 0.11.66 → 0.11.67
+
+**Test impact**: +9 (1529 → 1538)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
