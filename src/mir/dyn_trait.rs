@@ -215,3 +215,101 @@ pub fn emit_dyn_trait_fat_ptrs_text_batch_from_resolver(
     let fat_ptrs = build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner);
     emit_dyn_trait_fat_ptrs_text_batch(&fat_ptrs)
 }
+
+// ============================================================================
+// Stage 5.66: DynTraitMethodCall MIR representation
+//
+// Represents a `dyn Trait` method call at the MIR level: receiver fat
+// pointer (trait + type) + method name + vtable slot index + param count.
+// This is the last infrastructure piece before actual method call MIR
+// lowering (Stage 5.67+).
+//
+// Per API-naming-standard §3: `DynTraitMethodCall` follows
+// `<Noun><Noun><Noun>` pattern.
+// ============================================================================
+
+/// Stage 5.66: MIR-level representation of a `dyn Trait` method call.
+///
+/// Captures all information needed to generate LLVM IR for a dynamic
+/// dispatch method call:
+/// - `trait_name` / `type_name`: identify the (trait, type) pair (and
+///   thus the vtable)
+/// - `method_name`: the method being called (for diagnostics)
+/// - `slot_index`: the vtable slot index (from `stdlib_trait_method_index`)
+/// - `param_count`: number of parameters (excluding `self`)
+///
+/// Per API-naming-standard §3: `DynTraitMethodCall` follows
+/// `<Noun><Noun><Noun>` pattern.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DynTraitMethodCall {
+    /// The trait name (e.g. "Display").
+    pub trait_name: String,
+    /// The concrete type name (e.g. "MyType").
+    pub type_name: String,
+    /// The method name being called (e.g. "fmt").
+    pub method_name: String,
+    /// The vtable slot index (0-based, from `stdlib_trait_method_index`).
+    pub slot_index: u32,
+    /// Number of parameters excluding `self`.
+    pub param_count: u32,
+}
+
+impl DynTraitMethodCall {
+    /// Stage 5.66: Construct a `DynTraitMethodCall` from all fields.
+    ///
+    /// Per API-naming-standard §3: `new` is the standard constructor name.
+    pub fn new(
+        trait_name: &str,
+        type_name: &str,
+        method_name: &str,
+        slot_index: u32,
+        param_count: u32,
+    ) -> Self {
+        Self {
+            trait_name: trait_name.to_string(),
+            type_name: type_name.to_string(),
+            method_name: method_name.to_string(),
+            slot_index,
+            param_count,
+        }
+    }
+
+    /// Stage 5.66: Construct a `DynTraitMethodCall` from a `DynTraitFatPtr`
+    /// plus method-specific info.
+    ///
+    /// Borrows the trait_name and type_name from the fat pointer, adding
+    /// the method name, slot index, and parameter count.
+    ///
+    /// Per API-naming-standard §3: `from_fat_ptr` follows
+    /// `<prep>_<noun>_<noun>` pattern.
+    pub fn from_fat_ptr(
+        fat_ptr: &DynTraitFatPtr,
+        method_name: &str,
+        slot_index: u32,
+        param_count: u32,
+    ) -> Self {
+        Self {
+            trait_name: fat_ptr.trait_name.clone(),
+            type_name: fat_ptr.type_name.clone(),
+            method_name: method_name.to_string(),
+            slot_index,
+            param_count,
+        }
+    }
+
+    /// Stage 5.66: Get the vtable symbol for this method call's vtable.
+    ///
+    /// Returns `.vtable.<trait>.<type>` — the LLVM symbol for the vtable
+    /// global that contains the method being called.
+    pub fn vtable_symbol(&self) -> String {
+        format!(".vtable.{}.{}", self.trait_name, self.type_name)
+    }
+
+    /// Stage 5.66: Get the dynptr symbol for this method call's fat pointer.
+    ///
+    /// Returns `.dynptr.<trait>.<type>` — the LLVM symbol for the dynptr
+    /// global that contains the (data, vtable) pair.
+    pub fn dynptr_symbol(&self) -> String {
+        format!(".dynptr.{}.{}", self.trait_name, self.type_name)
+    }
+}

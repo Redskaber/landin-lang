@@ -5424,3 +5424,37 @@ Stage Summary:
 - Composes Stage 5.62 + 5.64. Single source of truth.
 - Dyn Trait fat ptr infrastructure fully complete with convenience entry.
 - Next: Stage 5.66+ (dyn Trait value construction in MIR lowering).
+
+---
+Task ID: stage5.66-r115
+Agent: Super Z (main)
+Task: Stage 5.66 — DynTraitMethodCall MIR representation + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.61 / 1483 tests (Stage 5.65 complete)
+
+Stage 5.66: DynTraitMethodCall MIR representation (last infrastructure piece)
+- src/mir/dyn_trait.rs: new DynTraitMethodCall struct (5 fields) + new() + from_fat_ptr() + vtable_symbol() + dynptr_symbol()
+- src/mir/mod.rs: re-export DynTraitMethodCall
+- src/lib.rs: Stage 5.66 history comment
+- tests/v0/stage5/plan/dyn_trait_method_call_tests.rs: 10 new tests
+- tests/all_tests.rs: added dyn_trait_method_call_tests module (80 mods)
+- Cargo.toml: version 0.11.61 → 0.11.62
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (800.1 MiB removed) ✅
+- cargo test: 1493 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.66 PASSED — CI/CD all green per §1.2.
+- DynTraitMethodCall struct: MIR-level dyn Trait method call representation.
+- from_fat_ptr() connects with DynTraitFatPtr (Stage 5.61).
+- vtable_symbol() + dynptr_symbol() auto-compute LLVM symbols.
+- **LAST INFRASTRUCTURE PIECE** — all dyn Trait MIR data structures complete:
+  - DynTraitFatPtr (5.61) — value representation
+  - build_dyn_trait_fat_ptrs_from_resolver (5.62) — resolver bridge
+  - emit_dyn_trait_fat_ptr_text (5.63) + batch (5.64) + from_resolver (5.65) — IR text
+  - DynTraitMethodCall (5.66) — method call representation
+- Next: Stage 5.67+ (actual dyn Trait method call MIR lowering).

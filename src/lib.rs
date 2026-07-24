@@ -395,7 +395,12 @@
 //!   Stage 5.65 (v0.11.61): emit_dyn_trait_fat_ptrs_text_batch_from_resolver
 //!     — convenience entry point composing Stage 5.62 + 5.64. One call
 //!     from resolver to all dyn Trait fat ptr IR text.
-//!   Next: Stage 5.66+ (dyn Trait value construction in MIR lowering).
+//!   Stage 5.66 (v0.11.62): DynTraitMethodCall MIR representation —
+//!     new `DynTraitMethodCall` struct (trait_name + type_name + method_name
+//!     + slot_index + param_count) + `new()` + `from_fat_ptr()` +
+//!     `vtable_symbol()` + `dynptr_symbol()` methods. Last infrastructure
+//!     piece before actual method call MIR lowering.
+//!   Next: Stage 5.67+ (dyn Trait method call MIR lowering).
 //! See `docs/develop/v0/api-naming-standard.md` for the API naming standard.
 
 pub mod ast;

@@ -1929,3 +1929,18 @@ Convenience entry point composing Stage 5.62 + 5.64.
 **Test impact**: +8 (1475 → 1483).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.36 (Stage 5.66, 2026-07-23)
+
+Stage 5.66 DynTraitMethodCall MIR representation round. **Last infrastructure
+piece** before actual method call MIR lowering.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `DynTraitMethodCall` | struct (in `mir`) | `<Noun><Noun><Noun>` |
+
+**Test impact**: +10 (1483 → 1493).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

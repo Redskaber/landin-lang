@@ -2030,3 +2030,20 @@ from resolver to all dyn Trait fat ptr IR text.
 
 **Test impact**: +8 (1475 → 1483)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.66 — DynTraitMethodCall MIR Representation (v0.11.62)
+
+**Priority**: MIR-level representation of `dyn Trait` method calls.
+Last infrastructure piece before actual method call MIR lowering.
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `DynTraitMethodCall` struct (5 fields) + `new()` +
+  `from_fat_ptr()` + `vtable_symbol()` + `dynptr_symbol()` methods
+- src/mir/mod.rs: re-export `DynTraitMethodCall`
+- src/lib.rs: Stage 5.66 history comment
+- tests/v0/stage5/plan/dyn_trait_method_call_tests.rs: 10 new tests
+- tests/all_tests.rs: added dyn_trait_method_call_tests module (80 mods)
+- Cargo.toml: version 0.11.61 → 0.11.62
+
+**Test impact**: +10 (1483 → 1493)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

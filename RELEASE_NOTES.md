@@ -1,9 +1,34 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.61
+**Current version**: v0.11.62
 **Date**: 2026-07-23
-**Test count**: 1483 tests + 5 benchmarks
+**Test count**: 1493 tests + 5 benchmarks
+
+---
+
+## v0.11.62 — Stage 5.66 (DynTraitMethodCall MIR representation)
+
+### Overview
+
+MIR-level representation of `dyn Trait` method calls. `DynTraitMethodCall`
+struct captures: trait_name + type_name + method_name + slot_index +
+param_count. Methods: `new()`, `from_fat_ptr()` (connects with
+`DynTraitFatPtr`), `vtable_symbol()`, `dynptr_symbol()`. **Last
+infrastructure piece** — all dyn Trait MIR data structures complete.
+
+### New type
+
+- `DynTraitMethodCall` (in `src/mir/dyn_trait.rs`) — 5 fields + 4 methods
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (800.1 MiB removed)
+cargo test: 1493 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

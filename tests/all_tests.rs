@@ -274,3 +274,6 @@ mod dyn_trait_fat_ptr_batch_tests;
 
 #[path = "v0/stage5/plan/dyn_trait_fat_ptr_from_resolver_tests.rs"]
 mod dyn_trait_fat_ptr_from_resolver_tests;
+
+#[path = "v0/stage5/plan/dyn_trait_method_call_tests.rs"]
+mod dyn_trait_method_call_tests;
