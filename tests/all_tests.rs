@@ -328,3 +328,6 @@ mod dyn_trait_e2e_integration_tests;
 
 #[path = "v0/stage5/plan/dyn_trait_param_kinds_tests.rs"]
 mod dyn_trait_param_kinds_tests;
+
+#[path = "v0/stage5/plan/is_stdlib_trait_tests.rs"]
+mod is_stdlib_trait_tests;

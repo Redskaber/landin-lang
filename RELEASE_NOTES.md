@@ -1,9 +1,50 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.80
+**Current version**: v0.11.81
 **Date**: 2026-07-24
-**Test count**: 1690 tests + 5 benchmarks
+**Test count**: 1714 tests + 5 benchmarks
+
+---
+
+## v0.11.81 — Stage 5.85 (is_stdlib_trait query)
+
+### Overview
+
+Add trait-level membership query `is_stdlib_trait()`. Complements existing
+`is_stdlib_marker_trait` (marker-only) and `is_stdlib_trait_method`
+(method-level) with a unified trait-level check covering both marker traits
+and traits with methods.
+
+### New API
+
+- `is_stdlib_trait(trait_name: &str) -> bool` — free fn (in `src/stdlib.rs`)
+
+### Behavior
+
+- Returns `true` for marker traits: Copy/Send/Sync/Sized/Unpin/Eq
+- Returns `true` for traits with methods: Clone/Drop/Display/Add/.../ShrAssign
+- Returns `false` for user-defined traits, empty string, method names
+- Implementation: `stdlib_trait_methods(trait_name).is_some()`
+
+### §23 compliance
+
+`is_<noun>_<noun>` — `is_` prefix per §8.1 helper-verb convention,
+mirroring `is_stdlib_marker_trait` from v1.6.
+
+### §16 compliance
+
+Pure read function. Reuses existing `stdlib_trait_methods` — no new
+dependencies. Data flow stays within `stdlib`.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (555.6 MiB removed)
+cargo test: 1714 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

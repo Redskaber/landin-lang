@@ -6210,3 +6210,46 @@ Stage Summary:
 - dyn Trait pipeline now emits precise return + param types end-to-end.
 - Next: Stage 5.85+ — user-defined trait dyn support, or Stage 6 planning
   (mir/lower split TD-011, Region inference TD-015).
+
+---
+Task ID: stage5.85-r134
+Agent: Super Z (main)
+Task: Stage 5.85 — is_stdlib_trait query + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.80 / 1690 tests (Stage 5.84 complete)
+
+Stage 5.85: is_stdlib_trait — trait-level membership query
+- src/stdlib.rs: new `is_stdlib_trait(trait_name: &str) -> bool` function
+  * Returns true for marker traits (Copy/Send/Sync/Sized/Unpin/Eq)
+  * Returns true for traits with methods (Clone/Drop/Display/Add/...)
+  * Returns false for user-defined traits, empty string, method names
+  * Implementation: `stdlib_trait_methods(trait_name).is_some()`
+  * §23 compliant: `is_<noun>_<noun>` (is_ prefix per §8.1)
+- src/lib.rs: re-export is_stdlib_trait
+- tests/v0/stage5/plan/is_stdlib_trait_tests.rs: 24 new tests
+  covering: 6 marker traits, 6 method traits, 6 non-stdlib cases,
+  4 consistency tests, 1 no-side-effects test
+- tests/all_tests.rs: added is_stdlib_trait_tests module (98 mods)
+- Cargo.toml: version 0.11.80 → 0.11.81 (description extended)
+- docs/develop/v0/stage-5/plan-5.85.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round85.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.85 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.55 entry appended
+- RELEASE_NOTES.md: v0.11.81 section prepended, header bumped
+- README.md: status line updated (85 sub-stages, 1714 tests)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (555.6 MiB removed) ✅
+- cargo test: 1714 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.85 PASSED — CI/CD all green per §1.2.
+- New API: is_stdlib_trait — trait-level membership query.
+- Complements is_stdlib_marker_trait + is_stdlib_trait_method.
+- 24 new tests covering marker traits, method traits, non-stdlib, consistency.
+- §16 + §23 compliant.
+- Next: Stage 5.86+ — user-defined trait dyn support, or Stage 6 planning
+  (mir/lower split TD-011, Region inference TD-015).

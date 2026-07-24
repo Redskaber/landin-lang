@@ -2485,3 +2485,27 @@ precise parameter type emission in codegen.
 **Note**: This stage was developed across two sessions due to a tool timeout.
 The session break occurred mid-way through test updates; the second session
 completed the remaining fixes and verified all 1690 tests pass.
+
+### Stage 5.85 — is_stdlib_trait query (v0.11.81)
+
+**Priority**: Add trait-level membership query `is_stdlib_trait()`. Complements
+existing `is_stdlib_marker_trait` (marker-only) and `is_stdlib_trait_method`
+(method-level) with a unified trait-level check.
+
+**Work completed**:
+- src/stdlib.rs: new `is_stdlib_trait(trait_name: &str) -> bool` function
+  * Returns true for marker traits (Copy/Send/Sync/Sized/Unpin/Eq)
+  * Returns true for traits with methods (Clone/Drop/Display/Add/...)
+  * Returns false for user-defined traits, empty string, method names
+  * Implementation: `stdlib_trait_methods(trait_name).is_some()`
+  * §23 compliant: `is_<noun>_<noun>` (is_ prefix per §8.1)
+- src/lib.rs: re-export is_stdlib_trait
+- tests/v0/stage5/plan/is_stdlib_trait_tests.rs: 24 new tests
+  covering: 6 marker traits, 6 method traits, 6 non-stdlib cases,
+  4 consistency tests (with is_stdlib_marker_trait, stdlib_trait_methods,
+  is_stdlib_trait_method), 1 no-side-effects test
+- tests/all_tests.rs: added is_stdlib_trait_tests module (98 mods)
+- Cargo.toml: version 0.11.80 → 0.11.81 (description extended)
+
+**Test impact**: +24 (1690 → 1714)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

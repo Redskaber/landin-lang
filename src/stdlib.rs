@@ -1240,6 +1240,36 @@ pub fn is_stdlib_marker_trait(trait_name: &str) -> bool {
     )
 }
 
+/// Stage 5.85: Check if a trait name is a stdlib trait (marker or with methods).
+///
+/// Returns `true` for:
+/// - Marker traits: Copy/Send/Sync/Sized/Unpin/Eq
+/// - Traits with methods: Clone/Drop/Default/Display/Debug/PartialEq/
+///   PartialOrd/Ord/Hash/Deref/DerefMut/IntoIterator/Iterator/Read/Write/
+///   Neg/Not/Add/Sub/Mul/Div/Rem/BitAnd/BitOr/BitXor/Shl/Shr/
+///   AddAssign/SubAssign/MulAssign/DivAssign/RemAssign/BitAndAssign/
+///   BitOrAssign/BitXorAssign/ShlAssign/ShrAssign
+///
+/// Returns `false` for:
+/// - User-defined trait names (Foo/Bar/MyTrait/...)
+/// - Empty string
+/// - Method names mistakenly passed as trait names ("clone" vs "Clone")
+///
+/// This is the trait-level membership query, complementing:
+/// - `is_stdlib_marker_trait` (marker-only check)
+/// - `is_stdlib_trait_method` (method-level check)
+///
+/// Per API-naming-standard §3 + §8.1: `is_stdlib_trait` follows the
+/// `is_<noun>_<noun>` pattern (`is_` prefix per §8.1 helper-verb convention,
+/// mirroring `is_stdlib_marker_trait` from v1.6).
+pub fn is_stdlib_trait(trait_name: &str) -> bool {
+    // A trait is a stdlib trait if it's either a marker trait OR a trait
+    // with methods in the registry. Both are captured by stdlib_trait_methods
+    // returning Some (marker traits return Some(&[]), method traits return
+    // Some(&[...])).
+    stdlib_trait_methods(trait_name).is_some()
+}
+
 /// Stage 5.37: Get all stdlib traits that have at least one vtable slot
 /// (i.e. declare at least one method).
 ///

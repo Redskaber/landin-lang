@@ -2458,3 +2458,37 @@ return_kind — add `param_kinds` field to `StdlibTraitMethod` and
 **Test impact**: +14 (1676 → 1690).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.55 (Stage 5.85, 2026-07-24)
+
+Stage 5.85 is_stdlib_trait query round. Add trait-level membership query
+`is_stdlib_trait()` — complements existing `is_stdlib_marker_trait`
+(marker-only) and `is_stdlib_trait_method` (method-level) with a unified
+trait-level check.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `is_stdlib_trait` | free fn (in `stdlib`) | `is_<noun>_<noun>` |
+
+**Design decisions**:
+1. **`is_` prefix** per §8.1 helper-verb convention — same family as
+   `is_stdlib_marker_trait` (v1.6) and `is_stdlib_trait_method` (v1.6).
+   All "membership check" functions use `is_` prefix.
+2. **Unified trait-level check** — covers both marker traits (return
+   `Some(&[])` from `stdlib_trait_methods`) and method traits (return
+   `Some(&[...])`). Implementation: `stdlib_trait_methods(trait_name).is_some()`.
+3. **Pure read function** — reuses existing `stdlib_trait_methods`, no new
+   dependencies. §16-compliant: data flow stays within `stdlib`.
+4. **Complements existing queries**:
+   - `is_stdlib_marker_trait` — marker-only (Copy/Send/Sync/Sized/Unpin/Eq)
+   - `is_stdlib_trait_method` — method-level (trait, method) pair
+   - `is_stdlib_trait` (new) — trait-level (any stdlib trait)
+
+**§16 compliance**: Pure read; no new dependencies introduced. Same module
+as `is_stdlib_marker_trait` / `is_stdlib_trait_method`.
+
+**Test impact**: +24 (1690 → 1714).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
