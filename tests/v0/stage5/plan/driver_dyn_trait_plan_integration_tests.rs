@@ -103,6 +103,7 @@ fn test_with_plan_no_method_call_no_record() {
             0,
             0,
             StdlibTypeKind::Unit,
+            vec![],
         )],
     );
 
@@ -134,6 +135,7 @@ fn test_with_plan_matching_method_call_records_dyn_call() {
             0,
             0,
             StdlibTypeKind::Unit,
+            vec![],
         )],
     );
 
@@ -172,6 +174,7 @@ fn test_with_plan_method_name_mismatch_no_record() {
             0,
             0,
             StdlibTypeKind::Unit,
+            vec![],
         )], // "foo" not "bar"
     );
 
@@ -198,8 +201,8 @@ fn test_multiple_method_calls_multiple_records() {
             DynTraitFatPtr::new("Bar", "S"),
         ],
         &[
-            DynTraitMethodCall::new("Foo", "S", "foo", 0, 0, StdlibTypeKind::Unit),
-            DynTraitMethodCall::new("Bar", "S", "bar", 0, 0, StdlibTypeKind::Unit),
+            DynTraitMethodCall::new("Foo", "S", "foo", 0, 0, StdlibTypeKind::Unit, vec![]),
+            DynTraitMethodCall::new("Bar", "S", "bar", 0, 0, StdlibTypeKind::Unit, vec![]),
         ],
     );
 

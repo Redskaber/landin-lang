@@ -62,6 +62,7 @@ fn test_mir_plan_single() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     assert_eq!(plan.fat_ptrs.len(), 1);
@@ -95,8 +96,16 @@ fn test_mir_plan_from_resolver_empty() {
 fn test_mir_plan_summary_fields() {
     let fps = [DynTraitFatPtr::new("Clone", "S")];
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new(
+            "Clone",
+            "S",
+            "clone_from",
+            1,
+            1,
+            StdlibTypeKind::Unit,
+            vec![],
+        ),
     ];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     assert_eq!(plan.summary.fat_ptr_count, 1);
@@ -115,6 +124,7 @@ fn test_mir_plan_eq() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let p1 = build_dyn_trait_mir_plan(&fps, &calls);
     let p2 = build_dyn_trait_mir_plan(&fps, &calls);

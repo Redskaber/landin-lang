@@ -2447,3 +2447,41 @@ side-table → codegen producing vtable indirect call IR + vtable/dynptr globals
 verifying that the full pipeline (driver → lower → codegen) produces correct
 output. Tests are robust to whether the dyn Trait path activates or falls
 back to legacy placeholder.
+
+### Stage 5.84 — dyn Trait param type refinement (v0.11.80)
+
+**Priority**: Symmetric to Stage 5.82's return_kind refinement. Add
+`param_kinds` field to `StdlibTraitMethod` and `DynTraitMethodCall` for
+precise parameter type emission in codegen.
+
+**Work completed**:
+- src/stdlib.rs:
+  * Added `pub param_kinds: &'static [StdlibTypeKind]` field to StdlibTraitMethod
+  * Added `EMPTY_PARAM_KINDS: &[StdlibTypeKind] = &[]` const for zero-param methods
+  * Updated all 23 method entries with param_kinds (via Python script)
+- src/mir/dyn_trait.rs:
+  * Added `pub param_kinds: Vec<StdlibTypeKind>` field to DynTraitMethodCall
+  * Updated `new()` constructor: added `param_kinds` parameter (BREAKING)
+  * Updated `from_fat_ptr()` constructor: added `param_kinds` parameter
+  * Updated `build_dyn_trait_method_calls_from_fat_ptrs`: passes `method.param_kinds.to_vec()`
+- src/codegen/mod.rs:
+  * Updated `codegen_dyn_trait_call`: uses `call_info.param_kinds[i-1]` for
+    precise arg types (self at index 0 → OpaquePtr, explicit args use param_kinds)
+    Falls back to detect_operand_type when param_kinds exhausted
+- tests/v0/stage5/plan/dyn_trait_param_kinds_tests.rs: 14 new tests
+  covering: StdlibTraitMethod.param_kinds field (4 tests), DynTraitMethodCall
+  param_kinds field (4 tests), codegen_dyn_trait_call uses param_kinds
+  (5 tests: i32/f64/bool/no-params/multiple), build_dyn_trait_method_calls
+  integration (1 test)
+- Updated 14 existing test files via Python scripts to add `vec![]` default
+  to all DynTraitMethodCall::new/from_fat_ptr calls
+- Updated stdlib_trait_method_tests.rs to add param_kinds to struct literals
+- tests/all_tests.rs: added dyn_trait_param_kinds_tests module (97 mods)
+- Cargo.toml: version 0.11.79 → 0.11.80 (description extended)
+
+**Test impact**: +14 (1676 → 1690)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Note**: This stage was developed across two sessions due to a tool timeout.
+The session break occurred mid-way through test updates; the second session
+completed the remaining fixes and verified all 1690 tests pass.

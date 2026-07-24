@@ -36,6 +36,7 @@ fn test_find_by_method_single_exact_match() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let found = find_dyn_trait_method_call_in_plan_by_method(&plan, "drop");
@@ -58,6 +59,7 @@ fn test_find_by_method_single_method_mismatch() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let found = find_dyn_trait_method_call_in_plan_by_method(&plan, "clone");
@@ -72,8 +74,8 @@ fn test_find_by_method_multiple_match_first() {
         DynTraitFatPtr::new("Drop", "B"),
     ];
     let calls = [
-        DynTraitMethodCall::new("Drop", "A", "drop", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Drop", "B", "drop", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Drop", "A", "drop", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new("Drop", "B", "drop", 0, 0, StdlibTypeKind::Unit, vec![]),
     ];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let found = find_dyn_trait_method_call_in_plan_by_method(&plan, "drop");
@@ -90,9 +92,25 @@ fn test_find_by_method_multiple_match_first() {
 fn test_find_by_method_multiple_match_middle() {
     let fps = [DynTraitFatPtr::new("Clone", "S")];
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Clone", "S", "clone_into", 2, 1, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new(
+            "Clone",
+            "S",
+            "clone_from",
+            1,
+            1,
+            StdlibTypeKind::Unit,
+            vec![],
+        ),
+        DynTraitMethodCall::new(
+            "Clone",
+            "S",
+            "clone_into",
+            2,
+            1,
+            StdlibTypeKind::Unit,
+            vec![],
+        ),
     ];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let found = find_dyn_trait_method_call_in_plan_by_method(&plan, "clone_from");
@@ -111,8 +129,8 @@ fn test_find_by_method_multiple_match_last() {
         DynTraitFatPtr::new("Display", "S"),
     ];
     let calls = [
-        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Display", "S", "fmt", 0, 1, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new("Display", "S", "fmt", 0, 1, StdlibTypeKind::Unit, vec![]),
     ];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let found = find_dyn_trait_method_call_in_plan_by_method(&plan, "fmt");
@@ -128,8 +146,8 @@ fn test_find_by_method_multiple_match_last() {
 fn test_find_by_method_multiple_no_match() {
     let fps = [DynTraitFatPtr::new("Drop", "S")];
     let calls = [
-        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Drop", "S", "finalize", 1, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new("Drop", "S", "finalize", 1, 0, StdlibTypeKind::Unit, vec![]),
     ];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let found = find_dyn_trait_method_call_in_plan_by_method(&plan, "nonexistent");
@@ -147,6 +165,7 @@ fn test_find_by_method_case_sensitive() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     // Lowercase match
@@ -165,8 +184,8 @@ fn test_find_by_method_same_name_across_traits() {
         DynTraitFatPtr::new("TraitB", "S"),
     ];
     let calls = [
-        DynTraitMethodCall::new("TraitA", "S", "execute", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("TraitB", "S", "execute", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("TraitA", "S", "execute", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new("TraitB", "S", "execute", 0, 0, StdlibTypeKind::Unit, vec![]),
     ];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let found = find_dyn_trait_method_call_in_plan_by_method(&plan, "execute");
@@ -183,8 +202,8 @@ fn test_find_by_method_same_name_across_types() {
         DynTraitFatPtr::new("Drop", "TypeB"),
     ];
     let calls = [
-        DynTraitMethodCall::new("Drop", "TypeA", "drop", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Drop", "TypeB", "drop", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Drop", "TypeA", "drop", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new("Drop", "TypeB", "drop", 0, 0, StdlibTypeKind::Unit, vec![]),
     ];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let found = find_dyn_trait_method_call_in_plan_by_method(&plan, "drop");
@@ -205,6 +224,7 @@ fn test_fuzzy_and_exact_consistent_when_unique() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
 
@@ -231,6 +251,7 @@ fn test_find_by_method_no_side_effects() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let r1 = find_dyn_trait_method_call_in_plan_by_method(&plan, "bar");

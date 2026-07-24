@@ -147,7 +147,7 @@ fn test_stdlib_type_kind_to_emit_type_unknown() {
 /// DynTraitMethodCall::new includes return_kind field.
 #[test]
 fn test_dyn_trait_method_call_new_with_return_kind() {
-    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit);
+    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]);
     assert_eq!(call.return_kind, StdlibTypeKind::Unit);
 }
 
@@ -155,7 +155,8 @@ fn test_dyn_trait_method_call_new_with_return_kind() {
 #[test]
 fn test_dyn_trait_method_call_from_fat_ptr_with_return_kind() {
     let fp = DynTraitFatPtr::new("Clone", "S");
-    let call = DynTraitMethodCall::from_fat_ptr(&fp, "clone", 0, 0, StdlibTypeKind::AllocType);
+    let call =
+        DynTraitMethodCall::from_fat_ptr(&fp, "clone", 0, 0, StdlibTypeKind::AllocType, vec![]);
     assert_eq!(call.return_kind, StdlibTypeKind::AllocType);
     assert_eq!(call.trait_name, "Clone");
 }
@@ -163,7 +164,7 @@ fn test_dyn_trait_method_call_from_fat_ptr_with_return_kind() {
 /// return_kind preserves the value passed in.
 #[test]
 fn test_return_kind_preserved() {
-    let call = DynTraitMethodCall::new("Display", "Vec", "fmt", 0, 1, StdlibTypeKind::Bool);
+    let call = DynTraitMethodCall::new("Display", "Vec", "fmt", 0, 1, StdlibTypeKind::Bool, vec![]);
     assert_eq!(call.return_kind, StdlibTypeKind::Bool);
 }
 
@@ -183,6 +184,7 @@ fn make_mir_with_return_kind(return_kind: StdlibTypeKind) -> MirBody {
         0,
         0,
         return_kind,
+        vec![],
     ));
     mir
 }

@@ -1,9 +1,62 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.79
+**Current version**: v0.11.80
 **Date**: 2026-07-24
-**Test count**: 1676 tests + 5 benchmarks
+**Test count**: 1690 tests + 5 benchmarks
+
+---
+
+## v0.11.80 — Stage 5.84 (dyn Trait param type refinement)
+
+### Overview
+
+Symmetric to Stage 5.82's return_kind refinement. Add `param_kinds` field
+to `StdlibTraitMethod` and `DynTraitMethodCall` for precise parameter type
+emission in codegen. Now codegen emits precise arg types for dyn Trait
+method calls instead of the I32 placeholder.
+
+### New API
+
+- `StdlibTraitMethod.param_kinds: &'static [StdlibTypeKind]` — pub field (in `src/stdlib.rs`)
+- `DynTraitMethodCall.param_kinds: Vec<StdlibTypeKind>` — pub field (in `src/mir/dyn_trait.rs`)
+
+### Breaking change
+
+`DynTraitMethodCall::new()` and `from_fat_ptr()` now require a `param_kinds`
+parameter. All call sites updated (14 test files + 1 source file + 1 struct
+literal test). Existing callers should pass `vec![]` for zero-param methods
+or `method.param_kinds.to_vec()` from `StdlibTraitMethod.param_kinds`.
+
+### Codegen integration
+
+`codegen_dyn_trait_call` now uses `call_info.param_kinds[i-1]` for precise
+arg types:
+- `self` (index 0) → `OpaquePtr` (fat pointer)
+- explicit args (index 1+) → `stdlib_type_kind_to_emit_type(param_kinds[i-1])`
+- falls back to `detect_operand_type` when param_kinds is exhausted
+
+### §23 compliance
+
+- `StdlibTraitMethod.param_kinds` — `<noun>_<noun>` (plural, mirrors `return_kind`)
+- `DynTraitMethodCall.param_kinds` — `<noun>_<noun>` (plural)
+
+### §16 compliance
+
+Data flow: `stdlib::StdlibTraitMethod.param_kinds` →
+`mir::dyn_trait::DynTraitMethodCall.param_kinds` (via
+`build_dyn_trait_method_calls_from_fat_ptrs`) →
+`codegen::stdlib_type_kind_to_emit_type` → `EmitType`. Single-directional,
+no circular dependency.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (799.4 MiB removed)
+cargo test: 1690 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

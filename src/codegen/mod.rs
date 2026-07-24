@@ -1200,10 +1200,29 @@ pub fn codegen_dyn_trait_call(
 
     // Codegen the args (self first, then explicit args — already ordered
     // by `build_dyn_trait_call_terminator`).
+    //
+    // Stage 5.84: use param_kinds for precise arg types. The args list is
+    // [self, arg0, arg1, ...] — self is at index 0 (always OpaquePtr since
+    // it's a fat pointer), explicit args start at index 1 and use
+    // param_kinds[i-1] for their EmitType. Falls back to detect_operand_type
+    // when param_kinds is exhausted or unavailable.
     let arg_pairs: Vec<(EmitType, EmitValue)> = args
         .iter()
-        .map(|a| {
-            let ty = detect_operand_type(mir, a, layouts).unwrap_or(EmitType::I32);
+        .enumerate()
+        .map(|(i, a)| {
+            let ty = if i == 0 {
+                // self — always a fat pointer (OpaquePtr)
+                EmitType::OpaquePtr
+            } else {
+                // Explicit arg — use param_kinds[i-1] if available
+                let param_idx = i - 1;
+                if param_idx < call_info.param_kinds.len() {
+                    stdlib_type_kind_to_emit_type(call_info.param_kinds[param_idx])
+                } else {
+                    // Fallback to operand type detection
+                    detect_operand_type(mir, a, layouts).unwrap_or(EmitType::I32)
+                }
+            };
             let val = codegen_operand(emitter, mir, a, interner, layouts);
             (ty, val)
         })

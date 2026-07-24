@@ -28,6 +28,7 @@ fn test_method_calls_text_batch_single() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let lines = emit_dyn_trait_method_calls_text_batch(&calls);
     assert_eq!(lines.len(), 1);
@@ -38,9 +39,17 @@ fn test_method_calls_text_batch_single() {
 #[test]
 fn test_method_calls_text_batch_multi() {
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new(
+            "Clone",
+            "S",
+            "clone_from",
+            1,
+            1,
+            StdlibTypeKind::Unit,
+            vec![],
+        ),
+        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]),
     ];
     let lines = emit_dyn_trait_method_calls_text_batch(&calls);
     assert_eq!(lines.len(), 3);
@@ -53,8 +62,8 @@ fn test_method_calls_text_batch_multi() {
 #[test]
 fn test_method_calls_text_batch_match_individual() {
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Drop", "T", "drop", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new("Drop", "T", "drop", 0, 0, StdlibTypeKind::Unit, vec![]),
     ];
     let batch = emit_dyn_trait_method_calls_text_batch(&calls);
     let individual: Vec<String> = calls.iter().map(emit_dyn_trait_method_call_text).collect();
@@ -71,6 +80,7 @@ fn test_method_calls_text_batch_no_side_effects() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let l1 = emit_dyn_trait_method_calls_text_batch(&calls);
     let l2 = emit_dyn_trait_method_calls_text_batch(&calls);
@@ -81,8 +91,8 @@ fn test_method_calls_text_batch_no_side_effects() {
 #[test]
 fn test_method_calls_text_batch_valid_ir() {
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Display", "Vec", "fmt", 0, 1, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new("Display", "Vec", "fmt", 0, 1, StdlibTypeKind::Unit, vec![]),
     ];
     let lines = emit_dyn_trait_method_calls_text_batch(&calls);
     for line in &lines {
@@ -96,9 +106,17 @@ fn test_method_calls_text_batch_valid_ir() {
 #[test]
 fn test_method_calls_text_batch_real_scenario() {
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new(
+            "Clone",
+            "S",
+            "clone_from",
+            1,
+            1,
+            StdlibTypeKind::Unit,
+            vec![],
+        ),
+        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]),
     ];
     let lines = emit_dyn_trait_method_calls_text_batch(&calls);
     assert_eq!(lines.len(), 3);
@@ -114,6 +132,7 @@ fn test_method_calls_text_batch_deterministic() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let l1 = emit_dyn_trait_method_calls_text_batch(&calls);
     let l2 = emit_dyn_trait_method_calls_text_batch(&calls);

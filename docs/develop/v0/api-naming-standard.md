@@ -2419,3 +2419,42 @@ full dyn Trait pipeline (Stages 5.78-5.82 integration).
 **Test impact**: +16 (1660 → 1676).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.54 (Stage 5.84, 2026-07-24)
+
+Stage 5.84 dyn Trait param type refinement round. Symmetric to Stage 5.82's
+return_kind — add `param_kinds` field to `StdlibTraitMethod` and
+`DynTraitMethodCall` for precise parameter type emission in codegen.
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `StdlibTraitMethod.param_kinds` | pub field (in `stdlib`) | `<noun>_<noun>` (plural) |
+| `DynTraitMethodCall.param_kinds` | pub field (in `mir::dyn_trait`) | `<noun>_<noun>` (plural) |
+
+**Design decisions**:
+1. **`&'static [StdlibTypeKind]`** for StdlibTraitMethod — keeps the `Copy`
+   + `&'static` design intact. Uses `EMPTY_PARAM_KINDS` const for zero-param
+   methods (avoids `&[] as &[T]` which doesn't work in const context).
+2. **`Vec<StdlibTypeKind>`** for DynTraitMethodCall — owned, consistent with
+   existing String fields. Cloned from `&'static [StdlibTypeKind]` via
+   `.to_vec()` in `build_dyn_trait_method_calls_from_fat_ptrs`.
+3. **Breaking change** to `DynTraitMethodCall::new` / `from_fat_ptr` — added
+   `param_kinds` parameter. All 14 test files + 1 source file + 1 struct
+   literal test updated. Default `vec![]` used for zero-param methods.
+4. **Codegen integration** — `codegen_dyn_trait_call` now uses
+   `call_info.param_kinds[i-1]` for precise arg types (self at index 0 →
+   OpaquePtr, explicit args use param_kinds). Falls back to
+   `detect_operand_type` when param_kinds is exhausted.
+5. **§16 compliance** — data flows one way: `stdlib::StdlibTraitMethod.
+   param_kinds` → `mir::dyn_trait::DynTraitMethodCall.param_kinds` →
+   `codegen::stdlib_type_kind_to_emit_type` → `EmitType`. No circular
+   dependency.
+6. **Naming symmetry** — `param_kinds` mirrors `return_kind` (Stage 5.82).
+   Both use `<noun>_<noun>` plural/singular pattern appropriately
+   (param_kinds is plural Vec/slice, return_kind is singular value).
+
+**Test impact**: +14 (1676 → 1690).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

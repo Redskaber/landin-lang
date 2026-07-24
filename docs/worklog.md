@@ -6155,3 +6155,58 @@ Stage Summary:
 - §16 compliant: tests use only public API.
 - Next: Stage 5.84+ — dyn Trait param type refinement, or Stage 6 planning
   (mir/lower split TD-011, Region inference TD-015).
+
+---
+Task ID: stage5.84-r133
+Agent: Super Z (main)
+Task: Stage 5.84 — dyn Trait param type refinement + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.79 / 1676 tests (Stage 5.83 complete)
+- Read prior agents' work from /home/z/my-project/worklog.md + docs/worklog.md
+- Note: This stage was developed across two sessions due to a tool timeout.
+  The first session completed ~80% (stdlib + mir + codegen changes + most
+  test updates). The second session (this one) completed the remaining
+  test fixes, added new tests, ran CI/CD, and updated all docs.
+
+Stage 5.84: dyn Trait param type refinement (symmetric to 5.82 return_kind)
+- src/stdlib.rs:
+  * Added `pub param_kinds: &'static [StdlibTypeKind]` field to StdlibTraitMethod
+  * Added `EMPTY_PARAM_KINDS: &[StdlibTypeKind] = &[]` const
+  * Updated all 23 method entries with param_kinds (via Python script)
+- src/mir/dyn_trait.rs:
+  * Added `pub param_kinds: Vec<StdlibTypeKind>` field to DynTraitMethodCall
+  * Updated `new()` + `from_fat_ptr()` constructors (BREAKING)
+  * Updated `build_dyn_trait_method_calls_from_fat_ptrs`: passes `method.param_kinds.to_vec()`
+- src/codegen/mod.rs:
+  * Updated `codegen_dyn_trait_call`: uses `call_info.param_kinds[i-1]` for
+    precise arg types (self→OpaquePtr, explicit args→param_kinds)
+- tests/v0/stage5/plan/dyn_trait_param_kinds_tests.rs: 14 new tests
+  covering: StdlibTraitMethod.param_kinds (4), DynTraitMethodCall param_kinds
+  (4), codegen_dyn_trait_call uses param_kinds (5), build integration (1)
+- Updated 14 existing test files via Python scripts to add `vec![]` default
+- Updated stdlib_trait_method_tests.rs to add param_kinds to struct literals
+- tests/all_tests.rs: added dyn_trait_param_kinds_tests module (97 mods)
+- Cargo.toml: version 0.11.79 → 0.11.80 (description extended)
+- docs/develop/v0/stage-5/plan-5.84.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round84.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.84 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.54 entry appended
+- RELEASE_NOTES.md: v0.11.80 section prepended, header bumped
+- README.md: status line updated (84 sub-stages, precise return + param types)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (799.4 MiB removed) ✅
+- cargo test: 1690 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.84 PASSED — CI/CD all green per §1.2.
+- dyn Trait param type refinement complete (symmetric to 5.82 return_kind).
+- New API: StdlibTraitMethod.param_kinds + DynTraitMethodCall.param_kinds.
+- Breaking change: DynTraitMethodCall::new/from_fat_ptr now require param_kinds.
+- 14 new tests + 14 existing test files updated.
+- dyn Trait pipeline now emits precise return + param types end-to-end.
+- Next: Stage 5.85+ — user-defined trait dyn support, or Stage 6 planning
+  (mir/lower split TD-011, Region inference TD-015).

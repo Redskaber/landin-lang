@@ -321,6 +321,7 @@ fn test_stdlib_trait_method_partial_eq() {
         self_kind: StdlibSelfKind::SelfByRef,
         param_count: 0,
         return_kind: StdlibTypeKind::Bool,
+        param_kinds: &[],
         is_unsafe: false,
     };
     let m2 = StdlibTraitMethod {
@@ -328,6 +329,7 @@ fn test_stdlib_trait_method_partial_eq() {
         self_kind: StdlibSelfKind::SelfByRef,
         param_count: 0,
         return_kind: StdlibTypeKind::Bool,
+        param_kinds: &[],
         is_unsafe: false,
     };
     let m3 = StdlibTraitMethod {
@@ -335,6 +337,7 @@ fn test_stdlib_trait_method_partial_eq() {
         self_kind: StdlibSelfKind::SelfByValue, // different
         param_count: 0,
         return_kind: StdlibTypeKind::Bool,
+        param_kinds: &[],
         is_unsafe: false,
     };
     assert_eq!(m1, m2);

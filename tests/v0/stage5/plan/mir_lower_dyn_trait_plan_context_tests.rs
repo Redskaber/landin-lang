@@ -22,9 +22,17 @@ fn build_sample_plan() -> landin_compiler::mir::DynTraitMIRPlan {
         DynTraitFatPtr::new("Clone", "T"),
     ];
     let calls = [
-        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Clone", "T", "clone", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Clone", "T", "clone_from", 1, 1, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new("Clone", "T", "clone", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new(
+            "Clone",
+            "T",
+            "clone_from",
+            1,
+            1,
+            StdlibTypeKind::Unit,
+            vec![],
+        ),
     ];
     build_dyn_trait_mir_plan(&fps, &calls)
 }
@@ -106,6 +114,7 @@ fn test_set_twice_last_wins() {
             0,
             0,
             StdlibTypeKind::Unit,
+            vec![],
         )],
     );
     cx.set_dyn_trait_plan(second);

@@ -240,6 +240,9 @@ pub fn emit_dyn_trait_fat_ptrs_text_batch_from_resolver(
 /// - `return_kind`: Stage 5.82 — the method's return type kind (from
 ///   `StdlibTraitMethod.return_kind`). Used by codegen to emit the
 ///   correct LLVM return type instead of the I32 placeholder.
+/// - `param_kinds`: Stage 5.84 — parameter type kinds (from
+///   `StdlibTraitMethod.param_kinds`). Used by codegen to emit precise
+///   LLVM arg types instead of the I32 placeholder.
 ///
 /// Per API-naming-standard §3: `DynTraitMethodCall` follows
 /// `<Noun><Noun><Noun>` pattern.
@@ -259,14 +262,17 @@ pub struct DynTraitMethodCall {
     /// Used by codegen to emit the correct LLVM return type instead of
     /// the I32 placeholder. Defaults to `Unit` for void methods.
     pub return_kind: crate::stdlib::StdlibTypeKind,
+    /// Stage 5.84: Parameter type kinds (from `StdlibTraitMethod.param_kinds`).
+    /// Length matches `param_count`. Used by codegen to emit precise LLVM
+    /// arg types instead of the I32 placeholder.
+    pub param_kinds: Vec<crate::stdlib::StdlibTypeKind>,
 }
 
 impl DynTraitMethodCall {
     /// Stage 5.66: Construct a `DynTraitMethodCall` from all fields.
     ///
-    /// Stage 5.82: `return_kind` parameter added. Existing callers should
-    /// pass `StdlibTypeKind::Unit` for void methods or the appropriate
-    /// kind from `StdlibTraitMethod.return_kind`.
+    /// Stage 5.82: `return_kind` parameter added.
+    /// Stage 5.84: `param_kinds` parameter added.
     ///
     /// Per API-naming-standard §3: `new` is the standard constructor name.
     pub fn new(
@@ -276,6 +282,7 @@ impl DynTraitMethodCall {
         slot_index: u32,
         param_count: u32,
         return_kind: crate::stdlib::StdlibTypeKind,
+        param_kinds: Vec<crate::stdlib::StdlibTypeKind>,
     ) -> Self {
         Self {
             trait_name: trait_name.to_string(),
@@ -284,6 +291,7 @@ impl DynTraitMethodCall {
             slot_index,
             param_count,
             return_kind,
+            param_kinds,
         }
     }
 
@@ -291,9 +299,11 @@ impl DynTraitMethodCall {
     /// plus method-specific info.
     ///
     /// Borrows the trait_name and type_name from the fat pointer, adding
-    /// the method name, slot index, parameter count, and return type kind.
+    /// the method name, slot index, parameter count, return type kind,
+    /// and parameter type kinds.
     ///
     /// Stage 5.82: `return_kind` parameter added.
+    /// Stage 5.84: `param_kinds` parameter added.
     ///
     /// Per API-naming-standard §3: `from_fat_ptr` follows
     /// `<prep>_<noun>_<noun>` pattern.
@@ -303,6 +313,7 @@ impl DynTraitMethodCall {
         slot_index: u32,
         param_count: u32,
         return_kind: crate::stdlib::StdlibTypeKind,
+        param_kinds: Vec<crate::stdlib::StdlibTypeKind>,
     ) -> Self {
         Self {
             trait_name: fat_ptr.trait_name.clone(),
@@ -311,6 +322,7 @@ impl DynTraitMethodCall {
             slot_index,
             param_count,
             return_kind,
+            param_kinds,
         }
     }
 
@@ -436,6 +448,7 @@ pub fn build_dyn_trait_method_calls_from_fat_ptrs(
                         slot_index,
                         method.param_count,
                         method.return_kind, // Stage 5.82: pass return_kind
+                        method.param_kinds.to_vec(), // Stage 5.84: pass param_kinds
                     ));
                 }
             }

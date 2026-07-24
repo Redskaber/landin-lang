@@ -624,7 +624,7 @@ pub enum StdlibSelfKind {
 ///
 /// Each entry maps a `(trait_name, method_name)` pair to its signature
 /// metadata: receiver kind, parameter count (excluding `self`), return
-/// type kind, and whether the method is `unsafe`.
+/// type kind, parameter type kinds, and whether the method is `unsafe`.
 ///
 /// Per API-naming-standard §3: `StdlibTraitMethod` follows
 /// `<Noun><Noun><Noun>` pattern. Field names follow `<noun>_<noun>` /
@@ -640,6 +640,10 @@ pub struct StdlibTraitMethod {
     pub param_count: u32,
     /// Return type kind.
     pub return_kind: StdlibTypeKind,
+    /// Stage 5.84: Parameter type kinds (excluding `self`). Length matches
+    /// `param_count`. Used by codegen to emit precise LLVM arg types for
+    /// dyn Trait method calls (TD-016 param refinement).
+    pub param_kinds: &'static [StdlibTypeKind],
     /// Whether the method is `unsafe fn`.
     pub is_unsafe: bool,
 }
@@ -660,6 +664,10 @@ impl StdlibTraitMethod {
 // "trait is not a stdlib trait at all" (None).
 // ---------------------------------------------------------------------------
 
+/// Stage 5.84: Empty param_kinds slice for methods with no parameters.
+/// Used as the `param_kinds` value for all `param_count: 0` methods.
+const EMPTY_PARAM_KINDS: &[StdlibTypeKind] = &[];
+
 /// Stage 5.36: Marker-trait method table — empty (no methods).
 const MARKER_METHODS: &[StdlibTraitMethod] = &[];
 
@@ -670,6 +678,7 @@ const CLONE_METHODS: &[StdlibTraitMethod] = &[
         self_kind: StdlibSelfKind::SelfByRef,
         param_count: 0,
         return_kind: StdlibTypeKind::AllocType, // Self (placeholder: AllocType for Adt-like)
+        param_kinds: EMPTY_PARAM_KINDS,
         is_unsafe: false,
     },
     StdlibTraitMethod {
@@ -677,6 +686,7 @@ const CLONE_METHODS: &[StdlibTraitMethod] = &[
         self_kind: StdlibSelfKind::SelfByMutRef,
         param_count: 1, // source: &Self
         return_kind: StdlibTypeKind::Unit,
+        param_kinds: &[StdlibTypeKind::AllocType],
         is_unsafe: false,
     },
 ];
@@ -687,6 +697,7 @@ const DROP_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByMutRef,
     param_count: 0,
     return_kind: StdlibTypeKind::Unit,
+    param_kinds: EMPTY_PARAM_KINDS,
     is_unsafe: false,
 }];
 
@@ -696,6 +707,7 @@ const DEFAULT_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::NoSelf,
     param_count: 0,
     return_kind: StdlibTypeKind::AllocType, // Self
+    param_kinds: EMPTY_PARAM_KINDS,
     is_unsafe: false,
 }];
 
@@ -705,6 +717,7 @@ const DISPLAY_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByRef,
     param_count: 1,                       // f: &mut Formatter
     return_kind: StdlibTypeKind::StdType, // Result<(), Error> → StdType
+    param_kinds: &[StdlibTypeKind::AllocType],
     is_unsafe: false,
 }];
 
@@ -714,6 +727,7 @@ const DEBUG_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByRef,
     param_count: 1,
     return_kind: StdlibTypeKind::StdType,
+    param_kinds: &[StdlibTypeKind::AllocType],
     is_unsafe: false,
 }];
 
@@ -724,6 +738,7 @@ const PARTIAL_EQ_METHODS: &[StdlibTraitMethod] = &[
         self_kind: StdlibSelfKind::SelfByRef,
         param_count: 1, // other: &Self
         return_kind: StdlibTypeKind::Bool,
+        param_kinds: &[StdlibTypeKind::AllocType],
         is_unsafe: false,
     },
     StdlibTraitMethod {
@@ -731,6 +746,7 @@ const PARTIAL_EQ_METHODS: &[StdlibTraitMethod] = &[
         self_kind: StdlibSelfKind::SelfByRef,
         param_count: 1,
         return_kind: StdlibTypeKind::Bool,
+        param_kinds: &[StdlibTypeKind::AllocType],
         is_unsafe: false,
     },
 ];
@@ -741,6 +757,7 @@ const PARTIAL_ORD_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByRef,
     param_count: 1,                       // other: &Self
     return_kind: StdlibTypeKind::StdType, // Option<Ordering>
+    param_kinds: &[StdlibTypeKind::AllocType],
     is_unsafe: false,
 }];
 
@@ -750,6 +767,7 @@ const ORD_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByRef,
     param_count: 1,                       // other: &Self
     return_kind: StdlibTypeKind::StdType, // Ordering
+    param_kinds: &[StdlibTypeKind::AllocType],
     is_unsafe: false,
 }];
 
@@ -759,6 +777,7 @@ const HASH_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByRef,
     param_count: 1, // state: &mut Hasher
     return_kind: StdlibTypeKind::Unit,
+    param_kinds: &[StdlibTypeKind::AllocType],
     is_unsafe: false,
 }];
 // ---------------------------------------------------------------------------
@@ -807,6 +826,7 @@ macro_rules! arith_binary_table {
             self_kind: StdlibSelfKind::SelfByValue,
             param_count: 1,                         // rhs: Rhs
             return_kind: StdlibTypeKind::AllocType, // Self::Output (Adt-like)
+            param_kinds: &[StdlibTypeKind::AllocType],
             is_unsafe: false,
         }];
     };
@@ -830,6 +850,7 @@ macro_rules! arith_assign_table {
             self_kind: StdlibSelfKind::SelfByMutRef,
             param_count: 1, // rhs: Rhs
             return_kind: StdlibTypeKind::Unit,
+            param_kinds: &[StdlibTypeKind::AllocType],
             is_unsafe: false,
         }];
     };
@@ -852,6 +873,7 @@ const NEG_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByValue,
     param_count: 0,
     return_kind: StdlibTypeKind::AllocType, // Self
+    param_kinds: EMPTY_PARAM_KINDS,
     is_unsafe: false,
 }];
 
@@ -861,6 +883,7 @@ const NOT_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByValue,
     param_count: 0,
     return_kind: StdlibTypeKind::AllocType,
+    param_kinds: EMPTY_PARAM_KINDS,
     is_unsafe: false,
 }];
 
@@ -870,6 +893,7 @@ const DEREF_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByRef,
     param_count: 0,
     return_kind: StdlibTypeKind::AllocType, // &Self::Target
+    param_kinds: EMPTY_PARAM_KINDS,
     is_unsafe: false,
 }];
 
@@ -879,6 +903,7 @@ const DEREF_MUT_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByMutRef,
     param_count: 0,
     return_kind: StdlibTypeKind::AllocType, // &mut Self::Target
+    param_kinds: EMPTY_PARAM_KINDS,
     is_unsafe: false,
 }];
 
@@ -888,6 +913,7 @@ const INTO_ITERATOR_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByValue,
     param_count: 0,
     return_kind: StdlibTypeKind::AllocType, // Self::IntoIter
+    param_kinds: EMPTY_PARAM_KINDS,
     is_unsafe: false,
 }];
 
@@ -897,6 +923,7 @@ const ITERATOR_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByMutRef,
     param_count: 0,
     return_kind: StdlibTypeKind::StdType, // Option<Self::Item>
+    param_kinds: EMPTY_PARAM_KINDS,
     is_unsafe: false,
 }];
 
@@ -906,6 +933,7 @@ const READ_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByMutRef,
     param_count: 1,                       // buf: &mut [u8]
     return_kind: StdlibTypeKind::StdType, // Result<usize>
+    param_kinds: &[StdlibTypeKind::AllocType],
     is_unsafe: false,
 }];
 
@@ -915,6 +943,7 @@ const WRITE_METHODS: &[StdlibTraitMethod] = &[StdlibTraitMethod {
     self_kind: StdlibSelfKind::SelfByMutRef,
     param_count: 1,                       // buf: &[u8]
     return_kind: StdlibTypeKind::StdType, // Result<usize>
+    param_kinds: &[StdlibTypeKind::AllocType],
     is_unsafe: false,
 }];
 

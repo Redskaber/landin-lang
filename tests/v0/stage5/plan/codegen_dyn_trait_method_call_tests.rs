@@ -157,6 +157,7 @@ fn make_mir_with_dyn_call() -> MirBody {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     ));
     mir
 }
@@ -208,6 +209,7 @@ fn test_codegen_dyn_trait_call_uses_correct_dynptr_symbol() {
         2,
         1,
         StdlibTypeKind::Unit,
+        vec![],
     ));
 
     let mut emitter = TextEmitter::new();
@@ -287,6 +289,7 @@ fn test_codegen_dyn_trait_call_multiple_distinct_indices() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     ));
     mir.dyn_trait_calls.push(DynTraitMethodCall::new(
         "Drop",
@@ -295,6 +298,7 @@ fn test_codegen_dyn_trait_call_multiple_distinct_indices() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     ));
 
     let mut emitter = TextEmitter::new();

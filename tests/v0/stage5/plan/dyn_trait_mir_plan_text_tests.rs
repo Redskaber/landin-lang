@@ -34,6 +34,7 @@ fn test_plan_text_single() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let text = emit_dyn_trait_mir_plan_text(&plan);
@@ -47,8 +48,16 @@ fn test_plan_text_single() {
 fn test_plan_text_clone() {
     let fps = [DynTraitFatPtr::new("Clone", "S")];
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
-        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit, vec![]),
+        DynTraitMethodCall::new(
+            "Clone",
+            "S",
+            "clone_from",
+            1,
+            1,
+            StdlibTypeKind::Unit,
+            vec![],
+        ),
     ];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let text = emit_dyn_trait_mir_plan_text(&plan);
@@ -104,6 +113,7 @@ fn test_plan_text_contains_both() {
         0,
         0,
         StdlibTypeKind::Unit,
+        vec![],
     )];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     let text = emit_dyn_trait_mir_plan_text(&plan);
