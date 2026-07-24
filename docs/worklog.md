@@ -6634,3 +6634,42 @@ Stage Summary:
 - 14 new tests, 0 clippy warnings, fmt clean.
 - §16 + §23 compliant.
 - Next: Stage 5.95+ — user-defined trait dyn support (TD-018), or Stage 6 planning.
+
+---
+Task ID: stage5.95-r144
+Agent: Super Z (main)
+Task: Stage 5.95 — stdlib_trait_methods_by_self_kind reverse query + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.90 / 1846 tests (Stage 5.94 complete)
+
+Stage 5.95: stdlib_trait_methods_by_self_kind — reverse query by self_kind
+- src/stdlib.rs: new `stdlib_trait_methods_by_self_kind(kind) -> Vec<(&'static str, &'static str)>` function
+  * Iterates STDLIB_TRAITS, filters methods by self_kind
+  * Returns (trait_name, method_name) pairs
+  * §23 compliant: `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` (plural, _by_self_kind suffix)
+- src/lib.rs: re-export stdlib_trait_methods_by_self_kind
+- tests/v0/stage5/plan/stdlib_trait_methods_by_self_kind_tests.rs: 11 new tests
+  covering: 4 non-empty, 3 contains, 2 consistency, 2 robustness
+- tests/all_tests.rs: added stdlib_trait_methods_by_self_kind_tests module (107 mods)
+- Cargo.toml: version 0.11.90 → 0.11.91 (description extended)
+- docs/develop/v0/stage-5/plan-5.95.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round95.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.95 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.65 entry appended
+- RELEASE_NOTES.md: v0.11.91 section prepended, header bumped
+- README.md: status line updated (95 sub-stages, 1857 tests, 107 modules)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (563.7 MiB removed) ✅
+- cargo test: 1857 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.95 PASSED — CI/CD all green per §1.2.
+- New API: stdlib_trait_methods_by_self_kind — reverse query by self_kind.
+- Complements stdlib_trait_method_self_kind (5.94, forward query).
+- 11 new tests, 0 clippy warnings, fmt clean.
+- §16 + §23 compliant.
+- Next: Stage 5.96+ — user-defined trait dyn support (TD-018), or Stage 6 planning.

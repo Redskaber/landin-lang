@@ -2758,3 +2758,29 @@ return_kind + param_kinds; this stage adds the remaining 3.
 **Milestone**: Full StdlibTraitMethod field accessor coverage complete!
 All 5 queryable fields (self_kind/param_count/return_kind/param_kinds/is_unsafe)
 now have dedicated convenience accessors. (name is a query parameter, not a field accessor.)
+
+### Stage 5.95 — stdlib_trait_methods_by_self_kind reverse query (v0.11.91)
+
+**Priority**: Add reverse query `stdlib_trait_methods_by_self_kind` — given a
+self_kind, find all (trait, method) pairs with that receiver kind. Complements
+the forward query `stdlib_trait_method_self_kind` (5.94).
+
+**Work completed**:
+- src/stdlib.rs: new `stdlib_trait_methods_by_self_kind(kind) -> Vec<(&'static str, &'static str)>` function
+  * Iterates STDLIB_TRAITS, filters methods by self_kind
+  * Returns (trait_name, method_name) pairs
+  * §23 compliant: `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` (plural, `_by_self_kind` suffix)
+- src/lib.rs: re-export stdlib_trait_methods_by_self_kind
+- tests/v0/stage5/plan/stdlib_trait_methods_by_self_kind_tests.rs: 11 new tests
+  covering: 4 non-empty tests (SelfByRef/SelfByMutRef/SelfByValue/NoSelf),
+  3 contains tests (Clone/Drop/Default), 2 consistency tests (all match query,
+  all 4 kinds cover all methods), 2 robustness tests (no side effects, all 4 cover all)
+- tests/all_tests.rs: added stdlib_trait_methods_by_self_kind_tests module (107 mods)
+- Cargo.toml: version 0.11.90 → 0.11.91 (description extended)
+
+**Test impact**: +11 (1846 → 1857)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Note**: Fixed test assertion — SelfByMutRef has 16 methods (10 assign + Drop +
+clone_from + others), more than SelfByRef's 9. Original test assumed SelfByRef >
+SelfByMutRef which was wrong.

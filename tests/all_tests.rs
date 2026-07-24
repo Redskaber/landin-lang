@@ -355,3 +355,6 @@ mod stdlib_trait_method_accessors_tests;
 
 #[path = "v0/stage5/plan/stdlib_trait_method_accessors_2_tests.rs"]
 mod stdlib_trait_method_accessors_2_tests;
+
+#[path = "v0/stage5/plan/stdlib_trait_methods_by_self_kind_tests.rs"]
+mod stdlib_trait_methods_by_self_kind_tests;

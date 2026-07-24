@@ -1260,6 +1260,40 @@ pub fn stdlib_trait_method_is_unsafe(trait_name: &str, method_name: &str) -> Opt
     find_stdlib_trait_method(trait_name, method_name).map(|m| m.is_unsafe)
 }
 
+/// Stage 5.95: Find all stdlib trait methods with a given `self` receiver kind.
+///
+/// Returns a `Vec<(&'static str, &'static str)>` of `(trait_name, method_name)`
+/// pairs for every stdlib trait method whose `self_kind` matches the given
+/// `kind`. This is a **reverse query** — given a self_kind, find all matching
+/// methods. Complements `stdlib_trait_method_self_kind` (Stage 5.94, forward
+/// query for a single method's self_kind).
+///
+/// Useful for:
+/// - Codegen: find all `SelfByValue` methods (need to copy receiver)
+/// - Typeck: validate self kind consistency
+/// - Documentation: list methods by receiver type
+///
+/// Per API-naming-standard §3 + §8.1: `stdlib_trait_methods_by_self_kind`
+/// follows the `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` pattern (plural),
+/// mirroring `stdlib_traits_with_method` from v1.6. The `_by_self_kind` suffix
+/// follows Rust API-guidelines field-filter convention (mirrors
+/// `find_dyn_trait_method_call_in_plan_by_method` from v1.47).
+pub fn stdlib_trait_methods_by_self_kind(
+    kind: StdlibSelfKind,
+) -> Vec<(&'static str, &'static str)> {
+    let mut out: Vec<(&'static str, &'static str)> = Vec::new();
+    for &trait_name in STDLIB_TRAITS {
+        if let Some(methods) = stdlib_trait_methods(trait_name) {
+            for method in methods {
+                if method.self_kind == kind {
+                    out.push((trait_name, method.name));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Stage 5.37: Get the complete vtable slot layout for a stdlib trait.
 ///
 /// Returns `Some(Vec<StdlibVtableSlot>)` for any registered trait (including

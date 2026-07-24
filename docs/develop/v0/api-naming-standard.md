@@ -2758,3 +2758,30 @@ All 5 queryable fields now have dedicated convenience accessors.
 **Test impact**: +14 (1832 → 1846).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.65 (Stage 5.95, 2026-07-24)
+
+Stage 5.95 stdlib_trait_methods_by_self_kind reverse query round. Add reverse
+query returning all (trait, method) pairs with a given self_kind. Complements
+the forward query `stdlib_trait_method_self_kind` (Stage 5.94).
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_trait_methods_by_self_kind` | free fn (in `stdlib`) | `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` (plural) |
+
+**Design decisions**:
+1. **Reverse query** — given a self_kind, find all matching (trait, method)
+   pairs. Complements the forward query `stdlib_trait_method_self_kind`
+   (v1.64) which queries a single method's self_kind.
+2. **`_by_self_kind` suffix** — Rust API-guidelines field-filter convention,
+   mirroring `find_dyn_trait_method_call_in_plan_by_method` from v1.47.
+3. **Returns `Vec<(&'static str, &'static str)>`** — (trait_name, method_name)
+   pairs, all `&'static` since they come from the static method tables.
+4. **§16 compliance** — pure read, reuses `STDLIB_TRAITS` +
+   `stdlib_trait_methods`, no new dependencies.
+
+**Test impact**: +11 (1846 → 1857).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

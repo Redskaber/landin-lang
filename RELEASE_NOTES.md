@@ -1,9 +1,49 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.90
+**Current version**: v0.11.91
 **Date**: 2026-07-24
-**Test count**: 1846 tests + 5 benchmarks
+**Test count**: 1857 tests + 5 benchmarks
+
+---
+
+## v0.11.91 — Stage 5.95 (stdlib_trait_methods_by_self_kind reverse query)
+
+### Overview
+
+Add reverse query `stdlib_trait_methods_by_self_kind` — given a self_kind,
+find all (trait, method) pairs with that receiver kind. Complements the
+forward query `stdlib_trait_method_self_kind` (Stage 5.94).
+
+### New API
+
+- `stdlib_trait_methods_by_self_kind(kind: StdlibSelfKind) -> Vec<(&'static str, &'static str)>` — free fn (in `src/stdlib.rs`)
+
+### Behavior
+
+Returns all `(trait_name, method_name)` pairs where the method's `self_kind`
+matches the given `kind`. Useful for codegen (find all SelfByValue methods
+that need copy), typeck (validate self kind consistency), and documentation.
+
+### §23 compliance
+
+`<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` (plural) — `_by_self_kind` suffix
+follows Rust API-guidelines field-filter convention (mirrors
+`find_dyn_trait_method_call_in_plan_by_method` from v1.47).
+
+### §16 compliance
+
+Pure read function. Reuses `STDLIB_TRAITS` + `stdlib_trait_methods` — no new
+dependencies. Data flow stays within `stdlib`.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (563.7 MiB removed)
+cargo test: 1857 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
