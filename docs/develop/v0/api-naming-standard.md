@@ -2147,3 +2147,35 @@ circular dependency; data flows one way (driver → cx → lower).
 **Test impact**: +11 (1575 → 1586).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.47 (Stage 5.77, 2026-07-24)
+
+Stage 5.77 find_dyn_trait_method_call_in_plan_by_method round. Fuzzy lookup
+variant of Stage 5.75's exact lookup — looks up a `DynTraitMethodCall` in a
+`DynTraitMIRPlan` by `method_name` only (no trait/type required).
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `find_dyn_trait_method_call_in_plan_by_method` | free fn (in `mir`) | `find_<noun>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>` |
+
+**Design decisions**:
+1. `_by_method` suffix — Rust API-guidelines convention for field-filter
+   functions (mirrors `iter_by`, `get_by`). Distinguishes from 5.75's
+   `_in_plan` (no suffix) which uses the full triple.
+2. First-match-wins semantics — when multiple `DynTraitMethodCall` entries
+   share the same `method_name`, the first one is returned. At MIR-lower
+   time we cannot disambiguate trait/type, so this is intentional. The
+   caller (Stage 5.78+) should treat the result as a candidate.
+3. Case-sensitive exact string equality — same strictness as 5.75.
+4. Pure read function: `(&DynTraitMIRPlan, &str) -> Option<&DynTraitMethodCall>`.
+   No mutation, no side effects. §16-compliant: data flow stays entirely
+   within `mir::dyn_trait`.
+
+**§16 compliance**: Pure read; no new dependencies introduced. Same module
+as Stage 5.75's `find_dyn_trait_method_call_in_plan`.
+
+**Test impact**: +12 (1586 → 1598).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

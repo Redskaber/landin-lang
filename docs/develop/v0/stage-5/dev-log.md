@@ -2213,3 +2213,29 @@ logic changes (those land in Stage 5.77+).
 
 **Test impact**: +11 (1575 → 1586)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.77 — find_dyn_trait_method_call_in_plan_by_method (v0.11.73)
+
+**Priority**: Fuzzy lookup variant of Stage 5.75's exact lookup. Looks up a
+`DynTraitMethodCall` by `method_name` ONLY (no trait/type). Use case: MIR
+lowering (Stage 5.78+) processes a HIR MethodCall `receiver.method(args)`
+and only has the method_name from HIR — the receiver's concrete dyn Trait
+type isn't known at lower time (it's a typeck concern).
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `find_dyn_trait_method_call_in_plan_by_method()` function
+  * Signature: (&DynTraitMIRPlan, &str) -> Option<&DynTraitMethodCall>
+  * First-match-wins on method_name field; case-sensitive exact string equality
+  * Returns None for empty plan or no match
+  * Pure read function (§16); `find_` prefix + `_by_method` suffix per §8.1
+- src/mir/mod.rs: re-export (added find_dyn_trait_method_call_in_plan_by_method)
+- tests/v0/stage5/plan/dyn_trait_method_call_in_plan_by_method_tests.rs: 12 new tests
+  covering: empty plan, single exact match, single mismatch, multiple calls
+  (match first/middle/last), no match, case sensitivity, same-name across
+  traits (first-wins), same-name across types (first-wins), consistency with
+  5.75 exact lookup when unique, no-side-effects idempotence
+- tests/all_tests.rs: added dyn_trait_method_call_in_plan_by_method_tests module (91 mods)
+- Cargo.toml: version 0.11.72 → 0.11.73 (description extended)
+
+**Test impact**: +12 (1586 → 1598)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

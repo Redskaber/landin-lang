@@ -1,9 +1,64 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.72
+**Current version**: v0.11.73
 **Date**: 2026-07-24
-**Test count**: 1586 tests + 5 benchmarks
+**Test count**: 1598 tests + 5 benchmarks
+
+---
+
+## v0.11.73 — Stage 5.77 (find_dyn_trait_method_call_in_plan_by_method)
+
+### Overview
+
+Fuzzy lookup variant of Stage 5.75's exact lookup. Looks up a
+`DynTraitMethodCall` in a `DynTraitMIRPlan` by `method_name` only (no
+trait/type required). Use case: MIR lowering (Stage 5.78+) processes a
+HIR `receiver.method(args)` and only has the method_name from HIR — the
+receiver's concrete dyn Trait type isn't known at lower time (it's a
+typeck concern).
+
+### New API
+
+- `find_dyn_trait_method_call_in_plan_by_method(&DynTraitMIRPlan, &str) -> Option<&DynTraitMethodCall>` (in `src/mir/dyn_trait.rs`)
+
+### Match semantics
+
+- Matches on `method_name` field only (case-sensitive exact string equality)
+- First-match-wins when multiple entries share the same `method_name`
+- Returns `None` for an empty plan or no match
+
+### §23 compliance
+
+`find_<noun>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>` — `find_` prefix
+per §8.1, `_by_method` suffix per Rust API-guidelines field-filter
+convention (mirrors `iter_by` / `get_by`).
+
+### §16 compliance
+
+Pure read function. Input `&DynTraitMIRPlan` + `&str`, output
+`Option<&DynTraitMethodCall>`. No mutation, no side effects, no new
+dependencies. Data flow stays within `mir::dyn_trait`.
+
+### Relationship to prior stages
+
+| Stage | API | Use case |
+|-------|-----|----------|
+| 5.75 | `find_dyn_trait_method_call_in_plan` (exact) | Caller knows full (trait, type, method) |
+| 5.76 | `MirLowerCtxt::set_dyn_trait_plan` / `dyn_trait_plan()` | Context wiring |
+| 5.77 | `find_dyn_trait_method_call_in_plan_by_method` (fuzzy) | Caller knows only method_name |
+
+Stage 5.78+ will use 5.76's cx field + 5.77's fuzzy lookup together in
+the `HirExprKind::MethodCall` branch.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (544.8 MiB removed)
+cargo test: 1598 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

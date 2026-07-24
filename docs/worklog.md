@@ -5797,3 +5797,52 @@ Stage Summary:
   TraitResolver ownership in MirLowerCtxt; no circular dependency.
 - Next: Stage 5.77+ — modify the HirExprKind::MethodCall branch in lower_expr_to_operand
   to query cx.dyn_trait_plan() when present, replacing the Error placeholder func.
+
+---
+Task ID: stage5.77-r126
+Agent: Super Z (main)
+Task: Stage 5.77 — find_dyn_trait_method_call_in_plan_by_method + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.72 / 1586 tests (Stage 5.76 complete)
+
+Stage 5.77: find_dyn_trait_method_call_in_plan_by_method (fuzzy lookup variant of 5.75)
+- src/mir/dyn_trait.rs: new find_dyn_trait_method_call_in_plan_by_method() function
+  * Signature: (&DynTraitMIRPlan, &str) -> Option<&DynTraitMethodCall>
+  * First-match-wins on method_name field; case-sensitive exact string equality
+  * Returns None for empty plan or no match
+  * Pure read function (§16); `find_` prefix + `_by_method` suffix per §8.1
+- src/mir/mod.rs: re-export (added find_dyn_trait_method_call_in_plan_by_method)
+- tests/v0/stage5/plan/dyn_trait_method_call_in_plan_by_method_tests.rs: 12 new tests
+  covering: empty plan, single exact match, single mismatch, multiple calls
+  (match first/middle/last), no match, case sensitivity, same-name across
+  traits (first-wins), same-name across types (first-wins), consistency with
+  5.75 exact lookup when unique, no-side-effects idempotence
+- tests/all_tests.rs: added dyn_trait_method_call_in_plan_by_method_tests module (91 mods)
+- Cargo.toml: version 0.11.72 → 0.11.73 (description extended)
+- docs/develop/v0/stage-5/plan-5.77.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round77.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.77 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.47 entry appended
+- RELEASE_NOTES.md: v0.11.73 section prepended, header bumped
+- README.md: status line + Stage 5 row test count + sub-stage list updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (544.8 MiB removed) ✅
+- cargo test: 1598 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.77 PASSED — CI/CD all green per §1.2.
+- Fuzzy lookup variant of 5.75: looks up by method_name only (no trait/type).
+- Use case: MIR lower processes `receiver.method(args)` — only knows method_name
+  from HIR; trait/type is typeck's concern.
+- §23 compliant: find_<noun>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>.
+- §16 compliant: pure read, no new deps, data flow stays in mir::dyn_trait.
+- Dyn Trait MIR infrastructure now has: bulk-emission (5.74) + exact lookup
+  (5.75) + cx wiring (5.76) + fuzzy lookup (5.77) — all tools ready for
+  mir/lower integration.
+- Next: Stage 5.78+ — modify HirExprKind::MethodCall branch in lower_expr_to_operand
+  to query cx.dyn_trait_plan() via find_dyn_trait_method_call_in_plan_by_method()
+  when plan is set, replacing the Error placeholder func.

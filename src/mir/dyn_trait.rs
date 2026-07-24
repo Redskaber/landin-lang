@@ -769,3 +769,86 @@ pub fn find_dyn_trait_method_call_in_plan<'a>(
             && call.method_name == method_name
     })
 }
+
+// ============================================================================
+// Stage 5.77: find_dyn_trait_method_call_in_plan_by_method
+//
+// Fuzzy lookup variant of Stage 5.75's find_dyn_trait_method_call_in_plan.
+// Looks up a DynTraitMethodCall by method_name ONLY (no trait/type).
+//
+// Use case: MIR lowering (Stage 5.78+) processes a HIR MethodCall
+// `receiver.method(args)` and only has the method_name from HIR — the
+// receiver's concrete dyn Trait type isn't known at lower time (it's a
+// typeck concern). This fuzzy lookup lets the lower find a candidate
+// DynTraitMethodCall by method_name alone.
+//
+// Per API-naming-standard §3 + §8.1: `find_dyn_trait_method_call_in_plan_by_method`
+// follows the `find_<noun>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>` pattern.
+// The `_by_method` suffix is the Rust API-guidelines convention for filtering
+// by a specific field (e.g. `iter_by`, `get_by`).
+// ============================================================================
+
+/// Stage 5.77: Find the first `DynTraitMethodCall` in a `DynTraitMIRPlan`
+/// matching the given `method_name` (fuzzy lookup, ignoring trait/type).
+///
+/// Returns a reference to the first matching entry in `plan.method_calls`,
+/// or `None` if no entry's `method_name` matches.
+///
+/// # Match semantics
+///
+/// - Matches on `method_name` field **only** (case-sensitive string equality)
+/// - Returns the **first** match when multiple entries share the same
+///   `method_name` (e.g. `Drop::drop` for type `A` AND `Drop::drop` for
+///   type `B` — first wins)
+/// - Returns `None` for an empty `plan.method_calls` or no match
+///
+/// # When to use this vs. `find_dyn_trait_method_call_in_plan` (Stage 5.75)
+///
+/// - Use **5.75** (`find_dyn_trait_method_call_in_plan`) when the caller
+///   already knows the exact `(trait, type, method)` triple — e.g. after
+///   typeck has resolved the receiver's concrete dyn Trait type
+/// - Use **5.77** (`find_dyn_trait_method_call_in_plan_by_method`) when
+///   the caller only knows the method name — e.g. MIR lowering, which
+///   sees `receiver.method(args)` in HIR but doesn't yet know the
+///   receiver's trait/type
+///
+/// # Ambiguity note
+///
+/// When multiple `DynTraitMethodCall` entries share the same `method_name`
+/// (e.g. `Clone::clone` for type `A` and `Clone::clone` for type `B`),
+/// this function returns the **first** one. This is intentional — at
+/// MIR-lower time we cannot disambiguate. The caller (Stage 5.78+) should
+/// treat the result as a candidate and may need additional typeck info
+/// to confirm correctness.
+///
+/// # §16 compliance
+///
+/// Pure read function: input `&DynTraitMIRPlan` + `&str`, output
+/// `Option<&DynTraitMethodCall>`. No mutation, no side effects, no new
+/// dependencies. Data flow stays within `mir::dyn_trait`.
+///
+/// # Example
+///
+/// ```ignore
+/// use landin_compiler::mir::{
+///     build_dyn_trait_mir_plan_from_resolver,
+///     find_dyn_trait_method_call_in_plan_by_method,
+/// };
+///
+/// let plan = build_dyn_trait_mir_plan_from_resolver(&resolver, &interner);
+/// if let Some(call) = find_dyn_trait_method_call_in_plan_by_method(
+///     &plan, "drop") {
+///     // call.slot_index gives the vtable slot for the dyn drop method
+/// }
+/// ```
+///
+/// Per API-naming-standard §3 + §8.1: `find_dyn_trait_method_call_in_plan_by_method`
+/// follows the `find_<noun>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>` pattern.
+pub fn find_dyn_trait_method_call_in_plan_by_method<'a>(
+    plan: &'a DynTraitMIRPlan,
+    method_name: &str,
+) -> Option<&'a DynTraitMethodCall> {
+    plan.method_calls
+        .iter()
+        .find(|call| call.method_name == method_name)
+}
