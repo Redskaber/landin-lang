@@ -1944,3 +1944,18 @@ piece** before actual method call MIR lowering.
 **Test impact**: +10 (1483 → 1493).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.37 (Stage 5.67, 2026-07-24)
+
+Stage 5.67 emit_dyn_trait_method_call_text round. First substantive dyn
+Trait method call lowering.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_dyn_trait_method_call_text` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>_<noun>` |
+
+**Test impact**: +10 (1493 → 1503).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

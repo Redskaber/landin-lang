@@ -2047,3 +2047,18 @@ Last infrastructure piece before actual method call MIR lowering.
 
 **Test impact**: +10 (1483 → 1493)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.67 — emit_dyn_trait_method_call_text (v0.11.63)
+
+**Priority**: First substantive dyn Trait method call lowering — converts
+DynTraitMethodCall to LLVM IR text for vtable indirect call.
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `emit_dyn_trait_method_call_text()` function
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_method_call_text_tests.rs: 10 new tests
+- tests/all_tests.rs: added dyn_trait_method_call_text_tests module (81 mods)
+- Cargo.toml: version 0.11.62 → 0.11.63
+
+**Test impact**: +10 (1493 → 1503)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

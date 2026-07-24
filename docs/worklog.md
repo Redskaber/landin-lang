@@ -5458,3 +5458,32 @@ Stage Summary:
   - emit_dyn_trait_fat_ptr_text (5.63) + batch (5.64) + from_resolver (5.65) — IR text
   - DynTraitMethodCall (5.66) — method call representation
 - Next: Stage 5.67+ (actual dyn Trait method call MIR lowering).
+
+---
+Task ID: stage5.67-r116
+Agent: Super Z (main)
+Task: Stage 5.67 — emit_dyn_trait_method_call_text + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.62 / 1493 tests (Stage 5.66 complete)
+
+Stage 5.67: emit_dyn_trait_method_call_text (FIRST SUBSTANTIVE method call lowering)
+- src/mir/dyn_trait.rs: new emit_dyn_trait_method_call_text() function
+  * Converts DynTraitMethodCall to LLVM IR for vtable indirect call
+  * Generates: getelementptr (extract vtable ptr) + load (load method fn) + call
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_method_call_text_tests.rs: 10 new tests
+- tests/all_tests.rs: added dyn_trait_method_call_text_tests module (81 mods)
+- Cargo.toml: version 0.11.62 → 0.11.63
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (458.4 MiB removed) ✅
+- cargo test: 1503 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.67 PASSED — CI/CD all green per §1.2.
+- emit_dyn_trait_method_call_text() — first substantive dyn Trait method call lowering.
+- Generates LLVM IR: getelementptr + load + call for vtable indirect dispatch.
+- Next: Stage 5.68+ (dyn Trait method call MIR lowering integration).

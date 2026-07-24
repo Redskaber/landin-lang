@@ -313,3 +313,63 @@ impl DynTraitMethodCall {
         format!(".dynptr.{}.{}", self.trait_name, self.type_name)
     }
 }
+
+// ============================================================================
+// Stage 5.67: emit_dyn_trait_method_call_text
+//
+// Converts DynTraitMethodCall (Stage 5.66 MIR representation) to LLVM IR
+// text for a vtable indirect call. This is the FIRST substantive dyn Trait
+// method call lowering — from data structure to actual LLVM IR instructions.
+//
+// Per API-naming-standard §3: `emit_dyn_trait_method_call_text` follows
+// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
+// ============================================================================
+
+/// Stage 5.67: Convert a `DynTraitMethodCall` to LLVM IR text for a vtable
+/// indirect call.
+///
+/// Produces LLVM IR that:
+/// 1. Extracts the vtable pointer from the fat pointer (second field)
+/// 2. Loads the method function pointer from the vtable at the slot index
+/// 3. Calls the loaded function pointer with self + args
+///
+/// Example output for `Display::fmt` on `Vec` (slot 0, 1 param):
+/// ```text
+/// ; dyn Display.Vec::fmt (slot=0, params=1)
+/// %vtable_ptr = getelementptr { ptr, ptr }, ptr %dynptr, i32 0, i32 1
+/// %method_fn = load ptr, ptr %vtable_ptr, i32 0
+/// %result = call ptr %method_fn(ptr %self, ptr %arg0)
+/// ```
+///
+/// Per API-naming-standard §3: `emit_dyn_trait_method_call_text` follows
+/// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn emit_dyn_trait_method_call_text(call: &DynTraitMethodCall) -> String {
+    let mut lines: Vec<String> = Vec::new();
+
+    // Comment line for diagnostics
+    lines.push(format!(
+        "; dyn {}.{}::{} (slot={}, params={})",
+        call.trait_name, call.type_name, call.method_name, call.slot_index, call.param_count
+    ));
+
+    // Extract vtable pointer from fat pointer (second field, index 1)
+    lines.push("%vtable_ptr = getelementptr { ptr, ptr }, ptr %dynptr, i32 0, i32 1".to_string());
+
+    // Load method function pointer from vtable at slot index
+    lines.push(format!(
+        "%method_fn = load ptr, ptr %vtable_ptr, i32 {}",
+        call.slot_index
+    ));
+
+    // Build parameter list: self + args
+    let mut params: Vec<String> = vec!["ptr %self".to_string()];
+    for i in 0..call.param_count {
+        params.push(format!("ptr %arg{i}"));
+    }
+    lines.push(format!(
+        "%result = call ptr %method_fn({})",
+        params.join(", ")
+    ));
+
+    lines.join("\n")
+}
