@@ -166,6 +166,31 @@ pub trait Emitter {
         ret_ty: &EmitType,
     ) -> EmitValue;
 
+    /// Stage 5.79: Emit a dyn Trait vtable indirect call.
+    ///
+    /// Produces LLVM IR that:
+    /// 1. Loads the vtable pointer from the dynptr global
+    ///    `@.dynptr.<trait>.<type>` (second field, index 1)
+    /// 2. Loads the method function pointer from the vtable at `slot_index`
+    /// 3. Calls the loaded function pointer with `args` (self first)
+    ///
+    /// The `dynptr_symbol` is the LLVM symbol for the dynptr global
+    /// (e.g. `.dynptr.Drop.S`). The `slot_index` is the vtable slot
+    /// offset (from `DynTraitMethodCall.slot_index`). The `args` list
+    /// already includes `self` as the first element.
+    ///
+    /// Per API-naming-standard §3 + §8.1: `emit_dyn_trait_method_call`
+    /// follows the `<verb>_<noun>_<noun>_<noun>_<noun>` pattern
+    /// (`emit_` prefix per §8.1 codegen emit convention, mirrors
+    /// `emit_call`).
+    fn emit_dyn_trait_method_call(
+        &mut self,
+        dynptr_symbol: &str,
+        slot_index: u32,
+        args: &[(EmitType, &EmitValue)],
+        ret_ty: &EmitType,
+    ) -> EmitValue;
+
     // === Comparisons ===
 
     /// Emit an integer comparison (icmp).

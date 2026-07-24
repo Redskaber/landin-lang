@@ -313,3 +313,6 @@ mod dyn_trait_method_call_in_plan_by_method_tests;
 
 #[path = "v0/stage5/plan/mir_lower_dyn_trait_method_call_integration_tests.rs"]
 mod mir_lower_dyn_trait_method_call_integration_tests;
+
+#[path = "v0/stage5/plan/codegen_dyn_trait_method_call_tests.rs"]
+mod codegen_dyn_trait_method_call_tests;

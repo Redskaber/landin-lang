@@ -5903,3 +5903,59 @@ Stage Summary:
 - Backward-compatible: 1598 pre-existing tests pass unchanged.
 - Next: Stage 5.79+ — codegen translates the Const marker into vtable indirect call;
   Stage 5.80+ — driver wires set_dyn_trait_plan into the pipeline.
+
+---
+Task ID: stage5.79-r128
+Agent: Super Z (main)
+Task: Stage 5.79 — codegen dyn Trait vtable indirect call + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.74 / 1611 tests (Stage 5.78 complete)
+
+Stage 5.79: FIRST codegen integration of dyn Trait data
+- src/codegen/emitter.rs: added `emit_dyn_trait_method_call()` to Emitter trait
+  * Signature: (dynptr_symbol, slot_index, args, ret_ty) -> EmitValue
+  * §23 compliant: `<verb>_<noun>_<noun>_<noun>_<noun>` (emit_ prefix)
+- src/codegen/text_emitter.rs: TextEmitter impl of emit_dyn_trait_method_call
+  * Emits 4 LLVM instructions: getelementptr + load (vtable ptr) + load (method fn ptr) + call (indirect)
+  * References `@<dynptr_symbol>` global, uses slot_index in second load
+- src/codegen/mod.rs: added `codegen_dyn_trait_call()` free function
+  * Reads mir.dyn_trait_calls[index], computes dynptr_symbol,
+    dispatches to emitter.emit_dyn_trait_method_call
+  * §23 compliant: `<verb>_<noun>_<noun>_<noun>` (codegen_ prefix)
+- src/codegen/mod.rs: modified `Terminator::Call` branch in codegen_terminator
+  * Detects marker at top of branch (Operand::Constant + Ty::Error + Int(idx) + idx < len)
+  * Dispatches to dyn Trait path when matched, stores result + branches to target
+  * Falls through to legacy direct-call path when not matched (backward compat)
+- src/lib.rs: re-export codegen_dyn_trait_call
+- tests/v0/stage5/plan/codegen_dyn_trait_method_call_tests.rs: 15 new tests
+  covering: emitter returns value, IR contains gep/loads/indirect call,
+  dynptr symbol reference, slot_index offset, void ret, distinct from
+  direct call, codegen_dyn_trait_call returns value/produces vtable IR/
+  uses correct dynptr symbol/panics on OOB, marker shape verification,
+  multiple distinct indices, IR well-formedness
+- tests/all_tests.rs: added codegen_dyn_trait_method_call_tests module (93 mods)
+- Cargo.toml: version 0.11.74 → 0.11.75 (description extended)
+- docs/develop/v0/stage-5/plan-5.79.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round79.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.79 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.49 entry appended
+- RELEASE_NOTES.md: v0.11.75 section prepended, header bumped
+- README.md: status line + Stage 5 row test count + sub-stage list updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (778.8 MiB removed) ✅
+- cargo test: 1626 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.79 PASSED — CI/CD all green per §1.2.
+- FIRST codegen integration of dyn Trait data.
+- New API: emit_dyn_trait_method_call (Emitter trait + TextEmitter impl) + codegen_dyn_trait_call (free fn).
+- Terminator::Call branch detects Const marker, dispatches to vtable indirect call path.
+- Emits 4 LLVM instructions: getelementptr + load (vtable ptr) + load (method fn ptr) + call (indirect).
+- Backward-compatible: 1611 pre-existing tests pass unchanged.
+- 5.78 + 5.79 together form the complete dyn Trait MIR lowering → codegen pipeline.
+- Next: Stage 5.80+ — driver wires set_dyn_trait_plan into the compile pipeline so
+  plan is automatically built from TraitResolver and attached to MirLowerCtxt.

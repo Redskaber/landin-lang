@@ -428,7 +428,7 @@ pub use cargo::{build_project, BuildConfig, BuildResult, ProjectManifest};
 pub use codegen::{
     build_dynptr_global_specs, build_trait_dispatch_emission_plan,
     build_trait_dispatch_emission_summary, build_vtable_global_specs, codegen_crate,
-    emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_dynptr_global_text,
+    codegen_dyn_trait_call, emit_dyn_trait_ptr_type, emit_dyn_trait_ptrs, emit_dynptr_global_text,
     emit_dynptrs_from_resolver, emit_trait_dispatch_globals_from_plan,
     emit_trait_dispatch_globals_text_batch, emit_trait_dispatch_globals_text_batch_from_resolver,
     emit_vtable_global_from_emission, emit_vtable_global_text, emit_vtable_globals_batch,

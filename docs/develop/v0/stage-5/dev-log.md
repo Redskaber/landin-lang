@@ -2278,3 +2278,37 @@ side-table for codegen Stage 5.79+ consumption.
 
 **Test impact**: +13 (1598 → 1611)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.79 — codegen dyn Trait vtable indirect call (v0.11.75)
+
+**Priority**: FIRST codegen integration of dyn Trait data. Detects the
+Stage 5.78 marker `Const{ty: Error, val: Int(index)}` on `Terminator::Call`'s
+`func` operand, reads `mir.dyn_trait_calls[index]` for trait/type/slot info,
+and emits vtable indirect call IR (getelementptr + load + indirect call).
+
+**Work completed**:
+- src/codegen/emitter.rs: added `emit_dyn_trait_method_call()` to Emitter trait
+  * Signature: (dynptr_symbol, slot_index, args, ret_ty) -> EmitValue
+  * §23 compliant: `<verb>_<noun>_<noun>_<noun>_<noun>` (emit_ prefix)
+- src/codegen/text_emitter.rs: TextEmitter impl of emit_dyn_trait_method_call
+  * Emits 4 LLVM instructions: getelementptr + load (vtable ptr) + load (method fn ptr) + call (indirect)
+  * References `@<dynptr_symbol>` global, uses slot_index in second load
+- src/codegen/mod.rs: added `codegen_dyn_trait_call()` free function
+  * Reads mir.dyn_trait_calls[index], computes dynptr_symbol,
+    dispatches to emitter.emit_dyn_trait_method_call
+  * §23 compliant: `<verb>_<noun>_<noun>_<noun>` (codegen_ prefix)
+- src/codegen/mod.rs: modified `Terminator::Call` branch in codegen_terminator
+  * Detects marker at top of branch, dispatches to dyn Trait path
+  * Falls through to legacy direct-call path when not matched (backward compat)
+- src/lib.rs: re-export codegen_dyn_trait_call
+- tests/v0/stage5/plan/codegen_dyn_trait_method_call_tests.rs: 15 new tests
+  covering: emitter returns value, IR contains gep/loads/indirect call,
+  dynptr symbol reference, slot_index offset, void ret, distinct from
+  direct call, codegen_dyn_trait_call returns value/produces vtable IR/
+  uses correct dynptr symbol/panics on OOB, marker shape verification,
+  multiple distinct indices, IR well-formedness
+- tests/all_tests.rs: added codegen_dyn_trait_method_call_tests module (93 mods)
+- Cargo.toml: version 0.11.74 → 0.11.75 (description extended)
+
+**Test impact**: +15 (1611 → 1626)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

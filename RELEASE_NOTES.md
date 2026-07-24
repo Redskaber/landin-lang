@@ -1,9 +1,83 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.74
+**Current version**: v0.11.75
 **Date**: 2026-07-24
-**Test count**: 1611 tests + 5 benchmarks
+**Test count**: 1626 tests + 5 benchmarks
+
+---
+
+## v0.11.75 — Stage 5.79 (codegen dyn Trait vtable indirect call)
+
+### Overview
+
+FIRST codegen integration of dyn Trait data. The `Terminator::Call` branch
+in `codegen_terminator` now detects the Stage 5.78 marker
+(`Const{ty: Error, val: Int(index)}` on the `func` operand) and dispatches
+to a new dyn Trait codegen path that emits a vtable indirect call:
+`getelementptr` → `load` (vtable ptr) → `load` (method fn ptr) →
+`call` (indirect).
+
+### New API
+
+- `Emitter::emit_dyn_trait_method_call(dynptr_symbol, slot_index, args, ret_ty) -> EmitValue` — trait method (in `src/codegen/emitter.rs`)
+- `TextEmitter::emit_dyn_trait_method_call` — impl (in `src/codegen/text_emitter.rs`)
+- `codegen_dyn_trait_call(emitter, mir, index, args, interner, layouts) -> EmitValue` — free fn (in `src/codegen/mod.rs`)
+
+### LLVM IR pattern
+
+For a `Drop::S::drop` call (slot 0), the emitted IR is:
+
+```llvm
+  %vN = getelementptr { ptr, ptr }, ptr @.dynptr.Drop.S, i32 0, i32 1
+  %vN+1 = load ptr, ptr %vN
+  %vN+2 = load ptr, ptr %vN+1, i32 0
+  %vN+3 = call i32 %vN+2(ptr %self, ...)
+```
+
+### Marker detection (three conditions)
+
+The dyn Trait path is taken only when ALL three conditions hold:
+1. `func` is `Operand::Constant`
+2. `c.ty.kind` is `TyKind::Error` (marker convention from Stage 5.78)
+3. `c.val` is `ConstVal::Int(idx)` AND `idx < mir.dyn_trait_calls.len()`
+
+Otherwise, the branch falls through to the legacy direct-call path. All
+1611 pre-existing tests pass unchanged.
+
+### §23 compliance
+
+- `emit_dyn_trait_method_call` — `<verb>_<noun>_<noun>_<noun>_<noun>`
+  (`emit_` prefix per §8.1, mirrors `emit_call`)
+- `codegen_dyn_trait_call` — `<verb>_<noun>_<noun>_<noun>`
+  (`codegen_` prefix per §8.1, mirrors `codegen_terminator`)
+
+### §16 compliance
+
+MIR carries the dyn Trait info as data on `mir.dyn_trait_calls`
+(populated by Stage 5.78's `build_dyn_trait_call_terminator`). Codegen
+reads the side-table — no HIR or TraitResolver queries. Data flow:
+`mir::body` → `codegen` → LLVM IR text. Single-directional.
+
+### Relationship to Stage 5.78
+
+| Stage | Role |
+|-------|------|
+| 5.78 | mir/lower writes `mir.dyn_trait_calls` + Const marker |
+| 5.79 | codegen reads side-table + translates marker to vtable indirect call IR |
+
+Together, 5.78 + 5.79 form the complete dyn Trait MIR lowering → codegen
+pipeline. Stage 5.80+ will wire the driver to call `set_dyn_trait_plan`
+automatically.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (778.8 MiB removed)
+cargo test: 1626 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

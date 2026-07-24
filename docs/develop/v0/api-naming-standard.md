@@ -2230,3 +2230,52 @@ carries all dyn Trait info as data.
 **Test impact**: +13 (1598 → 1611).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.49 (Stage 5.79, 2026-07-24)
+
+Stage 5.79 codegen dyn Trait vtable indirect call round. FIRST codegen
+integration of dyn Trait data. Adds `emit_dyn_trait_method_call()` to the
+`Emitter` trait (+ `TextEmitter` impl) and `codegen_dyn_trait_call()` free
+function. Modifies `codegen_terminator`'s `Terminator::Call` branch to
+detect the Stage 5.78 marker (`Const{ty: Error, val: Int(index)}`) and
+dispatch to the dyn Trait path.
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_dyn_trait_method_call` | Emitter trait method + TextEmitter impl | `<verb>_<noun>_<noun>_<noun>_<noun>` |
+| `codegen_dyn_trait_call` | free fn (in `codegen`) | `<verb>_<noun>_<noun>_<noun>` |
+
+**Design decisions**:
+1. **`emit_` prefix** per §8.1 codegen emit convention — same family as
+   `emit_call`, `emit_load`, `emit_gep_field`, etc. The new method emits
+   a 4-instruction LLVM IR sequence (getelementptr + 2 loads + indirect call).
+2. **`codegen_` prefix** per §8.1 codegen top-level entry convention — same
+   family as `codegen_terminator`, `codegen_operand`, `codegen_place_load`.
+   The new function reads `mir.dyn_trait_calls[index]` and dispatches to
+   `emitter.emit_dyn_trait_method_call`.
+3. **Three-condition marker detection** in `codegen_terminator`'s
+   `Terminator::Call` branch: (a) `func` is `Operand::Constant`, (b)
+   `c.ty.kind` is `TyKind::Error`, (c) `c.val` is `ConstVal::Int(idx)`
+   with `idx < mir.dyn_trait_calls.len()`. All three must hold — otherwise
+   falls through to legacy direct-call path. Backward-compatible: all
+   1611 pre-existing tests pass unchanged.
+4. **Return type placeholder**: `codegen_dyn_trait_call` uses `EmitType::I32`
+   as the return type because MIR doesn't carry typeck-resolved return types
+   for dyn Trait calls yet. Future stages can refine this by extending the
+   `DynTraitMethodCall` struct (Stage 5.66) with a `return_ty` field.
+5. **Panics on out-of-bounds index** — the caller (codegen_terminator) is
+   responsible for bounds-checking before invoking. This matches the
+   "contract" pattern used by `codegen_operand` / `codegen_place_load`.
+
+**§16 compliance**: `DynTraitMethodCall` defined in `mir::dyn_trait`.
+`MirBody.dyn_trait_calls` side-table in `mir::body`. New codegen functions
+in `codegen::emitter` + `codegen::text_emitter` + `codegen::mod`. Data
+flow: `mir::body` → `codegen` → LLVM IR text. Single-directional, no
+circular dependency. Codegen doesn't query HIR or TraitResolver — MIR
+carries all dyn Trait info as data.
+
+**Test impact**: +15 (1611 → 1626).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

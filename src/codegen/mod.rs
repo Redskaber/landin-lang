@@ -1106,6 +1106,76 @@ fn codegen_place_load(
     codegen_place_load_typed(emitter, mir, lv, EmitType::I32, interner, layouts)
 }
 
+/// Stage 5.79: Codegen a dyn Trait method call.
+///
+/// Reads `mir.dyn_trait_calls[index]` to get the
+/// `(trait, type, method, slot_index, param_count)` info, computes the
+/// dynptr symbol (`.dynptr.<trait>.<type>`), and calls
+/// `emitter.emit_dyn_trait_method_call()` with the slot_index + args.
+///
+/// # Arguments
+///
+/// - `emitter`: the codegen emitter (text or other backend)
+/// - `mir`: the MIR body (carries `dyn_trait_calls` side-table)
+/// - `index`: the side-table index (from the `Const{val: Int(index)}` marker)
+/// - `args`: the call's argument operands (self first, then explicit args)
+/// - `interner`: the string interner (for type detection)
+/// - `layouts`: ADT layouts (for type detection)
+///
+/// # Returns
+///
+/// The `EmitValue` (LLVM register name) holding the call result.
+///
+/// # Panics
+///
+/// Panics if `index` is out of bounds for `mir.dyn_trait_calls`. The
+/// caller (`codegen_terminator`'s `Terminator::Call` branch) is
+/// responsible for bounds-checking before invoking this function.
+///
+/// # §16 compliance
+///
+/// Reads `mir::body::MirBody.dyn_trait_calls` (side-table populated by
+/// Stage 5.78's `build_dyn_trait_call_terminator`). No HIR or
+/// TraitResolver queries — MIR carries all dyn Trait info as data.
+/// Data flow: `mir::body` → `codegen` → LLVM IR text. Single-directional.
+///
+/// # §23 compliance
+///
+/// `codegen_dyn_trait_call` follows the `<verb>_<noun>_<noun>_<noun>`
+/// pattern (helper-verb `codegen_` prefix per §8.1, mirrors
+/// `codegen_terminator` / `codegen_operand`).
+pub fn codegen_dyn_trait_call(
+    emitter: &mut dyn Emitter,
+    mir: &MirBody,
+    index: u128,
+    args: &[Operand],
+    interner: &Rodeo,
+    layouts: &crate::mir::body::AdtLayouts,
+) -> EmitValue {
+    let call_info = &mir.dyn_trait_calls[index as usize];
+    let dynptr_symbol = format!(".dynptr.{}.{}", call_info.trait_name, call_info.type_name);
+
+    // Codegen the args (self first, then explicit args — already ordered
+    // by `build_dyn_trait_call_terminator`).
+    let arg_pairs: Vec<(EmitType, EmitValue)> = args
+        .iter()
+        .map(|a| {
+            let ty = detect_operand_type(mir, a, layouts).unwrap_or(EmitType::I32);
+            let val = codegen_operand(emitter, mir, a, interner, layouts);
+            (ty, val)
+        })
+        .collect();
+    let arg_refs: Vec<(EmitType, &EmitValue)> =
+        arg_pairs.iter().map(|(t, v)| (t.clone(), v)).collect();
+
+    // The return type is unknown at this stage (no typeck info on the
+    // dyn Trait call's return type) — default to I32 as a placeholder.
+    // Future stages can refine this by carrying the return type through
+    // the side-table.
+    let ret_ty = EmitType::I32;
+    emitter.emit_dyn_trait_method_call(&dynptr_symbol, call_info.slot_index, &arg_refs, &ret_ty)
+}
+
 fn codegen_terminator(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
@@ -1174,6 +1244,46 @@ fn codegen_terminator(
             destination,
             target,
         } => {
+            // Stage 5.79: dyn Trait vtable indirect call path.
+            //
+            // Detect the marker `Operand::Constant(Const { ty: Error,
+            // val: Int(index) })` where `index < mir.dyn_trait_calls.len()`.
+            // If matched, dispatch to `codegen_dyn_trait_call` which emits
+            // the vtable indirect call (getelementptr + load + call).
+            //
+            // Otherwise fall through to the legacy direct-call path.
+            //
+            // Per §16: MIR carries the dyn Trait info as data on
+            // `mir.dyn_trait_calls` (populated by Stage 5.78's
+            // `build_dyn_trait_call_terminator`). Codegen doesn't query
+            // HIR or TraitResolver.
+            if let Operand::Constant(c) = func {
+                if matches!(c.ty.kind, crate::mir::ty::TyKind::Error) {
+                    if let ConstVal::Int(idx) = c.val {
+                        if (idx as usize) < mir.dyn_trait_calls.len() {
+                            let ret_val =
+                                codegen_dyn_trait_call(emitter, mir, idx, args, interner, layouts);
+                            // Store the result to destination local.
+                            if let PlaceKind::Local(id) = &destination.kind {
+                                let dest_ty = mir
+                                    .local_decls
+                                    .get(id.0 as usize)
+                                    .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
+                                    .unwrap_or(EmitType::I32);
+                                emitter.set_local(id.0, ret_val.clone());
+                                if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
+                                    emitter.emit_store(&dest_ty, &ret_val, &ptr);
+                                }
+                            }
+                            if let Some(cont) = target {
+                                emitter.emit_br(&format!("bb{}", cont.0));
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+
             let fn_name = if let Operand::Copy(lv) | Operand::Move(lv) = func {
                 if let PlaceKind::Local(id) = &lv.kind {
                     let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| &ld.ty);
