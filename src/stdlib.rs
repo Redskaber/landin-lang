@@ -1351,6 +1351,52 @@ pub fn stdlib_marker_traits() -> Vec<&'static str> {
         .collect()
 }
 
+/// Stage 5.88: Return all stdlib arithmetic operator trait names.
+///
+/// Returns a `Vec<&'static str>` containing the names of all stdlib
+/// arithmetic operator traits — both binary ops and their assign variants:
+///
+/// - Binary: Add, Sub, Mul, Div, Rem, BitAnd, BitOr, BitXor, Shl, Shr
+/// - Assign: AddAssign, SubAssign, MulAssign, DivAssign, RemAssign,
+///   BitAndAssign, BitOrAssign, BitXorAssign, ShlAssign, ShrAssign
+///
+/// This is a **semantic group query** — returns traits that share a
+/// semantic category (arithmetic operators). Useful for:
+/// - Operator overloading detection
+/// - Type inference assistance ("does this type support arithmetic?")
+/// - Codegen decisions about operator call emission
+///
+/// Per API-naming-standard §3: `stdlib_arithmetic_traits` follows the
+/// `<noun>_<adj>_<noun>` pattern (plural), mirroring `stdlib_marker_traits`
+/// from v1.57.
+pub fn stdlib_arithmetic_traits() -> Vec<&'static str> {
+    const ARITHMETIC_TRAITS: &[&str] = &[
+        // Binary arithmetic ops
+        "Add",
+        "Sub",
+        "Mul",
+        "Div",
+        "Rem",
+        "BitAnd",
+        "BitOr",
+        "BitXor",
+        "Shl",
+        "Shr",
+        // Arithmetic assign ops
+        "AddAssign",
+        "SubAssign",
+        "MulAssign",
+        "DivAssign",
+        "RemAssign",
+        "BitAndAssign",
+        "BitOrAssign",
+        "BitXorAssign",
+        "ShlAssign",
+        "ShrAssign",
+    ];
+    ARITHMETIC_TRAITS.to_vec()
+}
+
 // ============================================================================
 // Stage 5.38: Stdlib vtable byte size + pointer-width-aware layout helpers
 //

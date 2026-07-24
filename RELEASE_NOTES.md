@@ -1,9 +1,49 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.83
+**Current version**: v0.11.84
 **Date**: 2026-07-24
-**Test count**: 1749 tests + 5 benchmarks
+**Test count**: 1769 tests + 5 benchmarks
+
+---
+
+## v0.11.84 — Stage 5.88 (stdlib_arithmetic_traits semantic group query)
+
+### Overview
+
+Add `stdlib_arithmetic_traits()` — first semantic group query returning all
+stdlib arithmetic operator trait names (10 binary + 10 assign = 20 traits).
+Useful for operator overloading detection, type inference, and codegen
+decisions.
+
+### New API
+
+- `stdlib_arithmetic_traits() -> Vec<&'static str>` — free fn (in `src/stdlib.rs`)
+
+### Behavior
+
+Returns 20 arithmetic traits:
+- Binary: Add, Sub, Mul, Div, Rem, BitAnd, BitOr, BitXor, Shl, Shr
+- Assign: AddAssign, SubAssign, MulAssign, DivAssign, RemAssign, BitAndAssign, BitOrAssign, BitXorAssign, ShlAssign, ShrAssign
+
+### §23 compliance
+
+`<noun>_<adj>_<noun>` (plural) — mirrors `stdlib_marker_traits` from v1.57.
+First in a series of semantic category queries.
+
+### §16 compliance
+
+Pure read function. Uses `&'static` slice — no new dependencies. Data flow
+stays within `stdlib`.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (558.5 MiB removed)
+cargo test: 1769 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

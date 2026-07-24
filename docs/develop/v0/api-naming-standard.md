@@ -2554,3 +2554,33 @@ stdlib marker trait names (Copy/Send/Sync/Sized/Unpin/Eq). Symmetric with
 **Test impact**: +18 (1731 → 1749).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.58 (Stage 5.88, 2026-07-24)
+
+Stage 5.88 stdlib_arithmetic_traits semantic group query round. First
+semantic category query — returns all stdlib arithmetic operator trait
+names (10 binary + 10 assign = 20 traits).
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_arithmetic_traits` | free fn (in `stdlib`) | `<noun>_<adj>_<noun>` (plural) |
+
+**Design decisions**:
+1. **Semantic group naming** — `stdlib_arithmetic_traits` follows the
+   `<noun>_<adj>_<noun>` plural pattern, mirroring `stdlib_marker_traits`
+   (v1.57). Both are "return subset of traits by category" queries.
+2. **First semantic category** — arithmetic operators are a clear semantic
+   category useful for operator overloading detection, type inference, and
+   codegen decisions. Future stages may add more categories (core/io/iter).
+3. **Fixed `&'static` slice** — uses a local `ARITHMETIC_TRAITS: &[&str]`
+   const (not derived from `STDLIB_TRAITS` filtering) because the arithmetic
+   category is a specific enumerated list, not a predicate-based filter.
+4. **20 traits** — 10 binary ops (Add/Sub/Mul/Div/Rem/BitAnd/BitOr/BitXor/
+   Shl/Shr) + 10 assign variants (AddAssign/.../ShrAssign).
+5. **§16 compliance** — pure read, `&'static` slice, no new dependencies.
+
+**Test impact**: +20 (1749 → 1769).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

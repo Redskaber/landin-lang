@@ -2564,3 +2564,30 @@ marker trait names (Copy/Send/Sync/Sized/Unpin/Eq). Symmetric with
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
 
 **Milestone**: 100 test modules! Stage 5 test infrastructure continues to grow.
+
+### Stage 5.88 — stdlib_arithmetic_traits semantic group query (v0.11.84)
+
+**Priority**: Add `stdlib_arithmetic_traits()` — semantic group query returning
+all stdlib arithmetic operator trait names (10 binary + 10 assign = 20 traits).
+First in a series of semantic category queries.
+
+**Work completed**:
+- src/stdlib.rs: new `stdlib_arithmetic_traits() -> Vec<&'static str>` function
+  * Returns 20 arithmetic traits: Add/Sub/Mul/Div/Rem/BitAnd/BitOr/BitXor/Shl/Shr
+    + AddAssign/SubAssign/MulAssign/DivAssign/RemAssign/BitAndAssign/BitOrAssign/
+    BitXorAssign/ShlAssign/ShrAssign
+  * §23 compliant: `<noun>_<adj>_<noun>` (plural, mirrors stdlib_marker_traits)
+- src/lib.rs: re-export stdlib_arithmetic_traits
+- tests/v0/stage5/plan/stdlib_arithmetic_traits_tests.rs: 20 new tests
+  covering: 10 contains tests (Add/Sub/Mul/Div/Rem/BitAnd/Shl/Shr/AddAssign/ShrAssign
+  + non-empty), 4 exclusion tests (no Copy/Clone/Foo/Drop), 1 count test (==20),
+  2 consistency tests (subset of all_traits, disjoint from markers),
+  2 robustness tests (no side effects, no duplicates)
+- tests/all_tests.rs: added stdlib_arithmetic_traits_tests module (101 mods)
+- Cargo.toml: version 0.11.83 → 0.11.84 (description extended)
+
+**Test impact**: +20 (1749 → 1769)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Semantic group series**: This is the first semantic category query
+(arithmetic). Future stages may add more (core/io/iterator categories).

@@ -6342,3 +6342,46 @@ Stage Summary:
 - §16 + §23 compliant.
 - Next: Stage 5.88+ — user-defined trait dyn support, or Stage 6 planning
   (mir/lower split TD-011, Region inference TD-015).
+
+---
+Task ID: stage5.88-r137
+Agent: Super Z (main)
+Task: Stage 5.88 — stdlib_arithmetic_traits semantic group query + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.83 / 1749 tests (Stage 5.87 complete)
+
+Stage 5.88: stdlib_arithmetic_traits — first semantic group query
+- src/stdlib.rs: new `stdlib_arithmetic_traits() -> Vec<&'static str>` function
+  * Returns 20 arithmetic traits: 10 binary + 10 assign
+  * Uses local ARITHMETIC_TRAITS: &[&str] const
+  * §23 compliant: `<noun>_<adj>_<noun>` (plural, mirrors stdlib_marker_traits)
+- src/lib.rs: re-export stdlib_arithmetic_traits
+- tests/v0/stage5/plan/stdlib_arithmetic_traits_tests.rs: 20 new tests
+  covering: 10 contains tests, 4 exclusion tests, 1 count test (==20),
+  2 consistency tests (subset of all_traits, disjoint from markers),
+  2 robustness tests (no side effects, no duplicates)
+- tests/all_tests.rs: added stdlib_arithmetic_traits_tests module (101 mods)
+- Cargo.toml: version 0.11.83 → 0.11.84 (description extended)
+- docs/develop/v0/stage-5/plan-5.88.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round88.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.88 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.58 entry appended
+- RELEASE_NOTES.md: v0.11.84 section prepended, header bumped
+- README.md: status line updated (88 sub-stages, 1769 tests, 101 modules)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (558.5 MiB removed) ✅
+- cargo test: 1769 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+  (fixed 1 doc-lint warning: overindented list item)
+
+Stage Summary:
+- Stage 5.88 PASSED — CI/CD all green per §1.2.
+- New API: stdlib_arithmetic_traits — first semantic group query.
+- Returns 20 arithmetic operator traits (10 binary + 10 assign).
+- 20 new tests, 0 clippy warnings, fmt clean.
+- §16 + §23 compliant.
+- Next: Stage 5.89+ — more semantic group queries (core/io/iter),
+  user-defined trait dyn support, or Stage 6 planning.
