@@ -1974,3 +1974,18 @@ connecting stdlib trait method index with DynTraitMethodCall.
 **Test impact**: +10 (1503 → 1513).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.39 (Stage 5.69, 2026-07-24)
+
+Stage 5.69 emit_dyn_trait_method_calls_text_batch round. Batch version of
+Stage 5.67.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_dyn_trait_method_calls_text_batch` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` |
+
+**Test impact**: +8 (1513 → 1521).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

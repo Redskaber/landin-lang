@@ -2077,3 +2077,17 @@ DynTraitMethodCall to LLVM IR text for vtable indirect call.
 
 **Test impact**: +10 (1503 → 1513)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.69 — emit_dyn_trait_method_calls_text_batch (v0.11.65)
+
+**Priority**: Batch version of Stage 5.67. `&[DynTraitMethodCall]` → `Vec<String>`.
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `emit_dyn_trait_method_calls_text_batch()` function
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_method_call_batch_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_method_call_batch_tests module (83 mods)
+- Cargo.toml: version 0.11.64 → 0.11.65
+
+**Test impact**: +8 (1513 → 1521)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

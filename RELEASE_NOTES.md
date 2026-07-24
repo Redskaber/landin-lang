@@ -1,9 +1,32 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.64
+**Current version**: v0.11.65
 **Date**: 2026-07-24
-**Test count**: 1513 tests + 5 benchmarks
+**Test count**: 1521 tests + 5 benchmarks
+
+---
+
+## v0.11.65 — Stage 5.69 (emit_dyn_trait_method_calls_text_batch)
+
+### Overview
+
+Batch version of Stage 5.67's `emit_dyn_trait_method_call_text()`. Converts
+`&[DynTraitMethodCall]` to `Vec<String>` (all method call LLVM IR text).
+Completes the dyn Trait method call IR text generation chain.
+
+### New API
+
+- `emit_dyn_trait_method_calls_text_batch(&[DynTraitMethodCall]) -> Vec<String>` (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (879.2 MiB removed)
+cargo test: 1521 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

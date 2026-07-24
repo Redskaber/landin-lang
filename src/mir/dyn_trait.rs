@@ -426,3 +426,28 @@ pub fn build_dyn_trait_method_calls_from_fat_ptrs(
     }
     calls
 }
+
+// ============================================================================
+// Stage 5.69: emit_dyn_trait_method_calls_text_batch
+//
+// Batch version of Stage 5.67's emit_dyn_trait_method_call_text().
+// Converts &[DynTraitMethodCall] to Vec<String> (all method call IR text).
+//
+// Per API-naming-standard §3: `emit_dyn_trait_method_calls_text_batch`
+// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern.
+// ============================================================================
+
+/// Stage 5.69: Batch-convert a list of `DynTraitMethodCall` to LLVM IR text.
+///
+/// For each `DynTraitMethodCall` in the input slice, calls
+/// `emit_dyn_trait_method_call_text()` (Stage 5.67) and collects the results.
+///
+/// Returns `Vec<String>` where each element is the LLVM IR text for one
+/// vtable indirect method call (multiple lines per call).
+/// Empty input returns an empty Vec.
+///
+/// Per API-naming-standard §3: `emit_dyn_trait_method_calls_text_batch`
+/// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn emit_dyn_trait_method_calls_text_batch(calls: &[DynTraitMethodCall]) -> Vec<String> {
+    calls.iter().map(emit_dyn_trait_method_call_text).collect()
+}

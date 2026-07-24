@@ -5517,3 +5517,33 @@ Stage Summary:
 - Bridge function: stdlib trait method index → DynTraitMethodCall list.
 - Connects Stage 5.36-5.37 (stdlib queries) with Stage 5.66 (MIR method call).
 - Next: Stage 5.69+ (dyn Trait method call MIR lowering integration).
+
+---
+Task ID: stage5.69-r118
+Agent: Super Z (main)
+Task: Stage 5.69 — emit_dyn_trait_method_calls_text_batch + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.64 / 1513 tests (Stage 5.68 complete)
+
+Stage 5.69: emit_dyn_trait_method_calls_text_batch (batch method call IR text)
+- src/mir/dyn_trait.rs: new emit_dyn_trait_method_calls_text_batch() function
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_method_call_batch_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_method_call_batch_tests module (83 mods)
+- Cargo.toml: version 0.11.64 → 0.11.65
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (879.2 MiB removed) ✅
+- cargo test: 1521 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.69 PASSED — CI/CD all green per §1.2.
+- Batch version of Stage 5.67's emit_dyn_trait_method_call_text().
+- dyn Trait method call IR text generation chain complete:
+  - 5.67: single call → IR text
+  - 5.68: fat ptrs → method call list (via stdlib index)
+  - 5.69: method call list → batch IR text
+- Next: Stage 5.70+ (dyn Trait method call MIR lowering integration).
