@@ -6876,3 +6876,26 @@ Stage Summary:
 - 1881 tests pass unchanged (behavior-equivalent).
 - 0 clippy warnings, fmt clean.
 - Next: Stage 6.5+ — continue mir/lower split (control flow lowering, field resolution).
+
+---
+Task ID: stage6.5-r153
+Agent: Super Z (main)
+Task: Stage 6.5 — mir/lower field_resolution split (TD-011 step 5) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.12.3 / 1881 tests (Stage 6.4 complete)
+- Created src/mir/lower/field_resolution.rs (167 LOC) with 5 extracted functions
+- Updated mod.rs: added mod declaration, updated all call sites, removed 5 functions (-204 LOC)
+- Bumped Cargo.toml version 0.12.3 → 0.12.4
+- Updated all docs (gate-review-6.5.md, dev-log.md, api-naming-standard.md v1.74,
+  RELEASE_NOTES.md, README.md, docs/worklog.md)
+- Ran full CI/CD: cargo clean + cargo test (1881 passed) + cargo fmt +
+  cargo clippy --all-targets — all green ✅
+
+Stage Summary:
+- Stage 6.5 PASSED — CI/CD all green per §1.2.
+- mir/lower/mod.rs: 2656 → 2452 LOC (-204 LOC, -7.7%)
+- TD-011 cumulative: -894 LOC (-26.7%) across 5 splits
+- 1881 tests pass unchanged (behavior-equivalent).
+- 0 clippy warnings, fmt clean.
+- Next: Stage 6.6+ — continue mir/lower split (control flow lowering).

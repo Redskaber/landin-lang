@@ -1,9 +1,44 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.12.3
+**Current version**: v0.12.4
 **Date**: 2026-07-24
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.12.4 — Stage 6.5 (mir/lower field_resolution split — TD-011 step 5)
+
+### Overview
+
+Continue TD-011 repayment — extract field resolution helper functions (~204 LOC)
+from `mir/lower/mod.rs` (2656 LOC) into `mir/lower/field_resolution.rs` (167 LOC).
+
+### Changes
+
+- Created `src/mir/lower/field_resolution.rs` with 5 extracted functions
+- `mir/lower/mod.rs`: 2656 → 2452 LOC (-204 LOC, -7.7%)
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### TD-011 cumulative progress
+
+| Split | Module | LOC extracted | mod.rs after |
+|-------|--------|--------------|--------------|
+| 6.1 | adt_layout.rs | 153 | 3193 |
+| 6.2 | closure_capture.rs | 158 | 3035 |
+| 6.3 | pattern_bindings.rs | 305 | 2730 |
+| 6.4 | overflow_assert.rs | 74 | 2656 |
+| 6.5 | field_resolution.rs | 204 | 2452 |
+| **Total** | **5 modules** | **894 LOC** | **2452 (was 3346, -26.7%)** |
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (568.8 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

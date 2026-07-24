@@ -2938,3 +2938,19 @@ extract overflow/assert helper functions into mir/lower/overflow_assert.rs.
 **Test impact**: 0 (behavior-equivalent).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.74 (Stage 6.5, 2026-07-24)
+
+Stage 6.5 mir/lower field_resolution split round. Continue TD-011 repayment —
+extract field resolution helper functions into mir/lower/field_resolution.rs.
+
+**New public symbols**: None (internal refactoring, behavior-equivalent).
+
+**Changes**:
+- `resolve_field_type`, `resolve_field_index`, `find_receiver_struct_def_id`,
+  `resolve_index_element_type`, `resolve_adt_field_tys`:
+  `fn` → `pub(crate) fn` in new field_resolution.rs module
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

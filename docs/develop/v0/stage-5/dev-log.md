@@ -2977,3 +2977,26 @@ from mir/lower/mod.rs into mir/lower/overflow_assert.rs.
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
 
 **TD-011 cumulative**: 4 splits, -690 LOC (-20.6%). mod.rs now 2656 LOC (was 3346).
+
+### Stage 6.5 — mir/lower field_resolution split (TD-011 step 5) (v0.12.4)
+
+**Priority**: Continue TD-011 repayment — extract field resolution helper functions
+from mir/lower/mod.rs into mir/lower/field_resolution.rs.
+
+**Work completed**:
+- Created src/mir/lower/field_resolution.rs (167 LOC) with 5 extracted functions:
+  * resolve_field_type (pub(crate))
+  * resolve_field_index (pub(crate))
+  * find_receiver_struct_def_id (pub(crate))
+  * resolve_index_element_type (pub(crate))
+  * resolve_adt_field_tys (pub(crate))
+- src/mir/lower/mod.rs:
+  * Added `mod field_resolution;` declaration
+  * Updated all call sites with `field_resolution::` prefix
+  * LOC reduced: 2656 → 2452 (-204 LOC, -7.7%)
+- Cargo.toml: version 0.12.3 → 0.12.4
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-011 cumulative**: 5 splits, -894 LOC (-26.7%). mod.rs now 2452 LOC (was 3346).

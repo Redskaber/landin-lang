@@ -19,6 +19,7 @@ use lasso::Rodeo;
 
 mod adt_layout;
 mod closure_capture;
+mod field_resolution;
 mod overflow_assert;
 mod pattern_bindings;
 
@@ -778,8 +779,8 @@ fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Place {
         }
         HirExprKind::Field { receiver, ident } => {
             let base = lower_expr_to_place(cx, receiver);
-            let field_index = resolve_field_index(cx, receiver, &ident.name);
-            let field_ty = resolve_field_type(cx, receiver, field_index)
+            let field_index = field_resolution::resolve_field_index(cx, receiver, &ident.name);
+            let field_ty = field_resolution::resolve_field_type(cx, receiver, field_index)
                 .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
             Place {
                 kind: PlaceKind::Projection(
@@ -1190,13 +1191,13 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                         {
                             (idx, tys)
                         } else {
-                            (0, resolve_adt_field_tys(cx, adt_def_id))
+                            (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
                         }
                     } else {
-                        (0, resolve_adt_field_tys(cx, adt_def_id))
+                        (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
                     }
                 } else {
-                    (0, resolve_adt_field_tys(cx, adt_def_id))
+                    (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
                 };
                 // For enum variants, the Aggregate operands need to include
                 // the discriminant as the first element. For structs,
@@ -1384,9 +1385,9 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
         HirExprKind::Field { receiver, ident } => {
             let base_local = lower_expr_to_operand(cx, receiver);
             // Resolve the field index from the ident name.
-            let field_index = resolve_field_index(cx, receiver, &ident.name);
+            let field_index = field_resolution::resolve_field_index(cx, receiver, &ident.name);
             // Stage 3.32: resolve the field's actual type from the struct def.
-            let field_ty = resolve_field_type(cx, receiver, field_index)
+            let field_ty = field_resolution::resolve_field_type(cx, receiver, field_index)
                 .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
             let field_ty_for_proj = field_ty.clone();
             let result = cx.mir.new_local(field_ty, None, expr.span);
@@ -1416,7 +1417,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             // elem_ty = T. Falls back to fresh infer var if the receiver's
             // type can't be resolved (preserves old behavior for test
             // contexts).
-            let elem_ty = resolve_index_element_type(cx, base_local)
+            let elem_ty = field_resolution::resolve_index_element_type(cx, base_local)
                 .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
             let result = cx.mir.new_local(elem_ty, None, expr.span);
             cx.push_assign(
@@ -1734,7 +1735,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             // Stage 3.38 (L-ENUM): also handle enum struct variants
             // (e.g., `Shape::Circle { r: 1.0 }`).
             if let Res::Def(def_id, DefKind::Struct) = path.res {
-                let field_tys = resolve_adt_field_tys(cx, def_id);
+                let field_tys = field_resolution::resolve_adt_field_tys(cx, def_id);
                 let struct_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
                 return cx.eval_rvalue_to_temp(
                     Rvalue::Aggregate(
@@ -1925,211 +1926,6 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
             );
             dest
         }
-    }
-}
-
-/// Resolve the type of a specific field of a struct, given the receiver
-/// expression and the field index.
-///
-/// Stage 3.32 (L-DEBT-2 fix): looks up the receiver's struct DefId (via
-/// `find_receiver_struct_def_id`), then reads the field's type from the
-/// HIR struct definition. Returns `None` if the receiver isn't a struct
-/// or the field index is out of bounds — caller falls back to
-/// `fresh_infer_ty`.
-///
-/// Per §16: this is MIR lower reading HIR (allowed — data flows downstream).
-/// The resolved type is sunk into `ProjectionElem::Field(_, field_ty)` so
-/// codegen reads it from MIR.
-fn resolve_field_type(cx: &MirLowerCtxt, receiver: &HirExpr, field_index: u32) -> Option<Ty> {
-    let hir = cx.hir?;
-    let struct_def_id = find_receiver_struct_def_id(cx, receiver)?;
-    let owner = hir.owner(struct_def_id)?;
-    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner {
-        let field = s.fields.get(field_index as usize)?;
-        Some(lower_hir_ty_to_mir_ty(&field.ty))
-    } else {
-        None
-    }
-}
-
-/// Resolve the field index for a field-access expression `receiver.ident`.
-///
-/// Stage 3.30 fix: was hardcoded `FieldId(0)` — meant `p.1`, `p.x`, etc.
-/// all returned field 0 (silently wrong). Now:
-///   - For tuple struct fields (`p.0`, `p.1`), the ident is the stringified
-///     index — parse it directly.
-///   - For named struct fields (`p.x`), look up the field index in the HIR
-///     struct definition by matching the field name.
-///   - If we can't resolve (e.g., receiver type unknown), default to 0
-///     (legacy behavior — typeck should catch real errors).
-///   - Stage 3.32 fix: if the receiver's type can't be resolved (e.g.,
-///     `let m = Mixed { ... }; m.b` — m's type is Infer(TyVar) at lower
-///     time), scan all HIR struct owners for one that has a field with
-///     the given name. If exactly one match is found, use it. This is
-///     O(structs × fields) but correct for typical crates.
-fn resolve_field_index(
-    cx: &MirLowerCtxt,
-    receiver: &HirExpr,
-    field_name: &crate::lexer::Symbol,
-) -> u32 {
-    use crate::lexer::Symbol;
-    // First, try parsing as a tuple-struct field index (`0`, `1`, etc.).
-    if let Some(hir_crate) = cx.hir {
-        // Get the field name as a string.
-        if let Some(name_str) = cx.interner.try_resolve(field_name) {
-            if let Ok(idx) = name_str.parse::<u32>() {
-                return idx;
-            }
-            // Named field — try to find the receiver's struct def_id.
-            if let Some(struct_def_id) = find_receiver_struct_def_id(cx, receiver) {
-                if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
-                    hir_crate.owner(struct_def_id)
-                {
-                    for (i, f) in s.fields.iter().enumerate() {
-                        if let Some(f_ident) = &f.ident {
-                            if f_ident.name == *field_name {
-                                return i as u32;
-                            }
-                        }
-                    }
-                }
-            }
-            // Stage 3.32: receiver type not resolved yet. Scan all struct
-            // owners for one with a matching field name.
-            let mut found: Option<(u32,)> = None;
-            let mut ambiguous = false;
-            for (_def_id, owner) in &hir_crate.owners {
-                if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner {
-                    for (i, f) in s.fields.iter().enumerate() {
-                        if let Some(f_ident) = &f.ident {
-                            if f_ident.name == *field_name {
-                                if found.is_some() {
-                                    ambiguous = true;
-                                } else {
-                                    found = Some((i as u32,));
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-                if ambiguous {
-                    break;
-                }
-            }
-            if let Some((idx,)) = found {
-                if !ambiguous {
-                    return idx;
-                }
-            }
-        }
-    }
-    let _: Symbol = crate::lexer::Symbol::default();
-    0
-}
-
-/// Find the struct DefId that a receiver expression's type resolves to.
-///
-/// Used by `resolve_field_index` to look up named fields. Walks the
-/// receiver's MIR local decl to find its type, and if it's `TyKind::Adt`,
-/// returns the DefId.
-fn find_receiver_struct_def_id(cx: &MirLowerCtxt, receiver: &HirExpr) -> Option<crate::hir::DefId> {
-    // Lower the receiver to find its local id (without actually lowering
-    // again — we just need the type). Since lower_expr_to_operand has
-    // side effects, we use a different approach: pattern-match the
-    // receiver to extract its type from HIR.
-    //
-    // For a simple `let p = Point { ... }; p.x` — the receiver is a Path
-    // that resolves to a local. We'd need to track locals → types.
-    //
-    // Simpler: walk the receiver and if it's a Path to a local, look up
-    // the local's type from cx.local_map → mir.local_decls.
-    match &receiver.kind {
-        HirExprKind::Path(path) => {
-            if let crate::hir::Res::Local(hir_id) = path.res {
-                if let Some(local_id) = cx.local_map.get(&hir_id) {
-                    if let Some(ld) = cx.mir.local_decls.get(local_id.0 as usize) {
-                        if let TyKind::Adt(def_id, _) = &ld.ty.kind {
-                            return Some(*def_id);
-                        }
-                    }
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-/// Resolve the field types of an ADT (struct/enum variant) by looking up
-/// the HIR owner.
-///
-/// Stage 3.30 (per §16 阶段间接口隔离): this is called by MIR lower to
-/// sink the field types into `AggregateKind::Adt`'s `field_tys` field,
-/// so codegen doesn't have to re-query HIR (which would be a cross-stage
-/// internal-API call).
-/// Stage 3.52: Resolve the element type of an index expression `base[idx]`
-/// by inspecting the base's MIR type. For:
-///   - `&[T]` (Ref to Slice(T)): elem_ty = T
-///   - `[T; N]` (Array(T, _)): elem_ty = T
-///   - `&[T; N]` (Ref to Array(T, _)): elem_ty = T
-///
-/// Returns `None` if the base's type can't be resolved (e.g., fresh infer
-/// var in test contexts). The caller falls back to a fresh infer var in
-/// that case, preserving the old behavior.
-///
-/// Per §16 (阶段间接口隔离): reads MIR local_decls only (data flows
-/// downstream per §16.2.1 — MIR lower reads its own body). No HIR lookup.
-fn resolve_index_element_type(cx: &MirLowerCtxt, base_local: LocalId) -> Option<Ty> {
-    let base_ty = cx.mir.local_decls.get(base_local.0 as usize)?.ty.clone();
-    match &base_ty.kind {
-        // `&[T]` — fat pointer to slice
-        // `&str` — fat pointer to str (element is u8)
-        TyKind::Ref(_, _, inner) => match &inner.kind {
-            TyKind::Slice(elem) => Some((**elem).clone()),
-            TyKind::Array(elem, _) => Some((**elem).clone()),
-            // Stage 3.53: `&str` indexing → element is u8 (like `&[u8]`).
-            // Was: fell through to None → fresh_infer_ty → typeck default i32,
-            // causing `s[0]` on `&str` to store i8 into an i32 temp (type mismatch).
-            TyKind::Str => Some(Ty::new(TyKind::Uint(ast::UintTy::U8), Span::DUMMY)),
-            _ => None,
-        },
-        // `[T; N]` — array
-        TyKind::Array(elem, _) => Some((**elem).clone()),
-        // `&[T; N]` — array reference (thin pointer to array)
-        TyKind::Slice(elem) => Some((**elem).clone()),
-        _ => None,
-    }
-}
-
-/// Resolve the declared field types of an ADT (struct or enum variant).
-///
-/// For structs, returns the declared field types. For enums, returns the
-/// variant's field types (Stage 3.31+ — currently returns empty for
-/// non-struct owners). Returns empty if HIR is not available (e.g., in
-/// test contexts that construct MirLowerCtxt without a HIR crate).
-fn resolve_adt_field_tys(cx: &MirLowerCtxt, def_id: crate::hir::DefId) -> Vec<Ty> {
-    let hir = match cx.hir {
-        Some(h) => h,
-        None => return Vec::new(),
-    };
-    match hir.owner(def_id) {
-        Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) => s
-            .fields
-            .iter()
-            .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
-            .collect(),
-        // Stage 3.38 (L-ENUM): Enum variant field types.
-        // For enums, the field_tys include a discriminant (i32) as the
-        // first element, followed by the variant's payload field types.
-        // This is called with def_id = enum_def_id and variant_index = 0
-        // (from the Call/Struct paths that don't yet resolve variant).
-        // The variant-aware version is `resolve_enum_variant_field_tys`.
-        Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_))) => {
-            // Fallback: return just the discriminant (unit variant).
-            vec![Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)]
-        }
-        _ => Vec::new(),
     }
 }
 
