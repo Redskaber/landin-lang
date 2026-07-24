@@ -433,8 +433,9 @@ pub use codegen::{
     emit_trait_dispatch_globals_text_batch, emit_trait_dispatch_globals_text_batch_from_resolver,
     emit_vtable_global_from_emission, emit_vtable_global_text, emit_vtable_globals_batch,
     emit_vtables, emit_vtables_and_dynptrs_from_resolver, emit_vtables_from_resolver,
-    CodegenTraitDispatchEmissionPlan, CodegenTraitDispatchEmissionSummary, EmitType, EmitValue,
-    Emitter, StdlibDynptrGlobalSpec, StdlibVtableGlobalSpec, TextEmitter,
+    stdlib_type_kind_to_emit_type, CodegenTraitDispatchEmissionPlan,
+    CodegenTraitDispatchEmissionSummary, EmitType, EmitValue, Emitter, StdlibDynptrGlobalSpec,
+    StdlibVtableGlobalSpec, TextEmitter,
 };
 pub use driver::{compile, CompileErrors, CompileResult};
 pub use stdlib::{

@@ -319,3 +319,6 @@ mod codegen_dyn_trait_method_call_tests;
 
 #[path = "v0/stage5/plan/driver_dyn_trait_plan_integration_tests.rs"]
 mod driver_dyn_trait_plan_integration_tests;
+
+#[path = "v0/stage5/plan/dyn_trait_return_kind_tests.rs"]
+mod dyn_trait_return_kind_tests;

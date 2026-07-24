@@ -2379,3 +2379,41 @@ vtable indirect call IR (`getelementptr + load + load + call`).
 
 **Test impact**: 0 (no code changes, documentation-only stage)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.82 — TD-016 dyn Trait return type refinement (v0.11.78)
+
+**Priority**: Close TD-016 — dyn Trait return type I32 placeholder. Add
+`return_kind: StdlibTypeKind` field to `DynTraitMethodCall`, propagate
+from `StdlibTraitMethod.return_kind` via `build_dyn_trait_method_calls_from_fat_ptrs`,
+add `stdlib_type_kind_to_emit_type()` converter, use in `codegen_dyn_trait_call`.
+
+**Work completed**:
+- src/mir/dyn_trait.rs:
+  * Added `pub return_kind: crate::stdlib::StdlibTypeKind` field to DynTraitMethodCall
+  * Updated `new()` constructor: added `return_kind` parameter (BREAKING — all callers updated)
+  * Updated `from_fat_ptr()` constructor: added `return_kind` parameter
+  * Updated `build_dyn_trait_method_calls_from_fat_ptrs`: passes `method.return_kind`
+- src/codegen/mod.rs:
+  * Added `pub fn stdlib_type_kind_to_emit_type(kind: StdlibTypeKind) -> EmitType`
+    - I8/U8/Bool/Char → I8, I16/U16 → I16, I32/U32 → I32, I64/U64 → I64, I128/U128 → I128
+    - F32 → F32, F64 → F64
+    - Unit/Never → Void
+    - AllocType/StdType/Str/Unknown → OpaquePtr
+  * Updated `codegen_dyn_trait_call`: uses `stdlib_type_kind_to_emit_type(call_info.return_kind)`
+    instead of `EmitType::I32` placeholder
+- src/lib.rs: re-export `stdlib_type_kind_to_emit_type`
+- tests/v0/stage5/plan/dyn_trait_return_kind_tests.rs: 23 new tests
+  covering: stdlib_type_kind_to_emit_type (12 variants), DynTraitMethodCall
+  return_kind field (3 tests), codegen_dyn_trait_call uses return_kind
+  (5 tests: void/i32/f64/bool/alloc_type), build_dyn_trait_method_calls
+  integration (2 tests), stdlib_trait_methods return_kind verification
+- Updated 12 existing test files to add `StdlibTypeKind::Unit` default
+  to all DynTraitMethodCall::new/from_fat_ptr calls (via scripts)
+- tests/all_tests.rs: added dyn_trait_return_kind_tests module (95 mods)
+- Cargo.toml: version 0.11.77 → 0.11.78 (description extended)
+
+**Test impact**: +23 (1637 → 1660)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-016 status**: CLOSED — dyn Trait return type now uses precise EmitType
+based on StdlibTypeKind, no longer I32 placeholder.

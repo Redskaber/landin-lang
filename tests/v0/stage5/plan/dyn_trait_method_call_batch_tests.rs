@@ -9,6 +9,7 @@
 use landin_compiler::mir::{
     emit_dyn_trait_method_call_text, emit_dyn_trait_method_calls_text_batch, DynTraitMethodCall,
 };
+use landin_compiler::stdlib::StdlibTypeKind;
 
 /// Empty input → empty Vec.
 #[test]
@@ -20,7 +21,14 @@ fn test_method_calls_text_batch_empty() {
 /// Single call → 1 IR text block.
 #[test]
 fn test_method_calls_text_batch_single() {
-    let calls = [DynTraitMethodCall::new("Drop", "S", "drop", 0, 0)];
+    let calls = [DynTraitMethodCall::new(
+        "Drop",
+        "S",
+        "drop",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    )];
     let lines = emit_dyn_trait_method_calls_text_batch(&calls);
     assert_eq!(lines.len(), 1);
     assert!(lines[0].contains("; dyn Drop.S::drop"));
@@ -30,9 +38,9 @@ fn test_method_calls_text_batch_single() {
 #[test]
 fn test_method_calls_text_batch_multi() {
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0),
-        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1),
-        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit),
     ];
     let lines = emit_dyn_trait_method_calls_text_batch(&calls);
     assert_eq!(lines.len(), 3);
@@ -45,8 +53,8 @@ fn test_method_calls_text_batch_multi() {
 #[test]
 fn test_method_calls_text_batch_match_individual() {
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0),
-        DynTraitMethodCall::new("Drop", "T", "drop", 0, 0),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Drop", "T", "drop", 0, 0, StdlibTypeKind::Unit),
     ];
     let batch = emit_dyn_trait_method_calls_text_batch(&calls);
     let individual: Vec<String> = calls.iter().map(emit_dyn_trait_method_call_text).collect();
@@ -56,7 +64,14 @@ fn test_method_calls_text_batch_match_individual() {
 /// No side effects — pure function.
 #[test]
 fn test_method_calls_text_batch_no_side_effects() {
-    let calls = [DynTraitMethodCall::new("Foo", "S", "bar", 0, 0)];
+    let calls = [DynTraitMethodCall::new(
+        "Foo",
+        "S",
+        "bar",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    )];
     let l1 = emit_dyn_trait_method_calls_text_batch(&calls);
     let l2 = emit_dyn_trait_method_calls_text_batch(&calls);
     assert_eq!(l1, l2);
@@ -66,8 +81,8 @@ fn test_method_calls_text_batch_no_side_effects() {
 #[test]
 fn test_method_calls_text_batch_valid_ir() {
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0),
-        DynTraitMethodCall::new("Display", "Vec", "fmt", 0, 1),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Display", "Vec", "fmt", 0, 1, StdlibTypeKind::Unit),
     ];
     let lines = emit_dyn_trait_method_calls_text_batch(&calls);
     for line in &lines {
@@ -81,9 +96,9 @@ fn test_method_calls_text_batch_valid_ir() {
 #[test]
 fn test_method_calls_text_batch_real_scenario() {
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0),
-        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1),
-        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit),
     ];
     let lines = emit_dyn_trait_method_calls_text_batch(&calls);
     assert_eq!(lines.len(), 3);
@@ -92,7 +107,14 @@ fn test_method_calls_text_batch_real_scenario() {
 /// Deterministic — repeated calls identical.
 #[test]
 fn test_method_calls_text_batch_deterministic() {
-    let calls = [DynTraitMethodCall::new("Foo", "S", "bar", 0, 0)];
+    let calls = [DynTraitMethodCall::new(
+        "Foo",
+        "S",
+        "bar",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    )];
     let l1 = emit_dyn_trait_method_calls_text_batch(&calls);
     let l2 = emit_dyn_trait_method_calls_text_batch(&calls);
     assert_eq!(l1, l2);

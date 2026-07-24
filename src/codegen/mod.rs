@@ -393,6 +393,49 @@ pub fn mir_type_to_emit_type_with_layouts(
     }
 }
 
+/// Stage 5.82: Convert `StdlibTypeKind` to `EmitType` for codegen.
+///
+/// Used by `codegen_dyn_trait_call` to emit the correct LLVM return type
+/// for dyn Trait method calls (TD-016 closure). Previously (Stage 5.79),
+/// all dyn Trait calls used `EmitType::I32` as a placeholder — this
+/// function enables precise return type emission based on
+/// `StdlibTraitMethod.return_kind`.
+///
+/// # Mapping
+///
+/// - Integer types (I8/U8/Bool/Char → I8, I16/U16 → I16, etc.) — width-based
+/// - Float types (F32 → F32, F64 → F64) — direct
+/// - Unit/Never → Void
+/// - AllocType/StdType/Str/Unknown → OpaquePtr (dyn Trait receivers are
+///   fat pointers; method returns of these types are ptr-sized)
+///
+/// Per API-naming-standard §3 + §8.2: `stdlib_type_kind_to_emit_type`
+/// follows the `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` pattern,
+/// matching the translation ladder convention of `mir_type_to_emit_type`
+/// and `emit_type_to_llvm_str`.
+pub fn stdlib_type_kind_to_emit_type(kind: crate::stdlib::StdlibTypeKind) -> EmitType {
+    use crate::stdlib::StdlibTypeKind;
+    match kind {
+        StdlibTypeKind::I8 | StdlibTypeKind::U8 | StdlibTypeKind::Bool | StdlibTypeKind::Char => {
+            EmitType::I8
+        }
+        StdlibTypeKind::I16 | StdlibTypeKind::U16 => EmitType::I16,
+        StdlibTypeKind::I32 | StdlibTypeKind::U32 => EmitType::I32,
+        StdlibTypeKind::I64 | StdlibTypeKind::U64 => EmitType::I64,
+        StdlibTypeKind::I128 | StdlibTypeKind::U128 => EmitType::I128,
+        StdlibTypeKind::F32 => EmitType::F32,
+        StdlibTypeKind::F64 => EmitType::F64,
+        StdlibTypeKind::Unit | StdlibTypeKind::Never => EmitType::Void,
+        // AllocType/StdType/Str/Unknown → opaque pointer (dyn Trait
+        // receivers are fat pointers; method returns of these types are
+        // ptr-sized).
+        StdlibTypeKind::AllocType
+        | StdlibTypeKind::StdType
+        | StdlibTypeKind::Str
+        | StdlibTypeKind::Unknown => EmitType::OpaquePtr,
+    }
+}
+
 fn detect_place_storage_type(
     mir: &MirBody,
     lv: &Place,
@@ -1168,11 +1211,12 @@ pub fn codegen_dyn_trait_call(
     let arg_refs: Vec<(EmitType, &EmitValue)> =
         arg_pairs.iter().map(|(t, v)| (t.clone(), v)).collect();
 
-    // The return type is unknown at this stage (no typeck info on the
-    // dyn Trait call's return type) — default to I32 as a placeholder.
-    // Future stages can refine this by carrying the return type through
-    // the side-table.
-    let ret_ty = EmitType::I32;
+    // Stage 5.82: use return_kind for precise return type (TD-016 closure).
+    // Previously (Stage 5.79), this used EmitType::I32 as a placeholder.
+    // Now we convert call_info.return_kind (populated from
+    // StdlibTraitMethod.return_kind via build_dyn_trait_method_calls_from_fat_ptrs)
+    // to the correct EmitType.
+    let ret_ty = stdlib_type_kind_to_emit_type(call_info.return_kind);
     emitter.emit_dyn_trait_method_call(&dynptr_symbol, call_info.slot_index, &arg_refs, &ret_ty)
 }
 

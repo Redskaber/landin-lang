@@ -10,6 +10,7 @@ use landin_compiler::mir::{
     build_dyn_trait_mir_plan, build_dyn_trait_mir_plan_from_resolver, DynTraitFatPtr,
     DynTraitMethodCall,
 };
+use landin_compiler::stdlib::StdlibTypeKind;
 use landin_compiler::traits::{TraitResolver, Vtable, VtableEntry};
 use lasso::Rodeo;
 
@@ -54,7 +55,14 @@ fn test_mir_plan_empty() {
 #[test]
 fn test_mir_plan_single() {
     let fps = [DynTraitFatPtr::new("Drop", "S")];
-    let calls = [DynTraitMethodCall::new("Drop", "S", "drop", 0, 0)];
+    let calls = [DynTraitMethodCall::new(
+        "Drop",
+        "S",
+        "drop",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    )];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     assert_eq!(plan.fat_ptrs.len(), 1);
     assert_eq!(plan.method_calls.len(), 1);
@@ -87,8 +95,8 @@ fn test_mir_plan_from_resolver_empty() {
 fn test_mir_plan_summary_fields() {
     let fps = [DynTraitFatPtr::new("Clone", "S")];
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0),
-        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1, StdlibTypeKind::Unit),
     ];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
     assert_eq!(plan.summary.fat_ptr_count, 1);
@@ -100,7 +108,14 @@ fn test_mir_plan_summary_fields() {
 #[test]
 fn test_mir_plan_eq() {
     let fps = [DynTraitFatPtr::new("Drop", "S")];
-    let calls = [DynTraitMethodCall::new("Drop", "S", "drop", 0, 0)];
+    let calls = [DynTraitMethodCall::new(
+        "Drop",
+        "S",
+        "drop",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    )];
     let p1 = build_dyn_trait_mir_plan(&fps, &calls);
     let p2 = build_dyn_trait_mir_plan(&fps, &calls);
     assert_eq!(p1, p2);

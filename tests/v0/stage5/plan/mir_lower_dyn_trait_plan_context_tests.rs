@@ -12,6 +12,7 @@ use landin_compiler::mir::{
     build_dyn_trait_mir_plan, DynTraitFatPtr, DynTraitMethodCall, MirLowerCtxt,
 };
 use landin_compiler::session::Span;
+use landin_compiler::stdlib::StdlibTypeKind;
 use lasso::Rodeo;
 
 /// Helper: build a non-trivial plan with 2 fat ptrs + 3 method calls.
@@ -21,9 +22,9 @@ fn build_sample_plan() -> landin_compiler::mir::DynTraitMIRPlan {
         DynTraitFatPtr::new("Clone", "T"),
     ];
     let calls = [
-        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0),
-        DynTraitMethodCall::new("Clone", "T", "clone", 0, 0),
-        DynTraitMethodCall::new("Clone", "T", "clone_from", 1, 1),
+        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "T", "clone", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "T", "clone_from", 1, 1, StdlibTypeKind::Unit),
     ];
     build_dyn_trait_mir_plan(&fps, &calls)
 }
@@ -98,7 +99,14 @@ fn test_set_twice_last_wins() {
 
     let second = build_dyn_trait_mir_plan(
         &[DynTraitFatPtr::new("Clone", "B")],
-        &[DynTraitMethodCall::new("Clone", "B", "clone", 0, 0)],
+        &[DynTraitMethodCall::new(
+            "Clone",
+            "B",
+            "clone",
+            0,
+            0,
+            StdlibTypeKind::Unit,
+        )],
     );
     cx.set_dyn_trait_plan(second);
 

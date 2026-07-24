@@ -18,6 +18,7 @@ use landin_compiler::mir::dyn_trait::DynTraitMethodCall;
 use landin_compiler::mir::place::{LocalId, Operand, Place};
 use landin_compiler::mir::ty::{Const, ConstVal, Ty, TyKind};
 use landin_compiler::session::Span;
+use landin_compiler::stdlib::StdlibTypeKind;
 use lasso::Rodeo;
 
 // ============================================================
@@ -149,8 +150,14 @@ fn make_mir_with_dyn_call() -> MirBody {
     // Push a local decl for the destination (LocalId 1).
     mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
     // Push the dyn Trait call info.
-    mir.dyn_trait_calls
-        .push(DynTraitMethodCall::new("Drop", "S", "drop", 0, 0));
+    mir.dyn_trait_calls.push(DynTraitMethodCall::new(
+        "Drop",
+        "S",
+        "drop",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    ));
     mir
 }
 
@@ -184,7 +191,9 @@ fn test_codegen_dyn_trait_call_produces_vtable_ir() {
     assert!(output.contains("@.dynptr.Drop.S"));
     assert!(output.contains("getelementptr"));
     assert!(output.contains("load"));
-    assert!(output.contains("call i32 %v"));
+    // Stage 5.82: Drop::drop returns Unit → Void, so the indirect call
+    // emits `call void %v` (not `call i32 %v` which was the I32 placeholder).
+    assert!(output.contains("call void %v"));
 }
 
 /// codegen_dyn_trait_call uses correct dynptr symbol for trait/type.
@@ -192,8 +201,14 @@ fn test_codegen_dyn_trait_call_produces_vtable_ir() {
 fn test_codegen_dyn_trait_call_uses_correct_dynptr_symbol() {
     let mut mir = MirBody::new(Span::DUMMY);
     mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    mir.dyn_trait_calls
-        .push(DynTraitMethodCall::new("Display", "Vec", "fmt", 2, 1));
+    mir.dyn_trait_calls.push(DynTraitMethodCall::new(
+        "Display",
+        "Vec",
+        "fmt",
+        2,
+        1,
+        StdlibTypeKind::Unit,
+    ));
 
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
@@ -265,10 +280,22 @@ fn test_codegen_terminator_dyn_trait_dispatch_via_marker() {
 fn test_codegen_dyn_trait_call_multiple_distinct_indices() {
     let mut mir = MirBody::new(Span::DUMMY);
     mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    mir.dyn_trait_calls
-        .push(DynTraitMethodCall::new("Drop", "A", "drop", 0, 0));
-    mir.dyn_trait_calls
-        .push(DynTraitMethodCall::new("Drop", "B", "drop", 0, 0));
+    mir.dyn_trait_calls.push(DynTraitMethodCall::new(
+        "Drop",
+        "A",
+        "drop",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    ));
+    mir.dyn_trait_calls.push(DynTraitMethodCall::new(
+        "Drop",
+        "B",
+        "drop",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    ));
 
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();

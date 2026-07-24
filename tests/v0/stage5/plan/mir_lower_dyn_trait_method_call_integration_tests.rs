@@ -22,6 +22,7 @@ use landin_compiler::mir::{
 use landin_compiler::parser::Parser;
 use landin_compiler::resolve::resolve_crate;
 use landin_compiler::session::Span;
+use landin_compiler::stdlib::StdlibTypeKind;
 use lasso::Rodeo;
 
 /// Helper: extract LocalId from an Operand::Copy(Place).
@@ -51,7 +52,7 @@ fn make_cx() -> MirLowerCtxt<'static> {
 #[test]
 fn test_build_dyn_trait_call_terminator_returns_call() {
     let mut cx = make_cx();
-    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0);
+    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit);
     let recv = LocalId(0);
     let dest = LocalId(1);
     let terminator = build_dyn_trait_call_terminator(&mut cx, &call, recv, &[], dest, Span::DUMMY);
@@ -62,7 +63,7 @@ fn test_build_dyn_trait_call_terminator_returns_call() {
 #[test]
 fn test_build_dyn_trait_call_terminator_func_is_constant() {
     let mut cx = make_cx();
-    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0);
+    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
     if let Terminator::Call { func, .. } = terminator {
@@ -76,7 +77,7 @@ fn test_build_dyn_trait_call_terminator_func_is_constant() {
 #[test]
 fn test_build_dyn_trait_call_terminator_index_zero_for_first() {
     let mut cx = make_cx();
-    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0);
+    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
     if let Terminator::Call {
@@ -94,9 +95,9 @@ fn test_build_dyn_trait_call_terminator_index_zero_for_first() {
 #[test]
 fn test_build_dyn_trait_call_terminator_index_increments() {
     let mut cx = make_cx();
-    let call1 = DynTraitMethodCall::new("Drop", "A", "drop", 0, 0);
-    let call2 = DynTraitMethodCall::new("Drop", "B", "drop", 0, 0);
-    let call3 = DynTraitMethodCall::new("Clone", "C", "clone", 0, 0);
+    let call1 = DynTraitMethodCall::new("Drop", "A", "drop", 0, 0, StdlibTypeKind::Unit);
+    let call2 = DynTraitMethodCall::new("Drop", "B", "drop", 0, 0, StdlibTypeKind::Unit);
+    let call3 = DynTraitMethodCall::new("Clone", "C", "clone", 0, 0, StdlibTypeKind::Unit);
 
     let t1 =
         build_dyn_trait_call_terminator(&mut cx, &call1, LocalId(0), &[], LocalId(1), Span::DUMMY);
@@ -133,7 +134,7 @@ fn test_build_dyn_trait_call_terminator_index_increments() {
 #[test]
 fn test_build_dyn_trait_call_terminator_preserves_call_info() {
     let mut cx = make_cx();
-    let call = DynTraitMethodCall::new("Display", "Vec", "fmt", 2, 1);
+    let call = DynTraitMethodCall::new("Display", "Vec", "fmt", 2, 1, StdlibTypeKind::Unit);
     let _ =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
     assert_eq!(cx.mir.dyn_trait_calls.len(), 1);
@@ -149,7 +150,7 @@ fn test_build_dyn_trait_call_terminator_preserves_call_info() {
 #[test]
 fn test_build_dyn_trait_call_terminator_args_self_first() {
     let mut cx = make_cx();
-    let call = DynTraitMethodCall::new("Foo", "S", "bar", 0, 2);
+    let call = DynTraitMethodCall::new("Foo", "S", "bar", 0, 2, StdlibTypeKind::Unit);
     let terminator = build_dyn_trait_call_terminator(
         &mut cx,
         &call,
@@ -175,7 +176,7 @@ fn test_build_dyn_trait_call_terminator_args_self_first() {
 #[test]
 fn test_build_dyn_trait_call_terminator_destination() {
     let mut cx = make_cx();
-    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0);
+    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(42), Span::DUMMY);
     if let Terminator::Call { destination, .. } = terminator {
@@ -189,7 +190,7 @@ fn test_build_dyn_trait_call_terminator_destination() {
 #[test]
 fn test_build_dyn_trait_call_terminator_target_none() {
     let mut cx = make_cx();
-    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0);
+    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
     if let Terminator::Call { target, .. } = terminator {
@@ -203,7 +204,7 @@ fn test_build_dyn_trait_call_terminator_target_none() {
 #[test]
 fn test_build_dyn_trait_call_terminator_func_ty_is_error() {
     let mut cx = make_cx();
-    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0);
+    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
     if let Terminator::Call {
@@ -261,7 +262,14 @@ fn test_method_call_with_matching_plan_records_dyn_call() {
 
     // Build a plan with one method call: Drop::S::drop
     let fps = [DynTraitFatPtr::new("Drop", "S")];
-    let calls = [DynTraitMethodCall::new("Drop", "S", "drop", 0, 0)];
+    let calls = [DynTraitMethodCall::new(
+        "Drop",
+        "S",
+        "drop",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    )];
     let plan = build_dyn_trait_mir_plan(&fps, &calls);
 
     // Set the plan on a fresh cx, then call the helper directly.
@@ -271,7 +279,7 @@ fn test_method_call_with_matching_plan_records_dyn_call() {
 
     // Use the helper — simulates what the MethodCall branch does when
     // find_dyn_trait_method_call_in_plan_by_method returns Some.
-    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0);
+    let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
 
@@ -297,8 +305,8 @@ fn test_method_call_with_matching_plan_records_dyn_call() {
 #[test]
 fn test_multiple_dyn_trait_calls_get_distinct_indices() {
     let mut cx = make_cx();
-    let call1 = DynTraitMethodCall::new("Drop", "A", "drop", 0, 0);
-    let call2 = DynTraitMethodCall::new("Clone", "B", "clone", 0, 0);
+    let call1 = DynTraitMethodCall::new("Drop", "A", "drop", 0, 0, StdlibTypeKind::Unit);
+    let call2 = DynTraitMethodCall::new("Clone", "B", "clone", 0, 0, StdlibTypeKind::Unit);
 
     let t1 =
         build_dyn_trait_call_terminator(&mut cx, &call1, LocalId(0), &[], LocalId(1), Span::DUMMY);
@@ -341,7 +349,8 @@ fn test_multiple_dyn_trait_calls_get_distinct_indices() {
 #[test]
 fn test_side_table_records_method_name_verbatim() {
     let mut cx = make_cx();
-    let call = DynTraitMethodCall::new("Iterator", "Range", "size_hint", 1, 0);
+    let call =
+        DynTraitMethodCall::new("Iterator", "Range", "size_hint", 1, 0, StdlibTypeKind::Unit);
     let _ =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
     assert_eq!(cx.mir.dyn_trait_calls[0].method_name, "size_hint");

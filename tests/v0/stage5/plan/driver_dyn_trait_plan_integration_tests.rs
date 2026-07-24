@@ -19,6 +19,7 @@ use landin_compiler::mir::lower::{
 use landin_compiler::mir::{build_dyn_trait_mir_plan, DynTraitFatPtr, DynTraitMethodCall};
 use landin_compiler::parser::Parser;
 use landin_compiler::resolve::resolve_crate;
+use landin_compiler::stdlib::StdlibTypeKind;
 use lasso::Rodeo;
 
 // ============================================================
@@ -95,7 +96,14 @@ fn test_with_plan_no_method_call_no_record() {
     let (hir, interner) = parse_lower(src);
     let plan = build_dyn_trait_mir_plan(
         &[DynTraitFatPtr::new("Drop", "S")],
-        &[DynTraitMethodCall::new("Drop", "S", "drop", 0, 0)],
+        &[DynTraitMethodCall::new(
+            "Drop",
+            "S",
+            "drop",
+            0,
+            0,
+            StdlibTypeKind::Unit,
+        )],
     );
 
     let (mir, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
@@ -119,7 +127,14 @@ fn test_with_plan_matching_method_call_records_dyn_call() {
     let (hir, interner) = parse_lower(src);
     let plan = build_dyn_trait_mir_plan(
         &[DynTraitFatPtr::new("Foo", "S")],
-        &[DynTraitMethodCall::new("Foo", "S", "foo", 0, 0)],
+        &[DynTraitMethodCall::new(
+            "Foo",
+            "S",
+            "foo",
+            0,
+            0,
+            StdlibTypeKind::Unit,
+        )],
     );
 
     let (mir, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
@@ -150,7 +165,14 @@ fn test_with_plan_method_name_mismatch_no_record() {
     let (hir, interner) = parse_lower(src);
     let plan = build_dyn_trait_mir_plan(
         &[DynTraitFatPtr::new("Foo", "S")],
-        &[DynTraitMethodCall::new("Foo", "S", "foo", 0, 0)], // "foo" not "bar"
+        &[DynTraitMethodCall::new(
+            "Foo",
+            "S",
+            "foo",
+            0,
+            0,
+            StdlibTypeKind::Unit,
+        )], // "foo" not "bar"
     );
 
     let (mir, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
@@ -176,8 +198,8 @@ fn test_multiple_method_calls_multiple_records() {
             DynTraitFatPtr::new("Bar", "S"),
         ],
         &[
-            DynTraitMethodCall::new("Foo", "S", "foo", 0, 0),
-            DynTraitMethodCall::new("Bar", "S", "bar", 0, 0),
+            DynTraitMethodCall::new("Foo", "S", "foo", 0, 0, StdlibTypeKind::Unit),
+            DynTraitMethodCall::new("Bar", "S", "bar", 0, 0, StdlibTypeKind::Unit),
         ],
     );
 

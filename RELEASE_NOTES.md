@@ -1,9 +1,70 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.77
+**Current version**: v0.11.78
 **Date**: 2026-07-24
-**Test count**: 1637 tests + 5 benchmarks
+**Test count**: 1660 tests + 5 benchmarks
+
+---
+
+## v0.11.78 — Stage 5.82 (TD-016 dyn Trait return type refinement)
+
+### Overview
+
+Close TD-016 — dyn Trait return type I32 placeholder. Add `return_kind: StdlibTypeKind`
+field to `DynTraitMethodCall`, propagate from `StdlibTraitMethod.return_kind` via
+`build_dyn_trait_method_calls_from_fat_ptrs`, add `stdlib_type_kind_to_emit_type()`
+converter, use in `codegen_dyn_trait_call`. Now codegen emits precise return types
+(`void`, `i32`, `double`, `i8`, `i32*`, etc.) instead of always `i32`.
+
+### New API
+
+- `stdlib_type_kind_to_emit_type(kind: StdlibTypeKind) -> EmitType` — free fn (in `src/codegen/mod.rs`)
+- `DynTraitMethodCall.return_kind: StdlibTypeKind` — pub field (in `src/mir/dyn_trait.rs`)
+
+### Breaking change
+
+`DynTraitMethodCall::new()` and `from_fat_ptr()` now require a `return_kind`
+parameter. All call sites updated (12 test files + 1 source file). Existing
+callers should pass `StdlibTypeKind::Unit` for void methods or the appropriate
+kind from `StdlibTraitMethod.return_kind`.
+
+### Type mapping
+
+| StdlibTypeKind | EmitType | LLVM IR |
+|---------------|----------|---------|
+| I8/U8/Bool/Char | I8 | i8 |
+| I16/U16 | I16 | i16 |
+| I32/U32 | I32 | i32 |
+| I64/U64 | I64 | i64 |
+| I128/U128 | I128 | i128 |
+| F32 | F32 | float |
+| F64 | F64 | double |
+| Unit/Never | Void | void |
+| AllocType/StdType/Str/Unknown | OpaquePtr | i32* |
+
+### §23 compliance
+
+- `stdlib_type_kind_to_emit_type` — `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>`
+  (translation ladder convention, mirrors `mir_type_to_emit_type`)
+- `DynTraitMethodCall.return_kind` — `<noun>_<noun>` (field naming)
+
+### §16 compliance
+
+Data flow: `stdlib::StdlibTraitMethod.return_kind` →
+`mir::dyn_trait::DynTraitMethodCall.return_kind` (via
+`build_dyn_trait_method_calls_from_fat_ptrs`) →
+`codegen::stdlib_type_kind_to_emit_type` → `EmitType` →
+`emit_dyn_trait_method_call`. Single-directional, no circular dependency.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean
+cargo test: 1660 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

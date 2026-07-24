@@ -2359,3 +2359,41 @@ Stage 5.81 Deep Review #5 round. §25 阶段末尾深度审查，覆盖 Stage 5.
 **Test impact**: 0 (documentation-only stage).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.52 (Stage 5.82, 2026-07-24)
+
+Stage 5.82 TD-016 dyn Trait return type refinement round. Close TD-016 —
+add `return_kind: StdlibTypeKind` field to `DynTraitMethodCall`, propagate
+from `StdlibTraitMethod.return_kind`, add `stdlib_type_kind_to_emit_type()`
+converter, use in `codegen_dyn_trait_call`.
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_type_kind_to_emit_type` | free fn (in `codegen`) | `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` |
+| `DynTraitMethodCall.return_kind` | pub field (in `mir::dyn_trait`) | `<noun>_<noun>` |
+
+**Design decisions**:
+1. **`stdlib_type_kind_to_emit_type` naming** — follows the translation
+   ladder convention per §8.2, mirroring `mir_type_to_emit_type` and
+   `emit_type_to_llvm_str`. The `_to_` infix clearly indicates "convert
+   from X to Y".
+2. **Breaking change to `DynTraitMethodCall::new` / `from_fat_ptr`** —
+   added `return_kind` parameter. All 12 test files + 1 source file
+   updated. Default value `StdlibTypeKind::Unit` used for existing test
+   cases (matches original I32 placeholder behavior for void methods).
+3. **Type mapping** — integer types map by width (I8/U8/Bool/Char → I8,
+   etc.), floats map directly, Unit/Never → Void, AllocType/StdType/Str/
+   Unknown → OpaquePtr (dyn Trait receivers are fat pointers; method
+   returns of these types are ptr-sized).
+4. **§16 compliance** — data flows one way: `stdlib::StdlibTraitMethod.
+   return_kind` → `mir::dyn_trait::DynTraitMethodCall.return_kind` →
+   `codegen::stdlib_type_kind_to_emit_type` → `EmitType`. No circular
+   dependency.
+
+**TD-016 status**: CLOSED.
+
+**Test impact**: +23 (1637 → 1660).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

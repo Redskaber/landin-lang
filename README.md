@@ -6,12 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.11.77 — Stage 0-4 complete, Stage 5 in progress.
-> **1637 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
+> **Status:** v0.11.78 — Stage 0-4 complete, Stage 5 in progress.
+> **1660 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests milestone!
 > Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5.1-5.81: 81 sub-stages done. Deep Review #5: GO (TD-014 CLOSED).
-> 🎉 dyn Trait MIR lowering → codegen pipeline ACTIVE end-to-end.
-> Next: Stage 5.82+ — refine dyn Trait return type handling, deeper integration tests.
+> Stage 5.1-5.82: 82 sub-stages done. Deep Review #5: GO (TD-014 + TD-016 CLOSED).
+> 🎉 dyn Trait MIR lowering → codegen pipeline ACTIVE end-to-end with precise return types.
+> Next: Stage 5.83+ — deeper integration tests, or begin Stage 6 planning.
 
 ## Quick start
 

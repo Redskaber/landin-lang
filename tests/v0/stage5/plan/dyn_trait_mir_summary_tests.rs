@@ -6,6 +6,7 @@
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
 use landin_compiler::mir::{build_dyn_trait_mir_summary, DynTraitFatPtr, DynTraitMethodCall};
+use landin_compiler::stdlib::StdlibTypeKind;
 
 /// Empty input → all-zero summary.
 #[test]
@@ -22,7 +23,14 @@ fn test_mir_summary_empty() {
 #[test]
 fn test_mir_summary_single() {
     let fps = [DynTraitFatPtr::new("Drop", "S")];
-    let calls = [DynTraitMethodCall::new("Drop", "S", "drop", 0, 0)];
+    let calls = [DynTraitMethodCall::new(
+        "Drop",
+        "S",
+        "drop",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    )];
     let s = build_dyn_trait_mir_summary(&fps, &calls);
     assert_eq!(s.fat_ptr_count, 1);
     assert_eq!(s.method_call_count, 1);
@@ -36,8 +44,8 @@ fn test_mir_summary_single() {
 fn test_mir_summary_clone() {
     let fps = [DynTraitFatPtr::new("Clone", "S")];
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0),
-        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1, StdlibTypeKind::Unit),
     ];
     let s = build_dyn_trait_mir_summary(&fps, &calls);
     assert_eq!(s.fat_ptr_count, 1);
@@ -65,8 +73,8 @@ fn test_mir_summary_dedup() {
 fn test_mir_summary_total_slots() {
     let fps = [DynTraitFatPtr::new("PartialEq", "S")];
     let calls = [
-        DynTraitMethodCall::new("PartialEq", "S", "eq", 0, 1),
-        DynTraitMethodCall::new("PartialEq", "S", "ne", 1, 1),
+        DynTraitMethodCall::new("PartialEq", "S", "eq", 0, 1, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("PartialEq", "S", "ne", 1, 1, StdlibTypeKind::Unit),
     ];
     let s = build_dyn_trait_mir_summary(&fps, &calls);
     assert_eq!(s.total_slots, 2);
@@ -85,7 +93,14 @@ fn test_mir_summary_no_calls() {
 #[test]
 fn test_mir_summary_eq() {
     let fps = [DynTraitFatPtr::new("Drop", "S")];
-    let calls = [DynTraitMethodCall::new("Drop", "S", "drop", 0, 0)];
+    let calls = [DynTraitMethodCall::new(
+        "Drop",
+        "S",
+        "drop",
+        0,
+        0,
+        StdlibTypeKind::Unit,
+    )];
     let s1 = build_dyn_trait_mir_summary(&fps, &calls);
     let s2 = build_dyn_trait_mir_summary(&fps, &calls);
     assert_eq!(s1, s2);
@@ -100,10 +115,10 @@ fn test_mir_summary_real_scenario() {
         DynTraitFatPtr::new("Display", "S"),
     ];
     let calls = [
-        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0),
-        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1),
-        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0),
-        DynTraitMethodCall::new("Display", "S", "fmt", 0, 1),
+        DynTraitMethodCall::new("Clone", "S", "clone", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Clone", "S", "clone_from", 1, 1, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit),
+        DynTraitMethodCall::new("Display", "S", "fmt", 0, 1, StdlibTypeKind::Unit),
     ];
     let s = build_dyn_trait_mir_summary(&fps, &calls);
     assert_eq!(s.fat_ptr_count, 3);

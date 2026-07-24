@@ -6058,3 +6058,57 @@ Stage Summary:
 - Next: Stage 5.82+ — refine dyn Trait return type handling (TD-016),
   deeper end-to-end integration tests, or begin Stage 6 planning
   (mir/lower split TD-011, Region inference TD-015).
+
+---
+Task ID: stage5.82-r131
+Agent: Super Z (main)
+Task: Stage 5.82 — TD-016 dyn Trait return type refinement + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.77 / 1637 tests (Stage 5.81 complete)
+- Read prior agents' work from /home/z/my-project/worklog.md + docs/worklog.md
+
+Stage 5.82: TD-016 dyn Trait return type refinement (CLOSE TD-016)
+- src/mir/dyn_trait.rs:
+  * Added `pub return_kind: crate::stdlib::StdlibTypeKind` field to DynTraitMethodCall
+  * Updated `new()` constructor: added `return_kind` parameter (BREAKING)
+  * Updated `from_fat_ptr()` constructor: added `return_kind` parameter
+  * Updated `build_dyn_trait_method_calls_from_fat_ptrs`: passes `method.return_kind`
+- src/codegen/mod.rs:
+  * Added `pub fn stdlib_type_kind_to_emit_type(kind: StdlibTypeKind) -> EmitType`
+    - I8/U8/Bool/Char → I8, I16/U16 → I16, I32/U32 → I32, I64/U64 → I64, I128/U128 → I128
+    - F32 → F32, F64 → F64, Unit/Never → Void
+    - AllocType/StdType/Str/Unknown → OpaquePtr
+  * Updated `codegen_dyn_trait_call`: uses `stdlib_type_kind_to_emit_type(call_info.return_kind)`
+    instead of `EmitType::I32` placeholder
+- src/lib.rs: re-export `stdlib_type_kind_to_emit_type`
+- tests/v0/stage5/plan/dyn_trait_return_kind_tests.rs: 23 new tests
+  covering: stdlib_type_kind_to_emit_type (12 variants), DynTraitMethodCall
+  return_kind field (3 tests), codegen_dyn_trait_call uses return_kind
+  (5 tests: void/i32/f64/bool/alloc_type), build_dyn_trait_method_calls
+  integration (2 tests), stdlib_trait_methods return_kind verification
+- Updated 12 existing test files via Python scripts to add StdlibTypeKind::Unit
+  default to all DynTraitMethodCall::new/from_fat_ptr calls
+- tests/all_tests.rs: added dyn_trait_return_kind_tests module (95 mods)
+- Cargo.toml: version 0.11.77 → 0.11.78 (description extended)
+- docs/develop/v0/stage-5/plan-5.82.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round82.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.82 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.52 entry appended
+- RELEASE_NOTES.md: v0.11.78 section prepended, header bumped
+- README.md: status line updated (TD-014 + TD-016 CLOSED)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean ✅
+- cargo test: 1660 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.82 PASSED — CI/CD all green per §1.2.
+- TD-016 CLOSED — dyn Trait return type now uses precise EmitType.
+- New API: stdlib_type_kind_to_emit_type + DynTraitMethodCall.return_kind field.
+- Breaking change: DynTraitMethodCall::new/from_fat_ptr now require return_kind.
+- 23 new tests + 12 existing test files updated.
+- Next: Stage 5.83+ — deeper integration tests, or begin Stage 6 planning
+  (mir/lower split TD-011, Region inference TD-015).
