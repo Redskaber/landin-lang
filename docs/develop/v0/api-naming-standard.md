@@ -2906,3 +2906,20 @@ extract closure capture functions into mir/lower/closure_capture.rs.
 **Test impact**: 0 (behavior-equivalent).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.72 (Stage 6.3, 2026-07-24)
+
+Stage 6.3 mir/lower pattern_bindings split round. Continue TD-011 repayment —
+extract pattern binding functions into mir/lower/pattern_bindings.rs.
+
+**New public symbols**: None (internal refactoring, behavior-equivalent).
+
+**Changes**:
+- `pat_mutability`, `collect_pat_bindings_for_mir`, `lower_enum_variant_pattern_bindings`,
+  `compute_enum_payload_starting_idx`, `collect_pat_hir_ids`: `fn` → `pub(crate) fn`
+  in new pattern_bindings.rs module
+- `resolve_enum_variant`: `fn` → `pub(crate) fn` (needed by pattern_bindings.rs)
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

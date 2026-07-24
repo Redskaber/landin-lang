@@ -2924,3 +2924,34 @@ from mir/lower/mod.rs into mir/lower/closure_capture.rs.
 
 **TD-011 progress**: Second split complete. mir/lower/mod.rs now 3035 LOC (was 3346 originally).
 Two splits so far: adt_layout (-153) + closure_capture (-158) = -311 LOC total (-9.3%).
+
+### Stage 6.3 — mir/lower pattern_bindings split (TD-011 step 3) (v0.12.2)
+
+**Priority**: Continue TD-011 repayment — extract pattern binding functions
+from mir/lower/mod.rs into mir/lower/pattern_bindings.rs.
+
+**Work completed**:
+- Created src/mir/lower/pattern_bindings.rs (286 LOC) with 5 extracted functions:
+  * pat_mutability (pub(crate))
+  * collect_pat_bindings_for_mir (pub(crate))
+  * lower_enum_variant_pattern_bindings (pub(crate))
+  * compute_enum_payload_starting_idx (pub(crate))
+  * collect_pat_hir_ids (pub(crate))
+- src/mir/lower/mod.rs:
+  * Added `mod pattern_bindings;` declaration
+  * Changed `resolve_enum_variant` from `fn` to `pub(crate) fn`
+  * Updated all call sites with `pattern_bindings::` prefix
+  * LOC reduced: 3035 → 2730 (-305 LOC, -10.1%)
+  * Fixed unused import warning (removed Span from pattern_bindings.rs)
+- Cargo.toml: version 0.12.1 → 0.12.2
+
+**Test impact**: 0 (behavior-equivalent refactoring, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-011 cumulative progress**:
+| Split | Module | LOC extracted | mod.rs after |
+|-------|--------|--------------|--------------|
+| 6.1 | adt_layout.rs | 153 | 3193 |
+| 6.2 | closure_capture.rs | 158 | 3035 |
+| 6.3 | pattern_bindings.rs | 305 | 2730 |
+| **Total** | **3 modules** | **616 LOC** | **2730 (was 3346, -18.4%)** |

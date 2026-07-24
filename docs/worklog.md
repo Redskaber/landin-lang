@@ -6827,3 +6827,28 @@ Stage Summary:
 - 1881 tests pass unchanged (behavior-equivalent).
 - 0 clippy warnings, fmt clean.
 - Next: Stage 6.3+ — continue mir/lower split.
+
+---
+Task ID: stage6.3-r151
+Agent: Super Z (main)
+Task: Stage 6.3 — mir/lower pattern_bindings split (TD-011 step 3) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.12.1 / 1881 tests (Stage 6.2 complete)
+- Created src/mir/lower/pattern_bindings.rs (286 LOC) with 5 extracted functions
+- Updated mod.rs: added mod declaration, changed resolve_enum_variant to pub(crate),
+  updated all call sites, removed 5 functions (-305 LOC)
+- Fixed unused Span import in pattern_bindings.rs
+- Bumped Cargo.toml version 0.12.1 → 0.12.2
+- Updated all docs (plan-6.3.md, gate-review-6.3.md, dev-log.md,
+  api-naming-standard.md v1.72, RELEASE_NOTES.md, README.md, docs/worklog.md)
+- Ran full CI/CD: cargo clean + cargo test (1881 passed) + cargo fmt +
+  cargo clippy --all-targets — all green ✅
+
+Stage Summary:
+- Stage 6.3 PASSED — CI/CD all green per §1.2.
+- mir/lower/mod.rs: 3035 → 2730 LOC (-305 LOC, -10.1%)
+- TD-011 cumulative: -616 LOC (-18.4%) across 3 splits
+- 1881 tests pass unchanged (behavior-equivalent).
+- 0 clippy warnings, fmt clean.
+- Next: Stage 6.4+ — continue mir/lower split.

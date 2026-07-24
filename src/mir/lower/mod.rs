@@ -19,6 +19,7 @@ use lasso::Rodeo;
 
 mod adt_layout;
 mod closure_capture;
+mod pattern_bindings;
 
 /// Lowering context for HIR→MIR conversion.
 ///
@@ -1580,7 +1581,7 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
                 let ty = cx.fresh_infer_ty(param.pat.span);
                 cx.new_local(param.pat.hir_id, ty, None);
                 // Collect all hir_ids from the pattern (ident, tuple, etc.)
-                collect_pat_hir_ids(&param.pat, &mut param_hir_ids);
+                pattern_bindings::collect_pat_hir_ids(&param.pat, &mut param_hir_ids);
             }
 
             // Stage 4.7: Collect captured locals — external variables referenced in body
@@ -2139,7 +2140,7 @@ fn resolve_adt_field_tys(cx: &MirLowerCtxt, def_id: crate::hir::DefId) -> Vec<Ty
 /// Per §16: MIR lower reads HIR (allowed — data flows downstream). The
 /// resolved field_tys are sunk into `AggregateKind::Adt` so codegen reads
 /// from MIR.
-fn resolve_enum_variant(
+pub(crate) fn resolve_enum_variant(
     cx: &MirLowerCtxt,
     enum_def_id: crate::hir::DefId,
     variant_name: &crate::lexer::Symbol,
@@ -2379,31 +2380,6 @@ fn lower_deref_expr(cx: &mut MirLowerCtxt, inner: &HirExpr, span: Span) -> Local
     let result_ty = cx.fresh_infer_ty(span);
     cx.eval_rvalue_to_temp(Rvalue::Use(Operand::Copy(proj)), result_ty, span)
 }
-
-/// Extract the mutability from a pattern's BindingMode.
-///
-/// G5 fix (Stage 2.4e): For `let mut x = ...`, the pattern is
-/// `HirPatKind::Ident(ByValue(Mutable), ...)`. This helper extracts
-/// the `Mutable` and returns it as a MIR `Mutability`.
-///
-/// For non-Ident patterns (Wild, Tuple, Struct, etc.), returns Immutable
-/// (the default — these patterns don't directly bind a single local).
-fn pat_mutability(pat: &HirPat) -> crate::mir::ty::Mutability {
-    use crate::ast::BindingMode;
-    use crate::hir::HirPatKind;
-    use crate::mir::ty::Mutability;
-    match &pat.kind {
-        HirPatKind::Ident(
-            BindingMode::ByValue(ast::Mutability::Mutable)
-            | BindingMode::ByRef(ast::Mutability::Mutable),
-            _,
-            _,
-        ) => Mutability::Mutable,
-        _ => Mutability::Immutable,
-    }
-}
-
-/// Lower a HIR block to MIR. Processes statements in order and
 /// evaluates the trailing expression (if any). Returns the LocalId
 /// of the block's result value.
 fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
@@ -2435,7 +2411,7 @@ fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                     // `ByValue(Mutable)`. Without this, all locals are
                     // immutable and the borrow checker can't catch
                     // `let x = 1; x = 2;`.
-                    let mutability = pat_mutability(&local.pat);
+                    let mutability = pattern_bindings::pat_mutability(&local.pat);
                     let local_id = cx.new_local_with_mut(local.pat.hir_id, ty, None, mutability);
                     // Emit StorageLive to mark the local as in-scope.
                     // Codegen uses this to allocate stack space.
@@ -2466,7 +2442,7 @@ fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                     };
                     // G1 fix: use pat.hir_id (see comment above).
                     // G5 fix: extract mutability.
-                    let mutability = pat_mutability(&local.pat);
+                    let mutability = pattern_bindings::pat_mutability(&local.pat);
                     let local_id = cx.new_local_with_mut(local.pat.hir_id, ty, None, mutability);
                     // Emit StorageLive even for uninit locals (codegen
                     // still needs to allocate stack space).
@@ -2711,12 +2687,12 @@ fn lower_match(cx: &mut MirLowerCtxt, scrutinee: &HirExpr, arms: &[HirArm], span
         cx.current_block = arm_block;
 
         // Collect pattern bindings (for Ident patterns)
-        collect_pat_bindings_for_mir(cx, &arm.pat);
+        pattern_bindings::collect_pat_bindings_for_mir(cx, &arm.pat);
         // Stage 3.48 (L-ENUM-BINDING): generate payload-extraction projections
         // for enum tuple/struct variant patterns (e.g., `Opt::Some(x)`).
         // Before this fix, the binding `x` was never assigned — reading
         // uninitialized memory (P0 soundness bug).
-        lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
+        pattern_bindings::lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
 
         // Lower the arm body
         let arm_result = lower_expr_to_operand(cx, &arm.body);
@@ -2734,9 +2710,9 @@ fn lower_match(cx: &mut MirLowerCtxt, scrutinee: &HirExpr, arms: &[HirArm], span
     for arm in arms {
         let is_literal = matches!(&arm.pat.kind, HirPatKind::Lit(_));
         if !is_literal {
-            collect_pat_bindings_for_mir(cx, &arm.pat);
+            pattern_bindings::collect_pat_bindings_for_mir(cx, &arm.pat);
             // Stage 3.48 (L-ENUM-BINDING): same as above, for the otherwise arm.
-            lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
+            pattern_bindings::lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
             let arm_result = lower_expr_to_operand(cx, &arm.body);
             cx.push_assign(
                 Place::local(result_local, span),
@@ -2751,285 +2727,4 @@ fn lower_match(cx: &mut MirLowerCtxt, scrutinee: &HirExpr, arms: &[HirArm], span
     // Continuation
     cx.current_block = cont_block;
     result_local
-}
-
-/// Collect pattern bindings into the MIR local map.
-fn collect_pat_bindings_for_mir(cx: &mut MirLowerCtxt, pat: &HirPat) {
-    match &pat.kind {
-        HirPatKind::Ident(_mode, _ident, sub) => {
-            // Allocate a local for this binding
-            let ty = cx.fresh_infer_ty(pat.span);
-            cx.new_local(pat.hir_id, ty, None);
-            if let Some(s) = sub {
-                collect_pat_bindings_for_mir(cx, s);
-            }
-        }
-        HirPatKind::TupleStruct(_, pats) => {
-            for p in pats {
-                collect_pat_bindings_for_mir(cx, p);
-            }
-        }
-        HirPatKind::Tuple(pats) => {
-            for p in pats {
-                collect_pat_bindings_for_mir(cx, p);
-            }
-        }
-        HirPatKind::Struct(_, fields, _) => {
-            for f in fields {
-                collect_pat_bindings_for_mir(cx, &f.pat);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Stage 3.48 (L-ENUM-BINDING closure): Generate payload-extraction
-/// projections for enum tuple/struct variant patterns.
-///
-/// Before this fix, `Opt::Some(x) => x` would allocate a local for `x`
-/// but never assign it — reading uninitialized memory (P0 soundness bug).
-///
-/// This function walks the pattern, and for each enum variant pattern
-/// (`TupleStruct` or `Struct` on an enum variant), generates MIR
-/// statements that extract the variant's payload fields from the
-/// scrutinee and assign them to the binding locals.
-///
-/// Per §16 (阶段间接口隔离): reads HIR (allowed — data flows downstream
-/// per §16.2.1) to resolve variant_idx and field types. The generated
-/// MIR uses `ProjectionElem::Field(field_id, field_ty)` where `field_id`
-/// is the flat storage index (computed per Stage 3.48's flat layout) and
-/// `field_ty` is the field's MIR type. Codegen reads the MIR projection
-/// — no HIR lookup at codegen time.
-///
-/// The flat field_idx computation (per `mir_type_to_emit_type_with_layouts`
-/// Stage 3.48 layout):
-///   `field_idx(variant_V, field_F) = 1 + sum(field_counts of variants 0..V-1) + F`
-/// where the `1` accounts for the discriminant at storage.0.
-fn lower_enum_variant_pattern_bindings(cx: &mut MirLowerCtxt, scrut_local: LocalId, pat: &HirPat) {
-    let span = pat.span;
-    match &pat.kind {
-        HirPatKind::TupleStruct(path, sub_pats) => {
-            // Resolve variant_idx and field_tys from HIR.
-            if let Res::Def(enum_def_id, crate::resolve::DefKind::Enum) = path.res {
-                if let Some((variant_idx, field_tys)) =
-                    resolve_enum_variant(cx, enum_def_id, &path.segments[1].ident.name)
-                {
-                    // field_tys[0] is the discriminant; field_tys[1..] are the
-                    // variant's payload fields.
-                    let payload_tys = &field_tys[1..];
-                    // Compute starting field_idx in the flat storage layout.
-                    let starting_idx =
-                        compute_enum_payload_starting_idx(cx, enum_def_id, variant_idx);
-                    // For each sub_pat at position i, if it's an Ident binding,
-                    // generate: binding_local = Copy(scrut.Field(starting_idx + i, payload_tys[i]))
-                    for (i, sub_pat) in sub_pats.iter().enumerate() {
-                        if let HirPatKind::Ident(_mode, _ident, _) = &sub_pat.kind {
-                            let field_idx = starting_idx + i as u32;
-                            let field_ty = payload_tys.get(i).cloned().unwrap_or_else(|| {
-                                Ty::new(TyKind::Int(crate::ast::IntTy::I32), span)
-                            });
-                            // Allocate (or reuse) the binding's local.
-                            // collect_pat_bindings_for_mir already allocated it with a fresh infer ty;
-                            // we need to update its type to the correct field type.
-                            // Since we can't update an existing local's type, we re-allocate.
-                            // The original allocation is dead (never assigned), which is fine.
-                            let binding_local =
-                                cx.mir.new_local(field_ty.clone(), None, sub_pat.span);
-                            cx.local_map.insert(sub_pat.hir_id, binding_local);
-                            // Generate: binding_local = Copy(scrut.Field(field_idx, field_ty))
-                            cx.push_assign(
-                                Place::local(binding_local, sub_pat.span),
-                                Rvalue::Use(Operand::Copy(Place {
-                                    kind: PlaceKind::Projection(
-                                        Box::new(Place::local(scrut_local, span)),
-                                        ProjectionElem::Field(FieldId(field_idx), field_ty),
-                                    ),
-                                    span: sub_pat.span,
-                                })),
-                                sub_pat.span,
-                            );
-                        }
-                    }
-                }
-            }
-            // Recurse into sub-patterns (in case of nested patterns).
-            for p in sub_pats {
-                lower_enum_variant_pattern_bindings(cx, scrut_local, p);
-            }
-        }
-        HirPatKind::Struct(path, fields, _) => {
-            // Resolve variant_idx and field_tys from HIR.
-            if let Res::Def(enum_def_id, crate::resolve::DefKind::Enum) = path.res {
-                if let Some((variant_idx, field_tys)) =
-                    resolve_enum_variant(cx, enum_def_id, &path.segments[1].ident.name)
-                {
-                    let payload_tys = &field_tys[1..];
-                    let starting_idx =
-                        compute_enum_payload_starting_idx(cx, enum_def_id, variant_idx);
-                    // For struct variants, fields are named. We need to look up
-                    // each field's index in the variant definition.
-                    // For now, match by name to find the field's position.
-                    let hir = match cx.hir {
-                        Some(h) => h,
-                        None => return,
-                    };
-                    if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(enum_def))) =
-                        hir.owner(enum_def_id)
-                    {
-                        if let Some(variant) = enum_def.variants.get(variant_idx as usize) {
-                            if let crate::hir::HirVariantData::Struct(var_fields, _) = &variant.data
-                            {
-                                for field_pat in fields {
-                                    // Find this field's index in the variant definition.
-                                    if let Some(field_pos) = var_fields.iter().position(|f| {
-                                        f.ident.map(|i| i.name) == Some(field_pat.ident.name)
-                                    }) {
-                                        if let HirPatKind::Ident(_mode, _ident, _) =
-                                            &field_pat.pat.kind
-                                        {
-                                            let field_idx = starting_idx + field_pos as u32;
-                                            let field_ty = payload_tys
-                                                .get(field_pos)
-                                                .cloned()
-                                                .unwrap_or_else(|| {
-                                                    Ty::new(
-                                                        TyKind::Int(crate::ast::IntTy::I32),
-                                                        span,
-                                                    )
-                                                });
-                                            let binding_local = cx.mir.new_local(
-                                                field_ty.clone(),
-                                                None,
-                                                field_pat.pat.span,
-                                            );
-                                            cx.local_map
-                                                .insert(field_pat.pat.hir_id, binding_local);
-                                            cx.push_assign(
-                                                Place::local(binding_local, field_pat.pat.span),
-                                                Rvalue::Use(Operand::Copy(Place {
-                                                    kind: PlaceKind::Projection(
-                                                        Box::new(Place::local(scrut_local, span)),
-                                                        ProjectionElem::Field(
-                                                            FieldId(field_idx),
-                                                            field_ty,
-                                                        ),
-                                                    ),
-                                                    span: field_pat.pat.span,
-                                                })),
-                                                field_pat.pat.span,
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // Recurse into field patterns.
-            for f in fields {
-                lower_enum_variant_pattern_bindings(cx, scrut_local, &f.pat);
-            }
-        }
-        HirPatKind::Tuple(pats) => {
-            // Non-enum tuple pattern — no payload extraction (tuple fields
-            // are accessed via Field projections on the tuple itself).
-            for p in pats {
-                lower_enum_variant_pattern_bindings(cx, scrut_local, p);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Stage 3.48 (L-ENUM-BINDING): Compute the starting field_idx for variant V's
-/// payload in the flat enum storage layout.
-///
-/// Layout (per `mir_type_to_emit_type_with_layouts` Stage 3.48):
-///   `{ discr, variant_0_fields..., variant_1_fields..., ... }`
-/// (unit variants contribute no fields.)
-///
-/// `field_idx(variant_V, field_F) = 1 + sum(field_counts of variants 0..V-1) + F`
-fn compute_enum_payload_starting_idx(
-    cx: &MirLowerCtxt,
-    enum_def_id: crate::hir::DefId,
-    variant_idx: u32,
-) -> u32 {
-    let hir = match cx.hir {
-        Some(h) => h,
-        None => return 1, // fallback: assume no preceding variants have fields
-    };
-    let owner = match hir.owner(enum_def_id) {
-        Some(o) => o,
-        None => return 1,
-    };
-    let enum_def = match owner {
-        crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => e,
-        _ => return 1,
-    };
-    let mut idx = 1u32; // skip discriminant
-    for (i, variant) in enum_def.variants.iter().enumerate() {
-        if i as u32 >= variant_idx {
-            break;
-        }
-        let field_count = match &variant.data {
-            crate::hir::HirVariantData::Unit(_) => 0,
-            crate::hir::HirVariantData::Tuple(fields, _) => fields.len(),
-            crate::hir::HirVariantData::Struct(fields, _) => fields.len(),
-        };
-        idx += field_count as u32;
-    }
-    idx
-}
-
-// ================================================================
-// Stage 4.7: Closure capture analysis helpers
-// ================================================================
-
-/// Collect all HirIds from a pattern (for identifying closure params).
-fn collect_pat_hir_ids(pat: &HirPat, out: &mut std::collections::HashSet<HirId>) {
-    match &pat.kind {
-        HirPatKind::Ident(_, _, sub) => {
-            out.insert(pat.hir_id);
-            if let Some(s) = sub {
-                collect_pat_hir_ids(s, out);
-            }
-        }
-        HirPatKind::Struct(_, fields, _) => {
-            for f in fields {
-                collect_pat_hir_ids(&f.pat, out);
-            }
-        }
-        HirPatKind::TupleStruct(_, pats) => {
-            for p in pats {
-                collect_pat_hir_ids(p, out);
-            }
-        }
-        HirPatKind::Tuple(pats) => {
-            for p in pats {
-                collect_pat_hir_ids(p, out);
-            }
-        }
-        HirPatKind::Slice(pats, rest) => {
-            for p in pats {
-                collect_pat_hir_ids(p, out);
-            }
-            if let Some(r) = rest {
-                collect_pat_hir_ids(r, out);
-            }
-        }
-        HirPatKind::Or(pats) => {
-            for p in pats {
-                collect_pat_hir_ids(p, out);
-            }
-        }
-        HirPatKind::Ref(p, _) => {
-            collect_pat_hir_ids(p, out);
-        }
-        HirPatKind::Path(_)
-        | HirPatKind::Lit(_)
-        | HirPatKind::Wild
-        | HirPatKind::Rest
-        | HirPatKind::Range(_, _, _) => {}
-    }
 }

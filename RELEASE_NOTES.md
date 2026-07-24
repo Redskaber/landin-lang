@@ -1,9 +1,43 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.12.1
+**Current version**: v0.12.2
 **Date**: 2026-07-24
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.12.2 — Stage 6.3 (mir/lower pattern_bindings split — TD-011 step 3)
+
+### Overview
+
+Continue TD-011 repayment — extract pattern binding functions (~305 LOC)
+from `mir/lower/mod.rs` (3035 LOC) into `mir/lower/pattern_bindings.rs` (286 LOC).
+
+### Changes
+
+- Created `src/mir/lower/pattern_bindings.rs` with 5 extracted functions
+- `mir/lower/mod.rs`: 3035 → 2730 LOC (-305 LOC, -10.1%)
+- `resolve_enum_variant`: `fn` → `pub(crate) fn`
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### TD-011 cumulative progress
+
+| Split | Module | LOC extracted | mod.rs after |
+|-------|--------|--------------|--------------|
+| 6.1 | adt_layout.rs | 153 | 3193 |
+| 6.2 | closure_capture.rs | 158 | 3035 |
+| 6.3 | pattern_bindings.rs | 305 | 2730 |
+| **Total** | **3 modules** | **616 LOC** | **2730 (was 3346, -18.4%)** |
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (567.4 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
