@@ -1,9 +1,44 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.88
+**Current version**: v0.11.89
 **Date**: 2026-07-24
-**Test count**: 1820 tests + 5 benchmarks
+**Test count**: 1832 tests + 5 benchmarks
+
+---
+
+## v0.11.89 — Stage 5.93 (stdlib_trait_method accessors)
+
+### Overview
+
+Add two convenience accessor functions for direct field access on stdlib
+trait methods. Eliminates the two-step `find_stdlib_trait_method(...)?.field`
+pattern with one-step `stdlib_trait_method_<field>(...)` calls.
+
+### New API
+
+- `stdlib_trait_method_return_kind(trait, method) -> Option<StdlibTypeKind>` — free fn (in `src/stdlib.rs`)
+- `stdlib_trait_method_param_kinds(trait, method) -> Option<&'static [StdlibTypeKind]>` — free fn (in `src/stdlib.rs`)
+
+### §23 compliance
+
+`<noun>_<noun>_<noun>_<noun>_<noun>` — mirrors `stdlib_trait_method_count` /
+`stdlib_trait_method_index` from v1.6. All `stdlib_trait_method_<field>`
+accessors use the same pattern.
+
+### §16 compliance
+
+Pure read functions. Thin wrappers over `find_stdlib_trait_method` — no new
+dependencies. Data flow stays within `stdlib`.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (561.9 MiB removed)
+cargo test: 1832 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

@@ -1186,6 +1186,38 @@ pub fn stdlib_trait_method_index(trait_name: &str, method_name: &str) -> Option<
         .map(|idx| idx as u32)
 }
 
+/// Stage 5.93: Get the return type kind of a stdlib trait method.
+///
+/// Convenience accessor — equivalent to
+/// `find_stdlib_trait_method(trait_name, method_name).map(|m| m.return_kind)`
+/// but more readable at call sites.
+///
+/// Per API-naming-standard §3: `stdlib_trait_method_return_kind` follows
+/// the `<noun>_<noun>_<noun>_<noun>_<noun>` pattern, mirroring
+/// `stdlib_trait_method_count` / `stdlib_trait_method_index` from v1.6.
+pub fn stdlib_trait_method_return_kind(
+    trait_name: &str,
+    method_name: &str,
+) -> Option<StdlibTypeKind> {
+    find_stdlib_trait_method(trait_name, method_name).map(|m| m.return_kind)
+}
+
+/// Stage 5.93: Get the parameter type kinds of a stdlib trait method.
+///
+/// Convenience accessor — equivalent to
+/// `find_stdlib_trait_method(trait_name, method_name).map(|m| m.param_kinds)`
+/// but more readable at call sites.
+///
+/// Per API-naming-standard §3: `stdlib_trait_method_param_kinds` follows
+/// the `<noun>_<noun>_<noun>_<noun>_<noun>` pattern (plural), mirroring
+/// `stdlib_trait_method_count` / `stdlib_trait_method_index` from v1.6.
+pub fn stdlib_trait_method_param_kinds(
+    trait_name: &str,
+    method_name: &str,
+) -> Option<&'static [StdlibTypeKind]> {
+    find_stdlib_trait_method(trait_name, method_name).map(|m| m.param_kinds)
+}
+
 /// Stage 5.37: Get the complete vtable slot layout for a stdlib trait.
 ///
 /// Returns `Some(Vec<StdlibVtableSlot>)` for any registered trait (including

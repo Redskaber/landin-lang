@@ -2707,3 +2707,26 @@ for methods whose parameters are std types (Formatter, Hasher) rather than
 **Data accuracy**: Methods with &Self params (clone_from/eq/ne/partial_cmp/cmp)
 correctly use AllocType. Methods with std type params (fmt→Formatter, hash→Hasher)
 now correctly use StdType.
+
+### Stage 5.93 — stdlib_trait_method accessors (v0.11.89)
+
+**Priority**: Add two convenience accessor functions for direct field access
+on stdlib trait methods. Eliminates the two-step `find_stdlib_trait_method(...)?.field`
+pattern with one-step `stdlib_trait_method_<field>(...)` calls.
+
+**Work completed**:
+- src/stdlib.rs:
+  * Added `stdlib_trait_method_return_kind(trait, method) -> Option<StdlibTypeKind>`
+  * Added `stdlib_trait_method_param_kinds(trait, method) -> Option<&'static [StdlibTypeKind]>`
+  * Both are thin wrappers over `find_stdlib_trait_method().map(|m| m.field)`
+  * §23 compliant: `<noun>_<noun>_<noun>_<noun>_<noun>` (mirrors stdlib_trait_method_count/index)
+- src/lib.rs: re-export both accessors
+- tests/v0/stage5/plan/stdlib_trait_method_accessors_tests.rs: 12 new tests
+  covering: 6 return_kind tests (Drop/Clone/Display/PartialEq/Foo/nonexistent),
+  4 param_kinds tests (Drop/Display/Clone/Foo), 2 consistency tests
+  (matches find_stdlib_trait_method for 11+8 trait/method pairs)
+- tests/all_tests.rs: added stdlib_trait_method_accessors_tests module (105 mods)
+- Cargo.toml: version 0.11.88 → 0.11.89 (description extended)
+
+**Test impact**: +12 (1820 → 1832)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

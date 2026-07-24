@@ -349,3 +349,6 @@ mod stdlib_io_unary_traits_tests;
 
 #[path = "v0/stage5/plan/stdlib_param_kinds_accuracy_tests.rs"]
 mod stdlib_param_kinds_accuracy_tests;
+
+#[path = "v0/stage5/plan/stdlib_trait_method_accessors_tests.rs"]
+mod stdlib_trait_method_accessors_tests;

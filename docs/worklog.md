@@ -6550,3 +6550,43 @@ Stage Summary:
 - 8 new tests, 0 clippy warnings, fmt clean.
 - §16 compliant (data-only correction, no new dependencies).
 - Next: Stage 5.93+ — user-defined trait dyn support (TD-018), or Stage 6 planning.
+
+---
+Task ID: stage5.93-r142
+Agent: Super Z (main)
+Task: Stage 5.93 — stdlib_trait_method accessors + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.88 / 1820 tests (Stage 5.92 complete)
+
+Stage 5.93: stdlib_trait_method_return_kind + stdlib_trait_method_param_kinds
+- src/stdlib.rs:
+  * Added `stdlib_trait_method_return_kind(trait, method) -> Option<StdlibTypeKind>`
+  * Added `stdlib_trait_method_param_kinds(trait, method) -> Option<&'static [StdlibTypeKind]>`
+  * Both are thin wrappers over find_stdlib_trait_method().map(|m| m.field)
+  * §23 compliant: `<noun>_<noun>_<noun>_<noun>_<noun>` (mirrors stdlib_trait_method_count/index)
+- src/lib.rs: re-export both accessors
+- tests/v0/stage5/plan/stdlib_trait_method_accessors_tests.rs: 12 new tests
+  covering: 6 return_kind tests, 4 param_kinds tests, 2 consistency tests
+- tests/all_tests.rs: added stdlib_trait_method_accessors_tests module (105 mods)
+- Cargo.toml: version 0.11.88 → 0.11.89 (description extended)
+- docs/develop/v0/stage-5/plan-5.93.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round93.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.93 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.63 entry appended
+- RELEASE_NOTES.md: v0.11.89 section prepended, header bumped
+- README.md: status line updated (93 sub-stages, 1832 tests, 105 modules)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (561.9 MiB removed) ✅
+- cargo test: 1832 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.93 PASSED — CI/CD all green per §1.2.
+- New API: stdlib_trait_method_return_kind + stdlib_trait_method_param_kinds.
+- Convenience accessors eliminating two-step find+field pattern.
+- 12 new tests, 0 clippy warnings, fmt clean.
+- §16 + §23 compliant.
+- Next: Stage 5.94+ — user-defined trait dyn support (TD-018), or Stage 6 planning.

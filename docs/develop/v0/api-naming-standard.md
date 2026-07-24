@@ -2699,3 +2699,31 @@ Hasher) rather than `&Self`. No new public symbols — data-only correction.
 **Test impact**: +8 (1812 → 1820).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.63 (Stage 5.93, 2026-07-24)
+
+Stage 5.93 stdlib_trait_method accessors round. Add two convenience accessor
+functions for direct field access on stdlib trait methods.
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_trait_method_return_kind` | free fn (in `stdlib`) | `<noun>_<noun>_<noun>_<noun>_<noun>` |
+| `stdlib_trait_method_param_kinds` | free fn (in `stdlib`) | `<noun>_<noun>_<noun>_<noun>_<noun>` (plural) |
+
+**Design decisions**:
+1. **Convenience accessors** — thin wrappers over `find_stdlib_trait_method`
+   that return specific fields. Eliminates the two-step `find(...)?.field`
+   pattern with one-step `stdlib_trait_method_<field>(...)` calls.
+2. **Naming mirrors existing family** — `stdlib_trait_method_return_kind` /
+   `stdlib_trait_method_param_kinds` follow the same `<noun>_<noun>_<noun>_<noun>_<noun>`
+   pattern as `stdlib_trait_method_count` / `stdlib_trait_method_index` (v1.6).
+3. **`param_kinds` is plural** — returns `&'static [StdlibTypeKind]` (a slice),
+   so the plural form is appropriate. `return_kind` is singular (returns a
+   single `StdlibTypeKind`).
+4. **§16 compliance** — pure read, thin wrappers, no new dependencies.
+
+**Test impact**: +12 (1820 → 1832).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
