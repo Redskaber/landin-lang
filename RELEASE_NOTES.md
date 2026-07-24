@@ -1,9 +1,52 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.12.5
+**Current version**: v0.12.6
 **Date**: 2026-07-24
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.12.6 — Stage 6.7 (codegen trait_dispatch architectural split — TD-017 step 1)
+
+### Overview
+
+**Architectural split** of `codegen/mod.rs` (2461 LOC) — extract the trait dispatch
+emission domain (vtable/dynptr global generation + orchestration APIs) into a
+dedicated `codegen/trait_dispatch.rs` module (962 LOC). This is not just a
+size reduction — it's a **scientific module boundary design** that separates
+two distinct responsibilities:
+
+1. **MIR → LLVM IR translation core** (remains in `mod.rs`): consumes `MirBody`,
+   produces LLVM IR instructions
+2. **TraitResolver → vtable/dynptr globals** (moved to `trait_dispatch.rs`):
+   consumes `TraitResolver` data, produces `@.vtable.*` / `@.dynptr.*` global IR
+
+### Changes
+
+- Created `src/codegen/trait_dispatch.rs` (962 LOC) with 16 extracted functions + 4 structs
+- `codegen/mod.rs`: 2461 → 1512 LOC (-949 LOC, -38.6%)
+- All extracted symbols re-exported from `codegen/mod.rs` for backward compatibility
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### Architectural rationale
+
+The split follows the **single responsibility principle**:
+- `mod.rs` = "translate MIR bodies to LLVM IR" (codegen core)
+- `trait_dispatch.rs` = "generate vtable/dynptr globals from trait data" (trait dispatch)
+
+These are distinct data consumers (MirBody vs TraitResolver) with distinct outputs
+(LLVM IR instructions vs LLVM IR global constants). Separating them makes each
+module's purpose clear and enables independent evolution.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (852.3 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

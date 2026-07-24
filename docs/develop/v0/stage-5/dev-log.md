@@ -3026,3 +3026,39 @@ from mir/lower/mod.rs into mir/lower/control_flow.rs. **🎉 mod.rs below 2000 L
 
 **🎉 MILESTONE: mir/lower/mod.rs below 2000 LOC!**
 TD-011 cumulative: 6 splits, -1366 LOC (-40.8%). mod.rs now 1980 LOC (was 3346).
+
+### Stage 6.7 — codegen trait_dispatch architectural split (TD-017 step 1) (v0.12.6)
+
+**Priority**: Begin TD-017 repayment with **architectural** split of codegen/mod.rs.
+Not just size reduction — scientific module boundary design separating two
+distinct responsibilities: MIR→LLVM IR translation core vs TraitResolver→vtable/dynptr globals.
+
+**Work completed**:
+- Created src/codegen/trait_dispatch.rs (962 LOC) with 16 functions + 4 structs:
+  * emit_vtables, emit_dyn_trait_ptrs (delegation wrappers)
+  * emit_vtable_global_from_emission, emit_vtable_global_text, emit_vtable_globals_batch
+  * build_vtable_global_specs, emit_vtables_from_resolver
+  * emit_dynptr_global_text, build_dynptr_global_specs, emit_dynptrs_from_resolver
+  * emit_vtables_and_dynptrs_from_resolver
+  * build_trait_dispatch_emission_summary, build_trait_dispatch_emission_plan
+  * emit_trait_dispatch_globals_from_plan, emit_trait_dispatch_globals_text_batch
+  * emit_trait_dispatch_globals_text_batch_from_resolver
+  * StdlibVtableGlobalSpec, StdlibDynptrGlobalSpec structs
+  * CodegenTraitDispatchEmissionSummary, CodegenTraitDispatchEmissionPlan structs
+- src/codegen/mod.rs:
+  * Added `mod trait_dispatch;` declaration
+  * Added `pub use trait_dispatch::{...}` re-exports for backward compatibility
+  * Removed all 16 functions + 4 structs + doc comments (-949 LOC)
+  * LOC reduced: 2461 → 1512 (-949 LOC, -38.6%)
+  * Cleaned unused imports, fixed doc comment warning
+- Cargo.toml: version 0.12.5 → 0.12.6
+
+**Architectural rationale**: Single responsibility principle.
+- mod.rs = "translate MIR bodies to LLVM IR" (consumes MirBody)
+- trait_dispatch.rs = "generate vtable/dynptr globals from trait data" (consumes TraitResolver)
+Distinct data consumers, distinct outputs, clear module purpose.
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-017 progress**: First split complete. codegen/mod.rs now 1512 LOC (was 2461).

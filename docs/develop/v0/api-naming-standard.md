@@ -2970,3 +2970,24 @@ extract control flow lowering functions into mir/lower/control_flow.rs.
 **Test impact**: 0 (behavior-equivalent).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.76 (Stage 6.7, 2026-07-24)
+
+Stage 6.7 codegen trait_dispatch architectural split round. **Architectural**
+extraction from codegen/mod.rs — not just size reduction but scientific module
+boundary design per single responsibility principle.
+
+**New public symbols**: None (all re-exported from trait_dispatch via mod.rs).
+
+**Changes**:
+- 16 functions + 4 structs moved from codegen/mod.rs to codegen/trait_dispatch.rs
+- All re-exported via `pub use trait_dispatch::{...}` for backward compatibility
+- No new public API — pure architectural reorganization
+
+**Architectural rationale**: Single responsibility principle.
+- mod.rs = MIR→LLVM IR translation (consumes MirBody)
+- trait_dispatch.rs = vtable/dynptr global generation (consumes TraitResolver)
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
