@@ -316,3 +316,6 @@ mod mir_lower_dyn_trait_method_call_integration_tests;
 
 #[path = "v0/stage5/plan/codegen_dyn_trait_method_call_tests.rs"]
 mod codegen_dyn_trait_method_call_tests;
+
+#[path = "v0/stage5/plan/driver_dyn_trait_plan_integration_tests.rs"]
+mod driver_dyn_trait_plan_integration_tests;

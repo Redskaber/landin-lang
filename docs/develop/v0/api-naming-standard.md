@@ -2279,3 +2279,57 @@ carries all dyn Trait info as data.
 **Test impact**: +15 (1611 → 1626).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.50 (Stage 5.80, 2026-07-24)
+
+Stage 5.80 driver dyn Trait plan integration round. END-TO-END driver
+integration — the driver auto-builds `DynTraitMIRPlan` from
+`TraitResolver` and passes it to each body's lowering via the new
+`lower_hir_body_to_mir_full_with_dyn_trait_plan()` entry point. This
+activates Stage 5.78 (MethodCall dyn Trait path) + Stage 5.79 (codegen
+vtable indirect call) in the normal compile flow.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `lower_hir_body_to_mir_full_with_dyn_trait_plan` | free fn (in `mir::lower`) | `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>_<noun>_<noun>` |
+
+**Design decisions**:
+1. **`_with_dyn_trait_plan` suffix** — Rust API-guidelines convention for
+   "extended variant with additional feature" (mirrors `Vec::with_capacity`,
+   `HashMap::with_hasher`). The new function is the `_full` variant
+   extended with an optional `DynTraitMIRPlan` parameter.
+2. **Backward compatibility via delegation** — the original
+   `lower_hir_body_to_mir_full` now delegates to the new function with
+   `plan = None`. All existing callers see identical behavior; all 1626
+   pre-existing tests pass unchanged.
+3. **`Option<&DynTraitMIRPlan>` parameter** — passing by reference avoids
+   moving the plan; the lower clones once per body when attaching via
+   `set_dyn_trait_plan(plan.clone())`. The clone cost is acceptable
+   (plan is small — typically a few hundred bytes).
+4. **Driver refactor**: `trait_resolver` building (Stage 5.2 + 5.8 +
+   5.26 + collect) moved from after the per-body loop to before it. This
+   is necessary because the plan must be available at lowering time.
+   `validate_impls` remains in its original position (after the loop) —
+   it doesn't affect lowering, only reports errors.
+5. **Plan built once, reused per body** — the driver constructs the plan
+   once via `build_dyn_trait_mir_plan_from_resolver(&trait_resolver, &interner)`
+   before the loop, then passes `Some(&plan)` to each body's lowering.
+
+**§16 compliance**: The driver is the sole orchestrator that connects
+`TraitResolver` (Stage 5.2) to `mir::lower` (Stage 2.1) via the plan
+data structure. `MirLowerCtxt` does not own a `TraitResolver` — it
+receives the plan as data via `set_dyn_trait_plan`. Data flow:
+driver → plan → cx → lower → mir::body side-table → codegen.
+
+**Milestone**: dyn Trait MIR lowering → codegen pipeline is now ACTIVE
+end-to-end in the normal compile flow. Stages 5.78 + 5.79 + 5.80 together
+complete the pipeline:
+- 5.78: lower writes side-table + Const marker
+- 5.79: codegen detects marker, emits vtable indirect call IR
+- 5.80: driver auto-builds plan, passes to lower
+
+**Test impact**: +11 (1626 → 1637).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

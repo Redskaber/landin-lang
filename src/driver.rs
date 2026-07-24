@@ -40,7 +40,8 @@ use crate::hir::lower::lower_crate;
 use crate::hir::{HirCrate, HirFnRetTy, HirItem, OwnerNode};
 use crate::lexer::tokenize;
 use crate::mir::body::MirBody;
-use crate::mir::lower::lower_hir_body_to_mir_full;
+use crate::mir::dyn_trait::build_dyn_trait_mir_plan_from_resolver;
+use crate::mir::lower::lower_hir_body_to_mir_full_with_dyn_trait_plan;
 use crate::parser::Parser;
 use crate::resolve::resolve_crate;
 use crate::session::Span;
@@ -360,10 +361,58 @@ pub fn compile(src: &str) -> CompileResult {
 
     let mut mirs = Vec::with_capacity(hir.bodies.len());
     let mut typeck_results = Vec::with_capacity(hir.bodies.len());
+
+    // Stage 5.2: Build TraitResolver — collect trait definitions + impl blocks.
+    // Per §16: pre-computed by driver, passed as data to downstream stages.
+    //
+    // Stage 5.80 (refactor): moved BEFORE the per-body loop so the
+    // DynTraitMIRPlan can be built from it and passed to lowering.
+    // Previously this came after the loop — fine when lower didn't need
+    // trait info, but Stage 5.78+ requires the plan at lower time.
+    let mut trait_resolver = crate::traits::TraitResolver::new();
+    // Stage 5.8: Register builtin standard traits (Copy, Clone, Drop, etc.)
+    // before collect() so the compiler recognizes them without user
+    // definition. Needs &mut interner (collect() only takes &Rodeo).
+    // We clone the interner to get a mutable handle, register, then the
+    // original interner is used for collect() and stored in CompileResult.
+    // NOTE: interner is already &mut here (line 267: `let mut interner`),
+    // but by this point several borrows have happened. We use a direct
+    // mutable call since interner is still owned.
+    trait_resolver.register_builtin_traits(&mut interner);
+    // Stage 5.26: Register stdlib types + traits in the interner.
+    // This ensures all core types (i32, bool, str, etc.) and stdlib traits
+    // (Add, From, Iterator, etc.) are interned before compilation.
+    crate::stdlib::register_stdlib(&mut interner);
+    trait_resolver.collect(&hir, &interner);
+
+    // Stage 5.80: build DynTraitMIRPlan once for the whole crate.
+    //
+    // Per §16: the driver is the sole orchestrator that connects
+    // TraitResolver (Stage 5.2) to mir::lower (Stage 2.1) via the plan
+    // data structure. `MirLowerCtxt` does not own a TraitResolver — it
+    // receives the plan as data via `set_dyn_trait_plan`.
+    //
+    // The plan is built once here (before the per-body loop) and passed
+    // by reference to each body's lowering. The lower clones the plan
+    // internally when attaching it to the cx (one clone per body —
+    // acceptable cost; the plan is small).
+    //
+    // This activates the dyn Trait MIR lowering path (Stage 5.78) and
+    // the codegen vtable indirect call path (Stage 5.79) end-to-end:
+    // HIR `receiver.method(args)` → MIR `Terminator::Call` with Const
+    // marker → codegen `getelementptr + load + load + indirect call`.
+    let dyn_trait_plan = build_dyn_trait_mir_plan_from_resolver(&trait_resolver, &interner);
+
     for (body_id, body) in &hir.bodies {
         let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
 
-        let (mut mir, lower_unify) = lower_hir_body_to_mir_full(body, &interner, &hir, return_ty);
+        let (mut mir, lower_unify) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
+            body,
+            &interner,
+            &hir,
+            return_ty,
+            Some(&dyn_trait_plan),
+        );
 
         // Stage 3.60: typeck uses pre-computed tables instead of HIR.
         let mut tc = typeck::TypeChecker::with_unify(lower_unify);
@@ -449,27 +498,13 @@ pub fn compile(src: &str) -> CompileResult {
         })
         .collect();
 
-    // Stage 5.2: Build TraitResolver — collect trait definitions + impl blocks.
-    // Per §16: pre-computed by driver, passed as data to downstream stages.
-    let mut trait_resolver = crate::traits::TraitResolver::new();
-    // Stage 5.8: Register builtin standard traits (Copy, Clone, Drop, etc.)
-    // before collect() so the compiler recognizes them without user
-    // definition. Needs &mut interner (collect() only takes &Rodeo).
-    // We clone the interner to get a mutable handle, register, then the
-    // original interner is used for collect() and stored in CompileResult.
-    // NOTE: interner is already &mut here (line 267: `let mut interner`),
-    // but by this point several borrows have happened. We use a direct
-    // mutable call since interner is still owned.
-    trait_resolver.register_builtin_traits(&mut interner);
-    // Stage 5.26: Register stdlib types + traits in the interner.
-    // This ensures all core types (i32, bool, str, etc.) and stdlib traits
-    // (Add, From, Iterator, etc.) are interned before compilation.
-    crate::stdlib::register_stdlib(&mut interner);
-    trait_resolver.collect(&hir, &interner);
-
     // Stage 5.22: Validate all trait impls (coherence + completeness).
     // Per deep review r70 action item: wire validate_impls() into driver.
     // Non-fatal — compilation continues, but errors are reported.
+    //
+    // Stage 5.80 (refactor): trait_resolver was built earlier (before the
+    // per-body loop) so the DynTraitMIRPlan could be constructed from it.
+    // Validation remains here — it doesn't affect lowering, only reports.
     let validation_report = trait_resolver.validate_impls();
     for ce in &validation_report.coherence_errors {
         let trait_str = interner.try_resolve(&ce.trait_name).unwrap_or("?");

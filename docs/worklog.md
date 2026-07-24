@@ -5959,3 +5959,60 @@ Stage Summary:
 - 5.78 + 5.79 together form the complete dyn Trait MIR lowering → codegen pipeline.
 - Next: Stage 5.80+ — driver wires set_dyn_trait_plan into the compile pipeline so
   plan is automatically built from TraitResolver and attached to MirLowerCtxt.
+
+---
+Task ID: stage5.80-r129
+Agent: Super Z (main)
+Task: Stage 5.80 — driver dyn Trait plan integration + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.75 / 1626 tests (Stage 5.79 complete)
+
+Stage 5.80: END-TO-END driver integration
+- src/mir/lower/mod.rs:
+  * Refactored `lower_hir_body_to_mir_full` to delegate to new entry point with plan=None
+  * Added `lower_hir_body_to_mir_full_with_dyn_trait_plan(body, interner, hir, return_ty, plan: Option<&DynTraitMIRPlan>)`
+  * When plan=Some, calls `cx.set_dyn_trait_plan(plan.clone())`
+  * When plan=None, behavior identical to legacy path
+  * §23 compliant: `_with_dyn_trait_plan` suffix (Rust API-guidelines convention)
+- src/mir/mod.rs: re-export `lower_hir_body_to_mir_full_with_dyn_trait_plan`
+- src/driver.rs:
+  * Added imports for `build_dyn_trait_mir_plan_from_resolver` + new lower entry point
+  * Moved trait_resolver building (Stage 5.2 + 5.8 + 5.26 + collect) BEFORE the per-body loop
+  * Added `let dyn_trait_plan = build_dyn_trait_mir_plan_from_resolver(...)` after collect
+  * Changed body loop to call `lower_hir_body_to_mir_full_with_dyn_trait_plan` with `Some(&dyn_trait_plan)`
+  * `validate_impls` remains after the loop (unchanged behavior, only reports errors)
+- tests/v0/stage5/plan/driver_dyn_trait_plan_integration_tests.rs: 11 new tests
+  covering: plan=None matches legacy, empty plan no change, non-empty plan
+  no method call, matching method call records dyn call, method name
+  mismatch, multiple calls multiple records, driver no-dyn-trait, driver
+  with impl, end-to-end no panic, plan from resolver matches vtable count,
+  new entry point signature
+- tests/all_tests.rs: added driver_dyn_trait_plan_integration_tests module (94 mods)
+- Cargo.toml: version 0.11.75 → 0.11.76 (description extended)
+- docs/develop/v0/stage-5/plan-5.80.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round80.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.80 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.50 entry appended
+- RELEASE_NOTES.md: v0.11.76 section prepended, header bumped
+- README.md: status line + Stage 5 row test count + sub-stage list updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (549.1 MiB removed) ✅
+- cargo test: 1637 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.80 PASSED — CI/CD all green per §1.2.
+- END-TO-END driver integration complete.
+- New API: lower_hir_body_to_mir_full_with_dyn_trait_plan.
+- Driver auto-builds DynTraitMIRPlan from TraitResolver, passes to lower.
+- Backward-compatible: lower_hir_body_to_mir_full delegates with plan=None.
+- 🎉 MILESTONE: dyn Trait MIR lowering → codegen pipeline ACTIVE end-to-end!
+- Stages 5.78 + 5.79 + 5.80 complete the pipeline:
+  - 5.78: lower writes side-table + Const marker
+  - 5.79: codegen detects marker, emits vtable indirect call IR
+  - 5.80: driver auto-builds plan, passes to lower
+- Next: Stage 5.81+ — refine dyn Trait return type handling, deeper
+  integration tests, potential deep review #5.

@@ -2312,3 +2312,43 @@ and emits vtable indirect call IR (getelementptr + load + indirect call).
 
 **Test impact**: +15 (1611 → 1626)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.80 — driver dyn Trait plan integration (v0.11.76)
+
+**Priority**: END-TO-END driver integration. The driver now auto-builds
+`DynTraitMIRPlan` from `TraitResolver` and passes it to each body's
+lowering via the new `lower_hir_body_to_mir_full_with_dyn_trait_plan()`
+entry point. This activates Stage 5.78 (MethodCall dyn Trait path) +
+Stage 5.79 (codegen vtable indirect call) in the normal compile flow.
+
+**Work completed**:
+- src/mir/lower/mod.rs:
+  * Refactored `lower_hir_body_to_mir_full` to delegate to the new entry point with plan=None (backward-compat)
+  * Added `pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan()`:
+    - New signature: (body, interner, hir, return_ty, plan: Option<&DynTraitMIRPlan>)
+    - When plan=Some, calls `cx.set_dyn_trait_plan(plan.clone())`
+    - When plan=None, behavior identical to legacy path
+  * §23 compliant: `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>_<noun>_<noun>` (`_with_dyn_trait_plan` suffix)
+- src/mir/mod.rs: re-export `lower_hir_body_to_mir_full_with_dyn_trait_plan`
+- src/driver.rs:
+  * Added imports for `build_dyn_trait_mir_plan_from_resolver` + new lower entry point
+  * Moved `trait_resolver` building (Stage 5.2 + 5.8 + 5.26 + collect) BEFORE the per-body loop
+  * Added `let dyn_trait_plan = build_dyn_trait_mir_plan_from_resolver(...)` after collect
+  * Changed body loop to call `lower_hir_body_to_mir_full_with_dyn_trait_plan` with `Some(&dyn_trait_plan)`
+  * `validate_impls` remains after the loop (unchanged behavior)
+- tests/v0/stage5/plan/driver_dyn_trait_plan_integration_tests.rs: 11 new tests
+  covering: plan=None matches legacy, empty plan no change, non-empty plan
+  no method call, matching method call records dyn call, method name
+  mismatch, multiple calls multiple records, driver no-dyn-trait, driver
+  with impl, end-to-end no panic, plan from resolver matches vtable count,
+  new entry point signature
+- tests/all_tests.rs: added driver_dyn_trait_plan_integration_tests module (94 mods)
+- Cargo.toml: version 0.11.75 → 0.11.76 (description extended)
+
+**Test impact**: +11 (1626 → 1637)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Milestone**: dyn Trait MIR lowering → codegen pipeline is now ACTIVE
+end-to-end in the normal compile flow. HIR `receiver.method(args)` on a
+dyn Trait receiver → MIR `Terminator::Call` with Const marker → codegen
+vtable indirect call IR (`getelementptr + load + load + call`).

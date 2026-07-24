@@ -27,7 +27,8 @@ pub use body::{
 };
 pub use lower::{
     build_dyn_trait_call_terminator, lower_body, lower_body_full, lower_hir_body_to_mir,
-    lower_hir_body_to_mir_full, lower_hir_body_to_mir_with_return_ty, MirLowerCtxt,
+    lower_hir_body_to_mir_full, lower_hir_body_to_mir_full_with_dyn_trait_plan,
+    lower_hir_body_to_mir_with_return_ty, MirLowerCtxt,
 };
 pub use place::{
     AggregateKind, BinOp, BorrowKind, CastKind, FieldId, LocalId, Operand, Place, PlaceKind,

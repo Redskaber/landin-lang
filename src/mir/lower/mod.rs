@@ -467,8 +467,62 @@ pub fn lower_hir_body_to_mir_full(
     hir: &HirCrate,
     return_ty: Option<HirTy>,
 ) -> (MirBody, UnificationTable) {
+    // Stage 5.80: delegate to the new entry point with plan = None.
+    // Backward-compatible: all existing callers see identical behavior.
+    lower_hir_body_to_mir_full_with_dyn_trait_plan(body, interner, hir, return_ty, None)
+}
+
+/// Stage 5.80: Full lowering entry point with optional `DynTraitMIRPlan`.
+///
+/// When `plan` is `Some`, attaches it to the `MirLowerCtxt` via
+/// `cx.set_dyn_trait_plan(plan.clone())` — this activates the
+/// `HirExprKind::MethodCall` dyn Trait path (Stage 5.78). The clone
+/// happens once per body (acceptable cost; the plan is small — a few
+/// hundred bytes for typical crates).
+///
+/// When `plan` is `None`, behavior is identical to
+/// `lower_hir_body_to_mir_full` (legacy path — no dyn Trait lowering).
+///
+/// # Driver integration
+///
+/// The driver (Stage 5.80) builds the plan once via
+/// `build_dyn_trait_mir_plan_from_resolver(&trait_resolver, &interner)`
+/// before the per-body loop, then passes `Some(&plan)` to this function
+/// for each body. This activates end-to-end dyn Trait MIR lowering:
+/// HIR `receiver.method(args)` → MIR `Terminator::Call` with Const marker
+/// → codegen vtable indirect call IR.
+///
+/// # §16 compliance
+///
+/// The plan is built upstream by the driver (which is the sole orchestrator
+/// allowed to read TraitResolver). `MirLowerCtxt` does not own a
+/// TraitResolver — it receives the plan as data. Data flow:
+/// driver → plan → cx → lower → mir::body side-table → codegen.
+///
+/// # §23 compliance
+///
+/// `lower_hir_body_to_mir_full_with_dyn_trait_plan` follows the
+/// `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>_<noun>_<noun>` pattern.
+/// The `_with_dyn_trait_plan` suffix is the Rust API-guidelines convention
+/// for "extended variant with additional feature" (mirrors `Vec::with_capacity`,
+/// `HashMap::with_hasher`).
+pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
+    body: &Body,
+    interner: &Rodeo,
+    hir: &HirCrate,
+    return_ty: Option<HirTy>,
+    plan: Option<&DynTraitMIRPlan>,
+) -> (MirBody, UnificationTable) {
     let mut cx = MirLowerCtxt::new(interner, body.span);
     cx.hir = Some(hir);
+
+    // Stage 5.80: attach the dyn Trait plan if provided.
+    // Per §16: plan was built upstream by the driver via
+    // `build_dyn_trait_mir_plan_from_resolver()`. The lower does not
+    // query TraitResolver directly.
+    if let Some(plan) = plan {
+        cx.set_dyn_trait_plan(plan.clone());
+    }
 
     // Allocate LocalId(0) as the return value placeholder.
     // If a return type is provided (from the fn sig), use it directly

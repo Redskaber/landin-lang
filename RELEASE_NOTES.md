@@ -1,9 +1,80 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.75
+**Current version**: v0.11.76
 **Date**: 2026-07-24
-**Test count**: 1626 tests + 5 benchmarks
+**Test count**: 1637 tests + 5 benchmarks
+
+---
+
+## v0.11.76 — Stage 5.80 (driver dyn Trait plan integration)
+
+### Overview
+
+END-TO-END driver integration. The driver now auto-builds `DynTraitMIRPlan`
+from `TraitResolver` and passes it to each body's lowering via the new
+`lower_hir_body_to_mir_full_with_dyn_trait_plan()` entry point. This
+activates Stage 5.78 (MethodCall dyn Trait path) + Stage 5.79 (codegen
+vtable indirect call) in the normal compile flow — completing the dyn
+Trait MIR lowering → codegen pipeline.
+
+### New API
+
+- `lower_hir_body_to_mir_full_with_dyn_trait_plan(body, interner, hir, return_ty, plan: Option<&DynTraitMIRPlan>) -> (MirBody, UnificationTable)` — free fn (in `src/mir/lower/mod.rs`)
+
+### Driver refactor
+
+The `trait_resolver` building (Stage 5.2 + 5.8 + 5.26 + collect) was
+moved from after the per-body loop to before it. This is necessary
+because the `DynTraitMIRPlan` must be available at lowering time.
+`validate_impls` remains in its original position (after the loop) — it
+doesn't affect lowering, only reports errors.
+
+### End-to-end pipeline
+
+```
+HIR `receiver.method(args)` (dyn Trait receiver)
+  → driver builds DynTraitMIRPlan from TraitResolver
+  → lower_hir_body_to_mir_full_with_dyn_trait_plan(plan=Some)
+  → cx.set_dyn_trait_plan(plan)
+  → HirExprKind::MethodCall branch queries find_dyn_trait_method_call_in_plan_by_method
+  → build_dyn_trait_call_terminator writes side-table + Const marker
+  → codegen_terminator detects marker
+  → codegen_dyn_trait_call reads side-table
+  → emitter.emit_dyn_trait_method_call emits vtable indirect call IR
+    (getelementptr + load + load + indirect call)
+```
+
+### §23 compliance
+
+`lower_hir_body_to_mir_full_with_dyn_trait_plan` —
+`<verb>_<noun>_<noun>_<noun>_<prep>_<noun>_<noun>_<noun>`. The
+`_with_dyn_trait_plan` suffix follows Rust API-guidelines convention for
+"extended variant with additional feature" (mirrors `Vec::with_capacity`,
+`HashMap::with_hasher`).
+
+### §16 compliance
+
+The driver is the sole orchestrator that connects `TraitResolver`
+(Stage 5.2) to `mir::lower` (Stage 2.1) via the plan data structure.
+`MirLowerCtxt` does not own a `TraitResolver` — it receives the plan as
+data via `set_dyn_trait_plan`. Data flow:
+driver → plan → cx → lower → mir::body side-table → codegen.
+
+### Backward compatibility
+
+The original `lower_hir_body_to_mir_full` now delegates to the new
+function with `plan = None`. All existing callers see identical behavior.
+All 1626 pre-existing tests pass unchanged.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (549.1 MiB removed)
+cargo test: 1637 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
