@@ -340,3 +340,6 @@ mod stdlib_marker_traits_tests;
 
 #[path = "v0/stage5/plan/stdlib_arithmetic_traits_tests.rs"]
 mod stdlib_arithmetic_traits_tests;
+
+#[path = "v0/stage5/plan/stdlib_core_traits_tests.rs"]
+mod stdlib_core_traits_tests;

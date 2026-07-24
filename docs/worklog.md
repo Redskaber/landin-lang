@@ -6385,3 +6385,46 @@ Stage Summary:
 - §16 + §23 compliant.
 - Next: Stage 5.89+ — more semantic group queries (core/io/iter),
   user-defined trait dyn support, or Stage 6 planning.
+
+---
+Task ID: stage5.89-r138
+Agent: Super Z (main)
+Task: Stage 5.89 — stdlib_core_traits semantic group query + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.84 / 1769 tests (Stage 5.88 complete)
+
+Stage 5.89: stdlib_core_traits — second semantic group query
+- src/stdlib.rs: new `stdlib_core_traits() -> Vec<&'static str>` function
+  * Returns 13 core traits: Clone/Drop/Default/Display/Debug/PartialEq/
+    PartialOrd/Ord/Hash/Deref/DerefMut/IntoIterator/Iterator
+  * Uses local CORE_TRAITS: &[&str] const
+  * §23 compliant: `<noun>_<adj>_<noun>` (plural, mirrors stdlib_arithmetic_traits)
+- src/lib.rs: re-export stdlib_core_traits
+- tests/v0/stage5/plan/stdlib_core_traits_tests.rs: 22 new tests
+  covering: 12 contains tests, 4 exclusion tests, 1 count test (==13),
+  3 consistency tests (subset of all_traits, disjoint from markers,
+  disjoint from arithmetic), 2 robustness tests
+- tests/all_tests.rs: added stdlib_core_traits_tests module (102 mods)
+- Cargo.toml: version 0.11.84 → 0.11.85 (description extended)
+- docs/develop/v0/stage-5/plan-5.89.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round89.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.89 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.59 entry appended
+- RELEASE_NOTES.md: v0.11.85 section prepended, header bumped
+- README.md: status line updated (89 sub-stages, 1791 tests, 102 modules)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (624.4 MiB removed) ✅
+- cargo test: 1791 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.89 PASSED — CI/CD all green per §1.2.
+- New API: stdlib_core_traits — second semantic group query.
+- Returns 13 core traits (lifecycle/formatting/comparison/dereference/iteration).
+- 22 new tests, 0 clippy warnings, fmt clean.
+- §16 + §23 compliant.
+- Semantic group series: markers (5.87) + arithmetic (5.88) + core (5.89).
+- Next: Stage 5.90+ — more semantic group queries (io/unary), or Stage 6 planning.

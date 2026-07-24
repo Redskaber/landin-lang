@@ -2591,3 +2591,35 @@ First in a series of semantic category queries.
 
 **Semantic group series**: This is the first semantic category query
 (arithmetic). Future stages may add more (core/io/iterator categories).
+
+### Stage 5.89 — stdlib_core_traits semantic group query (v0.11.85)
+
+**Priority**: Add `stdlib_core_traits()` — second semantic group query
+returning all stdlib core trait names (13 traits: lifecycle/formatting/
+comparison/dereference/iteration). Continues the semantic category series
+started in 5.88.
+
+**Work completed**:
+- src/stdlib.rs: new `stdlib_core_traits() -> Vec<&'static str>` function
+  * Returns 13 core traits: Clone/Drop/Default/Display/Debug/PartialEq/
+    PartialOrd/Ord/Hash/Deref/DerefMut/IntoIterator/Iterator
+  * Uses local CORE_TRAITS: &[&str] const
+  * §23 compliant: `<noun>_<adj>_<noun>` (plural, mirrors stdlib_arithmetic_traits)
+- src/lib.rs: re-export stdlib_core_traits
+- tests/v0/stage5/plan/stdlib_core_traits_tests.rs: 22 new tests
+  covering: 12 contains tests (Clone/Drop/Default/Display/Debug/PartialEq/
+  Ord/Hash/Deref/Iterator/IntoIterator + non-empty), 4 exclusion tests
+  (no Copy/Add/Foo/Read), 1 count test (==13), 3 consistency tests
+  (subset of all_traits, disjoint from markers, disjoint from arithmetic),
+  2 robustness tests (no side effects, no duplicates)
+- tests/all_tests.rs: added stdlib_core_traits_tests module (102 mods)
+- Cargo.toml: version 0.11.84 → 0.11.85 (description extended)
+
+**Test impact**: +22 (1769 → 1791)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Semantic group series progress**:
+- 5.87: stdlib_marker_traits (6 markers)
+- 5.88: stdlib_arithmetic_traits (20 arithmetic)
+- 5.89: stdlib_core_traits (13 core) ← this stage
+- Future: io/unary categories

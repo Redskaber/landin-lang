@@ -2584,3 +2584,35 @@ names (10 binary + 10 assign = 20 traits).
 **Test impact**: +20 (1749 → 1769).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.59 (Stage 5.89, 2026-07-24)
+
+Stage 5.89 stdlib_core_traits semantic group query round. Second semantic
+category query — returns all stdlib core trait names (13 traits covering
+lifecycle/formatting/comparison/dereference/iteration).
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_core_traits` | free fn (in `stdlib`) | `<noun>_<adj>_<noun>` (plural) |
+
+**Design decisions**:
+1. **Semantic group naming** — `stdlib_core_traits` follows the
+   `<noun>_<adj>_<noun>` plural pattern, mirroring `stdlib_arithmetic_traits`
+   (v1.58). Both are "return subset of traits by category" queries.
+2. **Second semantic category** — core traits are the most commonly used
+   traits for everyday programming (Clone/Drop/Default/Display/Debug/
+   PartialEq/PartialOrd/Ord/Hash/Deref/DerefMut/IntoIterator/Iterator).
+3. **Fixed `&'static` slice** — uses a local `CORE_TRAITS: &[&str]` const,
+   consistent with `stdlib_arithmetic_traits` design (enumerated list, not
+   predicate-based filter).
+4. **13 traits** — organized by subcategory: lifecycle (3) + formatting (2)
+   + comparison (4) + dereference (2) + iteration (2).
+5. **§16 compliance** — pure read, `&'static` slice, no new dependencies.
+6. **Disjoint from other groups** — core traits are disjoint from marker
+   traits (5.87) and arithmetic traits (5.88), verified by tests.
+
+**Test impact**: +22 (1769 → 1791).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

@@ -1397,6 +1397,50 @@ pub fn stdlib_arithmetic_traits() -> Vec<&'static str> {
     ARITHMETIC_TRAITS.to_vec()
 }
 
+/// Stage 5.89: Return all stdlib core trait names.
+///
+/// Returns a `Vec<&'static str>` containing the names of all stdlib core
+/// traits — the most commonly used traits for everyday programming:
+///
+/// - Lifecycle: Clone, Drop, Default
+/// - Formatting: Display, Debug
+/// - Comparison: PartialEq, PartialOrd, Ord, Hash
+/// - Dereference: Deref, DerefMut
+/// - Iteration: IntoIterator, Iterator
+///
+/// This is a **semantic group query** — returns traits that share a
+/// semantic category (core programming traits). Useful for:
+/// - Type checker: "which core operations does this type support?"
+/// - Documentation generators: list core trait impls
+/// - Codegen: decide whether to emit runtime support code
+///
+/// Per API-naming-standard §3: `stdlib_core_traits` follows the
+/// `<noun>_<adj>_<noun>` pattern (plural), mirroring
+/// `stdlib_arithmetic_traits` from v1.58.
+pub fn stdlib_core_traits() -> Vec<&'static str> {
+    const CORE_TRAITS: &[&str] = &[
+        // Lifecycle
+        "Clone",
+        "Drop",
+        "Default",
+        // Formatting
+        "Display",
+        "Debug",
+        // Comparison
+        "PartialEq",
+        "PartialOrd",
+        "Ord",
+        "Hash",
+        // Dereference
+        "Deref",
+        "DerefMut",
+        // Iteration
+        "IntoIterator",
+        "Iterator",
+    ];
+    CORE_TRAITS.to_vec()
+}
+
 // ============================================================================
 // Stage 5.38: Stdlib vtable byte size + pointer-width-aware layout helpers
 //

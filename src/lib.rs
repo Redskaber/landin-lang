@@ -442,7 +442,7 @@ pub use stdlib::{
     default_prelude, find_stdlib_trait_method, integer_bit_width, is_float_type, is_primitive_type,
     is_signed_integer, is_stdlib_marker_trait, is_stdlib_trait, is_stdlib_trait_method,
     is_unsigned_integer, is_zero_sized_type, register_stdlib, resolve_stdlib_type,
-    stdlib_all_traits, stdlib_arithmetic_traits, stdlib_data_global_name,
+    stdlib_all_traits, stdlib_arithmetic_traits, stdlib_core_traits, stdlib_data_global_name,
     stdlib_dynptr_global_name, stdlib_impl_method_symbol, stdlib_marker_traits,
     stdlib_pointer_width_bytes, stdlib_trait_count, stdlib_trait_method_count,
     stdlib_trait_method_index, stdlib_trait_methods, stdlib_traits_with_method,

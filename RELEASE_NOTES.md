@@ -1,9 +1,52 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.84
+**Current version**: v0.11.85
 **Date**: 2026-07-24
-**Test count**: 1769 tests + 5 benchmarks
+**Test count**: 1791 tests + 5 benchmarks
+
+---
+
+## v0.11.85 — Stage 5.89 (stdlib_core_traits semantic group query)
+
+### Overview
+
+Add `stdlib_core_traits()` — second semantic group query returning all
+stdlib core trait names (13 traits: lifecycle/formatting/comparison/
+dereference/iteration). Continues the semantic category series started
+in Stage 5.88 (arithmetic).
+
+### New API
+
+- `stdlib_core_traits() -> Vec<&'static str>` — free fn (in `src/stdlib.rs`)
+
+### Behavior
+
+Returns 13 core traits:
+- Lifecycle: Clone, Drop, Default
+- Formatting: Display, Debug
+- Comparison: PartialEq, PartialOrd, Ord, Hash
+- Dereference: Deref, DerefMut
+- Iteration: IntoIterator, Iterator
+
+### §23 compliance
+
+`<noun>_<adj>_<noun>` (plural) — mirrors `stdlib_arithmetic_traits` from v1.58.
+Second in the semantic category query series.
+
+### §16 compliance
+
+Pure read function. Uses `&'static` slice — no new dependencies. Data flow
+stays within `stdlib`.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (624.4 MiB removed)
+cargo test: 1791 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
