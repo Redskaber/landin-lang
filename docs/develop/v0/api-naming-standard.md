@@ -2101,3 +2101,49 @@ lives in `src/mir/dyn_trait.rs` alongside the `DynTraitMIRPlan` it queries.
 **Test impact**: +12 (1563 → 1575).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.46 (Stage 5.76, 2026-07-24)
+
+Stage 5.76 MirLowerCtxt dyn_trait_plan field + setter/getter round. First
+mir/lower integration step — context wiring only. Adds a
+`dyn_trait_plan: Option<DynTraitMIRPlan>` field to `MirLowerCtxt` plus a
+`set_dyn_trait_plan()` setter and `dyn_trait_plan()` getter. No lowering
+logic changes (those land in Stage 5.77+).
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `MirLowerCtxt::set_dyn_trait_plan` | method (in `mir::lower`) | `<verb>_<noun>_<noun>_<noun>` (setter) |
+| `MirLowerCtxt::dyn_trait_plan` | method (in `mir::lower`) | `<noun>_<noun>_<noun>` (getter, no `get_` prefix) |
+| `MirLowerCtxt.dyn_trait_plan` | pub field (in `mir::lower`) | `<noun>_<noun>_<noun>` |
+
+**Design decisions**:
+1. Setter takes owned `DynTraitMIRPlan` (by value); context holds ownership.
+   This mirrors the established pattern for context-attached data (e.g.,
+   `cx.hir = Some(hir)` in `lower_hir_body_to_mir_full`).
+2. Getter returns `Option<&DynTraitMIRPlan>` — read-only reference, no
+   cloning. Callers can pattern-match on `Some(plan)` to get a `&DynTraitMIRPlan`
+   and then call `find_dyn_trait_method_call_in_plan()` (Stage 5.75) for
+   per-method-call lookup.
+3. **No `unset_dyn_trait_plan` method** — once a plan is attached, it stays
+   for the lifetime of the lowering context. This is consistent with the
+   `hir` field semantics (also `Option`, also set once at construction).
+   Avoids footguns where a caller unsets mid-lower and breaks invariants.
+4. Getter uses Rust C-GETTER convention — no `get_` prefix. Field name and
+   getter name are the same (`dyn_trait_plan`), which is the rust-api-guidelines
+   pattern for accessor methods.
+5. Pub field — caller can read `cx.dyn_trait_plan` directly OR via the
+   getter. Both work. The getter exists for future trait-based abstraction
+   (e.g., if `MirLowerCtxt` ever implements a `LowerContext` trait).
+
+**§16 compliance**: `DynTraitMIRPlan` is defined in `mir::dyn_trait` (Stage
+5.73). `MirLowerCtxt` lives in `mir::lower`. Data flow: driver builds plan
+upstream via `build_dyn_trait_mir_plan_from_resolver()` → passes plan by
+value to `cx.set_dyn_trait_plan()` → `mir::lower` reads via
+`cx.dyn_trait_plan()`. `MirLowerCtxt` does not own a `TraitResolver`. No
+circular dependency; data flows one way (driver → cx → lower).
+
+**Test impact**: +11 (1575 → 1586).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

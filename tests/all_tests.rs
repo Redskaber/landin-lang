@@ -304,3 +304,6 @@ mod dyn_trait_mir_plan_text_tests;
 
 #[path = "v0/stage5/plan/dyn_trait_method_call_in_plan_tests.rs"]
 mod dyn_trait_method_call_in_plan_tests;
+
+#[path = "v0/stage5/plan/mir_lower_dyn_trait_plan_context_tests.rs"]
+mod mir_lower_dyn_trait_plan_context_tests;

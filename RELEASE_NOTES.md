@@ -1,9 +1,58 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.71
+**Current version**: v0.11.72
 **Date**: 2026-07-24
-**Test count**: 1575 tests + 5 benchmarks
+**Test count**: 1586 tests + 5 benchmarks
+
+---
+
+## v0.11.72 — Stage 5.76 (MirLowerCtxt dyn_trait_plan field + setter/getter)
+
+### Overview
+
+First `mir/lower` integration step — context wiring only. Adds a
+`dyn_trait_plan: Option<DynTraitMIRPlan>` field to `MirLowerCtxt` plus a
+`set_dyn_trait_plan()` setter and `dyn_trait_plan()` getter. No lowering
+logic changes — Stage 5.77+ will use this field in the
+`HirExprKind::MethodCall` branch to look up vtable slot indices for dyn
+Trait method calls.
+
+### New API
+
+- `MirLowerCtxt::set_dyn_trait_plan(&mut self, plan: DynTraitMIRPlan)` — setter (in `src/mir/lower/mod.rs`)
+- `MirLowerCtxt::dyn_trait_plan(&self) -> Option<&DynTraitMIRPlan>` — getter (in `src/mir/lower/mod.rs`)
+- `MirLowerCtxt.dyn_trait_plan: Option<DynTraitMIRPlan>` — pub field (in `src/mir/lower/mod.rs`)
+
+### Design decisions
+
+1. **No `unset` method** — once a plan is attached, it stays for the
+   lifetime of the lowering context (consistent with `hir` field semantics).
+2. Setter takes owned `DynTraitMIRPlan` (by value); context holds ownership.
+3. Getter returns `Option<&DynTraitMIRPlan>` (read-only ref).
+4. Initialized to `None` in `MirLowerCtxt::new()`.
+
+### §23 compliance
+
+- Setter: `<verb>_<noun>_<noun>_<noun>` (`set_` prefix per Rust convention)
+- Getter: `<noun>_<noun>_<noun>` (no `get_` prefix per C-GETTER convention
+  in rust-api-guidelines)
+
+### §16 compliance
+
+The plan is built **upstream** (by the driver, using
+`build_dyn_trait_mir_plan_from_resolver()`) and passed in as a read-only
+value. `MirLowerCtxt` does not own a `TraitResolver`. Data flow:
+driver → cx → lower reads. No circular dependency.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (543.7 MiB removed)
+cargo test: 1586 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

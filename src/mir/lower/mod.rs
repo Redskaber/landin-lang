@@ -8,6 +8,7 @@
 use crate::ast;
 use crate::hir::*;
 use crate::mir::body::*;
+use crate::mir::dyn_trait::DynTraitMIRPlan;
 use crate::mir::place::*;
 use crate::mir::ty::*;
 use crate::session::Span;
@@ -35,6 +36,16 @@ pub struct MirLowerCtxt<'a> {
     /// `Option` because some test contexts construct MirLowerCtxt without
     /// a HIR crate (e.g., unit tests of helper functions).
     pub hir: Option<&'a HirCrate>,
+    /// Stage 5.76: optional `DynTraitMIRPlan` for dyn Trait method call
+    /// lowering. When set, the `HirExprKind::MethodCall` branch (Stage
+    /// 5.77+) can query this plan via `find_dyn_trait_method_call_in_plan()`
+    /// to retrieve the vtable slot index + param count for a dyn Trait
+    /// method call.
+    ///
+    /// Per §16: the plan is built **upstream** (by the driver, using
+    /// `build_dyn_trait_mir_plan_from_resolver()`) and passed in as a
+    /// read-only value. `MirLowerCtxt` does not own a TraitResolver.
+    pub dyn_trait_plan: Option<DynTraitMIRPlan>,
 }
 
 impl<'a> MirLowerCtxt<'a> {
@@ -48,6 +59,7 @@ impl<'a> MirLowerCtxt<'a> {
             current_block,
             unify: UnificationTable::new(),
             hir: None,
+            dyn_trait_plan: None,
         }
     }
 
@@ -101,6 +113,44 @@ impl<'a> MirLowerCtxt<'a> {
     /// Look up the MIR LocalId for a HirId.
     pub fn local_of(&self, hir_id: HirId) -> Option<LocalId> {
         self.local_map.get(&hir_id).copied()
+    }
+
+    /// Stage 5.76: Attach a pre-built `DynTraitMIRPlan` to this lowering
+    /// context.
+    ///
+    /// Subsequent `HirExprKind::MethodCall` lowering (Stage 5.77+) will
+    /// query this plan via `find_dyn_trait_method_call_in_plan()` to
+    /// retrieve the vtable slot index + param count for a dyn Trait
+    /// method call.
+    ///
+    /// Calling this twice overwrites the previously-attached plan — the
+    /// last call wins. There is intentionally no `unset_dyn_trait_plan`
+    /// method: once a plan is attached, it stays for the lifetime of
+    /// the lowering context (consistent with `hir` field semantics).
+    ///
+    /// Per §16: the plan is built **upstream** (by the driver, using
+    /// `build_dyn_trait_mir_plan_from_resolver()`) and passed in as a
+    /// read-only value. `MirLowerCtxt` does not own a `TraitResolver`.
+    ///
+    /// Per API-naming-standard §3 + §8.1: `set_dyn_trait_plan` follows
+    /// the `<verb>_<noun>_<noun>_<noun>` pattern (setter verb `set_`
+    /// prefix per Rust convention).
+    pub fn set_dyn_trait_plan(&mut self, plan: DynTraitMIRPlan) {
+        self.dyn_trait_plan = Some(plan);
+    }
+
+    /// Stage 5.76: Read-only access to the attached `DynTraitMIRPlan`, if
+    /// any.
+    ///
+    /// Returns `None` when no plan has been attached via
+    /// `set_dyn_trait_plan()`. In that case, the `HirExprKind::MethodCall`
+    /// branch (Stage 5.77+) falls back to the legacy placeholder path.
+    ///
+    /// Per API-naming-standard §3 + §8.1: `dyn_trait_plan` follows the
+    /// `<noun>_<noun>_<noun>` pattern (Rust getter convention — no `get_`
+    /// prefix per C-GETTER convention in rust-api-guidelines).
+    pub fn dyn_trait_plan(&self) -> Option<&DynTraitMIRPlan> {
+        self.dyn_trait_plan.as_ref()
     }
 
     /// Allocate a fresh basic block and return its ID.

@@ -5751,3 +5751,49 @@ Stage Summary:
   single-point lookup (5.75)** — ready for mir/lower/ integration in 5.76+.
 - Next: Stage 5.76+ — first mir/lower/ integration: hook the lookup into the
   HirExprKind::MethodCall branch (currently uses Error placeholder func).
+
+---
+Task ID: stage5.76-r125
+Agent: Super Z (main)
+Task: Stage 5.76 — MirLowerCtxt dyn_trait_plan field + setter/getter + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.71 / 1575 tests (Stage 5.75 complete)
+
+Stage 5.76: MirLowerCtxt dyn_trait_plan field + setter/getter (FIRST mir/lower integration step — context wiring only)
+- src/mir/lower/mod.rs:
+  * Added `use crate::mir::dyn_trait::DynTraitMIRPlan;` import
+  * Added `pub dyn_trait_plan: Option<DynTraitMIRPlan>` field to MirLowerCtxt
+  * Initialized `dyn_trait_plan: None` in `MirLowerCtxt::new()`
+  * Added `set_dyn_trait_plan(&mut self, plan)` setter
+  * Added `dyn_trait_plan(&self) -> Option<&DynTraitMIRPlan>` getter
+- tests/v0/stage5/plan/mir_lower_dyn_trait_plan_context_tests.rs: 11 new tests
+  covering: default None, set then get, fat_ptrs preservation, method_calls
+  preservation, summary preservation, set-twice-last-wins, empty plan,
+  field isolation, getter idempotence, round-trip, pub field accessibility
+- tests/all_tests.rs: added mir_lower_dyn_trait_plan_context_tests module (90 mods)
+- Cargo.toml: version 0.11.71 → 0.11.72 (description extended)
+- docs/develop/v0/stage-5/plan-5.76.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round76.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.76 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.46 entry appended
+- RELEASE_NOTES.md: v0.11.72 section prepended, header bumped
+- README.md: status line + Stage 5 row test count + sub-stage list updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (543.7 MiB removed) ✅
+- cargo test: 1586 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.76 PASSED — CI/CD all green per §1.2.
+- First mir/lower integration step — context wiring only, no lowering logic changes.
+- MirLowerCtxt now has a dyn_trait_plan field + set/get methods. Driver will
+  populate it (Stage 5.78+); MethodCall lowering will read it (Stage 5.77+).
+- §23 compliant: setter `<verb>_<noun>_<noun>_<noun>`, getter `<noun>_<noun>_<noun>`
+  (C-GETTER convention).
+- §16 compliant: plan built upstream by driver, lower only reads. No
+  TraitResolver ownership in MirLowerCtxt; no circular dependency.
+- Next: Stage 5.77+ — modify the HirExprKind::MethodCall branch in lower_expr_to_operand
+  to query cx.dyn_trait_plan() when present, replacing the Error placeholder func.

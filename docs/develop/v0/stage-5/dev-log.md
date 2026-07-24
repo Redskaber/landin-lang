@@ -2189,3 +2189,27 @@ to look up the specific method call representation when lowering a HIR
 
 **Test impact**: +12 (1563 → 1575)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.76 — MirLowerCtxt dyn_trait_plan field + setter/getter (v0.11.72)
+
+**Priority**: First mir/lower integration step — context wiring only. Adds
+`dyn_trait_plan: Option<DynTraitMIRPlan>` field to `MirLowerCtxt` plus
+`set_dyn_trait_plan()` setter and `dyn_trait_plan()` getter. No lowering
+logic changes (those land in Stage 5.77+).
+
+**Work completed**:
+- src/mir/lower/mod.rs:
+  * Added `use crate::mir::dyn_trait::DynTraitMIRPlan;` import
+  * Added `pub dyn_trait_plan: Option<DynTraitMIRPlan>` field to MirLowerCtxt
+  * Initialized `dyn_trait_plan: None` in `MirLowerCtxt::new()`
+  * Added `set_dyn_trait_plan(&mut self, plan)` setter
+  * Added `dyn_trait_plan(&self) -> Option<&DynTraitMIRPlan>` getter
+- tests/v0/stage5/plan/mir_lower_dyn_trait_plan_context_tests.rs: 11 new tests
+  covering: default None, set then get, fat_ptrs preservation, method_calls
+  preservation, summary preservation, set-twice-last-wins, empty plan,
+  field isolation, getter idempotence, round-trip, pub field accessibility
+- tests/all_tests.rs: added mir_lower_dyn_trait_plan_context_tests module (90 mods)
+- Cargo.toml: version 0.11.71 → 0.11.72 (description extended)
+
+**Test impact**: +11 (1575 → 1586)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
