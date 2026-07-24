@@ -2784,3 +2784,23 @@ the forward query `stdlib_trait_method_self_kind` (5.94).
 **Note**: Fixed test assertion — SelfByMutRef has 16 methods (10 assign + Drop +
 clone_from + others), more than SelfByRef's 9. Original test assumed SelfByRef >
 SelfByMutRef which was wrong.
+
+### Stage 5.96 — stdlib_trait_methods_by_return_kind reverse query (v0.11.92)
+
+**Priority**: Add reverse query `stdlib_trait_methods_by_return_kind` — given a
+return_kind, find all (trait, method) pairs with that return type. Complements
+`stdlib_trait_methods_by_self_kind` (5.95) with a symmetric return-type query.
+
+**Work completed**:
+- src/stdlib.rs: new `stdlib_trait_methods_by_return_kind(kind) -> Vec<(&'static str, &'static str)>` function
+  * Iterates STDLIB_TRAITS, filters methods by return_kind
+  * §23 compliant: `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` (plural, _by_return_kind suffix)
+- src/lib.rs: re-export stdlib_trait_methods_by_return_kind
+- tests/v0/stage5/plan/stdlib_trait_methods_by_return_kind_tests.rs: 10 new tests
+  covering: 4 non-empty (Unit/Bool/AllocType/StdType), 2 contains (Drop/PartialEq),
+  2 consistency (all match, all kinds cover all methods), 2 robustness (no side effects, I32 empty)
+- tests/all_tests.rs: added stdlib_trait_methods_by_return_kind_tests module (108 mods)
+- Cargo.toml: version 0.11.91 → 0.11.92 (description extended)
+
+**Test impact**: +10 (1857 → 1867)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

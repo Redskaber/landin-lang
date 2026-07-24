@@ -1294,6 +1294,38 @@ pub fn stdlib_trait_methods_by_self_kind(
     out
 }
 
+/// Stage 5.96: Find all stdlib trait methods with a given return type kind.
+///
+/// Returns a `Vec<(&'static str, &'static str)>` of `(trait_name, method_name)`
+/// pairs for every stdlib trait method whose `return_kind` matches the given
+/// `kind`. This is a **reverse query** — given a return_kind, find all matching
+/// methods. Complements `stdlib_trait_method_return_kind` (Stage 5.93, forward
+/// query for a single method's return_kind).
+///
+/// Useful for:
+/// - Codegen: find all methods returning Bool (need i1 result type)
+/// - Codegen: find all methods returning Unit (void call, no result register)
+/// - Typeck: validate return type consistency
+///
+/// Per API-naming-standard §3: `stdlib_trait_methods_by_return_kind` follows
+/// the `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` pattern (plural), mirroring
+/// `stdlib_trait_methods_by_self_kind` from v1.65.
+pub fn stdlib_trait_methods_by_return_kind(
+    kind: StdlibTypeKind,
+) -> Vec<(&'static str, &'static str)> {
+    let mut out: Vec<(&'static str, &'static str)> = Vec::new();
+    for &trait_name in STDLIB_TRAITS {
+        if let Some(methods) = stdlib_trait_methods(trait_name) {
+            for method in methods {
+                if method.return_kind == kind {
+                    out.push((trait_name, method.name));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Stage 5.37: Get the complete vtable slot layout for a stdlib trait.
 ///
 /// Returns `Some(Vec<StdlibVtableSlot>)` for any registered trait (including

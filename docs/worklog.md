@@ -6673,3 +6673,27 @@ Stage Summary:
 - 11 new tests, 0 clippy warnings, fmt clean.
 - §16 + §23 compliant.
 - Next: Stage 5.96+ — user-defined trait dyn support (TD-018), or Stage 6 planning.
+
+---
+Task ID: stage5.96-r145
+Agent: Super Z (main)
+Task: Stage 5.96 — stdlib_trait_methods_by_return_kind reverse query + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.91 / 1857 tests (Stage 5.95 complete)
+- Implemented stdlib_trait_methods_by_return_kind() in src/stdlib.rs
+- Re-exported from src/lib.rs
+- Added 10 tests in tests/v0/stage5/plan/stdlib_trait_methods_by_return_kind_tests.rs
+- Bumped Cargo.toml version 0.11.91 → 0.11.92
+- Updated all docs (plan-5.96.md, gate-review-round96.md, dev-log.md,
+  api-naming-standard.md v1.66, RELEASE_NOTES.md, README.md, docs/worklog.md)
+- Ran full CI/CD: cargo clean + cargo test (1867 passed) + cargo fmt +
+  cargo clippy --all-targets — all green ✅
+
+Stage Summary:
+- Stage 5.96 PASSED. CI/CD all green per §1.2.
+- New API: stdlib_trait_methods_by_return_kind — reverse query by return_kind.
+- Symmetric with stdlib_trait_methods_by_self_kind (5.95, by self_kind).
+- 10 new tests, 0 clippy warnings, fmt clean.
+- §16 + §23 compliant.
+- Next: Stage 5.97+ — user-defined trait dyn support, or Stage 6 planning.

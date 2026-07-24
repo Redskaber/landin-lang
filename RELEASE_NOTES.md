@@ -1,9 +1,42 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.91
+**Current version**: v0.11.92
 **Date**: 2026-07-24
-**Test count**: 1857 tests + 5 benchmarks
+**Test count**: 1867 tests + 5 benchmarks
+
+---
+
+## v0.11.92 — Stage 5.96 (stdlib_trait_methods_by_return_kind reverse query)
+
+### Overview
+
+Add reverse query `stdlib_trait_methods_by_return_kind` — given a return_kind,
+find all (trait, method) pairs with that return type. Symmetric with
+`stdlib_trait_methods_by_self_kind` (Stage 5.95, by self_kind).
+
+### New API
+
+- `stdlib_trait_methods_by_return_kind(kind: StdlibTypeKind) -> Vec<(&'static str, &'static str)>` — free fn (in `src/stdlib.rs`)
+
+### §23 compliance
+
+`<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` (plural) — `_by_return_kind` suffix
+mirrors `_by_self_kind` from v1.65.
+
+### §16 compliance
+
+Pure read function. Reuses `STDLIB_TRAITS` + `stdlib_trait_methods` — no new
+dependencies.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (653.4 MiB removed)
+cargo test: 1867 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

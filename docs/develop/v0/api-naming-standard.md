@@ -2785,3 +2785,25 @@ the forward query `stdlib_trait_method_self_kind` (Stage 5.94).
 **Test impact**: +11 (1846 → 1857).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.66 (Stage 5.96, 2026-07-24)
+
+Stage 5.96 stdlib_trait_methods_by_return_kind reverse query round. Add reverse
+query returning all (trait, method) pairs with a given return_kind. Symmetric
+with `stdlib_trait_methods_by_self_kind` (v1.65, by self_kind).
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_trait_methods_by_return_kind` | free fn (in `stdlib`) | `<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` (plural) |
+
+**Design decisions**:
+1. **Symmetric with 5.95** — `_by_return_kind` mirrors `_by_self_kind` (v1.65).
+   Both are reverse queries filtering by a specific StdlibTraitMethod field.
+2. **§16 compliance** — pure read, reuses `STDLIB_TRAITS` +
+   `stdlib_trait_methods`, no new dependencies.
+
+**Test impact**: +10 (1857 → 1867).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
