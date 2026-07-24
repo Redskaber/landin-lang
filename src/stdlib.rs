@@ -668,6 +668,66 @@ impl StdlibTraitMethod {
 /// Used as the `param_kinds` value for all `param_count: 0` methods.
 const EMPTY_PARAM_KINDS: &[StdlibTypeKind] = &[];
 
+/// Stage 5.86: Complete list of all stdlib trait names (marker + method).
+///
+/// Extracted from the duplicated local `ALL_REGISTERED_TRAITS` constants in
+/// `stdlib_traits_with_method` and `stdlib_traits_with_vtable` to eliminate
+/// repetition. Synchronized with the match arms in `stdlib_trait_methods`.
+///
+/// Per §16: kept in this module (not imported from `traits::builtin`) so
+/// that `stdlib.rs` stays self-contained.
+const STDLIB_TRAITS: &[&str] = &[
+    // Markers (no methods)
+    "Copy",
+    "Send",
+    "Sync",
+    "Sized",
+    "Unpin",
+    "Eq",
+    // Core traits
+    "Clone",
+    "Drop",
+    "Default",
+    "Display",
+    "Debug",
+    "PartialEq",
+    "PartialOrd",
+    "Ord",
+    "Hash",
+    "Deref",
+    "DerefMut",
+    "IntoIterator",
+    "Iterator",
+    // I/O traits
+    "Read",
+    "Write",
+    // Unary ops
+    "Neg",
+    "Not",
+    // Arithmetic binary ops
+    "Add",
+    "Sub",
+    "Mul",
+    "Div",
+    "Rem",
+    "BitAnd",
+    "BitOr",
+    "BitXor",
+    "Shl",
+    "Shr",
+    // Arithmetic assign ops
+    "AddAssign",
+    "SubAssign",
+    "MulAssign",
+    "DivAssign",
+    "RemAssign",
+    "BitAndAssign",
+    "BitOrAssign",
+    "BitXorAssign",
+    "ShlAssign",
+    "ShrAssign",
+];
+
 /// Stage 5.36: Marker-trait method table — empty (no methods).
 const MARKER_METHODS: &[StdlibTraitMethod] = &[];
 
@@ -1057,66 +1117,10 @@ pub fn is_stdlib_trait_method(trait_name: &str, method_name: &str) -> bool {
 /// Per API-naming-standard §3: `stdlib_traits_with_method` follows
 /// `<noun>_<noun>_with_<noun>` pattern.
 pub fn stdlib_traits_with_method(method_name: &str) -> Vec<&'static str> {
-    /// Complete list of trait names that have entries in
-    /// `stdlib_trait_methods()`'s match table.
-    ///
-    /// Kept in this module (not imported from `traits::builtin`) so that
-    /// `stdlib.rs` stays self-contained per §16 (no backwards dependency
-    /// on the `traits` module). Synchronized with the match arms in
-    /// `stdlib_trait_methods`.
-    const ALL_REGISTERED_TRAITS: &[&str] = &[
-        // Markers (no methods)
-        "Copy",
-        "Send",
-        "Sync",
-        "Sized",
-        "Unpin",
-        "Eq",
-        // Core traits
-        "Clone",
-        "Drop",
-        "Default",
-        "Display",
-        "Debug",
-        "PartialEq",
-        "PartialOrd",
-        "Ord",
-        "Hash",
-        "Deref",
-        "DerefMut",
-        "IntoIterator",
-        "Iterator",
-        // I/O traits
-        "Read",
-        "Write",
-        // Unary ops
-        "Neg",
-        "Not",
-        // Arithmetic binary ops
-        "Add",
-        "Sub",
-        "Mul",
-        "Div",
-        "Rem",
-        "BitAnd",
-        "BitOr",
-        "BitXor",
-        "Shl",
-        "Shr",
-        // Arithmetic assign ops
-        "AddAssign",
-        "SubAssign",
-        "MulAssign",
-        "DivAssign",
-        "RemAssign",
-        "BitAndAssign",
-        "BitOrAssign",
-        "BitXorAssign",
-        "ShlAssign",
-        "ShrAssign",
-    ];
+    // Stage 5.86: uses the module-level STDLIB_TRAITS constant
+    // (previously a local ALL_REGISTERED_TRAITS duplicate).
     let mut out: Vec<&'static str> = Vec::new();
-    for &trait_name in ALL_REGISTERED_TRAITS {
+    for &trait_name in STDLIB_TRAITS {
         if find_stdlib_trait_method(trait_name, method_name).is_some() {
             out.push(trait_name);
         }
@@ -1282,68 +1286,47 @@ pub fn is_stdlib_trait(trait_name: &str) -> bool {
 /// Per API-naming-standard §3: `stdlib_traits_with_vtable` follows
 /// `<noun>_<noun>_with_<noun>` pattern.
 pub fn stdlib_traits_with_vtable() -> Vec<&'static str> {
-    /// Complete list of trait names registered in `stdlib_trait_methods()`.
-    /// (Same list as in `stdlib_traits_with_method` — duplicated locally
-    /// so each function is self-contained per §16.)
-    const ALL_REGISTERED_TRAITS: &[&str] = &[
-        // Markers (no methods — will be filtered out by slot_count > 0)
-        "Copy",
-        "Send",
-        "Sync",
-        "Sized",
-        "Unpin",
-        "Eq",
-        // Core traits
-        "Clone",
-        "Drop",
-        "Default",
-        "Display",
-        "Debug",
-        "PartialEq",
-        "PartialOrd",
-        "Ord",
-        "Hash",
-        "Deref",
-        "DerefMut",
-        "IntoIterator",
-        "Iterator",
-        // I/O traits
-        "Read",
-        "Write",
-        // Unary ops
-        "Neg",
-        "Not",
-        // Arithmetic binary ops
-        "Add",
-        "Sub",
-        "Mul",
-        "Div",
-        "Rem",
-        "BitAnd",
-        "BitOr",
-        "BitXor",
-        "Shl",
-        "Shr",
-        // Arithmetic assign ops
-        "AddAssign",
-        "SubAssign",
-        "MulAssign",
-        "DivAssign",
-        "RemAssign",
-        "BitAndAssign",
-        "BitOrAssign",
-        "BitXorAssign",
-        "ShlAssign",
-        "ShrAssign",
-    ];
+    // Stage 5.86: uses the module-level STDLIB_TRAITS constant
+    // (previously a local ALL_REGISTERED_TRAITS duplicate).
     let mut out: Vec<&'static str> = Vec::new();
-    for &trait_name in ALL_REGISTERED_TRAITS {
+    for &trait_name in STDLIB_TRAITS {
         // Include only traits with at least one method slot.
         if matches!(stdlib_vtable_slot_count(trait_name), Some(n) if n > 0) {
             out.push(trait_name);
         }
     }
     out
+}
+
+/// Stage 5.86: Return the total number of stdlib traits (marker + method).
+///
+/// Convenience function — equivalent to `stdlib_all_traits().len()` but
+/// avoids allocating a Vec. Useful for sanity checks, capacity hints, and
+/// diagnostic output.
+///
+/// Per API-naming-standard §3: `stdlib_trait_count` follows the
+/// `<noun>_<noun>_<noun>` pattern, mirroring `stdlib_trait_method_count`
+/// from v1.6.
+pub fn stdlib_trait_count() -> usize {
+    STDLIB_TRAITS.len()
+}
+
+/// Stage 5.86: Return all stdlib trait names (marker + method).
+///
+/// Returns a `Vec<&'static str>` containing every trait name registered in
+/// the stdlib. This is the **unfiltered** list — includes both marker
+/// traits (Copy/Send/Sync/Sized/Unpin/Eq) and traits with methods
+/// (Clone/Drop/Display/Add/...).
+///
+/// Contrast with:
+/// - `stdlib_traits_with_vtable` — filtered to traits with at least one method
+/// - `stdlib_traits_with_method(name)` — filtered to traits having a specific method
+///
+/// Per API-naming-standard §3: `stdlib_all_traits` follows the
+/// `<noun>_<adj>_<noun>` pattern (`all_` prefix per Rust API-guidelines
+/// convention for "return everything" queries).
+pub fn stdlib_all_traits() -> Vec<&'static str> {
+    STDLIB_TRAITS.to_vec()
 }
 
 // ============================================================================

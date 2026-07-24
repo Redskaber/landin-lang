@@ -2492,3 +2492,36 @@ as `is_stdlib_marker_trait` / `is_stdlib_trait_method`.
 **Test impact**: +24 (1690 → 1714).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.56 (Stage 5.86, 2026-07-24)
+
+Stage 5.86 stdlib_trait_count + stdlib_all_traits convenience queries round.
+Add two convenience functions for stdlib trait enumeration, and extract the
+duplicated `ALL_REGISTERED_TRAITS` constant to module level as `STDLIB_TRAITS`.
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `stdlib_trait_count` | free fn (in `stdlib`) | `<noun>_<noun>_<noun>` |
+| `stdlib_all_traits` | free fn (in `stdlib`) | `<noun>_<adj>_<noun>` |
+
+**Design decisions**:
+1. **`stdlib_trait_count` naming** — mirrors `stdlib_trait_method_count`
+   (v1.6). Both are "count of X" queries returning `usize`.
+2. **`stdlib_all_traits` naming** — `all_` prefix per Rust API-guidelines
+   convention for "return everything" queries (mirrors `Vec::all`,
+   `HashMap::all_keys` patterns).
+3. **DRY refactoring** — extracted module-level `STDLIB_TRAITS: &[&str]`
+   constant (47 trait names). Previously `ALL_REGISTERED_TRAITS` was
+   duplicated as a local constant in both `stdlib_traits_with_method` and
+   `stdlib_traits_with_vtable` (~110 lines of duplication). Now single
+   source of truth.
+4. **`stdlib_trait_count` avoids Vec allocation** — returns `STDLIB_TRAITS.len()`
+   directly, useful for capacity hints and sanity checks without allocating.
+5. **§16 compliance** — pure read functions, reuse existing constant, no
+   new dependencies. Data flow stays within `stdlib`.
+
+**Test impact**: +17 (1714 → 1731).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

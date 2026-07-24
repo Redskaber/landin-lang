@@ -2509,3 +2509,33 @@ existing `is_stdlib_marker_trait` (marker-only) and `is_stdlib_trait_method`
 
 **Test impact**: +24 (1690 → 1714)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.86 — stdlib_trait_count + stdlib_all_traits convenience queries (v0.11.82)
+
+**Priority**: Add two convenience query functions for stdlib trait enumeration.
+Extract the duplicated `ALL_REGISTERED_TRAITS` constant to module level as
+`STDLIB_TRAITS`, eliminating repetition between `stdlib_traits_with_method`
+and `stdlib_traits_with_vtable`.
+
+**Work completed**:
+- src/stdlib.rs:
+  * Extracted module-level `STDLIB_TRAITS: &[&str]` constant (47 trait names)
+  * Refactored `stdlib_traits_with_method` to use `STDLIB_TRAITS` (removed local duplicate)
+  * Refactored `stdlib_traits_with_vtable` to use `STDLIB_TRAITS` (removed local duplicate)
+  * Added `pub fn stdlib_trait_count() -> usize` — total trait count
+  * Added `pub fn stdlib_all_traits() -> Vec<&'static str>` — all trait names
+- src/lib.rs: re-export stdlib_trait_count + stdlib_all_traits
+- tests/v0/stage5/plan/stdlib_trait_count_tests.rs: 17 new tests
+  covering: count positive/>=30/matches all_traits.len(), all_traits
+  non-empty/contains Copy/Clone/Add/Drop/ShrAssign/no Foo/empty/lowercase,
+  consistency with is_stdlib_trait/with_vtable, all > with_vtable,
+  no side effects, no duplicates
+- tests/all_tests.rs: added stdlib_trait_count_tests module (99 mods)
+- Cargo.toml: version 0.11.81 → 0.11.82 (description extended)
+
+**Test impact**: +17 (1714 → 1731)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Refactoring bonus**: Eliminated ~110 lines of duplicated `ALL_REGISTERED_TRAITS`
+constant definitions (2 copies × ~55 lines each). Now single source of truth
+at module level.

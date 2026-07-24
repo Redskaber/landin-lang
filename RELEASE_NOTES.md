@@ -1,9 +1,51 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.81
+**Current version**: v0.11.82
 **Date**: 2026-07-24
-**Test count**: 1714 tests + 5 benchmarks
+**Test count**: 1731 tests + 5 benchmarks
+
+---
+
+## v0.11.82 — Stage 5.86 (stdlib_trait_count + stdlib_all_traits)
+
+### Overview
+
+Add two convenience query functions for stdlib trait enumeration. Extract
+the duplicated `ALL_REGISTERED_TRAITS` constant to module level as
+`STDLIB_TRAITS`, eliminating ~110 lines of repetition between
+`stdlib_traits_with_method` and `stdlib_traits_with_vtable`.
+
+### New API
+
+- `stdlib_trait_count() -> usize` — total number of stdlib traits (free fn in `src/stdlib.rs`)
+- `stdlib_all_traits() -> Vec<&'static str>` — all stdlib trait names (free fn in `src/stdlib.rs`)
+
+### Refactoring bonus
+
+Eliminated ~110 lines of duplicated `ALL_REGISTERED_TRAITS` constant
+definitions (2 copies × ~55 lines each in `stdlib_traits_with_method` and
+`stdlib_traits_with_vtable`). Now single source of truth at module level
+as `STDLIB_TRAITS`.
+
+### §23 compliance
+
+- `stdlib_trait_count` — `<noun>_<noun>_<noun>`, mirrors `stdlib_trait_method_count`
+- `stdlib_all_traits` — `<noun>_<adj>_<noun>`, `all_` prefix per Rust API-guidelines
+
+### §16 compliance
+
+Pure read functions. Reuse existing `STDLIB_TRAITS` constant — no new
+dependencies. Data flow stays within `stdlib`.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (583.2 MiB removed)
+cargo test: 1731 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

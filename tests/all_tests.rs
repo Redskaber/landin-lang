@@ -331,3 +331,6 @@ mod dyn_trait_param_kinds_tests;
 
 #[path = "v0/stage5/plan/is_stdlib_trait_tests.rs"]
 mod is_stdlib_trait_tests;
+
+#[path = "v0/stage5/plan/stdlib_trait_count_tests.rs"]
+mod stdlib_trait_count_tests;

@@ -6253,3 +6253,48 @@ Stage Summary:
 - §16 + §23 compliant.
 - Next: Stage 5.86+ — user-defined trait dyn support, or Stage 6 planning
   (mir/lower split TD-011, Region inference TD-015).
+
+---
+Task ID: stage5.86-r135
+Agent: Super Z (main)
+Task: Stage 5.86 — stdlib_trait_count + stdlib_all_traits + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.81 / 1714 tests (Stage 5.85 complete)
+
+Stage 5.86: stdlib_trait_count + stdlib_all_traits convenience queries
+- src/stdlib.rs:
+  * Extracted module-level `STDLIB_TRAITS: &[&str]` constant (47 trait names)
+  * Refactored stdlib_traits_with_method to use STDLIB_TRAITS (removed local duplicate)
+  * Refactored stdlib_traits_with_vtable to use STDLIB_TRAITS (removed local duplicate)
+  * Added `pub fn stdlib_trait_count() -> usize`
+  * Added `pub fn stdlib_all_traits() -> Vec<&'static str>`
+- src/lib.rs: re-export stdlib_trait_count + stdlib_all_traits
+- tests/v0/stage5/plan/stdlib_trait_count_tests.rs: 17 new tests
+  covering: count positive/>=30/matches all_traits.len(), all_traits
+  non-empty/contains Copy/Clone/Add/Drop/ShrAssign/no Foo/empty/lowercase,
+  consistency with is_stdlib_trait/with_vtable, all > with_vtable,
+  no side effects, no duplicates
+- tests/all_tests.rs: added stdlib_trait_count_tests module (99 mods)
+- Cargo.toml: version 0.11.81 → 0.11.82 (description extended)
+- docs/develop/v0/stage-5/plan-5.86.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round86.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.86 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.56 entry appended
+- RELEASE_NOTES.md: v0.11.82 section prepended, header bumped
+- README.md: status line updated (86 sub-stages, 1731 tests)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (583.2 MiB removed) ✅
+- cargo test: 1731 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.86 PASSED — CI/CD all green per §1.2.
+- New API: stdlib_trait_count + stdlib_all_traits convenience queries.
+- DRY refactoring: eliminated ~110 lines of duplicated ALL_REGISTERED_TRAITS.
+- 17 new tests covering count, all_traits contents, consistency, no-dup.
+- §16 + §23 compliant.
+- Next: Stage 5.87+ — user-defined trait dyn support, or Stage 6 planning
+  (mir/lower split TD-011, Region inference TD-015).
