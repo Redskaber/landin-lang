@@ -2417,3 +2417,33 @@ add `stdlib_type_kind_to_emit_type()` converter, use in `codegen_dyn_trait_call`
 
 **TD-016 status**: CLOSED — dyn Trait return type now uses precise EmitType
 based on StdlibTypeKind, no longer I32 placeholder.
+
+### Stage 5.83 — dyn Trait end-to-end integration tests (v0.11.79)
+
+**Priority**: Deep end-to-end integration tests verifying the full dyn Trait
+compilation pipeline: source → driver compile → MIR with dyn_trait_calls
+side-table → codegen producing vtable indirect call IR + vtable/dynptr globals.
+
+**Work completed**:
+- tests/v0/stage5/plan/dyn_trait_e2e_integration_tests.rs: 16 new tests
+  covering:
+  * Pipeline stage 1 (MIR side-table): no trait, trait+impl no call, stdlib
+    method call populates side-table
+  * Pipeline stage 2 (codegen IR): empty source no globals, impl emits
+    vtable/dynptr globals, vtable references method symbol
+  * Pipeline stage 3 (vtable indirect call): dyn call produces indirect
+    call IR, Drop::drop void return, multiple impls multiple vtables
+  * Pipeline stage 4 (return_kind e2e): Drop return_kind Unit, Clone
+    return_kind AllocType, StdlibTypeKind→EmitType→LLVM IR mapping
+  * Pipeline robustness: unknown method no panic, nested method calls
+    no panic, multiple bodies no panic
+- tests/all_tests.rs: added dyn_trait_e2e_integration_tests module (96 mods)
+- Cargo.toml: version 0.11.78 → 0.11.79 (description extended)
+
+**Test impact**: +16 (1660 → 1676)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Coverage**: Tests exercise the integration of Stages 5.78-5.82 end-to-end,
+verifying that the full pipeline (driver → lower → codegen) produces correct
+output. Tests are robust to whether the dyn Trait path activates or falls
+back to legacy placeholder.

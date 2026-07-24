@@ -6112,3 +6112,46 @@ Stage Summary:
 - 23 new tests + 12 existing test files updated.
 - Next: Stage 5.83+ — deeper integration tests, or begin Stage 6 planning
   (mir/lower split TD-011, Region inference TD-015).
+
+---
+Task ID: stage5.83-r132
+Agent: Super Z (main)
+Task: Stage 5.83 — dyn Trait end-to-end integration tests + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.78 / 1660 tests (Stage 5.82 complete)
+
+Stage 5.83: dyn Trait end-to-end integration tests (test-only stage)
+- tests/v0/stage5/plan/dyn_trait_e2e_integration_tests.rs: 16 new tests
+  covering 4 pipeline stages + robustness:
+  * Stage 1 (MIR side-table): no trait, trait+impl no call, stdlib method call
+  * Stage 2 (codegen IR): empty source, impl emits vtable, impl emits dynptr,
+    vtable references method symbol
+  * Stage 3 (vtable indirect call): dyn call IR, Drop void return,
+    multiple impls multiple vtables
+  * Stage 4 (return_kind e2e): Drop return_kind Unit, Clone return_kind
+    AllocType, StdlibTypeKind→EmitType→LLVM IR mapping
+  * Robustness: unknown method no panic, nested calls no panic,
+    multiple bodies no panic
+- tests/all_tests.rs: added dyn_trait_e2e_integration_tests module (96 mods)
+- Cargo.toml: version 0.11.78 → 0.11.79 (description extended)
+- docs/develop/v0/stage-5/plan-5.83.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round83.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.83 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.53 entry appended
+- RELEASE_NOTES.md: v0.11.79 section prepended, header bumped
+- README.md: status line updated (83 sub-stages, e2e tests)
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (1.1 GiB removed) ✅
+- cargo test: 1676 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.83 PASSED — CI/CD all green per §1.2.
+- Test-only stage: 16 new e2e tests, no code changes.
+- Tests exercise Stages 5.78-5.82 integration end-to-end.
+- §16 compliant: tests use only public API.
+- Next: Stage 5.84+ — dyn Trait param type refinement, or Stage 6 planning
+  (mir/lower split TD-011, Region inference TD-015).

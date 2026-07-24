@@ -2397,3 +2397,25 @@ converter, use in `codegen_dyn_trait_call`.
 **Test impact**: +23 (1637 → 1660).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.53 (Stage 5.83, 2026-07-24)
+
+Stage 5.83 dyn Trait end-to-end integration tests round. Test-only stage —
+no new public symbols, no code changes. Adds 16 e2e tests verifying the
+full dyn Trait pipeline (Stages 5.78-5.82 integration).
+
+**New public symbols**: None (test-only stage).
+
+**Test coverage**:
+- Pipeline stage 1 (MIR side-table): 3 tests
+- Pipeline stage 2 (codegen IR): 4 tests
+- Pipeline stage 3 (vtable indirect call): 3 tests
+- Pipeline stage 4 (return_kind e2e): 3 tests
+- Robustness: 3 tests
+
+**§16 compliance**: Tests use only public API (`compile` + `codegen_crate`
++ `result.mirs`). No internal data structure access.
+
+**Test impact**: +16 (1660 → 1676).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

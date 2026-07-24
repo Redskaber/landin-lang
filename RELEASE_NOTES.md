@@ -1,9 +1,49 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.78
+**Current version**: v0.11.79
 **Date**: 2026-07-24
-**Test count**: 1660 tests + 5 benchmarks
+**Test count**: 1676 tests + 5 benchmarks
+
+---
+
+## v0.11.79 — Stage 5.83 (dyn Trait end-to-end integration tests)
+
+### Overview
+
+Deep end-to-end integration tests verifying the full dyn Trait compilation
+pipeline: source → driver compile → MIR with dyn_trait_calls side-table →
+codegen producing vtable indirect call IR + vtable/dynptr globals. Tests
+exercise the integration of Stages 5.78-5.82 end-to-end.
+
+### Test-only stage
+
+No code changes, no new API. 16 new tests covering 4 pipeline stages +
+robustness.
+
+### Test coverage
+
+| Stage | Tests | Verification |
+|-------|-------|--------------|
+| 1. MIR side-table | 3 | dyn_trait_calls population |
+| 2. codegen IR | 4 | vtable/dynptr globals + method symbols |
+| 3. vtable indirect call | 3 | IR instructions + return types |
+| 4. return_kind e2e | 3 | Drop/Clone return_kind + type mapping |
+| Robustness | 3 | no-panic on edge cases |
+
+### §16 compliance
+
+Tests use only public API (`compile` + `codegen_crate` + `result.mirs`).
+No internal data structure access.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (1.1 GiB removed)
+cargo test: 1676 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
