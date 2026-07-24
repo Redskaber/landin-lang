@@ -2239,3 +2239,42 @@ type isn't known at lower time (it's a typeck concern).
 
 **Test impact**: +12 (1586 → 1598)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.78 — HirExprKind::MethodCall dyn Trait integration (v0.11.74)
+
+**Priority**: FIRST real mir/lower integration of dyn Trait data. Modifies
+`lower_expr_to_operand`'s `HirExprKind::MethodCall` branch to query
+`cx.dyn_trait_plan()` + `find_dyn_trait_method_call_in_plan_by_method()`
+and use a new dyn Trait call terminator when matched. Adds
+`build_dyn_trait_call_terminator()` helper + `MirBody.dyn_trait_calls`
+side-table for codegen Stage 5.79+ consumption.
+
+**Work completed**:
+- src/mir/body.rs:
+  * Added `use crate::mir::dyn_trait::DynTraitMethodCall;`
+  * Added `pub dyn_trait_calls: Vec<DynTraitMethodCall>` field to MirBody
+  * Initialized `dyn_trait_calls: Vec::new()` in `MirBody::new()`
+- src/mir/lower/mod.rs:
+  * Added `find_dyn_trait_method_call_in_plan_by_method` + `DynTraitMethodCall` to imports
+  * Added `pub fn build_dyn_trait_call_terminator()` helper:
+    - Pushes call info to `cx.mir.dyn_trait_calls` side-table
+    - Returns `Terminator::Call` with `Const{ty: Error, val: Int(index)}`
+      where `index` is the side-table entry index — codegen detects this
+      marker and emits vtable indirect call
+    - Args list: self first, then explicit args
+    - Target is None (caller sets via `terminate_and_goto`)
+  * Modified `HirExprKind::MethodCall` branch:
+    - Clones matched `DynTraitMethodCall` out of immutable borrow scope
+    - When `cx.dyn_trait_plan()` is Some AND method_name matches → use helper
+    - Otherwise falls through to legacy placeholder path (unchanged)
+- src/mir/mod.rs: re-export `build_dyn_trait_call_terminator`
+- tests/v0/stage5/plan/mir_lower_dyn_trait_method_call_integration_tests.rs: 13 new tests
+  covering: helper returns Call, func is Constant, index 0 for first call,
+  index increments, preserves call info, args self-first, destination,
+  target None, func ty is Error, no plan → legacy path, matching plan
+  records dyn call, multiple calls distinct indices, method_name verbatim
+- tests/all_tests.rs: added mir_lower_dyn_trait_method_call_integration_tests module (92 mods)
+- Cargo.toml: version 0.11.73 → 0.11.74 (description extended)
+
+**Test impact**: +13 (1598 → 1611)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

@@ -5846,3 +5846,60 @@ Stage Summary:
 - Next: Stage 5.78+ — modify HirExprKind::MethodCall branch in lower_expr_to_operand
   to query cx.dyn_trait_plan() via find_dyn_trait_method_call_in_plan_by_method()
   when plan is set, replacing the Error placeholder func.
+
+---
+Task ID: stage5.78-r127
+Agent: Super Z (main)
+Task: Stage 5.78 — HirExprKind::MethodCall dyn Trait integration + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.73 / 1598 tests (Stage 5.77 complete)
+
+Stage 5.78: FIRST real mir/lower integration of dyn Trait data
+- src/mir/body.rs:
+  * Added `use crate::mir::dyn_trait::DynTraitMethodCall;`
+  * Added `pub dyn_trait_calls: Vec<DynTraitMethodCall>` field to MirBody
+  * Initialized `dyn_trait_calls: Vec::new()` in `MirBody::new()`
+- src/mir/lower/mod.rs:
+  * Added `find_dyn_trait_method_call_in_plan_by_method` + `DynTraitMethodCall` to imports
+  * Added `pub fn build_dyn_trait_call_terminator()` helper:
+    - Pushes call info to `cx.mir.dyn_trait_calls` side-table
+    - Returns `Terminator::Call` with `Const{ty: Error, val: Int(index)}` marker
+    - Args list: self first, then explicit args
+    - Target is None (caller sets via `terminate_and_goto`)
+  * Modified `HirExprKind::MethodCall` branch:
+    - Clones matched `DynTraitMethodCall` out of immutable borrow scope
+    - When `cx.dyn_trait_plan()` is Some AND method_name matches → use helper
+    - Otherwise falls through to legacy placeholder path (unchanged)
+- src/mir/mod.rs: re-export `build_dyn_trait_call_terminator`
+- tests/v0/stage5/plan/mir_lower_dyn_trait_method_call_integration_tests.rs: 13 new tests
+  covering: helper returns Call, func is Constant, index 0 for first call,
+  index increments, preserves call info, args self-first, destination,
+  target None, func ty is Error, no plan → legacy path, matching plan
+  records dyn call, multiple calls distinct indices, method_name verbatim
+- tests/all_tests.rs: added mir_lower_dyn_trait_method_call_integration_tests module (92 mods)
+- Cargo.toml: version 0.11.73 → 0.11.74 (description extended)
+- docs/develop/v0/stage-5/plan-5.78.md: created + status flipped to ✅
+- docs/develop/v0/stage-5/gate-review-round78.md: created (5/5 GO → PASS)
+- docs/develop/v0/stage-5/dev-log.md: Stage 5.78 entry appended
+- docs/develop/v0/api-naming-standard.md: v1.48 entry appended
+- RELEASE_NOTES.md: v0.11.74 section prepended, header bumped
+- README.md: status line + Stage 5 row test count + sub-stage list updated
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (545.5 MiB removed) ✅
+- cargo test: 1611 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.78 PASSED — CI/CD all green per §1.2.
+- FIRST real mir/lower integration of dyn Trait data.
+- New API: build_dyn_trait_call_terminator (helper) + MirBody.dyn_trait_calls (side-table).
+- HirExprKind::MethodCall branch now queries cx.dyn_trait_plan() + fuzzy lookup,
+  uses dyn Trait call terminator when matched, falls through to legacy path otherwise.
+- Side-table pattern (§16): MIR carries dyn Trait call info as data,
+  codegen (Stage 5.79+) will read it to emit vtable indirect calls.
+- Backward-compatible: 1598 pre-existing tests pass unchanged.
+- Next: Stage 5.79+ — codegen translates the Const marker into vtable indirect call;
+  Stage 5.80+ — driver wires set_dyn_trait_plan into the pipeline.

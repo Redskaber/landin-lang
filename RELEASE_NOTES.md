@@ -1,9 +1,80 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.73
+**Current version**: v0.11.74
 **Date**: 2026-07-24
-**Test count**: 1598 tests + 5 benchmarks
+**Test count**: 1611 tests + 5 benchmarks
+
+---
+
+## v0.11.74 — Stage 5.78 (HirExprKind::MethodCall dyn Trait integration)
+
+### Overview
+
+FIRST real `mir/lower` integration of dyn Trait data. The
+`HirExprKind::MethodCall` branch in `lower_expr_to_operand` now queries
+`cx.dyn_trait_plan()` + `find_dyn_trait_method_call_in_plan_by_method()`
+and, when a match is found, uses a new dyn Trait call terminator instead
+of the legacy Error placeholder. Adds a `MirBody.dyn_trait_calls`
+side-table that records each dyn Trait method call's
+`(trait, type, method, slot_index, param_count)` info for codegen
+(Stage 5.79+) to consume.
+
+### New API
+
+- `build_dyn_trait_call_terminator(cx, &DynTraitMethodCall, recv, args, dest, span) -> Terminator` (in `src/mir/lower/mod.rs`)
+- `MirBody.dyn_trait_calls: Vec<DynTraitMethodCall>` — pub side-table field (in `src/mir/body.rs`)
+
+### Marker convention
+
+The `Terminator::Call` produced by the helper has:
+- `func` = `Operand::Constant(Const { ty: Error, val: Int(index) })`
+  where `index` is the entry's position in `cx.mir.dyn_trait_calls`
+- `args` = `[Copy(recv), Copy(arg0), Copy(arg1), ...]` (self first)
+- `destination` = `Place::local(dest, span)`
+- `target` = `None` (caller sets via `terminate_and_goto`)
+
+Codegen (Stage 5.79+) detects the `Const{ty: Error, val: Int(_)}` marker
+on a `Call`'s `func` operand, looks up the corresponding entry in
+`mir.dyn_trait_calls`, and emits a vtable indirect call.
+
+### Backward compatibility
+
+When `cx.dyn_trait_plan()` is `None` (the default — no plan attached) OR
+when the method_name doesn't match any entry in the plan, the
+`HirExprKind::MethodCall` branch falls through to the legacy placeholder
+path (Stage 2.1 behavior). All 1598 pre-existing tests pass unchanged.
+
+### §23 compliance
+
+- `build_dyn_trait_call_terminator` — `<verb>_<noun>_<noun>_<noun>_<noun>`
+  (`build_` prefix per §8.1, mirrors `build_dyn_trait_mir_plan` from 5.73)
+- `MirBody.dyn_trait_calls` — `<noun>_<noun>_<noun>` (plural noun field)
+
+### §16 compliance
+
+Data flow: `mir::dyn_trait` (DynTraitMethodCall) → `mir::lower`
+(`build_dyn_trait_call_terminator`) → `mir::body` (side-table +
+Terminator) → codegen (Stage 5.79+). Single-directional, no circular
+dependency. MIR carries the dyn Trait info as data; codegen doesn't need
+to query HIR or TraitResolver.
+
+### Borrow checker note
+
+The `HirExprKind::MethodCall` branch first clones the matched
+`DynTraitMethodCall` out of the immutable borrow scope
+(`cx.dyn_trait_plan()` returns `Option<&DynTraitMIRPlan>`) before
+mutably borrowing `cx` via `build_dyn_trait_call_terminator`. This is
+the standard Rust pattern for "read-then-mutate" on the same struct.
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (545.5 MiB removed)
+cargo test: 1611 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

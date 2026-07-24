@@ -2179,3 +2179,54 @@ as Stage 5.75's `find_dyn_trait_method_call_in_plan`.
 **Test impact**: +12 (1586 → 1598).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.48 (Stage 5.78, 2026-07-24)
+
+Stage 5.78 HirExprKind::MethodCall dyn Trait integration round. FIRST
+real `mir/lower` integration of dyn Trait data. Adds a
+`MirBody.dyn_trait_calls: Vec<DynTraitMethodCall>` side-table + a
+`build_dyn_trait_call_terminator()` helper, and modifies the
+`HirExprKind::MethodCall` branch to use them when `cx.dyn_trait_plan()`
+returns `Some` and the method_name matches.
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `build_dyn_trait_call_terminator` | free fn (in `mir::lower`) | `<verb>_<noun>_<noun>_<noun>_<noun>` |
+| `MirBody.dyn_trait_calls` | pub field (in `mir::body`) | `<noun>_<noun>_<noun>` (plural) |
+
+**Design decisions**:
+1. **Side-table pattern** (§16-compliant): MIR carries the dyn Trait
+   call info as data on `MirBody.dyn_trait_calls`. The corresponding
+   `Terminator::Call`'s `func` operand is a marker `Const{ty: Error,
+   val: Int(index)}` where `index` is the side-table entry position.
+   Codegen (Stage 5.79+) detects this marker and emits a vtable indirect
+   call. This avoids needing a new `Operand` variant or `ConstVal` variant
+   — the marker convention is internal between mir::lower and codegen.
+2. **`build_` prefix** per §8.1 — same family as `build_dyn_trait_mir_plan`
+   (Stage 5.73), `build_dyn_trait_fat_ptrs_from_resolver` (Stage 5.62),
+   `build_dyn_trait_method_calls_from_fat_ptrs` (Stage 5.68). All
+   "construct an IR object from a dyn Trait source" helpers use `build_`.
+3. **Borrow-checker workaround**: the `HirExprKind::MethodCall` branch
+   clones the matched `DynTraitMethodCall` out of the immutable borrow
+   scope (`cx.dyn_trait_plan()` returns `Option<&DynTraitMIRPlan>`)
+   before mutably borrowing `cx` via `build_dyn_trait_call_terminator`.
+   This is the standard Rust "read-then-mutate" pattern on the same struct.
+4. **Backward compatibility**: when `cx.dyn_trait_plan()` is `None` (the
+   default — no plan attached) OR when method_name doesn't match, the
+   branch falls through to the legacy Stage 2.1 placeholder path. All
+   1598 pre-existing tests pass unchanged.
+5. **Side-table initialized empty** in `MirBody::new()` — zero overhead
+   for bodies without dyn Trait calls (the common case).
+
+**§16 compliance**: `DynTraitMethodCall` defined in `mir::dyn_trait`.
+`MirBody` lives in `mir::body`. `build_dyn_trait_call_terminator` lives
+in `mir::lower`. Data flow: `mir::dyn_trait` → `mir::lower` →
+`mir::body` → codegen (Stage 5.79+). Single-directional, no circular
+dependency. Codegen doesn't need to query HIR or TraitResolver — MIR
+carries all dyn Trait info as data.
+
+**Test impact**: +13 (1598 → 1611).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

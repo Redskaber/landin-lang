@@ -26,8 +26,8 @@ pub use body::{
     StatementKind, Terminator, VisibleNames,
 };
 pub use lower::{
-    lower_body, lower_body_full, lower_hir_body_to_mir, lower_hir_body_to_mir_full,
-    lower_hir_body_to_mir_with_return_ty, MirLowerCtxt,
+    build_dyn_trait_call_terminator, lower_body, lower_body_full, lower_hir_body_to_mir,
+    lower_hir_body_to_mir_full, lower_hir_body_to_mir_with_return_ty, MirLowerCtxt,
 };
 pub use place::{
     AggregateKind, BinOp, BorrowKind, CastKind, FieldId, LocalId, Operand, Place, PlaceKind,

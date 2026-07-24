@@ -10,6 +10,7 @@
 //! HIR** — closing the L-PIPE-1 pipeline-coupling debt carried since
 //! Stage 3.30.
 
+use crate::mir::dyn_trait::DynTraitMethodCall;
 use crate::mir::place::*;
 use crate::mir::ty::*;
 use crate::session::Span;
@@ -56,6 +57,19 @@ pub struct MirBody {
     /// Consumed by codegen to avoid HIR lookup (per §16).
     /// Empty in test contexts where MIR bodies are constructed without HIR.
     pub adt_layouts: AdtLayouts,
+    /// Stage 5.78: Dyn Trait method calls sunk from HIR by MIR lower.
+    ///
+    /// Each entry records the (trait, type, method, slot_index, param_count)
+    /// triple for one `HirExprKind::MethodCall` expression whose receiver
+    /// has `dyn Trait` type. The corresponding `Terminator::Call` in
+    /// `basic_blocks` uses a placeholder `Operand::Constant` whose
+    /// `ConstVal::Int` value is the **index** into this Vec — codegen
+    /// (Stage 5.79+) reads this side-table to emit vtable indirect calls.
+    ///
+    /// Per §16: MIR carries the dyn Trait info as data; codegen doesn't
+    /// need to query HIR or TraitResolver. Empty when no dyn Trait calls
+    /// exist in this body (the common case).
+    pub dyn_trait_calls: Vec<DynTraitMethodCall>,
 }
 
 impl MirBody {
@@ -65,6 +79,7 @@ impl MirBody {
             local_decls: Vec::new(),
             span,
             adt_layouts: AdtLayouts::new(),
+            dyn_trait_calls: Vec::new(),
         }
     }
 

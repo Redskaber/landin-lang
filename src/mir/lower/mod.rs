@@ -8,7 +8,9 @@
 use crate::ast;
 use crate::hir::*;
 use crate::mir::body::*;
-use crate::mir::dyn_trait::DynTraitMIRPlan;
+use crate::mir::dyn_trait::{
+    find_dyn_trait_method_call_in_plan_by_method, DynTraitMIRPlan, DynTraitMethodCall,
+};
 use crate::mir::place::*;
 use crate::mir::ty::*;
 use crate::session::Span;
@@ -754,6 +756,78 @@ fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Place {
             let local = cx.mir.new_local(ty, None, expr.span);
             Place::local(local, expr.span)
         }
+    }
+}
+
+/// Stage 5.78: Build a `Terminator::Call` for a dyn Trait method call,
+/// and register the call info in `cx.mir.dyn_trait_calls` side-table.
+///
+/// The function operand is a `Const` whose `ConstVal::Int` value is the
+/// **index** of the call entry in `cx.mir.dyn_trait_calls`. Codegen
+/// (Stage 5.79+) will detect this marker and emit a vtable indirect call
+/// using the recorded (trait, type, method, slot_index, param_count) info.
+///
+/// # Arguments
+///
+/// - `cx`: the lowering context (used to push the side-table entry)
+/// - `call`: the `DynTraitMethodCall` carrying trait/type/method/slot/param info
+/// - `recv_local`: the MIR local holding the receiver (the `self` arg)
+/// - `arg_locals`: the MIR locals holding the explicit args (excluding `self`)
+/// - `dest`: the destination local where the call result is stored
+/// - `span`: source span for error reporting
+///
+/// # Returns
+///
+/// A `Terminator::Call` whose:
+/// - `func` is `Operand::Constant(Const { ty: Error, val: Int(index) })`
+///   where `index` is the side-table entry index
+/// - `args` is `[Copy(recv), Copy(arg0), Copy(arg1), ...]` — self first
+///   then explicit args (matches the existing MethodCall convention)
+/// - `destination` is `Place::local(dest, span)`
+/// - `target` is `None` — caller sets it via `terminate_and_goto`
+///
+/// # §16 compliance
+///
+/// MIR carries the dyn Trait call info as data (`dyn_trait_calls`
+/// side-table), so codegen doesn't need to query HIR or TraitResolver.
+/// Data flow: `mir::dyn_trait` (DynTraitMethodCall) → `mir::lower`
+/// (this helper) → `mir::body` (side-table + Terminator) → codegen
+/// (Stage 5.79+). Single-directional, no circular dependency.
+///
+/// # §23 compliance
+///
+/// `build_dyn_trait_call_terminator` follows the
+/// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern (helper-verb `build_`
+/// prefix per §8.1, mirroring `build_dyn_trait_mir_plan` from Stage 5.73).
+pub fn build_dyn_trait_call_terminator(
+    cx: &mut MirLowerCtxt,
+    call: &DynTraitMethodCall,
+    recv_local: LocalId,
+    arg_locals: &[LocalId],
+    dest: LocalId,
+    span: Span,
+) -> Terminator {
+    // Push the call info into the side-table; the index becomes the marker.
+    let index = cx.mir.dyn_trait_calls.len() as u128;
+    cx.mir.dyn_trait_calls.push(call.clone());
+
+    // Build the args list: self first, then explicit args.
+    let mut arg_operands: Vec<Operand> = vec![Operand::Copy(Place::local(recv_local, span))];
+    for local in arg_locals {
+        arg_operands.push(Operand::Copy(Place::local(*local, Span::DUMMY)));
+    }
+
+    Terminator::Call {
+        // The Const's Int value is the side-table index. Codegen detects
+        // this marker and emits a vtable indirect call instead of a direct
+        // function call.
+        func: Operand::Constant(Const {
+            ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+            val: ConstVal::Int(index),
+        }),
+        args: arg_operands,
+        destination: Place::local(dest, span),
+        target: None,
     }
 }
 
@@ -1705,13 +1779,57 @@ fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
         // MethodCall: `receiver.method(args)` → simplified to Call
         HirExprKind::MethodCall {
             receiver,
-            method: _,
+            method,
             args,
             ..
         } => {
             let recv_local = lower_expr_to_operand(cx, receiver);
             let arg_locals: Vec<LocalId> =
                 args.iter().map(|a| lower_expr_to_operand(cx, a)).collect();
+
+            // Stage 5.78: dyn Trait path.
+            //
+            // When `cx.dyn_trait_plan()` is set AND the method name matches
+            // an entry in the plan, use the dyn Trait call terminator
+            // (which records the call info in `cx.mir.dyn_trait_calls`
+            // side-table for codegen Stage 5.79+ to emit a vtable indirect
+            // call). Otherwise fall through to the legacy placeholder path.
+            //
+            // Per §16: the plan was built upstream (by the driver, using
+            // `build_dyn_trait_mir_plan_from_resolver()`) and attached via
+            // `cx.set_dyn_trait_plan()`. The lower does not query HIR or
+            // TraitResolver directly here.
+            //
+            // We clone the matched `DynTraitMethodCall` out of the
+            // immutable borrow scope before mutating `cx` — this satisfies
+            // the borrow checker (immutable borrow of `cx.dyn_trait_plan()`
+            // ends before the mutable borrow begins via `build_dyn_trait_call_terminator`).
+            let method_name = cx.interner.resolve(&method.name).to_string();
+            let matched_call: Option<DynTraitMethodCall> = cx.dyn_trait_plan().and_then(|plan| {
+                find_dyn_trait_method_call_in_plan_by_method(plan, &method_name).cloned()
+            });
+            if let Some(call) = matched_call {
+                let dest_ty = cx.fresh_infer_ty(expr.span);
+                let dest = cx.mir.new_local(dest_ty, None, expr.span);
+                let cont = cx.new_block();
+                let mut terminator = build_dyn_trait_call_terminator(
+                    cx,
+                    &call,
+                    recv_local,
+                    &arg_locals,
+                    dest,
+                    expr.span,
+                );
+                // Set the target before terminating — the helper
+                // leaves it as None per design.
+                if let Terminator::Call { target, .. } = &mut terminator {
+                    *target = Some(cont);
+                }
+                cx.terminate_and_goto(terminator, cont);
+                return dest;
+            }
+
+            // Legacy placeholder path (Stage 2.1) — unchanged.
             let arg_operands: Vec<Operand> =
                 std::iter::once(Operand::Copy(Place::local(recv_local, receiver.span)))
                     .chain(
