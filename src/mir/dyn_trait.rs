@@ -586,3 +586,61 @@ pub fn build_dyn_trait_mir_summary_from_resolver(
     let calls = build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs);
     build_dyn_trait_mir_summary(&fat_ptrs, &calls)
 }
+
+// ============================================================================
+// Stage 5.73: DynTraitMIRPlan — final aggregate API
+//
+// Combines fat_ptrs + method_calls + summary into a single struct. Symmetric
+// with codegen's CodegenTraitDispatchEmissionPlan (Stage 5.53).
+//
+// Per API-naming-standard §3: `DynTraitMIRPlan` follows
+// `<Noun><Noun><Noun><Noun>` pattern.
+// ============================================================================
+
+/// Stage 5.73: Everything needed for dyn Trait MIR lowering in one struct.
+///
+/// Combines:
+/// - `fat_ptrs` (from Stage 5.61 `DynTraitFatPtr`)
+/// - `method_calls` (from Stage 5.66 `DynTraitMethodCall`)
+/// - `summary` (from Stage 5.71 `DynTraitMIRSummary`)
+///
+/// Symmetric with codegen's `CodegenTraitDispatchEmissionPlan` (Stage 5.53).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DynTraitMIRPlan {
+    /// All dyn Trait fat pointers.
+    pub fat_ptrs: Vec<DynTraitFatPtr>,
+    /// All dyn Trait method calls.
+    pub method_calls: Vec<DynTraitMethodCall>,
+    /// Project-level summary.
+    pub summary: DynTraitMIRSummary,
+}
+
+/// Stage 5.73: Build a `DynTraitMIRPlan` from fat ptrs + method calls.
+///
+/// Per API-naming-standard §3: `build_dyn_trait_mir_plan` follows
+/// `<verb>_<noun>_<noun>_<noun>` pattern.
+pub fn build_dyn_trait_mir_plan(
+    fat_ptrs: &[DynTraitFatPtr],
+    method_calls: &[DynTraitMethodCall],
+) -> DynTraitMIRPlan {
+    let summary = build_dyn_trait_mir_summary(fat_ptrs, method_calls);
+    DynTraitMIRPlan {
+        fat_ptrs: fat_ptrs.to_vec(),
+        method_calls: method_calls.to_vec(),
+        summary,
+    }
+}
+
+/// Stage 5.73: Build a `DynTraitMIRPlan` directly from
+/// `(&TraitResolver, &Rodeo)` — **convenience entry point**.
+///
+/// Per API-naming-standard §3: `build_dyn_trait_mir_plan_from_resolver`
+/// follows `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub fn build_dyn_trait_mir_plan_from_resolver(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &lasso::Rodeo,
+) -> DynTraitMIRPlan {
+    let fat_ptrs = build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner);
+    let method_calls = build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs);
+    build_dyn_trait_mir_plan(&fat_ptrs, &method_calls)
+}

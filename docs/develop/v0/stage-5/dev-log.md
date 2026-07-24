@@ -2136,3 +2136,18 @@ One call from resolver to DynTraitMIRSummary.
 
 **Test impact**: +8 (1538 → 1546)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.73 — DynTraitMIRPlan (v0.11.69)
+
+**Priority**: Final aggregate API — DynTraitMIRPlan = fat_ptrs + method_calls +
+summary. Symmetric with codegen's CodegenTraitDispatchEmissionPlan (Stage 5.53).
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `DynTraitMIRPlan` struct (3 fields) + `build_dyn_trait_mir_plan()` + `build_dyn_trait_mir_plan_from_resolver()` functions
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_mir_plan_tests.rs: 9 new tests
+- tests/all_tests.rs: added dyn_trait_mir_plan_tests module (87 mods)
+- Cargo.toml: version 0.11.68 → 0.11.69
+
+**Test impact**: +9 (1546 → 1555)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

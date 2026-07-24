@@ -5640,3 +5640,33 @@ Stage Summary:
   - Summary: DynTraitMIRSummary (5.71) + convenience (5.72)
 - All infrastructure ready for MIR lowering integration (Stage 5.73+).
 - Next: Stage 5.73+ (dyn Trait method call MIR lowering integration in mir/lower/).
+
+---
+Task ID: stage5.73-r122
+Agent: Super Z (main)
+Task: Stage 5.73 — DynTraitMIRPlan + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.68 / 1546 tests (Stage 5.72 complete)
+
+Stage 5.73: DynTraitMIRPlan (final aggregate API)
+- src/mir/dyn_trait.rs: new DynTraitMIRPlan struct (3 fields: fat_ptrs + method_calls + summary)
+  + build_dyn_trait_mir_plan() + build_dyn_trait_mir_plan_from_resolver() functions
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_mir_plan_tests.rs: 9 new tests
+- tests/all_tests.rs: added dyn_trait_mir_plan_tests module (87 mods)
+- Cargo.toml: version 0.11.68 → 0.11.69
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (811.2 MiB removed) ✅
+- cargo test: 1555 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.73 PASSED — CI/CD all green per §1.2.
+- DynTraitMIRPlan: final aggregate API (fat_ptrs + method_calls + summary).
+- Symmetric with codegen's CodegenTraitDispatchEmissionPlan (Stage 5.53).
+- Convenience entry: build_dyn_trait_mir_plan_from_resolver() — resolver → plan in one call.
+- **Dyn Trait MIR infrastructure FULLY COMPLETE with final aggregate (5.61-5.73)**.
+- Next: Stage 5.74+ (dyn Trait method call MIR lowering integration in mir/lower/).

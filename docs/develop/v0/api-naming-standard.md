@@ -2034,3 +2034,20 @@ entry point composing Stage 5.62 + 5.68 + 5.71.
 **Test impact**: +8 (1538 → 1546).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.43 (Stage 5.73, 2026-07-24)
+
+Stage 5.73 DynTraitMIRPlan round. Final aggregate API combining fat_ptrs +
+method_calls + summary.
+
+**New public symbols (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `DynTraitMIRPlan` | struct (in `mir`) | `<Noun><Noun><Noun><Noun>` |
+| `build_dyn_trait_mir_plan` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>` |
+| `build_dyn_trait_mir_plan_from_resolver` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` |
+
+**Test impact**: +9 (1546 → 1555).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

@@ -1,9 +1,33 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.68
+**Current version**: v0.11.69
 **Date**: 2026-07-24
-**Test count**: 1546 tests + 5 benchmarks
+**Test count**: 1555 tests + 5 benchmarks
+
+---
+
+## v0.11.69 — Stage 5.73 (DynTraitMIRPlan)
+
+### Overview
+
+Final aggregate API. `DynTraitMIRPlan` struct combines fat_ptrs +
+method_calls + summary in one struct. Symmetric with codegen's
+`CodegenTraitDispatchEmissionPlan` (Stage 5.53). Includes convenience
+entry `build_dyn_trait_mir_plan_from_resolver()`.
+
+### New API
+
+- `DynTraitMIRPlan` struct (3 fields) + `build_dyn_trait_mir_plan(&[DynTraitFatPtr], &[DynTraitMethodCall])` + `build_dyn_trait_mir_plan_from_resolver(&TraitResolver, &Rodeo)` (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (811.2 MiB removed)
+cargo test: 1555 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
