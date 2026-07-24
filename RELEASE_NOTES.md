@@ -1,9 +1,32 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.67
+**Current version**: v0.11.68
 **Date**: 2026-07-24
-**Test count**: 1538 tests + 5 benchmarks
+**Test count**: 1546 tests + 5 benchmarks
+
+---
+
+## v0.11.68 — Stage 5.72 (build_dyn_trait_mir_summary_from_resolver)
+
+### Overview
+
+Convenience entry point composing Stage 5.62 + 5.68 + 5.71. One call from
+`(&TraitResolver, &Rodeo)` to `DynTraitMIRSummary`. **Dyn Trait MIR
+infrastructure fully complete with convenience entries (5.61-5.72)**.
+
+### New API
+
+- `build_dyn_trait_mir_summary_from_resolver(&TraitResolver, &Rodeo) -> DynTraitMIRSummary` (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (1011.2 MiB removed)
+cargo test: 1546 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

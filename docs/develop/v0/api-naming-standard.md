@@ -2019,3 +2019,18 @@ Stage 5.71 DynTraitMIRSummary round. Project-level summary of dyn Trait MIR data
 **Test impact**: +9 (1529 → 1538).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.42 (Stage 5.72, 2026-07-24)
+
+Stage 5.72 build_dyn_trait_mir_summary_from_resolver round. Convenience
+entry point composing Stage 5.62 + 5.68 + 5.71.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `build_dyn_trait_mir_summary_from_resolver` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` |
+
+**Test impact**: +8 (1538 → 1546).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

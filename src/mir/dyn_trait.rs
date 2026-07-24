@@ -557,3 +557,32 @@ pub fn build_dyn_trait_mir_summary(
         type_names,
     }
 }
+
+// ============================================================================
+// Stage 5.72: build_dyn_trait_mir_summary_from_resolver
+//
+// Convenience entry point composing Stage 5.62 + 5.68 + 5.71. One call
+// from resolver to DynTraitMIRSummary.
+//
+// Per API-naming-standard §3: `build_dyn_trait_mir_summary_from_resolver`
+// follows `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+// ============================================================================
+
+/// Stage 5.72: Build a `DynTraitMIRSummary` directly from
+/// `(&TraitResolver, &Rodeo)` in one call — **convenience entry point**.
+///
+/// Internally:
+/// 1. `build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner)` (Stage 5.62)
+/// 2. `build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs)` (Stage 5.68)
+/// 3. `build_dyn_trait_mir_summary(&fat_ptrs, &calls)` (Stage 5.71)
+///
+/// Per API-naming-standard §3: `build_dyn_trait_mir_summary_from_resolver`
+/// follows `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub fn build_dyn_trait_mir_summary_from_resolver(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &lasso::Rodeo,
+) -> DynTraitMIRSummary {
+    let fat_ptrs = build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner);
+    let calls = build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs);
+    build_dyn_trait_mir_summary(&fat_ptrs, &calls)
+}

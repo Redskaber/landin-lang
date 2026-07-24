@@ -5607,3 +5607,36 @@ Stage Summary:
 - DynTraitMIRSummary: project-level dyn Trait MIR data summary.
 - Aggregates: fat_ptr_count + method_call_count + total_slots + dedup trait/type names.
 - Next: Stage 5.72+ (dyn Trait method call MIR lowering integration).
+
+---
+Task ID: stage5.72-r121
+Agent: Super Z (main)
+Task: Stage 5.72 — build_dyn_trait_mir_summary_from_resolver + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.67 / 1538 tests (Stage 5.71 complete)
+
+Stage 5.72: build_dyn_trait_mir_summary_from_resolver (convenience entry)
+- src/mir/dyn_trait.rs: new free function build_dyn_trait_mir_summary_from_resolver()
+  * Composes Stage 5.62 (build fat ptrs from resolver) + Stage 5.68 (build method calls) + Stage 5.71 (build summary)
+  * One call from resolver to DynTraitMIRSummary
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_mir_summary_from_resolver_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_mir_summary_from_resolver_tests module (86 mods)
+- Cargo.toml: version 0.11.67 → 0.11.68
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (1011.2 MiB removed) ✅
+- cargo test: 1546 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.72 PASSED — CI/CD all green per §1.2.
+- Convenience entry point: resolver → DynTraitMIRSummary in one call.
+- **Dyn Trait MIR infrastructure FULLY COMPLETE with convenience entries (5.61-5.72)**:
+  - Value: DynTraitFatPtr (5.61) + resolver bridge (5.62) + IR text (5.63-5.65)
+  - Method call: DynTraitMethodCall (5.66) + IR text (5.67-5.70)
+  - Summary: DynTraitMIRSummary (5.71) + convenience (5.72)
+- All infrastructure ready for MIR lowering integration (Stage 5.73+).
+- Next: Stage 5.73+ (dyn Trait method call MIR lowering integration in mir/lower/).

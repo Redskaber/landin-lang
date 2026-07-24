@@ -2121,3 +2121,18 @@ count + method call count + total slots + deduplicated trait/type names.
 
 **Test impact**: +9 (1529 → 1538)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.72 — build_dyn_trait_mir_summary_from_resolver (v0.11.68)
+
+**Priority**: Convenience entry point composing Stage 5.62 + 5.68 + 5.71.
+One call from resolver to DynTraitMIRSummary.
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `build_dyn_trait_mir_summary_from_resolver()` function
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_mir_summary_from_resolver_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_mir_summary_from_resolver_tests module (86 mods)
+- Cargo.toml: version 0.11.67 → 0.11.68
+
+**Test impact**: +8 (1538 → 1546)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
