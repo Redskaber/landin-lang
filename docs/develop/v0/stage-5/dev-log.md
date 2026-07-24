@@ -3062,3 +3062,41 @@ Distinct data consumers, distinct outputs, clear module purpose.
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
 
 **TD-017 progress**: First split complete. codegen/mod.rs now 1512 LOC (was 2461).
+
+### Stage 6.8 — codegen mir_translation architectural split (TD-017 step 2) (v0.12.7)
+
+**Priority**: Architectural split of codegen/mod.rs — extract MIR type/place/operand
+translation helpers into codegen/mir_translation.rs. Completes codegen 5-module architecture.
+
+**Work completed**:
+- Created src/codegen/mir_translation.rs (487 LOC) with 9 extracted functions:
+  * mir_type_to_emit_type_with_layouts (pub) — MIR Ty → EmitType
+  * stdlib_type_kind_to_emit_type (pub) — StdlibTypeKind → EmitType
+  * detect_place_storage_type (pub(crate)) — detect Place storage type
+  * detect_place_type (pub(crate)) — detect Place EmitType
+  * detect_operand_type (pub(crate)) — detect Operand EmitType
+  * compute_place_address (pub(crate)) — compute Place LLVM address
+  * unwrap_fat_ptr_for_index (pub(crate)) — unwrap fat ptr for indexing
+  * codegen_place_load_typed (pub(crate)) — typed Place load
+  * codegen_place_load (pub(crate)) — Place load
+- src/codegen/mod.rs:
+  * Added `mod mir_translation;` declaration
+  * Added `pub use` + `pub(crate) use` re-exports
+  * Removed all 9 functions (-462 LOC)
+  * LOC reduced: 1512 → 1050 (-462 LOC, -30.6%)
+  * Fixed mir_type_to_emit_type import (from emitter.rs)
+- Cargo.toml: version 0.12.6 → 0.12.7
+
+**Final codegen architecture (5 modules)**:
+| Module | LOC | Responsibility |
+|--------|-----|----------------|
+| mod.rs | 1050 | MIR → LLVM IR translation core |
+| trait_dispatch.rs | 962 | TraitResolver → vtable/dynptr globals |
+| mir_translation.rs | 487 | MIR Ty/Place/Operand → EmitType/EmitValue |
+| emitter.rs | 663 | Emitter trait + EmitType/EmitValue |
+| text_emitter.rs | 650 | TextEmitter impl |
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-017 progress**: codegen/mod.rs now 1050 LOC (was 2461, -57.3%). Codegen architecture complete.

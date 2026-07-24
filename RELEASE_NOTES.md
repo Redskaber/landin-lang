@@ -1,9 +1,49 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.12.6
+**Current version**: v0.12.7
 **Date**: 2026-07-24
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.12.7 — Stage 6.8 (codegen mir_translation architectural split — TD-017 step 2)
+
+### Overview
+
+**Architectural split** of `codegen/mod.rs` (1512 LOC) — extract the MIR type/place/operand
+translation helpers into `codegen/mir_translation.rs` (487 LOC). This completes the codegen
+module reorganization into a clean **5-module architecture**:
+
+| Module | LOC | Responsibility |
+|--------|-----|----------------|
+| `mod.rs` | 1050 | MIR → LLVM IR translation core (statement/rvalue/operand/terminator) |
+| `trait_dispatch.rs` | 962 | TraitResolver → vtable/dynptr globals |
+| `mir_translation.rs` | 487 | MIR Ty/Place/Operand → EmitType/EmitValue translation |
+| `emitter.rs` | 663 | Emitter trait + EmitType/EmitValue definitions |
+| `text_emitter.rs` | 650 | TextEmitter implementation |
+
+### Changes
+
+- Created `src/codegen/mir_translation.rs` (487 LOC) with 9 extracted functions
+- `codegen/mod.rs`: 1512 → 1050 LOC (-462 LOC, -30.6%)
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### Architectural rationale
+
+Single responsibility principle — each module has one clear purpose:
+- **mod.rs**: "translate MIR bodies to LLVM IR" (the translation engine)
+- **mir_translation.rs**: "translate MIR types/places/operands to codegen types" (the type bridge)
+- **trait_dispatch.rs**: "generate vtable/dynptr globals from trait data" (the trait infrastructure)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (857.7 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

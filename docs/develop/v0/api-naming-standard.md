@@ -2991,3 +2991,22 @@ boundary design per single responsibility principle.
 **Test impact**: 0 (behavior-equivalent).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.77 (Stage 6.8, 2026-07-24)
+
+Stage 6.8 codegen mir_translation architectural split round. Completes codegen
+5-module architecture. Extract MIR type/place/operand translation helpers
+into codegen/mir_translation.rs.
+
+**New public symbols**: None (all re-exported from mir_translation via mod.rs).
+
+**Changes**:
+- 9 functions moved from codegen/mod.rs to codegen/mir_translation.rs
+- `pub use` for public functions, `pub(crate) use` for internal helpers
+- No new public API — pure architectural reorganization
+
+**Architectural rationale**: Single responsibility — each module has one clear purpose.
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

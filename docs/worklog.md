@@ -6951,3 +6951,30 @@ Stage Summary:
 - 1881 tests pass unchanged (behavior-equivalent).
 - 0 clippy warnings, fmt clean.
 - Next: Stage 6.8+ — Region inference (TD-015), user-defined trait dyn (TD-018).
+
+---
+Task ID: stage6.8-r156
+Agent: Super Z (main)
+Task: Stage 6.8 — codegen mir_translation architectural split (TD-017 step 2) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.12.6 / 1881 tests (Stage 6.7 complete)
+- Architectural analysis: identified MIR type/place/operand translation as distinct domain
+- Created src/codegen/mir_translation.rs (487 LOC) with 9 extracted functions
+- Updated mod.rs: added mod declaration, pub use + pub(crate) use re-exports, removed 9 functions (-462 LOC)
+- Fixed mir_type_to_emit_type import (from emitter.rs)
+- Bumped Cargo.toml version 0.12.6 → 0.12.7
+- Updated all docs (gate-review-6.8.md, dev-log.md, api-naming-standard.md v1.77,
+  RELEASE_NOTES.md, README.md, docs/worklog.md)
+- Ran full CI/CD: cargo clean + cargo test (1881 passed) + cargo fmt +
+  cargo clippy --all-targets — all green ✅
+
+Stage Summary:
+- Stage 6.8 PASSED — CI/CD all green per §1.2.
+- Architectural split: codegen/mod.rs 1512 → 1050 LOC (-462 LOC, -30.6%)
+- 🎉 Codegen 5-module architecture complete!
+  mod.rs(1050) + trait_dispatch(962) + mir_translation(487) + emitter(663) + text_emitter(650)
+- TD-017 cumulative: -1411 LOC (-57.3%) across 2 splits
+- 1881 tests pass unchanged (behavior-equivalent).
+- 0 clippy warnings, fmt clean.
+- Next: Stage 6.9+ — Region inference (TD-015), user-defined trait dyn (TD-018).
