@@ -1,9 +1,56 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.12.7
+**Current version**: v0.12.8
 **Date**: 2026-07-24
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.12.8 — Stage 6.9 (stdlib 3-domain architectural split)
+
+### Overview
+
+**Architectural split** of `stdlib.rs` (2383 LOC) into a 3-module directory
+structure following the single responsibility principle. This is not just
+size reduction — it's a scientific module boundary design that separates
+three distinct data domains.
+
+### New module structure
+
+```
+src/stdlib/
+  mod.rs           (602 LOC) — Type system + prelude + registration (domain A)
+  trait_methods.rs (1103 LOC) — Trait method signatures + query API (domain B)
+  vtable_layout.rs (715 LOC) — Vtable layout + symbols + emission (domain C)
+```
+
+### Architectural rationale
+
+Each module owns one data domain with clear dependencies:
+
+| Module | Responsibility | Depends on |
+|--------|---------------|------------|
+| `mod.rs` | Type world (StdlibTypeKind, prelude, registration) | (base) |
+| `trait_methods.rs` | Trait method signatures + queries | `mod.rs` (StdlibTypeKind) |
+| `vtable_layout.rs` | Vtable layout planning + symbol generation | `mod.rs` + `trait_methods.rs` |
+
+Data flows单向: types → trait_methods → vtable_layout. No circular dependencies.
+
+### Changes
+
+- Converted `src/stdlib.rs` (single file, 2383 LOC) → `src/stdlib/` directory (3 files)
+- All public symbols re-exported via `pub use trait_methods::*; pub use vtable_layout::*;`
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (571.1 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

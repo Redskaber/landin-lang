@@ -3010,3 +3010,20 @@ into codegen/mir_translation.rs.
 **Test impact**: 0 (behavior-equivalent).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.78 (Stage 6.9, 2026-07-24)
+
+Stage 6.9 stdlib 3-domain architectural split round. Convert single-file
+stdlib.rs (2383 LOC) into 3-module directory structure following single
+responsibility principle.
+
+**New public symbols**: None (all re-exported via `pub use *::*`).
+
+**Architectural rationale**: 3 data domains separated:
+- mod.rs = type world (base)
+- trait_methods.rs = trait method queries (depends on mod.rs)
+- vtable_layout.rs = vtable layout + emission (depends on mod.rs + trait_methods.rs)
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

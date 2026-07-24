@@ -3100,3 +3100,30 @@ translation helpers into codegen/mir_translation.rs. Completes codegen 5-module 
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
 
 **TD-017 progress**: codegen/mod.rs now 1050 LOC (was 2461, -57.3%). Codegen architecture complete.
+
+### Stage 6.9 — stdlib 3-domain architectural split (v0.12.8)
+
+**Priority**: Architectural split of stdlib.rs (2383 LOC) into 3-module directory
+structure. Single responsibility principle — separate type system, trait method
+queries, and vtable layout into distinct modules.
+
+**Work completed**:
+- Created src/stdlib/ directory with 3 modules:
+  * mod.rs (602 LOC) — Type system + prelude + registration (domain A)
+  * trait_methods.rs (1103 LOC) — Trait method signatures + query API (domain B)
+  * vtable_layout.rs (715 LOC) — Vtable layout + symbols + emission (domain C)
+- Removed old single-file src/stdlib.rs
+- All public symbols re-exported via `pub use trait_methods::*; pub use vtable_layout::*;`
+- Fixed import issues (cross-module references, unused imports)
+- Fixed missing closing brace in trait_methods.rs
+- Fixed stray closing brace in vtable_layout.rs
+- Cargo.toml: version 0.12.7 → 0.12.8
+
+**Architectural rationale**: Single responsibility — 3 data domains:
+- mod.rs = type world (StdlibTypeKind, prelude, registration)
+- trait_methods.rs = trait method signatures + queries (depends on mod.rs)
+- vtable_layout.rs = vtable layout + symbols + emission (depends on mod.rs + trait_methods.rs)
+Data flows单向: types → trait_methods → vtable_layout. No circular dependencies.
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
