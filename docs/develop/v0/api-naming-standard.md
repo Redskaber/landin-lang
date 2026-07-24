@@ -2051,3 +2051,17 @@ method_calls + summary.
 **Test impact**: +9 (1546 → 1555).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.44 (Stage 5.74, 2026-07-24)
+
+Stage 5.74 emit_dyn_trait_mir_plan_text round. Complete IR text generator.
+
+**New public symbol (§23-compliant)**:
+
+| Symbol | Kind | Naming pattern |
+|--------|------|----------------|
+| `emit_dyn_trait_mir_plan_text` | free fn (in `mir`) | `<verb>_<noun>_<noun>_<noun>_<noun>` |
+
+**Test impact**: +8 (1555 → 1563).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

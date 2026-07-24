@@ -5670,3 +5670,38 @@ Stage Summary:
 - Convenience entry: build_dyn_trait_mir_plan_from_resolver() — resolver → plan in one call.
 - **Dyn Trait MIR infrastructure FULLY COMPLETE with final aggregate (5.61-5.73)**.
 - Next: Stage 5.74+ (dyn Trait method call MIR lowering integration in mir/lower/).
+
+---
+Task ID: stage5.74-r123
+Agent: Super Z (main)
+Task: Stage 5.74 — emit_dyn_trait_mir_plan_text + docs + CI/CD
+
+Work Log:
+- Baseline: v0.11.69 / 1555 tests (Stage 5.73 complete)
+
+Stage 5.74: emit_dyn_trait_mir_plan_text (complete IR text generator)
+- src/mir/dyn_trait.rs: new emit_dyn_trait_mir_plan_text() function
+  * Converts DynTraitMIRPlan → summary comment + fat ptr globals + method call IR
+  * One call for entire project's dyn Trait LLVM IR
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_mir_plan_text_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_mir_plan_text_tests module (88 mods)
+- Cargo.toml: version 0.11.69 → 0.11.70
+
+CI/CD Verification (§1.2, ACTUAL RUN):
+- cargo clean: clean (1016.1 MiB removed) ✅
+- cargo test: 1563 passed, 0 failed, 2 ignored ✅
+- cargo fmt --check: clean (exit 0) ✅
+- cargo clippy --all-targets: 0 warnings, 0 errors ✅
+
+Stage Summary:
+- Stage 5.74 PASSED — CI/CD all green per §1.2.
+- emit_dyn_trait_mir_plan_text(): complete IR text generator.
+- DynTraitMIRPlan → summary + fat ptrs + method calls in one String.
+- **Dyn Trait MIR infrastructure FULLY COMPLETE with IR text (5.61-5.74)**:
+  - Value: DynTraitFatPtr (5.61) + bridges (5.62-5.65)
+  - Method call: DynTraitMethodCall (5.66) + IR text (5.67-5.70)
+  - Summary: DynTraitMIRSummary (5.71-5.72)
+  - Plan: DynTraitMIRPlan (5.73)
+  - Complete IR: emit_dyn_trait_mir_plan_text (5.74)
+- Next: Stage 5.75+ (dyn Trait method call MIR lowering integration in mir/lower/).

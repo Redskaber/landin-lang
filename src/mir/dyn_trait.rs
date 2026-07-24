@@ -644,3 +644,52 @@ pub fn build_dyn_trait_mir_plan_from_resolver(
     let method_calls = build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs);
     build_dyn_trait_mir_plan(&fat_ptrs, &method_calls)
 }
+
+// ============================================================================
+// Stage 5.74: emit_dyn_trait_mir_plan_text
+//
+// Converts DynTraitMIRPlan (Stage 5.73) to complete LLVM IR text:
+// summary comment + all fat ptr globals + all method call IR.
+//
+// Per API-naming-standard §3: `emit_dyn_trait_mir_plan_text` follows
+// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
+// ============================================================================
+
+/// Stage 5.74: Convert a `DynTraitMIRPlan` to complete LLVM IR text.
+///
+/// Produces:
+/// 1. Summary comment line
+/// 2. All fat ptr global definitions (from `emit_dyn_trait_fat_ptr_text`)
+/// 3. All method call IR blocks (from `emit_dyn_trait_method_call_text`)
+///
+/// Per API-naming-standard §3: `emit_dyn_trait_mir_plan_text` follows
+/// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
+pub fn emit_dyn_trait_mir_plan_text(plan: &DynTraitMIRPlan) -> String {
+    let mut sections: Vec<String> = Vec::new();
+
+    // Summary comment
+    sections.push(format!(
+        "; DynTraitMIRSummary: {} fat ptrs, {} method calls, {} slots",
+        plan.summary.fat_ptr_count, plan.summary.method_call_count, plan.summary.total_slots
+    ));
+
+    // Fat ptr globals
+    if !plan.fat_ptrs.is_empty() {
+        let mut fat_ptr_lines: Vec<String> = Vec::new();
+        for fp in &plan.fat_ptrs {
+            fat_ptr_lines.push(emit_dyn_trait_fat_ptr_text(fp));
+        }
+        sections.push(fat_ptr_lines.join("\n"));
+    }
+
+    // Method call IR
+    if !plan.method_calls.is_empty() {
+        let mut call_lines: Vec<String> = Vec::new();
+        for call in &plan.method_calls {
+            call_lines.push(emit_dyn_trait_method_call_text(call));
+        }
+        sections.push(call_lines.join("\n"));
+    }
+
+    sections.join("\n\n")
+}

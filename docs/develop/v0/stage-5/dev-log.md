@@ -2151,3 +2151,17 @@ summary. Symmetric with codegen's CodegenTraitDispatchEmissionPlan (Stage 5.53).
 
 **Test impact**: +9 (1546 → 1555)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 5.74 — emit_dyn_trait_mir_plan_text (v0.11.70)
+
+**Priority**: Complete IR text generator — DynTraitMIRPlan → summary + fat ptrs + method calls.
+
+**Work completed**:
+- src/mir/dyn_trait.rs: new `emit_dyn_trait_mir_plan_text()` function
+- src/mir/mod.rs: re-export
+- tests/v0/stage5/plan/dyn_trait_mir_plan_text_tests.rs: 8 new tests
+- tests/all_tests.rs: added dyn_trait_mir_plan_text_tests module (88 mods)
+- Cargo.toml: version 0.11.69 → 0.11.70
+
+**Test impact**: +8 (1555 → 1563)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅

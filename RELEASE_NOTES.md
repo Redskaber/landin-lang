@@ -1,9 +1,32 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.11.69
+**Current version**: v0.11.70
 **Date**: 2026-07-24
-**Test count**: 1555 tests + 5 benchmarks
+**Test count**: 1563 tests + 5 benchmarks
+
+---
+
+## v0.11.70 — Stage 5.74 (emit_dyn_trait_mir_plan_text)
+
+### Overview
+
+Complete IR text generator. Converts `DynTraitMIRPlan` (Stage 5.73) to
+complete LLVM IR text: summary comment + all fat ptr globals + all method
+call IR. One call for the entire project's dyn Trait LLVM IR.
+
+### New API
+
+- `emit_dyn_trait_mir_plan_text(&DynTraitMIRPlan) -> String` (in `src/mir/dyn_trait.rs`)
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (1016.1 MiB removed)
+cargo test: 1563 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
