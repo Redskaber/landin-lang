@@ -3676,3 +3676,24 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 
 **🎉 TD-018 (用户自定义 trait dyn 支持) 完成！**
 **Next**: v0.2 features or additional Stage 7 improvements.
+
+### Stage 7.7 — §25.8 design writeback for TD-015/TD-018 (v0.14.7)
+
+**§25.8**: Update design docs to reflect Stage 7 TD-015 + TD-018 completion.
+
+**Work completed**:
+- Updated `docs/lang-design/03-type-system.md` +§11 Stage 7 实现状态更新
+  * §11.1 TD-015: 8 B1 → 0 (all ✅)
+  * §11.2 TD-018: 1 B1 → 0 (✅)
+  * §11.3 偏差处理计划更新
+- Updated `docs/lang-design/04-ownership-borrowing.md` +§12 Stage 7 实现状态更新
+  * §12.1 TD-015 complete (9 design § all ✅)
+  * §12.2 偏差处理计划更新
+- Created `tests/v0/stage7/plan/design_writeback_verification_tests.rs` (6 tests)
+- Added `#[path]` to `tests/all_tests.rs`
+- Cargo.toml: version 0.14.6 → 0.14.7
+
+**Test impact**: +6 integration tests (2029 total). 0 regressions.
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Next**: v0.2 features or additional improvements.

@@ -375,3 +375,7 @@ mod region_inference_tests;
 // Stage 7.6 (TD-018): User-defined trait dyn support tests
 #[path = "v0/stage7/plan/user_defined_trait_dyn_tests.rs"]
 mod user_defined_trait_dyn_tests;
+
+// Stage 7.7 (§25.8): Design writeback verification tests
+#[path = "v0/stage7/plan/design_writeback_verification_tests.rs"]
+mod design_writeback_verification_tests;

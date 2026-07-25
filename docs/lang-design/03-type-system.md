@@ -764,3 +764,48 @@ MVP 阶段实现 30-50 个最常见错误代码，每个错误含"error code + �
 | B1（orphan rule / canonical query / `?` / 推迟 constraint / normalization） | v0.2+ | MVP 不需要 |
 | B3（trait resolution 简化） | v0.2+ | 当前简化版满足 MVP |
 | B3（subtyping 简化） | v0.2+ | 当前 coercion 矩阵满足 MVP |
+
+---
+
+## 11. Stage 7 实现状态更新（v0.14.6，§25.8 回写）
+
+> 本节由 Stage 7.7 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+> 更新 Stage 6.18 的 §10 偏差清单，反映 Stage 7 的 TD-015 + TD-018 完成。
+
+### 11.1 TD-015 Region inference — 状态更新
+
+| 设计 § | Stage 6.18 状态 | Stage 7 状态 | 变化 |
+|--------|----------------|-------------|------|
+| §4.6.1 Universal region | ❌ 未实现 (B1) | ✅ 实现 (7.1) | `RegionInfo::Universal` + `add_universal_region` |
+| §4.6.2 Implied bounds | ❌ 未实现 (B1) | ✅ 实现 (7.3) | `collect_implied_bounds` + `extract_regions_from_ty` |
+| §4.6.3 Universe 机制 | ❌ 未实现 (B1) | ✅ 实现 (7.4) | `UniverseId` + `check_universe_escapes` |
+| §4.6.4 Type tests | ❌ 未实现 (B1) | ✅ 实现 (7.3) | `TypeTest` + `infer_regions()` Step 4 |
+| §4.6.5 SCC 压缩 | ❌ 未实现 (B1) | ✅ 实现 (7.4) | `compute_sccs` (Tarjan O(V+E)) |
+| §4.6.6 RegionInferenceContext | ❌ 未实现 (B1) | ✅ 实现 (7.1) | 完整数据结构 |
+| §4.2 Region inference 算法 | ❌ 未实现 (B1) | ✅ 实现 (7.2) | `infer_regions()` 不动点迭代 |
+| §4.2 Universal region check | ❌ 未实现 (B1) | ✅ 实现 (7.2) | Step 3: r.points ⊆ ur.points |
+| borrowck 集成 | ❌ 未实现 (B1) | ✅ 实现 (7.5) | `run_region_inference` in BorrowChecker |
+
+**偏差变化**：8 个 B1 偏差 → 0 个 B1 偏差（全部 ✅ 实现）
+**残留**：region inference 当前为 no-op（MIR regions 全为 Erased → 'static），
+未来当 MIR 携带真实 lifetime 标注时将完全激活。
+
+### 11.2 TD-018 用户自定义 trait dyn — 状态更新
+
+| 设计 § | Stage 6.18 状态 | Stage 7 状态 | 变化 |
+|--------|----------------|-------------|------|
+| §2.3 Trait object (用户自定义) | ❌ 未实现 (B1, TD-018) | ✅ 实现 (7.6) | `build_dyn_trait_method_calls_from_resolver` |
+| §2.3 Object safety 规则 | ❌ 未实现 (B1) | ❌ 未实现 (B1) | v0.2+（需要 trait method 检查） |
+
+**偏差变化**：1 个 B1 偏差 → 0 个 B1 偏差（TD-018 ✅ 实现）
+**残留**：Object safety 规则检查未实现（v0.2+）。
+
+### 11.3 偏差处理计划更新
+
+| 偏差 | Stage 6.18 计划 | Stage 7 更新 |
+|------|----------------|-------------|
+| B1（region inference） | TD-015 v0.2+ | ✅ **已实现** (Stage 7.1-7.5) |
+| B1（用户自定义 trait dyn） | TD-018 v0.2+ | ✅ **已实现** (Stage 7.6) |
+| B1（orphan rule / canonical query / `?` / normalization） | v0.2+ | 不变 |
+| B1（object safety 规则） | — | v0.2+（新增） |
+| B3（trait resolution / subtyping 简化） | v0.2+ | 不变 |

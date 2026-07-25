@@ -1,9 +1,39 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.14.6
+**Current version**: v0.14.7
 **Date**: 2026-07-25
-**Test count**: 2023 tests + 5 benchmarks
+**Test count**: 2029 tests + 5 benchmarks
+
+---
+
+## v0.14.7 — Stage 7.7 (§25.8 design writeback for TD-015/TD-018)
+
+### Overview
+
+Updates design documentation (`03-type-system.md` + `04-ownership-borrowing.md`)
+to reflect Stage 7's TD-015 (region inference) + TD-018 (user-defined trait dyn)
+completion. Adds verification tests.
+
+### Design doc updates (§25.8)
+
+| Doc | Update |
+|-----|--------|
+| `03-type-system.md` +§11 | TD-015: 8 B1 → 0 ✅ / TD-018: 1 B1 → 0 ✅ |
+| `04-ownership-borrowing.md` +§12 | TD-015: 9 design § all ✅ |
+
+### New test file (§17.1)
+
+`tests/v0/stage7/plan/design_writeback_verification_tests.rs` — 6 verification tests.
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2029 passed (126 unit + 1903 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

@@ -3554,3 +3554,20 @@ Stage 7.6 — User-defined trait dyn support (TD-018). Per v3.21 §13.4
 **Fmt impact**: clean.
 
 **TD-018**: COMPLETE — user-defined trait dyn support implemented.
+
+### v1.94 (Stage 7.7, 2026-07-25)
+
+Stage 7.7 — §25.8 design writeback for TD-015/TD-018. **No code changes** —
+pure documentation + verification tests.
+
+**New public symbols**: None.
+
+**Changes**:
+- Updated `docs/lang-design/03-type-system.md` +§11 (TD-015 + TD-018 status)
+- Updated `docs/lang-design/04-ownership-borrowing.md` +§12 (TD-015 status)
+- New test file: `tests/v0/stage7/plan/design_writeback_verification_tests.rs` (6 tests)
+- Added `#[path]` to `tests/all_tests.rs`
+
+**Test impact**: +6 integration tests (2029 total). 0 regressions.
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

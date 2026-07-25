@@ -637,3 +637,38 @@ Disjoint closure captures 与 borrow check 配合：
 |------|---------|------|
 | B1（region inference / two-phase borrows / drop check / disjoint captures） | TD-015 v0.2+ | 需要 region inference 基础设施 |
 | B3（lifetime elision / NLL 简化 / maybe-init / drop 顺序 / 诊断） | v0.2+ | 当前简化版满足 MVP |
+
+---
+
+## 12. Stage 7 实现状态更新（v0.14.6，§25.8 回写）
+
+> 本节由 Stage 7.7 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+> 更新 Stage 6.18 的 §11 偏差清单，反映 Stage 7 的 TD-015 完成。
+
+### 12.1 TD-015 Region inference — 完整实现状态
+
+| 设计 § | Stage 6.18 状态 | Stage 7 状态 | 实现位置 |
+|--------|----------------|-------------|---------|
+| §4.6.1 Universal region | ❌ B1 | ✅ (7.1) | `RegionInfo::Universal` |
+| §4.6.2 Implied bounds | ❌ B1 | ✅ (7.3) | `collect_implied_bounds` |
+| §4.6.3 Universe 机制 | ❌ B1 | ✅ (7.4) | `UniverseId` + `check_universe_escapes` |
+| §4.6.4 Type tests | ❌ B1 | ✅ (7.3) | `TypeTest` + `infer_regions()` Step 4 |
+| §4.6.5 SCC 压缩 | ❌ B1 | ✅ (7.4) | `compute_sccs` (Tarjan) |
+| §4.6.6 RegionInferenceContext | ❌ B1 | ✅ (7.1) | 完整数据结构 (1462 LOC) |
+| §4.2 不动点迭代 | ❌ B1 | ✅ (7.2) | `infer_regions()` |
+| §4.2 Universal check | ❌ B1 | ✅ (7.2) | Step 3 escape detection |
+| borrowck 集成 | ❌ B1 | ✅ (7.5) | `run_region_inference` |
+
+### 12.2 偏差处理计划更新
+
+| 偏差 | Stage 6.18 计划 | Stage 7 更新 |
+|------|----------------|-------------|
+| B1（region inference） | TD-015 v0.2+ | ✅ **已实现** (Stage 7.1-7.5) |
+| B1（two-phase borrows） | v0.2+ | 不变 |
+| B1（drop check） | v0.2+ | 不变 |
+| B1（disjoint closure captures） | v0.2+ | 不变 |
+| B3（lifetime elision / NLL 简化 / maybe-init / drop 顺序 / 诊断） | v0.2+ | 不变 |
+
+**关键变化**：Stage 6.18 的 §11.7 中 "B1（region inference）→ TD-015 v0.2+"
+已更新为 "✅ **已实现** (Stage 7.1-7.5)"。Region inference 基础设施完整建立
+并集成到 borrowck，当前作为附加检查运行（no-op，因 MIR regions 全为 Erased）。
