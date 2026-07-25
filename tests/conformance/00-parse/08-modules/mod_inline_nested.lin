@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: nested modules
+//! source: Stage 9.9 conformance expansion
+mod a { mod b { fn f() {} } }

@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: multiple use declarations
+//! source: Stage 9.9 conformance expansion
+mod foo { pub struct bar; } mod baz { pub struct qux; } use foo::bar; use baz::qux;

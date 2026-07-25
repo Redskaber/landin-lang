@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: nested use with super
+//! source: Stage 9.9 conformance expansion
+mod m { mod foo { pub struct bar; } use foo::{super::bar}; }

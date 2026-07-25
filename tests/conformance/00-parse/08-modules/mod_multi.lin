@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: multiple module declarations
+//! source: Stage 9.9 conformance expansion
+mod a {} mod b {} mod c {}

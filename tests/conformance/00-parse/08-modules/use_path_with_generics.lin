@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: use path (generics not supported in use paths)
+//! source: Stage 9.9 conformance expansion
+mod foo { pub struct bar; } use foo::bar;

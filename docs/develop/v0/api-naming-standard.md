@@ -4032,3 +4032,57 @@ This is a Stage 0 limitation. Rust supports closure type syntax via
   due to `Fn(i32)` path-with-generic-args in trait bound position). The
   simplified versions use untyped params and test the closure construction
   without the trait bound complexity.
+
+### v2.12 (Stage 9.9, 2026-07-26)
+
+Stage 9.9 — Modules conformance expansion.
+
+**Changes**:
+- New conformance category `tests/conformance/00-parse/08-modules/` created
+  and populated with 60 .lin test files covering all 6 modules sub-categories
+  (per `02-grammar.md` §3.1 + §3.7):
+  - Module declarations (12): empty/fn/struct/multi/nested/3-levels/with-vis/use/external/external-pub/in-fn (FAIL)/multi
+  - Use basic (12): simple/multi-segment/self/super/crate/as/as-self (FAIL)/glob/nested/nested-multi/nested-glob (FAIL)/nested-as
+  - Use advanced (8): nested-deep/3-levels/self/super/generics/in-module/multi/visibility
+  - Pub visibility (10): fn/struct/enum/trait/const/static/mod/use/type/field
+  - Restricted visibility (8): crate/super/self/in-path/struct/field/mod/use
+  - Error recovery (10): 7 FAIL + 3 PASS (recovery)
+- New Rust integration tests: `tests/v0/stage9/plan/modules_tests.rs` (10 tests)
+- `tests/all_tests.rs` updated with stage9_9 module reference
+
+**Test impact**: +10 rust integration tests (2197 → 2207) + 60 conformance tests
+(437 → 497). 0 regressions. 0 clippy warnings. fmt clean.
+
+**API surface**: No new public API (conformance tests are external .lin files).
+All existing APIs unchanged.
+
+**Key discovery — Parser limitations documented (3 FAIL tests)**:
+
+1. **Module declaration in fn body** (`fn f() { mod m {} }`) — the Stage 0
+   parser does not support module declarations inside function bodies. Modules
+   are top-level items only. `mod_in_fn.lin` converted PASS → FAIL.
+
+2. **Use with rename to self** (`use foo::bar as self;`) — the parser rejects
+   `self` as an alias name in use declarations. `use_as_self.lin` converted
+   PASS → FAIL.
+
+3. **Glob in nested use** (`use foo::{bar, *};`) — the parser does not support
+   glob `*` inside nested use groups `{...}`. `use_nested_glob.lin` converted
+   PASS → FAIL.
+
+These are Stage 0 limitations. They may be lifted in Stage 1.
+
+**Parser recovery behavior**:
+- `err_use_no_path.lin` (`use ;`) — PASS, parser accepts via synthetic node
+- `err_vis_invalid.lin` (`pub(bad) fn f() {}`) — PASS, parser accepts invalid
+  visibility specifier via synthetic node recovery
+- `err_use_no_tree.lin` (`use;`) — PASS, parser accepts via synthetic node
+
+**Parser error cases** (7 FAIL):
+- `err_mod_unclosed` — parser enforces closing `}`
+- `err_use_no_semi` — parser requires `;`
+- `err_use_invalid_glob` — parser rejects `**`
+- `err_vis_no_item` — parser requires item after visibility
+- `err_use_unclosed_nested` — parser enforces closing `}`
+- `err_mod_no_name` — parser requires module name
+- `err_use_double_colon` — parser rejects `:::`

@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: pub(crate) struct field
+//! source: Stage 9.9 conformance expansion
+struct S { pub(crate) x: i32 }

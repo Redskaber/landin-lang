@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: use inside module
+//! source: Stage 9.9 conformance expansion
+mod foo { pub struct bar; } mod m { use foo::bar; }

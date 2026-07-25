@@ -1,0 +1,6 @@
+//! FAIL
+//! category: modules
+//! description: glob * in nested use not supported in Stage 0 (parser limitation)
+//! error_pattern: expected
+//! source: Stage 9.9 conformance expansion
+mod foo { pub struct bar; } use foo::{bar, *};

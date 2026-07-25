@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: multi-segment use path
+//! source: Stage 9.9 conformance expansion
+mod foo { pub mod bar { pub struct baz; } } use foo::bar::baz;

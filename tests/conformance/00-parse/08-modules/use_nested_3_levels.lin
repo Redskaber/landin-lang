@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: 3-level nested use import
+//! source: Stage 9.9 conformance expansion
+mod foo { pub mod bar { pub mod baz { pub struct qux; } } } use foo::{bar::{baz::{qux}}};

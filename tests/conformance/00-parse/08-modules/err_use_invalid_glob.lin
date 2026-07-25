@@ -1,0 +1,6 @@
+//! FAIL
+//! category: modules
+//! description: invalid glob in use must error
+//! error_pattern: expected
+//! source: Stage 9.9 conformance expansion
+mod foo { pub struct bar; } use foo::**;

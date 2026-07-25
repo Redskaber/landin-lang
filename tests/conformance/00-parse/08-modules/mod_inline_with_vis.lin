@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: module with pub items
+//! source: Stage 9.9 conformance expansion
+mod m { pub fn f() {} }

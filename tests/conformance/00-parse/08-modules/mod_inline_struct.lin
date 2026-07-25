@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: inline module with struct
+//! source: Stage 9.9 conformance expansion
+mod m { struct S; }

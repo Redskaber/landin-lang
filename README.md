@@ -6,8 +6,8 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.16.7 — Stage 0-9.8 complete. v0.2 roadmap done + §17 docs standardization + v0.1 conformance 437/600.
-> **2197 tests** + 5 benchmarks + 437 conformance tests. 0 clippy warnings. fmt clean.
+> **Status:** v0.16.8 — Stage 0-9.9 complete. v0.2 roadmap done + §17 docs standardization + v0.1 conformance 497/600.
+> **2207 tests** + 5 benchmarks + 497 conformance tests. 0 clippy warnings. fmt clean.
 > Process v3.21 (§0-§28). §16 interface isolation compliant. §17.1/§17.2/§18.4 docs compliant.
 >
 > **Milestones:**
@@ -16,7 +16,7 @@ predictable performance.
 > - Stage 6: ✅ Complete (18 sub-stages — 47-module architecture, all files < 1500 LOC)
 > - Stage 7: ✅ Complete (9 sub-stages — TD-015 region inference, TD-018 user-defined trait dyn)
 > - Stage 8: ✅ Complete (7 sub-stages — v0.2 roadmap + §25.8 + §25 deep review + §17 docs standardization)
-> - Stage 9: 🔄 In progress (8/12 sub-stages — v0.1 conformance suite expansion: 437/600)
+> - Stage 9: 🔄 In progress (9/12 sub-stages — v0.1 conformance suite expansion: 497/600)
 >
 > **🎉 v0.2 roadmap COMPLETE + §25 deep review PASS + §17 docs standardization + Stage 9 v0.1 conformance kickoff!**
 >
@@ -56,7 +56,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 6 | architectural splits (47 modules) | ✅ Complete | — |
 | 7 | region inference, user-defined trait dyn | ✅ Complete | 154 |
 | 8 | v0.2 features (lifetime elision, etc.) + docs standardization | ✅ Complete | 38 |
-| 9 | v0.1 conformance suite expansion | 🔄 In progress (8/12) | +96 rust + +429 conformance |
+| 9 | v0.1 conformance suite expansion | 🔄 In progress (9/12) | +106 rust + +489 conformance |
 
 ## API surface
 
@@ -102,7 +102,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.16.7 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.16.8 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (6 modules, reader.rs 349 LOC)
 │   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC)
@@ -164,20 +164,20 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 6** ✅ COMPLETE (47-module architecture, all files < 1500 LOC)
 - **Stage 7** ✅ COMPLETE (region inference + user-defined trait dyn)
 - **Stage 8** ✅ COMPLETE (v0.2: lifetime elision → object safety → extern "C" → drop elaboration → async/await → §25.8 + §25 deep review → §17 docs standardization)
-- **Stage 9** 🔄 In progress (v0.1 conformance suite expansion: 437/600 tests, 8/12 sub-stages done — approaching 3/4!)
+- **Stage 9** 🔄 In progress (v0.1 conformance suite expansion: 497/600 tests, 9/12 sub-stages done — over 4/5!)
 - **v0.1** = Stage 0 完整 + conformance 通过 (target after Stage 9.12)
 - **v0.3** = self-hosting
 
 ## Documentation
 
 - `docs/stage-committee-process.md` — Process SOP v3.21 (§1-§28, with §13.4 + §14.4 + §25.8)
-- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.11
+- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.12
 - `docs/develop/v0/architecture-decisions.md` — 7 Architecture Decision Records
 - `docs/develop/v0/stage-{0..9}/` — Per-stage dev logs + gate reviews + plans (§17.3 三阶段文档协议)
 - `docs/lang-design/` — 19 language design documents (v1.3.2 Final, frozen)
 - `docs/tests/v0/stage{0..9}/` — Test plans per stage (§17.2 双向印证)
 - `docs/tests/matrix.md` — Global test matrix
-- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r191
+- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r192
 
 ## License
 

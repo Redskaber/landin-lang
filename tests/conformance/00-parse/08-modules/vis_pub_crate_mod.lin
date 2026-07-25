@@ -1,0 +1,5 @@
+//! PASS
+//! category: modules
+//! description: pub(crate) module
+//! source: Stage 9.9 conformance expansion
+pub(crate) mod m {}
