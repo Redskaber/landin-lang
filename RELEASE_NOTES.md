@@ -1,9 +1,42 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.14.7
+**Current version**: v0.14.8
 **Date**: 2026-07-25
-**Test count**: 2029 tests + 5 benchmarks
+**Test count**: 2035 tests + 5 benchmarks
+
+---
+
+## v0.14.8 — Stage 7.8 (§25 Deep Review — GO)
+
+### Overview
+
+Full 7-dimension deep review of Stage 7.1-7.7. **5/5 GO → PASS**.
+
+### Deep review results
+
+| Dimension | Status |
+|-----------|--------|
+| D1 Architecture | ✅ region_inference.rs independent, no breakage |
+| D2 Technical Debt | ✅ TD-015 + TD-018 CLOSED, no new TD |
+| D3 Test Coverage | ✅ 2035 tests (1881→2035, +8.2%) |
+| D4 Next Stage Ready | ✅ v0.2 prerequisites met |
+| D5 Design Rationality | ✅ aligned with §4.6 + §2.3 |
+| D6 Performance | ✅ O(R²×P) + Tarjan O(V+E) |
+| D7 Documentation | ✅ 7 plans + 7 gate reviews + §25.8 writeback + deep review |
+
+### New test file (§17.1)
+
+`tests/v0/stage7/plan/deep_review_tests.rs` — 5 verification tests.
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2035 passed (126 unit + 1909 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 

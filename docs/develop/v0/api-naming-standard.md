@@ -3571,3 +3571,18 @@ pure documentation + verification tests.
 **Test impact**: +6 integration tests (2029 total). 0 regressions.
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.95 (Stage 7.8, 2026-07-25)
+
+Stage 7.8 — §25 deep review. **No code changes** — pure review + verification tests.
+
+**New public symbols**: None.
+
+**Changes**:
+- New review document: `docs/develop/v0/stage-5/deep-review-stage7-r173.md`
+- New test file: `tests/v0/stage7/plan/deep_review_tests.rs` (5 tests)
+- Added `#[path]` to `tests/all_tests.rs`
+
+**Test impact**: +5 integration tests (2035 total). 0 regressions.
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

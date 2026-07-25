@@ -379,3 +379,7 @@ mod user_defined_trait_dyn_tests;
 // Stage 7.7 (§25.8): Design writeback verification tests
 #[path = "v0/stage7/plan/design_writeback_verification_tests.rs"]
 mod design_writeback_verification_tests;
+
+// Stage 7.8 (§25): Deep review verification tests
+#[path = "v0/stage7/plan/deep_review_tests.rs"]
+mod deep_review_tests;
