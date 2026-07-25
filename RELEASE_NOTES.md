@@ -1,9 +1,46 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.14.2
+**Current version**: v0.14.3
 **Date**: 2026-07-25
-**Test count**: 1995 tests + 5 benchmarks
+**Test count**: 2001 tests + 5 benchmarks
+
+---
+
+## v0.14.3 — Stage 7.3 (Implied bounds + type tests — TD-015 step 3)
+
+### Overview
+
+Implements **implied bounds** (§4.6.2: `&'a T` → `T: 'a`) and **type test
+verification** (§4.6.4: check `T: 'a` after region inference).
+
+### New symbols
+
+| Type/Method | Purpose |
+|-------------|---------|
+| `extract_regions_from_ty(ty)` | Recursive region extraction from Ty |
+| `collect_implied_bounds(ref_region, inner_ty, span)` | `&'a T` → `T: 'a` constraint collection |
+| `RegionInferenceError::TypeTestFailed` | Type test failure error |
+| `infer_regions()` Step 4 | Type test verification after inference |
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2001 passed (120 unit + 1881 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-015 progress
+
+| Step | Status | Stage |
+|------|--------|-------|
+| step 1: data structures | ✅ | 7.1 |
+| step 2: inference algorithm | ✅ | 7.2 |
+| step 3: implied bounds + type tests | ✅ | 7.3 |
+| step 4: universe + SCC | pending | 7.4 |
+| step 5: integrate into borrowck | pending | 7.5 |
 
 ---
 

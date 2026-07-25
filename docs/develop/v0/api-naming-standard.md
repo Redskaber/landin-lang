@@ -3462,3 +3462,19 @@ on top of the Stage 7.1 data structures.
 **Test impact**: +7 new unit tests (114 total unit + 1881 integration = 1995).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.90 (Stage 7.3, 2026-07-25)
+
+Stage 7.3 — Implied bounds + type tests (TD-015 step 3). Per v3.21 §13.4
+(aligned with 04-ownership-borrowing.md §4.6.2 + §4.6.4).
+
+**New `pub(crate)` symbols**:
+
+| Type/Function | Design § | Pattern |
+|---------------|----------|---------|
+| `RegionInferenceError::TypeTestFailed` (variant) | §4.6.4 | `<noun>_<verb>` |
+| `extract_regions_from_ty(ty)` | §4.6.2 | `<verb>_<noun>_<prep>_<noun>` |
+| `collect_implied_bounds(ref_region, inner_ty, span)` | §4.6.2 | `<verb>_<adj>_<noun>` |
+
+**Changes**: extended region_inference.rs +120 LOC. 6 new unit tests.
+**Test impact**: +6 (120 unit + 1881 integration = 2001). 0 regressions.

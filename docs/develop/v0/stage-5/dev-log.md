@@ -3597,3 +3597,21 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 
 **TD-015 step 2 complete. Steps 3-5 pending.**
 **Next**: Stage 7.3 — Implied bounds + type tests (TD-015 step 3).
+
+### Stage 7.3 — Implied bounds + type tests (TD-015 step 3) (v0.14.3)
+
+**§13.4**: Read §4.6.2 (implied bounds: `&'a T` → `T: 'a`) + §4.6.4 (type tests).
+
+**Work completed**:
+- `extract_regions_from_ty(ty)` — recursive region extraction from Ty
+- `collect_implied_bounds(ref_region, inner_ty, span)` — §4.6.2 implied bounds
+- `RegionInferenceError::TypeTestFailed` variant — §4.6.4 error
+- `infer_regions()` Step 4: type test verification after region inference
+- 6 new unit tests (all pass)
+- Cargo.toml: version 0.14.2 → 0.14.3
+
+**Test impact**: +6 new (120 unit + 1881 integration = 2001). 0 regressions.
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-015 step 3 complete. Steps 4-5 pending.**
+**Next**: Stage 7.4 — Universe + SCC compression (TD-015 step 4).

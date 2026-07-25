@@ -396,8 +396,9 @@ pub(crate) fn point_stmt(p: PointIndex) -> u32 {
 /// (the region outlives all points in its set).
 pub(crate) type RegionSet = Vec<PointIndex>;
 
-/// An error detected during region inference (§4.2 universal region check).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// An error detected during region inference (§4.2 universal region check
+/// + §4.6.4 type test verification).
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum RegionInferenceError {
     /// A non-universal region `r` escaped a universal region `ur`:
     /// `r` contains points not in `ur`'s point set.
@@ -411,6 +412,21 @@ pub(crate) enum RegionInferenceError {
         universal_region: RegionVid,
         /// The points that caused the escape (in escaping but not in universal).
         escape_points: Vec<PointIndex>,
+    },
+    /// A type test failed: `ty` does not outlive `universal_region` (§4.6.4).
+    ///
+    /// This means a value of type `ty` was used in a context that requires
+    /// it to live at least as long as `universal_region`, but the regions
+    /// in `ty` don't satisfy that constraint.
+    TypeTestFailed {
+        /// The universal region that `ty` was supposed to outlive.
+        universal_region: RegionVid,
+        /// The type that failed the test.
+        ty: Ty,
+        /// The span where the test was registered.
+        span: Span,
+        /// The regions in `ty` that don't outlive `universal_region`.
+        failing_regions: Vec<RegionVid>,
     },
 }
 
@@ -539,10 +555,70 @@ impl RegionInferenceContext {
         // Store the inferred point sets
         self.region_points = region_points;
 
+        // Step 4 (§4.6.4): Check type tests
+        // After region inference, verify that each type test `T: 'a` passes.
+        // For each type test, extract the regions in `ty` and check they
+        // all outlive `universal_region` (i.e., their point sets are subsets).
+        for tt in &self.type_tests {
+            let ur_idx = tt.universal_region.0 as usize;
+            if ur_idx >= self.region_points.len() {
+                continue;
+            }
+            let ur_points = &self.region_points[ur_idx];
+
+            // Extract all regions from `ty`
+            let ty_regions = extract_regions_from_ty(&tt.ty);
+
+            // Check each region in `ty` outlives `universal_region`
+            let failing_regions: Vec<RegionVid> = ty_regions
+                .iter()
+                .filter(|r| {
+                    let r_idx = r.0 as usize;
+                    if r_idx >= self.region_points.len() {
+                        return false;
+                    }
+                    let r_points = &self.region_points[r_idx];
+                    // r outlives ur iff r_points ⊆ ur_points
+                    !r_points.iter().all(|p| ur_points.contains(p))
+                })
+                .copied()
+                .collect();
+
+            if !failing_regions.is_empty() {
+                errors.push(RegionInferenceError::TypeTestFailed {
+                    universal_region: tt.universal_region,
+                    ty: tt.ty.clone(),
+                    span: tt.span,
+                    failing_regions,
+                });
+            }
+        }
+
         if errors.is_empty() {
             Ok(())
         } else {
             Err(errors)
+        }
+    }
+
+    /// Collect implied bounds from a reference type `&'a T` (§4.6.2).
+    ///
+    /// Per §4.6.2: `&'a T` implies `T: 'a` (all regions in `T` outlive `'a`).
+    /// This method extracts all regions from `T` and adds `region: 'a`
+    /// outlives constraints for each.
+    ///
+    /// Per §16: this API is called by borrowck (Stage 7.5 integration)
+    /// when processing reference types in function signatures and bodies.
+    pub(crate) fn collect_implied_bounds(
+        &mut self,
+        ref_region: RegionVid,
+        inner_ty: &Ty,
+        span: Span,
+    ) {
+        let inner_regions = extract_regions_from_ty(inner_ty);
+        for r in inner_regions {
+            // `r: ref_region` means r outlives ref_region (§4.6.2: T: 'a)
+            self.add_outlives_constraint(r, ref_region, ConstraintCause::ImpliedBound { span });
         }
     }
 
@@ -552,6 +628,59 @@ impl RegionInferenceContext {
     /// or if the `RegionVid` is out of range.
     pub(crate) fn region_points(&self, vid: RegionVid) -> Option<&RegionSet> {
         self.region_points.get(vid.0 as usize)
+    }
+}
+
+/// Extract all `RegionVid`s from a `Ty` (for implied bounds + type tests).
+///
+/// Per §4.6.2: `&'a T` implies `T: 'a`. To collect this, we need to
+/// find all regions appearing inside `T`. This function walks the type
+/// recursively and collects all `Region::Var(vid)` / `Region::Static`.
+///
+/// Returns a deduplicated `Vec<RegionVid>`.
+pub(crate) fn extract_regions_from_ty(ty: &Ty) -> Vec<RegionVid> {
+    let mut regions = Vec::new();
+    collect_regions_recursive(ty, &mut regions);
+    // Deduplicate
+    regions.sort_unstable();
+    regions.dedup();
+    regions
+}
+
+/// Recursive helper for `extract_regions_from_ty`.
+fn collect_regions_recursive(ty: &Ty, out: &mut Vec<RegionVid>) {
+    use crate::mir::ty::TyKind;
+    match &ty.kind {
+        TyKind::Ref(region, _mutability, inner_ty) => {
+            // Extract the region from the reference
+            let vid = match region {
+                Region::Static => RegionVid(0), // `'static` is vid 0
+                Region::Var(vid) => *vid,
+                Region::Erased => RegionVid(0), // erased = `'static`
+            };
+            if !out.contains(&vid) {
+                out.push(vid);
+            }
+            // Recurse into the inner type
+            collect_regions_recursive(inner_ty, out);
+        }
+        TyKind::Tuple(tys) => {
+            for t in tys {
+                collect_regions_recursive(t, out);
+            }
+        }
+        TyKind::Array(inner, _const) => {
+            collect_regions_recursive(inner, out);
+        }
+        TyKind::Slice(inner) => {
+            collect_regions_recursive(inner, out);
+        }
+        TyKind::RawPtr(_mutability, inner) => {
+            collect_regions_recursive(inner, out);
+        }
+        // Types without regions: Bool, Char, Int, Uint, Float, Never,
+        // FnDef, FnPtr, Str, Adt, Closure, Infer, Error, Foreign, Param
+        _ => {}
     }
 }
 
@@ -790,6 +919,9 @@ fn test_infer_regions_universal_escape_detected() {
             assert_eq!(escape_points.len(), 1);
             assert!(escape_points.contains(&make_point(0, 1)));
         }
+        RegionInferenceError::TypeTestFailed { .. } => {
+            panic!("expected RegionEscapesUniversal, got TypeTestFailed");
+        }
     }
 }
 
@@ -864,4 +996,132 @@ fn test_infer_regions_fixed_point_convergence() {
     assert!(c_pts.contains(&make_point(1, 0)));
     assert!(b_pts.contains(&make_point(1, 0))); // propagated from c
     assert!(a_pts.contains(&make_point(1, 0))); // propagated from b
+}
+
+// ================================================================
+// Stage 7.3 (TD-015 step 3): Implied bounds + type tests
+// ================================================================
+
+#[test]
+fn test_extract_regions_from_ref() {
+    use crate::mir::ty::{Mutability, TyKind};
+    // &'a i32
+    let ty = Ty::new(
+        TyKind::Ref(
+            Region::Var(RegionVid(5)),
+            Mutability::Immutable,
+            Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+        ),
+        Span::DUMMY,
+    );
+    let regions = extract_regions_from_ty(&ty);
+    assert_eq!(regions, vec![RegionVid(5)]);
+}
+
+#[test]
+fn test_extract_regions_from_nested_ref() {
+    use crate::mir::ty::{Mutability, TyKind};
+    // &'a &'b i32
+    let inner = Ty::new(
+        TyKind::Ref(
+            Region::Var(RegionVid(3)),
+            Mutability::Immutable,
+            Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+        ),
+        Span::DUMMY,
+    );
+    let outer = Ty::new(
+        TyKind::Ref(
+            Region::Var(RegionVid(5)),
+            Mutability::Immutable,
+            Box::new(inner),
+        ),
+        Span::DUMMY,
+    );
+    let regions = extract_regions_from_ty(&outer);
+    assert_eq!(regions, vec![RegionVid(3), RegionVid(5)]);
+}
+
+#[test]
+fn test_extract_regions_from_non_ref() {
+    // i32 has no regions
+    let ty = Ty::new(
+        crate::mir::ty::TyKind::Int(crate::ast::IntTy::I32),
+        Span::DUMMY,
+    );
+    let regions = extract_regions_from_ty(&ty);
+    assert!(regions.is_empty());
+}
+
+#[test]
+fn test_collect_implied_bounds() {
+    use crate::mir::ty::{Mutability, TyKind};
+    let mut ctx = RegionInferenceContext::new();
+    let vid_a = ctx.add_universal_region("'a"); // vid 1
+    let vid_b = ctx.add_universal_region("'b"); // vid 2
+
+    // &'a &'b i32 — implies 'b: 'a
+    let inner_ty = Ty::new(
+        TyKind::Ref(
+            Region::Var(vid_b),
+            Mutability::Immutable,
+            Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+        ),
+        Span::DUMMY,
+    );
+    ctx.collect_implied_bounds(vid_a, &inner_ty, Span::DUMMY);
+
+    // Should have added a constraint 'b: 'a (vid_b outlives vid_a)
+    assert_eq!(ctx.num_constraints(), 1);
+    let c = &ctx.constraints()[0];
+    assert_eq!(c.sup, vid_b); // 'b outlives 'a
+    assert_eq!(c.sub, vid_a);
+}
+
+#[test]
+fn test_type_test_passes() {
+    use crate::mir::ty::TyKind;
+    let mut ctx = RegionInferenceContext::new();
+    let vid_static = RegionVid(0);
+
+    // i32 has no regions → type test always passes
+    let ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
+    ctx.add_type_test(vid_static, ty, Span::DUMMY);
+
+    let result = ctx.infer_regions();
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_type_test_fails() {
+    use crate::mir::ty::{Mutability, TyKind};
+    let mut ctx = RegionInferenceContext::new();
+    let vid_static = RegionVid(0); // 'static, no use points
+    let vid_a = ctx.add_inference_region(UniverseId::ROOT); // vid 1
+
+    // &'a i32 — has region vid_a
+    let ty = Ty::new(
+        TyKind::Ref(
+            Region::Var(vid_a),
+            Mutability::Immutable,
+            Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+        ),
+        Span::DUMMY,
+    );
+
+    // Add a use point for 'a (but NOT for 'static)
+    ctx.add_use_point(vid_a, make_point(0, 1));
+
+    // Type test: &'a i32 must outlive 'static
+    // 'a has point {0,1}, 'static has {} → 'a doesn't outlive 'static
+    ctx.add_type_test(vid_static, ty.clone(), Span::DUMMY);
+
+    let result = ctx.infer_regions();
+    assert!(result.is_err());
+    let errors = result.unwrap_err();
+    // Should have both RegionEscapesUniversal AND TypeTestFailed
+    let has_type_test_error = errors
+        .iter()
+        .any(|e| matches!(e, RegionInferenceError::TypeTestFailed { .. }));
+    assert!(has_type_test_error, "expected TypeTestFailed error");
 }
