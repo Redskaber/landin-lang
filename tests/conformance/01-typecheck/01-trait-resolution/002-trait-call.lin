@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: call trait method
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+trait T { fn f(&self) -> i32; } struct S; impl T for S { fn f(&self) -> i32 { 1 } } fn main() { let s = S; s.f(); }

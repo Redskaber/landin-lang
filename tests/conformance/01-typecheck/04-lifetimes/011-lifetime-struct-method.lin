@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: struct method with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+struct S<'a> { x: &'a i32 } impl<'a> S<'a> { fn new(x: &'a i32) -> Self { S { x } } }

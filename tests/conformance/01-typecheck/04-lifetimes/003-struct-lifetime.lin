@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: struct with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+struct S<'a> { x: &'a i32 }

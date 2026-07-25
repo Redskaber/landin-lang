@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic function with 2 params
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
+
+fn f<T, U>(x: T, y: U) -> T { x } fn main() { let _ = f(1, 2); }

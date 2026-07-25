@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic pair struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+struct Pair<A, B> { first: A, second: B } fn main() { let p = Pair { first: 1, second: 2 }; }

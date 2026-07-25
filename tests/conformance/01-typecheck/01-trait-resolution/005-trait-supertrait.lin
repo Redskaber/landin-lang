@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with supertrait bound
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+trait Base { fn b(&self) -> i32; } trait Derived: Base { fn d(&self) -> i32; } struct S; impl Base for S { fn b(&self) -> i32 { 1 } } impl Derived for S { fn d(&self) -> i32 { 2 } }

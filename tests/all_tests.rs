@@ -471,3 +471,7 @@ mod v0_1_gap_analysis_tests;
 // Stage 10.0: CLI upgrade + Runner upgrade verification
 #[path = "v0/stage9/plan/stage10_0_tests.rs"]
 mod stage10_0_tests;
+
+// Stage 10.1: 01-typecheck conformance verification
+#[path = "v0/stage9/plan/stage10_1_tests.rs"]
+mod stage10_1_tests;

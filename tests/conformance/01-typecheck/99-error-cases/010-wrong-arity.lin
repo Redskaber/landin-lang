@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: wrong number of arguments
+// EXPECTED: compile_error
+// ERROR_PATTERN: argument
+// SOURCE: Stage 10.1 conformance expansion
+
+fn f(a: i32, b: i32) {} fn main() { f(1); }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: function pointer with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+fn f(x: &i32) -> i32 { *x } fn main() { let fp: fn(&i32) -> i32 = f; }

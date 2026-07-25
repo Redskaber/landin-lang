@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with static method (no self)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+trait Factory { fn new() -> i32; } struct S; impl Factory for S { fn new() -> i32 { 0 } }

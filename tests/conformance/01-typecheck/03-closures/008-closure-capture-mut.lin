@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure capturing mutable var
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+fn main() { let mut x = 0; let f = || { x + 1 }; }

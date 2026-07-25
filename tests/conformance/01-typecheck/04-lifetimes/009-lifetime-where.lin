@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime in where clause
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+fn f<'a, 'b>(x: &'a i32, y: &'b i32) where 'a: 'b {}

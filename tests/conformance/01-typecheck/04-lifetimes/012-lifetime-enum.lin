@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: enum with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+enum E<'a> { A(&'a i32), B }

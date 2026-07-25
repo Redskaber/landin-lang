@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure capturing multiple vars
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+fn main() { let a = 1; let b = 2; let f = || a + b; }

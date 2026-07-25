@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+trait T<'a> { fn f(&self, x: &'a i32); }

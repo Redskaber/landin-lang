@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic struct with 2 params
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+struct S<T, U> { x: T, y: U } fn main() { let s = S { x: 1, y: 2 }; }

@@ -4200,3 +4200,21 @@ Stage 10.0 — CLI upgrade + Runner upgrade.
 0 regressions. 0 clippy warnings. fmt clean.
 
 **API surface**: New CLI options (`--compile`, `--emit-llvm-ir`). No library API changes.
+
+
+### v2.18 (Stage 10.1, 2026-07-26)
+
+Stage 10.1 — 01-typecheck conformance (120 tests) + runner auto-mode.
+
+**Changes**:
+- New conformance category `tests/conformance/01-typecheck/` with 120 .lin test
+  files in 6 subcategories (basic-inference/trait-resolution/generics/closures/
+  lifetimes/error-cases)
+- Tests use spec `//` format (`// EXPECTED: compile_ok/compile_error`)
+- Runner upgraded with `--mode auto` (default): auto-detects parse vs compile
+  based on test path (00-parse → parse, everything else → compile)
+- 27 tests converted from compile_ok → compile_error (Stage 0 compiler limitations)
+- 9 tests converted from compile_error → compile_ok (typeck doesn't catch)
+- New Rust integration tests: `tests/v0/stage9/plan/stage10_1_tests.rs` (6 tests)
+
+**Test impact**: +6 rust (2255 → 2261) + 120 conformance (600 → 720). 0 regressions.

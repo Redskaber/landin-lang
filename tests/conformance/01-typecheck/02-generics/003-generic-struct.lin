@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic struct basic
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+struct S<T> { x: T } fn main() { let s = S { x: 42 }; }

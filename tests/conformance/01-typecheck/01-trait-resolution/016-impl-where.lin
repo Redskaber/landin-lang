@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: impl with where clause
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+trait T { fn f(&self) -> i32; } struct S<T> { x: T } impl<T> T for S<T> where T: T { fn f(&self) -> i32 { 0 } }

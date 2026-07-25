@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: if branches type mismatch
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — typeck does not catch this error)
+
+fn main() { let x = if true { 1 } else { true }; }

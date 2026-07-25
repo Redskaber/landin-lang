@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic function with trait bound
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
+
+trait Clone { fn clone(&self) -> i32; } fn f<T: Clone>(x: T) -> i32 { x.clone() }

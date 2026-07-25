@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: match arms type mismatch
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — typeck does not catch this error)
+
+fn main() { let x = match 1 { 1 => 1, _ => true }; }

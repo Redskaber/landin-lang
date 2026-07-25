@@ -124,12 +124,21 @@ def parse_header(path: Path) -> ConformanceTest:
     )
 
 
-def run_test(test: ConformanceTest, binary: Path, verbose: bool, mode: str = "parse") -> tuple[bool, str]:
+def run_test(test: ConformanceTest, binary: Path, verbose: bool, mode: str = "auto") -> tuple[bool, str]:
     """Run a single conformance test. Returns (passed, message).
 
     mode="parse": uses --emit-ast (legacy, only validates parse stage)
     mode="compile": uses --compile (validates full pipeline)
+    mode="auto": auto-detect based on test path — 00-parse uses parse mode,
+                 everything else (01-typecheck, 02-borrowck, etc.) uses compile mode
     """
+    if mode == "auto":
+        # Auto-detect: tests under 00-parse/ use parse mode, everything else uses compile
+        if "00-parse" in str(test.path):
+            mode = "parse"
+        else:
+            mode = "compile"
+
     if mode == "compile":
         cmd = [str(binary), "--compile", str(test.path)]
     else:
@@ -196,9 +205,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--mode",
-        choices=["parse", "compile"],
-        default="parse",
-        help="Test mode: parse (default, --emit-ast) or compile (--compile, full pipeline)",
+        choices=["auto", "parse", "compile"],
+        default="auto",
+        help="Test mode: auto (default, auto-detect per test), parse (--emit-ast), or compile (--compile)",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()

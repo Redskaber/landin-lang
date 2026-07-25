@@ -16,9 +16,8 @@ fn test_v01_gap_only_parse_category_exists() {
     let parse_dir = conf_dir.join("00-parse");
     assert!(parse_dir.exists(), "00-parse/ must exist");
 
-    // 7 categories missing per §5.1
+    // 6 categories still missing per §5.1 (01-typecheck created in Stage 10.1)
     let missing_categories = [
-        "01-typecheck",
         "02-borrowck",
         "03-codegen",
         "04-e2e",

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with default type param
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+struct S<T = i32> { x: T } fn main() { let s = S { x: 42 }; }

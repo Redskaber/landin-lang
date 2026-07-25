@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: function return type i32
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+fn f() -> i32 { 42 }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: explicit type annotation matches inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+fn main() { let x: i32 = 42; }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: f64 addition result type
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+fn main() { let x = 1.0 + 2.0; }

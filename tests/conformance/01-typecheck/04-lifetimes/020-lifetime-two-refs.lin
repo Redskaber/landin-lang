@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: function with two reference params
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+fn f(a: &i32, b: &i32) -> i32 { *a + *b }

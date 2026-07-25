@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic impl block
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
+
+struct S<T> { x: T } impl<T> S<T> { fn get(&self) -> &T { &self.x } }

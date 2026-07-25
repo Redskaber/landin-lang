@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: explicit f64 annotation
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+fn main() { let x: f64 = 3.14; }

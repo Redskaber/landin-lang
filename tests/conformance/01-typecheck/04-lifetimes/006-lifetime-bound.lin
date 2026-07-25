@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime bound on lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+fn f<'a: 'b, 'b>(x: &'a i32, y: &'b i32) -> &'b i32 { x }

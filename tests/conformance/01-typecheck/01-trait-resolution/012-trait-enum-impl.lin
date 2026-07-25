@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait impl for enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+trait T { fn f(&self) -> i32; } enum E { A, B } impl T for E { fn f(&self) -> i32 { 0 } }

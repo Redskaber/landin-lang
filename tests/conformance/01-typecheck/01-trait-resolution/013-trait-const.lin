@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with const
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion
+
+trait T { const C: i32; } struct S; impl T for S { const C: i32 = 42; }
