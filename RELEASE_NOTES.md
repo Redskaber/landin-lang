@@ -1,9 +1,88 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.14.0
+**Current version**: v0.14.1
 **Date**: 2026-07-25
-**Test count**: 1881 tests + 5 benchmarks
+**Test count**: 1890 tests + 5 benchmarks
+
+---
+
+## v0.14.1 — Stage 7.1 (Region inference 基础设施 — TD-015 step 1)
+
+### Overview
+
+**First sub-stage of Stage 7** — establishes the **data structure foundation**
+for region inference (TD-015). Per v3.21 §13.4 (stage-start design alignment
+with 04-ownership-borrowing.md §4.6) + §14.4 (refactoring as architecture design).
+
+The actual inference algorithm is deferred to Stage 7.2 (TD-015 step 2) to
+reduce risk — data structures first, algorithm second.
+
+### §13.4 design alignment
+
+Read `docs/lang-design/04-ownership-borrowing.md` §3 (生命周期系统) + §4.6
+(NLL 完整规范). Decision: Stage 7.1 only data structures + constraint
+collection API.
+
+### §14.4 J1-J6 judgments (all ✅)
+
+| # | Judgment | Status |
+|---|----------|--------|
+| J1 | architecture design alignment (1:1 with §4.6) | ✅ |
+| J2 | single responsibility (region inference data structures) | ✅ |
+| J3 | unidirectional flow (borrowck → region_inference → MirBody) | ✅ |
+| J4 | compiler concept completeness | ✅ |
+| J5 | stage boundary clarity (all in src/borrowck/, Stage 2) | ✅ |
+| J6 | scientific reasonable granularity (370 LOC) | ✅ |
+
+### New module: `src/borrowck/region_inference.rs` (370 LOC)
+
+7 types aligned with 04-ownership-borrowing.md §4.6:
+
+| Type | Design § | Purpose |
+|------|----------|---------|
+| `RegionInfo` (enum) | §4.6.1 | Universal / Inference / Placeholder region |
+| `UniverseId` | §4.6.3 | Universe identifier (HRTB) |
+| `OutlivesConstraint` | §4.6.2 | `'a: 'b` constraint |
+| `ConstraintCause` (enum) | — | Constraint source (FnSignature / ImpliedBound / Borrow / TypeTest) |
+| `TypeTest` | §4.6.4 | `T: 'a` verification |
+| `UniverseCause` (enum) | §4.6.3 | Universe creation cause (Root / Hrtb) |
+| `RegionInferenceContext` | §4.6.6 | Complete data structure |
+
+13 methods for constraint collection + 9 unit tests.
+
+### Backward compatibility (§23 + §16)
+
+- All new types `pub(crate)` (internal to borrowck)
+- Module marked `#[allow(dead_code)]` (not yet integrated into BorrowChecker)
+- 1881 original tests pass unchanged
+- +9 new unit tests = 1890 total
+
+### Changes
+
+- Created `src/borrowck/region_inference.rs` (370 LOC)
+- `src/borrowck/mod.rs`: added `mod region_inference;` declaration
+- Cargo.toml: version 0.14.0 → 0.14.1
+- No source code changes to existing modules
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean
+cargo test: 1890 passed (1881 original + 9 new), 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-015 progress
+
+| Step | Status | Stage |
+|------|--------|-------|
+| step 1: data structures + constraint collection | ✅ complete | 7.1 |
+| step 2: inference algorithm (fixed-point iteration) | pending | 7.2 |
+| step 3: implied bounds + type tests | pending | 7.3 |
+| step 4: universe + SCC compression | pending | 7.4 |
+| step 5: integrate into borrowck | pending | 7.5 |
 
 ---
 

@@ -30,6 +30,10 @@ pub mod move_tracker;
 mod copy_semantics;
 mod liveness;
 mod place_path;
+// Stage 7.1 (TD-015 step 1): region inference data structures + constraint collection.
+// Currently not integrated into BorrowChecker — will be activated in Stage 7.5.
+#[allow(dead_code)]
+mod region_inference;
 
 // Stage 3.63 (cross-stage naming standardization): `BorrowKind` is now
 // re-exported from `crate::mir::place` (single source of truth). The

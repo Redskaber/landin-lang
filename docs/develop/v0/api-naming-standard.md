@@ -3364,3 +3364,63 @@ Stage 6.18 — Stage 6 收尾里程碑. **No code changes** — pure documentati
 **Fmt impact**: clean.
 
 **Version bump**: v0.13.6 → v0.14.0 (Stage 6 收尾里程碑, minor bump per SemVer).
+
+### v1.88 (Stage 7.1, 2026-07-25)
+
+Stage 7.1 — Region inference data structures + constraint collection (TD-015 step 1).
+Per v3.21 §13.4 (stage-start design alignment with 04-ownership-borrowing.md §4.6)
++ §14.4 (refactoring as architecture design, J1-J6 judgments).
+
+First sub-stage of Stage 7. Establishes the **data structure foundation** for
+region inference (TD-015). The actual inference algorithm is deferred to
+Stage 7.2 (TD-015 step 2).
+
+**New public symbols**: None (all `pub(crate)`, internal to borrowck).
+
+**New `pub(crate)` symbols** (in `src/borrowck/region_inference.rs`):
+
+| Type | Design § | Naming pattern |
+|------|----------|----------------|
+| `RegionInfo` (enum) | §4.6.1 | `<noun>_<noun>` |
+| `UniverseId` | §4.6.3 | `<noun>_<noun>` |
+| `OutlivesConstraint` | §4.6.2 | `<adj>_<noun>` |
+| `ConstraintCause` (enum) | — | `<noun>_<noun>` |
+| `TypeTest` | §4.6.4 | `<noun>_<noun>` |
+| `UniverseCause` (enum) | §4.6.3 | `<noun>_<noun>` |
+| `RegionInferenceContext` | §4.6.6 | `<noun>_<noun>_<noun>` |
+
+**New `pub(crate)` methods** (on `RegionInferenceContext`):
+
+| Method | Naming pattern |
+|--------|----------------|
+| `new()` | constructor |
+| `add_universal_region(name)` | `<verb>_<adj>_<noun>` |
+| `add_inference_region(universe)` | `<verb>_<noun>_<noun>` |
+| `add_outlives_constraint(sup, sub, cause)` | `<verb>_<adj>_<noun>` |
+| `add_type_test(universal_region, ty, span)` | `<verb>_<noun>_<noun>` |
+| `new_universe(cause)` | `<verb>_<noun>` |
+| `region_to_vid(region)` | `<noun>_<prep>_<noun>` |
+| 6 getters (`universal_regions` / `region_defs` / `constraints` / `type_tests` / `region_info` / `num_*`) | `<noun>` / `num_<noun>` |
+
+**Changes**:
+- Created `src/borrowck/region_inference.rs` (370 LOC) with:
+  - 7 types aligned with 04-ownership-borrowing.md §4.6
+  - 13 methods for constraint collection
+  - 9 unit tests (all pass)
+- `src/borrowck/mod.rs`: added `mod region_inference;` declaration
+- `#[allow(dead_code)]` on module (not yet integrated into BorrowChecker)
+- Behavior-equivalent — all 1881 original tests pass unchanged
+
+**Architectural rationale**: Per §14.4 J1, new module maps 1:1 to
+04-ownership-borrowing.md §4.6 NLL 完整规范. Per J2, single responsibility
+(region inference data structures). Per J3, unidirectional flow
+(borrowck → region_inference → MirBody). Per J6, 370 LOC reasonable.
+
+**§16 compliance**: Module is independent of BorrowChecker — only reads
+MirBody. Will be integrated in Stage 7.5 (TD-015 step 5).
+
+**Test impact**: +9 new unit tests (1890 total). 0 regressions.
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
+
+**TD-015 progress**: step 1 (data structures) complete. Steps 2-5 deferred.

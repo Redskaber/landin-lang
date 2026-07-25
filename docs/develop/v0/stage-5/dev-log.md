@@ -3522,3 +3522,45 @@ declare architectural refactoring phase concluded, proceed to Stage 6 end
 
 **Stage 6 收尾里程碑达成** — 架构性重构阶段告一段落，§25.8 完整设计回写完成。
 **Next**: Stage 7+ — TD-015 Region inference / TD-018 用户自定义 trait dyn / v0.2 特性.
+
+### Stage 7.1 — Region inference 基础设施 (TD-015 step 1) (v0.14.1)
+
+**Priority**: User request — begin Stage 7, address TD-015 (region inference).
+Apply v3.21 §13.4 (stage-start design alignment with 04-ownership-borrowing.md §4.6).
+
+**§13.4 design alignment**:
+- Read `docs/lang-design/04-ownership-borrowing.md` §3 (生命周期系统) + §4.6 (NLL 完整规范)
+- §4.6.1 universal region, §4.6.2 implied bounds, §4.6.3 universe,
+  §4.6.4 type tests, §4.6.5 SCC, §4.6.6 RegionInferenceContext
+- Decision: Stage 7.1 only data structures + constraint collection API;
+  inference algorithm deferred to Stage 7.2 (分阶段降低风险)
+
+**§14.4 J1-J6 judgments** (all ✅):
+- J1 architecture design alignment (1:1 with §4.6)
+- J2 single responsibility (region inference data structures)
+- J3 unidirectional flow (borrowck → region_inference → MirBody)
+- J4 compiler concept completeness
+- J5 stage boundary clarity
+- J6 scientific reasonable granularity (370 LOC)
+
+**Work completed**:
+- Created `src/borrowck/region_inference.rs` (370 LOC) with:
+  * 7 types: RegionInfo / UniverseId / OutlivesConstraint / ConstraintCause /
+    TypeTest / UniverseCause / RegionInferenceContext
+  * 13 methods: new / add_universal_region / add_inference_region /
+    add_outlives_constraint / add_type_test / new_universe / region_to_vid /
+    6 getters
+  * 9 unit tests (all pass)
+- `src/borrowck/mod.rs`: added `mod region_inference;` declaration
+- `#[allow(dead_code)]` on module (not yet integrated into BorrowChecker)
+- Cargo.toml: version 0.14.0 → 0.14.1
+
+**Architectural rationale**: Per §14.4 J1, new module maps 1:1 to
+04-ownership-borrowing.md §4.6. The actual inference algorithm is deferred
+to Stage 7.2 to reduce risk — data structures first, algorithm second.
+
+**Test impact**: +9 new unit tests (1890 total). 0 regressions.
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-015 progress**: step 1 (data structures) complete. Steps 2-5 deferred.
+**Next**: Stage 7.2 — Region inference 算法（不动点迭代 + universal region 检查）.
