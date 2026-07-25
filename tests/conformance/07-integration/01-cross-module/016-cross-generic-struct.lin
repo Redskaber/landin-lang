@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: generic struct from another module
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod a { pub struct S<T> { x: T } } fn main() { let s = a::S { x: 42 }; }

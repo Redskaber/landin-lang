@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: use function from module
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { pub fn bar() -> i32 { 42 } } use foo::bar; fn main() { bar(); }

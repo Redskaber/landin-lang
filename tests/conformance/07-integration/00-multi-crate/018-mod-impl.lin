@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: impl block in module
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { pub struct S { x: i32 } impl S { pub fn new() -> S { S { x: 0 } } } } fn main() {}

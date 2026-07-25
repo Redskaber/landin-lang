@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: pub use re-export
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { pub struct S; } pub use foo::S; fn main() { let s = S; }

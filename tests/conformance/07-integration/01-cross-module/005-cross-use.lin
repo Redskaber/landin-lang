@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: use declaration crossing modules
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod a { pub fn f() -> i32 { 42 } } mod b { use a::f; pub fn g() -> i32 { f() } } fn main() { b::g(); }

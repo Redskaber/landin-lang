@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: use struct from another module
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod a { pub struct S { x: i32 } } mod b { pub fn g() -> a::S { a::S { x: 42 } } } fn main() { b::g(); }

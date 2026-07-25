@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: use with rename
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { pub struct S; } use foo::S as MyS; fn main() { let s = MyS; }

@@ -1,0 +1,7 @@
+// CATEGORY: integration
+// DESCRIPTION: generic function from another module
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.7 conformance expansion
+
+mod a { pub fn id<T>(x: T) -> T { x } } fn main() { a::id(42); }

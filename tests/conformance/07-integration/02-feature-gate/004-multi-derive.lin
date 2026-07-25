@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: multiple derive
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+#[derive(Clone, Copy, Debug)] struct S;

@@ -495,3 +495,7 @@ mod stage10_5_tests;
 // Stage 10.6: 06-stdlib conformance verification
 #[path = "v0/stage10/plan/stage10_6_tests.rs"]
 mod stage10_6_tests;
+
+// Stage 10.7: 07-integration conformance verification
+#[path = "v0/stage10/plan/stage10_7_tests.rs"]
+mod stage10_7_tests;

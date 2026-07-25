@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: use type alias from another module
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod a { pub type Id = i32; } mod b { pub fn g() -> a::Id { 42 } } fn main() { b::g(); }

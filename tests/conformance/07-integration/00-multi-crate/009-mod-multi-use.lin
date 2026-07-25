@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: multiple use imports
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { pub struct A; pub struct B; } use foo::{A, B}; fn main() { let a = A; let b = B; }

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: pub struct in module
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { pub struct S { x: i32 } } fn main() { let s = foo::S { x: 1 }; }

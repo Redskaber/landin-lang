@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: must_use attribute (may not be supported)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion (Stage 0 limitation — compiler does not catch this)
+
+#[must_use] fn f() -> i32 { 0 } fn main() {}

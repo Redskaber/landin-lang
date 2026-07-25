@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: const in module
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { pub const C: i32 = 42; } fn main() { let x = foo::C; }

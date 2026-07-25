@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: extern block in module
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { extern "C" { pub fn bar(); } } fn main() {}

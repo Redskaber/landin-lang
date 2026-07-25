@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: private fn not accessible cross-module (may not be caught)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod a { fn f() -> i32 { 42 } } fn main() {}

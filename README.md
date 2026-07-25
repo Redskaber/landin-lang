@@ -6,8 +6,8 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.17.8 — Stage 0-10.5 in progress. Conformance 1009/5000 (20.2% of v0.1 gate).
-> **2280 tests** + 5 benchmarks + 1009 conformance tests. 0 clippy warnings. fmt clean.
+> **Status:** v0.17.9 — Stage 0-10.5 in progress. Conformance 1059/5000 (21.2% of v0.1 gate).
+> **2284 tests** + 5 benchmarks + 1059 conformance tests. 0 clippy warnings. fmt clean.
 > Process v3.21 (§0-§28). §16 interface isolation compliant. §17.1/§17.2/§18.4 docs compliant.
 >
 > **Milestones:**
@@ -17,12 +17,12 @@ predictable performance.
 > - Stage 7: ✅ Complete (9 sub-stages — TD-015 region inference, TD-018 user-defined trait dyn)
 > - Stage 8: ✅ Complete (7 sub-stages — v0.2 roadmap + §25.8 + §25 deep review + §17 docs standardization)
 > - Stage 9: ✅ Complete (12 sub-stages — parse conformance 600/600, reclassified as 'Parse conformance milestone')
-> - Stage 10: 🔄 In progress (6/9 sub-stages — v0.1 conformance 1009/5000, 20.2% of gate)
+> - Stage 10: 🔄 In progress (7/9 sub-stages — v0.1 conformance 1059/5000, 21.2% of gate)
 >
 > **Architecture:** 50+ modules. All mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs < 1500 LOC.
 > Single responsibility per module. Data flows单向. Design docs synced (§25.8).
 >
-> **v0.1 roadmap:** conformance 1009/5000 (20.2%) — Stage 10 in progress (3 categories remaining)
+> **v0.1 roadmap:** conformance 1059/5000 (21.2%) — Stage 10 in progress (3 categories remaining)
 
 ## Quick start
 
@@ -119,7 +119,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.17.8 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.17.9 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (6 modules, reader.rs 349 LOC)
 │   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC)
@@ -209,7 +209,7 @@ cargo clippy --all-targets -- -D warnings
 ## Documentation
 
 - `docs/stage-committee-process.md` — Process SOP v3.21 (§1-§28, with §13.4 + §14.4 + §25.8)
-- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.23
+- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.24
 - `docs/develop/v0/architecture-decisions.md` — 7 Architecture Decision Records
 - `docs/develop/v0/stage-{0..9}/` — Stage 0-9 dev logs + gate reviews + plans (§17.3)
 - `docs/develop/v0/stage-10/` — Stage 10 dev logs + gate reviews + plans (independent directory)
@@ -217,7 +217,7 @@ cargo clippy --all-targets -- -D warnings
 - `docs/tests/v0/stage{0..9}/` — Stage 0-9 test plans (§17.2 双向印证)
 - `docs/tests/v0/stage10/` — Stage 10 test plans (independent directory)
 - `docs/tests/matrix.md` — Global test matrix
-- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r203
+- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r204
 
 ## License
 

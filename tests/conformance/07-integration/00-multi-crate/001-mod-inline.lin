@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: inline module as crate-like structure
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { pub fn bar() -> i32 { 42 } } fn main() { foo::bar(); }

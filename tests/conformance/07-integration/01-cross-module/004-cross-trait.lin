@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: implement trait from another module
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion (Stage 0 limitation — compiler does not catch this)
+
+mod a { pub trait T { fn f(&self) -> i32; } } mod b { pub struct S; impl a::T for S { fn f(&self) -> i32 { 1 } } } fn main() {}

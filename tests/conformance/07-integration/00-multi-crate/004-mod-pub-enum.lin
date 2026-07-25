@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: pub enum in module
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { pub enum E { A, B } } fn main() { let e = foo::E::A; }

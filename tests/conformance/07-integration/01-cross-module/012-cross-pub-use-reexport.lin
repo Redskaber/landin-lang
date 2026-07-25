@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: pub use re-export across modules
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod a { pub fn f() -> i32 { 42 } } mod b { pub use a::f; } fn main() { b::f(); }

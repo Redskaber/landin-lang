@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: glob import
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.7 conformance expansion
+
+mod foo { pub struct S; } use foo::*; fn main() { let s = S; }

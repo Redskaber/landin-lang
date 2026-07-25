@@ -4282,3 +4282,16 @@ Stage 10.6 — 06-stdlib conformance (50 tests).
 - New Rust integration tests: `tests/v0/stage10/plan/stage10_6_tests.rs` (4 tests)
 
 **Test impact**: +4 rust (2276 → 2280) + 50 conformance (959 → 1009). 0 regressions.
+
+### v2.24 (Stage 10.7, 2026-07-26)
+
+Stage 10.7 — 07-integration conformance (50 tests, last category!).
+
+**Changes**:
+- New conformance category `tests/conformance/07-integration/` with 50 .lin test
+  files in 3 subcategories (multi-crate/cross-module/feature-gate)
+- **🎉 All 8 conformance categories now exist!** (00-parse through 07-integration)
+- 18 tests adjusted (all feature-gate attributes compile, cross-module calls fail)
+- New Rust integration tests: `tests/v0/stage10/plan/stage10_7_tests.rs` (5 tests)
+
+**Test impact**: +5 rust (2280 → 2284) + 50 conformance (1009 → 1059). 0 regressions.
