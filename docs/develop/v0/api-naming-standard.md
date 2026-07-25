@@ -3424,3 +3424,41 @@ MirBody. Will be integrated in Stage 7.5 (TD-015 step 5).
 **Fmt impact**: clean.
 
 **TD-015 progress**: step 1 (data structures) complete. Steps 2-5 deferred.
+
+### v1.89 (Stage 7.2, 2026-07-25)
+
+Stage 7.2 — Region inference algorithm (TD-015 step 2). Per v3.21 §13.4
+(aligned with 04-ownership-borrowing.md §4.2) + §14.4.
+
+Implements the **fixed-point iteration algorithm** for region inference
+on top of the Stage 7.1 data structures.
+
+**New `pub(crate)` symbols**:
+
+| Type/Function | Design § | Pattern |
+|---------------|----------|---------|
+| `PointIndex` (type alias = u32) | §4.2 | `<noun>_<noun>` |
+| `make_point(bb_id, stmt_idx)` | — | `<verb>_<noun>` |
+| `point_bb(p)` / `point_stmt(p)` | — | `<noun>_<noun>` |
+| `RegionSet` (type alias = Vec<u32>) | §4.2 | `<noun>_<noun>` |
+| `RegionInferenceError` (enum) | §4.2 | `<noun>_<noun>_<noun>` |
+
+**New `pub(crate)` methods** (on `RegionInferenceContext`):
+
+| Method | Pattern |
+|--------|---------|
+| `add_use_point(vid, point)` | `<verb>_<noun>_<noun>` |
+| `infer_regions() -> Result<(), Vec<RegionInferenceError>>` | `<verb>_<noun>` |
+| `region_points(vid) -> Option<&RegionSet>` | `<noun>_<noun>` |
+
+**Changes**:
+- Extended `src/borrowck/region_inference.rs`: +200 LOC (algorithm + 7 tests)
+- Added `use_points` + `region_points` fields to `RegionInferenceContext`
+- Algorithm: fixed-point iteration (constraint propagation + use point addition)
+  + universal region escape check
+- 7 new unit tests (all pass)
+- Behavior-equivalent — 1881 original tests pass unchanged
+
+**Test impact**: +7 new unit tests (114 total unit + 1881 integration = 1995).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

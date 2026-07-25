@@ -1,9 +1,62 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.14.1
+**Current version**: v0.14.2
 **Date**: 2026-07-25
-**Test count**: 1890 tests + 5 benchmarks
+**Test count**: 1995 tests + 5 benchmarks
+
+---
+
+## v0.14.2 — Stage 7.2 (Region inference 算法 — TD-015 step 2)
+
+### Overview
+
+Implements the **fixed-point iteration algorithm** for region inference
+on top of the Stage 7.1 data structures. Per v3.21 §13.4 (aligned with
+04-ownership-borrowing.md §4.2).
+
+### Algorithm (§4.2)
+
+```
+1. Init: each region's point set = empty
+2. Fixed-point iteration:
+   a. For each 'sup: 'sub constraint: sup.points ∪= sub.points
+   b. Add each region's use_points to its point set
+   c. Repeat until no change
+3. Universal check: for each universal ur, non-universal r:
+   r.points ⊆ ur.points? Else RegionEscapesUniversal error
+```
+
+### New symbols
+
+| Type/Method | Purpose |
+|-------------|---------|
+| `PointIndex` (u32) | CFG point encoding |
+| `make_point` / `point_bb` / `point_stmt` | Encode/decode helpers |
+| `RegionSet` (Vec<u32>) | Sorted point set |
+| `RegionInferenceError` | Escape error |
+| `add_use_point(vid, point)` | Populate use points |
+| `infer_regions()` | **Core algorithm** |
+| `region_points(vid)` | Get inferred result |
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 1995 passed (114 unit + 1881 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-015 progress
+
+| Step | Status | Stage |
+|------|--------|-------|
+| step 1: data structures | ✅ | 7.1 |
+| step 2: inference algorithm | ✅ | 7.2 |
+| step 3: implied bounds + type tests | pending | 7.3 |
+| step 4: universe + SCC | pending | 7.4 |
+| step 5: integrate into borrowck | pending | 7.5 |
 
 ---
 

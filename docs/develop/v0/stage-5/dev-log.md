@@ -3564,3 +3564,36 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 
 **TD-015 progress**: step 1 (data structures) complete. Steps 2-5 deferred.
 **Next**: Stage 7.2 — Region inference 算法（不动点迭代 + universal region 检查）.
+
+### Stage 7.2 — Region inference 算法 (TD-015 step 2) (v0.14.2)
+
+**Priority**: Continue Stage 7, implement region inference algorithm.
+
+**§13.4 design alignment**:
+- Re-read 04-ownership-borrowing.md §4.2 (Region inference fixed-point iteration)
+- Algorithm: init → propagate constraints + use_points → universal check
+
+**Work completed**:
+- Extended `src/borrowck/region_inference.rs` (+200 LOC):
+  * `PointIndex` type + `make_point`/`point_bb`/`point_stmt` helpers
+  * `RegionSet` type (Vec<u32> sorted point set)
+  * `RegionInferenceError` enum (RegionEscapesUniversal)
+  * `add_use_point(vid, point)` method
+  * `infer_regions()` method — fixed-point iteration + universal check
+  * `region_points(vid)` getter
+  * Added `use_points` + `region_points` fields to struct
+- 7 new unit tests (all pass):
+  * test_infer_regions_empty
+  * test_infer_regions_use_points
+  * test_infer_regions_constraint_propagation
+  * test_infer_regions_universal_escape_detected
+  * test_infer_regions_universal_no_escape
+  * test_point_encoding
+  * test_infer_regions_fixed_point_convergence
+- Cargo.toml: version 0.14.1 → 0.14.2
+
+**Test impact**: +7 new (114 unit + 1881 integration = 1995 total). 0 regressions.
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-015 step 2 complete. Steps 3-5 pending.**
+**Next**: Stage 7.3 — Implied bounds + type tests (TD-015 step 3).

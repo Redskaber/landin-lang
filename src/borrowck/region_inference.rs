@@ -203,6 +203,16 @@ pub(crate) struct RegionInferenceContext {
 
     /// The next fresh `UniverseId` to allocate.
     next_universe: u32,
+
+    /// Stage 7.2: Use points for each region, indexed by `RegionVid`.
+    /// `use_points[vid.0 as usize]` gives the use points for `vid`.
+    /// Populated by `add_use_point()` before `infer_regions()` is called.
+    use_points: Vec<Vec<PointIndex>>,
+
+    /// Stage 7.2: Inferred point sets, indexed by `RegionVid`.
+    /// `region_points[vid.0 as usize]` gives the inferred point set for `vid`.
+    /// Populated by `infer_regions()`.
+    region_points: Vec<RegionSet>,
 }
 
 impl Default for RegionInferenceContext {
@@ -226,6 +236,8 @@ impl RegionInferenceContext {
             universe_causes: vec![UniverseCause::Root],
             next_region_vid: 0,
             next_universe: 1, // Universe 0 is root; next is 1
+            use_points: Vec::new(),
+            region_points: Vec::new(),
         };
         // Allocate `'static` as universal region 0.
         ctx.add_universal_region("'static");
@@ -348,6 +360,198 @@ impl RegionInferenceContext {
             Region::Var(vid) => vid,
             Region::Erased => RegionVid(0), // erased = `'static` for inference
         }
+    }
+}
+
+// ================================================================
+// Stage 7.2 (TD-015 step 2): Region inference algorithm
+// ================================================================
+
+/// A point in the MIR control-flow graph (§4.2).
+///
+/// Encoded as `u32` for simplicity: `(bb_id << 16) | stmt_idx`.
+/// `bb_id` is the basic block index (0..65535), `stmt_idx` is the
+/// statement index within the block (0..65535). The terminator
+/// occupies `stmt_idx == statements.len()`.
+pub(crate) type PointIndex = u32;
+
+/// Encode a point from basic block id and statement index.
+pub(crate) fn make_point(bb_id: u32, stmt_idx: u32) -> PointIndex {
+    (bb_id << 16) | (stmt_idx & 0xFFFF)
+}
+
+/// Decode the basic block id from a point.
+pub(crate) fn point_bb(p: PointIndex) -> u32 {
+    p >> 16
+}
+
+/// Decode the statement index from a point.
+pub(crate) fn point_stmt(p: PointIndex) -> u32 {
+    p & 0xFFFF
+}
+
+/// A sorted set of CFG points — the inferred value of a region (§4.2).
+///
+/// Represents the set of program points where a region is "live"
+/// (the region outlives all points in its set).
+pub(crate) type RegionSet = Vec<PointIndex>;
+
+/// An error detected during region inference (§4.2 universal region check).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RegionInferenceError {
+    /// A non-universal region `r` escaped a universal region `ur`:
+    /// `r` contains points not in `ur`'s point set.
+    ///
+    /// This means a value with lifetime `r` would outlive the scope
+    /// it's allowed to live in — a use-after-free risk.
+    RegionEscapesUniversal {
+        /// The non-universal region that escaped.
+        escaping_region: RegionVid,
+        /// The universal region it should have been contained in.
+        universal_region: RegionVid,
+        /// The points that caused the escape (in escaping but not in universal).
+        escape_points: Vec<PointIndex>,
+    },
+}
+
+impl RegionInferenceContext {
+    /// Add a use point for a region (§4.2).
+    ///
+    /// Use points are the program points where a region is "used"
+    /// (e.g., a reference with that lifetime is read). The inference
+    /// algorithm adds these to the region's point set.
+    ///
+    /// Per §16: this API is called by borrowck (Stage 7.5 integration)
+    /// to populate use points before calling `infer_regions()`.
+    pub(crate) fn add_use_point(&mut self, vid: RegionVid, point: PointIndex) {
+        // Ensure use_points vec is large enough
+        let idx = vid.0 as usize;
+        if idx >= self.use_points.len() {
+            self.use_points.resize(idx + 1, Vec::new());
+        }
+        self.use_points[idx].push(point);
+    }
+
+    /// Run the region inference algorithm (§4.2 fixed-point iteration).
+    ///
+    /// Algorithm:
+    /// 1. Initialize: each region's point set = empty
+    /// 2. Fixed-point iteration:
+    ///    - For each constraint `'sup: 'sub`: `sup.points = sup.points ∪ sub.points`
+    ///    - Add each region's use_points to its point set
+    ///    - Repeat until no change
+    /// 3. Check universal regions: for each universal `ur`, every non-universal
+    ///    `r` must have `r.points ⊆ ur.points`
+    ///
+    /// Returns `Ok(())` if all checks pass, or `Err(Vec<RegionInferenceError>)`
+    /// listing all violations.
+    ///
+    /// Per §4.2: complexity O(R² × P), R=regions, P=points. In practice
+    /// R and P are small, so this is nearly linear.
+    pub(crate) fn infer_regions(&mut self) -> Result<(), Vec<RegionInferenceError>> {
+        // Step 1: Initialize point sets to empty
+        let num_regions = self.region_defs.len();
+        let mut region_points: Vec<RegionSet> = vec![Vec::new(); num_regions];
+
+        // Step 2: Fixed-point iteration
+        let mut changed = true;
+        while changed {
+            changed = false;
+
+            // 2a: Propagate constraints: 'sup: 'sub means sup ⊇ sub
+            for constraint in &self.constraints {
+                let sup_idx = constraint.sup.0 as usize;
+                let sub_idx = constraint.sub.0 as usize;
+                if sup_idx < num_regions && sub_idx < num_regions {
+                    let sub_points = region_points[sub_idx].clone();
+                    let sup_points = &mut region_points[sup_idx];
+                    let old_len = sup_points.len();
+                    for p in &sub_points {
+                        if !sup_points.contains(p) {
+                            sup_points.push(*p);
+                        }
+                    }
+                    if sup_points.len() != old_len {
+                        changed = true;
+                    }
+                }
+            }
+
+            // 2b: Add each region's use_points to its point set
+            for (idx, use_pts) in self.use_points.iter().enumerate() {
+                if idx >= num_regions {
+                    break;
+                }
+                let pts = &mut region_points[idx];
+                let old_len = pts.len();
+                for p in use_pts {
+                    if !pts.contains(p) {
+                        pts.push(*p);
+                    }
+                }
+                if pts.len() != old_len {
+                    changed = true;
+                }
+            }
+        }
+
+        // Sort point sets for deterministic comparison (subset checks)
+        for pts in &mut region_points {
+            pts.sort_unstable();
+            pts.dedup();
+        }
+
+        // Step 3: Check universal regions
+        // For each universal region `ur`, every non-universal region `r`
+        // must have r.points ⊆ ur.points.
+        let mut errors = Vec::new();
+        let universal_vids: Vec<RegionVid> = self
+            .region_defs
+            .iter()
+            .filter(|info| info.is_universal())
+            .map(|info| info.vid())
+            .collect();
+
+        for ur_vid in &universal_vids {
+            let ur_idx = ur_vid.0 as usize;
+            let ur_points = &region_points[ur_idx];
+            for (idx, info) in self.region_defs.iter().enumerate() {
+                if info.is_universal() {
+                    continue; // universal regions don't check against themselves
+                }
+                let r_points = &region_points[idx];
+                // Check r.points ⊆ ur.points
+                let escape_points: Vec<PointIndex> = r_points
+                    .iter()
+                    .filter(|p| !ur_points.contains(p))
+                    .copied()
+                    .collect();
+                if !escape_points.is_empty() {
+                    errors.push(RegionInferenceError::RegionEscapesUniversal {
+                        escaping_region: RegionVid(idx as u32),
+                        universal_region: *ur_vid,
+                        escape_points,
+                    });
+                }
+            }
+        }
+
+        // Store the inferred point sets
+        self.region_points = region_points;
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
+    /// Get the inferred point set for a region (after `infer_regions()`).
+    ///
+    /// Returns `None` if `infer_regions()` has not been called yet,
+    /// or if the `RegionVid` is out of range.
+    pub(crate) fn region_points(&self, vid: RegionVid) -> Option<&RegionSet> {
+        self.region_points.get(vid.0 as usize)
     }
 }
 
@@ -486,4 +690,178 @@ mod tests {
         assert!(!placeholder.is_inference());
         assert!(placeholder.is_placeholder());
     }
+}
+
+// ================================================================
+// Stage 7.2 (TD-015 step 2): Region inference algorithm tests
+// ================================================================
+
+#[test]
+fn test_infer_regions_empty() {
+    let mut ctx = RegionInferenceContext::new();
+    // No constraints, no use points → all point sets empty, no errors
+    let result = ctx.infer_regions();
+    assert!(result.is_ok());
+    // `'static` (vid 0) has empty point set
+    assert_eq!(ctx.region_points(RegionVid(0)), Some(&Vec::new()));
+}
+
+#[test]
+fn test_infer_regions_use_points() {
+    let mut ctx = RegionInferenceContext::new();
+    let vid_static = RegionVid(0); // `'static`
+    let vid_a = ctx.add_inference_region(UniverseId::ROOT); // vid 1
+
+    // Add use points for region 'a
+    ctx.add_use_point(vid_a, make_point(0, 1));
+    ctx.add_use_point(vid_a, make_point(0, 2));
+
+    // Also add use points for 'static so 'a's points don't escape
+    ctx.add_use_point(vid_static, make_point(0, 1));
+    ctx.add_use_point(vid_static, make_point(0, 2));
+
+    let result = ctx.infer_regions();
+    assert!(result.is_ok());
+
+    // 'a should have points {0,1}, {0,2}
+    let pts = ctx.region_points(vid_a).unwrap();
+    assert_eq!(pts.len(), 2);
+    assert!(pts.contains(&make_point(0, 1)));
+    assert!(pts.contains(&make_point(0, 2)));
+
+    // 'static also has the same points
+    let static_pts = ctx.region_points(vid_static).unwrap();
+    assert_eq!(static_pts.len(), 2);
+}
+
+#[test]
+fn test_infer_regions_constraint_propagation() {
+    let mut ctx = RegionInferenceContext::new();
+    let vid_static = RegionVid(0); // `'static`
+    let vid_a = ctx.add_inference_region(UniverseId::ROOT); // vid 1
+    let vid_b = ctx.add_inference_region(UniverseId::ROOT); // vid 2
+
+    // 'a: 'b (a outlives b) → a ⊇ b
+    ctx.add_outlives_constraint(
+        vid_a,
+        vid_b,
+        ConstraintCause::FnSignature { span: Span::DUMMY },
+    );
+
+    // 'b has use point, 'a does not
+    ctx.add_use_point(vid_b, make_point(0, 5));
+    // 'static also has the use point so 'a doesn't escape
+    ctx.add_use_point(vid_static, make_point(0, 5));
+
+    let result = ctx.infer_regions();
+    assert!(result.is_ok());
+
+    // 'a should inherit 'b's points via constraint propagation
+    let a_pts = ctx.region_points(vid_a).unwrap();
+    let b_pts = ctx.region_points(vid_b).unwrap();
+    assert!(b_pts.contains(&make_point(0, 5)));
+    assert!(a_pts.contains(&make_point(0, 5))); // propagated
+}
+
+#[test]
+fn test_infer_regions_universal_escape_detected() {
+    let mut ctx = RegionInferenceContext::new();
+    // vid 0 = 'static (universal)
+    let vid_a = ctx.add_inference_region(UniverseId::ROOT); // vid 1
+
+    // 'a has use point but no constraint linking it to 'static
+    ctx.add_use_point(vid_a, make_point(0, 1));
+
+    // 'static has no use points → empty point set
+    // 'a has point {0,1} which is NOT subset of 'static's empty set
+    // → RegionEscapesUniversal error
+    let result = ctx.infer_regions();
+    assert!(result.is_err());
+    let errors = result.unwrap_err();
+    assert_eq!(errors.len(), 1);
+    match &errors[0] {
+        RegionInferenceError::RegionEscapesUniversal {
+            escaping_region,
+            universal_region,
+            escape_points,
+        } => {
+            assert_eq!(*escaping_region, vid_a);
+            assert_eq!(*universal_region, RegionVid(0)); // 'static
+            assert_eq!(escape_points.len(), 1);
+            assert!(escape_points.contains(&make_point(0, 1)));
+        }
+    }
+}
+
+#[test]
+fn test_infer_regions_universal_no_escape() {
+    let mut ctx = RegionInferenceContext::new();
+    let vid_static = RegionVid(0); // 'static (universal)
+    let vid_a = ctx.add_inference_region(UniverseId::ROOT); // vid 1
+
+    // 'a: 'static (a outlives 'static) → a ⊇ 'static
+    // This means 'a can have any points 'static has (but 'static is empty)
+    ctx.add_outlives_constraint(
+        vid_a,
+        vid_static,
+        ConstraintCause::FnSignature { span: Span::DUMMY },
+    );
+
+    // 'a has no use points → empty point set
+    // empty ⊆ empty → no error
+    let result = ctx.infer_regions();
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_point_encoding() {
+    let p = make_point(3, 7);
+    assert_eq!(point_bb(p), 3);
+    assert_eq!(point_stmt(p), 7);
+
+    let p2 = make_point(0, 0);
+    assert_eq!(point_bb(p2), 0);
+    assert_eq!(point_stmt(p2), 0);
+
+    let p3 = make_point(65535, 65535);
+    assert_eq!(point_bb(p3), 65535);
+    assert_eq!(point_stmt(p3), 65535);
+}
+
+#[test]
+fn test_infer_regions_fixed_point_convergence() {
+    // Test that the fixed-point iteration converges with chained constraints
+    let mut ctx = RegionInferenceContext::new();
+    let vid_static = RegionVid(0); // 'static
+    let vid_a = ctx.add_inference_region(UniverseId::ROOT); // vid 1
+    let vid_b = ctx.add_inference_region(UniverseId::ROOT); // vid 2
+    let vid_c = ctx.add_inference_region(UniverseId::ROOT); // vid 3
+
+    // Chain: 'a: 'b, 'b: 'c → 'a ⊇ 'b ⊇ 'c
+    ctx.add_outlives_constraint(
+        vid_a,
+        vid_b,
+        ConstraintCause::FnSignature { span: Span::DUMMY },
+    );
+    ctx.add_outlives_constraint(
+        vid_b,
+        vid_c,
+        ConstraintCause::FnSignature { span: Span::DUMMY },
+    );
+
+    // Only 'c has use points
+    ctx.add_use_point(vid_c, make_point(1, 0));
+    // 'static also has the use point so 'a doesn't escape
+    ctx.add_use_point(vid_static, make_point(1, 0));
+
+    let result = ctx.infer_regions();
+    assert!(result.is_ok());
+
+    // All three should have the same point set (propagated through chain)
+    let a_pts = ctx.region_points(vid_a).unwrap();
+    let b_pts = ctx.region_points(vid_b).unwrap();
+    let c_pts = ctx.region_points(vid_c).unwrap();
+    assert!(c_pts.contains(&make_point(1, 0)));
+    assert!(b_pts.contains(&make_point(1, 0))); // propagated from c
+    assert!(a_pts.contains(&make_point(1, 0))); // propagated from b
 }

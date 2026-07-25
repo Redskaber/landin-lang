@@ -6,12 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.14.1 — Stage 0-5 complete, Stage 6 收尾里程碑达成, Stage 7 in progress (region inference).
-> **1890 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 110 test modules!
+> **Status:** v0.14.2 — Stage 0-5 complete, Stage 6 收尾里程碑达成, Stage 7 in progress (region inference).
+> **1995 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 110 test modules!
 > Process v3.21 (§0-§28). §16 interface isolation compliant.
-> Stage 5 complete (99 sub-stages). Stage 6: 47-module architecture (concluded). Stage 7: TD-015 region inference (step 1/5 complete — data structures + constraint collection).
+> Stage 5 complete (99 sub-stages). Stage 6: 47-module architecture (concluded). Stage 7: TD-015 region inference (step 2/5 complete — data structures + inference algorithm).
 > 🎉 Architecture: all mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs files < 1300 LOC. Single responsibility per module. Data flows单向. Design docs synced with implementation (§25.8).
-> Next: Stage 7.2 — Region inference 算法（不动点迭代）.
+> Next: Stage 7.3 — Implied bounds + type tests (TD-015 step 3).
 
 ## Quick start
 
