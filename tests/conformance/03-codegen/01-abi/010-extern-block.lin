@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: extern block with multiple declarations
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+extern "C" { fn a(); fn b(); }

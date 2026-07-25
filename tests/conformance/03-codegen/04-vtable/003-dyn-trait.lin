@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: dyn trait object creation
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion (Stage 0 — trait/vtable compiles)
+
+trait T { fn f(&self); } struct S; impl T for S { fn f(&self) {} } fn main() { let s: &dyn T = &S; }

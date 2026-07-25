@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: shift overflow check
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn main() { let x: i32 = 1; let y = x << 31; }

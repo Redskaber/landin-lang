@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: function with no arguments
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn f() -> i32 { 0 }

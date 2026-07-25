@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: small numbers don't overflow
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn main() { let x = 1 + 2; }

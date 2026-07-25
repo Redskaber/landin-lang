@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: normal arithmetic doesn't panic
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn main() { let a = 10; let b = 3; let c = a / b; let d = a % b; }

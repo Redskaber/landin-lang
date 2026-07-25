@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: while produces br loop
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn main() { let mut i = 0; while i < 10 { i += 1; } }

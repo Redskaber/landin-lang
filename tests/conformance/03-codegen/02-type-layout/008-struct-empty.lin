@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: empty struct (unit-like)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+struct S;

@@ -4231,3 +4231,15 @@ Stage 10.2 — 02-borrowck conformance (80 tests).
 - New Rust integration tests: `tests/v0/stage9/plan/stage10_2_tests.rs` (4 tests)
 
 **Test impact**: +4 rust (2261 → 2265) + 80 conformance (720 → 800). 0 regressions.
+
+### v2.20 (Stage 10.3, 2026-07-26)
+
+Stage 10.3 — 03-codegen conformance (61 tests).
+
+**Changes**:
+- New conformance category `tests/conformance/03-codegen/` with 61 .lin test
+  files in 6 subcategories (llvm-ir-output/abi/type-layout/drop-glue/vtable/panic-paths)
+- 6 tests adjusted (5 error→ok for vtable, 1 ok→error for impl-no-trait)
+- New Rust integration tests: `tests/v0/stage9/plan/stage10_3_tests.rs` (4 tests)
+
+**Test impact**: +4 rust (2265 → 2269) + 61 conformance (800 → 861). 0 regressions.

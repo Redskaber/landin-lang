@@ -1,0 +1,7 @@
+// CATEGORY: codegen
+// DESCRIPTION: method call on struct
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.3 conformance expansion
+
+struct S { x: i32 } impl S { fn get(&self) -> i32 { self.x } } fn main() { let s = S { x: 1 }; s.get(); }

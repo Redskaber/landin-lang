@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: function with one argument
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn f(x: i32) -> i32 { x }

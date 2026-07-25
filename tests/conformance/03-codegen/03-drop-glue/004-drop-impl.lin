@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: struct with Drop impl
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion (Drop impl compiles)
+
+trait Drop { fn drop(&mut self); } struct S { x: i32 } impl Drop for S { fn drop(&mut self) {} }

@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: array type layout
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn main() { let arr: [i32; 4] = [0, 0, 0, 0]; }

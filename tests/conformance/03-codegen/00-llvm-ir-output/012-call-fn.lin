@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: function call produces call instruction
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn g() -> i32 { 0 } fn main() { g(); }

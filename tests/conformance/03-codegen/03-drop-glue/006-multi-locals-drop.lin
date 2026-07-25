@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: multiple locals dropped in reverse order
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn main() { let a = 1; let b = 2; let c = 3; }

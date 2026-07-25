@@ -479,3 +479,7 @@ mod stage10_1_tests;
 // Stage 10.2: 02-borrowck conformance verification
 #[path = "v0/stage9/plan/stage10_2_tests.rs"]
 mod stage10_2_tests;
+
+// Stage 10.3: 03-codegen conformance verification
+#[path = "v0/stage9/plan/stage10_3_tests.rs"]
+mod stage10_3_tests;

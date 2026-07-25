@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: integer overflow on mul
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn main() { let x: i32 = 1073741824; let y = x * 2; }

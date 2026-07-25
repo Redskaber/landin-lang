@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait method static dispatch
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion (Stage 0 — trait/vtable compiles)
+
+trait T { fn f(&self) -> i32; } struct S; impl T for S { fn f(&self) -> i32 { 1 } } fn main() { let s = S; s.f(); }

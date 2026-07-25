@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: if produces br instruction
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn main() { if true { 1 } else { 2 } }

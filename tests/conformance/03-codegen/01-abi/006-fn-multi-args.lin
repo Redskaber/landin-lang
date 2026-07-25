@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: function with multiple arguments
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn f(a: i32, b: i32, c: i32) -> i32 { a + b + c }

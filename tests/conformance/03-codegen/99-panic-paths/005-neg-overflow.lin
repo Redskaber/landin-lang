@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: negative overflow
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+fn main() { let x: i32 = -2147483648; let y = x - 1; }

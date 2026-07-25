@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: nested struct types
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.3 conformance expansion
+
+struct Inner { x: i32 } struct Outer { inner: Inner }
