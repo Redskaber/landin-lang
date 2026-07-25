@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: move closure capturing string
+//! source: Stage 9.8 conformance expansion
+fn f() { let s = "hello"; let g = move || s; }

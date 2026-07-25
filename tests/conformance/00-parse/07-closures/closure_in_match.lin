@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: closure in match arm
+//! source: Stage 9.8 conformance expansion
+fn f(x: i32) { match x { _ => |y| y }; }

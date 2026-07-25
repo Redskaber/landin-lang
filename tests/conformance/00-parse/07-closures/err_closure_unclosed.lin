@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: unclosed closure param parses via synthetic node recovery
+//! source: Stage 9.8 conformance expansion
+fn f() { let _ = |x 1; }

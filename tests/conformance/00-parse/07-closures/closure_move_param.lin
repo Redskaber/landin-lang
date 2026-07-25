@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: move closure with single param
+//! source: Stage 9.8 conformance expansion
+fn f() { let _ = move |x| x; }

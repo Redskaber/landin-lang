@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: closure capturing in function scope
+//! source: Stage 9.8 conformance expansion
+fn f() { let x = 1; let g = || x; }

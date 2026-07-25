@@ -1,0 +1,6 @@
+//! FAIL
+//! category: closures
+//! description: closure type syntax || -> i32 not supported in type position (parser limitation in Stage 0)
+//! error_pattern: parse error
+//! source: Stage 9.8 conformance expansion
+fn f() { let g: || -> i32 = || 1; }

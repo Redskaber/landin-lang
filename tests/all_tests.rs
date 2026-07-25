@@ -443,3 +443,7 @@ mod stage9_6_attributes_tests;
 // Stage 9.7: Generics conformance expansion verification
 #[path = "v0/stage9/plan/generics_tests.rs"]
 mod stage9_7_generics_tests;
+
+// Stage 9.8: Closures conformance expansion verification
+#[path = "v0/stage9/plan/closures_tests.rs"]
+mod stage9_8_closures_tests;

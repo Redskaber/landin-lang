@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: closure passed as expression
+//! source: Stage 9.8 conformance expansion
+fn g(x: i32) -> i32 { x } fn f() { let h = |y| g(y); }

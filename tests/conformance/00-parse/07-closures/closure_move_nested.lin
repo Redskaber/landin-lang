@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: nested move closures
+//! source: Stage 9.8 conformance expansion
+fn f() { let _ = move || move || 1; }

@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: curried closure chain
+//! source: Stage 9.8 conformance expansion
+fn f() { let _ = |x| |y| x + y; }

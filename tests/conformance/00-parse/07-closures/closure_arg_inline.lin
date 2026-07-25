@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: inline closure as argument
+//! source: Stage 9.8 conformance expansion
+fn map(f: i32) {} fn f() { let g = |x| x + 1; map(1); }

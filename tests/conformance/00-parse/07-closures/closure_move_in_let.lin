@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: move closure in let binding
+//! source: Stage 9.8 conformance expansion
+fn f() { let g = move || 1; }

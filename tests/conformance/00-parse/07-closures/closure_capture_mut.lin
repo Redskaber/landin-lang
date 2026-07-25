@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: closure capturing mutable var
+//! source: Stage 9.8 conformance expansion
+fn f() { let mut x = 1; let g = || { x += 1; x }; }

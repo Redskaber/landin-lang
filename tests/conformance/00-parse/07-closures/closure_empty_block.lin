@@ -1,0 +1,5 @@
+//! PASS
+//! category: closures
+//! description: empty closure || block
+//! source: Stage 9.8 conformance expansion
+fn f() { let _ = || { 1 }; }
