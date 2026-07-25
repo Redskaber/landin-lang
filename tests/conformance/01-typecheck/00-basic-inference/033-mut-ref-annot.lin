@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: mutable reference type annotation
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn main() { let mut x = 1; let r: &mut i32 = &mut x; }

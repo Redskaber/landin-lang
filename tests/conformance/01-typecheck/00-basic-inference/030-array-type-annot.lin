@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: array type annotation
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn main() { let arr: [i32; 3] = [1, 2, 3]; }

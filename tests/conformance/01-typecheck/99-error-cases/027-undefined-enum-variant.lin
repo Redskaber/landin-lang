@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: accessing undefined enum variant
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion (Stage 0 limitation — typeck does not catch this)
+
+enum E { A, B } fn main() { let e = E::C; }

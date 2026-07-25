@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: type alias usage
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+type Id = i32; fn main() { let x: Id = 42; }

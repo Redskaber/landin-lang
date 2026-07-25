@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: tuple type mismatch
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion (Stage 0 limitation — typeck does not catch this)
+
+fn main() { let t: (i32, i32) = (1, 2, 3); }

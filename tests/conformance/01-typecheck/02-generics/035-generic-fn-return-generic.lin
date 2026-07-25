@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic function returning generic struct
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.8 typecheck expansion (Stage 0 limitation)
+
+struct S<T> { x: T } fn f<T>(x: T) -> S<T> { S { x } }

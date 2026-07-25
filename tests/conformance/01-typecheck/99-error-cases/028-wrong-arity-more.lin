@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: too many arguments
+// EXPECTED: compile_error
+// ERROR_PATTERN: argument
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn f(a: i32) {} fn main() { f(1, 2); }

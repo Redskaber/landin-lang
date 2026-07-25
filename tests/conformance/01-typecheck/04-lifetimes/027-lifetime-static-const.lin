@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: static lifetime in const
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+const C: &'static str = "hello";

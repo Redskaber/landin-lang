@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: function with two ref params diff lifetimes
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn f<'a, 'b>(x: &'a i32, y: &'b i32) -> i32 { *x + *y }

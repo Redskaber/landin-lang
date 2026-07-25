@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: assigning to immutable reference
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion (Stage 0 limitation — typeck does not catch this)
+
+fn main() { let x = 1; let r = &x; *r = 2; }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: infer isize from literal
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn main() { let x: isize = 1; }

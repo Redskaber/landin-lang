@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: match on enum with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+enum E<'a> { A(&'a i32), B } fn f(e: E) -> i32 { match e { E::A(r) => *r, E::B => 0 } }

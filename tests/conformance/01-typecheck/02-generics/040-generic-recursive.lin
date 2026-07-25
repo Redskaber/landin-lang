@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: recursive generic struct (linked list)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+struct Node<T> { val: T, next: i32 } fn main() { let n: Node<i32> = Node { val: 1, next: -1 }; }

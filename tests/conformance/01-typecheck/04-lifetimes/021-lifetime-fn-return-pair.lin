@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: function returning pair of refs
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn f<'a>(x: &'a i32, y: &'a i32) -> (&'a i32, &'a i32) { (x, y) }

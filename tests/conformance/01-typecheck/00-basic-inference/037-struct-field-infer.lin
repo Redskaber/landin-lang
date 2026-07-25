@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: struct field type inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+struct S { x: i32 } fn main() { let s = S { x: 42 }; }

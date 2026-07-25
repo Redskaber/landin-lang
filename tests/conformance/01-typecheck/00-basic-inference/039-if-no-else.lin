@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: if without else is unit
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn main() { if true { let x = 1; } }

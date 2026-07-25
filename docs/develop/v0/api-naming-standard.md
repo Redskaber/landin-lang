@@ -4295,3 +4295,16 @@ Stage 10.7 — 07-integration conformance (50 tests, last category!).
 - New Rust integration tests: `tests/v0/stage10/plan/stage10_7_tests.rs` (5 tests)
 
 **Test impact**: +5 rust (2280 → 2284) + 50 conformance (1009 → 1059). 0 regressions.
+
+### v2.25 (Stage 10.8, 2026-07-26)
+
+Stage 10.8 — §25 deep review + typecheck expansion (Stage 10 finale).
+
+**Changes**:
+- §25 deep review completed: `docs/develop/v0/stage-10/deep-review-stage10-r205.md` (5/5 GO → PASS)
+- Typecheck batch expansion: +80 tests (120 → 200) in 4 subcategories
+- 26 tests adjusted after compile-mode discovery (Stage 0 limitations)
+- New Rust integration tests: `tests/v0/stage10/plan/stage10_8_tests.rs` (4 tests)
+- Stage 10 complete: 8/8 sub-stages, all 8 conformance categories created
+
+**Test impact**: +4 rust (2285 → 2290) + 80 conformance (1059 → 1139). 0 regressions.

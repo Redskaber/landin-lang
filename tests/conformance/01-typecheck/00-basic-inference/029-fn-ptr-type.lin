@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: function pointer type
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn g(x: i32) -> i32 { x } fn main() { let f: fn(i32) -> i32 = g; }

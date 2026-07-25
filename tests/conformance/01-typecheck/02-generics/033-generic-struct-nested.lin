@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: nested generic structs
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+struct Inner<T> { x: T } struct Outer<T> { i: Inner<T> }

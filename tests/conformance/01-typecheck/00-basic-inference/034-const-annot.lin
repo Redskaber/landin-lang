@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: const type annotation
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+const C: i32 = 42;

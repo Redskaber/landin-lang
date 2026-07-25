@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: multiple function pointers with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn f(x: &i32) -> i32 { *x } fn g(x: &i32) -> i32 { *x } fn main() { let f1: fn(&i32) -> i32 = f; let f2: fn(&i32) -> i32 = g; }

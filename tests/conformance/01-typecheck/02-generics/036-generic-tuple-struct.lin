@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic tuple struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+struct Pair<A, B>(A, B); fn main() { let p = Pair(1, 2); }

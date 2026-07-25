@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: reference type annotation
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.8 typecheck expansion
+
+fn main() { let x = 1; let r: &i32 = &x; }
