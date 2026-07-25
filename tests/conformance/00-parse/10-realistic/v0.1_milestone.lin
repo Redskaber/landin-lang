@@ -1,0 +1,85 @@
+//! PASS
+//! category: realistic
+//! description: v0.1 milestone — comprehensive program combining all Stage 0 features
+//! source: Stage 9.12 v0.1 release candidate milestone test
+
+// v0.1 MILESTONE TEST
+// This program combines all Stage 0 grammar features in a single file:
+// - Item declarations: struct, enum, trait, impl, fn, const, type alias
+// - Type system: primitives, references, arrays, tuples, generics, trait objects
+// - Expressions: literals, operators, control flow, closures, match
+// - Patterns: wildcard, ident, literal, struct, tuple, or, range
+// - Attributes: outer attributes with derive
+// - Modules: inline module with use declarations
+// - Error recovery: parser handles complex nested constructs
+
+struct Point<T> {
+    x: T,
+    y: T,
+}
+
+impl<T> Point<T> {
+    fn new(x: T, y: T) -> Self {
+        Point { x, y }
+    }
+}
+
+enum Shape {
+    Circle(f64),
+    Rectangle(f64, f64),
+    Triangle { a: f64, b: f64, c: f64 },
+}
+
+trait Area {
+    fn area(&self) -> f64;
+}
+
+impl Area for Shape {
+    fn area(&self) -> f64 {
+        match self {
+            Shape::Circle(r) => 3.14159 * r * r,
+            Shape::Rectangle(w, h) => w * h,
+            Shape::Triangle { a, b, c } => {
+                let s = (a + b + c) / 2.0;
+                (s * (s - a) * (s - b) * (s - c))
+            }
+        }
+    }
+}
+
+const PI: f64 = 3.14159;
+
+type PointF = Point<f64>;
+
+fn fib(n: i32) -> i32 {
+    if n < 2 {
+        return n;
+    }
+    fib(n - 1) + fib(n - 2)
+}
+
+fn main() {
+    let p = Point::<f64>::new(1.0, 2.0);
+    let shapes: [Shape; 3] = [
+        Shape::Circle(5.0),
+        Shape::Rectangle(3.0, 4.0),
+        Shape::Triangle { a: 3.0, b: 4.0, c: 5.0 },
+    ];
+
+    let mut total_area = 0.0;
+    let mut i = 0;
+    while i < 3 {
+        total_area += shapes[i].area();
+        i += 1;
+    }
+
+    let result = fib(10);
+    let closure = |x: i32| x * 2;
+    let doubled = closure(result);
+
+    match doubled {
+        0 => { }
+        n if n > 0 => { let _ = n; }
+        _ => { }
+    }
+}

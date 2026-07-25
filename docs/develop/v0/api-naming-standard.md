@@ -4141,3 +4141,23 @@ Stage 9.11 — Realistic programs conformance expansion.
 **Key discovery**: All 52 realistic programs pass on first run — no test
 adjustments needed! This validates that the Stage 0 parser correctly handles
 real-world combinations of all grammar features.
+
+
+### v2.15 (Stage 9.12, 2026-07-26)
+
+Stage 9.12 — §25 deep review + v0.1 release candidate.
+
+**Changes**:
+- Added final conformance test: `tests/conformance/00-parse/10-realistic/v0.1_milestone.lin`
+  (comprehensive program combining all Stage 0 features) — conformance 599 → 600
+- §25 deep review completed: `docs/develop/v0/stage-9/deep-review-stage9-r195.md`
+  (5/5 GO → PASS)
+- v0.1 release candidate announced (conformance 600/600 target met)
+- New Rust integration tests: `tests/v0/stage9/plan/deep_review_v01_rc_tests.rs` (10 tests)
+
+**Test impact**: +10 rust integration tests (2225 → 2235) + 1 conformance test
+(599 → 600). 0 regressions. 0 clippy warnings. fmt clean.
+
+**API surface**: No new public API. All existing APIs unchanged.
+
+**🎉 v0.1 release gate达成!** Conformance 600/600, §25 deep review PASS.

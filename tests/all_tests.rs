@@ -459,3 +459,7 @@ mod stage9_10_error_recovery_tests;
 // Stage 9.11: Realistic programs conformance expansion verification
 #[path = "v0/stage9/plan/realistic_programs_tests.rs"]
 mod stage9_11_realistic_programs_tests;
+
+// Stage 9.12: v0.1 release candidate verification (§25 deep review)
+#[path = "v0/stage9/plan/deep_review_v01_rc_tests.rs"]
+mod stage9_12_deep_review_v01_rc_tests;

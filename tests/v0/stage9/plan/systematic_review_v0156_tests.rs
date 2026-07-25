@@ -226,16 +226,25 @@ fn test_stage9_conformance_categories_match_design() {
     }
 }
 
-/// Stage 9.1 verification — Cargo.toml version bumped to 0.16.0
+/// Stage 9.1 verification — Cargo.toml version bumped to 0.16.0+
 #[test]
 fn test_stage9_cargo_toml_version_bumped() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let cargo_toml = manifest.join("Cargo.toml");
     let content = std::fs::read_to_string(&cargo_toml).expect("read Cargo.toml");
 
-    // After Stage 9.1, version should be 0.16.x
+    // After Stage 9.1, version should be 0.16.x+ (later stages may bump further)
+    let version_line = content
+        .lines()
+        .find(|l| l.starts_with("version = "))
+        .expect("version line must exist");
+    let is_valid = version_line.starts_with("version = \"0.16.")
+        || version_line.starts_with("version = \"0.17.")
+        || version_line.starts_with("version = \"0.18.")
+        || version_line.starts_with("version = \"0.19.")
+        || version_line.starts_with("version = \"0.20.");
     assert!(
-        content.contains("version = \"0.16."),
-        "Cargo.toml version must be 0.16.x after Stage 9.1 bump"
+        is_valid,
+        "Cargo.toml version must be 0.16.x+ after Stage 9.1 bump, got: {version_line}"
     );
 }

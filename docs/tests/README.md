@@ -72,7 +72,8 @@ docs/tests/
         ├── closures.md               ↔ tests/v0/stage9/plan/closures_tests.rs (11 tests)
         ├── modules.md                ↔ tests/v0/stage9/plan/modules_tests.rs (10 tests)
         ├── error_recovery.md          ↔ tests/v0/stage9/plan/error_recovery_tests.rs (8 tests)
-        └── realistic_programs.md       ↔ tests/v0/stage9/plan/realistic_programs_tests.rs (10 tests)
+        ├── realistic_programs.md       ↔ tests/v0/stage9/plan/realistic_programs_tests.rs (10 tests)
+        └── deep_review_v01_rc.md        ↔ tests/v0/stage9/plan/deep_review_v01_rc_tests.rs (10 tests)
 ```
 
 ## Test Code Directory Structure (tests/)
@@ -104,7 +105,7 @@ tests/
     │                          systematic_review_v014)
     └── stage8/plan/   (6 files: lifetime_elision, object_safety, extern_c_abi,
                                  drop_elaboration, async_await, deep_review)
-    └── stage9/plan/   (11 files: systematic_review_v0156_tests, operators_tests, control_flow_tests, patterns_tests, types_tests, attributes_tests, generics_tests, closures_tests, modules_tests, error_recovery_tests, realistic_programs_tests)
+    └── stage9/plan/   (12 files: systematic_review_v0156_tests, operators_tests, control_flow_tests, patterns_tests, types_tests, attributes_tests, generics_tests, closures_tests, modules_tests, error_recovery_tests, realistic_programs_tests, deep_review_v01_rc_tests)
 ```
 
 ### Why the refactor?
@@ -159,10 +160,10 @@ cargo test --test all_tests -- lexer_tests::test_int_decimal
 | Stage 6 | — (refactor, behavior-equivalent) | — |
 | Stage 7 | 154 (+28 unit) | 5 |
 | Stage 8 | 38 (+9 unit) | 6 |
-| Stage 9 | +124 rust + +591 conformance | 11 rust + 591 .lin |
-| **Total** | **2225** rust + **599** conformance (146 unit + 2079 integration, 2 ignored) | **128** rust + **599** .lin |
+| Stage 9 | +134 rust + +592 conformance | 12 rust + 592 .lin |
+| **Total** | **2235** rust + **600** conformance (146 unit + 2089 integration, 2 ignored) | **129** rust + **600** .lin |
 
 ---
 
-**Last updated**: 2026-07-26 (Stage 9.11 — Realistic programs conformance expansion)
+**Last updated**: 2026-07-26 (Stage 9.12 — v0.1 release candidate! Conformance 600/600)
 **Process**: v3.21

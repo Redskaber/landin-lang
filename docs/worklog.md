@@ -7784,3 +7784,27 @@ Stage Summary:
 - 🎉 Conformance progress: 547 → 599 (+52, 99.8% of 600 target — v0.1 release imminent!)
 - Key discovery: All 52 realistic programs pass on first run — validates Stage 0 parser handles real-world combinations of all grammar features correctly
 - Next: Stage 9.12 — §25 deep review + v0.1 release candidate (final 1 test + deep review = v0.1 release!)
+
+---
+Task ID: stage9.12-r195
+Agent: Super Z (main)
+Task: Stage 9.12 — §25 deep review + v0.1 release candidate (+1 .lin +10 rust tests) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.16.10 / 2225 rust tests + 599 conformance (Stage 9.11 complete); §25 deep review protocol
+- Created tests/conformance/00-parse/10-realistic/v0.1_milestone.lin — comprehensive program combining all Stage 0 features (struct/enum/trait/impl/fn/const/type + generics + match + closures + control flow + patterns); conformance 599 → 600 (target met!)
+- Created tests/v0/stage9/plan/deep_review_v01_rc_tests.rs (10 verification tests covering D3/D4/D5/D7 dimensions + v0.1 release gate verification); updated tests/all_tests.rs
+- Produced deep-review-stage9-r195.md (full 7-dimension audit of Stage 9.1-9.12): D1 architecture ✅ / D2 tech debt ✅ / D3 tests ✅ 2225+600 / D4 v0.1 readiness ✅ / D5 design ✅ / D6 perf ✅ / D7 docs ✅; 5/5 GO → PASS
+- Created 3 new docs: plan-9.12.md + gate-review-9.12.md + deep-review-stage9-r195.md
+- Updated README.md (v0.16.10 → v0.17.0, Stage 9 ✅ Complete, v0.1 RC announced), RELEASE_NOTES.md (+v0.17.0 section), api-naming-standard.md (v2.14 → v2.15), docs/tests/matrix.md (+Stage 9.12 stats, 600/600), docs/tests/README.md (+deep_review_v01_rc.md reference)
+- Bumped Cargo.toml v0.16.10 → v0.17.0 (v0.1 RC — minor bump for release candidate)
+- Ran full CI/CD: cargo clean + cargo test (2235 passed = 146 unit + 2089 integration) + cargo fmt + cargo clippy --all-targets — all green ✅
+- Ran conformance suite: python3 tests/conformance/run_all.py — 600 passed (599 + 1 milestone), 0 failed ✅
+
+Stage Summary:
+- Stage 9.12 PASSED — CI/CD all green per §1.2; §25 deep review 5/5 GO → PASS; §17.1/§17.2/§17.3/§18.4 fully compliant
+- 🎉 v0.1 release gate 达成! Conformance 600/600, §25 deep review PASS, v0.1 release candidate 宣布!
+- Test growth: 2225 → 2235 rust (+10) + 599 → 600 conformance (+1); 0 regressions; 0 clippy warnings
+- Stage 9 complete: 12 sub-stages (9.1-9.12), conformance 8 → 600 (+592, +7400%), 29 parser limitations documented
+- 🎯 v0.1 release gate: Stage 0-8 完整 + conformance 通过 (600/600) — 达成!
+- Next: v0.1 release (正式发布) OR v0.3 bootstrap preparation (Stage 1 重写规划)

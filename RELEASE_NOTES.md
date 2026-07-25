@@ -1,9 +1,84 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.16.10
+**Current version**: v0.17.0 (v0.1 RC)
 **Date**: 2026-07-26
-**Test count**: 2225 tests + 5 benchmarks + 599 conformance tests
+**Test count**: 2235 tests + 5 benchmarks + 600 conformance tests
+
+---
+
+## v0.17.0 — Stage 9.12 (§25 deep review + v0.1 release candidate) 🎉
+
+### Overview
+
+**Stage 9 收尾** — §25 七维度深度审查 + v0.1 release candidate 宣布!
+
+**🎉 v0.1 release gate 达成! Conformance 600/600!**
+
+### v0.1 release gate (per `12-roadmap.md` §1)
+
+| Gate | 状态 |
+|------|------|
+| Stage 0-8 完整 | ✅ |
+| Conformance 通过 (600/600) | ✅ |
+| §17 文档标准化 | ✅ |
+| §25 深度审查 PASS | ✅ |
+
+**v0.1 = Stage 0 完整 + conformance 通过（不自举）** — **达成!**
+
+### §25 深度审查
+
+`docs/develop/v0/stage-9/deep-review-stage9-r195.md` — 5/5 GO → PASS
+
+| 维度 | 状态 |
+|------|------|
+| D1 架构 | ✅ 50+ modules, 7 files > 1000 LOC (all OK or TD-019 hold) |
+| D2 技术债 | ✅ Only TD-019 OPEN (user-directed hold) |
+| D3 测试 | ✅ 2235 rust + 600 conformance (v0.1 gate met!) |
+| D4 v0.1 readiness | ✅ Stage 0-8 complete, conformance 600/600, v0.1 RC announced! |
+| D5 设计对齐 | ✅ 8 core design docs synced; conformance suite as executable spec |
+| D6 性能 | ✅ No O(n²); conformance 600 tests ~1 sec |
+| D7 文档 | ✅ §17.1/§17.2/§17.3/§18.4 fully compliant |
+
+### New conformance test (1 new — v0.1 milestone)
+
+`tests/conformance/00-parse/10-realistic/v0.1_milestone.lin` — comprehensive
+program combining all Stage 0 features (struct/enum/trait/impl/fn/const/type +
+generics + match + closures + control flow + patterns).
+
+### New Rust integration tests (10 tests)
+
+`tests/v0/stage9/plan/deep_review_v01_rc_tests.rs` — verifies v0.1 release gate.
+
+### Stage 9 complete summary
+
+| Sub-stage | Topic | Conformance | Cumulative |
+|-----------|-------|-------------|-----------|
+| 9.1 | Systematic review + literals | +30 | 38 |
+| 9.2 | Operators + Pratt | +60 | 98 |
+| 9.3 | Control flow | +79 | 177 |
+| 9.4 | Patterns | +70 | 247 |
+| 9.5 | Types | +60 | 307 |
+| 9.6 | Attributes | +40 | 347 |
+| 9.7 | Generics | +50 | 397 |
+| 9.8 | Closures | +40 | 437 |
+| 9.9 | Modules | +60 | 497 |
+| 9.10 | Error recovery | +50 | 547 |
+| 9.11 | Realistic programs | +52 | 599 |
+| 9.12 | §25 deep review + v0.1 RC | +1 | 600 🎉 |
+| **Total** | **12 sub-stages** | **+592** | **600** |
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2235 passed (146 unit + 2089 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 600 passed, 0 failed
+```
+
+### 🎉 v0.1 release candidate announced!
 
 ---
 
