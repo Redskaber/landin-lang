@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: refcell pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct RefCell<T>{val:T} fn main(){let r=RefCell{val:42};}

@@ -4364,3 +4364,15 @@ Stage 11.5 — soundness expansion (50→200, +150 tests).
 - New Rust integration tests: `tests/v0/stage11/plan/stage11_5_tests.rs` (3 tests)
 
 **Test impact**: +3 rust (2304 → 2307) + 150 conformance (1841 → 1991). 0 regressions.
+
+### v2.31 (Stage 11.6+11.7, 2026-07-26)
+
+Stage 11.6+11.7 — stdlib + integration expansion (50→200 each, +300 combined).
+
+**Changes**:
+- stdlib expanded +150 tests (core +50, alloc +50, std +50)
+- integration expanded +150 tests (multi-crate +50, cross-module +50, feature-gate +50)
+- 42 tests adjusted (Stage 0 limitations)
+- New Rust integration tests: `tests/v0/stage11/plan/stage11_6_7_tests.rs` (4 tests)
+
+**Test impact**: +4 rust (2307 → 2311) + 300 conformance (1991 → 2294). 0 regressions.

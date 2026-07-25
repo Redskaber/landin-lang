@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: once pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Once{val:i32,done:bool} fn main(){let o=Once{val:42,done:false};}

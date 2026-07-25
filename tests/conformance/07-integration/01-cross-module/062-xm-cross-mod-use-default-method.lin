@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross mod use default method
+// EXPECTED: compile_error
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod traits{pub trait T{fn f(&self)->i32{0}}} mod app{use traits::T; struct S; impl T for S{}

@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: step by
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let arr=[0,1,2,3,4,5];let mut s=0;let mut i=0;while i<6{s+=arr[i];i+=2;}}

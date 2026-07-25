@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: hashmap entry
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Entry<K,V>{key:K,value:V,next:i32} fn main(){let e=Entry{key:1,value:2,next:-1};}

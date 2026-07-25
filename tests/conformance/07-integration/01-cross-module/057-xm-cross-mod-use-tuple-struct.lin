@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross mod use tuple struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod types{pub struct Pair(i32,i32);} mod app{use types::Pair; pub fn new()->Pair{Pair(1,2)}}

@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: once cell
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct OnceCell<T>{val:T,init:bool} fn main(){let c=OnceCell{val:0,init:false};}

@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: debug trait
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+trait Debug{fn fmt(&self)->i32;} struct S{x:i32} impl Debug for S{fn fmt(&self)->i32{0}}

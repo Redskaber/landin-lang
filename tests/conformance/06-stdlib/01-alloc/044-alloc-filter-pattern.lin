@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: filter pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Filter{f:i32} fn main(){let f=Filter{f:0};}

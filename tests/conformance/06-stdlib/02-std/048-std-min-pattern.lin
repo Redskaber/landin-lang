@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: min pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let arr=[3,1,4,1,5];let mut m=arr[0];let mut i=1;while i<5{if arr[i]<m{m=arr[i];}i+=1;}}

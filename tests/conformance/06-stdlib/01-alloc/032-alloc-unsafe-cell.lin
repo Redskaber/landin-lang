@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: unsafe cell
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct UnsafeCell<T>{val:T} fn main(){let u=UnsafeCell{val:42};}

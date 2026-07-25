@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: any pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let arr=[1,2,3];let mut found=false;let mut i=0;while i<3{if arr[i]==2{found=true;}i+=1;}}

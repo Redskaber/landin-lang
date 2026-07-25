@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: derive on enum with data
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[derive(Clone)] enum E{A(i32),B}

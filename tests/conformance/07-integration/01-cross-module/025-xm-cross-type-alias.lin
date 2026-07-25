@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross type alias
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod a{pub type Id=i32;} mod b{pub fn g()->a::Id{42}}

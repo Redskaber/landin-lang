@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: repr transparent
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[repr(transparent)] struct S(i32);

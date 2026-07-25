@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross mod glob import
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+mod utils{pub fn a()->i32{1} pub fn b()->i32{2}} mod app{use utils::*; pub fn sum()->i32{a()+b()}}

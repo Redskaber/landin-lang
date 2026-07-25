@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: repr C
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[repr(C)] struct S{x:i32}

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross mod visibility
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+mod a{pub fn public()->i32{42} fn private()->i32{0}} mod b{pub fn call()->i32{a::public()}}

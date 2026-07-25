@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: chain iter
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let a=[1,2];let b=[3,4];let mut s=0;let mut i=0;while i<2{s+=a[i];i+=1;}i=0;while i<2{s+=b[i];i+=1;}}

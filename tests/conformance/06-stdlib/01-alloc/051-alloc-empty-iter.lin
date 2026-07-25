@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: empty iter
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Empty{} fn main(){let e=Empty{};}

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross trait impl
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+mod a{pub trait T{fn f(&self)->i32;}} mod b{pub struct S; impl a::T for S{fn f(&self)->i32{1}}}

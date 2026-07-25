@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross where clause
+// EXPECTED: compile_error
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod a{pub trait T{fn f(&self)->i32;}} mod b{pub fn g<X>(x:X)->i32 where X:a::T{x.f()}}

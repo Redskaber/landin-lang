@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod with if
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod m{fn f(x:i32)->i32{if x>0{1}else{0}}}

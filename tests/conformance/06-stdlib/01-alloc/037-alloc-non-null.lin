@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: non null
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct NonNull<T>{ptr:i32,_m:T} fn main(){let n=NonNull{ptr:0,_m:0};}

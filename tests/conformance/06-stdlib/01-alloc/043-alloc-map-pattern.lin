@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: map pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Map{f:i32} fn main(){let m=Map{f:0};}

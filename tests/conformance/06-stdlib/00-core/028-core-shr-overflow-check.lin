@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: shr overflow check
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let x:i32=-1;let _=x>>31;}

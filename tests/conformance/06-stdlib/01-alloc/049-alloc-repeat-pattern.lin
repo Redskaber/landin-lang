@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: repeat pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Repeat{val:i32} fn main(){let r=Repeat{val:42};}

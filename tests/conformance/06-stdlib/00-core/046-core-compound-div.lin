@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: compound div
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let mut x=10;x/=2;}

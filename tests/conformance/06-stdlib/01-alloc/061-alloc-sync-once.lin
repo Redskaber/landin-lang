@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: sync once
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct SyncOnce{done:bool} fn main(){let s=SyncOnce{done:false};}

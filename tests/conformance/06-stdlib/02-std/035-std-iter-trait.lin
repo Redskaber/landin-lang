@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: iter trait
+// EXPECTED: compile_error
+// SOURCE: Stage 11.6+11.7 expansion
+
+trait Iterator{fn next(&mut self)->i32;} struct C{n:i32} impl Iterator for C{fn next(&mut self)->i32{self.n+=1;self.n}}

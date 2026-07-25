@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross mod raw ptr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod sys{pub fn get_ptr()->*const i32{0 as *const i32}} mod app{pub fn use_ptr()->i32{0}}

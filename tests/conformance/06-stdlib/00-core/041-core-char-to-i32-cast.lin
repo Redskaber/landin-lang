@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: char to i32 cast
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let c:char='a';let x=c as i32;}

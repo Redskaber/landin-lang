@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: manually drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct ManuallyDrop<T>{val:T} fn main(){let m=ManuallyDrop{val:42};}

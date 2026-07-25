@@ -1,0 +1,7 @@
+// CATEGORY: integration
+// DESCRIPTION: mod with extern fn
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+mod m{extern "C" fn f(){}

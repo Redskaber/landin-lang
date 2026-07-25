@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: array mut index
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let mut arr=[1,2];arr[0]=10;}

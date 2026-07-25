@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: into iter
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct IntoIter{pos:i32} fn main(){let it=IntoIter{pos:0};}

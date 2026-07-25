@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross mod use enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod types{pub enum State{Active,Inactive}} mod app{use types::State; pub fn check(s:State)->bool{match s{State::Active=>true,State::Inactive=>false}}}

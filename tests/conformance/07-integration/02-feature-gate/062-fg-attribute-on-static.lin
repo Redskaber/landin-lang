@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: attribute on static
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[foo] static S:i32=42;

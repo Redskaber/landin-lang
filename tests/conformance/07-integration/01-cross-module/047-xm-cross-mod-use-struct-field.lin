@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross mod use struct field
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod types{pub struct S{pub x:i32,pub y:i32}} mod app{use types::S; pub fn new()->S{S{x:1,y:2}}}

@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: skip pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Skip{n:i32} fn main(){let s=Skip{n:5};}

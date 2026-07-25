@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: lazy pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Lazy<T>{val:T,init:bool} fn main(){let l=Lazy{val:0,init:false};}

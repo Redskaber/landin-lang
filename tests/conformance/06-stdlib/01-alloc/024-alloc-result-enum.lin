@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: result enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+enum Result<T,E>{Ok(T),Err(E)} fn main(){let x=Result::Ok(42);}

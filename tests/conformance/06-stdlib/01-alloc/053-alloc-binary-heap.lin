@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: binary heap
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct BinaryHeap{data:[i32;100],len:i32} fn main(){let h=BinaryHeap{data:[0;100],len:0};}

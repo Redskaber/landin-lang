@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: atomic pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct AtomicI32{val:i32} fn main(){let a=AtomicI32{val:0};}

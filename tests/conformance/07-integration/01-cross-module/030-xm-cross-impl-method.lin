@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross impl method
+// EXPECTED: compile_error
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod a{pub struct S{x:i32} impl S{pub fn get(&self)->i32{self.x}}} fn main(){let s=a::S{x:1};s.get();}

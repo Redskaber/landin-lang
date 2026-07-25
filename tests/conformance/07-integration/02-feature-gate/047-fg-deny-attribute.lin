@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: deny attribute
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[deny(warnings)] fn f(){}

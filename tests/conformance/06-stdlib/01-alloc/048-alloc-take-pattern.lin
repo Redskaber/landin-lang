@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: take pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Take{n:i32} fn main(){let t=Take{n:5};}

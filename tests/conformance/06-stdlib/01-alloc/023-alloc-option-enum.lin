@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: option enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+enum Option<T>{Some(T),None} fn main(){let x=Option::Some(42);}

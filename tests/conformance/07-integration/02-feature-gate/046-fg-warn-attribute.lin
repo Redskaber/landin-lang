@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: warn attribute
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[warn(dead_code)] fn f(){}

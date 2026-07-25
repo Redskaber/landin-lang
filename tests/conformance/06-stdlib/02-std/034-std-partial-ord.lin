@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: partial ord
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+trait PartialOrd{fn cmp(&self,o:&Self)->i32;} struct S{x:i32} impl PartialOrd for S{fn cmp(&self,o:&Self)->i32{0}}

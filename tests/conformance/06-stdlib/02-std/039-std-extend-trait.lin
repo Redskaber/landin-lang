@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: extend trait
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+trait Extend<A>{fn extend(&mut self,iter:A);}

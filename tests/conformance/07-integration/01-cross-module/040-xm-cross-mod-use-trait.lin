@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross mod use trait
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+mod traits{pub trait T{fn f(&self)->i32;}} mod app{use traits::T;} struct S; impl T for S{fn f(&self)->i32{0}}

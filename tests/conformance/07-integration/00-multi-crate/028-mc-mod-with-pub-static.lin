@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod with pub static
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod foo{pub static S:i32=42;}

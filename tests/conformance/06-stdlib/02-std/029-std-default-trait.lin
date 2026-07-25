@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: default trait
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+trait Default{fn default()->Self;} struct S{x:i32} impl Default for S{fn default()->Self{S{x:0}}}

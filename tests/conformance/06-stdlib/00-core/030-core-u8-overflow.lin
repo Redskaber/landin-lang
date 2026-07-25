@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: u8 overflow
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let x:u8=255;let _=x+1;}

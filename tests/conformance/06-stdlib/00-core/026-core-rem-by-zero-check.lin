@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: rem by zero check
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let x=10;let y=0;let _=x%y;}

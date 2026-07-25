@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: chain pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Chain{a:i32,b:i32} fn main(){let c=Chain{a:0,b:0};}

@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: product pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let arr=[1,2,3,4,5];let mut p=1;let mut i=0;while i<5{p*=arr[i];i+=1;}}

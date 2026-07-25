@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross mod use as
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+mod utils{pub fn helper()->i32{42}} mod app{use utils::helper as h; pub fn call()->i32{h()}}

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod use multi
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod foo{pub struct A;pub struct B;} use foo::{A,B};

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: derive PartialEq
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[derive(PartialEq)] struct S;

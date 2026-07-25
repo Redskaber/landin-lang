@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: must_use attribute
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+#[must_use] fn f()->i32{0}

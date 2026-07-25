@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod with pub enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod foo{pub enum E{A,B}}

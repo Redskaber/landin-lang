@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: range pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct Range{start:i32,end:i32} fn main(){let r=Range{start:0,end:10};}

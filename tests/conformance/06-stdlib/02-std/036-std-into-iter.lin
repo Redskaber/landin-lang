@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: into iter
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+trait IntoIterator{fn into_iter(self)->i32;} struct S; impl IntoIterator for S{fn into_iter(self)->i32{0}}

@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: exact size
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+trait ExactSizeIterator{fn len(&self)->i32;}

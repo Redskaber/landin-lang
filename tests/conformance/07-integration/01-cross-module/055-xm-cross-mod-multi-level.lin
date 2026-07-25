@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross mod multi level
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+mod a{pub mod b{pub mod c{pub fn f()->i32{42}}}} mod app{pub fn call()->i32{a::b::c::f()}}

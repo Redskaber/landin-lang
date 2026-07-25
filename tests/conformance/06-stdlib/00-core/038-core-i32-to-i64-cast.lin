@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: i32 to i64 cast
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let x:i32=42;let y=x as i64;}

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross pattern match
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+mod a{pub enum E{A,B(i32)}} fn main(){let e=a::E::B(42);match e{a::E::A=>{},a::E::B(_)=>{}}}

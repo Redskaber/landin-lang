@@ -1,0 +1,7 @@
+// CATEGORY: stdlib
+// DESCRIPTION: phantom data
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
+
+struct Phantom<T>{_m:i32} fn main(){let p:Phantom<i32>=Phantom{_m:0};}

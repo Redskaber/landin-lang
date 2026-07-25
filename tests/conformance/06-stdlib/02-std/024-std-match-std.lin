@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: match std
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+fn main(){let x=42;match x{0=>{},1..=10=>{},_=>{}}}

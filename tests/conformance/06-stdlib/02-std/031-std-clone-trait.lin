@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: clone trait
+// EXPECTED: compile_error
+// SOURCE: Stage 11.6+11.7 expansion
+
+trait Clone{fn clone(&self)->Self;} struct S{x:i32} impl Clone for S{fn clone(&self)->Self{S{x:self.x}}}

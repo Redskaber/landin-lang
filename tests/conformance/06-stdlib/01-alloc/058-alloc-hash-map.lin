@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: hash map
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion
+
+struct HashMap{buckets:[i32;16],len:i32} fn main(){let m=HashMap{buckets:[0;16],len:0};}
