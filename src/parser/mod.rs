@@ -18,6 +18,18 @@ pub mod error;
 #[allow(clippy::module_inception)]
 pub mod parser;
 
+// Stage 6.12 (TD-022) sub-modules of `parser` — declared here so they
+// resolve to `src/parser/{expr,generics,items,pat,path,stmt,ty}.rs`
+// (sibling to `parser.rs`). Each sub-module adds methods to `impl Parser`
+// via its own `impl` block, per §14.4 (refactoring as architecture design).
+mod expr;
+mod generics;
+mod items;
+mod pat;
+mod path;
+mod stmt;
+mod ty;
+
 pub use error::ParseError;
 pub use parser::Parser;
 

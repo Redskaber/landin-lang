@@ -1,9 +1,108 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.13.0
+**Current version**: v0.13.1
 **Date**: 2026-07-25
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.13.1 — Stage 6.12 (parser.rs architectural split per §14.4 — TD-022)
+
+### Overview
+
+**Architectural split** of `src/parser/parser.rs` (3112 LOC, project's largest
+file) into 7 sub-modules. First application of v3.21 §13.4 (stage-start design
+alignment) + §14.4 (refactoring as architecture design, J1-J6 judgments).
+
+The new structure maps 1:1 to `docs/lang-design/02-grammar.md` §3.1-§3.7
+productions — this is "refactoring as architecture design," not LOC slicing.
+
+### §13.4 design alignment
+
+Read `docs/lang-design/02-grammar.md` §2 (Parser overview) + §3 (productions).
+§3 splits productions into 7 categories:
+
+| Design doc § | Category | New module |
+|--------------|----------|------------|
+| §3.1 + §3.7 | items + use | `items.rs` (780 LOC) |
+| §3.2 | generic + bound + where | `generics.rs` (274 LOC) |
+| §3.3 | type | `ty.rs` (254 LOC) |
+| §3.4 | expression | `expr.rs` (1028 LOC) |
+| §3.5 | pattern | `pat.rs` (318 LOC) |
+| §3.6 | statement | `stmt.rs` (104 LOC) |
+| §3.1 (path) | path (3 contexts) | `path.rs` (268 LOC) |
+
+### §14.4 J1-J6 judgments (all ✅)
+
+| # | Judgment | Status |
+|---|----------|--------|
+| J1 | architecture design alignment (1:1 with §3.1-§3.7) | ✅ |
+| J2 | single responsibility (each module = one parse category) | ✅ |
+| J3 | unidirectional flow (mod.rs → items.rs → 6 leaves, no cycles) | ✅ |
+| J4 | compiler concept completeness (PathContext+path内聚; Pratt+13levels内聚) | ✅ |
+| J5 | stage boundary clarity (all in src/parser/, Stage 0 unchanged) | ✅ |
+| J6 | scientific reasonable granularity (104-1028 LOC range) | ✅ |
+
+### New module structure
+
+```
+src/parser/
+  mod.rs          (56 LOC)    — crate-level re-exports + 7 子模块声明
+  parser.rs       (263 LOC)   ← Parser struct + cursor + parse_crate + recover
+  error.rs        (34 LOC)    — ParseError 定义（不变）
+  items.rs        (780 LOC)   ← 16 个 item-parsing 函数 + ty_to_path helper
+  expr.rs         (1028 LOC)  ← 21 个 Pratt/expr 函数 + ExprSpan trait
+  pat.rs          (318 LOC)   ← 4 个 pattern 函数
+  path.rs         (268 LOC)   ← 7 个 path 函数 + PathContext 引用
+  generics.rs     (274 LOC)   ← 5 个 generics/bounds/where/params/return 函数
+  ty.rs           (254 LOC)   ← parse_ty
+  stmt.rs         (104 LOC)   ← parse_block + parse_let
+```
+
+**parser.rs**: 3112 → **263 LOC** (-91.5%, -2849 LOC)
+
+### Visibility strategy (§16 interface isolation)
+
+- `Parser` struct fields: `pub(super)` (sibling modules can read/write cursor state)
+- Cursor methods (`peek`/`bump`/`eat`/`expect`/...): `pub(super)`
+- All `parse_*` methods: `pub(super)` (sibling sub-modules can inter-call)
+- `parse_crate`: `pub` (only public entry — §16 compliant)
+- `PathContext` enum: `pub(super)` (used by path.rs)
+- `ExprSpan` trait: `pub(super)` (internal to expr.rs)
+
+Parser-external code only sees: `Parser::new` + `Parser::parse_crate` +
+`Parser::into_errors` + `Parser::has_errors`.
+
+### §23 API naming compliance
+
+- All function names preserved (zero churn)
+- Module names follow `<noun>` pattern (consistent with `error.rs`)
+- No new public symbols (pure architectural reorganization)
+- No `pub use X::*;` glob
+
+### Changes
+
+- Created 7 new sub-modules under `src/parser/`
+- `parser.rs`: 3112 → 263 LOC (-91.5%)
+- `mod.rs`: added 7 `mod xxx;` declarations (sibling to parser.rs)
+- Moved `ExprSpan` trait + impl from parser.rs to expr.rs
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (890.6 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-022
+
+Introduced and immediately closed in this stage: parser.rs LOC was 3112 (project's
+largest file, violating §14.4 J2+J6). After split: 263 LOC, all sub-modules in
+104-1028 LOC range.
 
 ---
 

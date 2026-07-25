@@ -3113,3 +3113,40 @@ sync with implementation. This round performs lightweight writeback to
 **Test impact**: 0 (no code changes).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean (no code changes).
+
+### v1.81 (Stage 6.12, 2026-07-25)
+
+Stage 6.12 parser.rs architectural split round. Per v3.21 §13.4 (stage-start
+design alignment with 02-grammar.md §3.1-§3.7) + §14.4 (refactoring as
+architecture design, J1-J6 judgments).
+
+Splits `src/parser/parser.rs` (3112 LOC, project's largest file) into 7
+sub-modules, each owning one parsing category aligned with 02-grammar.md §3.
+
+**New public symbols**: None (pure architectural reorganization).
+
+**Changes**:
+- Created 7 new sub-modules under `src/parser/`:
+  - `path.rs` (268 LOC) — PathContext + path parsing
+  - `generics.rs` (274 LOC) — generics + bounds + where + params + return type
+  - `ty.rs` (254 LOC) — type parsing
+  - `expr.rs` (1028 LOC) — expression Pratt parsing + ExprSpan trait
+  - `pat.rs` (318 LOC) — pattern parsing
+  - `stmt.rs` (104 LOC) — block + let statement
+  - `items.rs` (780 LOC) — 16 item-parsing functions + ty_to_path helper
+- `parser.rs`: 3112 → 263 LOC (-91.5%, -2849 LOC)
+- All `mod xxx;` declarations in `src/parser/mod.rs`
+- Visibility: struct fields + cursor methods + parse_* methods all `pub(super)`;
+  `parse_crate` remains `pub` (only public entry)
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+**Architectural rationale**: Per §14.4 J1, new structure maps 1:1 to
+02-grammar.md §3.1-§3.7. Per J2, each module owns one parse category.
+Per J3, data flows mod.rs → items.rs → {generics, ty, path, expr, pat, stmt}.
+Per J6, all modules in 104-1028 LOC range.
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
+
+**TD-022**: parser.rs LOC — introduced and immediately closed in this stage.

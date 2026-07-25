@@ -3220,3 +3220,51 @@ next stage) → §13.4 (read design again next stage).
 
 **Next**: Stage 6.12 — parser.rs architectural split (3112 LOC → 6 sub-modules
 by parse category: expr / stmt / ty / pat / path / item), per §14.4 full flow.
+
+### Stage 6.12 — parser.rs architectural split per §14.4 (v0.13.1)
+
+**Priority**: User request — continue stage 0-6 progress with API naming
+standardization. Apply v3.21 §13.4 (stage-start design alignment with
+02-grammar.md) + §14.4 (refactoring as architecture design, J1-J6 judgments).
+
+**§13.4 design alignment**:
+- Read `docs/lang-design/02-grammar.md` §2 (Parser overview) + §3 (productions)
+- §3 splits productions into 7 categories: §3.1 items, §3.2 generics, §3.3 type,
+  §3.4 expr, §3.5 pat, §3.6 stmt, §3.7 use
+- Decision: map 7 categories to 7 sub-modules (merge §3.1+§3.7 into items.rs)
+
+**§14.4 J1-J6 judgments**:
+- J1 ✅ architecture design alignment (new structure maps 1:1 to §3.1-§3.7)
+- J2 ✅ single responsibility (each module owns one parse category)
+- J3 ✅ unidirectional flow (mod.rs → items.rs → 6 leaf modules, no cycles)
+- J4 ✅ compiler concept completeness (PathContext + path parsing 内聚;
+  Pratt table + 13 levels 内聚)
+- J5 ✅ stage boundary clarity (all in src/parser/, Stage 0 unchanged)
+- J6 ✅ scientific reasonable granularity (104-1028 LOC range)
+
+**Work completed**:
+- Created 7 new sub-modules under `src/parser/`:
+  * path.rs (268 LOC) — PathContext + 7 path functions
+  * generics.rs (274 LOC) — 5 generics/bounds/where/params/return functions
+  * ty.rs (254 LOC) — parse_ty
+  * expr.rs (1028 LOC) — 21 Pratt/expr functions + ExprSpan trait
+  * pat.rs (318 LOC) — 4 pattern functions
+  * stmt.rs (104 LOC) — parse_block + parse_let
+  * items.rs (780 LOC) — 16 item functions + ty_to_path helper
+- parser.rs: 3112 → 263 LOC (-91.5%, -2849 LOC)
+  * Retains: Parser struct + cursor methods + parse_crate + recover
+- Visibility:
+  * Struct fields + cursor methods + parse_* methods all pub(super)
+  * parse_crate remains pub (only public entry)
+- Cargo.toml: version 0.13.0 → 0.13.1
+
+**Architectural rationale**: Per §14.4 J1, the new structure maps 1:1 to
+02-grammar.md §3.1-§3.7 productions. This is "refactoring as architecture
+design" — not LOC slicing, but scientific module boundary design aligned
+with the language specification.
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-022**: parser.rs LOC — introduced and immediately closed in this stage.
+**Next**: Stage 6.13 — lexer/reader.rs architectural split (1537 LOC).
