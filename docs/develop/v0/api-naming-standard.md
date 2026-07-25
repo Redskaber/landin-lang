@@ -3586,3 +3586,21 @@ Stage 7.8 — §25 deep review. **No code changes** — pure review + verificati
 **Test impact**: +5 integration tests (2035 total). 0 regressions.
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.96 (Stage 7.9, 2026-07-25)
+
+Stage 7.9 — Systematic review + v0.2 planning. **No code changes** — pure
+review + verification tests.
+
+**New public symbols**: None.
+
+**Changes**:
+- New plan: `docs/develop/v0/stage-5/plan-7.9.md` (systematic review + v0.2 roadmap)
+- New gate review: `docs/develop/v0/stage-5/gate-review-7.9.md`
+- New test file: `tests/v0/stage7/plan/systematic_review_v014_tests.rs` (7 tests)
+- Added `#[path]` to `tests/all_tests.rs`
+- Worklog updated with Stage 6/7 summary
+
+**Test impact**: +7 integration tests (2042 total). 0 regressions.
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.

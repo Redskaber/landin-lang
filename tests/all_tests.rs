@@ -383,3 +383,7 @@ mod design_writeback_verification_tests;
 // Stage 7.8 (§25): Deep review verification tests
 #[path = "v0/stage7/plan/deep_review_tests.rs"]
 mod deep_review_tests;
+
+// Stage 7.9: Systematic review verification tests (v0.14.8)
+#[path = "v0/stage7/plan/systematic_review_v014_tests.rs"]
+mod systematic_review_v014_tests;

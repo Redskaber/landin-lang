@@ -3715,3 +3715,27 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 
 **Test impact**: +5 integration tests (2035 total). 0 regressions.
 **Next**: v0.2 features or additional improvements.
+
+### Stage 7.9 — 系统性审查 + v0.2 规划 (v0.14.9)
+
+**§25 + §13.4**: Systematic review of v0.14.8 project state + v0.2 planning.
+
+**Work completed**:
+- Created plan-7.9.md (systematic review + v0.2 roadmap)
+- Created tests/v0/stage7/plan/systematic_review_v014_tests.rs (7 tests)
+- Added #[path] to tests/all_tests.rs
+- Verified: all 8 design docs synced, all TDs closed except TD-019, all files < 1500 LOC
+- Planned v0.2: region inference activation → lifetime elision → object safety → extern "C" → drop elaboration
+- Cargo.toml: version 0.14.8 → 0.14.9
+
+**Key findings**:
+- ✅ All 8 core design docs have §25.8 writeback
+- ✅ All TDs closed except TD-019 (user deferred)
+- ✅ 47 modules, all files < 1500 LOC
+- ✅ Process v3.21 with §13.4/§14.4/§25.8 protocols
+- ⚠️ Worklog missing Stage 6/7 entries (fixed this round)
+
+**Test impact**: +7 integration tests (2042 total). 0 regressions.
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Next**: Stage 8 — v0.2 features (region inference activation, lifetime elision, etc.).

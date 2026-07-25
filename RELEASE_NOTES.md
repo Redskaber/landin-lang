@@ -1,9 +1,51 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.14.8
+**Current version**: v0.14.9
 **Date**: 2026-07-25
-**Test count**: 2035 tests + 5 benchmarks
+**Test count**: 2042 tests + 5 benchmarks
+
+---
+
+## v0.14.9 — Stage 7.9 (系统性审查 + v0.2 规划)
+
+### Overview
+
+Systematic review of v0.14.8 project state. All design docs synced, all TDs
+closed (except TD-019 user-deferred), 47 modules all < 1500 LOC. v0.2 roadmap
+planned.
+
+### Review results
+
+| Dimension | Status |
+|-----------|--------|
+| D1 Architecture | ✅ 47 modules, all < 1500 LOC |
+| D2 Technical Debt | ✅ Only TD-019 OPEN (user deferred) |
+| D3 Test Coverage | ✅ 2042 tests (+7 new) |
+| D4 Next Stage | ✅ v0.2 roadmap planned |
+| D5 Design Alignment | ✅ 8 docs all §25.8 synced |
+| D6 Performance | ✅ < 2s compilation |
+| D7 Documentation | ✅ Complete + worklog updated |
+
+### v0.2 roadmap
+
+| Priority | Action | Target |
+|----------|--------|--------|
+| P1 | Activate region inference (real lifetime in MIR) | Stage 8.1 |
+| P2 | Lifetime elision rules (§3.2) | Stage 8.2 |
+| P2 | Object safety rules (§2.3) | Stage 8.3 |
+| P2 | extern "C" ABI (§13.2) | Stage 8.4 |
+| P2 | Drop elaboration (§5) | Stage 8.5 |
+| P3 | async/await (§10) | Stage 8.6+ |
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2042 passed (126 unit + 1916 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
