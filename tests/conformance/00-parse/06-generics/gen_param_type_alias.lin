@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: generic type alias
+//! source: Stage 9.7 conformance expansion
+type T<U> = U;

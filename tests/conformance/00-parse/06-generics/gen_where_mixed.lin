@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: mixed lifetime and type where clause
+//! source: Stage 9.7 conformance expansion
+trait Clone { fn c(&self); } fn f<'a, T>(x: &'a T) where 'a: 'static, T: Clone {}

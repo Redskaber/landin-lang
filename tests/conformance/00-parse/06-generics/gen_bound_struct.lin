@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: type bound in struct
+//! source: Stage 9.7 conformance expansion
+trait Clone { fn c(&self); } struct S<T: Clone> { x: T }

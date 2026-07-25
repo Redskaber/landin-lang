@@ -439,3 +439,7 @@ mod stage9_5_types_tests;
 // Stage 9.6: Attributes conformance expansion verification
 #[path = "v0/stage9/plan/attributes_tests.rs"]
 mod stage9_6_attributes_tests;
+
+// Stage 9.7: Generics conformance expansion verification
+#[path = "v0/stage9/plan/generics_tests.rs"]
+mod stage9_7_generics_tests;

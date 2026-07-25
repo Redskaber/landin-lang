@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: nested generic type
+//! source: Stage 9.7 conformance expansion
+struct Vec<T> { items: [T; 0] } struct S<T> { v: Vec<T> }

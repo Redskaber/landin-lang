@@ -67,7 +67,8 @@ docs/tests/
         ├── control_flow.md           ↔ tests/v0/stage9/plan/control_flow_tests.rs (14 tests)
         ├── patterns.md               ↔ tests/v0/stage9/plan/patterns_tests.rs (16 tests)
         ├── types.md                  ↔ tests/v0/stage9/plan/types_tests.rs (14 tests)
-        └── attributes.md             ↔ tests/v0/stage9/plan/attributes_tests.rs (10 tests)
+        ├── attributes.md             ↔ tests/v0/stage9/plan/attributes_tests.rs (10 tests)
+        └── generics.md               ↔ tests/v0/stage9/plan/generics_tests.rs (10 tests)
 ```
 
 ## Test Code Directory Structure (tests/)
@@ -99,7 +100,7 @@ tests/
     │                          systematic_review_v014)
     └── stage8/plan/   (6 files: lifetime_elision, object_safety, extern_c_abi,
                                  drop_elaboration, async_await, deep_review)
-    └── stage9/plan/   (6 files: systematic_review_v0156_tests, operators_tests, control_flow_tests, patterns_tests, types_tests, attributes_tests)
+    └── stage9/plan/   (7 files: systematic_review_v0156_tests, operators_tests, control_flow_tests, patterns_tests, types_tests, attributes_tests, generics_tests)
 ```
 
 ### Why the refactor?
@@ -154,10 +155,10 @@ cargo test --test all_tests -- lexer_tests::test_int_decimal
 | Stage 6 | — (refactor, behavior-equivalent) | — |
 | Stage 7 | 154 (+28 unit) | 5 |
 | Stage 8 | 38 (+9 unit) | 6 |
-| Stage 9 | +75 rust + +339 conformance | 6 rust + 339 .lin |
-| **Total** | **2176** rust + **347** conformance (146 unit + 2030 integration, 2 ignored) | **123** rust + **347** .lin |
+| Stage 9 | +85 rust + +389 conformance | 7 rust + 389 .lin |
+| **Total** | **2186** rust + **397** conformance (146 unit + 2040 integration, 2 ignored) | **124** rust + **397** .lin |
 
 ---
 
-**Last updated**: 2026-07-26 (Stage 9.6 — Attributes conformance expansion)
+**Last updated**: 2026-07-26 (Stage 9.7 — Generics conformance expansion)
 **Process**: v3.21

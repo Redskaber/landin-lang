@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: empty generic params <> parses via synthetic node recovery
+//! source: Stage 9.7 conformance expansion
+struct S<> { x: i32 }

@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: mixed lifetime and type generic args
+//! source: Stage 9.7 conformance expansion
+struct S<'a, T> { x: &'a T } fn f<'a>(x: &'a i32) { let s: S<'a, i32> = S { x }; }

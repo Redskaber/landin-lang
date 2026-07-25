@@ -3939,3 +3939,48 @@ All existing APIs unchanged.
 
 These are Stage 0 limitations. They may be lifted in Stage 1 when the parser
 is extended to handle attributes in more positions (per Rust's grammar).
+
+### v2.10 (Stage 9.7, 2026-07-26)
+
+Stage 9.7 — Generics conformance expansion.
+
+**Changes**:
+- New conformance category `tests/conformance/00-parse/06-generics/` created
+  and populated with 50 .lin test files covering all 6 generics sub-categories
+  (per `02-grammar.md` §3.2):
+  - Type params (12): single/multi/3/fn/impl/trait/enum/type-alias/method/default/nested/mixed
+  - Lifetime params (8): basic/multi/struct/impl/trait/with-type/static/bounds
+  - Type bounds (10): single/multi/3/lifetime/mixed/struct/impl/trait + ?Sized (FAIL) + HRTB (FAIL)
+  - Where clauses (10): basic/multi/lifetime/mixed/struct/impl/trait/multi-bound/no-bounds/complex
+  - Generic args (5): basic/multi/nested/lifetime/mixed
+  - Error recovery (5): unclosed (PASS, recovery) + no-params (PASS, recovery) + bound-no-type (PASS, recovery) + where-no-colon (FAIL) + double-comma (FAIL)
+- New Rust integration tests: `tests/v0/stage9/plan/generics_tests.rs` (10 tests)
+- `tests/all_tests.rs` updated with stage9_7 module reference
+
+**Test impact**: +10 rust integration tests (2176 → 2186) + 50 conformance tests
+(347 → 397). 0 regressions. 0 clippy warnings. fmt clean.
+
+**API surface**: No new public API (conformance tests are external .lin files).
+All existing APIs unchanged.
+
+**Key discovery — Parser limitations documented (2 FAIL tests)**:
+
+1. **`?Sized` bound** (`fn f<T: ?Sized>(x: &T)`) — the Stage 0 parser does not
+   support the `?Sized` bound syntax (per `02-grammar.md` §3.2, `?Sized` is a
+   v0.2 feature). `gen_bound_question_sized.lin` converted PASS → FAIL.
+
+2. **Higher-rank trait bounds (HRTB)** (`fn f<X: for<'a> T<'a>>(x: X)`) — the
+   Stage 0 parser does not support `for<'a>` HRTB syntax in type bounds.
+   `gen_bound_for_hrtb.lin` converted PASS → FAIL.
+
+These are Stage 0 limitations. `?Sized` is explicitly marked as v0.2 in the
+grammar spec. HRTB may be lifted in Stage 1.
+
+**Parser recovery behavior**:
+- `err_gen_unclosed.lin` (`struct S<T { x: T }`) — PASS, parser accepts via
+  synthetic node recovery
+- `err_gen_no_params.lin` (`struct S<>`) — PASS, parser accepts empty generics
+- `err_gen_bound_no_type.lin` (`fn f<T:>(x: T)`) — PASS, parser accepts empty
+  bound via synthetic node
+- `err_gen_where_no_colon.lin` (`where T Clone`) — FAIL, parser reports error
+- `err_gen_double_comma.lin` (`fn f<T, ,>(x: T)`) — FAIL, parser reports error

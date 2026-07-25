@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: basic lifetime parameter
+//! source: Stage 9.7 conformance expansion
+fn f<'a>(x: &'a i32) {}

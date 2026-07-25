@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: single type parameter
+//! source: Stage 9.7 conformance expansion
+struct S<T> { x: T }

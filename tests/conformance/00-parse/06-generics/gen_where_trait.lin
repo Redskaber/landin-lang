@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: where clause in trait
+//! source: Stage 9.7 conformance expansion
+trait Clone { fn c(&self); } trait T<U> where U: Clone { fn f(&self, x: U); }

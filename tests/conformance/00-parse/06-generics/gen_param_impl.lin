@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: generic impl block
+//! source: Stage 9.7 conformance expansion
+struct S<T> { x: T } impl<T> S<T> {}

@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: generic enum
+//! source: Stage 9.7 conformance expansion
+enum E<T> { A(T), B }

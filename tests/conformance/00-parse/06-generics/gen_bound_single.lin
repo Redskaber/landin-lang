@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: single type bound
+//! source: Stage 9.7 conformance expansion
+trait Clone { fn clone(&self); } fn f<T: Clone>(x: T) {}

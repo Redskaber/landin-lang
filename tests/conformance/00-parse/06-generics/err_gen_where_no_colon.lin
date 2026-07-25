@@ -1,0 +1,6 @@
+//! FAIL
+//! category: generics
+//! description: where without colon must error
+//! error_pattern: expected
+//! source: Stage 9.7 conformance expansion
+trait Clone { fn c(&self); } fn f<T>(x: T) where T Clone {}

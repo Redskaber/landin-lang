@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: nested generic args
+//! source: Stage 9.7 conformance expansion
+struct Vec<T> { items: [T; 0] } struct S<T> { v: T } fn f() { let x: S<Vec<i32>> = S { v: Vec { items: [] } }; }

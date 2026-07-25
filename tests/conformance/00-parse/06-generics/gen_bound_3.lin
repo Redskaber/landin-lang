@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: 3 type bounds
+//! source: Stage 9.7 conformance expansion
+trait A { fn a(&self); } trait B { fn b(&self); } trait C { fn c(&self); } fn f<T: A + B + C>(x: T) {}

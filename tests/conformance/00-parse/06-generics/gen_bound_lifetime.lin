@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: lifetime bound
+//! source: Stage 9.7 conformance expansion
+fn f<T: 'static>(x: T) {}

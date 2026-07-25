@@ -1,0 +1,6 @@
+//! FAIL
+//! category: generics
+//! description: higher-rank trait bound for<'a> not supported in Stage 0 (parser limitation)
+//! error_pattern: parse error
+//! source: Stage 9.7 conformance expansion
+trait T<'a> { fn f(&self, x: &'a i32); } fn f<X: for<'a> T<'a>>(x: X) {}

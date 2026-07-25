@@ -1,0 +1,6 @@
+//! FAIL
+//! category: generics
+//! description: double comma in generic params must error (parser does not recover)
+//! error_pattern: expected generic parameter
+//! source: Stage 9.7 conformance expansion
+fn f<T, ,>(x: T) {}

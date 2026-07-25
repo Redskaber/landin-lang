@@ -1,0 +1,6 @@
+//! FAIL
+//! category: generics
+//! description: ?Sized bound not supported in Stage 0 (parser limitation)
+//! error_pattern: parse error
+//! source: Stage 9.7 conformance expansion
+fn f<T: ?Sized>(x: &T) {}

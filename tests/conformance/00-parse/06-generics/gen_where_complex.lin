@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: complex where clause with multiple preds
+//! source: Stage 9.7 conformance expansion
+trait A { fn a(&self); } trait B { fn b(&self); } trait C { fn c(&self); } fn f<T, U, V>(x: T, y: U, z: V) where T: A, U: B + C, V: 'static {}

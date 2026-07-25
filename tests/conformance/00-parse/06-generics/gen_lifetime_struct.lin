@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: lifetime in struct
+//! source: Stage 9.7 conformance expansion
+struct S<'a> { x: &'a i32 }

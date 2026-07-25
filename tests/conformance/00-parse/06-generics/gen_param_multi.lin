@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: multiple type parameters
+//! source: Stage 9.7 conformance expansion
+struct S<T, U> { x: T, y: U }

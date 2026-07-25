@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: 'static lifetime in params
+//! source: Stage 9.7 conformance expansion
+fn f<'a>(x: &'a i32, y: &'static str) {}

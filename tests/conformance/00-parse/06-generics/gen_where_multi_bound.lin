@@ -1,0 +1,5 @@
+//! PASS
+//! category: generics
+//! description: multiple bounds in where
+//! source: Stage 9.7 conformance expansion
+trait A { fn a(&self); } trait B { fn b(&self); } trait C { fn c(&self); } fn f<T>(x: T) where T: A + B + C {}
