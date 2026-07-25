@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: function call postfix
+//! source: Stage 9.2 conformance expansion
+fn g(x: i32) -> i32 { x } fn f() { let _ = g(42); }

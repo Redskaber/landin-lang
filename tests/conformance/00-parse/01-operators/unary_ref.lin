@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: unary borrow prefix
+//! source: Stage 9.2 conformance expansion
+fn f(x: i32) { let _ = &x; }

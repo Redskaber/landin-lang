@@ -419,3 +419,7 @@ mod stage8_6_deep_review_tests;
 // Stage 9.1: systematic review verification (D1-D7 + stage9 setup)
 #[path = "v0/stage9/plan/systematic_review_v0156_tests.rs"]
 mod stage9_1_systematic_review_v0156_tests;
+
+// Stage 9.2: Operators + Pratt precedence verification
+#[path = "v0/stage9/plan/operators_tests.rs"]
+mod stage9_2_operators_tests;

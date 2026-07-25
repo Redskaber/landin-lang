@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: logical not (unary prefix)
+//! source: Stage 9.2 conformance expansion
+fn f(flag: bool) { let _ = !flag; }

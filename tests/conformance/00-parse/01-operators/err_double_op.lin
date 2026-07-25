@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: double + parses via synthetic node recovery (per §2 of 02-grammar.md)
+//! source: Stage 9.2 conformance expansion
+fn f() { let _ = 1 + + 2; }

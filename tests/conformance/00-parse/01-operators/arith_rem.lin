@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: remainder operator
+//! source: Stage 9.2 conformance expansion
+fn f() { let _ = 17 % 5; }

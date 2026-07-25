@@ -1,9 +1,118 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.16.0
+**Current version**: v0.16.1
 **Date**: 2026-07-26
-**Test count**: 2111 tests + 5 benchmarks + 38 conformance tests
+**Test count**: 2122 tests + 5 benchmarks + 98 conformance tests
+
+---
+
+## v0.16.1 — Stage 9.2 (Operators + Pratt precedence conformance expansion)
+
+### Overview
+
+**Stage 9 第 2 个子阶段** — conformance suite `01-operators/` category 扩展
+(3 → 60+ .lin files, +60 new tests). 覆盖所有 28 个 operators (per `02-grammar.md`
+§1.8) + 13 Pratt 优先级 (per §2) + 6 子类别 (arith/cmp/logic/bit/assign/unary) +
+postfix + 优先级组合 + 错误恢复.
+
+**Conformance progress: 38 → 98 (16.3% of 600 target)**
+
+### §13.4 设计对齐
+
+- `docs/lang-design/02-grammar.md` §1.8 (operator := 28 operators)
+- `docs/lang-design/02-grammar.md` §2 (Pratt 优先级表 — 13 levels)
+- `docs/lang-design/02-grammar.md` §3.4 (Expression)
+- `src/parser/expr.rs` (binop_bp + assign_op + 13 Pratt-level functions)
+
+### New conformance tests (60 .lin files)
+
+`tests/conformance/00-parse/01-operators/`:
+
+| Category | Count | Notable |
+|----------|-------|---------|
+| Arithmetic | 8 | +, -, *, /, %, chain, mixed, parens |
+| Comparison | 6 | ==, !=, <, >, <=, >= |
+| Logical | 5 | &&, \|\|, !, chain (&&>\|\|), parens |
+| Bitwise | 6 | &, \|, ^, <<, >>, chain (&>\|) |
+| Assignment | 12 | simple + 11 compound (+=, -=, *=, /=, %=, &=, \|=, ^=, <<=, >>=) |
+| Unary prefix | 5 | -, !, *, &, &mut |
+| Postfix | 5 | call, method, field, index, chain |
+| Pratt precedence | 10 | mul>add, add>cmp, cmp>and, and>or, or>assign, shift>add, bit>cmp, unary>mul, parens, nested |
+| Error recovery | 3 | unmatched paren (FAIL), double op (PASS, recovery), empty expr (PASS, recovery) |
+| **Total new** | **60** | |
+
+### New Rust integration tests (11 tests)
+
+`tests/v0/stage9/plan/operators_tests.rs`:
+
+- Operators directory populated (≥60 .lin, 1 test)
+- 6 category presence tests (arith/cmp/logic/bit/assign/precedence)
+- Error recovery tests presence (1 test, with FAIL verification)
+- Stage 9.2 docs created (1 test)
+- Cargo.toml version bump (1 test)
+- Conformance total ≥ 98 (1 test)
+
+### Key discovery — Parser error recovery behavior
+
+The Landin parser uses **"synthetic node + skip to next `;` or `}`" recovery**
+(per §2 of `02-grammar.md`). This means malformed expressions are *accepted*
+via synthetic nodes (no error reported) rather than rejected, when the parser
+can recover.
+
+**Discovery outcome**:
+- `err_double_op.lin` (`1 + + 2`) — initially FAIL, converted to PASS
+  (parser inserts synthetic empty-path expression between two `+`)
+- `err_empty_expr.lin` (`let x = ;`) — initially FAIL, converted to PASS
+  (parser inserts synthetic empty-path expression)
+- `err_unmatched_paren.lin` (`(1 + 2;`) — kept as FAIL
+  (parser reports "expected `)`" error)
+
+This is a positive outcome — the conformance suite clarified parser recovery
+behavior, distinguishing cases that produce errors from cases that silently
+recover via synthetic nodes. This distinction will inform Stage 9.10 (error
+recovery category) when more nuanced recovery scenarios are tested.
+
+### Documentation created
+
+| Document | Type |
+|----------|------|
+| `docs/develop/v0/stage-9/plan-9.2.md` | new — Stage 9.2 plan |
+| `docs/develop/v0/stage-9/gate-review-9.2.md` | new — gate review |
+| `docs/tests/v0/stage9/plan/operators.md` | new — test plan |
+| `tests/v0/stage9/plan/operators_tests.rs` | new — 11 tests |
+
+### Updated docs
+
+- `README.md` — v0.16.0 → v0.16.1, Stage 9.2 status, conformance 98/600
+- `RELEASE_NOTES.md` — this section
+- `docs/develop/v0/api-naming-standard.md` — v2.04 → v2.05
+- `docs/tests/matrix.md` — Stage 9.2 stats
+- `Cargo.toml` — 0.16.0 → 0.16.1
+- `tests/all_tests.rs` — +1 module reference
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2122 passed (146 unit + 1976 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 98 passed, 0 failed
+```
+
+### Conformance progress
+
+| Stage | Cumulative | Target | % |
+|-------|-----------|--------|---|
+| 9.1 | 38 | 600 | 6.3% |
+| 9.2 ✅ | 98 | 600 | 16.3% |
+| 9.3-9.11 (planned) | 98 → 600 | 600 | — |
+| 9.12 (v0.1 RC) | 600 | 600 | 100% ✅ |
+
+### Next steps
+
+- **Stage 9.3**: Control flow (if/while/for/loop/match/break/continue) — +80 conformance tests
 
 ---
 

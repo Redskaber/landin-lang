@@ -1,0 +1,6 @@
+//! FAIL
+//! category: operators
+//! description: unmatched open paren must error
+//! error_pattern: expected
+//! source: Stage 9.2 conformance expansion
+fn f() { let _ = (1 + 2; }

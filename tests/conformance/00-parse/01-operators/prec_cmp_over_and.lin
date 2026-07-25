@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: < higher than && (precedence)
+//! source: Stage 9.2 conformance expansion
+fn f(a: i32, b: i32, c: i32, d: i32) { let _ = a < b && c < d; }

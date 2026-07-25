@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: parens override precedence
+//! source: Stage 9.2 conformance expansion
+fn f() { let _ = (1 + 2) * 3; }

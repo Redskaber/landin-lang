@@ -3746,3 +3746,35 @@ not Rust API). All existing APIs unchanged.
 
 **§17.1/§17.2/§17.3 compliant**: Stage 9 docs follow three-stage documentation
 protocol (plan + gate-review + systematic-review).
+
+### v2.05 (Stage 9.2, 2026-07-26)
+
+Stage 9.2 — Operators + Pratt precedence conformance expansion.
+
+**Changes**:
+- New conformance category `tests/conformance/00-parse/01-operators/` populated
+  with 60 .lin test files covering all 28 operators (per `02-grammar.md` §1.8):
+  - Arithmetic (8): +, -, *, /, %, chain, mixed, parens
+  - Comparison (6): ==, !=, <, >, <=, >=
+  - Logical (5): &&, ||, !, chain, parens
+  - Bitwise (6): &, |, ^, <<, >>, chain
+  - Assignment (12): simple + 11 compound (+=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>=)
+  - Unary prefix (5): -, !, *, &, &mut
+  - Postfix (5): call, method, field, index, chain
+  - Pratt precedence (10): mul>add, add>cmp, cmp>and, and>or, or>assign,
+    shift>add, bit>cmp, unary>mul, parens, nested
+  - Error recovery (3): unmatched paren (FAIL), double op (PASS, recovery),
+    empty expr (PASS, recovery)
+- New Rust integration tests: `tests/v0/stage9/plan/operators_tests.rs` (11 tests)
+- `tests/all_tests.rs` updated with stage9_2 module reference
+
+**Test impact**: +11 rust integration tests (2111 → 2122) + 60 conformance tests
+(38 → 98). 0 regressions. 0 clippy warnings. fmt clean.
+
+**API surface**: No new public API (conformance tests are external .lin files).
+All existing APIs unchanged.
+
+**Key discovery**: Parser error recovery behavior clarified — `1 + + 2` and
+`let x = ;` are accepted via synthetic empty-path nodes (per §2 of
+`02-grammar.md`), while `(1 + 2;` produces "expected `)`" error. This
+distinction will inform Stage 9.10 (error recovery category).

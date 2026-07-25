@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: compound assignment <<=
+//! source: Stage 9.2 conformance expansion
+fn f() { let mut x: i32 = 1; x <<= 4; }

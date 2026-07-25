@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: unary dereference prefix
+//! source: Stage 9.2 conformance expansion
+fn f(p: &i32) { let _ = *p; }

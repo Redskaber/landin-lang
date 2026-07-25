@@ -1,0 +1,5 @@
+//! PASS
+//! category: operators
+//! description: unary - higher than * (precedence)
+//! source: Stage 9.2 conformance expansion
+fn f(x: i32) { let _ = -x * 2; }
