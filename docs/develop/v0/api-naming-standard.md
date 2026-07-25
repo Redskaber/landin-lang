@@ -3700,3 +3700,21 @@ Stage 8.6 — §25.8 design writeback + §25 deep review. **No code changes**.
 - New test file: `tests/v0/stage8/plan/deep_review_tests.rs` (9 tests)
 
 **Test impact**: +9 integration tests (2100 total). 0 regressions.
+
+### v2.03 (Stage 8.7, 2026-07-25)
+
+Stage 8.7 — §17 docs standardization + worklog sync. **No code changes** (documentation-only stage).
+
+**Changes**:
+- 64 docs moved from `docs/develop/v0/stage-5/` to proper `stage-6/`, `stage-7/`, `stage-8/` directories (§17.1, §17.3 compliance)
+- 11 new test plan docs created under `docs/tests/v0/stage{6,7,8}/plan/` (§17.2 双向印证)
+- 6 directory README.md created (3 in `docs/develop/v0/stage-{6,7,8}/` + 3 in `docs/tests/v0/stage{6,7,8}/plan/`)
+- `tests/v0/stage6/plan/` directory created (Stage 6 was pure refactoring, no new tests; placeholder README)
+- Missing `plan-8.6.md` created (was only `gate-review-8.6.md` before)
+- `plan-8.7.md` + `gate-review-8.7.md` created (this stage)
+- `docs/worklog.md` synced: 24 missing Task ID entries appended (stage6.10-r158 through stage8.6-r182)
+- `README.md`, `RELEASE_NOTES.md`, `api-naming-standard.md`, `docs/tests/matrix.md`, `docs/tests/README.md` updated
+
+**Test impact**: 0 (no code changes). 2100 tests still pass. 0 regressions.
+
+**§17.1/§17.2/§17.3/§18.4 全合规**: documentation organization now fully conforms to process v3.21 protocols.

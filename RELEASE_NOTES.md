@@ -1,9 +1,70 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.15.5
+**Current version**: v0.15.6
 **Date**: 2026-07-25
 **Test count**: 2100 tests + 5 benchmarks
+
+---
+
+## v0.15.6 — Stage 8.7 (§17 docs standardization + worklog sync)
+
+### Overview
+
+**Stage 8 文档收尾** — fix long-standing §17.1 / §17.2 / §17.3 / §18.4
+documentation organization violations accumulated across Stages 6-8.
+
+**🎉 §17.1/§17.2/§17.3/§18.4 全合规!**
+
+### Documentation reorganization (§17.1, §17.2, §17.3)
+
+| Action | Files | From | To |
+|--------|-------|------|-----|
+| Stage 6 plans + gate reviews moved | 33 | `docs/develop/v0/stage-5/` | `docs/develop/v0/stage-6/` |
+| Stage 7 plans + gate reviews + deep-review moved | 19 | `docs/develop/v0/stage-5/` | `docs/develop/v0/stage-7/` |
+| Stage 8 plans + gate reviews + deep-review moved | 12 | `docs/develop/v0/stage-5/` | `docs/develop/v0/stage-8/` |
+| Stage 6/7/8 test plan docs created | 11 | (none) | `docs/tests/v0/stage{6,7,8}/plan/` |
+| Stage 6/7/8 directory READMEs created | 6 | (none) | `docs/develop/v0/stage-{6,7,8}/README.md` + `docs/tests/v0/stage{6,7,8}/plan/README.md` |
+| `tests/v0/stage6/plan/` directory created | 1 | (none) | placeholder README (Stage 6 was pure refactoring, no new tests) |
+| Missing `plan-8.6.md` created | 1 | (none) | `docs/develop/v0/stage-8/plan-8.6.md` (was only gate-review-8.6.md before) |
+| `plan-8.7.md` + `gate-review-8.7.md` created | 2 | (none) | Stage 8.7 plan + gate review |
+
+### Worklog sync (§18.4)
+
+`docs/worklog.md` was missing 24 Task ID entries (stage6.10-r158 through stage8.6-r182).
+All 24 entries have been reconstructed from existing plan + gate-review documents and
+appended. The worklog now spans stage5.99-r148 through stage8.6-r182 with no gaps.
+
+### Updated docs
+
+- `README.md` — v0.15.5 → v0.15.6, Stage 8 status updated, docs structure updated
+- `RELEASE_NOTES.md` — this section
+- `docs/develop/v0/api-naming-standard.md` — v2.02 → v2.03 (Stage 8.7 entry)
+- `docs/tests/matrix.md` — Stage 6/7/8 stats added
+- `docs/tests/README.md` — Stage 6/7/8 references added
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2100 passed (146 unit + 1954 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### Stage 8 complete summary
+
+| Stage | Feature | Status |
+|-------|---------|--------|
+| 8.1 | Lifetime elision (§3.2) | ✅ |
+| 8.2 | Object safety (§2.3) | ✅ |
+| 8.3 | extern "C" ABI (§13.2) | ✅ |
+| 8.4 | Drop elaboration (§5) | ✅ |
+| 8.5 | async/await (§10) | ✅ |
+| 8.6 | §25.8 writeback + §25 review | ✅ GO |
+| 8.7 | §17 docs standardization + worklog sync | ✅ |
+
+**🎉 v0.2 roadmap + Stage 8 documentation 完全收尾!**
 
 ---
 

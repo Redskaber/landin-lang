@@ -6,18 +6,18 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.15.5 — Stage 0-8 complete. v0.2 roadmap ALL 5 features + deep review PASS.
+> **Status:** v0.15.6 — Stage 0-8 complete. v0.2 roadmap ALL 5 features + deep review PASS + §17 docs standardization.
 > **2100 tests** + 5 benchmarks. 0 clippy warnings. fmt clean.
-> Process v3.21 (§0-§28). §16 interface isolation compliant.
+> Process v3.21 (§0-§28). §16 interface isolation compliant. §17.1/§17.2/§18.4 docs compliant.
 >
 > **Milestones:**
 > - Stage 0-4: ✅ Complete (lexer, parser, HIR, MIR, typeck, borrowck, codegen)
 > - Stage 5: ✅ Complete (99 sub-stages — TraitResolver, vtable, dyn Trait, stdlib)
 > - Stage 6: ✅ Complete (18 sub-stages — 47-module architecture, all files < 1500 LOC)
-> - Stage 7: ✅ Complete (8 sub-stages — TD-015 region inference, TD-018 user-defined trait dyn)
-> - Stage 8: ✅ Complete (6 sub-stages — lifetime elision, object safety, extern "C" ABI, drop elaboration, async/await, §25.8 + §25 deep review GO)
+> - Stage 7: ✅ Complete (9 sub-stages — TD-015 region inference, TD-018 user-defined trait dyn)
+> - Stage 8: ✅ Complete (7 sub-stages — lifetime elision, object safety, extern "C" ABI, drop elaboration, async/await, §25.8 + §25 deep review GO, §17 docs standardization)
 >
-> **🎉 v0.2 roadmap COMPLETE + §25 deep review PASS!**
+> **🎉 v0.2 roadmap COMPLETE + §25 deep review PASS + §17 docs standardization!**
 >
 > **Architecture:** 50+ modules. All mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs < 1500 LOC.
 > Single responsibility per module. Data flows单向. Design docs synced (§25.8).
@@ -54,7 +54,7 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | ✅ Complete | 642 |
 | 6 | architectural splits (47 modules) | ✅ Complete | — |
 | 7 | region inference, user-defined trait dyn | ✅ Complete | 154 |
-| 8 | v0.2 features (lifetime elision, etc.) | 🔄 In progress | 10 |
+| 8 | v0.2 features (lifetime elision, etc.) + docs standardization | ✅ Complete | 38 |
 
 ## API surface
 
@@ -100,7 +100,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.15.0 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.15.6 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (6 modules, reader.rs 349 LOC)
 │   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC)
@@ -119,7 +119,7 @@ landin-stage0/
 │   ├── all_tests.rs        Unified entry point (#[path] mod declarations)
 │   ├── common/mod.rs       Shared test helpers
 │   ├── conformance/        .lin conformance suite + run_all.py
-│   └── v0/stage{0-8}/plan/ Standardized test files (v3.17 §17.1)
+│   └── v0/stage{0-8}/plan/ Standardized test files (v3.17 §17.1, §17.2-compliant)
 ├── benches/                Performance benchmarks (5 benchmarks)
 ├── examples/               API demos + historical audit scripts
 └── docs/
@@ -161,19 +161,20 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 5** ✅ COMPLETE (99 sub-stages: TraitResolver + vtable + dyn Trait + stdlib)
 - **Stage 6** ✅ COMPLETE (47-module architecture, all files < 1500 LOC)
 - **Stage 7** ✅ COMPLETE (region inference + user-defined trait dyn)
-- **Stage 8** 🔄 In progress (v0.2: lifetime elision → object safety → extern "C" → drop elaboration → async/await)
-- **v0.1** = Stage 0 完整 + conformance 通过
+- **Stage 8** ✅ COMPLETE (v0.2: lifetime elision → object safety → extern "C" → drop elaboration → async/await → §25.8 + §25 deep review → §17 docs standardization)
+- **v0.1** = Stage 0 完整 + conformance 通过 (next milestone)
 - **v0.3** = self-hosting
 
 ## Documentation
 
 - `docs/stage-committee-process.md` — Process SOP v3.21 (§1-§28, with §13.4 + §14.4 + §25.8)
-- `docs/develop/v0/api-naming-standard.md` — API naming standard v1.97
+- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.03
 - `docs/develop/v0/architecture-decisions.md` — 7 Architecture Decision Records
-- `docs/develop/v0/stage-{0..7}/` — Per-stage dev logs + gate reviews + plans
+- `docs/develop/v0/stage-{0..8}/` — Per-stage dev logs + gate reviews + plans (§17.3 三阶段文档协议)
 - `docs/lang-design/` — 19 language design documents (v1.3.2 Final, frozen)
-- `docs/tests/` — Test plans + matrix + README
-- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0)
+- `docs/tests/v0/stage{0..8}/` — Test plans per stage (§17.2 双向印证)
+- `docs/tests/matrix.md` — Global test matrix
+- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r182
 
 ## License
 

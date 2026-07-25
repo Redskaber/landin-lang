@@ -1,8 +1,10 @@
 # Test Documentation Index
 
-> **Process**: v3.17 §17.2 — 每个测试代码文件必须有对应的测试文档（双向印证）
+> **Process**: v3.21 §17.2 — 每个测试代码文件必须有对应的测试文档（双向印证）
 > **Stage 5.5 update**: tests/ refactored — flat files removed, unified
 > `all_tests.rs` entry point + `autotests = false` in Cargo.toml.
+> **Stage 8.7 update**: docs/tests/v0/stage{6,7,8}/ directories created and
+> populated per §17.2 — full §17.1/§17.2/§17.3 compliance achieved.
 
 ## Directory Structure
 
@@ -12,62 +14,83 @@ docs/tests/
 ├── matrix.md                         (全局测试矩阵 — 覆盖率追踪)
 └── v0/
     ├── stage0/plan/                  (Stage 0: Lexer + Parser + AST)
-    │   ├── lexer.md                  ↔ tests/v0/stage0/plan/lexer_tests.rs (109 tests)
-    │   ├── parser.md                 ↔ tests/v0/stage0/plan/parser_tests.rs (85 tests)
-    │   └── ast_structure.md          ↔ tests/v0/stage0/plan/ast_structure_tests.rs (150 tests)
+    │   ├── lexer.md                  ↔ tests/v0/stage0/plan/lexer_tests.rs
+    │   ├── parser.md                 ↔ tests/v0/stage0/plan/parser_tests.rs
+    │   └── ast_structure.md          ↔ tests/v0/stage0/plan/ast_structure_tests.rs
     ├── stage1/plan/                  (Stage 1: HIR + Name Resolution)
-    │   ├── hir_structure.md          ↔ tests/v0/stage1/plan/hir_structure_tests.rs (20 tests)
-    │   ├── hir_lowering.md           ↔ tests/v0/stage1/plan/hir_lowering_tests.rs (36 tests)
-    │   ├── hir_resolution.md         ↔ tests/v0/stage1/plan/hir_resolution_tests.rs (26 tests)
-    │   └── hir_scope_resolution.md   ↔ tests/v0/stage1/plan/hir_scope_resolution_tests.rs (17 tests)
+    │   ├── hir_structure.md          ↔ tests/v0/stage1/plan/hir_structure_tests.rs
+    │   ├── hir_lowering.md           ↔ tests/v0/stage1/plan/hir_lowering_tests.rs
+    │   ├── hir_resolution.md         ↔ tests/v0/stage1/plan/hir_resolution_tests.rs
+    │   └── hir_scope_resolution.md   ↔ tests/v0/stage1/plan/hir_scope_resolution_tests.rs
     ├── stage2/plan/                  (Stage 2: MIR + Typeck + Borrowck)
-    │   ├── mir_lowering.md           ↔ tests/v0/stage2/plan/mir_lowering_tests.rs (22 tests)
-    │   ├── typeck.md                 ↔ tests/v0/stage2/plan/typeck_tests.rs (26 tests)
-    │   ├── integration.md            ↔ tests/v0/stage2/plan/integration_tests.rs (58 tests)
-    │   └── negative_cases.md         ↔ tests/v0/stage2/plan/negative_cases_tests.rs (35 tests)
+    │   ├── mir_lowering.md           ↔ tests/v0/stage2/plan/mir_lowering_tests.rs
+    │   ├── typeck.md                 ↔ tests/v0/stage2/plan/typeck_tests.rs
+    │   ├── integration.md            ↔ tests/v0/stage2/plan/integration_tests.rs
+    │   └── negative_cases.md         ↔ tests/v0/stage2/plan/negative_cases_tests.rs
     ├── stage3/plan/                  (Stage 3: LLVM Codegen)
-    │   ├── codegen.md                ↔ tests/v0/stage3/plan/codegen_tests.rs (294 tests)
-    │   ├── deep_inspection.md        ↔ tests/v0/stage3/plan/deep_inspection_tests.rs (15 tests)
+    │   ├── codegen.md                ↔ tests/v0/stage3/plan/codegen_tests.rs
+    │   ├── deep_inspection.md        ↔ tests/v0/stage3/plan/deep_inspection_tests.rs
     │   ├── codegen_basic.md          (历史文档 — 保留)
     │   ├── codegen_enum.md           (历史文档 — 保留)
     │   └── codegen_struct.md         (历史文档 — 保留)
     ├── stage4/                       (Stage 4: Modules + Closures + Macros)
     │   ├── plan/
     │   │   ├── stage4_features.md    (Stage 4.1-4.4 测试计划)
-    │   │   └── closure_capture.md    ↔ tests/v0/stage4/plan/closure_capture_tests.rs (4 tests)
+    │   │   └── closure_capture.md    ↔ tests/v0/stage4/plan/closure_capture_tests.rs
     │   └── gate/
     │       ├── gate-review-round1.md (Stage 4.1-4.5 审查)
     │       └── gate-review-round2.md (Stage 4.7 审查)
-    └── stage5/                       (Stage 5: TraitResolver + Vtable)
-        ├── plan/
-        │   ├── trait_resolver.md     ↔ tests/v0/stage5/plan/trait_resolver_tests.rs
-        │   ├── ty_is_copy.md         ↔ tests/v0/stage5/plan/ty_is_copy_tests.rs
-        │   ├── def_id_name_map.md    ↔ tests/v0/stage5/plan/def_id_name_map_tests.rs
-        │   └── vtable.md             ↔ tests/v0/stage5/plan/vtable_tests.rs (4 tests)
-        └── gate/
-            ├── gate-review-round1.md … gate-review-round5.md
+    ├── stage5/                       (Stage 5: TraitResolver + Vtable + stdlib)
+    │   ├── plan/                     (92 test files, 642 tests)
+    │   └── gate/
+    ├── stage6/plan/                  (Stage 6: pure refactor, no new tests)
+    │   └── README.md                 ← placeholder; 1881 tests unchanged
+    ├── stage7/plan/                  (Stage 7: region inference + user-defined trait dyn)
+    │   ├── README.md
+    │   ├── region_inference.md       ↔ tests/v0/stage7/plan/region_inference_tests.rs (8 tests)
+    │   ├── user_defined_trait_dyn.md ↔ tests/v0/stage7/plan/user_defined_trait_dyn_tests.rs (8 tests)
+    │   ├── design_writeback_verification.md ↔ tests/v0/stage7/plan/design_writeback_verification_tests.rs (6 tests)
+    │   ├── deep_review.md            ↔ tests/v0/stage7/plan/deep_review_tests.rs (5 tests)
+    │   └── systematic_review_v014.md ↔ tests/v0/stage7/plan/systematic_review_v014_tests.rs (7 tests)
+    └── stage8/plan/                  (Stage 8: v0.2 features + docs standardization)
+        ├── README.md
+        ├── lifetime_elision.md       ↔ tests/v0/stage8/plan/lifetime_elision_tests.rs (7 tests)
+        ├── object_safety.md          ↔ tests/v0/stage8/plan/object_safety_tests.rs (5 tests)
+        ├── extern_c_abi.md           ↔ tests/v0/stage8/plan/extern_c_abi_tests.rs (5 tests)
+        ├── drop_elaboration.md       ↔ tests/v0/stage8/plan/drop_elaboration_tests.rs (7 tests)
+        ├── async_await.md            ↔ tests/v0/stage8/plan/async_await_tests.rs (5 tests)
+        └── deep_review.md            ↔ tests/v0/stage8/plan/deep_review_tests.rs (9 tests)
 ```
 
 ## Test Code Directory Structure (tests/)
 
 **Stage 5.5 refactor**: legacy flat `tests/*.rs` files (14 files, 11489 lines)
 removed — they were duplicates of the organized `tests/v0/stage{N}/plan/`
-files. The unified entry point `tests/all_tests.rs` includes all 23 test
+files. The unified entry point `tests/all_tests.rs` includes all test
 files via `#[path] mod` declarations. `Cargo.toml` sets `autotests = false`
 so only one `[[test]]` target (`all_tests`) is built.
 
+**Stage 8.7 update**: `tests/v0/stage6/plan/` directory created (placeholder
+README only — Stage 6 was pure architectural refactoring, 1881 tests unchanged).
+
 ```
 tests/
-├── all_tests.rs                      ← unified entry point (23 #[path] mod)
+├── all_tests.rs                      ← unified entry point (#[path] mod declarations)
 ├── common/mod.rs                     ← shared test helpers
 ├── conformance/                      ← .lin conformance suite + run_all.py
 └── v0/
-    ├── stage0/plan/  (3 files: lexer, parser, ast_structure)
-    ├── stage1/plan/  (4 files: hir_structure, hir_lowering, hir_resolution, hir_scope_resolution)
-    ├── stage2/plan/  (4 files: mir_lowering, typeck, integration, negative_cases)
-    ├── stage3/plan/  (2 files: codegen, deep_inspection)
-    ├── stage4/plan/  (5 files: closure_capture, closure_call, closure_full_call, macro_system, visibility)
-    └── stage5/plan/  (5 files: trait_resolver, trait_integration, ty_is_copy, def_id_name_map, vtable)
+    ├── stage0/plan/   (3 files)
+    ├── stage1/plan/   (4 files)
+    ├── stage2/plan/   (4 files)
+    ├── stage3/plan/   (2 files)
+    ├── stage4/plan/   (5 files)
+    ├── stage5/plan/   (92 files)
+    ├── stage6/plan/   (1 README — placeholder, no new tests)
+    ├── stage7/plan/   (5 files: region_inference, user_defined_trait_dyn,
+    │                          design_writeback_verification, deep_review,
+    │                          systematic_review_v014)
+    └── stage8/plan/   (6 files: lifetime_elision, object_safety, extern_c_abi,
+                                 drop_elaboration, async_await, deep_review)
 ```
 
 ### Why the refactor?
@@ -114,14 +137,17 @@ cargo test --test all_tests -- lexer_tests::test_int_decimal
 | Stage | Tests | Files |
 |-------|-------|-------|
 | Stage 0 | 344 | 3 |
-| Stage 1 | 99 | 4 |
-| Stage 2 | 141 | 4 |
+| Stage 1 | 117 | 4 |
+| Stage 2 | 170 | 4 |
 | Stage 3 | 309 | 2 |
-| Stage 4 | 4 | 1 |
-| Stage 5 | 14 | 5 |
-| **Total** | **1017** | **23** |
+| Stage 4 | 67 (incl. 5 bench) | 5 |
+| Stage 5 | 642 | 92 |
+| Stage 6 | — (refactor, behavior-equivalent) | — |
+| Stage 7 | 154 (+28 unit) | 5 |
+| Stage 8 | 38 (+9 unit) | 6 |
+| **Total** | **2100** (146 unit + 1954 integration, 2 ignored) | **117** |
 
 ---
 
-**Last updated**: 2026-07-22 (Stage 5.5 — tests/ refactor + Cargo.toml cleanup)
-**Process**: v3.18
+**Last updated**: 2026-07-25 (Stage 8.7 — §17.1/§17.2/§17.3 docs standardization)
+**Process**: v3.21

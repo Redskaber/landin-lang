@@ -1,19 +1,23 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-07-22
-> **Process**: v3.17 (§17 三阶段文档协议 + §18 轮次文档同步 + §21 跨阶段审查 + §23 命名标准 + §25 深度审查)
+> **Date**: 2026-07-25 (last updated Stage 8.7)
+> **Process**: v3.21 (§17 三阶段文档协议 + §18 轮次文档同步 + §21 跨阶段审查 + §23 命名标准 + §25 深度审查 + §25.8 设计回写)
 
 ## Current Status
 
 | Stage | Tests | Coverage | Status |
 |-------|-------|----------|--------|
 | Stage 0 (lexer/parser/AST) | 344 | ~100% | ✅ Complete |
-| Stage 1 (HIR/resolve) | 117 (nested modules + visibility) | ~100% | ✅ Complete |
+| Stage 1 (HIR/resolve) | 117 | ~100% | ✅ Complete |
 | Stage 2 (MIR/typeck/borrowck) | 170 | ~100% | ✅ Complete |
-| Stage 3 (codegen) | 294 + 5 §21 audit | ~99% | ✅ Complete |
-| Stage 4 (nested modules + closures) | 4 (closure capture) | ~100% | 🔄 In progress |
-| **Total** | **993** | ~99% | ✅ Stage 0-3 complete + Stage 4 in progress |
+| Stage 3 (codegen) | 309 (incl. 5 §21 audit) | ~99% | ✅ Complete |
+| Stage 4 (modules + closures + macros + benches) | 67 (incl. 5 bench) | ~100% | ✅ Complete |
+| Stage 5 (TraitResolver + vtable + dyn Trait + stdlib) | 642 | ~100% | ✅ Complete (99 sub-stages) |
+| Stage 6 (architectural splits — 47 modules) | — (refactor, behavior-equivalent) | — | ✅ Complete (18 sub-stages, 1881 tests unchanged) |
+| Stage 7 (region inference + user-defined trait dyn) | 154 (+28 unit) | ~98% | ✅ Complete (9 sub-stages) |
+| Stage 8 (v0.2 features + docs standardization) | 38 (+9 unit) | ~98% | ✅ Complete (7 sub-stages) |
+| **Total** | **2100** (146 unit + 1954 integration) | ~99% | ✅ Stage 0-8 complete |
 
 ## Stage 3 Test Breakdown
 
