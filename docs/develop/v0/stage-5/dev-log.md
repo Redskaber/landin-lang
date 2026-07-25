@@ -3656,3 +3656,23 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 
 **🎉 TD-015 (Region inference) 全部 5 步完成！**
 **Next**: TD-018 (用户自定义 trait dyn) or v0.2 features.
+
+### Stage 7.6 — User-defined trait dyn support (TD-018) (v0.14.6)
+
+**§13.4**: Read 03-type-system.md §2.3 (Trait object) + 09-stdlib.md (vtable).
+
+**Work completed**:
+- New `build_dyn_trait_method_calls_from_resolver(trait_resolver, interner)` function
+  * For stdlib traits: uses stdlib registry (unchanged behavior)
+  * For user-defined traits: looks up TraitResolver.vtables for method entries
+  * Slot index = entry position in vtable (sequential 0, 1, 2, ...)
+- Updated `build_dyn_trait_mir_plan_from_resolver` to use new function
+- Created `tests/v0/stage7/plan/user_defined_trait_dyn_tests.rs` (8 tests)
+- Added `#[path]` to `tests/all_tests.rs`
+- Cargo.toml: version 0.14.5 → 0.14.6
+
+**Test impact**: +8 integration tests (2023 total). 0 regressions.
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**🎉 TD-018 (用户自定义 trait dyn 支持) 完成！**
+**Next**: v0.2 features or additional Stage 7 improvements.

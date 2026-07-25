@@ -371,3 +371,7 @@ mod stdlib_trait_methods_by_param_count_tests;
 // Stage 7 (TD-015): Region inference tests
 #[path = "v0/stage7/plan/region_inference_tests.rs"]
 mod region_inference_tests;
+
+// Stage 7.6 (TD-018): User-defined trait dyn support tests
+#[path = "v0/stage7/plan/user_defined_trait_dyn_tests.rs"]
+mod user_defined_trait_dyn_tests;

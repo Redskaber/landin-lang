@@ -1,9 +1,48 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.14.5
+**Current version**: v0.14.6
 **Date**: 2026-07-25
-**Test count**: 2015 tests + 5 benchmarks
+**Test count**: 2023 tests + 5 benchmarks
+
+---
+
+## v0.14.6 — Stage 7.6 (User-defined trait dyn support — TD-018)
+
+### Overview
+
+Extends dyn Trait support to handle **user-defined traits** (not just stdlib
+traits). Previously, only stdlib traits (Copy, Clone, Drop, etc.) were
+resolved for dyn Trait method calls; user-defined traits were silently skipped.
+
+### New function: `build_dyn_trait_method_calls_from_resolver`
+
+This function replaces the stdlib-only `build_dyn_trait_method_calls_from_fat_ptrs`
+in the `build_dyn_trait_mir_plan_from_resolver` pipeline:
+
+- **Stdlib traits**: uses `stdlib_trait_methods` + `stdlib_trait_method_index` (unchanged)
+- **User-defined traits**: looks up `TraitResolver.vtables` for method entries,
+  assigns slot indices by entry position (0, 1, 2, ...)
+
+### New test file (§17.1)
+
+`tests/v0/stage7/plan/user_defined_trait_dyn_tests.rs` — 8 integration tests:
+- Fat ptr generation, method call resolution, slot index ordering
+- Empty methods, multiple traits, multiple types
+- Regression: stdlib traits still work
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2023 passed (126 unit + 1897 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-018 COMPLETE
+
+**🎉 TD-018 (用户自定义 trait dyn 支持) 完成！**
 
 ---
 

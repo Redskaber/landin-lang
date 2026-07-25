@@ -424,9 +424,8 @@ pub fn emit_dyn_trait_method_call_text(call: &DynTraitMethodCall) -> String {
 /// 3. Constructs a `DynTraitMethodCall` with the fat ptr's trait/type names,
 ///    method name, slot index, and parameter count
 ///
-/// Traits not in the stdlib registry are silently skipped (their methods
-/// would need to be resolved from user-defined trait definitions, which is
-/// a future stage).
+/// Traits not in the stdlib registry are resolved from user-defined trait
+/// definitions via TraitResolver (Stage 7.6, TD-018).
 ///
 /// Per API-naming-standard §3: `build_dyn_trait_method_calls_from_fat_ptrs`
 /// follows `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>_<noun>` pattern.
@@ -435,7 +434,7 @@ pub fn build_dyn_trait_method_calls_from_fat_ptrs(
 ) -> Vec<DynTraitMethodCall> {
     let mut calls: Vec<DynTraitMethodCall> = Vec::new();
     for fp in fat_ptrs {
-        // Look up trait methods from stdlib registry (Stage 5.36)
+        // First, try stdlib registry (Stage 5.36)
         if let Some(methods) = crate::stdlib::stdlib_trait_methods(&fp.trait_name) {
             for method in methods {
                 // Get slot index (Stage 5.37)
@@ -453,8 +452,76 @@ pub fn build_dyn_trait_method_calls_from_fat_ptrs(
                 }
             }
         }
-        // Traits not in stdlib registry are silently skipped
+        // If not a stdlib trait, it's silently skipped here.
+        // User-defined trait resolution is handled by
+        // `build_dyn_trait_method_calls_from_resolver` (Stage 7.6).
     }
+    calls
+}
+
+/// Stage 7.6 (TD-018): Build `DynTraitMethodCall` entries from
+/// `(&TraitResolver, &Rodeo)`, including **user-defined traits**.
+///
+/// This function extends Stage 5.68's `build_dyn_trait_method_calls_from_fat_ptrs`
+/// to handle user-defined traits that are NOT in the stdlib registry.
+/// For each fat pointer whose trait is not a stdlib trait, it looks up
+/// the trait's methods from `TraitResolver.vtables` and constructs
+/// `DynTraitMethodCall` entries with the correct slot indices.
+///
+/// Per §16: reads TraitResolver data (allowed — data flows downstream).
+/// Per §23: `build_dyn_trait_method_calls_from_resolver` follows
+/// `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub fn build_dyn_trait_method_calls_from_resolver(
+    trait_resolver: &crate::traits::TraitResolver,
+    interner: &lasso::Rodeo,
+) -> Vec<DynTraitMethodCall> {
+    let fat_ptrs = build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner);
+    let mut calls: Vec<DynTraitMethodCall> = Vec::new();
+
+    for fp in &fat_ptrs {
+        let trait_name_spur = interner.get(fp.trait_name.as_str());
+        let type_name_spur = interner.get(fp.type_name.as_str());
+
+        // Try stdlib first
+        if let (Some(tn), Some(ty)) = (trait_name_spur, type_name_spur) {
+            if crate::stdlib::is_stdlib_trait(&fp.trait_name) {
+                // Stdlib trait — use stdlib registry
+                if let Some(methods) = crate::stdlib::stdlib_trait_methods(&fp.trait_name) {
+                    for method in methods {
+                        if let Some(slot_index) =
+                            crate::stdlib::stdlib_trait_method_index(&fp.trait_name, method.name)
+                        {
+                            calls.push(DynTraitMethodCall::from_fat_ptr(
+                                fp,
+                                method.name,
+                                slot_index,
+                                method.param_count,
+                                method.return_kind,
+                                method.param_kinds.to_vec(),
+                            ));
+                        }
+                    }
+                }
+                continue; // Next fat ptr
+            }
+
+            // User-defined trait — use TraitResolver vtable (TD-018)
+            if let Some(vtable) = trait_resolver.vtables.get(&(tn, ty)) {
+                for (slot_index, entry) in vtable.entries.iter().enumerate() {
+                    let method_name = interner.resolve(&entry.method_name);
+                    calls.push(DynTraitMethodCall::from_fat_ptr(
+                        fp,
+                        method_name,
+                        slot_index as u32,
+                        0,                                  // param_count: 0 for MVP (just &self)
+                        crate::stdlib::StdlibTypeKind::I32, // return_kind: I32 placeholder
+                        Vec::new(),                         // param_kinds: empty for MVP
+                    ));
+                }
+            }
+        }
+    }
+
     calls
 }
 
@@ -672,7 +739,9 @@ pub fn build_dyn_trait_mir_plan_from_resolver(
     interner: &lasso::Rodeo,
 ) -> DynTraitMIRPlan {
     let fat_ptrs = build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner);
-    let method_calls = build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs);
+    // Stage 7.6 (TD-018): use resolver-based method call builder to support
+    // both stdlib AND user-defined traits.
+    let method_calls = build_dyn_trait_method_calls_from_resolver(trait_resolver, interner);
     build_dyn_trait_mir_plan(&fat_ptrs, &method_calls)
 }
 

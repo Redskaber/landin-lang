@@ -6,12 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.14.5 — Stage 0-5 complete, Stage 6 收尾里程碑达成, Stage 7 TD-015 region inference complete (5/5 steps).
-> **2015 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 111 test modules!
+> **Status:** v0.14.6 — Stage 0-5 complete, Stage 6 收尾里程碑达成, Stage 7 TD-015 region inference + TD-018 user-defined trait dyn complete.
+> **2023 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 112 test modules!
 > Process v3.21 (§0-§28). §16 interface isolation compliant.
-> Stage 5 complete (99 sub-stages). Stage 6: 47-module architecture (concluded). Stage 7: TD-015 region inference COMPLETE — data structures + algorithm + implied bounds + type tests + universe + SCC + borrowck integration.
+> Stage 5 complete (99 sub-stages). Stage 6: 47-module architecture (concluded). Stage 7: TD-015 region inference (5/5) + TD-018 user-defined trait dyn COMPLETE.
 > 🎉 Architecture: all mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs files < 1300 LOC. Single responsibility per module. Data flows单向. Design docs synced with implementation (§25.8). tests/v0/stage7/ created (§17.1).
-> Next: TD-018 (用户自定义 trait dyn) or v0.2 features (async/await, extern "C", unwind).
+> Next: v0.2 features (async/await, extern "C", unwind, drop elaboration) or additional improvements.
 
 ## Quick start
 

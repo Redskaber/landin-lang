@@ -3528,3 +3528,29 @@ Per v3.21 §13.4 + §17.1 (tests/ directory standardization).
 
 **TD-015**: ALL 5 STEPS COMPLETE. Region inference infrastructure fully built
 and integrated into borrowck as an additional check.
+
+### v1.93 (Stage 7.6, 2026-07-25)
+
+Stage 7.6 — User-defined trait dyn support (TD-018). Per v3.21 §13.4
+(aligned with 03-type-system.md §2.3).
+
+**New `pub` symbol**:
+
+| Function | Pattern |
+|----------|---------|
+| `build_dyn_trait_method_calls_from_resolver(trait_resolver, interner)` | `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` |
+
+**Changes**:
+- New function `build_dyn_trait_method_calls_from_resolver` in `mir/dyn_trait.rs`
+  - Handles both stdlib traits (via stdlib registry) AND user-defined traits
+    (via TraitResolver.vtables)
+  - User-defined trait method calls get slot indices from vtable entry order
+- Updated `build_dyn_trait_mir_plan_from_resolver` to use the new function
+- New test file: `tests/v0/stage7/plan/user_defined_trait_dyn_tests.rs` (8 tests)
+- Added `#[path]` to `tests/all_tests.rs`
+
+**Test impact**: +8 integration tests (2023 total). 0 regressions.
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
+
+**TD-018**: COMPLETE — user-defined trait dyn support implemented.
