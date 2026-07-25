@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: passing reference to function
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn g(x: &i32) -> i32 { *x } fn main() { let v = 1; g(&v); }

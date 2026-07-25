@@ -18,7 +18,6 @@ fn test_v01_gap_only_parse_category_exists() {
 
     // 6 categories still missing per §5.1 (01-typecheck created in Stage 10.1)
     let missing_categories = [
-        "02-borrowck",
         "03-codegen",
         "04-e2e",
         "05-soundness",

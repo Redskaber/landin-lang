@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: double mutable borrow
+// EXPECTED: compile_error
+// ERROR_PATTERN: borrow
+// SOURCE: Stage 10.2 conformance expansion
+
+fn main() { let mut x = 1; let r1 = &mut x; let r2 = &mut x; }

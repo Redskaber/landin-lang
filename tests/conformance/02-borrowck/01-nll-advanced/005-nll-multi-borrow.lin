@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with multiple borrows
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn main() { let x = 1; let y = 2; let rx = &x; let ry = &y; let _ = rx; let _ = ry; }

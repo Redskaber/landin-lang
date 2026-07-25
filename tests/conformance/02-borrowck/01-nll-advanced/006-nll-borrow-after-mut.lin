@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL borrow after mutation
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn main() { let mut x = 1; let r = &x; let _ = *r; x = 2; let r2 = &x; }

@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move enum value
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+enum E { A, B } fn main() { let e = E::A; let e2 = e; }

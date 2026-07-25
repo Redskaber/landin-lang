@@ -115,12 +115,15 @@ fn test_stage10_0_cargo_toml_version_bumped() {
         .lines()
         .find(|l| l.starts_with("version = "))
         .expect("version line must exist");
+    let is_valid = version_line.starts_with("version = \"0.17.2")
+        || version_line.starts_with("version = \"0.17.3")
+        || version_line.starts_with("version = \"0.17.4")
+        || version_line.starts_with("version = \"0.17.5")
+        || version_line.starts_with("version = \"0.18.")
+        || version_line.starts_with("version = \"0.19.")
+        || version_line.starts_with("version = \"0.20.");
     assert!(
-        version_line.starts_with("version = \"0.17.2")
-            || version_line.starts_with("version = \"0.17.3")
-            || version_line.starts_with("version = \"0.18.")
-            || version_line.starts_with("version = \"0.19.")
-            || version_line.starts_with("version = \"0.20."),
+        is_valid,
         "Cargo.toml version must be 0.17.2+ after Stage 10.0, got: {version_line}"
     );
 }

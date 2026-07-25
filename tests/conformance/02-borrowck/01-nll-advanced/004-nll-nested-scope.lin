@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with nested scopes
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn main() { let x = 1; { let r1 = &x; { let r2 = &x; } } }

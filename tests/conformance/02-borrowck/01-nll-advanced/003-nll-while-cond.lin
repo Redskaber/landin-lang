@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with while condition
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn main() { let x = 1; while x > 0 { let _ = x; } }

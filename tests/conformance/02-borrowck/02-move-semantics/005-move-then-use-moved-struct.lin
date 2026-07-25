@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: use struct after move
+// EXPECTED: compile_error
+// ERROR_PATTERN: move
+// SOURCE: Stage 10.2 conformance expansion
+
+struct S { x: i32 } fn main() { let s = S { x: 1 }; let s2 = s; let s3 = s; }

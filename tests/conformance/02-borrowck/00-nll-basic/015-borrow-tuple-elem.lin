@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow of tuple element
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn main() { let t = (1, 2); let r = &t.0; }

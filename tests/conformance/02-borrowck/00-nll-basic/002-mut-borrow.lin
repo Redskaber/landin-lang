@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: mutable borrow of variable
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn main() { let mut x = 1; let r = &mut x; *r = 2; }

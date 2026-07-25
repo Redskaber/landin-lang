@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with borrow as function param
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn g(r: &i32) {} fn main() { let x = 1; g(&x); let y = x; }

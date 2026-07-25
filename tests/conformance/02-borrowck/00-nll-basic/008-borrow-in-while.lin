@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow inside while block
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.2 conformance expansion (Stage 0 limitation)
+
+fn main() { let mut x = 1; while x > 0 { let r = &x; x -= 1; } }

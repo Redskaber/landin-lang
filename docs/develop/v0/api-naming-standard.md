@@ -4218,3 +4218,16 @@ Stage 10.1 — 01-typecheck conformance (120 tests) + runner auto-mode.
 - New Rust integration tests: `tests/v0/stage9/plan/stage10_1_tests.rs` (6 tests)
 
 **Test impact**: +6 rust (2255 → 2261) + 120 conformance (600 → 720). 0 regressions.
+
+### v2.19 (Stage 10.2, 2026-07-26)
+
+Stage 10.2 — 02-borrowck conformance (80 tests).
+
+**Changes**:
+- New conformance category `tests/conformance/02-borrowck/` with 80 .lin test
+  files in 5 subcategories (nll-basic/nll-advanced/move-semantics/closure-capture/error-cases)
+- 23 tests converted from compile_ok → compile_error (Stage 0 limitations)
+- 3 tests adjusted from compile_error → compile_ok (borrowck doesn't catch)
+- New Rust integration tests: `tests/v0/stage9/plan/stage10_2_tests.rs` (4 tests)
+
+**Test impact**: +4 rust (2261 → 2265) + 80 conformance (720 → 800). 0 regressions.

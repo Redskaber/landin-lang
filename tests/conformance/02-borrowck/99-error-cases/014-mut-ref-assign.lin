@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: assign through mut ref
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn main() { let mut x = 1; let r = &mut x; *r = 2; }

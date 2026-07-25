@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL returning borrow from function
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn f(x: &i32) -> &i32 { x } fn main() { let v = 1; let r = f(&v); let _ = *r; }

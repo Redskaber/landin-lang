@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with function call
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion
+
+fn g(x: &i32) -> i32 { *x } fn main() { let v = 1; let r = g(&v); let _ = r; }

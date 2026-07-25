@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move after closure captures
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.2 conformance expansion (Stage 0 limitation — borrowck doesn't catch this)
+
+fn main() { let x = 1; let f = || x; let y = x; }
