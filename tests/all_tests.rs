@@ -463,3 +463,7 @@ mod stage9_11_realistic_programs_tests;
 // Stage 9.12: v0.1 release candidate verification (§25 deep review)
 #[path = "v0/stage9/plan/deep_review_v01_rc_tests.rs"]
 mod stage9_12_deep_review_v01_rc_tests;
+
+// v0.1 Gap Analysis verification
+#[path = "v0/stage9/plan/v0.1_gap_analysis_tests.rs"]
+mod v0_1_gap_analysis_tests;

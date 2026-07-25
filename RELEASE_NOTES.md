@@ -1,9 +1,65 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.17.0 (v0.1 RC)
+**Current version**: v0.17.1
 **Date**: 2026-07-26
-**Test count**: 2235 tests + 5 benchmarks + 600 conformance tests
+**Test count**: 2245 tests + 5 benchmarks + 600 conformance tests (12% of v0.1 gate)
+
+---
+
+## v0.17.1 — v0.1 Gap Analysis (Stage 9.12 reclassification)
+
+### Overview
+
+**v0.1 gap analysis** — 对照 `12-roadmap.md` §1 和 `17-conformance-suite.md` §5.1
+审查后发现：v0.1 需要 5,000 个 conformance tests (8 categories)，当前仅 600 个
+(00-parse category, 12%)。
+
+**重新定位**: Stage 9.12 从 "v0.1 RC" 重新定位为 **"Parse conformance milestone
+(600/600 parse tests, 12% of v0.1 gate)"**
+
+### Gap summary
+
+| Gap | Severity | Description |
+|-----|----------|-------------|
+| GAP-01 | P0 | Conformance scope 600/5000 (12%) — 7 categories missing |
+| GAP-02 | P1 | .lin format uses //! instead of // per §3 spec |
+| GAP-03 | P1 | CLI lacks --compile/--run (only --emit-tokens/--emit-ast) |
+| GAP-04 | P2 | 7 conformance categories missing |
+| GAP-05 | P2 | Runner lacks typecheck/borrowck/codegen verification |
+| GAP-06 | P0 | v0.1 RC announced prematurely — reclassified |
+
+### v0.1 true progress
+
+| Category | Required | Current | % |
+|----------|---------|---------|---|
+| 00-parse | 600 | 600 | 100% ✅ |
+| 01-typecheck | 1000 | 0 | 0% |
+| 02-borrowck | 800 | 0 | 0% |
+| 03-codegen | 600 | 0 | 0% |
+| 04-e2e | 500 | 0 | 0% |
+| 05-soundness | 500 | 0 | 0% |
+| 06-stdlib | 500 | 0 | 0% |
+| 07-integration | 500 | 0 | 0% |
+| **Total** | **5000** | **600** | **12%** |
+
+### Stage 10 plan (v0.1 true path)
+
+9 sub-stages (10.0-10.8): format migration + CLI/runner upgrade + 7 categories + §25 deep review + v0.1 release
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2245 passed (146 unit + 2099 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 600 passed (parse only), 0 failed
+```
+
+### Committee vote
+
+**GO-WITH-CONDITIONS** — Stage 10 planned to achieve true v0.1 gate (5000/5000)
 
 ---
 

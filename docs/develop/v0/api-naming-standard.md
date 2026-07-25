@@ -4161,3 +4161,22 @@ Stage 9.12 — §25 deep review + v0.1 release candidate.
 **API surface**: No new public API. All existing APIs unchanged.
 
 **🎉 v0.1 release gate达成!** Conformance 600/600, §25 deep review PASS.
+
+
+### v2.16 (v0.1 Gap Analysis, 2026-07-26)
+
+v0.1 Gap Analysis — Stage 9.12 reclassification.
+
+**Changes**:
+- v0.1 gap analysis completed: `docs/develop/v0/stage-9/v0.1-gap-analysis.md`
+- Stage 9.12 reclassified from "v0.1 RC" to "Parse conformance milestone (600/600, 12% of v0.1 gate)"
+- Stage 10 plan created: `docs/develop/v0/stage-9/plan-stage10.md` (9 sub-stages, +4400 tests)
+- New Rust integration tests: `tests/v0/stage9/plan/v0.1_gap_analysis_tests.rs` (10 tests)
+
+**Test impact**: +10 rust integration tests (2235 → 2245). 0 conformance changes.
+0 regressions. 0 clippy warnings. fmt clean.
+
+**Key discovery**: v0.1 requires 5,000 conformance tests (8 categories per §5.1),
+current state is 600/5000 (12%). Stage 10 planned to achieve true v0.1 gate.
+
+**API surface**: No new public API. All existing APIs unchanged.

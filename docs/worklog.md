@@ -7808,3 +7808,27 @@ Stage Summary:
 - Stage 9 complete: 12 sub-stages (9.1-9.12), conformance 8 → 600 (+592, +7400%), 29 parser limitations documented
 - 🎯 v0.1 release gate: Stage 0-8 完整 + conformance 通过 (600/600) — 达成!
 - Next: v0.1 release (正式发布) OR v0.3 bootstrap preparation (Stage 1 重写规划)
+
+---
+Task ID: v0.1-gap-r196
+Agent: Super Z (main)
+Task: v0.1 Gap Analysis — 审查 v0.1 需求 vs 当前状态, 重新定位 + Stage 10 计划
+
+Work Log:
+- Baseline: v0.17.0 / 2235 rust tests + 600 conformance (Stage 9.12 "v0.1 RC" declared)
+- §25 deep review: 对照 12-roadmap.md §1 + 17-conformance-suite.md §2/§5.1 审查 v0.1 真实需求
+- 关键发现: v0.1 需要 5,000 个 conformance tests (8 categories per §5.1), 当前仅 600 个 (00-parse, 12%)
+- 识别 6 个 gaps: GAP-01 (conformance scope 600/5000, P0) + GAP-02 (format //! vs //, P1) + GAP-03 (CLI no --compile, P1) + GAP-04 (7 categories missing, P2) + GAP-05 (runner no typecheck/borrowck/codegen, P2) + GAP-06 (v0.1 RC announced prematurely, P0)
+- 重新定位: Stage 9.12 从 "v0.1 RC" → "Parse conformance milestone (600/600, 12% of v0.1 gate)"
+- 创建 Stage 10 计划 (9 sub-stages): 10.0 format+CLI+runner upgrade / 10.1-10.7 seven categories / 10.8 §25 deep review + v0.1 release
+- Created 4 new docs: v0.1-gap-analysis.md + plan-stage10.md + gate-review-v0.1-gap.md + v0.1_gap_analysis.md (test plan)
+- Created tests/v0/stage9/plan/v0.1_gap_analysis_tests.rs (10 verification tests); updated tests/all_tests.rs
+- Updated README.md (v0.17.0 → v0.17.1, reclassified), RELEASE_NOTES.md (+v0.17.1 section), api-naming-standard.md (v2.15 → v2.16), docs/tests/matrix.md (reclassified)
+- Bumped Cargo.toml v0.17.0 → v0.17.1
+
+Stage Summary:
+- v0.1 Gap Analysis PASSED — GO-WITH-CONDITIONS
+- 重新定位: Stage 9.12 = "Parse conformance milestone" (非 v0.1 RC)
+- v0.1 真实进度: 600/5000 = 12%
+- Stage 10 计划制定: 9 sub-stages, +4400 tests, 目标 v0.1 release (5000/5000)
+- Next: Stage 10.0 — Format migration + CLI upgrade + Runner upgrade

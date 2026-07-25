@@ -6,8 +6,8 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.17.0 — Stage 0-9.12 complete. v0.1 release candidate! Conformance 600/600 ✅.
-> **2235 tests** + 5 benchmarks + 600 conformance tests. 0 clippy warnings. fmt clean.
+> **Status:** v0.17.1 — Stage 0-9.12 complete + v0.1 gap analysis. Parse conformance 600/600 (12% of v0.1 gate).
+> **2245 tests** + 5 benchmarks + 600 conformance tests. 0 clippy warnings. fmt clean.
 > Process v3.21 (§0-§28). §16 interface isolation compliant. §17.1/§17.2/§18.4 docs compliant.
 >
 > **Milestones:**
@@ -18,12 +18,12 @@ predictable performance.
 > - Stage 8: ✅ Complete (7 sub-stages — v0.2 roadmap + §25.8 + §25 deep review + §17 docs standardization)
 > - Stage 9: ✅ Complete (12/12 sub-stages — v0.1 conformance 600/600, release candidate announced!)
 >
-> **🎉 v0.2 roadmap COMPLETE + §25 deep review PASS + §17 docs standardization + v0.1 release candidate (conformance 600/600)!**
+> **🎉 v0.2 roadmap COMPLETE + §25 deep review PASS + §17 docs standardization + Parse conformance 600/600 (12% of v0.1 gate — Stage 10 planned)**
 >
 > **Architecture:** 50+ modules. All mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs < 1500 LOC.
 > Single responsibility per module. Data flows单向. Design docs synced (§25.8).
 >
-> **v0.1 roadmap:** conformance 8 → 600 tests (Stage 9.1-9.12)
+> **v0.1 roadmap:** conformance 600/5000 (12%) — Stage 10 planned (7 categories + 4400 tests)
 
 ## Quick start
 
@@ -102,7 +102,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.17.0 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.17.1 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (6 modules, reader.rs 349 LOC)
 │   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC)
@@ -164,20 +164,20 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 6** ✅ COMPLETE (47-module architecture, all files < 1500 LOC)
 - **Stage 7** ✅ COMPLETE (region inference + user-defined trait dyn)
 - **Stage 8** ✅ COMPLETE (v0.2: lifetime elision → object safety → extern "C" → drop elaboration → async/await → §25.8 + §25 deep review → §17 docs standardization)
-- **Stage 9** ✅ COMPLETE (v0.1 conformance 600/600, release candidate announced!)
-- **v0.1** = Stage 0 完整 + conformance 通过 ✅ (release candidate announced!)
+- **Stage 9** ✅ COMPLETE (parse conformance 600/600 — 12% of v0.1 gate, reclassified as 'Parse conformance milestone')
+- **v0.1** = Stage 0 完整 + conformance 5000/5000 通过 (Stage 10 planned — current: 600/5000 = 12%)
 - **v0.3** = self-hosting
 
 ## Documentation
 
 - `docs/stage-committee-process.md` — Process SOP v3.21 (§1-§28, with §13.4 + §14.4 + §25.8)
-- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.15
+- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.16
 - `docs/develop/v0/architecture-decisions.md` — 7 Architecture Decision Records
 - `docs/develop/v0/stage-{0..9}/` — Per-stage dev logs + gate reviews + plans (§17.3 三阶段文档协议)
 - `docs/lang-design/` — 19 language design documents (v1.3.2 Final, frozen)
 - `docs/tests/v0/stage{0..9}/` — Test plans per stage (§17.2 双向印证)
 - `docs/tests/matrix.md` — Global test matrix
-- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r195
+- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r196
 
 ## License
 
