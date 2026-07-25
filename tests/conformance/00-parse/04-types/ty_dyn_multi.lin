@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: dyn trait with multiple bounds
+//! source: Stage 9.5 conformance expansion
+trait T { fn f(&self); } trait U { fn g(&self); } fn h() { let x: dyn T + U; }

@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: char primitive type
+//! source: Stage 9.5 conformance expansion
+fn f() { let x: char = 'a'; }

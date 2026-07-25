@@ -1,0 +1,6 @@
+//! FAIL
+//! category: types
+//! description: unclosed array type must error
+//! error_pattern: expected
+//! source: Stage 9.5 conformance expansion
+fn f() { let x: [i32; = [1, 2, 3]; }

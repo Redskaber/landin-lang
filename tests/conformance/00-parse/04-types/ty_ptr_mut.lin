@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: *mut raw pointer type
+//! source: Stage 9.5 conformance expansion
+fn f() { let x: *mut i32 = std::ptr::null_mut(); }

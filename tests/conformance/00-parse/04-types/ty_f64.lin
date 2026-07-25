@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: f64 primitive type
+//! source: Stage 9.5 conformance expansion
+fn f() { let x: f64 = 3.14; }

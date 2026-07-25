@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: mixed-type tuple type
+//! source: Stage 9.5 conformance expansion
+fn f() { let x: (i32, &str, bool) = (1, "a", true); }

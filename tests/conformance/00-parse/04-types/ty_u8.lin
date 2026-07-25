@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: u8 primitive type
+//! source: Stage 9.5 conformance expansion
+fn f() { let x: u8 = 1; }

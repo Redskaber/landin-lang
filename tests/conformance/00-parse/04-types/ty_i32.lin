@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: i32 primitive type
+//! source: Stage 9.5 conformance expansion
+fn f() { let x: i32 = 1; }

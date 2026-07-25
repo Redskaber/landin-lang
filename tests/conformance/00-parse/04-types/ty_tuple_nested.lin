@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: nested tuple type
+//! source: Stage 9.5 conformance expansion
+fn f() { let x: ((i32, i32), i32) = ((1, 2), 3); }

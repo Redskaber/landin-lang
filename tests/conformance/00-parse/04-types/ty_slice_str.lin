@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: string slice type
+//! source: Stage 9.5 conformance expansion
+fn f(arr: [&str; 2]) { let x: &[&str] = &arr; }

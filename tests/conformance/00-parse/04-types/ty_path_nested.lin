@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: nested generic path type
+//! source: Stage 9.5 conformance expansion
+struct Outer<T> { inner: T } struct Inner<T> { x: T } fn f() { let x: Outer<Inner<i32>> = Outer { inner: Inner { x: 1 } }; }

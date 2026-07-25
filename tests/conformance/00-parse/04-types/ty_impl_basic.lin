@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: impl trait type
+//! source: Stage 9.5 conformance expansion
+trait T { fn f(&self); } fn g(x: impl T) { x.f(); }

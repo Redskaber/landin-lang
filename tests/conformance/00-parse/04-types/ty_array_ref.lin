@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: reference array type
+//! source: Stage 9.5 conformance expansion
+fn f() { let v: i32 = 1; let x: [&i32; 1] = [&v]; }

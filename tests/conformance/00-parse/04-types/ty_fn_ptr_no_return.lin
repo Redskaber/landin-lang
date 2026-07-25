@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: fn pointer with no return type
+//! source: Stage 9.5 conformance expansion
+fn g(x: i32) { } fn f() { let fp: fn(i32) = g; }

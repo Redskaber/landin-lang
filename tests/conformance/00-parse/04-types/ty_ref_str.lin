@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: reference to str type
+//! source: Stage 9.5 conformance expansion
+fn f() { let x: &str = "hello"; }

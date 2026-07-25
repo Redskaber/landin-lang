@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: qualified path type
+//! source: Stage 9.5 conformance expansion
+mod m { pub struct T { x: i32 } } fn f() { let x: m::T = m::T { x: 1 }; }

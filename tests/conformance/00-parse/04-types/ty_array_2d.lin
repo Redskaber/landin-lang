@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: 2-dimensional array type
+//! source: Stage 9.5 conformance expansion
+fn f() { let x: [[i32; 2]; 2] = [[1, 2], [3, 4]]; }

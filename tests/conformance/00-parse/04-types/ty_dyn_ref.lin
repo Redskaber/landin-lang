@@ -1,0 +1,5 @@
+//! PASS
+//! category: types
+//! description: reference to dyn trait type
+//! source: Stage 9.5 conformance expansion
+trait T { fn f(&self); } struct S; impl T for S { fn f(&self) {} } fn g(s: &S) { let x: &dyn T = s as &dyn T; }

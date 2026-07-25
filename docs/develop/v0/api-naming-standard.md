@@ -3853,3 +3853,49 @@ All existing APIs unchanged.
    `pat_ref_nested.lin` converted PASS → FAIL.
 
 These are Stage 0 parser limitations, may be lifted in Stage 1.
+
+### v2.08 (Stage 9.5, 2026-07-26)
+
+Stage 9.5 — Types conformance expansion.
+
+**Changes**:
+- New conformance category `tests/conformance/00-parse/04-types/` created and
+  populated with 60 .lin test files covering all 10 type forms
+  (per `02-grammar.md` §3.3):
+  - Primitive (12): bool/char/i8/i32/i64/i128/isize/u8/u32/u64/usize/f64
+  - Reference (8): basic/mut/ref-ref (FAIL)/str/array/struct/mut-struct/static
+  - Raw pointer (5): *const/*mut variants
+  - Array (8): basic/2d/large/bool/str/struct/ref/empty
+  - Slice (4): basic/u8/str/struct
+  - Tuple (6): 2/3/mixed/empty/single/nested
+  - Function pointer (5): basic/no-args/no-return/multi/ref-args
+  - Path (5): simple/qualified/generic/multi/nested
+  - Trait object (4): dyn/dyn-ref/dyn-multi/impl
+  - Error recovery (3): missing (PASS, recovery) + unclosed-array (FAIL) +
+    unknown-primitive (PASS, parser doesn't validate)
+- New Rust integration tests: `tests/v0/stage9/plan/types_tests.rs` (14 tests)
+- `tests/all_tests.rs` updated with stage9_5 module reference
+
+**Test impact**: +14 rust integration tests (2152 → 2166) + 60 conformance tests
+(247 → 307). 0 regressions. 0 clippy warnings. fmt clean.
+
+**API surface**: No new public API (conformance tests are external .lin files).
+All existing APIs unchanged.
+
+**Key discovery — Nested reference type `&&` limitation**:
+
+The Landin lexer follows the **maximal munch** rule (per `02-grammar.md` §1.9):
+`&&` is lexed as a single `AndAnd` token (logical AND), not two `&` tokens.
+This means `let x: &&i32 = ...;` (nested reference type) fails to parse.
+
+`ty_ref_ref.lin` converted PASS → FAIL with description
+"nested reference type && (parser limitation — && lexed as AndAnd via maximal munch)".
+
+This is a Stage 0 limitation. In Rust, the parser handles this by special-casing
+`&&` in type contexts to be two `&`, or requiring parentheses: `&(&i32)`.
+Landin may adopt one of these approaches in Stage 1.
+
+**Parser recovery behavior**:
+- `err_ty_missing.lin` (`let x: = 1;`) — PASS, parser inserts synthetic type node
+- `err_ty_unknown_primitive.lin` (`let x: i256 = 1;`) — PASS, parser treats
+  `i256` as a path type (parser doesn't validate primitive type names)
