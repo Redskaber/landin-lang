@@ -3758,3 +3758,21 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 
 **Test impact**: +3 unit + 7 integration = 2052 total. 0 regressions.
 **Next**: Stage 8.2 — Object safety rules (§2.3).
+
+### Stage 8.2 — Object safety rules (§2.3) (v0.15.1)
+
+**§13.4**: Read 03-type-system.md §2.3 (Object safety, RFC #255).
+
+**Work completed**:
+- Created `src/traits/object_safety.rs` (~220 LOC):
+  * `check_object_safety(trait_def)` — checks all 4 rules
+  * `ObjectSafetyError` — InvalidReceiver / ReturnsSelf / GenericMethod / AssociatedConst
+  * `is_object_safe_receiver(sig)` — &self / &mut self check
+  * `returns_self(sig)` — Self return type check
+  * 5 unit tests
+- Added `mod object_safety;` to `src/traits/mod.rs`
+- Created `tests/v0/stage8/plan/object_safety_tests.rs` (5 tests)
+- Cargo.toml: version 0.15.0 → 0.15.1
+
+**Test impact**: +5 unit + 5 integration = 2062 total. 0 regressions.
+**Next**: Stage 8.3 — extern "C" ABI (§13.2).

@@ -3621,3 +3621,18 @@ Stage 8.1 — Lifetime elision rules (v0.2 start). Per v3.21 §13.4
 
 **Changes**: new module `src/typeck/lifetime_elision.rs` (~200 LOC).
 3 unit tests + 7 integration tests. 0 regressions.
+
+### v1.98 (Stage 8.2, 2026-07-25)
+
+Stage 8.2 — Object safety rules (§2.3). Per v3.21 §13.4
+(aligned with 03-type-system.md §2.3, RFC #255).
+
+**New `pub(crate)` symbols**:
+
+| Type/Function | Pattern |
+|---------------|---------|
+| `check_object_safety(trait_def)` | `<verb>_<noun>_<noun>` |
+| `ObjectSafetyError` (enum) | `<noun>_<noun>_<noun>` |
+
+**Changes**: new module `src/traits/object_safety.rs` (~220 LOC).
+5 unit tests + 5 integration tests. 0 regressions.

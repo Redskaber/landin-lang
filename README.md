@@ -6,8 +6,8 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.15.0 — Stage 0-7 complete, Stage 8 (v0.2) started.
-> **2052 tests** + 5 benchmarks. 0 clippy warnings. fmt clean.
+> **Status:** v0.15.1 — Stage 0-7 complete, Stage 8 (v0.2) in progress.
+> **2062 tests** + 5 benchmarks. 0 clippy warnings. fmt clean.
 > Process v3.21 (§0-§28). §16 interface isolation compliant.
 >
 > **Milestones:**
@@ -15,7 +15,7 @@ predictable performance.
 > - Stage 5: ✅ Complete (99 sub-stages — TraitResolver, vtable, dyn Trait, stdlib)
 > - Stage 6: ✅ Complete (18 sub-stages — 47-module architecture, all files < 1500 LOC)
 > - Stage 7: ✅ Complete (8 sub-stages — TD-015 region inference, TD-018 user-defined trait dyn)
-> - Stage 8: 🔄 In progress (8.1: lifetime elision ✅, next: object safety, extern "C", drop elaboration)
+> - Stage 8: 🔄 In progress (8.1: lifetime elision ✅, 8.2: object safety ✅, next: extern "C", drop elaboration)
 >
 > **Architecture:** 47 modules. All mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs < 1500 LOC.
 > Single responsibility per module. Data flows单向. Design docs synced (§25.8).

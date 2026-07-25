@@ -391,3 +391,7 @@ mod systematic_review_v014_tests;
 // Stage 8.1: Lifetime elision tests
 #[path = "v0/stage8/plan/lifetime_elision_tests.rs"]
 mod lifetime_elision_tests;
+
+// Stage 8.2: Object safety tests
+#[path = "v0/stage8/plan/object_safety_tests.rs"]
+mod object_safety_tests;

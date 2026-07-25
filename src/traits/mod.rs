@@ -11,6 +11,9 @@
 //! then provides data to typeck/borrowck/codegen.
 
 pub mod builtin;
+// Stage 8.2: object safety rules (§2.3).
+#[allow(dead_code)]
+mod object_safety;
 pub mod resolver;
 pub mod vtable;
 

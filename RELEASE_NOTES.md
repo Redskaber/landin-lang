@@ -1,9 +1,51 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.15.0
+**Current version**: v0.15.1
 **Date**: 2026-07-25
-**Test count**: 2052 tests + 5 benchmarks
+**Test count**: 2062 tests + 5 benchmarks
+
+---
+
+## v0.15.1 — Stage 8.2 (Object safety rules — §2.3)
+
+### Overview
+
+Implements **object safety rules** (§2.3, RFC #255) — verifies whether a trait
+can be used as `dyn Trait`.
+
+### New module: `src/traits/object_safety.rs`
+
+| Type/Method | Purpose |
+|-------------|---------|
+| `check_object_safety(trait_def)` | Check all 4 object safety rules |
+| `ObjectSafetyError` | Violation type (InvalidReceiver/ReturnsSelf/GenericMethod/AssociatedConst) |
+
+### Object safety rules (§2.3)
+
+1. All methods have receiver `&self` or `&mut self`
+2. No method returns `Self`
+3. No method has generic parameters
+4. No associated const
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2062 passed (134 unit + 1928 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### v0.2 roadmap
+
+| Priority | Action | Status |
+|----------|--------|--------|
+| P1 | Lifetime elision (§3.2) | ✅ Stage 8.1 |
+| P2 | Object safety (§2.3) | ✅ Stage 8.2 |
+| P2 | extern "C" ABI (§13.2) | pending |
+| P2 | Drop elaboration (§5) | pending |
+| P3 | async/await (§10) | pending |
 
 ---
 
