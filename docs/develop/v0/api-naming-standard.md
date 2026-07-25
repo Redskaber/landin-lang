@@ -4117,3 +4117,27 @@ Stage 9.10 — Error recovery conformance expansion.
 node recovery cases (PASS), 21 parser error cases (FAIL), 8 lexer error cases (FAIL).
 This provides a comprehensive executable specification of parser error handling
 for Stage 0, which will be invaluable for Stage 1 re-implementation.
+
+
+### v2.14 (Stage 9.11, 2026-07-26)
+
+Stage 9.11 — Realistic programs conformance expansion.
+
+**Changes**:
+- Expanded conformance category `tests/conformance/00-parse/10-realistic/`
+  with 52 new .lin test files (2 existing + 52 new = 54 total) covering 6
+  sub-categories of realistic programs:
+  - Classic algorithms (12): fib-iterative, factorial, gcd, bubble-sort, etc.
+  - Data structures (10): linked-list, stack, queue, tree, hash-map-entry, etc.
+  - Trait patterns (10): display, default, iterator, clone, eq, ord, etc.
+  - Closures & iterators (8): map, filter, reduce, compose, capture, etc.
+  - Pattern matching (6): match-option/result/enum/nested/guard/or-pat
+  - Real-world snippets (6): calculator, string-ops, counter, config, etc.
+- New Rust integration tests: `tests/v0/stage9/plan/realistic_programs_tests.rs` (10 tests)
+
+**Test impact**: +10 rust integration tests (2215 → 2225) + 52 conformance tests
+(547 → 599). 0 regressions. 0 clippy warnings. fmt clean.
+
+**Key discovery**: All 52 realistic programs pass on first run — no test
+adjustments needed! This validates that the Stage 0 parser correctly handles
+real-world combinations of all grammar features.

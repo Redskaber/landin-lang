@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: Iterator trait pattern
+//! source: Stage 9.11 conformance expansion
+trait Iterator { fn next(&mut self) -> Option<i32>; } struct Counter { count: i32 } impl Iterator for Counter { fn next(&mut self) -> Option<i32> { self.count += 1; Option::Some(self.count) } }

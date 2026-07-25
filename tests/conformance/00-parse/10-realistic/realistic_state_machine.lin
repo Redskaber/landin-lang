@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: state machine
+//! source: Stage 9.11 conformance expansion
+enum State { Idle, Running, Stopped } fn next_state(s: State) -> State { match s { State::Idle => State::Running, State::Running => State::Stopped, State::Stopped => State::Idle } }

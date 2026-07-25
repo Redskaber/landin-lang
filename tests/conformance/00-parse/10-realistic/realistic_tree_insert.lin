@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: BST insert
+//! source: Stage 9.11 conformance expansion
+struct Node { val: i32, left: i32, right: i32 } fn insert(root: i32, val: i32) -> i32 { if root == -1 { return val; } val }

@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: match Option
+//! source: Stage 9.11 conformance expansion
+enum Option<T> { Some(T), None } fn process(o: Option<i32>) -> i32 { match o { Option::Some(v) => v, Option::None => 0 } }

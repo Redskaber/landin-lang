@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: binary tree node
+//! source: Stage 9.11 conformance expansion
+struct TreeNode { val: i32, left: i32, right: i32 } fn new_tree_node(v: i32) -> TreeNode { TreeNode { val: v, left: -1, right: -1 } }

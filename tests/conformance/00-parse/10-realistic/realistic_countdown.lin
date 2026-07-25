@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: countdown loop
+//! source: Stage 9.11 conformance expansion
+fn countdown(n: i32) { let mut i = n; while i > 0 { i -= 1; } }

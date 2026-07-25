@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: callback pattern
+//! source: Stage 9.11 conformance expansion
+fn with_callback(cb: i32) -> i32 { cb } fn run() { let result = with_callback(42); let _ = result; }

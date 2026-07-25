@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: trait with default method
+//! source: Stage 9.11 conformance expansion
+trait Greet { fn name(&self) -> i32; fn greet(&self) -> i32 { self.name() } } struct Person { id: i32 } impl Greet for Person { fn name(&self) -> i32 { self.id } }

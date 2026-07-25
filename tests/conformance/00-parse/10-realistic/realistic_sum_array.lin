@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: sum array elements
+//! source: Stage 9.11 conformance expansion
+fn sum_array(arr: [i32; 5]) -> i32 { let mut sum = 0; let mut i = 0; while i < 5 { sum += arr[i]; i += 1; } sum }

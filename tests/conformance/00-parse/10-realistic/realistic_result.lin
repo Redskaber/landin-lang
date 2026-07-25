@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: Result enum
+//! source: Stage 9.11 conformance expansion
+enum Result<T, E> { Ok(T), Err(E) } fn is_ok<T, E>(r: Result<T, E>) -> bool { match r { Result::Ok(_) => true, Result::Err(_) => false } }

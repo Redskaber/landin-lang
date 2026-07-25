@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: queue with enqueue/dequeue
+//! source: Stage 9.11 conformance expansion
+struct Queue { data: [i32; 10], head: i32, tail: i32 } fn enqueue(q: &mut Queue, v: i32) { q.data[q.tail as usize] = v; q.tail += 1; } fn dequeue(q: &mut Queue) -> i32 { let v = q.data[q.head as usize]; q.head += 1; v }

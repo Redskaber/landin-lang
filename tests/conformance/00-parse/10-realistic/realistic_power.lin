@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: recursive power
+//! source: Stage 9.11 conformance expansion
+fn power(base: i64, exp: i64) -> i64 { if exp == 0 { 1 } else { base * power(base, exp - 1) } }

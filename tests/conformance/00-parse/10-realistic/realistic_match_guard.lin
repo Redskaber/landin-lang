@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: match with guard
+//! source: Stage 9.11 conformance expansion
+fn guarded_match(x: i32) -> i32 { match x { n if n > 0 => 1, n if n < 0 => -1, _ => 0 } }

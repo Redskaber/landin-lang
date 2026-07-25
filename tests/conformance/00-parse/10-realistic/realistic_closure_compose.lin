@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: compose two closures
+//! source: Stage 9.11 conformance expansion
+fn compose() { let f = |x: i32| x + 1; let g = |x: i32| x * 2; let h = |x: i32| g(f(x)); let _ = h(5); }

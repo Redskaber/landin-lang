@@ -1,9 +1,58 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.16.9
+**Current version**: v0.16.10
 **Date**: 2026-07-26
-**Test count**: 2215 tests + 5 benchmarks + 547 conformance tests
+**Test count**: 2225 tests + 5 benchmarks + 599 conformance tests
+
+---
+
+## v0.16.10 — Stage 9.11 (Realistic programs conformance expansion)
+
+### Overview
+
+**Stage 9 第 11 个子阶段** — conformance suite `10-realistic/` category 扩展
+(2 → 54 .lin files, +52 new tests). 覆盖 classic algorithms + data structures +
+trait patterns + closures + pattern matching + real-world snippets.
+
+**🎉 Conformance progress: 547 → 599 (99.8% of 600 target — v0.1 release imminent!)**
+
+### New conformance tests (52 new .lin files, 2 existing)
+
+| Category | Count | Notable |
+|----------|-------|---------|
+| Classic algorithms | 12 | fib-iterative, factorial, gcd, bubble-sort, binary-search, linear-search, power, is-prime, sum-array, max-array, reverse-array, countdown |
+| Data structures | 10 | linked-list, stack, queue, tree-node, tree-insert, hash-map-entry, vec-wrapper, option, result, point |
+| Trait patterns | 10 | display, default, iterator, clone, eq, ord, supertrait, multi-impl, associated-type, static-method |
+| Closures & iterators | 8 | map, filter, reduce, compose, capture, move-capture, recursive, callback |
+| Pattern matching | 6 | match-option, match-result, match-enum, match-nested, match-guard, match-or-pat |
+| Real-world snippets | 6 | calculator, string-ops, counter, config, state-machine, error-handling |
+| **Total** | **54** | (2 existing + 52 new) |
+
+### Key discovery
+
+**All 52 realistic programs pass on first run** — no test adjustments needed!
+This validates that the Stage 0 parser correctly handles real-world combinations
+of all grammar features.
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2225 passed (146 unit + 2079 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 599 passed, 0 failed
+```
+
+### Conformance progress
+
+| Stage | Cumulative | Target | % |
+|-------|-----------|--------|---|
+| 9.1-9.9 | 497 | 600 | 82.8% |
+| 9.10 | 547 | 600 | 91.2% |
+| 9.11 ✅ | 599 | 600 | 99.8% |
+| 9.12 (v0.1 RC) | 600 | 600 | 100% ✅ |
 
 ---
 

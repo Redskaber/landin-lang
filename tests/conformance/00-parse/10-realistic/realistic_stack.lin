@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: stack with push/pop
+//! source: Stage 9.11 conformance expansion
+struct Stack { data: [i32; 10], top: i32 } fn push(s: &mut Stack, v: i32) { s.data[s.top as usize] = v; s.top += 1; } fn pop(s: &mut Stack) -> i32 { s.top -= 1; s.data[s.top as usize] }

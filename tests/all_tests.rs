@@ -455,3 +455,7 @@ mod stage9_9_modules_tests;
 // Stage 9.10: Error recovery conformance expansion verification
 #[path = "v0/stage9/plan/error_recovery_tests.rs"]
 mod stage9_10_error_recovery_tests;
+
+// Stage 9.11: Realistic programs conformance expansion verification
+#[path = "v0/stage9/plan/realistic_programs_tests.rs"]
+mod stage9_11_realistic_programs_tests;

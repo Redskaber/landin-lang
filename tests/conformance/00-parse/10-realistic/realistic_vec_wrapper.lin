@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: Vec wrapper struct
+//! source: Stage 9.11 conformance expansion
+struct VecWrapper<T> { data: [T; 10], len: i32 } fn new_vec<T>() -> VecWrapper<T> { VecWrapper { data: [], len: 0 } }

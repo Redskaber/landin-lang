@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: hash map entry struct
+//! source: Stage 9.11 conformance expansion
+struct Entry<K, V> { key: K, value: V, next: i32 } fn new_entry<K, V>(k: K, v: V) -> Entry<K, V> { Entry { key: k, value: v, next: -1 } }

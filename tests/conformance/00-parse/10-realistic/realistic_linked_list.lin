@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: singly linked list node
+//! source: Stage 9.11 conformance expansion
+struct Node { val: i32, next: i32 } fn new_node(v: i32) -> Node { Node { val: v, next: -1 } }

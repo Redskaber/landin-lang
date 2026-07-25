@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: error handling with Result
+//! source: Stage 9.11 conformance expansion
+enum Result<T, E> { Ok(T), Err(E) } fn divide(a: i32, b: i32) -> Result<i32, i32> { if b == 0 { Result::Err(1) } else { Result::Ok(a / b) } }

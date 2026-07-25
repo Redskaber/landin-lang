@@ -1,0 +1,5 @@
+//! PASS
+//! category: realistic
+//! description: filter closure pattern
+//! source: Stage 9.11 conformance expansion
+fn filter(arr: [i32; 5], threshold: i32) -> i32 { let count = 0; let g = |x: i32| x > threshold; count }
