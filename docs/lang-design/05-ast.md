@@ -889,3 +889,42 @@ MVP 阶段简化：
 ---
 
 **下一文档**: [`06-mir.md`](./06-mir.md) — MIR 设计
+
+---
+
+## 13. 实现状态（v0.14.0，§25.8 回写）
+
+> 本节由 Stage 6.18 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+
+### 13.1 §2-§8 AST 结构 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §2 顶层结构 (Crate) | ✅ 实现 | — | `ast::kinds::Crate` |
+| §3 Item 定义 (fn/const/static/struct/enum/trait/impl/type/extern/mod/use) | ✅ 实现 | — | `ast::kinds::Item` |
+| §4 函数与参数 | ✅ 实现 | — | `ast::kinds::FnDecl` + `Param` |
+| §5 Generics 与 bound | ✅ 实现 | — | `ast::kinds::GenericParam` + `TypeBound` + `WherePredicate` |
+| §6 Type 定义 | ✅ 实现 | — | `ast::kinds::Ty` + `TyKind` |
+| §7 Pattern 定义 | ✅ 实现 | — | `ast::kinds::Pat` + `PatKind` |
+| §8 表达式定义 (30+ ExprKind) | ✅ 实现 | — | `ast::kinds::Expr` + `ExprKind` |
+| §9 Statement 定义 | ✅ 实现 | — | `ast::kinds::Stmt` |
+| §10 类型声明 (struct/enum field) | ✅ 实现 | — | `ast::kinds::StructDecl` + `EnumDecl` + `HirVariantData` |
+
+### 13.2 §12 HIR 与 AST 的差异 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §12.1 HIR 独有机制 (Res / OwnerNode / Body) | ✅ 实现 | — | `hir::kinds::Res` + `OwnerNode` + `Body` |
+| §12.2 HIR 数据结构 | ✅ 实现 | — | `hir::kinds` + `hir::id` + `hir::map` |
+| §12.3 HIR 与 AST 共享比例 | ✅ 实现 | B3（更高） | 实现中 HIR 与 AST 共享更多类型（如 `Path`、`Ident`、`Visibility`），减少重复 |
+| §12.4 HIR lowering 变换 | ✅ 实现 | — | `hir::lower::lower_crate` + `HirLowerCtxt` |
+| §12.5 MVP 实现 | ✅ 实现 | — | Stage 1 完成 |
+
+### 13.3 偏差处理计划
+
+| 偏差 | 处理时机 | 理由 |
+|------|---------|------|
+| B3（HIR/AST 共享比例更高） | 接受为永久偏差 | 实现更优（DRY），无需重构 |
+
+**B4 补写**：设计文档 §8 表达式定义未描述的 HIR 扩展（`HirExprKind` 比 `ExprKind`
+多 `MethodCall` / `Unsafe` / `Try` 等 variant）已在 `hir::kinds::HirExprKind` 实现。

@@ -1,9 +1,203 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.13.5
+**Current version**: v0.14.0
 **Date**: 2026-07-25
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.14.0 — Stage 6.18 (Stage 6 收尾：§25.8 完整设计回写 + 重构阶段告一段落)
+
+### Overview
+
+**Stage 6 收尾里程碑** — 3 actions per user instruction:
+1. Revert Stage 6.17 (expr_operand.rs sub-module extraction — insufficient ROI)
+2. Declare architectural refactoring phase concluded (Stage 6.1-6.16, 47 modules)
+3. Execute §25.8 full design-writeback (6 design docs)
+
+No code changes — pure documentation + design-writeback milestone.
+
+### User instruction
+
+> 像这种重构之后的收益不够时不需要现状去重构它，所以回退你对
+> expr_operand.rs 的重构（当前不需要）；并且明确当前重构阶段
+> 已经告一段落（可以接下来内容，继续重构只会收益不成正比）。
+
+### Action 1: Revert Stage 6.17
+
+- Deleted `place.rs` / `dyn_call.rs` / `enum_variant.rs`
+- Restored `expr_operand.rs` to 1275 LOC (Stage 6.16 state)
+- Restored `mod.rs` re-exports
+- 1881 tests pass (behavior-equivalent revert)
+- TD-019 (expr_operand giant match split) remains OPEN — deferred until ROI justifies
+
+### Action 2: Architectural refactoring phase concluded
+
+Stage 6.1-6.16 completed 47-module split across 8 compiler phases:
+
+| Phase | Modules | Largest file LOC (before → after) |
+|-------|---------|-----------------------------------|
+| mir/lower | 7 | mod.rs 3346 → 772 (-76.9%) |
+| codegen | 5 | mod.rs 2461 → 1050 (-57.3%) |
+| stdlib | 3 | (single file → 3 modules) |
+| parser | 8 | parser.rs 3112 → 263 (-91.5%) |
+| lexer | 6 | reader.rs 1537 → 349 (-77.3%) |
+| borrowck | 6 | mod.rs 1452 → 1146 (-21%) |
+| typeck | 5 | checker.rs 1320 → 1160 (-12%) |
+| resolve | 7 | resolver.rs 1131 → 154 (-86.4%) |
+| **Total** | **47** | All < 1300 LOC |
+
+Further refactoring would yield diminishing returns.
+
+### Action 3: §25.8 full design-writeback
+
+Per v3.21 §25.8, Stage 6 end must compare `docs/lang-design/` against
+actual implementation, identify B1-B4 deviations, write back to design docs.
+
+**8 design docs completed** (2 from Stage 6.11 + 6 from Stage 6.18):
+
+| Doc | Stage | Content |
+|-----|-------|---------|
+| `06-mir.md` | 6.11 | §14 实现状态 (B1/B3/B4 + dyn Trait lowering 补写) |
+| `07-codegen.md` | 6.11 | §14 实现扩展 (Trait dispatch codegen 补写) |
+| `01-language-specification.md` | 6.18 | §13 实现状态 (§6 名称解析 + §7 模块系统) |
+| `02-grammar.md` | 6.18 | §5 实现状态 (§1 词法 + §2-§3 语法) |
+| `03-type-system.md` | 6.18 | §10 实现状态 (§4 类型推导 + §5 trait + §7-§8) |
+| `04-ownership-borrowing.md` | 6.18 | §11 实现状态 (§2-§8 全部) |
+| `05-ast.md` | 6.18 | §13 实现状态 (§2-§8 AST + §12 HIR) |
+| `09-stdlib.md` | 6.18 | §11 实现状态 (stdlib + trait method API + vtable) |
+
+**Deviation summary**:
+- B1 (实现 < 设计) ~20 项 → 推迟 v0.2+
+- B3 (实现 ≠ 设计, 简化) ~10 项 → 接受为临时偏差
+- B4 (设计灰区, 实现已做) ~8 项 → 已补写
+
+### Changes
+
+- Reverted Stage 6.17 code changes (3 files deleted, 2 files restored)
+- 6 design docs updated with §25.8 实现状态 sections
+- Cargo.toml: version 0.13.6 → 0.14.0 (Stage 6 收尾里程碑)
+- No source code changes — 1881 tests pass unchanged
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### Why minor version bump (0.13 → 0.14)?
+
+Stage 6 收尾里程碑 — architectural refactoring phase concluded + §25.8
+full design-writeback complete. This is a major project milestone,
+justifying the minor version bump (per SemVer, 0.x → 0.y is the "major"
+bump for pre-1.0 software).
+
+### Stage 7+ candidates
+
+| Priority | Action | Target |
+|----------|--------|--------|
+| P2 | TD-015: Region inference | Stage 7+ |
+| P3 | TD-018: 用户自定义 trait dyn | Stage 7+ |
+| P3 | TD-019: expr_operand 巨型 match 细拆 (when ROI justifies) | Stage 7+ |
+| P2 | v0.2 features: async/await / extern "C" / unwind / drop elaboration | v0.2 |
+
+---
+
+## v0.13.6 — Stage 6.17 (mir/lower expr_operand sub-module extraction per §14.4 — TD-027)
+
+### Overview
+
+**Sub-module extraction** from `src/mir/lower/expr_operand.rs` (1275 LOC).
+Sixth application of v3.21 §13.4 (stage-start design alignment with
+05-ast.md §8) + §14.4 (refactoring as architecture design).
+
+Extracts 3 independent functions into dedicated sub-modules, reducing the
+file's LOC. The giant `lower_expr_to_operand` match (1046 LOC) is retained
+as TD-019 (Rust match cannot span files; future split candidate).
+
+### §13.4 design alignment
+
+Read `docs/lang-design/05-ast.md` §8 (表达式定义) + `06-mir.md` §8 (MIR 构建算法).
+Decision: extract 3 independent functions to dedicated sub-modules.
+
+| Concept | New module | Function |
+|---------|------------|----------|
+| Place lowering | `place.rs` (75 LOC) | `lower_expr_to_place` |
+| Dyn Trait call | `dyn_call.rs` (89 LOC) | `build_dyn_trait_call_terminator` |
+| Enum variant resolution | `enum_variant.rs` (63 LOC) | `resolve_enum_variant` |
+
+### §14.4 J1-J6 judgments (all ✅)
+
+| # | Judgment | Status |
+|---|----------|--------|
+| J1 | architecture design alignment (3 functions = 3 independent concepts) | ✅ |
+| J2 | single responsibility (each module = one concept) | ✅ |
+| J3 | unidirectional flow (expr_operand.rs → 3 leaves, no cycles) | ✅ |
+| J4 | compiler concept completeness | ✅ |
+| J5 | stage boundary clarity (all in src/mir/lower/, Stage 2 unchanged) | ✅ |
+| J6 | scientific reasonable granularity (63-89 LOC sub-modules) | ✅ |
+
+### New module structure
+
+```
+src/mir/lower/
+  expr_operand.rs   (1095 LOC)  ← lower_expr_to_operand (giant match, TD-019)
+  place.rs          (75 LOC)    ← lower_expr_to_place (新)
+  dyn_call.rs       (89 LOC)    ← build_dyn_trait_call_terminator (新)
+  enum_variant.rs   (63 LOC)    ← resolve_enum_variant (新)
+  ... (7 other modules unchanged)
+```
+
+**expr_operand.rs**: 1275 → **1095 LOC** (-14.1%, -180 LOC)
+
+### Backward compatibility (§23 + §16)
+
+All public symbols preserved via `pub use` re-exports in mod.rs:
+- `pub use dyn_call::build_dyn_trait_call_terminator;`
+- `pub(crate) use enum_variant::resolve_enum_variant;`
+
+External callers see **zero API change**.
+
+### TD-019 (remains OPEN)
+
+The giant `lower_expr_to_operand` match (1046 LOC, 30+ HirExprKind variants)
+is retained as TD-019. Rust match statements cannot span files, and
+extracting each arm to a function is high-risk. Future Stage 6.18+ can
+tackle this with careful per-category extraction.
+
+### Changes
+
+- Created 3 new sub-modules under `src/mir/lower/`
+- `expr_operand.rs`: 1275 → 1095 LOC (-14.1%)
+- `mod.rs`: added 3 `mod xxx;` declarations + `pub use` re-exports
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### Stage 6 architectural splits summary (updated)
+
+| Phase | Modules | Largest file LOC (before → after) |
+|-------|---------|-----------------------------------|
+| mir/lower | 10 | expr_operand.rs 1275 → 1095 (-14.1%) |
+| codegen | 5 | mod.rs 2461 → 1050 (-57.3%) |
+| stdlib | 3 | (single file → 3 modules) |
+| parser | 8 | parser.rs 3112 → 263 (-91.5%) |
+| lexer | 6 | reader.rs 1537 → 349 (-77.3%) |
+| borrowck | 6 | mod.rs 1452 → 1146 (-21%) |
+| typeck | 5 | checker.rs 1320 → 1160 (-12%) |
+| resolve | 7 | resolver.rs 1131 → 154 (-86.4%) |
+| **Total** | **50** | All < 1300 LOC |
 
 ---
 

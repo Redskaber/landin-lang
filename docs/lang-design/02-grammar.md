@@ -500,3 +500,50 @@ Parser 遇到错误时不立即停止，而是：
 ---
 
 **下一文档**: [`03-type-system.md`](./03-type-system.md) — 类型系统
+
+---
+
+## 5. 实现状态（v0.14.0，§25.8 回写）
+
+> 本节由 Stage 6.18 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+
+### 5.1 §1 词法结构 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §1.1 字符集（UTF-8 / 空白 / 注释） | ✅ 实现 | — | `lexer::reader::skip_trivia` |
+| §1.2 Token 分类 | ✅ 实现 | — | `lexer::token::TokenKind` |
+| §1.3 关键字 | ✅ 实现 | — | `lexer::token::keyword_from_str` |
+| §1.4 Identifier (XID_Start + XID_Continue) | ✅ 实现 | — | `lexer::ident::lex_ident` + unicode-xid |
+| §1.4 raw identifier `r#` | ✅ 实现 | — | `lexer::ident::lex_raw_identifier` |
+| §1.5 整数字面量 (dec/hex/oct/bin + suffix) | ✅ 实现 | — | `lexer::number::lex_number` + `lex_hex/oct/bin` |
+| §1.6 浮点字面量 | ✅ 实现 | — | `lexer::number::lex_number` (float 分支) |
+| §1.7 char / byte / string / raw_string / byte_string / raw_byte_string | ✅ 实现 | — | `lexer::string::lex_string` 等 10 个函数 |
+| §1.7 escape sequences | ✅ 实现 | — | `lexer::string::lex_escape` + `lex_byte_escape` |
+| §1.8 运算符与标点 | ✅ 实现 | — | `lexer::operators::lex_dot/lex_lt/...` 14 个函数 |
+| §1.9 Maximal Munch | ✅ 实现 | — | lexer 按最长匹配原则 |
+| §1.1 嵌套块注释 `/* /* */ */` | ✅ 实现 | — | `lexer::reader::skip_trivia` |
+
+### 5.2 §2-§3 语法产生式 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §2 Pratt parser | ✅ 实现 | — | `parser::expr::parse_*_expr` 13 层 Pratt |
+| §3.1 Crate + module + item | ✅ 实现 | — | `parser::items::parse_item` + 16 个 item 函数 |
+| §3.2 Generic + bound + where | ✅ 实现 | — | `parser::generics::parse_generics` + `parse_type_bounds` + `parse_where_clause` |
+| §3.3 Type | ✅ 实现 | — | `parser::ty::parse_ty` |
+| §3.4 Expression | ✅ 实现 | — | `parser::expr::parse_expr` + 21 个 expr 函数 |
+| §3.5 Pattern | ✅ 实现 | — | `parser::pat::parse_pat` + `parse_or_pat` + `parse_pat_no_or` |
+| §3.6 Statement (block + let) | ✅ 实现 | — | `parser::stmt::parse_block` + `parse_let` |
+| §3.7 use 声明 | ✅ 实现 | — | `parser::items::parse_use` + `parse_use_tree` |
+| §4.1 `<<` 歧义 | ✅ 实现 | — | `parser::path::try_parse_generic_args` 启发式 |
+| §4.2 closure vs binary OR | ✅ 实现 | — | parser 按 `|` 上下文区分 |
+| §4.3 attribute | ✅ 实现 | — | `parser::items::parse_outer_attrs` + `parse_attr_args` |
+| §4.4 内建宏调用 | ✅ 实现 | — | `parser::expr::parse_primary_expr` MacroCall 分支 |
+
+### 5.3 偏差处理计划
+
+无 B1/B3 偏差。所有 §1-§3 语法产生式都已实现并测试。
+
+**B4 补写**：设计文档 §1-§3 未描述的 lexer/parser 内部架构已在 Stage 6.12-6.13
+拆分中体现（lexer 6 模块 + parser 8 模块），对应 §1 词法类别 + §3 语法类别。

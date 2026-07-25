@@ -716,3 +716,51 @@ MVP 阶段实现 30-50 个最常见错误代码，每个错误含"error code + �
 ---
 
 **下一文档**: [`04-ownership-borrowing.md`](./04-ownership-borrowing.md) — 所有权与借用
+
+---
+
+## 10. 实现状态（v0.14.0，§25.8 回写）
+
+> 本节由 Stage 6.18 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+
+### 10.1 §4 类型推导 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §4.1 constraint-based inference | ✅ 实现 | — | `typeck::checker::TypeChecker` |
+| §4.2 inference variable | ✅ 实现 | — | `mir::ty::InferVar::{TyVar,IntVar,FloatVar}` |
+| §4.3 constraint 类型 | ✅ 实现 | — | 通过 unification 生成 |
+| §4.4 constraint 生成规则 | ✅ 实现 | — | `check_statement` + `check_terminator` + `infer_rvalue` |
+| §4.5 unification 算法 | ✅ 实现 | — | `typeck::unify::UnificationTable` |
+| §4.6 整数 fallback (i32 默认) | ✅ 实现 | — | `TypeChecker::check_mir_body` 末尾 default |
+| §4.7 不做的事（const generics / GATs） | ✅ 遵守 | — | MVP 无 |
+
+### 10.2 §5 Trait Resolution — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §5.1 整体流程 | ✅ 实现 | — | `traits::resolver::TraitResolver` |
+| §5.2 evaluation | ✅ 实现 | B3（简化） | 实现不做 canonical query，直接查 |
+| §5.3 selection | ✅ 实现 | B3（简化） | 实现不做 depth limit / specialization |
+| §5.4 fulfillment | ✅ 实现 | — | driver 编排 |
+| §5.5 impl matching | ✅ 实现 | — | `TraitResolver::is_copy_builtin` 等 |
+| §5.6 orphan rule | ❌ 未实现 | B1 | v0.2+ |
+| §5.7 coherence check | ✅ 实现 | B3（简化） | `traits::resolver` 做基本检查 |
+| §5.8 depth limit / canonical query | ❌ 未实现 | B1 | v0.2+ |
+| §5.9 `?` 与 From 唯一性 | ❌ 未实现 | B1 | v0.2+（需要 `?` 操作符） |
+| §5.10 推迟的 trait constraint | ❌ 未实现 | B1 | v0.2+ |
+
+### 10.3 §7-§8 Normalization + Subtyping — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §7 associated type normalization | ❌ 未实现 | B1 | v0.2+（需要 associated types） |
+| §8 subtyping 规则 | ✅ 实现 | B3（简化） | `typeck::predicates::can_coerce` 实现 coercion 矩阵 |
+
+### 10.4 偏差处理计划
+
+| 偏差 | 处理时机 | 理由 |
+|------|---------|------|
+| B1（orphan rule / canonical query / `?` / 推迟 constraint / normalization） | v0.2+ | MVP 不需要 |
+| B3（trait resolution 简化） | v0.2+ | 当前简化版满足 MVP |
+| B3（subtyping 简化） | v0.2+ | 当前 coercion 矩阵满足 MVP |

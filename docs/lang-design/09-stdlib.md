@@ -984,3 +984,58 @@ extern "C" {
 ---
 
 **下一文档**: [`10-toolchain.md`](./10-toolchain.md) — 工具链
+
+---
+
+## 11. 实现状态（v0.14.0，§25.8 回写）
+
+> 本节由 Stage 6.18 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+
+### 11.1 stdlib 整体 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §1 stdlib 三层架构 (core/alloc/std) | B4 | — | 实现使用单 crate `stdlib` 模块，非三层独立 crate |
+| §2 core prelude | ✅ 实现 | B3（简化） | 实现使用 `stdlib::mod::register_stdlib` 注册内置类型 |
+| §3 alloc 层 | ❌ 未实现 | B1 | v0.2+（需要 Box/Vec/String 完整实现） |
+| §4 std 层 | ❌ 未实现 | B1 | v0.2+ |
+| §5 trait 定义 (Copy/Clone/Drop/PartialEq/...) | ✅ 实现 | — | `stdlib::trait_methods::STDLIB_TRAITS` (43 traits) |
+| §6 stdlib trait method 查询 API | ✅ 实现 | B4 | 设计未描述，实现已做（Stage 5.93-5.99） |
+| §7 vtable 布局 | ✅ 实现 | B4 | 设计未描述，实现已做（Stage 5.40-5.80） |
+| §8 互操作 (C ABI / Rust ABI) | ❌ 未实现 | B1 | v0.2+ |
+| §9 最小 libc binding | ❌ 未实现 | B1 | v0.2+ |
+
+### 11.2 stdlib trait method 查询 API — 实现扩展（B4 补写）
+
+设计文档 §5 描述了 trait 定义，但未描述 trait method 查询 API。Stage 5.93-5.99
+实现了完整的查询 API：
+
+| 查询类型 | 函数 | Stage |
+|---------|------|-------|
+| 正向查询 | `find_stdlib_trait_method` | 5.93 |
+| 字段访问器 | `stdlib_trait_method_return_kind` / `param_kinds` / `self_kind` / `param_count` / `is_unsafe` | 5.93-5.94 |
+| 反向查询 | `stdlib_trait_methods_by_self_kind` / `by_return_kind` / `by_is_unsafe` / `by_param_count` | 5.95-5.99 |
+| 语义分组 | `stdlib_marker_traits` / `arithmetic_traits` / `core_traits` / `io_traits` / `unary_traits` | 5.87-5.90 |
+| 统计 | `stdlib_trait_count` / `stdlib_trait_method_count` | 5.82-5.86 |
+| 成员查询 | `is_stdlib_trait` / `is_stdlib_trait_method` / `is_stdlib_marker_trait` | 5.81-5.85 |
+
+### 11.3 vtable 布局 + emission — 实现扩展（B4 补写）
+
+设计文档未描述 vtable 布局。Stage 5.40-5.80 实现了完整的 vtable/dynptr emission：
+
+| 概念 | 实现位置 | Stage |
+|------|---------|-------|
+| `StdlibVtableSlot` + `stdlib_vtable_layout` | `stdlib::vtable_layout` | 5.40-5.50 |
+| `StdlibVtablePlan` + `stdlib_vtable_plan` | `stdlib::vtable_layout` | 5.50-5.55 |
+| vtable symbol 生成 | `stdlib::vtable_layout::stdlib_vtable_global_name` | 5.55-5.60 |
+| vtable emission | `stdlib::vtable_layout::StdlibVtableEmission` | 5.60-5.70 |
+| dynptr emission | `stdlib::vtable_layout::StdlibDynptrEmission` | 5.65-5.70 |
+| codegen vtable/dynptr globals | `codegen::trait_dispatch` | 5.70-5.80 |
+
+### 11.4 偏差处理计划
+
+| 偏差 | 处理时机 | 理由 |
+|------|---------|------|
+| B1（alloc/std 层 / 互操作 / libc binding） | v0.2+ | MVP 不需要 |
+| B3（core prelude 简化） | v0.2+ | 当前 register_stdlib 满足 MVP |
+| B4（trait method 查询 API + vtable 布局） | 已在 §11.2-11.3 补写 | — |

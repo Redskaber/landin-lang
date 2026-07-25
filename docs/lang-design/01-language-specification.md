@@ -591,3 +591,44 @@ fn safe_wrapper() {
 ---
 
 **下一文档**: [`02-grammar.md`](./02-grammar.md) — 完整 BNF/EBNF 文法
+
+---
+
+## 13. 实现状态（v0.14.0，§25.8 回写）
+
+> 本节由 Stage 6.18 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+> 仅记录"设计 + 理由"，实现细节归 `docs/develop/v0/stage-N/dev-log.md`。
+
+### 13.1 §6 名称解析 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §6.2 pass 1 (build reduced graph) | ✅ 实现 | — | `resolve::module_build::build_module_tree` |
+| §6.2 pass 2 (finalize imports) | ✅ 实现 | — | `resolve::module_build::resolve_uses` + `resolve_use_tree` + `resolve_use_leaf` + `resolve_use_glob` |
+| §6.2 pass 3 (compute visibilities) | ✅ 实现 | B3（实现更宽松） | `check_visibility` 当前 permissive（同 module 私有访问允许），严格 enforcement 推迟 |
+| §6.2 pass 4 (late resolve) | ✅ 实现 | — | `resolve::path_resolve::resolve_all_paths` + 11 个 path/expr 解析函数 |
+| §6.2 pass 5 (resolve main) | ✅ 实现 | — | driver 层处理 |
+| §6.2 pass 6 (check unused imports) | ❌ 未实现 | B1 | v0.2+ |
+| §6.2 pass 7 (report errors) | ✅ 实现 | — | `Resolver::into_errors` |
+| §6.2 pass 8 (postprocess) | ✅ 实现 | — | 无临时数据需清理 |
+| §6.3 prelude | B4 | — | 实现使用 stdlib 内置 traits，非显式 prelude 导入 |
+
+### 13.2 §7 模块系统 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| `mod foo { ... }` (inline) | ✅ 实现 | — | `resolve::module_build::build_child_module` |
+| `mod foo;` (external) | ❌ 未实现 | B1 | v0.2+（需要文件系统加载） |
+| `use` 导入 | ✅ 实现 | — | `resolve_use_leaf` + `resolve_use_glob` |
+| glob import `use foo::*` | ✅ 实现 | — | `resolve_use_glob` |
+| 嵌套 module 路径 `a::b::c` | ✅ 实现 | — | `resolve_path` |
+| visibility `pub` / `pub(crate)` / `pub(super)` | ✅ 实现 | B3 | `check_visibility` 当前 permissive |
+
+### 13.3 偏差处理计划
+
+| 偏差 | 处理时机 | 理由 |
+|------|---------|------|
+| B1（pass 6 unused imports warning） | v0.2+ | MVP 不需要 |
+| B1（external mod） | v0.2+ | 需要文件系统 |
+| B3（visibility 严格 enforcement） | v0.2+ | 当前 permissive 避免误报 |
+| B4（prelude 显式导入） | v0.2+ | 当前用 stdlib 内置 traits 替代 |

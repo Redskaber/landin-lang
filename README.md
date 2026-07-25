@@ -6,12 +6,13 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.13.5 — Stage 0-5 complete, Stage 6 in progress.
+> **Status:** v0.14.0 — Stage 0-5 complete, Stage 6 收尾里程碑达成 (architectural refactoring concluded + §25.8 design-writeback complete).
 > **1881 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 110 test modules!
 > Process v3.21 (§0-§28). §16 interface isolation compliant.
-> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7) + codegen (5) + stdlib (3) + parser (8) + lexer (6) + borrowck (6) + typeck (5) + resolve (7) + process governance v3.21 (§13.4 + §14.4 + §25.8). **47 modules total.**
+> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7) + codegen (5) + stdlib (3) + parser (8) + lexer (6) + borrowck (6) + typeck (5) + resolve (7) = **47 modules total.** §25.8 design-writeback: 8 docs.
 > 🎉 Architecture: all mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs files < 1300 LOC. Single responsibility per module. Data flows单向. Design docs synced with implementation (§25.8).
-> Next: Stage 6 末尾 — 完整 §25.8 设计回写 + TD-015 Region inference + TD-018 用户自定义 trait dyn.
+> **Architectural refactoring phase concluded** — further refactoring yields diminishing returns.
+> Next: Stage 7+ — TD-015 Region inference / TD-018 用户自定义 trait dyn / v0.2 features.
 
 ## Quick start
 

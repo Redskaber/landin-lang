@@ -3292,3 +3292,75 @@ path_resolve, primitives}. Per J6, all modules in 32-577 LOC range.
 **Fmt impact**: clean.
 
 **TD-026**: resolve/resolver.rs LOC — introduced and immediately closed in this stage.
+
+### v1.86 (Stage 6.17, 2026-07-25)
+
+Stage 6.17 mir/lower expr_operand sub-module extraction round. Per v3.21
+§13.4 (stage-start design alignment with 05-ast.md §8) + §14.4 (refactoring
+as architecture design, J1-J6 judgments).
+
+Extracts 3 independent functions from `src/mir/lower/expr_operand.rs`
+(1275 LOC) into dedicated sub-modules, reducing the file's LOC.
+
+**New public symbols**: None (all re-exported via mod.rs).
+
+**Changes**:
+- Created 3 new sub-modules under `src/mir/lower/`:
+  - `place.rs` (75 LOC) — `lower_expr_to_place` (expression → MIR Place)
+  - `dyn_call.rs` (89 LOC) — `build_dyn_trait_call_terminator` (dyn Trait call)
+  - `enum_variant.rs` (63 LOC) — `resolve_enum_variant` (enum variant resolution)
+- `expr_operand.rs`: 1275 → 1095 LOC (-14.1%, -180 LOC)
+  - Retains: `lower_expr_to_operand` (1046 LOC giant match — TD-019, future split)
+- mod.rs re-exports all public symbols for backward compat:
+  - `pub use dyn_call::build_dyn_trait_call_terminator;`
+  - `pub(crate) use enum_variant::resolve_enum_variant;`
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+**Architectural rationale**: Per §14.4 J1, the 3 extracted functions each
+correspond to an independent concept in 05-ast.md §8 (place / dyn call /
+enum variant). Per J2, each new module has single responsibility. Per J3,
+data flows expr_operand.rs → {place, dyn_call, enum_variant}.
+
+**Note**: The giant `lower_expr_to_operand` match (1046 LOC, 30+ HirExprKind
+variants) is retained as TD-019. Rust match statements cannot span files,
+and extracting each arm to a function is high-risk. Future Stage 6.18+
+can tackle this with careful per-category extraction.
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
+
+**TD-027**: expr_operand.rs independent function extraction — introduced
+and immediately closed. TD-019 (giant match split) remains OPEN.
+
+### v1.87 (Stage 6.18, 2026-07-25)
+
+Stage 6.18 — Stage 6 收尾里程碑. **No code changes** — pure documentation
++ design-writeback. Two actions per user instruction:
+
+1. **Reverted Stage 6.17** (expr_operand.rs sub-module extraction):
+   - Deleted `place.rs` / `dyn_call.rs` / `enum_variant.rs`
+   - Restored `expr_operand.rs` to 1275 LOC (Stage 6.16 state)
+   - Restored `mod.rs` re-exports
+   - User judgment: refactoring ROI insufficient at this time
+
+2. **Declared architectural refactoring phase concluded** (Stage 6.1-6.16):
+   - 47 modules total across 8 compiler phases
+   - All mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs < 1300 LOC
+   - Further refactoring would yield diminishing returns
+
+3. **§25.8 full design-writeback** (6 design docs):
+   - `01-language-specification.md` +§13 (§6 名称解析 + §7 模块系统)
+   - `02-grammar.md` +§5 (§1 词法 + §2-§3 语法)
+   - `03-type-system.md` +§10 (§4 类型推导 + §5 trait + §7-§8)
+   - `04-ownership-borrowing.md` +§11 (§2-§8 全部)
+   - `05-ast.md` +§13 (§2-§8 AST + §12 HIR)
+   - `09-stdlib.md` +§11 (stdlib 整体 + trait method API + vtable)
+
+**New public symbols**: None (no code changes).
+
+**Test impact**: 0 (no code changes).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
+
+**Version bump**: v0.13.6 → v0.14.0 (Stage 6 收尾里程碑, minor bump per SemVer).

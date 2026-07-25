@@ -3439,3 +3439,86 @@ design aligned with the design specification.
 
 **TD-026**: resolve/resolver.rs LOC — introduced and immediately closed in this stage.
 **Next**: Stage 6 末尾 — 完整 §25.8 设计回写 + TD-015 Region inference + TD-018.
+
+### Stage 6.17 — mir/lower expr_operand sub-module extraction per §14.4 (v0.13.6)
+
+**Priority**: User request — continue stage 6 progress with API naming
+standardization. Apply v3.21 §13.4 (stage-start design alignment with
+05-ast.md §8) + §14.4 (refactoring as architecture design).
+
+**§13.4 design alignment**:
+- Read `docs/lang-design/05-ast.md` §8 (表达式定义) + `06-mir.md` §8 (MIR 构建算法)
+- §8 把表达式按语义分为 8+ 类别
+- Decision: extract 3 independent functions from expr_operand.rs to
+  dedicated sub-modules; leave the giant match (lower_expr_to_operand)
+  as TD-019 for future split
+
+**§14.4 J1-J6 judgments** (all ✅):
+- J1 architecture design alignment (3 functions = 3 independent concepts)
+- J2 single responsibility
+- J3 unidirectional flow (expr_operand.rs → 3 leaf modules)
+- J4 compiler concept completeness
+- J5 stage boundary clarity
+- J6 scientific reasonable granularity (63-89 LOC sub-modules)
+
+**Work completed**:
+- Created 3 new sub-modules under `src/mir/lower/`:
+  * place.rs (75 LOC) — lower_expr_to_place
+  * dyn_call.rs (89 LOC) — build_dyn_trait_call_terminator
+  * enum_variant.rs (63 LOC) — resolve_enum_variant
+- expr_operand.rs: 1275 → 1095 LOC (-14.1%, -180 LOC)
+  * Retains: lower_expr_to_operand (1046 LOC giant match — TD-019)
+- mod.rs re-exports all public symbols for backward compat
+- Cargo.toml: version 0.13.5 → 0.13.6
+
+**Architectural rationale**: Per §14.4 J1, the 3 extracted functions each
+correspond to an independent concept in 05-ast.md §8. The giant match
+(lower_expr_to_operand) is left as TD-019 because Rust match statements
+cannot span files, and extracting each arm is high-risk.
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-027**: expr_operand.rs independent function extraction — introduced
+and immediately closed. TD-019 (giant match split) remains OPEN.
+**Next**: Stage 6 末尾 — 完整 §25.8 设计回写 + TD-015 Region inference + TD-018.
+
+### Stage 6.18 — Stage 6 收尾：§25.8 完整设计回写 + 重构阶段告一段落 (v0.14.0)
+
+**Priority**: User explicit instruction — revert Stage 6.17 (insufficient ROI),
+declare architectural refactoring phase concluded, proceed to Stage 6 end
+(§25.8 full design-writeback).
+
+**Work completed**:
+
+1. **Reverted Stage 6.17** (expr_operand.rs sub-module extraction):
+   - Deleted `place.rs` / `dyn_call.rs` / `enum_variant.rs`
+   - Restored `expr_operand.rs` from git (d544455 commit, 1275 LOC)
+   - Restored `mod.rs` re-exports to Stage 6.16 state
+   - 1881 tests pass (behavior-equivalent revert)
+
+2. **Declared architectural refactoring phase concluded**:
+   - Stage 6.1-6.16 completed 47-module split across 8 compiler phases
+   - All mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs < 1300 LOC
+   - User judgment: further refactoring yields diminishing returns
+
+3. **§25.8 full design-writeback** (6 design docs):
+   - `01-language-specification.md` +§13 实现状态（B1/B3/B4 偏差）
+   - `02-grammar.md` +§5 实现状态（B4 补写）
+   - `03-type-system.md` +§10 实现状态（B1/B3 偏差）
+   - `04-ownership-borrowing.md` +§11 实现状态（B1/B3 偏差）
+   - `05-ast.md` +§13 实现状态（B3/B4 偏差）
+   - `09-stdlib.md` +§11 实现状态（B1/B3/B4 偏差）
+
+4. **Version bump**: v0.13.6 → v0.14.0 (Stage 6 收尾里程碑)
+
+**偏差汇总**:
+- B1（实现 < 设计）~20 项 → 推迟 v0.2+
+- B3（实现 ≠ 设计，简化）~10 项 → 接受为临时偏差
+- B4（设计灰区，实现已做）~8 项 → 已补写
+
+**Test impact**: 0 (no code changes)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Stage 6 收尾里程碑达成** — 架构性重构阶段告一段落，§25.8 完整设计回写完成。
+**Next**: Stage 7+ — TD-015 Region inference / TD-018 用户自定义 trait dyn / v0.2 特性.

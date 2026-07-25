@@ -575,3 +575,65 @@ Disjoint closure captures 与 borrow check 配合：
 ---
 
 **下一文档**: [`05-ast.md`](./05-ast.md) — AST 结构定义
+
+---
+
+## 11. 实现状态（v0.14.0，§25.8 回写）
+
+> 本节由 Stage 6.18 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+
+### 11.1 §2 借用规则 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §2.1 共享借用 vs 独占借用 | ✅ 实现 | — | `borrowck::BorrowSet` + `BorrowKind::{Shared,Mut}` |
+| §2.2 借用检查规则 | ✅ 实现 | — | `borrowck::BorrowChecker::check_place_write/read` |
+| §2.3 NLL | ✅ 实现 | — | `borrowck::liveness::compute_last_use_map` |
+| §2.4 two-phase borrows | ❌ 未实现 | B1 | v0.2+ |
+
+### 11.2 §3 生命周期系统 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §3.1 lifetime 标注 | ✅ 实现（语法层） | B3 | parser 解析 lifetime，但 typeck 不做 region inference |
+| §3.2 lifetime elision | ✅ 实现（简化） | B3 | 实现用 `Region::Erased` 替代 |
+| §3.3 `'static` | ✅ 实现 | — | `mir::ty::Region::Static` |
+| §3.4 lifetime bound | ❌ 未实现 | B1 | TD-015（Region inference）v0.2+ |
+
+### 11.3 §4 NLL 算法实现 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §4.1 数据结构 (BorrowSet / MoveTracker) | ✅ 实现 | — | `borrowck::borrow_set` + `borrowck::move_tracker` |
+| §4.2 算法三阶段 | ✅ 实现 | B3（简化） | 实现合并 liveness + maybe-init + borrow analysis |
+| §4.3 liveness analysis | ✅ 实现 | — | `borrowck::liveness::compute_last_use_map` |
+| §4.4 maybe-initialized places | ✅ 实现 | B3（简化） | 通过 `StorageLive/StorageDead` 隐式跟踪 |
+| §4.5 move tracking | ✅ 实现 | — | `borrowck::move_tracker::MoveTracker` |
+| §4.6 NLL 完整规范（universal region / implied bounds / universe / type tests / SCC） | ❌ 未实现 | B1 | TD-015（Region inference）v0.2+ |
+
+### 11.4 §5 Drop check — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §5.1-5.3 drop check | ❌ 未实现 | B1 | v0.2+（需要 Drop trait 完整实现） |
+| §5.4 drop 顺序 | ✅ 实现（简化） | B3 | 实现按 scope 顺序 drop，不做严格 drop check |
+
+### 11.5 §6 借用错误诊断 — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §6.1 错误类型 | ✅ 实现 | — | `borrowck::error::BorrowError` + `BorrowErrorKind` |
+| §6.2 诊断信息设计 | ✅ 实现 | B3（简化） | 实现提供基本错误信息，无 suggested fix |
+
+### 11.6 §8 Disjoint closure captures — 实现状态
+
+| 设计 § | 实现状态 | 偏差类型 | 说明 |
+|--------|---------|---------|------|
+| §8 RFC 2229 disjoint closure captures | ❌ 未实现 | B1 | v0.2+ |
+
+### 11.7 偏差处理计划
+
+| 偏差 | 处理时机 | 理由 |
+|------|---------|------|
+| B1（region inference / two-phase borrows / drop check / disjoint captures） | TD-015 v0.2+ | 需要 region inference 基础设施 |
+| B3（lifetime elision / NLL 简化 / maybe-init / drop 顺序 / 诊断） | v0.2+ | 当前简化版满足 MVP |
