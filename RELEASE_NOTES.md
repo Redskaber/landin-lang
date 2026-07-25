@@ -1,9 +1,140 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.15.6
-**Date**: 2026-07-25
-**Test count**: 2100 tests + 5 benchmarks
+**Current version**: v0.16.0
+**Date**: 2026-07-26
+**Test count**: 2111 tests + 5 benchmarks + 38 conformance tests
+
+---
+
+## v0.16.0 — Stage 9.1 (Systematic Review + v0.1 Conformance Kickoff)
+
+### Overview
+
+**Stage 9 启动** — systematic review of project state + strategic decision
+to pursue v0.1 Conformance Suite expansion + first concrete step (literals
+category expansion). Aligns with `12-roadmap.md` §1 ("v0.1 = Stage 0 完整 +
+conformance 通过") and `17-conformance-suite.md` §2 (600 parse tests target).
+
+**🎯 Stage 9 方向决定: v0.1 Conformance Suite 扩展 (8 → 600 tests)**
+
+### §25 Systematic Review (七维度)
+
+`docs/develop/v0/stage-9/systematic-review-v0156.md` — 5/5 GO → PASS
+
+| Dimension | Status |
+|-----------|--------|
+| D1 Architecture | ✅ 50+ modules, 7 files > 1000 LOC (all OK or TD-019 hold) |
+| D2 Tech Debt | ✅ Only TD-019 OPEN (user-directed hold) |
+| D3 Tests | ✅ 2100 → 2111 (+11 new) + 8 → 38 conformance (+30 new) |
+| D4 v0.1 Readiness | ✅ Stage 0-8 complete, conformance suite exists, 38/600 (6.3%) |
+| D5 Design Alignment | ✅ 8 core design docs synced |
+| D6 Performance | ✅ No O(n²) algorithms |
+| D7 Documentation | ✅ §17.1/§17.2/§17.3/§18.4 fully compliant |
+
+### Strategic Decision (§15 long-term > short-term)
+
+**Direction A: v0.1 Conformance Suite** chosen over:
+- B. v0.3 Bootstrap Prep (high risk, requires v0.1 stable)
+- C. v0.2+ Features (insufficient validation without conformance)
+
+**Reasons**:
+1. Explicit release gate (`12-roadmap.md` §1)
+2. Executable language spec (`17-conformance-suite.md` §1.3)
+3. Regression protection (`17-conformance-suite.md` §1.2)
+4. Cross-compiler consistency — paves way for v0.3 (`17-conformance-suite.md` §1.4)
+5. Low risk, high reward — each test is independent and incremental
+6. Unlocks v0.1 release — only explicit next milestone
+
+### Stage 9 Sub-stage Plan (12 sub-stages)
+
+| Sub-stage | Topic | Tests | Cumulative |
+|-----------|-------|-------|-----------|
+| 9.1 | Systematic review + literals expansion | +30 | 38 ✅ |
+| 9.2 | Operators + Pratt precedence | +60 | 98 |
+| 9.3 | Control flow | +80 | 178 |
+| 9.4 | Patterns | +70 | 248 |
+| 9.5 | Types | +60 | 308 |
+| 9.6 | Attributes | +40 | 348 |
+| 9.7 | Generics | +50 | 398 |
+| 9.8 | Closures | +40 | 438 |
+| 9.9 | Modules | +60 | 498 |
+| 9.10 | Error recovery | +50 | 548 |
+| 9.11 | Realistic programs | +52 | 600 |
+| 9.12 | §25 deep review + v0.1 RC | — | 600 |
+
+### New conformance tests (30 .lin files)
+
+`tests/conformance/00-parse/00-literals/`:
+
+| Category | Count | Notable |
+|----------|-------|---------|
+| Integer decimal | 5 | 1 FAIL: leading zeros rejected (Rust-style) |
+| Integer hex | 4 | lowercase + uppercase + underscores |
+| Integer octal | 3 | 0o prefix |
+| Integer binary | 3 | 0b prefix |
+| Integer suffix | 4 | i32/u64/isize/usize |
+| Float | 5 | pi, exponent, underscores, f64 suffix |
+| Char | 3 | simple + escape newline + escape backslash |
+| String | 3 | simple + empty + escape |
+| **Total new** | **30** | |
+
+### New Rust integration tests (11 tests)
+
+`tests/v0/stage9/plan/systematic_review_v0156_tests.rs`:
+
+- D1 architecture verification (2 tests)
+- D3 test infrastructure (1 test)
+- D4 conformance suite (2 tests)
+- D5 design docs (2 tests)
+- D7 docs (2 tests)
+- Stage 9 conformance categories (1 test)
+- Cargo.toml version bump (1 test)
+
+### Key discovery
+
+**Lexer rule discovery (positive)**: The `int_dec_leading_zero.lin` test was
+initially written as PASS but converted to FAIL after observing the lexer
+rejects leading zeros in decimal integers (similar to Rust). The conformance
+suite caught an unverified language rule — demonstrating the value of
+executable specifications.
+
+### Documentation created
+
+| Document | Type |
+|----------|------|
+| `docs/develop/v0/stage-9/README.md` | new — Stage 9 index |
+| `docs/develop/v0/stage-9/plan-9.1.md` | new — Stage 9.1 plan |
+| `docs/develop/v0/stage-9/systematic-review-v0156.md` | new — §25 audit |
+| `docs/develop/v0/stage-9/gate-review-9.1.md` | new — gate review |
+| `docs/tests/v0/stage9/plan/README.md` | new — Stage 9 test doc index |
+| `docs/tests/v0/stage9/plan/systematic_review_v0156.md` | new — test plan |
+| `tests/v0/stage9/plan/systematic_review_v0156_tests.rs` | new — 11 tests |
+
+### Updated docs
+
+- `README.md` — v0.15.6 → v0.16.0, Stage 9 status, conformance mention
+- `RELEASE_NOTES.md` — this section
+- `docs/develop/v0/api-naming-standard.md` — v2.03 → v2.04 (Stage 9.1 entry)
+- `docs/tests/matrix.md` — Stage 9 row added
+- `docs/tests/README.md` — stage9 references added
+- `Cargo.toml` — 0.15.6 → 0.16.0
+- `tests/all_tests.rs` — +1 module reference
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2111 passed (146 unit + 1965 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 38 passed, 0 failed
+```
+
+### Next steps
+
+- **Stage 9.2**: Operators + Pratt precedence (+60 conformance tests)
+- **远期**: Stage 9.12 = v0.1 release candidate
 
 ---
 

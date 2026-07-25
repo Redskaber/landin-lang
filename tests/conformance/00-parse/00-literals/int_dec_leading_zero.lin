@@ -1,0 +1,6 @@
+//! FAIL
+//! category: literals
+//! description: decimal integer with leading zero must error (Rust-style)
+//! error_pattern: leading zeros not allowed
+//! source: Stage 9.1 conformance expansion
+fn f() { let _ = 007; }

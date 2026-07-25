@@ -1,0 +1,5 @@
+//! PASS
+//! category: literals
+//! description: uppercase hex with underscores
+//! source: Stage 9.1 conformance expansion
+fn f() { let _ = 0xDEAD_BEEF; }

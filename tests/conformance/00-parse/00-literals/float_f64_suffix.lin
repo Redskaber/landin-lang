@@ -1,0 +1,5 @@
+//! PASS
+//! category: literals
+//! description: float with f64 suffix
+//! source: Stage 9.1 conformance expansion
+fn f() { let _ = 1f64; }

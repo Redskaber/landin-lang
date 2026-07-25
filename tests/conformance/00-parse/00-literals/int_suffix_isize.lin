@@ -1,0 +1,5 @@
+//! PASS
+//! category: literals
+//! description: integer with isize suffix
+//! source: Stage 9.1 conformance expansion
+fn f() { let _ = 42isize; }

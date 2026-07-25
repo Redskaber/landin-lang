@@ -17,7 +17,8 @@
 | Stage 6 (architectural splits — 47 modules) | — (refactor, behavior-equivalent) | — | ✅ Complete (18 sub-stages, 1881 tests unchanged) |
 | Stage 7 (region inference + user-defined trait dyn) | 154 (+28 unit) | ~98% | ✅ Complete (9 sub-stages) |
 | Stage 8 (v0.2 features + docs standardization) | 38 (+9 unit) | ~98% | ✅ Complete (7 sub-stages) |
-| **Total** | **2100** (146 unit + 1954 integration) | ~99% | ✅ Stage 0-8 complete |
+| Stage 9 (v0.1 conformance suite expansion) | +11 rust + +30 conformance | ~99% | 🔄 In progress (1/12 sub-stages, 38/600 conformance) |
+| **Total** | **2111** rust + **38** conformance | ~99% | ✅ Stage 0-8 complete + Stage 9.1 complete |
 
 ## Stage 3 Test Breakdown
 

@@ -1,0 +1,5 @@
+//! PASS
+//! category: literals
+//! description: binary literal with underscore
+//! source: Stage 9.1 conformance expansion
+fn f() { let _ = 0b1111_0000; }

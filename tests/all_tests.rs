@@ -411,3 +411,11 @@ mod async_await_tests;
 // Stage 8.6: §25.8 design writeback + §25 deep review tests
 #[path = "v0/stage8/plan/deep_review_tests.rs"]
 mod stage8_6_deep_review_tests;
+
+// ============================================================
+// Stage 9.1 — Systematic Review + v0.1 Conformance Kickoff
+// ============================================================
+
+// Stage 9.1: systematic review verification (D1-D7 + stage9 setup)
+#[path = "v0/stage9/plan/systematic_review_v0156_tests.rs"]
+mod stage9_1_systematic_review_v0156_tests;

@@ -1,0 +1,5 @@
+//! PASS
+//! category: literals
+//! description: simple string literal
+//! source: Stage 9.1 conformance expansion
+fn f() { let _ = "hello"; }

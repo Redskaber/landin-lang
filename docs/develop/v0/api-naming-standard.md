@@ -3718,3 +3718,31 @@ Stage 8.7 — §17 docs standardization + worklog sync. **No code changes** (doc
 **Test impact**: 0 (no code changes). 2100 tests still pass. 0 regressions.
 
 **§17.1/§17.2/§17.3/§18.4 全合规**: documentation organization now fully conforms to process v3.21 protocols.
+
+### v2.04 (Stage 9.1, 2026-07-26)
+
+Stage 9.1 — Systematic Review + v0.1 Conformance Kickoff.
+
+**Strategic decision**: Choose Direction A (v0.1 Conformance Suite expansion)
+over Direction B (v0.3 Bootstrap Prep) and Direction C (v0.2+ Features), per
+§15 long-term > short-term principle.
+
+**Changes**:
+- New Stage 9 directory structure created:
+  - `docs/develop/v0/stage-9/` (README + plan-9.1 + systematic-review-v0156 + gate-review-9.1)
+  - `docs/tests/v0/stage9/plan/` (README + systematic_review_v0156.md)
+  - `tests/v0/stage9/plan/` (systematic_review_v0156_tests.rs, 11 tests)
+- Conformance suite expanded: `tests/conformance/00-parse/00-literals/` (+30 .lin files)
+  - Integer decimal (5), hex (4), octal (3), binary (3), suffix (4)
+  - Float (5), Char (3), String (3)
+  - 1 FAIL test (leading zeros rejected — Rust-style rule discovered via conformance)
+- `tests/all_tests.rs` updated with stage9_1 module reference
+
+**Test impact**: +11 rust integration tests (2100 → 2111) + 30 conformance tests
+(8 → 38). 0 regressions. 0 clippy warnings. fmt clean.
+
+**API surface**: No new public API (conformance tests are external .lin files,
+not Rust API). All existing APIs unchanged.
+
+**§17.1/§17.2/§17.3 compliant**: Stage 9 docs follow three-stage documentation
+protocol (plan + gate-review + systematic-review).
