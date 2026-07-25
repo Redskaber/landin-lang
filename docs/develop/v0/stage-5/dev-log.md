@@ -3181,3 +3181,42 @@ No circular dependency.
 Mod.rs transformed from giant mixed file to skeleton + entry points.
 New candidate TD-019: expr_operand.rs 1275 LOC, future Stage 6.12+ can
 split by expression category (primary/ops/aggregate/control/call/misc).
+
+### Stage 6.11 — process v3.21 governance protocol + §25.8 design-writeback (v0.13.0)
+
+**Priority**: User explicit request — refactor stage-committee-process.md
+to cover 3 new requirements (refactoring governance / stage-end design-writeback /
+stage-start design alignment), then systematically review project architecture
+and judge whether further refactoring is needed.
+
+**Work completed**:
+
+1. **Process doc refactor v3.20 → v3.21** (+416 LOC):
+   - §13.4 阶段开始时的设计对齐 (6-step alignment flow + 4 强制要求)
+   - §14.4 重构即架构设计 (6 judgments J1-J6 + 8-step execution flow + 6 anti-patterns)
+   - §25.8 阶段末尾设计回写协议 (4 deviation types B1-B4 + 7-step writeback flow)
+   - §0.2 task routing augmented with "refactoring" + "new stage" rows
+   - §1 overall principles augmented with 3 new v3.21 principles
+   - §28.4 changelog v3.20→v3.21 (full coverage confirmation + design intent source)
+
+2. **Systematic architecture review (§14.4 J1-J6)**:
+   - inventoried all src/ files by LOC
+   - J1-J6 judgment check: 4 ✅, 2 ⚠️ (parser.rs 3112 LOC, reader.rs 1537 LOC)
+   - Conclusion: current architecture healthy; parser.rs split deferred to Stage 6.12
+
+3. **§25.8 lightweight design-writeback**:
+   - 06-mir.md: +§14 实现状态 (B1/B3/B4 deviation table + dyn Trait lowering algorithm补写)
+   - 07-codegen.md: +§14 实现扩展 (Trait dispatch codegen subsystem补写, 5 subsections)
+
+4. **Version bump**: v0.12.9 → v0.13.0 (process major version bump)
+
+**Architectural rationale**: Three new protocols form a closed loop:
+§13.4 (read design at stage start) → stage execution → §25 (deep review) →
+§25.8 (write back to design at stage end) → §14.4 (execute refactoring
+next stage) → §13.4 (read design again next stage).
+
+**Test impact**: 0 (no code changes, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**Next**: Stage 6.12 — parser.rs architectural split (3112 LOC → 6 sub-modules
+by parse category: expr / stmt / ty / pat / path / item), per §14.4 full flow.

@@ -3086,3 +3086,30 @@ by sibling modules (`adt_layout`, `closure_capture`, `pattern_bindings`).
 **Fmt impact**: clean.
 
 **TD-011 cumulative**: mod.rs 3346 → 772 LOC (-76.9% across 7 splits).
+
+### v1.80 (Stage 6.11, 2026-07-25)
+
+Stage 6.11 process governance protocol round. **No code changes** — pure
+process documentation + design-writeback. Bumps process version v3.20 →
+v3.21 with three new protocols:
+
+- §13.4 阶段开始时的设计对齐 (Stage-start design alignment)
+- §14.4 重构即架构设计 (Refactoring as architecture design, 6 judgments J1-J6)
+- §25.8 阶段末尾设计回写协议 (Stage-end design-writeback, 4 deviation types B1-B4)
+
+**New public symbols**: None (no code changes).
+
+**Changes**:
+- docs/stage-committee-process.md: v3.20 → v3.21 (+416 LOC: §13.4 + §14.4 + §25.8 + §28.4)
+- docs/lang-design/06-mir.md: +§14 实现状态 (B1/B3/B4 偏差清单 + dyn Trait lowering 算法补写)
+- docs/lang-design/07-codegen.md: +§14 实现扩展 (Trait dispatch codegen 子系统补写)
+- Cargo.toml: version 0.12.9 → 0.13.0 (process major version bump)
+- No source code changes — 1881 tests pass unchanged
+
+**Architectural rationale**: Per §25.8 (new), design docs must be kept in
+sync with implementation. This round performs lightweight writeback to
+06-mir.md + 07-codegen.md (full writeback reserved for Stage 6 end).
+
+**Test impact**: 0 (no code changes).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean (no code changes).

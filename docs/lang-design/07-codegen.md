@@ -699,4 +699,96 @@ MVP 不支持。v0.2 通过 `extern "Rust"` ABI 支持有限互操作（要求 R
 
 ---
 
+## 14. 实现扩展（v0.13.0，§25.8 回写）
+
+> 本节由 Stage 6.11 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+> 设计文档 §1-§13 描述了 MIR → LLVM IR 的核心转换规则，但 Stage 5.40-5.80
+> 实现了**动态派发（dyn Trait）的完整 codegen** 子系统，设计文档未覆盖。
+> 本节补写设计意图（实现细节归 `docs/develop/v0/stage-5/dev-log.md`）。
+
+### 14.1 Trait dispatch codegen 子系统（Stage 5.40-5.80 实现，B4 补写）
+
+#### 14.1.1 设计目标
+
+支持 `dyn Trait` 类型的动态派发，符合 Landin "拒绝语言层特判" 哲学
+（00-overview.md §1.3）：`dyn Trait` 不是编译器特判类型，而是通过
+**vtable + fat pointer** 机制实现的普通类型。
+
+#### 14.1.2 数据结构
+
+| 数据结构 | 设计意图 | 实现位置 |
+|---------|---------|---------|
+| `vtable global` | 每个 `impl Trait for Type` 生成一个 LLVM global，前 3 个 slot 是 size/align/drop，后续是 method 指针 | `codegen/trait_dispatch.rs::emit_vtable_global` |
+| `dynptr global` | 每个 `dyn Trait` 类型对应一个 fat pointer 全局变量，指向其 vtable + instance | `codegen/trait_dispatch.rs::emit_dynptr_global` |
+| `DynTraitFatPtr` (MIR) | fat pointer 的 MIR 表示（vtable_ptr + data_ptr 两字段 struct） | `mir/dyn_trait.rs` |
+| `DynTraitMethodCall` (MIR) | 一次 dyn Trait 方法调用的元信息（trait/type/method/slot/param_count/return_kind/param_kinds） | `mir/dyn_trait.rs` |
+| `DynTraitMIRPlan` | 一个 MIR body 内所有 dyn Trait 调用的预计算 plan | `mir/dyn_trait.rs` |
+| `MirBody.dyn_trait_calls` | side-table，索引由 `Terminator::Call` 的 marker const 携带 | `mir/body.rs` |
+
+#### 14.1.3 转换规则
+
+**`dyn Trait` 类型 → LLVM IR**：
+
+```
+dyn Trait  →  { ptr, ptr }   // { vtable_ptr, data_ptr }
+```
+
+**`receiver.method(args)` dyn Trait 调用 → LLVM IR**：
+
+```llvm
+; 1. Load vtable pointer from fat ptr
+%vtable = load ptr, ptr %fat_ptr_gep0
+; 2. Load data pointer from fat ptr
+%data   = load ptr, ptr %fat_ptr_gep8
+; 3. Load method function pointer from vtable slot
+%method = load ptr, ptr %vtable_slot_N
+; 4. Indirect call
+%result = call i32 %method(ptr %data, ...)
+```
+
+**`DynTraitFatPtr` 常量 → LLVM IR**：codegen 发出一个 `{ vtable_global, data_global }`
+constant global，把 vtable 引用 + 数据实例引用打包。
+
+#### 14.1.4 §16 合规性
+
+所有 dyn Trait codegen 信息都通过 MIR 数据结构传递：
+- driver 阶段从 `TraitResolver` 构造 `DynTraitMIRPlan`
+- MIR lower 把 plan 信息 sunk 到 `MirBody.dyn_trait_calls` side-table
+- codegen 只读 MIR（含 side-table），不查 HIR / TraitResolver
+
+数据流单向：`TraitResolver → DynTraitMIRPlan → MirBody → codegen → LLVM IR`。
+
+#### 14.1.5 设计参考
+
+| 来源 | 借鉴点 | Landin 调整 |
+|------|--------|------------|
+| rustc `Ty::Dynamic` + `TraitObject` | fat pointer 双字段布局 | 一致 |
+| rustc `VirtualCall` terminator | 在 MIR 层显式标记 dyn 调用 | Landin 用 `Const{ty:Error, val:Int(index)}` marker 替代（无新增 terminator variant） |
+| rustc vtable layout | size/align/drop 前 3 slot + method 顺序按 trait def 顺序 | 一致 |
+| C++ Itanium ABI | vtable 是 global，不在对象内 | 一致 |
+
+**设计理由**：用 marker const + side-table 而非新增 `TerminatorKind::VirtualCall`
+variant，是因为 Landin MIR 的 `Terminator::Call` 已有足够字段承载调用语义，
+新增 variant 会增加所有 pattern match 点的维护成本。marker const 是零侵入方案。
+
+### 14.2 偏差处理计划
+
+| 偏差 | 处理时机 | 理由 |
+|------|---------|------|
+| B4（Trait dispatch codegen 子系统补写） | 已在 §14.1 补写 | — |
+| B1（`#[repr(C)]` 完整实现、`extern "Rust"` ABI） | v0.2 | MVP 不需要 C 互操作 |
+
+### 14.3 未实现项（B1，纳入 v0.2+）
+
+| 设计章节 | 未实现项 | 计划阶段 |
+|---------|---------|---------|
+| §6 控制流 | `unwind` LLVM 属性 | v0.2 |
+| §7 函数调用 ABI | `extern "C"` 严格 ABI | v0.2 |
+| §9 全局变量 | thread-local storage | v0.2 |
+| §10 链接策略 | 静态库 / 动态库链接 | v0.2 |
+| §11 调试信息 | DWARF 完整字段 | v0.2 |
+| §13 ABI 兼容性 | C++ / Rust 互操作 | v0.2+ |
+
+---
+
 **下一文档**: [`08-bootstrap-strategy.md`](./08-bootstrap-strategy.md) — 自举策略

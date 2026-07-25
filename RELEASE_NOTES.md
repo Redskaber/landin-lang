@@ -1,9 +1,122 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.12.9
+**Current version**: v0.13.0
 **Date**: 2026-07-25
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.13.0 — Stage 6.11 (process v3.21 governance protocol + §25.8 design-writeback)
+
+### Overview
+
+**Process governance upgrade** — refactors `docs/stage-committee-process.md`
+from v3.20 → v3.21, formalizing three new protocols requested by the user.
+No code changes; pure process + design documentation update.
+
+The three new protocols form a closed loop that keeps design docs and
+implementation permanently synchronized:
+
+```
+§13.4 (read design at stage start)
+  → stage execution
+  → §25 deep review (7 dimensions)
+  → §25.8 (write back to design at stage end)
+  → §14.4 (execute refactoring next stage)
+  → §13.4 (read design again next stage)
+```
+
+### Three new protocols (v3.21)
+
+#### §13.4 阶段开始时的设计对齐 (Stage-start design alignment)
+
+Every new stage MUST first consult `docs/lang-design/` for the corresponding
+stage's design doc, then plan based on project current state. Grey-area
+decisions cannot be skipped. Plan files MUST include a "design doc alignment"
+section.
+
+#### §14.4 重构即架构设计 (Refactoring as architecture design)
+
+Refactoring triggers MUST go through 6 judgments (J1-J6) before execution:
+- J1 架构设计对齐 (architecture design alignment)
+- J2 单一职责 (single responsibility)
+- J3 单向流动 (unidirectional flow, no cycles)
+- J4 编译相关表达完整 (compiler concept completeness)
+- J5 阶段划分清晰 (stage boundary clarity)
+- J6 科学合理粒度 (scientific reasonable granularity)
+
+6 anti-patterns explicitly forbidden (LOC-slicing, hidden cycles,
+cross-stage splits, design parachuting, no re-export, no judgment records).
+
+#### §25.8 阶段末尾设计回写协议 (Stage-end design-writeback)
+
+Every major stage end MUST compare `docs/lang-design/` against actual
+implementation, identify 4 deviation types (B1 实现<设计 / B2 实现>设计 /
+B3 实现≠设计 / B4 设计灰区), judge which is optimal, write back to design
+docs. Refactorable deviations get included in next stage plan.
+
+### Systematic architecture review (per new §14.4)
+
+Inventoried all `src/` files by LOC and ran J1-J6 judgment check:
+
+| File | LOC | J1-J6 status |
+|------|-----|--------------|
+| `parser/parser.rs` | 3112 | ⚠️ J2+J6 fail (6 parse categories mixed) |
+| `lexer/reader.rs` | 1537 | ⚠️ J6 borderline |
+| `borrowck/mod.rs` | 1452 | ⚠️ J6 borderline |
+| `typeck/checker.rs` | 1320 | ✅ under 1500 threshold |
+| All `mod.rs` files | < 1300 | ✅ |
+| `mir/lower/*` (7 modules) | 772+1275+462+286+175+167+147+94 | ✅ |
+| `codegen/*` (5 modules) | 1050+962+663+650+487 | ✅ |
+| `stdlib/*` (3 modules) | 602+1103+715 | ✅ |
+
+**Conclusion**: Architecture is healthy. Only `parser.rs` significantly
+violates J2+J6. **No immediate refactoring this stage** — parser.rs split
+deferred to Stage 6.12 to run §14.4 full flow (analysis → design alignment →
+candidates → J1-J6 check → execute).
+
+### §25.8 lightweight design-writeback
+
+Wrote back to 2 design docs (full writeback reserved for Stage 6 end):
+
+#### `docs/lang-design/06-mir.md` +§14 实现状态
+
+- §14.1 §2 顶层结构 — 11-field deviation table (B1/B3 marked per field)
+- §14.2 §8 MIR 构建算法 — dyn Trait lowering algorithm 补写 (B4)
+- §14.3 偏差处理计划表
+
+#### `docs/lang-design/07-codegen.md` +§14 实现扩展
+
+- §14.1 Trait dispatch codegen subsystem 补写 (B4, 5 subsections: design goal /
+  data structures / conversion rules / §16 compliance / design references)
+- §14.2 偏差处理计划表
+- §14.3 未实现项清单 (B1, deferred to v0.2+)
+
+### Changes
+
+- `docs/stage-committee-process.md`: v3.20 → v3.21 (+416 LOC: §13.4 + §14.4 + §25.8 + §28.4)
+- `docs/lang-design/06-mir.md`: +§14 实现状态 (B1/B3/B4 偏差清单 + dyn Trait lowering 算法补写)
+- `docs/lang-design/07-codegen.md`: +§14 实现扩展 (Trait dispatch codegen 子系统补写)
+- `Cargo.toml`: version 0.12.9 → 0.13.0 (process major version bump)
+- No source code changes — 1881 tests pass unchanged
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### Why major version bump (0.12 → 0.13)?
+
+Process v3.21 introduces §13.4 / §14.4 / §25.8 — three new governance
+protocols that materially change how every future stage is planned and
+reviewed. This is a process governance major upgrade, justifying the
+minor version bump (per SemVer, 0.x → 0.y is the "major" bump for
+pre-1.0 software).
 
 ---
 

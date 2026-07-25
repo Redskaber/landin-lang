@@ -926,4 +926,71 @@ case 暴露。
 
 ---
 
+## 14. 实现状态（v0.13.0，§25.8 回写）
+
+> 本节由 Stage 6.11 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+> 仅记录"设计 + 理由"，实现细节归 `docs/develop/v0/stage-N/dev-log.md`。
+
+### 14.1 §2 顶层结构 — 偏差清单
+
+| 设计字段 | 实现状态 | 偏差类型 | 说明 |
+|---------|---------|---------|------|
+| `basic_blocks: IndexVec<BasicBlock, BasicBlockData>` | ✅ 实现 | — | 实现用 `Vec<BasicBlock>`，等价 |
+| `locals: IndexVec<Local, LocalDecl>` | ✅ 实现 | — | 实现用 `Vec<LocalDecl>` + `LocalId(u32)`，等价 |
+| `source_scopes: IndexVec<SourceScope, SourceScopeData>` | ❌ 未实现 | B1 | 实现用 `LocalDecl.source_info: Span` 简化，无独立 scope 树。v0.2 + drop elaboration 阶段补 |
+| `arg_count: usize` | ❌ 未实现 | B1 | 实现通过 `LocalDecl` 的隐式约定（params 是 local 1..N）表达，无显式字段。可接受简化 |
+| `spread_arg: Option<Local>` | ❌ 未实现 | B1 | v0.2 外部 ABI 阶段补，MVP 不需要 |
+| `span: Span` | ✅ 实现 | — | — |
+| `adt_layouts: HashMap<DefId, AdtLayout>` | ✅ 实现 | — | Stage 3.47 L-PIPE-1 闭合 |
+| `BasicBlockData.is_cleanup: bool` | ❌ 未实现 | B1 | v0.2 unwind 阶段补，MVP 直接 abort |
+| `BasicBlockData.terminator: Option<Terminator>` | ✅ 实现（非 Option） | B3（实现更优） | 实现用 `Terminator::Unreachable` 作为默认值，避免 Option unwrap。等价且更易用 |
+| `LocalDecl.is_temp: bool` | ❌ 未实现 | B1 | 实现通过命名约定（无名 local = temp）表达，可接受简化 |
+| `LocalDecl.is_arg: bool` | ❌ 未实现 | B1 | 实现通过 `LocalId` 范围约定（1..arg_count 是 args）表达，可接受简化 |
+
+### 14.2 §8 MIR 构建算法 — 实现扩展（B4 补写）
+
+设计文档 §8 描述了"CFG 框架 + Drop elaboration"两步构建算法，但未描述
+Stage 5.78-5.80 新增的 **dyn Trait lowering** 子算法。本节补写：
+
+#### 14.2.1 dyn Trait lowering 算法（Stage 5.78-5.80 新增）
+
+**触发条件**：HIR 中存在 `receiver.method(args)` 表达式，且 receiver 类型
+为 `dyn Trait`。
+
+**算法步骤**：
+
+1. **driver 阶段**：driver 调用 `build_dyn_trait_mir_plan_from_resolver`
+   构造 `DynTraitMIRPlan`，包含每个 dyn Trait 方法的 `(trait, type, method,
+   slot_index, param_count, return_kind, param_kinds)` 七元组。
+2. **MIR lower 入口**：`lower_hir_body_to_mir_full_with_dyn_trait_plan`
+   接收 plan，存入 `MirLowerCtxt.dyn_trait_plan`。
+3. **MethodCall 降低**：`lower_expr_to_operand` 在 `HirExprKind::MethodCall`
+   分支查询 plan，匹配到则调用 `build_dyn_trait_call_terminator`：
+   - 构造 `Terminator::Call`，其 `func` 是 `Operand::Constant(Const { ty: Error,
+     val: Int(index) })` —— `index` 是 side-table 索引（marker）。
+   - 将 `(trait, type, method, slot_index, param_count)` 推入
+     `MirBody.dyn_trait_calls` side-table。
+4. **codegen 消费**：codegen 在 `Terminator::Call` 分支检测 marker
+   （func 是 `Const { ty: Error, val: Int(_) }`），读取 side-table 对应条目，
+   发出 vtable indirect call（`load vtable slot → indirect call`）。
+
+**§16 合规性**：MIR 携带 dyn Trait 调用信息作为数据（side-table），
+codegen 不查 HIR / TraitResolver。数据流单向：driver → MIR lower →
+MirBody side-table → codegen。
+
+**设计理由**：参考 rustc 的 `TerminatorKind::Call` 的 `fn_span` +
+`call_source` 设计——把调用元信息作为数据 sunk 到 MIR，避免下游回查。
+Landin 用 side-table + marker const 的方式实现等价语义，更适合当前
+MIR 结构（无 Call 上的扩展字段）。
+
+### 14.3 偏差处理计划
+
+| 偏差 | 处理时机 | 理由 |
+|------|---------|------|
+| B1（`source_scopes` / `is_cleanup` / `is_temp` / `is_arg` / `spread_arg`） | v0.2 unwind 阶段 | 与 unwind ABI 强相关，提前实现无意义 |
+| B3（`Option<Terminator>` → `Terminator::Unreachable`） | 接受为永久偏差 | 实现更优，无需重构 |
+| B4（dyn Trait lowering 算法补写） | 已在 §14.2 补写 | — |
+
+---
+
 **下一文档**: [`07-codegen.md`](./07-codegen.md) — LLVM IR 生成

@@ -6,12 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.12.9 — Stage 0-5 complete, Stage 6 in progress.
+> **Status:** v0.13.0 — Stage 0-5 complete, Stage 6 in progress.
 > **1881 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 110 test modules!
-> Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7 modules, mod.rs -76.9%) + codegen (5 modules) + stdlib (3 modules).
-> 🎉 Architecture: all mod.rs files < 1300 LOC. Single responsibility per module. Data flows单向.
-> Next: Stage 6.11+ — hir_ty.rs split, expr_operand by-category split, Region inference (TD-015), user-defined trait dyn (TD-018).
+> Process v3.21 (§0-§28). §16 interface isolation compliant.
+> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7 modules, mod.rs -76.9%) + codegen (5 modules) + stdlib (3 modules) + process governance v3.21 (§13.4 + §14.4 + §25.8).
+> 🎉 Architecture: all mod.rs files < 1300 LOC. Single responsibility per module. Data flows单向. Design docs synced with implementation (§25.8).
+> Next: Stage 6.12 — parser.rs architectural split (3112 LOC → 6 sub-modules by parse category).
 
 ## Quick start
 
@@ -112,7 +112,7 @@ landin-stage0/
 │   ├── audit/              Archived stage gate review scripts (historical)
 │   └── README.md           Index + run instructions
 └── docs/
-    ├── stage-committee-process.md  Process v3.20
+    ├── stage-committee-process.md  Process v3.21 (§13.4 stage-start alignment + §14.4 refactor governance + §25.8 stage-end writeback)
     ├── develop/v0/                 Dev logs + ADR + deep reviews
     ├── tests/                      Test plans + matrix
     └── worklog.md                  Worklog mirror (v3.18 §18.4.0)
@@ -157,7 +157,7 @@ one `#[path]` line to `tests/all_tests.rs` — no `Cargo.toml` edit needed.
 
 ## Documentation
 
-- `docs/stage-committee-process.md` — Process SOP v3.18 (§1-§28)
+- `docs/stage-committee-process.md` — Process SOP v3.21 (§1-§28, with §13.4 + §14.4 + §25.8 governance protocols)
 - `docs/develop/v0/api-naming-standard.md` — API naming standard v1.5
 - `docs/develop/v0/architecture-decisions.md` — 7 Architecture Decision Records
 - `docs/develop/v0/stage-{0..5}/` — Per-stage dev logs + gate reviews + plans
