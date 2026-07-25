@@ -7832,3 +7832,30 @@ Stage Summary:
 - v0.1 真实进度: 600/5000 = 12%
 - Stage 10 计划制定: 9 sub-stages, +4400 tests, 目标 v0.1 release (5000/5000)
 - Next: Stage 10.0 — Format migration + CLI upgrade + Runner upgrade
+
+---
+Task ID: stage10.0-r197
+Agent: Super Z (main)
+Task: Stage 10.0 — CLI upgrade (--compile/--emit-llvm-ir) + Runner upgrade (--mode compile + dual format) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.17.1 / 2245 rust tests + 600 conformance (v0.1 gap analysis complete, Stage 10 planned)
+- §13.4 design alignment with 17-conformance-suite.md §3 (test format) + 12-roadmap.md §1 (v0.1 = Stage 0 完整 + conformance)
+- CLI upgrade (GAP-03): src/bin/main.rs — added --compile (uses driver::compile for full pipeline) + --emit-llvm-ir (uses codegen::codegen_crate for LLVM IR output); exit 0 on success, exit 1 on compile error
+- Runner upgrade (GAP-05): tests/conformance/run_all.py — added --mode compile flag (uses --compile for full pipeline verification); added dual format support (legacy //! PASS/FAIL + spec // EXPECTED: compile_ok/compile_error); backward compatible with --mode parse (default)
+- Format migration (GAP-02): deferred to Stage 10.1 — runner dual-format compatible, no immediate migration needed for 600 existing .lin files
+- Created tests/v0/stage9/plan/stage10_0_tests.rs (8 verification tests covering CLI --compile/--emit-llvm-ir + runner --mode + dual format + backward compat + docs + version bump + conformance count); updated tests/all_tests.rs
+- Created 2 new docs: plan-10.0.md + gate-review-10.0.md
+- Updated README.md (v0.17.1 → v0.17.2), RELEASE_NOTES.md (+v0.17.2 section), api-naming-standard.md (v2.16 → v2.17), docs/tests/matrix.md (Stage 10.0 status)
+- Bumped Cargo.toml v0.17.1 → v0.17.2
+- Ran full CI/CD: cargo clean + cargo test (2255 passed = 146 unit + 2109 integration) + cargo fmt + cargo clippy --all-targets — all green ✅
+- Ran conformance suite: python3 tests/conformance/run_all.py — 600 passed (mode=parse, backward compatible), 0 failed ✅
+- Verified CLI --compile works: valid program exits 0, invalid program exits 1 with error messages
+- Verified CLI --emit-llvm-ir works: outputs LLVM IR for valid programs
+
+Stage Summary:
+- Stage 10.0 PASSED — CI/CD all green; §13.4 design aligned; §17.1/§17.2/§17.3 fully compliant
+- Infrastructure ready for Stage 10.1-10.7: CLI supports --compile (full pipeline) + runner supports --mode compile
+- Format migration deferred: runner dual-format compatible (!// legacy + // spec), migration in Stage 10.1
+- Test growth: 2245 → 2255 rust (+8); conformance unchanged 600; 0 regressions
+- Next: Stage 10.1 — 01-typecheck conformance (1000 tests) + format migration

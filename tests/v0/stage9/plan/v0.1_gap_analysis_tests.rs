@@ -91,10 +91,14 @@ fn test_v01_gap_cli_no_compile_option() {
     );
     assert!(content.contains("emit_ast"), "CLI must have --emit-ast");
 
-    // But no --compile / --run / --emit-llvm-ir (the gap)
+    // After Stage 10.0, CLI now has --compile and --emit-llvm-ir (gap GAP-03 fixed)
     assert!(
-        !content.contains("--compile"),
-        "CLI should NOT have --compile yet (Stage 10.0 will add it)"
+        content.contains("--compile"),
+        "CLI must have --compile (Stage 10.0 added it — GAP-03 fixed)"
+    );
+    assert!(
+        content.contains("--emit-llvm-ir"),
+        "CLI must have --emit-llvm-ir (Stage 10.0 added it — GAP-03 fixed)"
     );
 }
 

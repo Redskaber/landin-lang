@@ -4180,3 +4180,23 @@ v0.1 Gap Analysis — Stage 9.12 reclassification.
 current state is 600/5000 (12%). Stage 10 planned to achieve true v0.1 gate.
 
 **API surface**: No new public API. All existing APIs unchanged.
+
+
+### v2.17 (Stage 10.0, 2026-07-26)
+
+Stage 10.0 — CLI upgrade + Runner upgrade.
+
+**Changes**:
+- CLI `src/bin/main.rs` upgraded with `--compile` and `--emit-llvm-ir` options
+  - `--compile` uses `driver::compile()` for full pipeline (lex+parse+resolve+typeck+borrowck+codegen)
+  - `--emit-llvm-ir` uses `codegen::codegen_crate()` to emit LLVM IR
+- Runner `tests/conformance/run_all.py` upgraded with `--mode compile` flag
+  - `--mode parse` (default): backward compatible with `--emit-ast`
+  - `--mode compile`: uses `--compile` for full pipeline verification
+  - Supports both legacy `//!` format and spec `//` format (EXPECTED field)
+- New Rust integration tests: `tests/v0/stage9/plan/stage10_0_tests.rs` (8 tests)
+
+**Test impact**: +8 rust integration tests (2245 → 2255). 0 conformance changes.
+0 regressions. 0 clippy warnings. fmt clean.
+
+**API surface**: New CLI options (`--compile`, `--emit-llvm-ir`). No library API changes.

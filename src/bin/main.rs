@@ -1,4 +1,5 @@
 use clap::Parser as ClapParser;
+use landin_compiler::driver;
 use landin_compiler::parser::Parser;
 use landin_compiler::session::SourceFile;
 use lasso::Rodeo;
@@ -18,6 +19,15 @@ struct Cli {
     /// Emit AST only (don't proceed to later stages)
     #[arg(long)]
     emit_ast: bool,
+
+    /// Full compile (lex + parse + resolve + typeck + borrowck + codegen)
+    /// Exits 0 on success, 1 on compile error.
+    #[arg(long)]
+    compile: bool,
+
+    /// Emit LLVM IR (implies --compile)
+    #[arg(long)]
+    emit_llvm_ir: bool,
 }
 
 fn main() {
@@ -70,6 +80,34 @@ fn main() {
             parse_errors.len()
         );
         std::process::exit(1);
+    }
+
+    // If --compile or --emit-llvm-ir, run the full pipeline via driver::compile
+    if cli.compile || cli.emit_llvm_ir {
+        let result = driver::compile(&source_file.src);
+
+        if result.has_errors() {
+            // Print all errors
+            let error_str = result.errors.format_for_user(Some(&source_file.src));
+            eprintln!("{}", error_str);
+            eprintln!(
+                "error: aborting due to {} error(s)",
+                result.errors.total_count()
+            );
+            std::process::exit(1);
+        }
+
+        // Success
+        if cli.emit_llvm_ir {
+            let llvm_ir = landin_compiler::codegen::codegen_crate(&result);
+            println!("{}", llvm_ir);
+        } else {
+            eprintln!(
+                "info: successfully compiled {} items",
+                result.hir.as_ref().map(|h| h.owners.len()).unwrap_or(0)
+            );
+        }
+        return;
     }
 
     eprintln!("info: successfully parsed {} items", krate.items.len());

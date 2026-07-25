@@ -467,3 +467,7 @@ mod stage9_12_deep_review_v01_rc_tests;
 // v0.1 Gap Analysis verification
 #[path = "v0/stage9/plan/v0.1_gap_analysis_tests.rs"]
 mod v0_1_gap_analysis_tests;
+
+// Stage 10.0: CLI upgrade + Runner upgrade verification
+#[path = "v0/stage9/plan/stage10_0_tests.rs"]
+mod stage10_0_tests;

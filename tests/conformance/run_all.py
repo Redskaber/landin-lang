@@ -3,11 +3,16 @@
 Conformance test runner for Landin Stage 0.
 
 Walks the conformance test tree, parses each `.lin` file's header to determine
-the expected outcome (PASS/FAIL + optional error_pattern), invokes the
-landin-stage0 CLI to parse the file, and verifies the result.
+the expected outcome (PASS/FAIL or EXPECTED: compile_ok/compile_error/run_ok),
+invokes the landin-stage0 CLI, and verifies the result.
+
+Supports two header formats:
+  1. Legacy `//!` format (Stage 9): `//! PASS`, `//! FAIL`, `//! error_pattern: ...`
+  2. Spec `//` format (§3 of 17-conformance-suite.md):
+     `// CATEGORY: parse`, `// EXPECTED: compile_ok`, `// ERROR_PATTERN: ...`
 
 Usage:
-    python3 tests/conformance/run_all.py [--binary PATH] [--verbose]
+    python3 tests/conformance/run_all.py [--binary PATH] [--verbose] [--mode parse|compile]
 
 Exit code:
     0 = all tests passed
@@ -27,19 +32,27 @@ from typing import Optional
 @dataclass
 class ConformanceTest:
     path: Path
+    # Legacy format: expect_pass=True means PASS, False means FAIL
     expect_pass: bool
+    # New format: expected = "compile_ok" | "compile_error" | "run_ok" | None
+    expected: Optional[str]
     category: str
     description: str
     error_pattern: Optional[str]
     source: Optional[str]
 
 
-HEADER_RE = re.compile(r"^//!\s*(\w+)(?::\s*(.*))?$")
+# Legacy //! format: `//! PASS`, `//! FAIL`, `//! error_pattern: ...`
+LEGACY_HEADER_RE = re.compile(r"^//!\s*(\w+)(?::\s*(.*))?$")
+
+# New // format: `// KEY: VALUE` (e.g., `// EXPECTED: compile_ok`)
+SPEC_HEADER_RE = re.compile(r"^//\s*(\w+)(?::\s*(.*))?$")
 
 
 def parse_header(path: Path) -> ConformanceTest:
-    """Parse the //! header block of a .lin file."""
+    """Parse the header block of a .lin file. Supports both //! and // formats."""
     expect_pass = True
+    expected = None
     category = "uncategorized"
     description = ""
     error_pattern = None
@@ -48,32 +61,62 @@ def parse_header(path: Path) -> ConformanceTest:
     with path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.rstrip("\n")
-            if not line.startswith("//!"):
-                # Header ends at first non-//! line
-                if line.strip() == "":
-                    continue
-                break
-            m = HEADER_RE.match(line)
-            if not m:
+            if line.strip() == "":
                 continue
-            key = m.group(1).lower()
-            val = (m.group(2) or "").strip()
-            if key == "pass":
-                expect_pass = True
-            elif key == "fail":
-                expect_pass = False
-            elif key == "category":
-                category = val
-            elif key == "description":
-                description = val
-            elif key == "error_pattern":
-                error_pattern = val
-            elif key == "source":
-                source = val
+
+            # Try legacy //! format first
+            m = LEGACY_HEADER_RE.match(line)
+            if m:
+                key = m.group(1).lower()
+                val = (m.group(2) or "").strip()
+                if key == "pass":
+                    expect_pass = True
+                elif key == "fail":
+                    expect_pass = False
+                elif key == "category":
+                    category = val
+                elif key == "description":
+                    description = val
+                elif key == "error_pattern":
+                    error_pattern = val
+                elif key == "source":
+                    source = val
+                continue
+
+            # Try spec // format
+            m = SPEC_HEADER_RE.match(line)
+            if m:
+                key = m.group(1).upper()
+                val = (m.group(2) or "").strip()
+                if key == "EXPECTED":
+                    expected = val
+                    # Map to legacy: compile_ok → PASS, compile_error → FAIL
+                    if val == "compile_ok":
+                        expect_pass = True
+                    elif val == "compile_error":
+                        expect_pass = False
+                elif key == "CATEGORY":
+                    category = val
+                elif key == "DESCRIPTION":
+                    description = val
+                elif key == "ERROR_PATTERN":
+                    error_pattern = val
+                elif key == "ERROR_CODE":
+                    # Store error code as part of error_pattern if not already set
+                    if not error_pattern:
+                        error_pattern = val
+                elif key == "SOURCE":
+                    source = val
+                continue
+
+            # Non-comment line — header ends
+            if not line.startswith("//") and not line.startswith("//!"):
+                break
 
     return ConformanceTest(
         path=path,
         expect_pass=expect_pass,
+        expected=expected,
         category=category,
         description=description,
         error_pattern=error_pattern,
@@ -81,17 +124,26 @@ def parse_header(path: Path) -> ConformanceTest:
     )
 
 
-def run_test(test: ConformanceTest, binary: Path, verbose: bool) -> tuple[bool, str]:
-    """Run a single conformance test. Returns (passed, message)."""
+def run_test(test: ConformanceTest, binary: Path, verbose: bool, mode: str = "parse") -> tuple[bool, str]:
+    """Run a single conformance test. Returns (passed, message).
+
+    mode="parse": uses --emit-ast (legacy, only validates parse stage)
+    mode="compile": uses --compile (validates full pipeline)
+    """
+    if mode == "compile":
+        cmd = [str(binary), "--compile", str(test.path)]
+    else:
+        cmd = [str(binary), "--emit-ast", str(test.path)]
+
     try:
         result = subprocess.run(
-            [str(binary), "--emit-ast", str(test.path)],
+            cmd,
             capture_output=True,
             text=True,
             timeout=10,
         )
     except subprocess.TimeoutExpired:
-        return False, "TIMEOUT (parser hung — likely infinite loop)"
+        return False, "TIMEOUT (compiler hung — likely infinite loop)"
     except FileNotFoundError:
         return False, f"BINARY NOT FOUND: {binary}"
 
@@ -99,20 +151,18 @@ def run_test(test: ConformanceTest, binary: Path, verbose: bool) -> tuple[bool, 
     stderr = result.stderr or ""
     combined = stdout + stderr
 
-    # The CLI prints "parse error: ..." for parse errors and exits 0
-    # (errors are non-fatal in Stage 0 — we accumulate and report).
-    has_parse_error = "parse error:" in combined or "lex error:" in combined
+    # Check for errors in output
+    has_error = "parse error:" in combined or "lex error:" in combined or "error:" in combined.lower()
 
     if test.expect_pass:
-        if has_parse_error:
-            # Extract the first error message for the report
-            errs = [l for l in combined.splitlines() if "error:" in l]
+        if has_error:
+            errs = [l for l in combined.splitlines() if "error:" in l.lower()]
             return False, f"expected PASS but got errors:\n  " + "\n  ".join(errs[:3])
         return True, "OK"
     else:
         # Expected FAIL
-        if not has_parse_error:
-            return False, "expected FAIL but parser accepted the input"
+        if not has_error:
+            return False, "expected FAIL but compiler accepted the input"
         if test.error_pattern:
             if test.error_pattern not in combined:
                 return False, (
@@ -144,6 +194,12 @@ def main() -> int:
         default=Path(__file__).parent,
         help="Root directory of the conformance suite",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["parse", "compile"],
+        default="parse",
+        help="Test mode: parse (default, --emit-ast) or compile (--compile, full pipeline)",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
@@ -162,7 +218,7 @@ def main() -> int:
         print("No conformance tests found.")
         return 0
 
-    print(f"Running {len(tests)} conformance tests against {args.binary}")
+    print(f"Running {len(tests)} conformance tests against {args.binary} (mode={args.mode})")
     print()
 
     passed = 0
@@ -170,7 +226,7 @@ def main() -> int:
     failures: list[tuple[ConformanceTest, str]] = []
 
     for test in tests:
-        ok, msg = run_test(test, args.binary, args.verbose)
+        ok, msg = run_test(test, args.binary, args.verbose, args.mode)
         if ok:
             passed += 1
             if args.verbose:

@@ -1,9 +1,45 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.17.1
+**Current version**: v0.17.2
 **Date**: 2026-07-26
-**Test count**: 2245 tests + 5 benchmarks + 600 conformance tests (12% of v0.1 gate)
+**Test count**: 2255 tests + 5 benchmarks + 600 conformance tests
+
+---
+
+## v0.17.2 — Stage 10.0 (CLI upgrade + Runner upgrade)
+
+### Overview
+
+**Stage 10 第 0 个子阶段** — CLI + runner 基础设施升级, 为后续 7 个 conformance
+categories (10.1-10.7) 提供 compile-mode 验证能力。
+
+### CLI 升级 (GAP-03) ✅
+
+`src/bin/main.rs` 新增:
+- `--compile`: 完整编译 (lex + parse + resolve + typeck + borrowck + codegen) via `driver::compile()`
+- `--emit-llvm-ir`: 输出 LLVM IR via `codegen::codegen_crate()`
+
+### Runner 升级 (GAP-05) ✅
+
+`tests/conformance/run_all.py` 升级:
+- `--mode parse` (default): 向后兼容 `--emit-ast`
+- `--mode compile`: 使用 `--compile` 验证完整 pipeline
+- 双格式支持: legacy `//!` + spec `//` (EXPECTED field)
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2255 passed (146 unit + 2109 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 600 passed (mode=parse), 0 failed
+```
+
+### Next steps
+
+- **Stage 10.1**: 01-typecheck conformance (1000 tests) + format migration
 
 ---
 
