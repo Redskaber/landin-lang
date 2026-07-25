@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: assign ops
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let mut x=10;x+=5;x-=3;x*=2;}

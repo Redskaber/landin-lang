@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: tuple access
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t=(1,2);let x=t.0;}

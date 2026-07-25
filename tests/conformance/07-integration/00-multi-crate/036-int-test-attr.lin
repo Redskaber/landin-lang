@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: test attr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+#[test] fn f(){}

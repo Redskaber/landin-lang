@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: char in tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t:(char,char)=(0,0);}

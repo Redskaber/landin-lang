@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i128 in tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t:(i128,i128)=(0,0);}

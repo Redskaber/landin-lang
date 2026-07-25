@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: string literal
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let s="hello";}

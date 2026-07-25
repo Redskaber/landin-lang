@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i8 in tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t:(i8,i8)=(0,0);}

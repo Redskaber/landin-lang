@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: rem by zero
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x=10;let y=0;let _=x%y;}

@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: pair struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+struct Pair<A,B>{first:A,second:B} fn main(){let p=Pair{first:1,second:2};}

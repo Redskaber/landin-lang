@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: isize in tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t:(isize,isize)=(0,0);}

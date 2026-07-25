@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with i64 type
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x:i64=42;}

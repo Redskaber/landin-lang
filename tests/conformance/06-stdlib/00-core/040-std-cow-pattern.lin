@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: cow pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+enum Cow<T>{Borrowed(T),Owned(T)} fn main(){let c=Cow::Borrowed(42);}

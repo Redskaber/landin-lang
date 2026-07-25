@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: f64 ops
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let a:f64=3.14;let b:f64=2.0;let _=a*b;}

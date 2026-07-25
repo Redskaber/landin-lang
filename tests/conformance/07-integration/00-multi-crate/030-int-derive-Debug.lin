@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: derive Debug
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+#[derive(Debug)] struct S;

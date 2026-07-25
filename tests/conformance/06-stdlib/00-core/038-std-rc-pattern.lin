@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: rc pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+struct Rc<T>{val:T,count:i32} fn main(){let r=Rc{val:42,count:1};}

@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: shape enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+enum Shape{Circle(f64),Rect(f64,f64)} fn area(s:Shape)->f64{match s{Shape::Circle(r)=>r*r,Shape::Rect(w,h)=>w*h}}

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: fn param isize
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+
+fn f(x:isize)->isize{x} fn main(){f(1);}

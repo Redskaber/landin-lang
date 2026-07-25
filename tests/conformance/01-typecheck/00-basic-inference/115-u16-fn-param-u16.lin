@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: fn param u16
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+
+fn f(x:u16)->u16{x} fn main(){f(1);}

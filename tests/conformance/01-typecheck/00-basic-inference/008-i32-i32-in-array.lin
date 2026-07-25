@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i32 in array
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let arr:[i32;3]=[0;3];}

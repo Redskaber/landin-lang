@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: fn param f64
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn f(x:f64)->f64{x} fn main(){f(1);}

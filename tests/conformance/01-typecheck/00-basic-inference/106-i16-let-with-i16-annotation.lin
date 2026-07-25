@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with i16 annotation
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+
+fn main(){let x:i16=0;let y:x=x;}

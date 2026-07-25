@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: u128 in struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+struct S{x:u128} fn main(){let s=S{x:0};}

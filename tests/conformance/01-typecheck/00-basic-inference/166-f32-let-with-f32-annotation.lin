@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with f32 annotation
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+
+fn main(){let x:f32=0;let y:x=x;}

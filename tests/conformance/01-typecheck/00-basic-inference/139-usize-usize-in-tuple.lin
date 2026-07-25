@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: usize in tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t:(usize,usize)=(0,0);}

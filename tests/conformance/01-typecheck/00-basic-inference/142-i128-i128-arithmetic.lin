@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i128 arithmetic
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x:i128=1;let y=x+1;}

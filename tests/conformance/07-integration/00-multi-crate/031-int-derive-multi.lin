@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: derive multi
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+#[derive(Clone,Copy,Debug)] struct S;

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: undefined var
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x=undefined;}

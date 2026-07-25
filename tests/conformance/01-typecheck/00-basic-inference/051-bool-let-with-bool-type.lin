@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with bool type
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x:bool=42;}

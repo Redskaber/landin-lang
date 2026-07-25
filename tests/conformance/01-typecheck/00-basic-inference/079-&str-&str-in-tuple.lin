@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: &str in tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t:(&str,&str)=(0,0);}

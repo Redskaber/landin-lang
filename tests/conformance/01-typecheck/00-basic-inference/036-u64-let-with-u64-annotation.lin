@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with u64 annotation
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+
+fn main(){let x:u64=0;let y:x=x;}

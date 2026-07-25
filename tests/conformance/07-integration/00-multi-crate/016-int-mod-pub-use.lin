@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod pub use
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+mod m{pub struct S;} pub use m::S;

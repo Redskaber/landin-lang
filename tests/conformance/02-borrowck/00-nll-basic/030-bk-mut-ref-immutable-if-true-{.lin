@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: mut ref immutable if true {
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x=0;if true { let r=&mut x;}

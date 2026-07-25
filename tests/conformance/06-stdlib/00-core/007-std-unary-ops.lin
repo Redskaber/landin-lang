@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: unary ops
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x=42;let neg=-x;let b=true;let not=!b;}

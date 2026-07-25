@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: array mut
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let mut arr=[1,2,3];arr[0]=10;}

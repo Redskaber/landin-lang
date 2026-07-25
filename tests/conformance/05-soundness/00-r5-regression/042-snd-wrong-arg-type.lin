@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: wrong arg type
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn f(x:i32){} fn main(){f(true);}

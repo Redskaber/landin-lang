@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: undefined type
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x:Undef=0;}

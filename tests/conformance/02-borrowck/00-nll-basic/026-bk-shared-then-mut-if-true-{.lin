@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: shared then mut if true {
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let mut x=1;if true { let r=&x;let r2=&mut x;}

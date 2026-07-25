@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: path attr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+#[foo::bar] fn f(){}

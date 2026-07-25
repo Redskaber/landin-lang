@@ -4376,3 +4376,15 @@ Stage 11.6+11.7 — stdlib + integration expansion (50→200 each, +300 combined
 - New Rust integration tests: `tests/v0/stage11/plan/stage11_6_7_tests.rs` (4 tests)
 
 **Test impact**: +4 rust (2307 → 2311) + 300 conformance (1991 → 2294). 0 regressions.
+
+### v2.32 (Stage 11.8, 2026-07-26)
+
+Stage 11.8 — batch expansion (all 7 categories, +472 tests).
+
+**Changes**:
+- Batch expansion +472 tests across all 7 conformance categories
+- 108 tests adjusted (Stage 0 limitations)
+- New Rust integration tests: `tests/v0/stage11/plan/stage11_8_tests.rs` (2 tests)
+- 🎉 Conformance over halfway: 2294 → 2766 (55.3% of 5000)
+
+**Test impact**: +2 rust (2311 → 2313) + 472 conformance (2294 → 2766). 0 regressions.

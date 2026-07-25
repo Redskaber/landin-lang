@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross pub use
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+mod a{pub fn f()->i32{42}} mod b{pub use a::f;}

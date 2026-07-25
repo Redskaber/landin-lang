@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i64 in struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+struct S{x:i64} fn main(){let s=S{x:0};}

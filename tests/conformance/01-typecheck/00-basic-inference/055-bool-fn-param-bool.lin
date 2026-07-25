@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: fn param bool
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn f(x:bool)->bool{x} fn main(){f(1);}

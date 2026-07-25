@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: fn call with args
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn g(a:i32,b:i32)->i32{a+b} fn main(){g(1,2);}

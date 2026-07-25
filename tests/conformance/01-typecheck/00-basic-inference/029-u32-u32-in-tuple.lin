@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: u32 in tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t:(u32,u32)=(0,0);}

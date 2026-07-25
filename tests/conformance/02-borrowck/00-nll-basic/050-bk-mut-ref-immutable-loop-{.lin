@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: mut ref immutable loop {
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x=0;loop { let r=&mut x;}

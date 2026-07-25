@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with u8 type
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x:u8=42;}

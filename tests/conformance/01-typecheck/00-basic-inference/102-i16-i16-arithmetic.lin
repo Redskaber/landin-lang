@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i16 arithmetic
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x:i16=1;let y=x+1;}

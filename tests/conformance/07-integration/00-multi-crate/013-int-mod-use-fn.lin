@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod use fn
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+mod m{pub fn f(){}} use m::f;

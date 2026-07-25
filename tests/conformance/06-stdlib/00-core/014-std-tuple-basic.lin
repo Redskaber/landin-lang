@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: tuple basic
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t=(1,2,3);let x=t.0;}

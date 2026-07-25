@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: if branch
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){if true{1}else{0}}

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: no_mangle attr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+#[no_mangle] fn f(){}

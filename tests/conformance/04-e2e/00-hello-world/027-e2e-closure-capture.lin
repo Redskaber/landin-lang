@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: closure capture
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+
+fn main(){let a=1;let b=2;let f=||a+b;}

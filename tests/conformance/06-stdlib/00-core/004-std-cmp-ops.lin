@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: cmp ops
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let a=1;let b=2;let _=a<b;let _=a>b;let _=a==b;}

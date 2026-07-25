@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: fn return from block
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn f()->i32{{let x=1;x+1}}

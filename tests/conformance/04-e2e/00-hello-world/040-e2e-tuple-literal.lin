@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: tuple literal
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t=(1,2,3);}

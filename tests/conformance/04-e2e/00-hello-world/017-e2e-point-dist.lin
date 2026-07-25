@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: point dist
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+struct P{x:i32,y:i32} fn dist(p1:P,p2:P)->i32{let dx=p1.x-p2.x;let dy=p1.y-p2.y;dx*dx+dy*dy}

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i32 in tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t:(i32,i32)=(0,0);}

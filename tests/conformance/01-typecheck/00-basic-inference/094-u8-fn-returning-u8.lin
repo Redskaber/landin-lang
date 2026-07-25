@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: fn returning u8
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+
+fn f()->u8{42} fn main(){f();}

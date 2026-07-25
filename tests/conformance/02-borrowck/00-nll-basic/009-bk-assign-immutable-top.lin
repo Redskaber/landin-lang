@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: assign immutable top
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x=0;x=1;}

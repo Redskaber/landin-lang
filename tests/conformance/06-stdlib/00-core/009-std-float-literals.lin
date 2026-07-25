@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: float literals
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let a=3.14;let b=1.0e10;let c=0.0;}

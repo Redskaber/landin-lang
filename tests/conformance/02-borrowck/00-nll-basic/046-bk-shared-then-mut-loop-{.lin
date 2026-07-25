@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: shared then mut loop {
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let mut x=1;loop { let r=&x;let r2=&mut x;}

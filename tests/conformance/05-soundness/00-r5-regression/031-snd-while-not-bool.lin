@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: while not bool
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){while 42{}}

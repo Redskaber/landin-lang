@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: no such method
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+
+struct S; fn main(){let s=S;s.f();}

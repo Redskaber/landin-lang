@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: u16 in tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t:(u16,u16)=(0,0);}

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: shape area
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+enum Sh{C(f64),R(f64,f64)} fn area(s:Sh)->f64{match s{Sh::C(r)=>r*r,Sh::R(w,h)=>w*h}}

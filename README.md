@@ -6,8 +6,8 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.18.6 — Stage 0-10.5 in progress. Conformance 2294/5000 (45.9% of v0.1 gate).
-> **2311 tests** + 5 benchmarks + 2294 conformance tests. 0 clippy warnings. fmt clean.
+> **Status:** v0.18.7 — Stage 0-10.5 in progress. Conformance 2766/5000 (55.3% of v0.1 gate).
+> **2313 tests** + 5 benchmarks + 2766 conformance tests. 0 clippy warnings. fmt clean.
 > Process v3.21 (§0-§28). §16 interface isolation compliant. §17.1/§17.2/§18.4 docs compliant.
 >
 > **Milestones:**
@@ -119,7 +119,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.18.6 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.18.7 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (6 modules, reader.rs 349 LOC)
 │   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC)
@@ -209,7 +209,7 @@ cargo clippy --all-targets -- -D warnings
 ## Documentation
 
 - `docs/stage-committee-process.md` — Process SOP v3.21 (§1-§28, with §13.4 + §14.4 + §25.8)
-- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.31
+- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.32
 - `docs/develop/v0/architecture-decisions.md` — 7 Architecture Decision Records
 - `docs/develop/v0/stage-{0..9}/` — Stage 0-9 dev logs + gate reviews + plans (§17.3)
 - `docs/develop/v0/stage-10/` — Stage 10 dev logs + gate reviews + plans (independent directory)
@@ -217,7 +217,7 @@ cargo clippy --all-targets -- -D warnings
 - `docs/tests/v0/stage{0..9}/` — Stage 0-9 test plans (§17.2 双向印证)
 - `docs/tests/v0/stage10/` — Stage 10 test plans (independent directory)
 - `docs/tests/matrix.md` — Global test matrix
-- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r211
+- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r212
 
 ## License
 

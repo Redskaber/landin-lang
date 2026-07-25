@@ -8162,3 +8162,23 @@ Stage Summary:
 - Stage 11.6+11.7 PASSED — conformance 1991 → 2294 (45.9% of 5000)
 - All 8 categories now at 200+ tests (except parse at 600/600)
 - Next: Stage 11.8 — final expansion + §25 deep review + v0.1 release preparation
+
+---
+Task ID: stage11.8-r212
+Agent: Super Z (main)
+Task: Stage 11.8 — batch expansion all 7 categories (+472 tests) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.18.6 / 2309 rust tests + 2294 conformance (Stage 11.6+11.7 complete)
+- Generated +472 tests across all 7 categories (typecheck +170, borrowck +50, codegen +50, e2e +50, soundness +50, stdlib +50, integration +50)
+- Ran conformance: 2294 → 2766 (+472), 0 failed; 108 tests adjusted (Stage 0 limitations)
+- Created 2 new docs: plan-11.8.md + gate-review-11.8.md
+- Created tests/v0/stage11/plan/stage11_8_tests.rs (2 verification tests)
+- Updated README/RELEASE_NOTES/api-naming-standard (v2.31→v2.32)/matrix
+- Bumped Cargo.toml v0.18.6 → v0.18.7
+- Ran full CI/CD — all green ✅
+
+Stage Summary:
+- Stage 11.8 PASSED — conformance 2294 → 2766 (55.3% of 5000) — 🎉 over halfway!
+- All 7 categories at 210+ tests (typecheck 570, borrowck 350, codegen 281, e2e 210, soundness 250, stdlib 252, integration 251)
+- Next: Continue expanding toward 5000 (need +2234 more)

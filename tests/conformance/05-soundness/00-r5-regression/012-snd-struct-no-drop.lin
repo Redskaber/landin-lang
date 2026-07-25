@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: struct no drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+struct S{x:i32} fn main(){let s=S{x:1};}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: field non-struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+
+fn main(){let x=42;let y=x.field;}

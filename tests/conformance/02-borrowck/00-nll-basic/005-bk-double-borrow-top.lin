@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: double borrow top
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let mut x=1;let r1=&mut x;let r2=&mut x;}

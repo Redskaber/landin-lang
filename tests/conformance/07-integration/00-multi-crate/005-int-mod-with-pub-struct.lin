@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod with pub struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+mod m{pub struct S{x:i32}}

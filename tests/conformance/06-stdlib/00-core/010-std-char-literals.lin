@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: char literals
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let a='a';let b='\n';}

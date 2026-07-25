@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: linked list
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+struct Node{val:i32,next:i32} fn new(v:i32)->Node{Node{val:v,next:-1}}

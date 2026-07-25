@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross multi use
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+
+mod a{pub fn f()->i32{1}} mod b{pub fn g()->i32{2}} mod c{use a::f;use b::g;pub fn h()->i32{f()+g()}}

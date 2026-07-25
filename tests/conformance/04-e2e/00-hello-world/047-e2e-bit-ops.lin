@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: bit ops
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x=0xff&0x0f;}

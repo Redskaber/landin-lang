@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: usize in array
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let arr:[usize;3]=[0;3];}

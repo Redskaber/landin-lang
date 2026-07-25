@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: doc attr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+#[doc="x"] fn f(){}

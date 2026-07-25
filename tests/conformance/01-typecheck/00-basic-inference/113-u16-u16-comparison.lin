@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: u16 comparison
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x:u16=1;let y=x>0;}

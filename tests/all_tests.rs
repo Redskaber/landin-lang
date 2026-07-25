@@ -522,3 +522,6 @@ mod stage11_5_tests;
 // Stage 11.6+11.7: stdlib + integration expansion verification
 #[path = "v0/stage11/plan/stage11_6_7_tests.rs"]
 mod stage11_6_7_tests;
+// Stage 11.8: batch expansion verification
+#[path = "v0/stage11/plan/stage11_8_tests.rs"]
+mod stage11_8_tests;

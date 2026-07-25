@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: logical or
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x=true||false;}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: if not bool
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){if 42{1}}

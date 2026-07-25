@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: overflow mul
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x:i32=1073741824;let _=x*2;}

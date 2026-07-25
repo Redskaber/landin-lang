@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: fn param char
+// EXPECTED: compile_error
+// SOURCE: Stage 11.8 batch expansion
+
+fn f(x:char)->char{x} fn main(){f(1);}

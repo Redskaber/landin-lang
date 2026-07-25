@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+mod m{fn f<'a>(x:&'a i32)->&'a i32{x}}

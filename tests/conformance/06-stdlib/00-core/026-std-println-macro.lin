@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: println macro
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){println!("hello");}

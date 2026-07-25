@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: cross struct field pub
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+mod a{pub struct S{pub x:i32}} fn main(){let s=a::S{x:42};}

@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: raw ptr type
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let p:*const i32=0 as *const i32;}

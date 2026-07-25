@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: unit type
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x=();}

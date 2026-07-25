@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: u8 in tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let t:(u8,u8)=(0,0);}

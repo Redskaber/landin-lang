@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: u16 in struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+struct S{x:u16} fn main(){let s=S{x:0};}

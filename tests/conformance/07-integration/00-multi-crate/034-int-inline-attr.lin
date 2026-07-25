@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: inline attr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+#[inline] fn f(){}

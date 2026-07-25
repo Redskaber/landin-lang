@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: usize comparison
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x:usize=1;let y=x>0;}

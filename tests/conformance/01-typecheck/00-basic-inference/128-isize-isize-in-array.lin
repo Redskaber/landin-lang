@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: isize in array
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let arr:[isize;3]=[0;3];}

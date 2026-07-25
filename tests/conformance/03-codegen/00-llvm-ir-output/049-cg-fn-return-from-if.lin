@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: fn return from if
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn f(x:i32)->i32{if x>0{1}else{0}}

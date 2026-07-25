@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: int literals
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let a=42;let b=0xff;let c=0o777;let d=0b1010;}

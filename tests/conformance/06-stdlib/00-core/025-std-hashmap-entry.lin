@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: hashmap entry
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+struct Entry<K,V>{key:K,value:V} fn main(){let e=Entry{key:1,value:2};}

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod use multi
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+mod m{pub struct A;pub struct B;} use m::{A,B};

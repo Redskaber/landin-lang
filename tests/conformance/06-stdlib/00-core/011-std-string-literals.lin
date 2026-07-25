@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: string literals
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let a="hello";let b="";}

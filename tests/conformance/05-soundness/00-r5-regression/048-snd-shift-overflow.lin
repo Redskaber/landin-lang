@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: shift overflow
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let x:i32=1;let _=x<<31;}

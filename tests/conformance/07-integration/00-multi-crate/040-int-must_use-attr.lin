@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: must_use attr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+#[must_use] fn f()->i32{0}

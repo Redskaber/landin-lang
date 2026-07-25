@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: config
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+struct Config{w:i32,h:i32} fn default()->Config{Config{w:800,h:600}}

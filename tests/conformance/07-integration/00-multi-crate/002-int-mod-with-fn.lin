@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod with fn
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+mod m{fn f(){}}

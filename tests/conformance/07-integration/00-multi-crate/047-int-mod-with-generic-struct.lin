@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod with generic struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+mod m{struct S<T>{x:T}}

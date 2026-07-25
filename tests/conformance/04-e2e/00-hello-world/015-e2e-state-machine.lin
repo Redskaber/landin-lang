@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: state machine
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+enum S{Idle,Run} fn next(s:S)->S{match s{S::Idle=>S::Run,S::Run=>S::Idle}}

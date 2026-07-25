@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: bit ops
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.8 batch expansion
+
+fn main(){let a=0xff;let b=0x0f;let _=a&b;let _=a|b;let _=a^b;}
