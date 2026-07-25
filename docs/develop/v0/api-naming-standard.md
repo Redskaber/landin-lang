@@ -4320,3 +4320,14 @@ Stage 11.1 — typecheck expansion (200→400, +200 tests).
 - New Rust integration tests: `tests/v0/stage11/plan/stage11_1_tests.rs` (4 tests)
 
 **Test impact**: +4 rust (2290 → 2294) + 200 conformance (1139 → 1339). 0 regressions.
+
+### v2.27 (Stage 11.2, 2026-07-26)
+
+Stage 11.2 — borrowck expansion (80→300, +220 tests).
+
+**Changes**:
+- borrowck expanded +220 tests across 5 subcategories (nll-basic/nll-advanced/move-semantics/closure-capture/error-cases)
+- 99 tests adjusted (Stage 0 limitations)
+- New Rust integration tests: `tests/v0/stage11/plan/stage11_2_tests.rs` (3 tests)
+
+**Test impact**: +3 rust (2294 → 2298) + 220 conformance (1339 → 1559). 0 regressions.

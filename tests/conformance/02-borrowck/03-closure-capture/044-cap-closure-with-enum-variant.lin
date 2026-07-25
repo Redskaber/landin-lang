@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure with enum variant
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+enum E{A(i32)} fn main() { let x=1; let f=||E::A(x); }

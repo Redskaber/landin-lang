@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure with cast
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let x:i32=1; let f=||x as i64; }

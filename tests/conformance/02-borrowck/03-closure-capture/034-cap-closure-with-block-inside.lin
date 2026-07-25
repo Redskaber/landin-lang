@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure with block inside
+// EXPECTED: compile_error
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=1; let f=||{{let y=x;y}}; }

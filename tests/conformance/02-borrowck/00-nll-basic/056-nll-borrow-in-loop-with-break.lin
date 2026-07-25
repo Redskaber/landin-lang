@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow in loop with break
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=1; loop { let r=&x; if *r>0 { break; } } }

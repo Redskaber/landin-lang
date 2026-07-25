@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with nested references
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=1; let r=&x; let rr=&r; let y=**rr; let z=x; }

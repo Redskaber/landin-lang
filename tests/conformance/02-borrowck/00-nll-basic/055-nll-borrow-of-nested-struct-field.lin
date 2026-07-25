@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow of nested struct field
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+struct Inner{x:i32} struct Outer{i:Inner} fn main() { let o=Outer{i:Inner{x:1}}; let r=&o.i.x; }

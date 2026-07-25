@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move enum data
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+enum E{A(i32)} fn main() { let e=E::A(1); match e { E::A(x) => { let y=x; } } }

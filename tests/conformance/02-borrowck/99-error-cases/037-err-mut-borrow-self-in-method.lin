@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: mut borrow self in method
+// EXPECTED: compile_error
+// SOURCE: Stage 11.2 borrowck expansion
+
+struct S{x:i32} impl S { fn f(&mut self) { self.x=2; } } fn main() { let mut s=S{x:1}; s.f(); }

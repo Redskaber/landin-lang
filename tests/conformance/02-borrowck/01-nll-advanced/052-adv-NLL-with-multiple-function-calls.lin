@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with multiple function calls
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn g(x:&i32)->i32 { *x } fn main() { let v=1; g(&v); g(&v); g(&v); }

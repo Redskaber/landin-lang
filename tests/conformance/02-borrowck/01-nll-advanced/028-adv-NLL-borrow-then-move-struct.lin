@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL borrow then move struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+struct S{x:i32} fn main() { let s=S{x:1}; let r=&s.x; let _=*r; let s2=s; }

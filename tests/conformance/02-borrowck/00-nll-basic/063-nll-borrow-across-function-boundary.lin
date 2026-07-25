@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow across function boundary
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn g(r:&i32)->i32 { *r } fn main() { let x=1; g(&x); }

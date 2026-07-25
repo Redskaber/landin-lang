@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with continue
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let x=1; let mut i=0; while i<3 { let r=&x; i+=1; if *r>0 { continue; } } }

@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: chained closure captures
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let x=1; let f=|||y|x+y; }

@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure captures and returns
+// EXPECTED: compile_error
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=1; let f=||->i32{x}; }

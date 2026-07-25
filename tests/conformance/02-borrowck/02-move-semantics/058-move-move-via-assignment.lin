@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move via assignment
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let mut x=1; let y=2; x=y; }

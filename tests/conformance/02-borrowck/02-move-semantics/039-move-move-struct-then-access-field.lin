@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move struct then access field
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+struct S{x:i32} fn main() { let s=S{x:1}; let s2=s; let _=s.x; }

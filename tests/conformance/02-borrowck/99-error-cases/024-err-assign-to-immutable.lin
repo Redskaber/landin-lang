@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: assign to immutable
+// EXPECTED: compile_error
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=0; x=1; }

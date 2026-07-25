@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move then borrow after
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let x=1; let y=x; let r=&x; }

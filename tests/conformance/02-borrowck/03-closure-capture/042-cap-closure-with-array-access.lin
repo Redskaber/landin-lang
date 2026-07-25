@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure with array access
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let arr=[1,2,3]; let f=||arr[0]+arr[1]; }

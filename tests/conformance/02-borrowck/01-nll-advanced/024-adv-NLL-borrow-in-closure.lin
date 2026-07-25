@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL borrow in closure
+// EXPECTED: compile_error
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=1; let f=|| { let _=&x; }; f(); let y=x; }

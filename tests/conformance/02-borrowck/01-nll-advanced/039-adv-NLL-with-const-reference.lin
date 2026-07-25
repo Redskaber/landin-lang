@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with const reference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+const C:i32=42; fn main() { let r=&C; let r2=&C; }

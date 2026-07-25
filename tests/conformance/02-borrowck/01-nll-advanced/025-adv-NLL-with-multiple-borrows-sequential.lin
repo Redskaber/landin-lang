@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with multiple borrows sequential
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let mut x=1; let r1=&x; let _=*r1; let r2=&mut x; *r2=2; }

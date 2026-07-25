@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: mut borrow then shared use
+// EXPECTED: compile_error
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let mut x=1; let r=&mut x; let y=x; }

@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: mut borrow then copy
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let mut x=1; let r=&mut x; let y=*r; }

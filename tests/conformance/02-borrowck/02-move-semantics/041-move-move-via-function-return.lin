@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move via function return
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn f()->i32 { 42 } fn main() { let x=f(); let y=x; let z=x; }

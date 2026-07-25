@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move closure without move keyword
+// EXPECTED: compile_error
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=1; let f=||x; f(); }

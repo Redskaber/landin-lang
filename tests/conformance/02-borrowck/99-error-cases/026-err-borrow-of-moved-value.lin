@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow of moved value
+// EXPECTED: compile_error
+// SOURCE: Stage 11.2 borrowck expansion
+
+struct S{x:i32} fn main() { let s=S{x:1}; let s2=s; let r=&s; }

@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: multiple shared borrows different vars
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let a=1; let b=2; let ra=&a; let rb=&b; }

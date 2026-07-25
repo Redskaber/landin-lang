@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure capturing tuple destructured
+// EXPECTED: compile_error
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let t=(1,2); let f=||{let (a,b)=t; a+b}; }

@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure captures in fn scope
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn f() { let x=1; let g=||x; }

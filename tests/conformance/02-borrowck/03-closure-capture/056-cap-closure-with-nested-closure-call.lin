@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure with nested closure call
+// EXPECTED: compile_error
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=1; let f=||||x; let g=f(); let _=g(); }

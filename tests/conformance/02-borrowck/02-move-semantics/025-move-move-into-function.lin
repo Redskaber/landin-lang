@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move into function
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn g(x:i32){} fn main() { let v=1; g(v); let y=v; }

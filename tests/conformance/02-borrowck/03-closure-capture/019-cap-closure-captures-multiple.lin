@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure captures multiple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let a=1; let b=2; let c=3; let f=||a+b+c; }

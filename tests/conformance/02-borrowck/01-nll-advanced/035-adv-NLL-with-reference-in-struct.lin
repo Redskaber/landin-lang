@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with reference in struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+struct S<'a>{x:&'a i32} fn main() { let v=1; let s=S{x:&v}; let y=v; }

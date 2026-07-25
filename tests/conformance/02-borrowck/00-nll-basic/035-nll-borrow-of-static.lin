@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow of static
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+static S:i32=42; fn main() { let r=&S; }

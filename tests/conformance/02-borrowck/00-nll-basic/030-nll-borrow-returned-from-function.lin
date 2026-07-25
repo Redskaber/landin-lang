@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow returned from function
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn f(x:&i32)->&i32 { x } fn main() { let v=1; let r=f(&v); }

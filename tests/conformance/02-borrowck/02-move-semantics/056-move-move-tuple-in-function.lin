@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move tuple in function
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn g(t:(i32,i32))->(i32,i32) { t } fn main() { let t=(1,2); let t2=g(t); }

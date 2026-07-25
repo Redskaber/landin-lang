@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure captures f64
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let x=3.14; let f=||x*2.0; }

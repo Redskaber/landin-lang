@@ -507,3 +507,6 @@ mod stage10_8_tests;
 // Stage 11.1: typecheck expansion verification
 #[path = "v0/stage11/plan/stage11_1_tests.rs"]
 mod stage11_1_tests;
+// Stage 11.2: borrowck expansion verification
+#[path = "v0/stage11/plan/stage11_2_tests.rs"]
+mod stage11_2_tests;

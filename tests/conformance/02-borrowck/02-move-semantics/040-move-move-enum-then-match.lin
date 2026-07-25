@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move enum then match
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+enum E{A,B} fn main() { let e=E::A; let e2=e; match e { E::A=>{}, E::B=>{} } }

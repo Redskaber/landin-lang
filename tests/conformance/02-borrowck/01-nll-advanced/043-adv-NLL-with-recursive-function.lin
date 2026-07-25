@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with recursive function
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn f(n:i32)->i32 { if n<=0 { 0 } else { f(n-1) } } fn main() { let r=f(5); }

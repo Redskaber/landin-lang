@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with static reference in struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+struct S{x:&'static str} fn main() { let s=S{x:"hello"}; }

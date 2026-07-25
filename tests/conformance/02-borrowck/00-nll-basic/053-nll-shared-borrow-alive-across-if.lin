@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: shared borrow alive across if
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=1; let r=&x; if *r>0 { } else { } }

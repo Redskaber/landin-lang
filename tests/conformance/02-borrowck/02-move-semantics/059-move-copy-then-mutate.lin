@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: copy then mutate
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=1; let y=x; let mut z=y; z=2; }

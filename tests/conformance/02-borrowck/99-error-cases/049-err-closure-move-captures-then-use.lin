@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure move captures then use
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let x=1; let f=move||x; let y=x; }

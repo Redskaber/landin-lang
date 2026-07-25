@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move via struct construction
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+struct S{x:i32} fn main() { let x=1; let s=S{x}; let y=x; }

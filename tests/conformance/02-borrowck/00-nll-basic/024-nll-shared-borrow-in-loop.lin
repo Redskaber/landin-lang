@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: shared borrow in loop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn main() { let x=1; loop { let _=&x; break; } }

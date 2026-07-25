@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: mut borrow in loop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let mut x=1; loop { let r=&mut x; *r+=1; if *r>3 { break; } } }

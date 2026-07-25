@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure captures const
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+const C:i32=42; fn main() { let f=||C; }

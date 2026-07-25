@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: closure capturing array iter
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+fn main() { let arr=[1,2,3]; let f=||{let mut s=0; let mut i=0; while i<3 { s+=arr[i]; i+=1; } s}; }

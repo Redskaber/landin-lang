@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: move in return expr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+struct S{x:i32} fn f()->S { let s=S{x:1}; s } fn main() { let s=f(); }

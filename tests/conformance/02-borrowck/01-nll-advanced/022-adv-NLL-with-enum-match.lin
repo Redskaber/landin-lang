@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with enum match
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+enum E{A(i32),B} fn f(e:E)->i32 { match e { E::A(x)=>{ let r=&x; *r } E::B=>0 } }

@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL borrow then move enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
+
+enum E{A(i32)} fn main() { let e=E::A(1); let r=&e; let _=*r; let e2=e; }

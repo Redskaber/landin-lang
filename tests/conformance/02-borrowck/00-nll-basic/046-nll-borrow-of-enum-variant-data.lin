@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow of enum variant data
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+enum E{A(i32)} fn main() { let e=E::A(1); match e { E::A(r) => { let _=&r; } } }

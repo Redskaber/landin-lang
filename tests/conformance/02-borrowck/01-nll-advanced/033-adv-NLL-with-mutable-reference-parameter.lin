@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: NLL with mutable reference parameter
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion
+
+fn f(r:&mut i32) { *r=2; } fn main() { let mut x=1; f(&mut x); let y=x; }
