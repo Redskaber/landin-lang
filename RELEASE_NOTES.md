@@ -1,9 +1,104 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.13.4
+**Current version**: v0.13.5
 **Date**: 2026-07-25
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.13.5 — Stage 6.16 (resolve/resolver.rs architectural split per §14.4 — TD-026)
+
+### Overview
+
+**Architectural split** of `src/resolve/resolver.rs` (1131 LOC) into 3 sub-modules.
+Fifth application of v3.21 §13.4 (stage-start design alignment with
+01-language-specification.md §6.2) + §14.4 (refactoring as architecture design).
+
+The new structure maps to `docs/lang-design/01-language-specification.md` §6.2
+解析顺序 (resolve order) — this is "refactoring as architecture design."
+
+### §13.4 design alignment
+
+Read `docs/lang-design/01-language-specification.md` §6.2 (解析顺序).
+8-pass model (MVP simplified to 4). Decision: split resolver.rs by pass phases.
+
+| Design doc § | Pass | New module |
+|--------------|------|------------|
+| §6.2 pass 1-3 | build graph + finalize imports + compute vis | `module_build.rs` (470 LOC) |
+| §6.2 pass 4-5 | late resolve + resolve main | `path_resolve.rs` (577 LOC) |
+| §6.2 helpers | primitive type lookup | `primitives.rs` (32 LOC) |
+
+### §14.4 J1-J6 judgments (all ✅)
+
+| # | Judgment | Status |
+|---|----------|--------|
+| J1 | architecture design alignment (1:1 with §6.2 pass phases) | ✅ |
+| J2 | single responsibility (module_build = pass 1-3; path_resolve = pass 4-5) | ✅ |
+| J3 | unidirectional flow (resolver.rs → 3 leaves, no cycles) | ✅ |
+| J4 | compiler concept completeness (10 module/use/vis functions内聚; 11 path/expr functions内聚) | ✅ |
+| J5 | stage boundary clarity (all in src/resolve/, Stage 1 unchanged) | ✅ |
+| J6 | scientific reasonable granularity (32-577 LOC sub-modules) | ✅ |
+
+### New module structure
+
+```
+src/resolve/
+  mod.rs          (30 LOC)    — crate-level re-exports + 3 子模块声明
+  resolver.rs     (154 LOC)   ← Resolver struct + new + resolve + into_errors + helpers + entry
+  error.rs        (36 LOC)    — ResolveError 类型（不变）
+  module_tree.rs  (145 LOC)   — ModuleNode 数据结构（不变）
+  scope.rs        (174 LOC)   — ScopeStack 数据结构（不变）
+  module_build.rs (470 LOC)   ← module tree 构建 + use 解析（§6.2 pass 1-3）
+  path_resolve.rs (577 LOC)   ← late resolve 路径解析（§6.2 pass 4-5）
+  primitives.rs   (32 LOC)    ← primitive type 查询表
+```
+
+**resolver.rs**: 1131 → **154 LOC** (-86.4%, -977 LOC)
+
+### Backward compatibility (§23 + §16)
+
+All public symbols preserved:
+- `resolve_crate` entry point — `pub`
+- `Resolver::new` / `into_errors` / `def_visibility` / `current_module` — `pub`
+- `Resolver` struct fields — `pub(super)` (internal to resolve module)
+
+External callers see **zero API change**.
+
+### Changes
+
+- Created 3 new sub-modules under `src/resolve/`
+- `resolver.rs`: 1131 → 154 LOC (-86.4%)
+- `mod.rs`: added 3 `mod xxx;` declarations
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-026
+
+Introduced and immediately closed in this stage: resolve/resolver.rs LOC was
+1131. After split: 154 LOC. All sub-modules in 32-577 LOC range.
+
+### Stage 6 architectural splits summary (updated)
+
+| Phase | Modules | Largest file LOC (before → after) |
+|-------|---------|-----------------------------------|
+| mir/lower | 7 | mod.rs 3346 → 772 (-76.9%) |
+| codegen | 5 | mod.rs 2461 → 1050 (-57.3%) |
+| stdlib | 3 | (single file → 3 modules) |
+| parser | 8 | parser.rs 3112 → 263 (-91.5%) |
+| lexer | 6 | reader.rs 1537 → 349 (-77.3%) |
+| borrowck | 6 | mod.rs 1452 → 1146 (-21%) |
+| typeck | 5 | checker.rs 1320 → 1160 (-12%) |
+| resolve | 7 | resolver.rs 1131 → 154 (-86.4%) |
+| **Total** | **47** | All mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs < 1300 LOC |
 
 ---
 

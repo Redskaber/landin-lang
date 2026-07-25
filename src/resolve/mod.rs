@@ -11,6 +11,15 @@ pub mod module_tree;
 pub mod resolver;
 pub mod scope;
 
+// Stage 6.16 (TD-026) sub-modules of `resolver` — declared here so they
+// resolve to `src/resolve/{module_build,path_resolve,primitives}.rs`
+// (sibling to `resolver.rs`). Each sub-module adds methods to `impl Resolver`
+// via its own `impl` block, per §14.4 (refactoring as architecture design)
+// aligned with 01-language-specification.md §6.2 解析顺序.
+mod module_build;
+mod path_resolve;
+mod primitives;
+
 pub use error::ResolveError;
 pub use module_tree::{ModuleNode, UseDecl, UseImport};
 pub use resolver::{resolve_crate, Resolver};

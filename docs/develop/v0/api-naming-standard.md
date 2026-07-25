@@ -3257,3 +3257,38 @@ checker.rs → {tables, predicates}. Per J6, all modules in 78-132 LOC range.
 **Fmt impact**: clean.
 
 **TD-025**: typeck/checker.rs LOC — introduced and immediately closed in this stage.
+
+### v1.85 (Stage 6.16, 2026-07-25)
+
+Stage 6.16 resolve/resolver.rs architectural split round. Per v3.21 §13.4
+(stage-start design alignment with 01-language-specification.md §6.2) +
+§14.4 (refactoring as architecture design, J1-J6 judgments).
+
+Splits `src/resolve/resolver.rs` (1131 LOC) into 3 sub-modules, each owning
+one resolution phase aligned with 01-language-specification.md §6.2 解析顺序.
+
+**New public symbols**: None (pure architectural reorganization).
+
+**Changes**:
+- Created 3 new sub-modules under `src/resolve/`:
+  - `primitives.rs` (32 LOC) — lookup_prim_ty (primitive type lookup table)
+  - `module_build.rs` (470 LOC) — build_module_tree + collect_item_registration + build_child_module + item_def_id + resolve_uses + resolve_use_tree + resolve_use_leaf + resolve_use_glob + lookup_use_path_target + check_visibility (§6.2 pass 1-3)
+  - `path_resolve.rs` (577 LOC) — resolve_all_paths + resolve_owner_paths + resolve_item_paths + resolve_generics_paths + resolve_ty_paths + resolve_hir_path + resolve_path + resolve_body + collect_pat_bindings + resolve_expr + resolve_block (§6.2 pass 4-5)
+- `resolver.rs`: 1131 → 154 LOC (-86.4%, -977 LOC)
+  - Retains: Resolver struct + new + resolve orchestrator + into_errors + name_to_string + path_to_string + def_visibility + current_module + resolve_crate entry
+- All `mod xxx;` declarations in `src/resolve/mod.rs`
+- Visibility: struct fields + cursor methods + resolve_* methods all `pub(super)`;
+  `resolve_crate` remains `pub` (only public entry)
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+**Architectural rationale**: Per §14.4 J1, new structure maps to
+01-language-specification.md §6.2 解析顺序 (pass 1-3 → module_build;
+pass 4-5 → path_resolve; helpers → primitives). Per J2, each module owns
+one resolution phase. Per J3, data flows resolver.rs → {module_build,
+path_resolve, primitives}. Per J6, all modules in 32-577 LOC range.
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
+
+**TD-026**: resolve/resolver.rs LOC — introduced and immediately closed in this stage.

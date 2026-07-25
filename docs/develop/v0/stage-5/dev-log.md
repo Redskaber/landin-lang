@@ -3396,3 +3396,46 @@ module boundary design aligned with the design specification.
 
 **TD-025**: typeck/checker.rs LOC — introduced and immediately closed in this stage.
 **Next**: Stage 6 末尾 — 完整 §25.8 设计回写 + TD-015 Region inference + TD-018 用户自定义 trait dyn.
+
+### Stage 6.16 — resolve/resolver.rs architectural split per §14.4 (v0.13.5)
+
+**Priority**: User request — continue stage 6 progress with API naming
+standardization. Apply v3.21 §13.4 (stage-start design alignment with
+01-language-specification.md §6.2) + §14.4 (refactoring as architecture design).
+
+**§13.4 design alignment**:
+- Read `docs/lang-design/01-language-specification.md` §6.2 (解析顺序)
+- 8 pass model (MVP simplified to 4): build graph / finalize imports /
+  compute vis / late resolve / resolve main / check unused / report errors /
+  postprocess
+- Decision: split resolver.rs by §6.2 pass phases:
+  module_build (pass 1-3) + path_resolve (pass 4-5) + primitives (helper)
+
+**§14.4 J1-J6 judgments** (all ✅):
+- J1 architecture design alignment (1:1 with §6.2 pass phases)
+- J2 single responsibility
+- J3 unidirectional flow (resolver.rs → 3 leaf modules)
+- J4 compiler concept completeness
+- J5 stage boundary clarity
+- J6 scientific reasonable granularity (32-577 LOC sub-modules)
+
+**Work completed**:
+- Created 3 new sub-modules under `src/resolve/`:
+  * primitives.rs (32 LOC) — lookup_prim_ty
+  * module_build.rs (470 LOC) — 10 module/use/vis functions (pass 1-3)
+  * path_resolve.rs (577 LOC) — 11 path/expr functions (pass 4-5)
+- resolver.rs: 1131 → 154 LOC (-86.4%, -977 LOC)
+  * Retains: Resolver struct + new + resolve + into_errors + helpers + entry
+- Visibility: struct fields + cursor methods + resolve_* methods all pub(super)
+- Cargo.toml: version 0.13.4 → 0.13.5
+
+**Architectural rationale**: Per §14.4 J1, the new structure maps to
+01-language-specification.md §6.2 解析顺序. This is "refactoring as
+architecture design" — not LOC slicing, but scientific module boundary
+design aligned with the design specification.
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-026**: resolve/resolver.rs LOC — introduced and immediately closed in this stage.
+**Next**: Stage 6 末尾 — 完整 §25.8 设计回写 + TD-015 Region inference + TD-018.

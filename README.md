@@ -6,11 +6,11 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.13.4 — Stage 0-5 complete, Stage 6 in progress.
+> **Status:** v0.13.5 — Stage 0-5 complete, Stage 6 in progress.
 > **1881 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 110 test modules!
 > Process v3.21 (§0-§28). §16 interface isolation compliant.
-> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7 modules, mod.rs -76.9%) + codegen (5 modules) + stdlib (3 modules) + parser (8 modules, parser.rs -91.5%) + lexer (6 modules, reader.rs -77.3%) + borrowck (6 modules, mod.rs -21%) + typeck (5 modules, checker.rs -12%) + process governance v3.21 (§13.4 + §14.4 + §25.8). **40 modules total.**
-> 🎉 Architecture: all mod.rs/parser.rs/reader.rs/checker.rs files < 1300 LOC. Single responsibility per module. Data flows单向. Design docs synced with implementation (§25.8).
+> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7) + codegen (5) + stdlib (3) + parser (8) + lexer (6) + borrowck (6) + typeck (5) + resolve (7) + process governance v3.21 (§13.4 + §14.4 + §25.8). **47 modules total.**
+> 🎉 Architecture: all mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs files < 1300 LOC. Single responsibility per module. Data flows单向. Design docs synced with implementation (§25.8).
 > Next: Stage 6 末尾 — 完整 §25.8 设计回写 + TD-015 Region inference + TD-018 用户自定义 trait dyn.
 
 ## Quick start
@@ -93,7 +93,7 @@ landin-stage0/
 │   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC) (85 tests)
 │   ├── ast/                AST node definitions (150 tests)
 │   ├── hir/                HIR + lowering (56 tests)
-│   ├── resolve/            Name resolution + scope + visibility (43 tests)
+│   ├── resolve/            Name resolution + scope + visibility (7 modules, resolver.rs 154 LOC) (43 tests)
 │   ├── mir/                MIR types + HIR→MIR lowering (22 tests)
 │   ├── typeck/             Type inference + unification (5 modules, checker.rs 1160 LOC) (26 tests)
 │   ├── borrowck/           NLL borrow checker (6 modules, mod.rs 1146 LOC) (26 tests)
