@@ -1,9 +1,101 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.13.1
+**Current version**: v0.13.2
 **Date**: 2026-07-25
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.13.2 — Stage 6.13 (lexer/reader.rs architectural split per §14.4 — TD-023)
+
+### Overview
+
+**Architectural split** of `src/lexer/reader.rs` (1537 LOC) into 4 sub-modules.
+Second application of v3.21 §13.4 (stage-start design alignment with
+02-grammar.md §1) + §14.4 (refactoring as architecture design, J1-J6 judgments).
+
+The new structure maps to `docs/lang-design/02-grammar.md` §1 lexical
+categories — this is "refactoring as architecture design," not LOC slicing.
+
+### §13.4 design alignment
+
+Read `docs/lang-design/02-grammar.md` §1 (lexical structure, 9 sub-sections).
+Decision: aggregate 9 sub-sections to 4 cohesive modules.
+
+| Design doc § | Category | New module |
+|--------------|----------|------------|
+| §1.3 + §1.4 | keyword + identifier | `ident.rs` (123 LOC) |
+| §1.5 + §1.6 | integer + float literal | `number.rs` (303 LOC) |
+| §1.7 | char + string + byte + raw + escape | `string.rs` (486 LOC) |
+| §1.1 + §1.8 | comment + operator + punctuation | `operators.rs` (372 LOC) |
+
+### §14.4 J1-J6 judgments (all ✅)
+
+| # | Judgment | Status |
+|---|----------|--------|
+| J1 | architecture design alignment (1:1 with §1 lexical categories) | ✅ |
+| J2 | single responsibility (each module = one lexical category) | ✅ |
+| J3 | unidirectional flow (reader.rs → 4 leaves, no cycles) | ✅ |
+| J4 | compiler concept completeness (ident+keyword内聚; numbers内聚; strings+escape内聚; operators+comments内聚) | ✅ |
+| J5 | stage boundary clarity (all in src/lexer/, Stage 0 unchanged) | ✅ |
+| J6 | scientific reasonable granularity (123-486 LOC range) | ✅ |
+
+### New module structure
+
+```
+src/lexer/
+  mod.rs          (60 LOC)    — crate-level re-exports + 4 子模块声明
+  reader.rs       (349 LOC)   ← Lexer struct + cursor + skip_trivia + next_token + LexError
+  token.rs        (390 LOC)   — Token 类型定义（不变）
+  ident.rs        (123 LOC)   ← lex_raw_identifier + lex_ident + is_ident_start_byte
+  number.rs       (303 LOC)   ← lex_number + lex_hex/oct/bin + try_lex_number_suffix
+  string.rs       (486 LOC)   ← 10 个字符串/字符函数 + escape
+  operators.rs    (372 LOC)   ← lex_doc_comment + 14 个 lex_<op> 函数
+```
+
+**reader.rs**: 1537 → **349 LOC** (-77.3%, -1188 LOC)
+
+### Visibility strategy (§16 interface isolation)
+
+- `Lexer` struct fields: `pub(super)` (sibling modules can read/write cursor state)
+- Cursor methods (`peek`/`peek_at`/`bump`/`span_from`): `pub(super)`
+- `skip_trivia`: `pub(super)` (next_token calls it)
+- All `lex_*` methods: `pub(super)` (sibling sub-modules can inter-call)
+- `next_token`: `pub` (only public entry — §16 compliant, driver calls)
+- `into_errors` / `is_at_end`: `pub`
+- `is_ident_start_byte`: `pub(super)` (reader.rs next_token calls it)
+
+Lexer-external code only sees: `Lexer::new` + `Lexer::next_token` +
+`Lexer::into_errors` + `Lexer::is_at_end`.
+
+### §23 API naming compliance
+
+- All function names preserved (zero churn)
+- Module names follow `<noun>` pattern (consistent with `token.rs`)
+- No new public symbols (pure architectural reorganization)
+- No `pub use X::*;` glob
+
+### Changes
+
+- Created 4 new sub-modules under `src/lexer/`
+- `reader.rs`: 1537 → 349 LOC (-77.3%)
+- `mod.rs`: added 4 `mod xxx;` declarations (sibling to reader.rs)
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-023
+
+Introduced and immediately closed in this stage: reader.rs LOC was 1537
+(violating §14.4 J2+J6). After split: 349 LOC, all sub-modules in 123-486 LOC range.
 
 ---
 

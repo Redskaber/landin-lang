@@ -6,12 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.13.1 — Stage 0-5 complete, Stage 6 in progress.
+> **Status:** v0.13.2 — Stage 0-5 complete, Stage 6 in progress.
 > **1881 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 110 test modules!
 > Process v3.21 (§0-§28). §16 interface isolation compliant.
-> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7 modules, mod.rs -76.9%) + codegen (5 modules) + stdlib (3 modules) + parser (8 modules, parser.rs -91.5%) + process governance v3.21 (§13.4 + §14.4 + §25.8).
-> 🎉 Architecture: all mod.rs/parser.rs files < 1300 LOC. Single responsibility per module. Data flows单向. Design docs synced with implementation (§25.8).
-> Next: Stage 6.13 — lexer/reader.rs architectural split (1537 LOC → by lexical category).
+> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7 modules, mod.rs -76.9%) + codegen (5 modules) + stdlib (3 modules) + parser (8 modules, parser.rs -91.5%) + lexer (6 modules, reader.rs -77.3%) + process governance v3.21 (§13.4 + §14.4 + §25.8).
+> 🎉 Architecture: all mod.rs/parser.rs/reader.rs files < 1300 LOC. Single responsibility per module. Data flows单向. Design docs synced with implementation (§25.8).
+> Next: Stage 6.14 — borrowck/mod.rs architectural split (1452 LOC → by analysis category).
 
 ## Quick start
 
@@ -89,7 +89,7 @@ All error types implement `std::error::Error` + `Display`:
 landin-stage0/
 ├── Cargo.toml              v0.11.31 (autotests=false — single all_tests target)
 ├── src/
-│   ├── lexer/              Hand-written lexer (109 tests)
+│   ├── lexer/              Hand-written lexer (6 modules, reader.rs 349 LOC) (109 tests)
 │   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC) (85 tests)
 │   ├── ast/                AST node definitions (150 tests)
 │   ├── hir/                HIR + lowering (56 tests)

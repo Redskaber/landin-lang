@@ -6,6 +6,16 @@
 pub mod reader;
 pub mod token;
 
+// Stage 6.13 (TD-023) sub-modules of `reader` — declared here so they
+// resolve to `src/lexer/{ident,number,string,operators}.rs`
+// (sibling to `reader.rs`). Each sub-module adds methods to `impl Lexer`
+// via its own `impl` block, per §14.4 (refactoring as architecture design)
+// aligned with 02-grammar.md §1.1-§1.9 lexical categories.
+mod ident;
+mod number;
+mod operators;
+mod string;
+
 pub use reader::{LexError, Lexer};
 // Stage 3.63 (cross-stage naming standardization): explicit list instead of
 // `pub use token::*;` to prevent accidental leakage of internal types.

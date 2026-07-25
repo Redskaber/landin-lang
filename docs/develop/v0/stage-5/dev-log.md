@@ -3268,3 +3268,48 @@ with the language specification.
 
 **TD-022**: parser.rs LOC — introduced and immediately closed in this stage.
 **Next**: Stage 6.13 — lexer/reader.rs architectural split (1537 LOC).
+
+### Stage 6.13 — lexer/reader.rs architectural split per §14.4 (v0.13.2)
+
+**Priority**: User request — continue stage 0-6 progress with API naming
+standardization. Apply v3.21 §13.4 (stage-start design alignment with
+02-grammar.md §1) + §14.4 (refactoring as architecture design, J1-J6 judgments).
+
+**§13.4 design alignment**:
+- Read `docs/lang-design/02-grammar.md` §1 (lexical structure, 9 sub-sections)
+- §1.1 char set, §1.2 token classification, §1.3 keyword, §1.4 identifier,
+  §1.5 integer, §1.6 float, §1.7 char/string, §1.8 operator/punct, §1.9 maximal munch
+- Decision: aggregate 9 sub-sections to 4 cohesive modules:
+  ident (§1.3+§1.4), number (§1.5+§1.6), string (§1.7), operators (§1.1+§1.8)
+
+**§14.4 J1-J6 judgments** (all ✅):
+- J1 architecture design alignment (1:1 with §1 lexical categories)
+- J2 single responsibility
+- J3 unidirectional flow (reader.rs → 4 leaf modules)
+- J4 compiler concept completeness
+- J5 stage boundary clarity
+- J6 scientific reasonable granularity (123-486 LOC range)
+
+**Work completed**:
+- Created 4 new sub-modules under `src/lexer/`:
+  * ident.rs (123 LOC) — lex_raw_identifier + lex_ident + is_ident_start_byte
+  * number.rs (303 LOC) — 5 numeric literal functions
+  * string.rs (486 LOC) — 10 char/string functions + escape
+  * operators.rs (372 LOC) — lex_doc_comment + 14 lex_<op> functions
+- reader.rs: 1537 → 349 LOC (-77.3%, -1188 LOC)
+  * Retains: Lexer struct + cursor + skip_trivia + next_token + LexError
+- Visibility:
+  * Struct fields + cursor methods + lex_* methods all pub(super)
+  * next_token remains pub (only public entry)
+- Cargo.toml: version 0.13.1 → 0.13.2
+
+**Architectural rationale**: Per §14.4 J1, the new structure maps to
+02-grammar.md §1 lexical categories. This is "refactoring as architecture
+design" — not LOC slicing, but scientific module boundary design aligned
+with the language specification.
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-023**: lexer/reader.rs LOC — introduced and immediately closed in this stage.
+**Next**: Stage 6.14 — borrowck/mod.rs architectural split (1452 LOC).

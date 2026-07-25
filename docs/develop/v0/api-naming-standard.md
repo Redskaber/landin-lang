@@ -3150,3 +3150,39 @@ Per J6, all modules in 104-1028 LOC range.
 **Fmt impact**: clean.
 
 **TD-022**: parser.rs LOC — introduced and immediately closed in this stage.
+
+### v1.82 (Stage 6.13, 2026-07-25)
+
+Stage 6.13 lexer/reader.rs architectural split round. Per v3.21 §13.4
+(stage-start design alignment with 02-grammar.md §1) + §14.4 (refactoring
+as architecture design, J1-J6 judgments).
+
+Splits `src/lexer/reader.rs` (1537 LOC) into 4 sub-modules, each owning
+one lexical category aligned with 02-grammar.md §1 productions.
+
+**New public symbols**: None (pure architectural reorganization).
+
+**Changes**:
+- Created 4 new sub-modules under `src/lexer/`:
+  - `ident.rs` (123 LOC) — lex_raw_identifier + lex_ident + is_ident_start_byte (§1.3+§1.4)
+  - `number.rs` (303 LOC) — lex_number + lex_hex/oct/bin + try_lex_number_suffix (§1.5+§1.6)
+  - `string.rs` (486 LOC) — 10 char/string functions + escape (§1.7)
+  - `operators.rs` (372 LOC) — lex_doc_comment + 14 lex_<op> functions (§1.1+§1.8)
+- `reader.rs`: 1537 → 349 LOC (-77.3%, -1188 LOC)
+  - Retains: Lexer struct + cursor methods (pub(super)) + skip_trivia + next_token (pub) + LexError
+- All `mod xxx;` declarations in `src/lexer/mod.rs` (sibling to `reader.rs`)
+- Visibility: struct fields + cursor methods + lex_* methods all `pub(super)`;
+  `next_token` remains `pub` (only public entry)
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+**Architectural rationale**: Per §14.4 J1, new structure maps to 02-grammar.md
+§1 lexical categories (9 sub-sections aggregated to 4 cohesive modules).
+Per J2, each module owns one lexical category. Per J3, data flows
+reader.rs → {ident, number, string, operators}. Per J6, all modules in
+123-486 LOC range.
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
+
+**TD-023**: lexer/reader.rs LOC — introduced and immediately closed in this stage.
