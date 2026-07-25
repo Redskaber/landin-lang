@@ -395,3 +395,7 @@ mod lifetime_elision_tests;
 // Stage 8.2: Object safety tests
 #[path = "v0/stage8/plan/object_safety_tests.rs"]
 mod object_safety_tests;
+
+// Stage 8.3: extern "C" ABI tests
+#[path = "v0/stage8/plan/extern_c_abi_tests.rs"]
+mod extern_c_abi_tests;

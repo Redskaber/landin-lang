@@ -3636,3 +3636,16 @@ Stage 8.2 — Object safety rules (§2.3). Per v3.21 §13.4
 
 **Changes**: new module `src/traits/object_safety.rs` (~220 LOC).
 5 unit tests + 5 integration tests. 0 regressions.
+
+### v1.99 (Stage 8.3, 2026-07-25)
+
+Stage 8.3 — extern "C" ABI support (§13.2). Per v3.21 §13.4.
+
+**Changes**:
+- `BodyMeta` struct: added `abi: Abi` field (pub)
+- `codegen_function`: added `abi: Abi` parameter
+- ABI tracked from HIR `f.sig.abi` through driver → codegen
+- MVP: Landin ABI and C ABI use same LLVM CC (C default); future: custom CC
+
+**New public symbols**: None (BodyMeta.abi is pub field on existing struct).
+**Test impact**: +5 integration tests (2067 total). 0 regressions.

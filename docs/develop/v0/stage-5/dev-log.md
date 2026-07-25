@@ -3776,3 +3776,19 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 
 **Test impact**: +5 unit + 5 integration = 2062 total. 0 regressions.
 **Next**: Stage 8.3 — extern "C" ABI (§13.2).
+
+### Stage 8.3 — extern "C" ABI support (§13.2) (v0.15.2)
+
+**§13.4**: Read 07-codegen.md §13.2 (ABI) + 01-language-specification.md (extern).
+
+**Work completed**:
+- Added `abi: Abi` field to `BodyMeta` struct in driver.rs
+- Extract ABI from HIR `f.sig.abi` in driver body meta construction
+- Added `abi: Abi` parameter to `codegen_function` in codegen/mod.rs
+- ABI tracked through full pipeline: HIR → driver → codegen
+- MVP: both ABIs use LLVM C calling convention (no differentiation yet)
+- Created `tests/v0/stage8/plan/extern_c_abi_tests.rs` (5 tests)
+- Cargo.toml: version 0.15.1 → 0.15.2
+
+**Test impact**: +5 integration tests (2067 total). 0 regressions.
+**Next**: Stage 8.4 — Drop elaboration (§5).

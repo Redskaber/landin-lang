@@ -1,9 +1,45 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.15.1
+**Current version**: v0.15.2
 **Date**: 2026-07-25
-**Test count**: 2062 tests + 5 benchmarks
+**Test count**: 2067 tests + 5 benchmarks
+
+---
+
+## v0.15.2 — Stage 8.3 (extern "C" ABI support — §13.2)
+
+### Overview
+
+Adds **extern "C" ABI support** — ABI information tracked from HIR through
+driver to codegen. `extern "C" fn` declarations now carry their ABI through
+the full compilation pipeline.
+
+### Changes
+
+- `BodyMeta` struct: added `abi: Abi` field
+- `codegen_function`: added `abi: Abi` parameter
+- ABI extracted from HIR `f.sig.abi` → driver → codegen
+- MVP: both Landin and C ABI use LLVM C calling convention
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2067 passed (134 unit + 1933 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### v0.2 roadmap
+
+| Priority | Action | Status |
+|----------|--------|--------|
+| P1 | Lifetime elision (§3.2) | ✅ Stage 8.1 |
+| P2 | Object safety (§2.3) | ✅ Stage 8.2 |
+| P2 | extern "C" ABI (§13.2) | ✅ Stage 8.3 |
+| P2 | Drop elaboration (§5) | pending |
+| P3 | async/await (§10) | pending |
 
 ---
 

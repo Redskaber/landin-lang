@@ -244,6 +244,8 @@ pub struct BodyMeta {
     pub is_void: bool,
     /// Number of parameters.
     pub param_count: usize,
+    /// Stage 8.3: The ABI of this function (Landin or C).
+    pub abi: crate::ast::Abi,
 }
 
 impl CompileResult {
@@ -490,10 +492,19 @@ pub fn compile(src: &str) -> CompileResult {
             // Check if void (no return type).
             let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
             let is_void = return_ty.is_none();
+            // Stage 8.3: Get the ABI from the function owner.
+            let abi = hir
+                .owner(body_id.owner.0)
+                .and_then(|owner| match owner {
+                    crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) => Some(f.sig.abi),
+                    _ => None,
+                })
+                .unwrap_or(crate::ast::Abi::Landin);
             BodyMeta {
                 fn_name,
                 is_void,
                 param_count: body.params.len(),
+                abi,
             }
         })
         .collect();

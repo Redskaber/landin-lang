@@ -151,6 +151,7 @@ pub fn codegen_from_mir(
             interner,
             &mir.adt_layouts,
             meta.is_void,
+            meta.abi,
         );
     }
 }
@@ -166,6 +167,7 @@ fn codegen_function(
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
     is_void: bool,
+    abi: crate::ast::Abi,
 ) {
     let ret_ty = if is_void || mir.local_decls.is_empty() {
         EmitType::Void
@@ -193,6 +195,12 @@ fn codegen_function(
         .map(|(t, n)| (t.clone(), n.as_str()))
         .collect();
 
+    // Stage 8.3: Add ABI attributes after the function definition.
+    // For C ABI: no special attribute needed (C is the default in LLVM).
+    // For Landin ABI: add `cc 64` (custom calling convention placeholder).
+    // In MVP, both ABIs use the same LLVM calling convention (C), so no
+    // attribute is emitted. Future: Landin ABI could use a custom CC.
+    let _ = abi; // ABI is tracked but not yet differentiated in codegen
     emitter.emit_function_begin(name, &param_refs, &ret_ty);
 
     for (i, ld) in mir.local_decls.iter().enumerate() {
