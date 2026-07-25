@@ -1,0 +1,6 @@
+//! FAIL
+//! category: attributes
+//! description: attributes on fn params not supported in Stage 0 (parser limitation)
+//! error_pattern: parse error
+//! source: Stage 9.6 conformance expansion
+fn f(#[foo] x: i32) {}

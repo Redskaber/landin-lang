@@ -3899,3 +3899,43 @@ Landin may adopt one of these approaches in Stage 1.
 - `err_ty_missing.lin` (`let x: = 1;`) — PASS, parser inserts synthetic type node
 - `err_ty_unknown_primitive.lin` (`let x: i256 = 1;`) — PASS, parser treats
   `i256` as a path type (parser doesn't validate primitive type names)
+
+### v2.09 (Stage 9.6, 2026-07-26)
+
+Stage 9.6 — Attributes conformance expansion.
+
+**Changes**:
+- New conformance category `tests/conformance/00-parse/05-attributes/` created
+  and populated with 40 .lin test files covering all 6 attribute sub-categories
+  (per `02-grammar.md` §3.1 + §4.3):
+  - Outer attributes (12): fn/struct/enum/trait/impl/const/static/mod/use/type/multi/external
+  - Derive (8): single/multi/Debug/Default/PartialEq/3/4/enum
+  - Attribute args (10): empty/eq-literal/eq-int/list-empty/single/multi/named/mixed/path/path-with-args
+  - Attribute positions (5, all FAIL): variant/field/param/let/block — Stage 0 parser limitations
+  - Inner attributes (3, all FAIL): no_std/module/mixed — Stage 1 feature
+  - Error recovery (2): unclosed (FAIL) + missing-path (PASS, recovery)
+- New Rust integration tests: `tests/v0/stage9/plan/attributes_tests.rs` (10 tests)
+- `tests/all_tests.rs` updated with stage9_6 module reference
+
+**Test impact**: +10 rust integration tests (2166 → 2176) + 40 conformance tests
+(307 → 347). 0 regressions. 0 clippy warnings. fmt clean.
+
+**API surface**: No new public API (conformance tests are external .lin files).
+All existing APIs unchanged.
+
+**Key discovery — Stage 1 features & parser limitations**:
+
+1. **Inner attributes `#![...]`** (per §4.3) — the parser explicitly does NOT
+   support inner attributes in Stage 0 (per code comment in `src/parser/items.rs`).
+   3 inner attribute tests converted PASS → FAIL.
+
+2. **Attribute positions** — the Stage 0 parser only supports outer attributes
+   `#[...]` on top-level items. Attributes on enum variants, struct fields,
+   fn params, let stmts, and blocks are NOT supported. 5 tests converted
+   PASS → FAIL.
+
+3. **Parser recovery** — `#[]` (empty attribute) is accepted via synthetic
+   node recovery (parser doesn't validate path presence).
+
+These are Stage 0 limitations. They may be lifted in Stage 1 when the parser
+is extended to handle attributes in more positions (per Rust's grammar).

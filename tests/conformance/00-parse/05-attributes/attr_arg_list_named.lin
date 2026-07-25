@@ -1,0 +1,5 @@
+//! PASS
+//! category: attributes
+//! description: attribute with named arg
+//! source: Stage 9.6 conformance expansion
+#[foo(key = "value")] fn f() {}

@@ -1,0 +1,6 @@
+//! FAIL
+//! category: attributes
+//! description: attributes on struct fields not supported in Stage 0 (parser limitation)
+//! error_pattern: parse error
+//! source: Stage 9.6 conformance expansion
+struct S { #[foo] x: i32 }

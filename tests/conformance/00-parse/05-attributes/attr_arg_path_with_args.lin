@@ -1,0 +1,5 @@
+//! PASS
+//! category: attributes
+//! description: attribute with path and args
+//! source: Stage 9.6 conformance expansion
+#[foo::bar(a, b)] fn f() {}

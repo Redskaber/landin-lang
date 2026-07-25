@@ -1,0 +1,5 @@
+//! PASS
+//! category: attributes
+//! description: derive with single trait
+//! source: Stage 9.6 conformance expansion
+#[derive(Clone)] struct S;

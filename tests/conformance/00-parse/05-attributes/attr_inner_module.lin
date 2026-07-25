@@ -1,0 +1,6 @@
+//! FAIL
+//! category: attributes
+//! description: inner attribute on module (Stage 1 feature)
+//! error_pattern: expected
+//! source: Stage 9.6 conformance expansion
+#![foo] mod m {}

@@ -1,0 +1,5 @@
+//! PASS
+//! category: attributes
+//! description: attribute with multiple list args
+//! source: Stage 9.6 conformance expansion
+#[foo(a, b, c)] fn f() {}

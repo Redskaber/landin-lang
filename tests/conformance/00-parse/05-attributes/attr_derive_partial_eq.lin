@@ -1,0 +1,5 @@
+//! PASS
+//! category: attributes
+//! description: derive PartialEq
+//! source: Stage 9.6 conformance expansion
+#[derive(PartialEq)] struct S;

@@ -1,0 +1,5 @@
+//! PASS
+//! category: attributes
+//! description: derive on enum
+//! source: Stage 9.6 conformance expansion
+#[derive(Clone)] enum E { A, B }

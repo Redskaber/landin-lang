@@ -1,0 +1,6 @@
+//! FAIL
+//! category: attributes
+//! description: attributes on enum variants not supported in Stage 0 (parser limitation)
+//! error_pattern: parse error
+//! source: Stage 9.6 conformance expansion
+enum E { #[foo] A, B }

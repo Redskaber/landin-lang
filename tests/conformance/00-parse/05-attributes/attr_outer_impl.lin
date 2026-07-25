@@ -1,0 +1,5 @@
+//! PASS
+//! category: attributes
+//! description: outer attribute on impl
+//! source: Stage 9.6 conformance expansion
+trait T {} #[foo] impl T for S {}

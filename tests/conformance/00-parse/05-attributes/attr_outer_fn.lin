@@ -1,0 +1,5 @@
+//! PASS
+//! category: attributes
+//! description: outer attribute on fn
+//! source: Stage 9.6 conformance expansion
+#[foo] fn f() {}

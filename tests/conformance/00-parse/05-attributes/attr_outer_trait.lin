@@ -1,0 +1,5 @@
+//! PASS
+//! category: attributes
+//! description: outer attribute on trait
+//! source: Stage 9.6 conformance expansion
+#[foo] trait T {}

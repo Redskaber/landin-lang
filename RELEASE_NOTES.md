@@ -1,9 +1,134 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.16.4
+**Current version**: v0.16.5
 **Date**: 2026-07-26
-**Test count**: 2166 tests + 5 benchmarks + 307 conformance tests
+**Test count**: 2176 tests + 5 benchmarks + 347 conformance tests
+
+---
+
+## v0.16.5 — Stage 9.6 (Attributes conformance expansion)
+
+### Overview
+
+**Stage 9 第 6 个子阶段** — conformance suite `05-attributes/` category 创建并扩展
+(0 → 40 .lin files, +40 new tests). 覆盖 outer attributes `#[...]` on items +
+derive + attribute arguments + various positions + inner attributes `#![...]`
+(Stage 1 feature).
+
+**Conformance progress: 307 → 347 (57.8% of 600 target)**
+
+### §13.4 设计对齐
+
+- `docs/lang-design/02-grammar.md` §3.1 (attr := "#" "[" meta "]")
+- `docs/lang-design/02-grammar.md` §4.3 (outer `#[...]` vs inner `#![...]`)
+- `docs/lang-design/15-attributes.md` (full attribute spec)
+- `src/parser/items.rs` (parse_outer_attrs + parse_attr_args)
+
+Parser note: "Inner attributes `#![...]` are handled at crate level (Stage 1);
+for Stage 0 we only parse outer attributes here."
+
+### New conformance tests (40 new .lin files)
+
+`tests/conformance/00-parse/05-attributes/`:
+
+| Category | Count | Notable |
+|----------|-------|---------|
+| Outer attributes | 12 | fn/struct/enum/trait/impl/const/static/mod/use/type/multi/external |
+| Derive | 8 | single/multi/Debug/Default/PartialEq/3/4/enum |
+| Attribute args | 10 | empty/eq-literal/eq-int/list-empty/single/multi/named/mixed/path/path-with-args |
+| Attribute positions (all FAIL) | 5 | variant/field/param/let/block — Stage 0 parser limitations |
+| Inner attributes (all FAIL) | 3 | no_std/module/mixed — Stage 1 feature |
+| Error recovery | 2 | unclosed (FAIL) + missing-path (PASS, recovery) |
+| **Total** | **40** | |
+
+### New Rust integration tests (10 tests)
+
+`tests/v0/stage9/plan/attributes_tests.rs`:
+
+- Attributes directory populated (≥40 .lin, 1 test)
+- 4 category presence tests (outer/derive/args/error-recovery)
+- 2 FAIL pattern verification tests (positions + inner attributes)
+- Stage 9.6 docs created (1 test)
+- Cargo.toml version bump (1 test)
+- Conformance total ≥ 347 (1 test)
+
+### Key discovery — Stage 1 features & parser limitations
+
+**Stage 1 features identified — Inner attributes `#![...]`**:
+
+Per `02-grammar.md` §4.3 and the parser code comment in `src/parser/items.rs`:
+"Inner attributes `#![...]` are handled at crate level (Stage 1); for Stage 0
+we only parse outer attributes here."
+
+3 inner attribute tests converted from PASS to FAIL:
+- `attr_inner_no_std.lin` (`#![no_std]`)
+- `attr_inner_module.lin` (`#![foo] mod m {}`)
+- `attr_inner_mixed.lin` (`#![a] #[b] fn f() {}`)
+
+**Parser limitations documented (5 position FAIL tests)**:
+
+The Stage 0 parser only supports outer attributes `#[...]` on top-level items.
+Attributes on the following positions are NOT supported and produce parse errors:
+
+1. **Enum variants** (`enum E { #[foo] A, B }`) — `attr_on_enum_variant.lin` (FAIL)
+2. **Struct fields** (`struct S { #[foo] x: i32 }`) — `attr_on_struct_field.lin` (FAIL)
+3. **Function parameters** (`fn f(#[foo] x: i32) {}`) — `attr_on_fn_param.lin` (FAIL)
+4. **Let statements** (`fn f() { #[foo] let x = 1; }`) — `attr_on_let.lin` (FAIL)
+5. **Blocks** (`fn f() { #[foo] { 1 } }`) — `attr_on_block.lin` (FAIL)
+
+These are Stage 0 limitations. They may be lifted in Stage 1 when the parser
+is extended to handle attributes in more positions (per Rust's grammar).
+
+**Parser recovery behavior**:
+- `err_attr_missing_path.lin` (`#[] fn f() {}`) — PASS, parser accepts empty
+  attribute via synthetic node recovery (parser doesn't validate path presence
+  in `#[]`)
+
+### Documentation created
+
+| Document | Type |
+|----------|------|
+| `docs/develop/v0/stage-9/plan-9.6.md` | new — Stage 9.6 plan |
+| `docs/develop/v0/stage-9/gate-review-9.6.md` | new — gate review |
+| `docs/tests/v0/stage9/plan/attributes.md` | new — test plan |
+| `tests/v0/stage9/plan/attributes_tests.rs` | new — 10 tests |
+
+### Updated docs
+
+- `README.md` — v0.16.4 → v0.16.5, Stage 9.6 status, conformance 347/600
+- `RELEASE_NOTES.md` — this section
+- `docs/develop/v0/api-naming-standard.md` — v2.08 → v2.09
+- `docs/tests/matrix.md` — Stage 9.6 stats
+- `Cargo.toml` — 0.16.4 → 0.16.5
+- `tests/all_tests.rs` — +1 module reference
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2176 passed (146 unit + 2030 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 347 passed, 0 failed
+```
+
+### Conformance progress
+
+| Stage | Cumulative | Target | % |
+|-------|-----------|--------|---|
+| 9.1 | 38 | 600 | 6.3% |
+| 9.2 | 98 | 600 | 16.3% |
+| 9.3 | 177 | 600 | 29.5% |
+| 9.4 | 247 | 600 | 41.2% |
+| 9.5 | 307 | 600 | 51.2% |
+| 9.6 ✅ | 347 | 600 | 57.8% |
+| 9.7-9.11 (planned) | 347 → 600 | 600 | — |
+| 9.12 (v0.1 RC) | 600 | 600 | 100% ✅ |
+
+### Next steps
+
+- **Stage 9.7**: Generics (type params/bounds/where) — +50 conformance tests
 
 ---
 

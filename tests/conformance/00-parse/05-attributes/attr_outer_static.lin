@@ -1,0 +1,5 @@
+//! PASS
+//! category: attributes
+//! description: outer attribute on static
+//! source: Stage 9.6 conformance expansion
+#[foo] static S: i32 = 0;
