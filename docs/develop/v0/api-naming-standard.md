@@ -4086,3 +4086,34 @@ These are Stage 0 limitations. They may be lifted in Stage 1.
 - `err_use_unclosed_nested` — parser enforces closing `}`
 - `err_mod_no_name` — parser requires module name
 - `err_use_double_colon` — parser rejects `:::`
+
+
+### v2.13 (Stage 9.10, 2026-07-26)
+
+Stage 9.10 — Error recovery conformance expansion.
+
+**Changes**:
+- Expanded conformance category `tests/conformance/00-parse/09-error-recovery/`
+  with 50 new .lin test files (1 existing + 50 new = 51 total) systematically
+  documenting parser error recovery behavior per §2 of `02-grammar.md`:
+  - Lexer errors (10): empty-oct/bin, unterminated string/char/block-comment,
+    invalid escape/unicode, leading-zero, float-double-dot (PASS), negative-zero (PASS)
+  - Parser errors — expressions (10): unmatched paren/bracket/brace, missing-semi,
+    double-semi, missing-expr (PASS), missing-type (PASS), missing-pat, missing-fn-body/name
+  - Parser errors — items (10): missing struct/enum/trait/impl/const-name/type/value,
+    missing where-colon, missing-arrow-type (PASS), missing-use-path (PASS)
+  - Parser errors — types & patterns (8): unclosed array/tuple types, unclosed generic (PASS),
+    unclosed tuple/array patterns, missing-pat-after-at, missing-match-arrow, empty-match (PASS)
+  - Recovery — synthetic node (7): double-op, empty-let, empty-attr, empty-generics,
+    empty-bound, empty-where, unclosed-closure (all PASS)
+  - Recovery — skip to next stmt (5): skip-to-semi (PASS), skip-to-brace (FAIL),
+    multi-errors (PASS), nested-errors (PASS), after-error (PASS)
+- New Rust integration tests: `tests/v0/stage9/plan/error_recovery_tests.rs` (8 tests)
+
+**Test impact**: +8 rust integration tests (2207 → 2215) + 50 conformance tests
+(497 → 547). 0 regressions. 0 clippy warnings. fmt clean.
+
+**Key discovery**: Parser recovery behavior systematically documented — 12 synthetic
+node recovery cases (PASS), 21 parser error cases (FAIL), 8 lexer error cases (FAIL).
+This provides a comprehensive executable specification of parser error handling
+for Stage 0, which will be invaluable for Stage 1 re-implementation.

@@ -1,0 +1,6 @@
+//! FAIL
+//! category: error-recovery
+//! description: missing colon in where clause must error
+//! error_pattern: expected
+//! source: Stage 9.10 conformance expansion
+trait Clone { fn c(&self); } fn f<T>() where T Clone {}

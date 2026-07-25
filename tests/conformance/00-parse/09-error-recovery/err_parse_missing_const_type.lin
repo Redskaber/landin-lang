@@ -1,0 +1,6 @@
+//! FAIL
+//! category: error-recovery
+//! description: missing const type must error
+//! error_pattern: expected
+//! source: Stage 9.10 conformance expansion
+const C = 0;

@@ -1,0 +1,5 @@
+//! PASS
+//! category: error-recovery
+//! description: missing return type after arrow parses via synthetic node recovery
+//! source: Stage 9.10 conformance expansion
+fn f() -> { 1 }

@@ -1,0 +1,5 @@
+//! PASS
+//! category: error-recovery
+//! description: negative zero parses fine
+//! source: Stage 9.10 conformance expansion
+fn f() { let _ = -0; }

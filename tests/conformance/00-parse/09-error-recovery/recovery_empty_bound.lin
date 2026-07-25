@@ -1,0 +1,5 @@
+//! PASS
+//! category: error-recovery
+//! description: empty bound T: parses via synthetic node recovery (per §2)
+//! source: Stage 9.10 conformance expansion
+fn f<T:>() {}

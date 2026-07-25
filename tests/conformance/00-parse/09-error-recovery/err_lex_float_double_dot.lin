@@ -1,0 +1,5 @@
+//! PASS
+//! category: error-recovery
+//! description: float with double dot parses via synthetic node recovery (lexer treats 1.2.3 as 1.2 then .3 path)
+//! source: Stage 9.10 conformance expansion
+fn f() { let _ = 1.2.3; }

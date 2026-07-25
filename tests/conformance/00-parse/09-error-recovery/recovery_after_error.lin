@@ -1,0 +1,5 @@
+//! PASS
+//! category: error-recovery
+//! description: parser continues after error recovery (per §2)
+//! source: Stage 9.10 conformance expansion
+fn f() { let x = 1 + + 2; let y = 3; }

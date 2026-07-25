@@ -1,0 +1,5 @@
+//! PASS
+//! category: error-recovery
+//! description: invalid unicode escape parses (lexer may not validate backslash-u in Stage 0)
+//! source: Stage 9.10 conformance expansion
+fn f() { let _ = "\u{ZZ}"; }

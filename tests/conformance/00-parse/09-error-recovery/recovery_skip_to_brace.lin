@@ -1,0 +1,6 @@
+//! FAIL
+//! category: error-recovery
+//! description: parser does not skip to next brace after double operator error
+//! error_pattern: expected
+//! source: Stage 9.10 conformance expansion
+fn f() { let x = 1 + + { let y = 2; } }

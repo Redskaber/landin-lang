@@ -1,0 +1,5 @@
+//! PASS
+//! category: error-recovery
+//! description: empty attribute #[] parses via synthetic node recovery (per §2)
+//! source: Stage 9.10 conformance expansion
+#[] fn f() {}

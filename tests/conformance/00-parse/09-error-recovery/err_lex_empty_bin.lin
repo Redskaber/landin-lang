@@ -1,0 +1,6 @@
+//! FAIL
+//! category: error-recovery
+//! description: empty binary literal must error
+//! error_pattern: binary literal has no digits
+//! source: Stage 9.10 conformance expansion
+fn f() { let _ = 0b; }

@@ -1,9 +1,60 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.16.8
+**Current version**: v0.16.9
 **Date**: 2026-07-26
-**Test count**: 2207 tests + 5 benchmarks + 497 conformance tests
+**Test count**: 2215 tests + 5 benchmarks + 547 conformance tests
+
+---
+
+## v0.16.9 — Stage 9.10 (Error recovery conformance expansion)
+
+### Overview
+
+**Stage 9 第 10 个子阶段** — conformance suite `09-error-recovery/` category 扩展
+(1 → 51 .lin files, +50 new tests). 系统化记录 lexer errors + parser errors +
+recovery behavior (per §2 of `02-grammar.md` — synthetic node recovery).
+
+**🎉 Conformance progress: 497 → 547 (91.2% of 600 target — approaching v0.1 release!)**
+
+### New conformance tests (50 new .lin files, 1 existing)
+
+| Category | Count | Notable |
+|----------|-------|---------|
+| Lexer errors | 10 | empty-oct/bin, unterminated string/char/block-comment, invalid escape/unicode, leading-zero, float-double-dot (PASS), negative-zero (PASS) |
+| Parser errors — expressions | 10 | unmatched paren/bracket/brace, missing-semi (FAIL), double-semi (FAIL), missing-expr (PASS), missing-type (PASS), missing-pat (FAIL), missing-fn-body (FAIL), missing-fn-name (FAIL) |
+| Parser errors — items | 10 | missing struct/enum/trait/impl/const-name/type/value, missing where-colon (FAIL), missing-arrow-type (PASS), missing-use-path (PASS) |
+| Parser errors — types & patterns | 8 | unclosed array-type (FAIL), tuple-type (FAIL), generic (PASS), tuple-pat (FAIL), array-pat (FAIL), missing-pat-after-at (FAIL), missing-match-arrow (FAIL), empty-match (PASS) |
+| Recovery — synthetic node | 7 | double-op, empty-let, empty-attr, empty-generics, empty-bound, empty-where, unclosed-closure (all PASS) |
+| Recovery — skip to next stmt | 5 | skip-to-semi (PASS), skip-to-brace (FAIL), multi-errors (PASS), nested-errors (PASS), after-error (PASS) |
+| **Total** | **51** | (1 existing + 50 new) |
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2215 passed (146 unit + 2069 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 547 passed, 0 failed
+```
+
+### Conformance progress
+
+| Stage | Cumulative | Target | % |
+|-------|-----------|--------|---|
+| 9.1 | 38 | 600 | 6.3% |
+| 9.2 | 98 | 600 | 16.3% |
+| 9.3 | 177 | 600 | 29.5% |
+| 9.4 | 247 | 600 | 41.2% |
+| 9.5 | 307 | 600 | 51.2% |
+| 9.6 | 347 | 600 | 57.8% |
+| 9.7 | 397 | 600 | 66.2% |
+| 9.8 | 437 | 600 | 72.8% |
+| 9.9 | 497 | 600 | 82.8% |
+| 9.10 ✅ | 547 | 600 | 91.2% |
+| 9.11 (planned) | → 600 | 600 | — |
+| 9.12 (v0.1 RC) | 600 | 600 | 100% ✅ |
 
 ---
 

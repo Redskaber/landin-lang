@@ -451,3 +451,7 @@ mod stage9_8_closures_tests;
 // Stage 9.9: Modules conformance expansion verification
 #[path = "v0/stage9/plan/modules_tests.rs"]
 mod stage9_9_modules_tests;
+
+// Stage 9.10: Error recovery conformance expansion verification
+#[path = "v0/stage9/plan/error_recovery_tests.rs"]
+mod stage9_10_error_recovery_tests;
