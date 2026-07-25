@@ -367,3 +367,7 @@ mod stdlib_trait_methods_by_is_unsafe_tests;
 
 #[path = "v0/stage5/plan/stdlib_trait_methods_by_param_count_tests.rs"]
 mod stdlib_trait_methods_by_param_count_tests;
+
+// Stage 7 (TD-015): Region inference tests
+#[path = "v0/stage7/plan/region_inference_tests.rs"]
+mod region_inference_tests;

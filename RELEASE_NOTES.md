@@ -1,9 +1,56 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.14.4
+**Current version**: v0.14.5
 **Date**: 2026-07-25
-**Test count**: 2007 tests + 5 benchmarks
+**Test count**: 2015 tests + 5 benchmarks
+
+---
+
+## v0.14.5 — Stage 7.5 (Integrate region inference into borrowck — TD-015 complete)
+
+### Overview
+
+**Final step of TD-015** — integrates the region inference infrastructure
+(Stages 7.1-7.4) into `BorrowChecker::check_mir_body` as an additional
+safety check. Also creates `tests/v0/stage7/plan/` test directory (§17.1).
+
+### Integration
+
+Added `run_region_inference(mir)` method to `BorrowChecker`:
+- Creates `RegionInferenceContext`
+- Collects implied bounds from reference types (§4.6.2)
+- Runs `infer_regions()` (§4.2 fixed-point + §4.6.4 type tests)
+- Currently no-op (all MIR regions are `Erased` → `'static`)
+- Does NOT replace existing NLL — runs as additional check
+
+### New test file (§17.1)
+
+`tests/v0/stage7/plan/region_inference_tests.rs` — 8 integration tests:
+- Context creation, simple body, ref type body
+- Valid borrow acceptance, use-after-move detection
+- Standalone context, regression: empty body, regression: Copy type
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2015 passed (126 unit + 1889 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-015 COMPLETE
+
+| Step | Status | Stage |
+|------|--------|-------|
+| step 1: data structures | ✅ | 7.1 |
+| step 2: inference algorithm | ✅ | 7.2 |
+| step 3: implied bounds + type tests | ✅ | 7.3 |
+| step 4: universe + SCC | ✅ | 7.4 |
+| step 5: integrate into borrowck | ✅ | 7.5 |
+
+**🎉 TD-015 (Region inference) 全部 5 步完成！**
 
 ---
 

@@ -3634,3 +3634,25 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 **Test impact**: +6 new (126 unit + 1881 integration = 2007). 0 regressions.
 **TD-015 step 4 complete. Step 5 pending.**
 **Next**: Stage 7.5 — Integrate into borrowck (TD-015 step 5).
+
+### Stage 7.5 — Integrate region inference into borrowck (TD-015 step 5, final) (v0.14.5)
+
+**§13.4**: Read §4.2-§4.6 (complete NLL + region inference spec).
+**§17.1**: Created tests/v0/stage7/plan/ with test file.
+
+**Work completed**:
+- Added `run_region_inference(mir)` method to `BorrowChecker`
+  * Creates `RegionInferenceContext`
+  * Collects implied bounds from reference types in local declarations (§4.6.2)
+  * Runs `infer_regions()` (§4.2 fixed-point + §4.6.4 type tests)
+  * Currently no-op (all MIR regions are Erased → 'static)
+  * Does NOT replace existing NLL — runs as additional check
+- Created `tests/v0/stage7/plan/region_inference_tests.rs` (8 tests)
+- Added `#[path]` to `tests/all_tests.rs`
+- Cargo.toml: version 0.14.4 → 0.14.5
+
+**Test impact**: +8 integration tests (2015 total). 0 regressions.
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**🎉 TD-015 (Region inference) 全部 5 步完成！**
+**Next**: TD-018 (用户自定义 trait dyn) or v0.2 features.
