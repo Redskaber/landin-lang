@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: function returning integer
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+fn main() -> i32 { 0 }

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: recursive power
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+fn pow(base: i32, exp: i32) -> i32 { if exp == 0 { 1 } else { base * pow(base, exp - 1) } }

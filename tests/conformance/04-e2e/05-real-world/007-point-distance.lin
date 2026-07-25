@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: point distance calculation
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+struct Point { x: i32, y: i32 } fn distance(p1: Point, p2: Point) -> i32 { let dx = p1.x - p2.x; let dy = p1.y - p2.y; dx * dx + dy * dy }

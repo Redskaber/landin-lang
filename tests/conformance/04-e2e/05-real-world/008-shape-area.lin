@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: shape area calculation
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+enum Shape { Circle(f64), Rect(f64, f64) } fn area(s: Shape) -> f64 { match s { Shape::Circle(r) => r * r, Shape::Rect(w, h) => w * h } }

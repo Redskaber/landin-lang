@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: struct literal construction
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+struct P { x: i32, y: i32 } fn main() { let p = P { x: 1, y: 2 }; }

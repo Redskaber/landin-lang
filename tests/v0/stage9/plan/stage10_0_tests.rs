@@ -119,6 +119,10 @@ fn test_stage10_0_cargo_toml_version_bumped() {
         || version_line.starts_with("version = \"0.17.3")
         || version_line.starts_with("version = \"0.17.4")
         || version_line.starts_with("version = \"0.17.5")
+        || version_line.starts_with("version = \"0.17.6")
+        || version_line.starts_with("version = \"0.17.7")
+        || version_line.starts_with("version = \"0.17.8")
+        || version_line.starts_with("version = \"0.17.9")
         || version_line.starts_with("version = \"0.18.")
         || version_line.starts_with("version = \"0.19.")
         || version_line.starts_with("version = \"0.20.");

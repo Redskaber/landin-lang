@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: simple calculator
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+fn calc(op: i32, a: i32, b: i32) -> i32 { match op { 0 => a + b, 1 => a - b, 2 => a * b, _ => 0 } }

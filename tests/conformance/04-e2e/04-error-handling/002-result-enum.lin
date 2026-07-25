@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: Result enum definition
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+enum Result<T, E> { Ok(T), Err(E) } fn main() { let x = Result::Ok(42); }

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: Option enum definition
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+enum Option<T> { Some(T), None } fn main() { let x = Option::Some(42); }

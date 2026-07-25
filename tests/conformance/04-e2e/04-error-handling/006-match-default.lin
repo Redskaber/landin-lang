@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: match with default arm
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+fn f(x: i32) -> i32 { match x { 0 => 1, _ => 0 } }

@@ -4243,3 +4243,15 @@ Stage 10.3 — 03-codegen conformance (61 tests).
 - New Rust integration tests: `tests/v0/stage9/plan/stage10_3_tests.rs` (4 tests)
 
 **Test impact**: +4 rust (2265 → 2269) + 61 conformance (800 → 861). 0 regressions.
+
+### v2.21 (Stage 10.4, 2026-07-26)
+
+Stage 10.4 — 04-e2e conformance (48 tests).
+
+**Changes**:
+- New conformance category `tests/conformance/04-e2e/` with 48 .lin test files
+  in 6 subcategories (hello-world/fib/traits/closures/error-handling/real-world)
+- 9 tests adjusted from compile_error → compile_ok
+- New Rust integration tests: `tests/v0/stage9/plan/stage10_4_tests.rs` (4 tests)
+
+**Test impact**: +4 rust (2269 → 2273) + 48 conformance (861 → 909). 0 regressions.

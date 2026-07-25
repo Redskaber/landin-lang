@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: basic closure
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.4 conformance expansion
+
+fn main() { let f = |x| x + 1; let y = f(5); }

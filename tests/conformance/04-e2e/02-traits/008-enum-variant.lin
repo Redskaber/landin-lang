@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: enum variant construction
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+enum E { A, B(i32) } fn main() { let a = E::A; let b = E::B(42); }

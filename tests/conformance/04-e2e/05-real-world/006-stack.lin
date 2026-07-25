@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: stack struct
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.4 conformance expansion
+
+struct Stack { data: [i32; 10], top: i32 } impl Stack { fn new() -> Stack { Stack { data: [0; 10], top: 0 } } fn push(&mut self, v: i32) { self.data[self.top as usize] = v; self.top += 1; } } fn main() { let mut s = Stack::new(); s.push(1); }

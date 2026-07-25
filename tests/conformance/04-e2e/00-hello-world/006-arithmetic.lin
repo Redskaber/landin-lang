@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: basic arithmetic
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+fn main() { let x = 1 + 2 * 3; }

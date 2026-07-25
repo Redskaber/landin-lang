@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: sum array elements
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+fn sum(arr: [i32; 5]) -> i32 { let mut s = 0; let mut i = 0; while i < 5 { s += arr[i]; i += 1; } s }

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: linked list node struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.4 conformance expansion
+
+struct Node { val: i32, next: i32 } fn new_node(v: i32) -> Node { Node { val: v, next: -1 } }

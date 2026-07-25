@@ -6,8 +6,8 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.17.5 — Stage 0-10.0 complete. CLI --compile/--emit-llvm-ir + runner --mode compile. Conformance 861/5000 (17.2% of v0.1 gate).
-> **2269 tests** + 5 benchmarks + 861 conformance tests. 0 clippy warnings. fmt clean.
+> **Status:** v0.17.6 — Stage 0-10.0 complete. CLI --compile/--emit-llvm-ir + runner --mode compile. Conformance 909/5000 (18.2% of v0.1 gate).
+> **2273 tests** + 5 benchmarks + 909 conformance tests. 0 clippy warnings. fmt clean.
 > Process v3.21 (§0-§28). §16 interface isolation compliant. §17.1/§17.2/§18.4 docs compliant.
 >
 > **Milestones:**
@@ -102,7 +102,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.17.5 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.17.6 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (6 modules, reader.rs 349 LOC)
 │   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC)
@@ -171,13 +171,13 @@ cargo clippy --all-targets -- -D warnings
 ## Documentation
 
 - `docs/stage-committee-process.md` — Process SOP v3.21 (§1-§28, with §13.4 + §14.4 + §25.8)
-- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.20
+- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.21
 - `docs/develop/v0/architecture-decisions.md` — 7 Architecture Decision Records
 - `docs/develop/v0/stage-{0..9}/` — Per-stage dev logs + gate reviews + plans (§17.3 三阶段文档协议)
 - `docs/lang-design/` — 19 language design documents (v1.3.2 Final, frozen)
 - `docs/tests/v0/stage{0..9}/` — Test plans per stage (§17.2 双向印证)
 - `docs/tests/matrix.md` — Global test matrix
-- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r200
+- `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0) — synced through r201
 
 ## License
 
