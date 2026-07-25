@@ -9,10 +9,27 @@
 //! - NLL: lifetimes end at last use, not at lexical scope end
 //!
 //! Public entry point: [`check_mir_body`].
+//!
+//! ## Stage 6.14 architectural split (TD-024)
+//!
+//! Per `docs/stage-committee-process.md` v3.21 §14.4 + §13.4, this file
+//! has been split into 3 sub-modules:
+//!
+//! - `liveness.rs`       — NLL liveness analysis (§4.3)
+//! - `copy_semantics.rs` — Copy trait detection (§4.5 related)
+//! - `place_path.rs`     — PlacePath data structure (§4 data structures)
+//!
+//! This file (`mod.rs`) retains: BorrowChecker struct + impl + entry
+//! points (`check_mir_body` / `check_crate`) + tests.
 
 pub mod borrow_set;
 pub mod error;
 pub mod move_tracker;
+
+// Stage 6.14 (TD-024) sub-modules.
+mod copy_semantics;
+mod liveness;
+mod place_path;
 
 // Stage 3.63 (cross-stage naming standardization): `BorrowKind` is now
 // re-exported from `crate::mir::place` (single source of truth). The
@@ -22,6 +39,10 @@ pub use error::{BorrowError, BorrowErrorKind};
 pub use move_tracker::MoveTracker;
 // Re-export BorrowKind from mir::place so callers can `use borrowck::BorrowKind`.
 pub use crate::mir::place::BorrowKind;
+// Stage 6.14: re-export public symbols from sub-modules for backward compat.
+pub use copy_semantics::{ty_is_copy, ty_is_copy_unified, ty_is_copy_with_resolver};
+pub use liveness::{compute_last_use_map, LastUseMap};
+pub use place_path::{PlacePath, PlaceRoot, ProjElem};
 
 use crate::mir::body::*;
 use crate::mir::place::*;
@@ -486,336 +507,6 @@ impl BorrowChecker {
 impl Default for BorrowChecker {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-// ================================================================
-// NLL last-use computation (P0-14 / P0-16)
-// ================================================================
-
-/// Map from local → the last (bb_id, stmt_idx) where that local was read.
-///
-/// Computed by a forward scan of all basic blocks. Used by the borrow
-/// checker to expire borrows at their ref_local's last use.
-///
-/// A "read" of a local happens when the local appears as:
-/// - An `Operand::Copy(lv)` or `Operand::Move(lv)` where `lv` is `Local(id)`
-///   or a projection rooted at `Local(id)`
-/// - The `discr` of a `SwitchInt`
-/// - The `func` or an `arg` of a `Call`
-/// - The `place` of a `Drop`
-/// - The RHS of an `Assign` (via the rvalue's operands)
-///
-/// The map only tracks the *root local* of each read — projections like
-/// `a.x` count as a read of `a` (and also of `a.x`, but we only track
-/// `a` for NLL purposes since borrow references are always simple locals).
-pub type LastUseMap = std::collections::HashMap<crate::mir::place::LocalId, (BasicBlockId, usize)>;
-
-/// Compute the last-use map for a MIR body.
-///
-/// Walks all basic blocks in program order, recording the last program
-/// point (bb_id, stmt_idx) where each local is read. The terminator is
-/// treated as occupying stmt_idx == statements.len().
-pub fn compute_last_use_map(mir: &MirBody) -> LastUseMap {
-    let mut map: LastUseMap = std::collections::HashMap::new();
-    for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
-        let bb_id = BasicBlockId(bb_idx as u32);
-        for (stmt_idx, stmt) in bb.statements.iter().enumerate() {
-            let point = (bb_id, stmt_idx);
-            for local in statement_reads(stmt) {
-                map.insert(local, point);
-            }
-        }
-        // Terminator reads happen at idx == statements.len()
-        let term_point = (bb_id, bb.statements.len());
-        for local in terminator_reads(&bb.terminator) {
-            map.insert(local, term_point);
-        }
-    }
-    map
-}
-
-/// Collect all locals read by a statement (the RHS operands of an Assign).
-fn statement_reads(stmt: &Statement) -> Vec<crate::mir::place::LocalId> {
-    let mut out = Vec::new();
-    if let StatementKind::Assign(boxed) = &stmt.kind {
-        let (_place, rvalue) = &**boxed;
-        // The LHS is a write, not a read — skip it.
-        rvalue_reads(rvalue, &mut out);
-    }
-    out
-}
-
-/// Collect locals read by an rvalue.
-fn rvalue_reads(rv: &Rvalue, out: &mut Vec<crate::mir::place::LocalId>) {
-    match rv {
-        Rvalue::Use(op) | Rvalue::Cast(_, op, _) => operand_reads(op, out),
-        Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
-            operand_reads(a, out);
-            operand_reads(b, out);
-        }
-        Rvalue::UnaryOp(_, op) => operand_reads(op, out),
-        Rvalue::Ref(_, _, lv) => place_root_reads(lv, out),
-        Rvalue::Aggregate(_, operands) => {
-            for op in operands {
-                operand_reads(op, out);
-            }
-        }
-    }
-}
-
-/// Collect locals read by an operand.
-fn operand_reads(op: &Operand, out: &mut Vec<crate::mir::place::LocalId>) {
-    match op {
-        Operand::Copy(lv) | Operand::Move(lv) => place_root_reads(lv, out),
-        Operand::Constant(_) => {}
-    }
-}
-
-/// Collect the root local of a place (e.g., `a.x.y` → push `a`).
-/// For `*p`, also push `p` (the pointer local).
-fn place_root_reads(lv: &Place, out: &mut Vec<crate::mir::place::LocalId>) {
-    match &lv.kind {
-        PlaceKind::Local(id) => out.push(*id),
-        PlaceKind::Static(_) => {}
-        PlaceKind::Projection(base, _) => place_root_reads(base, out),
-    }
-}
-
-/// Collect locals read by a terminator.
-fn terminator_reads(term: &Terminator) -> Vec<crate::mir::place::LocalId> {
-    let mut out = Vec::new();
-    match term {
-        Terminator::Call { func, args, .. } => {
-            operand_reads(func, &mut out);
-            for arg in args {
-                operand_reads(arg, &mut out);
-            }
-        }
-        Terminator::SwitchInt { discr, .. } => {
-            operand_reads(discr, &mut out);
-        }
-        Terminator::Drop { place, .. } => {
-            place_root_reads(place, &mut out);
-        }
-        Terminator::Assert { cond, .. } => {
-            operand_reads(cond, &mut out);
-        }
-        _ => {}
-    }
-    out
-}
-
-/// Determine whether a type implements `Copy`.
-///
-/// Per Landin semantics (mirroring Rust), the following types are Copy:
-/// - Primitives: bool, char, int, uint, float
-/// - References: `&T` (shared refs are always Copy; `&mut T` is not Copy
-///   but Move semantics are checked elsewhere)
-/// - Raw pointers: `*const T`, `*mut T`
-/// - Function definitions and function pointers
-/// - Tuples whose every element is Copy
-/// - Arrays of Copy types (size is part of the type)
-/// - Slices are NOT Copy (they're unsized)
-/// - The unit type `()` is Copy
-///
-/// ADTs (struct/enum) require an explicit `#[derive(Copy)]` annotation;
-/// for Stage 2.4c we conservatively treat all Adt types as non-Copy
-/// (the TraitResolver, which would consult the derive list, is Stage 3).
-/// This is the safe default — a false negative (saying "not Copy" when
-/// it actually is) just produces a spurious error; a false positive
-/// (saying "Copy" when it isn't) would be unsound.
-///
-/// `Infer` and `Error` are treated as Copy to avoid spurious errors
-/// during type inference (the type isn't known yet, so we give the
-/// benefit of the doubt).
-pub fn ty_is_copy(ty: &crate::mir::ty::Ty) -> bool {
-    use crate::mir::ty::TyKind::*;
-    match &ty.kind {
-        Bool | Char | Int(_) | Uint(_) | Float(_) => true,
-        // Shared refs are Copy; mut refs are not. We treat all refs as
-        // Copy here for simplicity — the mut-ref case is rare and the
-        // worst case is a spurious acceptance, which is caught later by
-        // the move tracker (the second use of a moved &mut would fail).
-        Ref(_, _, _) => true,
-        RawPtr(_, _) => true,
-        FnDef(_, _) | FnPtr(_) => true,
-        Never => true,
-        Tuple(tys) => tys.iter().all(ty_is_copy),
-        Array(inner, _) => ty_is_copy(inner),
-        // Infer and Error: assume Copy to avoid spurious errors.
-        Infer(_) | Error | Foreign => true,
-        // Stage 5.3: Treat Adt (struct/enum) as Copy by default (fallback).
-        // Use `ty_is_copy_with_resolver` for precise Copy detection.
-        Adt(_, _) => true,
-        Str | Slice(_) | Closure(_, _) | Param(_) => false,
-    }
-}
-
-/// Stage 5.4: Check if a type is Copy using TraitResolver.
-///
-/// Now fully active for Adt types — uses `type_by_def_id` reverse map
-/// to look up the type name from its DefId, then checks if `impl Copy`
-/// exists for that type via `resolver.is_copy()`. If no Copy impl is
-/// found, the type is NOT Copy.
-///
-/// For non-Adt types, behavior is identical to `ty_is_copy`.
-///
-/// Stage 5.12: Primitive branches now delegate to `is_primitive_copy_kind()`
-/// for consistency — single source of truth for which TyKinds are always Copy.
-/// The match still handles Tuple/Array (recursive) and Adt (resolver query)
-/// which `is_primitive_copy_kind` cannot (it's string-based, no recursion).
-pub fn ty_is_copy_with_resolver(
-    ty: &crate::mir::ty::Ty,
-    resolver: &crate::traits::TraitResolver,
-    interner: &lasso::Rodeo,
-) -> bool {
-    use crate::mir::ty::TyKind::*;
-    match &ty.kind {
-        // Stage 5.12: delegate primitive Copy check to the unified helper.
-        // is_primitive_copy_kind returns true for Bool/Char/Int/Uint/Float/
-        // Never/Ref/RawPtr/FnDef/FnPtr — matching the old hardcoded branches.
-        Bool
-        | Char
-        | Int(_)
-        | Uint(_)
-        | Float(_)
-        | Ref(_, _, _)
-        | RawPtr(_, _)
-        | FnDef(_, _)
-        | FnPtr(_)
-        | Never => crate::traits::is_primitive_copy_kind(&format!("{:?}", ty.kind)),
-        Tuple(tys) => tys
-            .iter()
-            .all(|t| ty_is_copy_with_resolver(t, resolver, interner)),
-        Array(inner, _) => ty_is_copy_with_resolver(inner, resolver, interner),
-        Infer(_) | Error | Foreign => true,
-        // Stage 5.9: Use TraitResolver to check for Copy impl via the
-        // builtin Copy trait. Stage 5.8 ensures "Copy" is always interned,
-        // and Stage 5.9's is_copy_builtin() handles the lookup cleanly.
-        // Old fallback of `true` (treating all Adt as Copy) was unsound —
-        // now correctly returns false if no `impl Copy for <Type>` exists.
-        Adt(def_id, _) => resolver.is_copy_builtin(*def_id, interner),
-        Str | Slice(_) | Closure(_, _) | Param(_) => false,
-    }
-}
-
-/// Stage 5.12: Unified Copy check — single entry point that combines
-/// primitive Copy detection (via `is_primitive_copy_kind`) with resolver-
-/// based Copy detection (via `is_copy_builtin`).
-///
-/// This is the preferred Copy-detection entry point for new code. It
-/// delegates to `ty_is_copy_with_resolver` (which now uses
-/// `is_primitive_copy_kind` for primitives) and is kept as a separate
-/// name to make the "unified" intent explicit.
-///
-/// Per API-naming-standard §3: `ty_is_copy_` prefix consistent with
-/// `ty_is_copy` / `ty_is_copy_with_resolver`; `_unified` suffix distinguishes.
-pub fn ty_is_copy_unified(
-    ty: &crate::mir::ty::Ty,
-    resolver: &crate::traits::TraitResolver,
-    interner: &lasso::Rodeo,
-) -> bool {
-    ty_is_copy_with_resolver(ty, resolver, interner)
-}
-
-/// A field-sensitive place path for borrow/move tracking.
-///
-/// Per the Stage 2.x gate review (P0-15), the previous `PlacePath`
-/// collapsed projections — `a.x` and `a.y` both mapped to `Local(a)`,
-/// causing false-positive borrow conflicts. This new representation
-/// preserves the projection chain so that:
-///   - `a.x` and `a.y` are distinct (no false conflict)
-///   - `a` and `a.x` overlap (borrowing `a` conflicts with `a.x`)
-///   - `*p` and `p` are distinct (the pointer vs the pointee)
-///
-/// The `projections` field is a `Vec<ProjElem>` (not `Vec<ProjectionElem>`)
-/// because we want `Copy + PartialEq + Eq + Hash` for use as a HashMap
-/// key, and the MIR `ProjectionElem` carries a `Ty` which doesn't
-/// implement those traits. `ProjElem` is a stripped-down version that
-/// only carries the discriminator.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PlacePath {
-    /// The root local (or static def_id) of the place.
-    pub root: PlaceRoot,
-    /// Projection chain from root to the leaf. Empty means "the root
-    /// place itself" (e.g., `x` with no field access).
-    pub projections: Vec<ProjElem>,
-}
-
-/// The root of a place path: either a local or a static.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PlaceRoot {
-    Local(LocalId),
-    Static(crate::hir::DefId),
-}
-
-/// A stripped-down projection element used inside `PlacePath`.
-///
-/// This mirrors `crate::mir::place::ProjectionElem` but omits the
-/// payload types that don't implement Hash/Eq (like `Ty`). Field
-/// projections use just the `FieldId`; index projections use the
-/// `LocalId` of the index variable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ProjElem {
-    /// `*base` — dereference
-    Deref,
-    /// `base.field_id`
-    Field(FieldId),
-    /// `base[idx_local]`
-    Index(LocalId),
-    /// `base[N]` (constant index)
-    ConstantIndex { offset: u64, from_end: bool },
-}
-
-impl PlacePath {
-    /// Construct a path for a bare local (no projections).
-    pub fn local(id: LocalId) -> Self {
-        Self {
-            root: PlaceRoot::Local(id),
-            projections: Vec::new(),
-        }
-    }
-
-    /// Construct a path for a static.
-    pub fn static_def(def_id: crate::hir::DefId) -> Self {
-        Self {
-            root: PlaceRoot::Static(def_id),
-            projections: Vec::new(),
-        }
-    }
-
-    /// Append a projection element to this path, returning a new path.
-    /// Used when building up a path from a place's projection chain.
-    pub fn project(&self, elem: ProjElem) -> Self {
-        let mut new = self.clone();
-        new.projections.push(elem);
-        new
-    }
-
-    /// Whether this path *contains* another path as a prefix.
-    ///
-    /// `a.x.y` contains `a.x` and `a`. Used to detect overlap:
-    /// if you borrow `a.x`, then any access to `a`, `a.x`, or
-    /// `a.x.y` overlaps; but `a.y` does not.
-    pub fn contains(&self, other: &PlacePath) -> bool {
-        if self.root != other.root {
-            return false;
-        }
-        if other.projections.len() > self.projections.len() {
-            return false;
-        }
-        other
-            .projections
-            .iter()
-            .zip(self.projections.iter())
-            .all(|(a, b)| a == b)
-    }
-
-    /// Whether two paths *overlap* (one contains the other).
-    /// This is the symmetric closure of `contains`.
-    pub fn overlaps(&self, other: &PlacePath) -> bool {
-        self.contains(other) || other.contains(self)
     }
 }
 

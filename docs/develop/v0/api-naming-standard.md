@@ -3186,3 +3186,40 @@ reader.rs → {ident, number, string, operators}. Per J6, all modules in
 **Fmt impact**: clean.
 
 **TD-023**: lexer/reader.rs LOC — introduced and immediately closed in this stage.
+
+### v1.83 (Stage 6.14, 2026-07-25)
+
+Stage 6.14 borrowck/mod.rs architectural split round. Per v3.21 §13.4
+(stage-start design alignment with 04-ownership-borrowing.md §4) + §14.4
+(refactoring as architecture design, J1-J6 judgments).
+
+Splits `src/borrowck/mod.rs` (1452 LOC) into 3 sub-modules, each owning
+one analysis responsibility aligned with 04-ownership-borrowing.md §4
+NLL algorithm structure.
+
+**New public symbols**: None (all re-exported from sub-modules via mod.rs).
+
+**Changes**:
+- Created 3 new sub-modules under `src/borrowck/`:
+  - `liveness.rs` (109 LOC) — LastUseMap + compute_last_use_map + 5 read-collection helpers (§4.3)
+  - `copy_semantics.rs` (124 LOC) — ty_is_copy + ty_is_copy_with_resolver + ty_is_copy_unified (§4.5 related)
+  - `place_path.rs` (112 LOC) — PlacePath + PlaceRoot + ProjElem + impl PlacePath (§4 data structures)
+- `mod.rs`: 1452 → 1146 LOC (-21%, -306 LOC; ~550 LOC code + ~600 LOC tests)
+  - Retains: BorrowChecker struct + impl + check_mir_body/check_crate entry points + tests
+- mod.rs `pub use` re-exports all public symbols from sub-modules for backward compat:
+  - `pub use copy_semantics::{ty_is_copy, ty_is_copy_unified, ty_is_copy_with_resolver};`
+  - `pub use liveness::{compute_last_use_map, LastUseMap};`
+  - `pub use place_path::{PlacePath, PlaceRoot, ProjElem};`
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+**Architectural rationale**: Per §14.4 J1, new structure maps to
+04-ownership-borrowing.md §4 NLL algorithm stages. Per J2, each module
+owns one analysis responsibility. Per J3, data flows mod.rs → {liveness,
+copy_semantics, place_path}. Per J6, all modules in 109-124 LOC range
+(mod.rs retains 1146 LOC due to ~600 LOC of tests).
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
+
+**TD-024**: borrowck/mod.rs LOC — introduced and immediately closed in this stage.

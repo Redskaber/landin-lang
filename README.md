@@ -6,12 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.13.2 — Stage 0-5 complete, Stage 6 in progress.
+> **Status:** v0.13.3 — Stage 0-5 complete, Stage 6 in progress.
 > **1881 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 110 test modules!
 > Process v3.21 (§0-§28). §16 interface isolation compliant.
-> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7 modules, mod.rs -76.9%) + codegen (5 modules) + stdlib (3 modules) + parser (8 modules, parser.rs -91.5%) + lexer (6 modules, reader.rs -77.3%) + process governance v3.21 (§13.4 + §14.4 + §25.8).
+> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7 modules, mod.rs -76.9%) + codegen (5 modules) + stdlib (3 modules) + parser (8 modules, parser.rs -91.5%) + lexer (6 modules, reader.rs -77.3%) + borrowck (6 modules, mod.rs -21%) + process governance v3.21 (§13.4 + §14.4 + §25.8).
 > 🎉 Architecture: all mod.rs/parser.rs/reader.rs files < 1300 LOC. Single responsibility per module. Data flows单向. Design docs synced with implementation (§25.8).
-> Next: Stage 6.14 — borrowck/mod.rs architectural split (1452 LOC → by analysis category).
+> Next: Stage 6.15 — typeck/checker.rs architectural split (1320 LOC → by check category).
 
 ## Quick start
 
@@ -96,7 +96,7 @@ landin-stage0/
 │   ├── resolve/            Name resolution + scope + visibility (43 tests)
 │   ├── mir/                MIR types + HIR→MIR lowering (22 tests)
 │   ├── typeck/             Type inference + unification (26 tests)
-│   ├── borrowck/           NLL borrow checker (26 tests)
+│   ├── borrowck/           NLL borrow checker (6 modules, mod.rs 1146 LOC) (26 tests)
 │   ├── codegen/            LLVM IR codegen via Emitter trait (294 tests)
 │   ├── traits/             TraitResolver (mod.rs→vtable.rs+builtin.rs+resolver.rs) (Stage 5.1-5.23)
 │   ├── driver.rs           Full pipeline driver

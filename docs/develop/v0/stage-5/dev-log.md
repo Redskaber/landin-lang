@@ -3313,3 +3313,45 @@ with the language specification.
 
 **TD-023**: lexer/reader.rs LOC — introduced and immediately closed in this stage.
 **Next**: Stage 6.14 — borrowck/mod.rs architectural split (1452 LOC).
+
+### Stage 6.14 — borrowck/mod.rs architectural split per §14.4 (v0.13.3)
+
+**Priority**: User request — continue stage 0-6 progress with API naming
+standardization. Apply v3.21 §13.4 (stage-start design alignment with
+04-ownership-borrowing.md §4) + §14.4 (refactoring as architecture design).
+
+**§13.4 design alignment**:
+- Read `docs/lang-design/04-ownership-borrowing.md` §4 (NLL algorithm)
+- §4.1 data structures, §4.2 algorithm 3 phases, §4.3 liveness,
+  §4.4 maybe-init, §4.5 move tracking
+- Decision: split mod.rs by §4 analysis stages:
+  liveness (§4.3), copy_semantics (§4.5 related), place_path (§4 data structures)
+
+**§14.4 J1-J6 judgments** (all ✅):
+- J1 architecture design alignment (1:1 with §4 NLL stages)
+- J2 single responsibility
+- J3 unidirectional flow (mod.rs → 3 leaf modules)
+- J4 compiler concept completeness
+- J5 stage boundary clarity
+- J6 scientific reasonable granularity (109-124 LOC sub-modules)
+
+**Work completed**:
+- Created 3 new sub-modules under `src/borrowck/`:
+  * liveness.rs (109 LOC) — LastUseMap + compute_last_use_map + 5 read-collection helpers
+  * copy_semantics.rs (124 LOC) — 3 ty_is_copy* functions
+  * place_path.rs (112 LOC) — PlacePath + PlaceRoot + ProjElem + impl PlacePath
+- mod.rs: 1452 → 1146 LOC (-21%, -306 LOC)
+  * Retains: BorrowChecker struct + impl + entry points + tests
+- mod.rs `pub use` re-exports all public symbols for backward compat
+- Cargo.toml: version 0.13.2 → 0.13.3
+
+**Architectural rationale**: Per §14.4 J1, the new structure maps to
+04-ownership-borrowing.md §4 NLL algorithm stages. This is "refactoring
+as architecture design" — not LOC slicing, but scientific module boundary
+design aligned with the design specification.
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-024**: borrowck/mod.rs LOC — introduced and immediately closed in this stage.
+**Next**: Stage 6.15 — typeck/checker.rs architectural split (1320 LOC).

@@ -1,9 +1,91 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.13.2
+**Current version**: v0.13.3
 **Date**: 2026-07-25
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.13.3 — Stage 6.14 (borrowck/mod.rs architectural split per §14.4 — TD-024)
+
+### Overview
+
+**Architectural split** of `src/borrowck/mod.rs` (1452 LOC) into 3 sub-modules.
+Third application of v3.21 §13.4 (stage-start design alignment with
+04-ownership-borrowing.md §4) + §14.4 (refactoring as architecture design).
+
+The new structure maps to `docs/lang-design/04-ownership-borrowing.md` §4
+NLL algorithm stages — this is "refactoring as architecture design."
+
+### §13.4 design alignment
+
+Read `docs/lang-design/04-ownership-borrowing.md` §4 (NLL algorithm
+implementation). Decision: split mod.rs by §4 analysis stages.
+
+| Design doc § | Category | New module |
+|--------------|----------|------------|
+| §4.3 | Liveness analysis | `liveness.rs` (109 LOC) |
+| §4.5 related | Copy semantics | `copy_semantics.rs` (124 LOC) |
+| §4 data structures | PlacePath | `place_path.rs` (112 LOC) |
+
+### §14.4 J1-J6 judgments (all ✅)
+
+| # | Judgment | Status |
+|---|----------|--------|
+| J1 | architecture design alignment (1:1 with §4 NLL stages) | ✅ |
+| J2 | single responsibility (each module = one analysis responsibility) | ✅ |
+| J3 | unidirectional flow (mod.rs → 3 leaves, no cycles) | ✅ |
+| J4 | compiler concept completeness (liveness reads+map内聚; 3 ty_is_copy*内聚; PlacePath+impl内聚) | ✅ |
+| J5 | stage boundary clarity (all in src/borrowck/, Stage 2 unchanged) | ✅ |
+| J6 | scientific reasonable granularity (109-124 LOC sub-modules) | ✅ |
+
+### New module structure
+
+```
+src/borrowck/
+  mod.rs            (1146 LOC)  ← BorrowChecker struct + impl + entry points + tests
+  borrow_set.rs     (341 LOC)   — BorrowSet 数据结构（不变）
+  error.rs          (92 LOC)    — BorrowError 类型（不变）
+  move_tracker.rs   (90 LOC)    — MoveTracker 数据结构（不变）
+  liveness.rs       (109 LOC)   ← NLL liveness analysis（§4.3）
+  copy_semantics.rs (124 LOC)   ← Copy 语义判定（§4.5 related）
+  place_path.rs     (112 LOC)   ← PlacePath 数据结构（§4 data structures）
+```
+
+**mod.rs**: 1452 → **1146 LOC** (-21%, -306 LOC; ~550 LOC code + ~600 LOC tests)
+
+### Backward compatibility (§23 + §16)
+
+All public symbols preserved via `pub use` re-exports in mod.rs:
+- `pub use copy_semantics::{ty_is_copy, ty_is_copy_unified, ty_is_copy_with_resolver};`
+- `pub use liveness::{compute_last_use_map, LastUseMap};`
+- `pub use place_path::{PlacePath, PlaceRoot, ProjElem};`
+
+External callers see **zero API change** — `borrowck::ty_is_copy`,
+`borrowck::PlacePath`, etc. all work unchanged.
+
+### Changes
+
+- Created 3 new sub-modules under `src/borrowck/`
+- `mod.rs`: 1452 → 1146 LOC (-21%)
+- `mod.rs`: added 3 `mod xxx;` declarations + `pub use` re-exports
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-024
+
+Introduced and immediately closed in this stage: borrowck/mod.rs LOC was
+1452. After split: 1146 LOC (with ~600 LOC tests retained for the
+BorrowChecker test suite). Pure code portion is ~550 LOC.
 
 ---
 
