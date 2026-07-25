@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: gcd variant 7
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn gcd(a:i32,b:i32)->i32{if b==0{a}else{gcd(b,a%b)}}

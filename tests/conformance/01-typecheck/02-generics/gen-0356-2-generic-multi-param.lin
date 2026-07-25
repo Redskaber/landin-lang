@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic multi param variant 2
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.9 batch expansion
+
+fn f<A,B>(a:A,b:B)->A{a}

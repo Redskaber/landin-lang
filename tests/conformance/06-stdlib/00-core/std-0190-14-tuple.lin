@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: tuple variant 14
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let t=(1,2);}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: overflow variant 20
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:i32=2147483647;let _=x+1;}

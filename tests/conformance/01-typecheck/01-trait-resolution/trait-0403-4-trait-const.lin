@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait const variant 4
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+trait T{const C:i32;}

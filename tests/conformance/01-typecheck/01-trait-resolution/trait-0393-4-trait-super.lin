@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait super variant 4
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+trait Base{fn b(&self)->i32;} trait Derived:Base{fn d(&self)->i32;}

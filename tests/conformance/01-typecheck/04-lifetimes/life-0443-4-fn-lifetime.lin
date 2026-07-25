@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: fn lifetime variant 4
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn f<'a>(x:&'a i32)->&'a i32{x}

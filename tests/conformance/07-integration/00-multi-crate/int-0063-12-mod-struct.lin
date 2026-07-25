@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod struct variant 12
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+mod m{struct S{x:i32}}

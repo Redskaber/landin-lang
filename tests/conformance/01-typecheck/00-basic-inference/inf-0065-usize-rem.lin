@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: usize rem inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:usize=10;let y:usize=3;let _=x % y;}

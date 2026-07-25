@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow in if variant 1
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x=1;if true{let r=&x;}}

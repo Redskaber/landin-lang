@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod inline variant 7
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+mod m{}

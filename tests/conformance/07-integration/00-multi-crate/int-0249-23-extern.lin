@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: extern variant 23
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+extern "C"{fn f();}

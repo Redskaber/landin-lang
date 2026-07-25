@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: u32 sub inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:u32=10;let y:u32=3;let _=x - y;}

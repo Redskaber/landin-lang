@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure capture variant 0
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
+
+fn main(){let a=1;let f=||a;}

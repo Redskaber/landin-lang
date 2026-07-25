@@ -1,0 +1,7 @@
+// CATEGORY: soundness
+// DESCRIPTION: use after move variant 1
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.9 batch expansion
+
+struct S{x:i32} fn main(){let s=S{x:1};let s2=s;let s3=s;}

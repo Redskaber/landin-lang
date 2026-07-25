@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: extern C variant 11
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+extern "C"{fn f();}

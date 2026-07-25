@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: while loop variant 8
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let mut i=0;while i<10{i+=1;}}

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: fact variant 0
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn fact(n:i32)->i32{if n<=1{1}else{n*fact(n-1)}}

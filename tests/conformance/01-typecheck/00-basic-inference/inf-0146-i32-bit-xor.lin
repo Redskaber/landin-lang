@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i32 bit xor inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:i32=0xff;let y:i32=0x0f;let _=x ^ y;}

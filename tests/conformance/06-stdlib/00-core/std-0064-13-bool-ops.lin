@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: bool ops variant 13
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let a=true;let _=!a;}

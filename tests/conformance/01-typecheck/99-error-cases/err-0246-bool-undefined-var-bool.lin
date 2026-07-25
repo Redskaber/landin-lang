@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: undefined var bool
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:bool=undef;}

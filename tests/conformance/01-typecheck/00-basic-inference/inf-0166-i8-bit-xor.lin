@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i8 bit xor inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:i8=0xff;let y:i8=0x0f;let _=x ^ y;}

@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: enum variant 6
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+enum E{A,B}

@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: copy then use variant 15
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
+
+fn main(){let x=1;let y=x;let z=x;}

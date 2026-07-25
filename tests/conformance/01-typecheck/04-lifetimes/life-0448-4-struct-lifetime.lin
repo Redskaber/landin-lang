@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: struct lifetime variant 4
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+struct S<'a>{x:&'a i32}

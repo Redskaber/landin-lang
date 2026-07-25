@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: wrong arg type u32
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.9 batch expansion
+
+fn g(x:i32){} fn main(){g(true);}

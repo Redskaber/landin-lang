@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: borrow mut fn arg variant 2
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn g(x:&mut i32){*x=2;} fn main(){let mut v=1;g(&mut v);}

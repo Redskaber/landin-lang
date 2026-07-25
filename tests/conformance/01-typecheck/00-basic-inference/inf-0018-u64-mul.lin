@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: u64 mul inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:u64=10;let y:u64=3;let _=x * y;}

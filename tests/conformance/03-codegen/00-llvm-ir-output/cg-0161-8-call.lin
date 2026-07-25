@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: call variant 8
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn g(){} fn main(){g();}

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i64 div inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:i64=10;let y:i64=3;let _=x / y;}

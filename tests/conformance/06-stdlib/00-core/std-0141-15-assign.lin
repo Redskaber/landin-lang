@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: assign variant 15
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let mut x=10;x+=5;}

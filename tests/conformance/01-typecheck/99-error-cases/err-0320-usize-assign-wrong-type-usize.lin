@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: assign wrong type usize
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
+
+fn main(){let mut x:usize=0;x=true;}

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: mod use variant 10
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+mod m{pub struct S;} use m::S;

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: u32 bit shl inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:u32=0xff;let y:u32=0x0f;let _=x << y;}

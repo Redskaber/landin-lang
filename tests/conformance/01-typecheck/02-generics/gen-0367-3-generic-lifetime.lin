@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic lifetime variant 3
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
+
+fn f<'a,T>(x:&'a T)->&'a T{x}

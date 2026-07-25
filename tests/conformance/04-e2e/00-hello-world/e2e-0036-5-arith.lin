@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: arith variant 5
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x=1+2*3;}

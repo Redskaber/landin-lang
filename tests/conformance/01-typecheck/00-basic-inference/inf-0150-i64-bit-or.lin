@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i64 bit or inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:i64=0xff;let y:i64=0x0f;let _=x | y;}

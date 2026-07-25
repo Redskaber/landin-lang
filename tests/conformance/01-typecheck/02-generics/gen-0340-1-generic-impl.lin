@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic impl variant 1
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.9 batch expansion
+
+struct S<T>{x:T} impl<T> S<T>{fn get(&self)->&T{&self.x}}

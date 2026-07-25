@@ -1,0 +1,6 @@
+// CATEGORY: borrowck
+// DESCRIPTION: mut borrow variant 14
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let mut x=1;let r=&mut x;}

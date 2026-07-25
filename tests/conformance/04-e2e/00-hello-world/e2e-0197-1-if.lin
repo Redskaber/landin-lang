@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: if variant 1
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x=if true{1}else{2};}

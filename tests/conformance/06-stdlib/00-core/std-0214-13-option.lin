@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: option variant 13
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+enum Opt{Some(i32),None} fn main(){let x=Opt::Some(42);}

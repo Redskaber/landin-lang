@@ -1,0 +1,7 @@
+// CATEGORY: borrowck
+// DESCRIPTION: shared then mut variant 17
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let mut x=1;let r=&x;let r2=&mut x;}

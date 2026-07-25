@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: i32 ops variant 6
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let a:i32=10;let b=3;let _=a+b;}

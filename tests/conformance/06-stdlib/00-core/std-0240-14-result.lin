@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: result variant 14
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+enum Res{Ok(i32),Err(i32)} fn main(){let x=Res::Ok(42);}

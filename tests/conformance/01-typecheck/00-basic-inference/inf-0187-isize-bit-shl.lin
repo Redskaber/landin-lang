@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: isize bit shl inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:isize=0xff;let y:isize=0x0f;let _=x << y;}

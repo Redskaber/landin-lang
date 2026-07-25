@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: fn define variant 8
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn f()->i32{0}

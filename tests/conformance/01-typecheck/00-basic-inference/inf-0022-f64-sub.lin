@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: f64 sub inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:f64=10;let y:f64=3;let _=x - y;}

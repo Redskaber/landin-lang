@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: return mismatch f64
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.9 batch expansion
+
+fn f()->f64{true}

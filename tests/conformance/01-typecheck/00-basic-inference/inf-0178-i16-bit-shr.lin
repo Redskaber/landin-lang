@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i16 bit shr inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:i16=0xff;let y:i16=0x0f;let _=x >> y;}

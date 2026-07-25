@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: i8 mul inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let x:i8=10;let y:i8=3;let _=x * y;}

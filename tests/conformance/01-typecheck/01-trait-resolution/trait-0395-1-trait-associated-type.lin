@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait associated type variant 1
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+trait T{type Item;fn f(&self)->i32;}

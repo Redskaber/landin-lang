@@ -525,3 +525,6 @@ mod stage11_6_7_tests;
 // Stage 11.8: batch expansion verification
 #[path = "v0/stage11/plan/stage11_8_tests.rs"]
 mod stage11_8_tests;
+// Stage 11.9: final batch expansion verification — v0.1 gate reached!
+#[path = "v0/stage11/plan/stage11_9_tests.rs"]
+mod stage11_9_tests;

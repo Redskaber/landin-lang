@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: f64 ops variant 7
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion
+
+fn main(){let a:f64=3.14;let _=a*2.0;}
