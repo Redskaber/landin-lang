@@ -4402,3 +4402,16 @@ Stage 11.9 — FINAL BATCH EXPANSION — v0.1 CONFORMANCE GATE REACHED! 🎉
 **Test impact**: +3 rust (2313 → 2315) + 2260 conformance (2766 → 5026). 0 regressions.
 
 **v0.1 GATE REACHED**: Stage 0 完整 + conformance 5026/5000 通过 — v0.1 = Stage 0 完整 + conformance 通过（不自举）
+
+### v2.34 (Stage 11.10, 2026-07-26)
+
+Stage 11.10 — §25 deep review + v0.1 release prep + README rewrite.
+
+**Changes**:
+- §25 seven-dimension deep review: 5/5 GO → PASS
+- README.md completely rewritten with v0.1 gate reached status
+- New Rust integration tests: `tests/v0/stage11/plan/stage11_10_tests.rs` (5 tests)
+
+**Test impact**: +5 rust (2314 → 2319). 0 conformance changes. 0 regressions.
+
+**v0.1 GATE REACHED**: 5026/5000 conformance tests — Stage 0 完整 + conformance 通过 ✅
