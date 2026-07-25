@@ -1,9 +1,103 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.13.3
+**Current version**: v0.13.4
 **Date**: 2026-07-25
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.13.4 — Stage 6.15 (typeck/checker.rs architectural split per §14.4 — TD-025)
+
+### Overview
+
+**Architectural split** of `src/typeck/checker.rs` (1320 LOC) into 2 sub-modules.
+Fourth application of v3.21 §13.4 (stage-start design alignment with
+03-type-system.md §4+§8) + §14.4 (refactoring as architecture design).
+
+The new structure maps to `docs/lang-design/03-type-system.md` §4 (type
+inference data structures) + §8 (Subtyping rules) — this is "refactoring
+as architecture design."
+
+### §13.4 design alignment
+
+Read `docs/lang-design/03-type-system.md` §4 (类型推导) + §8 (Subtyping).
+Decision: split checker.rs by §4 data structures + §8 type predicates.
+
+| Design doc § | Category | New module |
+|--------------|----------|------------|
+| §4 data structures | TypeckResults + FieldTyTable + FnSigTable | `tables.rs` (78 LOC) |
+| §8 Subtyping | type predicates + coercion matrix | `predicates.rs` (132 LOC) |
+
+### §14.4 J1-J6 judgments (all ✅)
+
+| # | Judgment | Status |
+|---|----------|--------|
+| J1 | architecture design alignment (1:1 with §4 + §8) | ✅ |
+| J2 | single responsibility (tables = data; predicates = type classification) | ✅ |
+| J3 | unidirectional flow (checker.rs → 2 leaves, no cycles) | ✅ |
+| J4 | compiler concept completeness (3 struct+impl内聚; 6 type predicates内聚) | ✅ |
+| J5 | stage boundary clarity (all in src/typeck/, Stage 2 unchanged) | ✅ |
+| J6 | scientific reasonable granularity (78-132 LOC sub-modules) | ✅ |
+
+### New module structure
+
+```
+src/typeck/
+  mod.rs          (34 LOC)    — crate-level re-exports
+  checker.rs      (1160 LOC)  ← TypeChecker struct + impl + entry points + tests
+  unify.rs        (715 LOC)   — UnificationTable（不变）
+  error.rs        (62 LOC)    — TypeError 类型（不变）
+  tables.rs       (78 LOC)    ← typeck 数据表（§4 数据结构）
+  predicates.rs   (132 LOC)   ← type 分类谓词（§8 Subtyping）
+```
+
+**checker.rs**: 1320 → **1160 LOC** (-12%, -160 LOC)
+
+### Backward compatibility (§23 + §16)
+
+All public symbols preserved via `pub use` re-exports in mod.rs:
+- `pub use tables::{FieldTyTable, FnSigTable, TypeckResults};`
+
+External callers see **zero API change** — `typeck::TypeckResults`,
+`typeck::FieldTyTable`, etc. all work unchanged.
+
+### Changes
+
+- Created 2 new sub-modules under `src/typeck/`
+- `checker.rs`: 1320 → 1160 LOC (-12%)
+- `mod.rs`: added 2 `mod xxx;` declarations + `pub use` re-exports
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-025
+
+Introduced and immediately closed in this stage: typeck/checker.rs LOC was
+1320. After split: 1160 LOC. Pure code portion ~920 LOC + ~240 LOC tests.
+
+### Stage 6 architectural splits summary
+
+Stage 6 has now completed architectural splits across all major compiler
+phases:
+
+| Phase | Modules | Largest file LOC (before → after) |
+|-------|---------|-----------------------------------|
+| mir/lower | 7 | mod.rs 3346 → 772 (-76.9%) |
+| codegen | 5 | mod.rs 2461 → 1050 (-57.3%) |
+| stdlib | 3 | (single file → 3 modules) |
+| parser | 8 | parser.rs 3112 → 263 (-91.5%) |
+| lexer | 6 | reader.rs 1537 → 349 (-77.3%) |
+| borrowck | 6 | mod.rs 1452 → 1146 (-21%) |
+| typeck | 5 | checker.rs 1320 → 1160 (-12%) |
+| **Total** | **40** | All mod.rs/parser.rs/reader.rs/checker.rs < 1300 LOC |
 
 ---
 

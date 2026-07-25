@@ -3223,3 +3223,37 @@ copy_semantics, place_path}. Per J6, all modules in 109-124 LOC range
 **Fmt impact**: clean.
 
 **TD-024**: borrowck/mod.rs LOC — introduced and immediately closed in this stage.
+
+### v1.84 (Stage 6.15, 2026-07-25)
+
+Stage 6.15 typeck/checker.rs architectural split round. Per v3.21 §13.4
+(stage-start design alignment with 03-type-system.md §4+§8) + §14.4
+(refactoring as architecture design, J1-J6 judgments).
+
+Splits `src/typeck/checker.rs` (1320 LOC) into 2 sub-modules, each owning
+one typeck responsibility aligned with 03-type-system.md §4 (type inference
+data structures) + §8 (Subtyping rules).
+
+**New public symbols**: None (all re-exported from sub-modules via mod.rs).
+
+**Changes**:
+- Created 2 new sub-modules under `src/typeck/`:
+  - `tables.rs` (78 LOC) — TypeckResults + FieldTyTable + FnSigTable (§4 data structures)
+  - `predicates.rs` (132 LOC) — 6 type predicates + can_coerce (§8 Subtyping)
+- `checker.rs`: 1320 → 1160 LOC (-12%, -160 LOC)
+  - Retains: TypeChecker struct + impl + check_mir_body/check_crate entry points + tests
+- mod.rs `pub use` re-exports public symbols from sub-modules for backward compat:
+  - `pub use tables::{FieldTyTable, FnSigTable, TypeckResults};`
+- checker.rs imports predicates via `use super::predicates::{...}`
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+**Architectural rationale**: Per §14.4 J1, new structure maps to
+03-type-system.md §4 (data structures) + §8 (Subtyping). Per J2, each
+module owns one typeck responsibility. Per J3, data flows
+checker.rs → {tables, predicates}. Per J6, all modules in 78-132 LOC range.
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
+
+**TD-025**: typeck/checker.rs LOC — introduced and immediately closed in this stage.

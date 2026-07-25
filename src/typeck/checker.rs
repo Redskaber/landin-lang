@@ -7,6 +7,17 @@
 //! 3. Check terminator constraints (Call args, SwitchInt discr type)
 //! 4. Default unresolved int/float variables to i32/f64
 //! 5. Resolve and report any type errors
+//!
+//! ## Stage 6.15 architectural split (TD-025)
+//!
+//! Per `docs/stage-committee-process.md` v3.21 §14.4 + §13.4, this file
+//! has been split into 2 sub-modules:
+//!
+//! - `tables.rs`     — typeck data tables (TypeckResults + FieldTyTable + FnSigTable)
+//! - `predicates.rs` — type classification predicates + coercion rules
+//!
+//! This file (`checker.rs`) retains: TypeChecker struct + impl + entry
+//! points (`check_mir_body` / `check_crate`) + tests.
 
 use crate::ast;
 use crate::hir::HirCrate;
@@ -18,39 +29,12 @@ use crate::typeck::error::TypeError;
 use crate::typeck::unify::UnificationTable;
 use lasso::Rodeo;
 
-/// Per-body type checking results.
-///
-/// After running `TypeChecker::check_mir_body`, this struct holds:
-/// - The resolved type of each local (keyed by LocalId)
-/// - The resolved type of each HirId (keyed by HirId, for HIR writeback)
-///
-/// Stage 2.4d (P1-3): The driver collects these results so downstream
-/// consumers (codegen, error display) can consult the resolved types
-/// instead of re-running type inference.
-#[derive(Debug, Default, Clone)]
-pub struct TypeckResults {
-    /// Map from LocalId → resolved Ty.
-    pub local_types: std::collections::HashMap<LocalId, Ty>,
-    /// Map from HirId → resolved Ty (for HIR nodes that have a type).
-    /// Populated for local variable bindings; other HIR nodes are Stage 3+.
-    pub hir_types: std::collections::HashMap<crate::hir::HirId, Ty>,
-}
-
-impl TypeckResults {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Look up the resolved type of a local.
-    pub fn local_type(&self, id: LocalId) -> Option<&Ty> {
-        self.local_types.get(&id)
-    }
-
-    /// Look up the resolved type of a HIR node.
-    pub fn hir_type(&self, id: crate::hir::HirId) -> Option<&Ty> {
-        self.hir_types.get(&id)
-    }
-}
+// Stage 6.15: import data tables + predicates from sub-modules.
+use super::predicates::{
+    can_coerce, is_arithmetic_ty, is_concrete_int_or_float, is_negatable_ty, is_notable_ty,
+    is_shift_count_ty,
+};
+use super::tables::{FieldTyTable, TypeckResults};
 
 /// The type checker. Holds the unification table and collects errors.
 pub struct TypeChecker {
@@ -891,154 +875,6 @@ impl TypeChecker {
 impl Default for TypeChecker {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Whether a type can be used in arithmetic ops (Add/Sub/Mul/Div/Rem).
-///
-/// G7 fix (Stage 2.4f): Bool, Str, Tuple, Array, etc. are NOT arithmetic.
-/// Int, Uint, Float, and Infer (deferred) are.
-fn is_arithmetic_ty(ty: &Ty) -> bool {
-    matches!(
-        &ty.kind,
-        TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_) | TyKind::Infer(_) | TyKind::Error
-    )
-}
-
-/// Stage 3.60: Pre-computed ADT field type table.
-/// Built by the driver from HIR (data flows downstream per section 16.2.1).
-/// Replaces `check_mir_body_with_hir`'s HIR reference with a pure data
-/// structure — typeck no longer reads HIR directly.
-#[derive(Debug, Clone, Default)]
-pub struct FieldTyTable {
-    /// Maps struct DefId to ordered field types (as MIR Ty).
-    pub struct_fields: std::collections::HashMap<crate::hir::DefId, Vec<Ty>>,
-}
-
-impl FieldTyTable {
-    /// Look up the field types for a struct by DefId.
-    pub fn get_struct_fields(&self, def_id: &crate::hir::DefId) -> Option<&[Ty]> {
-        self.struct_fields.get(def_id).map(|v| v.as_slice())
-    }
-}
-
-/// Stage 3.60: Pre-computed function signatures.
-/// Built by the driver from HIR, replacing `populate_fn_sigs(&hir)`.
-#[derive(Debug, Clone, Default)]
-pub struct FnSigTable {
-    /// Maps fn DefId to MIR-level signature.
-    pub sigs: std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
-}
-
-impl FnSigTable {
-    pub fn get(&self, def_id: &crate::hir::DefId) -> Option<&crate::mir::ty::Sig> {
-        self.sigs.get(def_id)
-    }
-}
-
-/// Stage 3.36 (L-DEBT-3 fix): whether a type is a concrete Int/Uint/Float
-/// (not Infer, not Error, not Bool, not Str, etc.). Used by
-/// `writeback_field_load_locals` to decide if a BinaryOp operand's type
-/// should propagate to the result.
-fn is_concrete_int_or_float(ty: &Ty) -> bool {
-    matches!(
-        &ty.kind,
-        TyKind::Int(_) | TyKind::Uint(_) | TyKind::Float(_)
-    )
-}
-
-/// Whether a type can be negated with unary `-`.
-///
-/// Int, Uint, Float, Infer, Error are negatable. Bool, Str, Tuple are not.
-fn is_negatable_ty(ty: &Ty) -> bool {
-    is_arithmetic_ty(ty)
-}
-
-/// Whether a type can be used with `!` (bitwise NOT).
-///
-/// Bool, Int, Uint, IntVar, TyVar, Error are notable.
-/// Float, FloatVar, Str, Tuple are NOT notable.
-///
-/// G8 fix (Stage 2.4g): `!3.14` should error. FloatVar is excluded
-/// because it can only resolve to Float (which is not notable).
-fn is_notable_ty(ty: &Ty) -> bool {
-    matches!(
-        &ty.kind,
-        TyKind::Bool
-            | TyKind::Int(_)
-            | TyKind::Uint(_)
-            | TyKind::Infer(InferVar::TyVar(_))
-            | TyKind::Infer(InferVar::IntVar(_))
-            | TyKind::Error
-    )
-}
-
-/// Whether a type can be used as a shift count (rhs of Shl/Shr).
-///
-/// Int, Uint, Infer, Error are valid. Bool, Float, Str are not.
-fn is_shift_count_ty(ty: &Ty) -> bool {
-    matches!(
-        &ty.kind,
-        TyKind::Int(_) | TyKind::Uint(_) | TyKind::Infer(_) | TyKind::Error
-    )
-}
-
-/// Stage 3.58: Check if `rvalue_ty` can be implicitly coerced to `place_ty`.
-///
-/// Coercion rules (matching Landin's lenient type system):
-///   - Bool → Int/Uint: comparison results widen to integers (codegen emits zext)
-///   - Narrower Int/Uint → Wider Int/Uint: e.g., u8 → i32 (codegen emits zext/sext)
-///   - Int/Uint → Int/Uint of same width: e.g., u32 → i32 (bitcast, lossless)
-///   - Infer → anything: inference variables unify with anything
-///   - Error → anything: error types suppress further errors
-///
-/// Returns `Ok(())` if coercion is possible, `Err(())` if not.
-fn can_coerce(place_ty: &Ty, rvalue_ty: &Ty) -> bool {
-    use crate::ast::{IntTy, UintTy};
-    use crate::mir::ty::TyKind;
-    match (&place_ty.kind, &rvalue_ty.kind) {
-        // Infer/Error: always coercible
-        (TyKind::Infer(_), _) | (_, TyKind::Infer(_)) => true,
-        (TyKind::Error, _) | (_, TyKind::Error) => true,
-        // Bool → Int/Uint: comparison result widens to integer
-        (TyKind::Int(_), TyKind::Bool) | (TyKind::Uint(_), TyKind::Bool) => true,
-        // Narrower int → wider int (e.g., i8 → i32, i16 → i64)
-        (TyKind::Int(IntTy::I128), TyKind::Int(_)) => true,
-        (TyKind::Int(IntTy::I64), TyKind::Int(IntTy::I8 | IntTy::I16 | IntTy::I32)) => true,
-        (TyKind::Int(IntTy::I32), TyKind::Int(IntTy::I8 | IntTy::I16)) => true,
-        (TyKind::Int(IntTy::I16), TyKind::Int(IntTy::I8)) => true,
-        // Narrower uint → wider uint
-        (TyKind::Uint(UintTy::U128), TyKind::Uint(_)) => true,
-        (TyKind::Uint(UintTy::U64), TyKind::Uint(UintTy::U8 | UintTy::U16 | UintTy::U32)) => true,
-        (TyKind::Uint(UintTy::U32), TyKind::Uint(UintTy::U8 | UintTy::U16)) => true,
-        (TyKind::Uint(UintTy::U16), TyKind::Uint(UintTy::U8)) => true,
-        // Int ↔ Uint of same width (e.g., i32 ↔ u32): lossless reinterpretation
-        (TyKind::Int(IntTy::I8), TyKind::Uint(UintTy::U8)) => true,
-        (TyKind::Int(IntTy::I16), TyKind::Uint(UintTy::U16)) => true,
-        (TyKind::Int(IntTy::I32), TyKind::Uint(UintTy::U32)) => true,
-        (TyKind::Int(IntTy::I64), TyKind::Uint(UintTy::U64)) => true,
-        (TyKind::Int(IntTy::I128), TyKind::Uint(UintTy::U128)) => true,
-        (TyKind::Uint(UintTy::U8), TyKind::Int(IntTy::I8)) => true,
-        (TyKind::Uint(UintTy::U16), TyKind::Int(IntTy::I16)) => true,
-        (TyKind::Uint(UintTy::U32), TyKind::Int(IntTy::I32)) => true,
-        (TyKind::Uint(UintTy::U64), TyKind::Int(IntTy::I64)) => true,
-        (TyKind::Uint(UintTy::U128), TyKind::Int(IntTy::I128)) => true,
-        // Stage 3.59: Uint → wider Int (only widening, NOT narrowing).
-        // Was: `(TyKind::Int(_), TyKind::Uint(_)) => true` which accepted
-        // lossy narrowings like `i8 ← u64`. Now: explicit widening arms.
-        (TyKind::Int(IntTy::I16), TyKind::Uint(UintTy::U8)) => true,
-        (TyKind::Int(IntTy::I32), TyKind::Uint(UintTy::U8 | UintTy::U16)) => true,
-        (TyKind::Int(IntTy::I64), TyKind::Uint(UintTy::U8 | UintTy::U16 | UintTy::U32)) => true,
-        (
-            TyKind::Int(IntTy::I128),
-            TyKind::Uint(UintTy::U8 | UintTy::U16 | UintTy::U32 | UintTy::U64),
-        ) => true,
-        // Stage 3.59: f32 → f64 widening (lossless)
-        (TyKind::Float(crate::ast::FloatTy::F64), TyKind::Float(crate::ast::FloatTy::F32)) => true,
-        // Same type: no coercion needed
-        _ if place_ty.kind == rvalue_ty.kind => true,
-        // Everything else: not coercible
-        _ => false,
     }
 }
 

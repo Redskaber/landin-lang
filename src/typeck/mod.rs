@@ -17,6 +17,9 @@
 
 pub mod checker;
 pub mod error;
+// Stage 6.15 (TD-025) sub-modules.
+mod predicates;
+mod tables;
 pub mod unify;
 
 // Stage 3.63 (cross-stage naming standardization): `check_crate` and
@@ -24,8 +27,8 @@ pub mod unify;
 // for backwards compatibility; new code should use
 // `TypeChecker::check_mir_body_with_tables` (§16-compliant).
 #[allow(deprecated)]
-pub use checker::{
-    check_crate, check_mir_body, FieldTyTable, FnSigTable, TypeChecker, TypeckResults,
-};
+pub use checker::{check_crate, check_mir_body, TypeChecker};
+// Stage 6.15: re-export data tables from `tables` sub-module for backward compat.
 pub use error::TypeError;
+pub use tables::{FieldTyTable, FnSigTable, TypeckResults};
 pub use unify::UnificationTable;

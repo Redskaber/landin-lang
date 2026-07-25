@@ -3355,3 +3355,44 @@ design aligned with the design specification.
 
 **TD-024**: borrowck/mod.rs LOC — introduced and immediately closed in this stage.
 **Next**: Stage 6.15 — typeck/checker.rs architectural split (1320 LOC).
+
+### Stage 6.15 — typeck/checker.rs architectural split per §14.4 (v0.13.4)
+
+**Priority**: User request — continue stage 0-6 progress with API naming
+standardization. Apply v3.21 §13.4 (stage-start design alignment with
+03-type-system.md §4+§8) + §14.4 (refactoring as architecture design).
+
+**§13.4 design alignment**:
+- Read `docs/lang-design/03-type-system.md` §4 (类型推导) + §8 (Subtyping)
+- §4.1 constraint-based inference, §4.2 inference variable,
+  §4.5 unification, §8 coercion matrix
+- Decision: split checker.rs by §4 data structures + §8 type predicates
+
+**§14.4 J1-J6 judgments** (all ✅):
+- J1 architecture design alignment (1:1 with §4 data structures + §8)
+- J2 single responsibility
+- J3 unidirectional flow (checker.rs → 2 leaf modules)
+- J4 compiler concept completeness
+- J5 stage boundary clarity
+- J6 scientific reasonable granularity (78-132 LOC sub-modules)
+
+**Work completed**:
+- Created 2 new sub-modules under `src/typeck/`:
+  * tables.rs (78 LOC) — TypeckResults + FieldTyTable + FnSigTable
+  * predicates.rs (132 LOC) — 6 type predicates + can_coerce
+- checker.rs: 1320 → 1160 LOC (-12%, -160 LOC)
+  * Retains: TypeChecker struct + impl + entry points + tests
+- mod.rs `pub use` re-exports public symbols for backward compat
+- checker.rs imports predicates via `use super::predicates::{...}`
+- Cargo.toml: version 0.13.3 → 0.13.4
+
+**Architectural rationale**: Per §14.4 J1, the new structure maps to
+03-type-system.md §4 (data structures) + §8 (Subtyping). This is
+"refactoring as architecture design" — not LOC slicing, but scientific
+module boundary design aligned with the design specification.
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-025**: typeck/checker.rs LOC — introduced and immediately closed in this stage.
+**Next**: Stage 6 末尾 — 完整 §25.8 设计回写 + TD-015 Region inference + TD-018 用户自定义 trait dyn.
