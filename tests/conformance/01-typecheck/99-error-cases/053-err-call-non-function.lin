@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: call non-function
+// EXPECTED: compile_error
+// ERROR_PATTERN: function
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let x = 42; x(); }

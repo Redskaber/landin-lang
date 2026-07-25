@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic trait with lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait T<'a> { fn f(&self) -> &'a i32; }

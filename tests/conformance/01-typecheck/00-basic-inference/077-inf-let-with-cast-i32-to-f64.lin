@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with cast i32 to f64
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let x: i32 = 42; let y = x as f64; }

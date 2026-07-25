@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure with move and multiple captures
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+fn main() { let a = 1; let b = 2; let f = move || a + b; }

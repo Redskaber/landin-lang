@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with nested generic param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct Inner<T> { x: T } struct Outer<T> { i: Inner<T> } fn main() { let o = Outer { i: Inner { x: 42 } }; }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with no methods (marker)
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait Marker {} struct S; impl Marker for S {}

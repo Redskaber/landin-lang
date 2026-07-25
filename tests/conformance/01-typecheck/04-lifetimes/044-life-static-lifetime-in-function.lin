@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: static lifetime in function
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn f() -> &'static str { "hello" }

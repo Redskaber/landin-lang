@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with two methods
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+trait T { fn f(&self) -> i32; fn g(&self) -> i32; } struct S; impl T for S { fn f(&self) -> i32 { 1 } fn g(&self) -> i32 { 2 } }

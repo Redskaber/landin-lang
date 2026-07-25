@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: field access on non-struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+fn main() { let x = 42; let y = x.field; }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with lifetime in struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct S<'a, T> { x: &'a T } fn main() { let v = 1; let s = S { x: &v }; }

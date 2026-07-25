@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with phantom data pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct S<T> { _marker: i32 } fn main() { let s: S<i32> = S { _marker: 0 }; }

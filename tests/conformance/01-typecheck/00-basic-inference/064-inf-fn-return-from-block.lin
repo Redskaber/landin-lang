@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: fn return from block
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn f() -> i32 { let x = 1; x + 1 }

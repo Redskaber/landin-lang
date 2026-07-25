@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: call with wrong arg types
+// EXPECTED: compile_error
+// ERROR_PATTERN: type
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn f(x: i32) {} fn main() { f(true); }

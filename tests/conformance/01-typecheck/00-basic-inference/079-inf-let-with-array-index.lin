@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with array index
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let arr = [1, 2, 3]; let x = arr[0]; }

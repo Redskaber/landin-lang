@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with where clause on method
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait T { fn f<U>(&self) where U: T; }

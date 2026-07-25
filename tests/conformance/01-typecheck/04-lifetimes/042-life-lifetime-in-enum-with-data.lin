@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime in enum with data
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+enum E<'a> { A(&'a i32), B(&'a bool) } fn main() { let x = 1; let e = E::A(&x); }

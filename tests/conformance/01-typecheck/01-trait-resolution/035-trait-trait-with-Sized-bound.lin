@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with Sized bound
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait T: Sized { fn f(&self) -> i32; }

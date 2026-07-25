@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with Send + Sync bounds
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait T: Send + Sync { fn f(&self); }

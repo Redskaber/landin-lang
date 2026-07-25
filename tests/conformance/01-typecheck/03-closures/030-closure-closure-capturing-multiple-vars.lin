@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure capturing multiple vars
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+fn main() { let a = 1; let b = 2; let c = 3; let f = || a + b + c; }

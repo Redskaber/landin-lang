@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime in static context
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+static S: i32 = 42; fn main() { let r: &'static i32 = &S; }

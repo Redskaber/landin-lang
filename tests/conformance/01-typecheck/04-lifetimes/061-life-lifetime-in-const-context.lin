@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime in const context
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+const C: i32 = 42; fn main() { let r: &'static i32 = &C; }

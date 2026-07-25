@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime in chained method calls
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct S { x: i32 } impl S { fn get(&self) -> &i32 { &self.x } } fn main() { let s = S { x: 1 }; let r = s.get(); let _ = *r; }

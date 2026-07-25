@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with const generic-like usage
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn f<T>(x: T, y: T) -> T { x }

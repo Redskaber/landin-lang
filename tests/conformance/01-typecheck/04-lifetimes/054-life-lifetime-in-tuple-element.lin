@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime in tuple element
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let x = 1; let y = 2; let t = (&x, &y); }

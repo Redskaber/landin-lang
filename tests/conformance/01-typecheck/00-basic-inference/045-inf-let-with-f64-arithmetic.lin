@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with f64 arithmetic
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let x: f64 = 1.0 + 2.0; }

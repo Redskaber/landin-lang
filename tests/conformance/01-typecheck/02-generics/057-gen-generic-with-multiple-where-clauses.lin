@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with multiple where clauses
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait A { fn a(&self) -> i32; } trait B { fn b(&self) -> i32; } trait C { fn c(&self) -> i32; } fn f<T>(x: T) where T: A, T: B, T: C { x.a(); x.b(); x.c(); }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure with loop inside
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+fn main() { let f = || { let mut i = 0; while i < 3 { i += 1; } i }; }

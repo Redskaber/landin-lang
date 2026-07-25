@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure assigned to let then called
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let f = |x: i32| x + 1; let y = f(5); }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with bitwise xor
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let x = 0xff ^ 0x0f; }

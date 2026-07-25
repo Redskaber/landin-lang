@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with mutable reference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let mut x = 1; let r = &mut x; }

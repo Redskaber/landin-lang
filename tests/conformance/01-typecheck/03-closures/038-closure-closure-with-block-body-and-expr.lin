@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure with block body and expr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+fn main() { let f = |x: i32| { x + 1 }; }

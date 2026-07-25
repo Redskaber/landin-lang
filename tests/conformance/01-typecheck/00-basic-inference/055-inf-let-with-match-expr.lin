@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with match expr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let x = match 1 { 1 => 10, _ => 0 }; }

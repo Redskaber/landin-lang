@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: use after move enum
+// EXPECTED: compile_error
+// ERROR_PATTERN: move
+// SOURCE: Stage 11.1 typecheck expansion
+
+enum E { A(i32) } fn main() { let e = E::A(1); let e2 = e; let e3 = e; }

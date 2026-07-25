@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with unit from block
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let x = { }; }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with result-like enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+enum Result<T, E> { Ok(T), Err(E) } fn f() -> Result<i32, i32> { Result::Ok(42) }

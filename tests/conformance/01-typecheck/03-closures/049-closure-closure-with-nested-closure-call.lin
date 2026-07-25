@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure with nested closure call
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let f = |x| |y| x + y; let g = f(1); }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic enum with match
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+enum Opt<T> { Some(T), None } fn f(x: Opt<i32>) -> i32 { match x { Opt::Some(v) => v, Opt::None => 0 } }

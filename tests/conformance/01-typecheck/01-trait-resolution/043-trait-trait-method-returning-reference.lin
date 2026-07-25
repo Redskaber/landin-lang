@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait method returning reference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait T { fn f(&self) -> &i32; }

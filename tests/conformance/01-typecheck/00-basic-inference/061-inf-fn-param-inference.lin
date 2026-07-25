@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: fn param inference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn g(x: i32) {} fn main() { g(42); }

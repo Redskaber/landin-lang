@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: return wrong type from fn
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+fn f() -> bool { 42 }

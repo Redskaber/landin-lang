@@ -503,3 +503,7 @@ mod stage10_7_tests;
 // Stage 10.8: §25 deep review + typecheck expansion verification
 #[path = "v0/stage10/plan/stage10_8_tests.rs"]
 mod stage10_8_tests;
+
+// Stage 11.1: typecheck expansion verification
+#[path = "v0/stage11/plan/stage11_1_tests.rs"]
+mod stage11_1_tests;

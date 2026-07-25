@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: mismatched struct field type
+// EXPECTED: compile_error
+// ERROR_PATTERN: type
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct S { x: i32 } fn main() { let s = S { x: true }; }

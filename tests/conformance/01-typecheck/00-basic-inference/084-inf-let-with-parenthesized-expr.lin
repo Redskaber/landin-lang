@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with parenthesized expr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let x = (1 + 2) * (3 + 4); }

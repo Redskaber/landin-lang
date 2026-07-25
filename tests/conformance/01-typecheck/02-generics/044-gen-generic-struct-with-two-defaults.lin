@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic struct with two defaults
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct S<T = i32, U = bool> { x: T, y: U } fn main() { let s = S { x: 1, y: true }; }

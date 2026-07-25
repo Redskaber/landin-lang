@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure with multiple statements
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+fn main() { let f = |x: i32| { let y = x + 1; y * 2 }; }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime in Rc-like pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct Rc<T> { val: T, count: i32 } fn main() { let r = Rc { val: 42, count: 1 }; let x = &r.val; }

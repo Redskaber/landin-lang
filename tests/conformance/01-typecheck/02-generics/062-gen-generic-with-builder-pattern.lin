@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with builder pattern
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct Builder<T> { val: T } impl<T> Builder<T> { fn new(val: T) -> Self { Builder { val } } fn get(&self) -> &T { &self.val } }

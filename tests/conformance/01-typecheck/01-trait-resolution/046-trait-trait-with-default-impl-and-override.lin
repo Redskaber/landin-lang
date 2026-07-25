@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with default impl and override
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait T { fn f(&self) -> i32 { 0 } fn g(&self) -> i32 { 1 } } struct S; impl T for S { fn f(&self) -> i32 { 42 } }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with lifetime and type bound
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait T { fn f(&self) -> i32; } fn g<'a, X: T>(x: &'a X) -> i32 { x.f() }

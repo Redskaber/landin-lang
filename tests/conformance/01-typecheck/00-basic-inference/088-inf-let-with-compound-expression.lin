@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with compound expression
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let a = 1; let b = 2; let c = a + b * 2 - a; }

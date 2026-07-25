@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with struct field access 2
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct S { x: i32, y: i32 } fn main() { let s = S { x: 1, y: 2 }; let z = s.y; }

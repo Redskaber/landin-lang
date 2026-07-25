@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with option-like enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+enum Option<T> { Some(T), None } fn f() -> Option<i32> { Option::Some(42) }

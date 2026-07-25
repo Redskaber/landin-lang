@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with container pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+struct Container<T> { data: [T; 10], len: i32 } impl<T> Container<T> { fn new() -> Self { Container { data: [], len: 0 } } }

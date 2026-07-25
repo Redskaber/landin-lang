@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with tuple index 1
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let t = (10, 20); let x = t.1; }

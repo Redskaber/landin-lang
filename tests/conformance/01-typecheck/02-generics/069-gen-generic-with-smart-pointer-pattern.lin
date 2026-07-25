@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with smart pointer pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+struct Unique<T> { ptr: i32, _marker: T } impl<T> Unique<T> { fn new() -> Self { Unique { ptr: 0, _marker: 0 } } }

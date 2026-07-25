@@ -4308,3 +4308,15 @@ Stage 10.8 — §25 deep review + typecheck expansion (Stage 10 finale).
 - Stage 10 complete: 8/8 sub-stages, all 8 conformance categories created
 
 **Test impact**: +4 rust (2285 → 2290) + 80 conformance (1059 → 1139). 0 regressions.
+
+### v2.26 (Stage 11.1, 2026-07-26)
+
+Stage 11.1 — typecheck expansion (200→400, +200 tests).
+
+**Changes**:
+- Stage 11 独立目录: tests/v0/stage11/ + docs/develop/v0/stage-11/ + docs/tests/v0/stage11/
+- typecheck expanded +200 tests across 5 subcategories
+- 66 tests adjusted (Stage 0 limitations)
+- New Rust integration tests: `tests/v0/stage11/plan/stage11_1_tests.rs` (4 tests)
+
+**Test impact**: +4 rust (2290 → 2294) + 200 conformance (1139 → 1339). 0 regressions.

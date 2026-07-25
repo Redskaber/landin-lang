@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with loop result unit
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let mut i = 0; loop { if i >= 5 { break; } i += 1; } }

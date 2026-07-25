@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with while result unit
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let mut i = 0; while i < 5 { i += 1; } }

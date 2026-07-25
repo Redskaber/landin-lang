@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with lifetime in impl
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct S<'a, T> { x: &'a T } impl<'a, T> S<'a, T> { fn new(x: &'a T) -> Self { S { x } } fn get(&self) -> &'a T { self.x } }

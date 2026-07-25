@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime in Box-like pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct Box<T> { val: T } fn main() { let b = Box { val: 42 }; let r = &b.val; }

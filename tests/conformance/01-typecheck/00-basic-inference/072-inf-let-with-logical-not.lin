@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: let with logical not
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { let x = !true; }

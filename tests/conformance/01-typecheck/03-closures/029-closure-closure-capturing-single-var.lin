@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: closure capturing single var
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+fn main() { let x = 1; let f = || x; }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: assign wrong type to mut var
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+fn main() { let mut x: i32 = 0; x = true; }

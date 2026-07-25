@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime in extern fn
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+extern "C" { fn f(x: &i32) -> i32; }

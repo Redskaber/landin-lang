@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait generic method
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait T { fn f<U>(&self, x: U) -> i32; }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: lifetime in struct with two fields
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct S<'a, 'b> { x: &'a i32, y: &'b i32 } fn main() { let a = 1; let b = 2; let s = S { x: &a, y: &b }; }

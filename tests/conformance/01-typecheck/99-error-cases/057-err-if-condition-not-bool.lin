@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: if condition not bool
+// EXPECTED: compile_error
+// ERROR_PATTERN: type
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn main() { if 42 { 1 } }

@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: undefined enum variant
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+enum E { A } fn main() { let e = E::B; }

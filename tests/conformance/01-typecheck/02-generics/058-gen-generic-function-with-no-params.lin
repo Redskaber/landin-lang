@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic function with no params
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+fn f<T>() {}

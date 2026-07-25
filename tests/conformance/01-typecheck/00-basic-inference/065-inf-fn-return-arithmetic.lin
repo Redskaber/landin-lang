@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: fn return arithmetic
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+fn f(a: i32, b: i32) -> i32 { a * b + 1 }

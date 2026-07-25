@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic impl for multiple types
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait T { fn f(&self) -> i32; } struct A; struct B; impl T for A { fn f(&self) -> i32 { 1 } } impl T for B { fn f(&self) -> i32 { 2 } }

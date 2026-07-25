@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait extending two traits
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion
+
+trait A { fn a(&self); } trait B { fn b(&self); } trait C: A + B { fn c(&self); }

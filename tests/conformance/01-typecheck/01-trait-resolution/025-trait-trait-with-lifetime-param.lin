@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: trait with lifetime param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+
+trait T<'a> { fn f(&self, x: &'a i32); } struct S; impl<'a> T<'a> for S { fn f(&self, x: &'a i32) {} }

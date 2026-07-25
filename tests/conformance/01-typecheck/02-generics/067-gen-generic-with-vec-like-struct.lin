@@ -1,0 +1,6 @@
+// CATEGORY: typecheck
+// DESCRIPTION: generic with vec-like struct
+// EXPECTED: compile_error
+// SOURCE: Stage 11.1 typecheck expansion
+
+struct Vec<T> { data: [T; 0], len: i32 } impl<T> Vec<T> { fn new() -> Self { Vec { data: [], len: 0 } } fn push(&mut self, v: T) { self.len += 1; } }
