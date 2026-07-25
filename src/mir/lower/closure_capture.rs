@@ -145,6 +145,13 @@ pub(crate) fn collect_captured_locals(
         HirExprKind::Unsafe(b) => {
             collect_block_captured(cx, b, param_hir_ids, captured, seen);
         }
+        // Stage 8.5: async/await — collect captures from inner expressions
+        HirExprKind::Await { expr } => {
+            collect_captured_locals(cx, expr, param_hir_ids, captured, seen);
+        }
+        HirExprKind::Async { block } => {
+            collect_block_captured(cx, block, param_hir_ids, captured, seen);
+        }
     }
 }
 

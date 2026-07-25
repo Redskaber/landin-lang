@@ -1143,6 +1143,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         // Unsafe block: just lower inner block (unsafety is a typeck concern)
         HirExprKind::Unsafe(block) => control_flow::lower_block(cx, block),
 
+        // Stage 8.5: async/await — MVP: evaluate synchronously
+        HirExprKind::Await { expr } => lower_expr_to_operand(cx, expr),
+        HirExprKind::Async { block } => control_flow::lower_block(cx, block),
+
         // MethodCall: `receiver.method(args)` → simplified to Call
         HirExprKind::MethodCall {
             receiver,

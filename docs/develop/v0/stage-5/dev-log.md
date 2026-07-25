@@ -3811,3 +3811,27 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 
 **Test impact**: +9 unit + 7 integration = 2083 total. 0 regressions.
 **Next**: Stage 8.5 — async/await foundation (§10) or §25.8 design writeback.
+
+### Stage 8.5 — async/await foundation (§10) (v0.15.4)
+
+**§13.4**: Read 12-roadmap.md §4.1 (async fn + Future + async/await).
+
+**Work completed**:
+- AST: `Expr::Await { expr, span }` + `Expr::Async { block, span }` (src/ast/kinds.rs)
+- HIR: `HirExprKind::Await { expr }` + `HirExprKind::Async { block }` (src/hir/kinds.rs)
+- Parser: `KwAsync` → `Expr::Async`, `KwAwait` → `Expr::Await` (src/parser/expr.rs)
+- HIR lowering: async/await → synchronous evaluation (src/hir/lower/body.rs)
+- MIR lowering: async/await → synchronous evaluation (src/mir/lower/expr_operand.rs)
+- Resolve: async/await path resolution (src/resolve/path_resolve.rs)
+- Closure capture: async/await capture collection (src/mir/lower/closure_capture.rs)
+- `src/ast/async_marker.rs` — AsyncMarker + is_async_keyword/is_await_keyword helpers
+- 3 unit tests + 5 integration tests
+- Cargo.toml: version 0.15.3 → 0.15.4
+
+**MVP behavior**: async/await evaluates synchronously (no real async runtime).
+Future: state machine transform for true async execution.
+
+**Test impact**: +3 unit + 5 integration = 2091 total. 0 regressions.
+
+**🎉 v0.2 路线图全部 5 项完成！**
+**Next**: §25.8 design writeback for Stage 8 + §25 deep review.

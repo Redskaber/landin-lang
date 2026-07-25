@@ -3670,3 +3670,22 @@ Stage 8.4 — Drop elaboration (§5). Per v3.21 §13.4
 9 unit tests + 7 integration tests. 0 regressions.
 
 **Milestone**: v2.00 — API naming standard reaches v2.00 with drop elaboration.
+
+### v2.01 (Stage 8.5, 2026-07-25)
+
+Stage 8.5 — async/await foundation (§10). Per v3.21 §13.4.
+
+**New symbols**:
+
+| Type | Pattern | Scope |
+|------|---------|-------|
+| `Expr::Await { expr, span }` (AST variant) | `<noun>` | pub |
+| `Expr::Async { block, span }` (AST variant) | `<noun>` | pub |
+| `HirExprKind::Await { expr }` (HIR variant) | `<noun>` | pub |
+| `HirExprKind::Async { block }` (HIR variant) | `<noun>` | pub |
+| `AsyncMarker` (struct) | `<noun>_<noun>` | pub(crate) |
+
+**Changes**: new AST variants + HIR variants + parser support + MIR/resolve/closure_capture integration.
+3 unit tests + 5 integration tests. 0 regressions.
+
+**v0.2 roadmap COMPLETE**: all 5 items done (lifetime elision + object safety + extern C + drop elaboration + async/await).

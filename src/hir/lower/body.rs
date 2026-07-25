@@ -78,6 +78,8 @@ fn expr_span(expr: &ast::Expr) -> Span {
         MacroCall { span, .. } => *span,
         Unsafe(_, s) => *s,
         Unit(s) => *s,
+        Await { span, .. } => *span,
+        Async { span, .. } => *span,
     }
 }
 
@@ -273,6 +275,19 @@ pub fn lower_expr(cx: &mut HirLowerCtxt, expr: &Expr) -> HirExpr {
         },
         Expr::Unsafe(block, _) => HirExprKind::Unsafe(lower_block(cx, block)),
         Expr::Unit(_) => HirExprKind::Unit,
+        // Stage 8.5: async/await — MVP: evaluate synchronously (no real async runtime)
+        Expr::Await { expr, .. } => {
+            // MVP: `await expr` → just evaluate `expr` (no suspension)
+            let inner = lower_expr(cx, expr);
+            HirExprKind::Await {
+                expr: Box::new(inner),
+            }
+        }
+        Expr::Async { block, .. } => {
+            // MVP: `async { block }` → evaluate block synchronously
+            let hir_block = lower_block(cx, block);
+            HirExprKind::Async { block: hir_block }
+        }
     };
     HirExpr { hir_id, kind, span }
 }

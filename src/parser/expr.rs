@@ -664,6 +664,23 @@ impl<'a> Parser<'a> {
                 let block = self.parse_block();
                 Expr::Unsafe(block, span)
             }
+            // Stage 8.5: `async { block }` — async block expression.
+            TokenKind::KwAsync => {
+                self.bump();
+                let block = self.parse_block();
+                Expr::Async { block, span }
+            }
+            // Stage 8.5: `await expr` — await expression.
+            // Note: in Rust, `await` is a postfix `.await`, but Landin MVP
+            // supports `await expr` as a prefix form for simplicity.
+            TokenKind::KwAwait => {
+                self.bump();
+                let inner = self.parse_unary_expr();
+                Expr::Await {
+                    expr: Box::new(inner),
+                    span,
+                }
+            }
             // Block expression: `{ stmts; trailing_expr }`.
             // We do allow this in expression position now (Round 2e fix);
             // the `no_struct_literal` flag handles the if/while/for/match
@@ -979,6 +996,8 @@ impl<'a> Parser<'a> {
                 | TokenKind::KwCrate
                 | TokenKind::KwSuper
                 | TokenKind::KwMove // for `move ||` closure
+                | TokenKind::KwAsync // Stage 8.5: `async { block }`
+                | TokenKind::KwAwait // Stage 8.5: `await expr`
         )
     }
 }
@@ -1021,6 +1040,8 @@ impl ExprSpan for Expr {
             Expr::MacroCall { span, .. } => *span,
             Expr::Unsafe(_, s) => *s,
             Expr::Unit(s) => *s,
+            Expr::Await { span, .. } => *span,
+            Expr::Async { span, .. } => *span,
         }
     }
 }

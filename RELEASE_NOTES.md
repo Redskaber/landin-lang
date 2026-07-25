@@ -1,9 +1,59 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.15.3
+**Current version**: v0.15.4
 **Date**: 2026-07-25
-**Test count**: 2083 tests + 5 benchmarks
+**Test count**: 2091 tests + 5 benchmarks
+
+---
+
+## v0.15.4 — Stage 8.5 (async/await foundation — §10)
+
+### Overview
+
+Implements **async/await foundation** (§10) — AST/HIR/parser/MIR/resolve support
+for `async { block }` and `await expr`. MVP evaluates synchronously (no real
+async runtime). Future: state machine transform for true async execution.
+
+**🎉 v0.2 路线图全部 5 项完成！**
+
+### New AST/HIR variants
+
+| Variant | Syntax | MVP behavior |
+|---------|--------|-------------|
+| `Expr::Await { expr, span }` | `await expr` | Synchronous evaluation |
+| `Expr::Async { block, span }` | `async { block }` | Synchronous block execution |
+| `HirExprKind::Await { expr }` | (HIR) | Synchronous |
+| `HirExprKind::Async { block }` | (HIR) | Synchronous |
+
+### Pipeline integration
+
+- **Parser**: `KwAsync`/`KwAwait` branches in `parse_primary_expr`
+- **HIR lowering**: async → `lower_block`, await → `lower_expr`
+- **MIR lowering**: async → `lower_block`, await → `lower_expr_to_operand`
+- **Resolve**: async → `resolve_block`, await → `resolve_expr`
+- **Closure capture**: async/await capture collection
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2091 passed (146 unit + 1945 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### v0.2 roadmap — COMPLETE
+
+| Priority | Action | Status |
+|----------|--------|--------|
+| P1 | Lifetime elision (§3.2) | ✅ Stage 8.1 |
+| P2 | Object safety (§2.3) | ✅ Stage 8.2 |
+| P2 | extern "C" ABI (§13.2) | ✅ Stage 8.3 |
+| P2 | Drop elaboration (§5) | ✅ Stage 8.4 |
+| P3 | async/await (§10) | ✅ Stage 8.5 |
+
+**🎉 All 5 v0.2 features complete!**
 
 ---
 

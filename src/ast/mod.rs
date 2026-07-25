@@ -4,6 +4,10 @@
 
 pub mod kinds;
 
+// Stage 8.5: async/await marker.
+#[allow(dead_code)]
+mod async_marker;
+
 // Stage 3.63 (cross-stage naming standardization): explicit list instead of
 // `pub use kinds::*;` to prevent accidental leakage of internal types.
 // Matches the same pattern already established in src/hir/mod.rs and

@@ -512,6 +512,20 @@ pub enum Expr {
     },
     Unsafe(Block, Span),
     Unit(Span),
+    /// Stage 8.5: `await expr` — async await expression.
+    /// Per §10: `await` suspends the async function until the future completes.
+    /// In MVP, this is a no-op (evaluates the expression immediately).
+    Await {
+        expr: Box<Expr>,
+        span: Span,
+    },
+    /// Stage 8.5: `async { block }` — async block expression.
+    /// Per §10: creates an anonymous future.
+    /// In MVP, this evaluates the block synchronously.
+    Async {
+        block: Block,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

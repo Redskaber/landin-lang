@@ -790,6 +790,14 @@ pub enum HirExprKind {
     },
     Unsafe(HirBlock),
     Unit,
+    /// Stage 8.5: `await expr` — async await expression.
+    Await {
+        expr: Box<HirExpr>,
+    },
+    /// Stage 8.5: `async { block }` — async block.
+    Async {
+        block: HirBlock,
+    },
 }
 
 #[derive(Debug, Clone)]

@@ -403,3 +403,7 @@ mod extern_c_abi_tests;
 // Stage 8.4: Drop elaboration tests
 #[path = "v0/stage8/plan/drop_elaboration_tests.rs"]
 mod drop_elaboration_tests;
+
+// Stage 8.5: async/await tests
+#[path = "v0/stage8/plan/async_await_tests.rs"]
+mod async_await_tests;
