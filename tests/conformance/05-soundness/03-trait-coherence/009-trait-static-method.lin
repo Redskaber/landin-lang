@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait with static method
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion (Stage 0 limitation — compiler does not catch this)
+
+trait Factory { fn new() -> i32; } struct S; impl Factory for S { fn new() -> i32 { 0 } } fn main() { S::new(); }

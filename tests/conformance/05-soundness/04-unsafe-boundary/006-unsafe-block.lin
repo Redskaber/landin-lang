@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: unsafe block
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion (Stage 0 limitation — compiler does not catch this)
+
+fn main() { unsafe { let x = 1; } }

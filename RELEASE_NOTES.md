@@ -1,9 +1,9 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.17.6
+**Current version**: v0.17.7
 **Date**: 2026-07-26
-**Test count**: 2273 tests + 5 benchmarks + 909 conformance tests
+**Test count**: 2275 tests + 5 benchmarks + 959 conformance tests
 
 ---
 

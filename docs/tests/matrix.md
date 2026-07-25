@@ -18,7 +18,7 @@
 | Stage 7 (region inference + user-defined trait dyn) | 154 (+28 unit) | ~98% | ✅ Complete (9 sub-stages) |
 | Stage 8 (v0.2 features + docs standardization) | 38 (+9 unit) | ~98% | ✅ Complete (7 sub-stages) |
 | Stage 9 (v0.1 conformance suite expansion) | +134 rust + +592 conformance | ~100% | ✅ Complete (12/12 sub-stages, 600/600 conformance — v0.1 RC!) |
-| **Total** | **2273** rust + **909** conformance | ~100% | ✅ Stage 0-10.4 complete — 04-e2e conformance (909/5000 = 18.2%) |
+| **Total** | **2275** rust + **959** conformance | ~100% | ✅ Stage 0-10.5 complete — 05-soundness conformance (959/5000 = 19.2%) |
 
 ## Stage 3 Test Breakdown
 

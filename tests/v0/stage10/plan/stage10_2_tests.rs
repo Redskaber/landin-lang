@@ -50,10 +50,10 @@ fn test_stage10_2_subcategories_present() {
 fn test_stage10_2_docs_created() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     assert!(manifest
-        .join("docs/develop/v0/stage-9/plan-10.2.md")
+        .join("docs/develop/v0/stage-10/plan-10.2.md")
         .exists());
     assert!(manifest
-        .join("docs/develop/v0/stage-9/gate-review-10.2.md")
+        .join("docs/develop/v0/stage-10/gate-review-10.2.md")
         .exists());
 }
 

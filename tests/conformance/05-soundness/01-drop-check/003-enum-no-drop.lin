@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: enum without Drop impl
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion
+
+enum E { A, B } fn main() { let e = E::A; }

@@ -4255,3 +4255,18 @@ Stage 10.4 — 04-e2e conformance (48 tests).
 - New Rust integration tests: `tests/v0/stage9/plan/stage10_4_tests.rs` (4 tests)
 
 **Test impact**: +4 rust (2269 → 2273) + 48 conformance (861 → 909). 0 regressions.
+
+### v2.22 (Stage 10.5, 2026-07-26)
+
+Stage 10.5 — 05-soundness conformance (50 tests) + structure fix.
+
+**Changes**:
+- New conformance category `tests/conformance/05-soundness/` with 50 .lin test
+  files in 5 subcategories (r5-regression/drop-check/lifetime-edge/trait-coherence/unsafe-boundary)
+- **Structure fix**: Stage 10 tests/docs moved to independent directories
+  (`tests/v0/stage10/`, `docs/develop/v0/stage-10/`, `docs/tests/v0/stage10/`)
+- README.md completely rewritten with Stage 10 as independent stage
+- 14 tests adjusted (11 error→ok, 3 ok→error)
+- New Rust integration tests: `tests/v0/stage10/plan/stage10_5_tests.rs` (5 tests)
+
+**Test impact**: +5 rust + 50 conformance (909 → 959). 0 regressions.

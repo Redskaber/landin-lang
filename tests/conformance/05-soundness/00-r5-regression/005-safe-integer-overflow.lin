@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: integer overflow produces panic check
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion
+
+fn main() { let x: i32 = 2147483647; let y = x + 1; }

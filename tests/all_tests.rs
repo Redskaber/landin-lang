@@ -469,21 +469,25 @@ mod stage9_12_deep_review_v01_rc_tests;
 mod v0_1_gap_analysis_tests;
 
 // Stage 10.0: CLI upgrade + Runner upgrade verification
-#[path = "v0/stage9/plan/stage10_0_tests.rs"]
+#[path = "v0/stage10/plan/stage10_0_tests.rs"]
 mod stage10_0_tests;
 
 // Stage 10.1: 01-typecheck conformance verification
-#[path = "v0/stage9/plan/stage10_1_tests.rs"]
+#[path = "v0/stage10/plan/stage10_1_tests.rs"]
 mod stage10_1_tests;
 
 // Stage 10.2: 02-borrowck conformance verification
-#[path = "v0/stage9/plan/stage10_2_tests.rs"]
+#[path = "v0/stage10/plan/stage10_2_tests.rs"]
 mod stage10_2_tests;
 
 // Stage 10.3: 03-codegen conformance verification
-#[path = "v0/stage9/plan/stage10_3_tests.rs"]
+#[path = "v0/stage10/plan/stage10_3_tests.rs"]
 mod stage10_3_tests;
 
 // Stage 10.4: 04-e2e conformance verification
-#[path = "v0/stage9/plan/stage10_4_tests.rs"]
+#[path = "v0/stage10/plan/stage10_4_tests.rs"]
 mod stage10_4_tests;
+
+// Stage 10.5: 05-soundness conformance verification
+#[path = "v0/stage10/plan/stage10_5_tests.rs"]
+mod stage10_5_tests;

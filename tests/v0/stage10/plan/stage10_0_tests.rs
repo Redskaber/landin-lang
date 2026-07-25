@@ -97,8 +97,8 @@ fn test_stage10_0_runner_backward_compatible() {
 #[test]
 fn test_stage10_0_docs_created() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let plan = manifest.join("docs/develop/v0/stage-9/plan-10.0.md");
-    let gate = manifest.join("docs/develop/v0/stage-9/gate-review-10.0.md");
+    let plan = manifest.join("docs/develop/v0/stage-10/plan-10.0.md");
+    let gate = manifest.join("docs/develop/v0/stage-10/gate-review-10.0.md");
 
     assert!(plan.exists(), "plan-10.0.md must exist");
     assert!(gate.exists(), "gate-review-10.0.md must exist");

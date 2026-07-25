@@ -72,10 +72,10 @@ fn test_stage10_1_runner_auto_mode() {
 fn test_stage10_1_docs_created() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     assert!(manifest
-        .join("docs/develop/v0/stage-9/plan-10.1.md")
+        .join("docs/develop/v0/stage-10/plan-10.1.md")
         .exists());
     assert!(manifest
-        .join("docs/develop/v0/stage-9/gate-review-10.1.md")
+        .join("docs/develop/v0/stage-10/gate-review-10.1.md")
         .exists());
 }
 

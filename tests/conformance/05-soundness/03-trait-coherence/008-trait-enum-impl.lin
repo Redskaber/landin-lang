@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait impl for enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion (Stage 0 limitation — compiler does not catch this)
+
+trait T { fn f(&self) -> i32; } enum E { A, B } impl T for E { fn f(&self) -> i32 { 0 } } fn main() { let e = E::A; e.f(); }

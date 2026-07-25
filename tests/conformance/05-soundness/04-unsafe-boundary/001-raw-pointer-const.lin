@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: raw const pointer type
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion
+
+fn main() { let x: *const i32 = 0 as *const i32; }

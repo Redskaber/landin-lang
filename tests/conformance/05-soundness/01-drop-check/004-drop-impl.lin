@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: struct with Drop impl compiles
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion
+
+trait Drop { fn drop(&mut self); } struct S { x: i32 } impl Drop for S { fn drop(&mut self) {} }

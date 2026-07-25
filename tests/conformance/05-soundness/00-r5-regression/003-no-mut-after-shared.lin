@@ -1,0 +1,7 @@
+// CATEGORY: soundness
+// DESCRIPTION: mut borrow while shared active
+// EXPECTED: compile_error
+// ERROR_PATTERN: borrow
+// SOURCE: Stage 10.5 conformance expansion
+
+fn main() { let mut x = 1; let r = &x; let r2 = &mut x; }

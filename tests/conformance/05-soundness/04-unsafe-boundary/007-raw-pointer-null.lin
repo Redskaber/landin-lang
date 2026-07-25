@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: null raw pointer
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion
+
+fn main() { let p: *const i32 = 0 as *const i32; }

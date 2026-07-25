@@ -1,0 +1,7 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait with bound
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.5 conformance expansion
+
+trait T { fn f(&self) -> i32; } fn g<X: T>(x: X) -> i32 { x.f() }

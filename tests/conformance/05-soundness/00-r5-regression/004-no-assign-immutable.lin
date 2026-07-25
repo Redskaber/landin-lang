@@ -1,0 +1,7 @@
+// CATEGORY: soundness
+// DESCRIPTION: assign to immutable variable
+// EXPECTED: compile_error
+// ERROR_PATTERN: immutable
+// SOURCE: Stage 10.5 conformance expansion
+
+fn main() { let x = 0; x = 1; }

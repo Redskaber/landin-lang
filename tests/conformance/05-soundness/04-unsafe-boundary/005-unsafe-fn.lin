@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: unsafe function definition
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion
+
+unsafe fn f() {}

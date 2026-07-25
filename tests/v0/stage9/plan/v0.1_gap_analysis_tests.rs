@@ -17,7 +17,7 @@ fn test_v01_gap_only_parse_category_exists() {
     assert!(parse_dir.exists(), "00-parse/ must exist");
 
     // 6 categories still missing per §5.1 (01-typecheck created in Stage 10.1)
-    let missing_categories = ["05-soundness", "06-stdlib", "07-integration"];
+    let missing_categories = ["06-stdlib", "07-integration"];
 
     for cat in &missing_categories {
         let path = conf_dir.join(cat);
@@ -98,7 +98,7 @@ fn test_v01_gap_cli_no_compile_option() {
 #[test]
 fn test_v01_gap_analysis_doc_exists() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let gap_doc = manifest.join("docs/develop/v0/stage-9/v0.1-gap-analysis.md");
+    let gap_doc = manifest.join("docs/develop/v0/stage-10/v0.1-gap-analysis.md");
     assert!(gap_doc.exists(), "v0.1-gap-analysis.md must exist");
 
     let content = std::fs::read_to_string(&gap_doc).expect("read gap analysis");
@@ -116,7 +116,7 @@ fn test_v01_gap_analysis_doc_exists() {
 #[test]
 fn test_v01_gap_stage10_plan_exists() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let plan = manifest.join("docs/develop/v0/stage-9/plan-stage10.md");
+    let plan = manifest.join("docs/develop/v0/stage-10/plan-stage10.md");
     assert!(plan.exists(), "plan-stage10.md must exist");
 
     let content = std::fs::read_to_string(&plan).expect("read Stage 10 plan");
@@ -130,7 +130,7 @@ fn test_v01_gap_stage10_plan_exists() {
 #[test]
 fn test_v01_gap_gate_review_exists() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let gate = manifest.join("docs/develop/v0/stage-9/gate-review-v0.1-gap.md");
+    let gate = manifest.join("docs/develop/v0/stage-10/gate-review-v0.1-gap.md");
     assert!(gate.exists(), "gate-review-v0.1-gap.md must exist");
 }
 
@@ -168,7 +168,7 @@ fn test_v01_gap_roadmap_defines_5000_requirement() {
 #[test]
 fn test_v01_gap_reclassified_as_parse_milestone() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let gate = manifest.join("docs/develop/v0/stage-9/gate-review-v0.1-gap.md");
+    let gate = manifest.join("docs/develop/v0/stage-10/gate-review-v0.1-gap.md");
     let content = std::fs::read_to_string(&gate).expect("read gate review");
 
     assert!(

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: raw mut pointer type
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion
+
+fn main() { let x: *mut i32 = 0 as *mut i32; }
