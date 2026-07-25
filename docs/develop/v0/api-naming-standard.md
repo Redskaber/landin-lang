@@ -3027,3 +3027,62 @@ responsibility principle.
 **Test impact**: 0 (behavior-equivalent).
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.79 (Stage 6.10, 2026-07-25)
+
+Stage 6.10 mir/lower expr_operand architectural split round, triggered by
+user's explicit request: "重新分析 mir/lower" + "文件的拆分不是说只为了
+缩小体积，还有需要符合架构设计需求、科学合理划分、其实本质上就只
+组织结构的设计".
+
+This round performs an **architectural re-analysis** of `mir/lower/mod.rs`
+(1980 LOC) and identifies 4 responsibility domains:
+
+| Domain | LOC | Responsibility |
+|--------|-----|----------------|
+| A: Context infrastructure | 432 | MirLowerCtxt struct + impl |
+| B: Body entry points | 230 | lower_hir_body_to_mir* + aliases |
+| C: HIR→MIR type conversion | 89 | const_eval_array_len + lower_hir_ty_to_mir_ty |
+| **D: Expression lowering algorithm** | **1212** | lower_expr_to_operand + 3 helpers |
+
+Domain D (61.4% of mod.rs) is the largest mixed responsibility. It contains
+4 functions that together form the "HIR expression → MIR operand/terminator"
+algorithm and interact with MirLowerCtxt only through its public API.
+
+**New public symbols**: None (pure architectural reorganization).
+
+**Changes**:
+- Created `src/mir/lower/expr_operand.rs` (1275 LOC) hosting 4 functions:
+  - `pub fn build_dyn_trait_call_terminator` (public API, re-exported)
+  - `pub(crate) fn lower_expr_to_operand` (used by mod.rs + sibling modules)
+  - `pub(crate) fn lower_expr_to_place` (used only within expr_operand)
+  - `pub(crate) fn resolve_enum_variant` (used by adt_layout/control_flow)
+- Updated `mod.rs` re-exports:
+  ```rust
+  pub use expr_operand::build_dyn_trait_call_terminator;
+  pub(crate) use expr_operand::{lower_expr_to_operand, resolve_enum_variant};
+  ```
+- Removed unused imports from mod.rs (`DynTraitMethodCall`,
+  `find_dyn_trait_method_call_in_plan_by_method`)
+- Zero call-site changes for sibling modules (control_flow.rs,
+  pattern_bindings.rs continue using `super::lower_expr_to_operand` etc.)
+
+**Architectural rationale**: Single responsibility principle.
+- mod.rs = MirLowerCtxt context + body entry points + type conversion
+  utilities (skeleton)
+- expr_operand.rs = HIR expression → MIR operand/terminator algorithm
+  (algorithm core)
+
+Data flow is unidirectional:
+mod.rs → expr_operand → MirLowerCtxt → {adt_layout, closure_capture,
+control_flow, field_resolution, overflow_assert, pattern_bindings}.
+No circular dependency.
+
+**Module naming**: `expr_operand` follows the `<noun>_<noun>` pattern set
+by sibling modules (`adt_layout`, `closure_capture`, `pattern_bindings`).
+
+**Test impact**: 0 (behavior-equivalent).
+**Clippy impact**: 0 (0 warnings).
+**Fmt impact**: clean.
+
+**TD-011 cumulative**: mod.rs 3346 → 772 LOC (-76.9% across 7 splits).

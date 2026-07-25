@@ -6,12 +6,12 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.12.8 — Stage 0-5 complete, Stage 6 in progress.
+> **Status:** v0.12.9 — Stage 0-5 complete, Stage 6 in progress.
 > **1881 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 110 test modules!
 > Process v3.20 (§0-§28). §16 interface isolation compliant.
-> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (6 modules) + codegen (5 modules) + stdlib (3 modules).
-> 🎉 Architecture: all mod.rs files < 2000 LOC. Single responsibility per module. Data flows单向.
-> Next: Stage 6.10+ — Region inference (TD-015), user-defined trait dyn (TD-018).
+> Stage 5 complete (99 sub-stages). Stage 6: architectural splits — mir/lower (7 modules, mod.rs -76.9%) + codegen (5 modules) + stdlib (3 modules).
+> 🎉 Architecture: all mod.rs files < 1300 LOC. Single responsibility per module. Data flows单向.
+> Next: Stage 6.11+ — hir_ty.rs split, expr_operand by-category split, Region inference (TD-015), user-defined trait dyn (TD-018).
 
 ## Quick start
 

@@ -3127,3 +3127,57 @@ Data flows单向: types → trait_methods → vtable_layout. No circular depende
 
 **Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+### Stage 6.10 — mir/lower expr_operand architectural split (v0.12.9)
+
+**Priority**: User explicit request — "重新分析 mir/lower" + "文件的拆分不是
+说只为了缩小体积，还有需要符合架构设计需求、科学合理划分、其实本质上
+就只组织结构的设计". Perform architectural re-analysis of mir/lower/mod.rs
+(1980 LOC) and extract the expression lowering algorithm into a dedicated module.
+
+**Architectural re-analysis** (plan-6.10.md §2):
+Identified 4 responsibility domains in mod.rs:
+| Domain | LOC | Responsibility |
+|--------|-----|----------------|
+| A: Context infrastructure | 432 | MirLowerCtxt struct + impl |
+| B: Body entry points | 230 | lower_hir_body_to_mir* + aliases |
+| C: HIR→MIR type conversion | 89 | const_eval_array_len + lower_hir_ty_to_mir_ty |
+| D: Expression lowering algorithm | 1212 | lower_expr_to_operand + 3 helpers |
+
+Domain D (61.4% of mod.rs) is the largest mixed responsibility. 4 functions
+form a complete "HIR expression → MIR operand/terminator" algorithm with
+low coupling to context infrastructure (only &mut MirLowerCtxt public API).
+
+**Work completed**:
+- Created src/mir/lower/expr_operand.rs (1275 LOC) hosting 4 functions:
+  * pub fn build_dyn_trait_call_terminator (public API, re-exported)
+  * pub(crate) fn lower_expr_to_operand (used by mod.rs + sibling modules)
+  * pub(crate) fn lower_expr_to_place (used only within expr_operand)
+  * pub(crate) fn resolve_enum_variant (used by adt_layout/control_flow)
+- Updated mod.rs re-exports:
+  * pub use expr_operand::build_dyn_trait_call_terminator;
+  * pub(crate) use expr_operand::{lower_expr_to_operand, resolve_enum_variant};
+- Removed unused imports from mod.rs (DynTraitMethodCall,
+  find_dyn_trait_method_call_in_plan_by_method)
+- Zero call-site changes for sibling modules (control_flow.rs,
+  pattern_bindings.rs continue using super::lower_expr_to_operand etc.)
+- Cargo.toml: version 0.12.8 → 0.12.9
+
+**Architectural rationale**: Single responsibility principle.
+- mod.rs = MirLowerCtxt context + body entry points + type conversion
+  utilities (skeleton, 772 LOC)
+- expr_operand.rs = HIR expression → MIR operand/terminator algorithm
+  (algorithm core, 1275 LOC)
+
+Data flow is unidirectional:
+mod.rs → expr_operand → MirLowerCtxt → {adt_layout, closure_capture,
+control_flow, field_resolution, overflow_assert, pattern_bindings}.
+No circular dependency.
+
+**Test impact**: 0 (behavior-equivalent, all 1881 tests pass unchanged)
+**Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
+
+**TD-011 cumulative**: mod.rs 3346 → 772 LOC (-76.9% across 7 splits).
+Mod.rs transformed from giant mixed file to skeleton + entry points.
+New candidate TD-019: expr_operand.rs 1275 LOC, future Stage 6.12+ can
+split by expression category (primary/ops/aggregate/control/call/misc).

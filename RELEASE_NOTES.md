@@ -1,9 +1,139 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.12.8
-**Date**: 2026-07-24
+**Current version**: v0.12.9
+**Date**: 2026-07-25
 **Test count**: 1881 tests + 5 benchmarks
+
+---
+
+## v0.12.9 — Stage 6.10 (mir/lower expr_operand architectural split — TD-011 step 7)
+
+### Overview
+
+**Architectural re-analysis + split** of `mir/lower/mod.rs` (1980 LOC) — extract
+the expression lowering algorithm into `mir/lower/expr_operand.rs` (1275 LOC).
+Triggered by user's explicit request: "重新分析 mir/lower" + "文件的拆分不是说
+只为了缩小体积，还有需要符合架构设计需求、科学合理划分、其实本质上就只
+组织结构的设计".
+
+This round performs an **architectural re-analysis** of `mir/lower/mod.rs`,
+identifies 4 responsibility domains, and separates the largest mixed
+responsibility (domain D: expression lowering algorithm, 61.4% of mod.rs)
+into its own dedicated module.
+
+### Architectural re-analysis (plan-6.10.md §2)
+
+`mir/lower/mod.rs` (1980 LOC) was analyzed into 4 responsibility domains:
+
+| Domain | LOC | Responsibility |
+|--------|-----|----------------|
+| A: Context infrastructure | 432 | MirLowerCtxt struct + impl (new/terminate/push_assign/lit_to_const/...) |
+| B: Body entry points | 230 | 4 lower_hir_body_to_mir* + 2 lower_body* aliases |
+| C: HIR→MIR type conversion | 89 | const_eval_array_len + lower_hir_ty_to_mir_ty |
+| **D: Expression lowering algorithm** | **1212** | lower_expr_to_operand + 3 helpers |
+
+Domain D is the largest mixed responsibility. It contains 4 functions that
+together form the "HIR expression → MIR operand/terminator" algorithm and
+interact with MirLowerCtxt only through its public API (high cohesion, low
+coupling — textbook separation boundary).
+
+### New module structure
+
+```
+src/mir/lower/
+  mod.rs           (1980 → 772 LOC, -61.0%)  ← Context + entry points + type conversion
+  expr_operand.rs  (新, 1275 LOC)            ← Expression lowering algorithm
+  adt_layout.rs    (147 LOC, Stage 6.1)
+  closure_capture.rs (175 LOC, Stage 6.2)
+  pattern_bindings.rs (286 LOC, Stage 6.3)
+  overflow_assert.rs (94 LOC, Stage 6.4)
+  field_resolution.rs (167 LOC, Stage 6.5)
+  control_flow.rs  (462 LOC, Stage 6.6)
+```
+
+### Extracted functions (4)
+
+| Function | Visibility | LOC | Notes |
+|----------|-----------|-----|-------|
+| `lower_expr_to_place` | `pub(crate)` | 95 | 4 internal call sites only |
+| `build_dyn_trait_call_terminator` | `pub` | 35 | Public API, re-exported via mir/mod.rs |
+| `lower_expr_to_operand` | `pub(crate)` | 1066 | Giant function, 30+ HirExprKind variants |
+| `resolve_enum_variant` | `pub(crate)` | 14 | Shared by adt_layout/control_flow |
+
+### Re-export strategy (§23 compliance — no glob)
+
+```rust
+// In mod.rs:
+pub use expr_operand::build_dyn_trait_call_terminator;
+pub(crate) use expr_operand::{lower_expr_to_operand, resolve_enum_variant};
+```
+
+- `pub use` preserves the `mir/mod.rs` public re-export chain unchanged
+- `pub(crate) use` lets sibling modules (control_flow.rs, pattern_bindings.rs)
+  continue using `super::lower_expr_to_operand` / `super::resolve_enum_variant`
+  with **zero call-site changes**
+- `lower_expr_to_place` is NOT re-exported (only used inside expr_operand)
+
+### Architectural rationale
+
+Single responsibility principle — each module has one clear purpose:
+
+| Module | Responsibility |
+|--------|----------------|
+| `mod.rs` | MirLowerCtxt context + body entry points + type conversion utilities (skeleton) |
+| `expr_operand.rs` | HIR expression → MIR operand/terminator algorithm (algorithm core) |
+| `adt_layout.rs` | ADT field type extraction (specialized helper) |
+| `closure_capture.rs` | Closure capture analysis (specialized helper) |
+| `control_flow.rs` | Control flow lowering (specialized helper) |
+| `field_resolution.rs` | Field index/type resolution (specialized helper) |
+| `overflow_assert.rs` | Overflow/div-by-zero check emission (specialized helper) |
+| `pattern_bindings.rs` | Pattern variable binding collection (specialized helper) |
+
+Data flow is unidirectional:
+`mod.rs → expr_operand → MirLowerCtxt → {adt_layout, closure_capture, control_flow,
+field_resolution, overflow_assert, pattern_bindings}`. No circular dependency.
+
+### §16 interface isolation
+
+✅ `expr_operand` interacts with `MirLowerCtxt` exclusively through its public API
+✅ Never touches private fields
+✅ No reverse dependency (expr_operand never calls mod.rs private functions)
+
+### TD-011 cumulative progress
+
+| Stage | mod.rs LOC | Δ | Cumulative Δ |
+|-------|-----------|---|--------------|
+| 5.97 (baseline) | 3346 | — | — |
+| 6.1 (adt_layout) | 3199 | -147 | -147 (-4.4%) |
+| 6.2 (closure_capture) | 3035 | -164 | -311 (-9.3%) |
+| 6.3 (pattern_bindings) | 2730 | -305 | -616 (-18.4%) |
+| 6.4 (overflow_assert) | 2656 | -74 | -690 (-20.6%) |
+| 6.5 (field_resolution) | 2452 | -204 | -894 (-26.7%) |
+| 6.6 (control_flow) | 1980 | -472 | -1366 (-40.8%) |
+| **6.10 (expr_operand)** | **772** | **-1208** | **-2574 (-76.9%)** |
+
+🎉 **TD-011 cumulative -76.9%** (3346 → 772 LOC). `mod.rs` transformed from
+giant mixed file to skeleton + entry points. `expr_operand.rs` (1275 LOC) is
+the new algorithm core, candidate for further split in Stage 6.12+ by
+expression category (primary/ops/aggregate/control/call/misc).
+
+### Changes
+
+- Created `src/mir/lower/expr_operand.rs` (1275 LOC) hosting 4 functions
+- `mir/lower/mod.rs`: 1980 → 772 LOC (-1208 LOC, -61.0%)
+- Removed unused imports from mod.rs (`DynTraitMethodCall`,
+  `find_dyn_trait_method_call_in_plan_by_method`)
+- Behavior-equivalent — all 1881 tests pass unchanged
+
+### Verification (§1.2 actual run)
+
+```
+cargo clean: clean (892.7 MiB removed)
+cargo test: 1881 passed, 0 failed, 2 ignored
+cargo fmt --check: clean (exit 0)
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
 
 ---
 
