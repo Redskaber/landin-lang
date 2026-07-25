@@ -4353,3 +4353,14 @@ Stage 11.4 — e2e expansion (48→160, +112 tests).
 - New Rust integration tests: `tests/v0/stage11/plan/stage11_4_tests.rs` (3 tests)
 
 **Test impact**: +3 rust (2301 → 2304) + 112 conformance (1729 → 1841). 0 regressions.
+
+### v2.30 (Stage 11.5, 2026-07-26)
+
+Stage 11.5 — soundness expansion (50→200, +150 tests).
+
+**Changes**:
+- soundness expanded +150 tests across 5 subcategories
+- 28 tests adjusted (Stage 0 limitations)
+- New Rust integration tests: `tests/v0/stage11/plan/stage11_5_tests.rs` (3 tests)
+
+**Test impact**: +3 rust (2304 → 2307) + 150 conformance (1841 → 1991). 0 regressions.

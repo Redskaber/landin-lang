@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: array bool no drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let arr=[true,false];}

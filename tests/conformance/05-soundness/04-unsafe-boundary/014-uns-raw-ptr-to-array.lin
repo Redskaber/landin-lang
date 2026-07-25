@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: raw ptr to array
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let p:*const [i32;3]=0 as *const [i32;3];}

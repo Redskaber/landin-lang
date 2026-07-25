@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: raw ptr as fn param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn f(p:*const i32)->i32{0}

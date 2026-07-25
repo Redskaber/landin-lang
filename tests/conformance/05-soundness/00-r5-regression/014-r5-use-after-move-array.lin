@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: use after move array
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let arr=[1,2,3];let a2=arr;let a3=arr;}

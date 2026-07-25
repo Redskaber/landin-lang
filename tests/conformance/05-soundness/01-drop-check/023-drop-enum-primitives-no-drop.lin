@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: enum primitives no drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+enum E{A,B} fn main(){let e=E::A;}

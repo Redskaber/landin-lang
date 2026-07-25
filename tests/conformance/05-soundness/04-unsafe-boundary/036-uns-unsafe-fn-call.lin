@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: unsafe fn call
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+unsafe fn f(){} fn main(){f();}

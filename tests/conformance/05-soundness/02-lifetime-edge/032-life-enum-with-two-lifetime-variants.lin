@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: enum with two lifetime variants
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+enum E<'a,'b>{A(&'a i32),B(&'b bool)}

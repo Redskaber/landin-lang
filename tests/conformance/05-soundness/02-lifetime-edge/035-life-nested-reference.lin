@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: nested reference
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let x=1;let r=&x;let rr=&r;let _=**rr;}

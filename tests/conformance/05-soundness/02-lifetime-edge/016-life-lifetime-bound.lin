@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: lifetime bound
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn f<'a:'b,'b>(x:&'a i32,y:&'b i32)->&'b i32{x}

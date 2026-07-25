@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: extern C with ptr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+extern "C"{fn f(p:*const i32)->i32;}

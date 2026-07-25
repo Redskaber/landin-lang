@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: raw ptr assignment
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let p:*const i32=0 as *const i32;let q=p;}

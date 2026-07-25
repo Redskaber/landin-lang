@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait with no self
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+trait T{fn f()->i32;} struct S; impl T for S{fn f()->i32{0}}

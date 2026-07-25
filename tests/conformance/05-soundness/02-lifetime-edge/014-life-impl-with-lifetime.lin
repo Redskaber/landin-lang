@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: impl with lifetime
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+struct S<'a>{x:&'a i32} impl<'a> S<'a>{fn get(&self)->&'a i32{self.x}}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: extern C with void
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+extern "C"{fn f();} fn main(){}

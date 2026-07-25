@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: undefined variable
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let x=undefined_var;}

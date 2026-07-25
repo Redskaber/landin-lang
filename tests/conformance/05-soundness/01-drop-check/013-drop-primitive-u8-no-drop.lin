@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: primitive u8 no drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let x:u8=1;}

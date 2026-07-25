@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: mut then shared borrow
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let mut x=1;let r=&mut x;let r2=&x;}

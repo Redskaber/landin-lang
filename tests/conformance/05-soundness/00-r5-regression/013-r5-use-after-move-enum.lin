@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: use after move enum
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+enum E{A(i32)} fn main(){let e=E::A(1);let e2=e;let e3=e;}

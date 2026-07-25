@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: static str in const
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+const C:&'static str="hello";

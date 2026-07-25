@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: fn local drop after return
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn f()->i32{let x=1;x+1}

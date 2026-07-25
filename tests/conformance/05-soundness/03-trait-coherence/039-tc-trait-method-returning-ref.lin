@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait method returning ref
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+trait T{fn f(&self)->&i32;}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait for bool
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+trait T{fn f(&self)->i32;} impl T for bool{fn f(&self)->i32{0}}

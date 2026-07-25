@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: fn with two lifetimes
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn f<'a,'b>(x:&'a i32,y:&'b i32)->&'a i32{x}

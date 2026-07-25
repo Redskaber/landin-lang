@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: two refs fn
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn f(a:&i32,b:&i32)->i32{*a+*b}

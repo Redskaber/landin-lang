@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: raw ptr cast
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let x:i32=42;let p=&x as *const i32;}

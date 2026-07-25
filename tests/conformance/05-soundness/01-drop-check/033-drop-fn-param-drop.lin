@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: fn param drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn f(x:i32){let y=x;}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: raw ptr to struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+struct S{x:i32} fn main(){let p:*const S=0 as *const S;}

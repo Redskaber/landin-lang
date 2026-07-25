@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: extern C fn def with params
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+extern "C" fn f(x:i32)->i32{x}

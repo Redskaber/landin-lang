@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: extern C with struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+struct S{x:i32} extern "C"{fn f(s:S)->i32;}

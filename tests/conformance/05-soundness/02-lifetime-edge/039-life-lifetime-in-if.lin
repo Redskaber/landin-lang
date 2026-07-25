@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: lifetime in if
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let x=1;if *(&x)>0{}}

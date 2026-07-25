@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: while block drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+fn main(){let mut i=0;while i<3{let x=i;i+=1;}}

@@ -1,0 +1,7 @@
+// CATEGORY: soundness
+// DESCRIPTION: extern static
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+extern "C"{static S:i32;}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: match arms type mismatch
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+fn main(){let x=match 1{0=>1,_=>true};}

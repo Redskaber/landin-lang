@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: div by zero
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let x=1;let y=0;let z=x/y;}

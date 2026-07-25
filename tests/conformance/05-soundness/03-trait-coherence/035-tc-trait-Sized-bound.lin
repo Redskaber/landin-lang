@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait Sized bound
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+trait T:Sized{fn f(&self)->i32;}

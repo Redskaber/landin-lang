@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait enum impl
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+trait T{fn f(&self)->i32;} enum E{A,B} impl T for E{fn f(&self)->i32{0}}

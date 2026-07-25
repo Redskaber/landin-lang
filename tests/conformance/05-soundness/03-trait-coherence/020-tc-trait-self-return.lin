@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait self return
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+trait Builder{fn build(&self)->Self;} struct S{x:i32} impl Builder for S{fn build(&self)->Self{S{x:0}}}

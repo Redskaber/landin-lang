@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: primitive f64 no drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let x:f64=1.0;}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait for i32
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+trait T{fn f(&self)->i32;} impl T for i32{fn f(&self)->i32{*self}}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: raw ptr to enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+enum E{A} fn main(){let p:*const E=0 as *const E;}

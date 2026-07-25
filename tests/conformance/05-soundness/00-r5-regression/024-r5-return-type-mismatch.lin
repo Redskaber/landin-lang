@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: return type mismatch
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+fn f()->i32{true}

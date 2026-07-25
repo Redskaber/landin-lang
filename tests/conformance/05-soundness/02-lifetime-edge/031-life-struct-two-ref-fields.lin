@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: struct two ref fields
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+struct S<'a,'b>{x:&'a i32,y:&'b i32}

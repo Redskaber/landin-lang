@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: extra number of args
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+fn f(a:i32){} fn main(){f(1,2);}

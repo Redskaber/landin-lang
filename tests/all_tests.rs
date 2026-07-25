@@ -516,3 +516,6 @@ mod stage11_3_tests;
 // Stage 11.4: e2e expansion verification
 #[path = "v0/stage11/plan/stage11_4_tests.rs"]
 mod stage11_4_tests;
+// Stage 11.5: soundness expansion verification
+#[path = "v0/stage11/plan/stage11_5_tests.rs"]
+mod stage11_5_tests;

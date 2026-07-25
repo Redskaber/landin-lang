@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: fn ptr lifetime
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn f(x:&i32)->i32{*x} fn main(){let fp:fn(&i32)->i32=f;}

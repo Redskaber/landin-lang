@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: integer overflow add
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let x:i32=2147483647;let y=x+1;}

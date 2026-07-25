@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: static ref
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+const C:i32=42; fn main(){let r:&'static i32=&C;}

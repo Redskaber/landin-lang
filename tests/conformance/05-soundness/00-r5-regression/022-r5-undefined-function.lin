@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: undefined function
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){undefined_fn();}

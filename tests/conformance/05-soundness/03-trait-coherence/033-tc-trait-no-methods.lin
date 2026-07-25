@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: trait no methods
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+trait Marker{} struct S; impl Marker for S{}

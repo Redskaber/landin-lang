@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: use after move tuple
+// EXPECTED: compile_error
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let t=(1,2);let t2=t;let t3=t;}

@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: raw mut ptr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion
+
+fn main(){let x:*mut i32=0 as *mut i32;}

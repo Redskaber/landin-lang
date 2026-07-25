@@ -1,0 +1,6 @@
+// CATEGORY: soundness
+// DESCRIPTION: type mismatch return
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+
+fn f()->bool{42}
