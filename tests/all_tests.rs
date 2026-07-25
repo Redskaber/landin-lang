@@ -399,3 +399,7 @@ mod object_safety_tests;
 // Stage 8.3: extern "C" ABI tests
 #[path = "v0/stage8/plan/extern_c_abi_tests.rs"]
 mod extern_c_abi_tests;
+
+// Stage 8.4: Drop elaboration tests
+#[path = "v0/stage8/plan/drop_elaboration_tests.rs"]
+mod drop_elaboration_tests;

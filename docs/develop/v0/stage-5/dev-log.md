@@ -3792,3 +3792,22 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 
 **Test impact**: +5 integration tests (2067 total). 0 regressions.
 **Next**: Stage 8.4 — Drop elaboration (§5).
+
+### Stage 8.4 — Drop elaboration (§5) (v0.15.3)
+
+**§13.4**: Read 04-ownership-borrowing.md §5 (Drop check + Drop 顺序).
+
+**Work completed**:
+- Created `src/borrowck/drop_elaboration.rs` (~250 LOC):
+  * `DropElaborator` — analysis engine
+  * `DropSet` — locals needing drop (reverse order per §5.4)
+  * `needs_drop(ty)` — recursive type check (primitives=false, Adt=check impl Drop)
+  * `compute_drop_set(mir, bb)` — compute drop set for a basic block
+  * `elaborate(mir)` — walk all blocks, find Return blocks with drops
+  * 9 unit tests
+- Added `mod drop_elaboration;` to `src/borrowck/mod.rs`
+- Created `tests/v0/stage8/plan/drop_elaboration_tests.rs` (7 tests)
+- Cargo.toml: version 0.15.2 → 0.15.3
+
+**Test impact**: +9 unit + 7 integration = 2083 total. 0 regressions.
+**Next**: Stage 8.5 — async/await foundation (§10) or §25.8 design writeback.

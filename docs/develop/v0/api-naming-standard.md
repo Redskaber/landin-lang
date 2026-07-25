@@ -3649,3 +3649,24 @@ Stage 8.3 — extern "C" ABI support (§13.2). Per v3.21 §13.4.
 
 **New public symbols**: None (BodyMeta.abi is pub field on existing struct).
 **Test impact**: +5 integration tests (2067 total). 0 regressions.
+
+### v2.00 (Stage 8.4, 2026-07-25)
+
+Stage 8.4 — Drop elaboration (§5). Per v3.21 §13.4
+(aligned with 04-ownership-borrowing.md §5).
+
+**New `pub(crate)` symbols**:
+
+| Type/Function | Pattern |
+|---------------|---------|
+| `DropElaborator` (struct) | `<noun>_<noun>` (-er suffix) |
+| `DropSet` (struct) | `<noun>_<noun>` |
+| `register_drop_impl(def_id)` | `<verb>_<noun>_<noun>` |
+| `needs_drop(ty)` | `<verb>_<noun>` |
+| `compute_drop_set(mir, bb_id)` | `<verb>_<noun>_<noun>` |
+| `elaborate(mir)` | `<verb>` |
+
+**Changes**: new module `src/borrowck/drop_elaboration.rs` (~250 LOC).
+9 unit tests + 7 integration tests. 0 regressions.
+
+**Milestone**: v2.00 — API naming standard reaches v2.00 with drop elaboration.

@@ -28,6 +28,9 @@ pub mod move_tracker;
 
 // Stage 6.14 (TD-024) sub-modules.
 mod copy_semantics;
+// Stage 8.4: Drop elaboration (§5).
+#[allow(dead_code)]
+mod drop_elaboration;
 mod liveness;
 mod place_path;
 // Stage 7.1 (TD-015 step 1): region inference data structures + constraint collection.

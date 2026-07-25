@@ -1,9 +1,54 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.15.2
+**Current version**: v0.15.3
 **Date**: 2026-07-25
-**Test count**: 2067 tests + 5 benchmarks
+**Test count**: 2083 tests + 5 benchmarks
+
+---
+
+## v0.15.3 — Stage 8.4 (Drop elaboration — §5)
+
+### Overview
+
+Implements **drop elaboration** (§5) — analysis engine that identifies where
+`Terminator::Drop` should be inserted for types with `impl Drop`. Drop order
+follows §5.4: reverse declaration order for locals.
+
+### New module: `src/borrowck/drop_elaboration.rs`
+
+| Type/Method | Purpose |
+|-------------|---------|
+| `DropElaborator` | Analysis engine for drop insertion |
+| `DropSet` | Locals needing destruction (reverse order) |
+| `needs_drop(ty)` | Recursive type check (primitives=false, Adt=check impl) |
+| `compute_drop_set(mir, bb)` | Compute drop set for a basic block |
+| `elaborate(mir)` | Walk all blocks, find Return blocks with drops |
+
+### Drop order (§5.4)
+
+1. Local variables: reverse declaration order
+2. Struct fields: reverse declaration order
+3. Match arm bindings: at arm block end
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2083 passed (143 unit + 1940 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### v0.2 roadmap
+
+| Priority | Action | Status |
+|----------|--------|--------|
+| P1 | Lifetime elision (§3.2) | ✅ Stage 8.1 |
+| P2 | Object safety (§2.3) | ✅ Stage 8.2 |
+| P2 | extern "C" ABI (§13.2) | ✅ Stage 8.3 |
+| P2 | Drop elaboration (§5) | ✅ Stage 8.4 |
+| P3 | async/await (§10) | pending |
 
 ---
 
