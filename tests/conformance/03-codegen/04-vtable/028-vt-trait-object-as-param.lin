@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait object as param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion (Stage 0 limitation)
+
+trait T{fn f(&self)->i32;} fn g(t:&dyn T)->i32{t.f()}

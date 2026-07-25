@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: landin abi fn return f64
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f()->f64{3.14}

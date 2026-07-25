@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: fn with bool param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f(b:bool)->i32{if b{1}else{0}}

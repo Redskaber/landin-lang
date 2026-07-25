@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: while with break
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let mut i=0;while i<10{if i==5{break;}i+=1;}}

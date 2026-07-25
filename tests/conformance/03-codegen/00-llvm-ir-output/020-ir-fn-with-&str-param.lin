@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: fn with &str param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f(s:&str)->i32{0}

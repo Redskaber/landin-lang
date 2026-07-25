@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: enum without Drop trait
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum E{A,B} fn main(){let e=E::A;}

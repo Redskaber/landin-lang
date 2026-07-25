@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: nested struct 3 levels
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+struct A{x:i32} struct B{a:A} struct C{b:B}

@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait with supertrait
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+trait Base{fn b(&self);} trait Derived:Base{fn d(&self);}

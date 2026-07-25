@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: fn with mut ref param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f(r:&mut i32){*r=2;}

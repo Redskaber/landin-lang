@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: struct with raw ptr field
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+struct S{p:*const i32}

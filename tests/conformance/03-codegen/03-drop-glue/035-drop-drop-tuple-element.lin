@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: drop tuple element
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let t=(1,2);let x=t.0;}

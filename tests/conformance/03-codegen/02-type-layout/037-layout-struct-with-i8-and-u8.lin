@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: struct with i8 and u8
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+struct S{a:i8,b:u8}

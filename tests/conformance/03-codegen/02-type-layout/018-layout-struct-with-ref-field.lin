@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: struct with ref field
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+struct S<'a>{x:&'a i32}

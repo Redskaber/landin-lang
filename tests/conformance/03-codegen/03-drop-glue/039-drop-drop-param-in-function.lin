@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: drop param in function
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f(x:i32){let y=x;}

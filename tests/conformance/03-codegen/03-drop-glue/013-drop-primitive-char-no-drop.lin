@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: primitive char no drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let x:char='a';}

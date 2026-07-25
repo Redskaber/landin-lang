@@ -510,3 +510,6 @@ mod stage11_1_tests;
 // Stage 11.2: borrowck expansion verification
 #[path = "v0/stage11/plan/stage11_2_tests.rs"]
 mod stage11_2_tests;
+// Stage 11.3: codegen expansion verification
+#[path = "v0/stage11/plan/stage11_3_tests.rs"]
+mod stage11_3_tests;

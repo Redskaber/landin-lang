@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: array of bool no drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let arr:[bool;3]=[true,false,true];}

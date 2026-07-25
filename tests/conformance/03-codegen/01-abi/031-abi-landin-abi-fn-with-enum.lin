@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: landin abi fn with enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum E{A,B} fn f(e:E)->i32{0}

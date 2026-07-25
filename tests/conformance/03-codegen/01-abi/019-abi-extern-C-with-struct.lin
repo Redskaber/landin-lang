@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: extern C with struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+struct S{x:i32} extern "C" { fn f(s:S)->i32; }

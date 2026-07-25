@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: fn with enum param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum E{A(i32)} fn f(e:E)->i32{0}

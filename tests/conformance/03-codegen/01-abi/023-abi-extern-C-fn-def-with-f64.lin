@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: extern C fn def with f64
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+extern "C" fn f(x:f64)->f64{x}

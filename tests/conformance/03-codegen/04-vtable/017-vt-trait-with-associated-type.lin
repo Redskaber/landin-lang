@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait with associated type
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion (Stage 0 limitation)
+
+trait T{type Item;fn f(&self)->i32;} struct S; impl T for S{type Item=i32;fn f(&self)->i32{0}}

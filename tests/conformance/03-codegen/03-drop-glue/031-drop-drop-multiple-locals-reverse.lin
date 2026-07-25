@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: drop multiple locals reverse
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f(){let a=1;let b=2;let c=3;let d=4;}

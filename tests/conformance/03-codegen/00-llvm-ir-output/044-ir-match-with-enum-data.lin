@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: match with enum data
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum E{A(i32),B} fn main(){let e=E::A(42);match e{E::A(x)=>x,E::B=>0}}

@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: match with tuple pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let t=(1,2);match t{(a,b)=>a+b}}

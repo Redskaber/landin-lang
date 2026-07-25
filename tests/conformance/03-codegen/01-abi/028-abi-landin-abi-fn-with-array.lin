@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: landin abi fn with array
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f(arr:[i32;5])->i32{arr[0]}

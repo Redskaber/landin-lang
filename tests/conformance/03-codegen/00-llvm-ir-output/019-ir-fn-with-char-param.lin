@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: fn with char param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f(c:char)->i32{c as i32}

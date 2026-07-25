@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: struct with f32 and f64
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+struct S{a:f32,b:f64}

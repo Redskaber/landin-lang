@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: local in match arm
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){match 1{0=>{let x=1;}_=>{}}}

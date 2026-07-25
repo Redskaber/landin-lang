@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: extern C fn def with bool
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+extern "C" fn f(b:bool)->i32{if b{1}else{0}}

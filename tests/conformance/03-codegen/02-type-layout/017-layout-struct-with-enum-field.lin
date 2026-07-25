@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: struct with enum field
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum E{A,B} struct S{e:E}

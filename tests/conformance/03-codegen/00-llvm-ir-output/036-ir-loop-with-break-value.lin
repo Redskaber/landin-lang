@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: loop with break value
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let x=loop{break 42;};}

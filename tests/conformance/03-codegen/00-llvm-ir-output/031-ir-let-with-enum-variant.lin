@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: let with enum variant
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum E{A,B(i32)} fn main(){let e1=E::A;let e2=E::B(42);}

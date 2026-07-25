@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: enum with nested enum
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum Inner{A,B} enum Outer{A(Inner),B}

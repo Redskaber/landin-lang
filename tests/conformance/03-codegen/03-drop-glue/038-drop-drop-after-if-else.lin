@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: drop after if-else
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let x=1;if x>0{}else{}let y=x;}

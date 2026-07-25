@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: neg overflow
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let x:i32=-2147483648;let y=-x;}

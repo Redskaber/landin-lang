@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: landin abi fn return tuple
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f()->(i32,i32){(1,2)}

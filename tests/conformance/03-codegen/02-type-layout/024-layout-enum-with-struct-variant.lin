@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: enum with struct variant
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+struct S{x:i32} enum E{A(S),B}

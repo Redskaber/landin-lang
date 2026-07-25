@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: nested if
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let x=1;if x>0{if x>1{1}else{2}}else{0}}

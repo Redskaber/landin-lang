@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: match with multiple arms
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let x=1;match x{0=>0,1=>1,2=>2,_=>-1}}

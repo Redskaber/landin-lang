@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: struct with Drop trait
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+trait Drop{fn drop(&mut self);} struct S{x:i32} impl Drop for S{fn drop(&mut self){}}

@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: extern C with mut ptr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+extern "C" { fn f(p:*mut i32); }

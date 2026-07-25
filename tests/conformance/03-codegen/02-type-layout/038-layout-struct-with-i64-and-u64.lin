@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: struct with i64 and u64
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+struct S{a:i64,b:u64}

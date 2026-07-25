@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait with no methods
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+trait T{} struct S; impl T for S{}

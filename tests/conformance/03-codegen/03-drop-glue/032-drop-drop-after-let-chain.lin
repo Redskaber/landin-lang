@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: drop after let chain
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let a=1;let b=a;let c=b;}

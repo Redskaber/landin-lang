@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: array of i32 no drop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let arr:[i32;5]=[0;5];}

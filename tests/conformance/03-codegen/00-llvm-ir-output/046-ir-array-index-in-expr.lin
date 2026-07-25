@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: array index in expr
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let arr=[10,20,30];let x=arr[0]+arr[1];}

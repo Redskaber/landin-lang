@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: loop with break in if
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let mut i=0;loop{if i>=5{break;}i+=1;}}

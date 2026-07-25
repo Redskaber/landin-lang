@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: fn with ref param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f(r:&i32)->i32{*r}

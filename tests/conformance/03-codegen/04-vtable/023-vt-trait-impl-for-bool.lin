@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait impl for bool
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion (Stage 0 limitation)
+
+trait T{fn f(&self)->i32;} impl T for bool{fn f(&self)->i32{0}}

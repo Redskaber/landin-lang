@@ -18,7 +18,7 @@
 | Stage 7 (region inference + user-defined trait dyn) | 154 (+28 unit) | ~98% | ✅ Complete (9 sub-stages) |
 | Stage 8 (v0.2 features + docs standardization) | 38 (+9 unit) | ~98% | ✅ Complete (7 sub-stages) |
 | Stage 9 (v0.1 conformance suite expansion) | +134 rust + +592 conformance | ~100% | ✅ Complete (12/12 sub-stages, 600/600 conformance — v0.1 RC!) |
-| **Total** | **2298** rust + **1559** conformance | ~100% | ✅ Stage 0-11.2 complete — borrowck expanded 80→300 (1559/5000 = 31.2%) |
+| **Total** | **2301** rust + **1729** conformance | ~100% | ✅ Stage 0-11.3 complete — codegen expanded 61→231 (1729/5000 = 34.6%) |
 
 ## Stage 3 Test Breakdown
 

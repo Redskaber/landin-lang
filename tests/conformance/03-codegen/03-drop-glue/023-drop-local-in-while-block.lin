@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: local in while block
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let mut i=0;while i<3{let x=i;i+=1;}}

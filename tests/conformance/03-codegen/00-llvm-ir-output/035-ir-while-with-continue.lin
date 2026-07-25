@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: while with continue
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let mut i=0;while i<10{i+=1;if i%2==0{continue;}}}

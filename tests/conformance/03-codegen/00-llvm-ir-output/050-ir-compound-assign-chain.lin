@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: compound assign chain
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let mut x=10;x+=5;x*=2;x-=3;}

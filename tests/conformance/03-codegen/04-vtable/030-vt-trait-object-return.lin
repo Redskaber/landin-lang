@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait object return
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+trait T{fn f(&self)->i32;} fn g()->i32{0}

@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: match with guard
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let x=5;match x{n if n>0=>1,_=>0}}

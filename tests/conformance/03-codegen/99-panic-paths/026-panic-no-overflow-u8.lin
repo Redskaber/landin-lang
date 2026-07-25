@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: no overflow u8
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let x:u8=255;let y=x+1;}

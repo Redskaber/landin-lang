@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: struct with tuple field
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+struct S{t:(i32,i32)}

@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: let with array literal
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let arr=[1,2,3,4,5];}

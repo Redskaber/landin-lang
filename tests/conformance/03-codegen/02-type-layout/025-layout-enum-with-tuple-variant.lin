@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: enum with tuple variant
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum E{A((i32,i32)),B}

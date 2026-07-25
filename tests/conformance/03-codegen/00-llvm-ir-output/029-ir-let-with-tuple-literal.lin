@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: let with tuple literal
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let t=(1,true,'a');}

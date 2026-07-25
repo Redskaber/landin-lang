@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: drop after loop
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let x=1;loop{break;}}

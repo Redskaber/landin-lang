@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: fn with f64 params
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn f(a:f64,b:f64)->f64{a+b}

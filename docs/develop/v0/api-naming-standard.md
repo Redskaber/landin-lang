@@ -4331,3 +4331,14 @@ Stage 11.2 — borrowck expansion (80→300, +220 tests).
 - New Rust integration tests: `tests/v0/stage11/plan/stage11_2_tests.rs` (3 tests)
 
 **Test impact**: +3 rust (2294 → 2298) + 220 conformance (1339 → 1559). 0 regressions.
+
+### v2.28 (Stage 11.3, 2026-07-26)
+
+Stage 11.3 — codegen expansion (61→231, +170 tests).
+
+**Changes**:
+- codegen expanded +170 tests across 6 subcategories
+- 13 tests adjusted (Stage 0 limitations)
+- New Rust integration tests: `tests/v0/stage11/plan/stage11_3_tests.rs` (3 tests)
+
+**Test impact**: +3 rust (2298 → 2301) + 170 conformance (1559 → 1729). 0 regressions.

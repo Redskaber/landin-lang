@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: enum with array variant
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum E{A([i32;3]),B}

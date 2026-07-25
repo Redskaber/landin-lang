@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: enum with ref variant
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum E<'a>{A(&'a i32),B}

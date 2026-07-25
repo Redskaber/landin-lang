@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait with &mut self
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion (Stage 0 limitation)
+
+trait T{fn f(&mut self);} struct S; impl T for S{fn f(&mut self){}}

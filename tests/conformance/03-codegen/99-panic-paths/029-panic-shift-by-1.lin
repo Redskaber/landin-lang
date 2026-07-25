@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: shift by 1
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+fn main(){let x:i32=42;let y=x>>1;}

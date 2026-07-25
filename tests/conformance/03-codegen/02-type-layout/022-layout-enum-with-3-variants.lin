@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: enum with 3 variants
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.3 codegen expansion
+
+enum E{A,B,C}

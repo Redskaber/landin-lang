@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait impl for tuple
+// EXPECTED: compile_error
+// SOURCE: Stage 11.3 codegen expansion
+
+trait T{fn f(&self)->i32;} impl T for (i32,i32){fn f(&self)->i32{self.0}}
