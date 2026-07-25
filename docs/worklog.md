@@ -8228,3 +8228,24 @@ Stage Summary:
 - v0.1 gate: 5026/5000 ✅ GATE REACHED!
 - Stage 11 total: conformance 1139 → 5026 (+3887, +341%)
 - Next: v0.1 release (正式发布) OR v0.3 bootstrap preparation (Stage 1 重写规划)
+
+---
+Task ID: stage12.1-r215
+Agent: Super Z (main)
+Task: Stage 12.1 — v0.1 Release + v0.3 Bootstrap Preparation + docs + CI/CD
+
+Work Log:
+- Baseline: v0.20.0 / 2319 rust tests + 5026 conformance (Stage 11 complete, v0.1 gate reached)
+- Created Stage 12 independent directories: tests/v0/stage12/ + docs/develop/v0/stage-12/ + docs/tests/v0/stage12/
+- Created v0.1 release document: docs/develop/v0/stage-12/v0.1-release.md (full release summary, gate verification, feature summary, known limitations, architecture, stage history)
+- Created v0.3 bootstrap preparation plan: docs/develop/v0/stage-12/v0.3-bootstrap-prep.md (Stage 1 rewrite 5-phase plan, key dependencies, risk assessment)
+- Created 2 new docs: plan-12.1.md + gate-review-12.1.md
+- Created tests/v0/stage12/plan/stage12_1_tests.rs (6 verification tests covering release doc, bootstrap prep, directories, gate, all stages, README)
+- Updated README/RELEASE_NOTES/api-naming-standard (v2.34→v2.35)/matrix
+- Bumped Cargo.toml v0.20.0 → v0.21.0
+- Ran full CI/CD — all green ✅
+
+Stage Summary:
+- Stage 12.1 PASSED — v0.1 release prepared, v0.3 bootstrap planned
+- v0.1 gate: 5026/5000 ✅ GATE REACHED!
+- Next: v0.1 release announcement OR Stage 0 compile pipeline fixes (for v0.3)

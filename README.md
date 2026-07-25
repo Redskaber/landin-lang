@@ -8,8 +8,8 @@ predictable performance.
 
 > **🎉 v0.1 RELEASE — Conformance gate reached: 5026/5000 tests (100.5%)!**
 >
-> **Status:** v0.20.0 — Stage 0-11 complete. v0.1 conformance gate reached.
-> **2314 rust tests** + **5026 conformance tests** + 5 benchmarks. 0 clippy warnings.
+> **Status:** v0.21.0 — Stage 0-11 complete. v0.1 conformance gate reached.
+> **2325 rust tests** + **5026 conformance tests** + 5 benchmarks. 0 clippy warnings.
 > Process v3.21 (§0-§28). §16 interface isolation compliant. §17.1/§17.2/§18.4 docs compliant.
 >
 > **Milestones:**
@@ -137,7 +137,7 @@ All error types implement `std::error::Error` + `Display`:
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.20.0 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.21.0 (autotests=false — single all_tests target)
 ├── src/
 │   ├── lexer/              Hand-written lexer (6 modules, reader.rs 349 LOC)
 │   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC)
@@ -183,7 +183,7 @@ landin-stage0/
     │       ├── stage{0..9}/        Stage 0-9 test plans (§17.2 双向印证)
     │       ├── stage10/            Stage 10 test plans (independent)
     │       └── stage11/            Stage 11 test plans (independent)
-    └── worklog.md                  Worklog mirror (v3.18 §18.4.0) — synced through r214
+    └── worklog.md                  Worklog mirror (v3.18 §18.4.0) — synced through r215
 ```
 
 ## Testing

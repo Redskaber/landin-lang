@@ -531,3 +531,6 @@ mod stage11_9_tests;
 // Stage 11.10: §25 deep review + v0.1 release prep verification
 #[path = "v0/stage11/plan/stage11_10_tests.rs"]
 mod stage11_10_tests;
+// Stage 12.1: v0.1 release + v0.3 bootstrap prep verification
+#[path = "v0/stage12/plan/stage12_1_tests.rs"]
+mod stage12_1_tests;

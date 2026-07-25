@@ -4415,3 +4415,17 @@ Stage 11.10 — §25 deep review + v0.1 release prep + README rewrite.
 **Test impact**: +5 rust (2314 → 2319). 0 conformance changes. 0 regressions.
 
 **v0.1 GATE REACHED**: 5026/5000 conformance tests — Stage 0 完整 + conformance 通过 ✅
+
+### v2.35 (Stage 12.1, 2026-07-26)
+
+Stage 12.1 — v0.1 release + v0.3 bootstrap preparation.
+
+**Changes**:
+- v0.1 release document created: `docs/develop/v0/stage-12/v0.1-release.md`
+- v0.3 bootstrap preparation plan: `docs/develop/v0/stage-12/v0.3-bootstrap-prep.md`
+- Stage 12 independent directories created
+- New Rust integration tests: `tests/v0/stage12/plan/stage12_1_tests.rs` (6 tests)
+
+**Test impact**: +6 rust (2319 → 2325). 0 conformance changes. 0 regressions.
+
+**v0.1 GATE REACHED**: 5026/5000 conformance tests — RELEASE PREPARED ✅
