@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: box-like pattern (heap allocation simulation)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+struct Box<T> { val: T } fn main() { let b = Box { val: 42 }; }

@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: reference counting pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+struct Rc<T> { val: T, count: i32 } fn main() { let r = Rc { val: 42, count: 1 }; }

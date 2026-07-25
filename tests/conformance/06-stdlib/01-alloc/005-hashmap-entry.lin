@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: hashmap entry pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+struct Entry<K, V> { key: K, value: V, next: i32 } fn main() { let e = Entry { key: 1, value: 2, next: -1 }; }

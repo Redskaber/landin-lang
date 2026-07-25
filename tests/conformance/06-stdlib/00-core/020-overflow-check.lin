@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: overflow check in arithmetic
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let x: i32 = 2147483647; let _ = x + 1; }

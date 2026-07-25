@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: integer literal forms
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let a = 42; let b = 0xff; let c = 0o777; let d = 0b1010; let e = 1_000_000; }

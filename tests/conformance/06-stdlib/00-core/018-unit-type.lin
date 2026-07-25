@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: unit type usage
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let x = (); let y: () = (); }

@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: string literal forms
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let a = "hello"; let b = ""; let c = "with\nescape"; }

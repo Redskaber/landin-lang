@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: interior mutability pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+struct Cell<T> { val: T } fn main() { let c = Cell { val: 42 }; }

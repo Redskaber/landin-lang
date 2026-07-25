@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: string builder pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+struct StringBuilder { buf: [i8; 256], len: i32 } fn main() { let sb = StringBuilder { buf: [0; 256], len: 0 }; }

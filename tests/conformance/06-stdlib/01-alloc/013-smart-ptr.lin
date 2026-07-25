@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: smart pointer pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+struct Unique<T> { ptr: i32, _marker: T } fn main() { let u = Unique { ptr: 0, _marker: 0 }; }

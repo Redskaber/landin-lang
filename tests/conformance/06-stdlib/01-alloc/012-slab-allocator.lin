@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: slab allocator pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+struct Slab { slots: [i32; 64], free_head: i32 } fn main() { let s = Slab { slots: [0; 64], free_head: 0 }; }

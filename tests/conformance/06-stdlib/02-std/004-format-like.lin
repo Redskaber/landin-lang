@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: format-like pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let name = "world"; let _ = name; }

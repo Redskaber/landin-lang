@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: i64 arithmetic operations
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let a: i64 = 100; let b: i64 = 7; let _ = a + b; }

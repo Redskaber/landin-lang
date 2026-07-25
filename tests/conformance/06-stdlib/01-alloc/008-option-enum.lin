@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: Option enum (stdlib core)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+enum Option<T> { Some(T), None } fn main() { let x = Option::Some(42); let y = Option::None; }

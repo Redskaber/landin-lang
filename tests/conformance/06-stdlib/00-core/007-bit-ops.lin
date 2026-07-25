@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: bitwise operations
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let a = 0xff; let b = 0x0f; let _ = a & b; let _ = a | b; let _ = a ^ b; let _ = a << 2; let _ = a >> 2; }

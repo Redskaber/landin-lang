@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: range expressions
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let r = 0..10; let r2 = 0..=10; }

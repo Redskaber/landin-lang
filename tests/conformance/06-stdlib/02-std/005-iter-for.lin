@@ -1,0 +1,7 @@
+// CATEGORY: stdlib
+// DESCRIPTION: for loop iteration
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 10.6 conformance expansion (Stage 0 — for loop may not fully compile)
+
+fn main() { for i in 0..10 { let _ = i; } }

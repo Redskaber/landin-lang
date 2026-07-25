@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: comparison operations
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let a = 1; let b = 2; let _ = a < b; let _ = a > b; let _ = a == b; let _ = a != b; let _ = a <= b; let _ = a >= b; }

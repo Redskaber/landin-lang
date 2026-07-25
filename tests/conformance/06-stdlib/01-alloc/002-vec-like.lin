@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: vec-like pattern (dynamic array simulation)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+struct Vec<T> { data: [T; 0], len: i32 } fn main() { let v = Vec { data: [], len: 0 }; }

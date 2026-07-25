@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: bitwise compound assignment
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let mut x = 0xff; x &= 0x0f; x |= 0x10; x ^= 0xff; x <<= 4; x >>= 4; }

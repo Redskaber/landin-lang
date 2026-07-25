@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: copy-on-write pattern
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+enum Cow<T> { Borrowed(T), Owned(T) } fn main() { let c = Cow::Borrowed(42); }

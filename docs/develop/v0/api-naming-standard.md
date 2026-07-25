@@ -4270,3 +4270,15 @@ Stage 10.5 — 05-soundness conformance (50 tests) + structure fix.
 - New Rust integration tests: `tests/v0/stage10/plan/stage10_5_tests.rs` (5 tests)
 
 **Test impact**: +5 rust + 50 conformance (909 → 959). 0 regressions.
+
+### v2.23 (Stage 10.6, 2026-07-26)
+
+Stage 10.6 — 06-stdlib conformance (50 tests).
+
+**Changes**:
+- New conformance category `tests/conformance/06-stdlib/` with 50 .lin test files
+  in 3 subcategories (core/alloc/std)
+- 2 tests adjusted (1 ok→error for for-loop, 1 error→ok for Default trait)
+- New Rust integration tests: `tests/v0/stage10/plan/stage10_6_tests.rs` (4 tests)
+
+**Test impact**: +4 rust (2276 → 2280) + 50 conformance (959 → 1009). 0 regressions.

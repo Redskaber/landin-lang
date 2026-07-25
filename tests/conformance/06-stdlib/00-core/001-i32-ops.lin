@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: i32 arithmetic operations
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion
+
+fn main() { let a: i32 = 10; let b: i32 = 3; let c = a + b; let d = a - b; let e = a * b; let f = a / b; let g = a % b; }
