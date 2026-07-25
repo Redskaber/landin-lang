@@ -1,0 +1,6 @@
+//! FAIL
+//! category: patterns
+//! description: unclosed paren in pattern must error
+//! error_pattern: expected
+//! source: Stage 9.4 conformance expansion
+fn f() { let (a, b = (1, 2); }

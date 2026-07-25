@@ -3815,3 +3815,41 @@ in place to verify them when Stage 1 lands.
 **Parser recovery behavior**: `err_break_outside_loop` (`fn f() { break; }`) is
 accepted (PASS) — parser doesn't enforce loop context; semantic check at later
 stage. This differs from `err_if_without_cond` which produces "expected" error.
+
+### v2.07 (Stage 9.4, 2026-07-26)
+
+Stage 9.4 — Patterns conformance expansion.
+
+**Changes**:
+- New conformance category `tests/conformance/00-parse/03-patterns/` populated
+  with 71 .lin test files (1 existing + 70 new) covering all 12 pattern forms
+  (per `02-grammar.md` §3.5):
+  - Wildcard (5): _, in match, in fn param, _x prefix, in closure
+  - Identifier (6): basic, in match, in fn param, mut, ref, ref mut
+  - Literal (10): int/float/bool/char/string/hex/oct/bin/multi (1 FAIL: neg int)
+  - Struct (8): basic/renamed/partial/empty/nested/in-match/full/let-with-type
+  - Tuple (8): basic/3-elem/nested/wildcard/in-match/empty/single/multi-wild
+  - Or-pattern (7): 2/3/4 alternatives, idents, mixed, paths, tuples
+  - Range (7): inclusive/exclusive/char/neg (FAIL)/multi/or/with-at
+  - Array (5): basic/wild/rest/empty/nested
+  - Reference (5): basic/mut/nested (FAIL)/tuple/struct
+  - At-binding (3): basic/range/or
+  - Path (3): enum/enum-with-data/enum-struct
+  - Error recovery (3): missing pattern, @ no pat, unclosed paren (all FAIL)
+- New Rust integration tests: `tests/v0/stage9/plan/patterns_tests.rs` (16 tests)
+- `tests/all_tests.rs` updated with stage9_4 module reference
+
+**Test impact**: +16 rust integration tests (2136 → 2152) + 70 conformance tests
+(177 → 247). 0 regressions. 0 clippy warnings. fmt clean.
+
+**API surface**: No new public API (conformance tests are external .lin files).
+All existing APIs unchanged.
+
+**Key discovery — Parser limitations documented**:
+1. Negative literal in match arm (`match x { -1 => 1 }`) — parser does not parse
+   `-1` as a pattern in match arm context. Both `pat_lit_int_neg.lin` and
+   `pat_range_neg.lin` converted PASS → FAIL.
+2. Nested reference pattern (`let &&x = r;`) — parser only supports single `&`.
+   `pat_ref_nested.lin` converted PASS → FAIL.
+
+These are Stage 0 parser limitations, may be lifted in Stage 1.

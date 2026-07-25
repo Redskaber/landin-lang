@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: empty array pattern
+//! source: Stage 9.4 conformance expansion
+fn f() { let [] = []; }

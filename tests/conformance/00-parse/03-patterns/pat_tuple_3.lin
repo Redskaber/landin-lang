@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: 3-element tuple pattern
+//! source: Stage 9.4 conformance expansion
+fn f() { let (a, b, c) = (1, 2, 3); }

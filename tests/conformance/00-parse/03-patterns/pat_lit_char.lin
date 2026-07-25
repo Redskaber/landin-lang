@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: char literal pattern
+//! source: Stage 9.4 conformance expansion
+fn f(x: char) -> i32 { match x { 'a' => 1, _ => 0 } }

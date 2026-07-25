@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: or-pattern with identifiers
+//! source: Stage 9.4 conformance expansion
+fn f(x: i32) -> i32 { match x { a | b => 1, _ => 0 } }

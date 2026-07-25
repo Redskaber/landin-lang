@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: single-element tuple (trailing comma)
+//! source: Stage 9.4 conformance expansion
+fn f() { let (x,) = (1,); }

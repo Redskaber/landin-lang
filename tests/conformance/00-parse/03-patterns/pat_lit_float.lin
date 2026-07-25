@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: float literal pattern
+//! source: Stage 9.4 conformance expansion
+fn f(x: f64) -> i32 { match x { 3.14 => 1, _ => 0 } }

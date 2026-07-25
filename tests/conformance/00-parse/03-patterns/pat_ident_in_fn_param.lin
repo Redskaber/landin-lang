@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: identifier in fn param
+//! source: Stage 9.4 conformance expansion
+fn f(x: i32) {}

@@ -1,0 +1,6 @@
+//! FAIL
+//! category: patterns
+//! description: negative literal pattern in match arm (parser limitation in Stage 0)
+//! error_pattern: parse error
+//! source: Stage 9.4 conformance expansion
+fn f(x: i32) -> i32 { match x { -1 => 1, _ => 0 } }

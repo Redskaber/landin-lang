@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: tuple with multiple wildcards
+//! source: Stage 9.4 conformance expansion
+fn f() { let (_, _, _) = (1, 2, 3); }

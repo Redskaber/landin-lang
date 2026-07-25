@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: reference to tuple pattern
+//! source: Stage 9.4 conformance expansion
+fn f(r: &(i32, i32)) { let &(a, b) = r; }

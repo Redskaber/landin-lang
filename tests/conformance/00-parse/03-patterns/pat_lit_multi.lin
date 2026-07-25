@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: multiple literal arms
+//! source: Stage 9.4 conformance expansion
+fn f(x: i32) -> i32 { match x { 1 => 1, 2 => 2, 3 => 3, _ => 0 } }

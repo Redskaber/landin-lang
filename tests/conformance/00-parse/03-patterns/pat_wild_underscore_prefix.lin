@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: underscore-prefixed ident
+//! source: Stage 9.4 conformance expansion
+fn f() { let _x = 1; }

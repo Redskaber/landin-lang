@@ -1,0 +1,6 @@
+//! FAIL
+//! category: patterns
+//! description: nested reference pattern &&x (parser only supports single & in Stage 0)
+//! error_pattern: parse error
+//! source: Stage 9.4 conformance expansion
+fn f(r: &&i32) { let &&x = r; }

@@ -427,3 +427,7 @@ mod stage9_2_operators_tests;
 // Stage 9.3: Control flow conformance expansion verification
 #[path = "v0/stage9/plan/control_flow_tests.rs"]
 mod stage9_3_control_flow_tests;
+
+// Stage 9.4: Patterns conformance expansion verification
+#[path = "v0/stage9/plan/patterns_tests.rs"]
+mod stage9_4_patterns_tests;

@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: basic at-binding pattern
+//! source: Stage 9.4 conformance expansion
+fn f() { let x @ _ = 1; }

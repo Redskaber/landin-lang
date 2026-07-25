@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: basic struct pattern
+//! source: Stage 9.4 conformance expansion
+struct P { x: i32, y: i32 } fn f(p: P) { let P { x, y } = p; }

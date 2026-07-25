@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: enum path pattern with struct data
+//! source: Stage 9.4 conformance expansion
+enum E { A { x: i32 }, B } fn f(e: E) -> i32 { match e { E::A { x: _ } => 1, _ => 0 } }

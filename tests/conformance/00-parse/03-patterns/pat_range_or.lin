@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: range in or-pattern
+//! source: Stage 9.4 conformance expansion
+fn f(x: i32) -> i32 { match x { 1..=5 | 6..=10 => 1, _ => 0 } }

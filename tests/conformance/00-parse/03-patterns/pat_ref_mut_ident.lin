@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: ref mut identifier pattern
+//! source: Stage 9.4 conformance expansion
+fn f() { let ref mut x = 1; }

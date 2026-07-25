@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: or-pattern with paths
+//! source: Stage 9.4 conformance expansion
+enum E { A, B } fn f(x: E) -> i32 { match x { E::A | E::B => 1, _ => 0 } }

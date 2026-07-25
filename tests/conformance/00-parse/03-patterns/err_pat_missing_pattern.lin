@@ -1,0 +1,6 @@
+//! FAIL
+//! category: patterns
+//! description: missing pattern in let must error
+//! error_pattern: expected
+//! source: Stage 9.4 conformance expansion
+fn f() { let = 1; }

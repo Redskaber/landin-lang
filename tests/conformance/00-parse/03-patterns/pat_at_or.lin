@@ -1,0 +1,5 @@
+//! PASS
+//! category: patterns
+//! description: at-binding with or-pattern
+//! source: Stage 9.4 conformance expansion
+fn f(x: i32) -> i32 { match x { n @ (1 | 2 | 3) => n, _ => 0 } }
