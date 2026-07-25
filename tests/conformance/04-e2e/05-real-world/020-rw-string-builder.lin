@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: string builder
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+struct SB{buf:[i8;256],len:i32} fn new()->SB{SB{buf:[0;256],len:0}}

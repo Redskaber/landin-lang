@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: trait Clone impl
+// EXPECTED: compile_error
+// SOURCE: Stage 11.4 e2e expansion
+
+trait Clone{fn clone(&self)->Self;} struct S{x:i32} impl Clone for S{fn clone(&self)->Self{S{x:self.x}}}

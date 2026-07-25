@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: queue struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+struct Queue{data:[i32;10],head:i32,tail:i32} fn enq(q:&mut Queue,v:i32){q.data[q.tail as usize]=v;q.tail+=1;} fn deq(q:&mut Queue)->i32{let v=q.data[q.head as usize];q.head+=1;v}

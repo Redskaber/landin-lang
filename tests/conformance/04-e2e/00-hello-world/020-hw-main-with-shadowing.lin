@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: main with shadowing
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn main(){let x=1;let x=2;let x=x+1;}

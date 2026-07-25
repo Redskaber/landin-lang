@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: main with let chain
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn main(){let a=1;let b=a+1;let c=b+1;let d=c+1;}

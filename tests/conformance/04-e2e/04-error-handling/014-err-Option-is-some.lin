@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: Option is some
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+enum Opt{Some(i32),None} fn f(o:Opt)->bool{match o{Opt::Some(_)=>true,Opt::None=>false}}

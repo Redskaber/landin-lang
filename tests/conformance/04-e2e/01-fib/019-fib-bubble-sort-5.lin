@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: bubble sort 5
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn sort(arr:&mut[i32;5]){let mut i=0;while i<5{let mut j=0;while j<4-i{if arr[j]>arr[j+1]{let t=arr[j];arr[j]=arr[j+1];arr[j+1]=t;}j+=1;}i+=1;}}

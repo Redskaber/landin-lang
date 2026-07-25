@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: closure called immediately
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+fn main(){let x=(|y:i32|y*2)(5);}

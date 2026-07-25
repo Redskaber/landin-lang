@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: collatz steps
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+fn collatz(mut n:i32)->i32{let mut s=0;while n!=1{if n%2==0{n/=2;}else{n=3*n+1;}s+=1;}s}

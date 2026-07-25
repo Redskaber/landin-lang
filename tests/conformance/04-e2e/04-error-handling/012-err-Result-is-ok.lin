@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: Result is ok
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+enum Res{Ok(i32),Err(i32)} fn f(r:Res)->bool{match r{Res::Ok(_)=>true,Res::Err(_)=>false}}

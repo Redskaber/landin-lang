@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: fn calling another fn
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn g()->i32{42} fn f()->i32{g()}

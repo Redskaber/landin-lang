@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: calculator with match
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn calc(op:i32,a:i32,b:i32)->i32{match op{0=>a+b,1=>a-b,2=>a*b,3=>a/b,_=>0}}

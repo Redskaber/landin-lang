@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: gcd iterative
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+fn gcd(mut a:i32,mut b:i32)->i32{while b!=0{let t=b;b=a%b;a=t;}a}

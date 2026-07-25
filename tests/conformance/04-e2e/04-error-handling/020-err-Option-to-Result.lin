@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: Option to Result
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+enum Opt{Some(i32),None} enum Res{Ok(i32),Err(i32)} fn f(o:Opt)->Res{match o{Opt::Some(v)=>Res::Ok(v),Opt::None=>Res::Err(0)}}

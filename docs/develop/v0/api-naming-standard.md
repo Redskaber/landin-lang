@@ -4342,3 +4342,14 @@ Stage 11.3 — codegen expansion (61→231, +170 tests).
 - New Rust integration tests: `tests/v0/stage11/plan/stage11_3_tests.rs` (3 tests)
 
 **Test impact**: +3 rust (2298 → 2301) + 170 conformance (1559 → 1729). 0 regressions.
+
+### v2.29 (Stage 11.4, 2026-07-26)
+
+Stage 11.4 — e2e expansion (48→160, +112 tests).
+
+**Changes**:
+- e2e expanded +112 tests across 6 subcategories
+- 36 tests adjusted (Stage 0 limitations)
+- New Rust integration tests: `tests/v0/stage11/plan/stage11_4_tests.rs` (3 tests)
+
+**Test impact**: +3 rust (2301 → 2304) + 112 conformance (1729 → 1841). 0 regressions.

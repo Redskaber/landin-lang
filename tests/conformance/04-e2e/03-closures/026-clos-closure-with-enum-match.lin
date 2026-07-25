@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: closure with enum match
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+enum E{A(i32),B} fn main(){let f=|e:E|match e{E::A(x)=>x,E::B=>0};}

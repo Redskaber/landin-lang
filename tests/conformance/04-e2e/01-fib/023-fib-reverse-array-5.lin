@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: reverse array 5
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn reverse(arr:&mut[i32;5]){let mut lo=0;let mut hi=4;while lo<hi{let t=arr[lo];arr[lo]=arr[hi];arr[hi]=t;lo+=1;hi-=1;}}

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: closure with multiple captures
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+fn main(){let a=1;let b=2;let c=3;let f=||a+b+c;}

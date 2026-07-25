@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: fn with multiple locals
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn f()->i32{let a=1;let b=2;let c=a+b;c}

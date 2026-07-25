@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: closure typed return
+// EXPECTED: compile_error
+// SOURCE: Stage 11.4 e2e expansion
+
+fn main(){let f=||->i32{42};}

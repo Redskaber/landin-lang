@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: state machine
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+enum State{Idle,Run,Stop} fn next(s:State)->State{match s{State::Idle=>State::Run,State::Run=>State::Stop,State::Stop=>State::Idle}}

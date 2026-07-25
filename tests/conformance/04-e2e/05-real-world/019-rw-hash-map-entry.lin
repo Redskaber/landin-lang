@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: hash map entry
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+struct Entry{key:i32,val:i32,next:i32} fn new(k:i32,v:i32)->Entry{Entry{key:k,val:v,next:-1}}

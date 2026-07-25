@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: binary tree
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+struct Node{val:i32,left:i32,right:i32} fn new(v:i32)->Node{Node{val:v,left:-1,right:-1}}

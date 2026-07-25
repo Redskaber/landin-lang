@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: closure with array param
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+fn main(){let f=|arr:[i32;3]|arr[0];}

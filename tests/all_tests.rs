@@ -513,3 +513,6 @@ mod stage11_2_tests;
 // Stage 11.3: codegen expansion verification
 #[path = "v0/stage11/plan/stage11_3_tests.rs"]
 mod stage11_3_tests;
+// Stage 11.4: e2e expansion verification
+#[path = "v0/stage11/plan/stage11_4_tests.rs"]
+mod stage11_4_tests;

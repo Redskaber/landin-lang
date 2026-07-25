@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: main with nested blocks
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn main(){{let x=1;}{let y=2;}}

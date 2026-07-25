@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: match struct pattern
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+struct S{x:i32,y:i32} fn f(s:S)->i32{match s{S{x,y}=>x+y}}

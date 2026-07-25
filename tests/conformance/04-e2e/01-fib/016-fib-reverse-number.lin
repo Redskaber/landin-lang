@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: reverse number
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+fn reverse_num(mut n:i32)->i32{let mut r=0;while n>0{r=r*10+n%10;n/=10;}r}

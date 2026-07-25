@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: find max 5
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn find_max(arr:[i32;5])->i32{let mut m=arr[0];let mut i=1;while i<5{if arr[i]>m{m=arr[i];}i+=1;}m}

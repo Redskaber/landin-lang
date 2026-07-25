@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: config struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+struct Config{w:i32,h:i32,fs:bool} fn default()->Config{Config{w:800,h:600,fs:false}}

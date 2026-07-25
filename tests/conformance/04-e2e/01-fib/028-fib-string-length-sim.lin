@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: string length sim
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+fn strlen(s:&str)->i32{let mut c=0;let _=s;c}

@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: count digits
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+fn count_digits(mut n:i32)->i32{let mut c=0;while n>0{c+=1;n/=10;}c}

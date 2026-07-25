@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: closure capturing let
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+fn main(){let a=10;let f=||a+1;}

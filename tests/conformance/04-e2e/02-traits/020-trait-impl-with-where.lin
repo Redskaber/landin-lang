@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: impl with where
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+
+trait T{fn f(&self)->i32;} struct S<X>{x:X} impl<X:T> T for S<X>{fn f(&self)->i32{0}}

@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: Option unwrap or
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+enum Opt{Some(i32),None} fn f(o:Opt,d:i32)->i32{match o{Opt::Some(v)=>v,Opt::None=>d}}

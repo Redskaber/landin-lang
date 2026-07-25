@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: Result map
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion
+
+enum Res{Ok(i32),Err(i32)} fn f(r:Res)->Res{match r{Res::Ok(v)=>Res::Ok(v+1),Res::Err(e)=>Res::Err(e)}}
