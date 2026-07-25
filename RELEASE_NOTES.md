@@ -1,9 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.14.3
+**Current version**: v0.14.4
 **Date**: 2026-07-25
-**Test count**: 2001 tests + 5 benchmarks
+**Test count**: 2007 tests + 5 benchmarks
+
+---
+
+## v0.14.4 — Stage 7.4 (Universe tracking + SCC compression — TD-015 step 4)
+
+### Overview
+
+Implements **universe tracking** (§4.6.3: HRTB universe escape checking) and
+**SCC compression** (§4.6.5: Tarjan's algorithm for constraint graph compression).
+
+### New symbols
+
+| Type/Method | Purpose |
+|-------------|---------|
+| `SccId` | SCC identifier (§4.6.5) |
+| `UniverseEscapeError` | Universe escape soundness error (§4.6.3) |
+| `region_universe(vid)` | Get region's universe |
+| `check_universe_escapes()` | Verify no cross-universe escape |
+| `compute_sccs()` | Tarjan SCC algorithm (O(V+E)) |
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2007 passed (126 unit + 1881 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### TD-015 progress
+
+| Step | Status | Stage |
+|------|--------|-------|
+| step 1: data structures | ✅ | 7.1 |
+| step 2: inference algorithm | ✅ | 7.2 |
+| step 3: implied bounds + type tests | ✅ | 7.3 |
+| step 4: universe + SCC | ✅ | 7.4 |
+| step 5: integrate into borrowck | pending | 7.5 |
 
 ---
 

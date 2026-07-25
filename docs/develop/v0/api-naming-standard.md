@@ -3478,3 +3478,21 @@ Stage 7.3 — Implied bounds + type tests (TD-015 step 3). Per v3.21 §13.4
 
 **Changes**: extended region_inference.rs +120 LOC. 6 new unit tests.
 **Test impact**: +6 (120 unit + 1881 integration = 2001). 0 regressions.
+
+### v1.91 (Stage 7.4, 2026-07-25)
+
+Stage 7.4 — Universe tracking + SCC compression (TD-015 step 4). Per v3.21
+§13.4 (aligned with 04-ownership-borrowing.md §4.6.3 + §4.6.5).
+
+**New `pub(crate)` symbols**:
+
+| Type/Function | Design § | Pattern |
+|---------------|----------|---------|
+| `SccId(pub u32)` | §4.6.5 | `<noun>_<noun>` |
+| `UniverseEscapeError` (struct) | §4.6.3 | `<noun>_<noun>_<noun>` |
+| `region_universe(vid)` | §4.6.3 | `<noun>_<noun>` |
+| `check_universe_escapes()` | §4.6.3 | `<verb>_<noun>_<noun>` |
+| `compute_sccs()` | §4.6.5 | `<verb>_<noun>` |
+
+**Changes**: extended region_inference.rs +180 LOC. 6 new unit tests.
+**Test impact**: +6 (126 unit + 1881 integration = 2007). 0 regressions.

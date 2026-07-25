@@ -3615,3 +3615,22 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 
 **TD-015 step 3 complete. Steps 4-5 pending.**
 **Next**: Stage 7.4 — Universe + SCC compression (TD-015 step 4).
+
+### Stage 7.4 — Universe tracking + SCC compression (TD-015 step 4) (v0.14.4)
+
+**§13.4**: Read §4.6.3 (universe) + §4.6.5 (SCC compression).
+
+**Work completed**:
+- `SccId` struct — SCC identifier
+- `UniverseEscapeError` struct — universe escape soundness error
+- `region_universe(vid)` — get region's universe
+- `check_universe_escapes()` — verify no cross-universe escape (§4.6.3)
+- `compute_sccs()` — Tarjan's SCC algorithm O(V+E) (§4.6.5)
+- 6 new unit tests (all pass)
+- Fixed: scc_id_counter was reset per-vertex (moved outside loop)
+- Fixed: clippy too_many_arguments on strongconnect (added #[allow])
+- Cargo.toml: version 0.14.3 → 0.14.4
+
+**Test impact**: +6 new (126 unit + 1881 integration = 2007). 0 regressions.
+**TD-015 step 4 complete. Step 5 pending.**
+**Next**: Stage 7.5 — Integrate into borrowck (TD-015 step 5).

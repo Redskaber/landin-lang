@@ -629,6 +629,204 @@ impl RegionInferenceContext {
     pub(crate) fn region_points(&self, vid: RegionVid) -> Option<&RegionSet> {
         self.region_points.get(vid.0 as usize)
     }
+
+    // ================================================================
+    // Stage 7.4 (TD-015 step 4): Universe tracking + SCC compression
+    // ================================================================
+
+    /// Get the universe of a region (§4.6.3).
+    ///
+    /// Returns the `UniverseId` the region belongs to:
+    /// - Universal regions: always `UniverseId::ROOT` (they come from the
+    ///   function signature, which is in the root universe)
+    /// - Inference regions: the universe specified when created
+    /// - Placeholder regions: the universe specified when created
+    pub(crate) fn region_universe(&self, vid: RegionVid) -> Option<UniverseId> {
+        let info = self.region_info(vid)?;
+        Some(match info {
+            RegionInfo::Universal { .. } => UniverseId::ROOT,
+            RegionInfo::Inference { universe, .. } => *universe,
+            RegionInfo::Placeholder { universe, .. } => *universe,
+        })
+    }
+
+    /// Check that no inference region escapes its universe (§4.6.3).
+    ///
+    /// Per §4.6.3, each universe has an independent placeholder region set.
+    /// An inference region in universe N must not be constrained to outlive
+    /// a region in a lower universe M < N — that would mean a higher-universe
+    /// region "escaped" into a lower universe, which is unsound.
+    ///
+    /// This check is run AFTER `infer_regions()`. Returns a list of
+    /// `UniverseEscapeError` for each violation.
+    pub(crate) fn check_universe_escapes(&self) -> Vec<UniverseEscapeError> {
+        let mut errors = Vec::new();
+        for constraint in &self.constraints {
+            let sup_info = match self.region_info(constraint.sup) {
+                Some(info) => info,
+                None => continue,
+            };
+            let sub_info = match self.region_info(constraint.sub) {
+                Some(info) => info,
+                None => continue,
+            };
+
+            // Only check inference regions (placeholders are universal-like)
+            let sup_universe = match sup_info {
+                RegionInfo::Inference { universe, .. } => *universe,
+                _ => continue, // universal/placeholder sup is always fine
+            };
+            let sub_universe = match sub_info {
+                RegionInfo::Inference { universe, .. } => *universe,
+                RegionInfo::Placeholder { universe, .. } => *universe,
+                RegionInfo::Universal { .. } => UniverseId::ROOT,
+            };
+
+            // If sup is in a higher universe than sub, that's an escape
+            if sup_universe.0 > sub_universe.0 {
+                errors.push(UniverseEscapeError {
+                    escaping_region: constraint.sup,
+                    target_region: constraint.sub,
+                    escaping_universe: sup_universe,
+                    target_universe: sub_universe,
+                });
+            }
+        }
+        errors
+    }
+
+    /// Compute SCC (Strongly Connected Components) of the region constraint
+    /// graph (§4.6.5).
+    ///
+    /// Per §4.6.5, the constraint graph is compressed using SCC to avoid
+    /// O(R²×P) degrading to exponential complexity. Regions in the same
+    /// SCC have equivalent point sets (they mutually outlive each other).
+    ///
+    /// Returns a `Vec<SccId>` where `sccs[vid.0 as usize]` gives the SCC
+    /// ID for region `vid`. Regions in the same SCC share the same ID.
+    ///
+    /// Algorithm: Tarjan's SCC (single DFS, O(V+E)).
+    pub(crate) fn compute_sccs(&self) -> Vec<SccId> {
+        let num_regions = self.region_defs.len();
+        let mut sccs = vec![SccId(0); num_regions];
+        let mut index_counter = 0u32;
+        let mut stack: Vec<RegionVid> = Vec::new();
+        let mut on_stack = vec![false; num_regions];
+        let mut indices = vec![None; num_regions];
+        let mut low_links = vec![0u32; num_regions];
+
+        // Build adjacency list from constraints (sup → sub edges)
+        // 'sup: 'sub means sup ⊇ sub, so in the constraint graph there's
+        // an edge sup → sub (sup depends on sub).
+        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); num_regions];
+        for constraint in &self.constraints {
+            let sup_idx = constraint.sup.0 as usize;
+            let sub_idx = constraint.sub.0 as usize;
+            if sup_idx < num_regions && sub_idx < num_regions {
+                adj[sup_idx].push(sub_idx);
+            }
+        }
+
+        // Tarjan's SCC algorithm
+        #[allow(clippy::too_many_arguments)]
+        fn strongconnect(
+            v: usize,
+            adj: &[Vec<usize>],
+            index_counter: &mut u32,
+            stack: &mut Vec<RegionVid>,
+            on_stack: &mut Vec<bool>,
+            indices: &mut Vec<Option<u32>>,
+            low_links: &mut Vec<u32>,
+            sccs: &mut Vec<SccId>,
+            scc_id_counter: &mut u32,
+        ) {
+            indices[v] = Some(*index_counter);
+            low_links[v] = *index_counter;
+            *index_counter += 1;
+            stack.push(RegionVid(v as u32));
+            on_stack[v] = true;
+
+            for &w in &adj[v] {
+                match indices[w] {
+                    None => {
+                        strongconnect(
+                            w,
+                            adj,
+                            index_counter,
+                            stack,
+                            on_stack,
+                            indices,
+                            low_links,
+                            sccs,
+                            scc_id_counter,
+                        );
+                        low_links[v] = low_links[v].min(low_links[w]);
+                    }
+                    Some(_) if on_stack[w] => {
+                        low_links[v] = low_links[v].min(indices[w].unwrap());
+                    }
+                    _ => {}
+                }
+            }
+
+            // If v is a root node, pop the SCC
+            if low_links[v] == indices[v].unwrap() {
+                loop {
+                    let w = stack.pop().unwrap();
+                    let w_idx = w.0 as usize;
+                    on_stack[w_idx] = false;
+                    sccs[w_idx] = SccId(*scc_id_counter);
+                    if w_idx == v {
+                        break;
+                    }
+                }
+                *scc_id_counter += 1;
+            }
+        }
+
+        let mut scc_id_counter = 0u32;
+        for v in 0..num_regions {
+            if indices[v].is_none() {
+                strongconnect(
+                    v,
+                    &adj,
+                    &mut index_counter,
+                    &mut stack,
+                    &mut on_stack,
+                    &mut indices,
+                    &mut low_links,
+                    &mut sccs,
+                    &mut scc_id_counter,
+                );
+            }
+        }
+
+        sccs
+    }
+}
+
+/// An SCC (Strongly Connected Component) identifier (§4.6.5).
+///
+/// Regions in the same SCC have equivalent point sets — they mutually
+/// outlive each other. The SCC compression replaces each SCC with a
+/// single node, reducing the graph size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct SccId(pub u32);
+
+/// An error detected during universe escape checking (§4.6.3).
+///
+/// An inference region in a higher universe was constrained to outlive
+/// a region in a lower universe — a soundness violation.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct UniverseEscapeError {
+    /// The region that escaped (in a higher universe).
+    pub escaping_region: RegionVid,
+    /// The region it was constrained to outlive (in a lower universe).
+    pub target_region: RegionVid,
+    /// The universe of the escaping region.
+    pub escaping_universe: UniverseId,
+    /// The universe of the target region.
+    pub target_universe: UniverseId,
 }
 
 /// Extract all `RegionVid`s from a `Ty` (for implied bounds + type tests).
@@ -1124,4 +1322,141 @@ fn test_type_test_fails() {
         .iter()
         .any(|e| matches!(e, RegionInferenceError::TypeTestFailed { .. }));
     assert!(has_type_test_error, "expected TypeTestFailed error");
+}
+
+// ================================================================
+// Stage 7.4 (TD-015 step 4): Universe tracking + SCC compression tests
+// ================================================================
+
+#[test]
+fn test_region_universe() {
+    let mut ctx = RegionInferenceContext::new();
+    // 'static (vid 0) is in ROOT universe
+    assert_eq!(ctx.region_universe(RegionVid(0)), Some(UniverseId::ROOT));
+
+    // Inference region in ROOT universe
+    let vid_a = ctx.add_inference_region(UniverseId::ROOT);
+    assert_eq!(ctx.region_universe(vid_a), Some(UniverseId::ROOT));
+
+    // Create a new universe (e.g., for HRTB)
+    let uid1 = ctx.new_universe(UniverseCause::Hrtb { span: Span::DUMMY });
+    assert_eq!(uid1, UniverseId(1));
+
+    // Inference region in universe 1
+    let vid_b = ctx.add_inference_region(uid1);
+    assert_eq!(ctx.region_universe(vid_b), Some(UniverseId(1)));
+}
+
+#[test]
+fn test_check_universe_escapes_no_violation() {
+    let mut ctx = RegionInferenceContext::new();
+    let vid_a = ctx.add_inference_region(UniverseId::ROOT);
+    let vid_b = ctx.add_inference_region(UniverseId::ROOT);
+
+    // 'a: 'b (both in ROOT universe — no escape)
+    ctx.add_outlives_constraint(
+        vid_a,
+        vid_b,
+        ConstraintCause::FnSignature { span: Span::DUMMY },
+    );
+
+    let errors = ctx.check_universe_escapes();
+    assert!(errors.is_empty());
+}
+
+#[test]
+fn test_check_universe_escapes_detected() {
+    let mut ctx = RegionInferenceContext::new();
+    let uid1 = ctx.new_universe(UniverseCause::Hrtb { span: Span::DUMMY });
+    let vid_a = ctx.add_inference_region(uid1); // universe 1
+    let vid_b = ctx.add_inference_region(UniverseId::ROOT); // universe 0
+
+    // 'a: 'b where 'a is in universe 1, 'b is in universe 0
+    // This is an escape: higher-universe 'a constrained to outlive lower-universe 'b
+    ctx.add_outlives_constraint(
+        vid_a,
+        vid_b,
+        ConstraintCause::FnSignature { span: Span::DUMMY },
+    );
+
+    let errors = ctx.check_universe_escapes();
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].escaping_region, vid_a);
+    assert_eq!(errors[0].target_region, vid_b);
+    assert_eq!(errors[0].escaping_universe, UniverseId(1));
+    assert_eq!(errors[0].target_universe, UniverseId::ROOT);
+}
+
+#[test]
+fn test_scc_no_constraints() {
+    let mut ctx = RegionInferenceContext::new();
+    ctx.add_inference_region(UniverseId::ROOT);
+    ctx.add_inference_region(UniverseId::ROOT);
+
+    let sccs = ctx.compute_sccs();
+    // 3 regions ('static + 2 inference), no constraints → 3 SCCs
+    assert_eq!(sccs.len(), 3);
+    // Each region is its own SCC (all distinct)
+    let unique_sccs: Vec<SccId> = {
+        let mut s = sccs.clone();
+        s.sort_by_key(|s| s.0);
+        s.dedup();
+        s
+    };
+    assert_eq!(unique_sccs.len(), 3);
+}
+
+#[test]
+fn test_scc_mutual_constraints() {
+    let mut ctx = RegionInferenceContext::new();
+    let vid_a = ctx.add_inference_region(UniverseId::ROOT); // vid 1
+    let vid_b = ctx.add_inference_region(UniverseId::ROOT); // vid 2
+
+    // 'a: 'b AND 'b: 'a → mutual → same SCC
+    ctx.add_outlives_constraint(
+        vid_a,
+        vid_b,
+        ConstraintCause::FnSignature { span: Span::DUMMY },
+    );
+    ctx.add_outlives_constraint(
+        vid_b,
+        vid_a,
+        ConstraintCause::FnSignature { span: Span::DUMMY },
+    );
+
+    let sccs = ctx.compute_sccs();
+    // vid 1 and vid 2 should be in the same SCC
+    assert_eq!(sccs[1], sccs[2]);
+    // 'static (vid 0) should be in a different SCC
+    assert_ne!(sccs[0], sccs[1]);
+}
+
+#[test]
+fn test_scc_chain() {
+    let mut ctx = RegionInferenceContext::new();
+    let vid_a = ctx.add_inference_region(UniverseId::ROOT); // vid 1
+    let vid_b = ctx.add_inference_region(UniverseId::ROOT); // vid 2
+    let vid_c = ctx.add_inference_region(UniverseId::ROOT); // vid 3
+
+    // Chain: 'a: 'b, 'b: 'c (no cycle) → 3 distinct SCCs (plus 'static)
+    ctx.add_outlives_constraint(
+        vid_a,
+        vid_b,
+        ConstraintCause::FnSignature { span: Span::DUMMY },
+    );
+    ctx.add_outlives_constraint(
+        vid_b,
+        vid_c,
+        ConstraintCause::FnSignature { span: Span::DUMMY },
+    );
+
+    let sccs = ctx.compute_sccs();
+    // All 4 regions should be in distinct SCCs
+    let unique_sccs: Vec<SccId> = {
+        let mut s = sccs.clone();
+        s.sort_by_key(|s| s.0);
+        s.dedup();
+        s
+    };
+    assert_eq!(unique_sccs.len(), 4);
 }
