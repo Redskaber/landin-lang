@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: block with trailing expression
+//! source: Stage 9.3 conformance expansion
+fn f() -> i32 { let x = 1; x + 1 }

@@ -1,0 +1,6 @@
+//! FAIL
+//! category: control-flow
+//! description: if_let_else not yet supported in Stage 0 (planned for Stage 1)
+//! error_pattern: not yet supported in Stage 0
+//! source: Stage 9.3 conformance expansion
+enum Opt<T> { Some(T), None } fn f(o: Opt<i32>) -> i32 { if let Opt::Some(x) = o { x } else { 0 } }

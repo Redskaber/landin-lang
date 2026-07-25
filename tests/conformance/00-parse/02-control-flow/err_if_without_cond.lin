@@ -1,0 +1,6 @@
+//! FAIL
+//! category: control-flow
+//! description: if without condition must error
+//! error_pattern: expected
+//! source: Stage 9.3 conformance expansion
+fn f() { if { 1 } }

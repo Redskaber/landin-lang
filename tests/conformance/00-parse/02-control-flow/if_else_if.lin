@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: if-else if-else chain
+//! source: Stage 9.3 conformance expansion
+fn f(a: bool, b: bool) { if a { 1 } else if b { 2 } else { 3 } }

@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: match arm with block body
+//! source: Stage 9.3 conformance expansion
+fn f(x: i32) -> i32 { match x { 1 => { let y = 1; y } _ => 0 } }

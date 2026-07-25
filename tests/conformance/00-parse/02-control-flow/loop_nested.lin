@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: nested loops
+//! source: Stage 9.3 conformance expansion
+fn f() { loop { loop { break; } break; } }

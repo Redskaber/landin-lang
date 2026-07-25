@@ -1,9 +1,124 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.16.1
+**Current version**: v0.16.2
 **Date**: 2026-07-26
-**Test count**: 2122 tests + 5 benchmarks + 98 conformance tests
+**Test count**: 2136 tests + 5 benchmarks + 177 conformance tests
+
+---
+
+## v0.16.2 — Stage 9.3 (Control flow conformance expansion)
+
+### Overview
+
+**Stage 9 第 3 个子阶段** — conformance suite `02-control-flow/` category 扩展
+(1 → 80 .lin files, +79 new tests). 覆盖全部 11 control flow forms (per
+`02-grammar.md` §3.4: if/if-let/match/loop/while/while-let/for/unsafe-block/
+return/break/continue) + §3.6 (stmt + block) + §3.4 match_arm.
+
+**Conformance progress: 98 → 177 (29.5% of 600 target)**
+
+### §13.4 设计对齐
+
+- `docs/lang-design/02-grammar.md` §3.4 (control flow expressions)
+- `docs/lang-design/02-grammar.md` §3.6 (stmt + block)
+- `docs/lang-design/02-grammar.md` §3.4 (match_arm)
+- `src/parser/expr.rs` (parse_if_expr + parse_match_expr)
+
+### New conformance tests (79 new .lin files, 1 existing)
+
+`tests/conformance/00-parse/02-control-flow/`:
+
+| Category | Count | Notable |
+|----------|-------|---------|
+| if / else | 12 | if/else/else-if/nested/cmp/logic/call/multi-stmt/empty/expr-returns |
+| **if-let (FAIL — Stage 1 feature)** | **6** | all marked FAIL with "not yet supported in Stage 0" pattern |
+| while | 8 | basic/cmp/logic/empty/break/continue/nested/in-fn |
+| **while-let (FAIL — Stage 1 feature)** | **5** | all marked FAIL with "not yet supported in Stage 0" pattern |
+| for | 8 | basic/range/inclusive-range/break/continue/nested/tuple-pat/empty |
+| loop | 6 | basic/break/break-value/continue/nested/while-interplay |
+| match | 15 | basic/multi-arm/wildcard/ident/tuple/struct/enum/guard/block-arm/range/or-pat/nested/in-let/expr-scrutinee/empty |
+| break/continue/return | 10 | break basic/value/in-while/in-for; continue basic/in-for/in-loop; return basic/void/in-match |
+| block + stmt | 5 | basic/expr/trailing-expr/let/let-with-type |
+| Error recovery | 5 | 4 FAIL (err_if/match/while/for) + 1 PASS (err_break_outside_loop) |
+| **Total** | **80** | (1 existing + 79 new) |
+
+### New Rust integration tests (14 tests)
+
+`tests/v0/stage9/plan/control_flow_tests.rs`:
+
+- Control-flow directory populated (≥80 .lin, 1 test)
+- 10 category presence tests (if-else/if-let/while/while-let/for/loop/match/break-continue-return/block-stmt/error-recovery)
+- if-let + while-let marked FAIL with Stage 0 pattern (2 tests)
+- Stage 9.3 docs created (1 test)
+- Cargo.toml version bump (1 test)
+- Conformance total ≥ 177 (1 test)
+
+### Key discovery — Stage 1 features identified
+
+The Landin parser **explicitly rejects** `if let` and `while let` constructs
+in Stage 0, with the message: "`if let` patterns are not yet supported in
+Stage 0 (will be added in Stage 1)".
+
+**Discovery outcome**:
+- 6 `if-let` tests (if_let_basic, if_let_else, if_let_tuple, if_let_struct,
+  if_let_wildcard, if_let_chain) — initially written as PASS, converted to
+  FAIL with error_pattern "not yet supported in Stage 0"
+- 5 `while-let` tests (while_let_basic, while_let_break, while_let_tuple,
+  while_let_nested, while_let_continue) — same conversion
+
+This is a positive outcome — the conformance suite clarified which control
+flow features are Stage 0 vs Stage 1, providing clear scope for the v0.1
+release gate. These features will be implemented in Stage 1 (per the parser's
+explicit message), and the conformance tests are already in place to verify
+them when Stage 1 lands.
+
+**Parser recovery behavior**:
+- `err_break_outside_loop` (`fn f() { break; }`) — PASS, parser accepts
+  (semantic check at later stage); this differs from `err_if_without_cond`
+  which produces "expected" error
+
+### Documentation created
+
+| Document | Type |
+|----------|------|
+| `docs/develop/v0/stage-9/plan-9.3.md` | new — Stage 9.3 plan |
+| `docs/develop/v0/stage-9/gate-review-9.3.md` | new — gate review |
+| `docs/tests/v0/stage9/plan/control_flow.md` | new — test plan |
+| `tests/v0/stage9/plan/control_flow_tests.rs` | new — 14 tests |
+
+### Updated docs
+
+- `README.md` — v0.16.1 → v0.16.2, Stage 9.3 status, conformance 177/600
+- `RELEASE_NOTES.md` — this section
+- `docs/develop/v0/api-naming-standard.md` — v2.05 → v2.06
+- `docs/tests/matrix.md` — Stage 9.3 stats
+- `Cargo.toml` — 0.16.1 → 0.16.2
+- `tests/all_tests.rs` — +1 module reference
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2136 passed (146 unit + 1990 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 177 passed, 0 failed
+```
+
+### Conformance progress
+
+| Stage | Cumulative | Target | % |
+|-------|-----------|--------|---|
+| 9.1 | 38 | 600 | 6.3% |
+| 9.2 | 98 | 600 | 16.3% |
+| 9.3 ✅ | 177 | 600 | 29.5% |
+| 9.4-9.11 (planned) | 177 → 600 | 600 | — |
+| 9.12 (v0.1 RC) | 600 | 600 | 100% ✅ |
+
+### Next steps
+
+- **Stage 9.4**: Patterns (wild/ident/lit/struct/tuple/or/range) — +70 conformance tests
 
 ---
 

@@ -1,0 +1,6 @@
+//! FAIL
+//! category: control-flow
+//! description: if_let_chain not yet supported in Stage 0 (planned for Stage 1)
+//! error_pattern: not yet supported in Stage 0
+//! source: Stage 9.3 conformance expansion
+enum Opt<T> { Some(T), None } fn f(x: Opt<i32>, y: Opt<i32>) { if let Opt::Some(a) = x { if let Opt::Some(b) = y { let _ = a + b; } } }

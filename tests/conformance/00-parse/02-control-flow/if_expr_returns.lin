@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: if expression as function return
+//! source: Stage 9.3 conformance expansion
+fn f(c: bool) -> i32 { if c { 1 } else { 2 } }

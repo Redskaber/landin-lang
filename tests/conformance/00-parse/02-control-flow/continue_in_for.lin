@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: continue in for loop
+//! source: Stage 9.3 conformance expansion
+fn f(arr: [i32; 3]) { for x in arr { continue; } }

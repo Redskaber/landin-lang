@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: return with value
+//! source: Stage 9.3 conformance expansion
+fn f() -> i32 { return 42; }

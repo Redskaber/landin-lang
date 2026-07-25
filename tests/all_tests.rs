@@ -423,3 +423,7 @@ mod stage9_1_systematic_review_v0156_tests;
 // Stage 9.2: Operators + Pratt precedence verification
 #[path = "v0/stage9/plan/operators_tests.rs"]
 mod stage9_2_operators_tests;
+
+// Stage 9.3: Control flow conformance expansion verification
+#[path = "v0/stage9/plan/control_flow_tests.rs"]
+mod stage9_3_control_flow_tests;

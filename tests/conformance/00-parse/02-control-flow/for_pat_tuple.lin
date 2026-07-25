@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: for with tuple pattern
+//! source: Stage 9.3 conformance expansion
+fn f(pairs: [(i32, i32); 3]) { for (i, v) in pairs { let _ = i + v; } }

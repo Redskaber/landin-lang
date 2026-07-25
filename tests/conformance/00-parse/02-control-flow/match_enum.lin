@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: match with enum pattern
+//! source: Stage 9.3 conformance expansion
+enum E { A, B(i32) } fn f(e: E) -> i32 { match e { E::A => 1, E::B(_) => 2 } }

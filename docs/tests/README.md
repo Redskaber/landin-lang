@@ -63,7 +63,8 @@ docs/tests/
     └── stage9/plan/                  (Stage 9: v0.1 conformance suite expansion)
         ├── README.md
         ├── systematic_review_v0156.md ↔ tests/v0/stage9/plan/systematic_review_v0156_tests.rs (11 tests)
-        └── operators.md              ↔ tests/v0/stage9/plan/operators_tests.rs (11 tests)
+        ├── operators.md              ↔ tests/v0/stage9/plan/operators_tests.rs (11 tests)
+        └── control_flow.md           ↔ tests/v0/stage9/plan/control_flow_tests.rs (14 tests)
 ```
 
 ## Test Code Directory Structure (tests/)
@@ -95,7 +96,7 @@ tests/
     │                          systematic_review_v014)
     └── stage8/plan/   (6 files: lifetime_elision, object_safety, extern_c_abi,
                                  drop_elaboration, async_await, deep_review)
-    └── stage9/plan/   (2 files: systematic_review_v0156_tests, operators_tests)
+    └── stage9/plan/   (3 files: systematic_review_v0156_tests, operators_tests, control_flow_tests)
 ```
 
 ### Why the refactor?
@@ -150,10 +151,10 @@ cargo test --test all_tests -- lexer_tests::test_int_decimal
 | Stage 6 | — (refactor, behavior-equivalent) | — |
 | Stage 7 | 154 (+28 unit) | 5 |
 | Stage 8 | 38 (+9 unit) | 6 |
-| Stage 9 | +22 rust + +90 conformance | 2 rust + 90 .lin |
-| **Total** | **2122** rust + **98** conformance (146 unit + 1976 integration, 2 ignored) | **119** rust + **98** .lin |
+| Stage 9 | +36 rust + +169 conformance | 3 rust + 169 .lin |
+| **Total** | **2136** rust + **177** conformance (146 unit + 1990 integration, 2 ignored) | **120** rust + **177** .lin |
 
 ---
 
-**Last updated**: 2026-07-26 (Stage 9.2 — Operators + Pratt precedence conformance expansion)
+**Last updated**: 2026-07-26 (Stage 9.3 — Control flow conformance expansion)
 **Process**: v3.21

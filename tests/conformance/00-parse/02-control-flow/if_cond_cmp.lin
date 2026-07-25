@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: if with comparison condition
+//! source: Stage 9.3 conformance expansion
+fn f(x: i32) { if x > 0 { 1 } }

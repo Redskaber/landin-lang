@@ -1,0 +1,5 @@
+//! PASS
+//! category: control-flow
+//! description: return inside match arm
+//! source: Stage 9.3 conformance expansion
+fn f(x: i32) -> i32 { match x { 0 => return 1, _ => 0 } }

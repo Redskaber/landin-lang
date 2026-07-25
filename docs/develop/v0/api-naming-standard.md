@@ -3778,3 +3778,40 @@ All existing APIs unchanged.
 `let x = ;` are accepted via synthetic empty-path nodes (per §2 of
 `02-grammar.md`), while `(1 + 2;` produces "expected `)`" error. This
 distinction will inform Stage 9.10 (error recovery category).
+
+### v2.06 (Stage 9.3, 2026-07-26)
+
+Stage 9.3 — Control flow conformance expansion.
+
+**Changes**:
+- New conformance category `tests/conformance/00-parse/02-control-flow/` populated
+  with 80 .lin test files (1 existing + 79 new) covering all 11 control flow
+  forms (per `02-grammar.md` §3.4):
+  - if/else (12): if/else/else-if/nested/cmp/logic/call/multi-stmt/empty/expr-returns
+  - if-let (6, all FAIL — Stage 1 feature)
+  - while (8): basic/cmp/logic/empty/break/continue/nested/in-fn
+  - while-let (5, all FAIL — Stage 1 feature)
+  - for (8): basic/range/inclusive-range/break/continue/nested/tuple-pat/empty
+  - loop (6): basic/break/break-value/continue/nested/while-interplay
+  - match (15): basic/multi-arm/wildcard/ident/tuple/struct/enum/guard/block-arm/range/or-pat/nested/in-let/expr-scrutinee/empty
+  - break/continue/return (10)
+  - block + stmt (5)
+  - Error recovery (5): 4 FAIL + 1 PASS
+- New Rust integration tests: `tests/v0/stage9/plan/control_flow_tests.rs` (14 tests)
+- `tests/all_tests.rs` updated with stage9_3 module reference
+
+**Test impact**: +14 rust integration tests (2122 → 2136) + 79 conformance tests
+(98 → 177). 0 regressions. 0 clippy warnings. fmt clean.
+
+**API surface**: No new public API (conformance tests are external .lin files).
+All existing APIs unchanged.
+
+**Key discovery**: `if let` and `while let` are explicitly **not supported in
+Stage 0** (parser emits "will be added in Stage 1" error). 11 tests converted
+from PASS → FAIL with error_pattern "not yet supported in Stage 0". These
+features will be implemented in Stage 1, and the conformance tests are already
+in place to verify them when Stage 1 lands.
+
+**Parser recovery behavior**: `err_break_outside_loop` (`fn f() { break; }`) is
+accepted (PASS) — parser doesn't enforce loop context; semantic check at later
+stage. This differs from `err_if_without_cond` which produces "expected" error.

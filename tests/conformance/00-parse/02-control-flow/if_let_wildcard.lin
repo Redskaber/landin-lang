@@ -1,0 +1,6 @@
+//! FAIL
+//! category: control-flow
+//! description: if_let_wildcard not yet supported in Stage 0 (planned for Stage 1)
+//! error_pattern: not yet supported in Stage 0
+//! source: Stage 9.3 conformance expansion
+fn f(x: i32) { if let _ = x { 1 } }

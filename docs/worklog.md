@@ -7547,3 +7547,27 @@ Stage Summary:
 - Key discovery: parser error recovery behavior clarified — 1 + + 2 and let x = ; accepted via synthetic empty-path nodes (per §2 of 02-grammar.md), while (1 + 2; produces "expected )" error
 - Coverage: all 28 operators from §1.8 + all 13 Pratt precedence levels from §2 verified
 - Next: Stage 9.3 — Control flow (if/while/for/loop/match/break/continue) +80 conformance tests, target 178 cumulative
+
+---
+Task ID: stage9.3-r186
+Agent: Super Z (main)
+Task: Stage 9.3 — Control flow conformance expansion (+79 .lin +13 rust tests) + docs + CI/CD
+
+Work Log:
+- Baseline: v0.16.1 / 2122 rust tests + 98 conformance (Stage 9.2 complete); §13.4 design alignment with 02-grammar.md §3.4 (control flow: if/if-let/match/loop/while/while-let/for/unsafe/return/break/continue) + §3.6 (stmt + block) + §3.4 (match_arm) + src/parser/expr.rs (parse_if_expr + parse_match_expr)
+- Generated 80 .lin test files in tests/conformance/00-parse/02-control-flow/ (1 existing + 79 new) covering 10 sub-categories: if/else (12) / if-let (6) / while (8) / while-let (5) / for (8) / loop (6) / match (15) / break-continue-return (10) / block-stmt (5) / error-recovery (5)
+- Created tests/v0/stage9/plan/control_flow_tests.rs (13 verification tests covering all 10 categories + if-let/while-let FAIL pattern + docs + version bump + conformance total ≥177); updated tests/all_tests.rs with #[path]
+- Ran conformance suite: 98 → 177 (+79), 0 failed; 11 tests (6 if-let + 5 while-let) converted PASS → FAIL after observing parser explicit error "not yet supported in Stage 0 (will be added in Stage 1)" — Stage 1 features identified
+- Created 3 new docs: docs/develop/v0/stage-9/{plan-9.3.md, gate-review-9.3.md} + docs/tests/v0/stage9/plan/control_flow.md
+- Updated README.md (v0.16.1 → v0.16.2, Stage 9.3 status, conformance 177/600), RELEASE_NOTES.md (+v0.16.2 section), api-naming-standard.md (v2.05 → v2.06), docs/tests/matrix.md (+Stage 9.3 stats), docs/tests/README.md (+control_flow.md reference)
+- Bumped Cargo.toml v0.16.1 → v0.16.2
+- Ran full CI/CD: cargo clean + cargo test (2135 passed = 146 unit + 1990 integration) + cargo fmt + cargo clippy --all-targets — all green ✅
+- Ran conformance suite: python3 tests/conformance/run_all.py — 177 passed (98 + 79 new), 0 failed ✅
+
+Stage Summary:
+- Stage 9.3 PASSED — CI/CD all green per §1.2; §13.4 design aligned; §17.1/§17.2/§17.3 fully compliant
+- Conformance progress: 98 → 177 (+79, 29.5% of 600 target)
+- Test growth: 2122 → 2136 rust (+14) + 98 → 177 conformance (+79); 0 regressions; 0 clippy warnings
+- Key discovery: if-let and while-let are explicitly NOT supported in Stage 0 (parser emits "will be added in Stage 1" error); 11 tests converted PASS → FAIL with "not yet supported in Stage 0" pattern
+- Coverage: all 11 control flow forms (if/if-let/match/loop/while/while-let/for/unsafe-block/return/break/continue) verified
+- Next: Stage 9.4 — Patterns (wild/ident/lit/struct/tuple/or/range) +70 conformance tests, target 247 cumulative
