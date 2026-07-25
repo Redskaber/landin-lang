@@ -3835,3 +3835,24 @@ Future: state machine transform for true async execution.
 
 **🎉 v0.2 路线图全部 5 项完成！**
 **Next**: §25.8 design writeback for Stage 8 + §25 deep review.
+
+### Stage 8.6 — §25.8 design writeback + §25 deep review (v0.15.5)
+
+**§25.8 + §25**: Design writeback for Stage 8 + deep review.
+
+**Work completed**:
+- Updated 4 design docs with §25.8 writeback:
+  * 03-type-system.md +§12 (5 v0.2 features status)
+  * 04-ownership-borrowing.md +§13 (lifetime elision + drop elaboration)
+  * 05-ast.md +§14 (Await/Async variant)
+  * 07-codegen.md +§15 (extern "C" ABI)
+- Created deep-review-stage8-r181.md (§25 七维度审查, 5/5 GO)
+- Created tests/v0/stage8/plan/deep_review_tests.rs (9 tests)
+- Cargo.toml: version 0.15.4 → 0.15.5
+
+**Deep review**: 5/5 GO → PASS
+- D1: ✅ D2: ✅ D3: ✅ D4: ✅ D5: ✅ D6: ✅ D7: ✅
+- v0.2 路线图 5/5 完成, 设计文档 4/4 回写
+
+**Test impact**: +9 integration tests (2100 total). 0 regressions.
+**Next**: v0.1 conformance 测试 or v0.3 自举准备.

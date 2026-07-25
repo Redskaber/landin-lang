@@ -792,3 +792,31 @@ variant，是因为 Landin MIR 的 `Terminator::Call` 已有足够字段承载�
 ---
 
 **下一文档**: [`08-bootstrap-strategy.md`](./08-bootstrap-strategy.md) — 自举策略
+
+---
+
+## 15. Stage 8 实现状态更新（v0.15.4，§25.8 回写）
+
+> 本节由 Stage 8.6 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+
+### 15.1 v0.2 特性实现状态
+
+| 设计 § | 特性 | Stage 7 状态 | Stage 8 状态 | 实现 |
+|--------|------|-------------|-------------|------|
+| §7 函数调用 ABI | extern "C" ABI | ❌ B1 | ✅ (8.3) | `BodyMeta.abi` + `codegen_function` abi 参数 |
+| §6 控制流 | unwind | ❌ B1 | ❌ 未实现 | v0.3+ (需要 unwind terminator) |
+| §9 全局变量 | thread-local | ❌ B1 | ❌ 未实现 | v0.3+ |
+| §10 链接策略 | 静态/动态库 | ❌ B1 | ❌ 未实现 | v0.3+ |
+| §11 调试信息 | DWARF 完整 | ❌ B1 | ❌ 未实现 | v0.3+ |
+| §13 ABI 兼容性 | C++/Rust 互操作 | ❌ B1 | ❌ 未实现 | v0.3+ |
+
+### 15.2 偏差处理计划更新
+
+| 偏差 | Stage 7 计划 | Stage 8 更新 |
+|------|-------------|-------------|
+| B1（extern "C" ABI） | v0.2 | ✅ **已实现** (8.3, MVP: Landin/C 同 CC) |
+| B1（unwind） | v0.2 | v0.3+ (推迟) |
+| B1（thread-local / 链接 / DWARF / 互操作） | v0.2 | v0.3+ (推迟) |
+
+**关键变化**: extern "C" ABI 已实现。ABI 信息从 HIR → driver → codegen 全管线跟踪。
+MVP 中 Landin ABI 和 C ABI 使用相同 LLVM 调用约定，未来可添加自定义 CC。

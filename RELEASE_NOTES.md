@@ -1,9 +1,61 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.15.4
+**Current version**: v0.15.5
 **Date**: 2026-07-25
-**Test count**: 2091 tests + 5 benchmarks
+**Test count**: 2100 tests + 5 benchmarks
+
+---
+
+## v0.15.5 — Stage 8.6 (§25.8 design writeback + §25 deep review — GO)
+
+### Overview
+
+**Stage 8 收尾** — design writeback for all v0.2 features + 7-dimension deep
+review. **5/5 GO → PASS**.
+
+### Design doc updates (§25.8)
+
+| Doc | Update |
+|-----|--------|
+| `03-type-system.md` +§12 | 5 v0.2 features status (all ✅) |
+| `04-ownership-borrowing.md` +§13 | lifetime elision + drop elaboration status |
+| `05-ast.md` +§14 | Await/Async expression variant |
+| `07-codegen.md` +§15 | extern "C" ABI status |
+
+### Deep review (§25)
+
+| Dimension | Status |
+|-----------|--------|
+| D1 Architecture | ✅ 50+ modules, < 1500 LOC |
+| D2 Technical Debt | ✅ Only TD-019 OPEN |
+| D3 Test Coverage | ✅ 2100 tests (+9 new) |
+| D4 Next Stage | ✅ v0.1 conformance / v0.3 bootstrap |
+| D5 Design Alignment | ✅ 4 docs synced |
+| D6 Performance | ✅ No O(n²) |
+| D7 Documentation | ✅ Complete |
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2100 passed (146 unit + 1954 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### Stage 8 complete summary
+
+| Stage | Feature | Status |
+|-------|---------|--------|
+| 8.1 | Lifetime elision (§3.2) | ✅ |
+| 8.2 | Object safety (§2.3) | ✅ |
+| 8.3 | extern "C" ABI (§13.2) | ✅ |
+| 8.4 | Drop elaboration (§5) | ✅ |
+| 8.5 | async/await (§10) | ✅ |
+| 8.6 | §25.8 writeback + §25 review | ✅ GO |
+
+**🎉 v0.2 roadmap COMPLETE + deep review PASS!**
 
 ---
 

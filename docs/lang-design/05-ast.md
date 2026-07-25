@@ -928,3 +928,26 @@ MVP 阶段简化：
 
 **B4 补写**：设计文档 §8 表达式定义未描述的 HIR 扩展（`HirExprKind` 比 `ExprKind`
 多 `MethodCall` / `Unsafe` / `Try` 等 variant）已在 `hir::kinds::HirExprKind` 实现。
+
+---
+
+## 14. Stage 8 实现状态更新（v0.15.4，§25.8 回写）
+
+> 本节由 Stage 8.6 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+
+### 14.1 §8 表达式定义 — Stage 8 扩展
+
+| 设计 § | Stage 7 状态 | Stage 8 状态 | 实现 |
+|--------|-------------|-------------|------|
+| §8 表达式 (Await) | ❌ 未实现 | ✅ (8.5) | `Expr::Await { expr, span }` + `HirExprKind::Await` |
+| §8 表达式 (Async) | ❌ 未实现 | ✅ (8.5) | `Expr::Async { block, span }` + `HirExprKind::Async` |
+| §8 表达式 (其他 30+ variant) | ✅ 实现 | 不变 | — |
+
+### 14.2 偏差处理计划更新
+
+| 偏差 | Stage 7 计划 | Stage 8 更新 |
+|------|-------------|-------------|
+| B4（HIR 扩展: Await/Async） | — | ✅ **已补写** (8.5) |
+| B3（HIR/AST 共享比例更高） | 接受为永久偏差 | 不变 |
+
+**结论**: Stage 8.5 新增 `Await`/`Async` 表达式 variant，设计文档 §8 已覆盖。

@@ -672,3 +672,31 @@ Disjoint closure captures 与 borrow check 配合：
 **关键变化**：Stage 6.18 的 §11.7 中 "B1（region inference）→ TD-015 v0.2+"
 已更新为 "✅ **已实现** (Stage 7.1-7.5)"。Region inference 基础设施完整建立
 并集成到 borrowck，当前作为附加检查运行（no-op，因 MIR regions 全为 Erased）。
+
+---
+
+## 13. Stage 8 实现状态更新（v0.15.4，§25.8 回写）
+
+> 本节由 Stage 8.6 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+
+### 13.1 v0.2 特性实现状态
+
+| 设计 § | 特性 | Stage 7 状态 | Stage 8 状态 | 实现 |
+|--------|------|-------------|-------------|------|
+| §3.2 | Lifetime elision 规则 | ❌ B1 | ✅ (8.1) | `LifetimeElisionCtxt` + RFC #141 规则 1-4 |
+| §5 | Drop elaboration | ❌ B1 | ✅ (8.4) | `DropElaborator` + `needs_drop` + 逆序析构 (§5.4) |
+| §5.2 | Drop check (默认) | ❌ B1 | ✅ (8.4) | `needs_drop` 检查 + `register_drop_impl` |
+| §5.3 | `#[may_dangle]` 属性 | ❌ B1 | ❌ 未实现 | v0.3+ (需要 unsafe 属性系统) |
+
+### 13.2 偏差处理计划更新
+
+| 偏差 | Stage 7 计划 | Stage 8 更新 |
+|------|-------------|-------------|
+| B1（lifetime elision） | v0.2+ | ✅ **已实现** (8.1) |
+| B1（drop check / drop elaboration） | v0.2+ | ✅ **已实现** (8.4) |
+| B1（two-phase borrows） | v0.2+ | 不变 |
+| B1（disjoint closure captures） | v0.2+ | 不变 |
+| B1（`#[may_dangle]` 属性） | — | v0.3+（新增） |
+| B3（NLL 简化 / maybe-init / drop 顺序 / 诊断） | v0.2+ | 部分改善 (8.4: drop 顺序实现) |
+
+**关键变化**: v0.2 路线图 5 项全部实现。Drop elaboration 基础设施完整建立。

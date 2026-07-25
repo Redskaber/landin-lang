@@ -3689,3 +3689,14 @@ Stage 8.5 — async/await foundation (§10). Per v3.21 §13.4.
 3 unit tests + 5 integration tests. 0 regressions.
 
 **v0.2 roadmap COMPLETE**: all 5 items done (lifetime elision + object safety + extern C + drop elaboration + async/await).
+
+### v2.02 (Stage 8.6, 2026-07-25)
+
+Stage 8.6 — §25.8 design writeback + §25 deep review. **No code changes**.
+
+**Changes**:
+- 4 design docs updated (03-type-system +§12, 04-ownership +§13, 05-ast +§14, 07-codegen +§15)
+- New deep review: `deep-review-stage8-r181.md`
+- New test file: `tests/v0/stage8/plan/deep_review_tests.rs` (9 tests)
+
+**Test impact**: +9 integration tests (2100 total). 0 regressions.

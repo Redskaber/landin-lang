@@ -407,3 +407,7 @@ mod drop_elaboration_tests;
 // Stage 8.5: async/await tests
 #[path = "v0/stage8/plan/async_await_tests.rs"]
 mod async_await_tests;
+
+// Stage 8.6: §25.8 design writeback + §25 deep review tests
+#[path = "v0/stage8/plan/deep_review_tests.rs"]
+mod stage8_6_deep_review_tests;

@@ -809,3 +809,33 @@ MVP 阶段实现 30-50 个最常见错误代码，每个错误含"error code + �
 | B1（orphan rule / canonical query / `?` / normalization） | v0.2+ | 不变 |
 | B1（object safety 规则） | — | v0.2+（新增） |
 | B3（trait resolution / subtyping 简化） | v0.2+ | 不变 |
+
+---
+
+## 12. Stage 8 实现状态更新（v0.15.4，§25.8 回写）
+
+> 本节由 Stage 8.6 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+
+### 12.1 v0.2 特性实现状态
+
+| 设计 § | 特性 | Stage 7 状态 | Stage 8 状态 | 实现 |
+|--------|------|-------------|-------------|------|
+| §3.2 | Lifetime elision 规则 | ❌ B1 | ✅ (8.1) | `typeck::lifetime_elision::LifetimeElisionCtxt` |
+| §2.3 | Object safety 规则 | ❌ B1 | ✅ (8.2) | `traits::object_safety::check_object_safety` |
+| §13.2 | extern "C" ABI | ❌ B1 | ✅ (8.3) | `BodyMeta.abi` + `codegen_function` abi 参数 |
+| §5 | Drop elaboration | ❌ B1 | ✅ (8.4) | `borrowck::drop_elaboration::DropElaborator` |
+| §10 | async/await | ❌ B1 | ✅ (8.5) | AST `Expr::Await`/`Expr::Async` + HIR + parser + MIR |
+
+### 12.2 偏差处理计划更新
+
+| 偏差 | Stage 7 计划 | Stage 8 更新 |
+|------|-------------|-------------|
+| B1（object safety 规则） | v0.2+ | ✅ **已实现** (8.2) |
+| B1（lifetime elision） | v0.2+ | ✅ **已实现** (8.1) |
+| B1（drop check / drop elaboration） | v0.2+ | ✅ **已实现** (8.4) |
+| B1（async/await） | v0.2+ | ✅ **已实现** (8.5) |
+| B1（extern "C" ABI 严格区分） | v0.2+ | ✅ **已实现** (8.3, MVP: 同 CC) |
+| B1（orphan rule / canonical query / `?` / normalization） | v0.2+ | 不变 |
+| B3（trait resolution / subtyping 简化） | v0.2+ | 不变 |
+
+**结论**: v0.2 路线图 5 项全部实现。残留 B1 偏差推迟到 v0.3+。
