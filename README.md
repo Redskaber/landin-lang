@@ -6,12 +6,21 @@ A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance.
 
-> **Status:** v0.14.9 — Stage 0-7 complete. Systematic review done. v0.2 roadmap planned.
-> **2042 tests** + 5 benchmarks. 0 clippy warnings. fmt clean. 🎉 1000+ tests + 115 test modules!
+> **Status:** v0.15.0 — Stage 0-7 complete, Stage 8 (v0.2) started.
+> **2052 tests** + 5 benchmarks. 0 clippy warnings. fmt clean.
 > Process v3.21 (§0-§28). §16 interface isolation compliant.
-> Stage 5: 99 sub-stages. Stage 6: 47-module architecture (concluded). Stage 7: TD-015 + TD-018 + §25.8 + §25 deep review COMPLETE.
-> 🎉 All design docs synced (§25.8). All TDs closed except TD-019 (user deferred). All files < 1500 LOC.
-> Next: Stage 8 — v0.2 features (region inference activation, lifetime elision, object safety, extern "C", drop elaboration).
+>
+> **Milestones:**
+> - Stage 0-4: ✅ Complete (lexer, parser, HIR, MIR, typeck, borrowck, codegen)
+> - Stage 5: ✅ Complete (99 sub-stages — TraitResolver, vtable, dyn Trait, stdlib)
+> - Stage 6: ✅ Complete (18 sub-stages — 47-module architecture, all files < 1500 LOC)
+> - Stage 7: ✅ Complete (8 sub-stages — TD-015 region inference, TD-018 user-defined trait dyn)
+> - Stage 8: 🔄 In progress (8.1: lifetime elision ✅, next: object safety, extern "C", drop elaboration)
+>
+> **Architecture:** 47 modules. All mod.rs/parser.rs/reader.rs/checker.rs/resolver.rs < 1500 LOC.
+> Single responsibility per module. Data flows单向. Design docs synced (§25.8).
+>
+> **v0.2 roadmap:** lifetime elision → object safety → extern "C" → drop elaboration → async/await
 
 ## Quick start
 
@@ -40,7 +49,10 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 2 | `mir/`, `typeck/`, `borrowck/` | ✅ Complete | 170 |
 | 3 | `codegen/` | ✅ Complete | 309 (incl. 5 §21 audit) |
 | 4 | modules, closures, macros, benchmarks, ADR | ✅ Complete | 62 + 5 bench |
-| 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | 🔄 In progress | 642 (TraitResolver + integration + Copy + DefId→name + vtable + vtable codegen + dyn fat-pointer + stdlib MVP + builtin Copy/Clone/Drop + primitive Copy auto-detect + Copy unification + trait impl statistics + trait method query API + trait hierarchy/supertraits + TraitResolver summary + vtable method resolution + trait coherence checking + trait impl completeness check + trait impl validation report + stdlib facade + stdlib type resolution + stdlib type layout + stdlib trait method signatures + stdlib vtable slot layout + stdlib vtable byte size + stdlib vtable construction planner + stdlib vtable symbol name planner + stdlib vtable emission plan + stdlib vtable emission summary + codegen vtable emission helper + codegen vtable global text bridge + codegen vtable emission batch helper + codegen vtable spec builder + codegen vtable emission orchestrator + codegen dynptr global text helper + codegen dynptr spec builder + codegen dynptr emission orchestrator + codegen vtable+dynptr combined emission orchestrator + codegen trait-dispatch emission summary + codegen trait-dispatch emission plan + codegen trait-dispatch emission orchestrator plan-based + codegen trait-dispatch emission text batch + codegen trait-dispatch emission text batch from resolver + TextEmitter emit_vtable_global delegation + TextEmitter emit_dyn_trait_const delegation + emit_vtables delegation + emit_dyn_trait_ptrs delegation + DynTraitFatPtr MIR representation + build_dyn_trait_fat_ptrs_from_resolver + emit_dyn_trait_fat_ptr_text + emit_dyn_trait_fat_ptrs_text_batch + emit_dyn_trait_fat_ptrs_text_batch_from_resolver + DynTraitMethodCall MIR representation + emit_dyn_trait_method_call_text + build_dyn_trait_method_calls_from_fat_ptrs + emit_dyn_trait_method_calls_text_batch + emit_dyn_trait_method_calls_text_batch_from_resolver + DynTraitMIRSummary + build_dyn_trait_mir_summary_from_resolver + DynTraitMIRPlan + emit_dyn_trait_mir_plan_text + find_dyn_trait_method_call_in_plan + MirLowerCtxt dyn_trait_plan field + setter/getter + find_dyn_trait_method_call_in_plan_by_method + MirBody dyn_trait_calls side-table + build_dyn_trait_call_terminator + HirExprKind::MethodCall dyn Trait integration + emit_dyn_trait_method_call + codegen_dyn_trait_call + Terminator::Call dyn Trait marker dispatch + lower_hir_body_to_mir_full_with_dyn_trait_plan + driver auto-build DynTraitMIRPlan) |
+| 5 | `traits/`, vtable codegen, dyn Trait, stdlib, mini-cargo | ✅ Complete | 642 |
+| 6 | architectural splits (47 modules) | ✅ Complete | — |
+| 7 | region inference, user-defined trait dyn | ✅ Complete | 154 |
+| 8 | v0.2 features (lifetime elision, etc.) | 🔄 In progress | 10 |
 
 ## API surface
 
@@ -56,7 +68,6 @@ Clean, §16-compliant public API. See `docs/develop/v0/api-naming-standard.md`.
 | `TypeChecker::check_mir_body_with_tables(...)` | method (§16) |
 | `BorrowChecker::check_mir_body(&mir)` | method |
 | `codegen::codegen_crate(&CompileResult)` | free fn (§16) |
-| `codegen::{Emitter, TextEmitter, EmitType, EmitValue}` | trait + impls |
 | `traits::TraitResolver` | struct (Stage 5.1) |
 | `driver::compile(src)` | sole orchestrator |
 
@@ -80,40 +91,39 @@ All error types implement `std::error::Error` + `Display`:
 | Enums | `enum Color { Red, Green, Blue }` | `{ i32 }` (discriminant) |
 | Closures | `\|x\| x + y` | `{ capture_fields }` struct |
 | Macros | `println!("hello")` | unit (built-in expansion) |
-| Nested modules | `mod inner { pub fn f() {} }` | recursive module tree |
+| dyn Trait | `dyn Greet` | `{ ptr, ptr }` fat pointer + vtable |
 | Overflow check | `a + b` | `call @__landin_panic_overflow` |
 
 ## Project layout
 
 ```
 landin-stage0/
-├── Cargo.toml              v0.11.31 (autotests=false — single all_tests target)
+├── Cargo.toml              v0.15.0 (autotests=false — single all_tests target)
 ├── src/
-│   ├── lexer/              Hand-written lexer (6 modules, reader.rs 349 LOC) (109 tests)
-│   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC) (85 tests)
+│   ├── lexer/              Hand-written lexer (6 modules, reader.rs 349 LOC)
+│   ├── parser/             Recursive-descent + Pratt parser (8 modules, parser.rs 263 LOC)
 │   ├── ast/                AST node definitions (150 tests)
 │   ├── hir/                HIR + lowering (56 tests)
-│   ├── resolve/            Name resolution + scope + visibility (7 modules, resolver.rs 154 LOC) (43 tests)
-│   ├── mir/                MIR types + HIR→MIR lowering (22 tests)
-│   ├── typeck/             Type inference + unification (5 modules, checker.rs 1160 LOC) (26 tests)
-│   ├── borrowck/           NLL borrow checker (6 modules, mod.rs 1146 LOC) (26 tests)
-│   ├── codegen/            LLVM IR codegen via Emitter trait (294 tests)
-│   ├── traits/             TraitResolver (mod.rs→vtable.rs+builtin.rs+resolver.rs) (Stage 5.1-5.23)
+│   ├── resolve/            Name resolution + scope + visibility (7 modules, resolver.rs 154 LOC)
+│   ├── mir/                MIR types + HIR→MIR lowering (7 modules + lower/)
+│   ├── typeck/             Type inference + unification + lifetime elision (6 modules)
+│   ├── borrowck/           NLL borrow checker + region inference (7 modules)
+│   ├── codegen/            LLVM IR codegen via Emitter trait (5 modules)
+│   ├── traits/             TraitResolver (mod.rs→vtable.rs+builtin.rs+resolver.rs)
+│   ├── stdlib/             Standard library traits + vtable layout (3 modules)
 │   ├── driver.rs           Full pipeline driver
 │   └── bin/                CLI entry point
 ├── tests/
-│   ├── all_tests.rs        Unified entry point (49 #[path] mod declarations)
+│   ├── all_tests.rs        Unified entry point (#[path] mod declarations)
 │   ├── common/mod.rs       Shared test helpers
 │   ├── conformance/        .lin conformance suite + run_all.py
-│   └── v0/stage{0-5}/plan/ Standardized test files (v3.17 §17.1)
+│   └── v0/stage{0-8}/plan/ Standardized test files (v3.17 §17.1)
 ├── benches/                Performance benchmarks (5 benchmarks)
-├── examples/               API demos + historical audit scripts (v3.19 §17.4)
-│   ├── usage/              Maintained API demos (MUST compile with current API)
-│   ├── audit/              Archived stage gate review scripts (historical)
-│   └── README.md           Index + run instructions
+├── examples/               API demos + historical audit scripts
 └── docs/
-    ├── stage-committee-process.md  Process v3.21 (§13.4 stage-start alignment + §14.4 refactor governance + §25.8 stage-end writeback)
-    ├── develop/v0/                 Dev logs + ADR + deep reviews
+    ├── stage-committee-process.md  Process v3.21 (§13.4 + §14.4 + §25.8)
+    ├── develop/v0/                 Dev logs + ADR + deep reviews + plans
+    ├── lang-design/                19 design docs (00-18) + CHANGELOG + FREEZE-REPORT
     ├── tests/                      Test plans + matrix
     └── worklog.md                  Worklog mirror (v3.18 §18.4.0)
 ```
@@ -122,15 +132,13 @@ landin-stage0/
 
 The test suite uses a **unified entry point** (`tests/all_tests.rs`) that
 pulls in every test file under `tests/v0/stage{N}/plan/` via `#[path] mod`
-declarations. `Cargo.toml` sets `autotests = false` so only this single
-target is built — keeping `Cargo.toml` compact (one `[[test]]` entry, not
-19+) and producing a single test binary for faster incremental compilation.
+declarations.
 
 ```bash
-# Run all tests (1017 expected — 1013 baseline + 3 vtable + 1 audit)
+# Run all tests
 cargo test
 
-# Run a single module (e.g. only lexer tests)
+# Run a single module
 cargo test --test all_tests -- lexer_tests
 
 # Run benchmarks
@@ -141,26 +149,27 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 ```
 
-To add a new test file: drop it under `tests/v0/stage{N}/plan/`, then add
-one `#[path]` line to `tests/all_tests.rs` — no `Cargo.toml` edit needed.
-
 ## Roadmap
 
 - **Stage 0** ✅ Front-end (lexer + parser + AST)
-- **Stage 1** ✅ HIR + name resolution (use resolution, nested modules, visibility, unsafe impl/trait)
-- **Stage 2** ✅ MIR + type check + borrow check (NLL, closures, coercion matrix)
-- **Stage 3** ✅ LLVM codegen (§16 compliant, all soundness-critical limitations closed, L1 CLOSED)
-- **Stage 4** ✅ COMPLETE (13 sub-stages: modules + PHI + visibility + closures + macros + benchmarks + ADR + v3.18)
-- **Stage 5** 🔄 In progress (5.1-5.35 done + deep review #3 GO; next: dyn Trait MIR lowering, stdlib crate compilation)
-- **v0.1** = Stage 0 + conformance suite
+- **Stage 1** ✅ HIR + name resolution
+- **Stage 2** ✅ MIR + type check + borrow check (NLL)
+- **Stage 3** ✅ LLVM codegen (§16 compliant, all soundness-critical limitations closed)
+- **Stage 4** ✅ COMPLETE (modules + closures + macros + benchmarks + ADR)
+- **Stage 5** ✅ COMPLETE (99 sub-stages: TraitResolver + vtable + dyn Trait + stdlib)
+- **Stage 6** ✅ COMPLETE (47-module architecture, all files < 1500 LOC)
+- **Stage 7** ✅ COMPLETE (region inference + user-defined trait dyn)
+- **Stage 8** 🔄 In progress (v0.2: lifetime elision → object safety → extern "C" → drop elaboration → async/await)
+- **v0.1** = Stage 0 完整 + conformance 通过
 - **v0.3** = self-hosting
 
 ## Documentation
 
-- `docs/stage-committee-process.md` — Process SOP v3.21 (§1-§28, with §13.4 + §14.4 + §25.8 governance protocols)
-- `docs/develop/v0/api-naming-standard.md` — API naming standard v1.5
+- `docs/stage-committee-process.md` — Process SOP v3.21 (§1-§28, with §13.4 + §14.4 + §25.8)
+- `docs/develop/v0/api-naming-standard.md` — API naming standard v1.97
 - `docs/develop/v0/architecture-decisions.md` — 7 Architecture Decision Records
-- `docs/develop/v0/stage-{0..5}/` — Per-stage dev logs + gate reviews + plans
+- `docs/develop/v0/stage-{0..7}/` — Per-stage dev logs + gate reviews + plans
+- `docs/lang-design/` — 19 language design documents (v1.3.2 Final, frozen)
 - `docs/tests/` — Test plans + matrix + README
 - `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0)
 

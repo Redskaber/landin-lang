@@ -3604,3 +3604,20 @@ review + verification tests.
 **Test impact**: +7 integration tests (2042 total). 0 regressions.
 **Clippy impact**: 0 (0 warnings).
 **Fmt impact**: clean.
+
+### v1.97 (Stage 8.1, 2026-07-25)
+
+Stage 8.1 — Lifetime elision rules (v0.2 start). Per v3.21 §13.4
+(aligned with 04-ownership-borrowing.md §3.2).
+
+**New `pub(crate)` symbols**:
+
+| Type/Function | Pattern |
+|---------------|---------|
+| `LifetimeElisionCtxt` (struct) | `<noun>_<noun>_<noun>` |
+| `allocate_fresh_lifetime()` | `<verb>_<adj>_<noun>` |
+| `elide_lifetimes(fn_sig)` | `<verb>_<noun>` |
+| `LifetimeElisionError` (enum) | `<noun>_<noun>_<noun>` |
+
+**Changes**: new module `src/typeck/lifetime_elision.rs` (~200 LOC).
+3 unit tests + 7 integration tests. 0 regressions.

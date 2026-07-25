@@ -387,3 +387,7 @@ mod deep_review_tests;
 // Stage 7.9: Systematic review verification tests (v0.14.8)
 #[path = "v0/stage7/plan/systematic_review_v014_tests.rs"]
 mod systematic_review_v014_tests;
+
+// Stage 8.1: Lifetime elision tests
+#[path = "v0/stage8/plan/lifetime_elision_tests.rs"]
+mod lifetime_elision_tests;

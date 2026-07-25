@@ -3739,3 +3739,22 @@ to Stage 7.2 to reduce risk — data structures first, algorithm second.
 **Verification**: cargo clean + cargo test + cargo fmt + cargo clippy — all green ✅
 
 **Next**: Stage 8 — v0.2 features (region inference activation, lifetime elision, etc.).
+
+### Stage 8.1 — Lifetime elision 规则实现 (v0.2 启动) (v0.15.0)
+
+**§13.4**: Read 04-ownership-borrowing.md §3.2 (Lifetime elision, RFC #141).
+
+**Work completed**:
+- Created `src/typeck/lifetime_elision.rs` (~200 LOC):
+  * `LifetimeElisionCtxt` — fresh lifetime allocation
+  * `elide_lifetimes(fn_sig)` — §3.2 rules 1-4
+  * `collect_erased_regions(ty)` — recursive HIR type walker
+  * `LifetimeElisionError` — MissingLifetime error
+  * 3 unit tests
+- Added `mod lifetime_elision;` to `src/typeck/mod.rs`
+- Created `tests/v0/stage8/plan/lifetime_elision_tests.rs` (7 tests)
+- Added `#[path]` to `tests/all_tests.rs`
+- Cargo.toml: version 0.14.9 → 0.15.0 (v0.2 start, minor bump)
+
+**Test impact**: +3 unit + 7 integration = 2052 total. 0 regressions.
+**Next**: Stage 8.2 — Object safety rules (§2.3).

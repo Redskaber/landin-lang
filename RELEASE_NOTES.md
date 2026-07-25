@@ -1,9 +1,54 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.14.9
+**Current version**: v0.15.0
 **Date**: 2026-07-25
-**Test count**: 2042 tests + 5 benchmarks
+**Test count**: 2052 tests + 5 benchmarks
+
+---
+
+## v0.15.0 — Stage 8.1 (Lifetime elision 规则实现 — v0.2 启动)
+
+### Overview
+
+**v0.2 启动里程碑** — 实现 lifetime elision 规则（§3.2, RFC #141），
+激活 region inference 基础设施。版本号 minor bump (0.14.x → 0.15.0)。
+
+### New module: `src/typeck/lifetime_elision.rs`
+
+| Type/Method | Purpose |
+|-------------|---------|
+| `LifetimeElisionCtxt` | Fresh lifetime allocation context |
+| `allocate_fresh_lifetime()` | Allocate fresh `RegionVid` (from 1) |
+| `elide_lifetimes(fn_sig)` | Apply §3.2 rules 1-4 to function signature |
+| `LifetimeElisionError` | MissingLifetime error |
+| `collect_erased_regions(ty)` | Recursive HIR type → regions |
+
+### Elision rules (§3.2)
+
+1. Each reference parameter gets a fresh lifetime
+2. Single input lifetime → output takes it
+3. Multiple + &self → output takes self's
+4. Otherwise → must be explicit (error)
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2052 passed (129 unit + 1923 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+```
+
+### v0.2 roadmap
+
+| Priority | Action | Status |
+|----------|--------|--------|
+| P1 | Lifetime elision (§3.2) | ✅ Stage 8.1 |
+| P2 | Object safety (§2.3) | pending |
+| P2 | extern "C" ABI (§13.2) | pending |
+| P2 | Drop elaboration (§5) | pending |
+| P3 | async/await (§10) | pending |
 
 ---
 
