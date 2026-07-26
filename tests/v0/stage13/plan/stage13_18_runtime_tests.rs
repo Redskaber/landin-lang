@@ -286,3 +286,32 @@ fn rt_eprintln_stderr() {
     // stdout should only have "to stdout\n" (eprintln goes to stderr)
     assert_eq!(stdout, "to stdout\n");
 }
+
+// === Break/Continue (Stage 13.19) ===
+
+#[test]
+fn rt_break() {
+    assert_runtime(
+        "break",
+        "fn main() -> i32 { let mut i = 0; while i < 10 { if i == 3 { break; } println!(\"{}\", i); i = i + 1; } 0 }",
+        "0\n1\n2\n",
+    );
+}
+
+#[test]
+fn rt_continue() {
+    assert_runtime(
+        "continue",
+        "fn main() -> i32 { let mut i = 0; while i < 5 { i = i + 1; if i == 3 { continue; } println!(\"{}\", i); } 0 }",
+        "1\n2\n4\n5\n",
+    );
+}
+
+#[test]
+fn rt_loop_break() {
+    assert_runtime(
+        "loop-break",
+        "fn main() -> i32 { let mut i = 0; loop { if i >= 3 { break; } println!(\"{}\", i); i = i + 1; } 0 }",
+        "0\n1\n2\n",
+    );
+}

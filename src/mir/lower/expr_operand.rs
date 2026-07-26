@@ -1010,10 +1010,16 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             cx.current_block = loop_header;
             cx.terminate(Terminator::Goto(loop_body_start));
 
+            // Stage 13.19: Push (continue_target=loop_header, break_target=loop_exit)
+            cx.loop_stack.push((loop_header, loop_exit));
+
             // loop_body_start → lower body → goto loop_header
             cx.current_block = loop_body_start;
             let _body_result = control_flow::lower_block(cx, body);
             cx.terminate(Terminator::Goto(loop_header));
+
+            // Pop the loop stack
+            cx.loop_stack.pop();
 
             // loop_exit (reached via Break) → continuation
             cx.current_block = loop_exit;
@@ -1038,10 +1044,19 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 otherwise: exit_block,
             });
 
+            // Stage 13.19: Push (continue_target=cond_block, break_target=exit_block)
+            // onto the loop stack so `break` and `continue` inside the body
+            // can emit the correct Goto. Before Stage 13.19, break/continue
+            // were no-ops (P0 control-flow bug).
+            cx.loop_stack.push((cond_block, exit_block));
+
             // body_block: lower body, goto cond_block
             cx.current_block = body_block;
             control_flow::lower_block(cx, body);
             cx.terminate(Terminator::Goto(cond_block));
+
+            // Pop the loop stack (body is done)
+            cx.loop_stack.pop();
 
             // exit_block: continuation
             cx.current_block = exit_block;
@@ -1228,19 +1243,33 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             closure_local
         }
 
-        // Break: `break expr` → goto loop exit (simplified: just lower expr)
+        // Break: `break expr` → goto loop exit block
+        // Stage 13.19: Now emits a real Goto to the enclosing loop's exit
+        // block (tracked via cx.loop_stack). Before Stage 13.19, this was a
+        // no-op (P0 control-flow bug — break did nothing).
         HirExprKind::Break { expr: br_expr, .. } => {
             if let Some(e) = br_expr {
                 let _ = lower_expr_to_operand(cx, e);
             }
-            // For Stage 2.4b, Break is simplified — no loop exit targeting.
-            // Full implementation requires tracking loop exit blocks.
+            // Get the break target from the loop stack.
+            if let Some((_, break_target)) = cx.loop_stack.last().copied() {
+                cx.terminate(Terminator::Goto(break_target));
+            }
+            // Allocate a fresh block for any code after the break (unreachable
+            // but needed so current_block is valid for subsequent lowering).
+            cx.current_block = cx.new_block();
             cx.mir
                 .new_local(Ty::new(TyKind::Never, Span::DUMMY), None, Span::DUMMY)
         }
 
-        // Continue: `continue` → goto loop header (simplified)
+        // Continue: `continue` → goto loop header (cond_block for while)
+        // Stage 13.19: Now emits a real Goto to the enclosing loop's continue
+        // target. Before Stage 13.19, this was a no-op.
         HirExprKind::Continue => {
+            if let Some((continue_target, _)) = cx.loop_stack.last().copied() {
+                cx.terminate(Terminator::Goto(continue_target));
+            }
+            cx.current_block = cx.new_block();
             cx.mir
                 .new_local(Ty::new(TyKind::Never, Span::DUMMY), None, Span::DUMMY)
         }

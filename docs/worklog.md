@@ -9696,3 +9696,34 @@ Stage Summary:
 - Test impact: +25 runtime tests (2338→2371 with llvm-backend); 0 conformance changes
 - Stage 13 STATUS: 🔄 IN PROGRESS (13.1-13.18 ✅; known limitations: for loops, trait method calls, format specifiers like {:?})
 - Next: Stage 13.19 (for loop support) OR Stage 13.20 (trait method call codegen) OR continue runtime audit
+
+---
+Task ID: stage13.19-r241-break-continue-fix
+Agent: Super Z (main) + ARCH-A + REV-A (combined subagent role)
+Task: Stage 13.19 — Fix break/continue (P0 control-flow bug). v0.25.3 patch bump.
+
+Work Log:
+- Baseline: v0.25.2 / 2371 rust tests + 5026 conformance (Stage 13.18 ✅ runtime verification)
+- Round 2 audit found P0 control-flow bug: break/continue were no-ops!
+  - break: just allocated a Never local, didn't emit any Goto → loop never exited
+  - continue: same — just allocated a Never local, didn't goto loop header
+- Root cause: src/mir/lower/expr_operand.rs had "For Stage 2.4b, Break is simplified — no loop exit targeting. Full implementation requires tracking loop exit blocks."
+- Fix (Stage 13.19):
+  - Added `loop_stack: Vec<(BasicBlockId, BasicBlockId)>` field to MirLowerCtxt (continue_target, break_target)
+  - Push/pop in Loop and While arms of lower_expr_to_operand
+  - Break arm: emit `Terminator::Goto(break_target)` from loop_stack
+  - Continue arm: emit `Terminator::Goto(continue_target)` from loop_stack
+- Behavioral verification (all 3 pass):
+  - break: `while i < 10 { if i == 3 { break; } println!(i); i = i + 1; }` → "0\n1\n2" ✅
+  - continue: `while i < 5 { i = i + 1; if i == 3 { continue; } println!(i); }` → "1\n2\n4\n5" ✅
+  - loop-break: `loop { if i >= 3 { break; } println!(i); i = i + 1; }` → "0\n1\n2" ✅
+- Added 3 runtime tests (rt_break, rt_continue, rt_loop_break)
+- Bumped Cargo.toml v0.25.2 → v0.25.3
+- Ran full CI/CD: 2374 rust tests passed (with llvm-backend), 5026 conformance passed
+
+Stage Summary:
+- Stage 13.19 PASSED — break/continue now emit correct Goto to loop exit/header
+- P0 control-flow bug fixed (break/continue were no-ops since Stage 2.4b)
+- v0.25.3: patch bump (P0 bug fix)
+- Test impact: +3 runtime tests (2371→2374 with llvm-backend)
+- Next: continue runtime audit — arrays, strings, for loops, trait methods

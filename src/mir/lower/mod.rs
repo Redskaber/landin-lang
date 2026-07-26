@@ -88,6 +88,14 @@ pub struct MirLowerCtxt<'a> {
     /// common case (`let f = |x| ...; f(5);`) work without the full
     /// synthesized-MirBody infrastructure.
     pub closure_bodies: std::collections::HashMap<LocalId, ClosureBodyInfo>,
+    /// Stage 13.19: Stack of (continue_target, break_target) block IDs for
+    /// the enclosing loops. Used by `break` and `continue` to emit the
+    /// correct branch target. Empty when not inside a loop.
+    ///
+    /// Per §16: this is lowering context state, not MIR data. The resulting
+    /// MIR has the correct Goto instructions; the stack is just how we track
+    /// which loop we're currently inside.
+    pub loop_stack: Vec<(BasicBlockId, BasicBlockId)>,
 }
 
 /// Stage 13.3a (TD-030): Information about a closure literal, stored in
@@ -132,6 +140,7 @@ impl<'a> MirLowerCtxt<'a> {
             hir: None,
             dyn_trait_plan: None,
             closure_bodies: std::collections::HashMap::new(),
+            loop_stack: Vec::new(),
         }
     }
 

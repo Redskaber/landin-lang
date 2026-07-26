@@ -1,9 +1,9 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.25.2
+**Current version**: v0.25.3
 **Date**: 2026-07-27
-**Test count**: 2371 rust tests (with llvm-backend feature) + 5 benchmarks + 5026 conformance tests
+**Test count**: 2374 rust tests (with llvm-backend feature) + 5 benchmarks + 5026 conformance tests
 
 ---
 ## v0.25.1 — Stage 13.17 (Self binding fix + inherent method call codegen — 75 conformance tests unblocked)### OverviewStage 13.17 fixes two P0 bugs discovered during systematic audit: `self` not resolved in impl method bodies, and inherent method calls (`p.get()`) dropped from codegen. The self binding fix unblocked 75 conformance tests that were previously marked `compile_error`.### Bug A: Self Binding (parser/generics.rs)**Root cause**: Parser used `Spur::default()` (empty spur) for the `self` parameter's binding name, instead of interning the string `"self"`. When `self.x` was resolved in the method body, the path segment for `self` had a different spur, so the scope lookup failed with "cannot find value in this scope".**Fix**: Use `self.interner.get_or_intern("self")` for the binding name and `get_or_intern("Self")` for the type name.### Bug B: Inherent Method Call Codegen (mir/lower/expr_operand.rs)**Root cause**: The `HirExprKind::MethodCall` legacy placeholder path emitted `Const{ty: Error, val: Int(0)}` as the func operand, which codegen dropped entirely (method calls always returned 0).**Fix**: Added `resolve_inherent_method()` + `resolve_inherent_method_from_hir_expr()` to resolve the method DefId via HIR impl lookup. Emits real `Terminator::Call` with `Const{ty: FnDef(def_id), val: Uint(def_id)}`.### Known LimitationMethods that access `self.x` (field access on self) still crash because the self parameter's MIR type is `Infer` (not `Adt`), causing codegen to emit invalid GEP. This is a deeper typeck writeback issue deferred to Stage 13.18.### Conformance Impact75 tests flipped from `compile_error` to `compile_ok` (self binding fix unblocked them). All 5026 conformance tests now pass.### Verification```cargo test: 2338 passed, 0 failedcargo fmt: cleancargo clippy: 0 warningspython3 tests/conformance/run_all.py: 5026 passed, 0 failed```### Version policy: v0.25.0 → v0.25.1 (patch bump — bug fixes)---
@@ -143,7 +143,7 @@ This bug was hidden because Stage 13.11-13.15 `println!` only carried `msg: Stri
 
 ### Test impact
 
-+9 tests (2324 → 2371 rust tests (with llvm-backend feature)). 0 conformance changes. 0 regressions.
++9 tests (2324 → 2374 rust tests (with llvm-backend feature)). 0 conformance changes. 0 regressions.
 
 ### Verification
 
