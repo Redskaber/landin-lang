@@ -152,15 +152,22 @@ fn main() {
                     cli.file.with_extension("out")
                 };
 
-                // Stage 13.8/13.10: Generate a C wrapper that calls landin_main()
-                // and provides runtime stubs for panic functions.
-                // This provides a standard `main` entry point for the linker
-                // and defines the panic symbols that codegen declares as extern.
+                // Stage 13.8/13.10/13.13: Generate a C wrapper that calls landin_main()
+                // and provides runtime stubs for panic functions + println support.
+                // The wrapper calls __landin_printlns_landin_main (if it exists) before
+                // landin_main to flush println! output.
                 let wrapper_c =
                     std::env::temp_dir().join(format!("landin_wrapper_{}.c", std::process::id()));
+                // Check if the object file has __landin_printlns_landin_main symbol
+                // by checking if any MIR body had println_messages.
+                // For simplicity, we always declare it as weak extern and call it
+                // if non-null. This avoids needing to inspect the .o file.
                 let wrapper_src = r#"#include <stdio.h>
 #include <stdlib.h>
 extern int landin_main(void);
+/* Weak symbol: if the Landin program has println! calls, this function
+   is defined in the object file. If not, it's null and we skip the call. */
+__attribute__((weak)) void __landin_printlns_landin_main(void);
 /* Runtime stubs — codegen declares these as extern */
 void __landin_panic_overflow(int op, int lhs, int rhs) {
     fprintf(stderr, "panic: arithmetic overflow (op=%d lhs=%d rhs=%d)\n", op, lhs, rhs);
@@ -175,6 +182,10 @@ void __landin_panic_div_by_zero(void) {
     exit(1);
 }
 int main(void) {
+    /* Call println helper if it exists (weak symbol) */
+    if (__landin_printlns_landin_main) {
+        __landin_printlns_landin_main();
+    }
     int ret = landin_main();
     return ret;
 }
@@ -186,6 +197,8 @@ int main(void) {
 
                 let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
                 let status = std::process::Command::new(&cc)
+                    .arg("-fno-pie")
+                    .arg("-no-pie")
                     .arg(&wrapper_c)
                     .arg(&obj_path)
                     .arg("-o")

@@ -339,14 +339,12 @@ fn codegen_function(
         let print_fn_name = format!("__landin_printlns_{}", name);
         emitter.emit_function_begin(&print_fn_name, &[], &EmitType::Void);
         for msg in &mir.println_messages {
-            // Emit string global
-            let str_global = emitter.emit_string_global(msg.as_bytes());
-            // Call puts(str_global) — puts takes a const char* and prints + newline
-            // Since our message already has \n, we use fputs to stdout instead
-            // Actually, puts adds its own \n, so we should use fputs or printf.
-            // For simplicity: use printf with %s format.
-            // Emit format string "%s" as a global
+            // Emit format string "%s\0" (null-terminated for printf)
             let fmt = emitter.emit_string_global(b"%s\0");
+            // Emit message string (null-terminated for printf)
+            let mut msg_bytes = msg.as_bytes().to_vec();
+            msg_bytes.push(0); // null terminator
+            let str_global = emitter.emit_string_global(&msg_bytes);
             // Call printf("%s", str_global)
             emitter.emit_call(
                 "printf",
