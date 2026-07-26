@@ -152,13 +152,28 @@ fn main() {
                     cli.file.with_extension("out")
                 };
 
-                // Stage 13.8: Generate a C wrapper that calls landin_main()
-                // and prints the return value. This provides a standard `main`
-                // entry point for the linker.
+                // Stage 13.8/13.10: Generate a C wrapper that calls landin_main()
+                // and provides runtime stubs for panic functions.
+                // This provides a standard `main` entry point for the linker
+                // and defines the panic symbols that codegen declares as extern.
                 let wrapper_c =
                     std::env::temp_dir().join(format!("landin_wrapper_{}.c", std::process::id()));
                 let wrapper_src = r#"#include <stdio.h>
+#include <stdlib.h>
 extern int landin_main(void);
+/* Runtime stubs — codegen declares these as extern */
+void __landin_panic_overflow(int op, int lhs, int rhs) {
+    fprintf(stderr, "panic: arithmetic overflow (op=%d lhs=%d rhs=%d)\n", op, lhs, rhs);
+    exit(1);
+}
+void __landin_panic_bounds_check(long long index, long long len) {
+    fprintf(stderr, "panic: index out of bounds (index=%lld len=%lld)\n", index, len);
+    exit(1);
+}
+void __landin_panic_div_by_zero(void) {
+    fprintf(stderr, "panic: divide by zero\n");
+    exit(1);
+}
 int main(void) {
     int ret = landin_main();
     return ret;
