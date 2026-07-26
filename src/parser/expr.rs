@@ -593,32 +593,33 @@ impl<'a> Parser<'a> {
             }
             TokenKind::KwWhile => {
                 self.bump();
-                // while let Pat = expr block
-                let cond = if *self.peek() == TokenKind::KwLet {
+                // while let Pat = expr block — Stage 13.2 (TD-031): now fully supported
+                if *self.peek() == TokenKind::KwLet {
                     self.bump(); // let
-                    let _pat = self.parse_pat();
+                    let pat = self.parse_pat();
                     self.expect(&TokenKind::Eq, "`=`");
                     let prev = self.no_struct_literal;
                     self.no_struct_literal = true;
                     let scrutinee = self.parse_expr();
                     self.no_struct_literal = prev;
-                    self.errors.push(crate::parser::ParseError::new(
-                        "`while let` patterns are not yet supported in Stage 0 (will be added in Stage 1)".to_string(),
+                    let body = self.parse_block();
+                    Expr::WhileLet {
+                        pat,
+                        expr: Box::new(scrutinee),
+                        body,
                         span,
-                    ));
-                    scrutinee
+                    }
                 } else {
                     let prev = self.no_struct_literal;
                     self.no_struct_literal = true;
                     let c = self.parse_expr();
                     self.no_struct_literal = prev;
-                    c
-                };
-                let body = self.parse_block();
-                Expr::While {
-                    cond: Box::new(cond),
-                    body,
-                    span,
+                    let body = self.parse_block();
+                    Expr::While {
+                        cond: Box::new(c),
+                        body,
+                        span,
+                    }
                 }
             }
             TokenKind::KwFor => {
@@ -859,42 +860,54 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Skip a balanced delimiter group: `(...)` / `{...}` / `[...]`.
-    /// Used to skip over macro bodies without parsing them as expressions.
+    /// Parse an `if` expression, including `if let` (Stage 13.2 TD-031).
+    ///
+    /// - `if <cond> { ... } else { ... }` → `Expr::If`
+    /// - `if let <pat> = <expr> { ... } else { ... }` → `Expr::IfLet` (Stage 13.2)
+    ///
+    /// Per §13.4 design alignment + 05-ast.md §12.4: `IfLet` is parsed at AST
+    /// level but desugars to `Match` in HIR lowering (Strategy B).
     pub(super) fn parse_if_expr(&mut self) -> Expr {
         let span = self.current_span();
         self.bump(); // if
-                     // if let Pat = expr block — peek for KwLet after if.
-                     // We model `if let P = e { ... }` as `if (let P = e) { ... }` by
-                     // wrapping the let-pattern in a special Expr variant. For Stage 0
-                     // (no Expr::Let variant in AST), we fall back to parsing the
-                     // pat = expr as a regular expression and emit a soft error.
-        let cond = if *self.peek() == TokenKind::KwLet {
-            // if let pattern
+
+        // if let Pat = expr block — Stage 13.2 (TD-031): now fully supported
+        if *self.peek() == TokenKind::KwLet {
             self.bump(); // let
-            let _pat = self.parse_pat();
+            let pat = self.parse_pat();
             self.expect(&TokenKind::Eq, "`=`");
             // Set no_struct_literal so the scrutinee `{` doesn't get eaten.
             let prev = self.no_struct_literal;
             self.no_struct_literal = true;
             let scrutinee = self.parse_expr();
             self.no_struct_literal = prev;
-            // For Stage 0 we don't have Expr::Let — emit a soft error and
-            // use the scrutinee as the condition so the block parses.
-            self.errors.push(crate::parser::ParseError::new(
-                "`if let` patterns are not yet supported in Stage 0 (will be added in Stage 1)"
-                    .to_string(),
+            let then = self.parse_block();
+            let else_ = if *self.peek() == TokenKind::KwElse {
+                self.bump();
+                // else can be either { block } or if expr
+                if *self.peek() == TokenKind::LBrace {
+                    let block = self.parse_block();
+                    Some(Box::new(Expr::Block(block, self.current_span())))
+                } else {
+                    Some(Box::new(self.parse_expr()))
+                }
+            } else {
+                None
+            };
+            return Expr::IfLet {
+                pat,
+                expr: Box::new(scrutinee),
+                then,
+                else_,
                 span,
-            ));
-            scrutinee
-        } else {
-            // Regular if: parse cond with no_struct_literal = true
-            let prev = self.no_struct_literal;
-            self.no_struct_literal = true;
-            let c = self.parse_expr();
-            self.no_struct_literal = prev;
-            c
-        };
+            };
+        }
+
+        // Regular if: parse cond with no_struct_literal = true
+        let prev = self.no_struct_literal;
+        self.no_struct_literal = true;
+        let cond = self.parse_expr();
+        self.no_struct_literal = prev;
         let then = self.parse_block();
         let else_ = if *self.peek() == TokenKind::KwElse {
             self.bump();
@@ -1024,9 +1037,11 @@ impl ExprSpan for Expr {
             Expr::Cast { span, .. } => *span,
             Expr::Try { span, .. } => *span,
             Expr::If { span, .. } => *span,
+            Expr::IfLet { span, .. } => *span,
             Expr::Match { span, .. } => *span,
             Expr::Loop { span, .. } => *span,
             Expr::While { span, .. } => *span,
+            Expr::WhileLet { span, .. } => *span,
             Expr::For { span, .. } => *span,
             Expr::Closure { span, .. } => *span,
             Expr::Return { span, .. } => *span,

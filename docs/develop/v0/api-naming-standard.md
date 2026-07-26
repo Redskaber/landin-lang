@@ -4588,3 +4588,32 @@ patch is appropriate. v0.22.0 reserved for Stage 13.2-13.4 P0 closure (closures/
 **v0.1 GATE REACHED**: 5026/5000 conformance tests — RATIFIED by r216 + r217 + r219 audits ✅
 **Stage 13 STATUS**: 🔄 IN PROGRESS (13.1 ✅ DONE — TD-028 CLOSED; 13.1b TD-029 deferred; 13.2-13.4 P0 pending)
 **v0.22.0**: Reserved for Stage 13.2-13.4 P0 closure (closures/if-let/macro_rules! — actual compiler features)
+
+### v2.41 (Stage 13.2, 2026-07-26)
+
+Stage 13.2 — if-let / while-let (TD-031 P0 closure, first user-facing feature).
+
+**Changes**:
+- TD-031 CLOSED: if-let / while-let fully supported
+  - New AST variants: `Expr::IfLet { pat, expr, then, else_, span }` + `Expr::WhileLet { pat, expr, body, span }`
+  - Parser fully supports `if let` / `while let` (removed soft errors from Stage 0)
+  - HIR lowering desugars to existing `Match` / `Loop { Match }` (Strategy B — rustc-idiomatic per 05-ast.md §12.4)
+  - 11 conformance FAIL tests flipped to PASS (6 if-let + 5 while-let in 00-parse/02-control-flow/)
+  - 2 Stage 0 regression tests updated (test_regression_no_infinite_loop_on_if_let / _while_let)
+- §13.4 Design Alignment: Strategy B (Desugar to Match) chosen over Strategy A/C
+  - Reuses existing lower_match (188 LOC) + HirExprKind::Loop lowering (24 LOC)
+  - Zero new MIR lowering, typeck, or borrowck arms (§16 compliant)
+- §14.4 J1-J6: ALL 6 PASS
+- §25.8 design write-back: 05-ast.md §8 (IfLet/WhileLet B4) + 03-type-system.md §13.4 (refinement scope) + 04-ownership-borrowing.md §4 (borrow scope)
+- New §13.4 design alignment report: docs/develop/v0/stage-13/stage-13.2-design-alignment.md
+- New Stage 13.2 gate review: docs/develop/v0/stage-13/gate-review-13.2.md (5/5 GO → PASS)
+- New Rust integration tests: tests/v0/stage13/plan/stage13_2_tests.rs (11 tests verifying AST variants + parser support + HIR desugar + conformance flip + regression test update + gate review + design alignment + v0.1 gate)
+
+**Test impact**: +11 rust (2237 → 2247). +11 conformance PASS (5015 → 5026, all 5026 now PASS). 0 regressions.
+
+**Version policy**: v0.21.5 → v0.22.0 (minor bump). Stage 13.2 adds **first user-facing compiler feature** (if-let / while-let). Per semver §2.0.0, minor bump justified (new language feature). v0.21.x patch bumps were for Stage 12 review + Stage 13.1 refactoring (no new features).
+
+**v0.1 GATE REACHED**: 5026/5026 conformance tests — RATIFIED by r216 + r217 + r219 audits ✅
+**Stage 13 STATUS**: 🔄 IN PROGRESS (13.1 ✅ TD-028 CLOSED; 13.2 ✅ TD-031 P0 CLOSED; 13.3-13.4 P0 pending)
+**P0 closure progress**: 1/3 P0 items closed (TD-031); 2 remaining (TD-030, TD-032)
+**v0.23.0**: Reserved for Stage 13.3 P0 closure (closures callable)

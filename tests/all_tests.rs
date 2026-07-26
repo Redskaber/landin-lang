@@ -559,3 +559,8 @@ mod stage12_5_tests;
 // deferred to Stage 13.1b per design alignment §15 + §25.7.
 #[path = "v0/stage13/plan/stage13_1_tests.rs"]
 mod stage13_1_tests;
+// Stage 13.2: if-let / while-let (TD-031 P0 closure) — first user-facing feature.
+// Strategy B (Desugar to Match): AST has IfLet/WhileLet; HIR desugars to Match/Loop{Match}.
+// 11 conformance FAIL→PASS; 2 Stage 0 regression tests updated. v0.22.0 minor bump.
+#[path = "v0/stage13/plan/stage13_2_tests.rs"]
+mod stage13_2_tests;

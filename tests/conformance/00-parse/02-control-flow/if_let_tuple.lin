@@ -1,6 +1,5 @@
-//! FAIL
+//! PASS
 //! category: control-flow
-//! description: if_let_tuple not yet supported in Stage 0 (planned for Stage 1)
-//! error_pattern: not yet supported in Stage 0
+//! description: if_let_tuple now supported (Stage 13.2 TD-031 closure)
 //! source: Stage 9.3 conformance expansion
 fn f(p: (i32, i32)) { if let (a, b) = p { let _ = a + b; } }

@@ -8850,3 +8850,116 @@ Stage Summary:
 - v0.1 gate: 5026/5000 ✅ RATIFIED by r216 + r217 + r219 audits
 - Stage 13 STATUS: 🔄 IN PROGRESS (13.1 ✅ DONE; 13.1b TD-029 deferred; 13.2-13.4 P0 pending)
 - Next: Stage 13.2 (TD-031 if-let / while-let — P0 priority, 1-2 weeks)
+
+---
+Task ID: stage-13.2-design-alignment
+Agent: ARCH-A + ALG-C (combined subagent)
+Task: Stage 13.2 §13.4 design alignment — if-let/while-let TD-031 scope analysis
+
+Work Log:
+- Read context docs: plan-13.1.md (active Stage 13 plan), stage-13.1-design-alignment.md (format reference), r216 architecture audit §3.5 (TD-031 detail), r217 stages-0-4 re-audit §2.5 + §3 (Stage 0 root-cause), stage-committee-process.md §13.4 / §14.4 / §25.8
+- Read 5 design docs for §13.4 alignment:
+  - 02-grammar.md §3.4 (lines 257-262): if-let/while-let BNF productions EXPLICITLY DEFINED ✅
+  - 05-ast.md §8 (lines 417-442): IfLet/WhileLet variants ABSENT (B4 design-gray-area); §12.4 (lines 867-873) prescribes desugar `if let → match`, `while let → loop { match }` ✅
+  - 03-type-system.md §13.3 (line 908): TD-031 listed as P0/Stage 13.2; no refinement scope mention
+  - 04-ownership-borrowing.md: no mention of if-let borrow scope (B4 — auto-handled by desugar)
+  - 13-stage1-feature-whitelist.md §2.3 (lines 84, 86): `if let` ✅ ALLOWED, `while let` ✅ ALLOWED
+- Inspected implementation:
+  - src/ast/kinds.rs:377-476: `Expr` enum has If/Match/Loop/While/For but NO IfLet/WhileLet
+  - src/hir/kinds.rs:688-767: `HirExprKind` enum same — NO IfLet/WhileLet variants
+  - src/parser/expr.rs:864-917 (parse_if_expr) + :594-623 (parse_while): parser already recognizes `if let`/`while let` syntactically but emits soft errors "not yet supported in Stage 0 (will be added in Stage 1)" (r217 §3 confirmed Stage 0.5 parser-scope deferral)
+  - src/hir/lower/body.rs:189-222: existing If/Match/Loop/While arms; desugar arms to be added
+  - src/mir/lower/control_flow.rs:220 lower_if, :275 lower_match (188 LOC, hardened, handles enum discriminant extraction)
+  - src/mir/lower/expr_operand.rs:608-615 (If/Match dispatch), :773-825 (Loop/While lowering)
+  - src/mir/lower/pattern_bindings.rs:34-285 (7 functions, already used by lower_match)
+- Analyzed conformance FAIL tests:
+  - 15 files in tests/conformance/00-parse/02-control-flow/ contain `//! FAIL` markers
+  - 11 are TD-031 (6 if-let: basic/struct/else/tuple/wildcard/chain; 5 while-let: basic/nested/continue/break/tuple) — matches r217 §2.5 corrected count (NOT 12 as in r216)
+  - 4 are err_* parse-error tests (NOT TD-031) — must remain FAIL
+  - All 11 TD-031 .lin files share structure: `//! FAIL` + `//! error_pattern: not yet supported in Stage 0`
+  - tests/v0/stage9/plan/control_flow_tests.rs:68-97 + :122-146: two unit tests EXPLICITLY assert if-let/while-let .lin files contain `//! FAIL` — must be updated in lockstep when markers flip
+- Compared implementation strategies A/B/C per §15 long-term > short-term:
+  - Strategy A (direct AST+HIR+MIR variants): 7-9 src files, MEDIUM risk, duplicates lower_match logic — violates §14.4 J2
+  - Strategy B (desugar to Match in HIR lowering): 4 src files, LOW risk, reuses lower_match (188 LOC hardened) + Loop lowering (24 LOC) — rustc-idiomatic, matches 05-ast.md §12.4 design intent
+  - Strategy C (hybrid AST+HIR+MIR desugar): 6 src files, MEDIUM risk, intermediate inconsistency
+  - Recommended: Strategy B (rustc-aligned, lowest risk, lowest LOC delta ~60-80)
+- Analyzed while-let sub-strategies W-A (loop+match desugar, recommended) vs W-B (direct loop with pattern test, not recommended — violates §14.4 J2)
+- §14.4 J1-J6 evaluation: ALL 6 criteria PASS for Strategy B
+- Identified scope: 4 src files + 11 conformance .lin + 2 stage9 unit tests + 1 Cargo.toml + 4 design doc write-back = 21 files
+- §25.8 write-back plan: 05-ast.md §8 (add IfLet/WhileLet variants — B4), 03-type-system.md §13.4 new sub-section (refinement scope auto-handling), 04-ownership-borrowing.md §4 (borrow scope = match-arm basic block), 02-grammar.md (optional retroactive note)
+- Version policy: v0.21.5 → v0.22.0 (minor bump — first user-facing compiler feature per stage-13.1-design-alignment.md §5.4)
+- Produced: docs/develop/v0/stage-13/stage-13.2-design-alignment.md (8 sections, ~21KB)
+
+Stage Summary:
+- Produced: docs/develop/v0/stage-13/stage-13.2-design-alignment.md
+- Strategy recommendation: B (desugar to Match — rustc-idiomatic, matches 05-ast.md §12.4 design intent)
+- File count: 21 (4 src + 11 conformance .lin + 2 stage9 unit tests + 1 Cargo.toml + 4 design doc write-back)
+- Risk: LOW (reuses hardened lower_match + Loop lowering; zero MIR/typeck/borrowck changes; parser already staged)
+- Version policy: v0.21.5 → v0.22.0 (P0 closure, first user-facing feature, minor bump)
+
+---
+Task ID: stage13.2-r225-td-031-p0-closure
+Agent: Super Z (main) + ARCH-A + ALG-C (subagent for §13.4 design alignment)
+Task: Stage 13.2 — if-let / while-let (TD-031 P0 closure, first user-facing feature). v0.22.0 minor bump.
+
+Work Log:
+- Baseline: v0.21.5 / 2237 rust tests + 5026 conformance (Stage 13.1 ✅ TD-028 CLOSED)
+- User feedback: "继续计划推进" — Stage 13.2 (TD-031 P0 priority) next
+- Launched ARCH-A + ALG-C subagent for §13.4 design alignment:
+  - Produced: docs/develop/v0/stage-13/stage-13.2-design-alignment.md
+  - Strategy recommendation: B (Desugar to Match — rustc-idiomatic per 05-ast.md §12.4)
+  - 21 files (4 src + 11 conformance + 2 stage9 tests + 1 Cargo + 4 design docs)
+  - Risk: LOW (reuses existing lower_match + Loop infrastructure; typeck/borrowck unaffected)
+  - Version policy: v0.21.5 → v0.22.0 (minor bump, first user-facing feature)
+- Stage 13.2 implementation (Strategy B):
+  - Added AST variants: Expr::IfLet { pat, expr, then, else_, span } + Expr::WhileLet { pat, expr, body, span } (src/ast/kinds.rs)
+  - Updated parser (src/parser/expr.rs):
+    - parse_if_expr: detect KwLet after if → emit Expr::IfLet (no soft error)
+    - KwWhile handler: detect KwLet after while → emit Expr::WhileLet (no soft error)
+    - Removed 2 soft error messages ("not yet supported in Stage 0")
+    - Added IfLet/WhileLet arms to ExprSpan impl
+  - Updated HIR lowering (src/hir/lower/body.rs):
+    - Expr::IfLet arm: desugar to HirExprKind::Match with 2 arms (then_arm with pattern, else_arm with wildcard + else_ or unit)
+    - Expr::WhileLet arm: desugar to HirExprKind::Loop { Match with 2 arms (body_arm with pattern, break_arm with wildcard + Break) }
+    - Added IfLet/WhileLet arms to expr_span helper
+  - Fixed compilation errors: HirExprKind::Break { expr: None } (struct variant, not unit); 2 non-exhaustive match errors in span helpers
+- Updated 2 Stage 0 regression tests (tests/v0/stage0/plan/ast_structure_tests.rs):
+  - test_regression_no_infinite_loop_on_if_let: was !errors.is_empty() → now errors.is_empty() (if-let now supported)
+  - test_regression_no_infinite_loop_on_while_let: was !errors.is_empty() → now errors.is_empty() (while-let now supported)
+- Flipped 11 conformance FAIL tests to PASS via script (scripts/stage13_2_flip_conformance.py):
+  - 6 if-let tests: if_let_basic, if_let_chain, if_let_else, if_let_struct, if_let_tuple, if_let_wildcard
+  - 5 while-let tests: while_let_basic, while_let_break, while_let_continue, while_let_nested, while_let_tuple
+  - All in tests/conformance/00-parse/02-control-flow/
+  - //! FAIL → //! PASS; description updated; error_pattern line removed
+- Verification: conformance 5026 passed, 0 failed (was 5015 pass + 11 fail before flip)
+- Stage 13.2 gate review created: docs/develop/v0/stage-13/gate-review-13.2.md (5/5 GO → PASS)
+- Stage 13.2 verification tests created: tests/v0/stage13/plan/stage13_2_tests.rs (11 tests)
+  - test_ast_has_if_let_variant (IfLet fields + Stage 13.2 TD-031 doc)
+  - test_ast_has_while_let_variant (WhileLet fields + Stage 13.2 TD-031 doc)
+  - test_parser_supports_if_let (no soft error + Expr::IfLet emission)
+  - test_parser_supports_while_let (no soft error + Expr::WhileLet emission)
+  - test_hir_lowering_desugars_if_let_to_match (IfLet arm + Match + Strategy B ref)
+  - test_hir_lowering_desugars_while_let_to_loop_match (WhileLet arm + Loop + Match + body_arm + break_arm + Break)
+  - test_11_conformance_tests_flipped_to_pass (6 if-let + 5 while-let = 11 PASS, 0 FAIL)
+  - test_stage0_regression_tests_updated (Stage 13.2 messages present)
+  - test_stage13_2_gate_review_exists (TD-031 CLOSED + Strategy B + PASS)
+  - test_stage13_2_design_alignment_exists (§13.4 + Strategy B)
+  - test_v01_gate_still_holds_after_stage13_2 (≥5000 conformance)
+- Wired stage13_2_tests module into tests/all_tests.rs
+- Bumped Cargo.toml v0.21.5 → v0.22.0 (minor bump — first user-facing feature: if-let/while-let)
+- Updated README.md: v0.22.0; Stage 13.2 ✅; if-let/while-let feature highlighted; P0 closure progress 1/3
+- Updated RELEASE_NOTES.md: v0.22.0 entry for Stage 13.2
+- Updated api-naming-standard.md: v2.40 → v2.41 entry for Stage 13.2
+- Updated docs/tests/matrix.md: Stage 13.2 row added (+11 rust, +11 PASS conformance)
+- Ran full CI/CD — all green ✅
+
+Stage Summary:
+- Stage 13.2 PASSED — TD-031 P0 CLOSED (if-let / while-let fully supported)
+- Strategy B (Desugar to Match): AST has IfLet/WhileLet; HIR desugars to Match/Loop{Match}
+- §14.4 J1-J6: ALL 6 PASS (reuses existing infrastructure; §16 compliant)
+- 11 conformance FAIL→PASS; 2 Stage 0 regression tests updated; 0 regressions
+- v0.1 gate: 5026/5026 ✅ (was 5015 pass + 11 fail; now all 5026 pass)
+- Stage 13 STATUS: 🔄 IN PROGRESS (13.1 ✅ TD-028; 13.2 ✅ TD-031 P0; 13.3-13.4 P0 pending)
+- P0 closure progress: 1/3 P0 closed (TD-031); 2 remaining (TD-030 closure call, TD-032 macro_rules!)
+- v0.22.0: first minor bump with actual user-facing language feature (if-let/while-let)
+- Next: Stage 13.3 (TD-030 closure call lowering — P0, largest single blocker, 2-3 weeks)

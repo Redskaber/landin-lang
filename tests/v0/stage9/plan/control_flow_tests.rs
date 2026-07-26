@@ -65,7 +65,7 @@ fn test_stage9_3_if_else_tests_present() {
     }
 }
 
-/// Verify if-let tests present and marked as FAIL (Stage 1 feature)
+/// Verify if-let tests present and marked as PASS (Stage 13.2 TD-031 closed — if-let now supported)
 #[test]
 fn test_stage9_3_if_let_tests_marked_fail() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -85,13 +85,10 @@ fn test_stage9_3_if_let_tests_marked_fail() {
         assert!(path.exists(), "if-let test {name} must exist");
 
         let content = std::fs::read_to_string(&path).expect("read if-let test");
+        // Stage 13.2 (TD-031): if-let is now supported — tests flipped from FAIL to PASS
         assert!(
-            content.contains("//! FAIL"),
-            "{name} must be FAIL — if-let not yet supported in Stage 0"
-        );
-        assert!(
-            content.contains("not yet supported in Stage 0"),
-            "{name} must reference Stage 0 limitation in error_pattern"
+            content.contains("//! PASS"),
+            "{name} must be PASS — if-let now supported in Stage 13.2 (TD-031 closed)"
         );
     }
 }
@@ -119,7 +116,7 @@ fn test_stage9_3_while_tests_present() {
     }
 }
 
-/// Verify while-let tests present and marked as FAIL (Stage 1 feature)
+/// Verify while-let tests present and marked as PASS (Stage 13.2 TD-031 closed — while-let now supported)
 #[test]
 fn test_stage9_3_while_let_tests_marked_fail() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -138,9 +135,10 @@ fn test_stage9_3_while_let_tests_marked_fail() {
         assert!(path.exists(), "while-let test {name} must exist");
 
         let content = std::fs::read_to_string(&path).expect("read while-let test");
+        // Stage 13.2 (TD-031): while-let is now supported — tests flipped from FAIL to PASS
         assert!(
-            content.contains("//! FAIL"),
-            "{name} must be FAIL — while-let not yet supported in Stage 0"
+            content.contains("//! PASS"),
+            "{name} must be PASS — while-let now supported in Stage 13.2 (TD-031 closed)"
         );
     }
 }

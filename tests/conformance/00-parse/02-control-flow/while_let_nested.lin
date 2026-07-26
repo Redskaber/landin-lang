@@ -1,6 +1,5 @@
-//! FAIL
+//! PASS
 //! category: control-flow
-//! description: while_let_nested not yet supported in Stage 0 (planned for Stage 1)
-//! error_pattern: not yet supported in Stage 0
+//! description: while_let_nested now supported (Stage 13.2 TD-031 closure)
 //! source: Stage 9.3 conformance expansion
 enum Opt<T> { Some(T), None } fn f() { let mut x = Opt::Some(1); while let Opt::Some(a) = x { let mut y = Opt::Some(2); while let Opt::Some(b) = y { let _ = a + b; y = Opt::None; } x = Opt::None; } }

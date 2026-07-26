@@ -437,6 +437,30 @@ pub enum Expr {
         else_: Option<Box<Expr>>,
         span: Span,
     },
+    /// Stage 13.2 (TD-031): `if let <pat> = <expr> { ... } else { ... }`
+    ///
+    /// Per §13.4 design alignment + 05-ast.md §12.4: this variant is parsed
+    /// at AST level but **desugars to `Match` in HIR lowering** (Strategy B,
+    /// rustc-idiomatic). The desugar is:
+    ///
+    /// ```text
+    /// if let pat = expr { then } else { else_ }
+    /// ↓ (HIR lowering)
+    /// Match(expr, [
+    ///     Arm(pat, then),
+    ///     Arm(_, else_ or unit),  // wildcard catch-all arm
+    /// ])
+    /// ```
+    ///
+    /// This reuses the existing `lower_match` MIR lowering infrastructure
+    /// (no new MIR/typeck/borrowck arms needed — they see only Match).
+    IfLet {
+        pat: Pat,
+        expr: Box<Expr>,
+        then: Block,
+        else_: Option<Box<Expr>>,
+        span: Span,
+    },
     Match {
         expr: Box<Expr>,
         arms: Vec<Arm>,
@@ -448,6 +472,31 @@ pub enum Expr {
     },
     While {
         cond: Box<Expr>,
+        body: Block,
+        span: Span,
+    },
+    /// Stage 13.2 (TD-031): `while let <pat> = <expr> { ... }`
+    ///
+    /// Per §13.4 design alignment + 05-ast.md §12.4: this variant is parsed
+    /// at AST level but **desugars to `Loop { Match }` in HIR lowering**
+    /// (Strategy B, rustc-idiomatic). The desugar is:
+    ///
+    /// ```text
+    /// while let pat = expr { body }
+    /// ↓ (HIR lowering)
+    /// Loop {
+    ///     Match(expr, [
+    ///         Arm(pat, body),
+    ///         Arm(_, Break),  // wildcard catch-all → break out of loop
+    ///     ])
+    /// }
+    /// ```
+    ///
+    /// This reuses the existing `lower_match` + `lower_loop` MIR lowering
+    /// infrastructure (no new MIR/typeck/borrowck arms needed).
+    WhileLet {
+        pat: Pat,
+        expr: Box<Expr>,
         body: Block,
         span: Span,
     },

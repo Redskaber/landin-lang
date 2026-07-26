@@ -739,20 +739,28 @@ fn test_regression_no_infinite_loop_on_struct_literal() {
 #[test]
 fn test_regression_no_infinite_loop_on_if_let() {
     // Before Round 2a fix: `if let Some(x) = opt { }` caused a timeout.
-    let (_krate, errors) = parse("fn f() { if let Some(x) = opt { 1 } }");
+    // Stage 13.2 (TD-031): `if let` is now fully supported (no errors expected).
+    let (krate, errors) = parse("fn f() { if let Some(x) = opt { 1 } }");
     assert!(
-        !errors.is_empty(),
-        "if let should produce errors (not yet supported), got 0"
+        errors.is_empty(),
+        "Stage 13.2: if let is now supported (should produce 0 errors), got {} errors: {:?}",
+        errors.len(),
+        errors
     );
+    assert_eq!(krate.items.len(), 1, "should have 1 item (the fn)");
 }
 
 #[test]
 fn test_regression_no_infinite_loop_on_while_let() {
-    let (_krate, errors) = parse("fn f() { while let Some(x) = iter.next() { 1 } }");
+    // Stage 13.2 (TD-031): `while let` is now fully supported (no errors expected).
+    let (krate, errors) = parse("fn f() { while let Some(x) = iter.next() { 1 } }");
     assert!(
-        !errors.is_empty(),
-        "while let should produce errors (not yet supported), got 0"
+        errors.is_empty(),
+        "Stage 13.2: while let is now supported (should produce 0 errors), got {} errors: {:?}",
+        errors.len(),
+        errors
     );
+    assert_eq!(krate.items.len(), 1, "should have 1 item (the fn)");
 }
 
 #[test]

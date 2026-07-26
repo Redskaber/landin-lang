@@ -62,9 +62,11 @@ fn expr_span(expr: &ast::Expr) -> Span {
         Cast { span, .. } => *span,
         Try { span, .. } => *span,
         If { span, .. } => *span,
+        IfLet { span, .. } => *span,
         Match { span, .. } => *span,
         Loop { span, .. } => *span,
         While { span, .. } => *span,
+        WhileLet { span, .. } => *span,
         For { span, .. } => *span,
         Closure { span, .. } => *span,
         Return { span, .. } => *span,
@@ -193,6 +195,54 @@ pub fn lower_expr(cx: &mut HirLowerCtxt, expr: &Expr) -> HirExpr {
             then: lower_block(cx, then),
             else_: else_.as_ref().map(|e| Box::new(lower_expr(cx, e))),
         },
+        // Stage 13.2 (TD-031): `if let pat = expr { then } else { else_ }`
+        // desugars to `Match(expr, [Arm(pat, then), Arm(_, else_ or unit)])`.
+        // Per §13.4 design alignment Strategy B (rustc-idiomatic) + 05-ast.md §12.4.
+        Expr::IfLet {
+            pat,
+            expr,
+            then,
+            else_,
+            span,
+        } => {
+            // Build the HIR Match arms
+            let then_arm = HirArm {
+                hir_id: cx.fresh_hir_id(),
+                pat: pat::lower_pat(cx, pat),
+                guard: None,
+                body: Box::new(lower_block_expr(cx, then)),
+                span: *span,
+            };
+            // The else_ arm uses a wildcard pattern; body is else_ or unit block
+            let else_body = else_
+                .as_ref()
+                .map(|e| lower_expr(cx, e))
+                .unwrap_or_else(|| {
+                    lower_block_expr(
+                        cx,
+                        &ast::Block {
+                            stmts: vec![],
+                            expr: None,
+                            span: *span,
+                        },
+                    )
+                });
+            let else_arm = HirArm {
+                hir_id: cx.fresh_hir_id(),
+                pat: HirPat {
+                    hir_id: cx.fresh_hir_id(),
+                    kind: HirPatKind::Wild,
+                    span: *span,
+                },
+                guard: None,
+                body: Box::new(else_body),
+                span: *span,
+            };
+            HirExprKind::Match {
+                expr: Box::new(lower_expr(cx, expr)),
+                arms: vec![then_arm, else_arm],
+            }
+        }
         Expr::Match { expr, arms, .. } => HirExprKind::Match {
             expr: Box::new(lower_expr(cx, expr)),
             arms: arms
@@ -213,6 +263,58 @@ pub fn lower_expr(cx: &mut HirLowerCtxt, expr: &Expr) -> HirExpr {
             cond: Box::new(lower_expr(cx, cond)),
             body: lower_block(cx, body),
         },
+        // Stage 13.2 (TD-031): `while let pat = expr { body }` desugars to
+        // `Loop { Match(expr, [Arm(pat, body), Arm(_, Break)]) }`.
+        // Per §13.4 design alignment Strategy B (rustc-idiomatic) + 05-ast.md §12.4.
+        Expr::WhileLet {
+            pat,
+            expr,
+            body,
+            span,
+        } => {
+            // Build the Match arms: pattern arm runs the body; wildcard arm breaks the loop
+            let body_arm = HirArm {
+                hir_id: cx.fresh_hir_id(),
+                pat: pat::lower_pat(cx, pat),
+                guard: None,
+                body: Box::new(lower_block_expr(cx, body)),
+                span: *span,
+            };
+            let break_arm = HirArm {
+                hir_id: cx.fresh_hir_id(),
+                pat: HirPat {
+                    hir_id: cx.fresh_hir_id(),
+                    kind: HirPatKind::Wild,
+                    span: *span,
+                },
+                guard: None,
+                body: Box::new(HirExpr {
+                    hir_id: cx.fresh_hir_id(),
+                    kind: HirExprKind::Break { expr: None },
+                    span: *span,
+                }),
+                span: *span,
+            };
+            // Build the Match HIR expression
+            let match_expr = HirExpr {
+                hir_id: cx.fresh_hir_id(),
+                kind: HirExprKind::Match {
+                    expr: Box::new(lower_expr(cx, expr)),
+                    arms: vec![body_arm, break_arm],
+                },
+                span: *span,
+            };
+            // Wrap in a Loop with the Match as the body block's expr
+            let loop_body_block = HirBlock {
+                hir_id: cx.fresh_hir_id(),
+                stmts: vec![],
+                expr: Some(Box::new(match_expr)),
+                span: *span,
+            };
+            HirExprKind::Loop {
+                body: loop_body_block,
+            }
+        }
         Expr::For {
             pat, iter, body, ..
         } => HirExprKind::For {
