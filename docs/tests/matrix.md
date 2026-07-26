@@ -1,7 +1,7 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-07-25 (last updated Stage 8.7)
+> **Date**: 2026-07-26 (last updated Stage 12.2)
 > **Process**: v3.21 (§17 三阶段文档协议 + §18 轮次文档同步 + §21 跨阶段审查 + §23 命名标准 + §25 深度审查 + §25.8 设计回写)
 
 ## Current Status
@@ -9,16 +9,27 @@
 | Stage | Tests | Coverage | Status |
 |-------|-------|----------|--------|
 | Stage 0 (lexer/parser/AST) | 344 | ~100% | ✅ Complete |
-| Stage 1 (HIR/resolve) | 117 | ~100% | ✅ Complete |
-| Stage 2 (MIR/typeck/borrowck) | 170 | ~100% | ✅ Complete |
+| Stage 1 (HIR/resolve) | 99 | ~100% | ✅ Complete |
+| Stage 2 (MIR/typeck/borrowck) | 141 | ~100% | ✅ Complete |
 | Stage 3 (codegen) | 309 (incl. 5 §21 audit) | ~99% | ✅ Complete |
-| Stage 4 (modules + closures + macros + benches) | 67 (incl. 5 bench) | ~100% | ✅ Complete |
-| Stage 5 (TraitResolver + vtable + dyn Trait + stdlib) | 642 | ~100% | ✅ Complete (99 sub-stages) |
+| Stage 4 (modules + closures + macros + benches) | 13 (incl. 5 bench) | ~100% | ✅ Complete |
+| Stage 5 (TraitResolver + vtable + dyn Trait + stdlib) | 977 | ~100% | ✅ Complete (99 sub-stages) |
 | Stage 6 (architectural splits — 47 modules) | — (refactor, behavior-equivalent) | — | ✅ Complete (18 sub-stages, 1881 tests unchanged) |
-| Stage 7 (region inference + user-defined trait dyn) | 154 (+28 unit) | ~98% | ✅ Complete (9 sub-stages) |
+| Stage 7 (region inference + user-defined trait dyn) | 35 (+28 unit) | ~98% | ✅ Complete (9 sub-stages) |
 | Stage 8 (v0.2 features + docs standardization) | 38 (+9 unit) | ~98% | ✅ Complete (7 sub-stages) |
-| Stage 9 (v0.1 conformance suite expansion) | +134 rust + +592 conformance | ~100% | ✅ Complete (12/12 sub-stages, 600/600 conformance — v0.1 RC!) |
-| **Total** | **2325** rust + **5026** conformance | ~100% | 🎉 Stage 0-11.10 complete — §25 deep review PASS, v0.1 gate reached, README rewritten (5026/5000 = 100.5%) |
+| Stage 9 (v0.1 conformance suite expansion) | +145 rust + +600 conformance (00-parse) | ~100% | ✅ Complete (12/12 sub-stages, 600/600 parse conformance) |
+| Stage 10 (CLI upgrade + 8 conformance categories created) | +44 rust + +539 conformance | ~100% | ✅ Complete (8/8 sub-stages, 1139 conformance) |
+| Stage 11 (conformance expansion 1139→5026) | +30 rust + +3887 conformance | ~100% | ✅ Complete (10/10 sub-stages, 5026/5000 v0.1 gate reached!) |
+| Stage 12.1 (v0.1 release + v0.3 bootstrap prep) | +6 rust | — | ✅ Complete (v0.1 release ratified) |
+| Stage 12.2 (cross-stage audit r216 + Stage 13 plan + §25.8 write-back + D7 backfill) | +10 rust | — | ✅ Complete (5/5 GO-WITH-CONDITIONS, r216 first-pass) |
+| Stage 12.3 (r217 second-pass audit — 3 reports, 2055 lines, stage-round revisions) | +12 rust | — | ✅ Complete (5/5 GO-WITH-CONDITIONS, r217 second-pass) |
+| Stage 12.4 (§25.8 retroactive backfill for Stage 5 + Stage 8 — 3 design-doc edits) | 0 | — | ✅ Complete (DynTraitMIRSummary + StdlibTypeKind + async/await MVP) |
+| Stage 12.5 (plan-13.1.md reframe — Planned → Draft, Stage 12 output) | 0 | — | ✅ Complete |
+| Stage 12.6 (version revert v0.22.0 → v0.21.2 — patch bump per r217) | 0 | — | ✅ Complete |
+| Stage 12.7 (Stage 0-4 README per-module attribution corrections) | 0 | — | 🔄 Partial |
+| Stage 12.8 (Stage 12 final gate review — §25 deep review of Stage 12) | TBD | — | ⏳ Pending |
+| Stage 13 (v0.3 self-hosting prep — TD-028..033 closure, plan-13.1.md in Draft state) | TBD | — | 📋 Draft (awaits Stage 12.8 GO) |
+| **Total** | **2347** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217 audits (5026/5000 = 100.5%) |
 
 ## Stage 3 Test Breakdown
 

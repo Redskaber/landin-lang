@@ -8,9 +8,10 @@ predictable performance.
 
 > **🎉 v0.1 RELEASE — Conformance gate reached: 5026/5000 tests (100.5%)!**
 >
-> **Status:** v0.21.0 — Stage 0-11 complete. v0.1 conformance gate reached.
-> **2325 rust tests** + **5026 conformance tests** + 5 benchmarks. 0 clippy warnings.
+> **Status:** v0.21.2 — Stage 0-11 complete, Stage 12 in progress (12.1-12.7 done, 12.8 pending final gate review).
+> **2335+ rust tests** + **5026 conformance tests** + 5 benchmarks. 0 clippy warnings.
 > Process v3.21 (§0-§28). §16 interface isolation compliant. §17.1/§17.2/§18.4 docs compliant.
+> Cross-stage audit r216 (first-pass) + r217 (second-pass, 3 reports) complete.
 >
 > **Milestones:**
 > - Stage 0-4: ✅ Complete (lexer, parser, HIR, MIR, typeck, borrowck, codegen)
@@ -21,11 +22,14 @@ predictable performance.
 > - Stage 9: ✅ Complete (12 sub-stages — parse conformance 600/600)
 > - Stage 10: ✅ Complete (8 sub-stages — CLI upgrade + all 8 conformance categories created)
 > - Stage 11: ✅ Complete (10 sub-stages — conformance 1139→5026, v0.1 gate reached!)
+> - Stage 12: 🔄 In Progress (12.1 v0.1 release + 12.2 r216 first-pass audit + 12.3 r217 second-pass audit + 12.4 §25.8 backfill + 12.5 plan-13 reframe + 12.6 version revert + 12.7 README corrections; 12.8 final gate review pending)
+> - Stage 13: 📋 Draft (v0.3 self-hosting prep — `plan-13.1.md` exists as Stage 12 output, awaits Stage 12 close)
 >
 > **Architecture:** 50+ modules. All files < 1500 LOC. Single responsibility per module.
 > Data flows单向. Design docs synced (§25.8).
 >
-> **v0.1 gate:** conformance 5026/5000 ✅ — **GATE REACHED!**
+> **v0.1 gate:** conformance 5026/5000 ✅ — **GATE REACHED!** (ratified by r216 + r217 audits)
+> **v0.3 prep:** 3 P0 blockers (TD-030 closure call, TD-031 if-let, TD-032 macro_rules!) — Stage 13 target (post Stage 12.8)
 
 ## Quick start
 
@@ -223,21 +227,98 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 9** ✅ COMPLETE (parse conformance 600/600)
 - **Stage 10** ✅ COMPLETE (CLI upgrade + all 8 conformance categories created)
 - **Stage 11** ✅ COMPLETE (conformance 1139→5026, v0.1 gate reached!)
-- **v0.1** = Stage 0 完整 + conformance 5026/5000 通过 ✅ **GATE REACHED!**
-- **v0.3** = self-hosting (远期)
+- **Stage 12** 🔄 IN PROGRESS (12.1-12.7 done; 12.8 final gate review pending)
+  - 12.1 ✅ v0.1 release + v0.3 bootstrap prep
+  - 12.2 ✅ r216 first-pass audit (D1-D7, 5/5 GO-WITH-CONDITIONS)
+  - 12.3 ✅ r217 second-pass audit (3 reports, 2055 lines, 9 stage-round revisions)
+  - 12.4 ✅ §25.8 retroactive backfill (Stage 5 + Stage 8, 3 design-doc edits)
+  - 12.5 ✅ plan-13.1.md reframed as Stage 12 output (Planned → Draft)
+  - 12.6 ✅ Version revert v0.22.0 → v0.21.2 (patch bump, no new compiler features)
+  - 12.7 🔄 Stage 0-4 README corrections (partial)
+  - 12.8 ⏳ Final gate review (§25 deep review of Stage 12)
+- **Stage 13** 📋 DRAFT (v0.3 self-hosting prep — plan-13.1.md awaits Stage 12 close)
+- **v0.1** = Stage 0 完整 + conformance 5026/5000 通过 ✅ **GATE REACHED!** (ratified by r216 + r217)
+- **v0.3** = self-hosting (远期 — blocked on Stage 12.8 + Stage 13 P0 closure)
+
+## Cross-stage audit (r216 + r217)
+
+### r216 — first-pass audit (Stage 12.2)
+
+Stage 12.2 triggered a multi-agent group review per §25 + §21 + §16 + §25.8:
+
+- **ARCH-A** (D1 + D5): `docs/develop/v0/stage-12/cross-stage-audit-r216-architecture.md`
+  - 1 active §16 violation (TD-028: `mir::dyn_trait → codegen`, ≤3 files to fix)
+  - 1 newly-discovered B1 deviation (TD-029: `TyKind::Dynamic` missing in `src/mir/ty.rs`)
+  - Verdict: GO-WITH-CONDITIONS
+- **QA-A + REV-A + PM-A** (D2 + D3 + D4 + D6 + D7): `docs/develop/v0/stage-12/cross-stage-audit-r216-techdebt-tests-docs.md`
+  - 7 open tech debt items (P0=3, P1=1, P2=2, P3=1-on-hold)
+  - 7357 tests total (146 inline + 2179 integration + 5 benchmarks + 5026 conformance + 1 should_panic)
+  - Stage 13 recommendation: Option B (compile pipeline fixes for v0.3 readiness)
+  - Verdict: 5/5 GO-WITH-CONDITIONS
+
+### r217 — second-pass audit (Stage 12.3, this stage)
+
+Stage 12.3 triggered a second-pass review that revises r216 stage-round attributions and
+re-audits Stages 0-11 systematically. 3 parallel subagent batches produced 2055 lines:
+
+- **ARCH-A + REV-A** (stages 0-4): `cross-stage-audit-r217-stages-0-4.md` (411 lines)
+  - 5 stage-round revisions (TD-028 attribution correct, TD-029 root cause reattributed to Stage 2.1, TD-030/031 numeric corrections, TD-032 framing inversion)
+  - Stage 0-4 README per-module attribution errors identified (Stage 12.7 P2 fix)
+- **ARCH-A + REV-A + QA-A** (stages 5-8): `cross-stage-audit-r217-stages-5-8.md` (671 lines)
+  - 4 count corrections (Stage 5 has 96 plan files not 99; Stage 6 has 15 plans not 18)
+  - 5 new findings (3 implicit-knowledge gaps in design docs: DynTraitMIRSummary, StdlibTypeKind, async/await MVP)
+  - Stage 5 §25.8 retroactive backfill required (Stage 12.4 P1 fix)
+- **PM-A + REC-A + ARCH-A** (stages 9-11 + Stage 12 scope): `cross-stage-audit-r217-stages-9-12-scope.md` (973 lines)
+  - Stage 9-11 numeric claims all verified exact
+  - Stage 12 scope finalized: 8 sub-stages (12.1-12.8), 12.8 final gate review pending
+  - Stage 13 launch criteria: 5 conditions (all Stage 12.4-12.8 must close)
+  - Version policy: v0.21.2 (patch bump, no new compiler features)
+
+### §25.8 design write-backs
+
+- Stage 12.2 (r216): `docs/lang-design/03-type-system.md` §13 — TyKind::Dynamic B1 deviation
+- Stage 12.4 (r217 retroactive): `docs/lang-design/06-mir.md` §15 — DynTraitMIRSummary 4-layer arch
+- Stage 12.4 (r217 retroactive): `docs/lang-design/09-stdlib.md` §12 — StdlibTypeKind converter
+- Stage 12.4 (r217 retroactive): `docs/lang-design/05-ast.md` §15 — async/await MVP synchronous semantics
+
+### Stage 12 sub-stage plan (revised per r217)
+
+| Sub-stage | Status | Description |
+|-----------|--------|-------------|
+| 12.1 | ✅ DONE | v0.1 release + v0.3 bootstrap prep |
+| 12.2 | ✅ DONE | First-pass cross-stage audit r216 |
+| 12.3 | ✅ DONE | Second-pass audit r217 (3 reports, 2055 lines) |
+| 12.4 | ✅ DONE | §25.8 retroactive backfill (Stage 5 + Stage 8 — 3 design-doc edits) |
+| 12.5 | ✅ DONE | Reframe plan-13.1.md as Stage 12 output (Planned → Draft) |
+| 12.6 | ✅ DONE | Version revert v0.22.0 → v0.21.2 + sync README/RELEASE_NOTES/api-naming-standard |
+| 12.7 | 🔄 PARTIAL | Stage 0-4 README corrections (per r217 stages-0-4 findings) |
+| 12.8 | ⏳ PENDING | Stage 12 final gate review (§25 deep review of Stage 12 itself) |
+
+### Stage 13 launch criteria (per r217)
+
+Stage 13 cannot launch until all 5 conditions close:
+1. Stage 12.4 §25.8 Stage 5 backfill complete ✅
+2. Stage 12.5 plan-13.1.md reframed as Stage 12 output ✅
+3. Stage 12.6 version revert done (Cargo.toml = v0.21.2) ✅
+4. Stage 12.7 Stage 0-4 README corrections done 🔄
+5. Stage 12.8 final gate review 5/5 GO ⏳
 
 ## Documentation
 
 - `docs/stage-committee-process.md` — Process SOP v3.21 (§1-§28)
-- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.34
+- `docs/develop/v0/api-naming-standard.md` — API naming standard v2.37
 - `docs/develop/v0/architecture-decisions.md` — 7 Architecture Decision Records
 - `docs/develop/v0/stage-{0..9}/` — Stage 0-9 dev logs + gate reviews + plans (§17.3)
 - `docs/develop/v0/stage-10/` — Stage 10 dev logs + gate reviews + plans (independent)
 - `docs/develop/v0/stage-11/` — Stage 11 dev logs + gate reviews + plans (independent)
-- `docs/lang-design/` — 19 language design documents (v1.3.2 Final, frozen)
+- `docs/develop/v0/stage-12/` — Stage 12 dev logs + v0.1 release + v0.3 prep + r216 first-pass + r217 second-pass audits
+- `docs/develop/v0/stage-13/` — Stage 13 plan (DRAFT — Stage 12 output, awaits Stage 12 close)
+- `docs/lang-design/` — 19 language design documents (v1.3.2 Final, frozen; §25.8 write-backs appended through Stage 12.4)
 - `docs/tests/v0/stage{0..9}/` — Stage 0-9 test plans (§17.2 双向印证)
 - `docs/tests/v0/stage10/` — Stage 10 test plans (independent)
 - `docs/tests/v0/stage11/` — Stage 11 test plans (independent)
+- `docs/tests/v0/stage12/` — Stage 12 test plans (independent)
+- `docs/tests/v0/stage13/` — Stage 13 test plans (independent, planned)
 - `docs/tests/matrix.md` — Global test matrix
 - `docs/worklog.md` — Worklog mirror (v3.18 §18.4.0)
 

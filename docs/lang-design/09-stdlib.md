@@ -1039,3 +1039,47 @@ extern "C" {
 | B1（alloc/std 层 / 互操作 / libc binding） | v0.2+ | MVP 不需要 |
 | B3（core prelude 简化） | v0.2+ | 当前 register_stdlib 满足 MVP |
 | B4（trait method 查询 API + vtable 布局） | 已在 §11.2-11.3 补写 | — |
+
+---
+
+## 12. Stage 12.4 §25.8 追溯回写（v0.21.2，r217 二次审查）
+
+> 本节由 Stage 12.4（r217 二次审查）依据流程 v3.21 §25.8 追溯回写协议生成。
+> Stage 5 (99 子阶段) 在 v3.20 流程下执行，未做 §25.8 设计回写；本节补做。
+> 审计来源: `docs/develop/v0/stage-12/cross-stage-audit-r217-stages-5-8.md` §2.4
+
+### 12.1 `StdlibTypeKind` + `stdlib_type_kind_to_emit_type()` — TD-016 闭包转换器补写（B4 设计灰区）
+
+**实现来源**: Stage 5.82 (TD-016 closure — dyn Trait 返回类型 I32 占位符修复)
+**代码位置**: `src/stdlib/trait_methods.rs::StdlibTypeKind` + `stdlib_type_kind_to_emit_type()`
+
+**设计意图**:
+
+TD-016 在 Stage 5.82 修复了 dyn Trait 方法返回类型为 I32 占位符的限制。修复引入了 `StdlibTypeKind` 枚举，用于：
+
+1. 在 stdlib trait method 注册表中表达返回类型和参数类型的"种类"（kind）
+2. 通过 `stdlib_type_kind_to_emit_type()` 转换为 codegen 层的 `EmitType`
+3. 让 dyn Trait 方法调用能够正确 emit 返回值类型（不再硬编码 I32）
+
+**`StdlibTypeKind` 枚举值**（来自 src/stdlib/trait_methods.rs）:
+
+- `Void` — 单元类型 `()`
+- `Bool` — `bool`
+- `Int` — `i32`（默认整数类型）
+- `I64` — `i64`
+- `U8` / `U64` — 无符号整数
+- `F32` / `F64` — 浮点
+- `Ptr` — 裸指针 `*const T` / `*mut T`
+- `Struct` — 用户定义结构体
+- `Enum` — 用户定义枚举
+
+**回写动作**: §11.2 stdlib trait method 注册表 API 表新增 `stdlib_trait_method_return_kind` + `stdlib_trait_method_param_kinds` 访问器说明，引用 `StdlibTypeKind`。
+
+### 12.2 设计偏差状态（截至 v0.21.2）
+
+| 偏差 | 类型 | 状态 | 计划 |
+|------|------|------|------|
+| alloc/std 层 / 互操作 / libc binding | B1 | ❌ 未实现 | v0.2+ |
+| core prelude 简化 | B3（已接受） | — | 永久偏差 |
+| trait method 查询 API + vtable 布局 | B4 | ✅ 已回写 | §11.2-11.3 |
+| `StdlibTypeKind` 转换器补写 | B4 | ✅ 本节回写 | §12.1 |

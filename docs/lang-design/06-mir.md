@@ -993,4 +993,45 @@ MIR 结构（无 Call 上的扩展字段）。
 
 ---
 
+## 15. Stage 12.4 §25.8 追溯回写（v0.21.2，r217 二次审查）
+
+> 本节由 Stage 12.4（r217 二次审查）依据流程 v3.21 §25.8 追溯回写协议生成。
+> Stage 5 (99 子阶段) 在 v3.20 流程下执行，未做 §25.8 设计回写；本节补做。
+> 审计来源: `docs/develop/v0/stage-12/cross-stage-audit-r217-stages-5-8.md` §2.4
+
+### 15.1 `DynTraitMIRSummary` — dyn Trait MIR 4 层架构补写（B4 设计灰区）
+
+**实现来源**: Stage 5.71 (TD-018 准备阶段)
+**代码位置**: `src/mir/dyn_trait.rs::DynTraitMIRSummary`
+
+**4 层架构完整定义**:
+
+| 层级 | 类型 | 引入阶段 | 职责 |
+|------|------|---------|------|
+| 1 | `DynTraitFatPtr` | Stage 5.61 | 胖指针表示（data ptr + vtable ptr） |
+| 2 | `DynTraitMethodCall` | Stage 5.65 | 单个 dyn Trait 方法调用点 |
+| 3 | **`DynTraitMIRSummary`** | Stage 5.71 | **汇总一个 MIR body 内所有 dyn Trait 调用** |
+| 4 | `DynTraitMIRPlan` | Stage 5.75 | 完整发射计划（包含 fat ptrs + method calls + summary） |
+
+**设计意图**: 4 层架构遵循"summary → plan"两阶段模式（与 rustc `MonoItem` → `MonoItemData` 类似）：
+- Layer 1-2 是数据点（per-call-site）
+- Layer 3 是汇总（per-body）
+- Layer 4 是发射计划（per-crate，driver 持有）
+
+**当前文档状态**: §14 实现状态章节列出 `DynTraitFatPtr` 和 `DynTraitMethodCall` 但未列 `DynTraitMIRSummary`。本回写补全。
+
+**回写动作**: §14 实现状态表新增一行：
+| DynTraitMIRSummary | ✅ 实现 (5.71) | `mir/dyn_trait.rs` per-body 汇总 |
+
+### 15.2 设计偏差状态（截至 v0.21.2）
+
+| 偏差 | 类型 | 状态 | 计划 |
+|------|------|------|------|
+| `source_scopes` / `is_cleanup` 等字段 | B1 | ❌ 未实现 | v0.2 unwind 阶段 |
+| `Option<Terminator>` → `Terminator::Unreachable` | B3（已接受） | — | 永久偏差 |
+| dyn Trait lowering 算法 | B4 | ✅ 已回写 | §14.2 |
+| `DynTraitMIRSummary` 4 层架构补写 | B4 | ✅ 本节回写 | §15.1 |
+
+---
+
 **下一文档**: [`07-codegen.md`](./07-codegen.md) — LLVM IR 生成

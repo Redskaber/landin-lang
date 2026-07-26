@@ -534,3 +534,13 @@ mod stage11_10_tests;
 // Stage 12.1: v0.1 release + v0.3 bootstrap prep verification
 #[path = "v0/stage12/plan/stage12_1_tests.rs"]
 mod stage12_1_tests;
+// Stage 12.2: Cross-stage audit ratification (r216) + Stage 13 plan verification
+// (D1+D5 from ARCH-A, D2+D3+D4+D6+D7 from QA-A/REV-A/PM-A; §25.8 write-back ratified)
+#[path = "v0/stage12/plan/stage12_2_tests.rs"]
+mod stage12_2_tests;
+// Stage 12.3: Second-pass cross-stage audit (r217) verification
+// (3 parallel subagent batches re-audited stages 0-11 + revised r216 stage-round
+// attributions + finalized Stage 12 scope; §25.8 retroactive backfill for Stage 5/8;
+// plan-13.1.md reframed as Stage 12 output; Cargo.toml v0.22.0 → v0.21.2 per r217)
+#[path = "v0/stage12/plan/stage12_3_tests.rs"]
+mod stage12_3_tests;

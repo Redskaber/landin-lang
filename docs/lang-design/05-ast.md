@@ -951,3 +951,46 @@ MVP 阶段简化：
 | B3（HIR/AST 共享比例更高） | 接受为永久偏差 | 不变 |
 
 **结论**: Stage 8.5 新增 `Await`/`Async` 表达式 variant，设计文档 §8 已覆盖。
+
+---
+
+## 15. Stage 12.4 §25.8 追溯回写（v0.21.2，r217 二次审查）
+
+> 本节由 Stage 12.4（r217 二次审查）依据流程 v3.21 §25.8 追溯回写协议生成。
+> Stage 8.5 async/await MVP 实现决策仅记录在 `src/ast/async_marker.rs` 模块注释，
+> 设计文档未明确"MVP synchronous"语义；本节补写。
+> 审计来源: `docs/develop/v0/stage-12/cross-stage-audit-r217-stages-5-8.md` §5.4
+
+### 15.1 async/await MVP 同步语义补写（B4 设计灰区）
+
+**实现来源**: Stage 8.5 (async/await 基础设施)
+**代码位置**: `src/ast/async_marker.rs` (74 LOC) + `src/parser/expr.rs:667-680` (parser) + `src/mir/lower/expr_operand.rs:1147-1148` (lowering)
+
+**AST/HIR 扩展**:
+
+| 节点 | AST variant | HIR variant | 引入阶段 |
+|------|-------------|-------------|---------|
+| `async { block }` | `Expr::Async { block }` | `HirExprKind::Async { block }` | 8.5 |
+| `expr.await` | `Expr::Await { expr }` | `HirExprKind::Await { expr }` | 8.5 |
+
+**MVP 同步语义**（设计决策，本节明确记录）:
+
+| 表达式 | 完整 async 语义 (v0.2+) | MVP 同步语义 (Stage 8.5, v0.1) |
+|---------|----------------------|------------------------------|
+| `async { block }` | 编译为 `Future` state machine | 直接 lower 内部 block，无 state machine transform |
+| `expr.await` | 挂起当前 task，调度器介入 | 直接求值内部 expr，无挂起 |
+
+**理由**: v0.1 不实现 async runtime（无 `tokio`/`async-std` 等价物）。
+MVP 同步语义保证 `async fn` 能 parse + type check + codegen 通过，但实际执行等同同步代码。
+这是 v0.2+ async runtime 实现的占位符。
+
+**回写动作**: §8 表达式定义章节新增 `Await` / `Async` variant 的"MVP 同步语义"标注。
+
+### 15.2 设计偏差状态（截至 v0.21.2）
+
+| 偏差 | 类型 | 状态 | 计划 |
+|------|------|------|------|
+| HIR 扩展: Await/Async | B4 | ✅ 已回写 (8.5) | §14.2 |
+| HIR/AST 共享比例更高 | B3（已接受） | — | 永久偏差 |
+| async/await MVP 同步语义 | B4 | ✅ 本节回写 | §15.1 |
+| async/await 完整 state machine | B1 | ❌ 未实现 | v0.2+ (async runtime) |

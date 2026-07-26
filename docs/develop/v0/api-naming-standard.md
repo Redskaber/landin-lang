@@ -4429,3 +4429,72 @@ Stage 12.1 — v0.1 release + v0.3 bootstrap preparation.
 **Test impact**: +6 rust (2319 → 2325). 0 conformance changes. 0 regressions.
 
 **v0.1 GATE REACHED**: 5026/5000 conformance tests — RELEASE PREPARED ✅
+
+### v2.36 (Stage 12.2, 2026-07-26)
+
+Stage 12.2 — Cross-stage audit r216 + Stage 13 plan ratification + §25.8 design write-back.
+
+**Changes**:
+- Cross-stage audit reports (r216):
+  - `docs/develop/v0/stage-12/cross-stage-audit-r216-architecture.md` (350 lines, ARCH-A, D1+D5)
+  - `docs/develop/v0/stage-12/cross-stage-audit-r216-techdebt-tests-docs.md` (650 lines, combined, D2+D3+D4+D6+D7)
+- §25.8 design write-back: `docs/lang-design/03-type-system.md` §13 added
+  - New B1 deviation: `TyKind::Dynamic`/`TraitObject` missing (TD-029)
+  - 9 v0.3 self-hosting prerequisites listed (TD-030 through TD-033.6)
+- Stage 13 plan: `docs/develop/v0/stage-13/plan-13.1.md`
+  - 6 sub-stages (13.1-13.6), 7+ MUVs
+  - §13.4 design alignment + §14.4 refactor governance + §15 long-term > short-term
+- D7 documentation backfill: 6 missing `docs/tests/v0/stage{0-5}/plan/README.md` files created
+- Stage 13 directories created: `docs/develop/v0/stage-13/`, `docs/tests/v0/stage13/plan/`
+- New Rust integration tests: `tests/v0/stage12/plan/stage12_2_tests.rs` (11 tests)
+  - Verifies cross-stage audit reports exist + contain required dimensions
+  - Verifies §25.8 write-back for TyKind::Dynamic
+  - Verifies all 13 stage plan/README.md files exist
+  - Verifies Stage 13 plan documents + process compliance (§13.4, §14.4, §15, §25.8, MUV)
+  - Verifies all 14 stage develop + test-doc + test directories exist
+  - Verifies v0.1 gate still holds + README mentions audit + worklog has audit entries
+
+**Test impact**: +10 rust (2325 → 2335). 0 conformance changes. 0 regressions.
+
+**Tech debt inventory**: 7 open (P0=3, P1=1, P2=2, P3=1-on-hold) — TD-028..TD-033 + TD-019
+
+**v0.1 GATE REACHED**: 5026/5000 conformance tests — RATIFIED by r216 audit ✅
+**v0.3 PREP**: Stage 13 plan ratified (Option B: compile pipeline fixes)
+
+### v2.37 (Stage 12.3-12.7, 2026-07-26)
+
+Stage 12.3-12.7 — r217 second-pass audit + §25.8 retroactive backfill + plan-13 reframe + version revert.
+
+**Changes**:
+- r217 second-pass audit (3 parallel subagent batches, 2055 lines total):
+  - `cross-stage-audit-r217-stages-0-4.md` (411 lines, ARCH-A + REV-A) — stage round revision + Stages 0-4 re-audit
+  - `cross-stage-audit-r217-stages-5-8.md` (671 lines, ARCH-A + REV-A + QA-A) — Stages 5-8 re-audit
+  - `cross-stage-audit-r217-stages-9-12-scope.md` (973 lines, PM-A + REC-A + ARCH-A) — Stages 9-11 + Stage 12 scope finalization
+- r216 → r217 stage-round revisions (9 total): TD-028 attribution correct, TD-029 root cause reattributed to Stage 2.1, TD-030/031 numeric corrections, TD-032 framing inversion (7/26 hardcoded not 26), Stage 5/6 sub-stage count clarifications, Stage 5 §25.8 gap (ran on v3.20), Stage 8 async/await MVP semantics gap
+- Stage 12.4 §25.8 retroactive backfill (3 design-doc edits):
+  - `docs/lang-design/06-mir.md` §15 — DynTraitMIRSummary 4-layer MIR architecture (Stage 5.71)
+  - `docs/lang-design/09-stdlib.md` §12 — StdlibTypeKind + stdlib_type_kind_to_emit_type() (Stage 5.82, TD-016)
+  - `docs/lang-design/05-ast.md` §15 — async/await MVP synchronous semantics (Stage 8.5)
+- Stage 12.5 plan-13.1.md reframe: header `🔄 Planned` → `📋 Draft` (Stage 12 output, awaits Stage 12 close)
+- Stage 12.6 version policy correction: Cargo.toml v0.22.0 → v0.21.2 (patch bump, no new compiler features)
+- Stage 12.7 Stage 0-4 README per-module attribution corrections (partial, per r217 stages-0-4 findings)
+- Stage 12 sub-stage plan finalized (per r217):
+  - 12.1 ✅ DONE v0.1 release + v0.3 bootstrap prep
+  - 12.2 ✅ DONE r216 first-pass audit
+  - 12.3 ✅ DONE r217 second-pass audit (3 reports, 2055 lines)
+  - 12.4 ✅ DONE §25.8 retroactive backfill (Stage 5 + Stage 8, 3 design-doc edits)
+  - 12.5 ✅ DONE plan-13.1.md reframe (Planned → Draft)
+  - 12.6 ✅ DONE Version revert v0.22.0 → v0.21.2
+  - 12.7 🔄 PARTIAL Stage 0-4 README corrections
+  - 12.8 ⏳ PENDING Stage 12 final gate review
+- Stage 13 launch criteria defined (5 conditions, all must close before Stage 13 launches)
+- New Rust integration tests: `tests/v0/stage12/plan/stage12_3_tests.rs` (12 tests verifying r217 reports + stage-round revisions + §25.8 backfills + plan-13 reframe + Cargo.toml v0.21.2 + README r217 mentions + worklog r217 entries)
+
+**Test impact**: +12 rust (2335 → 2347). 0 conformance changes. 0 regressions.
+
+**Version policy**: v0.21.2 (patch bump from v0.21.0). Per semver §2.0.0, patch is appropriate
+because Stage 12 adds no new compiler features (only docs + audit + tests + plan reframe).
+v0.22.0 reserved for Stage 13 P0 closure (closures/if-let/macro_rules! — actual compiler features).
+
+**v0.1 GATE REACHED**: 5026/5000 conformance tests — RATIFIED by r216 + r217 audits ✅
+**v0.3 PREP**: Stage 13 plan in Draft state — awaits Stage 12.8 final gate review GO

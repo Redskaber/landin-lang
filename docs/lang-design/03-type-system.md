@@ -839,3 +839,80 @@ MVP 阶段实现 30-50 个最常见错误代码，每个错误含"error code + �
 | B3（trait resolution / subtyping 简化） | v0.2+ | 不变 |
 
 **结论**: v0.2 路线图 5 项全部实现。残留 B1 偏差推迟到 v0.3+。
+
+---
+
+## 13. Stage 12 实现状态更新（v0.21.0，§25.8 回写）
+
+> 本节由 Stage 12 跨阶段审计 (r216) 依据流程 v3.21 §25.8 阶段末尾设计回写协议生成。
+> 审计文档：`docs/develop/v0/stage-12/cross-stage-audit-r216-architecture.md` §3.3
+> 配套审计：`docs/develop/v0/stage-12/cross-stage-audit-r216-techdebt-tests-docs.md`
+
+### 13.1 新发现偏差 — `TyKind::Dynamic` 缺失（B1，新发现）
+
+| 设计 § | 设计要求 | 实现状态 | 偏差类型 | 来源 |
+|--------|---------|---------|---------|------|
+| §1.1 类型层次 | `TraitObject (dyn Trait + 'a)` 列为顶层类型 | ❌ 未实现 | **B1**（实现 < 设计） | r216 audit |
+
+**详细分析**：
+
+设计文档 §1.1 把 `TraitObject` 列为顶层类型变体之一。当前实现（`src/mir/ty.rs:28` `TyKind`
+枚举）没有 `Dynamic` / `TraitObject` 变体。`dyn Trait` 在实现中通过两个独立机制建模：
+
+1. `DynTraitFatPtr` 数据结构（`src/mir/dyn_trait.rs`）—— 胖指针表示（data ptr + vtable ptr）
+2. `DynTraitMIRPlan` 旁路表（`src/mir/dyn_trait.rs`）—— 收集所有 dyn Trait 调用点
+
+这种"旁路表 + 胖指针"设计可以工作，但偏离了设计文档的"first-class type"理念。
+
+**最优判断**：
+
+- **设计更优**：将 `dyn Trait` 作为 `TyKind::Dynamic` 变体是更优设计，因为：
+  - 类型系统完整性（type checker 可以直接对 `TyKind::Dynamic` 做子类型关系）
+  - 一致性（与 `&T` / `&mut T` / `*const T` 等其他引用类型同层）
+  - 简化 `Object safety` 检查（可以直接 query `TyKind::Dynamic` 的 trait）
+- **当前实现的代价**：typeck 需要在多个地方特殊处理 `DynTraitFatPtr`，且无法在类型层级
+  表达 `Box<dyn Trait>` vs `&dyn Trait` 的子类型关系。
+
+**重构判断**：**可重构**（影响 ≤5 文件：`mir/ty.rs` + `typeck/checker.rs` + `codegen/mod.rs`
++ `codegen/trait_dispatch.rs` + `mir/dyn_trait.rs`）。
+
+**回写动作**：
+
+- **当前阶段（Stage 12）**：记录偏差，标记为 TD-029（P2）
+- **下一阶段（Stage 13.1）**：实施重构
+  - 在 `TyKind` 添加 `Dynamic { trait_def: DefId, lifetime: Lifetime }` 变体
+  - `DynTraitFatPtr` 改为 `Dynamic` 类型的内部表示，不再是独立 side-table
+  - typeck 对 `TyKind::Dynamic` 直接处理子类型关系
+  - codegen 对 `TyKind::Dynamic` 直接 emit 胖指针
+
+### 13.2 已知偏差汇总（截至 v0.21.0）
+
+| 偏差 | 类型 | 状态 | 计划 |
+|------|------|------|------|
+| `TyKind::Dynamic` 缺失 | B1（新发现） | ❌ 未实现 | Stage 13.1 重构 (TD-029) |
+| Object safety 用户自定义 trait | — | ✅ 实现 (Stage 8.2) | — |
+| Lifetime elision | — | ✅ 实现 (Stage 8.1) | — |
+| Drop elaboration | — | ✅ 实现 (Stage 8.4) | — |
+| HRTB `for<'a>` | B1 | ❌ 未实现 | v0.2+ (TD-033) |
+| Associated type normalization | B1 | ❌ 未实现 | v0.2+ (TD-033) |
+| Orphan rule / canonical query / `?` operator | B1 | ❌ 未实现 | v0.2+ |
+| Trait resolution / subtyping 简化 | B3（已接受） | — | 长期保留简化版 |
+
+### 13.3 v0.3 自举前置条件（B1 偏差，阻塞 Stage 1）
+
+以下 6 项 B1 偏差是 v0.3 自举的硬性前置条件（详见 `13-stage1-feature-whitelist.md`）：
+
+| B1 偏差 | 优先级 | Stage 13 子阶段 |
+|---------|--------|----------------|
+| TD-030 闭包调用 lowering | P0 | Stage 13.3 |
+| TD-031 `if let` / `while let` | P0 | Stage 13.2 |
+| TD-032 `macro_rules!` + 26 内置宏 | P0 | Stage 13.4 |
+| TD-033.1 `for` 循环 | P1 | Stage 13.5 |
+| TD-033.2 `move` 闭包 | P1 | Stage 13.5 |
+| TD-033.3 HRTB `for<'a>` | P1 | Stage 13.5 |
+| TD-033.4 关联类型 normalization | P1 | Stage 13.5 |
+| TD-033.5 Two-phase borrows | P1 | Stage 13.5 |
+| TD-033.6 Disjoint closure captures (RFC 2229) | P1 | Stage 13.5 |
+
+**结论**: Stage 12 完成后，v0.1 release 已 ratified。Stage 13 启动 Option B
+（编译管线修复），目标是为 v0.3 自举扫清 P0/P1 阻塞项。
