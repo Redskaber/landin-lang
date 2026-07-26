@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.25.1  
+**Version**: v0.25.2  
 **Date**: 2026-07-27
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -38,7 +38,7 @@ backend via the `llvm-sys` crate.
 | 26 built-in macros | ✅ TD-032 P0 CLOSED (v0.24.0) |
 | String escape sequences (`\n`, `\t`, `\\`, `\"`) | ✅ Already supported (lexer `lex_escape()`) |
 | Conformance | 5026/5000 (100.5%) — parse + typeck verified |
-| Rust tests | 2338 passed, 0 failed |
+| Rust tests | 2371 passed (with llvm-backend), 0 failed |
 | Benchmarks | 5 passed |
 | Source code | ~90 files, ~32,000 LOC, 50+ modules |
 
@@ -267,7 +267,7 @@ cargo test
 python3 tests/conformance/run_all.py
 ```
 
-**Expected results** (v0.25.1):
+**Expected results** (v0.25.2):
 - `cargo build`: succeeds
 - `cargo fmt`: clean (no changes)
 - `cargo clippy`: 0 warnings, 0 errors

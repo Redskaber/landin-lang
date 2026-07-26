@@ -4888,3 +4888,26 @@ Stage 13.17 — Self binding fix + inherent method call codegen.
 **Test impact**: +5 rust (2333→2338); +75 conformance flipped (4951→5026 pass).
 
 **Version policy**: v0.25.0 → v0.25.1 (patch bump — bug fixes).
+
+---
+
+### v2.51 (Stage 13.18, 2026-07-27)
+
+Stage 13.18 — Runtime verification framework + self param type resolution.
+
+**Changes**:
+- New test file: `tests/v0/stage13/plan/stage13_18_runtime_tests.rs` (25 runtime tests, --run based)
+  - Tests verify stdout + exit code, not just compilation
+  - Gated behind `#[cfg(feature = "llvm-backend")]`
+  - Parallel-safe via atomic counter for unique temp file names
+- Bug fix: `src/mir/lower/mod.rs` — `resolve_self_param_type()` function added
+  - Queries HIR for impl block containing the method body
+  - Returns impl_block.self_ty as MIR type (Adt instead of Infer)
+  - Applied in both Some(ty) and None branches of param type resolution
+  - Naming follows §3 `<verb>_<adjective>_<noun>` pattern (mirrors resolve_inherent_method)
+- §14.4 J1-J6: 6/6 PASS (2 src files: mir/lower/mod.rs, tests/)
+- §25.8: ZERO new deviations (bug fix + test framework)
+
+**Test impact**: +25 runtime tests (2338→2371 with llvm-backend); 0 conformance changes.
+
+**Version policy**: v0.25.1 → v0.25.2 (patch bump — bug fix + test framework).

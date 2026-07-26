@@ -623,8 +623,26 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     // Allocate locals for fn params.
     for param in &body.params {
         let ty = match &param.ty {
-            Some(t) => lower_hir_ty_to_mir_ty(t),
-            None => cx.fresh_infer_ty(Span::DUMMY),
+            Some(t) => {
+                // Stage 13.18: For self params, the parser sets ty to a Path
+                // with "Self" as the segment. This resolves to Res::SelfTy
+                // which lower_hir_ty_to_mir_ty doesn't handle (returns Error).
+                // So for self params, we resolve the type from the impl block's
+                // self_ty directly.
+                if param.self_kind.is_some() {
+                    resolve_self_param_type(&cx, body).unwrap_or_else(|| lower_hir_ty_to_mir_ty(t))
+                } else {
+                    lower_hir_ty_to_mir_ty(t)
+                }
+            }
+            None => {
+                if param.self_kind.is_some() {
+                    resolve_self_param_type(&cx, body)
+                        .unwrap_or_else(|| cx.fresh_infer_ty(Span::DUMMY))
+                } else {
+                    cx.fresh_infer_ty(Span::DUMMY)
+                }
+            }
         };
         let param_local = cx.new_local(param.pat.hir_id, ty, None);
         // StorageLive for each parameter at function entry.
@@ -815,4 +833,43 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
         },
         _ => Ty::new(TyKind::Error, span), // complex types → Error for now
     }
+}
+
+/// Stage 13.18: Resolve the type of a `self` parameter from the owning impl block.
+///
+/// Given a `Body` (which is owned by an impl method), find the impl block in HIR
+/// and return its `self_ty` as a MIR type. This allows `self.x` field access to
+/// work — the self param's MIR type becomes `Adt(P, [])` instead of `Infer(TyVar)`.
+///
+/// Returns `None` if:
+/// - HIR is not available
+/// - The body's owner is not an impl method (e.g., free fn with self-like param)
+/// - The impl block's self_ty can't be lowered
+///
+/// Per §16: this is a HIR query at MIR-lowering time. The result type is sunk
+/// into `local_decls` as data, so codegen doesn't need HIR.
+fn resolve_self_param_type(cx: &MirLowerCtxt, body: &Body) -> Option<crate::mir::ty::Ty> {
+    let hir = cx.hir?;
+    // The body's owner DefId — for impl methods, this is the HirFn's owner.
+    let _owner_def_id = body.hir_id.owner;
+
+    // Search all owners for an Impl block that contains this method.
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            // Check if this impl block contains a method whose body matches.
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    if f.body
+                        == Some(crate::hir::BodyId {
+                            owner: crate::hir::OwnerId(body.hir_id.owner),
+                        })
+                    {
+                        // Found the owning impl block! Lower its self_ty.
+                        return Some(lower_hir_ty_to_mir_ty(&impl_block.self_ty));
+                    }
+                }
+            }
+        }
+    }
+    None
 }

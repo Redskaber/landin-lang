@@ -624,3 +624,7 @@ mod stage13_16_tests;
 // codegen (resolve_inherent_method via HIR impl lookup). v0.25.1 patch bump.
 #[path = "v0/stage13/plan/stage13_17_tests.rs"]
 mod stage13_17_tests;
+// Stage 13.18: Runtime verification tests (--run based) + self param type
+// resolution (resolve_self_param_type from impl self_ty). v0.25.2 patch bump.
+#[path = "v0/stage13/plan/stage13_18_runtime_tests.rs"]
+mod stage13_18_runtime_tests;

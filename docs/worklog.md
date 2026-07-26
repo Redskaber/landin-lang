@@ -9654,3 +9654,45 @@ Stage Summary:
 - Test impact: +5 rust (2333→2338); +75 conformance flipped (4951→5026 pass)
 - Known limitation: self.x field access crashes (self param type is Infer not Adt at MIR lower time; typeck writeback needed — Stage 13.18)
 - Next: Stage 13.18 (typeck writeback for self param type → fix self.x field access) OR v0.1 release announcement
+
+---
+Task ID: stage13.18-r240-runtime-verification-self-type
+Agent: Super Z (main) + ARCH-A + REV-A (combined subagent role)
+Task: Stage 13.18 — Runtime verification framework + self param type resolution. v0.25.2 patch bump.
+
+Work Log:
+- Baseline: v0.25.1 / 2338 rust tests + 5026 conformance (Stage 13.17 ✅ self binding + method call)
+- User feedback: "当前的 tests/conformance/ 并不是直接运行（--run）只是（--compile）只能证明他可以正常跑compile 并不能正确其正确实现"
+- Critical insight: conformance tests only verify compilation, NOT runtime correctness. Need --run based tests.
+- Created runtime verification test framework: tests/v0/stage13/plan/stage13_18_runtime_tests.rs
+  - 25 runtime tests covering: arithmetic (5), control flow (4), functions (2), structs (1), method calls (4), tuples (1), enums (1), references (1), closures (1), return values (2), string output (2), eprintln stderr (1)
+  - Each test compiles + links + runs a Landin program via --run and verifies stdout + exit code
+  - Gated behind #[cfg(feature = "llvm-backend")] since --run requires LLVM
+  - All 25 tests pass (parallel-safe via atomic counter for unique temp file names)
+- Fixed self param type resolution (the Stage 13.17 known limitation):
+  - Root cause: self param's MIR type was Infer(TyVar) because:
+    1. Parser sets self param's ty to Path("Self") (Some, not None)
+    2. lower_hir_ty_to_mir_ty doesn't handle Res::SelfTy → returns Error
+    3. Codegen treats Error as i32 → invalid GEP on struct field access → crash
+  - Fix: src/mir/lower/mod.rs — for self params, resolve type from impl block's self_ty
+    - Added resolve_self_param_type() function: queries HIR for impl block containing the method, returns impl_block.self_ty as MIR type
+    - Applied in both Some(ty) and None branches of param type resolution
+  - Behavioral result: self.x field access now works! All 4 method call scenarios pass:
+    - method-no-self ✅, method-self-x ✅, method-ref-self ✅, method-two-fields ✅, method-mut-self ✅
+- Bumped Cargo.toml v0.25.1 → v0.25.2
+- Ran full CI/CD:
+  - cargo test (default): 2338 passed
+  - cargo test --features llvm-backend: 2371 passed (2338 + 25 runtime + 8 feature-gated)
+  - conformance: 5026 passed
+  - cargo fmt: clean
+  - cargo clippy: 0 errors (pre-existing llvm-specific warnings)
+
+Stage Summary:
+- Stage 13.18 PASSED — runtime verification framework created + self.x field access fixed
+- 25 runtime tests verify --run correctness (not just --compile)
+- self param type now resolves to impl's self_ty (Adt) — self.x field access works
+- All 4 method call scenarios pass runtime verification
+- v0.25.2: patch bump (bug fix + test framework)
+- Test impact: +25 runtime tests (2338→2371 with llvm-backend); 0 conformance changes
+- Stage 13 STATUS: 🔄 IN PROGRESS (13.1-13.18 ✅; known limitations: for loops, trait method calls, format specifiers like {:?})
+- Next: Stage 13.19 (for loop support) OR Stage 13.20 (trait method call codegen) OR continue runtime audit
