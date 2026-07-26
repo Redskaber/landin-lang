@@ -44,27 +44,32 @@ fn test_codegen_println_branches_on_stderr() {
     );
 }
 
-/// Verify that when `stderr == true`, codegen calls `__landin_eprint` (not
-/// `printf`). This is the new Stage 13.14 behavior.
+/// Verify that when `stderr == true`, codegen calls `__landin_eprint` or
+/// `__landin_eprintf` (not `printf`). This is the Stage 13.14 behavior
+/// (extended in Stage 13.16 to use `__landin_eprintf` for variadic format args).
 #[test]
 fn test_codegen_eprint_calls_helper() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let codegen_mod_rs = manifest.join("src/codegen/mod.rs");
     let content = std::fs::read_to_string(&codegen_mod_rs).expect("read codegen/mod.rs");
 
-    // The `__landin_eprint` helper must be referenced in the codegen.
+    // Stage 13.14 + 13.16: The `__landin_eprintf` helper (variadic) must be
+    // referenced in the codegen for the stderr path. (Stage 13.14 originally
+    // used `__landin_eprint` for single-string stderr; Stage 13.16 unified
+    // the codegen to always use `__landin_eprintf` for both string and
+    // format-args cases, since the codegen now always builds a C format string.)
     assert!(
-        content.contains("\"__landin_eprint\""),
-        "StatementKind::Println arm (stderr == true) must call __landin_eprint helper"
+        content.contains("\"__landin_eprintf\""),
+        "StatementKind::Println arm (stderr == true) must call __landin_eprintf helper (Stage 13.16 variadic)"
     );
 
-    // The `__landin_eprint` call should be inside the `if *stderr` branch,
+    // The `__landin_eprintf` call should be inside the `if *stderr` branch,
     // so we verify the call appears AFTER the `if *stderr` check.
     let if_stderr_pos = content
         .find("if *stderr")
         .expect("if *stderr branch must exist");
     let eprint_call_pos = content
-        .find("\"__landin_eprint\"")
+        .find("\"__landin_eprintf\"")
         .expect("__landin_eprint call must exist");
     assert!(
         eprint_call_pos > if_stderr_pos,
@@ -130,16 +135,28 @@ fn test_c_wrapper_has_eprint_helper() {
         "bin/main.rs must reference Stage 13.14 in the C wrapper comment"
     );
 
-    // Must define the __landin_eprint helper function.
+    // Must define the __landin_eprint helper function (Stage 13.14).
     assert!(
         content.contains("void __landin_eprint(const char* s)"),
-        "C wrapper must define `void __landin_eprint(const char* s)` helper function"
+        "C wrapper must define `void __landin_eprint(const char* s)` helper function (Stage 13.14)"
     );
 
-    // The helper body must call fprintf(stderr, "%s", s).
+    // Stage 13.16: Must also define the __landin_eprintf variadic helper.
+    assert!(
+        content.contains("void __landin_eprintf(const char* fmt, ...)"),
+        "C wrapper must define `void __landin_eprintf(const char* fmt, ...)` variadic helper (Stage 13.16)"
+    );
+
+    // The __landin_eprint helper body must call fprintf(stderr, "%s", s).
     assert!(
         content.contains("fprintf(stderr, \"%s\", s)"),
         "__landin_eprint helper body must call fprintf(stderr, \"%s\", s)"
+    );
+
+    // The __landin_eprintf helper body must call vfprintf(stderr, fmt, args).
+    assert!(
+        content.contains("vfprintf(stderr, fmt, args)"),
+        "__landin_eprintf helper body must call vfprintf(stderr, fmt, args) (Stage 13.16 variadic)"
     );
 
     // The helper must be referenced in the codegen call site (cross-check

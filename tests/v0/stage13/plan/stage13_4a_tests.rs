@@ -126,16 +126,30 @@ fn test_stage13_4a_gate_review_exists() {
     );
 }
 
-/// Verify Cargo.toml version is v0.24.x (minor bump — all P0 closed)
+/// Verify Cargo.toml version is v0.24.x or later (minor bump — all P0 closed).
+/// Stage 13.16 bumped to v0.25.0 (format args feature), so we accept v0.24+.
 #[test]
 fn test_cargo_toml_version_is_v0_24() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let cargo_toml = manifest.join("Cargo.toml");
     let content = std::fs::read_to_string(&cargo_toml).expect("read Cargo.toml");
 
+    // Stage 13.4a established v0.24.x; Stage 13.16 bumped to v0.25.0.
+    // We accept any version >= v0.24.
+    let version_line = content
+        .lines()
+        .find(|line| line.starts_with("version = "))
+        .unwrap_or("");
+    let version = version_line
+        .trim_start_matches("version = \"")
+        .trim_end_matches("\"");
+    let parts: Vec<&str> = version.split('.').collect();
+    let major: u32 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let minor: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
     assert!(
-        content.contains("version = \"0.24."),
-        "Cargo.toml version must be v0.24.x (Stage 13.4a — all P0 closed, minor bump)"
+        (major == 0 && minor >= 24) || major > 0,
+        "Cargo.toml version must be >= v0.24 (Stage 13.4a baseline; Stage 13.16 is v0.25.0); found v{}",
+        version
     );
 }
 

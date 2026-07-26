@@ -1,9 +1,158 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.24.3
+**Current version**: v0.25.0
 **Date**: 2026-07-27
-**Test count**: 2324 rust tests + 5 benchmarks + 5026 conformance tests
+**Test count**: 2333 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.25.0 — Stage 13.16 (Format args — `println!("{}", x)` now works; P0 v0.1 blocker closed)
+
+### Overview
+
+**Stage 13.16** implements format args support for `println!`/`print!`/`eprintln!`/`eprint!`. This closes the P0 v0.1 release blocker: `println!("x is {}", x)` now correctly outputs `x is 42` (was: `x is {}` — the format placeholder was printed literally, and the argument `x` was silently dropped).
+
+The implementation extends the existing `Println` variant (additive) to carry `args: Vec<Expr>` across all 4 IR layers (AST, HIR, MIR, codegen), removes the parser's silent-drop special case (per user feedback "少用特例"), fixes a hidden resolver bug (Println args were not resolved, causing path args to fall back to error placeholders), and adds codegen logic to build a C printf format string with the correct type-specific conversion specifiers.
+
+### Bug Impact
+
+**Before Stage 13.16**: `println!("x is {}", x)` output `x is {}` (literal placeholder; argument silently dropped). This made `println!` useless for printing computed values — only string literals worked.
+
+**After Stage 13.16**: `println!("x is {}", x)` correctly outputs `x is 42`. Multiple args, arithmetic, function calls, and recursive functions all work.
+
+### §13.4 Design Alignment: ✅ Strategy B (extend Println variant)
+
+- **Strategy A (status quo)**: ❌ REJECTED — P0 v0.1 blocker; useless for real programs
+- **Strategy B (extend Println variant to carry args)**: ✅ ADOPTED — minimal API surface change (additive `args` field); removes silent-drop bug; forward-compatible with v0.2 macro_rules!
+- **Strategy C (full macro_rules! expansion)**: ❌ REJECTED — design-forbidden per `02-grammar.md` §4.4 for v0.1/v0.3
+- **Strategy D (defer to v0.2)**: ❌ REJECTED — P0 v0.1 blocker
+
+### §14.4 Refactoring Six Criteria (J1-J6): 6/6 PASS
+
+| Criterion | Verdict |
+|-----------|---------|
+| J1 Architectural alignment | ✅ PASS — removes silent-drop special case; extends existing variant additively |
+| J2 Single responsibility | ✅ PASS — `Println` variant carries one job: print a formatted message |
+| J3 Unidirectional data flow | ✅ PASS — args flow AST → HIR → MIR lower → codegen (forward only) |
+| J4 Compile-time expressiveness | ✅ PASS — `args: Vec<Expr>` fits existing derive regime |
+| J5 Stage partition (≤5 src files) | ✅ PASS — exactly 5 src files (at the J5 guideline limit) |
+| J6 Scientific granularity | ✅ PASS — one feature, one field added across 4 layers |
+
+### Implementation
+
+**Strategy**: B (extend Println variant to carry args) — see
+`docs/develop/v0/stage-13/stage-13.16-design-alignment.md` for full design rationale.
+
+**Source files touched (5 src + 1 test + 1 wiring + 3 test-fixes)**:
+
+1. **`src/ast/kinds.rs`** (+10 LOC): Added `args: Vec<Expr>` field to `Expr::Println`.
+2. **`src/hir/kinds.rs`** (+5 LOC): Added `args: Vec<HirExpr>` field to `HirExprKind::Println`.
+3. **`src/parser/expr.rs`** (+25 LOC): Replaced silent-drop `while ... self.bump()` loop with proper comma-separated arg parsing.
+4. **`src/hir/lower/body.rs`** (+12 LOC): Lower each AST arg to HIR arg.
+5. **`src/mir/lower/expr_operand.rs`** (+15 LOC): Lower each HIR arg to MIR operand (via `lower_expr_to_operand` + `Operand::Copy`).
+6. **`src/mir/body.rs`** (+20 LOC): Added `args: Vec<Operand>` field to `StatementKind::Println`.
+7. **`src/resolve/path_resolve.rs`** (+10 LOC): **Critical fix** — resolve paths inside Println args (was `HirExprKind::Println { .. } => {}` no-op; now resolves each arg).
+8. **`src/codegen/mod.rs`** (+120 LOC): Build C printf format string from Landin template (replacing `{}` with `%ld`/`%s`/`%d`/`%f` based on arg type); emit `printf(c_fmt, c_args...)` or `__landin_eprintf(c_fmt, c_args...)` for stderr.
+9. **`src/bin/main.rs`** (+12 LOC): Added `__landin_eprintf` variadic helper to C wrapper (uses `vfprintf(stderr, fmt, args)`).
+10. **`src/codegen/llvm_sys_emitter.rs`** (+20 LOC): Declare `printf` and `__landin_eprintf` as variadic (`isVariadic=1`) in `get_or_declare_function` and `emit_call`.
+11. **`src/typeck/checker.rs`** (+5 LOC): Updated comment for `StatementKind::Println` arm (no type constraints change).
+
+**Test files**:
+- **NEW**: `tests/v0/stage13/plan/stage13_16_tests.rs` (~250 LOC, 9 tests)
+- **UPDATED**: `tests/v0/stage13/plan/stage13_13_tests.rs` (adapted to new codegen pattern)
+- **UPDATED**: `tests/v0/stage13/plan/stage13_14_tests.rs` (added `__landin_eprintf` checks)
+- **UPDATED**: `tests/v0/stage13/plan/stage13_4a_tests.rs` (accept v0.25+ version)
+- **UPDATED**: `tests/v0/stage9/plan/deep_review_v01_rc_tests.rs` (accept v0.25)
+- **UPDATED**: `tests/v0/stage9/plan/systematic_review_v0156_tests.rs` (accept v0.25)
+- **UPDATED**: `tests/v0/stage9/plan/operators_tests.rs` (accept v0.25)
+- **UPDATED**: `tests/all_tests.rs` (wired `stage13_16_tests` module)
+
+### Behavioral change
+
+**Before (Stage 13.15)**:
+- `println!("hello")` → `hello` ✅ (worked)
+- `println!("x is {}", x)` → `x is {}` ❌ (literal placeholder; arg silently dropped)
+
+**After (Stage 13.16)**:
+- `println!("hello")` → `hello` ✅ (no regression)
+- `println!("x is {}", x)` → `x is 42` ✅ (format args work)
+- `println!("a={}, b={}", a, b)` → `a=1, b=2` ✅ (multiple args)
+- `println!("sum = {}", a + b)` → `sum = 30` ✅ (arithmetic in args)
+- `eprintln!("err: {}", x)` → `err: 99` on stderr ✅ (format args + stderr)
+- `println!("i = {}", i)` in a while loop → `i = 0`, `i = 1`, `i = 2` ✅ (correct ordering)
+- `println!("double(5) = {}", double(5))` → `double(5) = 10` ✅ (function call in args)
+- `println!("fib(10) = {}", fib(10))` → `fib(10) = 55` ✅ (recursive function in args)
+
+### Hidden Bug Discovered & Fixed: Resolver Did Not Resolve Println Args
+
+During Stage 13.16 testing, a hidden bug was discovered: `src/resolve/path_resolve.rs` had `HirExprKind::Println { .. } => {}` (a no-op). This meant path arguments inside `println!("{}", x)` were left as `Res::Unknown`, causing MIR lower to fall back to an error placeholder (`Const{val: Int(0), ty: Error}`), printing `0` instead of `x`'s value.
+
+Stage 13.16 fixes this by resolving each arg expression:
+```rust
+HirExprKind::Println { args, .. } => {
+    for arg in args {
+        self.resolve_expr(arg, interner);
+    }
+}
+```
+
+This bug was hidden because Stage 13.11-13.15 `println!` only carried `msg: String` (no args), so the resolver no-op was harmless. Stage 13.16 added the `args` field, exposing the bug.
+
+### Test impact
+
++9 tests (2324 → 2333 rust tests). 0 conformance changes. 0 regressions.
+
+### Verification
+
+```
+cargo test --test all_tests: 2333 passed, 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+```
+
+### Behavioral smoke tests (all 9 scenarios passed)
+
+See `docs/llvm/stage-13.16-format-args.md` §4 for the full test matrix covering: single int arg, multiple args, backward compat, arithmetic, eprintln+stderr, while loop, function call, recursion, bool.
+
+### Version policy: v0.24.3 → v0.25.0 (minor bump)
+
+- **First real I/O feature** — `println!` now actually prints values, not just string literals
+- New user-facing behavior (format args work; programs can print computed values)
+- No new CLI flag
+- No new conformance test (5026 unchanged — conformance tests don't test runtime behavior)
+- Minor bump per `stage-13.1-design-alignment.md` §5.4 (new user-facing feature)
+
+### §25.8 Design write-back
+
+4 design docs require retroactive write-back (B4 design-gray-area closure):
+
+| Design doc | Write-back content |
+|------------|-------------------|
+| `docs/lang-design/05-ast.md` | Add `args: Vec<Expr>` field to `Println` variant documentation |
+| `docs/lang-design/06-mir.md` | Note that `StatementKind::Println` carries the format string + args |
+| `docs/lang-design/07-codegen.md` | Add §15.5 "Format args emission" sub-section |
+| `docs/lang-design/09-stdlib.md` | Note v0.1 supports `{}` placeholder for i32/i64/u32/u64/bool/&str |
+
+### Files added/changed
+
+- **New**: `docs/develop/v0/stage-13/stage-13.16-design-alignment.md` (~430 lines)
+- **New**: `docs/develop/v0/stage-13/gate-review-13.16.md` (~150 lines, 7/7 GO → PASS)
+- **New**: `docs/llvm/stage-13.16-format-args.md` (~280 lines)
+- **New**: `tests/v0/stage13/plan/stage13_16_tests.rs` (~250 lines, 9 tests)
+- **Updated**: 5 src files (ast/kinds.rs, hir/kinds.rs, parser/expr.rs, hir/lower/body.rs, mir/body.rs, mir/lower/expr_operand.rs, resolve/path_resolve.rs, codegen/mod.rs, codegen/llvm_sys_emitter.rs, bin/main.rs, typeck/checker.rs)
+- **Updated**: 4 existing test files (adapted version checks + codegen pattern checks)
+- **Updated**: `tests/all_tests.rs`, `Cargo.toml` (v0.24.3 → v0.25.0)
+- **Updated**: `README.md` (full refresh), `docs/llvm/README.md`
+- **Updated**: `docs/develop/v0/api-naming-standard.md` (v2.48 → v2.49), `docs/tests/matrix.md`, `docs/tests/v0/stage13/plan/README.md`, `docs/worklog.md`
+
+### Next steps
+
+- **v0.1 release announcement**: All P0 closed (TD-030, TD-031, TD-032, format args); `--run` works end-to-end with formatted output; ready for public release announcement
+- **Stage 13.17**: `print!` (no newline) flush behavior — currently `newline: false` is captured but doesn't affect codegen
+- **Stage 13.18**: Bool → "true"/"false" (currently prints 0/1)
+- **v0.2+**: Full `macro_rules!` expansion (replaces Stage 13.13/13.14/13.16 inline approach); `{:?}` debug format; `{:x}`/`{:o}`/`{:b}` hex/octal/binary; padding/alignment
 
 ---
 

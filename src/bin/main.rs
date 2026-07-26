@@ -168,6 +168,7 @@ fn main() {
                     std::env::temp_dir().join(format!("landin_wrapper_{}.c", std::process::id()));
                 let wrapper_src = r#"#include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 extern int landin_main(void);
 /* Runtime stubs — codegen declares these as extern */
 void __landin_panic_overflow(int op, int lhs, int rhs) {
@@ -183,7 +184,8 @@ void __landin_panic_div_by_zero(void) {
     exit(1);
 }
 /* Stage 13.14: eprintln!/eprint! helper — routes to stderr via fprintf.
-   Codegen calls this when StatementKind::Println.stderr == true.
+   Codegen calls this when StatementKind::Println.stderr == true AND
+   there are no format args (plain string output).
    Portable across libc implementations (stderr is a macro in glibc;
    the helper hides this). The helper takes only the message string
    (no format string) — the C helper hardcodes "%s" as the format, so
@@ -191,6 +193,18 @@ void __landin_panic_div_by_zero(void) {
    Per api-naming-standard.md §8.1: __landin_<verb>_<noun> pattern. */
 void __landin_eprint(const char* s) {
     fprintf(stderr, "%s", s);
+}
+/* Stage 13.16: eprintln!/eprint! with format args — variadic helper that
+   takes a printf-style format string and args, routing output to stderr.
+   Codegen calls this when StatementKind::Println.stderr == true AND
+   there are format args (println!("{}", x) etc.).
+   Per api-naming-standard.md §8.1: __landin_<verb>_<noun>_<noun> pattern
+   (matches __landin_panic_bounds_check naming). */
+void __landin_eprintf(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
 }
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()

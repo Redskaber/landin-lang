@@ -4826,3 +4826,41 @@ Stage 13.15 — Fix `landin_main` double-prefix symbol bug (P0 linker fix).
 **Version policy**: v0.24.2 → v0.24.3 (patch bump — P0 linker bug fix; no new user-facing feature; zero new design deviations).
 
 **Stage 13 STATUS**: 🔄 IN PROGRESS (13.15 ✅; 13.16+ pending: investigate string escapes / format-args / print-flush)
+
+---
+
+### v2.49 (Stage 13.16, 2026-07-27)
+
+Stage 13.16 — Format args (`println!("{}", x)`) — first real I/O feature.
+
+**Changes**:
+- New C wrapper helper symbol: `__landin_eprintf` (variadic)
+  - Location: `src/bin/main.rs` C wrapper source string
+  - Naming follows §8.1 `__landin_<verb>_<noun>_<noun>` pattern (matches `__landin_panic_bounds_check` from Stage 13.10)
+  - Signature: `void __landin_eprintf(const char* fmt, ...)` — variadic, takes printf-style format string + args
+  - Body: `vfprintf(stderr, fmt, args)` — portable across libc implementations
+  - Used when `StatementKind::Println.stderr == true` (eprintln!/eprint! with format args)
+- Existing `__landin_eprint` (Stage 13.14, single-string stderr) retained for backward compat
+- AST/HIR/MIR `Println` variant extended with `args` field (additive):
+  - `Expr::Println { msg, args: Vec<Expr>, newline, stderr, span }`
+  - `HirExprKind::Println { msg, args: Vec<HirExpr>, newline, stderr }`
+  - `StatementKind::Println { msg, args: Vec<Operand>, newline, stderr }`
+- Field naming: `args` matches Rust convention (e.g., `printf(fmt, args...)`)
+- Cross-IR consistency: `args` field name is identical across AST/HIR/MIR (per §16)
+- LLVMSysEmitter: `printf` and `__landin_eprintf` declared as variadic (`isVariadic=1`) in `get_or_declare_function` and `emit_call` (Stage 13.16)
+- Resolver fix: `HirExprKind::Println { args, .. }` now resolves each arg expression (was a no-op `=> {}` before Stage 13.16, causing path args to fall back to error placeholders)
+- Stage 13.16 gate review: `docs/develop/v0/stage-13/gate-review-13.16.md` (7/7 GO → PASS)
+- Stage 13.16 design alignment: `docs/develop/v0/stage-13/stage-13.16-design-alignment.md` (~430 lines)
+- New LLVM doc: `docs/llvm/stage-13.16-format-args.md` (~280 lines)
+- New Rust integration tests: `tests/v0/stage13/plan/stage13_16_tests.rs` (9 tests)
+- §25.8 design write-back: 4 design docs (05-ast.md, 06-mir.md, 07-codegen.md, 09-stdlib.md)
+
+**§14.4 J1-J6 verdict**: 6/6 PASS (5 src files; exactly at J5 ≤5 file guideline limit)
+**§16 verdict**: ✅ COMPLIANT (additive field on existing variant; no new module boundaries crossed)
+**§25.8 verdict**: ONE B4 design-gray-area (extending `Println` variant with `args` field); write-back planned for 4 design docs
+
+**Test impact**: +9 rust (2324 → 2333). 0 conformance changes. 0 regressions.
+
+**Version policy**: v0.24.3 → v0.25.0 (minor bump — first real I/O feature: format args work, programs can print computed values).
+
+**Stage 13 STATUS**: 🔄 IN PROGRESS (13.16 ✅; 13.17+ pending: print-flush / bool-true-false / v0.2 macro_rules!)

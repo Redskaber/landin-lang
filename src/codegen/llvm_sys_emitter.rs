@@ -320,11 +320,19 @@ impl LLVMSysEmitter {
             // Build a function type.
             let ret = self.llvm_type(ret_ty);
             let params: Vec<LLVMTypeRef> = arg_tys.iter().map(|t| self.llvm_type(t)).collect();
+            // Stage 13.16: printf and __landin_eprintf are variadic — declare
+            // them with isVariadic=1 so the LLVM module declaration matches
+            // the variadic call sites in emit_call.
+            let is_variadic: i32 = if name == "printf" || name == "__landin_eprintf" {
+                1
+            } else {
+                0
+            };
             let fty = LLVMFunctionType(
                 ret,
                 params.as_ptr() as *mut LLVMTypeRef,
                 params.len() as u32,
-                0,
+                is_variadic,
             );
             let f = LLVMAddFunction(self.module, name_c.as_ptr(), fty);
             self.declared.insert(name.to_string(), f);
@@ -738,11 +746,21 @@ impl Emitter for LLVMSysEmitter {
             // Build function type — assume same signature.
             let ret_llvm_ty = self.llvm_type(ret_ty);
             let param_tys: Vec<LLVMTypeRef> = args.iter().map(|(t, _)| self.llvm_type(t)).collect();
+            // Stage 13.16: printf and __landin_eprintf are variadic — declare
+            // them with isVariadic=1 so LLVM doesn't complain about arg count
+            // mismatches when the call site has more args than the declaration.
+            // (The actual libc printf is variadic; our auto-declaration with
+            // fixed args would cause LLVM verifier errors for variadic calls.)
+            let is_variadic: i32 = if fn_name == "printf" || fn_name == "__landin_eprintf" {
+                1
+            } else {
+                0
+            };
             let fty = LLVMFunctionType(
                 ret_llvm_ty,
                 param_tys.as_ptr() as *mut LLVMTypeRef,
                 param_tys.len() as u32,
-                0,
+                is_variadic,
             );
             let name_c = CString::new("call").unwrap();
             let v = LLVMBuildCall2(

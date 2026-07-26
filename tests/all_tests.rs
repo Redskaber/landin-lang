@@ -615,3 +615,8 @@ mod stage13_14_tests;
 // produces symbol `landin_main`, not `landin_landin_main`). v0.24.3 patch bump.
 #[path = "v0/stage13/plan/stage13_15_tests.rs"]
 mod stage13_15_tests;
+// Stage 13.16: Format args (println!("{}", x)) — extends Println variant to
+// carry args, removes silent-drop special case, builds C printf format string
+// with type-specific specifiers. v0.25.0 minor bump (first real I/O feature).
+#[path = "v0/stage13/plan/stage13_16_tests.rs"]
+mod stage13_16_tests;

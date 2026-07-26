@@ -791,9 +791,15 @@ impl<'a> Parser<'a> {
                         _ => unreachable!(),
                     };
 
-                    // Stage 13.11: Special-case println!/print!/eprintln!/eprint!
-                    // with a single string literal argument. This allows codegen
-                    // to emit printf calls without full macro expansion.
+                    // Stage 13.11 + Stage 13.16: Special-case println!/print!/eprintln!/eprint!
+                    // with a format string and comma-separated arguments.
+                    //
+                    // Stage 13.11: captured only the format string (single string literal).
+                    // Stage 13.16: now captures ALL comma-separated args after the format
+                    // string, enabling `println!("x is {}", x)` to actually substitute x.
+                    // The previous Stage 13.11 implementation silently dropped args after
+                    // the format string — a "special case" that violated the user feedback
+                    // "少用特例" (use fewer special cases).
                     let macro_name = path.segments.last().map(|s| s.ident.name);
                     let macro_name_str = macro_name
                         .and_then(|spur| self.interner.try_resolve(&spur))
@@ -803,23 +809,33 @@ impl<'a> Parser<'a> {
                         if let Some(ref name) = macro_name_str {
                             if matches!(name.as_str(), "println" | "print" | "eprintln" | "eprint")
                             {
-                                // Try to parse `("string literal")`
+                                // Parse `(fmt_string, arg1, arg2, ...)`
                                 self.bump(); // (
                                 if let TokenKind::StrLit(sym) = *self.peek() {
-                                    self.bump(); // string literal
+                                    self.bump(); // string literal (format string)
                                     let msg = self.interner.resolve(&sym).to_string();
-                                    // Skip to closing )
-                                    while !matches!(
-                                        *self.peek(),
-                                        TokenKind::RParen | TokenKind::Eof
-                                    ) {
-                                        self.bump();
+                                    // Stage 13.16: Parse comma-separated args until )
+                                    let mut args = Vec::new();
+                                    while *self.peek() != TokenKind::RParen
+                                        && *self.peek() != TokenKind::Eof
+                                    {
+                                        // Expect comma separator
+                                        if *self.peek() == TokenKind::Comma {
+                                            self.bump(); // ,
+                                        } else {
+                                            // Unexpected token — break to avoid infinite loop
+                                            break;
+                                        }
+                                        // Parse expression argument
+                                        let arg = self.parse_expr();
+                                        args.push(arg);
                                     }
                                     if *self.peek() == TokenKind::RParen {
                                         self.bump(); // )
                                     }
                                     return Expr::Println {
                                         msg,
+                                        args,
                                         newline: name.ends_with("ln"),
                                         stderr: name.starts_with('e'),
                                         span: path_span,

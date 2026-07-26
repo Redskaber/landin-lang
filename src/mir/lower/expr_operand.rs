@@ -1388,6 +1388,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         // populated.
         HirExprKind::Println {
             msg,
+            args,
             newline,
             stderr,
         } => {
@@ -1396,6 +1397,17 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             } else {
                 msg.clone()
             };
+            // Stage 13.16: Lower each arg expression to a MIR operand.
+            // Each arg is lowered via lower_expr_to_operand (which produces
+            // a LocalId holding the arg's value). We then wrap it in
+            // Operand::Copy to produce a use operand for codegen.
+            let arg_operands: Vec<Operand> = args
+                .iter()
+                .map(|arg| {
+                    let local = lower_expr_to_operand(cx, arg);
+                    Operand::Copy(Place::local(local, expr.span))
+                })
+                .collect();
             // Push the println statement to the current basic block —
             // this is the §16-compliant way to express an ordered side effect.
             cx.mir
@@ -1404,6 +1416,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .push(Statement {
                     kind: StatementKind::Println {
                         msg: full_msg,
+                        args: arg_operands,
                         newline: *newline,
                         stderr: *stderr,
                     },

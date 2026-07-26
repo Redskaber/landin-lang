@@ -1,8 +1,8 @@
 # Stage 13 — Test Documentation
 
-> **阶段范围**: Stage 13.1 - 13.15+ (v0.3 self-hosting preparation + LLVM execution pipeline)
+> **阶段范围**: Stage 13.1 - 13.16+ (v0.3 self-hosting preparation + LLVM execution pipeline)
 > **测试目录**: `tests/v0/stage13/plan/` + `tests/conformance/01-07-*`
-> **状态**: 🔄 In Progress (13.1 ✅, 13.2 ✅, 13.3a ✅, 13.4a ✅, 13.5-13.15 ✅; 13.16+ pending)
+> **状态**: 🔄 In Progress (13.1 ✅, 13.2 ✅, 13.3a ✅, 13.4a ✅, 13.5-13.16 ✅; 13.17+ pending)
 
 ## 测试目录结构
 
@@ -22,6 +22,7 @@ tests/v0/stage13/plan/
 ├── stage13_13_tests.rs          (Stage 13.13 — Inline println! emission via StatementKind::Println)
 ├── stage13_14_tests.rs          (Stage 13.14 — eprintln!/eprint! stderr emission via __landin_eprint helper)
 └── stage13_15_tests.rs          (Stage 13.15 — Fix landin_main double-prefix symbol bug)
+└── stage13_16_tests.rs          (Stage 13.16 — Format args (println!("{}", x)))
 
 tests/conformance/               ← v0.1 conformance suite (Stage 13 不增加数量, 重点是 FAIL → PASS)
 ├── 00-parse/                    (612 — Stage 13.2 if-let/while-let tests flipped to PASS)
@@ -53,6 +54,7 @@ tests/conformance/               ← v0.1 conformance suite (Stage 13 不增加�
 | 13.13 | Inline println! emission via `StatementKind::Println` (fixes 13.12 ordering bug) | +10 rust | 0 |
 | 13.14 | `eprintln!`/`eprint!` stderr emission via `__landin_eprint` helper (closes 13.13 deferral) | +7 rust | 0 |
 | 13.15 | Fix `landin_main` double-prefix symbol bug — P0 linker fix; both `fn main()` and `fn landin_main()` now work | +7 rust | 0 |
+| 13.16 | Format args — `println!("{}", x)` now works; P0 v0.1 blocker closed; first real I/O feature | +9 rust | 0 |
 | 13.5+ | TD-033 P1 sub-items (for/move/HRTB/assoc-norm/two-phase/RFC 2229) | TBD | TBD |
 | 13.6 (release) | v0.1 release announcement | 0 | 0 |
 

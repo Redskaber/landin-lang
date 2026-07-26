@@ -487,13 +487,12 @@ impl TypeChecker {
             | StatementKind::StorageLive(_)
             | StatementKind::StorageDead(_)
             | StatementKind::Deinit(_) => {}
-            // Stage 13.13: Inline println! statement — no type constraints
-            // to check. The message string is opaque at the MIR level
-            // (carried as a String, not a typed operand). Codegen emits
-            // `printf("%s", <msg_global>)` which produces unit (i32 return
-            // discarded); the surrounding expression already produces a
-            // unit local at MIR-lowering time (see expr_operand.rs
-            // HirExprKind::Println arm).
+            // Stage 13.13 + Stage 13.16: Inline println! statement — no type
+            // constraints to check on the format string (opaque String).
+            // Stage 13.16: args are already lowered to MIR operands and
+            // their types were checked during operand lowering (each arg
+            // is lowered via lower_expr_to_operand which goes through the
+            // normal type-checking path).
             StatementKind::Println { .. } => {}
         }
     }

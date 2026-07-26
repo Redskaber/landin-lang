@@ -376,17 +376,24 @@ pub fn lower_expr(cx: &mut HirLowerCtxt, expr: &Expr) -> HirExpr {
             path: crate::hir::lower::path::lower_path(cx, path),
             delim: *delim,
         },
-        // Stage 13.12: Println → HirExprKind::Println (carries msg to MIR)
+        // Stage 13.12 + Stage 13.16: Println → HirExprKind::Println
+        // (carries format string + args to MIR for printf emission)
         Expr::Println {
             msg,
+            args,
             newline,
             stderr,
             ..
-        } => HirExprKind::Println {
-            msg: msg.clone(),
-            newline: *newline,
-            stderr: *stderr,
-        },
+        } => {
+            // Stage 13.16: Lower each arg expression to HIR
+            let hir_args: Vec<HirExpr> = args.iter().map(|arg| lower_expr(cx, arg)).collect();
+            HirExprKind::Println {
+                msg: msg.clone(),
+                args: hir_args,
+                newline: *newline,
+                stderr: *stderr,
+            }
+        }
         Expr::Unsafe(block, _) => HirExprKind::Unsafe(lower_block(cx, block)),
         Expr::Unit(_) => HirExprKind::Unit,
         // Stage 8.5: async/await — MVP: evaluate synchronously (no real async runtime)

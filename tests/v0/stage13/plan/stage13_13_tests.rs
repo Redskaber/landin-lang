@@ -130,16 +130,21 @@ fn test_codegen_statement_handles_println() {
         "StatementKind::Println arm must use emitter.emit_call"
     );
 
-    // The Println arm must emit a format string global "%s\0".
+    // The Println arm must emit a format string global.
+    // Stage 13.16 update: the codegen now builds a C format string from the
+    // Landin template (replacing `{}` with `%ld`/`%s`/`%d`), so the literal
+    // `b"%s\0"` is no longer present. Instead, we check for the format string
+    // emission pattern.
     assert!(
-        content.contains(r#"b"%s\0""#),
-        "StatementKind::Println arm must emit a format string global b\"%s\\0\""
+        content.contains("emit_string_global"),
+        "StatementKind::Println arm must emit a format string global via emit_string_global"
     );
 
-    // The Println arm must emit a message string global (with null terminator).
+    // The Println arm must null-terminate the format string (Stage 13.16
+    // appends '\\0' to the c_fmt string).
     assert!(
-        content.contains("msg_bytes.push(0)"),
-        "StatementKind::Println arm must null-terminate the message bytes"
+        content.contains("c_fmt.push('\\0')"),
+        "StatementKind::Println arm must null-terminate the C format string (Stage 13.16)"
     );
 }
 

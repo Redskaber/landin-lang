@@ -788,10 +788,15 @@ pub enum HirExprKind {
         path: HirPath,
         delim: MacroDelim,
     },
-    /// Stage 13.12: `println!("msg")` / `print!("msg")` / `eprintln!` / `eprint!`
-    /// Carries the message string through HIR to MIR lowerer for printf emission.
+    /// Stage 13.12 + Stage 13.16: `println!(fmt, args...)` / `print!` / `eprintln!` / `eprint!`
+    /// Carries the format string AND arguments through HIR to MIR lowerer for
+    /// printf emission with the correct format specifiers.
+    ///
+    /// Stage 13.12: introduced with `msg: String` only.
+    /// Stage 13.16: extended with `args: Vec<HirExpr>` to support format args.
     Println {
         msg: String,
+        args: Vec<HirExpr>,
         newline: bool,
         stderr: bool,
     },

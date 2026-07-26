@@ -153,7 +153,8 @@ Landin source code
 | `stage-13.6-object-file-generation.md` | 13.6 | `--emit-obj` flag — LLVM Module → TargetMachine → .o file |
 | `execution-pipeline.md` | 13.8-13.10 | End-to-end pipeline: Landin → MIR → LLVMSysEmitter → .o → cc → exe → run |
 | `stage-13.13-println-inline-emission.md` | 13.13 | Inline `println!` emission via `StatementKind::Println` (fixes Stage 13.12 ordering bug) |
-| `stage-13.14-eprintln-stderr-emission.md` | **13.14** | **`eprintln!`/`eprint!` stderr emission via `__landin_eprint` helper** (closes Stage 13.13 deferral) |
+| `stage-13.14-eprintln-stderr-emission.md` | 13.14 | `eprintln!`/`eprint!` stderr emission via `__landin_eprint` helper (closes Stage 13.13 deferral) |
+| `stage-13.16-format-args.md` | **13.16** | **Format args (`println!("{}", x)`) — extends Println variant to carry args, builds C printf format string** (first real I/O feature) |
 
 ## Known Issues
 

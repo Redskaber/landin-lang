@@ -531,7 +531,18 @@ impl Resolver {
             HirExprKind::MacroCall { path, .. } => {
                 self.resolve_hir_path(path, interner);
             }
-            HirExprKind::Println { .. } => {}
+            // Stage 13.16: resolve paths inside Println args (format args).
+            // Before Stage 13.16, Println carried only `msg: String` (no args),
+            // so there was nothing to resolve. Now that Println carries
+            // `args: Vec<HirExpr>`, we must resolve each arg expression so
+            // that path args (e.g., `println!("{}", x)`) get `Res::Local`
+            // instead of `Res::Unknown` — otherwise MIR lower falls back to
+            // an error placeholder (Const{val: Int(0), ty: Error}).
+            HirExprKind::Println { args, .. } => {
+                for arg in args {
+                    self.resolve_expr(arg, interner);
+                }
+            }
             HirExprKind::Unsafe(b) => self.resolve_block(b, interner),
             // Stage 8.5: async/await — resolve inner expressions
             HirExprKind::Await { expr } => self.resolve_expr(expr, interner),

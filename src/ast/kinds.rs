@@ -559,14 +559,26 @@ pub enum Expr {
         /// For Stage 0 we leave this empty — Stage 4 macro expansion will fill it.
         span: Span,
     },
-    /// Stage 13.11: `println!(string_literal)` — special-cased macro call
-    /// that captures the string argument for codegen to emit printf.
-    /// This is a pragmatic shortcut: the parser detects `println!("...")`
-    /// and `print!("...")` patterns and creates this node instead of
-    /// MacroCall, allowing the MIR lowerer to generate printf calls.
+    /// Stage 13.11 + Stage 13.16: `println!(fmt, args...)` — special-cased
+    /// macro call that captures the format string AND arguments for codegen
+    /// to emit printf with the correct format specifiers.
+    ///
+    /// Stage 13.11: introduced with `msg: String` only (single string literal).
+    /// Stage 13.16: extended with `args: Vec<Expr>` to support format args
+    /// (`println!("x is {}", x)`). The parser now captures all comma-separated
+    /// args (no longer silently drops them).
+    ///
+    /// The `msg` field is the format string template (e.g., `"x is {}"`).
+    /// The `args` field is the list of expressions to substitute into `{}`
+    /// placeholders, in order. Empty `args` means no substitution (backward
+    /// compat with `println!("literal")`).
     Println {
-        /// The format string content (without quotes).
+        /// The format string content (without quotes). May contain `{}`
+        /// placeholders that are substituted with `args` at codegen time.
         msg: String,
+        /// Arguments to substitute into `{}` placeholders in `msg`, in order.
+        /// Empty for `println!("literal")` (no substitution).
+        args: Vec<Expr>,
         /// Whether to append newline (println! = true, print! = false).
         newline: bool,
         /// Whether to use stderr (eprintln! = true, println! = false).
