@@ -1,9 +1,76 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.23.0
+**Current version**: v0.23.1
 **Date**: 2026-07-26
-**Test count**: 2265 rust tests + 5 benchmarks + 5026 conformance tests
+**Test count**: 2272 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.23.1 — Stage 13.4 (Built-in macros TD-032 P0 — preparation phase + TD-032 reframe)
+
+### Overview
+
+**Stage 13.4** — Preparation phase for TD-032 (last P0 blocker for v0.3 self-hosting).
+**Critical finding**: TD-032 was MISLABELED — design docs forbid `macro_rules!` for v0.1/v0.3.
+The actual blocker is **19 missing built-in macros** (7 of 26 hardcoded as non-functional
+placeholders). Strategy A (full macro_rules!) is REJECTED as design-forbidden; Strategy B
+(extend built-in macros) is design-sanctioned by `02-grammar.md` §4.4.
+
+### TD-032 Reframe
+
+**Before** (r216/r217/plan-13.1.md): TD-032 = "macro_rules! not implemented (26 built-in macros hardcoded)"
+**After** (Stage 13.4): TD-032 = "19 of 26 built-in macros missing (7 hardcoded as non-functional placeholders)"
+- `macro_rules!` is NOT a v0.3 blocker — it's a v0.2+ feature per `12-roadmap.md` §4.1
+- 5 design docs forbid macro_rules! for v0.1/v0.3
+
+### §13.4 Design Alignment: ✅ Strategy C → B (preparation + implementation split)
+
+- **Strategy A (full macro_rules!)**: REJECTED — design-forbidden per 5 design docs
+- **Strategy B (extend built-in macros)**: DESIGN-SANCTIONED — `02-grammar.md` §4.4
+- **Strategy C (preparation phase)**: CHOSEN for Stage 13.4; Stage 13.4a = Strategy B implementation
+
+### Implementation blueprint (for Stage 13.4a)
+
+1. New `TokenTree` type (~100 LOC) — `05-ast.md` §8 design specifies `args: Vec<TokenTree>`
+2. 19 missing built-in macro expanders (~500-700 LOC) — assert!, assert_eq!, write!, panic!, etc.
+3. HIR-time expansion (~200-300 LOC) — architectural shift from MIR-time to HIR-time
+4. Conformance FAIL→PASS verification
+
+### Files added/changed
+
+- New: `docs/develop/v0/stage-13/stage-13.4-design-alignment.md` (1069 lines, §13.4 design alignment)
+- New: `docs/develop/v0/stage-13/gate-review-13.4.md` (preparation gate review, 5/5 GO-WITH-CONDITIONS → PASS)
+- New: `tests/v0/stage13/plan/stage13_4_tests.rs` (7 verification tests)
+- Updated: `tests/all_tests.rs`, `Cargo.toml` (v0.23.0 → v0.23.1), `README.md`, `docs/develop/v0/api-naming-standard.md` (v2.43 → v2.44), `docs/tests/matrix.md`, `docs/worklog.md`
+
+### Verification
+
+```
+cargo test: 2272 passed (146 unit + 2272 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+```
+
+### TD status after Stage 13.4 (preparation)
+
+| TD ID | Priority | Status | Stage |
+|-------|----------|--------|-------|
+| TD-028 | P2 | ✅ CLOSED (Stage 13.1) | — |
+| TD-030 | P0 | ✅ CLOSED (Stage 13.3a) | — |
+| TD-031 | P0 | ✅ CLOSED (Stage 13.2) | — |
+| **TD-032** | **P0** | **🔄 OPEN (reframed: 19 missing built-in macros; 13.4a pending)** | Stage 13.4a |
+
+**P0 closure progress**: 2/3 P0 closed; 1 in preparation (TD-032 reframed)
+
+### Version policy: v0.23.0 → v0.23.1 (patch bump — preparation phase)
+
+### Next steps
+
+- **Stage 13.4a (P0 — last P0 blocker)**: 19 missing built-in macros (~800-1200 LOC, HIGH risk)
+- After Stage 13.4a: **ALL 3 P0 items closed** → v0.3 self-hosting can begin
+- **v0.24.0**: After Stage 13.4a (third user-facing feature, all P0 closed)
 
 ---
 

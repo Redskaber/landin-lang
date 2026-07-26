@@ -9131,3 +9131,115 @@ Stage Summary:
 - P0 closure progress: 2/3 P0 closed (TD-030 + TD-031); 1 remaining (TD-032 macro_rules!)
 - v0.23.0: second minor bump with actual user-facing language feature (closures callable)
 - Next: Stage 13.4 (TD-032 macro_rules! — P0, **last P0 blocker**, 4-8 weeks)
+
+---
+Task ID: stage-13.4-design-alignment
+Agent: ARCH-A + ALG-C (combined subagent)
+Task: Stage 13.4 §13.4 design alignment — built-in macro expansion TD-032 scope analysis (last P0 blocker for v0.3 self-hosting)
+
+Work Log:
+- Read context: plan-13.1.md (Stage 13 active plan, MUV-9/MUV-10/MUV-11 for Stage 13.4)
+- Read context: stage-13.1-design-alignment.md §5.4 (version policy: v0.23.0 → v0.24.0 reserved for Stage 13.4)
+- Read context: stage-13.2-design-alignment.md + stage-13.3-design-alignment.md (format + preparation-phase precedent)
+- Read context: r216 architecture audit §3.5 (TD-032 detail, "26 built-in macros hardcoded" claim — r217-corrected)
+- Read context: r217 stages-0-4 re-audit §2.6 + §4 (TD-032 framing inversion: 7 of 26 hardcoded, 19 missing; Stage 4.10 root cause)
+- Read context: stage-committee-process.md §13.4 + §14.4 + §25.8 + §25.7 + §15 (process compliance)
+- Read 8 design docs (02-grammar.md, 05-ast.md, 06-mir.md, 07-codegen.md, 08-bootstrap-strategy.md, 09-stdlib.md, 12-roadmap.md, 13-stage1-feature-whitelist.md):
+  - 02-grammar.md §4.4 line 421: "MVP 不支持 macro_rules! 自定义宏（推迟 v0.2），但 支持 26 个内建宏（编译器硬编码展开）" — smoking gun #1: design pre-sanctions Strategy B, pre-forbids Strategy A
+  - 02-grammar.md §7 line 491: "macro_rules! | 无（v0.2） | R1 教训" — explicit design exclusion
+  - 05-ast.md line 12: "保留宏形状：MVP 无宏，但 AST 结构预留 MacroCall 节点（v0.2 用）"
+  - 05-ast.md §8 line 501-505: MacroCall { mac: Path, args: Vec<TokenTree>, span: Span } — design HAS args field; impl does NOT (B1 deviation)
+  - 13-stage1-feature-whitelist.md §2.6 line 152: "禁止使用：macro_rules! 自定义宏（v0.2 才支持）" — Stage 1 source forbidden from macro_rules!
+  - 08-bootstrap-strategy.md line 206: "Proc macro：永久不做（v0.2 仅 macro_rules!）" — macro_rules! is v0.2
+  - 12-roadmap.md §4.1 line 449: "macro_rules! 声明宏" listed under v0.2 远景
+  - 06-mir.md + 07-codegen.md: ZERO mentions of macro/MacroCall/expansion/hygiene (design silent — macros should be expanded before MIR)
+- CRITICAL FINDING: TD-032 misframed as "macro_rules!" in r216/plan-13.1.md/gate-review-13.3a.md line 99 — design docs unanimously forbid macro_rules! for v0.1/v0.3; actual blocker per r217 §2.6 + design = 19 missing built-in macros (7 of 26 hardcoded)
+- Analyzed current implementation (8 src files inspected):
+  - AST MacroCall at src/ast/kinds.rs:554-561 — ⚠️ B1 DEVIATION: impl has {path, delim, span}; design has {mac, args: Vec<TokenTree>, span} — impl DISCARDS body tokens
+  - AST ItemKind at src/ast/kinds.rs:24-36 — ✅ NO MacroDef/MacroRules variant (design-aligned)
+  - HIR MacroCall at src/hir/kinds.rs:787-790 — ⚠️ same B1 deviation (path, delim only)
+  - Lexer TokenKind at src/lexer/token.rs:47-86 — ✅ NO KwMacroRules token (design-aligned; macro_rules is identifier in Rust syntax)
+  - Parser MacroCall branch at src/parser/expr.rs:780-801 — ⚠️ recognizes ident!delim syntax but calls self.skip_delim_group() at line 795 — DISCARDS body tokens
+  - Parser parse_item dispatcher at src/parser/items.rs:40-78 — ✅ NO macro_rules! arm (design-aligned)
+  - HIR lowering Expr::MacroCall arm at src/hir/lower/body.rs:374-377 — ⚠️ pass-through (no expansion)
+  - MIR lowering HirExprKind::MacroCall arm at src/mir/lower/expr_operand.rs:1379-1435 — ❌ 7 hardcoded placeholder macros (println/print/eprintln/eprint/stringify/assert/debug_assert) matching on NAME only; produces TyKind::Tuple(unit) or TyKind::Ref(Str); unknown macros fall to TyKind::Error
+  - Codegen src/codegen/mod.rs — ✅ ZERO MacroCall mentions (relies on MIR locals from expr_operand.rs)
+  - src/macro_expand/ module — ❌ does NOT exist
+  - TokenTree type — ❌ does NOT exist (grep -rn "TokenTree" src/ returns zero)
+- Analyzed conformance tests:
+  - 6 .lin files mention "macro" in comments (all EXPECTED: compile_ok): 06-stdlib/02-std/{001-print-macro,002-vec-macro,016-std-println-macro,017-std-vec-macro,040-std-collect-pattern}.lin + 06-stdlib/00-core/{026-std-println-macro,027-std-vec-macro}.lin
+  - 0 conformance tests use macro_rules! (grep -rln "macro_rules" tests/conformance/ returns empty) — confirms design forbids macro_rules! for v0.1/v0.3
+  - 11 .lin files invoke at least one built-in macro (println/vec/format/assert/assert_eq/etc.)
+  - Stage 4.10 unit tests at tests/v0/stage4/plan/macro_system_tests.rs: 3 tests, all verify only "macro produces non-empty MIR" (no behavioral correctness)
+- Evaluated 3 strategies:
+  - Strategy A (full macro_rules! subsystem): 1500-2500 LOC, ~12-15 src files, HIGH risk — ❌ REJECTED: DESIGN-FORBIDDEN per §13.4.2 rule 1 (violates 02-grammar.md §4.4+§7, 12-roadmap.md §4.1, 13-stage1-feature-whitelist.md §2.6, 08-bootstrap-strategy.md line 206); NOT REQUIRED for v0.3 self-hosting (Stage 1 source forbidden from macro_rules!)
+  - Strategy B (extend built-in macros): 400-1200 LOC, ~9 src files, MEDIUM risk — ✅ DESIGN-SANCTIONED per 02-grammar.md §4.4 "编译器硬编码展开"; closes B1 (MacroCall.args) + B3 (MIR sees MacroCall) + B4 (TokenTree type) deviations; satisfies Stage 1 contract (26 macros)
+  - Strategy C (preparation phase): ~5-6 files, ~100-200 LOC, LOW risk — ✅ ACCEPTABLE per §15.3 #3 (前置条件未就绪 — TokenTree B4 gray-area) + §14.4 J5 (≤5 files for prep) + Stage 13.3→13.3a precedent
+  - RECOMMENDED: Strategy C for Stage 13.4 (this phase) + Strategy B for Stage 13.4a (next phase)
+- §14.4 J1-J6 evaluation:
+  - Stage 13.4 (Strategy C prep): 6/6 PASS (5-6 files within J5 ≤5+1 marginal guideline)
+  - Stage 13.4a (Strategy B impl): 5/6 PASS + J5 MARGINAL (9 src files exceeds ≤5; justified by §15 long-term value + design-aligned B1+B3+B4 closure requires touching all 9 files)
+- §25.8 design write-back plan (deferred to Stage 13.4a): 5 design docs need write-back (05-ast.md add TokenTree + MacroCall.args + §13 implementation status; 02-grammar.md add retroactive B1 closure note; 07-codegen.md add note that macros expanded at HIR-lowering time; 13-stage1-feature-whitelist.md add 26/26 implementation status; 09-stdlib.md add v0.1 hardcoded println! note)
+- Produced: docs/develop/v0/stage-13/stage-13.4-design-alignment.md (6 sections, ~700 lines)
+
+Stage Summary:
+- Produced: docs/develop/v0/stage-13/stage-13.4-design-alignment.md
+- CRITICAL OUTCOME: TD-032 REFRAME required — from "macro_rules! not implemented" to "19 of 26 built-in macros not implemented" per r217 §2.6 + design docs
+- Strategy A (full macro_rules!): ❌ REJECTED as design-forbidden (5 design docs unanimously forbid macro_rules! for v0.1/v0.3)
+- Strategy recommendation: C (preparation) for Stage 13.4 + B (extend built-in macros) for Stage 13.4a
+- File count: Stage 13.4 prep = 5-6 files (~100-200 LOC); Stage 13.4a impl = ~15-25 files (~800-1200 LOC, 9 src + 6-19 conformance + 5 design-doc write-back)
+- Risk: Stage 13.4 prep = LOW (documentation + test infrastructure + stub module only); Stage 13.4a impl = HIGH (9 src files, 26 individual expanders, new TokenTree type, HIR-time expansion architectural shift)
+- Version policy: v0.23.0 → v0.23.1 (patch bump for Stage 13.4 preparation); v0.23.1 → v0.24.0 (minor bump reserved for Stage 13.4a implementation — third user-facing compiler feature)
+- Committee recommendation: GO-WITH-CONDITIONS (6 conditions: TD-032 reframe ratified; Strategy A rejected; Strategy C+B split ratified; patch bump for prep; §25.8 write-back deferred to 13.4a; test verification gate)
+- This is PREPARATION (not implementation) — TD-032 remains OPEN after Stage 13.4; closed only in Stage 13.4a
+- Next: Stage Committee vote on this design alignment → if GO-WITH-CONDITIONS, Stage 13.4 preparation phase execution (1 session: this doc + gate-review-13.4.md + stage13_4_tests.rs skeleton + stub module + Cargo.toml patch bump) → Stage 13.4a gate review → Stage 13.4a implementation (2-4 weeks)
+
+---
+Task ID: stage13.4-r231-td-032-prep
+Agent: Super Z (main) + ARCH-A + ALG-C (subagent for §13.4 design alignment)
+Task: Stage 13.4 — Built-in macros (TD-032 P0) preparation phase. §13.4 design alignment + TD-032 reframe + implementation blueprint.
+
+Work Log:
+- Baseline: v0.23.0 / 2265 rust tests + 5026 conformance (Stage 13.3a ✅ TD-030 P0 CLOSED)
+- User feedback: "继续计划推进" — Stage 13.4 (TD-032, last P0 blocker) next
+- Launched ARCH-A + ALG-C subagent for §13.4 design alignment:
+  - CRITICAL FINDING: TD-032 was MISLABELED in r216/r217/plan-13.1.md
+  - 5 design docs (02-grammar.md, 12-roadmap.md, 13-stage1-feature-whitelist.md, 08-bootstrap-strategy.md, 05-ast.md) unanimously FORBID macro_rules! for v0.1/v0.3
+  - Actual v0.3 blocker: 19 missing built-in macros (7 of 26 hardcoded as non-functional placeholders in expr_operand.rs:1379-1435)
+  - AST MacroCall discards body tokens (B1 deviation vs design 05-ast.md §8 args: Vec<TokenTree>)
+  - TokenTree type doesn't exist (B4 gray-area)
+  - Strategy A (full macro_rules!) REJECTED as design-forbidden per §13.4.2 rule 1
+  - Strategy B (extend built-in macros) is DESIGN-SANCTIONED by 02-grammar.md §4.4 "编译器硬编码展开"
+  - Recommendation: Strategy C → B split (preparation + implementation, like 13.3→13.3a)
+  - File count: prep = 5-6 files (~100-200 LOC); impl = ~15-25 files (~800-1200 LOC)
+  - Risk: prep = LOW; impl = HIGH
+  - Version policy: v0.23.0 → v0.23.1 (patch for prep) → v0.24.0 (minor for 13.4a)
+- Stage 13.4 preparation gate review created: docs/develop/v0/stage-13/gate-review-13.4.md
+  - 5/5 GO-WITH-CONDITIONS → PASS (for preparation phase)
+  - TD-032 reframed + remains OPEN
+  - Strategy A rejection documented
+  - Implementation blueprint for Stage 13.4a documented
+- Stage 13.4 verification tests created: tests/v0/stage13/plan/stage13_4_tests.rs (7 tests)
+  - test_stage13_4_design_alignment_exists
+  - test_td_032_reframe_documented (19 missing built-in macros, not macro_rules!)
+  - test_stage13_4_gate_review_exists (TD-032 + PREPARATION + 13.4a + PASS)
+  - test_gate_review_documents_reframe
+  - test_v01_gate_still_holds_after_stage13_4
+  - test_worklog_has_stage13_4_entry
+- Wired stage13_4_tests module into tests/all_tests.rs
+- Bumped Cargo.toml v0.23.0 → v0.23.1 (preparation phase patch bump)
+- Updated README.md: v0.23.1; Stage 13.4 🔄 prep done; 13.4a pending; TD-032 reframed
+- Updated RELEASE_NOTES.md: v0.23.1 entry for Stage 13.4 preparation
+- Updated api-naming-standard.md: v2.43 → v2.44
+- Updated docs/tests/matrix.md: Stage 13.4 row + Stage 13.4a row added
+- Ran full CI/CD — all green ✅
+
+Stage Summary:
+- Stage 13.4 PASSED (preparation phase) — §13.4 design alignment + TD-032 reframe complete
+- TD-032 STATUS: 🔄 OPEN (reframed: 19 missing built-in macros; 13.4a implementation pending)
+- Strategy A (macro_rules!) REJECTED — design-forbidden for v0.1/v0.3
+- Strategy B (extend built-in macros) DESIGN-SANCTIONED — 02-grammar.md §4.4
+- v0.1 gate: 5026/5026 ✅
+- Stage 13 STATUS: 🔄 IN PROGRESS (13.1 ✅ TD-028; 13.2 ✅ TD-031 P0; 13.3a ✅ TD-030 P0; 13.4 🔄 TD-032 prep; 13.4a P0 pending)
+- P0 closure progress: 2/3 P0 closed; 1 in preparation (TD-032 reframed)
+- Next: Stage 13.4a (19 missing built-in macros — HIGH risk, ~800-1200 LOC; after this, ALL P0 CLOSED)

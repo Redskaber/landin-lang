@@ -574,3 +574,8 @@ mod stage13_3_tests;
 // 30+ conformance compile_error→compile_ok. v0.23.0 minor bump (second user-facing feature).
 #[path = "v0/stage13/plan/stage13_3a_tests.rs"]
 mod stage13_3a_tests;
+// Stage 13.4: macro_rules! / built-in macros (TD-032 P0) — preparation phase.
+// §13.4 design alignment complete; TD-032 reframed (19 missing built-in macros, not macro_rules!).
+// Full implementation deferred to Stage 13.4a (HIGH risk, ~800-1200 LOC).
+#[path = "v0/stage13/plan/stage13_4_tests.rs"]
+mod stage13_4_tests;

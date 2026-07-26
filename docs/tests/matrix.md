@@ -34,9 +34,10 @@
 | Stage 13.3 (Closure call lowering TD-030 P0 — preparation phase, §13.4 design alignment + blueprint) | +9 rust | 0 | ✅ Preparation complete (5/5 GO-WITH-CONDITIONS → PASS; 13.3a implementation pending) |
 | Stage 13.3a (TD-030 P0 CLOSED — closures callable via inline approach, 30+ conformance compile_error→compile_ok) | +9 rust | +30 compile_ok | ✅ Complete (5/5 GO → PASS, v0.23.0 minor bump) |
 | Stage 13.1b (TD-029 TyKind::Dynamic refactor — deferred per design alignment §15) | TBD | — | ⏳ Deferred (P2, non-blocking for P0) |
-| Stage 13.4 (macro_rules! + 26 built-in macros — TD-032 P0 closure, **last P0 blocker**) | TBD | TBD | ⏳ Pending (P0) |
+| Stage 13.4 (Built-in macros TD-032 P0 — preparation, §13.4 design alignment + TD-032 reframe) | +7 rust | 0 | ✅ Preparation complete (5/5 GO-WITH-CONDITIONS → PASS; 13.4a pending) |
+| Stage 13.4a (19 missing built-in macros — TD-032 P0 closure, **last P0 blocker**) | TBD | TBD | ⏳ Pending (HIGH risk, ~800-1200 LOC) |
 | Stage 13.5+ (TD-033 P1 sub-items + full Strategy A + Fn/FnMut/FnOnce + v0.1 release announcement) | TBD | TBD | ⏳ Pending (P1) |
-| **Total** | **2265** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE; Stage 13 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0; 2/3 P0 closed) |
+| **Total** | **2265** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE; Stage 13 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0, 13.4 🔄 TD-032 prep; 2/3 P0 closed) |
 
 ## Stage 3 Test Breakdown
 

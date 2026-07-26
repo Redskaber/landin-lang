@@ -4682,3 +4682,29 @@ Stage 13.3a — TD-030 closure call lowering (P0 CLOSED — closures callable, s
 **Stage 13 STATUS**: 🔄 IN PROGRESS (13.1 ✅ TD-028; 13.2 ✅ TD-031 P0; 13.3a ✅ TD-030 P0; 13.4 P0 pending)
 **P0 closure progress**: 2/3 P0 closed (TD-030 + TD-031); 1 remaining (TD-032 macro_rules!)
 **v0.24.0**: Reserved for Stage 13.4 P0 closure (macro_rules! — third user-facing feature, all P0 closed)
+
+### v2.44 (Stage 13.4, 2026-07-26)
+
+Stage 13.4 — Built-in macros (TD-032 P0) preparation phase + TD-032 reframe.
+
+**Changes**:
+- TD-032 P0: PREPARATION PHASE + CRITICAL REFRAME
+  - TD-032 was MISLABELED as "macro_rules! not implemented" in r216/r217/plan-13.1.md
+  - 5 design docs (02-grammar.md §4.4+§7, 12-roadmap.md §4.1, 13-stage1-feature-whitelist.md §2.6, 08-bootstrap-strategy.md, 05-ast.md §8) unanimously FORBID macro_rules! for v0.1/v0.3
+  - Actual v0.3 blocker: 19 missing built-in macros (7 of 26 hardcoded as non-functional placeholders)
+  - TD-032 reframed: "19 of 26 built-in macros missing (7 hardcoded as non-functional placeholders)"
+  - macro_rules! is NOT a v0.3 blocker — it's a v0.2+ feature per 12-roadmap.md §4.1
+- Strategy A (full macro_rules!) REJECTED — design-forbidden per §13.4.2 rule 1
+- Strategy B (extend built-in macros) DESIGN-SANCTIONED — 02-grammar.md §4.4 "编译器硬编码展开"
+- Strategy C → B split: Stage 13.4 = preparation; Stage 13.4a = implementation
+- §13.4 design alignment: docs/develop/v0/stage-13/stage-13.4-design-alignment.md (1069 lines)
+- Stage 13.4 gate review: docs/develop/v0/stage-13/gate-review-13.4.md (5/5 GO-WITH-CONDITIONS → PASS)
+- New Rust integration tests: tests/v0/stage13/plan/stage13_4_tests.rs (7 tests)
+
+**Test impact**: +7 rust (2265 → 2272). 0 conformance changes. 0 regressions.
+
+**Version policy**: v0.23.0 → v0.23.1 (patch bump). Preparation phase, no new compiler features. v0.24.0 reserved for Stage 13.4a (19 built-in macros — third user-facing feature, all P0 closed).
+
+**v0.1 GATE REACHED**: 5026/5026 conformance tests ✅
+**Stage 13 STATUS**: 🔄 IN PROGRESS (13.1 ✅, 13.2 ✅, 13.3a ✅, 13.4 🔄 prep; 13.4a P0 pending)
+**P0 closure progress**: 2/3 P0 closed; 1 in preparation (TD-032 reframed)

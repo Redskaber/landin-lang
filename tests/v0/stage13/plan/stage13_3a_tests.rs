@@ -212,16 +212,16 @@ fn test_v01_gate_still_holds_after_stage13_3a() {
     );
 }
 
-/// Verify Cargo.toml version is v0.23.0 (minor bump for second user-facing feature)
+/// Verify Cargo.toml version is v0.23.x (minor bump for closures callable + subsequent patches)
 #[test]
-fn test_cargo_toml_version_is_v0_23_0() {
+fn test_cargo_toml_version_is_v0_23_x() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let cargo_toml = manifest.join("Cargo.toml");
     let content = std::fs::read_to_string(&cargo_toml).expect("read Cargo.toml");
 
     assert!(
-        content.contains("version = \"0.23.0\""),
-        "Cargo.toml version must be v0.23.0 (Stage 13.3a P0 closure, second user-facing feature)"
+        content.contains("version = \"0.23."),
+        "Cargo.toml version must be v0.23.x (Stage 13.3a P0 closure minor bump + subsequent patches)"
     );
 }
 
