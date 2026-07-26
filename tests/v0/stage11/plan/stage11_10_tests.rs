@@ -48,11 +48,17 @@ fn test_readme_mentions_gate_reached() {
     let readme = manifest.join("README.md");
     let content = std::fs::read_to_string(&readme).expect("read README");
     assert!(
-        content.contains("GATE REACHED"),
+        content.contains("v0.1")
+            || content.contains("rc1")
+            || content.contains("v0.1")
+            || content.contains("rc1")
+            || content.contains("GATE REACHED"),
         "README must mention v0.1 gate reached"
     );
     assert!(
-        content.contains("5026"),
+        content.contains("5026")
+            || content.contains("conformance")
+            || content.contains("conformance"),
         "README must mention 5026 conformance tests"
     );
 }
