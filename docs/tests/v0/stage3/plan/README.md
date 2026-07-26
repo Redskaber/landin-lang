@@ -9,7 +9,8 @@
 ```
 tests/v0/stage3/plan/
 ├── README.md                    ← 本文件
-└── codegen_tests.rs             (Stage 3 — LLVM IR codegen verification)
+├── codegen_tests.rs             (Stage 3 — LLVM IR codegen verification)
+└── deep_inspection_tests.rs     (Stage 3 — deep IR structure verification)
 
 tests/conformance/03-codegen/    ← Stage 11.3 expanded to 601 tests (100.2% ✅)
 ├── 00-basic/                    (basic codegen patterns)
@@ -21,6 +22,9 @@ tests/conformance/03-codegen/    ← Stage 11.3 expanded to 601 tests (100.2% �
 └── 06-traits/                   (trait dispatch codegen)
 ```
 
+> Note: Per r217 second-pass audit (Stage 12.7 correction), `deep_inspection_tests.rs`
+> (15 tests) was missing from the prior README module table.
+
 ## 测试统计
 
 | Type | Count |
@@ -30,9 +34,14 @@ tests/conformance/03-codegen/    ← Stage 11.3 expanded to 601 tests (100.2% �
 
 ## 测试覆盖 (Rust integration)
 
+> Per-module counts verified by r217 second-pass audit (Stage 12.7 correction).
+> Total = 309 ✅ (matches); `deep_inspection_tests.rs` added to module table.
+
 | Module | Tests | Focus |
 |--------|-------|-------|
-| codegen_tests.rs | 309 | LLVM IR emission, types, function calls, ABI, structs, enums, error recovery |
+| codegen_tests.rs | 294 | LLVM IR emission, types, function calls, ABI, structs, enums, error recovery |
+| deep_inspection_tests.rs | 15 | Deep IR structure inspection, post-codegen verification |
+| **Total** | **309** | (verified r217) |
 
 ## Conformance per subcategory (03-codegen)
 
@@ -60,6 +69,6 @@ tests/conformance/03-codegen/    ← Stage 11.3 expanded to 601 tests (100.2% �
 ## 测试 runner
 
 ```bash
-cargo test --test all_tests -- codegen_tests
+cargo test --test all_tests -- codegen_tests deep_inspection_tests
 python3 tests/conformance/run_all.py --category 03-codegen
 ```

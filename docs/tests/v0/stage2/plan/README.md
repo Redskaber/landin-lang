@@ -10,10 +10,14 @@
 tests/v0/stage2/plan/
 ├── README.md                    ← 本文件
 ├── mir_lowering_tests.rs        (Stage 2.1 — HIR → MIR lowering)
-├── negative_cases.rs            (Stage 2.2 — typeck/borrowck negative tests)
-├── integration.rs               (Stage 2.3 — MIR ↔ typeck integration)
-└── typeck_borrowck_tests.rs     (Stage 2.4 — type checker + borrow checker)
+├── negative_cases_tests.rs      (Stage 2.2 — typeck/borrowck negative tests)
+├── integration_tests.rs         (Stage 2.3 — MIR ↔ typeck integration)
+└── typeck_tests.rs              (Stage 2.4 — type checker + borrow checker)
 ```
+
+> Note: Per r217 second-pass audit (Stage 12.7 correction), actual filenames are
+> `negative_cases_tests.rs`, `integration_tests.rs`, `typeck_tests.rs`
+> (not `negative_cases.rs`, `integration.rs`, `typeck_borrowck_tests.rs` as previously listed).
 
 ## 测试统计
 
@@ -23,12 +27,16 @@ tests/v0/stage2/plan/
 
 ## 测试覆盖
 
+> Per-module counts verified by r217 second-pass audit (Stage 12.7 correction).
+> Total = 141 ✅ (matches); per-module breakdown corrected from r216 first-pass estimates.
+
 | Module | Tests | Focus |
 |--------|-------|-------|
-| mir_lowering_tests.rs | 45 | BasicBlock, LocalDecl, Terminator, Statement lowering |
-| negative_cases.rs | 30 | Type errors, borrow errors, expected compile_error |
-| integration.rs | 35 | MIR → typeck → borrowck data flow |
-| typeck_borrowck_tests.rs | 31 | Type inference, NLL borrow check |
+| mir_lowering_tests.rs | 22 | BasicBlock, LocalDecl, Terminator, Statement lowering |
+| negative_cases_tests.rs | 35 | Type errors, borrow errors, expected compile_error |
+| integration_tests.rs | 58 | MIR → typeck → borrowck data flow |
+| typeck_tests.rs | 26 | Type inference, NLL borrow check |
+| **Total** | **141** | (verified r217) |
 
 ## 关联文档
 
@@ -42,5 +50,5 @@ tests/v0/stage2/plan/
 ## 测试 runner
 
 ```bash
-cargo test --test all_tests -- mir_lowering_tests negative_cases integration typeck_borrowck_tests
+cargo test --test all_tests -- mir_lowering_tests negative_cases_tests integration_tests typeck_tests
 ```

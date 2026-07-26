@@ -29,9 +29,12 @@ tests/conformance/00-parse/      ← Stage 9 expanded to 600 tests (100% ✅)
 
 ## 测试统计
 
+> Per-module counts verified by r217 second-pass audit (Stage 12.7 correction).
+> Total = 344 ✅ (matches); breakdown corrected (ast_structure = 150, not 149; no "misc" file).
+
 | Type | Count |
 |------|-------|
-| Rust integration tests | 344 (lexer 109 + parser 85 + ast_structure 149 + 1 misc) |
+| Rust integration tests | 344 (lexer 109 + parser 85 + ast_structure 150) |
 | Conformance tests | 600 (00-parse, 100% of 600 target) ✅ |
 
 ## Conformance per subcategory (00-parse)

@@ -26,10 +26,10 @@
 | Stage 12.4 (§25.8 retroactive backfill for Stage 5 + Stage 8 — 3 design-doc edits) | 0 | — | ✅ Complete (DynTraitMIRSummary + StdlibTypeKind + async/await MVP) |
 | Stage 12.5 (plan-13.1.md reframe — Planned → Draft, Stage 12 output) | 0 | — | ✅ Complete |
 | Stage 12.6 (version revert v0.22.0 → v0.21.2 — patch bump per r217) | 0 | — | ✅ Complete |
-| Stage 12.7 (Stage 0-4 README per-module attribution corrections) | 0 | — | 🔄 Partial |
-| Stage 12.8 (Stage 12 final gate review — §25 deep review of Stage 12) | TBD | — | ⏳ Pending |
-| Stage 13 (v0.3 self-hosting prep — TD-028..033 closure, plan-13.1.md in Draft state) | TBD | — | 📋 Draft (awaits Stage 12.8 GO) |
-| **Total** | **2347** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217 audits (5026/5000 = 100.5%) |
+| Stage 12.7 (Stage 0-4 README per-module attribution corrections) | 0 | — | ✅ Complete (5 READMEs corrected) |
+| Stage 12.8 (Stage 12 final gate review — §25 deep review of Stage 12) | +13 rust | — | ✅ Complete (5/5 GO-WITH-CONDITIONS-or-GO → PASS) |
+| Stage 13 (v0.3 self-hosting prep — TD-028..033 closure, plan-13.1.md in Draft state) | TBD | — | ✅ AUTHORIZED to launch (all 5 launch criteria closed) |
+| **Total** | **2349** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE; Stage 13 ✅ AUTHORIZED |
 
 ## Stage 3 Test Breakdown
 

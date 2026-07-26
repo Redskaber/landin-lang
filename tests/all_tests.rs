@@ -544,3 +544,8 @@ mod stage12_2_tests;
 // plan-13.1.md reframed as Stage 12 output; Cargo.toml v0.22.0 → v0.21.2 per r217)
 #[path = "v0/stage12/plan/stage12_3_tests.rs"]
 mod stage12_3_tests;
+// Stage 12.4 (a.k.a. Stage 12.8 final gate review): §25 deep review of Stage 12 itself
+// + Stage 12.7 corrections (Stage 0-4 README per-module test attribution fixes per r217)
+// + Stage 12 closure verification (gate-review-12.8.md + deep-review-stage12-r219.md)
+#[path = "v0/stage12/plan/stage12_4_tests.rs"]
+mod stage12_4_tests;

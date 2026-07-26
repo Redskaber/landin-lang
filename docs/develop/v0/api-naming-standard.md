@@ -4498,3 +4498,33 @@ v0.22.0 reserved for Stage 13 P0 closure (closures/if-let/macro_rules! — actua
 
 **v0.1 GATE REACHED**: 5026/5000 conformance tests — RATIFIED by r216 + r217 audits ✅
 **v0.3 PREP**: Stage 13 plan in Draft state — awaits Stage 12.8 final gate review GO
+
+### v2.38 (Stage 12.7+12.8, 2026-07-26)
+
+Stage 12.7+12.8 — Stage 0-4 README corrections + Stage 12 final gate review + Stage 12 closure.
+
+**Changes**:
+- Stage 12.7 Stage 0-4 README per-module attribution corrections (5 files):
+  - `docs/tests/v0/stage0/plan/README.md` — ast_structure_tests.rs 149→150; removed nonexistent "+1 misc"
+  - `docs/tests/v0/stage1/plan/README.md` — hir_lowering 30→36, hir_resolution 25→26, hir_scope 24→17
+  - `docs/tests/v0/stage2/plan/README.md` — integration 35→58, mir_lowering 45→22, negative_cases 30→35, typeck 31→26; corrected filenames (negative_cases.rs→negative_cases_tests.rs, integration.rs→integration_tests.rs, typeck_borrowck_tests.rs→typeck_tests.rs)
+  - `docs/tests/v0/stage3/plan/README.md` — added missing deep_inspection_tests.rs (15 tests); codegen_tests.rs 309→294
+  - `docs/tests/v0/stage4/plan/README.md` — added missing closure_full_call_tests.rs (2 tests); corrected filenames (module_tests.rs→visibility_tests.rs, macro_tests.rs→macro_system_tests.rs); corrected counts (closure_call 4→2, closure_capture 3→4, macro 2→3, visibility 4→2)
+- Stage 12.8 §25 deep review of Stage 12 (full committee):
+  - `docs/develop/v0/stage-12/deep-review-stage12-r219.md` (514 lines, full D1-D7 review)
+  - `docs/develop/v0/stage-12/gate-review-12.8.md` (145 lines, concise gate summary)
+- Verdict: 5/5 GO-WITH-CONDITIONS-or-GO → PASS (3 GO-WITH-CONDITIONS + 2 GO, 0 NO-GO)
+- Stage 12 closure: ✅ COMPLETE (8/8 sub-stages done; 7 fully DONE + 1 partial→done in 12.7)
+- Stage 13 launch: ✅ AUTHORIZED (all 5 launch criteria closed)
+- New Rust integration tests: `tests/v0/stage12/plan/stage12_4_tests.rs` (13 tests verifying gate review + deep review + Stage 12 closure + Stage 13 launch + Stage 0-4 README corrections + tech debt inventory + worklog + README mentions)
+
+**Test impact**: +13 rust (2335 → 2348 → 2349 with rounded totals). 0 conformance changes. 0 regressions.
+
+**Version policy**: v0.21.3 (patch bump from v0.21.2). Stage 12 closure patch bump.
+Per semver §2.0.0, patch is appropriate because Stage 12.7+12.8 added no new compiler features
+(only docs + audit reports + verification tests + README corrections).
+
+**v0.1 GATE REACHED**: 5026/5000 conformance tests — RATIFIED by r216 + r217 + r219 audits ✅
+**Stage 12 STATUS**: ✅ COMPLETE (8/8 sub-stages)
+**Stage 13 STATUS**: ✅ AUTHORIZED to launch — Stage 13.1 may begin immediately
+**v0.22.0**: Reserved for Stage 13 P0 closure (closures/if-let/macro_rules! — actual compiler features)

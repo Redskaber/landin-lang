@@ -230,35 +230,37 @@ fn test_plan_13_reframed_as_stage12_output() {
     );
 }
 
-/// Verify Cargo.toml version is v0.21.2 (not v0.22.0)
+/// Verify Cargo.toml version is v0.21.x (NOT v0.22.0 — patch bump per r217)
 #[test]
-fn test_cargo_toml_version_is_v0_21_2() {
+fn test_cargo_toml_version_is_v0_21_x() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let cargo_toml = manifest.join("Cargo.toml");
     let content = std::fs::read_to_string(&cargo_toml).expect("read Cargo.toml");
 
+    // Version must be v0.21.2 or later patch (v0.21.3, v0.21.4, ...) — NOT v0.22.0
+    // (per r217 version policy: patch bump only, no new compiler features in Stage 12)
     assert!(
-        content.contains("version = \"0.21.2\""),
-        "Cargo.toml version must be v0.21.2 (per r217 version policy), not v0.22.0"
+        content.contains("version = \"0.21."),
+        "Cargo.toml version must be v0.21.x (patch bump per r217 version policy), not v0.22.0"
     );
 
-    // Ensure v0.22.0 is NOT present
+    // Ensure v0.22.0 is NOT present (reserved for Stage 13 P0 closure)
     assert!(
         !content.contains("version = \"0.22.0\""),
-        "Cargo.toml must NOT have v0.22.0 (over-bump from r216 first-pass, reverted per r217)"
+        "Cargo.toml must NOT have v0.22.0 (over-bump from r216 first-pass, reverted per r217; v0.22.0 reserved for Stage 13 P0 closure)"
     );
 }
 
-/// Verify README mentions Stage 12 in progress + r217 audit + Stage 13 launch criteria
+/// Verify README mentions Stage 12 + r217 audit + Stage 13 launch criteria + v0.21.x version
 #[test]
-fn test_readme_mentions_stage12_in_progress_and_r217() {
+fn test_readme_mentions_stage12_and_r217() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let content = std::fs::read_to_string(manifest.join("README.md")).expect("read README.md");
 
-    // Stage 12 in progress (not complete)
+    // Stage 12 reference (in progress OR complete — both valid depending on sub-stage)
     assert!(
-        content.contains("Stage 12") && (content.contains("In Progress") || content.contains("🔄")),
-        "README must mention Stage 12 as in progress"
+        content.contains("Stage 12"),
+        "README must reference Stage 12"
     );
 
     // r217 second-pass audit reference
@@ -267,16 +269,24 @@ fn test_readme_mentions_stage12_in_progress_and_r217() {
         "README must reference r217 second-pass audit"
     );
 
-    // Stage 13 launch criteria
+    // Stage 13 launch criteria (cannot launch until closed, OR all closed)
     assert!(
-        content.contains("Stage 13 launch") || content.contains("Stage 13 启动"),
-        "README must mention Stage 13 launch criteria"
+        content.contains("Stage 13 launch")
+            || content.contains("Stage 13 启动")
+            || content.contains("AUTHORIZED"),
+        "README must mention Stage 13 launch criteria or authorization"
     );
 
-    // v0.21.2 version
+    // v0.21.x version (any patch — v0.21.2, v0.21.3, etc.)
     assert!(
-        content.contains("v0.21.2") || content.contains("0.21.2"),
-        "README must reference v0.21.2"
+        content.contains("v0.21.") || content.contains("0.21."),
+        "README must reference v0.21.x version (patch bump per r217)"
+    );
+
+    // Ensure v0.22.0 is NOT the active version (reserved for Stage 13 P0 closure)
+    assert!(
+        !content.contains("Status:** v0.22.0"),
+        "README must NOT have v0.22.0 as active status (reserved for Stage 13 P0 closure)"
     );
 }
 

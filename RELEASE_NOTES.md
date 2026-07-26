@@ -1,9 +1,115 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.21.2
+**Current version**: v0.21.3
 **Date**: 2026-07-26
-**Test count**: 2335 rust tests + 5 benchmarks + 5026 conformance tests
+**Test count**: 2349 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.21.3 — Stage 12.7 + 12.8 (README corrections + §25 deep review + Stage 12 closure + Stage 13 launch authorized)
+
+### Overview
+
+**Stage 12.7 + 12.8** — Final two sub-stages of Stage 12. Stage 12.7 corrected Stage 0-4 README
+per-module test attribution errors identified by r217 second-pass audit. Stage 12.8 executed
+the §25 seven-dimension deep review of Stage 12 itself (required before Stage 13 launch),
+producing both a concise gate review and a full deep review report. Stage 12 is now ✅ COMPLETE
+and Stage 13 is ✅ AUTHORIZED to launch.
+
+### Stage 12.7 — Stage 0-4 README per-module attribution corrections
+
+Per r217 second-pass audit findings, the Stage 0-4 `docs/tests/v0/stage{N}/plan/README.md`
+files had correct **total** test counts but wrong **per-module** breakdowns (and some referenced
+nonexistent filenames). All 5 READMEs corrected:
+
+- `docs/tests/v0/stage0/plan/README.md` — ast_structure_tests.rs: 149 → 150; removed nonexistent "+1 misc"
+- `docs/tests/v0/stage1/plan/README.md` — hir_lowering: 30→36, hir_resolution: 25→26, hir_scope: 24→17
+- `docs/tests/v0/stage2/plan/README.md` — integration: 35→58, mir_lowering: 45→22, negative_cases: 30→35, typeck: 31→26; corrected filenames (negative_cases.rs→negative_cases_tests.rs, integration.rs→integration_tests.rs, typeck_borrowck_tests.rs→typeck_tests.rs)
+- `docs/tests/v0/stage3/plan/README.md` — added missing deep_inspection_tests.rs (15 tests); codegen_tests.rs: 309→294
+- `docs/tests/v0/stage4/plan/README.md` — added missing closure_full_call_tests.rs (2 tests); corrected filenames (module_tests.rs→visibility_tests.rs, macro_tests.rs→macro_system_tests.rs); corrected counts (closure_call: 4→2, closure_capture: 3→4, macro: 2→3, visibility: 4→2)
+
+### Stage 12.8 — §25 deep review of Stage 12 (final gate review)
+
+Full committee (ARCH-A + QA-A + REV-A + PM-A + ALG-C + SKL-A) performed §25 seven-dimension
+deep review of Stage 12 itself:
+
+- `docs/develop/v0/stage-12/deep-review-stage12-r219.md` (514 lines, full D1-D7 review)
+- `docs/develop/v0/stage-12/gate-review-12.8.md` (145 lines, concise gate summary)
+
+| Dimension | Status | Headline |
+|-----------|--------|----------|
+| D1 Architecture | ✅ | Zero new §16 violations (Stage 12 docs-only); TD-028 unchanged, scheduled for Stage 13.1 |
+| D2 Tech Debt | ✅ | 7 open TD items stable; Stage 12 closed 0 (review-only); 0 new code-level TD |
+| D3 Tests | ✅ | 2349 rust + 5026 conformance + 5 bench = 7380 total; Stage 12 added 30 verification tests |
+| D4 Stage 13 Readiness | ⚠️→✅ | 4 GO + 1 GO-WITH-CONDITIONS (Stage 12.7 partial — non-blocking); all P0 launch criteria met |
+| D5 Design | ✅ | 4 §25.8 design-doc backfills produced; descriptive-only, no over-design |
+| D6 Performance | ✅ | Zero code changes → zero performance impact; NLL O(n²) hot path scheduled for Stage 13.5+ |
+| D7 Docs | ✅ | ~5150 new documentation lines; 3 of 4 r217 implicit-knowledge items closed |
+
+**Committee vote**: 3 GO-WITH-CONDITIONS + 2 GO = 5/5 GO-WITH-CONDITIONS-or-GO. **0 NO-GO.** → **PASS**
+
+### Stage 12 closure: ✅ COMPLETE
+
+| Sub-stage | Status | Description |
+|-----------|--------|-------------|
+| 12.1 | ✅ DONE | v0.1 release + v0.3 bootstrap prep |
+| 12.2 | ✅ DONE | First-pass cross-stage audit r216 |
+| 12.3 | ✅ DONE | Second-pass audit r217 (3 reports, 2055 lines) |
+| 12.4 | ✅ DONE | §25.8 retroactive backfill (Stage 5 + Stage 8 — 3 design-doc edits) |
+| 12.5 | ✅ DONE | Reframe plan-13.1.md as Stage 12 output (Planned → Draft) |
+| 12.6 | ✅ DONE | Version revert v0.22.0 → v0.21.2 |
+| 12.7 | ✅ DONE | Stage 0-4 README corrections (per r217 stages-0-4 findings) |
+| 12.8 | ✅ DONE | Final gate review (§25 deep review of Stage 12 — 5/5 PASS) |
+
+### Stage 13 launch: ✅ AUTHORIZED
+
+All 5 launch criteria closed:
+1. Stage 12.4 §25.8 Stage 5 backfill complete ✅
+2. Stage 12.5 plan-13.1.md reframed as Stage 12 output ✅
+3. Stage 12.6 version revert done ✅
+4. Stage 12.7 Stage 0-4 README corrections done ✅
+5. Stage 12.8 final gate review 5/5 GO-WITH-CONDITIONS-or-GO ✅
+
+Stage 13.1 may begin immediately with MUV-1 (TD-028 §16 violation fix, ≤3 files, ~4h) →
+MUV-2 (TD-029 TyKind::Dynamic refactor, ~1-2 days).
+
+### Files added/changed
+
+- New: `docs/develop/v0/stage-12/gate-review-12.8.md` (145 lines, concise gate summary)
+- New: `docs/develop/v0/stage-12/deep-review-stage12-r219.md` (514 lines, full §25 D1-D7 review)
+- New: `tests/v0/stage12/plan/stage12_4_tests.rs` (13 verification tests)
+- Updated: `tests/all_tests.rs` (wire in stage12_4_tests module)
+- Updated: `docs/tests/v0/stage0/plan/README.md` (Stage 12.7 — ast_structure 149→150, removed misc)
+- Updated: `docs/tests/v0/stage1/plan/README.md` (Stage 12.7 — per-module counts corrected)
+- Updated: `docs/tests/v0/stage2/plan/README.md` (Stage 12.7 — filenames + counts corrected)
+- Updated: `docs/tests/v0/stage3/plan/README.md` (Stage 12.7 — added deep_inspection_tests.rs)
+- Updated: `docs/tests/v0/stage4/plan/README.md` (Stage 12.7 — filenames + closure_full_call added)
+- Updated: `Cargo.toml` (v0.21.2 → v0.21.3 — Stage 12 closure patch bump)
+- Updated: `README.md` (Stage 12 ✅ COMPLETE, Stage 13 ✅ AUTHORIZED, r219 audit section)
+- Updated: `docs/develop/v0/api-naming-standard.md` (v2.37 → v2.38)
+- Updated: `docs/worklog.md` (Stage 12.7+12.8 entries appended)
+- Updated: `docs/tests/matrix.md` (Stage 12.7+12.8 rows added; Stage 13 marked AUTHORIZED)
+- Updated: `docs/develop/v0/stage-12/README.md` (Stage 12 ✅ COMPLETE)
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2349 passed (146 unit + 2203 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+cargo test --benches: 5 passed, 0 failed
+```
+
+### Next steps
+
+- **Stage 13.1 (immediate)**: MUV-1 TD-028 §16 violation fix (~4h) → MUV-2 TD-029 TyKind::Dynamic refactor (~1-2 days)
+- **Stage 13.2**: if-let / while-let (TD-031) — 1-2 weeks
+- **Stage 13.3**: Closure call lowering (TD-030) — 2-3 weeks
+- **Stage 13.4**: macro_rules! + 26 built-in macros (TD-032) — 4-8 weeks
+- **v0.22.0**: After Stage 13 P0 closure (actual compiler features added)
 
 ---
 

@@ -23,12 +23,16 @@ tests/v0/stage1/plan/
 
 ## 测试覆盖
 
+> Per-module counts verified by r217 second-pass audit (Stage 12.7 correction).
+> Total = 99 ✅ (matches); per-module breakdown corrected from r216 first-pass estimates.
+
 | Module | Tests | Focus |
 |--------|-------|-------|
 | hir_structure_tests.rs | 20 | HirId/DefId, HirItem variants, HirExpr, HirPat, HirTy, Res, InferTy |
-| hir_lowering_tests.rs | 30 | AST → HIR transformation correctness |
-| hir_resolution_tests.rs | 25 | Path resolution, use imports, visibility |
-| hir_scope_resolution_tests.rs | 24 | Lexical scopes, shadowing, glob imports |
+| hir_lowering_tests.rs | 36 | AST → HIR transformation correctness |
+| hir_resolution_tests.rs | 26 | Path resolution, use imports, visibility |
+| hir_scope_resolution_tests.rs | 17 | Lexical scopes, shadowing, glob imports |
+| **Total** | **99** | (verified r217) |
 
 ## 关联文档
 
