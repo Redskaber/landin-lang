@@ -182,9 +182,20 @@ void __landin_panic_div_by_zero(void) {
     fprintf(stderr, "panic: divide by zero\n");
     exit(1);
 }
+/* Stage 13.14: eprintln!/eprint! helper — routes to stderr via fprintf.
+   Codegen calls this when StatementKind::Println.stderr == true.
+   Portable across libc implementations (stderr is a macro in glibc;
+   the helper hides this). The helper takes only the message string
+   (no format string) — the C helper hardcodes "%s" as the format, so
+   `%` in msg is literal (no format-string injection risk).
+   Per api-naming-standard.md §8.1: __landin_<verb>_<noun> pattern. */
+void __landin_eprint(const char* s) {
+    fprintf(stderr, "%s", s);
+}
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).
+       Stage 13.14: eprintln! output routes to __landin_eprint helper.
        No pre-main helper call needed. */
     int ret = landin_main();
     return ret;

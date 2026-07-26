@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.24.1  
+**Version**: v0.24.2  
 **Date**: 2026-07-27
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -11,8 +11,9 @@ backend via the `llvm-sys` crate.
 
 > **✅ v0.1-rc1** — Front-end complete (parse + typeck + borrowck + IR emit),
 > 5026/5000 conformance tests passing, **execution pipeline operational**
-> (`--run` compiles, links, and executes Landin programs with inline `println!`
-> output — Stage 13.13).
+> (`--run` compiles, links, and executes Landin programs with inline
+> `println!`/`eprintln!` output correctly routed to stdout/stderr —
+> Stages 13.13 + 13.14).
 
 ---
 
@@ -29,12 +30,13 @@ backend via the `llvm-sys` crate.
 | Object file generation (`--emit-obj`) | ✅ LLVM Module → TargetMachine → .o (Stage 13.6) |
 | Linker + Executable (`--emit-bin`) | ✅ Auto C wrapper + cc link (Stage 13.7-13.10) |
 | `--run` flag | ✅ Compile → link → execute (Stage 13.8) |
-| Inline `println!` output | ✅ Stage 13.13 (via `StatementKind::Println` → `printf`) |
+| Inline `println!` output (stdout) | ✅ Stage 13.13 (via `StatementKind::Println` → `printf`) |
+| Inline `eprintln!` output (stderr) | ✅ Stage 13.14 (via `__landin_eprint` helper → `fprintf(stderr, ...)`) |
 | if-let / while-let | ✅ TD-031 P0 CLOSED (v0.22.0) |
 | Closures callable | ✅ TD-030 P0 CLOSED (v0.23.0) |
 | 26 built-in macros | ✅ TD-032 P0 CLOSED (v0.24.0) |
 | Conformance | 5026/5000 (100.5%) — parse + typeck verified |
-| Rust tests | 2310+ passed, 0 failed |
+| Rust tests | 2317 passed, 0 failed |
 | Benchmarks | 5 passed |
 | Source code | ~90 files, ~32,000 LOC, 50+ modules |
 
@@ -57,7 +59,7 @@ cargo build --release                            # text IR only (default)
 cargo build --release --features llvm-backend    # with LLVM library backend
 
 # ── Test ──
-cargo test                                       # all rust tests (2310+)
+cargo test                                       # all rust tests (2317)
 python3 tests/conformance/run_all.py             # conformance suite (5026 tests)
 ```
 
@@ -86,18 +88,25 @@ echo $?    # → exit code (return value of landin_main())
 ### Hello World
 
 ```bash
-# Create a Landin program
+# Create a Landin program with both stdout and stderr output
 cat > /tmp/hello.lin << 'EOF'
 fn landin_main() -> i32 {
-    println!("hello world");
+    println!("hello world");     # → stdout
+    eprintln!("debug info");     # → stderr (Stage 13.14)
     0
 }
 EOF
 
-# Compile + run
+# Compile + run (combined output goes to terminal)
 ./target/release/landin-stage0 --run /tmp/hello.lin
 # stdout: hello world
+# stderr: debug info
 # exit: 0
+
+# Separate streams with redirection
+./target/release/landin-stage0 --run /tmp/hello.lin > /tmp/out.txt 2> /tmp/err.txt
+cat /tmp/out.txt  # → hello world
+cat /tmp/err.txt  # → debug info
 ```
 
 ---
@@ -113,6 +122,8 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
                                                                     └─────────────────┘
                                                                               ↓
                                                                     cc wrapper.c prog.o -o exe -lm
+                                                                    (wrapper provides: main(), __landin_panic_*,
+                                                                     __landin_eprint for stderr routing)
                                                                               ↓
                                                                     ./exe (calls landin_main())
 ```
@@ -142,9 +153,10 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 13.5 | LLVM integration + LLVMSysEmitter (MUV-1 + MUV-2 + MUV-3) | ✅ |
 | 13.6 | `--emit-obj` object file generation | ✅ |
 | 13.7-13.10 | `--emit-bin` + auto C wrapper + `--run` flag | ✅ |
-| 13.11-13.12 | `println!` capture + side-table emission | ✅ (with known limitation) |
-| **13.13** | **Inline `println!` emission via `StatementKind::Println` (fixes 13.12 ordering bug)** | ✅ |
-| 13.14+ | `eprintln!`, format args, string escapes | 🔄 Pending |
+| 13.11-13.12 | `println!` capture + side-table emission (with known limitation) | ✅ |
+| 13.13 | Inline `println!` emission via `StatementKind::Println` (fixes 13.12 ordering bug) | ✅ |
+| **13.14** | **`eprintln!`/`eprint!` stderr emission via `__landin_eprint` helper (closes 13.13 deferral)** | ✅ |
+| 13.15+ | Format args, string escapes, print flush | 🔄 Pending |
 
 ---
 
@@ -171,7 +183,8 @@ via the `llvm-sys` crate. The `LLVMSysEmitter` (1360 LOC) implements all 36
 | `docs/llvm/llvm-21-user-environment-setup.md` | 13.5 | LLVM 21 setup (user environment) |
 | `docs/llvm/stage-13.6-object-file-generation.md` | 13.6 | `--emit-obj` flag implementation |
 | `docs/llvm/execution-pipeline.md` | 13.8-13.10 | End-to-end execution pipeline |
-| `docs/llvm/stage-13.13-println-inline-emission.md` | **13.13** | **Inline `println!` emission (fixes Stage 13.12 ordering bug)** |
+| `docs/llvm/stage-13.13-println-inline-emission.md` | 13.13 | Inline `println!` emission (fixes Stage 13.12 ordering bug) |
+| `docs/llvm/stage-13.14-eprintln-stderr-emission.md` | **13.14** | **`eprintln!`/`eprint!` stderr emission via `__landin_eprint` helper** |
 
 ---
 
@@ -218,11 +231,11 @@ cargo test
 python3 tests/conformance/run_all.py
 ```
 
-**Expected results** (v0.24.1):
+**Expected results** (v0.24.2):
 - `cargo build`: succeeds
 - `cargo fmt`: clean (no changes)
 - `cargo clippy`: 0 warnings, 0 errors
-- `cargo test`: 2310+ tests passed, 0 failed
+- `cargo test`: 2317 tests passed, 0 failed
 - `conformance`: 5026 passed, 0 failed
 
 ---

@@ -398,47 +398,77 @@ fn codegen_statement(
         }
         StatementKind::StorageDead(_) => {}
         StatementKind::Nop | StatementKind::Deinit(_) => {}
-        // Stage 13.13: Inline println! / print! / eprintln! / eprint!
-        // statement — emits `printf("%s", <msg_global>)` at this exact
-        // position in the basic block (the §16-compliant source-of-truth
-        // for execution order).
+        // Stage 13.13 + Stage 13.14: Inline println! / print! / eprintln! / eprint!
+        // statement — emits a printf call (stdout) or __landin_eprint call (stderr)
+        // at this exact position in the basic block (the §16-compliant
+        // source-of-truth for execution order).
         //
-        // For `eprintln!`/`eprint!` (stderr == true), we currently still
-        // call `printf` (deferred to Stage 13.14 to switch to
-        // `fprintf(stderr, ...)`).
+        // Stage 13.13: introduced the variant; routed both stdout and stderr
+        // to `printf` (stderr flag captured but ignored — explicit deferral).
+        //
+        // Stage 13.14: closes the deferral — when `stderr == true`, route to
+        // the `__landin_eprint` C wrapper helper (which calls
+        // `fprintf(stderr, "%s", s)`). This restores Rust semantics for
+        // `eprintln!`/`eprint!`: error/diagnostic messages go to stderr
+        // (unbuffered, separate from stdout data), enabling proper pipe
+        // redirection and POSIX convention compliance.
         //
         // The `msg` field already includes the trailing "\n" if
-        // `newline == true` (set at MIR-lowering time). The `newline`
-        // and `stderr` flags are kept here for forward-compatibility
-        // (e.g., Stage 13.14 will use `stderr` to switch to `fprintf`).
+        // `newline == true` (set at MIR-lowering time). The `newline` flag
+        // is informational only (already encoded in `msg`).
+        //
+        // Per `api-naming-standard.md` §8.1: `__landin_eprint` follows the
+        // `__landin_<verb>_<noun>` pattern (matches `__landin_panic_*`
+        // siblings defined in the C wrapper).
         StatementKind::Println {
             msg,
             newline,
             stderr,
         } => {
             let _ = newline; // already encoded in `msg` (trailing "\n")
-            let _ = stderr; // Stage 13.14: switch to fprintf(stderr, ...) when true
 
-            // Emit format string "%s\0" (null-terminated for printf).
-            // The emitter deduplicates identical globals, so this is
-            // emitted once per module.
-            let fmt = emitter.emit_string_global(b"%s\0");
-
-            // Emit message string (null-terminated for printf).
+            // Emit message string (null-terminated for C).
             let mut msg_bytes = msg.as_bytes().to_vec();
             msg_bytes.push(0); // null terminator
             let str_global = emitter.emit_string_global(&msg_bytes);
 
-            // Call printf("%s", str_global) inline at this position.
-            // printf returns i32 (number of chars printed); we discard it.
-            emitter.emit_call(
-                "printf",
-                &[
-                    (EmitType::OpaquePtr, &fmt),
-                    (EmitType::OpaquePtr, &str_global),
-                ],
-                &EmitType::I32,
-            );
+            if *stderr {
+                // Stage 13.14: eprintln!/eprint! → __landin_eprint helper.
+                //
+                // The C wrapper defines:
+                //   void __landin_eprint(const char* s) { fprintf(stderr, "%s", s); }
+                //
+                // This is portable across libc implementations (stderr is a
+                // macro in glibc; the helper hides this). The helper takes
+                // only the message string (no format string) — the C helper
+                // hardcodes "%s" as the format, so `%` in msg is literal
+                // (no format-string injection risk).
+                //
+                // Returns void (we discard the fprintf return value).
+                emitter.emit_call(
+                    "__landin_eprint",
+                    &[(EmitType::OpaquePtr, &str_global)],
+                    &EmitType::Void,
+                );
+            } else {
+                // Stage 13.13: println!/print! → printf("%s", msg) (unchanged).
+                //
+                // Emit format string "%s\0" (null-terminated for printf).
+                // The emitter deduplicates identical globals, so this is
+                // emitted once per module.
+                let fmt = emitter.emit_string_global(b"%s\0");
+
+                // Call printf("%s", str_global) inline at this position.
+                // printf returns i32 (number of chars printed); we discard it.
+                emitter.emit_call(
+                    "printf",
+                    &[
+                        (EmitType::OpaquePtr, &fmt),
+                        (EmitType::OpaquePtr, &str_global),
+                    ],
+                    &EmitType::I32,
+                );
+            }
         }
     }
 }

@@ -115,13 +115,19 @@ echo $?  # → 42
    for loops and conditionals. See
    [`stage-13.13-println-inline-emission.md`](stage-13.13-println-inline-emission.md)
    for details.
-   - **Current limitation**: `eprintln!`/`eprint!` still use `printf` (not
-     `fprintf(stderr, ...)`) — deferred to Stage 13.14.
+2. **eprintln! output — Stage 13.14 stderr routing**: `eprintln!("hello")` now
+   correctly routes to **stderr** (not stdout) via the `__landin_eprint` C
+   wrapper helper (Stage 13.14, v0.24.2). The helper calls
+   `fprintf(stderr, "%s", s)`, which is portable across libc implementations.
+   See [`stage-13.14-eprintln-stderr-emission.md`](stage-13.14-eprintln-stderr-emission.md)
+   for details.
    - **Current limitation**: Format args (`println!("{}", x)`) are not
      substituted; the format string is treated as a literal — deferred to
      Stage 13.15.
-2. **`return` in if-blocks**: Type checking issue with `return` inside `if` blocks
+   - **Current limitation**: String escape sequences (`\n`, `\t`, `\\`, `\"`)
+     are not processed by the lexer — deferred to Stage 13.16.
+3. **`return` in if-blocks**: Type checking issue with `return` inside `if` blocks
    (mismatched types: expected I32, found unit). To be fixed in future stage.
-3. **Closures as values**: Inline closure call works (Stage 13.3a), but passing closures
+4. **Closures as values**: Inline closure call works (Stage 13.3a), but passing closures
    as function arguments requires full Strategy A (deferred to Stage 13.5+).
-4. **dyn Trait method calls**: `emit_dyn_trait_method_call` is stubbed with `unimplemented!()`.
+5. **dyn Trait method calls**: `emit_dyn_trait_method_call` is stubbed with `unimplemented!()`.

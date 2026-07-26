@@ -4764,3 +4764,37 @@ Stage 13.13 — Inline `println!` emission via `StatementKind::Println` (fixes S
 **Version policy**: v0.24.0 → v0.24.1 (patch bump — bug fix for Stage 13.12 known limitation; no new user-facing feature; backward-compatible MIR side-table field retained).
 
 **Stage 13 STATUS**: 🔄 IN PROGRESS (13.13 ✅; 13.14+ pending: eprintln!/format-args/string-escapes)
+
+---
+
+### v2.47 (Stage 13.14, 2026-07-27)
+
+Stage 13.14 — `eprintln!`/`eprint!` stderr emission via `__landin_eprint` C wrapper helper (closes Stage 13.13 deferral).
+
+**Changes**:
+- New C wrapper helper symbol: `__landin_eprint`
+  - Location: `src/bin/main.rs` C wrapper source string (lines 185-194)
+  - Naming follows §8.1 `__landin_<verb>_<noun>` pattern (matches `__landin_panic_*` siblings from Stage 13.10)
+  - Signature: `void __landin_eprint(const char* s)` — single message arg, void return
+  - Body: `fprintf(stderr, "%s", s)` — portable across libc implementations (stderr is a macro in glibc; the helper hides this)
+- Codegen (`src/codegen/mod.rs:401-472`): `StatementKind::Println` arm now branches on `stderr` flag
+  - `stderr == false` → `emitter.emit_call("printf", ...)` (Stage 13.13 path, unchanged)
+  - `stderr == true` → `emitter.emit_call("__landin_eprint", ...)` (Stage 13.14 new path)
+- LLVMSysEmitter auto-declares `__landin_eprint` as `declare void @__landin_eprint(i8*)` via `get_or_declare_function` (same pattern as `printf` from Stage 13.13 and `__landin_panic_*` from Stage 13.10)
+- Zero new MIR surface (exercises existing `stderr: bool` field on `StatementKind::Println` from Stage 13.13)
+- Zero new design deviations (Stage 13.14 is a pure implementation refinement)
+- Stage 13.14 gate review: `docs/develop/v0/stage-13/gate-review-13.14.md` (7/7 GO → PASS)
+- Stage 13.14 design alignment: `docs/develop/v0/stage-13/stage-13.14-design-alignment.md` (~360 lines)
+- New LLVM doc: `docs/llvm/stage-13.14-eprintln-stderr-emission.md` (~280 lines)
+- New Rust integration tests: `tests/v0/stage13/plan/stage13_14_tests.rs` (7 tests)
+- §25.8 design write-back: ZERO new deviations (Stage 13.14 exercises existing `stderr` field; no new MIR surface)
+
+**§14.4 J1-J6 verdict**: 6/6 PASS (2 src files; ≤5 file guideline met)
+**§16 verdict**: ✅ COMPLIANT (no new module boundaries crossed; helper called via existing `emit_call`)
+**§25.8 verdict**: ZERO new deviations (B4 gray-area from Stage 13.13 already documented; Stage 13.14 just exercises the existing field)
+
+**Test impact**: +7 rust (2310 → 2317). 0 conformance changes. 0 regressions.
+
+**Version policy**: v0.24.1 → v0.24.2 (patch bump — bug fix for stderr routing; no new user-facing feature; zero new design deviations).
+
+**Stage 13 STATUS**: 🔄 IN PROGRESS (13.14 ✅; 13.15+ pending: format-args/string-escapes/print-flush)

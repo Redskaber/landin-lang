@@ -9371,3 +9371,65 @@ Stage Summary:
 - Test impact: +10 rust (2279 baseline + 31 carry-over from Stage 13.5-13.12 → 2310, +10 Stage 13.13 → 2310)
 - Stage 13 STATUS: 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0, 13.4a ✅ TD-032 P0, 13.5-13.13 ✅ LLVM execution pipeline + inline println; 13.14+ pending: eprintln!/format-args/string-escapes)
 - Next: Stage 13.14 (eprintln! → fprintf(stderr, ...)) OR Stage 13.15 (format args) OR v0.1 release announcement
+
+---
+Task ID: stage13.14-r236-eprintln-stderr-emission
+Agent: Super Z (main) + ARCH-A + REV-A (combined subagent role)
+Task: Stage 13.14 — eprintln!/eprint! stderr emission via __landin_eprint C wrapper helper (closes Stage 13.13 deferral). v0.24.2 patch bump.
+
+Work Log:
+- Baseline: v0.24.1 / 2310 rust tests + 5026 conformance (Stage 13.13 ✅ inline println!)
+- Context: Stage 13.13 explicitly deferred the `stderr` flag handling on StatementKind::Println to Stage 13.14 (src/codegen/mod.rs:420 had `let _ = stderr; // Stage 13.14: switch to fprintf(stderr, ...) when true`)
+- Without Stage 13.14, `eprintln!`/`eprint!` routed to stdout via `printf` (incorrect — should go to stderr per Rust semantics)
+- Stage 13.14 §13.4 design alignment created: docs/develop/v0/stage-13/stage-13.14-design-alignment.md (~360 lines)
+  - Strategy A (direct fprintf + stderr extern): REJECTED — portability risk (stderr is a macro in glibc, not a simple global; declaring @stderr = external global ptr in LLVM IR doesn't work portably)
+  - Strategy B (__landin_eprint helper in C wrapper): ADOPTED — portable (C wrapper handles libc differences); symmetric with existing __landin_panic_* helpers; minimal codegen change
+  - Strategy C (defer to v0.2 macro_rules!): REJECTED — design-forbidden per 02-grammar.md §4.4 for v0.1/v0.3
+  - Strategy D (status quo — eprintln! → stdout): REJECTED — known correctness bug; violates §15 (long-term > short-term)
+  - §14.4 J1-J6: 6/6 PASS (2 src files, ≤5 file guideline met)
+  - §25.8 write-back: ZERO new deviations (Stage 13.14 exercises existing `stderr: bool` field from Stage 13.13; no new MIR surface)
+  - Version policy: v0.24.1 → v0.24.2 (patch bump — bug fix for stderr routing)
+- Stage 13.14 gate review created: docs/develop/v0/stage-13/gate-review-13.14.md (~250 lines)
+  - 7/7 GO → PASS (D1-D7 all PASS, no conditions blocking)
+  - Acceptance criteria: 22 checkpoints documented
+  - Lessons applied: capture all semantic flags on MIR variant upfront (Stage 13.13 did this; Stage 13.14 just exercises the existing field)
+- Implementation (Strategy B):
+  - src/codegen/mod.rs (+30/-15 LOC): Modified StatementKind::Println arm to branch on `if *stderr`. When stderr==true → emitter.emit_call("__landin_eprint", ...) (void return, single msg arg). When stderr==false → emitter.emit_call("printf", ...) (Stage 13.13 path, unchanged).
+  - src/bin/main.rs (+9 LOC): Added __landin_eprint helper to C wrapper source string. Body: `fprintf(stderr, "%s", s)` — portable across libc implementations. Per api-naming-standard.md §8.1: __landin_<verb>_<noun> pattern (matches __landin_panic_* siblings from Stage 13.10).
+- LLVMSysEmitter auto-declares __landin_eprint as `declare void @__landin_eprint(i8*)` via get_or_declare_function (same pattern as printf from Stage 13.13 and __landin_panic_* from Stage 13.10)
+- Stage 13.14 verification tests created: tests/v0/stage13/plan/stage13_14_tests.rs (~230 lines, 7 tests)
+  - test_codegen_println_branches_on_stderr (if *stderr branch exists; Stage 13.13 deferral removed)
+  - test_codegen_eprint_calls_helper (__landin_eprint call after if *stderr; EmitType::Void return)
+  - test_codegen_stdout_unchanged (printf call still exists; EmitType::I32 return; no regression)
+  - test_c_wrapper_has_eprint_helper (void __landin_eprint(const char* s) defined; body has fprintf(stderr, "%s", s))
+  - test_stage_13_14_design_alignment_exists (§13.4 + §14.4 + §25.8 + Strategy B + __landin_eprint + Stage 13.13 deferral)
+  - test_stage_13_14_gate_review_exists (PASS verdict + §14.4 + §16 + stderr reference)
+  - test_v01_gate_still_holds_after_stage_13_14 (≥5000 conformance .lin files)
+- Wired stage13_14_tests module into tests/all_tests.rs
+- Bumped Cargo.toml v0.24.1 → v0.24.2 (patch bump)
+- Created docs/llvm/stage-13.14-eprintln-stderr-emission.md (~280 lines)
+- Updated docs/llvm/README.md (Documentation Index: added Stage 13.14 row)
+- Updated docs/llvm/execution-pipeline.md (Known Limitations: Stage 13.14 stderr routing documented)
+- Updated RELEASE_NOTES.md (v0.24.2 entry prepended)
+- Updated api-naming-standard.md (v2.46 → v2.47 entry for Stage 13.14)
+- Updated docs/tests/matrix.md (Stage 13.14 row added; total 2317 rust + 5026 conformance)
+- Updated docs/tests/v0/stage13/plan/README.md (sub-stage overview 13.1-13.14)
+- Rewrote README.md (v0.24.2; Stage 13.14 ✅; eprintln! stderr routing feature highlighted)
+- Ran full CI/CD verification:
+  - cargo test --test all_tests stage13_14: 7/7 PASS
+  - cargo test --test all_tests: 2317 passed (was 2310 + 7 new), 0 failed, 2 ignored
+  - python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+  - cargo fmt --check: clean
+  - cargo clippy --all-targets: 0 warnings, 0 errors
+
+Stage Summary:
+- Stage 13.14 PASSED — eprintln!/eprint! now correctly routes to stderr via __landin_eprint C wrapper helper
+- §16 compliance preserved: no new module boundaries crossed (helper called via existing emit_call)
+- §14.4 J1-J6: ALL 6 PASS (2 src files; ≤5 file guideline met; no exceptions required)
+- §25.8 design write-back: ZERO new deviations (Stage 13.14 exercises existing `stderr: bool` field from Stage 13.13; no new MIR surface, no new codegen API, no new design-gray-area)
+- v0.1 gate: 5026/5026 ✅ (no conformance change)
+- v0.24.2: patch bump (bug fix; no new feature; zero new design deviations)
+- Test impact: +7 rust (2310 → 2317); 0 conformance changes; 0 regressions
+- Behavioral change: eprintln! output now appears on stderr (was stdout in Stage 13.13); pipe redirection (> out.txt) now correctly captures only stdout
+- Stage 13 STATUS: 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0, 13.4a ✅ TD-032 P0, 13.5-13.14 ✅ LLVM execution pipeline + inline println + stderr routing; 13.15+ pending: format-args/string-escapes/print-flush)
+- Next: Stage 13.15 (format args — println!("{}", x) — requires HIR-time format-args expansion) OR Stage 13.16 (string escape sequences in lexer) OR v0.1 release announcement

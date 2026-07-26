@@ -1,9 +1,139 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.24.1
+**Current version**: v0.24.2
 **Date**: 2026-07-27
-**Test count**: 2310 rust tests + 5 benchmarks + 5026 conformance tests
+**Test count**: 2317 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.24.2 — Stage 13.14 (eprintln!/eprint! stderr emission — closes Stage 13.13 deferral)
+
+### Overview
+
+**Stage 13.14** closes the explicit deferral from Stage 13.13: the `stderr`
+flag on `StatementKind::Println` is now exercised at codegen time. When
+`stderr == true` (i.e., `eprintln!` or `eprint!` was invoked), codegen emits
+a call to a new `__landin_eprint` C wrapper helper that routes the message
+to stderr via `fprintf(stderr, "%s", s)`. When `stderr == false` (i.e.,
+`println!` or `print!`), the existing `printf` path is unchanged.
+
+This restores Rust semantics for `eprintln!`/`eprint!`: error/diagnostic
+messages go to stderr (unbuffered, separate from stdout data), enabling
+proper pipe redirection and POSIX convention compliance.
+
+### §13.4 Design Alignment: ✅ Strategy B (__landin_eprint helper)
+
+- **Strategy A (direct `fprintf` + `stderr` extern)**: ❌ REJECTED —
+  portability risk (`stderr` is a macro in glibc, not a simple global;
+  declaring `@stderr = external global ptr` in LLVM IR doesn't work portably)
+- **Strategy B (`__landin_eprint` helper in C wrapper)**: ✅ ADOPTED —
+  portable (C wrapper handles libc differences); symmetric with existing
+  `__landin_panic_*` helpers; minimal codegen change
+- **Strategy C (defer to v0.2 macro_rules!)**: ❌ REJECTED — design-forbidden
+  per `02-grammar.md` §4.4 for v0.1/v0.3
+- **Strategy D (status quo — eprintln! → stdout)**: ❌ REJECTED — known
+  correctness bug; violates §15 (long-term > short-term)
+
+### §14.4 Refactoring Six Criteria (J1-J6): 6/6 PASS
+
+| Criterion | Verdict |
+|-----------|---------|
+| J1 Architectural alignment | ✅ PASS — restores Rust semantics for `eprintln!`/`eprint!` (stderr, not stdout) |
+| J2 Single responsibility | ✅ PASS — `__landin_eprint` helper carries one job: print to stderr |
+| J3 Unidirectional data flow | ✅ PASS — MIR lower → MIR body → codegen → C wrapper helper → libc; all forward |
+| J4 Compile-time expressiveness | ✅ PASS — no new types; just a branch on existing `bool` field |
+| J5 Stage partition (≤5 src files) | ✅ PASS — 2 src files (codegen/mod.rs, bin/main.rs) |
+| J6 Scientific granularity | ✅ PASS — one bug fix, one branch, one helper — minimum viable change |
+
+### Implementation
+
+**Strategy**: B (`__landin_eprint` helper) — see
+`docs/develop/v0/stage-13/stage-13.14-design-alignment.md` for full design
+rationale.
+
+**Source files touched (2 src + 1 test + 1 wiring)**:
+
+1. **`src/codegen/mod.rs`** (+30/-15 LOC): Modified the
+   `StatementKind::Println` arm in `codegen_statement` to branch on the
+   `stderr` flag. When `stderr == true`, calls `__landin_eprint` (void
+   return, single message arg). When `stderr == false`, calls `printf`
+   (unchanged from Stage 13.13).
+
+2. **`src/bin/main.rs`** (+9 LOC): Added the `__landin_eprint` helper
+   function to the C wrapper source string. The helper body is
+   `fprintf(stderr, "%s", s)` — a single line, portable across libc
+   implementations.
+
+3. **`tests/v0/stage13/plan/stage13_14_tests.rs`** (NEW, ~230 LOC): 7
+   verification tests covering codegen branch, eprint helper invocation,
+   stdout path no-regression, C wrapper helper definition, design alignment
+   existence, gate review existence, and v0.1 conformance gate.
+
+4. **`tests/all_tests.rs`** (+4 LOC): Wired `stage13_14_tests` module.
+
+### Behavioral change
+
+**Before (Stage 13.13)**:
+- `eprintln!("err")` routed to **stdout** via `printf` (stderr flag captured
+  but ignored — explicit deferral)
+- `eprintln!` and `println!` output interleaved on stdout
+- Pipe redirection (`> out.txt`) captured both streams
+
+**After (Stage 13.14)**:
+- `eprintln!("err")` correctly routes to **stderr** via `__landin_eprint`
+  helper (which calls `fprintf(stderr, "%s", s)`)
+- `eprintln!` output on stderr; `println!` output on stdout
+- Pipe redirection (`> out.txt`) captures only stdout; stderr goes to
+  terminal (or `2> err.txt` for stderr capture)
+
+### Test impact
+
++7 tests (2310 → 2317 rust tests). 0 conformance changes. 0 regressions.
+
+### Verification
+
+```
+cargo test --test all_tests: 2317 passed, 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+```
+
+### Version policy: v0.24.1 → v0.24.2 (patch bump)
+
+- Bug fix (stderr routing) — not a new feature
+- No new language feature (eprintln! was already "working" in 13.13, just to wrong stream)
+- No new CLI flag
+- No new conformance test (5026 unchanged)
+- No design-doc write-back (zero new deviations — Stage 13.14 exercises
+  the existing `stderr` field added in Stage 13.13)
+
+### §25.8 Design write-back
+
+**Zero new design deviations.** Stage 13.14 exercises the existing `stderr:
+bool` field on `StatementKind::Println` (added in Stage 13.13). No new MIR
+surface, no new codegen API, no new design-gray-area. Therefore zero
+design-doc write-back is required.
+
+### Files added/changed
+
+- **New**: `docs/develop/v0/stage-13/stage-13.14-design-alignment.md` (~360 lines)
+- **New**: `docs/develop/v0/stage-13/gate-review-13.14.md` (~250 lines, 7/7 GO → PASS)
+- **New**: `docs/llvm/stage-13.14-eprintln-stderr-emission.md` (~280 lines)
+- **New**: `tests/v0/stage13/plan/stage13_14_tests.rs` (~230 lines, 7 tests)
+- **Updated**: `src/codegen/mod.rs` (Println arm: branch on `stderr` flag)
+- **Updated**: `src/bin/main.rs` (C wrapper: added `__landin_eprint` helper)
+- **Updated**: `tests/all_tests.rs`, `Cargo.toml` (v0.24.1 → v0.24.2)
+- **Updated**: `README.md` (full refresh), `docs/llvm/README.md`, `docs/llvm/execution-pipeline.md`
+- **Updated**: `docs/develop/v0/api-naming-standard.md` (v2.46 → v2.47), `docs/tests/matrix.md`, `docs/tests/v0/stage13/plan/README.md`, `docs/worklog.md`
+
+### Next steps
+
+- **Stage 13.15**: Format args (`println!("{}", x)`) — requires HIR-time format-args expansion
+- **Stage 13.16**: String escape sequences in lexer (`\n`, `\t`, `\\`, `\"`)
+- **Stage 13.17**: `print!` (no newline) flush behavior
+- **v0.2+**: Full `macro_rules!` expansion (replaces Stage 13.13/13.14 inline approach)
 
 ---
 

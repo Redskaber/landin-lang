@@ -605,3 +605,8 @@ mod stage13_9_tests;
 // StatementKind::Println variant in the MIR basic block. v0.24.1 patch bump.
 #[path = "v0/stage13/plan/stage13_13_tests.rs"]
 mod stage13_13_tests;
+// Stage 13.14: eprintln!/eprint! stderr emission — closes Stage 13.13 deferral
+// by routing stderr flag to __landin_eprint C wrapper helper (fprintf(stderr, ...)).
+// v0.24.2 patch bump.
+#[path = "v0/stage13/plan/stage13_14_tests.rs"]
+mod stage13_14_tests;
