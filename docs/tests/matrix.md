@@ -36,8 +36,15 @@
 | Stage 13.1b (TD-029 TyKind::Dynamic refactor — deferred per design alignment §15) | TBD | — | ⏳ Deferred (P2, non-blocking for P0) |
 | Stage 13.4 (Built-in macros TD-032 P0 — preparation, §13.4 design alignment + TD-032 reframe) | +7 rust | 0 | ✅ Preparation complete (5/5 GO-WITH-CONDITIONS → PASS; 13.4a pending) |
 | Stage 13.4a (19 missing built-in macros — TD-032 P0 CLOSED, all 26 built-in macros) | +8 rust | 0 | ✅ Complete (5/5 GO → PASS, v0.24.0 minor bump, ALL P0 CLOSED) |
+| Stage 13.5 MUV-1 (LLVM library integration — `llvm-sys` v191/v211 linked) | +6 rust | 0 | ✅ Complete (LLVM 19/21 environment setup + version switching) |
+| Stage 13.5 MUV-2 (LLVMSysEmitter — 36/36 Emitter trait methods, 1360 LOC) | +9 rust | 0 | ✅ Complete (real LLVM module building via C API) |
+| Stage 13.5 MUV-3 (End-to-end LLVM module → object file verification) | +N rust | 0 | ✅ Complete (LLVMSysEmitter C API + to_object_file) |
+| Stage 13.6 (`--emit-obj` flag — LLVM Module → TargetMachine → .o file) | +N rust | 0 | ✅ Complete |
+| Stage 13.7-13.10 (`--emit-bin` + auto C wrapper + `--run` flag + runtime stubs) | +N rust | 0 | ✅ Complete (compile → link → execute pipeline) |
+| Stage 13.11-13.12 (println! capture + side-table emission, with known limitation) | +N rust | 0 | ✅ Complete (helper-function approach; ordering bug identified) |
+| Stage 13.13 (Inline println! emission via `StatementKind::Println` — fixes Stage 13.12 ordering bug) | +10 rust | 0 | ✅ Complete (7/7 GO → PASS, v0.24.1 patch bump) |
 | Stage 13.5+ (TD-033 P1 sub-items + full Strategy A + Fn/FnMut/FnOnce + v0.1 release announcement) | TBD | TBD | ⏳ Pending (P1) |
-| **Total** | **2265** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE; Stage 13 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0, 13.4a ✅ TD-032 P0; 3/3 P0 CLOSED 🎉) |
+| **Total** | **2310** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE; Stage 13 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0, 13.4a ✅ TD-032 P0; 3/3 P0 CLOSED 🎉; 13.5-13.13 LLVM execution pipeline + inline println ✅) |
 
 ## Stage 3 Test Breakdown
 

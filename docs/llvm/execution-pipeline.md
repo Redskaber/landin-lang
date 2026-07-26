@@ -108,8 +108,18 @@ echo $?  # → 42
 
 ## Known Limitations
 
-1. **println! produces unit (no output)**: `println!("hello")` compiles but doesn't print.
-   Runtime library + printf integration is the next step.
+1. **println! output — Stage 13.13 inline emission**: `println!("hello")` now
+   produces output via inline `printf("%s", <msg_global>)` calls emitted at
+   the source-code position (Stage 13.13, v0.24.1). Stage 13.12's side-table
+   + helper-function approach was removed because it broke output ordering
+   for loops and conditionals. See
+   [`stage-13.13-println-inline-emission.md`](stage-13.13-println-inline-emission.md)
+   for details.
+   - **Current limitation**: `eprintln!`/`eprint!` still use `printf` (not
+     `fprintf(stderr, ...)`) — deferred to Stage 13.14.
+   - **Current limitation**: Format args (`println!("{}", x)`) are not
+     substituted; the format string is treated as a literal — deferred to
+     Stage 13.15.
 2. **`return` in if-blocks**: Type checking issue with `return` inside `if` blocks
    (mismatched types: expected I32, found unit). To be fixed in future stage.
 3. **Closures as values**: Inline closure call works (Stage 13.3a), but passing closures

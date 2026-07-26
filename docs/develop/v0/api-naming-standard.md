@@ -4731,3 +4731,36 @@ Stage 13.4a — 19 missing built-in macros (TD-032 P0 CLOSED — ALL P0 CLOSED, 
 **🎉 ALL 3 P0 ITEMS CLOSED**: TD-030 (Stage 13.3a) + TD-031 (Stage 13.2) + TD-032 (Stage 13.4a)
 **v0.3 self-hosting preparation**: COMPLETE
 **Stage 13 STATUS**: 🔄 IN PROGRESS (all P0 closed; P1/P2 items remaining)
+
+---
+
+### v2.46 (Stage 13.13, 2026-07-27)
+
+Stage 13.13 — Inline `println!` emission via `StatementKind::Println` (fixes Stage 13.12 ordering bug).
+
+**Changes**:
+- New MIR variant: `StatementKind::Println { msg: String, newline: bool, stderr: bool }`
+  - Location: `src/mir/body.rs:191-220`
+  - Naming follows §3 `<Noun>` pattern for enum variants + §8.1 cross-IR consistency (matches `HirExprKind::Println` field names `msg`/`newline`/`stderr`)
+  - Per §16: inline statement (NOT side-table) is the source-of-truth for ordered side effects
+- MIR lower (`src/mir/lower/expr_operand.rs:1375-1414`): `HirExprKind::Println` arm now pushes `StatementKind::Println` to `cx.mir.block_mut(cx.current_block).statements` — inline emission at source position
+- Codegen (`src/codegen/mod.rs:400-437`): `codegen_statement` new arm `StatementKind::Println { msg, newline, stderr }` emits inline `printf("%s", <msg_global>)` via `emitter.emit_call("printf", ...)`
+- Typeck (`src/typeck/checker.rs:490-497`): `check_statement` new arm `StatementKind::Println { .. }` (no type constraints — message is opaque String)
+- C wrapper (`src/bin/main.rs:155-191`): removed Stage 13.12 weak-symbol trick (`__attribute__((weak)) void __landin_printlns_landin_main(void);` + conditional call before `landin_main()`). Wrapper now just calls `landin_main()` directly.
+- Backward compat: `MirBody.println_messages: Vec<String>` field retained (kept as `Vec::new()` for all bodies) for external tooling that may read MIR side-tables. Field is no longer populated by MIR lower.
+- Stage 13.12 helper-function emission block (`__landin_printlns_<fnname>` separate function after `emit_function_end`) REMOVED from `codegen_from_mir`
+- Stage 13.13 gate review: `docs/develop/v0/stage-13/gate-review-13.13.md` (7/7 GO → PASS)
+- Stage 13.13 design alignment: `docs/develop/v0/stage-13/stage-13.13-design-alignment.md` (~430 lines)
+- New LLVM doc: `docs/llvm/stage-13.13-println-inline-emission.md` (~280 lines)
+- New Rust integration tests: `tests/v0/stage13/plan/stage13_13_tests.rs` (10 tests)
+- §25.8 design write-back: 3 design docs (06-mir.md, 07-codegen.md, 09-stdlib.md)
+
+**§14.4 J1-J6 verdict**: 6/6 PASS (4 src files; ≤5 file guideline met)
+**§16 verdict**: ✅ COMPLIANT (basic block is single source of truth for ordering)
+**§25.8 verdict**: B4 design-gray-area (`StatementKind::Println` is a new variant not in `06-mir.md`) — write-back planned
+
+**Test impact**: +10 rust (2279 baseline + 31 carry-over from Stage 13.5-13.12 → 2310, +10 Stage 13.13 → 2310). 0 conformance changes. 0 regressions.
+
+**Version policy**: v0.24.0 → v0.24.1 (patch bump — bug fix for Stage 13.12 known limitation; no new user-facing feature; backward-compatible MIR side-table field retained).
+
+**Stage 13 STATUS**: 🔄 IN PROGRESS (13.13 ✅; 13.14+ pending: eprintln!/format-args/string-escapes)

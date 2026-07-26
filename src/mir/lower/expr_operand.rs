@@ -1372,7 +1372,20 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             )
         }
 
-        // Stage 13.12: Println — store message in side-table for codegen to emit puts call.
+        // Stage 13.12 + Stage 13.13: Println — emit inline StatementKind::Println
+        // in the current basic block so codegen places the printf call at the
+        // exact source-code position (fixes Stage 13.12 ordering bug).
+        //
+        // Stage 13.12 stored the message in a Vec<String> side-table and
+        // codegen emitted a separate __landin_printlns_<fnname> helper
+        // function called BEFORE landin_main() — this broke ordering for
+        // loops and conditionals.
+        //
+        // Stage 13.13 replaces the side-table approach with an inline
+        // StatementKind::Println variant, so codegen emits printf inline
+        // at the source position. The MirBody.println_messages field is
+        // kept (Vec::new()) for backward compatibility but no longer
+        // populated.
         HirExprKind::Println {
             msg,
             newline,
@@ -1383,12 +1396,19 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             } else {
                 msg.clone()
             };
-            // Store in MirBody.println_messages side-table.
-            // Codegen (codegen_from_mir) iterates this table and emits
-            // puts() calls at the beginning of each function that contains
-            // println! statements.
-            cx.mir.println_messages.push(full_msg);
-            let _ = stderr; // stderr support deferred
+            // Push the println statement to the current basic block —
+            // this is the §16-compliant way to express an ordered side effect.
+            cx.mir
+                .block_mut(cx.current_block)
+                .statements
+                .push(Statement {
+                    kind: StatementKind::Println {
+                        msg: full_msg,
+                        newline: *newline,
+                        stderr: *stderr,
+                    },
+                    span: expr.span,
+                });
             let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
             cx.mir.new_local(unit_ty, None, expr.span)
         }

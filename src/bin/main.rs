@@ -153,21 +153,22 @@ fn main() {
                 };
 
                 // Stage 13.8/13.10/13.13: Generate a C wrapper that calls landin_main()
-                // and provides runtime stubs for panic functions + println support.
-                // The wrapper calls __landin_printlns_landin_main (if it exists) before
-                // landin_main to flush println! output.
+                // and provides runtime stubs for panic functions.
+                //
+                // Stage 13.13 simplification: the previous weak-symbol trick
+                // (a separate println-helper function declared as weak extern
+                // and called before landin_main) has been REMOVED because
+                // Stage 13.13 now emits println! output INLINE within
+                // landin_main() itself (via StatementKind::Println →
+                // inline `printf("%s", <msg_global>)`). The C wrapper no
+                // longer needs to call a separate println helper before
+                // landin_main() — that approach (Stage 13.12) broke
+                // output ordering for loops and conditionals.
                 let wrapper_c =
                     std::env::temp_dir().join(format!("landin_wrapper_{}.c", std::process::id()));
-                // Check if the object file has __landin_printlns_landin_main symbol
-                // by checking if any MIR body had println_messages.
-                // For simplicity, we always declare it as weak extern and call it
-                // if non-null. This avoids needing to inspect the .o file.
                 let wrapper_src = r#"#include <stdio.h>
 #include <stdlib.h>
 extern int landin_main(void);
-/* Weak symbol: if the Landin program has println! calls, this function
-   is defined in the object file. If not, it's null and we skip the call. */
-__attribute__((weak)) void __landin_printlns_landin_main(void);
 /* Runtime stubs — codegen declares these as extern */
 void __landin_panic_overflow(int op, int lhs, int rhs) {
     fprintf(stderr, "panic: arithmetic overflow (op=%d lhs=%d rhs=%d)\n", op, lhs, rhs);
@@ -182,10 +183,9 @@ void __landin_panic_div_by_zero(void) {
     exit(1);
 }
 int main(void) {
-    /* Call println helper if it exists (weak symbol) */
-    if (__landin_printlns_landin_main) {
-        __landin_printlns_landin_main();
-    }
+    /* Stage 13.13: println! output is emitted inline within landin_main()
+       via StatementKind::Println → printf("%s", <msg_global>).
+       No pre-main helper call needed. */
     int ret = landin_main();
     return ret;
 }

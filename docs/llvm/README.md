@@ -142,6 +142,18 @@ Landin source code
 - llvm-sys crate: https://crates.io/crates/llvm-sys
 - LLVM C API: https://llvm.org/doxygen/group_llvm_c.html
 
+## Documentation Index
+
+| Document | Stage | Description |
+|----------|-------|-------------|
+| `README.md` (this file) | 13.5+ | LLVM integration overview + environment setup |
+| `version-switching.md` | 13.5 MUV-1 | Switching between LLVM 19 (build server) and LLVM 21 (user env) |
+| `llvm-19-build-server-setup.md` | 13.5 MUV-1 | LLVM 19 setup on build server (no root) via `setup-llvm-env.sh` |
+| `llvm-21-user-environment-setup.md` | 13.5 MUV-1 | LLVM 21 setup on user environment with system `llvm-config` |
+| `stage-13.6-object-file-generation.md` | 13.6 | `--emit-obj` flag — LLVM Module → TargetMachine → .o file |
+| `execution-pipeline.md` | 13.8-13.10 | End-to-end pipeline: Landin → MIR → LLVMSysEmitter → .o → cc → exe → run |
+| `stage-13.13-println-inline-emission.md` | **13.13** | **Inline `println!` emission via `StatementKind::Println`** (fixes Stage 13.12 ordering bug) |
+
 ## Known Issues
 
 ### Build Server (LLVM 19)

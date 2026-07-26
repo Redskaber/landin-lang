@@ -1,8 +1,8 @@
 # Stage 13 — Test Documentation
 
-> **阶段范围**: Stage 13.1 - 13.6 (v0.3 self-hosting preparation)
+> **阶段范围**: Stage 13.1 - 13.13+ (v0.3 self-hosting preparation + LLVM execution pipeline)
 > **测试目录**: `tests/v0/stage13/plan/` + `tests/conformance/01-07-*`
-> **状态**: 🔄 In Progress (13.1 — architecture baseline + audit/plan verification)
+> **状态**: 🔄 In Progress (13.1 ✅, 13.2 ✅, 13.3a ✅, 13.4a ✅, 13.5-13.13 ✅; 13.14+ pending)
 
 ## 测试目录结构
 
@@ -10,16 +10,23 @@
 tests/v0/stage13/plan/
 ├── README.md                    ← 本文件
 ├── stage13_1_tests.rs           (Stage 13.1 — audit/plan docs verification + cross-stage audit ratification)
-├── stage13_2_tests.rs           (Stage 13.2 — if-let / while-let, planned)
-├── stage13_3_tests.rs           (Stage 13.3 — closure call lowering, planned)
-└── stage13_4_tests.rs           (Stage 13.4 — macro_rules! + 26 built-in macros, planned)
+├── stage13_2_tests.rs           (Stage 13.2 — if-let / while-let, 11 conformance FAIL→PASS)
+├── stage13_3_tests.rs           (Stage 13.3 — closure call lowering preparation)
+├── stage13_3a_tests.rs          (Stage 13.3a — TD-030 P0 CLOSED, closures callable inline)
+├── stage13_4_tests.rs           (Stage 13.4 — built-in macros preparation + TD-032 reframe)
+├── stage13_4a_tests.rs          (Stage 13.4a — TD-032 P0 CLOSED, all 26 built-in macros)
+├── stage13_5_muv2_tests.rs      (Stage 13.5 MUV-2 — LLVMSysEmitter + LLVM version switching)
+├── stage13_5_muv3_tests.rs      (Stage 13.5 MUV-3 — End-to-end LLVM module → object file)
+├── stage13_8_tests.rs           (Stage 13.8 — --run flag + --emit-bin with auto C wrapper)
+├── stage13_9_tests.rs           (Stage 13.9 — Comprehensive --run verification across constructs)
+└── stage13_13_tests.rs          (Stage 13.13 — Inline println! emission via StatementKind::Println)
 
 tests/conformance/               ← v0.1 conformance suite (Stage 13 不增加数量, 重点是 FAIL → PASS)
-├── 00-parse/                    (600 → 612 expected after Stage 13.2 if-let parse tests)
-├── 01-typecheck/                (1020 → 1061 expected after Stage 13.3 closure call tests)
-├── 02-borrowck/                 (800 → 830 expected after Stage 13.2/13.3)
+├── 00-parse/                    (612 — Stage 13.2 if-let/while-let tests flipped to PASS)
+├── 01-typecheck/                (1061 — Stage 13.3a closure compile_error→compile_ok)
+├── 02-borrowck/                 (830 — Stage 13.2/13.3a closure capture compile_error→compile_ok)
 ├── 03-codegen/                  (601, no change in Stage 13)
-├── 04-e2e/                      (502 → 543 expected after Stage 13.3)
+├── 04-e2e/                      (543 — Stage 13.3a closure e2e compile_error→compile_ok)
 ├── 05-soundness/                (500, no change in Stage 13)
 ├── 06-stdlib/                   (502, no change in Stage 13)
 └── 07-integration/              (501, no change in Stage 13)
@@ -29,12 +36,21 @@ tests/conformance/               ← v0.1 conformance suite (Stage 13 不增加�
 
 | Sub-stage | Focus | Tests added | Conformance FAIL→PASS |
 |-----------|-------|-------------|----------------------|
-| 13.1 | Architecture baseline (TD-028 + TD-029 + 6 missing READMEs backfilled) | +5 rust | 0 |
-| 13.2 | if-let / while-let (TD-031) | TBD | +12 |
-| 13.3 | Closure call lowering (TD-030) | TBD | +41 |
-| 13.4 | macro_rules! + 26 built-in macros (TD-032) | TBD | TBD |
-| 13.5 | TD-033 P1 sub-items (for/move/HRTB/assoc-norm/two-phase/RFC 2229) | TBD | TBD |
-| 13.6 | v0.1 release announcement | 0 | 0 |
+| 13.1 | Architecture baseline (TD-028 + TD-029 + 6 missing READMEs backfilled) | +10 rust | 0 |
+| 13.2 | if-let / while-let (TD-031 P0 CLOSED) | +11 rust | +11 (5015→5026) |
+| 13.3 | Closure call lowering preparation (TD-030) | +9 rust | 0 |
+| 13.3a | TD-030 P0 CLOSED — closures callable (inline approach) | +9 rust | +30 compile_error→compile_ok |
+| 13.4 | Built-in macros preparation + TD-032 reframe | +7 rust | 0 |
+| 13.4a | TD-032 P0 CLOSED — all 26 built-in macros | +8 rust | 0 |
+| 13.5 MUV-1 | LLVM library integration (llvm-sys linked) | +6 rust | 0 |
+| 13.5 MUV-2 | LLVMSysEmitter (36/36 Emitter methods) | +9 rust | 0 |
+| 13.5 MUV-3 | LLVM module → object file e2e | +N rust | 0 |
+| 13.6 | `--emit-obj` flag | +N rust | 0 |
+| 13.7-13.10 | `--emit-bin` + auto C wrapper + `--run` + runtime stubs | +N rust | 0 |
+| 13.11-13.12 | println! capture + side-table emission (with known limitation) | +N rust | 0 |
+| 13.13 | Inline println! emission via `StatementKind::Println` (fixes 13.12 ordering bug) | +10 rust | 0 |
+| 13.5+ | TD-033 P1 sub-items (for/move/HRTB/assoc-norm/two-phase/RFC 2229) | TBD | TBD |
+| 13.6 (release) | v0.1 release announcement | 0 | 0 |
 
 ## Stage 13.1 verification tests
 

@@ -286,78 +286,19 @@ fn codegen_function(
         );
     }
 
-    // Stage 13.12: Emit puts() calls for println! messages.
-    // The messages are stored in mir.println_messages side-table.
-    // We emit them at the end of the function (after the last block's
-    // terminator). This is a simplification — in a real compiler, the
-    // puts call would be emitted at the position where println! appears.
-    // For MVP, this means all println! output appears before the function
-    // returns, which is correct for simple programs where println! is
-    // the last statement.
+    // Stage 13.12 + Stage 13.13: println! output is now emitted INLINE
+    // via StatementKind::Println in codegen_statement (see Println arm
+    // below). The Stage 13.12 side-table approach (a Vec<String> field
+    // on MirBody + a separate helper function emitted after
+    // emit_function_end + a weak-symbol trick in the C wrapper) was
+    // REMOVED in Stage 13.13 because it broke output ordering for loops
+    // and conditionals — the helper ran BEFORE landin_main(), so all
+    // prints appeared before the program body.
     //
-    // Actually, this won't work because the last block already has a
-    // terminator (ret). We can't emit instructions after a terminator.
-    //
-    // Better approach: emit puts calls in the entry block, before any
-    // other code. This means println! output appears before the function
-    // body executes — wrong ordering but produces output.
-    //
-    // Best MVP approach: emit puts calls right after emit_function_begin
-    // and before codegen_from_mir processes the basic blocks.
-    // But we're already past that point here.
-    //
-    // Pragmatic fix: emit the puts calls before the first block.
-    // We need to reposition the builder to the entry block.
-    // For TextEmitter: just insert text before "bb0:".
-    // For LLVMSysEmitter: need to position builder at entry block start.
-    //
-    // Simplest working approach: iterate println_messages and emit
-    // puts calls via emit_call. The emitter will handle positioning.
-    // We do this AFTER emit_function_end — but that's too late.
-    //
-    // Actually, let's do it BEFORE the basic block loop:
-    // (Already past that point — need to restructure.)
-    //
-    // For now, let's just emit the calls after the function end
-    // as a separate function that the C wrapper calls.
-    // OR: emit them in a new basic block that branches to bb0.
-
+    // The MirBody println_messages field is retained (Vec::new()) for
+    // backward compatibility with any external tooling that reads MIR
+    // side-tables, but is no longer populated by MIR lower.
     emitter.emit_function_end();
-
-    // Stage 13.12: If there are println messages, emit them as calls to puts.
-    // We emit a separate helper function `__landin_printlns_N` that the
-    // C wrapper can call. But this is complex.
-    //
-    // Simplest approach: just declare `puts` as extern and emit calls
-    // in a new function. The C wrapper will call this function.
-    //
-    // Even simpler: emit the puts calls in the entry block by
-    // re-opening the function. But emit_function_end already cleared state.
-    //
-    // Pragmatic MVP: emit puts calls as a separate function.
-    if !mir.println_messages.is_empty() {
-        let print_fn_name = format!("__landin_printlns_{}", name);
-        emitter.emit_function_begin(&print_fn_name, &[], &EmitType::Void);
-        for msg in &mir.println_messages {
-            // Emit format string "%s\0" (null-terminated for printf)
-            let fmt = emitter.emit_string_global(b"%s\0");
-            // Emit message string (null-terminated for printf)
-            let mut msg_bytes = msg.as_bytes().to_vec();
-            msg_bytes.push(0); // null terminator
-            let str_global = emitter.emit_string_global(&msg_bytes);
-            // Call printf("%s", str_global)
-            emitter.emit_call(
-                "printf",
-                &[
-                    (EmitType::OpaquePtr, &fmt),
-                    (EmitType::OpaquePtr, &str_global),
-                ],
-                &EmitType::I32,
-            );
-        }
-        emitter.emit_ret(&EmitType::Void, None);
-        emitter.emit_function_end();
-    }
 }
 fn codegen_statement(
     emitter: &mut dyn Emitter,
@@ -457,6 +398,48 @@ fn codegen_statement(
         }
         StatementKind::StorageDead(_) => {}
         StatementKind::Nop | StatementKind::Deinit(_) => {}
+        // Stage 13.13: Inline println! / print! / eprintln! / eprint!
+        // statement — emits `printf("%s", <msg_global>)` at this exact
+        // position in the basic block (the §16-compliant source-of-truth
+        // for execution order).
+        //
+        // For `eprintln!`/`eprint!` (stderr == true), we currently still
+        // call `printf` (deferred to Stage 13.14 to switch to
+        // `fprintf(stderr, ...)`).
+        //
+        // The `msg` field already includes the trailing "\n" if
+        // `newline == true` (set at MIR-lowering time). The `newline`
+        // and `stderr` flags are kept here for forward-compatibility
+        // (e.g., Stage 13.14 will use `stderr` to switch to `fprintf`).
+        StatementKind::Println {
+            msg,
+            newline,
+            stderr,
+        } => {
+            let _ = newline; // already encoded in `msg` (trailing "\n")
+            let _ = stderr; // Stage 13.14: switch to fprintf(stderr, ...) when true
+
+            // Emit format string "%s\0" (null-terminated for printf).
+            // The emitter deduplicates identical globals, so this is
+            // emitted once per module.
+            let fmt = emitter.emit_string_global(b"%s\0");
+
+            // Emit message string (null-terminated for printf).
+            let mut msg_bytes = msg.as_bytes().to_vec();
+            msg_bytes.push(0); // null terminator
+            let str_global = emitter.emit_string_global(&msg_bytes);
+
+            // Call printf("%s", str_global) inline at this position.
+            // printf returns i32 (number of chars printed); we discard it.
+            emitter.emit_call(
+                "printf",
+                &[
+                    (EmitType::OpaquePtr, &fmt),
+                    (EmitType::OpaquePtr, &str_global),
+                ],
+                &EmitType::I32,
+            );
+        }
     }
 }
 

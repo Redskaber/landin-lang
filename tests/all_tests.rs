@@ -600,3 +600,8 @@ mod stage13_8_tests;
 // Stage 13.9: Comprehensive --run verification across language constructs.
 #[path = "v0/stage13/plan/stage13_9_tests.rs"]
 mod stage13_9_tests;
+// Stage 13.13: Inline println! emission — fixes Stage 13.12 ordering bug by
+// replacing side-table + helper function approach with inline
+// StatementKind::Println variant in the MIR basic block. v0.24.1 patch bump.
+#[path = "v0/stage13/plan/stage13_13_tests.rs"]
+mod stage13_13_tests;

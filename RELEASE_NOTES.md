@@ -1,9 +1,161 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.24.0
-**Date**: 2026-07-26
-**Test count**: 2279 rust tests + 5 benchmarks + 5026 conformance tests
+**Current version**: v0.24.1
+**Date**: 2026-07-27
+**Test count**: 2310 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.24.1 — Stage 13.13 (Inline println! emission — fixes Stage 13.12 ordering bug)
+
+### Overview
+
+**Stage 13.13** fixes the known limitation from Stage 13.12: the println!
+output ordering bug. The Stage 13.12 implementation stashed println messages
+in a `Vec<String>` side-table on `MirBody` and emitted a separate helper
+function `__landin_printlns_<fnname>` containing all `printf` calls, which
+the C wrapper then called **before** `landin_main()` via a weak symbol. This
+caused all println output to appear before the program body executed, breaking
+output ordering for loops and conditionals.
+
+Stage 13.13 introduces a new MIR `StatementKind::Println { msg, newline,
+stderr }` variant that is emitted **inline** in the basic block where the
+`println!` macro appears. Codegen translates this statement to an inline
+`printf("%s", <msg_global>)` call at the exact source-code position,
+restoring §16 compliance (basic block is the single source of truth for
+execution order).
+
+### §13.4 Design Alignment: ✅ Strategy B (inline StatementKind::Println)
+
+- **Strategy A (status quo)**: ❌ REJECTED — Stage 13.12 side-table approach
+  broke output ordering for loops, conditionals, and interleaved runtime
+  side effects
+- **Strategy B (inline StatementKind::Println)**: ✅ ADOPTED — design-aligned
+  with §16 (basic block is source of truth for ordering); fixes all Stage
+  13.12 ordering bugs; minimal architectural change
+- **Strategy C (defer to v0.2 macro_rules!)**: ❌ REJECTED — design-forbidden
+  per `02-grammar.md` §4.4 for v0.1/v0.3
+- **Strategy D (HIR-time macro expansion)**: ❌ DEFERRED — proper macro
+  expansion is Stage 1 rewrite scope per `08-bootstrap-strategy.md`
+
+### §14.4 Refactoring Six Criteria (J1-J6): 6/6 PASS
+
+| Criterion | Verdict |
+|-----------|---------|
+| J1 Architectural alignment | ✅ PASS — restores §16 single-source-of-truth for ordering |
+| J2 Single responsibility | ✅ PASS — `StatementKind::Println` carries one job: emit a print side-effect in order |
+| J3 Unidirectional data flow | ✅ PASS — MIR lower → MIR body → codegen, all forward |
+| J4 Compile-time expressiveness | ✅ PASS — new variant derives `Debug + Clone` |
+| J5 Stage partition (≤5 src files) | ✅ PASS — 4 src files touched |
+| J6 Scientific granularity | ✅ PASS — one bug fix, one variant, one codegen arm |
+
+### Implementation
+
+**Strategy**: B (inline `StatementKind::Println`) — see
+`docs/develop/v0/stage-13/stage-13.13-design-alignment.md` for full design
+rationale.
+
+**Source files touched (4 src + 1 test + 1 wiring)**:
+
+1. **`src/mir/body.rs`** (+30 LOC): Added `StatementKind::Println { msg, newline, stderr }`
+   variant with §16-compliant doc comment explaining the Stage 13.12 → 13.13
+   architectural shift.
+
+2. **`src/mir/lower/expr_operand.rs`** (+27/-12 LOC): Modified the
+   `HirExprKind::Println` arm to push a `StatementKind::Println` statement
+   to the current basic block (instead of pushing to the side-table). The
+   `MirBody.println_messages` field is retained as `Vec::new()` for backward
+   compat.
+
+3. **`src/codegen/mod.rs`** (+43/-50 LOC): Added a `StatementKind::Println`
+   arm to `codegen_statement` that emits an inline `printf("%s", <msg_global>)`
+   call via `emitter.emit_call`. Removed the Stage 13.12 helper-function
+   emission block (`__landin_printlns_<fnname>` separate function after
+   `emit_function_end`).
+
+4. **`src/bin/main.rs`** (+5/-7 LOC): Simplified the C wrapper to remove the
+   `__attribute__((weak)) void __landin_printlns_landin_main(void);` declaration
+   and the conditional call before `landin_main()`. The wrapper now just calls
+   `landin_main()` directly — println output is emitted inline within
+   `landin_main()` itself.
+
+5. **`src/typeck/checker.rs`** (+10 LOC): Added `StatementKind::Println { .. }`
+   arm to `check_statement` (no type constraints — message is opaque String).
+
+6. **`tests/v0/stage13/plan/stage13_13_tests.rs`** (NEW, ~330 LOC): 10
+   verification tests covering StatementKind variant, MIR lower inline push,
+   codegen printf emission, helper function removal, C wrapper simplification,
+   backward compat field retention, gate review existence, design alignment
+   existence, typeck handling, and v0.1 conformance gate.
+
+7. **`tests/all_tests.rs`** (+4 LOC): Wired `stage13_13_tests` module.
+
+### Behavioral change
+
+**Before (Stage 13.12)**:
+- All `println!` messages stored in `MirBody.println_messages` side-table
+- Codegen emitted a separate helper function `__landin_printlns_<fnname>`
+- C wrapper called helper BEFORE `landin_main()` via weak symbol
+- Output: all prints appeared BEFORE program body executed (broken ordering
+  for loops, conditionals)
+
+**After (Stage 13.13)**:
+- Each `println!` emitted as a `StatementKind::Println` statement inline in
+  the basic block at the source position
+- Codegen emits `printf("%s", <msg_global>)` inline at that position
+- C wrapper just calls `landin_main()` — no weak symbol needed
+- Output: prints appear in source order, correctly interleaved with control
+  flow (loops print N times, conditionals print only taken branch)
+
+### Test impact
+
++10 tests (2279 → 2310 rust tests, including Stage 13.5-13.12 carry-over)
+
+### Verification
+
+```
+cargo test --test all_tests: 2310 passed, 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+```
+
+### Version policy: v0.24.0 → v0.24.1 (patch bump)
+
+- Bug fix (output ordering) — not a new feature
+- No new language feature (println! was "working" in 13.12, just incorrectly ordered)
+- No new CLI flag
+- No new conformance test (5026 unchanged)
+- Backward-compatible MIR side-table field retained (no API removal)
+
+### §25.8 Design write-back
+
+3 design docs require retroactive write-back (B4 design-gray-area closure):
+
+| Design doc | Write-back content |
+|------------|-------------------|
+| `docs/lang-design/06-mir.md` | Add `StatementKind::Println { msg, newline, stderr }` variant to the StatementKind section |
+| `docs/lang-design/07-codegen.md` | Add §15.4 "Inline println! emission" sub-section |
+| `docs/lang-design/09-stdlib.md` | Note v0.1 hardcoded println! emission (will be replaced by macro_rules! in v0.2) |
+
+### Files added/changed
+
+- **New**: `docs/develop/v0/stage-13/stage-13.13-design-alignment.md` (~430 lines)
+- **New**: `docs/develop/v0/stage-13/gate-review-13.13.md` (~270 lines, 7/7 GO → PASS)
+- **New**: `docs/llvm/stage-13.13-println-inline-emission.md` (~280 lines)
+- **New**: `tests/v0/stage13/plan/stage13_13_tests.rs` (~330 lines, 10 tests)
+- **Updated**: `src/mir/body.rs`, `src/mir/lower/expr_operand.rs`, `src/codegen/mod.rs`, `src/bin/main.rs`, `src/typeck/checker.rs`
+- **Updated**: `tests/all_tests.rs`, `Cargo.toml` (v0.24.0 → v0.24.1)
+- **Updated**: `README.md` (full refresh), `docs/llvm/README.md`, `docs/llvm/execution-pipeline.md`
+- **Updated**: `docs/develop/v0/api-naming-standard.md` (v2.45 → v2.46), `docs/tests/matrix.md`, `docs/worklog.md`
+
+### Next steps
+
+- **Stage 13.14**: `eprintln!`/`eprint!` → `fprintf(stderr, ...)` (currently `stderr` flag is captured but ignored)
+- **Stage 13.15**: Format args (`println!("{}", x)`) — requires HIR-time format-args expansion
+- **Stage 13.16**: String escape sequences in lexer (`\n`, `\t`, `\\`, `\"`)
+- **v0.2+**: Full `macro_rules!` expansion (replaces Stage 13.13 inline statement)
 
 ---
 

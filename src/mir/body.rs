@@ -188,6 +188,36 @@ pub enum StatementKind {
     /// `drop(x)` calls (not for scope-end cleanup, which uses StorageDead).
     /// Distinct from Terminator::Drop (which is for control-flow drops).
     Deinit(Place),
+    /// Stage 13.13: Inline `println!` / `print!` / `eprintln!` / `eprint!`
+    /// statement.
+    ///
+    /// Carries the message string (already formatted — for v0.1 this is the
+    /// raw string literal argument to `println!`, with a trailing `"\n"` if
+    /// `newline == true`), the `newline` flag (currently informational — the
+    /// `msg` already includes the newline when `newline == true`), and the
+    /// `stderr` flag (true for `eprintln!`/`eprint!`, false otherwise).
+    ///
+    /// Per §16 (Interface Isolation): the basic-block statement list is the
+    /// **single source of truth** for execution order. Stage 13.12 violated
+    /// this by stashing println messages in a `Vec<String>` side-table,
+    /// causing the codegen to emit them in the wrong order (before the
+    /// function body executed). Stage 13.13 fixes this by carrying the
+    /// message **inline** in the basic block at the position where the
+    /// `println!` macro appears in source.
+    ///
+    /// Codegen translates this statement to `printf("%s", <msg_global>)`
+    /// (or `fprintf(stderr, "%s", <msg_global>)` when `stderr == true` —
+    /// deferred to Stage 13.14).
+    ///
+    /// Forward-compatibility: this variant will be deprecated in v0.2 when
+    /// full `macro_rules!` expansion lands (per `08-bootstrap-strategy.md`),
+    /// at which point `println!` will expand to a real `printf` call at
+    /// HIR-lowering time.
+    Println {
+        msg: String,
+        newline: bool,
+        stderr: bool,
+    },
 }
 
 /// A MIR terminator: the last instruction in a basic block.
