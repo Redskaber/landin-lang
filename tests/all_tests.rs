@@ -564,3 +564,8 @@ mod stage13_1_tests;
 // 11 conformance FAIL→PASS; 2 Stage 0 regression tests updated. v0.22.0 minor bump.
 #[path = "v0/stage13/plan/stage13_2_tests.rs"]
 mod stage13_2_tests;
+// Stage 13.3: Closure call lowering (TD-030 P0) — preparation phase.
+// §13.4 design alignment complete; Strategy A blueprint documented; TD-030 remains OPEN.
+// Full implementation deferred to Stage 13.3a (HIGH risk, ~600-1000 LOC, 9 src files).
+#[path = "v0/stage13/plan/stage13_3_tests.rs"]
+mod stage13_3_tests;

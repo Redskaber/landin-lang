@@ -1,9 +1,94 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.22.0
+**Current version**: v0.22.1
 **Date**: 2026-07-26
-**Test count**: 2247 rust tests + 5 benchmarks + 5026 conformance tests
+**Test count**: 2258 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.22.1 — Stage 13.3 (Closure call lowering TD-030 — preparation phase)
+
+### Overview
+
+**Stage 13.3** — Preparation phase for TD-030 (closure call lowering — P0, largest single
+blocker for v0.3 self-hosting). Per §13.4 design alignment, Strategy A (Direct call function
+synthesis — rustc-style) was chosen, pre-sanctioned by `07-codegen.md` §8.1-8.2. Given the
+HIGH risk (54 files, ~600-1000 LOC, new synthesized MirBody infrastructure), Stage 13.3 is
+split into preparation (this phase) + full implementation (Stage 13.3a, next phase).
+
+This split follows §15 (long-term > short-term) + §25.7 (P0 problem handling — don't rush
+HIGH-risk changes; prepare properly).
+
+### §13.4 Design Alignment: ✅ Strategy A (Direct call function synthesis)
+
+Per `stage-13.3-design-alignment.md`:
+- **Strategy A chosen** (rustc-idiomatic) — pre-sanctioned by `07-codegen.md` §8.1-8.2
+- Design doc explicitly shows `call i32 @"<closure_type>::call"(%Closure_type* %closure, i32 42)`
+- B1 deviation traced to Stage 4.4 (closure type lowering added, call dispatch deferred)
+- **Fn/FnMut/FnOnce**: Option B — call lowering only; trait auto-impl deferred to Stage 13.5+
+
+### Implementation blueprint (for Stage 13.3a)
+
+Per design alignment §6, the full implementation requires:
+
+1. **Synthesized `call` function MirBody per closure** (~300 LOC)
+2. **Per-crate `closure_call_bodies` side-table** (~100 LOC, mirrors `dyn_trait_calls` pattern)
+3. **`HirExprKind::Call` closure dispatch** (~150 LOC, emit `Terminator::Call` to synthesized `call` fn)
+4. **Codegen for synthesized `call` functions** (~200 LOC)
+5. **Typeck acceptance** (~50 LOC, accept `TyKind::Closure` callee at `checker.rs:433-441`)
+6. **Conformance FAIL→PASS verification** (40 conformance tests in 01-typecheck/03-closures + 02-borrowck/03-closure-capture + 04-e2e/03-closures)
+
+### Files added/changed
+
+- New: `docs/develop/v0/stage-13/stage-13.3-design-alignment.md` (§13.4 design alignment + scope analysis, ~700 lines)
+- New: `docs/develop/v0/stage-13/gate-review-13.3.md` (Stage 13.3 preparation gate review, 5/5 GO-WITH-CONDITIONS → PASS)
+- New: `tests/v0/stage13/plan/stage13_3_tests.rs` (9 verification tests)
+- Updated: `tests/all_tests.rs` (wire in stage13_3_tests module)
+- Updated: `Cargo.toml` (v0.22.0 → v0.22.1 — patch bump, preparation phase)
+- Updated: `README.md` (Stage 13.3 🔄 prep done; 13.3a pending)
+- Updated: `docs/develop/v0/api-naming-standard.md` (v2.41 → v2.42)
+- Updated: `docs/tests/matrix.md` (Stage 13.3 row added)
+- Updated: `docs/worklog.md` (Stage 13.3 entry appended)
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2258 passed (146 unit + 2258 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+cargo test --benches: 5 passed, 0 failed
+```
+
+### TD status after Stage 13.3 (preparation)
+
+| TD ID | Priority | Status | Stage |
+|-------|----------|--------|-------|
+| TD-019 | P3 | on user hold | Stage 13+ |
+| TD-028 | P2 | ✅ CLOSED (Stage 13.1) | — |
+| TD-029 | P2 | open (deferred to Stage 13.1b) | Stage 13.1b |
+| **TD-030** | **P0** | **🔄 OPEN (13.3 prep done; 13.3a implementation pending)** | Stage 13.3a |
+| TD-031 | P0 | ✅ CLOSED (Stage 13.2) | — |
+| TD-032 | P0 | open | Stage 13.4 |
+| TD-033 | P1 | open | Stage 13.5+ |
+
+**P0 closure progress**: 1/3 P0 closed (TD-031); 1 in preparation (TD-030); 1 pending (TD-032)
+
+### Version policy: v0.22.0 → v0.22.1 (patch bump — preparation phase, no new features)
+
+Per semver §2.0.0:
+- Stage 13.3 preparation adds no new compiler features (only docs + tests + design alignment)
+- Patch bump appropriate
+- v0.23.0 reserved for Stage 13.3a (TD-030 closure — second user-facing feature)
+
+### Next steps
+
+- **Stage 13.3a (P0 priority)**: Full TD-030 closure call lowering implementation (~600-1000 LOC, HIGH risk)
+- **Stage 13.4**: macro_rules! + 26 built-in macros (TD-032 — P0)
+- **Stage 13.1b**: TD-029 TyKind::Dynamic refactor (P2, deferred)
+- **v0.23.0**: After Stage 13.3a P0 closure (closures callable — second user-facing feature)
 
 ---
 

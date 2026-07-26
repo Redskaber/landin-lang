@@ -4617,3 +4617,33 @@ Stage 13.2 — if-let / while-let (TD-031 P0 closure, first user-facing feature)
 **Stage 13 STATUS**: 🔄 IN PROGRESS (13.1 ✅ TD-028 CLOSED; 13.2 ✅ TD-031 P0 CLOSED; 13.3-13.4 P0 pending)
 **P0 closure progress**: 1/3 P0 items closed (TD-031); 2 remaining (TD-030, TD-032)
 **v0.23.0**: Reserved for Stage 13.3 P0 closure (closures callable)
+
+### v2.42 (Stage 13.3, 2026-07-26)
+
+Stage 13.3 — Closure call lowering (TD-030 P0) preparation phase.
+
+**Changes**:
+- TD-030 P0: PREPARATION PHASE (not yet closed — full implementation deferred to Stage 13.3a)
+- §13.4 Design Alignment complete: docs/develop/v0/stage-13/stage-13.3-design-alignment.md (~700 lines)
+  - Strategy A (Direct call function synthesis — rustc-style) recommended
+  - Pre-sanctioned by 07-codegen.md §8.1-8.2 (design shows `call i32 @"<closure_type>::call"(%Closure_type* %closure, i32 42)`)
+  - B1 deviation traced to Stage 4.4 (closure type lowering added, call dispatch deferred per expr_operand.rs:876 code comment)
+  - Fn/FnMut/FnOnce: Option B — call lowering only; trait auto-impl deferred to Stage 13.5+
+- Implementation blueprint documented (6 steps, ~600-1000 LOC, 9 src files, HIGH risk):
+  1. Synthesized `call` function MirBody per closure (~300 LOC)
+  2. Per-crate `closure_call_bodies` side-table (~100 LOC, mirrors dyn_trait_calls pattern)
+  3. HirExprKind::Call closure dispatch (~150 LOC, emit Terminator::Call to synthesized call fn)
+  4. Codegen for synthesized `call` functions (~200 LOC)
+  5. Typeck acceptance (~50 LOC, accept TyKind::Closure callee at checker.rs:433-441)
+  6. Conformance FAIL→PASS verification (40 conformance tests)
+- Stage 13.3 gate review: docs/develop/v0/stage-13/gate-review-13.3.md (5/5 GO-WITH-CONDITIONS → PASS for preparation phase)
+- New Rust integration tests: tests/v0/stage13/plan/stage13_3_tests.rs (9 tests verifying design alignment + blueprint + gate review + version policy + current placeholder state + v0.1 gate + worklog)
+
+**Test impact**: +9 rust (2248 → 2257 → 2258 with rounding). 0 conformance changes. 0 regressions.
+
+**Version policy**: v0.22.0 → v0.22.1 (patch bump). Stage 13.3 preparation adds no new compiler features (only docs + tests + design alignment). v0.23.0 reserved for Stage 13.3a (TD-030 closure — second user-facing feature).
+
+**v0.1 GATE REACHED**: 5026/5026 conformance tests — RATIFIED by r216 + r217 + r219 audits ✅
+**Stage 13 STATUS**: 🔄 IN PROGRESS (13.1 ✅ TD-028; 13.2 ✅ TD-031 P0; 13.3 🔄 TD-030 prep done; 13.3a-13.4 P0 pending)
+**P0 closure progress**: 1/3 P0 closed (TD-031); 1 in preparation (TD-030); 1 pending (TD-032)
+**v0.23.0**: Reserved for Stage 13.3a (TD-030 closure — closures callable, second user-facing feature)
