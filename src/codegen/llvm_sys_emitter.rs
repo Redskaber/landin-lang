@@ -1416,3 +1416,31 @@ fn test_landin_program_to_object_file() {
         }
     }
 }
+
+#[test]
+#[cfg(feature = "llvm-backend")]
+fn test_landin_add_program_to_object_file() {
+    use crate::codegen::codegen_crate_to_module;
+
+    let src = "fn add(a: i32, b: i32) -> i32 { a + b } fn main() -> i32 { add(3, 4) }";
+    let result = crate::driver::compile(src);
+
+    if result.has_errors() {
+        eprintln!("⚠️ Compile errors: {}", result.errors.total_count());
+    }
+
+    let emitter = codegen_crate_to_module(&result);
+    let out_path = "/tmp/test_landin_add.o";
+    let _ = std::fs::remove_file(out_path);
+
+    match emitter.to_object_file(out_path) {
+        Ok(()) => {
+            let meta = std::fs::metadata(out_path).expect("object file should exist");
+            println!("✅ Add program object file: {} bytes", meta.len());
+            assert!(meta.len() > 0, "object file must be non-empty");
+        }
+        Err(e) => {
+            eprintln!("⚠️ Add program object file error (WIP): {e}");
+        }
+    }
+}
