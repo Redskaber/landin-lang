@@ -1,9 +1,106 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.21.4
+**Current version**: v0.21.5
 **Date**: 2026-07-26
-**Test count**: 2362 rust tests + 5 benchmarks + 5026 conformance tests
+**Test count**: 2237 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.21.5 — Stage 13.1 (Architecture baseline — TD-028 §16 violation CLOSED)
+
+### Overview
+
+**Stage 13.1** — First sub-stage of Stage 13 (v0.3 self-hosting preparation). Closes TD-028
+(§16 interface isolation violation: `mir::dyn_trait` → `codegen` reverse dependency). Per
+Stage 13.1 design alignment (§13.4), MUV-1 (TD-028) is executed in Stage 13.1; MUV-2
+(TD-029 TyKind::Dynamic) is deferred to Stage 13.1b per §15 + §25.7 (P2 item, non-blocking
+for P0 closure).
+
+### TD-028 §16 violation fix (MUV-1) ✅ CLOSED
+
+**Before Stage 13.1** (r216 architecture audit §2.2):
+- `src/mir/dyn_trait.rs:160` called `crate::codegen::emit_dynptr_global_text()` — §16 violation
+- 7 `emit_*` functions in MIR produced codegen output (reverse-direction dependency)
+
+**After Stage 13.1**:
+- New module `src/codegen/dyn_trait_emit.rs` (294 LOC) — houses all 7 `emit_dyn_trait_*` functions
+- `src/mir/dyn_trait.rs`: 955 → 705 LOC (250 LOC removed)
+- `src/mir/mod.rs`: re-exports updated (emit_* removed; data structures + builders + lookup APIs retained)
+- `src/codegen/mod.rs`: new `pub mod dyn_trait_emit` + `pub use` re-exports for all 7 functions
+- 7 test files updated: `landin_compiler::mir::emit_dyn_trait_*` → `landin_compiler::codegen::emit_dyn_trait_*`
+
+**Verification**: `grep -rn "crate::codegen" src/mir/dyn_trait.rs` → **0 matches** ✅ (§16 violation eliminated)
+
+### §14.4 Refactor Governance J1-J6: ✅ ALL 6 PASS
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| J1 Architecture alignment | ✅ | Restores §16 data flow单向 (MIR → codegen, no reverse) |
+| J2 Single responsibility | ✅ | MIR no longer produces codegen text; codegen owns all IR emission |
+| J3 Single direction flow | ✅ | Eliminates mir → codegen reverse dependency |
+| J4 Compilation expression complete | ✅ | All 7 functions relocated as-is (no semantic change) |
+| J5 Stage division clear | ✅ | ≤5 src files + 7 test files affected |
+| J6 Scientific granularity | ✅ | No impact on other modules; pure relocation |
+
+### MUV-2 (TD-029 TyKind::Dynamic) — DEFERRED to Stage 13.1b
+
+Per Stage 13.1 design alignment §5:
+- TD-029 is P2 (non-blocking for P0 closure)
+- MUV-2 scope: 5 src files (Option B — variant-only), MEDIUM risk
+- 3 exhaustive match arms in borrowck need updating
+- 9 wildcard match arms compile clean but silently mishandle Dynamic
+- Per §15 (long-term > short-term) + §25.7 (P2 problem handling): defer to Stage 13.1b
+- Stage 13.2 (TD-031 if-let, P0) takes priority
+
+### Files added/changed
+
+- New: `src/codegen/dyn_trait_emit.rs` (294 lines) — 7 emit_* functions relocated from mir::dyn_trait
+- New: `docs/develop/v0/stage-13/stage-13.1-design-alignment.md` (§13.4 design alignment + scope analysis)
+- New: `docs/develop/v0/stage-13/gate-review-13.1.md` (Stage 13.1 gate review, 5/5 GO → PASS)
+- New: `tests/v0/stage13/plan/stage13_1_tests.rs` (10 verification tests)
+- Updated: `src/mir/dyn_trait.rs` (955 → 705 LOC; 7 emit_* functions removed)
+- Updated: `src/mir/mod.rs` (re-exports updated; Stage 13.1 TD-028 note added)
+- Updated: `src/codegen/mod.rs` (new `pub mod dyn_trait_emit` + re-exports)
+- Updated: `tests/all_tests.rs` (wire in stage13_1_tests module)
+- Updated: 7 test files in `tests/v0/stage5/plan/` (import paths mir → codegen)
+- Updated: `docs/develop/v0/stage-13/plan-13.1.md` (Draft → Active; MUV-1 DONE, MUV-2 deferred)
+- Updated: `Cargo.toml` (v0.21.4 → v0.21.5)
+- Updated: `README.md` (Stage 13 IN PROGRESS; 13.1 DONE; TD-028 CLOSED)
+- Updated: `docs/develop/v0/api-naming-standard.md` (v2.39 → v2.40)
+- Updated: `docs/tests/matrix.md` (Stage 13.1 row added)
+- Updated: `docs/worklog.md` (Stage 13.1 entry appended)
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2237 passed (146 unit + 2237 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+cargo test --benches: 5 passed, 0 failed
+```
+
+### TD status after Stage 13.1
+
+| TD ID | Priority | Status | Stage |
+|-------|----------|--------|-------|
+| TD-019 | P3 | on user hold | Stage 13+ |
+| **TD-028** | **P2** | **✅ CLOSED (Stage 13.1)** | — |
+| TD-029 | P2 | open (deferred to Stage 13.1b) | Stage 13.1b |
+| TD-030 | P0 | open | Stage 13.3 |
+| TD-031 | P0 | open | Stage 13.2 |
+| TD-032 | P0 | open | Stage 13.4 |
+| TD-033 | P1 | open | Stage 13.5+ |
+
+### Next steps
+
+- **Stage 13.2 (P0 priority)**: if-let / while-let (TD-031) — 1-2 weeks
+- **Stage 13.3**: Closure call lowering (TD-030) — 2-3 weeks
+- **Stage 13.4**: macro_rules! + 26 built-in macros (TD-032) — 4-8 weeks
+- **Stage 13.1b**: TD-029 TyKind::Dynamic refactor (P2, after P0 closure or concurrent)
+- **v0.22.0**: After Stage 13 P0 closure (actual compiler features: closures/if-let/macro_rules!)
 
 ---
 

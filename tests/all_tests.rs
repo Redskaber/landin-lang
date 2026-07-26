@@ -554,3 +554,8 @@ mod stage12_4_tests;
 // + plan-6.{4,5,6}.md retroactive backfill + api-naming-standard v2.36 record correction
 #[path = "v0/stage12/plan/stage12_5_tests.rs"]
 mod stage12_5_tests;
+// Stage 13.1: Architecture baseline — TD-028 §16 violation fix (relocate 7 emit_*
+// functions from mir::dyn_trait to codegen::dyn_trait_emit). MUV-2 (TD-029 TyKind::Dynamic)
+// deferred to Stage 13.1b per design alignment §15 + §25.7.
+#[path = "v0/stage13/plan/stage13_1_tests.rs"]
+mod stage13_1_tests;

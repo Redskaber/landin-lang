@@ -8758,3 +8758,95 @@ Stage Summary:
 - v0.1 gate: 5026/5000 ✅ RATIFIED by r216 + r217 + r219 audits
 - v0.3 prep: Stage 13 plan-13.1.md ready; Stage 13.1 may begin immediately with MUV-1 (TD-028 §16 fix, ≤3 files, ~4h)
 - Next: Stage 13.1 MUV-1 (TD-028) → MUV-2 (TD-029) → Stage 13.2 (TD-031 if-let) → Stage 13.3 (TD-030 closure call) → Stage 13.4 (TD-032 macro_rules!)
+
+---
+Task ID: stage-13.1-design-alignment
+Agent: ARCH-A (subagent)
+Task: Stage 13.1 §13.4 design alignment + MUV-1/MUV-2 scope analysis
+
+Work Log:
+- Read plan-13.1.md (238 lines) + r216 architecture audit (350 lines, §2.2 TD-028 + §3.3 TD-029 detail) + r217 stages-0-4 re-audit (411 lines, §2.3 TD-029 root cause reattributed to Stage 2.1)
+- Read stage-committee-process.md §13.4 (design alignment protocol) + §14.4 (J1-J6 refactor governance) + §16 (interface isolation) + §25.8 (design write-back)
+- Read 4 design docs with §25.8 write-back sections:
+  - 06-mir.md §2/§3/§4/§14/§15 (Body, BasicBlock, Place, Stage 6.11 write-back, Stage 12.4 retroactive)
+  - 03-type-system.md §1.1/§2.3/§13 (type hierarchy with TraitObject, trait object, Stage 12 §25.8 B1 write-back)
+  - 07-codegen.md §7/§14/§15 (vtable layout, Stage 6.11 trait dispatch subsystem write-back, Stage 8.6 write-back)
+  - 04-ownership-borrowing.md (zero references to TyKind/Dynamic — confirms TD-029 does not affect borrow checking by design)
+- Part 2 MUV-1 scope: Verified 7 emit_* functions in src/mir/dyn_trait.rs at lines 159, 187, 211, 375, 549, 573, 767 (matches r216 §2.2 + r217 §2.2 exactly). Confirmed via grep: zero external src callers (only internal + 7 test files). Confirmed r216 §2.2 "mir/dyn_trait.rs:780 (test)" claim is INACCURATE — line 780 is production code inside emit_dyn_trait_mir_plan_text, not a test (matches r217 §2.2 verdict).
+- Part 2 MUV-1 relocation: Recommended Option B (new src/codegen/dyn_trait_emit.rs) over Option A (append to trait_dispatch.rs 962 LOC) per §14.4 J2 (single responsibility) + J6 (scientific granularity). Total file change: 4 src + 7 test = 11 files.
+- Part 3 MUV-2 scope: Read src/mir/ty.rs:28-62 (17 TyKind variants, no Dynamic). Grep'd all match sites on TyKind across src/. Found 3 EXHAUSTIVE matches that will FAIL compilation if Dynamic added (borrowck/drop_elaboration.rs:70, borrowck/copy_semantics.rs:38 + :78). Found 9 WILDCARD matches that compile-clean but silently mishandle Dynamic (typeck/unify.rs:204+257, typeck/predicates.rs:88, borrowck/region_inference.rs:851, mir/lower/adt_layout.rs:68, mir/lower/field_resolution.rs:137, codegen/emitter.rs:430+458, codegen/mir_translation.rs:56+124).
+- Part 3 MUV-2 approach: Recommended Option B (variant-only, 5 src files) over Option A (full integration, 13-15 files) per §15 long-term > short-term + §25.7 P2 partial closure acceptable + §25.8.3 #5 best refactor timing between stages.
+- Part 4 execution plan: Recommended SPLIT — Stage 13.1 = MUV-1 only (v0.21.5); Stage 13.1b = MUV-2 Option B (v0.21.6). v0.22.0 reserved for Stage 13.2 (if-let, first user-facing feature).
+- Wrote /home/z/my-project/landin-stage0/docs/develop/v0/stage-13/stage-13.1-design-alignment.md (~12KB, 6 sections: Executive Summary / Design Doc Alignment / MUV-1 Scope / MUV-2 Scope / Execution Plan / Committee Recommendation)
+- §14.4 J1-J6 verdicts: MUV-1 = ✅ all 6 PASS; MUV-2 Option B = ✅ 5/6 PASS + 1 PARTIAL (J4 intentional for Option B)
+
+Stage Summary:
+- Produced: docs/develop/v0/stage-13/stage-13.1-design-alignment.md
+- MUV-1 scope: 11 files (4 src + 7 test), 7 functions to relocate from mir/dyn_trait.rs to new codegen/dyn_trait_emit.rs (~390 LOC moved). Zero semantic change. §16 violation eliminated.
+- MUV-2 scope: 5 src files for Option B (variant-only), 3 exhaustive match sites (borrowck) + 1 HIR-to-MIR lower arm + 1 optional region_inference arm + 2 inline test arms. Full integration (Option A, 13-15 files) deferred to Stage 13.1c/v0.3+.
+- Recommendation: SPLIT — Stage 13.1 = MUV-1 only (v0.21.4 → v0.21.5); Stage 13.1b = MUV-2 Option B (v0.21.5 → v0.21.6); v0.22.0 reserved for Stage 13.2.
+- Risk: MUV-1 LOW (pure relocation); MUV-2 Option B MEDIUM (variant addition + 3 borrowck arms); combined risk AVOIDED by split.
+- Committee vote: GO-WITH-CONDITIONS (6 conditions listed in §6 of the alignment report).
+
+---
+Task ID: stage13.1-r223-td-028-closure
+Agent: Super Z (main) + ARCH-A (subagent for §13.4 design alignment)
+Task: Stage 13.1 — Architecture baseline (TD-028 §16 violation fix). MUV-1 executed; MUV-2 deferred to Stage 13.1b per design alignment.
+
+Work Log:
+- Baseline: v0.21.4 / 2362 rust tests + 5026 conformance (Stage 12 COMPLETE, Stage 13 AUTHORIZED)
+- User feedback: "继续计划推进" — Stage 13 launches
+- Launched ARCH-A subagent for §13.4 design alignment + MUV-1/MUV-2 scope analysis:
+  - Produced: docs/develop/v0/stage-13/stage-13.1-design-alignment.md
+  - MUV-1 (TD-028): 11 files (4 src + 7 test), LOW risk, §14.4 J1-J6 ALL 6 PASS
+  - MUV-2 (TD-029): 5 src files (Option B — variant-only), MEDIUM risk, 3 exhaustive match arms + 9 wildcard match arms
+  - Recommendation: SPLIT — Stage 13.1 = MUV-1 only; Stage 13.1b = MUV-2 (deferred per §15 + §25.7)
+  - Version policy: v0.21.4 → v0.21.5 (MUV-1 patch bump) → v0.21.6 (MUV-2) → v0.22.0 (Stage 13.2-13.4 P0 closure)
+- Stage 13.1 MUV-1 execution (TD-028 §16 violation fix):
+  - Created src/codegen/dyn_trait_emit.rs (294 LOC) — houses 7 emit_dyn_trait_* functions relocated from mir::dyn_trait
+  - All 7 functions preserved as-is (no semantic change): emit_dyn_trait_fat_ptr_text, emit_dyn_trait_fat_ptrs_text_batch, emit_dyn_trait_fat_ptrs_text_batch_from_resolver, emit_dyn_trait_method_call_text, emit_dyn_trait_method_calls_text_batch, emit_dyn_trait_method_calls_text_batch_from_resolver, emit_dyn_trait_mir_plan_text
+  - Functions now import DynTraitFatPtr/DynTraitMethodCall/DynTraitMIRPlan from crate::mir::dyn_trait (data structures stay in MIR)
+  - Functions now call crate::codegen::emit_dynptr_global_text directly (no longer cross-module from mir)
+  - Removed 7 function definitions from src/mir/dyn_trait.rs (955 → 705 LOC, -250 LOC)
+  - Updated src/mir/mod.rs: re-exports updated (emit_* removed; data structures + builders + lookup APIs retained); Stage 13.1 TD-028 note added
+  - Updated src/codegen/mod.rs: new `pub mod dyn_trait_emit` + `pub use` re-exports for all 7 functions
+  - Updated 7 test files in tests/v0/stage5/plan/ via Python script (stage13_1_muv1_update_tests.py):
+    - dyn_trait_fat_ptr_batch_tests.rs
+    - dyn_trait_fat_ptr_from_resolver_tests.rs
+    - dyn_trait_fat_ptr_text_tests.rs
+    - dyn_trait_method_call_batch_tests.rs
+    - dyn_trait_method_call_from_resolver_tests.rs
+    - dyn_trait_method_call_text_tests.rs
+    - dyn_trait_mir_plan_text_tests.rs
+  - Import paths: landin_compiler::mir::emit_dyn_trait_* → landin_compiler::codegen::emit_dyn_trait_*
+  - Fixed 2 orphaned function bodies left by the relocation script (multi-line function signatures split across lines)
+- Verification: grep -rn "crate::codegen" src/mir/dyn_trait.rs → 0 matches ✅ (§16 violation eliminated)
+- Stage 13.1 gate review created: docs/develop/v0/stage-13/gate-review-13.1.md (5/5 GO → PASS)
+- Stage 13.1 verification tests created: tests/v0/stage13/plan/stage13_1_tests.rs (10 tests)
+  - test_no_codegen_references_in_mir_dyn_trait (§16 violation eliminated)
+  - test_codegen_dyn_trait_emit_module_exists (new module + 7 functions + §16/TD-028 docs)
+  - test_mir_dyn_trait_no_emit_functions (old location clean)
+  - test_mir_mod_no_emit_reexports (re-exports updated)
+  - test_codegen_mod_declares_dyn_trait_emit (new module + re-exports)
+  - test_emit_functions_accessible_from_codegen (compilation test — functions accessible)
+  - test_emit_functions_not_accessible_from_mir (re-export block clean)
+  - test_stage13_1_gate_review_exists (gate review + TD-028 CLOSED + §16 + PASS)
+  - test_stage13_1_design_alignment_exists (§13.4 + MUV-1/MUV-2 + SPLIT recommendation)
+  - test_v01_gate_still_holds_after_stage13_1 (≥5000 conformance)
+- Wired stage13_1_tests module into tests/all_tests.rs
+- Updated plan-13.1.md: Draft → Active; MUV-1 ✅ DONE; MUV-2 deferred to Stage 13.1b
+- Bumped Cargo.toml v0.21.4 → v0.21.5 (Stage 13.1 architectural baseline patch bump)
+- Updated README.md: Stage 13 🔄 IN PROGRESS; 13.1 ✅ DONE (TD-028 CLOSED); 13.1b-13.6 sub-stages listed
+- Updated RELEASE_NOTES.md: v0.21.5 entry for Stage 13.1
+- Updated api-naming-standard.md: v2.39 → v2.40 entry for Stage 13.1
+- Updated docs/tests/matrix.md: Stage 13.1 row added (✅ Complete); Stage 13.1b-13.5+ rows added (pending)
+- Ran full CI/CD — all green ✅
+
+Stage Summary:
+- Stage 13.1 PASSED — TD-028 §16 violation CLOSED (7 emit_* functions relocated mir→codegen)
+- §16 interface isolation: ✅ COMPLIANT (grep crate::codegen src/mir/dyn_trait.rs = 0 matches)
+- §14.4 J1-J6: ALL 6 PASS (pure relocation, no semantic change)
+- MUV-2 (TD-029): DEFERRED to Stage 13.1b per §15 + §25.7 (P2, non-blocking for P0)
+- v0.1 gate: 5026/5000 ✅ RATIFIED by r216 + r217 + r219 audits
+- Stage 13 STATUS: 🔄 IN PROGRESS (13.1 ✅ DONE; 13.1b TD-029 deferred; 13.2-13.4 P0 pending)
+- Next: Stage 13.2 (TD-031 if-let / while-let — P0 priority, 1-2 weeks)

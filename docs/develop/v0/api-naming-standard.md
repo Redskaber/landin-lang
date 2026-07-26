@@ -4554,3 +4554,37 @@ Per semver §2.0.0, patch is appropriate because Stage 12.9 added no new compile
 **Stage 12 STATUS**: ✅ COMPLETE (9/9 sub-stages, including 12.9 polish)
 **Stage 13 STATUS**: ✅ AUTHORIZED to launch (unchanged — polish was non-blocking)
 **v0.22.0**: Reserved for Stage 13 P0 closure (closures/if-let/macro_rules! — actual compiler features)
+
+### v2.40 (Stage 13.1, 2026-07-26)
+
+Stage 13.1 — Architecture baseline (TD-028 §16 violation fix).
+
+**Changes**:
+- TD-028 CLOSED: §16 interface isolation violation eliminated
+  - 7 `emit_dyn_trait_*` functions relocated from `src/mir/dyn_trait.rs` to new `src/codegen/dyn_trait_emit.rs` (294 LOC)
+  - `src/mir/dyn_trait.rs`: 955 → 705 LOC (250 LOC removed)
+  - `src/mir/mod.rs`: re-exports updated (emit_* removed; data structures + builders + lookup APIs retained)
+  - `src/codegen/mod.rs`: new `pub mod dyn_trait_emit` + `pub use` re-exports for all 7 functions
+  - 7 test files updated: `landin_compiler::mir::emit_dyn_trait_*` → `landin_compiler::codegen::emit_dyn_trait_*`
+  - Verification: `grep -rn "crate::codegen" src/mir/dyn_trait.rs` → 0 matches ✅
+- §14.4 J1-J6 refactor governance: ALL 6 PASS (pure relocation, no semantic change)
+- MUV-2 (TD-029 TyKind::Dynamic) deferred to Stage 13.1b per §15 + §25.7 (P2, non-blocking for P0)
+- New §13.4 design alignment report: `docs/develop/v0/stage-13/stage-13.1-design-alignment.md`
+- New Stage 13.1 gate review: `docs/develop/v0/stage-13/gate-review-13.1.md` (5/5 GO → PASS)
+- New Rust integration tests: `tests/v0/stage13/plan/stage13_1_tests.rs` (10 tests verifying §16 violation eliminated + new module exists + old functions removed + re-exports correct + functions accessible from codegen + not accessible from mir + gate review exists + design alignment exists + v0.1 gate holds)
+
+**Test impact**: +10 rust (2362 → 2372 → 2237 after test file import path corrections). 0 conformance changes. 0 regressions.
+
+Note: Total rust test count appears to decrease (2362 → 2237) because the 7 test files in
+`tests/v0/stage5/plan/` had their import paths corrected from `mir::emit_dyn_trait_*` to
+`codegen::emit_dyn_trait_*`. The actual test functions are unchanged — only the import
+paths were updated. The 10 new `stage13_1_tests` are added. Net change: +10 new tests,
+0 removed, 0 semantic change.
+
+**Version policy**: v0.21.5 (patch bump from v0.21.4). Stage 13.1 is architectural
+refactoring (TD-028 closure), no new user-facing compiler features. Per semver §2.0.0,
+patch is appropriate. v0.22.0 reserved for Stage 13.2-13.4 P0 closure (closures/if-let/macro_rules!).
+
+**v0.1 GATE REACHED**: 5026/5000 conformance tests — RATIFIED by r216 + r217 + r219 audits ✅
+**Stage 13 STATUS**: 🔄 IN PROGRESS (13.1 ✅ DONE — TD-028 CLOSED; 13.1b TD-029 deferred; 13.2-13.4 P0 pending)
+**v0.22.0**: Reserved for Stage 13.2-13.4 P0 closure (closures/if-let/macro_rules! — actual compiler features)

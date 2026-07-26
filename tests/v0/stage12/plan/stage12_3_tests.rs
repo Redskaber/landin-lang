@@ -198,20 +198,22 @@ fn test_section_25_8_backfill_async_await_mvp() {
     );
 }
 
-/// Verify plan-13.1.md was reframed as Stage 12 output (Draft, not Planned/Launch)
+/// Verify plan-13.1.md was reframed from initial "Planned" status
+/// (Stage 12.5 reframe: Planned → Draft; Stage 13.1 launch: Draft → Active)
 #[test]
 fn test_plan_13_reframed_as_stage12_output() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let plan = manifest.join("docs/develop/v0/stage-13/plan-13.1.md");
     let content = std::fs::read_to_string(&plan).expect("read plan-13.1.md");
 
-    // Must be marked as Draft (not Planned/Launched)
+    // Must be marked as Draft (Stage 12.5 reframe) OR Active (Stage 13.1 launch)
+    // — both are valid post-reframe states (not the original "Planned")
     assert!(
-        content.contains("Draft") || content.contains("📋 Draft"),
-        "plan-13.1.md must be reframed as Draft (not Planned/Launched)"
+        content.contains("Draft") || content.contains("Active") || content.contains("🔄 Active"),
+        "plan-13.1.md must be reframed as Draft or Active (not the original 'Planned')"
     );
 
-    // Must reference Stage 12.5 reframe note
+    // Must reference Stage 12.5 reframe note (historical context)
     assert!(
         content.contains("Stage 12.5"),
         "plan-13.1.md must reference Stage 12.5 reframe action"
@@ -223,10 +225,10 @@ fn test_plan_13_reframed_as_stage12_output() {
         "plan-13.1.md must reference r217 second-pass audit"
     );
 
-    // Must NOT claim to be the active stage plan
+    // Must NOT claim to be the original active stage plan (the initial "Planned" status)
     assert!(
-        !content.contains("🔄 Planned (per §13.4 design alignment)") || content.contains("Draft"),
-        "plan-13.1.md must not claim active 'Planned' status (must be Draft)"
+        !content.contains("🔄 Planned (per §13.4 design alignment)"),
+        "plan-13.1.md must not retain the original '🔄 Planned (per §13.4 design alignment)' status (must be Draft or Active)"
     );
 }
 

@@ -129,94 +129,6 @@ pub fn build_dyn_trait_fat_ptrs_from_resolver(
 }
 
 // ============================================================================
-// Stage 5.63: Convert DynTraitFatPtr to LLVM IR text
-//
-// Bridges Stage 5.61's DynTraitFatPtr (MIR representation) with Stage 5.48's
-// emit_dynptr_global_text() (codegen text output). This is the conversion
-// function that Stage 5.64+ MIR lowering will call to generate LLVM IR text
-// from a DynTraitFatPtr.
-//
-// Per API-naming-standard §3: `emit_dyn_trait_fat_ptr_text` follows
-// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
-//
-// Per §16: takes `&DynTraitFatPtr`, returns `String`. Calls
-// `crate::codegen::emit_dynptr_global_text()` (one-way: mir → codegen,
-// no circular dependency).
-// ============================================================================
-
-/// Stage 5.63: Convert a `DynTraitFatPtr` to LLVM IR text.
-///
-/// Produces a line like:
-/// ```text
-/// @.dynptr.<trait>.<type> = private unnamed_addr constant
-///     { ptr, ptr } { ptr @.data.<type>, ptr @.vtable.<trait>.<type> }
-/// ```
-///
-/// Internally delegates to Stage 5.48's `emit_dynptr_global_text()`.
-///
-/// Per API-naming-standard §3: `emit_dyn_trait_fat_ptr_text` follows
-/// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
-pub fn emit_dyn_trait_fat_ptr_text(fat_ptr: &DynTraitFatPtr) -> String {
-    crate::codegen::emit_dynptr_global_text(
-        &fat_ptr.dynptr_symbol,
-        &fat_ptr.data_symbol,
-        &fat_ptr.vtable_symbol,
-    )
-}
-
-// ============================================================================
-// Stage 5.64: Batch version of emit_dyn_trait_fat_ptr_text
-//
-// Batch-converts a list of DynTraitFatPtr to Vec<String> (LLVM IR text).
-// This is the batch counterpart of Stage 5.63's emit_dyn_trait_fat_ptr_text().
-//
-// Per API-naming-standard §3: `emit_dyn_trait_fat_ptrs_text_batch` follows
-// `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern.
-// ============================================================================
-
-/// Stage 5.64: Batch-convert a list of `DynTraitFatPtr` to LLVM IR text.
-///
-/// For each `DynTraitFatPtr` in the input slice, calls
-/// `emit_dyn_trait_fat_ptr_text()` (Stage 5.63) and collects the results.
-///
-/// Returns `Vec<String>` where each element is one dynptr global definition.
-/// Empty input returns an empty Vec.
-///
-/// Per API-naming-standard §3: `emit_dyn_trait_fat_ptrs_text_batch` follows
-/// `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern.
-pub fn emit_dyn_trait_fat_ptrs_text_batch(fat_ptrs: &[DynTraitFatPtr]) -> Vec<String> {
-    fat_ptrs.iter().map(emit_dyn_trait_fat_ptr_text).collect()
-}
-
-// ============================================================================
-// Stage 5.65: Convenience entry point — resolver → all fat ptr IR text in one call
-//
-// Composes Stage 5.62's build_dyn_trait_fat_ptrs_from_resolver() + Stage 5.64's
-// emit_dyn_trait_fat_ptrs_text_batch(). Single function from resolver to all
-// dyn Trait fat ptr LLVM IR text.
-//
-// Per API-naming-standard §3: `emit_dyn_trait_fat_ptrs_text_batch_from_resolver`
-// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
-// ============================================================================
-
-/// Stage 5.65: Generate LLVM IR text for all dyn Trait fat pointers directly
-/// from `(&TraitResolver, &Rodeo)` in one call — **convenience entry point**.
-///
-/// Internally:
-/// 1. `build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner)` (Stage 5.62)
-/// 2. `emit_dyn_trait_fat_ptrs_text_batch(&fat_ptrs)` (Stage 5.64)
-///
-/// Per API-naming-standard §3: `emit_dyn_trait_fat_ptrs_text_batch_from_resolver`
-/// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
-pub fn emit_dyn_trait_fat_ptrs_text_batch_from_resolver(
-    trait_resolver: &crate::traits::TraitResolver,
-    interner: &lasso::Rodeo,
-) -> Vec<String> {
-    let fat_ptrs = build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner);
-    emit_dyn_trait_fat_ptrs_text_batch(&fat_ptrs)
-}
-
-// ============================================================================
 // Stage 5.66: DynTraitMethodCall MIR representation
 //
 // Represents a `dyn Trait` method call at the MIR level: receiver fat
@@ -344,65 +256,6 @@ impl DynTraitMethodCall {
 }
 
 // ============================================================================
-// Stage 5.67: emit_dyn_trait_method_call_text
-//
-// Converts DynTraitMethodCall (Stage 5.66 MIR representation) to LLVM IR
-// text for a vtable indirect call. This is the FIRST substantive dyn Trait
-// method call lowering — from data structure to actual LLVM IR instructions.
-//
-// Per API-naming-standard §3: `emit_dyn_trait_method_call_text` follows
-// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
-// ============================================================================
-
-/// Stage 5.67: Convert a `DynTraitMethodCall` to LLVM IR text for a vtable
-/// indirect call.
-///
-/// Produces LLVM IR that:
-/// 1. Extracts the vtable pointer from the fat pointer (second field)
-/// 2. Loads the method function pointer from the vtable at the slot index
-/// 3. Calls the loaded function pointer with self + args
-///
-/// Example output for `Display::fmt` on `Vec` (slot 0, 1 param):
-/// ```text
-/// ; dyn Display.Vec::fmt (slot=0, params=1)
-/// %vtable_ptr = getelementptr { ptr, ptr }, ptr %dynptr, i32 0, i32 1
-/// %method_fn = load ptr, ptr %vtable_ptr, i32 0
-/// %result = call ptr %method_fn(ptr %self, ptr %arg0)
-/// ```
-///
-/// Per API-naming-standard §3: `emit_dyn_trait_method_call_text` follows
-/// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
-pub fn emit_dyn_trait_method_call_text(call: &DynTraitMethodCall) -> String {
-    let mut lines: Vec<String> = Vec::new();
-
-    // Comment line for diagnostics
-    lines.push(format!(
-        "; dyn {}.{}::{} (slot={}, params={})",
-        call.trait_name, call.type_name, call.method_name, call.slot_index, call.param_count
-    ));
-
-    // Extract vtable pointer from fat pointer (second field, index 1)
-    lines.push("%vtable_ptr = getelementptr { ptr, ptr }, ptr %dynptr, i32 0, i32 1".to_string());
-
-    // Load method function pointer from vtable at slot index
-    lines.push(format!(
-        "%method_fn = load ptr, ptr %vtable_ptr, i32 {}",
-        call.slot_index
-    ));
-
-    // Build parameter list: self + args
-    let mut params: Vec<String> = vec!["ptr %self".to_string()];
-    for i in 0..call.param_count {
-        params.push(format!("ptr %arg{i}"));
-    }
-    lines.push(format!(
-        "%result = call ptr %method_fn({})",
-        params.join(", ")
-    ));
-
-    lines.join("\n")
-}
-
 // ============================================================================
 // Stage 5.68: build_dyn_trait_method_calls_from_fat_ptrs
 //
@@ -523,60 +376,6 @@ pub fn build_dyn_trait_method_calls_from_resolver(
     }
 
     calls
-}
-
-// ============================================================================
-// Stage 5.69: emit_dyn_trait_method_calls_text_batch
-//
-// Batch version of Stage 5.67's emit_dyn_trait_method_call_text().
-// Converts &[DynTraitMethodCall] to Vec<String> (all method call IR text).
-//
-// Per API-naming-standard §3: `emit_dyn_trait_method_calls_text_batch`
-// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern.
-// ============================================================================
-
-/// Stage 5.69: Batch-convert a list of `DynTraitMethodCall` to LLVM IR text.
-///
-/// For each `DynTraitMethodCall` in the input slice, calls
-/// `emit_dyn_trait_method_call_text()` (Stage 5.67) and collects the results.
-///
-/// Returns `Vec<String>` where each element is the LLVM IR text for one
-/// vtable indirect method call (multiple lines per call).
-/// Empty input returns an empty Vec.
-///
-/// Per API-naming-standard §3: `emit_dyn_trait_method_calls_text_batch`
-/// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>` pattern.
-pub fn emit_dyn_trait_method_calls_text_batch(calls: &[DynTraitMethodCall]) -> Vec<String> {
-    calls.iter().map(emit_dyn_trait_method_call_text).collect()
-}
-
-// ============================================================================
-// Stage 5.70: emit_dyn_trait_method_calls_text_batch_from_resolver
-//
-// Convenience entry point composing Stage 5.62 + 5.68 + 5.69. One call
-// from resolver to all dyn Trait method call IR text.
-//
-// Per API-naming-standard §3: `emit_dyn_trait_method_calls_text_batch_from_resolver`
-// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
-// ============================================================================
-
-/// Stage 5.70: Generate LLVM IR text for all dyn Trait method calls directly
-/// from `(&TraitResolver, &Rodeo)` in one call — **convenience entry point**.
-///
-/// Internally:
-/// 1. `build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner)` (Stage 5.62)
-/// 2. `build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs)` (Stage 5.68)
-/// 3. `emit_dyn_trait_method_calls_text_batch(&calls)` (Stage 5.69)
-///
-/// Per API-naming-standard §3: `emit_dyn_trait_method_calls_text_batch_from_resolver`
-/// follows `<verb>_<noun>_<noun>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
-pub fn emit_dyn_trait_method_calls_text_batch_from_resolver(
-    trait_resolver: &crate::traits::TraitResolver,
-    interner: &lasso::Rodeo,
-) -> Vec<String> {
-    let fat_ptrs = build_dyn_trait_fat_ptrs_from_resolver(trait_resolver, interner);
-    let calls = build_dyn_trait_method_calls_from_fat_ptrs(&fat_ptrs);
-    emit_dyn_trait_method_calls_text_batch(&calls)
 }
 
 // ============================================================================
@@ -746,54 +545,6 @@ pub fn build_dyn_trait_mir_plan_from_resolver(
 }
 
 // ============================================================================
-// Stage 5.74: emit_dyn_trait_mir_plan_text
-//
-// Converts DynTraitMIRPlan (Stage 5.73) to complete LLVM IR text:
-// summary comment + all fat ptr globals + all method call IR.
-//
-// Per API-naming-standard §3: `emit_dyn_trait_mir_plan_text` follows
-// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
-// ============================================================================
-
-/// Stage 5.74: Convert a `DynTraitMIRPlan` to complete LLVM IR text.
-///
-/// Produces:
-/// 1. Summary comment line
-/// 2. All fat ptr global definitions (from `emit_dyn_trait_fat_ptr_text`)
-/// 3. All method call IR blocks (from `emit_dyn_trait_method_call_text`)
-///
-/// Per API-naming-standard §3: `emit_dyn_trait_mir_plan_text` follows
-/// `<verb>_<noun>_<noun>_<noun>_<noun>` pattern.
-pub fn emit_dyn_trait_mir_plan_text(plan: &DynTraitMIRPlan) -> String {
-    let mut sections: Vec<String> = Vec::new();
-
-    // Summary comment
-    sections.push(format!(
-        "; DynTraitMIRSummary: {} fat ptrs, {} method calls, {} slots",
-        plan.summary.fat_ptr_count, plan.summary.method_call_count, plan.summary.total_slots
-    ));
-
-    // Fat ptr globals
-    if !plan.fat_ptrs.is_empty() {
-        let mut fat_ptr_lines: Vec<String> = Vec::new();
-        for fp in &plan.fat_ptrs {
-            fat_ptr_lines.push(emit_dyn_trait_fat_ptr_text(fp));
-        }
-        sections.push(fat_ptr_lines.join("\n"));
-    }
-
-    // Method call IR
-    if !plan.method_calls.is_empty() {
-        let mut call_lines: Vec<String> = Vec::new();
-        for call in &plan.method_calls {
-            call_lines.push(emit_dyn_trait_method_call_text(call));
-        }
-        sections.push(call_lines.join("\n"));
-    }
-
-    sections.join("\n\n")
-}
-
 // ============================================================================
 // Stage 5.75: find_dyn_trait_method_call_in_plan
 //

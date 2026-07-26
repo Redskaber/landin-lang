@@ -1,16 +1,15 @@
-# Stage 13 — Plan (Draft): v0.3 Self-Hosting Preparation (Compile Pipeline Fixes)
+# Stage 13 — Plan (Active): v0.3 Self-Hosting Preparation (Compile Pipeline Fixes)
 
-> **状态**: 📋 Draft (Stage 12 output, awaiting Stage 12 close per r217 second-pass audit)
-> **版本目标**: v0.21.2 (Stage 12) → v0.22.0 (Stage 13.1+) → v0.23.0 (Stage 13.5+)
+> **状态**: 🔄 Active (Stage 13.1 MUV-1 ✅ DONE; MUV-2 deferred to Stage 13.1b per design alignment)
+> **版本目标**: v0.21.4 → v0.21.5 (Stage 13.1 MUV-1) → v0.21.6 (Stage 13.1b MUV-2) → v0.22.0 (Stage 13.2-13.4 P0 closure)
 > **流程**: stage-committee-process.md v3.21 (§13.4 + §14.4 + §25 + §25.8)
-> **基于**: r216 first-pass audit + r217 second-pass audit (3 reports, 2055 lines total)
-> **创建日期**: 2026-07-26 (Stage 12.2 first-pass), 2026-07-26 (Stage 12.5 reframe)
+> **基于**: r216 first-pass audit + r217 second-pass audit (3 reports, 2055 lines total) + r219 Stage 12 §25 deep review + Stage 13.1 design alignment
+> **创建日期**: 2026-07-26 (Stage 12.2 first-pass), 2026-07-26 (Stage 12.5 reframe), 2026-07-26 (Stage 13.1 active)
 
-> **⚠️ Stage 12.5 重定位说明** (per r217 second-pass audit):
-> 本文档原为 Stage 13 启动 plan，但 r217 二次审查判定 Stage 13 启动过早
-> （Stage 12 尚未完成 12.4-12.8 子阶段）。本文档重新定位为 **Stage 12 输出**，
-> 即"未来阶段规划草案"，等待 Stage 12 完全结束后再启动 Stage 13 执行。
-> Stage 13 启动条件：Stage 12.4-12.8 全部 GO（详见 r217-stages-9-12-scope.md §5.2）。
+> **Stage 13.1 状态更新** (per Stage 13.1 design alignment §5):
+> Stage 13.1 = MUV-1 only (TD-028 §16 violation fix — LOW risk, 11 files).
+> MUV-2 (TD-029 TyKind::Dynamic) deferred to Stage 13.1b (Option B — variant-only,
+> MEDIUM risk, 5 src files) per §15 + §25.7. Stage 13.2 (TD-031 if-let) is P0 priority.
 
 ---
 

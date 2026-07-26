@@ -6,9 +6,10 @@
 //! Per §16: tests use the public API only.
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
-use landin_compiler::mir::{
-    emit_dyn_trait_method_call_text, emit_dyn_trait_method_calls_text_batch, DynTraitMethodCall,
+use landin_compiler::codegen::{
+    emit_dyn_trait_method_call_text, emit_dyn_trait_method_calls_text_batch,
 };
+use landin_compiler::mir::DynTraitMethodCall;
 use landin_compiler::stdlib::StdlibTypeKind;
 
 /// Empty input → empty Vec.

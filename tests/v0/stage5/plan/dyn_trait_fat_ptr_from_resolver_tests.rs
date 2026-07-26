@@ -5,7 +5,7 @@
 //! Per §16: tests use the public API only.
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
-use landin_compiler::mir::emit_dyn_trait_fat_ptrs_text_batch_from_resolver;
+use landin_compiler::codegen::emit_dyn_trait_fat_ptrs_text_batch_from_resolver;
 use landin_compiler::traits::{TraitResolver, Vtable, VtableEntry};
 use lasso::Rodeo;
 

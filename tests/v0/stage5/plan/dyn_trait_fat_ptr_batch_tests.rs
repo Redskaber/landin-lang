@@ -6,9 +6,8 @@
 //! Per §16: tests use the public API only.
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
-use landin_compiler::mir::{
-    emit_dyn_trait_fat_ptr_text, emit_dyn_trait_fat_ptrs_text_batch, DynTraitFatPtr,
-};
+use landin_compiler::codegen::{emit_dyn_trait_fat_ptr_text, emit_dyn_trait_fat_ptrs_text_batch};
+use landin_compiler::mir::DynTraitFatPtr;
 
 /// Empty input → empty Vec.
 #[test]

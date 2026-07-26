@@ -8,10 +8,10 @@ predictable performance.
 
 > **🎉 v0.1 RELEASE — Conformance gate reached: 5026/5000 tests (100.5%)!**
 >
-> **Status:** v0.21.4 — Stage 0-11 complete, Stage 12 ✅ COMPLETE (9/9 sub-stages incl. polish), Stage 13 ✅ AUTHORIZED to launch.
-> **2362+ rust tests** + **5026 conformance tests** + 5 benchmarks. 0 clippy warnings.
-> Process v3.21 (§0-§28). §16 interface isolation compliant. §17.1/§17.2/§18.4 docs compliant.
-> Cross-stage audit r216 (first-pass) + r217 (second-pass, 3 reports) + r219 (Stage 12 §25 deep review) + Stage 12.9 polish backfill complete.
+> **Status:** v0.21.5 — Stage 0-11 complete, Stage 12 ✅ COMPLETE (9/9), Stage 13 🔄 IN PROGRESS (13.1 ✅ DONE — TD-028 §16 violation closed).
+> **2237+ rust tests** + **5026 conformance tests** + 5 benchmarks. 0 clippy warnings.
+> Process v3.21 (§0-§28). §16 interface isolation compliant (TD-028 CLOSED). §17.1/§17.2/§18.4 docs compliant.
+> Cross-stage audit r216 (first-pass) + r217 (second-pass, 3 reports) + r219 (Stage 12 §25 deep review) + Stage 13.1 design alignment complete.
 >
 > **Milestones:**
 > - Stage 0-4: ✅ Complete (lexer, parser, HIR, MIR, typeck, borrowck, codegen)
@@ -23,13 +23,13 @@ predictable performance.
 > - Stage 10: ✅ Complete (8 sub-stages — CLI upgrade + all 8 conformance categories created)
 > - Stage 11: ✅ Complete (10 sub-stages — conformance 1139→5026, v0.1 gate reached!)
 > - Stage 12: ✅ COMPLETE (9/9 sub-stages — v0.1 release + r216+r217+r219 cross-stage audits + §25.8 backfill + plan-13 reframe + version revert + README corrections + final gate review + polish backfill)
-> - Stage 13: ✅ AUTHORIZED to launch (v0.3 self-hosting prep — TD-028..TD-033 closure per r216/r217/r219 audits)
+> - Stage 13: 🔄 IN PROGRESS (13.1 ✅ DONE — TD-028 §16 violation closed; 13.1b TD-029 deferred; 13.2-13.4 P0 closure pending)
 >
-> **Architecture:** 50+ modules. All files < 1500 LOC. Single responsibility per module.
-> Data flows单向. Design docs synced (§25.8).
+> **Architecture:** 51+ modules. All files < 1500 LOC. Single responsibility per module.
+> Data flows单向 (§16 compliant — TD-028 closed). Design docs synced (§25.8).
 >
 > **v0.1 gate:** conformance 5026/5000 ✅ — **GATE REACHED!** (ratified by r216 + r217 + r219 audits)
-> **v0.3 prep:** 3 P0 blockers (TD-030 closure call, TD-031 if-let, TD-032 macro_rules!) — Stage 13 target
+> **v0.3 prep:** 3 P0 blockers (TD-030 closure call, TD-031 if-let, TD-032 macro_rules!) — Stage 13.2-13.4 target
 
 ## Quick start
 
@@ -237,7 +237,14 @@ cargo clippy --all-targets -- -D warnings
   - 12.7 ✅ Stage 0-4 README corrections (per r217 stages-0-4 findings)
   - 12.8 ✅ Final gate review (§25 deep review of Stage 12 — 5/5 GO-WITH-CONDITIONS-or-GO → PASS)
   - 12.9 ✅ Polish backfill (Stage 5 develop README + plan-6.{4,5,6}.md retroactive + v2.36 correction)
-- **Stage 13** ✅ AUTHORIZED to launch (v0.3 self-hosting prep — plan-13.1.md ready, TD-028..TD-033 closure target)
+- **Stage 13** 🔄 IN PROGRESS (v0.3 self-hosting prep — TD-028..TD-033 closure)
+  - 13.1 ✅ Architecture baseline — TD-028 §16 violation CLOSED (7 emit_* functions relocated mir→codegen)
+  - 13.1b ⏳ TD-029 TyKind::Dynamic refactor (deferred per design alignment §15)
+  - 13.2 ⏳ if-let / while-let (TD-031 — P0)
+  - 13.3 ⏳ Closure call lowering (TD-030 — P0)
+  - 13.4 ⏳ macro_rules! + 26 built-in macros (TD-032 — P0)
+  - 13.5 ⏳ TD-033 P1 sub-items (for/move/HRTB/assoc-norm/two-phase/RFC 2229)
+  - 13.6 ⏳ v0.1 release announcement (after P0 closure)
 - **v0.1** = Stage 0 完整 + conformance 5026/5000 通过 ✅ **GATE REACHED!** (ratified by r216 + r217 + r219)
 - **v0.3** = self-hosting (远期 — Stage 13 P0 closure in progress)
 

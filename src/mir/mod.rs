@@ -43,13 +43,13 @@ pub use ty::{
 // Stage 5.62: bridge function from TraitResolver
 // Stage 5.75: single-point lookup API for mir/lower integration
 // Stage 5.77: fuzzy lookup variant (by method_name only)
+// Stage 13.1 (TD-028): 7 emit_dyn_trait_* functions relocated to
+// `codegen::dyn_trait_emit` per §16 interface isolation fix. The re-exports
+// below only cover data structures + builders + lookup APIs (no emit_*).
 pub use dyn_trait::{
     build_dyn_trait_fat_ptrs_from_resolver, build_dyn_trait_method_calls_from_fat_ptrs,
     build_dyn_trait_mir_plan, build_dyn_trait_mir_plan_from_resolver, build_dyn_trait_mir_summary,
-    build_dyn_trait_mir_summary_from_resolver, emit_dyn_trait_fat_ptr_text,
-    emit_dyn_trait_fat_ptrs_text_batch, emit_dyn_trait_fat_ptrs_text_batch_from_resolver,
-    emit_dyn_trait_method_call_text, emit_dyn_trait_method_calls_text_batch,
-    emit_dyn_trait_method_calls_text_batch_from_resolver, emit_dyn_trait_mir_plan_text,
-    find_dyn_trait_method_call_in_plan, find_dyn_trait_method_call_in_plan_by_method,
-    DynTraitFatPtr, DynTraitMIRPlan, DynTraitMIRSummary, DynTraitMethodCall,
+    build_dyn_trait_mir_summary_from_resolver, find_dyn_trait_method_call_in_plan,
+    find_dyn_trait_method_call_in_plan_by_method, DynTraitFatPtr, DynTraitMIRPlan,
+    DynTraitMIRSummary, DynTraitMethodCall,
 };

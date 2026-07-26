@@ -29,8 +29,13 @@
 | Stage 12.7 (Stage 0-4 README per-module attribution corrections) | 0 | — | ✅ Complete (5 READMEs corrected) |
 | Stage 12.8 (Stage 12 final gate review — §25 deep review of Stage 12) | +13 rust | — | ✅ Complete (5/5 GO-WITH-CONDITIONS-or-GO → PASS) |
 | Stage 12.9 (Polish backfill — Stage 5 develop README + plan-6.{4,5,6}.md retroactive + v2.36 correction) | +13 rust | — | ✅ Complete (3/3 deferred P2/P3 items closed) |
-| Stage 13 (v0.3 self-hosting prep — TD-028..033 closure, plan-13.1.md in Draft state) | TBD | — | ✅ AUTHORIZED to launch (all 5 launch criteria closed) |
-| **Total** | **2362** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE (9/9); Stage 13 ✅ AUTHORIZED |
+| Stage 13.1 (Architecture baseline — TD-028 §16 violation CLOSED, 7 emit_* relocated mir→codegen) | +10 rust | — | ✅ Complete (5/5 GO → PASS, §16 compliant) |
+| Stage 13.1b (TD-029 TyKind::Dynamic refactor — deferred per design alignment §15) | TBD | — | ⏳ Deferred (P2, non-blocking for P0) |
+| Stage 13.2 (if-let / while-let — TD-031 P0 closure) | TBD | — | ⏳ Pending (P0 priority) |
+| Stage 13.3 (Closure call lowering — TD-030 P0 closure) | TBD | — | ⏳ Pending (P0) |
+| Stage 13.4 (macro_rules! + 26 built-in macros — TD-032 P0 closure) | TBD | — | ⏳ Pending (P0) |
+| Stage 13.5+ (TD-033 P1 sub-items + v0.1 release announcement) | TBD | — | ⏳ Pending (P1) |
+| **Total** | **2237** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE; Stage 13 🔄 IN PROGRESS (13.1 ✅ DONE — TD-028 CLOSED) |
 
 ## Stage 3 Test Breakdown
 
