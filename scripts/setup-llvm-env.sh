@@ -126,6 +126,14 @@ else
 fi
 echo "LLVM_SYS_VERSION: $LLVM_SYS_VERSION"
 echo ""
+
+# Step 3: Auto-update .cargo/config.toml + Cargo.toml for the detected version
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [ -f "$SCRIPT_DIR/switch-llvm-version.sh" ]; then
+    echo "Auto-switching LLVM version in .cargo/config.toml + Cargo.toml..."
+    bash "$SCRIPT_DIR/switch-llvm-version.sh" "$LLVM_SYS_VERSION" 2>/dev/null || true
+fi
+
 echo "=== LLVM environment ready ==="
 echo "Build: cargo build --lib"
 echo "Test:  cargo test --test all_tests"

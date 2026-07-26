@@ -583,3 +583,8 @@ mod stage13_4_tests;
 // 26/26 built-in macros now handled. v0.24.0 minor bump (all P0 closed, milestone).
 #[path = "v0/stage13/plan/stage13_4a_tests.rs"]
 mod stage13_4a_tests;
+// Stage 13.5 MUV-1+MUV-2: LLVM library integration + LLVMSysEmitter + version switching.
+// llvm-sys linked; LLVMSysEmitter implements Emitter trait via LLVM C API (1316 LOC).
+// switch-llvm-version.sh auto-detects LLVM 19/21 and updates .cargo/config.toml + Cargo.toml.
+#[path = "v0/stage13/plan/stage13_5_muv2_tests.rs"]
+mod stage13_5_muv2_tests;
