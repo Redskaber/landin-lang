@@ -9617,3 +9617,40 @@ Stage Summary:
 - Hidden bug fixed: resolver did not resolve Println args (was no-op `=> {}`); now resolves each arg expression
 - Stage 13 STATUS: 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0, 13.4a ✅ TD-032 P0, 13.5-13.16 ✅ LLVM execution pipeline + inline println + stderr routing + landin_main fix + format args; 13.17+ pending: print-flush / bool-true-false / v0.2 macro_rules!)
 - Next: v0.1 release announcement (all P0 closed; --run works end-to-end with formatted output) OR Stage 13.17 (print! flush behavior) OR Stage 13.18 (bool → "true"/"false")
+
+---
+Task ID: stage13.17-r239-self-binding-method-call
+Agent: Super Z (main) + ARCH-A + REV-A (combined subagent role)
+Task: Stage 13.17 — Self binding fix + inherent method call codegen. v0.25.1 patch bump.
+
+Work Log:
+- Baseline: v0.25.0 / 2333 rust tests + 5026 conformance (Stage 13.16 ✅ format args)
+- User feedback: "当前还存在大量问题，远没有达到v0.1发布的需求" + "少用特例"
+- Systematic audit conducted: tested 13 diverse Landin programs
+- Found two P0 bugs:
+  - Bug A: `self` not resolved in impl method bodies (parser used Spur::default() instead of interning "self")
+  - Bug B: Inherent method calls (p.get()) dropped from codegen (MIR lower emitted Error placeholder)
+- Stage 13.17 §13.4 design alignment created: docs/develop/v0/stage-13/stage-13.17-design-alignment.md
+- Stage 13.17 gate review created: docs/develop/v0/stage-13/gate-review-13.17.md (PASS with documented limitation)
+- Implementation:
+  - src/parser/generics.rs: Fixed self binding — use get_or_intern("self") for binding name, get_or_intern("Self") for type name (was Spur::default())
+  - src/mir/lower/expr_operand.rs: Added resolve_inherent_method() + resolve_inherent_method_from_hir_expr() + find_local_init_type() + search_block_for_local() + search_expr_for_local_init() + expr_to_adt_type() — resolves inherent methods via HIR impl lookup, emits real Terminator::Call with FnDef(def_id) instead of Error placeholder
+  - Removed unused `use lasso::Spur;` import from src/parser/generics.rs
+- Behavioral verification:
+  - ✅ `p.get()` where get(self) -> i32 { 42 } (no self access) → get=42 (method calls now work!)
+  - ✅ `self` resolves in method bodies (no more "cannot find value in this scope")
+  - ⚠️ `self.x` field access crashes (self param MIR type is Infer not Adt — Stage 13.18 typeck writeback needed)
+- Flipped 75 conformance tests from compile_error to compile_ok (self binding fix unblocked them)
+  - Script: scripts/stage13_17_flip_conformance.py
+  - All 5026 conformance tests now pass (was 4951 pass + 75 expected-fail)
+- Stage 13.17 verification tests created: tests/v0/stage13/plan/stage13_17_tests.rs (5 tests)
+- Bumped Cargo.toml v0.25.0 → v0.25.1
+- Ran full CI/CD: 2338 rust tests passed, 5026 conformance passed, 0 warnings, 0 errors
+
+Stage Summary:
+- Stage 13.17 PASSED — self binding fixed + inherent method calls now emitted (partial — self.x field access deferred to Stage 13.18)
+- 75 conformance tests flipped compile_error→compile_ok (self binding fix unblocked them)
+- v0.25.1: patch bump (bug fixes; no new feature)
+- Test impact: +5 rust (2333→2338); +75 conformance flipped (4951→5026 pass)
+- Known limitation: self.x field access crashes (self param type is Infer not Adt at MIR lower time; typeck writeback needed — Stage 13.18)
+- Next: Stage 13.18 (typeck writeback for self param type → fix self.x field access) OR v0.1 release announcement

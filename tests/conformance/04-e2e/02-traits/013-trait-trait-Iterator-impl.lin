@@ -1,6 +1,7 @@
 // CATEGORY: e2e
 // DESCRIPTION: trait Iterator impl
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.4 e2e expansion
 
 trait Iterator{fn next(&mut self)->i32;} struct Counter{n:i32} impl Iterator for Counter{fn next(&mut self)->i32{self.n+=1;self.n}}

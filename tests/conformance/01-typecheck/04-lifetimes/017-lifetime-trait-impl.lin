@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: trait impl with lifetime
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
 
 trait T<'a> { fn f(&self) -> &'a i32; } struct S { x: i32 } impl<'a> T<'a> for S { fn f(&self) -> &'a i32 { &self.x } }

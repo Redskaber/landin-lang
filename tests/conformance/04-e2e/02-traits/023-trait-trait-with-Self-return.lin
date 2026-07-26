@@ -1,6 +1,7 @@
 // CATEGORY: e2e
 // DESCRIPTION: trait with Self return
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.4 e2e expansion
 
 trait T{fn f(&self)->Self;} struct S{x:i32} impl T for S{fn f(&self)->Self{S{x:self.x}}}

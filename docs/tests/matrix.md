@@ -47,7 +47,7 @@
 | Stage 13.15 (Fix `landin_main` double-prefix symbol bug — P0 linker fix; both `fn main()` and `fn landin_main()` now work) | +7 rust | 0 | ✅ Complete (7/7 GO → PASS, v0.24.3 patch bump) |
 | Stage 13.16 (Format args — `println!("{}", x)` now works; P0 v0.1 blocker closed; first real I/O feature) | +9 rust | 0 | ✅ Complete (7/7 GO → PASS, v0.25.0 minor bump) |
 | Stage 13.5+ (TD-033 P1 sub-items + full Strategy A + Fn/FnMut/FnOnce + v0.1 release announcement) | TBD | TBD | ⏳ Pending (P1) |
-| **Total** | **2333** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE; Stage 13 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0, 13.4a ✅ TD-032 P0; 3/3 P0 CLOSED 🎉; 13.5-13.16 LLVM execution pipeline + inline println + stderr routing + landin_main fix + format args ✅) |
+| **Total** | **2333** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE; Stage 13 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0, 13.4a ✅ TD-032 P0; 3/3 P0 CLOSED 🎉; 13.5-13.17 LLVM execution pipeline + inline println + stderr routing + landin_main fix + format args + self binding + method call codegen ✅) |
 
 ## Stage 3 Test Breakdown
 

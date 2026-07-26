@@ -12,7 +12,6 @@
 
 use crate::ast::*;
 use crate::lexer::token::*;
-use lasso::Spur;
 
 use super::parser::Parser;
 
@@ -54,13 +53,16 @@ impl<'a> Parser<'a> {
                     self.bump();
                     self.parse_ty()
                 } else {
-                    // Default type for self — we use a path with KwSelf_ as the
+                    // Default type for self — we use a path with "Self" as the
                     // segment name. The type checker (Stage 2) will resolve this.
+                    // Stage 13.17 fix: intern "Self" (capital S) for the type,
+                    // matching the resolver's Self type lookup convention.
+                    let self_ty_spur = self.interner.get_or_intern("Self");
                     Ty::Path(
                         QSelf::default(),
                         Path {
                             segments: vec![PathSegment {
-                                ident: Ident::new(Spur::default(), span),
+                                ident: Ident::new(self_ty_spur, span),
                                 args: None,
                             }],
                             leading: PathLeading::None,
@@ -69,9 +71,15 @@ impl<'a> Parser<'a> {
                         span,
                     )
                 };
+                // Stage 13.17 fix: intern "self" (lowercase) for the binding
+                // name, so the resolver can match `self.x` references in the
+                // method body. Previously this used Spur::default() (empty),
+                // which never matched the interner's "self" spur — causing
+                // "cannot find value in this scope" for ALL self accesses.
+                let self_name_spur = self.interner.get_or_intern("self");
                 let pat = Pat::Ident(
                     BindingMode::ByValue(binding_mut),
-                    Ident::new(Spur::default(), span),
+                    Ident::new(self_name_spur, span),
                     None,
                 );
                 params.push(Param {

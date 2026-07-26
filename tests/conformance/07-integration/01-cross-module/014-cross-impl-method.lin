@@ -1,7 +1,7 @@
 // CATEGORY: integration
 // DESCRIPTION: call method from impl in another module
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 10.7 conformance expansion
 
 mod a { pub struct S { x: i32 } impl S { pub fn get(&self) -> i32 { self.x } } } fn main() { let s = a::S { x: 1 }; s.get(); }

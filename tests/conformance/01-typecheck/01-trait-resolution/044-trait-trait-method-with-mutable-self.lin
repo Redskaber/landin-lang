@@ -1,6 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: trait method with mutable self
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.1 typecheck expansion
 
 trait T { fn f(&mut self, x: i32); } struct S { x: i32 } impl T for S { fn f(&mut self, x: i32) { self.x = x; } }

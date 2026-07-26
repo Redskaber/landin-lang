@@ -1,6 +1,7 @@
 // CATEGORY: codegen
 // DESCRIPTION: trait impl for array
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.3 codegen expansion
 
 trait T{fn f(&self)->i32;} impl T for [i32;3]{fn f(&self)->i32{self[0]}}

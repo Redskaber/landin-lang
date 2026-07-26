@@ -1,6 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: trait impl for reference
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.1 typecheck expansion
 
 trait T { fn f(&self) -> i32; } impl<'a> T for &'a i32 { fn f(&self) -> i32 { **self } }

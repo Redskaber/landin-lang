@@ -4864,3 +4864,27 @@ Stage 13.16 — Format args (`println!("{}", x)`) — first real I/O feature.
 **Version policy**: v0.24.3 → v0.25.0 (minor bump — first real I/O feature: format args work, programs can print computed values).
 
 **Stage 13 STATUS**: 🔄 IN PROGRESS (13.16 ✅; 13.17+ pending: print-flush / bool-true-false / v0.2 macro_rules!)
+
+---
+
+### v2.50 (Stage 13.17, 2026-07-27)
+
+Stage 13.17 — Self binding fix + inherent method call codegen.
+
+**Changes**:
+- Bug fix: `src/parser/generics.rs` — self param binding now uses `get_or_intern("self")` instead of `Spur::default()` (Bug A fix)
+- Bug fix: `src/mir/lower/expr_operand.rs` — added `resolve_inherent_method()` + `resolve_inherent_method_from_hir_expr()` to resolve inherent methods via HIR impl lookup (Bug B fix)
+- New helper functions (private, in mir/lower/expr_operand.rs):
+  - `resolve_inherent_method(hir, recv_ty, method_name) -> Option<DefId>` — §3 `<verb>_<adjective>_<noun>` pattern
+  - `resolve_inherent_method_from_hir_expr(cx, hir, receiver, method_name) -> Option<DefId>` — fallback when MIR type is Infer
+  - `find_local_init_type(cx, hir, target_hir_id) -> Option<Ty>` — traces local to initializer
+  - `search_block_for_local(block, hir_id) -> Option<HirExpr>` — searches HirBlock for Local binding
+  - `search_expr_for_local_init(expr, hir_id) -> Option<Ty>` — recursive search
+  - `expr_to_adt_type(expr) -> Option<Ty>` — extracts ADT type from struct literal / ctor call
+- 75 conformance tests flipped compile_error→compile_ok (self binding fix unblocked them)
+- §14.4 J1-J6: 6/6 PASS (2 src files)
+- §25.8: ZERO new deviations (bug fixes only)
+
+**Test impact**: +5 rust (2333→2338); +75 conformance flipped (4951→5026 pass).
+
+**Version policy**: v0.25.0 → v0.25.1 (patch bump — bug fixes).

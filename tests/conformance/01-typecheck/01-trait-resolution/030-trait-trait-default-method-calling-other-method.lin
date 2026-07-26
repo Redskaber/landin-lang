@@ -1,6 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: trait default method calling other method
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.1 typecheck expansion
 
 trait T { fn f(&self) -> i32; fn g(&self) -> i32 { self.f() + 1 } }

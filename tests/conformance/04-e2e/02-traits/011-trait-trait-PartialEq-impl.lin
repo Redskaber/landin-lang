@@ -1,6 +1,7 @@
 // CATEGORY: e2e
 // DESCRIPTION: trait PartialEq impl
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.4 e2e expansion
 
 trait PartialEq{fn eq(&self,other:&Self)->bool;} struct S{x:i32} impl PartialEq for S{fn eq(&self,other:&Self)->bool{self.x==other.x}}

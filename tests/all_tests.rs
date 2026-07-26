@@ -620,3 +620,7 @@ mod stage13_15_tests;
 // with type-specific specifiers. v0.25.0 minor bump (first real I/O feature).
 #[path = "v0/stage13/plan/stage13_16_tests.rs"]
 mod stage13_16_tests;
+// Stage 13.17: Self binding fix (parser interns "self") + inherent method call
+// codegen (resolve_inherent_method via HIR impl lookup). v0.25.1 patch bump.
+#[path = "v0/stage13/plan/stage13_17_tests.rs"]
+mod stage13_17_tests;

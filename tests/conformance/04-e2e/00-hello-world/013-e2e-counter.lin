@@ -1,6 +1,7 @@
 // CATEGORY: e2e
 // DESCRIPTION: counter
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.8 batch expansion
 
 struct C{count:i32} impl C{fn new()->C{C{count:0}}fn inc(&mut self){self.count+=1;}}

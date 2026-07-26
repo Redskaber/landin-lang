@@ -1632,7 +1632,17 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 return dest;
             }
 
-            // Legacy placeholder path (Stage 2.1) — unchanged.
+            // Stage 13.17: Inherent method call resolution.
+            //
+            // Before Stage 13.17, this path emitted a placeholder
+            // `Const{ty: Error, val: Int(0)}` func, which codegen dropped
+            // (producing wrong results — method calls always returned 0).
+            //
+            // Stage 13.17: resolve the method to a real DefId by querying HIR
+            // for an impl block on the receiver's type. If found, emit a real
+            // `Terminator::Call` with `func: Const{ty: FnDef(def_id), val: Uint(def_id)}`.
+            // If not found (unknown method or non-ADT receiver), fall back to
+            // the Error placeholder (graceful degradation).
             let arg_operands: Vec<Operand> =
                 std::iter::once(Operand::Copy(Place::local(recv_local, receiver.span)))
                     .chain(
@@ -1641,21 +1651,67 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                             .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY))),
                     )
                     .collect();
+
+            // Try to resolve the method to a DefId via HIR impl lookup.
+            // Stage 13.17: We try multiple strategies to find the receiver's ADT type:
+            //   1. Check the MIR local's type (works if typeck has resolved it)
+            //   2. Check the HIR receiver expression directly (works for struct
+            //      literals like `P { x: 1 }.get()`)
+            //   3. If the receiver is a Path (local variable), trace back to
+            //      the let binding's initializer type
+            let method_def_id: Option<crate::hir::DefId> = cx.hir.and_then(|hir| {
+                // Strategy 1: Check MIR local type.
+                let recv_ty = cx.mir.local(recv_local).ty.clone();
+                if let Some(did) = resolve_inherent_method(hir, &recv_ty, &method.name) {
+                    return Some(did);
+                }
+                // Strategy 2: Check HIR receiver expression for ADT construction.
+                if let Some(did) =
+                    resolve_inherent_method_from_hir_expr(cx, hir, receiver, &method.name)
+                {
+                    return Some(did);
+                }
+                None
+            });
+
             let dest_ty = cx.fresh_infer_ty(expr.span);
             let dest = cx.mir.new_local(dest_ty, None, expr.span);
             let cont = cx.new_block();
-            cx.terminate_and_goto(
-                Terminator::Call {
-                    func: Operand::Constant(Const {
-                        ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
-                        val: ConstVal::Int(0),
-                    }), // placeholder func
-                    args: arg_operands,
-                    destination: Place::local(dest, expr.span),
-                    target: Some(cont),
-                },
-                cont,
-            );
+
+            if let Some(def_id) = method_def_id {
+                // Stage 13.17: Real inherent method call.
+                // Emit `Terminator::Call` with `func: Const{ty: FnDef(def_id), val: Uint(def_id)}`.
+                // Codegen resolves this via `fn_name_by_def_id` (which maps to
+                // `landin_<Type>_<method>` per the driver's naming convention).
+                cx.terminate_and_goto(
+                    Terminator::Call {
+                        func: Operand::Constant(Const {
+                            ty: Box::new(Ty::new(TyKind::FnDef(def_id, Vec::new()), expr.span)),
+                            val: ConstVal::Uint(def_id.as_u32() as u128),
+                        }),
+                        args: arg_operands,
+                        destination: Place::local(dest, expr.span),
+                        target: Some(cont),
+                    },
+                    cont,
+                );
+            } else {
+                // Fallback: Error placeholder (method not found or non-ADT receiver).
+                // This preserves the pre-Stage 13.17 behavior for cases we don't
+                // handle yet (trait methods, etc.).
+                cx.terminate_and_goto(
+                    Terminator::Call {
+                        func: Operand::Constant(Const {
+                            ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+                            val: ConstVal::Int(0),
+                        }),
+                        args: arg_operands,
+                        destination: Place::local(dest, expr.span),
+                        target: Some(cont),
+                    },
+                    cont,
+                );
+            }
             dest
         }
     }
@@ -1708,4 +1764,224 @@ pub(crate) fn resolve_enum_variant(
         }
     }
     None
+}
+
+/// Stage 13.17: Resolve an inherent method call to a DefId.
+///
+/// Searches HIR for an `impl` block on the receiver's type (must be
+/// `TyKind::Adt(adt_def_id, _)`) and finds a method with the given name.
+///
+/// Returns the method's DefId (the impl fn's `hir_id.owner`) if found,
+/// or `None` if:
+/// - The receiver's type is not `TyKind::Adt` (e.g., primitives, references)
+/// - No impl block exists for the type
+/// - The impl block doesn't contain a method with the given name
+///
+/// Per §16: this is a HIR query performed at MIR-lowering time. The result
+/// (DefId) is sunk into the MIR as data (`Const{ty: FnDef(def_id), val: Uint(def_id)}`),
+/// so codegen doesn't need to query HIR.
+///
+/// Per `api-naming-standard.md` §3 + §8: `resolve_inherent_method` follows
+/// the `<verb>_<adjective>_<noun>` pattern (mirrors `resolve_enum_variant`).
+fn resolve_inherent_method(
+    hir: &crate::hir::HirCrate,
+    recv_ty: &Ty,
+    method_name: &lasso::Spur,
+) -> Option<crate::hir::DefId> {
+    // Only ADT types (structs/enums) can have inherent impls.
+    let adt_def_id = match &recv_ty.kind {
+        TyKind::Adt(def_id, _) => *def_id,
+        _ => return None,
+    };
+
+    // Get the ADT's name (for matching impl self_ty).
+    // The impl's self_ty is a HirTy::Path with the type name as the single segment.
+    let adt_name = hir.owner(adt_def_id).and_then(|owner| match owner {
+        crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) => Some(s.ident.name),
+        crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => Some(e.ident.name),
+        _ => None,
+    })?;
+
+    // Search all impl blocks for one whose self_ty matches adt_name.
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            // Check if this impl is for our ADT (inherent impl, not trait impl).
+            if impl_block.of_trait.is_some() {
+                continue; // Skip trait impls; only looking for inherent methods.
+            }
+            // Check if the impl's self_ty matches adt_name.
+            let self_ty_matches = match &impl_block.self_ty.kind {
+                crate::hir::HirTyKind::Path(_qself, path) => {
+                    path.segments.len() == 1 && path.segments[0].ident.name == adt_name
+                }
+                _ => false,
+            };
+            if !self_ty_matches {
+                continue;
+            }
+            // Search the impl's items for a method with the given name.
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    if f.ident.name == *method_name {
+                        // Found the method! Return its DefId (the owner of the fn body).
+                        return Some(f.hir_id.owner);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Stage 13.17: Resolve an inherent method call from the HIR receiver expression.
+///
+/// This is a fallback when the MIR local's type is still `Infer` (unresolved
+/// at MIR-lowering time). We inspect the HIR receiver expression directly:
+///
+/// - `HirExprKind::Struct { path, .. }` — the receiver is a struct literal;
+///   the path gives us the ADT DefId.
+/// - `HirExprKind::Path(path)` — the receiver is a variable; we trace back
+///   to its let binding's initializer type.
+/// - `HirExprKind::Call { func, .. }` — the receiver is a function call
+///   (e.g., tuple struct ctor); we check if func is an ADT ctor.
+///
+/// Per §16: this is a HIR query at MIR-lowering time. The result (DefId) is
+/// sunk into the MIR as data.
+fn resolve_inherent_method_from_hir_expr(
+    cx: &MirLowerCtxt,
+    hir: &crate::hir::HirCrate,
+    receiver: &HirExpr,
+    method_name: &lasso::Spur,
+) -> Option<crate::hir::DefId> {
+    match &receiver.kind {
+        // Struct literal: `P { x: 1 }.get()` — path gives us the ADT.
+        HirExprKind::Struct { path, .. } => {
+            if let crate::hir::Res::Def(def_id, _) = path.res {
+                // Build a synthetic Adt type and resolve the method.
+                let synth_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), receiver.span);
+                resolve_inherent_method(hir, &synth_ty, method_name)
+            } else {
+                None
+            }
+        }
+        // Path: `p.get()` — trace back to the local's initializer.
+        HirExprKind::Path(path) => {
+            if let crate::hir::Res::Local(hir_id) = path.res {
+                // Find the let binding for this local.
+                if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
+                    return resolve_inherent_method(hir, &init_ty, method_name);
+                }
+            }
+            None
+        }
+        // Call: could be a tuple struct ctor like `Pair(1, 2).get()`.
+        HirExprKind::Call { func, .. } => {
+            if let HirExprKind::Path(path) = &func.kind {
+                if let crate::hir::Res::Def(def_id, _) = path.res {
+                    let synth_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), receiver.span);
+                    return resolve_inherent_method(hir, &synth_ty, method_name);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Stage 13.17: Find the type of a local variable's initializer.
+///
+/// Given a `hir_id` for a local binding, search the HIR body for the
+/// `let pat = init;` statement that binds it, and return the init's type.
+fn find_local_init_type(
+    _cx: &MirLowerCtxt,
+    hir: &crate::hir::HirCrate,
+    target_hir_id: crate::hir::HirId,
+) -> Option<Ty> {
+    // Search all bodies. Body.value is a HirExpr (Block for fns).
+    // We walk the block's statements looking for a Local that binds target_hir_id.
+    // The recursive search below covers all cases including nested blocks.
+    for (_, body) in &hir.bodies {
+        if let Some(ty) = search_expr_for_local_init(&body.value, target_hir_id) {
+            return Some(ty);
+        }
+    }
+    None
+}
+
+/// Search a HirBlock for a Local statement binding target_hir_id; return its init.
+fn search_block_for_local(
+    block: &crate::hir::HirBlock,
+    target_hir_id: crate::hir::HirId,
+) -> Option<HirExpr> {
+    for stmt in &block.stmts {
+        if let crate::hir::HirStmt::Local(local) = stmt {
+            if local.pat.hir_id == target_hir_id {
+                if let Some(init) = &local.init {
+                    return Some(init.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Recursively search an expression (and nested blocks) for a Local binding.
+fn search_expr_for_local_init(expr: &HirExpr, target_hir_id: crate::hir::HirId) -> Option<Ty> {
+    match &expr.kind {
+        HirExprKind::Block(block) => {
+            for stmt in &block.stmts {
+                if let crate::hir::HirStmt::Local(local) = stmt {
+                    if local.pat.hir_id == target_hir_id {
+                        if let Some(init) = &local.init {
+                            return expr_to_adt_type(init);
+                        }
+                    }
+                }
+                // Recurse into expression statements
+                if let crate::hir::HirStmt::Expr(e, _) = stmt {
+                    if let Some(ty) = search_expr_for_local_init(e, target_hir_id) {
+                        return Some(ty);
+                    }
+                }
+            }
+            // Also check the block's trailing expression
+            if let Some(trailing) = &block.expr {
+                return search_expr_for_local_init(trailing, target_hir_id);
+            }
+            None
+        }
+        HirExprKind::If { then, else_, .. } => {
+            // then is HirBlock; else_ is Option<Box<HirExpr>>
+            search_block_for_local(then, target_hir_id)
+                .and_then(|init| expr_to_adt_type(&init))
+                .or_else(|| {
+                    else_
+                        .as_ref()
+                        .and_then(|e| search_expr_for_local_init(e, target_hir_id))
+                })
+        }
+        _ => None,
+    }
+}
+
+/// Extract an ADT type from an expression (if it's a struct literal or ADT ctor call).
+fn expr_to_adt_type(expr: &HirExpr) -> Option<Ty> {
+    match &expr.kind {
+        HirExprKind::Struct { path, .. } => {
+            if let crate::hir::Res::Def(def_id, _) = path.res {
+                Some(Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span))
+            } else {
+                None
+            }
+        }
+        HirExprKind::Call { func, .. } => {
+            if let HirExprKind::Path(path) = &func.kind {
+                if let crate::hir::Res::Def(def_id, _) = path.res {
+                    return Some(Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
 }

@@ -1,6 +1,7 @@
 // CATEGORY: codegen
 // DESCRIPTION: impl block with setter
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.3 codegen expansion
 
 struct S{x:i32} impl S{fn set(&mut self,v:i32){self.x=v;}}

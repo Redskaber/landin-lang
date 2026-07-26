@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: generic impl variant 0
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.9 batch expansion
 
 struct S<T>{x:T} impl<T> S<T>{fn get(&self)->&T{&self.x}}

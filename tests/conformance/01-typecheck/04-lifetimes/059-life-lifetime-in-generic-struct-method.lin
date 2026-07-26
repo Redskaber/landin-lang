@@ -1,6 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: lifetime in generic struct method
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.1 typecheck expansion
 
 struct S<T> { x: T } impl<T> S<T> { fn get(&self) -> &T { &self.x } } fn main() { let s = S { x: 1 }; s.get(); }
