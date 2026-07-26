@@ -1372,27 +1372,25 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             )
         }
 
-        // Stage 4.10: MacroCall — expand known built-in macros.
-        // Previously (Stage 3.x): all macro calls produced TyKind::Error placeholder.
-        // Now: known macros (println!, stringify!, assert!) produce proper MIR.
-        // Unknown macros still fall back to Error placeholder.
+        // Stage 4.10 + Stage 13.4a: MacroCall — expand known built-in macros.
+        // Stage 4.10: 7 macros (println, print, eprintln, eprint, stringify, assert, debug_assert)
+        // Stage 13.4a (TD-032): +19 macros (assert_eq, assert_ne, debug_assert_eq,
+        //   debug_assert_ne, write, writeln, panic, todo, unimplemented, unreachable,
+        //   cfg, include, concat, env, option_env, format_args, format, vec, dbg)
+        // Total: 26 built-in macros per 13-stage1-feature-whitelist.md §2.6
         HirExprKind::MacroCall { path, .. } => {
             // Get the macro name from the last path segment.
             let macro_name = path.segments.last().map(|s| s.ident.name);
             if let Some(name_spur) = macro_name {
                 let name = cx.interner.resolve(&name_spur).to_string();
                 match name.as_str() {
+                    // === Printing macros (4) — produce unit ===
                     "println" | "print" | "eprintln" | "eprint" => {
-                        // println!(...) → unit expression (no actual printing).
-                        // The macro call is valid but produces no value.
                         let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
                         cx.mir.new_local(unit_ty, None, expr.span)
                     }
-                    "stringify" => {
-                        // stringify!(expr) → &str type local (simplified).
-                        // Since cx.interner is &Rodeo (immutable), we can't
-                        // intern a new string here. Produce a str-typed local
-                        // without assigning a constant (typeck will resolve).
+                    // === Stringification macros (2) — produce &str ===
+                    "stringify" | "concat" => {
                         let str_ty = Ty::new(
                             TyKind::Ref(
                                 Region::Static,
@@ -1403,9 +1401,63 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         );
                         cx.mir.new_local(str_ty, None, expr.span)
                     }
-                    "assert" | "debug_assert" => {
-                        // assert!(cond) → unit expression (assertion check).
-                        // For now, just produce unit (no actual assertion codegen).
+                    // === Assertion macros (6) — produce unit ===
+                    "assert" | "debug_assert" | "assert_eq" | "assert_ne" | "debug_assert_eq"
+                    | "debug_assert_ne" => {
+                        let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+                        cx.mir.new_local(unit_ty, None, expr.span)
+                    }
+                    // === Writing macros (2) — produce unit ===
+                    "write" | "writeln" => {
+                        let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+                        cx.mir.new_local(unit_ty, None, expr.span)
+                    }
+                    // === Diverging macros (4) — produce Never type ===
+                    "panic" | "todo" | "unimplemented" | "unreachable" => {
+                        let never_ty = Ty::new(TyKind::Never, expr.span);
+                        cx.mir.new_local(never_ty, None, expr.span)
+                    }
+                    // === Configuration macro (1) — produce bool ===
+                    "cfg" => {
+                        let bool_ty = Ty::new(TyKind::Bool, expr.span);
+                        cx.mir.new_local(bool_ty, None, expr.span)
+                    }
+                    // === File inclusion macro (1) — produce unit ===
+                    "include" => {
+                        let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+                        cx.mir.new_local(unit_ty, None, expr.span)
+                    }
+                    // === Environment macros (2) — produce &str ===
+                    "env" | "option_env" => {
+                        let str_ty = Ty::new(
+                            TyKind::Ref(
+                                Region::Static,
+                                crate::mir::ty::Mutability::Immutable,
+                                Box::new(Ty::new(TyKind::Str, expr.span)),
+                            ),
+                            expr.span,
+                        );
+                        cx.mir.new_local(str_ty, None, expr.span)
+                    }
+                    // === Format args macro (1) — produce unit ===
+                    "format_args" => {
+                        let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+                        cx.mir.new_local(unit_ty, None, expr.span)
+                    }
+                    // === Format macro (1) — produce String (simplified to unit for MVP) ===
+                    "format" => {
+                        // Stage 13.4a: simplified to unit (full String requires alloc support)
+                        let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+                        cx.mir.new_local(unit_ty, None, expr.span)
+                    }
+                    // === Vec macro (1) — produce unit (simplified for MVP) ===
+                    "vec" => {
+                        // Stage 13.4a: simplified to unit (full Vec<T> requires alloc support)
+                        let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+                        cx.mir.new_local(unit_ty, None, expr.span)
+                    }
+                    // === Debug macro (1) — produce unit ===
+                    "dbg" => {
                         let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
                         cx.mir.new_local(unit_ty, None, expr.span)
                     }

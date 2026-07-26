@@ -579,3 +579,7 @@ mod stage13_3a_tests;
 // Full implementation deferred to Stage 13.4a (HIGH risk, ~800-1200 LOC).
 #[path = "v0/stage13/plan/stage13_4_tests.rs"]
 mod stage13_4_tests;
+// Stage 13.4a: 19 missing built-in macros (TD-032 P0 CLOSED) — ALL P0 CLOSED.
+// 26/26 built-in macros now handled. v0.24.0 minor bump (all P0 closed, milestone).
+#[path = "v0/stage13/plan/stage13_4a_tests.rs"]
+mod stage13_4a_tests;

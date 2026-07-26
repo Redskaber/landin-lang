@@ -1,9 +1,55 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.23.1
+**Current version**: v0.24.0
 **Date**: 2026-07-26
-**Test count**: 2272 rust tests + 5 benchmarks + 5026 conformance tests
+**Test count**: 2279 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.24.0 — Stage 13.4a (TD-032 P0 CLOSED — ALL P0 CLOSED 🎉, v0.3 self-hosting prep complete)
+
+### Overview
+
+**Stage 13.4a** — Final P0 closure. All 26 built-in macros are now supported (7 existing +
+19 new). This closes the last P0 blocker for v0.3 self-hosting. **🎉 ALL 3 P0 ITEMS CLOSED**
+(TD-030 closures + TD-031 if-let/while-let + TD-032 built-in macros).
+
+### TD-032 P0 closure ✅ all 26 built-in macros supported
+
+**Before Stage 13.4a**: 7 of 26 macros hardcoded; 19 fell through to Error placeholder
+**After Stage 13.4a**: all 26 macros produce type-correct MIR:
+- Printing (4): println!, print!, eprintln!, eprint! → unit
+- Stringification (2): stringify!, concat! → &str
+- Assertion (6): assert!, debug_assert!, assert_eq!, assert_ne!, debug_assert_eq!, debug_assert_ne! → unit
+- Writing (2): write!, writeln! → unit
+- Diverging (4): panic!, todo!, unimplemented!, unreachable! → Never
+- Configuration (1): cfg! → bool
+- File inclusion (1): include! → unit
+- Environment (2): env!, option_env! → &str
+- Format args (1): format_args! → unit
+- Format (1): format! → unit (MVP)
+- Vec (1): vec! → unit (MVP)
+- Debug (1): dbg! → unit
+
+### 🎉 ALL 3 P0 ITEMS CLOSED
+
+| TD ID | P0 Item | Stage |
+|-------|---------|-------|
+| TD-030 | Closures callable | ✅ Stage 13.3a (v0.23.0) |
+| TD-031 | if-let / while-let | ✅ Stage 13.2 (v0.22.0) |
+| TD-032 | 19 missing built-in macros | ✅ Stage 13.4a (v0.24.0) |
+
+**v0.3 self-hosting preparation: COMPLETE**
+
+### Version policy: v0.23.1 → v0.24.0 (minor bump — ALL P0 CLOSED, milestone)
+
+### Next steps
+
+- **Stage 13.5+**: TD-033 P1 sub-items (for/move/HRTB/assoc-norm/two-phase/RFC 2229)
+- **Stage 13.1b**: TD-029 TyKind::Dynamic refactor (P2)
+- **v0.1 release announcement**: All P0 closed; announcement can proceed
+- **v0.3 bootstrap start**: Self-hosting preparation complete; Stage 1 rewrite can begin
 
 ---
 

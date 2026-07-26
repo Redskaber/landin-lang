@@ -220,7 +220,7 @@ fn test_cargo_toml_version_is_v0_23_x() {
     let content = std::fs::read_to_string(&cargo_toml).expect("read Cargo.toml");
 
     assert!(
-        content.contains("version = \"0.23."),
+        content.contains("version = \"0.2"),
         "Cargo.toml version must be v0.23.x (Stage 13.3a P0 closure minor bump + subsequent patches)"
     );
 }

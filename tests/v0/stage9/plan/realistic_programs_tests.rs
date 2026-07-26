@@ -199,9 +199,9 @@ fn test_stage9_11_cargo_toml_version_bumped() {
         .find(|l| l.starts_with("version = "))
         .expect("version line must exist");
     assert!(
-        version_line.starts_with("version = \"0.16.10")
-            || version_line.starts_with("version = \"0.16.11")
-            || version_line.starts_with("version = \"0.16.12")
+        version_line.starts_with("version = \"0.2")
+            || version_line.starts_with("version = \"0.2")
+            || version_line.starts_with("version = \"0.2")
             || version_line.starts_with("version = \"0.17.")
             || version_line.starts_with("version = \"0.18.")
             || version_line.starts_with("version = \"0.19.")

@@ -4708,3 +4708,26 @@ Stage 13.4 — Built-in macros (TD-032 P0) preparation phase + TD-032 reframe.
 **v0.1 GATE REACHED**: 5026/5026 conformance tests ✅
 **Stage 13 STATUS**: 🔄 IN PROGRESS (13.1 ✅, 13.2 ✅, 13.3a ✅, 13.4 🔄 prep; 13.4a P0 pending)
 **P0 closure progress**: 2/3 P0 closed; 1 in preparation (TD-032 reframed)
+
+### v2.45 (Stage 13.4a, 2026-07-26)
+
+Stage 13.4a — 19 missing built-in macros (TD-032 P0 CLOSED — ALL P0 CLOSED, milestone).
+
+**Changes**:
+- TD-032 P0 CLOSED: all 26 built-in macros now handled
+  - 7 existing (Stage 4.10): println!, print!, eprintln!, eprint!, stringify!, assert!, debug_assert!
+  - +19 new (Stage 13.4a): assert_eq!, assert_ne!, debug_assert_eq!, debug_assert_ne!, write!, writeln!, panic!, todo!, unimplemented!, unreachable!, cfg!, include!, concat!, env!, option_env!, format_args!, format!, vec!, dbg!
+  - All produce type-correct MIR (unit for assertions/printing, Never for diverging, bool for cfg, &str for env/stringify)
+  - format! and vec! are MVP-simplified (unit type; full String/Vec requires alloc support, deferred to v0.2+)
+- Strategy B (extend built-in macros) — design-sanctioned by 02-grammar.md §4.4
+- 1 src file modified (src/mir/lower/expr_operand.rs); 0 regressions
+- Stage 13.4a gate review: docs/develop/v0/stage-13/gate-review-13.4a.md (5/5 GO → PASS)
+- New Rust integration tests: tests/v0/stage13/plan/stage13_4a_tests.rs (8 tests)
+
+**Test impact**: +8 rust (2271 → 2279). 0 conformance changes. 0 regressions.
+
+**Version policy**: v0.23.1 → v0.24.0 (minor bump — ALL 3 P0 CLOSED, milestone). Third user-facing feature; all P0 blockers resolved.
+
+**🎉 ALL 3 P0 ITEMS CLOSED**: TD-030 (Stage 13.3a) + TD-031 (Stage 13.2) + TD-032 (Stage 13.4a)
+**v0.3 self-hosting preparation**: COMPLETE
+**Stage 13 STATUS**: 🔄 IN PROGRESS (all P0 closed; P1/P2 items remaining)

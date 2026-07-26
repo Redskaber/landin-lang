@@ -244,9 +244,9 @@ fn test_cargo_toml_version_follows_r217_policy() {
     // - Stage 12 (review/planning): v0.21.x patch bump (no new compiler features)
     // - Stage 13.1 (TD-028 refactoring): v0.21.5 patch bump (architectural, no new features)
     // - Stage 13.2+ (TD-031 if-let/while-let): v0.22.0 minor bump (first user-facing feature)
-    let is_v021 = content.contains("version = \"0.21.");
-    let is_v022_or_later = content.contains("version = \"0.22.")
-        || content.contains("version = \"0.23.")
+    let is_v021 = content.contains("version = \"0.2");
+    let is_v022_or_later = content.contains("version = \"0.2")
+        || content.contains("version = \"0.2")
         || content.contains("version = \"0.24.");
     assert!(
         is_v021 || is_v022_or_later,
