@@ -344,3 +344,43 @@ fn rt_string_multi() {
         "foo bar\n",
     );
 }
+
+// === Negative Numbers (Stage 13.21) ===
+
+#[test]
+fn rt_negative_number() {
+    assert_runtime(
+        "negative-number",
+        "fn main() -> i32 { let x = -5; println!(\"{}\", x); 0 }",
+        "-5\n",
+    );
+}
+
+#[test]
+fn rt_negative_arithmetic() {
+    assert_runtime(
+        "negative-arithmetic",
+        "fn main() -> i32 { let a = 10; let b = 20; println!(\"{}\", a - b); 0 }",
+        "-10\n",
+    );
+}
+
+// === Early Return (Stage 13.21) ===
+
+#[test]
+fn rt_early_return() {
+    assert_runtime(
+        "early-return",
+        "fn f(x: i32) -> i32 { if x > 0 { return x; } 0 } fn main() -> i32 { println!(\"{}\", f(5)); 0 }",
+        "5\n",
+    );
+}
+
+#[test]
+fn rt_early_return_negative() {
+    assert_runtime(
+        "early-return-negative",
+        "fn f(x: i32) -> i32 { if x < 0 { return -1; } 1 } fn main() -> i32 { println!(\"{}\", f(-5)); 0 }",
+        "-1\n",
+    );
+}

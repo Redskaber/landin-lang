@@ -283,7 +283,8 @@ impl LLVMSysEmitter {
                     }
                 }
                 // Fallback: null pointer if we can't parse.
-                return LLVMConstNull(unsafe { LLVMPointerTypeInContext(self.ctx, 0) });
+                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+                return LLVMConstNull(ptr_ty);
             }
             // Fallback: i32 zero.
             let ty = LLVMInt32TypeInContext(self.ctx);

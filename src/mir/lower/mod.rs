@@ -244,6 +244,19 @@ impl<'a> MirLowerCtxt<'a> {
         self.mir.block_mut(self.current_block).terminator = terminator;
     }
 
+    /// Stage 13.21: Check if the current block is already terminated (has a
+    /// non-Unreachable terminator). Used by `if`/`match` lowering to skip
+    /// the continuation Goto when the then/else block ends with `return`,
+    /// `break`, or `continue`.
+    ///
+    /// Per §16: this is lowering context state, not MIR data.
+    pub fn is_terminated(&self) -> bool {
+        !matches!(
+            self.mir.block(self.current_block).terminator,
+            Terminator::Unreachable
+        )
+    }
+
     /// Set the terminator of the current block and switch to `next`.
     pub fn terminate_and_goto(&mut self, terminator: Terminator, next: BasicBlockId) {
         self.mir.block_mut(self.current_block).terminator = terminator;

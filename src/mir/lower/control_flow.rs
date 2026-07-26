@@ -273,30 +273,37 @@ pub(crate) fn lower_if(
     // Then block
     cx.current_block = then_block;
     let then_result = lower_block(cx, then);
-    cx.push_assign(
-        Place::local(result_local, span),
-        Rvalue::Use(Operand::Copy(Place::local(then_result, then.span))),
-        then.span,
-    );
-    cx.terminate(Terminator::Goto(cont_block));
+    // Stage 13.21: If the then block ended with `return`/`break`/`continue`,
+    // the block is already terminated — skip the assign and Goto.
+    if !cx.is_terminated() {
+        cx.push_assign(
+            Place::local(result_local, span),
+            Rvalue::Use(Operand::Copy(Place::local(then_result, then.span))),
+            then.span,
+        );
+        cx.terminate(Terminator::Goto(cont_block));
+    }
 
     // Else block
     cx.current_block = else_block;
     if let Some(else_expr) = else_ {
         let else_result = lower_expr_to_operand(cx, else_expr);
-        cx.push_assign(
-            Place::local(result_local, span),
-            Rvalue::Use(Operand::Copy(Place::local(else_result, else_expr.span))),
-            else_expr.span,
-        );
+        if !cx.is_terminated() {
+            cx.push_assign(
+                Place::local(result_local, span),
+                Rvalue::Use(Operand::Copy(Place::local(else_result, else_expr.span))),
+                else_expr.span,
+            );
+            cx.terminate(Terminator::Goto(cont_block));
+        }
     } else {
         cx.push_assign(
             Place::local(result_local, span),
             Rvalue::Aggregate(AggregateKind::Tuple, vec![]),
             span,
         );
+        cx.terminate(Terminator::Goto(cont_block));
     }
-    cx.terminate(Terminator::Goto(cont_block));
 
     // Continuation block
     cx.current_block = cont_block;

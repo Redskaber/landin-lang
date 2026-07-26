@@ -9756,3 +9756,33 @@ Stage Summary:
 - v0.25.4: patch bump (P0 bug fix — string printing)
 - Test impact: +3 runtime tests (2374→2377 with llvm-backend)
 - Next: continue runtime audit — arrays.len(), for loops, trait methods
+
+---
+Task ID: stage13.21-r243-early-return-negative-numbers
+Agent: Super Z (main)
+Task: Stage 13.21 — Fix early return + negative number printing. v0.25.5 patch bump.
+
+Work Log:
+- Baseline: v0.25.4 / 2377 rust tests + 5026 conformance (Stage 13.20 ✅ string null terminator)
+- Round 4 audit found two more P0 bugs:
+  - Bug A: `return x` in if-block didn't work — function continued after return, overwriting return value with 0
+  - Bug B: `println!("{}", -5)` printed `4294967291` instead of `-5` (zero-extension instead of sign-extension)
+- Bug A root cause: control_flow::lower_if didn't check if then/else block was already terminated by `return` — it unconditionally emitted push_assign + Goto(cont_block), overwriting the return value.
+- Bug A fix: Added `is_terminated()` method to MirLowerCtxt; lower_if now skips assign+Goto if block already terminated.
+- Bug B root cause: codegen used `emit_zext` (zero-extension) for integer args in printf — turns -5 (0xFFFFFFFB) into 4294967291 (0x00000000FFFFFFFB).
+- Bug B fix: Use `emit_cast` (sign-extension for signed integers) instead of `emit_zext` for non-bool integer args.
+- Behavioral verification (all pass):
+  - early-return: `fn f(x) { if x > 0 { return x; } 0 }` → f(5) = 5 ✅
+  - early-return-negative: `fn f(x) { if x < 0 { return -1; } 1 }` → f(-5) = -1 ✅
+  - negative-number: `println!("{}", -5)` → "-5" ✅
+  - negative-arithmetic: `println!("{}", 10 - 20)` → "-10" ✅
+- Added 4 runtime tests (rt_negative_number, rt_negative_arithmetic, rt_early_return, rt_early_return_negative)
+- Bumped Cargo.toml v0.25.4 → v0.25.5
+- Full CI/CD: 2381 rust tests passed (with llvm-backend), 5026 conformance passed
+
+Stage Summary:
+- Stage 13.21 PASSED — early return + negative number printing fixed
+- Two P0 bugs fixed: return-in-if overwriting return value + zext vs sext for signed integers
+- v0.25.5: patch bump (P0 bug fixes)
+- Test impact: +4 runtime tests (2377→2381 with llvm-backend)
+- Next: continue audit — tuple destructuring, for loops, integer overflow checks

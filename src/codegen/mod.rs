@@ -463,12 +463,20 @@ fn codegen_statement(
                             | EmitType::I64
                             | EmitType::I128 => {
                                 // Integer → %ld (cast to i64 for portability)
-                                // For now, use %ld assuming the value fits in i64.
-                                // (Bool is i1; we zext to i32 then treat as %ld.)
+                                // Stage 13.21: Use SIGN-EXTENSION (emit_cast) for signed
+                                // integers so negative numbers print correctly. Before
+                                // Stage 13.21, we used zext (zero-extension), which
+                                // turned -5 (0xFFFFFFFB in i32) into 4294967291
+                                // (0x00000000FFFFFFFB in i64) — a P0 bug for any
+                                // program printing negative values.
+                                //
+                                // Bool (i1) is the only case where zero-extension is
+                                // correct (bool → 0/1, no sign).
                                 let cast_val = if arg_ty == EmitType::I1 {
                                     emitter.emit_zext(&EmitType::I1, &EmitType::I64, &arg_val)
                                 } else if arg_ty != EmitType::I64 {
-                                    emitter.emit_zext(&arg_ty, &EmitType::I64, &arg_val)
+                                    // Use emit_cast which does sext for signed integers
+                                    emitter.emit_cast(&arg_ty, &EmitType::I64, &arg_val)
                                 } else {
                                     arg_val
                                 };
