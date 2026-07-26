@@ -597,3 +597,6 @@ mod stage13_5_muv3_tests;
 // Compile → object → link (auto C wrapper calls landin_main) → execute.
 #[path = "v0/stage13/plan/stage13_8_tests.rs"]
 mod stage13_8_tests;
+// Stage 13.9: Comprehensive --run verification across language constructs.
+#[path = "v0/stage13/plan/stage13_9_tests.rs"]
+mod stage13_9_tests;

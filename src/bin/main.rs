@@ -157,14 +157,13 @@ fn main() {
                 // entry point for the linker.
                 let wrapper_c =
                     std::env::temp_dir().join(format!("landin_wrapper_{}.c", std::process::id()));
-                let wrapper_src = r#"
-                    #include <stdio.h>
-                    extern int landin_main(void);
-                    int main(void) {
-                        int ret = landin_main();
-                        return ret;
-                    }
-                    "#;
+                let wrapper_src = r#"#include <stdio.h>
+extern int landin_main(void);
+int main(void) {
+    int ret = landin_main();
+    return ret;
+}
+"#;
                 if let Err(e) = std::fs::write(&wrapper_c, wrapper_src) {
                     eprintln!("error: cannot write wrapper: {e}");
                     std::process::exit(1);
