@@ -1314,3 +1314,34 @@ mod tests {
         );
     }
 }
+#[test]
+#[cfg(feature = "llvm-backend")]
+fn test_simple_module_builds_and_emits() {
+    use crate::codegen::emitter::*;
+    use crate::codegen::LLVMSysEmitter;
+
+    let mut emitter = LLVMSysEmitter::new();
+    emitter.emit_header();
+    emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
+
+    // Build: define i32 @main() { ret i32 42 }
+    emitter.emit_function_begin("main", &[], &EmitType::I32);
+    let val = emitter.emit_const(&crate::mir::ty::ConstVal::Int(42));
+    emitter.emit_ret(&EmitType::I32, Some(&val));
+    emitter.emit_function_end();
+
+    // Emit object file
+    let out_path = "/tmp/test_simple_module.o";
+    let _ = std::fs::remove_file(out_path);
+
+    match emitter.to_object_file(out_path) {
+        Ok(()) => {
+            let meta = std::fs::metadata(out_path).expect("object file should exist");
+            println!("✅ Object file: {} bytes", meta.len());
+            assert!(meta.len() > 0, "object file must be non-empty");
+        }
+        Err(e) => {
+            panic!("Object file generation failed: {e}");
+        }
+    }
+}

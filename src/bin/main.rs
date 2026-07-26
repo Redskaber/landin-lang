@@ -28,6 +28,18 @@ struct Cli {
     /// Emit LLVM IR (implies --compile)
     #[arg(long)]
     emit_llvm_ir: bool,
+
+    /// Emit object file (.o) — requires --features llvm-backend
+    #[arg(long)]
+    emit_obj: bool,
+
+    /// Emit executable (link via cc/clang) — requires --features llvm-backend
+    #[arg(long)]
+    emit_bin: bool,
+
+    /// Output file path (default: <input>.o or <input>.out)
+    #[arg(short = 'o', long)]
+    output: Option<PathBuf>,
 }
 
 fn main() {
@@ -82,12 +94,11 @@ fn main() {
         std::process::exit(1);
     }
 
-    // If --compile or --emit-llvm-ir, run the full pipeline via driver::compile
-    if cli.compile || cli.emit_llvm_ir {
+    // If --compile, --emit-llvm-ir, --emit-obj, or --emit-bin, run full pipeline
+    if cli.compile || cli.emit_llvm_ir || cli.emit_obj || cli.emit_bin {
         let result = driver::compile(&source_file.src);
 
         if result.has_errors() {
-            // Print all errors
             let error_str = result.errors.format_for_user(Some(&source_file.src));
             eprintln!("{}", error_str);
             eprintln!(
@@ -97,16 +108,84 @@ fn main() {
             std::process::exit(1);
         }
 
-        // Success
+        // Stage 13.5: Emit LLVM IR (text)
         if cli.emit_llvm_ir {
             let llvm_ir = landin_compiler::codegen::codegen_crate(&result);
             println!("{}", llvm_ir);
-        } else {
-            eprintln!(
-                "info: successfully compiled {} items",
-                result.hir.as_ref().map(|h| h.owners.len()).unwrap_or(0)
-            );
+            return;
         }
+
+        // Stage 13.6: Emit object file or executable via LLVMSysEmitter
+        #[cfg(feature = "llvm-backend")]
+        if cli.emit_obj || cli.emit_bin {
+            use landin_compiler::codegen::codegen_crate_to_module;
+
+            let emitter = codegen_crate_to_module(&result);
+
+            // Determine output path
+            let obj_path = if let Some(ref o) = cli.output {
+                o.with_extension("o")
+            } else {
+                cli.file.with_extension("o")
+            };
+
+            // Emit object file
+            match emitter.to_object_file(obj_path.to_str().unwrap()) {
+                Ok(()) => {
+                    eprintln!("info: object file written to {}", obj_path.display());
+                }
+                Err(e) => {
+                    eprintln!("error: object file generation failed: {e}");
+                    std::process::exit(1);
+                }
+            }
+
+            // If --emit-bin, link via cc/clang
+            if cli.emit_bin {
+                let exe_path = if let Some(ref o) = cli.output {
+                    o.clone()
+                } else {
+                    cli.file.with_extension("out")
+                };
+
+                let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
+                let status = std::process::Command::new(&cc)
+                    .arg(&obj_path)
+                    .arg("-o")
+                    .arg(&exe_path)
+                    .arg("-lm")
+                    .status();
+
+                match status {
+                    Ok(s) if s.success() => {
+                        eprintln!("info: executable written to {}", exe_path.display());
+                    }
+                    Ok(s) => {
+                        eprintln!("error: linker failed with status {s}");
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("error: cannot invoke linker '{cc}': {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+
+            return;
+        }
+
+        #[cfg(not(feature = "llvm-backend"))]
+        if cli.emit_obj || cli.emit_bin {
+            eprintln!("error: --emit-obj/--emit-bin requires --features llvm-backend");
+            eprintln!("hint: rebuild with: cargo build --features llvm-backend");
+            std::process::exit(1);
+        }
+
+        // --compile: just report success
+        eprintln!(
+            "info: successfully compiled {} items",
+            result.hir.as_ref().map(|h| h.owners.len()).unwrap_or(0)
+        );
         return;
     }
 
