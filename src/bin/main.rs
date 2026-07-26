@@ -37,6 +37,10 @@ struct Cli {
     #[arg(long)]
     emit_bin: bool,
 
+    /// Compile, link, and run the program — requires --features llvm-backend
+    #[arg(long)]
+    run: bool,
+
     /// Output file path (default: <input>.o or <input>.out)
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
@@ -94,8 +98,8 @@ fn main() {
         std::process::exit(1);
     }
 
-    // If --compile, --emit-llvm-ir, --emit-obj, or --emit-bin, run full pipeline
-    if cli.compile || cli.emit_llvm_ir || cli.emit_obj || cli.emit_bin {
+    // If --compile, --emit-llvm-ir, --emit-obj, --emit-bin, or --run, run full pipeline
+    if cli.compile || cli.emit_llvm_ir || cli.emit_obj || cli.emit_bin || cli.run {
         let result = driver::compile(&source_file.src);
 
         if result.has_errors() {
@@ -115,14 +119,14 @@ fn main() {
             return;
         }
 
-        // Stage 13.6: Emit object file or executable via LLVMSysEmitter
+        // Stage 13.6-13.8: Emit object file, executable, or run via LLVMSysEmitter
         #[cfg(feature = "llvm-backend")]
-        if cli.emit_obj || cli.emit_bin {
+        if cli.emit_obj || cli.emit_bin || cli.run {
             use landin_compiler::codegen::codegen_crate_to_module;
 
             let emitter = codegen_crate_to_module(&result);
 
-            // Determine output path
+            // Determine object file path
             let obj_path = if let Some(ref o) = cli.output {
                 o.with_extension("o")
             } else {
@@ -140,21 +144,42 @@ fn main() {
                 }
             }
 
-            // If --emit-bin, link via cc/clang
-            if cli.emit_bin {
+            // If --emit-bin or --run, link via cc/clang
+            if cli.emit_bin || cli.run {
                 let exe_path = if let Some(ref o) = cli.output {
                     o.clone()
                 } else {
                     cli.file.with_extension("out")
                 };
 
+                // Stage 13.8: Generate a C wrapper that calls landin_main()
+                // and prints the return value. This provides a standard `main`
+                // entry point for the linker.
+                let wrapper_c =
+                    std::env::temp_dir().join(format!("landin_wrapper_{}.c", std::process::id()));
+                let wrapper_src = r#"
+                    #include <stdio.h>
+                    extern int landin_main(void);
+                    int main(void) {
+                        int ret = landin_main();
+                        return ret;
+                    }
+                    "#;
+                if let Err(e) = std::fs::write(&wrapper_c, wrapper_src) {
+                    eprintln!("error: cannot write wrapper: {e}");
+                    std::process::exit(1);
+                }
+
                 let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
                 let status = std::process::Command::new(&cc)
+                    .arg(&wrapper_c)
                     .arg(&obj_path)
                     .arg("-o")
                     .arg(&exe_path)
                     .arg("-lm")
                     .status();
+
+                let _ = std::fs::remove_file(&wrapper_c);
 
                 match status {
                     Ok(s) if s.success() => {
@@ -169,14 +194,34 @@ fn main() {
                         std::process::exit(1);
                     }
                 }
+
+                // Stage 13.8: If --run, execute the program
+                if cli.run {
+                    eprintln!("info: running {}", exe_path.display());
+                    let run_status = std::process::Command::new(&exe_path).status();
+
+                    match run_status {
+                        Ok(s) => {
+                            let _ = std::fs::remove_file(&exe_path);
+                            let _ = std::fs::remove_file(&obj_path);
+                            std::process::exit(s.code().unwrap_or(1));
+                        }
+                        Err(e) => {
+                            eprintln!("error: cannot execute '{}': {e}", exe_path.display());
+                            let _ = std::fs::remove_file(&exe_path);
+                            let _ = std::fs::remove_file(&obj_path);
+                            std::process::exit(1);
+                        }
+                    }
+                }
             }
 
             return;
         }
 
         #[cfg(not(feature = "llvm-backend"))]
-        if cli.emit_obj || cli.emit_bin {
-            eprintln!("error: --emit-obj/--emit-bin requires --features llvm-backend");
+        if cli.emit_obj || cli.emit_bin || cli.run {
+            eprintln!("error: --emit-obj/--emit-bin/--run requires --features llvm-backend");
             eprintln!("hint: rebuild with: cargo build --features llvm-backend");
             std::process::exit(1);
         }

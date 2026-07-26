@@ -593,3 +593,7 @@ mod stage13_5_muv2_tests;
 #[cfg(feature = "llvm-backend")]
 #[path = "v0/stage13/plan/stage13_5_muv3_tests.rs"]
 mod stage13_5_muv3_tests;
+// Stage 13.8: --run flag + --emit-bin with auto C wrapper.
+// Compile → object → link (auto C wrapper calls landin_main) → execute.
+#[path = "v0/stage13/plan/stage13_8_tests.rs"]
+mod stage13_8_tests;
