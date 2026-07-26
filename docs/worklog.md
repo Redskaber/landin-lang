@@ -9727,3 +9727,32 @@ Stage Summary:
 - v0.25.3: patch bump (P0 bug fix)
 - Test impact: +3 runtime tests (2371→2374 with llvm-backend)
 - Next: continue runtime audit — arrays, strings, for loops, trait methods
+
+---
+Task ID: stage13.20-r242-string-null-terminator-fix
+Agent: Super Z (main)
+Task: Stage 13.20 — Fix string variable printing ((null) bug). v0.25.4 patch bump.
+
+Work Log:
+- Baseline: v0.25.3 / 2374 rust tests + 5026 conformance (Stage 13.19 ✅ break/continue)
+- Round 3 audit found: `let s = "hello"; println!("{}", s)` outputs "(null)" instead of "hello"
+- Root cause analysis (two bugs):
+  - Bug A: String globals lacked null terminator — `[5 x i8] c"hello"` (no \0), so printf read past end
+  - Bug B: LLVMSysEmitter's lookup_or_const returned i32 zero (null pointer) for "getelementptr" text — Stage 13.5 MUV-2 stub never replaced!
+- Fix A: src/codegen/mod.rs — append \0 to string global bytes; GEP array size uses n+1
+- Fix B: src/codegen/llvm_sys_emitter.rs — parse global name from GEP text, build real LLVMConstInBoundsGEP2 to get i8* pointer
+- Behavioral verification (all 4 pass):
+  - string-var: `let s = "hello"; println!("{}", s)` → "hello" ✅
+  - string-direct: `println!("{}", "world")` → "world" ✅
+  - string-multi: `println!("{} {}", a, b)` → "foo bar" ✅
+  - string-empty: `let s = ""` → "empty" ✅
+- Added 3 runtime tests (rt_string_var, rt_string_direct, rt_string_multi)
+- Bumped Cargo.toml v0.25.3 → v0.25.4
+- This was a MAJOR bug — string variables are fundamental; printing them is a core use case
+
+Stage Summary:
+- Stage 13.20 PASSED — string variables now print correctly (was "(null)" for ALL string args)
+- Two bugs fixed: null terminator in globals + GEP stub in LLVMSysEmitter
+- v0.25.4: patch bump (P0 bug fix — string printing)
+- Test impact: +3 runtime tests (2374→2377 with llvm-backend)
+- Next: continue runtime audit — arrays.len(), for loops, trait methods

@@ -756,7 +756,7 @@ fn codegen_string_literal_emits_global() {
     let ll = gen_ll("fn f() { let s = \"hello\"; }");
     // Should emit a private unnamed_addr global with the bytes.
     assert!(
-        ll.contains("@.str.0 = private unnamed_addr constant [5 x i8] c\"hello\""),
+        ll.contains("@.str.0 = private unnamed_addr constant [6 x i8] c\"hello\\00\""),
         "expected string global in:\n{}",
         ll
     );
@@ -769,7 +769,7 @@ fn codegen_string_literal_gep_to_i8_ptr() {
     // `{ i8*, i64 }`. The GEP still produces an i8* (stored at field 0
     // of the fat pointer via insertvalue).
     assert!(
-        ll.contains("getelementptr inbounds ([2 x i8], [2 x i8]* @.str.0, i32 0, i32 0)"),
+        ll.contains("getelementptr inbounds ([3 x i8], [3 x i8]* @.str.0, i32 0, i32 0)"),
         "expected GEP to i8* in:\n{}",
         ll
     );
@@ -791,7 +791,7 @@ fn codegen_string_literal_dedup() {
     // Same string twice should produce only ONE global.
     let ll = gen_ll("fn f() { let a = \"hello\"; let b = \"hello\"; }");
     let count = ll
-        .matches("@.str.0 = private unnamed_addr constant [5 x i8] c\"hello\"")
+        .matches("@.str.0 = private unnamed_addr constant [6 x i8] c\"hello\\00\"")
         .count();
     assert_eq!(
         count, 1,
@@ -811,12 +811,12 @@ fn codegen_string_literal_distinct() {
     // Two different strings should produce TWO globals.
     let ll = gen_ll("fn f() { let a = \"hello\"; let b = \"world\"; }");
     assert!(
-        ll.contains("@.str.0 = private unnamed_addr constant [5 x i8] c\"hello\""),
+        ll.contains("@.str.0 = private unnamed_addr constant [6 x i8] c\"hello\\00\""),
         "expected hello global in:\n{}",
         ll
     );
     assert!(
-        ll.contains("@.str.1 = private unnamed_addr constant [5 x i8] c\"world\""),
+        ll.contains("@.str.1 = private unnamed_addr constant [6 x i8] c\"world\\00\""),
         "expected world global in:\n{}",
         ll
     );
@@ -825,10 +825,10 @@ fn codegen_string_literal_distinct() {
 #[test]
 fn codegen_string_literal_escape_tab() {
     let ll = gen_ll("fn f() { let s = \"a\\tb\"; }");
-    // \t → \09 in LLVM c"..." literal.
+    // \t → \09 in LLVM c"..." literal. Stage 13.20: now includes \00 null terminator.
     assert!(
-        ll.contains("c\"a\\09b\""),
-        "expected \\\\09 escape for tab in:\n{}",
+        ll.contains("c\"a\\09b\\00\""),
+        "expected \\\\09 escape for tab (with null terminator) in:\n{}",
         ll
     );
 }
@@ -836,10 +836,10 @@ fn codegen_string_literal_escape_tab() {
 #[test]
 fn codegen_string_literal_escape_newline() {
     let ll = gen_ll("fn f() { let s = \"a\\nb\"; }");
-    // \n → \0A
+    // \n → \0A. Stage 13.20: now includes \00 null terminator.
     assert!(
-        ll.contains("c\"a\\0Ab\""),
-        "expected \\\\0A escape for newline in:\n{}",
+        ll.contains("c\"a\\0Ab\\00\""),
+        "expected \\\\0A escape for newline (with null terminator) in:\n{}",
         ll
     );
 }
@@ -847,10 +847,10 @@ fn codegen_string_literal_escape_newline() {
 #[test]
 fn codegen_string_literal_escape_quote() {
     let ll = gen_ll("fn f() { let s = \"a\\\"b\"; }");
-    // " → \22
+    // " → \22. Stage 13.20: now includes \00 null terminator.
     assert!(
-        ll.contains("c\"a\\22b\""),
-        "expected \\\\22 escape for quote in:\n{}",
+        ll.contains("c\"a\\22b\\00\""),
+        "expected \\\\22 escape for quote (with null terminator) in:\n{}",
         ll
     );
 }
@@ -858,43 +858,44 @@ fn codegen_string_literal_escape_quote() {
 #[test]
 fn codegen_string_literal_escape_backslash() {
     let ll = gen_ll("fn f() { let s = \"a\\\\b\"; }");
-    // \\ → \5C
+    // \\ → \5C. Stage 13.20: now includes \00 null terminator.
     assert!(
-        ll.contains("c\"a\\5Cb\""),
-        "expected \\\\5C escape for backslash in:\n{}",
+        ll.contains("c\"a\\5Cb\\00\""),
+        "expected \\\\5C escape for backslash (with null terminator) in:\n{}",
         ll
     );
 }
 
 #[test]
 fn codegen_string_literal_unicode_utf8() {
-    // é (U+00E9) → UTF-8 bytes C3 A9.
+    // é (U+00E9) → UTF-8 bytes C3 A9. Stage 13.20: now includes \00 null terminator.
     let ll = gen_ll("fn f() { let s = \"\\u{e9}\"; }");
     assert!(
-        ll.contains("c\"\\C3\\A9\""),
-        "expected UTF-8 bytes \\\\C3\\\\A9 for é in:\n{}",
+        ll.contains("c\"\\C3\\A9\\00\""),
+        "expected UTF-8 bytes \\\\C3\\\\A9 for é (with null terminator) in:\n{}",
         ll
     );
 }
 
 #[test]
 fn codegen_string_literal_correct_length() {
-    // Length in [N x i8] should match the byte count, not char count.
-    // "é" is 1 char but 2 UTF-8 bytes.
+    // Length in [N x i8] should match the byte count + null terminator.
+    // "é" is 1 char but 2 UTF-8 bytes + 1 null = 3 bytes total.
     let ll = gen_ll("fn f() { let s = \"\\u{e9}\"; }");
     assert!(
-        ll.contains("[2 x i8]"),
-        "expected [2 x i8] for UTF-8 é in:\n{}",
+        ll.contains("[3 x i8]"),
+        "expected [3 x i8] for UTF-8 é + null terminator in:\n{}",
         ll
     );
 }
 
 #[test]
 fn codegen_string_literal_empty() {
+    // Stage 13.20: empty string now has 1 byte (the null terminator).
     let ll = gen_ll("fn f() { let s = \"\"; }");
     assert!(
-        ll.contains("[0 x i8] c\"\""),
-        "expected empty string global in:\n{}",
+        ll.contains("[1 x i8] c\"\\00\"") || ll.contains("[1 x i8]"),
+        "expected [1 x i8] for empty string + null terminator in:\n{}",
         ll
     );
 }
@@ -918,11 +919,13 @@ fn codegen_no_alloca_void_for_unit_locals() {
 #[test]
 fn codegen_string_literal_multiple_functions() {
     // Strings used in different functions should still dedup to the same global.
+    // Stage 13.20: string globals now include a null terminator (\00).
     let ll = gen_ll("fn f() { let _ = \"shared\"; } fn g() { let _ = \"shared\"; }");
-    let count = ll.matches("\"shared\"").count();
+    // Count occurrences of "shared\00" (the null-terminated form)
+    let count = ll.matches("shared\\00").count();
     assert_eq!(
         count, 1,
-        "expected 1 'shared' global, got {} in:\n{}",
+        "expected 1 'shared\\00' global, got {} in:\n{}",
         count, ll
     );
 }
@@ -935,7 +938,7 @@ fn codegen_byte_string_literal_emits_global() {
     // Byte strings share the same global format as string literals
     // (LLVM doesn't distinguish i8 from u8).
     assert!(
-        ll.contains("@.str.0 = private unnamed_addr constant [5 x i8] c\"hello\""),
+        ll.contains("@.str.0 = private unnamed_addr constant [6 x i8] c\"hello\\00\""),
         "expected byte string global in:\n{}",
         ll
     );
@@ -945,7 +948,7 @@ fn codegen_byte_string_literal_emits_global() {
 fn codegen_byte_string_literal_gep_to_i8_ptr() {
     let ll = gen_ll("fn f() { let b = b\"hi\"; }");
     assert!(
-        ll.contains("getelementptr inbounds ([2 x i8], [2 x i8]* @.str.0, i32 0, i32 0)"),
+        ll.contains("getelementptr inbounds ([3 x i8], [3 x i8]* @.str.0, i32 0, i32 0)"),
         "expected GEP to i8* for byte string in:\n{}",
         ll
     );
@@ -955,7 +958,7 @@ fn codegen_byte_string_literal_gep_to_i8_ptr() {
 fn codegen_byte_string_literal_dedup_with_str() {
     // b"hello" and "hello" should share the same global (same bytes).
     let ll = gen_ll("fn f() { let s = \"hello\"; let b = b\"hello\"; }");
-    let count = ll.matches("[5 x i8] c\"hello\"").count();
+    let count = ll.matches("[6 x i8] c\"hello\\00\"").count();
     assert_eq!(
         count, 1,
         "expected 1 hello global (str + bytestr dedup), got {} in:\n{}",
@@ -968,7 +971,7 @@ fn codegen_byte_string_literal_escape() {
     // b"a\nb" → bytes [0x61, 0x0A, 0x62]
     let ll = gen_ll("fn f() { let b = b\"a\\nb\"; }");
     assert!(
-        ll.contains("c\"a\\0Ab\""),
+        ll.contains("c\"a\\0Ab\\00\""),
         "expected \\\\0A escape for newline in byte string in:\n{}",
         ll
     );
@@ -978,8 +981,8 @@ fn codegen_byte_string_literal_escape() {
 fn codegen_byte_string_literal_empty() {
     let ll = gen_ll("fn f() { let b = b\"\"; }");
     assert!(
-        ll.contains("[0 x i8] c\"\""),
-        "expected empty byte string global in:\n{}",
+        ll.contains("[1 x i8]"),
+        "expected [1 x i8] for empty byte string + null terminator in:\n{}",
         ll
     );
 }
@@ -989,7 +992,7 @@ fn codegen_byte_string_literal_correct_length() {
     // b"abc" → 3 bytes
     let ll = gen_ll("fn f() { let b = b\"abc\"; }");
     assert!(
-        ll.contains("[3 x i8]"),
+        ll.contains("[4 x i8]"),
         "expected [3 x i8] for b\"abc\" in:\n{}",
         ll
     );
@@ -1022,7 +1025,7 @@ fn codegen_byte_string_in_function_with_other_locals() {
     // Stage 3.50: byte string local is now a fat pointer `{ i8*, i64 }`.
     let ll = gen_ll("fn f() -> i32 { let b = b\"hi\"; let n = 42; n }");
     assert!(
-        ll.contains("[2 x i8] c\"hi\""),
+        ll.contains("[3 x i8] c\"hi\\00\""),
         "expected byte string global in:\n{}",
         ll
     );
@@ -2783,7 +2786,7 @@ fn codegen_byte_string_dedup_with_str() {
     // b"hello" and "hello" share the same global (same bytes).
     let ll = gen_ll("fn f() { let s = \"hello\"; let b = b\"hello\"; }");
     let count = ll
-        .matches("@.str.0 = private unnamed_addr constant [5 x i8] c\"hello\"")
+        .matches("@.str.0 = private unnamed_addr constant [6 x i8] c\"hello\\00\"")
         .count();
     assert_eq!(
         count, 1,

@@ -315,3 +315,32 @@ fn rt_loop_break() {
         "0\n1\n2\n",
     );
 }
+
+// === String Variables (Stage 13.20) ===
+
+#[test]
+fn rt_string_var() {
+    assert_runtime(
+        "string-var",
+        "fn main() -> i32 { let s = \"hello\"; println!(\"{}\", s); 0 }",
+        "hello\n",
+    );
+}
+
+#[test]
+fn rt_string_direct() {
+    assert_runtime(
+        "string-direct",
+        "fn main() -> i32 { println!(\"{}\", \"world\"); 0 }",
+        "world\n",
+    );
+}
+
+#[test]
+fn rt_string_multi() {
+    assert_runtime(
+        "string-multi",
+        "fn main() -> i32 { let a = \"foo\"; let b = \"bar\"; println!(\"{} {}\", a, b); 0 }",
+        "foo bar\n",
+    );
+}

@@ -879,28 +879,46 @@ fn codegen_operand(
                     .try_resolve(&sym)
                     .map(|s| s.as_bytes())
                     .unwrap_or(b"\0");
-                let global_name = emitter.emit_string_global(bytes);
-                let n = bytes.len();
-                // Stage 3.49 (L13 closure): emit a fat pointer
-                // `{ i8*, i64 }` (or `{ T*, i64 }` for byte strings) instead
-                // of just the thin `i8*` pointer. The fat pointer carries
-                // the length, so callees can recover it.
+                // Stage 13.20: Append a null terminator to the string global
+                // so `printf("%s", ptr)` works correctly. Without the null
+                // terminator, printf reads past the end of the string,
+                // producing garbage output (e.g., "(null)").
                 //
-                // The constant's type (`c.ty`) tells us whether this is a
-                // `&str` (Ref to Str) or a `&[u8]` (Slice(u8) — actually
-                // MIR lower produces Slice(u8) directly for byte strings,
-                // not a Ref to Slice, but codegen treats both as fat ptrs).
-                //
-                // For `&str`: fat_ptr = `{ i8*, i64 }`, ptr = GEP to global,
-                //   len = byte count.
-                // For `&[u8]` (Slice(u8) const): same layout, same emission.
-                //
-                // We compute the fat pointer's EmitType from the constant's
-                // declared type, then `insertvalue` the ptr and len.
+                // The fat pointer's length field still carries the original
+                // byte count (without the null terminator), so &str length
+                // queries remain correct. The null terminator is only for
+                // C ABI compatibility (printf, strcmp, etc.).
+                let mut bytes_with_null = bytes.to_vec();
+                bytes_with_null.push(0);
+                let global_name = emitter.emit_string_global(&bytes_with_null);
+                let n = bytes.len(); // original length (without null)
+                                     // Stage 3.49 (L13 closure): emit a fat pointer
+                                     // `{ i8*, i64 }` (or `{ T*, i64 }` for byte strings) instead
+                                     // of just the thin `i8*` pointer. The fat pointer carries
+                                     // the length, so callees can recover it.
+                                     //
+                                     // The constant's type (`c.ty`) tells us whether this is a
+                                     // `&str` (Ref to Str) or a `&[u8]` (Slice(u8) — actually
+                                     // MIR lower produces Slice(u8) directly for byte strings,
+                                     // not a Ref to Slice, but codegen treats both as fat ptrs).
+                                     //
+                                     // For `&str`: fat_ptr = `{ i8*, i64 }`, ptr = GEP to global,
+                                     //   len = byte count.
+                                     // For `&[u8]` (Slice(u8) const): same layout, same emission.
+                                     //
+                                     // We compute the fat pointer's EmitType from the constant's
+                                     // declared type, then `insertvalue` the ptr and len.
                 let fat_ty = mir_type_to_emit_type_with_layouts(&c.ty, layouts);
+                // Stage 13.20: GEP array size must match the global's actual
+                // size (n+1 to include the null terminator). Using the original
+                // length `n` here would create a type mismatch with the global
+                // ([n+1 x i8] global but [n x i8] GEP), which LLVM accepts but
+                // produces incorrect pointer arithmetic in some cases.
                 let ptr_val = format!(
                     "getelementptr inbounds ([{} x i8], [{} x i8]* @{}, i32 0, i32 0)",
-                    n, n, global_name
+                    n + 1,
+                    n + 1,
+                    global_name
                 );
                 // insertvalue { i8*, i64 } undef, i8* %ptr, 0
                 let with_ptr = emitter.emit_insertvalue(

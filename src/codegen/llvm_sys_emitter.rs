@@ -252,13 +252,38 @@ impl LLVMSysEmitter {
                 let ty = LLVMInt32TypeInContext(self.ctx);
                 return LLVMConstInt(ty, n as u64, 1);
             }
-            // "getelementptr inbounds ..." — this is produced by codegen_operand
-            // for &str fat-pointer construction. Stage 13.5 MUV-2 stubs this
-            // path: we return an i32 zero (the call-site is `emit_insertvalue`
-            // which we don't fully lower yet for ad-hoc GEP text).
+            // "getelementptr inbounds ([N x i8], [N x i8]* @.str.M, i32 0, i32 0)"
+            // — this is produced by codegen_operand for &str fat-pointer
+            // construction. Stage 13.20: parse the global name (@.str.M) and
+            // build a real GEP to get the i8* pointer to the string data.
+            //
+            // Before Stage 13.20, this returned i32 zero (null pointer),
+            // causing `printf("%s", null)` → "(null)" output for ALL string
+            // arguments.
             if name.starts_with("getelementptr") {
-                let ty = LLVMInt32TypeInContext(self.ctx);
-                return LLVMConstInt(ty, 0, 0);
+                // Extract the global name: find "@." and read until the next
+                // space or comma.
+                if let Some(at_pos) = name.find("@.") {
+                    let rest = &name[at_pos + 1..]; // skip "@"
+                    let global_name: String = rest
+                        .chars()
+                        .take_while(|c| c.is_alphanumeric() || *c == '.' || *c == '_')
+                        .collect();
+                    // Look up the global value.
+                    if let Some(&global) = self.values.get(&global_name) {
+                        unsafe {
+                            // Build GEP: getelementptr inbounds [N x i8], ptr @global, i32 0, i32 0
+                            let i8_ty = LLVMInt8TypeInContext(self.ctx);
+                            let i32_ty = LLVMInt32TypeInContext(self.ctx);
+                            let zero = LLVMConstInt(i32_ty, 0, 0);
+                            let mut indices = [zero, zero];
+                            let gep = LLVMConstInBoundsGEP2(i8_ty, global, indices.as_mut_ptr(), 2);
+                            return gep;
+                        }
+                    }
+                }
+                // Fallback: null pointer if we can't parse.
+                return LLVMConstNull(unsafe { LLVMPointerTypeInContext(self.ctx, 0) });
             }
             // Fallback: i32 zero.
             let ty = LLVMInt32TypeInContext(self.ctx);
