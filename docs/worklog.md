@@ -8672,3 +8672,89 @@ Stage Summary:
 - v0.1 gate: 5026/5000 ✅ RATIFIED by r216 + r217 + r219 audits
 - v0.3 prep: Stage 13 plan-13.1.md ready; Stage 13.1 may begin immediately with MUV-1 (TD-028 §16 fix, ≤3 files, ~4h)
 - Next: Stage 13.1 MUV-1 (TD-028) → MUV-2 (TD-029) → Stage 13.2 (TD-031 if-let) → Stage 13.3 (TD-030 closure call) → Stage 13.4 (TD-032 macro_rules!)
+
+---
+Task ID: stage-12.9-polish-backfill
+Agent: REC-A + REV-A (combined subagent)
+Task: Stage 12.9 polish backfill — Stage 5 develop README + plan-6.{4,5,6}.md retroactive backfill
+
+Work Log:
+- Read context: stage-6/README.md + stage-7/README.md (mirror structure for Stage 5 README), cross-stage-audit-r217-stages-5-8.md §2 (Stage 5 re-audit findings) + §3 (Stage 6 re-audit) + §7 (P2 items 5/6) + §8 (committee vote)
+- Verified Stage 5 file counts: 200 total files (96 plan-5.*.md + 96 gate-review-round*.md + 7 deep-review-*.md + 1 dev-log.md), matches r217 §2.1 verified counts
+- Verified Stage 5 version span from dev-log.md: v0.11.0 (5.1) → v0.11.95 (5.99); corrected task template error (template said "v0.11.0 → v0.14.0" but v0.11.95 → v0.14.0 is the Stage 6 span per stage-6/README.md:4)
+- Read existing plan-6.1.md + plan-6.2.md + plan-6.3.md for plan format reference (Chinese headings, function table, dependency section, single "创建日期" footer)
+- Read gate-review-6.4.md + gate-review-6.5.md + gate-review-6.6.md for backfill source content (CI/CD results, LOC delta tables, TD-011 cumulative progress)
+- Produced docs/develop/v0/stage-5/README.md (85 lines): 12-row sub-stage index table covering all 99 distinct sub-stages (with explicit note on 3 deep-review-only milestones 5.21/5.27/5.32), milestones section, TD-014/016/018 status table, §25.8 status section documenting Stage 12.4 retroactive backfill of DynTraitMIRSummary + StdlibTypeKind, related tests (977 rust tests across 92 files + 502 conformance .lin), related docs
+- Produced docs/develop/v0/stage-6/plan-6.4.md (103 lines): TD-011 step 4 (overflow_assert split); reconstructed MUV (74 LOC extracted), §16 interface isolation, §14.4 J1-J6 6/6 GO (clearly marked as backfilled criteria), acceptance criteria, actual execution results from gate-review-6.4.md (1881 tests pass, mod.rs 2730→2656)
+- Produced docs/develop/v0/stage-6/plan-6.5.md (109 lines): TD-011 step 5 (field_resolution split); reconstructed MUV (204 LOC extracted, 167 LOC new file), §16 (field_resolution → adt_layout dependency), §14.4 J1-J6 6/6 GO, actual results from gate-review-6.5.md (mod.rs 2656→2452)
+- Produced docs/develop/v0/stage-6/plan-6.6.md (121 lines): TD-011 step 6 (control_flow split + 🎉 mod.rs < 2000 LOC milestone); reconstructed MUV (472 LOC extracted, 462 LOC new file, largest single TD-011 step), §16 (control_flow → pattern_bindings dependency), §14.4 J1-J6 6/6 GO, actual results from gate-review-6.6.md (mod.rs 2452→1980, -40.8% cumulative)
+- Verified after backfill: Stage 6 plan files now 18 (was 15), matching 18 gate-review files — r217 §3.1 finding corrected
+- Produced docs/develop/v0/stage-12/stage-12.9-polish-backfill-report.md: completion report with 3-item completion list, files created table, verification section (file existence + count alignment + content structure + data accuracy), process discipline note (J1-J6 marked as backfilled not original), verdict (✅ COMPLETE, non-blocking, Stage 13 launch unaffected)
+
+Stage Summary:
+- Produced: docs/develop/v0/stage-5/README.md (85 lines, D7 backfill closed)
+- Produced: docs/develop/v0/stage-6/plan-6.4.md (103 lines, retroactive TD-011 step 4 plan)
+- Produced: docs/develop/v0/stage-6/plan-6.5.md (109 lines, retroactive TD-011 step 5 plan)
+- Produced: docs/develop/v0/stage-6/plan-6.6.md (121 lines, retroactive TD-011 step 6 plan, mod.rs < 2000 LOC milestone)
+- Produced: docs/develop/v0/stage-12/stage-12.9-polish-backfill-report.md (completion report)
+- 4 files created (excl. report), 0 code changes
+- r217 §7 P2 items 5 & 6 CLOSED; r217 §3.1 finding CORRECTED (Stage 6 plan files 15→18, aligned with 18 gate-review files)
+- Stage 12.9 verdict: ✅ COMPLETE — non-blocking polish items closed, Stage 13 launch criteria unaffected
+
+---
+Task ID: stage12.9-polish-backfill-r221
+Agent: Super Z (main) + REC-A + REV-A (subagent for items 1+2)
+Task: Stage 12.9 — Polish backfill (close 3 deferred P2/P3 items from gate-review-12.8 before Stage 13 launches)
+
+Work Log:
+- Baseline: v0.21.3 / 2349 rust tests + 5026 conformance (Stage 12 marked COMPLETE in 12.8)
+- User feedback: "continue advancing Stage 12" — interpreted per §15 (long-term > short-term) as: close all P2/P3 polish items before Stage 13 launches
+- Identified 3 deferred P2/P3 items from gate-review-12.8.md §"Stage 13.1 immediate actions" item 4:
+  1. Stage 5 develop-side README.md (D7 gap from r217 stages-5-8 §5.5)
+  2. Stage 6 plan-6.{4,5,6}.md retroactive backfill (r217 stages-5-8 §7 P2 item 6)
+  3. api-naming-standard v2.36 record correction (+10 → +12 tests)
+- Launched subagent for items 1+2 (content-heavy documentation backfill):
+  - Created docs/develop/v0/stage-5/README.md (85 lines) — mirrors stage-6/README.md structure; covers 99 sub-stages, TD-014/016/018 status, §25.8 retroactive backfill, 977 rust tests / 502 conformance
+  - Created docs/develop/v0/stage-6/plan-6.4.md (103 lines) — retroactive TD-011 step 4 plan from gate-review-6.4.md
+  - Created docs/develop/v0/stage-6/plan-6.5.md (109 lines) — retroactive TD-011 step 5 plan from gate-review-6.5.md
+  - Created docs/develop/v0/stage-6/plan-6.6.md (121 lines) — retroactive TD-011 step 6 plan from gate-review-6.6.md (mod.rs < 2000 LOC milestone)
+  - Created docs/develop/v0/stage-12/stage-12.9-polish-backfill-report.md (completion report)
+  - Stage 6 plan file count: 15 → 18 (now matches 18 gate-review files — r217 §3.1 finding corrected)
+  - Stage 5 develop README parity restored (Stages 5-12 all have READMEs)
+- Main agent executed item 3 directly:
+  - Verified stage12_2_tests.rs has 12 tests (not 10 as v2.36 record claimed)
+  - Corrected v2.36 record: "+10 rust (2325 → 2335)" → "+12 rust (2325 → 2337)" + correction note explaining the delta
+- Created Stage 12.9 plan + gate review:
+  - docs/develop/v0/stage-12/plan-12.9.md (MUV-1/2/3/4 + §15 + §25.7 + verification criteria)
+  - docs/develop/v0/stage-12/gate-review-12.9.md (5/5 GO → PASS; 3/3 polish items closed)
+- Stage 12.9 verification tests created: tests/v0/stage12/plan/stage12_5_tests.rs (13 tests)
+  - test_stage5_develop_readme_exists (README + 99 sub-stages + TD-014/016/018 + §25.8 + DynTraitMIRSummary)
+  - test_stage6_plan_6_4_backfilled (retroactive + §14.4 + gate-review-6.4 ref + Stage 12.9 ref)
+  - test_stage6_plan_6_5_backfilled (same checks for 6.5)
+  - test_stage6_plan_6_6_backfilled (same checks for 6.6)
+  - test_stage6_plan_count_now_18 (was 15, now ≥18)
+  - test_api_naming_v2_36_record_corrected (+12 not +10; correction note present; +10 record absent in v2.36 section)
+  - test_stage12_9_documents_exist (plan-12.9.md + gate-review-12.9.md + polish-backfill-report.md + PASS verdict)
+  - test_stage12_9_plan_references_deferred_items (gate-review-12.8 ref + MUV-1/2/3 + §15 + §25.7)
+  - test_v01_gate_still_holds_after_stage12_9 (≥5000 conformance)
+  - test_worklog_has_stage12_9_entry
+  - test_readme_mentions_stage12_9
+  - + 2 more verification tests
+- Wired stage12_5_tests module into tests/all_tests.rs
+- Bumped Cargo.toml v0.21.3 → v0.21.4 (Stage 12.9 polish patch bump)
+- Updated README.md: Stage 12 ✅ COMPLETE (9/9 sub-stages incl. polish); Stage 12.9 row added to sub-stage plan
+- Updated RELEASE_NOTES.md: v0.21.4 entry for Stage 12.9
+- Updated api-naming-standard.md: v2.38 → v2.39 entry for Stage 12.9 + v2.36 record correction
+- Updated docs/tests/matrix.md: Stage 12.9 row added (✅ Complete); total tests 2349 → 2362
+- Ran full CI/CD — all green ✅
+
+Stage Summary:
+- Stage 12.9 PASSED — 3/3 deferred P2/P3 polish items closed
+- Stage 5 develop README created (D7 gap closed)
+- Stage 6 plan-6.{4,5,6}.md retroactively backfilled (15 → 18 plan files; r217 §3.1 finding corrected)
+- api-naming-standard v2.36 record corrected (+10 → +12 tests)
+- Stage 12 STATUS: ✅ COMPLETE (9/9 sub-stages, including 12.9 polish)
+- Stage 13 STATUS: ✅ AUTHORIZED to launch (unchanged — polish was non-blocking)
+- v0.1 gate: 5026/5000 ✅ RATIFIED by r216 + r217 + r219 audits
+- v0.3 prep: Stage 13 plan-13.1.md ready; Stage 13.1 may begin immediately with MUV-1 (TD-028 §16 fix, ≤3 files, ~4h)
+- Next: Stage 13.1 MUV-1 (TD-028) → MUV-2 (TD-029) → Stage 13.2 (TD-031 if-let) → Stage 13.3 (TD-030 closure call) → Stage 13.4 (TD-032 macro_rules!)

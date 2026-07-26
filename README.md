@@ -8,10 +8,10 @@ predictable performance.
 
 > **🎉 v0.1 RELEASE — Conformance gate reached: 5026/5000 tests (100.5%)!**
 >
-> **Status:** v0.21.3 — Stage 0-11 complete, Stage 12 ✅ COMPLETE (8/8 sub-stages), Stage 13 ✅ AUTHORIZED to launch.
-> **2349+ rust tests** + **5026 conformance tests** + 5 benchmarks. 0 clippy warnings.
+> **Status:** v0.21.4 — Stage 0-11 complete, Stage 12 ✅ COMPLETE (9/9 sub-stages incl. polish), Stage 13 ✅ AUTHORIZED to launch.
+> **2362+ rust tests** + **5026 conformance tests** + 5 benchmarks. 0 clippy warnings.
 > Process v3.21 (§0-§28). §16 interface isolation compliant. §17.1/§17.2/§18.4 docs compliant.
-> Cross-stage audit r216 (first-pass) + r217 (second-pass, 3 reports) + r219 (Stage 12 §25 deep review) complete.
+> Cross-stage audit r216 (first-pass) + r217 (second-pass, 3 reports) + r219 (Stage 12 §25 deep review) + Stage 12.9 polish backfill complete.
 >
 > **Milestones:**
 > - Stage 0-4: ✅ Complete (lexer, parser, HIR, MIR, typeck, borrowck, codegen)
@@ -22,7 +22,7 @@ predictable performance.
 > - Stage 9: ✅ Complete (12 sub-stages — parse conformance 600/600)
 > - Stage 10: ✅ Complete (8 sub-stages — CLI upgrade + all 8 conformance categories created)
 > - Stage 11: ✅ Complete (10 sub-stages — conformance 1139→5026, v0.1 gate reached!)
-> - Stage 12: ✅ COMPLETE (8/8 sub-stages — v0.1 release + r216+r217 cross-stage audits + §25.8 backfill + plan-13 reframe + version revert + README corrections + final gate review)
+> - Stage 12: ✅ COMPLETE (9/9 sub-stages — v0.1 release + r216+r217+r219 cross-stage audits + §25.8 backfill + plan-13 reframe + version revert + README corrections + final gate review + polish backfill)
 > - Stage 13: ✅ AUTHORIZED to launch (v0.3 self-hosting prep — TD-028..TD-033 closure per r216/r217/r219 audits)
 >
 > **Architecture:** 50+ modules. All files < 1500 LOC. Single responsibility per module.
@@ -227,7 +227,7 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 9** ✅ COMPLETE (parse conformance 600/600)
 - **Stage 10** ✅ COMPLETE (CLI upgrade + all 8 conformance categories created)
 - **Stage 11** ✅ COMPLETE (conformance 1139→5026, v0.1 gate reached!)
-- **Stage 12** ✅ COMPLETE (8/8 sub-stages — v0.1 release + r216 first-pass + r217 second-pass audits + §25.8 backfill + plan-13 reframe + version revert + README corrections + final gate review)
+- **Stage 12** ✅ COMPLETE (9/9 sub-stages — v0.1 release + r216 first-pass + r217 second-pass audits + §25.8 backfill + plan-13 reframe + version revert + README corrections + final gate review + polish backfill)
   - 12.1 ✅ v0.1 release + v0.3 bootstrap prep
   - 12.2 ✅ r216 first-pass audit (D1-D7, 5/5 GO-WITH-CONDITIONS)
   - 12.3 ✅ r217 second-pass audit (3 reports, 2055 lines, 9 stage-round revisions)
@@ -236,6 +236,7 @@ cargo clippy --all-targets -- -D warnings
   - 12.6 ✅ Version revert v0.22.0 → v0.21.2 (patch bump, no new compiler features)
   - 12.7 ✅ Stage 0-4 README corrections (per r217 stages-0-4 findings)
   - 12.8 ✅ Final gate review (§25 deep review of Stage 12 — 5/5 GO-WITH-CONDITIONS-or-GO → PASS)
+  - 12.9 ✅ Polish backfill (Stage 5 develop README + plan-6.{4,5,6}.md retroactive + v2.36 correction)
 - **Stage 13** ✅ AUTHORIZED to launch (v0.3 self-hosting prep — plan-13.1.md ready, TD-028..TD-033 closure target)
 - **v0.1** = Stage 0 完整 + conformance 5026/5000 通过 ✅ **GATE REACHED!** (ratified by r216 + r217 + r219)
 - **v0.3** = self-hosting (远期 — Stage 13 P0 closure in progress)
@@ -292,7 +293,7 @@ Stage 12.8 triggered the §25 seven-dimension deep review of Stage 12 itself (re
 - **Stage 12 closure**: ✅ **COMPLETE** (7/8 fully DONE + 1/8 PARTIAL with P2 follow-up; no P0/P1 blockers)
 - **Stage 13 launch**: ✅ **AUTHORIZED** (4 GO + 1 GO-WITH-CONDITIONS on Stage 12.7 partial — non-blocking)
 
-### Stage 12 sub-stage plan (final, per r219)
+### Stage 12 sub-stage plan (final, per r219 + Stage 12.9)
 
 | Sub-stage | Status | Description |
 |-----------|--------|-------------|
@@ -301,9 +302,10 @@ Stage 12.8 triggered the §25 seven-dimension deep review of Stage 12 itself (re
 | 12.3 | ✅ DONE | Second-pass audit r217 (3 reports, 2055 lines) |
 | 12.4 | ✅ DONE | §25.8 retroactive backfill (Stage 5 + Stage 8 — 3 design-doc edits) |
 | 12.5 | ✅ DONE | Reframe plan-13.1.md as Stage 12 output (Planned → Draft) |
-| 12.6 | ✅ DONE | Version revert v0.22.0 → v0.21.2 → v0.21.3 (Stage 12 closure patch bump) |
+| 12.6 | ✅ DONE | Version revert v0.22.0 → v0.21.2 → v0.21.3 → v0.21.4 (Stage 12 closure + polish patch bumps) |
 | 12.7 | ✅ DONE | Stage 0-4 README corrections (per r217 stages-0-4 findings) |
 | 12.8 | ✅ DONE | Stage 12 final gate review (§25 deep review — 5/5 GO-WITH-CONDITIONS-or-GO → PASS) |
+| 12.9 | ✅ DONE | Polish backfill (Stage 5 develop README + plan-6.{4,5,6}.md retroactive + v2.36 correction) |
 
 ### Stage 13 launch criteria (per r217 + r219)
 

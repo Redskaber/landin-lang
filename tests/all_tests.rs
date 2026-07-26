@@ -549,3 +549,8 @@ mod stage12_3_tests;
 // + Stage 12 closure verification (gate-review-12.8.md + deep-review-stage12-r219.md)
 #[path = "v0/stage12/plan/stage12_4_tests.rs"]
 mod stage12_4_tests;
+// Stage 12.5 (a.k.a. Stage 12.9 polish backfill): Close deferred P2/P3 items from
+// gate-review-12.8.md §"Stage 13.1 immediate actions" item 4 — Stage 5 develop README
+// + plan-6.{4,5,6}.md retroactive backfill + api-naming-standard v2.36 record correction
+#[path = "v0/stage12/plan/stage12_5_tests.rs"]
+mod stage12_5_tests;

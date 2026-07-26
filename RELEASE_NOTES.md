@@ -1,9 +1,87 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.21.3
+**Current version**: v0.21.4
 **Date**: 2026-07-26
-**Test count**: 2349 rust tests + 5 benchmarks + 5026 conformance tests
+**Test count**: 2362 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.21.4 — Stage 12.9 (Polish backfill — deferred P2/P3 items from gate-review-12.8)
+
+### Overview
+
+**Stage 12.9** — Polish backfill to close 3 deferred P2/P3 items from `gate-review-12.8.md`
+§"Stage 13.1 immediate actions" item 4. Per §15 "long-term > short-term", all P2/P3 polish
+items should be closed before Stage 13 launches to avoid tech debt accumulation. Stage 12.9
+is non-blocking (Stage 13 launch criteria already met in 12.8), but completes Stage 12
+discipline.
+
+### Polish items closed: 3/3 ✅
+
+| # | Item | Source | Status |
+|---|------|--------|--------|
+| 1 | Stage 5 develop-side README.md | r217 stages-5-8 §5.5 (D7 gap) | ✅ DONE (85 lines) |
+| 2 | Stage 6 plan-6.{4,5,6}.md retroactive backfill | r217 stages-5-8 §7 P2 item 6 | ✅ DONE (3 files, 333 lines) |
+| 3 | api-naming-standard v2.36 record correction (+10 → +12 tests) | gate-review-12.8 §"Stage 13.1 actions" item 4 | ✅ DONE (+ correction note) |
+
+### Files created
+
+- `docs/develop/v0/stage-5/README.md` (85 lines) — Stage 5 develop docs index, mirrors stage-6/README.md structure. Covers 99 sub-stages, TD-014/016/018 status, §25.8 retroactive backfill (DynTraitMIRSummary + StdlibTypeKind), 977 rust tests / 502 conformance.
+- `docs/develop/v0/stage-6/plan-6.4.md` (103 lines) — Retroactive TD-011 step 4 plan reconstructed from gate-review-6.4.md
+- `docs/develop/v0/stage-6/plan-6.5.md` (109 lines) — Retroactive TD-011 step 5 plan reconstructed from gate-review-6.5.md
+- `docs/develop/v0/stage-6/plan-6.6.md` (121 lines) — Retroactive TD-011 step 6 plan reconstructed from gate-review-6.6.md (🎉 mod.rs < 2000 LOC milestone)
+- `docs/develop/v0/stage-12/plan-12.9.md` — Stage 12.9 plan (MUV-1/2/3/4)
+- `docs/develop/v0/stage-12/gate-review-12.9.md` — Stage 12.9 gate review (5/5 GO → PASS)
+- `docs/develop/v0/stage-12/stage-12.9-polish-backfill-report.md` — Polish backfill completion report
+- `tests/v0/stage12/plan/stage12_5_tests.rs` (13 verification tests)
+
+### Files updated
+
+- `docs/develop/v0/api-naming-standard.md` — v2.36 record corrected (+10 → +12 tests) + v2.39 entry for Stage 12.9
+- `tests/all_tests.rs` — wire in stage12_5_tests module
+- `Cargo.toml` — v0.21.3 → v0.21.4 (Stage 12.9 polish patch bump)
+- `README.md` — Stage 12 ✅ COMPLETE (9/9 sub-stages incl. polish); Stage 12.9 row added to sub-stage plan
+- `docs/tests/matrix.md` — Stage 12.9 row added
+- `docs/worklog.md` — Stage 12.9 entry appended
+
+### Stage 12 final status: ✅ COMPLETE (9/9 sub-stages)
+
+| Sub-stage | Status | Description |
+|-----------|--------|-------------|
+| 12.1 | ✅ DONE | v0.1 release + v0.3 bootstrap prep |
+| 12.2 | ✅ DONE | First-pass cross-stage audit r216 |
+| 12.3 | ✅ DONE | Second-pass audit r217 (3 reports, 2055 lines) |
+| 12.4 | ✅ DONE | §25.8 retroactive backfill (Stage 5 + Stage 8 — 3 design-doc edits) |
+| 12.5 | ✅ DONE | Reframe plan-13.1.md as Stage 12 output (Planned → Draft) |
+| 12.6 | ✅ DONE | Version revert v0.22.0 → v0.21.2 |
+| 12.7 | ✅ DONE | Stage 0-4 README corrections (per r217 stages-0-4 findings) |
+| 12.8 | ✅ DONE | Final gate review (§25 deep review of Stage 12 — 5/5 PASS) |
+| **12.9** | ✅ **DONE** | **Polish backfill (Stage 5 develop README + plan-6.{4,5,6}.md retroactive + v2.36 correction)** |
+
+### Stage 13 launch: ✅ AUTHORIZED (unchanged — polish was non-blocking)
+
+Stage 13.1 may begin immediately with MUV-1 (TD-028 §16 violation fix, ≤3 files, ~4h) →
+MUV-2 (TD-029 TyKind::Dynamic refactor, ~1-2 days).
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2229 passed (146 unit + 2229 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+cargo test --benches: 5 passed, 0 failed
+```
+
+### Next steps
+
+- **Stage 13.1 (immediate)**: MUV-1 TD-028 §16 violation fix (~4h) → MUV-2 TD-029 TyKind::Dynamic refactor (~1-2 days)
+- **Stage 13.2**: if-let / while-let (TD-031) — 1-2 weeks
+- **Stage 13.3**: Closure call lowering (TD-030) — 2-3 weeks
+- **Stage 13.4**: macro_rules! + 26 built-in macros (TD-032) — 4-8 weeks
+- **v0.22.0**: After Stage 13 P0 closure (actual compiler features added)
 
 ---
 

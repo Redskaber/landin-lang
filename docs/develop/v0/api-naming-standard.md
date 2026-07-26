@@ -4454,7 +4454,10 @@ Stage 12.2 — Cross-stage audit r216 + Stage 13 plan ratification + §25.8 desi
   - Verifies all 14 stage develop + test-doc + test directories exist
   - Verifies v0.1 gate still holds + README mentions audit + worklog has audit entries
 
-**Test impact**: +10 rust (2325 → 2335). 0 conformance changes. 0 regressions.
+**Test impact**: +12 rust (2325 → 2337). 0 conformance changes. 0 regressions.
+*(Stage 12.9 correction: original v2.36 record said "+10 rust (2325 → 2335)" — actual
+stage12_2_tests.rs has 12 tests, not 10. Corrected per r217 stages-9-12 audit §"Stage 13.1
+immediate actions" item 4 deferred P2 follow-up.)*
 
 **Tech debt inventory**: 7 open (P0=3, P1=1, P2=2, P3=1-on-hold) — TD-028..TD-033 + TD-019
 
@@ -4527,4 +4530,27 @@ Per semver §2.0.0, patch is appropriate because Stage 12.7+12.8 added no new co
 **v0.1 GATE REACHED**: 5026/5000 conformance tests — RATIFIED by r216 + r217 + r219 audits ✅
 **Stage 12 STATUS**: ✅ COMPLETE (8/8 sub-stages)
 **Stage 13 STATUS**: ✅ AUTHORIZED to launch — Stage 13.1 may begin immediately
+**v0.22.0**: Reserved for Stage 13 P0 closure (closures/if-let/macro_rules! — actual compiler features)
+
+### v2.39 (Stage 12.9, 2026-07-26)
+
+Stage 12.9 — Polish backfill (deferred P2/P3 items from gate-review-12.8).
+
+**Changes**:
+- Polish item 1: Stage 5 develop-side README.md created (85 lines) — D7 gap closed (r217 stages-5-8 §5.5)
+- Polish item 2: Stage 6 plan-6.{4,5,6}.md retroactively backfilled (3 files, 333 lines total) — r217 stages-5-8 §7 P2 item 6 closed. Each plan reconstructed from corresponding gate-review-6.{4,5,6}.md, marked as retroactive backfill, includes §14.4 J1-J6 evaluation
+- Polish item 3: v2.36 record corrected — "+10 rust (2325 → 2335)" → "+12 rust (2325 → 2337)" + correction note (actual stage12_2_tests.rs has 12 tests, not 10)
+- Stage 6 plan file count: 15 → 18 (now matches 18 gate-review files — r217 §3.1 finding corrected)
+- Stage 5 develop README parity restored (Stages 5-12 all have READMEs)
+- New Rust integration tests: `tests/v0/stage12/plan/stage12_5_tests.rs` (13 tests verifying Stage 5 README + plan-6.{4,5,6}.md + v2.36 correction + Stage 12.9 plan/gate docs + worklog + README mentions)
+
+**Test impact**: +13 rust (2349 → 2362). 0 conformance changes. 0 regressions.
+
+**Version policy**: v0.21.4 (patch bump from v0.21.3). Stage 12.9 polish patch bump.
+Per semver §2.0.0, patch is appropriate because Stage 12.9 added no new compiler features
+(only docs backfill + verification tests + record correction).
+
+**v0.1 GATE REACHED**: 5026/5000 conformance tests — RATIFIED by r216 + r217 + r219 audits ✅
+**Stage 12 STATUS**: ✅ COMPLETE (9/9 sub-stages, including 12.9 polish)
+**Stage 13 STATUS**: ✅ AUTHORIZED to launch (unchanged — polish was non-blocking)
 **v0.22.0**: Reserved for Stage 13 P0 closure (closures/if-let/macro_rules! — actual compiler features)
