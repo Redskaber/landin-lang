@@ -6,7 +6,7 @@
 # Run `source scripts/setup-llvm-env.sh` before building.
 
 [env]
-LLVM_SYS_191_PREFIX = "/nix/store/rfx89pjxx0dzlw8rbl9h5i1xsfv137kv-llvm-21.1.8-dev"
+LLVM_SYS_211_PREFIX = "/nix/store/rfx89pjxx0dzlw8rbl9h5i1xsfv137kv-llvm-21.1.8-dev"
 LLVM_LINK_SHARED = "1"
 # Note: LD_LIBRARY_PATH must be set in shell, not in .cargo/config.toml
 # For LLVM 21: set LLVM_SYS_211_PREFIX instead of LLVM_SYS_191_PREFIX

@@ -64,10 +64,17 @@
 pub mod emitter;
 pub mod text_emitter;
 
+// Stage 13.5 MUV-2: LLVMSysEmitter — LLVM C-API emitter via llvm-sys.
+// Only available behind the `llvm-backend` feature.
+#[cfg(feature = "llvm-backend")]
+pub mod llvm_sys_emitter;
+
 pub use emitter::{
     emit_dyn_trait_ptr_type, emit_fat_ptr_type, emit_type_to_llvm_str, mir_type_to_emit_type,
     EmitType, EmitValue, Emitter,
 };
+#[cfg(feature = "llvm-backend")]
+pub use llvm_sys_emitter::LLVMSysEmitter;
 pub use text_emitter::TextEmitter;
 
 use crate::mir::body::*;
@@ -130,6 +137,36 @@ pub fn codegen_crate(result: &crate::driver::CompileResult) -> String {
     // globals when lowering `dyn Trait` locals.
     emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, &mut emitter);
     emitter.output_with_globals()
+}
+
+/// Stage 13.5 MUV-2: Generate LLVM IR via the LLVM C API (`llvm-sys`).
+///
+/// Mirrors `codegen_crate` but uses `LLVMSysEmitter` instead of
+/// `TextEmitter`. The returned `LLVMModuleRef` is owned by the
+/// `LLVMSysEmitter` instance returned alongside it (so callers can
+/// drop them together). Use `LLVMSysEmitter::to_module()` to access
+/// the module and `LLVMSysEmitter::to_object_file()` to emit an
+/// object file.
+///
+/// Per §16: same MIR-only consumer contract as `codegen_crate` —
+/// zero upstream calls to `crate::mir::lower` / `crate::typeck`.
+#[cfg(feature = "llvm-backend")]
+pub fn codegen_crate_to_module(result: &crate::driver::CompileResult) -> LLVMSysEmitter {
+    let mut emitter = LLVMSysEmitter::new();
+    emitter.emit_header();
+    emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
+    emitter.emit_declare("void @__landin_panic_bounds_check(i64 %index, i64 %len)");
+    emitter.emit_declare("void @__landin_panic_div_by_zero()");
+    codegen_from_mir(
+        &result.mirs,
+        &result.body_metas,
+        &result.fn_name_by_def_id,
+        &result.interner,
+        &mut emitter,
+    );
+    emit_vtables(&result.trait_resolver, &result.interner, &mut emitter);
+    emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, &mut emitter);
+    emitter
 }
 
 // Stage 6.7: emit_vtables and emit_dyn_trait_ptrs moved to trait_dispatch module.
