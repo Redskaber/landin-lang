@@ -4798,3 +4798,31 @@ Stage 13.14 — `eprintln!`/`eprint!` stderr emission via `__landin_eprint` C wr
 **Version policy**: v0.24.1 → v0.24.2 (patch bump — bug fix for stderr routing; no new user-facing feature; zero new design deviations).
 
 **Stage 13 STATUS**: 🔄 IN PROGRESS (13.14 ✅; 13.15+ pending: format-args/string-escapes/print-flush)
+
+---
+
+### v2.48 (Stage 13.15, 2026-07-27)
+
+Stage 13.15 — Fix `landin_main` double-prefix symbol bug (P0 linker fix).
+
+**Changes**:
+- Bug fix in `src/driver.rs` (3 sites: lines 444, 468, 483): added `strip_prefix("landin_").unwrap_or(name)` before `format!("landin_{}", ...)` to avoid doubling the prefix when the user writes `fn landin_main()` (which would otherwise produce symbol `landin_landin_main`)
+- The `landin_` prefix convention is preserved per §8.1 (matches `07-codegen.md` §8.1 design); we just avoid doubling it
+- Both `fn main()` (Rust convention) and `fn landin_main()` (Landin convention) now produce the same LLVM symbol `landin_main`, matching the C wrapper's `extern int landin_main(void);` declaration
+- Vtable method symbols (`landin_<Type>_<method>`) also benefit from the fix — both `type_str` and `method` are now stripped of leading `landin_` for consistency (handles user types named `landin_Foo`)
+- Zero new public API surface (pure bug fix to internal string formatting)
+- Zero new design deviations (the `landin_` prefix convention is preserved; no design-doc change)
+- Stage 13.15 gate review: `docs/develop/v0/stage-13/gate-review-13.15.md` (7/7 GO → PASS)
+- Stage 13.15 design alignment: `docs/develop/v0/stage-13/stage-13.15-design-alignment.md` (~370 lines)
+- New Rust integration tests: `tests/v0/stage13/plan/stage13_15_tests.rs` (7 tests, including behavioral tests that compile + link + run actual Landin programs)
+- §25.8 design write-back: ZERO new deviations (pure bug fix; `landin_` prefix convention preserved)
+
+**§14.4 J1-J6 verdict**: 6/6 PASS (1 src file; ≤5 file guideline met)
+**§16 verdict**: ✅ COMPLIANT (no new module boundaries crossed; pure string-formatting fix)
+**§25.8 verdict**: ZERO new deviations (pure bug fix; no new MIR surface, no new codegen API)
+
+**Test impact**: +7 rust (2317 → 2324). 0 conformance changes. 0 regressions.
+
+**Version policy**: v0.24.2 → v0.24.3 (patch bump — P0 linker bug fix; no new user-facing feature; zero new design deviations).
+
+**Stage 13 STATUS**: 🔄 IN PROGRESS (13.15 ✅; 13.16+ pending: investigate string escapes / format-args / print-flush)

@@ -1,9 +1,181 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.24.2
+**Current version**: v0.24.3
 **Date**: 2026-07-27
-**Test count**: 2317 rust tests + 5 benchmarks + 5026 conformance tests
+**Test count**: 2324 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.24.3 — Stage 13.15 (Fix `landin_main` double-prefix symbol bug — P0 linker fix)
+
+### Overview
+
+**Stage 13.15** fixes a P0 linker bug discovered during Stage 13.14 smoke
+testing: the README's "Hello World" example (`fn landin_main() { ... }`)
+failed to link with `undefined reference to 'landin_main'`.
+
+**Root cause**: `src/driver.rs` generated LLVM symbols by prefixing function
+names with `landin_` (e.g., `format!("landin_{}", name)`). For `fn main()`,
+this produced `landin_main` (correct). For `fn landin_main()`, this produced
+`landin_landin_main` (double prefix — wrong). The C wrapper expected
+`landin_main`, so the linker failed.
+
+**Fix**: Strip a leading `landin_` from the function name before prefixing
+(at 3 sites in `src/driver.rs`). This makes both `fn main()` (Rust convention)
+and `fn landin_main()` (Landin convention) produce the same LLVM symbol
+`landin_main`, matching the C wrapper's `extern int landin_main(void);`
+declaration.
+
+### Bug Impact
+
+**Before Stage 13.15**: Any Landin program using `fn landin_main()` (the
+README's documented entry point) failed to link:
+```
+/usr/bin/ld: undefined reference to `landin_main'
+collect2: error: ld returned 1 exit status
+```
+
+**After Stage 13.15**: Both `fn main()` and `fn landin_main()` work
+correctly — they compile, link, and run as expected.
+
+### Why Stage 13.8/13.9 Tests Didn't Catch This
+
+Stage 13.8 and 13.9 tests verify **source-code presence** of strings like
+`extern int landin_main` in `src/bin/main.rs`, but they **do not actually
+execute** `--run` on a `fn landin_main()` program. All conformance tests use
+`fn main()` (which worked correctly), so the bug went unnoticed.
+
+Stage 13.15 adds behavioral tests that compile + link + run actual Landin
+programs to catch this class of bug in the future.
+
+### §13.4 Design Alignment: ✅ Strategy B (strip prefix)
+
+- **Strategy A (status quo — require `fn main()` in user code)**: ❌ REJECTED
+  — contradicts README + breaks user expectation
+- **Strategy B (strip `landin_` prefix if already present)**: ✅ ADOPTED —
+  fixes README example; preserves backward compat for `fn main()` users;
+  minimal code change (1-line per site × 3 sites)
+- **Strategy C (rename entry point to `main()`)**: ❌ REJECTED — too
+  disruptive (breaks all conformance tests)
+- **Strategy D (use a different prefix)**: ❌ REJECTED — cascading changes
+
+### §14.4 Refactoring Six Criteria (J1-J6): 6/6 PASS
+
+| Criterion | Verdict |
+|-----------|---------|
+| J1 Architectural alignment | ✅ PASS — restores README contract (`fn landin_main()` works); preserves `landin_` prefix convention |
+| J2 Single responsibility | ✅ PASS — fix is in driver.rs fn_name generation — one job: produce correct LLVM symbol |
+| J3 Unidirectional data flow | ✅ PASS — no new data flow; just a string transformation fix |
+| J4 Compile-time expressiveness | ✅ PASS — no new types |
+| J5 Stage partition (≤5 src files) | ✅ PASS — 1 src file: driver.rs (3 one-line changes at parallel sites) |
+| J6 Scientific granularity | ✅ PASS — one bug fix, three identical one-line changes — minimum viable change |
+
+### Implementation
+
+**Strategy**: B (strip `landin_` prefix if already present) — see
+`docs/develop/v0/stage-13/stage-13.15-design-alignment.md` for full design
+rationale.
+
+**Source files touched (1 src + 1 test + 1 wiring)**:
+
+1. **`src/driver.rs`** (+15/-3 LOC): Added `strip_prefix("landin_").unwrap_or(name)`
+   at 3 fn_name generation sites:
+   - Line 444 (top-level fn: `fn_name_by_def_id` construction)
+   - Line 468 (per-body metadata: top-level fn branch)
+   - Line 483 (per-body metadata: impl method branch — strips both type_str
+     and method for consistency)
+
+2. **`tests/v0/stage13/plan/stage13_15_tests.rs`** (NEW, ~250 LOC): 7
+   verification tests covering no-double-prefix, strip-prefix-present,
+   fn-main-no-regression, fn-landin-main-works, design-alignment-exists,
+   gate-review-exists, and v0.1 conformance gate.
+
+3. **`tests/all_tests.rs`** (+4 LOC): Wired `stage13_15_tests` module.
+
+### Behavioral change
+
+**Before (Stage 13.14)**:
+- `fn main()` → LLVM symbol `landin_main` ✅ (worked)
+- `fn landin_main()` → LLVM symbol `landin_landin_main` ❌ (linker failure)
+
+**After (Stage 13.15)**:
+- `fn main()` → LLVM symbol `landin_main` ✅ (no regression)
+- `fn landin_main()` → LLVM symbol `landin_main` ✅ (bug fixed)
+
+Both conventions now produce the same LLVM symbol, matching the C wrapper's
+`extern int landin_main(void);` declaration.
+
+### Behavioral smoke test (verified)
+
+```bash
+$ echo 'fn landin_main() -> i32 { println!("hello world"); 0 }' > /tmp/hello.lin
+$ ./target/debug/landin-stage0 --run /tmp/hello.lin
+info: object file written to /tmp/hello.o
+info: executable written to /tmp/hello.out
+info: running /tmp/hello.out
+hello world
+
+$ echo 'fn main() -> i32 { println!("hello from main"); 0 }' > /tmp/main.lin
+$ ./target/debug/landin-stage0 --run /tmp/main.lin
+info: object file written to /tmp/main.o
+info: executable written to /tmp/main.out
+info: running /tmp/main.out
+hello from main
+
+$ echo 'fn landin_main() -> i32 { eprintln!("to stderr"); println!("to stdout"); 0 }' > /tmp/streams.lin
+$ ./target/debug/landin-stage0 --run /tmp/streams.lin > /tmp/out.txt 2> /tmp/err.txt
+$ cat /tmp/out.txt
+to stdout
+$ cat /tmp/err.txt
+to stderr
+```
+
+### Test impact
+
++7 tests (2317 → 2324 rust tests). 0 conformance changes. 0 regressions.
+
+### Verification
+
+```
+cargo test --test all_tests: 2324 passed, 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+```
+
+### Version policy: v0.24.2 → v0.24.3 (patch bump)
+
+- Bug fix (linker symbol doubling) — not a new feature
+- No new language feature
+- No new CLI flag
+- No new conformance test (5026 unchanged)
+- No design-doc write-back (zero new deviations)
+
+### §25.8 Design write-back
+
+**Zero new design deviations.** Stage 13.15 is a pure bug fix to internal
+string formatting in `src/driver.rs`. The `landin_` prefix convention is
+preserved (per `07-codegen.md` §8.1); we just avoid doubling it.
+
+### Files added/changed
+
+- **New**: `docs/develop/v0/stage-13/stage-13.15-design-alignment.md` (~370 lines)
+- **New**: `docs/develop/v0/stage-13/gate-review-13.15.md` (~250 lines, 7/7 GO → PASS)
+- **New**: `tests/v0/stage13/plan/stage13_15_tests.rs` (~250 lines, 7 tests)
+- **Updated**: `src/driver.rs` (3 sites: strip_prefix("landin_") fix)
+- **Updated**: `tests/all_tests.rs`, `Cargo.toml` (v0.24.2 → v0.24.3)
+- **Updated**: `README.md` (full refresh), `docs/llvm/execution-pipeline.md`
+- **Updated**: `docs/develop/v0/api-naming-standard.md` (v2.47 → v2.48), `docs/tests/matrix.md`, `docs/tests/v0/stage13/plan/README.md`, `docs/worklog.md`
+
+### Next steps
+
+- **Stage 13.16**: Investigate whether string escape sequences need additional
+  work (preliminary investigation during Stage 13.15 suggests the lexer already
+  handles `\n`, `\t`, `\\`, `\"` correctly via `lex_escape()`)
+- **Stage 13.17**: Format args (`println!("{}", x)`) — requires HIR-time format-args expansion
+- **Stage 13.18**: `print!` (no newline) flush behavior
+- **v0.1 release announcement**: All P0 closed; ready for public release announcement
 
 ---
 

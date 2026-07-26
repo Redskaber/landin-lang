@@ -131,3 +131,9 @@ echo $?  # → 42
 4. **Closures as values**: Inline closure call works (Stage 13.3a), but passing closures
    as function arguments requires full Strategy A (deferred to Stage 13.5+).
 5. **dyn Trait method calls**: `emit_dyn_trait_method_call` is stubbed with `unimplemented!()`.
+6. **Entry-point naming (Stage 13.15 fix)**: Both `fn main()` (Rust convention) and
+   `fn landin_main()` (Landin convention) are now supported as entry points. Stage 13.15
+   fixed a bug where `fn landin_main()` produced the LLVM symbol `landin_landin_main`
+   (double prefix), causing linker failures. The fix strips a leading `landin_` from
+   the function name before prefixing, so both conventions produce `landin_main` (the
+   symbol the C wrapper declares as `extern int landin_main(void);`).

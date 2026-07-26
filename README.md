@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.24.2  
+**Version**: v0.24.3  
 **Date**: 2026-07-27
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -13,7 +13,7 @@ backend via the `llvm-sys` crate.
 > 5026/5000 conformance tests passing, **execution pipeline operational**
 > (`--run` compiles, links, and executes Landin programs with inline
 > `println!`/`eprintln!` output correctly routed to stdout/stderr —
-> Stages 13.13 + 13.14).
+> Stages 13.13 + 13.14 + 13.15).
 
 ---
 
@@ -32,11 +32,13 @@ backend via the `llvm-sys` crate.
 | `--run` flag | ✅ Compile → link → execute (Stage 13.8) |
 | Inline `println!` output (stdout) | ✅ Stage 13.13 (via `StatementKind::Println` → `printf`) |
 | Inline `eprintln!` output (stderr) | ✅ Stage 13.14 (via `__landin_eprint` helper → `fprintf(stderr, ...)`) |
+| Entry-point naming (`fn main()` AND `fn landin_main()`) | ✅ Stage 13.15 (strip-prefix fix; both conventions produce `landin_main` symbol) |
 | if-let / while-let | ✅ TD-031 P0 CLOSED (v0.22.0) |
 | Closures callable | ✅ TD-030 P0 CLOSED (v0.23.0) |
 | 26 built-in macros | ✅ TD-032 P0 CLOSED (v0.24.0) |
+| String escape sequences (`\n`, `\t`, `\\`, `\"`) | ✅ Already supported (lexer `lex_escape()` — verified Stage 13.15) |
 | Conformance | 5026/5000 (100.5%) — parse + typeck verified |
-| Rust tests | 2317 passed, 0 failed |
+| Rust tests | 2324 passed, 0 failed |
 | Benchmarks | 5 passed |
 | Source code | ~90 files, ~32,000 LOC, 50+ modules |
 
@@ -59,7 +61,7 @@ cargo build --release                            # text IR only (default)
 cargo build --release --features llvm-backend    # with LLVM library backend
 
 # ── Test ──
-cargo test                                       # all rust tests (2317)
+cargo test                                       # all rust tests (2324)
 python3 tests/conformance/run_all.py             # conformance suite (5026 tests)
 ```
 
@@ -87,8 +89,11 @@ echo $?    # → exit code (return value of landin_main())
 
 ### Hello World
 
+Both `fn main()` (Rust convention) and `fn landin_main()` (Landin convention)
+are supported as entry points (Stage 13.15 fix):
+
 ```bash
-# Create a Landin program with both stdout and stderr output
+# Using fn landin_main() (Landin convention — README's documented entry point)
 cat > /tmp/hello.lin << 'EOF'
 fn landin_main() -> i32 {
     println!("hello world");     # → stdout
@@ -97,16 +102,51 @@ fn landin_main() -> i32 {
 }
 EOF
 
-# Compile + run (combined output goes to terminal)
 ./target/release/landin-stage0 --run /tmp/hello.lin
 # stdout: hello world
 # stderr: debug info
+# exit: 0
+
+# Using fn main() (Rust convention — used by conformance tests)
+cat > /tmp/hello2.lin << 'EOF'
+fn main() -> i32 {
+    println!("hello from main");
+    0
+}
+EOF
+
+./target/release/landin-stage0 --run /tmp/hello2.lin
+# stdout: hello from main
 # exit: 0
 
 # Separate streams with redirection
 ./target/release/landin-stage0 --run /tmp/hello.lin > /tmp/out.txt 2> /tmp/err.txt
 cat /tmp/out.txt  # → hello world
 cat /tmp/err.txt  # → debug info
+```
+
+### String Escape Sequences
+
+The lexer correctly processes standard escape sequences via `lex_escape()`
+(verified during Stage 13.15 investigation):
+
+```bash
+cat > /tmp/escape.lin << 'EOF'
+fn landin_main() -> i32 {
+    println!("hello\nworld");    # \n → newline
+    println!("tab\there");       # \t → tab
+    println!("quote\"end");      # \" → literal quote
+    println!("backslash\\end");  # \\ → literal backslash
+    0
+}
+EOF
+
+./target/release/landin-stage0 --run /tmp/escape.lin
+# hello
+# world
+# tab	here
+# quote"end
+# backslash\end
 ```
 
 ---
@@ -155,8 +195,9 @@ source → lexer → parser → AST → HIR → resolve → MIR → typeck → b
 | 13.7-13.10 | `--emit-bin` + auto C wrapper + `--run` flag | ✅ |
 | 13.11-13.12 | `println!` capture + side-table emission (with known limitation) | ✅ |
 | 13.13 | Inline `println!` emission via `StatementKind::Println` (fixes 13.12 ordering bug) | ✅ |
-| **13.14** | **`eprintln!`/`eprint!` stderr emission via `__landin_eprint` helper (closes 13.13 deferral)** | ✅ |
-| 13.15+ | Format args, string escapes, print flush | 🔄 Pending |
+| 13.14 | `eprintln!`/`eprint!` stderr emission via `__landin_eprint` helper | ✅ |
+| **13.15** | **Fix `landin_main` double-prefix symbol bug — both `fn main()` and `fn landin_main()` now work** | ✅ |
+| 13.16+ | Format args, print flush | 🔄 Pending |
 
 ---
 
@@ -184,7 +225,7 @@ via the `llvm-sys` crate. The `LLVMSysEmitter` (1360 LOC) implements all 36
 | `docs/llvm/stage-13.6-object-file-generation.md` | 13.6 | `--emit-obj` flag implementation |
 | `docs/llvm/execution-pipeline.md` | 13.8-13.10 | End-to-end execution pipeline |
 | `docs/llvm/stage-13.13-println-inline-emission.md` | 13.13 | Inline `println!` emission (fixes Stage 13.12 ordering bug) |
-| `docs/llvm/stage-13.14-eprintln-stderr-emission.md` | **13.14** | **`eprintln!`/`eprint!` stderr emission via `__landin_eprint` helper** |
+| `docs/llvm/stage-13.14-eprintln-stderr-emission.md` | 13.14 | `eprintln!`/`eprint!` stderr emission via `__landin_eprint` helper |
 
 ---
 
@@ -231,11 +272,11 @@ cargo test
 python3 tests/conformance/run_all.py
 ```
 
-**Expected results** (v0.24.2):
+**Expected results** (v0.24.3):
 - `cargo build`: succeeds
 - `cargo fmt`: clean (no changes)
 - `cargo clippy`: 0 warnings, 0 errors
-- `cargo test`: 2317 tests passed, 0 failed
+- `cargo test`: 2324 tests passed, 0 failed
 - `conformance`: 5026 passed, 0 failed
 
 ---

@@ -610,3 +610,8 @@ mod stage13_13_tests;
 // v0.24.2 patch bump.
 #[path = "v0/stage13/plan/stage13_14_tests.rs"]
 mod stage13_14_tests;
+// Stage 13.15: Fix landin_main double-prefix symbol bug — strip leading
+// "landin_" from fn names before prefixing (e.g., `fn landin_main()` now
+// produces symbol `landin_main`, not `landin_landin_main`). v0.24.3 patch bump.
+#[path = "v0/stage13/plan/stage13_15_tests.rs"]
+mod stage13_15_tests;

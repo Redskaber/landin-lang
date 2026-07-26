@@ -441,7 +441,13 @@ pub fn compile(src: &str) -> CompileResult {
     for (def_id, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
             let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-            fn_name_by_def_id.insert(*def_id, format!("landin_{}", name));
+            // Stage 13.15: Strip a leading "landin_" prefix to avoid doubling it
+            // (e.g., `fn landin_main()` should produce symbol `landin_main`, not
+            // `landin_landin_main`). This supports both `fn main()` (Rust
+            // convention) and `fn landin_main()` (Landin convention) as entry
+            // points, matching the C wrapper's `extern int landin_main(void);`.
+            let stripped = name.strip_prefix("landin_").unwrap_or(name);
+            fn_name_by_def_id.insert(*def_id, format!("landin_{}", stripped));
         }
     }
 
@@ -465,7 +471,10 @@ pub fn compile(src: &str) -> CompileResult {
                         if f.body == Some(*body_id) =>
                     {
                         let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-                        Some(format!("landin_{}", name))
+                        // Stage 13.15: Strip leading "landin_" to avoid doubling
+                        // (see fn_name_by_def_id construction above for details).
+                        let stripped = name.strip_prefix("landin_").unwrap_or(name);
+                        Some(format!("landin_{}", stripped))
                     }
                     // Stage 5.6: impl method body: `landin_<SelfType>_<method>`.
                     // Matches the naming used by TraitResolver for vtable entries.
@@ -480,7 +489,17 @@ pub fn compile(src: &str) -> CompileResult {
                                     let type_str = self_ty_name
                                         .and_then(|s| interner.try_resolve(&s))
                                         .unwrap_or("Type");
-                                    return Some(format!("landin_{}_{}", type_str, method));
+                                    // Stage 13.15: Strip leading "landin_" from
+                                    // both type_str and method to avoid doubling
+                                    // (consistent with top-level fn handling).
+                                    let type_stripped =
+                                        type_str.strip_prefix("landin_").unwrap_or(type_str);
+                                    let method_stripped =
+                                        method.strip_prefix("landin_").unwrap_or(method);
+                                    return Some(format!(
+                                        "landin_{}_{}",
+                                        type_stripped, method_stripped
+                                    ));
                                 }
                             }
                         }
