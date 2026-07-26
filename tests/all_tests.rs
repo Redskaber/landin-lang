@@ -588,3 +588,8 @@ mod stage13_4a_tests;
 // switch-llvm-version.sh auto-detects LLVM 19/21 and updates .cargo/config.toml + Cargo.toml.
 #[path = "v0/stage13/plan/stage13_5_muv2_tests.rs"]
 mod stage13_5_muv2_tests;
+// Stage 13.5 MUV-3: End-to-end LLVM module → object file verification.
+// Verifies LLVMSysEmitter C API usage + to_object_file + to_module + Emitter impl.
+#[cfg(feature = "llvm-backend")]
+#[path = "v0/stage13/plan/stage13_5_muv3_tests.rs"]
+mod stage13_5_muv3_tests;
