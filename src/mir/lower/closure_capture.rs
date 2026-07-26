@@ -113,6 +113,7 @@ pub(crate) fn collect_captured_locals(
         | HirExprKind::Lit(_)
         | HirExprKind::Unit
         | HirExprKind::MacroCall { .. } => {}
+        HirExprKind::Println { .. } => {}
         HirExprKind::Range { start, end, .. } => {
             if let Some(s) = start {
                 collect_captured_locals(cx, s, param_hir_ids, captured, seen);

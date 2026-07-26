@@ -788,6 +788,13 @@ pub enum HirExprKind {
         path: HirPath,
         delim: MacroDelim,
     },
+    /// Stage 13.12: `println!("msg")` / `print!("msg")` / `eprintln!` / `eprint!`
+    /// Carries the message string through HIR to MIR lowerer for printf emission.
+    Println {
+        msg: String,
+        newline: bool,
+        stderr: bool,
+    },
     Unsafe(HirBlock),
     Unit,
     /// Stage 8.5: `await expr` — async await expression.

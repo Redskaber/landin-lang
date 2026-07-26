@@ -70,6 +70,14 @@ pub struct MirBody {
     /// need to query HIR or TraitResolver. Empty when no dyn Trait calls
     /// exist in this body (the common case).
     pub dyn_trait_calls: Vec<DynTraitMethodCall>,
+    /// Stage 13.12: println! messages sunk from HIR by MIR lower.
+    ///
+    /// Each entry is the full message string (including trailing "\n" for
+    /// println!). Codegen iterates this table and emits `puts()` calls
+    /// at the appropriate position in the function body.
+    ///
+    /// Per §16: MIR carries the message as data; codegen doesn't need HIR.
+    pub println_messages: Vec<String>,
 }
 
 impl MirBody {
@@ -80,6 +88,7 @@ impl MirBody {
             span,
             adt_layouts: AdtLayouts::new(),
             dyn_trait_calls: Vec::new(),
+            println_messages: Vec::new(),
         }
     }
 

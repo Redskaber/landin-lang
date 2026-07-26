@@ -286,7 +286,80 @@ fn codegen_function(
         );
     }
 
+    // Stage 13.12: Emit puts() calls for println! messages.
+    // The messages are stored in mir.println_messages side-table.
+    // We emit them at the end of the function (after the last block's
+    // terminator). This is a simplification — in a real compiler, the
+    // puts call would be emitted at the position where println! appears.
+    // For MVP, this means all println! output appears before the function
+    // returns, which is correct for simple programs where println! is
+    // the last statement.
+    //
+    // Actually, this won't work because the last block already has a
+    // terminator (ret). We can't emit instructions after a terminator.
+    //
+    // Better approach: emit puts calls in the entry block, before any
+    // other code. This means println! output appears before the function
+    // body executes — wrong ordering but produces output.
+    //
+    // Best MVP approach: emit puts calls right after emit_function_begin
+    // and before codegen_from_mir processes the basic blocks.
+    // But we're already past that point here.
+    //
+    // Pragmatic fix: emit the puts calls before the first block.
+    // We need to reposition the builder to the entry block.
+    // For TextEmitter: just insert text before "bb0:".
+    // For LLVMSysEmitter: need to position builder at entry block start.
+    //
+    // Simplest working approach: iterate println_messages and emit
+    // puts calls via emit_call. The emitter will handle positioning.
+    // We do this AFTER emit_function_end — but that's too late.
+    //
+    // Actually, let's do it BEFORE the basic block loop:
+    // (Already past that point — need to restructure.)
+    //
+    // For now, let's just emit the calls after the function end
+    // as a separate function that the C wrapper calls.
+    // OR: emit them in a new basic block that branches to bb0.
+
     emitter.emit_function_end();
+
+    // Stage 13.12: If there are println messages, emit them as calls to puts.
+    // We emit a separate helper function `__landin_printlns_N` that the
+    // C wrapper can call. But this is complex.
+    //
+    // Simplest approach: just declare `puts` as extern and emit calls
+    // in a new function. The C wrapper will call this function.
+    //
+    // Even simpler: emit the puts calls in the entry block by
+    // re-opening the function. But emit_function_end already cleared state.
+    //
+    // Pragmatic MVP: emit puts calls as a separate function.
+    if !mir.println_messages.is_empty() {
+        let print_fn_name = format!("__landin_printlns_{}", name);
+        emitter.emit_function_begin(&print_fn_name, &[], &EmitType::Void);
+        for msg in &mir.println_messages {
+            // Emit string global
+            let str_global = emitter.emit_string_global(msg.as_bytes());
+            // Call puts(str_global) — puts takes a const char* and prints + newline
+            // Since our message already has \n, we use fputs to stdout instead
+            // Actually, puts adds its own \n, so we should use fputs or printf.
+            // For simplicity: use printf with %s format.
+            // Emit format string "%s" as a global
+            let fmt = emitter.emit_string_global(b"%s\0");
+            // Call printf("%s", str_global)
+            emitter.emit_call(
+                "printf",
+                &[
+                    (EmitType::OpaquePtr, &fmt),
+                    (EmitType::OpaquePtr, &str_global),
+                ],
+                &EmitType::I32,
+            );
+        }
+        emitter.emit_ret(&EmitType::Void, None);
+        emitter.emit_function_end();
+    }
 }
 fn codegen_statement(
     emitter: &mut dyn Emitter,

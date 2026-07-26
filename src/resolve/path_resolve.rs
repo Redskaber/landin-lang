@@ -531,6 +531,7 @@ impl Resolver {
             HirExprKind::MacroCall { path, .. } => {
                 self.resolve_hir_path(path, interner);
             }
+            HirExprKind::Println { .. } => {}
             HirExprKind::Unsafe(b) => self.resolve_block(b, interner),
             // Stage 8.5: async/await — resolve inner expressions
             HirExprKind::Await { expr } => self.resolve_expr(expr, interner),

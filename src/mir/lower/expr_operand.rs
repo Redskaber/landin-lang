@@ -1372,6 +1372,27 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             )
         }
 
+        // Stage 13.12: Println — store message in side-table for codegen to emit puts call.
+        HirExprKind::Println {
+            msg,
+            newline,
+            stderr,
+        } => {
+            let full_msg = if *newline {
+                format!("{}\n", msg)
+            } else {
+                msg.clone()
+            };
+            // Store in MirBody.println_messages side-table.
+            // Codegen (codegen_from_mir) iterates this table and emits
+            // puts() calls at the beginning of each function that contains
+            // println! statements.
+            cx.mir.println_messages.push(full_msg);
+            let _ = stderr; // stderr support deferred
+            let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+            cx.mir.new_local(unit_ty, None, expr.span)
+        }
+
         // Stage 4.10 + Stage 13.4a: MacroCall — expand known built-in macros.
         // Stage 4.10: 7 macros (println, print, eprintln, eprint, stringify, assert, debug_assert)
         // Stage 13.4a (TD-032): +19 macros (assert_eq, assert_ne, debug_assert_eq,

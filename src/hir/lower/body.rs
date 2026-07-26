@@ -376,51 +376,17 @@ pub fn lower_expr(cx: &mut HirLowerCtxt, expr: &Expr) -> HirExpr {
             path: crate::hir::lower::path::lower_path(cx, path),
             delim: *delim,
         },
-        // Stage 13.11: Println → MacroCall (preserved for MIR lowerer to detect)
+        // Stage 13.12: Println → HirExprKind::Println (carries msg to MIR)
         Expr::Println {
             msg,
             newline,
             stderr,
-            span,
-        } => {
-            let macro_name = if *stderr {
-                if *newline {
-                    "eprintln"
-                } else {
-                    "eprint"
-                }
-            } else {
-                if *newline {
-                    "println"
-                } else {
-                    "print"
-                }
-            };
-            let _ = msg; // Message lost in HIR lowering — deferred to future stage
-                         // Use the interner to look up or create the macro name symbol.
-                         // cx.interner is &Rodeo (immutable), so we can only read.
-                         // We use try_resolve to find the existing symbol, or fall back
-                         // to a dummy symbol if not found (the name was already interned
-                         // during parsing).
-            let spur = cx.interner.get(macro_name).unwrap_or_else(|| {
-                // Fallback: use a static dummy symbol. The MIR lowerer
-                // will match on the resolved name string.
-                cx.interner.get("println").unwrap_or_default()
-            });
-            HirExprKind::MacroCall {
-                path: crate::hir::HirPath {
-                    hir_id: cx.fresh_hir_id(),
-                    segments: vec![crate::hir::HirPathSegment {
-                        ident: crate::ast::Ident::new(spur, *span),
-                        args: None,
-                    }],
-                    leading: crate::ast::PathLeading::None,
-                    res: crate::hir::Res::Unknown,
-                    span: *span,
-                },
-                delim: crate::ast::MacroDelim::Paren,
-            }
-        }
+            ..
+        } => HirExprKind::Println {
+            msg: msg.clone(),
+            newline: *newline,
+            stderr: *stderr,
+        },
         Expr::Unsafe(block, _) => HirExprKind::Unsafe(lower_block(cx, block)),
         Expr::Unit(_) => HirExprKind::Unit,
         // Stage 8.5: async/await — MVP: evaluate synchronously (no real async runtime)
