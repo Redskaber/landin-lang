@@ -559,6 +559,20 @@ pub enum Expr {
         /// For Stage 0 we leave this empty — Stage 4 macro expansion will fill it.
         span: Span,
     },
+    /// Stage 13.11: `println!(string_literal)` — special-cased macro call
+    /// that captures the string argument for codegen to emit printf.
+    /// This is a pragmatic shortcut: the parser detects `println!("...")`
+    /// and `print!("...")` patterns and creates this node instead of
+    /// MacroCall, allowing the MIR lowerer to generate printf calls.
+    Println {
+        /// The format string content (without quotes).
+        msg: String,
+        /// Whether to append newline (println! = true, print! = false).
+        newline: bool,
+        /// Whether to use stderr (eprintln! = true, println! = false).
+        stderr: bool,
+        span: Span,
+    },
     Unsafe(Block, Span),
     Unit(Span),
     /// Stage 8.5: `await expr` — async await expression.

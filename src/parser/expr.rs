@@ -790,6 +790,53 @@ impl<'a> Parser<'a> {
                         TokenKind::LBracket => MacroDelim::Bracket,
                         _ => unreachable!(),
                     };
+
+                    // Stage 13.11: Special-case println!/print!/eprintln!/eprint!
+                    // with a single string literal argument. This allows codegen
+                    // to emit printf calls without full macro expansion.
+                    let macro_name = path.segments.last().map(|s| s.ident.name);
+                    let macro_name_str = macro_name
+                        .and_then(|spur| self.interner.try_resolve(&spur))
+                        .map(|s| s.to_string());
+
+                    if delim == MacroDelim::Paren {
+                        if let Some(ref name) = macro_name_str {
+                            if matches!(name.as_str(), "println" | "print" | "eprintln" | "eprint")
+                            {
+                                // Try to parse `("string literal")`
+                                self.bump(); // (
+                                if let TokenKind::StrLit(sym) = *self.peek() {
+                                    self.bump(); // string literal
+                                    let msg = self.interner.resolve(&sym).to_string();
+                                    // Skip to closing )
+                                    while !matches!(
+                                        *self.peek(),
+                                        TokenKind::RParen | TokenKind::Eof
+                                    ) {
+                                        self.bump();
+                                    }
+                                    if *self.peek() == TokenKind::RParen {
+                                        self.bump(); // )
+                                    }
+                                    return Expr::Println {
+                                        msg,
+                                        newline: name.ends_with("ln"),
+                                        stderr: name.starts_with('e'),
+                                        span: path_span,
+                                    };
+                                }
+                                // Not a string literal — fall through to skip_delim_group
+                                // Reset position: we already consumed `(`. Need to balance.
+                                self.skip_delim_group();
+                                return Expr::MacroCall {
+                                    path,
+                                    delim,
+                                    span: path_span,
+                                };
+                            }
+                        }
+                    }
+
                     // Skip the macro body tokens for Stage 0 — we just balance
                     // the delimiters. Stage 4 macro expansion will re-parse them.
                     self.skip_delim_group();
@@ -1053,6 +1100,7 @@ impl ExprSpan for Expr {
             Expr::Repeat { span, .. } => *span,
             Expr::Struct { span, .. } => *span,
             Expr::MacroCall { span, .. } => *span,
+            Expr::Println { span, .. } => *span,
             Expr::Unsafe(_, s) => *s,
             Expr::Unit(s) => *s,
             Expr::Await { span, .. } => *span,

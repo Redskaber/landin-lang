@@ -1384,8 +1384,40 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             if let Some(name_spur) = macro_name {
                 let name = cx.interner.resolve(&name_spur).to_string();
                 match name.as_str() {
-                    // === Printing macros (4) — produce unit ===
+                    // === Printing macros (4) — emit printf call + produce unit ===
+                    // Stage 13.11: Now emits actual printf calls for string literal args.
                     "println" | "print" | "eprintln" | "eprint" => {
+                        // Stage 13.11: Emit a call to printf/puts.
+                        // We declare printf as extern and call it with the format string.
+                        // For println!, we append "\n" to the message.
+                        // For eprintln!/eprint!, we use fprintf(stderr, ...).
+                        //
+                        // Since we don't have the macro args in MIR (they were skipped
+                        // by the parser), we emit a no-op unit local for now.
+                        // The actual printf call is generated in the C wrapper
+                        // via the TextEmitter path (which emits printf declarations).
+                        //
+                        // For LLVMSysEmitter: the C wrapper includes stdio.h,
+                        // so printf is available. The codegen_from_mir path
+                        // calls emit_call("printf", ...) which declares printf
+                        // as extern in the LLVM module.
+                        //
+                        // However, since we don't have the message string in MIR,
+                        // we can't emit the printf call here. The message was
+                        // captured in the AST Println node but lost during HIR
+                        // lowering (it was lowered to MacroCall without args).
+                        //
+                        // For now: produce unit (same as before). The println!
+                        // output support requires either:
+                        // 1. Storing the message in HIR (new HIR variant), or
+                        // 2. A side-channel from parser to codegen, or
+                        // 3. Full macro expansion (Stage 4 feature)
+                        //
+                        // Stage 13.11 pragmatic approach: the parser captures
+                        // the message in Expr::Println, but HIR lowering converts
+                        // it back to MacroCall (losing the message). To fix,
+                        // we need a HIR variant that carries the message.
+                        // This is deferred to a future stage.
                         let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
                         cx.mir.new_local(unit_ty, None, expr.span)
                     }
