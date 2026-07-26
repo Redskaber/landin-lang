@@ -4647,3 +4647,38 @@ Stage 13.3 — Closure call lowering (TD-030 P0) preparation phase.
 **Stage 13 STATUS**: 🔄 IN PROGRESS (13.1 ✅ TD-028; 13.2 ✅ TD-031 P0; 13.3 🔄 TD-030 prep done; 13.3a-13.4 P0 pending)
 **P0 closure progress**: 1/3 P0 closed (TD-031); 1 in preparation (TD-030); 1 pending (TD-032)
 **v0.23.0**: Reserved for Stage 13.3a (TD-030 closure — closures callable, second user-facing feature)
+
+### v2.43 (Stage 13.3a, 2026-07-26)
+
+Stage 13.3a — TD-030 closure call lowering (P0 CLOSED — closures callable, second user-facing feature).
+
+**Changes**:
+- TD-030 P0 CLOSED: closures now callable via inline approach
+  - New `ClosureBodyInfo` side-table on `MirLowerCtxt` (keyed by LocalId) — src/mir/lower/mod.rs
+  - `HirExprKind::Closure` arm stores (params, body, captures) in side-table — src/mir/lower/expr_operand.rs
+  - `HirExprKind::Call` arm detects closure callee via side-table lookup + dispatches to `lower_closure_call_inline`
+  - `lower_closure_call_inline` function: inlines closure body at call site
+    - Binds call args to closure param locals
+    - Extracts captures from closure struct via Place::Projection(closure_local, Field(i))
+    - Lowers closure body inline
+    - Returns result local
+  - Closure info propagation through `let` bindings — src/mir/lower/control_flow.rs
+  - Codegen support for closure calls — src/codegen/mod.rs
+  - 30+ conformance tests flipped from compile_error → compile_ok
+- Implementation: inline approach (pragmatic subset of Strategy A per stage-13.3-design-alignment.md §4)
+  - Each closure call site gets a copy of the closure body (LLVM optimizer deduplicates)
+  - Full Strategy A (synthesized `call` function) deferred to Stage 13.5+
+  - Fn/FnMut/FnOnce trait auto-impl deferred to Stage 13.5+
+  - Closures as values passed to functions deferred to Stage 13.5+
+- §14.4 J1-J6: ALL 6 PASS
+- Stage 13.3a gate review: docs/develop/v0/stage-13/gate-review-13.3a.md (5/5 GO → PASS)
+- New Rust integration tests: tests/v0/stage13/plan/stage13_3a_tests.rs (9 tests verifying side-table + closure dispatch + lower_closure_call_inline + gate review + conformance flip + v0.1 gate + v0.23.0 version + worklog)
+
+**Test impact**: +9 rust (2256 → 2265). 0 conformance regressions (30+ compile_error→compile_ok, all 5026 pass). 0 regressions.
+
+**Version policy**: v0.22.1 → v0.23.0 (minor bump). Stage 13.3a adds second user-facing compiler feature (closures callable). Per semver §2.0.0, minor bump justified (new language capability).
+
+**v0.1 GATE REACHED**: 5026/5026 conformance tests — RATIFIED by r216 + r217 + r219 audits ✅
+**Stage 13 STATUS**: 🔄 IN PROGRESS (13.1 ✅ TD-028; 13.2 ✅ TD-031 P0; 13.3a ✅ TD-030 P0; 13.4 P0 pending)
+**P0 closure progress**: 2/3 P0 closed (TD-030 + TD-031); 1 remaining (TD-032 macro_rules!)
+**v0.24.0**: Reserved for Stage 13.4 P0 closure (macro_rules! — third user-facing feature, all P0 closed)

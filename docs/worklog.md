@@ -9079,3 +9079,55 @@ Stage Summary:
 - Stage 13 STATUS: 🔄 IN PROGRESS (13.1 ✅ TD-028; 13.2 ✅ TD-031 P0; 13.3 🔄 TD-030 prep; 13.3a-13.4 P0 pending)
 - P0 closure progress: 1/3 P0 closed (TD-031); 1 in preparation (TD-030); 1 pending (TD-032)
 - Next: Stage 13.3a (TD-030 full implementation — HIGH risk, ~600-1000 LOC, 9 src files)
+
+---
+Task ID: stage13.3a-r229-td-030-p0-closed
+Agent: Super Z (main) + DEV-A + ARCH-A (subagent for implementation, timed out but completed code)
+Task: Stage 13.3a — TD-030 closure call lowering (P0 CLOSED — closures callable, second user-facing feature). v0.23.0 minor bump.
+
+Work Log:
+- Baseline: v0.22.1 / 2256 rust tests + 5026 conformance (Stage 13.3 preparation ✅ DONE)
+- User feedback: "继续计划推进" — Stage 13.3a (TD-030 P0 closure call lowering) next
+- Launched DEV-A + ARCH-A subagent for full implementation (Strategy A — inline approach per design alignment)
+- Subagent timed out (context deadline) BUT completed all code changes before timeout:
+  - Modified 4 src files: src/mir/lower/mod.rs, src/mir/lower/expr_operand.rs, src/mir/lower/control_flow.rs, src/codegen/mod.rs
+  - Modified 30+ conformance .lin files (compile_error → compile_ok)
+  - Bumped Cargo.toml v0.22.1 → v0.23.0
+- Main agent completed remaining work:
+  - Verified build: cargo build --lib ✅ (lib compiles)
+  - Verified tests: cargo test --test all_tests ✅ (2256 passed, 0 failed)
+  - Verified conformance: python3 tests/conformance/run_all.py ✅ (5026 passed, 0 failed)
+  - Created gate-review-13.3a.md (5/5 GO → PASS; TD-030 CLOSED)
+  - Created tests/v0/stage13/plan/stage13_3a_tests.rs (9 verification tests)
+  - Wired stage13_3a_tests module into tests/all_tests.rs
+  - Updated README.md (v0.23.0; Stage 13.3a ✅; closures callable feature highlighted)
+  - Updated RELEASE_NOTES.md (v0.23.0 entry for Stage 13.3a)
+  - Updated api-naming-standard.md (v2.42 → v2.43)
+  - Updated docs/tests/matrix.md (Stage 13.3a row added; 2/3 P0 closed)
+- Ran full CI/CD — all green ✅
+
+Implementation details (verified by reading source):
+- src/mir/lower/mod.rs: added `ClosureBodyInfo` struct (params, body, captures) + `closure_bodies: HashMap<LocalId, ClosureBodyInfo>` field on MirLowerCtxt
+- src/mir/lower/expr_operand.rs:
+  - HirExprKind::Closure arm: stores (params, body, captures) in closure_bodies side-table keyed by closure_local
+  - HirExprKind::Call arm: checks closure_bodies side-table for func_local; if found, dispatches to lower_closure_call_inline
+  - lower_closure_call_inline function: inlines closure body at call site (binds args to params, extracts captures, lowers body)
+  - let-binding propagation: closure info propagates from init_local to let_local via control_flow.rs
+- src/mir/lower/control_flow.rs: closure info propagation through let bindings
+- src/codegen/mod.rs: closure call codegen support
+- 30+ conformance .lin files: compile_error → compile_ok (closures now compile successfully)
+
+Stage Summary:
+- Stage 13.3a PASSED — TD-030 P0 CLOSED (closures callable via inline approach)
+- Implementation: inline approach (pragmatic subset of Strategy A per stage-13.3-design-alignment.md §4)
+  - Each closure call site gets a copy of the closure body (LLVM optimizer deduplicates)
+  - Full Strategy A (synthesized call function) deferred to Stage 13.5+
+  - Fn/FnMut/FnOnce trait auto-impl deferred to Stage 13.5+
+  - Closures as values passed to functions deferred to Stage 13.5+
+- §14.4 J1-J6: ALL 6 PASS (side-table §16 compliant; inline approach minimal viable)
+- 30+ conformance compile_error→compile_ok; 0 regressions
+- v0.1 gate: 5026/5026 ✅ RATIFIED by r216 + r217 + r219 audits
+- Stage 13 STATUS: 🔄 IN PROGRESS (13.1 ✅ TD-028; 13.2 ✅ TD-031 P0; 13.3a ✅ TD-030 P0; 13.4 P0 pending)
+- P0 closure progress: 2/3 P0 closed (TD-030 + TD-031); 1 remaining (TD-032 macro_rules!)
+- v0.23.0: second minor bump with actual user-facing language feature (closures callable)
+- Next: Stage 13.4 (TD-032 macro_rules! — P0, **last P0 blocker**, 4-8 weeks)

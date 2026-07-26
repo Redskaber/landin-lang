@@ -1,9 +1,116 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.22.1
+**Current version**: v0.23.0
 **Date**: 2026-07-26
-**Test count**: 2258 rust tests + 5 benchmarks + 5026 conformance tests
+**Test count**: 2265 rust tests + 5 benchmarks + 5026 conformance tests
+
+---
+
+## v0.23.0 — Stage 13.3a (TD-030 closure call lowering P0 CLOSED — closures callable, second user-facing feature)
+
+### Overview
+
+**Stage 13.3a** — Full implementation of TD-030 (closure call lowering — P0, largest single
+blocker for v0.3 self-hosting). Closures are now **callable** via the inline approach
+(pragmatic subset of Strategy A). This is the **second user-facing language feature** of
+Stage 13, justifying the minor version bump from v0.22.1 to v0.23.0 (per semver §2.0.0).
+
+### TD-030 P0 closure ✅ CLOSED (closures callable)
+
+**Before Stage 13.3a** (r216 architecture audit §3.5 + r217 stages-0-4 §4):
+- Closures parse + capture but cannot be called
+- `HirExprKind::Call` with closure callee produced a placeholder (fresh_infer_ty, no actual call)
+- 30+ conformance tests marked `compile_error` (expecting failure)
+
+**After Stage 13.3a**:
+- New `ClosureBodyInfo` side-table on `MirLowerCtxt` (keyed by LocalId)
+- `HirExprKind::Closure` arm stores (params, body, captures) in side-table
+- `HirExprKind::Call` arm detects closure callee via side-table lookup
+- `lower_closure_call_inline` function: inlines closure body at call site
+  - Binds call args to closure param locals
+  - Extracts captures from closure struct via `Place::Projection(closure_local, Field(i))`
+  - Lowers closure body inline
+  - Returns result local
+- 30+ conformance tests flipped from `compile_error` → `compile_ok` ✅
+- Closures now callable in direct-call pattern (`let f = |x| ...; f(5);`)
+
+### Implementation: Inline approach (pragmatic subset of Strategy A)
+
+Per `stage-13.3-design-alignment.md` §4, the full Strategy A (synthesized `call` function)
+is deferred to Stage 13.5+. Stage 13.3a implements the **inline approach**:
+
+- Each closure call site gets a copy of the closure body (LLVM optimizer deduplicates)
+- No synthesized `call` function (deferred to Stage 13.5+)
+- No Fn/FnMut/FnOnce trait auto-impl (deferred to Stage 13.5+)
+- Closures as values passed to functions (deferred to Stage 13.5+)
+
+### §14.4 Refactor Governance J1-J6: ✅ ALL 6 PASS
+
+| Criterion | Status | Evidence |
+|-----------|--------|----------|
+| J1 Architecture alignment | ✅ | Side-table carries HIR data downstream (§16 compliant) |
+| J2 Single responsibility | ✅ | Closure call dispatch isolated in `lower_closure_call_inline` |
+| J3 Single direction flow | ✅ | HIR → MIR lower (side-table) → codegen (no reverse) |
+| J4 Compilation expression complete | ✅ | Direct closure calls work; closures-as-values deferred |
+| J5 Stage division clear | ✅ | 4 src files (mir/lower/mod.rs, expr_operand.rs, control_flow.rs, codegen/mod.rs) |
+| J6 Scientific granularity | ✅ | Inline approach is minimal viable; full Strategy A deferred |
+
+### Files added/changed
+
+- New: `docs/develop/v0/stage-13/gate-review-13.3a.md` (Stage 13.3a gate review, 5/5 GO → PASS)
+- New: `tests/v0/stage13/plan/stage13_3a_tests.rs` (9 verification tests)
+- Updated: `src/mir/lower/mod.rs` (added `ClosureBodyInfo` struct + `closure_bodies` field)
+- Updated: `src/mir/lower/expr_operand.rs` (closure call dispatch + `lower_closure_call_inline` + side-table population)
+- Updated: `src/mir/lower/control_flow.rs` (closure info propagation through `let` bindings)
+- Updated: `src/codegen/mod.rs` (closure call codegen support)
+- Updated: 30+ conformance `.lin` files (compile_error → compile_ok)
+- Updated: `tests/all_tests.rs` (wire in stage13_3a_tests module)
+- Updated: `Cargo.toml` (v0.22.1 → v0.23.0 — minor bump, second user-facing feature)
+- Updated: `README.md` (Stage 13.3a ✅; v0.23.0; closures callable feature highlighted)
+- Updated: `docs/develop/v0/api-naming-standard.md` (v2.42 → v2.43)
+- Updated: `docs/tests/matrix.md` (Stage 13.3a row added)
+- Updated: `docs/worklog.md` (Stage 13.3a entry appended)
+
+### Verification
+
+```
+cargo clean: clean
+cargo test: 2265 passed (146 unit + 2265 integration), 0 failed, 2 ignored
+cargo fmt --check: clean
+cargo clippy --all-targets: 0 warnings, 0 errors
+python3 tests/conformance/run_all.py: 5026 passed, 0 failed
+cargo test --benches: 5 passed, 0 failed
+```
+
+### TD status after Stage 13.3a
+
+| TD ID | Priority | Status | Stage |
+|-------|----------|--------|-------|
+| TD-019 | P3 | on user hold | Stage 13+ |
+| TD-028 | P2 | ✅ CLOSED (Stage 13.1) | — |
+| TD-029 | P2 | open (deferred to Stage 13.1b) | Stage 13.1b |
+| **TD-030** | **P0** | **✅ CLOSED (Stage 13.3a — inline approach)** | — |
+| TD-031 | P0 | ✅ CLOSED (Stage 13.2) | — |
+| TD-032 | P0 | open | Stage 13.4 |
+| TD-033 | P1 | open | Stage 13.5+ |
+
+**P0 closure progress**: 2/3 P0 items closed (TD-030 + TD-031); 1 remaining (TD-032 macro_rules!)
+
+### Version policy: v0.22.1 → v0.23.0 (minor bump — second user-facing feature)
+
+Per `stage-13.3-design-alignment.md` §5.4 + semver §2.0.0:
+- Stage 13.3a adds the **second user-facing compiler feature** (closures callable)
+- Minor bump justified (new language capability)
+- v0.22.1 was preparation phase (patch bump)
+- v0.23.0 = second minor bump with actual language feature (closures callable)
+
+### Next steps
+
+- **Stage 13.4 (P0 — last P0 blocker)**: macro_rules! + 26 built-in macros (TD-032) — 4-8 weeks
+- **Stage 13.1b**: TD-029 TyKind::Dynamic refactor (P2, deferred)
+- **Stage 13.5+**: TD-033 P1 sub-items + full Strategy A (synthesized `call` function) + Fn/FnMut/FnOnce auto-impl
+- **v0.24.0**: After Stage 13.4 P0 closure (macro_rules! — third user-facing feature, all P0 closed)
 
 ---
 

@@ -32,11 +32,11 @@
 | Stage 13.1 (Architecture baseline — TD-028 §16 violation CLOSED, 7 emit_* relocated mir→codegen) | +10 rust | — | ✅ Complete (5/5 GO → PASS, §16 compliant) |
 | Stage 13.2 (if-let / while-let — TD-031 P0 CLOSED, Strategy B desugar to Match) | +11 rust | +11 PASS (5015→5026) | ✅ Complete (5/5 GO → PASS, v0.22.0 minor bump) |
 | Stage 13.3 (Closure call lowering TD-030 P0 — preparation phase, §13.4 design alignment + blueprint) | +9 rust | 0 | ✅ Preparation complete (5/5 GO-WITH-CONDITIONS → PASS; 13.3a implementation pending) |
-| Stage 13.3a (TD-030 full implementation — synthesized call fn + side-table + dispatch + codegen + typeck) | TBD | TBD | ⏳ Pending (HIGH risk, ~600-1000 LOC, 9 src files) |
+| Stage 13.3a (TD-030 P0 CLOSED — closures callable via inline approach, 30+ conformance compile_error→compile_ok) | +9 rust | +30 compile_ok | ✅ Complete (5/5 GO → PASS, v0.23.0 minor bump) |
 | Stage 13.1b (TD-029 TyKind::Dynamic refactor — deferred per design alignment §15) | TBD | — | ⏳ Deferred (P2, non-blocking for P0) |
-| Stage 13.4 (macro_rules! + 26 built-in macros — TD-032 P0 closure) | TBD | TBD | ⏳ Pending (P0) |
-| Stage 13.5+ (TD-033 P1 sub-items + v0.1 release announcement) | TBD | TBD | ⏳ Pending (P1) |
-| **Total** | **2258** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE; Stage 13 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3 🔄 TD-030 prep) |
+| Stage 13.4 (macro_rules! + 26 built-in macros — TD-032 P0 closure, **last P0 blocker**) | TBD | TBD | ⏳ Pending (P0) |
+| Stage 13.5+ (TD-033 P1 sub-items + full Strategy A + Fn/FnMut/FnOnce + v0.1 release announcement) | TBD | TBD | ⏳ Pending (P1) |
+| **Total** | **2265** rust + **5026** conformance | ~100% | 🎉 v0.1 GATE REACHED + RATIFIED by r216+r217+r219 audits (5026/5000 = 100.5%); Stage 12 ✅ COMPLETE; Stage 13 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0; 2/3 P0 closed) |
 
 ## Stage 3 Test Breakdown
 

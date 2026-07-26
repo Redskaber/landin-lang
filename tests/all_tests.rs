@@ -569,3 +569,8 @@ mod stage13_2_tests;
 // Full implementation deferred to Stage 13.3a (HIGH risk, ~600-1000 LOC, 9 src files).
 #[path = "v0/stage13/plan/stage13_3_tests.rs"]
 mod stage13_3_tests;
+// Stage 13.3a: TD-030 closure call lowering (P0 CLOSED) — inline approach.
+// Closures callable via ClosureBodyInfo side-table + lower_closure_call_inline.
+// 30+ conformance compile_error→compile_ok. v0.23.0 minor bump (second user-facing feature).
+#[path = "v0/stage13/plan/stage13_3a_tests.rs"]
+mod stage13_3a_tests;

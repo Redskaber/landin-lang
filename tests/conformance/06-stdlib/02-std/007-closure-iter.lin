@@ -1,7 +1,6 @@
 // CATEGORY: stdlib
 // DESCRIPTION: closure-based iteration pattern
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
-// SOURCE: Stage 10.6 conformance expansion
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.6 conformance expansion (Stage 13.3a closure call lowering — TD-030 closed)
 
 fn main() { let f = |x| x + 1; let _ = f(5); }

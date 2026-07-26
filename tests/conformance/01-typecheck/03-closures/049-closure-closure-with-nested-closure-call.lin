@@ -1,6 +1,6 @@
 // CATEGORY: typecheck
 // DESCRIPTION: closure with nested closure call
-// EXPECTED: compile_error
-// SOURCE: Stage 11.1 typecheck expansion
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 13.3a closure call lowering — TD-030 closed)
 
 fn main() { let f = |x| |y| x + y; let g = f(1); }

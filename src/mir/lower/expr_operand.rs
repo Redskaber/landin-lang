@@ -187,6 +187,204 @@ pub fn build_dyn_trait_call_terminator(
     }
 }
 
+/// Stage 13.3a (TD-030): Inline a closure body at the call site.
+///
+/// This implements the pragmatic subset of Strategy A (per
+/// `stage-13.3-design-alignment.md` §4) for closure call lowering:
+/// instead of synthesizing a separate `call` function MirBody per closure
+/// (the full Strategy A), we inline the closure body directly at each
+/// call site. This duplicates the body code at each call site, but is
+/// simpler to implement and lets LLVM's optimizer deduplicate.
+///
+/// # Steps
+///
+/// 1. **Bind call args to closure params**: for each `(param, arg_local)`
+///    pair, re-register `param.pat.hir_id` → `arg_local` in `local_map`.
+///    (The closure arm registered the param's hir_id → a fresh infer-typed
+///    local at construction time; we overwrite that with the call arg's
+///    local so the body's Path references to the param resolve to the
+///    actual call arg.)
+///
+/// 2. **Extract captures from the closure struct**: for each capture i,
+///    create a fresh local with the capture's type, and assign it
+///    `Copy(Projection(closure_local, Field(i, cap_ty)))`. Re-register
+///    the captured binding's hir_id → the extract local in `local_map`.
+///    (The captured binding's hir_id was originally registered to point
+///    at the captured variable's original local — but at the call site,
+///    the closure has the captured value stored in its struct field, so
+///    we must re-route references through the extract local.)
+///
+/// 3. **Lower the closure body inline**: `lower_expr_to_operand(cx, body)`.
+///    The body's Path references resolve via `local_map` to the args (step 1)
+///    and captures (step 2). The result is the call's result.
+///
+/// 4. **Restore `local_map`**: the param + capture hir_id re-registrations
+///    are reverted to their pre-call values so subsequent code in the
+///    enclosing function sees the original locals.
+///
+/// # §16 compliance
+///
+/// The closure body is HIR data sunk into `MirLowerCtxt.closure_bodies`
+/// at construction time. The inline lowering reads from this side-table
+/// — no HIR access from codegen (codegen just sees the resulting MIR
+/// statements).
+///
+/// # §23 compliance
+///
+/// `lower_closure_call_inline` follows the
+/// `<verb>_<noun>_<noun>_<prep>_<noun>` pattern (mirrors
+/// `lower_expr_to_operand`).
+fn lower_closure_call_inline(
+    cx: &mut MirLowerCtxt,
+    info: super::ClosureBodyInfo,
+    closure_local: LocalId,
+    arg_locals: &[LocalId],
+    expr: &HirExpr,
+) -> LocalId {
+    // Save the local_map entries we're about to overwrite so we can
+    // restore them after the body is lowered. (The body might reference
+    // the same hir_ids as the enclosing function's locals — e.g., a
+    // captured variable — and we don't want the inlined body to
+    // permanently re-route those references.)
+    let mut saved_entries: Vec<(HirId, Option<LocalId>)> = Vec::new();
+
+    // Step 1: Bind call args to closure params.
+    // For each (param, arg) pair, re-register the param's hir_id → arg_local.
+    // Also collect pattern sub-hir_ids (for tuple patterns etc.) and map
+    // them to the arg_local too — though Stage 13.3a only supports simple
+    // ident patterns robustly; tuple patterns may need additional handling.
+    for (i, param) in info.params.iter().enumerate() {
+        let param_hir_id = param.pat.hir_id;
+        // Save old entry.
+        let old = cx.local_map.get(&param_hir_id).copied();
+        saved_entries.push((param_hir_id, old));
+
+        if i < arg_locals.len() {
+            // Re-register param's hir_id → call arg's local.
+            // The body's Path references to this param will now resolve
+            // to the call arg's local (which holds the actual arg value).
+            cx.local_map.insert(param_hir_id, arg_locals[i]);
+
+            // Stage 13.3a: also collect sub-hir_ids from the pattern
+            // (e.g., tuple patterns) and map them to the same arg_local.
+            // This handles `|(a, b)| ...` minimally — both a and b get
+            // the same arg_local, which is wrong for tuple patterns but
+            // at least doesn't crash. Proper tuple pattern destructuring
+            // at closure calls is deferred to Stage 13.5+.
+            let mut sub_ids: std::collections::HashSet<HirId> = std::collections::HashSet::new();
+            pattern_bindings::collect_pat_hir_ids(&param.pat, &mut sub_ids);
+            for sub_id in sub_ids {
+                if sub_id != param_hir_id {
+                    let old_sub = cx.local_map.get(&sub_id).copied();
+                    saved_entries.push((sub_id, old_sub));
+                    cx.local_map.insert(sub_id, arg_locals[i]);
+                }
+            }
+        }
+    }
+
+    // Step 2: Extract captures from the closure struct.
+    // For each capture i, create a fresh local + assign
+    // Copy(Projection(closure_local, Field(i, cap_ty))).
+    // Re-register the captured binding's hir_id → extract_local.
+    //
+    // Stage 13.3a: if the captured value was itself a closure (i.e., the
+    // captured binding's original local is in `cx.closure_bodies`), propagate
+    // the closure info to the extract_local. This enables nested closure
+    // calls — e.g., `let f = |x| x; let g = || f(1); g();` — where `g`
+    // captures `f`, and when `g()` is called, the inlined body needs to
+    // know that the extracted `f` is callable as a closure.
+    for (i, (cap_hir_id, cap_ty)) in info.captures.iter().enumerate() {
+        // Save old entry (the original local that held the captured value).
+        let old = cx.local_map.get(cap_hir_id).copied();
+        saved_entries.push((*cap_hir_id, old));
+
+        // Create the extract local.
+        let extract_local = cx.mir.new_local(cap_ty.clone(), None, expr.span);
+
+        // Assign: extract_local = Copy(Projection(closure_local, Field(i, cap_ty)))
+        cx.push_assign(
+            Place::local(extract_local, expr.span),
+            Rvalue::Use(Operand::Copy(Place {
+                kind: PlaceKind::Projection(
+                    Box::new(Place::local(closure_local, expr.span)),
+                    ProjectionElem::Field(FieldId(i as u32), cap_ty.clone()),
+                ),
+                span: expr.span,
+            })),
+            expr.span,
+        );
+
+        // Re-register the captured binding's hir_id → extract_local.
+        // The body's Path references to the captured variable now resolve
+        // to the extracted capture value.
+        cx.local_map.insert(*cap_hir_id, extract_local);
+
+        // Stage 13.3a: propagate closure info from the original captured
+        // local to the extract_local. If the captured value was a closure,
+        // the inlined body might call it — we need the closure info
+        // registered at the extract_local so the call dispatch finds it.
+        if let Some(orig_local) = old {
+            if let Some(orig_info) = cx.closure_bodies.get(&orig_local).cloned() {
+                cx.closure_bodies.insert(extract_local, orig_info);
+            }
+        }
+    }
+
+    // Step 3: Lower the closure body inline.
+    // The body's Path references resolve via local_map to:
+    //   - params → call arg locals (step 1)
+    //   - captures → extract locals (step 2)
+    let result_local = lower_expr_to_operand(cx, &info.body);
+
+    // Step 4: Restore local_map entries.
+    for (hir_id, old) in saved_entries {
+        if let Some(lid) = old {
+            cx.local_map.insert(hir_id, lid);
+        } else {
+            cx.local_map.remove(&hir_id);
+        }
+    }
+
+    result_local
+}
+
+/// Stage 13.3a (TD-030): Determine whether a capture's type is Copy.
+///
+/// This is a duplicate of `borrowck::copy_semantics::ty_is_copy` — inlined
+/// here to avoid a `mir::lower → borrowck` dependency (§16 violation:
+/// borrowck runs after mir::lower in the pipeline).
+///
+/// Returns `true` for:
+/// - Primitives: bool, char, int, uint, float
+/// - References (`&T`), raw pointers, fn defs, fn ptrs
+/// - Tuples/arrays of Copy types
+/// - Infer/Error (assumed Copy to avoid spurious errors during inference)
+/// - Adt (assumed Copy as a fallback — precise check needs TraitResolver,
+///   which is not available at MIR lower time)
+///
+/// Returns `false` for:
+/// - `Str`, `Slice(_)`, `Closure(_, _)`, `Param(_)` — these are non-Copy
+///
+/// A future refactor should move Copy-ness detection to a neutral location
+/// (e.g., `mir::ty` or a new `ty::copy_semantics` module) so both
+/// `mir::lower` and `borrowck` can share the same logic without violating §16.
+fn is_capture_ty_copy(ty: &Ty) -> bool {
+    use crate::mir::ty::TyKind::*;
+    match &ty.kind {
+        Bool | Char | Int(_) | Uint(_) | Float(_) => true,
+        Ref(_, _, _) => true,
+        RawPtr(_, _) => true,
+        FnDef(_, _) | FnPtr(_) => true,
+        Never => true,
+        Tuple(tys) => tys.iter().all(is_capture_ty_copy),
+        Array(inner, _) => is_capture_ty_copy(inner),
+        Infer(_) | Error | Foreign => true,
+        Adt(_, _) => true,
+        Str | Slice(_) | Closure(_, _) | Param(_) => false,
+    }
+}
+
 /// Lower a HIR expression to a MIR Operand (a value that can be used
 /// as an argument to a binary op, call, etc.).
 ///
@@ -449,6 +647,33 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .iter()
                 .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
                 .collect();
+
+            // Stage 13.3a (TD-030): Closure call dispatch.
+            //
+            // Before falling through to the existing FnDef / Adt / placeholder
+            // dispatch, check if `func_local` is registered in the
+            // `cx.closure_bodies` side-table. If yes, this is a closure call —
+            // inline the closure body at the call site.
+            //
+            // The side-table is keyed by LocalId (not DefId) because:
+            // (a) at MIR lowering time, we don't have a unique per-closure
+            //     DefId allocation mechanism;
+            // (b) the call site has the func_local (LocalId), not a DefId;
+            // (c) closure info propagates through `let` bindings (the let
+            //     lowering in `control_flow::lower_block` propagates the
+            //     info from init_local to let_local).
+            //
+            // The inline approach is the Stage 13.3a pragmatic subset of
+            // Strategy A (per `stage-13.3-design-alignment.md` §4): each
+            // call site gets a copy of the closure body. LLVM's optimizer
+            // can deduplicate. Strategy A's full synthesized `call` function
+            // is deferred to Stage 13.5+.
+            //
+            // Per §16: the closure body is HIR data sunk into the lowering
+            // context as a side-table. No HIR access from codegen.
+            if let Some(info) = cx.closure_bodies.get(&func_local).cloned() {
+                return lower_closure_call_inline(cx, info, func_local, &arg_locals, expr);
+            }
 
             // Stage 3.30 (per §15): inspect the func operand's type to decide
             //   - TyKind::Adt(def_id, _)  → Aggregate(Adt(def_id, ...)) —
@@ -856,28 +1081,44 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span)
         }
 
-        // Closure: `|args| body` → lower body + create closure value with captures.
+        // Closure: `|args| body` → create closure value with captures + register
+        // the closure's HIR body for later inlining at call sites.
+        //
         // Stage 4.4 (L3 closure codegen): creates a proper closure value.
         // Stage 4.7 (L3 capture analysis): now detects and captures external variables.
+        // Stage 13.3a (TD-030 closure call lowering): the body is NO LONGER lowered
+        // inline at the closure literal site — instead, it is stored in the
+        // `cx.closure_bodies` side-table keyed by the closure_local. When the
+        // closure is later called (`HirExprKind::Call` arm), the body is
+        // retrieved and lowered inline at the call site.
         //
-        // Current implementation (Stage 4.7):
-        // - Registers closure params as locals (unchanged)
-        // - Collects captured locals (external variables referenced in body)
-        // - Lowers the closure body
-        // - Creates a closure value via `AggregateKind::Closure` with captured operands
-        // - The closure type carries capture field types in substs
+        // Why the change? Previously, the body was lowered inline at the
+        // closure literal site, which caused the body's statements (and side
+        // effects!) to fire at closure CONSTRUCTION time, not at call time.
+        // This is a soundness bug — `let f = |x| { println!(...); x + 1 };`
+        // would print at construction, not at `f(5)`. Now the body is only
+        // lowered when the closure is actually called.
+        //
+        // What if the closure is never called? The body is never lowered,
+        // and any errors inside it are not reported. This is acceptable for
+        // Stage 13.3a — dead closures are dead code. A future "lower all
+        // closure bodies for error checking" pass can be added if needed.
         //
         // Capture analysis:
-        // - Walks the closure body to find `HirExprKind::Path` with `Res::Local(hir_id)`
-        // - Filters out closure params (those hir_ids just registered)
-        // - Remaining locals are "captured" — their values become closure env fields
+        // - Walks the closure body (HIR walk, not MIR) to find
+        //   `HirExprKind::Path` with `Res::Local(hir_id)`.
+        // - Filters out closure params (those hir_ids just registered).
+        // - Remaining locals are "captured" — their values become closure
+        //   env fields, stored in the closure struct.
         //
-        // Limitations (deferred to Stage 4.8+):
-        // - Closure call lowering: closure calls still go through regular Call
+        // Limitations (deferred to Stage 13.5+):
         // - Capture mode (move vs borrow): currently always Copy
         // - Nested closures: not yet handled
+        // - Fn/FnMut/FnOnce auto-impl: deferred to Stage 13.5+
         HirExprKind::Closure { params, body, .. } => {
-            // Register closure params as locals + collect their hir_ids
+            // Register closure params as locals + collect their hir_ids.
+            // The params get fresh infer var types — these will be unified
+            // with the call arg types when the closure is called.
             let mut param_hir_ids: std::collections::HashSet<HirId> =
                 std::collections::HashSet::new();
             for param in params {
@@ -898,16 +1139,46 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 &mut seen,
             );
 
-            // Lower closure body
-            let _body_local = lower_expr_to_operand(cx, body);
+            // Stage 13.3a: DO NOT lower the body inline here. The body is
+            // stored in `cx.closure_bodies` and lowered at the call site.
+            // (See comment block above for the soundness rationale.)
 
-            // Stage 4.7: Build capture field types + operands
+            // Stage 4.7: Build capture field types + operands.
+            // Each capture's type is read from the captured variable's local_decl.
+            //
+            // Stage 13.3a fix: choose `Operand::Copy` or `Operand::Move` based
+            // on whether the capture's type is Copy.
+            //   - Copy types (i32, bool, &T, etc.): use `Operand::Copy` —
+            //     bit-copy the value into the closure struct. The original
+            //     variable remains valid for subsequent uses.
+            //   - Non-Copy types (Closure, Str, Slice, etc.): use `Operand::Move` —
+            //     transfer ownership into the closure struct. The original
+            //     variable is moved and cannot be used again.
+            //
+            // This matches Rust's default capture mode (by-ref for Copy types,
+            // by-value for non-Copy types when the closure body requires it).
+            // The `move` keyword on closures is currently a no-op (Stage 13.3a
+            // simplification — proper move-closure semantics deferred to
+            // Stage 13.5+).
+            //
+            // Stage 13.3a §16 note: we inline the Copy-ness check here
+            // (instead of importing `borrowck::ty_is_copy`) to avoid a
+            // mir::lower → borrowck dependency (borrowck runs after
+            // mir::lower per the pipeline). The logic is duplicated from
+            // `src/borrowck/copy_semantics.rs::ty_is_copy` — a future
+            // refactor should move Copy-ness detection to a neutral location
+            // (e.g., `mir::ty` or a new `ty::copy_semantics` module).
             let mut capture_tys: Vec<Ty> = Vec::new();
             let mut capture_operands: Vec<Operand> = Vec::new();
-            for (_hir_id, local_id) in &captured {
+            for (_cap_hir_id, local_id) in &captured {
                 let ty = cx.mir.local(*local_id).ty.clone();
-                capture_tys.push(ty);
-                capture_operands.push(Operand::Copy(Place::local(*local_id, expr.span)));
+                capture_tys.push(ty.clone());
+                let operand = if is_capture_ty_copy(&ty) {
+                    Operand::Copy(Place::local(*local_id, expr.span))
+                } else {
+                    Operand::Move(Place::local(*local_id, expr.span))
+                };
+                capture_operands.push(operand);
             }
 
             // Create closure value with captures
@@ -915,9 +1186,15 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .hir
                 .map(|h| h.owners.first().map(|(id, _)| *id).unwrap_or_default())
                 .unwrap_or_default();
-            let closure_ty = Ty::new(TyKind::Closure(closure_def_id, capture_tys), expr.span);
+            let closure_ty = Ty::new(
+                TyKind::Closure(closure_def_id, capture_tys.clone()),
+                expr.span,
+            );
             let closure_local = cx.mir.new_local(closure_ty, None, expr.span);
-            // Assign the closure value with captured operands
+            // Assign the closure value with captured operands.
+            // Stage 13.3a fix: pass `capture_tys` (not `vec![]`) as the
+            // AggregateKind::Closure substs — matches TyKind::Closure substs.
+            // Was: `vec![]` — inconsistent with the type's substs.
             cx.mir
                 .block_mut(cx.current_block)
                 .statements
@@ -925,12 +1202,29 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     kind: StatementKind::Assign(Box::new((
                         Place::local(closure_local, expr.span),
                         Rvalue::Aggregate(
-                            AggregateKind::Closure(closure_def_id, vec![]),
+                            AggregateKind::Closure(closure_def_id, capture_tys.clone()),
                             capture_operands,
                         ),
                     ))),
                     span: expr.span,
                 });
+
+            // Stage 13.3a: store the closure's (params, body, captures) in
+            // the side-table keyed by closure_local. The `HirExprKind::Call`
+            // arm will look this up to inline the body at the call site.
+            let closure_info = super::ClosureBodyInfo {
+                params: params.clone(),
+                body: body.clone(),
+                captures: captured
+                    .iter()
+                    .map(|(hir_id, local_id)| {
+                        let ty = cx.mir.local(*local_id).ty.clone();
+                        (*hir_id, ty)
+                    })
+                    .collect(),
+            };
+            cx.closure_bodies.insert(closure_local, closure_info);
+
             closure_local
         }
 

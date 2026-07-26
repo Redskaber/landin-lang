@@ -621,6 +621,36 @@ fn codegen_rvalue(
                 agg
             }
         }
+        // Stage 13.3a (TD-030): Closure struct construction.
+        // Aggregate(AggregateKind::Closure(def_id, substs), operands) constructs
+        // a closure struct value with one field per capture. The `substs`
+        // vector carries the capture field types (matching `TyKind::Closure`).
+        // The `operands` vector carries the capture values (in field order).
+        //
+        // Codegen: emit the closure struct type as `{ field_tys... }`, then
+        // `insertvalue` each capture operand at its field index. Mirrors the
+        // `AggregateKind::Adt` struct path (lines 603-622 above).
+        //
+        // Per `07-codegen.md` §8.1: "每个闭包字面量生成一个唯一的匿名 struct" —
+        // the closure struct is an anonymous struct with one field per capture.
+        // The struct type is computed by `mir_type_to_emit_type` from
+        // `TyKind::Closure(_, substs)` (see `emitter.rs:487-490`).
+        Rvalue::Aggregate(AggregateKind::Closure(_def_id, substs), operands) => {
+            if operands.is_empty() {
+                // Empty closure (no captures) — emit an empty struct value.
+                return "0".to_string();
+            }
+            // Build the closure struct type from the capture field types.
+            let field_tys: Vec<EmitType> = substs.iter().map(mir_type_to_emit_type).collect();
+            let agg_ty = EmitType::Struct(field_tys.clone());
+            let mut agg = "undef".to_string();
+            for (i, op) in operands.iter().enumerate() {
+                let val = codegen_operand(emitter, mir, op, interner, layouts);
+                let val_ty = field_tys.get(i).cloned().unwrap_or(EmitType::I32);
+                agg = emitter.emit_insertvalue(&agg_ty, &agg, &val_ty, &val, i as u32);
+            }
+            agg
+        }
         Rvalue::Cast(_, op, target_ty) => {
             let val = codegen_operand(emitter, mir, op, interner, layouts);
             let src_ty = detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32);

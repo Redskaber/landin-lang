@@ -8,10 +8,10 @@ predictable performance.
 
 > **🎉 v0.1 RELEASE — Conformance gate reached: 5026/5000 tests (100.5%)!**
 >
-> **Status:** v0.22.1 — Stage 0-11 complete, Stage 12 ✅ COMPLETE (9/9), Stage 13 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3 🔄 TD-030 prep done).
-> **2258+ rust tests** + **5026 conformance tests** + 5 benchmarks. 0 clippy warnings.
+> **Status:** v0.23.0 — Stage 0-11 complete, Stage 12 ✅ COMPLETE (9/9), Stage 13 🔄 IN PROGRESS (13.1 ✅ TD-028, 13.2 ✅ TD-031 P0, 13.3a ✅ TD-030 P0 CLOSED — closures callable).
+> **2265+ rust tests** + **5026 conformance tests** + 5 benchmarks. 0 clippy warnings.
 > Process v3.21 (§0-§28). §16 interface isolation compliant (TD-028 CLOSED). §17.1/§17.2/§18.4 docs compliant.
-> Cross-stage audit r216 (first-pass) + r217 (second-pass, 3 reports) + r219 (Stage 12 §25 deep review) + Stage 13.1-13.3 design alignment complete.
+> Cross-stage audit r216 (first-pass) + r217 (second-pass, 3 reports) + r219 (Stage 12 §25 deep review) + Stage 13.1-13.3a design alignment + implementation complete.
 >
 > **Milestones:**
 > - Stage 0-4: ✅ Complete (lexer, parser, HIR, MIR, typeck, borrowck, codegen)
@@ -23,14 +23,15 @@ predictable performance.
 > - Stage 10: ✅ Complete (8 sub-stages — CLI upgrade + all 8 conformance categories created)
 > - Stage 11: ✅ Complete (10 sub-stages — conformance 1139→5026, v0.1 gate reached!)
 > - Stage 12: ✅ COMPLETE (9/9 sub-stages — v0.1 release + r216+r217+r219 cross-stage audits + §25.8 backfill + plan-13 reframe + version revert + README corrections + final gate review + polish backfill)
-> - Stage 13: 🔄 IN PROGRESS (13.1 ✅ TD-028 §16 CLOSED; 13.2 ✅ TD-031 P0 CLOSED — if-let/while-let; 13.3 🔄 TD-030 prep done; 13.3a-13.4 P0 pending)
+> - Stage 13: 🔄 IN PROGRESS (13.1 ✅ TD-028 §16 CLOSED; 13.2 ✅ TD-031 P0 CLOSED — if-let/while-let; 13.3a ✅ TD-030 P0 CLOSED — closures callable; 13.4 P0 pending)
 >
 > **Architecture:** 51+ modules. All files < 1500 LOC. Single responsibility per module.
 > Data flows单向 (§16 compliant — TD-028 closed). Design docs synced (§25.8).
 >
 > **v0.1 gate:** conformance 5026/5000 ✅ — **GATE REACHED!** (ratified by r216 + r217 + r219 audits)
-> **v0.3 prep:** 2 P0 blockers remaining (TD-030 closure call, TD-032 macro_rules!) — Stage 13.3a-13.4 target
-> **v0.22.0 feature:** ✅ if-let / while-let (TD-031 P0 CLOSED) — first user-facing language feature of Stage 13
+> **v0.3 prep:** 1 P0 blocker remaining (TD-032 macro_rules!) — Stage 13.4 target
+> **v0.22.0 feature:** ✅ if-let / while-let (TD-031 P0 CLOSED) — first user-facing language feature
+> **v0.23.0 feature:** ✅ closures callable (TD-030 P0 CLOSED) — second user-facing language feature
 
 ## Quick start
 
@@ -241,13 +242,14 @@ cargo clippy --all-targets -- -D warnings
 - **Stage 13** 🔄 IN PROGRESS (v0.3 self-hosting prep — TD-028..TD-033 closure)
   - 13.1 ✅ Architecture baseline — TD-028 §16 violation CLOSED (7 emit_* functions relocated mir→codegen)
   - 13.2 ✅ if-let / while-let — TD-031 P0 CLOSED (Strategy B desugar to Match; 11 conformance FAIL→PASS)
-  - 13.3 🔄 Closure call lowering — TD-030 P0 PREPARATION DONE (§13.4 design alignment + blueprint; 13.3a implementation pending, HIGH risk ~600-1000 LOC)
+  - 13.3 ✅ Closure call lowering preparation — §13.4 design alignment + blueprint
+  - 13.3a ✅ Closure call lowering — TD-030 P0 CLOSED (inline approach; 30+ conformance compile_error→compile_ok)
   - 13.1b ⏳ TD-029 TyKind::Dynamic refactor (deferred per design alignment §15)
-  - 13.4 ⏳ macro_rules! + 26 built-in macros (TD-032 — P0)
+  - 13.4 ⏳ macro_rules! + 26 built-in macros (TD-032 — P0, **last P0 blocker**)
   - 13.5 ⏳ TD-033 P1 sub-items (for/move/HRTB/assoc-norm/two-phase/RFC 2229)
   - 13.6 ⏳ v0.1 release announcement (after P0 closure)
 - **v0.1** = Stage 0 完整 + conformance 5026/5000 通过 ✅ **GATE REACHED!** (ratified by r216 + r217 + r219)
-- **v0.3** = self-hosting (远期 — Stage 13 P0 closure in progress, 1/3 P0 closed, 1 in prep)
+- **v0.3** = self-hosting (远期 — Stage 13 P0 closure in progress, 2/3 P0 closed, 1 remaining)
 
 ## Cross-stage audit (r216 + r217 + r219)
 

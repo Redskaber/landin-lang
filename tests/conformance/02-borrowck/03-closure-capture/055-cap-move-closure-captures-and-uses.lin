@@ -1,6 +1,6 @@
 // CATEGORY: borrowck
 // DESCRIPTION: move closure captures and uses
-// EXPECTED: compile_error
-// SOURCE: Stage 11.2 borrowck expansion
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.2 borrowck expansion (Stage 13.3a closure call lowering — TD-030 closed)
 
 fn main() { let x=1; let f=move||{let y=x;y+1}; }

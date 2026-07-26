@@ -72,6 +72,51 @@ pub struct MirLowerCtxt<'a> {
     /// `build_dyn_trait_mir_plan_from_resolver()`) and passed in as a
     /// read-only value. `MirLowerCtxt` does not own a TraitResolver.
     pub dyn_trait_plan: Option<DynTraitMIRPlan>,
+    /// Stage 13.3a (TD-030): Side-table mapping the LocalId that holds a
+    /// closure struct value → the closure's HIR body + params + capture
+    /// info. Used by `HirExprKind::Call` to inline the closure body at the
+    /// call site.
+    ///
+    /// The key is the LocalId of any local that holds a closure value —
+    /// either the original closure literal's local, or a let-bound local
+    /// that received the closure via Move/Copy (propagated by the let
+    /// lowering in `control_flow::lower_block`).
+    ///
+    /// Per `stage-13.3-design-alignment.md` §4, the long-term plan is
+    /// Strategy A (synthesized `call` function per closure); Stage 13.3a
+    /// implements the inline approach as a pragmatic subset to make the
+    /// common case (`let f = |x| ...; f(5);`) work without the full
+    /// synthesized-MirBody infrastructure.
+    pub closure_bodies: std::collections::HashMap<LocalId, ClosureBodyInfo>,
+}
+
+/// Stage 13.3a (TD-030): Information about a closure literal, stored in
+/// `MirLowerCtxt.closure_bodies` keyed by the LocalId holding the closure
+/// struct value. Used by `HirExprKind::Call` to inline the closure body at
+/// the call site.
+///
+/// Fields:
+/// - `params`: the closure's declared parameters (HIR). At the call site,
+///   each param is bound to the corresponding call argument local.
+/// - `body`: the closure's body expression (HIR). Lowered inline at each
+///   call site.
+/// - `captures`: list of (HirId of the captured binding, capture field type).
+///   The capture field index in the closure struct = the vec index. At the
+///   call site, each capture is extracted via
+///   `Place::Projection(closure_local, Field(i, cap_ty))`.
+///
+/// Per §16: this side-table carries HIR-derived data downstream to the call
+/// site. The lowering context reads HIR (allowed — MIR lower is downstream
+/// of HIR). No HIR access from codegen.
+#[derive(Clone, Debug)]
+pub struct ClosureBodyInfo {
+    /// The closure's declared parameters (HIR).
+    pub params: Vec<HirParam>,
+    /// The closure's body expression (HIR).
+    pub body: Box<HirExpr>,
+    /// Captured locals: (HirId of the captured binding, capture field type).
+    /// The capture field index in the closure struct = the vec index.
+    pub captures: Vec<(HirId, Ty)>,
 }
 
 impl<'a> MirLowerCtxt<'a> {
@@ -86,6 +131,7 @@ impl<'a> MirLowerCtxt<'a> {
             unify: UnificationTable::new(),
             hir: None,
             dyn_trait_plan: None,
+            closure_bodies: std::collections::HashMap::new(),
         }
     }
 

@@ -1,6 +1,6 @@
 // CATEGORY: typecheck
 // DESCRIPTION: closure assigned to let then called
-// EXPECTED: compile_error
-// SOURCE: Stage 11.1 typecheck expansion
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion (Stage 13.3a closure call lowering — TD-030 closed)
 
 fn main() { let f = |x: i32| x + 1; let y = f(5); }

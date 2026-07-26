@@ -175,6 +175,37 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                         Rvalue::Use(Operand::Move(Place::local(init_local, init.span))),
                         local.span,
                     );
+
+                    // Stage 13.3a (TD-030): Propagate closure info from
+                    // init_local to local_id. If the init was a closure
+                    // literal (or another let-bound closure), the closure
+                    // body info is registered in `cx.closure_bodies` keyed
+                    // by init_local. When the closure is later called via
+                    // the let-bound name (e.g., `let g = |x| ...; g(5);`),
+                    // the `HirExprKind::Call` arm looks up the info by
+                    // the let_local (local_id) — so we propagate the info
+                    // from init_local to local_id here.
+                    //
+                    // This handles:
+                    //   - `let g = |x| ...;`  (init_local = closure_local)
+                    //   - `let h = g;`        (init_local = g's local_id)
+                    //
+                    // It does NOT handle:
+                    //   - `let h = if cond { |x| ... } else { |x| ... };`
+                    //     (both branches have different closures; we'd need
+                    //     a more sophisticated approach — deferred to
+                    //     Stage 13.5+ when full Strategy A is implemented)
+                    //   - `let h = some_func();` where some_func returns a
+                    //     closure (we don't track closure info across fn
+                    //     boundaries — would require Strategy A)
+                    //
+                    // The propagation is by reference (cloned), so subsequent
+                    // mutations to `cx.closure_bodies` (e.g., another
+                    // closure literal in the same scope) don't affect
+                    // already-registered entries.
+                    if let Some(info) = cx.closure_bodies.get(&init_local).cloned() {
+                        cx.closure_bodies.insert(local_id, info);
+                    }
                 } else {
                     // No init: just allocate the local. If a type annotation
                     // is present, use it; otherwise fresh Infer var.
