@@ -124,6 +124,19 @@ fn main() {
         if cli.emit_obj || cli.emit_bin || cli.run {
             use landin_compiler::codegen::codegen_crate_to_module;
 
+            // Stage 13.27: Check if the source contains `fn main()` before
+            // attempting to link. Without `fn main()`, there's no `landin_main`
+            // symbol for the C wrapper to call → linker error.
+            // This gives a clear error message instead of a cryptic linker failure.
+            if cli.emit_bin || cli.run {
+                let has_main = result.body_metas.iter().any(|m| m.fn_name == "landin_main");
+                if !has_main {
+                    eprintln!("error: no `fn main()` found in source — cannot link or run");
+                    eprintln!("hint: add `fn main() {{ }}` to your program");
+                    std::process::exit(1);
+                }
+            }
+
             let emitter = codegen_crate_to_module(&result);
 
             // Stage 13.23: Determine object file path.

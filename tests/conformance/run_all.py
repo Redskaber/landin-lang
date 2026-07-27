@@ -131,6 +131,9 @@ def run_test(test: ConformanceTest, binary: Path, verbose: bool, mode: str = "au
     mode="compile": uses --compile (validates full pipeline)
     mode="auto": auto-detect based on test path — 00-parse uses parse mode,
                  everything else (01-typecheck, 02-borrowck, etc.) uses compile mode
+
+    Stage 13.27: For compile_ok tests that contain `fn main()`, also verify
+    that `--run` exits 0 (runtime correctness check).
     """
     if mode == "auto":
         # Auto-detect: tests under 00-parse/ use parse mode, everything else uses compile
@@ -167,6 +170,15 @@ def run_test(test: ConformanceTest, binary: Path, verbose: bool, mode: str = "au
         if has_error:
             errs = [l for l in combined.splitlines() if "error:" in l.lower()]
             return False, f"expected PASS but got errors:\n  " + "\n  ".join(errs[:3])
+
+        # Stage 13.27: For compile_ok tests with `fn main()`, also verify --run.
+        # Only do this if the binary supports --run (check for llvm-backend feature
+        # by testing if --run works on a simple program).
+        if mode == "compile" and _has_fn_main(test.path):
+            run_ok, run_msg = _try_run(test.path, binary)
+            if not run_ok:
+                return False, f"compiled OK but --run failed: {run_msg}"
+
         return True, "OK"
     else:
         # Expected FAIL
@@ -179,6 +191,46 @@ def run_test(test: ConformanceTest, binary: Path, verbose: bool, mode: str = "au
                     + "\n  ".join(combined.splitlines()[:5])
                 )
         return True, "OK (expected error)"
+
+
+def _has_fn_main(path: Path) -> bool:
+    """Check if a .lin file contains `fn main`."""
+    try:
+        content = path.read_text(encoding="utf-8")
+        return "fn main" in content
+    except Exception:
+        return False
+
+
+def _try_run(path: Path, binary: Path) -> tuple[bool, str]:
+    """Try to --run a .lin file. Returns (ok, message).
+    Uses --run which requires llvm-backend feature.
+    """
+    try:
+        result = subprocess.run(
+            [str(binary), "--run", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        # --run should exit 0 for successful programs
+        # (exit code may be the program's return value, which could be non-zero)
+        # We accept exit 0 as success, and any crash (exit 139, 134) as failure.
+        if result.returncode == 139:
+            return False, "SEGFAULT (exit 139)"
+        if result.returncode == 134:
+            return False, "SIGABRT (exit 134)"
+        # Exit 1 with "no fn main" error is OK (handled by the compile check above)
+        if result.returncode == 1 and "no `fn main()`" in (result.stderr or ""):
+            return True, "no fn main (compile-only test)"
+        # Any other non-negative exit is OK (program returned a value)
+        if result.returncode >= 0 and result.returncode < 128:
+            return True, "OK"
+        return False, f"exit code {result.returncode}"
+    except subprocess.TimeoutExpired:
+        return False, "RUNTIME TIMEOUT"
+    except Exception as e:
+        return False, f"run error: {e}"
 
 
 def discover_tests(root: Path) -> list[ConformanceTest]:

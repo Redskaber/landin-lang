@@ -9963,3 +9963,31 @@ Stage Summary:
   fn main() without return type → () → exit 0.
   fn main() -> i32 { N } → exit N.
   The codegen symbol is always "landin_main" (the prefixed name for "main").
+
+---
+Task ID: stage13.27-r249-fn-main-check-conformance-run
+Agent: Super Z (main)
+Task: Stage 13.27 — Add fn main() check before linking + conformance --run verification. v0.27.1 patch bump.
+
+Work Log:
+- Baseline: v0.27.0 / 2387 rust tests + 5026 conformance
+- User reported: `--run tests/conformance/00-parse/00-literals/char_escape_backslash.lin` → linker error "undefined reference to `landin_main'"
+- Root cause: The test file has `fn f()` but no `fn main()`. The C wrapper calls `landin_main()` which doesn't exist → linker error.
+- Fix 1: src/bin/main.rs — Added `fn main()` existence check before --emit-bin/--run linking.
+  - Checks `result.body_metas` for a function named "landin_main"
+  - If not found: prints "error: no `fn main()` found in source — cannot link or run" + hint
+  - Prevents cryptic linker errors for files without fn main()
+- Fix 2: tests/conformance/run_all.py — Added `--run` verification for compile_ok tests with `fn main()`.
+  - After --compile passes, if the test file contains `fn main()`, also tries `--run`
+  - Accepts exit 0-127 as success (program may return a value)
+  - Flags crashes (exit 139 = SEGFAULT, 134 = SIGABRT) as failures
+  - Tests without `fn main()` stay as compile-only (no --run attempt)
+- Bumped Cargo.toml v0.27.0 → v0.27.1
+- Note: Could not run CI/CD in this session (Rust toolchain unavailable). User should run:
+  cargo clean && cargo build --lib --features llvm-backend && cargo fmt && cargo clippy --all-targets && cargo test
+
+Stage Summary:
+- Stage 13.27 — fn main() check + conformance --run verification
+- Clear error message for files without fn main() (no more cryptic linker errors)
+- Conformance runner now verifies runtime correctness for tests with fn main()
+- v0.27.1: patch bump (UX improvement + test framework enhancement)
