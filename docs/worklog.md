@@ -9991,3 +9991,33 @@ Stage Summary:
 - Clear error message for files without fn main() (no more cryptic linker errors)
 - Conformance runner now verifies runtime correctness for tests with fn main()
 - v0.27.1: patch bump (UX improvement + test framework enhancement)
+
+---
+Task ID: stage13.27-r250-test-cleanup-remove-doc-existence-tests
+Agent: Super Z (main)
+Task: Stage 13.27 — Remove all doc-existence tests from tests/ directory. v0.28.0 minor bump.
+
+Work Log:
+- Baseline: v0.27.1 / 2387 rust tests + 5026 conformance
+- User feedback: "在 tests/ 测试目录下，不要包含和测试项无关的内容（如，判断文档是否存在，文档内容等这种东西完全没必要，而且易变动）"
+- Audit: Found 38 test files that were entirely doc-existence tests:
+  - 16 files in stage13/ (checking source code patterns, file existence, Cargo.toml version strings)
+  - 13 files in stage9/ (checking conformance test file contents, all_tests.rs references, version bumps)
+  - 9 files in stage10/ (checking conformance test file patterns, version strings)
+- Removed all 38 files — total ~5000 lines of doc-existence tests eliminated
+- Rewrote tests/all_tests.rs to only reference behavioral test files that actually exist
+- Remaining test count:
+  - Default (no llvm-backend): 1916 tests (down from 2387 — removed ~471 doc-existence tests)
+  - With llvm-backend: 1951 tests (1916 + 35 runtime tests)
+  - Conformance: 5026 tests (unchanged)
+- Fixed fn main() check: --run and --emit-bin now give clear error message when source has no fn main()
+- Fixed conformance runner: verifies --run for compile_ok tests that contain fn main()
+- Clippy: 0 warnings (fixed all 3 remaining warnings)
+- Bumped Cargo.toml v0.27.1 → v0.28.0 (minor bump — test infrastructure cleanup)
+
+Stage Summary:
+- Stage 13.27 PASSED — all doc-existence tests removed, only behavioral tests remain
+- tests/ directory now contains ONLY behavioral tests (compilation + runtime verification)
+- No more fragile tests that check source file contents or file existence
+- v0.28.0: minor bump (test infrastructure cleanup is user-facing — test count changed)
+- Test count: 1916 (default) / 1951 (llvm-backend) / 5026 (conformance)
