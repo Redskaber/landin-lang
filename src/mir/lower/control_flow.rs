@@ -170,9 +170,38 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                     // ownership. Using Copy here would fail the borrow
                     // checker's Copy-ness check on non-Copy types (e.g.,
                     // `let s = "hello"` where s : Str — Str is not Copy).
+                    //
+                    // Stage 13.25 fix: Use Copy for Copy types, Move for non-Copy.
+                    // Before Stage 13.25, this always used Operand::Move, which
+                    // marked the init local as moved — breaking subsequent uses
+                    // of Copy types (e.g., `let x = i; i += 1;` where i is i32).
+                    // Now we check the type: if it's Copy (i32, bool, etc.), use
+                    // Operand::Copy (no move recorded); otherwise use Move.
+                    let init_ty = cx.mir.local(init_local).ty.clone();
+                    let is_copy = matches!(
+                        &init_ty.kind,
+                        crate::mir::ty::TyKind::Bool
+                            | crate::mir::ty::TyKind::Char
+                            | crate::mir::ty::TyKind::Int(_)
+                            | crate::mir::ty::TyKind::Uint(_)
+                            | crate::mir::ty::TyKind::Float(_)
+                            | crate::mir::ty::TyKind::Ref(_, _, _)
+                            | crate::mir::ty::TyKind::RawPtr(_, _)
+                            | crate::mir::ty::TyKind::FnDef(_, _)
+                            | crate::mir::ty::TyKind::FnPtr(_)
+                            | crate::mir::ty::TyKind::Never
+                            | crate::mir::ty::TyKind::Infer(_)
+                            | crate::mir::ty::TyKind::Error
+                            | crate::mir::ty::TyKind::Foreign
+                    );
+                    let operand = if is_copy {
+                        Operand::Copy(Place::local(init_local, init.span))
+                    } else {
+                        Operand::Move(Place::local(init_local, init.span))
+                    };
                     cx.push_assign(
                         Place::local(local_id, local.span),
-                        Rvalue::Use(Operand::Move(Place::local(init_local, init.span))),
+                        Rvalue::Use(operand),
                         local.span,
                     );
 

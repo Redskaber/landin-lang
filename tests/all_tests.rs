@@ -628,3 +628,7 @@ mod stage13_17_tests;
 // resolution (resolve_self_param_type from impl self_ty). v0.25.2 patch bump.
 #[path = "v0/stage13/plan/stage13_18_runtime_tests.rs"]
 mod stage13_18_runtime_tests;
+// Stage 13.23: Test directory cleanup (temp dir for --run) + entry point
+// design verification. v0.25.7 patch bump.
+#[path = "v0/stage13/plan/stage13_23_tests.rs"]
+mod stage13_23_tests;

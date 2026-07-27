@@ -247,7 +247,9 @@ fn test_stage9_cargo_toml_version_bumped() {
         || version_line.starts_with("version = \"0.22.")
         || version_line.starts_with("version = \"0.23.")
         || version_line.starts_with("version = \"0.24.")
-        || version_line.starts_with("version = \"0.25.");
+        || version_line.starts_with("version = \"0.25.")
+        || version_line.starts_with("version = \"0.26.")
+        || version_line.starts_with("version = \"0.27.");
     assert!(
         is_valid,
         "Cargo.toml version must be 0.16.x+ after Stage 9.1 bump, got: {version_line}"

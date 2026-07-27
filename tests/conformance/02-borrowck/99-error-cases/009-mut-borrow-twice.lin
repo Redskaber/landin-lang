@@ -1,7 +1,7 @@
 // CATEGORY: borrowck
 // DESCRIPTION: mut borrow twice in different scope
-// EXPECTED: compile_error
-// ERROR_PATTERN: borrow
+// EXPECTED: compile_ok
+// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
 // SOURCE: Stage 10.2 conformance expansion
 
 fn main() { let mut x = 1; { let r1 = &mut x; *r1 = 2; } let r2 = &mut x; *r2 = 3; }

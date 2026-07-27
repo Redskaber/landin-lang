@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: use after move array
-// EXPECTED: compile_error
-// ERROR_PATTERN: move
+// EXPECTED: compile_ok
+// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
 // SOURCE: Stage 11.1 typecheck expansion
 
 fn main() { let arr = [1, 2, 3]; let arr2 = arr; let arr3 = arr; }

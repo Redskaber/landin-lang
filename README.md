@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.25.5  
+**Version**: v0.27.0  
 **Date**: 2026-07-27
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -267,7 +267,7 @@ cargo test
 python3 tests/conformance/run_all.py
 ```
 
-**Expected results** (v0.25.5):
+**Expected results** (v0.27.0):
 - `cargo build`: succeeds
 - `cargo fmt`: clean (no changes)
 - `cargo clippy`: 0 warnings, 0 errors

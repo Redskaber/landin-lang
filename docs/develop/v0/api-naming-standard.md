@@ -4911,3 +4911,26 @@ Stage 13.18 — Runtime verification framework + self param type resolution.
 **Test impact**: +25 runtime tests (2338→2371 with llvm-backend); 0 conformance changes.
 
 **Version policy**: v0.25.1 → v0.25.2 (patch bump — bug fix + test framework).
+
+---
+
+### v2.52 (Stage 13.23, 2026-07-27)
+
+Stage 13.23 — Test directory cleanup + entry point design.
+
+**Changes**:
+- Bug fix: `src/bin/main.rs` — `--run` now uses `std::env::temp_dir()` for intermediate .o and .out files (was leaving them in source/test directory)
+- Intermediate file naming: `landin_run_{pid}_{filename}.o` and `.out` (unique per process + input file)
+- `.gitignore` updated: added `*.o`, `*.out`, `tests/conformance/**/*.o`, `tests/conformance/**/*.out`
+- Warning fix: `src/codegen/llvm_sys_emitter.rs` — removed unnecessary `unsafe` block in GEP construction (LLVM Const APIs are safe in llvm-sys)
+- Entry point design verified: `fn main()` is the only entry point (Landin = Rust convention)
+  - `fn main() { ... }` → default `()` return → exit 0
+  - `fn main() -> i32 { N }` → explicit return → exit N
+  - C wrapper calls `landin_main` (codegen symbol for `fn main()`)
+
+**§14.4 J1-J6**: 6/6 PASS (2 src files: bin/main.rs, codegen/llvm_sys_emitter.rs)
+**§25.8**: ZERO new deviations
+
+**Test impact**: +6 rust (2338→2344). 0 conformance changes.
+
+**Version policy**: v0.25.6 → v0.25.7 (patch bump — cleanup + warning fix).

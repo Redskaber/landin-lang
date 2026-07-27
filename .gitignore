@@ -1,4 +1,6 @@
 /target
+*.o
+*.out
 **/*.rs.bk
 *.pdb
 __pycache__/

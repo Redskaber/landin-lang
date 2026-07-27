@@ -149,7 +149,9 @@ fn test_v01_cargo_toml_version_bumped() {
             || version_line.starts_with("version = \"0.22.")
             || version_line.starts_with("version = \"0.23.")
             || version_line.starts_with("version = \"0.24.")
-            || version_line.starts_with("version = \"0.25."),
+            || version_line.starts_with("version = \"0.25.")
+            || version_line.starts_with("version = \"0.26.")
+            || version_line.starts_with("version = \"0.27."),
         "Cargo.toml version must be 0.17.x+ for v0.1 RC, got: {version_line}"
     );
 }

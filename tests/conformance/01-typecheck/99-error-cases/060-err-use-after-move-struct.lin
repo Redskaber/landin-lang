@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: use after move struct
-// EXPECTED: compile_error
-// ERROR_PATTERN: move
+// EXPECTED: compile_ok
+// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
 // SOURCE: Stage 11.1 typecheck expansion
 
 struct S { x: i32 } fn main() { let s = S { x: 1 }; let s2 = s; let s3 = s; }

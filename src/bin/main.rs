@@ -126,8 +126,19 @@ fn main() {
 
             let emitter = codegen_crate_to_module(&result);
 
-            // Determine object file path
-            let obj_path = if let Some(ref o) = cli.output {
+            // Stage 13.23: Determine object file path.
+            // For --run: always use a temp directory to avoid polluting the
+            // source/test directory with .o and .out files.
+            // For --emit-obj/--emit-bin: use -o if specified, else alongside
+            // the input file (user explicitly requested the output).
+            let obj_path = if cli.run {
+                // --run: use temp dir, cleaned up after execution
+                std::env::temp_dir().join(format!(
+                    "landin_run_{}_{}.o",
+                    std::process::id(),
+                    cli.file.file_name().unwrap_or_default().to_string_lossy()
+                ))
+            } else if let Some(ref o) = cli.output {
                 o.with_extension("o")
             } else {
                 cli.file.with_extension("o")
@@ -146,7 +157,14 @@ fn main() {
 
             // If --emit-bin or --run, link via cc/clang
             if cli.emit_bin || cli.run {
-                let exe_path = if let Some(ref o) = cli.output {
+                let exe_path = if cli.run {
+                    // --run: use temp dir, cleaned up after execution
+                    std::env::temp_dir().join(format!(
+                        "landin_run_{}_{}.out",
+                        std::process::id(),
+                        cli.file.file_name().unwrap_or_default().to_string_lossy()
+                    ))
+                } else if let Some(ref o) = cli.output {
                     o.clone()
                 } else {
                     cli.file.with_extension("out")
@@ -210,7 +228,13 @@ int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).
        Stage 13.14: eprintln! output routes to __landin_eprint helper.
-       No pre-main helper call needed. */
+       No pre-main helper call needed.
+       Stage 13.22: landin_main may be declared as `int landin_main(void)`
+       (when fn main() -> i32) or `void landin_main(void)` (when fn main()
+       has no return type). We always declare it as int; if the actual
+       symbol is void, the C ABI leaves the return register unchanged
+       (typically 0 from the C runtime setup), so `ret` is 0. This is
+       technically UB but works on all major platforms (x86-64, ARM). */
     int ret = landin_main();
     return ret;
 }

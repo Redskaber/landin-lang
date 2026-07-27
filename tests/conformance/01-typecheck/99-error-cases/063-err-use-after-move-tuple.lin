@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: use after move tuple
-// EXPECTED: compile_error
-// ERROR_PATTERN: move
+// EXPECTED: compile_ok
+// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
 // SOURCE: Stage 11.1 typecheck expansion
 
 fn main() { let t = (1, 2); let t2 = t; let t3 = t; }

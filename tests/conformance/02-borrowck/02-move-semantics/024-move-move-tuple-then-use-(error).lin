@@ -1,6 +1,7 @@
 // CATEGORY: borrowck
 // DESCRIPTION: move tuple then use (error)
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
 // SOURCE: Stage 11.2 borrowck expansion
 
 fn main() { let t=(1,2); let t2=t; let t3=t; }

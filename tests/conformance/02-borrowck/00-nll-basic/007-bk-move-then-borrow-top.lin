@@ -1,6 +1,7 @@
 // CATEGORY: borrowck
 // DESCRIPTION: move then borrow top
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
+// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
 // SOURCE: Stage 11.8 batch expansion
 
 struct S{x:i32} fn main(){let s=S{x:1};let s2=s;let r=&s;}

@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: borrow after move
-// EXPECTED: compile_error
-// ERROR_PATTERN: move
+// EXPECTED: compile_ok
+// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
 // SOURCE: Stage 10.8 typecheck expansion
 
 fn main() { let x = 1; let y = x; let r = &x; }

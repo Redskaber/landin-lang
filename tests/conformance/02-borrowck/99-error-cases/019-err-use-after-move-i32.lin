@@ -1,7 +1,7 @@
 // CATEGORY: borrowck
 // DESCRIPTION: use after move i32
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
+// EXPECTED: compile_ok
+// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
 // SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
 
 fn main() { let x=1; let y=x; let z=x; }

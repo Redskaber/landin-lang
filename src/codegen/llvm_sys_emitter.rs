@@ -271,15 +271,13 @@ impl LLVMSysEmitter {
                         .collect();
                     // Look up the global value.
                     if let Some(&global) = self.values.get(&global_name) {
-                        unsafe {
-                            // Build GEP: getelementptr inbounds [N x i8], ptr @global, i32 0, i32 0
-                            let i8_ty = LLVMInt8TypeInContext(self.ctx);
-                            let i32_ty = LLVMInt32TypeInContext(self.ctx);
-                            let zero = LLVMConstInt(i32_ty, 0, 0);
-                            let mut indices = [zero, zero];
-                            let gep = LLVMConstInBoundsGEP2(i8_ty, global, indices.as_mut_ptr(), 2);
-                            return gep;
-                        }
+                        // Build GEP: getelementptr inbounds [N x i8], ptr @global, i32 0, i32 0
+                        let i8_ty = LLVMInt8TypeInContext(self.ctx);
+                        let i32_ty = LLVMInt32TypeInContext(self.ctx);
+                        let zero = LLVMConstInt(i32_ty, 0, 0);
+                        let mut indices = [zero, zero];
+                        let gep = LLVMConstInBoundsGEP2(i8_ty, global, indices.as_mut_ptr(), 2);
+                        return gep;
                     }
                 }
                 // Fallback: null pointer if we can't parse.
@@ -1277,9 +1275,7 @@ fn parse_real_predicate(op: &str) -> llvm_sys::LLVMRealPredicate {
 fn parse_declare_name(sig: &str) -> Option<String> {
     let at = sig.find('@')?;
     let rest = &sig[at + 1..];
-    let end = rest
-        .find(|c: char| c == '(' || c == ' ' || c == '\t')
-        .unwrap_or(rest.len());
+    let end = rest.find(['(', ' ', '\t']).unwrap_or(rest.len());
     Some(rest[..end].to_string())
 }
 
@@ -1361,7 +1357,7 @@ mod tests {
     fn emit_const_int() {
         let mut e = LLVMSysEmitter::new();
         e.emit_header();
-        let _ = e.emit_function_begin("c", &[], &EmitType::Void);
+        e.emit_function_begin("c", &[], &EmitType::Void);
         let v = e.emit_const(&ConstVal::Int(42));
         assert!(v.starts_with("%v"));
     }

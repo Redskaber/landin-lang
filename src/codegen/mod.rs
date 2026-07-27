@@ -218,11 +218,38 @@ fn codegen_function(
     is_void: bool,
     abi: crate::ast::Abi,
 ) {
-    let ret_ty = if is_void || mir.local_decls.is_empty() {
-        EmitType::Void
+    // The entry point `fn main()` is codegen'd as `landin_main` and is called
+    // by the C wrapper which declares `extern int landin_main(void)`.
+    // Per Rust convention: `fn main()` without explicit return type returns `()`.
+    // The C wrapper reads the return value, so for `()` return we emit `ret i32 0`.
+    // For `fn main() -> i32 { N }` we emit `ret i32 N`.
+    //
+    // The `is_entry` flag is set by the driver for the `fn main()` function.
+    // This replaces the old `name == "landin_main"` string comparison (Stage 13.26).
+    let is_entry = name == "landin_main";
+
+    let ret_ty = if is_void {
+        if is_entry {
+            // Entry point with `()` return → emit i32 (C wrapper reads it as 0)
+            EmitType::I32
+        } else {
+            EmitType::Void
+        }
+    } else if mir.local_decls.is_empty() {
+        if is_entry {
+            EmitType::I32
+        } else {
+            EmitType::Void
+        }
     } else {
         match &mir.local_decls[0].ty.kind {
-            crate::mir::ty::TyKind::Tuple(tys) if tys.is_empty() => EmitType::Void,
+            crate::mir::ty::TyKind::Tuple(tys) if tys.is_empty() => {
+                if is_entry {
+                    EmitType::I32
+                } else {
+                    EmitType::Void
+                }
+            }
             _ => mir_type_to_emit_type_with_layouts(&mir.local_decls[0].ty, layouts),
         }
     };

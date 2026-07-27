@@ -1,0 +1,6 @@
+
+fn main() -> i32 {
+  let welcome: &'static str = "hello,world!";
+  println!("landin: {}", welcome);
+  0
+}

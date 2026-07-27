@@ -852,17 +852,40 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             cx.mir
                 .new_local(Ty::new(TyKind::Never, Span::DUMMY), None, Span::DUMMY)
         }
-        HirExprKind::Assign { lhs, rhs, .. } => {
-            let rhs_local = lower_expr_to_operand(cx, rhs);
-            // Stage 3.34 (L-MUT-1 fix): handle assignment LHS that are
-            // projections (field access, index, deref). Was: only handled
-            // `Path` LHS — `a.v = 42` fell through to "just evaluate rhs"
-            // and silently dropped the mutation.
-            //
-            // Per §15: root-cause fix (handle all LHS shapes in the Assign
-            // lower), not a hack (e.g., special-casing field mutation in
-            // codegen).
+        HirExprKind::Assign { lhs, rhs, op } => {
+            // Stage 13.25: Handle compound assignment operators (+=, -=, *=, /=, %=).
+            // When `op` is Some, the assignment is `lhs op= rhs`, which desugars
+            // to `lhs = lhs op rhs`. Before Stage 13.25, the `op` field was
+            // ignored (via `..`), so `x += 5` was lowered as `x = 5` (P0 bug).
             let lhs_place = lower_expr_to_place(cx, lhs);
+
+            let rhs_local = if let Some(bin_op) = op {
+                // Compound assignment: `lhs op= rhs` → `lhs = lhs op rhs`
+                // Lower the RHS first, then read the LHS, apply the binop,
+                // and store the result back.
+                let rhs_val = lower_expr_to_operand(cx, rhs);
+                // Read the current value of lhs into a temp
+                let lhs_copy = lhs_place.clone();
+                let lhs_ty = cx.fresh_infer_ty(expr.span);
+                let lhs_val =
+                    cx.eval_rvalue_to_temp(Rvalue::Use(Operand::Copy(lhs_copy)), lhs_ty, expr.span);
+                // Apply the binary operation: result = lhs_val op rhs_val
+                let mir_op = MirLowerCtxt::lower_bin_op(*bin_op);
+                let result_ty = cx.fresh_infer_ty(expr.span);
+                let lhs_operand = Operand::Copy(Place::local(lhs_val, expr.span));
+                let rhs_operand = Operand::Copy(Place::local(rhs_val, rhs.span));
+                cx.eval_rvalue_to_temp(
+                    Rvalue::BinaryOp(mir_op, lhs_operand, rhs_operand),
+                    result_ty,
+                    expr.span,
+                )
+            } else {
+                // Simple assignment: `lhs = rhs`
+                lower_expr_to_operand(cx, rhs)
+            };
+
+            // Stage 3.34 (L-MUT-1 fix): handle assignment LHS that are
+            // projections (field access, index, deref).
             cx.push_assign(
                 lhs_place,
                 Rvalue::Use(Operand::Copy(Place::local(rhs_local, rhs.span))),

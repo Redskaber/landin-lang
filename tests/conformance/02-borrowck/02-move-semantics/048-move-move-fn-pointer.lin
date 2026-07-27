@@ -1,7 +1,7 @@
 // CATEGORY: borrowck
 // DESCRIPTION: move fn pointer
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
+// EXPECTED: compile_ok
+// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
 // SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
 
 fn g(){} fn main() { let f=g; let f2=f; let f3=f; }

@@ -511,6 +511,12 @@ pub fn compile(src: &str) -> CompileResult {
             // Check if void (no return type).
             let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
             let is_void = return_ty.is_none();
+            // Stage 13.22: Force `main`/`landin_main` to return i32 (not void).
+            // The C wrapper declares `extern int landin_main(void)` and reads
+            // the return value. If the LLVM function is void, the return
+            // register contains garbage → undefined exit code (e.g., 219).
+            // For void main, codegen emits `ret i32 0` instead of `ret void`.
+            let is_void = is_void && fn_name != "landin_main";
             // Stage 8.3: Get the ABI from the function owner.
             let abi = hir
                 .owner(body_id.owner.0)
