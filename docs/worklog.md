@@ -12524,3 +12524,41 @@ Stage Summary:
   (struct-in-struct, tuple-in-struct, struct-in-tuple, tuple-in-tuple) to any depth
 - All tests pass (zero regression); 3 new run_ok tests
 - v0.66.0: minor bump (nested pattern destructure — major pattern matching completeness)
+
+---
+Task ID: stage14.51-process-doc-v3.22-upgrade
+Agent: Super Z (main)
+Task: Stage 14.51 — Upgrade docs/stage-committee-process.md to v3.22 with all requested supplements. v0.66.0 → v0.67.0.
+
+Work Log:
+- Baseline: v0.66.0 / 1951 rust tests + 5109 conformance (post-Stage 14.50)
+- Upgraded docs/stage-committee-process.md from v3.21 → v3.22
+- 8 additions/modifications:
+  1. §1.0 核心设计决策原则 (NEW) — 8 principles with priority ranking, violation examples, synergy relationships
+  2. §11.3 LLVM 文档同步规则 (NEW) — 6 types of LLVM changes requiring docs/llvm/ sync
+  3. §11.4 审查检查增强 (MODIFIED) — Added LLVM doc sync + pipeline-test-coverage.md checks
+  4. §17.5 测试矩阵覆盖率增强 (MODIFIED) — Added pipeline path coverage requirement
+  5. §17.5.1 编译流水线测试路径覆盖矩阵 (NEW) — 3-tier coverage matrix, full pipeline diagram, branch coverage
+  6. §17.5.2 测试用例书写与组织标准 (NEW) — Standard format template, 5 organization rules
+  7. §25.1 D8 维度 (NEW) — 8th deep review dimension: test path coverage & pipeline verification
+  8. §25.2 深度审查执行协议增强 (MODIFIED) — QA-A pipeline-test-coverage.md check, 7→8 dimensions
+- Also updated:
+  - Header: v3.21 → v3.22, effective from Stage 14.51
+  - §0.2 task type routing: added §1.0, §11.3, §17.5.1, §17.5.2 references
+  - §28.5 changelog: v3.21→v3.22 diff with coverage confirmation table
+- Per §1.3 (Spec 持续演进): all original v3.21 content preserved verbatim — only additions, no deletions
+- Verification:
+  - All 1951 rust tests pass (zero regression — doc-only change)
+  - All 5109 conformance tests pass (zero regression)
+  - 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.66.0 → v0.67.0 (minor bump — process doc v3.22 upgrade)
+
+Stage Summary:
+- Stage 14.51 PASSED — process doc upgraded to v3.22
+- 4 key improvements per §28.5.3:
+  1. 原则体系化 — 8 principles from implicit to explicit in §1.0
+  2. LLVM 文档同步 — §11.3 fills the gap
+  3. 测试路径覆盖矩阵 — §17.5.1 from "feature coverage" to "pipeline path coverage"
+  4. 审查维度 D8 — §25 from 7 to 8 dimensions
+- All original v3.21 content preserved (100% backward compatible)
+- v0.67.0: minor bump (process doc upgrade)

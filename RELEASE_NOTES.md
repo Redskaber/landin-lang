@@ -1,9 +1,46 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.66.0
+**Current version**: v0.67.0
 **Date**: 2026-07-28
 **Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5109 conformance tests (83 run_ok) + 4 examples
+
+---
+## v0.67.0 — Stage 14.51 (Process Doc v3.22 Upgrade)
+
+### Overview
+
+Stage 14.51 upgrades `docs/stage-committee-process.md` from v3.21 to v3.22,
+adding 8 supplements requested by the user: core design principles, LLVM
+document sync rules, pipeline test path coverage matrix, test case writing
+standards, and a new deep review dimension (D8). All original v3.21 content
+is preserved — only additions, no deletions.
+
+### Stage 14.51 — Process Doc v3.22 Upgrade
+
+**8 additions/modifications**:
+
+1. **§1.0 核心设计决策原则** (NEW) — 8 principles: 长期>短期, 整体>局部,
+   显式>隐式, 报错>静默, 去除兼容思维, 通用>特例, API命名标准化, 设计驱动测试
+2. **§11.3 LLVM 文档同步规则** (NEW) — 6 types of LLVM changes requiring docs/llvm/ sync
+3. **§11.4 审查检查增强** (MODIFIED) — Added LLVM doc + pipeline-test-coverage checks
+4. **§17.5 测试矩阵覆盖率增强** (MODIFIED) — Added pipeline path coverage (Tier 1-3)
+5. **§17.5.1 编译流水线测试路径覆盖矩阵** (NEW) — 3-tier coverage, full pipeline, branch coverage
+6. **§17.5.2 测试用例书写与组织标准** (NEW) — Standard format, 5 organization rules
+7. **§25.1 D8 维度** (NEW) — Deep review dimension: test path coverage & pipeline verification
+8. **§25.2 深度审查执行协议增强** (MODIFIED) — QA-A pipeline check, 7→8 dimensions
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5109 passed, 0 failed
+```
+
+### Version policy: v0.66.0 → v0.67.0 (minor bump — process doc v3.22 upgrade)
 
 ---
 ## v0.66.0 — Stage 14.50 (Nested Struct + Mixed Pattern Destructure)

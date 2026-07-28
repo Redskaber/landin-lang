@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.66.0
+**Version**: v0.67.0
 **Date**: 2026-07-28
 
 A work-in-progress systems programming language inspired by Rust, designed for
