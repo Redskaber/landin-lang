@@ -121,7 +121,53 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
             }
         }
         HirPatKind::Struct(path, fields, _) => {
-            if let Res::Def(enum_def_id, crate::resolve::DefKind::Enum) = path.res {
+            // Stage 14.48: Handle plain struct patterns (not enum variants).
+            // For `match p { Point { x, y } => ... }`, extract each field from
+            // the scrutinee struct and assign to the binding local.
+            //
+            // Per §13.4: mirrors tuple destructuring but uses field NAMES
+            // (looked up from HIR struct definition) instead of indices.
+            if let Res::Def(struct_def_id, crate::resolve::DefKind::Struct) = path.res {
+                // Get field names from HIR to compute indices
+                let field_indices: std::collections::HashMap<crate::lexer::token::Symbol, usize> = {
+                    let mut map = std::collections::HashMap::new();
+                    if let Some(hir) = cx.hir {
+                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                            hir.owner(struct_def_id)
+                        {
+                            for (i, f) in s.fields.iter().enumerate() {
+                                if let Some(name) = f.ident {
+                                    map.insert(name.name, i);
+                                }
+                            }
+                        }
+                    }
+                    map
+                };
+                for field_pat in fields {
+                    if let Some(field_idx) = field_indices.get(&field_pat.ident.name).copied() {
+                        if let HirPatKind::Ident(_mode, _ident, _) = &field_pat.pat.kind {
+                            let field_ty = cx.fresh_infer_ty(field_pat.pat.span);
+                            let binding_local =
+                                cx.mir.new_local(field_ty.clone(), None, field_pat.pat.span);
+                            cx.local_map.insert(field_pat.pat.hir_id, binding_local);
+                            cx.push_assign(
+                                Place::local(binding_local, field_pat.pat.span),
+                                Rvalue::Use(Operand::Copy(Place {
+                                    kind: PlaceKind::Projection(
+                                        Box::new(Place::local(scrut_local, span)),
+                                        ProjectionElem::Field(FieldId(field_idx as u32), field_ty),
+                                    ),
+                                    span: field_pat.pat.span,
+                                })),
+                                field_pat.pat.span,
+                            );
+                        }
+                    }
+                    // Recurse for nested patterns
+                    lower_enum_variant_pattern_bindings(cx, scrut_local, &field_pat.pat);
+                }
+            } else if let Res::Def(enum_def_id, crate::resolve::DefKind::Enum) = path.res {
                 if let Some((variant_idx, field_tys)) =
                     resolve_enum_variant(cx, enum_def_id, &path.segments[1].ident.name)
                 {

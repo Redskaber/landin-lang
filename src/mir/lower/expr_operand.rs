@@ -916,6 +916,14 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .iter()
                 .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
                 .collect();
+            // Stage 14.49: Use fresh_infer_ty for the tuple type.
+            // typeck will unify this with the let binding's annotation
+            // (e.g., `let t: (f64, f64) = (0, 0)` — the Infer unifies with
+            // Tuple([Float, Float])).
+            //
+            // For nested tuple destructure, a post-typeck writeback step
+            // in the driver resolves the concrete tuple type into local_decls
+            // so that field extraction works.
             let tuple_ty = cx.fresh_infer_ty(expr.span);
             cx.eval_rvalue_to_temp(
                 Rvalue::Aggregate(AggregateKind::Tuple, operands),

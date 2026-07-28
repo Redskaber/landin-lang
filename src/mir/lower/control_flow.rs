@@ -122,6 +122,86 @@ pub(crate) fn lower_deref_expr(cx: &mut MirLowerCtxt, inner: &HirExpr, span: Spa
     let result_ty = cx.fresh_infer_ty(span);
     cx.eval_rvalue_to_temp(Rvalue::Use(Operand::Copy(proj)), result_ty, span)
 }
+/// Stage 14.49: Recursively destructure a nested tuple pattern.
+///
+/// Given a source local holding a tuple value and a list of sub-patterns,
+/// extract each field and bind it. If a sub-pattern is itself a Tuple,
+/// recurse into it.
+///
+/// Per §13.4: handles arbitrary nesting depth (e.g., `((a, (b, c)), d)`).
+/// Per §"显式 > 隐式": field types are extracted from the source local's
+/// declared type (Tuple), not inferred — ensuring correct LLVM alloca types.
+fn lower_nested_tuple_destructure(
+    cx: &mut MirLowerCtxt,
+    src_local: LocalId,
+    sub_pats: &[HirPat],
+    span: Span,
+) {
+    // Get the source local's type to extract field types
+    let src_ty = cx.mir.local(src_local).ty.clone();
+    let field_tys: Vec<Ty> = match &src_ty.kind {
+        TyKind::Tuple(tys) => tys.clone(),
+        _ => {
+            // Source is not a tuple (may be Infer) — fall back to fresh infer
+            sub_pats.iter().map(|_| cx.fresh_infer_ty(span)).collect()
+        }
+    };
+    for (field_idx, sub_pat) in sub_pats.iter().enumerate() {
+        let field_ty = field_tys
+            .get(field_idx)
+            .cloned()
+            .unwrap_or_else(|| cx.fresh_infer_ty(sub_pat.span));
+        match &sub_pat.kind {
+            HirPatKind::Ident(_mode, _ident, _) => {
+                let sub_local = cx.new_local(sub_pat.hir_id, field_ty.clone(), None);
+                cx.mir
+                    .block_mut(cx.current_block)
+                    .statements
+                    .push(Statement {
+                        kind: StatementKind::StorageLive(sub_local),
+                        span: sub_pat.span,
+                    });
+                cx.push_assign(
+                    Place::local(sub_local, sub_pat.span),
+                    Rvalue::Use(Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(src_local, span)),
+                            ProjectionElem::Field(FieldId(field_idx as u32), field_ty),
+                        ),
+                        span: sub_pat.span,
+                    })),
+                    sub_pat.span,
+                );
+            }
+            HirPatKind::Tuple(inner_sub_pats) => {
+                // Recurse into nested tuple
+                let inner_local = cx.new_local(sub_pat.hir_id, field_ty.clone(), None);
+                cx.mir
+                    .block_mut(cx.current_block)
+                    .statements
+                    .push(Statement {
+                        kind: StatementKind::StorageLive(inner_local),
+                        span: sub_pat.span,
+                    });
+                cx.push_assign(
+                    Place::local(inner_local, sub_pat.span),
+                    Rvalue::Use(Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(src_local, span)),
+                            ProjectionElem::Field(FieldId(field_idx as u32), field_ty),
+                        ),
+                        span: sub_pat.span,
+                    })),
+                    sub_pat.span,
+                );
+                lower_nested_tuple_destructure(cx, inner_local, inner_sub_pats, sub_pat.span);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Lower a block: lower all statements, then
 /// evaluates the trailing expression (if any). Returns the LocalId
 /// of the block's result value.
 pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
@@ -210,10 +290,150 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                                     })),
                                     sub_pat.span,
                                 );
+                            } else if let HirPatKind::Tuple(inner_sub_pats) = &sub_pat.kind {
+                                // Stage 14.49: Nested tuple destructure.
+                                // `let ((a, b), c) = ((1, 2), 3)` — the sub-pattern
+                                // at field_idx is itself a Tuple `(a, b)`.
+                                // Extract the inner tuple to a temp local, then
+                                // recursively destructure it.
+                                //
+                                // Per §"显式 > 隐式": use the field type from the
+                                // outer tuple's type (not fresh_infer_ty) so the
+                                // inner local gets the correct Tuple type.
+                                let outer_ty = cx.mir.local(tuple_local).ty.clone();
+                                let inner_ty = match &outer_ty.kind {
+                                    TyKind::Tuple(tys) => tys
+                                        .get(field_idx)
+                                        .cloned()
+                                        .unwrap_or_else(|| cx.fresh_infer_ty(sub_pat.span)),
+                                    _ => cx.fresh_infer_ty(sub_pat.span),
+                                };
+                                let inner_local =
+                                    cx.new_local(sub_pat.hir_id, inner_ty.clone(), None);
+                                cx.mir
+                                    .block_mut(cx.current_block)
+                                    .statements
+                                    .push(Statement {
+                                        kind: StatementKind::StorageLive(inner_local),
+                                        span: sub_pat.span,
+                                    });
+                                // Extract the inner tuple from the outer tuple
+                                cx.push_assign(
+                                    Place::local(inner_local, sub_pat.span),
+                                    Rvalue::Use(Operand::Copy(Place {
+                                        kind: PlaceKind::Projection(
+                                            Box::new(Place::local(tuple_local, local.span)),
+                                            ProjectionElem::Field(
+                                                FieldId(field_idx as u32),
+                                                inner_ty,
+                                            ),
+                                        ),
+                                        span: sub_pat.span,
+                                    })),
+                                    sub_pat.span,
+                                );
+                                // Recursively destructure the inner tuple
+                                lower_nested_tuple_destructure(
+                                    cx,
+                                    inner_local,
+                                    inner_sub_pats,
+                                    sub_pat.span,
+                                );
                             }
                         }
                         // Skip the normal single-local path
                         continue;
+                    }
+
+                    // Stage 14.48: Handle struct destructuring patterns.
+                    // `let Point { x, y } = p` should:
+                    // 1. Create a temp local for the whole struct
+                    // 2. For each field pattern, create a local and extract the field
+                    //
+                    // Per §13.4: mirrors tuple destructuring but uses field NAMES
+                    // (looked up from HIR struct definition) instead of indices.
+                    if let HirPatKind::Struct(path, fields, _has_rest) = &local.pat.kind {
+                        // Resolve the struct DefId to look up field indices
+                        if let crate::hir::Res::Def(struct_def_id, _) = path.res {
+                            // Get field names from HIR to compute indices
+                            let field_indices: std::collections::HashMap<
+                                crate::lexer::token::Symbol,
+                                usize,
+                            > = {
+                                let mut map = std::collections::HashMap::new();
+                                if let Some(hir) = cx.hir {
+                                    if let Some(crate::hir::OwnerNode::Item(
+                                        crate::hir::HirItem::Struct(s),
+                                    )) = hir.owner(struct_def_id)
+                                    {
+                                        for (i, f) in s.fields.iter().enumerate() {
+                                            if let Some(name) = f.ident {
+                                                map.insert(name.name, i);
+                                            }
+                                        }
+                                    }
+                                }
+                                map
+                            };
+                            // Create a temp local for the whole struct
+                            let struct_ty = cx.mir.local(init_local).ty.clone();
+                            let struct_local =
+                                cx.new_local(local.pat.hir_id, struct_ty.clone(), None);
+                            cx.mir
+                                .block_mut(cx.current_block)
+                                .statements
+                                .push(Statement {
+                                    kind: StatementKind::StorageLive(struct_local),
+                                    span: local.span,
+                                });
+                            // Assign the init struct to the temp local
+                            cx.push_assign(
+                                Place::local(struct_local, local.span),
+                                Rvalue::Use(Operand::Copy(Place::local(init_local, init.span))),
+                                local.span,
+                            );
+                            // For each field pattern, create a local and extract
+                            for field_pat in fields {
+                                if let Some(field_idx) =
+                                    field_indices.get(&field_pat.ident.name).copied()
+                                {
+                                    if let HirPatKind::Ident(_mode, _ident, _) = &field_pat.pat.kind
+                                    {
+                                        let field_ty = cx.fresh_infer_ty(field_pat.pat.span);
+                                        let sub_local = cx.new_local(
+                                            field_pat.pat.hir_id,
+                                            field_ty.clone(),
+                                            None,
+                                        );
+                                        cx.mir.block_mut(cx.current_block).statements.push(
+                                            Statement {
+                                                kind: StatementKind::StorageLive(sub_local),
+                                                span: field_pat.pat.span,
+                                            },
+                                        );
+                                        cx.push_assign(
+                                            Place::local(sub_local, field_pat.pat.span),
+                                            Rvalue::Use(Operand::Copy(Place {
+                                                kind: PlaceKind::Projection(
+                                                    Box::new(Place::local(
+                                                        struct_local,
+                                                        local.span,
+                                                    )),
+                                                    ProjectionElem::Field(
+                                                        FieldId(field_idx as u32),
+                                                        field_ty,
+                                                    ),
+                                                ),
+                                                span: field_pat.pat.span,
+                                            })),
+                                            field_pat.pat.span,
+                                        );
+                                    }
+                                }
+                            }
+                            // Skip the normal single-local path
+                            continue;
+                        }
                     }
 
                     // Allocate a local for this binding. If the let has

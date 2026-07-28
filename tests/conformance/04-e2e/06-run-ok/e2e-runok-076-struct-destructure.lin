@@ -1,0 +1,13 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok struct destructuring in let binding — Stage 14.48
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10 20
+// SOURCE: Stage 14.48 — struct destructure `let Point { x, y } = p` now works
+
+struct Point { x: i32, y: i32 }
+fn main() -> i32 {
+    let p = Point { x: 10, y: 20 };
+    let Point { x, y } = p;
+    println!("{} {}", x, y);
+    0
+}

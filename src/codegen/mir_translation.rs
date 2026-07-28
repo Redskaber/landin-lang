@@ -254,8 +254,28 @@ pub(crate) fn detect_place_type(
                     base_ty
                 }
             }
-            ProjectionElem::Field(_, field_ty) => {
-                mir_type_to_emit_type_with_layouts(field_ty, layouts)
+            ProjectionElem::Field(field_id, field_ty) => {
+                // Stage 14.49: If field_ty is Infer, try to resolve it from
+                // the base's type (e.g., Tuple field types). This handles
+                // nested tuple destructure where the projection's field_ty
+                // was set to Infer at MIR-lower time but the base's type was
+                // resolved by the post-typeck writeback.
+                let emit_ty = mir_type_to_emit_type_with_layouts(field_ty, layouts);
+                if matches!(emit_ty, EmitType::I32)
+                    && matches!(&field_ty.kind, crate::mir::ty::TyKind::Infer(_))
+                {
+                    // Try to get the field type from the base's Tuple type
+                    if let PlaceKind::Local(base_id) = &base.kind {
+                        if let Some(base_ld) = mir.local_decls.get(base_id.0 as usize) {
+                            if let crate::mir::ty::TyKind::Tuple(field_tys) = &base_ld.ty.kind {
+                                if let Some(resolved) = field_tys.get(field_id.0 as usize) {
+                                    return mir_type_to_emit_type_with_layouts(resolved, layouts);
+                                }
+                            }
+                        }
+                    }
+                }
+                emit_ty
             }
             ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
                 let storage = detect_place_storage_type(mir, base, layouts);

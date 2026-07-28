@@ -159,6 +159,8 @@
 | 14.45 | Or-pattern fix in match (was matching all values via wildcard) + audit (closures/strings/math — no bugs) + 3 run_ok tests | +3 run_ok (5097 total) | ✅ |
 | 14.46 | Tuple destructuring in let bindings (was 0 0 0 — only created one local) + field extraction via Projection + 2 run_ok tests | +2 run_ok (5099 total) | ✅ |
 | 14.47 | Match arm tuple destructure (was garbage values) + field extraction for Tuple in pattern_bindings + skip SwitchInt on non-int scrutinee + 2 conformance updated compile_error→compile_ok + 2 run_ok tests | +2 run_ok (5101 total) | ✅ |
+| 14.48 | Struct destructuring in let + match (was 0 0 / garbage) + field-name→index lookup from HIR + 3 run_ok tests | +3 run_ok (5104 total) | ✅ |
+| 14.49 | Nested tuple destructure (was 0 0 3) + recursive helper + 3 writeback steps (tuple literal, field projection, detect_place_type) + 2 run_ok tests | +2 run_ok (5106 total) | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

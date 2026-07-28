@@ -663,3 +663,88 @@ own local + field extraction projection.
 Per §13.4: tuple destructure in match arms now mirrors let binding semantics.
 
 **Last updated**: 2026-07-28
+
+## Stage 14.48 — Struct Destructuring in Let + Match (2026-07-28)
+
+**Task ID**: `stage14.48-struct-destructuring-let-and-match`
+
+**Agent**: Super Z (main)
+
+**Bug 1**: `let Point { x, y } = p` outputs `0 0` instead of `10 20`
+- Root cause: `lower_block` only handled `Ident` and `Tuple` patterns
+- For `Struct` patterns, created ONE local for the whole struct
+
+**Fix 1**: Added struct destructuring in `lower_block` (control_flow.rs)
+- Resolve struct DefId → look up field names → indices map from HIR
+- Create temp local for whole struct + extract each field via Projection
+
+**Bug 2**: `match p { Point { x, y } => ... }` outputs garbage values
+- Root cause: `lower_enum_variant_pattern_bindings` only handled enum Structs
+- For plain structs (DefKind::Struct), skipped field extraction
+
+**Fix 2**: Added plain struct field extraction in `lower_enum_variant_pattern_bindings`
+- Added `DefKind::Struct` branch BEFORE the `DefKind::Enum` branch
+- Same field-name → index lookup + Projection extraction
+
+**Verification** (post-fix):
+- `let Point { x, y } = p` → 10 20 ✅ (was 0 0)
+- `let Point { z, x, y } = p` (reordered) → 1 2 3 ✅
+- `match p { Point { x, y } => ... }` → 10 20 ✅ (was garbage)
+- All 1951 rust tests pass (zero regression)
+- All 5104 conformance tests pass (was 5101, +3)
+- 0 clippy warnings, fmt clean
+
+**New tests** (3 run_ok):
+- `e2e-runok-076-struct-destructure.lin` — let struct destructure
+- `e2e-runok-077-struct-destructure-reorder.lin` — reordered fields
+- `e2e-runok-078-match-struct-destructure.lin` — match arm struct destructure
+
+**Stage Summary**: Stage 14.48 PASSED — struct destructuring now works in
+both let and match. 2 fixes. Per §13.4: mirrors tuple destructure with
+field-name → index lookup. Per §"通用 > 特例": general mechanism for any struct.
+
+**Last updated**: 2026-07-28
+
+## Stage 14.49 — Nested Tuple Destructure + Type Writeback (2026-07-28)
+
+**Task ID**: `stage14.49-nested-tuple-destructure-and-tuple-type-writeback`
+
+**Agent**: Super Z (main)
+
+**Bug 1**: `let ((a, b), c) = ((1, 2), 3)` outputs `0 0 3` instead of `1 2 3`
+- Inner tuple `(a, b)` not destructured
+- Root cause: `lower_block` tuple destructure only handled one level
+
+**Fix 1**: Added `lower_nested_tuple_destructure` recursive helper (control_flow.rs)
+- Recursively destructures nested Tuple sub-patterns to any depth
+
+**Bug 2**: After Fix 1, LLVM error "Invalid indices for GEP pointer type"
+- Inner tuple local was `alloca i32` instead of `alloca { i32, i32 }`
+- Root cause: tuple literal type was `fresh_infer_ty` (Infer) — field types unknown
+
+**Fix 2a**: Tuple literal type writeback (driver.rs)
+- After typeck, build concrete Tuple type from operand types for Tuple Aggregate dests
+
+**Fix 2b**: Field projection Copy dest writeback (driver.rs)
+- Resolve field type from source tuple's Tuple type at correct field index
+
+**Fix 2c**: `detect_place_type` Field Infer resolution (mir_translation.rs)
+- If projection's field_ty is Infer, resolve from base's Tuple type
+
+**Verification** (post-fix):
+- `let ((a, b), c) = ((1, 2), 3)` → 1 2 3 ✅ (was 0 0 3)
+- `let (((a, b), c), d) = (((1, 2), 3), 4)` → 1 2 3 4 ✅ (3-level)
+- `let t: (f64, f64) = (0, 0)` still compiles ✅ (no typeck regression)
+- All 1951 rust tests pass (zero regression)
+- All 5106 conformance tests pass (was 5104, +2)
+- 0 clippy warnings, fmt clean
+
+**New tests** (2 run_ok):
+- `e2e-runok-079-nested-tuple-destructure.lin` — 2-level nested
+- `e2e-runok-080-deep-nested-tuple.lin` — 3-level nested
+
+**Stage Summary**: Stage 14.49 PASSED — nested tuple destructure works to any depth.
+4 fixes: recursive helper + 3 writeback steps (tuple literal, field projection,
+detect_place_type). Per §13.4: general recursion handles any nesting depth.
+
+**Last updated**: 2026-07-28

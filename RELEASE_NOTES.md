@@ -1,9 +1,111 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.63.0
+**Current version**: v0.65.0
 **Date**: 2026-07-28
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5101 conformance tests (75 run_ok) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5106 conformance tests (80 run_ok) + 4 examples
+
+---
+## v0.65.0 — Stage 14.49 (Nested Tuple Destructure + Type Writeback)
+
+### Overview
+
+Stage 14.49 fixes nested tuple destructuring (`let ((a, b), c) = ((1, 2), 3)`).
+Previously, only the first level was destructured — inner tuples were silently
+dropped (output `0 0 3` instead of `1 2 3`). The fix adds recursive
+destructuring plus three writeback steps to resolve concrete tuple types
+after typeck.
+
+### Stage 14.49 — Nested Tuple Destructure + Type Writeback
+
+**Bug 1**: `let ((a, b), c) = ((1, 2), 3)` outputs `0 0 3` instead of `1 2 3`
+- Root cause: tuple destructure only handled one level — no recursion
+
+**Fix 1**: Added `lower_nested_tuple_destructure` recursive helper
+- Recursively destructures nested Tuple sub-patterns to any depth
+
+**Bug 2**: LLVM error "Invalid indices for GEP pointer type"
+- Inner tuple local was `alloca i32` (type was Infer)
+- Root cause: tuple literal type was `fresh_infer_ty` — field types unknown
+
+**Fix 2a**: Tuple literal type writeback (driver.rs)
+- After typeck, build concrete Tuple type from operand types
+
+**Fix 2b**: Field projection Copy dest writeback (driver.rs)
+- Resolve field type from source tuple's Tuple type
+
+**Fix 2c**: `detect_place_type` Field Infer resolution (mir_translation.rs)
+- If projection's field_ty is Infer, resolve from base's Tuple type
+
+**Verified paths** (all pass):
+- `let ((a, b), c) = ((1, 2), 3)` → 1 2 3 ✅ (was 0 0 3)
+- `let (((a, b), c), d) = (((1, 2), 3), 4)` → 1 2 3 4 ✅ (3-level)
+- All existing tests still pass (zero regression)
+
+**2 new run_ok tests**:
+- `e2e-runok-079-nested-tuple-destructure.lin` — 2-level nested
+- `e2e-runok-080-deep-nested-tuple.lin` — 3-level nested
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5106 passed, 0 failed (5026 compile + 80 run_ok with runtime verification)
+```
+
+### Version policy: v0.64.0 → v0.65.0 (minor bump — nested destructure is common pattern)
+
+---
+## v0.64.0 — Stage 14.48 (Struct Destructuring in Let + Match)
+
+### Overview
+
+Stage 14.48 fixes struct destructuring in both let bindings and match arms.
+Previously, `let Point { x, y } = p` output `0 0` and `match p { Point { x, y } => ... }`
+output garbage values. Both are now fixed with field-name → index lookup.
+
+### Stage 14.48 — Struct Destructuring in Let + Match
+
+**Bug 1**: `let Point { x, y } = p` outputs `0 0` instead of `10 20`
+- Root cause: `lower_block` only handled `Ident` and `Tuple` patterns
+- For `Struct` patterns, created ONE local for the whole struct
+
+**Fix 1**: Added struct destructuring in `lower_block` (control_flow.rs)
+- Resolve struct DefId → look up field names → indices map from HIR
+- Create temp local + extract each field via Projection
+
+**Bug 2**: `match p { Point { x, y } => ... }` outputs garbage values
+- Root cause: `lower_enum_variant_pattern_bindings` only handled enum Structs
+- For plain structs (DefKind::Struct), skipped field extraction
+
+**Fix 2**: Added plain struct field extraction in `lower_enum_variant_pattern_bindings`
+- Added `DefKind::Struct` branch with same field-name → index lookup
+
+**Verified paths** (all pass):
+- `let Point { x, y } = p` → 10 20 ✅ (was 0 0)
+- `let Point { z, x, y } = p` (reordered) → 1 2 3 ✅
+- `match p { Point { x, y } => ... }` → 10 20 ✅ (was garbage)
+- All existing tests still pass (zero regression)
+
+**3 new run_ok tests**:
+- `e2e-runok-076-struct-destructure.lin` — let struct destructure
+- `e2e-runok-077-struct-destructure-reorder.lin` — reordered fields
+- `e2e-runok-078-match-struct-destructure.lin` — match arm struct destructure
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5104 passed, 0 failed (5026 compile + 78 run_ok with runtime verification)
+```
+
+### Version policy: v0.63.0 → v0.64.0 (minor bump — struct destructure is common pattern)
 
 ---
 ## v0.63.0 — Stage 14.47 (Match Arm Tuple Destructure)

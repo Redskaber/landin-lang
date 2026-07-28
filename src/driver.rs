@@ -476,6 +476,84 @@ pub fn compile(src: &str) -> CompileResult {
         bc.check_mir_body(&mir);
         errors.borrowck.extend(bc.into_errors());
 
+        // Stage 14.49: Write back concrete tuple types for tuple literals.
+        //
+        // Tuple literals use fresh_infer_ty for their type (so typeck can unify
+        // with let binding annotations). After typeck, if the local's type is
+        // still Infer but it's assigned from a Tuple Aggregate, we need to
+        // resolve the concrete tuple type from the Aggregate's operands.
+        //
+        // This enables nested tuple destructure — the outer tuple's type must
+        // be Tuple([...]) (not Infer) so field types can be extracted.
+        //
+        // Per §13.4: typeck resolves the tuple type via unification; this
+        // writeback step sinks the resolved type into local_decls for codegen.
+        for bb in &mir.basic_blocks {
+            for stmt in &bb.statements {
+                if let crate::mir::body::StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let crate::mir::place::PlaceKind::Local(dest_id) = &place.kind {
+                        let dest_ty = &mir.local_decls[dest_id.0 as usize].ty;
+                        if matches!(&dest_ty.kind, crate::mir::ty::TyKind::Infer(_)) {
+                            // Check if rvalue is a Tuple Aggregate
+                            if let crate::mir::place::Rvalue::Aggregate(
+                                crate::mir::place::AggregateKind::Tuple,
+                                operands,
+                            ) = rvalue
+                            {
+                                // Build the tuple type from operand types
+                                let elem_tys: Vec<crate::mir::ty::Ty> = operands
+                                    .iter()
+                                    .map(|op| match op {
+                                        crate::mir::place::Operand::Copy(p)
+                                        | crate::mir::place::Operand::Move(p) => {
+                                            if let crate::mir::place::PlaceKind::Local(id) = &p.kind
+                                            {
+                                                mir.local_decls
+                                                    .get(id.0 as usize)
+                                                    .map(|ld| ld.ty.clone())
+                                                    .unwrap_or_else(|| {
+                                                        crate::mir::ty::Ty::new(
+                                                            crate::mir::ty::TyKind::Infer(
+                                                                crate::mir::ty::InferVar::TyVar(
+                                                                    crate::mir::ty::TyVid(0),
+                                                                ),
+                                                            ),
+                                                            p.span,
+                                                        )
+                                                    })
+                                            } else {
+                                                crate::mir::ty::Ty::new(
+                                                    crate::mir::ty::TyKind::Infer(
+                                                        crate::mir::ty::InferVar::TyVar(
+                                                            crate::mir::ty::TyVid(0),
+                                                        ),
+                                                    ),
+                                                    p.span,
+                                                )
+                                            }
+                                        }
+                                        crate::mir::place::Operand::Constant(c) => {
+                                            c.ty.as_ref().clone()
+                                        }
+                                    })
+                                    .collect();
+                                let tuple_ty = crate::mir::ty::Ty::new(
+                                    crate::mir::ty::TyKind::Tuple(elem_tys),
+                                    stmt.span,
+                                );
+                                if let Some(ld) = mir.local_decls.get_mut(dest_id.0 as usize) {
+                                    if matches!(&ld.ty.kind, crate::mir::ty::TyKind::Infer(_)) {
+                                        ld.ty = tuple_ty;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Stage 14.37: Write back Call dest local types from fn_sigs.
         // After typeck, Call dest locals may still have Infer→i32 type
         // (typeck doesn't propagate Call return types). This pass scans
@@ -586,6 +664,80 @@ pub fn compile(src: &str) -> CompileResult {
                                                 ) {
                                                     ld.ty = elem_ty;
                                                 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stage 14.49: Write back types for Field projection Copy dests.
+        //
+        // When `loc = Copy(tuple.field)` and loc's type is Infer, write back
+        // the field's type from the source tuple's type. This is needed for
+        // nested tuple destructure where the inner tuple local gets Infer type
+        // at MIR-lower time, but after typeck the outer tuple has a concrete
+        // type with concrete field types.
+        //
+        // Per §13.4: mirrors the Index projection writeback above.
+        for bb in &mir.basic_blocks {
+            for stmt in &bb.statements {
+                if let crate::mir::body::StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let crate::mir::place::PlaceKind::Local(dest_id) = &place.kind {
+                        let dest_ty = &mir.local_decls[dest_id.0 as usize].ty;
+                        if !matches!(
+                            &dest_ty.kind,
+                            crate::mir::ty::TyKind::Infer(_) | crate::mir::ty::TyKind::Error
+                        ) {
+                            continue;
+                        }
+                        if let crate::mir::place::Rvalue::Use(
+                            crate::mir::place::Operand::Copy(src_place)
+                            | crate::mir::place::Operand::Move(src_place),
+                        ) = rvalue
+                        {
+                            if let crate::mir::place::PlaceKind::Projection(
+                                base,
+                                crate::mir::place::ProjectionElem::Field(field_id, field_ty),
+                            ) = &src_place.kind
+                            {
+                                // Get the base's type (the tuple/struct)
+                                if let crate::mir::place::PlaceKind::Local(base_id) = &base.kind {
+                                    if let Some(base_ld) = mir.local_decls.get(base_id.0 as usize) {
+                                        // The field_ty in the projection may be Infer;
+                                        // try to get the actual field type from the base's Tuple type
+                                        let resolved_field_ty = if matches!(
+                                            &field_ty.kind,
+                                            crate::mir::ty::TyKind::Infer(_)
+                                        ) {
+                                            if let crate::mir::ty::TyKind::Tuple(field_tys) =
+                                                &base_ld.ty.kind
+                                            {
+                                                // Extract the field type at field_id.0
+                                                field_tys
+                                                    .get(field_id.0 as usize)
+                                                    .cloned()
+                                                    .unwrap_or_else(|| field_ty.clone())
+                                            } else {
+                                                field_ty.clone()
+                                            }
+                                        } else {
+                                            field_ty.clone()
+                                        };
+                                        if let Some(ld) =
+                                            mir.local_decls.get_mut(dest_id.0 as usize)
+                                        {
+                                            if matches!(
+                                                &ld.ty.kind,
+                                                crate::mir::ty::TyKind::Infer(_)
+                                                    | crate::mir::ty::TyKind::Error
+                                            ) {
+                                                ld.ty = resolved_field_ty;
                                             }
                                         }
                                     }
