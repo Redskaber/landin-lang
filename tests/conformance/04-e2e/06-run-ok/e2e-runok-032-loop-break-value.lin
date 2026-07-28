@@ -1,0 +1,16 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok loop with break value (Stage 14.24 fix)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10
+// EXPECTED_EXIT_CODE: 10
+// SOURCE: Stage 14.24 — loop { break expr; } now returns expr value
+
+fn main() -> i32 {
+    let mut i = 0;
+    let result = loop {
+        if i >= 5 { break i * 2; }
+        i += 1;
+    };
+    println!("{}", result);
+    result
+}

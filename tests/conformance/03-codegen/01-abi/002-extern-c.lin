@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.3 conformance expansion
 
 extern "C" { fn printf(format: i32); }
+fn main(){ 0 }

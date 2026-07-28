@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 10.4 conformance expansion
 
-struct Config { width: i32, height: i32, fullscreen: bool } fn default_config() -> Config { Config { width: 800, height: 600, fullscreen: false } }
+struct Config { width: i32, height: i32, fullscreen: bool } fn main() -> Config { Config { width: 800, height: 600, fullscreen: false } }

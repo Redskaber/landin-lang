@@ -3,3 +3,4 @@
 //! description: map closure pattern
 //! source: Stage 9.11 conformance expansion
 fn map(arr: [i32; 3], f: i32) -> [i32; 3] { let result = [0, 0, 0]; let g = |x: i32| x + 1; result }
+fn main(){ let _ = map([0;3],0); }

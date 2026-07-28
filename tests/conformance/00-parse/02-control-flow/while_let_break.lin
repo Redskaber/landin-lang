@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: while_let_break now supported (Stage 13.2 TD-031 closure)
 //! source: Stage 9.3 conformance expansion
-enum Opt<T> { Some(T), None } fn f() { let mut it = Opt::Some(0); while let Opt::Some(x) = it { if x == 0 { break; } } }
+enum Opt<T> { Some(T), None } fn main() { let mut it = Opt::Some(0); while let Opt::Some(x) = it { if x == 0 { break; } } }

@@ -4,3 +4,4 @@
 //! error_pattern: parse error
 //! source: Stage 9.6 conformance expansion
 enum E { #[foo] A, B }
+fn main(){ let _ = E::A; }

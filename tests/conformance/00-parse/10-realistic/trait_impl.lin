@@ -13,3 +13,4 @@ impl Point {
         (dx * dx + dy * dy).sqrt()
     }
 }
+fn main(){ let _ = Point{x: 0,y: 0}; }

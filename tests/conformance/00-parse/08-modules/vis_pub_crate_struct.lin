@@ -3,3 +3,4 @@
 //! description: pub(crate) struct
 //! source: Stage 9.9 conformance expansion
 pub(crate) struct S;
+fn main(){ let _ = S; }

@@ -2,4 +2,4 @@
 //! category: closures
 //! description: move closure as argument
 //! source: Stage 9.8 conformance expansion
-fn map(f: i32) {} fn f() { let g = move |x| x; map(1); }
+fn map(f: i32) {} fn main() { let g = move |x| x; map(1); }

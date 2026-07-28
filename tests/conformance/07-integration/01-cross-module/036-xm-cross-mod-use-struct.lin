@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.6+11.7 expansion
 
-mod types{pub struct Config{pub val:i32}} mod app{use types::Config; pub fn new()->Config{Config{val:42}}}
+mod types{pub struct Config{pub val:i32}} mod app{use types::Config; pub fn main()->Config{Config{val:42}}}

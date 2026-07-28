@@ -2,4 +2,4 @@
 //! category: types
 //! description: usize primitive type
 //! source: Stage 9.5 conformance expansion
-fn f() { let x: usize = 1; }
+fn main() { let x: usize = 1; }

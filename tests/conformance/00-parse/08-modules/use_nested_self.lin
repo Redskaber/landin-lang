@@ -3,3 +3,4 @@
 //! description: nested use with self
 //! source: Stage 9.9 conformance expansion
 mod foo { pub mod bar; } use foo::{self};
+fn main(){ 0 }

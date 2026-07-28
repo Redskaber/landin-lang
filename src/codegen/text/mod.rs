@@ -410,6 +410,24 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
+    /// Stage 14.12 (GAP-18): TextEmitter select instruction.
+    /// Emits: `%vN = select i1 %cond, <ty> %true_val, <ty> %false_val`
+    fn emit_select(
+        &mut self,
+        ty: &EmitType,
+        cond: &EmitValue,
+        true_val: &EmitValue,
+        false_val: &EmitValue,
+    ) -> EmitValue {
+        let r = self.fresh();
+        let ty_str = emit_type_to_llvm_str(ty);
+        self.line(&format!(
+            "  %v{} = select i1 {}, {} {}, {} {}",
+            r, cond, ty_str, true_val, ty_str, false_val
+        ));
+        format!("%v{}", r)
+    }
+
     fn emit_gep_field(
         &mut self,
         base_ptr: &EmitValue,

@@ -5,3 +5,4 @@
 // SOURCE: Stage 10.8 typecheck expansion (Stage 0 limitation)
 
 struct S<'a, 'b> { x: &'a i32, y: &'b i32 } impl<'a, 'b> S<'a, 'b> { fn get_x(&self) -> &'a i32 { self.x } }
+fn main(){ let _ref_0 = 0; let _ref_1 = 0; let _ = S{x:&_ref_0,y:&_ref_1}; }

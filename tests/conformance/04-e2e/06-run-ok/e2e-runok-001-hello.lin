@@ -1,0 +1,10 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok basic hello world
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: hello world
+// SOURCE: Stage 14.11 (GAP-8) — run_ok runner verification
+
+fn main() -> i32 {
+    println!("hello world");
+    0
+}

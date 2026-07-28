@@ -1,0 +1,12 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok array literal [a, b, c] + indexing
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: arr[0]=10, arr[2]=30, arr[4]=50
+// EXPECTED_EXIT_CODE: 60
+// SOURCE: Stage 14.20 — array literal + indexing verification
+
+fn main() -> i32 {
+    let arr = [10, 20, 30, 40, 50];
+    println!("arr[0]={}, arr[2]={}, arr[4]={}", arr[0], arr[2], arr[4]);
+    arr[0] + arr[4]
+}

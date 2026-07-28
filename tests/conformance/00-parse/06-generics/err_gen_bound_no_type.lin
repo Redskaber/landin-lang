@@ -3,3 +3,4 @@
 //! description: bound without type parses via synthetic node recovery (parser does not validate bound content)
 //! source: Stage 9.7 conformance expansion
 fn f<T:>(x: T) {}
+fn main(){ 0 }

@@ -2,4 +2,4 @@
 //! category: attributes
 //! description: multiple outer attributes
 //! source: Stage 9.6 conformance expansion
-#[a] #[b] #[c] fn f() {}
+#[a] #[b] #[c] fn main() {}

@@ -3,3 +3,4 @@
 //! description: recursive factorial
 //! source: Stage 9.11 conformance expansion
 fn factorial(n: i64) -> i64 { if n <= 1 { 1 } else { n * factorial(n - 1) } }
+fn main(){ let _ = factorial(0); }

@@ -3,3 +3,4 @@
 //! description: PartialEq trait pattern
 //! source: Stage 9.11 conformance expansion
 trait PartialEq { fn eq(&self, other: &Self) -> bool; } struct Foo { x: i32 } impl PartialEq for Foo { fn eq(&self, other: &Self) -> bool { self.x == other.x } }
+fn main(){ let _ = Foo{x: 0}; }

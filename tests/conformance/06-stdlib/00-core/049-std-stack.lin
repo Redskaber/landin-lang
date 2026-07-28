@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-struct Stack{data:[i32;10],top:i32} fn new()->Stack{Stack{data:[0;10],top:0}}
+struct Stack{data:[i32;10],top:i32} fn main()->Stack{Stack{data:[0;10],top:0}}

@@ -2,4 +2,4 @@
 //! category: generics
 //! description: multiple generic args
 //! source: Stage 9.7 conformance expansion
-struct S<T, U> { x: T, y: U } fn f() { let x: S<i32, &str> = S { x: 1, y: "a" }; }
+struct S<T, U> { x: T, y: U } fn main() { let x: S<i32, &str> = S { x: 1, y: "a" }; }

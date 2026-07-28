@@ -4,3 +4,4 @@
 //! error_pattern: expected
 //! source: Stage 9.10 conformance expansion
 struct {}
+fn main(){ 0 }

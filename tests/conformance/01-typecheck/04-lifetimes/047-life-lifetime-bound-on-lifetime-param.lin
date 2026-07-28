@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 fn f<'a: 'static>(x: &'a i32) {}
+fn main(){ 0 }

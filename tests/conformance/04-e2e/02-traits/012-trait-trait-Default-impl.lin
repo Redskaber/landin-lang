@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
 
 trait Default{fn default()->Self;} struct S{x:i32} impl Default for S{fn default()->Self{S{x:0}}}
+fn main(){ let _ = S{x: 0}; }

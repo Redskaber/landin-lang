@@ -2,4 +2,4 @@
 //! category: literals
 //! description: decimal integer with underscore separator
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = 999_999; }
+fn main() { let _ = 999_999; }

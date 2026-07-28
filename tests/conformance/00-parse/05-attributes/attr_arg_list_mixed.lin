@@ -2,4 +2,4 @@
 //! category: attributes
 //! description: attribute with mixed args
 //! source: Stage 9.6 conformance expansion
-#[foo(a, b = 1, c)] fn f() {}
+#[foo(a, b = 1, c)] fn main() {}

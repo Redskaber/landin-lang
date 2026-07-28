@@ -30,9 +30,34 @@ use lasso::Rodeo;
 mod trait_methods;
 mod vtable_layout;
 
-// Re-export all public symbols from sub-modules for backward compatibility.
-pub use trait_methods::*;
-pub use vtable_layout::*;
+// Stage 14.4 §23 compliance: explicit re-export lists (no glob `pub use X::*;`).
+// Each name below is a public symbol from a sub-module that callers may use
+// via `crate::stdlib::<Name>` or `landin_compiler::stdlib::<Name>`.
+
+// From `trait_methods` — trait method signatures + query API (domain B).
+pub use trait_methods::{
+    find_stdlib_trait_method, is_stdlib_marker_trait, is_stdlib_trait, is_stdlib_trait_method,
+    stdlib_all_traits, stdlib_arithmetic_traits, stdlib_core_traits, stdlib_io_traits,
+    stdlib_marker_traits, stdlib_trait_count, stdlib_trait_method_count, stdlib_trait_method_index,
+    stdlib_trait_method_is_unsafe, stdlib_trait_method_param_count,
+    stdlib_trait_method_param_kinds, stdlib_trait_method_return_kind,
+    stdlib_trait_method_self_kind, stdlib_trait_methods, stdlib_trait_methods_by_is_unsafe,
+    stdlib_trait_methods_by_param_count, stdlib_trait_methods_by_return_kind,
+    stdlib_trait_methods_by_self_kind, stdlib_traits_with_method, stdlib_traits_with_vtable,
+    stdlib_unary_traits, stdlib_vtable_layout, stdlib_vtable_slot_count, StdlibSelfKind,
+    StdlibTraitMethod, StdlibVtableSlot, ARITH_ASSIGN_METHOD_NAMES, ARITH_OP_METHOD_NAMES,
+};
+
+// From `vtable_layout` — vtable layout + symbols + emission (domain C).
+pub use vtable_layout::{
+    stdlib_data_global_name, stdlib_dynptr_global_name, stdlib_impl_method_symbol,
+    stdlib_pointer_width_bytes, stdlib_vtable_byte_size, stdlib_vtable_emission,
+    stdlib_vtable_emission_summary, stdlib_vtable_emissions_for_traits, stdlib_vtable_global_name,
+    stdlib_vtable_method_offset, stdlib_vtable_method_symbols, stdlib_vtable_plan,
+    stdlib_vtable_plan_entry_count, stdlib_vtable_plan_is_complete,
+    stdlib_vtable_plan_missing_methods, StdlibPointerWidth, StdlibVtableEmission,
+    StdlibVtableEmissionSummary, StdlibVtablePlan, StdlibVtablePlanEntry,
+};
 
 /// Stage 5.25: Core primitive type names recognized by the compiler.
 ///

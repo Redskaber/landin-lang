@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-#[allow(dead_code)] fn f(){}
+#[allow(dead_code)] fn main(){ 0 }

@@ -1,0 +1,17 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok static method call with side effects (Stage 14.41 — V::new() now calls the method, not treated as struct ctor)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 105
+// SOURCE: Stage 14.41 — resolver + MIR lower fixes for Type::method paths
+
+struct Counter { val: i32 }
+impl Counter {
+    fn new(start: i32) -> Counter { Counter { val: start + 100 } }
+}
+fn main() -> i32 {
+    let c = Counter::new(5);
+    // If new() is called: val = 5 + 100 = 105
+    // If new() is NOT called (treated as ctor): val = 5
+    println!("{}", c.val);
+    0
+}

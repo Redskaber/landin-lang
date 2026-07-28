@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.3 codegen expansion
 
-enum E{A} fn f()->E{E::A}
+enum E{A} fn main()->E{E::A}

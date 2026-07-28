@@ -3,3 +3,4 @@
 //! description: outer attribute on module
 //! source: Stage 9.6 conformance expansion
 #[foo] mod m {}
+fn main(){ 0 }

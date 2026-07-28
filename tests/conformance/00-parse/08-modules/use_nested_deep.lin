@@ -3,3 +3,4 @@
 //! description: deeply nested use import
 //! source: Stage 9.9 conformance expansion
 mod foo { pub mod bar { pub struct baz; pub struct qux; } } use foo::{bar::{baz, qux}};
+fn main(){ 0 }

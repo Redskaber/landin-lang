@@ -3,3 +3,4 @@
 //! description: mut reference pattern
 //! source: Stage 9.4 conformance expansion
 fn f(r: &mut i32) { let &mut x = r; }
+fn main(){ let _ref_0 = 0; f(&_ref_0); }

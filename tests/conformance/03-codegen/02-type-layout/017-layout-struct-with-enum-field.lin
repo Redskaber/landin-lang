@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 enum E{A,B} struct S{e:E}
+fn main(){ let _ = E::A; }

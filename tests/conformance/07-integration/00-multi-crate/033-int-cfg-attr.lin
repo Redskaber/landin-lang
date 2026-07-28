@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-#[cfg(test)] fn f(){}
+#[cfg(test)] fn main(){ 0 }

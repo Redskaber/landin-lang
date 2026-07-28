@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok array repeat initialization [val; N] + element assignment
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: arr[0]=10, arr[1]=20, arr[2]=30
+// EXPECTED_EXIT_CODE: 60
+// SOURCE: Stage 14.20 — array repeat [0; N] fix + element assignment verification
+
+fn main() -> i32 {
+    let mut arr = [0; 3];
+    arr[0] = 10;
+    arr[1] = 20;
+    arr[2] = 30;
+    println!("arr[0]={}, arr[1]={}, arr[2]={}", arr[0], arr[1], arr[2]);
+    arr[0] + arr[1] + arr[2]
+}

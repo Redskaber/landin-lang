@@ -2,4 +2,4 @@
 //! category: closures
 //! description: closure capturing multiple vars
 //! source: Stage 9.8 conformance expansion
-fn f() { let a = 1; let b = 2; let g = || a + b; }
+fn main() { let a = 1; let b = 2; let g = || a + b; }

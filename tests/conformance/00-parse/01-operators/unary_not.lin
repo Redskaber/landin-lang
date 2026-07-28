@@ -3,3 +3,4 @@
 //! description: unary logical not prefix
 //! source: Stage 9.2 conformance expansion
 fn f(flag: bool) { let _ = !flag; }
+fn main(){ f(false); }

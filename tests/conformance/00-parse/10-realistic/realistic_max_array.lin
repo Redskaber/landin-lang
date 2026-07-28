@@ -3,3 +3,4 @@
 //! description: find max in array
 //! source: Stage 9.11 conformance expansion
 fn max_array(arr: [i32; 5]) -> i32 { let mut max = arr[0]; let mut i = 1; while i < 5 { if arr[i] > max { max = arr[i]; } i += 1; } max }
+fn main(){ let _ = max_array([0;5]); }

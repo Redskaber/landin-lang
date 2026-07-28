@@ -3,3 +3,4 @@
 //! description: nested struct pattern
 //! source: Stage 9.4 conformance expansion
 struct Inner { x: i32 } struct Outer { inner: Inner } fn f(o: Outer) { let Outer { inner: Inner { x } } = o; }
+fn main(){ let _ = Inner{x: 0}; }

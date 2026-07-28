@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 enum Cow<T> { Borrowed(T), Owned(T) } impl<T> Cow<T> { fn new(t: T) -> Self { Cow::Owned(t) } }
+fn main(){ let _ = Cow::Borrowed; }

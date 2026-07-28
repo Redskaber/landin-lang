@@ -3,3 +3,4 @@
 //! description: logical and operator
 //! source: Stage 9.2 conformance expansion
 fn f(a: bool, b: bool) { let _ = a && b; }
+fn main(){ f(false,false); }

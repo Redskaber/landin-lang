@@ -4,3 +4,4 @@
 //! error_pattern: expected
 //! source: Stage 9.6 conformance expansion
 #![no_std]
+fn main(){ 0 }

@@ -1,7 +1,7 @@
 // CATEGORY: borrowck
 // DESCRIPTION: borrow then mutate after scope
 // EXPECTED: compile_ok
-// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
 
 fn main() { let mut x=1; { let r=&x; } x=2; }

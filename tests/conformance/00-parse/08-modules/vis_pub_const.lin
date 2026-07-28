@@ -3,3 +3,4 @@
 //! description: pub const
 //! source: Stage 9.9 conformance expansion
 pub const C: i32 = 0;
+fn main(){ 0 }

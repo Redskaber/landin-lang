@@ -3,4 +3,4 @@
 //! description: missing semicolon between lets must error
 //! error_pattern: expected
 //! source: Stage 9.10 conformance expansion
-fn f() { let x = 1 let y = 2; }
+fn main() { let x = 1 let y = 2; }

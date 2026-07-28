@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 #[foo] static S:i32=42;
+fn main(){ 0 }

@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 enum E<'a> { A(&'a i32), B(&'a bool) } fn f(e: E) -> i32 { match e { E::A(r) => *r, E::B(_) => 0 } }
+fn main(){ let _ref_0 = 0; let _ref_1 = 0; let _ = E::A(&_ref_0); let _ = f(E::A(&_ref_1)); }

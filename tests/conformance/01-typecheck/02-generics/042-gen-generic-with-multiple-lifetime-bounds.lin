@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 fn f<'a, 'b, 'c>(x: &'a i32) where 'a: 'b, 'a: 'c {}
+fn main(){ 0 }

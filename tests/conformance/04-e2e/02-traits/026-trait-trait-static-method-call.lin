@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
 
 trait Factory{fn new()->i32;} struct S; impl Factory for S{fn new()->i32{0}}
+fn main(){ let _ = S; }

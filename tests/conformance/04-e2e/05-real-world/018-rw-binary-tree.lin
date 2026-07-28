@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 struct Node{val:i32,left:i32,right:i32} fn new(v:i32)->Node{Node{val:v,left:-1,right:-1}}
+fn main(){ let _ = Node{val: 0,left: 0,right: 0}; let _ = new(0); }

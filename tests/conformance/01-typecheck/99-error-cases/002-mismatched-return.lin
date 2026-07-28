@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — typeck does not catch this error)
 
-fn f() -> i32 { true }
+fn main() -> i32 { true }

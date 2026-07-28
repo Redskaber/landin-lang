@@ -2,4 +2,4 @@
 //! category: error-recovery
 //! description: parser recovers from multiple errors in same block (per §2)
 //! source: Stage 9.10 conformance expansion
-fn f() { let x = ; let y = ; let z = 1; }
+fn main() { let x = ; let y = ; let z = 1; }

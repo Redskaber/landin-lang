@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 mod m{pub struct A;pub struct B;} use m::{A,B};
+fn main(){ let _ = A; let _ = B; }

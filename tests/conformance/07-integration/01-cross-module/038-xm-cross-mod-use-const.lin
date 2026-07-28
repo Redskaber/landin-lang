@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 mod config{pub const MAX:i32=100;} mod app{use config::MAX; pub fn check(x:i32)->bool{x<MAX}}
+fn main(){ let _ = check(0); }

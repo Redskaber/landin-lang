@@ -3,3 +3,4 @@
 //! description: pub external module
 //! source: Stage 9.9 conformance expansion
 pub mod m;
+fn main(){ 0 }

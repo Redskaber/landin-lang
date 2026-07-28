@@ -3,3 +3,4 @@
 //! description: pub static
 //! source: Stage 9.9 conformance expansion
 pub static S: i32 = 0;
+fn main(){ 0 }

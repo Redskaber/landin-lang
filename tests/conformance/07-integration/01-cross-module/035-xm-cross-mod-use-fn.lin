@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
 
-mod utils{pub fn helper(x:i32)->i32{x*2}} mod app{use utils::helper; pub fn run()->i32{helper(5)}}
+mod utils{pub fn helper(x:i32)->i32{x*2}} mod app{use utils::helper; pub fn main()->i32{helper(5)}}

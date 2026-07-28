@@ -4,3 +4,5 @@
 // SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
 
 mod a{pub fn f()->i32{42}} mod b{use a::f; pub fn g()->i32{f()}}
+
+fn main(){ let _ = f(); let _ = g(); }

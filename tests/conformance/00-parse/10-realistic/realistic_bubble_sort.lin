@@ -3,3 +3,4 @@
 //! description: bubble sort on array
 //! source: Stage 9.11 conformance expansion
 fn bubble_sort(arr: &mut [i32; 5]) { let mut i = 0; while i < 5 { let mut j = 0; while j < 4 - i { if arr[j] > arr[j + 1] { let tmp = arr[j]; arr[j] = arr[j + 1]; arr[j + 1] = tmp; } j += 1; } i += 1; } }
+fn main(){ let _ref_0 = [0;5]; bubble_sort(&_ref_0); }

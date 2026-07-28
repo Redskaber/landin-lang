@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: let with type annotation
 //! source: Stage 9.3 conformance expansion
-fn f() { let x: i32 = 1; }
+fn main() { let x: i32 = 1; }

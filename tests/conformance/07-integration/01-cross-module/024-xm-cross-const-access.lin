@@ -4,4 +4,4 @@
 // ERROR_PATTERN: error
 // SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
 
-mod a{pub const C:i32=42;} mod b{pub fn g()->i32{a::C}}
+mod a{pub const C:i32=42;} mod b{pub fn main()->i32{a::C}}

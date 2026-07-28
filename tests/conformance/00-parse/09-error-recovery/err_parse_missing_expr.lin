@@ -2,4 +2,4 @@
 //! category: error-recovery
 //! description: missing expression in let parses via synthetic node recovery
 //! source: Stage 9.10 conformance expansion
-fn f() { let x = ; }
+fn main() { let x = ; }

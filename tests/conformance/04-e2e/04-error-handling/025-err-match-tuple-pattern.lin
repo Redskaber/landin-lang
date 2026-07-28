@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
 
 fn f(t:(i32,i32))->i32{match t{(0,_)=>0,(_,0)=>1,_=>2}}
+fn main(){ let _ = f((0,0)); }

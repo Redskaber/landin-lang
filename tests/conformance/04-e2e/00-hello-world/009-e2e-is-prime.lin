@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 fn is_prime(n:i32)->bool{if n<2{false}else{let mut i=2;while i*i<=n{if n%i==0{return false;}i+=1;}true}}
+fn main(){ let _ = is_prime(0); }

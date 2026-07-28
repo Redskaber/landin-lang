@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 trait T:Sized{fn f(&self)->i32;}
+fn main(){ 0 }

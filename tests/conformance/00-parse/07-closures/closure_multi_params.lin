@@ -2,4 +2,4 @@
 //! category: closures
 //! description: multi param closure
 //! source: Stage 9.8 conformance expansion
-fn f() { let _ = |x, y| x + y; }
+fn main() { let _ = |x, y| x + y; }

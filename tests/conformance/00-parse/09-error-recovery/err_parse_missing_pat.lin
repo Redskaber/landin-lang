@@ -3,4 +3,4 @@
 //! description: missing pattern in let must error
 //! error_pattern: expected
 //! source: Stage 9.10 conformance expansion
-fn f() { let = 1; }
+fn main() { let = 1; }

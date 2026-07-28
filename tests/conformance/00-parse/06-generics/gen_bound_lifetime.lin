@@ -3,3 +3,4 @@
 //! description: lifetime bound
 //! source: Stage 9.7 conformance expansion
 fn f<T: 'static>(x: T) {}
+fn main(){ 0 }

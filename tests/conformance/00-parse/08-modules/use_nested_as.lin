@@ -3,3 +3,4 @@
 //! description: nested use with rename
 //! source: Stage 9.9 conformance expansion
 mod foo { pub struct bar; pub struct baz; } use foo::{bar as b, baz};
+fn main(){ 0 }

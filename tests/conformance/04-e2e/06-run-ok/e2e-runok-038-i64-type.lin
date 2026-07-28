@@ -1,0 +1,12 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok i64 type with printing
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: big=42, small=10
+// SOURCE: Stage 14.25 — i64 type verification
+
+fn main() -> i32 {
+    let big: i64 = 42;
+    let small: i32 = 10;
+    println!("big={}, small={}", big, small);
+    0
+}

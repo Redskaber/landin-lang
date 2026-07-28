@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: break in loop
 //! source: Stage 9.3 conformance expansion
-fn f() { loop { break; } }
+fn main() { loop { break; } }

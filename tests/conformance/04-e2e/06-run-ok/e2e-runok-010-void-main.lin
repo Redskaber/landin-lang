@@ -1,0 +1,9 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok void main return type (GAP-20 verification — codegen emits ret i32 0)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: hello from void main
+// SOURCE: Stage 14.16 (GAP-20) — void main return type verification
+
+fn main() {
+    println!("hello from void main");
+}

@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok recursive function (factorial)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: fact(5) = 120
+// EXPECTED_EXIT_CODE: 120
+// SOURCE: Stage 14.16 — recursion + early return verification
+
+fn fact(n: i32) -> i32 {
+    if n <= 1 { 1 } else { n * fact(n - 1) }
+}
+fn main() -> i32 {
+    let r = fact(5);
+    println!("fact(5) = {}", r);
+    r
+}

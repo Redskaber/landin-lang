@@ -1,0 +1,13 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok closure capture + inline call
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: closure: 15
+// SOURCE: Stage 14.28 — closure capture + inline call verification
+
+fn main() -> i32 {
+    let x = 10;
+    let f = |y: i32| { x + y };
+    let r = f(5);
+    println!("closure: {}", r);
+    0
+}

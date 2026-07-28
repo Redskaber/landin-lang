@@ -4,3 +4,4 @@
 //! error_pattern: expected use alias name
 //! source: Stage 9.9 conformance expansion
 mod foo { pub mod bar; } use foo::bar as self;
+fn main(){ 0 }

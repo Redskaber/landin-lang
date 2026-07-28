@@ -1,0 +1,18 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok while loop with continue (skip even numbers)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: sum=25
+// EXPECTED_EXIT_CODE: 25
+// SOURCE: Stage 14.33 — continue + if + modulo verification
+
+fn main() -> i32 {
+    let mut i = 0;
+    let mut sum = 0;
+    while i < 10 {
+        i += 1;
+        if i % 2 == 0 { continue; }
+        sum += i;
+    }
+    println!("sum={}", sum);
+    sum
+}

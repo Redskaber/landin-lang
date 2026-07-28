@@ -3,3 +3,4 @@
 //! description: where clause in struct
 //! source: Stage 9.7 conformance expansion
 trait Clone { fn c(&self); } struct S<T> where T: Clone { x: T }
+fn main(){ 0 }

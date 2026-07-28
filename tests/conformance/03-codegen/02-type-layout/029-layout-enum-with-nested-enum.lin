@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 enum Inner{A,B} enum Outer{A(Inner),B}
+fn main(){ let _ = Inner::A; let _ = Outer::A; }

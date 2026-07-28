@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 enum E<'a>{A(&'a i32),B}
+fn main(){ let _ref_0 = 0; let _ = E::A(&_ref_0); }

@@ -3,3 +3,4 @@
 //! description: if as statement (no else)
 //! source: Stage 9.3 conformance expansion
 fn f(c: bool) { if c { let x = 1; } }
+fn main(){ f(false); }

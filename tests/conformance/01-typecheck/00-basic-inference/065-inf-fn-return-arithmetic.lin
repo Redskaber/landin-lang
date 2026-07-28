@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 fn f(a: i32, b: i32) -> i32 { a * b + 1 }
+fn main(){ let _ = f(0,0); }

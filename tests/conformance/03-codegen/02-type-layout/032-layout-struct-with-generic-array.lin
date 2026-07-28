@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct S<T>{arr:[T;3]}
+fn main(){ 0 }

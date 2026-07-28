@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.4 conformance expansion
 
 fn f(x: i32) -> i32 { match x { n if n > 0 => 1, _ => 0 } }
+fn main(){ let _ = f(0); }

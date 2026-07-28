@@ -3,3 +3,4 @@
 //! description: nested for loops
 //! source: Stage 9.3 conformance expansion
 fn f(a: [i32; 2], b: [i32; 2]) { for i in a { for j in b { let _ = i + j; } } }
+fn main(){ f([0;2],[0;2]); }

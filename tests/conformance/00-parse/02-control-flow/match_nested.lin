@@ -3,3 +3,4 @@
 //! description: nested match expressions
 //! source: Stage 9.3 conformance expansion
 fn f(x: i32, y: i32) -> i32 { match x { 1 => match y { 2 => 1, _ => 0 } _ => 2 } }
+fn main(){ let _ = f(0,0); }

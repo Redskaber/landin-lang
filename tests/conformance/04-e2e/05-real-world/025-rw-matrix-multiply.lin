@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 fn matmul(a:[i32;4],b:[i32;4])->[i32;4]{[a[0]*b[0]+a[1]*b[2],a[0]*b[1]+a[1]*b[3],a[2]*b[0]+a[3]*b[2],a[2]*b[1]+a[3]*b[3]]}
+fn main(){ let _ = matmul([0;4],[0;4]); }

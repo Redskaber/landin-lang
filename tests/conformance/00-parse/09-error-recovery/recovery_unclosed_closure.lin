@@ -2,4 +2,4 @@
 //! category: error-recovery
 //! description: unclosed closure param parses via synthetic node recovery (per §2)
 //! source: Stage 9.10 conformance expansion
-fn f() { let _ = |x 1; }
+fn main() { let _ = |x 1; }

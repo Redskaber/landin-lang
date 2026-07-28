@@ -3,3 +3,4 @@
 //! description: lifetime in impl
 //! source: Stage 9.7 conformance expansion
 struct S<'a> { x: &'a i32 } impl<'a> S<'a> {}
+fn main(){ let _ref_0 = 0; let _ = S{x:&_ref_0}; }

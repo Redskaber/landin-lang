@@ -3,3 +3,4 @@
 //! description: while with logical condition
 //! source: Stage 9.3 conformance expansion
 fn f(a: bool, done: bool) { while a && !done { } }
+fn main(){ f(false,false); }

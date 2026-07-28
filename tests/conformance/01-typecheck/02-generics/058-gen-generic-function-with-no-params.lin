@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
 
 fn f<T>() {}
+fn main(){ 0 }

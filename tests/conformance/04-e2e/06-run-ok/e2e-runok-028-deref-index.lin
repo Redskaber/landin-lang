@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok &self method with array field + index (GAP-31 Deref+Index fix)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: s.get(1)=20
+// SOURCE: Stage 14.21 — &self + array field + index verification
+
+struct S { data: [i32; 3] }
+impl S {
+    fn get(&self, i: i32) -> i32 { self.data[i] }
+}
+fn main() -> i32 {
+    let s = S { data: [10, 20, 30] };
+    println!("s.get(1)={}", s.get(1));
+    0
+}

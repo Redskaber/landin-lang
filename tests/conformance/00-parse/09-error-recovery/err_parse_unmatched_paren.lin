@@ -3,4 +3,4 @@
 //! description: unmatched open paren must error
 //! error_pattern: expected
 //! source: Stage 9.10 conformance expansion
-fn f() { let _ = (1 + 2; }
+fn main() { let _ = (1 + 2; }

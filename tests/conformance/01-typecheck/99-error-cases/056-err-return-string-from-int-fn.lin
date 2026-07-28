@@ -4,4 +4,4 @@
 // ERROR_PATTERN: type
 // SOURCE: Stage 11.1 typecheck expansion
 
-fn f() -> i32 { "hello" }
+fn main() -> i32 { "hello" }

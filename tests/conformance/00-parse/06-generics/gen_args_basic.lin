@@ -2,4 +2,4 @@
 //! category: generics
 //! description: basic generic args
 //! source: Stage 9.7 conformance expansion
-struct S<T> { x: T } fn f() { let x: S<i32> = S { x: 1 }; }
+struct S<T> { x: T } fn main() { let x: S<i32> = S { x: 1 }; }

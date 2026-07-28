@@ -3,4 +3,4 @@
 //! description: attributes on blocks not supported in Stage 0 (parser limitation)
 //! error_pattern: parse error
 //! source: Stage 9.6 conformance expansion
-fn f() { #[foo] { 1 } }
+fn main() { #[foo] { 1 } }

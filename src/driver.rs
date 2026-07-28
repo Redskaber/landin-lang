@@ -136,6 +136,15 @@ impl CompileErrors {
                 out.push_str(&format_snippet(s, &e.span));
             }
         }
+        // Stage 14.10: trait_errors were missing from format_for_user,
+        // causing "error: N error(s)" with no detail lines when only
+        // trait coherence/completeness errors existed. total_count()
+        // already included trait_errors.len(), so the count was correct
+        // but the details were invisible. This fix closes that diagnostic
+        // gap by printing each trait error with a [trait] prefix.
+        for e in &self.trait_errors {
+            out.push_str(&format!("  [trait] {}\n", e));
+        }
         out
     }
 }
@@ -220,6 +229,10 @@ pub struct CompileResult {
     /// Stage 3.56: per-body metadata parallel to `mirs`.
     /// Each entry: (fn_name, is_void, param_count).
     pub body_metas: Vec<BodyMeta>,
+    /// Stage 14.35: Pre-computed function signatures (DefId → Sig) for codegen.
+    /// Used by codegen_terminator to resolve Call return types (fixes struct-returning
+    /// method calls where dest local type defaults to i32 after typeck writeback).
+    pub fn_sigs: std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
     /// Stage 5.2: TraitResolver — pre-computed trait/impl dispatch tables.
     /// Built during compile() so downstream (typeck, borrowck, codegen)
     /// can query trait implementations without reading HIR.
@@ -264,6 +277,7 @@ impl CompileResult {
             interner,
             fn_name_by_def_id: std::collections::HashMap::new(),
             body_metas: Vec::new(),
+            fn_sigs: std::collections::HashMap::new(),
             trait_resolver: crate::traits::TraitResolver::new(),
             stdlib_prelude: crate::stdlib::default_prelude(),
             stdlib_facade: crate::stdlib::StdlibFacade::default(),
@@ -416,6 +430,11 @@ pub fn compile(src: &str) -> CompileResult {
             Some(&dyn_trait_plan),
         );
 
+        // Stage 14.30: Collect type errors from MIR lowering (e.g., "no method found").
+        // Per "报错 > 静默" principle — these errors were previously silently
+        // swallowed (Error placeholder → codegen produced 0 or invalid IR).
+        errors.typeck.append(&mut mir.lower_type_errors);
+
         // Stage 3.60: typeck uses pre-computed tables instead of HIR.
         let mut tc = typeck::TypeChecker::with_unify(lower_unify);
         tc.fn_sigs = fn_sig_table.sigs.clone();
@@ -428,6 +447,118 @@ pub fn compile(src: &str) -> CompileResult {
         let mut bc = borrowck::BorrowChecker::new();
         bc.check_mir_body(&mir);
         errors.borrowck.extend(bc.into_errors());
+
+        // Stage 14.37: Write back Call dest local types from fn_sigs.
+        // After typeck, Call dest locals may still have Infer→i32 type
+        // (typeck doesn't propagate Call return types). This pass scans
+        // all Call terminators and writes the callee's return type into
+        // the dest local's local_decl, so codegen allocates the correct
+        // size and field access uses the correct type.
+        //
+        // Also propagates types through Assign statements: if a local is
+        // assigned from a Copy/Move of another local whose type was
+        // written back, propagate the type to the destination local too.
+        // This handles `let c = a.add(b);` where c's local gets the
+        // struct type from the Call dest.
+        for bb in &mir.basic_blocks {
+            if let crate::mir::body::Terminator::Call {
+                func, destination, ..
+            } = &bb.terminator
+            {
+                if let crate::mir::place::PlaceKind::Local(id) = &destination.kind {
+                    let callee_def_id = if let crate::mir::place::Operand::Constant(c) = func {
+                        match &c.val {
+                            crate::mir::ty::ConstVal::Uint(n) => Some(crate::hir::DefId(*n as u32)),
+                            crate::mir::ty::ConstVal::Int(n) => Some(crate::hir::DefId(*n as u32)),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(did) = callee_def_id {
+                        if let Some(sig) = fn_sig_table.get(&did) {
+                            let dest_idx = id.0 as usize;
+                            if let Some(ld) = mir.local_decls.get_mut(dest_idx) {
+                                if matches!(
+                                    &ld.ty.kind,
+                                    crate::mir::ty::TyKind::Infer(_)
+                                        | crate::mir::ty::TyKind::Error
+                                ) {
+                                    ld.ty = sig.output.as_ref().clone();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stage 14.37: Propagate written-back types through Assign statements.
+        // If `loc_A = Copy(loc_B)` and loc_B's type was written back to a
+        // concrete type (not Infer/Error), propagate it to loc_A.
+        // Iterate until fixpoint (in case of chains: loc_A = Copy(loc_B = Copy(loc_C))).
+        use crate::mir::place::Rvalue as RvalueEnum;
+        loop {
+            let mut changes: Vec<(usize, crate::mir::ty::Ty)> = Vec::new();
+            for bb in &mir.basic_blocks {
+                for stmt in &bb.statements {
+                    if let crate::mir::body::StatementKind::Assign(boxed) = &stmt.kind {
+                        let (place, rvalue) = &**boxed;
+                        if let crate::mir::place::PlaceKind::Local(dest_id) = &place.kind {
+                            if let RvalueEnum::Use(
+                                crate::mir::place::Operand::Copy(src_place)
+                                | crate::mir::place::Operand::Move(src_place),
+                            ) = rvalue
+                            {
+                                if let crate::mir::place::PlaceKind::Local(src_id) = &src_place.kind
+                                {
+                                    let src_ty = &mir.local_decls[src_id.0 as usize].ty;
+                                    let dest_ty = &mir.local_decls[dest_id.0 as usize].ty;
+                                    if matches!(
+                                        &dest_ty.kind,
+                                        crate::mir::ty::TyKind::Infer(_)
+                                            | crate::mir::ty::TyKind::Error
+                                    ) && !matches!(
+                                        &src_ty.kind,
+                                        crate::mir::ty::TyKind::Infer(_)
+                                            | crate::mir::ty::TyKind::Error
+                                    ) {
+                                        changes.push((dest_id.0 as usize, src_ty.clone()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if changes.is_empty() {
+                break;
+            }
+            for (idx, ty) in changes {
+                mir.local_decls[idx].ty = ty;
+            }
+        }
+
+        // Stage 14.41: Re-populate adt_layouts AFTER the Stage 14.37 writeback.
+        //
+        // The initial `populate_adt_layouts` call (inside `lower_hir_body_to_mir`)
+        // runs BEFORE the Stage 14.37 writeback. At that point, Call dest locals
+        // still have `Infer` types (typeck doesn't propagate Call return types).
+        // After the writeback, these locals have concrete `Adt(def_id, [])` types
+        // — but `adt_layouts` was already populated with the stale set, so
+        // codegen's `mir_type_to_emit_type_with_layouts` would return `I32`
+        // (the fallback for unknown Adt layouts) instead of `Struct([...])`.
+        //
+        // This re-population picks up the new Adt DefIds exposed by the
+        // writeback, ensuring codegen can emit correct struct return types
+        // for static method calls like `Counter::new(5)` (which returns
+        // `Counter`, an Adt).
+        //
+        // Per §16 (interface isolation): `populate_adt_layouts` reads HIR
+        // (read-only) and sinks the layout data into MIR. The driver is the
+        // orchestrator that knows when HIR is still available. After this
+        // point, MIR is self-contained — codegen doesn't need HIR.
+        crate::mir::lower::populate_adt_layouts(&mut mir, &hir);
 
         mirs.push(mir);
     }
@@ -577,6 +708,7 @@ pub fn compile(src: &str) -> CompileResult {
         fn_name_by_def_id,
         body_metas,
         trait_resolver,
+        fn_sigs: fn_sig_table.sigs,
         stdlib_prelude: crate::stdlib::default_prelude(),
         stdlib_facade: crate::stdlib::StdlibFacade::default(),
     }

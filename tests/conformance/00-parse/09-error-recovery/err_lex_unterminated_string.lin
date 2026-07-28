@@ -3,4 +3,4 @@
 //! description: unterminated string literal must error
 //! error_pattern: unterminated
 //! source: Stage 9.10 conformance expansion
-fn f() { let _ = "hello; }
+fn main() { let _ = "hello; }

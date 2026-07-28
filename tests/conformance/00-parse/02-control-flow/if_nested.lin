@@ -3,3 +3,4 @@
 //! description: nested if expressions
 //! source: Stage 9.3 conformance expansion
 fn f(a: bool, b: bool) { if a { if b { 1 } else { 2 } } else { 3 } }
+fn main(){ f(false,false); }

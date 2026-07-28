@@ -3,3 +3,4 @@
 //! description: empty inline module
 //! source: Stage 9.9 conformance expansion
 mod m {}
+fn main(){ 0 }

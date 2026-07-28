@@ -3,3 +3,4 @@
 //! description: binary search
 //! source: Stage 9.11 conformance expansion
 fn binary_search(arr: [i32; 10], target: i32) -> i32 { let mut lo = 0; let mut hi = 9; while lo <= hi { let mid = (lo + hi) / 2; if arr[mid] == target { return mid; } if arr[mid] < target { lo = mid + 1; } else { hi = mid - 1; } } -1 }
+fn main(){ let _ = binary_search([0;10],0); }

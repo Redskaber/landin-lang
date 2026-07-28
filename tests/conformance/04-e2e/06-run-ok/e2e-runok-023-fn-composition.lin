@@ -1,0 +1,17 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok multiple function calls + return values
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: result = 17
+// EXPECTED_EXIT_CODE: 17
+// SOURCE: Stage 14.17 — function composition + early return verification
+// Math: add(3,4)=7; mul(7,2)=14; add(14,3)=17
+
+fn add(a: i32, b: i32) -> i32 { a + b }
+fn mul(a: i32, b: i32) -> i32 { a * b }
+fn main() -> i32 {
+    let x = add(3, 4);
+    let y = mul(x, 2);
+    let z = add(y, 3);
+    println!("result = {}", z);
+    z
+}

@@ -3,3 +3,4 @@
 //! description: lifetime and type parameter together
 //! source: Stage 9.7 conformance expansion
 fn f<'a, T>(x: &'a T) {}
+fn main(){ 0 }

@@ -2,4 +2,4 @@
 //! category: literals
 //! description: empty string literal
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = ""; }
+fn main() { let _ = ""; }

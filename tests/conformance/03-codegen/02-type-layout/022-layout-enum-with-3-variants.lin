@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 enum E{A,B,C}
+fn main(){ let _ = E::A; }

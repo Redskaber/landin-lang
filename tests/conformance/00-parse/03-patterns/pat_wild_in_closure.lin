@@ -2,4 +2,4 @@
 //! category: patterns
 //! description: wildcard in closure param
 //! source: Stage 9.4 conformance expansion
-fn f() { let _ = |_ : i32| 1; }
+fn main() { let _ = |_ : i32| 1; }

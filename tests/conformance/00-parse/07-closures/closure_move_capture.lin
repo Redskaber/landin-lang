@@ -2,4 +2,4 @@
 //! category: closures
 //! description: move closure capturing variable
 //! source: Stage 9.8 conformance expansion
-fn f() { let x = 1; let g = move || x; }
+fn main() { let x = 1; let g = move || x; }

@@ -3,3 +3,4 @@
 //! description: if with logical condition
 //! source: Stage 9.3 conformance expansion
 fn f(a: bool, b: bool) { if a && b { 1 } }
+fn main(){ f(false,false); }

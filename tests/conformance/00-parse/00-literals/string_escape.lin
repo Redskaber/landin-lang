@@ -2,4 +2,4 @@
 //! category: literals
 //! description: string with escape sequence
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = "with\nescape"; }
+fn main() { let _ = "with\nescape"; }

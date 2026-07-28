@@ -2,4 +2,4 @@
 //! category: literals
 //! description: octal literal
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = 0o777; }
+fn main() { let _ = 0o777; }

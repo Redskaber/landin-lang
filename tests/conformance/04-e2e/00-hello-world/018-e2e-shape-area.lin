@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 enum Sh{C(f64),R(f64,f64)} fn area(s:Sh)->f64{match s{Sh::C(r)=>r*r,Sh::R(w,h)=>w*h}}
+fn main(){ let _ = Sh::C(0.0); }

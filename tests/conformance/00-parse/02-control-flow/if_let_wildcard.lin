@@ -3,3 +3,4 @@
 //! description: if_let_wildcard now supported (Stage 13.2 TD-031 closure)
 //! source: Stage 9.3 conformance expansion
 fn f(x: i32) { if let _ = x { 1 } }
+fn main(){ f(0); }

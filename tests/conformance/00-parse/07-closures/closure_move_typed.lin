@@ -2,4 +2,4 @@
 //! category: closures
 //! description: move closure with typed param
 //! source: Stage 9.8 conformance expansion
-fn f() { let _ = move |x: i32| x; }
+fn main() { let _ = move |x: i32| x; }

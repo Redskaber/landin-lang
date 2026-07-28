@@ -2,4 +2,4 @@
 //! category: types
 //! description: bool array type
 //! source: Stage 9.5 conformance expansion
-fn f() { let x: [bool; 4] = [true, false, true, false]; }
+fn main() { let x: [bool; 4] = [true, false, true, false]; }

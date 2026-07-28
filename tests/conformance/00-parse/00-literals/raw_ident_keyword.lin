@@ -3,3 +3,4 @@
 //! description: raw identifier escaping a keyword as a function name
 //! source: RP0-2 regression
 fn r#match() {}
+fn main(){ 0 }

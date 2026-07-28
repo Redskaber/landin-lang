@@ -3,3 +3,4 @@
 //! description: missing use path parses via synthetic node recovery
 //! source: Stage 9.10 conformance expansion
 use ;
+fn main(){ 0 }

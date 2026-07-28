@@ -3,3 +3,4 @@
 //! description: break in while loop
 //! source: Stage 9.3 conformance expansion
 fn f(c: bool) { while c { break; } }
+fn main(){ f(false); }

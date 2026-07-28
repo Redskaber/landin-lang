@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.9 batch expansion
 
-fn main(){}
+fn main(){ 0 }

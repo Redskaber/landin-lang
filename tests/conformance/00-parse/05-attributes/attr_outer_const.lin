@@ -3,3 +3,4 @@
 //! description: outer attribute on const
 //! source: Stage 9.6 conformance expansion
 #[foo] const C: i32 = 0;
+fn main(){ 0 }

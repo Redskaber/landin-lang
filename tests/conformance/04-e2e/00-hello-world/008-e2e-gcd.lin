@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 fn gcd(a:i32,b:i32)->i32{if b==0{a}else{gcd(b,a%b)}}
+fn main(){ let _ = gcd(0,0); }

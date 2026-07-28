@@ -3,3 +3,4 @@
 //! description: octal literal pattern
 //! source: Stage 9.4 conformance expansion
 fn f(x: i32) -> i32 { match x { 0o777 => 1, _ => 0 } }
+fn main(){ let _ = f(0); }

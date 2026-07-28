@@ -115,8 +115,46 @@ impl Resolver {
                 self.def_kinds.insert(def_id, DefKind::Trait);
                 self.def_visibility.insert(def_id, t.vis.clone());
             }
-            HirItem::Impl(_) => {
+            HirItem::Impl(impl_block) => {
                 self.def_kinds.insert(def_id, DefKind::Impl);
+                // Stage 14.41: Build impl method index for `Type::method` path
+                // resolution. For each method in the impl block, register
+                // `(self_ty_name, method_name) → method_def_id` so the resolver
+                // can later resolve `V::new` to the `new` method, not to the
+                // struct V itself.
+                //
+                // Per §16 (interface isolation): this index is built during
+                // Phase 1 (module tree construction) and read during Phase 3
+                // (path resolution). The index is keyed by Spur pairs (no
+                // interner needed at lookup time — the path's segments are
+                // already interned).
+                //
+                // Per §13.4 (design alignment): impl methods are stored BOTH
+                // as separate owners (HirItem::Fn) AND as clones inside
+                // `impl_block.items`. We read from `impl_block.items` here
+                // because that's the canonical source (the owner copies are
+                // a HIR lowering detail).
+                //
+                // Limitation: this only handles INHERENT impls (impl blocks
+                // without `of_trait`). Trait impl method resolution
+                // (`<T as Trait>::method`) is deferred — Stage 5+ work.
+                if impl_block.of_trait.is_none() {
+                    // Extract the type name from self_ty. Only single-segment
+                    // paths are supported (e.g., `V`, `Vec`). Multi-segment
+                    // paths (e.g., `mod::V`) are deferred.
+                    if let crate::hir::HirTyKind::Path(_, self_ty_path) = &impl_block.self_ty.kind {
+                        if self_ty_path.segments.len() == 1 {
+                            let type_name = self_ty_path.segments[0].ident.name;
+                            for impl_item in &impl_block.items {
+                                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                                    let method_name = f.ident.name;
+                                    self.impl_method_index
+                                        .insert((type_name, method_name), f.hir_id.owner);
+                                }
+                            }
+                        }
+                    }
+                }
             }
             HirItem::TypeAlias(t) => {
                 registrations.push((def_id, DefKind::TypeAlias, t.ident.name));

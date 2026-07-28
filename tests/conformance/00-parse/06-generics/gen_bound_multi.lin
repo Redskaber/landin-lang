@@ -3,3 +3,4 @@
 //! description: multiple type bounds
 //! source: Stage 9.7 conformance expansion
 trait Clone { fn c(&self); } trait Default { fn d(&self); } fn f<T: Clone + Default>(x: T) {}
+fn main(){ 0 }

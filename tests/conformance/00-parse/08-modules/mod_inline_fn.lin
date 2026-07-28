@@ -2,4 +2,4 @@
 //! category: modules
 //! description: inline module with fn
 //! source: Stage 9.9 conformance expansion
-mod m { fn f() {} }
+mod m { fn main() {} }

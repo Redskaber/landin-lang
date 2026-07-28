@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion (Stage 0 limitation)
 
 enum E{}
+fn main(){ 0 }

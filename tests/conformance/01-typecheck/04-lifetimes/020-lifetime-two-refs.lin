@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.1 conformance expansion
 
 fn f(a: &i32, b: &i32) -> i32 { *a + *b }
+fn main(){ let _ref_0 = 0; let _ref_1 = 0; let _ = f(&_ref_0,&_ref_1); }

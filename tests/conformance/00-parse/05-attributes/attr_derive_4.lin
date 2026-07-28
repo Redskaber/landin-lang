@@ -3,3 +3,4 @@
 //! description: derive 4 traits
 //! source: Stage 9.6 conformance expansion
 #[derive(Clone, Copy, Debug, Default)] struct S;
+fn main(){ let _ = S; }

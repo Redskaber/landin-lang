@@ -2,4 +2,4 @@
 //! category: literals
 //! description: pi float literal
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = 3.14; }
+fn main() { let _ = 3.14; }

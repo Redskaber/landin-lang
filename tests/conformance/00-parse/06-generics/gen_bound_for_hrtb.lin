@@ -4,3 +4,4 @@
 //! error_pattern: parse error
 //! source: Stage 9.7 conformance expansion
 trait T<'a> { fn f(&self, x: &'a i32); } fn f<X: for<'a> T<'a>>(x: X) {}
+fn main(){ 0 }

@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 trait A{} trait B{} trait C:A+B{}
+fn main(){ 0 }

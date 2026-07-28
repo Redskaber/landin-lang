@@ -2,4 +2,4 @@
 //! category: operators
 //! description: method call postfix
 //! source: Stage 9.2 conformance expansion
-fn f() { let v = vec![]; v.push(1); }
+fn main() { let v = vec![]; v.push(1); }

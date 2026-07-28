@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 10.2 conformance expansion (Stage 0 limitation) (Stage 13.3a closure call lowering — TD-030 closed)
 
-fn f() { let x = 1; let g = || x; let _ = g(); }
+fn main() { let x = 1; let g = || x; let _ = g(); }

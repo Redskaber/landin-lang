@@ -3,3 +3,4 @@
 //! description: continue in while loop
 //! source: Stage 9.3 conformance expansion
 fn f(c: bool) { while c { continue; } }
+fn main(){ f(false); }

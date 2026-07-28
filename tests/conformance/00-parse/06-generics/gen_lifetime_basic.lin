@@ -3,3 +3,4 @@
 //! description: basic lifetime parameter
 //! source: Stage 9.7 conformance expansion
 fn f<'a>(x: &'a i32) {}
+fn main(){ 0 }

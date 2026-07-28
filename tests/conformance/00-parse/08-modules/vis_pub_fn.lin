@@ -2,4 +2,4 @@
 //! category: modules
 //! description: pub fn
 //! source: Stage 9.9 conformance expansion
-pub fn f() {}
+pub fn main() {}

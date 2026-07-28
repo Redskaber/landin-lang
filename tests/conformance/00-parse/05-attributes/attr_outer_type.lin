@@ -3,3 +3,4 @@
 //! description: outer attribute on type alias
 //! source: Stage 9.6 conformance expansion
 #[foo] type T = i32;
+fn main(){ 0 }

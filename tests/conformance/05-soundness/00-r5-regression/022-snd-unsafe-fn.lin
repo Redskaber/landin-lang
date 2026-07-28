@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-unsafe fn f(){}
+unsafe fn main(){ 0 }

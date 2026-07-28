@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 #[derive(Clone)] struct S{x:i32,y:i32}
+fn main(){ let _ = S{x: 0,y: 0}; }

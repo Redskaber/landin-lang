@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: break with value
 //! source: Stage 9.3 conformance expansion
-fn f() -> i32 { loop { break 42; } }
+fn main() -> i32 { loop { break 42; } }

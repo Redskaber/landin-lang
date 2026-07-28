@@ -3,3 +3,4 @@
 //! description: if with empty block
 //! source: Stage 9.3 conformance expansion
 fn f(c: bool) { if c { } }
+fn main(){ f(false); }

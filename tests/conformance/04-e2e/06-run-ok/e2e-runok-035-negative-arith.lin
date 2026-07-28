@@ -1,0 +1,16 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok negative number arithmetic edge cases
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: -8 -12 12 -3 -3 1
+// SOURCE: Stage 14.24 — negative number arithmetic verification
+
+fn main() -> i32 {
+    let a = (-5) + (-3);
+    let b = 3 * (-4);
+    let c = (-3) * (-4);
+    let d = 10 / (-3);
+    let e = (-10) / 3;
+    let f = 10 % (-3);
+    println!("{} {} {} {} {} {}", a, b, c, d, e, f);
+    0
+}

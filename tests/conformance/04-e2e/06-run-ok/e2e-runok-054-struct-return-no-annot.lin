@@ -1,0 +1,18 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok struct-returning method call without type annotation (Stage 14.37 fix)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 4 6
+// SOURCE: Stage 14.37 — Call dest type writeback + Assign type propagation
+
+struct V { x: i32, y: i32 }
+impl V {
+    fn new(x: i32, y: i32) -> V { V { x, y } }
+    fn add(self, o: V) -> V { V { x: self.x + o.x, y: self.y + o.y } }
+}
+fn main() -> i32 {
+    let a = V::new(1, 2);
+    let b = V::new(3, 4);
+    let c = a.add(b);
+    println!("{} {}", c.x, c.y);
+    0
+}

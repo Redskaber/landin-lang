@@ -70,15 +70,10 @@ impl Resolver {
     pub(super) fn resolve_item_paths(&mut self, item: &mut HirItem, interner: &Rodeo) {
         match item {
             HirItem::Fn(f) => {
-                self.resolve_generics_paths(&mut f.generics, interner);
-                for param in &mut f.sig.inputs {
-                    if let Some(ty) = &mut param.ty {
-                        self.resolve_ty_paths(ty, interner);
-                    }
-                }
-                if let HirFnRetTy::Ty(ty) = &mut f.sig.output {
-                    self.resolve_ty_paths(ty, interner);
-                }
+                // Stage 14.40: extracted to `resolve_fn_sig_paths` for reuse
+                // by `resolve_trait_item_paths` / `resolve_impl_item_paths`
+                // (the inline clones inside Trait/Impl blocks).
+                self.resolve_fn_sig_paths(&mut f.sig, &mut f.generics, interner);
             }
             HirItem::Const(c) => {
                 self.resolve_ty_paths(&mut c.ty, interner);
@@ -108,6 +103,11 @@ impl Resolver {
             HirItem::Trait(t) => {
                 // Stage 3.66: set owner context so `Self` in supertrait bounds
                 // resolves to `HirSelfKind::Trait`.
+                // Stage 14.40: keep owner context set while processing trait
+                // item signatures so `Self` in method signatures resolves to
+                // `HirSelfKind::Trait` (previously only supertraits got the
+                // context — items were left unresolved because the owner
+                // copy was resolved but `trait.items` held an unresolved clone).
                 self.current_self_kind = Some(crate::hir::HirSelfKind::Trait);
                 self.resolve_generics_paths(&mut t.generics, interner);
                 for bound in &mut t.supertraits {
@@ -115,16 +115,38 @@ impl Resolver {
                         self.resolve_hir_path(&mut tb.path, interner);
                     }
                 }
+                // Stage 14.40: resolve signatures of trait items (Fn/Const/Type)
+                // inline. The owner copies (stored as separate HirItem::Fn
+                // owners) get resolved by `resolve_item_paths(HirItem::Fn)`,
+                // but `t.items` is a CLONE — it must be resolved independently.
+                for trait_item in &mut t.items {
+                    self.resolve_trait_item_paths(trait_item, interner);
+                }
                 self.current_self_kind = None;
             }
             HirItem::Impl(i) => {
                 // Stage 3.66: set owner context so `Self` in self_ty / of_trait
                 // resolves to `HirSelfKind::Impl`.
+                // Stage 14.40: keep owner context set while processing impl
+                // item signatures so `Self` in method signatures resolves to
+                // `HirSelfKind::Impl` (previously: only self_ty/of_trait got
+                // the context; items were left unresolved because the owner
+                // copy was resolved but `i.items` held an unresolved clone).
                 self.current_self_kind = Some(crate::hir::HirSelfKind::Impl);
                 self.resolve_generics_paths(&mut i.generics, interner);
                 self.resolve_ty_paths(&mut i.self_ty, interner);
                 if let Some(trait_path) = &mut i.of_trait {
                     self.resolve_hir_path(trait_path, interner);
+                }
+                // Stage 14.40: resolve signatures of impl items (Fn/Const/Type)
+                // inline. The owner copies (stored as separate HirItem::Fn
+                // owners) get resolved by `resolve_item_paths(HirItem::Fn)`,
+                // but `i.items` is a CLONE — it must be resolved independently.
+                // This fixes the long-standing bug where impl method return
+                // types like `fn add(...) -> V` had `path.res = Unknown`,
+                // breaking method chain resolution in MIR lower.
+                for impl_item in &mut i.items {
+                    self.resolve_impl_item_paths(impl_item, interner);
                 }
                 self.current_self_kind = None;
             }
@@ -133,6 +155,97 @@ impl Resolver {
                 self.resolve_ty_paths(&mut t.ty, interner);
             }
             _ => {}
+        }
+    }
+
+    /// Stage 14.40: Resolve signature paths inside a trait item.
+    ///
+    /// Trait items (Fn/Type/Const) are stored BOTH as separate owners AND as
+    /// clones inside `HirTrait.items`. The owner copies get resolved by the
+    /// `HirItem::Fn`/`HirItem::Const`/`HirItem::TypeAlias` arms of
+    /// `resolve_item_paths`; this helper resolves the inline clones inside the
+    /// trait block so that downstream passes reading `trait.items` see
+    /// `Res::Def` instead of `Res::Unknown`.
+    ///
+    /// Per §13.4 + §14.4 (interface isolation): traits own their item
+    /// signatures; the owner-copy duplication is an internal HIR lowering
+    /// detail, not a resolver concern.
+    pub(super) fn resolve_trait_item_paths(
+        &mut self,
+        item: &mut crate::hir::HirTraitItem,
+        interner: &Rodeo,
+    ) {
+        match item {
+            crate::hir::HirTraitItem::Fn(f) => {
+                self.resolve_fn_sig_paths(&mut f.sig, &mut f.generics, interner);
+            }
+            crate::hir::HirTraitItem::Const(c) => {
+                self.resolve_ty_paths(&mut c.ty, interner);
+            }
+            crate::hir::HirTraitItem::Type(t) => {
+                for bound in &mut t.bounds {
+                    if let HirTypeBound::Trait(tb) = bound {
+                        self.resolve_hir_path(&mut tb.path, interner);
+                    }
+                }
+                if let Some(default) = &mut t.default {
+                    self.resolve_ty_paths(default, interner);
+                }
+            }
+        }
+    }
+
+    /// Stage 14.40: Resolve signature paths inside an impl item.
+    ///
+    /// Same rationale as `resolve_trait_item_paths` — impl items are stored
+    /// both as separate owners and as clones inside `HirImpl.items`. This
+    /// helper resolves the inline clones so `query_method_return_type` and
+    /// other MIR-lower queries reading `impl.items` see `Res::Def`.
+    pub(super) fn resolve_impl_item_paths(
+        &mut self,
+        item: &mut crate::hir::HirImplItem,
+        interner: &Rodeo,
+    ) {
+        match item {
+            crate::hir::HirImplItem::Fn(f) => {
+                self.resolve_fn_sig_paths(&mut f.sig, &mut f.generics, interner);
+            }
+            crate::hir::HirImplItem::Const(c) => {
+                self.resolve_ty_paths(&mut c.ty, interner);
+            }
+            crate::hir::HirImplItem::Type(t) => {
+                for bound in &mut t.bounds {
+                    if let HirTypeBound::Trait(tb) = bound {
+                        self.resolve_hir_path(&mut tb.path, interner);
+                    }
+                }
+                if let Some(default) = &mut t.default {
+                    self.resolve_ty_paths(default, interner);
+                }
+            }
+        }
+    }
+
+    /// Stage 14.40: Resolve all paths in a function signature
+    /// (generics + input param types + return type).
+    ///
+    /// Extracted from `resolve_item_paths(HirItem::Fn)` so it can be reused
+    /// by `resolve_trait_item_paths` and `resolve_impl_item_paths` for the
+    /// inline clones inside Trait/Impl blocks.
+    pub(super) fn resolve_fn_sig_paths(
+        &mut self,
+        sig: &mut crate::hir::HirFnSig,
+        generics: &mut HirGenerics,
+        interner: &Rodeo,
+    ) {
+        self.resolve_generics_paths(generics, interner);
+        for param in &mut sig.inputs {
+            if let Some(ty) = &mut param.ty {
+                self.resolve_ty_paths(ty, interner);
+            }
+        }
+        if let crate::hir::HirFnRetTy::Ty(ty) = &mut sig.output {
+            self.resolve_ty_paths(ty, interner);
         }
     }
 
@@ -295,6 +408,41 @@ impl Resolver {
             });
 
         if let Some(def_id) = first_def {
+            // Stage 14.41: For 2-segment paths like `V::new`, check the
+            // impl_method_index BEFORE falling back to returning the type's
+            // DefId. This fixes the long-standing bug where `V::new(1, 2)`
+            // was treated as a struct constructor `V { x: 1, y: 2 }` instead
+            // of calling the `new` method.
+            //
+            // The index is built during `build_module_tree` (Phase 1) and
+            // keyed by `(type_name, method_name)`. We only check this for
+            // 2-segment paths where the first segment resolves to a struct/
+            // enum (DefKind::Struct or DefKind::Enum). For other DefKinds
+            // (Mod, Fn, etc.), the original behavior is preserved.
+            //
+            // Per §16 (interface isolation): the resolver doesn't need HIR
+            // access — the index is pre-computed data. Per §13.4 (design
+            // alignment): this is the proper way to resolve `Type::method`
+            // paths, not the previous "return first segment's DefId" hack.
+            if path.segments.len() == 2 {
+                let first_kind = self.def_kinds.get(&def_id).copied();
+                if matches!(first_kind, Some(DefKind::Struct) | Some(DefKind::Enum)) {
+                    let type_name = first.ident.name;
+                    let method_name = path.segments[1].ident.name;
+                    if let Some(&method_def_id) =
+                        self.impl_method_index.get(&(type_name, method_name))
+                    {
+                        // Found the method! Return it as Res::Def with DefKind::Fn.
+                        let _ = self.check_visibility(method_def_id, path.span);
+                        return Res::Def(method_def_id, DefKind::Fn);
+                    }
+                    // Method not found in impl_method_index — fall through to
+                    // the original behavior (return the type's DefId). This
+                    // handles cases like `Color::Red` (enum variant access)
+                    // where the second segment is a variant, not a method.
+                }
+            }
+
             // For multi-segment paths where the first segment is a module,
             // we would walk into the child module. For Stage 1.3, we resolve
             // the first segment and return — full multi-level resolution

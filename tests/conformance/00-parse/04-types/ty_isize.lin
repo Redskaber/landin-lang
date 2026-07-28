@@ -2,4 +2,4 @@
 //! category: types
 //! description: isize primitive type
 //! source: Stage 9.5 conformance expansion
-fn f() { let x: isize = 1; }
+fn main() { let x: isize = 1; }

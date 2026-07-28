@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-fn f()->f64{0.0}
+fn main()->f64{0.0}

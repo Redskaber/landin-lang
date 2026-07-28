@@ -3,3 +3,4 @@
 //! description: mixed type and lifetime bounds
 //! source: Stage 9.7 conformance expansion
 trait Clone { fn c(&self); } fn f<T: Clone + 'static>(x: T) {}
+fn main(){ 0 }

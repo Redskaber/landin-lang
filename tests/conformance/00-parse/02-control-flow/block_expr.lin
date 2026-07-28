@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: block as expression
 //! source: Stage 9.3 conformance expansion
-fn f() { let x = { 1 + 2 }; }
+fn main() { let x = { 1 + 2 }; }

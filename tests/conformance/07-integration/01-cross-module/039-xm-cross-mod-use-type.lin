@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.6+11.7 expansion
 
-mod types{pub type Id=i32;} mod app{use types::Id; pub fn new_id()->Id{0}}
+mod types{pub type Id=i32;} mod app{use types::Id; pub fn main()->Id{0}}

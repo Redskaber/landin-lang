@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 10.3 conformance expansion
 
-fn f() -> f64 { 3.14 }
+fn main() -> f64 { 3.14 }

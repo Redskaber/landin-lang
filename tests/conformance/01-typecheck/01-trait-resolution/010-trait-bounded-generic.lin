@@ -5,3 +5,4 @@
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
 
 trait Clone { fn clone(&self) -> i32; } fn f<T: Clone>(x: T) -> i32 { x.clone() }
+fn main(){ 0 }

@@ -3,4 +3,4 @@
 //! description: invalid escape sequence must error
 //! error_pattern: invalid escape
 //! source: Stage 9.10 conformance expansion
-fn f() { let _ = '\q'; }
+fn main() { let _ = '\q'; }

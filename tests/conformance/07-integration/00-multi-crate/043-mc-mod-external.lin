@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 mod m;
+fn main(){ 0 }

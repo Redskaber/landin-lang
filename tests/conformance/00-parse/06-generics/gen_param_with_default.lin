@@ -3,3 +3,4 @@
 //! description: type parameter with default
 //! source: Stage 9.7 conformance expansion
 struct S<T = i32> { x: T }
+fn main(){ 0 }

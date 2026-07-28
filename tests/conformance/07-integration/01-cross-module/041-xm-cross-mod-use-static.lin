@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.6+11.7 expansion
 
-mod config{pub static VERSION:i32=1;} mod app{use config::VERSION; pub fn get_version()->i32{VERSION}}
+mod config{pub static VERSION:i32=1;} mod app{use config::VERSION; pub fn main()->i32{VERSION}}

@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 const C:&'static str="hello";
+fn main(){ 0 }

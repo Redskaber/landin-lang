@@ -2,4 +2,4 @@
 //! category: modules
 //! description: invalid visibility pub(bad) parses via synthetic node recovery
 //! source: Stage 9.9 conformance expansion
-pub(bad) fn f() {}
+pub(bad) fn main() {}

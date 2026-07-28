@@ -3,3 +3,4 @@
 //! description: outer attribute on struct
 //! source: Stage 9.6 conformance expansion
 #[foo] struct S;
+fn main(){ let _ = S; }

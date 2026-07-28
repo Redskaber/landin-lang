@@ -3,3 +3,4 @@
 //! description: bitwise and operator
 //! source: Stage 9.2 conformance expansion
 fn f(a: i32, b: i32) { let _ = a & b; }
+fn main(){ f(0,0); }

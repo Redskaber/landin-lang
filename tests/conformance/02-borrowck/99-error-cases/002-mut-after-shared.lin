@@ -1,7 +1,7 @@
 // CATEGORY: borrowck
 // DESCRIPTION: mutable borrow while shared active
 // EXPECTED: compile_ok
-// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 10.2 conformance expansion
 
 fn main() { let mut x = 1; let r = &x; let r2 = &mut x; let _ = *r; }

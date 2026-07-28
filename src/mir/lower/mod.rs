@@ -40,6 +40,10 @@ mod pattern_bindings;
 // Per §23 (API naming): no glob re-export — each name is listed explicitly.
 pub use expr_operand::build_dyn_trait_call_terminator;
 pub(crate) use expr_operand::{lower_expr_to_operand, resolve_enum_variant};
+// Stage 14.41: re-export populate_adt_layouts so the driver can re-run it
+// after the Stage 14.37 writeback (the initial run inside lower_hir_body_to_mir
+// happens before the writeback, so it misses Adt types exposed by writeback).
+pub(crate) use adt_layout::populate_adt_layouts;
 
 /// Lowering context for HIR→MIR conversion.
 ///
@@ -96,6 +100,14 @@ pub struct MirLowerCtxt<'a> {
     /// MIR has the correct Goto instructions; the stack is just how we track
     /// which loop we're currently inside.
     pub loop_stack: Vec<(BasicBlockId, BasicBlockId)>,
+    /// Stage 14.24: Result locals for each enclosing loop. Used by `break expr`
+    /// to assign the break value to the loop's result local before jumping to
+    /// the break target. Parallel to `loop_stack` — push/pop together.
+    pub loop_result_locals: Vec<crate::mir::place::LocalId>,
+    /// Stage 14.30: Type errors collected during MIR lowering. These are
+    /// merged into the driver's CompileErrors after lowering completes.
+    /// Used for "报错 > 静默" — emit errors instead of silent placeholders.
+    pub type_errors: Vec<crate::typeck::TypeError>,
 }
 
 /// Stage 13.3a (TD-030): Information about a closure literal, stored in
@@ -141,6 +153,8 @@ impl<'a> MirLowerCtxt<'a> {
             dyn_trait_plan: None,
             closure_bodies: std::collections::HashMap::new(),
             loop_stack: Vec::new(),
+            loop_result_locals: Vec::new(),
+            type_errors: Vec::new(),
         }
     }
 
@@ -651,15 +665,21 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
                 // which lower_hir_ty_to_mir_ty doesn't handle (returns Error).
                 // So for self params, we resolve the type from the impl block's
                 // self_ty directly.
+                // Stage 14.18 (GAP-31): &self/&mut self Ref wrapping was attempted
+                // but reverted — codegen doesn't correctly handle Deref projections
+                // for field access through references. The full fix requires codegen
+                // changes to handle ProjectionElem::Deref in field access paths.
+                // See docs/worklog.md Stage 14.18 for details.
                 if param.self_kind.is_some() {
-                    resolve_self_param_type(&cx, body).unwrap_or_else(|| lower_hir_ty_to_mir_ty(t))
+                    resolve_self_param_type(&cx, body, param.self_kind)
+                        .unwrap_or_else(|| lower_hir_ty_to_mir_ty(t))
                 } else {
                     lower_hir_ty_to_mir_ty(t)
                 }
             }
             None => {
                 if param.self_kind.is_some() {
-                    resolve_self_param_type(&cx, body)
+                    resolve_self_param_type(&cx, body, param.self_kind)
                         .unwrap_or_else(|| cx.fresh_infer_ty(Span::DUMMY))
                 } else {
                     cx.fresh_infer_ty(Span::DUMMY)
@@ -680,12 +700,20 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     // Lower the body's value expression into the return local.
     let value_local = lower_expr_to_operand(&mut cx, &body.value);
 
-    // Assign the value to the return local.
-    cx.push_assign(
-        Place::local(return_local, Span::DUMMY),
-        Rvalue::Use(Operand::Copy(Place::local(value_local, Span::DUMMY))),
-        body.span,
-    );
+    // Stage 14.23: If the current block is already terminated (e.g. by a
+    // `return` statement inside the body), skip the assignment to the return
+    // local. The return local was already assigned by the `return` expression's
+    // lowering. Without this check, we'd emit an assignment AFTER the Return
+    // terminator, which is dead code that overwrites the return value with
+    // an uninitialized local.
+    if !cx.is_terminated() {
+        // Assign the value to the return local.
+        cx.push_assign(
+            Place::local(return_local, Span::DUMMY),
+            Rvalue::Use(Operand::Copy(Place::local(value_local, Span::DUMMY))),
+            body.span,
+        );
+    }
 
     // Emit StorageDead for all locals (except the return local) before
     // the function returns. This is a conservative approximation —
@@ -870,7 +898,11 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
 ///
 /// Per §16: this is a HIR query at MIR-lowering time. The result type is sunk
 /// into `local_decls` as data, so codegen doesn't need HIR.
-fn resolve_self_param_type(cx: &MirLowerCtxt, body: &Body) -> Option<crate::mir::ty::Ty> {
+fn resolve_self_param_type(
+    cx: &MirLowerCtxt,
+    body: &Body,
+    self_kind: Option<crate::ast::SelfKind>,
+) -> Option<crate::mir::ty::Ty> {
     let hir = cx.hir?;
     // The body's owner DefId — for impl methods, this is the HirFn's owner.
     let _owner_def_id = body.hir_id.owner;
@@ -887,7 +919,34 @@ fn resolve_self_param_type(cx: &MirLowerCtxt, body: &Body) -> Option<crate::mir:
                         })
                     {
                         // Found the owning impl block! Lower its self_ty.
-                        return Some(lower_hir_ty_to_mir_ty(&impl_block.self_ty));
+                        // Stage 14.19 (GAP-31): For &self/&mut self, wrap the
+                        // type in TyKind::Ref so the self param is a reference.
+                        // This makes mutations propagate to the caller.
+                        // The codegen Deref+Field handling has been fixed in
+                        // mir_translation.rs to support this correctly.
+                        let adt_ty = lower_hir_ty_to_mir_ty(&impl_block.self_ty);
+                        return match self_kind {
+                            Some(crate::ast::SelfKind::Ref(mutability)) => {
+                                let mir_mut = match mutability {
+                                    crate::ast::Mutability::Mutable => {
+                                        crate::mir::ty::Mutability::Mutable
+                                    }
+                                    crate::ast::Mutability::Immutable => {
+                                        crate::mir::ty::Mutability::Immutable
+                                    }
+                                };
+                                Some(crate::mir::ty::Ty::new(
+                                    crate::mir::ty::TyKind::Ref(
+                                        crate::mir::ty::Region::Erased,
+                                        mir_mut,
+                                        Box::new(adt_ty),
+                                    ),
+                                    body.span,
+                                ))
+                            }
+                            // self by value — no wrapping
+                            _ => Some(adt_ty),
+                        };
                     }
                 }
             }

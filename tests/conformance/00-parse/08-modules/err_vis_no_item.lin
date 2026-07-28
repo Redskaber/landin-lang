@@ -4,3 +4,4 @@
 //! error_pattern: expected
 //! source: Stage 9.9 conformance expansion
 pub;
+fn main(){ 0 }

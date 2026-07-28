@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.2 borrowck expansion
 
 fn f(x:&i32)->&i32 { match *x { 0=>x, _=>x } }
+fn main(){ let _ref_0 = 0; let _ = f(&_ref_0); }

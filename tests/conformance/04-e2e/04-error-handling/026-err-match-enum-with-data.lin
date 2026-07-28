@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 enum E{A(i32),B(i32,i32)} fn f(e:E)->i32{match e{E::A(x)=>x,E::B(a,b)=>a+b}}
+fn main(){ let _ = E::A(0); }

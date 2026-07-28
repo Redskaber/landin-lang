@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: if with function call condition
 //! source: Stage 9.3 conformance expansion
-fn g() -> bool { true } fn f() { if g() { 1 } }
+fn main() -> bool { true } fn f() { if g() { 1 } }

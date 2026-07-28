@@ -2,4 +2,4 @@
 //! category: closures
 //! description: closure with empty body parses via synthetic node recovery
 //! source: Stage 9.8 conformance expansion
-fn f() { let _ = |x| ; }
+fn main() { let _ = |x| ; }

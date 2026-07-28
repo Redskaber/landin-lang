@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 mod m{pub enum E{A,B}}
+fn main(){ let _ = E::A; }

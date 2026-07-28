@@ -3,3 +3,4 @@
 //! description: trait with supertrait
 //! source: Stage 9.11 conformance expansion
 trait Base { fn base_method(&self) -> i32; } trait Derived: Base { fn derived_method(&self) -> i32; } struct Foo; impl Base for Foo { fn base_method(&self) -> i32 { 1 } } impl Derived for Foo { fn derived_method(&self) -> i32 { 2 } }
+fn main(){ let _ = Foo; }

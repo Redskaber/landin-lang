@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.5 conformance expansion (Stage 0 limitation — compiler does not catch this)
 
 trait T {} struct S; unsafe impl T for S {}
+fn main(){ let _ = S; }

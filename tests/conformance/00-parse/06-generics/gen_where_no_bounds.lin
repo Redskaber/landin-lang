@@ -3,3 +3,4 @@
 //! description: empty where clause (parser recovery)
 //! source: Stage 9.7 conformance expansion
 fn f<T>(x: T) where {}
+fn main(){ 0 }

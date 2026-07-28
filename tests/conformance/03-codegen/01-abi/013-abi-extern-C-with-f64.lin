@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 extern "C" { fn f(x:f64)->f64; }
+fn main(){ let _ = f(0.0); }

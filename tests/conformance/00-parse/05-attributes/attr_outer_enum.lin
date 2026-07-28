@@ -3,3 +3,4 @@
 //! description: outer attribute on enum
 //! source: Stage 9.6 conformance expansion
 #[foo] enum E { A, B }
+fn main(){ let _ = E::A; }

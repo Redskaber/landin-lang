@@ -5,3 +5,4 @@
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
 
 trait Mutate { fn set(&mut self, v: i32); } struct Foo { x: i32 } impl Mutate for Foo { fn set(&mut self, v: i32) { self.x = v; } }
+fn main(){ let _ = Foo{x: 0}; }

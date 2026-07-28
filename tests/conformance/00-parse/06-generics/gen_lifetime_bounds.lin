@@ -3,3 +3,4 @@
 //! description: lifetime bounds
 //! source: Stage 9.7 conformance expansion
 fn f<'a: 'b>(x: &'a i32, y: &'b i32) {}
+fn main(){ 0 }

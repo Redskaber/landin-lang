@@ -2,4 +2,4 @@
 //! category: modules
 //! description: pub(in path) visibility
 //! source: Stage 9.9 conformance expansion
-mod m { pub(in m) fn f() {} }
+mod m { pub(in m) fn main() {} }

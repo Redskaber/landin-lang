@@ -2,4 +2,4 @@
 //! category: closures
 //! description: closure with multi-stmt block body
 //! source: Stage 9.8 conformance expansion
-fn f() { let _ = || { let x = 1; x }; }
+fn main() { let _ = || { let x = 1; x }; }

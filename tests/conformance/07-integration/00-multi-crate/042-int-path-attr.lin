@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-#[foo::bar] fn f(){}
+#[foo::bar] fn main(){ 0 }

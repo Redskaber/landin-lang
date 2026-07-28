@@ -3,3 +3,4 @@
 //! description: empty generics <> parses via synthetic node recovery (per §2)
 //! source: Stage 9.10 conformance expansion
 struct S<> {}
+fn main(){ let _ = S; }

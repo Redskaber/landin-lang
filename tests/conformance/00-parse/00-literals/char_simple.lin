@@ -2,4 +2,4 @@
 //! category: literals
 //! description: simple char literal
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = 'a'; }
+fn main() { let _ = 'a'; }

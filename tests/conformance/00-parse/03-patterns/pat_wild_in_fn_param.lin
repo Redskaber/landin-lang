@@ -3,3 +3,4 @@
 //! description: wildcard in fn param
 //! source: Stage 9.4 conformance expansion
 fn f(_: i32) {}
+fn main(){ f(0); }

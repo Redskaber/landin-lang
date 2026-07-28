@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 enum E<'a,'b>{A(&'a i32),B(&'b bool)}
+fn main(){ let _ref_0 = 0; let _ = E::A(&_ref_0); }

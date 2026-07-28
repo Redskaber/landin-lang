@@ -3,3 +3,4 @@
 //! description: empty match parses via synthetic node recovery
 //! source: Stage 9.10 conformance expansion
 fn f(x: i32) { match x { } }
+fn main(){ f(0); }

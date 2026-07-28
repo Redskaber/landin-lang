@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
 
 fn f<'a>(x: &'a i32) -> &'a i32 { if *x > 0 { f(&(*x - 1)) } else { x } }
+fn main(){ 0 }

@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-struct Q{data:[i32;10],head:i32,tail:i32} fn new()->Q{Q{data:[0;10],head:0,tail:0}}
+struct Q{data:[i32;10],head:i32,tail:i32} fn main()->Q{Q{data:[0;10],head:0,tail:0}}

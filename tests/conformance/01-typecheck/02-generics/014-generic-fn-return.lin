@@ -5,3 +5,4 @@
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
 
 struct S<T> { x: T } fn f<T>(x: T) -> S<T> { S { x } }
+fn main(){ 0 }

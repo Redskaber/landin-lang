@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct A{x:i32} struct B{a:A} struct C{b:B}
+fn main(){ let _ = A{x: 0}; }

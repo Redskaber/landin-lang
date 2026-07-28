@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
 
 trait T{fn f(&self)->i32;} enum E{A,B} impl T for E{fn f(&self)->i32{0}}
+fn main(){ let _ = E::A; }

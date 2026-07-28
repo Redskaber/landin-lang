@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.9 batch expansion
 
 trait T{fn f(&self)->i32;} fn g<X:T>(x:X)->i32{x.f()}
+fn main(){ 0 }

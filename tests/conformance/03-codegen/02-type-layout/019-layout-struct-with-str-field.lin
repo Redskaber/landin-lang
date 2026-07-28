@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct S{x:&str}
+fn main(){ let _ = S{x: "x"}; }

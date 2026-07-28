@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 trait T { fn f(&self) -> i32; } fn g() -> impl T { struct S; impl T for S { fn f(&self) -> i32 { 0 } } S }
+fn main(){ let _ = g(); let _ = S; }

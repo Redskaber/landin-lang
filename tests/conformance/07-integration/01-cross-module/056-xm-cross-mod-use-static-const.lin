@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.6+11.7 expansion
 
-mod config{pub const C:i32=42;} mod app{use config::C; pub fn get()->i32{C}}
+mod config{pub const C:i32=42;} mod app{use config::C; pub fn main()->i32{C}}

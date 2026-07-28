@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-mod m{fn f(){let mut i=0;while i<10{i+=1;}}}
+mod m{fn main(){let mut i=0;while i<10{i+=1;}}}

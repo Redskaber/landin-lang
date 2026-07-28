@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
 
 mod m{use foo::bar;}
+fn main(){ 0 }

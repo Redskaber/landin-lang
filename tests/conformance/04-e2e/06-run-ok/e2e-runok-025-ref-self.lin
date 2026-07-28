@@ -1,0 +1,16 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok &self method (read-only self reference)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: sum=30
+// EXPECTED_EXIT_CODE: 30
+// SOURCE: Stage 14.19 (GAP-31) — &self method verification
+
+struct Point { x: i32, y: i32 }
+impl Point {
+    fn sum(&self) -> i32 { self.x + self.y }
+}
+fn main() -> i32 {
+    let p = Point { x: 10, y: 20 };
+    println!("sum={}", p.sum());
+    p.sum()
+}

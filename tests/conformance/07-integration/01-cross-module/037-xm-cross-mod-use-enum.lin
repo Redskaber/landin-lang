@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 mod types{pub enum State{Active,Inactive}} mod app{use types::State; pub fn check(s:State)->bool{match s{State::Active=>true,State::Inactive=>false}}}
+fn main(){ let _ = State::Active; let _ = check(State::Active); }

@@ -2,4 +2,4 @@
 //! category: modules
 //! description: pub(super) visibility
 //! source: Stage 9.9 conformance expansion
-pub(super) fn f() {}
+pub(super) fn main() {}

@@ -2,4 +2,4 @@
 //! category: literals
 //! description: float with exponent
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = 1.0e10; }
+fn main() { let _ = 1.0e10; }

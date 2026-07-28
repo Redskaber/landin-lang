@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.6+11.7 expansion
 
-mod sys{extern "C"{pub fn f();}} mod app{pub fn call(){}}
+mod sys{extern "C"{pub fn main();}} mod app{pub fn call(){}}

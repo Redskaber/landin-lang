@@ -5,3 +5,4 @@
 // SOURCE: Stage 10.5 conformance expansion (Stage 0 limitation)
 
 extern "C" { static S: i32; }
+fn main(){ 0 }

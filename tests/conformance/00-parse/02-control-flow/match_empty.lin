@@ -3,3 +3,4 @@
 //! description: match with no arms (parser recovery)
 //! source: Stage 9.3 conformance expansion
 fn f(x: i32) { match x { } }
+fn main(){ f(0); }

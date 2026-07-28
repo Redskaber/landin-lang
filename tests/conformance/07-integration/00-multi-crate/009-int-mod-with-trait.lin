@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 mod m{trait T{fn f(&self);}}
+fn main(){ 0 }

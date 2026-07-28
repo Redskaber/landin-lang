@@ -4,4 +4,4 @@
 // ERROR_PATTERN: error
 // SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
 
-mod a{pub enum E{A}} mod b{pub fn g()->a::E{a::E::A}}
+mod a{pub enum E{A}} mod b{pub fn main()->a::E{a::E::A}}

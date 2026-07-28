@@ -2,4 +2,4 @@
 //! category: error-recovery
 //! description: parser skips to next semicolon after error (per §2)
 //! source: Stage 9.10 conformance expansion
-fn f() { let x = 1 + +; let y = 2; }
+fn main() { let x = 1 + +; let y = 2; }

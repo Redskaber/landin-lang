@@ -113,6 +113,46 @@
 | 5.1 | TraitResolver: collect trait definitions + impl blocks + build dispatch tables (ImplMap + MethodMap); src/traits/mod.rs created | +3 | ✅ |
 | **Total** | | **294 + 5 §21 audit + 3 trait** | ✅ |
 | Gate audits R1-R36 + Deep reviews R37/R48/R49 + Stage 4.1-4.14 + Stage 5.1 | Audit cases | 716+ cumulative + 3 deep reviews | ✅ |
+| 13.1-13.16 | LLVM integration + execution pipeline + I/O (println!/eprintln!/format args) | 1951 rust tests + 5026 conformance | ✅ |
+| 13.17-13.29 | Self binding + method call codegen + compound assign + NLL flip + codegen refactoring | (no new tests; conformance flip) | ✅ |
+| 13.30-13.34 | conformance fn main fix + meaningful main generation (worklog backfilled in Stage 14.2) | (no new tests) | ✅ |
+| 14.1 | v0.1 capability assessment + gap analysis (research only — no code change) | 0 | ✅ |
+| 14.2 | Process hygiene: worklog backfill + version sync (no code change) | 0 | ✅ |
+| 14.3 | Architecture cleanup: `trait_dispatch.rs` split per §14.4 (962→4 files; zero behavior change) | 1951 (zero regression) | ✅ |
+| 14.4 | API naming audit (§23): fix glob re-exports in `stdlib/mod.rs` (zero behavior change) | 1951 (zero regression) | ✅ |
+| 14.5 | examples/ standardization (§17.4): 4 `[[example]]` declarations + new `trait_dispatch_emission` example | 4 examples compile | ✅ |
+| 14.6-14.9 | Documentation sync + README rewrite + RELEASE_NOTES + final verification + package | (docs only) | ✅ |
+| 14.10 | GAP-5 reclassified CLOSED (self.x fixed in Stage 13.18) + format_for_user trait_errors fix + GAP-17 reclassified CLOSED (print! works) | 1951 (zero regression) | ✅ |
+| 14.11 | GAP-8 CLOSED: run_ok conformance runner rewrite + 6 run_ok test cases (run_ok/run_panic dispatch + EXPECTED_STDOUT/EXIT_CODE) | +6 run_ok (5032 total) | ✅ |
+| 14.12 | GAP-18 CLOSED: bool prints as "true"/"false" via emit_select (added to Emitter trait + both backends) | 1951 (zero regression) | ✅ |
+| 14.13 | GAP-30 PARTIAL: emit_dyn_trait_method_call implemented (was unimplemented! panic) + vtable/dynptr global content fixed (was NULL) + codegen reorder + 3 new run_ok tests | +3 run_ok (5035 total) | ✅ |
+| 14.14 | Architecture cleanup investigation: >1000 LOC files analyzed (expr_operand 2039, llvm/mod 1686) — all deferred as L3 high-risk | 0 (investigation only) | ✅ |
+| 14.16 | GAP-20 reclassified CLOSED (void main is NOT UB — codegen always emits ret i32 0) + 9 new run_ok tests (match, while, string, tuple, enum, recursion, struct method, if-else, void main) | +9 run_ok (5044 total) | ✅ |
+| 14.17 | run_ok expansion (+5 tests: nested if, arithmetic, shadowing, iterative fib, fn composition) + discovered GAP-31 (&mut self field mutation broken) | +5 run_ok (5049 total) | ✅ |
+| 14.18 | GAP-31 investigation: MIR lowering infrastructure added (query_method_self_kind + auto_deref_if_ref) but reverted — codegen Deref+Field projection issue blocks full fix | 0 (investigation) | ✅ |
+| 14.19 | GAP-31 CLOSED: &mut self field mutation now propagates — codegen Deref+Field fix (3 sites) + MIR Ref-wrapping + call site Rvalue::Ref + auto_deref_if_ref + 2 run_ok tests | +2 run_ok (5051 total) | ✅ |
+| 14.20 | Array repeat [val; N] fix — was 1-element array, now N elements with proper [T; N] type + 2 run_ok tests | +2 run_ok (5053 total) | ✅ |
+| 14.21 | &self/&mut self + array field + index fix — codegen Deref+Index + find_receiver_struct_def_id auto-deref Ref + 2 run_ok tests | +2 run_ok (5055 total) | ✅ |
+| 14.22 | Nested struct fix (mir_type_to_emit_type_with_layouts) + early return typeck (block diverges → Never) + struct type cache + 1 run_ok test | +1 run_ok (5056 total) | ✅ |
+| 14.23 | Return value fix (is_terminated guard prevents overwriting return local) + return; assigns unit () + 1 run_ok test | +1 run_ok (5057 total) | ✅ |
+| 14.24 | Loop break value fix (was returning 0) + test path coverage matrix + 4 run_ok tests (logical, bitwise, negative arith, loop break) | +4 run_ok (5061 total) | ✅ |
+| 14.25 | Coverage matrix completion: *= /=, enum unit, i64, comparison all branches + 4 run_ok tests | +4 run_ok (5065 total) | ✅ |
+| 14.26 | Pipeline test coverage matrix (603 paths, 99.7% coverage — per-stage + inter-stage + E2E) | 0 (documentation) | ✅ |
+| 14.27 | *ptr = val fix (Deref store path loads pointer type, not value) + 3 run_ok tests (mut ref deref, ref read, ref param+return) | +3 run_ok (5068 total) | ✅ |
+| 14.28 | Pipeline coverage expansion: closure capture, type cast, match or-pattern, string eq + 3 run_ok tests | +3 run_ok (5071 total) | ✅ |
+| 14.29 | Method return type propagation (query_method_return_type) — chained calls work with annotations + 1 run_ok test | +1 run_ok (5072 total) | ✅ |
+| 14.30 | Error reporting for unknown methods on concrete types (报错 > 静默) + lower_type_errors infrastructure | 0 (error reporting) | ✅ |
+| 14.31 | Silent default audit: missing field / field on non-struct / index on non-array — TODO documented (blocked by immutable cx) | 0 (audit) | ✅ |
+| 14.32 | Field error reporting attempted + reverted (MIR lower runs before typeck → false positives on valid fields) | 0 (reverted) | ✅ |
+| 14.33 | Control flow coverage: while+continue, nested loop+break, while+break + 3 run_ok tests | +3 run_ok (5075 total) | ✅ |
+| 14.34 | Match arm + return fix (is_terminated guard) + enum multi-variant, tuple struct, const, static, unit struct + 4 run_ok tests | +4 run_ok (5079 total) | ✅ |
+| 14.35 | Call return type from fn_sigs (threading fn_sigs through codegen) — struct-returning calls fixed with annotations | 0 (infrastructure) | ✅ |
+| 14.36 | Alloca type override for Call dest locals (get_call_dest_type) — alloca correct, field access still needs fn_sigs | 0 (partial fix) | ✅ |
+| 14.37 | Call dest type writeback from fn_sigs + Assign type propagation (fixpoint) — struct-returning calls work WITHOUT annotations + 1 run_ok test | +1 run_ok (5080 total) | ✅ |
+| 14.38 | Method chain resolution infrastructure (find_local_init_expr + resolve_method_by_name + query_method_return_type) — partial, two-step chains need debug | 0 (infrastructure) | ✅ |
+| 14.39 | Self return type resolution in query_method_return_type + resolver bug discovered (impl method return type V has res=Unknown) | 0 (partial fix) | ✅ |
+| 14.40 | Resolver fix: process impl_block.items + trait.items signatures inline — method chains now work end-to-end + 2 run_ok tests (multi-step chain, inline chain) | +2 run_ok (5082 total) | ✅ |
+| 14.41 | Static method call correctness (Type::method path resolution via impl_method_index + adt_layouts re-populate after writeback) + 2 run_ok tests (static method side effect, Vec pattern) | +2 run_ok (5084 total) | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

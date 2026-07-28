@@ -3,3 +3,4 @@
 //! description: if_let_tuple now supported (Stage 13.2 TD-031 closure)
 //! source: Stage 9.3 conformance expansion
 fn f(p: (i32, i32)) { if let (a, b) = p { let _ = a + b; } }
+fn main(){ f((0,0)); }

@@ -3,3 +3,4 @@
 //! description: derive Default
 //! source: Stage 9.6 conformance expansion
 #[derive(Default)] struct S;
+fn main(){ let _ = S; }

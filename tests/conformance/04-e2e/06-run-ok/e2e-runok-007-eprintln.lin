@@ -1,0 +1,12 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok eprintln! stderr output (GAP verification)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: stdout line
+// SOURCE: Stage 14.13 — eprintln! + print! + format args verification
+
+fn main() -> i32 {
+    print!("stdout ");
+    println!("line");
+    eprintln!("this goes to stderr");
+    0
+}

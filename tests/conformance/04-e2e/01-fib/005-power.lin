@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.4 conformance expansion
 
 fn pow(base: i32, exp: i32) -> i32 { if exp == 0 { 1 } else { base * pow(base, exp - 1) } }
+fn main(){ let _ = pow(0,0); }

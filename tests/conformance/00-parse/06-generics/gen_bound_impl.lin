@@ -3,3 +3,4 @@
 //! description: type bound in impl
 //! source: Stage 9.7 conformance expansion
 trait Clone { fn c(&self); } struct S<T> { x: T } impl<T: Clone> S<T> {}
+fn main(){ 0 }

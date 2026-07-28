@@ -198,7 +198,20 @@ pub(crate) fn detect_place_storage_type(
             ProjectionElem::Field(_, field_ty) => {
                 mir_type_to_emit_type_with_layouts(field_ty, layouts)
             }
-            // For Index/ConstantIndex/Deref, the storage type is the base's
+            // Stage 14.19 (GAP-31): For Deref, the storage type is the
+            // pointee type (what the reference points to), not the reference
+            // type itself. This matches detect_place_type's Deref handling.
+            // Was: recursed into base, returning the Ref type (pointer) instead
+            // of the pointee, causing GEP to use the wrong type.
+            ProjectionElem::Deref => {
+                let base_ty = detect_place_storage_type(mir, base, layouts);
+                if base_ty.is_ptr() {
+                    base_ty.pointee()
+                } else {
+                    base_ty
+                }
+            }
+            // For Index/ConstantIndex, the storage type is the base's
             // storage type (we're indexing INTO the base's storage).
             _ => detect_place_storage_type(mir, base, layouts),
         },
@@ -277,7 +290,17 @@ pub(crate) fn compute_place_address(
             .unwrap_or_else(|| "0".to_string()),
         PlaceKind::Projection(base, elem) => match elem {
             ProjectionElem::Field(field_id, _) => {
-                let base_addr = compute_place_address(emitter, mir, base, _interner, layouts);
+                // Stage 14.19 (GAP-31): Handle Deref+Field for store path.
+                // When base is a Deref (e.g. `(*self).field`), load the pointer
+                // from the inner base, then GEP through it.
+                let base_addr = if let PlaceKind::Projection(inner_base, ProjectionElem::Deref) =
+                    &base.kind
+                {
+                    let ptr_ty = detect_place_type(mir, inner_base, layouts);
+                    codegen_place_load_typed(emitter, mir, inner_base, ptr_ty, _interner, layouts)
+                } else {
+                    compute_place_address(emitter, mir, base, _interner, layouts)
+                };
                 let struct_ty = detect_place_storage_type(mir, base, layouts);
                 emitter.emit_gep_field(&base_addr, &struct_ty, field_id.0)
             }
@@ -362,11 +385,33 @@ pub(crate) fn codegen_place_load_typed(
                 emitter.emit_load(&ty, &ptr_val)
             }
             ProjectionElem::Field(field_id, _) => {
+                // Stage 14.19 (GAP-31): Handle Deref+Field projection correctly.
+                // When the base is a Deref (e.g. `(*self).field` for &self/&mut self
+                // methods), we need to load the POINTER from the base (the &self
+                // reference), then GEP through that pointer to get the field.
+                // Previously, this fell through to codegen_place_load_typed which
+                // loaded the entire struct VALUE and then tried to GEP the value
+                // (invalid LLVM IR — caused segfaults).
                 let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                     emitter
                         .get_local_ptr(id.0)
                         .cloned()
                         .unwrap_or_else(|| "0".to_string())
+                } else if let PlaceKind::Projection(inner_base, ProjectionElem::Deref) = &base.kind
+                {
+                    // base is (*inner).field — load the pointer from inner_base,
+                    // then GEP through it.
+                    let ptr_ty = detect_place_type(mir, inner_base, layouts);
+                    let ptr_val = codegen_place_load_typed(
+                        emitter,
+                        mir,
+                        inner_base,
+                        ptr_ty.clone(),
+                        interner,
+                        layouts,
+                    );
+                    // The pointer value IS the base address for GEP
+                    ptr_val
                 } else {
                     let ptr_ty = detect_place_type(mir, base, layouts);
                     codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
@@ -376,14 +421,26 @@ pub(crate) fn codegen_place_load_typed(
                 emitter.emit_load(&ty, &field_ptr)
             }
             ProjectionElem::Index(idx) => {
+                // Stage 14.21 (GAP-31): Handle Deref+Field+Index and Field+Index
+                // projections correctly. When the base is a Projection (e.g.
+                // `(*self).data` for &self methods, or `self.data` for by-value),
+                // we need the ADDRESS of the array, not its loaded value.
+                // Was: codegen_place_load_typed loaded the value, then GEP tried
+                // to index into the value (invalid for arrays — caused segfault).
                 let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                     emitter
                         .get_local_ptr(id.0)
                         .cloned()
                         .unwrap_or_else(|| "0".to_string())
+                } else if let PlaceKind::Projection(inner_base, ProjectionElem::Deref) = &base.kind
+                {
+                    // base is (*inner) — load the pointer from inner_base
+                    let ptr_ty = detect_place_type(mir, inner_base, layouts);
+                    codegen_place_load_typed(emitter, mir, inner_base, ptr_ty, interner, layouts)
                 } else {
-                    let ptr_ty = detect_place_type(mir, base, layouts);
-                    codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
+                    // base is a Field projection (e.g. self.data) — compute its
+                    // ADDRESS (GEP to the field), don't load the value.
+                    compute_place_address(emitter, mir, base, interner, layouts)
                 };
                 let array_ty = detect_place_storage_type(mir, base, layouts);
                 let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {

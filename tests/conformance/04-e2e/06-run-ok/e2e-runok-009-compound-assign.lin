@@ -1,0 +1,17 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok compound assignment operators (Stage 13.25 fix verification)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: result = 13
+// SOURCE: Stage 14.13 — compound assign (+=, -=, *=, /=, %=) verification
+// Math: 10 + 5 = 15; 15 - 2 = 13; 13 * 2 = 26; 26 / 2 = 13; 13 % 20 = 13
+
+fn main() -> i32 {
+    let mut x = 10;
+    x += 5;
+    x -= 2;
+    x *= 2;
+    x /= 2;
+    x %= 20;
+    println!("result = {}", x);
+    0
+}

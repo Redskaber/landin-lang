@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-mod m{pub fn f(){}}
+mod m{pub fn main(){ 0 }}

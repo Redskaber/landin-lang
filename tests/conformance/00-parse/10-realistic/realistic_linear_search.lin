@@ -3,3 +3,4 @@
 //! description: linear search
 //! source: Stage 9.11 conformance expansion
 fn linear_search(arr: [i32; 5], target: i32) -> i32 { let mut i = 0; while i < 5 { if arr[i] == target { return i; } i += 1; } -1 }
+fn main(){ let _ = linear_search([0;5],0); }

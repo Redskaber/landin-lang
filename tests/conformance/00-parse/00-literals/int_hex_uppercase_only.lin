@@ -2,4 +2,4 @@
 //! category: literals
 //! description: uppercase hex literal
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = 0xFF; }
+fn main() { let _ = 0xFF; }

@@ -1,0 +1,23 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok multi-step method chain (Stage 14.40 resolver fix — impl method return types now resolved)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 50
+// SOURCE: Stage 14.40 — resolver processes impl_block.items signatures inline (was: only owner copy resolved)
+
+struct V { x: i32, y: i32 }
+impl V {
+    fn new(x: i32, y: i32) -> V { V { x, y } }
+    fn add(self, o: V) -> V { V { x: self.x + o.x, y: self.y + o.y } }
+    fn scale(self, s: i32) -> V { V { x: self.x * s, y: self.y * s } }
+    fn get(self) -> i32 { self.x + self.y }
+}
+fn main() -> i32 {
+    let a = V::new(1, 2);
+    let b = V::new(3, 4);
+    let c = a.add(b);
+    let d = c.scale(2);
+    let e = d.add(V::new(10, 20));
+    let r = e.get();
+    println!("{}", r);
+    0
+}

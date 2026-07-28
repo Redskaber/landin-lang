@@ -3,3 +3,4 @@
 //! description: recursive via closure
 //! source: Stage 9.11 conformance expansion
 fn recursive_closure(n: i32) -> i32 { let _f = |x: i32| x; n }
+fn main(){ let _ = recursive_closure(0); }

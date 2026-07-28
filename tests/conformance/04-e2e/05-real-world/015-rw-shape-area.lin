@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 enum Shape{Circle(f64),Rect(f64,f64)} fn area(s:Shape)->f64{match s{Shape::Circle(r)=>r*r,Shape::Rect(w,h)=>w*h}}
+fn main(){ let _ = Shape::Circle(0.0); }

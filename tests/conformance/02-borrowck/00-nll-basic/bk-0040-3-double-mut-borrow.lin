@@ -1,7 +1,7 @@
 // CATEGORY: borrowck
 // DESCRIPTION: double mut borrow variant 3
 // EXPECTED: compile_ok
-// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.9 batch expansion
 
 fn main(){let mut x=1;let r1=&mut x;let r2=&mut x;}

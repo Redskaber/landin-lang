@@ -3,3 +3,4 @@
 //! description: where clause in impl
 //! source: Stage 9.7 conformance expansion
 trait Clone { fn c(&self); } struct S<T> { x: T } impl<T> S<T> where T: Clone {}
+fn main(){ 0 }

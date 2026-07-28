@@ -1,0 +1,20 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok method call with explicit type annotation (Stage 14.29)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: result=15
+// EXPECTED_EXIT_CODE: 15
+// SOURCE: Stage 14.29 — method return type propagation with annotation
+
+struct Calc { val: i32 }
+impl Calc {
+    fn new(v: i32) -> Calc { Calc { val: v } }
+    fn add(self, n: i32) -> Calc { Calc { val: self.val + n } }
+    fn get(self) -> i32 { self.val }
+}
+fn main() -> i32 {
+    let c: Calc = Calc::new(10);
+    let c2: Calc = c.add(5);
+    let r: i32 = c2.get();
+    println!("result={}", r);
+    r
+}

@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.9 batch expansion
 
 enum E{A,B}
+fn main(){ let _ = E::A; }

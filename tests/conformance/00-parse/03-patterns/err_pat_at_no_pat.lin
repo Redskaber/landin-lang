@@ -3,4 +3,4 @@
 //! description: missing pattern after @ must error
 //! error_pattern: expected
 //! source: Stage 9.4 conformance expansion
-fn f() { let x @ = 1; }
+fn main() { let x @ = 1; }

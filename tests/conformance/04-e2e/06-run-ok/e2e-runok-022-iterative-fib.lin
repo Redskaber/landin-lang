@@ -1,0 +1,21 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok loop with break value (fibonacci iterative)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: fib(10) = 55
+// EXPECTED_EXIT_CODE: 55
+// SOURCE: Stage 14.17 — iterative loop + accumulator pattern verification
+
+fn main() -> i32 {
+    let mut a = 0;
+    let mut b = 1;
+    let mut i = 0;
+    loop {
+        if i >= 10 { break; }
+        let temp = a + b;
+        a = b;
+        b = temp;
+        i += 1;
+    }
+    println!("fib(10) = {}", a);
+    a
+}

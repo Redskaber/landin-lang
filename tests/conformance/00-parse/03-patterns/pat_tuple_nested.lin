@@ -2,4 +2,4 @@
 //! category: patterns
 //! description: nested tuple pattern
 //! source: Stage 9.4 conformance expansion
-fn f() { let ((a, b), c) = ((1, 2), 3); }
+fn main() { let ((a, b), c) = ((1, 2), 3); }

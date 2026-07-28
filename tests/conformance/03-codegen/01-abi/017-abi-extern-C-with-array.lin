@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 extern "C" { fn f(arr:*const i32,len:i32); }
+fn main(){ 0 }

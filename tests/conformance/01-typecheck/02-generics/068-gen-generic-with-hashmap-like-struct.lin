@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
 
-struct HashMap<K, V> { keys: [K; 0], vals: [V; 0] } impl<K, V> HashMap<K, V> { fn new() -> Self { HashMap { keys: [], vals: [] } } }
+struct HashMap<K, V> { keys: [K; 0], vals: [V; 0] } impl<K, V> HashMap<K, V> { fn main() -> Self { HashMap { keys: [], vals: [] } } }

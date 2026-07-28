@@ -3,3 +3,4 @@
 //! description: generic function
 //! source: Stage 9.7 conformance expansion
 fn f<T>(x: T) {}
+fn main(){ 0 }

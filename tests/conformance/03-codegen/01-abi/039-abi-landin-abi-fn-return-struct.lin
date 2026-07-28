@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.3 codegen expansion
 
-struct S{x:i32} fn f()->S{S{x:1}}
+struct S{x:i32} fn main()->S{S{x:1}}

@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 mod m{const C:i32=42;}
+fn main(){ 0 }

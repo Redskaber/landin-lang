@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.6+11.7 expansion
 
-mod a{mod b{mod c{fn f()->i32{42}}}}
+mod a{mod b{mod c{fn main()->i32{42}}}}

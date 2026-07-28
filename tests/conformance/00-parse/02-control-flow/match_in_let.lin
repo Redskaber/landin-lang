@@ -3,3 +3,4 @@
 //! description: match in let initializer
 //! source: Stage 9.3 conformance expansion
 fn f(x: i32) { let z: i32 = match x { 1 => 1, _ => 0 }; }
+fn main(){ f(0); }

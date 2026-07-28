@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.9 batch expansion
 
 trait T{fn f<U>(&self,x:U)->U;}
+fn main(){ 0 }

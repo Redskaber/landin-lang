@@ -3,3 +3,4 @@
 //! description: loop with continue
 //! source: Stage 9.3 conformance expansion
 fn f(c: bool) { loop { if c { continue; } break; } }
+fn main(){ f(false); }

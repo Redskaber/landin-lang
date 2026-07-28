@@ -2,4 +2,4 @@
 //! category: closures
 //! description: typed multi param closure
 //! source: Stage 9.8 conformance expansion
-fn f() { let _ = |x: i32, y: i32| x + y; }
+fn main() { let _ = |x: i32, y: i32| x + y; }

@@ -3,3 +3,4 @@
 //! description: shift right operator
 //! source: Stage 9.2 conformance expansion
 fn f(a: i32) { let _ = a >> 2; }
+fn main(){ f(0); }

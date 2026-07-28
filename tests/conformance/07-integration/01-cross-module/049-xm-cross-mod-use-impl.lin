@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
 
 mod types{pub struct S{x:i32} impl S{pub fn new()->S{S{x:0}}}} mod app{use types::S; pub fn create()->S{S::new()}}
+fn main(){ let _ = create(); let _ = S{x: 0}; }

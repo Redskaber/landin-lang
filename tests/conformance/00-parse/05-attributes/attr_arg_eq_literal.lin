@@ -2,4 +2,4 @@
 //! category: attributes
 //! description: attribute with eq literal
 //! source: Stage 9.6 conformance expansion
-#[foo = "bar"] fn f() {}
+#[foo = "bar"] fn main() {}

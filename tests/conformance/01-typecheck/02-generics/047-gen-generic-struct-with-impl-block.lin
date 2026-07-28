@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 struct S<T> { x: T } impl<T> S<T> { fn new(x: T) -> Self { S { x } } fn get(&self) -> &T { &self.x } fn set(&mut self, x: T) { self.x = x; } }
+fn main(){ let _ = get(); }

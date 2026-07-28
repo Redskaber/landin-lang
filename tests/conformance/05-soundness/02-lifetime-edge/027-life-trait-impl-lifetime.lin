@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 trait T<'a>{fn f(&self)->&'a i32;} struct S{x:i32} impl<'a> T<'a> for S{fn f(&self)->&'a i32{&self.x}}
+fn main(){ let _ = S{x:0}; }

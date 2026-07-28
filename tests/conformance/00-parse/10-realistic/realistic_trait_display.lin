@@ -3,3 +3,4 @@
 //! description: Display trait pattern
 //! source: Stage 9.11 conformance expansion
 trait Display { fn display(&self) -> i32; } struct Foo { x: i32 } impl Display for Foo { fn display(&self) -> i32 { self.x } }
+fn main(){ let _ = Foo{x: 0}; }

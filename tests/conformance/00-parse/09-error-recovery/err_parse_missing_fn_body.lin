@@ -3,4 +3,4 @@
 //! description: missing fn body must error
 //! error_pattern: expected
 //! source: Stage 9.10 conformance expansion
-fn f()
+fn main()

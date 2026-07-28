@@ -4,3 +4,4 @@
 //! error_pattern: hexadecimal literal has no digits
 //! source: RP0-4 regression
 0x
+fn main(){ 0 }

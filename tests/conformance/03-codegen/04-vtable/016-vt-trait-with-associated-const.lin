@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion (Stage 0 limitation)
 
 trait T{const C:i32;} struct S; impl T for S{const C:i32=42;}
+fn main(){ let _ = S; }

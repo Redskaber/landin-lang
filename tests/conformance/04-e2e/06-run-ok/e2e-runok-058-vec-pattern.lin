@@ -1,0 +1,24 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Vec-like struct with static ctor + push + array field access (Stage 14.41)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 42\n99\n2
+// SOURCE: Stage 14.41 — static method call + array field access after mutation
+
+struct Vec { data: [i32; 10], len: i32 }
+impl Vec {
+    fn new() -> Vec { Vec { data: [0; 10], len: 0 } }
+    fn len(&self) -> i32 { self.len }
+    fn push(&mut self, v: i32) {
+        self.data[self.len] = v;
+        self.len = self.len + 1;
+    }
+}
+fn main() -> i32 {
+    let mut v = Vec::new();
+    v.push(42);
+    v.push(99);
+    println!("{}", v.data[0]);
+    println!("{}", v.data[1]);
+    println!("{}", v.len());
+    0
+}

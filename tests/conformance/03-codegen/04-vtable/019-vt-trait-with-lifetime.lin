@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 trait T<'a>{fn f(&self,x:&'a i32);}
+fn main(){ 0 }

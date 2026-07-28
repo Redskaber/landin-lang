@@ -17,3 +17,4 @@ fn area(s: Shape) -> f64 {
         }
     }
 }
+fn main(){ let _ = Shape::Circle(0.0); }

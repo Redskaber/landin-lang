@@ -3,3 +3,4 @@
 //! description: generic trait
 //! source: Stage 9.7 conformance expansion
 trait T<U> { fn f(&self, x: U); }
+fn main(){ 0 }

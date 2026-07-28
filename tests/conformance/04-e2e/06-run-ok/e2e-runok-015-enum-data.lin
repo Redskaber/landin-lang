@@ -1,0 +1,23 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok enum with data + match binding
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: circle=25, rect=12
+// EXPECTED_EXIT_CODE: 37
+// SOURCE: Stage 14.16 — enum with data + pattern binding verification
+
+enum Shape {
+    Circle(i32),
+    Rect(i32, i32),
+}
+fn area(s: Shape) -> i32 {
+    match s {
+        Shape::Circle(r) => { r * r }
+        Shape::Rect(w, h) => { w * h }
+    }
+}
+fn main() -> i32 {
+    let c = Shape::Circle(5);
+    let r = Shape::Rect(3, 4);
+    println!("circle={}, rect={}", area(c), area(r));
+    area(c) + area(r)
+}

@@ -3,3 +3,4 @@
 //! description: closure body with bitwise OR
 //! source: Stage 9.8 conformance expansion
 fn f(y: i32) { let _ = |x| x | y; }
+fn main(){ f(0); }

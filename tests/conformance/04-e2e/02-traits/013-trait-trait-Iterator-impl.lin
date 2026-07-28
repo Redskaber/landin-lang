@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 trait Iterator{fn next(&mut self)->i32;} struct Counter{n:i32} impl Iterator for Counter{fn next(&mut self)->i32{self.n+=1;self.n}}
+fn main(){ let _ = Counter{n: 0}; }

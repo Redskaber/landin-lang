@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.9 batch expansion
 
 fn fib(n:i32)->i32{if n<2{n}else{fib(n-1)+fib(n-2)}}
+fn main(){ let _ = fib(0); }

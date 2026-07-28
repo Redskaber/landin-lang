@@ -1,0 +1,18 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok enum with unit variants + match
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 2
+// EXPECTED_EXIT_CODE: 2
+// SOURCE: Stage 14.25 — enum unit variant + match verification
+
+enum Color { Red, Green, Blue }
+fn main() -> i32 {
+    let c = Color::Green;
+    let n = match c {
+        Color::Red => 1,
+        Color::Green => 2,
+        Color::Blue => 3,
+    };
+    println!("{}", n);
+    n
+}

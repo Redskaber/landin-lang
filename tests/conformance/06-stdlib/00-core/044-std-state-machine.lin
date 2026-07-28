@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 enum State{Idle,Run,Stop} fn next(s:State)->State{match s{State::Idle=>State::Run,_=>State::Stop}}
+fn main(){ let _ = State::Idle; let _ = next(State::Idle); }

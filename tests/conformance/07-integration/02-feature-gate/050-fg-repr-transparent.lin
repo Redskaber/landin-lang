@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 #[repr(transparent)] struct S(i32);
+fn main(){ 0 }

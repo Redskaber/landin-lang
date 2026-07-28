@@ -2,4 +2,4 @@
 //! category: closures
 //! description: move closure with no params
 //! source: Stage 9.8 conformance expansion
-fn f() { let _ = move || 1; }
+fn main() { let _ = move || 1; }

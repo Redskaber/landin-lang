@@ -2,4 +2,4 @@
 //! category: patterns
 //! description: basic tuple pattern
 //! source: Stage 9.4 conformance expansion
-fn f() { let (a, b) = (1, 2); }
+fn main() { let (a, b) = (1, 2); }

@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 fn f(a:f64,b:f64)->f64{a+b}
+fn main(){ let _ = f(0.0,0.0); }

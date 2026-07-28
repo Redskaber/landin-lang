@@ -3,3 +3,4 @@
 //! description: use with super path
 //! source: Stage 9.9 conformance expansion
 mod m { use super::foo; }
+fn main(){ 0 }

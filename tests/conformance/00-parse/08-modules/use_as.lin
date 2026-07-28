@@ -3,3 +3,4 @@
 //! description: use with rename (as)
 //! source: Stage 9.9 conformance expansion
 mod foo { pub struct bar; } use foo::bar as baz;
+fn main(){ 0 }

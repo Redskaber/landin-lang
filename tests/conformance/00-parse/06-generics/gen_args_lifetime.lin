@@ -3,3 +3,4 @@
 //! description: lifetime generic args
 //! source: Stage 9.7 conformance expansion
 struct S<'a> { x: &'a i32 } fn f<'a>(x: &'a i32) { let s: S<'a> = S { x }; }
+fn main(){ let _ref_0 = 0; let _ = S{x:&_ref_0}; }

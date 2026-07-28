@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-#[must_use] fn f()->i32{0}
+#[must_use] fn main()->i32{0}

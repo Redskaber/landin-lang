@@ -2,4 +2,4 @@
 //! category: closures
 //! description: closure returning unit
 //! source: Stage 9.8 conformance expansion
-fn f() { let _ = || {}; }
+fn main() { let _ = || {}; }

@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: continue in loop
 //! source: Stage 9.3 conformance expansion
-fn f() { loop { continue; } }
+fn main() { loop { continue; } }

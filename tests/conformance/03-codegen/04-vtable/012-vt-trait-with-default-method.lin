@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 trait T{fn f(&self)->i32{0}} struct S; impl T for S{}
+fn main(){ let _ = S; }

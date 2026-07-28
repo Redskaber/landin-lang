@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.7 conformance expansion
 
 #[derive(Clone)] struct S;
+fn main(){ let _ = S; }

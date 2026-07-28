@@ -2,4 +2,4 @@
 //! category: literals
 //! description: zero binary literal
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = 0b0; }
+fn main() { let _ = 0b0; }

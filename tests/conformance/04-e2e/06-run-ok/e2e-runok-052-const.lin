@@ -1,0 +1,12 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok const value resolution
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 42
+// EXPECTED_EXIT_CODE: 42
+// SOURCE: Stage 14.34 — const value verification
+
+const N: i32 = 42;
+fn main() -> i32 {
+    println!("{}", N);
+    N
+}

@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.3 conformance expansion
 
 enum E { A, B, C }
+fn main(){ let _ = E::A; }

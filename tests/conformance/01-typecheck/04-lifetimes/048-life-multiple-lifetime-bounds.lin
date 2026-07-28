@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 fn f<'a, 'b: 'a, 'c: 'a>(x: &'a i32, y: &'b i32, z: &'c i32) {}
+fn main(){ 0 }

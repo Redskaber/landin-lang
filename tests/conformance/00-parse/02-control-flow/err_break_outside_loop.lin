@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: break outside loop parses (parser recovery, semantic check at later stage)
 //! source: Stage 9.3 conformance expansion
-fn f() { break; }
+fn main() { break; }

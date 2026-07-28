@@ -3,3 +3,4 @@
 //! description: match with identifier pattern
 //! source: Stage 9.3 conformance expansion
 fn f(x: i32) -> i32 { match x { y => y } }
+fn main(){ let _ = f(0); }

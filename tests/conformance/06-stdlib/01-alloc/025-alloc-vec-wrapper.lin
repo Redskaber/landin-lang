@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
 
-struct Vec<T>{data:[T;10],len:i32} impl<T> Vec<T>{fn new()->Vec<T>{Vec{data:[],len:0}}}
+struct Vec<T>{data:[T;10],len:i32} impl<T> Vec<T>{fn main()->Vec<T>{Vec{data:[],len:0}}}

@@ -3,3 +3,4 @@
 //! description: use with no tree parses via synthetic node recovery
 //! source: Stage 9.9 conformance expansion
 use;
+fn main(){ 0 }

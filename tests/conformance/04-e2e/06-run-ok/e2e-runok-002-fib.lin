@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok fib(10) = 55
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: fib(10) = 55
+// EXPECTED_EXIT_CODE: 55
+// SOURCE: Stage 14.11 (GAP-8) — run_ok runner verification
+
+fn fib(n: i32) -> i32 {
+    if n < 2 { n } else { fib(n - 1) + fib(n - 2) }
+}
+fn main() -> i32 {
+    let r = fib(10);
+    println!("fib(10) = {}", r);
+    r
+}

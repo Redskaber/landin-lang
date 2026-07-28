@@ -1,0 +1,12 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok all arithmetic operators with format args
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: a+b=107, a-b=93, a*b=700, a/b=14, a%=2
+// SOURCE: Stage 14.17 — arithmetic operators + multi-arg format verification
+
+fn main() -> i32 {
+    let a = 100;
+    let b = 7;
+    println!("a+b={}, a-b={}, a*b={}, a/b={}, a%={}", a+b, a-b, a*b, a/b, a%b);
+    0
+}

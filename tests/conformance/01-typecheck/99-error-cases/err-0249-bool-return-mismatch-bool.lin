@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
 
-fn f()->bool{true}
+fn main()->bool{true}

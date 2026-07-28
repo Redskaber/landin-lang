@@ -3,4 +3,4 @@
 //! description: module declaration in fn body not supported in Stage 0 (parser limitation)
 //! error_pattern: parser made no progress
 //! source: Stage 9.9 conformance expansion
-fn f() { mod m {} }
+fn main() { mod m {} }

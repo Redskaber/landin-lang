@@ -2,4 +2,4 @@
 //! category: error-recovery
 //! description: missing type annotation parses via synthetic node recovery
 //! source: Stage 9.10 conformance expansion
-fn f() { let x: = 1; }
+fn main() { let x: = 1; }

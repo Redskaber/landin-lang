@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 trait T { fn f<U>(&self, x: U) -> i32; }
+fn main(){ 0 }

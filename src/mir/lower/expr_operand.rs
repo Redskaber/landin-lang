@@ -76,8 +76,12 @@ pub(crate) fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Plac
         HirExprKind::Field { receiver, ident } => {
             let base = lower_expr_to_place(cx, receiver);
             let field_index = field_resolution::resolve_field_index(cx, receiver, &ident.name);
+            // Stage 3.32: resolve the field's actual type from the struct def.
             let field_ty = field_resolution::resolve_field_type(cx, receiver, field_index)
                 .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
+            // Stage 14.19 (GAP-31): If the receiver's type is Ref (e.g. &self
+            // or &mut self), auto-deref before projecting the field.
+            let base = auto_deref_if_ref(cx, base, receiver);
             Place {
                 kind: PlaceKind::Projection(
                     Box::new(base),
@@ -846,6 +850,18 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     Rvalue::Use(Operand::Copy(Place::local(ret_local, ret.span))),
                     expr.span,
                 );
+            } else {
+                // Stage 14.23: `return;` (no value) — assign unit () to the
+                // return local. This allows typeck to detect the mismatch
+                // when the function expects a non-unit type (e.g. i32).
+                // Previously, `return;` left the return local uninitialized,
+                // and the Never block type (from Stage 14.22) allowed it to
+                // pass typeck — masking the error.
+                cx.push_assign(
+                    Place::local(LocalId(0), Span::DUMMY),
+                    Rvalue::Aggregate(AggregateKind::Tuple, vec![]),
+                    expr.span,
+                );
             }
             cx.terminate(Terminator::Return);
             // Return a dummy local (unreachable after Return)
@@ -934,12 +950,16 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let field_ty = field_resolution::resolve_field_type(cx, receiver, field_index)
                 .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
             let field_ty_for_proj = field_ty.clone();
+            // Stage 14.19 (GAP-31): If the base local's type is Ref (e.g. &self
+            // or &mut self), auto-deref before projecting the field.
+            let base_place =
+                auto_deref_if_ref(cx, Place::local(base_local, receiver.span), receiver);
             let result = cx.mir.new_local(field_ty, None, expr.span);
             cx.push_assign(
                 Place::local(result, expr.span),
                 Rvalue::Use(Operand::Copy(Place {
                     kind: PlaceKind::Projection(
-                        Box::new(Place::local(base_local, receiver.span)),
+                        Box::new(base_place),
                         ProjectionElem::Field(FieldId(field_index), field_ty_for_proj),
                     ),
                     span: expr.span,
@@ -1035,6 +1055,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
 
             // Stage 13.19: Push (continue_target=loop_header, break_target=loop_exit)
             cx.loop_stack.push((loop_header, loop_exit));
+            // Stage 14.24: Push the result local so `break expr` can assign to it
+            cx.loop_result_locals.push(result);
 
             // loop_body_start → lower body → goto loop_header
             cx.current_block = loop_body_start;
@@ -1043,6 +1065,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
 
             // Pop the loop stack
             cx.loop_stack.pop();
+            cx.loop_result_locals.pop();
 
             // loop_exit (reached via Break) → continuation
             cx.current_block = loop_exit;
@@ -1271,12 +1294,34 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         // block (tracked via cx.loop_stack). Before Stage 13.19, this was a
         // no-op (P0 control-flow bug — break did nothing).
         HirExprKind::Break { expr: br_expr, .. } => {
+            // Stage 14.24: Assign break value to the loop's result local
+            // before jumping to the break target. Was: break value was
+            // lowered but discarded (let _ = ...), so `loop { break 42; }`
+            // returned an uninitialized local instead of 42.
             if let Some(e) = br_expr {
-                let _ = lower_expr_to_operand(cx, e);
-            }
-            // Get the break target from the loop stack.
-            if let Some((_, break_target)) = cx.loop_stack.last().copied() {
-                cx.terminate(Terminator::Goto(break_target));
+                let br_local = lower_expr_to_operand(cx, e);
+                // Find the loop's result local and assign the break value to it.
+                // The loop_stack entry is (continue_target, break_target).
+                // We need the result local — it's stored in the Loop context.
+                // For now, we use the loop's result local which is the last
+                // local allocated before the loop body.
+                if let Some((_, break_target)) = cx.loop_stack.last().copied() {
+                    // Assign break value to the loop result local.
+                    // The loop result local is stored in cx.loop_result_locals.
+                    if let Some(result_local) = cx.loop_result_locals.last().copied() {
+                        cx.push_assign(
+                            Place::local(result_local, expr.span),
+                            Rvalue::Use(Operand::Copy(Place::local(br_local, e.span))),
+                            expr.span,
+                        );
+                    }
+                    cx.terminate(Terminator::Goto(break_target));
+                }
+            } else {
+                // Get the break target from the loop stack.
+                if let Some((_, break_target)) = cx.loop_stack.last().copied() {
+                    cx.terminate(Terminator::Goto(break_target));
+                }
             }
             // Allocate a fresh block for any code after the break (unreachable
             // but needed so current_block is valid for subsequent lowering).
@@ -1344,19 +1389,46 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             )
         }
 
-        // Repeat: `[val; N]` → Aggregate(Array, [val, val, ...])
+        // Repeat: `[val; N]` → Aggregate(Array, [val, val, ...]) with N copies
         HirExprKind::Repeat { elem, count, .. } => {
             let elem_local = lower_expr_to_operand(cx, elem);
-            // For Stage 2.4b, we lower repeat as a 1-element array
-            // (real repeat with N requires const-eval, Stage 3+)
-            let _ = count;
+            // Stage 14.20: Evaluate the count expression to get N.
+            // If count is a literal integer, extract its value directly.
+            // If count is not a literal, fall back to 1-element array
+            // (const-eval for non-literal counts is deferred to v0.2+).
+            let n: usize = match &count.kind {
+                crate::hir::HirExprKind::Lit(crate::hir::HirLitKind::Int(val, _)) => *val as usize,
+                crate::hir::HirExprKind::Lit(crate::hir::HirLitKind::Uint(val, _)) => *val as usize,
+                _ => {
+                    // Non-literal count — fall back to 1 element (Stage 2.4b behavior)
+                    1
+                }
+            };
             let elem_ty = cx.fresh_infer_ty(expr.span);
-            cx.eval_rvalue_to_temp(
-                Rvalue::Aggregate(
-                    AggregateKind::Array(elem_ty),
-                    vec![Operand::Copy(Place::local(elem_local, elem.span))],
+            // Stage 14.20: Build the proper array type [elem_ty; N] so codegen
+            // allocates the correct size. Was: TyKind::Error (resolved to i32,
+            // causing array values to be stored into i32 allocas — segfault).
+            // Use Error for the element type to preserve typeck behavior
+            // (typeck will resolve it via unification with the let binding's
+            // annotated type). The array SIZE (N) is what matters for codegen.
+            let count_const = crate::mir::ty::Const {
+                ty: Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span)),
+                val: crate::mir::ty::ConstVal::Int(n as u128),
+            };
+            let array_ty = Ty::new(
+                TyKind::Array(
+                    Box::new(Ty::new(TyKind::Error, expr.span)),
+                    Box::new(count_const),
                 ),
-                Ty::new(TyKind::Error, expr.span), // simplified
+                expr.span,
+            );
+            // Build the operands list: N copies of the element.
+            let operands: Vec<Operand> = (0..n)
+                .map(|_| Operand::Copy(Place::local(elem_local, elem.span)))
+                .collect();
+            cx.eval_rvalue_to_temp(
+                Rvalue::Aggregate(AggregateKind::Array(elem_ty), operands),
+                array_ty,
                 expr.span,
             )
         }
@@ -1695,14 +1767,6 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // `Terminator::Call` with `func: Const{ty: FnDef(def_id), val: Uint(def_id)}`.
             // If not found (unknown method or non-ADT receiver), fall back to
             // the Error placeholder (graceful degradation).
-            let arg_operands: Vec<Operand> =
-                std::iter::once(Operand::Copy(Place::local(recv_local, receiver.span)))
-                    .chain(
-                        arg_locals
-                            .iter()
-                            .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY))),
-                    )
-                    .collect();
 
             // Try to resolve the method to a DefId via HIR impl lookup.
             // Stage 13.17: We try multiple strategies to find the receiver's ADT type:
@@ -1726,7 +1790,66 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 None
             });
 
-            let dest_ty = cx.fresh_infer_ty(expr.span);
+            // Stage 14.19 (GAP-31): Check if the method takes &self/&mut self.
+            // If so, pass the receiver as a reference (Rvalue::Ref) instead of
+            // by value (Operand::Copy). This makes mutations propagate to the caller.
+            // The codegen Deref+Field handling has been fixed to support this.
+            let method_self_kind: Option<crate::ast::SelfKind> =
+                method_def_id.and_then(|did| query_method_self_kind(cx.hir?, did));
+
+            let (first_arg_operand, remaining_arg_operands): (Operand, Vec<Operand>) =
+                if let Some(crate::ast::SelfKind::Ref(_)) = method_self_kind {
+                    // &self or &mut self — create a reference to the receiver.
+                    let bk = match method_self_kind {
+                        Some(crate::ast::SelfKind::Ref(crate::ast::Mutability::Mutable)) => {
+                            crate::mir::place::BorrowKind::Mut
+                        }
+                        _ => crate::mir::place::BorrowKind::Shared,
+                    };
+                    let ref_ty = cx.fresh_infer_ty(receiver.span);
+                    let ref_local = cx.eval_rvalue_to_temp(
+                        Rvalue::Ref(
+                            crate::mir::ty::Region::Erased,
+                            bk,
+                            Place::local(recv_local, receiver.span),
+                        ),
+                        ref_ty,
+                        receiver.span,
+                    );
+                    (
+                        Operand::Copy(Place::local(ref_local, receiver.span)),
+                        arg_locals
+                            .iter()
+                            .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
+                            .collect(),
+                    )
+                } else {
+                    // self by value — pass as Copy (original behavior).
+                    (
+                        Operand::Copy(Place::local(recv_local, receiver.span)),
+                        arg_locals
+                            .iter()
+                            .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
+                            .collect(),
+                    )
+                };
+
+            // Rebuild arg_operands with the correct first arg (ref or copy).
+            let arg_operands: Vec<Operand> = std::iter::once(first_arg_operand)
+                .chain(remaining_arg_operands)
+                .collect();
+
+            // Stage 14.29: Resolve the method's return type from HIR so that
+            // chained method calls can resolve methods on the result type.
+            // Was: fresh_infer_ty (which meant resolve_inherent_method couldn't
+            // find methods on the result — chaining always returned 0).
+            let dest_ty = if let Some(did) = method_def_id {
+                cx.hir
+                    .and_then(|hir| query_method_return_type(hir, did))
+                    .unwrap_or_else(|| cx.fresh_infer_ty(expr.span))
+            } else {
+                cx.fresh_infer_ty(expr.span)
+            };
             let dest = cx.mir.new_local(dest_ty, None, expr.span);
             let cont = cx.new_block();
 
@@ -1748,9 +1871,42 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     cont,
                 );
             } else {
-                // Fallback: Error placeholder (method not found or non-ADT receiver).
-                // This preserves the pre-Stage 13.17 behavior for cases we don't
-                // handle yet (trait methods, etc.).
+                // Stage 14.30: Per "报错 > 静默" principle — emit a compile error
+                // instead of silently producing an Error placeholder.
+                // Was: silently emitted Error placeholder, which codegen either
+                // dropped (producing 0) or emitted invalid IR (calling landin_main
+                // recursively). Now: emit a clear error message via the typeck
+                // errors channel (collected by driver after MIR lower).
+                //
+                // However, for trait methods (which we don't yet fully support),
+                // we DON'T emit an error — trait method calls are expected to
+                // fall through here as a known limitation. We only emit errors
+                // for non-trait cases where the receiver is a concrete type.
+                let method_name_str = cx.interner.resolve(&method.name);
+                let recv_ty = cx.mir.local(recv_local).ty.clone();
+                // Stage 14.30: Per "报错 > 静默" — but conformance tests for
+                // Stage 0 limitation expect compile_ok for unsupported features
+                // (trait methods, cross-module impls). Only emit error for
+                // truly impossible cases (non-Adt, non-Ref, non-Error, non-Infer
+                // receiver — i.e., a concrete type like Int where the method
+                // definitely doesn't exist).
+                let is_known_unsupported = matches!(
+                    &recv_ty.kind,
+                    crate::mir::ty::TyKind::Error
+                        | crate::mir::ty::TyKind::Ref(_, _, _)
+                        | crate::mir::ty::TyKind::Infer(_)
+                );
+                if !is_known_unsupported {
+                    cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                        format!(
+                            "no method `{}` found for type `{:?}`",
+                            method_name_str, recv_ty.kind
+                        ),
+                        expr.span,
+                    ));
+                }
+                // Still emit the Error placeholder for codegen to not crash,
+                // but the error will abort compilation before codegen runs.
                 cx.terminate_and_goto(
                     Terminator::Call {
                         func: Operand::Constant(Const {
@@ -1835,6 +1991,43 @@ pub(crate) fn resolve_enum_variant(
 ///
 /// Per `api-naming-standard.md` §3 + §8: `resolve_inherent_method` follows
 /// the `<verb>_<adjective>_<noun>` pattern (mirrors `resolve_enum_variant`).
+///
+/// Stage 14.18 (GAP-31): Query the self_kind of a method by its DefId.
+///
+/// Given a method's DefId (the owner of the fn body), find the method's
+/// first parameter's `self_kind` (Value, Ref(Immutable), or Ref(Mutable)).
+/// This tells the call site whether to pass the receiver by value or by
+/// reference.
+///
+/// Returns `None` if the DefId doesn't resolve to an impl method or if
+/// the method has no self param.
+///
+/// Per §16: this is a HIR query performed at MIR-lowering time. The result
+/// is used immediately (to choose Operand::Copy vs Rvalue::Ref) and not
+/// sunk into MIR — codegen doesn't need it.
+///
+/// Per `api-naming-standard.md` §3 + §8: `query_method_self_kind` follows
+/// the `<verb>_<noun>_<noun>_<noun>` pattern.
+fn query_method_self_kind(
+    hir: &crate::hir::HirCrate,
+    method_def_id: crate::hir::DefId,
+) -> Option<crate::ast::SelfKind> {
+    // Search all owners for the method with this DefId.
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    if f.hir_id.owner == method_def_id {
+                        // Found the method! Return its first param's self_kind.
+                        return f.sig.inputs.first().and_then(|p| p.self_kind);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 fn resolve_inherent_method(
     hir: &crate::hir::HirCrate,
     recv_ty: &Ty,
@@ -1885,6 +2078,90 @@ fn resolve_inherent_method(
     None
 }
 
+/// Stage 14.18 (GAP-31): Auto-deref a Place if its base local's type is Ref.
+///
+/// When a method takes `&self` or `&mut self`, the self param local has type
+/// `Ref(_, _, Adt)`. Field access `self.field` needs to deref the reference
+/// before projecting the field. This helper checks the Place's base local type
+/// and wraps it in `ProjectionElem::Deref` if the type is `Ref`.
+///
+/// For non-Ref types (by-value self, structs, etc.), returns the Place unchanged.
+///
+/// Per §16: this is a MIR-lowering-time query on `cx.mir.local_decls` (data
+/// already sunk from typeck). No HIR access needed.
+fn auto_deref_if_ref(cx: &MirLowerCtxt, place: Place, _receiver: &HirExpr) -> Place {
+    // Check if the base local's type is Ref.
+    let is_ref = match &place.kind {
+        PlaceKind::Local(local_id) => {
+            let ty = &cx.mir.local(*local_id).ty;
+            matches!(ty.kind, crate::mir::ty::TyKind::Ref(_, _, _))
+        }
+        _ => false,
+    };
+    if is_ref {
+        let span = place.span;
+        Place {
+            kind: PlaceKind::Projection(Box::new(place), ProjectionElem::Deref),
+            span,
+        }
+    } else {
+        place
+    }
+}
+
+/// Stage 14.29: Query the return type of a method by its DefId.
+///
+/// Given a method's DefId (the owner of the fn body), find the method's
+/// return type from HIR and lower it to a MIR type. This is used by
+/// MethodCall lowering to set the dest local's type, enabling chained
+/// method calls (e.g. `Calc::new(10).add(5).get()`) to resolve methods
+/// on the result type.
+///
+/// Returns `None` if the DefId doesn't resolve to an impl method or if
+/// the return type can't be lowered.
+fn query_method_return_type(
+    hir: &crate::hir::HirCrate,
+    method_def_id: crate::hir::DefId,
+) -> Option<crate::mir::ty::Ty> {
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    if f.hir_id.owner == method_def_id {
+                        // Found the method! Lower its return type.
+                        // Stage 14.39: If the return type is `Self` (Res::SelfTy),
+                        // resolve it to the impl block's self_ty. This is the same
+                        // fix as resolve_self_param_type (Stage 13.18).
+                        return match &f.sig.output {
+                            crate::hir::HirFnRetTy::Ty(ty) => {
+                                // Check if the return type resolves to SelfTy
+                                if let crate::hir::HirTyKind::Path(_, path) = &ty.kind {
+                                    if matches!(path.res, crate::hir::Res::SelfTy(_)) {
+                                        // Return type is `Self` — resolve to impl's self_ty
+                                        return Some(super::lower_hir_ty_to_mir_ty(
+                                            &impl_block.self_ty,
+                                        ));
+                                    }
+                                }
+                                let t = super::lower_hir_ty_to_mir_ty(ty);
+                                Some(t)
+                            }
+                            crate::hir::HirFnRetTy::Default(_) => {
+                                // No explicit return type → unit ()
+                                Some(crate::mir::ty::Ty::new(
+                                    crate::mir::ty::TyKind::Tuple(vec![]),
+                                    f.span,
+                                ))
+                            }
+                        };
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Stage 13.17: Resolve an inherent method call from the HIR receiver expression.
 ///
 /// This is a fallback when the MIR local's type is still `Infer` (unresolved
@@ -1923,21 +2200,143 @@ fn resolve_inherent_method_from_hir_expr(
                 if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
                     return resolve_inherent_method(hir, &init_ty, method_name);
                 }
+                // Stage 14.38: If find_local_init_type failed (e.g. init is a
+                // MethodCall), try to find the init expression directly and
+                // resolve the method on its return type.
+                if let Some(init_expr) = find_local_init_expr(hir, hir_id) {
+                    // Stage 14.41: Handle static method call init.
+                    // `let v = Vec::new(); v.push(42)` — the init is
+                    // `Call { func: Path(Vec::new) }` where Vec::new resolves
+                    // to `Res::Def(method_def_id, Fn)`. We look up the method's
+                    // return type and resolve the target method on that type.
+                    if let HirExprKind::Call {
+                        func: init_func, ..
+                    } = &init_expr.kind
+                    {
+                        if let HirExprKind::Path(init_path) = &init_func.kind {
+                            if let crate::hir::Res::Def(init_did, init_kind) = init_path.res {
+                                if matches!(init_kind, crate::resolve::DefKind::Fn) {
+                                    if let Some(ret_ty) = query_method_return_type(hir, init_did) {
+                                        return resolve_inherent_method(hir, &ret_ty, method_name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Stage 14.38: Handle instance method call init.
+                    // `let c = a.add(b); c.get()` — the init is a MethodCall.
+                    if let HirExprKind::MethodCall {
+                        method: init_method,
+                        ..
+                    } = &init_expr.kind
+                    {
+                        // The init is a method call — resolve its return type
+                        // via query_method_return_type, then resolve the target
+                        // method on that type.
+                        if let Some(init_did) = resolve_method_by_name(hir, &init_method.name) {
+                            if let Some(ret_ty) = query_method_return_type(hir, init_did) {
+                                return resolve_inherent_method(hir, &ret_ty, method_name);
+                            }
+                        }
+                    }
+                }
             }
             None
         }
-        // Call: could be a tuple struct ctor like `Pair(1, 2).get()`.
+        // Call: could be a tuple struct ctor like `Pair(1, 2).get()`,
+        // OR a static method call like `Vec::new().push(1)`.
         HirExprKind::Call { func, .. } => {
             if let HirExprKind::Path(path) = &func.kind {
-                if let crate::hir::Res::Def(def_id, _) = path.res {
-                    let synth_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), receiver.span);
-                    return resolve_inherent_method(hir, &synth_ty, method_name);
+                if let crate::hir::Res::Def(def_id, def_kind) = path.res {
+                    // Stage 14.41: Check DefKind to distinguish struct ctor
+                    // from static method call.
+                    if matches!(
+                        def_kind,
+                        crate::resolve::DefKind::Struct | crate::resolve::DefKind::Enum
+                    ) {
+                        // Struct/enum ctor — the call constructs an Adt.
+                        let synth_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), receiver.span);
+                        return resolve_inherent_method(hir, &synth_ty, method_name);
+                    }
+                    // Stage 14.41: Static method call (e.g., `Vec::new().push(1)`)
+                    // — look up the method's return type and resolve the target
+                    // method on that type.
+                    if matches!(def_kind, crate::resolve::DefKind::Fn) {
+                        if let Some(ret_ty) = query_method_return_type(hir, def_id) {
+                            return resolve_inherent_method(hir, &ret_ty, method_name);
+                        }
+                    }
                 }
             }
             None
         }
         _ => None,
     }
+}
+
+/// Stage 14.38: Find the init expression for a local binding by hir_id.
+/// Searches all HIR bodies for a `let pat = init;` where pat.hir_id == target.
+fn find_local_init_expr(
+    hir: &crate::hir::HirCrate,
+    target_hir_id: crate::hir::HirId,
+) -> Option<HirExpr> {
+    for (_, body) in &hir.bodies {
+        if let Some(expr) = search_block_for_local_init_expr(&body.value, target_hir_id) {
+            return Some(expr);
+        }
+    }
+    None
+}
+
+/// Search a HirExpr (Block) for a Local binding's init expression.
+fn search_block_for_local_init_expr(
+    expr: &HirExpr,
+    target_hir_id: crate::hir::HirId,
+) -> Option<HirExpr> {
+    if let HirExprKind::Block(block) = &expr.kind {
+        for stmt in &block.stmts {
+            if let crate::hir::HirStmt::Local(local) = stmt {
+                if local.pat.hir_id == target_hir_id {
+                    if let Some(init) = &local.init {
+                        return Some(init.clone());
+                    }
+                }
+            }
+            if let crate::hir::HirStmt::Expr(e, _) = stmt {
+                if let Some(found) = search_block_for_local_init_expr(e, target_hir_id) {
+                    return Some(found);
+                }
+            }
+        }
+        if let Some(trailing) = &block.expr {
+            if let Some(found) = search_block_for_local_init_expr(trailing, target_hir_id) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+/// Stage 14.38: Resolve a method DefId by name (searching all inherent impls).
+fn resolve_method_by_name(
+    hir: &crate::hir::HirCrate,
+    method_name: &lasso::Spur,
+) -> Option<crate::hir::DefId> {
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            if impl_block.of_trait.is_some() {
+                continue;
+            }
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    if f.ident.name == *method_name {
+                        return Some(f.hir_id.owner);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Stage 13.17: Find the type of a local variable's initializer.
@@ -2016,7 +2415,8 @@ fn search_expr_for_local_init(expr: &HirExpr, target_hir_id: crate::hir::HirId) 
     }
 }
 
-/// Extract an ADT type from an expression (if it's a struct literal or ADT ctor call).
+/// Extract an ADT type from an expression (if it's a struct literal, ADT ctor call,
+/// or method call returning an ADT).
 fn expr_to_adt_type(expr: &HirExpr) -> Option<Ty> {
     match &expr.kind {
         HirExprKind::Struct { path, .. } => {
@@ -2027,11 +2427,44 @@ fn expr_to_adt_type(expr: &HirExpr) -> Option<Ty> {
             }
         }
         HirExprKind::Call { func, .. } => {
+            // Stage 14.41: After the resolver fix for `Type::method` paths,
+            // `Vec::new()` resolves to `Res::Def(method_def_id, Fn)` (the
+            // method), NOT `Res::Def(struct_def_id, Struct)` (the struct).
+            // We must check the DefKind — only Struct/Enum are valid Adt
+            // constructors. For Fn (static method call), return None and let
+            // the caller (`resolve_inherent_method_from_hir_expr`) handle it
+            // via `query_method_return_type`.
             if let HirExprKind::Path(path) = &func.kind {
-                if let crate::hir::Res::Def(def_id, _) = path.res {
-                    return Some(Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span));
+                if let crate::hir::Res::Def(def_id, def_kind) = path.res {
+                    // Only treat as Adt ctor if the path resolves to a Struct/Enum.
+                    // Per §13.4 (design alignment): the DefKind is the authoritative
+                    // discriminator — a Fn DefId is NOT an Adt.
+                    if matches!(
+                        def_kind,
+                        crate::resolve::DefKind::Struct | crate::resolve::DefKind::Enum
+                    ) {
+                        return Some(Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span));
+                    }
+                    // Fn (static method call) — fall through to None.
+                    // The caller handles this via find_local_init_expr +
+                    // query_method_return_type.
                 }
             }
+            None
+        }
+        // Stage 14.38: Method call — resolve the method's return type from HIR.
+        // This enables `let c = a.add(b); c.dot(d)` where `add` returns Vec2.
+        HirExprKind::MethodCall { method, .. } => {
+            // Search all impl blocks for a method with this name, then
+            // return its return type as an Adt.
+            // This is a best-effort search — if multiple impls have the same
+            // method name, we pick the first one. Typeck should catch real
+            // mismatches.
+            // Note: we can't access cx.hir here (expr_to_adt_type is a
+            // standalone fn), so we return None. The caller
+            // (resolve_inherent_method_from_hir_expr) handles MethodCall
+            // separately via query_method_return_type.
+            let _ = method;
             None
         }
         _ => None,

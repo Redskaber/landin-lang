@@ -3,3 +3,4 @@
 //! description: outer attribute on extern block
 //! source: Stage 9.6 conformance expansion
 #[foo] extern "C" {}
+fn main(){ 0 }

@@ -3,3 +3,4 @@
 //! description: bool literal pattern
 //! source: Stage 9.4 conformance expansion
 fn f(x: bool) -> i32 { match x { true => 1, false => 0 } }
+fn main(){ let _ = f(false); }

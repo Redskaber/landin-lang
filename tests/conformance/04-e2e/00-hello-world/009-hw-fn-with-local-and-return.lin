@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.4 e2e expansion
 
-fn f()->i32{let x=42;x}
+fn main()->i32{let x=42;x}

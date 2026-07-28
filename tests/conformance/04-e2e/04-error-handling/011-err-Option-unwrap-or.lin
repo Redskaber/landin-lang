@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 enum Opt{Some(i32),None} fn f(o:Opt,d:i32)->i32{match o{Opt::Some(v)=>v,Opt::None=>d}}
+fn main(){ let _ = Opt::Some(0); }

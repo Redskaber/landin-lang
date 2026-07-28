@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 fn f(x:i32){let y=x;}
+fn main(){ f(0); }

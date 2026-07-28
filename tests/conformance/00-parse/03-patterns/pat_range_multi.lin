@@ -3,3 +3,4 @@
 //! description: multiple range arms
 //! source: Stage 9.4 conformance expansion
 fn f(x: i32) -> i32 { match x { 1..=10 => 1, 20..=30 => 2, _ => 0 } }
+fn main(){ let _ = f(0); }

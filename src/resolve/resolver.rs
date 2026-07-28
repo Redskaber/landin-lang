@@ -50,6 +50,19 @@ pub struct Resolver {
     /// is in the same module as the definition (private access) or a
     /// different module (requires pub).
     pub(super) current_module: Option<Spur>,
+    /// Stage 14.41: Impl method index — maps `(type_name, method_name)` to
+    /// the method's DefId. Used to resolve `Type::method` paths (e.g.,
+    /// `Vec::new`, `Counter::create`) to the actual method, NOT to the
+    /// struct itself.
+    ///
+    /// Per §13.4 + §16 (interface isolation): the index is built during
+    /// `build_module_tree` (Phase 1) and read during `resolve_path` (Phase 3).
+    /// This eliminates the long-standing bug where `V::new(1, 2)` was treated
+    /// as a struct constructor `V { x: 1, y: 2 }` instead of calling the
+    /// `new` method — the resolver now returns `Res::Def(method_def_id, Fn)`
+    /// for `V::new`, and the MIR lower's `is_adt_ctor` check no longer
+    /// misfires.
+    pub(super) impl_method_index: HashMap<(Spur, Spur), DefId>,
     /// Errors encountered (non-fatal).
     pub(super) errors: Vec<ResolveError>,
 }
@@ -63,6 +76,7 @@ impl Resolver {
             scopes: None,
             current_self_kind: None,
             current_module: None,
+            impl_method_index: HashMap::new(),
             errors: Vec::new(),
         }
     }

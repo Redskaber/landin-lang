@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.3 codegen expansion
 
-fn f()->(i32,i32){(1,2)}
+fn main()->(i32,i32){(1,2)}

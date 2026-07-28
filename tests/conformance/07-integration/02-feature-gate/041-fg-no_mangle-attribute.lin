@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.6+11.7 expansion
 
-#[no_mangle] fn f(){}
+#[no_mangle] fn main(){ 0 }

@@ -2,4 +2,4 @@
 //! category: attributes
 //! description: empty attribute #[] parses via synthetic node recovery (parser does not validate path presence)
 //! source: Stage 9.6 conformance expansion
-#[] fn f() {}
+#[] fn main() {}

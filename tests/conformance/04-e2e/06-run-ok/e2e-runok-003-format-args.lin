@@ -1,0 +1,12 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok arithmetic and format args
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: x = 42, y = 99, sum = 141
+// SOURCE: Stage 14.11 (GAP-8) — run_ok runner verification
+
+fn main() -> i32 {
+    let x = 42;
+    let y = 99;
+    println!("x = {}, y = {}, sum = {}", x, y, x + y);
+    0
+}

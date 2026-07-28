@@ -3,3 +3,4 @@
 //! description: match with struct pattern
 //! source: Stage 9.3 conformance expansion
 struct P { x: i32, y: i32 } fn f(p: P) -> i32 { match p { P { x, y } => x + y } }
+fn main(){ let _ = P{x: 0,y: 0}; let _ = f(P{x: 0,y: 0}); }

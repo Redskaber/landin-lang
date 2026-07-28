@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.3 conformance expansion
 
 struct S { x: f64 }
+fn main(){ let _ = S{x: 0.0}; }

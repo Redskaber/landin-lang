@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: while loop in function
 //! source: Stage 9.3 conformance expansion
-fn f() -> i32 { let mut i = 0; while i < 5 { i += 1; } i }
+fn main() -> i32 { let mut i = 0; while i < 5 { i += 1; } i }

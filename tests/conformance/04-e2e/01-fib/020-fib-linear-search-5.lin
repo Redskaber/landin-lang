@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
 
 fn search(arr:[i32;5],target:i32)->i32{let mut i=0;while i<5{if arr[i]==target{return i;}i+=1;}-1}
+fn main(){ let _ = search([0;5],0); }

@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct Inner{x:i32} struct Outer{i:Inner}
+fn main(){ let _ = Inner{x: 0}; }

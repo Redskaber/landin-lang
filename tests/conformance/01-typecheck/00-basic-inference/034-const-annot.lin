@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.8 typecheck expansion
 
 const C: i32 = 42;
+fn main(){ 0 }

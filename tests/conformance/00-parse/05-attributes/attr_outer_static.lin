@@ -3,3 +3,4 @@
 //! description: outer attribute on static
 //! source: Stage 9.6 conformance expansion
 #[foo] static S: i32 = 0;
+fn main(){ 0 }

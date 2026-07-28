@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 fn bin_to_dec(b:i32)->i32{let mut r=0;let mut p=1;let mut n=b;while n>0{let d=n%10;r+=d*p;p*=2;n/=10;}r}
+fn main(){ let _ = bin_to_dec(0); }

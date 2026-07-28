@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 trait T{fn f(&self)->i32;} fn g<X>(x:X)->i32 where X:T{x.f()}
+fn main(){ 0 }

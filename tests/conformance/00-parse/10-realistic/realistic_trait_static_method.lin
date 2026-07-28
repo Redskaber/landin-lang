@@ -3,3 +3,4 @@
 //! description: trait with static method
 //! source: Stage 9.11 conformance expansion
 trait Factory { fn new() -> Self; } struct Foo { x: i32 } impl Factory for Foo { fn new() -> Foo { Foo { x: 0 } } }
+fn main(){ let _ = Foo{x: 0}; }

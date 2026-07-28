@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 fn f(r:&i32)->i32{*r}
+fn main(){ let _ref_0 = 0; let _ = f(&_ref_0); }

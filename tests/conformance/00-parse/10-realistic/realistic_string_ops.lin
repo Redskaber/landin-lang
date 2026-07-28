@@ -3,3 +3,4 @@
 //! description: string operations
 //! source: Stage 9.11 conformance expansion
 fn string_len(s: &str) -> i32 { let mut count = 0; let _ = s; count }
+fn main(){ let _ = string_len("x"); }

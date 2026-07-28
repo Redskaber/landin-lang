@@ -2,4 +2,4 @@
 //! category: operators
 //! description: subtraction operator
 //! source: Stage 9.2 conformance expansion
-fn f() { let _ = 10 - 5; }
+fn main() { let _ = 10 - 5; }

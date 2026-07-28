@@ -3,3 +3,4 @@
 //! description: use with crate path
 //! source: Stage 9.9 conformance expansion
 mod m { use crate::foo; }
+fn main(){ 0 }

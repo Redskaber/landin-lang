@@ -1,7 +1,7 @@
 // CATEGORY: borrowck
 // DESCRIPTION: mut then shared variant 14
 // EXPECTED: compile_ok
-// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.9 batch expansion
 
 fn main(){let mut x=1;let r=&mut x;let r2=&x;}

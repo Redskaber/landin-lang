@@ -3,3 +3,4 @@
 //! description: Clone trait pattern
 //! source: Stage 9.11 conformance expansion
 trait Clone { fn clone(&self) -> Self; } struct Foo { x: i32 } impl Clone for Foo { fn clone(&self) -> Self { Foo { x: self.x } } }
+fn main(){ let _ = Foo{x: 0}; }

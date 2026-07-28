@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.6+11.7 expansion
 
-mod types{pub enum E{A(i32),B}} mod app{use types::E; pub fn get()->E{E::A(42)}}
+mod types{pub enum E{A(i32),B}} mod app{use types::E; pub fn main()->E{E::A(42)}}

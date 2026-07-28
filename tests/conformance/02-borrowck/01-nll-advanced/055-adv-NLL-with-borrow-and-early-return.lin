@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.2 borrowck expansion
 
 fn f(x:i32)->i32 { let r=&x; if *r>0 { return 1; } let y=x; 0 }
+fn main(){ let _ = f(0); }

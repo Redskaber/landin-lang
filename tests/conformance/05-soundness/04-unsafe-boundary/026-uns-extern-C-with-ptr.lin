@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 extern "C"{fn f(p:*const i32)->i32;}
+fn main(){ 0 }

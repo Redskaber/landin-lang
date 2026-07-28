@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
 
-fn f()->u16{true}
+fn main()->u16{true}

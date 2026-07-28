@@ -3,3 +3,4 @@
 //! description: pub(crate) use
 //! source: Stage 9.9 conformance expansion
 mod foo { pub struct bar; } pub(crate) use foo::bar;
+fn main(){ 0 }

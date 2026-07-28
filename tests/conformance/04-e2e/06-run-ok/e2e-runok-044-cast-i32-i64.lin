@@ -1,0 +1,12 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok type cast i32 as i64
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: cast: 42
+// SOURCE: Stage 14.28 — type cast verification
+
+fn main() -> i32 {
+    let a: i32 = 42;
+    let b: i64 = a as i64;
+    println!("cast: {}", b);
+    0
+}

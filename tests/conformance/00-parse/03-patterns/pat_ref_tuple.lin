@@ -3,3 +3,4 @@
 //! description: reference to tuple pattern
 //! source: Stage 9.4 conformance expansion
 fn f(r: &(i32, i32)) { let &(a, b) = r; }
+fn main(){ let mut _r0 = (0,0); f(&_r0); }

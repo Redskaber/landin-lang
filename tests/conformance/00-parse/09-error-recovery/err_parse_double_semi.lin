@@ -3,4 +3,4 @@
 //! description: double semicolon must error (parser does not recover)
 //! error_pattern: could not parse
 //! source: Stage 9.10 conformance expansion
-fn f() { let x = 1;; }
+fn main() { let x = 1;; }

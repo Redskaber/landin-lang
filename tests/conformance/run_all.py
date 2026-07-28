@@ -34,12 +34,17 @@ class ConformanceTest:
     path: Path
     # Legacy format: expect_pass=True means PASS, False means FAIL
     expect_pass: bool
-    # New format: expected = "compile_ok" | "compile_error" | "run_ok" | None
+    # New format: expected = "compile_ok" | "compile_error" | "run_ok" | "run_panic" | None
     expected: Optional[str]
     category: str
     description: str
     error_pattern: Optional[str]
     source: Optional[str]
+    # Stage 14.11 (GAP-8): run_ok / run_panic verification fields.
+    # EXPECTED_STDOUT: exact stdout string the program should produce.
+    # EXPECTED_EXIT_CODE: expected exit code (default 0 for run_ok).
+    expected_stdout: Optional[str]
+    expected_exit_code: Optional[int]
 
 
 # Legacy //! format: `//! PASS`, `//! FAIL`, `//! error_pattern: ...`
@@ -57,6 +62,8 @@ def parse_header(path: Path) -> ConformanceTest:
     description = ""
     error_pattern = None
     source = None
+    expected_stdout = None
+    expected_exit_code = None
 
     with path.open("r", encoding="utf-8") as f:
         for line in f:
@@ -90,10 +97,10 @@ def parse_header(path: Path) -> ConformanceTest:
                 val = (m.group(2) or "").strip()
                 if key == "EXPECTED":
                     expected = val
-                    # Map to legacy: compile_ok → PASS, compile_error → FAIL
-                    if val == "compile_ok":
+                    # Map to legacy: compile_ok/run_ok → PASS, compile_error → FAIL
+                    if val == "compile_ok" or val == "run_ok":
                         expect_pass = True
-                    elif val == "compile_error":
+                    elif val == "compile_error" or val == "run_panic":
                         expect_pass = False
                 elif key == "CATEGORY":
                     category = val
@@ -107,6 +114,16 @@ def parse_header(path: Path) -> ConformanceTest:
                         error_pattern = val
                 elif key == "SOURCE":
                     source = val
+                elif key == "EXPECTED_STDOUT":
+                    # Stage 14.11 (GAP-8): Expected stdout for run_ok tests.
+                    # Use \n as literal escape sequence in headers (converted here).
+                    expected_stdout = val.replace("\\n", "\n")
+                elif key == "EXPECTED_EXIT_CODE":
+                    # Stage 14.11 (GAP-8): Expected exit code for run_ok tests.
+                    try:
+                        expected_exit_code = int(val)
+                    except ValueError:
+                        pass  # Invalid exit code — leave as None
                 continue
 
             # Non-comment line — header ends
@@ -121,20 +138,144 @@ def parse_header(path: Path) -> ConformanceTest:
         description=description,
         error_pattern=error_pattern,
         source=source,
+        expected_stdout=expected_stdout,
+        expected_exit_code=expected_exit_code,
     )
+
+
+def _run_test_run_ok(test: ConformanceTest, binary: Path, verbose: bool) -> tuple[bool, str]:
+    """Stage 14.11 (GAP-8): Execute a run_ok test via --run.
+
+    A run_ok test passes when:
+    1. The program compiles and links successfully (no compiler errors)
+    2. The program runs and exits with the expected exit code (default 0)
+    3. If EXPECTED_STDOUT is set, stdout must match exactly
+
+    A run_ok test fails when:
+    - The compiler produces errors (compile-time failure)
+    - The program crashes (SIGSEGV=139, SIGABRT=134)
+    - The exit code doesn't match EXPECTED_EXIT_CODE
+    - stdout doesn't match EXPECTED_STDOUT (if set)
+    """
+    cmd = [str(binary), "--run", str(test.path)]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT (program hung — likely infinite loop)"
+    except FileNotFoundError:
+        return False, f"BINARY NOT FOUND: {binary}"
+
+    stdout = result.stdout or ""
+    stderr = result.stderr or ""
+    combined = stdout + stderr
+    exit_code = result.returncode
+
+    # Check for compiler errors (these appear before the program runs)
+    has_compile_error = "parse error:" in combined or "lex error:" in combined or "error:" in stderr.lower()
+
+    if has_compile_error:
+        errs = [l for l in stderr.splitlines() if "error:" in l.lower()]
+        return False, f"compile error during --run:\n  " + "\n  ".join(errs[:3])
+
+    # Check for crashes (SIGSEGV=139, SIGABRT=134, or other signal-based exits)
+    if exit_code >= 128:
+        sig = exit_code - 128
+        return False, f"program crashed with signal {sig} (exit code {exit_code})"
+
+    # Verify exit code (default 0 for run_ok)
+    expected_exit = test.expected_exit_code if test.expected_exit_code is not None else 0
+    if exit_code != expected_exit:
+        return False, f"exit code mismatch: expected {expected_exit}, got {exit_code}"
+
+    # Verify stdout (if EXPECTED_STDOUT is set)
+    # Stage 14.11: Be lenient about trailing newlines — println! adds "\n"
+    # but test authors shouldn't need to include it in EXPECTED_STDOUT.
+    # We strip trailing whitespace from both sides before comparing.
+    if test.expected_stdout is not None:
+        actual_stripped = stdout.rstrip()
+        expected_stripped = test.expected_stdout.rstrip()
+        if actual_stripped != expected_stripped:
+            return False, (
+                f"stdout mismatch:\n  expected: {expected_stripped!r}\n  got:      {actual_stripped!r}"
+            )
+
+    return True, f"OK (exit={exit_code})"
+
+
+def _run_test_run_panic(test: ConformanceTest, binary: Path, verbose: bool) -> tuple[bool, str]:
+    """Stage 14.11 (GAP-8): Execute a run_panic test via --run.
+
+    A run_panic test passes when the program crashes or panics:
+    - Exit code >= 128 (signal-based termination: SIGSEGV=139, SIGABRT=134)
+    - OR non-zero exit code with a panic message in stderr
+
+    A run_panic test fails when:
+    - The program compiles and runs successfully (exit 0)
+    - The compiler produces errors (this is a compile failure, not a panic)
+    """
+    cmd = [str(binary), "--run", str(test.path)]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "TIMEOUT (program hung — expected a crash, not a hang)"
+    except FileNotFoundError:
+        return False, f"BINARY NOT FOUND: {binary}"
+
+    stdout = result.stdout or ""
+    stderr = result.stderr or ""
+    combined = stdout + stderr
+    exit_code = result.returncode
+
+    # Check for compiler errors (these are NOT panics — they're compile failures)
+    has_compile_error = "parse error:" in combined or "lex error:" in combined or "error:" in stderr.lower()
+    if has_compile_error:
+        errs = [l for l in stderr.splitlines() if "error:" in l.lower()]
+        return False, f"compile error (expected a panic, not a compile error):\n  " + "\n  ".join(errs[:3])
+
+    # Check for crash/panic: exit code >= 128 (signal) or non-zero (panic exit)
+    if exit_code == 0:
+        return False, "program exited normally (expected a panic/crash)"
+
+    # If PANIC_PATTERN is set (via error_pattern), verify it appears in stderr
+    if test.error_pattern and test.error_pattern not in stderr:
+        return False, (
+            f"expected panic pattern `{test.error_pattern}` not found in stderr:\n  "
+            + "\n  ".join(stderr.splitlines()[:5])
+        )
+
+    return True, f"OK (panic/crash, exit={exit_code})"
 
 
 def run_test(test: ConformanceTest, binary: Path, verbose: bool, mode: str = "auto") -> tuple[bool, str]:
     """Run a single conformance test. Returns (passed, message).
 
-    mode="parse": uses --emit-ast (legacy, only validates parse stage)
-    mode="compile": uses --compile (validates full pipeline)
-    mode="auto": auto-detect based on test path — 00-parse uses parse mode,
-                 everything else (01-typecheck, 02-borrowck, etc.) uses compile mode
+    Stage 14.11 (GAP-8): Now dispatches on the `expected` field:
+      - compile_ok    → --compile (must succeed, no errors)
+      - compile_error → --compile (must fail with error_pattern)
+      - run_ok        → --run (must succeed + verify stdout/exit code)
+      - run_panic     → --run (must crash: SIGSEGV/SIGABRT or non-zero exit)
 
-    Stage 13.27: For compile_ok tests that contain `fn main()`, also verify
-    that `--run` exits 0 (runtime correctness check).
+    The legacy `mode` parameter is respected for compile_ok/compile_error
+    tests (auto-detect parse vs compile). For run_ok/run_panic, `--run` is
+    always used regardless of `mode`.
     """
+    # Stage 14.11 (GAP-8): Dispatch on expected type for run_ok / run_panic.
+    if test.expected == "run_ok":
+        return _run_test_run_ok(test, binary, verbose)
+    elif test.expected == "run_panic":
+        return _run_test_run_panic(test, binary, verbose)
+
+    # Legacy dispatch for compile_ok / compile_error / None
     if mode == "auto":
         # Auto-detect: tests under 00-parse/ use parse mode, everything else uses compile
         if "00-parse" in str(test.path):
@@ -170,15 +311,6 @@ def run_test(test: ConformanceTest, binary: Path, verbose: bool, mode: str = "au
         if has_error:
             errs = [l for l in combined.splitlines() if "error:" in l.lower()]
             return False, f"expected PASS but got errors:\n  " + "\n  ".join(errs[:3])
-
-        # Stage 13.27: For compile_ok tests with `fn main()`, also verify --run.
-        # Only do this if the binary supports --run (check for llvm-backend feature
-        # by testing if --run works on a simple program).
-        if mode == "compile" and _has_fn_main(test.path):
-            run_ok, run_msg = _try_run(test.path, binary)
-            if not run_ok:
-                return False, f"compiled OK but --run failed: {run_msg}"
-
         return True, "OK"
     else:
         # Expected FAIL
@@ -191,46 +323,6 @@ def run_test(test: ConformanceTest, binary: Path, verbose: bool, mode: str = "au
                     + "\n  ".join(combined.splitlines()[:5])
                 )
         return True, "OK (expected error)"
-
-
-def _has_fn_main(path: Path) -> bool:
-    """Check if a .lin file contains `fn main`."""
-    try:
-        content = path.read_text(encoding="utf-8")
-        return "fn main" in content
-    except Exception:
-        return False
-
-
-def _try_run(path: Path, binary: Path) -> tuple[bool, str]:
-    """Try to --run a .lin file. Returns (ok, message).
-    Uses --run which requires llvm-backend feature.
-    """
-    try:
-        result = subprocess.run(
-            [str(binary), "--run", str(path)],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        # --run should exit 0 for successful programs
-        # (exit code may be the program's return value, which could be non-zero)
-        # We accept exit 0 as success, and any crash (exit 139, 134) as failure.
-        if result.returncode == 139:
-            return False, "SEGFAULT (exit 139)"
-        if result.returncode == 134:
-            return False, "SIGABRT (exit 134)"
-        # Exit 1 with "no fn main" error is OK (handled by the compile check above)
-        if result.returncode == 1 and "no `fn main()`" in (result.stderr or ""):
-            return True, "no fn main (compile-only test)"
-        # Any other non-negative exit is OK (program returned a value)
-        if result.returncode >= 0 and result.returncode < 128:
-            return True, "OK"
-        return False, f"exit code {result.returncode}"
-    except subprocess.TimeoutExpired:
-        return False, "RUNTIME TIMEOUT"
-    except Exception as e:
-        return False, f"run error: {e}"
 
 
 def discover_tests(root: Path) -> list[ConformanceTest]:

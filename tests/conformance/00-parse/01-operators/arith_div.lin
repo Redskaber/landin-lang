@@ -2,4 +2,4 @@
 //! category: operators
 //! description: division operator
 //! source: Stage 9.2 conformance expansion
-fn f() { let _ = 20 / 5; }
+fn main() { let _ = 20 / 5; }

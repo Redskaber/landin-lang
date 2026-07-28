@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 mod foo{pub trait T{fn f(&self)->i32;}}
+fn main(){ 0 }

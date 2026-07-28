@@ -2,4 +2,4 @@
 //! category: operators
 //! description: chained addition (left assoc)
 //! source: Stage 9.2 conformance expansion
-fn f() { let _ = 1 + 2 + 3 + 4; }
+fn main() { let _ = 1 + 2 + 3 + 4; }

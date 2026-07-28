@@ -2,4 +2,4 @@
 //! category: operators
 //! description: compound assignment ^=
 //! source: Stage 9.2 conformance expansion
-fn f() { let mut x: i32 = 0; x ^= 0xff; }
+fn main() { let mut x: i32 = 0; x ^= 0xff; }

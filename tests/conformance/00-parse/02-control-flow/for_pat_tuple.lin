@@ -3,3 +3,4 @@
 //! description: for with tuple pattern
 //! source: Stage 9.3 conformance expansion
 fn f(pairs: [(i32, i32); 3]) { for (i, v) in pairs { let _ = i + v; } }
+fn main(){ f([(0,0);3]); }

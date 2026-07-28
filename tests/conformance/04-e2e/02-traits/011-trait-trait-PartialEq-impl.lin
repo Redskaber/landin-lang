@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 trait PartialEq{fn eq(&self,other:&Self)->bool;} struct S{x:i32} impl PartialEq for S{fn eq(&self,other:&Self)->bool{self.x==other.x}}
+fn main(){ let _ = S{x: 0}; }

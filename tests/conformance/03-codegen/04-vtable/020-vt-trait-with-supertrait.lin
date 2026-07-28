@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 trait Base{fn b(&self);} trait Derived:Base{fn d(&self);}
+fn main(){ 0 }

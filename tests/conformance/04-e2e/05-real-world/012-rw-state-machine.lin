@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 enum State{Idle,Run,Stop} fn next(s:State)->State{match s{State::Idle=>State::Run,State::Run=>State::Stop,State::Stop=>State::Idle}}
+fn main(){ let _ = State::Idle; let _ = next(State::Idle); }

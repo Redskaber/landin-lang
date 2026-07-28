@@ -3,3 +3,4 @@
 //! description: lifetime in trait
 //! source: Stage 9.7 conformance expansion
 trait T<'a> { fn f(&self, x: &'a i32); }
+fn main(){ 0 }

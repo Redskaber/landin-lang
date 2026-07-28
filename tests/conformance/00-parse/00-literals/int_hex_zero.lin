@@ -2,4 +2,4 @@
 //! category: literals
 //! description: zero hex literal
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = 0x0; }
+fn main() { let _ = 0x0; }

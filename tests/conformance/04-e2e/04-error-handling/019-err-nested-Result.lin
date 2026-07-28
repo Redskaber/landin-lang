@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 enum Res{Ok(i32),Err(i32)} fn f(r1:Res,r2:Res)->i32{match r1{Res::Ok(a)=>match r2{Res::Ok(b)=>a+b,Res::Err(_)=>-1},Res::Err(_)=>-1}}
+fn main(){ let _ = Res::Ok(0); }

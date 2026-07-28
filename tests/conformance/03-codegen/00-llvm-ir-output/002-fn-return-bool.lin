@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 10.3 conformance expansion
 
-fn f() -> bool { true }
+fn main() -> bool { true }

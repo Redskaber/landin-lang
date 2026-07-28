@@ -5,3 +5,4 @@
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
 
 trait Display { fn display(&self) -> i32; } struct Foo { x: i32 } impl Display for Foo { fn display(&self) -> i32 { self.x } }
+fn main(){ let _ = Foo{x: 0}; }

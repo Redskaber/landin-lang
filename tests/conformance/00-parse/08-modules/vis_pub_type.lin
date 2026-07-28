@@ -3,3 +3,4 @@
 //! description: pub type alias
 //! source: Stage 9.9 conformance expansion
 pub type T = i32;
+fn main(){ 0 }

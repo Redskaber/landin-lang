@@ -2,4 +2,4 @@
 //! category: types
 //! description: empty tuple (unit) type
 //! source: Stage 9.5 conformance expansion
-fn f() { let x: () = (); }
+fn main() { let x: () = (); }

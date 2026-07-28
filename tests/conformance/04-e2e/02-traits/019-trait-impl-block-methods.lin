@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 struct S{x:i32} impl S{fn new()->S{S{x:0}}fn get(&self)->i32{self.x}fn set(&mut self,v:i32){self.x=v}}
+fn main(){ 0 }

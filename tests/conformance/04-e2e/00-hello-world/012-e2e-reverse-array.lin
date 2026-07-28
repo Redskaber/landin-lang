@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 fn rev(arr:&mut[i32;5]){let mut lo=0;let mut hi=4;while lo<hi{let t=arr[lo];arr[lo]=arr[hi];arr[hi]=t;lo+=1;hi-=1;}}
+fn main(){ 0 }

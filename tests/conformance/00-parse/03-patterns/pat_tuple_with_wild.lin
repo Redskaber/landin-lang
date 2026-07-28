@@ -2,4 +2,4 @@
 //! category: patterns
 //! description: tuple with wildcard
 //! source: Stage 9.4 conformance expansion
-fn f() { let (a, _) = (1, 2); }
+fn main() { let (a, _) = (1, 2); }

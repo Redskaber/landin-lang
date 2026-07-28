@@ -3,3 +3,4 @@
 //! description: pub enum
 //! source: Stage 9.9 conformance expansion
 pub enum E { A, B }
+fn main(){ let _ = E::A; }

@@ -3,3 +3,4 @@
 //! description: reduce closure pattern
 //! source: Stage 9.11 conformance expansion
 fn reduce(arr: [i32; 5]) -> i32 { let mut sum = 0; let g = |acc: i32, x: i32| acc + x; let mut i = 0; while i < 5 { sum = g(sum, arr[i]); i += 1; } sum }
+fn main(){ let _ = reduce([0;5]); }

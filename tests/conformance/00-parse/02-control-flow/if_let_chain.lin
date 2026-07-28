@@ -3,3 +3,4 @@
 //! description: if_let_chain now supported (Stage 13.2 TD-031 closure)
 //! source: Stage 9.3 conformance expansion
 enum Opt<T> { Some(T), None } fn f(x: Opt<i32>, y: Opt<i32>) { if let Opt::Some(a) = x { if let Opt::Some(b) = y { let _ = a + b; } } }
+fn main(){ let _ = Opt::Some; }

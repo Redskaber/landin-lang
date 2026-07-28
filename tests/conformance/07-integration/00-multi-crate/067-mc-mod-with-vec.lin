@@ -4,4 +4,4 @@
 // ERROR_PATTERN: error
 // SOURCE: Stage 11.6+11.7 expansion (Stage 0 limitation)
 
-mod m{fn f(){let v=vec![];}
+mod m{fn main(){let v=vec![];}

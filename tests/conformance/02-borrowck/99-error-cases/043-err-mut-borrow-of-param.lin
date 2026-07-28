@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.2 borrowck expansion
 
 fn f(x:&mut i32) { *x=2; }
+fn main(){ let mut _r0 = 0; f(&mut _r0); }

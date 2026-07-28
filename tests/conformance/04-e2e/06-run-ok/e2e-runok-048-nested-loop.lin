@@ -1,0 +1,23 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok nested loop with break (3x3 grid count)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: count=9
+// EXPECTED_EXIT_CODE: 9
+// SOURCE: Stage 14.33 — nested loop + break verification
+
+fn main() -> i32 {
+    let mut count = 0;
+    let mut i = 0;
+    loop {
+        if i >= 3 { break; }
+        let mut j = 0;
+        loop {
+            if j >= 3 { break; }
+            count += 1;
+            j += 1;
+        }
+        i += 1;
+    }
+    println!("count={}", count);
+    count
+}

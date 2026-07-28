@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: while with break
 //! source: Stage 9.3 conformance expansion
-fn f() { while true { break; } }
+fn main() { while true { break; } }

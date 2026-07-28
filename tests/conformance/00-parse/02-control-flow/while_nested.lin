@@ -3,3 +3,4 @@
 //! description: nested while loops
 //! source: Stage 9.3 conformance expansion
 fn f(a: bool, b: bool) { while a { while b { } } }
+fn main(){ f(false,false); }

@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 enum Res{Ok(i32),Err(i32)} fn unwrap(r:Res,d:i32)->i32{match r{Res::Ok(v)=>v,Res::Err(_)=>d}}
+fn main(){ let _ = Res::Ok(0); }

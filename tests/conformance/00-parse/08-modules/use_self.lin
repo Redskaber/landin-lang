@@ -3,3 +3,4 @@
 //! description: use with self path
 //! source: Stage 9.9 conformance expansion
 mod m { use self::foo; }
+fn main(){ 0 }

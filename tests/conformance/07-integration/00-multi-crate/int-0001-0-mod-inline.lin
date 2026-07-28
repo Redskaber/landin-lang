@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.9 batch expansion
 
 mod m{}
+fn main(){ 0 }

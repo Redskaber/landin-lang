@@ -5,3 +5,4 @@
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
 
 trait T { fn f(&self) -> i32; } struct A; struct B; impl T for A { fn f(&self) -> i32 { 1 } } impl T for B { fn f(&self) -> i32 { 2 } }
+fn main(){ let _ = A; let _ = B; }

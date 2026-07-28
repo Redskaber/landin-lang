@@ -2,4 +2,4 @@
 //! category: types
 //! description: *const raw pointer type
 //! source: Stage 9.5 conformance expansion
-fn f() { let x: *const i32 = std::ptr::null(); }
+fn main() { let x: *const i32 = std::ptr::null(); }

@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.5 soundness expansion
 
-extern "C"{fn a();fn b();fn c();}
+extern "C"{fn main();fn b();fn c();}

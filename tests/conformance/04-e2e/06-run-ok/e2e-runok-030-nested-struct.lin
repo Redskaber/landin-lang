@@ -1,0 +1,13 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok nested struct construction + field access (GAP-32 fix)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: tl.x=0, br.y=20
+// SOURCE: Stage 14.22 — nested struct field type resolution fix
+
+struct Point { x: i32, y: i32 }
+struct Rect { tl: Point, br: Point }
+fn main() -> i32 {
+    let r = Rect { tl: Point { x: 0, y: 0 }, br: Point { x: 10, y: 20 } };
+    println!("tl.x={}, br.y={}", r.tl.x, r.br.y);
+    0
+}

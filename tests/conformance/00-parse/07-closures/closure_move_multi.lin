@@ -2,4 +2,4 @@
 //! category: closures
 //! description: move closure with multi params
 //! source: Stage 9.8 conformance expansion
-fn f() { let _ = move |x, y| x + y; }
+fn main() { let _ = move |x, y| x + y; }

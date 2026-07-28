@@ -3,4 +3,4 @@
 //! description: leading zeros in decimal must error
 //! error_pattern: leading zeros not allowed
 //! source: Stage 9.10 conformance expansion
-fn f() { let _ = 007; }
+fn main() { let _ = 007; }

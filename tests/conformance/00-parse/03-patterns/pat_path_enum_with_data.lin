@@ -3,3 +3,4 @@
 //! description: enum path pattern with tuple data
 //! source: Stage 9.4 conformance expansion
 enum E { A(i32), B } fn f(e: E) -> i32 { match e { E::A(_) => 1, _ => 0 } }
+fn main(){ let _ = E::A(0); }

@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.1 conformance expansion
 
 struct Vec<T> { data: [T; 0] } struct S<T> { v: Vec<T> }
+fn main(){ 0 }

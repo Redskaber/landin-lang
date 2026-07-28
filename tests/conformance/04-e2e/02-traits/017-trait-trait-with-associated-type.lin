@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
 
 trait T{type Item;fn get(&self)->i32;} struct S; impl T for S{type Item=i32;fn get(&self)->i32{0}}
+fn main(){ let _ = S; }

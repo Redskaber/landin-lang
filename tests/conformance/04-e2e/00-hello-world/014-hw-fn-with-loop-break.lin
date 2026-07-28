@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.4 e2e expansion
 
-fn f()->i32{loop{break 42;}}
+fn main()->i32{loop{break 42;}}

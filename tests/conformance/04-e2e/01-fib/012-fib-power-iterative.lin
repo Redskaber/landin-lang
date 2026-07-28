@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 fn pow(base:i32,exp:i32)->i32{let mut r=1;let mut i=0;while i<exp{r*=base;i+=1;}r}
+fn main(){ let _ = pow(0,0); }

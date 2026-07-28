@@ -2,4 +2,4 @@
 //! category: closures
 //! description: nested closure with capture
 //! source: Stage 9.8 conformance expansion
-fn f() { let a = 1; let g = || { let b = 2; || a + b }; }
+fn main() { let a = 1; let g = || { let b = 2; || a + b }; }

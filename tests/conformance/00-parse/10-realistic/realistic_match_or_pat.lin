@@ -3,3 +3,4 @@
 //! description: match with or-pattern
 //! source: Stage 9.11 conformance expansion
 fn or_match(x: i32) -> i32 { match x { 1 | 2 | 3 => 1, 4 | 5 | 6 => 2, _ => 0 } }
+fn main(){ let _ = or_match(0); }

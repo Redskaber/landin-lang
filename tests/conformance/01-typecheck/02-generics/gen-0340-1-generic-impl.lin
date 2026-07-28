@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.9 batch expansion
 
 struct S<T>{x:T} impl<T> S<T>{fn get(&self)->&T{&self.x}}
+fn main(){ 0 }

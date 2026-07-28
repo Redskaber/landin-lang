@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.5 soundness expansion
 
-fn f()->*const i32{0 as *const i32}
+fn main()->*const i32{0 as *const i32}

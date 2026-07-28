@@ -1,7 +1,7 @@
 // CATEGORY: borrowck
 // DESCRIPTION: borrow inside while block
 // EXPECTED: compile_ok
-// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 10.2 conformance expansion (Stage 0 limitation)
 
 fn main() { let mut x = 1; while x > 0 { let r = &x; x -= 1; } }

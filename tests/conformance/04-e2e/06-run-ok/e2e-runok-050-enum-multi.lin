@@ -1,0 +1,23 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok enum with multiple data variants (Ok/Err pattern)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: a=42 b=-5
+// EXPECTED_EXIT_CODE: 37
+// SOURCE: Stage 14.34 — enum multi-variant + match binding verification
+
+enum Result {
+    Ok(i32),
+    Err(i32),
+}
+fn unwrap(r: Result) -> i32 {
+    match r {
+        Result::Ok(v) => { v }
+        Result::Err(e) => { 0 - e }
+    }
+}
+fn main() -> i32 {
+    let a = unwrap(Result::Ok(42));
+    let b = unwrap(Result::Err(5));
+    println!("a={} b={}", a, b);
+    a + b
+}

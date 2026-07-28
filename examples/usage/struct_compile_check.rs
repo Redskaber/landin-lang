@@ -17,10 +17,7 @@ fn main() {
             "struct Pair(i32, i64); fn f() -> i64 { let p = Pair(1, 2); p.0 }",
             "tuple struct + field access",
         ),
-        (
-            "struct Unit; fn f() { let _u = Unit; }",
-            "unit struct",
-        ),
+        ("struct Unit; fn f() { let _u = Unit; }", "unit struct"),
         (
             "struct Empty { } fn f() { let _e = Empty { }; }",
             "empty struct",

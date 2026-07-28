@@ -267,12 +267,37 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
     if let Some(expr) = &block.expr {
         lower_expr_to_operand(cx, expr)
     } else {
-        // No trailing expr → unit
-        cx.eval_rvalue_to_temp(
-            Rvalue::Aggregate(AggregateKind::Tuple, vec![]),
-            Ty::new(TyKind::Tuple(vec![]), block.span),
-            block.span,
-        )
+        // Stage 14.22: Check if the last statement diverges (return with value,
+        // break, continue). If so, the block type is Never (control flow
+        // doesn't reach here). This allows `fn f() -> i32 { return 42; }` to
+        // typecheck (Never unifies with i32).
+        // Note: `return;` (no value) is NOT treated as diverging here — typeck
+        // will catch the mismatch when the function expects i32 but return
+        // provides ().
+        let last_diverges = block.stmts.iter().rev().any(|stmt| {
+            if let HirStmt::Expr(e, _) = stmt {
+                matches!(
+                    &e.kind,
+                    HirExprKind::Return { expr: Some(_), .. }
+                        | HirExprKind::Break { .. }
+                        | HirExprKind::Continue
+                )
+            } else {
+                false
+            }
+        });
+        if last_diverges {
+            // Block diverges — return Never type (unifies with anything)
+            cx.mir
+                .new_local(Ty::new(TyKind::Never, block.span), None, block.span)
+        } else {
+            // No trailing expr, no divergence → unit
+            cx.eval_rvalue_to_temp(
+                Rvalue::Aggregate(AggregateKind::Tuple, vec![]),
+                Ty::new(TyKind::Tuple(vec![]), block.span),
+                block.span,
+            )
+        }
     }
 }
 
@@ -495,12 +520,16 @@ pub(crate) fn lower_match(
 
         // Lower the arm body
         let arm_result = lower_expr_to_operand(cx, &arm.body);
-        cx.push_assign(
-            Place::local(result_local, span),
-            Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
-            arm.span,
-        );
-        cx.terminate(Terminator::Goto(cont_block));
+        // Stage 14.34: If the arm body diverged (e.g. `return` inside match arm),
+        // the current block is already terminated. Skip the assignment + Goto.
+        if !cx.is_terminated() {
+            cx.push_assign(
+                Place::local(result_local, span),
+                Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
+                arm.span,
+            );
+            cx.terminate(Terminator::Goto(cont_block));
+        }
     }
 
     // Lower the otherwise block (for non-literal patterns)

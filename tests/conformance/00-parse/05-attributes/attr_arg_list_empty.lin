@@ -2,4 +2,4 @@
 //! category: attributes
 //! description: attribute with empty list
 //! source: Stage 9.6 conformance expansion
-#[foo()] fn f() {}
+#[foo()] fn main() {}

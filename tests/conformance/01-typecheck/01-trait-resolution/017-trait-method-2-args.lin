@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.1 conformance expansion
 
 trait BinOp { fn op(&self, a: i32, b: i32) -> i32; } struct Add; impl BinOp for Add { fn op(&self, a: i32, b: i32) -> i32 { a + b } }
+fn main(){ let _ = Add; }

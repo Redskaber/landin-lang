@@ -3,3 +3,4 @@
 //! description: closure capturing multiple vars
 //! source: Stage 9.11 conformance expansion
 fn capture(a: i32, b: i32) { let f = || a + b; let _ = f(); }
+fn main(){ capture(0,0); }

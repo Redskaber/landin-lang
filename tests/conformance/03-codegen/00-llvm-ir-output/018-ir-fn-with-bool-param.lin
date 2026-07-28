@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 fn f(b:bool)->i32{if b{1}else{0}}
+fn main(){ let _ = f(false); }

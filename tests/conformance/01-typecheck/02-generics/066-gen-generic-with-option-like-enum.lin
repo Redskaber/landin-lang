@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.1 typecheck expansion
 
-enum Option<T> { Some(T), None } fn f() -> Option<i32> { Option::Some(42) }
+enum Option<T> { Some(T), None } fn main() -> Option<i32> { Option::Some(42) }

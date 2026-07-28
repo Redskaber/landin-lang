@@ -2,4 +2,4 @@
 //! category: literals
 //! description: large decimal integer with underscores
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = 1_000_000; }
+fn main() { let _ = 1_000_000; }

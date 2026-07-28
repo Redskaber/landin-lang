@@ -2,4 +2,4 @@
 //! category: types
 //! description: mutable reference type
 //! source: Stage 9.5 conformance expansion
-fn f() { let mut v: i32 = 1; let x: &mut i32 = &mut v; }
+fn main() { let mut v: i32 = 1; let x: &mut i32 = &mut v; }

@@ -3,3 +3,4 @@
 //! description: chained postfix ops
 //! source: Stage 9.2 conformance expansion
 struct P { v: Vec<i32> } fn f(p: P) { let _ = p.v.len(); }
+fn main(){ 0 }

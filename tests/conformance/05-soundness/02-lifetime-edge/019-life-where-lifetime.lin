@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 fn f<'a,'b>(x:&'a i32,y:&'b i32) where 'a:'b{}
+fn main(){ 0 }

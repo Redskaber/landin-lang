@@ -3,3 +3,4 @@
 //! description: || and && precedence (&& higher)
 //! source: Stage 9.2 conformance expansion
 fn f(a: bool, b: bool, c: bool) { let _ = a || b && c; }
+fn main(){ f(false,false,false); }

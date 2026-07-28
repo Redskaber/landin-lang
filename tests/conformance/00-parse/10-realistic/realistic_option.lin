@@ -3,3 +3,4 @@
 //! description: Option enum
 //! source: Stage 9.11 conformance expansion
 enum Option<T> { Some(T), None } fn unwrap_or<T>(o: Option<T>, default: T) -> T { match o { Option::Some(v) => v, Option::None => default } }
+fn main(){ let _ = Option::Some; }

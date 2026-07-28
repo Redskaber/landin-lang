@@ -3,3 +3,4 @@
 //! description: struct slice type
 //! source: Stage 9.5 conformance expansion
 struct P { x: i32 } fn f(arr: [P; 2]) { let x: &[P] = &arr; }
+fn main(){ let _ = P{x: 0}; }

@@ -3,3 +3,4 @@
 //! description: || higher than = (precedence)
 //! source: Stage 9.2 conformance expansion
 fn f(a: bool, b: bool) { let mut x = false; x = a || b; }
+fn main(){ f(false,false); }

@@ -3,3 +3,4 @@
 //! description: wildcard in match arm
 //! source: Stage 9.4 conformance expansion
 fn f(x: i32) -> i32 { match x { _ => 0 } }
+fn main(){ let _ = f(0); }

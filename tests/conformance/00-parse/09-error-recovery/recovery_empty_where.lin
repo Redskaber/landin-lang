@@ -3,3 +3,4 @@
 //! description: empty where clause parses via synthetic node recovery (per §2)
 //! source: Stage 9.10 conformance expansion
 fn f<T>() where {}
+fn main(){ 0 }

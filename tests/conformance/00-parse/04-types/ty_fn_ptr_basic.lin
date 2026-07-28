@@ -2,4 +2,4 @@
 //! category: types
 //! description: basic fn pointer type
 //! source: Stage 9.5 conformance expansion
-fn g(x: i32) -> i32 { x } fn f() { let fp: fn(i32) -> i32 = g; }
+fn g(x: i32) -> i32 { x } fn main() { let fp: fn(i32) -> i32 = g; }

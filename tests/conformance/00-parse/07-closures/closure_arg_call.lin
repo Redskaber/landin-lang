@@ -2,4 +2,4 @@
 //! category: closures
 //! description: closure called immediately
 //! source: Stage 9.8 conformance expansion
-fn f() { let _ = (|x: i32| x)(42); }
+fn main() { let _ = (|x: i32| x)(42); }

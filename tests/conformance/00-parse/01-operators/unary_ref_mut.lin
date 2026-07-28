@@ -3,3 +3,4 @@
 //! description: unary mutable borrow prefix
 //! source: Stage 9.2 conformance expansion
 fn f(x: &mut i32) { let _ = &mut *x; }
+fn main(){ let _ref_0 = 0; f(&_ref_0); }

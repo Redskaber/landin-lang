@@ -3,3 +3,4 @@
 //! description: PartialOrd trait pattern
 //! source: Stage 9.11 conformance expansion
 trait PartialOrd { fn cmp(&self, other: &Self) -> i32; } struct Foo { x: i32 } impl PartialOrd for Foo { fn cmp(&self, other: &Self) -> i32 { if self.x < other.x { -1 } else { 1 } } }
+fn main(){ let _ = Foo{x: 0}; }

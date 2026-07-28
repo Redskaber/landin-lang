@@ -2,4 +2,4 @@
 //! category: types
 //! description: reference to array type
 //! source: Stage 9.5 conformance expansion
-fn f() { let arr: [i32; 3] = [1, 2, 3]; let x: &[i32; 3] = &arr; }
+fn main() { let arr: [i32; 3] = [1, 2, 3]; let x: &[i32; 3] = &arr; }

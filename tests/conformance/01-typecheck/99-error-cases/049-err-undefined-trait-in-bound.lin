@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 fn f<T: UndefinedTrait>(x: T) {}
+fn main(){ 0 }

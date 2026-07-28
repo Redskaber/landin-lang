@@ -3,3 +3,4 @@
 //! description: derive PartialEq
 //! source: Stage 9.6 conformance expansion
 #[derive(PartialEq)] struct S;
+fn main(){ let _ = S; }

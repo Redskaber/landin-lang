@@ -2,4 +2,4 @@
 //! category: operators
 //! description: + higher than << (precedence)
 //! source: Stage 9.2 conformance expansion
-fn f() { let _ = 1 + 2 << 3; }
+fn main() { let _ = 1 + 2 << 3; }

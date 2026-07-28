@@ -3,3 +3,4 @@
 //! description: lifetime where clause
 //! source: Stage 9.7 conformance expansion
 fn f<'a, 'b>(x: &'a i32, y: &'b i32) where 'a: 'b {}
+fn main(){ 0 }

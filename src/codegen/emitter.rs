@@ -217,6 +217,25 @@ pub trait Emitter {
     /// Emit a type cast (trunc/sext/zext/sitofp/fptosi/fpext/fptrunc).
     fn emit_cast(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue;
 
+    /// Stage 14.12 (GAP-18): Emit a `select` instruction — chooses between
+    /// two values based on a boolean condition, without branching.
+    ///
+    /// LLVM IR: `%result = select i1 %cond, <ty> %true_val, <ty> %false_val`
+    ///
+    /// Used for bool → "true"/"false" string selection in printf codegen
+    /// (avoids the need for diamond control flow in the middle of a print
+    /// statement).
+    ///
+    /// Per API-naming-standard §3: `emit_select` follows the `emit_<noun>`
+    /// pattern consistent with `emit_zext`, `emit_cast`, etc.
+    fn emit_select(
+        &mut self,
+        ty: &EmitType,
+        cond: &EmitValue,
+        true_val: &EmitValue,
+        false_val: &EmitValue,
+    ) -> EmitValue;
+
     // === Aggregates ===
 
     /// Emit a getelementptr for struct field access.

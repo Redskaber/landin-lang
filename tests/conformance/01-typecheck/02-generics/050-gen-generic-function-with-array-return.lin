@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 fn f<T>() -> [T; 0] { [] }
+fn main(){ 0 }

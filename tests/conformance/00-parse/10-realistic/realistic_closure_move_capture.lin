@@ -3,3 +3,4 @@
 //! description: move closure capturing
 //! source: Stage 9.11 conformance expansion
 fn move_capture(x: i32) { let f = move || x; let _ = f(); }
+fn main(){ move_capture(0); }

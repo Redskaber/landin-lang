@@ -2,4 +2,4 @@
 //! category: operators
 //! description: chained assignment (right assoc)
 //! source: Stage 9.2 conformance expansion
-fn f() { let mut a = 0; let mut b = 0; a = b = 5; }
+fn main() { let mut a = 0; let mut b = 0; a = b = 5; }

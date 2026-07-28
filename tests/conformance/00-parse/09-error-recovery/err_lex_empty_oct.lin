@@ -3,4 +3,4 @@
 //! description: empty octal literal must error
 //! error_pattern: octal literal has no digits
 //! source: Stage 9.10 conformance expansion
-fn f() { let _ = 0o; }
+fn main() { let _ = 0o; }

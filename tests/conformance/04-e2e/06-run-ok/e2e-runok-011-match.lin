@@ -1,0 +1,21 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok match expression with enum dispatch
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: a=0, b=1, c=10
+// EXPECTED_EXIT_CODE: 11
+// SOURCE: Stage 14.16 — match + control flow verification
+
+fn classify(n: i32) -> i32 {
+    match n {
+        0 => { 0 }
+        1 => { 1 }
+        _ => { n * 2 }
+    }
+}
+fn main() -> i32 {
+    let a = classify(0);
+    let b = classify(1);
+    let c = classify(5);
+    println!("a={}, b={}, c={}", a, b, c);
+    a + b + c
+}

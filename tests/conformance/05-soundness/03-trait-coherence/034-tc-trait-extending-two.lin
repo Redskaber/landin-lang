@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 trait A{fn a(&self);} trait B{fn b(&self);} trait C:A+B{fn c(&self);}
+fn main(){ 0 }

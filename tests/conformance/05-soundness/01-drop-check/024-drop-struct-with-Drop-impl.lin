@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 trait Drop{fn drop(&mut self);} struct S{x:i32} impl Drop for S{fn drop(&mut self){}}
+fn main(){ let _ = S{x: 0}; }

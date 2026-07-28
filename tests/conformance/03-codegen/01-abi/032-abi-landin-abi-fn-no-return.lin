@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.3 codegen expansion
 
-fn f(){}
+fn main(){ 0 }

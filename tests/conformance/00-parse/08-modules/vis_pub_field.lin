@@ -3,3 +3,4 @@
 //! description: pub struct field
 //! source: Stage 9.9 conformance expansion
 struct S { pub x: i32 }
+fn main(){ let _ = S{x: 0}; }

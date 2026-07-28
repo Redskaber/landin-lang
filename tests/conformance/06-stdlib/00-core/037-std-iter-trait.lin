@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 trait Iterator{fn next(&mut self)->i32;} struct C{n:i32} impl Iterator for C{fn next(&mut self)->i32{self.n+=1;self.n}}
+fn main(){ let _ = C{n: 0}; }

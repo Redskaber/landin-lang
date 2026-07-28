@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 extern "C" { fn f(x: &i32) -> i32; }
+fn main(){ 0 }

@@ -3,3 +3,4 @@
 //! description: reference to struct pattern
 //! source: Stage 9.4 conformance expansion
 struct P { x: i32, y: i32 } fn f(r: &P) { let &P { x, y } = r; }
+fn main(){ let _ = P{x: 0,y: 0}; }

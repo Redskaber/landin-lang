@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.1 typecheck expansion
 
 trait T { fn f(&self) -> i32; } fn g<'a, X: T>(x: &'a X) -> i32 { x.f() }
+fn main(){ 0 }

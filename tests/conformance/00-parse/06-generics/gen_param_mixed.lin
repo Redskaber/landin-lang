@@ -3,3 +3,4 @@
 //! description: mixed param and default
 //! source: Stage 9.7 conformance expansion
 struct S<T, U = i32> { x: T, y: U }
+fn main(){ 0 }

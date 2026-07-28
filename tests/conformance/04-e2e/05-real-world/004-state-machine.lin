@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.4 conformance expansion
 
 enum State { Idle, Running, Stopped } fn next(s: State) -> State { match s { State::Idle => State::Running, State::Running => State::Stopped, State::Stopped => State::Idle } }
+fn main(){ let _ = State::Idle; let _ = next(State::Idle); }

@@ -1,7 +1,8 @@
 // CATEGORY: borrowck
 // DESCRIPTION: borrow of param then move
 // EXPECTED: compile_ok
-// STAGE_13.25: Flipped from compile_error (NLL + Copy fix)
+// STAGE_13.17: Flipped from compile_error (self binding fix)
 // SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
 
 fn f(x:i32) { let r=&x; let y=x; }
+fn main(){ f(0); }

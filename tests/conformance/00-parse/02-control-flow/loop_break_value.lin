@@ -2,4 +2,4 @@
 //! category: control-flow
 //! description: loop with break value
 //! source: Stage 9.3 conformance expansion
-fn f() { let x: i32 = loop { break 42; }; }
+fn main() { let x: i32 = loop { break 42; }; }

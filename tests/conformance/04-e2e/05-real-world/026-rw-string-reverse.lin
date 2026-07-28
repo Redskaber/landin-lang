@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 fn reverse(s:&str)->i32{let mut c=0;let _=s;c}
+fn main(){ let _ = reverse("x"); }

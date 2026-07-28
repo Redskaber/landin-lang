@@ -2,4 +2,4 @@
 //! category: types
 //! description: string array type
 //! source: Stage 9.5 conformance expansion
-fn f() { let x: [&str; 2] = ["a", "b"]; }
+fn main() { let x: [&str; 2] = ["a", "b"]; }

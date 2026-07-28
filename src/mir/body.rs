@@ -78,6 +78,10 @@ pub struct MirBody {
     ///
     /// Per §16: MIR carries the message as data; codegen doesn't need HIR.
     pub println_messages: Vec<String>,
+    /// Stage 14.30: Type errors collected during MIR lowering. These are
+    /// drained by the driver and merged into CompileErrors. Used for
+    /// "报错 > 静默" — emit errors instead of silent placeholders.
+    pub lower_type_errors: Vec<crate::typeck::TypeError>,
 }
 
 impl MirBody {
@@ -89,6 +93,7 @@ impl MirBody {
             adt_layouts: AdtLayouts::new(),
             dyn_trait_calls: Vec::new(),
             println_messages: Vec::new(),
+            lower_type_errors: Vec::new(),
         }
     }
 

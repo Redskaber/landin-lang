@@ -3,3 +3,4 @@
 //! description: derive Debug
 //! source: Stage 9.6 conformance expansion
 #[derive(Debug)] struct S;
+fn main(){ let _ = S; }

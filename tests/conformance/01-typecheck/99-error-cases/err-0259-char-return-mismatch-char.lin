@@ -4,4 +4,4 @@
 // ERROR_PATTERN: error
 // SOURCE: Stage 11.9 batch expansion
 
-fn f()->char{true}
+fn main()->char{true}

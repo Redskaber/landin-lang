@@ -242,12 +242,13 @@ int main(void) {
        via StatementKind::Println → printf("%s", <msg_global>).
        Stage 13.14: eprintln! output routes to __landin_eprint helper.
        No pre-main helper call needed.
-       Stage 13.22: landin_main may be declared as `int landin_main(void)`
-       (when fn main() -> i32) or `void landin_main(void)` (when fn main()
-       has no return type). We always declare it as int; if the actual
-       symbol is void, the C ABI leaves the return register unchanged
-       (typically 0 from the C runtime setup), so `ret` is 0. This is
-       technically UB but works on all major platforms (x86-64, ARM). */
+       Stage 13.22: codegen always emits `define i32 @landin_main(...)` —
+       when `fn main()` has no return type, codegen emits `ret i32 0`
+       (verified by --emit-llvm-ir). The C wrapper declaration
+       `extern int landin_main(void)` is therefore always correct —
+       no UB, no ABI mismatch. The earlier "void landin_main" comment
+       was inaccurate; codegen has never emitted a void landin_main.
+       Stage 14.16 (GAP-20): comment corrected to reflect actual behavior. */
     int ret = landin_main();
     return ret;
 }

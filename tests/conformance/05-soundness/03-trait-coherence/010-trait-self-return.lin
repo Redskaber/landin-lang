@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.5 conformance expansion (Stage 0 limitation — compiler does not catch this)
 
 trait Builder { fn build(&self) -> Self; } struct S { x: i32 } impl Builder for S { fn build(&self) -> Self { S { x: 0 } } }
+fn main(){ let _ = S{x: 0}; }

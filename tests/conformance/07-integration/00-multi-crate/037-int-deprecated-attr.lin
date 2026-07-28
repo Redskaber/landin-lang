@@ -3,4 +3,4 @@
 // EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
-#[deprecated] fn f(){}
+#[deprecated] fn main(){ 0 }

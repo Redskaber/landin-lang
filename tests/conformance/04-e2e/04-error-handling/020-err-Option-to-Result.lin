@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 enum Opt{Some(i32),None} enum Res{Ok(i32),Err(i32)} fn f(o:Opt)->Res{match o{Opt::Some(v)=>Res::Ok(v),Opt::None=>Res::Err(0)}}
+fn main(){ let _ = Opt::Some(0); let _ = Res::Ok(0); }

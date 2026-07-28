@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 fn f(s:&str)->i32{0}
+fn main(){ let _ = f("x"); }

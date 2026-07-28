@@ -1,0 +1,23 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok &mut self field mutation propagation (GAP-31 fix verification)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: before=10\nafter=20
+// SOURCE: Stage 14.19 (GAP-31) — &mut self field mutation now propagates to caller
+
+struct Counter { val: i32 }
+impl Counter {
+    fn new(start: i32) -> Counter { Counter { val: start } }
+    fn increment(&mut self) { self.val += 1; }
+    fn get(self) -> i32 { self.val }
+}
+fn main() -> i32 {
+    let mut c = Counter::new(10);
+    println!("before={}", c.get());
+    let mut i = 0;
+    while i < 10 {
+        c.increment();
+        i += 1;
+    }
+    println!("after={}", c.get());
+    0
+}

@@ -2,4 +2,4 @@
 //! category: literals
 //! description: char with newline escape
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = '\n'; }
+fn main() { let _ = '\n'; }

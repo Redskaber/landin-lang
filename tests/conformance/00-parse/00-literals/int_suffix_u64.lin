@@ -2,4 +2,4 @@
 //! category: literals
 //! description: integer with u64 suffix
 //! source: Stage 9.1 conformance expansion
-fn f() { let _ = 42u64; }
+fn main() { let _ = 42u64; }
