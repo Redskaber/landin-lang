@@ -44,19 +44,34 @@ pub(crate) fn populate_adt_layouts(mir: &mut MirBody, hir: &HirCrate) {
 
     // Register each unique DefId using the Entry API.
     for def_id in def_ids_to_register {
-        if let std::collections::hash_map::Entry::Vacant(e) = mir.adt_layouts.entry(def_id) {
-            if let Some(layout) = build_adt_layout(def_id, hir) {
-                let nested: Vec<DefId> = layout.field_def_ids();
-                e.insert(layout);
-                for nested_id in nested {
-                    if let std::collections::hash_map::Entry::Vacant(ne) =
-                        mir.adt_layouts.entry(nested_id)
-                    {
-                        if let Some(nested_layout) = build_adt_layout(nested_id, hir) {
-                            ne.insert(nested_layout);
-                        }
-                    }
-                }
+        register_adt_layout_recursive(&mut mir.adt_layouts, def_id, hir);
+    }
+}
+
+/// Stage 14.43: Recursively register an ADT layout and all of its nested ADTs.
+///
+/// Previously, `populate_adt_layouts` only registered one level of nesting
+/// (e.g., for L1→L2→L3, it registered L1 and L2 but not L3). This caused
+/// `mir_type_to_emit_type_with_layouts` to return wrong types for deeply
+/// nested structs — L1 would render as `{{i32}}` (2 levels) instead of
+/// `{{{i32}}}` (3 levels), causing LLVM type mismatches.
+///
+/// Per §13.4 (design alignment): the layout registry should be complete —
+/// all reachable ADTs should have their layouts registered. This function
+/// walks the nesting chain recursively until no new ADTs are found.
+fn register_adt_layout_recursive(
+    layouts: &mut std::collections::HashMap<DefId, AdtLayout>,
+    def_id: DefId,
+    hir: &HirCrate,
+) {
+    use std::collections::hash_map::Entry;
+    if let Entry::Vacant(e) = layouts.entry(def_id) {
+        if let Some(layout) = build_adt_layout(def_id, hir) {
+            let nested: Vec<DefId> = layout.field_def_ids();
+            e.insert(layout);
+            // Recursively register all nested ADTs (any depth).
+            for nested_id in nested {
+                register_adt_layout_recursive(layouts, nested_id, hir);
             }
         }
     }

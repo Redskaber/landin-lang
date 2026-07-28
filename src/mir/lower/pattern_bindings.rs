@@ -189,8 +189,34 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
             }
         }
         HirPatKind::Tuple(pats) => {
-            for p in pats {
-                lower_enum_variant_pattern_bindings(cx, scrut_local, p);
+            // Stage 14.47: Handle plain tuple patterns (not enum TupleStruct).
+            // For `match t { (a, b, c) => ... }`, extract each field from the
+            // scrutinee tuple and assign to the binding local.
+            //
+            // Per §13.4 (design alignment): Rust's tuple destructuring in match
+            // arms creates separate bindings for each sub-pattern, just like
+            // let bindings. The previous code only recursed into sub-patterns
+            // but never generated field extraction for plain tuples — causing
+            // bindings to read uninitialized memory (garbage values).
+            for (i, sub_pat) in pats.iter().enumerate() {
+                if let HirPatKind::Ident(_mode, _ident, _) = &sub_pat.kind {
+                    let field_ty = cx.fresh_infer_ty(sub_pat.span);
+                    let binding_local = cx.mir.new_local(field_ty.clone(), None, sub_pat.span);
+                    cx.local_map.insert(sub_pat.hir_id, binding_local);
+                    cx.push_assign(
+                        Place::local(binding_local, sub_pat.span),
+                        Rvalue::Use(Operand::Copy(Place {
+                            kind: PlaceKind::Projection(
+                                Box::new(Place::local(scrut_local, span)),
+                                ProjectionElem::Field(FieldId(i as u32), field_ty),
+                            ),
+                            span: sub_pat.span,
+                        })),
+                        sub_pat.span,
+                    );
+                }
+                // Recurse for nested patterns (e.g., (a, (b, c)))
+                lower_enum_variant_pattern_bindings(cx, scrut_local, sub_pat);
             }
         }
         _ => {}

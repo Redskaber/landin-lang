@@ -31,6 +31,32 @@ impl Resolver {
     // we recurse into the items and register them in a child ModuleNode.
 
     pub(super) fn build_module_tree(&mut self, hir: &HirCrate, interner: &Rodeo) {
+        // Stage 14.42: Pre-collect impl method DefIds so we can skip them
+        // during top-level value namespace registration.
+        //
+        // Without this, two impl blocks with same-named methods (e.g.,
+        // `A::new` and `B::new`) would both be registered as `new` in the
+        // value namespace → "duplicate definition" error.
+        //
+        // Per §13.4 (design alignment): impl methods are accessed via
+        // `Type::method` paths (handled by `impl_method_index`), NOT as
+        // free functions in the value namespace. Registering them there
+        // is both wrong (they're not free functions) and causes collisions.
+        let impl_method_def_ids: std::collections::HashSet<DefId> = {
+            let mut set = std::collections::HashSet::new();
+            for (_, node) in &hir.owners {
+                if let OwnerNode::Item(HirItem::Impl(impl_block)) = node {
+                    for impl_item in &impl_block.items {
+                        if let HirImplItem::Fn(f) = impl_item {
+                            set.insert(f.hir_id.owner);
+                        }
+                    }
+                }
+            }
+            set
+        };
+        self.impl_method_def_ids = impl_method_def_ids;
+
         // Collect top-level registrations + use decls + nested module children.
         let mut registrations: Vec<(DefId, DefKind, Spur)> = Vec::new();
         let mut use_decls: Vec<UseDecl> = Vec::new();
@@ -38,6 +64,15 @@ impl Resolver {
 
         for (def_id, node) in &hir.owners {
             if let OwnerNode::Item(item) = node {
+                // Stage 14.42: Skip impl method owners — they're accessed via
+                // `Type::method` paths (impl_method_index), not as free fns.
+                if let HirItem::Fn(_) = item {
+                    if self.impl_method_def_ids.contains(def_id) {
+                        // Still record the DefKind so codegen can find it.
+                        self.def_kinds.insert(*def_id, DefKind::Fn);
+                        continue;
+                    }
+                }
                 self.collect_item_registration(
                     *def_id,
                     item,

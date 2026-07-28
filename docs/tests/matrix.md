@@ -153,6 +153,12 @@
 | 14.39 | Self return type resolution in query_method_return_type + resolver bug discovered (impl method return type V has res=Unknown) | 0 (partial fix) | ✅ |
 | 14.40 | Resolver fix: process impl_block.items + trait.items signatures inline — method chains now work end-to-end + 2 run_ok tests (multi-step chain, inline chain) | +2 run_ok (5082 total) | ✅ |
 | 14.41 | Static method call correctness (Type::method path resolution via impl_method_index + adt_layouts re-populate after writeback) + 2 run_ok tests (static method side effect, Vec pattern) | +2 run_ok (5084 total) | ✅ |
+| 14.42 | Method chain on MethodCall receivers + auto-deref for Ref + impl method namespace fix (impl_method_def_ids) + 6 run_ok tests + 2 conformance tests updated compile_error→compile_ok | +6 run_ok (5090 total) | ✅ |
+| 14.43 | Nested struct mutation (2-level + 3-level) via compute_place_address + fn_sig_table self_kind-first check + recursive adt_layouts registration + 2 run_ok tests | +2 run_ok (5092 total) | ✅ |
+| 14.44 | Array of structs + LLVMVerifyModule (catches silent IR errors) + 7 fixes (array aggregate, GEP, void call, branch i1, Index receiver, Index writeback) + 2 run_ok tests | +2 run_ok (5094 total) | ✅ |
+| 14.45 | Or-pattern fix in match (was matching all values via wildcard) + audit (closures/strings/math — no bugs) + 3 run_ok tests | +3 run_ok (5097 total) | ✅ |
+| 14.46 | Tuple destructuring in let bindings (was 0 0 0 — only created one local) + field extraction via Projection + 2 run_ok tests | +2 run_ok (5099 total) | ✅ |
+| 14.47 | Match arm tuple destructure (was garbage values) + field extraction for Tuple in pattern_bindings + skip SwitchInt on non-int scrutinee + 2 conformance updated compile_error→compile_ok + 2 run_ok tests | +2 run_ok (5101 total) | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

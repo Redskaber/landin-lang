@@ -1,0 +1,23 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok conditional struct field initialization (different branches) — Stage 14.42
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10 20 30 40 50 60
+// SOURCE: Stage 14.42 — verifies struct construction in if/else if/else branches
+
+struct Point { x: i32, y: i32 }
+fn make_point(cond: i32) -> Point {
+    if cond == 0 {
+        Point { x: 10, y: 20 }
+    } else if cond == 1 {
+        Point { x: 30, y: 40 }
+    } else {
+        Point { x: 50, y: 60 }
+    }
+}
+fn main() -> i32 {
+    let p0 = make_point(0);
+    let p1 = make_point(1);
+    let p2 = make_point(2);
+    println!("{} {} {} {} {} {}", p0.x, p0.y, p1.x, p1.y, p2.x, p2.y);
+    0
+}

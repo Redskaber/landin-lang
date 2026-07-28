@@ -2033,6 +2033,22 @@ fn resolve_inherent_method(
     recv_ty: &Ty,
     method_name: &lasso::Spur,
 ) -> Option<crate::hir::DefId> {
+    // Stage 14.42: Auto-deref Ref/RawPtr to find the underlying ADT type.
+    //
+    // This is needed for method chaining on `&mut self` returns. For example:
+    //   `c.inc().inc().add(10)` — `c.inc()` returns `&mut Counter`, and the
+    //   next `.inc()` call needs to resolve `inc` on `Counter` (the inner
+    //   type of the Ref), not on the Ref itself.
+    //
+    // Per §13.4 (design alignment): Rust's auto-deref is a well-defined
+    // semantic — method lookup follows the receiver's deref chain. We
+    // implement the common case: one level of Ref/RawPtr auto-deref.
+    // Multi-level auto-deref (e.g., `&&mut T`) is deferred.
+    let recv_ty = match &recv_ty.kind {
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => inner,
+        _ => recv_ty,
+    };
+
     // Only ADT types (structs/enums) can have inherent impls.
     let adt_def_id = match &recv_ty.kind {
         TyKind::Adt(def_id, _) => *def_id,
@@ -2270,6 +2286,87 @@ fn resolve_inherent_method_from_hir_expr(
             }
             None
         }
+        // Stage 14.42: MethodCall receiver — `c.inc().inc()` where the receiver
+        // is itself a MethodCall. We resolve the inner method's return type via
+        // `query_method_return_type`, then resolve the target method on that
+        // type (with auto-deref handling Ref returns like `&mut Counter`).
+        //
+        // Per §13.4 (design alignment): this is the proper way to handle
+        // method chaining — we trace through the HIR to find the receiver
+        // type at MIR-lowering time, since typeck doesn't propagate Call
+        // return types to dest locals.
+        HirExprKind::MethodCall {
+            method: recv_method,
+            ..
+        } => {
+            // Resolve the receiver method's DefId by name.
+            if let Some(recv_did) = resolve_method_by_name(hir, &recv_method.name) {
+                // Get the receiver method's return type.
+                if let Some(ret_ty) = query_method_return_type(hir, recv_did) {
+                    // Resolve the target method on the return type.
+                    // `resolve_inherent_method` now handles Ref auto-deref
+                    // (added in Stage 14.42), so `&mut Counter` correctly
+                    // resolves to `Counter`.
+                    return resolve_inherent_method(hir, &ret_ty, method_name);
+                }
+            }
+            None
+        }
+        // Stage 14.44: Index receiver — `arr[i].method()` where the receiver
+        // is an array indexing expression. We need to determine the array's
+        // element type and resolve the method on that type.
+        //
+        // Per §13.4: this mirrors the Call/MethodCall receiver handling —
+        // we trace through the HIR to find the receiver type at MIR-lowering
+        // time, since typeck doesn't fully propagate types through indexing.
+        HirExprKind::Index { receiver, .. } => {
+            // Try to determine the array's element type from the receiver.
+            // If the receiver is a Path (local variable), trace back to its
+            // init type.
+            if let HirExprKind::Path(path) = &receiver.kind {
+                if let crate::hir::Res::Local(hir_id) = path.res {
+                    // Find the array's element type from the local's init.
+                    if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
+                        // If it's an Array, extract the element type.
+                        if let TyKind::Array(elem_ty, _) = &init_ty.kind {
+                            return resolve_inherent_method(hir, elem_ty, method_name);
+                        }
+                        // Otherwise, try resolving on the type directly.
+                        return resolve_inherent_method(hir, &init_ty, method_name);
+                    }
+                    // Stage 14.44b: find_local_init_type failed (e.g., init is
+                    // a static method call). Try find_local_init_expr to get
+                    // the init expression, then resolve via query_method_return_type.
+                    if let Some(init_expr) = find_local_init_expr(hir, hir_id) {
+                        // Static method call init: `[Point::new(1, 2), ...]`
+                        if let HirExprKind::Array { elems, .. } = &init_expr.kind {
+                            if let Some(first_elem) = elems.first() {
+                                // If the first element is a Call (static method),
+                                // resolve its return type.
+                                if let HirExprKind::Call { func, .. } = &first_elem.kind {
+                                    if let HirExprKind::Path(p) = &func.kind {
+                                        if let crate::hir::Res::Def(did, kind) = p.res {
+                                            if matches!(kind, crate::resolve::DefKind::Fn) {
+                                                if let Some(ret_ty) =
+                                                    query_method_return_type(hir, did)
+                                                {
+                                                    return resolve_inherent_method(
+                                                        hir,
+                                                        &ret_ty,
+                                                        method_name,
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
         _ => None,
     }
 }
@@ -2465,6 +2562,26 @@ fn expr_to_adt_type(expr: &HirExpr) -> Option<Ty> {
             // (resolve_inherent_method_from_hir_expr) handles MethodCall
             // separately via query_method_return_type.
             let _ = method;
+            None
+        }
+        // Stage 14.44: Array literal — return Array(elem_ty, N) so callers
+        // can extract the element type. The element type is detected from
+        // the first element via expr_to_adt_type OR query_method_return_type
+        // (for static method calls like `Point::new(1, 2)`).
+        HirExprKind::Array { elems, .. } => {
+            if let Some(first) = elems.first() {
+                // First try expr_to_adt_type (handles struct/enum literals)
+                if let Some(elem_ty) = expr_to_adt_type(first) {
+                    let count_const = crate::mir::ty::Const {
+                        ty: Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span)),
+                        val: crate::mir::ty::ConstVal::Uint(elems.len() as u128),
+                    };
+                    return Some(Ty::new(
+                        TyKind::Array(Box::new(elem_ty), Box::new(count_const)),
+                        expr.span,
+                    ));
+                }
+            }
             None
         }
         _ => None,

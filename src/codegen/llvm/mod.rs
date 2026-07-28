@@ -35,6 +35,7 @@
 use crate::codegen::emitter::*;
 use crate::mir::place::{BinOp, UnOp};
 use crate::mir::ty::ConstVal;
+use llvm_sys::analysis::{LLVMVerifierFailureAction, LLVMVerifyModule};
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use llvm_sys::target_machine::*;
@@ -125,6 +126,23 @@ impl LLVMSysEmitter {
     /// LLVM error.
     pub fn to_object_file(&self, out_path: &str) -> Result<(), String> {
         unsafe {
+            // Stage 14.44: Verify the module before emitting.
+            // This catches invalid IR early (instead of silently producing
+            // empty object files). The error message helps diagnose issues
+            // like type mismatches in insertvalue/extractvalue.
+            let mut verify_err: *mut std::os::raw::c_char = std::ptr::null_mut();
+            let verify_rc = LLVMVerifyModule(
+                self.module,
+                LLVMVerifierFailureAction::LLVMPrintMessageAction,
+                &mut verify_err,
+            );
+            if !verify_err.is_null() {
+                LLVMDisposeMessage(verify_err);
+            }
+            if verify_rc != 0 {
+                return Err("LLVM module verification failed (see messages above)".into());
+            }
+
             // 1. Initialise all targets / asm printers.
             llvm_sys::target::LLVM_InitializeAllTargetInfos();
             llvm_sys::target::LLVM_InitializeAllTargets();
@@ -696,7 +714,37 @@ impl Emitter for LLVMSysEmitter {
             let cond_v = self.lookup(cond);
             let then_bb = self.block_for(then_label);
             let else_bb = self.block_for(else_label);
-            LLVMBuildCondBr(self.builder, cond_v, then_bb, else_bb);
+            // Stage 14.44: Ensure the condition is i1 (boolean).
+            // Comparison operators (Eq/Lt/etc.) produce i1, but the result may
+            // be stored in an i32 alloca (when the local's type is Infer→i32)
+            // and loaded back as i32. LLVM requires br conditions to be i1.
+            // Was: passed i32 directly → "Branch condition is not 'i1' type"
+            // verifier error (caught now that we added LLVMVerifyModule).
+            let cond_ty = LLVMTypeOf(cond_v);
+            let i1_ty = LLVMInt1TypeInContext(self.ctx);
+            let cond_i1 = if LLVMGetTypeKind(cond_ty) == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                && LLVMGetIntTypeWidth(cond_ty) != 1
+            {
+                // Truncate i32 → i1 (non-zero is true)
+                let name_c = CString::new("tobool").unwrap();
+                LLVMBuildTrunc(self.builder, cond_v, i1_ty, name_c.as_ptr())
+            } else if LLVMGetTypeKind(cond_ty) == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                && LLVMGetIntTypeWidth(cond_ty) == 1
+            {
+                cond_v
+            } else {
+                // Other types — try ICMP ne 0 to convert to i1
+                let zero = LLVMConstInt(cond_ty, 0, 0);
+                let name_c = CString::new("tobool").unwrap();
+                LLVMBuildICmp(
+                    self.builder,
+                    llvm_sys::LLVMIntPredicate::LLVMIntNE,
+                    cond_v,
+                    zero,
+                    name_c.as_ptr(),
+                )
+            };
+            LLVMBuildCondBr(self.builder, cond_i1, then_bb, else_bb);
         }
     }
 
@@ -812,7 +860,15 @@ impl Emitter for LLVMSysEmitter {
                 param_tys.len() as u32,
                 is_variadic,
             );
-            let name_c = CString::new("call").unwrap();
+            // Stage 14.44: For void-returning calls, pass an EMPTY name string
+            // to LLVMBuildCall2. Was: always passed "call" as the name, which
+            // caused "Instruction has a name, but provides a void value" verifier
+            // error for calls to void functions (e.g., __landin_panic_overflow).
+            let name_c = if *ret_ty == EmitType::Void {
+                CString::new("").unwrap()
+            } else {
+                CString::new("call").unwrap()
+            };
             let v = LLVMBuildCall2(
                 self.builder,
                 fty,

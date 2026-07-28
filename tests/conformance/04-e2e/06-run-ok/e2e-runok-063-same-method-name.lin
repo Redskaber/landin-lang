@@ -1,0 +1,22 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok two structs with same-named methods (A::new + B::new) — Stage 14.42
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10 20
+// SOURCE: Stage 14.42 — impl methods no longer registered in top-level value namespace (fixes collision)
+
+struct A { val: i32 }
+impl A {
+    fn new(v: i32) -> A { A { val: v } }
+    fn get(self) -> i32 { self.val }
+}
+struct B { val: i32 }
+impl B {
+    fn new(v: i32) -> B { B { val: v } }
+    fn get(self) -> i32 { self.val }
+}
+fn main() -> i32 {
+    let a = A::new(10);
+    let b = B::new(20);
+    println!("{} {}", a.get(), b.get());
+    0
+}

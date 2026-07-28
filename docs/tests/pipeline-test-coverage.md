@@ -257,7 +257,7 @@ Each test cell has a status:
 
 ## 5. Tier 3: End-to-End (E2E) Path Coverage
 
-### 5.1 run_ok Tests (58 total — verified at runtime)
+### 5.1 run_ok Tests (75 total — verified at runtime)
 
 | Test ID | Feature | Expected Output | Status |
 |---------|---------|-----------------|--------|
@@ -319,6 +319,23 @@ Each test cell has a status:
 | E-056 | Inline chained method call | `10` | ✅ |
 | E-057 | Static method call with side effects | `105` | ✅ |
 | E-058 | Vec pattern (new + push + array field) | `42\n99\n2` | ✅ |
+| E-059 | Self-by-value method chain (4 calls) | `13` | ✅ |
+| E-060 | Recursive struct accumulator | `15` | ✅ |
+| E-061 | Enum with 3 data variants + match | `12 12 6` | ✅ |
+| E-062 | Conditional struct init (3 branches) | `10 20 30 40 50 60` | ✅ |
+| E-063 | Two structs same method name | `10 20` | ✅ |
+| E-064 | Nested struct with method chain | `10` | ✅ |
+| E-065 | Nested struct mutation (2-level) | `99` | ✅ |
+| E-066 | Deep nested struct mutation (3-level) | `99` | ✅ |
+| E-067 | Array of structs with field access | `9 12` | ✅ |
+| E-068 | Array of structs with method call | `10` | ✅ |
+| E-069 | Or-pattern + wildcard fallthrough | `1\n2\n2\n3` | ✅ |
+| E-070 | Array iteration with while loop | `150` | ✅ |
+| E-071 | Math edge cases (neg/mod/div) | `-3\n-1\n-30\n10` | ✅ |
+| E-072 | Tuple destructuring in let | `10 20 30` | ✅ |
+| E-073 | Tuple destructure from function return | `42 99` | ✅ |
+| E-074 | Match arm tuple destructure | `10 20 30` | ✅ |
+| E-075 | Match arm tuple destructure + sum | `6` | ✅ |
 
 ### 5.2 Negative Tests (compile_error — 403 total)
 
@@ -355,9 +372,9 @@ Each test cell has a status:
 |------|-------------|----------|----------|
 | Tier 1: Per-Stage | 146 | 144 | 98.6% |
 | Tier 2: Inter-Stage | 15 | 15 | 100% |
-| Tier 3: E2E (run_ok) | 58 | 58 | 100% |
-| Tier 3: E2E (compile_error) | 403 | 403 | 100% |
-| **Total** | **622** | **620** | **99.7%** |
+| Tier 3: E2E (run_ok) | 75 | 75 | 100% |
+| Tier 3: E2E (compile_error) | 399 | 399 | 100% |
+| **Total** | **635** | **633** | **99.7%** |
 
 **Unverified paths** (2):
 1. B-03: Double mutable borrow — NLL permissive (GAP-1, known limitation)

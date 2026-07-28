@@ -1,0 +1,17 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok array of structs with method call — Stage 14.44
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10
+// SOURCE: Stage 14.44 — array of structs + element method call (Index receiver + static method init)
+
+struct Point { x: i32, y: i32 }
+impl Point {
+    fn new(x: i32, y: i32) -> Point { Point { x, y } }
+    fn sum(self) -> i32 { self.x + self.y }
+}
+fn main() -> i32 {
+    let points = [Point::new(1, 2), Point::new(3, 4)];
+    let total = points[0].sum() + points[1].sum();
+    println!("{}", total);
+    0
+}

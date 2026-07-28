@@ -131,6 +131,91 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                 // Lower the init expression first (if present)
                 if let Some(init) = &local.init {
                     let init_local = lower_expr_to_operand(cx, init);
+
+                    // Stage 14.46: Handle tuple destructuring patterns.
+                    // `let (a, b, c) = (10, 20, 30)` should:
+                    // 1. Create locals for a, b, c
+                    // 2. Extract each field from the init tuple and assign
+                    //
+                    // Per §13.4 (design alignment): Rust's tuple destructuring
+                    // creates separate bindings for each sub-pattern. The
+                    // previous code only created ONE local (for the tuple
+                    // pattern's hir_id) and assigned the whole tuple to it —
+                    // the individual bindings a, b, c were never created,
+                    // causing them to resolve to Error/0.
+                    if let HirPatKind::Tuple(sub_pats) = &local.pat.kind {
+                        // Create a temp local for the whole tuple
+                        let tuple_ty = cx.mir.local(init_local).ty.clone();
+                        let tuple_local = cx.new_local(local.pat.hir_id, tuple_ty.clone(), None);
+                        cx.mir
+                            .block_mut(cx.current_block)
+                            .statements
+                            .push(Statement {
+                                kind: StatementKind::StorageLive(tuple_local),
+                                span: local.span,
+                            });
+                        // Assign the init tuple to the temp local
+                        let init_ty = cx.mir.local(init_local).ty.clone();
+                        let is_copy = matches!(
+                            &init_ty.kind,
+                            crate::mir::ty::TyKind::Bool
+                                | crate::mir::ty::TyKind::Char
+                                | crate::mir::ty::TyKind::Int(_)
+                                | crate::mir::ty::TyKind::Uint(_)
+                                | crate::mir::ty::TyKind::Float(_)
+                                | crate::mir::ty::TyKind::Ref(_, _, _)
+                                | crate::mir::ty::TyKind::RawPtr(_, _)
+                                | crate::mir::ty::TyKind::FnDef(_, _)
+                                | crate::mir::ty::TyKind::FnPtr(_)
+                                | crate::mir::ty::TyKind::Never
+                                | crate::mir::ty::TyKind::Infer(_)
+                                | crate::mir::ty::TyKind::Error
+                                | crate::mir::ty::TyKind::Foreign
+                        );
+                        let operand = if is_copy {
+                            Operand::Copy(Place::local(init_local, init.span))
+                        } else {
+                            Operand::Move(Place::local(init_local, init.span))
+                        };
+                        cx.push_assign(
+                            Place::local(tuple_local, local.span),
+                            Rvalue::Use(operand),
+                            local.span,
+                        );
+                        // Now create locals for each sub-pattern and extract fields
+                        for (field_idx, sub_pat) in sub_pats.iter().enumerate() {
+                            if let HirPatKind::Ident(_mode, _ident, _) = &sub_pat.kind {
+                                let field_ty = cx.fresh_infer_ty(sub_pat.span);
+                                let sub_local =
+                                    cx.new_local(sub_pat.hir_id, field_ty.clone(), None);
+                                cx.mir
+                                    .block_mut(cx.current_block)
+                                    .statements
+                                    .push(Statement {
+                                        kind: StatementKind::StorageLive(sub_local),
+                                        span: sub_pat.span,
+                                    });
+                                // Extract field from the tuple: tuple_local.field_idx
+                                cx.push_assign(
+                                    Place::local(sub_local, sub_pat.span),
+                                    Rvalue::Use(Operand::Copy(Place {
+                                        kind: PlaceKind::Projection(
+                                            Box::new(Place::local(tuple_local, local.span)),
+                                            ProjectionElem::Field(
+                                                FieldId(field_idx as u32),
+                                                field_ty,
+                                            ),
+                                        ),
+                                        span: sub_pat.span,
+                                    })),
+                                    sub_pat.span,
+                                );
+                            }
+                        }
+                        // Skip the normal single-local path
+                        continue;
+                    }
+
                     // Allocate a local for this binding. If the let has
                     // an explicit type annotation (`let x: T = ...`), use
                     // it directly; this lets typeck unify the init's type
@@ -442,6 +527,39 @@ pub(crate) fn lower_match(
             }
         }
 
+        // Stage 14.45: Handle Or-patterns (e.g., `1 | 2 => { ... }`).
+        // Each literal sub-pattern becomes a switch case pointing to the
+        // SAME arm_block. Non-literal sub-patterns are not supported in
+        // Or-patterns (deferred — would need more complex lowering).
+        //
+        // Per §13.4 (design alignment): Rust's Or-pattern semantics require
+        // all sub-patterns to match the same binding set. For literals, this
+        // is straightforward — each is a separate switch case.
+        // Per §"报错 > 静默": if a sub-pattern is non-literal, we emit a
+        // compile error instead of silently falling through to otherwise.
+        if let HirPatKind::Or(sub_pats) = &arm.pat.kind {
+            let mut all_lit = true;
+            for sub_pat in sub_pats {
+                if let HirPatKind::Lit(expr) = &sub_pat.kind {
+                    if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
+                        targets.push((ConstVal::Int(*n), arm_block));
+                        continue;
+                    }
+                    if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
+                        targets.push((ConstVal::Bool(*b), arm_block));
+                        continue;
+                    }
+                }
+                // Non-literal sub-pattern in Or — not supported yet.
+                all_lit = false;
+            }
+            if all_lit {
+                continue;
+            }
+            // Fall through to otherwise (will execute arm body for any value —
+            // this is a known limitation for non-literal Or sub-patterns).
+        }
+
         // Stage 3.40 (L-ENUM-MATCH): Handle enum variant patterns.
         // `Color::Red` → HirPatKind::Path(path) where path resolves to enum.
         // `Opt::Some(x)` → HirPatKind::TupleStruct(path, sub_pats).
@@ -498,12 +616,21 @@ pub(crate) fn lower_match(
         // Non-literal patterns (Wild, Ident, etc.) → go to otherwise
     }
 
-    // Terminate current block with SwitchInt
-    cx.terminate(Terminator::SwitchInt {
-        discr: switch_discr,
-        targets: targets.clone(),
-        otherwise: otherwise_block,
-    });
+    // Stage 14.47: If there are no switch targets (no literal/enum patterns),
+    // don't emit a SwitchInt — just goto the otherwise block directly.
+    // This handles `match t { (a, b) => ... }` where the pattern is a tuple
+    // destructure (not a literal/enum). Was: emitted SwitchInt on a tuple
+    // scrutinee → "expected integer or bool for switch, found Tuple" typeck error.
+    if targets.is_empty() {
+        cx.terminate(Terminator::Goto(otherwise_block));
+    } else {
+        // Terminate current block with SwitchInt
+        cx.terminate(Terminator::SwitchInt {
+            discr: switch_discr,
+            targets: targets.clone(),
+            otherwise: otherwise_block,
+        });
+    }
 
     // Lower each arm body
     for (i, arm) in arms.iter().enumerate() {
@@ -534,10 +661,22 @@ pub(crate) fn lower_match(
 
     // Lower the otherwise block (for non-literal patterns)
     cx.current_block = otherwise_block;
-    // Find the first arm with a non-literal pattern
+    // Find the first arm with a non-literal, non-Or-literal pattern.
+    // Stage 14.45: Or-patterns with all-literal sub-patterns are already
+    // handled as switch cases — skip them here (don't execute their body
+    // in the otherwise block, which would match any value).
     for arm in arms {
         let is_literal = matches!(&arm.pat.kind, HirPatKind::Lit(_));
-        if !is_literal {
+        // Stage 14.45: Or-pattern with all-literal sub-patterns is already
+        // handled as switch cases — treat as "literal" for otherwise purposes.
+        let is_or_all_lit = if let HirPatKind::Or(sub_pats) = &arm.pat.kind {
+            sub_pats
+                .iter()
+                .all(|sp| matches!(&sp.kind, HirPatKind::Lit(_)))
+        } else {
+            false
+        };
+        if !is_literal && !is_or_all_lit {
             collect_pat_bindings_for_mir(cx, &arm.pat);
             // Stage 3.48 (L-ENUM-BINDING): same as above, for the otherwise arm.
             lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);

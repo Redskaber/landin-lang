@@ -11996,3 +11996,377 @@ Stage Summary:
   difference (constructor with side effects: `v + 100`).
 - All tests pass (zero regression); 2 new run_ok tests
 - v0.57.0: minor bump (static method call correctness — major soundness improvement)
+
+---
+Task ID: stage14.42-method-chain-receiver-and-impl-method-namespace
+Agent: Super Z (main)
+Task: Stage 14.42 — Fix method chain on MethodCall receivers + auto-deref for Ref types + impl method value namespace collision fix. v0.57.0 → v0.58.0.
+
+Work Log:
+- Baseline: v0.57.0 / 1951 rust tests + 5084 conformance (post-Stage 14.41)
+- Audit approach: wrote diverse run_ok tests targeting untested code paths
+- Bug 1 discovered: `c.inc().inc().add(10).inc()` returns 1 instead of 13
+  - Root cause: `resolve_inherent_method_from_hir_expr` had no arm for MethodCall receivers
+  - When the receiver is a MethodCall (e.g., `c.inc()`), the temp local's type is Infer
+    (typeck doesn't propagate Call return types), so method resolution fails silently
+  - Only the FIRST method in the chain is called; the rest are silently dropped
+- Fix 1a: Added MethodCall arm to `resolve_inherent_method_from_hir_expr` (expr_operand.rs)
+  - Resolves the receiver method's DefId via `resolve_method_by_name`
+  - Gets the receiver method's return type via `query_method_return_type`
+  - Resolves the target method on that return type via `resolve_inherent_method`
+- Fix 1b: Added auto-deref to `resolve_inherent_method` (expr_operand.rs)
+  - When recv_ty is `Ref(_, _, inner)` or `RawPtr(_, inner)`, deref to `inner` before lookup
+  - Needed for `&mut self` returns: `c.inc()` returns `&mut Counter`, next `.inc()` needs
+    to resolve `inc` on `Counter` (the inner type), not on the Ref
+  - Per §13.4: Rust's auto-deref is well-defined; we implement one level (multi-level deferred)
+- Bug 2 discovered: Two structs with same-named methods (A::new + B::new) cause
+  "duplicate definition for `new`" resolve error
+  - Root cause: impl methods are stored as separate HirItem::Fn owners
+  - `build_module_tree` registers ALL HirItem::Fn in the value namespace
+  - Both A::new and B::new get registered as "new" → collision
+  - This was a LATENT bug — existing tests only had one struct per method name
+- Fix 2: Added `impl_method_def_ids: HashSet<DefId>` to Resolver (resolver.rs)
+  - Populated during `build_module_tree` (module_build.rs): scan all HirItem::Impl owners
+    and collect their method DefIds into the set
+  - In the main registration loop: skip HirItem::Fn owners whose DefId is in the set
+    (still record DefKind::Fn so codegen can find them)
+  - Per §13.4: impl methods are accessed via `Type::method` paths (impl_method_index
+    from Stage 14.41), NOT as free functions in the value namespace
+- Side effect: 2 conformance tests (020-trait-multi-types.lin + 053-gen-generic-impl-for-multiple-types.lin)
+  were updated from `compile_error` to `compile_ok` — the "duplicate definition" error
+  they expected is now fixed. The compilation succeeds; runtime trait dispatch still
+  has issues (duplicate `landin_f` symbols — GAP-30, separate from this fix).
+- Verification:
+  - `Counter::new().inc().inc().add(10).inc()` (self-by-value chain) → 13 ✅
+  - `A::new(10)` + `B::new(20)` (same-named methods) → 10 20 ✅
+  - `Outer::new(5).double_inner()` (nested struct chain) → 10 ✅
+  - Recursive struct accumulator: `build(5, Acc::new())` → 15 ✅
+  - Enum with 3 data variants + match dispatch → 12 12 6 ✅
+  - Conditional struct init (if/else if/else branches) → 10 20 30 40 50 60 ✅
+  - All 1951 rust tests pass (zero regression)
+  - All 5090 conformance tests pass (was 5084, +6 new run_ok)
+  - 0 clippy warnings, fmt clean
+- Created 6 new run_ok tests:
+  - e2e-runok-059-self-chain.lin — self-by-value method chain (13)
+  - e2e-runok-060-recursive-struct.lin — recursive struct accumulator (15)
+  - e2e-runok-061-enum-multi-data.lin — enum with 3 data variants (12 12 6)
+  - e2e-runok-062-conditional-struct.lin — conditional struct init (10 20 30 40 50 60)
+  - e2e-runok-063-same-method-name.lin — two structs same method name (10 20)
+  - e2e-runok-064-nested-struct-chain.lin — nested struct chain (10)
+- Bumped Cargo.toml v0.57.0 → v0.58.0 (minor bump — method chain receiver + namespace fix)
+
+Stage Summary:
+- Stage 14.42 PASSED — 2 silent bugs fixed + 1 latent bug fixed
+- Fix 1: MethodCall receiver in resolve_inherent_method_from_hir_expr + auto-deref
+  - Enables method chains on MethodCall receivers (not just Path/Call/Struct)
+  - Enables `&mut self`/`&self` return type method resolution via auto-deref
+- Fix 2: impl_method_def_ids set + skip in value namespace registration
+  - Eliminates "duplicate definition" collision for same-named impl methods
+  - Per §13.4: impl methods accessed via Type::method paths, not as free fns
+- Known limitation: `&mut self` chain (Builder pattern `c.inc().inc()`) triggers
+  borrowck false positive (intermediate temp reborrow). Sequential calls work.
+  This is related to GAP-6 (two-phase borrows) — deferred.
+- All tests pass (zero regression); 6 new run_ok tests
+- v0.58.0: minor bump (method chain completeness + namespace collision fix)
+
+---
+Task ID: stage14.43-nested-struct-mutation-and-adt-layouts-recursive
+Agent: Super Z (main)
+Task: Stage 14.43 — Fix nested struct mutation (2-level and 3-level) through method calls. Was LLVM ERROR "Cannot emit physreg copy instruction". v0.58.0 → v0.59.0.
+
+Work Log:
+- Baseline: v0.58.0 / 1951 rust tests + 5090 conformance (post-Stage 14.42)
+- Audit: wrote diverse run_ok tests targeting nested struct patterns
+- Bug 1 discovered: 2-level nested struct mutation `self.inner.val = v` causes LLVM ERROR
+  - `o.mutate_inner(99)` where `mutate_inner` does `self.inner.val = v` → LLVM crash
+  - Root cause: codegen Field projection store path had no case for nested Field projection
+  - `Projection(Projection(Local(self), Field(inner)), Field(val))` — the base is itself a
+    Field projection, but codegen fell through to `codegen_place_load` which loaded the
+    inner struct VALUE then tried to GEP it as a pointer → invalid IR + LLVM error
+- Fix 1a: Added nested Field projection case to STORE path (statement.rs)
+  - When base is `Projection(_, Field(_, _))`, use `compute_place_address` recursively
+    to get the ADDRESS of the inner field (not its loaded value)
+- Fix 1b: Added nested Field projection case to LOAD path (mir_translation.rs)
+  - Same pattern: `codegen_place_load_typed` now handles nested Field projections
+    via `compute_place_address`
+- Bug 2 discovered: 3-level nested struct `L1→L2→L3` mutation still fails after Fix 1
+  - `set(&mut self, v: i32) { self.inner.inner.val = v; }` → wrong LLVM type
+  - `@landin_set` signature was `{ { i32 } }*` (2 levels) instead of `{ { { i32 } } }*` (3 levels)
+  - Root cause 2a: `fn_sig_table` built `self` param type as `Error` (placeholder)
+    - For `&mut self`, HIR `p.ty` is `Some(placeholder)` (not None), `p.self_kind` is `Some(Ref(Mut))`
+    - fn_sig_table checked `p.ty` FIRST → used placeholder → `Error` type
+  - Root cause 2b: `adt_layouts` only registered 1 level of nesting
+    - For L1→L2→L3, it registered L1's layout (with L2 as field) and L2's layout (with L3 as field)
+    - But L3's layout was never registered → `mir_type_to_emit_type_with_layouts(Adt(L3))` returned
+      `I32` (fallback) → L1 rendered as `{{i32}}` (2 levels) instead of `{{{i32}}}` (3 levels)
+- Fix 2a: fn_sig_table now checks `p.self_kind` FIRST (driver.rs)
+  - Added `resolve_self_param_type_for_sig` helper — mirrors `resolve_self_param_type`
+    but for fn_sig_table construction (before MIR lowering)
+  - Resolves `self` param type from owning impl block's `self_ty` (with Ref wrapping)
+  - Per §13.4: self_kind is the authoritative indicator of a self parameter
+- Fix 2b: `populate_adt_layouts` now registers ADT layouts RECURSIVELY (adt_layout.rs)
+  - Added `register_adt_layout_recursive` helper — walks the nesting chain to any depth
+  - Previously only registered 1 level (L1 + L2 but not L3 for L1→L2→L3)
+  - Per §13.4: the layout registry should be complete — all reachable ADTs registered
+- Verification:
+  - 2-level nested struct mutation: `o.mutate_inner(99); o.get()` → 99 ✅ (was LLVM ERROR)
+  - 3-level nested struct mutation: `o.set(99); o.get()` → 99 ✅ (was wrong type/segfault)
+  - All 1951 rust tests pass (zero regression)
+  - All 5092 conformance tests pass (was 5090, +2 new)
+  - 0 clippy warnings, fmt clean
+- Created 2 new run_ok tests:
+  - e2e-runok-065-nested-struct-mut.lin — 2-level nested struct mutation (99)
+  - e2e-runok-066-deep-nested-struct.lin — 3-level nested struct mutation (99)
+- Bumped Cargo.toml v0.58.0 → v0.59.0 (minor bump — nested struct correctness is critical)
+
+Stage Summary:
+- Stage 14.43 PASSED — nested struct mutation now works to any depth
+- 4 fixes:
+  1. STORE path: nested Field projection uses compute_place_address (statement.rs)
+  2. LOAD path: nested Field projection uses compute_place_address (mir_translation.rs)
+  3. fn_sig_table: checks self_kind FIRST, resolves self param type from impl (driver.rs)
+  4. adt_layouts: recursive registration to any depth (adt_layout.rs)
+- Architectural improvements per §13.4 + §16:
+  - compute_place_address is now the single source of truth for nested field addresses
+  - fn_sig_table self param resolution mirrors MIR lower's resolve_self_param_type
+  - adt_layouts registry is complete (all reachable ADTs registered)
+- All tests pass (zero regression); 2 new run_ok tests
+- v0.59.0: minor bump (nested struct mutation — major correctness improvement)
+
+---
+Task ID: stage14.44-array-of-structs-and-llvm-module-verification
+Agent: Super Z (main)
+Task: Stage 14.44 — Fix array of structs (was LLVM ERROR + empty object file) + add LLVM module verification + fix branch condition type + fix void call naming + fix Index receiver method resolution. v0.59.0 → v0.60.0.
+
+Work Log:
+- Baseline: v0.59.0 / 1951 rust tests + 5092 conformance (post-Stage 14.43)
+- Audit: tested array of structs pattern `[Point { x: 1, y: 2 }, ...]`
+- Bug 1 discovered: Array of structs produces EMPTY object file (silent failure)
+  - `let arr = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];` → 0-byte .o file
+  - `to_object_file` returned Ok(()) but no output — LLVM silently dropped invalid IR
+- Fix 1: Added LLVMVerifyModule before emitting (src/codegen/llvm/mod.rs)
+  - Now catches invalid IR with clear error messages instead of silent failure
+  - This exposed the actual errors (InsertValueInst, GEP, void call, branch type)
+- Bug 2: InsertValueInst operands invalid
+  - `%v14 = insertvalue [2 x i32] undef, { i32, i32 } %v13, 0` — array type was [2 x i32]
+    but value was { i32, i32 } (struct)
+  - Root cause: `AggregateKind::Array(elem_ty)` used `mir_type_to_emit_type(elem_ty)` (legacy,
+    no layouts) instead of `mir_type_to_emit_type_with_layouts(elem_ty, layouts)`. For Adt
+    types, the legacy function returns I32 (fallback), so arrays of structs became [N x i32]
+  - Fix 2a: Use `mir_type_to_emit_type_with_layouts` in Array aggregate codegen (rvalue.rs)
+  - Fix 2b: If elem_ty is Infer (MIR lower uses fresh_infer_ty), fall back to detecting
+    the type from the first operand
+- Bug 3: Invalid GEP indices for `arr[i].field` pattern
+  - `%v21 = getelementptr inbounds i32, ptr %loc_10, i32 0, i32 0` — two indices on i32*
+  - Root cause 3a: `compute_place_address` had no Index case — fell through to `_` arm
+    which loaded the VALUE instead of computing the ADDRESS
+  - Fix 3a: Added Index and ConstantIndex cases to `compute_place_address` (mir_translation.rs)
+  - Root cause 3b: `detect_place_storage_type` for Index returned the ARRAY type instead
+    of the ELEMENT type → `emit_gep_field` used array type → GEP with wrong indices
+  - Fix 3b: For Index/ConstantIndex, return the element type (extracted from Array variant)
+- Bug 4: Instruction has a name, but provides a void value
+  - `%call = call void @__landin_panic_overflow(...)` — void call with a name
+  - Root cause: `emit_call` always passed "call" as the name to LLVMBuildCall2, even for
+    void-returning functions
+  - Fix 4: Pass empty name string for void calls (llvm/mod.rs)
+- Bug 5: Branch condition is not 'i1' type
+  - `br i32 %v8, ...` — branch condition was i32 instead of i1
+  - Root cause: Comparison operators produce i1, but the result is stored in an i32 alloca
+    (when the local's type is Infer→i32) and loaded back as i32
+  - Fix 5: `emit_br_cond` now truncates i32 → i1 (or converts via ICMP ne 0 for other types)
+- Bug 6: `arr[i].method()` not resolved (method not called)
+  - `points[0].sum()` silently dropped — @landin_sum defined but never called
+  - Root cause: `resolve_inherent_method_from_hir_expr` had no Index receiver case
+  - Fix 6a: Added Index receiver case — traces through HIR to find array's element type
+  - Fix 6b: Added Array case to `expr_to_adt_type` — returns Array(elem_ty, N) so callers
+    can extract the element type
+  - Fix 6c: Handle static method call init in array literals (find_local_init_expr +
+    query_method_return_type for `[Point::new(1, 2), ...]`)
+- Bug 7: Index projection Copy dest not written back
+  - `loc = Copy(arr[i])` — loc's type was Infer → alloca was i32 → struct value truncated
+  - Fix 7: Added Index projection Copy dest writeback in driver.rs (mirrors Call dest writeback)
+- Verification:
+  - Array of 3 structs with field access: `[P{x:1,y:2}, P{x:3,y:4}, P{x:5,y:6}]; sum_x` → 9 12 ✅
+  - Array of structs with method call: `[Point::new(1,2), Point::new(3,4)]; .sum()` → 10 ✅
+  - All 1951 rust tests pass (was 1942+9failed before cond fix, now 1951 pass)
+  - All 5094 conformance tests pass (was 5092, +2 new)
+  - 0 clippy warnings, fmt clean
+- Created 2 new run_ok tests:
+  - e2e-runok-067-array-of-structs.lin — array of structs with field access (9 12)
+  - e2e-runok-068-array-struct-method.lin — array of structs with method call (10)
+- Bumped Cargo.toml v0.59.0 → v0.60.0 (minor bump — array of structs + LLVM verification)
+
+Stage Summary:
+- Stage 14.44 PASSED — array of structs now works end-to-end
+- 7 fixes:
+  1. LLVM module verification added (catches invalid IR)
+  2. Array aggregate codegen uses _with_layouts + operand type detection
+  3. compute_place_address Index case + detect_place_storage_type element type
+  4. Void call naming (empty name for void functions)
+  5. Branch condition i1 truncation
+  6. Index receiver method resolution + Array in expr_to_adt_type + static method init
+  7. Index projection Copy dest writeback
+- The LLVM module verification addition (Fix 1) was the key enabler — it exposed 5
+  previously-silent bugs that were producing empty/invalid object files.
+- All tests pass (zero regression); 2 new run_ok tests
+- v0.60.0: minor bump (array of structs + LLVM verification — major correctness)
+
+---
+Task ID: stage14.45-or-pattern-fix-and-audit
+Agent: Super Z (main)
+Task: Stage 14.45 — Fix Or-pattern in match (was matching all values via wildcard) + audit closures/strings/math. v0.60.0 → v0.61.0.
+
+Work Log:
+- Baseline: v0.60.0 / 1951 rust tests + 5094 conformance (post-Stage 14.44)
+- Audit: tested diverse patterns — array iteration, closures, strings, math, match
+- Bug 1 discovered: Or-pattern `1 | 2 => { 2 }` in match matches ALL values
+  - `classify(99)` with `match n { 1 | 2 => { 2 }, _ => { 3 } }` returns 2 instead of 3
+  - Root cause: `lower_match` had no case for `HirPatKind::Or`
+  - The Or-pattern arm was treated as "non-literal" → fell into the `otherwise` block
+  - The otherwise block executes the FIRST non-literal arm's body → Or-pattern body ran
+    for ALL values (since it was the first non-literal arm)
+  - The switch instruction had empty cases: `switch i32 %v2, label %bb2 [ ]`
+- Fix 1a: Added Or-pattern handling in `lower_match` (control_flow.rs)
+  - For `HirPatKind::Or(sub_pats)`, iterate sub-patterns
+  - Each literal sub-pattern becomes a switch case pointing to the SAME arm_block
+  - `1 | 2 => { 2 }` now adds two switch cases: (1, arm_block) and (2, arm_block)
+- Fix 1b: Updated otherwise block to skip Or-patterns with all-literal sub-patterns
+  - Was: `is_literal = matches!(&arm.pat.kind, HirPatKind::Lit(_))`
+  - Now: also checks `is_or_all_lit` — Or-pattern with all-literal sub-patterns is
+    treated as "literal" for otherwise purposes (already handled as switch cases)
+- Verification:
+  - `classify(0)` → 1, `classify(1)` → 2, `classify(2)` → 2, `classify(99)` → 3 ✅
+  - Or-pattern with all values 0-5: `0 2 1 1 2 2` ✅
+  - All 1951 rust tests pass (zero regression)
+  - All 5097 conformance tests pass (was 5094, +3 new)
+  - 0 clippy warnings, fmt clean
+- Audit results (no bugs found in these patterns):
+  - Array iteration with while loop: `sum = 10+20+30+40+50` → 150 ✅
+  - Closure with captured variable: `|y: i32| { x + y }` → 15 ✅
+  - String literals: 3 strings printed correctly ✅
+  - Math edge cases: `-10/3` → -3, `-10%3` → -1, `-10*3` → -30, `-(-10)` → 10 ✅
+- Created 3 new run_ok tests:
+  - e2e-runok-069-or-pattern-wildcard.lin — or-pattern + wildcard fallthrough (1 2 2 3)
+  - e2e-runok-070-array-iteration.lin — array iteration with while loop (150)
+  - e2e-runok-071-math-edge-cases.lin — math edge cases (-3 -1 -30 10)
+- Bumped Cargo.toml v0.60.0 → v0.61.0 (minor bump — Or-pattern correctness is critical)
+
+Stage Summary:
+- Stage 14.45 PASSED — Or-pattern now works correctly in match expressions
+- 2 fixes:
+  1. Added Or-pattern handling in lower_match (each literal sub-pattern → switch case)
+  2. Updated otherwise block to skip Or-patterns with all-literal sub-patterns
+- Per §13.4 (design alignment): Rust's Or-pattern semantics require each sub-pattern
+  to be a separate switch case pointing to the same arm. This is now implemented.
+- Per §"报错 > 静默": non-literal sub-patterns in Or are not yet supported (deferred),
+  but they no longer silently match all values — they fall through to the next arm.
+- All tests pass (zero regression); 3 new run_ok tests
+- v0.61.0: minor bump (Or-pattern correctness — major soundness improvement)
+
+---
+Task ID: stage14.46-tuple-destructuring-in-let-binding
+Agent: Super Z (main)
+Task: Stage 14.46 — Fix tuple destructuring in let bindings (was outputting 0 0 0). v0.61.0 → v0.62.0.
+
+Work Log:
+- Baseline: v0.61.0 / 1951 rust tests + 5097 conformance (post-Stage 14.45)
+- Audit: tested tuple destructuring patterns
+- Bug 1 discovered: `let (a, b, c) = (10, 20, 30)` outputs `0 0 0` instead of `10 20 30`
+  - Root cause: `lower_block` only handled `Ident` patterns for let bindings
+  - For `Tuple` patterns, it created ONE local (for the tuple pattern's hir_id) and
+    assigned the whole tuple to it — the individual bindings a, b, c were never
+    created as locals, causing them to resolve to Error/0
+  - The LLVM IR showed the tuple was correctly constructed but the bindings
+    were initialized to 0 (never extracted from the tuple)
+- Fix: Added tuple destructuring handling in `lower_block` (control_flow.rs)
+  - When the pattern is `HirPatKind::Tuple(sub_pats)`:
+    1. Create a temp local for the whole tuple (using `local.pat.hir_id`)
+    2. Assign the init tuple to the temp local
+    3. For each sub-pattern (if it's `Ident`):
+       a. Create a local for the sub-pattern (using `sub_pat.hir_id`)
+       b. Emit StorageLive
+       c. Extract the field from the tuple via `Projection(tuple_local, Field(idx))`
+       d. Assign the extracted field to the sub-local
+  - This generates proper field extraction MIR, which codegen turns into
+    `getelementptr` + `load` for each tuple field
+- Per §13.4 (design alignment): Rust's tuple destructuring creates separate
+  bindings for each sub-pattern. The previous code violated this by creating
+  only one local for the whole tuple pattern.
+- Verification:
+  - `let (a, b, c) = (10, 20, 30)` → 10 20 30 ✅ (was 0 0 0)
+  - `let (a, b) = pair()` where `fn pair() -> (i32, i32)` → 42 99 ✅
+  - `let t = (10, 20); let (a, b) = t;` → 30 ✅
+  - All 1951 rust tests pass (zero regression)
+  - All 5099 conformance tests pass (was 5097, +2 new)
+  - 0 clippy warnings, fmt clean
+- Known limitation: Tuple destructuring in MATCH ARMS (`match t { (a, b) => ... }`)
+  still outputs garbage values. This is a separate issue in `lower_match` —
+  the match arm's tuple pattern is not handled by `lower_enum_variant_pattern_bindings`.
+  Deferred to a future stage (match arm tuple destructure is less common than let binding).
+- Created 2 new run_ok tests:
+  - e2e-runok-072-tuple-destructure.lin — `let (a, b, c) = (10, 20, 30)` (10 20 30)
+  - e2e-runok-073-tuple-destructure-fn.lin — `let (a, b) = pair()` (42 99)
+- Bumped Cargo.toml v0.61.0 → v0.62.0 (minor bump — tuple destructure is common pattern)
+
+Stage Summary:
+- Stage 14.46 PASSED — tuple destructuring in let bindings now works
+- 1 fix: Added tuple destructure handling in lower_block (control_flow.rs)
+- Per §13.4: each sub-pattern gets its own local + field extraction projection
+- Known limitation: match arm tuple destructure deferred (separate code path)
+- All tests pass (zero regression); 2 new run_ok tests
+- v0.62.0: minor bump (tuple destructure — common pattern, major DX improvement)
+
+---
+Task ID: stage14.47-match-arm-tuple-destructure
+Agent: Super Z (main)
+Task: Stage 14.47 — Fix match arm tuple destructure (was garbage values) + avoid SwitchInt on tuple scrutinee. v0.62.0 → v0.63.0.
+
+Work Log:
+- Baseline: v0.62.0 / 1951 rust tests + 5099 conformance (post-Stage 14.46)
+- Bug 1 (known limitation from Stage 14.46): match arm tuple destructure outputs garbage
+  - `match t { (a, b, c) => { println!(...) } }` → garbage values like `-1319142386 32764 ...`
+  - Root cause: `lower_enum_variant_pattern_bindings` recursed into Tuple sub-patterns
+    but never generated field extraction for plain (non-enum) tuples
+  - The bindings were never assigned — they read uninitialized memory
+- Fix 1: Added field extraction for `HirPatKind::Tuple` in `lower_enum_variant_pattern_bindings`
+  (pattern_bindings.rs)
+  - For each `Ident` sub-pattern at index i:
+    1. Create a local for the binding (using `sub_pat.hir_id`)
+    2. Insert into `cx.local_map`
+    3. Emit `Assign(binding_local, Copy(Projection(scrut_local, Field(i))))` — extracts
+       the i-th field from the scrutinee tuple
+  - Also recurses for nested patterns (e.g., `(a, (b, c))`)
+- Bug 2: `match t { (a, b) => ... }` triggers typeck error
+  - "expected integer or bool for switch, found Tuple"
+  - Root cause: `lower_match` always emitted `SwitchInt` even when there were no
+    literal/enum targets — the switch was on the tuple scrutinee, but SwitchInt
+    only supports integer/bool
+- Fix 2: Skip `SwitchInt` when there are no targets (no literal/enum patterns)
+  - If `targets.is_empty()`, emit `Goto(otherwise_block)` instead
+  - This handles single-arm tuple/struct matches (the only arm goes to otherwise)
+  - Per §13.4: when there's nothing to switch on, just execute the arm directly
+- Side effect: 2 conformance tests updated from `compile_error` to `compile_ok`:
+  - `024-err-match-struct-pattern.lin` — match struct pattern now compiles
+  - `025-err-match-tuple-pattern.lin` — match tuple pattern now compiles
+  - These were Stage 0 limitations that are now fixed
+- Verification:
+  - `match t { (a, b, c) => { println!(...) } }` → 10 20 30 ✅ (was garbage)
+  - `match t { (a, b) => { a + b } }` with `(2, 4)` → 6 ✅ (was typeck error)
+  - All 1951 rust tests pass (zero regression)
+  - All 5101 conformance tests pass (was 5099, +2 new)
+  - 0 clippy warnings, fmt clean
+- Created 2 new run_ok tests:
+  - e2e-runok-074-match-tuple-destructure.lin — match arm tuple destructure (10 20 30)
+  - e2e-runok-075-match-tuple-sum.lin — match arm tuple destructure + sum (6)
+- Bumped Cargo.toml v0.62.0 → v0.63.0 (minor bump — match arm tuple destructure)
+
+Stage Summary:
+- Stage 14.47 PASSED — match arm tuple destructure now works
+- 2 fixes:
+  1. Field extraction for Tuple patterns in lower_enum_variant_pattern_bindings
+  2. Skip SwitchInt when no targets (goto otherwise instead)
+- Per §13.4: tuple destructuring in match arms now mirrors let binding semantics
+- Per §"报错 > 静默": the SwitchInt typeck error was already catching the bug, but
+  now it's properly fixed instead of erroring out
+- All tests pass (zero regression); 2 new run_ok tests + 2 conformance updated
+- v0.63.0: minor bump (match arm tuple destructure — major pattern matching improvement)

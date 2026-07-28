@@ -1,0 +1,14 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok array of structs with field access — Stage 14.44
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 9 12
+// SOURCE: Stage 14.44 — array of structs + Index+Field projection + LLVM module verification
+
+struct Point { x: i32, y: i32 }
+fn main() -> i32 {
+    let points = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }, Point { x: 5, y: 6 }];
+    let sum_x = points[0].x + points[1].x + points[2].x;
+    let sum_y = points[0].y + points[1].y + points[2].y;
+    println!("{} {}", sum_x, sum_y);
+    0
+}

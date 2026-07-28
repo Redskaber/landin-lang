@@ -1,9 +1,335 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.57.0
+**Current version**: v0.63.0
 **Date**: 2026-07-28
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5084 conformance tests (58 run_ok) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5101 conformance tests (75 run_ok) + 4 examples
+
+---
+## v0.63.0 — Stage 14.47 (Match Arm Tuple Destructure)
+
+### Overview
+
+Stage 14.47 fixes match arm tuple destructure (was outputting garbage values)
+and avoids `SwitchInt` on tuple scrutinee (was triggering typeck error). This
+closes the known limitation from Stage 14.46 — tuple destructuring now works
+in both let bindings AND match arms.
+
+### Stage 14.47 — Match Arm Tuple Destructure
+
+**Bug 1**: match arm tuple destructure outputs garbage values
+- `match t { (a, b, c) => ... }` → garbage (uninitialized memory)
+- Root cause: `lower_enum_variant_pattern_bindings` recursed into Tuple
+  sub-patterns but never generated field extraction for plain tuples
+
+**Fix 1**: Added field extraction for `HirPatKind::Tuple` (pattern_bindings.rs)
+- For each `Ident` sub-pattern at index i: create local + extract field via Projection
+
+**Bug 2**: `match t { (a, b) => ... }` triggers typeck error
+- "expected integer or bool for switch, found Tuple"
+- Root cause: `lower_match` always emitted `SwitchInt` even with no targets
+
+**Fix 2**: Skip `SwitchInt` when no targets (emit `Goto(otherwise_block)`)
+
+**Side effect**: 2 conformance tests updated `compile_error` → `compile_ok`
+
+**Verified paths** (all pass):
+- `match t { (a, b, c) => ... }` → 10 20 30 ✅ (was garbage)
+- `match t { (a, b) => { a + b } }` → 6 ✅ (was typeck error)
+- All existing tests still pass (zero regression)
+
+**2 new run_ok tests**:
+- `e2e-runok-074-match-tuple-destructure.lin` — match arm tuple destructure
+- `e2e-runok-075-match-tuple-sum.lin` — match arm tuple destructure + sum
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5101 passed, 0 failed (5026 compile + 75 run_ok with runtime verification)
+```
+
+### Version policy: v0.62.0 → v0.63.0 (minor bump — match arm tuple destructure)
+
+---
+## v0.62.0 — Stage 14.46 (Tuple Destructuring in Let Bindings)
+
+### Overview
+
+Stage 14.46 fixes tuple destructuring in let bindings. Previously,
+`let (a, b, c) = (10, 20, 30)` output `0 0 0` instead of `10 20 30` because
+the MIR lower only created one local for the whole tuple pattern — the
+individual bindings were never created. The fix adds proper field extraction
+for each sub-pattern.
+
+### Stage 14.46 — Tuple Destructuring in Let Bindings
+
+**Bug**: `let (a, b, c) = (10, 20, 30)` outputs `0 0 0` instead of `10 20 30`
+- Root cause: `lower_block` only handled `Ident` patterns for let bindings
+- For `Tuple` patterns, created ONE local for the whole tuple — individual
+  bindings a, b, c were never created → resolved to Error/0
+
+**Fix**: Added tuple destructuring handling in `lower_block` (control_flow.rs)
+- When pattern is `HirPatKind::Tuple(sub_pats)`:
+  1. Create temp local for the whole tuple
+  2. Assign init tuple to temp local
+  3. For each `Ident` sub-pattern: create local + extract field via Projection
+
+**Verified paths** (all pass):
+- `let (a, b, c) = (10, 20, 30)` → 10 20 30 ✅ (was 0 0 0)
+- `let (a, b) = pair()` → 42 99 ✅
+- `let t = (10, 20); let (a, b) = t;` → 30 ✅
+- All existing tests still pass (zero regression)
+
+**Known limitation**: Tuple destructuring in MATCH ARMS
+(`match t { (a, b) => ... }`) still outputs garbage values. Deferred.
+
+**2 new run_ok tests**:
+- `e2e-runok-072-tuple-destructure.lin` — let tuple destructure
+- `e2e-runok-073-tuple-destructure-fn.lin` — tuple destructure from fn return
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5099 passed, 0 failed (5026 compile + 73 run_ok with runtime verification)
+```
+
+### Version policy: v0.61.0 → v0.62.0 (minor bump — tuple destructure is common pattern)
+
+---
+## v0.61.0 — Stage 14.45 (Or-Pattern Fix + Audit)
+
+### Overview
+
+Stage 14.45 fixes a critical bug where Or-patterns (`1 | 2 => { ... }`) in match
+expressions matched ALL values instead of just the listed values. The Or-pattern
+arm was silently falling through to the otherwise block, executing its body for
+any input. The fix adds proper switch case generation for each literal sub-pattern.
+
+### Stage 14.45 — Or-Pattern Fix + Audit
+
+**Bug**: Or-pattern `1 | 2 => { 2 }` matches ALL values
+- `classify(99)` returns 2 instead of 3
+- Root cause: `lower_match` had no case for `HirPatKind::Or`
+- Or-pattern arm treated as "non-literal" → fell into otherwise block
+- Otherwise block executes first non-literal arm's body → matched all values
+
+**Fix 1a**: Added Or-pattern handling in `lower_match` (control_flow.rs)
+- Each literal sub-pattern becomes a switch case pointing to the SAME arm_block
+- `1 | 2` now adds two switch cases: (1, arm_block) and (2, arm_block)
+
+**Fix 1b**: Updated otherwise block to skip Or-patterns with all-literal sub-patterns
+- `is_or_all_lit` check — Or with all literals treated as "literal" for otherwise
+
+**Audit results** (no bugs found in these patterns):
+- Array iteration with while loop → 150 ✅
+- Closure with captured variable → 15 ✅
+- String literals → correct ✅
+- Math edge cases (neg/modulo/div/unary) → correct ✅
+
+**Verified paths** (all pass):
+- `classify(0/1/2/99)` → 1 2 2 3 ✅ (was 1 2 2 2)
+- Or-pattern all values 0-5 → 0 2 1 1 2 2 ✅
+- All existing tests still pass (zero regression)
+
+**3 new run_ok tests**:
+- `e2e-runok-069-or-pattern-wildcard.lin` — or-pattern + wildcard fallthrough
+- `e2e-runok-070-array-iteration.lin` — array iteration with while loop
+- `e2e-runok-071-math-edge-cases.lin` — math edge cases
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5097 passed, 0 failed (5026 compile + 71 run_ok with runtime verification)
+```
+
+### Version policy: v0.60.0 → v0.61.0 (minor bump — Or-pattern correctness is critical soundness)
+
+---
+## v0.60.0 — Stage 14.44 (Array of Structs + LLVM Module Verification)
+
+### Overview
+
+Stage 14.44 fixes array of structs patterns (was producing empty object files
+silently) and adds LLVM module verification that exposed 5 previously-silent
+bugs. The verification addition is the key enabler — it catches invalid IR
+early instead of silently producing empty/invalid output.
+
+### Stage 14.44 — Array of Structs + LLVM Module Verification
+
+**Bug 1**: Array of structs produces EMPTY object file (silent failure)
+- `let arr = [Point { x: 1, y: 2 }, ...];` → 0-byte .o file, Ok(()) returned
+
+**Fix 1**: Added `LLVMVerifyModule` before emitting (src/codegen/llvm/mod.rs)
+- Catches invalid IR with clear error messages instead of silent failure
+
+**Bug 2**: InsertValueInst invalid — array type [N x i32] instead of [N x {i32, i32}]
+**Fix 2**: Use `mir_type_to_emit_type_with_layouts` + operand type detection
+
+**Bug 3**: Invalid GEP indices for `arr[i].field`
+**Fix 3**: Added Index case to `compute_place_address` + element type in `detect_place_storage_type`
+
+**Bug 4**: Void call with name → "Instruction has a name, but provides a void value"
+**Fix 4**: Pass empty name string for void calls
+
+**Bug 5**: Branch condition i32 instead of i1
+**Fix 5**: `emit_br_cond` truncates i32 → i1
+
+**Bug 6**: `arr[i].method()` not resolved
+**Fix 6**: Added Index receiver case + Array in expr_to_adt_type + static method init
+
+**Bug 7**: Index projection Copy dest not written back
+**Fix 7**: Added Index projection Copy dest writeback
+
+**Verified paths** (all pass):
+- Array of 3 structs with field access → 9 12 ✅
+- Array of structs with method call → 10 ✅
+- All existing tests still pass (zero regression)
+
+**2 new run_ok tests**:
+- `e2e-runok-067-array-of-structs.lin` — array of structs with field access
+- `e2e-runok-068-array-struct-method.lin` — array of structs with method call
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5094 passed, 0 failed (5026 compile + 68 run_ok with runtime verification)
+```
+
+### Version policy: v0.59.0 → v0.60.0 (minor bump — array of structs + LLVM verification is critical correctness)
+
+---
+## v0.59.0 — Stage 14.43 (Nested Struct Mutation + Recursive ADT Layouts)
+
+### Overview
+
+Stage 14.43 fixes nested struct mutation (2-level and 3-level) through method calls.
+Previously, `self.inner.val = v` caused LLVM ERROR "Cannot emit physreg copy instruction"
+because the codegen had no case for nested Field projections. The fix also addresses
+two related issues in `fn_sig_table` (self param type) and `adt_layouts` (recursive
+registration for deeply nested structs).
+
+### Stage 14.43 — Nested Struct Mutation + Recursive ADT Layouts
+
+**Bug 1**: 2-level nested struct mutation `self.inner.val = v` → LLVM ERROR
+- Root cause: codegen Field projection had no case for nested Field projection
+- Base was Field projection → codegen loaded VALUE → GEP as pointer → invalid IR
+
+**Fix 1a**: STORE path (statement.rs) — added nested Field projection case
+- Uses `compute_place_address` recursively for nested Field projections
+
+**Fix 1b**: LOAD path (mir_translation.rs) — added nested Field projection case
+- Same pattern: `codegen_place_load_typed` now handles nested Field
+
+**Bug 2**: 3-level nested struct `L1→L2→L3` mutation still fails after Fix 1
+- `@landin_set` signature was `{ { i32 } }*` (2 levels) instead of `{ { { i32 } } }*` (3 levels)
+
+**Fix 2a**: fn_sig_table checks `self_kind` FIRST (driver.rs)
+- Added `resolve_self_param_type_for_sig` helper
+- Resolves self param type from owning impl block's self_ty
+
+**Fix 2b**: `populate_adt_layouts` registers ADT layouts RECURSIVELY (adt_layout.rs)
+- Added `register_adt_layout_recursive` helper — walks nesting chain to any depth
+- Previously only registered 1 level (L1 + L2 but not L3 for L1→L2→L3)
+
+**Verified paths** (all pass):
+- 2-level nested struct mutation → 99 ✅ (was LLVM ERROR)
+- 3-level nested struct mutation → 99 ✅ (was wrong type/segfault)
+- All existing tests still pass (zero regression)
+
+**2 new run_ok tests**:
+- `e2e-runok-065-nested-struct-mut.lin` — 2-level nested struct mutation
+- `e2e-runok-066-deep-nested-struct.lin` — 3-level nested struct mutation
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5092 passed, 0 failed (5026 compile + 66 run_ok with runtime verification)
+```
+
+### Version policy: v0.58.0 → v0.59.0 (minor bump — nested struct mutation is critical correctness)
+
+---
+## v0.58.0 — Stage 14.42 (Method Chain Receiver + Impl Method Namespace Fix)
+
+### Overview
+
+Stage 14.42 fixes 2 silent bugs and 1 latent bug discovered through systematic
+audit with diverse run_ok tests. Method chain resolution is now complete for
+all receiver types, and impl methods no longer collide in the value namespace.
+
+### Stage 14.42 — Method Chain Receiver + Impl Method Namespace
+
+**Bug 1**: `c.inc().inc().add(10).inc()` returns 1 instead of 13 (silent drop)
+- Only the first method in the chain was called; the rest were silently dropped
+- Root cause: no MethodCall arm in `resolve_inherent_method_from_hir_expr`
+
+**Fix 1a**: Added MethodCall arm to `resolve_inherent_method_from_hir_expr`
+- Resolves receiver method → gets return type → resolves target method
+
+**Fix 1b**: Added auto-deref to `resolve_inherent_method`
+- `Ref`/`RawPtr` → deref to inner type before ADT lookup
+- Enables `&mut self` return type method resolution
+
+**Bug 2**: `A::new` + `B::new` → "duplicate definition" (latent bug)
+- Two impl blocks with same-named methods collided in value namespace
+
+**Fix 2**: Added `impl_method_def_ids: HashSet<DefId>` to Resolver
+- Skip impl methods during value namespace registration
+- Impl methods accessed via `Type::method` paths (impl_method_index)
+
+**Side effect**: 2 conformance tests updated from `compile_error` to `compile_ok`
+- The "duplicate definition" error they expected is now fixed
+
+**Known limitation**: `&mut self` chain (Builder pattern) triggers borrowck false positive
+- Sequential calls work; chained calls need two-phase borrows (GAP-6, deferred)
+
+**Verified paths** (all pass):
+- `Counter::new().inc().inc().add(10).inc()` → 13 ✅ (was 1)
+- `A::new(10)` + `B::new(20)` → 10 20 ✅ (was compile error)
+- `Outer::new(5).double_inner()` → 10 ✅ (was compile error)
+- Recursive struct accumulator → 15 ✅
+- Enum with 3 data variants → 12 12 6 ✅
+- Conditional struct init → 10 20 30 40 50 60 ✅
+
+**6 new run_ok tests**:
+- `e2e-runok-059-self-chain.lin` — self-by-value method chain
+- `e2e-runok-060-recursive-struct.lin` — recursive struct accumulator
+- `e2e-runok-061-enum-multi-data.lin` — enum with 3 data variants
+- `e2e-runok-062-conditional-struct.lin` — conditional struct init
+- `e2e-runok-063-same-method-name.lin` — two structs same method name
+- `e2e-runok-064-nested-struct-chain.lin` — nested struct chain
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5090 passed, 0 failed (5026 compile + 64 run_ok with runtime verification)
+```
+
+### Version policy: v0.57.0 → v0.58.0 (minor bump — method chain completeness + namespace fix)
 
 ---
 ## v0.57.0 — Stage 14.41 (Resolver: Type::method Path Resolution — Static Method Calls)

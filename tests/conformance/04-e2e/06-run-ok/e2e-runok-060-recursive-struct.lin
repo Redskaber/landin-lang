@@ -1,0 +1,19 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok recursive struct accumulator with method chain — Stage 14.42
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 15
+// SOURCE: Stage 14.42 — verifies struct return + method chain in recursive context
+
+struct Acc { sum: i32 }
+impl Acc {
+    fn new() -> Acc { Acc { sum: 0 } }
+    fn add(self, v: i32) -> Acc { Acc { sum: self.sum + v } }
+}
+fn build(n: i32, acc: Acc) -> Acc {
+    if n == 0 { acc } else { build(n - 1, acc.add(n)) }
+}
+fn main() -> i32 {
+    let final_acc = build(5, Acc::new());
+    println!("{}", final_acc.sum);
+    0
+}

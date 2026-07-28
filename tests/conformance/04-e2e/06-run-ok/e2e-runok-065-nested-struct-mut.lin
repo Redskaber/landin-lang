@@ -1,0 +1,21 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok nested struct mutation through method call (2 levels) — Stage 14.43
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 99
+// SOURCE: Stage 14.43 — nested Field projection codegen + adt_layouts recursive registration
+
+struct Inner { val: i32 }
+struct Outer { inner: Inner }
+impl Outer {
+    fn new(v: i32) -> Outer { Outer { inner: Inner { val: v } } }
+    fn mutate_inner(&mut self, v: i32) {
+        self.inner.val = v;
+    }
+    fn get(self) -> i32 { self.inner.val }
+}
+fn main() -> i32 {
+    let mut o = Outer::new(10);
+    o.mutate_inner(99);
+    println!("{}", o.get());
+    0
+}

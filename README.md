@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.57.0
+**Version**: v0.63.0
 **Date**: 2026-07-28
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -14,11 +14,13 @@ backend via the `llvm-sys` crate.
 > Stage 14.1 capability assessment (`docs/develop/v0/stage-14/v0.1-capability-assessment.md`)
 > identified **8 P0 blockers** that must be closed before v0.1. The prior
 > "v0.1 GATE REACHED" claim (Stage 12.1, 2026-07-26) is **formally superseded**.
-> This release (v0.57.0) is **v0.1-rc3** — architecture cleanup + API
+> This release (v0.63.0) is **v0.1-rc3** — architecture cleanup + API
 > standardization + 6 gap closures (GAP-5/8/17/18/20/31) + method chain
-> resolution + static method call correctness are complete, but deep soundness
-> work (NLL fixpoint, region inference, drop elaboration, lifetime elision)
-> remains.
+> resolution + static method call correctness + impl method namespace fix
+> + nested struct mutation + array of structs + LLVM module verification
+> + Or-pattern fix + tuple destructuring (let + match) are complete, but deep
+> soundness work (NLL fixpoint, region inference, drop elaboration, lifetime
+> elision) remains.
 
 ---
 
@@ -72,8 +74,16 @@ backend via the `llvm-sys` crate.
 | Struct-returning method calls without annotations | ✅ Stage 14.35-14.37 — fn_sigs threading + Call dest type writeback + Assign type propagation (fixpoint) |
 | **Method chain resolution (multi-step + inline)** | ✅ Stage 14.38-14.40 — `a.add(b).scale(2).get()` works without annotations |
 | **Static method calls (Type::method)** | ✅ Stage 14.41 — `Counter::new(5)` calls the method, not treated as struct ctor |
+| **Method chain on all receiver types** | ✅ Stage 14.42 — Path/Call/Struct/MethodCall receivers all work + auto-deref for Ref |
+| **Impl method namespace (no collision)** | ✅ Stage 14.42 — `A::new` + `B::new` no longer collide in value namespace |
+| **Nested struct mutation (any depth)** | ✅ Stage 14.43 — `self.inner.val = v` works for 2-level + 3-level nesting |
+| **Array of structs** | ✅ Stage 14.44 — `[Point{..}, Point{..}]` + `arr[i].field` + `arr[i].method()` |
+| **LLVM module verification** | ✅ Stage 14.44 — catches invalid IR early (was silent empty output) |
+| **Or-patterns in match** | ✅ Stage 14.45 — `1 \| 2 => { ... }` now correctly matches only listed values |
+| **Tuple destructuring in let** | ✅ Stage 14.46 — `let (a, b, c) = (1, 2, 3)` now extracts fields correctly |
+| **Tuple destructuring in match** | ✅ Stage 14.47 — `match t { (a, b) => ... }` now works (was garbage values) |
 | **v0.1 Release Readiness** | **❌ NO-GO** — 7 P0 blockers remain (see below) |
-| Conformance | 5084 tests (5026 compile + 58 run_ok with real runtime verification) |
+| Conformance | 5101 tests (5026 compile + 75 run_ok with real runtime verification) |
 | Rust tests | 1951 passed (with llvm-backend), 0 failed |
 | Source code | ~90 files, ~32,000 LOC, 50+ modules |
 
@@ -304,7 +314,13 @@ src/codegen/
 | 14.35-14.37 | Struct return without annotations (fn_sigs threading + writeback) | ✅ |
 | 14.38-14.40 | Method chain resolution (resolver fix for impl/trait items) | ✅ |
 | 14.41 | Static method call correctness (Type::method path resolution + adt_layouts re-populate) | ✅ |
-| 14.42+ | Deep P0 soundness work (NLL, region, drop, lifetime, stdlib, cargo) | ⏳ Deferred |
+| 14.42 | Method chain on all receiver types + impl method namespace fix (no collision) | ✅ |
+| 14.43 | Nested struct mutation (2-level + 3-level) + recursive adt_layouts registration | ✅ |
+| 14.44 | Array of structs + LLVM module verification (catches silent IR errors) + 5 bug fixes | ✅ |
+| 14.45 | Or-pattern fix in match (was matching all values via wildcard) + audit (closures/strings/math) | ✅ |
+| 14.46 | Tuple destructuring in let bindings (was outputting 0 0 0) + 2 run_ok tests | ✅ |
+| 14.47 | Match arm tuple destructure (was garbage values) + skip SwitchInt on non-int scrutinee + 2 run_ok tests | ✅ |
+| 14.48+ | Deep P0 soundness work (NLL, region, drop, lifetime, stdlib, cargo) | ⏳ Deferred |
 
 ---
 
@@ -397,13 +413,13 @@ cargo test --features llvm-backend
 python3 tests/conformance/run_all.py
 ```
 
-**Expected results** (v0.57.0):
+**Expected results** (v0.63.0):
 - `cargo build --features llvm-backend`: succeeds
 - `cargo fmt --check`: clean (no changes)
 - `cargo clippy --all-targets --features llvm-backend`: 0 warnings, 0 errors
 - `cargo test --features llvm-backend`: 1951 tests passed, 0 failed, 2 ignored
 - `cargo build --examples --features llvm-backend`: 4 examples compile
-- `conformance`: 5084 passed, 0 failed (5026 compile + 58 run_ok with runtime verification)
+- `conformance`: 5101 passed, 0 failed (5026 compile + 75 run_ok with runtime verification)
 
 ---
 

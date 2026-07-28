@@ -1,8 +1,7 @@
 // CATEGORY: e2e
-// DESCRIPTION: match tuple pattern
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
-// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+// DESCRIPTION: match tuple pattern (compilation succeeds — Stage 14.47 fixed tuple destructure in match)
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion; Stage 14.47 updated — match tuple pattern now works
 
 fn f(t:(i32,i32))->i32{match t{(0,_)=>0,(_,0)=>1,_=>2}}
 fn main(){ let _ = f((0,0)); }

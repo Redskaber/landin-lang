@@ -350,11 +350,39 @@ pub fn compile(src: &str) -> CompileResult {
                 .inputs
                 .iter()
                 .map(|p| {
-                    p.ty.as_ref()
-                        .map(crate::mir::lower::lower_hir_ty_to_mir_ty)
-                        .unwrap_or_else(|| {
-                            crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
-                        })
+                    // Stage 14.43: Handle `self` shorthand parameters.
+                    //
+                    // For `&mut self` / `&self` / `self`, the HIR `p.ty` may be
+                    // a placeholder (non-empty Spur but resolves to Res::Unknown
+                    // or Res::Err). We check `p.self_kind` FIRST — if it's Some,
+                    // the parameter is a self param and its type comes from the
+                    // owning impl block's self_ty (with Ref wrapping for &self/&mut self).
+                    //
+                    // Previously, `p.ty` was checked first, causing impl methods
+                    // with `&mut self` to have wrong signatures (placeholder type
+                    // instead of the impl's self_ty). This caused LLVM type
+                    // mismatches for nested struct methods.
+                    //
+                    // Per §13.4 (design alignment): self_kind is the authoritative
+                    // indicator of a self parameter — the ty field is a HIR
+                    // lowering detail that may or may not be set.
+                    if p.self_kind.is_some() {
+                        // Resolve self param type from owning impl block.
+                        resolve_self_param_type_for_sig(&hir, *def_id, p.self_kind).unwrap_or_else(
+                            || {
+                                // Fallback: if self_ty resolution fails, try p.ty
+                                if let Some(ty) = &p.ty {
+                                    crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                                } else {
+                                    crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
+                                }
+                            },
+                        )
+                    } else if let Some(ty) = &p.ty {
+                        crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                    } else {
+                        crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
+                    }
                 })
                 .collect();
             let output = match &f.sig.output {
@@ -485,6 +513,82 @@ pub fn compile(src: &str) -> CompileResult {
                                         | crate::mir::ty::TyKind::Error
                                 ) {
                                     ld.ty = sig.output.as_ref().clone();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stage 14.44: Write back types for Index projection Copy dests.
+        //
+        // When `loc = Copy(arr[i])` and loc's type is Infer, we need to
+        // write back the array's element type to loc. This is needed for
+        // `arr[0].field` patterns where the loaded element (a struct) is
+        // stored into an Infer-typed local — without writeback, the alloca
+        // is i32 (fallback), causing GEP errors when accessing fields.
+        //
+        // Per §13.4: mirrors the Call dest writeback above but for Index
+        // projections. The element type is extracted from the array type
+        // in the source place's local_decls.
+        for bb in &mir.basic_blocks {
+            for stmt in &bb.statements {
+                if let crate::mir::body::StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let crate::mir::place::PlaceKind::Local(dest_id) = &place.kind {
+                        // Check if dest is Infer/Error
+                        let dest_ty = &mir.local_decls[dest_id.0 as usize].ty;
+                        if !matches!(
+                            &dest_ty.kind,
+                            crate::mir::ty::TyKind::Infer(_) | crate::mir::ty::TyKind::Error
+                        ) {
+                            continue;
+                        }
+                        // Check if rvalue is Copy/Move of an Index projection
+                        if let crate::mir::place::Rvalue::Use(
+                            crate::mir::place::Operand::Copy(src_place)
+                            | crate::mir::place::Operand::Move(src_place),
+                        ) = rvalue
+                        {
+                            if let crate::mir::place::PlaceKind::Projection(base, elem) =
+                                &src_place.kind
+                            {
+                                if matches!(
+                                    elem,
+                                    crate::mir::place::ProjectionElem::Index(_)
+                                        | crate::mir::place::ProjectionElem::ConstantIndex { .. }
+                                ) {
+                                    // Get the base's type (the array)
+                                    if let crate::mir::place::PlaceKind::Local(arr_id) = &base.kind
+                                    {
+                                        let elem_ty_clone = mir
+                                            .local_decls
+                                            .get(arr_id.0 as usize)
+                                            .and_then(|arr_ld| {
+                                                if let crate::mir::ty::TyKind::Array(elem_ty, _) =
+                                                    &arr_ld.ty.kind
+                                                {
+                                                    Some(elem_ty.as_ref().clone())
+                                                } else {
+                                                    None
+                                                }
+                                            });
+                                        if let Some(elem_ty) = elem_ty_clone {
+                                            // Write back the element type
+                                            if let Some(ld) =
+                                                mir.local_decls.get_mut(dest_id.0 as usize)
+                                            {
+                                                if matches!(
+                                                    &ld.ty.kind,
+                                                    crate::mir::ty::TyKind::Infer(_)
+                                                        | crate::mir::ty::TyKind::Error
+                                                ) {
+                                                    ld.ty = elem_ty;
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -733,6 +837,58 @@ fn owner_return_ty(owner: &OwnerNode) -> Option<crate::hir::HirTy> {
     }
 }
 
+/// Stage 14.43: Resolve the type of a `self` parameter for fn_sig_table.
+///
+/// This mirrors `resolve_self_param_type` in mir/lower/mod.rs but is used
+/// during fn_sig_table construction (before MIR lowering). It searches
+/// the HIR for the impl block that owns the given method DefId, then
+/// returns the impl's `self_ty` (with Ref wrapping for &self/&mut self).
+///
+/// Per §16 (interface isolation): this is a HIR query at fn_sig_table
+/// construction time. The result is sunk into fn_sig_table as data.
+fn resolve_self_param_type_for_sig(
+    hir: &HirCrate,
+    method_def_id: crate::hir::DefId,
+    self_kind: Option<crate::ast::SelfKind>,
+) -> Option<crate::mir::ty::Ty> {
+    // Search all owners for an Impl block that contains a method whose
+    // hir_id.owner matches method_def_id.
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    if f.hir_id.owner == method_def_id {
+                        // Found the owning impl block! Lower its self_ty.
+                        let adt_ty = crate::mir::lower::lower_hir_ty_to_mir_ty(&impl_block.self_ty);
+                        return match self_kind {
+                            Some(crate::ast::SelfKind::Ref(mutability)) => {
+                                let mir_mut = match mutability {
+                                    crate::ast::Mutability::Mutable => {
+                                        crate::mir::ty::Mutability::Mutable
+                                    }
+                                    crate::ast::Mutability::Immutable => {
+                                        crate::mir::ty::Mutability::Immutable
+                                    }
+                                };
+                                Some(crate::mir::ty::Ty::new(
+                                    crate::mir::ty::TyKind::Ref(
+                                        crate::mir::ty::Region::Erased,
+                                        mir_mut,
+                                        Box::new(adt_ty),
+                                    ),
+                                    f.span,
+                                ))
+                            }
+                            // self by value — no wrapping
+                            _ => Some(adt_ty),
+                        };
+                    }
+                }
+            }
+        }
+    }
+    None
+}
 /// Public wrapper for codegen to get the return type of a body's owner.
 pub fn owner_return_ty_for_body(
     hir: &HirCrate,

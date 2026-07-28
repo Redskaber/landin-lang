@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok match with tuple destructure + sum — Stage 14.47
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 6
+// SOURCE: Stage 14.47 — tuple destructure in match arm + field extraction
+
+fn classify(t: (i32, i32)) -> i32 {
+    match t {
+        (a, b) => { a + b }
+    }
+}
+fn main() -> i32 {
+    println!("{}", classify((2, 4)));
+    0
+}

@@ -211,9 +211,24 @@ pub(crate) fn detect_place_storage_type(
                     base_ty
                 }
             }
-            // For Index/ConstantIndex, the storage type is the base's
-            // storage type (we're indexing INTO the base's storage).
-            _ => detect_place_storage_type(mir, base, layouts),
+            // Stage 14.44: For Index/ConstantIndex, the storage type is the
+            // ELEMENT type (what's stored at that index), not the array type.
+            // Was: returned detect_place_storage_type(base) which gives the
+            // array type [N x T] instead of the element type T. This caused
+            // emit_gep_field to use the array type instead of the element type
+            // for `arr[i].field` patterns → GEP with wrong indices.
+            ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
+                let array_ty = detect_place_storage_type(mir, base, layouts);
+                // If the base is an array, return the element type.
+                if let EmitType::Array(elem_ty, _) = &array_ty {
+                    elem_ty.as_ref().clone()
+                } else {
+                    // Fat pointer { ptr, len } — element type is ptr's pointee.
+                    // unwrap_fat_ptr handles this; return the base type for now.
+                    array_ty
+                }
+            }
+            ProjectionElem::Subslice { .. } => detect_place_storage_type(mir, base, layouts),
         },
         PlaceKind::Static(_) => EmitType::I32,
     }
@@ -304,6 +319,40 @@ pub(crate) fn compute_place_address(
                 let struct_ty = detect_place_storage_type(mir, base, layouts);
                 emitter.emit_gep_field(&base_addr, &struct_ty, field_id.0)
             }
+            // Stage 14.44: For Index projection in compute_place_address,
+            // we need to GEP to the element's ADDRESS (not load the value).
+            // Previously, this fell through to the `_` arm which called
+            // codegen_place_load_typed (loads the value), breaking
+            // `arr[i].field` patterns where Field wraps Index.
+            ProjectionElem::Index(idx) => {
+                let base_ptr = compute_place_address(emitter, mir, base, _interner, layouts);
+                let array_ty = detect_place_storage_type(mir, base, layouts);
+                let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
+                    v
+                } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
+                    emitter.emit_load(&EmitType::I32, &ptr)
+                } else {
+                    "0".to_string()
+                };
+                let (gep_base, pointee_opt) =
+                    unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
+                match pointee_opt {
+                    Some(elem_ty) => emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &idx_val),
+                    None => emitter.emit_gep_index(&gep_base, &array_ty, &idx_val),
+                }
+            }
+            ProjectionElem::ConstantIndex { offset, .. } => {
+                let base_ptr = compute_place_address(emitter, mir, base, _interner, layouts);
+                let array_ty = detect_place_storage_type(mir, base, layouts);
+                let (gep_base, pointee_opt) =
+                    unwrap_fat_ptr_for_index(emitter, &base_ptr, &array_ty);
+                match pointee_opt {
+                    Some(elem_ty) => {
+                        emitter.emit_gep_index_ptr(&gep_base, &elem_ty, &offset.to_string())
+                    }
+                    None => emitter.emit_gep_index(&gep_base, &array_ty, &offset.to_string()),
+                }
+            }
             // For other projection types, fall back to the load path
             // (loads the value — old behavior, may not work for fat pointers
             // in store position, but preserves existing behavior for non-fat-ptr cases).
@@ -392,6 +441,13 @@ pub(crate) fn codegen_place_load_typed(
                 // Previously, this fell through to codegen_place_load_typed which
                 // loaded the entire struct VALUE and then tried to GEP the value
                 // (invalid LLVM IR — caused segfaults).
+                //
+                // Stage 14.43: Handle nested Field projection (e.g., `self.inner.val`).
+                // When the base is itself a Field projection (e.g., `self.inner`),
+                // we need the ADDRESS of the inner field, not its loaded value.
+                // Was: codegen_place_load_typed loaded the inner struct value, then
+                // GEP-ed into it as if it were a pointer → invalid IR + LLVM error.
+                // Fix: use compute_place_address for nested Field projections.
                 let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                     emitter
                         .get_local_ptr(id.0)
@@ -412,6 +468,10 @@ pub(crate) fn codegen_place_load_typed(
                     );
                     // The pointer value IS the base address for GEP
                     ptr_val
+                } else if let PlaceKind::Projection(_, ProjectionElem::Field(_, _)) = &base.kind {
+                    // Stage 14.43: base is a nested Field projection (e.g., self.inner).
+                    // Compute its ADDRESS (GEP to the inner field), don't load the value.
+                    compute_place_address(emitter, mir, base, interner, layouts)
                 } else {
                     let ptr_ty = detect_place_type(mir, base, layouts);
                     codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)

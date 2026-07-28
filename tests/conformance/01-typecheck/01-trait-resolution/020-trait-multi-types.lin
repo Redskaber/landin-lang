@@ -1,8 +1,7 @@
 // CATEGORY: typecheck
-// DESCRIPTION: trait impl for multiple types
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
-// SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
+// DESCRIPTION: trait impl for multiple types (compilation succeeds — Stage 14.42 fixed value namespace collision)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.1 conformance expansion; Stage 14.42 updated — impl methods no longer collide in value namespace
 
 trait T { fn f(&self) -> i32; } struct A; struct B; impl T for A { fn f(&self) -> i32 { 1 } } impl T for B { fn f(&self) -> i32 { 2 } }
 fn main(){ let _ = A; let _ = B; }

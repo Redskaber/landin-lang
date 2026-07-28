@@ -63,6 +63,14 @@ pub struct Resolver {
     /// for `V::new`, and the MIR lower's `is_adt_ctor` check no longer
     /// misfires.
     pub(super) impl_method_index: HashMap<(Spur, Spur), DefId>,
+    /// Stage 14.42: Set of impl method DefIds — used to skip registering
+    /// impl methods in the top-level value namespace.
+    ///
+    /// Without this, two impl blocks with same-named methods (e.g.,
+    /// `A::new` and `B::new`) would collide in the value namespace.
+    /// Impl methods are accessed via `Type::method` paths (impl_method_index),
+    /// NOT as free functions.
+    pub(super) impl_method_def_ids: std::collections::HashSet<DefId>,
     /// Errors encountered (non-fatal).
     pub(super) errors: Vec<ResolveError>,
 }
@@ -77,6 +85,7 @@ impl Resolver {
             current_self_kind: None,
             current_module: None,
             impl_method_index: HashMap::new(),
+            impl_method_def_ids: std::collections::HashSet::new(),
             errors: Vec::new(),
         }
     }

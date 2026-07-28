@@ -1,0 +1,11 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok tuple destructuring in let binding — Stage 14.46
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10 20 30
+// SOURCE: Stage 14.46 — tuple destructuring `let (a, b, c) = (10, 20, 30)` now works
+
+fn main() -> i32 {
+    let (a, b, c) = (10, 20, 30);
+    println!("{} {} {}", a, b, c);
+    0
+}

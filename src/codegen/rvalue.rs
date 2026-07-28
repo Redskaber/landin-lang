@@ -173,7 +173,31 @@ pub(crate) fn codegen_rvalue(
             if operands.is_empty() {
                 return "0".to_string();
             }
-            let elem_emit_ty = mir_type_to_emit_type(elem_ty);
+            // Stage 14.44: Use mir_type_to_emit_type_WITH_LAYOUTS (not the
+            // legacy mir_type_to_emit_type which doesn't know about AdtLayouts).
+            // For arrays of structs, the legacy function returns I32 (fallback),
+            // causing the array type to be [N x i32] instead of [N x { i32, i32 }].
+            // This made insertvalue insert a struct value into an i32 array →
+            // invalid IR + empty object file (silent failure).
+            //
+            // Stage 14.44b: If elem_ty is Infer (MIR lower uses fresh_infer_ty
+            // because typeck doesn't fully propagate element types), fall back
+            // to detecting the type from the first operand. This handles
+            // arrays of structs like `[Point { x: 1, y: 2 }, Point { x: 3, y: 4 }]`
+            // where elem_ty is Infer but the operands are Adt values.
+            let elem_emit_ty = {
+                let from_elem_ty = mir_type_to_emit_type_with_layouts(elem_ty, layouts);
+                if matches!(from_elem_ty, EmitType::I32) && !operands.is_empty() {
+                    // elem_ty might be Infer → try detecting from first operand
+                    if let Some(detected) = detect_operand_type(mir, &operands[0], layouts) {
+                        detected
+                    } else {
+                        from_elem_ty
+                    }
+                } else {
+                    from_elem_ty
+                }
+            };
             let n = operands.len() as u64;
             let agg_ty = EmitType::array_of(elem_emit_ty.clone(), n);
             let mut agg = "undef".to_string();

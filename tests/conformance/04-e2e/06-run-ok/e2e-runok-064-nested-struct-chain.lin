@@ -1,0 +1,22 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok nested struct with method chain — Stage 14.42
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10
+// SOURCE: Stage 14.42 — verifies nested struct construction + method resolution across types
+
+struct Inner { val: i32 }
+impl Inner {
+    fn new(v: i32) -> Inner { Inner { val: v } }
+    fn double(self) -> Inner { Inner { val: self.val * 2 } }
+}
+struct Outer { inner: Inner }
+impl Outer {
+    fn new(v: i32) -> Outer { Outer { inner: Inner::new(v) } }
+    fn double_inner(self) -> Outer { Outer { inner: self.inner.double() } }
+    fn get(self) -> i32 { self.inner.val }
+}
+fn main() -> i32 {
+    let o = Outer::new(5).double_inner();
+    println!("{}", o.get());
+    0
+}

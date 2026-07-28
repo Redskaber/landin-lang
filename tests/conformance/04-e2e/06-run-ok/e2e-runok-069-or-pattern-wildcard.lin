@@ -1,0 +1,20 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok match with or-pattern + wildcard fallthrough — Stage 14.45
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 1\n2\n2\n3
+// SOURCE: Stage 14.45 — Or-pattern (1 | 2) now correctly adds switch cases; was matching all values
+
+fn classify(n: i32) -> i32 {
+    match n {
+        0 => { 1 }
+        1 | 2 => { 2 }
+        _ => { 3 }
+    }
+}
+fn main() -> i32 {
+    println!("{}", classify(0));
+    println!("{}", classify(1));
+    println!("{}", classify(2));
+    println!("{}", classify(99));
+    0
+}

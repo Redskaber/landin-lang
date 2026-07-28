@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok math edge cases (negative / modulo / division / unary neg) — Stage 14.45
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: -3\n-1\n-30\n10
+// SOURCE: Stage 14.45 — math edge cases verification
+
+fn main() -> i32 {
+    let a = -10;
+    let b = 3;
+    println!("{}", a / b);
+    println!("{}", a % b);
+    println!("{}", a * b);
+    println!("{}", -a);
+    0
+}

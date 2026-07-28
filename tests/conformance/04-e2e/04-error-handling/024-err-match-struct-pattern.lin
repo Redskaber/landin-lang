@@ -1,8 +1,7 @@
 // CATEGORY: e2e
-// DESCRIPTION: match struct pattern
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
-// SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
+// DESCRIPTION: match struct pattern (compilation succeeds — Stage 14.47 fixed tuple/struct destructure in match)
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion; Stage 14.47 updated — match struct pattern now works
 
 struct S{x:i32,y:i32} fn f(s:S)->i32{match s{S{x,y}=>x+y}}
 fn main(){ let _ = S{x: 0,y: 0}; let _ = f(S{x: 0,y: 0}); }

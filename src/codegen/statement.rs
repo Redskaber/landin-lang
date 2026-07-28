@@ -65,6 +65,15 @@ pub(crate) fn codegen_statement(
                             // Stage 14.19 (GAP-31): Handle Deref+Field for store path.
                             // When base is a Deref (e.g. `(*self).field`), load the
                             // pointer from the inner base, then GEP through it.
+                            //
+                            // Stage 14.43: Handle nested Field projection for store path.
+                            // When base is itself a Field projection (e.g., `self.inner.val`
+                            // → Projection(Projection(Local(self), Field(inner)), Field(val))),
+                            // we need the ADDRESS of the inner field, not its loaded value.
+                            // Was: codegen_place_load loaded the inner struct value, then
+                            // GEP-ed into it as if it were a pointer → invalid IR + LLVM
+                            // "Cannot emit physreg copy instruction" error at JIT.
+                            // Fix: recursively compute the address via compute_place_address.
                             let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                                 emitter
                                     .get_local_ptr(id.0)
@@ -78,6 +87,12 @@ pub(crate) fn codegen_statement(
                                 codegen_place_load_typed(
                                     emitter, mir, inner_base, ptr_ty, interner, layouts,
                                 )
+                            } else if let PlaceKind::Projection(_, ProjectionElem::Field(_, _)) =
+                                &base.kind
+                            {
+                                // Stage 14.43: base is a nested Field projection
+                                // (e.g., self.inner). Compute its address recursively.
+                                compute_place_address(emitter, mir, base, interner, layouts)
                             } else {
                                 codegen_place_load(emitter, mir, base, interner, layouts)
                             };
