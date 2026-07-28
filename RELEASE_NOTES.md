@@ -1,9 +1,54 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.65.0
+**Current version**: v0.66.0
 **Date**: 2026-07-28
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5106 conformance tests (80 run_ok) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5109 conformance tests (83 run_ok) + 4 examples
+
+---
+## v0.66.0 — Stage 14.50 (Nested Struct + Mixed Pattern Destructure)
+
+### Overview
+
+Stage 14.50 fixes nested struct destructuring and mixed pattern destructuring
+(struct with tuple field, tuple of structs). Previously, only `Ident` field
+sub-patterns were handled — nested `Struct` or `Tuple` field patterns were
+silently skipped, causing inner bindings to read uninitialized memory.
+
+### Stage 14.50 — Nested Struct + Mixed Pattern Destructure
+
+**Bug 1**: `let Outer { inner: Inner { a, b }, c } = o` → `0 0 3` (was `1 2 3`)
+- Inner struct not destructured
+
+**Bug 2**: `let Wrapper { data: (a, b), label } = w` → `0 0 99` (was `10 20 99`)
+- Tuple field not destructured
+
+**Fix**: Added unified `lower_nested_pattern_destructure` recursive helper
+- Handles ALL nested pattern types: Struct, Tuple, Ident (no-op)
+- One function handles all combinations to any depth (per §"通用 > 特例")
+
+**Verified paths** (all pass):
+- Nested struct destructure → 1 2 3 ✅ (was 0 0 3)
+- Struct with tuple field → 10 20 99 ✅ (was 0 0 99)
+- Tuple of structs → 1 2 3 4 ✅ (already worked)
+- All existing tests still pass (zero regression)
+
+**3 new run_ok tests**:
+- `e2e-runok-081-nested-struct-destructure.lin` — nested struct
+- `e2e-runok-082-struct-tuple-field.lin` — struct with tuple field
+- `e2e-runok-083-tuple-of-structs.lin` — tuple of structs
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5109 passed, 0 failed (5026 compile + 83 run_ok with runtime verification)
+```
+
+### Version policy: v0.65.0 → v0.66.0 (minor bump — nested pattern destructure is common)
 
 ---
 ## v0.65.0 — Stage 14.49 (Nested Tuple Destructure + Type Writeback)

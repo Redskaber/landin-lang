@@ -748,3 +748,42 @@ field-name → index lookup. Per §"通用 > 特例": general mechanism for any 
 detect_place_type). Per §13.4: general recursion handles any nesting depth.
 
 **Last updated**: 2026-07-28
+
+## Stage 14.50 — Nested Struct + Mixed Pattern Destructure (2026-07-28)
+
+**Task ID**: `stage14.50-nested-struct-and-mixed-pattern-destructure`
+
+**Agent**: Super Z (main)
+
+**Bug 1**: `let Outer { inner: Inner { a, b }, c } = o` → `0 0 3` (was `1 2 3`)
+- Inner struct not destructured — only `Ident` field patterns handled
+
+**Bug 2**: `let Wrapper { data: (a, b), label } = w` → `0 0 99` (was `10 20 99`)
+- Tuple field not destructured — same root cause
+
+**Fix**: Added unified `lower_nested_pattern_destructure` recursive helper
+- Handles ALL nested pattern types: Struct, Tuple, Ident (no-op)
+- Called after each field extraction in struct destructure
+- Recursively destructures from the extracted field local
+- Per §"通用 > 特例": one function handles all combinations to any depth
+
+**Verification** (post-fix):
+- Nested struct destructure → 1 2 3 ✅ (was 0 0 3)
+- Struct with tuple field → 10 20 99 ✅ (was 0 0 99)
+- Tuple of structs → 1 2 3 4 ✅ (already worked)
+- All 1951 rust tests pass (zero regression)
+- All 5109 conformance tests pass (was 5106, +3)
+- 0 clippy warnings, fmt clean
+
+**New tests** (3 run_ok):
+- `e2e-runok-081-nested-struct-destructure.lin` — nested struct
+- `e2e-runok-082-struct-tuple-field.lin` — struct with tuple field
+- `e2e-runok-083-tuple-of-structs.lin` — tuple of structs
+
+**Stage Summary**: Stage 14.50 PASSED — nested pattern destructure complete.
+1 fix: unified recursive helper for all nested pattern combinations.
+Pattern matching system now handles: tuple/struct destructure in let + match,
+nested patterns (struct-in-struct, tuple-in-struct, etc.) to any depth,
+or-patterns, enum variants.
+
+**Last updated**: 2026-07-28

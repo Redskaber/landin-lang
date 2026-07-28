@@ -257,7 +257,7 @@ Each test cell has a status:
 
 ## 5. Tier 3: End-to-End (E2E) Path Coverage
 
-### 5.1 run_ok Tests (80 total — verified at runtime)
+### 5.1 run_ok Tests (83 total — verified at runtime)
 
 | Test ID | Feature | Expected Output | Status |
 |---------|---------|-----------------|--------|
@@ -341,6 +341,9 @@ Each test cell has a status:
 | E-078 | Struct destructure in match arm | `10 20` | ✅ |
 | E-079 | Nested tuple destructure (2-level) | `1 2 3` | ✅ |
 | E-080 | Deep nested tuple destructure (3-level) | `1 2 3 4` | ✅ |
+| E-081 | Nested struct destructure | `1 2 3` | ✅ |
+| E-082 | Struct with tuple field destructure | `10 20 99` | ✅ |
+| E-083 | Tuple of structs destructure | `1 2 3 4` | ✅ |
 
 ### 5.2 Negative Tests (compile_error — 403 total)
 
@@ -377,9 +380,9 @@ Each test cell has a status:
 |------|-------------|----------|----------|
 | Tier 1: Per-Stage | 146 | 144 | 98.6% |
 | Tier 2: Inter-Stage | 15 | 15 | 100% |
-| Tier 3: E2E (run_ok) | 80 | 80 | 100% |
+| Tier 3: E2E (run_ok) | 83 | 83 | 100% |
 | Tier 3: E2E (compile_error) | 399 | 399 | 100% |
-| **Total** | **640** | **638** | **99.7%** |
+| **Total** | **643** | **641** | **99.7%** |
 
 **Unverified paths** (2):
 1. B-03: Double mutable borrow — NLL permissive (GAP-1, known limitation)

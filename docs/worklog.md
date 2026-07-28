@@ -12481,3 +12481,46 @@ Stage Summary:
 - Per §"显式 > 隐式": field types resolved from concrete Tuple types, not inferred
 - All tests pass (zero regression); 2 new run_ok tests
 - v0.65.0: minor bump (nested destructure — major pattern matching improvement)
+
+---
+Task ID: stage14.50-nested-struct-and-mixed-pattern-destructure
+Agent: Super Z (main)
+Task: Stage 14.50 — Fix nested struct destructure + struct with tuple field destructure. v0.65.0 → v0.66.0.
+
+Work Log:
+- Baseline: v0.65.0 / 1951 rust tests + 5106 conformance (post-Stage 14.49)
+- Audit: tested nested struct destructure and mixed patterns
+- Bug 1 discovered: `let Outer { inner: Inner { a, b }, c } = o` outputs `0 0 3` instead of `1 2 3`
+  - Inner struct `Inner { a, b }` not destructured — `a` and `b` get `0`
+  - Root cause: struct destructure in `lower_block` only handled `Ident` field sub-patterns
+  - When a field pattern is itself a `Struct` (nested), it was skipped entirely
+- Bug 2 discovered: `let Wrapper { data: (a, b), label } = w` outputs `0 0 99` instead of `10 20 99`
+  - Tuple field `(a, b)` not destructured — `a` and `b` get `0`
+  - Same root cause: struct destructure didn't handle `Tuple` field sub-patterns
+- Fix: Added unified `lower_nested_pattern_destructure` recursive helper (control_flow.rs)
+  - Handles ALL nested pattern types: Struct, Tuple, and Ident (no-op for Ident)
+  - Called after each field extraction in struct destructure
+  - Recursively destructures nested patterns from the extracted field local
+  - Per §13.4: general mechanism — handles struct-in-struct, tuple-in-struct,
+    struct-in-tuple, tuple-in-tuple to any depth
+  - Per §"通用 > 特例": one function handles all pattern combinations, no special cases
+- Verification:
+  - `let Outer { inner: Inner { a, b }, c } = o` → 1 2 3 ✅ (was 0 0 3)
+  - `let Wrapper { data: (a, b), label } = w` → 10 20 99 ✅ (was 0 0 99)
+  - `let (p1, p2) = (Point{..}, Point{..})` → 1 2 3 4 ✅ (already worked)
+  - All 1951 rust tests pass (zero regression)
+  - All 5109 conformance tests pass (was 5106, +3 new)
+  - 0 clippy warnings, fmt clean
+- Created 3 new run_ok tests:
+  - e2e-runok-081-nested-struct-destructure.lin — nested struct (1 2 3)
+  - e2e-runok-082-struct-tuple-field.lin — struct with tuple field (10 20 99)
+  - e2e-runok-083-tuple-of-structs.lin — tuple of structs (1 2 3 4)
+- Bumped Cargo.toml v0.65.0 → v0.66.0 (minor bump — nested pattern destructure)
+
+Stage Summary:
+- Stage 14.50 PASSED — nested struct + mixed pattern destructure now works
+- 1 fix: unified `lower_nested_pattern_destructure` recursive helper
+- Per §13.4 + §"通用 > 特例": ONE function handles ALL nested pattern combinations
+  (struct-in-struct, tuple-in-struct, struct-in-tuple, tuple-in-tuple) to any depth
+- All tests pass (zero regression); 3 new run_ok tests
+- v0.66.0: minor bump (nested pattern destructure — major pattern matching completeness)

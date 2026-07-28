@@ -122,6 +122,73 @@ pub(crate) fn lower_deref_expr(cx: &mut MirLowerCtxt, inner: &HirExpr, span: Spa
     let result_ty = cx.fresh_infer_ty(span);
     cx.eval_rvalue_to_temp(Rvalue::Use(Operand::Copy(proj)), result_ty, span)
 }
+/// Stage 14.50: Recursively destructure a nested pattern from a source local.
+///
+/// Given a source local holding a value and a pattern, if the pattern is a
+/// Struct or Tuple, extract fields and recursively destructure nested patterns.
+/// For Ident patterns, the local has already been created by the caller —
+/// this function does nothing.
+///
+/// Per §13.4: handles nested struct-in-struct, tuple-in-struct, struct-in-tuple,
+/// and tuple-in-tuple patterns to any depth.
+fn lower_nested_pattern_destructure(cx: &mut MirLowerCtxt, src_local: LocalId, pat: &HirPat) {
+    match &pat.kind {
+        HirPatKind::Struct(path, fields, _) => {
+            // Resolve the struct DefId to look up field indices
+            if let crate::hir::Res::Def(struct_def_id, _) = path.res {
+                let field_indices: std::collections::HashMap<crate::lexer::token::Symbol, usize> = {
+                    let mut map = std::collections::HashMap::new();
+                    if let Some(hir) = cx.hir {
+                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                            hir.owner(struct_def_id)
+                        {
+                            for (i, f) in s.fields.iter().enumerate() {
+                                if let Some(name) = f.ident {
+                                    map.insert(name.name, i);
+                                }
+                            }
+                        }
+                    }
+                    map
+                };
+                for field_pat in fields {
+                    if let Some(field_idx) = field_indices.get(&field_pat.ident.name).copied() {
+                        let field_ty = cx.fresh_infer_ty(field_pat.pat.span);
+                        let sub_local = cx.new_local(field_pat.pat.hir_id, field_ty.clone(), None);
+                        cx.mir
+                            .block_mut(cx.current_block)
+                            .statements
+                            .push(Statement {
+                                kind: StatementKind::StorageLive(sub_local),
+                                span: field_pat.pat.span,
+                            });
+                        cx.push_assign(
+                            Place::local(sub_local, field_pat.pat.span),
+                            Rvalue::Use(Operand::Copy(Place {
+                                kind: PlaceKind::Projection(
+                                    Box::new(Place::local(src_local, pat.span)),
+                                    ProjectionElem::Field(FieldId(field_idx as u32), field_ty),
+                                ),
+                                span: field_pat.pat.span,
+                            })),
+                            field_pat.pat.span,
+                        );
+                        // Recurse for nested patterns
+                        lower_nested_pattern_destructure(cx, sub_local, &field_pat.pat);
+                    }
+                }
+            }
+        }
+        HirPatKind::Tuple(sub_pats) => {
+            // Use the existing nested tuple destructure helper
+            lower_nested_tuple_destructure(cx, src_local, sub_pats, pat.span);
+        }
+        _ => {
+            // Ident or other pattern — local already created by caller
+        }
+    }
+}
+
 /// Stage 14.49: Recursively destructure a nested tuple pattern.
 ///
 /// Given a source local holding a tuple value and a list of sub-patterns,
@@ -397,38 +464,36 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                                 if let Some(field_idx) =
                                     field_indices.get(&field_pat.ident.name).copied()
                                 {
-                                    if let HirPatKind::Ident(_mode, _ident, _) = &field_pat.pat.kind
-                                    {
-                                        let field_ty = cx.fresh_infer_ty(field_pat.pat.span);
-                                        let sub_local = cx.new_local(
-                                            field_pat.pat.hir_id,
-                                            field_ty.clone(),
-                                            None,
-                                        );
-                                        cx.mir.block_mut(cx.current_block).statements.push(
-                                            Statement {
-                                                kind: StatementKind::StorageLive(sub_local),
-                                                span: field_pat.pat.span,
-                                            },
-                                        );
-                                        cx.push_assign(
-                                            Place::local(sub_local, field_pat.pat.span),
-                                            Rvalue::Use(Operand::Copy(Place {
-                                                kind: PlaceKind::Projection(
-                                                    Box::new(Place::local(
-                                                        struct_local,
-                                                        local.span,
-                                                    )),
-                                                    ProjectionElem::Field(
-                                                        FieldId(field_idx as u32),
-                                                        field_ty,
-                                                    ),
+                                    let field_ty = cx.fresh_infer_ty(field_pat.pat.span);
+                                    // Create a temp local for the field value
+                                    let sub_local =
+                                        cx.new_local(field_pat.pat.hir_id, field_ty.clone(), None);
+                                    cx.mir
+                                        .block_mut(cx.current_block)
+                                        .statements
+                                        .push(Statement {
+                                            kind: StatementKind::StorageLive(sub_local),
+                                            span: field_pat.pat.span,
+                                        });
+                                    // Extract the field from the struct
+                                    cx.push_assign(
+                                        Place::local(sub_local, field_pat.pat.span),
+                                        Rvalue::Use(Operand::Copy(Place {
+                                            kind: PlaceKind::Projection(
+                                                Box::new(Place::local(struct_local, local.span)),
+                                                ProjectionElem::Field(
+                                                    FieldId(field_idx as u32),
+                                                    field_ty,
                                                 ),
-                                                span: field_pat.pat.span,
-                                            })),
-                                            field_pat.pat.span,
-                                        );
-                                    }
+                                            ),
+                                            span: field_pat.pat.span,
+                                        })),
+                                        field_pat.pat.span,
+                                    );
+                                    // Stage 14.50: Handle nested patterns within struct fields.
+                                    // If the field pattern is itself a Struct or Tuple,
+                                    // recursively destructure it from the extracted local.
+                                    lower_nested_pattern_destructure(cx, sub_local, &field_pat.pat);
                                 }
                             }
                             // Skip the normal single-local path
