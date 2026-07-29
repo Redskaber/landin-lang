@@ -35,17 +35,20 @@ pub(crate) fn codegen_rvalue(
             // aggregate types. For `==`/`!=`, we compare both fields:
             //   eq = (a.ptr == b.ptr) & (a.len == b.len)
             //   ne = (a.ptr != b.ptr) | (a.len != b.len)
-            // This is a bitwise comparison, not content comparison —
-            // `"abc" == "abc"` returns true only if they're the same
-            // global (deduped) or same allocation. Content comparison
-            // (memcmp) is deferred to a future stage (requires a runtime
-            // function).
             //
-            // Stage 3.50: extract the actual pointee type from the fat
-            // pointer's field 0 (was: hardcoded `i8*` in Stage 3.49, which
-            // was technically valid for `&str` but wrong for `&[T]` where
-            // T ≠ u8 — would produce `icmp eq i8*` for an `i32*` value,
-            // which is a type mismatch in typed-pointer LLVM).
+            // Stage 14.69: For &str (fat pointer with i8 pointee), use the
+            // `__landin_str_eq` runtime function for CONTENT comparison.
+            // Previously, this was a bitwise comparison (pointer + length),
+            // which only worked for deduplicated string globals. For different
+            // allocations of the same content (e.g., function parameter vs.
+            // literal in function body), bitwise comparison returned false.
+            //
+            // For &[T] (fat pointer with non-i8 pointee), keep the bitwise
+            // comparison (content comparison for arbitrary types requires
+            // element-wise comparison, deferred to a future stage).
+            //
+            // Per §1.0 原则 5 "报错 > 静默": string equality now correctly
+            // compares content, not just pointers.
             let (is_fat_ptr, ptr_field_ty) = match &ty {
                 EmitType::Struct(fields) if fields.len() == 2 => {
                     let is_fp = fields[0].is_ptr() && fields[1] == EmitType::I64;
@@ -53,9 +56,31 @@ pub(crate) fn codegen_rvalue(
                 }
                 _ => (false, EmitType::I32),
             };
+            // Stage 14.69: Check if this is a &str (fat pointer to i8).
+            // If so, use __landin_str_eq for content comparison.
+            let is_str_fat_ptr = is_fat_ptr
+                && matches!(ptr_field_ty, EmitType::Ptr(ref inner) if **inner == EmitType::I8);
 
             match op {
                 BinOp::Eq => {
+                    if is_str_fat_ptr {
+                        // Stage 14.69: Use __landin_str_eq for content comparison.
+                        // Call: __landin_str_eq(a.ptr, a.len, b.ptr, b.len) → i32 (0 or 1)
+                        let a_ptr = emitter.emit_extractvalue(&ty, &a_val, 0);
+                        let a_len = emitter.emit_extractvalue(&ty, &a_val, 1);
+                        let b_ptr = emitter.emit_extractvalue(&ty, &b_val, 0);
+                        let b_len = emitter.emit_extractvalue(&ty, &b_val, 1);
+                        let args: [(EmitType, &EmitValue); 4] = [
+                            (EmitType::OpaquePtr, &a_ptr),
+                            (EmitType::I64, &a_len),
+                            (EmitType::OpaquePtr, &b_ptr),
+                            (EmitType::I64, &b_len),
+                        ];
+                        // __landin_str_eq returns i32 (0 or 1) — already the
+                        // correct type for the comparison result (zext'd i1 → i32).
+                        // Skip the emit_zext below by returning early.
+                        return emitter.emit_call("__landin_str_eq", &args, &EmitType::I32);
+                    }
                     let cmp = if is_fat_ptr {
                         // Extract ptr (field 0) and len (field 1) from both,
                         // compare each, AND the results.
@@ -74,6 +99,26 @@ pub(crate) fn codegen_rvalue(
                     emitter.emit_zext(&EmitType::I1, &EmitType::I32, &cmp)
                 }
                 BinOp::Ne => {
+                    if is_str_fat_ptr {
+                        // Stage 14.69: Use __landin_str_eq, then NOT the result.
+                        let a_ptr = emitter.emit_extractvalue(&ty, &a_val, 0);
+                        let a_len = emitter.emit_extractvalue(&ty, &a_val, 1);
+                        let b_ptr = emitter.emit_extractvalue(&ty, &b_val, 0);
+                        let b_len = emitter.emit_extractvalue(&ty, &b_val, 1);
+                        let args: [(EmitType, &EmitValue); 4] = [
+                            (EmitType::OpaquePtr, &a_ptr),
+                            (EmitType::I64, &a_len),
+                            (EmitType::OpaquePtr, &b_ptr),
+                            (EmitType::I64, &b_len),
+                        ];
+                        let eq_result = emitter.emit_call("__landin_str_eq", &args, &EmitType::I32);
+                        // NOT the result: ne = (eq == 0) ? 1 : 0
+                        // eq_result is i32 (0 or 1). ne = 1 - eq_result.
+                        // Use icmp eq with 0, then zext to i32.
+                        let zero = "0".to_string();
+                        let ne_i1 = emitter.emit_icmp("eq", &EmitType::I32, &eq_result, &zero);
+                        return emitter.emit_zext(&EmitType::I1, &EmitType::I32, &ne_i1);
+                    }
                     let cmp = if is_fat_ptr {
                         let a_ptr = emitter.emit_extractvalue(&ty, &a_val, 0);
                         let a_len = emitter.emit_extractvalue(&ty, &a_val, 1);

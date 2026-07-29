@@ -257,7 +257,7 @@ Each test cell has a status:
 
 ## 5. Tier 3: End-to-End (E2E) Path Coverage
 
-### 5.1 run_ok Tests (127 total — verified at runtime)
+### 5.1 run_ok Tests (129 total — verified at runtime)
 
 | Test ID | Feature | Expected Output | Status |
 |---------|---------|-----------------|--------|
@@ -388,6 +388,8 @@ Each test cell has a status:
 | E-125 | Prime check with multiple return paths | `true\ntrue\nfalse\nfalse` | ✅ |
 | E-126 | Enum with struct payload (Shape::Point(Point)) | `12\n12\n30` | ✅ |
 | E-127 | Min/max tuple with while loop | `1 5` | ✅ |
+| E-128 | String equality comparison (same scope, `__landin_str_eq`) | `true\nfalse` | ✅ |
+| E-129 | String comparison across function boundaries | `1\n2\n3\n0` | ✅ |
 
 ### 5.2 Negative Tests (compile_error — 403 total)
 
@@ -424,9 +426,9 @@ Each test cell has a status:
 |------|-------------|----------|----------|
 | Tier 1: Per-Stage | 149 | 147 | 98.7% |
 | Tier 2: Inter-Stage | 15 | 15 | 100% |
-| Tier 3: E2E (run_ok) | 127 | 127 | 100% |
+| Tier 3: E2E (run_ok) | 129 | 129 | 100% |
 | Tier 3: E2E (compile_error) | 399 | 399 | 100% |
-| **Total** | **690** | **688** | **99.7%** |
+| **Total** | **692** | **690** | **99.7%** |
 
 **Unverified paths** (2):
 1. B-03: Double mutable borrow — NLL permissive (GAP-1, known limitation)
@@ -465,6 +467,12 @@ Each test cell has a status:
 - E-125: Prime check — while loop with multiple early returns (audit-verified)
 - E-126: Enum+struct payload — Shape::Point(Point) match (audit-verified)
 - E-127: Min/max tuple — while loop with multiple conditionals (audit-verified)
+
+**Stage 14.69 additions** (1 new path):
+- E-128: String equality — `__landin_str_eq` runtime for content comparison
+
+**Stage 14.70 additions** (1 new path):
+- E-129: String comparison across function boundaries — fat pointer ABI fix (insertvalue i64 coercion)
 
 ---
 

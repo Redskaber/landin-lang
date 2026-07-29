@@ -1,0 +1,28 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok &mut self calling &mut self method (GAP-6 two-phase borrows) — Stage 14.73
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 5
+// SOURCE: Stage 14.73 — fixed &mut self method calling another &mut self method: when receiver
+// is already a Ref (e.g. self inside &mut self method), pass it directly instead of creating
+// a new reference (which produced &&mut T, causing type mismatch).
+
+struct Counter { count: i32 }
+impl Counter {
+    fn new() -> Counter { Counter { count: 0 } }
+    fn inc(&mut self) { self.count = self.count + 1; }
+    fn inc_by(&mut self, n: i32) {
+        let mut i = 0;
+        while i < n {
+            self.inc();
+            i = i + 1;
+        }
+    }
+    fn get(&self) -> i32 { self.count }
+}
+
+fn main() -> i32 {
+    let mut c = Counter::new();
+    c.inc_by(5);
+    println!("{}", c.get());
+    0
+}

@@ -1,0 +1,52 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok State machine with enum match + pause/resume — Stage 14.75
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: true\n10
+// SOURCE: Stage 14.75 — fixed enum variant patterns being treated as catch-all in otherwise
+// block. State machine with pause/resume now correctly skips tick when paused.
+
+enum State { Idle, Active, Paused, Done }
+struct Machine { state: State, count: i32 }
+impl Machine {
+    fn new() -> Machine { Machine { state: State::Idle, count: 0 } }
+    fn start(&mut self) {
+        match self.state {
+            State::Idle => { self.state = State::Active; self.count = 0; }
+            _ => {}
+        }
+    }
+    fn tick(&mut self) {
+        match self.state {
+            State::Active => {
+                self.count = self.count + 1;
+                if self.count >= 10 { self.state = State::Done; }
+            }
+            _ => {}
+        }
+    }
+    fn pause(&mut self) {
+        match self.state { State::Active => { self.state = State::Paused; } _ => {} }
+    }
+    fn resume(&mut self) {
+        match self.state { State::Paused => { self.state = State::Active; } _ => {} }
+    }
+    fn is_done(&self) -> bool {
+        match self.state { State::Done => true, _ => false }
+    }
+    fn get_count(&self) -> i32 { self.count }
+}
+
+fn main() -> i32 {
+    let mut m = Machine::new();
+    m.start();
+    let mut i = 0;
+    while i < 15 {
+        m.tick();
+        if i == 5 { m.pause(); }
+        if i == 7 { m.resume(); }
+        i = i + 1;
+    }
+    println!("{}", m.is_done());    // true
+    println!("{}", m.get_count());  // 10
+    0
+}

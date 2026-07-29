@@ -237,6 +237,22 @@ void __landin_eprintf(const char* fmt, ...) {
     vfprintf(stderr, fmt, args);
     va_end(args);
 }
+/* Stage 14.69: String equality comparison — content comparison via memcmp.
+   Codegen calls this for `==` and `!=` on &str (fat pointers {ptr, len}).
+   Without this, string comparison was bitwise (pointer + length), which
+   only worked for deduplicated string globals (same literal in same scope).
+   For different allocations of the same content (e.g., function parameter
+   vs. literal in function body), bitwise comparison returned false.
+   Per api-naming-standard.md §8.1: __landin_<noun>_<verb> pattern. */
+int __landin_str_eq(const char* a, long long a_len, const char* b, long long b_len) {
+    if (a_len != b_len) return 0;
+    if (a == b) return 1;  /* same pointer → definitely equal */
+    /* Compare contents byte by byte (memcmp semantics) */
+    for (long long i = 0; i < a_len; i++) {
+        if (a[i] != b[i]) return 0;
+    }
+    return 1;
+}
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).

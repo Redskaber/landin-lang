@@ -1,0 +1,33 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok &mut self calling &self then &mut self (reborrow coercion) — Stage 14.74
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 150\n80\n70
+// SOURCE: Stage 14.74 — &mut T can now be coerced to &T (immutable reborrow). This enables
+// &mut self methods to call &self methods (check_balance) then &mut self methods (withdraw).
+
+struct Account { balance: i32 }
+impl Account {
+    fn new() -> Account { Account { balance: 0 } }
+    fn deposit(&mut self, amount: i32) { self.balance = self.balance + amount; }
+    fn withdraw(&mut self, amount: i32) -> bool {
+        if self.balance >= amount { self.balance = self.balance - amount; true } else { false }
+    }
+    fn check_balance(&self) -> i32 { self.balance }
+    fn try_withdraw(&mut self, amount: i32) -> i32 {
+        if self.check_balance() >= amount {
+            self.withdraw(amount);
+            amount
+        } else { 0 }
+    }
+}
+
+fn main() -> i32 {
+    let mut acc = Account::new();
+    acc.deposit(100);
+    acc.deposit(50);
+    println!("{}", acc.check_balance());  // 150
+    let w = acc.try_withdraw(80);
+    println!("{}", w);  // 80
+    println!("{}", acc.check_balance());  // 70
+    0
+}

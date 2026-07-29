@@ -402,9 +402,21 @@ impl UnificationTable {
             }
 
             // Ref with Ref: unify region + mutability + inner
+            // Stage 14.74: &mut T can be coerced to &T (immutable reborrow).
+            // When unifying Ref(Immut, T) with Ref(Mut, T), allow it by
+            // treating the Mut as Immut (the Mut side is a subtype of Immut).
             (TyKind::Ref(_, a_m, a_t), TyKind::Ref(_, b_m, b_t)) => {
                 if a_m != b_m {
-                    return Err(Box::new(TypeError::mismatch(a.clone(), b.clone(), a.span)));
+                    // Stage 14.74: Allow Ref(Mut, T) → Ref(Immut, T) coercion.
+                    // In Rust, &mut T is a subtype of &T (mutation is a
+                    // refinement — you can always use &mut where & is expected).
+                    let one_immut = *a_m == crate::mir::ty::Mutability::Immutable
+                        || *b_m == crate::mir::ty::Mutability::Immutable;
+                    if !one_immut {
+                        return Err(Box::new(TypeError::mismatch(a.clone(), b.clone(), a.span)));
+                    }
+                    // If one is Immut and the other is Mut, allow — just
+                    // unify the inner types.
                 }
                 self.unify_resolved(a_t, b_t)
             }

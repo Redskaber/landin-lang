@@ -1,0 +1,13 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok String equality comparison (same scope) — Stage 14.69
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: true\nfalse
+// SOURCE: Stage 14.69 — string == and != now use __landin_str_eq runtime function for content
+// comparison (was: bitwise pointer comparison which only worked for deduplicated globals)
+
+fn main() -> i32 {
+    let s = "hello";
+    println!("{}", s == "hello");  // true
+    println!("{}", s == "world");  // false
+    0
+}

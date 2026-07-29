@@ -124,6 +124,11 @@ pub(super) fn can_coerce(place_ty: &Ty, rvalue_ty: &Ty) -> bool {
         ) => true,
         // Stage 3.59: f32 → f64 widening (lossless)
         (TyKind::Float(crate::ast::FloatTy::F64), TyKind::Float(crate::ast::FloatTy::F32)) => true,
+        // Stage 14.74: &mut T → &T coercion (reborrow as immutable).
+        (
+            TyKind::Ref(_, crate::mir::ty::Mutability::Immutable, inner_a),
+            TyKind::Ref(_, crate::mir::ty::Mutability::Mutable, inner_b),
+        ) => inner_a == inner_b,
         // Same type: no coercion needed
         _ if place_ty.kind == rvalue_ty.kind => true,
         // Everything else: not coercible

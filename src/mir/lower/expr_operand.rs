@@ -1838,29 +1838,55 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let (first_arg_operand, remaining_arg_operands): (Operand, Vec<Operand>) =
                 if let Some(crate::ast::SelfKind::Ref(_)) = method_self_kind {
                     // &self or &mut self — create a reference to the receiver.
-                    let bk = match method_self_kind {
-                        Some(crate::ast::SelfKind::Ref(crate::ast::Mutability::Mutable)) => {
-                            crate::mir::place::BorrowKind::Mut
-                        }
-                        _ => crate::mir::place::BorrowKind::Shared,
-                    };
-                    let ref_ty = cx.fresh_infer_ty(receiver.span);
-                    let ref_local = cx.eval_rvalue_to_temp(
-                        Rvalue::Ref(
-                            crate::mir::ty::Region::Erased,
-                            bk,
-                            Place::local(recv_local, receiver.span),
-                        ),
-                        ref_ty,
-                        receiver.span,
-                    );
-                    (
-                        Operand::Copy(Place::local(ref_local, receiver.span)),
-                        arg_locals
-                            .iter()
-                            .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
-                            .collect(),
-                    )
+                    //
+                    // Stage 14.73: If the receiver is ALREADY a reference
+                    // (e.g., `self` inside a &mut self method), pass it
+                    // directly without creating a new reference. Creating
+                    // `&self` when self is already `&mut T` produces `&&mut T`,
+                    // which causes a type mismatch.
+                    //
+                    // Per §1.0 原则 6 "通用 > 特例": one rule handles both
+                    // by-value receivers (create new ref) and by-ref receivers
+                    // (pass existing ref).
+                    let recv_ty = cx.mir.local(recv_local).ty.clone();
+                    let is_already_ref =
+                        matches!(&recv_ty.kind, crate::mir::ty::TyKind::Ref(_, _, _));
+
+                    if is_already_ref {
+                        // Receiver is already a reference — pass it directly.
+                        (
+                            Operand::Copy(Place::local(recv_local, receiver.span)),
+                            arg_locals
+                                .iter()
+                                .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
+                                .collect(),
+                        )
+                    } else {
+                        // Receiver is by-value — create a new reference.
+                        let bk = match method_self_kind {
+                            Some(crate::ast::SelfKind::Ref(crate::ast::Mutability::Mutable)) => {
+                                crate::mir::place::BorrowKind::Mut
+                            }
+                            _ => crate::mir::place::BorrowKind::Shared,
+                        };
+                        let ref_ty = cx.fresh_infer_ty(receiver.span);
+                        let ref_local = cx.eval_rvalue_to_temp(
+                            Rvalue::Ref(
+                                crate::mir::ty::Region::Erased,
+                                bk,
+                                Place::local(recv_local, receiver.span),
+                            ),
+                            ref_ty,
+                            receiver.span,
+                        );
+                        (
+                            Operand::Copy(Place::local(ref_local, receiver.span)),
+                            arg_locals
+                                .iter()
+                                .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
+                                .collect(),
+                        )
+                    }
                 } else {
                     // self by value — pass as Copy (original behavior).
                     (

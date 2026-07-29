@@ -1,0 +1,33 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Complex enum eval with 6 variants — Stage 14.76
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 42\n30\n21\n25\n-5
+// SOURCE: Stage 14.76 — audit verified complex enum with 6 data variants (Num/Add/Sub/Mul/Div/Neg)
+
+enum Expr {
+    Num(i32),
+    Add(i32, i32),
+    Sub(i32, i32),
+    Mul(i32, i32),
+    Div(i32, i32),
+    Neg(i32),
+}
+fn eval(e: Expr) -> i32 {
+    match e {
+        Expr::Num(n) => n,
+        Expr::Add(a, b) => a + b,
+        Expr::Sub(a, b) => a - b,
+        Expr::Mul(a, b) => a * b,
+        Expr::Div(a, b) => a / b,
+        Expr::Neg(n) => 0 - n,
+    }
+}
+
+fn main() -> i32 {
+    println!("{}", eval(Expr::Num(42)));
+    println!("{}", eval(Expr::Add(10, 20)));
+    println!("{}", eval(Expr::Mul(3, 7)));
+    println!("{}", eval(Expr::Div(100, 4)));
+    println!("{}", eval(Expr::Neg(5)));
+    0
+}

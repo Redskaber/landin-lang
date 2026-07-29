@@ -127,6 +127,9 @@ pub fn codegen_crate(result: &crate::driver::CompileResult) -> String {
     emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
     emitter.emit_declare("void @__landin_panic_bounds_check(i64 %index, i64 %len)");
     emitter.emit_declare("void @__landin_panic_div_by_zero()");
+    // Stage 14.69: __landin_str_eq is NOT pre-declared here because emit_declare
+    // treats all args as i32 (heuristic). The function needs (ptr, i64, ptr, i64)
+    // args. emit_call will create the declaration with correct types on first use.
     codegen_from_mir(
         &result.mirs,
         &result.body_metas,
@@ -173,6 +176,9 @@ pub fn codegen_crate_to_module(result: &crate::driver::CompileResult) -> LLVMSys
     emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
     emitter.emit_declare("void @__landin_panic_bounds_check(i64 %index, i64 %len)");
     emitter.emit_declare("void @__landin_panic_div_by_zero()");
+    // Stage 14.69: __landin_str_eq is NOT pre-declared (emit_declare treats
+    // all args as i32; this function needs ptr, i64 args). emit_call creates
+    // the declaration with correct types on first use.
     // Stage 14.13 (GAP-30): Emit vtable + dynptr globals BEFORE function
     // bodies, so that `emit_dyn_trait_method_call` can look up the dynptr
     // global by name via LLVMGetNamedGlobal when generating indirect calls.

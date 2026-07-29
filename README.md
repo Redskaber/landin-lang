@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.84.0
+**Version**: v0.92.0
 **Date**: 2026-07-29
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -14,7 +14,7 @@ backend via the `llvm-sys` crate.
 > Stage 14.1 capability assessment (`docs/develop/v0/stage-14/v0.1-capability-assessment.md`)
 > identified **8 P0 blockers** that must be closed before v0.1. The prior
 > "v0.1 GATE REACHED" claim (Stage 12.1, 2026-07-26) is **formally superseded**.
-> This release (v0.84.0) is **v0.1-rc3** — architecture cleanup + API
+> This release (v0.92.0) is **v0.1-rc3** — architecture cleanup + API
 > standardization + 6 gap closures (GAP-5/8/17/18/20/31) + method chain
 > resolution + static method call correctness + impl method namespace fix
 > + nested struct mutation + array of structs + LLVM module verification
@@ -99,7 +99,7 @@ backend via the `llvm-sys` crate.
 | **&[i32; N] reference array indexing** | ✅ Stage 14.61 — `fn f(arr: &[i32; 3]) -> i32 { arr[0] }` now works |
 | **&mut [i32; N] array element mutation** | ✅ Stage 14.62 — `fn modify(arr: &mut [i32; 3]) { arr[0] = 100; }` now works |
 | **v0.1 Release Readiness** | **❌ NO-GO** — 7 P0 blockers remain (see below) |
-| Conformance | 5153 tests (5026 compile + 127 run_ok with real runtime verification) |
+| Conformance | 5161 tests (5026 compile + 135 run_ok with real runtime verification) |
 | Rust tests | 1951 passed (with llvm-backend), 0 failed |
 | Source code | ~90 files, ~32,000 LOC, 50+ modules |
 

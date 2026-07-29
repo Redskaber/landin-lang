@@ -1,0 +1,31 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Bit manipulation (is_power_of_2 + popcount) — Stage 14.76
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: true\nfalse\ntrue\nfalse\n3\n1\n8
+// SOURCE: Stage 14.76 — audit verified bitwise operations (& | >> <<)
+
+fn is_power_of_2(n: i32) -> bool {
+    if n <= 0 { return false; }
+    n & (n - 1) == 0
+}
+
+fn popcount(n: i32) -> i32 {
+    let mut count = 0;
+    let mut n = n;
+    while n != 0 {
+        count = count + (n & 1);
+        n = n >> 1;
+    }
+    count
+}
+
+fn main() -> i32 {
+    println!("{}", is_power_of_2(8));
+    println!("{}", is_power_of_2(6));
+    println!("{}", is_power_of_2(1));
+    println!("{}", is_power_of_2(0));
+    println!("{}", popcount(7));
+    println!("{}", popcount(8));
+    println!("{}", popcount(255));
+    0
+}

@@ -1,9 +1,258 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.84.0
+**Current version**: v0.92.0
 **Date**: 2026-07-29
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5153 conformance tests (127 run_ok) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5161 conformance tests (135 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.92.0 — Stage 14.76 (Comprehensive Pattern Audit — Zero Bugs Found)
+
+### Overview
+
+Stage 14.76 conducted a comprehensive audit of complex patterns. **No bugs were found** —
+all patterns passed on the first try. This validates the cumulative fixes from Stages 14.63-14.75.
+
+### Audit-Verified Patterns
+
+- Complex enum with 6 data variants (Num/Add/Sub/Mul/Div/Neg)
+- Enum with &str payload (Command::Echo)
+- 3x3 Matrix with methods (get/set/trace/row_sum)
+- Token evaluator (nested match in match)
+- Array-based linked list (push_front/sum/contains)
+- Fibonacci pair (iterative)
+- Power of 2 check (bitwise: n & (n-1) == 0)
+- Popcount (bitwise: n & 1, n >> 1)
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5161 conformance tests pass (was 5158, +3 new run_ok)
+- 0 clippy warnings, fmt clean
+- Debug tool: 135/135 pass (100%)
+
+### 3 new run_ok tests
+
+- `e2e-runok-133-complex-enum-eval.lin` — enum with 6 data variants
+- `e2e-runok-134-array-linked-list.lin` — array-based linked list
+- `e2e-runok-135-bit-manipulation.lin` — bitwise operations
+
+---
+## v0.91.0 — Stage 14.75 (Enum Variant Pattern in Otherwise Block Fix)
+
+### Overview
+
+Stage 14.75 fixes a bug where enum variant patterns were executed as catch-alls
+in the match otherwise block, causing state machines to malfunction.
+
+### Bug: Enum variant patterns executed as catch-all
+
+**Symptom**: `match self.state { State::Active => {...}, _ => {} }` executed the
+`State::Active` arm for ALL states.
+
+**Root cause**: Enum variant patterns (`Path`, `TupleStruct`, `Struct`) were not
+classified as "literal" in the otherwise block, so they were treated as catch-alls
+and their bodies were executed for all states.
+
+**Fix**: Added `is_enum_variant` check to skip enum variant patterns in the
+otherwise block (they're already switch cases).
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5158 conformance tests pass (was 5157, +1 new run_ok)
+- 0 clippy warnings, fmt clean
+- Debug tool: 132/132 pass (100%)
+
+---
+## v0.90.0 — Stage 14.74 (&mut T → &T Coercion — Reborrow)
+
+### Overview
+
+Stage 14.74 adds `&mut T → &T` coercion (immutable reborrow), completing the
+GAP-6 fix. `&mut self` methods can now call both `&self` and `&mut self` methods.
+
+### Bug: &mut self calling &self method failed
+
+**Symptom**: `try_withdraw(&mut self)` calling `check_balance(&self)` failed
+with mutability mismatch.
+
+**Root cause**: `unify` rejected `Ref(Mut, T)` vs `Ref(Immut, T)`. In Rust,
+`&mut T` is a subtype of `&T`.
+
+**Fix**: Allow `Ref(Mut, T)` to unify with `Ref(Immut, T)` (subtype coercion).
+
+### Verification
+
+- All 1951 rust tests pass (1 test updated)
+- All 5157 conformance tests pass (was 5156, +1 new run_ok)
+- 0 clippy warnings, fmt clean
+- Debug tool: 131/131 pass (100%)
+
+---
+## v0.89.0 — Stage 14.73 (GAP-6 Fixed: &mut self Calling &mut self)
+
+### Overview
+
+Stage 14.73 fixes GAP-6 (two-phase borrows) — `&mut self` methods can now
+call other `&mut self` methods.
+
+### Bug: &mut self calling &mut self method
+
+**Symptom**: `self.inc()` inside `inc_by(&mut self, n)` failed with type
+mismatch.
+
+**Root cause**: When receiver is already a `Ref` (e.g., `self` in `&mut self`
+method), codegen created `&self` producing `&&mut T` instead of `&mut T`.
+
+**Fix**: Check if receiver is already a `Ref`. If so, pass it directly.
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5156 conformance tests pass (was 5155, +1 new run_ok)
+- 0 clippy warnings, fmt clean
+- Debug tool: 130/130 pass (100%)
+
+### 1 new run_ok test
+
+- `e2e-runok-130-mut-self-calls-mut-self.lin` — &mut self calling &mut self
+
+---
+## v0.88.0 — Stage 14.72 (Impl Method Name Mangling Fix — 100% run_ok Pass Rate!)
+
+### Overview
+
+Stage 14.72 fixes impl method name collisions that caused segfaults in
+self-by-value method chains. This achieves **100% run_ok test pass rate**!
+
+### Bug: Impl method name collisions caused segfault
+
+**Symptom**: `Outer::new(5).double_inner().get()` segfaulted because
+`Inner::new` and `Outer::new` both resolved to `landin_new`.
+
+**Root cause**: HIR lowering stores impl methods as `HirItem::Fn` owners (not
+nested in `HirItem::Impl`). `body_metas` looked for `HirItem::Impl` to generate
+type-qualified names but never found them. All same-named methods resolved to
+`landin_<method>` (no type prefix) → duplicate function definitions.
+
+**Fix**: Register impl methods in `fn_name_by_def_id` with type-qualified names
+(`landin_<Type>_<method>`). Use `fn_name_by_def_id` for `body_metas` name
+resolution (instead of recomputing from HIR).
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- **All 129 run_ok tests pass (100%!)** 🎉
+- 0 clippy warnings, fmt clean
+- Debug tool test-runner: 129/129 pass
+
+---
+## v0.87.0 — Stage 14.71 (Debug Tool + Match Wildcard Regression Fix)
+
+### Overview
+
+Stage 14.71 creates a debug/testing tool and fixes a match wildcard regression
+discovered by the tool.
+
+### New Feature: Debug Tool
+
+Created `tools/debug/landin_debug.py` — a Python tool with 5 commands:
+- `trace` — Trace compilation pipeline
+- `mir` — Dump MIR structure
+- `test-runner` — Run all run_ok tests with pass/fail reporting
+- `diff` — Compare test output with EXPECTED_STDOUT
+- `stages` — Show which stages pass/fail
+
+### Bug: Match wildcard (`_`) arm returned wrong value
+
+**Discovery**: The test-runner found `classify(5)` returned 1 instead of 10.
+
+**Root cause**: Stage 14.67's otherwise-block rewrite reset `cx.current_block`
+to `fallthrough_block` after `lower_expr_to_operand`, orphaning overflow-check
+blocks and skipping the result assignment.
+
+**Fix**: Don't reset `cx.current_block`; terminate the current (last) block.
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- Debug tool: 128/129 run_ok tests pass (1 known: self-by-value chain)
+- 0 clippy warnings, fmt clean
+
+---
+## v0.86.0 — Stage 14.70 (Fat Pointer ABI Fix — insertvalue i64 Coercion)
+
+### Overview
+
+Stage 14.70 fixes the fat pointer `{ptr, i64}` ABI corruption that caused
+string comparison to fail across function boundaries. This was the root cause
+of the "known limitation" from Stage 14.69.
+
+### Bug: Fat pointer len field corrupted across function calls
+
+**Symptom**: `classify_name("Bob")` returned 0 instead of 2. The `i64` length
+field was corrupted on the 2nd+ calls.
+
+**Root cause**: `interpret_adhoc` parses integer literals as `i32`. When
+inserted into an `i64` struct field via `emit_insertvalue`, LLVM stored only
+4 bytes (`movl`), leaving upper 4 bytes as stack garbage.
+
+**Fix**: In `emit_insertvalue`, coerce the value to the struct field's type
+before inserting. Uses `LLVMGetStructElementTypes` + `LLVMBuildIntCast2` for
+integer width mismatches.
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5155 conformance tests pass (was 5154, +1 new run_ok)
+- 0 clippy warnings, fmt clean
+- String comparison now works across function boundaries
+
+### 1 new run_ok test
+
+- `e2e-runok-129-string-cmp-cross-fn.lin` — string comparison across function boundaries
+
+---
+## v0.85.0 — Stage 14.69 (Dead Code Fix + String Equality Runtime)
+
+### Overview
+
+Stage 14.69 fixes a user-reported dead_code warning and adds string content
+comparison via the `__landin_str_eq` runtime function.
+
+### Bug 1: `build_fn_sigs_map` dead_code warning
+
+**Symptom**: `cargo build` (without `--features llvm-backend`) warned about
+unused `build_fn_sigs_map` function.
+
+**Fix**: Added `#[cfg(feature = "llvm-backend")]` to the function.
+
+### Bug 2: String equality was bitwise, not content comparison
+
+**Symptom**: `name == "Bob"` returned false even when `name` was `"Bob"` (different
+allocations).
+
+**Root cause**: `BinOp::Eq`/`Ne` on fat pointers used `icmp eq ptr` + `icmp eq i64`
+(bitwise). Only worked for deduplicated globals.
+
+**Fix**: Added `__landin_str_eq` runtime function (byte-by-byte content comparison).
+Codegen now calls it for `&str` equality. For `&[T]` (non-i8), keeps bitwise.
+
+**Known limitation**: Cross-function-boundary string parameters have an ABI issue
+with `{ ptr, i64 }` struct passing (i64 field corrupted after first call). Same-scope
+comparisons work correctly.
+
+### Verification
+
+- All 1951 rust tests pass (4 tests updated for new behavior)
+- All 5154 conformance tests pass (was 5153, +1 new run_ok)
+- 0 clippy warnings, fmt clean
+- `cargo build` (without llvm-backend) → 0 warnings
+
+### 1 new run_ok test
+
+- `e2e-runok-128-string-equality.lin` — string equality (same scope)
 
 ---
 ## v0.84.0 — Stage 14.68 (While+Return Parser Fix + Loop Body Divergence)

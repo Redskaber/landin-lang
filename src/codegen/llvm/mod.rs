@@ -1457,7 +1457,7 @@ impl Emitter for LLVMSysEmitter {
         let _ = val_ty;
         unsafe {
             let agg_v = self.lookup(agg);
-            let val_v = self.lookup(val);
+            let mut val_v = self.lookup(val);
             let llvm_agg_ty = self.llvm_type(agg_ty);
             // If agg is the textual "undef" sentinel, build a fresh undef.
             let agg_real = if agg == "undef" {
@@ -1465,6 +1465,55 @@ impl Emitter for LLVMSysEmitter {
             } else {
                 agg_v
             };
+
+            // Stage 14.70: Coerce val_v to the field's type.
+            //
+            // `interpret_adhoc` parses integer literals as i32 (default).
+            // When inserting into an i64 field (e.g., fat pointer's len),
+            // the i32 value must be cast to i64. Without this, LLVM stores
+            // only 4 bytes (movl) instead of 8 bytes (movq), leaving the
+            // upper 4 bytes as stack garbage — causing corrupted lengths
+            // on subsequent function calls.
+            //
+            // Per §1.0 原则 5 "报错 > 静默": explicit cast prevents silent
+            // stack garbage corruption.
+            let field_ty = {
+                let kind = LLVMGetTypeKind(llvm_agg_ty);
+                if kind == llvm_sys::LLVMTypeKind::LLVMStructTypeKind {
+                    let count = LLVMCountStructElementTypes(llvm_agg_ty);
+                    if index < count {
+                        let mut types: Vec<LLVMTypeRef> =
+                            vec![std::ptr::null_mut(); count as usize];
+                        LLVMGetStructElementTypes(llvm_agg_ty, types.as_mut_ptr());
+                        types[index as usize]
+                    } else {
+                        std::ptr::null_mut()
+                    }
+                } else {
+                    std::ptr::null_mut()
+                }
+            };
+            if !field_ty.is_null() {
+                let val_kind = LLVMGetTypeKind(LLVMTypeOf(val_v));
+                let field_kind = LLVMGetTypeKind(field_ty);
+                if val_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                    && field_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                {
+                    let val_width = LLVMGetIntTypeWidth(LLVMTypeOf(val_v));
+                    let field_width = LLVMGetIntTypeWidth(field_ty);
+                    if val_width != field_width {
+                        let name_c = CString::new("icast").unwrap();
+                        val_v = LLVMBuildIntCast2(
+                            self.builder,
+                            val_v,
+                            field_ty,
+                            1, // signed
+                            name_c.as_ptr(),
+                        );
+                    }
+                }
+            }
+
             let name_c = CString::new("iv").unwrap();
             let r = LLVMBuildInsertValue(self.builder, agg_real, val_v, index, name_c.as_ptr());
             self.fresh_named(r)

@@ -836,6 +836,39 @@ pub fn compile(src: &str) -> CompileResult {
             let stripped = name.strip_prefix("landin_").unwrap_or(name);
             fn_name_by_def_id.insert(*def_id, format!("landin_{}", stripped));
         }
+        // Stage 14.72: Also register impl method names in fn_name_by_def_id.
+        //
+        // Previously, only top-level fns were registered. Impl methods
+        // (e.g., `Inner::new`, `Outer::new`) were only in body_metas but
+        // NOT in fn_name_by_def_id. This caused method name collisions:
+        // `Inner::new` and `Outer::new` both resolved to `landin_new`
+        // (the fallback name from codegen), producing duplicate function
+        // definitions in the LLVM module → segfault at runtime.
+        //
+        // Fix: iterate impl blocks and register each method with its
+        // fully-qualified name: `landin_<SelfType>_<method>`.
+        //
+        // Per §1.0 原则 5 "报错 > 静默": name collisions now produce
+        // distinct symbols instead of silently overwriting.
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(i)) = owner {
+            for impl_item in &i.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    let method = interner.try_resolve(&f.ident.name).unwrap_or("fn");
+                    let self_ty_name = crate::traits::extract_impl_self_ty_name(&i.self_ty);
+                    let type_str = self_ty_name
+                        .and_then(|s| interner.try_resolve(&s))
+                        .unwrap_or("Type");
+                    let type_stripped = type_str.strip_prefix("landin_").unwrap_or(type_str);
+                    let method_stripped = method.strip_prefix("landin_").unwrap_or(method);
+                    // Use the method's DefId (from its HirId)
+                    let method_def_id = f.hir_id.owner;
+                    fn_name_by_def_id.insert(
+                        method_def_id,
+                        format!("landin_{}_{}", type_stripped, method_stripped),
+                    );
+                }
+            }
+        }
     }
 
     // Build per-body metadata (parallel to mirs).
@@ -848,53 +881,37 @@ pub fn compile(src: &str) -> CompileResult {
         .bodies
         .iter()
         .map(|(body_id, body)| {
-            // Find the fn name for this body.
-            let fn_name = hir
-                .owners
-                .iter()
-                .find_map(|(_, owner)| match owner {
-                    // Top-level fn: `landin_<name>`.
-                    crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f))
-                        if f.body == Some(*body_id) =>
-                    {
-                        let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-                        // Stage 13.15: Strip leading "landin_" to avoid doubling
-                        // (see fn_name_by_def_id construction above for details).
-                        let stripped = name.strip_prefix("landin_").unwrap_or(name);
-                        Some(format!("landin_{}", stripped))
-                    }
-                    // Stage 5.6: impl method body: `landin_<SelfType>_<method>`.
-                    // Matches the naming used by TraitResolver for vtable entries.
-                    crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(i)) => {
-                        for impl_item in &i.items {
-                            if let crate::hir::HirImplItem::Fn(f) = impl_item {
-                                if f.body == Some(*body_id) {
-                                    let method =
-                                        interner.try_resolve(&f.ident.name).unwrap_or("fn");
-                                    let self_ty_name =
-                                        crate::traits::extract_impl_self_ty_name(&i.self_ty);
-                                    let type_str = self_ty_name
-                                        .and_then(|s| interner.try_resolve(&s))
-                                        .unwrap_or("Type");
-                                    // Stage 13.15: Strip leading "landin_" from
-                                    // both type_str and method to avoid doubling
-                                    // (consistent with top-level fn handling).
-                                    let type_stripped =
-                                        type_str.strip_prefix("landin_").unwrap_or(type_str);
-                                    let method_stripped =
-                                        method.strip_prefix("landin_").unwrap_or(method);
-                                    return Some(format!(
-                                        "landin_{}_{}",
-                                        type_stripped, method_stripped
-                                    ));
-                                }
-                            }
+            // Stage 14.72: Use fn_name_by_def_id for name resolution.
+            //
+            // Previously, body_metas recomputed the fn name by iterating
+            // hir.owners. But impl methods are stored as HirItem::Fn owners
+            // (not HirItem::Impl), so the Impl branch was never matched.
+            // This caused all impl methods with the same name (e.g.,
+            // Inner::new and Outer::new) to resolve to `landin_new`,
+            // producing duplicate function definitions → segfault.
+            //
+            // Fix: look up the name from fn_name_by_def_id, which was
+            // built earlier with proper type-qualified names for impl
+            // methods (landin_<Type>_<method>).
+            let owner_def_id = body_id.owner.0;
+            let fn_name = if let Some(name) = fn_name_by_def_id.get(&owner_def_id) {
+                name.clone()
+            } else {
+                // Fallback: recompute from HirItem::Fn owner.
+                hir.owners
+                    .iter()
+                    .find_map(|(_, owner)| match owner {
+                        crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f))
+                            if f.body == Some(*body_id) =>
+                        {
+                            let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
+                            let stripped = name.strip_prefix("landin_").unwrap_or(name);
+                            Some(format!("landin_{}", stripped))
                         }
-                        None
-                    }
-                    _ => None,
-                })
-                .unwrap_or_else(|| format!("fn_{}", body_id.owner.0.as_u32()));
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| format!("fn_{}", body_id.owner.0.as_u32()))
+            };
             // Check if void (no return type).
             let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
             let is_void = return_ty.is_none();

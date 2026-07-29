@@ -1,0 +1,56 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Array-based linked list with push_front/sum/contains — Stage 14.76
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 3\n60\ntrue\nfalse
+// SOURCE: Stage 14.76 — audit verified array-based linked list (data + next arrays, head pointer)
+
+struct List {
+    data: [i32; 20],
+    next: [i32; 20],
+    head: i32,
+    size: i32,
+}
+impl List {
+    fn new() -> List {
+        List { data: [0; 20], next: [-1; 20], head: -1, size: 0 }
+    }
+    fn push_front(&mut self, val: i32) {
+        if self.size < 20 {
+            let idx = self.size;
+            self.data[idx] = val;
+            self.next[idx] = self.head;
+            self.head = idx;
+            self.size = self.size + 1;
+        }
+    }
+    fn sum(&self) -> i32 {
+        let mut s = 0;
+        let mut cur = self.head;
+        while cur >= 0 {
+            s = s + self.data[cur];
+            cur = self.next[cur];
+        }
+        s
+    }
+    fn len(&self) -> i32 { self.size }
+    fn contains(&self, target: i32) -> bool {
+        let mut cur = self.head;
+        while cur >= 0 {
+            if self.data[cur] == target { return true; }
+            cur = self.next[cur];
+        }
+        false
+    }
+}
+
+fn main() -> i32 {
+    let mut list = List::new();
+    list.push_front(10);
+    list.push_front(20);
+    list.push_front(30);
+    println!("{}", list.len());
+    println!("{}", list.sum());
+    println!("{}", list.contains(20));
+    println!("{}", list.contains(99));
+    0
+}

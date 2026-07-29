@@ -204,6 +204,9 @@ fn unify_refs_same_inner() {
 
 #[test]
 fn unify_refs_different_mutability_err() {
+    // Stage 14.74: &mut T can now be coerced to &T (immutable reborrow).
+    // This test previously asserted that unifying Ref(Immut) with Ref(Mut)
+    // is an error. Now it's allowed (subtype coercion).
     let mut t = UnificationTable::new();
     let a = Ty::new(
         TyKind::Ref(
@@ -221,7 +224,8 @@ fn unify_refs_different_mutability_err() {
         ),
         Span::DUMMY,
     );
-    assert!(t.unify(&a, &b).is_err());
+    // Stage 14.74: This now succeeds (was: asserted is_err()).
+    assert!(t.unify(&a, &b).is_ok());
 }
 
 // === Resolve chain ===

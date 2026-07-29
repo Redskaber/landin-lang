@@ -986,7 +986,15 @@ pub(crate) fn lower_match(
         } else {
             false
         };
-        if is_literal || is_or_all_lit {
+        // Stage 14.75: Enum variant patterns (Path, TupleStruct, Struct)
+        // that resolve to enum variants are already handled as switch cases
+        // above. Skip them in the otherwise block — otherwise their body
+        // would be executed as a catch-all, causing wrong behavior.
+        let is_enum_variant = matches!(
+            &arm.pat.kind,
+            HirPatKind::Path(_) | HirPatKind::TupleStruct(_, _) | HirPatKind::Struct(_, _, _)
+        ) && is_enum;
+        if is_literal || is_or_all_lit || is_enum_variant {
             continue;
         }
 
@@ -1028,12 +1036,26 @@ pub(crate) fn lower_match(
             Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
             arm.span,
         );
+        // Stage 14.71: Don't reset cx.current_block to fallthrough_block
+        // after the loop — lower_expr_to_operand may have created new blocks
+        // (e.g., overflow checks), and cx.current_block points to the LAST
+        // block. Resetting to fallthrough_block would overwrite the original
+        // block with a Goto, orphaning the overflow check blocks.
+        // Instead, terminate the CURRENT block (the last one from
+        // lower_expr_to_operand) with Goto(cont_block).
+        if !cx.is_terminated() {
+            cx.terminate(Terminator::Goto(cont_block));
+        }
         break;
     }
-    // If no catch-all was found, the fallthrough_block needs to terminate.
-    // For exhaustiveness, we'd normally error, but for now just goto cont.
-    cx.current_block = fallthrough_block;
-    cx.terminate(Terminator::Goto(cont_block));
+    // Stage 14.71: Only terminate fallthrough_block if no catch-all was found.
+    // If a catch-all was found, the loop already terminated the last block.
+    // If no catch-all, fallthrough_block needs a terminator.
+    // Check if fallthrough_block is the same as cx.current_block — if so,
+    // it hasn't been terminated yet (no catch-all found).
+    if !cx.is_terminated() {
+        cx.terminate(Terminator::Goto(cont_block));
+    }
 
     // Continuation
     cx.current_block = cont_block;
