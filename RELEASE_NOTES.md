@@ -1,9 +1,54 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.82.0
+**Current version**: v0.83.0
 **Date**: 2026-07-29
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5145 conformance tests (119 run_ok) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5149 conformance tests (123 run_ok) + 4 examples
+
+---
+## v0.83.0 — Stage 14.67 (Tuple Pattern Match with Literal Sub-patterns)
+
+### Overview
+
+Stage 14.67 fixes a P0 bug in tuple pattern matching and adds 3 audit-verified
+patterns as run_ok tests (closures, bubble sort, stack).
+
+### Bug: Tuple match with literal sub-patterns always matched first arm
+
+**Symptom**: `match p { (0, 0) => 0, (0, _) => 1, (_, 0) => 2, (a, b) => ... }`
+returned `0` for ALL inputs.
+
+**Root cause**: `lower_match` only handled top-level literals and Or-patterns
+as switch cases. Tuple patterns fell through to the otherwise block, which
+executed the first non-literal arm's body UNCONDITIONALLY.
+
+**Fix**: Added `build_tuple_pattern_condition` helper that generates
+conditional checks for tuple patterns with literal sub-patterns. For each
+literal sub-pattern at index `i`, extracts field `i` and compares with the
+literal. Wildcards and bindings are skipped (always match).
+
+### Audit-Verified Patterns (No Bugs Found)
+
+- Closure with immutable capture (inline call)
+- Closure with no capture (fn pointer parameter)
+- Multiple closures in sequence
+- Array of strings with `!= ""` comparison
+- Match on array element (`match arr[0] { 0 => ..., _ => ... }`)
+- Stack data structure (push/pop/peek/size with &mut self)
+- Full bubble sort (nested while loops, conditional swap)
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5149 conformance tests pass (was 5145, +4 new run_ok)
+- 0 clippy warnings, fmt clean
+
+### 4 new run_ok tests
+
+- `e2e-runok-120-tuple-match-literals.lin` — tuple match with literal sub-patterns
+- `e2e-runok-121-closure-capture-inline.lin` — closure with immutable capture
+- `e2e-runok-122-bubble-sort-full.lin` — full bubble sort (nested while)
+- `e2e-runok-123-stack-data-structure.lin` — Stack with push/pop/peek/size
 
 ---
 ## v0.82.0 — Stage 14.66 (Loop Break Value + Enum &self Match + Deref on Value + Ref Field Access)

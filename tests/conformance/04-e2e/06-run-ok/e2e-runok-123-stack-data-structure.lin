@@ -1,0 +1,51 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Stack data structure with push/pop/peek/size — Stage 14.67
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 30\n30\n20\n2
+// SOURCE: Stage 14.67 — audit verified Stack with array field, &mut self methods, and size tracking
+
+struct Stack {
+    data: [i32; 10],
+    top: i32,
+}
+impl Stack {
+    fn new() -> Stack {
+        Stack { data: [0; 10], top: 0 }
+    }
+    fn push(&mut self, val: i32) {
+        if self.top < 10 {
+            self.data[self.top] = val;
+            self.top = self.top + 1;
+        }
+    }
+    fn pop(&mut self) -> i32 {
+        if self.top > 0 {
+            self.top = self.top - 1;
+            self.data[self.top]
+        } else {
+            -1
+        }
+    }
+    fn peek(&self) -> i32 {
+        if self.top > 0 {
+            self.data[self.top - 1]
+        } else {
+            -1
+        }
+    }
+    fn size(&self) -> i32 {
+        self.top
+    }
+}
+
+fn main() -> i32 {
+    let mut s = Stack::new();
+    s.push(10);
+    s.push(20);
+    s.push(30);
+    println!("{}", s.peek());   // 30
+    println!("{}", s.pop());    // 30
+    println!("{}", s.peek());   // 20
+    println!("{}", s.size());   // 2
+    0
+}

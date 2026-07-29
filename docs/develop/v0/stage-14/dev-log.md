@@ -1212,3 +1212,78 @@ All four were silent (compilation succeeded, runtime produced errors or wrong va
 Found through audit of: loop break values, enum methods on &self, 2D arrays.
 
 **Last updated**: 2026-07-29
+
+---
+
+## Stage 14.67 — v0.82.0 → v0.83.0 (2026-07-29) — Tuple Pattern Match with Literal Sub-patterns
+
+### Bug: Tuple match with literal sub-patterns always matched first arm
+
+**Symptom**: `match p { (0, 0) => 0, (0, _) => 1, (_, 0) => 2, (a, b) => ... }`
+returned `0` for ALL inputs, regardless of the actual tuple values.
+
+**Root cause**: The `lower_match` function only handled top-level literal
+patterns (`HirPatKind::Lit`) and Or-patterns as switch cases. Tuple patterns
+(`HirPatKind::Tuple`) were treated as "non-literal" and fell through to the
+otherwise block. The otherwise block found the first non-literal arm and
+executed its body UNCONDITIONALLY — without checking if the tuple pattern
+actually matched.
+
+So `(0, 0) => 0` was always executed, returning 0 for any input.
+
+**Fix** (`src/mir/lower/control_flow.rs`): Added `build_tuple_pattern_condition`
+helper that generates conditional checks for tuple patterns with literal
+sub-patterns. For each literal sub-pattern at index `i`, it:
+1. Extracts field `i` from the scrutinee tuple
+2. Compares it with the literal value (Eq)
+3. Branches: if equal, continue to next check; if not, fall through to next arm
+
+Wildcard (`_`) and Ident (binding) sub-patterns are skipped (always match).
+
+The otherwise block now generates an if-else chain:
+- For each tuple-pattern arm, check all literal sub-fields
+- If all match, execute the arm body
+- If any fails, fall through to the next arm
+- Non-tuple, non-literal arms (Wild, Ident) are catch-alls
+
+**Per §1.0 原则 5 "报错 > 静默"**: tuple patterns now generate proper
+conditional checks instead of silently matching the first arm.
+
+**Per §1.0 原则 6 "通用 > 特例"**: one `build_tuple_pattern_condition`
+handles all tuple patterns with any combination of literal/wildcard/binding
+sub-patterns.
+
+### Audit Patterns Tested (No Bugs Found)
+
+The following patterns were tested and all work correctly:
+- Closure with immutable capture (inline call): `make_adder(5)` = 15
+- Closure with no capture (fn pointer): `apply_no_capture(inc, 10)` = 11
+- Inline closure in block: `use_inline_closure()` = 15
+- Multiple closures in sequence: `multi_closures()` = 21
+- Array of strings: `count_nonempty(["a", "", "b", "c"])` = 3
+- Tuple match with literals+wildcards: `classify_pair` (5 cases)
+- Match on array element: `classify_first` (3 cases)
+- Find first zero with loop+break: `find_first_zero` (2 cases)
+- Stack with push/pop/peek/size: full LIFO operations
+- Sum array: `sum_array([1,2,3,4,5])` = 15
+- Full bubble sort: `bubble_sort([5,3,1,4,2])` = [1,2,3,4,5]
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5149 conformance tests pass (was 5145, +4 new run_ok)
+- 0 clippy warnings, fmt clean
+
+### 4 new run_ok tests
+
+- `e2e-runok-120-tuple-match-literals.lin` — tuple match with literal sub-patterns
+- `e2e-runok-121-closure-capture-inline.lin` — closure with immutable capture (inline)
+- `e2e-runok-122-bubble-sort-full.lin` — full bubble sort (nested while)
+- `e2e-runok-123-stack-data-structure.lin` — Stack with push/pop/peek/size
+
+### Stage Summary
+
+Stage 14.67 PASSED — one P0 bug fixed (tuple pattern match) + 3 audit-verified
+patterns (closures, bubble sort, stack) added as run_ok tests.
+
+**Last updated**: 2026-07-29

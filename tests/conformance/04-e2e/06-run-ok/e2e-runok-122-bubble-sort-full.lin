@@ -1,0 +1,29 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Full bubble sort with nested while loops — Stage 14.67
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 1 2 3 4 5
+// SOURCE: Stage 14.67 — audit verified full bubble sort (5 elements, nested while, conditional swap) works
+
+fn bubble_sort(arr: [i32; 5]) -> [i32; 5] {
+    let mut result = arr;
+    let mut i = 0;
+    while i < 5 {
+        let mut j = 0;
+        while j < 4 - i {
+            if result[j] > result[j + 1] {
+                let tmp = result[j];
+                result[j] = result[j + 1];
+                result[j + 1] = tmp;
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    result
+}
+
+fn main() -> i32 {
+    let sorted = bubble_sort([5, 3, 1, 4, 2]);
+    println!("{} {} {} {} {}", sorted[0], sorted[1], sorted[2], sorted[3], sorted[4]);
+    0
+}

@@ -961,11 +961,20 @@ pub(crate) fn lower_match(
     }
 
     // Lower the otherwise block (for non-literal patterns)
+    // Stage 14.67: Handle tuple patterns with literal sub-patterns by
+    // generating conditional checks (if-else chain).
+    //
+    // For `match p { (0, 0) => 0, (0, _) => 1, (_, 0) => 2, (a, b) => ... }`:
+    // - (0, 0): check p.0 == 0 AND p.1 == 0
+    // - (0, _): check p.0 == 0 (p.1 is wildcard, always matches)
+    // - (_, 0): check p.1 == 0 (p.0 is wildcard)
+    // - (a, b): no check (binding, always matches) — catch-all
+    //
+    // Each arm with a tuple pattern generates a conditional block. If the
+    // condition matches, execute the arm body; otherwise, fall through to
+    // the next arm.
     cx.current_block = otherwise_block;
-    // Find the first arm with a non-literal, non-Or-literal pattern.
-    // Stage 14.45: Or-patterns with all-literal sub-patterns are already
-    // handled as switch cases — skip them here (don't execute their body
-    // in the otherwise block, which would match any value).
+    let mut fallthrough_block = otherwise_block;
     for arm in arms {
         let is_literal = matches!(&arm.pat.kind, HirPatKind::Lit(_));
         // Stage 14.45: Or-pattern with all-literal sub-patterns is already
@@ -977,9 +986,26 @@ pub(crate) fn lower_match(
         } else {
             false
         };
-        if !is_literal && !is_or_all_lit {
+        if is_literal || is_or_all_lit {
+            continue;
+        }
+
+        // Stage 14.67: For tuple patterns with literal sub-patterns,
+        // generate a conditional check.
+        let has_tuple_lit = matches!(&arm.pat.kind, HirPatKind::Tuple(_));
+        if has_tuple_lit {
+            // Generate condition: AND of all literal sub-field checks
+            let next_block = cx.new_block();
+            let match_block = cx.new_block();
+
+            // Build the condition by checking each literal sub-pattern
+            cx.current_block = fallthrough_block;
+            if let HirPatKind::Tuple(sub_pats) = &arm.pat.kind {
+                build_tuple_pattern_condition(cx, scrut_local, sub_pats, match_block, next_block);
+            }
+            // match_block: pattern matched — execute arm body
+            cx.current_block = match_block;
             collect_pat_bindings_for_mir(cx, &arm.pat);
-            // Stage 3.48 (L-ENUM-BINDING): same as above, for the otherwise arm.
             lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
             let arm_result = lower_expr_to_operand(cx, &arm.body);
             cx.push_assign(
@@ -987,12 +1013,127 @@ pub(crate) fn lower_match(
                 Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
                 arm.span,
             );
-            break;
+            cx.terminate(Terminator::Goto(cont_block));
+            fallthrough_block = next_block;
+            continue;
         }
+
+        // Non-tuple, non-literal pattern (Wild, Ident, etc.) — catch-all
+        cx.current_block = fallthrough_block;
+        collect_pat_bindings_for_mir(cx, &arm.pat);
+        lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
+        let arm_result = lower_expr_to_operand(cx, &arm.body);
+        cx.push_assign(
+            Place::local(result_local, span),
+            Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
+            arm.span,
+        );
+        break;
     }
+    // If no catch-all was found, the fallthrough_block needs to terminate.
+    // For exhaustiveness, we'd normally error, but for now just goto cont.
+    cx.current_block = fallthrough_block;
     cx.terminate(Terminator::Goto(cont_block));
 
     // Continuation
     cx.current_block = cont_block;
     result_local
+}
+
+/// Stage 14.67: Build a conditional check for a tuple pattern.
+///
+/// For each literal sub-pattern at index `i`, check `scrut.i == literal`.
+/// Wildcard sub-patterns (`_`) are skipped (always match).
+/// Ident sub-patterns (bindings) are skipped (always match, binding done later).
+///
+/// Generates an if-else chain: if first check fails, goto next_block;
+/// if all checks pass, goto match_block.
+fn build_tuple_pattern_condition(
+    cx: &mut MirLowerCtxt,
+    scrut_local: LocalId,
+    sub_pats: &[HirPat],
+    match_block: BasicBlockId,
+    next_block: BasicBlockId,
+) {
+    use crate::mir::body::StatementKind;
+    use crate::mir::place::{BinOp, Operand, Place, PlaceKind, ProjectionElem, Rvalue};
+
+    let span = crate::session::Span::DUMMY;
+    let mut current = cx.current_block;
+
+    for (i, sub_pat) in sub_pats.iter().enumerate() {
+        // Only check literal sub-patterns
+        let lit_val = if let HirPatKind::Lit(expr) = &sub_pat.kind {
+            if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
+                Some(*n)
+            } else if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
+                // Bool literals — compare as i32 (0 or 1)
+                Some(if *b { 1 } else { 0 })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(n) = lit_val {
+            // Extract field i from scrutinee: scrut.i
+            let field_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), span);
+            let field_local = cx.mir.new_local(field_ty.clone(), None, span);
+            cx.mir.block_mut(current).statements.push(Statement {
+                kind: StatementKind::StorageLive(field_local),
+                span,
+            });
+            // push_assign uses current_block, so set it to `current`
+            cx.current_block = current;
+            cx.push_assign(
+                Place::local(field_local, span),
+                Rvalue::Use(Operand::Copy(Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(scrut_local, span)),
+                        ProjectionElem::Field(FieldId(i as u32), field_ty.clone()),
+                    ),
+                    span,
+                })),
+                span,
+            );
+            current = cx.current_block;
+
+            // Compare: field_local == n
+            let cmp_result = cx.mir.new_local(Ty::new(TyKind::Bool, span), None, span);
+            cx.mir.block_mut(current).statements.push(Statement {
+                kind: StatementKind::StorageLive(cmp_result),
+                span,
+            });
+            cx.current_block = current;
+            cx.push_assign(
+                Place::local(cmp_result, span),
+                Rvalue::BinaryOp(
+                    BinOp::Eq,
+                    Operand::Copy(Place::local(field_local, span)),
+                    Operand::Constant(crate::mir::ty::Const {
+                        ty: Box::new(field_ty),
+                        val: crate::mir::ty::ConstVal::Int(n),
+                    }),
+                ),
+                span,
+            );
+            current = cx.current_block;
+
+            // Switch on cmp_result: if true, continue to next check (or match);
+            // if false, goto next_block (pattern didn't match)
+            let continue_block = cx.new_block();
+            cx.mir.block_mut(current).terminator = Terminator::SwitchInt {
+                discr: Operand::Copy(Place::local(cmp_result, span)),
+                targets: vec![(ConstVal::Bool(true), continue_block)],
+                otherwise: next_block,
+            };
+            current = continue_block;
+        }
+        // Wildcard or Ident — skip (always matches)
+    }
+
+    // All checks passed — goto match_block
+    cx.mir.block_mut(current).terminator = Terminator::Goto(match_block);
+    cx.current_block = current;
 }

@@ -257,7 +257,7 @@ Each test cell has a status:
 
 ## 5. Tier 3: End-to-End (E2E) Path Coverage
 
-### 5.1 run_ok Tests (119 total — verified at runtime)
+### 5.1 run_ok Tests (123 total — verified at runtime)
 
 | Test ID | Feature | Expected Output | Status |
 |---------|---------|-----------------|--------|
@@ -380,6 +380,10 @@ Each test cell has a status:
 | E-117 | Enum method with match on &self (`unwrap_or`) | `10\n99` | ✅ |
 | E-118 | Enum method returning enum (`map` with fn ptr) | `20\n0` | ✅ |
 | E-119 | 2D array search (matrix `[[i32;3];3]`, nested loops) | `true\nfalse` | ✅ |
+| E-120 | Tuple match with literal sub-patterns `(0, _)`, `(_, 0)`, `(a, b)` | `0\n1\n2\n3\n4` | ✅ |
+| E-121 | Closure with immutable capture (inline call) | `15\n21` | ✅ |
+| E-122 | Full bubble sort (nested while, conditional swap) | `1 2 3 4 5` | ✅ |
+| E-123 | Stack data structure (push/pop/peek/size, &mut self) | `30\n30\n20\n2` | ✅ |
 
 ### 5.2 Negative Tests (compile_error — 403 total)
 
@@ -416,9 +420,9 @@ Each test cell has a status:
 |------|-------------|----------|----------|
 | Tier 1: Per-Stage | 149 | 147 | 98.7% |
 | Tier 2: Inter-Stage | 15 | 15 | 100% |
-| Tier 3: E2E (run_ok) | 119 | 119 | 100% |
+| Tier 3: E2E (run_ok) | 123 | 123 | 100% |
 | Tier 3: E2E (compile_error) | 399 | 399 | 100% |
-| **Total** | **682** | **680** | **99.7%** |
+| **Total** | **686** | **684** | **99.7%** |
 
 **Unverified paths** (2):
 1. B-03: Double mutable borrow — NLL permissive (GAP-1, known limitation)
@@ -445,6 +449,12 @@ Each test cell has a status:
 - E-117: Enum method &self match — Deref projection for Ref scrutinees
 - E-118: Enum method map (returning enum) — Deref on value + Ref field access
 - E-119: 2D array search — nested loops with break + `[[i32;N];M]` indexing
+
+**Stage 14.67 additions** (4 new paths):
+- E-120: Tuple match with literals — conditional checks for literal sub-patterns
+- E-121: Closure with capture (inline) — verified closures work when called inline
+- E-122: Full bubble sort — nested while + conditional swap (audit-verified)
+- E-123: Stack data structure — push/pop/peek/size with &mut self (audit-verified)
 
 ---
 

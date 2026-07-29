@@ -215,6 +215,7 @@ pub fn codegen_crate_to_module(result: &crate::driver::CompileResult) -> LLVMSys
 /// Uses empty ADT layouts (forward declarations don't need precise ADT
 /// types — they only need the right primitive signature so that
 /// `emit_function_begin` can reuse the declaration).
+#[cfg(feature = "llvm-backend")]
 fn build_fn_sigs_map(
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
     fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,

@@ -1,0 +1,23 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Closure with immutable capture (inline call) — Stage 14.67
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 15\n21
+// SOURCE: Stage 14.67 — audit verified closures with immutable capture work when called inline (no fn pointer coercion)
+
+fn make_adder(x: i32) -> i32 {
+    let f = |y: i32| { x + y };
+    f(10)
+}
+
+fn multi_closures() -> i32 {
+    let x = 10;
+    let add5 = |y: i32| { x + y };
+    let mul2 = |y: i32| { y * 2 };
+    add5(3) + mul2(4)
+}
+
+fn main() -> i32 {
+    println!("{}", make_adder(5));    // 15
+    println!("{}", multi_closures()); // 21
+    0
+}
