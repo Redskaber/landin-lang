@@ -20,11 +20,12 @@ pub(crate) fn codegen_statement(
     stmt: &Statement,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
 ) {
     match &stmt.kind {
         StatementKind::Assign(boxed) => {
             let (place, rvalue) = &**boxed;
-            let val = codegen_rvalue(emitter, mir, rvalue, interner, layouts);
+            let val = codegen_rvalue(emitter, mir, rvalue, interner, layouts, fn_name_by_def_id);
             match &place.kind {
                 PlaceKind::Local(id) => {
                     let default_ty = crate::mir::ty::Ty::new(
@@ -102,22 +103,46 @@ pub(crate) fn codegen_statement(
                             emitter.emit_store(&ty, &val, &field_ptr);
                         }
                         ProjectionElem::Index(idx) => {
-                            // Stage 3.54: for the store path, when the base
-                            // is a projection (e.g., `s.data` where `data` is
-                            // a field), we need the ADDRESS of the base, not
-                            // its loaded value. Was: `codegen_place_load`
-                            // returned the loaded fat pointer value, then
-                            // `unwrap_fat_ptr_for_index` tried to GEP into
-                            // the value (treating it as a pointer) — invalid.
-                            //
-                            // Fix: if the base is a Local, use its alloca
-                            // pointer (address). If the base is a Projection,
-                            // compute the address by GEP-ing to the field
-                            // (without loading). This matches the load path's
-                            // behavior where `base_ptr` is always an address.
-                            let base_ptr =
-                                compute_place_address(emitter, mir, base, interner, layouts);
-                            let array_ty = detect_place_storage_type(mir, base, layouts);
+                            // Stage 14.62: For store path, when base is a Ref (e.g., `&mut [i32; 3]`),
+                            // load the reference value (the array pointer) instead of using
+                            // the alloca pointer. Also extract Array type from Ref for GEP.
+                            // Mirrors the load path fix from Stage 14.61.
+                            let base_ty = detect_place_type(mir, base, layouts);
+                            let base_ptr = if base_ty.is_ptr() {
+                                // Ref to array — load the pointer value
+                                codegen_place_load_typed(
+                                    emitter, mir, base, base_ty, interner, layouts,
+                                )
+                            } else {
+                                compute_place_address(emitter, mir, base, interner, layouts)
+                            };
+                            // Extract Array type from Ptr(Array) or Ref for GEP
+                            let array_ty = {
+                                let raw_ty = detect_place_storage_type(mir, base, layouts);
+                                match &raw_ty {
+                                    EmitType::Ptr(inner) => *inner.clone(),
+                                    EmitType::OpaquePtr => {
+                                        if let PlaceKind::Local(id) = &base.kind {
+                                            if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                                                if let crate::mir::ty::TyKind::Ref(_, _, inner) =
+                                                    &ld.ty.kind
+                                                {
+                                                    mir_type_to_emit_type_with_layouts(
+                                                        inner, layouts,
+                                                    )
+                                                } else {
+                                                    raw_ty
+                                                }
+                                            } else {
+                                                raw_ty
+                                            }
+                                        } else {
+                                            raw_ty
+                                        }
+                                    }
+                                    _ => raw_ty,
+                                }
+                            };
                             let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
                                 v
                             } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
@@ -202,7 +227,14 @@ pub(crate) fn codegen_statement(
                         let arg_ty =
                             detect_operand_type(mir, arg, layouts).unwrap_or(EmitType::I32);
                         // Codegen the operand to get its LLVM value
-                        let arg_val = codegen_operand(emitter, mir, arg, interner, layouts);
+                        let arg_val = codegen_operand(
+                            emitter,
+                            mir,
+                            arg,
+                            interner,
+                            layouts,
+                            fn_name_by_def_id,
+                        );
                         // Determine the C conversion specifier + cast
                         match &arg_ty {
                             EmitType::I1
@@ -257,7 +289,49 @@ pub(crate) fn codegen_statement(
                                 c_fmt.push_str("%f");
                                 c_arg_vals.push((EmitType::F64, cast_val));
                             }
-                            EmitType::Ptr(_) | EmitType::OpaquePtr => {
+                            EmitType::Ptr(inner) => {
+                                // Stage 14.59: Distinguish &i32 (thin pointer to int)
+                                // from &str (fat pointer struct). For &i32, dereference
+                                // and print as integer. For other pointers, treat as %s.
+                                let inner_ref = inner.as_ref();
+                                if matches!(
+                                    inner_ref,
+                                    EmitType::I1
+                                        | EmitType::I8
+                                        | EmitType::I16
+                                        | EmitType::I32
+                                        | EmitType::I64
+                                        | EmitType::I128
+                                ) {
+                                    // &i32 → load the value through the pointer, then print as int
+                                    let loaded = emitter.emit_load(inner_ref, &arg_val);
+                                    if *inner_ref == EmitType::I1 {
+                                        let true_str = emitter.emit_string_global(b"true\0");
+                                        let false_str = emitter.emit_string_global(b"false\0");
+                                        let selected = emitter.emit_select(
+                                            &EmitType::OpaquePtr,
+                                            &loaded,
+                                            &true_str,
+                                            &false_str,
+                                        );
+                                        c_fmt.push_str("%s");
+                                        c_arg_vals.push((EmitType::OpaquePtr, selected));
+                                    } else if *inner_ref != EmitType::I64 {
+                                        let cast_val =
+                                            emitter.emit_cast(inner_ref, &EmitType::I64, &loaded);
+                                        c_fmt.push_str("%ld");
+                                        c_arg_vals.push((EmitType::I64, cast_val));
+                                    } else {
+                                        c_fmt.push_str("%ld");
+                                        c_arg_vals.push((EmitType::I64, loaded));
+                                    }
+                                } else {
+                                    // Other pointer → treat as %s
+                                    c_fmt.push_str("%s");
+                                    c_arg_vals.push((EmitType::OpaquePtr, arg_val));
+                                }
+                            }
+                            EmitType::OpaquePtr => {
                                 // Pointer → assume &str (fat pointer: {ptr, len})
                                 // For simplicity, treat as %s with the pointer.
                                 // (Full &str support requires extracting the data ptr.)

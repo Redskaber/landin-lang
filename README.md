@@ -1,8 +1,8 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.72.0
-**Date**: 2026-07-28
+**Version**: v0.78.0
+**Date**: 2026-07-29
 
 A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
@@ -86,8 +86,13 @@ backend via the `llvm-sys` crate.
 | **Nested tuple destructure** | ✅ Stage 14.49 — `let ((a, b), c) = ((1, 2), 3)` works to any depth |
 | **Nested/mixed pattern destructure** | ✅ Stage 14.50 — `let Outer { inner: Inner { a, b }, c } = o` + struct-tuple-field + tuple-of-structs |
 | **Enum method resolution** | ✅ Stage 14.52 — `Color::Red.to_code()` now works (was silently returning 0) |
+| **Function pointer parameters** | ✅ Stage 14.57-14.58 — `fn apply(f: fn(i32) -> i32, x: i32)` now works end-to-end |
+| **LLVM 19 opaque pointers** | ✅ Stage 14.59 — all pointer types emit as `ptr` (LLVM 19 compliant) |
+| **&i32 reference printing** | ✅ Stage 14.59 — `println!("{}", &val)` now prints the value (was `*`) |
+| **&[i32; N] reference array indexing** | ✅ Stage 14.61 — `fn f(arr: &[i32; 3]) -> i32 { arr[0] }` now works |
+| **&mut [i32; N] array element mutation** | ✅ Stage 14.62 — `fn modify(arr: &mut [i32; 3]) { arr[0] = 100; }` now works |
 | **v0.1 Release Readiness** | **❌ NO-GO** — 7 P0 blockers remain (see below) |
-| Conformance | 5123 tests (5026 compile + 97 run_ok with real runtime verification) |
+| Conformance | 5131 tests (5026 compile + 105 run_ok with real runtime verification) |
 | Rust tests | 1951 passed (with llvm-backend), 0 failed |
 | Source code | ~90 files, ~32,000 LOC, 50+ modules |
 

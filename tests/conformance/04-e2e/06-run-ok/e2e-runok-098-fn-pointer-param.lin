@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok function pointer parameter (fn type) — Stage 14.58
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 42
+// SOURCE: Stage 14.58 — fn pointer type support: pass function as fn(i32)->i32 param
+
+fn double(n: i32) -> i32 { n * 2 }
+fn apply(f: fn(i32) -> i32, x: i32) -> i32 {
+    f(x)
+}
+fn main() -> i32 {
+    let result = apply(double, 21);
+    println!("{}", result);
+    0
+}

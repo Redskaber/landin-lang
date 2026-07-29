@@ -881,6 +881,28 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
             Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),
             _ => Ty::new(TyKind::Error, span),
         },
+        // Stage 14.57: Handle fn pointer type annotations (e.g., `fn(i32) -> i32`).
+        // Previously fell through to Error, causing fn pointer params to be
+        // treated as i32 — function references were passed as `0` instead of
+        // the actual function pointer.
+        HirTyKind::FnPtr {
+            inputs,
+            output,
+            abi,
+            is_unsafe,
+        } => {
+            let mir_inputs: Vec<Ty> = inputs.iter().map(lower_hir_ty_to_mir_ty).collect();
+            let mir_output = Box::new(lower_hir_ty_to_mir_ty(output));
+            Ty::new(
+                TyKind::FnPtr(crate::mir::ty::Sig {
+                    inputs: mir_inputs,
+                    output: mir_output,
+                    abi: *abi,
+                    is_unsafe: *is_unsafe,
+                }),
+                span,
+            )
+        }
         _ => Ty::new(TyKind::Error, span), // complex types → Error for now
     }
 }

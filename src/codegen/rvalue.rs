@@ -19,12 +19,13 @@ pub(crate) fn codegen_rvalue(
     rv: &Rvalue,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
 ) -> EmitValue {
     match rv {
-        Rvalue::Use(op) => codegen_operand(emitter, mir, op, interner, layouts),
+        Rvalue::Use(op) => codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id),
         Rvalue::BinaryOp(op, a, b) => {
-            let a_val = codegen_operand(emitter, mir, a, interner, layouts);
-            let b_val = codegen_operand(emitter, mir, b, interner, layouts);
+            let a_val = codegen_operand(emitter, mir, a, interner, layouts, fn_name_by_def_id);
+            let b_val = codegen_operand(emitter, mir, b, interner, layouts, fn_name_by_def_id);
             let ty = detect_operand_type(mir, a, layouts)
                 .or(detect_operand_type(mir, b, layouts))
                 .unwrap_or(EmitType::I32);
@@ -137,7 +138,7 @@ pub(crate) fn codegen_rvalue(
             }
         }
         Rvalue::UnaryOp(op, operand) => {
-            let val = codegen_operand(emitter, mir, operand, interner, layouts);
+            let val = codegen_operand(emitter, mir, operand, interner, layouts, fn_name_by_def_id);
             let ty = detect_operand_type(mir, operand, layouts).unwrap_or(EmitType::I32);
             emitter.emit_unop(*op, &ty, &val)
         }
@@ -153,7 +154,14 @@ pub(crate) fn codegen_rvalue(
             if operands.is_empty() {
                 "0".to_string()
             } else if operands.len() == 1 {
-                codegen_operand(emitter, mir, &operands[0], interner, layouts)
+                codegen_operand(
+                    emitter,
+                    mir,
+                    &operands[0],
+                    interner,
+                    layouts,
+                    fn_name_by_def_id,
+                )
             } else {
                 let field_tys: Vec<EmitType> = operands
                     .iter()
@@ -162,7 +170,8 @@ pub(crate) fn codegen_rvalue(
                 let agg_ty = EmitType::Struct(field_tys.clone());
                 let mut agg = "undef".to_string();
                 for (i, op) in operands.iter().enumerate() {
-                    let val = codegen_operand(emitter, mir, op, interner, layouts);
+                    let val =
+                        codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
                     let val_ty = &field_tys[i];
                     agg = emitter.emit_insertvalue(&agg_ty, &agg, val_ty, &val, i as u32);
                 }
@@ -202,7 +211,7 @@ pub(crate) fn codegen_rvalue(
             let agg_ty = EmitType::array_of(elem_emit_ty.clone(), n);
             let mut agg = "undef".to_string();
             for (i, op) in operands.iter().enumerate() {
-                let val = codegen_operand(emitter, mir, op, interner, layouts);
+                let val = codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
                 agg = emitter.emit_insertvalue(&agg_ty, &agg, &elem_emit_ty, &val, i as u32);
             }
             agg
@@ -262,7 +271,8 @@ pub(crate) fn codegen_rvalue(
                 // for enum variants — see `lower_expr_to_operand`'s Call path).
                 // Insert it at field 0 of the storage.
                 let discr_op = &operands[0];
-                let discr_val = codegen_operand(emitter, mir, discr_op, interner, layouts);
+                let discr_val =
+                    codegen_operand(emitter, mir, discr_op, interner, layouts, fn_name_by_def_id);
                 let discr_ty = detect_operand_type(mir, discr_op, layouts).unwrap_or(EmitType::I32);
                 agg = emitter.emit_insertvalue(&storage_ty, &agg, &discr_ty, &discr_val, 0);
 
@@ -272,7 +282,8 @@ pub(crate) fn codegen_rvalue(
                 // element 0 (per `resolve_enum_variant`), so payload field i
                 // is at `field_tys[i+1]`.
                 for (i, op) in operands.iter().enumerate().skip(1) {
-                    let val = codegen_operand(emitter, mir, op, interner, layouts);
+                    let val =
+                        codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
                     // field_tys[i] is this operand's type (field_tys[0]=discr,
                     // field_tys[1]=payload_field_0, ...).
                     let val_ty = field_tys
@@ -306,7 +317,8 @@ pub(crate) fn codegen_rvalue(
                 let agg_ty = EmitType::Struct(field_tys.clone());
                 let mut agg = "undef".to_string();
                 for (i, op) in operands.iter().enumerate() {
-                    let val = codegen_operand(emitter, mir, op, interner, layouts);
+                    let val =
+                        codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
                     let val_ty = field_tys.get(i).cloned().unwrap_or(EmitType::I32);
                     agg = emitter.emit_insertvalue(&agg_ty, &agg, &val_ty, &val, i as u32);
                 }
@@ -337,14 +349,14 @@ pub(crate) fn codegen_rvalue(
             let agg_ty = EmitType::Struct(field_tys.clone());
             let mut agg = "undef".to_string();
             for (i, op) in operands.iter().enumerate() {
-                let val = codegen_operand(emitter, mir, op, interner, layouts);
+                let val = codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
                 let val_ty = field_tys.get(i).cloned().unwrap_or(EmitType::I32);
                 agg = emitter.emit_insertvalue(&agg_ty, &agg, &val_ty, &val, i as u32);
             }
             agg
         }
         Rvalue::Cast(_, op, target_ty) => {
-            let val = codegen_operand(emitter, mir, op, interner, layouts);
+            let val = codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
             let src_ty = detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32);
             let dst_ty = mir_type_to_emit_type(target_ty);
             emitter.emit_cast(&src_ty, &dst_ty, &val)

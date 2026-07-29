@@ -257,7 +257,7 @@ Each test cell has a status:
 
 ## 5. Tier 3: End-to-End (E2E) Path Coverage
 
-### 5.1 run_ok Tests (97 total — verified at runtime)
+### 5.1 run_ok Tests (105 total — verified at runtime)
 
 | Test ID | Feature | Expected Output | Status |
 |---------|---------|-----------------|--------|
@@ -358,6 +358,14 @@ Each test cell has a status:
 | E-095 | Fibonacci recursive + iterative comparison | `610 610` | ✅ |
 | E-096 | Power function recursive (3 branches) | `1024\n243\n1` | ✅ |
 | E-097 | GCD Euclidean algorithm recursive | `6\n25\n1` | ✅ |
+| E-098 | Function pointer parameter (fn type) | `42` | ✅ |
+| E-099 | Reference return value printing (&i32 → deref) | `42` | ✅ |
+| E-100 | Stack with push/pop/peek (&mut self) | `30\n30\n20\n10` | ✅ |
+| E-101 | 2D matrix traversal (array of arrays) | `45` | ✅ |
+| E-102 | Result enum (Ok/Err) with safe_div | `20\n-1` | ✅ |
+| E-103 | Struct with &str field + method | `30\nAlice` | ✅ |
+| E-104 | Reference array indexing (&[i32; 3]) | `10` | ✅ |
+| E-105 | &mut [i32; 3] array element mutation | `100 200 300` | ✅ |
 
 ### 5.2 Negative Tests (compile_error — 403 total)
 
@@ -394,9 +402,9 @@ Each test cell has a status:
 |------|-------------|----------|----------|
 | Tier 1: Per-Stage | 146 | 144 | 98.6% |
 | Tier 2: Inter-Stage | 15 | 15 | 100% |
-| Tier 3: E2E (run_ok) | 97 | 97 | 100% |
+| Tier 3: E2E (run_ok) | 105 | 105 | 100% |
 | Tier 3: E2E (compile_error) | 399 | 399 | 100% |
-| **Total** | **657** | **655** | **99.7%** |
+| **Total** | **665** | **663** | **99.7%** |
 
 **Unverified paths** (2):
 1. B-03: Double mutable borrow — NLL permissive (GAP-1, known limitation)

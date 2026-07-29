@@ -20,6 +20,7 @@ pub(crate) fn codegen_operand(
     op: &Operand,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
 ) -> EmitValue {
     match op {
         Operand::Constant(c) => match c.val {
@@ -64,8 +65,7 @@ pub(crate) fn codegen_operand(
                 // ([n+1 x i8] global but [n x i8] GEP), which LLVM accepts but
                 // produces incorrect pointer arithmetic in some cases.
                 let ptr_val = format!(
-                    "getelementptr inbounds ([{} x i8], [{} x i8]* @{}, i32 0, i32 0)",
-                    n + 1,
+                    "getelementptr inbounds ([{} x i8], ptr @{}, i32 0, i32 0)",
                     n + 1,
                     global_name
                 );
@@ -80,7 +80,19 @@ pub(crate) fn codegen_operand(
                 // insertvalue { i8*, i64 } %with_ptr, i64 N, 1
                 emitter.emit_insertvalue(&fat_ty, &with_ptr, &EmitType::I64, &n.to_string(), 1)
             }
-            _ => emitter.emit_const(&c.val),
+            _ => {
+                // Stage 14.57: Handle FnDef constants — emit function reference
+                // (function name) instead of the raw integer DefId.
+                if let crate::mir::ty::TyKind::FnDef(_, _) = &c.ty.kind {
+                    if let crate::mir::ty::ConstVal::Uint(n) = &c.val {
+                        let def_id = crate::hir::DefId(*n as u32);
+                        if let Some(name) = fn_name_by_def_id.get(&def_id) {
+                            return format!("@{}", name);
+                        }
+                    }
+                }
+                emitter.emit_const(&c.val)
+            }
         },
         Operand::Copy(lv) | Operand::Move(lv) => {
             let ty = detect_place_type(mir, lv, layouts);
@@ -135,6 +147,7 @@ pub fn codegen_dyn_trait_call(
     args: &[Operand],
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
 ) -> EmitValue {
     let call_info = &mir.dyn_trait_calls[index as usize];
     let dynptr_symbol = format!(".dynptr.{}.{}", call_info.trait_name, call_info.type_name);
@@ -164,7 +177,7 @@ pub fn codegen_dyn_trait_call(
                     detect_operand_type(mir, a, layouts).unwrap_or(EmitType::I32)
                 }
             };
-            let val = codegen_operand(emitter, mir, a, interner, layouts);
+            let val = codegen_operand(emitter, mir, a, interner, layouts, fn_name_by_def_id);
             (ty, val)
         })
         .collect();

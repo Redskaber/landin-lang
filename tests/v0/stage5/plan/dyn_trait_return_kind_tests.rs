@@ -198,7 +198,15 @@ fn test_codegen_dyn_trait_call_void_return() {
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     assert!(
@@ -217,7 +225,15 @@ fn test_codegen_dyn_trait_call_i32_return() {
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     assert!(
@@ -236,7 +252,15 @@ fn test_codegen_dyn_trait_call_f64_return() {
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     assert!(
@@ -255,7 +279,15 @@ fn test_codegen_dyn_trait_call_bool_return() {
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     assert!(
@@ -265,7 +297,7 @@ fn test_codegen_dyn_trait_call_bool_return() {
     );
 }
 
-/// Method returning AllocType (Self) → call i32* %v (OpaquePtr maps to i32*)
+/// Method returning AllocType (Self) → call ptr %v (OpaquePtr maps to ptr in LLVM 19)
 #[test]
 fn test_codegen_dyn_trait_call_alloc_type_return() {
     let mir = make_mir_with_return_kind(StdlibTypeKind::AllocType);
@@ -274,13 +306,21 @@ fn test_codegen_dyn_trait_call_alloc_type_return() {
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     // OpaquePtr → "i32*" in LLVM IR (legacy default for opaque pointers)
     assert!(
-        output.contains("call i32* %v"),
-        "expected 'call i32* %v', got: {}",
+        output.contains("call ptr %v"),
+        "expected 'call ptr %v', got: {}",
         output
     );
 }

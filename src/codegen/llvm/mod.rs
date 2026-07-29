@@ -311,6 +311,25 @@ impl LLVMSysEmitter {
                 let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
                 return LLVMConstNull(ptr_ty);
             }
+            // Stage 14.58: Handle function reference values like "@landin_double".
+            // These are produced by codegen_operand for FnDef constants.
+            // We look up the function value from the values map or declare it.
+            if name.starts_with('@') {
+                let func_name: String = name.strip_prefix('@').unwrap().to_string();
+                // Check if already in values map
+                if let Some(&v) = self.values.get(name) {
+                    return v;
+                }
+                // Try to get the function from the module
+                let name_c = CString::new(func_name).unwrap();
+                let func = LLVMGetNamedFunction(self.module, name_c.as_ptr());
+                if !func.is_null() {
+                    return func;
+                }
+                // Fallback: null pointer
+                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+                return LLVMConstNull(ptr_ty);
+            }
             // Fallback: i32 zero.
             let ty = LLVMInt32TypeInContext(self.ctx);
             LLVMConstInt(ty, 0, 0)
@@ -837,7 +856,14 @@ impl Emitter for LLVMSysEmitter {
         ret_ty: &EmitType,
     ) -> EmitValue {
         let arg_tys: Vec<EmitType> = args.iter().map(|(t, _)| t.clone()).collect();
-        let callee = self.get_or_declare_function(fn_name, ret_ty, &arg_tys);
+        // Stage 14.58: Support indirect calls through function pointers.
+        // When fn_name is an SSA value (starts with %), look it up as a
+        // value instead of declaring a function.
+        let callee = if fn_name.starts_with('%') || fn_name.starts_with('@') {
+            self.lookup(&fn_name.to_string())
+        } else {
+            self.get_or_declare_function(fn_name, ret_ty, &arg_tys)
+        };
         unsafe {
             let mut arg_vals: Vec<LLVMValueRef> =
                 args.iter().map(|(_, v)| self.lookup(v)).collect();

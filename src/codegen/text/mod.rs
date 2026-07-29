@@ -255,13 +255,20 @@ impl Emitter for TextEmitter {
             .collect::<Vec<_>>()
             .join(", ");
         // For void calls we don't assign a result register.
+        // Stage 14.58: For indirect calls, fn_name may be an SSA value (%vN)
+        // or a function reference (@landin_name). Use the appropriate prefix.
+        let call_target = if fn_name.starts_with('%') || fn_name.starts_with('@') {
+            fn_name.to_string()
+        } else {
+            format!("@{}", fn_name)
+        };
         if *ret_ty == EmitType::Void {
-            self.line(&format!("  call void @{}({})", fn_name, args_str));
+            self.line(&format!("  call void {}({})", call_target, args_str));
             "0".to_string()
         } else {
             self.line(&format!(
-                "  %v{} = call {} @{}({})",
-                r, ret_str, fn_name, args_str
+                "  %v{} = call {} {}({})",
+                r, ret_str, call_target, args_str
             ));
             format!("%v{}", r)
         }
@@ -452,7 +459,8 @@ impl Emitter for TextEmitter {
     ) -> EmitValue {
         let r = self.fresh();
         let array_str = emit_type_to_llvm_str(array_ty);
-        let ptr_str = format!("{}*", array_str);
+        // Stage 14.59: LLVM 19 opaque pointers — use "ptr" instead of "array*"
+        let ptr_str = "ptr".to_string();
         self.line(&format!(
             "  %v{} = getelementptr inbounds {}, {} {}, i32 0, i32 {}",
             r, array_str, ptr_str, base_ptr, index
@@ -469,7 +477,8 @@ impl Emitter for TextEmitter {
     ) -> EmitValue {
         let r = self.fresh();
         let elem_str = emit_type_to_llvm_str(elem_ty);
-        let ptr_str = format!("{}*", elem_str);
+        // Stage 14.59: LLVM 19 opaque pointers — use "ptr" instead of "elem*"
+        let ptr_str = "ptr".to_string();
         self.line(&format!(
             "  %v{} = getelementptr inbounds {}, {} {}, i32 {}",
             r, elem_str, ptr_str, base_ptr, index

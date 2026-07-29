@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok reference return value printing (&i32 → deref + print) — Stage 14.59
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 42
+// SOURCE: Stage 14.59 — &i32 return type now prints correctly (was "*" — treated as string)
+
+fn id(x: &i32) -> &i32 {
+    x
+}
+fn main() -> i32 {
+    let val = 42;
+    let ref_val = id(&val);
+    println!("{}", ref_val);
+    0
+}

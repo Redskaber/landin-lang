@@ -12732,3 +12732,221 @@ Stage Summary:
 - Known limitation: function pointer parameters not supported (fn type params)
 - 3 new run_ok tests (total 97 run_ok)
 - v0.72.0: patch bump (audit + test coverage)
+
+---
+Task ID: stage14.57-fn-pointer-type-support
+Agent: Super Z (main)
+Task: Stage 14.57 — Add fn pointer type support (FnPtr in MIR lower + codegen + typeck coercion). v0.72.0 → v0.73.0.
+
+Work Log:
+- Baseline: v0.72.0 / 1951 rust tests + 5123 conformance (post-Stage 14.56)
+- Known limitation from Stage 14.56: function pointer parameters not supported
+  - `fn apply(f: fn(i32) -> i32, x: i32) -> i32 { f(x) }` — `f` was treated as i32
+  - Function name `double` was passed as `0` instead of function reference
+- Fix 1: MIR lower — handle `HirTyKind::FnPtr` in `lower_hir_ty_to_mir_ty` (mod.rs)
+  - Was: fell through to `Ty::Error` → params treated as i32
+  - Now: constructs `TyKind::FnPtr(Sig{inputs, output, abi, is_unsafe})`
+- Fix 2: Codegen — handle `TyKind::FnPtr` and `TyKind::FnDef` in `mir_type_to_emit_type`
+  - Was: fell through to `EmitType::I32`
+  - Now: returns `EmitType::OpaquePtr` (function pointer)
+- Fix 3: Codegen — handle `FnDef` constants in `codegen_operand` (operand.rs)
+  - Was: emitted `0` (the Uint DefId value) as an i32 constant
+  - Now: looks up function name from `fn_name_by_def_id` and emits `@landin_<name>`
+  - Required adding `fn_name_by_def_id` parameter to `codegen_operand` and all callers
+    (codegen_rvalue, codegen_statement, codegen_terminator, codegen_dyn_trait_call)
+- Fix 4: Typeck — add FnDef→FnPtr coercion in unify (unify.rs)
+  - Was: `expected FnDef, found FnPtr` type error
+  - Now: FnDef coerces to FnPtr (function item → function pointer), like Rust
+- Fix 5: Updated all test files that call `codegen_dyn_trait_call` directly
+  (codegen_dyn_trait_method_call_tests.rs, dyn_trait_return_kind_tests.rs,
+   dyn_trait_param_kinds_tests.rs) to pass `&HashMap::new()` as the new parameter
+- Known remaining issue: runtime execution of fn pointer calls still fails
+  (LLVM type mismatch — function ref stored in i32 alloca, then loaded as i32)
+  - The typeck coercion and MIR/codegen type handling are correct, but the
+    codegen store/load path for FnDef constants through allocas needs deeper
+    work (function refs shouldn't go through i32 allocas)
+  - This is a codegen-level issue, not a type system issue — the foundation is laid
+- Verification:
+  - All 1951 rust tests pass (zero regression)
+  - All 5123 conformance tests pass (zero regression)
+  - 0 clippy warnings, fmt clean
+  - The fn pointer code COMPILES correctly (typeck passes, MIR is correct)
+  - The fn pointer code does NOT yet RUN correctly (codegen alloca type issue)
+- Bumped Cargo.toml v0.72.0 → v0.73.0 (minor bump — fn pointer type infrastructure)
+
+Stage Summary:
+- Stage 14.57 PARTIAL — fn pointer type infrastructure added
+- 5 fixes: MIR lower FnPtr, codegen FnPtr/FnDef EmitType, codegen FnDef constant,
+  typeck FnDef→FnPtr coercion, test file updates
+- Foundation laid for fn pointer support — typeck and MIR are correct
+- Remaining: codegen alloca type for FnDef locals (function refs through allocas)
+- All tests pass (zero regression)
+- v0.73.0: minor bump (fn pointer type infrastructure)
+
+---
+Task ID: stage14.58-fn-pointer-runtime-fix
+Agent: Super Z (main)
+Task: Stage 14.58 — Fix fn pointer runtime: OpaquePtr → ptr (LLVM 19), LLVMSysEmitter @name lookup, indirect call in terminator. v0.73.0 → v0.74.0.
+
+Work Log:
+- Baseline: v0.73.0 / 1951 rust tests + 5123 conformance (post-Stage 14.57)
+- Stage 14.57 laid the foundation: MIR FnPtr type, codegen OpaquePtr, typeck coercion
+- Stage 14.58 fixed the runtime execution:
+  1. TextEmitter: OpaquePtr emits "ptr" (LLVM 19 opaque pointer) instead of "i32*"
+  2. TextEmitter: pointee() returns OpaquePtr instead of I32
+  3. LLVMSysEmitter: interpret_adhoc handles "@func_name" values — looks up function via LLVMGetNamedFunction
+  4. TextEmitter: emit_call handles SSA values (%vN) and @references for indirect calls
+  5. LLVMSysEmitter: emit_call detects SSA/@ values and uses lookup instead of get_or_declare_function
+  6. Terminator codegen: indirect call through FnPtr-typed local (was returning "0")
+  7. Test: updated dyn_trait_return_kind test for ptr (was i32*)
+- Verification:
+  - `fn apply(f: fn(i32) -> i32, x: i32) -> i32 { f(x) }` with `apply(double, 21)` → 42 ✅
+  - All 1951 rust tests pass (zero regression)
+  - All 5124 conformance tests pass (was 5123, +1 new)
+  - 0 clippy warnings, fmt clean
+- Created 1 new run_ok test:
+  - e2e-runok-098-fn-pointer-param.lin — fn pointer parameter (42)
+- Bumped Cargo.toml v0.73.0 → v0.74.0 (minor bump — fn pointer runtime works end-to-end)
+
+Stage Summary:
+- Stage 14.58 PASSED — function pointer parameters now work end-to-end
+- 7 fixes across TextEmitter, LLVMSysEmitter, and terminator codegen
+- Per §1.0 原则 3 "显式 > 隐式": function references are now explicit @name values
+- Per §1.0 原则 6 "通用 > 特例": indirect call mechanism is general (works for any FnPtr)
+- All tests pass (zero regression); 1 new run_ok test (total 98 run_ok)
+- v0.74.0: minor bump (fn pointer support complete)
+
+---
+Task ID: stage14.59-opaque-ptr-migration-and-ref-print
+Agent: Super Z (main)
+Task: Stage 14.59 — Migrate all TextEmitter pointer types to LLVM 19 opaque "ptr" + fix &i32 printing. v0.74.0 → v0.75.0.
+
+Work Log:
+- Baseline: v0.74.0 / 1951 rust tests + 5124 conformance (post-Stage 14.58)
+- Bug: `fn id(x: &i32) -> &i32 { x }` prints `*` instead of `42`
+  - Root cause 1: TextEmitter still used typed pointers (`i32*`, `i8*`) instead of LLVM 19 opaque `ptr`
+  - Root cause 2: println! codegen treated all pointers as strings (%s), not distinguishing &i32 from &str
+- Fix 1: TextEmitter `emit_type_to_llvm_str`: `Ptr(_)` → `"ptr"` (was `"{pointee}*"`)
+- Fix 2: TextEmitter `pointee()`: returns `OpaquePtr` (was `I32`)
+- Fix 3: println! codegen: `Ptr(inner)` with integer inner type → dereference + print as integer (was: always %s)
+- Fix 4: String GEP in codegen_operand: `[N x i8]* @global` → `ptr @global`
+- Fix 5: `emit_gep_index` and `emit_gep_index_ptr`: use `ptr` instead of `type*`
+- Fix 6: Updated 30+ test assertions from `i32*`/`i8*`/`i64*`/`double*` to `ptr`
+- Verification:
+  - `fn id(x: &i32) -> &i32 { x }` with `id(&42)` → 42 ✅ (was `*`)
+  - All 1951 rust tests pass (zero regression after test assertion updates)
+  - All 5125 conformance tests pass (was 5124, +1 new)
+  - 0 clippy warnings, fmt clean
+- Created 1 new run_ok test:
+  - e2e-runok-099-ref-return-print.lin — &i32 return type printing (42)
+- Bumped Cargo.toml v0.74.0 → v0.75.0 (minor bump — opaque ptr migration + ref printing)
+
+Stage Summary:
+- Stage 14.59 PASSED — LLVM 19 opaque pointer migration complete + &i32 printing fixed
+- 6 fixes across TextEmitter, codegen operand, statement codegen, and GEP emission
+- 30+ test assertions updated from typed pointers to opaque ptr
+- Per §1.0 原则 3 "显式 > 隐式": pointer types are now consistently "ptr" everywhere
+- All tests pass (zero regression); 1 new run_ok test (total 99 run_ok)
+- v0.75.0: minor bump (opaque ptr migration — major LLVM 19 compliance)
+
+---
+Task ID: stage14.60-audit-data-structures
+Agent: Super Z (main)
+Task: Stage 14.60 — Audit: Stack (push/pop/peek), 2D matrix, Result enum, struct with &str. No bugs found. v0.75.0 → v0.76.0.
+
+Work Log:
+- Baseline: v0.75.0 / 1951 rust tests + 5125 conformance (post-Stage 14.59)
+- Audit: tested complex data structure patterns
+- All patterns passed (no bugs found):
+  1. Stack with push/pop/peek (&mut self + array field mutation) → 30 30 20 10 ✅
+  2. 2D matrix traversal (array of arrays m[i][j]) → 45 ✅
+  3. Result enum (Ok/Err) with safe_div + match → 20 -1 ✅
+  4. Struct with &str field + constructor + method → 30 Alice ✅
+  5. Linked list traversal (array-based nodes) → 70 ✅
+  6. Sequential &mut self calls (Counter inc/inc/inc) → 3 ✅
+  7. Closure with mutable capture → FAILS (expected — GAP-7 disjoint closure captures)
+- Created 4 new run_ok tests:
+  - e2e-runok-100-stack-push-pop.lin — Stack with push/pop/peek (30 30 20 10)
+  - e2e-runok-101-matrix-2d.lin — 2D matrix traversal (45)
+  - e2e-runok-102-result-enum.lin — Result enum with safe_div (20 -1)
+  - e2e-runok-103-struct-str-field.lin — struct with &str field (30 Alice)
+- Verification:
+  - All 1951 rust tests pass (zero regression)
+  - All 5129 conformance tests pass (was 5125, +4 new)
+  - 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.75.0 → v0.76.0 (minor bump — 100+ run_ok milestone)
+
+Stage Summary:
+- Stage 14.60 PASSED — no bugs found, 4 new run_ok tests (total 103 run_ok)
+- 100+ run_ok milestone achieved!
+- Per §1.0 原则 8 "设计驱动测试": tests cover Stack (LIFO), matrix (2D indexing),
+  Result enum (error handling), struct with &str (string field)
+- v0.76.0: minor bump (100+ run_ok milestone)
+
+---
+Task ID: stage14.61-ref-array-indexing
+Agent: Super Z (main)
+Task: Stage 14.61 — Fix &[i32; N] reference array indexing (was LLVM GEP error). v0.76.0 → v0.77.0.
+
+Work Log:
+- Baseline: v0.76.0 / 1951 rust tests + 5129 conformance (post-Stage 14.60)
+- Bug: `fn f(arr: &[i32; 3]) -> i32 { arr[0] }` fails with LLVM GEP error
+  - "Invalid indices for GEP pointer type! getelementptr inbounds ptr, ptr %v3, i32 0, i32 0"
+  - Root cause: codegen didn't dereference the Ref before indexing the array
+  - When base is Ref(_, _, Array), codegen used the alloca pointer (ptr to ptr)
+    instead of loading the reference value (ptr to array) before GEP
+  - Also: detect_place_storage_type returned Ptr(Array) for Ref — GEP used
+    "ptr" instead of "[3 x i32]" as the array type
+- Fix 1: compute_place_address Index case — when base is Ref (is_ptr()),
+  load the reference value (code_place_load_typed) instead of using alloca
+- Fix 2: compute_place_address Index case — extract Array type from Ptr(Array)
+  or from MIR Ref(_, _, Array) for the GEP type
+- Fix 3: codegen_place_load_typed Index case — same Ref detection + Array
+  type extraction for the load path
+- Verification:
+  - `fn f(arr: &[i32; 3]) -> i32 { arr[0] }` with `f(&[10, 20, 30])` → 10 ✅
+  - All 1951 rust tests pass (zero regression)
+  - All 5130 conformance tests pass (was 5129, +1 new)
+  - 0 clippy warnings, fmt clean
+- Created 1 new run_ok test:
+  - e2e-runok-104-ref-array-index.lin — &[i32; 3] indexing (10)
+- Bumped Cargo.toml v0.76.0 → v0.77.0 (minor bump — ref array indexing)
+
+Stage Summary:
+- Stage 14.61 PASSED — &[i32; N] reference array indexing now works
+- 3 fixes in codegen (compute_place_address + codegen_place_load_typed)
+- Per §1.0 原则 3 "显式 > 隐式": Ref type is explicitly dereferenced before indexing
+- All tests pass (zero regression); 1 new run_ok test (total 104 run_ok)
+- v0.77.0: minor bump (ref array indexing — important pattern)
+
+---
+Task ID: stage14.62-mut-ref-array-store
+Agent: Super Z (main)
+Task: Stage 14.62 — Fix &mut [i32; N] store path (was LLVM GEP error). v0.77.0 → v0.78.0.
+
+Work Log:
+- Baseline: v0.77.0 / 1951 rust tests + 5130 conformance (post-Stage 14.61)
+- Bug: `fn modify(arr: &mut [i32; 3]) { arr[0] = 100; }` fails with LLVM GEP error
+  - "Invalid indices for GEP pointer type! getelementptr inbounds ptr, ptr %loc_1, i32 0, i32 0"
+  - Root cause: STORE path (statement.rs) didn't have the Ref dereference fix
+    that the LOAD path (mir_translation.rs) got in Stage 14.61
+  - Same pattern: base is Ref to Array, codegen used alloca pointer instead
+    of loading the reference value before GEP
+- Fix: Mirrored the Stage 14.61 load path fix to the store path (statement.rs)
+  - When base is Ref (is_ptr()), load reference value (codegen_place_load_typed)
+  - Extract Array type from Ptr(Array) or MIR Ref(_, _, Array) for GEP
+- Verification:
+  - `fn modify(arr: &mut [i32; 3]) { arr[0] = 100; arr[1] = 200; arr[2] = 300; }` → 100 200 300 ✅
+  - All 1951 rust tests pass (zero regression)
+  - All 5131 conformance tests pass (was 5130, +1 new)
+  - 0 clippy warnings, fmt clean
+- Created 1 new run_ok test:
+  - e2e-runok-105-mut-ref-array-store.lin — &mut [i32; 3] store (100 200 300)
+- Bumped Cargo.toml v0.77.0 → v0.78.0 (minor bump — &mut array store path)
+
+Stage Summary:
+- Stage 14.62 PASSED — &mut [i32; N] array element mutation through reference now works
+- 1 fix: mirrored Stage 14.61 Ref dereference to store path (statement.rs)
+- Per §1.0 原則 6 "通用 > 特例": same pattern applies to both load and store paths
+- All tests pass (zero regression); 1 new run_ok test (total 105 run_ok)
+- v0.78.0: minor bump (&mut array store — important pattern)

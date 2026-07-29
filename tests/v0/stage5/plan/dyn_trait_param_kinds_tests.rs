@@ -191,7 +191,15 @@ fn test_codegen_dyn_trait_call_i32_param() {
         Operand::Copy(Place::local(LocalId(2), Span::DUMMY)),
     ];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     // The call should contain "i32" for the param (not just self)
@@ -214,7 +222,15 @@ fn test_codegen_dyn_trait_call_f64_param() {
         Operand::Copy(Place::local(LocalId(2), Span::DUMMY)),
     ];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     assert!(
@@ -236,7 +252,15 @@ fn test_codegen_dyn_trait_call_bool_param() {
         Operand::Copy(Place::local(LocalId(2), Span::DUMMY)),
     ];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     assert!(output.contains("i8"), "expected i8 in IR, got: {}", output);
@@ -251,7 +275,15 @@ fn test_codegen_dyn_trait_call_no_params() {
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     // Should have self as i32* (OpaquePtr) and void return (Unit)
@@ -275,7 +307,15 @@ fn test_codegen_dyn_trait_call_multiple_params() {
         Operand::Copy(Place::local(LocalId(3), Span::DUMMY)),
     ];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     assert!(

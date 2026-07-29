@@ -1,0 +1,14 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok reference to array (&[i32; 3]) indexing — Stage 14.61
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10
+// SOURCE: Stage 14.61 — &array indexing now works (was LLVM GEP error — didn't deref Ref before indexing)
+
+fn first_one(arr: &[i32; 3]) -> i32 {
+    arr[0]
+}
+fn main() -> i32 {
+    let a = [10, 20, 30];
+    println!("{}", first_one(&a));
+    0
+}

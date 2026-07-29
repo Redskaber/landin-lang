@@ -66,7 +66,7 @@ impl EmitType {
     pub fn pointee(&self) -> EmitType {
         match self {
             EmitType::Ptr(t) => (**t).clone(),
-            EmitType::OpaquePtr => EmitType::I32,
+            EmitType::OpaquePtr => EmitType::OpaquePtr, // Stage 14.58: ptr's pointee is still ptr
             other => other.clone(),
         }
     }
@@ -507,7 +507,11 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
             let fields: Vec<EmitType> = substs.iter().map(mir_type_to_emit_type).collect();
             EmitType::Struct(fields)
         }
-        // Fns/ADTs/etc. — Stage 3 treats as opaque i32 placeholder.
+        // Stage 14.57: Function pointer and function definition types — emit as
+        // opaque pointer (function reference). Was: fell through to I32, causing
+        // fn pointer params to be treated as i32 — function refs passed as `0`.
+        TyKind::FnPtr(_) | TyKind::FnDef(_, _) => EmitType::OpaquePtr,
+        // ADTs and other complex types — Stage 3 treats as opaque i32 placeholder.
         _ => EmitType::I32,
     }
 }
@@ -569,8 +573,9 @@ pub fn emit_type_to_llvm_str(ty: &EmitType) -> String {
         EmitType::I128 => "i128".into(),
         EmitType::F32 => "float".into(),
         EmitType::F64 => "double".into(),
-        EmitType::Ptr(pointee) => format!("{}*", emit_type_to_llvm_str(pointee)),
-        EmitType::OpaquePtr => "i32*".into(),
+        // Stage 14.59: LLVM 19+ uses opaque pointers — all pointer types
+        // emit as "ptr" regardless of pointee type. Was: "{}*" with pointee.
+        EmitType::Ptr(_) | EmitType::OpaquePtr => "ptr".into(),
         EmitType::Void => "void".into(),
         EmitType::Struct(fields) => {
             if fields.is_empty() {

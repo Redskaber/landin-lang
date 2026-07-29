@@ -173,7 +173,15 @@ fn test_codegen_dyn_trait_call_returns_value() {
     // The receiver operand: Copy(Place::local(LocalId(0), span))
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    let ret = codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    let ret = codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
     assert!(!ret.is_empty());
 }
 
@@ -186,7 +194,15 @@ fn test_codegen_dyn_trait_call_produces_vtable_ir() {
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     assert!(output.contains("@.dynptr.Drop.S"));
@@ -217,7 +233,15 @@ fn test_codegen_dyn_trait_call_uses_correct_dynptr_symbol() {
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     assert!(output.contains("@.dynptr.Display.Vec"));
@@ -235,7 +259,15 @@ fn test_codegen_dyn_trait_call_panics_on_oob() {
     let args: Vec<Operand> = vec![];
 
     // Index 0 but side-table is empty → panic.
-    let _ = codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    let _ = codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 }
 
 // ============================================================
@@ -307,9 +339,25 @@ fn test_codegen_dyn_trait_call_multiple_distinct_indices() {
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
     // First call → index 0 → Drop.A
-    codegen_dyn_trait_call(&mut emitter, &mir, 0, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        0,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
     // Second call → index 1 → Drop.B
-    codegen_dyn_trait_call(&mut emitter, &mir, 1, &args, &interner, &layouts);
+    codegen_dyn_trait_call(
+        &mut emitter,
+        &mir,
+        1,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
 
     let output = emitter.output_with_globals();
     // Both dynptr symbols should appear.

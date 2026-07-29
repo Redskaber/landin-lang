@@ -130,6 +130,8 @@ pub fn mir_type_to_emit_type_with_layouts(
             }
         }
         TyKind::Slice(elem) => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(elem, layouts)),
+        // Stage 14.57: FnPtr and FnDef — emit as opaque pointer (function reference).
+        TyKind::FnPtr(_) | TyKind::FnDef(_, _) => EmitType::OpaquePtr,
         _ => mir_type_to_emit_type(ty),
     }
 }
@@ -219,6 +221,33 @@ pub(crate) fn detect_place_storage_type(
             // for `arr[i].field` patterns → GEP with wrong indices.
             ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
                 let array_ty = detect_place_storage_type(mir, base, layouts);
+                // Stage 14.61: If the base is a Ref to an array (e.g., `&[i32; 3]`),
+                // detect_place_storage_type returns the Ref type (Ptr/OpaquePtr).
+                // We need to check the MIR type for Ref(_, _, Array) and extract
+                // the array type from the inner.
+                let array_ty = if matches!(array_ty, EmitType::OpaquePtr | EmitType::Ptr(_)) {
+                    // Check if the base MIR type is Ref(_, _, Array)
+                    if let PlaceKind::Local(id) = &base.kind {
+                        if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                            if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
+                                let inner_emit = mir_type_to_emit_type_with_layouts(inner, layouts);
+                                if !matches!(inner_emit, EmitType::I32) {
+                                    inner_emit
+                                } else {
+                                    array_ty
+                                }
+                            } else {
+                                array_ty
+                            }
+                        } else {
+                            array_ty
+                        }
+                    } else {
+                        array_ty
+                    }
+                } else {
+                    array_ty
+                };
                 // If the base is an array, return the element type.
                 if let EmitType::Array(elem_ty, _) = &array_ty {
                     elem_ty.as_ref().clone()
@@ -345,8 +374,49 @@ pub(crate) fn compute_place_address(
             // codegen_place_load_typed (loads the value), breaking
             // `arr[i].field` patterns where Field wraps Index.
             ProjectionElem::Index(idx) => {
-                let base_ptr = compute_place_address(emitter, mir, base, _interner, layouts);
-                let array_ty = detect_place_storage_type(mir, base, layouts);
+                // Stage 14.61: When the base is a Ref (e.g., `&[i32; 3]`),
+                // we need to dereference the reference first to get the array
+                // pointer, then GEP into the array.
+                let base_ty = detect_place_type(mir, base, layouts);
+                let base_ptr = if base_ty.is_ptr() {
+                    // Ref to array — load the pointer value from the alloca
+                    codegen_place_load_typed(
+                        emitter,
+                        mir,
+                        base,
+                        base_ty.clone(),
+                        _interner,
+                        layouts,
+                    )
+                } else {
+                    compute_place_address(emitter, mir, base, _interner, layouts)
+                };
+                // Stage 14.61: For Ref to Array, extract the Array type from the
+                // Ref's inner type for the GEP. detect_place_storage_type returns
+                // Ptr(Array) which is wrong for GEP — we need Array itself.
+                let array_ty = {
+                    let raw_ty = detect_place_storage_type(mir, base, layouts);
+                    match &raw_ty {
+                        EmitType::Ptr(inner) => *inner.clone(),
+                        EmitType::OpaquePtr => {
+                            // Check MIR for Ref(_, _, Array)
+                            if let PlaceKind::Local(id) = &base.kind {
+                                if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                                    if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
+                                        mir_type_to_emit_type_with_layouts(inner, layouts)
+                                    } else {
+                                        raw_ty
+                                    }
+                                } else {
+                                    raw_ty
+                                }
+                            } else {
+                                raw_ty
+                            }
+                        }
+                        _ => raw_ty,
+                    }
+                };
                 let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
                     v
                 } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
@@ -507,11 +577,29 @@ pub(crate) fn codegen_place_load_typed(
                 // we need the ADDRESS of the array, not its loaded value.
                 // Was: codegen_place_load_typed loaded the value, then GEP tried
                 // to index into the value (invalid for arrays — caused segfault).
+                //
+                // Stage 14.61: When base is a Local with Ref type (e.g., `&[i32; 3]`),
+                // load the reference value (the array pointer) instead of using
+                // the alloca pointer directly.
                 let base_ptr = if let PlaceKind::Local(id) = &base.kind {
-                    emitter
-                        .get_local_ptr(id.0)
-                        .cloned()
-                        .unwrap_or_else(|| "0".to_string())
+                    let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone());
+                    if let Some(ty) = local_ty {
+                        if matches!(&ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
+                            // Ref to array — load the pointer value
+                            let ptr_ty = detect_place_type(mir, base, layouts);
+                            codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
+                        } else {
+                            emitter
+                                .get_local_ptr(id.0)
+                                .cloned()
+                                .unwrap_or_else(|| "0".to_string())
+                        }
+                    } else {
+                        emitter
+                            .get_local_ptr(id.0)
+                            .cloned()
+                            .unwrap_or_else(|| "0".to_string())
+                    }
                 } else if let PlaceKind::Projection(inner_base, ProjectionElem::Deref) = &base.kind
                 {
                     // base is (*inner) — load the pointer from inner_base
@@ -522,7 +610,29 @@ pub(crate) fn codegen_place_load_typed(
                     // ADDRESS (GEP to the field), don't load the value.
                     compute_place_address(emitter, mir, base, interner, layouts)
                 };
-                let array_ty = detect_place_storage_type(mir, base, layouts);
+                // Stage 14.61: Extract Array type from Ref for GEP.
+                let array_ty = {
+                    let raw_ty = detect_place_storage_type(mir, base, layouts);
+                    match &raw_ty {
+                        EmitType::Ptr(inner) => *inner.clone(),
+                        EmitType::OpaquePtr => {
+                            if let PlaceKind::Local(id) = &base.kind {
+                                if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                                    if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
+                                        mir_type_to_emit_type_with_layouts(inner, layouts)
+                                    } else {
+                                        raw_ty
+                                    }
+                                } else {
+                                    raw_ty
+                                }
+                            } else {
+                                raw_ty
+                            }
+                        }
+                        _ => raw_ty,
+                    }
+                };
                 let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
                     v
                 } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {

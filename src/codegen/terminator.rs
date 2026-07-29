@@ -49,7 +49,8 @@ pub(crate) fn codegen_terminator(
             targets,
             otherwise,
         } => {
-            let discr_val = codegen_operand(emitter, mir, discr, interner, layouts);
+            let discr_val =
+                codegen_operand(emitter, mir, discr, interner, layouts, fn_name_by_def_id);
             let is_bool_switch = targets
                 .iter()
                 .any(|(val, _)| matches!(val, ConstVal::Bool(_)));
@@ -101,8 +102,15 @@ pub(crate) fn codegen_terminator(
                 if matches!(c.ty.kind, crate::mir::ty::TyKind::Error) {
                     if let ConstVal::Int(idx) = c.val {
                         if (idx as usize) < mir.dyn_trait_calls.len() {
-                            let ret_val =
-                                codegen_dyn_trait_call(emitter, mir, idx, args, interner, layouts);
+                            let ret_val = codegen_dyn_trait_call(
+                                emitter,
+                                mir,
+                                idx,
+                                args,
+                                interner,
+                                layouts,
+                                fn_name_by_def_id,
+                            );
                             // Store the result to destination local.
                             if let PlaceKind::Local(id) = &destination.kind {
                                 let dest_ty = mir
@@ -157,7 +165,8 @@ pub(crate) fn codegen_terminator(
                 .iter()
                 .map(|a| {
                     let ty = detect_operand_type(mir, a, layouts).unwrap_or(EmitType::I32);
-                    let val = codegen_operand(emitter, mir, a, interner, layouts);
+                    let val =
+                        codegen_operand(emitter, mir, a, interner, layouts, fn_name_by_def_id);
                     (ty, val)
                 })
                 .collect();
@@ -206,7 +215,22 @@ pub(crate) fn codegen_terminator(
                     });
                 emitter.emit_call(name, &arg_refs, &call_ret_ty)
             } else {
-                "0".to_string()
+                // Stage 14.58: Indirect call through function pointer.
+                // When fn_name is None but the func operand is a FnPtr-typed
+                // local, we need to call through the pointer value.
+                // Get the function pointer value from the operand.
+                let fn_ptr_val =
+                    codegen_operand(emitter, mir, func, interner, layouts, fn_name_by_def_id);
+                // Determine return type from fn_sigs or dest local
+                let call_ret_ty = if let PlaceKind::Local(id) = &destination.kind {
+                    mir.local_decls
+                        .get(id.0 as usize)
+                        .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
+                        .unwrap_or(EmitType::I32)
+                } else {
+                    EmitType::I32
+                };
+                emitter.emit_call(&fn_ptr_val, &arg_refs, &call_ret_ty)
             };
 
             if let PlaceKind::Local(id) = &destination.kind {
@@ -238,8 +262,10 @@ pub(crate) fn codegen_terminator(
                     let op_ty = detect_operand_type(mir, lhs, layouts)
                         .or(detect_operand_type(mir, rhs, layouts))
                         .unwrap_or(EmitType::I32);
-                    let lhs_val = codegen_operand(emitter, mir, lhs, interner, layouts);
-                    let rhs_val = codegen_operand(emitter, mir, rhs, interner, layouts);
+                    let lhs_val =
+                        codegen_operand(emitter, mir, lhs, interner, layouts, fn_name_by_def_id);
+                    let rhs_val =
+                        codegen_operand(emitter, mir, rhs, interner, layouts, fn_name_by_def_id);
                     match op {
                         crate::mir::place::BinOp::Shl | crate::mir::place::BinOp::Shr => {
                             let bit_width: u32 = match op_ty {
@@ -277,13 +303,15 @@ pub(crate) fn codegen_terminator(
                     }
                 }
                 crate::mir::body::AssertMessage::DivisionByZero(rhs) => {
-                    let rhs_val = codegen_operand(emitter, mir, rhs, interner, layouts);
+                    let rhs_val =
+                        codegen_operand(emitter, mir, rhs, interner, layouts, fn_name_by_def_id);
                     let rhs_ty = detect_operand_type(mir, rhs, layouts).unwrap_or(EmitType::I32);
                     let is_zero = emitter.emit_icmp("eq", &rhs_ty, &rhs_val, &"0".to_string());
                     emitter.emit_br_cond(&is_zero, &panic_label, &format!("bb{}", target.0));
                 }
                 crate::mir::body::AssertMessage::BoundsCheck => {
-                    let cond_val = codegen_operand(emitter, mir, cond, interner, layouts);
+                    let cond_val =
+                        codegen_operand(emitter, mir, cond, interner, layouts, fn_name_by_def_id);
                     emitter.emit_br_cond(&cond_val, &format!("bb{}", target.0), &panic_label);
                 }
             }

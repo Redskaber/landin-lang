@@ -1,0 +1,17 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok struct with &str field + method — Stage 14.60
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 30\nAlice
+// SOURCE: Stage 14.60 — struct with &str field + constructor + method + field access
+
+struct Person { name: &str, age: i32 }
+impl Person {
+    fn new(name: &str, age: i32) -> Person { Person { name, age } }
+    fn greet(&self) -> i32 { self.age }
+}
+fn main() -> i32 {
+    let p = Person::new("Alice", 30);
+    println!("{}", p.greet());
+    println!("{}", p.name);
+    0
+}

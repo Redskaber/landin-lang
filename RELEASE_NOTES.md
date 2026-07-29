@@ -1,12 +1,225 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.72.0
-**Date**: 2026-07-28
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5123 conformance tests (97 run_ok) + 4 examples
+**Current version**: v0.78.0
+**Date**: 2026-07-29
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5131 conformance tests (105 run_ok) + 4 examples
 
 ---
-## v0.72.0 — Stage 14.56 (Audit: Classic Algorithms — Fib, Power, GCD)
+## v0.78.0 — Stage 14.62 (&mut Array Store Path Fix)
+
+### Overview
+
+Stage 14.62 fixes `&mut [i32; N]` array element mutation through reference
+parameters. Previously, `fn modify(arr: &mut [i32; 3]) { arr[0] = 100; }`
+failed with an LLVM GEP error — the store path didn't have the Ref dereference
+fix that the load path got in Stage 14.61.
+
+### Stage 14.62 — &mut Array Store Path
+
+**Bug**: `fn modify(arr: &mut [i32; 3]) { arr[0] = 100; }` → LLVM GEP error
+- Root cause: STORE path (statement.rs) lacked the Ref dereference fix
+- Same pattern as Stage 14.61 (load path) — base is Ref to Array
+
+**Fix**: Mirrored Stage 14.61 load path fix to store path
+- Load reference value when base is Ref (is_ptr())
+- Extract Array type from Ptr(Array) or MIR Ref for GEP
+
+**Verified**: `fn modify(arr: &mut [i32; 3]) { arr[0]=100; arr[1]=200; arr[2]=300; }` → `100 200 300` ✅
+
+**1 new run_ok test**: E-105
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5131 passed, 0 failed (5026 compile + 105 run_ok)
+```
+
+### Version policy: v0.77.0 → v0.78.0 (minor bump — &mut array store path)
+
+---
+## v0.77.0 — Stage 14.61 (Reference Array Indexing Fix)
+
+### Overview
+
+Stage 14.61 fixes `&[i32; N]` reference array indexing. Previously, `fn f(arr: &[i32; 3]) -> i32 { arr[0] }` failed with an LLVM GEP error because the codegen didn't dereference the Ref before indexing the array.
+
+### Stage 14.61 — Reference Array Indexing
+
+**Bug**: `fn f(arr: &[i32; 3]) -> i32 { arr[0] }` → LLVM GEP error
+- Root cause: codegen used alloca pointer (ptr to ptr) instead of loading
+  the reference value (ptr to array) before GEP
+- Also: GEP type was "ptr" instead of "[3 x i32]"
+
+**3 fixes**:
+1. `compute_place_address` Index case — dereference Ref before GEP
+2. `compute_place_address` Index case — extract Array type from Ptr(Array) for GEP
+3. `codegen_place_load_typed` Index case — same Ref detection + Array extraction
+
+**Verified**: `fn f(arr: &[i32; 3]) -> i32 { arr[0] }` with `f(&[10, 20, 30])` → `10` ✅
+
+**1 new run_ok test**: E-104
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5130 passed, 0 failed (5026 compile + 104 run_ok)
+```
+
+### Version policy: v0.76.0 → v0.77.0 (minor bump — ref array indexing)
+
+---
+## v0.76.0 — Stage 14.60 (Audit: Data Structures — 100+ run_ok Milestone)
+
+### Overview
+
+Stage 14.60 audits complex data structure patterns: Stack (push/pop/peek),
+2D matrix traversal, Result enum (Ok/Err), struct with &str field. No bugs
+found. 4 new run_ok tests bring the total to 103 — the **100+ run_ok milestone**.
+
+### Audit Results (all pass — no bugs)
+
+1. Stack with push/pop/peek → 30 30 20 10 ✅
+2. 2D matrix (array of arrays) → 45 ✅
+3. Result enum (Ok/Err) with safe_div → 20 -1 ✅
+4. Struct with &str field + method → 30 Alice ✅
+5. Linked list (array-based) → 70 ✅
+6. Sequential &mut self → 3 ✅
+7. Closure with mut capture → FAILS (GAP-7, expected)
+
+**4 new run_ok tests**: E-100 through E-103
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5129 passed, 0 failed (5026 compile + 103 run_ok)
+```
+
+### Version policy: v0.75.0 → v0.76.0 (minor bump — 100+ run_ok milestone)
+
+---
+## v0.75.0 — Stage 14.59 (LLVM 19 Opaque Pointer Migration + &i32 Printing)
+
+### Overview
+
+Stage 14.59 migrates all TextEmitter pointer types to LLVM 19 opaque `ptr`
+(was using typed pointers `i32*`, `i8*`, etc.). Also fixes `&i32` reference
+printing — was printing `*` (treated as string) instead of the integer value.
+
+### Stage 14.59 — Opaque Pointer Migration + &i32 Printing
+
+**6 fixes**:
+
+1. **TextEmitter**: `Ptr(_)` → `"ptr"` (LLVM 19 opaque, was `"{pointee}*"`)
+2. **TextEmitter**: `pointee()` returns `OpaquePtr` (was `I32`)
+3. **println! codegen**: `Ptr(inner)` with integer inner → dereference + print as int (was: always %s)
+4. **String GEP**: `[N x i8]* @global` → `ptr @global`
+5. **GEP emission**: `emit_gep_index`/`emit_gep_index_ptr` use `ptr` (was `type*`)
+6. **Tests**: 30+ assertions updated from typed pointers to `ptr`
+
+**Verified**: `fn id(x: &i32) -> &i32 { x }` with `id(&42)` → `42` ✅ (was `*`)
+
+**1 new run_ok test**: E-099
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5125 passed, 0 failed (5026 compile + 99 run_ok)
+```
+
+### Version policy: v0.74.0 → v0.75.0 (minor bump — opaque ptr migration + ref printing)
+
+---
+## v0.74.0 — Stage 14.58 (Fn Pointer Runtime — End-to-End)
+
+### Overview
+
+Stage 14.58 completes function pointer support. The Stage 14.57 infrastructure
+(MIR FnPtr type, typeck coercion) is now fully working at runtime. Function
+pointer parameters (`fn(i32) -> i32`) can be passed, stored, and called.
+
+### Stage 14.58 — Fn Pointer Runtime
+
+**7 fixes**:
+
+1. **TextEmitter**: `OpaquePtr` → `"ptr"` (LLVM 19 opaque pointer, was `"i32*"`)
+2. **TextEmitter**: `pointee()` returns `OpaquePtr` (was `I32`)
+3. **LLVMSysEmitter**: `interpret_adhoc` handles `@func_name` via `LLVMGetNamedFunction`
+4. **TextEmitter**: `emit_call` handles SSA values (`%vN`) and `@` references for indirect calls
+5. **LLVMSysEmitter**: `emit_call` detects SSA/`@` values and uses `lookup` instead of `get_or_declare_function`
+6. **Terminator codegen**: Indirect call through `FnPtr`-typed local (was returning `"0"`)
+7. **Test**: Updated `dyn_trait_return_kind` test for `ptr` (was `i32*`)
+
+**Verified**: `fn apply(f: fn(i32) -> i32, x: i32) -> i32 { f(x) }` with `apply(double, 21)` → `42` ✅
+
+**1 new run_ok test**: E-098 (fn pointer param)
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5124 passed, 0 failed (5026 compile + 98 run_ok)
+```
+
+### Version policy: v0.73.0 → v0.74.0 (minor bump — fn pointer support complete)
+
+---
+## v0.73.0 — Stage 14.57 (Fn Pointer Type Infrastructure)
+
+### Overview
+
+Stage 14.57 adds fn pointer type support (`fn(i32) -> i32` type annotations).
+The type system infrastructure is now in place: MIR lower handles `FnPtr` types,
+codegen emits `OpaquePtr` for function references, typeck allows FnDef→FnPtr
+coercion. Runtime execution still has a codegen alloca type issue (deferred).
+
+### Stage 14.57 — Fn Pointer Type Infrastructure
+
+**5 fixes**:
+
+1. **MIR lower**: Handle `HirTyKind::FnPtr` → `TyKind::FnPtr(Sig)` (was: Error)
+2. **Codegen**: `FnPtr`/`FnDef` → `EmitType::OpaquePtr` (was: I32)
+3. **Codegen operand**: FnDef constants emit `@landin_<name>` (was: `0`)
+   - Required adding `fn_name_by_def_id` param to `codegen_operand` + all callers
+4. **Typeck**: FnDef→FnPtr coercion in unify (was: type mismatch error)
+5. **Test files**: Updated 3 test files for new `codegen_dyn_trait_call` signature
+
+**Known remaining**: Runtime execution of fn pointer calls fails (codegen
+alloca type — function refs stored in i32 allocas). Foundation is laid.
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5123 passed, 0 failed
+```
+
+### Version policy: v0.72.0 → v0.73.0 (minor bump — fn pointer type infrastructure)
+
+---
+## v0.72.0 — Stage 14.56 (Audit: Classic Algorithms)
 
 ### Overview
 

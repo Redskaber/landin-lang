@@ -334,7 +334,7 @@ fn codegen_function(
         let label = format!("bb{}", bb_idx);
         emitter.emit_block(&label);
         for stmt in &bb.statements {
-            codegen_statement(emitter, mir, stmt, interner, layouts);
+            codegen_statement(emitter, mir, stmt, interner, layouts, fn_name_by_def_id);
         }
         codegen_terminator(
             emitter,
