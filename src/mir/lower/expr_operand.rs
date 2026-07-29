@@ -1084,7 +1084,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // loop_body_start → lower body → goto loop_header
             cx.current_block = loop_body_start;
             let _body_result = control_flow::lower_block(cx, body);
-            cx.terminate(Terminator::Goto(loop_header));
+            // Stage 14.68: Only emit Goto if the body didn't diverge.
+            if !cx.is_terminated() {
+                cx.terminate(Terminator::Goto(loop_header));
+            }
 
             // Pop the loop stack
             cx.loop_stack.pop();
@@ -1122,7 +1125,16 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // body_block: lower body, goto cond_block
             cx.current_block = body_block;
             control_flow::lower_block(cx, body);
-            cx.terminate(Terminator::Goto(cond_block));
+            // Stage 14.68: Only emit Goto if the body didn't diverge
+            // (e.g. via `return`, `break`, or `continue`). Without this
+            // check, the Goto would OVERWRITE the Return terminator,
+            // causing the function to not return (infinite loop instead).
+            //
+            // Per §1.0 原则 5 "报错 > 静默": silently overwriting a Return
+            // terminator is a P0 control-flow bug.
+            if !cx.is_terminated() {
+                cx.terminate(Terminator::Goto(cond_block));
+            }
 
             // Pop the loop stack (body is done)
             cx.loop_stack.pop();
@@ -1157,7 +1169,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // body_block: lower body, goto cond_block
             cx.current_block = body_block;
             control_flow::lower_block(cx, body);
-            cx.terminate(Terminator::Goto(cond_block));
+            // Stage 14.68: Only emit Goto if the body didn't diverge.
+            if !cx.is_terminated() {
+                cx.terminate(Terminator::Goto(cond_block));
+            }
 
             // exit_block: continuation
             cx.current_block = exit_block;

@@ -1,9 +1,65 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.83.0
+**Current version**: v0.84.0
 **Date**: 2026-07-29
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5149 conformance tests (123 run_ok) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5153 conformance tests (127 run_ok) + 4 examples
+
+---
+## v0.84.0 — Stage 14.68 (While+Return Parser Fix + Loop Body Divergence)
+
+### Overview
+
+Stage 14.68 fixes two P0 bugs: a parser issue where `while {} -1` was parsed as
+binary subtraction, and a control-flow issue where loop body `return` was
+overwritten by `Goto`.
+
+### Bug 1: `while {} -1` parsed as binary subtraction
+
+**Symptom**: `while i < 5 { return i; } -1` failed with "cannot apply arithmetic
+to Tuple([])" — parsed as `(while_result) - 1`.
+
+**Root cause**: Binary operator parsers greedily consumed operators after block-like
+expressions. Stage 14.63 fixed this for postfix operators but not binary operators.
+
+**Fix**: Added `is_block_like_expr(&lhs)` check at the start of EVERY binary operator
+parser (parse_or_expr through parse_add_expr). If LHS is block-like, return immediately.
+
+### Bug 2: While/Loop body with return overwrote Return terminator
+
+**Symptom**: `while i < 5 { return i; }` — the Return terminator was overwritten by
+`Goto(cond_block)`.
+
+**Root cause**: Loop lowering called `cx.terminate(Goto(...))` unconditionally after
+`lower_block`, even if body already terminated.
+
+**Fix**: Added `if !cx.is_terminated()` check before `cx.terminate(Goto(...))` in
+While, For, and Loop lowering.
+
+### Audit-Verified Patterns (No Bugs Found)
+
+- String comparison, Person struct with &mut self birthday
+- Nested struct mutation through &mut
+- Array of structs with method calls
+- Enum with struct payload (Shape::Point(Point))
+- While loop with early return (find_first)
+- Tuple returning function (min_max)
+- Complex enum dispatch (Expr::Num/Add/Mul/Neg)
+- Deep nesting (4 levels)
+- Fibonacci iterative, Prime check
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5153 conformance tests pass (was 5149, +4 new run_ok)
+- 0 clippy warnings, fmt clean
+
+### 4 new run_ok tests
+
+- `e2e-runok-124-while-early-return.lin` — while loop with early return
+- `e2e-runok-125-prime-check.lin` — prime check with multiple returns
+- `e2e-runok-126-enum-struct-payload.lin` — enum with struct payload
+- `e2e-runok-127-min-max-tuple.lin` — min/max with while loop
 
 ---
 ## v0.83.0 — Stage 14.67 (Tuple Pattern Match with Literal Sub-patterns)

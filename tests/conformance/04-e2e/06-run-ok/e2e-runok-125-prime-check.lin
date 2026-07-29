@@ -1,0 +1,28 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Prime check with early return — Stage 14.68
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: true\ntrue\nfalse\nfalse
+// SOURCE: Stage 14.68 — audit verified prime check with multiple return paths works after
+// while+return parser fix
+
+fn is_prime(n: i32) -> bool {
+    if n < 2 { return false; }
+    if n == 2 { return true; }
+    if n % 2 == 0 { return false; }
+    let mut i = 3;
+    while i * i <= n {
+        if n % i == 0 {
+            return false;
+        }
+        i = i + 2;
+    }
+    true
+}
+
+fn main() -> i32 {
+    println!("{}", is_prime(2));   // true
+    println!("{}", is_prime(7));   // true
+    println!("{}", is_prime(10));  // false
+    println!("{}", is_prime(1));   // false
+    0
+}

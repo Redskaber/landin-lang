@@ -257,7 +257,7 @@ Each test cell has a status:
 
 ## 5. Tier 3: End-to-End (E2E) Path Coverage
 
-### 5.1 run_ok Tests (123 total — verified at runtime)
+### 5.1 run_ok Tests (127 total — verified at runtime)
 
 | Test ID | Feature | Expected Output | Status |
 |---------|---------|-----------------|--------|
@@ -384,6 +384,10 @@ Each test cell has a status:
 | E-121 | Closure with immutable capture (inline call) | `15\n21` | ✅ |
 | E-122 | Full bubble sort (nested while, conditional swap) | `1 2 3 4 5` | ✅ |
 | E-123 | Stack data structure (push/pop/peek/size, &mut self) | `30\n30\n20\n2` | ✅ |
+| E-124 | While loop with early return (`while {} { return i; }`) | `2` | ✅ |
+| E-125 | Prime check with multiple return paths | `true\ntrue\nfalse\nfalse` | ✅ |
+| E-126 | Enum with struct payload (Shape::Point(Point)) | `12\n12\n30` | ✅ |
+| E-127 | Min/max tuple with while loop | `1 5` | ✅ |
 
 ### 5.2 Negative Tests (compile_error — 403 total)
 
@@ -420,9 +424,9 @@ Each test cell has a status:
 |------|-------------|----------|----------|
 | Tier 1: Per-Stage | 149 | 147 | 98.7% |
 | Tier 2: Inter-Stage | 15 | 15 | 100% |
-| Tier 3: E2E (run_ok) | 123 | 123 | 100% |
+| Tier 3: E2E (run_ok) | 127 | 127 | 100% |
 | Tier 3: E2E (compile_error) | 399 | 399 | 100% |
-| **Total** | **686** | **684** | **99.7%** |
+| **Total** | **690** | **688** | **99.7%** |
 
 **Unverified paths** (2):
 1. B-03: Double mutable borrow — NLL permissive (GAP-1, known limitation)
@@ -455,6 +459,12 @@ Each test cell has a status:
 - E-121: Closure with capture (inline) — verified closures work when called inline
 - E-122: Full bubble sort — nested while + conditional swap (audit-verified)
 - E-123: Stack data structure — push/pop/peek/size with &mut self (audit-verified)
+
+**Stage 14.68 additions** (4 new paths):
+- E-124: While+return — parser block-like boundary for binary operators
+- E-125: Prime check — while loop with multiple early returns (audit-verified)
+- E-126: Enum+struct payload — Shape::Point(Point) match (audit-verified)
+- E-127: Min/max tuple — while loop with multiple conditionals (audit-verified)
 
 ---
 

@@ -120,6 +120,21 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_or_expr(&mut self) -> Expr {
         let mut lhs = self.parse_and_expr();
+        // Stage 14.68: Block-like expressions (if/while/match/etc.) at
+        // statement position are statement boundaries — binary operators
+        // after them should NOT be consumed.
+        //
+        // Without this check, `while i < 5 { ... } -1` would be parsed as
+        // `(while_result) - 1` (binary subtraction), causing type errors
+        // because while returns unit (Tuple([])), not a number.
+        //
+        // Per Rust grammar: ExpressionWithBlock cannot participate in binary
+        // operations without explicit parens.
+        // Per §1.0 原则 3 "显式 > 隐式": explicit parens required for binary
+        // ops on block-like expression results.
+        if is_block_like_expr(&lhs) {
+            return lhs;
+        }
         while let Some((op, _bp)) = Self::binop_bp(self.peek()) {
             if op != BinOp::Or {
                 break;
@@ -139,6 +154,9 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_and_expr(&mut self) -> Expr {
         let mut lhs = self.parse_cmp_expr();
+        if is_block_like_expr(&lhs) {
+            return lhs;
+        }
         while let Some((op, _bp)) = Self::binop_bp(self.peek()) {
             if op != BinOp::And {
                 break;
@@ -158,6 +176,9 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_cmp_expr(&mut self) -> Expr {
         let mut lhs = self.parse_bitor_expr();
+        if is_block_like_expr(&lhs) {
+            return lhs;
+        }
         while let Some((op, _bp)) = Self::binop_bp(self.peek()) {
             if !matches!(
                 op,
@@ -180,6 +201,9 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_bitor_expr(&mut self) -> Expr {
         let mut lhs = self.parse_bitxor_expr();
+        if is_block_like_expr(&lhs) {
+            return lhs;
+        }
         while *self.peek() == TokenKind::Or {
             let span = lhs.span();
             self.bump();
@@ -196,6 +220,9 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_bitxor_expr(&mut self) -> Expr {
         let mut lhs = self.parse_bitand_expr();
+        if is_block_like_expr(&lhs) {
+            return lhs;
+        }
         while *self.peek() == TokenKind::Caret {
             let span = lhs.span();
             self.bump();
@@ -212,6 +239,9 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_bitand_expr(&mut self) -> Expr {
         let mut lhs = self.parse_shift_expr();
+        if is_block_like_expr(&lhs) {
+            return lhs;
+        }
         while *self.peek() == TokenKind::And {
             let span = lhs.span();
             self.bump();
@@ -228,6 +258,9 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_shift_expr(&mut self) -> Expr {
         let mut lhs = self.parse_add_expr();
+        if is_block_like_expr(&lhs) {
+            return lhs;
+        }
         while matches!(self.peek(), TokenKind::Shl | TokenKind::Shr) {
             let (op, _) = Self::binop_bp(self.peek()).unwrap();
             let span = lhs.span();
@@ -245,6 +278,9 @@ impl<'a> Parser<'a> {
 
     pub(super) fn parse_add_expr(&mut self) -> Expr {
         let mut lhs = self.parse_mul_expr();
+        if is_block_like_expr(&lhs) {
+            return lhs;
+        }
         while matches!(self.peek(), TokenKind::Plus | TokenKind::Minus) {
             let (op, _) = Self::binop_bp(self.peek()).unwrap();
             let span = lhs.span();

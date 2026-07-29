@@ -1,0 +1,31 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Enum with struct payload in match — Stage 14.68
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 12\n12\n30
+// SOURCE: Stage 14.68 — audit verified enum variant with struct payload (Shape::Point(Point))
+// can be matched and fields accessed
+
+struct Point { x: i32, y: i32 }
+impl Point {
+    fn sum(&self) -> i32 { self.x + self.y }
+}
+
+enum Shape {
+    Circle(i32),
+    Rect(i32, i32),
+    Point(Point),
+}
+fn area(s: Shape) -> i32 {
+    match s {
+        Shape::Circle(r) => 3 * r * r,
+        Shape::Rect(w, h) => w * h,
+        Shape::Point(p) => p.x * p.y,
+    }
+}
+
+fn main() -> i32 {
+    println!("{}", area(Shape::Circle(2)));     // 12
+    println!("{}", area(Shape::Rect(3, 4)));    // 12
+    println!("{}", area(Shape::Point(Point { x: 5, y: 6 })));  // 30
+    0
+}

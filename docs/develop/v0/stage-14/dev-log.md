@@ -1287,3 +1287,86 @@ Stage 14.67 PASSED — one P0 bug fixed (tuple pattern match) + 3 audit-verified
 patterns (closures, bubble sort, stack) added as run_ok tests.
 
 **Last updated**: 2026-07-29
+
+---
+
+## Stage 14.68 — v0.83.0 → v0.84.0 (2026-07-29) — While+Return Parser Fix + Loop Body Divergence
+
+### Bug 1: `while {} -1` parsed as binary subtraction (while_result - 1)
+
+**Symptom**: `while i < 5 { return i; } -1` failed with "cannot apply arithmetic to
+Tuple([])" because the parser parsed it as `(while_result) - 1` (binary subtraction).
+
+**Root cause**: The parser's binary operator parsers (parse_add_expr, parse_cmp_expr,
+etc.) greedily consumed binary operators after ANY expression, including block-like
+expressions (while/if/match/etc.). In Rust grammar, block-like expressions at statement
+position are statement boundaries — binary operators after them should NOT be consumed.
+
+Stage 14.63 fixed this for postfix operators (Call/Index) but NOT for binary operators.
+So `while {} -1` was parsed as `while_result - 1` instead of two statements: `while {}`
+and `-1`.
+
+**Fix** (`src/parser/expr.rs`): Added `is_block_like_expr(&lhs)` check at the start of
+EVERY binary operator parser (parse_or_expr, parse_and_expr, parse_cmp_expr,
+parse_bitor_expr, parse_bitxor_expr, parse_bitand_expr, parse_shift_expr, parse_add_expr).
+If the LHS is block-like, return immediately without consuming any binary operators.
+
+**Per §1.0 原则 3 "显式 > 隐式"**: explicit parens required for binary ops on
+block-like expression results (e.g., `(while {}) - 1`).
+
+### Bug 2: While/Loop body with return overwrote Return terminator
+
+**Symptom**: `while i < 5 { return i; }` — the `return i` terminator was overwritten
+by the `Goto(cond_block)` that follows `lower_block(cx, body)` in the while/loop
+lowering.
+
+**Root cause**: The while/loop lowering called `cx.terminate(Terminator::Goto(...))`
+unconditionally after `lower_block`, even if the body already terminated (via `return`,
+`break`, or `continue`).
+
+**Fix** (`src/mir/lower/expr_operand.rs`): Added `if !cx.is_terminated()` check before
+`cx.terminate(Goto(...))` in all three loop lowering sites (While, For, Loop).
+
+**Per §1.0 原则 5 "报错 > 静默"**: silently overwriting a Return terminator is a P0
+control-flow bug — the function would not return (infinite loop).
+
+### Audit Patterns Tested (No Bugs Found)
+
+The following patterns were tested and all work correctly:
+- String comparison: `cmp_str("hello", "hello")` = 0
+- Person struct with &mut self birthday: age 30 → 31
+- Nested struct mutation through &mut: `o.bump()` = 42
+- Array of structs with method calls: `sum_points` = 21
+- Enum with struct payload (Shape::Point(Point)): area = 30
+- While loop with early return: `find_first` = 2/-1
+- Tuple returning function (min_max): (1, 5)
+- Complex enum dispatch (Expr::Num/Add/Mul/Neg)
+- Deep nesting (4 levels): deep_nesting
+- Fibonacci iterative: `fib_iter(10)` = 55
+- Prime check: `is_prime(7)` = true, `is_prime(10)` = false
+
+### Known Limitation (GAP-6 confirmed)
+
+`&mut self` method calling another `&mut self` method (e.g., `self.inc()` inside
+`inc_by`) fails with "cannot borrow as mutable". This is the two-phase borrows
+limitation (GAP-6).
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5153 conformance tests pass (was 5149, +4 new run_ok)
+- 0 clippy warnings, fmt clean
+
+### 4 new run_ok tests
+
+- `e2e-runok-124-while-early-return.lin` — while loop with early return
+- `e2e-runok-125-prime-check.lin` — prime check with multiple returns
+- `e2e-runok-126-enum-struct-payload.lin` — enum with struct payload in match
+- `e2e-runok-127-min-max-tuple.lin` — min/max with while loop
+
+### Stage Summary
+
+Stage 14.68 PASSED — two P0 bugs fixed (while+return parser, loop body divergence
+overwrite) + audit verified patterns (prime check, enum+struct, min/max).
+
+**Last updated**: 2026-07-29
