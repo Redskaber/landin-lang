@@ -412,6 +412,73 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                         continue;
                     }
 
+                    // Stage 14.89 (Bug 1 fix): Handle tuple struct destructuring
+                    // patterns. `let Pair(a, b) = Pair(10, 20)` should:
+                    // 1. Create a temp local for the whole struct
+                    // 2. For each positional field pattern, create a local and
+                    //    extract the field by index
+                    //
+                    // Per §13.4: mirrors tuple destructuring but for tuple structs
+                    // (positional fields, not named). Previously, tuple struct
+                    // patterns fell through to the single-local path, creating
+                    // ONE local for the whole struct — individual bindings a, b
+                    // were never created, resolving to Error/0.
+                    if let HirPatKind::TupleStruct(path, sub_pats) = &local.pat.kind {
+                        // Only handle plain structs (not enum tuple variants — those
+                        // are handled by the enum match path)
+                        if let crate::hir::Res::Def(_struct_def_id, def_kind) = path.res {
+                            if def_kind == crate::resolve::DefKind::Struct {
+                                // Create a temp local for the whole struct
+                                let struct_ty = cx.mir.local(init_local).ty.clone();
+                                let struct_local =
+                                    cx.new_local(local.pat.hir_id, struct_ty.clone(), None);
+                                cx.mir
+                                    .block_mut(cx.current_block)
+                                    .statements
+                                    .push(Statement {
+                                        kind: StatementKind::StorageLive(struct_local),
+                                        span: local.span,
+                                    });
+                                // Assign the init struct to the temp local
+                                cx.push_assign(
+                                    Place::local(struct_local, local.span),
+                                    Rvalue::Use(Operand::Copy(Place::local(init_local, init.span))),
+                                    local.span,
+                                );
+                                // For each positional field pattern, create a local and extract
+                                for (i, sub_pat) in sub_pats.iter().enumerate() {
+                                    let field_ty = cx.fresh_infer_ty(sub_pat.span);
+                                    // Create a temp local for the field value
+                                    let sub_local =
+                                        cx.new_local(sub_pat.hir_id, field_ty.clone(), None);
+                                    cx.mir
+                                        .block_mut(cx.current_block)
+                                        .statements
+                                        .push(Statement {
+                                            kind: StatementKind::StorageLive(sub_local),
+                                            span: sub_pat.span,
+                                        });
+                                    // Extract the field from the struct by positional index
+                                    cx.push_assign(
+                                        Place::local(sub_local, sub_pat.span),
+                                        Rvalue::Use(Operand::Copy(Place {
+                                            kind: PlaceKind::Projection(
+                                                Box::new(Place::local(struct_local, local.span)),
+                                                ProjectionElem::Field(FieldId(i as u32), field_ty),
+                                            ),
+                                            span: sub_pat.span,
+                                        })),
+                                        sub_pat.span,
+                                    );
+                                    // Handle nested patterns within tuple struct fields
+                                    lower_nested_pattern_destructure(cx, sub_local, sub_pat);
+                                }
+                                // Skip the normal single-local path
+                                continue;
+                            }
+                        }
+                    }
+
                     // Stage 14.48: Handle struct destructuring patterns.
                     // `let Point { x, y } = p` should:
                     // 1. Create a temp local for the whole struct
@@ -812,19 +879,72 @@ pub(crate) fn lower_match(
     let mut arm_blocks: Vec<BasicBlockId> = Vec::new();
     let otherwise_block = cx.new_block();
 
+    // Stage 14.87 (Bug A fix): Track literal values "claimed" by guarded arms.
+    // When building switch targets for unguarded arms, skip any literal value
+    // that was previously claimed by a guarded arm. Those values need to be
+    // evaluated in the otherwise block (where the guarded arm runs first).
+    //
+    // Without this, `match n { 0 if n == 0 => 100, 0 => 200 }` would route
+    // n=0 directly to the second arm via the switch target, bypassing the
+    // guarded first arm. Per Rust semantics, arms are tried in source order,
+    // so the guarded arm should run first.
+    //
+    // Per §1.0 原則 5 "报错 > 静默": previously the guarded arm was silently
+    // skipped when an overlapping unguarded arm existed, causing wrong output.
+    //
+    // Note: we use a Vec + linear scan (not HashSet) because ConstVal contains
+    // f64 which doesn't implement Eq/Hash. In practice only Int/Bool values
+    // are stored (no Float patterns), but using Vec avoids the trait bound.
+    let mut guarded_lit_values: Vec<ConstVal> = Vec::new();
+
     for arm in arms {
         let arm_block = cx.new_block();
         arm_blocks.push(arm_block);
 
+        // Stage 14.86: Match arms with guards (`pat if cond => body`) must
+        // NOT be added as direct switch targets — the guard condition must
+        // be evaluated before the arm body runs. If we added them as switch
+        // targets, the arm would match without checking the guard.
+        //
+        // Skip the literal/enum target push for guarded arms — they'll be
+        // handled in the otherwise block (where we can evaluate both the
+        // pattern match AND the guard).
+        //
+        // Per §1.0 原則 5 "报错 > 静默": previously guarded arms silently
+        // matched without checking the guard, causing wrong runtime behavior
+        // (e.g., `x if x < 10 => 1` matched even when x >= 10).
+        let has_guard = arm.guard.is_some();
+
         // Check if this arm's pattern is a literal
         if let HirPatKind::Lit(expr) = &arm.pat.kind {
             if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
-                targets.push((ConstVal::Int(*n), arm_block));
-                continue;
+                let val = ConstVal::Int(*n);
+                if has_guard {
+                    // Record this literal as claimed by a guarded arm
+                    guarded_lit_values.push(val);
+                } else if !guarded_lit_values.contains(&val) {
+                    // Not claimed — add as switch target
+                    targets.push((val, arm_block));
+                    continue;
+                }
+                // If we reach here (guarded or claimed), continue to next arm
+                // (don't fall through to other pattern handlers below —
+                // guarded arms are fully handled in otherwise block)
+                if has_guard {
+                    continue;
+                }
             }
             if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
-                targets.push((ConstVal::Bool(*b), arm_block));
-                continue;
+                let val = ConstVal::Bool(*b);
+                if has_guard {
+                    guarded_lit_values.push(val);
+                } else if !guarded_lit_values.contains(&val) {
+                    targets.push((val, arm_block));
+                    continue;
+                }
+                if has_guard {
+                    continue;
+                }
             }
         }
 
@@ -838,37 +958,77 @@ pub(crate) fn lower_match(
         // is straightforward — each is a separate switch case.
         // Per §"报错 > 静默": if a sub-pattern is non-literal, we emit a
         // compile error instead of silently falling through to otherwise.
+        //
+        // Stage 14.86: Skip Or-pattern targets for guarded arms (same as
+        // single-literal arms — guards must be evaluated in otherwise block).
+        //
+        // Stage 14.87 (Bug A fix): For unguarded Or-patterns, skip any
+        // sub-pattern literal that was claimed by a previous guarded arm.
+        // If all sub-pattern literals are claimed (or none are left), don't
+        // add any targets — let otherwise handle the whole arm.
         if let HirPatKind::Or(sub_pats) = &arm.pat.kind {
-            let mut all_lit = true;
-            for sub_pat in sub_pats {
-                if let HirPatKind::Lit(expr) = &sub_pat.kind {
-                    if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
-                        targets.push((ConstVal::Int(*n), arm_block));
-                        continue;
-                    }
-                    if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
-                        targets.push((ConstVal::Bool(*b), arm_block));
-                        continue;
+            if has_guard {
+                // Record all literal sub-pattern values as claimed
+                for sub_pat in sub_pats {
+                    if let HirPatKind::Lit(expr) = &sub_pat.kind {
+                        if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
+                            guarded_lit_values.push(ConstVal::Int(*n));
+                        }
+                        if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
+                            guarded_lit_values.push(ConstVal::Bool(*b));
+                        }
                     }
                 }
-                // Non-literal sub-pattern in Or — not supported yet.
-                all_lit = false;
+            } else {
+                // Unguarded Or-pattern: only add sub-pattern literals that
+                // weren't claimed by a previous guarded arm
+                let mut all_lit = true;
+                let mut added_any = false;
+                for sub_pat in sub_pats {
+                    if let HirPatKind::Lit(expr) = &sub_pat.kind {
+                        if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
+                            let val = ConstVal::Int(*n);
+                            if !guarded_lit_values.contains(&val) {
+                                targets.push((val, arm_block));
+                                added_any = true;
+                            }
+                            continue;
+                        }
+                        if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
+                            let val = ConstVal::Bool(*b);
+                            if !guarded_lit_values.contains(&val) {
+                                targets.push((val, arm_block));
+                                added_any = true;
+                            }
+                            continue;
+                        }
+                    }
+                    // Non-literal sub-pattern in Or — not supported yet.
+                    all_lit = false;
+                }
+                if all_lit && added_any {
+                    continue;
+                }
+                // If all_lit but !added_any (all claimed by guards) or
+                // !all_lit (non-literal sub-pattern), fall through to
+                // otherwise handling.
             }
-            if all_lit {
-                continue;
-            }
-            // Fall through to otherwise (will execute arm body for any value —
-            // this is a known limitation for non-literal Or sub-patterns).
         }
 
         // Stage 3.40 (L-ENUM-MATCH): Handle enum variant patterns.
         // `Color::Red` → HirPatKind::Path(path) where path resolves to enum.
         // `Opt::Some(x)` → HirPatKind::TupleStruct(path, sub_pats).
         // Resolve the variant index and use it as the switch target.
-        if is_enum {
-            let variant_idx = match &arm.pat.kind {
+        //
+        // Stage 14.86: Skip enum variant targets for guarded arms.
+        //
+        // Stage 14.87 (Bug A fix): For guarded enum variant arms, record the
+        // variant index as claimed. For unguarded enum variant arms, skip
+        // adding the target if the variant was claimed by a previous guarded
+        // arm — those values need to be evaluated in otherwise.
+        let enum_variant_idx: Option<u32> = if is_enum {
+            match &arm.pat.kind {
                 HirPatKind::Path(path) => {
-                    // Unit variant pattern: `Color::Red`
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
                         if path.segments.len() >= 2 {
                             super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
@@ -881,7 +1041,6 @@ pub(crate) fn lower_match(
                     }
                 }
                 HirPatKind::TupleStruct(path, _) => {
-                    // Tuple variant pattern: `Opt::Some(x)`
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
                         if path.segments.len() >= 2 {
                             super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
@@ -894,7 +1053,6 @@ pub(crate) fn lower_match(
                     }
                 }
                 HirPatKind::Struct(path, _, _) => {
-                    // Struct variant pattern: `Shape::Circle { r: x }`
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
                         if path.segments.len() >= 2 {
                             super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
@@ -907,11 +1065,46 @@ pub(crate) fn lower_match(
                     }
                 }
                 _ => None,
-            };
-            if let Some(idx) = variant_idx {
-                targets.push((ConstVal::Uint(idx as u128), arm_block));
-                continue;
             }
+        } else {
+            None
+        };
+
+        if let Some(idx) = enum_variant_idx {
+            let val = ConstVal::Uint(idx as u128);
+            // Stage 14.89 (Bug 4 fix): Check if this enum variant arm has
+            // inner sub-patterns that could differentiate it from other arms
+            // with the same variant. If so, don't add as a switch target —
+            // handle in otherwise where inner sub-patterns can be checked.
+            // This prevents duplicate switch cases AND ensures the correct
+            // arm body runs (was: first arm with matching variant always won).
+            let has_inner_subpatterns = match &arm.pat.kind {
+                HirPatKind::TupleStruct(_, sub_pats) => sub_pats
+                    .iter()
+                    .any(|sp| !matches!(&sp.kind, HirPatKind::Wild)),
+                HirPatKind::Struct(_, fields, _) => fields
+                    .iter()
+                    .any(|f| !matches!(&f.pat.kind, HirPatKind::Wild)),
+                HirPatKind::Path(_) => false, // Unit variant — no payload
+                _ => false,
+            };
+            if has_guard {
+                // Record this enum variant as claimed by a guarded arm
+                guarded_lit_values.push(val);
+            } else if !guarded_lit_values.contains(&val) && !has_inner_subpatterns {
+                // Not claimed AND no inner subpatterns — safe to add as switch target
+                let already_in_targets = targets.iter().any(|(t_val, _)| *t_val == val);
+                if !already_in_targets {
+                    targets.push((val, arm_block));
+                    continue;
+                }
+            } else if !guarded_lit_values.contains(&val) && has_inner_subpatterns {
+                // Stage 14.89 (Bug 4 fix): Has inner subpatterns — record as
+                // claimed so subsequent arms with same variant also go to otherwise.
+                guarded_lit_values.push(val);
+            }
+            // If claimed by a guard OR has inner subpatterns OR already in
+            // targets, fall through to otherwise handling
         }
 
         // Non-literal patterns (Wild, Ident, etc.) → go to otherwise
@@ -976,6 +1169,7 @@ pub(crate) fn lower_match(
     cx.current_block = otherwise_block;
     let mut fallthrough_block = otherwise_block;
     for arm in arms {
+        let has_guard = arm.guard.is_some();
         let is_literal = matches!(&arm.pat.kind, HirPatKind::Lit(_));
         // Stage 14.45: Or-pattern with all-literal sub-patterns is already
         // handled as switch cases — treat as "literal" for otherwise purposes.
@@ -994,22 +1188,424 @@ pub(crate) fn lower_match(
             &arm.pat.kind,
             HirPatKind::Path(_) | HirPatKind::TupleStruct(_, _) | HirPatKind::Struct(_, _, _)
         ) && is_enum;
-        if is_literal || is_or_all_lit || is_enum_variant {
+        // Stage 14.86: arms WITHOUT guards that are literal/Or-all-lit/enum-variant
+        // were already handled as switch cases — skip them in otherwise.
+        // Arms WITH guards (regardless of pattern kind) must be handled here
+        // so we can evaluate the guard before running the arm body.
+        //
+        // Stage 14.87 (Bug A fix): An unguarded arm whose literal value was
+        // "claimed" by a previous guarded arm was NOT added as a switch target.
+        // It needs to be evaluated in the otherwise block (where the guarded
+        // arm runs first; if guard fails, this unguarded arm should match).
+        // So we DON'T skip unguarded literal/Or-all-lit arms if their values
+        // were claimed by a guarded arm.
+        let was_claimed = if is_literal {
+            // Check if this arm's literal value is in guarded_lit_values
+            if let HirPatKind::Lit(expr) = &arm.pat.kind {
+                if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
+                    guarded_lit_values.contains(&ConstVal::Int(*n))
+                } else if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
+                    guarded_lit_values.contains(&ConstVal::Bool(*b))
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else if is_or_all_lit {
+            // Check if any sub-pattern literal was claimed
+            if let HirPatKind::Or(sub_pats) = &arm.pat.kind {
+                sub_pats.iter().any(|sp| {
+                    if let HirPatKind::Lit(expr) = &sp.kind {
+                        if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
+                            return guarded_lit_values.contains(&ConstVal::Int(*n));
+                        }
+                        if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
+                            return guarded_lit_values.contains(&ConstVal::Bool(*b));
+                        }
+                    }
+                    false
+                })
+            } else {
+                false
+            }
+        } else if is_enum_variant {
+            // Stage 14.87 (Bug A fix): Check if this enum variant was claimed
+            // by a previous guarded arm
+            let variant_idx = match &arm.pat.kind {
+                HirPatKind::Path(path)
+                | HirPatKind::TupleStruct(path, _)
+                | HirPatKind::Struct(path, _, _) => {
+                    if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
+                        if path.segments.len() >= 2 {
+                            super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
+                                .map(|(idx, _)| idx)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some(idx) = variant_idx {
+                guarded_lit_values.contains(&ConstVal::Uint(idx as u128))
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        // Skip ONLY if: no guard AND (literal/Or-all-lit/enum-variant) AND
+        // not was_claimed (i.e., this arm was added as a switch target).
+        //
+        // Stage 14.89 (Bug 4 fix): Also check if this enum variant was NOT
+        // added as a switch target (because it was a duplicate). If it wasn't
+        // added, don't skip — handle it in otherwise (check inner sub-patterns).
+        let was_added_as_target = if is_enum_variant {
+            // Check if this variant was added to targets
+            let variant_idx = match &arm.pat.kind {
+                HirPatKind::Path(path)
+                | HirPatKind::TupleStruct(path, _)
+                | HirPatKind::Struct(path, _, _) => {
+                    if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
+                        if path.segments.len() >= 2 {
+                            super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
+                                .map(|(idx, _)| idx)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some(idx) = variant_idx {
+                let val = ConstVal::Uint(idx as u128);
+                targets.iter().any(|(t_val, _)| *t_val == val)
+            } else {
+                false
+            }
+        } else {
+            // For literal/Or patterns, they were added as targets if not claimed
+            !was_claimed
+        };
+        // Stage 14.89 (Bug 4 fix): If enum variant was NOT added as target
+        // (duplicate), treat as claimed so it gets handled in the
+        // has_guard || was_claimed block (which checks the pattern).
+        let was_claimed = was_claimed || (!was_added_as_target && is_enum_variant);
+        if !has_guard && (is_literal || is_or_all_lit || is_enum_variant) && was_added_as_target {
+            continue;
+        }
+
+        // Stage 14.86 + 14.87: For guarded arms (and unguarded arms whose
+        // literal values were claimed by a previous guarded arm), we need
+        // to:
+        // 1. Check the pattern match (since they weren't added as switch
+        //    targets, we need to re-check in otherwise)
+        // 2. Bind pattern variables (for Ident patterns) so the guard can
+        //    reference them (guarded arms only — claimed-but-unguarded arms
+        //    use literal/Or/enum patterns, no Ident bindings)
+        // 3. Evaluate the guard (guarded arms only)
+        // 4. If both pass, run the arm body; otherwise, fall through to next arm
+        //
+        // Stage 14.87 (Bug A fix): previously only `has_guard` arms were
+        // handled here. Now also handle `was_claimed` arms (unguarded arms
+        // whose literal value was claimed by a previous guarded arm — these
+        // weren't added as switch targets, so they need pattern re-check).
+        if has_guard || was_claimed {
+            let next_block = cx.new_block();
+            let match_block = cx.new_block();
+
+            cx.current_block = fallthrough_block;
+
+            // Step 1: Bind pattern variables BEFORE evaluating pattern check
+            // or guard. For Ident patterns, this creates the binding local
+            // and assigns the scrutinee value. The guard can then reference
+            // the binding.
+            collect_pat_bindings_for_mir(cx, &arm.pat);
+            lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
+            // Stage 14.77: For Ident patterns, assign scrutinee value to binding
+            if let HirPatKind::Ident(_mode, _ident, _) = &arm.pat.kind {
+                if let Some(binding_local) = cx.local_map.get(&arm.pat.hir_id).copied() {
+                    let scrut_ty = cx.mir.local(scrut_local).ty.clone();
+                    if matches!(&scrut_ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
+                        cx.push_assign(
+                            Place::local(binding_local, arm.pat.span),
+                            Rvalue::Use(Operand::Copy(Place {
+                                kind: PlaceKind::Projection(
+                                    Box::new(Place::local(scrut_local, arm.pat.span)),
+                                    ProjectionElem::Deref,
+                                ),
+                                span: arm.pat.span,
+                            })),
+                            arm.pat.span,
+                        );
+                    } else {
+                        cx.push_assign(
+                            Place::local(binding_local, arm.pat.span),
+                            Rvalue::Use(Operand::Copy(Place::local(scrut_local, arm.pat.span))),
+                            arm.pat.span,
+                        );
+                    }
+                }
+            }
+
+            // Step 2: Build the pattern-match condition.
+            // For literal/Or/enum patterns, generate the equality check.
+            // For Tuple/TupleStruct/Struct patterns with literal sub-patterns,
+            // also generate conditional checks (Stage 14.90 Bug X1 fix).
+            // For Ident/Wild/other, skip (always matches).
+            let needs_pattern_check = match &arm.pat.kind {
+                HirPatKind::Lit(_) => true,
+                HirPatKind::Or(_) => true,
+                HirPatKind::Path(_)
+                | HirPatKind::TupleStruct(_, _)
+                | HirPatKind::Struct(_, _, _)
+                    if is_enum =>
+                {
+                    true
+                }
+                // Stage 14.90 (Bug X1 fix): Tuple/TupleStruct/Struct patterns
+                // with literal sub-patterns need conditional checks in
+                // guarded arms. Without this, `match (1, 5) { (0, _) if true => 100, (1, _) if true => 200 }`
+                // would match the first arm without checking the tuple fields.
+                HirPatKind::Tuple(sub_pats)
+                    if sub_pats
+                        .iter()
+                        .any(|sp| matches!(&sp.kind, HirPatKind::Lit(_))) =>
+                {
+                    true
+                }
+                HirPatKind::TupleStruct(_, sub_pats)
+                    if !is_enum
+                        && sub_pats
+                            .iter()
+                            .any(|sp| matches!(&sp.kind, HirPatKind::Lit(_))) =>
+                {
+                    true
+                }
+                HirPatKind::Struct(_, fields, _)
+                    if fields
+                        .iter()
+                        .any(|f| matches!(&f.pat.kind, HirPatKind::Lit(_))) =>
+                {
+                    true
+                }
+                _ => false,
+            };
+
+            let after_pattern_check_block = if needs_pattern_check {
+                // Build pattern-match check, branching to after_pattern_check_block
+                // on success or next_block on failure.
+                let after_pattern_check_block = cx.new_block();
+                build_pattern_equality_check(
+                    cx,
+                    scrut_local,
+                    &arm.pat,
+                    is_enum,
+                    after_pattern_check_block,
+                    next_block,
+                );
+                after_pattern_check_block
+            } else {
+                // No pattern check needed — current block IS the after-pattern-check block
+                cx.current_block
+            };
+
+            // Step 3: If arm has a guard, evaluate the guard from after_pattern_check_block.
+            // If no guard (was_claimed but unguarded), skip directly to arm body.
+            let body_block = if has_guard {
+                cx.current_block = after_pattern_check_block;
+                let guard_expr = arm.guard.as_ref().unwrap();
+                let guard_local = lower_expr_to_operand(cx, guard_expr);
+                cx.terminate(Terminator::SwitchInt {
+                    discr: Operand::Copy(Place::local(guard_local, guard_expr.span)),
+                    targets: vec![(ConstVal::Bool(true), match_block)],
+                    otherwise: next_block,
+                });
+                match_block
+            } else {
+                // No guard — after_pattern_check_block IS where we run the arm body
+                after_pattern_check_block
+            };
+
+            // body_block: pattern + guard both passed — execute arm body
+            cx.current_block = body_block;
+            // Note: pattern bindings already done above (before guard eval)
+            let arm_result = lower_expr_to_operand(cx, &arm.body);
+            if !cx.is_terminated() {
+                cx.push_assign(
+                    Place::local(result_local, span),
+                    Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
+                    arm.span,
+                );
+                cx.terminate(Terminator::Goto(cont_block));
+            }
+            fallthrough_block = next_block;
             continue;
         }
 
         // Stage 14.67: For tuple patterns with literal sub-patterns,
         // generate a conditional check.
         let has_tuple_lit = matches!(&arm.pat.kind, HirPatKind::Tuple(_));
-        if has_tuple_lit {
+        // Stage 14.89 (Bug 2 fix): Also handle TupleStruct patterns with
+        // literal sub-patterns (e.g., `Pair(0, _) => ...`).
+        let has_tuple_struct_lit = matches!(
+            &arm.pat.kind,
+            HirPatKind::TupleStruct(_, sub_pats)
+            if sub_pats.iter().any(|sp| matches!(&sp.kind, HirPatKind::Lit(_)))
+        );
+        // Stage 14.89 (Bug 3 fix): Also handle Struct patterns with literal
+        // sub-patterns (e.g., `Config { mode: 0, .. } => ...`).
+        let has_struct_lit = matches!(
+            &arm.pat.kind,
+            HirPatKind::Struct(_, fields, _)
+            if fields.iter().any(|f| matches!(&f.pat.kind, HirPatKind::Lit(_)))
+        );
+        if has_tuple_lit || has_tuple_struct_lit || has_struct_lit {
             // Generate condition: AND of all literal sub-field checks
             let next_block = cx.new_block();
             let match_block = cx.new_block();
 
             // Build the condition by checking each literal sub-pattern
             cx.current_block = fallthrough_block;
-            if let HirPatKind::Tuple(sub_pats) = &arm.pat.kind {
-                build_tuple_pattern_condition(cx, scrut_local, sub_pats, match_block, next_block);
+            match &arm.pat.kind {
+                HirPatKind::Tuple(sub_pats) => {
+                    build_tuple_pattern_condition(
+                        cx,
+                        scrut_local,
+                        sub_pats,
+                        match_block,
+                        next_block,
+                    );
+                }
+                HirPatKind::TupleStruct(_, sub_pats) => {
+                    // Stage 14.89: For tuple struct patterns, extract fields
+                    // by positional index (same as Tuple, but the scrutinee
+                    // is a struct, not a tuple).
+                    build_tuple_pattern_condition(
+                        cx,
+                        scrut_local,
+                        sub_pats,
+                        match_block,
+                        next_block,
+                    );
+                }
+                HirPatKind::Struct(path, fields, _) => {
+                    // Stage 14.89: For struct patterns, look up field indices
+                    // by name from HIR, then check each literal sub-pattern.
+                    if let crate::hir::Res::Def(struct_def_id, _) = path.res {
+                        let field_indices: std::collections::HashMap<
+                            crate::lexer::token::Symbol,
+                            usize,
+                        > = {
+                            let mut map = std::collections::HashMap::new();
+                            if let Some(hir) = cx.hir {
+                                if let Some(crate::hir::OwnerNode::Item(
+                                    crate::hir::HirItem::Struct(s),
+                                )) = hir.owner(struct_def_id)
+                                {
+                                    for (i, f) in s.fields.iter().enumerate() {
+                                        if let Some(name) = f.ident {
+                                            map.insert(name.name, i);
+                                        }
+                                    }
+                                }
+                            }
+                            map
+                        };
+                        // Build a Vec of (field_idx, sub_pat) for literal sub-patterns
+                        let mut lit_checks: Vec<(usize, &HirPat)> = Vec::new();
+                        for field_pat in fields {
+                            if let Some(field_idx) =
+                                field_indices.get(&field_pat.ident.name).copied()
+                            {
+                                if matches!(&field_pat.pat.kind, HirPatKind::Lit(_)) {
+                                    lit_checks.push((field_idx, &field_pat.pat));
+                                }
+                            }
+                        }
+                        // For struct patterns, build the condition inline
+                        // (build_tuple_pattern_condition expects positional indices)
+                        let mut current = cx.current_block;
+                        let span = arm.pat.span;
+                        for (field_idx, lit_pat) in &lit_checks {
+                            if let HirPatKind::Lit(expr) = &lit_pat.kind {
+                                let lit_val = if let HirExprKind::Lit(HirLitKind::Int(n, _)) =
+                                    &expr.kind
+                                {
+                                    Some(*n)
+                                } else if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
+                                    Some(if *b { 1 } else { 0 })
+                                } else {
+                                    None
+                                };
+                                if let Some(n) = lit_val {
+                                    // Extract field from scrutinee
+                                    let field_ty =
+                                        Ty::new(TyKind::Int(crate::ast::IntTy::I32), span);
+                                    let field_local =
+                                        cx.mir.new_local(field_ty.clone(), None, span);
+                                    cx.mir.block_mut(current).statements.push(Statement {
+                                        kind: StatementKind::StorageLive(field_local),
+                                        span,
+                                    });
+                                    cx.current_block = current;
+                                    cx.push_assign(
+                                        Place::local(field_local, span),
+                                        Rvalue::Use(Operand::Copy(Place {
+                                            kind: PlaceKind::Projection(
+                                                Box::new(Place::local(scrut_local, span)),
+                                                ProjectionElem::Field(
+                                                    FieldId(*field_idx as u32),
+                                                    field_ty.clone(),
+                                                ),
+                                            ),
+                                            span,
+                                        })),
+                                        span,
+                                    );
+                                    current = cx.current_block;
+                                    // Compare field == n
+                                    let cmp_result =
+                                        cx.mir.new_local(Ty::new(TyKind::Bool, span), None, span);
+                                    cx.mir.block_mut(current).statements.push(Statement {
+                                        kind: StatementKind::StorageLive(cmp_result),
+                                        span,
+                                    });
+                                    cx.current_block = current;
+                                    cx.push_assign(
+                                        Place::local(cmp_result, span),
+                                        Rvalue::BinaryOp(
+                                            BinOp::Eq,
+                                            Operand::Copy(Place::local(field_local, span)),
+                                            Operand::Constant(crate::mir::ty::Const {
+                                                ty: Box::new(field_ty),
+                                                val: crate::mir::ty::ConstVal::Int(n),
+                                            }),
+                                        ),
+                                        span,
+                                    );
+                                    current = cx.current_block;
+                                    let continue_block = cx.new_block();
+                                    cx.mir.block_mut(current).terminator = Terminator::SwitchInt {
+                                        discr: Operand::Copy(Place::local(cmp_result, span)),
+                                        targets: vec![(ConstVal::Bool(true), continue_block)],
+                                        otherwise: next_block,
+                                    };
+                                    current = continue_block;
+                                }
+                            }
+                        }
+                        // All literal checks passed — goto match_block
+                        cx.mir.block_mut(current).terminator = Terminator::Goto(match_block);
+                        cx.current_block = current;
+                    }
+                }
+                _ => {}
             }
             // match_block: pattern matched — execute arm body
             cx.current_block = match_block;
@@ -1195,10 +1791,428 @@ fn build_tuple_pattern_condition(
             };
             current = continue_block;
         }
+        // Stage 14.87 (Bug B fix): Handle enum variant sub-patterns.
+        // For `(Opt::None, 0)` etc., extract the field's enum discriminant
+        // and compare to the variant index. Was: silently skipped (treated
+        // as wildcard), causing wrong match results.
+        else if let HirPatKind::Path(path)
+        | HirPatKind::TupleStruct(path, _)
+        | HirPatKind::Struct(path, _, _) = &sub_pat.kind
+        {
+            if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
+                if path.segments.len() >= 2 {
+                    if let Some((variant_idx, _)) =
+                        super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
+                    {
+                        // Build the enum's Adt type for the field local
+                        let enum_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), span);
+                        let field_local = cx.mir.new_local(enum_ty.clone(), None, span);
+                        cx.mir.block_mut(current).statements.push(Statement {
+                            kind: StatementKind::StorageLive(field_local),
+                            span,
+                        });
+                        cx.current_block = current;
+                        cx.push_assign(
+                            Place::local(field_local, span),
+                            Rvalue::Use(Operand::Copy(Place {
+                                kind: PlaceKind::Projection(
+                                    Box::new(Place::local(scrut_local, span)),
+                                    ProjectionElem::Field(FieldId(i as u32), enum_ty.clone()),
+                                ),
+                                span,
+                            })),
+                            span,
+                        );
+                        current = cx.current_block;
+
+                        // Extract discriminant: discr = field_local.0
+                        let discr_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), span);
+                        let discr_local = cx.mir.new_local(discr_ty.clone(), None, span);
+                        cx.mir.block_mut(current).statements.push(Statement {
+                            kind: StatementKind::StorageLive(discr_local),
+                            span,
+                        });
+                        cx.current_block = current;
+                        cx.push_assign(
+                            Place::local(discr_local, span),
+                            Rvalue::Use(Operand::Copy(Place {
+                                kind: PlaceKind::Projection(
+                                    Box::new(Place::local(field_local, span)),
+                                    ProjectionElem::Field(FieldId(0), discr_ty.clone()),
+                                ),
+                                span,
+                            })),
+                            span,
+                        );
+                        current = cx.current_block;
+
+                        // Compare: discr_local == variant_idx
+                        let cmp_result = cx.mir.new_local(Ty::new(TyKind::Bool, span), None, span);
+                        cx.mir.block_mut(current).statements.push(Statement {
+                            kind: StatementKind::StorageLive(cmp_result),
+                            span,
+                        });
+                        cx.current_block = current;
+                        cx.push_assign(
+                            Place::local(cmp_result, span),
+                            Rvalue::BinaryOp(
+                                BinOp::Eq,
+                                Operand::Copy(Place::local(discr_local, span)),
+                                Operand::Constant(crate::mir::ty::Const {
+                                    ty: Box::new(discr_ty),
+                                    val: crate::mir::ty::ConstVal::Int(variant_idx as u128),
+                                }),
+                            ),
+                            span,
+                        );
+                        current = cx.current_block;
+
+                        // Switch on cmp_result
+                        let continue_block = cx.new_block();
+                        cx.mir.block_mut(current).terminator = Terminator::SwitchInt {
+                            discr: Operand::Copy(Place::local(cmp_result, span)),
+                            targets: vec![(ConstVal::Bool(true), continue_block)],
+                            otherwise: next_block,
+                        };
+                        current = continue_block;
+                    }
+                }
+            }
+        }
         // Wildcard or Ident — skip (always matches)
     }
 
     // All checks passed — goto match_block
     cx.mir.block_mut(current).terminator = Terminator::Goto(match_block);
     cx.current_block = current;
+}
+
+/// Stage 14.86: Build a pattern-equality check for guarded match arms.
+///
+/// For arms with guards that have literal/Or/enum patterns, we need to
+/// re-check the pattern in the otherwise block (since guarded arms were
+/// not added as switch targets).
+///
+/// Generates: if pattern_matches(scrut, pat) { goto match_block } else { goto next_block }
+///
+/// Pattern kinds handled:
+/// - `HirPatKind::Lit(lit_expr)` — check `scrut == lit`
+/// - `HirPatKind::Or(sub_pats)` — check `scrut == lit1 || scrut == lit2 || ...`
+///   (only for all-literal sub-patterns; non-literal Or sub-patterns in
+///   guarded arms are not supported — fall through to next_block)
+/// - `HirPatKind::Path/TupleStruct/Struct` (enum variant) — check
+///   `scrut_discr == variant_idx` (extract discriminant from scrut first)
+///
+/// For non-literal/Or/enum patterns (Ident, Wild, etc.), this function is
+/// not called (callers check `needs_pattern_check` first).
+///
+/// Per §1.0 原則 5 "报错 > 静默": this generates the pattern check that
+/// was previously missing for guarded arms, causing them to match without
+/// verifying the pattern.
+fn build_pattern_equality_check(
+    cx: &mut MirLowerCtxt,
+    scrut_local: LocalId,
+    pat: &HirPat,
+    is_enum: bool,
+    match_block: BasicBlockId,
+    next_block: BasicBlockId,
+) {
+    use crate::mir::place::{BinOp, Operand, Place, PlaceKind, ProjectionElem, Rvalue};
+
+    let span = pat.span;
+
+    // Helper: build `scrut == lit_val` and terminate current block with
+    // a SwitchInt that goes to match_block on true, next_block on false.
+    let build_eq_check = |cx: &mut MirLowerCtxt, lit_val: i128, is_bool: bool| {
+        // Load scrutinee value
+        let scrut_place = Place::local(scrut_local, span);
+        // Build `scrut == lit_val`
+        let lit_const = crate::mir::ty::Const {
+            ty: Box::new(Ty::new(
+                if is_bool {
+                    TyKind::Bool
+                } else {
+                    TyKind::Int(crate::ast::IntTy::I32)
+                },
+                span,
+            )),
+            val: if is_bool {
+                crate::mir::ty::ConstVal::Bool(lit_val != 0)
+            } else {
+                crate::mir::ty::ConstVal::Int(lit_val as u128)
+            },
+        };
+        let cmp_result = cx.eval_rvalue_to_temp(
+            Rvalue::BinaryOp(
+                BinOp::Eq,
+                Operand::Copy(scrut_place),
+                Operand::Constant(lit_const),
+            ),
+            Ty::new(TyKind::Bool, span),
+            span,
+        );
+        cx.terminate(Terminator::SwitchInt {
+            discr: Operand::Copy(Place::local(cmp_result, span)),
+            targets: vec![(ConstVal::Bool(true), match_block)],
+            otherwise: next_block,
+        });
+    };
+
+    match &pat.kind {
+        HirPatKind::Lit(expr) => {
+            if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
+                build_eq_check(cx, *n as i128, false);
+            } else if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
+                build_eq_check(cx, *b as i128, true);
+            } else {
+                // Unknown literal — fall through to next
+                cx.terminate(Terminator::Goto(next_block));
+            }
+        }
+        HirPatKind::Or(sub_pats) => {
+            // For Or-patterns, build: if scrut == lit1 { match } else if scrut == lit2 { match } else { next }
+            // Each sub-pattern is a separate check. On success, go to match_block.
+            // On failure, go to the next sub-pattern's check block.
+            // After the last sub-pattern fails, go to next_block.
+            let mut current_block = cx.current_block;
+            for (i, sub_pat) in sub_pats.iter().enumerate() {
+                if let HirPatKind::Lit(expr) = &sub_pat.kind {
+                    let (lit_val, is_bool) =
+                        if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
+                            (*n as i128, false)
+                        } else if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
+                            (*b as i128, true)
+                        } else {
+                            // Unknown literal type — fall through to next
+                            cx.current_block = current_block;
+                            cx.terminate(Terminator::Goto(next_block));
+                            return;
+                        };
+                    // The "failure" target is the next sub-pattern's check,
+                    // or next_block if this is the last sub-pattern.
+                    let failure_block = if i + 1 < sub_pats.len() {
+                        cx.new_block()
+                    } else {
+                        next_block
+                    };
+                    cx.current_block = current_block;
+                    // Build `scrut == lit_val` inline (can't use build_eq_check
+                    // because it captures match_block/next_block from closure)
+                    let scrut_place = Place::local(scrut_local, span);
+                    let lit_const = crate::mir::ty::Const {
+                        ty: Box::new(Ty::new(
+                            if is_bool {
+                                TyKind::Bool
+                            } else {
+                                TyKind::Int(crate::ast::IntTy::I32)
+                            },
+                            span,
+                        )),
+                        val: if is_bool {
+                            crate::mir::ty::ConstVal::Bool(lit_val != 0)
+                        } else {
+                            crate::mir::ty::ConstVal::Int(lit_val as u128)
+                        },
+                    };
+                    let cmp_result = cx.eval_rvalue_to_temp(
+                        Rvalue::BinaryOp(
+                            BinOp::Eq,
+                            Operand::Copy(scrut_place),
+                            Operand::Constant(lit_const),
+                        ),
+                        Ty::new(TyKind::Bool, span),
+                        span,
+                    );
+                    cx.terminate(Terminator::SwitchInt {
+                        discr: Operand::Copy(Place::local(cmp_result, span)),
+                        targets: vec![(ConstVal::Bool(true), match_block)],
+                        otherwise: failure_block,
+                    });
+                    current_block = failure_block;
+                } else {
+                    // Non-literal sub-pattern — not supported, fall through to next
+                    cx.current_block = current_block;
+                    cx.terminate(Terminator::Goto(next_block));
+                    return;
+                }
+            }
+        }
+        HirPatKind::Path(path)
+        | HirPatKind::TupleStruct(path, _)
+        | HirPatKind::Struct(path, _, _)
+            if is_enum =>
+        {
+            // For enum variant, check discriminant (field 0 of scrut struct)
+            if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
+                if path.segments.len() >= 2 {
+                    if let Some((variant_idx, _)) =
+                        super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
+                    {
+                        // Extract discriminant: discr = scrut.0
+                        let discr_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), span);
+                        let discr_local = cx.mir.new_local(discr_ty.clone(), None, span);
+                        let scrut_ty = cx.mir.local(scrut_local).ty.clone();
+                        let scrut_place =
+                            if matches!(&scrut_ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
+                                Place {
+                                    kind: PlaceKind::Projection(
+                                        Box::new(Place::local(scrut_local, span)),
+                                        ProjectionElem::Deref,
+                                    ),
+                                    span,
+                                }
+                            } else {
+                                Place::local(scrut_local, span)
+                            };
+                        cx.push_assign(
+                            Place::local(discr_local, span),
+                            Rvalue::Use(Operand::Move(Place {
+                                kind: PlaceKind::Projection(
+                                    Box::new(scrut_place),
+                                    ProjectionElem::Field(FieldId(0), discr_ty.clone()),
+                                ),
+                                span,
+                            })),
+                            span,
+                        );
+                        // Check discr == variant_idx
+                        let lit_const = crate::mir::ty::Const {
+                            ty: Box::new(Ty::new(discr_ty.kind.clone(), span)),
+                            val: crate::mir::ty::ConstVal::Int(variant_idx as u128),
+                        };
+                        let cmp_result = cx.eval_rvalue_to_temp(
+                            Rvalue::BinaryOp(
+                                BinOp::Eq,
+                                Operand::Copy(Place::local(discr_local, span)),
+                                Operand::Constant(lit_const),
+                            ),
+                            Ty::new(TyKind::Bool, span),
+                            span,
+                        );
+                        cx.terminate(Terminator::SwitchInt {
+                            discr: Operand::Copy(Place::local(cmp_result, span)),
+                            targets: vec![(ConstVal::Bool(true), match_block)],
+                            otherwise: next_block,
+                        });
+                        return;
+                    }
+                }
+            }
+            // Couldn't resolve variant — fall through
+            cx.terminate(Terminator::Goto(next_block));
+        }
+        // Stage 14.90 (Bug X1 fix): Handle Tuple/TupleStruct patterns with
+        // literal sub-patterns. These need conditional field checks.
+        // For Tuple and TupleStruct (positional), use build_tuple_pattern_condition.
+        HirPatKind::Tuple(sub_pats) => {
+            build_tuple_pattern_condition(cx, scrut_local, sub_pats, match_block, next_block);
+        }
+        HirPatKind::TupleStruct(_, sub_pats) if !is_enum => {
+            // Plain tuple struct — same as Tuple (positional fields)
+            build_tuple_pattern_condition(cx, scrut_local, sub_pats, match_block, next_block);
+        }
+        // Stage 14.90 (Bug X1 fix): Handle Struct patterns with literal
+        // sub-patterns. Look up field indices by name, check each literal.
+        HirPatKind::Struct(path, fields, _) => {
+            if let crate::hir::Res::Def(struct_def_id, _) = path.res {
+                let field_indices: std::collections::HashMap<crate::lexer::token::Symbol, usize> = {
+                    let mut map = std::collections::HashMap::new();
+                    if let Some(hir) = cx.hir {
+                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                            hir.owner(struct_def_id)
+                        {
+                            for (i, f) in s.fields.iter().enumerate() {
+                                if let Some(name) = f.ident {
+                                    map.insert(name.name, i);
+                                }
+                            }
+                        }
+                    }
+                    map
+                };
+                let mut current = cx.current_block;
+                let mut found_lit = false;
+                for field_pat in fields {
+                    if let Some(field_idx) = field_indices.get(&field_pat.ident.name).copied() {
+                        if let HirPatKind::Lit(expr) = &field_pat.pat.kind {
+                            found_lit = true;
+                            let lit_val =
+                                if let HirExprKind::Lit(HirLitKind::Int(n, _)) = &expr.kind {
+                                    Some(*n)
+                                } else if let HirExprKind::Lit(HirLitKind::Bool(b)) = &expr.kind {
+                                    Some(if *b { 1 } else { 0 })
+                                } else {
+                                    None
+                                };
+                            if let Some(n) = lit_val {
+                                let field_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), span);
+                                let field_local = cx.mir.new_local(field_ty.clone(), None, span);
+                                cx.mir.block_mut(current).statements.push(Statement {
+                                    kind: StatementKind::StorageLive(field_local),
+                                    span,
+                                });
+                                cx.current_block = current;
+                                cx.push_assign(
+                                    Place::local(field_local, span),
+                                    Rvalue::Use(Operand::Copy(Place {
+                                        kind: PlaceKind::Projection(
+                                            Box::new(Place::local(scrut_local, span)),
+                                            ProjectionElem::Field(
+                                                FieldId(field_idx as u32),
+                                                field_ty.clone(),
+                                            ),
+                                        ),
+                                        span,
+                                    })),
+                                    span,
+                                );
+                                current = cx.current_block;
+                                let cmp_result =
+                                    cx.mir.new_local(Ty::new(TyKind::Bool, span), None, span);
+                                cx.mir.block_mut(current).statements.push(Statement {
+                                    kind: StatementKind::StorageLive(cmp_result),
+                                    span,
+                                });
+                                cx.current_block = current;
+                                cx.push_assign(
+                                    Place::local(cmp_result, span),
+                                    Rvalue::BinaryOp(
+                                        BinOp::Eq,
+                                        Operand::Copy(Place::local(field_local, span)),
+                                        Operand::Constant(crate::mir::ty::Const {
+                                            ty: Box::new(field_ty),
+                                            val: crate::mir::ty::ConstVal::Int(n),
+                                        }),
+                                    ),
+                                    span,
+                                );
+                                current = cx.current_block;
+                                let continue_block = cx.new_block();
+                                cx.mir.block_mut(current).terminator = Terminator::SwitchInt {
+                                    discr: Operand::Copy(Place::local(cmp_result, span)),
+                                    targets: vec![(ConstVal::Bool(true), continue_block)],
+                                    otherwise: next_block,
+                                };
+                                current = continue_block;
+                            }
+                        }
+                    }
+                }
+                if found_lit {
+                    cx.mir.block_mut(current).terminator = Terminator::Goto(match_block);
+                    cx.current_block = current;
+                } else {
+                    // No literal sub-patterns — always match
+                    cx.terminate(Terminator::Goto(match_block));
+                }
+            } else {
+                // Can't resolve struct — fall through
+                cx.terminate(Terminator::Goto(next_block));
+            }
+        }
+        _ => {
+            // Shouldn't happen (callers check needs_pattern_check first)
+            cx.terminate(Terminator::Goto(match_block));
+        }
+    }
 }

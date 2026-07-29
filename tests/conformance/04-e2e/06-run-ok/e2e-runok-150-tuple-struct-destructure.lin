@@ -1,0 +1,22 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Plain tuple struct destructuring (let + match) — Stage 14.89
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10\n20\n10\n20
+// SOURCE: Stage 14.89 — Bug 1 fix: plain tuple struct destructuring was broken
+//         (fell through to single-local path, creating ONE local for the whole
+//         struct). Now correctly extracts each positional field.
+
+struct Pair(i32, i32);
+fn main() -> i32 {
+    let Pair(a, b) = Pair(10, 20);
+    println!("{}", a);  // 10
+    println!("{}", b);  // 20
+    let p = Pair(10, 20);
+    match p {
+        Pair(x, y) => {
+            println!("{}", x);  // 10
+            println!("{}", y);  // 20
+        }
+    }
+    0
+}

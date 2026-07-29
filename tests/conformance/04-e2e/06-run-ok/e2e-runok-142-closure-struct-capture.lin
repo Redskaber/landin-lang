@@ -1,0 +1,21 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Closure capturing a struct — Stage 14.82 + 14.84 audit fix
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10\n20
+// SOURCE: Stage 14.82 — fixed closure struct capture codegen:
+//         was: closure substs had stale Infer type after typeck, causing
+//         LLVM verification to crash with "Invalid InsertValueInst operands!"
+//         now: writeback step resolves closure substs from captured locals'
+//         Stage 14.84 (audit fix): also update closure local's local_decl.ty
+//         + extract local's type + closure codegen — was: || p.x worked but
+//         || p.y returned garbage (silent truncation to first 4 bytes)
+
+struct Point { x: i32, y: i32 }
+fn main() -> i32 {
+    let p = Point { x: 10, y: 20 };
+    let f = || p.x;
+    let g = || p.y;
+    println!("{}", f());
+    println!("{}", g());
+    0
+}

@@ -14,6 +14,10 @@ compiler issues:
 3. **`test-runner`** — Run all `run_ok` tests in a directory and report results
 4. **`diff`** — Compile and run a single test, compare output with `EXPECTED_STDOUT`
 5. **`stages`** — Show which compilation stages pass/fail for a `.lin` file
+6. **`borrowck-trace`** — Show borrow checker errors with context (Stage 14.81+)
+7. **`ir-types`** — Show LLVM IR with alloca/load/store types highlighted (Stage 14.82+)
+8. **`coverage`** — Show test count by category (Stage 14.81+)
+9. **`gaps`** — Show P0/P1 gap status from capability assessment (Stage 14.81+)
 
 ## Usage
 
@@ -35,6 +39,18 @@ python3 tools/debug/landin_debug.py mir my_test.lin --verbose
 
 # Verbose output (show full IR, full test details)
 python3 tools/debug/landin_debug.py trace my_test.lin --verbose
+
+# Stage 14.81+: Show borrow checker errors for a .lin file
+python3 tools/debug/landin_debug.py borrowck-trace tests/conformance/02-borrowck/00-nll-basic/bk-0451-18-gap1-double-mut-borrow.lin
+
+# Stage 14.82+: Show LLVM IR with type-bearing instructions highlighted
+python3 tools/debug/landin_debug.py ir-types my_test.lin
+
+# Show test count by category
+python3 tools/debug/landin_debug.py coverage
+
+# Show P0/P1 gap status
+python3 tools/debug/landin_debug.py gaps
 ```
 
 ## Test File Format
@@ -93,3 +109,43 @@ runtime output was wrong. This led to the discovery that the Stage 14.67
 otherwise-block rewrite had a bug where `cx.current_block` was reset to
 `fallthrough_block` after `lower_expr_to_operand`, orphaning overflow-check
 blocks.
+
+## Stage 14.81 GAP-1 Discovery
+
+The `borrowck-trace` command (added in Stage 14.81) was used to diagnose
+GAP-1 (NLL soundness). Running it on
+`let mut x = 1; let r1 = &mut x; let r2 = &mut x;` initially showed no
+borrowck errors — confirming the silent acceptance. After adding debug
+eprintlns to `borrow_set.rs`, the trace revealed that `transfer_borrow_ref`
+was never called for `Operand::Copy` (only `Operand::Move`), causing the
+first borrow to be killed at the temp's last use (the Copy statement)
+instead of the user-visible local's last use. The 1-line fix:
+`if let Operand::Move(lv) | Operand::Copy(lv) = op {`.
+
+## Stage 14.82 GAP-7 Discovery
+
+The `ir-types` command (added in Stage 14.82) was used to diagnose GAP-7
+(closure struct captures). Running it on `let f = || p.x;` showed the
+closure alloca as `{ i32 }` instead of `{ { i32, i32 } }`. Adding debug
+eprintlns to `codegen/mod.rs::codegen_function` revealed the closure's
+`substs` held `Infer(TyVar)` (stale, captured before typeck ran). The fix:
+driver writeback that walks `Aggregate(Closure, operands)` rvalues and
+writes back each operand's source local resolved type to the corresponding
+subst.
+
+## Adding New Debug Commands
+
+To add a new debug command:
+
+1. Add the command name to the `choices` list in `main()`.
+2. Add a `cmd_<name>` function in the Commands section.
+3. Add an `elif args.command == "<name>":` branch in `main()`.
+4. Update the docstring at the top of the file.
+5. Update this README with usage examples.
+
+For commands that need debug output from the compiler itself, use the
+`LANDIN_DEBUG_<MODULE>` env var pattern (e.g., `LANDIN_DEBUG_BORROWCK=1`,
+`LANDIN_DEBUG_CODEGEN=1`). Add the corresponding `eprintln!` calls gated
+by `std::env::var("LANDIN_DEBUG_<MODULE>").is_ok()` in the relevant source
+files.
+

@@ -148,6 +148,26 @@ pub fn mir_type_to_emit_type_with_layouts(
         TyKind::Slice(elem) => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(elem, layouts)),
         // Stage 14.57: FnPtr and FnDef — emit as opaque pointer (function reference).
         TyKind::FnPtr(_) | TyKind::FnDef(_, _) => EmitType::OpaquePtr,
+        // Stage 14.82 (GAP-7 partial fix): Closure type — emit as a struct
+        // with one field per capture, using the layouts-aware variant
+        // recursively so captured Adts resolve to their actual LLVM struct
+        // type. Was: fell through to `mir_type_to_emit_type` (the legacy
+        // variant), which uses itself (legacy) for substs — falling back
+        // to `EmitType::I32` for any `Adt` capture. This caused closures
+        // capturing structs to be typed `{ i32 }` instead of
+        // `{ { i32, i32 } }`, leading to "Invalid InsertValueInst
+        // operands!" in LLVM verification.
+        //
+        // Per §1.0 原則 5 "报错 > 静默": the legacy fallback silently
+        // produced wrong LLVM types. The layouts-aware variant surfaces
+        // the correct type and lets LLVM verification succeed.
+        TyKind::Closure(_, substs) => {
+            let fields: Vec<EmitType> = substs
+                .iter()
+                .map(|ty| mir_type_to_emit_type_with_layouts(ty, layouts))
+                .collect();
+            EmitType::Struct(fields)
+        }
         _ => mir_type_to_emit_type(ty),
     }
 }
@@ -314,6 +334,18 @@ pub(crate) fn detect_place_type(
                         if let Some(base_ld) = mir.local_decls.get(base_id.0 as usize) {
                             if let crate::mir::ty::TyKind::Tuple(field_tys) = &base_ld.ty.kind {
                                 if let Some(resolved) = field_tys.get(field_id.0 as usize) {
+                                    return mir_type_to_emit_type_with_layouts(resolved, layouts);
+                                }
+                            }
+                            // Stage 14.84 (audit fix #3): Also handle Closure
+                            // base — extract the field type from the closure's
+                            // substs (which were written back by the driver
+                            // post-typeck). This fixes `|| p.y` codegen where
+                            // the projection's field_ty was set to Infer at
+                            // MIR-lower time but the closure local's substs
+                            // are now resolved to [Adt(Point)].
+                            if let crate::mir::ty::TyKind::Closure(_, substs) = &base_ld.ty.kind {
+                                if let Some(resolved) = substs.get(field_id.0 as usize) {
                                     return mir_type_to_emit_type_with_layouts(resolved, layouts);
                                 }
                             }

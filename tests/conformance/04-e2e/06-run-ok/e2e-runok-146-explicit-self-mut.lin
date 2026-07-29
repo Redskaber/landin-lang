@@ -1,0 +1,22 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Explicit self: &mut Type form — Stage 14.87
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 10\n99
+// SOURCE: Stage 14.87 — Bug C fix: explicit `self: &mut Type` form now
+//         correctly propagates mutations. Was: self_kind stayed as
+//         Value(Immutable), causing mutations to not propagate to caller.
+
+struct Counter { value: i32 }
+impl Counter {
+    fn new(v: i32) -> Counter { Counter { value: v } }
+    fn get(&self) -> i32 { self.value }
+    fn set(self: &mut Counter, v: i32) { self.value = v; }
+}
+
+fn main() -> i32 {
+    let mut c = Counter::new(10);
+    println!("{}", c.get());  // 10
+    c.set(99);
+    println!("{}", c.get());  // 99
+    0
+}

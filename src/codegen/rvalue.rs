@@ -7,7 +7,8 @@
 #[allow(unused_imports)]
 use super::mir_translation::{
     codegen_place_load, codegen_place_load_typed, compute_place_address, detect_operand_type,
-    detect_place_storage_type, detect_place_type, unwrap_fat_ptr_for_index,
+    detect_place_storage_type, detect_place_type, mir_type_to_emit_type_with_layouts,
+    unwrap_fat_ptr_for_index,
 };
 use super::*;
 use crate::mir::body::*;
@@ -390,7 +391,24 @@ pub(crate) fn codegen_rvalue(
                 return "0".to_string();
             }
             // Build the closure struct type from the capture field types.
-            let field_tys: Vec<EmitType> = substs.iter().map(mir_type_to_emit_type).collect();
+            //
+            // Stage 14.82 (GAP-7 partial fix): use
+            // `mir_type_to_emit_type_with_layouts` (NOT the legacy
+            // `mir_type_to_emit_type`) so that `Adt(Point)` capture types
+            // resolve to their actual LLVM struct type (e.g. `{ i32, i32 }`)
+            // instead of falling back to `EmitType::I32`. Was: closures
+            // capturing structs crashed LLVM verification with
+            // `Invalid InsertValueInst operands!` because the closure
+            // struct was typed `{ i32 }` but the operand was `{ i32, i32 }`.
+            //
+            // Per §1.0 原則 5 "报错 > 静默": the legacy fallback silently
+            // produced wrong LLVM types, manifesting as a backend crash
+            // instead of a clear compiler error. Using the layouts-aware
+            // variant surfaces the correct type.
+            let field_tys: Vec<EmitType> = substs
+                .iter()
+                .map(|ty| mir_type_to_emit_type_with_layouts(ty, layouts))
+                .collect();
             let agg_ty = EmitType::Struct(field_tys.clone());
             let mut agg = "undef".to_string();
             for (i, op) in operands.iter().enumerate() {

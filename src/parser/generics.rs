@@ -51,7 +51,18 @@ impl<'a> Parser<'a> {
                              // self: Type form (rare; usually just `self` or `&self`)
                 let ty = if *self.peek() == TokenKind::Colon {
                     self.bump();
-                    self.parse_ty()
+                    let parsed_ty = self.parse_ty();
+                    // Stage 14.87 (Bug C fix): If the explicit type is a
+                    // reference type (&T or &mut T), update self_kind to
+                    // match. Was: self_kind stayed as Value(Immutable) even
+                    // for `self: &mut Type`, causing mutations to not
+                    // propagate to the caller.
+                    if let crate::ast::Ty::Ref(_, ref_mut, _, _) = &parsed_ty {
+                        self_kind = SelfKind::Ref(*ref_mut);
+                    }
+                    // For non-ref types (e.g., `self: Type`), leave self_kind
+                    // as Value (the default).
+                    parsed_ty
                 } else {
                     // Default type for self — we use a path with "Self" as the
                     // segment name. The type checker (Stage 2) will resolve this.

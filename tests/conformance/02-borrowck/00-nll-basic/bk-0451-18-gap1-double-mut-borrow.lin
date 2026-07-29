@@ -1,0 +1,13 @@
+// CATEGORY: borrowck
+// DESCRIPTION: GAP-1 fix: double mutable borrow must be rejected (Stage 14.81)
+// EXPECTED: compile_error
+// ERROR_PATTERN: cannot borrow
+// SOURCE: Stage 14.81 — GAP-1 NLL soundness fix (transfer_borrow_ref for Operand::Copy)
+
+fn main() {
+    let mut x = 1;
+    let r1 = &mut x;
+    let r2 = &mut x;  // ERROR: x is already borrowed as mut
+    *r1 = 10;
+    *r2 = 20;
+}

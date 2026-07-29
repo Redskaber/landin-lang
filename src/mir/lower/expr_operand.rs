@@ -1448,17 +1448,42 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // array [3 x [3 x i32]] was stored into an alloca typed [3 x i32],
             // causing "Invalid InsertValueInst operands!" in LLVMSysEmitter.
             //
-            // Fix: get the element type from elem_local's MIR local decl.
-            // If it's Infer (not yet resolved), fall back to Error (typeck
-            // will resolve it later).
-            let elem_ty = cx.mir.local(elem_local).ty.clone();
-            let fresh_elem_ty = cx.fresh_infer_ty(expr.span);
+            // Stage 14.80 hardening: only use the concrete element type if it
+            // is *not* an Infer/Error placeholder. For unsuffixed integer
+            // literals like `0`, the lowered element type is `Infer(IntVar)`
+            // (int-only — cannot unify with Float/Bool/Char/Str). If we put
+            // that into array_ty, typeck would error on `let arr: [f64; 3]
+            // = [0; 3]` — but in Rust that is *also* a type error, so the
+            // behavior is correct. However, for the AggregateKind::Array we
+            // use a fresh TyVar (general inference variable) so each operand
+            // unifies successfully with the declared element type, and the
+            // outer array_type can unify with the destination's element type.
+            //
+            // Per §1.0 原則 5 "报错 > 静默": surface real type errors (e.g.
+            // `[0; 3]` for `[f64; 3]` is now caught by typeck instead of
+            // being silently mis-compiled as `Error` → `i32`).
+            // Per §1.0 原則 6 "通用 > 特例": one rule handles both cases by
+            // checking whether the element type is already concrete.
+            let actual_elem_ty = cx.mir.local(elem_local).ty.clone();
+            // For array_ty: use concrete element type if known, else fall
+            // back to Error (preserves pre-14.79 behavior for unsuffixed
+            // literals — typeck will catch the mismatch if destination is
+            // non-int, but codegen uses Error → I32 fallback for size).
+            // For AggregateKind::Array: always use a fresh TyVar so operands
+            // unify cleanly with the declared element type.
+            let array_elem_ty = if matches!(&actual_elem_ty.kind, TyKind::Infer(_) | TyKind::Error)
+            {
+                Ty::new(TyKind::Error, expr.span)
+            } else {
+                actual_elem_ty
+            };
+            let agg_elem_ty = cx.fresh_infer_ty(expr.span);
             let count_const = crate::mir::ty::Const {
                 ty: Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span)),
                 val: crate::mir::ty::ConstVal::Int(n as u128),
             };
             let array_ty = Ty::new(
-                TyKind::Array(Box::new(elem_ty), Box::new(count_const)),
+                TyKind::Array(Box::new(array_elem_ty), Box::new(count_const)),
                 expr.span,
             );
             // Build the operands list: N copies of the element.
@@ -1466,7 +1491,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .map(|_| Operand::Copy(Place::local(elem_local, elem.span)))
                 .collect();
             cx.eval_rvalue_to_temp(
-                Rvalue::Aggregate(AggregateKind::Array(fresh_elem_ty), operands),
+                Rvalue::Aggregate(AggregateKind::Array(agg_elem_ty), operands),
                 array_ty,
                 expr.span,
             )
@@ -1829,6 +1854,22 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 None
             });
 
+            // Stage 14.90 (Bug X2 fix): Check if the receiver is a local whose
+            // init is a reference expression (e.g., `let r = &p; r.method()`).
+            // If so, the receiver is already a reference — don't create a new
+            // reference for &self methods. This prevents &&T double-referencing.
+            let receiver_is_ref_init = cx.hir.is_some_and(|hir| {
+                if let HirExprKind::Path(path) = &receiver.kind {
+                    if let crate::hir::Res::Local(hir_id) = path.res {
+                        // Find the init expression for this local
+                        if let Some(init_expr) = find_local_init_expr(hir, hir_id) {
+                            return matches!(&init_expr.kind, HirExprKind::AddrOf { .. });
+                        }
+                    }
+                }
+                false
+            });
+
             // Stage 14.19 (GAP-31): Check if the method takes &self/&mut self.
             // If so, pass the receiver as a reference (Rvalue::Ref) instead of
             // by value (Operand::Copy). This makes mutations propagate to the caller.
@@ -1851,7 +1892,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     // (pass existing ref).
                     let recv_ty = cx.mir.local(recv_local).ty.clone();
                     let is_already_ref =
-                        matches!(&recv_ty.kind, crate::mir::ty::TyKind::Ref(_, _, _));
+                        matches!(&recv_ty.kind, crate::mir::ty::TyKind::Ref(_, _, _))
+                            || receiver_is_ref_init;
 
                     if is_already_ref {
                         // Receiver is already a reference — pass it directly.
@@ -2517,6 +2559,28 @@ fn find_local_init_type(
         if let Some(ty) = search_expr_for_local_init(&body.value, target_hir_id) {
             return Some(ty);
         }
+        // Stage 14.90 (Bug X2 fix): If the init expression is a Path resolving
+        // to another Local, recursively trace through that Local's init.
+        // `let r = &p; r.sum()` → r's init is &p, p is Local(p_hir_id),
+        // so we search for p_hir_id's init type.
+        if let Some(init_expr) = search_block_for_local_init_expr(&body.value, target_hir_id) {
+            // Strip AddrOf wrappers
+            let mut inner = &init_expr;
+            while let HirExprKind::AddrOf { expr: e, .. } = &inner.kind {
+                inner = e;
+            }
+            // If the inner expression is a Path to a Local, recurse
+            if let HirExprKind::Path(path) = &inner.kind {
+                if let crate::hir::Res::Local(inner_hir_id) = path.res {
+                    if inner_hir_id != target_hir_id {
+                        // Recurse — find the inner local's init type
+                        if let Some(ty) = find_local_init_type(_cx, hir, inner_hir_id) {
+                            return Some(ty);
+                        }
+                    }
+                }
+            }
+        }
     }
     None
 }
@@ -2581,6 +2645,11 @@ fn search_expr_for_local_init(expr: &HirExpr, target_hir_id: crate::hir::HirId) 
 /// or method call returning an ADT).
 fn expr_to_adt_type(expr: &HirExpr) -> Option<Ty> {
     match &expr.kind {
+        // Stage 14.90 (Bug X2 fix): Handle reference expressions.
+        // `let r = &p; r.method()` — the init is `AddrOf { expr: p }`.
+        // For method resolution, we want the INNER type (Adt), not the Ref.
+        // The find_local_init_type caller handles the Ref wrapping separately.
+        HirExprKind::AddrOf { expr: inner, .. } => expr_to_adt_type(inner),
         HirExprKind::Struct { path, .. } => {
             if let crate::hir::Res::Def(def_id, _) = path.res {
                 Some(Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span))

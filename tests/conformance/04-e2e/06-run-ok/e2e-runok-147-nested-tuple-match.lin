@@ -1,0 +1,20 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Nested pattern bindings in match — Stage 14.88
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 1\n2\n3
+// SOURCE: Stage 14.88 — Round 4 audit fix: nested pattern bindings in
+//         match context were broken (recursed with outer scrut_local
+//         instead of field-specific temp local). Now correctly extracts
+//         fields to temp locals before recursing.
+
+fn main() -> i32 {
+    let t = ((1, 2), 3);
+    match t {
+        ((a, b), c) => {
+            println!("{}", a);  // 1
+            println!("{}", b);  // 2
+            println!("{}", c);  // 3
+        }
+    }
+    0
+}

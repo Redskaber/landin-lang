@@ -1,7 +1,9 @@
 // CATEGORY: borrowck
 // DESCRIPTION: borrow in loop with mutation
-// EXPECTED: compile_ok
+// EXPECTED: compile_error
+// ERROR_PATTERN: cannot
 // STAGE_13.17: Flipped from compile_error (self binding fix)
+// STAGE_14.81: Flipped BACK to compile_error (GAP-1 NLL soundness fix — transfer_borrow_ref for Operand::Copy)
 // SOURCE: Stage 10.2 conformance expansion
 
 fn main() { let mut x = 0; while x < 10 { let r = &x; x += 1; } }

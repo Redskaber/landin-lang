@@ -1,0 +1,24 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Tuple patterns with enum variant sub-patterns — Stage 14.87
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 0\n1\n2\n3
+// SOURCE: Stage 14.87 — Bug B fix: tuple patterns with enum variant sub-patterns
+//         were silently ignored (treated as wildcards). Now correctly checked.
+
+enum Opt { None, Some(i32) }
+fn describe(t: (Opt, i32)) -> i32 {
+    match t {
+        (Opt::None, 0) => 0,
+        (Opt::None, _) => 1,
+        (Opt::Some(_), 0) => 2,
+        (Opt::Some(_), _) => 3,
+    }
+}
+
+fn main() -> i32 {
+    println!("{}", describe((Opt::None, 0)));     // 0
+    println!("{}", describe((Opt::None, 5)));     // 1
+    println!("{}", describe((Opt::Some(10), 0))); // 2
+    println!("{}", describe((Opt::Some(10), 5))); // 3
+    0
+}

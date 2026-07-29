@@ -108,7 +108,45 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
     };
     match &pat.kind {
         HirPatKind::TupleStruct(path, sub_pats) => {
-            if let Res::Def(enum_def_id, crate::resolve::DefKind::Enum) = path.res {
+            // Stage 14.89 (Bug 1 fix): Handle plain tuple struct patterns
+            // (not enum tuple variants). `match Pair(10, 20) { Pair(a, b) => ... }`
+            // should extract each positional field by index.
+            if let Res::Def(_, crate::resolve::DefKind::Struct) = path.res {
+                for (i, sub_pat) in sub_pats.iter().enumerate() {
+                    let field_ty = cx.fresh_infer_ty(sub_pat.span);
+                    if let HirPatKind::Ident(_mode, _ident, _) = &sub_pat.kind {
+                        let binding_local = cx.mir.new_local(field_ty.clone(), None, sub_pat.span);
+                        cx.local_map.insert(sub_pat.hir_id, binding_local);
+                        cx.push_assign(
+                            Place::local(binding_local, sub_pat.span),
+                            Rvalue::Use(Operand::Copy(Place {
+                                kind: PlaceKind::Projection(
+                                    Box::new(scrut_place.clone()),
+                                    ProjectionElem::Field(FieldId(i as u32), field_ty),
+                                ),
+                                span: sub_pat.span,
+                            })),
+                            sub_pat.span,
+                        );
+                    } else {
+                        // Non-Ident sub-pattern — extract field to temp local,
+                        // then recurse with temp as new scrut_local.
+                        let temp_local = cx.mir.new_local(field_ty.clone(), None, sub_pat.span);
+                        cx.push_assign(
+                            Place::local(temp_local, sub_pat.span),
+                            Rvalue::Use(Operand::Copy(Place {
+                                kind: PlaceKind::Projection(
+                                    Box::new(scrut_place.clone()),
+                                    ProjectionElem::Field(FieldId(i as u32), field_ty),
+                                ),
+                                span: sub_pat.span,
+                            })),
+                            sub_pat.span,
+                        );
+                        lower_enum_variant_pattern_bindings(cx, temp_local, sub_pat);
+                    }
+                }
+            } else if let Res::Def(enum_def_id, crate::resolve::DefKind::Enum) = path.res {
                 if let Some((variant_idx, field_tys)) =
                     resolve_enum_variant(cx, enum_def_id, &path.segments[1].ident.name)
                 {
@@ -116,11 +154,12 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                     let starting_idx =
                         compute_enum_payload_starting_idx(cx, enum_def_id, variant_idx);
                     for (i, sub_pat) in sub_pats.iter().enumerate() {
+                        let field_idx = starting_idx + i as u32;
+                        let field_ty = payload_tys
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| Ty::new(TyKind::Int(crate::ast::IntTy::I32), span));
                         if let HirPatKind::Ident(_mode, _ident, _) = &sub_pat.kind {
-                            let field_idx = starting_idx + i as u32;
-                            let field_ty = payload_tys.get(i).cloned().unwrap_or_else(|| {
-                                Ty::new(TyKind::Int(crate::ast::IntTy::I32), span)
-                            });
                             let binding_local =
                                 cx.mir.new_local(field_ty.clone(), None, sub_pat.span);
                             cx.local_map.insert(sub_pat.hir_id, binding_local);
@@ -135,12 +174,25 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                                 })),
                                 sub_pat.span,
                             );
+                        } else {
+                            // Stage 14.88: Non-Ident sub-pattern — extract field to
+                            // temp local, then recurse with temp as new scrut_local.
+                            let temp_local = cx.mir.new_local(field_ty.clone(), None, sub_pat.span);
+                            cx.push_assign(
+                                Place::local(temp_local, sub_pat.span),
+                                Rvalue::Use(Operand::Copy(Place {
+                                    kind: PlaceKind::Projection(
+                                        Box::new(scrut_place.clone()),
+                                        ProjectionElem::Field(FieldId(field_idx), field_ty),
+                                    ),
+                                    span: sub_pat.span,
+                                })),
+                                sub_pat.span,
+                            );
+                            lower_enum_variant_pattern_bindings(cx, temp_local, sub_pat);
                         }
                     }
                 }
-            }
-            for p in sub_pats {
-                lower_enum_variant_pattern_bindings(cx, scrut_local, p);
             }
         }
         HirPatKind::Struct(path, fields, _) => {
@@ -185,10 +237,26 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                                 })),
                                 field_pat.pat.span,
                             );
+                        } else {
+                            // Stage 14.88: Non-Ident sub-pattern — extract field to
+                            // temp local, then recurse with temp as new scrut_local.
+                            let field_ty = cx.fresh_infer_ty(field_pat.pat.span);
+                            let temp_local =
+                                cx.mir.new_local(field_ty.clone(), None, field_pat.pat.span);
+                            cx.push_assign(
+                                Place::local(temp_local, field_pat.pat.span),
+                                Rvalue::Use(Operand::Copy(Place {
+                                    kind: PlaceKind::Projection(
+                                        Box::new(scrut_place.clone()),
+                                        ProjectionElem::Field(FieldId(field_idx as u32), field_ty),
+                                    ),
+                                    span: field_pat.pat.span,
+                                })),
+                                field_pat.pat.span,
+                            );
+                            lower_enum_variant_pattern_bindings(cx, temp_local, &field_pat.pat);
                         }
                     }
-                    // Recurse for nested patterns
-                    lower_enum_variant_pattern_bindings(cx, scrut_local, &field_pat.pat);
                 }
             } else if let Res::Def(enum_def_id, crate::resolve::DefKind::Enum) = path.res {
                 if let Some((variant_idx, field_tys)) =
@@ -211,19 +279,16 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                                     if let Some(field_pos) = var_fields.iter().position(|f| {
                                         f.ident.map(|i| i.name) == Some(field_pat.ident.name)
                                     }) {
+                                        let field_idx = starting_idx + field_pos as u32;
+                                        let field_ty = payload_tys
+                                            .get(field_pos)
+                                            .cloned()
+                                            .unwrap_or_else(|| {
+                                                Ty::new(TyKind::Int(crate::ast::IntTy::I32), span)
+                                            });
                                         if let HirPatKind::Ident(_mode, _ident, _) =
                                             &field_pat.pat.kind
                                         {
-                                            let field_idx = starting_idx + field_pos as u32;
-                                            let field_ty = payload_tys
-                                                .get(field_pos)
-                                                .cloned()
-                                                .unwrap_or_else(|| {
-                                                    Ty::new(
-                                                        TyKind::Int(crate::ast::IntTy::I32),
-                                                        span,
-                                                    )
-                                                });
                                             let binding_local = cx.mir.new_local(
                                                 field_ty.clone(),
                                                 None,
@@ -245,6 +310,34 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                                                 })),
                                                 field_pat.pat.span,
                                             );
+                                        } else {
+                                            // Stage 14.88: Non-Ident sub-pattern — extract
+                                            // field to temp local, then recurse with temp as
+                                            // new scrut_local.
+                                            let temp_local = cx.mir.new_local(
+                                                field_ty.clone(),
+                                                None,
+                                                field_pat.pat.span,
+                                            );
+                                            cx.push_assign(
+                                                Place::local(temp_local, field_pat.pat.span),
+                                                Rvalue::Use(Operand::Copy(Place {
+                                                    kind: PlaceKind::Projection(
+                                                        Box::new(scrut_place.clone()),
+                                                        ProjectionElem::Field(
+                                                            FieldId(field_idx),
+                                                            field_ty,
+                                                        ),
+                                                    ),
+                                                    span: field_pat.pat.span,
+                                                })),
+                                                field_pat.pat.span,
+                                            );
+                                            lower_enum_variant_pattern_bindings(
+                                                cx,
+                                                temp_local,
+                                                &field_pat.pat,
+                                            );
                                         }
                                     }
                                 }
@@ -253,9 +346,10 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                     }
                 }
             }
-            for f in fields {
-                lower_enum_variant_pattern_bindings(cx, scrut_local, &f.pat);
-            }
+            // Stage 14.88: The tail recursion `for f in fields { ... }` was
+            // removed — it caused double-processing of fields (once in the
+            // loops above, once here). The loops above now handle both Ident
+            // and non-Ident sub-patterns correctly.
         }
         HirPatKind::Tuple(pats) => {
             // Stage 14.47: Handle plain tuple patterns (not enum TupleStruct).
@@ -267,6 +361,12 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
             // let bindings. The previous code only recursed into sub-patterns
             // but never generated field extraction for plain tuples — causing
             // bindings to read uninitialized memory (garbage values).
+            //
+            // Stage 14.88 (Round 4 audit fix): For non-Ident sub-patterns
+            // (e.g., nested tuple, struct, or enum variant), first extract
+            // the field to a temp local, then recurse with that temp as the
+            // new scrut_local. Was: recursed with the OUTER scrut_local,
+            // causing nested patterns to read from the wrong place.
             for (i, sub_pat) in pats.iter().enumerate() {
                 if let HirPatKind::Ident(_mode, _ident, _) = &sub_pat.kind {
                     let field_ty = cx.fresh_infer_ty(sub_pat.span);
@@ -283,9 +383,24 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                         })),
                         sub_pat.span,
                     );
+                } else {
+                    // Stage 14.88: Non-Ident sub-pattern — extract field to
+                    // temp local, then recurse with temp as new scrut_local.
+                    let field_ty = cx.fresh_infer_ty(sub_pat.span);
+                    let temp_local = cx.mir.new_local(field_ty.clone(), None, sub_pat.span);
+                    cx.push_assign(
+                        Place::local(temp_local, sub_pat.span),
+                        Rvalue::Use(Operand::Copy(Place {
+                            kind: PlaceKind::Projection(
+                                Box::new(Place::local(scrut_local, span)),
+                                ProjectionElem::Field(FieldId(i as u32), field_ty),
+                            ),
+                            span: sub_pat.span,
+                        })),
+                        sub_pat.span,
+                    );
+                    lower_enum_variant_pattern_bindings(cx, temp_local, sub_pat);
                 }
-                // Recurse for nested patterns (e.g., (a, (b, c)))
-                lower_enum_variant_pattern_bindings(cx, scrut_local, sub_pat);
             }
         }
         _ => {}

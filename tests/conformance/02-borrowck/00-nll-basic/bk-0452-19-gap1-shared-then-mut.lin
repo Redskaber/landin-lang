@@ -1,0 +1,13 @@
+// CATEGORY: borrowck
+// DESCRIPTION: GAP-1 fix: shared then mut borrow must be rejected (Stage 14.81)
+// EXPECTED: compile_error
+// ERROR_PATTERN: cannot borrow
+// SOURCE: Stage 14.81 — GAP-1 NLL soundness fix
+
+fn main() {
+    let mut x = 1;
+    let r = &x;        // shared borrow OK
+    let r2 = &mut x;   // ERROR: cannot mutably borrow x while r is alive
+    println!("{}", *r);
+    *r2 = 10;
+}

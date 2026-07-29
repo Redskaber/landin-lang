@@ -336,7 +336,21 @@ impl BorrowChecker {
                 //   r = Move(tmp)  (transfer ref_local to r)
                 // Without this transfer, NLL would track tmp's lifetime
                 // instead of r's, causing borrows to expire too early.
-                if let Operand::Move(lv) = op {
+                //
+                // Stage 14.81 (GAP-1 soundness fix): ALSO handle
+                // `Operand::Copy` of a ref_temp. References (`&T`, `&mut T`)
+                // are Copy types — `let r = &x;` lowers to `r = Copy(tmp)`
+                // (not Move) because `TyKind::Ref` is in the `is_copy` set
+                // in `lower_block`. The previous code only transferred for
+                // Move, so the borrow's ref_local stayed as `tmp` — and NLL
+                // killed it at `tmp`'s last use (which is the Copy itself),
+                // causing subsequent `&mut x` to silently succeed.
+                //
+                // Per §1.0 原則 5 "报错 > 静默": this is the root cause of
+                // GAP-1 — `let r1 = &mut x; let r2 = &mut x;` was silently
+                // accepted because r1's borrow was killed at tmp1's last
+                // use (the Copy statement), not at r1's last use (later).
+                if let Operand::Move(lv) | Operand::Copy(lv) = op {
                     if let PlaceKind::Local(ref_local_src) = lv.kind {
                         if let Some(lhs) = lhs_local {
                             self.borrows.transfer_borrow_ref(ref_local_src, lhs);

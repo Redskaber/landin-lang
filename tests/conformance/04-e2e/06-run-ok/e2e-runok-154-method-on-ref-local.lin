@@ -1,0 +1,18 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Method call on local ref variable — Stage 14.90
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 30
+// SOURCE: Stage 14.90 — Bug X2 fix: `let r = &p; r.method()` crashed because
+//         method resolution couldn't trace through the reference to find p's
+//         type, and the receiver was double-referenced (&&T instead of &T).
+
+struct Point { x: i32, y: i32 }
+impl Point {
+    fn sum(&self) -> i32 { self.x + self.y }
+}
+fn main() -> i32 {
+    let p = Point { x: 10, y: 20 };
+    let r = &p;
+    println!("{}", r.sum());  // 30
+    0
+}

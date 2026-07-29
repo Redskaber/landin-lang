@@ -816,6 +816,284 @@ pub fn compile(src: &str) -> CompileResult {
         // point, MIR is self-contained — codegen doesn't need HIR.
         crate::mir::lower::populate_adt_layouts(&mut mir, &hir);
 
+        // Stage 14.82 (GAP-7 partial fix): Write back resolved types to
+        // closure substs.
+        //
+        // When `let f = || p.x;` is lowered, the closure's substs capture
+        // `p`'s MIR type — which is `Infer(TyVar)` at MIR-lowering time
+        // (typeck hasn't run yet). After typeck, `p`'s local type is
+        // resolved to `Adt(Point, [])` — but the closure's substs still
+        // hold the stale `Infer(TyVar)` type.
+        //
+        // Without this writeback, `mir_type_to_emit_type_with_layouts`
+        // for the closure local falls back to `EmitType::I32` (the
+        // catch-all for Infer), causing the closure struct to be typed
+        // `{ i32 }` instead of `{ { i32, i32 } }` — crashing LLVM
+        // verification with "Invalid InsertValueInst operands!".
+        //
+        // Stage 14.84 (audit fix): The Stage 14.82 writeback only updated
+        // `AggregateKind::Closure` substs (used for insertvalue type) but
+        // NOT the closure local's `local_decl.ty` (used for alloca size +
+        // store type). This caused the alloca to be `{ i32 }` (4 bytes)
+        // while the store was `{ { i32, i32 } }` (8 bytes) — LLVM silently
+        // truncated, making `|| p.x` work (field 0) but `|| p.y` (field 1)
+        // read uninitialized memory.
+        //
+        // Fix: ALSO update the closure local's `local_decl.ty` after
+        // updating the AggregateKind substs. The closure local is the
+        // destination of the `Aggregate(Closure, ...)` rvalue — look it
+        // up via the Assign's LHS place.
+        //
+        // Stage 14.84 (audit fix #2): The user-visible `f` local (the
+        // destination of `f = Move(closure_tmp)`) ALSO needs its type
+        // updated. MIR-lower produces two statements:
+        //   1. closure_tmp = Aggregate(Closure, operands)  — closure_tmp.ty = Closure(def_id, [Infer])
+        //   2. f = Move(closure_tmp)                       — f.ty = Closure(def_id, [Infer])
+        // After updating closure_tmp.ty in step 1's handling, we ALSO
+        // need to walk `Rvalue::Use(Operand::Move(closure_tmp))` statements
+        // and propagate the updated type to f.
+        //
+        // Per §1.0 原則 5 "报错 > 静默": silent wrong output for field 1+
+        // was the worst kind of bug — fixed by also updating local_decl.ty
+        // and propagating through Move.
+        for bb in &mut mir.basic_blocks {
+            for stmt_idx in 0..bb.statements.len() {
+                let (lhs_local_id, resolved_substs, closure_def_id) = {
+                    let stmt = &bb.statements[stmt_idx];
+                    if let crate::mir::body::StatementKind::Assign(boxed) = &stmt.kind {
+                        let (place, rvalue) = &**boxed;
+                        if let crate::mir::place::Rvalue::Aggregate(
+                            crate::mir::place::AggregateKind::Closure(def_id, _substs),
+                            operands,
+                        ) = rvalue
+                        {
+                            // Get the LHS localId (the closure tmp local)
+                            let lhs_local_id = match &place.kind {
+                                crate::mir::place::PlaceKind::Local(id) => Some(*id),
+                                _ => None,
+                            };
+                            // Snapshot the source local IDs and resolved types
+                            let src_local_ids: Vec<Option<crate::mir::place::LocalId>> = operands
+                                .iter()
+                                .map(|op| match op {
+                                    crate::mir::place::Operand::Copy(p)
+                                    | crate::mir::place::Operand::Move(p) => {
+                                        if let crate::mir::place::PlaceKind::Local(id) = &p.kind {
+                                            Some(*id)
+                                        } else {
+                                            None
+                                        }
+                                    }
+                                    _ => None,
+                                })
+                                .collect();
+                            // For each subst, look up the source local's resolved type
+                            let resolved_substs: Vec<Option<crate::mir::ty::Ty>> = src_local_ids
+                                .iter()
+                                .map(|src_id_opt| {
+                                    src_id_opt
+                                        .and_then(|src_id| mir.local_decls.get(src_id.0 as usize))
+                                        .map(|ld| ld.ty.clone())
+                                        .filter(|ty| {
+                                            !matches!(&ty.kind, crate::mir::ty::TyKind::Infer(_))
+                                        })
+                                })
+                                .collect();
+                            (lhs_local_id, resolved_substs, Some(*def_id))
+                        } else {
+                            (None, vec![], None)
+                        }
+                    } else {
+                        (None, vec![], None)
+                    }
+                };
+
+                // Now mutate: update AggregateKind substs AND the closure
+                // local's local_decl.ty
+                if let Some(closure_def_id) = closure_def_id {
+                    if !resolved_substs.is_empty() {
+                        let new_substs: Vec<crate::mir::ty::Ty> = resolved_substs
+                            .iter()
+                            .map(|opt| {
+                                opt.clone().unwrap_or_else(|| {
+                                    crate::mir::ty::Ty::new(
+                                        crate::mir::ty::TyKind::Error,
+                                        crate::session::Span::DUMMY,
+                                    )
+                                })
+                            })
+                            .collect();
+                        if let crate::mir::body::StatementKind::Assign(boxed) =
+                            &mut bb.statements[stmt_idx].kind
+                        {
+                            let (_, rv) = &mut **boxed;
+                            if let crate::mir::place::Rvalue::Aggregate(
+                                crate::mir::place::AggregateKind::Closure(_, substs),
+                                _,
+                            ) = rv
+                            {
+                                for (i, resolved_ty_opt) in resolved_substs.iter().enumerate() {
+                                    if let Some(ty) = resolved_ty_opt {
+                                        if i < substs.len() {
+                                            substs[i] = ty.clone();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Stage 14.84 (audit fix): Also update the closure
+                        // local's local_decl.ty so the alloca size matches.
+                        if let Some(lhs_id) = lhs_local_id {
+                            if let Some(lhs_ld) = mir.local_decls.get_mut(lhs_id.0 as usize) {
+                                let new_closure_ty = crate::mir::ty::Ty::new(
+                                    crate::mir::ty::TyKind::Closure(
+                                        closure_def_id,
+                                        new_substs.clone(),
+                                    ),
+                                    lhs_ld.ty.span,
+                                );
+                                lhs_ld.ty = new_closure_ty.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stage 14.84 (audit fix #2): Propagate updated closure types
+        // through `f = Move(closure_tmp)` statements. After the loop above,
+        // closure_tmp has the correct `Closure(_, [resolved_substs])` type.
+        // But the user-visible `f` local (assigned via Move(closure_tmp))
+        // still has the stale `Closure(_, [Infer])` type.
+        //
+        // Walk `Rvalue::Use(Operand::Move(closure_tmp))` statements. If
+        // the source local's type is now `Closure(_, substs)` (not Infer),
+        // propagate it to the LHS local.
+        #[allow(clippy::collapsible_match)]
+        for bb in &mut mir.basic_blocks {
+            for stmt in &mut bb.statements {
+                if let crate::mir::body::StatementKind::Assign(boxed) = &mut stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let crate::mir::place::Rvalue::Use(op) = rvalue {
+                        if let crate::mir::place::Operand::Move(src_place) = op {
+                            if let crate::mir::place::PlaceKind::Local(src_id) = &src_place.kind {
+                                if let Some(src_ld) = mir.local_decls.get(src_id.0 as usize) {
+                                    let src_ty = src_ld.ty.clone();
+                                    // Source must be a Closure with all substs resolved (not Infer)
+                                    let src_ok = matches!(&src_ty.kind,
+                                        crate::mir::ty::TyKind::Closure(_, substs)
+                                        if !substs.iter().any(|s| matches!(
+                                            &s.kind,
+                                            crate::mir::ty::TyKind::Infer(_)
+                                        ))
+                                    );
+                                    if src_ok {
+                                        if let crate::mir::place::PlaceKind::Local(lhs_id) =
+                                            &place.kind
+                                        {
+                                            if let Some(lhs_ld) =
+                                                mir.local_decls.get_mut(lhs_id.0 as usize)
+                                            {
+                                                // Only update if LHS is still Infer or stale Closure
+                                                let needs_update = matches!(
+                                                    &lhs_ld.ty.kind,
+                                                    crate::mir::ty::TyKind::Infer(_)
+                                                ) || matches!(&lhs_ld.ty.kind,
+                                                    crate::mir::ty::TyKind::Closure(_, substs)
+                                                    if substs.iter().any(|s| matches!(
+                                                        &s.kind,
+                                                        crate::mir::ty::TyKind::Infer(_)
+                                                    ))
+                                                );
+                                                if needs_update {
+                                                    lhs_ld.ty = src_ty;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stage 14.84 (audit fix #3): Update extract locals' types for
+        // closure captures. When `lower_closure_call_inline` extracts
+        // captures, it creates `extract_local = Copy(Projection(closure_local,
+        // Field(i, cap_ty)))` where `cap_ty` came from `info.captures[i].1`
+        // — set at MIR-lower time with the stale `Infer(TyVar)` type.
+        //
+        // After the Stage 14.84 audit fix #1 (closure local's local_decl.ty
+        // updated with resolved substs), we can now walk extract statements
+        // and update the extract local's type from the closure local's
+        // resolved subst.
+        //
+        // Pattern: `extract_local = Use(Copy(Projection(closure_local, Field(i, _))))`
+        // The extract local's type should match `closure_local.substs[i]`.
+        //
+        // Per §1.0 原則 5 "报错 > 静默": stale extract types caused wrong
+        // codegen for `|| p.y` (field 1+ access) — fixed by syncing the
+        // extract local's type from the closure's resolved substs.
+        #[allow(clippy::collapsible_match)]
+        for bb in &mut mir.basic_blocks {
+            for stmt in &mut bb.statements {
+                if let crate::mir::body::StatementKind::Assign(boxed) = &mut stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    // Match: extract_local = Use(Copy(Projection(closure_local, Field(i, _))))
+                    if let crate::mir::place::Rvalue::Use(op) = rvalue {
+                        if let crate::mir::place::Operand::Copy(src_place) = op {
+                            if let crate::mir::place::PlaceKind::Projection(base, elem) =
+                                &src_place.kind
+                            {
+                                if let crate::mir::place::ProjectionElem::Field(field_id, _) = elem
+                                {
+                                    if let crate::mir::place::PlaceKind::Local(closure_local_id) =
+                                        &base.kind
+                                    {
+                                        // Get the closure's resolved subst at field_id
+                                        let resolved_cap_ty = mir
+                                            .local_decls
+                                            .get(closure_local_id.0 as usize)
+                                            .and_then(|ld| {
+                                                if let crate::mir::ty::TyKind::Closure(_, substs) =
+                                                    &ld.ty.kind
+                                                {
+                                                    substs.get(field_id.0 as usize).cloned()
+                                                } else {
+                                                    None
+                                                }
+                                            });
+                                        if let Some(cap_ty) = resolved_cap_ty {
+                                            // Update the extract local's type
+                                            if let crate::mir::place::PlaceKind::Local(lhs_id) =
+                                                &place.kind
+                                            {
+                                                if let Some(lhs_ld) =
+                                                    mir.local_decls.get_mut(lhs_id.0 as usize)
+                                                {
+                                                    if matches!(
+                                                        &lhs_ld.ty.kind,
+                                                        crate::mir::ty::TyKind::Infer(_)
+                                                    ) {
+                                                        lhs_ld.ty = cap_ty;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Also re-populate adt_layouts after closure subst writeback (the
+        // substs may now reference Adts that weren't registered before).
+        crate::mir::lower::populate_adt_layouts(&mut mir, &hir);
+
         mirs.push(mir);
     }
 

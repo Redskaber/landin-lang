@@ -1,7 +1,9 @@
 // CATEGORY: borrowck
 // DESCRIPTION: mut then shared variant 4
-// EXPECTED: compile_ok
+// EXPECTED: compile_error
+// ERROR_PATTERN: cannot borrow
 // STAGE_13.17: Flipped from compile_error (self binding fix)
+// STAGE_14.81: Flipped BACK to compile_error (GAP-1 NLL soundness fix — transfer_borrow_ref for Operand::Copy)
 // SOURCE: Stage 11.9 batch expansion
 
 fn main(){let mut x=1;let r=&mut x;let r2=&x;}

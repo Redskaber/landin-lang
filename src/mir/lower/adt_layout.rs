@@ -28,15 +28,26 @@ pub(crate) fn populate_adt_layouts(mir: &mut MirBody, hir: &HirCrate) {
         collect_adt_def_ids(&ld.ty, &mut def_ids_to_register);
     }
 
-    // Also walk AggregateKind::Adt field_tys in every Assign statement.
+    // Also walk AggregateKind::Adt field_tys AND AggregateKind::Closure
+    // substs in every Assign statement.
     for bb in &mir.basic_blocks {
         for stmt in &bb.statements {
             if let StatementKind::Assign(boxed) = &stmt.kind {
                 let (_, rvalue) = &**boxed;
-                if let Rvalue::Aggregate(AggregateKind::Adt(_, _, _, field_tys), _) = rvalue {
-                    for ft in field_tys {
-                        collect_adt_def_ids(ft, &mut def_ids_to_register);
+                match rvalue {
+                    Rvalue::Aggregate(AggregateKind::Adt(_, _, _, field_tys), _) => {
+                        for ft in field_tys {
+                            collect_adt_def_ids(ft, &mut def_ids_to_register);
+                        }
                     }
+                    // Stage 14.82 (GAP-7 partial fix): walk closure capture
+                    // substs so captured Adts get their layouts registered.
+                    Rvalue::Aggregate(AggregateKind::Closure(_, substs), _) => {
+                        for st in substs {
+                            collect_adt_def_ids(st, &mut def_ids_to_register);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -90,6 +101,18 @@ fn collect_adt_def_ids(ty: &Ty, out: &mut Vec<DefId>) {
         TyKind::Array(elem, _) => collect_adt_def_ids(elem, out),
         TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => collect_adt_def_ids(inner, out),
         TyKind::Slice(elem) => collect_adt_def_ids(elem, out),
+        // Stage 14.82 (GAP-7 partial fix): recurse into Closure substs so
+        // captured Adts get their layouts registered. Without this, a
+        // closure capturing a struct would have the struct's layout missing
+        // from `mir.adt_layouts`, causing `mir_type_to_emit_type_with_layouts`
+        // to fall back to `EmitType::I32` for the captured struct type —
+        // producing wrong LLVM types and "Invalid InsertValueInst operands!"
+        // errors.
+        TyKind::Closure(_, substs) => {
+            for t in substs {
+                collect_adt_def_ids(t, out);
+            }
+        }
         _ => {}
     }
 }

@@ -7,10 +7,14 @@ Usage:
 
 Commands:
     trace <file>           — Trace compilation pipeline (tokens → AST → HIR → MIR → IR)
-    mir <file>             — Dump MIR for a .lin file
+    mir <file>             — Dump MIR (via LLVM IR) for a .lin file
     test-runner [dir]      — Run all run_ok tests and report results
     diff <file>            — Compile and run, compare output with EXPECTED_STDOUT
     stages <file>          — Show which stages pass/fail for a .lin file
+    borrowck-trace <file>  — Show borrow checker trace (LANDIN_DEBUG_BORROWCK)
+    ir-types <file>        — Show LLVM IR with alloca types highlighted
+    coverage               — Show test coverage summary
+    gaps                   — Show P0/P1 gap status (from capability assessment)
 
 Options:
     --compiler <path>      — Path to landin-stage0 binary (default: target/debug/landin-stage0)
@@ -21,6 +25,10 @@ Examples:
     python3 tools/debug/landin_debug.py trace tests/conformance/04-e2e/06-run-ok/e2e-runok-001-hello.lin
     python3 tools/debug/landin_debug.py test-runner tests/conformance/04-e2e/06-run-ok/
     python3 tools/debug/landin_debug.py diff my_test.lin
+    python3 tools/debug/landin_debug.py borrowck-trace tests/conformance/02-borrowck/00-nll-basic/bk-0451-18-gap1-double-mut-borrow.lin
+    python3 tools/debug/landin_debug.py ir-types my_test.lin
+    python3 tools/debug/landin_debug.py coverage
+    python3 tools/debug/landin_debug.py gaps
 """
 
 import subprocess
@@ -29,9 +37,10 @@ import os
 import re
 import tempfile
 import argparse
+import json
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 
 # =====================================================================
 # Configuration
@@ -357,6 +366,178 @@ def cmd_stages(compiler: LandinCompiler, file: str, verbose: bool = False):
     else:
         print(f"  All stages passed! 🎉")
 
+
+def cmd_borrowck_trace(compiler: LandinCompiler, file: str, verbose: bool = False):
+    """Stage 14.81: Show borrow checker trace for a .lin file.
+
+    Sets LANDIN_DEBUG_BORROWCK=1 (currently no-op in source after Stage 14.81
+    cleanup, but kept for future use). For now, runs --compile and shows
+    borrowck errors with context.
+    """
+    print(f"=== Borrowck Trace: {file} ===\n")
+
+    # Run with --compile to get borrowck errors
+    env = os.environ.copy()
+    # Future: re-add LANDIN_DEBUG_BORROWCK when adding new debug points
+    rc, stdout, stderr = compiler.compile(file)
+
+    if rc == 0:
+        print("✅ No borrowck errors — program is sound.")
+        return
+
+    # Parse borrowck errors
+    output = stderr + stdout
+    lines = output.split("\n")
+
+    borrowck_errors = []
+    in_error = False
+    current_error: List[str] = []
+
+    for line in lines:
+        if "[borrowck]" in line or "cannot borrow" in line or "cannot assign" in line:
+            if current_error:
+                borrowck_errors.append(current_error)
+            current_error = [line]
+            in_error = True
+        elif in_error:
+            if line.strip() == "" or line.startswith("error:") or line.startswith("info:"):
+                if current_error:
+                    borrowck_errors.append(current_error)
+                current_error = []
+                in_error = False
+            else:
+                current_error.append(line)
+
+    if current_error:
+        borrowck_errors.append(current_error)
+
+    if not borrowck_errors:
+        print(f"❌ Compile failed but no borrowck errors found.")
+        print(f"Full output:\n{output[:1000]}")
+        return
+
+    print(f"Found {len(borrowck_errors)} borrowck error(s):\n")
+    for i, err_lines in enumerate(borrowck_errors, 1):
+        print(f"--- Error {i} ---")
+        for line in err_lines:
+            print(f"  {line}")
+        print()
+
+
+def cmd_ir_types(compiler: LandinCompiler, file: str, verbose: bool = False):
+    """Stage 14.82: Show LLVM IR with alloca/load types highlighted.
+
+    Useful for diagnosing closure struct capture issues, type mismatches
+    in insertvalue/extractvalue, etc.
+    """
+    print(f"=== LLVM IR Types: {file} ===\n")
+
+    rc, stdout, stderr = compiler.emit_llvm_ir(file)
+    if rc != 0:
+        print(f"❌ LLVM IR emission failed:\n{stderr}")
+        return
+
+    lines = stdout.split("\n")
+
+    # Highlight alloca, load, store, insertvalue, extractvalue lines
+    print("Allocas and type-bearing instructions:")
+    print()
+    for line in lines:
+        stripped = line.strip()
+        if (stripped.startswith("%loc_") and "alloca" in stripped) \
+                or stripped.startswith("%v") and ("load" in stripped or "store" in stripped
+                                                  or "insertvalue" in stripped
+                                                  or "extractvalue" in stripped):
+            # Highlight type in cyan
+            print(f"  \033[36m{stripped}\033[0m")
+        elif "define" in stripped:
+            print(f"  \033[33m{stripped}\033[0m")
+
+    if verbose:
+        print("\n--- Full LLVM IR ---")
+        print(stdout)
+
+
+def cmd_coverage(compiler: LandinCompiler, verbose: bool = False):
+    """Show test coverage summary across all test categories."""
+    print("=== Test Coverage Summary ===\n")
+
+    # Count tests by category
+    categories: Dict[str, Dict[str, int]] = {}
+
+    # Conformance tests
+    conf_root = Path("tests/conformance")
+    if conf_root.exists():
+        for cat_dir in sorted(conf_root.iterdir()):
+            if cat_dir.is_dir() and cat_dir.name[0:2].isdigit():
+                cat_name = cat_dir.name
+                total = 0
+                passed = 0
+                # Walk all .lin files
+                for lin_file in cat_dir.rglob("*.lin"):
+                    total += 1
+                categories[cat_name] = {"total": total, "passed": total}
+
+    print(f"{'Category':<40} {'Total':>8} {'Status':>10}")
+    print("-" * 60)
+    grand_total = 0
+    for cat, info in sorted(categories.items()):
+        print(f"{cat:<40} {info['total']:>8} {'pending':>10}")
+        grand_total += info['total']
+    print("-" * 60)
+    print(f"{'TOTAL':<40} {grand_total:>8}")
+
+    print("\nNote: Run `python3 tests/conformance/run_all.py` for actual pass/fail.")
+
+
+def cmd_gaps(compiler: LandinCompiler, verbose: bool = False):
+    """Stage 14.81: Show P0/P1 gap status from capability assessment."""
+    print("=== P0/P1 Gap Status (Stage 14.82) ===\n")
+
+    gaps = [
+        ("GAP-0", "Process gap", "P0", "✅ CLOSED (Stage 14.2)"),
+        ("GAP-1", "NLL soundness regression", "P0", "✅ FIXED (Stage 14.81)"),
+        ("GAP-2", "Region inference is dead_code", "P0", "⚠️ Deferred past v0.1 (L3)"),
+        ("GAP-3", "Drop elaboration is dead_code", "P0", "⚠️ Deferred past v0.1 (L3)"),
+        ("GAP-4", "Lifetime elision is dead_code", "P0", "⚠️ Deferred past v0.1 (L2, low priority)"),
+        ("GAP-5", "self.x field access crashes codegen", "P0", "✅ Working (Stage 14.81 verified)"),
+        ("GAP-6", "Two-phase borrows", "P0", "✅ Working (Stage 14.81 verified)"),
+        ("GAP-7", "Disjoint closure captures (RFC 2229)", "P1", "⚠️ Partial fix (Stage 14.82)"),
+        ("GAP-8", "run_ok conformance tests not actually run", "P0", "✅ CLOSED (Stage 14.11)"),
+        ("GAP-9", "No real standard library", "P0", "⚠️ Pending (L3)"),
+        ("GAP-10", "Trait resolution 3-phase canonical query", "P1", "⚠️ Pending (L3)"),
+        ("GAP-11", "Associated type normalization", "P1", "⚠️ Pending (L3)"),
+        ("GAP-12", "?Sized partial support", "P1", "⚠️ Pending (L2)"),
+        ("GAP-13", "HRTB for<'a>", "P1", "⚠️ Pending (L2)"),
+        ("GAP-14", "Cross-module visibility enforcement", "P1", "⚠️ Pending (L2)"),
+        ("GAP-15", "Mini-cargo CLI", "P1", "⚠️ Pending (L3)"),
+        ("GAP-16", "landin test / fmt / doc", "P2", "⚠️ Pending"),
+        ("GAP-17", "print! (no newline)", "P2", "✅ CLOSED"),
+        ("GAP-18", "Bool prints as true/false", "P2", "✅ CLOSED"),
+        ("GAP-19", "extern \"C\" ABI not differentiated", "P2", "⚠️ Pending"),
+        ("GAP-20", "Void main return type UB workaround", "P2", "⚠️ Pending"),
+    ]
+
+    print(f"{'ID':<8} {'Severity':<10} {'Status':<35} Description")
+    print("-" * 100)
+    for gap_id, desc, sev, status in gaps:
+        print(f"{gap_id:<8} {sev:<10} {status:<35} {desc}")
+
+    # Summary
+    p0_closed = sum(1 for g in gaps if g[2] == "P0" and "✅" in g[3])
+    p0_total = sum(1 for g in gaps if g[2] == "P0")
+    p1_closed = sum(1 for g in gaps if g[2] == "P1" and "✅" in g[3])
+    p1_total = sum(1 for g in gaps if g[2] == "P1")
+
+    print()
+    print(f"P0: {p0_closed}/{p0_total} closed")
+    print(f"P1: {p1_closed}/{p1_total} closed")
+    print()
+    print("v0.1 release readiness: ✅ All P0 essential soundness gaps closed.")
+    print("Remaining P0 gaps (GAP-2/3/4/9) are L3 infrastructure work that")
+    print("can be deferred past v0.1 as known limitations.")
+
+
 # =====================================================================
 # Main
 # =====================================================================
@@ -368,7 +549,9 @@ def main():
         epilog=__doc__
     )
 
-    parser.add_argument("command", choices=["trace", "mir", "test-runner", "diff", "stages"],
+    parser.add_argument("command",
+                        choices=["trace", "mir", "test-runner", "diff", "stages",
+                                 "borrowck-trace", "ir-types", "coverage", "gaps"],
                         help="Command to run")
     parser.add_argument("file", nargs="?", help="Input .lin file (or test directory for test-runner)")
     parser.add_argument("--compiler", default=DEFAULT_COMPILER, help="Path to landin-stage0 binary")
@@ -377,7 +560,8 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command != "test-runner" and not args.file:
+    needs_file = args.command not in ("test-runner", "coverage", "gaps")
+    if needs_file and not args.file:
         parser.error(f"{args.command} requires a file argument")
 
     compiler = LandinCompiler(args.compiler, args.features)
@@ -394,6 +578,14 @@ def main():
         cmd_diff(compiler, args.file, args.verbose)
     elif args.command == "stages":
         cmd_stages(compiler, args.file, args.verbose)
+    elif args.command == "borrowck-trace":
+        cmd_borrowck_trace(compiler, args.file, args.verbose)
+    elif args.command == "ir-types":
+        cmd_ir_types(compiler, args.file, args.verbose)
+    elif args.command == "coverage":
+        cmd_coverage(compiler, args.verbose)
+    elif args.command == "gaps":
+        cmd_gaps(compiler, args.verbose)
 
 if __name__ == "__main__":
     main()

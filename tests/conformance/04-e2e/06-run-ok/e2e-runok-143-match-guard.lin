@@ -1,0 +1,34 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Match arms with guards — Stage 14.86
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 0\n-1\n1\n2\n5\n100
+// SOURCE: Stage 14.86 — fixed match guards (was: guards silently ignored,
+//         causing `x if x < 10 => 1` to match even when x >= 10)
+
+fn classify(n: i32) -> i32 {
+    match n {
+        0 => 0,
+        x if x < 0 => -1,
+        x if x < 10 => 1,
+        _ => 2,
+    }
+}
+
+fn classify_with_ident(n: i32) -> i32 {
+    match n {
+        0 => 0,
+        x if x < 10 => x,  // returns the bound value
+        _ => 100,
+    }
+}
+
+fn main() -> i32 {
+    println!("{}", classify(0));    // 0
+    println!("{}", classify(-5));   // -1
+    println!("{}", classify(5));    // 1
+    println!("{}", classify(100));  // 2
+    println!("{}", classify_with_ident(5));   // 5 (x < 10, returns x = 5)
+    println!("{}", classify_with_ident(20));  // 100 (x < 10 is false, falls to _)
+    0
+}
+

@@ -1,0 +1,15 @@
+// CATEGORY: borrowck
+// DESCRIPTION: GAP-1 fix: NLL — sequential mut borrows OK after last use (Stage 14.81)
+// EXPECTED: compile_ok
+// SOURCE: Stage 14.81 — GAP-1 NLL soundness fix (should still accept NLL-valid patterns)
+
+fn main() -> i32 {
+    let mut x = 5;
+    let r1 = &mut x;
+    *r1 = 10;
+    println!("{}", *r1);  // last use of r1
+    let r2 = &mut x;       // OK — r1's borrow expired after last use
+    *r2 = 20;
+    println!("{}", x);
+    0
+}

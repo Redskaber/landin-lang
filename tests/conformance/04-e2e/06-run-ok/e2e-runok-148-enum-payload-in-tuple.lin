@@ -1,0 +1,21 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Enum payload binding inside tuple in match — Stage 14.88
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 42\n99
+// SOURCE: Stage 14.88 — Round 4 audit fix: enum variant payload binding
+//         inside tuple pattern was broken (bound to wrong field). Now
+//         correctly extracts the enum value to a temp local first, then
+//         extracts the payload from the temp local.
+
+enum Opt { None, Some(i32) }
+fn main() -> i32 {
+    let t: (Opt, i32) = (Opt::Some(42), 99);
+    match t {
+        (Opt::Some(v), n) => {
+            println!("{}", v);  // 42
+            println!("{}", n);  // 99
+        }
+        _ => { println!("none"); }
+    }
+    0
+}

@@ -1,0 +1,22 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Tuple struct with literal sub-patterns in match — Stage 14.89
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 100\n200\n300
+// SOURCE: Stage 14.89 — Bug 2 fix: tuple struct patterns with literal sub-patterns
+//         were not checked (fell through to catch-all). Now correctly checks
+//         each literal sub-pattern by positional field index.
+
+struct Pair(i32, i32);
+fn classify(p: Pair) -> i32 {
+    match p {
+        Pair(0, _) => 100,
+        Pair(1, _) => 200,
+        Pair(_, _) => 300,
+    }
+}
+fn main() -> i32 {
+    println!("{}", classify(Pair(0, 99)));   // 100
+    println!("{}", classify(Pair(1, 99)));   // 200
+    println!("{}", classify(Pair(5, 99)));   // 300
+    0
+}

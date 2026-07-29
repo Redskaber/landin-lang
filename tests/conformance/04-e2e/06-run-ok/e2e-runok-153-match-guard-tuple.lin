@@ -1,0 +1,19 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Match guard on tuple pattern — Stage 14.90
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 200
+// SOURCE: Stage 14.90 — Bug X1 fix: match guards on Tuple/TupleStruct/Struct
+//         patterns silently skipped the pattern check. Now correctly checks
+//         each literal sub-pattern before evaluating the guard.
+
+fn classify(t: (i32, i32)) -> i32 {
+    match t {
+        (0, _) if true => 100,
+        (1, _) if true => 200,
+        _ => 300,
+    }
+}
+fn main() -> i32 {
+    println!("{}", classify((1, 5)));  // 200
+    0
+}
