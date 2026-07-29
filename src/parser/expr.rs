@@ -347,6 +347,25 @@ impl<'a> Parser<'a> {
     pub(super) fn parse_postfix_expr(&mut self) -> Expr {
         let mut expr = self.parse_primary_expr();
 
+        // Stage 14.63: Block-like expressions (if/while/for/loop/match/block)
+        // at statement position are statement boundaries — postfix `(` and `[`
+        // must NOT be consumed greedily, otherwise:
+        //
+        //     while cond { ... }
+        //     (n, acc)
+        //
+        // would be misparsed as `while ... { ... }((n, acc))` — a Call to the
+        // while loop's unit result with a tuple argument — producing
+        // "expected function, found Tuple([])" at typeck time.
+        //
+        // Per Rust's grammar: ExpressionWithBlock cannot have postfix `(` or
+        // `[` applied directly without parens. `.` (method/field) and `?` (try)
+        // are still allowed because they're unambiguous postfix operators.
+        //
+        // Per §1.0 原则 3 "显式 > 隐式": explicit user parens required for
+        // Call/Index on block-like expression results.
+        let block_like = is_block_like_expr(&expr);
+
         loop {
             let span = expr.span();
             match self.peek() {
@@ -416,6 +435,13 @@ impl<'a> Parser<'a> {
                     }
                 }
                 TokenKind::LParen => {
+                    // Stage 14.63: Block-like expressions (if/while/match/etc.)
+                    // cannot be called directly — require explicit parens.
+                    // `while c { ... }(arg)` is parsed as two statements, not
+                    // as a Call. The user must write `(while c { ... })(arg)`.
+                    if block_like {
+                        break;
+                    }
                     self.bump();
                     let mut args = Vec::new();
                     while !matches!(self.peek(), TokenKind::RParen | TokenKind::Eof) {
@@ -432,6 +458,11 @@ impl<'a> Parser<'a> {
                     };
                 }
                 TokenKind::LBracket => {
+                    // Stage 14.63: Same as LParen — block-like expressions
+                    // cannot be indexed directly.
+                    if block_like {
+                        break;
+                    }
                     self.bump();
                     let index = self.parse_expr();
                     self.expect(&TokenKind::RBracket, "`]`");
@@ -1123,4 +1154,27 @@ impl ExprSpan for Expr {
             Expr::Async { span, .. } => *span,
         }
     }
+}
+
+/// Stage 14.63: Returns true if `expr` is an `ExpressionWithBlock` per Rust
+/// reference — i.e., an expression that begins a new block and acts as a
+/// statement boundary when followed by `(` or `[`.
+///
+/// Such expressions cannot have postfix Call/Index applied directly; the
+/// user must wrap them in parens: `(if c { 1 } else { 2 })(arg)`.
+///
+/// Includes: If, IfLet, Match, Loop, While, WhileLet, For, and bare Block.
+/// Excludes: closures, struct literals, etc. (which require explicit `(`).
+pub(super) fn is_block_like_expr(expr: &Expr) -> bool {
+    matches!(
+        expr,
+        Expr::If { .. }
+            | Expr::IfLet { .. }
+            | Expr::Match { .. }
+            | Expr::Loop { .. }
+            | Expr::While { .. }
+            | Expr::WhileLet { .. }
+            | Expr::For { .. }
+            | Expr::Block(_, _)
+    )
 }

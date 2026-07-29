@@ -180,6 +180,24 @@ pub fn codegen_crate_to_module(result: &crate::driver::CompileResult) -> LLVMSys
     // global to not exist yet when functions referenced it.
     emit_vtables(&result.trait_resolver, &result.interner, &mut emitter);
     emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, &mut emitter);
+    // Stage 14.65: Populate fn_sigs for forward-reference resolution.
+    //
+    // When a function returns another function as a value (e.g.,
+    // `fn adder(x) -> fn(i32) -> i32 { double }`), the FnDef constant
+    // `@landin_double` is referenced BEFORE `landin_double`'s body is
+    // emitted. Without fn_sigs, `interpret_adhoc` would create a forward
+    // declaration with a WRONG (variadic i32) signature, which then can't
+    // be reused by `emit_function_begin` (signature mismatch), causing
+    // "undefined reference" link errors.
+    //
+    // Fix: pass all function signatures to the emitter so forward
+    // declarations use the CORRECT signature. `emit_function_begin` will
+    // then reuse these declarations (Stage 14.63 forward-decl dedup).
+    //
+    // Per §1.0 原则 6 "通用 > 特例": one fn_sigs map handles all
+    // forward-reference cases (mutual recursion + fn pointer returns).
+    let fn_sigs_map = build_fn_sigs_map(&result.fn_name_by_def_id, &result.fn_sigs);
+    emitter.set_fn_sigs(fn_sigs_map);
     codegen_from_mir(
         &result.mirs,
         &result.body_metas,
@@ -189,6 +207,36 @@ pub fn codegen_crate_to_module(result: &crate::driver::CompileResult) -> LLVMSys
         &mut emitter,
     );
     emitter
+}
+
+/// Stage 14.65: Build a map from function name → (return type, param types)
+/// for the LLVMSysEmitter's forward-reference resolution.
+///
+/// Uses empty ADT layouts (forward declarations don't need precise ADT
+/// types — they only need the right primitive signature so that
+/// `emit_function_begin` can reuse the declaration).
+fn build_fn_sigs_map(
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
+) -> std::collections::HashMap<String, (EmitType, Vec<EmitType>)> {
+    use crate::codegen::emitter::EmitType;
+    use crate::codegen::mir_translation::mir_type_to_emit_type_with_layouts;
+    use crate::mir::body::AdtLayouts;
+
+    let layouts = AdtLayouts::new();
+    let mut map = std::collections::HashMap::new();
+    for (def_id, name) in fn_name_by_def_id {
+        if let Some(sig) = fn_sigs.get(def_id) {
+            let ret_ty = mir_type_to_emit_type_with_layouts(&sig.output, &layouts);
+            let param_tys: Vec<EmitType> = sig
+                .inputs
+                .iter()
+                .map(|t| mir_type_to_emit_type_with_layouts(t, &layouts))
+                .collect();
+            map.insert(name.clone(), (ret_ty, param_tys));
+        }
+    }
+    map
 }
 
 // Stage 6.7: emit_vtables and emit_dyn_trait_ptrs moved to trait_dispatch module.

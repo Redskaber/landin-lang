@@ -83,6 +83,29 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
     pat: &HirPat,
 ) {
     let span = pat.span;
+    // Stage 14.66: If scrut_local is a Ref (e.g., `match self { ... }`
+    // where `self: &Self`), dereference it before accessing fields.
+    //
+    // Without this, `self.0` on `&self` would GEP through the reference
+    // alloca directly, producing invalid IR
+    // (`getelementptr ptr, ptr %loc_1, 0, 0`).
+    //
+    // Fix: create a Deref projection on the scrut_local, so field accesses
+    // go through the loaded reference value.
+    let scrut_place = {
+        let scrut_ty = cx.mir.local(scrut_local).ty.clone();
+        if matches!(scrut_ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
+            Place {
+                kind: PlaceKind::Projection(
+                    Box::new(Place::local(scrut_local, span)),
+                    ProjectionElem::Deref,
+                ),
+                span,
+            }
+        } else {
+            Place::local(scrut_local, span)
+        }
+    };
     match &pat.kind {
         HirPatKind::TupleStruct(path, sub_pats) => {
             if let Res::Def(enum_def_id, crate::resolve::DefKind::Enum) = path.res {
@@ -105,7 +128,7 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                                 Place::local(binding_local, sub_pat.span),
                                 Rvalue::Use(Operand::Copy(Place {
                                     kind: PlaceKind::Projection(
-                                        Box::new(Place::local(scrut_local, span)),
+                                        Box::new(scrut_place.clone()),
                                         ProjectionElem::Field(FieldId(field_idx), field_ty),
                                     ),
                                     span: sub_pat.span,
@@ -155,7 +178,7 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                                 Place::local(binding_local, field_pat.pat.span),
                                 Rvalue::Use(Operand::Copy(Place {
                                     kind: PlaceKind::Projection(
-                                        Box::new(Place::local(scrut_local, span)),
+                                        Box::new(scrut_place.clone()),
                                         ProjectionElem::Field(FieldId(field_idx as u32), field_ty),
                                     ),
                                     span: field_pat.pat.span,
@@ -212,7 +235,7 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                                                 Place::local(binding_local, field_pat.pat.span),
                                                 Rvalue::Use(Operand::Copy(Place {
                                                     kind: PlaceKind::Projection(
-                                                        Box::new(Place::local(scrut_local, span)),
+                                                        Box::new(scrut_place.clone()),
                                                         ProjectionElem::Field(
                                                             FieldId(field_idx),
                                                             field_ty,

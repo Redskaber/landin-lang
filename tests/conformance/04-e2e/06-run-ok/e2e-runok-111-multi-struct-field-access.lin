@@ -1,0 +1,23 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Struct field access with multiple structs having same field names — Stage 14.64
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 0 0\n1 0
+// SOURCE: Stage 14.64 — field index resolution fallback returned 0 when multiple structs had the same
+// field name (ambiguous), causing u.y to read field 0 (x) instead of field 1 (y)
+
+struct Vec2 { x: i32, y: i32 }
+struct Point2 { x: i32, y: i32 }
+fn origin() -> Vec2 {
+    Vec2 { x: 0, y: 0 }
+}
+fn unit_x() -> Vec2 {
+    Vec2 { x: 1, y: 0 }
+}
+
+fn main() -> i32 {
+    let o = origin();
+    println!("{} {}", o.x, o.y);
+    let u = unit_x();
+    println!("{} {}", u.x, u.y);
+    0
+}

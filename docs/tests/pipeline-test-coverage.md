@@ -257,7 +257,7 @@ Each test cell has a status:
 
 ## 5. Tier 3: End-to-End (E2E) Path Coverage
 
-### 5.1 run_ok Tests (105 total — verified at runtime)
+### 5.1 run_ok Tests (119 total — verified at runtime)
 
 | Test ID | Feature | Expected Output | Status |
 |---------|---------|-----------------|--------|
@@ -366,6 +366,20 @@ Each test cell has a status:
 | E-103 | Struct with &str field + method | `30\nAlice` | ✅ |
 | E-104 | Reference array indexing (&[i32; 3]) | `10` | ✅ |
 | E-105 | &mut [i32; 3] array element mutation | `100 200 300` | ✅ |
+| E-106 | Mutual recursion (is_even/is_odd) | `true\ntrue\nfalse` | ✅ |
+| E-107 | While loop + trailing tuple expression | `5 120` | ✅ |
+| E-108 | Zero-field struct (`struct Unit;`) with methods | `42\n100` | ✅ |
+| E-109 | Conditional swap in loop (bubble sort pass) | `3 1 4 2 5` | ✅ |
+| E-110 | i64 arithmetic with large constants | `3000000000` | ✅ |
+| E-111 | Multi-struct field access (ambiguous names) | `0 0\n1 0` | ✅ |
+| E-112 | Char to int cast and back (`c as i32`, `n as char`) | `98` | ✅ |
+| E-113 | Float comparison result to Bool (`x > 0.0`) | `true\nfalse` | ✅ |
+| E-114 | Bool match with both true and false arms | `1\n0` | ✅ |
+| E-115 | Function returning fn pointer (forward reference) | `42` | ✅ |
+| E-116 | Loop with break value (`loop { break arr[i]; }`) | `8` | ✅ |
+| E-117 | Enum method with match on &self (`unwrap_or`) | `10\n99` | ✅ |
+| E-118 | Enum method returning enum (`map` with fn ptr) | `20\n0` | ✅ |
+| E-119 | 2D array search (matrix `[[i32;3];3]`, nested loops) | `true\nfalse` | ✅ |
 
 ### 5.2 Negative Tests (compile_error — 403 total)
 
@@ -400,15 +414,37 @@ Each test cell has a status:
 
 | Tier | Total Paths | Verified | Coverage |
 |------|-------------|----------|----------|
-| Tier 1: Per-Stage | 146 | 144 | 98.6% |
+| Tier 1: Per-Stage | 149 | 147 | 98.7% |
 | Tier 2: Inter-Stage | 15 | 15 | 100% |
-| Tier 3: E2E (run_ok) | 105 | 105 | 100% |
+| Tier 3: E2E (run_ok) | 119 | 119 | 100% |
 | Tier 3: E2E (compile_error) | 399 | 399 | 100% |
-| **Total** | **665** | **663** | **99.7%** |
+| **Total** | **682** | **680** | **99.7%** |
 
 **Unverified paths** (2):
 1. B-03: Double mutable borrow — NLL permissive (GAP-1, known limitation)
 2. B-04: Use after move — NLL permissive (GAP-1, known limitation)
+
+**Stage 14.63 additions** (3 new paths):
+- E-106: Mutual recursion (`is_even`/`is_odd`) — LLVMSysEmitter forward-decl dedup
+- E-107: While + trailing tuple — parser block-like statement boundary
+- E-108: Zero-field struct methods — ZST representation as `{}` not `void`
+
+**Stage 14.64 additions** (3 new paths):
+- E-109: Conditional swap in loop — Bool store coercion (i32→i1 trunc)
+- E-110: i64 arithmetic — integer constant width cast in codegen_operand + emit_store
+- E-111: Multi-struct field access — field index resolution ambiguity fix
+
+**Stage 14.65 additions** (4 new paths):
+- E-112: Char cast (`c as i32`, `n as char`) — integer-to-integer cast generalization (IntCast2)
+- E-113: Float comparison to Bool — typeck writeback skip for comparison ops
+- E-114: Bool match both arms — SwitchInt codegen checks both true AND false targets
+- E-115: Fn pointer forward reference — fn_sigs map for forward-decl with correct signature
+
+**Stage 14.66 additions** (4 new paths):
+- E-116: Loop break value — loop result local mutability fix (Mutable)
+- E-117: Enum method &self match — Deref projection for Ref scrutinees
+- E-118: Enum method map (returning enum) — Deref on value + Ref field access
+- E-119: 2D array search — nested loops with break + `[[i32;N];M]` indexing
 
 ---
 

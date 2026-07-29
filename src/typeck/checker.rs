@@ -353,7 +353,30 @@ impl TypeChecker {
                 if let StatementKind::Assign(boxed) = &stmt.kind {
                     let (place, rvalue) = &**boxed;
                     if let PlaceKind::Local(dest_id) = &place.kind {
-                        if let Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) = rvalue {
+                        if let Rvalue::BinaryOp(op, a, b) = rvalue {
+                            // Stage 14.65: Comparison ops (Eq/Ne/Lt/Le/Gt/Ge)
+                            // ALWAYS return Bool, regardless of operand types.
+                            // Skip the operand-type propagation for these ops,
+                            // otherwise `x > 0.0` (where 0.0 is f64) would
+                            // overwrite the result type with f64, causing
+                            // `store double %cmp_result, %bool_alloca` — a
+                            // type mismatch that silently miscompiles at runtime
+                            // (segfault when loading as i1).
+                            //
+                            // Per §1.0 原则 5 "报错 > 静默": comparison results
+                            // are always Bool, never the operand type.
+                            let is_comparison = matches!(
+                                op,
+                                BinOp::Eq
+                                    | BinOp::Ne
+                                    | BinOp::Lt
+                                    | BinOp::Le
+                                    | BinOp::Gt
+                                    | BinOp::Ge
+                            );
+                            if is_comparison {
+                                continue;
+                            }
                             let a_ty = self.resolve_operand_for_writeback(mir, a);
                             let b_ty = self.resolve_operand_for_writeback(mir, b);
                             let result_ty = if is_concrete_int_or_float(&a_ty) {

@@ -1,0 +1,35 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Enum method returning enum (map) — Stage 14.66
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 20\n0
+// SOURCE: Stage 14.66 — enum method `map` with fn pointer parameter and match on &self returning enum
+
+enum Opt2 {
+    None,
+    Some(i32),
+}
+impl Opt2 {
+    fn map(&self, f: fn(i32) -> i32) -> Opt2 {
+        match self {
+            Opt2::None => Opt2::None,
+            Opt2::Some(v) => Opt2::Some(f(*v)),
+        }
+    }
+    fn unwrap_or(&self, default: i32) -> i32 {
+        match self {
+            Opt2::None => default,
+            Opt2::Some(v) => *v,
+        }
+    }
+}
+
+fn double_val(x: i32) -> i32 { x * 2 }
+
+fn main() -> i32 {
+    let some = Opt2::Some(10);
+    let none = Opt2::None;
+    let mapped = some.map(double_val);
+    println!("{}", mapped.unwrap_or(0));
+    println!("{}", none.map(double_val).unwrap_or(0));
+    0
+}

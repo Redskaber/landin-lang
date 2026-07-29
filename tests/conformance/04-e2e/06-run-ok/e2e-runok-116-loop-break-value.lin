@@ -1,0 +1,26 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Loop with break value — Stage 14.66
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 8
+// SOURCE: Stage 14.66 — loop result local was Immutable, causing "cannot assign twice to immutable variable"
+// when break assigns to it. Fixed by using new_local_with_mut(Mutable).
+
+fn find_first_even(arr: [i32; 6]) -> i32 {
+    let mut i = 0;
+    let result = loop {
+        if i >= 6 {
+            break -1;
+        }
+        if arr[i] % 2 == 0 {
+            break arr[i];
+        }
+        i = i + 1;
+    };
+    result
+}
+
+fn main() -> i32 {
+    let arr = [1, 3, 5, 8, 9, 11];
+    println!("{}", find_first_even(arr));
+    0
+}

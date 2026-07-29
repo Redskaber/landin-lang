@@ -91,7 +91,89 @@ pub(crate) fn codegen_operand(
                         }
                     }
                 }
-                emitter.emit_const(&c.val)
+                // Stage 14.64: Cast INTEGER constants to their declared type.
+                //
+                // `emit_const` always creates an i32 constant for `ConstVal::Int`
+                // (because it doesn't know the target type). When the constant's
+                // actual type is i64 (e.g., `1_000_000_000` in an i64 context),
+                // storing the i32 value to an i64 alloca only writes 4 bytes,
+                // leaving the upper 4 bytes as garbage — producing wrong runtime
+                // values like `180228417674752` instead of `3000000000`.
+                //
+                // Fix: after `emit_const`, cast the value to the constant's
+                // declared type (`c.ty`) — but ONLY for integer types. For
+                // non-integer types (struct, enum, etc.), the constant's value
+                // is a placeholder (e.g., `0` for an enum variant discriminant)
+                // and the actual value is constructed elsewhere (via insertvalue).
+                // Casting i32 to struct would produce invalid IR
+                // (`bitcast i32 0 to { i32, i32 }`).
+                //
+                // Per §1.0 原则 3 "显式 > 隐式": the constant's type is
+                // explicitly tracked in `c.ty` and used for the cast.
+                // Per §1.0 原则 6 "通用 > 特例": one rule for all integer
+                // constants, regardless of width.
+                let raw = emitter.emit_const(&c.val);
+                let target_ty = mir_type_to_emit_type_with_layouts(&c.ty, layouts);
+                // Determine the source type based on the ConstVal variant.
+                // This must match what `emit_const` creates internally.
+                let src_ty = match &c.val {
+                    ConstVal::Int(_) | ConstVal::Uint(_) | ConstVal::Char(_) => EmitType::I32,
+                    ConstVal::Bool(_) => EmitType::I1,
+                    ConstVal::Float(_) => EmitType::F64,
+                    _ => return raw,
+                };
+                // Only cast if BOTH src and target are integer types.
+                // Casting i32 to struct/enum/etc. would produce invalid IR.
+                let is_int_cast = matches!(
+                    (&src_ty, &target_ty),
+                    (EmitType::I1, EmitType::I1)
+                        | (EmitType::I8, EmitType::I8)
+                        | (EmitType::I16, EmitType::I16)
+                        | (EmitType::I32, EmitType::I32)
+                        | (EmitType::I64, EmitType::I64)
+                        | (EmitType::I128, EmitType::I128)
+                        | (
+                            EmitType::I1,
+                            EmitType::I8
+                                | EmitType::I16
+                                | EmitType::I32
+                                | EmitType::I64
+                                | EmitType::I128
+                        )
+                        | (
+                            EmitType::I8,
+                            EmitType::I16 | EmitType::I32 | EmitType::I64 | EmitType::I128
+                        )
+                        | (
+                            EmitType::I16,
+                            EmitType::I32 | EmitType::I64 | EmitType::I128
+                        )
+                        | (EmitType::I32, EmitType::I64 | EmitType::I128)
+                        | (EmitType::I64, EmitType::I128)
+                        | (
+                            EmitType::I8
+                                | EmitType::I16
+                                | EmitType::I32
+                                | EmitType::I64
+                                | EmitType::I128,
+                            EmitType::I1
+                        )
+                        | (
+                            EmitType::I16 | EmitType::I32 | EmitType::I64 | EmitType::I128,
+                            EmitType::I8
+                        )
+                        | (
+                            EmitType::I32 | EmitType::I64 | EmitType::I128,
+                            EmitType::I16
+                        )
+                        | (EmitType::I64 | EmitType::I128, EmitType::I32)
+                        | (EmitType::I128, EmitType::I64)
+                );
+                if src_ty == target_ty || !is_int_cast {
+                    raw
+                } else {
+                    emitter.emit_cast(&src_ty, &target_ty, &raw)
+                }
             }
         },
         Operand::Copy(lv) | Operand::Move(lv) => {

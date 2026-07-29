@@ -55,12 +55,34 @@ pub(crate) fn codegen_terminator(
                 .iter()
                 .any(|(val, _)| matches!(val, ConstVal::Bool(_)));
             if is_bool_switch {
+                // Stage 14.65: Fix bool match with both true AND false arms.
+                //
+                // Previously, the codegen assumed "false goes to otherwise"
+                // and only checked for the `true` target. This was WRONG when
+                // the match had BOTH a `true => ...` and a `false => ...` arm:
+                //
+                //   match b { true => 1, false => 0 }
+                //
+                // The `false` arm's body was NEVER executed — the otherwise
+                // block was empty (or had stale content), so the result was
+                // uninitialized garbage (e.g., -976284176).
+                //
+                // Fix: check for BOTH `true` and `false` targets. If both are
+                // present (as separate arms), branch to each. If only one is
+                // present, the other goes to `otherwise` (legacy behavior).
+                //
+                // Per §1.0 原则 5 "报错 > 静默": both arms now execute their
+                // proper bodies, rather than silently skipping the false arm.
                 let true_bb = targets
                     .iter()
                     .find(|(val, _)| matches!(val, ConstVal::Bool(true)))
                     .map(|(_, bb)| bb.0)
                     .unwrap_or(otherwise.0);
-                let false_bb = otherwise.0;
+                let false_bb = targets
+                    .iter()
+                    .find(|(val, _)| matches!(val, ConstVal::Bool(false)))
+                    .map(|(_, bb)| bb.0)
+                    .unwrap_or(otherwise.0);
                 emitter.emit_br_cond(
                     &discr_val,
                     &format!("bb{}", true_bb),

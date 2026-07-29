@@ -1,0 +1,16 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Float comparison result stored to Bool — Stage 14.65
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: true\nfalse
+// SOURCE: Stage 14.65 — typeck writeback overwrote comparison result type with operand type (f64),
+// causing `store double %cmp_result, %bool_alloca` — a type mismatch that segfaulted at runtime
+
+fn is_positive(x: f64) -> bool {
+    x > 0.0
+}
+
+fn main() -> i32 {
+    println!("{}", is_positive(5.0));
+    println!("{}", is_positive(-3.0));
+    0
+}

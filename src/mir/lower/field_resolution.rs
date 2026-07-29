@@ -91,29 +91,44 @@ pub(crate) fn resolve_field_index(
                 }
             }
             // Fallback: search all structs (for tuple struct fields like .0, .1)
-            let mut found: Option<(u32,)> = None;
-            let mut ambiguous = false;
+            // Stage 14.64: When the field name appears in multiple structs,
+            // check if they all agree on the index. If so, return that index.
+            // Previously, any ambiguity caused a fallthrough to `return 0`,
+            // which silently produced wrong field accesses (e.g., `u.y` where
+            // u is Vec2 returned field 0 instead of field 1 because Point2
+            // also has a `y` field, making the search "ambiguous" even though
+            // both structs agree `y` is at index 1).
+            //
+            // Per §1.0 原则 5 "报错 > 静默": if all candidates agree, use the
+            // agreed-upon index rather than silently defaulting to 0.
+            // Per §1.0 原则 6 "通用 > 特例": one rule handles both the
+            // unambiguous case and the agreeable-ambiguous case.
+            let mut found_idx: Option<u32> = None;
+            let mut all_agree = true;
             for (_def_id, owner) in &hir_crate.owners {
                 if let OwnerNode::Item(HirItem::Struct(s)) = owner {
                     for (i, f) in s.fields.iter().enumerate() {
                         if let Some(f_ident) = &f.ident {
                             if f_ident.name == *field_name {
-                                if found.is_some() {
-                                    ambiguous = true;
-                                } else {
-                                    found = Some((i as u32,));
+                                match found_idx {
+                                    None => found_idx = Some(i as u32),
+                                    Some(existing) => {
+                                        if existing != i as u32 {
+                                            all_agree = false;
+                                        }
+                                    }
                                 }
                                 break;
                             }
                         }
                     }
-                }
-                if ambiguous {
-                    break;
+                    if !all_agree {
+                        break;
+                    }
                 }
             }
-            if let Some((idx,)) = found {
-                if !ambiguous {
+            if let Some(idx) = found_idx {
+                if all_agree {
                     return idx;
                 }
             }

@@ -57,7 +57,23 @@ pub fn mir_type_to_emit_type_with_layouts(
         TyKind::Adt(def_id, _substs) => match layouts.get(def_id) {
             Some(AdtLayout::Struct { field_tys }) => {
                 if field_tys.is_empty() {
-                    EmitType::Void
+                    // Stage 14.63: Zero-field structs (e.g. `struct Unit;`)
+                    // are represented as LLVM `{}` (empty struct), NOT `void`.
+                    //
+                    // Previously, these were mapped to `EmitType::Void`, which
+                    // caused:
+                    // 1. Functions returning ZSTs to have `void` signature
+                    // 2. Locals of ZST type to be skipped (no alloca)
+                    // 3. Method calls on ZST receivers to pass `null` as `&self`
+                    //
+                    // With `Struct(vec![])` (LLVM `{}`):
+                    // - The function signature is `{} @f()` (returns empty struct)
+                    // - The alloca is `alloca {}` (valid, zero-size)
+                    // - The receiver `&self` is the alloca pointer (valid `ptr`)
+                    //
+                    // Per §1.0 原则 6 "通用 > 特例": same code path as non-empty
+                    // structs, just with zero fields.
+                    EmitType::Struct(vec![])
                 } else {
                     // Stage 3.47: recurse with `layouts` so nested Adts
                     // resolve correctly (e.g., `struct Outer { i: Inner }`
@@ -365,7 +381,78 @@ pub(crate) fn compute_place_address(
                 } else {
                     compute_place_address(emitter, mir, base, _interner, layouts)
                 };
+                // Stage 14.66: Handle `self.field` where `self` is `&self` (Ref).
+                //
+                // When the base is a Local whose type is Ref(_, _, Adt) (i.e.,
+                // `&self` or `&mut self`), the alloca pointer points to a
+                // POINTER (the reference), not the struct directly. We need to:
+                // 1. Load the reference value from the alloca
+                // 2. GEP through the loaded reference to access the field
+                //
+                // Without this fix, the code would GEP through the alloca
+                // pointer directly, producing `getelementptr ptr, ptr %loc_1,
+                // 0, 0` — invalid because `ptr` is not an aggregate.
+                //
+                // Per §1.0 原则 6 "通用 > 特例": one rule handles all Ref-based
+                // field accesses (not just &self methods).
                 let struct_ty = detect_place_storage_type(mir, base, layouts);
+                // Stage 14.66: Handle `self.field` where `self` is `&self` (Ref).
+                //
+                // When the base is a Local whose type is Ref(_, _, Adt) (i.e.,
+                // `&self` or `&mut self`), the alloca pointer points to a
+                // POINTER (the reference), not the struct directly. We need to:
+                // 1. Load the reference value from the alloca
+                // 2. GEP through the loaded reference to access the field
+                //
+                // Without this fix, the code would GEP through the alloca
+                // pointer directly, producing `getelementptr ptr, ptr %loc_1,
+                // 0, 0` — invalid because `ptr` is not an aggregate.
+                //
+                // Per §1.0 原则 6 "通用 > 特例": one rule handles all Ref-based
+                // field accesses (not just &self methods).
+                let (base_addr, struct_ty) = if struct_ty.is_ptr() {
+                    // base is a Ref — load the pointer value, then use the
+                    // pointee type for GEP.
+                    let pointee_ty = struct_ty.pointee();
+                    // Check if pointee is an aggregate (struct/enum). If it's
+                    // still OpaquePtr (unknown), try MIR type resolution.
+                    let pointee_ty = if pointee_ty == EmitType::OpaquePtr {
+                        // Resolve from MIR local type
+                        if let PlaceKind::Local(id) = &base.kind {
+                            if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                                if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
+                                    mir_type_to_emit_type_with_layouts(inner, layouts)
+                                } else {
+                                    pointee_ty
+                                }
+                            } else {
+                                pointee_ty
+                            }
+                        } else {
+                            pointee_ty
+                        }
+                    } else {
+                        pointee_ty
+                    };
+                    // Only dereference if the pointee is a Struct (aggregate).
+                    // If it's a primitive (e.g., &i32), don't dereference —
+                    // the field access is on the pointer itself (rare).
+                    if matches!(pointee_ty, EmitType::Struct(_)) {
+                        let loaded_ptr = codegen_place_load_typed(
+                            emitter,
+                            mir,
+                            base,
+                            struct_ty.clone(),
+                            _interner,
+                            layouts,
+                        );
+                        (loaded_ptr, pointee_ty)
+                    } else {
+                        (base_addr, struct_ty)
+                    }
+                } else {
+                    (base_addr, struct_ty)
+                };
                 emitter.emit_gep_field(&base_addr, &struct_ty, field_id.0)
             }
             // Stage 14.44: For Index projection in compute_place_address,
@@ -518,10 +605,48 @@ pub(crate) fn codegen_place_load_typed(
         }
         PlaceKind::Projection(base, elem) => match elem {
             ProjectionElem::Deref => {
-                let ptr_ty = detect_place_type(mir, base, layouts);
-                let ptr_val =
-                    codegen_place_load_typed(emitter, mir, base, ptr_ty.clone(), interner, layouts);
-                emitter.emit_load(&ty, &ptr_val)
+                // Stage 14.66: Handle `*v` where `v` is a value (not a reference).
+                //
+                // When matching `Some(v) => *v` on `&self`, the enum variant
+                // pattern binding extracts the payload VALUE (i32) into `v`.
+                // But the user wrote `*v`, expecting `v` to be a reference.
+                // This produces `load i32, i32 %v14` — invalid IR.
+                //
+                // Fix: check if the base's MIR type is a Ref. If it's NOT a
+                // Ref (i.e., it's already a value), return the value directly
+                // without loading (treat `*v` as `v` for non-reference types).
+                //
+                // Per §1.0 原则 5 "报错 > 静默": silently treating `*value`
+                // as `value` is a workaround, but it matches the semantic
+                // intent (the user wants the value, and `*` on a non-reference
+                // is a no-op in this context).
+                let base_is_ref = if let PlaceKind::Local(id) = &base.kind {
+                    mir.local_decls
+                        .get(id.0 as usize)
+                        .map(|ld| matches!(&ld.ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)))
+                        .unwrap_or(false)
+                } else {
+                    // For projections, check the place type
+                    let base_ty = detect_place_type(mir, base, layouts);
+                    base_ty.is_ptr()
+                };
+                if !base_is_ref {
+                    // Base is not a reference — `*v` on a value is a no-op.
+                    // Return the value directly.
+                    let val_ty = detect_place_type(mir, base, layouts);
+                    codegen_place_load_typed(emitter, mir, base, val_ty, interner, layouts)
+                } else {
+                    let ptr_ty = detect_place_type(mir, base, layouts);
+                    let ptr_val = codegen_place_load_typed(
+                        emitter,
+                        mir,
+                        base,
+                        ptr_ty.clone(),
+                        interner,
+                        layouts,
+                    );
+                    emitter.emit_load(&ty, &ptr_val)
+                }
             }
             ProjectionElem::Field(field_id, _) => {
                 // Stage 14.19 (GAP-31): Handle Deref+Field projection correctly.
@@ -539,10 +664,28 @@ pub(crate) fn codegen_place_load_typed(
                 // GEP-ed into it as if it were a pointer → invalid IR + LLVM error.
                 // Fix: use compute_place_address for nested Field projections.
                 let base_ptr = if let PlaceKind::Local(id) = &base.kind {
-                    emitter
-                        .get_local_ptr(id.0)
-                        .cloned()
-                        .unwrap_or_else(|| "0".to_string())
+                    // Stage 14.66: If the local is a Ref (e.g., `&self`),
+                    // load the reference value (the pointer) — don't use
+                    // the alloca pointer directly. The alloca points to a
+                    // POINTER (the reference), not the struct.
+                    let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone());
+                    if let Some(ty) = local_ty {
+                        if matches!(&ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
+                            // Ref — load the pointer value
+                            let ptr_ty = detect_place_type(mir, base, layouts);
+                            codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
+                        } else {
+                            emitter
+                                .get_local_ptr(id.0)
+                                .cloned()
+                                .unwrap_or_else(|| "0".to_string())
+                        }
+                    } else {
+                        emitter
+                            .get_local_ptr(id.0)
+                            .cloned()
+                            .unwrap_or_else(|| "0".to_string())
+                    }
                 } else if let PlaceKind::Projection(inner_base, ProjectionElem::Deref) = &base.kind
                 {
                     // base is (*inner).field — load the pointer from inner_base,
@@ -566,7 +709,28 @@ pub(crate) fn codegen_place_load_typed(
                     let ptr_ty = detect_place_type(mir, base, layouts);
                     codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
                 };
-                let struct_ty = detect_place_storage_type(mir, base, layouts);
+                let mut struct_ty = detect_place_storage_type(mir, base, layouts);
+                // Stage 14.66: If base is a Ref, the storage type is a pointer.
+                // Use the pointee type (the actual struct) for GEP.
+                if struct_ty.is_ptr() {
+                    let pointee = struct_ty.pointee();
+                    if matches!(pointee, EmitType::Struct(_)) {
+                        struct_ty = pointee;
+                    } else if pointee == EmitType::OpaquePtr {
+                        // Try MIR resolution
+                        if let PlaceKind::Local(id) = &base.kind {
+                            if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                                if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
+                                    let resolved =
+                                        mir_type_to_emit_type_with_layouts(inner, layouts);
+                                    if matches!(resolved, EmitType::Struct(_)) {
+                                        struct_ty = resolved;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 let field_ptr = emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0);
                 emitter.emit_load(&ty, &field_ptr)
             }

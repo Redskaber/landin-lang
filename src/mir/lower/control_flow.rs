@@ -772,6 +772,22 @@ pub(crate) fn lower_match(
 
     // If enum, extract discriminant: discr = scrut.0 (field 0 of the struct).
     let switch_discr = if is_enum {
+        // Stage 14.66: If scrut_local is a Ref (e.g., `match self { ... }`
+        // where `self: &Self`), dereference it before extracting the discriminant.
+        let scrut_place = {
+            let scrut_ty = cx.mir.local(scrut_local).ty.clone();
+            if matches!(scrut_ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
+                Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(scrut_local, scrutinee.span)),
+                        ProjectionElem::Deref,
+                    ),
+                    span,
+                }
+            } else {
+                Place::local(scrut_local, scrutinee.span)
+            }
+        };
         // Create a temp local for the extracted discriminant.
         let discr_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), span);
         let discr_local = cx.mir.new_local(discr_ty.clone(), None, span);
@@ -779,7 +795,7 @@ pub(crate) fn lower_match(
             Place::local(discr_local, span),
             Rvalue::Use(Operand::Move(Place {
                 kind: PlaceKind::Projection(
-                    Box::new(Place::local(scrut_local, scrutinee.span)),
+                    Box::new(scrut_place),
                     ProjectionElem::Field(FieldId(0), discr_ty.clone()),
                 ),
                 span,

@@ -396,16 +396,64 @@ impl Emitter for TextEmitter {
         let r = self.fresh();
         let src_str = emit_type_to_llvm_str(src);
         let dst_str = emit_type_to_llvm_str(dst);
+        // Stage 14.65: Generalize integer-to-integer casts.
+        //
+        // Previously, only specific pairs were handled (I32→I64 sext, I1→I32
+        // zext, I64→I32/I32→I1 trunc). Other integer pairs (e.g., I32→I8 for
+        // `c as char`) fell through to "bitcast", which is invalid for integers
+        // of different widths.
+        //
+        // Fix: for ANY integer-to-integer cast, choose the right op based on
+        // width comparison:
+        //   - src == dst width: bitcast (no-op, same size)
+        //   - src < dst: zext (zero-extend, for unsigned) or sext (sign-extend,
+        //     for signed — Landin defaults to signed)
+        //   - src > dst: trunc
+        //
+        // Per §1.0 原则 6 "通用 > 特例": one rule for all integer pairs.
+        let is_int = |t: &EmitType| {
+            matches!(
+                t,
+                EmitType::I1
+                    | EmitType::I8
+                    | EmitType::I16
+                    | EmitType::I32
+                    | EmitType::I64
+                    | EmitType::I128
+            )
+        };
+        let int_width = |t: &EmitType| -> u32 {
+            match t {
+                EmitType::I1 => 1,
+                EmitType::I8 => 8,
+                EmitType::I16 => 16,
+                EmitType::I32 => 32,
+                EmitType::I64 => 64,
+                EmitType::I128 => 128,
+                _ => 0,
+            }
+        };
         let op = match (src, dst) {
             (a, b) if a == b => return val.clone(),
-            (EmitType::I32, EmitType::I64) => "sext",
-            (EmitType::I1, EmitType::I32) => "zext",
-            (EmitType::I64, EmitType::I32) => "trunc",
-            (EmitType::I32, EmitType::I1) => "trunc",
+            (a, b) if is_int(a) && is_int(b) => {
+                let sw = int_width(a);
+                let dw = int_width(b);
+                if sw < dw {
+                    "sext" // sign-extend (Landin integers default to signed)
+                } else if sw > dw {
+                    "trunc"
+                } else {
+                    "bitcast" // same width (rare for integers, but valid)
+                }
+            }
             (EmitType::I32, EmitType::F64) | (EmitType::I64, EmitType::F64) => "sitofp",
             (EmitType::I32, EmitType::F32) | (EmitType::I64, EmitType::F32) => "sitofp",
+            (EmitType::I8, EmitType::F64) | (EmitType::I8, EmitType::F32) => "sitofp",
+            (EmitType::I16, EmitType::F64) | (EmitType::I16, EmitType::F32) => "sitofp",
             (EmitType::F64, EmitType::I32) | (EmitType::F64, EmitType::I64) => "fptosi",
             (EmitType::F32, EmitType::I32) | (EmitType::F32, EmitType::I64) => "fptosi",
+            (EmitType::F64, EmitType::I8) | (EmitType::F32, EmitType::I8) => "fptosi",
+            (EmitType::F64, EmitType::I16) | (EmitType::F32, EmitType::I16) => "fptosi",
             (EmitType::F64, EmitType::F32) => "fptrunc",
             (EmitType::F32, EmitType::F64) => "fpext",
             _ => "bitcast",

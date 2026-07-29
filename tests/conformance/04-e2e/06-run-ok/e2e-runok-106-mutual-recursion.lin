@@ -1,0 +1,19 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Mutual recursion — is_even/is_odd call each other — Stage 14.63
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: true\ntrue\nfalse
+// SOURCE: Stage 14.63 — LLVMSysEmitter was creating duplicate function declarations (foo.1) for forward-referenced functions
+
+fn is_even(n: i32) -> bool {
+    if n == 0 { true } else { is_odd(n - 1) }
+}
+fn is_odd(n: i32) -> bool {
+    if n == 0 { false } else { is_even(n - 1) }
+}
+
+fn main() -> i32 {
+    println!("{}", is_even(10));
+    println!("{}", is_odd(7));
+    println!("{}", is_even(7));
+    0
+}

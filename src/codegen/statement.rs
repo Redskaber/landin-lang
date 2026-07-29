@@ -25,7 +25,8 @@ pub(crate) fn codegen_statement(
     match &stmt.kind {
         StatementKind::Assign(boxed) => {
             let (place, rvalue) = &**boxed;
-            let val = codegen_rvalue(emitter, mir, rvalue, interner, layouts, fn_name_by_def_id);
+            let mut val =
+                codegen_rvalue(emitter, mir, rvalue, interner, layouts, fn_name_by_def_id);
             match &place.kind {
                 PlaceKind::Local(id) => {
                     let default_ty = crate::mir::ty::Ty::new(
@@ -38,6 +39,38 @@ pub(crate) fn codegen_statement(
                         .map(|ld| &ld.ty)
                         .unwrap_or(&default_ty);
                     let ty = mir_type_to_emit_type_with_layouts(local_ty, layouts);
+                    // Stage 14.64: Coerce comparison results to the local's type.
+                    //
+                    // Comparison ops (Eq/Ne/Lt/Le/Gt/Ge) in codegen_rvalue
+                    // always zext the i1 result to i32. When the destination
+                    // local is Bool (i1), storing i32 to i1 is a type mismatch
+                    // that produces invalid LLVM IR (silently miscompiles at
+                    // runtime — LLVM module verification doesn't catch it
+                    // because the LLVMSysEmitter uses LLVMBuildStore which
+                    // doesn't validate types as strictly as the textual IR
+                    // verifier).
+                    //
+                    // Fix: when storing to an i1 local and the rvalue is a
+                    // comparison, trunc the i32 value to i1 first.
+                    //
+                    // Per §1.0 原则 5 "报错 > 静默": this surfaces the type
+                    // mismatch as a truncation rather than silently storing
+                    // the wrong-sized value.
+                    if ty == EmitType::I1 {
+                        if let Rvalue::BinaryOp(op, _, _) = rvalue {
+                            if matches!(
+                                op,
+                                BinOp::Eq
+                                    | BinOp::Ne
+                                    | BinOp::Lt
+                                    | BinOp::Le
+                                    | BinOp::Gt
+                                    | BinOp::Ge
+                            ) {
+                                val = emitter.emit_cast(&EmitType::I32, &EmitType::I1, &val);
+                            }
+                        }
+                    }
                     emitter.set_local(id.0, val.clone());
                     if ty != EmitType::Void {
                         if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {

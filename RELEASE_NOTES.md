@@ -1,9 +1,274 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.78.0
+**Current version**: v0.82.0
 **Date**: 2026-07-29
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5131 conformance tests (105 run_ok) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5145 conformance tests (119 run_ok) + 4 examples
+
+---
+## v0.82.0 — Stage 14.66 (Loop Break Value + Enum &self Match + Deref on Value + Ref Field Access)
+
+### Overview
+
+Stage 14.66 fixes four more P0 bugs found through systematic audit of complex
+patterns. All four were silent — compilation succeeded but runtime produced
+errors or wrong values.
+
+### Bug 1: Loop result local was Immutable
+
+**Symptom**: `loop { break 42; }` failed with "cannot assign twice to immutable variable".
+
+**Root cause**: Loop result local created with `new_local` (Immutable). `break expr` assigns to it, triggering borrowck error.
+
+**Fix**: Use `new_local_with_mut(Mutable)` for loop result local.
+
+### Bug 2: Enum match on &self failed with "Invalid GEP pointer type"
+
+**Symptom**: `match self { Opt::Some(v) => ... }` (where `self: &Opt`) failed with invalid GEP on `ptr`.
+
+**Root cause**: Codegen accessed `self.0` directly from the alloca, but `self` is a reference — the alloca contains a POINTER, not the struct. GEP-ing through `ptr` with field indices is invalid.
+
+**Fix**: Add Deref projection for Ref scrutinees in match lowering, pattern bindings, and codegen Field access (load reference value before GEP).
+
+### Bug 3: `*v` on a value (not reference) failed
+
+**Symptom**: `Opt2::Some(v) => *v` produced `load i32, i32 %v14` — invalid (v is i32, not a pointer).
+
+**Root cause**: Enum pattern binding extracts payload VALUE into `v`, but user wrote `*v` expecting a reference. Deref tried to load from an i32.
+
+**Fix**: In Deref projection, if base is not a Ref, return value directly (treat `*v` as `v` for non-reference types).
+
+### Bug 4: Field access on Ref base in codegen_place_load_typed
+
+**Symptom**: Same as Bug 2 — field access on `&self` produced invalid GEP.
+
+**Root cause**: `codegen_place_load_typed`'s Field case used alloca pointer directly for Local bases, even when the local was a Ref.
+
+**Fix**: If base is a Local with Ref type, load the reference value first, then GEP through it. Resolve struct type from Ref's pointee.
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5145 conformance tests pass (was 5141, +4 new run_ok)
+- 0 clippy warnings, fmt clean
+
+### 4 new run_ok tests
+
+- `e2e-runok-116-loop-break-value.lin` — loop with break value
+- `e2e-runok-117-enum-method-self.lin` — enum method with match on &self
+- `e2e-runok-118-enum-map-method.lin` — enum method returning enum (map)
+- `e2e-runok-119-matrix-2d-search.lin` — 2D array search with nested loops
+
+---
+## v0.81.0 — Stage 14.65 (Integer Casts + Float Comparison Writeback + Bool Match + FnPtr Forward Ref)
+
+### Overview
+
+Stage 14.65 fixes four more P0 bugs found through systematic audit of complex
+patterns. All four were silent — compilation succeeded but runtime produced
+wrong values or segfaulted.
+
+### Bug 1: Integer-to-integer casts used BitCast (invalid for different widths)
+
+**Symptom**: `c as i32` and `n as char` (char is i8) failed with
+`Invalid bitcast` LLVM verification errors.
+
+**Root cause**: `emit_cast` only handled specific pairs (I32↔I64, I1↔I32).
+Other integer pairs (e.g., I32→I8 for `c as char`) fell through to
+`LLVMBuildBitCast`, which is invalid for integers of different widths.
+
+**Fix**: For ANY integer-to-integer cast, use `LLVMBuildIntCast2` with
+`is_signed=1`. Handles zext/sext/trunc automatically.
+
+### Bug 2: Comparison results stored with operand type (Bool→f64 mismatch)
+
+**Symptom**: `fn is_positive(x: f64) -> bool { x > 0.0 }` segfaulted.
+
+**Root cause**: typeck writeback propagated operand types to BinaryOp results.
+For `x > 0.0` (f64), it overwrote the result type with f64, causing
+`store double %cmp_result, %bool_alloca`.
+
+**Fix**: Skip operand-type propagation for comparison ops (always return Bool).
+
+### Bug 3: Bool match with both `true` and `false` arms skipped the false arm
+
+**Symptom**: `match b { true => 1, false => 0 }` returned garbage for false.
+
+**Root cause**: `SwitchInt` codegen assumed "false goes to otherwise" and
+only checked for the `true` target, ignoring the `false` arm's body.
+
+**Fix**: Check for BOTH `true` and `false` targets. Branch to each if present.
+
+### Bug 4: Function pointer return with forward reference caused segfault
+
+**Symptom**: `fn adder(x) -> fn(i32) -> i32 { double }` (where `double` is
+defined after `adder`) segfaulted — the function pointer was null.
+
+**Root cause**: `interpret_adhoc` called `LLVMGetNamedFunction` which returned
+null for not-yet-emitted functions. The code returned `LLVMConstNull` (null
+pointer), which was stored and later called.
+
+**Fix**: Added `fn_sigs` map to `LLVMSysEmitter`. `interpret_adhoc` now looks
+up the function's signature and creates a forward declaration with the CORRECT
+signature. `emit_function_begin` reuses this declaration (Stage 14.63 dedup).
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5141 conformance tests pass (was 5137, +4 new run_ok)
+- 0 clippy warnings, fmt clean
+
+### 4 new run_ok tests
+
+- `e2e-runok-112-char-cast.lin` — char to int cast and back
+- `e2e-runok-113-float-comparison.lin` — float comparison result to Bool
+- `e2e-runok-114-bool-match.lin` — bool match with both true and false arms
+- `e2e-runok-115-fn-pointer-return.lin` — function returning fn pointer (forward ref)
+
+---
+## v0.80.0 — Stage 14.64 (Bool Store Coercion + i64 Constants + Field Index Ambiguity)
+
+### Overview
+
+Stage 14.64 fixes three more P0 bugs found through systematic audit of complex
+patterns. All three were silent — compilation succeeded but runtime produced
+wrong values.
+
+### Bug 1: Comparison Results Stored to Bool Locals
+
+**Symptom**: `bubble_sort_pass([5, 3, 1, 4, 2])` returned `0 0 1 2 4` instead
+of `3 1 4 2 5`. The conditional swap was broken.
+
+**Root cause**: `codegen_rvalue` for comparison ops always zexts the i1 result
+to i32. When stored to a Bool (i1) local's alloca, this produced a type
+mismatch. The LLVMSysEmitter's `emit_store` ignored the type parameter, so
+LLVMBuildStore used the value's i32 type, writing 4 bytes to an i1 alloca.
+
+**Fix** (`src/codegen/statement.rs`):
+- When storing to an i1 local AND the rvalue is a comparison, trunc the i32
+  value to i1 via `emit_cast(I32, I1, val)`.
+
+### Bug 2: i64 Constants Stored as i32
+
+**Symptom**: `big_sum(1_000_000_000, 2_000_000_000)` returned
+`180228417674752` instead of `3000000000` when combined with other functions.
+
+**Root cause**: `LLVMSysEmitter::emit_const` always creates i32 constants for
+`ConstVal::Int`. When the constant's actual type is i64, storing the i32
+value to an i64 alloca only writes 4 bytes, leaving upper 4 bytes as garbage.
+
+**Fix** (two parts):
+1. `src/codegen/operand.rs`: Cast integer constants to their declared type
+   (`c.ty`) after `emit_const` — only for integer types.
+2. `src/codegen/llvm/mod.rs`: `emit_store` now checks the value's LLVM type
+   and casts integer values to match the alloca's type.
+
+### Bug 3: Field Index Resolution for Ambiguous Names
+
+**Symptom**: `unit_x()` returned `Vec2 { x: 1, y: 1 }` instead of
+`Vec2 { x: 1, y: 0 }` when another struct (`Point2`) with the same field
+names was in the compilation unit.
+
+**Root cause**: `resolve_field_index`'s fallback search marked the search as
+"ambiguous" when multiple structs had the same field name, and fell through
+to `return 0` — even when all structs agreed on the field index.
+
+**Fix** (`src/mir/lower/field_resolution.rs`):
+- Track whether ALL found indices agree. If they agree, return the index.
+- Only fall through to `return 0` if the indices truly disagree.
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5137 conformance tests pass (was 5134, +3 new run_ok)
+- 0 clippy warnings, fmt clean
+
+### 3 new run_ok tests
+
+- `e2e-runok-109-bubble-sort-pass.lin` — conditional swap in loop
+- `e2e-runok-110-i64-arithmetic.lin` — i64 arithmetic with large constants
+- `e2e-runok-111-multi-struct-field-access.lin` — field access with ambiguous names
+
+---
+## v0.79.0 — Stage 14.63 (Mutual Recursion + Statement Boundary + ZST Methods)
+
+### Overview
+
+Stage 14.63 fixes three P0 bugs found through systematic audit of complex
+patterns. All three were silent — compilation succeeded but runtime failed.
+
+### Bug 1: Mutual Recursion — Forward Declaration Deduplication
+
+**Symptom**: Mutually recursive functions (`is_even` calls `is_odd` which
+calls `is_even`) failed with `undefined reference to 'landin_is_odd'`.
+
+**Root cause**: `LLVMSysEmitter::emit_function_begin` called `LLVMAddFunction`
+without checking whether a forward declaration already existed (created earlier
+by `get_or_declare_function` when the callee was referenced before its
+definition). LLVM silently renamed the new function (`foo` → `foo.1`), so the
+call sites pointed to the original declaration (no body) and the linker
+reported the symbol as undefined.
+
+**Fix** (`src/codegen/llvm/mod.rs`):
+- Check `self.declared` cache and `LLVMGetNamedFunction` before calling
+  `LLVMAddFunction`. Reuse existing forward declaration if signature matches.
+
+### Bug 2: Block-like Expression Statement Boundary
+
+**Symptom**: `while cond { ... }` followed by `(n, acc)` was misparsed as
+`while ... { ... }((n, acc))` — a Call to the while loop's unit result —
+producing `error: expected function, found Tuple([])` at typeck time.
+
+**Root cause**: `Parser::parse_postfix_expr` greedily consumed `(` after any
+expression as a Call. In Rust grammar, block-like expressions
+(`if`/`while`/`for`/`loop`/`match`/`{}`) at statement position are statement
+boundaries — postfix `(` and `[` must NOT be consumed without explicit parens.
+
+**Fix** (`src/parser/expr.rs`):
+- Added `is_block_like_expr(&Expr) -> bool` helper.
+- In `parse_postfix_expr`, after parsing primary, if `block_like`, the
+  `LParen` and `LBracket` arms `break` instead of consuming.
+- `Dot` and `Question` are still allowed (unambiguous postfix operators).
+
+### Bug 3: Zero-field Struct Method Calls
+
+**Symptom**: `let u = Unit::new(); u.value()` (where `struct Unit;`) failed
+with `LLVM module verification failed: Call parameter type does not match
+function signature!`
+
+**Root cause**: `mir_type_to_emit_type_with_layouts` mapped zero-field
+structs to `EmitType::Void`. This caused:
+1. `landin_new` had signature `void @landin_new()` (no return value)
+2. The local `u` was skipped in the alloca loop
+3. `u.value()` had no alloca to take `&u` from — passed `i32 0` as `&self`
+
+**Fix** (`src/codegen/mir_translation.rs`):
+- Changed zero-field struct Adt case from `EmitType::Void` to
+  `EmitType::Struct(vec![])` (LLVM `{}` — empty struct, size 0, real value type).
+- Now `landin_new` returns `{}`, `u` gets `alloca {}`, `&u` is the alloca pointer.
+
+### Audit Results (no bugs found)
+
+These patterns now work end-to-end (some already worked, validated for regression):
+- Tuple struct field access, enum with tuple payload, recursive function
+- Nested struct access via method, method chaining
+- Multi-arm match with struct payloads, sequential `&mut self` calls
+- Array of structs with field access, nested tuple destructuring
+- Mutually recursive functions, while + trailing tuple, unit struct methods
+- Builder pattern, while with break, tuple struct with swap method
+- Nested struct field assignment, 2D matrix, linked list, Result enum
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5134 conformance tests pass (was 5131, +3 new run_ok)
+- 0 clippy warnings, fmt clean
+
+### 3 new run_ok tests
+
+- `e2e-runok-106-mutual-recursion.lin` — `is_even`/`is_odd` mutual recursion
+- `e2e-runok-107-while-then-tuple.lin` — while loop + trailing tuple expression
+- `e2e-runok-108-unit-struct-method.lin` — zero-field struct with methods
 
 ---
 ## v0.78.0 — Stage 14.62 (&mut Array Store Path Fix)

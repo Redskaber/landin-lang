@@ -71,6 +71,12 @@ pub struct LLVMSysEmitter {
     /// when the field type doesn't match the aggregate's field type.
     /// Uses RefCell for interior mutability since llvm_type takes &self.
     struct_type_cache: std::cell::RefCell<HashMap<String, LLVMTypeRef>>,
+    /// Stage 14.65: Map from function name → (return type, param types).
+    /// Populated by `set_fn_sigs` before codegen, used by `interpret_adhoc`
+    /// to create forward declarations with the CORRECT signature when a
+    /// function is referenced before its body is emitted (e.g., `fn adder()
+    /// -> fn(i32) -> i32 { double }` references `double` before it's emitted).
+    fn_sigs: HashMap<String, (EmitType, Vec<EmitType>)>,
 }
 
 impl Default for LLVMSysEmitter {
@@ -101,8 +107,18 @@ impl LLVMSysEmitter {
                 blocks: HashMap::new(),
                 declared: HashMap::new(),
                 struct_type_cache: std::cell::RefCell::new(HashMap::new()),
+                fn_sigs: HashMap::new(),
             }
         }
+    }
+
+    /// Stage 14.65: Set the function signatures for forward-reference resolution.
+    ///
+    /// Called by `codegen_crate_to_module` before `codegen_from_mir` so that
+    /// `interpret_adhoc` can create forward declarations with the CORRECT
+    /// signature when a function is referenced before its body is emitted.
+    pub(crate) fn set_fn_sigs(&mut self, sigs: HashMap<String, (EmitType, Vec<EmitType>)>) {
+        self.fn_sigs = sigs;
     }
 
     /// Return the underlying `LLVMModuleRef`.
@@ -255,7 +271,7 @@ impl LLVMSysEmitter {
     /// strings like `"0"`, `"-1"`, `"undef"`, decimal integers, and
     /// `getelementptr ...` text produced by `codegen_operand` for
     /// `&str` fat pointers (stubbed — see `interpret_adhoc`).
-    fn lookup(&self, name: &EmitValue) -> LLVMValueRef {
+    fn lookup(&mut self, name: &EmitValue) -> LLVMValueRef {
         if let Some(v) = self.values.get(name) {
             return *v;
         }
@@ -264,7 +280,7 @@ impl LLVMSysEmitter {
 
     /// Best-effort interpretation of a literal / GEP-text `EmitValue`.
     /// Used when `lookup()` can't find the name in `values`.
-    fn interpret_adhoc(&self, name: &EmitValue) -> LLVMValueRef {
+    fn interpret_adhoc(&mut self, name: &EmitValue) -> LLVMValueRef {
         unsafe {
             // undef → i32 undef (placeholder).
             if name == "undef" {
@@ -321,14 +337,49 @@ impl LLVMSysEmitter {
                     return v;
                 }
                 // Try to get the function from the module
-                let name_c = CString::new(func_name).unwrap();
+                let name_c = CString::new(func_name.clone()).unwrap();
                 let func = LLVMGetNamedFunction(self.module, name_c.as_ptr());
                 if !func.is_null() {
                     return func;
                 }
-                // Fallback: null pointer
-                let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
-                return LLVMConstNull(ptr_ty);
+                // Stage 14.65: Function not yet defined — create a forward
+                // declaration with the CORRECT signature from `fn_sigs`.
+                //
+                // Previously, this returned a null pointer when the function
+                // hadn't been emitted yet (e.g., `adder` returns `double`
+                // where `double` is defined AFTER `adder` in source order).
+                // The null pointer was then stored and returned, causing
+                // segfaults when the function was later called.
+                //
+                // Fix: look up the function's signature in `self.fn_sigs`
+                // (populated by `set_fn_sigs` before codegen) and create
+                // a forward declaration with the correct return + param types.
+                // When the actual function is emitted later,
+                // `emit_function_begin` will reuse this declaration (Stage
+                // 14.63 forward-decl dedup) because the signature matches.
+                //
+                // Per §1.0 原则 5 "报错 > 静默": function references are
+                // never null — they always point to a real (possibly
+                // forward-declared) function value.
+                if let Some((ret_ty, param_tys)) = self.fn_sigs.get(&func_name) {
+                    let ret_llvm_ty = self.llvm_type(ret_ty);
+                    let param_llvm_tys: Vec<LLVMTypeRef> =
+                        param_tys.iter().map(|t| self.llvm_type(t)).collect();
+                    let fty = LLVMFunctionType(
+                        ret_llvm_ty,
+                        param_llvm_tys.as_ptr() as *mut LLVMTypeRef,
+                        param_llvm_tys.len() as u32,
+                        0,
+                    );
+                    let fwd = LLVMAddFunction(self.module, name_c.as_ptr(), fty);
+                    self.declared.insert(func_name, fwd);
+                    return fwd;
+                }
+                // Fallback: signature not in fn_sigs — use generic variadic.
+                let ret_ty = LLVMInt32TypeInContext(self.ctx);
+                let fty = LLVMFunctionType(ret_ty, std::ptr::null_mut(), 0, 1);
+                let fwd = LLVMAddFunction(self.module, name_c.as_ptr(), fty);
+                return fwd;
             }
             // Fallback: i32 zero.
             let ty = LLVMInt32TypeInContext(self.ctx);
@@ -427,6 +478,25 @@ impl LLVMSysEmitter {
         }
     }
 
+    /// Stage 14.65: Pre-declare a function with its correct signature.
+    ///
+    /// This is called by `predeclare_all_functions` BEFORE any function
+    /// bodies are emitted, so that forward references (FnDef constants,
+    /// indirect calls) resolve to a real function value with the correct
+    /// type — not a placeholder with a wrong signature.
+    ///
+    /// Uses `get_or_declare_function` internally (which checks the declared
+    /// cache + LLVMGetNamedFunction before creating a new function).
+    #[allow(dead_code)]
+    pub(crate) fn predeclare_function(
+        &mut self,
+        name: &str,
+        ret_ty: &EmitType,
+        arg_tys: &[EmitType],
+    ) {
+        self.get_or_declare_function(name, ret_ty, arg_tys);
+    }
+
     /// Get or create the basic block for `label`, mirroring `TextEmitter::emit_block`.
     fn block_for(&mut self, label: &str) -> LLVMBasicBlockRef {
         // Strip leading '%' if present.
@@ -515,7 +585,53 @@ impl Emitter for LLVMSysEmitter {
                 0,
             );
             let name_c = CString::new(name).unwrap();
-            let fn_val = LLVMAddFunction(self.module, name_c.as_ptr(), fty);
+            // Stage 14.63: Reuse existing forward declaration if present.
+            //
+            // When functions are mutually recursive, a forward declaration
+            // is created via `get_or_declare_function` (called by emit_call)
+            // before we reach `emit_function_begin` for the actual definition.
+            // If we call `LLVMAddFunction` again with the same name, LLVM
+            // silently renames the new function (e.g. `foo` → `foo.1`),
+            // producing an "undefined reference" link error.
+            //
+            // Fix: first check `self.declared` cache and the module's named-
+            // function table. If a declaration already exists, reuse it
+            // (LLVM allows redefining a function's body in-place by adding
+            // basic blocks to the existing function value).
+            let existing = if let Some(v) = self.declared.get(name) {
+                Some(*v)
+            } else {
+                let v = LLVMGetNamedFunction(self.module, name_c.as_ptr());
+                if !v.is_null() {
+                    Some(v)
+                } else {
+                    None
+                }
+            };
+            let fn_val = if let Some(existing) = existing {
+                // Verify the existing declaration's signature matches what
+                // we're about to emit. If it does, reuse it. Otherwise, fall
+                // back to creating a new function (which would be a bug in
+                // the type-checker — but we don't want to silently miscompile).
+                let existing_type = LLVMGlobalGetValueType(existing);
+                let existing_kind = LLVMGetValueKind(existing);
+                // Reuse if the existing value is a function with matching type
+                if existing_kind == llvm_sys::LLVMValueKind::LLVMFunctionValueKind
+                    && existing_type == fty
+                {
+                    existing
+                } else {
+                    // Signature mismatch — fall back to LLVMAddFunction.
+                    // This will likely produce a rename, but at least we
+                    // surface the issue rather than silently miscompile.
+                    LLVMAddFunction(self.module, name_c.as_ptr(), fty)
+                }
+            } else {
+                LLVMAddFunction(self.module, name_c.as_ptr(), fty)
+            };
+            // Register the function in the declared cache so subsequent
+            // emit_call sites resolve to this same function value.
+            self.declared.insert(name.to_string(), fn_val);
             self.cur_fn = Some(fn_val);
 
             // Reset per-function state.
@@ -831,11 +947,50 @@ impl Emitter for LLVMSysEmitter {
     }
 
     fn emit_store(&mut self, ty: &EmitType, val: &EmitValue, ptr: &EmitValue) {
-        let _ = ty;
         unsafe {
             let v = self.lookup(val);
             let p = self.lookup(ptr);
-            LLVMBuildStore(self.builder, v, p);
+            // Stage 14.64: Coerce INTEGER values to the target type before storing.
+            //
+            // Previously, this function ignored the `ty` parameter and just
+            // called `LLVMBuildStore(builder, v, p)`, which uses the value's
+            // actual LLVM type. This caused silent miscompilation when the
+            // value's type didn't match the alloca's type:
+            //
+            //   - i32 constant stored to i64 alloca: only 4 bytes written,
+            //     upper 4 bytes are garbage. Loading as i64 produces wrong
+            //     values (e.g., `180228417674752` instead of `3000000000`).
+            //   - i32 comparison result stored to i1 alloca: type mismatch.
+            //
+            // Fix: for INTEGER types only, check the value's actual LLVM type
+            // (via LLVMTypeOf). If it doesn't match `ty`, cast the value first
+            // (zext/sext/trunc). For non-integer types (struct, array, etc.),
+            // we assume the types match and store directly — a mismatch there
+            // is a codegen bug that should surface as an LLVM verification error.
+            //
+            // Per §1.0 原则 5 "报错 > 静默": integer mismatches are fixed by
+            // explicit casts; non-integer mismatches surface as errors.
+            let val_ty = LLVMTypeOf(v);
+            let target_llvm_ty = self.llvm_type(ty);
+            let val_kind = LLVMGetTypeKind(val_ty);
+            let target_kind = LLVMGetTypeKind(target_llvm_ty);
+            let stored = if val_ty == target_llvm_ty {
+                v
+            } else if val_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                && target_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+            {
+                // Integer-to-integer cast (zext/sext/trunc).
+                // Use signed extension (1) since Landin's integer literals
+                // default to i32 (signed). This matches the `emit_cast`
+                // behavior for (I32, I64) → SExt.
+                let name_c = CString::new("cast").unwrap();
+                LLVMBuildIntCast2(self.builder, v, target_llvm_ty, 1, name_c.as_ptr())
+            } else {
+                // Non-integer types with mismatch — store directly and let
+                // LLVM module verification catch it (surfaces the bug).
+                v
+            };
+            LLVMBuildStore(self.builder, stored, p);
         }
     }
 
@@ -1110,35 +1265,60 @@ impl Emitter for LLVMSysEmitter {
             let v = self.lookup(val);
             let dst_ty = self.llvm_type(dst);
             let name_c = CString::new("cast").unwrap();
-            let r = match (src, dst) {
-                (EmitType::I32, EmitType::I64) => {
-                    LLVMBuildSExt(self.builder, v, dst_ty, name_c.as_ptr())
+            // Stage 14.65: Generalize integer-to-integer casts.
+            //
+            // Previously, `emit_cast` only handled specific pairs:
+            // (I32, I64) → SExt, (I1, I32) → ZExt, (I64, I32)/(I32, I1) → Trunc.
+            // All other integer pairs (e.g., I32 → I8 for `c as char`, I8 → I32
+            // for `char as i32`) fell through to `LLVMBuildBitCast`, which is
+            // INVALID for integers of different widths — produces
+            // "Invalid bitcast" LLVM verification errors.
+            //
+            // Fix: for ANY integer-to-integer cast, use `LLVMBuildIntCast2`
+            // with `is_signed=1` (Landin integers default to signed). This
+            // handles zext (wider), sext (wider, signed), and trunc (narrower)
+            // automatically based on source/destination widths.
+            //
+            // Per §1.0 原则 6 "通用 > 特例": one rule for all integer pairs
+            // instead of enumerating each combination.
+            let src_kind = LLVMGetTypeKind(self.llvm_type(src));
+            let dst_kind = LLVMGetTypeKind(dst_ty);
+            let r = if src_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                && dst_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+            {
+                // Integer-to-integer: use IntCast2 (handles zext/sext/trunc).
+                // Sign=1 means signed (SExt for widening, Trunc for narrowing).
+                LLVMBuildIntCast2(self.builder, v, dst_ty, 1, name_c.as_ptr())
+            } else {
+                match (src, dst) {
+                    (EmitType::I32, EmitType::F64)
+                    | (EmitType::I64, EmitType::F64)
+                    | (EmitType::I32, EmitType::F32)
+                    | (EmitType::I64, EmitType::F32)
+                    | (EmitType::I8, EmitType::F64)
+                    | (EmitType::I8, EmitType::F32)
+                    | (EmitType::I16, EmitType::F64)
+                    | (EmitType::I16, EmitType::F32) => {
+                        LLVMBuildSIToFP(self.builder, v, dst_ty, name_c.as_ptr())
+                    }
+                    (EmitType::F64, EmitType::I32)
+                    | (EmitType::F64, EmitType::I64)
+                    | (EmitType::F32, EmitType::I32)
+                    | (EmitType::F32, EmitType::I64)
+                    | (EmitType::F64, EmitType::I8)
+                    | (EmitType::F32, EmitType::I8)
+                    | (EmitType::F64, EmitType::I16)
+                    | (EmitType::F32, EmitType::I16) => {
+                        LLVMBuildFPToSI(self.builder, v, dst_ty, name_c.as_ptr())
+                    }
+                    (EmitType::F64, EmitType::F32) => {
+                        LLVMBuildFPTrunc(self.builder, v, dst_ty, name_c.as_ptr())
+                    }
+                    (EmitType::F32, EmitType::F64) => {
+                        LLVMBuildFPExt(self.builder, v, dst_ty, name_c.as_ptr())
+                    }
+                    _ => LLVMBuildBitCast(self.builder, v, dst_ty, name_c.as_ptr()),
                 }
-                (EmitType::I1, EmitType::I32) => {
-                    LLVMBuildZExt(self.builder, v, dst_ty, name_c.as_ptr())
-                }
-                (EmitType::I64, EmitType::I32) | (EmitType::I32, EmitType::I1) => {
-                    LLVMBuildTrunc(self.builder, v, dst_ty, name_c.as_ptr())
-                }
-                (EmitType::I32, EmitType::F64)
-                | (EmitType::I64, EmitType::F64)
-                | (EmitType::I32, EmitType::F32)
-                | (EmitType::I64, EmitType::F32) => {
-                    LLVMBuildSIToFP(self.builder, v, dst_ty, name_c.as_ptr())
-                }
-                (EmitType::F64, EmitType::I32)
-                | (EmitType::F64, EmitType::I64)
-                | (EmitType::F32, EmitType::I32)
-                | (EmitType::F32, EmitType::I64) => {
-                    LLVMBuildFPToSI(self.builder, v, dst_ty, name_c.as_ptr())
-                }
-                (EmitType::F64, EmitType::F32) => {
-                    LLVMBuildFPTrunc(self.builder, v, dst_ty, name_c.as_ptr())
-                }
-                (EmitType::F32, EmitType::F64) => {
-                    LLVMBuildFPExt(self.builder, v, dst_ty, name_c.as_ptr())
-                }
-                _ => LLVMBuildBitCast(self.builder, v, dst_ty, name_c.as_ptr()),
             };
             self.fresh_named(r)
         }

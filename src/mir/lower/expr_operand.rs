@@ -1051,7 +1051,22 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let loop_body_start = cx.new_block();
             let loop_exit = cx.new_block();
             let result_ty = cx.fresh_infer_ty(expr.span);
-            let result = cx.mir.new_local(result_ty, None, expr.span);
+            // Stage 14.66: Loop result local must be MUTABLE so that
+            // `break expr` can assign to it without triggering
+            // "cannot assign twice to immutable variable" borrowck errors.
+            //
+            // Previously, this used `new_local` (Immutable), causing
+            // `loop { break 42; }` to fail with AssignImmutable.
+            //
+            // Per §1.0 原则 6 "通用 > 特例": the loop result local is
+            // always mutable (break assigns to it), regardless of the
+            // loop's context.
+            let result = cx.mir.new_local_with_mut(
+                result_ty,
+                None,
+                expr.span,
+                crate::mir::ty::Mutability::Mutable,
+            );
 
             // Entry → goto loop_header
             cx.terminate(Terminator::Goto(loop_header));

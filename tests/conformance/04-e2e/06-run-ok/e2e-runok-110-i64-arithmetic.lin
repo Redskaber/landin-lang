@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok i64 arithmetic with large constants — Stage 14.64
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 3000000000
+// SOURCE: Stage 14.64 — i32 constants stored to i64 allocas only wrote 4 bytes,
+// leaving upper 4 bytes as garbage (produced 180228417674752 instead of 3000000000)
+
+fn big_sum(a: i64, b: i64) -> i64 {
+    a + b
+}
+
+fn main() -> i32 {
+    println!("{}", big_sum(1_000_000_000, 2_000_000_000));
+    0
+}

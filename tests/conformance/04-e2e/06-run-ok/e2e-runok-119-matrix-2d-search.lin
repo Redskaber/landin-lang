@@ -1,0 +1,33 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok 2D array (matrix) search — Stage 14.66
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: true\nfalse
+// SOURCE: Stage 14.66 — 2D array [[i32; 3]; 3] with nested while loops and break
+
+fn matrix_search(matrix: [[i32; 3]; 3], target: i32) -> bool {
+    let mut row = 0;
+    let mut found = false;
+    while row < 3 && !found {
+        let mut col = 0;
+        while col < 3 {
+            if matrix[row][col] == target {
+                found = true;
+                break;
+            }
+            col = col + 1;
+        }
+        row = row + 1;
+    }
+    found
+}
+
+fn main() -> i32 {
+    let matrix = [
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+    ];
+    println!("{}", matrix_search(matrix, 5));
+    println!("{}", matrix_search(matrix, 99));
+    0
+}
