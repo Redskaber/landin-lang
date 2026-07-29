@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.67.0
+**Version**: v0.72.0
 **Date**: 2026-07-28
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -85,8 +85,9 @@ backend via the `llvm-sys` crate.
 | **Struct destructuring (let + match)** | ✅ Stage 14.48 — `let Point { x, y } = p` + `match p { Point { x, y } => ... }` work |
 | **Nested tuple destructure** | ✅ Stage 14.49 — `let ((a, b), c) = ((1, 2), 3)` works to any depth |
 | **Nested/mixed pattern destructure** | ✅ Stage 14.50 — `let Outer { inner: Inner { a, b }, c } = o` + struct-tuple-field + tuple-of-structs |
+| **Enum method resolution** | ✅ Stage 14.52 — `Color::Red.to_code()` now works (was silently returning 0) |
 | **v0.1 Release Readiness** | **❌ NO-GO** — 7 P0 blockers remain (see below) |
-| Conformance | 5109 tests (5026 compile + 83 run_ok with real runtime verification) |
+| Conformance | 5123 tests (5026 compile + 97 run_ok with real runtime verification) |
 | Rust tests | 1951 passed (with llvm-backend), 0 failed |
 | Source code | ~90 files, ~32,000 LOC, 50+ modules |
 

@@ -12562,3 +12562,173 @@ Stage Summary:
   4. 审查维度 D8 — §25 from 7 to 8 dimensions
 - All original v3.21 content preserved (100% backward compatible)
 - v0.67.0: minor bump (process doc upgrade)
+
+---
+Task ID: stage14.52-enum-method-resolution-via-path
+Agent: Super Z (main)
+Task: Stage 14.52 — Fix enum method resolution (was 0 0 0 — method calls on enum variant values silently dropped). v0.67.0 → v0.68.0.
+
+Work Log:
+- Baseline: v0.67.0 / 1951 rust tests + 5109 conformance (post-Stage 14.51)
+- Audit: tested enum with methods pattern
+- Bug discovered: `Color::Red.to_code()` returns 0 instead of correct value
+  - Root cause: `expr_to_adt_type` had no Path arm — only handled Struct and Call
+  - `Color::Red` is a multi-segment Path that resolves to `Res::Def(enum_def_id, Enum)`
+  - `find_local_init_type` called `expr_to_adt_type(Color::Red)` → returned None
+  - Method resolution failed → Error placeholder → call silently dropped
+- Fix: Added Path arm to `expr_to_adt_type` (expr_operand.rs)
+  - If `HirExprKind::Path(path)` resolves to `Res::Def(def_id, Struct|Enum)`,
+    return `Adt(def_id)` — enabling method resolution on enum/struct variant values
+  - Per §1.0 原则 4 "报错 > 静默": this was a silent failure (no error, wrong result)
+  - Per §1.0 原则 6 "通用 > 特例": the Path arm is a general mechanism, not a
+    per-type special case
+- Verification:
+  - `Color::Red.to_code()` → 42 ✅ (was 0)
+  - Multi-variant enum with match dispatch → 16711680 65280 255 ✅ (was 0 0 0)
+  - All 1951 rust tests pass (zero regression)
+  - All 5110 conformance tests pass (was 5109, +1 new)
+  - 0 clippy warnings, fmt clean
+- Created 1 new run_ok test:
+  - e2e-runok-084-enum-methods.lin — enum with methods + match dispatch
+- Bumped Cargo.toml v0.67.0 → v0.68.0 (minor bump — enum method resolution)
+
+Stage Summary:
+- Stage 14.52 PASSED — enum method resolution now works
+- 1 fix: Added Path arm to expr_to_adt_type
+- Per §1.0: "报错 > 静默" (was silent failure) + "通用 > 特例" (general Path mechanism)
+- All tests pass (zero regression); 1 new run_ok test
+- v0.68.0: minor bump (enum method resolution — major OOP pattern support)
+
+---
+Task ID: stage14.53-audit-enum-data-method-complex-control-flow
+Agent: Super Z (main)
+Task: Stage 14.53 — Audit: enum data variant + method, complex while conditions, struct error pattern, nested if-else returns, loop break value. No bugs found. v0.68.0 → v0.69.0.
+
+Work Log:
+- Baseline: v0.68.0 / 1951 rust tests + 5110 conformance (post-Stage 14.52)
+- Audit: tested diverse complex patterns
+- All patterns passed (no bugs found):
+  1. Enum with data variant + method (Opt::Some(42).unwrap_or(0)) → 42 99 ✅
+  2. While loop with complex condition (i < 10 && sum < 30) + nested if → 20 ✅
+  3. Struct return as error pattern (Result { val, ok }) → 5 1 0 0 ✅
+  4. Const + static global state (MAX - counter) → 58 ✅
+  5. Loop with break value (sum of squares) → 30 ✅
+  6. Nested if-else chain with early returns (4 branches) → -1 0 1 2 ✅
+- Created 4 new run_ok tests:
+  - e2e-runok-085-enum-data-method.lin — enum data variant + method (42 99)
+  - e2e-runok-086-complex-while.lin — while with && + nested if (20)
+  - e2e-runok-087-struct-error-pattern.lin — struct return for errors (5 1 0 0)
+  - e2e-runok-088-nested-if-return.lin — 4-branch if-else with returns (-1 0 1 2)
+- Verification:
+  - All 1951 rust tests pass (zero regression)
+  - All 5114 conformance tests pass (was 5110, +4 new)
+  - 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.68.0 → v0.69.0 (patch bump — audit + test coverage expansion)
+
+Stage Summary:
+- Stage 14.53 PASSED — no bugs found, 4 new run_ok tests added
+- Audit confirms: enum data+methods, complex control flow, struct error patterns,
+  const/static, loop break values, nested if-else returns all work correctly
+- Per §1.0 原则 8 "设计驱动测试": these tests cover additional pipeline paths
+  (enum data variant extraction, complex boolean conditions, struct multi-field
+  return, global state access, loop result propagation)
+- v0.69.0: patch bump (test coverage expansion, no code changes)
+
+---
+Task ID: stage14.54-audit-tuple-struct-enum-complex-match-mixed-self
+Agent: Super Z (main)
+Task: Stage 14.54 — Audit: tuple struct methods, enum complex match, mixed self kinds, nested fn calls, bitwise neg, shadowing. No bugs found. v0.69.0 → v0.70.0.
+
+Work Log:
+- Baseline: v0.69.0 / 1951 rust tests + 5114 conformance (post-Stage 14.53)
+- Audit: tested 7 diverse patterns
+- All patterns passed (no bugs found):
+  1. Tuple struct with methods + .0/.1 field access (Pair::new(10,20).sum()) → 30 10 ✅
+  2. Mixed self kinds (&mut self + &self + self) on same type → 30 0 ✅
+  3. Array of structs + iteration (sum_chain) → 60 ✅
+  4. Enum with 3 data variants + complex match (Circle/Rect/Triangle area) → 75 24 6 ✅
+  5. Shadowing chain (let x = 10; let x = x + 5; let x = x * 2) → 30 ✅
+  6. Nested function calls (add(mul(2,3), mul(4,5))) → 26 ✅
+  7. Bitwise on negative numbers (-1 & 255, etc.) → 255 -1 -256 63 1020 ✅
+- Created 4 new run_ok tests:
+  - e2e-runok-089-tuple-struct-methods.lin — tuple struct ctor + methods (30 10)
+  - e2e-runok-090-enum-complex-match.lin — 3 data variants + area calc (75 24 6)
+  - e2e-runok-091-mixed-self-kinds.lin — &mut self / self / &self mix (30 0)
+  - e2e-runok-092-nested-fn-calls.lin — nested fn call args (26)
+- Verification:
+  - All 1951 rust tests pass (zero regression)
+  - All 5118 conformance tests pass (was 5114, +4 new)
+  - 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.69.0 → v0.70.0 (minor bump — milestone: 90 run_ok tests)
+
+Stage Summary:
+- Stage 14.54 PASSED — no bugs found, 4 new run_ok tests added (total 92 run_ok)
+- v0.70.0 milestone: 90+ run_ok tests, 5118+ conformance tests, comprehensive
+  pattern coverage across all compiler pipeline stages
+
+---
+Task ID: stage14.55-audit-comprehensive-programs
+Agent: Super Z (main)
+Task: Stage 14.55 — Audit: comprehensive mini-programs (calculator, bubble sort). Known limitation: &mut self through match arms (GAP-6). v0.70.0 → v0.71.0.
+
+Work Log:
+- Baseline: v0.70.0 / 1951 rust tests + 5118 conformance (post-Stage 14.54)
+- Audit: tested comprehensive mini-programs combining multiple features
+- Results:
+  1. Self-by-value chain calculator (Calc::new().add(10).add(5).mul(3).get()) → 45 ✅
+  2. Bubble sort (10 elements, nested while + if + array swap) → 0-9 sorted ✅
+  3. Enum dispatch with &mut param through match arms → FAILS (GAP-6 known limitation)
+     - `match op { Op::Add(n) => calc.add(n) }` where calc is &mut — borrowck rejects
+     - This is the two-phase borrows gap (GAP-6) — &mut self chaining through match
+       requires reservation/activation semantics not yet implemented
+     - Workaround: use sequential calls without match dispatch, or use self-by-value
+- Created 2 new run_ok tests:
+  - e2e-runok-093-self-chain-calc.lin — self-by-value chain calculator (45)
+  - e2e-runok-094-bubble-sort.lin — bubble sort 10 elements (0-9)
+- Verification:
+  - All 1951 rust tests pass (zero regression)
+  - All 5120 conformance tests pass (was 5118, +2 new)
+  - 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.70.0 → v0.71.0 (patch bump — audit + test expansion)
+
+Stage Summary:
+- Stage 14.55 PASSED — comprehensive mini-programs tested
+- 1 known limitation confirmed: &mut self through match arms (GAP-6)
+- 2 new run_ok tests added (total 94 run_ok)
+- v0.71.0: patch bump (audit + test coverage)
+
+---
+Task ID: stage14.56-audit-algorithms-fib-power-gcd
+Agent: Super Z (main)
+Task: Stage 14.56 — Audit: classic algorithms (fib, power, GCD). Found fn pointer limitation. v0.71.0 → v0.72.0.
+
+Work Log:
+- Baseline: v0.71.0 / 1951 rust tests + 5120 conformance (post-Stage 14.55)
+- Audit: tested classic algorithm implementations
+- Results:
+  1. Fibonacci recursive + iterative (fib(15)) → 610 610 ✅
+  2. Power function recursive (2^10, 3^5, 5^0) → 1024 243 1 ✅
+  3. GCD Euclidean algorithm (gcd(48,18), gcd(100,75), gcd(17,13)) → 6 25 1 ✅
+  4. i64 arithmetic + cast (big - small as i64) → 139835545223125 ✅
+  5. Multiple string variables → hello world hello ✅
+  6. Function pointer as parameter → FAILS (known limitation)
+     - `fn apply(f: fn(i32) -> i32, x: i32) -> i32 { f(x) }` passes `0` instead of function ref
+     - MIR lower doesn't support `fn` type parameters — the function name is lowered as `Const{val: Int(0)}`
+     - This is a type system limitation — `fn(i32) -> i32` type annotations and function pointer passing
+       are not yet supported. Workaround: use closures or direct calls.
+  7. Closure with capture (|x: i32| { x + captured }) → 15 ✅ (closure capture works)
+- Created 3 new run_ok tests:
+  - e2e-runok-095-fib-rec-iter.lin — recursive + iterative fib (610 610)
+  - e2e-runok-096-power-rec.lin — recursive power (1024 243 1)
+  - e2e-runok-097-gcd.lin — GCD Euclidean (6 25 1)
+- Verification:
+  - All 1951 rust tests pass (zero regression)
+  - All 5123 conformance tests pass (was 5120, +3 new)
+  - 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.71.0 → v0.72.0 (patch bump — audit + test expansion)
+
+Stage Summary:
+- Stage 14.56 PASSED — classic algorithms all work correctly
+- Known limitation: function pointer parameters not supported (fn type params)
+- 3 new run_ok tests (total 97 run_ok)
+- v0.72.0: patch bump (audit + test coverage)

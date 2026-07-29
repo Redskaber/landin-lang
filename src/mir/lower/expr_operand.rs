@@ -2531,6 +2531,22 @@ fn expr_to_adt_type(expr: &HirExpr) -> Option<Ty> {
                 None
             }
         }
+        // Stage 14.52: Handle Path expressions that resolve to enum/struct types.
+        // `Color::Red` resolves to `Res::Def(enum_def_id, Enum)` — the def_id
+        // is the enum type's DefId, so we can construct `Adt(enum_def_id)`.
+        // This enables method resolution on enum variant values like
+        // `let r = Color::Red; r.to_code()`.
+        HirExprKind::Path(path) => {
+            if let crate::hir::Res::Def(def_id, def_kind) = path.res {
+                if matches!(
+                    def_kind,
+                    crate::resolve::DefKind::Struct | crate::resolve::DefKind::Enum
+                ) {
+                    return Some(Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span));
+                }
+            }
+            None
+        }
         HirExprKind::Call { func, .. } => {
             // Stage 14.41: After the resolver fix for `Type::method` paths,
             // `Vec::new()` resolves to `Res::Def(method_def_id, Fn)` (the

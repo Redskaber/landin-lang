@@ -1,0 +1,19 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok GCD (Euclidean algorithm) recursive — Stage 14.56
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 6\n25\n1
+// SOURCE: Stage 14.56 — GCD with modulo + recursion + base case
+
+fn gcd(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
+}
+fn main() -> i32 {
+    println!("{}", gcd(48, 18));
+    println!("{}", gcd(100, 75));
+    println!("{}", gcd(17, 13));
+    0
+}

@@ -1,0 +1,31 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok enum data variants with complex match (3 shapes + area calc) — Stage 14.54
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 75 24 6
+// SOURCE: Stage 14.54 — enum with 3 data variants + match dispatch + local let in arms
+
+enum Shape {
+    Circle(i32),
+    Rect(i32, i32),
+    Triangle(i32, i32, i32),
+}
+fn area(s: Shape) -> i32 {
+    match s {
+        Shape::Circle(r) => {
+            let pi = 3;
+            pi * r * r
+        }
+        Shape::Rect(w, h) => w * h,
+        Shape::Triangle(a, b, c) => {
+            let s = (a + b + c) / 2;
+            s
+        }
+    }
+}
+fn main() -> i32 {
+    let c = area(Shape::Circle(5));
+    let r = area(Shape::Rect(4, 6));
+    let t = area(Shape::Triangle(3, 4, 5));
+    println!("{} {} {}", c, r, t);
+    0
+}

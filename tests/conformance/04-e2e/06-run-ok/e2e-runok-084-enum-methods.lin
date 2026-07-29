@@ -1,0 +1,23 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok enum with methods + match dispatch — Stage 14.52
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 16711680 65280 255
+// SOURCE: Stage 14.52 — enum method resolution via Path in expr_to_adt_type (was 0 0 0)
+
+enum Color { Red, Green, Blue }
+impl Color {
+    fn to_code(self) -> i32 {
+        match self {
+            Color::Red => 16711680,
+            Color::Green => 65280,
+            Color::Blue => 255,
+        }
+    }
+}
+fn main() -> i32 {
+    let r = Color::Red;
+    let g = Color::Green;
+    let b = Color::Blue;
+    println!("{} {} {}", r.to_code(), g.to_code(), b.to_code());
+    0
+}

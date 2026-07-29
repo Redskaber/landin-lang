@@ -1,0 +1,28 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok bubble sort (10 elements) — Stage 14.55
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 0\n1\n2\n3\n4\n5\n6\n7\n8\n9
+// SOURCE: Stage 14.55 — bubble sort with nested while + if + array mutation + swap
+
+fn main() -> i32 {
+    let mut arr = [5, 3, 8, 1, 9, 2, 7, 4, 6, 0];
+    let mut i = 0;
+    while i < 10 {
+        let mut j = 0;
+        while j < 10 - i - 1 {
+            if arr[j] > arr[j + 1] {
+                let tmp = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = tmp;
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    let mut k = 0;
+    while k < 10 {
+        println!("{}", arr[k]);
+        k = k + 1;
+    }
+    0
+}

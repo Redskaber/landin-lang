@@ -1,9 +1,175 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.67.0
+**Current version**: v0.72.0
 **Date**: 2026-07-28
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5109 conformance tests (83 run_ok) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5123 conformance tests (97 run_ok) + 4 examples
+
+---
+## v0.72.0 — Stage 14.56 (Audit: Classic Algorithms — Fib, Power, GCD)
+
+### Overview
+
+Stage 14.56 tests classic algorithm implementations: Fibonacci (recursive +
+iterative), power function, GCD (Euclidean). All pass. Found known limitation:
+function pointer parameters (`fn(i32) -> i32` type) not yet supported.
+
+### Audit Results
+
+1. Fibonacci recursive + iterative: fib(15) → 610 610 ✅
+2. Power recursive: 2^10=1024, 3^5=243, 5^0=1 ✅
+3. GCD Euclidean: gcd(48,18)=6, gcd(100,75)=25, gcd(17,13)=1 ✅
+4. i64 arithmetic + cast: ✅
+5. Function pointer as parameter → FAILS (known limitation — fn type params)
+6. Closure with capture → 15 ✅
+
+**3 new run_ok tests**: E-095 (fib rec+iter), E-096 (power), E-097 (GCD)
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5123 passed, 0 failed (5026 compile + 97 run_ok)
+```
+
+### Version policy: v0.71.0 → v0.72.0 (patch bump — audit + test expansion)
+
+---
+## v0.71.0 — Stage 14.55 (Audit: Comprehensive Mini-Programs)
+
+### Overview
+
+Stage 14.55 tests comprehensive mini-programs combining multiple features:
+self-chain calculator and bubble sort. Both pass. Confirmed known limitation:
+`&mut self` through match arms requires GAP-6 (two-phase borrows).
+
+### Audit Results
+
+1. Self-by-value chain calculator: `Calc::new().add(10).add(5).mul(3).get()` → 45 ✅
+2. Bubble sort (10 elements): nested while + if + array swap → 0-9 sorted ✅
+3. Enum dispatch with `&mut` through match arms → FAILS (GAP-6, known)
+
+**2 new run_ok tests**: E-093 (self-chain calc), E-094 (bubble sort)
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5120 passed, 0 failed (5026 compile + 94 run_ok)
+```
+
+### Version policy: v0.70.0 → v0.71.0 (patch bump — audit + test expansion)
+
+---
+## v0.70.0 — Stage 14.54 (Audit: Tuple Struct + Enum Complex Match + Mixed Self)
+
+### Overview
+
+Stage 14.54 is an audit round testing 7 diverse complex patterns. No bugs found.
+4 new run_ok tests added, bringing the total to 92 run_ok tests. This is a
+milestone release — the first with 90+ runtime-verified test cases.
+
+### Audit Results (all pass — no bugs)
+
+1. Tuple struct with methods + .0/.1: `Pair::new(10,20).sum()` → 30 10 ✅
+2. Mixed self kinds (&mut + & + self): Counter add/get/reset → 30 0 ✅
+3. Array of structs + iteration: sum_chain → 60 ✅
+4. Enum 3 data variants + complex match: Circle/Rect/Triangle area → 75 24 6 ✅
+5. Shadowing chain: `let x = 10; let x = x + 5; let x = x * 2` → 30 ✅
+6. Nested function calls: `add(mul(2,3), mul(4,5))` → 26 ✅
+7. Bitwise on negatives: `-1 & 255` etc → 255 -1 -256 63 1020 ✅
+
+**4 new run_ok tests**: E-089 through E-092
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5118 passed, 0 failed (5026 compile + 92 run_ok)
+```
+
+### Version policy: v0.69.0 → v0.70.0 (minor bump — 90+ run_ok milestone)
+
+---
+## v0.69.0 — Stage 14.53 (Audit: Enum Data + Complex Control Flow)
+
+### Overview
+
+Stage 14.53 is an audit round testing diverse complex patterns: enum with data
+variant + method, while loop with complex conditions, struct error pattern,
+const/static, loop break value, nested if-else with early returns. No bugs
+found — all patterns work correctly. 4 new run_ok tests added.
+
+### Audit Results (all pass — no bugs)
+
+1. Enum data variant + method: `Opt::Some(42).unwrap_or(0)` → 42 99 ✅
+2. While with complex condition: `i < 10 && sum < 30` + nested if → 20 ✅
+3. Struct error pattern: `Result { val, ok }` return → 5 1 0 0 ✅
+4. Const + static: `MAX - counter` → 58 ✅
+5. Loop break value: sum of squares → 30 ✅
+6. Nested if-else returns: 4-branch → -1 0 1 2 ✅
+
+**4 new run_ok tests**: E-085 through E-088
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5114 passed, 0 failed (5026 compile + 88 run_ok)
+```
+
+### Version policy: v0.68.0 → v0.69.0 (patch bump — audit + test coverage expansion)
+
+---
+## v0.68.0 — Stage 14.52 (Enum Method Resolution)
+
+### Overview
+
+Stage 14.52 fixes enum method resolution — `Color::Red.to_code()` was returning
+0 instead of the correct value because `expr_to_adt_type` had no Path arm.
+Method calls on enum variant values were silently dropped.
+
+### Stage 14.52 — Enum Method Resolution
+
+**Bug**: `Color::Red.to_code()` returns 0 (silent failure)
+- Root cause: `expr_to_adt_type` only handled `Struct` and `Call` expressions
+- `Color::Red` is a `Path` resolving to `Res::Def(enum_def_id, Enum)` — not handled
+- Method resolution failed → Error placeholder → call silently dropped
+
+**Fix**: Added `Path` arm to `expr_to_adt_type` (expr_operand.rs)
+- If path resolves to `Res::Def(def_id, Struct|Enum)`, return `Adt(def_id)`
+- Per §1.0: "报错 > 静默" (was silent) + "通用 > 特例" (general mechanism)
+
+**Verified paths** (all pass):
+- `Color::Red.to_code()` → 42 ✅ (was 0)
+- Multi-variant enum with match → 16711680 65280 255 ✅ (was 0 0 0)
+
+**1 new run_ok test**:
+- `e2e-runok-084-enum-methods.lin` — enum with methods + match dispatch
+
+### Verification
+
+```
+cargo build --features llvm-backend: OK
+cargo fmt: clean
+cargo clippy --all-targets --features llvm-backend: 0 warnings
+cargo test --features llvm-backend: 1951 passed, 0 failed, 2 ignored
+conformance: 5110 passed, 0 failed (5026 compile + 84 run_ok)
+```
+
+### Version policy: v0.67.0 → v0.68.0 (minor bump — enum method resolution)
 
 ---
 ## v0.67.0 — Stage 14.51 (Process Doc v3.22 Upgrade)

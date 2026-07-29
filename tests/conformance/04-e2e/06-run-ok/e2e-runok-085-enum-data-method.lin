@@ -1,0 +1,24 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok enum with data variant + method with match — Stage 14.53
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 42 99
+// SOURCE: Stage 14.53 — enum data variant + method dispatch verification
+
+enum Opt {
+    Some(i32),
+    None,
+}
+impl Opt {
+    fn unwrap_or(self, default: i32) -> i32 {
+        match self {
+            Opt::Some(v) => v,
+            Opt::None => default,
+        }
+    }
+}
+fn main() -> i32 {
+    let a = Opt::Some(42);
+    let b = Opt::None;
+    println!("{} {}", a.unwrap_or(0), b.unwrap_or(99));
+    0
+}

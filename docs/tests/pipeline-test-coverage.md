@@ -257,7 +257,7 @@ Each test cell has a status:
 
 ## 5. Tier 3: End-to-End (E2E) Path Coverage
 
-### 5.1 run_ok Tests (83 total — verified at runtime)
+### 5.1 run_ok Tests (97 total — verified at runtime)
 
 | Test ID | Feature | Expected Output | Status |
 |---------|---------|-----------------|--------|
@@ -344,6 +344,20 @@ Each test cell has a status:
 | E-081 | Nested struct destructure | `1 2 3` | ✅ |
 | E-082 | Struct with tuple field destructure | `10 20 99` | ✅ |
 | E-083 | Tuple of structs destructure | `1 2 3 4` | ✅ |
+| E-084 | Enum with methods + match dispatch | `16711680 65280 255` | ✅ |
+| E-085 | Enum data variant + method (unwrap_or) | `42 99` | ✅ |
+| E-086 | While with complex condition (&&) + nested if | `20` | ✅ |
+| E-087 | Struct return as error pattern | `5 1 0 0` | ✅ |
+| E-088 | Nested if-else chain with early returns | `-1 0 1 2` | ✅ |
+| E-089 | Tuple struct with methods + .0/.1 access | `30 10` | ✅ |
+| E-090 | Enum 3 data variants + complex match (area) | `75 24 6` | ✅ |
+| E-091 | Mixed self kinds (&mut + & + self) | `30\n0` | ✅ |
+| E-092 | Nested function calls + arg evaluation | `26` | ✅ |
+| E-093 | Self-by-value chain calculator (add+add+mul) | `45` | ✅ |
+| E-094 | Bubble sort (10 elements, nested while+if+swap) | `0\n1\n2\n3\n4\n5\n6\n7\n8\n9` | ✅ |
+| E-095 | Fibonacci recursive + iterative comparison | `610 610` | ✅ |
+| E-096 | Power function recursive (3 branches) | `1024\n243\n1` | ✅ |
+| E-097 | GCD Euclidean algorithm recursive | `6\n25\n1` | ✅ |
 
 ### 5.2 Negative Tests (compile_error — 403 total)
 
@@ -380,9 +394,9 @@ Each test cell has a status:
 |------|-------------|----------|----------|
 | Tier 1: Per-Stage | 146 | 144 | 98.6% |
 | Tier 2: Inter-Stage | 15 | 15 | 100% |
-| Tier 3: E2E (run_ok) | 83 | 83 | 100% |
+| Tier 3: E2E (run_ok) | 97 | 97 | 100% |
 | Tier 3: E2E (compile_error) | 399 | 399 | 100% |
-| **Total** | **643** | **641** | **99.7%** |
+| **Total** | **657** | **655** | **99.7%** |
 
 **Unverified paths** (2):
 1. B-03: Double mutable borrow — NLL permissive (GAP-1, known limitation)
