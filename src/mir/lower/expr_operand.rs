@@ -1442,22 +1442,23 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     1
                 }
             };
-            let elem_ty = cx.fresh_infer_ty(expr.span);
-            // Stage 14.20: Build the proper array type [elem_ty; N] so codegen
-            // allocates the correct size. Was: TyKind::Error (resolved to i32,
-            // causing array values to be stored into i32 allocas — segfault).
-            // Use Error for the element type to preserve typeck behavior
-            // (typeck will resolve it via unification with the let binding's
-            // annotated type). The array SIZE (N) is what matters for codegen.
+            // Stage 14.79: Use the actual element type from the lowered element,
+            // not Error. Was: TyKind::Error (resolved to i32, causing nested
+            // arrays like [[i32; 3]; 3] to have wrong alloca type — the outer
+            // array [3 x [3 x i32]] was stored into an alloca typed [3 x i32],
+            // causing "Invalid InsertValueInst operands!" in LLVMSysEmitter.
+            //
+            // Fix: get the element type from elem_local's MIR local decl.
+            // If it's Infer (not yet resolved), fall back to Error (typeck
+            // will resolve it later).
+            let elem_ty = cx.mir.local(elem_local).ty.clone();
+            let fresh_elem_ty = cx.fresh_infer_ty(expr.span);
             let count_const = crate::mir::ty::Const {
                 ty: Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span)),
                 val: crate::mir::ty::ConstVal::Int(n as u128),
             };
             let array_ty = Ty::new(
-                TyKind::Array(
-                    Box::new(Ty::new(TyKind::Error, expr.span)),
-                    Box::new(count_const),
-                ),
+                TyKind::Array(Box::new(elem_ty), Box::new(count_const)),
                 expr.span,
             );
             // Build the operands list: N copies of the element.
@@ -1465,7 +1466,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .map(|_| Operand::Copy(Place::local(elem_local, elem.span)))
                 .collect();
             cx.eval_rvalue_to_temp(
-                Rvalue::Aggregate(AggregateKind::Array(elem_ty), operands),
+                Rvalue::Aggregate(AggregateKind::Array(fresh_elem_ty), operands),
                 array_ty,
                 expr.span,
             )

@@ -1,0 +1,28 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Sum builder with method chaining + add_range (GAP-6) — Stage 14.78
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 60\n55
+// SOURCE: Stage 14.78 — audit verified Sum builder with &mut self method chaining and add_range
+// calling add (GAP-6: &mut self calling &mut self)
+
+struct Sum { total: i32 }
+impl Sum {
+    fn new() -> Sum { Sum { total: 0 } }
+    fn add(&mut self, n: i32) -> &mut Sum { self.total = self.total + n; self }
+    fn add_range(&mut self, start: i32, end: i32) -> &mut Sum {
+        let mut i = start;
+        while i <= end { self.add(i); i = i + 1; }
+        self
+    }
+    fn get(&self) -> i32 { self.total }
+}
+
+fn main() -> i32 {
+    let mut s = Sum::new();
+    s.add(10).add(20).add(30);
+    println!("{}", s.get());  // 60
+    let mut s2 = Sum::new();
+    s2.add_range(1, 10);
+    println!("{}", s2.get());  // 55
+    0
+}

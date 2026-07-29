@@ -1763,3 +1763,143 @@ compiler's correctness for a wide range of patterns including:
 - Pattern matching (literals, tuples, wildcards, enum variants)
 
 **Last updated**: 2026-07-29
+
+---
+
+## Stage 14.77 — v0.92.0 → v0.93.0 (2026-07-29) — Match Binding Initialization Fix
+
+### Bug: Match binding `n => { ... }` was uninitialized (read stack garbage)
+
+**Symptom**: `match score { 0 => 0, n => { if n < 50 { 1 } ... } }` returned wrong
+values — `n` was uninitialized, reading stack garbage instead of the scrutinee value.
+
+**Root cause**: `collect_pat_bindings_for_mir` creates a local for the binding `n` but
+doesn't assign it the scrutinee value. The otherwise block didn't have code to initialize
+the binding — it just called `collect_pat_bindings_for_mir` and `lower_enum_variant_pattern_bindings`,
+neither of which handles plain `Ident` bindings for non-enum scrutinees.
+
+**Fix** (`src/mir/lower/control_flow.rs`): After `collect_pat_bindings_for_mir` in the
+otherwise block, if the pattern is `Ident` (a binding like `n`), assign the scrutinee
+value to the binding local. Handle both by-value scrutinees (direct copy) and by-reference
+scrutinees (deref before copy).
+
+### Audit-Verified Patterns (No Bugs Found)
+
+- Negative arithmetic: `neg_math()` = 160
+- i64 negative: `i64_neg()` = -3000000000
+- Mixed i32/i64: `mixed_int()` = 300
+- Bank with transfer (GAP-6 verified): open/deposit/withdraw/transfer/balance/total
+- Find common element (nested while + early return)
+- Char operations: `char_test()` = 162
+- Float arithmetic: `float_math()` = 12.566
+- Boolean logic: `logic_test()` 5 cases
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5163 conformance tests pass (was 5161, +2 new run_ok)
+- 0 clippy warnings, fmt clean
+- Debug tool: 137/137 pass (100%)
+
+### 2 new run_ok tests
+
+- `e2e-runok-136-match-binding-if-else.lin` — match binding + if-else chain
+- `e2e-runok-137-bank-transfer.lin` — Bank with transfer (GAP-6 verified)
+
+### Stage Summary
+
+Stage 14.77 PASSED — match binding initialization fixed. Bindings in match arms
+(`n => { ... }`) are now correctly initialized to the scrutinee value.
+
+**Last updated**: 2026-07-29
+
+---
+
+## Stage 14.78 — v0.93.0 → v0.94.0 (2026-07-29) — Numeric Edge Cases + Complex Match Patterns
+
+### Known limitation found: Nested array struct `[[i32; N]; M]` fails in LLVMSysEmitter
+
+**Symptom**: `struct Grid { cells: [[i32; 3]; 3] }` with `Grid { cells: [[0; 3]; 3] }`
+fails with `Invalid InsertValueInst operands!` in LLVMSysEmitter.
+
+**Root cause**: The struct literal insertvalue gets the wrong value type — the inner
+`[3 x i32]` is passed where `[3 x [3 x i32]]` is expected. The TextEmitter produces
+correct IR, but LLVMSysEmitter's value flow through store/load doesn't preserve the
+nested array type correctly.
+
+**Status**: Known limitation, deferred to future stage. The workaround is to use
+1D arrays or construct nested arrays element-by-element.
+
+### Audit-Verified Patterns (No Bugs Found)
+
+- Integer boundary test (i32::MAX/MIN): `max_i32_test()` = 1
+- Division/modulo with negatives: `div_mod_test()` = -32
+- FizzBuzz (match + if-else chain): 4, 1, 2, 3
+- Sum builder with method chaining: `s.add(10).add(20).add(30)` = 60
+- Sum builder add_range (GAP-6): `s2.add_range(1, 10)` = 55
+- String comparison chain: classify_command 5 cases
+- Enum with 3 variants + nested if-else: handle_result 4 cases
+- Tuple destructuring in function params: `process_pair((6, 7))` = 42
+- is_sorted (while with complex condition): true/false
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5166 conformance tests pass (was 5163, +3 new run_ok)
+- 0 clippy warnings, fmt clean
+- Debug tool: 140/140 pass (100%)
+
+### 3 new run_ok tests
+
+- `e2e-runok-138-fizzbuzz.lin` — FizzBuzz (match + if-else)
+- `e2e-runok-139-sum-builder-chain.lin` — Sum builder with method chaining
+- `e2e-runok-140-enum-nested-if.lin` — Enum with nested if-else
+
+### Stage Summary
+
+Stage 14.78 PASSED — numeric edge cases and complex match patterns verified.
+Found one known limitation (nested array struct in LLVMSysEmitter), documented for
+future work.
+
+**Last updated**: 2026-07-29
+
+---
+
+## Stage 14.79 — v0.94.0 → v0.95.0 (2026-07-29) — Nested Array Struct Fix (Repeat Element Type)
+
+### Bug: Nested array `[[i32; N]; M]` failed in LLVMSysEmitter
+
+**Symptom**: `struct Grid { cells: [[i32; 3]; 3] }` with `Grid { cells: [[0; 3]; 3] }`
+failed with `Invalid InsertValueInst operands!` in LLVMSysEmitter.
+
+**Root cause**: The Repeat expression `[val; N]` lowering used `TyKind::Error` as the
+element type in the array type. For simple arrays like `[0; 5]`, Error resolves to i32
+(acceptable). But for nested arrays like `[[0; 3]; 3]`, the element type should be
+`[3 x i32]`, not `Error`/`i32`. This caused the outer array's alloca to be typed
+`[3 x i32]` instead of `[3 x [3 x i32]]`, and the insertvalue for the struct literal
+got a type mismatch.
+
+**Fix** (`src/mir/lower/expr_operand.rs`): Use the actual element type from the lowered
+element's MIR local decl (`cx.mir.local(elem_local).ty.clone()`) instead of
+`TyKind::Error`. This ensures the array type has the correct element type, and the
+alloca is sized correctly.
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5167 conformance tests pass (was 5166, +1 new run_ok)
+- 0 clippy warnings, fmt clean
+- Debug tool: 141/141 pass (100%)
+- Grid with [[i32; 5]; 5] works correctly: get/set/row_max/total all pass
+
+### 1 new run_ok test
+
+- `e2e-runok-141-nested-array-struct.lin` — nested array struct with methods
+
+### Stage Summary
+
+Stage 14.79 PASSED — nested array struct limitation fixed. The known limitation from
+Stage 14.78 is now resolved. `[[i32; N]; M]` arrays work correctly in both struct
+fields and standalone expressions.
+
+**Last updated**: 2026-07-29

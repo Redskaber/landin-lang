@@ -1,0 +1,59 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Bank with transfer (GAP-6: &mut self calling &mut self) — Stage 14.77
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 100\n150\n100\ntrue\n120\n80\n300
+// SOURCE: Stage 14.77 — audit verified Bank with transfer (withdraw + deposit chain, GAP-6)
+
+struct Bank {
+    accounts: [i32; 5],
+    count: i32,
+}
+impl Bank {
+    fn new() -> Bank { Bank { accounts: [0; 5], count: 0 } }
+    fn open(&mut self, initial: i32) -> i32 {
+        let id = self.count;
+        self.accounts[id] = initial;
+        self.count = self.count + 1;
+        id
+    }
+    fn deposit(&mut self, id: i32, amount: i32) {
+        self.accounts[id] = self.accounts[id] + amount;
+    }
+    fn withdraw(&mut self, id: i32, amount: i32) -> bool {
+        if self.accounts[id] >= amount {
+            self.accounts[id] = self.accounts[id] - amount;
+            true
+        } else { false }
+    }
+    fn transfer(&mut self, from: i32, to: i32, amount: i32) -> bool {
+        if self.withdraw(from, amount) {
+            self.deposit(to, amount);
+            true
+        } else { false }
+    }
+    fn balance(&self, id: i32) -> i32 { self.accounts[id] }
+    fn total(&self) -> i32 {
+        let mut sum = 0;
+        let mut i = 0;
+        while i < self.count { sum = sum + self.accounts[i]; i = i + 1; }
+        sum
+    }
+}
+
+fn main() -> i32 {
+    let mut bank = Bank::new();
+    let a = bank.open(100);
+    let b = bank.open(200);
+    let c = bank.open(50);
+    println!("{}", bank.balance(a));
+    bank.deposit(a, 50);
+    println!("{}", bank.balance(a));
+    bank.withdraw(b, 100);
+    println!("{}", bank.balance(b));
+    let ok = bank.transfer(a, c, 30);
+    println!("{}", ok);
+    println!("{}", bank.balance(a));
+    println!("{}", bank.balance(c));
+    println!("{}", bank.total());
+    0
+}

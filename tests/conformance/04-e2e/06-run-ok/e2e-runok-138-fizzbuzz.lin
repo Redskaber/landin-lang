@@ -1,0 +1,24 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok FizzBuzz with match + if-else chain — Stage 14.78
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 4\n1\n2\n3
+// SOURCE: Stage 14.78 — audit verified FizzBuzz pattern (match on n%15, then if-else for sub-cases)
+
+fn fizzbuzz(n: i32) -> i32 {
+    match n % 15 {
+        0 => 4,
+        _ => {
+            if n % 3 == 0 { 1 }
+            else if n % 5 == 0 { 2 }
+            else { 3 }
+        }
+    }
+}
+
+fn main() -> i32 {
+    println!("{}", fizzbuzz(15));  // 4 (FizzBuzz)
+    println!("{}", fizzbuzz(9));   // 1 (Fizz)
+    println!("{}", fizzbuzz(10));  // 2 (Buzz)
+    println!("{}", fizzbuzz(7));   // 3 (Number)
+    0
+}

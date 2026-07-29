@@ -1030,6 +1030,49 @@ pub(crate) fn lower_match(
         cx.current_block = fallthrough_block;
         collect_pat_bindings_for_mir(cx, &arm.pat);
         lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
+
+        // Stage 14.77: For Ident patterns (bindings like `n => { ... }`),
+        // assign the scrutinee value to the binding local.
+        //
+        // collect_pat_bindings_for_mir creates the local but doesn't assign it.
+        // Without this, `n` would be uninitialized — reading garbage values.
+        //
+        // Per §1.0 原则 5 "报错 > 静默": bindings must be initialized to the
+        // scrutinee value, not left as uninitialized stack garbage.
+        if let HirPatKind::Ident(_mode, _ident, _) = &arm.pat.kind {
+            // Look up the local created by collect_pat_bindings_for_mir
+            if let Some(binding_local) = cx.local_map.get(&arm.pat.hir_id).copied() {
+                // Check if scrut_local is a Ref (e.g., &self match)
+                let scrut_ty = cx.mir.local(scrut_local).ty.clone();
+                if matches!(&scrut_ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
+                    // Scrutinee is a reference — deref before assigning
+                    let deref_ty = match &scrut_ty.kind {
+                        crate::mir::ty::TyKind::Ref(_, _, inner) => (**inner).clone(),
+                        _ => scrut_ty.clone(),
+                    };
+                    cx.push_assign(
+                        Place::local(binding_local, arm.pat.span),
+                        Rvalue::Use(Operand::Copy(Place {
+                            kind: PlaceKind::Projection(
+                                Box::new(Place::local(scrut_local, arm.pat.span)),
+                                ProjectionElem::Deref,
+                            ),
+                            span: arm.pat.span,
+                        })),
+                        arm.pat.span,
+                    );
+                    let _ = deref_ty; // type hint (not used directly)
+                } else {
+                    // Scrutinee is by value — copy directly
+                    cx.push_assign(
+                        Place::local(binding_local, arm.pat.span),
+                        Rvalue::Use(Operand::Copy(Place::local(scrut_local, arm.pat.span))),
+                        arm.pat.span,
+                    );
+                }
+            }
+        }
+
         let arm_result = lower_expr_to_operand(cx, &arm.body);
         cx.push_assign(
             Place::local(result_local, span),

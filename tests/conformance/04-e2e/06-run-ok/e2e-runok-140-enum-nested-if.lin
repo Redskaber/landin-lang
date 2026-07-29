@@ -1,0 +1,30 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Enum with 3 variants + nested if-else dispatch — Stage 14.78
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 1\n2\n-1\n-99
+// SOURCE: Stage 14.78 — audit verified enum Result3 with Ok/Err/Pending + nested if-else
+
+enum Result3 { Ok(i32), Err(i32), Pending }
+fn handle_result(r: Result3) -> i32 {
+    match r {
+        Result3::Ok(v) => {
+            if v > 100 { 2 }
+            else if v > 0 { 1 }
+            else { 0 }
+        }
+        Result3::Err(code) => {
+            if code == 1 { -1 }
+            else if code == 2 { -2 }
+            else { -3 }
+        }
+        Result3::Pending => -99,
+    }
+}
+
+fn main() -> i32 {
+    println!("{}", handle_result(Result3::Ok(50)));
+    println!("{}", handle_result(Result3::Ok(200)));
+    println!("{}", handle_result(Result3::Err(1)));
+    println!("{}", handle_result(Result3::Pending));
+    0
+}

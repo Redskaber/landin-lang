@@ -1,9 +1,98 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.92.0
+**Current version**: v0.95.0
 **Date**: 2026-07-29
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5161 conformance tests (135 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5167 conformance tests (141 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.95.0 — Stage 14.79 (Nested Array Struct Fix — Repeat Element Type)
+
+### Overview
+
+Stage 14.79 fixes the nested array struct limitation from Stage 14.78.
+`[[i32; N]; M]` arrays now work correctly in struct fields.
+
+### Bug: Nested array `[[i32; N]; M]` failed in LLVMSysEmitter
+
+**Symptom**: `struct Grid { cells: [[i32; 3]; 3] }` failed with
+`Invalid InsertValueInst operands!`.
+
+**Root cause**: Repeat expression `[val; N]` used `TyKind::Error` as element type.
+For nested arrays, the element type should be `[3 x i32]`, not `Error`/`i32`.
+
+**Fix**: Use actual element type from the lowered element's MIR local decl.
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5167 conformance tests pass (was 5166, +1 new run_ok)
+- 0 clippy warnings, fmt clean
+- Debug tool: 141/141 pass (100%)
+
+---
+## v0.94.0 — Stage 14.78 (Numeric Edge Cases + Complex Match Patterns)
+
+### Overview
+
+Stage 14.78 audits numeric edge cases, complex match patterns, and method chaining.
+Found one known limitation (nested array struct).
+
+### Audit-Verified Patterns
+
+- Integer boundary test (i32::MAX/MIN)
+- Division/modulo with negatives
+- FizzBuzz (match + if-else chain)
+- Sum builder with method chaining + add_range (GAP-6 verified)
+- String comparison chain (5 cases)
+- Enum with 3 variants + nested if-else
+- Tuple destructuring in function params
+- is_sorted (while with complex condition)
+
+### Known Limitation: Nested array struct
+
+`struct Grid { cells: [[i32; N]; M] }` fails in LLVMSysEmitter due to
+insertvalue type mismatch. TextEmitter produces correct IR. Deferred to
+future stage.
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5166 conformance tests pass (was 5163, +3 new run_ok)
+- 0 clippy warnings, fmt clean
+- Debug tool: 140/140 pass (100%)
+
+---
+## v0.93.0 — Stage 14.77 (Match Binding Initialization Fix)
+
+### Overview
+
+Stage 14.77 fixes a bug where match bindings (`n => { ... }`) were uninitialized,
+reading stack garbage instead of the scrutinee value.
+
+### Bug: Match binding `n` was uninitialized
+
+**Symptom**: `match score { 0 => 0, n => { if n < 50 { 1 } ... } }` returned wrong values.
+
+**Root cause**: `collect_pat_bindings_for_mir` created the binding local but didn't assign
+it the scrutinee value.
+
+**Fix**: In the otherwise block, after creating bindings, assign the scrutinee value to
+Ident bindings (handle both by-value and by-reference scrutinees).
+
+### Audit-Verified Patterns
+
+- Negative arithmetic, i64 negative values, mixed i32/i64
+- Bank with transfer (GAP-6: &mut self calling &mut self)
+- Find common element (nested while + early return)
+- Char operations, float arithmetic, boolean logic
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5163 conformance tests pass (was 5161, +2 new run_ok)
+- 0 clippy warnings, fmt clean
+- Debug tool: 137/137 pass (100%)
 
 ---
 ## v0.92.0 — Stage 14.76 (Comprehensive Pattern Audit — Zero Bugs Found)
