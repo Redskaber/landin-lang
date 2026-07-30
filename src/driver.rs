@@ -400,7 +400,7 @@ pub fn compile(src: &str) -> CompileResult {
                     is_unsafe: f.sig.is_unsafe,
                 },
             );
-            if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+            if crate::session::debug_codegen_enabled() {
                 let name = interner.try_resolve(&f.ident.name).unwrap_or("?");
                 eprintln!(
                     "[DRIVER] fn_sig_table (HirItem::Fn): def_id={:?} name={} inputs_len={}",
@@ -420,7 +420,7 @@ pub fn compile(src: &str) -> CompileResult {
     // LLVM to create a renamed duplicate (e.g. `landin_Square_area.1`)
     // and producing an "undefined reference" link error.
     for (def_id, owner) in &hir.owners {
-        if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+        if crate::session::debug_codegen_enabled() {
             eprintln!("[DRIVER] owner: def_id={:?} kind={:?}", def_id, owner);
         }
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
@@ -477,7 +477,7 @@ pub fn compile(src: &str) -> CompileResult {
                             is_unsafe: f.sig.is_unsafe,
                         },
                     );
-                    if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+                    if crate::session::debug_codegen_enabled() {
                         let name = interner.try_resolve(&f.ident.name).unwrap_or("?");
                         eprintln!("[DRIVER] fn_sig_table: inserted method_def_id={:?} name={} inputs_len={}",
                             method_def_id, name, fn_sig_table.sigs.get(&method_def_id).map(|s| s.inputs.len()).unwrap_or(0));
@@ -641,7 +641,7 @@ pub fn compile(src: &str) -> CompileResult {
                             is_unsafe: f.sig.is_unsafe,
                         },
                     );
-                    if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+                    if crate::session::debug_codegen_enabled() {
                         let name = interner.try_resolve(&f.ident.name).unwrap_or("?");
                         eprintln!(
                             "[DRIVER] fn_sig_table: inserted trait default method_def_id={:?} name={} inputs_len={}",
@@ -753,7 +753,7 @@ pub fn compile(src: &str) -> CompileResult {
             }
             false
         });
-        if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+        if crate::session::debug_codegen_enabled() {
             eprintln!(
                 "[DRIVER] body_id owner={:?} is_default_body_with_zero_impls={}",
                 owner_def_id, is_default_body_with_zero_impls
@@ -788,9 +788,57 @@ pub fn compile(src: &str) -> CompileResult {
         typeck_results.push(body_results);
 
         // Borrow check
-        let mut bc = borrowck::BorrowChecker::new();
+        // Stage 14.106 (HP-1 fix attempt): Pass TraitResolver to BorrowChecker.
+        //
+        // NOTE: HP-1 fix is DEFERRED to v0.2. The issue is that
+        // `ty_is_copy_with_resolver` returns false for ALL user-defined structs
+        // (because v0.1 has no #[derive(Copy)] support and users don't write
+        // `impl Copy for Type` blocks). This causes 223 test failures because
+        // v0.1 tests expect structs with all-Copy fields to be Copy.
+        //
+        // The correct v0.2 fix is to implement field-level Copy detection:
+        // a struct is Copy if ALL its fields are Copy (matching Rust's
+        // #[derive(Copy)] rules). This requires field type lookup infrastructure
+        // that doesn't exist in v0.1.
+        //
+        // For v0.1: fall back to unsound `ty_is_copy` (treats all Adt as Copy).
+        // This is a known v0.1 soundness limitation — documented in the
+        // v0.1-capability-assessment.
+        let mut bc: borrowck::BorrowChecker<'_> = borrowck::BorrowChecker::new();
         bc.check_mir_body(&mir);
         errors.borrowck.extend(bc.into_errors());
+
+        // Stage 14.108 (HP-B11 documentation): Type Writeback Architecture
+        //
+        // The following 8 writeback passes sink resolved types from typeck
+        // into MIR local_decls for codegen. Each pass was added incrementally
+        // across Stages 14.30-14.84 to fix a specific type-propagation gap.
+        //
+        // Pass 1 (Stage 14.49): Tuple literal types — sink resolved tuple
+        //   types from Aggregate operands to local_decls.
+        // Pass 2 (Stage 14.37): Call dest types — sink callee return types
+        //   from fn_sigs to Call destination local_decls.
+        // Pass 3 (Stage 14.49): Field projection Copy dests — sink field
+        //   types from source local to destination local.
+        // Pass 4 (Stage 14.37): Deref/Index projection dests — sink element
+        //   types from source local to destination local.
+        // Pass 5 (Stage 14.37): Type propagation through Assign — propagate
+        //   resolved types through Copy/Move chains (fixpoint loop).
+        // Pass 6 (Stage 14.82): Closure substs writeback — sink resolved
+        //   capture types to closure struct substs.
+        // Pass 7 (Stage 14.84): Closure local_decl.ty — update closure
+        //   local's type from Infer to Closure(def_id, substs).
+        // Pass 8 (Stage 14.84): Closure extract locals — update extract
+        //   local types from stale Infer to resolved subst types.
+        //
+        // v0.2 TODO: Consolidate passes 1-5 into a single O(B×S) pass
+        // that handles all type-propagation cases in one walk. Passes 6-8
+        // are closure-specific and can be merged into a single closure
+        // writeback pass. This would reduce from 8 passes to 2.
+        //
+        // Per §1.0 原則 1 "长期 > 短期": the incremental approach was correct
+        // for v0.1 (each pass fixed a real bug), but v0.2 should consolidate
+        // for maintainability and performance (6× constant factor reduction).
 
         // Stage 14.49: Write back concrete tuple types for tuple literals.
         //

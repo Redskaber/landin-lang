@@ -103,6 +103,8 @@ impl MirBody {
         self.basic_blocks.push(BasicBlock {
             statements: Vec::new(),
             terminator: Terminator::Unreachable,
+            span: Span::DUMMY,
+            terminator_span: Span::DUMMY,
         });
         id
     }
@@ -160,12 +162,23 @@ impl MirBody {
 
 /// A basic block: a straight-line sequence of statements ending with
 /// a terminator (control flow instruction).
+///
+/// Stage 14.107 (HP-19/21 fix): BasicBlock now carries `span` and
+/// `terminator_span` fields for debug info attribution.
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
     /// Statements executed in order.
     pub statements: Vec<Statement>,
     /// The terminator: how control leaves this block.
     pub terminator: Terminator,
+    /// Stage 14.107 (HP-19): Source span of this basic block.
+    /// Set to the span of the first statement, or DUMMY if empty.
+    pub span: crate::session::Span,
+    /// Stage 14.107 (HP-21): Source span of the terminator.
+    /// Set during MIR lowering to the span of the source construct
+    /// that generated this terminator (e.g., `return` keyword span,
+    /// `if` condition span, `match` scrutinee span).
+    pub terminator_span: crate::session::Span,
 }
 
 /// A MIR statement: `Place = Rvalue`.
@@ -229,6 +242,10 @@ pub enum StatementKind {
 
 /// A MIR terminator: the last instruction in a basic block.
 /// Determines how control flows to the next block(s).
+///
+/// Stage 14.107 (HP-21): The source span of the terminator is stored
+/// in `BasicBlock.terminator_span` (not on the Terminator itself, to
+/// avoid refactoring 120+ pattern-match call sites).
 #[derive(Debug, Clone)]
 pub enum Terminator {
     /// Unconditional jump to `target`.

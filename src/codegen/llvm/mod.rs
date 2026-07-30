@@ -362,7 +362,7 @@ impl LLVMSysEmitter {
                 // never null — they always point to a real (possibly
                 // forward-declared) function value.
                 if let Some((ret_ty, param_tys)) = self.fn_sigs.get(&func_name) {
-                    if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+                    if crate::session::debug_codegen_enabled() {
                         eprintln!(
                             "[CODEGEN] get_or_declare: found sig for {} params={}",
                             func_name,
@@ -383,7 +383,7 @@ impl LLVMSysEmitter {
                     return fwd;
                 }
                 // Fallback: signature not in fn_sigs — use generic variadic.
-                if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+                if crate::session::debug_codegen_enabled() {
                     eprintln!("[CODEGEN] get_or_declare: NOT found in fn_sigs: {} (fn_sigs has {} entries)", func_name, self.fn_sigs.len());
                 }
                 let ret_ty = LLVMInt32TypeInContext(self.ctx);
@@ -1035,7 +1035,7 @@ impl Emitter for LLVMSysEmitter {
         } else {
             self.get_or_declare_function(fn_name, ret_ty, &arg_tys)
         };
-        if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+        if crate::session::debug_codegen_enabled() {
             eprintln!(
                 "[CODEGEN] emit_call: fn_name={} callee={:?}",
                 fn_name, callee

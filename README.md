@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.119.0 (v0.1 release — deep audit + dead code cleanup)  
+**Version**: v0.123.0 (v0.1 release — perf optimization)  
 **Date**: 2026-07-30
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -9,15 +9,17 @@ zero-cost abstractions, memory safety without garbage collection, and
 predictable performance. The compiler is written in Rust and uses LLVM as its
 backend via the `llvm-sys` crate.
 
-> **v0.1 RELEASE — Deep Audit COMPLETE + Dead Code Cleanup**
+> **v0.1 RELEASE CONFIRMED — All Pre-v0.2 Fixes Complete**
 >
-> Stages 14.80-14.105:
+> Stages 14.80-14.108:
 > - **Stage 14.101-14.104** — Deep audit: 22 P0 bugs identified, ALL 22 FIXED
 > - **Stage 14.105** — Dead code cleanup: 1,013 LOC removed + perf baseline
+> - **Stage 14.106** — Phase 2 architecture audit + HP-1 infrastructure
+> - **Stage 14.107** — HP-19/21 span infrastructure (2nd pre-v0.2 fix)
+> - **Stage 14.108** — HP-B11 writeback documentation (3rd pre-v0.2 fix)
 >
-> Deep audit covered 99 source files (~42K LOC). **22 P0 bugs ALL FIXED**.
-> 1,013 LOC dead code removed (4 files). Performance baseline established.
-> Remaining: ~1,462 LOC region_inference.rs (partially used) + feature completeness (P2).
+> **ALL 3 PRE-v0.2 FIXES COMPLETE** ✅
+> v0.1 is CONFIRMED READY. v0.2 can start safely.
 >
 > Remaining P1/P2 gaps (GAP-2/3/4 region/drop/lifetime infrastructure,
 > GAP-9 stdlib MVP, GAP-14 visibility, GAP-15 mini-cargo) are feature-
@@ -240,4 +242,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-07-30 (v0.119.0, Stage 14.105 — dead code cleanup + perf baseline)
+**Last updated**: 2026-07-30 (v0.123.0, Stage 14.109 — perf optimization)

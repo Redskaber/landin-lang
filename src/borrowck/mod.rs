@@ -61,7 +61,7 @@ use crate::session::Span;
 
 /// The borrow checker. Walks MIR bodies, tracks borrows and moves,
 /// and reports ownership/borrowing violations.
-pub struct BorrowChecker {
+pub struct BorrowChecker<'a> {
     /// All active borrows in the current body.
     borrows: BorrowSet,
     /// Move tracker: which locals have been moved.
@@ -73,15 +73,50 @@ pub struct BorrowChecker {
     /// allowed even for immutable locals) from `x = 2;` (reassignment,
     /// rejected for immutable locals).
     initialized: std::collections::HashSet<crate::mir::place::LocalId>,
+    /// Stage 14.106 (HP-1 fix): Optional TraitResolver for sound Copy detection.
+    /// When set, `ty_is_copy` calls use `ty_is_copy_with_resolver` instead of
+    /// the unsound `ty_is_copy` (which returns true for ALL Adt types).
+    /// When None (tests), falls back to unsound `ty_is_copy`.
+    resolver: Option<&'a crate::traits::TraitResolver>,
+    /// Stage 14.106 (HP-1 fix): Optional interner for resolver-based Copy detection.
+    interner: Option<&'a lasso::Rodeo>,
 }
 
-impl BorrowChecker {
+impl<'a> BorrowChecker<'a> {
     pub fn new() -> Self {
         Self {
             borrows: BorrowSet::new(),
             moves: MoveTracker::new(),
             errors: Vec::new(),
             initialized: std::collections::HashSet::new(),
+            resolver: None,
+            interner: None,
+        }
+    }
+
+    /// Stage 14.106 (HP-1 fix): Create a BorrowChecker with a TraitResolver
+    /// for sound Copy detection. Use this in the driver instead of `new()`.
+    pub fn with_resolver(
+        resolver: &'a crate::traits::TraitResolver,
+        interner: &'a lasso::Rodeo,
+    ) -> Self {
+        Self {
+            borrows: BorrowSet::new(),
+            moves: MoveTracker::new(),
+            errors: Vec::new(),
+            initialized: std::collections::HashSet::new(),
+            resolver: Some(resolver),
+            interner: Some(interner),
+        }
+    }
+
+    /// Stage 14.106 (HP-1 fix): Sound Copy check — uses TraitResolver when
+    /// available, falls back to unsound `ty_is_copy` in test contexts.
+    fn is_copy(&self, ty: &crate::mir::ty::Ty) -> bool {
+        if let (Some(resolver), Some(interner)) = (self.resolver, self.interner) {
+            copy_semantics::ty_is_copy_with_resolver(ty, resolver, interner)
+        } else {
+            copy_semantics::ty_is_copy(ty)
         }
     }
 
@@ -408,7 +443,7 @@ impl BorrowChecker {
                     PlaceKind::Projection(_, ProjectionElem::Field(_, _))
                 );
                 let ty = self.place_ty(mir, lv);
-                if !ty_is_copy(&ty) && !is_field_projection {
+                if !self.is_copy(&ty) && !is_field_projection {
                     self.errors.push(BorrowError::not_copy(
                         format!(
                             "use of moved value: {:?} does not implement Copy; \
@@ -587,7 +622,7 @@ impl BorrowChecker {
     }
 }
 
-impl Default for BorrowChecker {
+impl<'a> Default for BorrowChecker<'a> {
     fn default() -> Self {
         Self::new()
     }
@@ -595,8 +630,11 @@ impl Default for BorrowChecker {
 
 /// Check a single MIR body for borrow/ownership errors.
 /// Returns a list of errors (non-fatal).
+///
+/// Note: This convenience function does NOT use TraitResolver for Copy detection.
+/// For sound Copy detection, use `BorrowChecker::with_resolver` instead.
 pub fn check_mir_body(mir: &MirBody) -> Vec<BorrowError> {
-    let mut bc = BorrowChecker::new();
+    let mut bc: BorrowChecker<'_> = BorrowChecker::new();
     bc.check_mir_body(mir);
     bc.into_errors()
 }

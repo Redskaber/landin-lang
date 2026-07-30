@@ -3,6 +3,31 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+// Stage 14.109 (perf optimization): Cache env var lookups at startup.
+// Previously, `std::env::var("LANDIN_DEBUG_CODEGEN")` was called ~8 times
+// per compile — each call is a syscall. Now cached via OnceLock.
+//
+// Per §1.0 原则 6 "通用 > 特例": one `debug_codegen_enabled()` function
+// serves all 8 call sites. Per Phase 2 audit recommendation D.3.1.
+
+use std::sync::OnceLock;
+
+static DEBUG_CODEGEN: OnceLock<bool> = OnceLock::new();
+
+/// Check if LANDIN_DEBUG_CODEGEN env var is set.
+/// Cached after first call — eliminates repeated syscalls.
+pub fn debug_codegen_enabled() -> bool {
+    *DEBUG_CODEGEN.get_or_init(|| std::env::var("LANDIN_DEBUG_CODEGEN").is_ok())
+}
+
+static DEBUG_BORROWCK: OnceLock<bool> = OnceLock::new();
+
+/// Check if LANDIN_DEBUG_BORROWCK env var is set.
+/// Cached after first call.
+pub fn debug_borrowck_enabled() -> bool {
+    *DEBUG_BORROWCK.get_or_init(|| std::env::var("LANDIN_DEBUG_BORROWCK").is_ok())
+}
+
 /// A source file in the compilation.
 #[derive(Debug, Clone)]
 pub struct SourceFile {
