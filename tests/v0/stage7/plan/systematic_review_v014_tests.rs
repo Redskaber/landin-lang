@@ -66,6 +66,7 @@ fn stage7_9_td018_user_trait_dyn_active() {
             methods: vec![mn],
             is_unsafe: false,
             supertraits: vec![],
+            default_methods: vec![],
         },
     );
     resolver.trait_by_name.insert(tn, DefId(100));

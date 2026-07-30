@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: trait with default method
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
+// EXPECTED: compile_ok
+
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
 
 trait T { fn f(&self) -> i32 { 0 } } struct S; impl T for S {}

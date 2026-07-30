@@ -25,6 +25,10 @@ pub struct TraitInfo {
     /// trait requires `Self` to also implement (e.g. `trait Foo: Bar` →
     /// supertraits = [Bar_spur]). Extracted from `HirTrait.supertraits`.
     pub supertraits: Vec<Spur>,
+    /// Stage 14.97 (Bug Y1 fix): Method names that have default bodies
+    /// (body: Some(BodyId) in the trait declaration). These don't need
+    /// to be overridden in impl blocks.
+    pub default_methods: Vec<Spur>,
 }
 
 /// An impl block collected by TraitResolver.
@@ -173,6 +177,23 @@ impl TraitResolver {
                                 methods.push(f.ident.name);
                             }
                         }
+                        // Stage 14.97 (Bug Y1 fix): Collect default method bodies.
+                        // Trait methods with `body: Some(BodyId)` have default
+                        // implementations. When an impl doesn't override them,
+                        // the default body should be used instead of reporting
+                        // "missing method".
+                        //
+                        // We store the set of method names that have default
+                        // bodies so that `impl_covers_trait` and
+                        // `missing_impl_methods` can skip them.
+                        let mut default_methods: Vec<Spur> = Vec::new();
+                        for trait_item in &t.items {
+                            if let HirTraitItem::Fn(f) = trait_item {
+                                if f.body.is_some() {
+                                    default_methods.push(f.ident.name);
+                                }
+                            }
+                        }
                         // Stage 5.15: Collect supertrait names from
                         // HirTrait.supertraits (Vec<HirTypeBound>).
                         // Each HirTypeBound::Trait(HirTraitBound) has a
@@ -194,6 +215,7 @@ impl TraitResolver {
                             methods,
                             is_unsafe: t.is_unsafe,
                             supertraits,
+                            default_methods,
                         };
                         self.trait_by_name.insert(t.ident.name, *def_id);
                         self.type_by_def_id.insert(*def_id, t.ident.name);
@@ -775,16 +797,22 @@ impl TraitResolver {
     /// Per API-naming-standard §3: `impl_covers_trait` follows
     /// `<noun>_<verb>_<noun>` pattern for boolean queries.
     pub fn impl_covers_trait(&self, trait_name: Spur, self_ty_name: Spur) -> bool {
-        let trait_methods = match self.trait_methods(trait_name) {
-            Some(m) => m,
+        let trait_info = match self.find_trait(trait_name) {
+            Some(info) => info,
             None => return false,
         };
+        let trait_methods = &trait_info.methods;
+        let default_methods = &trait_info.default_methods;
         let impl_methods = match self.impl_methods(trait_name, self_ty_name) {
             Some(m) => m,
             None => return false,
         };
-        // Every trait method must be in the impl methods
-        trait_methods.iter().all(|tm| impl_methods.contains(tm))
+        // Every trait method must be in the impl methods OR have a default body.
+        // Stage 14.97 (Bug Y1 fix): Methods with default bodies don't need
+        // to be overridden in impl blocks.
+        trait_methods
+            .iter()
+            .all(|tm| impl_methods.contains(tm) || default_methods.contains(tm))
     }
 
     /// Stage 5.19: Get the trait methods missing from an impl.
@@ -796,17 +824,20 @@ impl TraitResolver {
     /// Per API-naming-standard §3: `missing_impl_methods` follows
     /// `<adjective>_<noun>_<noun>` pattern for collection-returning queries.
     pub fn missing_impl_methods(&self, trait_name: Spur, self_ty_name: Spur) -> Vec<Spur> {
-        let trait_methods = match self.trait_methods(trait_name) {
-            Some(m) => m,
+        let trait_info = match self.find_trait(trait_name) {
+            Some(info) => info,
             None => return Vec::new(),
         };
+        let trait_methods = &trait_info.methods;
+        let default_methods = &trait_info.default_methods;
         let impl_methods = match self.impl_methods(trait_name, self_ty_name) {
             Some(m) => m,
             None => return Vec::new(),
         };
+        // Stage 14.97 (Bug Y1 fix): Skip methods that have default bodies.
         trait_methods
             .iter()
-            .filter(|tm| !impl_methods.contains(tm))
+            .filter(|tm| !impl_methods.contains(tm) && !default_methods.contains(tm))
             .copied()
             .collect()
     }

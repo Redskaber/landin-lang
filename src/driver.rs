@@ -1211,6 +1211,27 @@ pub fn compile(src: &str) -> CompileResult {
         //
         // Per §1.0 原则 5 "报错 > 静默": name collisions now produce
         // distinct symbols instead of silently overwriting.
+        // Stage 14.97 (Bug Y1 fix): Also register trait default method names.
+        // Trait default methods (with body: Some) need proper function names
+        // so they can be called when not overridden in impl blocks.
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            for trait_item in &t.items {
+                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                    if f.body.is_some() {
+                        let method = interner.try_resolve(&f.ident.name).unwrap_or("fn");
+                        let trait_name = interner.try_resolve(&t.ident.name).unwrap_or("Trait");
+                        let trait_stripped =
+                            trait_name.strip_prefix("landin_").unwrap_or(trait_name);
+                        let method_stripped = method.strip_prefix("landin_").unwrap_or(method);
+                        let method_def_id = f.hir_id.owner;
+                        fn_name_by_def_id.insert(
+                            method_def_id,
+                            format!("landin_{}_default_{}", trait_stripped, method_stripped),
+                        );
+                    }
+                }
+            }
+        }
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(i)) = owner {
             for impl_item in &i.items {
                 if let crate::hir::HirImplItem::Fn(f) = impl_item {

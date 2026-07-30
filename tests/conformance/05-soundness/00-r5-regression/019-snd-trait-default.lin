@@ -1,6 +1,6 @@
 // CATEGORY: soundness
 // DESCRIPTION: trait default
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
 // SOURCE: Stage 11.8 batch expansion
 
 trait T{fn f(&self)->i32{0}} struct S; impl T for S{}

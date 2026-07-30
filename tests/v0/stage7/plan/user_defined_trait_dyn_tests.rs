@@ -45,6 +45,7 @@ fn make_resolver_with_user_trait(
             methods: methods.clone(),
             is_unsafe: false,
             supertraits: Vec::new(),
+            default_methods: Vec::new(),
         },
     );
     resolver.trait_by_name.insert(trait_spur, trait_def_id);
@@ -201,6 +202,7 @@ fn stage7_user_defined_trait_multiple_traits() {
             methods: vec![method_spur],
             is_unsafe: false,
             supertraits: Vec::new(),
+            default_methods: Vec::new(),
         },
     );
     resolver.trait_by_name.insert(display_spur, trait_def_id);

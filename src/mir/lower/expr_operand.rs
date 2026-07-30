@@ -2429,6 +2429,48 @@ fn resolve_trait_method(
             }
         }
     }
+
+    // Stage 14.97 (Bug Y1 fix): If the method wasn't found in any impl block,
+    // search trait definitions for a default body. If the trait has a method
+    // with the given name AND a body (Some(BodyId)), use that method's DefId.
+    //
+    // This handles `trait T { fn f(&self) -> i32; fn g(&self) -> i32 { self.f() + 1 } }`
+    // where `g` has a default body and is not overridden in `impl T for S`.
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            // Check if this trait is implemented for our ADT type.
+            // We check by seeing if any impl block implements this trait
+            // for the ADT name.
+            let trait_name = t.ident.name;
+            let trait_implemented = hir.owners.iter().any(|(_, o)| {
+                if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = o {
+                    if impl_block
+                        .of_trait
+                        .as_ref()
+                        .and_then(|p| p.segments.last().map(|s| s.ident.name))
+                        == Some(trait_name)
+                    {
+                        if let crate::hir::HirTyKind::Path(_, path) = &impl_block.self_ty.kind {
+                            return path.segments.last().map(|s| s.ident.name) == Some(adt_name);
+                        }
+                    }
+                }
+                false
+            });
+            if !trait_implemented {
+                continue;
+            }
+            // Search trait items for a method with the given name that has a body.
+            for trait_item in &t.items {
+                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                    if f.ident.name == *method_name && f.body.is_some() {
+                        return Some(f.hir_id.owner);
+                    }
+                }
+            }
+        }
+    }
+
     None
 }
 

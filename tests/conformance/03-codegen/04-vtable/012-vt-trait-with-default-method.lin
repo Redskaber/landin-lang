@@ -1,6 +1,6 @@
 // CATEGORY: codegen
 // DESCRIPTION: trait with default method
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
 // SOURCE: Stage 11.3 codegen expansion
 
 trait T{fn f(&self)->i32{0}} struct S; impl T for S{}
