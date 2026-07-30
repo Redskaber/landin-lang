@@ -362,10 +362,22 @@ impl<'a> Lexer<'a> {
                     let c = text.chars().next().unwrap_or('\0');
                     // Handle escapes
                     if text.len() > 1 && text.as_bytes()[0] == b'\\' {
-                        let escaped = self.lex_escape_from_str(text);
-                        Token {
-                            kind: TokenKind::CharLit(escaped),
-                            span: self.span_from(start),
+                        match self.lex_escape_from_str(text) {
+                            Some(escaped) => Token {
+                                kind: TokenKind::CharLit(escaped),
+                                span: self.span_from(start),
+                            },
+                            None => {
+                                // Stage 14.102: Unrecognized escape — emit error
+                                self.errors.push(LexError {
+                                    message: format!("invalid character escape: `{}`", text),
+                                    span: self.span_from(start),
+                                });
+                                Token {
+                                    kind: TokenKind::CharLit('\0'),
+                                    span: self.span_from(start),
+                                }
+                            }
                         }
                     } else {
                         Token {
@@ -470,17 +482,24 @@ impl<'a> Lexer<'a> {
     }
 
     /// Parse escape from a string slice (for char literal re-parsing).
-    pub(super) fn lex_escape_from_str(&self, s: &str) -> char {
-        // Simplified: only handle common escapes
+    /// Stage 14.102 (Phase 1 audit fix): `lex_escape_from_str` now returns
+    /// `Option<char>` instead of silently falling back to the last char.
+    ///
+    /// **Before**: `'\q'` silently became `'q'` (violating §1.0 原则 5
+    /// "报错 > 静默").
+    ///
+    /// **After**: Returns `None` for unrecognized escapes. Callers check
+    /// the result and push a `LexError` if needed.
+    pub(super) fn lex_escape_from_str(&self, s: &str) -> Option<char> {
         match s {
-            "\\n" => '\n',
-            "\\r" => '\r',
-            "\\t" => '\t',
-            "\\\\" => '\\',
-            "\\0" => '\0',
-            "\\'" => '\'',
-            "\\\"" => '"',
-            _ => s.chars().last().unwrap_or('\0'),
+            "\\n" => Some('\n'),
+            "\\r" => Some('\r'),
+            "\\t" => Some('\t'),
+            "\\\\" => Some('\\'),
+            "\\0" => Some('\0'),
+            "\\'" => Some('\''),
+            "\\\"" => Some('"'),
+            _ => None, // Unrecognized escape — caller should error
         }
     }
 }

@@ -1,0 +1,11 @@
+// CATEGORY: e2e
+// DESCRIPTION: Integer overflow detection works (SH-5 fix)
+// EXPECTED: run_ok
+// EXPECTED_EXIT_CODE: 1
+// SOURCE: Stage 14.103 — SH-5 fix (emit_checked_binop now uses real LLVM intrinsics)
+
+fn main() {
+    let x: i32 = 2147483647;
+    let y = x + 1;
+    println!("{}", y);
+}

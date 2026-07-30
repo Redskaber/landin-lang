@@ -536,7 +536,26 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                                     }
                                                 }
                                             }
-                                            _ => {}
+                                            _ => {
+                                                // Stage 14.104 (ME-4 fix): The path
+                                                // resolved to a DefId that's not a
+                                                // Const/Static — emit a typeck error
+                                                // instead of silently falling through
+                                                // to the FnDef fallback.
+                                                //
+                                                // Per §1.0 原则 5 "报错 > 静默": don't
+                                                // silently treat unknown items as FnDef.
+                                                cx.mir.lower_type_errors.push(
+                                                    crate::typeck::TypeError::new(
+                                                        format!(
+                                                            "cannot find value `{}` in this scope (not a const/static/fn)",
+                                                            cx.interner
+                                                                .resolve(&path.segments[0].ident.name)
+                                                        ),
+                                                        expr.span,
+                                                    ),
+                                                );
+                                            }
                                         }
                                     }
                                 }
@@ -1613,13 +1632,24 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let elem_local = lower_expr_to_operand(cx, elem);
             // Stage 14.20: Evaluate the count expression to get N.
             // If count is a literal integer, extract its value directly.
-            // If count is not a literal, fall back to 1-element array
-            // (const-eval for non-literal counts is deferred to v0.2+).
+            // Stage 14.103 (ME-3 fix): If count is NOT a literal, emit a
+            // typeck error instead of silently falling back to 1 element.
+            //
+            // Per §1.0 原则 5 "报错 > 静默": non-const array lengths must be
+            // reported, not silently mis-compiled as 1-element arrays.
             let n: usize = match &count.kind {
                 crate::hir::HirExprKind::Lit(crate::hir::HirLitKind::Int(val, _)) => *val as usize,
                 crate::hir::HirExprKind::Lit(crate::hir::HirLitKind::Uint(val, _)) => *val as usize,
                 _ => {
-                    // Non-literal count — fall back to 1 element (Stage 2.4b behavior)
+                    // Non-literal count — emit error, fall back to 1 element
+                    // for recovery (so downstream codegen doesn't crash).
+                    cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                        format!(
+                            "array repeat count must be a literal integer in v0.1; const-eval for non-literal counts is v0.2+ work (found {:?})",
+                            count.kind
+                        ),
+                        expr.span,
+                    ));
                     1
                 }
             };
@@ -1917,7 +1947,16 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         cx.mir.new_local(unit_ty, None, expr.span)
                     }
                     _ => {
-                        // Unknown macro → Error placeholder (fallback).
+                        // Stage 14.104 (ME-5 fix): Unknown macro → emit typeck
+                        // error instead of silently returning Error placeholder.
+                        //
+                        // Per §1.0 原则 5 "报错 > 静默": unknown macros must be
+                        // reported, not silently mis-compiled as Error→0.
+                        let macro_name_str = cx.interner.resolve(&name_spur).to_string();
+                        cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                            format!("cannot find macro `{}` in this scope", macro_name_str),
+                            expr.span,
+                        ));
                         cx.eval_rvalue_to_temp(
                             Rvalue::Use(Operand::Constant(Const {
                                 ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
@@ -1929,7 +1968,11 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     }
                 }
             } else {
-                // No macro name → Error placeholder.
+                // No macro name → emit error.
+                cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                    "macro call has no name".to_string(),
+                    expr.span,
+                ));
                 cx.eval_rvalue_to_temp(
                     Rvalue::Use(Operand::Constant(Const {
                         ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),

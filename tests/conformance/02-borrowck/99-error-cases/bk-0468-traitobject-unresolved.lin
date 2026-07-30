@@ -1,0 +1,8 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Unresolved trait in dyn Trait is now caught (Phase 1 audit)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.101 — scan_ty_for_unresolved TraitObject arm
+
+fn main() {
+    let _d: dyn nonexistent_trait = unsafe { std::mem::transmute(0usize) };
+}

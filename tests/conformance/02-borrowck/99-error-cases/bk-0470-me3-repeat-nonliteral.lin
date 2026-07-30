@@ -1,0 +1,10 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Non-literal array repeat count is now caught (ME-3 fix)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.103 — ME-3 fix (emit error for non-literal repeat count)
+
+fn main() {
+    let n = 3;
+    let arr = [0; n];
+    println!("{}", arr[0]);
+}

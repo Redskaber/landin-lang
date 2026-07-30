@@ -15,6 +15,38 @@ use crate::session::{BytePos, Span};
 use super::reader::{LexError, Lexer};
 
 impl<'a> Lexer<'a> {
+    /// Stage 14.102 (Phase 1 audit fix): Parse an integer suffix and emit
+    /// a LexError for invalid suffixes (e.g., `0xFF_i33`).
+    ///
+    /// **Before**: `lex_hex`/`lex_oct`/`lex_bin` used `and_then` with
+    /// `_ => None`, silently swallowing invalid suffixes.
+    ///
+    /// **After**: This helper emits a proper LexError for invalid suffixes,
+    /// matching the decimal path's behavior.
+    fn parse_int_suffix_with_error(&mut self, suffix_start: BytePos) -> Option<IntTy> {
+        self.try_lex_number_suffix().and_then(|s| match s.as_str() {
+            "i8" => Some(IntTy::I8),
+            "i16" => Some(IntTy::I16),
+            "i32" => Some(IntTy::I32),
+            "i64" => Some(IntTy::I64),
+            "i128" => Some(IntTy::I128),
+            "isize" => Some(IntTy::Isize),
+            "u8" => Some(IntTy::U8),
+            "u16" => Some(IntTy::U16),
+            "u32" => Some(IntTy::U32),
+            "u64" => Some(IntTy::U64),
+            "u128" => Some(IntTy::U128),
+            "usize" => Some(IntTy::Usize),
+            _ => {
+                self.errors.push(LexError {
+                    message: format!("invalid integer suffix: {s}"),
+                    span: Span::new(suffix_start, self.pos),
+                });
+                None
+            }
+        })
+    }
+
     /// Lex a number (integer or float).
     pub(super) fn lex_number(&mut self, start: BytePos) -> Token {
         // Check for hex/oct/bin prefix
@@ -168,21 +200,8 @@ impl<'a> Lexer<'a> {
         let cleaned: String = text.chars().filter(|c| *c != '_').collect();
         let val = u128::from_str_radix(&cleaned, 16).unwrap_or(u128::MAX);
         let span = self.span_from(start);
-        let suffix = self.try_lex_number_suffix().and_then(|s| match s.as_str() {
-            "i8" => Some(IntTy::I8),
-            "i16" => Some(IntTy::I16),
-            "i32" => Some(IntTy::I32),
-            "i64" => Some(IntTy::I64),
-            "i128" => Some(IntTy::I128),
-            "isize" => Some(IntTy::Isize),
-            "u8" => Some(IntTy::U8),
-            "u16" => Some(IntTy::U16),
-            "u32" => Some(IntTy::U32),
-            "u64" => Some(IntTy::U64),
-            "u128" => Some(IntTy::U128),
-            "usize" => Some(IntTy::Usize),
-            _ => None,
-        });
+        let suffix_start = self.pos;
+        let suffix = self.parse_int_suffix_with_error(suffix_start);
         Token {
             kind: TokenKind::IntLit(val, suffix),
             span,
@@ -215,21 +234,8 @@ impl<'a> Lexer<'a> {
         let cleaned: String = text.chars().filter(|c| *c != '_').collect();
         let val = u128::from_str_radix(&cleaned, 8).unwrap_or(u128::MAX);
         let span = self.span_from(start);
-        let suffix = self.try_lex_number_suffix().and_then(|s| match s.as_str() {
-            "i8" => Some(IntTy::I8),
-            "i16" => Some(IntTy::I16),
-            "i32" => Some(IntTy::I32),
-            "i64" => Some(IntTy::I64),
-            "i128" => Some(IntTy::I128),
-            "isize" => Some(IntTy::Isize),
-            "u8" => Some(IntTy::U8),
-            "u16" => Some(IntTy::U16),
-            "u32" => Some(IntTy::U32),
-            "u64" => Some(IntTy::U64),
-            "u128" => Some(IntTy::U128),
-            "usize" => Some(IntTy::Usize),
-            _ => None,
-        });
+        let suffix_start = self.pos;
+        let suffix = self.parse_int_suffix_with_error(suffix_start);
         Token {
             kind: TokenKind::IntLit(val, suffix),
             span,
@@ -262,21 +268,8 @@ impl<'a> Lexer<'a> {
         let cleaned: String = text.chars().filter(|c| *c != '_').collect();
         let val = u128::from_str_radix(&cleaned, 2).unwrap_or(u128::MAX);
         let span = self.span_from(start);
-        let suffix = self.try_lex_number_suffix().and_then(|s| match s.as_str() {
-            "i8" => Some(IntTy::I8),
-            "i16" => Some(IntTy::I16),
-            "i32" => Some(IntTy::I32),
-            "i64" => Some(IntTy::I64),
-            "i128" => Some(IntTy::I128),
-            "isize" => Some(IntTy::Isize),
-            "u8" => Some(IntTy::U8),
-            "u16" => Some(IntTy::U16),
-            "u32" => Some(IntTy::U32),
-            "u64" => Some(IntTy::U64),
-            "u128" => Some(IntTy::U128),
-            "usize" => Some(IntTy::Usize),
-            _ => None,
-        });
+        let suffix_start = self.pos;
+        let suffix = self.parse_int_suffix_with_error(suffix_start);
         Token {
             kind: TokenKind::IntLit(val, suffix),
             span,

@@ -1,0 +1,9 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Unknown macro is now caught (ME-5 fix)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.104 — ME-5 fix (emit error for unknown macro instead of silent Error)
+
+fn main() {
+    let x = nonexistent_macro!(42);
+    println!("{}", x);
+}

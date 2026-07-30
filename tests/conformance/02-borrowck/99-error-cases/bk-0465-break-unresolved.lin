@@ -1,0 +1,10 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Unresolved identifier in Break expr is now caught (Phase 1 audit)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.101 — scan_expr_for_unresolved Break arm
+
+fn main() {
+    loop {
+        break nonexistent_xyz;
+    }
+}

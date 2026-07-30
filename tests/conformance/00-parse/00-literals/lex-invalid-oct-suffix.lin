@@ -1,0 +1,8 @@
+// CATEGORY: parse
+// DESCRIPTION: Invalid integer suffix on octal literal is now caught (Phase 1 audit fix)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.102 — lex_oct now reports invalid suffixes
+
+fn main() {
+    let x = 0o77_u33;
+}

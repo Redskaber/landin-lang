@@ -775,8 +775,20 @@ impl TypeChecker {
                 }
             }
             Rvalue::BinaryOp2(_, a, _) => {
+                // Stage 14.102 (ME-2 fix): BinaryOp2 is used for Range
+                // expressions (start..end). The result type is a Range struct,
+                // but for v0.1 we don't have Range in the type system.
+                // Previously this silently returned Ty::Error.
+                //
+                // Per §1.0 原则 5 "报错 > 静默": emit a type error instead of
+                // silently returning Error. The operand type is still inferred
+                // (for use in for-loop desugaring).
                 let _a_ty = self.infer_operand(mir, a);
-                Ty::new(TyKind::Error, Span::DUMMY) // Range type (Stage 3)
+                self.errors.push(TypeError::new(
+                    "range expressions (start..end) are not supported in type position in v0.1 — use them only in for-loop iterators".to_string(),
+                    Span::DUMMY,
+                ));
+                Ty::new(TyKind::Error, Span::DUMMY)
             }
             Rvalue::UnaryOp(op, operand) => {
                 let inner_ty = self.unify.resolve(&self.infer_operand(mir, operand));
@@ -874,7 +886,19 @@ impl TypeChecker {
                     }
                     Ty::new(TyKind::Adt(*def_id, _substs.clone()), Span::DUMMY)
                 }
-                _ => Ty::new(TyKind::Error, Span::DUMMY),
+                // Stage 14.102 (ME-1 fix): AggregateKind::Closure previously
+                // fell through to the catch-all and silently returned Ty::Error.
+                // Now explicitly handled — closures get a fresh type variable.
+                AggregateKind::Closure(_def_id, _substs) => {
+                    for op in operands {
+                        let _ = self.infer_operand(mir, op);
+                    }
+                    let vid = self.unify.new_ty_var();
+                    Ty::new(
+                        TyKind::Infer(crate::mir::ty::InferVar::TyVar(vid)),
+                        Span::DUMMY,
+                    )
+                }
             },
         }
     }

@@ -1,0 +1,8 @@
+// CATEGORY: parse
+// DESCRIPTION: Invalid integer suffix on hex literal is now caught (Phase 1 audit fix)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.102 — lex_hex now reports invalid suffixes
+
+fn main() {
+    let x = 0xFF_i33;
+}

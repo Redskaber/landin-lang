@@ -1,0 +1,8 @@
+// CATEGORY: parse
+// DESCRIPTION: Invalid integer suffix on binary literal is now caught (Phase 1 audit fix)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.102 — lex_bin now reports invalid suffixes
+
+fn main() {
+    let x = 0b1010_u33;
+}

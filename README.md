@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.114.0 (v0.1 release)  
+**Version**: v0.119.0 (v0.1 release — deep audit + dead code cleanup)  
 **Date**: 2026-07-30
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -9,24 +9,15 @@ zero-cost abstractions, memory safety without garbage collection, and
 predictable performance. The compiler is written in Rust and uses LLVM as its
 backend via the `llvm-sys` crate.
 
-> **v0.1 RELEASE — All P0 essential soundness gaps closed**
+> **v0.1 RELEASE — Deep Audit COMPLETE + Dead Code Cleanup**
 >
-> Stages 14.80-14.100 closed all P0 essential soundness gaps:
-> - **GAP-1** (NLL soundness) — fixed in Stage 14.81
-> - **GAP-5** (`self.x` field access) — verified working in Stage 14.81
-> - **GAP-6** (two-phase borrow — method-call subset) — verified working
->   in Stage 14.81
-> - **GAP-7** (closure struct captures) — fixed in Stage 14.82 + 14.84
-> - **Match guards** (`pat if cond => body`) — fixed in Stage 14.86
-> - **Bug Y1** (trait default body `self.method()`) — fixed in Stage 14.97
-> - **For-loop over Range** — fixed in Stage 14.97
-> - **Bugs Z1-Z4** (method resolution on let-bound locals) — fixed in Stage 14.98
-> - **Bugs Z5-Z7** (for-loop mutability + trait default multi-impl) — fixed in Stage 14.99
-> - **Bugs AA1-AA6** (silent unresolved paths + zero-impl default bodies) — fixed in Stage 14.100
+> Stages 14.80-14.105:
+> - **Stage 14.101-14.104** — Deep audit: 22 P0 bugs identified, ALL 22 FIXED
+> - **Stage 14.105** — Dead code cleanup: 1,013 LOC removed + perf baseline
 >
-> Stage 14.100 included an independent audit by a general-purpose subagent
-> that found 6 bugs (4 silent unresolved-path bugs, 1 LLVM crash, 1 false
-> positive). All are fully fixed.
+> Deep audit covered 99 source files (~42K LOC). **22 P0 bugs ALL FIXED**.
+> 1,013 LOC dead code removed (4 files). Performance baseline established.
+> Remaining: ~1,462 LOC region_inference.rs (partially used) + feature completeness (P2).
 >
 > Remaining P1/P2 gaps (GAP-2/3/4 region/drop/lifetime infrastructure,
 > GAP-9 stdlib MVP, GAP-14 visibility, GAP-15 mini-cargo) are feature-
@@ -220,15 +211,15 @@ src/
 
 ---
 
-## Test Counts (v0.114.0)
+## Test Counts (v0.118.0)
 
 | Suite | Count | Pass rate |
 |-------|-------|-----------|
 | Rust unit/integration tests | 1951 | 100% |
-| Conformance tests (.lin) | 5204 | 100% |
+| Conformance tests (.lin) | 5216 | 100% |
 | - Parse-only (`00-parse`) | 600 | 100% |
 | - Typecheck (`01-typecheck`) | 1020 | 100% |
-| - Borrowck (`02-borrowck`) | 810 | 100% |
+| - Borrowck (`02-borrowck`) | 815 | 100% |
 | - Codegen (`03-codegen`) | 601 | 100% |
 | - End-to-end run (`04-e2e/06-run-ok`) | 170 | 100% |
 | - Soundness (`05-soundness`) | 500 | 100% |
@@ -249,4 +240,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-07-30 (v0.114.0, Stage 14.100 — v0.1 release)
+**Last updated**: 2026-07-30 (v0.119.0, Stage 14.105 — dead code cleanup + perf baseline)

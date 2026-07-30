@@ -1,0 +1,10 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Unresolved identifier in Unsafe block is now caught (Phase 1 audit)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.101 — scan_expr_for_unresolved Unsafe arm
+
+fn main() {
+    unsafe {
+        let _ = nonexistent_xyz;
+    }
+}

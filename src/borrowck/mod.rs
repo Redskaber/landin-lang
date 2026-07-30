@@ -28,9 +28,9 @@ pub mod move_tracker;
 
 // Stage 6.14 (TD-024) sub-modules.
 mod copy_semantics;
-// Stage 8.4: Drop elaboration (§5).
-#[allow(dead_code)]
-mod drop_elaboration;
+// Stage 14.105 (dead code cleanup): `drop_elaboration` module removed.
+// It was `#[allow(dead_code)]` since Stage 8.4 and never called.
+// Drop elaboration will be re-implemented in v0.2 when user-defined Drop is added.
 mod liveness;
 mod place_path;
 // Stage 7.1 (TD-015 step 1): region inference data structures + constraint collection.
@@ -475,7 +475,12 @@ impl BorrowChecker {
                     ProjectionElem::Deref => match &base_ty.kind {
                         crate::mir::ty::TyKind::Ref(_, _, inner)
                         | crate::mir::ty::TyKind::RawPtr(_, inner) => (**inner).clone(),
-                        _ => base_ty,
+                        // Stage 14.103 (ME-7 fix): Deref on non-reference type
+                        // is a type error. Previously returned base_ty silently,
+                        // which could cause the borrow checker to make wrong
+                        // decisions. Now return Error so downstream code knows
+                        // the type is unknown.
+                        _ => Ty::new(crate::mir::ty::TyKind::Error, lv.span),
                     },
                     ProjectionElem::Field(_, field_ty) => field_ty.clone(),
                     ProjectionElem::Index(_)
@@ -483,7 +488,9 @@ impl BorrowChecker {
                     | ProjectionElem::Subslice { .. } => match &base_ty.kind {
                         crate::mir::ty::TyKind::Array(inner, _)
                         | crate::mir::ty::TyKind::Slice(inner) => (**inner).clone(),
-                        _ => base_ty,
+                        // Stage 14.103 (ME-7 fix): Index on non-array type
+                        // is a type error. Previously returned base_ty silently.
+                        _ => Ty::new(crate::mir::ty::TyKind::Error, lv.span),
                     },
                 }
             }

@@ -1,0 +1,8 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Unresolved type in fn pointer is now caught (Phase 1 audit)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.101 — scan_ty_for_unresolved FnPtr arm
+
+fn main() {
+    let _f: fn(unresolved_ty) -> i32 = unsafe { std::mem::transmute(0usize) };
+}

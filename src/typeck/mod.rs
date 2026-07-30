@@ -20,9 +20,9 @@ pub mod error;
 // Stage 6.15 (TD-025) sub-modules.
 mod predicates;
 mod tables;
-// Stage 8.1 (TD-015 activation): lifetime elision rules.
-#[allow(dead_code)]
-mod lifetime_elision;
+// Stage 14.105 (dead code cleanup): `lifetime_elision` module removed.
+// It was `#[allow(dead_code)]` since Stage 8.1 and never called.
+// Lifetime elision will be re-implemented in v0.2 when real lifetimes are added.
 pub mod unify;
 
 // Stage 3.63 (cross-stage naming standardization): `check_crate` and

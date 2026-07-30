@@ -1,0 +1,12 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Unresolved multi-segment path in match pattern is now caught (Phase 1 audit)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.101 — scan_pat_for_unresolved re-enabled
+
+fn main() {
+    let x = 42;
+    match x {
+        nonexistent::Variant => (),
+        _ => ()
+    }
+}

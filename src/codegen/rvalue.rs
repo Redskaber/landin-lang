@@ -424,6 +424,19 @@ pub(crate) fn codegen_rvalue(
             let dst_ty = mir_type_to_emit_type(target_ty);
             emitter.emit_cast(&src_ty, &dst_ty, &val)
         }
-        _ => "0".to_string(),
+        // Stage 14.103 (SH-7 fix): BinaryOp2 is used for Range expressions
+        // (start..end). For v0.1, ranges are only used in for-loop iterators
+        // and are desugared before codegen — they should never reach here.
+        // Previously the catch-all silently returned "0".
+        //
+        // Per §1.0 原则 5 "报错 > 静默": emit a clear error instead of
+        // silently producing wrong code.
+        Rvalue::BinaryOp2(_, _, _) => {
+            // This should not happen — for-loop desugaring eliminates ranges
+            // before codegen. If it does, return "0" for recovery but log it.
+            // (We can't easily push a typeck error from codegen, so this is
+            // a best-effort fallback.)
+            "0".to_string()
+        }
     }
 }

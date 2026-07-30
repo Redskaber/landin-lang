@@ -1810,7 +1810,11 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
                 scan_expr_for_unresolved(&arm.body, errors);
             }
         }
-        HirExprKind::Return { expr: Some(e), .. } => scan_expr_for_unresolved(e, errors),
+        HirExprKind::Return { expr } | HirExprKind::Break { expr } => {
+            if let Some(e) = expr {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
         HirExprKind::Assign { lhs, rhs, .. } => {
             scan_expr_for_unresolved(lhs, errors);
             scan_expr_for_unresolved(rhs, errors);
@@ -1912,20 +1916,165 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
             }
         }
         HirExprKind::Closure { body, .. } => scan_expr_for_unresolved(body, errors),
-        // Lit, Unit, Break, Continue, Try, Unsafe, MacroCall — no paths
-        // (Unsafe contains a HirBlock which is scanned when the block is
-        // lowered; MacroCall is expanded before this scan runs.)
-        _ => {}
+        // Stage 14.101 (Phase 1 audit fix): Scan Try expr, Unsafe block,
+        // MacroCall path, Await expr, Async block.
+        // Previously the catch-all silently skipped these, so unresolved
+        // paths inside them went unreported.
+        HirExprKind::Try { expr, .. } => scan_expr_for_unresolved(expr, errors),
+        HirExprKind::Unsafe(block) => {
+            for stmt in &block.stmts {
+                use crate::hir::HirStmt;
+                match stmt {
+                    HirStmt::Local(local) => {
+                        if let Some(init) = &local.init {
+                            scan_expr_for_unresolved(init, errors);
+                        }
+                        if let Some(ty) = &local.ty {
+                            scan_ty_for_unresolved(ty, errors);
+                        }
+                    }
+                    HirStmt::Expr(e, _) => scan_expr_for_unresolved(e, errors),
+                    _ => {}
+                }
+            }
+            if let Some(e) = &block.expr {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
+        HirExprKind::MacroCall { path, .. } => {
+            // Stage 14.101: MacroCall path resolution. Built-in macros
+            // (vec!, println!, assert!, etc.) are single-segment paths that
+            // the resolver doesn't resolve to Res::Def — they're handled
+            // specially during HIR lowering. Only report multi-segment paths
+            // (e.g., `std::println!`) as errors if unresolved.
+            //
+            // Per §1.0 原则 5 "报错 > 静默": unresolved macro paths should be
+            // reported, but we must not false-positive on built-in macros.
+            if path.segments.len() > 1 && matches!(path.res, Res::Unknown | Res::Err) {
+                errors.resolve.push(crate::resolve::ResolveError::new(
+                    "cannot find macro in this scope".to_string(),
+                    path.span,
+                ));
+            }
+        }
+        HirExprKind::Await { expr, .. } => scan_expr_for_unresolved(expr, errors),
+        HirExprKind::Async { block, .. } => {
+            for stmt in &block.stmts {
+                use crate::hir::HirStmt;
+                match stmt {
+                    HirStmt::Local(local) => {
+                        if let Some(init) = &local.init {
+                            scan_expr_for_unresolved(init, errors);
+                        }
+                        if let Some(ty) = &local.ty {
+                            scan_ty_for_unresolved(ty, errors);
+                        }
+                    }
+                    HirStmt::Expr(e, _) => scan_expr_for_unresolved(e, errors),
+                    _ => {}
+                }
+            }
+            if let Some(e) = &block.expr {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
+        // Lit, Unit, Continue — genuinely no sub-expressions
+        HirExprKind::Lit(_) | HirExprKind::Unit | HirExprKind::Continue => {}
     }
 }
 
-fn scan_pat_for_unresolved(_pat: &crate::hir::HirPat, _errors: &mut CompileErrors) {
-    // G4 fix: temporarily disabled for patterns. Enum variant patterns
-    // (e.g., `Circle(r)` in `match s { Circle(r) => ... }`) are not yet
-    // resolved by the resolver (Stage 3 work), so they appear as
-    // Res::Unknown. Reporting them as errors would break all enum match
-    // tests. Stage 3 will add proper enum variant resolution and re-enable
-    // pattern scanning.
+fn scan_pat_for_unresolved(pat: &crate::hir::HirPat, errors: &mut CompileErrors) {
+    // Stage 14.101 (Phase 1 audit fix): Re-enabled pattern scanning.
+    //
+    // Previously this was a no-op stub (G4 fix) because enum variant patterns
+    // like `Circle(r)` appeared as Res::Unknown. However, this meant unresolved
+    // IDENTIFIER patterns (e.g., `match x { nonexistent => ... }`) were also
+    // silently accepted.
+    //
+    // Now we scan patterns but ONLY report paths that resolve to Res::Unknown
+    // AND are not enum variant patterns. We detect enum variant patterns by
+    // checking if the path has multiple segments (e.g., `Color::Red`) — single-
+    // segment paths in TupleStruct/Struct/Path patterns might be enum variants
+    // (resolved lazily during typeck) so we skip them.
+    //
+    // Per §1.0 原则 5 "报错 > 静默": unresolved identifiers in patterns should
+    // be reported. Per §1.0 原则 6 "通用 > 特例": one rule handles all pattern
+    // kinds by recursing into sub-patterns.
+    use crate::hir::{HirPatKind, Res};
+    match &pat.kind {
+        HirPatKind::Wild | HirPatKind::Rest | HirPatKind::Lit(_) => {}
+        HirPatKind::Ident(_mode, ident, sub) => {
+            // Ident patterns bind a new variable — they don't reference an
+            // existing path. No resolution check needed.
+            let _ = ident;
+            if let Some(s) = sub {
+                scan_pat_for_unresolved(s, errors);
+            }
+        }
+        HirPatKind::Struct(path, fields, _has_rest) => {
+            // Multi-segment paths (e.g., `Color::Red { ... }`) should be resolved.
+            // Single-segment paths might be enum variants (lazily resolved).
+            if path.segments.len() > 1 && matches!(path.res, Res::Unknown | Res::Err) {
+                errors.resolve.push(crate::resolve::ResolveError::new(
+                    "cannot find type in this scope".to_string(),
+                    path.span,
+                ));
+            }
+            for f in fields {
+                scan_pat_for_unresolved(&f.pat, errors);
+            }
+        }
+        HirPatKind::TupleStruct(path, sub_pats) => {
+            if path.segments.len() > 1 && matches!(path.res, Res::Unknown | Res::Err) {
+                errors.resolve.push(crate::resolve::ResolveError::new(
+                    "cannot find type in this scope".to_string(),
+                    path.span,
+                ));
+            }
+            for p in sub_pats {
+                scan_pat_for_unresolved(p, errors);
+            }
+        }
+        HirPatKind::Tuple(sub_pats) => {
+            for p in sub_pats {
+                scan_pat_for_unresolved(p, errors);
+            }
+        }
+        HirPatKind::Slice(sub_pats, rest) => {
+            for p in sub_pats {
+                scan_pat_for_unresolved(p, errors);
+            }
+            if let Some(r) = rest {
+                scan_pat_for_unresolved(r, errors);
+            }
+        }
+        HirPatKind::Or(sub_pats) => {
+            for p in sub_pats {
+                scan_pat_for_unresolved(p, errors);
+            }
+        }
+        HirPatKind::Path(path) => {
+            // Multi-segment paths (e.g., `Color::Red`) should be resolved.
+            // Single-segment paths might be enum variants (lazily resolved).
+            if path.segments.len() > 1 && matches!(path.res, Res::Unknown | Res::Err) {
+                errors.resolve.push(crate::resolve::ResolveError::new(
+                    "cannot find type in this scope".to_string(),
+                    path.span,
+                ));
+            }
+        }
+        HirPatKind::Range(start, end, _) => {
+            if let Some(s) = start {
+                scan_expr_for_unresolved(s, errors);
+            }
+            if let Some(e) = end {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
+        HirPatKind::Ref(sub, _) => {
+            scan_pat_for_unresolved(sub, errors);
+        }
+    }
 }
 
 fn scan_ty_for_unresolved(ty: &crate::hir::HirTy, errors: &mut CompileErrors) {
@@ -1948,7 +2097,50 @@ fn scan_ty_for_unresolved(ty: &crate::hir::HirTy, errors: &mut CompileErrors) {
                 scan_ty_for_unresolved(t, errors);
             }
         }
-        _ => {}
+        // Stage 14.101 (Phase 1 audit fix): FnPtr inputs/output must be scanned.
+        // Previously the catch-all silently skipped FnPtr, so
+        // `fn(unresolved) -> i32` went unreported.
+        HirTyKind::FnPtr { inputs, output, .. } => {
+            for t in inputs {
+                scan_ty_for_unresolved(t, errors);
+            }
+            scan_ty_for_unresolved(output, errors);
+        }
+        // Stage 14.101 (Phase 1 audit fix): TraitObject bounds must be scanned.
+        HirTyKind::TraitObject { bounds, .. } => {
+            for bound in bounds {
+                scan_type_bound_for_unresolved(bound, errors);
+            }
+        }
+        // Stage 14.101 (Phase 1 audit fix): ImplTrait bounds must be scanned.
+        HirTyKind::ImplTrait(bounds) => {
+            for bound in bounds {
+                scan_type_bound_for_unresolved(bound, errors);
+            }
+        }
+        // Bool, Char, Int, Uint, Float, Never, Infer — no sub-types
+        HirTyKind::Bool
+        | HirTyKind::Char
+        | HirTyKind::Int(_)
+        | HirTyKind::Uint(_)
+        | HirTyKind::Float(_)
+        | HirTyKind::Never
+        | HirTyKind::Infer => {}
+    }
+}
+
+/// Stage 14.101 (Phase 1 audit fix): Scan a type bound for unresolved paths.
+/// Used by TraitObject and ImplTrait scanning.
+fn scan_type_bound_for_unresolved(bound: &crate::hir::HirTypeBound, errors: &mut CompileErrors) {
+    use crate::hir::Res;
+    if let crate::hir::HirTypeBound::Trait(trait_bound) = bound {
+        let path = &trait_bound.path;
+        if matches!(path.res, Res::Unknown | Res::Err) {
+            errors.resolve.push(crate::resolve::ResolveError::new(
+                "cannot find trait in this scope".to_string(),
+                path.span,
+            ));
+        }
     }
 }
 

@@ -11,9 +11,9 @@
 //! then provides data to typeck/borrowck/codegen.
 
 pub mod builtin;
-// Stage 8.2: object safety rules (§2.3).
-#[allow(dead_code)]
-mod object_safety;
+// Stage 14.105 (dead code cleanup): `object_safety` module removed.
+// It was `#[allow(dead_code)]` since Stage 8.2 and never called.
+// Object safety will be re-implemented in v0.2 when dyn Trait is fully supported.
 pub mod resolver;
 pub mod vtable;
 

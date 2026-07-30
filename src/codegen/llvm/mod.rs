@@ -1559,17 +1559,79 @@ impl Emitter for LLVMSysEmitter {
         lhs: &EmitValue,
         rhs: &EmitValue,
     ) -> EmitValue {
-        // Pragmatic stub: build { T, i1 } undef with overflow flag = 0.
-        // Real LLVM intrinsic calls (`llvm.sadd.with.overflow.*`) would
-        // require declaring the intrinsic as a module-level function —
-        // deferred to MUV-3.
-        let _ = (op, lhs, rhs);
+        // Stage 14.103 (SH-5 fix): Implement real checked binop using LLVM
+        // intrinsics `llvm.{sadd,ssub,smul}.with.overflow.{i8,i16,i32,i64,i128}`.
+        //
+        // Previously this was a stub that always returned overflow=0, silently
+        // disabling overflow detection on the --emit-obj/--run path.
+        //
+        // Per §1.0 原则 5 "报错 > 静默": overflow checks must actually work.
+        // Per §1.0 原则 6 "通用 > 特例": one intrinsic-name function handles
+        // all op/type combinations.
         unsafe {
             let elem_ty = self.llvm_type(ty);
             let i1_ty = LLVMInt1TypeInContext(self.ctx);
             let fields = [elem_ty, i1_ty];
             let agg_ty =
                 LLVMStructTypeInContext(self.ctx, fields.as_ptr() as *mut LLVMTypeRef, 2, 0);
+
+            // Determine the intrinsic name based on op + type.
+            let intrinsic_name: Option<String> = match (op, ty) {
+                (BinOp::Add, EmitType::I8) => Some("llvm.sadd.with.overflow.i8".to_string()),
+                (BinOp::Add, EmitType::I16) => Some("llvm.sadd.with.overflow.i16".to_string()),
+                (BinOp::Add, EmitType::I32) => Some("llvm.sadd.with.overflow.i32".to_string()),
+                (BinOp::Add, EmitType::I64) => Some("llvm.sadd.with.overflow.i64".to_string()),
+                (BinOp::Add, EmitType::I128) => Some("llvm.sadd.with.overflow.i128".to_string()),
+                (BinOp::Sub, EmitType::I8) => Some("llvm.ssub.with.overflow.i8".to_string()),
+                (BinOp::Sub, EmitType::I16) => Some("llvm.ssub.with.overflow.i16".to_string()),
+                (BinOp::Sub, EmitType::I32) => Some("llvm.ssub.with.overflow.i32".to_string()),
+                (BinOp::Sub, EmitType::I64) => Some("llvm.ssub.with.overflow.i64".to_string()),
+                (BinOp::Sub, EmitType::I128) => Some("llvm.ssub.with.overflow.i128".to_string()),
+                (BinOp::Mul, EmitType::I8) => Some("llvm.smul.with.overflow.i8".to_string()),
+                (BinOp::Mul, EmitType::I16) => Some("llvm.smul.with.overflow.i16".to_string()),
+                (BinOp::Mul, EmitType::I32) => Some("llvm.smul.with.overflow.i32".to_string()),
+                (BinOp::Mul, EmitType::I64) => Some("llvm.smul.with.overflow.i64".to_string()),
+                (BinOp::Mul, EmitType::I128) => Some("llvm.smul.with.overflow.i128".to_string()),
+                _ => None,
+            };
+
+            if let Some(name) = intrinsic_name {
+                // Declare the intrinsic if not already declared.
+                let fn_ty = LLVMFunctionType(
+                    agg_ty,
+                    [elem_ty, elem_ty].as_ptr() as *mut LLVMTypeRef,
+                    2,
+                    0,
+                );
+                let name_c = CString::new(name.as_str()).unwrap();
+                let intrinsic_fn = if self.values.contains_key(&name) {
+                    *self.values.get(&name).unwrap()
+                } else {
+                    let f = LLVMAddFunction(self.module, name_c.as_ptr(), fn_ty);
+                    self.values.insert(name, f);
+                    f
+                };
+
+                // Call the intrinsic: %r = call { T, i1 } @intrinsic(T %lhs, T %rhs)
+                let lhs_val = self.lookup(lhs);
+                let rhs_val = self.lookup(rhs);
+                let mut args = [lhs_val, rhs_val];
+                let name_c = CString::new("cbo").unwrap();
+                // Stage 14.103: LLVMBuildCall2 requires the FUNCTION type (fn_ty),
+                // NOT the return type (agg_ty). Passing agg_ty caused segfaults.
+                let r = LLVMBuildCall2(
+                    self.builder,
+                    fn_ty,
+                    intrinsic_fn,
+                    args.as_mut_ptr(),
+                    2,
+                    name_c.as_ptr(),
+                );
+                return self.fresh_named(r);
+            }
+
+            // Unsupported op or type — fall back to "no overflow".
+            // Synthesize `{ T, i1 } undef` with the overflow flag zeroed.
             let agg = LLVMGetUndef(agg_ty);
             let zero_i1 = LLVMConstInt(i1_ty, 0, 0);
             let name_c = CString::new("cbo").unwrap();

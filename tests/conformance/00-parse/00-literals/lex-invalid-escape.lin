@@ -1,0 +1,8 @@
+// CATEGORY: parse
+// DESCRIPTION: Invalid character escape is now caught (Phase 1 audit fix)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.102 — lex_escape_from_str returns None for unrecognized escapes
+
+fn main() {
+    let c = '\q';
+}

@@ -378,8 +378,19 @@ pub(crate) fn codegen_terminator(
             }
             emitter.emit_unreachable();
         }
+        // Stage 14.103 (SH-8 documentation): Terminator::Drop is a no-op in v0.1.
+        //
+        // In Rust, `Drop` would call the type's `Drop::drop` method here.
+        // In v0.1, user-defined `Drop::drop` is not supported (GAP-3 —
+        // `drop_elaboration.rs` is dead code). So there's nothing to call.
+        //
+        // Per §1.0 原则 3 "显式 > 隐式": the no-op is now explicitly documented.
+        // When v0.2 adds Drop support, this arm will need to:
+        //   1. Look up the type's Drop impl (if any)
+        //   2. Call the drop method with the place as receiver
+        //   3. Then branch to target
         Terminator::Drop { place, target, .. } => {
-            let _ = place;
+            let _ = place; // v0.1: no Drop impls exist, so nothing to call
             emitter.emit_br(&format!("bb{}", target.0));
         }
     }
