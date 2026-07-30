@@ -1,9 +1,245 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.107.0
+**Current version**: v0.114.0
 **Date**: 2026-07-30
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5184 conformance tests (155 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5204 conformance tests (170 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.114.0 — Stage 14.100 (6 Bug Fixes from Round 8 Audit)
+
+### Overview
+
+Stage 14.100 fixes 6 bugs found by the Round 8 independent audit. All 6 are
+fully fixed. AA1-AA4 share the same root cause (incomplete scanning of
+expression variants in `scan_expr_for_unresolved`). AA5 is a codegen filter
+issue. AA6 is a refinement of Stage 14.99's Z7 check.
+
+### Bug AA1-AA4: Silent unresolved paths
+
+**Symptoms**:
+- AA1: `println!("{}", nonexistent_xyz)` silently printed 0
+- AA2: `for i in 0..5 { let _ = nonexistent_xyz; }` silently compiled
+- AA3: `for i in foo..5 { ... }` silently used foo=0
+- AA4: `let arr = [foo; 3];` silently used foo=0
+
+**Root cause**: `scan_expr_for_unresolved` had a `_ => {}` catch-all that
+skipped `Println`, `For`, `Range`, and `Repeat` variants. The `Loop`/`While`
+arm also only scanned Expr statements, not Local statements.
+
+**Fix**: Added explicit arms for `Println`, `For`, `Range`, `Repeat`. Updated
+`Loop`/`While` arm to scan both Local and Expr statements.
+
+### Bug AA5: Trait default body with zero impls crashes LLVM
+
+**Symptom**: Trait with default body but zero impls crashed with
+`Function arguments must have first-class types!`.
+
+**Root cause**: Default body's `self.<method>()` calls have no resolution
+with zero impls. Body was eagerly codegen'd even though never called.
+
+**Fix**: Skip codegen for trait default bodies when the trait has zero impls.
+Track lowered bodies in a `HashSet<DefId>` and filter `body_metas` to only
+include lowered bodies.
+
+### Bug AA6: Z7 false positive when both impls override
+
+**Symptom**: Stage 14.99's Z7 check fired even when both impls overrode the
+default body (so the default was never used).
+
+**Fix**: Refine the Z7 check to only fire when at least one impl does NOT
+override the default body method.
+
+### Verification
+
+| Bug | Status |
+|-----|--------|
+| AA1 (println unresolved) | ✅ fully fixed |
+| AA2 (for-loop body unresolved) | ✅ fully fixed |
+| AA3 (Range unresolved) | ✅ fully fixed |
+| AA4 (Repeat unresolved) | ✅ fully fixed |
+| AA5 (zero-impl default body crash) | ✅ fully fixed |
+| AA6 (Z7 false positive) | ✅ fully fixed |
+
+- All 1951 rust tests pass (zero regression)
+- All 5204 conformance tests pass (was 5198, +6 new tests)
+- 0 clippy warnings, fmt clean
+
+---
+## v0.113.0 — Stage 14.99 (3 P1 Bug Fixes from Round 7 Audit)
+
+### Overview
+
+Stage 14.99 fixes 3 P1 bugs deferred from the Round 7 independent audit:
+
+1. **Bug Z5/Z6**: For-loop mutability semantics — `for mut i in 0..N { i = ...; }`
+   modified the iteration counter, ending iteration early.
+2. **Bug Z7**: Trait default body with multiple impls silently picked the first
+   impl's self_ty for specialization, producing wrong output for other impls.
+
+### Bug Z5/Z6: For-loop mutability semantics
+
+**Symptom**: `for mut i in 0..5 { i = i + 100; sum += i; }` returned 100
+instead of 510. Modifying the loop variable ended iteration after the first
+iter.
+
+**Root cause**: Stage 14.97's for-loop desugar used the pattern's hir_id as
+the counter, so the counter WAS the user-visible binding.
+
+**Fix**: Use TWO locals:
+1. A hidden counter local (always Mutable, used for iteration control)
+2. The user-visible pattern binding (mutability from user's `mut` annotation)
+At the start of each iteration, copy counter → pat_local. Only the hidden
+counter is incremented.
+
+### Bug Z7: Trait default body with multiple impls
+
+**Symptom**: When 2+ impls of a trait with default body methods exist, the
+default body was silently specialized using the first impl's self_ty.
+
+**Fix**: Emit a clear typeck error when a trait has a default body method AND
+2+ impls exist (refined in Stage 14.100 to only fire when at least one impl
+doesn't override the default).
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5198 conformance tests pass (was 5195, +3 new tests)
+- 0 clippy warnings, fmt clean
+
+---
+## v0.112.0 — Stage 14.98 (4 P0 Bug Fixes from Round 7 Audit)
+
+### Overview
+
+Stage 14.98 fixes 4 P0 bugs found by the Round 7 independent audit. All 4 are
+LLVM crashes on common code patterns (method calls on let-bound locals whose
+init type isn't propagated by typeck). All are fully fixed.
+
+### Bug Z1/Z2: Method call on struct literal inside loop/match crashes
+
+**Symptom**: `for i in 0..3 { let n = N { v: i }; sum += n.base(); }` crashed
+with `LLVM module verification failed: Called function must be a pointer!`.
+Same crash for `let n = match x { 0 => N{v:100}, _ => N{v:200} }; n.base();`.
+
+**Root cause**: `search_expr_for_local_init` only handled `Block` and `If` —
+it didn't recurse into `While`/`For`/`Loop`/`Match` bodies. When typeck didn't
+propagate the local's type, method resolution failed and emitted a null
+function pointer.
+
+**Fix**: Rewrote `search_expr_for_local_init` to handle all expression kinds.
+Added `search_expr_for_local_init_expr` helper. For `Match` init, look at the
+first arm's body to determine the type.
+
+### Bug Z3: Trait default body via intermediate `let` crashes
+
+**Symptom**: `let r1 = p; let r2 = r1.g();` where `g` is a trait default body
+crashed with LLVM null function pointer.
+
+**Root cause**: `resolve_inherent_method_from_hir_expr`'s MethodCall-init
+tracing arm only called `resolve_inherent_method`, not `resolve_trait_method`.
+
+**Fix**: Added `.or_else(|| resolve_trait_method(...))` to 3 method-resolution
+arms in `resolve_inherent_method_from_hir_expr`.
+
+### Bug Z4: Method call on free function result crashes
+
+**Symptom**: `let n = make_n(i); n.base();` (where `make_n` is a free function
+returning a struct) crashed with LLVM null function pointer.
+
+**Root cause**: `query_method_return_type` only searched `Impl` blocks, not
+free `Fn` owners. Free-function return types couldn't be traced.
+
+**Fix**: Extended `query_method_return_type` to search `HirItem::Fn` (free
+functions) and `HirItem::Trait` (trait default bodies).
+
+### Verification
+
+| Bug | Status |
+|-----|--------|
+| Z1 (struct in for-loop) | ✅ fully fixed |
+| Z2 (struct from match) | ✅ fully fixed |
+| Z3 (trait default via let) | ✅ fully fixed |
+| Z4 (free function result) | ✅ fully fixed |
+
+- All 1951 rust tests pass (zero regression)
+- All 5195 conformance tests pass (was 5191, +4 new run_ok tests)
+- 0 clippy warnings, fmt clean
+
+---
+## v0.111.0 — Stage 14.97 (Bug Y1 + For-Loop Support)
+
+### Overview
+
+Stage 14.97 fixes 2 long-standing P0 bugs in the v0.1 release:
+
+1. **Bug Y1**: Trait default body methods calling `self.method()` crashed with
+   LLVM verification errors. Fixed with 4 layered changes.
+2. **For-loop over Range**: `for i in 0..N { body }` was a stub since Stage 2.4b
+   — it just checked if the iter was "truthy" and never iterated. Now properly
+   lowered to a `while counter < end { body; counter += 1 }` loop.
+
+### Bug Y1: Trait default body `self.method()` crash
+
+**Symptom**:
+```landin
+trait Counter {
+    fn value(&self) -> i32;
+    fn double_value(&self) -> i32 { self.value() * 2 }
+}
+struct Pair { x: i32 }
+impl Counter for Pair { fn value(&self) -> i32 { self.x } }
+fn main() { let p = Pair { x: 21 }; println!("{}", p.double_value()); }
+```
+Crashed with `LLVM module verification failed`.
+
+**Root causes** (4 layered):
+1. HIR lowering: Trait default body methods didn't get their own DefId.
+2. fn_sig_table: No entries for trait default body methods.
+3. resolve_self_param_type: Only handled impl methods, not trait default bodies.
+4. query_method_self_kind: Only searched impl blocks, not trait definitions.
+
+**Fixes** (4 layered):
+1. `src/hir/lower/item.rs::lower_trait_item`: For trait methods WITH bodies,
+   call `enter_owner()` to allocate a fresh DefId.
+2. `src/driver.rs`: Add fn_sig_table entries for trait default body methods.
+3. `src/mir/lower/mod.rs::resolve_self_param_type`: Extended to search Trait
+   owners.
+4. `src/mir/lower/expr_operand.rs::query_method_self_kind`: Extended to search
+   Trait owners.
+
+### For-loop over Range
+
+**Symptom**: `for i in 0..5 { sum += i; }` produced wrong output (iter treated
+as single value, no iteration).
+
+**Fix**: Desugar `for pat in start..end { body }` to:
+```landin
+let mut pat = start;
+while pat < end { body; pat += 1; }
+```
+For inclusive ranges (`start..=end`), uses `<=` instead of `<`. Properly
+handles `break`, `continue`, empty ranges, and single-element ranges. For
+non-Range iter expressions (arrays, etc.), emits a clear typeck error.
+
+### Test count updates
+
+- Rust tests: 1951 (unchanged)
+- Conformance tests: 5191 (was 5184, +7 new run_ok tests)
+- 4 existing tests flipped from compile_error → run_ok (for-loop stdlib tests)
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5191 conformance tests pass (was 5184, +7 new)
+- 0 clippy warnings, fmt clean
+
+### Known limitations (Stage 14.97)
+
+- For-loop over arrays: not supported (clear error message)
+- Open ranges (`..end`, `start..`): not supported (clear error message)
+- Trait default body with multiple impls: uses first impl's self_ty
+- Trait default body calling another trait's method: not supported
 
 ---
 ## v0.107.0 — Stage 14.92 (2 Critical Bug Fixes from Round 6 Audit)

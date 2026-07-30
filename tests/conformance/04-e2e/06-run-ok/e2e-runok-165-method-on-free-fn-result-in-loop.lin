@@ -1,0 +1,18 @@
+// CATEGORY: e2e
+// DESCRIPTION: Method call on result of free function inside for-loop (Bug Z4)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 3
+// EXPECTED_EXIT_CODE: 0
+// SOURCE: Stage 14.98 — Bug Z4 fix (free function return type tracing)
+
+struct N { v: i32 }
+impl N { fn base(&self) -> i32 { self.v } }
+fn make_n(i: i32) -> N { N { v: i } }
+fn main() {
+    let mut sum = 0;
+    for i in 0..3 {
+        let n = make_n(i);
+        sum += n.base();
+    }
+    println!("{}", sum);
+}

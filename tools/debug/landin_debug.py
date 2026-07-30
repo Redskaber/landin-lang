@@ -15,6 +15,9 @@ Commands:
     ir-types <file>        — Show LLVM IR with alloca types highlighted
     coverage               — Show test coverage summary
     gaps                   — Show P0/P1 gap status (from capability assessment)
+    quick-test <file>      — Compile + run + check expected stdout (single test)
+    stats                  — Show project statistics (LOC, test counts, version)
+    audit <file>           — Audit a .lin file: trace + diff + ir-types in one pass
 
 Options:
     --compiler <path>      — Path to landin-stage0 binary (default: target/debug/landin-stage0)
@@ -29,6 +32,9 @@ Examples:
     python3 tools/debug/landin_debug.py ir-types my_test.lin
     python3 tools/debug/landin_debug.py coverage
     python3 tools/debug/landin_debug.py gaps
+    python3 tools/debug/landin_debug.py quick-test tests/conformance/04-e2e/06-run-ok/e2e-runok-160-trait-default-body-self-method.lin
+    python3 tools/debug/landin_debug.py stats
+    python3 tools/debug/landin_debug.py audit tests/conformance/04-e2e/06-run-ok/e2e-runok-156-for-loop-range.lin
 """
 
 import subprocess
@@ -538,6 +544,164 @@ def cmd_gaps(compiler: LandinCompiler, verbose: bool = False):
     print("can be deferred past v0.1 as known limitations.")
 
 
+def cmd_quick_test(compiler: LandinCompiler, file: str, verbose: bool = False):
+    """Quick-test a .lin file: parse expected stdout, compile, run, compare.
+
+    Reads EXPECTED_STDOUT and EXPECTED_EXIT_CODE from the file's header,
+    compiles with --run, and compares the actual output.
+    """
+    print(f"=== Quick Test: {file} ===\n")
+
+    try:
+        with open(file) as f:
+            content = f.read()
+    except FileNotFoundError:
+        print(f"❌ File not found: {file}")
+        return
+
+    # Parse EXPECTED_STDOUT and EXPECTED_EXIT_CODE
+    expected_stdout = None
+    expected_exit = "0"
+    expected_type = "run_ok"  # default
+
+    for line in content.split("\n"):
+        line = line.strip()
+        if line.startswith("// EXPECTED_STDOUT:"):
+            expected_stdout = line.split(":", 1)[1].strip()
+        elif line.startswith("// EXPECTED_EXIT_CODE:"):
+            expected_exit = line.split(":", 1)[1].strip()
+        elif line.startswith("// EXPECTED:"):
+            expected_type = line.split(":", 1)[1].strip()
+
+    if expected_type != "run_ok":
+        print(f"⚠️  Test type is {expected_type}, not run_ok — running compile check only")
+        rc, stdout, stderr = compiler.compile(file)
+        if rc == 0:
+            print("✅ Compile OK")
+        else:
+            print(f"❌ Compile FAILED (exit {rc})")
+            if stderr:
+                print(stderr)
+        return
+
+    if expected_stdout is None:
+        print("⚠️  No EXPECTED_STDOUT in file header — running without output check")
+
+    # Compile and run
+    rc, stdout, stderr = compiler.run_program(file)
+
+    print(f"Exit code: {rc} (expected: {expected_exit})")
+    print(f"Stdout: {stdout.strip()!r}")
+    if stderr.strip():
+        print(f"Stderr: {stderr.strip()!r}")
+
+    # Check exit code
+    exit_ok = str(rc) == expected_exit
+
+    # Check stdout
+    output_ok = True
+    if expected_stdout is not None:
+        output_ok = stdout.strip() == expected_stdout
+
+    if exit_ok and output_ok:
+        print("\n✅ PASS")
+    else:
+        print("\n❌ FAIL")
+        if not exit_ok:
+            print(f"   Exit code mismatch: expected {expected_exit}, got {rc}")
+        if not output_ok:
+            print(f"   Stdout mismatch: expected {expected_stdout!r}, got {stdout.strip()!r}")
+
+
+def cmd_stats(compiler: LandinCompiler, verbose: bool = False):
+    """Show project statistics."""
+    print("=== Landin Compiler Statistics ===\n")
+
+    # Get version from Cargo.toml
+    try:
+        with open("Cargo.toml") as f:
+            for line in f:
+                if line.startswith("version ="):
+                    version = line.split('"')[1]
+                    print(f"Version: v{version}")
+                    break
+    except FileNotFoundError:
+        print("Version: unknown (Cargo.toml not found)")
+
+    # Count source lines
+    src_loc = 0
+    src_files = 0
+    for root, dirs, files in os.walk("src"):
+        for f in files:
+            if f.endswith(".rs"):
+                src_files += 1
+                with open(os.path.join(root, f)) as fp:
+                    for _ in fp:
+                        src_loc += 1
+    print(f"Source files: {src_files}")
+    print(f"Source lines: {src_loc:,}")
+
+    # Count tests
+    test_loc = 0
+    test_files = 0
+    for root, dirs, files in os.walk("tests"):
+        for f in files:
+            if f.endswith(".rs"):
+                test_files += 1
+                with open(os.path.join(root, f)) as fp:
+                    for _ in fp:
+                        test_loc += 1
+    print(f"Test files (Rust): {test_files}")
+    print(f"Test lines (Rust): {test_loc:,}")
+
+    # Count conformance tests
+    conf_count = 0
+    run_ok_count = 0
+    for root, dirs, files in os.walk("tests/conformance"):
+        for f in files:
+            if f.endswith(".lin"):
+                conf_count += 1
+                if "06-run-ok" in root:
+                    run_ok_count += 1
+    print(f"Conformance tests (.lin): {conf_count}")
+    print(f"  - run_ok tests: {run_ok_count}")
+
+    # Count docs
+    doc_count = 0
+    for root, dirs, files in os.walk("docs"):
+        for f in files:
+            if f.endswith(".md"):
+                doc_count += 1
+    print(f"Doc files (.md): {doc_count}")
+
+    # Check release binary
+    if os.path.exists("target/release/landin-stage0"):
+        print("Release binary: ✅ built")
+    else:
+        print("Release binary: ❌ not built (run: cargo build --release --features llvm-backend)")
+
+    if os.path.exists("target/debug/landin-stage0"):
+        print("Debug binary: ✅ built")
+    else:
+        print("Debug binary: ❌ not built (run: cargo build --features llvm-backend)")
+
+
+def cmd_audit(compiler: LandinCompiler, file: str, verbose: bool = False):
+    """Audit a .lin file: trace + diff + ir-types in one pass."""
+    print(f"=== Audit: {file} ===\n")
+
+    print("--- Stage 1: Pipeline Trace ---")
+    cmd_trace(compiler, file, verbose=False)
+    print()
+
+    print("--- Stage 2: Output Diff ---")
+    cmd_diff(compiler, file, verbose=False)
+    print()
+
+    print("--- Stage 3: IR Types ---")
+    cmd_ir_types(compiler, file, verbose=False)
+
+
 # =====================================================================
 # Main
 # =====================================================================
@@ -551,7 +715,8 @@ def main():
 
     parser.add_argument("command",
                         choices=["trace", "mir", "test-runner", "diff", "stages",
-                                 "borrowck-trace", "ir-types", "coverage", "gaps"],
+                                 "borrowck-trace", "ir-types", "coverage", "gaps",
+                                 "quick-test", "stats", "audit"],
                         help="Command to run")
     parser.add_argument("file", nargs="?", help="Input .lin file (or test directory for test-runner)")
     parser.add_argument("--compiler", default=DEFAULT_COMPILER, help="Path to landin-stage0 binary")
@@ -560,7 +725,7 @@ def main():
 
     args = parser.parse_args()
 
-    needs_file = args.command not in ("test-runner", "coverage", "gaps")
+    needs_file = args.command not in ("test-runner", "coverage", "gaps", "stats")
     if needs_file and not args.file:
         parser.error(f"{args.command} requires a file argument")
 
@@ -586,6 +751,12 @@ def main():
         cmd_coverage(compiler, args.verbose)
     elif args.command == "gaps":
         cmd_gaps(compiler, args.verbose)
+    elif args.command == "quick-test":
+        cmd_quick_test(compiler, args.file, args.verbose)
+    elif args.command == "stats":
+        cmd_stats(compiler, args.verbose)
+    elif args.command == "audit":
+        cmd_audit(compiler, args.file, args.verbose)
 
 if __name__ == "__main__":
     main()

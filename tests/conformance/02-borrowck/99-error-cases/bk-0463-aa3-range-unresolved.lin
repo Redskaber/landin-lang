@@ -1,0 +1,12 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Unresolved identifier in Range start is now caught (Bug AA3)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.100 — Bug AA3 fix (scan_expr_for_unresolved Range arm)
+
+fn main() {
+    let mut sum = 0;
+    for i in foo..5 {
+        sum += i;
+    }
+    println!("{}", sum);
+}

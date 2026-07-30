@@ -1,0 +1,8 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Unresolved identifier in println! arg is now caught (Bug AA1)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.100 — Bug AA1 fix (scan_expr_for_unresolved Println arm)
+
+fn main() {
+    println!("{}", nonexistent_xyz);
+}

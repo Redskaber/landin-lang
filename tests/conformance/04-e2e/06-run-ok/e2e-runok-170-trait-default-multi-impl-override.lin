@@ -1,0 +1,31 @@
+// CATEGORY: e2e
+// DESCRIPTION: Trait default body with 2 impls both overriding works (Bug AA6)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 50\n100
+// EXPECTED_EXIT_CODE: 0
+// SOURCE: Stage 14.100 — Bug AA6 fix (refine Z7 check to only fire when default is unoverridden)
+
+trait Counter {
+    fn value(&self) -> i32;
+    fn doubled(&self) -> i32 { self.value() * 2 }
+}
+
+struct A { x: i32 }
+struct B { x: i32 }
+
+impl Counter for A {
+    fn value(&self) -> i32 { self.x }
+    fn doubled(&self) -> i32 { self.x * 10 }  // override
+}
+
+impl Counter for B {
+    fn value(&self) -> i32 { self.x }
+    fn doubled(&self) -> i32 { self.x * 20 }  // override
+}
+
+fn main() {
+    let a = A { x: 5 };
+    let b = B { x: 5 };
+    println!("{}", a.doubled());  // 50
+    println!("{}", b.doubled());  // 100
+}

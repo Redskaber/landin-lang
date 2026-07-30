@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.107.0 (v0.1 release)  
+**Version**: v0.114.0 (v0.1 release)  
 **Date**: 2026-07-30
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -11,23 +11,22 @@ backend via the `llvm-sys` crate.
 
 > **v0.1 RELEASE — All P0 essential soundness gaps closed**
 >
-> Stages 14.80-14.86 closed all P0 essential soundness gaps:
-> - **GAP-1** (NLL soundness) — fixed in Stage 14.81 (1-line fix to
->   `transfer_borrow_ref` for `Operand::Copy`); 113 unsound conformance
->   tests flipped back to `compile_error`
+> Stages 14.80-14.100 closed all P0 essential soundness gaps:
+> - **GAP-1** (NLL soundness) — fixed in Stage 14.81
 > - **GAP-5** (`self.x` field access) — verified working in Stage 14.81
 > - **GAP-6** (two-phase borrow — method-call subset) — verified working
 >   in Stage 14.81
 > - **GAP-7** (closure struct captures) — fixed in Stage 14.82 + 14.84
->   audit fix; closures capturing structs now work for ALL fields
->   (not just field 0); disjoint field captures (RFC 2229) deferred past v0.1
-> - **Match guards** (`pat if cond => body`) — fixed in Stage 14.86;
->   guards were silently ignored before, causing wrong runtime behavior
+> - **Match guards** (`pat if cond => body`) — fixed in Stage 14.86
+> - **Bug Y1** (trait default body `self.method()`) — fixed in Stage 14.97
+> - **For-loop over Range** — fixed in Stage 14.97
+> - **Bugs Z1-Z4** (method resolution on let-bound locals) — fixed in Stage 14.98
+> - **Bugs Z5-Z7** (for-loop mutability + trait default multi-impl) — fixed in Stage 14.99
+> - **Bugs AA1-AA6** (silent unresolved paths + zero-impl default bodies) — fixed in Stage 14.100
 >
-> Stage 14.84 included an independent audit by a general-purpose subagent
-> that found a critical bug in the Stage 14.82 "partial fix" (closures
-> accessing field 1+ silently returned garbage). The audit fix closes this
-> bug with 4 layered writeback fixes + a codegen type-lookup fix.
+> Stage 14.100 included an independent audit by a general-purpose subagent
+> that found 6 bugs (4 silent unresolved-path bugs, 1 LLVM crash, 1 false
+> positive). All are fully fixed.
 >
 > Remaining P1/P2 gaps (GAP-2/3/4 region/drop/lifetime infrastructure,
 > GAP-9 stdlib MVP, GAP-14 visibility, GAP-15 mini-cargo) are feature-
@@ -119,7 +118,7 @@ Source Text (.lin)
 
 ## Language Features
 
-### Working in v0.107.0
+### Working in v0.114.0
 
 - **Primitive types**: `i32`, `i64`, `f32`, `f64`, `bool`, `char`, `&str`
 - **Compound types**: tuples, arrays `[T; N]`, structs, enums (with payload)
@@ -136,11 +135,14 @@ Source Text (.lin)
 - **Trait dispatch**: vtable emission + `dyn Trait` fat pointer (infrastructure
   only — static trait method dispatch NOT supported in v0.1; trait impls can
   be defined but method calls crash at runtime)
+- **Trait default bodies**: methods with default bodies that call other trait
+  methods (`self.method()`) work via single-impl specialization (Stage 14.97)
 - **Pattern matching**: literals, identifiers, tuples, structs, enums, or-patterns,
   nested patterns (any depth)
 - **Destructuring**: `let (a, b) = ...;`, `let Point { x, y } = ...;`
 - **Control flow**: `if`/`else`, `while`, `loop { break value; }`, `match`
-  (with all pattern kinds including guards), early `return`, `break`, `continue`
+  (with all pattern kinds including guards), early `return`, `break`, `continue`,
+  `for i in start..end { body }` and `for i in start..=end { body }` (Stage 14.97)
 - **Macros**: 26 built-in macros including `println!`, `eprintln!`, `print!`,
   `format!`, `assert!`, `assert_eq!`, `panic!`, `vec!`, `dbg!`, `todo!`
 - **Operators**: all arithmetic, comparison, logical (`&&`/`||` short-circuit),
@@ -160,6 +162,13 @@ Source Text (.lin)
 - **GAP-14**: Cross-module visibility enforcement is stub
 - **GAP-15**: Mini-cargo CLI not exposed (`landinc build/run/test` absent)
 - **GAP-16**: No `landin test` / `landin fmt` / `landin doc` subcommands
+- **For-loop over arrays**: only Range iterators (`start..end`, `start..=end`)
+  are supported; arrays and other iterables produce a clear compile error
+- **Trait default body with multiple impls**: uses first impl's self_ty for
+  specialization (v0.1 single-impl heuristic; full monomorphization is v0.2+)
+- **Trait default body calling another trait's method**: not supported
+- **For-loop variable mutability**: loop variable is mutable even without
+  `mut` annotation; modifying it affects iteration (P1, deferred to v0.2)
 
 See `docs/develop/v0/stage-14/v0.1-capability-assessment.md` for the full
 gap analysis.
@@ -211,17 +220,17 @@ src/
 
 ---
 
-## Test Counts (v0.107.0)
+## Test Counts (v0.114.0)
 
 | Suite | Count | Pass rate |
 |-------|-------|-----------|
 | Rust unit/integration tests | 1951 | 100% |
-| Conformance tests (.lin) | 5184 | 100% |
+| Conformance tests (.lin) | 5204 | 100% |
 | - Parse-only (`00-parse`) | 600 | 100% |
 | - Typecheck (`01-typecheck`) | 1020 | 100% |
-| - Borrowck (`02-borrowck`) | 803 | 100% |
+| - Borrowck (`02-borrowck`) | 810 | 100% |
 | - Codegen (`03-codegen`) | 601 | 100% |
-| - End-to-end run (`04-e2e/06-run-ok`) | 155 | 100% |
+| - End-to-end run (`04-e2e/06-run-ok`) | 170 | 100% |
 | - Soundness (`05-soundness`) | 500 | 100% |
 | - Stdlib (`06-stdlib`) | 502 | 100% |
 | - Integration (`07-integration`) | 501 | 100% |
@@ -240,4 +249,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-07-30 (v0.107.0, Stage 14.92 — v0.1 release)
+**Last updated**: 2026-07-30 (v0.114.0, Stage 14.100 — v0.1 release)

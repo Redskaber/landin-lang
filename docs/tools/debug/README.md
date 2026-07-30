@@ -18,6 +18,9 @@ compiler issues:
 7. **`ir-types`** — Show LLVM IR with alloca/load/store types highlighted (Stage 14.82+)
 8. **`coverage`** — Show test count by category (Stage 14.81+)
 9. **`gaps`** — Show P0/P1 gap status from capability assessment (Stage 14.81+)
+10. **`quick-test`** — Compile + run + check expected stdout for a single test (Stage 14.98+)
+11. **`stats`** — Show project statistics: version, LOC, test counts, doc counts (Stage 14.98+)
+12. **`audit`** — Combined trace + diff + ir-types in one pass (Stage 14.98+)
 
 ## Usage
 
@@ -51,6 +54,15 @@ python3 tools/debug/landin_debug.py coverage
 
 # Show P0/P1 gap status
 python3 tools/debug/landin_debug.py gaps
+
+# Stage 14.98+: Quick-test a single .lin file with EXPECTED_STDOUT check
+python3 tools/debug/landin_debug.py quick-test tests/conformance/04-e2e/06-run-ok/e2e-runok-160-trait-default-body-self-method.lin
+
+# Stage 14.98+: Show project statistics
+python3 tools/debug/landin_debug.py stats
+
+# Stage 14.98+: Audit a single .lin file (trace + diff + ir-types)
+python3 tools/debug/landin_debug.py audit tests/conformance/04-e2e/06-run-ok/e2e-runok-156-for-loop-range.lin
 ```
 
 ## Test File Format
@@ -132,6 +144,18 @@ eprintlns to `codegen/mod.rs::codegen_function` revealed the closure's
 driver writeback that walks `Aggregate(Closure, operands)` rvalues and
 writes back each operand's source local resolved type to the corresponding
 subst.
+
+## Stage 14.97-14.98 Bug Discovery
+
+The `quick-test` command (added in Stage 14.98) was used to verify each
+new test case during the Bug Y1 + for-loop + Z1-Z4 fixes. It quickly shows
+whether a test passes or fails, with clear expected-vs-actual output.
+
+The `stats` command was used to track project growth and verify the release
+binary was built before running tests.
+
+The `audit` command combines trace + diff + ir-types in one pass, useful
+for comprehensive single-file analysis.
 
 ## Adding New Debug Commands
 

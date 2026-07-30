@@ -1,0 +1,22 @@
+// CATEGORY: e2e
+// DESCRIPTION: Trait default body that doesn't call another method
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 42
+// EXPECTED_EXIT_CODE: 0
+// SOURCE: Stage 14.97 — Bug Y1 fix (trait default body codegen)
+
+trait Counter {
+    fn default_value(&self) -> i32 {
+        42
+    }
+}
+
+struct Pair { x: i32 }
+
+impl Counter for Pair {
+}
+
+fn main() {
+    let p = Pair { x: 21 };
+    println!("{}", p.default_value());
+}

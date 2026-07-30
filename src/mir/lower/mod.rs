@@ -929,6 +929,28 @@ fn resolve_self_param_type(
     // The body's owner DefId — for impl methods, this is the HirFn's owner.
     let _owner_def_id = body.hir_id.owner;
 
+    // Helper: wrap an ADT type as &T/&mut T based on self_kind.
+    let wrap_with_ref = |adt_ty: crate::mir::ty::Ty| -> crate::mir::ty::Ty {
+        match self_kind {
+            Some(crate::ast::SelfKind::Ref(mutability)) => {
+                let mir_mut = match mutability {
+                    crate::ast::Mutability::Mutable => crate::mir::ty::Mutability::Mutable,
+                    crate::ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
+                };
+                crate::mir::ty::Ty::new(
+                    crate::mir::ty::TyKind::Ref(
+                        crate::mir::ty::Region::Erased,
+                        mir_mut,
+                        Box::new(adt_ty),
+                    ),
+                    body.span,
+                )
+            }
+            // self by value — no wrapping
+            _ => adt_ty,
+        }
+    };
+
     // Search all owners for an Impl block that contains this method.
     for (_, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
@@ -947,28 +969,65 @@ fn resolve_self_param_type(
                         // The codegen Deref+Field handling has been fixed in
                         // mir_translation.rs to support this correctly.
                         let adt_ty = lower_hir_ty_to_mir_ty(&impl_block.self_ty);
-                        return match self_kind {
-                            Some(crate::ast::SelfKind::Ref(mutability)) => {
-                                let mir_mut = match mutability {
-                                    crate::ast::Mutability::Mutable => {
-                                        crate::mir::ty::Mutability::Mutable
+                        return Some(wrap_with_ref(adt_ty));
+                    }
+                }
+            }
+        }
+    }
+
+    // Stage 14.97 (Bug Y1 fix): Trait default body methods.
+    //
+    // If no impl block owns this body, check if a Trait block owns it
+    // (i.e., this is a trait default body). For trait default bodies, the
+    // self type is `Self` — a type parameter that's unknown without
+    // monomorphization. For v0.1, we use a single-impl heuristic: if exactly
+    // one impl of the trait exists in the program, use that impl's self_ty
+    // as the specialization type. This is correct for the common case of
+    // `trait T { fn f(&self) {...} } impl T for Type { ... }` with one impl.
+    //
+    // Limitation: If multiple impls exist, we use the first impl's self_ty.
+    // This is wrong for the other impls but is a v0.1 limitation (full
+    // monomorphization is v0.2+ work). The alternative (returning None and
+    // leaving self as Infer) causes worse failures (LLVM crashes).
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            for trait_item in &t.items {
+                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                    if f.body
+                        == Some(crate::hir::BodyId {
+                            owner: crate::hir::OwnerId(body.hir_id.owner),
+                        })
+                    {
+                        // Found the owning trait! Find impls of this trait.
+                        let trait_name = t.ident.name;
+                        let impls: Vec<_> = hir
+                            .owners
+                            .iter()
+                            .filter_map(|(_, o)| {
+                                if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(
+                                    impl_block,
+                                )) = o
+                                {
+                                    if impl_block
+                                        .of_trait
+                                        .as_ref()
+                                        .and_then(|p| p.segments.last().map(|s| s.ident.name))
+                                        == Some(trait_name)
+                                    {
+                                        return Some(impl_block);
                                     }
-                                    crate::ast::Mutability::Immutable => {
-                                        crate::mir::ty::Mutability::Immutable
-                                    }
-                                };
-                                Some(crate::mir::ty::Ty::new(
-                                    crate::mir::ty::TyKind::Ref(
-                                        crate::mir::ty::Region::Erased,
-                                        mir_mut,
-                                        Box::new(adt_ty),
-                                    ),
-                                    body.span,
-                                ))
-                            }
-                            // self by value — no wrapping
-                            _ => Some(adt_ty),
-                        };
+                                }
+                                None
+                            })
+                            .collect();
+
+                        // Use the first impl's self_ty as the specialization type.
+                        if let Some(impl_block) = impls.first() {
+                            let adt_ty = lower_hir_ty_to_mir_ty(&impl_block.self_ty);
+                            return Some(wrap_with_ref(adt_ty));
+                        }
+                        // No impls exist — fall through to return None.
                     }
                 }
             }

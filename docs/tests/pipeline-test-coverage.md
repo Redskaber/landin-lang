@@ -819,3 +819,161 @@ without introducing regressions.
 
 **Final Updated**: 2026-07-30 (Stage 14.88)
 **Process**: v3.22 §17.5
+
+---
+
+## Stage 14.97 Update — Bug Y1 + For-Loop Support (2026-07-30)
+
+### Test count update
+
+- **Rust tests**: 1951 (unchanged)
+- **Conformance tests**: 5191 (was 5184, +7 new run_ok)
+  - +7 new: e2e-runok-156..162 (for-loop range/inclusive/break/continue, trait default body simple/no-call/chain)
+  - 4 existing flipped compile_error → run_ok: 028/005/019/020 stdlib for-loop tests
+
+### Stage 14.97 changes
+
+- **Bug Y1**: Trait default body methods calling `self.method()` crashed with
+  LLVM verification errors. Fixed with 4 layered changes (HIR lowering +
+  fn_sig_table + resolve_self_param_type + query_method_self_kind).
+- **For-loop over Range**: `for i in 0..N { body }` was a stub. Now properly
+  lowered to `while counter < end { body; counter += 1 }`. Handles inclusive
+  ranges, break, continue, empty ranges.
+
+### Pipeline path coverage — Stage 14.97 additions
+
+| Stage | Path | Coverage notes |
+|-------|------|----------------|
+| 1 HIR Lower | `lower_trait_item` Fn with body — enter_owner/store_owner | NEW: gives each trait default body method its own DefId |
+| 2 MIR Lower | `HirExprKind::For` with Range iter | NEW: desugar to while + counter |
+| 2 MIR Lower | `HirExprKind::For` with non-Range iter | NEW: emit clear typeck error |
+| 2 MIR Lower | `resolve_self_param_type` for Trait owners | NEW: handle trait default body self param |
+| 2 MIR Lower | `query_method_self_kind` for Trait owners | NEW: handle trait default body self_kind |
+| Driver | fn_sig_table for trait default body methods | NEW: register signatures with first impl self_ty |
+
+### v0.1 release criteria — Still MET ✅
+
+**Final Updated**: 2026-07-30 (Stage 14.97)
+**Process**: v3.22 §17.5
+
+---
+
+## Stage 14.98 Update — Round 7 Audit Bug Fixes (2026-07-30)
+
+### Test count update
+
+- **Rust tests**: 1951 (unchanged)
+- **Conformance tests**: 5195 (was 5191, +4 new run_ok)
+  - +4 new: e2e-runok-163..166 (struct in loop, struct from match, free fn result, trait default via let)
+
+### Stage 14.98 changes
+
+- **Bug Z1/Z2**: Method call on struct literal inside loop/match bodies crashed
+  with LLVM "Called function must be a pointer!". Root cause: `search_expr_for_local_init`
+  only handled Block and If — didn't recurse into While/For/Loop/Match bodies.
+- **Bug Z3**: Trait default body via intermediate `let` crashed. Root cause:
+  `resolve_inherent_method_from_hir_expr` only called `resolve_inherent_method`,
+  not `resolve_trait_method`, in 3 method-resolution arms.
+- **Bug Z4**: Method call on free function result crashed. Root cause:
+  `query_method_return_type` only searched Impl blocks, not free Fn owners or
+  Trait default body methods.
+
+### Pipeline path coverage — Stage 14.98 additions
+
+| Stage | Path | Coverage notes |
+|-------|------|----------------|
+| 2 MIR Lower | `search_expr_for_local_init` for While bodies | NEW: recurse into While bodies |
+| 2 MIR Lower | `search_expr_for_local_init` for For bodies | NEW: recurse into For bodies |
+| 2 MIR Lower | `search_expr_for_local_init` for Loop bodies | NEW: recurse into Loop bodies |
+| 2 MIR Lower | `search_expr_for_local_init` for Match arms | NEW: search all arms (body + guard) |
+| 2 MIR Lower | `find_local_init_type` for Call init (free fn) | NEW: query_method_return_type |
+| 2 MIR Lower | `find_local_init_type` for MethodCall init | NEW: query_method_return_type |
+| 2 MIR Lower | `find_local_init_type` for Match init | NEW: look at first arm's body |
+| 2 MIR Lower | `query_method_return_type` for HirItem::Fn | NEW: search free functions |
+| 2 MIR Lower | `query_method_return_type` for HirItem::Trait | NEW: search trait default bodies |
+| 2 MIR Lower | `resolve_inherent_method_from_hir_expr` MethodCall arm | NEW: also try resolve_trait_method |
+| 2 MIR Lower | `resolve_inherent_method_from_hir_expr` Call arm | NEW: also try resolve_trait_method |
+| 2 MIR Lower | `resolve_inherent_method_from_hir_expr` MethodCall receiver arm | NEW: also try resolve_trait_method |
+
+### v0.1 release criteria — Still MET ✅
+
+All previously-met criteria remain met. Stage 14.98 fixed 4 new P0 bugs found
+by Round 7 audit without introducing regressions.
+
+**Final Updated**: 2026-07-30 (Stage 14.98)
+**Process**: v3.22 §17.5
+
+---
+
+## Stage 14.99 Update — Z5/Z6/Z7 P1 Bug Fixes (2026-07-30)
+
+### Test count update
+
+- **Rust tests**: 1951 (unchanged)
+- **Conformance tests**: 5198 (was 5195, +3 new)
+  - +2 new run_ok: e2e-runok-167/168 (for-loop var modification, shadowing)
+  - +1 new compile_error: bk-0460 (Z7 multi-impl trait default)
+
+### Stage 14.99 changes
+
+- **Bug Z5/Z6**: For-loop mutability semantics — now uses a HIDDEN counter
+  local separate from the user-visible pattern binding. Modifying the loop
+  variable inside the body no longer affects iteration.
+- **Bug Z7**: Trait default body with multiple impls — now emits a clear
+  typeck error instead of silently producing wrong specialization.
+
+### Pipeline path coverage — Stage 14.99 additions
+
+| Stage | Path | Coverage notes |
+|-------|------|----------------|
+| 2 MIR Lower | `HirExprKind::For` hidden counter local | NEW: separate from pat_local |
+| 2 MIR Lower | `HirExprKind::For` pat_local respects user's `mut` | NEW: via pat_mutability |
+| 2 MIR Lower | `HirExprKind::For` per-iter copy counter→pat | NEW: isolates user binding from counter |
+| Driver | trait default body + 2+ impls error | NEW: emit typeck error |
+
+### v0.1 release criteria — Still MET ✅
+
+**Final Updated**: 2026-07-30 (Stage 14.99)
+**Process**: v3.22 §17.5
+
+---
+
+## Stage 14.100 Update — Round 8 Audit Bug Fixes (2026-07-30)
+
+### Test count update
+
+- **Rust tests**: 1951 (unchanged)
+- **Conformance tests**: 5204 (was 5198, +6 new)
+  - +4 new compile_error: bk-0461..0464 (AA1-AA4 unresolved paths)
+  - +2 new run_ok: e2e-runok-169/170 (AA5 zero-impl default, AA6 override-both)
+
+### Stage 14.100 changes
+
+- **Bug AA1-AA4**: Silent unresolved paths in `Println`, `For`, `Range`,
+  `Repeat` expressions — now produce clear resolve errors. Also fixed
+  `Loop`/`While` to scan Local statements (not just Expr).
+- **Bug AA5**: Trait default body with zero impls crashed LLVM — now skips
+  codegen for these bodies + filters body_metas.
+- **Bug AA6**: Z7 false positive when both impls override — refined check
+  to only fire when at least one impl doesn't override.
+
+### Pipeline path coverage — Stage 14.100 additions
+
+| Stage | Path | Coverage notes |
+|-------|------|----------------|
+| 1 Resolve | `scan_expr_for_unresolved` Println arm | NEW: scan args |
+| 1 Resolve | `scan_expr_for_unresolved` For arm | NEW: scan iter + body |
+| 1 Resolve | `scan_expr_for_unresolved` Range arm | NEW: scan start + end |
+| 1 Resolve | `scan_expr_for_unresolved` Repeat arm | NEW: scan elem + count |
+| 1 Resolve | `scan_expr_for_unresolved` Loop/While Local stmts | NEW: scan Local init + ty |
+| Driver | skip codegen for zero-impl trait default bodies | NEW: lowered_body_owners filter |
+| Driver | body_metas filter for skipped bodies | NEW: filter_map with lowered_body_owners |
+| Driver | Z7 check refinement (override-both) | NEW: only fire when default is unoverridden |
+
+### v0.1 release criteria — Still MET ✅
+
+All previously-met criteria remain met. Stage 14.100 fixed 6 new bugs found
+by Round 8 audit without introducing regressions.
+
+**Final Updated**: 2026-07-30 (Stage 14.100)
+**Process**: v3.22 §17.5

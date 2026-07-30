@@ -311,37 +311,85 @@ impl<'a> HirLowerCtxt<'a> {
     fn lower_trait_item(&mut self, ti: &ast::TraitItem) -> HirTraitItem {
         match ti {
             ast::TraitItem::Fn(ident, generics, sig, body) => {
-                let hir_generics = generics::lower_generics(self, generics);
-                let inputs: Vec<HirParam> =
-                    sig.inputs.iter().map(|p| self.lower_param(p)).collect();
-                let output = match &sig.output {
-                    ast::FnRetTy::Default(s) => HirFnRetTy::Default(*s),
-                    ast::FnRetTy::Ty(t) => HirFnRetTy::Ty(ty::lower_ty(self, t)),
-                };
-                let hir_body = if let Some(b) = body {
-                    let hir_body = body::lower_body(self, b, inputs.clone());
-                    Some(self.store_body(hir_body))
-                } else {
-                    None
-                };
-                let fn_hir_id = self.fresh_hir_id();
-                let hir_fn = HirFn {
-                    hir_id: fn_hir_id,
-                    ident: *ident,
-                    generics: hir_generics,
-                    sig: HirFnSig {
-                        inputs,
-                        output,
-                        abi: sig.abi,
-                        is_unsafe: sig.is_unsafe,
+                // Stage 14.97 (Bug Y1 fix): For trait methods WITH a body (default
+                // implementations), enter a new owner context so each method
+                // gets its own DefId. This is required for:
+                //   - fn_name_by_def_id registration (otherwise all trait methods
+                //     in the same trait share the trait's DefId, causing name
+                //     collisions like landin_Counter_default_doubled_increment
+                //     for both increment and doubled_increment)
+                //   - fn_sig_table registration (same reason)
+                //   - vtable / call site resolution (callers look up by DefId)
+                //
+                // For trait methods WITHOUT bodies (just declarations), we keep
+                // the old behavior (no separate owner) — they don't need to be
+                // codegen'd as functions, so they don't need their own DefId.
+                //
+                // Per §1.0 原则 6 "通用 > 特例": when bodies are present, use the
+                // same enter_owner/exit_owner pattern as lower_impl.
+                if body.is_some() {
+                    let def_id = self.enter_owner();
+                    let fn_hir_id = self.owner_hir_id();
+                    let hir_generics = generics::lower_generics(self, generics);
+                    let inputs: Vec<HirParam> =
+                        sig.inputs.iter().map(|p| self.lower_param(p)).collect();
+                    let output = match &sig.output {
+                        ast::FnRetTy::Default(s) => HirFnRetTy::Default(*s),
+                        ast::FnRetTy::Ty(t) => HirFnRetTy::Ty(ty::lower_ty(self, t)),
+                    };
+                    let hir_body = if let Some(b) = body {
+                        let hir_body = body::lower_body(self, b, inputs.clone());
+                        Some(self.store_body(hir_body))
+                    } else {
+                        None
+                    };
+                    let hir_fn = HirFn {
+                        hir_id: fn_hir_id,
+                        ident: *ident,
+                        generics: hir_generics,
+                        sig: HirFnSig {
+                            inputs,
+                            output,
+                            abi: sig.abi,
+                            is_unsafe: sig.is_unsafe,
+                            span: sig.span,
+                        },
+                        body: hir_body,
+                        vis: Visibility::Private,
+                        attrs: vec![],
                         span: sig.span,
-                    },
-                    body: hir_body,
-                    vis: Visibility::Private,
-                    attrs: vec![],
-                    span: sig.span,
-                };
-                HirTraitItem::Fn(hir_fn)
+                    };
+                    self.store_owner(def_id, OwnerNode::Item(HirItem::Fn(hir_fn.clone())));
+                    self.exit_owner();
+                    HirTraitItem::Fn(hir_fn)
+                } else {
+                    // No body — keep old behavior (no separate owner).
+                    let hir_generics = generics::lower_generics(self, generics);
+                    let inputs: Vec<HirParam> =
+                        sig.inputs.iter().map(|p| self.lower_param(p)).collect();
+                    let output = match &sig.output {
+                        ast::FnRetTy::Default(s) => HirFnRetTy::Default(*s),
+                        ast::FnRetTy::Ty(t) => HirFnRetTy::Ty(ty::lower_ty(self, t)),
+                    };
+                    let fn_hir_id = self.fresh_hir_id();
+                    let hir_fn = HirFn {
+                        hir_id: fn_hir_id,
+                        ident: *ident,
+                        generics: hir_generics,
+                        sig: HirFnSig {
+                            inputs,
+                            output,
+                            abi: sig.abi,
+                            is_unsafe: sig.is_unsafe,
+                            span: sig.span,
+                        },
+                        body: None,
+                        vis: Visibility::Private,
+                        attrs: vec![],
+                        span: sig.span,
+                    };
+                    HirTraitItem::Fn(hir_fn)
+                }
             }
             ast::TraitItem::Type(ident, bounds, default) => {
                 let hir_bounds = generics::lower_type_bounds(self, bounds);

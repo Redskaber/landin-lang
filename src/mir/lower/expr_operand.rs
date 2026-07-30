@@ -1145,36 +1145,217 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span)
         }
 
-        // For: `for pat in iter { body }` → lower iter, loop with next()
+        // For: `for pat in iter { body }`
+        //
+        // Stage 14.97: Implement proper for-loop over Range expressions.
+        // Previously this was a stub that just checked if iter was "truthy",
+        // which produced wrong runtime behavior for any range.
+        //
+        // Desugars `for i in start..end { body }` to:
+        //   let mut i = start;
+        //   while i < end { body; i += 1; }
+        //
+        // For inclusive ranges `start..=end`, uses `i <= end` and the same
+        // increment. For non-Range iter expressions (arrays, etc.), emits a
+        // typeck error (deferred to v0.2+).
         HirExprKind::For {
-            pat: _, iter, body, ..
+            pat, iter, body, ..
         } => {
-            let iter_local = lower_expr_to_operand(cx, iter);
+            // Stage 14.97: Check if iter is a Range expression.
+            let (start_expr, end_expr, end_kind) = match &iter.kind {
+                HirExprKind::Range {
+                    start,
+                    end,
+                    end_kind,
+                } => (start, end, *end_kind),
+                _ => {
+                    // Non-Range iter — emit a typeck error.
+                    cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                        format!(
+                            "for-loop only supports Range iterators (start..end or start..=end); found {:?}",
+                            iter.kind
+                        ),
+                        expr.span,
+                    ));
+                    return cx.mir.new_local(
+                        Ty::new(TyKind::Tuple(vec![]), expr.span),
+                        None,
+                        expr.span,
+                    );
+                }
+            };
+
+            // Range must have a start and end (we don't support open ranges yet).
+            let start_expr = match start_expr {
+                Some(s) => s,
+                None => {
+                    cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                        "for-loop over open range (..start / start..) is not supported in v0.1"
+                            .to_string(),
+                        expr.span,
+                    ));
+                    return cx.mir.new_local(
+                        Ty::new(TyKind::Tuple(vec![]), expr.span),
+                        None,
+                        expr.span,
+                    );
+                }
+            };
+            let end_expr = match end_expr {
+                Some(e) => e,
+                None => {
+                    cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                        "for-loop over open range (..start / start..) is not supported in v0.1"
+                            .to_string(),
+                        expr.span,
+                    ));
+                    return cx.mir.new_local(
+                        Ty::new(TyKind::Tuple(vec![]), expr.span),
+                        None,
+                        expr.span,
+                    );
+                }
+            };
+
+            // Lower start and end expressions to locals.
+            let start_local = lower_expr_to_operand(cx, start_expr);
+            let end_local = lower_expr_to_operand(cx, end_expr);
+
+            // Stage 14.99 (Bug Z5/Z6 fix): Use a HIDDEN counter local that's
+            // always Mutable, separate from the user-visible pattern binding.
+            //
+            // Previously, the for-loop desugar used the pattern's hir_id as the
+            // counter, which meant:
+            //   - The user's `mut` annotation was ignored (counter was always mut)
+            //   - Modifying the loop variable inside the body changed the counter,
+            //     ending iteration early
+            //
+            // Now we use two locals:
+            //   1. A hidden counter local (always Mutable, used for iteration control)
+            //   2. The user-visible pattern binding (respecting user's `mut` annotation,
+            //      copied from the counter at the start of each iteration)
+            //
+            // Per §1.0 原则 6 "通用 > 特例": one rule handles both `mut` and non-`mut`
+            // patterns — the pattern binding's mutability is derived from the user's
+            // annotation via `pat_mutability`, not hardcoded.
+            let counter_ty = cx.mir.local(start_local).ty.clone();
+            // Stage 14.99: Allocate the hidden counter via cx.mir.new_local_with_mut
+            // (not cx.new_local_with_mut) so it doesn't get registered in local_map.
+            // This is a temp local — it has no HirId and shouldn't be reachable by
+            // name resolution.
+            let hidden_counter = cx.mir.new_local_with_mut(
+                counter_ty.clone(),
+                None,
+                expr.span,
+                crate::mir::ty::Mutability::Mutable,
+            );
+            cx.mir
+                .block_mut(cx.current_block)
+                .statements
+                .push(Statement {
+                    kind: StatementKind::StorageLive(hidden_counter),
+                    span: expr.span,
+                });
+            // hidden_counter = start
+            cx.push_assign(
+                Place::local(hidden_counter, expr.span),
+                Rvalue::Use(Operand::Copy(Place::local(start_local, expr.span))),
+                expr.span,
+            );
+
+            // Create the user-visible pattern binding local.
+            // The mutability respects the user's `mut` annotation.
+            let pat_mutability = pattern_bindings::pat_mutability(pat);
+            let pat_local = cx.new_local_with_mut(pat.hir_id, counter_ty, None, pat_mutability);
+            cx.mir
+                .block_mut(cx.current_block)
+                .statements
+                .push(Statement {
+                    kind: StatementKind::StorageLive(pat_local),
+                    span: expr.span,
+                });
+
+            // Allocate block IDs for the loop.
             let cond_block = cx.new_block();
             let body_block = cx.new_block();
+            let incr_block = cx.new_block();
             let exit_block = cx.new_block();
 
             // Entry → goto cond_block
             cx.terminate(Terminator::Goto(cond_block));
 
-            // cond_block: placeholder — real impl would call iter.next()
-            // For Stage 2.4b, we just check if iter is truthy
+            // cond_block: compare HIDDEN COUNTER with end.
+            // - Excluded range (start..end): loop while counter < end
+            // - Included range (start..=end): loop while counter <= end
             cx.current_block = cond_block;
+            let cmp_op = match end_kind {
+                crate::ast::RangeEnd::Excluded => BinOp::Lt,
+                crate::ast::RangeEnd::Included => BinOp::Le,
+            };
+            let cond_ty = Ty::new(TyKind::Bool, expr.span);
+            let cond_local = cx.eval_rvalue_to_temp(
+                Rvalue::BinaryOp(
+                    cmp_op,
+                    Operand::Copy(Place::local(hidden_counter, expr.span)),
+                    Operand::Copy(Place::local(end_local, expr.span)),
+                ),
+                cond_ty,
+                expr.span,
+            );
             cx.terminate(Terminator::SwitchInt {
-                discr: Operand::Copy(Place::local(iter_local, iter.span)),
+                discr: Operand::Copy(Place::local(cond_local, expr.span)),
                 targets: vec![(ConstVal::Bool(true), body_block)],
                 otherwise: exit_block,
             });
 
-            // body_block: lower body, goto cond_block
+            // body_block: copy hidden_counter → pat_local, lower the body,
+            // then goto incr_block.
             cx.current_block = body_block;
+            // Copy the current counter value into the user-visible pattern binding.
+            // This is done at the START of each iteration, so modifications to the
+            // pattern binding inside the body don't affect the counter.
+            cx.push_assign(
+                Place::local(pat_local, expr.span),
+                Rvalue::Use(Operand::Copy(Place::local(hidden_counter, expr.span))),
+                expr.span,
+            );
+            // Push loop context (incr_block = continue target, exit_block = break target).
+            cx.loop_stack.push((incr_block, exit_block));
+            cx.loop_result_locals.push(pat_local); // not used (for-loop has no break value)
             control_flow::lower_block(cx, body);
+            cx.loop_result_locals.pop();
+            cx.loop_stack.pop();
             // Stage 14.68: Only emit Goto if the body didn't diverge.
             if !cx.is_terminated() {
-                cx.terminate(Terminator::Goto(cond_block));
+                cx.terminate(Terminator::Goto(incr_block));
             }
 
-            // exit_block: continuation
+            // incr_block: hidden_counter += 1, then goto cond_block.
+            // Note: only the hidden counter is incremented — the user-visible
+            // pattern binding is left as-is (it's overwritten at the start of
+            // the next iteration anyway).
+            cx.current_block = incr_block;
+            let one_const = Operand::Constant(Const {
+                ty: Box::new(cx.mir.local(hidden_counter).ty.clone()),
+                val: ConstVal::Int(1),
+            });
+            let new_val = cx.eval_rvalue_to_temp(
+                Rvalue::BinaryOp(
+                    BinOp::Add,
+                    Operand::Copy(Place::local(hidden_counter, expr.span)),
+                    one_const,
+                ),
+                cx.mir.local(hidden_counter).ty.clone(),
+                expr.span,
+            );
+            cx.push_assign(
+                Place::local(hidden_counter, expr.span),
+                Rvalue::Use(Operand::Copy(Place::local(new_val, expr.span))),
+                expr.span,
+            );
+            cx.terminate(Terminator::Goto(cond_block));
+
+            // exit_block: continuation. For-loop evaluates to unit ().
             cx.current_block = exit_block;
             cx.mir
                 .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span)
@@ -2197,6 +2378,20 @@ fn query_method_self_kind(
                 }
             }
         }
+        // Stage 14.97 (Bug Y1 fix): Also search Trait owners for trait default
+        // body methods. When a method call resolves to a trait default body
+        // (e.g., `p.double_value()` where double_value has a default body in
+        // trait Counter), we need to know the self_kind to correctly lower the
+        // call (e.g., borrow p as &p for &self methods).
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            for trait_item in &t.items {
+                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                    if f.hir_id.owner == method_def_id {
+                        return f.sig.inputs.first().and_then(|p| p.self_kind);
+                    }
+                }
+            }
+        }
     }
     None
 }
@@ -2342,6 +2537,73 @@ fn query_method_return_type(
                                     f.span,
                                 ))
                             }
+                        };
+                    }
+                }
+            }
+        }
+        // Stage 14.98 (Bug Z4 fix): Also search top-level HirItem::Fn owners.
+        // Free functions (e.g., `fn make_n(i: i32) -> N { N { v: i } }`) are
+        // stored as HirItem::Fn owners. Without this, method calls on results
+        // of free functions (e.g., `let n = make_n(i); n.base();`) crashed
+        // because the return type couldn't be traced.
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
+            if f.hir_id.owner == method_def_id {
+                return match &f.sig.output {
+                    crate::hir::HirFnRetTy::Ty(ty) => Some(super::lower_hir_ty_to_mir_ty(ty)),
+                    crate::hir::HirFnRetTy::Default(_) => Some(crate::mir::ty::Ty::new(
+                        crate::mir::ty::TyKind::Tuple(vec![]),
+                        f.span,
+                    )),
+                };
+            }
+        }
+        // Stage 14.98 (Bug Z1 fix): Also search Trait owners for trait default
+        // body methods. When `let r = p.f(); r.g();` where f is a trait default
+        // body, we need to query f's return type to resolve g.
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            for trait_item in &t.items {
+                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                    if f.hir_id.owner == method_def_id {
+                        return match &f.sig.output {
+                            crate::hir::HirFnRetTy::Ty(ty) => {
+                                // For trait default body return types, `Self` is
+                                // unknown without monomorphization. Use the first
+                                // impl's self_ty as the specialization type (v0.1
+                                // single-impl heuristic).
+                                if let crate::hir::HirTyKind::Path(_, path) = &ty.kind {
+                                    if matches!(path.res, crate::hir::Res::SelfTy(_)) {
+                                        let trait_name = t.ident.name;
+                                        let first_impl_self_ty =
+                                            hir.owners.iter().find_map(|(_, o)| {
+                                                if let crate::hir::OwnerNode::Item(
+                                                    crate::hir::HirItem::Impl(impl_block),
+                                                ) = o
+                                                {
+                                                    if impl_block.of_trait.as_ref().and_then(|p| {
+                                                        p.segments.last().map(|s| s.ident.name)
+                                                    }) == Some(trait_name)
+                                                    {
+                                                        return Some(
+                                                            super::lower_hir_ty_to_mir_ty(
+                                                                &impl_block.self_ty,
+                                                            ),
+                                                        );
+                                                    }
+                                                }
+                                                None
+                                            });
+                                        if let Some(self_ty) = first_impl_self_ty {
+                                            return Some(self_ty);
+                                        }
+                                    }
+                                }
+                                Some(super::lower_hir_ty_to_mir_ty(ty))
+                            }
+                            crate::hir::HirFnRetTy::Default(_) => Some(crate::mir::ty::Ty::new(
+                                crate::mir::ty::TyKind::Tuple(vec![]),
+                                f.span,
+                            )),
                         };
                     }
                 }
@@ -2533,7 +2795,12 @@ fn resolve_inherent_method_from_hir_expr(
                         // method on that type.
                         if let Some(init_did) = resolve_method_by_name(hir, &init_method.name) {
                             if let Some(ret_ty) = query_method_return_type(hir, init_did) {
-                                return resolve_inherent_method(hir, &ret_ty, method_name);
+                                // Stage 14.98 (Bug Z3 fix): Also try trait method
+                                // resolution, not just inherent. Without this,
+                                // `let r1 = p.f(); let r2 = r1.g();` where g is
+                                // a trait default body crashes (LLVM "call i32 0").
+                                return resolve_inherent_method(hir, &ret_ty, method_name)
+                                    .or_else(|| resolve_trait_method(hir, &ret_ty, method_name));
                             }
                         }
                     }
@@ -2561,7 +2828,10 @@ fn resolve_inherent_method_from_hir_expr(
                     // method on that type.
                     if matches!(def_kind, crate::resolve::DefKind::Fn) {
                         if let Some(ret_ty) = query_method_return_type(hir, def_id) {
-                            return resolve_inherent_method(hir, &ret_ty, method_name);
+                            // Stage 14.98 (Bug Z3 fix): Also try trait method
+                            // resolution for static method call results.
+                            return resolve_inherent_method(hir, &ret_ty, method_name)
+                                .or_else(|| resolve_trait_method(hir, &ret_ty, method_name));
                         }
                     }
                 }
@@ -2589,7 +2859,9 @@ fn resolve_inherent_method_from_hir_expr(
                     // `resolve_inherent_method` now handles Ref auto-deref
                     // (added in Stage 14.42), so `&mut Counter` correctly
                     // resolves to `Counter`.
-                    return resolve_inherent_method(hir, &ret_ty, method_name);
+                    // Stage 14.98 (Bug Z3 fix): Also try trait method resolution.
+                    return resolve_inherent_method(hir, &ret_ty, method_name)
+                        .or_else(|| resolve_trait_method(hir, &ret_ty, method_name));
                 }
             }
             None
@@ -2701,41 +2973,16 @@ fn find_local_init_expr(
     target_hir_id: crate::hir::HirId,
 ) -> Option<HirExpr> {
     for (_, body) in &hir.bodies {
-        if let Some(expr) = search_block_for_local_init_expr(&body.value, target_hir_id) {
+        if let Some(expr) = search_expr_for_local_init_expr(&body.value, target_hir_id) {
             return Some(expr);
         }
     }
     None
 }
 
-/// Search a HirExpr (Block) for a Local binding's init expression.
-fn search_block_for_local_init_expr(
-    expr: &HirExpr,
-    target_hir_id: crate::hir::HirId,
-) -> Option<HirExpr> {
-    if let HirExprKind::Block(block) = &expr.kind {
-        for stmt in &block.stmts {
-            if let crate::hir::HirStmt::Local(local) = stmt {
-                if local.pat.hir_id == target_hir_id {
-                    if let Some(init) = &local.init {
-                        return Some(init.clone());
-                    }
-                }
-            }
-            if let crate::hir::HirStmt::Expr(e, _) = stmt {
-                if let Some(found) = search_block_for_local_init_expr(e, target_hir_id) {
-                    return Some(found);
-                }
-            }
-        }
-        if let Some(trailing) = &block.expr {
-            if let Some(found) = search_block_for_local_init_expr(trailing, target_hir_id) {
-                return Some(found);
-            }
-        }
-    }
-    None
-}
+// Stage 14.98 (Bug Z1/Z2/Z4 fix): Removed old `search_block_for_local_init_expr`
+// (only handled Block). Use `search_expr_for_local_init_expr` instead, which
+// handles all expression kinds (Block, If, While, For, Loop, Match) recursively.
 
 /// Stage 14.38: Resolve a method DefId by name (searching all inherent impls).
 fn resolve_method_by_name(
@@ -2787,7 +3034,7 @@ fn find_local_init_type(
         // to another Local, recursively trace through that Local's init.
         // `let r = &p; r.sum()` → r's init is &p, p is Local(p_hir_id),
         // so we search for p_hir_id's init type.
-        if let Some(init_expr) = search_block_for_local_init_expr(&body.value, target_hir_id) {
+        if let Some(init_expr) = search_expr_for_local_init_expr(&body.value, target_hir_id) {
             // Strip AddrOf wrappers
             let mut inner = &init_expr;
             while let HirExprKind::AddrOf { expr: e, .. } = &inner.kind {
@@ -2804,13 +3051,138 @@ fn find_local_init_type(
                     }
                 }
             }
+            // Stage 14.98 (Bug Z4 fix): If the init is a Call to a free function
+            // (DefKind::Fn), query the function's return type.
+            // `let n = make_n(i); n.base();` — make_n returns N, so n's type is N.
+            // Without this, method resolution on n fails because n's MIR type is
+            // Infer (typeck doesn't propagate Call return types to dest locals).
+            if let HirExprKind::Call { func, .. } = &inner.kind {
+                if let HirExprKind::Path(path) = &func.kind {
+                    if let crate::hir::Res::Def(def_id, def_kind) = path.res {
+                        if matches!(def_kind, crate::resolve::DefKind::Fn) {
+                            if let Some(ret_ty) = query_method_return_type(hir, def_id) {
+                                return Some(ret_ty);
+                            }
+                        }
+                    }
+                }
+            }
+            // Stage 14.98 (Bug Z1 fix): If the init is a MethodCall, query the
+            // method's return type.
+            if let HirExprKind::MethodCall {
+                method: init_method,
+                ..
+            } = &inner.kind
+            {
+                if let Some(init_did) = resolve_method_by_name(hir, &init_method.name) {
+                    if let Some(ret_ty) = query_method_return_type(hir, init_did) {
+                        return Some(ret_ty);
+                    }
+                }
+            }
+            // Stage 14.98 (Bug Z2 fix): If the init is a Match, look at the
+            // first arm's body to determine the type. All arms should have the
+            // same type (typeck enforces this), so the first arm is sufficient
+            // for type resolution.
+            if let HirExprKind::Match { arms, .. } = &inner.kind {
+                if let Some(first_arm) = arms.first() {
+                    let arm_body = &first_arm.body;
+                    // Try expr_to_adt_type first (handles struct/enum literals).
+                    if let Some(ty) = expr_to_adt_type(arm_body) {
+                        return Some(ty);
+                    }
+                    // Try Call with Fn DefKind.
+                    if let HirExprKind::Call { func, .. } = &arm_body.kind {
+                        if let HirExprKind::Path(p) = &func.kind {
+                            if let crate::hir::Res::Def(did, kind) = p.res {
+                                if matches!(kind, crate::resolve::DefKind::Fn) {
+                                    if let Some(ret_ty) = query_method_return_type(hir, did) {
+                                        return Some(ret_ty);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Try MethodCall.
+                    if let HirExprKind::MethodCall { method: m, .. } = &arm_body.kind {
+                        if let Some(did) = resolve_method_by_name(hir, &m.name) {
+                            if let Some(ret_ty) = query_method_return_type(hir, did) {
+                                return Some(ret_ty);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     None
 }
 
-/// Search a HirBlock for a Local statement binding target_hir_id; return its init.
-fn search_block_for_local(
+/// Recursively search an expression (and nested blocks) for a Local binding.
+fn search_expr_for_local_init(expr: &HirExpr, target_hir_id: crate::hir::HirId) -> Option<Ty> {
+    match &expr.kind {
+        HirExprKind::Block(block) => search_block_for_local_init(block, target_hir_id)
+            .and_then(|init| expr_to_adt_type(&init)),
+        HirExprKind::If { then, else_, .. } => {
+            // then is HirBlock; else_ is Option<Box<HirExpr>>
+            search_block_for_local_init(then, target_hir_id)
+                .and_then(|init| expr_to_adt_type(&init))
+                .or_else(|| {
+                    else_
+                        .as_ref()
+                        .and_then(|e| search_expr_for_local_init(e, target_hir_id))
+                })
+        }
+        // Stage 14.98 (Bug Z1/Z2 fix): Recurse into loop bodies.
+        // Previously, `search_expr_for_local_init` only handled Block and If —
+        // it didn't search inside While/For/Loop/Match bodies. This meant
+        // method calls on struct literals created inside loops crashed
+        // ("Called function must be a pointer! %v17 = call i32 0(...)").
+        //
+        // Per §1.0 原则 6 "通用 > 特例": one recursive rule handles all
+        // loop/match kinds by delegating to search_block_for_local_init.
+        HirExprKind::While { cond, body, .. } => {
+            // cond may contain a block expression with locals (rare but possible)
+            if let Some(ty) = search_expr_for_local_init(cond, target_hir_id) {
+                return Some(ty);
+            }
+            search_block_for_local_init(body, target_hir_id)
+                .and_then(|init| expr_to_adt_type(&init))
+        }
+        HirExprKind::For { iter, body, .. } => {
+            if let Some(ty) = search_expr_for_local_init(iter, target_hir_id) {
+                return Some(ty);
+            }
+            search_block_for_local_init(body, target_hir_id)
+                .and_then(|init| expr_to_adt_type(&init))
+        }
+        HirExprKind::Loop { body, .. } => search_block_for_local_init(body, target_hir_id)
+            .and_then(|init| expr_to_adt_type(&init)),
+        HirExprKind::Match { expr, arms } => {
+            if let Some(ty) = search_expr_for_local_init(expr, target_hir_id) {
+                return Some(ty);
+            }
+            // Search each arm's body
+            for arm in arms {
+                // arm.guard may be Some(expr) — search it
+                if let Some(guard) = &arm.guard {
+                    if let Some(ty) = search_expr_for_local_init(guard, target_hir_id) {
+                        return Some(ty);
+                    }
+                }
+                if let Some(ty) = search_expr_for_local_init(&arm.body, target_hir_id) {
+                    return Some(ty);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Helper: search a HirBlock's statements + trailing expression for a Local
+/// binding matching `target_hir_id`. Returns the init expression if found.
+fn search_block_for_local_init(
     block: &crate::hir::HirBlock,
     target_hir_id: crate::hir::HirId,
 ) -> Option<HirExpr> {
@@ -2822,44 +3194,58 @@ fn search_block_for_local(
                 }
             }
         }
+        // Recurse into expression statements
+        if let crate::hir::HirStmt::Expr(e, _) = stmt {
+            if let Some(init_expr) = search_expr_for_local_init_expr(e, target_hir_id) {
+                return Some(init_expr);
+            }
+        }
+    }
+    // Also check the block's trailing expression
+    if let Some(trailing) = &block.expr {
+        if let Some(init_expr) = search_expr_for_local_init_expr(trailing, target_hir_id) {
+            return Some(init_expr);
+        }
     }
     None
 }
 
-/// Recursively search an expression (and nested blocks) for a Local binding.
-fn search_expr_for_local_init(expr: &HirExpr, target_hir_id: crate::hir::HirId) -> Option<Ty> {
+/// Helper: search an expression for a Local binding's init expression.
+/// Returns the init expression (not yet type-resolved).
+fn search_expr_for_local_init_expr(
+    expr: &HirExpr,
+    target_hir_id: crate::hir::HirId,
+) -> Option<HirExpr> {
     match &expr.kind {
-        HirExprKind::Block(block) => {
-            for stmt in &block.stmts {
-                if let crate::hir::HirStmt::Local(local) = stmt {
-                    if local.pat.hir_id == target_hir_id {
-                        if let Some(init) = &local.init {
-                            return expr_to_adt_type(init);
-                        }
-                    }
-                }
-                // Recurse into expression statements
-                if let crate::hir::HirStmt::Expr(e, _) = stmt {
-                    if let Some(ty) = search_expr_for_local_init(e, target_hir_id) {
-                        return Some(ty);
-                    }
-                }
+        HirExprKind::Block(block) => search_block_for_local_init(block, target_hir_id),
+        HirExprKind::If { then, else_, .. } => search_block_for_local_init(then, target_hir_id)
+            .or_else(|| {
+                else_
+                    .as_ref()
+                    .and_then(|e| search_expr_for_local_init_expr(e, target_hir_id))
+            }),
+        HirExprKind::While { cond, body, .. } => {
+            search_expr_for_local_init_expr(cond, target_hir_id)
+                .or_else(|| search_block_for_local_init(body, target_hir_id))
+        }
+        HirExprKind::For { iter, body, .. } => search_expr_for_local_init_expr(iter, target_hir_id)
+            .or_else(|| search_block_for_local_init(body, target_hir_id)),
+        HirExprKind::Loop { body, .. } => search_block_for_local_init(body, target_hir_id),
+        HirExprKind::Match { expr, arms } => {
+            if let Some(init) = search_expr_for_local_init_expr(expr, target_hir_id) {
+                return Some(init);
             }
-            // Also check the block's trailing expression
-            if let Some(trailing) = &block.expr {
-                return search_expr_for_local_init(trailing, target_hir_id);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    if let Some(init) = search_expr_for_local_init_expr(guard, target_hir_id) {
+                        return Some(init);
+                    }
+                }
+                if let Some(init) = search_expr_for_local_init_expr(&arm.body, target_hir_id) {
+                    return Some(init);
+                }
             }
             None
-        }
-        HirExprKind::If { then, else_, .. } => {
-            // then is HirBlock; else_ is Option<Box<HirExpr>>
-            search_block_for_local(then, target_hir_id)
-                .and_then(|init| expr_to_adt_type(&init))
-                .or_else(|| {
-                    else_
-                        .as_ref()
-                        .and_then(|e| search_expr_for_local_init(e, target_hir_id))
-                })
         }
         _ => None,
     }

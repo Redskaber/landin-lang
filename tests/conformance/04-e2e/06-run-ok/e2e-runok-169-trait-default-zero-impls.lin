@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: Trait default body with zero impls no longer crashes (Bug AA5)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: hello
+// EXPECTED_EXIT_CODE: 0
+// SOURCE: Stage 14.100 — Bug AA5 fix (skip codegen for trait default bodies with zero impls)
+
+trait Shape {
+    fn area(&self) -> i32;
+    fn desc(&self) -> i32 { self.area() * 100 }
+}
+
+fn main() {
+    println!("hello");
+}

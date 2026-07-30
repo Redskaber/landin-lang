@@ -1,6 +1,6 @@
 // CATEGORY: stdlib
 // DESCRIPTION: for loop
-// EXPECTED: compile_error
-// SOURCE: Stage 11.8 batch expansion
+// EXPECTED: run_ok
+// SOURCE: Stage 11.8 batch expansion; Stage 14.97 enabled for-loop over Range
 
 fn main(){for i in 0..10{let _=i;}}

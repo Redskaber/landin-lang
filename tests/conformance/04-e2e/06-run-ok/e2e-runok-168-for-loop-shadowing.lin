@@ -1,0 +1,15 @@
+// CATEGORY: e2e
+// DESCRIPTION: For-loop preserves outer variable with same name (shadowing)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 100
+// EXPECTED_EXIT_CODE: 0
+// SOURCE: Stage 14.99 — verify for-loop shadowing still works correctly
+
+fn main() {
+    let i = 100;
+    for i in 0..3 {
+        // inner i shadows outer i
+        let _ = i;  // 0, 1, 2
+    }
+    println!("{}", i);  // outer i is still 100
+}

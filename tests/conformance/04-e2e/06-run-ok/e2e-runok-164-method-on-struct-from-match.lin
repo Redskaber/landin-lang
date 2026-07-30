@@ -1,0 +1,17 @@
+// CATEGORY: e2e
+// DESCRIPTION: Method call on struct from match arm (Bug Z2)
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 200
+// EXPECTED_EXIT_CODE: 0
+// SOURCE: Stage 14.98 — Bug Z2 fix (Match arm init type resolution)
+
+struct N { v: i32 }
+impl N { fn base(&self) -> i32 { self.v } }
+fn main() {
+    let x = 1;
+    let n = match x {
+        0 => N { v: 100 },
+        _ => N { v: 200 },
+    };
+    println!("{}", n.base());
+}

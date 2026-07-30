@@ -1,0 +1,25 @@
+// CATEGORY: borrowck
+// DESCRIPTION: For-loop with multiple impls of trait with default body produces error (Bug Z7)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.99 — Bug Z7 fix (emit error instead of silent wrong specialization)
+
+trait Counter {
+    fn value(&self) -> i32;
+    fn doubled(&self) -> i32 { self.value() * 2 }
+}
+
+struct A { x: i32 }
+struct B { x: i32 }
+
+impl Counter for A {
+    fn value(&self) -> i32 { self.x }
+}
+
+impl Counter for B {
+    fn value(&self) -> i32 { self.x }
+}
+
+fn main() {
+    let a = A { x: 10 };
+    println!("{}", a.doubled());
+}

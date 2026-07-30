@@ -486,6 +486,178 @@ pub fn compile(src: &str) -> CompileResult {
             }
         }
     }
+    // Stage 14.97 (Bug Y1 fix): Also build fn_sig_table entries for trait
+    // DEFAULT BODY methods. A trait default body is a method declared inside
+    // a `trait T { fn f(&self) -> i32 { ... } }` block that has a body. When
+    // called via static dispatch (e.g., `p.f()` where p: Pair and Pair: T),
+    // codegen needs the function signature to emit the correct call.
+    //
+    // Strategy: For each trait method with a body, find the unique impl of
+    // that trait (if any). Use the impl's self_ty as the self parameter type.
+    // If multiple impls exist, use the first impl's self_ty (v0.1 limitation
+    // — full monomorphization is v0.2+ work).
+    //
+    // Stage 14.99 (Bug Z7 fix): Emit a warning when 2+ impls exist for a trait
+    // with default bodies. Per §1.0 原则 5 "报错 > 静默": the user should know
+    // that the default body will be specialized for only the first impl.
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            let trait_name = t.ident.name;
+            // Find all impls of this trait.
+            let impls: Vec<_> = hir
+                .owners
+                .iter()
+                .filter_map(|(_, o)| {
+                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = o {
+                        if impl_block
+                            .of_trait
+                            .as_ref()
+                            .and_then(|p| p.segments.last().map(|s| s.ident.name))
+                            == Some(trait_name)
+                        {
+                            return Some(impl_block);
+                        }
+                    }
+                    None
+                })
+                .collect();
+            // Stage 14.99 (Bug Z7 fix): Check if this trait has any default body methods.
+            // If so, and if there are 2+ impls, emit a warning per §1.0 原则 5.
+            //
+            // Stage 14.100 (Bug AA6 fix): Refine the check — only emit the error
+            // if at least one impl does NOT override the default body method.
+            // If all impls override the default body, the default is never used,
+            // so no specialization issue can occur.
+            if impls.len() >= 2 {
+                // For each trait method with a body, check if any impl doesn't override it.
+                let mut any_unoverridden_default = false;
+                for trait_item in &t.items {
+                    if let crate::hir::HirTraitItem::Fn(default_fn) = trait_item {
+                        if default_fn.body.is_none() {
+                            continue;
+                        }
+                        // Check if every impl overrides this method.
+                        let all_override = impls.iter().all(|impl_block| {
+                            impl_block.items.iter().any(|impl_item| {
+                                if let crate::hir::HirImplItem::Fn(impl_fn) = impl_item {
+                                    impl_fn.ident.name == default_fn.ident.name
+                                } else {
+                                    false
+                                }
+                            })
+                        });
+                        if !all_override {
+                            any_unoverridden_default = true;
+                            break;
+                        }
+                    }
+                }
+                if any_unoverridden_default {
+                    let trait_name_str = interner.try_resolve(&trait_name).unwrap_or("?");
+                    errors.typeck.push(crate::typeck::TypeError::new(
+                        format!(
+                            "trait `{}` has default body methods and {} impls — \
+                             v0.1 will specialize the default body using the first impl's \
+                             self_ty only. Other impls will use incorrect specialization. \
+                             This is a v0.1 limitation; full monomorphization is v0.2+ work. \
+                             Workaround: override the default body in each impl.",
+                            trait_name_str,
+                            impls.len()
+                        ),
+                        t.span,
+                    ));
+                }
+            }
+            for trait_item in &t.items {
+                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
+                    if f.body.is_none() {
+                        continue; // No body — no fn_sig needed (it's just a declaration).
+                    }
+                    let method_def_id = f.hir_id.owner;
+                    if fn_sig_table.sigs.contains_key(&method_def_id) {
+                        continue; // Already registered (e.g., overridden in an impl).
+                    }
+                    // Use the first impl's self_ty as the specialization type.
+                    let self_ty_opt = impls.first().map(|impl_block| {
+                        crate::mir::lower::lower_hir_ty_to_mir_ty(&impl_block.self_ty)
+                    });
+                    let inputs: Vec<crate::mir::ty::Ty> = f
+                        .sig
+                        .inputs
+                        .iter()
+                        .map(|p| {
+                            if p.self_kind.is_some() {
+                                if let Some(ref self_ty) = self_ty_opt {
+                                    match p.self_kind {
+                                        Some(crate::ast::SelfKind::Ref(mutability)) => {
+                                            let mir_mut = match mutability {
+                                                crate::ast::Mutability::Mutable => {
+                                                    crate::mir::ty::Mutability::Mutable
+                                                }
+                                                crate::ast::Mutability::Immutable => {
+                                                    crate::mir::ty::Mutability::Immutable
+                                                }
+                                            };
+                                            crate::mir::ty::Ty::new(
+                                                crate::mir::ty::TyKind::Ref(
+                                                    crate::mir::ty::Region::Erased,
+                                                    mir_mut,
+                                                    Box::new(self_ty.clone()),
+                                                ),
+                                                crate::session::Span::DUMMY,
+                                            )
+                                        }
+                                        _ => self_ty.clone(),
+                                    }
+                                } else {
+                                    crate::mir::ty::Ty::new(
+                                        crate::mir::ty::TyKind::Error,
+                                        crate::session::Span::DUMMY,
+                                    )
+                                }
+                            } else if let Some(ty) = &p.ty {
+                                crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                            } else {
+                                crate::mir::ty::Ty::new(
+                                    crate::mir::ty::TyKind::Error,
+                                    crate::session::Span::DUMMY,
+                                )
+                            }
+                        })
+                        .collect();
+                    let output = match &f.sig.output {
+                        HirFnRetTy::Default(_) => crate::mir::ty::Ty::new(
+                            crate::mir::ty::TyKind::Tuple(Vec::new()),
+                            crate::session::Span::DUMMY,
+                        ),
+                        HirFnRetTy::Ty(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
+                    };
+                    fn_sig_table.sigs.insert(
+                        method_def_id,
+                        crate::mir::ty::Sig {
+                            inputs,
+                            output: Box::new(output),
+                            abi: f.sig.abi,
+                            is_unsafe: f.sig.is_unsafe,
+                        },
+                    );
+                    if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+                        let name = interner.try_resolve(&f.ident.name).unwrap_or("?");
+                        eprintln!(
+                            "[DRIVER] fn_sig_table: inserted trait default method_def_id={:?} name={} inputs_len={}",
+                            method_def_id,
+                            name,
+                            fn_sig_table
+                                .sigs
+                                .get(&method_def_id)
+                                .map(|s| s.inputs.len())
+                                .unwrap_or(0)
+                        );
+                    }
+                }
+            }
+        }
+    }
     let mut mirs = Vec::with_capacity(hir.bodies.len());
     let mut typeck_results = Vec::with_capacity(hir.bodies.len());
 
@@ -530,7 +702,68 @@ pub fn compile(src: &str) -> CompileResult {
     // marker → codegen `getelementptr + load + load + indirect call`.
     let dyn_trait_plan = build_dyn_trait_mir_plan_from_resolver(&trait_resolver, &interner);
 
+    // Stage 14.100 (Bug AA5 fix): Track which body_ids are lowered (i.e., not
+    // skipped). This set is used to filter body_metas so codegen doesn't try
+    // to emit functions for skipped bodies (which would have no MIR and
+    // produce invalid LLVM IR like `void %(void %arg0)`).
+    let mut lowered_body_owners: std::collections::HashSet<crate::hir::DefId> =
+        std::collections::HashSet::new();
+
     for (body_id, body) in &hir.bodies {
+        // Stage 14.100 (Bug AA5 fix): Skip codegen for trait default body
+        // methods when the trait has zero impls. The default body references
+        // `self.<method>()` calls that have no resolution with zero impls,
+        // causing LLVM crashes ("Called function must be a pointer!").
+        //
+        // Per §1.0 原则 5 "报错 > 静默": silently crashing is worse than
+        // skipping the dead code. If the user actually calls the default body,
+        // they'd get a compile error elsewhere (no impl exists to dispatch to).
+        // If they don't call it, skipping is correct — dead code elimination.
+        let owner_def_id = body_id.owner.0;
+        let is_default_body_with_zero_impls = hir.owners.iter().any(|(_, owner)| {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                // Check if this body belongs to one of this trait's default body methods.
+                let owns_body = t.items.iter().any(|item| {
+                    if let crate::hir::HirTraitItem::Fn(f) = item {
+                        // f.body is Some(BodyId) for default body methods.
+                        // Compare the body's owner DefId with the current body's owner.
+                        f.body.map(|b| b.owner.0) == Some(owner_def_id)
+                    } else {
+                        false
+                    }
+                });
+                if owns_body {
+                    // Check if this trait has zero impls.
+                    let trait_name = t.ident.name;
+                    let has_impl = hir.owners.iter().any(|(_, o)| {
+                        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) =
+                            o
+                        {
+                            impl_block
+                                .of_trait
+                                .as_ref()
+                                .and_then(|p| p.segments.last().map(|s| s.ident.name))
+                                == Some(trait_name)
+                        } else {
+                            false
+                        }
+                    });
+                    return !has_impl;
+                }
+            }
+            false
+        });
+        if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+            eprintln!(
+                "[DRIVER] body_id owner={:?} is_default_body_with_zero_impls={}",
+                owner_def_id, is_default_body_with_zero_impls
+            );
+        }
+        if is_default_body_with_zero_impls {
+            continue;
+        }
+        lowered_body_owners.insert(owner_def_id);
+
         let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
 
         let (mut mir, lower_unify) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
@@ -1262,7 +1495,15 @@ pub fn compile(src: &str) -> CompileResult {
     let body_metas: Vec<BodyMeta> = hir
         .bodies
         .iter()
-        .map(|(body_id, body)| {
+        .filter_map(|(body_id, body)| {
+            // Stage 14.100 (Bug AA5 fix): Skip body_metas for bodies that
+            // were skipped during MIR lowering (trait default bodies with
+            // zero impls). Without this filter, codegen would try to emit
+            // functions for bodies that have no MIR, producing invalid LLVM
+            // IR like `void %(void %arg0)`.
+            if !lowered_body_owners.contains(&body_id.owner.0) {
+                return None;
+            }
             // Stage 14.72: Use fn_name_by_def_id for name resolution.
             //
             // Previously, body_metas recomputed the fn name by iterating
@@ -1311,12 +1552,12 @@ pub fn compile(src: &str) -> CompileResult {
                     _ => None,
                 })
                 .unwrap_or(crate::ast::Abi::Landin);
-            BodyMeta {
+            Some(BodyMeta {
                 fn_name,
                 is_void,
                 param_count: body.params.len(),
                 abi,
-            }
+            })
         })
         .collect();
 
@@ -1603,16 +1844,77 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
         HirExprKind::Loop { body, .. } | HirExprKind::While { body, .. } => {
             for stmt in &body.stmts {
                 use crate::hir::HirStmt;
-                if let HirStmt::Expr(e, _) = stmt {
-                    scan_expr_for_unresolved(e, errors);
+                match stmt {
+                    HirStmt::Local(local) => {
+                        if let Some(init) = &local.init {
+                            scan_expr_for_unresolved(init, errors);
+                        }
+                        if let Some(ty) = &local.ty {
+                            scan_ty_for_unresolved(ty, errors);
+                        }
+                    }
+                    HirStmt::Expr(e, _) => scan_expr_for_unresolved(e, errors),
+                    _ => {}
                 }
             }
             if let Some(e) = &body.expr {
                 scan_expr_for_unresolved(e, errors);
             }
         }
+        // Stage 14.100 (Bug AA2 fix): For-loop body must be scanned for
+        // unresolved paths. Previously the `_ => {}` catch-all skipped For,
+        // so `for i in 0..5 { let _ = nonexistent_xyz; }` silently compiled.
+        HirExprKind::For { iter, body, .. } => {
+            scan_expr_for_unresolved(iter, errors);
+            for stmt in &body.stmts {
+                use crate::hir::HirStmt;
+                match stmt {
+                    HirStmt::Local(local) => {
+                        if let Some(init) = &local.init {
+                            scan_expr_for_unresolved(init, errors);
+                        }
+                        if let Some(ty) = &local.ty {
+                            scan_ty_for_unresolved(ty, errors);
+                        }
+                    }
+                    HirStmt::Expr(e, _) => scan_expr_for_unresolved(e, errors),
+                    _ => {}
+                }
+            }
+            if let Some(e) = &body.expr {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
+        // Stage 14.100 (Bug AA3 fix): Range start/end must be scanned.
+        // Previously the catch-all skipped Range, so `for i in foo..5 {}`
+        // silently used foo=0.
+        HirExprKind::Range { start, end, .. } => {
+            if let Some(s) = start {
+                scan_expr_for_unresolved(s, errors);
+            }
+            if let Some(e) = end {
+                scan_expr_for_unresolved(e, errors);
+            }
+        }
+        // Stage 14.100 (Bug AA4 fix): Repeat elem/count must be scanned.
+        // Previously the catch-all skipped Repeat, so `let arr = [foo; 3];`
+        // silently used foo=0.
+        HirExprKind::Repeat { elem, count } => {
+            scan_expr_for_unresolved(elem, errors);
+            scan_expr_for_unresolved(count, errors);
+        }
+        // Stage 14.100 (Bug AA1 fix): Println args must be scanned.
+        // Previously the catch-all skipped Println, so
+        // `println!("{}", nonexistent_xyz)` silently printed 0.
+        HirExprKind::Println { args, .. } => {
+            for a in args {
+                scan_expr_for_unresolved(a, errors);
+            }
+        }
         HirExprKind::Closure { body, .. } => scan_expr_for_unresolved(body, errors),
-        // Lit, Unit, Break, Continue, Try, Unsafe, MacroCall, Range, Repeat — no paths
+        // Lit, Unit, Break, Continue, Try, Unsafe, MacroCall — no paths
+        // (Unsafe contains a HirBlock which is scanned when the block is
+        // lowered; MacroCall is expanded before this scan runs.)
         _ => {}
     }
 }

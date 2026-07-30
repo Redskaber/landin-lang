@@ -1,0 +1,10 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Unresolved identifier in for-loop body is now caught (Bug AA2)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.100 — Bug AA2 fix (scan_expr_for_unresolved For arm)
+
+fn main() {
+    for i in 0..5 {
+        let _ = nonexistent_xyz;
+    }
+}

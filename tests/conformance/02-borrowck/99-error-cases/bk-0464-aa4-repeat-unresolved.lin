@@ -1,0 +1,9 @@
+// CATEGORY: borrowck
+// DESCRIPTION: Unresolved identifier in Repeat elem is now caught (Bug AA4)
+// EXPECTED: compile_error
+// SOURCE: Stage 14.100 — Bug AA4 fix (scan_expr_for_unresolved Repeat arm)
+
+fn main() {
+    let arr = [foo; 3];
+    println!("{}", arr[0]);
+}
