@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.105.0 (v0.1 release)  
+**Version**: v0.107.0 (v0.1 release)  
 **Date**: 2026-07-30
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -119,7 +119,7 @@ Source Text (.lin)
 
 ## Language Features
 
-### Working in v0.105.0
+### Working in v0.107.0
 
 - **Primitive types**: `i32`, `i64`, `f32`, `f64`, `bool`, `char`, `&str`
 - **Compound types**: tuples, arrays `[T; N]`, structs, enums (with payload)
@@ -211,17 +211,17 @@ src/
 
 ---
 
-## Test Counts (v0.105.0)
+## Test Counts (v0.107.0)
 
 | Suite | Count | Pass rate |
 |-------|-------|-----------|
 | Rust unit/integration tests | 1951 | 100% |
-| Conformance tests (.lin) | 5183 | 100% |
+| Conformance tests (.lin) | 5184 | 100% |
 | - Parse-only (`00-parse`) | 600 | 100% |
 | - Typecheck (`01-typecheck`) | 1020 | 100% |
 | - Borrowck (`02-borrowck`) | 803 | 100% |
 | - Codegen (`03-codegen`) | 601 | 100% |
-| - End-to-end run (`04-e2e/06-run-ok`) | 154 | 100% |
+| - End-to-end run (`04-e2e/06-run-ok`) | 155 | 100% |
 | - Soundness (`05-soundness`) | 500 | 100% |
 | - Stdlib (`06-stdlib`) | 502 | 100% |
 | - Integration (`07-integration`) | 501 | 100% |
@@ -240,4 +240,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-07-30 (v0.105.0, Stage 14.90 — v0.1 release)
+**Last updated**: 2026-07-30 (v0.107.0, Stage 14.92 — v0.1 release)

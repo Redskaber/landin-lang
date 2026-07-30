@@ -1795,29 +1795,77 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // immutable borrow scope before mutating `cx` — this satisfies
             // the borrow checker (immutable borrow of `cx.dyn_trait_plan()`
             // ends before the mutable borrow begins via `build_dyn_trait_call_terminator`).
-            let method_name = cx.interner.resolve(&method.name).to_string();
+            // Stage 14.91 (Bug X3 fix): Before using the dyn Trait vtable
+            // indirect call path, check if the method can be resolved via
+            // static dispatch (inherent method or trait impl method). If so,
+            // skip the dyn Trait path and use static dispatch instead.
+            //
+            // The dyn Trait path is for actual `dyn Trait` receivers (fat
+            // pointers with vtable). For concrete types like `Square`, we
+            // should use static dispatch — the vtable indirect call crashes
+            // because the receiver is passed as a value, not a fat pointer.
+            //
+            // Per §1.0 原則 5 "报错 > 静默": the dyn Trait path silently
+            // produced wrong code for concrete types, causing LLVM crashes.
+            let method_name_str = cx.interner.resolve(&method.name).to_string();
             let matched_call: Option<DynTraitMethodCall> = cx.dyn_trait_plan().and_then(|plan| {
-                find_dyn_trait_method_call_in_plan_by_method(plan, &method_name).cloned()
+                find_dyn_trait_method_call_in_plan_by_method(plan, &method_name_str).cloned()
             });
-            if let Some(call) = matched_call {
-                let dest_ty = cx.fresh_infer_ty(expr.span);
-                let dest = cx.mir.new_local(dest_ty, None, expr.span);
-                let cont = cx.new_block();
-                let mut terminator = build_dyn_trait_call_terminator(
-                    cx,
-                    &call,
-                    recv_local,
-                    &arg_locals,
-                    dest,
-                    expr.span,
-                );
-                // Set the target before terminating — the helper
-                // leaves it as None per design.
-                if let Terminator::Call { target, .. } = &mut terminator {
-                    *target = Some(cont);
+
+            // Check if static dispatch is possible before using dyn Trait
+            let can_static_dispatch = cx.hir.is_some_and(|hir| {
+                let recv_ty = cx.mir.local(recv_local).ty.clone();
+                if resolve_inherent_method(hir, &recv_ty, &method.name).is_some() {
+                    return true;
                 }
-                cx.terminate_and_goto(terminator, cont);
-                return dest;
+                if resolve_inherent_method_from_hir_expr(cx, hir, receiver, &method.name).is_some()
+                {
+                    return true;
+                }
+                if resolve_trait_method(hir, &recv_ty, &method.name).is_some() {
+                    return true;
+                }
+                // Stage 14.91: Also try HIR-traced type for trait method resolution.
+                // The MIR type may be Infer, but HIR tracing can find the ADT type.
+                if let Some(init_ty) = find_local_init_type(cx, hir, {
+                    // Get the hir_id from the receiver Path
+                    if let HirExprKind::Path(path) = &receiver.kind {
+                        if let crate::hir::Res::Local(hir_id) = path.res {
+                            hir_id
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }) {
+                    return resolve_trait_method(hir, &init_ty, &method.name).is_some();
+                }
+                false
+            });
+
+            if let Some(call) = matched_call {
+                if !can_static_dispatch {
+                    let dest_ty = cx.fresh_infer_ty(expr.span);
+                    let dest = cx.mir.new_local(dest_ty, None, expr.span);
+                    let cont = cx.new_block();
+                    let mut terminator = build_dyn_trait_call_terminator(
+                        cx,
+                        &call,
+                        recv_local,
+                        &arg_locals,
+                        dest,
+                        expr.span,
+                    );
+                    // Set the target before terminating — the helper
+                    // leaves it as None per design.
+                    if let Terminator::Call { target, .. } = &mut terminator {
+                        *target = Some(cont);
+                    }
+                    cx.terminate_and_goto(terminator, cont);
+                    return dest;
+                } // end if !can_static_dispatch
+                  // If can_static_dispatch, fall through to the static dispatch path below
             }
 
             // Stage 13.17: Inherent method call resolution.
@@ -1850,6 +1898,24 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     resolve_inherent_method_from_hir_expr(cx, hir, receiver, &method.name)
                 {
                     return Some(did);
+                }
+                // Stage 14.91 (Bug X3 fix): Strategy 3 — Try trait impl method
+                // resolution. If the receiver's ADT type has a trait impl that
+                // provides the method, resolve to that trait impl method's DefId.
+                // This enables static trait dispatch (`impl Trait for Type`).
+                if let Some(did) = resolve_trait_method(hir, &recv_ty, &method.name) {
+                    return Some(did);
+                }
+                // Stage 14.91: Also try HIR-traced type for trait method resolution.
+                // The MIR type may be Infer, but HIR tracing can find the ADT type.
+                if let HirExprKind::Path(path) = &receiver.kind {
+                    if let crate::hir::Res::Local(hir_id) = path.res {
+                        if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
+                            if let Some(did) = resolve_trait_method(hir, &init_ty, &method.name) {
+                                return Some(did);
+                            }
+                        }
+                    }
                 }
                 None
             });
@@ -2299,6 +2365,73 @@ fn query_method_return_type(
 ///
 /// Per §16: this is a HIR query at MIR-lowering time. The result (DefId) is
 /// sunk into the MIR as data.
+/// Stage 14.91 (Bug X3 fix): Resolve a method via trait impls.
+///
+/// Searches all `impl Trait for Type` blocks for one whose `self_ty` matches
+/// the receiver's ADT type and whose items include a method with the given name.
+/// Returns the method's DefId if found.
+///
+/// This enables static trait dispatch: `impl Shape for Square { fn area() {...} }`
+/// followed by `s.area()` resolves to the trait impl's `area` method.
+///
+/// Per §13.4: Rust trait method resolution is complex (canonical query, etc.).
+/// For v0.1, we implement the simple case: search all trait impls for a matching
+/// self_ty + method name. This is O(n*m) but sufficient for v0.1's scale.
+fn resolve_trait_method(
+    hir: &crate::hir::HirCrate,
+    recv_ty: &Ty,
+    method_name: &lasso::Spur,
+) -> Option<crate::hir::DefId> {
+    // Auto-deref Ref to find the underlying ADT type.
+    let recv_ty = match &recv_ty.kind {
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => inner,
+        _ => recv_ty,
+    };
+
+    // Only ADT types can have trait impls.
+    let adt_def_id = match &recv_ty.kind {
+        TyKind::Adt(def_id, _) => *def_id,
+        _ => return None,
+    };
+
+    // Get the ADT's name.
+    let adt_name = hir.owner(adt_def_id).and_then(|owner| match owner {
+        crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) => Some(s.ident.name),
+        crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => Some(e.ident.name),
+        _ => None,
+    })?;
+
+    // Search all TRAIT impl blocks (of_trait.is_some()) for one whose self_ty
+    // matches adt_name and whose items include the method.
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            // Only look at TRAIT impls (skip inherent impls).
+            if impl_block.of_trait.is_none() {
+                continue;
+            }
+            // Check if the impl's self_ty matches adt_name.
+            let self_ty_matches = match &impl_block.self_ty.kind {
+                crate::hir::HirTyKind::Path(_qself, path) => {
+                    path.segments.len() == 1 && path.segments[0].ident.name == adt_name
+                }
+                _ => false,
+            };
+            if !self_ty_matches {
+                continue;
+            }
+            // Search the impl's items for a method with the given name.
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    if f.ident.name == *method_name {
+                        return Some(f.hir_id.owner);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 fn resolve_inherent_method_from_hir_expr(
     cx: &MirLowerCtxt,
     hir: &crate::hir::HirCrate,

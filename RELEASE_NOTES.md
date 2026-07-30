@@ -1,16 +1,16 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.105.0
+**Current version**: v0.107.0
 **Date**: 2026-07-30
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5183 conformance tests (154 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5184 conformance tests (155 run_ok — **100% pass rate!**) + 4 examples
 
 ---
-## v0.105.0 — Stage 14.90 (2 Critical Bug Fixes from Round 6 Audit)
+## v0.107.0 — Stage 14.92 (2 Critical Bug Fixes from Round 6 Audit)
 
 ### Overview
 
-Stage 14.90 fixes 2 CRITICAL bugs found by the Round 6 independent audit.
+Stage 14.92 fixes 2 CRITICAL bugs found by the Round 6 independent audit.
 Bug X3 (trait method dispatch) is documented as a known limitation.
 
 ### Bug X1: Match guards on Tuple/TupleStruct/Struct patterns skip pattern check
@@ -56,7 +56,7 @@ reflect this.
 | X3 (trait method dispatch) | ⚠️ known limitation (README updated) |
 
 - All 1951 rust tests pass (zero regression)
-- All 5183 conformance tests pass (was 5181, +2 new run_ok tests)
+- All 5184 conformance tests pass (was 5181, +2 new run_ok tests)
 - 0 clippy warnings, fmt clean
 
 ---

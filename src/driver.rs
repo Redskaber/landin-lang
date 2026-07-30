@@ -394,15 +394,98 @@ pub fn compile(src: &str) -> CompileResult {
             fn_sig_table.sigs.insert(
                 *def_id,
                 crate::mir::ty::Sig {
-                    inputs,
+                    inputs: inputs.clone(),
                     output: Box::new(output),
                     abi: f.sig.abi,
                     is_unsafe: f.sig.is_unsafe,
                 },
             );
+            if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+                let name = interner.try_resolve(&f.ident.name).unwrap_or("?");
+                eprintln!(
+                    "[DRIVER] fn_sig_table (HirItem::Fn): def_id={:?} name={} inputs_len={}",
+                    def_id,
+                    name,
+                    inputs.len()
+                );
+            }
         }
     }
 
+    // Stage 14.91 (Bug X3 fix): Also build fn_sig_table entries for trait
+    // impl methods. The loop above only handles HirItem::Fn owners, but
+    // trait impl methods are HirImplItem::Fn inside HirItem::Impl owners.
+    // Without this, call-site forward declarations use a generic variadic
+    // signature that doesn't match the actual function definition, causing
+    // LLVM to create a renamed duplicate (e.g. `landin_Square_area.1`)
+    // and producing an "undefined reference" link error.
+    for (def_id, owner) in &hir.owners {
+        if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+            eprintln!("[DRIVER] owner: def_id={:?} kind={:?}", def_id, owner);
+        }
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    use crate::hir::HirFnRetTy;
+                    let method_def_id = f.hir_id.owner;
+                    // Skip if already registered (inherent impl methods are
+                    // registered as HirItem::Fn owners — but trait impl methods
+                    // might not be).
+                    if fn_sig_table.sigs.contains_key(&method_def_id) {
+                        continue;
+                    }
+                    let inputs: Vec<crate::mir::ty::Ty> = f
+                        .sig
+                        .inputs
+                        .iter()
+                        .map(|p| {
+                            if p.self_kind.is_some() {
+                                resolve_self_param_type_for_sig(&hir, method_def_id, p.self_kind)
+                                    .unwrap_or_else(|| {
+                                        if let Some(ty) = &p.ty {
+                                            crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                                        } else {
+                                            crate::mir::ty::Ty::new(
+                                                crate::mir::ty::TyKind::Error,
+                                                crate::session::Span::DUMMY,
+                                            )
+                                        }
+                                    })
+                            } else if let Some(ty) = &p.ty {
+                                crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                            } else {
+                                crate::mir::ty::Ty::new(
+                                    crate::mir::ty::TyKind::Error,
+                                    crate::session::Span::DUMMY,
+                                )
+                            }
+                        })
+                        .collect();
+                    let output = match &f.sig.output {
+                        HirFnRetTy::Default(_) => crate::mir::ty::Ty::new(
+                            crate::mir::ty::TyKind::Tuple(Vec::new()),
+                            crate::session::Span::DUMMY,
+                        ),
+                        HirFnRetTy::Ty(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
+                    };
+                    fn_sig_table.sigs.insert(
+                        method_def_id,
+                        crate::mir::ty::Sig {
+                            inputs,
+                            output: Box::new(output),
+                            abi: f.sig.abi,
+                            is_unsafe: f.sig.is_unsafe,
+                        },
+                    );
+                    if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+                        let name = interner.try_resolve(&f.ident.name).unwrap_or("?");
+                        eprintln!("[DRIVER] fn_sig_table: inserted method_def_id={:?} name={} inputs_len={}",
+                            method_def_id, name, fn_sig_table.sigs.get(&method_def_id).map(|s| s.inputs.len()).unwrap_or(0));
+                    }
+                }
+            }
+        }
+    }
     let mut mirs = Vec::with_capacity(hir.bodies.len());
     let mut typeck_results = Vec::with_capacity(hir.bodies.len());
 

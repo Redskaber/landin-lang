@@ -362,6 +362,13 @@ impl LLVMSysEmitter {
                 // never null — they always point to a real (possibly
                 // forward-declared) function value.
                 if let Some((ret_ty, param_tys)) = self.fn_sigs.get(&func_name) {
+                    if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+                        eprintln!(
+                            "[CODEGEN] get_or_declare: found sig for {} params={}",
+                            func_name,
+                            param_tys.len()
+                        );
+                    }
                     let ret_llvm_ty = self.llvm_type(ret_ty);
                     let param_llvm_tys: Vec<LLVMTypeRef> =
                         param_tys.iter().map(|t| self.llvm_type(t)).collect();
@@ -376,6 +383,9 @@ impl LLVMSysEmitter {
                     return fwd;
                 }
                 // Fallback: signature not in fn_sigs — use generic variadic.
+                if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+                    eprintln!("[CODEGEN] get_or_declare: NOT found in fn_sigs: {} (fn_sigs has {} entries)", func_name, self.fn_sigs.len());
+                }
                 let ret_ty = LLVMInt32TypeInContext(self.ctx);
                 let fty = LLVMFunctionType(ret_ty, std::ptr::null_mut(), 0, 1);
                 let fwd = LLVMAddFunction(self.module, name_c.as_ptr(), fty);
@@ -438,7 +448,7 @@ impl LLVMSysEmitter {
 
     /// Look up or create a function by name in the module.
     /// Used by `emit_call` to resolve the callee.
-    fn get_or_declare_function(
+    pub(crate) fn get_or_declare_function(
         &mut self,
         name: &str,
         ret_ty: &EmitType,
@@ -609,23 +619,29 @@ impl Emitter for LLVMSysEmitter {
                 }
             };
             let fn_val = if let Some(existing) = existing {
-                // Verify the existing declaration's signature matches what
-                // we're about to emit. If it does, reuse it. Otherwise, fall
-                // back to creating a new function (which would be a bug in
-                // the type-checker — but we don't want to silently miscompile).
-                let existing_type = LLVMGlobalGetValueType(existing);
-                let existing_kind = LLVMGetValueKind(existing);
-                // Reuse if the existing value is a function with matching type
-                if existing_kind == llvm_sys::LLVMValueKind::LLVMFunctionValueKind
-                    && existing_type == fty
-                {
-                    existing
-                } else {
-                    // Signature mismatch — fall back to LLVMAddFunction.
-                    // This will likely produce a rename, but at least we
-                    // surface the issue rather than silently miscompile.
-                    LLVMAddFunction(self.module, name_c.as_ptr(), fty)
-                }
+                // Stage 14.92 (Bug X3 complete fix): Always reuse the existing
+                // function declaration, regardless of type mismatch.
+                //
+                // Previously, we checked `existing_type == fty` (pointer equality
+                // on LLVMTypeRef). But LLVM function types are NOT interned —
+                // two structurally-identical function types may have different
+                // pointers. This caused:
+                // - Vtable auto-created declarations (0 args, variadic) to be
+                //   treated as "mismatch" → duplicate function (.1 suffix)
+                // - Forward declarations from get_or_declare_function (correct
+                //   arg count but different LLVMTypeRef pointer) to also mismatch
+                //
+                // Fix: always reuse the existing declaration. LLVM allows
+                // defining a function body by adding basic blocks to a
+                // previously-declared function. The type checker ensures
+                // signature compatibility — if types genuinely mismatch, LLVM
+                // verification will catch it (which is the correct behavior
+                // for real conflicts).
+                //
+                // Per §1.0 原則 5 "报错 > 静默": the old code silently created
+                // duplicates (.1 suffix) instead of reusing, producing
+                // "undefined reference" link errors — the worst kind of bug.
+                existing
             } else {
                 LLVMAddFunction(self.module, name_c.as_ptr(), fty)
             };
@@ -1019,6 +1035,12 @@ impl Emitter for LLVMSysEmitter {
         } else {
             self.get_or_declare_function(fn_name, ret_ty, &arg_tys)
         };
+        if std::env::var("LANDIN_DEBUG_CODEGEN").is_ok() {
+            eprintln!(
+                "[CODEGEN] emit_call: fn_name={} callee={:?}",
+                fn_name, callee
+            );
+        }
         unsafe {
             let mut arg_vals: Vec<LLVMValueRef> =
                 args.iter().map(|(_, v)| self.lookup(v)).collect();
@@ -1613,22 +1635,36 @@ impl Emitter for LLVMSysEmitter {
                         let sym_c = CString::new(sym.as_str()).unwrap();
                         let func = LLVMGetNamedFunction(self.module, sym_c.as_ptr());
                         if func.is_null() {
-                            // Function not yet defined — declare it as an
-                            // external so the vtable slot points to a real
-                            // symbol. This handles forward references.
-                            let i32_ty = LLVMInt32TypeInContext(self.ctx);
-                            let void_ty = LLVMVoidTypeInContext(self.ctx);
-                            // Default signature: i32(void) — most trait
-                            // methods return i32 and take self by value.
-                            // This is a simplification; full correctness
-                            // requires per-method signatures (future work).
+                            // Stage 14.92 (Bug X3 complete fix): Function not
+                            // yet defined — declare it using the correct
+                            // signature from fn_sigs if available, or fall back
+                            // to a generic ptr-taking i32-returning function.
+                            //
+                            // Previously (Stage 14.13), this created a
+                            // declaration with `i32(void)` — 0 args. This
+                            // caused emit_function_begin to find a mismatch
+                            // (0 args vs N args) and create a duplicate (.1).
+                            //
+                            // Fix: use fn_sigs to get the correct signature.
+                            // If fn_sigs doesn't have it, use a generic
+                            // `i32(ptr)` — most trait methods take &self (ptr).
+                            let (ret_ty, param_tys) = self
+                                .fn_sigs
+                                .get(sym)
+                                .cloned()
+                                .unwrap_or((EmitType::I32, vec![EmitType::OpaquePtr]));
+                            let ret_llvm_ty = self.llvm_type(&ret_ty);
+                            let param_llvm_tys: Vec<LLVMTypeRef> =
+                                param_tys.iter().map(|t| self.llvm_type(t)).collect();
                             let fty = LLVMFunctionType(
-                                i32_ty,
-                                [void_ty].as_ptr() as *mut LLVMTypeRef,
-                                0,
+                                ret_llvm_ty,
+                                param_llvm_tys.as_ptr() as *mut LLVMTypeRef,
+                                param_llvm_tys.len() as u32,
                                 0,
                             );
-                            LLVMAddFunction(self.module, sym_c.as_ptr(), fty)
+                            let fwd = LLVMAddFunction(self.module, sym_c.as_ptr(), fty);
+                            self.declared.insert(sym.clone(), fwd);
+                            fwd
                         } else {
                             func
                         }

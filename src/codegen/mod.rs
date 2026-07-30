@@ -138,6 +138,7 @@ pub fn codegen_crate(result: &crate::driver::CompileResult) -> String {
         &result.interner,
         &mut emitter,
     );
+
     // Stage 5.6: emit vtable globals for all (trait, type) pairs collected
     // by TraitResolver. Each vtable is a constant array of opaque function
     // pointers, one per trait method, pointing at the concrete impl method
@@ -179,6 +180,20 @@ pub fn codegen_crate_to_module(result: &crate::driver::CompileResult) -> LLVMSys
     // Stage 14.69: __landin_str_eq is NOT pre-declared (emit_declare treats
     // all args as i32; this function needs ptr, i64 args). emit_call creates
     // the declaration with correct types on first use.
+    // Stage 14.91 (Bug X3 fix): Populate fn_sigs BEFORE vtable emission.
+    // The vtable globals reference function symbols (e.g., `ptr @landin_Square_area`),
+    // which causes LLVM to auto-create declarations with 0 args (wrong). By
+    // setting fn_sigs first, get_or_declare_function (if called during vtable
+    // emission) will create the correct declaration. And even if LLVM auto-creates
+    // a declaration, emit_function_begin will find the fn_sigs entry and create
+    // a matching declaration that gets reused.
+    //
+    // Previously, set_fn_sigs was called AFTER vtable emission (line 222),
+    // so the vtable's auto-created declaration had 0 args, causing a signature
+    // mismatch in emit_function_begin → duplicate function (.1 suffix) →
+    // "undefined reference" link error.
+    let fn_sigs_map = build_fn_sigs_map(&result.fn_name_by_def_id, &result.fn_sigs);
+    emitter.set_fn_sigs(fn_sigs_map);
     // Stage 14.13 (GAP-30): Emit vtable + dynptr globals BEFORE function
     // bodies, so that `emit_dyn_trait_method_call` can look up the dynptr
     // global by name via LLVMGetNamedGlobal when generating indirect calls.
@@ -186,24 +201,6 @@ pub fn codegen_crate_to_module(result: &crate::driver::CompileResult) -> LLVMSys
     // global to not exist yet when functions referenced it.
     emit_vtables(&result.trait_resolver, &result.interner, &mut emitter);
     emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, &mut emitter);
-    // Stage 14.65: Populate fn_sigs for forward-reference resolution.
-    //
-    // When a function returns another function as a value (e.g.,
-    // `fn adder(x) -> fn(i32) -> i32 { double }`), the FnDef constant
-    // `@landin_double` is referenced BEFORE `landin_double`'s body is
-    // emitted. Without fn_sigs, `interpret_adhoc` would create a forward
-    // declaration with a WRONG (variadic i32) signature, which then can't
-    // be reused by `emit_function_begin` (signature mismatch), causing
-    // "undefined reference" link errors.
-    //
-    // Fix: pass all function signatures to the emitter so forward
-    // declarations use the CORRECT signature. `emit_function_begin` will
-    // then reuse these declarations (Stage 14.63 forward-decl dedup).
-    //
-    // Per §1.0 原则 6 "通用 > 特例": one fn_sigs map handles all
-    // forward-reference cases (mutual recursion + fn pointer returns).
-    let fn_sigs_map = build_fn_sigs_map(&result.fn_name_by_def_id, &result.fn_sigs);
-    emitter.set_fn_sigs(fn_sigs_map);
     codegen_from_mir(
         &result.mirs,
         &result.body_metas,
@@ -226,20 +223,26 @@ fn build_fn_sigs_map(
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
     fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
 ) -> std::collections::HashMap<String, (EmitType, Vec<EmitType>)> {
+    use crate::codegen::emitter::mir_type_to_emit_type;
     use crate::codegen::emitter::EmitType;
-    use crate::codegen::mir_translation::mir_type_to_emit_type_with_layouts;
-    use crate::mir::body::AdtLayouts;
 
-    let layouts = AdtLayouts::new();
+    // Stage 14.91 (Bug X3 fix): Use the legacy mir_type_to_emit_type (without
+    // layouts) for fn_sig_map. This correctly maps Ref types to ptr (OpaquePtr),
+    // while the _with_layouts variant would fall back to I32 for Adt types
+    // when layouts are empty (which they are here — build_fn_sigs_map runs
+    // before MIR bodies are available).
+    //
+    // For Ref types (which is what &self/&mut self params are), both variants
+    // produce the same result (ptr). For Adt types, the legacy variant produces
+    // I32 (wrong for structs) — but this is only used for forward declarations,
+    // and the actual function definition uses the correct type from the MIR
+    // body's local_decls. The forward declaration is just a placeholder that
+    // gets reused if the signature matches.
     let mut map = std::collections::HashMap::new();
     for (def_id, name) in fn_name_by_def_id {
         if let Some(sig) = fn_sigs.get(def_id) {
-            let ret_ty = mir_type_to_emit_type_with_layouts(&sig.output, &layouts);
-            let param_tys: Vec<EmitType> = sig
-                .inputs
-                .iter()
-                .map(|t| mir_type_to_emit_type_with_layouts(t, &layouts))
-                .collect();
+            let ret_ty = mir_type_to_emit_type(&sig.output);
+            let param_tys: Vec<EmitType> = sig.inputs.iter().map(mir_type_to_emit_type).collect();
             map.insert(name.clone(), (ret_ty, param_tys));
         }
     }

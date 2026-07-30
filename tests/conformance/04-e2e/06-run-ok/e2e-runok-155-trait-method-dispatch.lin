@@ -1,0 +1,23 @@
+// CATEGORY: e2e
+// DESCRIPTION: run_ok Trait method dispatch (static) — Stage 14.92
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 25\n5
+// SOURCE: Stage 14.92 — Bug X3 complete fix: trait method dispatch via --run
+//         now works. Was: vtable auto-created declaration with 0 args caused
+//         emit_function_begin to create duplicate (.1 suffix) → link error.
+
+trait Shape {
+    fn area(&self) -> i32;
+    fn side(&self) -> i32;
+}
+struct Square { side: i32 }
+impl Shape for Square {
+    fn area(&self) -> i32 { self.side * self.side }
+    fn side(&self) -> i32 { self.side }
+}
+fn main() -> i32 {
+    let s = Square { side: 5 };
+    println!("{}", s.area());  // 25
+    println!("{}", s.side());  // 5
+    0
+}
