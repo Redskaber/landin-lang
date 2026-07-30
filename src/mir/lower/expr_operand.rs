@@ -2700,11 +2700,19 @@ fn resolve_method_by_name(
     hir: &crate::hir::HirCrate,
     method_name: &lasso::Spur,
 ) -> Option<crate::hir::DefId> {
+    // Stage 14.95 (regression fix): The Stage 14.94 Bug Y2 fix added a
+    // `self_kind.is_none()` check to only return static methods. But this
+    // broke `resolve_method_by_name` for instance methods — it's also
+    // called from MethodCall receiver tracing (lines 2492, 2543) where
+    // we need to find instance methods (with self) by name to get their
+    // return types.
+    //
+    // Fix: return ANY method matching the name (static or instance).
+    // The callers that specifically need static methods already check
+    // `def_kind == DefKind::Fn` on the path resolution before calling
+    // this function — so returning instance methods here is safe.
     for (_, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
-            if impl_block.of_trait.is_some() {
-                continue;
-            }
             for impl_item in &impl_block.items {
                 if let crate::hir::HirImplItem::Fn(f) = impl_item {
                     if f.ident.name == *method_name {

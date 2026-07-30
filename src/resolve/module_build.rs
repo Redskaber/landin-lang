@@ -173,19 +173,19 @@ impl Resolver {
                 // Limitation: this only handles INHERENT impls (impl blocks
                 // without `of_trait`). Trait impl method resolution
                 // (`<T as Trait>::method`) is deferred — Stage 5+ work.
-                if impl_block.of_trait.is_none() {
-                    // Extract the type name from self_ty. Only single-segment
-                    // paths are supported (e.g., `V`, `Vec`). Multi-segment
-                    // paths (e.g., `mod::V`) are deferred.
-                    if let crate::hir::HirTyKind::Path(_, self_ty_path) = &impl_block.self_ty.kind {
-                        if self_ty_path.segments.len() == 1 {
-                            let type_name = self_ty_path.segments[0].ident.name;
-                            for impl_item in &impl_block.items {
-                                if let crate::hir::HirImplItem::Fn(f) = impl_item {
-                                    let method_name = f.ident.name;
-                                    self.impl_method_index
-                                        .insert((type_name, method_name), f.hir_id.owner);
-                                }
+                // Stage 14.94 (Bug Y2 fix): Also register trait impl methods
+                // in impl_method_index. Previously, only inherent impls were
+                // registered, so `S::make()` where `make` is in `impl T for S`
+                // was not resolved — the path fell through to returning the
+                // type's DefId (treated as struct ctor), producing wrong code.
+                if let crate::hir::HirTyKind::Path(_, self_ty_path) = &impl_block.self_ty.kind {
+                    if self_ty_path.segments.len() == 1 {
+                        let type_name = self_ty_path.segments[0].ident.name;
+                        for impl_item in &impl_block.items {
+                            if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                                let method_name = f.ident.name;
+                                self.impl_method_index
+                                    .insert((type_name, method_name), f.hir_id.owner);
                             }
                         }
                     }
