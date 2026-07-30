@@ -2607,6 +2607,47 @@ fn resolve_inherent_method_from_hir_expr(
             }
             None
         }
+        // Stage 14.93 (Bug Y3 fix): Field receiver — `o.inner.method()`
+        // where the receiver is a field access expression. We trace back
+        // through the outer struct's init to find the field's type.
+        //
+        // Per §13.4: mirrors the Index receiver handling — we trace through
+        // the HIR to find the receiver type at MIR-lowering time.
+        HirExprKind::Field {
+            receiver: field_receiver,
+            ident,
+        } => {
+            if let HirExprKind::Path(path) = &field_receiver.kind {
+                if let crate::hir::Res::Local(hir_id) = path.res {
+                    if let Some(init_ty) = find_local_init_type(cx, hir, hir_id) {
+                        if let TyKind::Adt(struct_def_id, _) = &init_ty.kind {
+                            if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(
+                                s,
+                            ))) = hir.owner(*struct_def_id)
+                            {
+                                for f in &s.fields {
+                                    if f.ident.map(|fi| fi.name) == Some(ident.name) {
+                                        let field_mir_ty =
+                                            crate::mir::lower::lower_hir_ty_to_mir_ty(&f.ty);
+                                        if let Some(did) =
+                                            resolve_inherent_method(hir, &field_mir_ty, method_name)
+                                        {
+                                            return Some(did);
+                                        }
+                                        return resolve_trait_method(
+                                            hir,
+                                            &field_mir_ty,
+                                            method_name,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        }
         _ => None,
     }
 }
