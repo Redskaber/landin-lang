@@ -1,9 +1,60 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.139.0
+**Current version**: v0.140.0
 **Date**: 2026-07-31
-**Test count**: 153 rust lib tests + 1998 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 153 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.140.0 — Stage 15.14 (Driver Diagnostics Integration)
+
+### Overview
+
+Stage 15.14 bridges `CompileErrors` (the driver's 6-field error collection)
+to the `diagnostics` module (the single source of truth for error display).
+This completes the diagnostics integration started in Stage 15.13.
+
+### What Changed
+
+**Added `CompileErrors::to_diagnostics`** (`src/driver.rs`):
+- Converts all 6 error types (lex/parse/resolve/typeck/borrowck/trait) to
+  `Diagnostic` values with category codes ("Lex", "Parse", etc.)
+- Type errors get expected/found as child notes
+- Trait errors get interner-resolved messages
+
+**Added `CompileErrors::format_via_diagnostics`** (`src/driver.rs`):
+- Converts to diagnostics, then formats via
+  `DiagnosticBuffer::format_with_source` (rustc-style display)
+- Produces: `error[Code]: message` + `--> source:line:col` + source snippet
+
+**New tests**:
+- 8 integration tests in `tests/v0/stage15/plan/driver_diagnostics_integration_tests.rs`
+
+**Documentation**:
+- `docs/develop/v0/stage-15/stage-15.14-driver-diagnostics.md` — full §29 review
+- `docs/tests/v0/stage15/stage-15.14-test-plan.md` — test plan
+- `docs/worklog.md` — Stage 15.14 entry
+- `README.md` — updated v0.2 progress
+
+### Why This Is The Right Stage 15.14
+
+Per user requirement "留意错误系统、显示友好(src/diagnostics/)":
+- Stage 15.13 made `src/diagnostics/` the single source of truth for error
+  display formatting.
+- But the driver's `CompileErrors` still had its own `format_for_user` method
+  with inline formatting logic — not using the diagnostics module.
+- This stage bridges the gap: `CompileErrors` can now convert to `Diagnostic`
+  values and format via the diagnostics module.
+
+Per §1.0 原则 3 "显式 > 隐式": the conversion is explicit in `to_diagnostics`.
+Per §23 (API Naming): `to_diagnostics` follows `<verb>_<noun>` pattern.
+
+### Verification
+
+- All 153 lib tests pass (zero regression)
+- All 2006 integration tests pass (1998 + 8 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.139.0 — Stage 15.13 (Diagnostics System Improvements)

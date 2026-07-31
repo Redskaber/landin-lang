@@ -261,6 +261,8 @@ mod stage13_18_runtime_tests;
 mod stage15_const_ty_box_to_ty_tests;
 #[path = "v0/stage15/plan/crate_adt_layouts_tests.rs"]
 mod stage15_crate_adt_layouts_tests;
+#[path = "v0/stage15/plan/driver_diagnostics_integration_tests.rs"]
+mod stage15_driver_diagnostics_integration_tests;
 #[path = "v0/stage15/plan/error_system_cleanup_tests.rs"]
 mod stage15_error_system_cleanup_tests;
 #[path = "v0/stage15/plan/method_return_type_cache_tests.rs"]

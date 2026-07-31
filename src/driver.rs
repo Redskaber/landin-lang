@@ -235,6 +235,113 @@ impl CompileErrors {
         }
         out
     }
+
+    /// Stage 15.14: Convert all errors to `Diagnostic` values.
+    ///
+    /// Produces a `Vec<Diagnostic>` with one entry per error, preserving
+    /// the category as a note. This bridges `CompileErrors` (the driver's
+    /// 6-field error collection) to the `diagnostics` module (the single
+    /// source of truth for error display).
+    ///
+    /// Each diagnostic has:
+    /// - `level: Error`
+    /// - `message`: the error message
+    /// - `span`: the error span
+    /// - `code`: `Some("Lex")`, `Some("Parse")`, etc. (category as code)
+    /// - one child note with the category name
+    ///
+    /// Per §1.0 原则 3 "显式 > 隐式": the conversion is explicit.
+    /// Per §23 (API Naming): `to_diagnostics` follows `<verb>_<noun>` pattern.
+    pub fn to_diagnostics(&self, interner: Option<&Rodeo>) -> Vec<crate::diagnostics::Diagnostic> {
+        use crate::diagnostics::DiagnosticBuilder;
+        let mut diags = Vec::new();
+
+        for e in &self.lex {
+            diags.push(
+                DiagnosticBuilder::error(&e.message, e.span)
+                    .with_code("Lex")
+                    .build(),
+            );
+        }
+        for e in &self.parse {
+            diags.push(
+                DiagnosticBuilder::error(&e.message, e.span)
+                    .with_code("Parse")
+                    .build(),
+            );
+        }
+        for e in &self.resolve {
+            diags.push(
+                DiagnosticBuilder::error(&e.message, e.span)
+                    .with_code("Resolve")
+                    .build(),
+            );
+        }
+        for e in &self.typeck {
+            let mut builder = DiagnosticBuilder::error(&e.message, e.span).with_code("Type");
+            // Stage 15.14: Add expected/found as notes if present.
+            if let (Some(expected), Some(found)) = (&e.expected, &e.found) {
+                builder = builder.with_note(format!("expected: {:?}", expected.kind), e.span);
+                builder = builder.with_note(format!("found: {:?}", found.kind), e.span);
+            }
+            diags.push(builder.build());
+        }
+        for e in &self.borrowck {
+            diags.push(
+                DiagnosticBuilder::error(format!("{} ({:?})", e.message, e.kind), e.span)
+                    .with_code("Borrow")
+                    .build(),
+            );
+        }
+        for e in &self.trait_errors {
+            let msg = if let Some(interner) = interner {
+                e.format_with_interner(interner)
+            } else {
+                format!("{:?}", e)
+            };
+            diags.push(
+                DiagnosticBuilder::error(&msg, crate::session::Span::DUMMY)
+                    .with_code("Trait")
+                    .build(),
+            );
+        }
+
+        diags
+    }
+
+    /// Stage 15.14: Format errors via the diagnostics module.
+    ///
+    /// Converts all errors to `Diagnostic` values, then formats them using
+    /// `DiagnosticBuffer::format_with_source` (rustc-style display with
+    /// source code snippets). This is the "new" display path that uses
+    /// `src/diagnostics/` as the single source of truth.
+    ///
+    /// The existing `format_for_user` is kept for backward compatibility.
+    /// Future stages can migrate callers to this method.
+    ///
+    /// Per "显示友好": produces rustc-style output with:
+    /// - `error[Code]: message`
+    /// - `  --> source:line:col`
+    /// - source snippet with `^^^` underline
+    /// - notes/helps
+    ///
+    /// Per §23 (API Naming): `format_via_diagnostics` follows
+    /// `<verb>_<prep>_<noun>` pattern.
+    pub fn format_via_diagnostics(
+        &self,
+        src: &str,
+        source_name: &str,
+        source_map: &crate::session::SourceMap,
+        interner: Option<&Rodeo>,
+    ) -> String {
+        use crate::diagnostics::DiagnosticBuffer;
+        let diags = self.to_diagnostics(interner);
+        let mut buf = DiagnosticBuffer::new();
+        for diag in diags {
+            buf.emit(diag);
+        }
+        buf.format_with_source(source_name, source_map, src)
+    }
 }
 
 /// Format a source snippet around a span, with a `^` underline.

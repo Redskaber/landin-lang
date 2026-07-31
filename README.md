@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.139.0 (v0.2 Phase 1 in progress — diagnostics system improvements)  
+**Version**: v0.140.0 (v0.2 Phase 1 in progress — driver diagnostics integration)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -23,9 +23,9 @@ backend via the `llvm-sys` crate.
 >
 > See `docs/develop/v0/stage-14/v0.1-final-release-assessment.md` for full assessment.
 
-> **v0.2 Phase 1 IN PROGRESS — Stage 15.13 Complete**
+> **v0.2 Phase 1 IN PROGRESS — Stage 15.14 Complete**
 >
-> Stage 15.1-15.13 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
+> Stage 15.1-15.14 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
 > - **Stage 15.1** — Ty interning design doc (`docs/lang-design/19-ty-interning.md`)
 > - **Stage 15.2** — TypeInterner infrastructure + pre-build impl index (HP-B12)
 > - **Stage 15.3** — cstr() thread-local cache (memory leak fix for LSP mode)
@@ -50,8 +50,11 @@ backend via the `llvm-sys` crate.
 > - **Stage 15.13** — Diagnostics system improvements: `src/diagnostics/` is now
 >   the single source of truth for error display. Added `DiagnosticBuilder`,
 >   `format_with_source` (rustc-style), error limit enforcement. 8 new tests.
+> - **Stage 15.14** — Driver diagnostics integration: `CompileErrors` now bridges
+>   to `diagnostics` module via `to_diagnostics` + `format_via_diagnostics`.
+>   Completes the diagnostics integration. 8 new tests.
 >
-> **Test count**: 153 lib tests + 1998 integration tests + 5216 conformance tests = 7367 passing.
+> **Test count**: 153 lib tests + 2006 integration tests + 5216 conformance tests = 7375 passing.
 > **0 clippy warnings**, fmt clean. Next major milestone: v0.2 Phase 1 Task 1
 > (full Ty interning via Rc<TyKind> stepping stone).
 

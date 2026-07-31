@@ -18402,3 +18402,67 @@ Stage Summary:
 - format_with_source provides rustc-style display
 - Error limit prevents cascading errors
 - v0.139.0: minor bump (diagnostics infrastructure + UX improvement)
+
+---
+Task ID: stage15.14-driver-diagnostics
+Agent: Super Z (main)
+Task: Stage 15.14 — Driver diagnostics integration (bridge CompileErrors to diagnostics module). v0.139.0 → v0.140.0.
+
+Work Log:
+- Baseline: v0.139.0 / 1998 rust tests + 5216 conformance (post-Stage 15.13)
+
+### 1. Added CompileErrors::to_diagnostics (src/driver.rs)
+
+New method that converts all 6 error types to Diagnostic values:
+- lex → DiagnosticBuilder::error(msg, span).with_code("Lex").build()
+- parse → with_code("Parse")
+- resolve → with_code("Resolve")
+- typeck → with_code("Type") + expected/found notes
+- borrowck → with_code("Borrow") + kind in message
+- trait_errors → with_code("Trait") + interner resolution
+
+Per §1.0 原则 3 "显式 > 隐式": conversion is explicit.
+Per §23 (API Naming): to_diagnostics follows <verb>_<noun> pattern.
+
+### 2. Added CompileErrors::format_via_diagnostics (src/driver.rs)
+
+New method that:
+1. Converts errors to Diagnostic values via to_diagnostics
+2. Emits them to a DiagnosticBuffer
+3. Formats via DiagnosticBuffer::format_with_source (rustc-style display)
+
+Produces: error[Code]: message + --> source:line:col + source snippet.
+
+### 3. New Tests (tests/v0/stage15/plan/driver_diagnostics_integration_tests.rs)
+
+8 integration tests:
+1. stage15_14_lex_errors_to_diagnostics — lex errors convert with code "Lex"
+2. stage15_14_parse_errors_to_diagnostics — parse errors convert
+3. stage15_14_resolve_errors_to_diagnostics — resolve errors convert
+4. stage15_14_trait_errors_to_diagnostics — trait errors convert with interner
+5. stage15_14_format_via_diagnostics_rustc_style — produces rustc-style output
+6. stage15_14_format_via_diagnostics_includes_snippets — includes snippets
+7. stage15_14_empty_errors_empty_diagnostics — empty → empty
+8. stage15_14_to_diagnostics_preserves_count — count preserved
+
+### 4. Documentation
+
+- Created docs/develop/v0/stage-15/stage-15.14-driver-diagnostics.md
+- Created docs/tests/v0/stage15/stage-15.14-test-plan.md
+- Updated docs/worklog.md (this entry)
+- Updated RELEASE_NOTES.md (v0.140.0 entry)
+- Updated README.md (Stage 15.14 progress)
+
+### Verification
+- All 153 lib tests pass (zero regression)
+- All 2006 integration tests pass (1998 + 8 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.139.0 → v0.140.0
+
+Stage Summary:
+- Stage 15.14 PASSED — driver diagnostics integration
+- CompileErrors now bridges to diagnostics module via to_diagnostics
+- format_via_diagnostics produces rustc-style display
+- src/diagnostics/ is now fully integrated as single source of truth
+- v0.140.0: minor bump (diagnostics integration)
