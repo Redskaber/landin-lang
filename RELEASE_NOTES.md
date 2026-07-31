@@ -1,9 +1,51 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.149.0
+**Current version**: v0.150.0
 **Date**: 2026-07-31
 **Test count**: 170 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.150.0 — Stage 15.24 (v0.150 Milestone: Clean State + Ty Interning Investigation)
+
+### Overview
+
+Stage 15.24 is a milestone release verifying the clean state after 24 stages of
+v0.2 Phase 1 work. Also investigated Ty interning migration paths and confirmed
+the incremental approach.
+
+### Investigation Results
+
+1. **`.kind` → `.kind()` migration**: 43 sites in typeck module, but `.kind` is
+   shared between `Ty`, `Place`, `Statement`, `Terminator` — blanket regex fails.
+   Needs per-site manual migration (future stages).
+
+2. **`Eq + Hash` derives for `TyKind`**: blocked by `ConstVal::Float(f64)` which
+   doesn't implement `Eq` or `Hash`. Would need to change Float to `u64` (bits) first.
+
+3. **`Box<Ty>` → `Ty` in `TyKind`**: blocked by recursive type — `Ty` is still a
+   struct, not a pointer. Must wait until `Ty` becomes `Rc<TyKind>` newtype first.
+
+### v0.2 Phase 1 Summary (Stage 15.1-15.24)
+
+| Area | Stages | Status |
+|------|--------|--------|
+| Ty interning design + infra | 15.1-15.4 | ✅ Design done, infra ready |
+| Span removal + cache activation | 15.5-15.6 | ✅ |
+| Writeback consolidation | 15.7 | ✅ 8→2 functions |
+| AdtLayouts + VtableEntry interning | 15.8-15.9 | ✅ |
+| SubstsRef + Const.ty optimization | 15.10-15.11 | ✅ |
+| Error system + diagnostics module | 15.12-15.16 | ✅ |
+| Color output + CLI + LLVM script | 15.17-15.22 | ✅ |
+| Ty::kind() accessor | 15.23 | ✅ |
+| v0.150 milestone | 15.24 | ✅ |
+
+### Verification
+
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.149.0 — Stage 15.23 (Ty Interning Prep: kind() Accessor Method)

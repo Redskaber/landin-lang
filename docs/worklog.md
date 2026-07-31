@@ -18920,3 +18920,46 @@ Stage Summary:
 - Stage 15.23 PASSED — Ty::kind() accessor method added
 - Preparation for Rc<TyKind> interning (Stage 15.24+)
 - v0.149.0: minor bump (API addition — kind() method)
+
+---
+Task ID: stage15.24-v0150-milestone
+Agent: Super Z (main)
+Task: Stage 15.24 — v0.150.0 milestone: verify clean state + investigated Ty interning migration paths. v0.149.0 → v0.150.0.
+
+Work Log:
+- Baseline: v0.149.0 / 2006 rust tests + 5216 conformance
+
+### Investigation
+1. Attempted .kind → .kind() migration in typeck module (43 sites)
+   - Problem: .kind is shared between Ty, Place, Statement, Terminator
+   - Blanket regex converted Place.kind to Place.kind() which doesn't exist
+   - Reverted — needs manual per-site migration (too time-consuming for one stage)
+
+2. Investigated adding Eq+Hash derives to TyKind (for future interning)
+   - Problem: ConstVal::Float(f64) prevents Eq+Hash derivation
+   - f64 doesn't implement Eq or Hash
+   - Would need to change Float representation (e.g., to bits: u64) first
+   - Deferred to future stage
+
+3. Investigated Box<Ty> → Ty migration in TyKind
+   - Problem: Ty is still a struct (not a pointer), so removing Box creates infinite type
+   - Must wait until Ty becomes Rc<TyKind> (newtype) first
+   - Circular dependency: can't change Ty without migrating .kind, can't migrate .kind safely
+
+### Conclusion
+The Ty interning migration (Stage 15.1 attempt: 361 errors) remains the biggest
+blocker. The incremental approach (add kind() method first, then migrate callers)
+is correct but requires careful per-site migration. This will be done in
+subsequent stages, one module at a time.
+
+### Verification
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.149.0 → v0.150.0
+
+Stage Summary:
+- Stage 15.24 PASSED — v0.150.0 milestone (clean state verified)
+- Ty interning migration strategy confirmed: incremental, per-module
+- v0.150.0: minor bump (milestone — clean verified state)

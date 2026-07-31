@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.149.0 (v0.2 Phase 1 in progress — Ty interning prep: kind() accessor)  
+**Version**: v0.150.0 (v0.2 Phase 1 — 24 stages complete, 7392 tests passing)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,16 +21,17 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 1 IN PROGRESS — Stage 15.23 Complete**
+> **v0.2 Phase 1 — Stage 15.24 Complete (v0.150 milestone)**
 >
-> Stage 15.1-15.23 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
-> - **Stage 15.1-15.11** — Ty interning design + infrastructure + memory optimizations
-> - **Stage 15.12-15.16** — Error system cleanup + diagnostics module + Spanned + ErrorCode
-> - **Stage 15.17-15.22** — Color output + CLI wiring + --color flag + LLVM script fix + snippet alignment
-> - **Stage 15.23** — Ty interning prep: added `kind()` accessor method (preparation for Rc<TyKind>)
+> 24 stages of v0.2 Phase 1 work complete:
+> - **Memory optimizations**: Span removal, SubstsRef Rc<[Ty]>, Const.ty inline, AdtLayouts sharing
+> - **Architecture**: Writeback consolidation (8→2), error system cleanup, writeback 3-tuple return
+> - **Diagnostics**: DiagnosticBuilder, ErrorCode catalog (E001-E900), Spanned trait, color output, --color flag
+> - **CLI**: rustc-style display with source snippets, TTY auto-detection, LLVM version switch fix
+> - **Ty interning prep**: TypeInterner infrastructure, kind() accessor method, design doc
 >
 > **Test count**: 170 lib tests + 2006 integration tests + 5216 conformance tests = 7392 passing.
-> **0 clippy warnings**, fmt clean. Next: incremental Ty interning migration (Stage 15.24+).
+> **0 clippy warnings**, fmt clean. Next: incremental Ty interning migration (per-module).
 
 ---
 
