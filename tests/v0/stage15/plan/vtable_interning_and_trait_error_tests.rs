@@ -18,6 +18,7 @@
 
 #![cfg(test)]
 
+#![allow(deprecated)]  // Stage 15.15: tests use deprecated format_for_user
 use landin_compiler::compile;
 use landin_compiler::TraitError;
 

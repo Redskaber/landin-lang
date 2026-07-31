@@ -162,6 +162,14 @@ impl CompileErrors {
     /// `src` is the original source string (used to extract snippets).
     /// If `src` is None, only the messages are printed (no snippets).
     ///
+    /// **DEPRECATED** (Stage 15.15): Use `format_via_diagnostics` instead —
+    /// it uses the `src/diagnostics/` module as the single source of truth
+    /// for error display (rustc-style with `error[Code]:` + `-->` + snippets).
+    /// This method is kept for backward compatibility with existing tests.
+    #[deprecated(
+        since = "0.140.0",
+        note = "Use `format_via_diagnostics` instead (rustc-style display via src/diagnostics/ module)"
+    )]
     /// Stage 2.4d (P1-4): This is the user-facing error display.
     /// Previously, errors were only available as raw Debug output.
     ///

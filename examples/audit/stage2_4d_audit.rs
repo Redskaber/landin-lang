@@ -4,6 +4,7 @@
 //!
 //! Run with: cargo run --example stage2_4d_audit
 
+#![allow(deprecated)]  // Stage 15.15: tests use deprecated format_for_user
 use landin_compiler::driver::compile;
 
 const PROGRAMS: &[(&str, &str)] = &[

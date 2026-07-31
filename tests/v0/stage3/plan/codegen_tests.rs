@@ -2,6 +2,7 @@
 //!
 //! Verify that the LLVM IR output is correct for basic programs.
 
+#![allow(deprecated)]  // Stage 15.15: tests use deprecated format_for_user
 use landin_compiler::codegen::codegen_crate;
 use landin_compiler::driver::compile;
 

@@ -1,9 +1,44 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.140.0
+**Current version**: v0.141.0
 **Date**: 2026-07-31
 **Test count**: 153 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.141.0 — Stage 15.15 (CLI Diagnostics Migration)
+
+### Overview
+
+Stage 15.15 migrates the CLI (`src/bin/main.rs`) and mini-cargo (`src/cargo.rs`)
+from the deprecated `format_for_user` to the new `format_via_diagnostics`
+method. This completes the diagnostics integration — all user-facing error
+display now goes through the `src/diagnostics/` module (single source of truth).
+
+### What Changed
+
+**CLI migration** (`src/bin/main.rs`):
+- `format_for_user` → `format_via_diagnostics` (rustc-style display)
+
+**Mini-cargo migration** (`src/cargo.rs`):
+- Same migration
+
+**Deprecated `format_for_user`** (`src/driver.rs`):
+- Added `#[deprecated(note = "Use format_via_diagnostics instead")]`
+- Kept for backward compatibility with existing tests
+
+**Documentation**:
+- `docs/develop/v0/stage-15/stage-15.15-cli-diagnostics-migration.md`
+- `docs/tests/v0/stage15/stage-15.15-test-plan.md`
+- `docs/worklog.md` — Stage 15.15 entry
+- `README.md` — updated v0.2 progress
+
+### Verification
+
+- All 153 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.140.0 — Stage 15.14 (Driver Diagnostics Integration)

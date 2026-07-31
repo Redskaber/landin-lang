@@ -12,6 +12,7 @@
 
 #![cfg(test)]
 
+#![allow(deprecated)]  // Stage 15.15: tests use deprecated format_for_user
 use landin_compiler::compile;
 
 /// Stage 15.12 test 1: error summary uses friendlier format.

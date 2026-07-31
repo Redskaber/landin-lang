@@ -18466,3 +18466,51 @@ Stage Summary:
 - format_via_diagnostics produces rustc-style display
 - src/diagnostics/ is now fully integrated as single source of truth
 - v0.140.0: minor bump (diagnostics integration)
+
+---
+Task ID: stage15.15-cli-diagnostics-migration
+Agent: Super Z (main)
+Task: Stage 15.15 — CLI diagnostics migration (format_for_user → format_via_diagnostics). v0.140.0 → v0.141.0.
+
+Work Log:
+- Baseline: v0.140.0 / 2006 rust tests + 5216 conformance (post-Stage 15.14)
+
+### 1. CLI Migration (src/bin/main.rs)
+
+Migrated from format_for_user to format_via_diagnostics:
+- Before: format_for_user(Some(&src), Some(&interner)) + manual "aborting" line
+- After: format_via_diagnostics(&src, &source_file.name, &source_map, Some(&interner))
+  (DiagnosticBuffer includes the "aborting" summary automatically)
+
+The new display uses rustc-style format: error[Code]: message + --> location + snippet.
+
+### 2. Mini-cargo Migration (src/cargo.rs)
+
+Same migration — format_for_user → format_via_diagnostics.
+Used "cargo" as the source_name (mini-cargo doesn't track file paths).
+
+### 3. Deprecated format_for_user (src/driver.rs)
+
+Added #[deprecated(since = "0.140.0", note = "Use format_via_diagnostics instead")].
+Kept for backward compatibility with existing tests.
+
+### 4. Documentation
+
+- Created docs/develop/v0/stage-15/stage-15.15-cli-diagnostics-migration.md
+- Created docs/tests/v0/stage15/stage-15.15-test-plan.md
+- Updated docs/worklog.md (this entry)
+- Updated RELEASE_NOTES.md (v0.141.0 entry)
+- Updated README.md (Stage 15.15 progress)
+
+### Verification
+- All 153 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.140.0 → v0.141.0
+
+Stage Summary:
+- Stage 15.15 PASSED — CLI diagnostics migration complete
+- All user-facing error display now goes through src/diagnostics/ module
+- format_for_user deprecated (kept for backward compat with tests)
+- v0.141.0: minor bump (diagnostics integration complete)

@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.140.0 (v0.2 Phase 1 in progress — driver diagnostics integration)  
+**Version**: v0.141.0 (v0.2 Phase 1 in progress — CLI diagnostics migration complete)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -23,36 +23,21 @@ backend via the `llvm-sys` crate.
 >
 > See `docs/develop/v0/stage-14/v0.1-final-release-assessment.md` for full assessment.
 
-> **v0.2 Phase 1 IN PROGRESS — Stage 15.14 Complete**
+> **v0.2 Phase 1 IN PROGRESS — Stage 15.15 Complete**
 >
-> Stage 15.1-15.14 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
-> - **Stage 15.1** — Ty interning design doc (`docs/lang-design/19-ty-interning.md`)
-> - **Stage 15.2** — TypeInterner infrastructure + pre-build impl index (HP-B12)
-> - **Stage 15.3** — cstr() thread-local cache (memory leak fix for LSP mode)
-> - **Stage 15.4** — method_return_type_cache infrastructure (deferred activation)
+> Stage 15.1-15.15 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
+> - **Stage 15.1-15.4** — Ty interning design + infrastructure (TypeInterner, impl index, cstr cache, method_return_type_cache)
 > - **Stage 15.5** — Span removal from Ty (foundational for interning)
-> - **Stage 15.6** — `method_return_type_cache` activation (closes HP-B12)
->   + §23 API naming audit (0 violations)
-> - **Stage 15.7** — Writeback consolidation: 8 driver passes → 2 functions
->   in new `src/mir/lower/writeback.rs`. driver.rs: 2,358 → 1,709 LOC.
->   Closes v0.2 Phase 1 Task 5.
-> - **Stage 15.8** — Crate-level AdtLayouts sharing: `Arc<AdtLayouts>` shared
->   across all MirBodies. ~500KB memory saved per typical crate.
-> - **Stage 15.9** — VtableEntry.fn_name interning (HP-B16) + TraitError typed
->   errors. All Phase 2 audit "4-hour" quick wins now complete.
-> - **Stage 15.10** — SubstsRef `Vec<Ty>` → `Rc<[Ty]>` interning. Eliminates
->   per-generic-app heap allocation. Stepping stone toward v0.3 arena interning.
-> - **Stage 15.11** — `Const.ty: Box<Ty>` → `Ty` (inline). Eliminates per-Const
->   heap allocation. `Sig.output: Box<Ty>` kept (structurally necessary).
-> - **Stage 15.12** — Error system cleanup: removed `MirBody.lower_type_errors`
->   (IR no longer carries error collection). Lowering functions return 3-tuple.
->   Friendly display: "errors found" summary + ResolveError .message display.
-> - **Stage 15.13** — Diagnostics system improvements: `src/diagnostics/` is now
->   the single source of truth for error display. Added `DiagnosticBuilder`,
->   `format_with_source` (rustc-style), error limit enforcement. 8 new tests.
-> - **Stage 15.14** — Driver diagnostics integration: `CompileErrors` now bridges
->   to `diagnostics` module via `to_diagnostics` + `format_via_diagnostics`.
->   Completes the diagnostics integration. 8 new tests.
+> - **Stage 15.6** — `method_return_type_cache` activation + §23 API naming audit
+> - **Stage 15.7** — Writeback consolidation: 8 passes → 2 functions
+> - **Stage 15.8** — Crate-level AdtLayouts sharing (~500KB memory saved)
+> - **Stage 15.9** — VtableEntry interning + TraitError typed errors
+> - **Stage 15.10** — SubstsRef `Vec<Ty>` → `Rc<[Ty]>` interning
+> - **Stage 15.11** — `Const.ty: Box<Ty>` → `Ty` (inline)
+> - **Stage 15.12** — Error system cleanup + friendly display
+> - **Stage 15.13** — Diagnostics system: `DiagnosticBuilder`, `format_with_source`, error limit
+> - **Stage 15.14** — Driver diagnostics integration: `to_diagnostics` + `format_via_diagnostics`
+> - **Stage 15.15** — CLI diagnostics migration: all user-facing error display now via `src/diagnostics/`
 >
 > **Test count**: 153 lib tests + 2006 integration tests + 5216 conformance tests = 7375 passing.
 > **0 clippy warnings**, fmt clean. Next major milestone: v0.2 Phase 1 Task 1

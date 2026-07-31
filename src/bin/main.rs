@@ -103,14 +103,17 @@ fn main() {
         let result = driver::compile(&source_file.src);
 
         if result.has_errors() {
-            let error_str = result
-                .errors
-                .format_for_user(Some(&source_file.src), Some(&result.interner));
-            eprintln!("{}", error_str);
-            eprintln!(
-                "error: aborting due to {} error(s)",
-                result.errors.total_count()
+            // Stage 15.15: Use format_via_diagnostics (rustc-style display via
+            // src/diagnostics/ module — single source of truth for error display).
+            // Was: format_for_user (inline formatting in driver.rs).
+            let source_map = landin_compiler::session::SourceMap::new(&source_file.src);
+            let error_str = result.errors.format_via_diagnostics(
+                &source_file.src,
+                &source_file.name,
+                &source_map,
+                Some(&result.interner),
             );
+            eprintln!("{}", error_str);
             std::process::exit(1);
         }
 

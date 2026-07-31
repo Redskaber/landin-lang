@@ -163,9 +163,15 @@ pub fn build_project(manifest: &ProjectManifest, config: &BuildConfig) -> BuildR
         files_compiled: 1,
         llvm_ir,
         errors: if error_count > 0 {
-            vec![result
-                .errors
-                .format_for_user(Some(&src), Some(&result.interner))]
+            // Stage 15.15: Use format_via_diagnostics (rustc-style display via
+            // src/diagnostics/ module — single source of truth for error display).
+            let source_map = crate::session::SourceMap::new(&src);
+            vec![result.errors.format_via_diagnostics(
+                &src,
+                "cargo",
+                &source_map,
+                Some(&result.interner),
+            )]
         } else {
             Vec::new()
         },
