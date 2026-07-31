@@ -18886,3 +18886,37 @@ Stage Summary:
 - Stage 15.22 PASSED — gutter alignment fixed
 - ^^^ underline now properly aligned with source token
 - v0.148.0: minor bump (UX fix — correct snippet alignment)
+
+---
+Task ID: stage15.23-ty-kind-accessor
+Agent: Super Z (main)
+Task: Stage 15.23 — Ty interning prep: add kind() accessor method. v0.148.0 → v0.149.0.
+
+Work Log:
+- Baseline: v0.148.0 / 2006 rust tests + 5216 conformance
+
+### Background
+The full Ty(Rc<TyKind>) newtype migration (Stage 15.1 attempt) produced 361-382
+errors across 318 `.kind` field accesses. A big-bang migration is too risky.
+
+### Approach: Incremental migration
+Stage 15.23 adds the `kind()` accessor method to `Ty` without changing the
+field type. This allows callers to gradually migrate from `ty.kind` to
+`ty.kind()` before the field type changes to `Rc<TyKind>` in a future stage.
+
+### Changes
+- Added `pub fn kind(&self) -> &TyKind` to `Ty` impl
+- No field type change — `kind` is still `TyKind` (not `Rc<TyKind>`)
+- All existing code continues to work (`.kind` field access is unaffected)
+
+### Verification
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.148.0 → v0.149.0
+
+Stage Summary:
+- Stage 15.23 PASSED — Ty::kind() accessor method added
+- Preparation for Rc<TyKind> interning (Stage 15.24+)
+- v0.149.0: minor bump (API addition — kind() method)

@@ -15,15 +15,19 @@ use crate::session::Span;
 /// A MIR type.
 ///
 /// Stage 15.5 (v0.2): Removed `span: Span` field from `Ty`.
-/// Span belongs on `LocalDecl` and `Statement`, not on the type itself.
-/// This is the foundational change for Ty interning — without Span, Ty
-/// values can be cached and compared by kind alone.
+/// Stage 15.23 (v0.2): Added `kind()` method as preparation for Rc<TyKind> interning.
+///   The `kind` field is still `TyKind` (not `Rc<TyKind>` yet) — the full
+///   newtype migration will happen in Stage 15.24+ (incremental, one module
+///   at a time). This stage adds the `kind()` accessor method so callers can
+///   start migrating from `ty.kind` to `ty.kind()` before the field type changes.
 ///
-/// Per `docs/lang-design/19-ty-interning.md`: this enables O(1) Ty::clone()
-/// in v0.3 (via Rc/arena interning) and correct caching of method return types.
+/// Per `docs/lang-design/19-ty-interning.md`: the migration from `Ty { kind: TyKind }`
+/// to `Ty(Rc<TyKind>)` requires updating 318 `.kind` accesses. Doing it
+/// incrementally (add `kind()` method first, then change the field type)
+/// reduces the risk of breaking everything at once.
 ///
-/// Per §1.0 原則 3 "显式 > 隐式": Span is now explicit on LocalDecl/Statement,
-/// not implicitly duplicated on every Ty.
+/// Per §1.0 原則 1 "长期 > 短期": gradual migration is safer than big-bang.
+/// Per §15 "最优 > 最小": this is the right first step.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ty {
     pub kind: TyKind,
@@ -40,6 +44,14 @@ impl Ty {
     /// Stage 15.5: Construct a Ty without span (preferred new API).
     pub fn from_kind(kind: TyKind) -> Self {
         Self { kind }
+    }
+
+    /// Stage 15.23: Accessor method for TyKind.
+    /// Returns `&TyKind` — callers should prefer `ty.kind()` over `ty.kind`
+    /// to prepare for the Rc<TyKind> migration (where `.kind` field access
+    /// will be replaced by `.kind()` method call).
+    pub fn kind(&self) -> &TyKind {
+        &self.kind
     }
 }
 

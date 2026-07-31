@@ -1,9 +1,40 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.148.0
+**Current version**: v0.149.0
 **Date**: 2026-07-31
 **Test count**: 170 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.149.0 — Stage 15.23 (Ty Interning Prep: kind() Accessor Method)
+
+### Overview
+
+Stage 15.23 adds the `Ty::kind()` accessor method as preparation for the
+`Rc<TyKind>` interning migration. The full big-bang migration (changing
+`Ty { kind: TyKind }` to `Ty(Rc<TyKind>)`) produces 382 errors across 318
+`.kind` accesses — too many for a single stage. This stage adds the accessor
+method so callers can migrate gradually.
+
+### What Changed
+
+**Added `Ty::kind()` method** (`src/mir/ty.rs`):
+```rust
+pub fn kind(&self) -> &TyKind {
+    &self.kind
+}
+```
+
+No field type change — `kind` is still `TyKind`. All existing `.kind` field
+accesses continue to work. Future stages will migrate callers to `.kind()`,
+then change the field type to `Rc<TyKind>`.
+
+### Verification
+
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.148.0 — Stage 15.22 (Snippet Gutter Alignment Fix)
