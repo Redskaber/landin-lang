@@ -17,8 +17,7 @@
 //! changes work correctly with real HIR produced by compile().
 
 #![cfg(test)]
-
-#![allow(deprecated)]  // Stage 15.15: tests use deprecated format_for_user
+#![allow(deprecated)] // Stage 15.15: tests use deprecated format_for_user
 use landin_compiler::compile;
 use landin_compiler::TraitError;
 

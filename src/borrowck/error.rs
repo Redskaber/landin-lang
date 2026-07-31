@@ -78,6 +78,13 @@ impl BorrowError {
     }
 }
 
+// Stage 15.16: implement `Spanned` for uniform span access.
+impl crate::diagnostics::Spanned for BorrowError {
+    fn span(&self) -> crate::session::Span {
+        self.span
+    }
+}
+
 impl std::fmt::Display for BorrowError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "borrow error: {} at {}", self.message, self.span)

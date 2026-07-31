@@ -267,26 +267,27 @@ impl CompileErrors {
         for e in &self.lex {
             diags.push(
                 DiagnosticBuilder::error(&e.message, e.span)
-                    .with_code("Lex")
+                    .with_code(crate::diagnostics::ErrorCode::Lex.to_string())
                     .build(),
             );
         }
         for e in &self.parse {
             diags.push(
                 DiagnosticBuilder::error(&e.message, e.span)
-                    .with_code("Parse")
+                    .with_code(crate::diagnostics::ErrorCode::Parse.to_string())
                     .build(),
             );
         }
         for e in &self.resolve {
             diags.push(
                 DiagnosticBuilder::error(&e.message, e.span)
-                    .with_code("Resolve")
+                    .with_code(crate::diagnostics::ErrorCode::Resolve.to_string())
                     .build(),
             );
         }
         for e in &self.typeck {
-            let mut builder = DiagnosticBuilder::error(&e.message, e.span).with_code("Type");
+            let mut builder = DiagnosticBuilder::error(&e.message, e.span)
+                .with_code(crate::diagnostics::ErrorCode::Type.to_string());
             // Stage 15.14: Add expected/found as notes if present.
             if let (Some(expected), Some(found)) = (&e.expected, &e.found) {
                 builder = builder.with_note(format!("expected: {:?}", expected.kind), e.span);
@@ -297,7 +298,7 @@ impl CompileErrors {
         for e in &self.borrowck {
             diags.push(
                 DiagnosticBuilder::error(format!("{} ({:?})", e.message, e.kind), e.span)
-                    .with_code("Borrow")
+                    .with_code(crate::diagnostics::ErrorCode::Borrow.to_string())
                     .build(),
             );
         }
@@ -309,7 +310,7 @@ impl CompileErrors {
             };
             diags.push(
                 DiagnosticBuilder::error(&msg, crate::session::Span::DUMMY)
-                    .with_code("Trait")
+                    .with_code(crate::diagnostics::ErrorCode::Trait.to_string())
                     .build(),
             );
         }

@@ -39,7 +39,7 @@ fn stage15_14_lex_errors_to_diagnostics() {
         );
     }
     // At least one should have code "Lex"
-    let has_lex_code = diags.iter().any(|d| d.code.as_deref() == Some("Lex"));
+    let has_lex_code = diags.iter().any(|d| d.code.as_deref() == Some("E001"));
     assert!(
         has_lex_code,
         "should have at least one diagnostic with code 'Lex'"
@@ -54,7 +54,7 @@ fn stage15_14_parse_errors_to_diagnostics() {
     let result = compile(src);
     let diags = result.errors.to_diagnostics(Some(&result.interner));
     if !result.errors.parse.is_empty() {
-        let has_parse_code = diags.iter().any(|d| d.code.as_deref() == Some("Parse"));
+        let has_parse_code = diags.iter().any(|d| d.code.as_deref() == Some("E100"));
         assert!(
             has_parse_code,
             "should have at least one diagnostic with code 'Parse'"
@@ -70,7 +70,7 @@ fn stage15_14_resolve_errors_to_diagnostics() {
     let result = compile(src);
     let diags = result.errors.to_diagnostics(Some(&result.interner));
     if !result.errors.resolve.is_empty() {
-        let has_resolve_code = diags.iter().any(|d| d.code.as_deref() == Some("Resolve"));
+        let has_resolve_code = diags.iter().any(|d| d.code.as_deref() == Some("E300"));
         assert!(
             has_resolve_code,
             "should have at least one diagnostic with code 'Resolve'"
@@ -86,7 +86,7 @@ fn stage15_14_trait_errors_to_diagnostics() {
     let result = compile(src);
     if !result.errors.trait_errors.is_empty() {
         let diags = result.errors.to_diagnostics(Some(&result.interner));
-        let has_trait_code = diags.iter().any(|d| d.code.as_deref() == Some("Trait"));
+        let has_trait_code = diags.iter().any(|d| d.code.as_deref() == Some("E600"));
         assert!(
             has_trait_code,
             "should have at least one diagnostic with code 'Trait'"

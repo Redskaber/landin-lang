@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.141.0 (v0.2 Phase 1 in progress — CLI diagnostics migration complete)  
+**Version**: v0.142.0 (v0.2 Phase 1 in progress — error system: Spanned + ErrorCode)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -20,26 +20,19 @@ backend via the `llvm-sys` crate.
 >
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
->
-> See `docs/develop/v0/stage-14/v0.1-final-release-assessment.md` for full assessment.
 
-> **v0.2 Phase 1 IN PROGRESS — Stage 15.15 Complete**
+> **v0.2 Phase 1 IN PROGRESS — Stage 15.16 Complete**
 >
-> Stage 15.1-15.15 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
-> - **Stage 15.1-15.4** — Ty interning design + infrastructure (TypeInterner, impl index, cstr cache, method_return_type_cache)
-> - **Stage 15.5** — Span removal from Ty (foundational for interning)
-> - **Stage 15.6** — `method_return_type_cache` activation + §23 API naming audit
+> Stage 15.1-15.16 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
+> - **Stage 15.1-15.4** — Ty interning design + infrastructure
+> - **Stage 15.5-15.6** — Span removal + method_return_type_cache activation
 > - **Stage 15.7** — Writeback consolidation: 8 passes → 2 functions
-> - **Stage 15.8** — Crate-level AdtLayouts sharing (~500KB memory saved)
-> - **Stage 15.9** — VtableEntry interning + TraitError typed errors
-> - **Stage 15.10** — SubstsRef `Vec<Ty>` → `Rc<[Ty]>` interning
-> - **Stage 15.11** — `Const.ty: Box<Ty>` → `Ty` (inline)
-> - **Stage 15.12** — Error system cleanup + friendly display
-> - **Stage 15.13** — Diagnostics system: `DiagnosticBuilder`, `format_with_source`, error limit
-> - **Stage 15.14** — Driver diagnostics integration: `to_diagnostics` + `format_via_diagnostics`
-> - **Stage 15.15** — CLI diagnostics migration: all user-facing error display now via `src/diagnostics/`
+> - **Stage 15.8-15.9** — AdtLayouts sharing + VtableEntry interning + TraitError
+> - **Stage 15.10-15.11** — SubstsRef Rc<[Ty]> + Const.ty Box→Ty
+> - **Stage 15.12-15.15** — Error system cleanup + diagnostics module + CLI migration
+> - **Stage 15.16** — Spanned trait (uniform span access) + ErrorCode catalog (E001-E900)
 >
-> **Test count**: 153 lib tests + 2006 integration tests + 5216 conformance tests = 7375 passing.
+> **Test count**: 161 lib tests + 2006 integration tests + 5216 conformance tests = 7383 passing.
 > **0 clippy warnings**, fmt clean. Next major milestone: v0.2 Phase 1 Task 1
 > (full Ty interning via Rc<TyKind> stepping stone).
 

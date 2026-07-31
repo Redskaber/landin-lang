@@ -1,9 +1,40 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.141.0
+**Current version**: v0.142.0
 **Date**: 2026-07-31
-**Test count**: 153 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 161 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.142.0 — Stage 15.16 (Error System: Spanned Trait + ErrorCode Catalog)
+
+### Overview
+
+Stage 15.16 adds two improvements to the error system:
+1. **`Spanned` trait** — uniform span access for all 6 error types.
+2. **`ErrorCode` catalog** — stable error codes (E001-E900) for each category.
+
+### What Changed
+
+**Added `Spanned` trait** (`src/diagnostics/mod.rs`):
+- `pub trait Spanned { fn span(&self) -> Span; }`
+- Implemented for: LexError, ParseError, ResolveError, TypeError, BorrowError, LowerError
+
+**Added `ErrorCode` catalog** (`src/diagnostics/mod.rs`):
+- `pub enum ErrorCode { Lex, Parse, Lower, Resolve, Type, Borrow, Trait, Internal }`
+- Methods: `code()` → "E001", `category()` → "lex", `Display` impl
+
+**Updated `to_diagnostics`** (`src/driver.rs`):
+- `with_code("Lex")` → `with_code(ErrorCode::Lex.to_string())` (stable code)
+
+**New tests**: 8 unit tests in `src/diagnostics/mod.rs`
+
+### Verification
+
+- All 161 lib tests pass (153 + 8 new, zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.141.0 — Stage 15.15 (CLI Diagnostics Migration)

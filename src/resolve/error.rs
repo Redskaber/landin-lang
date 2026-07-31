@@ -22,6 +22,13 @@ impl ResolveError {
     }
 }
 
+// Stage 15.16: implement `Spanned` for uniform span access.
+impl crate::diagnostics::Spanned for ResolveError {
+    fn span(&self) -> crate::session::Span {
+        self.span
+    }
+}
+
 impl std::fmt::Display for ResolveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "resolve error: {} at {}", self.message, self.span)

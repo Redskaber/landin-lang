@@ -38,6 +38,14 @@ pub struct LexError {
 // so it integrates with the standard Rust error-handling ecosystem
 // (`?` propagation, `anyhow::Error`, `Box<dyn Error>`, etc.). Previously
 // only carried a `message: String + span: Span` shape with no trait impls.
+
+// Stage 15.16: implement `Spanned` for uniform span access.
+impl crate::diagnostics::Spanned for LexError {
+    fn span(&self) -> Span {
+        self.span
+    }
+}
+
 impl std::fmt::Display for LexError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[lex error at {}] {}", self.span, self.message)

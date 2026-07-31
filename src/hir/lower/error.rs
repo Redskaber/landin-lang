@@ -22,6 +22,13 @@ impl LowerError {
     }
 }
 
+// Stage 15.16: implement `Spanned` for uniform span access.
+impl crate::diagnostics::Spanned for LowerError {
+    fn span(&self) -> crate::session::Span {
+        self.span
+    }
+}
+
 impl std::fmt::Display for LowerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "lower error: {} at {}", self.message, self.span)

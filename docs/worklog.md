@@ -18514,3 +18514,79 @@ Stage Summary:
 - All user-facing error display now goes through src/diagnostics/ module
 - format_for_user deprecated (kept for backward compat with tests)
 - v0.141.0: minor bump (diagnostics integration complete)
+
+---
+Task ID: stage15.16-error-system-spanned-errorcode
+Agent: Super Z (main)
+Task: Stage 15.16 — Error system: Spanned trait + ErrorCode catalog. v0.141.0 → v0.142.0.
+
+Work Log:
+- Baseline: v0.141.0 / 2006 rust tests + 5216 conformance (post-Stage 15.15)
+
+### 1. Added Spanned trait (src/diagnostics/mod.rs)
+
+Added `pub trait Spanned { fn span(&self) -> Span; }` — uniform span access
+for all error types. Per §1.0 原则 6 "通用 > 特例": one trait handles all
+error types. Per §23 (API Naming): Spanned follows the <Adj> pattern.
+
+### 2. Implemented Spanned for all 6 error types
+
+- LexError (src/lexer/reader.rs)
+- ParseError (src/parser/error.rs)
+- ResolveError (src/resolve/error.rs)
+- TypeError (src/typeck/error.rs)
+- BorrowError (src/borrowck/error.rs)
+- LowerError (src/hir/lower/error.rs)
+
+### 3. Added ErrorCode catalog (src/diagnostics/mod.rs)
+
+Added `pub enum ErrorCode { Lex, Parse, Lower, Resolve, Type, Borrow, Trait, Internal }`
+with methods:
+- code() → "E001", "E100", "E200", "E300", "E400", "E500", "E600", "E900"
+- category() → "lex", "parse", "lower", "resolve", "type", "borrow", "trait", "internal"
+- Display impl
+
+Per §1.0 原则 3 "显式 > 隐式": the code is explicit, not implicit.
+Per §23 (API Naming): ErrorCode follows the <Noun>Code pattern.
+
+### 4. Updated to_diagnostics (src/driver.rs)
+
+Changed from with_code("Lex") (string literal) to
+with_code(ErrorCode::Lex.to_string()) (stable code).
+
+### 5. 8 new unit tests (src/diagnostics/mod.rs)
+
+1. stage15_16_error_code_codes — code() returns correct codes
+2. stage15_16_error_code_categories — category() returns correct names
+3. stage15_16_error_code_display — Display impl
+4. stage15_16_spanned_trait_lex_error — LexError implements Spanned
+5. stage15_16_spanned_trait_type_error — TypeError implements Spanned
+6. stage15_16_spanned_trait_resolve_error — ResolveError implements Spanned
+7. stage15_16_spanned_trait_borrow_error — BorrowError implements Spanned
+8. stage15_16_spanned_trait_parse_error — ParseError implements Spanned
+
+### 6. Updated test assertions (driver_diagnostics_integration_tests.rs)
+
+Changed from Some("Lex") to Some("E001") etc. to match new ErrorCode.
+
+### 7. Documentation
+
+- Created docs/develop/v0/stage-15/stage-15.16-error-system-spanned-errorcode.md
+- Created docs/tests/v0/stage15/stage-15.16-test-plan.md
+- Updated docs/worklog.md (this entry)
+- Updated RELEASE_NOTES.md (v0.142.0 entry)
+- Updated README.md (Stage 15.16 progress)
+
+### Verification
+- All 161 lib tests pass (153 + 8 new, zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.141.0 → v0.142.0
+
+Stage Summary:
+- Stage 15.16 PASSED — Spanned trait + ErrorCode catalog
+- All error types now implement Spanned (uniform span access)
+- ErrorCode catalog provides stable error codes (E001-E900)
+- to_diagnostics uses ErrorCode instead of string literals
+- v0.142.0: minor bump (error system improvements)

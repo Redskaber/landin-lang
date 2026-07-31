@@ -15,7 +15,7 @@
 //! trait-dispatch globals in isolation, which is useful for debugging
 //! vtable layout and dynptr structure.
 
-#![allow(deprecated)]  // Stage 15.15: tests use deprecated format_for_user
+#![allow(deprecated)] // Stage 15.15: tests use deprecated format_for_user
 use landin_compiler::codegen::{
     build_trait_dispatch_emission_plan, emit_trait_dispatch_globals_text_batch,
 };

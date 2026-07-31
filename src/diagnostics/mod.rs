@@ -6,6 +6,9 @@
 //! source code snippets. This module is now the single source of truth for
 //! error display formatting.
 //!
+//! Stage 15.16 (v0.2): Added `Spanned` trait (uniform span access for all
+//! error types) and `ErrorCode` catalog (stable error codes E001-E999).
+//!
 //! Per §1.0 原则 3 "显式 > 隐式": the snippet format is explicit in this
 //! module, not hidden in driver.rs.
 //! Per §23 (API Naming): `DiagnosticBuilder` follows the `<Noun>Builder`
@@ -13,6 +16,88 @@
 
 use crate::session::{LineCol, Span};
 use std::fmt;
+
+/// Stage 15.16: Trait for types that carry a source span.
+///
+/// All error types implement this trait so that `to_diagnostics` and other
+/// consumers can access the span uniformly without knowing the concrete type.
+///
+/// Per §1.0 原则 6 "通用 > 特例": one trait handles all error types.
+/// Per §23 (API Naming): `Spanned` follows the `<Adj>` pattern (trait name
+/// describes a capability, consistent with `Clone`, `Copy`).
+pub trait Spanned {
+    /// Returns the source span of this item.
+    fn span(&self) -> Span;
+}
+
+/// Stage 15.16: Error code catalog.
+///
+/// Stable error codes for each error category. These codes appear in
+/// diagnostics as `error[E001]: message`, matching the rustc convention.
+/// Users can look up the code in documentation to understand the error.
+///
+/// Per §1.0 原则 3 "显式 > 隐式": the code is explicit, not implicit.
+/// Per §23 (API Naming): `ErrorCode` follows the `<Noun>Code` pattern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ErrorCode {
+    /// Lexer errors (E001-E099)
+    Lex,
+    /// Parser errors (E100-E199)
+    Parse,
+    /// HIR lowering errors (E200-E299)
+    Lower,
+    /// Name resolution errors (E300-E399)
+    Resolve,
+    /// Type checking errors (E400-E499)
+    Type,
+    /// Borrow checking errors (E500-E599)
+    Borrow,
+    /// Trait coherence/completeness errors (E600-E699)
+    Trait,
+    /// Internal compiler error (E900)
+    Internal,
+}
+
+impl ErrorCode {
+    /// Get the numeric code (e.g., E001, E100, E400).
+    ///
+    /// Per §23 (API Naming): `code` follows the `<noun>` pattern for
+    /// property accessors (Rust getter convention — no `get_` prefix).
+    pub fn code(self) -> &'static str {
+        match self {
+            ErrorCode::Lex => "E001",
+            ErrorCode::Parse => "E100",
+            ErrorCode::Lower => "E200",
+            ErrorCode::Resolve => "E300",
+            ErrorCode::Type => "E400",
+            ErrorCode::Borrow => "E500",
+            ErrorCode::Trait => "E600",
+            ErrorCode::Internal => "E900",
+        }
+    }
+
+    /// Get the category name (e.g., "lex", "parse", "type").
+    ///
+    /// Per §23 (API Naming): `category` follows the `<noun>` pattern.
+    pub fn category(self) -> &'static str {
+        match self {
+            ErrorCode::Lex => "lex",
+            ErrorCode::Parse => "parse",
+            ErrorCode::Lower => "lower",
+            ErrorCode::Resolve => "resolve",
+            ErrorCode::Type => "type",
+            ErrorCode::Borrow => "borrow",
+            ErrorCode::Trait => "trait",
+            ErrorCode::Internal => "internal",
+        }
+    }
+}
+
+impl fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.code())
+    }
+}
 
 /// Severity level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -495,5 +580,86 @@ mod tests {
         assert_eq!(Level::Help.to_string(), "help");
         assert_eq!(Level::Fatal.to_string(), "fatal error");
         assert_eq!(Level::Bug.to_string(), "internal compiler error");
+    }
+
+    // Stage 15.16 tests
+
+    #[test]
+    fn stage15_16_error_code_codes() {
+        assert_eq!(ErrorCode::Lex.code(), "E001");
+        assert_eq!(ErrorCode::Parse.code(), "E100");
+        assert_eq!(ErrorCode::Lower.code(), "E200");
+        assert_eq!(ErrorCode::Resolve.code(), "E300");
+        assert_eq!(ErrorCode::Type.code(), "E400");
+        assert_eq!(ErrorCode::Borrow.code(), "E500");
+        assert_eq!(ErrorCode::Trait.code(), "E600");
+        assert_eq!(ErrorCode::Internal.code(), "E900");
+    }
+
+    #[test]
+    fn stage15_16_error_code_categories() {
+        assert_eq!(ErrorCode::Lex.category(), "lex");
+        assert_eq!(ErrorCode::Parse.category(), "parse");
+        assert_eq!(ErrorCode::Type.category(), "type");
+        assert_eq!(ErrorCode::Borrow.category(), "borrow");
+        assert_eq!(ErrorCode::Trait.category(), "trait");
+    }
+
+    #[test]
+    fn stage15_16_error_code_display() {
+        assert_eq!(ErrorCode::Lex.to_string(), "E001");
+        assert_eq!(ErrorCode::Type.to_string(), "E400");
+        assert_eq!(ErrorCode::Trait.to_string(), "E600");
+    }
+
+    #[test]
+    fn stage15_16_spanned_trait_lex_error() {
+        use crate::lexer::LexError;
+        let err = LexError {
+            message: "test".to_string(),
+            span: Span::new(10, 20),
+        };
+        assert_eq!(err.span().lo, 10);
+        assert_eq!(err.span().hi, 20);
+    }
+
+    #[test]
+    fn stage15_16_spanned_trait_type_error() {
+        use crate::typeck::TypeError;
+        let err = TypeError::new("test", Span::new(5, 15));
+        assert_eq!(err.span().lo, 5);
+        assert_eq!(err.span().hi, 15);
+    }
+
+    #[test]
+    fn stage15_16_spanned_trait_resolve_error() {
+        use crate::resolve::ResolveError;
+        let err = ResolveError::new("test", Span::new(0, 10));
+        assert_eq!(err.span().lo, 0);
+        assert_eq!(err.span().hi, 10);
+    }
+
+    #[test]
+    fn stage15_16_spanned_trait_borrow_error() {
+        use crate::borrowck::BorrowError;
+        use crate::borrowck::BorrowErrorKind;
+        let err = BorrowError {
+            message: "test".to_string(),
+            span: Span::new(3, 7),
+            kind: BorrowErrorKind::UseAfterMove,
+        };
+        assert_eq!(err.span().lo, 3);
+        assert_eq!(err.span().hi, 7);
+    }
+
+    #[test]
+    fn stage15_16_spanned_trait_parse_error() {
+        use crate::parser::ParseError;
+        let err = ParseError {
+            message: "test".to_string(),
+            span: Span::new(100, 110),
+        };
+        assert_eq!(err.span().lo, 100);
+        assert_eq!(err.span().hi, 110);
     }
 }
