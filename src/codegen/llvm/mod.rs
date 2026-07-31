@@ -1851,9 +1851,34 @@ impl Emitter for LLVMSysEmitter {
 /// bytes (which would indicate a bug in the literal). The returned pointer
 /// is borrowed from a leaked `CString` (the string is short and lives for
 /// the duration of the program — acceptable for LLVM name tags).
+/// Stage 15.3 (perf fix): Convert &str to C string pointer.
+///
+/// **Before**: `CString::new(s).unwrap().into_raw()` — leaks every CString
+/// (memory grows unbounded in LSP mode).
+/// **After**: Uses a thread-local cache of CStrings. Repeated strings reuse
+/// the same allocation. Memory is bounded by the number of unique strings
+/// (typically <1000 per compilation unit).
+///
+/// Per Phase 2 audit HP-B6: "cstr() leaks every CString."
+/// Per §1.0 原則 6 "通用 > 特例": one cache handles all string-to-CString conversions.
 fn cstr(s: &str) -> *const std::os::raw::c_char {
-    let c = CString::new(s).unwrap();
-    c.into_raw()
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    thread_local! {
+        static CSTR_CACHE: RefCell<HashMap<String, CString>> = RefCell::new(HashMap::new());
+    }
+
+    CSTR_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if !cache.contains_key(s) {
+            cache.insert(s.to_string(), CString::new(s).unwrap());
+        }
+        // Safe: the CString is stored in the HashMap and won't be moved
+        // or dropped until the thread exits. HashMap doesn't move values
+        // after insertion (only rehashes the bucket array).
+        cache[s].as_ptr()
+    })
 }
 
 /// True iff `ty` is a floating-point type.

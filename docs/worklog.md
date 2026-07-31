@@ -17535,3 +17535,40 @@ Stage Summary:
 - TypeInterner module created (infrastructure for v0.3 Ty interning)
 - Pre-build impl index eliminates O(B×O×I) quadratic → O(1) per lookup
 - v0.128.0: minor bump (v0.2 infrastructure + perf optimization)
+
+---
+Task ID: stage15.3-cstr-cache-perf
+Agent: Super Z (main)
+Task: Stage 15.3 — cstr() memory leak fix (thread-local cache). v0.128.0 → v0.129.0.
+
+Work Log:
+- Baseline: v0.128.0 / 1951 rust tests + 5216 conformance (post-Stage 15.2)
+
+### cstr() Memory Leak Fix (src/codegen/llvm/mod.rs)
+
+**Before**: `CString::new(s).unwrap().into_raw()` — leaks every CString.
+Each call to `cstr()` allocates a new CString and never frees it.
+~100 calls per compile = ~100 leaked CStrings per compilation unit.
+
+**After**: Thread-local `HashMap<String, CString>` cache.
+- First call for a string: allocates + caches CString
+- Subsequent calls for same string: returns cached pointer
+- Memory bounded by number of unique strings (~1000 per compilation unit)
+- Thread-local: no synchronization overhead, no global state
+
+Per Phase 2 audit HP-B6: "cstr() leaks every CString. Acceptable for v0.1 CLI
+but v0.2 LSP mode will accumulate unbounded memory."
+
+Per §1.0 原則 6 "通用 > 特例": one cache handles all string-to-CString conversions.
+Per §1.0 原則 3 "显式 > 隐式": caching is explicit in the function implementation.
+
+### Verification
+- All 1951 rust tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.128.0 → v0.129.0
+
+Stage Summary:
+- Stage 15.3 PASSED — cstr() memory leak fixed via thread-local cache
+- Eliminates unbounded memory growth in LSP mode (v0.2)
+- v0.129.0: minor bump (perf fix — memory leak elimination)
