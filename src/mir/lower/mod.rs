@@ -479,7 +479,7 @@ impl<'a> MirLowerCtxt<'a> {
                 (
                     Const {
                         ty: ty.clone(),
-                        val: ConstVal::Float(*f),
+                        val: ConstVal::Float(f.to_bits()),
                     },
                     ty,
                 )

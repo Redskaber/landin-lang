@@ -18963,3 +18963,47 @@ Stage Summary:
 - Stage 15.24 PASSED — v0.150.0 milestone (clean state verified)
 - Ty interning migration strategy confirmed: incremental, per-module
 - v0.150.0: minor bump (milestone — clean verified state)
+
+---
+Task ID: stage15.25-constval-float-bits-eq-hash
+Agent: Super Z (main)
+Task: Stage 15.25 — ConstVal::Float(f64)→Float(u64) bits + Eq+Hash derives on TyKind. v0.150.0 → v0.151.0.
+
+Work Log:
+- Baseline: v0.150.0 / 2006 rust tests + 5216 conformance
+
+### 1. Changed ConstVal::Float(f64) to ConstVal::Float(u64) (src/mir/ty.rs)
+
+f64 doesn't implement Eq or Hash (because NaN != NaN). Changed to store the
+bit representation (u64) instead. This enables Eq+Hash derives on ConstVal,
+which transitively enables them on Const, TyKind, and Ty.
+
+Construction: `ConstVal::Float(*f)` → `ConstVal::Float(f.to_bits())`
+Consumption: `*f` → `f64::from_bits(*bits)`
+
+Updated 3 consumption sites:
+- src/mir/lower/mod.rs (construction)
+- src/codegen/llvm/mod.rs (LLVM emission)
+- src/codegen/text/mod.rs (text emission)
+
+### 2. Added Eq+Hash derives to TyKind, Ty, Const, ConstVal (src/mir/ty.rs)
+
+All now derive `Debug, Clone, PartialEq, Eq, Hash`.
+
+### 3. Added Hash derive to dependency types
+
+- IntTy, UintTy, FloatTy (src/ast/kinds.rs) — had Eq, added Hash
+- Abi (src/ast/kinds.rs) — had Eq, added Hash
+- Mutability, Sig, ParamTy (src/mir/ty.rs) — had Eq, added Hash
+
+### 4. Verification
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.150.0 → v0.151.0
+
+Stage Summary:
+- Stage 15.25 PASSED — ConstVal::Float bits + Eq+Hash on TyKind
+- Unblocks future Ty interning (HashMap<TyKind, ...> dedup)
+- v0.151.0: minor bump (foundational — Eq+Hash enables interning)

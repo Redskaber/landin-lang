@@ -105,10 +105,11 @@ impl Emitter for TextEmitter {
             ConstVal::Int(n) => format!("{}", n),
             ConstVal::Uint(n) => format!("{}", n),
             ConstVal::Bool(b) => format!("{}", if *b { 1 } else { 0 }),
-            ConstVal::Float(f) => {
-                if *f == 0.0 {
+            ConstVal::Float(bits) => {
+                let f = f64::from_bits(*bits);
+                if f == 0.0 {
                     "0.000000e+00".to_string()
-                } else if *f == 1.0 {
+                } else if f == 1.0 {
                     "1.000000e+00".to_string()
                 } else {
                     format!("{:e}", f)

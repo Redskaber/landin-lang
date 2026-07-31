@@ -28,7 +28,8 @@ use crate::session::Span;
 ///
 /// Per §1.0 原則 1 "长期 > 短期": gradual migration is safer than big-bang.
 /// Per §15 "最优 > 最小": this is the right first step.
-#[derive(Debug, Clone, PartialEq)]
+/// Stage 15.25 (v0.2): Added `Eq, Hash` derives to Ty (transitively from TyKind).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ty {
     pub kind: TyKind,
 }
@@ -56,7 +57,10 @@ impl Ty {
 }
 
 /// All MIR type kinds.
-#[derive(Debug, Clone, PartialEq)]
+/// Stage 15.25 (v0.2): Added `Eq, Hash` derives — enabled by ConstVal::Float
+/// now storing u64 (bits) instead of f64. Required for future Ty interning
+/// (HashMap<TyKind, ...> dedup in TypeInterner).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TyKind {
     Bool,
     Char,
@@ -94,7 +98,8 @@ pub enum TyKind {
 }
 
 /// Mutability of a reference or pointer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Stage 15.25 (v0.2): Added `Eq, Hash` derives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Mutability {
     Mutable,
     Immutable,
@@ -142,7 +147,8 @@ pub struct RegionVid(pub u32);
 pub type SubstsRef = Rc<[Ty]>;
 
 /// Function signature.
-#[derive(Debug, Clone, PartialEq)]
+/// Stage 15.25 (v0.2): Added `Eq, Hash` derives.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Sig {
     pub inputs: Vec<Ty>,
     pub output: Box<Ty>,
@@ -151,7 +157,7 @@ pub struct Sig {
 }
 
 /// A type parameter: `T` with its index in the generic params.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ParamTy {
     pub index: u32,
     pub name: crate::lexer::Symbol,
@@ -163,18 +169,31 @@ pub struct ParamTy {
 /// heap allocation per Const. Ty is already a small struct (one TyKind
 /// field), so Box<Ty> was an unnecessary indirection.
 /// Per §15 "最优 > 最小": root-cause fix for per-Const heap allocation.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// Stage 15.25 (v0.2): Added `Eq, Hash` derives — enabled by ConstVal::Float
+/// now storing u64 (bits) instead of f64.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Const {
     pub ty: Ty,
     pub val: ConstVal,
 }
 
 /// Compile-time constant value.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// Stage 15.25 (v0.2): Changed `Float(f64)` to `Float(u64)` — stores the
+/// bit representation of f64 instead of the f64 value itself. This enables
+/// `Eq + Hash` derives on `ConstVal` (and transitively on `Const`, `TyKind`,
+/// and `Ty`), which is required for future Ty interning (HashMap dedup).
+///
+/// Per §1.0 原則 3 "显式 > 隐式": the bit representation is explicit.
+/// Per §15 "最优 > 最小": this is the root-cause fix that unblocks Eq+Hash.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ConstVal {
     Int(u128),
     Uint(u128),
-    Float(f64),
+    /// Stage 15.25: f64 stored as bits (u64) for Eq+Hash support.
+    /// Use `f64::from_bits(val)` to recover the f64 value.
+    Float(u64),
     Bool(bool),
     Char(char),
     Str(crate::lexer::Symbol),

@@ -104,7 +104,7 @@ pub struct FnSig {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Abi {
     Landin,
     C,
@@ -252,7 +252,7 @@ pub enum Ty {
     Infer(Span),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IntTy {
     I8,
     I16,
@@ -262,7 +262,7 @@ pub enum IntTy {
     Isize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UintTy {
     U8,
     U16,
@@ -272,7 +272,7 @@ pub enum UintTy {
     Usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FloatTy {
     F32,
     F64,

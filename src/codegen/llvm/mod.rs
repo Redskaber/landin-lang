@@ -698,9 +698,9 @@ impl Emitter for LLVMSysEmitter {
                     let ty = LLVMInt32TypeInContext(self.ctx);
                     LLVMConstInt(ty, *c as u64, 0)
                 }
-                ConstVal::Float(f) => {
+                ConstVal::Float(bits) => {
                     let ty = LLVMDoubleTypeInContext(self.ctx);
-                    LLVMConstReal(ty, *f)
+                    LLVMConstReal(ty, f64::from_bits(*bits))
                 }
                 ConstVal::Str(_) => {
                     // Stage 3.27 (TextEmitter) intercepts Str before reaching

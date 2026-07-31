@@ -1,12 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.150.0
+**Current version**: v0.151.0
 **Date**: 2026-07-31
 **Test count**: 170 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
 
 ---
-## v0.150.0 — Stage 15.24 (v0.150 Milestone: Clean State + Ty Interning Investigation)
+## v0.151.0 — Stage 15.25 (ConstVal::Float bits + Eq+Hash on TyKind)
+
+### Overview
+
+Stage 15.25 changes `ConstVal::Float(f64)` to `ConstVal::Float(u64)` (bit
+representation) and adds `Eq + Hash` derives to `TyKind`, `Ty`, `Const`, and
+`ConstVal`. This unblocks future Ty interning — `HashMap<TyKind, ...>` dedup
+in the `TypeInterner` now works.
+
+### What Changed
+
+**`ConstVal::Float(f64)` → `Float(u64)`** (`src/mir/ty.rs`):
+- f64 doesn't implement Eq/Hash (NaN != NaN)
+- u64 (bits) does implement Eq/Hash
+- Construction: `f.to_bits()`, consumption: `f64::from_bits(bits)`
+
+**Added `Eq, Hash` derives**:
+- `Ty`, `TyKind`, `Const`, `ConstVal` (src/mir/ty.rs)
+- `IntTy`, `UintTy`, `FloatTy`, `Abi` (src/ast/kinds.rs)
+- `Mutability`, `Sig`, `ParamTy` (src/mir/ty.rs)
+
+### Why This Matters
+
+This is the foundational change for Ty interning. Without `Eq + Hash`, types
+can't be deduplicated in a `HashMap`. Now they can — the `TypeInterner`
+(added in Stage 15.2) can finally use `HashMap<TyKind, Ty>` for dedup.
+
+### Verification
+
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+---
+## v0.150.0 — Stage 15.24 (v0.150 Milestone)
 
 ### Overview
 
