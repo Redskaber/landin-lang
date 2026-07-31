@@ -99,6 +99,70 @@ impl fmt::Display for ErrorCode {
     }
 }
 
+/// Stage 15.17: Color configuration for diagnostics display.
+///
+/// Controls whether ANSI color codes are emitted. When `Auto`, colors are
+/// enabled only if stderr is a TTY (checked by the caller).
+///
+/// Per §1.0 原则 3 "显式 > 隐式": the color choice is explicit.
+/// Per §23 (API Naming): `ColorConfig` follows the `<Noun>Config` pattern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ColorConfig {
+    /// Always use colors (even if output is not a TTY).
+    Always,
+    /// Never use colors (plain text).
+    Never,
+    /// Auto-detect: use colors only if stderr is a TTY (caller checks).
+    #[default]
+    Auto,
+}
+
+/// Stage 15.17: ANSI color codes for terminal output.
+///
+/// Per §23 (API Naming): `Color` follows the `<Noun>` pattern for enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Color {
+    Red,
+    Yellow,
+    Cyan,
+    Green,
+    #[allow(dead_code)]
+    Bold,
+    Reset,
+}
+
+impl Color {
+    fn code(self) -> &'static str {
+        match self {
+            Color::Red => "\x1b[31m",
+            Color::Yellow => "\x1b[33m",
+            Color::Cyan => "\x1b[36m",
+            Color::Green => "\x1b[32m",
+            Color::Bold => "\x1b[1m",
+            Color::Reset => "\x1b[0m",
+        }
+    }
+}
+
+/// Stage 15.17: Apply color to a string if colors are enabled.
+fn colorize(text: &str, color: Color, config: ColorConfig) -> String {
+    match config {
+        ColorConfig::Always => format!("{}{}{}", color.code(), text, Color::Reset.code()),
+        ColorConfig::Never => text.to_string(),
+        ColorConfig::Auto => text.to_string(), // Auto is resolved by caller
+    }
+}
+
+/// Stage 15.17: Get the color for a diagnostic level.
+fn level_color(level: Level) -> Color {
+    match level {
+        Level::Error | Level::Fatal | Level::Bug => Color::Red,
+        Level::Warning => Color::Yellow,
+        Level::Note => Color::Cyan,
+        Level::Help => Color::Green,
+    }
+}
+
 /// Severity level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Level {
@@ -420,6 +484,65 @@ impl DiagnosticBuffer {
         }
         out
     }
+
+    /// Stage 15.17: Format diagnostics with source snippets and ANSI colors.
+    ///
+    /// Same as `format_with_source` but with color:
+    /// - Error/Fatal/Bug: red
+    /// - Warning: yellow
+    /// - Note: cyan
+    /// - Help: green
+    /// - `^^^` underline: colored by level
+    ///
+    /// Per "显示友好": colored output makes it easier to distinguish
+    /// errors from warnings at a glance.
+    ///
+    /// Per §23 (API Naming): `format_with_source_colored` follows
+    /// `<verb>_<prep>_<noun>_<adj>` pattern.
+    pub fn format_with_source_colored(
+        &self,
+        source_name: &str,
+        source_map: &crate::session::SourceMap,
+        source: &str,
+        color: ColorConfig,
+    ) -> String {
+        let mut out = String::new();
+        for diag in &self.diagnostics {
+            let lc = level_color(diag.level);
+            // Header line: colored "error[E0308]: message"
+            let level_str = colorize(&diag.level.to_string(), lc, color);
+            if let Some(ref code) = diag.code {
+                out.push_str(&format!("{}[{}]: {}\n", level_str, code, diag.message));
+            } else {
+                out.push_str(&format!("{}: {}\n", level_str, diag.message));
+            }
+            // Location line
+            let LineCol { line, col } = source_map.line_col(diag.span.lo);
+            out.push_str(&format!("  --> {}:{}:{}\n", source_name, line, col));
+            // Source snippet with colored ^^^ underline
+            out.push_str(&format_snippet_colored(source, &diag.span, lc, color));
+            // Children
+            for child in &diag.children {
+                let cc = level_color(child.level);
+                let child_level_str = colorize(&child.level.to_string(), cc, color);
+                out.push_str(&format!("\n{}: {}\n", child_level_str, child.message));
+                let LineCol { line, col } = source_map.line_col(child.span.lo);
+                out.push_str(&format!("  --> {}:{}:{}\n", source_name, line, col));
+                out.push_str(&format_snippet_colored(source, &child.span, cc, color));
+            }
+            out.push('\n');
+        }
+        if self.error_count > 0 {
+            let err_str = colorize("error", Color::Red, color);
+            out.push_str(&format!(
+                "{}: aborting due to {} previous error{}\n",
+                err_str,
+                self.error_count,
+                if self.error_count > 1 { "s" } else { "" }
+            ));
+        }
+        out
+    }
 }
 
 /// Stage 15.13: Format a source snippet around a span, with a `^` underline.
@@ -481,6 +604,57 @@ pub fn format_snippet(src: &str, span: &Span) -> String {
     out.push_str(&" ".repeat(col_lo));
     let span_len = col_hi.saturating_sub(col_lo).max(1);
     out.push_str(&"^".repeat(span_len));
+    out.push('\n');
+    out
+}
+
+/// Stage 15.17: Format a source snippet with colored `^` underline.
+///
+/// Same as `format_snippet` but the `^^^` underline is colored.
+/// Per §23 (API Naming): `format_snippet_colored` follows
+/// `<verb>_<noun>_<adj>` pattern.
+pub fn format_snippet_colored(src: &str, span: &Span, color: Color, config: ColorConfig) -> String {
+    if span.is_dummy() {
+        return String::new();
+    }
+    let lo = span.lo as usize;
+    let hi = span.hi as usize;
+    if lo >= src.len() || hi > src.len() {
+        return String::new();
+    }
+
+    let mut line_start = 0;
+    let mut line_end = src.len();
+    let mut line_no = 1;
+    for (i, c) in src.char_indices() {
+        if i < lo {
+            if c == '\n' {
+                line_start = i + 1;
+                line_no += 1;
+            }
+        } else if c == '\n' {
+            line_end = i;
+            break;
+        }
+    }
+    if line_end < line_start {
+        line_end = src.len();
+    }
+    let line = &src[line_start..line_end.min(src.len())];
+
+    let col_lo = lo.saturating_sub(line_start);
+    let col_hi = hi.saturating_sub(line_start).max(col_lo + 1);
+
+    let mut out = String::new();
+    let line_no_str = line_no.to_string();
+    let pad = " ".repeat(line_no_str.len());
+    out.push_str(&format!("  {} |\n", pad));
+    out.push_str(&format!("{} | {}\n", line_no_str, line));
+    out.push_str(&format!("  {} | ", pad));
+    out.push_str(&" ".repeat(col_lo));
+    let span_len = col_hi.saturating_sub(col_lo).max(1);
+    let underline = "^".repeat(span_len);
+    out.push_str(&colorize(&underline, color, config));
     out.push('\n');
     out
 }
@@ -661,5 +835,88 @@ mod tests {
         };
         assert_eq!(err.span().lo, 100);
         assert_eq!(err.span().hi, 110);
+    }
+
+    // Stage 15.17 tests
+
+    #[test]
+    fn stage15_17_color_config_default() {
+        assert_eq!(ColorConfig::default(), ColorConfig::Auto);
+    }
+
+    #[test]
+    fn stage15_17_colorize_always() {
+        let result = colorize("error", Color::Red, ColorConfig::Always);
+        assert!(result.contains("\x1b[31m"), "should contain red ANSI code");
+        assert!(result.contains("\x1b[0m"), "should contain reset ANSI code");
+        assert!(result.contains("error"), "should contain the text");
+    }
+
+    #[test]
+    fn stage15_17_colorize_never() {
+        let result = colorize("error", Color::Red, ColorConfig::Never);
+        assert_eq!(result, "error", "Never should produce plain text");
+        assert!(!result.contains("\x1b"), "should not contain ANSI codes");
+    }
+
+    #[test]
+    fn stage15_17_colorize_auto() {
+        // Auto resolves to plain text (caller resolves Auto to Always/Never)
+        let result = colorize("error", Color::Red, ColorConfig::Auto);
+        assert_eq!(result, "error", "Auto should produce plain text by default");
+    }
+
+    #[test]
+    fn stage15_17_level_color_mapping() {
+        assert_eq!(level_color(Level::Error), Color::Red);
+        assert_eq!(level_color(Level::Fatal), Color::Red);
+        assert_eq!(level_color(Level::Bug), Color::Red);
+        assert_eq!(level_color(Level::Warning), Color::Yellow);
+        assert_eq!(level_color(Level::Note), Color::Cyan);
+        assert_eq!(level_color(Level::Help), Color::Green);
+    }
+
+    #[test]
+    fn stage15_17_format_snippet_colored_never() {
+        let src = "fn main() { let x = 42; }";
+        let span = Span::new(20, 22);
+        let result = format_snippet_colored(src, &span, Color::Red, ColorConfig::Never);
+        assert!(result.contains("42"), "should contain source line");
+        assert!(!result.contains("\x1b"), "Never should not have ANSI codes");
+    }
+
+    #[test]
+    fn stage15_17_format_snippet_colored_always() {
+        let src = "fn main() { let x = 42; }";
+        let span = Span::new(20, 22);
+        let result = format_snippet_colored(src, &span, Color::Red, ColorConfig::Always);
+        assert!(result.contains("42"), "should contain source line");
+        assert!(
+            result.contains("\x1b[31m"),
+            "should contain red ANSI code for ^^^"
+        );
+        assert!(result.contains("\x1b[0m"), "should contain reset ANSI code");
+    }
+
+    #[test]
+    fn stage15_17_format_with_source_colored_never() {
+        let mut buf = DiagnosticBuffer::new();
+        buf.emit(Diagnostic::error("test error", Span::new(0, 5)));
+        let src = "fn main() { }";
+        let sm = crate::session::SourceMap::new(src);
+        let result = buf.format_with_source_colored("test.lin", &sm, src, ColorConfig::Never);
+        assert!(result.contains("error"), "should contain 'error'");
+        assert!(!result.contains("\x1b"), "Never should not have ANSI codes");
+    }
+
+    #[test]
+    fn stage15_17_format_with_source_colored_always() {
+        let mut buf = DiagnosticBuffer::new();
+        buf.emit(Diagnostic::error("test error", Span::new(0, 5)));
+        let src = "fn main() { }";
+        let sm = crate::session::SourceMap::new(src);
+        let result = buf.format_with_source_colored("test.lin", &sm, src, ColorConfig::Always);
+        assert!(result.contains("\x1b[31m"), "should contain red ANSI code");
+        assert!(result.contains("test error"), "should contain message");
     }
 }

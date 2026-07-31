@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.142.0 (v0.2 Phase 1 in progress — error system: Spanned + ErrorCode)  
+**Version**: v0.143.0 (v0.2 Phase 1 in progress — color output for diagnostics)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,18 +21,18 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 1 IN PROGRESS — Stage 15.16 Complete**
+> **v0.2 Phase 1 IN PROGRESS — Stage 15.17 Complete**
 >
-> Stage 15.1-15.16 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
+> Stage 15.1-15.17 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
 > - **Stage 15.1-15.4** — Ty interning design + infrastructure
 > - **Stage 15.5-15.6** — Span removal + method_return_type_cache activation
 > - **Stage 15.7** — Writeback consolidation: 8 passes → 2 functions
 > - **Stage 15.8-15.9** — AdtLayouts sharing + VtableEntry interning + TraitError
 > - **Stage 15.10-15.11** — SubstsRef Rc<[Ty]> + Const.ty Box→Ty
-> - **Stage 15.12-15.15** — Error system cleanup + diagnostics module + CLI migration
-> - **Stage 15.16** — Spanned trait (uniform span access) + ErrorCode catalog (E001-E900)
+> - **Stage 15.12-15.16** — Error system cleanup + diagnostics module + CLI migration + Spanned + ErrorCode
+> - **Stage 15.17** — Color output: ANSI color support for diagnostics (ColorConfig, colored ^^^ underline)
 >
-> **Test count**: 161 lib tests + 2006 integration tests + 5216 conformance tests = 7383 passing.
+> **Test count**: 170 lib tests + 2006 integration tests + 5216 conformance tests = 7392 passing.
 > **0 clippy warnings**, fmt clean. Next major milestone: v0.2 Phase 1 Task 1
 > (full Ty interning via Rc<TyKind> stepping stone).
 

@@ -1,9 +1,35 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.142.0
+**Current version**: v0.143.0
 **Date**: 2026-07-31
-**Test count**: 161 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 170 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.143.0 — Stage 15.17 (Color Output for Diagnostics)
+
+### Overview
+
+Stage 15.17 adds ANSI color support to the diagnostics system, making it
+easier to distinguish errors from warnings at a glance.
+
+### What Changed
+
+**Added color infrastructure** (`src/diagnostics/mod.rs`):
+- `ColorConfig` enum (Always/Never/Auto)
+- `Color` enum (Red/Yellow/Cyan/Green/Bold/Reset) + `colorize()` helper
+- `level_color()` mapping (Error→Red, Warning→Yellow, Note→Cyan, Help→Green)
+- `format_snippet_colored()` — colored `^^^` underline
+- `DiagnosticBuffer::format_with_source_colored()` — colored full display
+
+**New tests**: 9 unit tests in `src/diagnostics/mod.rs`
+
+### Verification
+
+- All 170 lib tests pass (161 + 9 new, zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.142.0 — Stage 15.16 (Error System: Spanned Trait + ErrorCode Catalog)

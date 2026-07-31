@@ -18590,3 +18590,59 @@ Stage Summary:
 - ErrorCode catalog provides stable error codes (E001-E900)
 - to_diagnostics uses ErrorCode instead of string literals
 - v0.142.0: minor bump (error system improvements)
+
+---
+Task ID: stage15.17-color-output
+Agent: Super Z (main)
+Task: Stage 15.17 — Color output for diagnostics (ANSI codes). v0.142.0 → v0.143.0.
+
+Work Log:
+- Baseline: v0.142.0 / 2006 rust tests + 5216 conformance (post-Stage 15.16)
+
+### 1. Added ColorConfig enum (src/diagnostics/mod.rs)
+- Always: always use colors
+- Never: never use colors (plain text)
+- Auto: auto-detect (caller resolves to Always/Never based on TTY)
+
+### 2. Added Color enum + colorize() helper
+- Red, Yellow, Cyan, Green, Bold, Reset
+- colorize(text, color, config) → applies ANSI codes if config is Always
+
+### 3. Added level_color() mapping
+- Error/Fatal/Bug → Red
+- Warning → Yellow
+- Note → Cyan
+- Help → Green
+
+### 4. Added format_snippet_colored()
+- Same as format_snippet but ^^^ underline is colored
+
+### 5. Added DiagnosticBuffer::format_with_source_colored()
+- Same as format_with_source but with colored headers and underlines
+- Level text colored by level_color()
+- ^^^ underline colored by level_color()
+- "error: aborting" summary in red
+
+### 6. 9 new unit tests
+1. stage15_17_color_config_default
+2. stage15_17_colorize_always
+3. stage15_17_colorize_never
+4. stage15_17_colorize_auto
+5. stage15_17_level_color_mapping
+6. stage15_17_format_snippet_colored_never
+7. stage15_17_format_snippet_colored_always
+8. stage15_17_format_with_source_colored_never
+9. stage15_17_format_with_source_colored_always
+
+### Verification
+- All 170 lib tests pass (161 + 9 new, zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.142.0 → v0.143.0
+
+Stage Summary:
+- Stage 15.17 PASSED — color output for diagnostics
+- ANSI color support: ColorConfig, Color, colorize(), format_snippet_colored
+- format_with_source_colored produces colored rustc-style display
+- v0.143.0: minor bump (UX improvement — colored error display)
