@@ -342,6 +342,10 @@ pub fn compile(src: &str) -> CompileResult {
     }
 
     let mut fn_sig_table = typeck::FnSigTable::default();
+
+    // Stage 15.2 (perf): Pre-build method→impl index for O(1) lookup.
+    let method_to_impl_index = build_method_to_impl_index(&hir);
+
     for (def_id, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
             use crate::hir::HirFnRetTy;
@@ -368,16 +372,20 @@ pub fn compile(src: &str) -> CompileResult {
                     // lowering detail that may or may not be set.
                     if p.self_kind.is_some() {
                         // Resolve self param type from owning impl block.
-                        resolve_self_param_type_for_sig(&hir, *def_id, p.self_kind).unwrap_or_else(
-                            || {
-                                // Fallback: if self_ty resolution fails, try p.ty
-                                if let Some(ty) = &p.ty {
-                                    crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
-                                } else {
-                                    crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
-                                }
-                            },
+                        resolve_self_param_type_for_sig(
+                            &hir,
+                            *def_id,
+                            p.self_kind,
+                            &method_to_impl_index,
                         )
+                        .unwrap_or_else(|| {
+                            // Fallback: if self_ty resolution fails, try p.ty
+                            if let Some(ty) = &p.ty {
+                                crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                            } else {
+                                crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
+                            }
+                        })
                     } else if let Some(ty) = &p.ty {
                         crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
                     } else {
@@ -440,17 +448,22 @@ pub fn compile(src: &str) -> CompileResult {
                         .iter()
                         .map(|p| {
                             if p.self_kind.is_some() {
-                                resolve_self_param_type_for_sig(&hir, method_def_id, p.self_kind)
-                                    .unwrap_or_else(|| {
-                                        if let Some(ty) = &p.ty {
-                                            crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
-                                        } else {
-                                            crate::mir::ty::Ty::new(
-                                                crate::mir::ty::TyKind::Error,
-                                                crate::session::Span::DUMMY,
-                                            )
-                                        }
-                                    })
+                                resolve_self_param_type_for_sig(
+                                    &hir,
+                                    method_def_id,
+                                    p.self_kind,
+                                    &method_to_impl_index,
+                                )
+                                .unwrap_or_else(|| {
+                                    if let Some(ty) = &p.ty {
+                                        crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                                    } else {
+                                        crate::mir::ty::Ty::new(
+                                            crate::mir::ty::TyKind::Error,
+                                            crate::session::Span::DUMMY,
+                                        )
+                                    }
+                                })
                             } else if let Some(ty) = &p.ty {
                                 crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
                             } else {
@@ -1686,46 +1699,59 @@ fn owner_return_ty(owner: &OwnerNode) -> Option<crate::hir::HirTy> {
 ///
 /// Per §16 (interface isolation): this is a HIR query at fn_sig_table
 /// construction time. The result is sunk into fn_sig_table as data.
+/// Stage 15.2 (perf optimization): Pre-build a DefId → ImplBlock index
+/// to eliminate O(B × O × I) quadratic scan in `resolve_self_param_type_for_sig`.
+///
+/// Per Phase 2 audit recommendation: "Pre-build HashMap<DefId, &ImplBlock> index
+/// so resolve_self_param_type_for_sig is O(1) per call."
+///
+/// Per §1.0 原则 6 "通用 > 特例": one index handles all impl methods.
+fn build_method_to_impl_index(
+    hir: &HirCrate,
+) -> std::collections::HashMap<crate::hir::DefId, usize> {
+    let mut index = std::collections::HashMap::new();
+    for (i, (_, owner)) in hir.owners.iter().enumerate() {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+            for impl_item in &impl_block.items {
+                if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                    // Map method DefId → owner index (where the impl block lives)
+                    index.insert(f.hir_id.owner, i);
+                }
+            }
+        }
+    }
+    index
+}
+
 fn resolve_self_param_type_for_sig(
     hir: &HirCrate,
     method_def_id: crate::hir::DefId,
     self_kind: Option<crate::ast::SelfKind>,
+    method_to_impl_index: &std::collections::HashMap<crate::hir::DefId, usize>,
 ) -> Option<crate::mir::ty::Ty> {
-    // Search all owners for an Impl block that contains a method whose
-    // hir_id.owner matches method_def_id.
-    for (_, owner) in &hir.owners {
-        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
-            for impl_item in &impl_block.items {
-                if let crate::hir::HirImplItem::Fn(f) = impl_item {
-                    if f.hir_id.owner == method_def_id {
-                        // Found the owning impl block! Lower its self_ty.
-                        let adt_ty = crate::mir::lower::lower_hir_ty_to_mir_ty(&impl_block.self_ty);
-                        return match self_kind {
-                            Some(crate::ast::SelfKind::Ref(mutability)) => {
-                                let mir_mut = match mutability {
-                                    crate::ast::Mutability::Mutable => {
-                                        crate::mir::ty::Mutability::Mutable
-                                    }
-                                    crate::ast::Mutability::Immutable => {
-                                        crate::mir::ty::Mutability::Immutable
-                                    }
-                                };
-                                Some(crate::mir::ty::Ty::new(
-                                    crate::mir::ty::TyKind::Ref(
-                                        crate::mir::ty::Region::Erased,
-                                        mir_mut,
-                                        Box::new(adt_ty),
-                                    ),
-                                    f.span,
-                                ))
-                            }
-                            // self by value — no wrapping
-                            _ => Some(adt_ty),
-                        };
-                    }
-                }
+    // Stage 15.2: O(1) lookup via pre-built index (was O(O × I) linear scan).
+    let owner_idx = *method_to_impl_index.get(&method_def_id)?;
+    let (_, owner) = &hir.owners[owner_idx];
+    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
+        let adt_ty = crate::mir::lower::lower_hir_ty_to_mir_ty(&impl_block.self_ty);
+        return match self_kind {
+            Some(crate::ast::SelfKind::Ref(mutability)) => {
+                let mir_mut = match mutability {
+                    crate::ast::Mutability::Mutable => crate::mir::ty::Mutability::Mutable,
+                    crate::ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
+                };
+                Some(crate::mir::ty::Ty::new(
+                    crate::mir::ty::TyKind::Ref(
+                        crate::mir::ty::Region::Erased,
+                        mir_mut,
+                        Box::new(adt_ty),
+                    ),
+                    crate::session::Span::DUMMY,
+                ))
             }
-        }
+            // self by value — no wrapping
+            _ => Some(adt_ty),
+        };
     }
     None
 }

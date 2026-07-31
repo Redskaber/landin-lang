@@ -11,6 +11,7 @@ pub mod dyn_trait;
 pub mod lower;
 pub mod place;
 pub mod ty;
+pub mod ty_interner;
 
 // Stage 3.57 (P0-3 fix): explicit re-exports instead of `pub use *::*;`
 // to prevent accidental leakage of internal types.
