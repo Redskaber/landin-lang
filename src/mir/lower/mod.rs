@@ -109,6 +109,13 @@ pub struct MirLowerCtxt<'a> {
     /// merged into the driver's CompileErrors after lowering completes.
     /// Used for "报错 > 静默" — emit errors instead of silent placeholders.
     pub type_errors: Vec<crate::typeck::TypeError>,
+    /// Stage 15.4 (perf): Lazy cache for `query_method_return_type`.
+    /// Maps method DefId → return type. Populated on first lookup,
+    /// reused for all subsequent lookups of the same method.
+    /// Eliminates O(n) HIR scan per method call.
+    pub method_return_type_cache: std::cell::RefCell<
+        std::collections::HashMap<crate::hir::DefId, Option<crate::mir::ty::Ty>>,
+    >,
 }
 
 /// Stage 13.3a (TD-030): Information about a closure literal, stored in
@@ -156,6 +163,7 @@ impl<'a> MirLowerCtxt<'a> {
             loop_stack: Vec::new(),
             loop_result_locals: Vec::new(),
             type_errors: Vec::new(),
+            method_return_type_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     }
 

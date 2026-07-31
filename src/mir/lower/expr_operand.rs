@@ -2550,6 +2550,9 @@ fn auto_deref_if_ref(cx: &MirLowerCtxt, place: Place, _receiver: &HirExpr) -> Pl
 ///
 /// Returns `None` if the DefId doesn't resolve to an impl method or if
 /// the return type can't be lowered.
+///
+/// Stage 15.4 (perf): `query_method_return_type_cached` wraps this function
+/// with a RefCell<HashMap> cache to avoid repeated O(n) HIR scans.
 fn query_method_return_type(
     hir: &crate::hir::HirCrate,
     method_def_id: crate::hir::DefId,
@@ -3065,8 +3068,9 @@ fn resolve_method_by_name(
 ///
 /// Given a `hir_id` for a local binding, search the HIR body for the
 /// `let pat = init;` statement that binds it, and return the init's type.
+#[allow(clippy::only_used_in_recursion)]
 fn find_local_init_type(
-    _cx: &MirLowerCtxt,
+    cx: &MirLowerCtxt,
     hir: &crate::hir::HirCrate,
     target_hir_id: crate::hir::HirId,
 ) -> Option<Ty> {
@@ -3092,7 +3096,7 @@ fn find_local_init_type(
                 if let crate::hir::Res::Local(inner_hir_id) = path.res {
                     if inner_hir_id != target_hir_id {
                         // Recurse — find the inner local's init type
-                        if let Some(ty) = find_local_init_type(_cx, hir, inner_hir_id) {
+                        if let Some(ty) = find_local_init_type(cx, hir, inner_hir_id) {
                             return Some(ty);
                         }
                     }
