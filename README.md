@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.138.0 (v0.2 Phase 1 in progress — error system cleanup + friendly display)  
+**Version**: v0.139.0 (v0.2 Phase 1 in progress — diagnostics system improvements)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -23,9 +23,9 @@ backend via the `llvm-sys` crate.
 >
 > See `docs/develop/v0/stage-14/v0.1-final-release-assessment.md` for full assessment.
 
-> **v0.2 Phase 1 IN PROGRESS — Stage 15.12 Complete**
+> **v0.2 Phase 1 IN PROGRESS — Stage 15.13 Complete**
 >
-> Stage 15.1-15.12 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error system):
+> Stage 15.1-15.13 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
 > - **Stage 15.1** — Ty interning design doc (`docs/lang-design/19-ty-interning.md`)
 > - **Stage 15.2** — TypeInterner infrastructure + pre-build impl index (HP-B12)
 > - **Stage 15.3** — cstr() thread-local cache (memory leak fix for LSP mode)
@@ -47,8 +47,11 @@ backend via the `llvm-sys` crate.
 > - **Stage 15.12** — Error system cleanup: removed `MirBody.lower_type_errors`
 >   (IR no longer carries error collection). Lowering functions return 3-tuple.
 >   Friendly display: "errors found" summary + ResolveError .message display.
+> - **Stage 15.13** — Diagnostics system improvements: `src/diagnostics/` is now
+>   the single source of truth for error display. Added `DiagnosticBuilder`,
+>   `format_with_source` (rustc-style), error limit enforcement. 8 new tests.
 >
-> **Test count**: 1998 rust tests + 5216 conformance tests = 7214 passing.
+> **Test count**: 153 lib tests + 1998 integration tests + 5216 conformance tests = 7367 passing.
 > **0 clippy warnings**, fmt clean. Next major milestone: v0.2 Phase 1 Task 1
 > (full Ty interning via Rc<TyKind> stepping stone).
 

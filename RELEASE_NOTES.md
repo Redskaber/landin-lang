@@ -1,9 +1,67 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.138.0
+**Current version**: v0.139.0
 **Date**: 2026-07-31
-**Test count**: 1998 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 153 rust lib tests + 1998 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.139.0 — Stage 15.13 (Diagnostics System Improvements)
+
+### Overview
+
+Stage 15.13 improves the `src/diagnostics/` module to make it the single
+source of truth for error display formatting. The module previously had
+infrastructure that was unused — the driver had its own `format_snippet`
+function and `format_for_user` method.
+
+### What Changed
+
+**Moved `format_snippet`** (`src/diagnostics/mod.rs`):
+- From `driver.rs` (private) to `diagnostics/mod.rs` (public)
+- Driver's `format_snippet` is now a thin wrapper
+
+**Added `DiagnosticBuilder`** (`src/diagnostics/mod.rs`):
+- Fluent API for ergonomic `Diagnostic` construction
+- Methods: `error()`, `warning()`, `note()`, `help()`, `fatal()`,
+  `with_code()`, `with_note()`, `with_help()`, `build()`
+
+**Added `DiagnosticBuffer::format_with_source`** (`src/diagnostics/mod.rs`):
+- rustc-style display with source code snippets
+- Header + location + snippet + children (notes/helps)
+
+**Added error limit enforcement** (`src/diagnostics/mod.rs`):
+- `emit` respects `error_limit` (default 128)
+- "error limit reached" note emitted ONCE
+- Prevents overwhelming the user with cascading errors
+
+**New tests**:
+- 8 unit tests in `src/diagnostics/mod.rs`
+
+**Documentation**:
+- `docs/develop/v0/stage-15/stage-15.13-diagnostics-system.md` — full §29 review
+- `docs/tests/v0/stage15/stage-15.13-test-plan.md` — test plan
+- `docs/worklog.md` — Stage 15.13 entry
+- `README.md` — updated v0.2 progress
+
+### Why This Is The Right Stage 15.13
+
+Per user requirement "留意错误系统、显示友好(src/diagnostics/)":
+- The `src/diagnostics/` module existed but was unused.
+- The driver had its own `format_snippet` — duplicated logic.
+- `DiagnosticBuffer::format` only showed line:col without source snippets.
+- No ergonomic builder for constructing diagnostics.
+
+Per §1.0 原则 3 "显式 > 隐式": the snippet format should be explicit in
+the diagnostics module, not hidden in driver.rs.
+Per §23 (API Naming): `DiagnosticBuilder` follows the `<Noun>Builder` pattern.
+
+### Verification
+
+- All 153 lib tests pass (145 + 8 new, zero regression)
+- All 1998 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.138.0 — Stage 15.12 (Error System Cleanup + Friendly Display)

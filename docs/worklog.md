@@ -18323,3 +18323,82 @@ Stage Summary:
 - Lowering functions return 3-tuple (MirBody, UnificationTable, Vec<TypeError>)
 - Error display: "errors found" summary + ResolveError .message display
 - v0.138.0: minor bump (architectural cleanup + UX improvement)
+
+---
+Task ID: stage15.13-diagnostics-system
+Agent: Super Z (main)
+Task: Stage 15.13 — Diagnostics system improvements (src/diagnostics/). v0.138.0 → v0.139.0.
+
+Work Log:
+- Baseline: v0.138.0 / 1998 rust tests + 5216 conformance (post-Stage 15.12)
+
+### 1. Moved format_snippet to diagnostics module (src/diagnostics/mod.rs)
+
+Moved `format_snippet` from `src/driver.rs` (private) to `src/diagnostics/mod.rs`
+(public). The driver's `format_snippet` is now a thin wrapper:
+`fn format_snippet(src: &str, span: &Span) -> String { crate::diagnostics::format_snippet(src, span) }`
+
+This makes `src/diagnostics/` the single source of truth for error display
+formatting. Per §1.0 原则 3 "显式 > 隐式": the snippet format is explicit
+in the diagnostics module, not hidden in driver.rs.
+
+### 2. Added DiagnosticBuilder (src/diagnostics/mod.rs)
+
+Added `DiagnosticBuilder` — fluent API for ergonomic `Diagnostic` construction:
+- error(), warning(), note(), help(), fatal() constructors
+- with_code(), with_note(), with_help() chainable methods
+- build() finalizer
+
+Per §23 (API Naming): `DiagnosticBuilder` follows the `<Noun>Builder` pattern
+consistent with Rust API guidelines (cf. std::process::Command).
+
+### 3. Added DiagnosticBuffer::format_with_source (src/diagnostics/mod.rs)
+
+New method that produces rustc-style display with source code snippets:
+- Header: "error[E0308]: message" or "error: message"
+- Location: "  --> source_name:line:col"
+- Snippet: source line with ^^^ underline (via format_snippet)
+- Children: notes/helps with their own snippets
+
+The existing `format` method (line:col only) is kept for backward compatibility.
+
+### 4. Added error limit enforcement (src/diagnostics/mod.rs)
+
+`DiagnosticBuffer::emit` now respects `error_limit` (default 128):
+- After error_limit errors, further errors are suppressed
+- A "error limit reached" note is emitted ONCE (using limit_reached_emitted flag)
+- Prevents overwhelming the user with cascading errors
+
+### 5. Added 8 unit tests (src/diagnostics/mod.rs)
+
+1. stage15_13_diagnostic_builder_error — builder with code + note + help
+2. stage15_13_diagnostic_builder_warning — warning-level builder
+3. stage15_13_diagnostic_buffer_emit_and_count — emit + count tracking
+4. stage15_13_diagnostic_buffer_emit_builder — emit_builder convenience
+5. stage15_13_diagnostic_buffer_error_limit — error limit enforcement
+6. stage15_13_format_snippet_dummy_span — dummy span → empty snippet
+7. stage15_13_format_snippet_real_span — real span → gutter + underline
+8. stage15_13_level_display — Level Display impl
+
+### 6. Documentation
+
+- Created docs/develop/v0/stage-15/stage-15.13-diagnostics-system.md
+- Created docs/tests/v0/stage15/stage-15.13-test-plan.md
+- Updated docs/worklog.md (this entry)
+- Updated RELEASE_NOTES.md (v0.139.0 entry)
+- Updated README.md (Stage 15.13 progress)
+
+### Verification
+- All 153 lib tests pass (145 + 8 new diagnostics tests, zero regression)
+- All 1998 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.138.0 → v0.139.0
+
+Stage Summary:
+- Stage 15.13 PASSED — diagnostics system improvements
+- src/diagnostics/ is now the single source of truth for error display
+- DiagnosticBuilder provides ergonomic construction
+- format_with_source provides rustc-style display
+- Error limit prevents cascading errors
+- v0.139.0: minor bump (diagnostics infrastructure + UX improvement)

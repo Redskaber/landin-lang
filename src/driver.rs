@@ -247,51 +247,12 @@ impl CompileErrors {
 /// ```
 ///
 /// For dummy spans (lo == hi == 0), returns an empty string (no snippet).
+///
+/// Stage 15.13: This is now a thin wrapper around
+/// `crate::diagnostics::format_snippet` (the single source of truth).
+/// Kept for backward compatibility with existing call sites in this file.
 fn format_snippet(src: &str, span: &Span) -> String {
-    if span.is_dummy() {
-        return String::new();
-    }
-    let lo = span.lo as usize;
-    let hi = span.hi as usize;
-    if lo >= src.len() || hi > src.len() {
-        return String::new();
-    }
-
-    // Find the line containing `lo`.
-    let mut line_start = 0;
-    let mut line_end = src.len();
-    let mut line_no = 1;
-    for (i, c) in src.char_indices() {
-        if i < lo {
-            if c == '\n' {
-                line_start = i + 1;
-                line_no += 1;
-            }
-        } else if c == '\n' {
-            line_end = i;
-            break;
-        }
-    }
-    if line_end < line_start {
-        line_end = src.len();
-    }
-    let line = &src[line_start..line_end.min(src.len())];
-
-    // Compute column offsets within the line.
-    let col_lo = lo.saturating_sub(line_start);
-    let col_hi = hi.saturating_sub(line_start).max(col_lo + 1);
-
-    let mut out = String::new();
-    let line_no_str = line_no.to_string();
-    let pad = " ".repeat(line_no_str.len());
-    out.push_str(&format!("  {} |\n", pad));
-    out.push_str(&format!("{} | {}\n", line_no_str, line));
-    out.push_str(&format!("  {} | ", pad));
-    out.push_str(&" ".repeat(col_lo));
-    let span_len = col_hi.saturating_sub(col_lo).max(1);
-    out.push_str(&"^".repeat(span_len));
-    out.push('\n');
-    out
+    crate::diagnostics::format_snippet(src, span)
 }
 
 /// The result of compiling a source file.
