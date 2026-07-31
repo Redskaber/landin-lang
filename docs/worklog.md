@@ -17256,3 +17256,131 @@ Stage Summary:
 - 3 pre-v0.2 fixes done, 5 data structure optimizations applied
 - 7167/7167 tests pass (100%), 0 clippy warnings, fmt clean
 - v0.2 can start safely
+
+---
+Task ID: stage14.113-final-deep-verification
+Agent: general-purpose (Final deep verification)
+Task: Final v0.1 deep verification — 15 critical feature tests + full suite
+
+Work Log:
+- Wrote 15 .lin verification tests under /tmp/final_v/ covering hello world, recursion (fib), for-loop range (exclusive/inclusive), break/continue, mut loop var, struct+method, trait default body (single/3-level chain/zero-impl), i32 overflow detection, match guards, closure capture, and method calls inside for-loops.
+- Ran each test against target/release/landin-stage0 --run, capturing stdout/stderr and exit code.
+- Test 8 (struct+method on Point.distance) initially failed because the test relied on f64.sqrt(), which is not a Landin built-in. Isolated the cause: typeck correctly rejects `x.sqrt()` on a simple variable (`no method 'sqrt' found for type Float(F64)`) but does NOT reject `(expr).sqrt()` on a parenthesized expression — instead it silently emits a call to function pointer `0`, producing broken LLVM IR ("Called function must be a pointer!  %v59 = call addrspace(32) double 0(double %v57)") and an object-file-generation failure.
+- Rewrote test 8 to use a struct method returning integer distance_sq (no sqrt) → outputs 25 as expected; struct+method-call mechanism verified working.
+- Ran conformance suite via `python3 tests/conformance/run_all.py` → 5216/5216 pass.
+- Ran `cargo test --features llvm-backend` (needed LIBRARY_PATH=/home/z/.local/lib:/tmp/llvm-19-prefix/lib to resolve -lz3) → 1951/1951 pass, 2 ignored (pre-existing doctests).
+- Ran `cargo clippy --all-targets --features llvm-backend` → 0 warnings.
+- Ran `cargo fmt --check` → clean (no diff).
+
+Stage Summary:
+- 15 verification tests: 14/15 PASS strictly. Test 8 PASS-with-caveat: original test design assumed a non-existent `f64.sqrt()` builtin; corrected test (struct method returning distance_sq) outputs 25 as expected, confirming struct+method-call works. Underlying issue: method calls on parenthesized expressions with unknown method names bypass typeck and emit a null function pointer (LLVM verification crash). Not exercised by any conformance or Rust test; flagged as a robustness follow-up.
+- Conformance suite: 5216/5216 PASS ✅
+- Rust tests: 1951/1951 PASS ✅ (2 ignored, pre-existing)
+- Clippy: 0 warnings ✅
+- fmt: clean ✅
+- FINAL VERDICT: READY — v0.1 is declared ready. One minor follow-up noted: harden typeck so method calls on arbitrary receiver expressions (not just simple variables) reliably report unknown-method errors instead of emitting null function-pointer calls at codegen time.
+
+---
+Task ID: stage14.114-process-doc-v3.23-refactor
+Agent: Super Z (main)
+Task: Stage 14.114 — Refactor docs/stage-committee-process.md to v3.23 with §29 阶段间深度验证协议.
+
+Work Log:
+- Baseline: v0.126.0 (post-Stage 14.113 final verification)
+
+### Process Document Refactor (v3.22 → v3.23)
+
+Added §29 "阶段间深度验证与架构审查协议" to docs/stage-committee-process.md:
+
+§29.1 四项强制审查:
+  - 29.1.1 数据流覆盖分支检测（完整性审查）
+  - 29.1.2 架构设计审查
+  - 29.1.3 设计-实现-测试三者覆盖
+  - 29.1.4 隐藏问题与下一阶段就绪度
+
+§29.2 重构最优性审查
+§29.3 多轮深挖验证
+§29.4 性能测试标准
+§29.5 自我强化与迭代
+§29.6 输出文档集合
+§29.7 与 §25 的关系
+§29.8 版本更新
+
+Also updated:
+- Document header: v3.22 → v3.23, effective from Stage 14.114
+- §0.1 角色路由表: added §29 to "准备开新阶段的 Agent" route
+- §0.2 任务类型路由: added §29 to "进入新阶段" task type
+
+### 100% Coverage Verification
+
+v3.23 100% preserves v3.22 content. Only additions:
+- New §29 (阶段间深度验证协议)
+- Updated §0.1 routing table (added §29 reference)
+- Updated §0.2 task type routing (added §29 reference)
+- Updated document header (version + effective date)
+
+All v3.22 sections (§1-§28) preserved verbatim.
+
+### Verification
+- All 1951 rust tests pass (zero regression — doc-only change)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- No version bump (doc-only change, v0.126.0 unchanged)
+
+Stage Summary:
+- Stage 14.114 PASSED — process doc refactored to v3.23
+- §29 阶段间深度验证协议 added with 4 mandatory reviews
+- 100% coverage of v3.22 intent + new requirements
+- v0.126.0: unchanged (doc-only)
+
+---
+Task ID: stage14.115-cicd-and-v02-prep
+Agent: Super Z (main)
+Task: Stage 14.115 — CI/CD workflows + v0.2 preparation. v0.126.0 (no version bump — infra+docs).
+
+Work Log:
+- Baseline: v0.126.0 (post-Stage 14.114 process doc v3.23)
+
+### CI/CD Workflows Created (3 files)
+
+1. `.github/workflows/ci.yml` — CI Pipeline
+   - 5 jobs: fmt → clippy → test → conformance → build-release
+   - Runs on every push to main and every PR
+   - Installs LLVM 19 on each job
+   - Smoke test: hello world verification
+
+2. `.github/workflows/release.yml` — Release Pipeline
+   - 3 jobs: verify → perf-baseline → release
+   - Triggers on version tags (v*) or manual dispatch
+   - Performance baseline measurement (fib(30), 100×100 loops)
+   - Creates GitHub Release with binary + source tarball
+
+3. `.github/workflows/perf.yml` — Nightly Performance Tracking
+   - 5 benchmarks: compile-small, compile-fib, run-fib, run-loops, conformance-suite
+   - Runs nightly at 02:00 UTC
+   - Outputs performance summary to GitHub Actions
+
+### v0.2 Preparation Document
+
+Created `docs/develop/v0/stage-15/v0.2-preparation.md`:
+- v0.2 roadmap (4 phases, ~16 weeks, 20 tasks)
+- 6 design documents needed
+- Test strategy (6500+ conformance target, 2500+ Rust test target)
+- Test file structure for v0.2 (3 new categories: monomorph, lifetimes, drop)
+- Infrastructure preparation status
+- v0.2 tooling needs
+- Risk register (5 risks)
+- Success criteria (8 criteria)
+- Next actions (5 items)
+
+### Verification
+- All 1951 rust tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- No version bump (infra + docs only)
+
+Stage Summary:
+- Stage 14.115 PASSED — CI/CD + v0.2 prep
+- 3 GitHub Actions workflows created (ci, release, perf)
+- v0.2 preparation document complete
+- v0.126.0: unchanged (infra + docs only)

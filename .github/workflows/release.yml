@@ -1,0 +1,152 @@
+# Landin Compiler — Release Pipeline
+#
+# Triggers on version tags (v*) or manual dispatch.
+# Builds release binaries for Linux x86_64, creates GitHub Release with
+# release notes, and uploads the binary + source tarball.
+#
+# Per §29.4 (Performance Testing Standard): includes performance baseline measurement.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., v0.126.0)"
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ──────────────────────────────────────────────────────
+  # Job 1: Full verification before release
+  # ──────────────────────────────────────────────────────
+  verify:
+    name: Pre-Release Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install LLVM 19
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" | sudo tee /etc/apt/sources.list.d/llvm19.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
+      - name: Format check
+        run: cargo fmt --check
+      - name: Clippy
+        env:
+          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+          LLVM_LINK_SHARED: "1"
+        run: cargo clippy --all-targets --features llvm-backend -- -D warnings
+      - name: Rust tests
+        env:
+          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+          LLVM_LINK_SHARED: "1"
+        run: cargo test --features llvm-backend
+      - name: Build release
+        env:
+          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+          LLVM_LINK_SHARED: "1"
+        run: cargo build --release --features llvm-backend
+      - name: Conformance tests
+        run: python3 tests/conformance/run_all.py
+
+  # ──────────────────────────────────────────────────────
+  # Job 2: Performance baseline (per §29.4)
+  # ──────────────────────────────────────────────────────
+  perf-baseline:
+    name: Performance Baseline
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install LLVM 19
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" | sudo tee /etc/apt/sources.list.d/llvm19.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
+      - name: Build release
+        env:
+          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+          LLVM_LINK_SHARED: "1"
+        run: cargo build --release --features llvm-backend
+      - name: Performance baseline — fib(30)
+        env:
+          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+          LLVM_LINK_SHARED: "1"
+        run: |
+          echo 'fn fib(n: i32) -> i32 { if n < 2 { return n; } return fib(n-1) + fib(n-2); } fn main() { let r = fib(30); println!("{}", r); }' > /tmp/perf_fib.lin
+          START=$(date +%s%N)
+          ./target/release/landin-stage0 --run /tmp/perf_fib.lin
+          END=$(date +%s%N)
+          ELAPSED=$(( (END - START) / 1000000 ))
+          echo "fib(30) compile+run: ${ELAPSED}ms"
+          echo "## Performance Baseline" >> $GITHUB_STEP_SUMMARY
+          echo "fib(30) compile+run: ${ELAPSED}ms" >> $GITHUB_STEP_SUMMARY
+      - name: Performance baseline — nested loops
+        env:
+          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+          LLVM_LINK_SHARED: "1"
+        run: |
+          echo 'struct Point { x: i32, y: i32 } impl Point { fn new(x: i32, y: i32) -> Point { Point { x, y } } fn dist(&self, o: &Point) -> i32 { let dx = self.x - o.x; let dy = self.y - o.y; dx*dx + dy*dy } } fn main() { let mut s = 0; for i in 0..100 { for j in 0..100 { let p1 = Point::new(i,j); let p2 = Point::new(i+1,j+1); s += p1.dist(&p2); } } println!("{}", s); }' > /tmp/perf_loops.lin
+          START=$(date +%s%N)
+          ./target/release/landin-stage0 --run /tmp/perf_loops.lin
+          END=$(date +%s%N)
+          ELAPSED=$(( (END - START) / 1000000 ))
+          echo "100x100 loops compile+run: ${ELAPSED}ms"
+          echo "100x100 loops compile+run: ${ELAPSED}ms" >> $GITHUB_STEP_SUMMARY
+
+  # ──────────────────────────────────────────────────────
+  # Job 3: Create GitHub Release
+  # ──────────────────────────────────────────────────────
+  release:
+    name: Create Release
+    needs: [verify, perf-baseline]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install LLVM 19
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-19 main" | sudo tee /etc/apt/sources.list.d/llvm19.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
+      - name: Build release binary
+        env:
+          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+          LLVM_LINK_SHARED: "1"
+        run: cargo build --release --features llvm-backend
+      - name: Package release
+        run: |
+          VERSION=${GITHUB_REF_NAME:-${{ inputs.version }}}
+          mkdir -p release
+          cp target/release/landin-stage0 release/
+          cp README.md release/
+          cp LICENSE release/
+          cp -r docs release/
+          cp -r examples release/
+          cp -r tests release/
+          cp -r tools release/
+          tar czf "landin-${VERSION}-linux-x86_64.tar.gz" -C release .
+          echo "Created landin-${VERSION}-linux-x86_64.tar.gz"
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: landin-*.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc') }}
