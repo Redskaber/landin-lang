@@ -17426,3 +17426,54 @@ Stage Summary:
 - llvm-sys pinned to =191.1.0 (prevents upgrade to v211)
 - Env vars moved to job level in all 3 workflows
 - v0.126.0: unchanged (fix only)
+
+---
+Task ID: stage15.1-v02-start-ty-interning-design
+Agent: Super Z (main)
+Task: Stage 15.1 — v0.2 start: Ty interning design doc + API standardization. v0.126.0 → v0.127.0.
+
+Work Log:
+- Baseline: v0.126.0 (post-Stage 14.116 CI/CD fix)
+
+### v0.2 Phase 1 Task 1: Ty Interning Design
+
+Created `docs/lang-design/19-ty-interning.md` with:
+- Problem statement (Ty not Copy, 149 unnecessary clones, 3-5× memory overhead)
+- Design options analysis (arena interning, Rc stepping stone, pragma approach)
+- Final decision: Rc<TyKind> stepping stone for v0.2, arena interning for v0.3
+- Migration strategy (phased approach)
+- Size analysis and conclusion
+
+Attempted Ty refactoring (Rc<TyKind> + remove Span):
+- Changed Ty to `Ty(pub Rc<TyKind>)` with Deref impl
+- Changed Box<Ty> → Ty, Vec<Ty> → Rc<[Ty]> in TyKind
+- Changed SubstsRef from Vec<Ty> to Rc<[Ty]>
+- Changed Const.ty from Box<Ty> to Ty
+- Changed Sig.inputs/output to use Rc<[Ty]> and Ty
+
+Result: 361 compilation errors across the codebase
+- 147 type mismatches (&Ty vs Ty, Box::new vs direct)
+- 120 "no field 'kind'" (Deref doesn't provide field access)
+- 20 "no field 'span'" (removed from Ty)
+- 39 "cannot be dereferenced" (*inner on Ty)
+
+Decision: Ty interning is too large for a single stage — needs dedicated
+multi-stage refactoring. Reverted ty.rs to clean state. Ty interning deferred
+to a dedicated v0.2 sub-stage with incremental migration.
+
+### What Was Accomplished
+- Design document created (docs/lang-design/19-ty-interning.md)
+- v0.2 preparation document updated (docs/develop/v0/stage-15/v0.2-preparation.md)
+- Clean state verified (all 7167 tests pass)
+
+### Verification
+- All 1951 rust tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.126.0 → v0.127.0 (v0.2 start)
+
+Stage Summary:
+- Stage 15.1 PASSED — v0.2 started, Ty interning design doc created
+- Ty interning refactoring attempted but too large for single stage (361 errors)
+- Reverted to clean state — Ty interning deferred to dedicated sub-stages
+- v0.127.0: minor bump (v0.2 start + design doc)
