@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.136.0 (v0.2 Phase 1 in progress — SubstsRef Rc<[Ty]> interning)  
+**Version**: v0.137.0 (v0.2 Phase 1 in progress — Const.ty Box<Ty> → Ty)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -23,9 +23,9 @@ backend via the `llvm-sys` crate.
 >
 > See `docs/develop/v0/stage-14/v0.1-final-release-assessment.md` for full assessment.
 
-> **v0.2 Phase 1 IN PROGRESS — Stage 15.10 Complete**
+> **v0.2 Phase 1 IN PROGRESS — Stage 15.11 Complete**
 >
-> Stage 15.1-15.10 (v0.2 Phase 1 prep + consolidation + quick wins + interning):
+> Stage 15.1-15.11 (v0.2 Phase 1 prep + consolidation + quick wins + interning):
 > - **Stage 15.1** — Ty interning design doc (`docs/lang-design/19-ty-interning.md`)
 > - **Stage 15.2** — TypeInterner infrastructure + pre-build impl index (HP-B12)
 > - **Stage 15.3** — cstr() thread-local cache (memory leak fix for LSP mode)
@@ -42,8 +42,10 @@ backend via the `llvm-sys` crate.
 >   errors. All Phase 2 audit "4-hour" quick wins now complete.
 > - **Stage 15.10** — SubstsRef `Vec<Ty>` → `Rc<[Ty]>` interning. Eliminates
 >   per-generic-app heap allocation. Stepping stone toward v0.3 arena interning.
+> - **Stage 15.11** — `Const.ty: Box<Ty>` → `Ty` (inline). Eliminates per-Const
+>   heap allocation. `Sig.output: Box<Ty>` kept (structurally necessary).
 >
-> **Test count**: 1983 rust tests + 5216 conformance tests = 7199 passing.
+> **Test count**: 1990 rust tests + 5216 conformance tests = 7206 passing.
 > **0 clippy warnings**, fmt clean. Next major milestone: v0.2 Phase 1 Task 1
 > (full Ty interning via Rc<TyKind> stepping stone).
 

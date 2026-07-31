@@ -686,7 +686,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                     val: ConstVal::Int(42),
                 })),
             ))),
@@ -833,7 +833,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                     val: ConstVal::Int(42),
                 })),
             ))),
@@ -917,7 +917,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                     val: ConstVal::Int(42),
                 })),
             ))),
@@ -1025,7 +1025,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                     val: ConstVal::Int(42),
                 })),
             ))),
@@ -1057,7 +1057,7 @@ mod tests {
                         span: Span::DUMMY,
                     }),
                     Operand::Constant(Const {
-                        ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                        ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                         val: ConstVal::Int(1),
                     }),
                 ),
@@ -1069,7 +1069,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                     val: ConstVal::Int(100),
                 })),
             ))),
@@ -1122,7 +1122,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                     val: ConstVal::Int(42),
                 })),
             ))),
@@ -1143,7 +1143,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(x, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                     val: ConstVal::Int(100),
                 })),
             ))),
@@ -1235,7 +1235,7 @@ mod tests {
             TyKind::Array(
                 Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
                 Box::new(Const {
-                    ty: Box::new(Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
                     val: ConstVal::Uint(4),
                 }),
             ),

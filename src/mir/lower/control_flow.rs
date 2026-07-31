@@ -57,7 +57,7 @@ pub(crate) fn lower_short_circuit(
     cx.push_assign(
         Place::local(result_local, span),
         Rvalue::Use(Operand::Constant(Const {
-            ty: Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
+            ty: Ty::new(TyKind::Bool, Span::DUMMY),
             val: ConstVal::Bool(short_val),
         })),
         span,
@@ -78,7 +78,7 @@ pub(crate) fn lower_short_circuit(
     cx.push_assign(
         Place::local(result_local, span),
         Rvalue::Use(Operand::Constant(Const {
-            ty: Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
+            ty: Ty::new(TyKind::Bool, Span::DUMMY),
             val: ConstVal::Bool(true),
         })),
         span,
@@ -90,7 +90,7 @@ pub(crate) fn lower_short_circuit(
     cx.push_assign(
         Place::local(result_local, span),
         Rvalue::Use(Operand::Constant(Const {
-            ty: Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
+            ty: Ty::new(TyKind::Bool, Span::DUMMY),
             val: ConstVal::Bool(false),
         })),
         span,
@@ -1584,7 +1584,7 @@ pub(crate) fn lower_match(
                                             BinOp::Eq,
                                             Operand::Copy(Place::local(field_local, span)),
                                             Operand::Constant(crate::mir::ty::Const {
-                                                ty: Box::new(field_ty),
+                                                ty: field_ty,
                                                 val: crate::mir::ty::ConstVal::Int(n),
                                             }),
                                         ),
@@ -1778,7 +1778,7 @@ fn build_tuple_pattern_condition(
                     BinOp::Eq,
                     Operand::Copy(Place::local(field_local, span)),
                     Operand::Constant(crate::mir::ty::Const {
-                        ty: Box::new(field_ty),
+                        ty: field_ty,
                         val: crate::mir::ty::ConstVal::Int(n),
                     }),
                 ),
@@ -1870,7 +1870,7 @@ fn build_tuple_pattern_condition(
                                 BinOp::Eq,
                                 Operand::Copy(Place::local(discr_local, span)),
                                 Operand::Constant(crate::mir::ty::Const {
-                                    ty: Box::new(discr_ty),
+                                    ty: discr_ty,
                                     val: crate::mir::ty::ConstVal::Int(variant_idx as u128),
                                 }),
                             ),
@@ -1943,14 +1943,14 @@ fn build_pattern_equality_check(
         let scrut_place = Place::local(scrut_local, span);
         // Build `scrut == lit_val`
         let lit_const = crate::mir::ty::Const {
-            ty: Box::new(Ty::new(
+            ty: Ty::new(
                 if is_bool {
                     TyKind::Bool
                 } else {
                     TyKind::Int(crate::ast::IntTy::I32)
                 },
                 span,
-            )),
+            ),
             val: if is_bool {
                 crate::mir::ty::ConstVal::Bool(lit_val != 0)
             } else {
@@ -2015,14 +2015,14 @@ fn build_pattern_equality_check(
                     // because it captures match_block/next_block from closure)
                     let scrut_place = Place::local(scrut_local, span);
                     let lit_const = crate::mir::ty::Const {
-                        ty: Box::new(Ty::new(
+                        ty: Ty::new(
                             if is_bool {
                                 TyKind::Bool
                             } else {
                                 TyKind::Int(crate::ast::IntTy::I32)
                             },
                             span,
-                        )),
+                        ),
                         val: if is_bool {
                             crate::mir::ty::ConstVal::Bool(lit_val != 0)
                         } else {
@@ -2092,7 +2092,7 @@ fn build_pattern_equality_check(
                         );
                         // Check discr == variant_idx
                         let lit_const = crate::mir::ty::Const {
-                            ty: Box::new(Ty::new(discr_ty.kind.clone(), span)),
+                            ty: Ty::new(discr_ty.kind.clone(), span),
                             val: crate::mir::ty::ConstVal::Int(variant_idx as u128),
                         };
                         let cmp_result = cx.eval_rvalue_to_temp(
@@ -2195,7 +2195,7 @@ fn build_pattern_equality_check(
                                         BinOp::Eq,
                                         Operand::Copy(Place::local(field_local, span)),
                                         Operand::Constant(crate::mir::ty::Const {
-                                            ty: Box::new(field_ty),
+                                            ty: field_ty,
                                             val: crate::mir::ty::ConstVal::Int(n),
                                         }),
                                     ),

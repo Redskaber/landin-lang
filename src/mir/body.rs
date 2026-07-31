@@ -425,7 +425,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(local, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                     val: ConstVal::Int(42),
                 })),
             ))),

@@ -52,7 +52,7 @@ pub(crate) fn emit_overflow_assert(
     cx.terminate_kind_and_goto(
         TerminatorKind::Assert {
             cond: Operand::Constant(Const {
-                ty: Box::new(Ty::new(TyKind::Bool, span)),
+                ty: Ty::new(TyKind::Bool, span),
                 val: ConstVal::Bool(true),
             }),
             expected: true,
@@ -81,7 +81,7 @@ pub(crate) fn emit_div_by_zero_assert(
     cx.terminate_kind_and_goto(
         TerminatorKind::Assert {
             cond: Operand::Constant(Const {
-                ty: Box::new(Ty::new(TyKind::Bool, span)),
+                ty: Ty::new(TyKind::Bool, span),
                 val: ConstVal::Bool(true),
             }),
             expected: true,

@@ -292,7 +292,7 @@ fn test_codegen_terminator_dyn_trait_dispatch_via_marker() {
     // would detect. We verify the marker shape matches the dispatch
     // condition: `Operand::Constant(Const { ty: Error, val: Int(0) })`.
     let marker = Operand::Constant(Const {
-        ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+        ty: Ty::new(TyKind::Error, Span::DUMMY),
         val: ConstVal::Int(0),
     });
 

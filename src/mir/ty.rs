@@ -146,9 +146,14 @@ pub struct ParamTy {
 }
 
 /// A compile-time constant value used in types (e.g., array length `[T; N]`).
+///
+/// Stage 15.11 (v0.2): Changed `ty: Box<Ty>` to `ty: Ty` — eliminates a
+/// heap allocation per Const. Ty is already a small struct (one TyKind
+/// field), so Box<Ty> was an unnecessary indirection.
+/// Per §15 "最优 > 最小": root-cause fix for per-Const heap allocation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Const {
-    pub ty: Box<Ty>,
+    pub ty: Ty,
     pub val: ConstVal,
 }
 

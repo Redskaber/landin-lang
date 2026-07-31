@@ -257,6 +257,8 @@ mod user_defined_trait_dyn_tests;
 mod stage13_18_runtime_tests;
 
 // === Stage 15 (v0.2: Ty interning prep + perf) ===
+#[path = "v0/stage15/plan/const_ty_box_to_ty_tests.rs"]
+mod stage15_const_ty_box_to_ty_tests;
 #[path = "v0/stage15/plan/crate_adt_layouts_tests.rs"]
 mod stage15_crate_adt_layouts_tests;
 #[path = "v0/stage15/plan/method_return_type_cache_tests.rs"]

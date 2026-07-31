@@ -258,7 +258,7 @@ fn operand_ty(op: &Operand, mir: &MirBody) -> Ty {
                 fresh_infer_ty()
             }
         }
-        Operand::Constant(c) => c.ty.as_ref().clone(),
+        Operand::Constant(c) => c.ty.clone(),
     }
 }
 

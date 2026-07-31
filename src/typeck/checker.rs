@@ -423,7 +423,7 @@ impl TypeChecker {
         use crate::mir::place::Operand;
         match op {
             Operand::Copy(lv) | Operand::Move(lv) => self.resolve_place_for_writeback(mir, lv),
-            Operand::Constant(c) => c.ty.as_ref().clone(),
+            Operand::Constant(c) => c.ty.clone(),
         }
     }
 
@@ -862,10 +862,7 @@ impl TypeChecker {
                         TyKind::Array(
                             Box::new(elem_ty.clone()),
                             Box::new(Const {
-                                ty: Box::new(Ty::new(
-                                    TyKind::Uint(ast::UintTy::Usize),
-                                    Span::DUMMY,
-                                )),
+                                ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
                                 val: ConstVal::Uint(operands.len() as u128),
                             }),
                         ),
@@ -908,7 +905,7 @@ impl TypeChecker {
     fn infer_operand(&self, mir: &MirBody, op: &Operand) -> Ty {
         match op {
             Operand::Copy(lv) | Operand::Move(lv) => self.infer_place(mir, lv),
-            Operand::Constant(c) => c.ty.as_ref().clone(),
+            Operand::Constant(c) => c.ty.clone(),
         }
     }
 
@@ -987,7 +984,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(temp, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                     val: ConstVal::Int(42),
                 })),
             ))),
@@ -1025,7 +1022,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(dest, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
                     val: ConstVal::Int(42),
                 })),
             ))),

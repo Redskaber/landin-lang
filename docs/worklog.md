@@ -18178,3 +18178,79 @@ Stage Summary:
 - Stepping stone toward v0.3 arena interning (&'tcx [Ty])
 - Closes v0.2 Phase 1 Task 2 stepping stone
 - v0.136.0: minor bump (memory optimization + type safety)
+
+---
+Task ID: stage15.11-const-ty-box-to-ty
+Agent: Super Z (main)
+Task: Stage 15.11 — Const.ty Box<Ty> → Ty (eliminates per-Const heap allocation). v0.136.0 → v0.137.0.
+
+Work Log:
+- Baseline: v0.136.0 / 1983 rust tests + 5216 conformance (post-Stage 15.10)
+
+### 1. Type Change: Const.ty (src/mir/ty.rs)
+
+Changed `Const.ty: Box<Ty>` to `Const.ty: Ty` — eliminates a heap allocation
+per Const. Ty is already a small struct (one TyKind field, ~40 bytes), so
+Box<Ty> was an unnecessary indirection.
+
+The Box was originally added to avoid recursive type issues, but analysis
+shows Const is only referenced via Box<Const> (in TyKind::Array(Box<Ty>,
+Box<Const>)), so the recursive cycle is already broken by the Box<Const>.
+The Box<Ty> on Const.ty is redundant.
+
+Note: Sig.output: Box<Ty> was NOT changed because it would cause a recursive
+type error (TyKind::FnPtr(Sig) → Sig.output: Ty → cycle). The Box on
+Sig.output is structurally necessary until v0.3 Ty interning.
+
+### 2. Construction Site Updates (55 sites across 9 files)
+
+Updated all `ty: Box::new(X)` → `ty: X` patterns using a Python script with
+balanced-paren matching. Files updated:
+- src/typeck/checker.rs (3 sites)
+- src/mir/body.rs (1 site)
+- src/mir/place.rs (2 sites)
+- src/mir/lower/expr_operand.rs (16 sites)
+- src/mir/lower/control_flow.rs (10 sites)
+- src/mir/lower/overflow_assert.rs (2 sites)
+- src/mir/lower/mod.rs (11 sites)
+- src/borrowck/mod.rs (9 sites)
+- tests/v0/stage5/plan/codegen_dyn_trait_method_call_tests.rs (1 site)
+
+### 3. Consumption Site Updates (3 sites)
+
+Updated `c.ty.as_ref().clone()` → `c.ty.clone()` in:
+- src/mir/lower/writeback.rs (1 site)
+- src/typeck/checker.rs (2 sites)
+
+### 4. New Tests (tests/v0/stage15/plan/const_ty_box_to_ty_tests.rs)
+
+7 integration tests:
+1. stage15_11_integer_constant
+2. stage15_11_boolean_constant
+3. stage15_11_function_call_with_constant
+4. stage15_11_binary_op_with_constants
+5. stage15_11_array_with_constants
+6. stage15_11_method_call_with_constant
+7. stage15_11_match_with_constant
+
+### 5. Documentation
+
+- Created docs/develop/v0/stage-15/stage-15.11-const-ty-box-to-ty.md
+  (full §29 stage-end deep review, including Sig.output analysis)
+- Created docs/tests/v0/stage15/stage-15.11-test-plan.md
+- Updated docs/worklog.md (this entry)
+- Updated RELEASE_NOTES.md (v0.137.0 entry)
+- Updated README.md (Stage 15.11 progress)
+
+### Verification
+- All 145 lib tests pass (zero regression)
+- All 1990 integration tests pass (1983 + 7 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.136.0 → v0.137.0
+
+Stage Summary:
+- Stage 15.11 PASSED — Const.ty changed from Box<Ty> to Ty
+- Eliminates per-Const heap allocation (100 allocs for typical crate)
+- Sig.output kept as Box<Ty> (structurally necessary — recursive type)
+- v0.137.0: minor bump (memory optimization)

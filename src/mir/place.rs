@@ -235,11 +235,11 @@ mod tests {
     #[test]
     fn rvalue_binary_op() {
         let lhs = Operand::Constant(Const {
-            ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+            ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
             val: ConstVal::Int(1),
         });
         let rhs = Operand::Constant(Const {
-            ty: Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+            ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
             val: ConstVal::Int(2),
         });
         let rv = Rvalue::BinaryOp(BinOp::Add, lhs, rhs);

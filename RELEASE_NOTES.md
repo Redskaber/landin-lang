@@ -1,9 +1,57 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.136.0
+**Current version**: v0.137.0
 **Date**: 2026-07-31
-**Test count**: 1983 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 1990 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.137.0 — Stage 15.11 (Const.ty Box<Ty> → Ty)
+
+### Overview
+
+Stage 15.11 changes `Const.ty` from `Box<Ty>` to `Ty` — eliminating a heap
+allocation per `Const`. `Ty` is already a small struct (one `TyKind` field),
+so `Box<Ty>` was an unnecessary indirection. For a crate with 100 constants,
+this eliminates 100 heap allocations per compilation.
+
+### What Changed
+
+**Type change** (`src/mir/ty.rs`):
+- `Const.ty: Box<Ty>` → `Const.ty: Ty` (inline, no heap allocation)
+- `Sig.output: Box<Ty>` kept (structurally necessary — recursive type)
+
+**Construction updates** (55 sites across 9 files):
+- `Const { ty: Box::new(X), val }` → `Const { ty: X, val }`
+
+**Consumption updates** (3 sites):
+- `c.ty.as_ref().clone()` → `c.ty.clone()`
+
+**New tests**:
+- 7 integration tests in `tests/v0/stage15/plan/const_ty_box_to_ty_tests.rs`
+
+**Documentation**:
+- `docs/develop/v0/stage-15/stage-15.11-const-ty-box-to-ty.md` — full §29 review
+- `docs/tests/v0/stage15/stage-15.11-test-plan.md` — test plan
+- `docs/worklog.md` — Stage 15.11 entry
+- `README.md` — updated v0.2 progress
+
+### Why This Is The Right Stage 15.11
+
+The `Box<Ty>` on `Const.ty` was redundant because `Const` is already boxed
+at its reference site (`Box<Const>` in `TyKind::Array`). The recursive type
+cycle is broken by `Box<Const>`, not `Box<Ty>`. Removing the redundant Box
+eliminates a heap allocation per Const with no semantic change.
+
+Per §15 "最优 > 最小": root-cause fix for per-Const heap allocation.
+Per §1.0 原则 6 "通用 > 特例": `Const.ty` is now `Ty`, matching `LocalDecl.ty`.
+
+### Verification
+
+- All 145 lib tests pass (zero regression)
+- All 1990 integration tests pass (1983 + 7 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.136.0 — Stage 15.10 (SubstsRef Rc<[Ty]> Interning)

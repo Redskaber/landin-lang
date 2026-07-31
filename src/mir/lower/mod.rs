@@ -406,7 +406,7 @@ impl<'a> MirLowerCtxt<'a> {
         match lit {
             HirLitKind::Bool(b) => (
                 Const {
-                    ty: Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
+                    ty: Ty::new(TyKind::Bool, Span::DUMMY),
                     val: ConstVal::Bool(*b),
                 },
                 Ty::new(TyKind::Bool, Span::DUMMY),
@@ -434,7 +434,7 @@ impl<'a> MirLowerCtxt<'a> {
                 let ty = Ty::new(ty_kind, Span::DUMMY);
                 (
                     Const {
-                        ty: Box::new(ty.clone()),
+                        ty: ty.clone(),
                         val: ConstVal::Int(*n),
                     },
                     ty,
@@ -457,7 +457,7 @@ impl<'a> MirLowerCtxt<'a> {
                 let ty = Ty::new(ty_kind, Span::DUMMY);
                 (
                     Const {
-                        ty: Box::new(ty.clone()),
+                        ty: ty.clone(),
                         val: ConstVal::Uint(*n),
                     },
                     ty,
@@ -478,7 +478,7 @@ impl<'a> MirLowerCtxt<'a> {
                 let ty = Ty::new(ty_kind, Span::DUMMY);
                 (
                     Const {
-                        ty: Box::new(ty.clone()),
+                        ty: ty.clone(),
                         val: ConstVal::Float(*f),
                     },
                     ty,
@@ -486,7 +486,7 @@ impl<'a> MirLowerCtxt<'a> {
             }
             HirLitKind::Char(c) => (
                 Const {
-                    ty: Box::new(Ty::new(TyKind::Char, Span::DUMMY)),
+                    ty: Ty::new(TyKind::Char, Span::DUMMY),
                     val: ConstVal::Char(*c),
                 },
                 Ty::new(TyKind::Char, Span::DUMMY),
@@ -508,7 +508,7 @@ impl<'a> MirLowerCtxt<'a> {
                 );
                 (
                     Const {
-                        ty: Box::new(ref_str_ty.clone()),
+                        ty: ref_str_ty.clone(),
                         val: ConstVal::Str(*sym),
                     },
                     ref_str_ty,
@@ -535,7 +535,7 @@ impl<'a> MirLowerCtxt<'a> {
                 );
                 (
                     Const {
-                        ty: Box::new(ref_slice_ty.clone()),
+                        ty: ref_slice_ty.clone(),
                         // Reuse Str variant — codegen will interpret
                         // the symbol as bytes when the type is Ref(_, _, Slice(u8)).
                         val: ConstVal::Str(*sym),
@@ -545,7 +545,7 @@ impl<'a> MirLowerCtxt<'a> {
             }
             HirLitKind::Byte(b) => (
                 Const {
-                    ty: Box::new(Ty::new(TyKind::Uint(ast::UintTy::U8), Span::DUMMY)),
+                    ty: Ty::new(TyKind::Uint(ast::UintTy::U8), Span::DUMMY),
                     val: ConstVal::Uint(*b as u128),
                 },
                 Ty::new(TyKind::Uint(ast::UintTy::U8), Span::DUMMY),
@@ -892,16 +892,16 @@ pub fn lower_body_full(
 fn const_eval_array_len(expr: &HirExpr, span: Span) -> Const {
     match &expr.kind {
         HirExprKind::Lit(HirLitKind::Int(n, _)) => Const {
-            ty: Box::new(Ty::new(TyKind::Uint(ast::UintTy::Usize), span)),
+            ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), span),
             val: ConstVal::Uint(*n),
         },
         HirExprKind::Lit(HirLitKind::Uint(n, _)) => Const {
-            ty: Box::new(Ty::new(TyKind::Uint(ast::UintTy::Usize), span)),
+            ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), span),
             val: ConstVal::Uint(*n),
         },
         // Non-literal: emit an Error-typed const so typeck flags it.
         _ => Const {
-            ty: Box::new(Ty::new(TyKind::Error, span)),
+            ty: Ty::new(TyKind::Error, span),
             val: ConstVal::Uint(0),
         },
     }

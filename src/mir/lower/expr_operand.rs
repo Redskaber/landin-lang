@@ -184,7 +184,7 @@ pub fn build_dyn_trait_call_terminator(
             // this marker and emits a vtable indirect call instead of a direct
             // function call.
             func: Operand::Constant(Const {
-                ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+                ty: Ty::new(TyKind::Error, Span::DUMMY),
                 val: ConstVal::Int(index),
             }),
             args: arg_operands,
@@ -449,10 +449,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                         expr.span,
                                     );
                                     let discr = Operand::Constant(Const {
-                                        ty: Box::new(Ty::new(
+                                        ty: Ty::new(
                                             TyKind::Int(crate::ast::IntTy::I32),
                                             Span::DUMMY,
-                                        )),
+                                        ),
                                         val: ConstVal::Uint(variant_idx as u128),
                                     });
                                     return cx.eval_rvalue_to_temp(
@@ -480,7 +480,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         );
                         return cx.eval_rvalue_to_temp(
                             Rvalue::Use(Operand::Constant(Const {
-                                ty: Box::new(adt_ty.clone()),
+                                ty: adt_ty.clone(),
                                 val: ConstVal::Uint(def_id.as_u32() as u128),
                             })),
                             adt_ty,
@@ -578,7 +578,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                 );
                                 return cx.eval_rvalue_to_temp(
                                     Rvalue::Use(Operand::Constant(Const {
-                                        ty: Box::new(fndef_ty.clone()),
+                                        ty: fndef_ty.clone(),
                                         val: ConstVal::Uint(def_id.as_u32() as u128),
                                     })),
                                     fndef_ty,
@@ -593,7 +593,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                 );
                                 return cx.eval_rvalue_to_temp(
                                     Rvalue::Use(Operand::Constant(Const {
-                                        ty: Box::new(fndef_ty.clone()),
+                                        ty: fndef_ty.clone(),
                                         val: ConstVal::Uint(def_id.as_u32() as u128),
                                     })),
                                     fndef_ty,
@@ -607,7 +607,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Otherwise, create an error placeholder.
             cx.eval_rvalue_to_temp(
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+                    ty: Ty::new(TyKind::Error, Span::DUMMY),
                     val: ConstVal::Int(0),
                 })),
                 Ty::new(TyKind::Error, Span::DUMMY),
@@ -770,7 +770,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 {
                     // Enum variant — prepend discriminant.
                     let discr = Operand::Constant(Const {
-                        ty: Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+                        ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
                         val: ConstVal::Uint(variant_idx as u128),
                     });
                     all_operands.push(discr);
@@ -1372,7 +1372,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // the next iteration anyway).
             cx.current_block = incr_block;
             let one_const = Operand::Constant(Const {
-                ty: Box::new(cx.mir.local(hidden_counter).ty.clone()),
+                ty: cx.mir.local(hidden_counter).ty.clone(),
                 val: ConstVal::Int(1),
             });
             let new_val = cx.eval_rvalue_to_temp(
@@ -1633,7 +1633,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 TyKind::Array(
                     Box::new(elem_ty),
                     Box::new(Const {
-                        ty: Box::new(Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY)),
+                        ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
                         val: ConstVal::Uint(elems.len() as u128),
                     }),
                 ),
@@ -1709,7 +1709,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             };
             let agg_elem_ty = cx.fresh_infer_ty(expr.span);
             let count_const = crate::mir::ty::Const {
-                ty: Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span)),
+                ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span),
                 val: crate::mir::ty::ConstVal::Int(n as u128),
             };
             let array_ty = Ty::new(
@@ -1766,7 +1766,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     {
                         // Prepend discriminant to the operands.
                         let discr = Operand::Constant(Const {
-                            ty: Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+                            ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
                             val: ConstVal::Uint(variant_idx as u128),
                         });
                         let mut all_operands = vec![discr];
@@ -1988,7 +1988,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         ));
                         cx.eval_rvalue_to_temp(
                             Rvalue::Use(Operand::Constant(Const {
-                                ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+                                ty: Ty::new(TyKind::Error, Span::DUMMY),
                                 val: ConstVal::Int(0),
                             })),
                             Ty::new(TyKind::Error, Span::DUMMY),
@@ -2004,7 +2004,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 ));
                 cx.eval_rvalue_to_temp(
                     Rvalue::Use(Operand::Constant(Const {
-                        ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+                        ty: Ty::new(TyKind::Error, Span::DUMMY),
                         val: ConstVal::Int(0),
                     })),
                     Ty::new(TyKind::Error, Span::DUMMY),
@@ -2289,10 +2289,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 cx.terminate_kind_and_goto(
                     TerminatorKind::Call {
                         func: Operand::Constant(Const {
-                            ty: Box::new(Ty::new(
+                            ty: Ty::new(
                                 TyKind::FnDef(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
                                 expr.span,
-                            )),
+                            ),
                             val: ConstVal::Uint(def_id.as_u32() as u128),
                         }),
                         args: arg_operands,
@@ -2341,7 +2341,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 cx.terminate_kind_and_goto(
                     TerminatorKind::Call {
                         func: Operand::Constant(Const {
-                            ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+                            ty: Ty::new(TyKind::Error, Span::DUMMY),
                             val: ConstVal::Int(0),
                         }),
                         args: arg_operands,
@@ -3443,7 +3443,7 @@ fn expr_to_adt_type(expr: &HirExpr) -> Option<Ty> {
                 // First try expr_to_adt_type (handles struct/enum literals)
                 if let Some(elem_ty) = expr_to_adt_type(first) {
                     let count_const = crate::mir::ty::Const {
-                        ty: Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span)),
+                        ty: Ty::new(TyKind::Uint(crate::ast::UintTy::Usize), expr.span),
                         val: crate::mir::ty::ConstVal::Uint(elems.len() as u128),
                     };
                     return Some(Ty::new(
