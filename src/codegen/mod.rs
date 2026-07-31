@@ -280,6 +280,8 @@ pub fn codegen_from_mir(
             fn_sigs,
             meta.param_count,
             interner,
+            // Stage 15.8: Arc<AdtLayouts> auto-derefs to &AdtLayouts.
+            // Per clippy::explicit_auto_deref, use &mir.adt_layouts (auto-deref).
             &mir.adt_layouts,
             meta.is_void,
             meta.abi,
@@ -415,9 +417,10 @@ fn codegen_function(
     // and conditionals — the helper ran BEFORE landin_main(), so all
     // prints appeared before the program body.
     //
-    // The MirBody println_messages field is retained (Vec::new()) for
-    // backward compatibility with any external tooling that reads MIR
-    // side-tables, but is no longer populated by MIR lower.
+    // Stage 15.6 (cleanup): The MirBody.println_messages field itself
+    // was removed in Stage 14.x (no longer declared on MirBody). This
+    // comment retained as historical context for the inline-emission
+    // design decision.
     emitter.emit_function_end();
 }
 

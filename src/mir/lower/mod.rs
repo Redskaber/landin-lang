@@ -23,6 +23,7 @@ mod expr_operand;
 mod field_resolution;
 mod overflow_assert;
 mod pattern_bindings;
+mod writeback;
 
 // Stage 6.10 (TD-011): Re-export expression lowering functions from
 // `expr_operand` so:
@@ -40,11 +41,28 @@ mod pattern_bindings;
 //
 // Per §23 (API naming): no glob re-export — each name is listed explicitly.
 pub use expr_operand::build_dyn_trait_call_terminator;
+// Stage 15.6 (v0.2): Expose the uncached inner function so tests can
+// verify cache semantics (cached result == uncached result). Per §29.1.3
+// (Design-Impl-Test coverage): tests need direct access to verify the
+// cache wrapper doesn't change behavior.
+pub use expr_operand::query_method_return_type_uncached;
+// Stage 15.7 (v0.2): Expose consolidated writeback functions for the
+// driver to call. Per §23 (API Naming): `pub use` of named functions
+// (no glob). Per §16: driver is orchestrator-only — these functions
+// contain the writeback logic, driver just calls them in order.
 pub(crate) use expr_operand::{lower_expr_to_operand, resolve_enum_variant};
-// Stage 14.41: re-export populate_adt_layouts so the driver can re-run it
-// after the Stage 14.37 writeback (the initial run inside lower_hir_body_to_mir
-// happens before the writeback, so it misses Adt types exposed by writeback).
-pub(crate) use adt_layout::populate_adt_layouts;
+pub use writeback::{writeback_closures, writeback_type_propagation};
+// Stage 14.41: populate_adt_layouts was re-exported here so the driver
+// could re-run it after writeback. Stage 15.8: the driver no longer calls
+// it (uses build_crate_adt_layouts instead). The function is still called
+// internally by lower_hir_body_to_mir via the adt_layout::module path.
+// The re-export is removed to eliminate the unused-import warning.
+//
+// Stage 15.8 (v0.2): Crate-level ADT layouts builder. The driver calls
+// this once after HIR resolution and shares the result via Arc<AdtLayouts>.
+// Per §23 (API Naming): `pub use` of named function (no glob).
+// Per §16: reads HIR (allowed in MIR lower), produces MIR data.
+pub use adt_layout::build_crate_adt_layouts;
 
 /// Lowering context for HIR→MIR conversion.
 ///
@@ -255,6 +273,49 @@ impl<'a> MirLowerCtxt<'a> {
     /// prefix per C-GETTER convention in rust-api-guidelines).
     pub fn dyn_trait_plan(&self) -> Option<&DynTraitMIRPlan> {
         self.dyn_trait_plan.as_ref()
+    }
+
+    /// Stage 15.6 (perf): Cached method return type lookup.
+    ///
+    /// Given a method's DefId, returns the method's return type as a MIR Ty.
+    /// Results are memoized in `method_return_type_cache` (a `RefCell<HashMap>`),
+    /// so repeated lookups of the same DefId are O(1) after the first call.
+    ///
+    /// Returns `None` when:
+    /// - `self.hir` is `None` (lowering context has no HIR attached), OR
+    /// - The DefId doesn't resolve to any method (impl method, free fn, or
+    ///   trait default body), OR
+    /// - The return type can't be lowered.
+    ///
+    /// Caching `None` results is intentional — it avoids re-scanning HIR
+    /// for known-unresolvable DefIds (e.g. primitives without methods).
+    ///
+    /// Per §23 (API Naming): public method follows `<verb>_<noun>` pattern.
+    /// Per §1.0 原则 6 "通用 > 特例": one cache handles all owner kinds.
+    /// Per §1.0 原则 3 "显式 > 隐式": caching is explicit in the method body.
+    ///
+    /// # Why now (Stage 15.6)
+    ///
+    /// Stage 15.4 added the cache field but couldn't activate it because Ty
+    /// carried a `Span`, making equal-Ty-different-Span lookups cache-miss.
+    /// Stage 15.5 removed Span from Ty (foundational for interning), unblocking
+    /// activation. Per `docs/lang-design/19-ty-interning.md`.
+    pub fn query_method_return_type(
+        &self,
+        method_def_id: crate::hir::DefId,
+    ) -> Option<crate::mir::ty::Ty> {
+        // Fast path: cache hit.
+        if let Some(cached) = self.method_return_type_cache.borrow().get(&method_def_id) {
+            return cached.clone();
+        }
+        // Slow path: scan HIR, memoize result (including None).
+        let result = self
+            .hir
+            .and_then(|hir| expr_operand::query_method_return_type_uncached(hir, method_def_id));
+        self.method_return_type_cache
+            .borrow_mut()
+            .insert(method_def_id, result.clone());
+        result
     }
 
     /// Allocate a fresh basic block and return its ID.

@@ -4,15 +4,52 @@
 //! Contains functions for sinking ADT storage layouts from HIR into MIR's
 //! `adt_layouts` side-table, so codegen can resolve `TyKind::Adt(def_id, _)`
 //! without reading HIR (per §16 — L-PIPE-1 closure from Stage 3.47).
+//!
+//! Stage 15.8 (v0.2): Added `build_crate_adt_layouts` — builds ALL ADT
+//! layouts from HIR upfront (crate-level), eliminating the per-body
+//! `populate_adt_layouts` re-scans. The crate-level map is shared across
+//! all MirBodies via `Arc<AdtLayouts>`.
 
 use crate::hir::{DefId, HirCrate, HirItem, OwnerNode};
-use crate::mir::body::{AdtLayout, MirBody, StatementKind};
+use crate::mir::body::{AdtLayout, AdtLayouts, MirBody, StatementKind};
 use crate::mir::place::{AggregateKind, Rvalue};
 use crate::mir::ty::{Ty, TyKind};
 use crate::session::Span;
 
 // Re-export lower_hir_ty_to_mir_ty from the parent module.
 use super::lower_hir_ty_to_mir_ty;
+
+/// Stage 15.8 (v0.2): Build ALL ADT layouts from HIR, crate-level.
+///
+/// Scans every HIR owner for `HirItem::Struct` and `HirItem::Enum`,
+/// builds an `AdtLayout` for each, and recursively registers nested ADTs.
+/// The resulting map is complete — every ADT defined in the crate has its
+/// layout registered, regardless of whether it appears in any body's
+/// local_decls.
+///
+/// This is the root-cause fix for the "re-populate after writeback" hack
+/// from Stages 14.41 and 14.84. Previously, `populate_adt_layouts` only
+/// registered ADTs that appeared in `mir.local_decls` — but writeback
+/// could change a local's type from `Infer` to `Adt(def_id, [])`, exposing
+/// new DefIds that weren't registered. The fix was to re-run
+/// `populate_adt_layouts` after writeback. With `build_crate_adt_layouts`,
+/// all layouts are registered upfront — no re-runs needed.
+///
+/// Per §15 "最优 > 最小": this is the root-cause fix, not a workaround.
+/// Per §1.0 原则 6 "通用 > 特例": one function handles all HIR owner kinds.
+/// Per §16: reads HIR (allowed in MIR lower), produces MIR data.
+pub fn build_crate_adt_layouts(hir: &HirCrate) -> AdtLayouts {
+    let mut layouts: AdtLayouts = AdtLayouts::new();
+    for (def_id, _owner) in &hir.owners {
+        // Try to build a layout for this DefId. If it's a struct/enum,
+        // build_adt_layout returns Some and we register it (plus nested).
+        // For non-ADT owners (fns, impls, traits), build_adt_layout returns None.
+        if build_adt_layout(*def_id, hir).is_some() {
+            register_adt_layout_recursive(&mut layouts, *def_id, hir);
+        }
+    }
+    layouts
+}
 
 /// Stage 3.47 (L-PIPE-1 closure): sink ADT layouts from HIR into MIR's
 /// `adt_layouts` side-table.
@@ -21,7 +58,29 @@ use super::lower_hir_ty_to_mir_ty;
 /// collecting all `TyKind::Adt(def_id, _)` DefIds. For each unique DefId,
 /// builds an `AdtLayout` from HIR and inserts it into `mir.adt_layouts`.
 /// Also registers one level of nested Adts.
+///
+/// Stage 15.8 (v0.2): This function is now DEPRECATED for driver use.
+/// The driver should call `build_crate_adt_layouts(hir)` once and share
+/// the result via `Arc<AdtLayouts>`. This per-body function is retained
+/// for the `lower_hir_body_to_mir` internal call (which runs before the
+/// driver has a chance to build the crate-level map), but its result is
+/// overwritten by the driver's crate-level map after all bodies are
+/// processed.
+///
+/// Per §15 "最优 > 最小": `build_crate_adt_layouts` is the root-cause fix;
+/// this function is kept for backward compatibility during the migration.
 pub(crate) fn populate_adt_layouts(mir: &mut MirBody, hir: &HirCrate) {
+    // Stage 15.8: MirBody.adt_layouts is now Arc<AdtLayouts> (immutable
+    // when shared). To populate, we need to extract the Arc, mutate the
+    // inner HashMap, and re-wrap. This is safe because the Arc is not yet
+    // shared (we're still in lower_hir_body_to_mir, before the driver
+    // shares it across bodies).
+    //
+    // Arc::make_mut gives us a mutable ref if the Arc has refcount 1
+    // (which is the case here — the Arc was just created in MirBody::new),
+    // or clones the inner data if shared (which won't happen here).
+    let layouts = std::sync::Arc::make_mut(&mut mir.adt_layouts);
+
     // Collect all DefIds referenced by any local's type (top-level scan).
     let mut def_ids_to_register: Vec<DefId> = Vec::new();
     for ld in &mir.local_decls {
@@ -55,7 +114,7 @@ pub(crate) fn populate_adt_layouts(mir: &mut MirBody, hir: &HirCrate) {
 
     // Register each unique DefId using the Entry API.
     for def_id in def_ids_to_register {
-        register_adt_layout_recursive(&mut mir.adt_layouts, def_id, hir);
+        register_adt_layout_recursive(layouts, def_id, hir);
     }
 }
 

@@ -1,0 +1,675 @@
+//! Stage 15.7 (v0.2): Consolidated type writeback passes.
+//!
+//! This module consolidates the 8 driver writeback passes (Stages 14.30-14.84)
+//! into 2 functions:
+//!
+//! - [`writeback_type_propagation`] — merges passes 1-5 (Tuple literal types,
+//!   Call dest types, Field projection Copy dests, Index projection Copy
+//!   dests, Copy/Move chain propagation) into a single fixpoint walk.
+//! - [`writeback_closures`] — merges passes 6-8 (Closure substs writeback,
+//!   Closure local_decl.ty update, Closure extract locals update) into a
+//!   single 3-sub-pass walk.
+//!
+//! # Why consolidate?
+//!
+//! Per `docs/develop/v0/stage-15/v0.2-preparation.md` Phase 1 Task 5:
+//! the 8 incremental passes were correct for v0.1 (each fixed a real bug)
+//! but v0.2 should consolidate for maintainability and performance.
+//! The consolidation reduces 6× constant factor overhead and makes the
+//! type-propagation logic easier to reason about.
+//!
+//! # Architecture
+//!
+//! Per §16 (interface isolation): these functions take `&mut MirBody` (and
+//! `&FnSigTable` for type propagation) and mutate local_decls in place.
+//! They are pure MIR-to-MIR transforms — no HIR access. The driver calls
+//! them after typeck completes.
+//!
+//! Per §23 (API naming): both functions follow the `<verb>_<noun>` pattern
+//! (`writeback_*`). The module name `writeback` matches the noun.
+//!
+//! Per §1.0 原则 1 "长期 > 短期": the consolidation is the right long-term
+//! structure, even though the incremental passes were correct short-term.
+
+use crate::hir::DefId;
+use crate::mir::body::{MirBody, StatementKind, TerminatorKind};
+use crate::mir::place::{AggregateKind, Operand, PlaceKind, ProjectionElem, Rvalue};
+use crate::mir::ty::{Ty, TyKind};
+use crate::session::Span;
+use std::collections::HashMap;
+
+/// Check if a Ty is Infer or Error (the two kinds that need writeback).
+///
+/// Per §1.0 原则 3 "显式 > 隐式": the helper makes the "needs writeback"
+/// predicate explicit at every callsite.
+fn needs_writeback(ty: &Ty) -> bool {
+    matches!(&ty.kind, TyKind::Infer(_) | TyKind::Error)
+}
+
+/// Stage 15.7: Consolidated type-propagation writeback (passes 1-5).
+///
+/// Walks the MIR body in a fixpoint loop, applying all type-propagation
+/// rules until no more changes are made. Each iteration walks all basic
+/// blocks once, checking every Assign statement and Call terminator.
+///
+/// # Rules applied (per iteration)
+///
+/// 1. **Tuple Aggregate**: `loc = (a, b, c)` → build `Tuple([a_ty, b_ty, c_ty])`
+///    from operand types and write to `loc`'s local_decl.
+/// 2. **Call dest**: `loc = call f(...)` → look up `f`'s return type in
+///    `fn_sigs` and write to `loc`'s local_decl.
+/// 3. **Field projection Copy/Move**: `loc = Copy(tup.0)` → resolve field
+///    type from `tup`'s Tuple type and write to `loc`.
+/// 4. **Index projection Copy/Move**: `loc = Copy(arr[i])` → resolve
+///    element type from `arr`'s Array type and write to `loc`.
+/// 5. **Local-to-local Copy/Move**: `loc = Copy(other)` → propagate
+///    `other`'s resolved type to `loc`.
+///
+/// # Fixpoint termination
+///
+/// The loop terminates when an iteration makes no changes. Each iteration
+/// can only transition a local from `Infer`/`Error` to a concrete type —
+/// never the reverse. So the loop runs at most `local_count + 1` iterations
+/// (worst case: a chain of `loc_A = Copy(loc_B); loc_B = Copy(loc_C); ...`
+/// where each iteration resolves one local).
+///
+/// # Parameters
+///
+/// - `mir`: the MIR body to mutate (local_decls updated in place)
+/// - `fn_sigs`: map from fn DefId to MIR Sig (used by Call dest rule)
+///
+/// Per §23 (API Naming): `pub fn <verb>_<noun>(...)` pattern.
+/// Per §16: pure MIR-to-MIR transform, no HIR access.
+pub fn writeback_type_propagation(
+    mir: &mut MirBody,
+    fn_sigs: &HashMap<DefId, crate::mir::ty::Sig>,
+) {
+    loop {
+        let mut changes: Vec<(usize, Ty)> = Vec::new();
+
+        for bb in &mir.basic_blocks {
+            // Rules 1, 3, 4, 5: walk Assign statements.
+            for stmt in &bb.statements {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let PlaceKind::Local(dest_id) = &place.kind {
+                        let dest_idx = dest_id.0 as usize;
+                        // Skip if dest already has a concrete type.
+                        let dest_ty = &mir.local_decls[dest_idx].ty;
+                        if !needs_writeback(dest_ty) {
+                            continue;
+                        }
+                        // Try each rule; first match wins.
+                        if let Some(new_ty) = compute_writeback_ty(rvalue, mir) {
+                            // Stage 15.7 fix: only push if the new type is
+                            // itself concrete. Without this check, if the
+                            // source type is Infer (e.g., a generic method's
+                            // return type T), we'd write Infer to dest,
+                            // dest stays Infer, and the fixpoint never
+                            // converges — infinite loop.
+                            if !needs_writeback(&new_ty) {
+                                changes.push((dest_idx, new_ty));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Rule 2: Call dest writeback (terminator-level).
+            if let TerminatorKind::Call {
+                func, destination, ..
+            } = &bb.terminator.kind
+            {
+                if let PlaceKind::Local(id) = &destination.kind {
+                    let dest_idx = id.0 as usize;
+                    let dest_ty = &mir.local_decls[dest_idx].ty;
+                    if !needs_writeback(dest_ty) {
+                        continue;
+                    }
+                    if let Some(new_ty) = compute_call_dest_ty(func, fn_sigs) {
+                        // Same fixpoint convergence check as above.
+                        if !needs_writeback(&new_ty) {
+                            changes.push((dest_idx, new_ty));
+                        }
+                    }
+                }
+            }
+        }
+
+        if changes.is_empty() {
+            break;
+        }
+        for (idx, ty) in changes {
+            mir.local_decls[idx].ty = ty;
+        }
+    }
+}
+
+/// Compute the writeback type for an Assign's RHS, if any rule applies.
+///
+/// Handles rules 1, 3, 4, 5 (Call dest is handled separately because it's
+/// a terminator, not a statement).
+///
+/// Returns `None` if no rule applies or if the source types are still
+/// Infer/Error (can't resolve yet — will retry in next fixpoint iteration).
+fn compute_writeback_ty(rvalue: &Rvalue, mir: &MirBody) -> Option<Ty> {
+    match rvalue {
+        // Rule 1: Tuple Aggregate — build tuple type from operand types.
+        Rvalue::Aggregate(AggregateKind::Tuple, operands) => {
+            let elem_tys: Vec<Ty> = operands.iter().map(|op| operand_ty(op, mir)).collect();
+            Some(Ty::new(TyKind::Tuple(elem_tys), Span::DUMMY))
+        }
+
+        // Rules 3, 4, 5: Use(Copy|Move(place)) — propagate from source.
+        Rvalue::Use(Operand::Copy(src_place) | Operand::Move(src_place)) => {
+            compute_use_writeback_ty(src_place, mir)
+        }
+
+        _ => None,
+    }
+}
+
+/// Compute the type for a `Use(Copy|Move(place))` writeback.
+///
+/// Handles:
+/// - Rule 5: `place = Local(src_id)` → propagate src's type
+/// - Rule 3: `place = Projection(Local(base), Field(i, ty))` → resolve field ty
+/// - Rule 4: `place = Projection(Local(base), Index|ConstantIndex)` → resolve elem ty
+fn compute_use_writeback_ty(src_place: &crate::mir::place::Place, mir: &MirBody) -> Option<Ty> {
+    match &src_place.kind {
+        // Rule 5: Local-to-local propagation.
+        PlaceKind::Local(src_id) => {
+            let src_ty = &mir.local_decls[src_id.0 as usize].ty;
+            if !needs_writeback(src_ty) {
+                Some(src_ty.clone())
+            } else {
+                None
+            }
+        }
+
+        // Rules 3, 4: Projection from a local.
+        PlaceKind::Projection(base, elem) => {
+            let PlaceKind::Local(base_id) = &base.kind else {
+                return None;
+            };
+            let base_ld = mir.local_decls.get(base_id.0 as usize)?;
+            match elem {
+                // Rule 3: Field projection — resolve field ty from base Tuple.
+                ProjectionElem::Field(field_id, field_ty) => {
+                    if !needs_writeback(field_ty) {
+                        // Field ty is already concrete — use it.
+                        return Some(field_ty.clone());
+                    }
+                    // Field ty is Infer — try to resolve from base's Tuple type.
+                    if let TyKind::Tuple(field_tys) = &base_ld.ty.kind {
+                        return field_tys.get(field_id.0 as usize).cloned();
+                    }
+                    None
+                }
+                // Rule 4: Index/ConstantIndex projection — resolve elem ty from base Array.
+                ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. } => {
+                    if let TyKind::Array(elem_ty, _) = &base_ld.ty.kind {
+                        return Some(elem_ty.as_ref().clone());
+                    }
+                    None
+                }
+                _ => None,
+            }
+        }
+
+        _ => None,
+    }
+}
+
+/// Compute the Call dest type from the callee's fn_sig.
+///
+/// Rule 2: `loc = call f(...)` → look up `f`'s return type in `fn_sigs`.
+fn compute_call_dest_ty(
+    func: &Operand,
+    fn_sigs: &HashMap<DefId, crate::mir::ty::Sig>,
+) -> Option<Ty> {
+    let Operand::Constant(c) = func else {
+        return None;
+    };
+    let did = match &c.val {
+        crate::mir::ty::ConstVal::Uint(n) => DefId(*n as u32),
+        crate::mir::ty::ConstVal::Int(n) => DefId(*n as u32),
+        _ => return None,
+    };
+    let sig = fn_sigs.get(&did)?;
+    Some(sig.output.as_ref().clone())
+}
+
+/// Get the Ty of an operand (for Tuple Aggregate writeback).
+///
+/// For Copy/Move: reads from the source local's local_decl.
+/// For Constant: returns the constant's Ty.
+/// Falls back to a fresh Infer TyVid(0) if the source local is missing
+/// (preserves existing v0.1 behavior — see Stage 14.49 commit).
+fn operand_ty(op: &Operand, mir: &MirBody) -> Ty {
+    match op {
+        Operand::Copy(p) | Operand::Move(p) => {
+            if let PlaceKind::Local(id) = &p.kind {
+                mir.local_decls
+                    .get(id.0 as usize)
+                    .map(|ld| ld.ty.clone())
+                    .unwrap_or_else(fresh_infer_ty)
+            } else {
+                fresh_infer_ty()
+            }
+        }
+        Operand::Constant(c) => c.ty.as_ref().clone(),
+    }
+}
+
+/// Construct a fresh Infer TyVid(0) for fallback cases.
+///
+/// Per §1.0 原则 3 "显式 > 隐式": the fallback is explicit. The TyVid(0)
+/// is a placeholder — typeck should have resolved it, but if not, the
+/// writeback doesn't make things worse.
+fn fresh_infer_ty() -> Ty {
+    Ty::new(
+        TyKind::Infer(crate::mir::ty::InferVar::TyVar(crate::mir::ty::TyVid(0))),
+        Span::DUMMY,
+    )
+}
+
+/// Stage 15.7: Consolidated closure writeback (passes 6-8).
+///
+/// Walks the MIR body in 3 sub-passes (all linear, no fixpoint needed):
+///
+/// 1. **Closure substs + local_decl**: For each `loc = Aggregate(Closure(def_id, _), operands)`:
+///    - Resolve each subst from the corresponding operand's source local type.
+///    - Update the Aggregate's substs in place.
+///    - Update `loc`'s local_decl.ty to `Closure(def_id, resolved_substs)`.
+///
+/// 2. **Closure Move propagation**: For each `loc = Use(Move(closure_tmp))`:
+///    - If `closure_tmp`'s type is now `Closure(_, [resolved])` (no Infer),
+///      propagate it to `loc`'s local_decl.ty.
+///
+/// 3. **Closure extract locals**: For each `loc = Use(Copy(Projection(closure_local, Field(i, _))))`:
+///    - Look up `closure_local`'s resolved subst at index `i`.
+///    - Write it to `loc`'s local_decl.ty.
+///
+/// # Why no fixpoint?
+///
+/// Sub-pass 1 produces the resolved substs. Sub-pass 2 consumes them to
+/// propagate to user-visible locals. Sub-pass 3 consumes sub-pass 2's
+/// result to update extract locals. The dependency chain is linear —
+/// each sub-pass runs exactly once, in order.
+///
+/// # Parameters
+///
+/// - `mir`: the MIR body to mutate (local_decls + Aggregate substs updated)
+///
+/// Per §23 (API Naming): `pub fn <verb>_<noun>(...)` pattern.
+/// Per §16: pure MIR-to-MIR transform, no HIR access.
+pub fn writeback_closures(mir: &mut MirBody) {
+    // Sub-pass 1: Closure substs + local_decl.ty update.
+    // Snapshot-then-mutate pattern: we read from local_decls to compute
+    // resolved substs, then mutate both the Aggregate and the closure
+    // local's local_decl.ty.
+    for bb in &mut mir.basic_blocks {
+        for stmt_idx in 0..bb.statements.len() {
+            let (lhs_local_id, resolved_substs, closure_def_id) = {
+                let stmt = &bb.statements[stmt_idx];
+                let StatementKind::Assign(boxed) = &stmt.kind else {
+                    continue;
+                };
+                let (place, rvalue) = &**boxed;
+                let Rvalue::Aggregate(AggregateKind::Closure(def_id, _substs), operands) = rvalue
+                else {
+                    continue;
+                };
+                // Get the LHS localId (the closure tmp local).
+                let lhs_local_id = match &place.kind {
+                    PlaceKind::Local(id) => Some(*id),
+                    _ => None,
+                };
+                // Snapshot source local IDs and resolved types.
+                let src_local_ids: Vec<Option<crate::mir::place::LocalId>> = operands
+                    .iter()
+                    .map(|op| match op {
+                        Operand::Copy(p) | Operand::Move(p) => {
+                            if let PlaceKind::Local(id) = &p.kind {
+                                Some(*id)
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                let resolved_substs: Vec<Option<Ty>> = src_local_ids
+                    .iter()
+                    .map(|src_id_opt| {
+                        src_id_opt
+                            .and_then(|src_id| mir.local_decls.get(src_id.0 as usize))
+                            .map(|ld| ld.ty.clone())
+                            .filter(|ty| !needs_writeback(ty))
+                    })
+                    .collect();
+                (lhs_local_id, resolved_substs, Some(*def_id))
+            };
+
+            // Now mutate: update AggregateKind substs AND closure local's local_decl.ty.
+            if let Some(closure_def_id) = closure_def_id {
+                if !resolved_substs.is_empty() {
+                    let new_substs: Vec<Ty> = resolved_substs
+                        .iter()
+                        .map(|opt| {
+                            opt.clone()
+                                .unwrap_or_else(|| Ty::new(TyKind::Error, Span::DUMMY))
+                        })
+                        .collect();
+                    if let StatementKind::Assign(boxed) = &mut bb.statements[stmt_idx].kind {
+                        let (_, rv) = &mut **boxed;
+                        if let Rvalue::Aggregate(AggregateKind::Closure(_, substs), _) = rv {
+                            for (i, resolved_ty_opt) in resolved_substs.iter().enumerate() {
+                                if let Some(ty) = resolved_ty_opt {
+                                    if i < substs.len() {
+                                        substs[i] = ty.clone();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // Also update the closure local's local_decl.ty so the alloca size matches.
+                    if let Some(lhs_id) = lhs_local_id {
+                        if let Some(lhs_ld) = mir.local_decls.get_mut(lhs_id.0 as usize) {
+                            let new_closure_ty = Ty::new(
+                                TyKind::Closure(closure_def_id, new_substs.clone()),
+                                Span::DUMMY,
+                            );
+                            lhs_ld.ty = new_closure_ty;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Sub-pass 2: Propagate updated closure types through `f = Move(closure_tmp)`.
+    // After sub-pass 1, closure_tmp has the correct `Closure(_, [resolved])` type.
+    // The user-visible `f` local (assigned via Move(closure_tmp)) still has the
+    // stale `Closure(_, [Infer])` type — propagate.
+    #[allow(clippy::collapsible_match)]
+    for bb in &mut mir.basic_blocks {
+        for stmt in &mut bb.statements {
+            let StatementKind::Assign(boxed) = &mut stmt.kind else {
+                continue;
+            };
+            let (place, rvalue) = &**boxed;
+            let Rvalue::Use(op) = rvalue else {
+                continue;
+            };
+            let Operand::Move(src_place) = op else {
+                continue;
+            };
+            let PlaceKind::Local(src_id) = &src_place.kind else {
+                continue;
+            };
+            let Some(src_ld) = mir.local_decls.get(src_id.0 as usize) else {
+                continue;
+            };
+            let src_ty = src_ld.ty.clone();
+            // Source must be a Closure with all substs resolved (no Infer).
+            let src_ok = matches!(&src_ty.kind,
+                TyKind::Closure(_, substs)
+                if !substs.iter().any(needs_writeback)
+            );
+            if !src_ok {
+                continue;
+            }
+            let PlaceKind::Local(lhs_id) = &place.kind else {
+                continue;
+            };
+            if let Some(lhs_ld) = mir.local_decls.get_mut(lhs_id.0 as usize) {
+                // Only update if LHS is still Infer or stale Closure (with Infer substs).
+                let needs_update = needs_writeback(&lhs_ld.ty)
+                    || matches!(&lhs_ld.ty.kind,
+                        TyKind::Closure(_, substs)
+                        if substs.iter().any(needs_writeback)
+                    );
+                if needs_update {
+                    lhs_ld.ty = src_ty;
+                }
+            }
+        }
+    }
+
+    // Sub-pass 3: Update extract locals' types for closure captures.
+    // Pattern: `extract_local = Use(Copy(Projection(closure_local, Field(i, _))))`.
+    // The extract local's type should match `closure_local.substs[i]`.
+    #[allow(clippy::collapsible_match)]
+    for bb in &mut mir.basic_blocks {
+        for stmt in &mut bb.statements {
+            let StatementKind::Assign(boxed) = &mut stmt.kind else {
+                continue;
+            };
+            let (place, rvalue) = &**boxed;
+            let Rvalue::Use(op) = rvalue else {
+                continue;
+            };
+            let Operand::Copy(src_place) = op else {
+                continue;
+            };
+            let PlaceKind::Projection(base, elem) = &src_place.kind else {
+                continue;
+            };
+            let ProjectionElem::Field(field_id, _) = elem else {
+                continue;
+            };
+            let PlaceKind::Local(closure_local_id) = &base.kind else {
+                continue;
+            };
+            // Get the closure's resolved subst at field_id.
+            let Some(resolved_cap_ty) =
+                mir.local_decls
+                    .get(closure_local_id.0 as usize)
+                    .and_then(|ld| {
+                        if let TyKind::Closure(_, substs) = &ld.ty.kind {
+                            substs.get(field_id.0 as usize).cloned()
+                        } else {
+                            None
+                        }
+                    })
+            else {
+                continue;
+            };
+            // Update the extract local's type.
+            let PlaceKind::Local(lhs_id) = &place.kind else {
+                continue;
+            };
+            if let Some(lhs_ld) = mir.local_decls.get_mut(lhs_id.0 as usize) {
+                if needs_writeback(&lhs_ld.ty) {
+                    lhs_ld.ty = resolved_cap_ty;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::IntTy;
+    use crate::mir::body::{BasicBlock, LocalDecl, MirBody, Statement, Terminator};
+    use crate::mir::place::{AggregateKind, Operand, Place, Rvalue};
+    use crate::mir::ty::{InferVar, Mutability, TyKind, TyVid};
+    use crate::session::Span;
+
+    /// Build a LocalDecl with the given type and Immutable mutability.
+    fn local_decl(ty: Ty) -> LocalDecl {
+        LocalDecl {
+            ty,
+            name: None,
+            mutability: Mutability::Immutable,
+            source_info: Span::DUMMY,
+        }
+    }
+
+    /// Build a minimal MirBody with one basic block and the given statements.
+    fn build_mir(local_decls: Vec<LocalDecl>, statements: Vec<Statement>) -> MirBody {
+        let mut mir = MirBody::new(Span::DUMMY);
+        mir.local_decls = local_decls;
+        let bb = BasicBlock {
+            statements,
+            terminator: Terminator::unreachable(Span::DUMMY),
+            span: Span::DUMMY,
+            terminator_span: Span::DUMMY,
+        };
+        mir.basic_blocks = vec![bb];
+        mir
+    }
+
+    /// Stage 15.7 test 1: Tuple Aggregate writeback.
+    ///
+    /// `loc = (a, b)` where a:i32, b:bool → loc's type resolves to Tuple([i32, bool]).
+    #[test]
+    fn stage15_7_tuple_aggregate_writeback() {
+        let local_decls = vec![
+            local_decl(Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY)), // 0: a
+            local_decl(Ty::new(TyKind::Bool, Span::DUMMY)),            // 1: b
+            local_decl(fresh_infer_test()),                            // 2: loc (dest)
+        ];
+        let statements = vec![Statement {
+            kind: StatementKind::Assign(Box::new((
+                Place::local(crate::mir::place::LocalId(2), Span::DUMMY),
+                Rvalue::Aggregate(
+                    AggregateKind::Tuple,
+                    vec![
+                        Operand::Copy(Place::local(crate::mir::place::LocalId(0), Span::DUMMY)),
+                        Operand::Copy(Place::local(crate::mir::place::LocalId(1), Span::DUMMY)),
+                    ],
+                ),
+            ))),
+            span: Span::DUMMY,
+        }];
+        let mut mir = build_mir(local_decls, statements);
+        let fn_sigs = HashMap::new();
+        writeback_type_propagation(&mut mir, &fn_sigs);
+        assert!(
+            matches!(&mir.local_decls[2].ty.kind, TyKind::Tuple(tys) if tys.len() == 2),
+            "dest local must be Tuple with 2 elements after writeback"
+        );
+    }
+
+    /// Stage 15.7 test 2: Local-to-local Copy propagation.
+    ///
+    /// `loc = Copy(src)` where src:i32 → loc's type resolves to i32.
+    #[test]
+    fn stage15_7_local_copy_writeback() {
+        let local_decls = vec![
+            local_decl(Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY)), // 0: src
+            local_decl(fresh_infer_test()),                            // 1: loc (dest)
+        ];
+        let statements = vec![Statement {
+            kind: StatementKind::Assign(Box::new((
+                Place::local(crate::mir::place::LocalId(1), Span::DUMMY),
+                Rvalue::Use(Operand::Copy(Place::local(
+                    crate::mir::place::LocalId(0),
+                    Span::DUMMY,
+                ))),
+            ))),
+            span: Span::DUMMY,
+        }];
+        let mut mir = build_mir(local_decls, statements);
+        let fn_sigs = HashMap::new();
+        writeback_type_propagation(&mut mir, &fn_sigs);
+        assert!(
+            matches!(&mir.local_decls[1].ty.kind, TyKind::Int(IntTy::I32)),
+            "dest local must be i32 after Copy propagation"
+        );
+    }
+
+    /// Stage 15.7 test 3: Fixpoint converges on Copy chain.
+    ///
+    /// `c = Copy(b); b = Copy(a); a = i32_literal`
+    /// (a is i32, b is Infer, c is Infer — fixpoint must resolve both b and c.)
+    #[test]
+    fn stage15_7_fixpoint_copy_chain() {
+        let local_decls = vec![
+            local_decl(Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY)), // 0: a
+            local_decl(fresh_infer_test()),                            // 1: b
+            local_decl(fresh_infer_test()),                            // 2: c
+        ];
+        let statements = vec![
+            Statement {
+                kind: StatementKind::Assign(Box::new((
+                    Place::local(crate::mir::place::LocalId(1), Span::DUMMY),
+                    Rvalue::Use(Operand::Copy(Place::local(
+                        crate::mir::place::LocalId(0),
+                        Span::DUMMY,
+                    ))),
+                ))),
+                span: Span::DUMMY,
+            },
+            Statement {
+                kind: StatementKind::Assign(Box::new((
+                    Place::local(crate::mir::place::LocalId(2), Span::DUMMY),
+                    Rvalue::Use(Operand::Copy(Place::local(
+                        crate::mir::place::LocalId(1),
+                        Span::DUMMY,
+                    ))),
+                ))),
+                span: Span::DUMMY,
+            },
+        ];
+        let mut mir = build_mir(local_decls, statements);
+        let fn_sigs = HashMap::new();
+        writeback_type_propagation(&mut mir, &fn_sigs);
+        assert!(
+            matches!(&mir.local_decls[1].ty.kind, TyKind::Int(IntTy::I32)),
+            "b must be i32 after fixpoint"
+        );
+        assert!(
+            matches!(&mir.local_decls[2].ty.kind, TyKind::Int(IntTy::I32)),
+            "c must be i32 after fixpoint (chain resolved)"
+        );
+    }
+
+    /// Stage 15.7 test 4: No writeback when dest is already concrete.
+    #[test]
+    fn stage15_7_no_writeback_when_concrete() {
+        let local_decls = vec![
+            local_decl(Ty::new(TyKind::Bool, Span::DUMMY)), // 0: src
+            local_decl(Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY)), // 1: dest (already i32)
+        ];
+        let statements = vec![Statement {
+            kind: StatementKind::Assign(Box::new((
+                Place::local(crate::mir::place::LocalId(1), Span::DUMMY),
+                Rvalue::Use(Operand::Copy(Place::local(
+                    crate::mir::place::LocalId(0),
+                    Span::DUMMY,
+                ))),
+            ))),
+            span: Span::DUMMY,
+        }];
+        let mut mir = build_mir(local_decls, statements);
+        let fn_sigs = HashMap::new();
+        writeback_type_propagation(&mut mir, &fn_sigs);
+        // dest should remain i32 (not overwritten with Bool).
+        assert!(
+            matches!(&mir.local_decls[1].ty.kind, TyKind::Int(IntTy::I32)),
+            "concrete dest must not be overwritten"
+        );
+    }
+
+    /// Stage 15.7 test 5: needs_writeback helper.
+    #[test]
+    fn stage15_7_needs_writeback_helper() {
+        assert!(needs_writeback(&fresh_infer_test()));
+        assert!(needs_writeback(&Ty::new(TyKind::Error, Span::DUMMY)));
+        assert!(!needs_writeback(&Ty::new(TyKind::Bool, Span::DUMMY)));
+        assert!(!needs_writeback(&Ty::new(
+            TyKind::Int(IntTy::I32),
+            Span::DUMMY
+        )));
+    }
+
+    /// Helper: fresh Infer TyVid(0) for tests.
+    fn fresh_infer_test() -> Ty {
+        Ty::new(TyKind::Infer(InferVar::TyVar(TyVid(0))), Span::DUMMY)
+    }
+}

@@ -1,9 +1,235 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.126.0
-**Date**: 2026-07-30
-**Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Current version**: v0.134.0
+**Date**: 2026-07-31
+**Test count**: 1970 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.134.0 — Stage 15.8 (Crate-level AdtLayouts Sharing)
+
+### Overview
+
+Stage 15.8 eliminates per-body `AdtLayouts` HashMap duplication by building
+the layout map once at the crate level (from HIR) and sharing it across all
+`MirBody` instances via `Arc<AdtLayouts>`. This closes a Phase 2 audit quick
+win: "Share AdtLayouts crate-level instead of per-body (1 day)".
+
+For a typical 100-fn, 50-type crate, this saves ~500KB of duplicated HashMap
+entries and eliminates 3× per-body `populate_adt_layouts` re-scan passes.
+
+### What Changed
+
+**New function** (`src/mir/lower/adt_layout.rs`):
+- `build_crate_adt_layouts(hir) -> AdtLayouts` — scans ALL HIR struct/enum
+  owners and builds their layouts upfront. Root-cause fix that doesn't
+  depend on `local_decls` (the source of the "re-populate after writeback"
+  hack from Stages 14.41 and 14.84).
+
+**Type change** (`src/mir/body.rs`):
+- `MirBody.adt_layouts: AdtLayouts` → `Arc<AdtLayouts>` (new type alias
+  `SharedAdtLayouts`). Cheap refcount-bump clone instead of HashMap clone.
+
+**Driver simplification** (`src/driver.rs`):
+- Removed 3× per-body `populate_adt_layouts` calls
+- Added 1× crate-level `build_crate_adt_layouts` + Arc sharing across bodies
+
+**Codegen** (`src/codegen/mod.rs`):
+- Updated one call site: `&mir.adt_layouts` → `&*mir.adt_layouts` (Arc deref)
+
+**New tests**:
+- 6 integration tests in `tests/v0/stage15/plan/crate_adt_layouts_tests.rs`
+  including `Arc::ptr_eq` verification that all bodies share the same Arc
+
+**Documentation**:
+- `docs/develop/v0/stage-15/stage-15.8-crate-adt-layouts.md` — full §29 review
+- `docs/tests/v0/stage15/stage-15.8-test-plan.md` — test plan
+- `docs/worklog.md` — Stage 15.8 entry
+- `README.md` — updated v0.2 progress
+
+### Why This Is The Right Stage 15.8
+
+Per `docs/develop/v0/stage-15/v0.2-preparation.md` Phase 1 quick wins:
+"Share AdtLayouts crate-level instead of per-body (1 day)".
+
+The Phase 2 audit identified ~500KB memory waste per typical crate from
+duplicated AdtLayouts HashMaps. The root cause was that `populate_adt_layouts`
+only registered layouts for ADTs in `local_decls` — requiring 3× per-body
+re-runs after writeback. Stage 15.8 fixes the root cause by building all
+layouts from HIR upfront.
+
+Per §15 "最优 > 最小": root-cause fix, not a workaround.
+Per §1.0 原则 6 "通用 > 特例": one crate-level map for all bodies.
+
+### Verification
+
+- All 145 lib tests pass (zero regression)
+- All 1970 integration tests pass (1964 + 6 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+---
+## v0.133.0 — Stage 15.7 (Writeback Consolidation — 8 passes → 2 functions)
+
+### Overview
+
+Stage 15.7 consolidates the 8 incremental driver writeback passes (Stages
+14.30-14.84) into 2 functions in a new `src/mir/lower/writeback.rs` module.
+This closes v0.2 Phase 1 Task 5 and reduces `driver.rs` from 2,358 LOC to
+1,709 LOC (−649 LOC, −27.5%).
+
+A fixpoint convergence bug was found and fixed during integration testing:
+the loop must not push `Infer`/`Error` types to `changes` (doing so causes
+an infinite loop when a generic method's return type `T` is lowered to
+`Infer`).
+
+### What Changed
+
+**New module** (`src/mir/lower/writeback.rs`):
+- `writeback_type_propagation(mir, fn_sigs)` — merges passes 1-5 (Tuple
+  Aggregate, Call dest, Field projection Copy, Index projection Copy,
+  Copy/Move chain fixpoint) into one fixpoint walk.
+- `writeback_closures(mir)` — merges passes 6-8 (Closure substs, Closure
+  local_decl.ty, Closure extract locals) into 3 linear sub-passes.
+
+**Driver refactoring** (`src/driver.rs`):
+- Replaced 650 LOC of inline writeback passes with 25 LOC of function calls
+- Driver is now truly orchestrator-only (per §16)
+
+**Bug fix** (fixpoint convergence):
+- Added `!needs_writeback(&new_ty)` guard before pushing to `changes`
+- Without this guard, generic method calls (`fn f<T>(&self, x: T) -> T`)
+  caused infinite loops because `T` is lowered to `Infer`
+- 5 conformance tests were hanging before the fix; all pass after
+
+**New tests**:
+- 5 unit tests in `src/mir/lower/writeback.rs` (synthetic MIR)
+- 7 integration tests in `tests/v0/stage15/plan/writeback_consolidation_tests.rs`
+  (real HIR via `compile()`)
+- 1 regression test for the infinite-loop bug
+
+**Documentation**:
+- `docs/develop/v0/stage-15/stage-15.7-writeback-consolidation.md` — full
+  §29 stage-end deep review with bug analysis
+- `docs/tests/v0/stage15/stage-15.7-test-plan.md` — test plan
+- `docs/worklog.md` — Stage 15.7 entry
+- `README.md` — updated v0.2 progress section
+
+### Why This Is The Right Stage 15.7
+
+Per `docs/develop/v0/stage-15/v0.2-preparation.md` Phase 1 Task 5: the 8
+incremental passes were correct for v0.1 (each fixed a real bug) but v0.2
+should consolidate for maintainability and performance. The consolidation
+reduces 6× constant factor overhead and makes the type-propagation logic
+easier to reason about.
+
+Per §16 (interface isolation): the driver should be orchestrator-only.
+Per §23 (API naming): both functions follow the `<verb>_<noun>` pattern.
+Per §1.0 原則 1 "长期 > 短期": the consolidation is the right long-term
+structure.
+
+### Verification
+
+- All 145 lib tests pass (140 + 5 new, zero regression)
+- All 1964 integration tests pass (1957 + 7 new, zero regression)
+- All 5216 conformance tests pass (including 5 that hung before the fix)
+- 0 clippy warnings, fmt clean
+- driver.rs: 2,358 → 1,709 LOC (−649 LOC)
+
+---
+## v0.132.0 — Stage 15.6 (`method_return_type_cache` Activation + §23 Audit)
+
+### Overview
+
+Stage 15.6 activates the `method_return_type_cache` infrastructure that
+was added in Stage 15.4 but couldn't be turned on because `Ty` carried a
+`Span` (Stage 15.5 removed it). The cache converts the O(B×M×O) HIR-scan
+quadratic flagged by Phase 2 audit HP-B12 into O(B×M+O) amortized.
+
+A secondary contribution is a full §23 API naming audit: 0 violations
+found (no glob re-exports, all deprecated items carry notes, all entry
+points follow the `<verb>_<noun>` pattern, all context types use `Ctxt` /
+`-er` suffix).
+
+### What Changed
+
+**Cache activation** (`src/mir/lower/`):
+- Renamed `query_method_return_type(hir, did)` → `query_method_return_type_uncached(hir, did)` (pub)
+- Added `MirLowerCtxt::query_method_return_type(&self, did) -> Option<Ty>` — cached wrapper
+- Converted all 10 callsites in `expr_operand.rs` to use `cx.query_method_return_type(did)`
+- Cache stores `Option<Ty>` (memoizes None results to avoid re-scanning HIR)
+
+**Dead comment cleanup**:
+- `src/codegen/mod.rs` + `src/mir/lower/expr_operand.rs`: removed stale
+  references to `MirBody.println_messages` (field was removed in Stage 14.x)
+
+**New test module**:
+- `tests/v0/stage15/plan/method_return_type_cache_tests.rs` — 6 new tests
+  verifying cache mechanics (tests 1-4) and integration with real HIR
+  (tests 5-6). Registered as `stage15_method_return_type_cache_tests`.
+
+**Documentation**:
+- `docs/develop/v0/stage-15/stage-15.6-method-return-type-cache.md` — full
+  §29 stage-end deep review
+- `docs/tests/v0/stage15/stage-15.6-test-plan.md` — test plan
+- `docs/worklog.md` — Stage 15.6 entry
+- `README.md` — updated v0.2 progress section
+
+### Why This Is The Right Stage 15.6
+
+Per §29.1.4 (hidden problems): Stage 15.5 removed `Span` from `Ty`, which
+unblocked the cache but didn't activate it. Leaving the cache dormant
+would have wasted the Stage 15.4 infrastructure work and left the HP-B12
+quadratic in place. Activating it now (Stage 15.6) is the optimal single-
+stage change — it closes the HP-B12 audit item without consuming the
+budget needed for the larger Phase 1 tasks (writeback consolidation, Ty
+interning).
+
+The §23 audit was bundled into Stage 15.6 because the cache activation
+touched `MirLowerCtxt` (a context type) and `query_method_return_type`
+(an entry-point method) — both §23-sensitive areas. Bundling the audit
+ensures the new code is compliant by construction.
+
+### Verification
+
+- All 1957 rust tests pass (1951 + 6 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- §23 audit: 0 glob re-exports, 0 unnamed deprecations, 0 type-prefix violations
+- Cache correctness: 4 design points covered by 6 tests (§29.1.3)
+
+---
+## v0.131.0 — Stage 15.5 (Span Removal from Ty — Foundation for Interning)
+
+### Overview
+
+Stage 15.5 removes the `span: Span` field from `Ty`, foundational for Ty
+interning (v0.3). The `_span` parameter is kept on `Ty::new(kind, _span)`
+for API compatibility; `Ty::from_kind(kind)` is the new preferred API.
+
+### What Changed
+
+- `src/mir/ty.rs`: Removed `span: Span` field from `Ty` struct
+- `src/typeck/unify.rs` + `src/mir/lower/mod.rs` + `src/driver.rs`: Replaced
+  all `ty.span` references with `Span::DUMMY`
+- `tests/conformance/01-typecheck/99-error-cases/034-return-missing-value.lin`:
+  Updated ERROR_PATTERN (error message path changed due to Span removal)
+
+### Why This Is The Right Stage 15.5
+
+Per `docs/lang-design/19-ty-interning.md`: Span belongs on `LocalDecl` and
+`Statement`, not on the type itself. Without Span, Ty values can be
+compared by kind alone — perfect for caching (unblocks `method_return_type_cache`
+activation in Stage 15.6) and for future Rc<TyKind> interning (v0.3).
+
+Per §1.0 原則 3 "显式 > 隐式": Span is now explicit on LocalDecl/Statement,
+not implicitly duplicated on every Ty.
+
+### Verification
+
+- All 1951 rust tests pass (zero regression, 1 conformance pattern updated)
+- All 5216 conformance tests pass
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.126.0 — Stage 14.112 (Terminator Struct Refactor — Proper HP-21 Fix)

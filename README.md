@@ -1,8 +1,8 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.126.0 (v0.1 release — Terminator struct refactor)  
-**Date**: 2026-07-30
+**Version**: v0.134.0 (v0.2 Phase 1 in progress — crate-level AdtLayouts sharing)  
+**Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
@@ -22,10 +22,28 @@ backend via the `llvm-sys` crate.
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 >
 > See `docs/develop/v0/stage-14/v0.1-final-release-assessment.md` for full assessment.
+
+> **v0.2 Phase 1 IN PROGRESS — Stage 15.8 Complete**
 >
-> Remaining P1/P2 gaps (GAP-2/3/4 region/drop/lifetime infrastructure,
-> GAP-9 stdlib MVP, GAP-14 visibility, GAP-15 mini-cargo) are feature-
-> completeness work, deferred past v0.1 as known limitations.
+> Stage 15.1-15.8 (v0.2 Phase 1 prep + consolidation + quick wins):
+> - **Stage 15.1** — Ty interning design doc (`docs/lang-design/19-ty-interning.md`)
+> - **Stage 15.2** — TypeInterner infrastructure + pre-build impl index (HP-B12)
+> - **Stage 15.3** — cstr() thread-local cache (memory leak fix for LSP mode)
+> - **Stage 15.4** — method_return_type_cache infrastructure (deferred activation)
+> - **Stage 15.5** — Span removal from Ty (foundational for interning)
+> - **Stage 15.6** — `method_return_type_cache` activation (closes HP-B12)
+>   + §23 API naming audit (0 violations)
+> - **Stage 15.7** — Writeback consolidation: 8 driver passes → 2 functions
+>   in new `src/mir/lower/writeback.rs`. driver.rs: 2,358 → 1,709 LOC.
+>   Closes v0.2 Phase 1 Task 5.
+> - **Stage 15.8** — Crate-level AdtLayouts sharing: `Arc<AdtLayouts>` shared
+>   across all MirBodies. ~500KB memory saved per typical crate. Eliminates
+>   3× per-body `populate_adt_layouts` re-runs. Root-cause fix for the
+>   "re-populate after writeback" hack.
+>
+> **Test count**: 1970 rust tests + 5216 conformance tests = 7186 passing.
+> **0 clippy warnings**, fmt clean. Next major milestone: v0.2 Phase 1 Task 1
+> (Ty interning via Rc stepping stone).
 
 ---
 

@@ -1786,9 +1786,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         //
         // Stage 13.13 replaces the side-table approach with an inline
         // StatementKind::Println variant, so codegen emits printf inline
-        // at the source position. The MirBody.println_messages field is
-        // kept (Vec::new()) for backward compatibility but no longer
-        // populated.
+        // at the source position. (Stage 15.6: the legacy
+        // MirBody.println_messages side-table field was removed in 14.x.)
         HirExprKind::Println {
             msg,
             args,
@@ -2245,8 +2244,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Was: fresh_infer_ty (which meant resolve_inherent_method couldn't
             // find methods on the result — chaining always returned 0).
             let dest_ty = if let Some(did) = method_def_id {
-                cx.hir
-                    .and_then(|hir| query_method_return_type(hir, did))
+                // Stage 15.6 (perf): use cached lookup — O(1) amortized
+                // vs O(n) HIR scan per call. Per §1.0 原则 6 "通用 > 特例":
+                // one cache handles all owner kinds.
+                cx.query_method_return_type(did)
                     .unwrap_or_else(|| cx.fresh_infer_ty(expr.span))
             } else {
                 cx.fresh_infer_ty(expr.span)
@@ -2551,9 +2552,14 @@ fn auto_deref_if_ref(cx: &MirLowerCtxt, place: Place, _receiver: &HirExpr) -> Pl
 /// Returns `None` if the DefId doesn't resolve to an impl method or if
 /// the return type can't be lowered.
 ///
-/// Stage 15.4 (perf): `query_method_return_type_cached` wraps this function
-/// with a RefCell<HashMap> cache to avoid repeated O(n) HIR scans.
-fn query_method_return_type(
+/// Stage 15.6 (perf): Now wrapped by `MirLowerCtxt::query_method_return_type`
+/// which checks a RefCell<HashMap> cache to avoid repeated O(n) HIR scans.
+/// This is the uncached inner implementation.
+///
+/// Per §23 (API Naming): public free function uses `<verb>_<noun>` pattern.
+/// Per §1.0 原则 6 "通用 > 特例": one function handles all owner kinds (impl
+/// method, free fn, trait default body).
+pub fn query_method_return_type_uncached(
     hir: &crate::hir::HirCrate,
     method_def_id: crate::hir::DefId,
 ) -> Option<crate::mir::ty::Ty> {
@@ -2826,7 +2832,8 @@ fn resolve_inherent_method_from_hir_expr(
                         if let HirExprKind::Path(init_path) = &init_func.kind {
                             if let crate::hir::Res::Def(init_did, init_kind) = init_path.res {
                                 if matches!(init_kind, crate::resolve::DefKind::Fn) {
-                                    if let Some(ret_ty) = query_method_return_type(hir, init_did) {
+                                    // Stage 15.6 (perf): use cached lookup.
+                                    if let Some(ret_ty) = cx.query_method_return_type(init_did) {
                                         return resolve_inherent_method(hir, &ret_ty, method_name);
                                     }
                                 }
@@ -2844,7 +2851,8 @@ fn resolve_inherent_method_from_hir_expr(
                         // via query_method_return_type, then resolve the target
                         // method on that type.
                         if let Some(init_did) = resolve_method_by_name(hir, &init_method.name) {
-                            if let Some(ret_ty) = query_method_return_type(hir, init_did) {
+                            // Stage 15.6 (perf): use cached lookup.
+                            if let Some(ret_ty) = cx.query_method_return_type(init_did) {
                                 // Stage 14.98 (Bug Z3 fix): Also try trait method
                                 // resolution, not just inherent. Without this,
                                 // `let r1 = p.f(); let r2 = r1.g();` where g is
@@ -2877,7 +2885,8 @@ fn resolve_inherent_method_from_hir_expr(
                     // — look up the method's return type and resolve the target
                     // method on that type.
                     if matches!(def_kind, crate::resolve::DefKind::Fn) {
-                        if let Some(ret_ty) = query_method_return_type(hir, def_id) {
+                        // Stage 15.6 (perf): use cached lookup.
+                        if let Some(ret_ty) = cx.query_method_return_type(def_id) {
                             // Stage 14.98 (Bug Z3 fix): Also try trait method
                             // resolution for static method call results.
                             return resolve_inherent_method(hir, &ret_ty, method_name)
@@ -2904,7 +2913,8 @@ fn resolve_inherent_method_from_hir_expr(
             // Resolve the receiver method's DefId by name.
             if let Some(recv_did) = resolve_method_by_name(hir, &recv_method.name) {
                 // Get the receiver method's return type.
-                if let Some(ret_ty) = query_method_return_type(hir, recv_did) {
+                // Stage 15.6 (perf): use cached lookup.
+                if let Some(ret_ty) = cx.query_method_return_type(recv_did) {
                     // Resolve the target method on the return type.
                     // `resolve_inherent_method` now handles Ref auto-deref
                     // (added in Stage 14.42), so `&mut Counter` correctly
@@ -2951,8 +2961,9 @@ fn resolve_inherent_method_from_hir_expr(
                                     if let HirExprKind::Path(p) = &func.kind {
                                         if let crate::hir::Res::Def(did, kind) = p.res {
                                             if matches!(kind, crate::resolve::DefKind::Fn) {
+                                                // Stage 15.6 (perf): cached.
                                                 if let Some(ret_ty) =
-                                                    query_method_return_type(hir, did)
+                                                    cx.query_method_return_type(did)
                                                 {
                                                     return resolve_inherent_method(
                                                         hir,
@@ -3111,7 +3122,8 @@ fn find_local_init_type(
                 if let HirExprKind::Path(path) = &func.kind {
                     if let crate::hir::Res::Def(def_id, def_kind) = path.res {
                         if matches!(def_kind, crate::resolve::DefKind::Fn) {
-                            if let Some(ret_ty) = query_method_return_type(hir, def_id) {
+                            // Stage 15.6 (perf): use cached lookup.
+                            if let Some(ret_ty) = cx.query_method_return_type(def_id) {
                                 return Some(ret_ty);
                             }
                         }
@@ -3126,7 +3138,8 @@ fn find_local_init_type(
             } = &inner.kind
             {
                 if let Some(init_did) = resolve_method_by_name(hir, &init_method.name) {
-                    if let Some(ret_ty) = query_method_return_type(hir, init_did) {
+                    // Stage 15.6 (perf): use cached lookup.
+                    if let Some(ret_ty) = cx.query_method_return_type(init_did) {
                         return Some(ret_ty);
                     }
                 }
@@ -3147,7 +3160,8 @@ fn find_local_init_type(
                         if let HirExprKind::Path(p) = &func.kind {
                             if let crate::hir::Res::Def(did, kind) = p.res {
                                 if matches!(kind, crate::resolve::DefKind::Fn) {
-                                    if let Some(ret_ty) = query_method_return_type(hir, did) {
+                                    // Stage 15.6 (perf): cached.
+                                    if let Some(ret_ty) = cx.query_method_return_type(did) {
                                         return Some(ret_ty);
                                     }
                                 }
@@ -3157,7 +3171,8 @@ fn find_local_init_type(
                     // Try MethodCall.
                     if let HirExprKind::MethodCall { method: m, .. } = &arm_body.kind {
                         if let Some(did) = resolve_method_by_name(hir, &m.name) {
-                            if let Some(ret_ty) = query_method_return_type(hir, did) {
+                            // Stage 15.6 (perf): cached.
+                            if let Some(ret_ty) = cx.query_method_return_type(did) {
                                 return Some(ret_ty);
                             }
                         }

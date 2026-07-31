@@ -15,6 +15,7 @@ use crate::mir::place::*;
 use crate::mir::ty::*;
 use crate::session::Span;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Stage 3.47 (L-PIPE-1 closure): Storage layout of an ADT
 /// (struct or enum), computed once by MIR lower and consumed by codegen.
@@ -44,6 +45,20 @@ pub enum AdtLayout {
 /// Side-table mapping ADT `DefId` → `AdtLayout`, stored on `MirBody`.
 pub type AdtLayouts = HashMap<crate::hir::DefId, AdtLayout>;
 
+/// Stage 15.8 (v0.2): Shared crate-level ADT layouts.
+///
+/// `Arc<AdtLayouts>` is cheap to clone (refcount bump) and shares the
+/// same underlying HashMap across all MirBodies in a compilation. This
+/// eliminates the per-body duplication from Stages 14.30-14.84 where each
+/// body had its own `AdtLayouts` HashMap (Phase 2 audit: ~500KB waste
+/// for a typical 100-fn, 50-type crate).
+///
+/// Per `docs/develop/v0/stage-15/v0.2-preparation.md` Phase 1 quick wins:
+/// "Share AdtLayouts crate-level instead of per-body (1 day)".
+/// Per §1.0 原则 6 "通用 > 特例": one shared map for all bodies.
+/// Per §16: codegen reads from MIR (via Arc deref), not HIR.
+pub type SharedAdtLayouts = Arc<AdtLayouts>;
+
 /// A MIR body: the CFG representation of a function body.
 #[derive(Debug, Clone)]
 pub struct MirBody {
@@ -56,7 +71,12 @@ pub struct MirBody {
     /// Stage 3.47 (L-PIPE-1): ADT layouts sunk from HIR by MIR lower.
     /// Consumed by codegen to avoid HIR lookup (per §16).
     /// Empty in test contexts where MIR bodies are constructed without HIR.
-    pub adt_layouts: AdtLayouts,
+    ///
+    /// Stage 15.8 (v0.2): Changed from `AdtLayouts` (owned HashMap) to
+    /// `SharedAdtLayouts` (Arc<AdtLayouts>). The driver builds the
+    /// crate-level map once from HIR and shares the Arc across all bodies.
+    /// This eliminates per-body HashMap duplication (~500KB for typical crate).
+    pub adt_layouts: SharedAdtLayouts,
     /// Stage 5.78: Dyn Trait method calls sunk from HIR by MIR lower.
     ///
     /// Each entry records the (trait, type, method, slot_index, param_count)
@@ -82,7 +102,7 @@ impl MirBody {
             basic_blocks: Vec::new(),
             local_decls: Vec::new(),
             span,
-            adt_layouts: AdtLayouts::new(),
+            adt_layouts: Arc::new(AdtLayouts::new()),
             dyn_trait_calls: Vec::new(),
             lower_type_errors: Vec::new(),
         }
@@ -146,8 +166,15 @@ impl MirBody {
     /// Called by MIR lower when it constructs a `TyKind::Adt(def_id, _)`.
     /// Idempotent: if the same `def_id` is registered twice with the same
     /// layout, the second call is a no-op.
+    ///
+    /// Stage 15.8 (v0.2): Uses `Arc::make_mut` to get mutable access to the
+    /// inner HashMap. This clones the HashMap if the Arc is shared (refcount > 1),
+    /// but in practice the Arc is only shared after the driver finishes building
+    /// all bodies — so during lowering (when this method is called), the Arc
+    /// has refcount 1 and `make_mut` is a no-op.
     pub fn register_adt_layout(&mut self, def_id: crate::hir::DefId, layout: AdtLayout) {
-        self.adt_layouts.entry(def_id).or_insert(layout);
+        let layouts = std::sync::Arc::make_mut(&mut self.adt_layouts);
+        layouts.entry(def_id).or_insert(layout);
     }
 }
 
