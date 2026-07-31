@@ -288,7 +288,10 @@ pub(crate) fn codegen_rvalue(
                 // Look up the full storage type from the Adt layout.
                 let storage_ty = mir_type_to_emit_type_with_layouts(
                     &crate::mir::ty::Ty::new(
-                        crate::mir::ty::TyKind::Adt(*def_id, Vec::new()),
+                        crate::mir::ty::TyKind::Adt(
+                            *def_id,
+                            Vec::<crate::mir::ty::Ty>::new().into(),
+                        ),
                         crate::session::Span::DUMMY,
                     ),
                     layouts,

@@ -941,6 +941,12 @@ pub fn compile(src: &str) -> CompileResult {
     //
     // Per §15 "最优 > 最小": this is the root-cause fix, not a workaround.
     // Per §1.0 原则 6 "通用 > 特例": one crate-level map for all bodies.
+    //
+    // clippy::arc_with_non_send_sync: AdtLayouts (HashMap<DefId, AdtLayout>)
+    // is not Send+Sync because AdtLayout contains Ty (which has Box/Vec).
+    // The compiler is single-threaded, so Arc is fine — using Arc instead
+    // of Rc keeps the door open for future multi-threaded LSP mode.
+    #[allow(clippy::arc_with_non_send_sync)]
     let crate_adt_layouts: std::sync::Arc<crate::mir::body::AdtLayouts> =
         std::sync::Arc::new(crate::mir::lower::build_crate_adt_layouts(&hir));
 

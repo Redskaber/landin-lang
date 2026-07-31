@@ -441,8 +441,13 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                 if field_tys.len() == 1 {
                                     // Unit variant — construct directly with
                                     // discriminant operand.
-                                    let adt_ty =
-                                        Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
+                                    let adt_ty = Ty::new(
+                                        TyKind::Adt(
+                                            def_id,
+                                            Vec::<crate::mir::ty::Ty>::new().into(),
+                                        ),
+                                        expr.span,
+                                    );
                                     let discr = Operand::Constant(Const {
                                         ty: Box::new(Ty::new(
                                             TyKind::Int(crate::ast::IntTy::I32),
@@ -455,7 +460,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                             AggregateKind::Adt(
                                                 def_id,
                                                 variant_idx,
-                                                Vec::new(),
+                                                Vec::new().into(),
                                                 field_tys,
                                             ),
                                             vec![discr],
@@ -469,7 +474,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                 // Fall through to create the Adt-typed operand.
                             }
                         }
-                        let adt_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
+                        let adt_ty = Ty::new(
+                            TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                            expr.span,
+                        );
                         return cx.eval_rvalue_to_temp(
                             Rvalue::Use(Operand::Constant(Const {
                                 ty: Box::new(adt_ty.clone()),
@@ -564,8 +572,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                     }
                                 }
                                 // Fallback: treat as FnDef (error recovery).
-                                let fndef_ty =
-                                    Ty::new(TyKind::FnDef(def_id, Vec::new()), expr.span);
+                                let fndef_ty = Ty::new(
+                                    TyKind::FnDef(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                                    expr.span,
+                                );
                                 return cx.eval_rvalue_to_temp(
                                     Rvalue::Use(Operand::Constant(Const {
                                         ty: Box::new(fndef_ty.clone()),
@@ -577,8 +587,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                             }
                             _ => {
                                 // Default: treat as FnDef (covers Fn, etc.).
-                                let fndef_ty =
-                                    Ty::new(TyKind::FnDef(def_id, Vec::new()), expr.span);
+                                let fndef_ty = Ty::new(
+                                    TyKind::FnDef(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                                    expr.span,
+                                );
                                 return cx.eval_rvalue_to_temp(
                                     Rvalue::Use(Operand::Constant(Const {
                                         ty: Box::new(fndef_ty.clone()),
@@ -769,7 +781,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 cx.push_assign(
                     Place::local(dest, expr.span),
                     Rvalue::Aggregate(
-                        AggregateKind::Adt(adt_def_id, variant_idx, Vec::new(), field_tys),
+                        AggregateKind::Adt(adt_def_id, variant_idx, Vec::new().into(), field_tys),
                         all_operands,
                     ),
                     expr.span,
@@ -820,8 +832,9 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
 
                     // Get the closure type's capture field types
                     let closure_ty = &cx.mir.local(func_local).ty;
+                    // Stage 15.10: substs is now Rc<[Ty]>, convert to Vec for local use.
                     let capture_tys: Vec<Ty> = match &closure_ty.kind {
-                        TyKind::Closure(_, substs) => substs.clone(),
+                        TyKind::Closure(_, substs) => substs.iter().cloned().collect(),
                         _ => vec![],
                     };
 
@@ -1490,7 +1503,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .map(|h| h.owners.first().map(|(id, _)| *id).unwrap_or_default())
                 .unwrap_or_default();
             let closure_ty = Ty::new(
-                TyKind::Closure(closure_def_id, capture_tys.clone()),
+                // Stage 15.10: capture_tys is Vec<Ty>, convert to Rc<[Ty]>.
+                TyKind::Closure(closure_def_id, capture_tys.clone().into()),
                 expr.span,
             );
             let closure_local = cx.mir.new_local(closure_ty, None, expr.span);
@@ -1505,7 +1519,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     kind: StatementKind::Assign(Box::new((
                         Place::local(closure_local, expr.span),
                         Rvalue::Aggregate(
-                            AggregateKind::Closure(closure_def_id, capture_tys.clone()),
+                            // Stage 15.10: capture_tys → Rc<[Ty]>
+                            AggregateKind::Closure(closure_def_id, capture_tys.clone().into()),
                             capture_operands,
                         ),
                     ))),
@@ -1729,10 +1744,13 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // (e.g., `Shape::Circle { r: 1.0 }`).
             if let Res::Def(def_id, DefKind::Struct) = path.res {
                 let field_tys = field_resolution::resolve_adt_field_tys(cx, def_id);
-                let struct_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
+                let struct_ty = Ty::new(
+                    TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                    expr.span,
+                );
                 return cx.eval_rvalue_to_temp(
                     Rvalue::Aggregate(
-                        AggregateKind::Adt(def_id, 0, Vec::new(), field_tys),
+                        AggregateKind::Adt(def_id, 0, Vec::new().into(), field_tys),
                         operands,
                     ),
                     struct_ty,
@@ -1753,10 +1771,18 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         });
                         let mut all_operands = vec![discr];
                         all_operands.extend(operands);
-                        let enum_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span);
+                        let enum_ty = Ty::new(
+                            TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                            expr.span,
+                        );
                         return cx.eval_rvalue_to_temp(
                             Rvalue::Aggregate(
-                                AggregateKind::Adt(def_id, variant_idx, Vec::new(), field_tys),
+                                AggregateKind::Adt(
+                                    def_id,
+                                    variant_idx,
+                                    Vec::new().into(),
+                                    field_tys,
+                                ),
                                 all_operands,
                             ),
                             enum_ty,
@@ -2263,7 +2289,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 cx.terminate_kind_and_goto(
                     TerminatorKind::Call {
                         func: Operand::Constant(Const {
-                            ty: Box::new(Ty::new(TyKind::FnDef(def_id, Vec::new()), expr.span)),
+                            ty: Box::new(Ty::new(
+                                TyKind::FnDef(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                                expr.span,
+                            )),
                             val: ConstVal::Uint(def_id.as_u32() as u128),
                         }),
                         args: arg_operands,
@@ -2803,7 +2832,10 @@ fn resolve_inherent_method_from_hir_expr(
         HirExprKind::Struct { path, .. } => {
             if let crate::hir::Res::Def(def_id, _) = path.res {
                 // Build a synthetic Adt type and resolve the method.
-                let synth_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), receiver.span);
+                let synth_ty = Ty::new(
+                    TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                    receiver.span,
+                );
                 resolve_inherent_method(hir, &synth_ty, method_name)
             } else {
                 None
@@ -2878,7 +2910,10 @@ fn resolve_inherent_method_from_hir_expr(
                         crate::resolve::DefKind::Struct | crate::resolve::DefKind::Enum
                     ) {
                         // Struct/enum ctor — the call constructs an Adt.
-                        let synth_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), receiver.span);
+                        let synth_ty = Ty::new(
+                            TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                            receiver.span,
+                        );
                         return resolve_inherent_method(hir, &synth_ty, method_name);
                     }
                     // Stage 14.41: Static method call (e.g., `Vec::new().push(1)`)
@@ -3328,7 +3363,10 @@ fn expr_to_adt_type(expr: &HirExpr) -> Option<Ty> {
         HirExprKind::AddrOf { expr: inner, .. } => expr_to_adt_type(inner),
         HirExprKind::Struct { path, .. } => {
             if let crate::hir::Res::Def(def_id, _) = path.res {
-                Some(Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span))
+                Some(Ty::new(
+                    TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                    expr.span,
+                ))
             } else {
                 None
             }
@@ -3344,7 +3382,10 @@ fn expr_to_adt_type(expr: &HirExpr) -> Option<Ty> {
                     def_kind,
                     crate::resolve::DefKind::Struct | crate::resolve::DefKind::Enum
                 ) {
-                    return Some(Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span));
+                    return Some(Ty::new(
+                        TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                        expr.span,
+                    ));
                 }
             }
             None
@@ -3366,7 +3407,10 @@ fn expr_to_adt_type(expr: &HirExpr) -> Option<Ty> {
                         def_kind,
                         crate::resolve::DefKind::Struct | crate::resolve::DefKind::Enum
                     ) {
-                        return Some(Ty::new(TyKind::Adt(def_id, Vec::new()), expr.span));
+                        return Some(Ty::new(
+                            TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                            expr.span,
+                        ));
                     }
                     // Fn (static method call) — fall through to None.
                     // The caller handles this via find_local_init_expr +

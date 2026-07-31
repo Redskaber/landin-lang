@@ -102,7 +102,7 @@ pub(crate) fn populate_adt_layouts(mir: &mut MirBody, hir: &HirCrate) {
                     // Stage 14.82 (GAP-7 partial fix): walk closure capture
                     // substs so captured Adts get their layouts registered.
                     Rvalue::Aggregate(AggregateKind::Closure(_, substs), _) => {
-                        for st in substs {
+                        for st in substs.iter() {
                             collect_adt_def_ids(st, &mut def_ids_to_register);
                         }
                     }
@@ -168,7 +168,7 @@ fn collect_adt_def_ids(ty: &Ty, out: &mut Vec<DefId>) {
         // producing wrong LLVM types and "Invalid InsertValueInst operands!"
         // errors.
         TyKind::Closure(_, substs) => {
-            for t in substs {
+            for t in substs.iter() {
                 collect_adt_def_ids(t, out);
             }
         }

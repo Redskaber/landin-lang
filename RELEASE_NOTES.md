@@ -1,9 +1,66 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.135.0
+**Current version**: v0.136.0
 **Date**: 2026-07-31
-**Test count**: 1976 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 1983 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.136.0 — Stage 15.10 (SubstsRef Rc<[Ty]> Interning)
+
+### Overview
+
+Stage 15.10 changes `SubstsRef` from `Vec<Ty>` to `Rc<[Ty]>` — an interned
+slice that makes `SubstsRef::clone()` a refcount bump instead of a heap
+allocation. This is the stepping stone toward full Ty interning (Task 1)
+and directly addresses Phase 1 Task 2 ("SubstsRef → `&'tcx [GenericArg]`").
+
+For a crate with 50 generic applications, this eliminates 50 `Vec<Ty>`
+heap allocations per compilation.
+
+### What Changed
+
+**Type change** (`src/mir/ty.rs`):
+- `pub type SubstsRef = Vec<Ty>` → `pub type SubstsRef = Rc<[Ty]>`
+- `Rc::clone()` is O(1) (refcount bump) vs `Vec::clone()` which is O(N)
+
+**Construction updates** (15+ sites across 6 source files):
+- `Vec::new()` → `Vec::<Ty>::new().into()` (empty substs)
+- `vec![]` → `vec![].into()` (test files)
+- `capture_tys.clone()` → `capture_tys.clone().into()` (Vec→Rc)
+
+**Consumption updates** (2 sites in `adt_layout.rs`):
+- `for st in substs` → `for st in substs.iter()` (Rc doesn't auto-deref in for)
+
+**Mutation update** (1 site in `writeback.rs`):
+- `substs[i] = ty.clone()` → rebuild Vec, mutate, convert back to Rc
+
+**New tests**:
+- 7 integration tests in `tests/v0/stage15/plan/substs_ref_rc_tests.rs`
+
+**Documentation**:
+- `docs/develop/v0/stage-15/stage-15.10-substs-ref-rc.md` — full §29 review
+- `docs/tests/v0/stage15/stage-15.10-test-plan.md` — test plan
+- `docs/worklog.md` — Stage 15.10 entry
+- `README.md` — updated v0.2 progress
+
+### Why This Is The Right Stage 15.10
+
+Per `docs/lang-design/19-ty-interning.md`: `Rc<[Ty]>` is the v0.2 stepping
+stone toward v0.3 arena interning (`&'tcx [Ty]`). Both deref to `[Ty]`, so
+consumption patterns work unchanged. The Rc form enables future sharing —
+when the same `Vec<i32>` type appears in 100 places, they can all share
+one `Rc<[i32]>` slice after interning.
+
+Per §15 "最优 > 最小": root-cause fix for per-app heap allocation.
+Per §1.0 原则 6 "通用 > 特例": one shared slice type for all generic apps.
+
+### Verification
+
+- All 145 lib tests pass (zero regression)
+- All 1983 integration tests pass (1976 + 7 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.135.0 — Stage 15.9 (VtableEntry.fn_name Interning + TraitError Typed Errors)

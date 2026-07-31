@@ -1257,7 +1257,7 @@ mod tests {
         assert!(!ty_is_copy(&slice_ty));
         // Stage 3.40: Adt is now treated as Copy (pragmatic — allows
         // enum match and struct field access without spurious errors).
-        let adt_ty = Ty::new(TyKind::Adt(DefId::new(0), vec![]), Span::DUMMY);
+        let adt_ty = Ty::new(TyKind::Adt(DefId::new(0), vec![].into()), Span::DUMMY);
         assert!(ty_is_copy(&adt_ty));
     }
 

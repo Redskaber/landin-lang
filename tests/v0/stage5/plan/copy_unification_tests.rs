@@ -55,7 +55,7 @@ fn test_unified_matches_with_resolver() {
 #[test]
 fn test_unified_adt_without_copy_not_copy() {
     let adt_ty = Ty::new(
-        TyKind::Adt(landin_compiler::hir::DefId(0), vec![]),
+        TyKind::Adt(landin_compiler::hir::DefId(0), vec![].into()),
         Span::DUMMY,
     );
     let resolver = TraitResolver::new();
@@ -81,7 +81,7 @@ fn test_unified_integration_with_impl_copy() {
         .map(|(&d, _)| d)
         .expect("S DefId found");
 
-    let s_ty = Ty::new(TyKind::Adt(s_def_id, vec![]), Span::DUMMY);
+    let s_ty = Ty::new(TyKind::Adt(s_def_id, vec![].into()), Span::DUMMY);
     assert!(
         ty_is_copy_unified(&s_ty, &result.trait_resolver, &result.interner),
         "S with impl Copy should be Copy via unified check"
@@ -101,7 +101,7 @@ fn test_unified_integration_without_impl_copy() {
         .map(|(&d, _)| d)
         .expect("S DefId found");
 
-    let s_ty = Ty::new(TyKind::Adt(s_def_id, vec![]), Span::DUMMY);
+    let s_ty = Ty::new(TyKind::Adt(s_def_id, vec![].into()), Span::DUMMY);
     assert!(
         !ty_is_copy_unified(&s_ty, &result.trait_resolver, &result.interner),
         "S without impl Copy should NOT be Copy via unified check"

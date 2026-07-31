@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.135.0 (v0.2 Phase 1 in progress — VtableEntry interning + TraitError)  
+**Version**: v0.136.0 (v0.2 Phase 1 in progress — SubstsRef Rc<[Ty]> interning)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -23,9 +23,9 @@ backend via the `llvm-sys` crate.
 >
 > See `docs/develop/v0/stage-14/v0.1-final-release-assessment.md` for full assessment.
 
-> **v0.2 Phase 1 IN PROGRESS — Stage 15.9 Complete (all quick wins done)**
+> **v0.2 Phase 1 IN PROGRESS — Stage 15.10 Complete**
 >
-> Stage 15.1-15.9 (v0.2 Phase 1 prep + consolidation + quick wins):
+> Stage 15.1-15.10 (v0.2 Phase 1 prep + consolidation + quick wins + interning):
 > - **Stage 15.1** — Ty interning design doc (`docs/lang-design/19-ty-interning.md`)
 > - **Stage 15.2** — TypeInterner infrastructure + pre-build impl index (HP-B12)
 > - **Stage 15.3** — cstr() thread-local cache (memory leak fix for LSP mode)
@@ -40,10 +40,12 @@ backend via the `llvm-sys` crate.
 >   across all MirBodies. ~500KB memory saved per typical crate.
 > - **Stage 15.9** — VtableEntry.fn_name interning (HP-B16) + TraitError typed
 >   errors. All Phase 2 audit "4-hour" quick wins now complete.
+> - **Stage 15.10** — SubstsRef `Vec<Ty>` → `Rc<[Ty]>` interning. Eliminates
+>   per-generic-app heap allocation. Stepping stone toward v0.3 arena interning.
 >
-> **Test count**: 1976 rust tests + 5216 conformance tests = 7192 passing.
+> **Test count**: 1983 rust tests + 5216 conformance tests = 7199 passing.
 > **0 clippy warnings**, fmt clean. Next major milestone: v0.2 Phase 1 Task 1
-> (Ty interning via Rc stepping stone) — the biggest single improvement for v0.2.
+> (full Ty interning via Rc<TyKind> stepping stone).
 
 ---
 

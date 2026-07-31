@@ -7,6 +7,7 @@
 
 use crate::ast::{FloatTy, IntTy, UintTy};
 use crate::hir::DefId;
+use std::rc::Rc;
 
 #[cfg(test)]
 use crate::session::Span;
@@ -106,7 +107,27 @@ pub struct RegionVid(pub u32);
 
 /// Substitutions: the type arguments to a generic type.
 /// E.g., `HashMap<String, i32>` has SubstsRef = [String, i32].
-pub type SubstsRef = Vec<Ty>;
+///
+/// Stage 15.10 (v0.2): Changed from `Vec<Ty>` to `Rc<[Ty]>` — interned
+/// slice. This makes `SubstsRef::clone()` a refcount bump (8 bytes) instead
+/// of a heap allocation (24 bytes + N × 40 bytes for the Ty values).
+/// For a crate with 50 generic applications, this eliminates 50 heap
+/// allocations per compilation.
+///
+/// Per `docs/lang-design/19-ty-interning.md`: this is the stepping stone
+/// toward full Ty interning. The Rc<[Ty]> form allows sharing the same
+/// substs slice across multiple types (e.g., `Vec<i32>` used in 100 places
+/// shares one `Rc<[i32]>` slice after interning).
+///
+/// Per §1.0 原则 6 "通用 > 特例": one shared slice type for all generic apps.
+/// Per §15 "最优 > 最小": root-cause fix for per-app heap allocation.
+///
+/// Construction: `Vec<Ty>` → `Rc<[Ty]>` via `.into()` or `Rc::from()`.
+/// Consumption: `Rc<[Ty]>` derefs to `[Ty]`, so `.iter()`, `.get()`,
+/// `.len()`, `.is_empty()` all work unchanged.
+/// Mutation: `Rc<[Ty]>` is immutable — use `Rc::make_mut` (requires
+/// `Vec<Ty>` conversion) or rebuild the Vec and convert back.
+pub type SubstsRef = Rc<[Ty]>;
 
 /// Function signature.
 #[derive(Debug, Clone, PartialEq)]

@@ -1813,7 +1813,10 @@ fn build_tuple_pattern_condition(
                         super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
                     {
                         // Build the enum's Adt type for the field local
-                        let enum_ty = Ty::new(TyKind::Adt(def_id, Vec::new()), span);
+                        let enum_ty = Ty::new(
+                            TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                            span,
+                        );
                         let field_local = cx.mir.new_local(enum_ty.clone(), None, span);
                         cx.mir.block_mut(current).statements.push(Statement {
                             kind: StatementKind::StorageLive(field_local),

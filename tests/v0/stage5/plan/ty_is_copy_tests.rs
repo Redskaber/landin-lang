@@ -36,7 +36,7 @@ fn test_primitives_always_copy() {
 #[test]
 fn test_adt_without_copy_impl_not_copy() {
     let adt_ty = Ty::new(
-        TyKind::Adt(landin_compiler::hir::DefId(0), vec![]),
+        TyKind::Adt(landin_compiler::hir::DefId(0), vec![].into()),
         Span::DUMMY,
     );
     let resolver = TraitResolver::new();

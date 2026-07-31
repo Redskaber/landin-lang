@@ -365,20 +365,24 @@ pub fn writeback_closures(mir: &mut MirBody) {
                     if let StatementKind::Assign(boxed) = &mut bb.statements[stmt_idx].kind {
                         let (_, rv) = &mut **boxed;
                         if let Rvalue::Aggregate(AggregateKind::Closure(_, substs), _) = rv {
+                            // Stage 15.10: SubstsRef is now Rc<[Ty]> (immutable).
+                            // Rebuild the Vec, mutate, convert back to Rc<[Ty]>.
+                            let mut new_substs_vec: Vec<Ty> = substs.iter().cloned().collect();
                             for (i, resolved_ty_opt) in resolved_substs.iter().enumerate() {
                                 if let Some(ty) = resolved_ty_opt {
-                                    if i < substs.len() {
-                                        substs[i] = ty.clone();
+                                    if i < new_substs_vec.len() {
+                                        new_substs_vec[i] = ty.clone();
                                     }
                                 }
                             }
+                            *substs = new_substs_vec.into();
                         }
                     }
                     // Also update the closure local's local_decl.ty so the alloca size matches.
                     if let Some(lhs_id) = lhs_local_id {
                         if let Some(lhs_ld) = mir.local_decls.get_mut(lhs_id.0 as usize) {
                             let new_closure_ty = Ty::new(
-                                TyKind::Closure(closure_def_id, new_substs.clone()),
+                                TyKind::Closure(closure_def_id, new_substs.clone().into()),
                                 Span::DUMMY,
                             );
                             lhs_ld.ty = new_closure_ty;

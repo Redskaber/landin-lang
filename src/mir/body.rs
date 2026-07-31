@@ -102,6 +102,10 @@ impl MirBody {
             basic_blocks: Vec::new(),
             local_decls: Vec::new(),
             span,
+            // clippy::arc_with_non_send_sync: AdtLayouts is not Send+Sync
+            // (contains Ty with Box/Vec). Compiler is single-threaded, so
+            // Arc is fine — keeps door open for future multi-threaded LSP.
+            #[allow(clippy::arc_with_non_send_sync)]
             adt_layouts: Arc::new(AdtLayouts::new()),
             dyn_trait_calls: Vec::new(),
             lower_type_errors: Vec::new(),

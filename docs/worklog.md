@@ -18093,3 +18093,88 @@ Stage Summary:
 - All "4-hour" quick wins now complete
 - v0.135.0: minor bump (memory + type safety improvements)
 - Next major milestone: v0.2 Phase 1 Task 1 (Ty interning via Rc stepping stone)
+
+---
+Task ID: stage15.10-substs-ref-rc
+Agent: Super Z (main)
+Task: Stage 15.10 — SubstsRef Vec<Ty> → Rc<[Ty]> (v0.2 Phase 1 Task 2 stepping stone). v0.135.0 → v0.136.0.
+
+Work Log:
+- Baseline: v0.135.0 / 1976 rust tests + 5216 conformance (post-Stage 15.9)
+
+### 1. Type Change: SubstsRef (src/mir/ty.rs)
+
+Changed `pub type SubstsRef = Vec<Ty>` to `pub type SubstsRef = Rc<[Ty]>`.
+
+This makes SubstsRef::clone() a refcount bump (8 bytes) instead of a heap
+allocation (24 bytes + N × 40 bytes). For a crate with 50 generic
+applications, eliminates 50 Vec<Ty> heap allocations per compilation.
+
+Per docs/lang-design/19-ty-interning.md: Rc<[Ty]> is the v0.2 stepping stone
+toward v0.3 arena interning (&'tcx [Ty]). Both deref to [Ty], so consumption
+patterns (.iter(), .get(), .len()) work unchanged.
+
+### 2. Construction Site Updates
+
+Updated 15+ construction sites across 6 source files:
+- Vec::new() → Vec::<Ty>::new().into() (empty substs)
+- vec![] → vec![].into() (test files)
+- capture_tys.clone() → capture_tys.clone().into() (Vec→Rc conversion)
+
+Files updated:
+- src/codegen/rvalue.rs (1 site)
+- src/mir/lower/expr_operand.rs (12+ sites)
+- src/mir/lower/control_flow.rs (1 site)
+- src/mir/lower/mod.rs (1 site)
+- src/borrowck/mod.rs (1 test site)
+- tests/v0/stage5/plan/copy_unification_tests.rs (3 sites)
+- tests/v0/stage5/plan/ty_is_copy_tests.rs (1 site)
+
+### 3. Consumption Site Updates
+
+Updated 2 sites in src/mir/lower/adt_layout.rs where `for st in substs`
+was used — Rc<[Ty]> doesn't auto-deref in for loops, so changed to
+`for st in substs.iter()`.
+
+### 4. Mutation Site Update (src/mir/lower/writeback.rs)
+
+The writeback closure substs mutation site used `substs[i] = ty.clone()`
+which doesn't work on immutable Rc<[Ty]>. Refactored to rebuild pattern:
+- Clone substs to Vec<Ty>
+- Mutate the Vec in place
+- Convert back to Rc<[Ty]> via .into()
+
+This preserves the exact old behavior (only updates Some entries).
+
+### 5. New Tests (tests/v0/stage15/plan/substs_ref_rc_tests.rs)
+
+7 integration tests:
+1. stage15_10_struct_empty_substs — empty Rc<[Ty]> construction
+2. stage15_10_enum_empty_substs — enum variant construction
+3. stage15_10_closure_with_captures — closure substs
+4. stage15_10_method_call_on_adt — writeback with Rc substs
+5. stage15_10_nested_struct_access — nested Adt substs
+6. stage15_10_closure_capturing_struct — Adt in closure substs
+7. stage15_10_multiple_closures — multiple closures
+
+### 6. Documentation
+
+- Created docs/develop/v0/stage-15/stage-15.10-substs-ref-rc.md
+- Created docs/tests/v0/stage15/stage-15.10-test-plan.md
+- Updated docs/worklog.md (this entry)
+- Updated RELEASE_NOTES.md (v0.136.0 entry)
+- Updated README.md (Stage 15.10 progress)
+
+### Verification
+- All 145 lib tests pass (zero regression)
+- All 1983 integration tests pass (1976 + 7 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.135.0 → v0.136.0
+
+Stage Summary:
+- Stage 15.10 PASSED — SubstsRef changed from Vec<Ty> to Rc<[Ty]>
+- Eliminates per-generic-app heap allocation
+- Stepping stone toward v0.3 arena interning (&'tcx [Ty])
+- Closes v0.2 Phase 1 Task 2 stepping stone
+- v0.136.0: minor bump (memory optimization + type safety)

@@ -968,7 +968,10 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
         // Stage 3.42: also handle PrimTy::Str → TyKind::Str (was: fell
         // through to Error, breaking `&str` type annotations).
         HirTyKind::Path(_, path) => match path.res {
-            Res::Def(def_id, _) => Ty::new(TyKind::Adt(def_id, Vec::new()), span),
+            Res::Def(def_id, _) => Ty::new(
+                TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
+                span,
+            ),
             Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),
             _ => Ty::new(TyKind::Error, span),
         },
