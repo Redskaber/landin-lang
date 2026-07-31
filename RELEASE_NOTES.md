@@ -1,9 +1,41 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.151.0
+**Current version**: v0.152.0
 **Date**: 2026-07-31
-**Test count**: 170 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 173 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.152.0 — Stage 15.26 (TypeInterner Dedup Activated)
+
+### Overview
+
+Stage 15.26 activates the `TypeInterner` HashMap-based deduplication. Stage 15.2
+added the infrastructure (placeholder, no dedup). Stage 15.25 added `Eq + Hash`
+derives to `TyKind`. This stage replaces the placeholder with real
+`HashMap<TyKind, Ty>` dedup.
+
+### What Changed
+
+**Activated `TypeInterner` dedup** (`src/mir/ty_interner.rs`):
+- Before: `Vec<Rc<TyKind>>` — no dedup, every `intern()` allocates
+- After: `HashMap<TyKind, Ty>` — equal `TyKind` values return cached `Ty`
+
+**New tests**: 5 tests verifying dedup works for basic, complex, and ref types.
+
+### Why This Matters
+
+This is the **Ty interning milestone** — the `TypeInterner` is now functional.
+For a crate with 100 uses of `i32`, only 1 `TyKind::Int(I32)` is stored in the
+interner. Future stages can wire `Ty::new`/`Ty::from_kind` to optionally go
+through the interner for automatic dedup.
+
+### Verification
+
+- All 173 lib tests pass (170 + 3 new, zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.151.0 — Stage 15.25 (ConstVal::Float bits + Eq+Hash on TyKind)

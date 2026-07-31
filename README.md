@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.151.0 (v0.2 Phase 1 — Eq+Hash on TyKind, Ty interning unblocked)  
+**Version**: v0.152.0 (v0.2 Phase 1 — TypeInterner dedup activated, Ty interning live)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,17 +21,17 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 1 — Stage 15.25 Complete (Eq+Hash unblocks Ty interning)**
+> **v0.2 Phase 1 — Stage 15.26 Complete (TypeInterner dedup LIVE)**
 >
-> 25 stages of v0.2 Phase 1 work complete:
+> 26 stages of v0.2 Phase 1 work complete:
 > - **Memory optimizations**: Span removal, SubstsRef Rc<[Ty]>, Const.ty inline, AdtLayouts sharing
 > - **Architecture**: Writeback consolidation (8→2), error system cleanup, writeback 3-tuple return
 > - **Diagnostics**: DiagnosticBuilder, ErrorCode catalog (E001-E900), Spanned trait, color output, --color flag
 > - **CLI**: rustc-style display with source snippets, TTY auto-detection, LLVM version switch fix
-> - **Ty interning prep**: TypeInterner infrastructure, kind() accessor, **Eq+Hash on TyKind** (Stage 15.25)
+> - **Ty interning**: TypeInterner infra → Eq+Hash on TyKind → **dedup activated** (Stage 15.26)
 >
-> **Test count**: 170 lib tests + 2006 integration tests + 5216 conformance tests = 7392 passing.
-> **0 clippy warnings**, fmt clean. Next: activate TypeInterner dedup + Rc<TyKind> migration.
+> **Test count**: 173 lib tests + 2006 integration tests + 5216 conformance tests = 7395 passing.
+> **0 clippy warnings**, fmt clean. Next: wire TypeInterner into Ty::new + Rc<TyKind> migration.
 
 ---
 

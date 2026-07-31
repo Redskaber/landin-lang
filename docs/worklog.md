@@ -19007,3 +19007,59 @@ Stage Summary:
 - Stage 15.25 PASSED — ConstVal::Float bits + Eq+Hash on TyKind
 - Unblocks future Ty interning (HashMap<TyKind, ...> dedup)
 - v0.151.0: minor bump (foundational — Eq+Hash enables interning)
+
+---
+Task ID: stage15.26-type-interner-dedup-activated
+Agent: Super Z (main)
+Task: Stage 15.26 — Activate TypeInterner HashMap dedup (Eq+Hash ready). v0.151.0 → v0.152.0.
+
+Work Log:
+- Baseline: v0.151.0 / 2006 rust tests + 5216 conformance
+
+### 1. Activated TypeInterner dedup (src/mir/ty_interner.rs)
+
+Stage 15.2 added TypeInterner as placeholder (no dedup). Stage 15.25 added
+Eq+Hash derives to TyKind. Stage 15.26 activates the HashMap dedup:
+
+Before (Stage 15.2):
+```rust
+arena: Vec<Rc<TyKind>>,  // just pushed, no dedup
+pub fn intern(&mut self, kind: TyKind) -> Ty {
+    self.arena.push(Rc::new(kind.clone()));
+    Ty::new(kind, Span::DUMMY)
+}
+```
+
+After (Stage 15.26):
+```rust
+dedup: HashMap<TyKind, Ty>,  // real dedup
+pub fn intern(&mut self, kind: TyKind) -> Ty {
+    self.dedup.entry(kind)
+        .or_insert_with_key(|k| Ty::from_kind(k.clone()))
+        .clone()
+}
+```
+
+Now interning the same TyKind twice returns the same Ty (by value).
+For a crate with 100 uses of `i32`, only 1 TyKind::Int(I32) is stored.
+
+### 2. Updated tests
+
+Replaced old tests (which asserted len==2 for no dedup) with new tests:
+- stage15_26_interner_dedup_basic — same TyKind → len==1 (dedup works)
+- stage15_26_interner_dedup_different_types — different TyKind → len==2
+- stage15_26_interner_empty — empty interner
+- stage15_26_interner_complex_types — Tuple types dedup
+- stage15_26_interner_ref_types — Ref types dedup
+
+### Verification
+- All 173 lib tests pass (170 + 3 new TypeInterner tests, zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.151.0 → v0.152.0
+
+Stage Summary:
+- Stage 15.26 PASSED — TypeInterner dedup activated
+- HashMap<TyKind, Ty> dedup now works (Eq+Hash from Stage 15.25)
+- v0.152.0: minor bump (Ty interning milestone — dedup live)
