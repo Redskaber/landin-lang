@@ -12,7 +12,7 @@
 use crate::ast::{FloatTy, IntTy, UintTy};
 use crate::mir::ty::*;
 use crate::typeck::error::TypeError;
-use std::collections::HashMap;
+// Stage 14.111: HashMap import removed — UnificationTable now uses Vec.
 
 /// Binding state for an integer inference variable.
 ///
@@ -45,20 +45,25 @@ enum FloatVarBinding {
 /// Each `TyVid` maps to either `None` (unbound) or `Some(Ty)` (bound
 /// to a concrete or partially-resolved type). IntVar and FloatVar use
 /// an explicit `Linked` variant for union-find parent pointers.
+///
+/// Stage 14.111 (data structure optimization): Switched from HashMap to
+/// Vec for all three variable stores. TyVid/IntVid/FloatVid are sequential
+/// u32 IDs starting from 0, so Vec indexing gives true O(1) lookup without
+/// hashing overhead. Per Phase 2 data structure audit recommendation #5.
+///
+/// Per §1.0 原則 6 "通用 > 特例": one Vec-per-store pattern handles all
+/// three variable kinds uniformly.
 #[derive(Debug, Default)]
 pub struct UnificationTable {
     /// General type variable bindings.
-    ty_vars: HashMap<TyVid, Option<Ty>>,
-    /// Next TyVid to allocate.
-    next_ty_vid: u32,
+    /// Indexed by TyVid.0 as usize — true O(1) lookup.
+    ty_vars: Vec<Option<Ty>>,
     /// Integer variable bindings (with union-find `Linked` pointers).
-    int_vars: HashMap<IntVid, IntVarBinding>,
-    /// Next IntVid to allocate.
-    next_int_vid: u32,
+    /// Indexed by IntVid.0 as usize — true O(1) lookup.
+    int_vars: Vec<IntVarBinding>,
     /// Float variable bindings (with union-find `Linked` pointers).
-    float_vars: HashMap<FloatVid, FloatVarBinding>,
-    /// Next FloatVid to allocate.
-    next_float_vid: u32,
+    /// Indexed by FloatVid.0 as usize — true O(1) lookup.
+    float_vars: Vec<FloatVarBinding>,
     /// Errors encountered during unification (non-fatal).
     errors: Vec<TypeError>,
 }
@@ -74,25 +79,22 @@ impl UnificationTable {
 
     /// Allocate a fresh general type variable.
     pub fn new_ty_var(&mut self) -> TyVid {
-        let vid = TyVid(self.next_ty_vid);
-        self.next_ty_vid += 1;
-        self.ty_vars.insert(vid, None);
+        let vid = TyVid(self.ty_vars.len() as u32);
+        self.ty_vars.push(None);
         vid
     }
 
     /// Allocate a fresh integer type variable.
     pub fn new_int_var(&mut self) -> IntVid {
-        let vid = IntVid(self.next_int_vid);
-        self.next_int_vid += 1;
-        self.int_vars.insert(vid, IntVarBinding::Unbound);
+        let vid = IntVid(self.int_vars.len() as u32);
+        self.int_vars.push(IntVarBinding::Unbound);
         vid
     }
 
     /// Allocate a fresh float type variable.
     pub fn new_float_var(&mut self) -> FloatVid {
-        let vid = FloatVid(self.next_float_vid);
-        self.next_float_vid += 1;
-        self.float_vars.insert(vid, FloatVarBinding::Unbound);
+        let vid = FloatVid(self.float_vars.len() as u32);
+        self.float_vars.push(FloatVarBinding::Unbound);
         vid
     }
 
@@ -111,7 +113,7 @@ impl UnificationTable {
         let mut cur = vid;
         let mut depth = 0;
         loop {
-            match self.ty_vars.get(&cur) {
+            match self.ty_vars.get(cur.0 as usize) {
                 None => return None,
                 Some(None) => return None, // unbound
                 Some(Some(ty)) => {
@@ -140,7 +142,7 @@ impl UnificationTable {
         let mut cur = vid;
         let mut depth = 0;
         loop {
-            match self.int_vars.get(&cur) {
+            match self.int_vars.get(cur.0 as usize) {
                 Some(IntVarBinding::Linked(parent)) => {
                     cur = *parent;
                     depth += 1;
@@ -162,7 +164,7 @@ impl UnificationTable {
         let mut cur = vid;
         let mut depth = 0;
         loop {
-            match self.float_vars.get(&cur) {
+            match self.float_vars.get(cur.0 as usize) {
                 Some(FloatVarBinding::Linked(parent)) => {
                     cur = *parent;
                     depth += 1;
@@ -180,7 +182,7 @@ impl UnificationTable {
     /// union-find `Linked` chains.
     pub fn resolve_int_var(&self, vid: IntVid) -> Option<IntTy> {
         let root = self.int_var_root(vid);
-        match self.int_vars.get(&root) {
+        match self.int_vars.get(root.0 as usize) {
             Some(IntVarBinding::Bound(i)) => Some(*i),
             _ => None,
         }
@@ -189,7 +191,7 @@ impl UnificationTable {
     /// Resolve a float variable to its bound FloatTy (if any).
     pub fn resolve_float_var(&self, vid: FloatVid) -> Option<FloatTy> {
         let root = self.float_var_root(vid);
-        match self.float_vars.get(&root) {
+        match self.float_vars.get(root.0 as usize) {
             Some(FloatVarBinding::Bound(f)) => Some(*f),
             _ => None,
         }
@@ -329,22 +331,22 @@ impl UnificationTable {
                     return Ok(());
                 }
                 // Read both bindings via their roots.
-                let a_binding = self.int_vars.get(&ra).cloned();
-                let b_binding = self.int_vars.get(&rb).cloned();
+                let a_binding = self.int_vars.get(ra.0 as usize).cloned();
+                let b_binding = self.int_vars.get(rb.0 as usize).cloned();
                 match (a_binding, b_binding) {
                     // Both unbound — link ra to rb (or vice versa).
                     (Some(IntVarBinding::Unbound), Some(IntVarBinding::Unbound)) => {
-                        self.int_vars.insert(ra, IntVarBinding::Linked(rb));
+                        self.int_vars[ra.0 as usize] = IntVarBinding::Linked(rb);
                     }
                     // a bound, b unbound — propagate a's value to b's root
                     (Some(IntVarBinding::Bound(i)), Some(IntVarBinding::Unbound)) => {
-                        self.int_vars.insert(ra, IntVarBinding::Linked(rb));
-                        self.int_vars.insert(rb, IntVarBinding::Bound(i));
+                        self.int_vars[ra.0 as usize] = IntVarBinding::Linked(rb);
+                        self.int_vars[rb.0 as usize] = IntVarBinding::Bound(i);
                     }
                     // a unbound, b bound — propagate b's value to a's root
                     (Some(IntVarBinding::Unbound), Some(IntVarBinding::Bound(i))) => {
-                        self.int_vars.insert(rb, IntVarBinding::Linked(ra));
-                        self.int_vars.insert(ra, IntVarBinding::Bound(i));
+                        self.int_vars[rb.0 as usize] = IntVarBinding::Linked(ra);
+                        self.int_vars[ra.0 as usize] = IntVarBinding::Bound(i);
                     }
                     // Both bound — must match, else type error
                     (Some(IntVarBinding::Bound(ai)), Some(IntVarBinding::Bound(bi)))
@@ -373,19 +375,19 @@ impl UnificationTable {
                 if ra == rb {
                     return Ok(());
                 }
-                let a_binding = self.float_vars.get(&ra).cloned();
-                let b_binding = self.float_vars.get(&rb).cloned();
+                let a_binding = self.float_vars.get(ra.0 as usize).cloned();
+                let b_binding = self.float_vars.get(rb.0 as usize).cloned();
                 match (a_binding, b_binding) {
                     (Some(FloatVarBinding::Unbound), Some(FloatVarBinding::Unbound)) => {
-                        self.float_vars.insert(ra, FloatVarBinding::Linked(rb));
+                        self.float_vars[ra.0 as usize] = FloatVarBinding::Linked(rb);
                     }
                     (Some(FloatVarBinding::Bound(f)), Some(FloatVarBinding::Unbound)) => {
-                        self.float_vars.insert(ra, FloatVarBinding::Linked(rb));
-                        self.float_vars.insert(rb, FloatVarBinding::Bound(f));
+                        self.float_vars[ra.0 as usize] = FloatVarBinding::Linked(rb);
+                        self.float_vars[rb.0 as usize] = FloatVarBinding::Bound(f);
                     }
                     (Some(FloatVarBinding::Unbound), Some(FloatVarBinding::Bound(f))) => {
-                        self.float_vars.insert(rb, FloatVarBinding::Linked(ra));
-                        self.float_vars.insert(ra, FloatVarBinding::Bound(f));
+                        self.float_vars[rb.0 as usize] = FloatVarBinding::Linked(ra);
+                        self.float_vars[ra.0 as usize] = FloatVarBinding::Bound(f);
                     }
                     (Some(FloatVarBinding::Bound(af)), Some(FloatVarBinding::Bound(bf)))
                         if af != bf =>
@@ -510,12 +512,12 @@ impl UnificationTable {
     // ================================================================
 
     pub fn bind_ty_var(&mut self, vid: TyVid, ty: Ty) {
-        self.ty_vars.insert(vid, Some(ty));
+        self.ty_vars[vid.0 as usize] = Some(ty);
     }
 
     pub fn bind_int_var(&mut self, vid: IntVid, i: IntTy) {
         let root = self.int_var_root(vid);
-        self.int_vars.insert(root, IntVarBinding::Bound(i));
+        self.int_vars[root.0 as usize] = IntVarBinding::Bound(i);
     }
 
     /// Bind an int variable to a UintTy.
@@ -539,7 +541,7 @@ impl UnificationTable {
 
     fn bind_float_var(&mut self, vid: FloatVid, f: FloatTy) {
         let root = self.float_var_root(vid);
-        self.float_vars.insert(root, FloatVarBinding::Bound(f));
+        self.float_vars[root.0 as usize] = FloatVarBinding::Bound(f);
     }
 
     // ================================================================
@@ -551,34 +553,29 @@ impl UnificationTable {
     pub fn default_unresolved(&mut self) {
         // Walk every int var; for each root that is still Unbound,
         // bind it to i32.
-        let int_roots: Vec<IntVid> = self
-            .int_vars
-            .keys()
-            .copied()
+        let int_roots: Vec<IntVid> = (0..self.int_vars.len() as u32)
+            .map(IntVid)
             .map(|v| self.int_var_root(v))
             .collect();
         for root in int_roots {
             if matches!(
-                self.int_vars.get(&root),
+                self.int_vars.get(root.0 as usize),
                 Some(IntVarBinding::Unbound) | None
             ) {
-                self.int_vars.insert(root, IntVarBinding::Bound(IntTy::I32));
+                self.int_vars[root.0 as usize] = IntVarBinding::Bound(IntTy::I32);
             }
         }
         // Same for float vars
-        let float_roots: Vec<FloatVid> = self
-            .float_vars
-            .keys()
-            .copied()
+        let float_roots: Vec<FloatVid> = (0..self.float_vars.len() as u32)
+            .map(FloatVid)
             .map(|v| self.float_var_root(v))
             .collect();
         for root in float_roots {
             if matches!(
-                self.float_vars.get(&root),
+                self.float_vars.get(root.0 as usize),
                 Some(FloatVarBinding::Unbound) | None
             ) {
-                self.float_vars
-                    .insert(root, FloatVarBinding::Bound(FloatTy::F64));
+                self.float_vars[root.0 as usize] = FloatVarBinding::Bound(FloatTy::F64);
             }
         }
     }

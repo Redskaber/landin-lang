@@ -4,7 +4,7 @@
 //! Contains functions for emitting overflow and division-by-zero assert terminators.
 
 use crate::hir::HirBinOp;
-use crate::mir::body::{AssertMessage, Terminator};
+use crate::mir::body::{AssertMessage, TerminatorKind};
 use crate::mir::place::{BinOp, LocalId, Operand};
 use crate::mir::ty::{Const, ConstVal, Ty, TyKind};
 use crate::session::Span;
@@ -49,8 +49,8 @@ pub(crate) fn emit_overflow_assert(
     span: Span,
 ) {
     let cont = cx.new_block();
-    cx.terminate_and_goto(
-        Terminator::Assert {
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Assert {
             cond: Operand::Constant(Const {
                 ty: Box::new(Ty::new(TyKind::Bool, span)),
                 val: ConstVal::Bool(true),
@@ -78,8 +78,8 @@ pub(crate) fn emit_div_by_zero_assert(
     span: Span,
 ) {
     let cont = cx.new_block();
-    cx.terminate_and_goto(
-        Terminator::Assert {
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Assert {
             cond: Operand::Constant(Const {
                 ty: Box::new(Ty::new(TyKind::Bool, span)),
                 val: ConstVal::Bool(true),

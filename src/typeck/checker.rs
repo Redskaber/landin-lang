@@ -21,6 +21,7 @@
 
 use crate::ast;
 use crate::hir::HirCrate;
+use crate::mir::body::TerminatorKind;
 use crate::mir::body::*;
 use crate::mir::place::*;
 use crate::mir::ty::*;
@@ -453,7 +454,7 @@ impl TypeChecker {
     /// so all types are resolved. Catches errors that depend on
     /// defaulting (e.g., `let x = 1; x();` where x defaults to i32).
     fn post_check_terminator(&mut self, mir: &MirBody, term: &Terminator) {
-        if let Terminator::Call { func, .. } = term {
+        if let TerminatorKind::Call { func, .. } = &term.kind {
             let func_ty = self.unify.resolve(&self.infer_operand(mir, func));
             // G7 fix: if func is neither FnDef nor FnPtr (after defaulting),
             // emit an error. Infer should be resolved by now; if it's still
@@ -522,8 +523,8 @@ impl TypeChecker {
 
     /// Check a terminator's type constraints.
     fn check_terminator(&mut self, mir: &MirBody, term: &Terminator) {
-        match term {
-            Terminator::Call {
+        match &term.kind {
+            TerminatorKind::Call {
                 func,
                 args,
                 destination,
@@ -597,7 +598,7 @@ impl TypeChecker {
                     ));
                 }
             }
-            Terminator::SwitchInt { discr, targets, .. } => {
+            TerminatorKind::SwitchInt { discr, targets, .. } => {
                 // The discriminant must be an integer or bool
                 let discr_ty = self.infer_operand(mir, discr);
                 // G7 fix (Stage 2.4f): if any target is ConstVal::Bool(_),
@@ -634,11 +635,11 @@ impl TypeChecker {
                     }
                 }
             }
-            Terminator::Drop { place, .. } => {
+            TerminatorKind::Drop { place, .. } => {
                 // Just infer the place type (no constraint to check)
                 let _ = self.infer_place(mir, place);
             }
-            Terminator::Assert { cond, .. } => {
+            TerminatorKind::Assert { cond, .. } => {
                 // The condition must be a bool. We don't enforce this
                 // strictly (codegen will handle the runtime check) but
                 // we do infer the type to catch obvious mismatches.
@@ -999,7 +1000,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         mir
     }
 
@@ -1029,7 +1031,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mut mir);
         assert!(!errors.is_empty(), "expected type mismatch error");
     }
@@ -1060,7 +1063,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mut mir);
         assert!(
             errors.is_empty(),
@@ -1101,7 +1105,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mut mir);
         assert!(
             errors.is_empty(),
@@ -1144,7 +1149,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mut mir);
         assert!(
             errors.is_empty(),
@@ -1164,13 +1170,16 @@ mod tests {
         );
         let bb1 = mir.new_block();
         let bb2 = mir.new_block();
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::SwitchInt {
-            discr: Operand::Copy(Place::local(discr, Span::DUMMY)),
-            targets: vec![(ConstVal::Int(1), bb1)],
-            otherwise: bb2,
-        };
-        mir.block_mut(bb1).terminator = Terminator::Return;
-        mir.block_mut(bb2).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator = Terminator::new(
+            TerminatorKind::SwitchInt {
+                discr: Operand::Copy(Place::local(discr, Span::DUMMY)),
+                targets: vec![(ConstVal::Int(1), bb1)],
+                otherwise: bb2,
+            },
+            Span::DUMMY,
+        );
+        mir.block_mut(bb1).terminator = Terminator::new(TerminatorKind::Return, Span::DUMMY);
+        mir.block_mut(bb2).terminator = Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mut mir);
         assert!(
             errors.is_empty(),
@@ -1197,13 +1206,16 @@ mod tests {
         );
         let bb1 = mir.new_block();
         let bb2 = mir.new_block();
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::SwitchInt {
-            discr: Operand::Copy(Place::local(discr, Span::DUMMY)),
-            targets: vec![(ConstVal::Int(1), bb1)],
-            otherwise: bb2,
-        };
-        mir.block_mut(bb1).terminator = Terminator::Return;
-        mir.block_mut(bb2).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator = Terminator::new(
+            TerminatorKind::SwitchInt {
+                discr: Operand::Copy(Place::local(discr, Span::DUMMY)),
+                targets: vec![(ConstVal::Int(1), bb1)],
+                otherwise: bb2,
+            },
+            Span::DUMMY,
+        );
+        mir.block_mut(bb1).terminator = Terminator::new(TerminatorKind::Return, Span::DUMMY);
+        mir.block_mut(bb2).terminator = Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mut mir);
         assert!(!errors.is_empty(), "expected error for switch on ref type");
     }

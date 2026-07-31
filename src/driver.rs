@@ -698,7 +698,7 @@ pub fn compile(src: &str) -> CompileResult {
     //
     // This activates the dyn Trait MIR lowering path (Stage 5.78) and
     // the codegen vtable indirect call path (Stage 5.79) end-to-end:
-    // HIR `receiver.method(args)` → MIR `Terminator::Call` with Const
+    // HIR `receiver.method(args)` → MIR `TerminatorKind::Call` with Const
     // marker → codegen `getelementptr + load + load + indirect call`.
     let dyn_trait_plan = build_dyn_trait_mir_plan_from_resolver(&trait_resolver, &interner);
 
@@ -931,9 +931,9 @@ pub fn compile(src: &str) -> CompileResult {
         // This handles `let c = a.add(b);` where c's local gets the
         // struct type from the Call dest.
         for bb in &mir.basic_blocks {
-            if let crate::mir::body::Terminator::Call {
+            if let crate::mir::body::TerminatorKind::Call {
                 func, destination, ..
-            } = &bb.terminator
+            } = &bb.terminator.kind
             {
                 if let crate::mir::place::PlaceKind::Local(id) = &destination.kind {
                     let callee_def_id = if let crate::mir::place::Operand::Constant(c) = func {

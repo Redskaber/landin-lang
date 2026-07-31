@@ -5,7 +5,7 @@
 //!   getelementptr + load + indirect call instructions
 //! - `codegen_dyn_trait_call()` free function reads `mir.dyn_trait_calls`
 //!   side-table and dispatches to the emitter
-//! - `codegen_terminator`'s `Terminator::Call` branch detects the
+//! - `codegen_terminator`'s `TerminatorKind::Call` branch detects the
 //!   `Const{ty: Error, val: Int(index)}` marker and dispatches to the
 //!   dyn Trait path
 //!
@@ -271,7 +271,7 @@ fn test_codegen_dyn_trait_call_panics_on_oob() {
 }
 
 // ============================================================
-// codegen_terminator integration: Terminator::Call dispatch
+// codegen_terminator integration: TerminatorKind::Call dispatch
 // ============================================================
 
 /// When func is the dyn Trait marker, codegen dispatches to dyn Trait path.

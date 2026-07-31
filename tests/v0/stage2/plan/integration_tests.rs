@@ -661,8 +661,8 @@ fn integration_assert_emitted_for_addition() {
     let mir = &result.mirs[0];
     let has_overflow_assert = mir.basic_blocks.iter().any(|bb| {
         matches!(
-            &bb.terminator,
-            landin_compiler::mir::body::Terminator::Assert {
+            &bb.terminator.kind,
+            landin_compiler::mir::body::TerminatorKind::Assert {
                 msg: landin_compiler::mir::body::AssertMessage::Overflow(_, _, _),
                 ..
             }
@@ -681,8 +681,8 @@ fn integration_assert_emitted_for_subtraction() {
     let mir = &result.mirs[0];
     let has_overflow_assert = mir.basic_blocks.iter().any(|bb| {
         matches!(
-            &bb.terminator,
-            landin_compiler::mir::body::Terminator::Assert {
+            &bb.terminator.kind,
+            landin_compiler::mir::body::TerminatorKind::Assert {
                 msg: landin_compiler::mir::body::AssertMessage::Overflow(
                     landin_compiler::mir::place::BinOp::Sub,
                     _,
@@ -706,8 +706,8 @@ fn integration_no_assert_for_comparison() {
     let mir = &result.mirs[0];
     let has_overflow_assert = mir.basic_blocks.iter().any(|bb| {
         matches!(
-            &bb.terminator,
-            landin_compiler::mir::body::Terminator::Assert {
+            &bb.terminator.kind,
+            landin_compiler::mir::body::TerminatorKind::Assert {
                 msg: landin_compiler::mir::body::AssertMessage::Overflow(..),
                 ..
             }
@@ -1018,8 +1018,8 @@ fn integration_storage_dead_emitted_before_return() {
         .iter()
         .find(|bb| {
             matches!(
-                bb.terminator,
-                landin_compiler::mir::body::Terminator::Return
+                bb.terminator.kind,
+                landin_compiler::mir::body::TerminatorKind::Return
             )
         })
         .expect("expected a Return terminator");

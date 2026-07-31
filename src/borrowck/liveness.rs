@@ -9,6 +9,7 @@
 //! - 5 read-collection helpers: `statement_reads` / `rvalue_reads` /
 //!   `operand_reads` / `place_root_reads` / `terminator_reads`
 
+use crate::mir::body::TerminatorKind;
 use crate::mir::body::*;
 use crate::mir::place::*;
 
@@ -88,20 +89,20 @@ pub fn place_root_reads(lv: &Place, out: &mut Vec<crate::mir::place::LocalId>) {
 /// Collect locals read by a terminator.
 pub fn terminator_reads(term: &Terminator) -> Vec<crate::mir::place::LocalId> {
     let mut out = Vec::new();
-    match term {
-        Terminator::Call { func, args, .. } => {
+    match &term.kind {
+        TerminatorKind::Call { func, args, .. } => {
             operand_reads(func, &mut out);
             for arg in args {
                 operand_reads(arg, &mut out);
             }
         }
-        Terminator::SwitchInt { discr, .. } => {
+        TerminatorKind::SwitchInt { discr, .. } => {
             operand_reads(discr, &mut out);
         }
-        Terminator::Drop { place, .. } => {
+        TerminatorKind::Drop { place, .. } => {
             place_root_reads(place, &mut out);
         }
-        Terminator::Assert { cond, .. } => {
+        TerminatorKind::Assert { cond, .. } => {
             operand_reads(cond, &mut out);
         }
         _ => {}

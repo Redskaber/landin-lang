@@ -1096,7 +1096,7 @@ fn codegen_named_struct_alloca_has_struct_type() {
 #[test]
 fn codegen_tuple_struct_construction() {
     // Stage 3.30 critical test: tuple struct ctor `Pair(1, 2)` must lower
-    // as Aggregate(Adt), NOT as Terminator::Call. Before §15 fix, this
+    // as Aggregate(Adt), NOT as TerminatorKind::Call. Before §15 fix, this
     // produced `call i32 @fn_0(i32 1, i32 2)` — a fake call to a non-existent
     // function. After the fix, it produces insertvalue.
     let ll = gen_ll("struct Pair(i32, i64); fn f() -> i64 { let p = Pair(1, 2); p.0 }");

@@ -5,6 +5,7 @@
 //! evaluation, deref expressions, blocks, if/match expressions.
 
 use crate::hir::*;
+use crate::mir::body::TerminatorKind;
 use crate::mir::body::*;
 use crate::mir::place::*;
 use crate::mir::ty::*;
@@ -42,7 +43,7 @@ pub(crate) fn lower_short_circuit(
         HirBinOp::Or => (short_circuit_block, eval_rhs_block),
         _ => unreachable!("lower_short_circuit called with non-And/Or op"),
     };
-    cx.terminate(Terminator::SwitchInt {
+    cx.terminate_kind(TerminatorKind::SwitchInt {
         discr: Operand::Copy(Place::local(lhs_local, lhs.span)),
         targets: vec![(ConstVal::Bool(true), true_target)],
         otherwise: false_target,
@@ -61,12 +62,12 @@ pub(crate) fn lower_short_circuit(
         })),
         span,
     );
-    cx.terminate(Terminator::Goto(cont_block));
+    cx.terminate_kind(TerminatorKind::Goto(cont_block));
 
     // eval_rhs_block: evaluate rhs, switchInt(rhs) → {true: result_true, _: result_false}
     cx.current_block = eval_rhs_block;
     let rhs_local = lower_expr_to_operand(cx, rhs);
-    cx.terminate(Terminator::SwitchInt {
+    cx.terminate_kind(TerminatorKind::SwitchInt {
         discr: Operand::Copy(Place::local(rhs_local, rhs.span)),
         targets: vec![(ConstVal::Bool(true), result_true_block)],
         otherwise: result_false_block,
@@ -82,7 +83,7 @@ pub(crate) fn lower_short_circuit(
         })),
         span,
     );
-    cx.terminate(Terminator::Goto(cont_block));
+    cx.terminate_kind(TerminatorKind::Goto(cont_block));
 
     // result_false_block: result = false; goto cont
     cx.current_block = result_false_block;
@@ -94,7 +95,7 @@ pub(crate) fn lower_short_circuit(
         })),
         span,
     );
-    cx.terminate(Terminator::Goto(cont_block));
+    cx.terminate_kind(TerminatorKind::Goto(cont_block));
 
     // Continuation
     cx.current_block = cont_block;
@@ -755,7 +756,7 @@ pub(crate) fn lower_if(
         cx.mir
             .new_local_with_mut(result_ty, None, span, crate::mir::ty::Mutability::Mutable);
 
-    cx.terminate(Terminator::SwitchInt {
+    cx.terminate_kind(TerminatorKind::SwitchInt {
         discr: Operand::Copy(Place::local(cond_local, cond.span)),
         targets: vec![(ConstVal::Bool(true), then_block)],
         otherwise: else_block,
@@ -772,7 +773,7 @@ pub(crate) fn lower_if(
             Rvalue::Use(Operand::Copy(Place::local(then_result, then.span))),
             then.span,
         );
-        cx.terminate(Terminator::Goto(cont_block));
+        cx.terminate_kind(TerminatorKind::Goto(cont_block));
     }
 
     // Else block
@@ -785,7 +786,7 @@ pub(crate) fn lower_if(
                 Rvalue::Use(Operand::Copy(Place::local(else_result, else_expr.span))),
                 else_expr.span,
             );
-            cx.terminate(Terminator::Goto(cont_block));
+            cx.terminate_kind(TerminatorKind::Goto(cont_block));
         }
     } else {
         cx.push_assign(
@@ -793,7 +794,7 @@ pub(crate) fn lower_if(
             Rvalue::Aggregate(AggregateKind::Tuple, vec![]),
             span,
         );
-        cx.terminate(Terminator::Goto(cont_block));
+        cx.terminate_kind(TerminatorKind::Goto(cont_block));
     }
 
     // Continuation block
@@ -1116,10 +1117,10 @@ pub(crate) fn lower_match(
     // destructure (not a literal/enum). Was: emitted SwitchInt on a tuple
     // scrutinee → "expected integer or bool for switch, found Tuple" typeck error.
     if targets.is_empty() {
-        cx.terminate(Terminator::Goto(otherwise_block));
+        cx.terminate_kind(TerminatorKind::Goto(otherwise_block));
     } else {
         // Terminate current block with SwitchInt
-        cx.terminate(Terminator::SwitchInt {
+        cx.terminate_kind(TerminatorKind::SwitchInt {
             discr: switch_discr,
             targets: targets.clone(),
             otherwise: otherwise_block,
@@ -1149,7 +1150,7 @@ pub(crate) fn lower_match(
                 Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
                 arm.span,
             );
-            cx.terminate(Terminator::Goto(cont_block));
+            cx.terminate_kind(TerminatorKind::Goto(cont_block));
         }
     }
 
@@ -1421,7 +1422,7 @@ pub(crate) fn lower_match(
                 cx.current_block = after_pattern_check_block;
                 let guard_expr = arm.guard.as_ref().unwrap();
                 let guard_local = lower_expr_to_operand(cx, guard_expr);
-                cx.terminate(Terminator::SwitchInt {
+                cx.terminate_kind(TerminatorKind::SwitchInt {
                     discr: Operand::Copy(Place::local(guard_local, guard_expr.span)),
                     targets: vec![(ConstVal::Bool(true), match_block)],
                     otherwise: next_block,
@@ -1442,7 +1443,7 @@ pub(crate) fn lower_match(
                     Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
                     arm.span,
                 );
-                cx.terminate(Terminator::Goto(cont_block));
+                cx.terminate_kind(TerminatorKind::Goto(cont_block));
             }
             fallthrough_block = next_block;
             continue;
@@ -1591,17 +1592,21 @@ pub(crate) fn lower_match(
                                     );
                                     current = cx.current_block;
                                     let continue_block = cx.new_block();
-                                    cx.mir.block_mut(current).terminator = Terminator::SwitchInt {
-                                        discr: Operand::Copy(Place::local(cmp_result, span)),
-                                        targets: vec![(ConstVal::Bool(true), continue_block)],
-                                        otherwise: next_block,
-                                    };
+                                    cx.mir.block_mut(current).terminator = Terminator::new(
+                                        TerminatorKind::SwitchInt {
+                                            discr: Operand::Copy(Place::local(cmp_result, span)),
+                                            targets: vec![(ConstVal::Bool(true), continue_block)],
+                                            otherwise: next_block,
+                                        },
+                                        Span::DUMMY,
+                                    );
                                     current = continue_block;
                                 }
                             }
                         }
                         // All literal checks passed — goto match_block
-                        cx.mir.block_mut(current).terminator = Terminator::Goto(match_block);
+                        cx.mir.block_mut(current).terminator =
+                            Terminator::new(TerminatorKind::Goto(match_block), Span::DUMMY);
                         cx.current_block = current;
                     }
                 }
@@ -1617,7 +1622,7 @@ pub(crate) fn lower_match(
                 Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
                 arm.span,
             );
-            cx.terminate(Terminator::Goto(cont_block));
+            cx.terminate_kind(TerminatorKind::Goto(cont_block));
             fallthrough_block = next_block;
             continue;
         }
@@ -1683,7 +1688,7 @@ pub(crate) fn lower_match(
         // Instead, terminate the CURRENT block (the last one from
         // lower_expr_to_operand) with Goto(cont_block).
         if !cx.is_terminated() {
-            cx.terminate(Terminator::Goto(cont_block));
+            cx.terminate_kind(TerminatorKind::Goto(cont_block));
         }
         break;
     }
@@ -1693,7 +1698,7 @@ pub(crate) fn lower_match(
     // Check if fallthrough_block is the same as cx.current_block — if so,
     // it hasn't been terminated yet (no catch-all found).
     if !cx.is_terminated() {
-        cx.terminate(Terminator::Goto(cont_block));
+        cx.terminate_kind(TerminatorKind::Goto(cont_block));
     }
 
     // Continuation
@@ -1784,11 +1789,14 @@ fn build_tuple_pattern_condition(
             // Switch on cmp_result: if true, continue to next check (or match);
             // if false, goto next_block (pattern didn't match)
             let continue_block = cx.new_block();
-            cx.mir.block_mut(current).terminator = Terminator::SwitchInt {
-                discr: Operand::Copy(Place::local(cmp_result, span)),
-                targets: vec![(ConstVal::Bool(true), continue_block)],
-                otherwise: next_block,
-            };
+            cx.mir.block_mut(current).terminator = Terminator::new(
+                TerminatorKind::SwitchInt {
+                    discr: Operand::Copy(Place::local(cmp_result, span)),
+                    targets: vec![(ConstVal::Bool(true), continue_block)],
+                    otherwise: next_block,
+                },
+                Span::DUMMY,
+            );
             current = continue_block;
         }
         // Stage 14.87 (Bug B fix): Handle enum variant sub-patterns.
@@ -1869,11 +1877,14 @@ fn build_tuple_pattern_condition(
 
                         // Switch on cmp_result
                         let continue_block = cx.new_block();
-                        cx.mir.block_mut(current).terminator = Terminator::SwitchInt {
-                            discr: Operand::Copy(Place::local(cmp_result, span)),
-                            targets: vec![(ConstVal::Bool(true), continue_block)],
-                            otherwise: next_block,
-                        };
+                        cx.mir.block_mut(current).terminator = Terminator::new(
+                            TerminatorKind::SwitchInt {
+                                discr: Operand::Copy(Place::local(cmp_result, span)),
+                                targets: vec![(ConstVal::Bool(true), continue_block)],
+                                otherwise: next_block,
+                            },
+                            Span::DUMMY,
+                        );
                         current = continue_block;
                     }
                 }
@@ -1883,7 +1894,8 @@ fn build_tuple_pattern_condition(
     }
 
     // All checks passed — goto match_block
-    cx.mir.block_mut(current).terminator = Terminator::Goto(match_block);
+    cx.mir.block_mut(current).terminator =
+        Terminator::new(TerminatorKind::Goto(match_block), Span::DUMMY);
     cx.current_block = current;
 }
 
@@ -1951,7 +1963,7 @@ fn build_pattern_equality_check(
             Ty::new(TyKind::Bool, span),
             span,
         );
-        cx.terminate(Terminator::SwitchInt {
+        cx.terminate_kind(TerminatorKind::SwitchInt {
             discr: Operand::Copy(Place::local(cmp_result, span)),
             targets: vec![(ConstVal::Bool(true), match_block)],
             otherwise: next_block,
@@ -1966,7 +1978,7 @@ fn build_pattern_equality_check(
                 build_eq_check(cx, *b as i128, true);
             } else {
                 // Unknown literal — fall through to next
-                cx.terminate(Terminator::Goto(next_block));
+                cx.terminate_kind(TerminatorKind::Goto(next_block));
             }
         }
         HirPatKind::Or(sub_pats) => {
@@ -1985,7 +1997,7 @@ fn build_pattern_equality_check(
                         } else {
                             // Unknown literal type — fall through to next
                             cx.current_block = current_block;
-                            cx.terminate(Terminator::Goto(next_block));
+                            cx.terminate_kind(TerminatorKind::Goto(next_block));
                             return;
                         };
                     // The "failure" target is the next sub-pattern's check,
@@ -2023,7 +2035,7 @@ fn build_pattern_equality_check(
                         Ty::new(TyKind::Bool, span),
                         span,
                     );
-                    cx.terminate(Terminator::SwitchInt {
+                    cx.terminate_kind(TerminatorKind::SwitchInt {
                         discr: Operand::Copy(Place::local(cmp_result, span)),
                         targets: vec![(ConstVal::Bool(true), match_block)],
                         otherwise: failure_block,
@@ -2032,7 +2044,7 @@ fn build_pattern_equality_check(
                 } else {
                     // Non-literal sub-pattern — not supported, fall through to next
                     cx.current_block = current_block;
-                    cx.terminate(Terminator::Goto(next_block));
+                    cx.terminate_kind(TerminatorKind::Goto(next_block));
                     return;
                 }
             }
@@ -2089,7 +2101,7 @@ fn build_pattern_equality_check(
                             Ty::new(TyKind::Bool, span),
                             span,
                         );
-                        cx.terminate(Terminator::SwitchInt {
+                        cx.terminate_kind(TerminatorKind::SwitchInt {
                             discr: Operand::Copy(Place::local(cmp_result, span)),
                             targets: vec![(ConstVal::Bool(true), match_block)],
                             otherwise: next_block,
@@ -2099,7 +2111,7 @@ fn build_pattern_equality_check(
                 }
             }
             // Couldn't resolve variant — fall through
-            cx.terminate(Terminator::Goto(next_block));
+            cx.terminate_kind(TerminatorKind::Goto(next_block));
         }
         // Stage 14.90 (Bug X1 fix): Handle Tuple/TupleStruct patterns with
         // literal sub-patterns. These need conditional field checks.
@@ -2188,31 +2200,35 @@ fn build_pattern_equality_check(
                                 );
                                 current = cx.current_block;
                                 let continue_block = cx.new_block();
-                                cx.mir.block_mut(current).terminator = Terminator::SwitchInt {
-                                    discr: Operand::Copy(Place::local(cmp_result, span)),
-                                    targets: vec![(ConstVal::Bool(true), continue_block)],
-                                    otherwise: next_block,
-                                };
+                                cx.mir.block_mut(current).terminator = Terminator::new(
+                                    TerminatorKind::SwitchInt {
+                                        discr: Operand::Copy(Place::local(cmp_result, span)),
+                                        targets: vec![(ConstVal::Bool(true), continue_block)],
+                                        otherwise: next_block,
+                                    },
+                                    Span::DUMMY,
+                                );
                                 current = continue_block;
                             }
                         }
                     }
                 }
                 if found_lit {
-                    cx.mir.block_mut(current).terminator = Terminator::Goto(match_block);
+                    cx.mir.block_mut(current).terminator =
+                        Terminator::new(TerminatorKind::Goto(match_block), Span::DUMMY);
                     cx.current_block = current;
                 } else {
                     // No literal sub-patterns — always match
-                    cx.terminate(Terminator::Goto(match_block));
+                    cx.terminate_kind(TerminatorKind::Goto(match_block));
                 }
             } else {
                 // Can't resolve struct — fall through
-                cx.terminate(Terminator::Goto(next_block));
+                cx.terminate_kind(TerminatorKind::Goto(next_block));
             }
         }
         _ => {
             // Shouldn't happen (callers check needs_pattern_check first)
-            cx.terminate(Terminator::Goto(match_block));
+            cx.terminate_kind(TerminatorKind::Goto(match_block));
         }
     }
 }

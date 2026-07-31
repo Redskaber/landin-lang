@@ -14,7 +14,7 @@
 //!   - Short-circuit && produces control flow (P1-1 regression)
 
 use landin_compiler::driver::compile;
-use landin_compiler::mir::body::{AssertMessage, StatementKind, Terminator};
+use landin_compiler::mir::body::{AssertMessage, StatementKind, TerminatorKind};
 use landin_compiler::mir::place::{BinOp, LocalId};
 use landin_compiler::mir::ty::TyKind;
 
@@ -91,7 +91,7 @@ fn deep_storage_dead_before_return() {
     let return_bb = mir
         .basic_blocks
         .iter()
-        .find(|bb| matches!(bb.terminator, Terminator::Return))
+        .find(|bb| matches!(bb.terminator.kind, TerminatorKind::Return))
         .expect("no Return terminator");
     let dead_count = return_bb
         .statements
@@ -115,8 +115,8 @@ fn deep_assert_overflow_for_addition() {
     let mir = &result.mirs[0];
     let has_overflow_assert = mir.basic_blocks.iter().any(|bb| {
         matches!(
-            &bb.terminator,
-            Terminator::Assert {
+            &bb.terminator.kind,
+            TerminatorKind::Assert {
                 msg: AssertMessage::Overflow(BinOp::Add, _, _),
                 ..
             }
@@ -135,7 +135,7 @@ fn deep_no_assert_for_comparison() {
     let has_assert = mir
         .basic_blocks
         .iter()
-        .any(|bb| matches!(&bb.terminator, Terminator::Assert { .. }));
+        .any(|bb| matches!(&bb.terminator.kind, TerminatorKind::Assert { .. }));
     assert!(
         !has_assert,
         "expected NO Assert for comparison (comparisons can't overflow)"

@@ -207,7 +207,7 @@ pub(crate) fn codegen_operand(
 /// # Panics
 ///
 /// Panics if `index` is out of bounds for `mir.dyn_trait_calls`. The
-/// caller (`codegen_terminator`'s `Terminator::Call` branch) is
+/// caller (`codegen_terminator`'s `TerminatorKind::Call` branch) is
 /// responsible for bounds-checking before invoking this function.
 ///
 /// # §16 compliance

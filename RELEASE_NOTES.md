@@ -1,9 +1,104 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.123.0
+**Current version**: v0.126.0
 **Date**: 2026-07-30
 **Test count**: 1951 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.126.0 — Stage 14.112 (Terminator Struct Refactor — Proper HP-21 Fix)
+
+### Overview
+
+Stage 14.112 refactors `Terminator` from a bare enum to a `struct { kind, span }`,
+properly implementing HP-21 (span on terminators for debug info). This replaces
+the Stage 14.107 shortcut (terminator_span field on BasicBlock) with the correct
+architectural layering.
+
+### What Changed
+
+- Renamed `Terminator` enum → `TerminatorKind` enum
+- Created `Terminator` struct with `kind: TerminatorKind` + `span: Span`
+- Added convenience constructors: `new()`, `goto()`, `ret()`, `unreachable()`
+- Added `terminate_kind()` and `terminate_kind_and_goto()` to MirLowerCtxt
+- Updated 106+ pattern-match call sites across 11 source files
+- Updated 6 test files with TerminatorKind references
+
+### Why This Is Better Than Stage 14.107
+
+Stage 14.107 added `terminator_span` as a separate field on BasicBlock — a
+shortcut that avoided refactoring 120+ call sites. The Phase 2 data structure
+audit marked this as "❌ WRONG — shortcut." Stage 14.112 does the proper
+refactor: span lives on the Terminator itself, not on BasicBlock.
+
+Per §1.0 原則 3 "显式 > 隐式": span is now on the Terminator itself.
+Per §14.4: proper architectural layering.
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+---
+## v0.125.0 — Stage 14.111 (UnificationTable HashMap→Vec Optimization)
+
+### Overview
+
+Stage 14.111 implements data structure audit recommendation #5: convert
+`UnificationTable` from HashMap to Vec for true O(1) variable lookup.
+
+### What Changed
+
+- `ty_vars`: `HashMap<TyVid, Option<Ty>>` → `Vec<Option<Ty>>`
+- `int_vars`: `HashMap<IntVid, IntVarBinding>` → `Vec<IntVarBinding>`
+- `float_vars`: `HashMap<FloatVid, FloatVarBinding>` → `Vec<FloatVarBinding>`
+- All lookups now use `vid.0 as usize` index — no hashing overhead
+- Zero API change — all public methods have same signatures
+
+### Performance Impact
+
+- True O(1) array indexing (was amortized O(1) with hashing overhead)
+- Better cache locality (Vec is contiguous)
+- Eliminates hashing for hundreds of type variable lookups per function body
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+---
+## v0.124.0 — Stage 14.110 (Data Structure Audit + O(1) HirCrate Lookup)
+
+### Overview
+
+Stage 14.110 conducts a deep data structure architecture review and implements
+the top 2 quick-win optimizations: O(1) HirCrate lookup and dead field removal.
+
+### Data Structure Audit Results
+
+Exhaustive audit of all core data structures:
+- **11 ✅ OPTIMAL** (DefId, HirId, MirBody.basic_blocks, etc.)
+- **24 ⚠️ SUBOPTIMAL** (OwnerId triple-indirection, Ty not Copy, etc.)
+- **16 ❌ WRONG** (HirCrate Vec lookup, dyn_trait_calls magic marker, EmitValue=String, etc.)
+
+10 prioritized recommendations for v0.2 data structure refactoring.
+
+### Fix: HirCrate O(1) Lookup
+
+**Before**: `owner()` and `body()` did O(n) linear scans.
+**After**: Cached `OnceCell<HashMap<u32, usize>>` index — O(1) after first lookup.
+
+### Fix: Remove Dead `println_messages` Field
+
+Dead field from Stage 13.12, superseded by `StatementKind::Println` (Stage 13.13).
+
+### Verification
+
+- All 1951 rust tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.123.0 — Stage 14.109 (Performance Optimization: Env Var Caching)

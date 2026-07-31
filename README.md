@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.123.0 (v0.1 release — perf optimization)  
+**Version**: v0.126.0 (v0.1 release — Terminator struct refactor)  
 **Date**: 2026-07-30
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -9,17 +9,19 @@ zero-cost abstractions, memory safety without garbage collection, and
 predictable performance. The compiler is written in Rust and uses LLVM as its
 backend via the `llvm-sys` crate.
 
-> **v0.1 RELEASE CONFIRMED — All Pre-v0.2 Fixes Complete**
+> **v0.1 RELEASE CONFIRMED — Deep Audit + Data Structure Optimization Complete**
 >
-> Stages 14.80-14.108:
+> Stages 14.80-14.112:
 > - **Stage 14.101-14.104** — Deep audit: 22 P0 bugs identified, ALL 22 FIXED
 > - **Stage 14.105** — Dead code cleanup: 1,013 LOC removed + perf baseline
-> - **Stage 14.106** — Phase 2 architecture audit + HP-1 infrastructure
-> - **Stage 14.107** — HP-19/21 span infrastructure (2nd pre-v0.2 fix)
-> - **Stage 14.108** — HP-B11 writeback documentation (3rd pre-v0.2 fix)
+> - **Stage 14.106-14.108** — Phase 2 architecture audit + 3 pre-v0.2 fixes
+> - **Stage 14.109-14.112** — Data structure optimization: env var caching,
+>   O(1) HirCrate lookup, UnificationTable HashMap→Vec, Terminator struct refactor
 >
-> **ALL 3 PRE-v0.2 FIXES COMPLETE** ✅
+> **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
+>
+> See `docs/develop/v0/stage-14/v0.1-final-release-assessment.md` for full assessment.
 >
 > Remaining P1/P2 gaps (GAP-2/3/4 region/drop/lifetime infrastructure,
 > GAP-9 stdlib MVP, GAP-14 visibility, GAP-15 mini-cargo) are feature-
@@ -242,4 +244,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-07-30 (v0.123.0, Stage 14.109 — perf optimization)
+**Last updated**: 2026-07-30 (v0.126.0, Stage 14.112 — Terminator struct refactor)

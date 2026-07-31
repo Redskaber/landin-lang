@@ -5,6 +5,7 @@
 
 use landin_compiler::hir::lower::lower_crate;
 use landin_compiler::lexer::tokenize;
+use landin_compiler::mir::body::TerminatorKind;
 use landin_compiler::mir::lower::lower_hir_body_to_mir;
 use landin_compiler::mir::*;
 use landin_compiler::parser::Parser;
@@ -38,7 +39,7 @@ fn mir_empty_fn() {
     assert!(!mir.basic_blocks.is_empty());
     // The last block should terminate with Return
     let last_bb = mir.basic_blocks.last().unwrap();
-    assert!(matches!(last_bb.terminator, Terminator::Return));
+    assert!(matches!(last_bb.terminator.kind, TerminatorKind::Return));
 }
 
 #[test]
@@ -102,7 +103,7 @@ fn mir_if_expr() {
     // The entry block should have a SwitchInt terminator
     let entry = &mir.basic_blocks[0];
     assert!(
-        matches!(&entry.terminator, Terminator::SwitchInt { .. }),
+        matches!(&entry.terminator.kind, TerminatorKind::SwitchInt { .. }),
         "entry block should have SwitchInt, got {:?}",
         entry.terminator
     );
@@ -114,7 +115,7 @@ fn mir_match_expr() {
     let mir = &mirs[0];
     // Match should produce a SwitchInt with at least 1 target (the literal 1)
     let has_switch = mir.basic_blocks.iter().any(
-        |bb| matches!(&bb.terminator, Terminator::SwitchInt { targets, .. } if !targets.is_empty()),
+        |bb| matches!(&bb.terminator.kind, TerminatorKind::SwitchInt { targets, .. } if !targets.is_empty()),
     );
     assert!(has_switch, "should have SwitchInt with targets");
 }
@@ -127,7 +128,7 @@ fn mir_call_expr() {
     let has_call = main_mir
         .basic_blocks
         .iter()
-        .any(|bb| matches!(&bb.terminator, Terminator::Call { .. }));
+        .any(|bb| matches!(&bb.terminator.kind, TerminatorKind::Call { .. }));
     assert!(has_call, "should have a Call terminator");
 }
 
@@ -139,7 +140,7 @@ fn mir_return_expr() {
     let has_return = mir
         .basic_blocks
         .iter()
-        .any(|bb| matches!(bb.terminator, Terminator::Return));
+        .any(|bb| matches!(bb.terminator.kind, TerminatorKind::Return));
     assert!(has_return);
 }
 
@@ -287,7 +288,7 @@ fn mir_basic_block_terminators_valid() {
     // The last block should have Return
     let mir = &mirs[0];
     let last = mir.basic_blocks.last().unwrap();
-    assert!(matches!(last.terminator, Terminator::Return));
+    assert!(matches!(last.terminator.kind, TerminatorKind::Return));
 }
 
 // =================================================================

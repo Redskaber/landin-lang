@@ -433,9 +433,9 @@ fn get_call_dest_type(
     layouts: &crate::mir::body::AdtLayouts,
 ) -> Option<EmitType> {
     for bb in &mir.basic_blocks {
-        if let crate::mir::body::Terminator::Call {
+        if let crate::mir::body::TerminatorKind::Call {
             func, destination, ..
-        } = &bb.terminator
+        } = &bb.terminator.kind
         {
             if let crate::mir::place::PlaceKind::Local(id) = &destination.kind {
                 if id.0 as usize == local_idx {

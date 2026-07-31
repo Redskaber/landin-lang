@@ -54,6 +54,7 @@ pub use copy_semantics::{ty_is_copy, ty_is_copy_unified, ty_is_copy_with_resolve
 pub use liveness::{compute_last_use_map, LastUseMap};
 pub use place_path::{PlacePath, PlaceRoot, ProjElem};
 
+use crate::mir::body::TerminatorKind;
 use crate::mir::body::*;
 use crate::mir::place::*;
 use crate::mir::ty::Ty;
@@ -292,22 +293,22 @@ impl<'a> BorrowChecker<'a> {
         _bb_id: BasicBlockId,
         _stmt_idx: usize,
     ) {
-        match term {
-            Terminator::Call { func, args, .. } => {
+        match &term.kind {
+            TerminatorKind::Call { func, args, .. } => {
                 self.check_operand(mir, func, Span::DUMMY);
                 for arg in args {
                     self.check_operand(mir, arg, Span::DUMMY);
                 }
             }
-            Terminator::SwitchInt { discr, .. } => {
+            TerminatorKind::SwitchInt { discr, .. } => {
                 self.check_operand(mir, discr, Span::DUMMY);
             }
-            Terminator::Drop { place, .. } => {
+            TerminatorKind::Drop { place, .. } => {
                 self.check_place_read(mir, place, Span::DUMMY);
             }
             // Assert reads the condition operand (a bool). Check it
             // for use-after-move just like any other operand.
-            Terminator::Assert { cond, .. } => {
+            TerminatorKind::Assert { cond, .. } => {
                 self.check_operand(mir, cond, Span::DUMMY);
             }
             _ => {}
@@ -698,7 +699,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mir);
         assert!(errors.is_empty(), "expected no errors, got {:?}", errors);
     }
@@ -737,7 +739,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mir);
         assert!(!errors.is_empty(), "expected use-after-move error");
     }
@@ -787,7 +790,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mir);
         assert!(!errors.is_empty(), "expected move-borrowed error");
     }
@@ -835,7 +839,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mir);
         assert!(!errors.is_empty(), "expected assign-borrowed error");
     }
@@ -876,7 +881,8 @@ mod tests {
         // For Stage 2.3, we don't track last-use precisely — this is a
         // simplified check. The borrow remains active for the whole body.
         // This test just verifies no crash.
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let _ = check_mir_body(&mir);
     }
 
@@ -925,7 +931,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mir);
         assert!(
             errors.is_empty(),
@@ -968,7 +975,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mir);
         assert!(
             errors.is_empty(),
@@ -1067,7 +1075,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mir);
         assert!(
             errors.is_empty(),
@@ -1153,7 +1162,8 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        mir.block_mut(BasicBlockId(0)).terminator = Terminator::Return;
+        mir.block_mut(BasicBlockId(0)).terminator =
+            Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mir);
         // The borrow on x is alive at "x = 100" because r's last use is
         // at "y = *r" (a later statement). So assigning to x should fail.

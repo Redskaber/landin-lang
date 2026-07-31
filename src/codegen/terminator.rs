@@ -1,16 +1,17 @@
 //! MIR terminator → LLVM IR codegen.
 //!
 //! Extracted from codegen/mod.rs per Stage 13.28 codegen reorganization.
-//! Handles `Terminator::Return`, `Goto`, `SwitchInt`, `Call`, `Drop`,
+//! Handles `TerminatorKind::Return`, `Goto`, `SwitchInt`, `Call`, `Drop`,
 //! `Assert`, `Unreachable`.
 
 #![allow(unused_imports)]
-#[allow(unused_imports)]
 use super::mir_translation::{
     codegen_place_load, codegen_place_load_typed, compute_place_address, detect_operand_type,
     detect_place_storage_type, detect_place_type, unwrap_fat_ptr_for_index,
 };
 use super::*;
+#[allow(unused_imports)]
+use crate::mir::body::TerminatorKind;
 use crate::mir::body::*;
 use crate::mir::place::*;
 use crate::mir::ty::ConstVal;
@@ -25,8 +26,8 @@ pub(crate) fn codegen_terminator(
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
 ) {
-    match term {
-        Terminator::Return => {
+    match &term.kind {
+        TerminatorKind::Return => {
             if *ret_ty == EmitType::Void {
                 emitter.emit_ret(ret_ty, None);
             } else {
@@ -38,13 +39,13 @@ pub(crate) fn codegen_terminator(
                 emitter.emit_ret(ret_ty, ret_val.as_ref());
             }
         }
-        Terminator::Unreachable => {
+        TerminatorKind::Unreachable => {
             emitter.emit_unreachable();
         }
-        Terminator::Goto(target) => {
+        TerminatorKind::Goto(target) => {
             emitter.emit_br(&format!("bb{}", target.0));
         }
-        Terminator::SwitchInt {
+        TerminatorKind::SwitchInt {
             discr,
             targets,
             otherwise,
@@ -101,7 +102,7 @@ pub(crate) fn codegen_terminator(
                 emitter.emit_switch(&discr_val, &discr_ty, &cases, &format!("bb{}", otherwise.0));
             }
         }
-        Terminator::Call {
+        TerminatorKind::Call {
             func,
             args,
             destination,
@@ -275,7 +276,7 @@ pub(crate) fn codegen_terminator(
                 emitter.emit_br(&format!("bb{}", cont.0));
             }
         }
-        Terminator::Assert {
+        TerminatorKind::Assert {
             cond, target, msg, ..
         } => {
             let panic_label = format!("panic_assert_{}", target.0);
@@ -378,7 +379,7 @@ pub(crate) fn codegen_terminator(
             }
             emitter.emit_unreachable();
         }
-        // Stage 14.103 (SH-8 documentation): Terminator::Drop is a no-op in v0.1.
+        // Stage 14.103 (SH-8 documentation): TerminatorKind::Drop is a no-op in v0.1.
         //
         // In Rust, `Drop` would call the type's `Drop::drop` method here.
         // In v0.1, user-defined `Drop::drop` is not supported (GAP-3 —
@@ -389,7 +390,7 @@ pub(crate) fn codegen_terminator(
         //   1. Look up the type's Drop impl (if any)
         //   2. Call the drop method with the place as receiver
         //   3. Then branch to target
-        Terminator::Drop { place, target, .. } => {
+        TerminatorKind::Drop { place, target, .. } => {
             let _ = place; // v0.1: no Drop impls exist, so nothing to call
             emitter.emit_br(&format!("bb{}", target.0));
         }

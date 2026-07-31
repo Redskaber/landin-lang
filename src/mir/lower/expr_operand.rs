@@ -36,6 +36,7 @@
 
 use crate::ast;
 use crate::hir::*;
+use crate::mir::body::TerminatorKind;
 use crate::mir::body::*;
 use crate::mir::dyn_trait::{find_dyn_trait_method_call_in_plan_by_method, DynTraitMethodCall};
 use crate::mir::place::*;
@@ -119,7 +120,7 @@ pub(crate) fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Plac
     }
 }
 
-/// Stage 5.78: Build a `Terminator::Call` for a dyn Trait method call,
+/// Stage 5.78: Build a `TerminatorKind::Call` for a dyn Trait method call,
 /// and register the call info in `cx.mir.dyn_trait_calls` side-table.
 ///
 /// The function operand is a `Const` whose `ConstVal::Int` value is the
@@ -138,7 +139,7 @@ pub(crate) fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Plac
 ///
 /// # Returns
 ///
-/// A `Terminator::Call` whose:
+/// A `TerminatorKind::Call` whose:
 /// - `func` is `Operand::Constant(Const { ty: Error, val: Int(index) })`
 ///   where `index` is the side-table entry index
 /// - `args` is `[Copy(recv), Copy(arg0), Copy(arg1), ...]` — self first
@@ -177,18 +178,21 @@ pub fn build_dyn_trait_call_terminator(
         arg_operands.push(Operand::Copy(Place::local(*local, Span::DUMMY)));
     }
 
-    Terminator::Call {
-        // The Const's Int value is the side-table index. Codegen detects
-        // this marker and emits a vtable indirect call instead of a direct
-        // function call.
-        func: Operand::Constant(Const {
-            ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
-            val: ConstVal::Int(index),
-        }),
-        args: arg_operands,
-        destination: Place::local(dest, span),
-        target: None,
-    }
+    Terminator::new(
+        TerminatorKind::Call {
+            // The Const's Int value is the side-table index. Codegen detects
+            // this marker and emits a vtable indirect call instead of a direct
+            // function call.
+            func: Operand::Constant(Const {
+                ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
+                val: ConstVal::Int(index),
+            }),
+            args: arg_operands,
+            destination: Place::local(dest, span),
+            target: None,
+        },
+        span,
+    )
 }
 
 /// Stage 13.3a (TD-030): Inline a closure body at the call site.
@@ -701,7 +705,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Stage 3.30 (per §15): inspect the func operand's type to decide
             //   - TyKind::Adt(def_id, _)  → Aggregate(Adt(def_id, ...)) —
             //     this is a struct/enum ctor call like `Pair(1, 2)`.
-            //   - TyKind::FnDef(..)       → real Terminator::Call.
+            //   - TyKind::FnDef(..)       → real TerminatorKind::Call.
             // This dispatch eliminates the root cause of "tuple struct ctor
             // was being lowered as Call" — the type info flows naturally
             // from Path resolution through to Call lowering.
@@ -777,7 +781,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 // Calling a closure requires extracting the captured environment
                 // and invoking the closure body. For now (simplified), we detect
                 // closure calls and produce a placeholder result (unit type),
-                // avoiding the incorrect Terminator::Call that would treat the
+                // avoiding the incorrect TerminatorKind::Call that would treat the
                 // closure struct as a function pointer.
                 let is_closure = {
                     let func_local_decl = cx.mir.local_decls.get(func_local.0 as usize);
@@ -840,8 +844,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     let dest_ty = cx.fresh_infer_ty(Span::DUMMY);
                     let dest = cx.mir.new_local(dest_ty, None, expr.span);
                     let cont = cx.new_block();
-                    cx.terminate_and_goto(
-                        Terminator::Call {
+                    cx.terminate_kind_and_goto(
+                        TerminatorKind::Call {
                             func: Operand::Copy(Place::local(func_local, func.span)),
                             args: arg_operands,
                             destination: Place::local(dest, expr.span),
@@ -882,7 +886,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     expr.span,
                 );
             }
-            cx.terminate(Terminator::Return);
+            cx.terminate_kind(TerminatorKind::Return);
             // Return a dummy local (unreachable after Return)
             cx.mir
                 .new_local(Ty::new(TyKind::Never, Span::DUMMY), None, Span::DUMMY)
@@ -1088,12 +1092,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             );
 
             // Entry → goto loop_header
-            cx.terminate(Terminator::Goto(loop_header));
+            cx.terminate_kind(TerminatorKind::Goto(loop_header));
 
             // loop_header → goto loop_body_start (placeholder for future
             // condition checking / break targeting)
             cx.current_block = loop_header;
-            cx.terminate(Terminator::Goto(loop_body_start));
+            cx.terminate_kind(TerminatorKind::Goto(loop_body_start));
 
             // Stage 13.19: Push (continue_target=loop_header, break_target=loop_exit)
             cx.loop_stack.push((loop_header, loop_exit));
@@ -1105,7 +1109,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let _body_result = control_flow::lower_block(cx, body);
             // Stage 14.68: Only emit Goto if the body didn't diverge.
             if !cx.is_terminated() {
-                cx.terminate(Terminator::Goto(loop_header));
+                cx.terminate_kind(TerminatorKind::Goto(loop_header));
             }
 
             // Pop the loop stack
@@ -1124,12 +1128,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let exit_block = cx.new_block();
 
             // Entry → goto cond_block
-            cx.terminate(Terminator::Goto(cond_block));
+            cx.terminate_kind(TerminatorKind::Goto(cond_block));
 
             // cond_block: evaluate cond, switchInt
             cx.current_block = cond_block;
             let cond_local = lower_expr_to_operand(cx, cond);
-            cx.terminate(Terminator::SwitchInt {
+            cx.terminate_kind(TerminatorKind::SwitchInt {
                 discr: Operand::Copy(Place::local(cond_local, cond.span)),
                 targets: vec![(ConstVal::Bool(true), body_block)],
                 otherwise: exit_block,
@@ -1152,7 +1156,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Per §1.0 原则 5 "报错 > 静默": silently overwriting a Return
             // terminator is a P0 control-flow bug.
             if !cx.is_terminated() {
-                cx.terminate(Terminator::Goto(cond_block));
+                cx.terminate_kind(TerminatorKind::Goto(cond_block));
             }
 
             // Pop the loop stack (body is done)
@@ -1301,7 +1305,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let exit_block = cx.new_block();
 
             // Entry → goto cond_block
-            cx.terminate(Terminator::Goto(cond_block));
+            cx.terminate_kind(TerminatorKind::Goto(cond_block));
 
             // cond_block: compare HIDDEN COUNTER with end.
             // - Excluded range (start..end): loop while counter < end
@@ -1321,7 +1325,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 cond_ty,
                 expr.span,
             );
-            cx.terminate(Terminator::SwitchInt {
+            cx.terminate_kind(TerminatorKind::SwitchInt {
                 discr: Operand::Copy(Place::local(cond_local, expr.span)),
                 targets: vec![(ConstVal::Bool(true), body_block)],
                 otherwise: exit_block,
@@ -1346,7 +1350,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             cx.loop_stack.pop();
             // Stage 14.68: Only emit Goto if the body didn't diverge.
             if !cx.is_terminated() {
-                cx.terminate(Terminator::Goto(incr_block));
+                cx.terminate_kind(TerminatorKind::Goto(incr_block));
             }
 
             // incr_block: hidden_counter += 1, then goto cond_block.
@@ -1372,7 +1376,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 Rvalue::Use(Operand::Copy(Place::local(new_val, expr.span))),
                 expr.span,
             );
-            cx.terminate(Terminator::Goto(cond_block));
+            cx.terminate_kind(TerminatorKind::Goto(cond_block));
 
             // exit_block: continuation. For-loop evaluates to unit ().
             cx.current_block = exit_block;
@@ -1553,12 +1557,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                             expr.span,
                         );
                     }
-                    cx.terminate(Terminator::Goto(break_target));
+                    cx.terminate_kind(TerminatorKind::Goto(break_target));
                 }
             } else {
                 // Get the break target from the loop stack.
                 if let Some((_, break_target)) = cx.loop_stack.last().copied() {
-                    cx.terminate(Terminator::Goto(break_target));
+                    cx.terminate_kind(TerminatorKind::Goto(break_target));
                 }
             }
             // Allocate a fresh block for any code after the break (unreachable
@@ -1573,7 +1577,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         // target. Before Stage 13.19, this was a no-op.
         HirExprKind::Continue => {
             if let Some((continue_target, _)) = cx.loop_stack.last().copied() {
-                cx.terminate(Terminator::Goto(continue_target));
+                cx.terminate_kind(TerminatorKind::Goto(continue_target));
             }
             cx.current_block = cx.new_block();
             cx.mir
@@ -2083,7 +2087,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     );
                     // Set the target before terminating — the helper
                     // leaves it as None per design.
-                    if let Terminator::Call { target, .. } = &mut terminator {
+                    if let TerminatorKind::Call { target, .. } = &mut terminator.kind {
                         *target = Some(cont);
                     }
                     cx.terminate_and_goto(terminator, cont);
@@ -2100,7 +2104,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             //
             // Stage 13.17: resolve the method to a real DefId by querying HIR
             // for an impl block on the receiver's type. If found, emit a real
-            // `Terminator::Call` with `func: Const{ty: FnDef(def_id), val: Uint(def_id)}`.
+            // `TerminatorKind::Call` with `func: Const{ty: FnDef(def_id), val: Uint(def_id)}`.
             // If not found (unknown method or non-ADT receiver), fall back to
             // the Error placeholder (graceful degradation).
 
@@ -2252,11 +2256,11 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
 
             if let Some(def_id) = method_def_id {
                 // Stage 13.17: Real inherent method call.
-                // Emit `Terminator::Call` with `func: Const{ty: FnDef(def_id), val: Uint(def_id)}`.
+                // Emit `TerminatorKind::Call` with `func: Const{ty: FnDef(def_id), val: Uint(def_id)}`.
                 // Codegen resolves this via `fn_name_by_def_id` (which maps to
                 // `landin_<Type>_<method>` per the driver's naming convention).
-                cx.terminate_and_goto(
-                    Terminator::Call {
+                cx.terminate_kind_and_goto(
+                    TerminatorKind::Call {
                         func: Operand::Constant(Const {
                             ty: Box::new(Ty::new(TyKind::FnDef(def_id, Vec::new()), expr.span)),
                             val: ConstVal::Uint(def_id.as_u32() as u128),
@@ -2304,8 +2308,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 }
                 // Still emit the Error placeholder for codegen to not crash,
                 // but the error will abort compilation before codegen runs.
-                cx.terminate_and_goto(
-                    Terminator::Call {
+                cx.terminate_kind_and_goto(
+                    TerminatorKind::Call {
                         func: Operand::Constant(Const {
                             ty: Box::new(Ty::new(TyKind::Error, Span::DUMMY)),
                             val: ConstVal::Int(0),

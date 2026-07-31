@@ -1,7 +1,7 @@
 //! Stage 4.9: Closure call lowering tests
 //!
 //! Tests that closure calls (calling a value of TyKind::Closure) are correctly
-//! detected and don't produce incorrect Terminator::Call.
+//! detected and don't produce incorrect TerminatorKind::Call.
 //!
 //! Per stage-committee-process.md v3.17 §17.1, new tests are placed in
 //! `tests/v0/stage4/plan/` (standardized directory structure).

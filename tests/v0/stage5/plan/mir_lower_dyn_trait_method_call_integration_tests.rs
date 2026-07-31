@@ -1,7 +1,7 @@
 //! Stage 5.78: HirExprKind::MethodCall dyn Trait integration tests
 //!
 //! Tests the FIRST real `mir/lower` integration of dyn Trait data:
-//! - `build_dyn_trait_call_terminator()` helper constructs a `Terminator::Call`
+//! - `build_dyn_trait_call_terminator()` helper constructs a `TerminatorKind::Call`
 //!   with a marker Const whose Int value is the index into `cx.mir.dyn_trait_calls`
 //! - `HirExprKind::MethodCall` branch queries `cx.dyn_trait_plan()` and uses
 //!   the helper when a match is found; falls through to legacy path otherwise.
@@ -11,7 +11,7 @@
 
 use landin_compiler::hir::lower::lower_crate;
 use landin_compiler::lexer::tokenize;
-use landin_compiler::mir::body::Terminator;
+use landin_compiler::mir::body::TerminatorKind;
 use landin_compiler::mir::dyn_trait::DynTraitMethodCall;
 use landin_compiler::mir::lower::{lower_hir_body_to_mir_full, MirLowerCtxt};
 use landin_compiler::mir::place::{LocalId, Operand, PlaceKind};
@@ -48,7 +48,7 @@ fn make_cx() -> MirLowerCtxt<'static> {
     MirLowerCtxt::new(interner, Span::DUMMY)
 }
 
-/// Basic construction: returns Terminator::Call.
+/// Basic construction: returns TerminatorKind::Call.
 #[test]
 fn test_build_dyn_trait_call_terminator_returns_call() {
     let mut cx = make_cx();
@@ -56,7 +56,7 @@ fn test_build_dyn_trait_call_terminator_returns_call() {
     let recv = LocalId(0);
     let dest = LocalId(1);
     let terminator = build_dyn_trait_call_terminator(&mut cx, &call, recv, &[], dest, Span::DUMMY);
-    assert!(matches!(terminator, Terminator::Call { .. }));
+    assert!(matches!(&terminator.kind, TerminatorKind::Call { .. }));
 }
 
 /// Function operand is Operand::Constant.
@@ -66,10 +66,10 @@ fn test_build_dyn_trait_call_terminator_func_is_constant() {
     let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
-    if let Terminator::Call { func, .. } = terminator {
+    if let TerminatorKind::Call { func, .. } = &terminator.kind {
         assert!(matches!(func, Operand::Constant(_)));
     } else {
-        panic!("expected Terminator::Call");
+        panic!("expected TerminatorKind::Call");
     }
 }
 
@@ -80,10 +80,10 @@ fn test_build_dyn_trait_call_terminator_index_zero_for_first() {
     let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
-    if let Terminator::Call {
+    if let TerminatorKind::Call {
         func: Operand::Constant(c),
         ..
-    } = terminator
+    } = &terminator.kind
     {
         assert!(matches!(c.val, ConstVal::Int(0)));
     } else {
@@ -106,24 +106,24 @@ fn test_build_dyn_trait_call_terminator_index_increments() {
     let t3 =
         build_dyn_trait_call_terminator(&mut cx, &call3, LocalId(0), &[], LocalId(1), Span::DUMMY);
 
-    if let Terminator::Call {
+    if let TerminatorKind::Call {
         func: Operand::Constant(c1),
         ..
-    } = t1
+    } = &t1.kind
     {
         assert!(matches!(c1.val, ConstVal::Int(0)));
     }
-    if let Terminator::Call {
+    if let TerminatorKind::Call {
         func: Operand::Constant(c2),
         ..
-    } = t2
+    } = &t2.kind
     {
         assert!(matches!(c2.val, ConstVal::Int(1)));
     }
-    if let Terminator::Call {
+    if let TerminatorKind::Call {
         func: Operand::Constant(c3),
         ..
-    } = t3
+    } = &t3.kind
     {
         assert!(matches!(c3.val, ConstVal::Int(2)));
     }
@@ -159,7 +159,7 @@ fn test_build_dyn_trait_call_terminator_args_self_first() {
         LocalId(8),
         Span::DUMMY,
     );
-    if let Terminator::Call { args, .. } = terminator {
+    if let TerminatorKind::Call { args, .. } = &terminator.kind {
         assert_eq!(args.len(), 3); // self + 2 args
                                    // self is at index 0
         assert_eq!(local_of(&args[0]), LocalId(5));
@@ -179,8 +179,8 @@ fn test_build_dyn_trait_call_terminator_destination() {
     let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(42), Span::DUMMY);
-    if let Terminator::Call { destination, .. } = terminator {
-        assert_eq!(local_of(&Operand::Copy(destination)), LocalId(42));
+    if let TerminatorKind::Call { destination, .. } = &terminator.kind {
+        assert_eq!(local_of(&Operand::Copy(destination.clone())), LocalId(42));
     } else {
         panic!("expected Call");
     }
@@ -193,7 +193,7 @@ fn test_build_dyn_trait_call_terminator_target_none() {
     let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
-    if let Terminator::Call { target, .. } = terminator {
+    if let TerminatorKind::Call { target, .. } = &terminator.kind {
         assert!(target.is_none());
     } else {
         panic!("expected Call");
@@ -207,10 +207,10 @@ fn test_build_dyn_trait_call_terminator_func_ty_is_error() {
     let call = DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![]);
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
-    if let Terminator::Call {
+    if let TerminatorKind::Call {
         func: Operand::Constant(c),
         ..
-    } = terminator
+    } = &terminator.kind
     {
         assert!(matches!(c.ty.kind, TyKind::Error));
     } else {
@@ -223,7 +223,7 @@ fn test_build_dyn_trait_call_terminator_func_ty_is_error() {
 // ============================================================
 
 /// Without plan attached: MethodCall falls through to legacy path
-/// (Terminator::Call with placeholder Const Int(0) and no side-table entry).
+/// (TerminatorKind::Call with placeholder Const Int(0) and no side-table entry).
 #[test]
 fn test_method_call_without_plan_uses_legacy_path() {
     let src = "fn f() { let x = 1; x.foo(); }";
@@ -291,10 +291,10 @@ fn test_method_call_with_matching_plan_records_dyn_call() {
     assert_eq!(cx.mir.dyn_trait_calls[0].type_name, "S");
 
     // Verify terminator func Const has Int(0) (the index).
-    if let Terminator::Call {
+    if let TerminatorKind::Call {
         func: Operand::Constant(c),
         ..
-    } = terminator
+    } = &terminator.kind
     {
         assert!(matches!(c.val, ConstVal::Int(0)));
     } else {
@@ -314,10 +314,10 @@ fn test_multiple_dyn_trait_calls_get_distinct_indices() {
     let t2 =
         build_dyn_trait_call_terminator(&mut cx, &call2, LocalId(0), &[], LocalId(1), Span::DUMMY);
 
-    let idx1 = if let Terminator::Call {
+    let idx1 = if let TerminatorKind::Call {
         func: Operand::Constant(c),
         ..
-    } = t1
+    } = &t1.kind
     {
         if let ConstVal::Int(i) = c.val {
             i
@@ -328,10 +328,10 @@ fn test_multiple_dyn_trait_calls_get_distinct_indices() {
         panic!();
     };
 
-    let idx2 = if let Terminator::Call {
+    let idx2 = if let TerminatorKind::Call {
         func: Operand::Constant(c),
         ..
-    } = t2
+    } = &t2.kind
     {
         if let ConstVal::Int(i) = c.val {
             i

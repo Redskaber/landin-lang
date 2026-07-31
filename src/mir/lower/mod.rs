@@ -7,6 +7,7 @@
 
 use crate::ast;
 use crate::hir::*;
+use crate::mir::body::TerminatorKind;
 use crate::mir::body::*;
 use crate::mir::dyn_trait::DynTraitMIRPlan;
 use crate::mir::place::*;
@@ -258,6 +259,19 @@ impl<'a> MirLowerCtxt<'a> {
         self.mir.block_mut(self.current_block).terminator = terminator;
     }
 
+    /// Stage 14.112: Convenience method — terminate with a TerminatorKind
+    /// and DUMMY span. Use `terminate()` with explicit span for debug info.
+    pub fn terminate_kind(&mut self, kind: TerminatorKind) {
+        self.mir.block_mut(self.current_block).terminator =
+            Terminator::new(kind, crate::session::Span::DUMMY);
+    }
+
+    /// Stage 14.112: Convenience method — terminate with a TerminatorKind
+    /// and explicit span (for debug info).
+    pub fn terminate_kind_span(&mut self, kind: TerminatorKind, span: crate::session::Span) {
+        self.mir.block_mut(self.current_block).terminator = Terminator::new(kind, span);
+    }
+
     /// Stage 13.21: Check if the current block is already terminated (has a
     /// non-Unreachable terminator). Used by `if`/`match` lowering to skip
     /// the continuation Goto when the then/else block ends with `return`,
@@ -266,14 +280,22 @@ impl<'a> MirLowerCtxt<'a> {
     /// Per §16: this is lowering context state, not MIR data.
     pub fn is_terminated(&self) -> bool {
         !matches!(
-            self.mir.block(self.current_block).terminator,
-            Terminator::Unreachable
+            self.mir.block(self.current_block).terminator.kind,
+            TerminatorKind::Unreachable
         )
     }
 
     /// Set the terminator of the current block and switch to `next`.
     pub fn terminate_and_goto(&mut self, terminator: Terminator, next: BasicBlockId) {
         self.mir.block_mut(self.current_block).terminator = terminator;
+        self.current_block = next;
+    }
+
+    /// Stage 14.112: Convenience — terminate with TerminatorKind + DUMMY span,
+    /// then switch to `next`.
+    pub fn terminate_kind_and_goto(&mut self, kind: TerminatorKind, next: BasicBlockId) {
+        self.mir.block_mut(self.current_block).terminator =
+            Terminator::new(kind, crate::session::Span::DUMMY);
         self.current_block = next;
     }
 
@@ -595,7 +617,7 @@ pub fn lower_hir_body_to_mir_full(
 /// `build_dyn_trait_mir_plan_from_resolver(&trait_resolver, &interner)`
 /// before the per-body loop, then passes `Some(&plan)` to this function
 /// for each body. This activates end-to-end dyn Trait MIR lowering:
-/// HIR `receiver.method(args)` → MIR `Terminator::Call` with Const marker
+/// HIR `receiver.method(args)` → MIR `TerminatorKind::Call` with Const marker
 /// → codegen vtable indirect call IR.
 ///
 /// # §16 compliance
@@ -735,7 +757,7 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     }
 
     // Terminate the current block with Return.
-    cx.terminate(Terminator::Return);
+    cx.terminate_kind(TerminatorKind::Return);
 
     // Stage 3.47 (L-PIPE-1 closure per §16): sink ADT layouts from HIR into
     // MIR's `adt_layouts` side-table. This lets codegen resolve

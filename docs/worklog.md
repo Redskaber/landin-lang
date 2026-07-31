@@ -16747,3 +16747,512 @@ Stage Summary:
 - Stage 14.109 PASSED — env var caching implemented
 - 8 syscalls eliminated per compile
 - v0.123.0: minor bump (performance optimization)
+
+---
+Task ID: stage14.110-data-structure-review
+Agent: general-purpose (Data structure architecture review)
+Task: Deep data structure + pipeline flow + refactoring optimality review
+
+Work Log:
+- Read worklog tail (lines 16449-16750) for Stage 14.101-14.109 refactoring context
+- Read all core data structure source files end-to-end:
+  - src/hir/{id.rs (237), kinds.rs (984), map.rs (64)}
+  - src/mir/{body.rs (498), place.rs (259), ty.rs (204), dyn_trait.rs (706)}
+  - src/typeck/{unify.rs (742), tables.rs (79), checker.rs (1211), predicates.rs (138), error.rs (63)}
+  - src/borrowck/{mod.rs (1265), borrow_set.rs (342), place_path.rs (113), move_tracker.rs (91), copy_semantics.rs (125), liveness.rs (111), error.rs (93), region_inference.rs (1462)}
+  - src/traits/{resolver.rs (935), vtable.rs (31)}
+  - src/codegen/{mod.rs (477), emitter.rs (688), text/mod.rs (726), terminator.rs (398), operand.rs (277)}
+  - src/driver.rs (2333) — including the 8 writeback passes (lines 811-1459)
+  - src/session/mod.rs (180), src/lib.rs
+- Counted clones in src/mir + src/typeck: 149 sites
+- Counted `lower_hir_ty_to_mir_ty` call sites in driver.rs: 11 (§16 violation)
+- Cross-referenced Phase 2 audit (HP-1..HP-23, HP-B1..HP-B25) with current state
+- Inventoried v0.123.0 source: 41,897 LOC across 95 files
+
+Stage Summary:
+
+# Landin v0.123.0 — Deep Data Structure & Pipeline Architecture Review
+
+## Part 1: Data Structure Scorecard
+
+| Structure | Verdict | Key Issues |
+|-----------|---------|------------|
+| `DefId(u32)` | ✅ OPTIMAL | Right primitive; missing `CrateNum` for cross-crate (v0.2) |
+| `ItemLocalId(u32)` | ✅ OPTIMAL | Compact, per-owner namespace |
+| `HirId { owner, local_id }` | ✅ OPTIMAL | 8 bytes, Copy + Hash + Eq. Standard rustc pattern |
+| `OwnerId(DefId)` | ⚠️ SUBOPTIMAL | Pure ceremony newtype — provides zero type safety HashMap doesn't. Adds noise |
+| `BodyId { owner: OwnerId }` | ⚠️ SUBOPTIMAL | Triple-indirection (BodyId→OwnerId→DefId) storing 1 value. 1 body per owner — should be `DefId` directly |
+| `HirCrate.owners: Vec<(DefId, OwnerNode)>` | ❌ WRONG | O(n) `.iter().find()` lookup (line 113). For 100-owner crate, every owner query is O(100). Vec was a "we'll swap to FxHashMap later" placeholder never done. Should be indexed `Vec<OwnerNode>` (DefId is sequential u32) or `FxHashMap<DefId, OwnerNode>` |
+| `HirCrate.bodies: Vec<(BodyId, Body)>` | ❌ WRONG | Same O(n) lookup issue |
+| `HirPath` | ✅ OPTIMAL | Carries hir_id, segments, res, span. Standard shape |
+| `Res` enum | ⚠️ SUBOPTIMAL | Missing `Def(DefId, DefKind)` SubstsRef for generics; no `AssocTy`, `Ctor`, `Macro`. v0.2 blockers |
+| `DefKind` | ⚠️ SUBOPTIMAL | Missing `Macro`, `Closure`, `AnonConst`, `Field`, `Ctor`. v0.2 will need |
+| `MirBody.basic_blocks: Vec<BasicBlock>` | ✅ OPTIMAL | O(1) by BasicBlockId. Cache-friendly |
+| `MirBody.local_decls: Vec<LocalDecl>` | ✅ OPTIMAL | O(1) by LocalId |
+| `MirBody.adt_layouts: HashMap<DefId, AdtLayout>` | ⚠️ SUBOPTIMAL | (a) Std HashMap (SipHash slow — use FxHashMap); (b) per-body — should be crate-level shared (memory waste ~500KB for 100-fn crate); (c) duplicates FieldTyTable |
+| `MirBody.dyn_trait_calls: Vec<DynTraitMethodCall>` | ❌ WRONG | Side-table indexed by `ConstVal::Int` marker in `Terminator::Call.func` (HP-22). Codegen checks `c.ty.kind == TyKind::Error && val is Int(idx)` — fragile "magic encoding". Should be `Terminator::Call { dyn_dispatch: Option<DynTraitMethodCall>, .. }` or separate `Terminator::DynCall` variant |
+| `MirBody.println_messages: Vec<String>` | ❌ WRONG | Dead field (HP-B; "kept for backward compat but never populated"). Pure deletion candidate |
+| `MirBody.lower_type_errors: Vec<TypeError>` | ❌ WRONG | Mixes IR with error collection — body should be pure IR. Should be returned by `lower_hir_body_to_mir_full`, not stored on body |
+| `BasicBlock { statements, terminator, span, terminator_span }` | ⚠️ SUBOPTIMAL | Carrying 2 spans on block (not on terminator/statement) is the wrong layering. `Statement` has its own span; `Terminator` doesn't. Stage 14.107 took shortcut of adding `terminator_span` to block — should have refactored Terminator to `struct { kind, span }`. Spans double size of empty blocks; manual sync when terminators move between blocks |
+| `Statement { kind, span }` | ✅ OPTIMAL | Clean |
+| `StatementKind::Println { msg, args, newline, stderr }` | ❌ WRONG | Side-effecting macro call masquerading as MIR statement. Bloats MIR with v0.1 hack. v0.2 macro_rules! should replace — codegen already notes "deprecated in v0.2" |
+| `Terminator` enum | ⚠️ SUBOPTIMAL | 7 variants. `Call` lacks `unwind: Option<BasicBlockId>`; `Assert` lacks unwind; no `DynCall`/`CoroutineDrop`/`FalseEdge`/`FalseUnwind` for v0.2 |
+| `Place { kind, span }` | ✅ OPTIMAL | Carries span. Standard shape |
+| `PlaceKind::Projection(Box<Place>, ProjectionElem)` | ✅ OPTIMAL | Box is fine for source projection depth (1-3) |
+| `ProjectionElem::Field(FieldId, Ty)` | ❌ WRONG | Carries full `Ty` per projection — duplicates AdtLayouts/FieldTyTable. With monomorphization, Ty must be re-instantiated per instantiation (HP-20, HP-B3). Should be `Field(FieldId)` only — type looked up via tables |
+| `Rvalue` enum | ⚠️ SUBOPTIMAL | Missing `Discriminant`, `Len`, `Repeat`, `ThreadLocalRef` (HP-B22). `BinaryOp` + `BinaryOp2` poor naming — should be `BinaryOp` + `Range`. `Cast` lacks `Unsize` trait coercion semantics |
+| `Operand` enum | ✅ OPTIMAL | 3 variants (Copy/Move/Constant). Standard rustc |
+| `AggregateKind::Adt(DefId, u32, SubstsRef, Vec<Ty>)` | ❌ WRONG | 4th field `field_tys: Vec<Ty>` sunk at lower time (HP-20, HP-B3). Not monomorphization-proof if Tys contain `Param`. Should look up via `adt_layouts` |
+| `Ty { kind, span }` | ⚠️ SUBOPTIMAL | Carries Span (8 bytes) per Ty — bloats every type. rustc interns to 8-byte pointer (no per-instance span). v0.2 must intern |
+| `Ty` is `Clone` not `Copy` | ❌ WRONG | Every type operation clones. 149 clones in src/mir + src/typeck. Should be `Copy` via interning |
+| `TyKind` enum | ⚠️ SUBOPTIMAL | Missing `Projection` (assoc types), `Dynamic` (trait objects), `Generator`/`Coroutine`, `Bound`, `Placeholder`, `Infer(Fresh)`. v0.2 GATs/async/assoc types blocked |
+| `Region` enum | ⚠️ SUBOPTIMAL | Has Static/Var/Erased. Missing `LateBound`, `Free`, `LateParam`, `Placeholder` for HRTB. Blocks v0.2 lifetimes |
+| `InferVar` enum | ✅ OPTIMAL | Separates TyVar/IntVar/FloatVar — correct HM style |
+| `SubstsRef = Vec<Ty>` | ❌ WRONG | Heap-allocates per generic application. rustc uses `&'tcx [GenericArg<'tcx>]` (interned slice). Major perf cliff for v0.2 monomorphization |
+| `Const { ty, val }` | ⚠️ SUBOPTIMAL | `ConstVal::Unevaluated` is unit variant — should carry `DefId` for const eval. No `Param` const for v0.2 generic consts |
+| `Sig { inputs, output, abi, is_unsafe }` | ⚠️ SUBOPTIMAL | Missing `c_variadic`, `safety`, generic params, lifetime params. Blocks HRTB |
+| `UnificationTable` HashMap storage | ❌ WRONG | `ty_vars: HashMap<TyVid, Option<Ty>>`, `int_vars: HashMap<IntVid, IntVarBinding>`, `float_vars: HashMap<FloatVid, FloatVarBinding>`. TyVid/IntVid/FloatVid are sequential u32 — should be `Vec<Option<Ty>>` indexed by vid.0. HashMap gives O(1) avg with SipHash overhead; Vec gives true O(1) with cache locality. rustc pattern is Vec |
+| `UnificationTable` inconsistent union-find | ⚠️ SUBOPTIMAL | TyVars do union-find via `Option<Ty>` (Ty may contain `TyVar(other_vid)`); IntVars use explicit `Linked(IntVid)` variant. Two patterns for same concept |
+| `UnificationTable` no path compression | ⚠️ SUBOPTIMAL | TyVar `resolve_ty_var` has 1024-depth guard but no path compression. Perf cliff for deep inference chains |
+| `UnificationTable` no snapshot/rollback | ❌ WRONG | No `snapshot()` / `rollback_to()` for speculative unification (method probe, where-clause resolution). v0.2 needs |
+| `BorrowSet.borrows: Vec<Borrow>` linear scan | ❌ WRONG (HP-8) | O(B) per `add_borrow`/`borrow_kind`/`is_borrowed`/`kill_borrows_of_local`. For body with N borrows: O(N²) total. Should be tree-based (interval tree keyed by (root, projections)) or hash-by-root |
+| `Borrow { kind, place, span, ref_local }` | ✅ OPTIMAL | Clean fields |
+| `PlacePath { root, projections: Vec<ProjElem> }` | ⚠️ SUBOPTIMAL | Per-borrow Vec<ProjElem> heap-allocates. For borrow-check hot paths, should be small-vec or interned. `overlaps`/`contains` is O(depth) — acceptable |
+| `MoveTracker.moved: HashSet<PlacePath>` | ⚠️ SUBOPTIMAL | HashSet of cloned PlacePaths — per-place allocations. Could be HashSet<(LocalId, SmallVec<[ProjElem; 4]>)> |
+| `BorrowChecker<'a> { borrows, moves, errors, initialized, resolver: Option<&'a TraitResolver>, interner: Option<&'a Rodeo> }` | ⚠️ SUBOPTIMAL (HP-1 infra) | Two `Option<ref>` fields means runtime null checks on every `is_copy()` call. Test path (no resolver) and prod path diverge. Better design: `CopyOracle` trait with `UnsoundCopyOracle` (tests) + `ResolverCopyOracle` (prod) impls. Single method, no Option checks |
+| `TraitResolver` name-based keys | ❌ WRONG (HP-1, HP-2, HP-15) | `impl_by_trait_and_type: HashMap<(Spur, Spur), DefId>` — cannot distinguish `Vec<i32>` from `Vec<u64>` or two types with same name in different modules. No monomorphization. Should be keyed by `(DefId, SubstsRef)` or `(TraitDefId, SelfTy)` |
+| `Vtable { trait_name: Spur, self_ty_name: Spur, impl_def_id, entries }` | ❌ WRONG | Keyed by name, not `(DefId, SubstsRef)`. v0.2 monomorphization needs per-instantiation vtables |
+| `VtableEntry { method_name: Spur, fn_name: String }` | ⚠️ SUBOPTIMAL (HP-B16) | `fn_name: String` should be interned via `Spur` |
+| `TraitInfo` lacks assoc types | ❌ WRONG (HP-13) | No `associated_types: Vec<Spur>`, `associated_consts`, `auto_traits`, `marker_traits`. Blocks v0.2 assoc types |
+| `ImplInfo.trait_name: Option<Spur>, self_ty_name: Option<Spur>` | ❌ WRONG (HP-16) | Name-based. Should be `Option<DefId>` for trait, `Option<Ty>` for self_ty |
+| `CompileResult` god struct | ⚠️ SUBOPTIMAL | 11 fields mixing IR (mirs, hir), metadata (fn_sigs, body_metas, fn_name_by_def_id), and resolver state (trait_resolver, interner, stdlib_prelude, stdlib_facade). Should split into `CompileOutput` (IR + metadata) + `CompileContext` (interner, resolver) + `CompileErrors` |
+| `CompileResult` parallel Vecs | ⚠️ SUBOPTIMAL | `mirs: Vec<MirBody>` + `body_metas: Vec<BodyMeta>` + `typeck_results: Vec<TypeckResults>` — parallel Vecs indexed by body index. Should be `Vec<BodyOutput { mir, meta, typeck_results }>` |
+| `CompileErrors.trait_errors: Vec<String>` | ❌ WRONG | Already-typed `CoherenceError`/`IncompleteImpl` are stringified into Vec<String>. Loses type info for downstream tools |
+| `BodyMeta { fn_name, is_void, param_count, abi }` | ⚠️ SUBOPTIMAL | Missing `local_count`, `source_span` for debug info |
+| `FieldTyTable.struct_fields: HashMap<DefId, Vec<Ty>>` | ⚠️ SUBOPTIMAL | Only `struct_fields` — missing `enum_variant_fields`, `tuple_field_tys`. Blocks v0.2 enums with field types |
+| `FnSigTable.sigs: HashMap<DefId, Sig>` | ⚠️ SUBOPTIMAL | Sig lacks `safety`, `c_variadic`, generic params. Built by driver via 11 calls into `mir::lower::lower_hir_ty_to_mir_ty` — §16 violation |
+| `EmitType` enum | ✅ OPTIMAL | I1-I128/F32-F64/Ptr/OpaquePtr/Void/Struct/Array. Reasonable shape |
+| `EmitValue = String` | ❌ WRONG (HP-B4) | **Biggest architectural issue.** Text-emitter uses String names ("%v3") as opaque value handles. LLVMSysEmitter must re-parse strings (interpret_adhoc, SH-1). Debug info APIs can't be added without redesign. LTO/inlining need real LLVMValueRef. "String bridge" fundamentally incompatible with real LLVM backend |
+| `Emitter` trait (36 methods) | ⚠️ SUBOPTIMAL | One impl (TextEmitter). Should decompose into `EmitterArith`/`EmitterMemory`/`EmitterControlFlow`/etc. when adding 2nd backend |
+| `AdtLayout::Enum { discriminant_ty, variant_payloads: Vec<Vec<Ty>> }` | ✅ OPTIMAL | Forward-compatible with union layout (per docstring) |
+| `AdtLayouts = HashMap<DefId, AdtLayout>` per-body | ⚠️ SUBOPTIMAL | Per-body — duplicated across all bodies. Should be crate-level shared. ~500KB waste for 100-fn crate |
+
+**Scorecard summary**: 11 ✅ OPTIMAL, 24 ⚠️ SUBOPTIMAL, 16 ❌ WRONG.
+
+## Part 2: Pipeline Flow Diagram with Anti-Patterns
+
+```
+Lexer ──tokens──> Parser ──AST──> HIR Lower ──HIR──> Resolve ──HIR──> MIR Lower
+   ✅ clean          ✅ clean        ✅ clean          ✅ clean         ✅ clean
+                                                                                  │
+                                                                                  ▼
+                                                                       ┌────────────────────┐
+                                                                       │ Driver builds      │
+                                                                       │ FieldTyTable +     │
+                                                                       │ FnSigTable         │
+                                                                       │ ⚠️ via 11 calls    │
+                                                                       │   into             │
+                                                                       │   mir::lower::     │
+                                                                       │   lower_hir_ty_    │
+                                                                       │   to_mir_ty        │
+                                                                       │   (§16 violation)  │
+                                                                       └────────────────────┘
+                                                                                  │
+                                                                                  ▼
+                                                                            TypeCheck
+                                                                          ✅ §16-compliant
+                                                                       (check_mir_body_with_tables)
+                                                                                  │
+                                                                                  ▼
+                                                                          BorrowCheck
+                                                                       ⚠️ HP-1 unsound
+                                                                       (ty_is_copy fallback
+                                                                        for Adt)
+                                                                                  │
+                                                                                  ▼
+                                                                  ┌────────────────────────┐
+                                                                  │ Driver 8 writeback     │
+                                                                  │ passes (lines 811-1459)│
+                                                                  │ ❌ "Back-flow" —       │
+                                                                  │   driver mutates MIR   │
+                                                                  │   local_decls          │
+                                                                  │   (admission that     │
+                                                                  │    typeck doesn't     │
+                                                                  │    fully resolve)     │
+                                                                  │ ⚠️ 2× populate_adt_   │
+                                                                  │   layouts per body    │
+                                                                  │   (HP-B13)            │
+                                                                  └────────────────────────┘
+                                                                                  │
+                                                                                  ▼
+                                                                          Codegen (text/llvm)
+                                                                       ❌ "Magic encoding":
+                                                                       codegen decodes
+                                                                       ConstVal::Int(idx) +
+                                                                       TyKind::Error as
+                                                                       "look up dyn_trait_calls[idx]"
+                                                                       (terminator.rs:122)
+                                                                                  │
+                                                                                  ▼
+                                                                            Link (llc/clang)
+                                                                          ✅ clean
+
+  Back-flow anti-patterns:
+  ─────────────────────────
+  1. Driver writeback passes — driver reaches INTO MIR bodies to mutate types
+     after typeck. Should be: typeck produces fully-typed MIR; codegen consumes.
+  2. Driver calls mir::lower::lower_hir_ty_to_mir_ty — §16 violation, driver
+     should be orchestrator-only.
+  3. Driver calls populate_adt_layouts 2× per body — should be cached per-DefId.
+  4. scan_for_unresolved_paths runs AFTER resolve_crate — driver doing resolve's job.
+  5. MirBody.dyn_trait_calls side-table — codegen decodes magic ConstVal::Int marker.
+  6. MirBody.lower_type_errors — IR carries error collection (mixes concerns).
+```
+
+## Part 3: Refactoring Optimality Verdict
+
+**Stage 14.101-14.109 refactoring verdict**: ⚠️ SUBOPTIMAL — correct in spirit, minimal in execution.
+
+### P0 bug fixes (Stage 14.101-14.104): ✅ OPTIMAL
+Each fix added `TypeError`/`BorrowError` instead of silent `Ty::Error` placeholder. Per "报错 > 静默" principle. ✅ Right approach, not band-aids.
+
+### Dead code removal (Stage 14.105): ✅ MOSTLY OPTIMAL
+Correctly removed 4 modules (1013 LOC). ⚠️ Did NOT remove `region_inference.rs` (1462 LOC, mostly dead SCC/universe infrastructure) — kept "for v0.2 HRTB". This is half-measure: either activate or delete. "Activated but no-op" state is worst of both worlds.
+
+### HP-1 infrastructure (Stage 14.106): ⚠️ SUBOPTIMAL
+`BorrowChecker<'a>` with `Option<&TraitResolver>` + `Option<&Rodeo>` works but:
+- Runtime null checks on every `is_copy()` call
+- Test path diverges from prod path — tests don't exercise real Copy detection
+- Better: `CopyOracle` trait with `UnsoundCopyOracle` (tests) + `ResolverCopyOracle` (prod) impls. Single method, no Option checks
+- Deferral is correct (223 tests fail if activated), but infrastructure design is suboptimal
+
+### HP-19/21 span infrastructure (Stage 14.107): ❌ WRONG APPROACH
+Phase 2 audit recommended converting `Terminator` from enum to struct (`{ kind, span }`). Stage 14.107 took shortcut of adding `terminator_span` to `BasicBlock` — "avoided refactoring 120+ pattern-match call sites".
+- Span now 2 hops away from terminator (`block.terminator_span` not `terminator.span`)
+- When terminator moves between blocks, span must be moved manually — bug-prone
+- "120+ call sites" argument is weak: mechanical `match &term { ... }` → `match &term.kind { ... }` refactor is one-time cost pays off forever
+- **Correct fix**: `struct Terminator { kind: TerminatorKind, span: Span }`. Pattern matches become `match &term.kind { ... }`. This is the rustc pattern.
+
+### Env var caching (Stage 14.109): ✅ OPTIMAL (but trivial)
+`OnceLock<bool>` for `LANDIN_DEBUG_CODEGEN`/`LANDIN_DEBUG_BORROWCK`. Saves 7 syscalls per compile. Good cleanup but doesn't address architectural debt.
+
+### HP-B11 writeback documentation (Stage 14.108): ❌ INSUFFICIENT
+Documenting 8 writeback passes is not a fix — it's admission of debt. Proper fix is consolidation (v0.2 TODO acknowledges this). Should have at least consolidated passes 1-5 (all type-propagation) into one pass. Comment says "merging without understanding risks subtle type propagation bugs" but bug risk is already there in 5 separate passes.
+
+### What was SKIPPED that should have been done:
+1. **HirCrate.owners Vec → indexed Vec/FxHashMap** — pure perf, 0 architectural change. Should have been Stage 14.110.
+2. **UnificationTable.ty_vars HashMap → Vec** — pure perf, no API change.
+3. **AdtLayouts per-body → crate-level shared** — memory win, easy refactor.
+4. **MirBody.println_messages removal** — already dead field. Pure deletion.
+5. **MirBody.lower_type_errors removal** — should be returned by lower, not on body.
+6. **Driver `lower_hir_ty_to_mir_ty` encapsulation** — should be `hir_type_to_mir_type` in a new `typeck::ty_conv` module, not called into `mir::lower`.
+7. **Terminator struct refactor** (proper HP-21 fix) — one-time cost, pays off forever.
+8. **CoherenceError/IncompleteImpl preservation in CompileErrors** — stop stringifying typed errors.
+9. **VtableEntry.fn_name String → Spur** — interning, easy.
+
+## Part 4: v0.2 Extensibility Gaps
+
+| Structure | Monomorph. | Assoc Types | HRTB | GATs | Incremental | Cross-Crate |
+|-----------|-----------|-------------|------|------|-------------|-------------|
+| `DefId` | ❌ no CrateNum | ✅ | ✅ | ✅ | ❌ counter-based | ❌ single-crate |
+| `HirPath/Res` | ❌ no SubstsRef | ❌ no Res::AssocTy | ❌ no bound vars | ❌ | ✅ HirId-keyed | ❌ |
+| `MirBody/Place` | ❌ Field carries Ty inline | ❌ | ❌ | ❌ | ❌ no HirId↔Place | ❌ |
+| `Ty/TyKind` | ⚠️ SubstsRef=Vec | ❌ no Projection | ❌ no Bound | ❌ | ❌ no interning | ⚠️ needs CrateNum |
+| `UnificationTable` | ⚠️ | ❌ no projection norm | ❌ no universe | ❌ | ❌ no snapshot | ✅ |
+| `BorrowSet` | ✅ | ✅ | ❌ single-pass NLL | ✅ | ❌ no HirId↔Place | ✅ |
+| `TraitResolver/Vtable` | ❌ name-keyed | ❌ no assoc types | ❌ | ❌ | ❌ rebuilt | ❌ |
+| `CompileResult` | ✅ | ✅ | ✅ | ✅ | ❌ rebuilt | ✅ |
+| `FieldTyTable` | ❌ per-DefId only | ❌ | ❌ | ❌ | ⚠️ could cache | ❌ |
+| `EmitType/EmitValue` | ✅ | ✅ | ✅ | ✅ | ❌ String-based | ✅ |
+| `AdtLayouts` | ❌ per-body | ✅ | ✅ | ✅ | ✅ | ❌ |
+
+**Critical v0.2 redesigns needed (priority order)**:
+1. **Ty interning** — `Ty<'tcx>` as `Copy` thin pointer, no per-instance Span. Without this, every type op clones 40+ bytes.
+2. **SubstsRef → `&'tcx [GenericArg<'tcx>]`** — interned slice, no per-app heap alloc.
+3. **TraitResolver key redesign** — `(DefId, SubstsRef)` keys, not `(Spur, Spur)`.
+4. **TyKind::Projection** — for assoc types / GATs.
+5. **Region HRTB infrastructure** — activate or rewrite `region_inference.rs` (currently 1462 LOC dead).
+6. **ProjectionElem::Field(FieldId)** — drop the inline Ty, look up via tables.
+7. **MirBody cleanup** — remove `println_messages`, `lower_type_errors`, move `dyn_trait_calls` into Terminator.
+8. **DefId + CrateNum** — `struct DefId { krate: CrateNum, index: u32 }` for cross-crate.
+9. **HirId↔Place mapping** — for incremental compilation.
+10. **EmitValue → typed handle** — replace String bridge with `LLVMValueRef`-like handle for debug info / LTO.
+
+## Part 5: Performance Hotspots
+
+### O(n²) or worse access patterns
+1. `HirCrate.owner(DefId)` — O(n) × n lookups = **O(n²)** per compile. Fix: indexed Vec.
+2. `HirCrate.body(BodyId)` — same.
+3. `BorrowSet.add_borrow` — O(B) × N adds = **O(B×N)**. Fix: tree-based.
+4. `BorrowSet.borrow_kind/is_borrowed/kill_borrows_of_local` — O(B) per query, called 3× per statement.
+5. `resolve_self_param_type_for_sig` — **O(B × O × I)** (HP-B12) quadratic in impl count.
+6. `populate_adt_layouts` 2× per body — **O(B × O × L)** (HP-B13).
+7. `get_call_dest_type` — **O(L × B)** per function.
+8. Driver writeback passes 1-8 — each O(B × S) × 8 passes = **8× O(B×S)** per body.
+9. `find_local_init_type` — O(bodies) recursive walk per method call.
+10. `query_method_return_type` — O(owners) per method call.
+11. `TraitResolver::traits_with_method` — O(traits) per call.
+12. `BorrowChecker.kill_expired_borrows` — O(last_use_map) per program point.
+
+### HashMap when Vec would be better
+1. `UnificationTable.ty_vars/int_vars/float_vars` — sequential u32 keys, should be Vec.
+2. `TextEmitter.locals/local_ptrs: HashMap<u32, EmitValue>` — sequential u32 keys.
+3. `BorrowChecker.initialized: HashSet<LocalId>` — small set, could be BitSet.
+
+### Vec when HashMap would be better
+1. `HirCrate.owners/bodies: Vec<(Id, Node)>` — keyed lookup is O(n).
+2. (none others identified — most Vec uses are sequential-indexed, which is correct)
+
+### Unnecessary clones
+1. `Ty` clones (149 sites in mir/typeck) — should be `Copy` via interning.
+2. `Sig` clones per fn_sig_table lookup.
+3. `MirBody` derives Clone but should never be cloned (mutable IR) — remove derive.
+4. `Place` clones in `place_path()` (borrowck/mod.rs:585) — every place check allocates new PlacePath with Vec<ProjElem>.
+5. `SubstsRef = Vec<Ty>` clones on every TyKind::Adt/FnDef/Closure construction.
+
+### Poor cache locality
+1. `PlaceKind::Projection(Box<Place>, ProjectionElem)` — pointer chasing for projection chains.
+2. `Ty { kind, span }` — 40+ bytes per Ty; rustc interns to 8-byte pointer.
+3. `SubstsRef = Vec<Ty>` — heap-allocated per generic type.
+4. `Borrow.place: PlacePath` with `Vec<ProjElem>` — per-borrow heap alloc.
+5. `VtableEntry.fn_name: String` — per-entry heap alloc (should be Spur).
+
+### Memory overhead per compilation unit (rough estimate)
+- Per `Ty`: ~40-50 bytes (Span + TyKind + tag padding). rustc: 8 bytes (interned). 5-6× overhead.
+- Per `Place`: ~24 bytes (kind enum + span + boxed projection).
+- Per `Borrow`: ~80 bytes (kind + PlacePath w/ Vec<ProjElem> + span + ref_local).
+- Per `BasicBlock`: ~80 bytes (Vec<Statement> + Terminator + 2 Spans).
+- Per `AdtLayouts` per-body: O(types × fields) — for 100-fn crate with 50 types, ~5000 entries duplicated = ~500KB waste.
+- Estimated total overhead vs rustc-style interning: **3-5× memory bloat** for typical crate.
+
+## Part 6: Top 10 Recommendations (prioritized)
+
+| # | Recommendation | Risk | Effort | Impact |
+|---|----------------|------|--------|--------|
+| 1 | **Intern `Ty` to `Ty<'tcx>` (Copy, 8-byte pointer)** — drop per-Ty Span, add TyCtxt | High | Large (3-4 weeks) | Enables v0.2 monomorphization + 3-5× memory reduction |
+| 2 | **Switch `SubstsRef` from `Vec<Ty>` to `&'tcx [GenericArg<'tcx>]`** — interned slice | High | Large (2-3 weeks) | Eliminates per-generic-app heap alloc |
+| 3 | **Redesign `TraitResolver` keys** from `(Spur, Spur)` to `(DefId, SubstsRef)` | High | Medium (2 weeks) | Unblocks v0.2 monomorphization + cross-crate |
+| 4 | **Convert `HirCrate.owners/bodies` Vec → indexed Vec or FxHashMap** | Low | Small (1 day) | O(n²)→O(1) owner lookup, zero API change |
+| 5 | **Convert `UnificationTable` HashMap → Vec storage** | Low | Small (1 day) | O(1) true (cache-friendly) var lookup |
+| 6 | **Refactor `Terminator` enum → `struct { kind, span }`** (proper HP-21 fix) | Medium | Medium (1 week, mostly mechanical) | Right architectural layering, enables span-per-terminator |
+| 7 | **Consolidate 8 driver writeback passes → 2** (HP-B11 actual fix, not docs) | Medium | Medium (1-2 weeks) | 4× constant factor reduction, simpler architecture |
+| 8 | **Move `dyn_trait_calls` from MirBody side-table into `Terminator::Call`** (HP-22 fix) | Medium | Medium (1 week) | Eliminates magic encoding, §16-compliant |
+| 9 | **Add `CrateNum` to `DefId`** for cross-crate resolution | High | Large (3-4 weeks) | Unblocks v0.2 cross-crate |
+| 10 | **Replace `EmitValue = String` with typed handle** (HP-B4 fix) | High | Large (4-6 weeks) | Unblocks debug info + LTO + real LLVM backend |
+
+### Bonus quick wins (low effort, high value):
+- Delete `MirBody.println_messages` (dead field, 1 hour)
+- Delete `MirBody.lower_type_errors` (mixes concerns, 2 hours)
+- Intern `VtableEntry.fn_name` to `Spur` (HP-B16, 4 hours)
+- Stop stringifying `CoherenceError`/`IncompleteImpl` into `Vec<String>` (4 hours)
+- Share `AdtLayouts` crate-level instead of per-body (1 day)
+
+## Final Verdict
+
+**Is the current refactoring (Stages 14.101-14.109) optimal?** No — it is **correct but minimal**. The P0 bug fixes were right. The dead code removal was mostly right (but left 1462 LOC of dead region_inference). The HP-1 infrastructure works but uses suboptimal `Option<ref>` design. The HP-19/21 span fix took the wrong shortcut. The HP-B11 documentation is admission of debt, not a fix. The env caching is correct but trivial.
+
+**Is the architecture v0.2-ready?** No — there are 16 ❌ WRONG and 24 ⚠️ SUBOPTIMAL data structures. The biggest blockers are:
+- No Ty interning (every type op clones 40+ bytes)
+- SubstsRef = Vec<Ty> (per-app heap alloc)
+- TraitResolver name-based keys (can't monomorphize)
+- EmitValue = String (blocks debug info / LTO / real LLVM backend)
+- No CrateNum in DefId (single-crate only)
+
+**Recommended path forward**:
+1. Quick wins (1 week): delete dead fields, intern VtableEntry.fn_name, switch HirCrate Vec → HashMap, switch UnificationTable HashMap → Vec. These are pure perf wins with 0 architectural change.
+2. Terminator struct refactor (1 week): proper HP-21 fix instead of `terminator_span` shortcut.
+3. Consolidate writeback passes (2 weeks): proper HP-B11 fix.
+4. Ty interning (3-4 weeks): the biggest single improvement for v0.2.
+5. SubstsRef interning + TraitResolver key redesign (4-6 weeks): unblocks monomorphization.
+
+**v0.1 readiness**: ✅ confirmed. All 7167 tests pass, 0 clippy warnings, architecture is sound for v0.1 features. The debt catalogued above is v0.2 work, not v0.1 blockers.
+
+**v0.2 readiness**: ⚠️ needs 8-12 weeks of data structure refactoring before feature work can begin. The current architecture can support v0.2 features in a "works but slow and memory-hungry" mode, but proper v0.2 (with monomorphization, cross-crate, debug info) requires the top-10 recommendations above.
+
+---
+Task ID: stage14.110-data-structure-audit-optimization
+Agent: Super Z (main) + general-purpose (data structure audit)
+Task: Stage 14.110 — Data structure audit + O(1) HirCrate lookup + dead field removal. v0.123.0 → v0.124.0.
+
+Work Log:
+- Baseline: v0.123.0 / 1951 rust tests + 5216 conformance (post-Stage 14.109)
+
+### Data Structure Audit (general-purpose subagent)
+
+Exhaustive audit of all core data structures:
+- 11 ✅ OPTIMAL (DefId, HirId, MirBody.basic_blocks, etc.)
+- 24 ⚠️ SUBOPTIMAL (OwnerId triple-indirection, Ty not Copy, etc.)
+- 16 ❌ WRONG (HirCrate Vec lookup, dyn_trait_calls magic marker, EmitValue=String, etc.)
+
+Top 10 recommendations:
+1. Intern Ty to Ty<'tcx> (Copy, 8-byte pointer) — 3-4 weeks
+2. Switch SubstsRef to &'tcx [GenericArg<'tcx>] — 2-3 weeks
+3. Redesign TraitResolver keys to (DefId, SubstsRef) — 2 weeks
+4. Convert HirCrate.owners/bodies to indexed lookup — 1 day ✅ DONE
+5. Convert UnificationTable HashMap → Vec — 1 day
+6. Refactor Terminator to struct { kind, span } — 1 week
+7. Consolidate 8 writeback passes → 2 — 1-2 weeks
+8. Move dyn_trait_calls into Terminator::Call — 1 week
+9. Add CrateNum to DefId — 3-4 weeks
+10. Replace EmitValue = String with typed handle — 4-6 weeks
+
+Refactoring optimality: ⚠️ SUBOPTIMAL — correct in spirit, minimal in execution
+
+### Fix #4: HirCrate O(1) Lookup (src/hir/kinds.rs)
+- Added OnceCell<HashMap<u32, usize>> cached indexes for owners and bodies
+- owner() and body() now O(1) after first lookup (was O(n) linear scan)
+- Zero API change — callers unaffected
+
+### Fix: Remove Dead println_messages Field (src/mir/body.rs)
+- Field was declared and initialized but never populated or read
+- Dead from Stage 13.12, superseded by StatementKind::Println (Stage 13.13)
+
+### Verification
+- All 1951 rust tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.123.0 → v0.124.0
+
+Stage Summary:
+- Stage 14.110 PASSED — data structure audit + 2 quick-win optimizations
+- HirCrate lookup: O(n) → O(1) via cached OnceCell index
+- Dead println_messages field removed from MirBody
+- 10 prioritized recommendations for v0.2 data structure refactoring
+- v0.124.0: minor bump (data structure audit + O(1) lookup + dead field removal)
+
+---
+Task ID: stage14.111-unification-table-vec-optimization
+Agent: Super Z (main)
+Task: Stage 14.111 — UnificationTable HashMap→Vec optimization (#5 from data structure audit). v0.124.0 → v0.125.0.
+
+Work Log:
+- Baseline: v0.124.0 / 1951 rust tests + 5216 conformance (post-Stage 14.110)
+
+### UnificationTable HashMap → Vec (src/typeck/unify.rs)
+
+Before: HashMap<TyVid, Option<Ty>> + HashMap<IntVid, IntVarBinding> + HashMap<FloatVid, FloatVarBinding>
+After: Vec<Option<Ty>> + Vec<IntVarBinding> + Vec<FloatVarBinding>
+
+TyVid/IntVid/FloatVid are sequential u32 IDs starting from 0 — perfect for Vec indexing.
+
+Changes:
+- Removed HashMap import + next_*_vid counters
+- new_ty_var/int_var/float_var use push() instead of insert()
+- All get(&vid) → get(vid.0 as usize)
+- All insert(vid, val) → vec[vid.0 as usize] = val
+- default_unresolved iterates 0..len() instead of .keys()
+
+Performance: true O(1) array indexing (no hashing), better cache locality
+API: zero change — all public methods same signatures
+
+### Verification
+- All 1951 rust tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.124.0 → v0.125.0
+
+Stage Summary:
+- Stage 14.111 PASSED — UnificationTable HashMap→Vec
+- Data structure optimization #5 complete
+- v0.125.0: minor bump (UnificationTable optimization)
+
+---
+Task ID: stage14.112-terminator-struct-refactor
+Agent: Super Z (main)
+Task: Stage 14.112 — Terminator struct refactor (#6 from data structure audit). v0.125.0 → v0.126.0.
+
+Work Log:
+- Baseline: v0.125.0 / 1951 rust tests + 5216 conformance (post-Stage 14.111)
+
+### Terminator struct refactor (src/mir/body.rs + 13 source files + 6 test files)
+
+Refactored Terminator from bare enum to struct { kind: TerminatorKind, span: Span }:
+- Renamed enum Terminator → TerminatorKind
+- Created struct Terminator { kind: TerminatorKind, span: Span }
+- Added convenience constructors: new(), goto(), ret(), unreachable()
+- Added terminate_kind() and terminate_kind_and_goto() to MirLowerCtxt
+- Updated all 106+ pattern-match call sites across 11 source files
+- Updated all construction call sites to use Terminator::new() or terminate_kind()
+- Updated 6 test files with TerminatorKind references + .kind access
+
+Files changed:
+- src/mir/body.rs: Terminator enum → struct, TerminatorKind enum, constructors
+- src/mir/lower/mod.rs: terminate_kind(), terminate_kind_and_goto()
+- src/mir/lower/control_flow.rs: 34 pattern matches + 27 construction sites
+- src/mir/lower/expr_operand.rs: 25 pattern matches + 14 construction sites
+- src/mir/lower/overflow_assert.rs: 2 pattern matches
+- src/typeck/checker.rs: 16 pattern matches
+- src/borrowck/mod.rs: 13 pattern matches
+- src/borrowck/liveness.rs: 4 pattern matches
+- src/codegen/terminator.rs: 9 pattern matches
+- src/codegen/mod.rs: 1 if-let
+- src/driver.rs: 2 if-let + direct assignments
+- tests/v0/stage2/plan/mir_lowering_tests.rs: pattern matches
+- tests/v0/stage3/plan/deep_inspection_tests.rs: pattern matches
+- tests/v0/stage3/plan/codegen_tests.rs: pattern matches
+- tests/v0/stage4/plan/closure_call_tests.rs: pattern matches
+- tests/v0/stage5/plan/codegen_dyn_trait_method_call_tests.rs: pattern matches
+- tests/v0/stage5/plan/mir_lower_dyn_trait_method_call_integration_tests.rs: pattern matches
+- tests/v0/stage2/plan/integration_tests.rs: pattern matches
+
+### Why This Is the Right Fix
+
+Phase 2 data structure audit marked HP-19/21 (Stage 14.107) as "❌ WRONG — shortcut":
+- Stage 14.107 added terminator_span as a field on BasicBlock instead of
+  refactoring Terminator to struct { kind, span }
+- This was because refactoring 120+ call sites was considered too risky
+- Stage 14.112 does the proper refactor — Terminator now carries its own span
+
+Per §1.0 原則 3 "显式 > 隐式": span is now on the Terminator itself, not
+on BasicBlock as a separate field. Per §14.4: proper architectural layering.
+
+### Verification
+- All 1951 rust tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.125.0 → v0.126.0
+
+Stage Summary:
+- Stage 14.112 PASSED — Terminator struct refactor complete
+- Data structure optimization #6 complete
+- 106+ call sites updated across 11 source files + 6 test files
+- v0.126.0: minor bump (Terminator struct refactor — proper HP-21 fix)
+
+---
+Task ID: stage14.112-final-v01-assessment
+Agent: Super Z (main)
+Task: Stage 14.112 — Final v0.1 release assessment + full cargo clean verification.
+
+Work Log:
+- Baseline: v0.126.0 (post-Terminator struct refactor)
+
+### Full Verification (cargo clean + build + fmt + clippy + test)
+
+```
+cargo clean: ✅ (removed 490 files, 1.6GiB)
+cargo build --features llvm-backend: ✅ (16.30s)
+cargo fmt --check: ✅ clean
+cargo clippy --all-targets --features llvm-backend: ✅ 0 warnings
+cargo test --features llvm-backend: ✅ 1951 passed, 0 failed
+python3 tests/conformance/run_all.py: ✅ 5216 passed, 0 failed
+Total: 7167/7167 (100%)
+```
+
+### Final Release Assessment Document
+
+Created docs/develop/v0/stage-14/v0.1-final-release-assessment.md documenting:
+- Executive summary of Stage 14.101-14.112
+- All 22 P0 bugs fixed (with stage references)
+- Data structure optimization progress (3 done, 3 v0.2)
+- Architecture assessment (per-stage verdicts)
+- Performance baseline
+- Known limitations (P0: none, P1: documented, P2: v0.2+)
+- v0.2 roadmap (~16 weeks)
+
+Stage Summary:
+- v0.1 RELEASE CONFIRMED ✅
+- 12 stages of deep audit and optimization (14.101-14.112)
+- 22 P0 bugs fixed, 1,013 LOC dead code removed
+- 3 pre-v0.2 fixes done, 5 data structure optimizations applied
+- 7167/7167 tests pass (100%), 0 clippy warnings, fmt clean
+- v0.2 can start safely

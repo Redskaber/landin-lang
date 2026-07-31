@@ -61,7 +61,7 @@ pub struct MirBody {
     ///
     /// Each entry records the (trait, type, method, slot_index, param_count)
     /// triple for one `HirExprKind::MethodCall` expression whose receiver
-    /// has `dyn Trait` type. The corresponding `Terminator::Call` in
+    /// has `dyn Trait` type. The corresponding `TerminatorKind::Call` in
     /// `basic_blocks` uses a placeholder `Operand::Constant` whose
     /// `ConstVal::Int` value is the **index** into this Vec — codegen
     /// (Stage 5.79+) reads this side-table to emit vtable indirect calls.
@@ -70,14 +70,6 @@ pub struct MirBody {
     /// need to query HIR or TraitResolver. Empty when no dyn Trait calls
     /// exist in this body (the common case).
     pub dyn_trait_calls: Vec<DynTraitMethodCall>,
-    /// Stage 13.12: println! messages sunk from HIR by MIR lower.
-    ///
-    /// Each entry is the full message string (including trailing "\n" for
-    /// println!). Codegen iterates this table and emits `puts()` calls
-    /// at the appropriate position in the function body.
-    ///
-    /// Per §16: MIR carries the message as data; codegen doesn't need HIR.
-    pub println_messages: Vec<String>,
     /// Stage 14.30: Type errors collected during MIR lowering. These are
     /// drained by the driver and merged into CompileErrors. Used for
     /// "报错 > 静默" — emit errors instead of silent placeholders.
@@ -92,7 +84,6 @@ impl MirBody {
             span,
             adt_layouts: AdtLayouts::new(),
             dyn_trait_calls: Vec::new(),
-            println_messages: Vec::new(),
             lower_type_errors: Vec::new(),
         }
     }
@@ -102,7 +93,7 @@ impl MirBody {
         let id = BasicBlockId(self.basic_blocks.len() as u32);
         self.basic_blocks.push(BasicBlock {
             statements: Vec::new(),
-            terminator: Terminator::Unreachable,
+            terminator: Terminator::unreachable(Span::DUMMY),
             span: Span::DUMMY,
             terminator_span: Span::DUMMY,
         });
@@ -204,7 +195,7 @@ pub enum StatementKind {
     StorageDead(LocalId),
     /// Run the destructor for the value at `place`. Used for explicit
     /// `drop(x)` calls (not for scope-end cleanup, which uses StorageDead).
-    /// Distinct from Terminator::Drop (which is for control-flow drops).
+    /// Distinct from TerminatorKind::Drop (which is for control-flow drops).
     Deinit(Place),
     /// Stage 13.13 + Stage 13.16: Inline `println!` / `print!` / `eprintln!` / `eprint!`
     /// statement with format args support.
@@ -240,14 +231,26 @@ pub enum StatementKind {
     },
 }
 
-/// A MIR terminator: the last instruction in a basic block.
-/// Determines how control flows to the next block(s).
+/// Stage 14.112 (HP-21 proper fix): Terminator is now a struct carrying
+/// both `kind` (the control-flow variant) and `span` (source location).
+/// Previously the Terminator was a bare enum — no source location info.
+/// v0.2 debug info needs source spans on terminators for accurate
+/// line attribution in stack traces and debugger stepping.
 ///
-/// Stage 14.107 (HP-21): The source span of the terminator is stored
-/// in `BasicBlock.terminator_span` (not on the Terminator itself, to
-/// avoid refactoring 120+ pattern-match call sites).
+/// The `terminator_span` field on BasicBlock (added in Stage 14.107 as
+/// a shortcut) is now redundant — the span lives on the Terminator itself.
+/// It's kept for backward compatibility but should be removed in v0.2.
 #[derive(Debug, Clone)]
-pub enum Terminator {
+pub struct Terminator {
+    /// The actual terminator kind (Goto, SwitchInt, Return, etc.)
+    pub kind: TerminatorKind,
+    /// Source span for debug info.
+    pub span: crate::session::Span,
+}
+
+/// The kind of terminator: how control leaves a basic block.
+#[derive(Debug, Clone)]
+pub enum TerminatorKind {
     /// Unconditional jump to `target`.
     Goto(BasicBlockId),
     /// `switchInt(discr) { val1 => bb1, val2 => bb2, _ => otherwise }`
@@ -280,6 +283,36 @@ pub enum Terminator {
         target: BasicBlockId,
         msg: AssertMessage,
     },
+}
+
+// Stage 14.112: Compatibility re-exports so existing code that writes
+// `TerminatorKind::Goto(x)` still compiles. These delegate to TerminatorKind.
+// New code should use `Terminator { kind: TerminatorKind::Goto(x), span }`.
+impl Terminator {
+    pub fn new(kind: TerminatorKind, span: crate::session::Span) -> Self {
+        Terminator { kind, span }
+    }
+
+    pub fn goto(target: BasicBlockId, span: crate::session::Span) -> Self {
+        Terminator {
+            kind: TerminatorKind::Goto(target),
+            span,
+        }
+    }
+
+    pub fn ret(span: crate::session::Span) -> Self {
+        Terminator {
+            kind: TerminatorKind::Return,
+            span,
+        }
+    }
+
+    pub fn unreachable(span: crate::session::Span) -> Self {
+        Terminator {
+            kind: TerminatorKind::Unreachable,
+            span,
+        }
+    }
 }
 
 /// Assert message for runtime checks.
@@ -368,10 +401,13 @@ mod tests {
             span: Span::DUMMY,
         });
         // Set terminator: return
-        body.block_mut(bb).terminator = Terminator::Return;
+        body.block_mut(bb).terminator = Terminator::new(TerminatorKind::Return, Span::DUMMY);
 
         assert_eq!(body.block(bb).statements.len(), 1);
-        assert!(matches!(body.block(bb).terminator, Terminator::Return));
+        assert!(matches!(
+            body.block(bb).terminator.kind,
+            TerminatorKind::Return
+        ));
     }
 
     #[test]
@@ -379,10 +415,10 @@ mod tests {
         let mut body = MirBody::new(Span::DUMMY);
         let bb0 = body.new_block();
         let bb1 = body.new_block();
-        body.block_mut(bb0).terminator = Terminator::Goto(bb1);
+        body.block_mut(bb0).terminator = Terminator::new(TerminatorKind::Goto(bb1), Span::DUMMY);
         assert!(matches!(
-            body.block(bb0).terminator,
-            Terminator::Goto(BasicBlockId(1))
+            &body.block(bb0).terminator.kind,
+            TerminatorKind::Goto(BasicBlockId(1))
         ));
     }
 
@@ -397,13 +433,16 @@ mod tests {
             None,
             Span::DUMMY,
         );
-        body.block_mut(bb0).terminator = Terminator::SwitchInt {
-            discr: Operand::Copy(Place::local(discr_local, Span::DUMMY)),
-            targets: vec![(ConstVal::Int(1), bb1)],
-            otherwise: bb2,
-        };
-        match &body.block(bb0).terminator {
-            Terminator::SwitchInt {
+        body.block_mut(bb0).terminator = Terminator::new(
+            TerminatorKind::SwitchInt {
+                discr: Operand::Copy(Place::local(discr_local, Span::DUMMY)),
+                targets: vec![(ConstVal::Int(1), bb1)],
+                otherwise: bb2,
+            },
+            Span::DUMMY,
+        );
+        match &body.block(bb0).terminator.kind {
+            TerminatorKind::SwitchInt {
                 targets, otherwise, ..
             } => {
                 assert_eq!(targets.len(), 1);

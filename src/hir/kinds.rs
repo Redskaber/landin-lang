@@ -94,13 +94,17 @@ impl DefKind {
 /// owners first, then lazily descend into bodies.
 #[derive(Debug, Clone, Default)]
 pub struct HirCrate {
-    /// All owner nodes, keyed by DefId. Insertion order is preserved
-    /// (using a Vec + linear lookup for Stage 1.2; can swap to FxHashMap
-    /// later without API change).
+    /// All owner nodes, keyed by DefId. Insertion order is preserved.
     pub owners: Vec<(DefId, OwnerNode)>,
     /// All bodies, keyed by BodyId. A body is the expression tree of
     /// a fn/const/static.
     pub bodies: Vec<(BodyId, Body)>,
+    /// Stage 14.110 (perf): Cached index for O(1) owner lookup by DefId.
+    /// Maps DefId.0 → index into `owners` Vec. Built lazily on first lookup.
+    /// Per Phase 2 data structure audit: eliminates O(n²) linear scans.
+    owner_index: std::cell::OnceCell<std::collections::HashMap<u32, usize>>,
+    /// Stage 14.110 (perf): Cached index for O(1) body lookup by BodyId.
+    body_index: std::cell::OnceCell<std::collections::HashMap<u32, usize>>,
 }
 
 impl HirCrate {
@@ -109,19 +113,29 @@ impl HirCrate {
     }
 
     /// Look up an owner node by DefId.
+    /// Stage 14.110: O(1) via cached index (was O(n) linear scan).
     pub fn owner(&self, def_id: DefId) -> Option<&OwnerNode> {
-        self.owners
-            .iter()
-            .find(|(d, _)| *d == def_id)
-            .map(|(_, n)| n)
+        let index = self.owner_index.get_or_init(|| {
+            self.owners
+                .iter()
+                .enumerate()
+                .map(|(i, (d, _))| (d.0, i))
+                .collect()
+        });
+        index.get(&def_id.0).map(|&i| &self.owners[i].1)
     }
 
     /// Look up a body by BodyId.
+    /// Stage 14.110: O(1) via cached index (was O(n) linear scan).
     pub fn body(&self, body_id: BodyId) -> Option<&Body> {
-        self.bodies
-            .iter()
-            .find(|(b, _)| *b == body_id)
-            .map(|(_, b)| b)
+        let index = self.body_index.get_or_init(|| {
+            self.bodies
+                .iter()
+                .enumerate()
+                .map(|(i, (b, _))| (b.owner.0 .0, i))
+                .collect()
+        });
+        index.get(&body_id.owner.0 .0).map(|&i| &self.bodies[i].1)
     }
 
     /// Total number of owner nodes.

@@ -284,7 +284,7 @@ impl Emitter for TextEmitter {
     /// 4. `%vN+3 = call <ret_ty> %vN+2(<args>)` — indirect call
     ///
     /// Per §16 + Stage 5.78 marker convention: this method is invoked
-    /// when codegen detects a `Terminator::Call` whose `func` is
+    /// when codegen detects a `TerminatorKind::Call` whose `func` is
     /// `Operand::Constant(Const { ty: Error, val: Int(index) })` where
     /// `index < mir.dyn_trait_calls.len()`.
     fn emit_dyn_trait_method_call(
