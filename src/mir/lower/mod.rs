@@ -848,7 +848,7 @@ fn const_eval_array_len(expr: &HirExpr, span: Span) -> Const {
 
 /// Lower a HIR type to a MIR type.
 pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
-    let span = ty.span;
+    let span = Span::DUMMY;
     match &ty.kind {
         HirTyKind::Bool => Ty::new(TyKind::Bool, span),
         HirTyKind::Char => Ty::new(TyKind::Char, span),

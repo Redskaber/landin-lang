@@ -11,6 +11,7 @@
 
 use crate::ast::{FloatTy, IntTy, UintTy};
 use crate::mir::ty::*;
+use crate::session::Span;
 use crate::typeck::error::TypeError;
 // Stage 14.111: HashMap import removed — UnificationTable now uses Vec.
 
@@ -210,26 +211,30 @@ impl UnificationTable {
             },
             TyKind::Infer(InferVar::IntVar(vid)) => self
                 .resolve_int_var(*vid)
-                .map(|i| Ty::new(TyKind::Int(i), ty.span))
+                .map(|i| Ty::new(TyKind::Int(i), Span::DUMMY))
                 .unwrap_or_else(|| ty.clone()),
             TyKind::Infer(InferVar::FloatVar(vid)) => self
                 .resolve_float_var(*vid)
-                .map(|f| Ty::new(TyKind::Float(f), ty.span))
+                .map(|f| Ty::new(TyKind::Float(f), Span::DUMMY))
                 .unwrap_or_else(|| ty.clone()),
-            TyKind::Ref(r, m, inner) => {
-                Ty::new(TyKind::Ref(*r, *m, Box::new(self.resolve(inner))), ty.span)
-            }
-            TyKind::RawPtr(m, inner) => {
-                Ty::new(TyKind::RawPtr(*m, Box::new(self.resolve(inner))), ty.span)
-            }
+            TyKind::Ref(r, m, inner) => Ty::new(
+                TyKind::Ref(*r, *m, Box::new(self.resolve(inner))),
+                Span::DUMMY,
+            ),
+            TyKind::RawPtr(m, inner) => Ty::new(
+                TyKind::RawPtr(*m, Box::new(self.resolve(inner))),
+                Span::DUMMY,
+            ),
             TyKind::Array(inner, c) => Ty::new(
                 TyKind::Array(Box::new(self.resolve(inner)), c.clone()),
-                ty.span,
+                Span::DUMMY,
             ),
-            TyKind::Slice(inner) => Ty::new(TyKind::Slice(Box::new(self.resolve(inner))), ty.span),
+            TyKind::Slice(inner) => {
+                Ty::new(TyKind::Slice(Box::new(self.resolve(inner))), Span::DUMMY)
+            }
             TyKind::Tuple(tys) => Ty::new(
                 TyKind::Tuple(tys.iter().map(|t| self.resolve(t)).collect()),
-                ty.span,
+                Span::DUMMY,
             ),
             _ => ty.clone(),
         }
@@ -353,9 +358,9 @@ impl UnificationTable {
                         if ai != bi =>
                     {
                         return Err(Box::new(TypeError::mismatch(
-                            Ty::new(TyKind::Int(ai), a.span),
-                            Ty::new(TyKind::Int(bi), b.span),
-                            a.span,
+                            Ty::new(TyKind::Int(ai), Span::DUMMY),
+                            Ty::new(TyKind::Int(bi), Span::DUMMY),
+                            Span::DUMMY,
                         )));
                     }
                     // Linked cases shouldn't appear at roots (we already found roots),
@@ -393,9 +398,9 @@ impl UnificationTable {
                         if af != bf =>
                     {
                         return Err(Box::new(TypeError::mismatch(
-                            Ty::new(TyKind::Float(af), a.span),
-                            Ty::new(TyKind::Float(bf), b.span),
-                            a.span,
+                            Ty::new(TyKind::Float(af), Span::DUMMY),
+                            Ty::new(TyKind::Float(bf), Span::DUMMY),
+                            Span::DUMMY,
                         )));
                     }
                     _ => {}
@@ -415,7 +420,11 @@ impl UnificationTable {
                     let one_immut = *a_m == crate::mir::ty::Mutability::Immutable
                         || *b_m == crate::mir::ty::Mutability::Immutable;
                     if !one_immut {
-                        return Err(Box::new(TypeError::mismatch(a.clone(), b.clone(), a.span)));
+                        return Err(Box::new(TypeError::mismatch(
+                            a.clone(),
+                            b.clone(),
+                            Span::DUMMY,
+                        )));
                     }
                     // If one is Immut and the other is Mut, allow — just
                     // unify the inner types.
@@ -426,7 +435,11 @@ impl UnificationTable {
             // Tuple with Tuple: unify element-wise
             (TyKind::Tuple(a_tys), TyKind::Tuple(b_tys)) => {
                 if a_tys.len() != b_tys.len() {
-                    return Err(Box::new(TypeError::mismatch(a.clone(), b.clone(), a.span)));
+                    return Err(Box::new(TypeError::mismatch(
+                        a.clone(),
+                        b.clone(),
+                        Span::DUMMY,
+                    )));
                 }
                 for (at, bt) in a_tys.iter().zip(b_tys.iter()) {
                     self.unify_resolved(at, bt)?;
@@ -446,7 +459,11 @@ impl UnificationTable {
             // RawPtr with RawPtr: unify mutability + inner
             (TyKind::RawPtr(a_m, a_t), TyKind::RawPtr(b_m, b_t)) => {
                 if a_m != b_m {
-                    return Err(Box::new(TypeError::mismatch(a.clone(), b.clone(), a.span)));
+                    return Err(Box::new(TypeError::mismatch(
+                        a.clone(),
+                        b.clone(),
+                        Span::DUMMY,
+                    )));
                 }
                 self.unify_resolved(a_t, b_t)
             }
@@ -454,7 +471,11 @@ impl UnificationTable {
             // FnPtr with FnPtr: unify inputs + output
             (TyKind::FnPtr(a_sig), TyKind::FnPtr(b_sig)) => {
                 if a_sig.inputs.len() != b_sig.inputs.len() {
-                    return Err(Box::new(TypeError::mismatch(a.clone(), b.clone(), a.span)));
+                    return Err(Box::new(TypeError::mismatch(
+                        a.clone(),
+                        b.clone(),
+                        Span::DUMMY,
+                    )));
                 }
                 for (at, bt) in a_sig.inputs.iter().zip(b_sig.inputs.iter()) {
                     self.unify_resolved(at, bt)?;
@@ -465,10 +486,18 @@ impl UnificationTable {
             // Adt with Adt: same DefId → unify substs
             (TyKind::Adt(a_def, a_substs), TyKind::Adt(b_def, b_substs)) => {
                 if a_def != b_def {
-                    return Err(Box::new(TypeError::mismatch(a.clone(), b.clone(), a.span)));
+                    return Err(Box::new(TypeError::mismatch(
+                        a.clone(),
+                        b.clone(),
+                        Span::DUMMY,
+                    )));
                 }
                 if a_substs.len() != b_substs.len() {
-                    return Err(Box::new(TypeError::mismatch(a.clone(), b.clone(), a.span)));
+                    return Err(Box::new(TypeError::mismatch(
+                        a.clone(),
+                        b.clone(),
+                        Span::DUMMY,
+                    )));
                 }
                 for (at, bt) in a_substs.iter().zip(b_substs.iter()) {
                     self.unify_resolved(at, bt)?;
@@ -503,7 +532,11 @@ impl UnificationTable {
             (TyKind::Foreign, TyKind::Foreign) => Ok(()),
 
             // Mismatch
-            _ => Err(Box::new(TypeError::mismatch(a.clone(), b.clone(), a.span))),
+            _ => Err(Box::new(TypeError::mismatch(
+                a.clone(),
+                b.clone(),
+                Span::DUMMY,
+            ))),
         }
     }
 

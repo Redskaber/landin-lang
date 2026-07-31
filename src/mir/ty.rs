@@ -7,19 +7,38 @@
 
 use crate::ast::{FloatTy, IntTy, UintTy};
 use crate::hir::DefId;
+
+#[cfg(test)]
 use crate::session::Span;
 
-/// A MIR type. Carries a `TyKind` and an optional inference variable
-/// (set by Stage 2.2 typeck, `None` during MIR construction).
+/// A MIR type.
+///
+/// Stage 15.5 (v0.2): Removed `span: Span` field from `Ty`.
+/// Span belongs on `LocalDecl` and `Statement`, not on the type itself.
+/// This is the foundational change for Ty interning — without Span, Ty
+/// values can be cached and compared by kind alone.
+///
+/// Per `docs/lang-design/19-ty-interning.md`: this enables O(1) Ty::clone()
+/// in v0.3 (via Rc/arena interning) and correct caching of method return types.
+///
+/// Per §1.0 原則 3 "显式 > 隐式": Span is now explicit on LocalDecl/Statement,
+/// not implicitly duplicated on every Ty.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ty {
     pub kind: TyKind,
-    pub span: Span,
 }
 
 impl Ty {
-    pub fn new(kind: TyKind, span: Span) -> Self {
-        Self { kind, span }
+    /// Create a new Ty. Span is no longer stored on Ty (Stage 15.5).
+    /// The `_span` parameter is kept for API compatibility — callers
+    /// should migrate to `Ty::from_kind()` which doesn't take span.
+    pub fn new(kind: TyKind, _span: crate::session::Span) -> Self {
+        Self { kind }
+    }
+
+    /// Stage 15.5: Construct a Ty without span (preferred new API).
+    pub fn from_kind(kind: TyKind) -> Self {
+        Self { kind }
     }
 }
 

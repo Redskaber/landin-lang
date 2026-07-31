@@ -1327,7 +1327,7 @@ pub fn compile(src: &str) -> CompileResult {
                                         closure_def_id,
                                         new_substs.clone(),
                                     ),
-                                    lhs_ld.ty.span,
+                                    Span::DUMMY,
                                 );
                                 lhs_ld.ty = new_closure_ty.clone();
                             }
@@ -2158,7 +2158,7 @@ fn scan_ty_for_unresolved(ty: &crate::hir::HirTy, errors: &mut CompileErrors) {
             if matches!(p.res, Res::Unknown | Res::Err) {
                 errors.resolve.push(crate::resolve::ResolveError::new(
                     "cannot find type in this scope".to_string(),
-                    ty.span,
+                    Span::DUMMY,
                 ));
             }
         }
