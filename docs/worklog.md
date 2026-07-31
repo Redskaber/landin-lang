@@ -17384,3 +17384,45 @@ Stage Summary:
 - 3 GitHub Actions workflows created (ci, release, perf)
 - v0.2 preparation document complete
 - v0.126.0: unchanged (infra + docs only)
+
+---
+Task ID: stage14.116-cicd-llvm-version-fix
+Agent: Super Z (main)
+Task: Stage 14.116 — Fix CI/CD llvm-sys version pinning + env var propagation. v0.126.0 (no version bump).
+
+Work Log:
+- Baseline: v0.126.0 (post-Stage 14.115)
+
+### Problem
+CI failed with "No suitable version of LLVM was found" because:
+1. `Cargo.toml` declared `llvm-sys` version as `"191"` (semver ^191) which
+   allowed cargo to upgrade to v211.0.1 (LLVM 21) instead of v191.1.0 (LLVM 19)
+2. GitHub Actions env vars (`LLVM_SYS_191_PREFIX`, `LLVM_LINK_SHARED`) were
+   set per-step instead of per-job, causing them to not propagate to cargo
+
+### Fixes
+
+1. **Pin llvm-sys version** (Cargo.toml):
+   - Before: `version = "191"` (allows upgrade to v211)
+   - After: `version = "=191.1.0"` (exact version pin)
+
+2. **Move env vars to job level** (all 3 workflows):
+   - Before: `env:` set inside each `run:` step
+   - After: `env:` set at job level (propagates to all steps)
+
+3. **Updated all 3 workflow files**:
+   - `.github/workflows/ci.yml` — env vars at job level
+   - `.github/workflows/release.yml` — env vars at job level
+   - `.github/workflows/perf.yml` — env vars at job level
+
+### Verification
+- All 1951 rust tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- No version bump (fix only)
+
+Stage Summary:
+- Stage 14.116 PASSED — CI/CD llvm-sys version fix
+- llvm-sys pinned to =191.1.0 (prevents upgrade to v211)
+- Env vars moved to job level in all 3 workflows
+- v0.126.0: unchanged (fix only)

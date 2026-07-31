@@ -37,6 +37,9 @@ jobs:
   clippy:
     name: Clippy Lint
     runs-on: ubuntu-latest
+    env:
+      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -49,9 +52,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
       - name: Run clippy
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: cargo clippy --all-targets --features llvm-backend -- -D warnings
 
   # ──────────────────────────────────────────────────────
@@ -61,6 +61,9 @@ jobs:
     name: Rust Tests
     needs: [fmt, clippy]
     runs-on: ubuntu-latest
+    env:
+      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -71,9 +74,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
       - name: Run tests
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: cargo test --features llvm-backend
 
   # ──────────────────────────────────────────────────────
@@ -83,6 +83,9 @@ jobs:
     name: Conformance Tests
     needs: [fmt, clippy]
     runs-on: ubuntu-latest
+    env:
+      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -93,9 +96,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
       - name: Build release
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: cargo build --release --features llvm-backend
       - name: Run conformance tests
         run: python3 tests/conformance/run_all.py
@@ -107,6 +107,9 @@ jobs:
     name: Release Build
     needs: [test, conformance]
     runs-on: ubuntu-latest
+    env:
+      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -117,16 +120,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
       - name: Build release
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: cargo build --release --features llvm-backend
       - name: Verify binary exists
         run: test -f target/release/landin-stage0
       - name: Smoke test — hello world
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: |
           echo 'fn main() { println!("hello world"); }' > /tmp/smoke.lin
           ./target/release/landin-stage0 --run /tmp/smoke.lin

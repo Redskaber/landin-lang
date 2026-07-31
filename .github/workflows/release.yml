@@ -29,6 +29,9 @@ jobs:
   verify:
     name: Pre-Release Verification
     runs-on: ubuntu-latest
+    env:
+      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -43,19 +46,10 @@ jobs:
       - name: Format check
         run: cargo fmt --check
       - name: Clippy
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: cargo clippy --all-targets --features llvm-backend -- -D warnings
       - name: Rust tests
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: cargo test --features llvm-backend
       - name: Build release
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: cargo build --release --features llvm-backend
       - name: Conformance tests
         run: python3 tests/conformance/run_all.py
@@ -67,6 +61,9 @@ jobs:
     name: Performance Baseline
     needs: verify
     runs-on: ubuntu-latest
+    env:
+      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -77,14 +74,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
       - name: Build release
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: cargo build --release --features llvm-backend
       - name: Performance baseline — fib(30)
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: |
           echo 'fn fib(n: i32) -> i32 { if n < 2 { return n; } return fib(n-1) + fib(n-2); } fn main() { let r = fib(30); println!("{}", r); }' > /tmp/perf_fib.lin
           START=$(date +%s%N)
@@ -95,9 +86,6 @@ jobs:
           echo "## Performance Baseline" >> $GITHUB_STEP_SUMMARY
           echo "fib(30) compile+run: ${ELAPSED}ms" >> $GITHUB_STEP_SUMMARY
       - name: Performance baseline — nested loops
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: |
           echo 'struct Point { x: i32, y: i32 } impl Point { fn new(x: i32, y: i32) -> Point { Point { x, y } } fn dist(&self, o: &Point) -> i32 { let dx = self.x - o.x; let dy = self.y - o.y; dx*dx + dy*dy } } fn main() { let mut s = 0; for i in 0..100 { for j in 0..100 { let p1 = Point::new(i,j); let p2 = Point::new(i+1,j+1); s += p1.dist(&p2); } } println!("{}", s); }' > /tmp/perf_loops.lin
           START=$(date +%s%N)
@@ -116,6 +104,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+      LLVM_LINK_SHARED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -126,9 +117,6 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev
       - name: Build release binary
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: cargo build --release --features llvm-backend
       - name: Package release
         run: |

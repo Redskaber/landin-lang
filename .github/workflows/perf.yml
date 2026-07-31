@@ -15,6 +15,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
+  LLVM_LINK_SHARED: "1"
 
 jobs:
   perf:
@@ -30,15 +32,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq llvm-19-dev libpolly-19-dev libz3-dev python3
       - name: Build release
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: cargo build --release --features llvm-backend
 
       - name: Benchmark — Compile time (small program)
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: |
           echo 'fn main() { println!("hello"); }' > /tmp/bench_small.lin
           START=$(date +%s%N)
@@ -47,9 +43,6 @@ jobs:
           echo "COMPILE_SMALL_MS=$(( (END - START) / 1000000 ))" >> $GITHUB_ENV
 
       - name: Benchmark — Compile time (fib(30))
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: |
           echo 'fn fib(n: i32) -> i32 { if n < 2 { return n; } return fib(n-1) + fib(n-2); } fn main() { let r = fib(30); println!("{}", r); }' > /tmp/bench_fib.lin
           START=$(date +%s%N)
@@ -58,9 +51,6 @@ jobs:
           echo "COMPILE_FIB_MS=$(( (END - START) / 1000000 ))" >> $GITHUB_ENV
 
       - name: Benchmark — Compile + run (fib(30))
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: |
           START=$(date +%s%N)
           ./target/release/landin-stage0 --run /tmp/bench_fib.lin
@@ -68,9 +58,6 @@ jobs:
           echo "RUN_FIB_MS=$(( (END - START) / 1000000 ))" >> $GITHUB_ENV
 
       - name: Benchmark — Compile + run (100×100 loops)
-        env:
-          LLVM_SYS_191_PREFIX: /usr/lib/llvm-19
-          LLVM_LINK_SHARED: "1"
         run: |
           echo 'struct P { x: i32, y: i32 } impl P { fn n(x: i32, y: i32) -> P { P { x, y } } fn d(&self, o: &P) -> i32 { let dx = self.x - o.x; let dy = self.y - o.y; dx*dx + dy*dy } } fn main() { let mut s = 0; for i in 0..100 { for j in 0..100 { let p1 = P::n(i,j); let p2 = P::n(i+1,j+1); s += p1.d(&p2); } } println!("{}", s); }' > /tmp/bench_loops.lin
           START=$(date +%s%N)
