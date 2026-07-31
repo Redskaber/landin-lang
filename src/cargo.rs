@@ -163,7 +163,9 @@ pub fn build_project(manifest: &ProjectManifest, config: &BuildConfig) -> BuildR
         files_compiled: 1,
         llvm_ir,
         errors: if error_count > 0 {
-            vec![result.errors.format_for_user(Some(&src))]
+            vec![result
+                .errors
+                .format_for_user(Some(&src), Some(&result.interner))]
         } else {
             Vec::new()
         },

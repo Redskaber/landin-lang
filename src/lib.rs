@@ -437,7 +437,7 @@ pub use codegen::{
     CodegenTraitDispatchEmissionSummary, EmitType, EmitValue, Emitter, StdlibDynptrGlobalSpec,
     StdlibVtableGlobalSpec, TextEmitter,
 };
-pub use driver::{compile, CompileErrors, CompileResult};
+pub use driver::{compile, CompileErrors, CompileResult, TraitError};
 pub use stdlib::{
     default_prelude, find_stdlib_trait_method, integer_bit_width, is_float_type, is_primitive_type,
     is_signed_integer, is_stdlib_marker_trait, is_stdlib_trait, is_stdlib_trait_method,

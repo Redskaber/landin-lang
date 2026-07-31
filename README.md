@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.134.0 (v0.2 Phase 1 in progress — crate-level AdtLayouts sharing)  
+**Version**: v0.135.0 (v0.2 Phase 1 in progress — VtableEntry interning + TraitError)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -23,9 +23,9 @@ backend via the `llvm-sys` crate.
 >
 > See `docs/develop/v0/stage-14/v0.1-final-release-assessment.md` for full assessment.
 
-> **v0.2 Phase 1 IN PROGRESS — Stage 15.8 Complete**
+> **v0.2 Phase 1 IN PROGRESS — Stage 15.9 Complete (all quick wins done)**
 >
-> Stage 15.1-15.8 (v0.2 Phase 1 prep + consolidation + quick wins):
+> Stage 15.1-15.9 (v0.2 Phase 1 prep + consolidation + quick wins):
 > - **Stage 15.1** — Ty interning design doc (`docs/lang-design/19-ty-interning.md`)
 > - **Stage 15.2** — TypeInterner infrastructure + pre-build impl index (HP-B12)
 > - **Stage 15.3** — cstr() thread-local cache (memory leak fix for LSP mode)
@@ -37,13 +37,13 @@ backend via the `llvm-sys` crate.
 >   in new `src/mir/lower/writeback.rs`. driver.rs: 2,358 → 1,709 LOC.
 >   Closes v0.2 Phase 1 Task 5.
 > - **Stage 15.8** — Crate-level AdtLayouts sharing: `Arc<AdtLayouts>` shared
->   across all MirBodies. ~500KB memory saved per typical crate. Eliminates
->   3× per-body `populate_adt_layouts` re-runs. Root-cause fix for the
->   "re-populate after writeback" hack.
+>   across all MirBodies. ~500KB memory saved per typical crate.
+> - **Stage 15.9** — VtableEntry.fn_name interning (HP-B16) + TraitError typed
+>   errors. All Phase 2 audit "4-hour" quick wins now complete.
 >
-> **Test count**: 1970 rust tests + 5216 conformance tests = 7186 passing.
+> **Test count**: 1976 rust tests + 5216 conformance tests = 7192 passing.
 > **0 clippy warnings**, fmt clean. Next major milestone: v0.2 Phase 1 Task 1
-> (Ty interning via Rc stepping stone).
+> (Ty interning via Rc stepping stone) — the biggest single improvement for v0.2.
 
 ---
 

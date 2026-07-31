@@ -41,7 +41,10 @@ fn main() -> i32 {
 
     if !result.errors.is_empty() {
         eprintln!("compile errors ({} total):", result.errors.total_count());
-        eprintln!("{}", result.errors.format_for_user(None));
+        eprintln!(
+            "{}",
+            result.errors.format_for_user(None, Some(&result.interner))
+        );
         std::process::exit(1);
     }
 

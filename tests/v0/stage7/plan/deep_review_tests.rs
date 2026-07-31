@@ -142,7 +142,7 @@ fn stage7_deep_review_td018_user_trait_dyn_active() {
             impl_def_id: DefId(998),
             entries: vec![VtableEntry {
                 method_name,
-                fn_name: "landin_ReviewType_review_method".to_string(),
+                fn_name: interner.get_or_intern("landin_ReviewType_review_method"),
             }],
         },
     );

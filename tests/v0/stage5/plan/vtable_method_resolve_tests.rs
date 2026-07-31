@@ -19,7 +19,7 @@ fn test_resolve_vtable_method() {
 
     let fn_name = result
         .trait_resolver
-        .resolve_vtable_method(foo_spur, s_spur, bar_spur)
+        .resolve_vtable_method(&result.interner, foo_spur, s_spur, bar_spur)
         .expect("should resolve bar");
     assert_eq!(
         fn_name, "landin_S_bar",
@@ -38,7 +38,7 @@ fn test_resolve_vtable_method_unknown_method() {
     assert!(
         result
             .trait_resolver
-            .resolve_vtable_method(foo_spur, s_spur, foo_spur)
+            .resolve_vtable_method(&result.interner, foo_spur, s_spur, foo_spur)
             .is_none(),
         "should return None for non-existent method"
     );
@@ -55,7 +55,7 @@ fn test_resolve_vtable_method_no_impl() {
     assert!(
         result
             .trait_resolver
-            .resolve_vtable_method(foo_spur, s_spur, bar_spur)
+            .resolve_vtable_method(&result.interner, foo_spur, s_spur, bar_spur)
             .is_none(),
         "should return None when no impl exists"
     );
@@ -70,7 +70,9 @@ fn test_vtable_method_names() {
     let foo_spur = result.interner.get("Foo").expect("Foo interned");
     let s_spur = result.interner.get("S").expect("S interned");
 
-    let names = result.trait_resolver.vtable_method_names(foo_spur, s_spur);
+    let names = result
+        .trait_resolver
+        .vtable_method_names(&result.interner, foo_spur, s_spur);
     assert_eq!(names.len(), 2, "should have 2 method names");
     assert!(
         names.contains(&"landin_S_bar"),
@@ -89,7 +91,9 @@ fn test_vtable_method_names_empty() {
     let foo_spur = result.interner.get("Foo").expect("Foo interned");
     let s_spur = result.interner.get("S").expect("S interned");
 
-    let names = result.trait_resolver.vtable_method_names(foo_spur, s_spur);
+    let names = result
+        .trait_resolver
+        .vtable_method_names(&result.interner, foo_spur, s_spur);
     assert!(names.is_empty(), "should be empty when no vtable exists");
 }
 
@@ -141,21 +145,21 @@ fn test_resolve_multiple_methods() {
     assert_eq!(
         result
             .trait_resolver
-            .resolve_vtable_method(foo_spur, s_spur, bar_spur)
+            .resolve_vtable_method(&result.interner, foo_spur, s_spur, bar_spur)
             .unwrap(),
         "landin_S_bar"
     );
     assert_eq!(
         result
             .trait_resolver
-            .resolve_vtable_method(foo_spur, s_spur, baz_spur)
+            .resolve_vtable_method(&result.interner, foo_spur, s_spur, baz_spur)
             .unwrap(),
         "landin_S_baz"
     );
     assert_eq!(
         result
             .trait_resolver
-            .resolve_vtable_method(foo_spur, s_spur, qux_spur)
+            .resolve_vtable_method(&result.interner, foo_spur, s_spur, qux_spur)
             .unwrap(),
         "landin_S_qux"
     );

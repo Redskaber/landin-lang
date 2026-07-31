@@ -72,7 +72,7 @@ fn make_resolver_with_user_trait(
         .zip(fn_names.iter())
         .map(|(m, f)| VtableEntry {
             method_name: interner.get_or_intern(m),
-            fn_name: f.to_string(),
+            fn_name: interner.get_or_intern(f),
         })
         .collect();
     resolver.vtables.insert(
@@ -230,7 +230,7 @@ fn stage7_user_defined_trait_multiple_traits() {
             impl_def_id,
             entries: vec![VtableEntry {
                 method_name: method_spur,
-                fn_name: "landin_Person_fmt".to_string(),
+                fn_name: interner.get_or_intern("landin_Person_fmt"),
             }],
         },
     );
@@ -326,7 +326,7 @@ fn stage7_user_defined_trait_multiple_types_same_trait() {
             impl_def_id,
             entries: vec![VtableEntry {
                 method_name: hello_spur,
-                fn_name: "landin_Robot_hello".to_string(),
+                fn_name: interner.get_or_intern("landin_Robot_hello"),
             }],
         },
     );

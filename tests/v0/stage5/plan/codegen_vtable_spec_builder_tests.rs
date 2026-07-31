@@ -36,7 +36,7 @@ fn make_resolver_with_vtable(
         .iter()
         .map(|&sym| VtableEntry {
             method_name: interner.get_or_intern(sym),
-            fn_name: sym.to_string(),
+            fn_name: interner.get_or_intern(sym),
         })
         .collect();
 
@@ -97,7 +97,7 @@ fn test_build_vtable_global_specs_multi() {
         impl_def_id: landin_compiler::hir::DefId::new(1),
         entries: vec![VtableEntry {
             method_name: interner.get_or_intern("baz"),
-            fn_name: "landin_T_baz".to_string(),
+            fn_name: interner.get_or_intern("landin_T_baz"),
         }],
     };
     resolver.vtables.insert((trait_spur, type_spur), vtable);
@@ -235,8 +235,16 @@ fn test_build_vtable_global_specs_match_emit_vtables_inline() {
         let trait_str = interner.try_resolve(trait_name).unwrap_or("Trait");
         let type_str = interner.try_resolve(self_ty_name).unwrap_or("Type");
         let global_name = format!(".vtable.{trait_str}.{type_str}");
-        let method_symbols: Vec<String> =
-            vtable.entries.iter().map(|e| e.fn_name.clone()).collect();
+        let method_symbols: Vec<String> = vtable
+            .entries
+            .iter()
+            .map(|e| {
+                interner
+                    .try_resolve(&e.fn_name)
+                    .map(String::from)
+                    .unwrap_or_else(|| "fn".to_string())
+            })
+            .collect();
         expected_specs.push(StdlibVtableGlobalSpec {
             global_name,
             method_symbols,
@@ -318,7 +326,7 @@ fn test_build_vtable_global_specs_real_scenario() {
             .iter()
             .map(|&m| VtableEntry {
                 method_name: interner.get_or_intern(m),
-                fn_name: m.to_string(),
+                fn_name: interner.get_or_intern(m),
             })
             .collect();
         resolver.vtables.insert(

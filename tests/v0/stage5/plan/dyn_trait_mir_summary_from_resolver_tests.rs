@@ -22,7 +22,7 @@ fn make_resolver_with_vtable(
         .iter()
         .map(|&sym| VtableEntry {
             method_name: interner.get_or_intern(sym),
-            fn_name: sym.to_string(),
+            fn_name: interner.get_or_intern(sym),
         })
         .collect();
     resolver.vtables.insert(
@@ -98,7 +98,7 @@ fn test_summary_from_resolver_real_scenario() {
             .iter()
             .map(|&m| VtableEntry {
                 method_name: interner.get_or_intern(m),
-                fn_name: m.to_string(),
+                fn_name: interner.get_or_intern(m),
             })
             .collect();
         resolver.vtables.insert(

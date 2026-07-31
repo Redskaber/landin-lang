@@ -14,7 +14,9 @@ fn gen_ll(src: &str) -> String {
     assert!(
         !result.has_errors(),
         "unexpected compile errors:\n{}",
-        result.errors.format_for_user(Some(src))
+        result
+            .errors
+            .format_for_user(Some(src), Some(&result.interner))
     );
     codegen_crate(&result)
 }
@@ -3626,7 +3628,9 @@ fn codegen_error_free_for_complex_program() {
     assert!(
         !result.has_errors(),
         "complex valid program should have no errors:\n{}",
-        result.errors.format_for_user(Some(src))
+        result
+            .errors
+            .format_for_user(Some(src), Some(&result.interner))
     );
 }
 
@@ -3643,7 +3647,7 @@ fn codegen_coercion_f32_to_f64() {
         "f32 → f64 widening should not error:\n{}",
         result
             .errors
-            .format_for_user(Some("fn f(x: f32) -> f64 { x }"))
+            .format_for_user(Some("fn f(x: f32) -> f64 { x }"), Some(&result.interner))
     );
 }
 

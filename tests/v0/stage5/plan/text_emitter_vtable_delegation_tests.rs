@@ -112,7 +112,7 @@ fn test_text_emitter_vtable_global_delegation_no_regression() {
             impl_def_id: landin_compiler::hir::DefId::new(0),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("bar"),
-                fn_name: "landin_S_bar".to_string(),
+                fn_name: interner.get_or_intern("landin_S_bar"),
             }],
         },
     );

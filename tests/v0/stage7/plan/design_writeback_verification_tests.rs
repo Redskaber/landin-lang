@@ -168,7 +168,7 @@ fn stage7_td018_user_defined_trait_resolved() {
             impl_def_id: DefId(101),
             entries: vec![VtableEntry {
                 method_name,
-                fn_name: "landin_MyType_do_thing".to_string(),
+                fn_name: interner.get_or_intern("landin_MyType_do_thing"),
             }],
         },
     );
@@ -237,7 +237,7 @@ fn stage7_td018_stdlib_and_user_traits_coexist() {
             impl_def_id: DefId(201),
             entries: vec![VtableEntry {
                 method_name,
-                fn_name: "landin_CustomType_custom_method".to_string(),
+                fn_name: interner.get_or_intern("landin_CustomType_custom_method"),
             }],
         },
     );

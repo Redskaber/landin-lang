@@ -1,9 +1,71 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.134.0
+**Current version**: v0.135.0
 **Date**: 2026-07-31
-**Test count**: 1970 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 1976 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.135.0 — Stage 15.9 (VtableEntry.fn_name Interning + TraitError Typed Errors)
+
+### Overview
+
+Stage 15.9 completes the last two Phase 2 audit quick wins:
+1. **HP-B16**: Intern `VtableEntry.fn_name` to `Spur` (was `String`) —
+   eliminates per-entry heap allocation.
+2. **CoherenceError de-stringification**: Changed `CompileErrors.trait_errors`
+   from `Vec<String>` to `Vec<TraitError>`, preserving structured
+   `CoherenceError`/`IncompleteImpl` data for downstream consumers.
+
+Both changes are backward-compatible at the user-facing level (the `compile()`
+API and error display are unchanged) but improve memory efficiency and
+preserve structured error data.
+
+### What Changed
+
+**VtableEntry.fn_name interning** (`src/traits/vtable.rs`):
+- `VtableEntry.fn_name: String` → `Spur` (interned)
+- `TraitResolver::collect()` now takes `&mut Rodeo` (was `&Rodeo`)
+- `resolve_vtable_method()` and `vtable_method_names()` now take `interner` param
+- Added `find_vtable_method_entry()` helper — `vtable_has_method()` no longer needs interner
+
+**TraitError typed enum** (`src/driver.rs`):
+- Added `pub enum TraitError { Coherence(CoherenceError), Incomplete(IncompleteImpl) }`
+- Added `TraitError::format_with_interner(interner)` method
+- `CompileErrors.trait_errors: Vec<String>` → `Vec<TraitError>`
+- `format_for_user()` now takes `interner: Option<&Rodeo>` parameter
+- Driver trait error construction: 20 lines → 4 lines
+
+**Test updates**:
+- 27 test files updated for VtableEntry Spur construction
+- 4 test files updated for `format_for_user` new signature
+- 6 new integration tests in `tests/v0/stage15/plan/vtable_interning_and_trait_error_tests.rs`
+
+**Documentation**:
+- `docs/develop/v0/stage-15/stage-15.9-vtable-interning-trait-error.md` — full §29 review
+- `docs/tests/v0/stage15/stage-15.9-test-plan.md` — test plan
+- `docs/worklog.md` — Stage 15.9 entry
+- `README.md` — updated v0.2 progress
+
+### Why This Is The Right Stage 15.9
+
+Per `docs/develop/v0/stage-15/v0.2-preparation.md` Phase 1 quick wins:
+- "Intern VtableEntry.fn_name to Spur (HP-B16, 4 hours)"
+- "Stop stringifying CoherenceError/IncompleteImpl into Vec<String> (4 hours)"
+
+Both are 4-hour changes that close Phase 2 audit items. With Stage 15.9,
+all "4-hour" quick wins are complete. The remaining Phase 1 work is the
+larger tasks (Ty interning, SubstsRef, TraitResolver keys, EmitValue).
+
+Per §1.0 原则 3 "显式 > 隐式": TraitError enum makes the error kind explicit.
+Per §1.0 原则 6 "通用 > 特例": Spur interning is the same pattern as method_name.
+
+### Verification
+
+- All 145 lib tests pass (zero regression)
+- All 1976 integration tests pass (1970 + 6 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.134.0 — Stage 15.8 (Crate-level AdtLayouts Sharing)

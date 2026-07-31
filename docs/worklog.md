@@ -17995,3 +17995,101 @@ Stage Summary:
 - Root-cause fix for "re-populate after writeback" hack
 - Closes v0.2 Phase 1 quick win: "Share AdtLayouts crate-level"
 - v0.134.0: minor bump (memory optimization + architectural cleanup)
+
+---
+Task ID: stage15.9-vtable-interning-trait-error
+Agent: Super Z (main)
+Task: Stage 15.9 — VtableEntry.fn_name interning (HP-B16) + TraitError typed errors. v0.134.0 → v0.135.0.
+
+Work Log:
+- Baseline: v0.134.0 / 1970 rust tests + 5216 conformance (post-Stage 15.8)
+
+### 1. VtableEntry.fn_name: String → Spur (src/traits/vtable.rs)
+
+Changed VtableEntry.fn_name from String to Spur (interned). Closes Phase 2
+audit HP-B16. For a crate with 50 trait methods, eliminates 50 String heap
+allocations per compilation.
+
+Updated all construction sites (resolver.rs) to use interner.get_or_intern().
+Updated all consumption sites (codegen) to use interner.try_resolve().
+
+### 2. TraitResolver API changes (src/traits/resolver.rs)
+
+- collect() signature: &Rodeo → &mut Rodeo (needed for get_or_intern)
+- resolve_vtable_method(): added interner: &Rodeo param (returns Option<&str>)
+- vtable_method_names(): added interner: &Rodeo param (returns Vec<&str>)
+- vtable_has_method(): refactored to NOT need interner — uses new
+  find_vtable_method_entry() helper that returns Option<&VtableEntry>
+- Added find_vtable_method_entry() private helper (§1.0 原则 3 "显式 > 隐式")
+
+### 3. TraitError typed enum (src/driver.rs)
+
+Changed CompileErrors.trait_errors from Vec<String> to Vec<TraitError>.
+
+Added TraitError enum:
+- TraitError::Coherence(CoherenceError)
+- TraitError::Incomplete(IncompleteImpl)
+
+Added TraitError::format_with_interner(interner) method for human-readable
+display. The structured CoherenceError/IncompleteImpl data is preserved
+for downstream consumers (LSP, error reporters).
+
+### 4. format_for_user API change
+
+CompileErrors::format_for_user() now takes interner: Option<&Rodeo> as
+second parameter. Used to resolve TraitError Spur symbols. Falls back to
+Debug formatting if interner is None.
+
+Updated all callers:
+- src/bin/main.rs: passes Some(&result.interner)
+- src/cargo.rs: passes Some(&result.interner)
+- All test callers: pass Some(&result.interner)
+
+### 5. Driver simplification
+
+Trait error construction shrinks from ~20 lines of format!() to 4 lines
+of typed enum construction. The formatting logic moves to
+TraitError::format_with_interner, the single source of truth.
+
+### 6. Test updates
+
+- 27 test files updated to use interner.get_or_intern() for VtableEntry
+- 4 test files updated for format_for_user new signature
+- 3 test files updated for resolve_vtable_method/vtable_method_names new
+  signature (added interner param)
+- 1 test file updated for vtable_tests.rs fn_name assertions (resolve via interner)
+- 1 test file updated for driver_validation_tests.rs (format_with_interner)
+- 1 test file updated for trait_resolver_tests.rs (collect takes &mut Rodeo)
+
+### 7. New tests (tests/v0/stage15/plan/vtable_interning_and_trait_error_tests.rs)
+
+6 integration tests:
+1. stage15_9_vtable_fn_name_interned
+2. stage15_9_multiple_vtable_entries_interned
+3. stage15_9_trait_error_coherence_structured
+4. stage15_9_trait_error_incomplete_structured
+5. stage15_9_trait_error_format_with_interner
+6. stage15_9_format_for_user_with_interner
+
+### 8. Documentation
+
+- Created docs/develop/v0/stage-15/stage-15.9-vtable-interning-trait-error.md
+- Created docs/tests/v0/stage15/stage-15.9-test-plan.md
+- Updated docs/worklog.md (this entry)
+- Updated RELEASE_NOTES.md (v0.135.0 entry)
+- Updated README.md (Stage 15.9 progress)
+
+### Verification
+- All 145 lib tests pass (zero regression)
+- All 1976 integration tests pass (1970 + 6 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.134.0 → v0.135.0
+
+Stage Summary:
+- Stage 15.9 PASSED — VtableEntry.fn_name interned + TraitError typed
+- Closes Phase 2 audit HP-B16 (VtableEntry.fn_name interning)
+- Closes Phase 2 audit "Stop stringifying CoherenceError/IncompleteImpl"
+- All "4-hour" quick wins now complete
+- v0.135.0: minor bump (memory + type safety improvements)
+- Next major milestone: v0.2 Phase 1 Task 1 (Ty interning via Rc stepping stone)

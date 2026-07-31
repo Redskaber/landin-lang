@@ -103,7 +103,9 @@ fn main() {
         let result = driver::compile(&source_file.src);
 
         if result.has_errors() {
-            let error_str = result.errors.format_for_user(Some(&source_file.src));
+            let error_str = result
+                .errors
+                .format_for_user(Some(&source_file.src), Some(&result.interner));
             eprintln!("{}", error_str);
             eprintln!(
                 "error: aborting due to {} error(s)",

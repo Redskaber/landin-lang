@@ -160,7 +160,11 @@ impl TraitResolver {
     }
 
     /// Collect all trait definitions, impl blocks, type names, and vtables from HIR.
-    pub fn collect(&mut self, hir: &HirCrate, interner: &Rodeo) {
+    ///
+    /// Stage 15.9: Changed `interner` from `&Rodeo` to `&mut Rodeo` so we can
+    /// intern the resolved vtable symbol names (VtableEntry.fn_name is now Spur).
+    /// All call sites already pass `&mut Rodeo` or can be adjusted trivially.
+    pub fn collect(&mut self, hir: &HirCrate, interner: &mut Rodeo) {
         // Stage 5.8: Builtin traits are registered by the driver before
         // collect() is called (via register_builtin_traits), because that
         // method needs &mut Rodeo while collect() takes &Rodeo. Here we
@@ -240,9 +244,13 @@ impl TraitResolver {
                         // that driver.rs's body_metas now uses for impl method
                         // bodies, so the vtable's symbol references resolve
                         // correctly at link time.
+                        //
+                        // Stage 15.9: Owned String (was &str) so we can mutably
+                        // borrow the interner later to intern the symbol name.
                         let self_ty_str = self_ty_name
                             .and_then(|s| interner.try_resolve(&s))
-                            .unwrap_or("Type");
+                            .unwrap_or("Type")
+                            .to_string();
 
                         // Stage 5.5: Build vtable entries from impl methods.
                         let mut vtable_entries = Vec::new();
@@ -252,9 +260,13 @@ impl TraitResolver {
                                 let method_str =
                                     interner.try_resolve(&f.ident.name).unwrap_or("fn");
                                 method_names.push(f.ident.name);
+                                // Stage 15.9: Intern the resolved symbol name
+                                // instead of allocating a String. Closes HP-B16.
+                                let fn_name_str = format!("landin_{}_{}", self_ty_str, method_str);
+                                let fn_name_spur = interner.get_or_intern(fn_name_str);
                                 vtable_entries.push(VtableEntry {
                                     method_name: f.ident.name,
-                                    fn_name: format!("landin_{}_{}", self_ty_str, method_str),
+                                    fn_name: fn_name_spur,
                                 });
                             }
                         }
@@ -398,6 +410,23 @@ impl TraitResolver {
 
     /// Stage 5.17: Resolve a vtable method to its concrete LLVM symbol name.
     ///
+    /// Stage 15.9: Find a vtable entry by method name (without resolving
+    /// the fn_name to a string). Used by `resolve_vtable_method` (which
+    /// needs the string) and `vtable_has_method` (which only needs to
+    /// know if the entry exists).
+    ///
+    /// Per §1.0 原则 3 "显式 > 隐式": the entry lookup is explicit, separate
+    /// from the string resolution.
+    fn find_vtable_method_entry(
+        &self,
+        trait_name: Spur,
+        self_ty_name: Spur,
+        method_name: Spur,
+    ) -> Option<&VtableEntry> {
+        let vtable = self.find_vtable(trait_name, self_ty_name)?;
+        vtable.entries.iter().find(|e| e.method_name == method_name)
+    }
+
     /// Given `(trait_spur, type_spur, method_spur)`, looks up the vtable
     /// for `(trait, type)` and finds the entry whose `method_name` matches
     /// `method_spur`. Returns the resolved `fn_name` (e.g. `landin_S_bar`).
@@ -410,31 +439,47 @@ impl TraitResolver {
     /// This is the single entry point for vtable method resolution — it
     /// combines `find_vtable` + entry lookup in one call.
     ///
+    /// Stage 15.9: Added `interner` parameter because `VtableEntry.fn_name`
+    /// is now an interned `Spur` (was `String`). The interner resolves it
+    /// to `&str` for the caller.
+    ///
     /// Per API-naming-standard §3: `resolve_vtable_method` follows
     /// `resolve_<noun>_<noun>` pattern for resolution queries returning
     /// the resolved value.
-    pub fn resolve_vtable_method(
-        &self,
+    pub fn resolve_vtable_method<'a>(
+        &'a self,
+        interner: &'a lasso::Rodeo,
         trait_name: Spur,
         self_ty_name: Spur,
         method_name: Spur,
-    ) -> Option<&str> {
-        let vtable = self.find_vtable(trait_name, self_ty_name)?;
-        vtable
-            .entries
-            .iter()
-            .find(|e| e.method_name == method_name)
-            .map(|e| e.fn_name.as_str())
+    ) -> Option<&'a str> {
+        let entry = self.find_vtable_method_entry(trait_name, self_ty_name, method_name)?;
+        // Stage 15.9: The returned &str borrows from `interner`, not `self`.
+        // Both params share lifetime `'a` so the returned &str is valid as
+        // long as both self and interner are alive.
+        interner.try_resolve(&entry.fn_name)
     }
 
     /// Stage 5.17: Get all method symbol names from a vtable
     /// (by trait + type). Returns an empty Vec if no vtable exists.
     ///
+    /// Stage 15.9: Added `interner` parameter because `VtableEntry.fn_name`
+    /// is now an interned `Spur` (was `String`).
+    ///
     /// Per API-naming-standard §3: `vtable_method_names` follows
     /// `<noun>_<noun>_<noun>` pattern for collection-returning queries.
-    pub fn vtable_method_names(&self, trait_name: Spur, self_ty_name: Spur) -> Vec<&str> {
+    pub fn vtable_method_names<'a>(
+        &'a self,
+        interner: &'a lasso::Rodeo,
+        trait_name: Spur,
+        self_ty_name: Spur,
+    ) -> Vec<&'a str> {
         if let Some(vtable) = self.find_vtable(trait_name, self_ty_name) {
-            vtable.entries.iter().map(|e| e.fn_name.as_str()).collect()
+            vtable
+                .entries
+                .iter()
+                .filter_map(|e| interner.try_resolve(&e.fn_name))
+                .collect()
         } else {
             Vec::new()
         }
@@ -442,6 +487,10 @@ impl TraitResolver {
 
     /// Stage 5.17: Check if a vtable has a method entry
     /// (by trait + type + method name).
+    ///
+    /// Stage 15.9: No longer calls `resolve_vtable_method` (which now
+    /// requires an interner). Uses `find_vtable_method_entry` directly —
+    /// the existence check doesn't need to resolve the fn_name string.
     ///
     /// Per API-naming-standard §3: `vtable_has_method` follows
     /// `<noun>_<verb>_<noun>` pattern for boolean queries, consistent
@@ -452,7 +501,7 @@ impl TraitResolver {
         self_ty_name: Spur,
         method_name: Spur,
     ) -> bool {
-        self.resolve_vtable_method(trait_name, self_ty_name, method_name)
+        self.find_vtable_method_entry(trait_name, self_ty_name, method_name)
             .is_some()
     }
 

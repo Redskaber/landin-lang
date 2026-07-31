@@ -45,8 +45,67 @@ use crate::mir::lower::lower_hir_body_to_mir_full_with_dyn_trait_plan;
 use crate::parser::Parser;
 use crate::resolve::resolve_crate;
 use crate::session::Span;
+use crate::traits::{CoherenceError, IncompleteImpl};
 use crate::typeck::{self, TypeError, TypeckResults};
 use lasso::Rodeo;
+
+/// Stage 15.9 (v0.2): Typed trait error.
+///
+/// Replaces the previous `Vec<String>` for `CompileErrors.trait_errors`.
+/// Carries the structured `CoherenceError`/`IncompleteImpl` data so downstream
+/// consumers (LSP, error reporters) can access the DefIds and Spur names
+/// without re-parsing strings.
+///
+/// Per §1.0 原则 3 "显式 > 隐式": the error kind is explicit (enum variant),
+/// not implicit (string prefix).
+/// Per §23 (API Naming): `TraitError` follows the `<Noun>Error` pattern
+/// consistent with `TypeError`, `BorrowError`, etc.
+#[derive(Debug, Clone)]
+pub enum TraitError {
+    /// Stage 5.18: Multiple `impl Trait for Type` blocks exist for the same
+    /// (trait, type) pair — coherence violation.
+    Coherence(CoherenceError),
+    /// Stage 5.19: An `impl Trait for Type` block is missing one or more
+    /// methods declared by the trait.
+    Incomplete(IncompleteImpl),
+}
+
+impl TraitError {
+    /// Format the error as a human-readable string, using the interner
+    /// to resolve Spur symbols to &str.
+    ///
+    /// Per §23 (API Naming): `format_with_interner` follows
+    /// `<verb>_<noun>_<noun>` pattern.
+    pub fn format_with_interner(&self, interner: &Rodeo) -> String {
+        match self {
+            TraitError::Coherence(ce) => {
+                let trait_str = interner.try_resolve(&ce.trait_name).unwrap_or("?");
+                let type_str = interner.try_resolve(&ce.self_ty_name).unwrap_or("?");
+                format!(
+                    "conflicting implementations of trait `{}` for type `{}` ({} impl blocks)",
+                    trait_str,
+                    type_str,
+                    ce.impl_def_ids.len()
+                )
+            }
+            TraitError::Incomplete(inc) => {
+                let trait_str = interner.try_resolve(&inc.trait_name).unwrap_or("?");
+                let type_str = interner.try_resolve(&inc.self_ty_name).unwrap_or("?");
+                let missing: Vec<&str> = inc
+                    .missing_methods
+                    .iter()
+                    .map(|s| interner.try_resolve(s).unwrap_or("?"))
+                    .collect();
+                format!(
+                    "impl `{}` for `{}` is missing method(s): {}",
+                    trait_str,
+                    type_str,
+                    missing.join(", ")
+                )
+            }
+        }
+    }
+}
 
 /// Errors collected from one or more passes.
 #[derive(Debug, Default)]
@@ -63,7 +122,11 @@ pub struct CompileErrors {
     pub borrowck: Vec<BorrowError>,
     /// Stage 5.22: Trait coherence/completeness errors (non-fatal —
     /// compilation continues but the user should fix these).
-    pub trait_errors: Vec<String>,
+    ///
+    /// Stage 15.9 (v0.2): Changed from `Vec<String>` to `Vec<TraitError>`
+    /// to preserve the structured CoherenceError/IncompleteImpl data.
+    /// Closes Phase 2 audit item: "Stop stringifying CoherenceError/IncompleteImpl".
+    pub trait_errors: Vec<TraitError>,
 }
 
 impl CompileErrors {
@@ -101,7 +164,11 @@ impl CompileErrors {
     ///
     /// Stage 2.4d (P1-4): This is the user-facing error display.
     /// Previously, errors were only available as raw Debug output.
-    pub fn format_for_user(&self, src: Option<&str>) -> String {
+    ///
+    /// Stage 15.9 (v0.2): Added `interner: Option<&Rodeo>` parameter to
+    /// resolve TraitError Spur symbols to &str. The interner is always
+    /// available from CompileResult.interner — callers pass `Some(&result.interner)`.
+    pub fn format_for_user(&self, src: Option<&str>, interner: Option<&Rodeo>) -> String {
         let mut out = String::new();
         let total = self.total_count();
         if total == 0 {
@@ -142,8 +209,17 @@ impl CompileErrors {
         // already included trait_errors.len(), so the count was correct
         // but the details were invisible. This fix closes that diagnostic
         // gap by printing each trait error with a [trait] prefix.
+        //
+        // Stage 15.9: trait_errors is now Vec<TraitError> (was Vec<String>).
+        // Use format_with_interner to resolve Spur symbols. If interner is
+        // None (test contexts), fall back to Debug formatting.
         for e in &self.trait_errors {
-            out.push_str(&format!("  [trait] {}\n", e));
+            let msg = if let Some(interner) = interner {
+                e.format_with_interner(interner)
+            } else {
+                format!("{:?}", e)
+            };
+            out.push_str(&format!("  [trait] {}\n", msg));
         }
         out
     }
@@ -695,7 +771,9 @@ pub fn compile(src: &str) -> CompileResult {
     // This ensures all core types (i32, bool, str, etc.) and stdlib traits
     // (Add, From, Iterator, etc.) are interned before compilation.
     crate::stdlib::register_stdlib(&mut interner);
-    trait_resolver.collect(&hir, &interner);
+    // Stage 15.9: trait_resolver.collect now takes &mut Rodeo to intern
+    // vtable symbol names (VtableEntry.fn_name is now Spur, was String).
+    trait_resolver.collect(&hir, &mut interner);
 
     // Stage 5.80: build DynTraitMIRPlan once for the whole crate.
     //
@@ -1027,30 +1105,14 @@ pub fn compile(src: &str) -> CompileResult {
     // per-body loop) so the DynTraitMIRPlan could be constructed from it.
     // Validation remains here — it doesn't affect lowering, only reports.
     let validation_report = trait_resolver.validate_impls();
-    for ce in &validation_report.coherence_errors {
-        let trait_str = interner.try_resolve(&ce.trait_name).unwrap_or("?");
-        let type_str = interner.try_resolve(&ce.self_ty_name).unwrap_or("?");
-        errors.trait_errors.push(format!(
-            "conflicting implementations of trait `{}` for type `{}` ({} impl blocks)",
-            trait_str,
-            type_str,
-            ce.impl_def_ids.len()
-        ));
+    // Stage 15.9: Push typed TraitError values (was String). The structured
+    // data (CoherenceError/IncompleteImpl) is preserved for downstream
+    // consumers. format_for_user resolves the Spur symbols to &str.
+    for ce in validation_report.coherence_errors {
+        errors.trait_errors.push(TraitError::Coherence(ce));
     }
-    for inc in &validation_report.incomplete_impls {
-        let trait_str = interner.try_resolve(&inc.trait_name).unwrap_or("?");
-        let type_str = interner.try_resolve(&inc.self_ty_name).unwrap_or("?");
-        let missing: Vec<&str> = inc
-            .missing_methods
-            .iter()
-            .map(|s| interner.try_resolve(s).unwrap_or("?"))
-            .collect();
-        errors.trait_errors.push(format!(
-            "impl `{}` for `{}` is missing method(s): {}",
-            trait_str,
-            type_str,
-            missing.join(", ")
-        ));
+    for inc in validation_report.incomplete_impls {
+        errors.trait_errors.push(TraitError::Incomplete(inc));
     }
 
     CompileResult {

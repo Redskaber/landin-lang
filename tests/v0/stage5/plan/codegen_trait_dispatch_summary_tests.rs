@@ -32,7 +32,7 @@ fn make_resolver_with_vtable(
         .iter()
         .map(|&sym| VtableEntry {
             method_name: interner.get_or_intern(sym),
-            fn_name: sym.to_string(),
+            fn_name: interner.get_or_intern(sym),
         })
         .collect();
 
@@ -104,11 +104,11 @@ fn test_build_trait_dispatch_emission_summary_multi() {
             entries: vec![
                 VtableEntry {
                     method_name: interner.get_or_intern("baz"),
-                    fn_name: "landin_T_baz".to_string(),
+                    fn_name: interner.get_or_intern("landin_T_baz"),
                 },
                 VtableEntry {
                     method_name: interner.get_or_intern("qux"),
-                    fn_name: "landin_T_qux".to_string(),
+                    fn_name: interner.get_or_intern("landin_T_qux"),
                 },
             ],
         },
@@ -177,7 +177,7 @@ fn test_build_trait_dispatch_emission_summary_trait_names_dedup() {
                 impl_def_id: landin_compiler::hir::DefId::new(0),
                 entries: vec![VtableEntry {
                     method_name: interner.get_or_intern("clone"),
-                    fn_name: format!("landin_{type_name}_clone"),
+                    fn_name: interner.get_or_intern(format!("landin_{type_name}_clone")),
                 }],
             },
         );
@@ -205,7 +205,7 @@ fn test_build_trait_dispatch_emission_summary_type_names_dedup() {
                 impl_def_id: landin_compiler::hir::DefId::new(0),
                 entries: vec![VtableEntry {
                     method_name: interner.get_or_intern("m"),
-                    fn_name: format!("landin_S_{trait_name}_m"),
+                    fn_name: interner.get_or_intern(format!("landin_S_{trait_name}_m")),
                 }],
             },
         );
@@ -237,7 +237,7 @@ fn test_build_trait_dispatch_emission_summary_total_method_slots() {
             impl_def_id: landin_compiler::hir::DefId::new(1),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("drop"),
-                fn_name: "landin_S_drop".to_string(),
+                fn_name: interner.get_or_intern("landin_S_drop"),
             }],
         },
     );
@@ -310,7 +310,7 @@ fn test_build_trait_dispatch_emission_summary_real_scenario() {
             .iter()
             .map(|&m| VtableEntry {
                 method_name: interner.get_or_intern(m),
-                fn_name: m.to_string(),
+                fn_name: interner.get_or_intern(m),
             })
             .collect();
         resolver.vtables.insert(

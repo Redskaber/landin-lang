@@ -35,7 +35,7 @@ fn make_resolver_with_vtable(
         .iter()
         .map(|&sym| VtableEntry {
             method_name: interner.get_or_intern(sym),
-            fn_name: sym.to_string(),
+            fn_name: interner.get_or_intern(sym),
         })
         .collect();
 
@@ -101,7 +101,7 @@ fn test_emit_trait_dispatch_globals_text_batch_multi() {
             impl_def_id: landin_compiler::hir::DefId::new(1),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("baz"),
-                fn_name: "landin_T_baz".to_string(),
+                fn_name: interner.get_or_intern("landin_T_baz"),
             }],
         },
     );
@@ -268,7 +268,7 @@ fn test_emit_trait_dispatch_globals_text_batch_real_scenario() {
             .iter()
             .map(|&m| VtableEntry {
                 method_name: interner.get_or_intern(m),
-                fn_name: m.to_string(),
+                fn_name: interner.get_or_intern(m),
             })
             .collect();
         resolver.vtables.insert(

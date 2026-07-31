@@ -34,7 +34,7 @@ fn make_resolver_with_vtable(
         .iter()
         .map(|&sym| VtableEntry {
             method_name: interner.get_or_intern(sym),
-            fn_name: sym.to_string(),
+            fn_name: interner.get_or_intern(sym),
         })
         .collect();
 
@@ -106,7 +106,7 @@ fn test_emit_vtables_from_resolver_multi() {
             impl_def_id: landin_compiler::hir::DefId::new(1),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("baz"),
-                fn_name: "landin_T_baz".to_string(),
+                fn_name: interner.get_or_intern("landin_T_baz"),
             }],
         },
     );
@@ -170,7 +170,7 @@ fn test_emit_vtables_from_resolver_match_emit_vtables_multi() {
             impl_def_id: landin_compiler::hir::DefId::new(1),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("drop"),
-                fn_name: "landin_S_drop".to_string(),
+                fn_name: interner.get_or_intern("landin_S_drop"),
             }],
         },
     );
@@ -237,7 +237,7 @@ fn test_emit_vtables_from_resolver_unresolved_interner() {
             impl_def_id: landin_compiler::hir::DefId::new(0),
             entries: vec![VtableEntry {
                 method_name: trait_spur,
-                fn_name: "landin_S_bar".to_string(),
+                fn_name: interner_with_spur.get_or_intern("landin_S_bar"),
             }],
         },
     );
@@ -374,7 +374,7 @@ fn test_emit_vtables_from_resolver_real_scenario() {
             .iter()
             .map(|&m| VtableEntry {
                 method_name: interner.get_or_intern(m),
-                fn_name: m.to_string(),
+                fn_name: interner.get_or_intern(m),
             })
             .collect();
         resolver.vtables.insert(

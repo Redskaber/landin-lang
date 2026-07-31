@@ -82,7 +82,7 @@ fn test_plan_text_from_resolver() {
             impl_def_id: landin_compiler::hir::DefId::new(0),
             entries: vec![VtableEntry {
                 method_name: interner.get_or_intern("drop"),
-                fn_name: "landin_S_drop".to_string(),
+                fn_name: interner.get_or_intern("landin_S_drop"),
             }],
         },
     );
@@ -141,7 +141,7 @@ fn test_plan_text_real_scenario() {
             .iter()
             .map(|&m| VtableEntry {
                 method_name: interner.get_or_intern(m),
-                fn_name: m.to_string(),
+                fn_name: interner.get_or_intern(m),
             })
             .collect();
         resolver.vtables.insert(

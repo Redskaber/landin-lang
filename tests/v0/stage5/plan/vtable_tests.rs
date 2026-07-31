@@ -83,15 +83,24 @@ fn test_vtable_query() {
         "first entry method_name should be 'bar'"
     );
     assert_eq!(
-        vtable.entries[0].fn_name, "landin_S_bar",
-        "first entry fn_name should be 'landin_S_bar'"
-    );
-    assert_eq!(
         vtable.entries[1].method_name, baz_spur,
         "second entry method_name should be 'baz'"
     );
+    // Stage 15.9: fn_name is now Spur, resolve via interner for comparison.
+    let fn_name_0 = result
+        .interner
+        .try_resolve(&vtable.entries[0].fn_name)
+        .unwrap_or("?");
+    let fn_name_1 = result
+        .interner
+        .try_resolve(&vtable.entries[1].fn_name)
+        .unwrap_or("?");
     assert_eq!(
-        vtable.entries[1].fn_name, "landin_S_baz",
+        fn_name_0, "landin_S_bar",
+        "first entry fn_name should be 'landin_S_bar'"
+    );
+    assert_eq!(
+        fn_name_1, "landin_S_baz",
         "second entry fn_name should be 'landin_S_baz'"
     );
 }

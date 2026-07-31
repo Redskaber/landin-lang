@@ -799,7 +799,9 @@ fn integration_typeck_results_bool_and_float() {
 fn integration_error_display_lex_error() {
     let src = "fn f() { let s = \"unterminated; }";
     let result = compile(src);
-    let formatted = result.errors.format_for_user(Some(src));
+    let formatted = result
+        .errors
+        .format_for_user(Some(src), Some(&result.interner));
     assert!(
         formatted.contains("[lex]"),
         "expected [lex] in formatted output, got: {}",
@@ -829,7 +831,9 @@ fn integration_error_display_parse_error() {
     let src = "fn f() { let x = 42;";
     let result = compile(src);
     assert!(!result.errors.parse.is_empty(), "expected parse errors");
-    let formatted = result.errors.format_for_user(Some(src));
+    let formatted = result
+        .errors
+        .format_for_user(Some(src), Some(&result.interner));
     assert!(
         formatted.contains("[parse]"),
         "expected [parse] in formatted output, got: {}",
@@ -841,7 +845,9 @@ fn integration_error_display_parse_error() {
 fn integration_error_display_no_errors() {
     let src = "fn f() {}";
     let result = compile(src);
-    let formatted = result.errors.format_for_user(Some(src));
+    let formatted = result
+        .errors
+        .format_for_user(Some(src), Some(&result.interner));
     assert!(
         formatted.is_empty(),
         "expected empty formatted output for clean compile, got: {}",
@@ -854,7 +860,7 @@ fn integration_error_display_no_src() {
     // When src is None, only messages are printed (no snippets).
     let src = "fn f() { let x = 42;";
     let result = compile(src);
-    let formatted = result.errors.format_for_user(None);
+    let formatted = result.errors.format_for_user(None, Some(&result.interner));
     assert!(formatted.contains("[parse]"));
     // Should NOT contain `|` (snippet gutter) since src is None.
     assert!(!formatted.contains(" | "));
@@ -864,7 +870,9 @@ fn integration_error_display_no_src() {
 fn integration_error_display_includes_total_count() {
     let src = "fn f() { let x = 42;";
     let result = compile(src);
-    let formatted = result.errors.format_for_user(Some(src));
+    let formatted = result
+        .errors
+        .format_for_user(Some(src), Some(&result.interner));
     assert!(
         formatted.contains("error:"),
         "expected 'error:' header in formatted output, got: {}",
@@ -913,7 +921,9 @@ fn integration_fn_sig_mismatch_detected() {
         !result.errors.typeck.is_empty(),
         "expected typeck error for return type mismatch"
     );
-    let formatted = result.errors.format_for_user(Some(src));
+    let formatted = result
+        .errors
+        .format_for_user(Some(src), Some(&result.interner));
     assert!(formatted.contains("mismatched types"));
 }
 

@@ -3,6 +3,9 @@
 //! Tests that the driver correctly reports trait coherence and completeness
 //! errors via `CompileErrors.trait_errors`.
 //!
+//! Stage 15.9: trait_errors is now `Vec<TraitError>` (was `Vec<String>`).
+//! Tests use `format_with_interner` to get the human-readable message.
+//!
 //! Per §16: tests use the `compile()` public API.
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
@@ -16,9 +19,12 @@ fn test_driver_reports_coherence_error() {
         !result.errors.trait_errors.is_empty(),
         "should have trait_errors for conflicting impls"
     );
+    // Stage 15.9: trait_errors[0] is now TraitError, format via interner.
+    let msg = result.errors.trait_errors[0].format_with_interner(&result.interner);
     assert!(
-        result.errors.trait_errors[0].contains("conflicting implementations"),
-        "error message should mention conflicting implementations"
+        msg.contains("conflicting implementations"),
+        "error message should mention conflicting implementations, got: {}",
+        msg
     );
 }
 
@@ -32,13 +38,16 @@ fn test_driver_reports_completeness_error() {
         !result.errors.trait_errors.is_empty(),
         "should have trait_errors for incomplete impl"
     );
+    let msg = result.errors.trait_errors[0].format_with_interner(&result.interner);
     assert!(
-        result.errors.trait_errors[0].contains("missing method"),
-        "error message should mention missing method"
+        msg.contains("missing method"),
+        "error message should mention missing method, got: {}",
+        msg
     );
     assert!(
-        result.errors.trait_errors[0].contains("baz"),
-        "error message should mention the missing method name"
+        msg.contains("baz"),
+        "error message should mention the missing method name, got: {}",
+        msg
     );
 }
 

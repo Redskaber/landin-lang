@@ -261,5 +261,7 @@ mod stage13_18_runtime_tests;
 mod stage15_crate_adt_layouts_tests;
 #[path = "v0/stage15/plan/method_return_type_cache_tests.rs"]
 mod stage15_method_return_type_cache_tests;
+#[path = "v0/stage15/plan/vtable_interning_and_trait_error_tests.rs"]
+mod stage15_vtable_interning_and_trait_error_tests;
 #[path = "v0/stage15/plan/writeback_consolidation_tests.rs"]
 mod stage15_writeback_consolidation_tests;

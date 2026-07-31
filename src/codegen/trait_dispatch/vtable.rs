@@ -237,7 +237,10 @@ pub fn emit_vtable_globals_batch(specs: &[StdlibVtableGlobalSpec]) -> Vec<String
 /// - `global_name = format!(".vtable.{trait_str}.{type_str}")`
 ///   where `trait_str = interner.try_resolve(trait_name).unwrap_or("Trait")`
 ///   and `type_str = interner.try_resolve(self_ty_name).unwrap_or("Type")`
-/// - `method_symbols = vtable.entries.iter().map(|e| e.fn_name.clone()).collect()`
+/// - `method_symbols = vtable.entries.iter().map(|e| interner.try_resolve(&e.fn_name).unwrap_or("fn")).map(String::from).collect()`
+///
+/// Stage 15.9: `VtableEntry.fn_name` is now an interned `Spur` (was `String`),
+/// so we resolve it via the interner at the point of consumption.
 ///
 /// This is the **pure-function extraction** of the spec-construction logic
 /// currently inlined in `emit_vtables()` (Stage 5.6). Stage 5.47 will
@@ -259,8 +262,17 @@ pub fn build_vtable_global_specs(
         let global_name = format!(".vtable.{trait_str}.{type_str}");
 
         // Collect the resolved method symbol names from VtableEntry.
-        let method_symbols: Vec<String> =
-            vtable.entries.iter().map(|e| e.fn_name.clone()).collect();
+        // Stage 15.9: VtableEntry.fn_name is now Spur, resolve via interner.
+        let method_symbols: Vec<String> = vtable
+            .entries
+            .iter()
+            .map(|e| {
+                interner
+                    .try_resolve(&e.fn_name)
+                    .map(String::from)
+                    .unwrap_or_else(|| "fn".to_string())
+            })
+            .collect();
 
         specs.push(StdlibVtableGlobalSpec {
             global_name,

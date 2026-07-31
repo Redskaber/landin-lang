@@ -89,7 +89,7 @@ fn stage7_9_td018_user_trait_dyn_active() {
             impl_def_id: DefId(101),
             entries: vec![VtableEntry {
                 method_name: mn,
-                fn_name: "landin_MyType_my_method".to_string(),
+                fn_name: interner.get_or_intern("landin_MyType_my_method"),
             }],
         },
     );
