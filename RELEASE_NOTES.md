@@ -1,9 +1,62 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.137.0
+**Current version**: v0.138.0
 **Date**: 2026-07-31
-**Test count**: 1990 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 1998 rust tests (with llvm-backend feature) + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.138.0 — Stage 15.12 (Error System Cleanup + Friendly Display)
+
+### Overview
+
+Stage 15.12 improves the error system in two ways:
+1. **Architectural cleanup**: Removed `MirBody.lower_type_errors` field.
+   Type errors are now returned from the lowering function as a separate
+   `Vec<TypeError>` in the return tuple. This separates IR data from error
+   collection (was an architectural smell — IR carrying error collection).
+2. **Friendly display**: Improved `format_for_user` to use friendlier
+   summary ("error: N errors found" vs "error: N error(s)") and display
+   `ResolveError` via `.message` + snippet (was Debug `{:?}`).
+
+### What Changed
+
+**Architectural cleanup** (`src/mir/body.rs`, `src/mir/lower/mod.rs`):
+- Removed `MirBody.lower_type_errors` field
+- 4 lowering functions return 3-tuple `(MirBody, UnificationTable, Vec<TypeError>)`
+- 8 callsites in `expr_operand.rs`: `cx.mir.lower_type_errors.push` → `cx.type_errors.push`
+- Driver receives errors from return tuple (was `mir.lower_type_errors`)
+
+**Friendly display** (`src/driver.rs`):
+- Summary: "error: N error(s)" → "error: N errors found" (or "1 error found")
+- ResolveError: Debug `{:?}` → `.message` + snippet
+
+**New tests**:
+- 8 integration tests in `tests/v0/stage15/plan/error_system_cleanup_tests.rs`
+
+**Documentation**:
+- `docs/develop/v0/stage-15/stage-15.12-error-system-cleanup.md` — full §29 review
+- `docs/tests/v0/stage15/stage-15.12-test-plan.md` — test plan
+- `docs/worklog.md` — Stage 15.12 entry
+- `README.md` — updated v0.2 progress
+
+### Why This Is The Right Stage 15.12
+
+Per user requirement "留意错误系统、显示友好" (mind the error system, display friendly):
+- The `lower_type_errors` field on `MirBody` mixed IR data with error collection
+  — a violation of separation of concerns. Per §1.0 原则 3 "显式 > 隐式":
+  errors should be explicit in the function signature, not implicit on the IR struct.
+- The "error(s)" format with parenthetical was awkward. Per "显示友好":
+  use "errors found" with singular/plural distinction.
+- `ResolveError` displayed via Debug `{:?}` showed internal struct fields
+  instead of the user-facing message. Fixed to use `.message` + snippet.
+
+### Verification
+
+- All 145 lib tests pass (zero regression)
+- All 1998 integration tests pass (1990 + 8 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.137.0 — Stage 15.11 (Const.ty Box<Ty> → Ty)

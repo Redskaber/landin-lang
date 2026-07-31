@@ -878,9 +878,11 @@ fn integration_error_display_includes_total_count() {
         "expected 'error:' header in formatted output, got: {}",
         formatted
     );
+    // Stage 15.12: format changed from "error(s)" to "errors found" /
+    // "error found" (friendlier display).
     assert!(
-        formatted.contains("error(s)"),
-        "expected 'error(s)' count in formatted output, got: {}",
+        formatted.contains("error found") || formatted.contains("errors found"),
+        "expected 'error(s) found' count in formatted output, got: {}",
         formatted
     );
 }

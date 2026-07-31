@@ -643,6 +643,9 @@ pub fn lower_hir_body_to_mir_with_return_ty(
     hir: &HirCrate,
     return_ty: Option<HirTy>,
 ) -> MirBody {
+    // Stage 15.12: lower_full now returns 3-tuple (mir, unify, type_errors).
+    // The convenience wrappers discard unify + type_errors for callers that
+    // only need the MirBody (e.g., tests).
     lower_hir_body_to_mir_full(body, interner, hir, return_ty).0
 }
 
@@ -658,12 +661,17 @@ pub fn lower_hir_body_to_mir_with_return_ty(
 /// fresh (empty) table and lose track of the IntVars allocated during
 /// lowering — causing literals to stay as unresolved Infer vars even
 /// after typeck.
+///
+/// Stage 15.12: Now returns 3-tuple `(MirBody, UnificationTable, Vec<TypeError>)`.
+/// The type_errors were previously stored on `MirBody.lower_type_errors` —
+/// this was an architectural smell (IR carrying error collection). Now
+/// errors are returned from the lowering function, separating concerns.
 pub fn lower_hir_body_to_mir_full(
     body: &Body,
     interner: &Rodeo,
     hir: &HirCrate,
     return_ty: Option<HirTy>,
-) -> (MirBody, UnificationTable) {
+) -> (MirBody, UnificationTable, Vec<crate::typeck::TypeError>) {
     // Stage 5.80: delegate to the new entry point with plan = None.
     // Backward-compatible: all existing callers see identical behavior.
     lower_hir_body_to_mir_full_with_dyn_trait_plan(body, interner, hir, return_ty, None)
@@ -709,7 +717,7 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     hir: &HirCrate,
     return_ty: Option<HirTy>,
     plan: Option<&DynTraitMIRPlan>,
-) -> (MirBody, UnificationTable) {
+) -> (MirBody, UnificationTable, Vec<crate::typeck::TypeError>) {
     let mut cx = MirLowerCtxt::new(interner, body.span);
     cx.hir = Some(hir);
 
@@ -843,9 +851,12 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     //   - Field types sunk into `AggregateKind::Adt`
     adt_layout::populate_adt_layouts(&mut cx.mir, hir);
 
-    // Extract the unify table before consuming cx.
+    // Extract the unify table + type_errors before consuming cx.
+    // Stage 15.12: type_errors now returned from the lowering function
+    // (was stored on MirBody.lower_type_errors — mixed IR + error collection).
     let unify = std::mem::take(&mut cx.unify);
-    (cx.mir, unify)
+    let type_errors = std::mem::take(&mut cx.type_errors);
+    (cx.mir, unify, type_errors)
 }
 
 // ================================================================
@@ -873,12 +884,14 @@ pub fn lower_body(body: &Body, interner: &Rodeo, hir: &HirCrate) -> MirBody {
 /// Returns both the `MirBody` and the `UnificationTable` (the latter is
 /// passed to `TypeChecker::with_unify` so typeck can resolve inference
 /// variables created during lowering).
+///
+/// Stage 15.12: Now also returns `Vec<TypeError>` (was stored on MirBody).
 pub fn lower_body_full(
     body: &Body,
     interner: &Rodeo,
     hir: &HirCrate,
     return_ty: Option<HirTy>,
-) -> (MirBody, UnificationTable) {
+) -> (MirBody, UnificationTable, Vec<crate::typeck::TypeError>) {
     lower_hir_body_to_mir_full(body, interner, hir, return_ty)
 }
 

@@ -238,7 +238,7 @@ fn test_method_call_without_plan_uses_legacy_path() {
     let mut hir = lower_crate(&krate, &interner);
     let _ = resolve_crate(&mut hir, &interner);
 
-    let (mir, _unify) = lower_hir_body_to_mir_full(&hir.bodies[0].1, &interner, &hir, None);
+    let (mir, _unify, _) = lower_hir_body_to_mir_full(&hir.bodies[0].1, &interner, &hir, None);
 
     // No dyn Trait plan was attached → side-table should be empty.
     assert!(

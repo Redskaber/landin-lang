@@ -18254,3 +18254,72 @@ Stage Summary:
 - Eliminates per-Const heap allocation (100 allocs for typical crate)
 - Sig.output kept as Box<Ty> (structurally necessary — recursive type)
 - v0.137.0: minor bump (memory optimization)
+
+---
+Task ID: stage15.12-error-system-cleanup
+Agent: Super Z (main)
+Task: Stage 15.12 — Error system cleanup (remove MirBody.lower_type_errors) + friendly display. v0.137.0 → v0.138.0.
+
+Work Log:
+- Baseline: v0.137.0 / 1990 rust tests + 5216 conformance (post-Stage 15.11)
+
+### 1. Architectural Cleanup: Remove MirBody.lower_type_errors (src/mir/body.rs)
+
+Removed `lower_type_errors: Vec<crate::typeck::TypeError>` field from MirBody.
+This was an architectural smell — IR carrying error collection. The
+MirLowerCtxt already had a `type_errors` field that was unused; now it's
+the canonical location.
+
+Per §1.0 原则 3 "显式 > 隐式": errors are now explicit in the function
+signature, not implicit on the IR struct.
+
+### 2. Lowering Functions Return 3-tuple (src/mir/lower/mod.rs)
+
+Changed 4 lowering entry points to return `(MirBody, UnificationTable, Vec<TypeError>)`:
+- lower_hir_body_to_mir_full_with_dyn_trait_plan
+- lower_hir_body_to_mir_full
+- lower_body_full
+- (lower_hir_body_to_mir and lower_hir_body_to_mir_with_return_ty are
+  convenience wrappers that discard unify + errors)
+
+### 3. Updated 8 Callsites (src/mir/lower/expr_operand.rs)
+
+All `cx.mir.lower_type_errors.push(...)` → `cx.type_errors.push(...)`.
+
+### 4. Updated Driver (src/driver.rs)
+
+Changed from `errors.typeck.append(&mut mir.lower_type_errors)` to
+`errors.typeck.extend(lower_type_errors)` (from the return tuple).
+
+### 5. Friendly Error Display (src/driver.rs format_for_user)
+
+- Summary line: "error: N error(s)" → "error: N errors found" (or "1 error found")
+- ResolveError: Debug {:?} → .message + snippet (matches typeck/borrowck)
+
+### 6. Test Updates
+
+- 3 test files updated for 3-tuple destructuring (typeck_tests, driver_dyn_trait_plan, mir_lower_dyn_trait_method_call)
+- 1 test file updated for new "errors found" format (integration_tests)
+- 8 new integration tests in tests/v0/stage15/plan/error_system_cleanup_tests.rs
+
+### 7. Documentation
+
+- Created docs/develop/v0/stage-15/stage-15.12-error-system-cleanup.md
+- Created docs/tests/v0/stage15/stage-15.12-test-plan.md
+- Updated docs/worklog.md (this entry)
+- Updated RELEASE_NOTES.md (v0.138.0 entry)
+- Updated README.md (Stage 15.12 progress)
+
+### Verification
+- All 145 lib tests pass (zero regression)
+- All 1998 integration tests pass (1990 + 8 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.137.0 → v0.138.0
+
+Stage Summary:
+- Stage 15.12 PASSED — error system cleanup + friendly display
+- MirBody.lower_type_errors removed (IR no longer carries error collection)
+- Lowering functions return 3-tuple (MirBody, UnificationTable, Vec<TypeError>)
+- Error display: "errors found" summary + ResolveError .message display
+- v0.138.0: minor bump (architectural cleanup + UX improvement)

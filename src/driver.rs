@@ -174,7 +174,14 @@ impl CompileErrors {
         if total == 0 {
             return String::new();
         }
-        out.push_str(&format!("error: {} error(s)\n", total));
+        // Stage 15.12: friendlier summary line (was "error: N error(s)").
+        // Per "显示友好": use "error[E001]: ..." style with count.
+        // Example: "error: 3 errors found" (plural) or "error: 1 error found" (singular).
+        if total == 1 {
+            out.push_str("error: 1 error found\n");
+        } else {
+            out.push_str(&format!("error: {} errors found\n", total));
+        }
 
         for e in &self.lex {
             out.push_str(&format!("  [lex] {}\n", e.message));
@@ -189,7 +196,12 @@ impl CompileErrors {
             }
         }
         for e in &self.resolve {
-            out.push_str(&format!("  [resolve] {:?}\n", e));
+            // Stage 15.12: use Display message + snippet (was Debug {:?}).
+            // Per "显示友好": users see the message, not the Debug format.
+            out.push_str(&format!("  [resolve] {}\n", e.message));
+            if let Some(s) = src {
+                out.push_str(&format_snippet(s, &e.span));
+            }
         }
         for e in &self.typeck {
             out.push_str(&format!("  [typeck] {}\n", e.message));
@@ -857,18 +869,21 @@ pub fn compile(src: &str) -> CompileResult {
 
         let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
 
-        let (mut mir, lower_unify) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
-            body,
-            &interner,
-            &hir,
-            return_ty,
-            Some(&dyn_trait_plan),
-        );
+        let (mut mir, lower_unify, lower_type_errors) =
+            lower_hir_body_to_mir_full_with_dyn_trait_plan(
+                body,
+                &interner,
+                &hir,
+                return_ty,
+                Some(&dyn_trait_plan),
+            );
 
-        // Stage 14.30: Collect type errors from MIR lowering (e.g., "no method found").
+        // Stage 15.12: Collect type errors from MIR lowering (e.g., "no method found").
         // Per "报错 > 静默" principle — these errors were previously silently
         // swallowed (Error placeholder → codegen produced 0 or invalid IR).
-        errors.typeck.append(&mut mir.lower_type_errors);
+        // Stage 15.12: errors now returned from the lowering function (was
+        // stored on MirBody.lower_type_errors — mixed IR + error collection).
+        errors.typeck.extend(lower_type_errors);
 
         // Stage 3.60: typeck uses pre-computed tables instead of HIR.
         let mut tc = typeck::TypeChecker::with_unify(lower_unify);

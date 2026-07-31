@@ -90,10 +90,13 @@ pub struct MirBody {
     /// need to query HIR or TraitResolver. Empty when no dyn Trait calls
     /// exist in this body (the common case).
     pub dyn_trait_calls: Vec<DynTraitMethodCall>,
-    /// Stage 14.30: Type errors collected during MIR lowering. These are
-    /// drained by the driver and merged into CompileErrors. Used for
-    /// "报错 > 静默" — emit errors instead of silent placeholders.
-    pub lower_type_errors: Vec<crate::typeck::TypeError>,
+    // Stage 15.12 (v0.2): `lower_type_errors` field REMOVED.
+    // Type errors collected during MIR lowering are now returned from
+    // `lower_hir_body_to_mir_full*` as a separate `Vec<TypeError>` in
+    // the return tuple. This separates IR data from error collection
+    // (was an architectural smell — IR carrying error collection).
+    // Per §1.0 原则 3 "显式 > 隐式": errors are now explicit in the
+    // function signature, not implicit on the IR struct.
 }
 
 impl MirBody {
@@ -108,7 +111,6 @@ impl MirBody {
             #[allow(clippy::arc_with_non_send_sync)]
             adt_layouts: Arc::new(AdtLayouts::new()),
             dyn_trait_calls: Vec::new(),
-            lower_type_errors: Vec::new(),
         }
     }
 

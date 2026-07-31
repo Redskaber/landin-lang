@@ -557,7 +557,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                                 //
                                                 // Per §1.0 原则 5 "报错 > 静默": don't
                                                 // silently treat unknown items as FnDef.
-                                                cx.mir.lower_type_errors.push(
+                                                cx.type_errors.push(
                                                     crate::typeck::TypeError::new(
                                                         format!(
                                                             "cannot find value `{}` in this scope (not a const/static/fn)",
@@ -1206,7 +1206,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 } => (start, end, *end_kind),
                 _ => {
                     // Non-Range iter — emit a typeck error.
-                    cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                    cx.type_errors.push(crate::typeck::TypeError::new(
                         format!(
                             "for-loop only supports Range iterators (start..end or start..=end); found {:?}",
                             iter.kind
@@ -1225,7 +1225,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let start_expr = match start_expr {
                 Some(s) => s,
                 None => {
-                    cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                    cx.type_errors.push(crate::typeck::TypeError::new(
                         "for-loop over open range (..start / start..) is not supported in v0.1"
                             .to_string(),
                         expr.span,
@@ -1240,7 +1240,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let end_expr = match end_expr {
                 Some(e) => e,
                 None => {
-                    cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                    cx.type_errors.push(crate::typeck::TypeError::new(
                         "for-loop over open range (..start / start..) is not supported in v0.1"
                             .to_string(),
                         expr.span,
@@ -1662,7 +1662,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 _ => {
                     // Non-literal count — emit error, fall back to 1 element
                     // for recovery (so downstream codegen doesn't crash).
-                    cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                    cx.type_errors.push(crate::typeck::TypeError::new(
                         format!(
                             "array repeat count must be a literal integer in v0.1; const-eval for non-literal counts is v0.2+ work (found {:?})",
                             count.kind
@@ -1982,7 +1982,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         // Per §1.0 原则 5 "报错 > 静默": unknown macros must be
                         // reported, not silently mis-compiled as Error→0.
                         let macro_name_str = cx.interner.resolve(&name_spur).to_string();
-                        cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                        cx.type_errors.push(crate::typeck::TypeError::new(
                             format!("cannot find macro `{}` in this scope", macro_name_str),
                             expr.span,
                         ));
@@ -1998,7 +1998,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 }
             } else {
                 // No macro name → emit error.
-                cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                cx.type_errors.push(crate::typeck::TypeError::new(
                     "macro call has no name".to_string(),
                     expr.span,
                 ));
@@ -2328,7 +2328,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         | crate::mir::ty::TyKind::Infer(_)
                 );
                 if !is_known_unsupported {
-                    cx.mir.lower_type_errors.push(crate::typeck::TypeError::new(
+                    cx.type_errors.push(crate::typeck::TypeError::new(
                         format!(
                             "no method `{}` found for type `{:?}`",
                             method_name_str, recv_ty.kind
