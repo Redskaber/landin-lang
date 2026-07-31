@@ -351,6 +351,36 @@ impl CompileErrors {
         }
         buf.format_with_source(source_name, source_map, src)
     }
+
+    /// Stage 15.18: Format errors via the diagnostics module with ANSI colors.
+    ///
+    /// Same as `format_via_diagnostics` but uses `format_with_source_colored`
+    /// for colored output. The `color` parameter controls whether ANSI codes
+    /// are emitted:
+    /// - `ColorConfig::Always` — always emit colors
+    /// - `ColorConfig::Never` — never emit colors (plain text)
+    /// - `ColorConfig::Auto` — caller resolves to Always/Never based on TTY
+    ///
+    /// Per "显示友好": colored output makes it easier to distinguish
+    /// errors from warnings at a glance.
+    /// Per §23 (API Naming): `format_via_diagnostics_colored` follows
+    /// `<verb>_<prep>_<noun>_<adj>` pattern.
+    pub fn format_via_diagnostics_colored(
+        &self,
+        src: &str,
+        source_name: &str,
+        source_map: &crate::session::SourceMap,
+        interner: Option<&Rodeo>,
+        color: crate::diagnostics::ColorConfig,
+    ) -> String {
+        use crate::diagnostics::DiagnosticBuffer;
+        let diags = self.to_diagnostics(interner);
+        let mut buf = DiagnosticBuffer::new();
+        for diag in diags {
+            buf.emit(diag);
+        }
+        buf.format_with_source_colored(source_name, source_map, src, color)
+    }
 }
 
 /// Format a source snippet around a span, with a `^` underline.

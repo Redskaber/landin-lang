@@ -92,26 +92,34 @@ echo "  → LLVM_LINK_SHARED = 1"
 
 echo "Updating $CARGO_TOML ..."
 
-# Use Python for robust TOML editing (sed is fragile with version strings)
-python3 << PYEOF
-import re
+# Stage 15.20: Use Python for robust TOML editing.
+# The version string in Cargo.toml can be:
+#   version = "191"        (bare)
+#   version = "191.1.0"    (with patch)
+#   version = "=191.1.0"   (exact pin with =)
+# The script must handle ALL of these and produce the correct replacement.
+# For llvm-sys, we use a bare version (e.g. "211") because the crate uses
+# major.minor format where major is the LLVM version code (191, 201, 211).
+python3 -c "
+import re, sys
 
-with open("$CARGO_TOML", "r") as f:
+with open(sys.argv[1], 'r') as f:
     content = f.read()
 
-# Replace llvm-sys version = "XXX" with the correct version
-new_ver = "$LLVM_SYS_VER"
-content = re.sub(
-    r'(\[dependencies\.llvm-sys\]\s*\nversion\s*=\s*)"[0-9]+"',
-    r'\1"' + new_ver + '"',
-    content
-)
+new_ver = sys.argv[2]
+# Match: version = \"...\" or version = \"=...\" after [dependencies.llvm-sys]
+# Handles optional quote, optional =, digits+dots, optional quote
+pattern = r'(\\[dependencies\\.llvm-sys\\]\\s*\\nversion\\s*=\\s*)[\\\"\\']?[=]?[0-9.]+[\\\"\\']?'
+replacement = r'\\1\"' + new_ver + '\"'
+content_new = re.sub(pattern, replacement, content)
 
-with open("$CARGO_TOML", "w") as f:
-    f.write(content)
-
-print(f"  → llvm-sys version = \"{new_ver}\"")
-PYEOF
+if content_new == content:
+    print('  ⚠ WARNING: Cargo.toml not changed (regex did not match)')
+else:
+    with open(sys.argv[1], 'w') as f:
+        f.write(content_new)
+    print(f'  → llvm-sys version = \"{new_ver}\"')
+" "$CARGO_TOML" "$LLVM_SYS_VER"
 
 echo ""
 echo "✅ LLVM version switched to $LLVM_MAJOR (llvm-sys $LLVM_SYS_VER)"

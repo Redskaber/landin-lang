@@ -1,9 +1,159 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.143.0
+**Current version**: v0.148.0
 **Date**: 2026-07-31
 **Test count**: 170 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.148.0 — Stage 15.22 (Snippet Gutter Alignment Fix)
+
+### Overview
+
+Stage 15.22 fixes the snippet gutter alignment. The `^^^` underline was 2
+positions too far to the right, misaligning with the source token.
+
+### What Changed
+
+**Fixed `format_snippet` + `format_snippet_colored`** (`src/diagnostics/mod.rs`):
+- Changed gutter format from `"  {pad} | "` to `"{pad} | "`
+- Removed 2 extra leading spaces that caused misalignment
+
+### Before → After
+
+```
+Before:                    After:
+    |                      |
+3 |   x                    3 |   x
+    |   ^                      |   ^
+```
+
+`^` now aligns perfectly with `x` (both at position 6).
+
+### Verification
+
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Alignment verified with byte-level analysis
+
+---
+## v0.147.0 — Stage 15.21 (Snippet ^^^ Span Clamping Fix)
+
+### Overview
+
+Stage 15.21 fixes the snippet `^^^` underline width. The underline was wider
+than the actual source token (e.g., `^^^^^` for a 1-character identifier `x`).
+Fixed by clamping the span to the line width.
+
+### What Changed
+
+**Fixed `format_snippet` + `format_snippet_colored`** (`src/diagnostics/mod.rs`):
+- Added `col_hi_clamped = col_hi.min(line_len)` and `col_lo_clamped = col_lo.min(line_len)`
+- `^^^` now never extends past the end of the source line
+
+### Before → After
+
+```
+Before:                    After:
+4 |   x                    4 |   x
+    |   ^^^^^                  |   ^
+```
+
+### Verification
+
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+---
+## v0.146.0 — Stage 15.20 (LLVM Version Switch Script Fix)
+
+### Overview
+
+Stage 15.20 properly fixes the `scripts/switch-llvm-version.sh` regex bug.
+The script was NOT updating `Cargo.toml` when the version string contained
+dots or `=` (e.g. `"=191.1.0"`). The fix uses `python3 -c` with `sys.argv`
+instead of heredoc, avoiding shell variable interpolation issues.
+
+### What Changed
+
+**Fixed `scripts/switch-llvm-version.sh`**:
+- Rewrote Python code to use `python3 -c "..."` with `sys.argv` (not heredoc)
+- Regex now correctly matches: `"191"`, `"191.1.0"`, `"=191.1.0"`
+- Added WARNING message when regex doesn't match
+
+**Added `docs/llvm/version-switching-guide.md`**:
+- Comprehensive LLVM version switching guide
+- Quick start, version mapping, troubleshooting
+
+### Verification
+
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Script tested: `=191.1.0` → `191` (LLVM 19) or `211` (LLVM 21)
+
+---
+## v0.145.0 — Stage 15.19 (LLVM Script Fix + --color CLI Flag)
+
+### Overview
+
+Stage 15.19 fixes two issues:
+1. **`switch-llvm-version.sh` regex bug** — the script wasn't actually updating
+   `Cargo.toml` because the regex `"[0-9]+"` didn't match version strings with
+   dots like `"191.1.0"`. Fixed to match any numeric version string.
+2. **`--color` CLI flag** — added `--color=auto|always|never` flag so users can
+   force color output even when piped/redirected.
+
+### What Changed
+
+**Fixed `scripts/switch-llvm-version.sh`**:
+- Regex: `r'"[0-9]+"'` → `r'"?[=]?[0-9.]+\"?'` (handles dots + exact pins)
+
+**Added `--color` CLI flag** (`src/bin/main.rs`):
+- `--color=always` — force ANSI color codes
+- `--color=never` — force plain text
+- `--color=auto` — TTY auto-detection (default)
+
+### Verification
+
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Color output verified with `od` (raw bytes: `\x1b[31m error \x1b[0m`)
+
+---
+## v0.144.0 — Stage 15.18 (CLI Color Output with TTY Auto-Detection)
+
+### Overview
+
+Stage 15.18 wires the colored diagnostics output (from Stage 15.17) into the
+CLI and mini-cargo with TTY auto-detection. Users get colored errors by
+default when running in a terminal; piped/redirected output stays plain text.
+
+### What Changed
+
+**Added `format_via_diagnostics_colored`** (`src/driver.rs`):
+- Delegates to `DiagnosticBuffer::format_with_source_colored`
+
+**Updated CLI** (`src/bin/main.rs`):
+- Uses `format_via_diagnostics_colored` with `std::io::IsTerminal`
+- Terminal → colored, piped → plain text
+
+**Updated mini-cargo** (`src/cargo.rs`):
+- Same migration
+
+### Verification
+
+- All 170 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.143.0 — Stage 15.17 (Color Output for Diagnostics)

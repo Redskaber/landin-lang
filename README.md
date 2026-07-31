@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.143.0 (v0.2 Phase 1 in progress — color output for diagnostics)  
+**Version**: v0.148.0 (v0.2 Phase 1 in progress — snippet gutter alignment fix)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,16 +21,14 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 1 IN PROGRESS — Stage 15.17 Complete**
+> **v0.2 Phase 1 IN PROGRESS — Stage 15.22 Complete**
 >
-> Stage 15.1-15.17 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
-> - **Stage 15.1-15.4** — Ty interning design + infrastructure
-> - **Stage 15.5-15.6** — Span removal + method_return_type_cache activation
-> - **Stage 15.7** — Writeback consolidation: 8 passes → 2 functions
-> - **Stage 15.8-15.9** — AdtLayouts sharing + VtableEntry interning + TraitError
-> - **Stage 15.10-15.11** — SubstsRef Rc<[Ty]> + Const.ty Box→Ty
-> - **Stage 15.12-15.16** — Error system cleanup + diagnostics module + CLI migration + Spanned + ErrorCode
-> - **Stage 15.17** — Color output: ANSI color support for diagnostics (ColorConfig, colored ^^^ underline)
+> Stage 15.1-15.22 (v0.2 Phase 1 prep + consolidation + quick wins + interning + error/diagnostics system):
+> - **Stage 15.1-15.11** — Ty interning design + infrastructure + memory optimizations
+> - **Stage 15.12-15.16** — Error system cleanup + diagnostics module + Spanned + ErrorCode
+> - **Stage 15.17-15.18** — Color output + CLI wiring with TTY auto-detection
+> - **Stage 15.19-15.20** — --color CLI flag + switch-llvm-version.sh regex fix
+> - **Stage 15.21-15.22** — Snippet ^^^ span clamping + gutter alignment fix
 >
 > **Test count**: 170 lib tests + 2006 integration tests + 5216 conformance tests = 7392 passing.
 > **0 clippy warnings**, fmt clean. Next major milestone: v0.2 Phase 1 Task 1

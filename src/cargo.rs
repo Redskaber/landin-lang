@@ -163,14 +163,21 @@ pub fn build_project(manifest: &ProjectManifest, config: &BuildConfig) -> BuildR
         files_compiled: 1,
         llvm_ir,
         errors: if error_count > 0 {
-            // Stage 15.15: Use format_via_diagnostics (rustc-style display via
-            // src/diagnostics/ module — single source of truth for error display).
+            // Stage 15.18: Use format_via_diagnostics_colored with TTY auto-detection.
+            use crate::diagnostics::ColorConfig;
+            use std::io::IsTerminal;
+            let color = if std::io::stderr().is_terminal() {
+                ColorConfig::Always
+            } else {
+                ColorConfig::Never
+            };
             let source_map = crate::session::SourceMap::new(&src);
-            vec![result.errors.format_via_diagnostics(
+            vec![result.errors.format_via_diagnostics_colored(
                 &src,
                 "cargo",
                 &source_map,
                 Some(&result.interner),
+                color,
             )]
         } else {
             Vec::new()

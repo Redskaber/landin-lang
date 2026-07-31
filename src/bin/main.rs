@@ -44,6 +44,11 @@ struct Cli {
     /// Output file path (default: <input>.o or <input>.out)
     #[arg(short = 'o', long)]
     output: Option<PathBuf>,
+
+    /// Stage 15.19: Color output control (auto/always/never).
+    /// Default: auto (colors when stderr is a terminal).
+    #[arg(long, value_name = "WHEN", default_value = "auto")]
+    color: String,
 }
 
 fn main() {
@@ -103,15 +108,29 @@ fn main() {
         let result = driver::compile(&source_file.src);
 
         if result.has_errors() {
-            // Stage 15.15: Use format_via_diagnostics (rustc-style display via
-            // src/diagnostics/ module — single source of truth for error display).
-            // Was: format_for_user (inline formatting in driver.rs).
+            // Stage 15.19: Color output with --color flag (auto/always/never).
+            // Default: auto (colors when stderr is a terminal).
+            use landin_compiler::diagnostics::ColorConfig;
+            use std::io::IsTerminal;
+            let color = match cli.color.as_str() {
+                "always" => ColorConfig::Always,
+                "never" => ColorConfig::Never,
+                _ => {
+                    // "auto" or any other value — TTY auto-detection
+                    if std::io::stderr().is_terminal() {
+                        ColorConfig::Always
+                    } else {
+                        ColorConfig::Never
+                    }
+                }
+            };
             let source_map = landin_compiler::session::SourceMap::new(&source_file.src);
-            let error_str = result.errors.format_via_diagnostics(
+            let error_str = result.errors.format_via_diagnostics_colored(
                 &source_file.src,
                 &source_file.name,
                 &source_map,
                 Some(&result.interner),
+                color,
             );
             eprintln!("{}", error_str);
             std::process::exit(1);

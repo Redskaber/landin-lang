@@ -595,14 +595,33 @@ pub fn format_snippet(src: &str, span: &Span) -> String {
     let col_lo = lo.saturating_sub(line_start);
     let col_hi = hi.saturating_sub(line_start).max(col_lo + 1);
 
-    let mut out = String::new();
+    // Stage 15.21: Clamp the span to the line width.
+    // If the span extends beyond the line (e.g., multi-line span or span
+    // includes trailing whitespace), clamp col_hi to line.len().
+    // This prevents ^^^ from extending past the source line.
+    let line_len = line.len();
+    let col_hi_clamped = col_hi.min(line_len);
+    let col_lo_clamped = col_lo.min(line_len);
+
+    // Stage 15.22: Fix gutter alignment.
+    // The source line format is: "{line_no_str} | {line}"
+    //   e.g. "3 |   x" — '3' at pos 0, ' ' at pos 1, '|' at pos 2, ' ' at pos 3, source at pos 4+
+    // The gutter line format is: "{pad} |"
+    //   where pad = " " * len(line_no_str), so ' ' at pos 0, ' ' at pos 1... NO.
+    //   Actually: pad should be " " * len(line_no_str), then " |" follows.
+    //   For line_no_str="3" (1 char): pad=" " (1 space), gutter = " |" — | at pos 2. ✓
+    //   For line_no_str="10" (2 chars): pad="  " (2 spaces), gutter = "  |" — | at pos 3. ✓
+    // The underline format is: "{pad} | {spaces}{^}"
+    //   For line_no_str="3": " | " + "  " + "^" — ^ at pos 6 (matching x at pos 6 in "3 |   x"). ✓
     let line_no_str = line_no.to_string();
     let pad = " ".repeat(line_no_str.len());
-    out.push_str(&format!("  {} |\n", pad));
-    out.push_str(&format!("{} | {}\n", line_no_str, line));
-    out.push_str(&format!("  {} | ", pad));
-    out.push_str(&" ".repeat(col_lo));
-    let span_len = col_hi.saturating_sub(col_lo).max(1);
+
+    let mut out = String::new();
+    out.push_str(&format!("{} |\n", pad)); // gutter: " |"
+    out.push_str(&format!("{} | {}\n", line_no_str, line)); // source: "3 |   x"
+    out.push_str(&format!("{} | ", pad)); // underline prefix: " | "
+    out.push_str(&" ".repeat(col_lo_clamped));
+    let span_len = col_hi_clamped.saturating_sub(col_lo_clamped).max(1);
     out.push_str(&"^".repeat(span_len));
     out.push('\n');
     out
@@ -645,14 +664,21 @@ pub fn format_snippet_colored(src: &str, span: &Span, color: Color, config: Colo
     let col_lo = lo.saturating_sub(line_start);
     let col_hi = hi.saturating_sub(line_start).max(col_lo + 1);
 
-    let mut out = String::new();
+    // Stage 15.21: Clamp the span to the line width (same as format_snippet).
+    let line_len = line.len();
+    let col_hi_clamped = col_hi.min(line_len);
+    let col_lo_clamped = col_lo.min(line_len);
+
+    // Stage 15.22: Fix gutter alignment (same as format_snippet).
     let line_no_str = line_no.to_string();
     let pad = " ".repeat(line_no_str.len());
-    out.push_str(&format!("  {} |\n", pad));
+
+    let mut out = String::new();
+    out.push_str(&format!("{} |\n", pad));
     out.push_str(&format!("{} | {}\n", line_no_str, line));
-    out.push_str(&format!("  {} | ", pad));
-    out.push_str(&" ".repeat(col_lo));
-    let span_len = col_hi.saturating_sub(col_lo).max(1);
+    out.push_str(&format!("{} | ", pad));
+    out.push_str(&" ".repeat(col_lo_clamped));
+    let span_len = col_hi_clamped.saturating_sub(col_lo_clamped).max(1);
     let underline = "^".repeat(span_len);
     out.push_str(&colorize(&underline, color, config));
     out.push('\n');
