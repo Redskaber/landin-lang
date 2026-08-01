@@ -180,9 +180,10 @@ pub fn build_dyn_trait_call_terminator(
 
     Terminator::new(
         TerminatorKind::Call {
-            // The Const's Int value is the side-table index. Codegen detects
-            // this marker and emits a vtable indirect call instead of a direct
-            // function call.
+            // Stage 15.30 (HP-22): dyn_trait_call field carries the call info
+            // directly on the terminator. The func operand is still a marker
+            // (ConstVal::Int(index)) for backward compat, but codegen checks
+            // dyn_trait_call FIRST.
             func: Operand::Constant(Const {
                 ty: Ty::new(TyKind::Error, Span::DUMMY),
                 val: ConstVal::Int(index),
@@ -190,6 +191,7 @@ pub fn build_dyn_trait_call_terminator(
             args: arg_operands,
             destination: Place::local(dest, span),
             target: None,
+            dyn_trait_call: Some(call.clone()),
         },
         span,
     )
@@ -863,6 +865,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                             args: arg_operands,
                             destination: Place::local(dest, expr.span),
                             target: Some(cont),
+                            dyn_trait_call: None,
                         },
                         cont,
                     );
@@ -2298,6 +2301,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         args: arg_operands,
                         destination: Place::local(dest, expr.span),
                         target: Some(cont),
+                        dyn_trait_call: None,
                     },
                     cont,
                 );
@@ -2347,6 +2351,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         args: arg_operands,
                         destination: Place::local(dest, expr.span),
                         target: Some(cont),
+                        dyn_trait_call: None,
                     },
                     cont,
                 );

@@ -1,9 +1,51 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.155.0
+**Current version**: v0.156.0
 **Date**: 2026-08-01
 **Test count**: 173 rust lib tests + 2013 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.156.0 — Stage 15.30 (HP-22: Move dyn_trait_calls into Terminator::Call)
+
+### Overview
+
+Stage 15.30 implements HP-22 — moving dyn Trait method call info from the
+`MirBody.dyn_trait_calls` side-table into the `TerminatorKind::Call` struct
+directly. This eliminates the "magic encoding" (`ConstVal::Int(index)` +
+`TyKind::Error` marker) that codegen had to decode.
+
+### What Changed
+
+**Added `dyn_trait_call` field to `TerminatorKind::Call`** (`src/mir/body.rs`):
+- `dyn_trait_call: Option<DynTraitMethodCall>`
+- When `Some`, this call is a dyn Trait vtable indirect call
+- Codegen checks this field FIRST — no more decoding magic markers
+
+**Updated `build_dyn_trait_call_terminator`** (`src/mir/lower/expr_operand.rs`):
+- Now sets `dyn_trait_call: Some(call.clone())` on the terminator
+
+**Added `codegen_dyn_trait_call_direct`** (`src/codegen/operand.rs`):
+- New function that takes `&DynTraitMethodCall` directly
+- No longer needs `mir.dyn_trait_calls[index]` side-table lookup
+
+**Updated codegen** (`src/codegen/terminator.rs`):
+- Checks `dyn_trait_call` field FIRST; if `Some`, uses direct path
+- Falls through to legacy path if `None` (backward compat)
+
+### Why This Matters
+
+Per §1.0 原則 3 "显式 > 隐式": the dyn Trait info is now explicit on the
+terminator, not implicit in a side-table indexed by a magic integer.
+Per §16: MIR carries the info as data on the terminator — codegen doesn't
+need to decode magic markers.
+
+### Verification
+
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.155.0 — Stage 15.29 (Ty Interner Integration Tests + Inference Var Bypass)

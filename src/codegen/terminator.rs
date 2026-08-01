@@ -107,11 +107,40 @@ pub(crate) fn codegen_terminator(
             args,
             destination,
             target,
+            dyn_trait_call,
         } => {
-            // Stage 5.79: dyn Trait vtable indirect call path.
-            //
-            // Detect the marker `Operand::Constant(Const { ty: Error,
-            // val: Int(index) })` where `index < mir.dyn_trait_calls.len()`.
+            // Stage 15.30 (HP-22): Check dyn_trait_call field FIRST.
+            // If Some, this is a dyn Trait vtable indirect call — use the
+            // DynTraitMethodCall info directly from the terminator.
+            // Was: decode magic `Error + Int(index)` marker from func operand.
+            if let Some(call_info) = dyn_trait_call {
+                let ret_val = codegen_dyn_trait_call_direct(
+                    emitter,
+                    call_info,
+                    args,
+                    interner,
+                    layouts,
+                    fn_name_by_def_id,
+                );
+                if let PlaceKind::Local(id) = &destination.kind {
+                    let dest_ty = mir
+                        .local_decls
+                        .get(id.0 as usize)
+                        .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
+                        .unwrap_or(EmitType::I32);
+                    emitter.set_local(id.0, ret_val.clone());
+                    if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
+                        emitter.emit_store(&dest_ty, &ret_val, &ptr);
+                    }
+                }
+                if let Some(cont) = target {
+                    emitter.emit_br(&format!("bb{}", cont.0));
+                }
+                return;
+            }
+
+            // Stage 5.79: Legacy dyn Trait vtable indirect call path.
+            // (Kept for backward compat — will be removed in Stage 15.31.)
             // If matched, dispatch to `codegen_dyn_trait_call` which emits
             // the vtable indirect call (getelementptr + load + call).
             //

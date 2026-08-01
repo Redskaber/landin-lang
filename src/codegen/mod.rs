@@ -90,6 +90,7 @@ mod trait_dispatch;
 
 // Re-export functions from sub-modules for use within codegen.
 pub use operand::codegen_dyn_trait_call;
+pub use operand::codegen_dyn_trait_call_direct;
 pub(crate) use operand::codegen_operand;
 pub(crate) use rvalue::codegen_rvalue;
 pub(crate) use statement::codegen_statement;

@@ -308,6 +308,19 @@ pub enum TerminatorKind {
         args: Vec<Operand>,
         destination: Place,
         target: Option<BasicBlockId>,
+        /// Stage 15.30 (HP-22): dyn Trait method call info.
+        ///
+        /// When `Some`, this call is a dyn Trait vtable indirect call.
+        /// The `func` operand is a placeholder (ConstVal::Int with the
+        /// old side-table index — kept for backward compat during migration).
+        /// Codegen checks this field FIRST; if `Some`, it uses the
+        /// DynTraitMethodCall info directly instead of decoding the
+        /// magic `Error + Int(index)` marker.
+        ///
+        /// Per §1.0 原則 3 "显式 > 隐式": the dyn Trait info is now explicit
+        /// on the terminator, not implicit in a side-table.
+        /// Per §16: MIR carries the info as data on the terminator.
+        dyn_trait_call: Option<crate::mir::dyn_trait::DynTraitMethodCall>,
     },
     /// Assert a boolean condition (for overflow checks, Stage 3+).
     Assert {
