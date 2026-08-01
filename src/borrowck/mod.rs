@@ -51,7 +51,11 @@ pub use move_tracker::MoveTracker;
 pub use crate::mir::place::BorrowKind;
 // Stage 6.14: re-export public symbols from sub-modules for backward compat.
 pub use copy_semantics::{ty_is_copy, ty_is_copy_unified, ty_is_copy_with_resolver};
-pub use liveness::{compute_last_use_map, LastUseMap};
+// Stage 15.35 (HP-10): re-export fixpoint liveness analysis API for v0.2 Phase 2.
+// The legacy `compute_last_use_map` is retained until Stage 15.37 migration.
+pub use liveness::{
+    compute_last_use_map, compute_liveness, successors, LastUseMap, LiveInMap, LiveOutMap,
+};
 pub use place_path::{PlacePath, PlaceRoot, ProjElem};
 
 use crate::mir::body::TerminatorKind;

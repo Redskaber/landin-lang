@@ -267,6 +267,9 @@ mod stage15_driver_diagnostics_integration_tests;
 mod stage15_error_system_cleanup_tests;
 #[path = "v0/stage15/plan/method_return_type_cache_tests.rs"]
 mod stage15_method_return_type_cache_tests;
+// Stage 15.35 (HP-10): NLL fixpoint liveness analysis (v0.2 Phase 2 Task 7).
+#[path = "v0/stage15/plan/nll_fixpoint_liveness_tests.rs"]
+mod stage15_nll_fixpoint_liveness_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]

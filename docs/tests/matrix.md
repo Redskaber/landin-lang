@@ -163,6 +163,29 @@
 | 14.49 | Nested tuple destructure (was 0 0 3) + recursive helper + 3 writeback steps (tuple literal, field projection, detect_place_type) + 2 run_ok tests | +2 run_ok (5106 total) | ✅ |
 | 14.50 | Nested struct + mixed pattern destructure (was 0 0 3 / 0 0 99) + unified `lower_nested_pattern_destructure` recursive helper (handles Struct/Tuple/Ident) + 3 run_ok tests | +3 run_ok (5109 total) | ✅ |
 
+## Stage 15 (v0.2 Phase 1 + Phase 2) Test Coverage
+
+| Sub-stage | Feature | Tests | Status |
+|-----------|---------|-------|--------|
+| 15.6 | Method return type cache (perf — avoid re-querying TraitResolver) | +N rust | ✅ |
+| 15.7 | Writeback consolidation (8 driver writeback passes → 2 functions, 650 LOC → 25 LOC) | +N rust | ✅ |
+| 15.8 | Crate-shared AdtLayouts (Arc<AdtLayouts> — ~500KB saved per crate) | +N rust | ✅ |
+| 15.9 | VtableEntry interning (fn_name: String → Spur + typed TraitError) | +N rust | ✅ |
+| 15.10 | SubstsRef Vec<Ty> → Rc<[Ty]> (eliminate per-generic-app heap alloc) | +7 rust | ✅ |
+| 15.11 | Const.ty Box<Ty> → Ty (eliminate per-Const heap alloc) | +N rust | ✅ |
+| 15.12 | Error system cleanup (remove MirBody.lower_type_errors; lowering returns 3-tuple) | +N rust | ✅ |
+| 15.13-15.18 | DiagnosticBuilder + ErrorCode catalog + Spanned trait + colored output + CLI migration | +N rust | ✅ |
+| 15.27 | TypeInterner wired into CompileResult | +N rust | ✅ |
+| 15.28 | Thread-local TypeInterner activated (automatic Ty dedup) | +N rust | ✅ |
+| 15.29 | Ty interner integration tests + inference var from_kind_raw bypass | +7 rust | ✅ |
+| 15.30 | HP-22: dyn_trait_call field moved into TerminatorKind::Call | +N rust | ✅ |
+| 15.31 | HP-22 doc cleanup | 0 | ✅ |
+| 15.32 | region_inference.rs dead code documentation cleanup | 0 | ✅ |
+| 15.33 | v0.159 milestone review (Phase 1 core complete, Phase 2 plan) | 0 | ✅ |
+| 15.34 | NLL fixpoint design doc (Phase 2 Task 7 start) | 0 | ✅ |
+| **15.35** | **NLL fixpoint `compute_liveness` (Phase 2 Task 7 step 1 of 4) — backwards dataflow + `successors` helper + 21 unit + 13 integration tests** | **+34 rust (21 unit + 13 integration)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 fixpoint liveness API** | **+34 rust in 15.35** | ✅ |
+
 ## Deferred Items (≤5% allowed per §17.3)
 
 | ID | Feature | Reason | Plan |

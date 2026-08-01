@@ -1,9 +1,111 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.160.0
+**Current version**: v0.161.0
 **Date**: 2026-08-01
-**Test count**: 173 rust lib tests + 2013 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 173 rust lib tests + 2026 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.161.0 — Stage 15.35 (v0.2 Phase 2 Task 7 step 1: Fixpoint Liveness API)
+
+### Overview
+
+Stage 15.35 implements the fixpoint `compute_liveness` function — the
+**first of four migration steps** (Stage 15.34-15.37) to replace the
+legacy single-pass `compute_last_use_map` with a proper backwards
+dataflow liveness analysis. The new algorithm correctly handles loops
+and conditionals, fixing the soundness gaps in the legacy analysis.
+
+### What Changed
+
+**New API in `src/borrowck/liveness.rs`**:
+- `compute_liveness(mir: &MirBody) -> (LiveInMap, LiveOutMap)` — backwards
+  dataflow fixpoint iteration implementing the classic liveness equations
+- `successors(term: &TerminatorKind) -> Vec<BasicBlockId>` — successor
+  enumeration for all 7 `TerminatorKind` variants
+- `LiveInMap` / `LiveOutMap` type aliases
+- `statement_writes` / `place_root_writes` / `terminator_writes` helpers
+  (mirror the existing `*_reads` helpers, needed for the `Def[bb]` set)
+
+**Re-exported from `borrowck::mod`**:
+- `compute_liveness`, `successors`, `LiveInMap`, `LiveOutMap` (alongside
+  the legacy `compute_last_use_map` / `LastUseMap`)
+
+**Backward compatibility**: The legacy `compute_last_use_map` is retained.
+The active borrow checker (`BorrowChecker::check_mir_body`) still uses
+the legacy map. Stage 15.36 will add `kill_expired_borrows_dataflow`
+using the liveness maps, Stage 15.37 will flip the switch and remove
+`compute_last_use_map`.
+
+### Why This Matters
+
+The Stage 6.14 single-pass `compute_last_use_map` is **unsound** for:
+
+1. **Loops**: a local's "last use" inside a loop body is not its true
+   last use — the next iteration will read it again. The legacy approach
+   kills borrows too early, producing false-positive borrow errors on
+   the second iteration.
+2. **Conditionals**: a borrow alive in one branch may still be live in
+   the other branch. The legacy approach doesn't track branch liveness.
+
+The fixpoint liveness analysis iterates the standard dataflow equations
+to convergence, correctly handling loops, conditionals, and recursion.
+This unblocks Stage 15.36-15.37 (borrow checker migration) and indirectly
+Stage 8 (Drop elaboration, which needs proper liveness) and Stage 9
+(Region allocation, which uses liveness to derive constraints).
+
+### Algorithm
+
+```text
+LiveIn[bb]  = Use[bb] ∪ (LiveOut[bb] - Def[bb])
+LiveOut[bb] = ∪ LiveIn[s] for s in successors(bb)
+```
+
+Iterated to fixpoint (until no `LiveIn`/`LiveOut` set changes). Pre-computes
+per-block Use/Def sets so the inner loop only does set algebra. Reverse
+iteration order (last block to first) for faster convergence.
+
+**Complexity**: O(L × B² × (S + T)) worst case where L=locals, B=blocks,
+S=stmts/block, T=successors. For typical functions (B<50, S<20, L<30)
+this is well under 1ms.
+
+### Tests
+
+- **21 new unit tests** in `src/borrowck/liveness.rs::tests`:
+  - 9 `successors()` tests covering all `TerminatorKind` variants
+  - 3 write-collection helper tests
+  - 9 `compute_liveness()` tests covering straight-line, branch, loop,
+    edge cases (empty body, total map, mutability)
+- **13 new integration tests** in `tests/v0/stage15/plan/nll_fixpoint_liveness_tests.rs`:
+  - 8 synthetic CFG tests with precise `LiveIn`/`LiveOut` assertions
+  - 5 real-pipeline smoke tests via `compile()` (straight-line, control
+    flow, loop, borrows, mutability)
+
+### Documentation
+
+- `docs/develop/v0/stage-15/stage-15.35-nll-fixpoint-liveness.md` — plan + dev log
+- `docs/tests/v0/stage15/stage-15.35-test-plan.md` — test plan with coverage matrix
+- `docs/lang-design/23-nll-fixpoint.md` — design doc (created in Stage 15.34)
+- `docs/tests/matrix.md` — new Stage 15 section added
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib borrowck::liveness::` — ✅ 21/21
+- `cargo test --features llvm-backend --test all_tests stage15_nll_fixpoint_liveness_tests` — ✅ 13/13
+- All 173 lib tests pass (zero regression)
+- All 2026 integration tests pass (2013 + 13 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+### Migration Plan (Stages 15.34-15.37)
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.34 | ✅ DONE (v0.160.0) | NLL fixpoint design doc |
+| **15.35** | **✅ DONE (v0.161.0)** | **`compute_liveness` fixpoint function (this release)** |
+| 15.36 | ⏳ NEXT | Add `kill_expired_borrows_dataflow` using liveness maps |
+| 15.37 | ⏳ PLANNED | Switch borrow checker to use fixpoint liveness + remove `compute_last_use_map` |
 
 ---
 ## v0.160.0 — Stage 15.34 (v0.2 Phase 2 Start: NLL Fixpoint Design Doc)

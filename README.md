@@ -1,8 +1,8 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.160.0 (v0.2 Phase 2 started — NLL fixpoint design doc)  
-**Date**: 2026-07-31
+**Version**: v0.161.0 (v0.2 Phase 2 — fixpoint liveness API landed)  
+**Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
@@ -21,15 +21,18 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 2 Started — Stage 15.34 (NLL fixpoint design doc)**
+> **v0.2 Phase 2 — Stage 15.35 (Fixpoint Liveness API landed)**
 >
-> Phase 1 complete (33 stages). Phase 2 started:
+> Phase 1 complete (33 stages). Phase 2 in progress:
 > - ✅ **Phase 1**: Ty interning, memory optimizations, writeback consolidation, diagnostics, HP-22
-> - 🔧 **Phase 2**: NLL fixpoint design doc created (Stage 15.34)
->   - Next: implement fixpoint liveness analysis (Stage 15.35+)
+> - 🔧 **Phase 2 Task 7 (HP-10)**: Fixpoint dataflow NLL — 4-step migration
+>   - ✅ Stage 15.34 — NLL fixpoint design doc
+>   - ✅ **Stage 15.35** — `compute_liveness` fixpoint algorithm + `successors` helper + 34 new tests
+>   - ⏳ Stage 15.36 — `kill_expired_borrows_dataflow` using liveness maps (next)
+>   - ⏳ Stage 15.37 — Switch borrow checker to fixpoint liveness + remove `compute_last_use_map`
 >   - Unblocks: Drop elaboration, Region allocation, Closure redesign
 >
-> **Test count**: 173 lib tests + 2013 integration tests + 5216 conformance tests = 7402 passing.
+> **Test count**: 173 lib tests + 2026 integration tests + 5216 conformance tests = 7415 passing.
 > **0 clippy warnings**, fmt clean.
 
 ---
