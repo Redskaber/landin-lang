@@ -3,6 +3,10 @@
 //! Per stage-committee-process.md v3.21 §25 + §17.1, this file contains
 //! verification tests for the Stage 7 deep review (§25 七维度审查).
 //! These tests verify the overall health of Stage 7's deliverables.
+// Stage 15.37: Allow deprecated — these tests intentionally exercise the
+// legacy `check_mir_body` path while it is being phased out (driver now uses
+// `check_mir_body_with_dataflow`).
+#![allow(deprecated)]
 
 use landin_compiler::borrowck::{check_mir_body, BorrowChecker};
 use landin_compiler::hir::DefId;

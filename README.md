@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.162.0 (v0.2 Phase 2 — dataflow borrow-check entry point landed)  
+**Version**: v0.163.0 (v0.2 Phase 2 — driver switch DEFERRED, legacy deprecated)  
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,18 +21,19 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 2 — Stage 15.36 (Dataflow borrow-check entry point landed)**
+> **v0.2 Phase 2 — Stage 15.37 (Driver switch DEFERRED + legacy deprecated)**
 >
 > Phase 1 complete (33 stages). Phase 2 in progress:
 > - ✅ **Phase 1**: Ty interning, memory optimizations, writeback consolidation, diagnostics, HP-22
 > - 🔧 **Phase 2 Task 7 (HP-10)**: Fixpoint dataflow NLL — 4-step migration
 >   - ✅ Stage 15.34 — NLL fixpoint design doc
 >   - ✅ Stage 15.35 — `compute_liveness` fixpoint algorithm + `successors` helper + 34 new tests
->   - ✅ **Stage 15.36** — `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` + 22 new tests
->   - ⏳ Stage 15.37 — Switch driver to dataflow path + remove `compute_last_use_map` (next)
->   - Unblocks: Drop elaboration, Region allocation, Closure redesign
+>   - ✅ Stage 15.36 — `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` + 22 new tests
+>   - ⚠️ **Stage 15.37** — Legacy `check_mir_body` deprecated; driver switch **DEFERRED** due to GAP-1 semantic conflict (112 conformance tests would regress); 9 new tests document the conflict
+>   - ⏳ Future — Reconcile GAP-1 with NLL correctness, then switch driver + remove legacy code
+>   - Unblocks (after reconciliation): Drop elaboration, Region allocation, Closure redesign
 >
-> **Test count**: 182 lib tests + 2039 integration tests + 5216 conformance tests = 7437 passing.
+> **Test count**: 182 lib tests + 2048 integration tests + 5216 conformance tests = 7446 passing.
 > **0 clippy warnings**, fmt clean.
 
 ---

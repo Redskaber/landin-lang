@@ -273,6 +273,9 @@ mod stage15_nll_fixpoint_liveness_tests;
 // Stage 15.36 (HP-10 step 2): kill_expired_borrows_dataflow + check_mir_body_with_dataflow.
 #[path = "v0/stage15/plan/kill_borrows_dataflow_tests.rs"]
 mod stage15_kill_borrows_dataflow_tests;
+// Stage 15.37 (HP-10 step 3 — DEFERRED): driver switch deferred + legacy deprecation + GAP-1 conflict.
+#[path = "v0/stage15/plan/stage15_37_driver_switch_tests.rs"]
+mod stage15_37_driver_switch_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]

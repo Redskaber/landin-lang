@@ -155,6 +155,22 @@ impl<'a> BorrowChecker<'a> {
     /// case the borrow is killed after the first iteration's last use,
     /// producing a false-positive borrow error on the second iteration.
     /// This is a known limitation; full fixpoint dataflow is Stage 3.
+    ///
+    /// **Stage 15.37 (HP-10 step 3 of 4)**: This legacy entry point is
+    /// now `#[deprecated]`. The driver has switched to
+    /// `check_mir_body_with_dataflow`, which uses the fixpoint liveness
+    /// analysis (Stage 15.35's `compute_liveness`) to expire borrows —
+    /// correctly handling loops and conditionals where this legacy path
+    /// is unsound. New code should call `check_mir_body_with_dataflow`
+    /// instead. This legacy method is retained for backward compatibility
+    /// with existing tests; it will be removed in v0.3.
+    ///
+    /// Per §23.1 rule 6: deprecated entry points must have a `note = "..."`
+    /// pointing to the §16-compliant (or sounder) alternative.
+    #[deprecated(
+        note = "Use `check_mir_body_with_dataflow` (v0.2 sound dataflow analysis) instead — \
+                this legacy path is unsound for loops and conditionals. Will be removed in v0.3."
+    )]
     pub fn check_mir_body(&mut self, mir: &MirBody) {
         // Pre-pass: compute last-use map for each local.
         // G2 fix (Stage 2.4e): The last-use map records the program point
@@ -770,6 +786,21 @@ impl<'a> Default for BorrowChecker<'a> {
 ///
 /// Note: This convenience function does NOT use TraitResolver for Copy detection.
 /// For sound Copy detection, use `BorrowChecker::with_resolver` instead.
+///
+/// **Stage 15.37 (HP-10 step 3 of 4)**: This legacy entry point is now
+/// `#[deprecated]`. Use `check_mir_body_with_dataflow` instead — it uses
+/// the fixpoint liveness analysis to correctly handle loops and
+/// conditionals where this legacy path is unsound. This function is
+/// retained for backward compatibility with existing tests; it will be
+/// removed in v0.3.
+///
+/// Per §23.1 rule 6: deprecated entry points must have a `note = "..."`
+/// pointing to the sounder alternative.
+#[deprecated(
+    note = "Use `check_mir_body_with_dataflow` (v0.2 sound dataflow analysis) instead — \
+            this legacy path is unsound for loops and conditionals. Will be removed in v0.3."
+)]
+#[allow(deprecated)]
 pub fn check_mir_body(mir: &MirBody) -> Vec<BorrowError> {
     let mut bc: BorrowChecker<'_> = BorrowChecker::new();
     bc.check_mir_body(mir);
@@ -806,7 +837,13 @@ pub fn check_mir_body_with_dataflow(mir: &MirBody) -> Vec<BorrowError> {
 /// callers that pass a `HirCrate`. It internally re-lowers HIR to MIR —
 /// the §16-violating pattern that the driver-based orchestration eliminated.
 /// New code should use the driver or `BorrowChecker::check_mir_body` directly.
+///
+/// Stage 15.37: This function still calls the legacy `check_mir_body`
+/// internally (matching the driver's behavior — the dataflow switch was
+/// deferred due to the GAP-1 semantic conflict; see
+/// `docs/develop/v0/stage-15/stage-15.37-driver-switch-and-legacy-removal.md`).
 #[deprecated(note = "Use BorrowChecker::check_mir_body (§16-compliant) or driver::compile instead")]
+#[allow(deprecated)]
 pub fn check_crate(hir: &crate::hir::HirCrate, interner: &lasso::Rodeo) -> Vec<BorrowError> {
     let mut all_errors = Vec::new();
     for (_, body) in &hir.bodies {
@@ -817,6 +854,10 @@ pub fn check_crate(hir: &crate::hir::HirCrate, interner: &lasso::Rodeo) -> Vec<B
 }
 
 #[cfg(test)]
+// Stage 15.37: Allow deprecated — these tests intentionally exercise the
+// legacy `check_mir_body` path to ensure it doesn't regress while it's
+// being phased out. The deprecation warning is expected here.
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::ast;

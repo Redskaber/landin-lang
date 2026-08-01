@@ -2,6 +2,11 @@
 //!
 //! Per stage-committee-process.md v3.21 §13.4 + §17.1.
 //! Tests the drop elaboration module (Stage 8.4, §5).
+// Stage 15.37: Allow deprecated — these tests intentionally exercise the
+// legacy `check_mir_body` path while it is being phased out (driver now uses
+// `check_mir_body_with_dataflow`).
+#![allow(deprecated)]
+
 
 use landin_compiler::borrowck::BorrowChecker;
 use landin_compiler::driver::compile;

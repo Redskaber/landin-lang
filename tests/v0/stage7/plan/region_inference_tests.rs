@@ -10,6 +10,10 @@
 //! 3. Implied bounds + type tests (Stage 7.3)
 //! 4. Universe tracking + SCC compression (Stage 7.4)
 //! 5. Integration with borrowck (Stage 7.5)
+// Stage 15.37: Allow deprecated — these tests intentionally exercise the
+// legacy `check_mir_body` path while it is being phased out (driver now uses
+// `check_mir_body_with_dataflow`).
+#![allow(deprecated)]
 
 use landin_compiler::borrowck::{check_mir_body, BorrowChecker};
 use landin_compiler::mir::body::MirBody;

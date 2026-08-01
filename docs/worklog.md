@@ -19654,3 +19654,170 @@ Stage Summary:
 - Backward-compat maintained: legacy `check_mir_body` still active in driver
 - v0.2 Phase 2 Task 7 step 2 of 4 complete
 - v0.162.0: minor bump (Phase 2 dataflow borrow-check entry point)
+
+---
+Task ID: stage15.37-driver-switch-deferred
+Agent: Super Z (main)
+Task: Stage 15.37 — Driver switch (DEFERRED) + legacy deprecation + GAP-1 conflict documentation. v0.162.0 → v0.163.0.
+
+Work Log:
+- Baseline: v0.162.0 / 2039 rust tests + 5216 conformance
+
+### 1. Attempted driver switch (src/driver.rs)
+
+Changed the driver to call `bc.check_mir_body_with_dataflow(&mir)` instead
+of `bc.check_mir_body(&mir)`. Built release and ran conformance:
+
+```
+Results: 5104 passed, 112 failed, 5216 total
+112 TESTS FAILED
+```
+
+All 112 failures are GAP-1 soundness patterns (double-mut-borrow,
+shared-then-mut, etc.) where the dataflow path accepts (correct NLL —
+`r1` is dead after `r2` is created, so its borrow expires) but the
+legacy path rejects (GAP-1 stricter semantics from Stage 14.81).
+
+### 2. Root cause analysis — GAP-1 semantic conflict
+
+The Stage 14.81 GAP-1 fix decided that `let r1 = &mut x; let r2 = &mut x;`
+should be a `compile_error` even when `r1` is never used after `r2` is
+created. The legacy path achieves this "accidentally" — `compute_last_use_map`
+only records reads, so a never-read `ref_local` (like `r1`) never has
+its "last use" recorded, so `kill_expired_borrows` never kills its borrow.
+The borrow stays alive as a "stray" until scope exit, causing `r2 = &mut x`
+to conflict.
+
+The dataflow path correctly identifies `r1` as dead (it's never read
+after assignment) and kills its borrow via `kill_expired_borrows_dataflow`.
+This is standard NLL — `r1` is dead, so its borrow expires, so `r2 = &mut x`
+is allowed. This is what real Rust does.
+
+The conflict: the project's GAP-1 decision is stricter than real Rust
+NLL. 112 conformance tests encode the GAP-1 stricter semantics. Switching
+the driver regresses them.
+
+### 3. Reverted driver switch
+
+Reverted `src/driver.rs` to call `bc.check_mir_body(&mir)` (wrapped in
+`#[allow(deprecated)]` to suppress the deprecation warning at the call
+site). The driver's behavior is now identical to v0.162.0. Re-ran
+conformance:
+
+```
+Results: 5216 passed, 0 failed, 5216 total
+ALL TESTS PASSED
+```
+
+### 4. Marked legacy `check_mir_body` as `#[deprecated]`
+
+Both the method (`BorrowChecker::check_mir_body`) and the free function
+(`borrowck::check_mir_body`) are now marked `#[deprecated]` with a note
+pointing to `check_mir_body_with_dataflow`:
+
+```rust
+#[deprecated(
+    note = "Use `check_mir_body_with_dataflow` (v0.2 sound dataflow analysis) instead — \
+            this legacy path is unsound for loops and conditionals. Will be removed in v0.3."
+)]
+```
+
+Per §23.1 rule 6: deprecated entry points must have a `note = "..."`
+pointing to the sounder alternative.
+
+### 5. Reverted `check_crate` to use legacy path
+
+`check_crate` (already `#[deprecated]` from Stage 3.63) was briefly
+changed to use `check_mir_body_with_dataflow` internally, then reverted
+to use `check_mir_body` (matching the driver's behavior). Added
+`#[allow(deprecated)]` and updated the doc comment to explain the
+deferral.
+
+### 6. Patched 7 existing test files with `#[allow(deprecated)]`
+
+These test files intentionally call the legacy `check_mir_body` to test
+the legacy path. Patched with `#![allow(deprecated)]` to suppress the
+expected deprecation warnings:
+
+- tests/v0/stage7/plan/design_writeback_verification_tests.rs
+- tests/v0/stage7/plan/deep_review_tests.rs
+- tests/v0/stage7/plan/systematic_review_v014_tests.rs
+- tests/v0/stage7/plan/region_inference_tests.rs
+- tests/v0/stage8/plan/lifetime_elision_tests.rs
+- tests/v0/stage8/plan/deep_review_tests.rs
+- tests/v0/stage8/plan/drop_elaboration_tests.rs
+
+Also patched tests/v0/stage15/plan/kill_borrows_dataflow_tests.rs
+(Stage 15.36 file — calls both paths for parity comparison).
+
+### 7. Added `#[allow(deprecated)]` to borrowck mod.rs tests module
+
+The inline `mod tests` in `src/borrowck/mod.rs` calls the deprecated
+`check_mir_body`. Added `#[allow(deprecated)]` to the module attribute.
+
+### 8. Created 9 new integration tests (tests/v0/stage15/plan/stage15_37_driver_switch_tests.rs)
+
+Part A — Deprecation smoke (2):
+- stage15_37_legacy_check_mir_body_still_callable
+- stage15_37_legacy_borrow_checker_method_still_callable
+
+Part B — Driver integration (2):
+- stage15_37_driver_uses_legacy_path_no_regression
+- stage15_37_driver_preserves_gap1_soundness
+
+Part C — Dataflow path accessibility (2):
+- stage15_37_dataflow_path_still_accessible
+- stage15_37_dataflow_path_handles_loop_borrow
+
+Part D — GAP-1 conflict documentation (1):
+- stage15_37_gap1_semantic_conflict_documented — documents that legacy
+  rejects `let r1 = &mut x; let r2 = &mut x;` while dataflow accepts.
+  This is the acceptance criterion for future reconciliation work.
+
+Part E — Parity on non-conflict cases (2):
+- stage15_37_parity_on_valid_program
+- stage15_37_parity_on_single_borrow
+
+### 9. Did NOT remove `compute_last_use_map` + `kill_expired_borrows`
+
+The original plan was to remove these as dead code after the driver
+switch. Since the driver switch was deferred, these functions are NOT
+dead code — they're still used by the legacy `check_mir_body` path.
+They remain as-is, documented as "retained until the driver switch is
+completed in a future stage".
+
+### 10. Created documentation
+
+- docs/develop/v0/stage-15/stage-15.37-driver-switch-and-legacy-removal.md
+  (full analysis of the GAP-1 conflict, reconciliation options A/B/C)
+- docs/tests/v0/stage15/stage-15.37-test-plan.md
+- Updated docs/tests/matrix.md (Stage 15.37 marked ⚠️ PARTIAL)
+- Updated RELEASE_NOTES.md, README.md
+
+### 11. Migration plan status (Stage 15.34-15.37) — updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.34 | ✅ DONE (v0.160.0) | NLL fixpoint design doc |
+| 15.35 | ✅ DONE (v0.161.0) | `compute_liveness` fixpoint function |
+| 15.36 | ✅ DONE (v0.162.0) | `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` |
+| 15.37 | ⚠️ PARTIAL (v0.163.0) | Legacy `check_mir_body` deprecated; driver switch DEFERRED due to GAP-1 conflict |
+| future | ⏳ DEFERRED | Reconcile GAP-1 with NLL correctness, then switch driver + remove legacy code |
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean build, 0 warnings
+- `cargo test --features llvm-backend --test all_tests stage15_37_driver_switch_tests` — ✅ 9/9 PASS
+- All 173 lib tests pass (zero regression)
+- All 2048 integration tests pass (2039 + 9 new, zero regression)
+- All 5216 conformance tests pass (zero regression — driver switch reverted)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.162.0 → v0.163.0
+
+Stage Summary:
+- Stage 15.37 PARTIAL — legacy `check_mir_body` deprecated; driver switch DEFERRED
+- Discovered GAP-1 semantic conflict: dataflow path is correct NLL but
+  violates Stage 14.81 GAP-1 stricter semantics (112 conformance tests
+  depend on it)
+- 9 new integration tests document the conflict and verify the deferral
+- Dataflow path retained for future migration; reconciliation deferred to v0.3
+- v0.163.0: minor bump (Phase 2 — legacy deprecation + GAP-1 conflict documented)
