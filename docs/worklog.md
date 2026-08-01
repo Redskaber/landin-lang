@@ -19246,3 +19246,28 @@ Stage Summary:
 - The "magic encoding" (Error + Int(index)) is now augmented with explicit
   dyn_trait_call field on the terminator
 - v0.156.0: minor bump (architectural improvement — §16 compliance)
+
+---
+Task ID: stage15.31-dyn-trait-call-doc-cleanup
+Agent: Super Z (main)
+Task: Stage 15.31 — HP-22 doc cleanup + comments update. v0.156.0 → v0.157.0.
+
+Work Log:
+- Baseline: v0.156.0 / 2013 rust tests + 5216 conformance
+
+### 1. Updated comments in build_dyn_trait_call_terminator
+
+Clarified that the side-table push is kept for backward compat with the legacy
+codegen path. The dyn_trait_call field on the terminator is the primary source
+of truth (Stage 15.30). Future stage will remove the side-table entirely.
+
+### 2. Verification
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.156.0 → v0.157.0
+
+Stage Summary:
+- Stage 15.31 PASSED — HP-22 doc cleanup
+- v0.157.0: minor bump (documentation cleanup)

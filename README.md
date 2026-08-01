@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.156.0 (v0.2 Phase 1 — HP-22: dyn_trait_call in Terminator)  
+**Version**: v0.157.0 (v0.2 Phase 1 — 31 stages complete, 7402 tests passing)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,9 +21,9 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 1 — Stage 15.30 Complete (HP-22: dyn_trait_call in Terminator)**
+> **v0.2 Phase 1 — Stage 15.31 Complete (31 stages, v0.157 milestone)**
 >
-> 30 stages of v0.2 Phase 1 work complete:
+> 31 stages of v0.2 Phase 1 work complete:
 > - **Memory optimizations**: Span removal, SubstsRef Rc<[Ty]>, Const.ty inline, AdtLayouts sharing
 > - **Architecture**: Writeback consolidation (8→2), error system cleanup, writeback 3-tuple return
 > - **Diagnostics**: DiagnosticBuilder, ErrorCode catalog, Spanned trait, color output, --color flag

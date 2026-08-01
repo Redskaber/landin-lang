@@ -168,7 +168,10 @@ pub fn build_dyn_trait_call_terminator(
     dest: LocalId,
     span: Span,
 ) -> Terminator {
-    // Push the call info into the side-table; the index becomes the marker.
+    // Stage 15.31: The side-table push is kept for backward compat with the
+    // legacy codegen path. The dyn_trait_call field on the terminator is the
+    // primary source of truth (Stage 15.30). Future stage will remove the
+    // side-table entirely.
     let index = cx.mir.dyn_trait_calls.len() as u128;
     cx.mir.dyn_trait_calls.push(call.clone());
 
@@ -180,10 +183,9 @@ pub fn build_dyn_trait_call_terminator(
 
     Terminator::new(
         TerminatorKind::Call {
-            // Stage 15.30 (HP-22): dyn_trait_call field carries the call info
-            // directly on the terminator. The func operand is still a marker
-            // (ConstVal::Int(index)) for backward compat, but codegen checks
-            // dyn_trait_call FIRST.
+            // Stage 15.30 (HP-22): dyn_trait_call field is the primary source
+            // of truth. The func operand marker is kept for backward compat
+            // with the legacy codegen path (will be removed in future stage).
             func: Operand::Constant(Const {
                 ty: Ty::new(TyKind::Error, Span::DUMMY),
                 val: ConstVal::Int(index),

@@ -1,9 +1,25 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.156.0
+**Current version**: v0.157.0
 **Date**: 2026-08-01
 **Test count**: 173 rust lib tests + 2013 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.157.0 — Stage 15.31 (HP-22 Doc Cleanup)
+
+### Overview
+
+Stage 15.31 cleans up documentation comments for the HP-22 dyn_trait_call
+migration (Stage 15.30). Clarifies that the side-table is kept for backward
+compat and the terminator field is the primary source of truth.
+
+### Verification
+
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.156.0 — Stage 15.30 (HP-22: Move dyn_trait_calls into Terminator::Call)
