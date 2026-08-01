@@ -1,9 +1,96 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.166.0
+**Current version**: v0.167.0
 **Date**: 2026-08-01
-**Test count**: 208 rust lib tests + 2069 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 208 rust lib tests + 2083 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.167.0 — Stage 15.41 (NLL Migration FULLY COMPLETE — Legacy Code Cleaned Up)
+
+### Overview
+
+Stage 15.41 completes the NLL migration cleanup. The legacy `check_mir_body`
+(method + free function) now delegates directly to
+`check_mir_body_with_dataflow`. The original single-pass walk implementation
+(`kill_expired_borrows` + the legacy `check_mir_body` body) has been removed
+as dead code.
+
+**The NLL fixpoint migration (Phase 2 Task 7, HP-10) is FULLY COMPLETE.**
+
+### What Changed
+
+**`src/borrowck/mod.rs`**:
+- Legacy `check_mir_body` method — body replaced with single-line delegation
+  to `check_mir_body_with_dataflow`. Removed ~30 lines of walk logic.
+- `kill_expired_borrows` (legacy walk version) — **REMOVED** as dead code.
+  Was only called by the legacy `check_mir_body` walk.
+- Free function `check_mir_body` — already called the method, so now also
+  delegates to the dataflow path.
+
+**`src/borrowck/liveness.rs`**:
+- `compute_last_use_map` — documentation updated to clarify it's NO LONGER
+  legacy. It's now part of the dataflow path (Stage 15.40 revised the kill
+  logic to use last-use-based kill, which requires this map).
+
+### What Was NOT Removed (Retained for Future Use)
+
+- `compute_last_use_map` + `LastUseMap` — used by dataflow path.
+- `compute_liveness`, `LiveInMap`, `LiveOutMap` — retained for future NLL
+  with borrow regions.
+- `compute_live_after_point` — retained (unused but kept for future use).
+- `compute_ever_read` — used for GAP-1 preservation (Option B).
+- Legacy `check_mir_body` (method + free fn) — retained as `#[deprecated]`
+  for backward compatibility with ~15 test files.
+
+### Why Delegation Instead of Removal
+
+The legacy `check_mir_body` API is still used by ~15 test files. Removing
+it would break all these tests. Delegating to the dataflow path preserves
+the API (short-term compat) while eliminating the dead code (long-term
+cleanliness). The API will be fully removed in v0.3 when the tests are
+migrated.
+
+### Tests
+
+- **7 new integration tests** in `tests/v0/stage15/plan/stage15_41_legacy_delegation_tests.rs`:
+  - 2 delegation-verification tests (legacy produces same results as dataflow)
+  - 1 `compute_last_use_map` availability test
+  - 4 no-behavior-change tests (valid borrow, GAP-1, loop borrow, method call in loop)
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend` — ✅ 208 lib + 2083 integration = 2291 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+
+### Migration Plan (Stages 15.34-15.41) — FULLY COMPLETE
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.34 | ✅ DONE (v0.160.0) | NLL fixpoint design doc |
+| 15.35 | ✅ DONE (v0.161.0) | `compute_liveness` fixpoint function |
+| 15.36 | ✅ DONE (v0.162.0) | `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` |
+| 15.37 | ⚠️ PARTIAL (v0.163.0) | Legacy `check_mir_body` deprecated; driver switch DEFERRED |
+| 15.38 | ✅ DONE (v0.164.0) | Diagnostic tool + reconciliation design doc |
+| 15.39 | ✅ DONE (v0.165.0) | Option B: GAP-1 preserved (112 → 0) |
+| 15.40 | ✅ DONE (v0.166.0) | Kill-on-redef + driver switch (NLL migration COMPLETE) |
+| **15.41** | **✅ DONE (v0.167.0)** | **Legacy delegation cleanup — dead code removed (this release)** |
+
+**Phase 2 Task 7 (HP-10) is CLOSED.**
+
+### Key Takeaway
+
+The NLL fixpoint migration is fully complete. The driver uses the
+dataflow-driven borrow checker. The legacy API delegates to the dataflow
+path (no behavior difference). Dead code is removed. All 5216 conformance
+tests + 2291 rust tests pass.
+
+The `compute_liveness` infrastructure (Stages 15.35-15.36) is retained
+for future use (full NLL with borrow regions), but the current kill
+decision uses the last-use-based approach + `ever_read` check + kill-on-
+redefinition.
 
 ---
 ## v0.166.0 — Stage 15.40 (NLL Migration COMPLETE — Driver Switched to Dataflow Path)

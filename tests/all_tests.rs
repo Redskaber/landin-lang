@@ -285,6 +285,9 @@ mod stage15_option_b_implementation_tests;
 // Stage 15.40 (HP-10 — COMPLETE): kill-on-redefinition + driver switch (false positive fixed).
 #[path = "v0/stage15/plan/stage15_40_driver_switch_tests.rs"]
 mod stage15_40_driver_switch_tests;
+// Stage 15.41 (HP-10 — cleanup): legacy `check_mir_body` delegates to dataflow path; dead code removed.
+#[path = "v0/stage15/plan/stage15_41_legacy_delegation_tests.rs"]
+mod stage15_41_legacy_delegation_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]

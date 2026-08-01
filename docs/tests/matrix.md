@@ -188,8 +188,9 @@
 | 15.37 | Legacy `check_mir_body` deprecated (§23.1 rule 6); driver switch DEFERRED due to GAP-1 semantic conflict (112 conformance tests would regress); dataflow path retained for future migration; 9 integration tests document the conflict | +9 rust (integration) | ⚠️ PARTIAL |
 | 15.38 | Borrow-check comparison diagnostic tool — compares legacy vs dataflow on all 5216 conformance files; found 112 LEGACY-STRICTER (GAP-1) + 1 DATAFLOW-STRICTER (false positive); reconciliation design doc recommends Option B (lexical lifetimes + "was ever read" check); 4 new tests | +4 rust (3 unit + 1 integration) | ✅ |
 | 15.39 | Option B implementation — `compute_ever_read` + modified `kill_expired_borrows_dataflow` preserves GAP-1 in dataflow path; LEGACY-STRICTER dropped 112 → 0; 1 known limitation (`&mut self` false positive in loops) documented; 14 new tests | +14 rust (5 unit + 9 integration) | ✅ |
-| **15.40** | **Kill-on-redefinition + last-use-based kill + driver switch — false positive FIXED (DATAFLOW-STRICTER 1 → 0); driver now uses `check_mir_body_with_dataflow`; both paths agree on all 5028 comparable tests; 8 new tests** | **+8 rust (integration)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL fixpoint migration COMPLETE (driver uses dataflow path)** | **+91 rust in 15.35-15.40** | ✅ (15.41 = remove legacy code) |
+| 15.40 | Kill-on-redefinition + last-use-based kill + driver switch — false positive FIXED (DATAFLOW-STRICTER 1 → 0); driver now uses `check_mir_body_with_dataflow`; both paths agree on all 5028 comparable tests; 8 new tests | +8 rust (integration) | ✅ |
+| **15.41** | **Legacy delegation cleanup — `check_mir_body` now delegates to `check_mir_body_with_dataflow`; `kill_expired_borrows` (legacy walk) removed as dead code; `compute_last_use_map` retained (part of dataflow path); 7 new tests** | **+7 rust (integration)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL fixpoint migration FULLY COMPLETE (driver uses dataflow path, legacy code cleaned up)** | **+98 rust in 15.35-15.41** | ✅ COMPLETE |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

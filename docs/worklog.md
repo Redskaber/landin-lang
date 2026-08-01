@@ -20216,3 +20216,104 @@ Stage Summary:
 - Both paths agree on all 5028 comparable conformance tests
 - All 5216 conformance tests pass with driver using dataflow path
 - v0.166.0: minor bump (Phase 2 — NLL migration complete, driver switched)
+
+---
+Task ID: stage15.41-legacy-delegation-cleanup
+Agent: Super Z (main)
+Task: Stage 15.41 — Legacy delegation cleanup (remove dead code, make legacy `check_mir_body` delegate to dataflow path). NLL migration FULLY COMPLETE. v0.166.0 → v0.167.0.
+
+Work Log:
+- Baseline: v0.166.0 / 2076 rust tests + 5216 conformance
+
+### 1. Legacy `check_mir_body` now delegates to dataflow path
+
+Replaced the legacy `check_mir_body` method body (30+ lines of walk logic
+using `kill_expired_borrows`) with a single-line delegation:
+
+```rust
+#[deprecated(note = "Use `check_mir_body_with_dataflow` ...")]
+pub fn check_mir_body(&mut self, mir: &MirBody) {
+    self.check_mir_body_with_dataflow(mir);
+}
+```
+
+The free function `check_mir_body(mir: &MirBody) -> Vec<BorrowError>` was
+already calling `bc.check_mir_body(mir)`, so it now also delegates to the
+dataflow path (via the method).
+
+Per §1.0 原則 1 "长期 > 短期": delegating eliminates dead code while
+preserving the API for ~15 test files that still call it.
+Per §15 "最优 > 最小": the legacy walk body is removed, reducing maintenance.
+
+### 2. Removed `kill_expired_borrows` (legacy walk version)
+
+Removed the `kill_expired_borrows` method — the single-pass walk version
+that took a `LastUseMap` and killed borrows at their last-use point. It was
+only called by the legacy `check_mir_body` walk, which is now replaced by
+delegation.
+
+Note: `kill_expired_borrows_dataflow` (the dataflow version) is retained —
+it's the active kill path used by `check_mir_body_with_dataflow`.
+
+### 3. Updated `compute_last_use_map` documentation
+
+Updated the doc to clarify that `compute_last_use_map` is NO LONGER legacy
+— it's now part of the dataflow borrow-check path. Stage 15.40 revised
+`kill_expired_borrows_dataflow` to use last-use-based kill (borrow lifetimes
+end at their last read), which requires this map.
+
+### 4. What was NOT removed
+
+- `compute_last_use_map` — retained (used by dataflow path).
+- `LastUseMap` type alias — retained.
+- `compute_liveness`, `LiveInMap`, `LiveOutMap` — retained for future use.
+- `compute_live_after_point` — retained (unused but kept for future use).
+- `compute_ever_read` — retained (used for GAP-1 preservation).
+- Legacy `check_mir_body` (method + free fn) — retained as `#[deprecated]`.
+
+### 5. Added 7 new integration tests
+
+tests/v0/stage15/plan/stage15_41_legacy_delegation_tests.rs:
+- stage15_41_legacy_free_fn_delegates_to_dataflow
+- stage15_41_legacy_method_delegates_to_dataflow
+- stage15_41_compute_last_use_map_still_available
+- stage15_41_legacy_accepts_valid_borrow
+- stage15_41_legacy_rejects_gap1
+- stage15_41_legacy_accepts_loop_borrow
+- stage15_41_legacy_accepts_method_call_in_loop
+
+### 6. Created documentation
+
+- docs/develop/v0/stage-15/stage-15.41-legacy-delegation-cleanup.md
+- docs/tests/v0/stage15/stage-15.41-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### 7. Migration plan status (Stage 15.34-15.41) — FULLY COMPLETE
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.34 | ✅ DONE (v0.160.0) | NLL fixpoint design doc |
+| 15.35 | ✅ DONE (v0.161.0) | `compute_liveness` fixpoint function |
+| 15.36 | ✅ DONE (v0.162.0) | `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` |
+| 15.37 | ⚠️ PARTIAL (v0.163.0) | Legacy `check_mir_body` deprecated; driver switch DEFERRED |
+| 15.38 | ✅ DONE (v0.164.0) | Diagnostic tool + reconciliation design doc |
+| 15.39 | ✅ DONE (v0.165.0) | Option B: GAP-1 preserved (112 → 0) |
+| 15.40 | ✅ DONE (v0.166.0) | Kill-on-redef + driver switch (NLL migration COMPLETE) |
+| 15.41 | ✅ DONE (v0.167.0) | Legacy delegation cleanup — dead code removed |
+
+**Phase 2 Task 7 (HP-10) is CLOSED.**
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean build, 0 warnings
+- `cargo test --features llvm-backend` — ✅ 208 lib + 2083 integration = 2291 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.166.0 → v0.167.0
+
+Stage Summary:
+- Stage 15.41 PASSED — legacy delegation cleanup complete
+- Removed ~60 LOC of dead code (legacy `kill_expired_borrows` + walk body)
+- Legacy `check_mir_body` now delegates to `check_mir_body_with_dataflow`
+- `compute_last_use_map` retained (part of dataflow path)
+- All tests pass (zero regression)
+- v0.167.0: minor bump (Phase 2 — NLL migration FULLY COMPLETE, legacy code cleaned up)

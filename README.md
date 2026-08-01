@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.166.0 (v0.2 Phase 2 — NLL migration COMPLETE, driver switched)  
+**Version**: v0.167.0 (v0.2 Phase 2 — NLL migration FULLY COMPLETE, legacy code cleaned up)  
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,22 +21,22 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 2 — Stage 15.40 (NLL migration COMPLETE — driver switched to dataflow path)**
+> **v0.2 Phase 2 — Stage 15.41 (NLL migration FULLY COMPLETE — legacy code cleaned up)**
 >
 > Phase 1 complete (33 stages). Phase 2 in progress:
 > - ✅ **Phase 1**: Ty interning, memory optimizations, writeback consolidation, diagnostics, HP-22
-> - ✅ **Phase 2 Task 7 (HP-10)**: Fixpoint dataflow NLL — **migration COMPLETE**
+> - ✅ **Phase 2 Task 7 (HP-10)**: Fixpoint dataflow NLL — **migration FULLY COMPLETE**
 >   - ✅ Stage 15.34 — NLL fixpoint design doc
 >   - ✅ Stage 15.35 — `compute_liveness` fixpoint algorithm + 34 new tests
 >   - ✅ Stage 15.36 — `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` + 22 new tests
 >   - ⚠️ Stage 15.37 — Legacy `check_mir_body` deprecated; driver switch DEFERRED (GAP-1 conflict)
 >   - ✅ Stage 15.38 — Diagnostic tool: 112 GAP-1 cases + 1 false positive found; Option B recommended
 >   - ✅ Stage 15.39 — Option B (`compute_ever_read`): GAP-1 conflict **resolved** (112 → 0)
->   - ✅ **Stage 15.40** — Kill-on-redef + last-use-based kill + **driver switched** to `check_mir_body_with_dataflow`; false positive FIXED (1 → 0); both paths agree on all 5028 comparable tests; 8 new tests
->   - ⏳ Stage 15.41 — Remove legacy code (now dead code)
+>   - ✅ Stage 15.40 — Kill-on-redef + **driver switched** to `check_mir_body_with_dataflow`; false positive FIXED (1 → 0)
+>   - ✅ **Stage 15.41** — Legacy `check_mir_body` now delegates to dataflow path; dead code removed; **NLL migration FULLY COMPLETE**
 >   - Unblocks: Drop elaboration, Region allocation, Closure redesign
 >
-> **Test count**: 208 lib tests + 2069 integration tests + 5216 conformance tests = 7493 passing.
+> **Test count**: 208 lib tests + 2083 integration tests + 5216 conformance tests = 7507 passing.
 > **0 clippy warnings**, fmt clean.
 
 ---

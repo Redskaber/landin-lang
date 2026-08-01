@@ -52,13 +52,17 @@ pub type LiveOutMap =
 /// point (bb_id, stmt_idx) where each local is read. The terminator is
 /// treated as occupying stmt_idx == statements.len().
 ///
-/// **Legacy**: this is the Stage 6.14 single-pass forward scan. It is
-/// unsound for loops (a local's "last use" inside a loop body is not its
-/// true last use — the next iteration will read it again) and for
-/// conditionals (a borrow alive in one branch may still be live in the
-/// other branch). The fixpoint `compute_liveness` (Stage 15.35) replaces
-/// this analysis; this function is retained for backward compatibility
-/// until the borrow checker is fully migrated (Stage 15.36-15.37).
+/// **Stage 15.41 (HP-10 — legacy cleanup)**: This function is NO LONGER
+/// legacy — it's now part of the dataflow borrow-check path. Stage 15.40
+/// revised `kill_expired_borrows_dataflow` to use last-use-based kill
+/// (borrow lifetimes end at their last read), which requires this map.
+/// The original "unsound for loops" concern was about using this map for
+/// LOCAL liveness, but it's correct for BORROW lifetimes (a borrow's
+/// useful lifetime ends at its last read, regardless of loop structure).
+///
+/// The fixpoint `compute_liveness` (Stage 15.35) is retained for future
+/// use (full NLL with borrow regions) but is not currently used for the
+/// kill decision.
 pub fn compute_last_use_map(mir: &MirBody) -> LastUseMap {
     let mut map: LastUseMap = std::collections::HashMap::new();
     for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {

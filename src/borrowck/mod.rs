@@ -132,99 +132,34 @@ impl<'a> BorrowChecker<'a> {
 
     /// Check a single MIR body for borrow/ownership violations.
     ///
-    /// Walks all basic blocks in order, tracking:
-    /// - Borrows created by `Rvalue::Ref`
-    /// - Moves created by `Operand::Move`
-    /// - Uses of borrowed/moved places
+    /// **Stage 15.41 (HP-10 — legacy cleanup)**: This legacy entry point
+    /// now delegates directly to `check_mir_body_with_dataflow`. The
+    /// original single-pass walk implementation (with `kill_expired_borrows`)
+    /// has been removed — the dataflow path produces identical results on
+    /// all 5028 comparable conformance tests (verified by the Stage 15.38
+    /// diagnostic tool).
     ///
-    /// Reports errors for:
-    /// - Use-after-move
-    /// - Mutating while borrowed
-    /// - Borrowing a moved value
-    ///
-    /// NLL (Stage 2.4c, P0-14/P0-16):
-    /// Before the main walk, we compute a "last use" map: for each local,
-    /// the last (bb_id, stmt_idx) where it's read. During the walk, after
-    /// processing each statement, we kill any borrow whose `ref_local`
-    /// has its last use at the current point. This means a borrow on `x`
-    /// expires as soon as the reference `r = &x` is no longer used — not
-    /// at the lexical scope end.
-    ///
-    /// This is a single-pass forward walk with a pre-computed last-use
-    /// map. It's correct for straight-line code and most loop patterns.
-    /// The only case it gets wrong is when a borrow's last use is inside
-    /// a loop body but the borrow was created outside the loop — in that
-    /// case the borrow is killed after the first iteration's last use,
-    /// producing a false-positive borrow error on the second iteration.
-    /// This is a known limitation; full fixpoint dataflow is Stage 3.
-    ///
-    /// **Stage 15.37 (HP-10 step 3 of 4)**: This legacy entry point is
-    /// now `#[deprecated]`. The driver has switched to
-    /// `check_mir_body_with_dataflow`, which uses the fixpoint liveness
-    /// analysis (Stage 15.35's `compute_liveness`) to expire borrows —
-    /// correctly handling loops and conditionals where this legacy path
-    /// is unsound. New code should call `check_mir_body_with_dataflow`
-    /// instead. This legacy method is retained for backward compatibility
-    /// with existing tests; it will be removed in v0.3.
+    /// The method is retained as `#[deprecated]` for backward compatibility
+    /// with existing tests that call `check_mir_body` directly. New code
+    /// should call `check_mir_body_with_dataflow` instead. The legacy
+    /// method will be removed in v0.3.
     ///
     /// Per §23.1 rule 6: deprecated entry points must have a `note = "..."`
-    /// pointing to the §16-compliant (or sounder) alternative.
+    /// pointing to the sounder alternative.
+    /// Per §1.0 原則 1 "长期 > 短期": delegating to the dataflow path
+    /// eliminates the dead code (the legacy walk) while preserving the
+    /// API for callers that haven't migrated yet.
+    /// Per §15 "最优 > 最小": the legacy walk body is removed (not retained
+    /// as dead code), reducing maintenance burden.
     #[deprecated(
         note = "Use `check_mir_body_with_dataflow` (v0.2 sound dataflow analysis) instead — \
-                this legacy path is unsound for loops and conditionals. Will be removed in v0.3."
+                this legacy path now delegates to it. Will be removed in v0.3."
     )]
     pub fn check_mir_body(&mut self, mir: &MirBody) {
-        // Pre-pass: compute last-use map for each local.
-        // G2 fix (Stage 2.4e): The last-use map records the program point
-        // where each local is *read*. The borrow should be killed *after*
-        // that statement completes — i.e., at the start of the *next*
-        // statement. This ensures that within the statement that performs
-        // the last read, the borrow is still alive, so any write to the
-        // borrowed place within that same statement is correctly flagged.
-        //
-        // Concretely: if local `r`'s last use is at (bb, stmt_idx), we kill
-        // the borrow at the start of processing (bb, stmt_idx + 1) — BEFORE
-        // check_statement runs for that next statement.
-        let last_use_map = compute_last_use_map(mir);
-
-        // Main walk: forward over all basic blocks.
-        for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
-            let bb_id = BasicBlockId(bb_idx as u32);
-            let stmt_count = bb.statements.len();
-            for stmt_idx in 0..stmt_count {
-                // Kill borrows whose ref_local's last use was at the
-                // PREVIOUS statement (stmt_idx - 1). This ensures the
-                // borrow stays alive during the statement that performs
-                // the last read.
-                if stmt_idx > 0 {
-                    self.kill_expired_borrows(&last_use_map, bb_id, stmt_idx - 1);
-                }
-                self.check_statement(mir, &bb.statements[stmt_idx], bb_id, stmt_idx);
-            }
-            // After the last statement, kill borrows whose last use was
-            // at the last statement.
-            if stmt_count > 0 {
-                self.kill_expired_borrows(&last_use_map, bb_id, stmt_count - 1);
-            }
-            // Check terminator (uses are at index == statements.len())
-            let term_idx = stmt_count;
-            self.check_terminator(mir, &bb.terminator, bb_id, term_idx);
-            self.kill_expired_borrows(&last_use_map, bb_id, term_idx);
-        }
-
-        // Stage 7.5 (TD-015 step 5): Run region inference as an additional
-        // check. This activates the RegionInferenceContext infrastructure
-        // (Stages 7.1-7.4) alongside the existing simplified NLL.
-        //
-        // Per §16: region inference reads MirBody data (allowed — data flows
-        // downstream). It does NOT replace the existing NLL; it runs as an
-        // additional safety check. When the MIR carries real lifetime
-        // annotations (future stages), this will provide full region checking.
-        //
-        // Currently, all regions in MIR are `Region::Erased` or `Region::Static`,
-        // so region inference is effectively a no-op — it validates the
-        // infrastructure without producing false positives.
-        self.run_region_inference(mir);
+        // Stage 15.41: Delegate directly to the dataflow path. The original
+        // single-pass walk (with `kill_expired_borrows`) has been removed —
+        // the dataflow path produces identical results.
+        self.check_mir_body_with_dataflow(mir);
     }
 
     /// Stage 7.5 (TD-015 step 5): Run region inference on the MIR body.
@@ -265,30 +200,12 @@ impl<'a> BorrowChecker<'a> {
         // will be converted to BorrowErrors and added to self.errors.
     }
 
-    /// Kill any active borrow whose `ref_local` has its last use at the
-    /// given program point.
-    fn kill_expired_borrows(
-        &mut self,
-        last_use_map: &LastUseMap,
-        bb: BasicBlockId,
-        stmt_idx: usize,
-    ) {
-        let current_point = (bb, stmt_idx);
-        // Collect locals whose last use is at the current point.
-        let locals_to_kill: Vec<crate::mir::place::LocalId> = last_use_map
-            .iter()
-            .filter_map(|(local, last)| {
-                if *last == current_point {
-                    Some(*local)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        for local in locals_to_kill {
-            self.borrows.kill_borrows_of_local(local);
-        }
-    }
+    // Stage 15.41: The legacy `kill_expired_borrows` method (the single-pass
+    // walk version) has been REMOVED. The legacy `check_mir_body` now
+    // delegates directly to `check_mir_body_with_dataflow`, which uses
+    // `kill_expired_borrows_dataflow` (the dataflow version). The legacy
+    // walk body is no longer needed — the dataflow path produces identical
+    // results on all 5028 comparable conformance tests.
 
     /// Stage 15.36 (HP-10 step 2 of 4, revised in Stage 15.40): Kill any
     /// active borrow whose `ref_local`'s **last read is at the given
