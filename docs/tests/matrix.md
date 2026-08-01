@@ -190,7 +190,8 @@
 | 15.39 | Option B implementation — `compute_ever_read` + modified `kill_expired_borrows_dataflow` preserves GAP-1 in dataflow path; LEGACY-STRICTER dropped 112 → 0; 1 known limitation (`&mut self` false positive in loops) documented; 14 new tests | +14 rust (5 unit + 9 integration) | ✅ |
 | 15.40 | Kill-on-redefinition + last-use-based kill + driver switch — false positive FIXED (DATAFLOW-STRICTER 1 → 0); driver now uses `check_mir_body_with_dataflow`; both paths agree on all 5028 comparable tests; 8 new tests | +8 rust (integration) | ✅ |
 | **15.41** | **Legacy delegation cleanup — `check_mir_body` now delegates to `check_mir_body_with_dataflow`; `kill_expired_borrows` (legacy walk) removed as dead code; `compute_last_use_map` retained (part of dataflow path); 7 new tests** | **+7 rust (integration)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL fixpoint migration FULLY COMPLETE (driver uses dataflow path, legacy code cleaned up)** | **+98 rust in 15.35-15.41** | ✅ COMPLETE |
+| **15.42** | **Drop elaboration design doc (Task 8, HP-12) — design alignment per §13.4; covers `needs_drop` analysis, drop insertion, drop glue codegen; 6-stage implementation plan (15.42-15.47)** | **0 (doc only)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL migration COMPLETE + Drop elaboration design started** | **+98 rust in 15.35-15.41** | ✅ (15.42 = design) |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

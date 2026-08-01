@@ -20317,3 +20317,69 @@ Stage Summary:
 - `compute_last_use_map` retained (part of dataflow path)
 - All tests pass (zero regression)
 - v0.167.0: minor bump (Phase 2 — NLL migration FULLY COMPLETE, legacy code cleaned up)
+
+---
+Task ID: stage15.42-drop-elaboration-design
+Agent: Super Z (main)
+Task: Stage 15.42 — Drop elaboration design doc (Task 8, HP-12). Design alignment per §13.4. v0.167.0 → v0.168.0.
+
+Work Log:
+- Baseline: v0.167.0 / 2076 rust tests + 5216 conformance
+
+### 1. Restored v0.167.0 from upload
+
+The session was reset (project was at v0.67.0). Restored v0.167.0 from
+the uploaded zip (landin-stage0-v0.167.0-stage15.41-nll-fully-complete-r306.zip).
+Reinstalled Rust toolchain (rustup stable + rustfmt + clippy) and LLVM 19
+(via scripts/setup-llvm-env.sh). Verified build + 208 lib tests pass.
+
+### 2. Reviewed v0.2 roadmap — next task is Task 8 (Drop elaboration)
+
+Per docs/develop/v0/stage-15/v0.2-preparation.md Phase 2:
+- Task 7 (NLL) — COMPLETE (Stage 15.41)
+- Task 8 (Drop elaboration, HP-12) — 3-5 days, needs NLL (DONE) — NEXT
+- Task 9 (Region allocation, HP-5) — 1 week, needs NLL (DONE)
+- Task 10 (Closure redesign, HP-3) — 2-3 weeks, needs Ty interning (DONE)
+
+### 3. Reviewed existing Drop infrastructure
+
+- TerminatorKind::Drop exists in MIR but is a no-op in codegen.
+- TraitResolver::is_drop_builtin exists (can query Drop impl).
+- StatementKind::StorageDead is emitted at function return.
+- drop_elaboration module was removed in Stage 14.105 (dead code).
+- Design docs (06-mir.md, 07-codegen.md) have Drop design notes.
+
+### 4. Created design doc (docs/lang-design/25-drop-elaboration.md)
+
+Per §13.4 (设计对齐): design before implementation. The doc covers:
+1. Problem statement (no user-defined Drop support).
+2. Design: needs_drop analysis, drop insertion pass, drop glue codegen,
+   drop order (fields in declaration order, locals in reverse).
+3. Migration strategy: 6 stages (15.42 design + 15.43-15.46 impl + 15.47 review).
+4. Dependencies: Task 7 (COMPLETE), Task 1 (COMPLETE), TraitResolver (EXISTS).
+5. Testing strategy: unit + integration + conformance.
+6. API naming compliance (§23): ty_needs_drop, elaborate_drops, emit_drop_glue.
+7. Open questions: field type traversal, block splitting, naming, move interaction.
+
+### 5. Created develop + test plan docs
+
+- docs/develop/v0/stage-15/stage-15.42-drop-elaboration-design.md
+- docs/tests/v0/stage15/stage-15.42-test-plan.md
+
+### 6. Updated docs
+
+- docs/tests/matrix.md (Stage 15.42 row added)
+- RELEASE_NOTES.md, README.md, worklog.md
+
+### Verification
+- No code changes — design-only stage.
+- `cargo build --features llvm-backend` — ✅ clean build
+- `cargo test --features llvm-backend --lib` — ✅ 208/208 PASS (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.167.0 → v0.168.0
+
+Stage Summary:
+- Stage 15.42 PASSED — Drop elaboration design doc created
+- Design covers full scope: needs_drop analysis, drop insertion, drop glue codegen
+- 6-stage implementation plan (15.42-15.47)
+- v0.168.0: minor bump (Phase 2 — Drop elaboration design doc)

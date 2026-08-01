@@ -1,9 +1,67 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.167.0
+**Current version**: v0.168.0
 **Date**: 2026-08-01
 **Test count**: 208 rust lib tests + 2083 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.168.0 — Stage 15.42 (Drop Elaboration Design Doc — Task 8 Started)
+
+### Overview
+
+Stage 15.42 is a **design-only stage** — no code changes. It creates the
+design document for Drop elaboration (Task 8, HP-12), which is the next
+v0.2 Phase 2 task after the NLL migration (Task 7) was completed in
+Stage 15.41.
+
+Per §13.4 (设计对齐 — design before implementation): the design doc must
+exist before any implementation work begins.
+
+### What Changed
+
+**New design doc** (`docs/lang-design/25-drop-elaboration.md`):
+- Problem statement: No user-defined `Drop` support; `TerminatorKind::Drop`
+  is a no-op; no `drop_elaboration` module.
+- Design: `needs_drop` analysis, drop insertion pass, drop glue codegen,
+  drop order (fields in declaration order, locals in reverse).
+- Migration strategy: 6 stages (15.42 design + 15.43-15.46 implementation
+  + 15.47 review).
+- Dependencies: Task 7 (NLL) — COMPLETE; Task 1 (Ty interning) — COMPLETE;
+  TraitResolver — EXISTS.
+- Open questions: field type traversal, block splitting, drop glue naming,
+  interaction with `move`.
+
+### Why This Matters
+
+Drop elaboration is the foundation for RAII (Resource Acquisition Is
+Initialization) — the pattern where types like `File`, `MutexGuard`, and
+`Box<T>` automatically release resources when they go out of scope. Without
+Drop elaboration, the compiler cannot:
+- Call user-defined `Drop::drop` methods at scope end.
+- Free `Box<T>` allocations (memory leaks).
+- Close `File` handles automatically.
+
+The design doc plans the implementation in 6 stages (15.42-15.47),
+totaling 3-5 days of effort.
+
+### Verification
+
+- No code changes — design-only stage.
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 208/208 PASS (zero regression)
+- 0 clippy warnings, fmt clean
+
+### Migration Plan (Stages 15.42-15.47) — Task 8
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| **15.42** | **✅ DONE (v0.168.0)** | **Design doc (this release)** |
+| 15.43 | ⏳ NEXT | Implement `ty_needs_drop` analysis + unit tests |
+| 15.44 | ⏳ PLANNED | Implement `elaborate_drops` pass + tests |
+| 15.45 | ⏳ PLANNED | Implement drop glue codegen |
+| 15.46 | ⏳ PLANNED | Integration: wire into driver, add conformance tests |
+| 15.47 | ⏳ PLANNED | Gate review + deep review |
 
 ---
 ## v0.167.0 — Stage 15.41 (NLL Migration FULLY COMPLETE — Legacy Code Cleaned Up)
