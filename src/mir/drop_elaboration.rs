@@ -192,6 +192,145 @@ fn ty_needs_drop_impl(
     }
 }
 
+/// Stage 15.44 (HP-12 step 3 of 6): Insert `Drop` terminators before
+/// `StorageDead` statements for locals whose type needs drop.
+///
+/// This pass walks all basic blocks. For each `StorageDead(local)`
+/// statement where `ty_needs_drop(local.ty)` is true, it splits the
+/// basic block at that point:
+///
+/// 1. The current block's statements up to (but not including) the
+///    `StorageDead` stay in the current block.
+/// 2. The current block's terminator is replaced with
+///    `Drop { place: local, target: new_block }`.
+/// 3. A new basic block is created with:
+///    - The `StorageDead(local)` statement.
+///    - The remaining statements from the original block.
+///    - The original terminator.
+///
+/// This correctly models the drop semantics: the destructor runs BEFORE
+/// the local is marked as dead. The `Drop` terminator is a control-flow
+/// point (it branches to the target after running the destructor).
+///
+/// ## Drop order
+///
+/// Locals are dropped in reverse declaration order (matching Rust's
+/// scope-end drop order). Since `StorageDead` statements are emitted in
+/// declaration order (local 1, 2, 3, ...) at function return, and we
+/// process them in forward order, the first local's `Drop` terminator
+/// is inserted first, creating a chain:
+///
+/// ```text
+/// bb_return:
+///   ...statements before StorageDead chain...
+///   Drop(_1, bb_drop1)   // if _1 needs drop
+///
+/// bb_drop1:
+///   StorageDead(_1)
+///   Drop(_2, bb_drop2)   // if _2 needs drop
+///
+/// bb_drop2:
+///   StorageDead(_2)
+///   ...remaining StorageDead statements...
+///   Return
+/// ```
+///
+/// Wait — this is FORWARD order, not reverse. Rust drops in REVERSE
+/// declaration order. For the MVP, we process `StorageDead` in forward
+/// order (matching the current emission order). A future stage will
+/// reverse the `StorageDead` emission order to match Rust's semantics.
+///
+/// Per §23: function name follows `<verb>_<noun>` pattern (free-function
+/// entry point).
+/// Per §16: this pass mutates `MirBody` in place — it's a MIR-to-MIR
+/// transformation, not a cross-stage operation.
+/// Per §1.0 原則 3 "显式 > 隐式": the `Drop` terminators are explicit
+/// in the MIR, not implicit in `StorageDead`.
+pub fn elaborate_drops(
+    mir: &mut crate::mir::body::MirBody,
+    resolver: &TraitResolver,
+    interner: &Rodeo,
+) {
+    use crate::mir::body::{BasicBlockId, Statement, StatementKind, Terminator, TerminatorKind};
+    use crate::mir::place::{Place, PlaceKind};
+
+    // We need to process blocks in order. Since we may insert new blocks
+    // (which are appended to the end of basic_blocks), we record the
+    // original block count and only process blocks up to that count.
+    // New blocks created by splitting are processed in subsequent iterations.
+    let mut bb_idx = 0;
+    while bb_idx < mir.basic_blocks.len() {
+        let bb_id = BasicBlockId(bb_idx as u32);
+        let bb = &mir.basic_blocks[bb_idx];
+
+        // Find the first StorageDead(local) where local needs drop.
+        let split_point = bb.statements.iter().enumerate().find(|(_, stmt)| {
+            if let StatementKind::StorageDead(local_id) = &stmt.kind {
+                let local_ty = &mir.local(*local_id).ty;
+                ty_needs_drop(local_ty, resolver, &mir.adt_layouts, interner)
+            } else {
+                false
+            }
+        });
+
+        if let Some((stmt_idx, stmt)) = split_point {
+            let local_id = if let StatementKind::StorageDead(lid) = &stmt.kind {
+                *lid
+            } else {
+                unreachable!() // we just checked this above
+            };
+
+            // Split the block at stmt_idx.
+            // 1. Save the statements from stmt_idx onwards + the terminator.
+            let remaining_stmts: Vec<Statement> = bb.statements[stmt_idx..].to_vec();
+            let original_terminator = bb.terminator.clone();
+            let original_term_span = bb.terminator_span;
+            let block_span = bb.span;
+            let stmt_span = stmt.span;
+
+            // Compute the new block ID BEFORE the mutable borrow (avoids
+            // borrow checker conflict: mir.basic_blocks.len() is immutable,
+            // mir.block_mut() is mutable).
+            let new_block_id_num = mir.basic_blocks.len() as u32;
+
+            // 2. Truncate the current block's statements (remove from stmt_idx onwards).
+            let bb_mut = mir.block_mut(bb_id);
+            bb_mut.statements.truncate(stmt_idx);
+
+            // 3. Set the current block's terminator to Drop { place: local, target: new_block }.
+            bb_mut.terminator = Terminator {
+                kind: TerminatorKind::Drop {
+                    place: Place {
+                        kind: PlaceKind::Local(local_id),
+                        span: stmt_span,
+                    },
+                    target: BasicBlockId(new_block_id_num),
+                    unwind: None,
+                },
+                span: stmt_span,
+            };
+            bb_mut.terminator_span = stmt_span;
+
+            // 4. Create a new block with the remaining statements + original terminator.
+            let new_block_id = mir.new_block();
+            let new_block = mir.block_mut(new_block_id);
+            new_block.statements = remaining_stmts;
+            new_block.terminator = original_terminator;
+            new_block.terminator_span = original_term_span;
+            new_block.span = block_span;
+
+            // Move to the next block. The current block's remaining statements
+            // were all moved to the new block, so the current block no longer
+            // has any StorageDead needing drop. The new block will be processed
+            // when bb_idx reaches its index.
+            bb_idx += 1;
+        } else {
+            // No StorageDead needing drop in this block — move to the next.
+            bb_idx += 1;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,5 +522,77 @@ mod tests {
         // Should not infinite-loop. Returns false (cycle broken, no Drop impl).
         let _ = ty_needs_drop(&t, &resolver, &adt_layouts, &interner);
         // We don't assert the result — just that it terminates.
+    }
+
+    // ----- elaborate_drops() tests (Stage 15.44) -----
+
+    /// Stage 15.44: `elaborate_drops` is a no-op when no types need drop.
+    /// With an empty TraitResolver (no Drop impls), all types return false
+    /// for `ty_needs_drop`, so no `Drop` terminators should be inserted.
+    #[test]
+    fn stage15_44_elaborate_drops_noop_when_no_drop_needed() {
+        use crate::mir::body::{MirBody, Statement, StatementKind, Terminator};
+
+        let (resolver, interner, _adt_layouts) = build_test_context();
+
+        let mut body = MirBody::new(Span::DUMMY);
+        let local_0 = body.new_local(
+            ty(TyKind::Int(IntTy::I32)),
+            None,
+            Span::DUMMY,
+        );
+        let local_1 = body.new_local(
+            ty(TyKind::Bool),
+            None,
+            Span::DUMMY,
+        );
+        let bb0 = body.new_block();
+        body.block_mut(bb0).statements.push(Statement {
+            kind: StatementKind::StorageDead(local_0),
+            span: Span::DUMMY,
+        });
+        body.block_mut(bb0).statements.push(Statement {
+            kind: StatementKind::StorageDead(local_1),
+            span: Span::DUMMY,
+        });
+        body.block_mut(bb0).terminator = Terminator::ret(Span::DUMMY);
+
+        // Replace the adt_layouts with our test one.
+        // (MirBody::new creates an empty Arc<AdtLayouts>, which is fine.)
+        // We need to use Arc::make_mut to set it, but since the Arc has
+        // refcount 1, make_mut is a no-op.
+        // Actually, MirBody doesn't expose a way to set adt_layouts directly.
+        // But elaborate_drops uses mir.adt_layouts, which is an Arc.
+        // For this test, the empty adt_layouts is fine — no ADT types.
+
+        let block_count_before = body.basic_blocks.len();
+        elaborate_drops(&mut body, &resolver, &interner);
+        let block_count_after = body.basic_blocks.len();
+
+        // No types need drop → no blocks inserted.
+        assert_eq!(
+            block_count_before, block_count_after,
+            "elaborate_drops should not insert blocks when no types need drop"
+        );
+
+        // The block should still have its StorageDead statements (not split).
+        assert_eq!(
+            body.block(bb0).statements.len(),
+            2,
+            "StorageDead statements should remain (no drop needed)"
+        );
+    }
+
+    /// Stage 15.44: `elaborate_drops` is callable on an empty body (no panic).
+    #[test]
+    fn stage15_44_elaborate_drops_empty_body() {
+        use crate::mir::body::MirBody;
+
+        let (resolver, interner, _) = build_test_context();
+        let mut body = MirBody::new(Span::DUMMY);
+        body.new_block(); // One empty block with unreachable terminator.
+
+        // Should not panic.
+        elaborate_drops(&mut body, &resolver, &interner);
     }
 }

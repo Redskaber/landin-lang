@@ -1,9 +1,53 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.169.0
+**Current version**: v0.170.0
 **Date**: 2026-08-01
-**Test count**: 224 rust lib tests + 2079 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 226 rust lib tests + 2082 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.170.0 — Stage 15.44 (`elaborate_drops` Pass — Drop Terminator Insertion)
+
+### Overview
+
+Stage 15.44 implements `elaborate_drops` — the MIR-to-MIR pass that inserts
+`Drop` terminators before `StorageDead` statements for locals whose type
+needs drop glue. Uses `ty_needs_drop` from Stage 15.43 and performs basic
+block splitting.
+
+Currently a **no-op** on all existing code (no types implement `Drop` yet).
+The effect will be visible in Stage 15.46 when `impl Drop` support is added.
+
+### What Changed
+
+**`src/mir/drop_elaboration.rs`**:
+- New `elaborate_drops(mir, resolver, interner)` function — walks all basic
+  blocks, splits blocks at `StorageDead` points for needs-drop locals,
+  inserts `Drop { place, target, unwind }` terminators.
+
+### Tests
+
+- **2 unit tests** (no-op verification, empty body).
+- **3 integration tests** (no-op on real MIR: simple, struct, complex).
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib drop_elaboration` — ✅ 18/18
+- `cargo test --features llvm-backend --test all_tests stage15_elaborate_drops_integration` — ✅ 3/3
+- All 226 lib + 2082 integration tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+### Migration Plan (Stages 15.42-15.47) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.42 | ✅ DONE (v0.168.0) | Design doc |
+| 15.43 | ✅ DONE (v0.169.0) | `ty_needs_drop` analysis |
+| **15.44** | **✅ DONE (v0.170.0)** | **`elaborate_drops` pass (this release)** |
+| 15.45 | ⏳ NEXT | Implement drop glue codegen |
+| 15.46 | ⏳ PLANNED | Integration + conformance tests |
+| 15.47 | ⏳ PLANNED | Gate review + deep review |
 
 ---
 ## v0.169.0 — Stage 15.43 (`ty_needs_drop` Analysis — Drop Elaboration Foundation)

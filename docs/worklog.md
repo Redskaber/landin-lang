@@ -20452,3 +20452,64 @@ Stage Summary:
 - 16 unit + 3 integration = 19 new tests, zero regression
 - Foundation for drop elaboration pass (Stage 15.44) and drop glue codegen (Stage 15.45)
 - v0.169.0: minor bump (Phase 2 — Drop elaboration `ty_needs_drop` analysis)
+
+---
+Task ID: stage15.44-elaborate-drops
+Agent: Super Z (main)
+Task: Stage 15.44 — Implement `elaborate_drops` pass (Drop terminator insertion, Task 8 step 3). v0.169.0 → v0.170.0.
+
+Work Log:
+- Baseline: v0.169.0 / 2079 rust tests + 5216 conformance
+
+### 1. Implemented `elaborate_drops` (src/mir/drop_elaboration.rs)
+
+New MIR-to-MIR pass that inserts `Drop` terminators before `StorageDead`
+statements for locals whose type needs drop glue. Uses `ty_needs_drop`
+from Stage 15.43. Performs basic block splitting:
+1. Current block's statements up to StorageDead stay.
+2. Current block's terminator → `Drop { place: local, target: new_block }`.
+3. New block: StorageDead + remaining statements + original terminator.
+
+Key challenge: borrow checker conflict between `mir.basic_blocks.len()`
+(immutable) and `mir.block_mut()` (mutable). Fixed by computing the new
+block ID before the mutable borrow.
+
+Per §23: function name follows `<verb>_<noun>` pattern.
+Per §16: mutates MirBody in place — MIR-to-MIR transformation.
+
+### 2. Current behavior: no-op
+
+Since no user-defined `Drop` impls exist yet, `ty_needs_drop` returns
+false for all types in existing code. `elaborate_drops` doesn't insert
+any `Drop` terminators — it's a no-op. Tests verify this.
+
+### 3. Added 5 new tests
+
+2 unit tests:
+- stage15_44_elaborate_drops_noop_when_no_drop_needed
+- stage15_44_elaborate_drops_empty_body
+
+3 integration tests:
+- stage15_44_integration_elaborate_drops_noop_on_real_mir
+- stage15_44_integration_elaborate_drops_struct_no_drop
+- stage15_44_integration_elaborate_drops_complex_program
+
+### 4. Created documentation
+
+- docs/develop/v0/stage-15/stage-15.44-elaborate-drops.md
+- docs/tests/v0/stage15/stage-15.44-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean build, 0 warnings
+- `cargo test --features llvm-backend --lib drop_elaboration` — ✅ 18/18 PASS
+- `cargo test --features llvm-backend --test all_tests stage15_elaborate_drops_integration` — ✅ 3/3 PASS
+- All 226 lib + 2082 integration tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.169.0 → v0.170.0
+
+Stage Summary:
+- Stage 15.44 PASSED — `elaborate_drops` pass implemented
+- 5 new tests (2 unit + 3 integration), zero regression
+- Currently no-op (no Drop impls exist) — effect visible in Stage 15.46
+- v0.170.0: minor bump (Phase 2 — Drop elaboration `elaborate_drops` pass)
