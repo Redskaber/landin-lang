@@ -440,6 +440,11 @@ pub struct CompileResult {
     /// Built from stdlib_prelude; provides type_count, trait_count,
     /// layer_count, is_stdlib_name, summary.
     pub stdlib_facade: crate::stdlib::StdlibFacade,
+    /// Stage 15.27 (v0.2): TypeInterner — deduplicates TyKind values.
+    /// Built during compile() so all type constructions can go through it.
+    /// Currently not wired into Ty::new (that requires migrating all call
+    /// sites). Available for debugging/stats and future wiring.
+    pub type_interner: crate::mir::ty_interner::TypeInterner,
 }
 
 /// Stage 3.56: Per-body metadata for codegen.
@@ -476,6 +481,7 @@ impl CompileResult {
             trait_resolver: crate::traits::TraitResolver::new(),
             stdlib_prelude: crate::stdlib::default_prelude(),
             stdlib_facade: crate::stdlib::StdlibFacade::default(),
+            type_interner: crate::mir::ty_interner::TypeInterner::new(),
         }
     }
 }
@@ -1255,6 +1261,7 @@ pub fn compile(src: &str) -> CompileResult {
         fn_sigs: fn_sig_table.sigs,
         stdlib_prelude: crate::stdlib::default_prelude(),
         stdlib_facade: crate::stdlib::StdlibFacade::default(),
+        type_interner: crate::mir::ty_interner::TypeInterner::new(),
     }
 }
 

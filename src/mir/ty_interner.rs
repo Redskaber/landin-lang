@@ -22,6 +22,7 @@ use std::collections::HashMap;
 ///
 /// Per §1.0 原则 6 "通用 > 特例": one interner handles all TyKind variants.
 /// Per §1.0 原则 3 "显式 > 隐式": interning is explicit (caller calls `intern()`).
+#[derive(Debug, Default)]
 pub struct TypeInterner {
     /// Deduplication map: TyKind → Ty.
     /// Uses TyKind's PartialEq + Eq + Hash (Stage 15.25) for dedup.
@@ -72,11 +73,7 @@ impl TypeInterner {
     }
 }
 
-impl Default for TypeInterner {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// Default impl derived via #[derive(Default)] on the struct.
 
 #[cfg(test)]
 mod tests {

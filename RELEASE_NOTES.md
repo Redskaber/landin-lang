@@ -1,9 +1,33 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.152.0
+**Current version**: v0.153.0
 **Date**: 2026-07-31
 **Test count**: 173 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.153.0 — Stage 15.27 (TypeInterner Wired into CompileResult)
+
+### Overview
+
+Stage 15.27 wires the `TypeInterner` (activated in Stage 15.26) into
+`CompileResult`. The interner is now accessible from compilation results
+for debugging, statistics, and future wiring into `Ty::new`.
+
+### What Changed
+
+**Added `type_interner` field to `CompileResult`** (`src/driver.rs`):
+- `pub type_interner: crate::mir::ty_interner::TypeInterner`
+- Initialized as `TypeInterner::new()` in both `compile()` and `empty()`
+
+**Added `Debug + Default` derives** to `TypeInterner` (`src/mir/ty_interner.rs`).
+
+### Verification
+
+- All 173 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.152.0 — Stage 15.26 (TypeInterner Dedup Activated)
