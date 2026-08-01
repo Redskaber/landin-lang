@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.158.0 (v0.2 Phase 1 — 32 stages complete, 7402 tests passing)  
+**Version**: v0.159.0 (v0.2 Phase 1 core complete — Phase 2 ready)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,19 +21,18 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 1 — Stage 15.32 Complete (32 stages, v0.158 milestone)**
+> **v0.2 Phase 1 Core Complete — Stage 15.33 (v0.159 milestone)**
 >
-> 32 stages of v0.2 Phase 1 work complete:
-> - **Ty interning**: TypeInterner → Eq+Hash → thread-local automatic dedup → integration tests
-> - **Memory optimizations**: Span removal, SubstsRef Rc<[Ty]>, Const.ty inline, AdtLayouts sharing
-> - **Architecture**: Writeback consolidation (8→2), error system cleanup, writeback 3-tuple return
-> - **Diagnostics**: DiagnosticBuilder, ErrorCode catalog, Spanned trait, color output, --color flag
-> - **CLI**: rustc-style display with source snippets, TTY auto-detection, LLVM version switch fix
-> - **HP-22**: dyn Trait call info moved from side-table into TerminatorKind::Call
-> - **Dead code**: region_inference.rs 1462 LOC documented + allow(dead_code) cleanup
+> 33 stages of v0.2 work complete. Phase 1 core tasks done:
+> - ✅ **Ty interning**: thread-local HashMap dedup — all types auto-deduped
+> - ✅ **Memory optimizations**: SubstsRef Rc<[Ty]>, Const.ty inline, AdtLayouts Arc
+> - ✅ **Writeback consolidation**: 8 passes → 2 functions
+> - ✅ **Diagnostics**: DiagnosticBuilder, ErrorCode, Spanned, color output, --color
+> - ✅ **HP-22**: dyn Trait call info in TerminatorKind::Call
+> - ⏳ **Phase 2 ready**: Closure redesign (Ty interning done), NLL, Drop, Copy detection
 >
 > **Test count**: 173 lib tests + 2013 integration tests + 5216 conformance tests = 7402 passing.
-> **0 clippy warnings**, fmt clean.
+> **0 clippy warnings**, fmt clean. Next: Phase 2 (soundness closures) or Task 4 (EmitValue).
 
 ---
 

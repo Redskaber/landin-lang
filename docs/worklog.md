@@ -19310,3 +19310,50 @@ in borrowck/mod.rs).
 Stage Summary:
 - Stage 15.32 PASSED — region_inference.rs dead code documentation cleanup
 - v0.158.0: minor bump (documentation + clippy fix)
+
+---
+Task ID: stage15.33-v0159-milestone-review
+Agent: Super Z (main)
+Task: Stage 15.33 — v0.159 milestone: Phase 1 review + Phase 2 planning. v0.158.0 → v0.159.0.
+
+Work Log:
+- Baseline: v0.158.0 / 2013 rust tests + 5216 conformance
+
+### v0.2 Phase 1 Review (Stage 15.1-15.32)
+
+Phase 1 Task Status:
+1. Ty interning (Ty<'tcx> Copy) → DONE via thread-local TypeInterner (Stage 15.28)
+   - Stage 15.1-15.29: Design → Eq+Hash → HashMap dedup → thread-local → tests
+   - v0.2 approach: thread-local HashMap (v0.3 will use arena &'tcx)
+2. SubstsRef → Rc<[Ty]> → DONE (Stage 15.10)
+3. TraitResolver key redesign → NOT STARTED (needs Task 1 full Rc<TyKind> migration)
+4. EmitValue → typed LLVM handle → NOT STARTED (4-6 weeks, independent)
+5. Writeback consolidation 8→2 → DONE (Stage 15.7)
+6. HP-1 Sound Copy detection → DEFERRED (needs Task 3)
+7-10. Phase 2 tasks → NOT STARTED
+
+HP-22 (dyn_trait_call in Terminator) → DONE (Stage 15.30)
+Dead code cleanup → DONE (Stage 15.32)
+
+### Remaining Phase 1 work:
+- Task 3: TraitResolver key redesign (blocked on full Rc<TyKind> migration)
+- Task 4: EmitValue → typed LLVM handle (independent, 4-6 weeks)
+
+### Phase 2 readiness:
+- HP-1 Sound Copy detection (1-2 days, needs Task 3)
+- Fixpoint NLL (1-2 weeks)
+- Drop elaboration (3-5 days, needs NLL)
+- Region allocation (1 week, needs NLL)
+- Closure redesign (2-3 weeks, needs Ty interning — DONE)
+
+### Verification
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.158.0 → v0.159.0
+
+Stage Summary:
+- Stage 15.33 PASSED — v0.159 milestone review
+- Phase 1 core work complete (Ty interning, writeback, diagnostics, HP-22)
+- v0.159.0: minor bump (milestone review)

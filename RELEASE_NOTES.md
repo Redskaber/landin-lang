@@ -1,9 +1,45 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.158.0
+**Current version**: v0.159.0
 **Date**: 2026-08-01
 **Test count**: 173 rust lib tests + 2013 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.159.0 — Stage 15.33 (v0.159 Milestone: Phase 1 Review + Phase 2 Planning)
+
+### Overview
+
+Stage 15.33 is a milestone review of v0.2 Phase 1 progress (Stage 15.1-15.32).
+All core Phase 1 tasks are complete. Remaining work is Phase 2 (soundness) and
+Phase 3 (features).
+
+### Phase 1 Status
+
+| Task | Status | Stages |
+|------|--------|--------|
+| 1. Ty interning | ✅ DONE | 15.1-15.29 (thread-local HashMap dedup) |
+| 2. SubstsRef Rc<[Ty]> | ✅ DONE | 15.10 |
+| 3. TraitResolver keys | ⏳ Deferred | Needs full Rc<TyKind> migration |
+| 4. EmitValue → typed handle | ⏳ Deferred | Independent, 4-6 weeks |
+| 5. Writeback consolidation | ✅ DONE | 15.7 (8→2 functions) |
+| HP-22: dyn_trait_call | ✅ DONE | 15.30-15.31 |
+| Dead code cleanup | ✅ DONE | 15.32 |
+
+### Phase 2 Readiness
+
+- HP-1 Sound Copy detection (1-2 days, needs Task 3)
+- Fixpoint NLL (1-2 weeks)
+- Drop elaboration (3-5 days, needs NLL)
+- Region allocation (1 week, needs NLL)
+- Closure redesign (2-3 weeks, needs Ty interning — ✅ DONE)
+
+### Verification
+
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.158.0 — Stage 15.32 (Region Inference Dead Code Documentation Cleanup)
