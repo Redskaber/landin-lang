@@ -272,24 +272,28 @@ fn stage15_39_compute_ever_read_empty_for_no_reads() {
 }
 
 // ============================================================
-// Part E — Known limitation: `&mut self` method-call false positive
+// Part E — `&mut self` method-call in loop (FALSE POSITIVE FIXED in Stage 15.40)
 // ============================================================
 
-/// Stage 15.39 test 9: **Documents the known limitation.**
+/// Stage 15.39 test 9 (UPDATED in Stage 15.40): **False positive FIXED.**
 ///
-/// The `&mut self` method-call false positive (1 conformance case:
-/// `e2e-runok-132-state-machine.lin`) is NOT fixed by Option B. It's
-/// a separate bug in the dataflow path's handling of borrow temps in
-/// loops — the temp is live across the back-edge (correctly), so its
-/// borrow is never killed, causing conflicts with the next iteration's
-/// borrow.
+/// **Original Stage 15.39 behavior**: The dataflow path produced a false
+/// positive on `&mut self` method calls in loops. The borrow temp was
+/// live across the loop back-edge (correctly), so its borrow was never
+/// killed, causing conflicts with the next iteration's borrow.
 ///
-/// This test documents the limitation by checking that the dataflow
-/// path still produces a false positive on a simplified version of
-/// the state machine pattern. The fix is deferred to a future stage.
+/// **Stage 15.40 fix**: The `kill_expired_borrows_dataflow` method was
+/// revised to use `last_use_map` (borrow lifetimes end at their last
+/// read) instead of `live_out` (local lifetimes). Additionally,
+/// `kill_borrows_on_redefinition` kills borrows when their ref_local
+/// is re-assigned. Together, these correctly expire the borrow at the
+/// call point, not at the local's re-assignment.
 ///
-/// **When this test starts failing, it means the false positive is
-/// fixed — update this test to assert `dataflow_errors.is_empty()`.**
+/// This test verifies the fix: the dataflow path now accepts `&mut self`
+/// method calls in loops, matching the legacy path.
+///
+/// See `docs/develop/v0/stage-15/stage-15.40-kill-on-redef-and-driver-switch.md`
+/// for the full fix analysis.
 #[test]
 fn stage15_39_known_limitation_mut_self_method_call_in_loop() {
     let src = r#"
@@ -326,21 +330,13 @@ fn stage15_39_known_limitation_mut_self_method_call_in_loop() {
         legacy_errors
     );
 
-    // Dataflow path: KNOWN FALSE POSITIVE — rejects due to borrow temp
-    // liveness across the loop back-edge.
-    // This is the known limitation documented in
-    // docs/develop/v0/stage-15/stage-15.39-option-b-implementation.md §6.
-    // When this is fixed, flip the assertion to `is_empty()`.
-    if !dataflow_errors.is_empty() {
-        // Expected — known limitation. Print for visibility.
-        eprintln!(
-            "Stage 15.39 known limitation: dataflow path rejects valid &mut self method call in loop. \
-             Errors: {:?}",
-            dataflow_errors
-        );
-    }
-    // We don't assert `!dataflow_errors.is_empty()` because the fix
-    // might land before this test is updated. Instead, we just log it.
-    // The key assertion is that legacy accepts (no regression on the
-    // legacy path).
+    // Dataflow path: NOW ALSO ACCEPTS (Stage 15.40 fixed the false positive).
+    // Before Stage 15.40, this would have been non-empty (the false positive).
+    // Now it's empty — both paths agree.
+    assert!(
+        dataflow_errors.is_empty(),
+        "Dataflow path with Stage 15.40 fix must accept &mut self method calls in loop. \
+         The false positive is FIXED. Errors: {:?}",
+        dataflow_errors
+    );
 }

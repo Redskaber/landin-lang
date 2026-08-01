@@ -20090,3 +20090,129 @@ Stage Summary:
 - 1 known limitation remains: `&mut self` false positive in loops (deferred)
 - Driver switch (Stage 15.40) still blocked by the 1 false positive
 - v0.165.0: minor bump (Phase 2 — Option B preserves GAP-1 in dataflow path)
+
+---
+Task ID: stage15.40-kill-on-redef-and-driver-switch
+Agent: Super Z (main)
+Task: Stage 15.40 — Fix `&mut self` false positive (kill-on-redefinition + last-use-based kill) + switch driver to dataflow path. NLL migration COMPLETE. v0.165.0 → v0.166.0.
+
+Work Log:
+- Baseline: v0.165.0 / 2061 rust tests + 5216 conformance
+
+### 1. Revised `kill_expired_borrows_dataflow` to use last-use-based kill
+
+Stage 15.36-15.39 used liveness-based kill (`compute_live_after_point` +
+`LiveOutMap`). This was correct for LOCAL lifetimes but wrong for BORROW
+lifetimes. A borrow temp in a loop is correctly live across the back-edge
+(its value is re-assigned each iteration), but the BORROW should expire
+at the call that uses it (the borrow's last read), not at the local's
+last use (the re-assignment).
+
+Changed `kill_expired_borrows_dataflow` to take `last_use_map: &LastUseMap`
+instead of `live_out: &LiveOutMap`. The kill logic is now:
+1. If ref_local was never read → don't kill (GAP-1 preservation, Option B).
+2. If ref_local's last read is at the current point → kill (borrow's
+   lifetime ends at its last read).
+
+This matches the legacy path's kill behavior, plus the ever_read check.
+
+### 2. Added `kill_borrows_on_redefinition` method
+
+A new method that kills any active borrow whose `ref_local` is the LHS
+of the current `Assign` statement. This handles the case where a borrow
+temp is re-assigned — the old borrow is stale and must be killed before
+the new borrow is created.
+
+Called before `check_statement` in the dataflow walk.
+
+### 3. Switched the driver
+
+`src/driver.rs` now calls `bc.check_mir_body_with_dataflow(&mir)` instead
+of `bc.check_mir_body(&mir)`. Removed the `#[allow(deprecated)]` attributes.
+
+### 4. Updated `check_crate`
+
+The deprecated `check_crate` free function now calls
+`check_mir_body_with_dataflow` internally (matching the driver).
+
+### 5. Ran diagnostic tool — KEY RESULT
+
+```
+Files scanned: 5216 (skipped: 188)
+Files compared: 5028
+  AGREE-OK:           4830  (was 4829 — 1 case moved from DATAFLOW-STRICTER)
+  AGREE-ERROR:        198
+  LEGACY-STRICTER:    0     (was 112 — GAP-1 conflict resolved by Option B)
+  DATAFLOW-STRICTER:  0     (was 1 — false positive FIXED ✅)
+  DIFFERENT-ERRORS:   0
+```
+
+Both paths now agree on ALL 5028 comparable conformance tests. The NLL
+migration is complete.
+
+### 6. Ran full conformance suite with driver switch
+
+```
+Results: 5216 passed, 0 failed, 5216 total
+ALL TESTS PASSED
+```
+
+All 5216 conformance tests pass with the driver using the dataflow path.
+
+### 7. Updated existing tests
+
+- `stage15_39_known_limitation_mut_self_method_call_in_loop` — updated
+  to assert `dataflow_errors.is_empty()` (the false positive is fixed).
+- `stage15_37_gap1_semantic_conflict_documented` — already updated in
+  Stage 15.39 (asserts both paths reject GAP-1).
+
+### 8. Added 8 new integration tests (tests/v0/stage15/plan/stage15_40_driver_switch_tests.rs)
+
+Part A — False positive fixed (3 tests):
+- stage15_40_state_machine_false_positive_fixed
+- stage15_40_simple_method_call_in_loop
+- stage15_40_multiple_method_calls_in_loop
+
+Part B — Driver uses dataflow path (2 tests):
+- stage15_40_driver_uses_dataflow_path
+- stage15_40_driver_preserves_gap1
+
+Part C — Parity on all patterns (3 tests):
+- stage15_40_parity_valid_borrow
+- stage15_40_parity_gap1_pattern
+- stage15_40_parity_loop_borrow
+
+### 9. Created documentation
+
+- docs/develop/v0/stage-15/stage-15.40-kill-on-redef-and-driver-switch.md
+- docs/tests/v0/stage15/stage-15.40-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### 10. Migration plan status (Stage 15.34-15.41) — COMPLETE
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.34 | ✅ DONE (v0.160.0) | NLL fixpoint design doc |
+| 15.35 | ✅ DONE (v0.161.0) | `compute_liveness` fixpoint function |
+| 15.36 | ✅ DONE (v0.162.0) | `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` |
+| 15.37 | ⚠️ PARTIAL (v0.163.0) | Legacy `check_mir_body` deprecated; driver switch DEFERRED |
+| 15.38 | ✅ DONE (v0.164.0) | Diagnostic tool + reconciliation design doc |
+| 15.39 | ✅ DONE (v0.165.0) | Option B: GAP-1 preserved (112 → 0) |
+| 15.40 | ✅ DONE (v0.166.0) | Kill-on-redef + driver switch (false positive fixed) — NLL MIGRATION COMPLETE |
+| 15.41 | ⏳ NEXT | Remove legacy code (now dead code) |
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean build, 0 warnings
+- `cargo test --features llvm-backend` — ✅ 208 lib + 2069 integration = 2277 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- Diagnostic tool: LEGACY-STRICTER = 0, DATAFLOW-STRICTER = 0
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.165.0 → v0.166.0
+
+Stage Summary:
+- Stage 15.40 PASSED — NLL fixpoint migration COMPLETE
+- Driver now uses `check_mir_body_with_dataflow` (dataflow path)
+- False positive FIXED (DATAFLOW-STRICTER 1 → 0)
+- Both paths agree on all 5028 comparable conformance tests
+- All 5216 conformance tests pass with driver using dataflow path
+- v0.166.0: minor bump (Phase 2 — NLL migration complete, driver switched)

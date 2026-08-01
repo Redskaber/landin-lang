@@ -1,9 +1,109 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.165.0
+**Current version**: v0.166.0
 **Date**: 2026-08-01
-**Test count**: 187 rust lib tests + 2061 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 208 rust lib tests + 2069 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.166.0 — Stage 15.40 (NLL Migration COMPLETE — Driver Switched to Dataflow Path)
+
+### Overview
+
+Stage 15.40 **completes the NLL fixpoint migration** (Stages 15.34-15.40).
+The driver now uses `check_mir_body_with_dataflow` instead of the legacy
+`check_mir_body`. The `&mut self` method-call false positive (the 1
+DATAFLOW-STRICTER case from Stage 15.39) is fixed.
+
+**Key results**:
+- Diagnostic tool confirms: LEGACY-STRICTER = 0, DATAFLOW-STRICTER = 0
+  (both paths agree on all 5028 comparable conformance tests).
+- All 5216 conformance tests pass with the driver using the dataflow path.
+- All 208 lib + 2069 integration tests pass (zero regression).
+
+### What Changed
+
+**`src/borrowck/mod.rs`**:
+- `kill_expired_borrows_dataflow` — **revised** to use `last_use_map`
+  (last-use-based kill) instead of `live_out` (liveness-based kill).
+  Borrow lifetimes now end at their last READ, not at the local's last
+  use. This fixes the false positive on `&mut self` method calls in loops.
+- `kill_borrows_on_redefinition` — **new method** that kills borrows
+  when their `ref_local` is re-assigned (handles borrow temps in loops).
+- `check_mir_body_with_dataflow` — now calls `kill_borrows_on_redefinition`
+  before each `check_statement`.
+- `check_crate` — now uses `check_mir_body_with_dataflow` internally.
+
+**`src/driver.rs`**:
+- Driver now calls `bc.check_mir_body_with_dataflow(&mir)` instead of
+  `bc.check_mir_body(&mir)`. Removed `#[allow(deprecated)]` attributes.
+
+### Why the Last-Use-Based Kill Fixes the False Positive
+
+Stage 15.36-15.39 used liveness-based kill, which was correct for LOCAL
+lifetimes but wrong for BORROW lifetimes. A borrow temp in a loop is
+correctly live across the back-edge (its value is re-assigned each
+iteration), but the BORROW should expire at the call that uses it (the
+borrow's last read), not at the local's last use (the re-assignment).
+
+The last-use-based kill correctly expires the borrow at the call point
+(the borrow's last read), matching the legacy path's behavior. Combined
+with `kill_borrows_on_redefinition` (kills borrows when ref_local is
+re-assigned) and the `ever_read` check (Option B, preserves GAP-1),
+the dataflow path now produces identical results to the legacy path on
+all 5028 comparable conformance tests.
+
+### Diagnostic Verification
+
+```
+Files scanned: 5216 (skipped: 188)
+Files compared: 5028
+  AGREE-OK:           4830  (was 4829)
+  AGREE-ERROR:        198
+  LEGACY-STRICTER:    0     (was 112 — GAP-1 resolved by Option B)
+  DATAFLOW-STRICTER:  0     (was 1 — false positive FIXED ✅)
+  DIFFERENT-ERRORS:   0
+```
+
+### Tests
+
+- **8 new integration tests** in `tests/v0/stage15/plan/stage15_40_driver_switch_tests.rs`:
+  - 3 false-positive-fixed tests (state machine, simple, multiple method calls)
+  - 2 driver-uses-dataflow-path tests
+  - 3 parity tests on all patterns
+- **1 existing test updated**: `stage15_39_known_limitation_mut_self_method_call_in_loop`
+  — now asserts the false positive is fixed.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend` — ✅ 208 lib + 2069 integration = 2277 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- Diagnostic tool: LEGACY-STRICTER = 0, DATAFLOW-STRICTER = 0
+- 0 clippy warnings, fmt clean
+
+### Migration Plan (Stages 15.34-15.41) — COMPLETE
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.34 | ✅ DONE (v0.160.0) | NLL fixpoint design doc |
+| 15.35 | ✅ DONE (v0.161.0) | `compute_liveness` fixpoint function |
+| 15.36 | ✅ DONE (v0.162.0) | `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` |
+| 15.37 | ⚠️ PARTIAL (v0.163.0) | Legacy `check_mir_body` deprecated; driver switch DEFERRED |
+| 15.38 | ✅ DONE (v0.164.0) | Diagnostic tool + reconciliation design doc |
+| 15.39 | ✅ DONE (v0.165.0) | Option B: GAP-1 preserved (112 → 0) |
+| **15.40** | **✅ DONE (v0.166.0)** | **Kill-on-redef + driver switch — NLL MIGRATION COMPLETE** |
+| 15.41 | ⏳ NEXT | Remove legacy `compute_last_use_map` + `kill_expired_borrows` + `check_mir_body` (now dead code) |
+
+### Key Takeaway
+
+The NLL fixpoint migration (Phase 2 Task 7, HP-10) is **COMPLETE**. The
+driver uses the dataflow-driven borrow checker. The `compute_liveness`
+infrastructure (Stages 15.35-15.36) is retained for future use (full
+NLL with borrow regions), but the current kill decision uses the
+last-use-based approach (matching the legacy path) plus the `ever_read`
+check (Option B, preserves GAP-1) plus kill-on-redefinition (Stage 15.40,
+handles borrow temps in loops).
 
 ---
 ## v0.165.0 — Stage 15.39 (Option B: GAP-1 Conflict Resolved — 112 → 0)

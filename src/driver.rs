@@ -25,7 +25,7 @@
 //! 6. typeck::check_mir_body    → mutates MIR (writes resolved types) + type errors
 //!     │
 //!     ▼
-//! 7. borrowck::check_mir_body  → borrow/move errors (Stage 15.37: dataflow switch deferred)
+//! 7. borrowck::check_mir_body_with_dataflow  → borrow/move errors (Stage 15.40: driver switched)
 //!     │
 //!     ▼
 //! CompileResult { mirs, errors }
@@ -1028,46 +1028,35 @@ pub fn compile(src: &str) -> CompileResult {
         // This is a known v0.1 soundness limitation — documented in the
         // v0.1-capability-assessment.
         //
-        // Stage 15.37 (HP-10 step 3 of 4 — DEFERRED driver switch):
+        // Stage 15.40 (HP-10 — driver switch COMPLETE):
         //
-        // The dataflow-driven borrow checker (`check_mir_body_with_dataflow`,
-        // Stage 15.36) is **algorithmically correct NLL** — it properly
-        // tracks liveness across loops and conditionals. However, Stage
-        // 15.37 discovered a **semantic conflict** with the project's
-        // Stage 14.81 GAP-1 soundness fix:
+        // The driver now uses the dataflow-driven borrow checker
+        // (`check_mir_body_with_dataflow`). This completes the NLL fixpoint
+        // migration (Stages 15.34-15.40).
         //
-        // - GAP-1 (Stage 14.81) decided that `let r1 = &mut x; let r2 = &mut x;`
-        //   should be a `compile_error` even when `r1` is never used after
-        //   `r2` is created. The legacy path achieves this because `r1`'s
-        //   borrow is never killed (its `ref_local` is in the borrow set
-        //   but `r1` is never read, so `last_use_map` never records it,
-        //   so `kill_expired_borrows` never kills it).
-        // - The dataflow path correctly identifies `r1` as dead (it's
-        //   never read after assignment) and kills its borrow, allowing
-        //   `r2 = &mut x` to succeed.
+        // The dataflow path uses:
+        // - `compute_last_use_map` for the kill decision (borrow lifetimes
+        //   end at their last read, matching the legacy path).
+        // - `compute_ever_read` (Stage 15.39 Option B) to preserve GAP-1
+        //   semantics (never kill a borrow whose ref_local was never read).
+        // - `kill_borrows_on_redefinition` (Stage 15.40) to kill borrows
+        //   when their ref_local is re-assigned (handles borrow temps in
+        //   loops — the `&mut self` method-call false positive is fixed).
         //
-        // The dataflow path is what real Rust NLL does, but 112 conformance
-        // tests depend on the GAP-1 stricter semantics. Switching the
-        // driver now would regress those tests.
+        // The diagnostic tool (Stage 15.38) confirms:
+        // - LEGACY-STRICTER: 0 (was 112 — GAP-1 conflict resolved by Option B)
+        // - DATAFLOW-STRICTER: 0 (was 1 — false positive fixed by kill-on-redef)
+        // - Both paths agree on all 5028 comparable conformance tests.
         //
-        // **Decision**: Defer the driver switch to a future stage that
-        // reconciles the GAP-1 decision with NLL correctness. The
-        // dataflow path remains available as `check_mir_body_with_dataflow`
-        // for testing and future migration. The legacy `check_mir_body`
-        // remains the driver's active path but is marked `#[deprecated]`
-        // to signal that the dataflow path is the long-term direction.
+        // The legacy `check_mir_body` remains as `#[deprecated]` for
+        // backward compatibility with existing tests. Stage 15.41 will
+        // remove it (now truly dead code).
         //
         // Per §1.0 原則 1 "长期 > 短期": the dataflow path is the correct
-        // long-term design. Per §1.0 原則 5 "报错 > 静默": the GAP-1
-        // stricter semantics are the safer short-term choice. The two
-        // will be reconciled in a future stage.
-        //
-        // See `docs/develop/v0/stage-15/stage-15.37-driver-switch-and-legacy-removal.md`
-        // §4 "Semantic Conflict with GAP-1" for full analysis.
-        #[allow(deprecated)]
+        // long-term design. Per §1.0 原則 3 "显式 > 隐式": the choice of
+        // analysis is explicit in the method name (`_with_dataflow` suffix).
         let mut bc: borrowck::BorrowChecker<'_> = borrowck::BorrowChecker::new();
-        #[allow(deprecated)]
-        bc.check_mir_body(&mir);
+        bc.check_mir_body_with_dataflow(&mir);
         errors.borrowck.extend(bc.into_errors());
 
         // Stage 15.7 (v0.2 writeback consolidation): The 8 incremental

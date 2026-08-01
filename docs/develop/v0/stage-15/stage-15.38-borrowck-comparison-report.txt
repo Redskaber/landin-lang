@@ -12,10 +12,10 @@ Version: v0.164.0
 
 ## Category Counts
 
-- AGREE-OK (both accept): 4829
+- AGREE-OK (both accept): 4830
 - AGREE-ERROR (both reject, same errors): 198
 - LEGACY-STRICTER (legacy rejects, dataflow accepts — GAP-1 pattern): 0
-- DATAFLOW-STRICTER (dataflow rejects, legacy accepts — soundness improvement): 1
+- DATAFLOW-STRICTER (dataflow rejects, legacy accepts — soundness improvement): 0
 - DIFFERENT-ERRORS (both reject, different error counts): 0
 
 ## LEGACY-STRICTER Cases (GAP-1 conflict)
@@ -29,8 +29,6 @@ path accepts. They represent the GAP-1 semantic conflict.
 These are the cases where the dataflow path rejects but the legacy
 path accepts. They represent dataflow soundness improvements.
 
-- `tests/conformance/04-e2e/06-run-ok/e2e-runok-132-state-machine.lin` (expected: run_ok)
-  - Dataflow errors: 2
 
 ## DIFFERENT-ERRORS Cases
 
@@ -44,7 +42,7 @@ The LEGACY-STRICTER count (0) is the number of conformance tests that
 would regress if the driver switched to the dataflow path. This is the
 GAP-1 semantic conflict documented in Stage 15.37.
 
-The DATAFLOW-STRICTER count (1) is the number of cases where the dataflow
+The DATAFLOW-STRICTER count (0) is the number of cases where the dataflow
 path is sounder than the legacy path. A non-zero count here would
 indicate the legacy path has soundness bugs the dataflow path fixes.
 
