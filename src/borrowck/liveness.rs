@@ -507,6 +507,63 @@ fn fold_use_def(
     }
 }
 
+/// Stage 15.39 (HP-10 step 4 — Option B): Compute the set of locals that
+/// are read **anywhere** in the MIR body.
+///
+/// This is a simple forward scan that collects every local appearing in
+/// any `statement_reads` or `terminator_reads` result. The resulting set
+/// is used by `kill_expired_borrows_dataflow` to preserve GAP-1 semantics:
+/// a borrow whose `ref_local` was never read is NOT killed (it stays as
+/// a "stray" until scope end, matching the legacy path's behavior).
+///
+/// ## Why this is needed
+///
+/// The dataflow liveness analysis (`compute_liveness`) correctly
+/// identifies locals that are dead (never read after a given point).
+/// Killing a dead `ref_local`'s borrow is correct NLL — but it violates
+/// the project's Stage 14.81 GAP-1 soundness fix, which decided that
+/// `let r1 = &mut x; let r2 = &mut x;` should be a `compile_error` even
+/// when `r1` is never read after `r2` is created.
+///
+/// The legacy path achieves GAP-1 "accidentally" — `compute_last_use_map`
+/// only records reads, so a never-read local never has its "last use"
+/// recorded, so `kill_expired_borrows` never kills its borrow. The borrow
+/// stays alive as a "stray" and conflicts with the new borrow.
+///
+/// `compute_ever_read` lets the dataflow path replicate this behavior:
+/// if a `ref_local` was never read ANYWHERE in the body, its borrow is
+/// never killed by the dataflow path either. This preserves GAP-1 while
+/// still using the dataflow infrastructure for loop/conditional correctness.
+///
+/// Per §1.0 原則 1 "长期 > 短期": this is the right long-term design for
+/// now — it fixes the real NLL soundness bugs (loops, conditionals)
+/// without changing the project's soundness posture. Future migration to
+/// real NLL (Option A) remains possible by removing this check.
+///
+/// Per §1.0 原則 3 "显式 > 隐式": the "was ever read" check is explicit
+/// and documented. Per §23: function name follows `<verb>_<noun>_<noun>`
+/// pattern.
+///
+/// ## Complexity
+///
+/// O(B × (S + T)) where B=blocks, S=avg stmts/block, T=terminator reads.
+/// Called once per `check_mir_body_with_dataflow` invocation. For typical
+/// functions (<50 blocks, <20 stmts/block) this is well under 100µs.
+pub fn compute_ever_read(mir: &MirBody) -> std::collections::HashSet<crate::mir::place::LocalId> {
+    let mut ever = std::collections::HashSet::new();
+    for bb in &mir.basic_blocks {
+        for stmt in &bb.statements {
+            for local in statement_reads(stmt) {
+                ever.insert(local);
+            }
+        }
+        for local in terminator_reads(&bb.terminator) {
+            ever.insert(local);
+        }
+    }
+    ever
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1132,5 +1189,129 @@ mod tests {
             live_after_term.contains(&x),
             "x live in bb1 → live_out[bb0]"
         );
+    }
+
+    // ----- compute_ever_read() tests (Stage 15.39) -----
+
+    /// Stage 15.39: `compute_ever_read` returns the set of all locals read
+    /// anywhere in the body (statements + terminators).
+    #[test]
+    fn stage15_39_compute_ever_read_collects_all_reads() {
+        // bb0: y = x; z = y; return
+        // Reads: x (in y=x), y (in z=y).
+        // Writes: y, z.
+        // ever_read should contain x and y (not z — z is never read).
+        let (mut body, locals) = build_body_with_locals(3);
+        let x = locals[0];
+        let y = locals[1];
+        let z = locals[2];
+        let bb0 = body.new_block();
+        body.block_mut(bb0).statements.push(stmt_assign_use(y, x)); // y = x
+        body.block_mut(bb0).statements.push(stmt_assign_use(z, y)); // z = y
+        body.block_mut(bb0).terminator = Terminator::ret(Span::DUMMY);
+
+        let ever = compute_ever_read(&body);
+        assert!(ever.contains(&x), "x is read in 'y = x'");
+        assert!(ever.contains(&y), "y is read in 'z = y'");
+        assert!(
+            !ever.contains(&z),
+            "z is written but never read → not in ever_read"
+        );
+    }
+
+    /// Stage 15.39: `compute_ever_read` includes reads from terminators
+    /// (e.g., SwitchInt discr, Call func/args, Assert cond).
+    #[test]
+    fn stage15_39_compute_ever_read_includes_terminator_reads() {
+        // bb0: y = x; switchInt(x) { 0 => bb1, _ => bb2 }
+        // Reads: x (in y=x), x (in switchInt discr).
+        // ever_read should contain x.
+        let (mut body, locals) = build_body_with_locals(2);
+        let x = locals[0];
+        let y = locals[1];
+        let bb0 = body.new_block();
+        let bb1 = body.new_block();
+        let bb2 = body.new_block();
+        body.block_mut(bb0).statements.push(stmt_assign_use(y, x)); // y = x
+        body.block_mut(bb0).terminator = Terminator {
+            kind: TerminatorKind::SwitchInt {
+                discr: Operand::Copy(place_local(x)),
+                targets: vec![(crate::mir::ty::ConstVal::Int(0), bb1)],
+                otherwise: bb2,
+            },
+            span: Span::DUMMY,
+        };
+        body.block_mut(bb1).terminator = Terminator::ret(Span::DUMMY);
+        body.block_mut(bb2).terminator = Terminator::ret(Span::DUMMY);
+
+        let ever = compute_ever_read(&body);
+        assert!(ever.contains(&x), "x is read by switchInt discr");
+    }
+
+    /// Stage 15.39: `compute_ever_read` returns empty set for a body with
+    /// no reads (only writes).
+    #[test]
+    fn stage15_39_compute_ever_read_empty_when_no_reads() {
+        // bb0: x = 1; y = 2; return
+        // No reads (RHS are constants). ever_read should be empty.
+        let (mut body, locals) = build_body_with_locals(2);
+        let x = locals[0];
+        let y = locals[1];
+        let bb0 = body.new_block();
+
+        let const_one = Operand::Constant(crate::mir::ty::Const {
+            ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
+            val: crate::mir::ty::ConstVal::Int(1),
+        });
+        let stmt_assign_const = |dst: crate::mir::place::LocalId, op: Operand| Statement {
+            kind: StatementKind::Assign(Box::new((place_local(dst), Rvalue::Use(op)))),
+            span: Span::DUMMY,
+        };
+        body.block_mut(bb0)
+            .statements
+            .push(stmt_assign_const(x, const_one.clone()));
+        body.block_mut(bb0)
+            .statements
+            .push(stmt_assign_const(y, const_one));
+        body.block_mut(bb0).terminator = Terminator::ret(Span::DUMMY);
+
+        let ever = compute_ever_read(&body);
+        assert!(ever.is_empty(), "no reads → ever_read is empty");
+    }
+
+    /// Stage 15.39: `compute_ever_read` returns empty set for an empty body
+    /// (no statements, unreachable terminator).
+    #[test]
+    fn stage15_39_compute_ever_read_empty_body() {
+        let mut body = MirBody::new(Span::DUMMY);
+        let bb0 = body.new_block();
+        body.block_mut(bb0).terminator = Terminator::unreachable(Span::DUMMY);
+
+        let ever = compute_ever_read(&body);
+        assert!(ever.is_empty(), "empty body → ever_read is empty");
+    }
+
+    /// Stage 15.39: `compute_ever_read` collects reads across multiple
+    /// basic blocks.
+    #[test]
+    fn stage15_39_compute_ever_read_multiple_blocks() {
+        // bb0: y = x; goto bb1
+        // bb1: z = y; return
+        // ever_read should contain x and y (across both blocks).
+        let (mut body, locals) = build_body_with_locals(3);
+        let x = locals[0];
+        let y = locals[1];
+        let z = locals[2];
+        let bb0 = body.new_block();
+        let bb1 = body.new_block();
+        body.block_mut(bb0).statements.push(stmt_assign_use(y, x)); // y = x
+        body.block_mut(bb0).terminator = Terminator::goto(bb1, Span::DUMMY);
+        body.block_mut(bb1).statements.push(stmt_assign_use(z, y)); // z = y
+        body.block_mut(bb1).terminator = Terminator::ret(Span::DUMMY);
+
+        let ever = compute_ever_read(&body);
+        assert!(ever.contains(&x), "x read in bb0");
+        assert!(ever.contains(&y), "y read in bb1");
+        assert!(!ever.contains(&z), "z never read");
     }
 }

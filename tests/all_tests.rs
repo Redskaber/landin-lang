@@ -279,6 +279,9 @@ mod stage15_37_driver_switch_tests;
 // Stage 15.38: Borrow-check comparison diagnostic tool (informs GAP-1 reconciliation).
 #[path = "v0/stage15/plan/borrowck_comparison_diagnostic_tests.rs"]
 mod stage15_borrowck_comparison_diagnostic_tests;
+// Stage 15.39 (HP-10 step 4 — Option B): "was ever read" check preserves GAP-1 in dataflow path.
+#[path = "v0/stage15/plan/option_b_implementation_tests.rs"]
+mod stage15_option_b_implementation_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]

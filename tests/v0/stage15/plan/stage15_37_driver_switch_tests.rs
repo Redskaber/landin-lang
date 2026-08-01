@@ -202,33 +202,29 @@ fn stage15_37_dataflow_path_handles_loop_borrow() {
 }
 
 // ============================================================
-// Part D — GAP-1 semantic conflict regression test (DOCUMENTS the conflict)
+// Part D — GAP-1 conflict regression test (RESOLVED in Stage 15.39)
 // ============================================================
 
-/// Stage 15.37 test 7: **Documents the GAP-1 semantic conflict.**
+/// Stage 15.37 test 7 (UPDATED in Stage 15.39): **GAP-1 conflict RESOLVED.**
 ///
-/// For `let r1 = &mut x; let r2 = &mut x;` (where `r1` is never used
-/// after `r2` is created):
+/// **Original Stage 15.37 behavior**: The dataflow path accepted
+/// `let r1 = &mut x; let r2 = &mut x;` (correct NLL — `r1` is dead),
+/// while the legacy path rejected it (GAP-1 soundness fix). This was
+/// the documented semantic conflict that blocked the driver switch.
 ///
-/// - **Legacy path** (`check_mir_body`): REJECTS with a borrow error.
-///   This is the Stage 14.81 GAP-1 soundness fix — the project decided
-///   this pattern should be a `compile_error` even though `r1` is
-///   never read after `r2` is created. 112 conformance tests depend
-///   on this behavior.
+/// **Stage 15.39 update**: Option B (`compute_ever_read` + modified
+/// `kill_expired_borrows_dataflow`) resolved the conflict. The dataflow
+/// path now ALSO rejects this pattern, matching the legacy path. The
+/// "was ever read" check preserves GAP-1: a borrow whose `ref_local`
+/// was never read is NOT killed (it stays as a "stray" until scope end,
+/// matching the legacy path's behavior).
 ///
-/// - **Dataflow path** (`check_mir_body_with_dataflow`): ACCEPTS.
-///   This is correct NLL semantics — `r1` is dead after `r2` is
-///   created (it's never read), so its borrow expires, so `r2 = &mut x`
-///   is allowed. This is what real Rust NLL does.
+/// This test verifies the resolution: both paths now reject the GAP-1
+/// pattern. The 112 conformance cases that depended on GAP-1 semantics
+/// are now AGREE-ERROR (both paths reject with the same error count).
 ///
-/// This test documents the conflict so future reconciliation work has
-/// a clear acceptance criterion. The conflict must be resolved before
-/// the driver can switch to the dataflow path.
-///
-/// Per §1.0 原則 1 "长期 > 短期": the dataflow path is the correct
-/// long-term design. Per §1.0 原則 5 "报错 > 静默": the GAP-1 stricter
-/// semantics are the safer short-term choice. Reconciliation requires
-/// a design decision about which semantics the project wants.
+/// See `docs/develop/v0/stage-15/stage-15.39-option-b-implementation.md`
+/// for the full resolution analysis.
 #[test]
 #[allow(deprecated)]
 fn stage15_37_gap1_semantic_conflict_documented() {
@@ -262,14 +258,15 @@ fn stage15_37_gap1_semantic_conflict_documented() {
         "Legacy path must reject double-mut-borrow (GAP-1 soundness fix)"
     );
 
-    // Dataflow path: accepts (correct NLL — r1 is dead after r2 is created).
-    // This is the documented semantic conflict.
+    // Dataflow path: NOW ALSO REJECTS (Stage 15.39 Option B resolved the conflict).
+    // Before Option B, this would have been empty (the conflict). Now it's
+    // non-empty — both paths agree, GAP-1 is preserved.
     let dataflow_errors = check_mir_body_with_dataflow(main_mir);
     assert!(
-        dataflow_errors.is_empty(),
-        "Dataflow path accepts double-mut-borrow (correct NLL — r1 is dead). \
-         This is the documented GAP-1 semantic conflict. \
-         Errors (if any): {:?}",
+        !dataflow_errors.is_empty(),
+        "Dataflow path with Option B (Stage 15.39) must reject double-mut-borrow \
+         (GAP-1 preserved). The conflict documented in Stage 15.37 is RESOLVED. \
+         Errors: {:?}",
         dataflow_errors
     );
 }

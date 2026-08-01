@@ -55,9 +55,11 @@ pub use copy_semantics::{ty_is_copy, ty_is_copy_unified, ty_is_copy_with_resolve
 // The legacy `compute_last_use_map` is retained until Stage 15.37 migration.
 // Stage 15.36 (HP-10 step 2): also re-export `compute_live_after_point` —
 // the per-statement liveness helper used by `kill_expired_borrows_dataflow`.
+// Stage 15.39 (HP-10 step 4 — Option B): also re-export `compute_ever_read` —
+// the "was ever read" set used to preserve GAP-1 semantics in the dataflow path.
 pub use liveness::{
-    compute_last_use_map, compute_live_after_point, compute_liveness, successors, LastUseMap,
-    LiveInMap, LiveOutMap,
+    compute_ever_read, compute_last_use_map, compute_live_after_point, compute_liveness,
+    successors, LastUseMap, LiveInMap, LiveOutMap,
 };
 pub use place_path::{PlacePath, PlaceRoot, ProjElem};
 
@@ -342,17 +344,40 @@ impl<'a> BorrowChecker<'a> {
         &mut self,
         mir: &MirBody,
         live_out: &LiveOutMap,
+        ever_read: &std::collections::HashSet<crate::mir::place::LocalId>,
         bb: BasicBlockId,
         stmt_idx: usize,
     ) {
         let live_after = compute_live_after_point(mir, live_out, bb, stmt_idx);
 
-        // Kill any active borrow whose `ref_local` is NOT in the live set.
-        // We collect first to avoid mutating `borrows` while iterating.
+        // Kill any active borrow whose `ref_local` is NOT in the live set —
+        // BUT only if the `ref_local` was ever read anywhere in the body.
+        //
+        // Stage 15.39 (Option B): The "was ever read" check preserves
+        // GAP-1 semantics. A borrow whose `ref_local` was never read
+        // (e.g., `let r1 = &mut x;` where `r1` is never used) stays as
+        // a "stray" until scope end, matching the legacy path's behavior.
+        // This prevents the dataflow path from accepting GAP-1 patterns
+        // like `let r1 = &mut x; let r2 = &mut x;` (where `r1` is dead
+        // after `r2` is created, so NLL would kill `r1`'s borrow, but
+        // GAP-1 wants it to stay and conflict with `r2`'s borrow).
+        //
+        // Per §1.0 原則 5 "报错 > 静默": preserving the stray borrow is
+        // the safer choice — it errors on the side of rejecting
+        // potentially-unsound programs.
         let locals_to_kill: Vec<crate::mir::place::LocalId> = self
             .borrows
             .active_ref_locals()
-            .filter(|local| !live_after.contains(local))
+            .filter(|local| {
+                // GAP-1 preservation: never kill a borrow whose ref_local
+                // was never read. The borrow stays as a "stray" until
+                // scope end, matching the legacy path's behavior.
+                if !ever_read.contains(local) {
+                    return false; // do NOT kill
+                }
+                // NLL: kill if the ref_local is not live after this point.
+                !live_after.contains(local)
+            })
             .collect();
         for local in locals_to_kill {
             self.borrows.kill_borrows_of_local(local);
@@ -386,6 +411,12 @@ impl<'a> BorrowChecker<'a> {
     pub fn check_mir_body_with_dataflow(&mut self, mir: &MirBody) {
         // Pre-pass: compute fixpoint liveness maps (Stage 15.35).
         let (_live_in, live_out) = compute_liveness(mir);
+        // Stage 15.39 (Option B): Compute the set of locals that are read
+        // anywhere in the body. Used by `kill_expired_borrows_dataflow`
+        // to preserve GAP-1 semantics (never kill a borrow whose
+        // ref_local was never read — it stays as a "stray" until scope
+        // end, matching the legacy path's behavior).
+        let ever_read = compute_ever_read(mir);
 
         // Main walk: forward over all basic blocks.
         // The walk structure mirrors `check_mir_body` exactly.
@@ -398,19 +429,31 @@ impl<'a> BorrowChecker<'a> {
                 // borrow stays alive during the statement that performs
                 // the last read (matches legacy semantics).
                 if stmt_idx > 0 {
-                    self.kill_expired_borrows_dataflow(mir, &live_out, bb_id, stmt_idx - 1);
+                    self.kill_expired_borrows_dataflow(
+                        mir,
+                        &live_out,
+                        &ever_read,
+                        bb_id,
+                        stmt_idx - 1,
+                    );
                 }
                 self.check_statement(mir, &bb.statements[stmt_idx], bb_id, stmt_idx);
             }
             // After the last statement, kill borrows whose ref_local is
             // not live after the last statement.
             if stmt_count > 0 {
-                self.kill_expired_borrows_dataflow(mir, &live_out, bb_id, stmt_count - 1);
+                self.kill_expired_borrows_dataflow(
+                    mir,
+                    &live_out,
+                    &ever_read,
+                    bb_id,
+                    stmt_count - 1,
+                );
             }
             // Check terminator (uses are at index == statements.len()).
             let term_idx = stmt_count;
             self.check_terminator(mir, &bb.terminator, bb_id, term_idx);
-            self.kill_expired_borrows_dataflow(mir, &live_out, bb_id, term_idx);
+            self.kill_expired_borrows_dataflow(mir, &live_out, &ever_read, bb_id, term_idx);
         }
 
         // Run region inference as an additional check (same as legacy path).

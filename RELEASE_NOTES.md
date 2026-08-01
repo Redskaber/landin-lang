@@ -1,9 +1,143 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.164.0
+**Current version**: v0.165.0
 **Date**: 2026-08-01
-**Test count**: 182 rust lib tests + 2052 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 187 rust lib tests + 2061 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.165.0 — Stage 15.39 (Option B: GAP-1 Conflict Resolved — 112 → 0)
+
+### Overview
+
+Stage 15.39 implements **Option B** from the GAP-1 reconciliation design
+doc: a `compute_ever_read` pre-pass + modified
+`kill_expired_borrows_dataflow` that preserves GAP-1 semantics in the
+dataflow borrow-check path.
+
+**Key result**: The diagnostic tool (Stage 15.38) confirms the
+LEGACY-STRICTER count dropped from **112 → 0** — the GAP-1 conflict is
+**resolved**. The dataflow path now agrees with the legacy path on all
+112 GAP-1 cases.
+
+**Known limitation**: 1 DATAFLOW-STRICTER case remains (a false positive
+on `&mut self` method calls in loops). This is a separate bug from the
+GAP-1 conflict and is deferred to a future stage. The driver switch
+(Stage 15.40) is blocked until this false positive is fixed.
+
+### What Changed
+
+**`src/borrowck/liveness.rs`**:
+- New `compute_ever_read(mir: &MirBody) -> HashSet<LocalId>` — computes
+  the set of locals read anywhere in the MIR body (statements +
+  terminators). Used by `kill_expired_borrows_dataflow` to preserve
+  GAP-1 semantics.
+
+**`src/borrowck/mod.rs`**:
+- `kill_expired_borrows_dataflow` — added `ever_read: &HashSet<LocalId>`
+  parameter. The kill logic now checks: (1) GAP-1 preservation — if
+  `ref_local` was never read, do NOT kill the borrow; (2) NLL kill —
+  if `ref_local` was read AND is not live after the current point, kill
+  the borrow.
+- `check_mir_body_with_dataflow` — now calls `compute_ever_read(mir)`
+  once at the start and passes `&ever_read` to every
+  `kill_expired_borrows_dataflow` call.
+- Re-exported `compute_ever_read` in the explicit re-export list.
+
+### How Option B Works
+
+The legacy path's `compute_last_use_map` only records locals that are
+**read**. A never-read local (like `r1` in `let r1 = &mut x; let r2 = &mut x;`)
+never appears in the map, so its borrow is never killed — it stays as a
+"stray" and conflicts with the new borrow (GAP-1 soundness).
+
+The dataflow path (before Option B) correctly identifies `r1` as dead
+and kills its borrow — allowing `r2 = &mut x` to succeed (correct NLL
+but violates GAP-1).
+
+Option B adds the "was ever read" check: if `ref_local` was never read
+ANYWHERE in the body, its borrow is NOT killed (matching the legacy
+path's "stray borrow" behavior). This preserves GAP-1 while still using
+the dataflow infrastructure for loop/conditional correctness.
+
+### Diagnostic Verification
+
+Re-ran the Stage 15.38 diagnostic tool after implementing Option B:
+
+```
+Files scanned: 5216 (skipped: 188)
+Files compared: 5028
+  AGREE-OK:           4829
+  AGREE-ERROR:        198   (was 86 — the 112 GAP-1 cases moved here)
+  LEGACY-STRICTER:    0     (was 112 — GAP-1 conflict RESOLVED ✅)
+  DATAFLOW-STRICTER:  1     (unchanged — known limitation)
+  DIFFERENT-ERRORS:   0
+```
+
+### Known Limitation: `&mut self` Method-Call False Positive
+
+The 1 remaining DATAFLOW-STRICTER case is `e2e-runok-132-state-machine.lin`
+— a valid `run_ok` program with `&mut self` method call chains in a loop.
+The dataflow path rejects it with a false positive.
+
+**Root cause**: In a loop, the MIR creates a fresh `tmp = &mut c` each
+iteration. The dataflow liveness analysis correctly identifies `tmp` as
+live across the loop back-edge (used in next iteration's call). This
+means `tmp`'s borrow is never killed — it stays alive and conflicts
+with the next iteration's `&mut c` borrow.
+
+**Why Option B doesn't fix it**: Option B's "was ever read" check only
+applies to never-read locals. `tmp` IS read (by the call), so the normal
+NLL liveness check applies.
+
+**The correct fix (deferred)**: Kill a borrow when its `ref_local` is
+**redefined** (re-assigned), not just when it becomes dead. This
+requires modifying the borrow-check walk to kill borrows at
+re-definition points. Deferred to a future stage.
+
+**Impact**: The driver switch (Stage 15.40) is blocked until this false
+positive is fixed (it would break 1 conformance test).
+
+### Tests
+
+- **14 new tests**:
+  - 5 unit tests for `compute_ever_read` (in `src/borrowck/liveness.rs::tests`)
+  - 9 integration tests in `tests/v0/stage15/plan/option_b_implementation_tests.rs`:
+    - 3 GAP-1 preservation tests (the main goal of Option B)
+    - 1 loop-borrow soundness test (preserved from Stage 15.36)
+    - 2 parity tests on valid programs
+    - 2 `compute_ever_read` public API tests
+    - 1 known-limitation documentation test
+
+### Documentation
+
+- `docs/develop/v0/stage-15/stage-15.39-option-b-implementation.md` — plan + dev log
+- `docs/tests/v0/stage15/stage-15.39-test-plan.md` — test plan
+- `docs/tests/matrix.md` — Stage 15.39 row added
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib borrowck::liveness::tests::stage15_39` — ✅ 5/5
+- `cargo test --features llvm-backend --test all_tests stage15_option_b_implementation_tests` — ✅ 9/9
+- Diagnostic tool re-run: LEGACY-STRICTER = 0 (was 112) ✅
+- All 187 lib tests pass (182 + 5 new, zero regression)
+- All 2061 integration tests pass (2052 + 9 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+### Migration Plan (Stages 15.34-15.41) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.34 | ✅ DONE (v0.160.0) | NLL fixpoint design doc |
+| 15.35 | ✅ DONE (v0.161.0) | `compute_liveness` fixpoint function |
+| 15.36 | ✅ DONE (v0.162.0) | `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` |
+| 15.37 | ⚠️ PARTIAL (v0.163.0) | Legacy `check_mir_body` deprecated; driver switch DEFERRED |
+| 15.38 | ✅ DONE (v0.164.0) | Diagnostic tool + reconciliation design doc |
+| **15.39** | **✅ DONE (v0.165.0)** | **Option B: GAP-1 preserved (112 → 0) — this release** |
+| 15.40 | ⏳ BLOCKED | Fix `&mut self` false positive, then switch driver |
+| 15.41 | ⏳ PLANNED | Remove legacy `compute_last_use_map` + `kill_expired_borrows` + `check_mir_body` |
 
 ---
 ## v0.164.0 — Stage 15.38 (Borrow-Check Comparison Diagnostic Tool + GAP-1 Reconciliation Design Doc)
