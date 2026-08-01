@@ -183,8 +183,9 @@
 | 15.32 | region_inference.rs dead code documentation cleanup | 0 | ✅ |
 | 15.33 | v0.159 milestone review (Phase 1 core complete, Phase 2 plan) | 0 | ✅ |
 | 15.34 | NLL fixpoint design doc (Phase 2 Task 7 start) | 0 | ✅ |
-| **15.35** | **NLL fixpoint `compute_liveness` (Phase 2 Task 7 step 1 of 4) — backwards dataflow + `successors` helper + 21 unit + 13 integration tests** | **+34 rust (21 unit + 13 integration)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 fixpoint liveness API** | **+34 rust in 15.35** | ✅ |
+| 15.35 | NLL fixpoint `compute_liveness` (Phase 2 Task 7 step 1 of 4) — backwards dataflow + `successors` helper + 21 unit + 13 integration tests | +34 rust (21 unit + 13 integration) | ✅ |
+| **15.36** | **`kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` (Phase 2 Task 7 step 2 of 4) — `compute_live_after_point` + `active_ref_locals` + 9 unit + 13 integration tests** | **+22 rust (9 unit + 13 integration)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 fixpoint liveness API + dataflow borrow-check entry point** | **+56 rust in 15.35-15.36** | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

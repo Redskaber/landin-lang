@@ -388,6 +388,125 @@ pub fn terminator_writes(term: &Terminator) -> Vec<crate::mir::place::LocalId> {
     out
 }
 
+/// Stage 15.36 (HP-10 step 2 of 4): Compute the set of locals that are
+/// live **immediately after** a given program point `(bb_id, stmt_idx)`.
+///
+/// This is a per-statement liveness query derived from the block-level
+/// `LiveOutMap` (computed by `compute_liveness`). The algorithm:
+///
+/// 1. Start with `live = LiveOut[bb_id]` (locals live at the block's exit).
+/// 2. Walk the block's statements **backwards** from the terminator index
+///    down to `stmt_idx + 1`, applying the transfer function
+///    `live = Use[stmt] ∪ (live - Def[stmt])` at each step.
+/// 3. If `stmt_idx` < the terminator index (i.e., the program point is
+///    before the terminator), also fold in the terminator's Use/Def.
+/// 4. The resulting set is the locals live immediately after `(bb_id, stmt_idx)`.
+///
+/// ## Why this is needed
+///
+/// `compute_liveness` produces block-level `LiveIn` / `LiveOut` maps. But
+/// `kill_expired_borrows_dataflow` needs to know "is `ref_local` live
+/// *right after this statement*?" — a per-statement query. The block-level
+/// `LiveOut` is correct for the block's exit, but for interior program
+/// points we need to "back-propagate" through the remaining statements
+/// using the standard liveness transfer function.
+///
+/// Per §1.0 原則 3 "显式 > 隐式": the per-point liveness is derived
+/// explicitly from the block-level liveness, not computed by a separate
+/// analysis. Per §16: this function reads only `mir` and `live_out` — no
+/// writes, no HIR lookup.
+///
+/// ## Complexity
+///
+/// O((S - stmt_idx) × L) per call where S = statements in `bb` and L =
+/// locals in the live set. For typical blocks (S<20, L<30) this is well
+/// under 100µs. Called once per program point in
+/// `check_mir_body_with_dataflow`, so total cost across a body is
+/// O(S²_per_block × L) = negligible.
+///
+/// ## Edge cases
+///
+/// - `stmt_idx == statements.len()`: the program point is the terminator.
+///   The result is `LiveOut[bb_id]` directly (no remaining statements to
+///   fold in). The terminator itself is "the current point" — we want
+///   what's live after it executes, which is what `LiveOut` represents.
+/// - `stmt_idx == statements.len() - 1`: the program point is the last
+///   statement. We fold in the terminator's Use/Def only.
+/// - `stmt_idx == 0`: the program point is the first statement. We fold
+///   in all remaining statements + the terminator.
+pub fn compute_live_after_point(
+    mir: &MirBody,
+    live_out: &LiveOutMap,
+    bb_id: BasicBlockId,
+    stmt_idx: usize,
+) -> std::collections::HashSet<crate::mir::place::LocalId> {
+    let bb = match mir.basic_blocks.get(bb_id.0 as usize) {
+        Some(bb) => bb,
+        None => return std::collections::HashSet::new(),
+    };
+    let stmt_count = bb.statements.len();
+    let term_idx = stmt_count;
+
+    // Start with LiveOut[bb_id] — locals live at block exit.
+    let mut live: std::collections::HashSet<crate::mir::place::LocalId> =
+        live_out.get(&bb_id).cloned().unwrap_or_default();
+
+    // If the program point is at-or-after the terminator, LiveOut is
+    // already the answer (nothing after the terminator to fold in).
+    if stmt_idx >= term_idx {
+        return live;
+    }
+
+    // Fold in the terminator's Use/Def (it sits between `stmt_idx` and
+    // `LiveOut` whenever `stmt_idx < term_idx`).
+    fold_use_def(
+        &mut live,
+        &terminator_reads(&bb.terminator),
+        &terminator_writes(&bb.terminator),
+    );
+
+    // Walk backwards over the statements after `stmt_idx` (from the last
+    // down to `stmt_idx + 1`), folding in each one's Use/Def.
+    for s in (stmt_idx + 1..stmt_count).rev() {
+        fold_use_def(
+            &mut live,
+            &statement_reads(&bb.statements[s]),
+            &statement_writes(&bb.statements[s]),
+        );
+    }
+
+    live
+}
+
+/// Stage 15.36 (HP-10): Apply the standard liveness transfer function
+/// `live = Use ∪ (live - Def)` to a live set, in place.
+///
+/// Given the current `live` set (locals live AFTER a statement), update
+/// it to be the set of locals live BEFORE that statement:
+///
+/// - Add every local in `uses` (the statement reads it → it must be live
+///   before).
+/// - Remove every local in `defs` that's not also in `uses` (the statement
+///   writes it before any read → it doesn't need to be live before).
+///
+/// This is the classic backwards dataflow transfer. It's a private helper
+/// — `compute_live_after_point` is the only caller.
+fn fold_use_def(
+    live: &mut std::collections::HashSet<crate::mir::place::LocalId>,
+    uses: &[crate::mir::place::LocalId],
+    defs: &[crate::mir::place::LocalId],
+) {
+    // First remove defs (the statement writes them, so they don't need to
+    // be live before — unless they're also read by this statement).
+    for d in defs {
+        live.remove(d);
+    }
+    // Then add uses (the statement reads them, so they must be live before).
+    for u in uses {
+        live.insert(*u);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -855,5 +974,163 @@ mod tests {
         // live_out[bb0] = ∅ (no successor reads). live_in[bb0] = Use ∪ ∅ = {x}.
         assert!(live_in[&bb0].contains(&crate::mir::place::LocalId(0)));
         assert!(live_out[&bb0].is_empty());
+    }
+
+    // ----- compute_live_after_point() tests (Stage 15.36) -----
+
+    /// Stage 15.36: `compute_live_after_point` at the terminator index
+    /// returns LiveOut[bb_id] directly (no remaining statements to fold).
+    #[test]
+    fn stage15_36_compute_live_after_point_at_terminator() {
+        // bb0: y = x; return
+        // LiveOut[bb0] = ∅ (no successors). At stmt_idx == 1 (terminator),
+        // result is ∅.
+        let (mut body, locals) = build_body_with_locals(2);
+        let x = locals[0];
+        let y = locals[1];
+        let bb0 = body.new_block();
+        body.block_mut(bb0).statements.push(stmt_assign_use(y, x));
+        body.block_mut(bb0).terminator = Terminator::ret(Span::DUMMY);
+
+        let (_live_in, live_out) = compute_liveness(&body);
+        let live_after = compute_live_after_point(&body, &live_out, bb0, 1);
+        assert!(
+            live_after.is_empty(),
+            "at terminator, live_after = LiveOut[bb0] = ∅"
+        );
+    }
+
+    /// Stage 15.36: `compute_live_after_point` at stmt_idx=0 folds in the
+    /// terminator's Use/Def and any subsequent statements.
+    #[test]
+    fn stage15_36_compute_live_after_point_folds_terminator() {
+        // bb0: y = x; assert(x)  ← terminator reads x
+        // LiveOut[bb0] = ∅. At stmt_idx=0 (after `y = x`), the terminator
+        // (Assert) still reads x, so x must be live_after.
+        let (mut body, locals) = build_body_with_locals(2);
+        let x = locals[0];
+        let y = locals[1];
+        let bb0 = body.new_block();
+        body.block_mut(bb0).statements.push(stmt_assign_use(y, x));
+        body.block_mut(bb0).terminator = Terminator {
+            kind: TerminatorKind::Assert {
+                cond: Operand::Copy(place_local(x)),
+                expected: true,
+                target: bb0, // self-loop to keep well-formed
+                msg: AssertMessage::BoundsCheck,
+            },
+            span: Span::DUMMY,
+        };
+
+        let (_live_in, live_out) = compute_liveness(&body);
+        let live_after_stmt0 = compute_live_after_point(&body, &live_out, bb0, 0);
+        // x is read by the terminator → must be live after stmt 0.
+        assert!(
+            live_after_stmt0.contains(&x),
+            "x is read by terminator → live after stmt 0"
+        );
+    }
+
+    /// Stage 15.36: `compute_live_after_point` correctly back-propagates
+    /// through multiple statements.
+    #[test]
+    fn stage15_36_compute_live_after_point_back_propagates() {
+        // bb0: x = 1; y = 2; z = x; return
+        // LiveOut[bb0] = ∅. At stmt_idx=0 (after `x = 1`):
+        //   - Fold terminator (Return: no reads/writes) → still ∅.
+        //   - Fold stmt 2 (z = x): Def={z}, Use={x} → live = {x}.
+        //   - Fold stmt 1 (y = 2): Def={y}, Use=∅ → live = {x}.
+        // Result: {x}.
+        let (mut body, locals) = build_body_with_locals(3);
+        let x = locals[0];
+        let y = locals[1];
+        let z = locals[2];
+        let bb0 = body.new_block();
+
+        // stmt 0: x = const 1
+        let const_one = Operand::Constant(crate::mir::ty::Const {
+            ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
+            val: crate::mir::ty::ConstVal::Int(1),
+        });
+        let stmt_assign_const = |dst: crate::mir::place::LocalId, op: Operand| Statement {
+            kind: StatementKind::Assign(Box::new((place_local(dst), Rvalue::Use(op)))),
+            span: Span::DUMMY,
+        };
+        body.block_mut(bb0)
+            .statements
+            .push(stmt_assign_const(x, const_one.clone()));
+        body.block_mut(bb0)
+            .statements
+            .push(stmt_assign_const(y, const_one));
+        body.block_mut(bb0).statements.push(stmt_assign_use(z, x));
+        body.block_mut(bb0).terminator = Terminator::ret(Span::DUMMY);
+
+        let (_live_in, live_out) = compute_liveness(&body);
+        let live_after_stmt0 = compute_live_after_point(&body, &live_out, bb0, 0);
+        assert!(
+            live_after_stmt0.contains(&x),
+            "x is read in stmt 2 → live after stmt 0"
+        );
+        assert!(
+            !live_after_stmt0.contains(&y),
+            "y is written but never read → not live after stmt 0"
+        );
+        assert!(
+            !live_after_stmt0.contains(&z),
+            "z is written but never read → not live after stmt 0"
+        );
+    }
+
+    /// Stage 15.36: `compute_live_after_point` with out-of-range bb_id
+    /// returns empty set (defensive — no panic).
+    #[test]
+    fn stage15_36_compute_live_after_point_out_of_range_bb() {
+        let (body, _locals) = build_body_with_locals(1);
+        let (_live_in, live_out) = compute_liveness(&body);
+        // bb_id 999 doesn't exist — should return empty set, not panic.
+        let live_after = compute_live_after_point(&body, &live_out, BasicBlockId(999), 0);
+        assert!(live_after.is_empty());
+    }
+
+    /// Stage 15.36: `compute_live_after_point` at stmt_idx == statements.len()
+    /// is the terminator point — result equals LiveOut[bb_id] exactly.
+    #[test]
+    fn stage15_36_compute_live_after_point_terminator_equals_live_out() {
+        // bb0: x = 1; goto bb1
+        // bb1: y = x; return
+        // LiveOut[bb0] = live_in[bb1] = {x}.
+        // At stmt_idx=1 (terminator of bb0), live_after should equal LiveOut[bb0] = {x}.
+        let (mut body, locals) = build_body_with_locals(2);
+        let x = locals[0];
+        let y = locals[1];
+        let bb0 = body.new_block();
+        let bb1 = body.new_block();
+
+        let const_one = Operand::Constant(crate::mir::ty::Const {
+            ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
+            val: crate::mir::ty::ConstVal::Int(1),
+        });
+        let stmt_assign_const = |dst: crate::mir::place::LocalId, op: Operand| Statement {
+            kind: StatementKind::Assign(Box::new((place_local(dst), Rvalue::Use(op)))),
+            span: Span::DUMMY,
+        };
+        body.block_mut(bb0)
+            .statements
+            .push(stmt_assign_const(x, const_one));
+        body.block_mut(bb0).terminator = Terminator::goto(bb1, Span::DUMMY);
+        body.block_mut(bb1).statements.push(stmt_assign_use(y, x));
+        body.block_mut(bb1).terminator = Terminator::ret(Span::DUMMY);
+
+        let (_live_in, live_out) = compute_liveness(&body);
+        let live_after_term = compute_live_after_point(&body, &live_out, bb0, 1);
+        assert_eq!(
+            live_after_term,
+            *live_out.get(&bb0).unwrap(),
+            "live_after at terminator index should equal LiveOut[bb0]"
+        );
+        assert!(
+            live_after_term.contains(&x),
+            "x live in bb1 → live_out[bb0]"
+        );
     }
 }

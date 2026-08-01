@@ -53,8 +53,11 @@ pub use crate::mir::place::BorrowKind;
 pub use copy_semantics::{ty_is_copy, ty_is_copy_unified, ty_is_copy_with_resolver};
 // Stage 15.35 (HP-10): re-export fixpoint liveness analysis API for v0.2 Phase 2.
 // The legacy `compute_last_use_map` is retained until Stage 15.37 migration.
+// Stage 15.36 (HP-10 step 2): also re-export `compute_live_after_point` —
+// the per-statement liveness helper used by `kill_expired_borrows_dataflow`.
 pub use liveness::{
-    compute_last_use_map, compute_liveness, successors, LastUseMap, LiveInMap, LiveOutMap,
+    compute_last_use_map, compute_live_after_point, compute_liveness, successors, LastUseMap,
+    LiveInMap, LiveOutMap,
 };
 pub use place_path::{PlacePath, PlaceRoot, ProjElem};
 
@@ -267,6 +270,135 @@ impl<'a> BorrowChecker<'a> {
         for local in locals_to_kill {
             self.borrows.kill_borrows_of_local(local);
         }
+    }
+
+    /// Stage 15.36 (HP-10 step 2 of 4): Kill any active borrow whose
+    /// `ref_local` is **not live after** the given program point.
+    ///
+    /// This is the dataflow-driven counterpart to `kill_expired_borrows`.
+    /// Instead of consulting the legacy single-pass `LastUseMap` (which is
+    /// unsound for loops and conditionals — see `compute_liveness` doc),
+    /// this method consults the fixpoint `LiveOutMap` and computes the
+    /// "live after point" set on the fly:
+    ///
+    /// 1. Start with `LiveOut[bb]` (the set of locals live at the exit
+    ///    of `bb`, which is correct for any point *after* `bb`'s last
+    ///    statement, including the terminator).
+    /// 2. Walk *backwards* over the statements in `bb` *after* `stmt_idx`,
+    ///    applying the transfer function `live = Use[stmt] ∪ (live - Def[stmt])`.
+    ///    Also fold in the terminator's Use/Def when `stmt_idx` < the
+    ///    terminator's index.
+    /// 3. The resulting set is the set of locals live *immediately after*
+    ///    `(bb, stmt_idx)`. Any borrow whose `ref_local` is NOT in this
+    ///    set is killed.
+    ///
+    /// Per §1.0 原則 3 "显式 > 隐式": the liveness computation is
+    /// explicit and inline-documented; no magic. Per §16: this method
+    /// reads only `mir` and `live_out` — no writes, no HIR lookup.
+    ///
+    /// Per §23: method name follows `<verb>_<noun>_<noun>` pattern.
+    /// The `_dataflow` suffix distinguishes it from the legacy
+    /// `kill_expired_borrows` (which takes a `LastUseMap`). The two
+    /// methods coexist until Stage 15.37 removes the legacy path.
+    ///
+    /// ## Why "live after point" instead of "last use at point"
+    ///
+    /// The legacy analysis asks "is this the last use of `ref_local`?" —
+    /// a single-point check that misses loop back-edges (a local's "last
+    /// use" inside a loop body is not its true last use; the next
+    /// iteration will read it again).
+    ///
+    /// The dataflow analysis asks "is `ref_local` live *after* this
+    /// point?" — a set-membership check that correctly handles loops
+    /// (if `ref_local` is live at the loop header, it's live throughout
+    /// the loop body) and conditionals (if `ref_local` is live in any
+    /// successor branch, it's live at the branch point).
+    ///
+    /// ## Complexity
+    ///
+    /// O(B_per_block × L) per call, where B_per_block = statements after
+    /// `stmt_idx` in `bb` (typically <20) and L = locals in the live set.
+    /// Called once per program point in `check_mir_body_with_dataflow`,
+    /// so total cost is O(B × B_per_block × L) = O(B²_per_block × L)
+    /// worst case. For typical functions (<50 blocks, <30 locals) this
+    /// is well under 1ms.
+    fn kill_expired_borrows_dataflow(
+        &mut self,
+        mir: &MirBody,
+        live_out: &LiveOutMap,
+        bb: BasicBlockId,
+        stmt_idx: usize,
+    ) {
+        let live_after = compute_live_after_point(mir, live_out, bb, stmt_idx);
+
+        // Kill any active borrow whose `ref_local` is NOT in the live set.
+        // We collect first to avoid mutating `borrows` while iterating.
+        let locals_to_kill: Vec<crate::mir::place::LocalId> = self
+            .borrows
+            .active_ref_locals()
+            .filter(|local| !live_after.contains(local))
+            .collect();
+        for local in locals_to_kill {
+            self.borrows.kill_borrows_of_local(local);
+        }
+    }
+
+    /// Stage 15.36 (HP-10 step 2 of 4): Dataflow-driven borrow check entry
+    /// point.
+    ///
+    /// This is the **`compute_liveness`-based counterpart** of
+    /// `check_mir_body`. It performs the same forward walk over basic
+    /// blocks, but uses `kill_expired_borrows_dataflow` (which consults
+    /// the fixpoint `LiveOutMap`) instead of `kill_expired_borrows`
+    /// (which consults the legacy single-pass `LastUseMap`).
+    ///
+    /// The walk structure mirrors `check_mir_body` exactly — only the
+    /// borrow-expiry predicate differs. This deliberate symmetry lets us
+    /// validate the dataflow path against the legacy path on the same
+    /// MIR shape, then flip the switch in Stage 15.37 by replacing the
+    /// call site in `driver.rs`.
+    ///
+    /// Per §1.0 原則 1 "长期 > 短期": keeping both entry points for one
+    /// stage lets us A/B-test the dataflow path on real code before
+    /// committing. Per §1.0 原則 3 "显式 > 隐式": the choice of analysis
+    /// is explicit in the method name — no hidden flag.
+    ///
+    /// Per §23: method name follows `<verb>_<noun>_<noun>` pattern with
+    /// the `_with_dataflow` suffix marking it as the v0.2 analysis. The
+    /// legacy `check_mir_body` (no suffix) is the v0.1 default until
+    /// Stage 15.37.
+    pub fn check_mir_body_with_dataflow(&mut self, mir: &MirBody) {
+        // Pre-pass: compute fixpoint liveness maps (Stage 15.35).
+        let (_live_in, live_out) = compute_liveness(mir);
+
+        // Main walk: forward over all basic blocks.
+        // The walk structure mirrors `check_mir_body` exactly.
+        for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
+            let bb_id = BasicBlockId(bb_idx as u32);
+            let stmt_count = bb.statements.len();
+            for stmt_idx in 0..stmt_count {
+                // Kill borrows whose ref_local is not live AFTER the
+                // PREVIOUS statement (stmt_idx - 1). This ensures the
+                // borrow stays alive during the statement that performs
+                // the last read (matches legacy semantics).
+                if stmt_idx > 0 {
+                    self.kill_expired_borrows_dataflow(mir, &live_out, bb_id, stmt_idx - 1);
+                }
+                self.check_statement(mir, &bb.statements[stmt_idx], bb_id, stmt_idx);
+            }
+            // After the last statement, kill borrows whose ref_local is
+            // not live after the last statement.
+            if stmt_count > 0 {
+                self.kill_expired_borrows_dataflow(mir, &live_out, bb_id, stmt_count - 1);
+            }
+            // Check terminator (uses are at index == statements.len()).
+            let term_idx = stmt_count;
+            self.check_terminator(mir, &bb.terminator, bb_id, term_idx);
+            self.kill_expired_borrows_dataflow(mir, &live_out, bb_id, term_idx);
+        }
+
+        // Run region inference as an additional check (same as legacy path).
+        self.run_region_inference(mir);
     }
 
     fn check_statement(
@@ -641,6 +773,29 @@ impl<'a> Default for BorrowChecker<'a> {
 pub fn check_mir_body(mir: &MirBody) -> Vec<BorrowError> {
     let mut bc: BorrowChecker<'_> = BorrowChecker::new();
     bc.check_mir_body(mir);
+    bc.into_errors()
+}
+
+/// Stage 15.36 (HP-10 step 2 of 4): Dataflow-driven borrow check entry point.
+///
+/// This is the free-function counterpart of
+/// `BorrowChecker::check_mir_body_with_dataflow`, mirroring the relationship
+/// between `check_mir_body` and `BorrowChecker::check_mir_body`. It uses the
+/// fixpoint liveness analysis (Stage 15.35) to expire borrows, correctly
+/// handling loops and conditionals — the legacy `check_mir_body` is unsound
+/// for those patterns.
+///
+/// Per §23: free-function entry point follows `<verb>_<noun>` pattern with
+/// the `_with_dataflow` suffix marking it as the v0.2 analysis. Per §16:
+/// this is a thin wrapper around `BorrowChecker::check_mir_body_with_dataflow`
+/// — no HIR lookup, no MIR re-lowering.
+///
+/// Note: This convenience function does NOT use TraitResolver for Copy
+/// detection. For sound Copy detection, use
+/// `BorrowChecker::with_resolver` + `check_mir_body_with_dataflow`.
+pub fn check_mir_body_with_dataflow(mir: &MirBody) -> Vec<BorrowError> {
+    let mut bc: BorrowChecker<'_> = BorrowChecker::new();
+    bc.check_mir_body_with_dataflow(mir);
     bc.into_errors()
 }
 

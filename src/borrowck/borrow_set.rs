@@ -212,6 +212,28 @@ impl BorrowSet {
     pub fn iter(&self) -> impl Iterator<Item = &Borrow> {
         self.borrows.iter()
     }
+
+    /// Stage 15.36 (HP-10): Iterate over the `ref_local` of every active
+    /// borrow (deduplicated). Used by `kill_expired_borrows_dataflow` to
+    /// find which borrows to kill at each program point.
+    ///
+    /// Returns an iterator yielding each distinct `LocalId` that currently
+    /// holds a borrow reference (i.e., the `r` in `r = &x`). Borrows with
+    /// `ref_local = None` (rare — LHS wasn't a simple local) are skipped.
+    ///
+    /// Per §23: method name follows `<verb>_<noun>` pattern (`active_` is
+    /// the verb "what's active", `ref_locals` is the noun "the ref_local
+    /// set"). Per §15 "最优 > 最小": this is the minimum API the dataflow
+    /// kill path needs — no separate `kill_borrow_by_index` or other
+    /// speculative additions.
+    pub fn active_ref_locals(&self) -> impl Iterator<Item = crate::mir::place::LocalId> + '_ {
+        use std::collections::HashSet;
+        let mut seen: HashSet<crate::mir::place::LocalId> = HashSet::new();
+        self.borrows
+            .iter()
+            .filter_map(move |b| b.ref_local)
+            .filter(move |local| seen.insert(*local))
+    }
 }
 
 #[cfg(test)]
@@ -337,5 +359,103 @@ mod tests {
         bs.add_borrow(field_place(0, 0), BorrowKind::Shared, Span::DUMMY)
             .unwrap();
         assert!(bs.is_borrowed(&local_place(0)));
+    }
+
+    // ----- Stage 15.36 (HP-10): active_ref_locals tests -----
+
+    /// Stage 15.36: `active_ref_locals` returns the set of distinct
+    /// `ref_local`s of all active borrows.
+    #[test]
+    fn stage15_36_active_ref_locals_returns_distinct_set() {
+        let mut bs = BorrowSet::new();
+        // r1 = &x  (ref_local = LocalId(1))
+        bs.add_borrow_with_ref(
+            local_place(0),
+            BorrowKind::Shared,
+            Span::DUMMY,
+            Some(LocalId(1)),
+        )
+        .unwrap();
+        // r2 = &y  (ref_local = LocalId(2))
+        bs.add_borrow_with_ref(
+            local_place(5),
+            BorrowKind::Shared,
+            Span::DUMMY,
+            Some(LocalId(2)),
+        )
+        .unwrap();
+        // r1 = &z  (same ref_local LocalId(1), different place)
+        bs.add_borrow_with_ref(
+            local_place(10),
+            BorrowKind::Shared,
+            Span::DUMMY,
+            Some(LocalId(1)),
+        )
+        .unwrap();
+
+        let ref_locals: std::collections::HashSet<LocalId> = bs.active_ref_locals().collect();
+        // Should be {1, 2} — LocalId(1) appears twice but is deduplicated.
+        assert_eq!(ref_locals.len(), 2, "dedup: ref_local=1 appears twice");
+        assert!(ref_locals.contains(&LocalId(1)));
+        assert!(ref_locals.contains(&LocalId(2)));
+    }
+
+    /// Stage 15.36: `active_ref_locals` skips borrows with `ref_local = None`.
+    #[test]
+    fn stage15_36_active_ref_locals_skips_none() {
+        let mut bs = BorrowSet::new();
+        // A borrow added via `add_borrow` (no ref_local).
+        bs.add_borrow(local_place(0), BorrowKind::Shared, Span::DUMMY)
+            .unwrap();
+        // A borrow with explicit ref_local.
+        bs.add_borrow_with_ref(
+            local_place(1),
+            BorrowKind::Shared,
+            Span::DUMMY,
+            Some(LocalId(7)),
+        )
+        .unwrap();
+
+        let ref_locals: std::collections::HashSet<LocalId> = bs.active_ref_locals().collect();
+        // Only LocalId(7) — the None borrow is skipped.
+        assert_eq!(ref_locals.len(), 1);
+        assert!(ref_locals.contains(&LocalId(7)));
+    }
+
+    /// Stage 15.36: `active_ref_locals` is empty when no borrows are active.
+    #[test]
+    fn stage15_36_active_ref_locals_empty_when_no_borrows() {
+        let bs = BorrowSet::new();
+        let ref_locals: std::collections::HashSet<LocalId> = bs.active_ref_locals().collect();
+        assert!(ref_locals.is_empty());
+    }
+
+    /// Stage 15.36: After `kill_borrows_of_local`, the killed `ref_local`
+    /// no longer appears in `active_ref_locals`.
+    #[test]
+    fn stage15_36_active_ref_locals_after_kill() {
+        let mut bs = BorrowSet::new();
+        bs.add_borrow_with_ref(
+            local_place(0),
+            BorrowKind::Shared,
+            Span::DUMMY,
+            Some(LocalId(1)),
+        )
+        .unwrap();
+        bs.add_borrow_with_ref(
+            local_place(5),
+            BorrowKind::Shared,
+            Span::DUMMY,
+            Some(LocalId(2)),
+        )
+        .unwrap();
+        assert_eq!(bs.active_ref_locals().count(), 2);
+
+        // Kill borrows whose ref_local == LocalId(1).
+        bs.kill_borrows_of_local(LocalId(1));
+        let ref_locals: std::collections::HashSet<LocalId> = bs.active_ref_locals().collect();
+        assert_eq!(ref_locals.len(), 1);
+        assert!(ref_locals.contains(&LocalId(2)));
+        assert!(!ref_locals.contains(&LocalId(1)));
     }
 }

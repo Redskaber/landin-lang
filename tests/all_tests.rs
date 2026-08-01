@@ -270,6 +270,9 @@ mod stage15_method_return_type_cache_tests;
 // Stage 15.35 (HP-10): NLL fixpoint liveness analysis (v0.2 Phase 2 Task 7).
 #[path = "v0/stage15/plan/nll_fixpoint_liveness_tests.rs"]
 mod stage15_nll_fixpoint_liveness_tests;
+// Stage 15.36 (HP-10 step 2): kill_expired_borrows_dataflow + check_mir_body_with_dataflow.
+#[path = "v0/stage15/plan/kill_borrows_dataflow_tests.rs"]
+mod stage15_kill_borrows_dataflow_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]

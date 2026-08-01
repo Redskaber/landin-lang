@@ -1,9 +1,111 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.161.0
+**Current version**: v0.162.0
 **Date**: 2026-08-01
-**Test count**: 173 rust lib tests + 2026 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 182 rust lib tests + 2039 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.162.0 — Stage 15.36 (v0.2 Phase 2 Task 7 step 2: Dataflow Borrow-Check Entry Point)
+
+### Overview
+
+Stage 15.36 wires the fixpoint liveness analysis from Stage 15.35 into a
+**new borrow-checker entry point** `check_mir_body_with_dataflow`. The new
+entry point uses `kill_expired_borrows_dataflow` — a method that consults
+the fixpoint `LiveOutMap` instead of the legacy single-pass `LastUseMap` —
+to expire borrows. This is the **second of four migration steps**
+(Stage 15.34-15.37) to replace the unsound legacy borrow-check path with a
+proper dataflow analysis.
+
+The legacy entry point (`check_mir_body`) is **retained unchanged**. Both
+paths coexist for one stage so we can A/B-test the dataflow path on real
+MIR before flipping the switch in Stage 15.37.
+
+### What Changed
+
+**New public API in `src/borrowck/mod.rs`**:
+- `BorrowChecker::check_mir_body_with_dataflow(&mut self, mir: &MirBody)` —
+  dataflow-driven borrow check entry point. Mirrors `check_mir_body` exactly
+  except for the kill path (uses `kill_expired_borrows_dataflow` instead
+  of `kill_expired_borrows`).
+- `check_mir_body_with_dataflow(mir: &MirBody) -> Vec<BorrowError>` —
+  free-function wrapper for parity with `check_mir_body`.
+
+**New public API in `src/borrowck/liveness.rs`**:
+- `compute_live_after_point(mir, live_out, bb_id, stmt_idx) -> HashSet<LocalId>` —
+  per-statement liveness query. Back-propagates from `LiveOut[bb_id]`
+  through the remaining statements + terminator, applying the liveness
+  transfer function `live = Use ∪ (live - Def)` at each step.
+
+**New public API in `src/borrowck/borrow_set.rs`**:
+- `BorrowSet::active_ref_locals() -> impl Iterator<Item = LocalId>` —
+  deduplicated iterator over the `ref_local`s of all active borrows.
+  Used by `kill_expired_borrows_dataflow` to enumerate which borrows to
+  consider killing.
+
+**Backward compatibility**: The legacy `check_mir_body` is retained
+unchanged. The driver still calls `check_mir_body`. The dataflow path is
+only invoked by the new tests. Stage 15.37 will switch the driver to
+`check_mir_body_with_dataflow` and remove `compute_last_use_map`.
+
+### Why This Matters
+
+The Stage 6.14 `kill_expired_borrows` (legacy) consults the unsound
+`compute_last_use_map`, which is wrong for:
+
+1. **Loops**: a local's "last use" inside a loop body is not its true
+   last use — the next iteration will read it again. The legacy approach
+   kills borrows too early, producing false-positive borrow errors on
+   the second iteration.
+2. **Conditionals**: a borrow alive in one branch may still be live in
+   the other branch. The legacy approach doesn't track branch liveness.
+
+`kill_expired_borrows_dataflow` consults the fixpoint `LiveOutMap`
+(computed by Stage 15.35's `compute_liveness`). For each program point
+`(bb_id, stmt_idx)`, it computes "the set of locals live immediately
+after this point" via `compute_live_after_point` and kills any active
+borrow whose `ref_local` is NOT in that set. This correctly handles
+loops (if `ref_local` is live at the loop header, it's live throughout
+the loop body) and conditionals (if `ref_local` is live in any successor
+branch, it's live at the branch point).
+
+### Tests
+
+- **9 new unit tests**:
+  - 5 for `compute_live_after_point` (in `src/borrowck/liveness.rs::tests`)
+  - 4 for `BorrowSet::active_ref_locals` (in `src/borrowck/borrow_set.rs::tests`)
+- **13 new integration tests** in `tests/v0/stage15/plan/kill_borrows_dataflow_tests.rs`:
+  - 4 smoke tests (compile + call dataflow path on real MIR)
+  - 4 parity tests (dataflow vs legacy on valid programs — both must produce 0 errors)
+  - 2 soundness tests (loop-carried borrow, branch-carried borrow — where legacy may fail)
+  - 3 `compute_live_after_point` integration tests
+
+### Documentation
+
+- `docs/develop/v0/stage-15/stage-15.36-kill-expired-borrows-dataflow.md` — plan + dev log
+- `docs/tests/v0/stage15/stage-15.36-test-plan.md` — test plan with coverage matrix
+- `docs/tests/matrix.md` — Stage 15.36 row added
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib borrowck::liveness::tests::stage15_36` — ✅ 5/5
+- `cargo test --features llvm-backend --lib borrowck::borrow_set::tests::stage15_36` — ✅ 4/4
+- `cargo test --features llvm-backend --test all_tests stage15_kill_borrows_dataflow_tests` — ✅ 13/13
+- All 182 lib tests pass (173 + 9 new, zero regression)
+- All 2039 integration tests pass (2026 + 13 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+### Migration Plan (Stages 15.34-15.37)
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.34 | ✅ DONE (v0.160.0) | NLL fixpoint design doc |
+| 15.35 | ✅ DONE (v0.161.0) | `compute_liveness` fixpoint function |
+| **15.36** | **✅ DONE (v0.162.0)** | **`kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` (this release)** |
+| 15.37 | ⏳ NEXT | Switch driver to use `check_mir_body_with_dataflow` + remove `compute_last_use_map` |
 
 ---
 ## v0.161.0 — Stage 15.35 (v0.2 Phase 2 Task 7 step 1: Fixpoint Liveness API)

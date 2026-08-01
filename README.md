@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.161.0 (v0.2 Phase 2 — fixpoint liveness API landed)  
+**Version**: v0.162.0 (v0.2 Phase 2 — dataflow borrow-check entry point landed)  
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,18 +21,18 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 2 — Stage 15.35 (Fixpoint Liveness API landed)**
+> **v0.2 Phase 2 — Stage 15.36 (Dataflow borrow-check entry point landed)**
 >
 > Phase 1 complete (33 stages). Phase 2 in progress:
 > - ✅ **Phase 1**: Ty interning, memory optimizations, writeback consolidation, diagnostics, HP-22
 > - 🔧 **Phase 2 Task 7 (HP-10)**: Fixpoint dataflow NLL — 4-step migration
 >   - ✅ Stage 15.34 — NLL fixpoint design doc
->   - ✅ **Stage 15.35** — `compute_liveness` fixpoint algorithm + `successors` helper + 34 new tests
->   - ⏳ Stage 15.36 — `kill_expired_borrows_dataflow` using liveness maps (next)
->   - ⏳ Stage 15.37 — Switch borrow checker to fixpoint liveness + remove `compute_last_use_map`
+>   - ✅ Stage 15.35 — `compute_liveness` fixpoint algorithm + `successors` helper + 34 new tests
+>   - ✅ **Stage 15.36** — `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` + 22 new tests
+>   - ⏳ Stage 15.37 — Switch driver to dataflow path + remove `compute_last_use_map` (next)
 >   - Unblocks: Drop elaboration, Region allocation, Closure redesign
 >
-> **Test count**: 173 lib tests + 2026 integration tests + 5216 conformance tests = 7415 passing.
+> **Test count**: 182 lib tests + 2039 integration tests + 5216 conformance tests = 7437 passing.
 > **0 clippy warnings**, fmt clean.
 
 ---
