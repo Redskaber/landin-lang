@@ -1,9 +1,35 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.154.0
-**Date**: 2026-07-31
-**Test count**: 173 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Current version**: v0.155.0
+**Date**: 2026-08-01
+**Test count**: 173 rust lib tests + 2013 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.155.0 — Stage 15.29 (Ty Interner Integration Tests + Inference Var Bypass)
+
+### Overview
+
+Stage 15.29 adds 7 integration tests for the thread-local TypeInterner (activated
+in Stage 15.28) and optimizes inference variable creation to bypass the interner.
+
+### What Changed
+
+**Inference variables bypass interner** (`src/mir/lower/mod.rs`):
+- `fresh_infer_ty`, `fresh_int_ty`, `fresh_float_ty` now use `Ty::from_kind_raw`
+  instead of `Ty::new` — inference variables are always unique (unique TyVid),
+  so interning them wastes memory and pollutes the dedup map.
+
+**7 new integration tests** (`tests/v0/stage15/plan/ty_interner_integration_tests.rs`):
+- Dedup verification, clear/reset, from_kind_raw bypass, compile clears interner,
+  repeated compile no accumulation, complex type dedup.
+
+### Verification
+
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (2006 + 7 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.154.0 — Stage 15.28 (Thread-Local TypeInterner — Automatic Ty Dedup LIVE)

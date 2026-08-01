@@ -187,21 +187,25 @@ impl<'a> MirLowerCtxt<'a> {
 
     /// Allocate a fresh inference type variable and return it as a Ty.
     /// Each call produces a unique TyVid — no sharing.
-    pub fn fresh_infer_ty(&mut self, span: Span) -> Ty {
+    ///
+    /// Stage 15.29: Uses `from_kind_raw` to bypass the TypeInterner —
+    /// inference variables are always unique (unique TyVid), so interning
+    /// them wastes memory and pollutes the dedup map.
+    pub fn fresh_infer_ty(&mut self, _span: Span) -> Ty {
         let vid = self.unify.new_ty_var();
-        Ty::new(TyKind::Infer(InferVar::TyVar(vid)), span)
+        Ty::from_kind_raw(TyKind::Infer(InferVar::TyVar(vid)))
     }
 
     /// Allocate a fresh integer inference variable.
-    pub fn fresh_int_ty(&mut self, span: Span) -> Ty {
+    pub fn fresh_int_ty(&mut self, _span: Span) -> Ty {
         let vid = self.unify.new_int_var();
-        Ty::new(TyKind::Infer(InferVar::IntVar(vid)), span)
+        Ty::from_kind_raw(TyKind::Infer(InferVar::IntVar(vid)))
     }
 
     /// Allocate a fresh float inference variable.
-    pub fn fresh_float_ty(&mut self, span: Span) -> Ty {
+    pub fn fresh_float_ty(&mut self, _span: Span) -> Ty {
         let vid = self.unify.new_float_var();
-        Ty::new(TyKind::Infer(InferVar::FloatVar(vid)), span)
+        Ty::from_kind_raw(TyKind::Infer(InferVar::FloatVar(vid)))
     }
 
     /// Allocate a new local variable for a HirId.

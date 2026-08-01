@@ -19151,3 +19151,43 @@ Stage Summary:
 - Stage 15.28 PASSED — thread-local TypeInterner activated
 - ALL Ty::new/Ty::from_kind calls now go through the interner automatically
 - v0.154.0: minor bump (Ty interning LIVE — automatic dedup for all types)
+
+---
+Task ID: stage15.29-ty-interner-integration-tests
+Agent: Super Z (main)
+Task: Stage 15.29 — Ty interner integration tests + inference var from_kind_raw. v0.154.0 → v0.155.0.
+
+Work Log:
+- Baseline: v0.154.0 / 2006 rust tests + 5216 conformance
+
+### 1. Inference variables bypass interner (src/mir/lower/mod.rs)
+
+Changed fresh_infer_ty, fresh_int_ty, fresh_float_ty to use Ty::from_kind_raw
+instead of Ty::new. Inference variables are always unique (unique TyVid), so
+interning them wastes memory and pollutes the dedup map.
+
+### 2. 7 new integration tests (tests/v0/stage15/plan/ty_interner_integration_tests.rs)
+
+1. stage15_29_from_kind_dedup — equal TyKind → same Ty, interner len==1
+2. stage15_29_different_types_not_dedup — different TyKind → len==3
+3. stage15_29_clear_interner — clear resets to 0
+4. stage15_29_from_kind_raw_no_interning — from_kind_raw doesn't add to interner
+5. stage15_29_compile_clears_interner — compile() clears interner at start
+6. stage15_29_repeated_compile_no_accumulation — repeated compile doesn't grow interner
+7. stage15_29_complex_types_dedup — tuple types dedup correctly
+
+### 3. Fixed unused span warnings
+
+Changed `span: Span` → `_span: Span` in fresh_infer_ty/fresh_int_ty/fresh_float_ty
+(span is no longer used since Ty doesn't store span).
+
+### Verification
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (2006 + 7 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.154.0 → v0.155.0
+
+Stage Summary:
+- Stage 15.29 PASSED — Ty interner integration tests + inference var bypass
+- v0.155.0: minor bump (test coverage + perf optimization)

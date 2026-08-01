@@ -269,6 +269,8 @@ mod stage15_error_system_cleanup_tests;
 mod stage15_method_return_type_cache_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
+#[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]
+mod stage15_ty_interner_integration_tests;
 #[path = "v0/stage15/plan/vtable_interning_and_trait_error_tests.rs"]
 mod stage15_vtable_interning_and_trait_error_tests;
 #[path = "v0/stage15/plan/writeback_consolidation_tests.rs"]
