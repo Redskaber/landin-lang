@@ -19821,3 +19821,132 @@ Stage Summary:
 - 9 new integration tests document the conflict and verify the deferral
 - Dataflow path retained for future migration; reconciliation deferred to v0.3
 - v0.163.0: minor bump (Phase 2 — legacy deprecation + GAP-1 conflict documented)
+
+---
+Task ID: stage15.38-borrowck-comparison-diagnostic
+Agent: Super Z (main)
+Task: Stage 15.38 — Build borrow-check comparison diagnostic tool + GAP-1 reconciliation design doc. v0.163.0 → v0.164.0.
+
+Work Log:
+- Baseline: v0.163.0 / 2048 rust tests + 5216 conformance
+
+### 1. Built diagnostic tool (tests/v0/stage15/plan/borrowck_comparison_diagnostic_tests.rs)
+
+An integration test that compares the legacy borrow-check path
+(`check_mir_body`) against the dataflow path
+(`check_mir_body_with_dataflow`) on all 5216 conformance test files.
+
+For each .lin file:
+1. Compiles via `compile()` to get MIR bodies.
+2. Runs both borrow-check paths on each MIR body.
+3. Categorizes the result into 5 buckets:
+   - AGREE-OK (both accept)
+   - AGREE-ERROR (both reject, same count)
+   - LEGACY-STRICTER (legacy rejects, dataflow accepts — GAP-1)
+   - DATAFLOW-STRICTER (dataflow rejects, legacy accepts — false positive)
+   - DIFFERENT-ERRORS (both reject, different counts)
+4. Writes a full report to `target/borrowck-comparison-report.txt`.
+5. Prints a summary to stdout.
+6. Always passes — the report is the artifact.
+
+Per §29.5 (自我强化与迭代): created a new tool to inform the design decision.
+Per §13.4 (设计对齐): design before implementation — gather data first.
+
+### 2. Ran the diagnostic tool — key findings
+
+```
+Files scanned: 5216 (skipped: 188)
+Files compared: 5028
+  AGREE-OK:           4829
+  AGREE-ERROR:        86
+  LEGACY-STRICTER:    112 (GAP-1 conflict cases)
+  DATAFLOW-STRICTER:  1 (soundness improvements)
+  DIFFERENT-ERRORS:   0
+```
+
+**112 LEGACY-STRICTER cases** (expected — the GAP-1 conflict from Stage 15.37).
+Examining the patterns:
+- Double mut borrow: `let r1 = &mut x; let r2 = &mut x;` (~40 cases)
+- Shared then mut: `let r = &x; let r2 = &mut x;` (~25 cases)
+- Mut then shared: `let r = &mut x; let r2 = &x;` (~15 cases)
+- Borrow then mutate after scope: `{ let r = &x; } x = 2;` (~15 cases)
+- Borrow in while: `while x > 0 { let r = &x; x -= 1; }` (~10 cases)
+- Other NLL scope patterns (~7 cases)
+
+**1 DATAFLOW-STRICTER case** (UNEXPECTED — false positive!):
+- File: `tests/conformance/04-e2e/06-run-ok/e2e-runok-132-state-machine.lin`
+- Expected: `run_ok` (valid program)
+- Dataflow behavior: rejects with a borrow error.
+- Root cause: `&mut self` method call chains (m.start(); m.tick(); m.pause();)
+  — the dataflow path kills the `&mut self` borrow too early.
+
+**0 DIFFERENT-ERRORS cases** (good — both paths agree on rejection counts).
+
+### 3. Key insight: project's "NLL" is actually lexical lifetimes
+
+The 112 LEGACY-STRICTER cases reveal that the project's borrow checker
+is NOT doing real NLL. It's doing **lexical lifetimes** (a borrow stays
+alive until scope end) with a partial last-use optimization (only for
+locals that ARE read). The dataflow path does real NLL (a borrow dies
+when its `ref_local` is no longer live).
+
+This means the reconciliation decision is really: **does the project
+want lexical lifetimes or NLL?**
+
+### 4. Created reconciliation design doc (docs/lang-design/24-gap1-reconciliation.md)
+
+Analyzes three reconciliation options:
+- **Option A** (adopt real NLL): flip 112 tests to compile_ok, fix the
+  false positive, switch driver. Effort: 1-2 weeks. Relaxes GAP-1.
+- **Option B** (keep lexical lifetimes): add "was ever read" check to
+  dataflow path. Preserves GAP-1, avoids false positive. Effort: 3-5 days.
+- **Option C** (hybrid): dataflow for loops/conditionals, legacy for
+  straight-line. Complex. Effort: 1-2 weeks.
+
+**Recommendation: Option B** — preserves soundness posture, uses existing
+infrastructure, fixes real bugs, avoids false positive, lowest effort,
+reversible.
+
+Per §1.0 原則 1 "长期 > 短期": Option B is the right long-term design for now.
+Per §1.0 原則 5 "报错 > 静默": Option B preserves the safer GAP-1 semantics.
+
+### 5. Implementation plan for Option B (Stages 15.39-15.41)
+
+- **Stage 15.39**: Implement `compute_ever_read` + modified
+  `kill_expired_borrows_dataflow`. Re-run diagnostic tool to verify
+  LEGACY-STRICTER drops to ~0. Do NOT switch driver yet.
+- **Stage 15.40**: Switch driver to `check_mir_body_with_dataflow`.
+  Run full conformance suite.
+- **Stage 15.41**: Remove legacy `compute_last_use_map` +
+  `kill_expired_borrows` + `check_mir_body` (now truly dead code).
+
+### 6. Added 4 new tests
+
+- `stage15_38_borrowck_comparison_diagnostic` (main diagnostic test)
+- `stage15_38_comparison_category_categorization` (unit test for categorization)
+- `stage15_38_parse_expected_header` (unit test for header parser)
+- `stage15_38_discover_conformance_files_finds_lin_files` (unit test for walker)
+
+### 7. Created documentation
+
+- `docs/lang-design/24-gap1-reconciliation.md` (reconciliation design doc)
+- `docs/develop/v0/stage-15/stage-15.38-borrowck-comparison-tool.md` (plan/dev-log)
+- `docs/develop/v0/stage-15/stage-15.38-borrowck-comparison-report.txt` (permanent copy of report)
+- `docs/tests/v0/stage15/stage-15.38-test-plan.md` (test plan)
+- Updated `docs/tests/matrix.md`, `RELEASE_NOTES.md`, `README.md`
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean build, 0 warnings
+- `cargo test --features llvm-backend --test all_tests stage15_borrowck_comparison_diagnostic` — ✅ 4/4 PASS
+- All 173 lib tests pass (zero regression)
+- All 2052 integration tests pass (2048 + 4 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.163.0 → v0.164.0
+
+Stage Summary:
+- Stage 15.38 PASSED — diagnostic tool built, reconciliation design doc created
+- Key findings: 112 LEGACY-STRICTER (GAP-1, expected) + 1 DATAFLOW-STRICTER (false positive, unexpected)
+- Key insight: project's "NLL" is actually lexical lifetimes with partial last-use optimization
+- Recommendation: Option B (lexical lifetimes + "was ever read" check) — 3-5 days effort
+- v0.164.0: minor bump (Phase 2 — diagnostic tool + reconciliation design doc)

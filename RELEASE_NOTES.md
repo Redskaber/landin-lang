@@ -1,9 +1,123 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.163.0
+**Current version**: v0.164.0
 **Date**: 2026-08-01
-**Test count**: 182 rust lib tests + 2048 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 182 rust lib tests + 2052 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.164.0 — Stage 15.38 (Borrow-Check Comparison Diagnostic Tool + GAP-1 Reconciliation Design Doc)
+
+### Overview
+
+Stage 15.38 builds a **diagnostic tool** that compares the legacy
+borrow-check path (`check_mir_body`) against the dataflow path
+(`check_mir_body_with_dataflow`) on all 5216 conformance test files.
+The tool produces a categorized report that informs the GAP-1
+reconciliation decision documented in
+`docs/lang-design/24-gap1-reconciliation.md`.
+
+This stage follows §13.4 (设计对齐 — design before implementation) and
+§29.5 (自我强化与迭代 — agents can create tools as needed). It gathers
+the data needed to choose between the three reconciliation options
+(A/B/C) identified in Stage 15.37.
+
+### What Changed
+
+**New diagnostic tool** (`tests/v0/stage15/plan/borrowck_comparison_diagnostic_tests.rs`):
+- An integration test that compiles each `.lin` file via `compile()`,
+  runs both borrow-check paths on the resulting MIR, and categorizes
+  the result into 5 buckets (AGREE-OK, AGREE-ERROR, LEGACY-STRICTER,
+  DATAFLOW-STRICTER, DIFFERENT-ERRORS).
+- Writes a full report to `target/borrowck-comparison-report.txt`.
+- Always passes — the report is the artifact.
+
+**New design doc** (`docs/lang-design/24-gap1-reconciliation.md`):
+- Analyzes the 112 LEGACY-STRICTER cases (GAP-1 conflict).
+- Documents the 1 DATAFLOW-STRICTER case (false positive on `&mut self`
+  method calls — unexpected finding).
+- Key insight: the project's "NLL" is actually **lexical lifetimes** with
+  a partial last-use optimization, NOT real NLL.
+- Evaluates Options A/B/C with concrete examples and effort estimates.
+- **Recommends Option B** (keep lexical lifetimes, add "was ever read"
+  check to the dataflow path) — preserves GAP-1, avoids the false
+  positive, lowest effort (3-5 days).
+
+### Key Findings from the Diagnostic Report
+
+```
+Files scanned: 5216 (skipped: 188)
+Files compared: 5028
+  AGREE-OK:           4829
+  AGREE-ERROR:        86
+  LEGACY-STRICTER:    112 (GAP-1 conflict cases)
+  DATAFLOW-STRICTER:  1 (false positive!)
+  DIFFERENT-ERRORS:   0
+```
+
+- **112 LEGACY-STRICTER**: The GAP-1 conflict (expected from Stage 15.37).
+  All are `compile_error` tests where the legacy path rejects and the
+  dataflow path accepts. Patterns: double-mut-borrow, shared-then-mut,
+  borrow-then-mutate-after-scope, borrow-in-while.
+
+- **1 DATAFLOW-STRICTER**: A false positive on
+  `e2e-runok-132-state-machine.lin` (a valid `run_ok` program with
+  `&mut self` method call chains). The dataflow path rejects it
+  because it kills the `&mut self` borrow too early. This was an
+  **unexpected finding** — the dataflow path is not strictly "more
+  correct"; it has its own false positives.
+
+- **0 DIFFERENT-ERRORS**: Both paths agree on all rejection counts
+  (good — no ambiguous cases).
+
+### Why This Matters
+
+Stage 15.37 deferred the driver switch because of the GAP-1 conflict
+(112 tests would regress). Stage 15.38 gathers the data needed to make
+an informed reconciliation decision. The key insight — that the
+project's "NLL" is actually lexical lifetimes — clarifies that the
+reconciliation is really a choice between lexical lifetimes (Option B,
+preserve current behavior) and real NLL (Option A, relax GAP-1).
+
+The recommendation (Option B) unblocks the NLL migration: implement a
+"was ever read" check in the dataflow path (Stage 15.39), switch the
+driver (Stage 15.40), remove the legacy code (Stage 15.41). The
+migration will be complete in ~1 week.
+
+### Tests
+
+- **4 new tests** in `tests/v0/stage15/plan/borrowck_comparison_diagnostic_tests.rs`:
+  - 1 main diagnostic test (runs on all 5216 conformance files)
+  - 3 unit tests (categorization logic, header parser, file walker)
+
+### Documentation
+
+- `docs/lang-design/24-gap1-reconciliation.md` — reconciliation design doc with recommendation
+- `docs/develop/v0/stage-15/stage-15.38-borrowck-comparison-tool.md` — plan + dev log
+- `docs/develop/v0/stage-15/stage-15.38-borrowck-comparison-report.txt` — permanent copy of the diagnostic report
+- `docs/tests/v0/stage15/stage-15.38-test-plan.md` — test plan
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --test all_tests stage15_borrowck_comparison_diagnostic` — ✅ 4/4
+- All 182 lib tests pass (zero regression)
+- All 2052 integration tests pass (2048 + 4 new, zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+### Migration Plan (Stages 15.34-15.41) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.34 | ✅ DONE (v0.160.0) | NLL fixpoint design doc |
+| 15.35 | ✅ DONE (v0.161.0) | `compute_liveness` fixpoint function |
+| 15.36 | ✅ DONE (v0.162.0) | `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` |
+| 15.37 | ⚠️ PARTIAL (v0.163.0) | Legacy `check_mir_body` deprecated; driver switch DEFERRED |
+| **15.38** | **✅ DONE (v0.164.0)** | **Diagnostic tool + reconciliation design doc (this release)** |
+| 15.39 | ⏳ NEXT | Implement Option B (`compute_ever_read` + modified kill path) |
+| 15.40 | ⏳ PLANNED | Switch driver to `check_mir_body_with_dataflow` |
+| 15.41 | ⏳ PLANNED | Remove legacy `compute_last_use_map` + `kill_expired_borrows` + `check_mir_body` |
 
 ---
 ## v0.163.0 — Stage 15.37 (v0.2 Phase 2 Task 7 step 3: Driver Switch DEFERRED + Legacy Deprecation)

@@ -185,8 +185,9 @@
 | 15.34 | NLL fixpoint design doc (Phase 2 Task 7 start) | 0 | ✅ |
 | 15.35 | NLL fixpoint `compute_liveness` (Phase 2 Task 7 step 1 of 4) — backwards dataflow + `successors` helper + 21 unit + 13 integration tests | +34 rust (21 unit + 13 integration) | ✅ |
 | 15.36 | `kill_expired_borrows_dataflow` + `check_mir_body_with_dataflow` (Phase 2 Task 7 step 2 of 4) — `compute_live_after_point` + `active_ref_locals` + 9 unit + 13 integration tests | +22 rust (9 unit + 13 integration) | ✅ |
-| **15.37** | **Legacy `check_mir_body` deprecated (§23.1 rule 6); driver switch DEFERRED due to GAP-1 semantic conflict (112 conformance tests would regress); dataflow path retained for future migration; 9 integration tests document the conflict** | **+9 rust (integration)** | ⚠️ PARTIAL |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 fixpoint liveness API + dataflow borrow-check entry point (driver switch deferred)** | **+65 rust in 15.35-15.37** | ⚠️ PARTIAL (15.37 deferred) |
+| 15.37 | Legacy `check_mir_body` deprecated (§23.1 rule 6); driver switch DEFERRED due to GAP-1 semantic conflict (112 conformance tests would regress); dataflow path retained for future migration; 9 integration tests document the conflict | +9 rust (integration) | ⚠️ PARTIAL |
+| **15.38** | **Borrow-check comparison diagnostic tool — compares legacy vs dataflow on all 5216 conformance files; found 112 LEGACY-STRICTER (GAP-1) + 1 DATAFLOW-STRICTER (false positive); reconciliation design doc recommends Option B (lexical lifetimes + "was ever read" check); 4 new tests** | **+4 rust (3 unit + 1 integration)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 fixpoint liveness API + dataflow borrow-check entry point + diagnostic tool (driver switch deferred, Option B recommended)** | **+69 rust in 15.35-15.38** | ⚠️ PARTIAL (15.37 deferred) |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

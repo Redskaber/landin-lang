@@ -276,6 +276,9 @@ mod stage15_kill_borrows_dataflow_tests;
 // Stage 15.37 (HP-10 step 3 — DEFERRED): driver switch deferred + legacy deprecation + GAP-1 conflict.
 #[path = "v0/stage15/plan/stage15_37_driver_switch_tests.rs"]
 mod stage15_37_driver_switch_tests;
+// Stage 15.38: Borrow-check comparison diagnostic tool (informs GAP-1 reconciliation).
+#[path = "v0/stage15/plan/borrowck_comparison_diagnostic_tests.rs"]
+mod stage15_borrowck_comparison_diagnostic_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]
