@@ -408,19 +408,78 @@ pub(crate) fn codegen_terminator(
             }
             emitter.emit_unreachable();
         }
-        // Stage 14.103 (SH-8 documentation): TerminatorKind::Drop is a no-op in v0.1.
+        // Stage 15.45 (HP-12 step 4): TerminatorKind::Drop now calls drop glue.
         //
-        // In Rust, `Drop` would call the type's `Drop::drop` method here.
-        // In v0.1, user-defined `Drop::drop` is not supported (GAP-3 —
-        // `drop_elaboration.rs` is dead code). So there's nothing to call.
+        // The `Drop` terminator is inserted by `elaborate_drops` (Stage 15.44)
+        // before `StorageDead` for locals whose type needs drop. When this
+        // terminator is reached, the codegen:
+        //   1. Computes the place's address (pointer to the value).
+        //   2. Calls the drop glue function `drop_<Type>` with the pointer.
+        //   3. Branches to the target block.
         //
-        // Per §1.0 原则 3 "显式 > 隐式": the no-op is now explicitly documented.
-        // When v0.2 adds Drop support, this arm will need to:
-        //   1. Look up the type's Drop impl (if any)
-        //   2. Call the drop method with the place as receiver
-        //   3. Then branch to target
+        // The drop glue function (`drop_<Type>`) is emitted by
+        // `emit_drop_glue` (to be implemented in Stage 15.46). For types
+        // that implement `Drop`, it calls the user's `Drop::drop` method,
+        // then recursively drops each field. For types that don't implement
+        // `Drop` but have fields that need drop, it just drops the fields.
+        //
+        // Per §1.0 原則 3 "显式 > 隐式": the drop call is explicit.
+        // Per §23: the drop glue function name follows `drop_<Type>` pattern.
+        //
+        // Note: In v0.170.0, no `Drop` terminators are generated (because
+        // `elaborate_drops` is a no-op — no types implement Drop yet). This
+        // code path is therefore not exercised by existing tests. When
+        // Stage 15.46 adds `impl Drop` support, `Drop` terminators will be
+        // generated and this code path will be tested.
         TerminatorKind::Drop { place, target, .. } => {
-            let _ = place; // v0.1: no Drop impls exist, so nothing to call
+            // Compute the place's address (pointer to the value to drop).
+            let place_addr = crate::codegen::mir_translation::compute_place_address(
+                emitter, mir, place, interner, layouts,
+            );
+
+            // Get the place's LLVM type to pass to emit_call.
+            let place_ty = crate::codegen::mir_translation::detect_place_type(
+                mir, place, layouts,
+            );
+
+            // Call the drop glue function.
+            //
+            // The drop glue function name uses a simple format based on
+            // the place's MIR type. For ADT types, we look up the DefId
+            // from the local's type declaration (e.g., `drop_adt_3` for
+            // DefId(3)). For other types, we use a generic name.
+            //
+            // Per §23: function name follows `drop_<noun>` pattern.
+            // Per §1.0 原則 3 "显式 > 隐式": the drop call is explicit.
+            //
+            // Note: In v0.170.0, no Drop terminators are generated (because
+            // `elaborate_drops` is a no-op). This code path is not exercised
+            // by existing tests. When Stage 15.46 adds `impl Drop` support,
+            // Drop terminators will be generated and this code path will be
+            // tested.
+            let drop_fn_name = {
+                // Look up the place's MIR type to get the DefId (if ADT).
+                let mir_ty = match &place.kind {
+                    crate::mir::place::PlaceKind::Local(local_id) => {
+                        Some(mir.local(*local_id).ty.kind.clone())
+                    }
+                    _ => None,
+                };
+                match &mir_ty {
+                    Some(crate::mir::ty::TyKind::Adt(def_id, _)) => {
+                        format!("drop_adt_{}", def_id.0)
+                    }
+                    _ => "drop_generic".to_string(),
+                }
+            };
+
+            emitter.emit_call(
+                &drop_fn_name,
+                &[(place_ty.clone(), &place_addr)],
+                &EmitType::Void,
+            );
+
+            // Branch to the target block.
             emitter.emit_br(&format!("bb{}", target.0));
         }
     }

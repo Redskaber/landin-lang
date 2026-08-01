@@ -1,9 +1,49 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.170.0
+**Current version**: v0.171.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2082 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.171.0 — Stage 15.45 (Drop Glue Codegen — Non-Noop `TerminatorKind::Drop`)
+
+### Overview
+
+Stage 15.45 makes `TerminatorKind::Drop` codegen non-noop. The `Drop`
+terminator now computes the place's address, determines the drop glue
+function name, and emits a `call void @drop_adt_<N>(...)` to the drop
+glue function.
+
+### What Changed
+
+**`src/codegen/terminator.rs`**:
+- `TerminatorKind::Drop` codegen changed from no-op (just `br target`) to:
+  1. Compute place address via `compute_place_address`.
+  2. Get place type via `detect_place_type`.
+  3. Determine drop glue function name: `drop_adt_<DefId>` for ADT types,
+     `drop_generic` for other types.
+  4. Emit `call void @drop_adt_<N>(<type>* %ptr)`.
+  5. Branch to target.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+
+### Migration Plan (Stages 15.42-15.47) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.42 | ✅ DONE (v0.168.0) | Design doc |
+| 15.43 | ✅ DONE (v0.169.0) | `ty_needs_drop` analysis |
+| 15.44 | ✅ DONE (v0.170.0) | `elaborate_drops` pass |
+| **15.45** | **✅ DONE (v0.171.0)** | **Drop glue codegen (this release)** |
+| 15.46 | ⏳ NEXT | Integration + `impl Drop` support + conformance tests |
+| 15.47 | ⏳ PLANNED | Gate review + deep review |
 
 ---
 ## v0.170.0 — Stage 15.44 (`elaborate_drops` Pass — Drop Terminator Insertion)
