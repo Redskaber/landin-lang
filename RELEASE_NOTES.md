@@ -1,9 +1,54 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.168.0
+**Current version**: v0.169.0
 **Date**: 2026-08-01
-**Test count**: 208 rust lib tests + 2083 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 224 rust lib tests + 2079 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.169.0 — Stage 15.43 (`ty_needs_drop` Analysis — Drop Elaboration Foundation)
+
+### Overview
+
+Stage 15.43 implements `ty_needs_drop` — the analysis that determines whether
+a type needs drop glue. This is the foundation for the drop elaboration pass
+(Stage 15.44) and drop glue codegen (Stage 15.45).
+
+### What Changed
+
+**New module** (`src/mir/drop_elaboration.rs`):
+- `ty_needs_drop(ty, resolver, adt_layouts, interner) -> bool` — recursively
+  determines whether a type needs drop glue.
+- Handles all `TyKind` variants: primitives (false), references (false),
+  tuples/arrays (recursive), ADT (Drop impl + field traversal), closures
+  (false), infer/error (conservative false).
+- Cycle detection via `HashSet<DefId>` for self-referential types.
+
+**Wired into** `src/mir/mod.rs` as `pub mod drop_elaboration`.
+
+### Tests
+
+- **16 unit tests** covering all `TyKind` variants + cycle detection.
+- **3 integration tests** verifying the analysis works on real MIR from `compile()`.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib drop_elaboration` — ✅ 16/16
+- `cargo test --features llvm-backend --test all_tests stage15_ty_needs_drop_integration` — ✅ 3/3
+- All 224 lib + 2079 integration tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+
+### Migration Plan (Stages 15.42-15.47) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.42 | ✅ DONE (v0.168.0) | Design doc |
+| **15.43** | **✅ DONE (v0.169.0)** | **`ty_needs_drop` analysis (this release)** |
+| 15.44 | ⏳ NEXT | Implement `elaborate_drops` pass + tests |
+| 15.45 | ⏳ PLANNED | Implement drop glue codegen |
+| 15.46 | ⏳ PLANNED | Integration + conformance tests |
+| 15.47 | ⏳ PLANNED | Gate review + deep review |
 
 ---
 ## v0.168.0 — Stage 15.42 (Drop Elaboration Design Doc — Task 8 Started)

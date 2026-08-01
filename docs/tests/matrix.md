@@ -191,7 +191,8 @@
 | 15.40 | Kill-on-redefinition + last-use-based kill + driver switch — false positive FIXED (DATAFLOW-STRICTER 1 → 0); driver now uses `check_mir_body_with_dataflow`; both paths agree on all 5028 comparable tests; 8 new tests | +8 rust (integration) | ✅ |
 | **15.41** | **Legacy delegation cleanup — `check_mir_body` now delegates to `check_mir_body_with_dataflow`; `kill_expired_borrows` (legacy walk) removed as dead code; `compute_last_use_map` retained (part of dataflow path); 7 new tests** | **+7 rust (integration)** | ✅ |
 | **15.42** | **Drop elaboration design doc (Task 8, HP-12) — design alignment per §13.4; covers `needs_drop` analysis, drop insertion, drop glue codegen; 6-stage implementation plan (15.42-15.47)** | **0 (doc only)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL migration COMPLETE + Drop elaboration design started** | **+98 rust in 15.35-15.41** | ✅ (15.42 = design) |
+| **15.43** | **`ty_needs_drop` analysis — new `src/mir/drop_elaboration.rs` module; recursive type traversal with cycle detection; 16 unit + 3 integration tests** | **+19 rust (16 unit + 3 integration)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL migration COMPLETE + Drop elaboration (design + needs_drop)** | **+117 rust in 15.35-15.43** | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

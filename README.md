@@ -1,7 +1,7 @@
 # Landin
 
-**Author**: redskaber  
-**Version**: v0.168.0 (v0.2 Phase 2 — Drop elaboration design started)  
+**Author**: redskaber
+**Version**: v0.169.0 (v0.2 Phase 2 — Drop elaboration `ty_needs_drop` analysis)
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,15 +21,15 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 2 — Stage 15.42 (Drop elaboration design started — Task 8)**
+> **v0.2 Phase 2 — Stage 15.43 (Drop elaboration `ty_needs_drop` analysis — Task 8)**
 >
 > Phase 1 complete (33 stages). Phase 2 in progress:
 > - ✅ **Phase 1**: Ty interning, memory optimizations, writeback consolidation, diagnostics, HP-22
 > - ✅ **Phase 2 Task 7 (HP-10)**: Fixpoint dataflow NLL — **migration FULLY COMPLETE** (Stages 15.34-15.41)
-> - 🔧 **Phase 2 Task 8 (HP-12)**: Drop elaboration — **design started**
->   - ✅ Stage 15.42 — Drop elaboration design doc (`docs/lang-design/25-drop-elaboration.md`)
->   - ⏳ Stage 15.43 — Implement `ty_needs_drop` analysis (next)
->   - ⏳ Stage 15.44 — Implement `elaborate_drops` pass
+> - 🔧 **Phase 2 Task 8 (HP-12)**: Drop elaboration — **`ty_needs_drop` analysis implemented**
+>   - ✅ Stage 15.42 — Drop elaboration design doc
+>   - ✅ **Stage 15.43** — `ty_needs_drop` analysis (recursive, cycle detection, 19 new tests)
+>   - ⏳ Stage 15.44 — Implement `elaborate_drops` pass (next)
 >   - ⏳ Stage 15.45 — Implement drop glue codegen
 >   - ⏳ Stage 15.46 — Integration + conformance tests
 >   - ⏳ Stage 15.47 — Gate review
@@ -37,7 +37,7 @@ backend via the `llvm-sys` crate.
 > - ⏳ **Phase 2 Task 9 (HP-5)**: Region allocation — needs NLL (DONE)
 > - ⏳ **Phase 2 Task 10 (HP-3)**: Closure redesign — needs Ty interning (DONE)
 >
-> **Test count**: 208 lib tests + 2083 integration tests + 5216 conformance tests = 7507 passing.
+> **Test count**: 224 lib tests + 2079 integration tests + 5216 conformance tests = 7519 passing.
 > **0 clippy warnings**, fmt clean.
 
 ---

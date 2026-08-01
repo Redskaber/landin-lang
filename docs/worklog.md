@@ -20383,3 +20383,72 @@ Stage Summary:
 - Design covers full scope: needs_drop analysis, drop insertion, drop glue codegen
 - 6-stage implementation plan (15.42-15.47)
 - v0.168.0: minor bump (Phase 2 — Drop elaboration design doc)
+
+---
+Task ID: stage15.43-ty-needs-drop
+Agent: Super Z (main)
+Task: Stage 15.43 — Implement `ty_needs_drop` analysis (Drop elaboration foundation, Task 8 step 2). v0.168.0 → v0.169.0.
+
+Work Log:
+- Baseline: v0.168.0 / 2076 rust tests + 5216 conformance
+
+### 1. Created src/mir/drop_elaboration.rs module
+
+Implemented `ty_needs_drop(ty, resolver, adt_layouts, interner) -> bool`:
+- Primitives (bool, char, int, uint, float, str, Never): false.
+- References (&T, &mut T): false (just pointers).
+- Raw pointers (*const T, *mut T): false.
+- Function types (FnDef, FnPtr): false.
+- Tuples: true if any element needs drop.
+- Arrays/Slices: true if element type needs drop.
+- ADT (struct/enum): true if implements Drop (via is_drop_builtin) or any
+  field needs drop (recursive, using AdtLayouts per §16).
+- Closures: false (v0.2 no Drop on closures).
+- Foreign/Param/Infer/Error: false (conservative).
+
+Cycle detection via `visited: HashSet<DefId>` to prevent infinite recursion
+on self-referential types (e.g., Box<Self>).
+
+Per §23: function name follows `<noun>_<verb>_<noun>` pattern.
+Per §16: uses AdtLayouts (sunk from HIR) for field type lookup, no HIR read.
+
+### 2. Wired into src/mir/mod.rs
+
+Added `pub mod drop_elaboration;`.
+
+### 3. Added 16 unit tests (src/mir/drop_elaboration.rs::tests)
+
+- 6 primitive type tests (i32, bool, char, float, str, Never).
+- 3 reference/pointer tests (ref, mut ref, raw ptr).
+- 1 tuple test (all primitives → false).
+- 2 array/slice tests (primitive element → false).
+- 1 ADT test (no Drop impl, primitive fields → false).
+- 2 Infer/Error tests (conservative false).
+- 1 cycle detection test (self-referential type — no infinite loop).
+
+### 4. Added 3 integration tests (tests/v0/stage15/plan/ty_needs_drop_integration_tests.rs)
+
+- stage15_43_integration_i32_locals_no_drop
+- stage15_43_integration_struct_no_drop
+- stage15_43_integration_no_panic_on_complex_program
+
+### 5. Created documentation
+
+- docs/develop/v0/stage-15/stage-15.43-ty-needs-drop.md
+- docs/tests/v0/stage15/stage-15.43-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean build, 0 warnings
+- `cargo test --features llvm-backend --lib drop_elaboration` — ✅ 16/16 PASS
+- `cargo test --features llvm-backend --test all_tests stage15_ty_needs_drop_integration` — ✅ 3/3 PASS
+- All 208 lib tests pass (zero regression) + 16 new = 224 lib tests
+- All 2079 integration tests pass (2076 + 3 new, zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.168.0 → v0.169.0
+
+Stage Summary:
+- Stage 15.43 PASSED — `ty_needs_drop` analysis implemented
+- 16 unit + 3 integration = 19 new tests, zero regression
+- Foundation for drop elaboration pass (Stage 15.44) and drop glue codegen (Stage 15.45)
+- v0.169.0: minor bump (Phase 2 — Drop elaboration `ty_needs_drop` analysis)

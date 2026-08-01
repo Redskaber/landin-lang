@@ -7,6 +7,8 @@
 //! - Stage 3: LLVM codegen (MIR → LLVM IR)
 
 pub mod body;
+// Stage 15.43 (HP-12 step 2): Drop elaboration — `ty_needs_drop` analysis.
+pub mod drop_elaboration;
 pub mod dyn_trait;
 pub mod lower;
 pub mod place;

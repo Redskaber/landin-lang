@@ -288,6 +288,9 @@ mod stage15_40_driver_switch_tests;
 // Stage 15.41 (HP-10 — cleanup): legacy `check_mir_body` delegates to dataflow path; dead code removed.
 #[path = "v0/stage15/plan/stage15_41_legacy_delegation_tests.rs"]
 mod stage15_41_legacy_delegation_tests;
+// Stage 15.43 (HP-12 step 2): ty_needs_drop analysis — drop elaboration foundation.
+#[path = "v0/stage15/plan/ty_needs_drop_integration_tests.rs"]
+mod stage15_ty_needs_drop_integration_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]
