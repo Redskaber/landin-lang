@@ -19357,3 +19357,38 @@ Stage Summary:
 - Stage 15.33 PASSED — v0.159 milestone review
 - Phase 1 core work complete (Ty interning, writeback, diagnostics, HP-22)
 - v0.159.0: minor bump (milestone review)
+
+---
+Task ID: stage15.34-nll-fixpoint-design-doc
+Agent: Super Z (main)
+Task: Stage 15.34 — v0.2 Phase 2 start: NLL fixpoint design doc. v0.159.0 → v0.160.0.
+
+Work Log:
+- Baseline: v0.159.0 / 2013 rust tests + 5216 conformance
+
+### 1. Created NLL fixpoint design doc (docs/lang-design/23-nll-fixpoint.md)
+
+Design document for Phase 2 Task 7 (Activate fixpoint dataflow NLL, HP-10):
+- Problem statement: current single-pass last-use map is unsound for loops/conditionals
+- Design: backwards dataflow liveness analysis with fixpoint iteration
+- Data structures: LiveInMap, LiveOutMap, compute_liveness()
+- Migration strategy: 4 stages (15.34-15.37), each independently testable
+- Dependencies: none (independent), unblocks Drop elaboration + Region allocation
+- Effort: 1-2 weeks
+
+### 2. Phase 2 officially started
+
+Phase 1 (Stage 15.1-15.33) is complete. Phase 2 begins with the NLL fixpoint
+design document. The implementation will follow in Stage 15.35+.
+
+### Verification
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.159.0 → v0.160.0
+
+Stage Summary:
+- Stage 15.34 PASSED — NLL fixpoint design doc created
+- v0.2 Phase 2 officially started
+- v0.160.0: minor bump (Phase 2 start — design doc)

@@ -1,9 +1,41 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.159.0
+**Current version**: v0.160.0
 **Date**: 2026-08-01
 **Test count**: 173 rust lib tests + 2013 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.160.0 — Stage 15.34 (v0.2 Phase 2 Start: NLL Fixpoint Design Doc)
+
+### Overview
+
+Stage 15.34 marks the start of v0.2 Phase 2 (Soundness Closures). Created
+the design document for fixpoint dataflow NLL (HP-10), which will replace
+the current single-pass last-use map with a proper backwards liveness analysis.
+
+### What Changed
+
+**Created `docs/lang-design/23-nll-fixpoint.md`**:
+- Problem statement: current last-use map is unsound for loops/conditionals
+- Design: backwards dataflow liveness with fixpoint iteration
+- Data structures: `LiveInMap`, `LiveOutMap`, `compute_liveness()`
+- Migration strategy: 4 stages (15.34-15.37)
+- Dependencies: none, unblocks Drop + Region allocation
+
+### Why This Matters
+
+The current borrow checker uses a single forward pass to compute last-use
+points. This is unsound for loops (kills borrows too early) and conditionals
+(doesn't track branch liveness). The fixpoint NLL will correctly handle all
+control flow patterns.
+
+### Verification
+
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.159.0 — Stage 15.33 (v0.159 Milestone: Phase 1 Review + Phase 2 Planning)

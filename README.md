@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.159.0 (v0.2 Phase 1 core complete — Phase 2 ready)  
+**Version**: v0.160.0 (v0.2 Phase 2 started — NLL fixpoint design doc)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,18 +21,16 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 1 Core Complete — Stage 15.33 (v0.159 milestone)**
+> **v0.2 Phase 2 Started — Stage 15.34 (NLL fixpoint design doc)**
 >
-> 33 stages of v0.2 work complete. Phase 1 core tasks done:
-> - ✅ **Ty interning**: thread-local HashMap dedup — all types auto-deduped
-> - ✅ **Memory optimizations**: SubstsRef Rc<[Ty]>, Const.ty inline, AdtLayouts Arc
-> - ✅ **Writeback consolidation**: 8 passes → 2 functions
-> - ✅ **Diagnostics**: DiagnosticBuilder, ErrorCode, Spanned, color output, --color
-> - ✅ **HP-22**: dyn Trait call info in TerminatorKind::Call
-> - ⏳ **Phase 2 ready**: Closure redesign (Ty interning done), NLL, Drop, Copy detection
+> Phase 1 complete (33 stages). Phase 2 started:
+> - ✅ **Phase 1**: Ty interning, memory optimizations, writeback consolidation, diagnostics, HP-22
+> - 🔧 **Phase 2**: NLL fixpoint design doc created (Stage 15.34)
+>   - Next: implement fixpoint liveness analysis (Stage 15.35+)
+>   - Unblocks: Drop elaboration, Region allocation, Closure redesign
 >
 > **Test count**: 173 lib tests + 2013 integration tests + 5216 conformance tests = 7402 passing.
-> **0 clippy warnings**, fmt clean. Next: Phase 2 (soundness closures) or Task 4 (EmitValue).
+> **0 clippy warnings**, fmt clean.
 
 ---
 
