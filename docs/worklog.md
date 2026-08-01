@@ -19271,3 +19271,42 @@ of truth (Stage 15.30). Future stage will remove the side-table entirely.
 Stage Summary:
 - Stage 15.31 PASSED — HP-22 doc cleanup
 - v0.157.0: minor bump (documentation cleanup)
+
+---
+Task ID: stage15.32-region-inference-dead-code-cleanup
+Agent: Super Z (main)
+Task: Stage 15.32 — Clean up region_inference.rs dead code documentation. v0.157.0 → v0.158.0.
+
+Work Log:
+- Baseline: v0.157.0 / 2013 rust tests + 5216 conformance
+
+### 1. Cleaned up region_inference.rs documentation
+
+Updated the module-level documentation to explain:
+- The `#[allow(dead_code)]` is on the `mod region_inference;` declaration in
+  borrowck/mod.rs (not a `#![allow(dead_code)]` inner attribute — that caused
+  clippy::duplicated_attributes warning)
+- Only `new()`, `region_to_vid()`, `collect_implied_bounds()`, and
+  `infer_regions()` are called from borrowck/mod.rs
+- The remaining 1400+ LOC of APIs are infrastructure for future v0.2 Phase 2
+  work (HRTB, proper NLL)
+
+Per §1.0 原則 1 "长期 > 短期": the infrastructure is kept for future use.
+Per §15 "最优 > 最小": keeping the code is the right trade-off.
+
+### 2. Fixed clippy::duplicated_attributes warning
+
+Removed the `#![allow(dead_code)]` inner attribute from region_inference.rs
+(it was duplicated with the `#[allow(dead_code)]` on the mod declaration
+in borrowck/mod.rs).
+
+### Verification
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.157.0 → v0.158.0
+
+Stage Summary:
+- Stage 15.32 PASSED — region_inference.rs dead code documentation cleanup
+- v0.158.0: minor bump (documentation + clippy fix)

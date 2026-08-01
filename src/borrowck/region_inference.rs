@@ -3,26 +3,36 @@
 //! Per `docs/lang-design/04-ownership-borrowing.md` §4.6 (NLL 完整规范).
 //! Extracted as a new module per `docs/stage-committee-process.md` v3.21
 //! §13.4 (stage-start design alignment) + §14.4 (refactoring as architecture
-//! design).
+//! realignment).
 //!
-//! This module implements the **data structures + constraint collection API**
-//! for region inference. The actual inference algorithm (fixed-point iteration)
-//! is deferred to Stage 7.2 (TD-015 step 2).
+//! Stage 15.32 (v0.2): Dead code is allowed via `#[allow(dead_code)]` on the
+//! `mod region_inference;` declaration in borrowck/mod.rs. Only `new()`,
+//! `region_to_vid()`, `collect_implied_bounds()`, and `infer_regions()` are
+//! called. The remaining APIs are infrastructure for future v0.2 Phase 2 work.
 //!
-//! ## Design alignment (§4.6)
-//!
-//! - §4.6.1 Universal region: `RegionInfo::Universal` + `UniversalRegion`
-//! - §4.6.2 Implied bounds: `OutlivesConstraint` (collected from `&'a T` → `T: 'a`)
-//! - §4.6.3 Universe: `UniverseCause` + `UniverseId`
-//! - §4.6.4 Type tests: `TypeTest { universal_region, ty, span }`
-//! - §4.6.5 SCC: deferred to Stage 7.4
-//! - §4.6.6 `RegionInferenceContext`: complete data structure
-//!
-//! ## §16 compliance
-//!
-//! This module is independent of `BorrowChecker` — it only reads `MirBody`
-//! data structures. Future Stage 7.5 will integrate it into borrowck,
-//! replacing the simplified NLL (last-use map).
+//! Per §1.0 原則 1 "长期 > 短期": the infrastructure is kept for future use.
+//! Per §14.4 J1 (单一职责): the module is self-contained.
+//! Per §15 "最优 > 最小": keeping the code is the right trade-off.
+
+// Original module documentation continues:
+// design).
+//
+// This module implements the data structures + constraint collection API
+// for region inference. The actual inference algorithm (fixed-point iteration)
+// is deferred to Stage 7.2 (TD-015 step 2).
+//
+// Design alignment (4.6):
+// - 4.6.1 Universal region: RegionInfo::Universal + UniversalRegion
+// - 4.6.2 Implied bounds: OutlivesConstraint (collected from &'a T -> T: 'a)
+// - 4.6.3 Universe: UniverseCause + UniverseId
+// - 4.6.4 Type tests: TypeTest { universal_region, ty, span }
+// - 4.6.5 SCC: deferred to Stage 7.4
+// - 4.6.6 RegionInferenceContext: complete data structure
+//
+// 16 compliance:
+// This module is independent of BorrowChecker — it only reads MirBody
+// data structures. Future Stage 7.5 will integrate it into borrowck,
+// replacing the simplified NLL (last-use map).
 
 use crate::mir::place::LocalId;
 use crate::mir::ty::{Region, RegionVid, Ty};

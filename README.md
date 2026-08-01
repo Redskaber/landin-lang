@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.157.0 (v0.2 Phase 1 — 31 stages complete, 7402 tests passing)  
+**Version**: v0.158.0 (v0.2 Phase 1 — 32 stages complete, 7402 tests passing)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,15 +21,16 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 1 — Stage 15.31 Complete (31 stages, v0.157 milestone)**
+> **v0.2 Phase 1 — Stage 15.32 Complete (32 stages, v0.158 milestone)**
 >
-> 31 stages of v0.2 Phase 1 work complete:
+> 32 stages of v0.2 Phase 1 work complete:
+> - **Ty interning**: TypeInterner → Eq+Hash → thread-local automatic dedup → integration tests
 > - **Memory optimizations**: Span removal, SubstsRef Rc<[Ty]>, Const.ty inline, AdtLayouts sharing
 > - **Architecture**: Writeback consolidation (8→2), error system cleanup, writeback 3-tuple return
 > - **Diagnostics**: DiagnosticBuilder, ErrorCode catalog, Spanned trait, color output, --color flag
 > - **CLI**: rustc-style display with source snippets, TTY auto-detection, LLVM version switch fix
-> - **Ty interning**: TypeInterner → Eq+Hash → thread-local automatic dedup → integration tests
-> - **HP-22**: dyn Trait call info moved from side-table into TerminatorKind::Call (explicit, §16)
+> - **HP-22**: dyn Trait call info moved from side-table into TerminatorKind::Call
+> - **Dead code**: region_inference.rs 1462 LOC documented + allow(dead_code) cleanup
 >
 > **Test count**: 173 lib tests + 2013 integration tests + 5216 conformance tests = 7402 passing.
 > **0 clippy warnings**, fmt clean.

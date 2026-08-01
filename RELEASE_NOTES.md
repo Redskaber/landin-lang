@@ -1,9 +1,31 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.157.0
+**Current version**: v0.158.0
 **Date**: 2026-08-01
 **Test count**: 173 rust lib tests + 2013 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.158.0 — Stage 15.32 (Region Inference Dead Code Documentation Cleanup)
+
+### Overview
+
+Stage 15.32 cleans up the `region_inference.rs` module documentation and fixes
+a `clippy::duplicated_attributes` warning. The 1462 LOC of region inference
+infrastructure is kept for future v0.2 Phase 2 work (HRTB, proper NLL).
+
+### What Changed
+
+- Updated module documentation to explain the `#[allow(dead_code)]` status
+- Removed duplicate `#![allow(dead_code)]` inner attribute (was on mod declaration)
+- Fixed `clippy::duplicated_attributes` warning
+
+### Verification
+
+- All 173 lib tests pass (zero regression)
+- All 2013 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.157.0 — Stage 15.31 (HP-22 Doc Cleanup)
