@@ -1,9 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.174.0
+**Current version**: v0.175.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2085 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.175.0 — Stage 15.49 (Lifetime Elision + MIR Region Assignment)
+
+### Overview
+
+Stage 15.49 implements lifetime elision and MIR region assignment. The
+`lower_hir_ty_to_mir_ty` function now delegates to a new
+`lower_hir_ty_to_mir_ty_with_regions` function that assigns a fresh
+`Region::Var(RegionVid(n))` to each reference type, instead of
+`Region::Erased` (which mapped to `'static`).
+
+### What Changed
+
+**`src/mir/lower/mod.rs`**:
+- New `lower_hir_ty_to_mir_ty_with_regions(ty, region_counter)` function.
+- Each `&T` gets a unique `Region::Var(vid)` (counter incremented per reference).
+- The lowering entry point allocates a `region_counter` and passes it to
+  the new function when lowering return types and parameter types.
+- Legacy `lower_hir_ty_to_mir_ty` delegates to the new function.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+
+### Migration Plan (Stages 15.48-15.52) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.48 | ✅ DONE (v0.174.0) | Design doc |
+| **15.49** | **✅ DONE (v0.175.0)** | **Lifetime elision + MIR region assignment (this release)** |
+| 15.50 | ⏳ NEXT | Constraint collection from MIR |
+| 15.51 | ⏳ PLANNED | Error reporting + integration |
+| 15.52 | ⏳ PLANNED | Conformance tests + gate review |
 
 ---
 ## v0.174.0 — Stage 15.48 (Region Allocation Design Doc — Task 9 Started)

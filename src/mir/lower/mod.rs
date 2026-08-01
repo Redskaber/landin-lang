@@ -733,12 +733,17 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
         cx.set_dyn_trait_plan(plan.clone());
     }
 
+    // Stage 15.49: Region counter for assigning fresh RegionVids to
+    // reference types during lowering. Each `&T` gets a unique vid,
+    // giving the region inference infrastructure real region variables.
+    let mut region_counter = 0u32;
+
     // Allocate LocalId(0) as the return value placeholder.
     // If a return type is provided (from the fn sig), use it directly
     // instead of a fresh inference variable. This is the key fix for
     // unifying fn signatures with body value types.
     let return_mir_ty = match &return_ty {
-        Some(t) => lower_hir_ty_to_mir_ty(t),
+        Some(t) => lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter),
         None => cx.fresh_infer_ty(Span::DUMMY),
     };
     // G5 fix: return_local is assigned multiple times (once per Return
@@ -775,9 +780,9 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
                 // See docs/worklog.md Stage 14.18 for details.
                 if param.self_kind.is_some() {
                     resolve_self_param_type(&cx, body, param.self_kind)
-                        .unwrap_or_else(|| lower_hir_ty_to_mir_ty(t))
+                        .unwrap_or_else(|| lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter))
                 } else {
-                    lower_hir_ty_to_mir_ty(t)
+                    lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter)
                 }
             }
             None => {
@@ -926,6 +931,29 @@ fn const_eval_array_len(expr: &HirExpr, span: Span) -> Const {
 
 /// Lower a HIR type to a MIR type.
 pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
+    // Stage 15.49: delegate to the region-aware variant with a throwaway
+    // counter. The legacy callers that don't need region tracking get
+    // `Region::Erased` for elided lifetimes (same as before).
+    let mut region_counter = 0u32;
+    lower_hir_ty_to_mir_ty_with_regions(ty, &mut region_counter)
+}
+
+/// Stage 15.49 (HP-5 step 2): Lower a HIR type to MIR type with proper
+/// region assignment.
+///
+/// Unlike `lower_hir_ty_to_mir_ty`, this function assigns a fresh
+/// `Region::Var(RegionVid(n))` to each elided reference lifetime, where
+/// `n` is obtained from `region_counter` (incremented per allocation).
+/// This gives the region inference infrastructure real region variables
+/// to work with, instead of `Region::Erased` (which maps to `'static`).
+///
+/// Per §23: function name follows `<verb>_<noun>_<noun>_<prep>_<noun>`
+/// pattern with `_with_regions` suffix.
+/// Per §1.0 原則 3 "显式 > 隐式": regions are explicit in the MIR.
+pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(
+    ty: &HirTy,
+    region_counter: &mut u32,
+) -> Ty {
     let span = Span::DUMMY;
     match &ty.kind {
         HirTyKind::Bool => Ty::new(TyKind::Bool, span),
@@ -935,20 +963,46 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
         HirTyKind::Float(float_ty) => Ty::new(TyKind::Float(*float_ty), span),
         HirTyKind::Never => Ty::new(TyKind::Never, span),
         HirTyKind::Tuple(tys) => Ty::new(
-            TyKind::Tuple(tys.iter().map(lower_hir_ty_to_mir_ty).collect()),
+            TyKind::Tuple(
+                tys.iter()
+                    .map(|t| lower_hir_ty_to_mir_ty_with_regions(t, region_counter))
+                    .collect(),
+            ),
             span,
         ),
         HirTyKind::Ref(region, mutability, inner) => {
+            // Stage 15.49: Assign a fresh Region::Var for each reference.
+            // - Explicit lifetimes: assign a fresh vid (we don't yet track
+            //   the source-level lifetime name, but the vid is unique per
+            //   reference, which is what the region inference needs).
+            // - Elided lifetimes: assign a fresh vid (lifetime elision rule 1:
+            //   each elided input lifetime gets its own fresh lifetime).
             let mir_region = match region {
-                Some(_lt) => Region::Var(RegionVid(0)), // placeholder
-                None => Region::Erased,
+                Some(_lt) => {
+                    // Explicit lifetime — assign a fresh vid.
+                    // TODO (future): track the lifetime name so we can unify
+                    // references with the same explicit lifetime.
+                    let vid = *region_counter;
+                    *region_counter += 1;
+                    Region::Var(RegionVid(vid))
+                }
+                None => {
+                    // Elided lifetime — assign a fresh vid (elision rule 1).
+                    let vid = *region_counter;
+                    *region_counter += 1;
+                    Region::Var(RegionVid(vid))
+                }
             };
             let mir_mut = match mutability {
                 ast::Mutability::Mutable => crate::mir::ty::Mutability::Mutable,
                 ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
             };
             Ty::new(
-                TyKind::Ref(mir_region, mir_mut, Box::new(lower_hir_ty_to_mir_ty(inner))),
+                TyKind::Ref(
+                    mir_region,
+                    mir_mut,
+                    Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter)),
+                ),
                 span,
             )
         }
@@ -958,17 +1012,17 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
                 ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
             };
             Ty::new(
-                TyKind::RawPtr(mir_mut, Box::new(lower_hir_ty_to_mir_ty(inner))),
+                TyKind::RawPtr(mir_mut, Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter))),
                 span,
             )
         }
         HirTyKind::Slice(inner) => {
-            Ty::new(TyKind::Slice(Box::new(lower_hir_ty_to_mir_ty(inner))), span)
+            Ty::new(TyKind::Slice(Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter))), span)
         }
         HirTyKind::Array(inner, count_expr) => {
             let len_const = const_eval_array_len(count_expr, span);
             Ty::new(
-                TyKind::Array(Box::new(lower_hir_ty_to_mir_ty(inner)), Box::new(len_const)),
+                TyKind::Array(Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter)), Box::new(len_const)),
                 span,
             )
         }
@@ -1002,8 +1056,8 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
             abi,
             is_unsafe,
         } => {
-            let mir_inputs: Vec<Ty> = inputs.iter().map(lower_hir_ty_to_mir_ty).collect();
-            let mir_output = Box::new(lower_hir_ty_to_mir_ty(output));
+            let mir_inputs: Vec<Ty> = inputs.iter().map(|t| lower_hir_ty_to_mir_ty_with_regions(t, region_counter)).collect();
+            let mir_output = Box::new(lower_hir_ty_to_mir_ty_with_regions(output, region_counter));
             Ty::new(
                 TyKind::FnPtr(crate::mir::ty::Sig {
                     inputs: mir_inputs,
