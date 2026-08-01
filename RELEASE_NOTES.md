@@ -1,9 +1,50 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.171.0
+**Current version**: v0.172.0
 **Date**: 2026-08-01
-**Test count**: 226 rust lib tests + 2082 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 226 rust lib tests + 2085 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.172.0 — Stage 15.46 (Drop Elaboration Integration — Wired into Driver Pipeline)
+
+### Overview
+
+Stage 15.46 wires `elaborate_drops` into the driver pipeline. The pass
+now runs AFTER typeck (which writes resolved types into MIR) and BEFORE
+borrowck (so the borrow checker sees the `Drop` terminators).
+
+### What Changed
+
+**`src/driver.rs`**:
+- Added `elaborate_drops(&mut mir, &trait_resolver, &interner)` call
+  between typeck and borrowck.
+- Updated pipeline documentation to include stage 6.5 (drop elaboration).
+
+### Tests
+
+- **3 integration tests** verifying the pipeline works correctly (no
+  regression on simple, struct, and complex programs).
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests stage15_drop_elaboration_integration` — ✅ 3/3 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+
+### Migration Plan (Stages 15.42-15.47) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.42 | ✅ DONE (v0.168.0) | Design doc |
+| 15.43 | ✅ DONE (v0.169.0) | `ty_needs_drop` analysis |
+| 15.44 | ✅ DONE (v0.170.0) | `elaborate_drops` pass |
+| 15.45 | ✅ DONE (v0.171.0) | Drop glue codegen |
+| **15.46** | **✅ DONE (v0.172.0)** | **Integration: wired into driver pipeline (this release)** |
+| 15.47 | ⏳ NEXT | Gate review + deep review |
 
 ---
 ## v0.171.0 — Stage 15.45 (Drop Glue Codegen — Non-Noop `TerminatorKind::Drop`)

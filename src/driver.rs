@@ -25,6 +25,9 @@
 //! 6. typeck::check_mir_body    → mutates MIR (writes resolved types) + type errors
 //!     │
 //!     ▼
+//! 6.5. mir::drop_elaboration::elaborate_drops  → insert Drop terminators (Stage 15.46)
+//!     │
+//!     ▼
 //! 7. borrowck::check_mir_body_with_dataflow  → borrow/move errors (Stage 15.40: driver switched)
 //!     │
 //!     ▼
@@ -1009,6 +1012,31 @@ pub fn compile(src: &str) -> CompileResult {
         let (type_errors, body_results) = tc.into_results();
         errors.typeck.extend(type_errors);
         typeck_results.push(body_results);
+
+        // Stage 15.46 (HP-12 step 5): Drop elaboration.
+        //
+        // Insert `Drop` terminators before `StorageDead` for locals whose
+        // type needs drop glue. This runs AFTER typeck (which writes
+        // resolved types into `mir.local_decls`) and BEFORE borrowck
+        // (so the borrow checker sees the `Drop` terminators).
+        //
+        // Per §16: `elaborate_drops` is a MIR-to-MIR transformation —
+        // it mutates `mir` in place. It reads `mir.adt_layouts` (sunk
+        // from HIR during MIR lowering) and `trait_resolver` (for
+        // `is_drop_builtin` queries). No HIR lookup.
+        //
+        // Per §1.0 原則 3 "显式 > 隐式": the `Drop` terminators are
+        // explicit in the MIR, not implicit in `StorageDead`.
+        //
+        // Note: In v0.171.0, no types implement `Drop` yet (the parser
+        // doesn't support `impl Drop for T`), so `elaborate_drops` is a
+        // no-op. When `impl Drop` support is added (future stage), the
+        // pass will start inserting `Drop` terminators.
+        crate::mir::drop_elaboration::elaborate_drops(
+            &mut mir,
+            &trait_resolver,
+            &interner,
+        );
 
         // Borrow check
         // Stage 14.106 (HP-1 fix attempt): Pass TraitResolver to BorrowChecker.

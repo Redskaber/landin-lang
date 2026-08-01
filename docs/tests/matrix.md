@@ -194,7 +194,8 @@
 | **15.43** | **`ty_needs_drop` analysis — new `src/mir/drop_elaboration.rs` module; recursive type traversal with cycle detection; 16 unit + 3 integration tests** | **+19 rust (16 unit + 3 integration)** | ✅ |
 | **15.44** | **`elaborate_drops` pass — MIR-to-MIR transformation inserting `Drop` terminators before `StorageDead` for needs-drop locals; block splitting; 2 unit + 3 integration tests (currently no-op — no Drop impls exist yet)** | **+5 rust (2 unit + 3 integration)** | ✅ |
 | **15.45** | **Drop glue codegen — `TerminatorKind::Drop` no longer no-op; emits `call void @drop_adt_<N>(...)` for ADT types, `drop_generic` for others; code path not yet exercised (no Drop terminators generated until Stage 15.46)** | **0 (code change, no new tests — path not exercised)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL migration COMPLETE + Drop elaboration (design + needs_drop + elaborate_drops + codegen)** | **+122 rust in 15.35-15.44** | ✅ |
+| **15.46** | **Drop elaboration integration — `elaborate_drops` wired into driver pipeline (after typeck, before borrowck); 3 integration tests verify no regression; pass is currently no-op (no Drop impls exist yet)** | **+3 rust (integration)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL migration COMPLETE + Drop elaboration (design + needs_drop + elaborate_drops + codegen + integration)** | **+125 rust in 15.35-15.46** | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.171.0 (v0.2 Phase 2 — Drop elaboration drop glue codegen)
+**Version**: v0.172.0 (v0.2 Phase 2 — Drop elaboration integration into driver)
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,7 +21,7 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 2 — Stage 15.45 (Drop elaboration drop glue codegen — Task 8)**
+> **v0.2 Phase 2 — Stage 15.46 (Drop elaboration integration — Task 8)**
 >
 > Phase 1 complete (33 stages). Phase 2 in progress:
 > - ✅ **Phase 1**: Ty interning, memory optimizations, writeback consolidation, diagnostics, HP-22
@@ -37,7 +37,7 @@ backend via the `llvm-sys` crate.
 > - ⏳ **Phase 2 Task 9 (HP-5)**: Region allocation — needs NLL (DONE)
 > - ⏳ **Phase 2 Task 10 (HP-3)**: Closure redesign — needs Ty interning (DONE)
 >
-> **Test count**: 226 lib tests + 2082 integration tests + 5216 conformance tests = 7524 passing.
+> **Test count**: 226 lib tests + 2085 integration tests + 5216 conformance tests = 7527 passing.
 > **0 clippy warnings**, fmt clean.
 
 ---

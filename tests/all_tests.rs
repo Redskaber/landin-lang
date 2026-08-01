@@ -294,6 +294,9 @@ mod stage15_ty_needs_drop_integration_tests;
 // Stage 15.44 (HP-12 step 3): elaborate_drops pass — insert Drop terminators.
 #[path = "v0/stage15/plan/elaborate_drops_integration_tests.rs"]
 mod stage15_elaborate_drops_integration_tests;
+// Stage 15.46 (HP-12 step 5): Drop elaboration integration — wired into driver pipeline.
+#[path = "v0/stage15/plan/drop_elaboration_integration_tests.rs"]
+mod stage15_drop_elaboration_integration_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]

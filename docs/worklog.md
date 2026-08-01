@@ -20567,3 +20567,69 @@ Stage Summary:
 - TerminatorKind::Drop now emits a call to drop_adt_<N> function
 - Code path not yet exercised (no Drop terminators generated until Stage 15.46)
 - v0.171.0: minor bump (Phase 2 — Drop elaboration drop glue codegen)
+
+---
+Task ID: stage15.46-drop-elaboration-integration
+Agent: Super Z (main)
+Task: Stage 15.46 — Wire elaborate_drops into driver pipeline (Task 8 step 5). v0.171.0 → v0.172.0.
+
+Work Log:
+- Baseline: v0.171.0 / 226 lib + 2082 integration + 5216 conformance
+
+### 1. Wired elaborate_drops into driver.rs
+
+Added the `elaborate_drops` call between typeck (which writes resolved
+types into MIR) and borrowck (which needs to see Drop terminators):
+
+```rust
+// After typeck:
+tc.check_mir_body_with_tables(&mut mir, Some(&field_ty_table));
+// ...
+
+// Stage 15.46: Drop elaboration.
+crate::mir::drop_elaboration::elaborate_drops(&mut mir, &trait_resolver, &interner);
+
+// Before borrowck:
+let mut bc = borrowck::BorrowChecker::new();
+bc.check_mir_body_with_dataflow(&mir);
+```
+
+Per §16: elaborate_drops is a MIR-to-MIR transformation — mutates mir
+in place. Reads mir.adt_layouts + trait_resolver (no HIR lookup).
+Per §1.0 原則 3 "显式 > 隐式": Drop terminators are explicit in MIR.
+
+### 2. Updated driver pipeline documentation
+
+Updated the pipeline diagram to include the new stage 6.5:
+```
+6. typeck::check_mir_body
+6.5. mir::drop_elaboration::elaborate_drops  (Stage 15.46)
+7. borrowck::check_mir_body_with_dataflow
+```
+
+### 3. Added 3 integration tests
+
+- stage15_46_driver_pipeline_runs_elaborate_drops
+- stage15_46_struct_no_drop_compiles
+- stage15_46_complex_program_compiles
+
+### 4. Created documentation
+
+- docs/develop/v0/stage-15/stage-15.46-drop-elaboration-integration.md
+- docs/tests/v0/stage15/stage-15.46-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean build, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests stage15_drop_elaboration_integration` — ✅ 3/3 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- Bumped Cargo.toml v0.171.0 → v0.172.0
+
+Stage Summary:
+- Stage 15.46 PASSED — elaborate_drops wired into driver pipeline
+- 3 new integration tests, zero regression
+- Pass is currently no-op (no Drop impls exist yet)
+- v0.172.0: minor bump (Phase 2 — Drop elaboration integration into driver)
