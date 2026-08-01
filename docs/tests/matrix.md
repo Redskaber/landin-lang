@@ -196,7 +196,8 @@
 | **15.45** | **Drop glue codegen — `TerminatorKind::Drop` no longer no-op; emits `call void @drop_adt_<N>(...)` for ADT types, `drop_generic` for others; code path not yet exercised (no Drop terminators generated until Stage 15.46)** | **0 (code change, no new tests — path not exercised)** | ✅ |
 | **15.46** | **Drop elaboration integration — `elaborate_drops` wired into driver pipeline (after typeck, before borrowck); 3 integration tests verify no regression; pass is currently no-op (no Drop impls exist yet)** | **+3 rust (integration)** | ✅ |
 | **15.47** | **Drop elaboration gate review + deep review (Task 8 closure) — §25 8-dimension review; Task 8 PARTIALLY COMPLETE (infrastructure ready, `impl Drop` parser support deferred); 0 new tests (review only)** | **0 (review only)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL migration COMPLETE + Drop elaboration (infrastructure COMPLETE, parser support deferred)** | **+125 rust in 15.35-15.46** | ✅ |
+| **15.48** | **Region allocation design doc (Task 9, HP-5) — design alignment per §13.4; covers lifetime elision, MIR region assignment, constraint collection, error reporting; 5-stage implementation plan (15.48-15.52)** | **0 (doc only)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL COMPLETE + Drop elaboration (partial) + Region allocation (design started)** | **+125 rust in 15.35-15.46** | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.173.0 (v0.2 Phase 2 — Drop elaboration gate review, Task 8 closure)
+**Version**: v0.174.0 (v0.2 Phase 2 — Region allocation design started)
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,7 +21,7 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 2 — Stage 15.47 (Drop elaboration gate review — Task 8 closure)**
+> **v0.2 Phase 2 — Stage 15.48 (Region allocation design — Task 9 started)**
 >
 > Phase 1 complete (33 stages). Phase 2 in progress:
 > - ✅ **Phase 1**: Ty interning, memory optimizations, writeback consolidation, diagnostics, HP-22

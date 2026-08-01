@@ -1,9 +1,46 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.173.0
+**Current version**: v0.174.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2085 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.174.0 — Stage 15.48 (Region Allocation Design Doc — Task 9 Started)
+
+### Overview
+
+Stage 15.48 is a **design-only stage** — no code changes. It creates the
+design document for region allocation (Task 9, HP-5), which is the next
+v0.2 Phase 2 task after Drop elaboration (Task 8) was closed as partially
+complete in Stage 15.47.
+
+### What Changed
+
+**New design doc** (`docs/lang-design/26-region-allocation.md`):
+- Problem statement: 1472 LOC of region inference infrastructure exists but is a no-op.
+- Design: Lifetime elision rules, MIR region assignment, constraint collection, error reporting.
+- What's already implemented: Stages 7.1-7.5 (`RegionInferenceContext`, fixpoint iteration).
+- What needs to be implemented: 5 items (lifetime elision, MIR region assignment, constraint collection, error reporting, integration).
+- Migration strategy: 5 stages (15.48-15.52), ~1 week total.
+- Open questions: interaction with `Region::Erased`, function signature lifetimes, performance.
+
+### Migration Plan (Stages 15.48-15.52) — Task 9
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| **15.48** | **✅ DONE (v0.174.0)** | **Design doc (this release)** |
+| 15.49 | ⏳ NEXT | Lifetime elision rules + MIR region assignment |
+| 15.50 | ⏳ PLANNED | Constraint collection from MIR |
+| 15.51 | ⏳ PLANNED | Error reporting + integration |
+| 15.52 | ⏳ PLANNED | Conformance tests + gate review |
+
+### Verification
+
+- No code changes — design-only stage.
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.173.0 — Stage 15.47 (Drop Elaboration Gate Review — Task 8 Closure)

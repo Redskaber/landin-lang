@@ -20692,3 +20692,66 @@ Stage Summary:
 - §25 8-dimension review: all GO or GO-WITH-CONDITIONS
 - Committee vote: GO-WITH-CONDITIONS
 - v0.173.0: minor bump (Phase 2 — Drop elaboration gate review, Task 8 closure)
+
+---
+Task ID: stage15.48-region-allocation-design
+Agent: Super Z (main)
+Task: Stage 15.48 — Region allocation design doc (Task 9, HP-5). Design alignment per §13.4. v0.173.0 → v0.174.0.
+
+Work Log:
+- Baseline: v0.173.0 / 226 lib + 2085 integration + 5216 conformance
+
+### 1. Reviewed v0.2 roadmap — next task is Task 9 (Region allocation)
+
+Per docs/develop/v0/stage-15/v0.2-preparation.md Phase 2:
+- Task 7 (NLL) — COMPLETE (Stage 15.41)
+- Task 8 (Drop elaboration) — PARTIALLY COMPLETE (Stage 15.47)
+- Task 9 (Region allocation, HP-5) — 1 week, needs NLL (DONE) — NEXT
+- Task 10 (Closure redesign, HP-3) — 2-3 weeks, needs Ty interning (DONE)
+
+### 2. Reviewed existing region inference infrastructure
+
+- src/borrowck/region_inference.rs — 1472 LOC, built in Stages 7.1-7.5.
+- RegionInferenceContext with new(), region_to_vid(), collect_implied_bounds(),
+  infer_regions() — all implemented but effectively no-op.
+- run_region_inference() called in check_mir_body_with_dataflow — no-op because
+  all MIR regions are Region::Erased.
+- Infrastructure is sound — just needs real region variables and constraints.
+
+### 3. Created design doc (docs/lang-design/26-region-allocation.md)
+
+Per §13.4 (设计对齐): design before implementation. The doc covers:
+1. Problem statement (1472 LOC infrastructure is no-op).
+2. Design: lifetime elision rules, MIR region assignment, constraint collection,
+   error reporting, integration with NLL.
+3. What's already implemented (Stages 7.1-7.5).
+4. What needs to be implemented (5 items).
+5. Migration strategy: 5 stages (15.48-15.52).
+6. Dependencies: Task 7 (COMPLETE), region inference infrastructure (EXISTS).
+7. Testing strategy: unit + integration + conformance.
+8. API naming compliance (§23): elide_lifetimes, assign_mir_regions, collect_mir_constraints.
+9. Open questions: interaction with Region::Erased, function signature lifetimes,
+   interaction with elaborate_drops, performance.
+
+### 4. Created develop + test plan docs
+
+- docs/develop/v0/stage-15/stage-15.48-region-allocation-design.md
+- docs/tests/v0/stage15/stage-15.48-test-plan.md
+
+### 5. Updated docs
+
+- docs/tests/matrix.md (Stage 15.48 row added)
+- RELEASE_NOTES.md, README.md, worklog.md
+
+### Verification
+- No code changes — design-only stage.
+- `cargo build --features llvm-backend` — ✅ clean build
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.173.0 → v0.174.0
+
+Stage Summary:
+- Stage 15.48 PASSED — Region allocation design doc created
+- Design covers full scope: lifetime elision, MIR region assignment, constraint collection
+- 5-stage implementation plan (15.48-15.52)
+- v0.174.0: minor bump (Phase 2 — Region allocation design doc)
