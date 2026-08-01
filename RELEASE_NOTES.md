@@ -1,9 +1,61 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.153.0
+**Current version**: v0.154.0
 **Date**: 2026-07-31
 **Test count**: 173 rust lib tests + 2006 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.154.0 — Stage 15.28 (Thread-Local TypeInterner — Automatic Ty Dedup LIVE)
+
+### Overview
+
+Stage 15.28 activates a **thread-local TypeInterner** that automatically
+deduplicates all Ty values created via `Ty::new` and `Ty::from_kind`. This is
+the **Ty interning milestone** — all 320+ type construction calls now go
+through the interner transparently, without changing any call sites.
+
+### What Changed
+
+**Thread-local TypeInterner** (`src/mir/ty.rs`):
+```rust
+thread_local! {
+    static TYPE_INTERNER: RefCell<TypeInterner> = RefCell::new(TypeInterner::new());
+}
+```
+
+**`Ty::new` and `Ty::from_kind`** now go through the interner:
+- Before: `Self { kind }` — always allocates a new Ty
+- After: `TYPE_INTERNER.with(|i| i.borrow_mut().intern(kind))` — dedup
+
+**New methods**:
+- `Ty::from_kind_raw(kind)` — bypass interner (for inference variables)
+- `Ty::interner_len()` — number of unique types (debugging)
+- `Ty::clear_interner()` — reset interner (called at start of each `compile()`)
+
+**Fixed recursive call**: `TypeInterner::intern` now uses `from_kind_raw`
+instead of `from_kind` to avoid infinite recursion.
+
+### Why This Matters
+
+This is the **culmination of the Ty interning effort** (Stage 15.1-15.28):
+- Stage 15.2: TypeInterner infrastructure (placeholder)
+- Stage 15.5: Span removal from Ty
+- Stage 15.23: `kind()` accessor method
+- Stage 15.25: `Eq + Hash` on TyKind (ConstVal::Float bits)
+- Stage 15.26: Activate HashMap dedup
+- Stage 15.27: Wire into CompileResult
+- **Stage 15.28: Thread-local interner — ALL types deduped automatically**
+
+For a crate with 100 uses of `i32`, only 1 `TyKind::Int(I32)` is stored.
+The other 99 `Ty::from_kind(TyKind::Int(I32))` calls return the cached Ty.
+
+### Verification
+
+- All 173 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.153.0 — Stage 15.27 (TypeInterner Wired into CompileResult)

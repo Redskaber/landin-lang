@@ -16,43 +16,82 @@ use crate::session::Span;
 ///
 /// Stage 15.5 (v0.2): Removed `span: Span` field from `Ty`.
 /// Stage 15.23 (v0.2): Added `kind()` method as preparation for Rc<TyKind> interning.
-///   The `kind` field is still `TyKind` (not `Rc<TyKind>` yet) — the full
-///   newtype migration will happen in Stage 15.24+ (incremental, one module
-///   at a time). This stage adds the `kind()` accessor method so callers can
-///   start migrating from `ty.kind` to `ty.kind()` before the field type changes.
-///
-/// Per `docs/lang-design/19-ty-interning.md`: the migration from `Ty { kind: TyKind }`
-/// to `Ty(Rc<TyKind>)` requires updating 318 `.kind` accesses. Doing it
-/// incrementally (add `kind()` method first, then change the field type)
-/// reduces the risk of breaking everything at once.
-///
-/// Per §1.0 原則 1 "长期 > 短期": gradual migration is safer than big-bang.
-/// Per §15 "最优 > 最小": this is the right first step.
 /// Stage 15.25 (v0.2): Added `Eq, Hash` derives to Ty (transitively from TyKind).
+/// Stage 15.28 (v0.2): Ty::new and Ty::from_kind now go through a thread-local
+///   TypeInterner for automatic dedup. Equal TyKind values return the same Ty
+///   (by value), reducing memory usage. The interner is opt-in — callers that
+///   don't want dedup can use `Ty::from_kind_raw` (no interning).
+///
+/// Per `docs/lang-design/19-ty-interning.md`: the thread-local interner is the
+/// v0.2 approach. v0.3 will replace it with arena interning (`&'tcx TyKind`).
+///
+/// Per §1.0 原則 6 "通用 > 特例": one thread-local interner handles all TyKind variants.
+/// Per §15 "最优 > 最小": this is the root-cause fix for type duplication.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ty {
     pub kind: TyKind,
+}
+
+// Stage 15.28: Thread-local TypeInterner for automatic Ty dedup.
+//
+// This is a global (per-thread) interner that deduplicates all Ty values
+// created via `Ty::new` and `Ty::from_kind`. The interner is:
+// - Thread-safe (each thread has its own interner)
+// - Bounded (grows with unique types, not total type constructions)
+// - Transparent (callers don't need to pass an interner around)
+//
+// Per §1.0 原則 3 "显式 > 隐式": the interner is explicit in the thread_local! macro.
+thread_local! {
+    static TYPE_INTERNER: std::cell::RefCell<crate::mir::ty_interner::TypeInterner> =
+        std::cell::RefCell::new(crate::mir::ty_interner::TypeInterner::new());
 }
 
 impl Ty {
     /// Create a new Ty. Span is no longer stored on Ty (Stage 15.5).
     /// The `_span` parameter is kept for API compatibility — callers
     /// should migrate to `Ty::from_kind()` which doesn't take span.
+    ///
+    /// Stage 15.28: Now goes through the thread-local TypeInterner for dedup.
     pub fn new(kind: TyKind, _span: crate::session::Span) -> Self {
-        Self { kind }
+        Self::from_kind(kind)
     }
 
     /// Stage 15.5: Construct a Ty without span (preferred new API).
+    ///
+    /// Stage 15.28: Now goes through the thread-local TypeInterner for dedup.
+    /// Equal TyKind values return the same Ty (by value), reducing memory.
     pub fn from_kind(kind: TyKind) -> Self {
+        TYPE_INTERNER.with(|interner| interner.borrow_mut().intern(kind))
+    }
+
+    /// Stage 15.28: Construct a Ty WITHOUT going through the interner.
+    ///
+    /// This is for cases where the caller knows the TyKind is unique (e.g.,
+    /// inference variables that are always different) or where interning
+    /// overhead is unnecessary.
+    ///
+    /// Per §1.0 原則 3 "显式 > 隐式": the `_raw` suffix makes it explicit
+    /// that this bypasses the interner.
+    pub fn from_kind_raw(kind: TyKind) -> Self {
         Self { kind }
     }
 
     /// Stage 15.23: Accessor method for TyKind.
-    /// Returns `&TyKind` — callers should prefer `ty.kind()` over `ty.kind`
-    /// to prepare for the Rc<TyKind> migration (where `.kind` field access
-    /// will be replaced by `.kind()` method call).
     pub fn kind(&self) -> &TyKind {
         &self.kind
+    }
+
+    /// Stage 15.28: Get the number of unique types in the thread-local interner.
+    /// Useful for debugging and statistics.
+    pub fn interner_len() -> usize {
+        TYPE_INTERNER.with(|interner| interner.borrow().len())
+    }
+
+    /// Stage 15.28: Clear the thread-local interner.
+    /// Called between compilations to avoid cross-compilation pollution.
+    pub fn clear_interner() {
+        TYPE_INTERNER
+            .with(|interner| *interner.borrow_mut() = crate::mir::ty_interner::TypeInterner::new());
     }
 }
 

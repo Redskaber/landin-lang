@@ -19101,3 +19101,53 @@ Stage Summary:
 - Stage 15.27 PASSED — TypeInterner wired into CompileResult
 - TypeInterner is now accessible from compilation results
 - v0.153.0: minor bump (API addition — type_interner field)
+
+---
+Task ID: stage15.28-thread-local-type-interner
+Agent: Super Z (main)
+Task: Stage 15.28 — Thread-local TypeInterner for automatic Ty dedup. v0.153.0 → v0.154.0.
+
+Work Log:
+- Baseline: v0.153.0 / 2006 rust tests + 5216 conformance
+
+### 1. Added thread-local TypeInterner (src/mir/ty.rs)
+
+Added `thread_local! { static TYPE_INTERNER: RefCell<TypeInterner> }` that
+automatically deduplicates all Ty values created via `Ty::new` and `Ty::from_kind`.
+
+Now ALL 320+ Ty::new/Ty::from_kind calls go through the interner automatically.
+For a crate with 100 uses of `i32`, only 1 TyKind::Int(I32) is stored — the
+other 99 return the cached Ty.
+
+### 2. Added Ty::from_kind_raw (bypass interner)
+
+For cases where the caller knows the TyKind is unique (e.g., inference variables
+that are always different), `Ty::from_kind_raw` constructs a Ty without going
+through the interner.
+
+### 3. Added Ty::interner_len() + Ty::clear_interner()
+
+- `interner_len()`: returns the number of unique types in the thread-local interner
+- `clear_interner()`: resets the interner (called at the start of each compilation)
+
+### 4. Fixed recursive call in TypeInterner::intern
+
+The `intern` method now uses `Ty::from_kind_raw` instead of `Ty::from_kind`
+to avoid infinite recursion (Ty::from_kind → intern → Ty::from_kind → ...).
+
+### 5. Driver clears interner at start of each compilation
+
+Added `Ty::clear_interner()` at the top of `compile()` to avoid
+cross-compilation pollution.
+
+### Verification
+- All 173 lib tests pass (zero regression)
+- All 2006 integration tests pass (zero regression)
+- All 5216 conformance tests pass (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.153.0 → v0.154.0
+
+Stage Summary:
+- Stage 15.28 PASSED — thread-local TypeInterner activated
+- ALL Ty::new/Ty::from_kind calls now go through the interner automatically
+- v0.154.0: minor bump (Ty interning LIVE — automatic dedup for all types)

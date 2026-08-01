@@ -497,6 +497,10 @@ impl CompileResult {
 /// is still produced — this lets later stages (codegen, error display)
 /// work with partial results.
 pub fn compile(src: &str) -> CompileResult {
+    // Stage 15.28: Clear the thread-local TypeInterner at the start of each
+    // compilation to avoid cross-compilation pollution.
+    crate::mir::ty::Ty::clear_interner();
+
     let mut interner = Rodeo::new();
     let mut errors = CompileErrors::default();
 

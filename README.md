@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber  
-**Version**: v0.153.0 (v0.2 Phase 1 — TypeInterner wired into CompileResult)  
+**Version**: v0.154.0 (v0.2 Phase 1 — Ty interning LIVE: automatic dedup for all types)  
 **Date**: 2026-07-31
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -21,17 +21,20 @@ backend via the `llvm-sys` crate.
 > **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
 > v0.1 is CONFIRMED READY. v0.2 can start safely.
 
-> **v0.2 Phase 1 — Stage 15.27 Complete (TypeInterner in CompileResult)**
+> **v0.2 Phase 1 — Stage 15.28 Complete (Ty interning LIVE)**
 >
-> 27 stages of v0.2 Phase 1 work complete:
+> 28 stages of v0.2 Phase 1 work complete:
 > - **Memory optimizations**: Span removal, SubstsRef Rc<[Ty]>, Const.ty inline, AdtLayouts sharing
 > - **Architecture**: Writeback consolidation (8→2), error system cleanup, writeback 3-tuple return
-> - **Diagnostics**: DiagnosticBuilder, ErrorCode catalog (E001-E900), Spanned trait, color output, --color flag
+> - **Diagnostics**: DiagnosticBuilder, ErrorCode catalog, Spanned trait, color output, --color flag
 > - **CLI**: rustc-style display with source snippets, TTY auto-detection, LLVM version switch fix
-> - **Ty interning**: TypeInterner infra → Eq+Hash → dedup activated → **wired into CompileResult** (15.27)
+> - **Ty interning**: TypeInterner infra → Eq+Hash → dedup → CompileResult → **thread-local automatic dedup** (15.28)
+>
+> **Ty interning is LIVE**: all `Ty::new`/`Ty::from_kind` calls now go through a thread-local
+> `TypeInterner` with `HashMap` dedup. For 100 uses of `i32`, only 1 `TyKind::Int(I32)` is stored.
 >
 > **Test count**: 173 lib tests + 2006 integration tests + 5216 conformance tests = 7395 passing.
-> **0 clippy warnings**, fmt clean. Next: wire TypeInterner into Ty::new + Rc<TyKind> migration.
+> **0 clippy warnings**, fmt clean.
 
 ---
 

@@ -45,11 +45,12 @@ impl TypeInterner {
     ///
     /// Per §23 (API Naming): `intern` follows `<verb>` pattern.
     pub fn intern(&mut self, kind: TyKind) -> Ty {
-        // Stage 15.26: HashMap dedup — if we've seen this TyKind before,
-        // return the cached Ty. Otherwise, create a new Ty and cache it.
+        // Stage 15.28: Use from_kind_raw to avoid recursive call to intern()
+        // (Ty::from_kind now calls intern, which would loop infinitely).
+        // from_kind_raw bypasses the interner and constructs Ty directly.
         self.dedup
             .entry(kind)
-            .or_insert_with_key(|k| Ty::from_kind(k.clone()))
+            .or_insert_with_key(|k| Ty::from_kind_raw(k.clone()))
             .clone()
     }
 
