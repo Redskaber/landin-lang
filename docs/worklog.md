@@ -20858,3 +20858,66 @@ Stage Summary:
 - Wired into run_region_inference
 - Zero regression — all 5216 conformance tests pass
 - v0.176.0: minor bump (Phase 2 — Region allocation constraint collection)
+
+---
+Task ID: stage15.51-error-reporting
+Agent: Super Z (main)
+Task: Stage 15.51 — Implement error reporting for region inference (Task 9 step 4). v0.176.0 → v0.177.0.
+
+Work Log:
+- Baseline: v0.176.0 / 226 lib + 2085 integration + 5216 conformance
+
+### 1. Added LifetimeError variant to BorrowErrorKind
+
+src/borrowck/error.rs:
+```rust
+/// Stage 15.51 (HP-5 step 4): Lifetime error from region inference.
+LifetimeError,
+```
+
+Per §23: BorrowErrorKind::LifetimeError follows the <Noun>Error convention.
+
+### 2. Updated run_region_inference to report errors
+
+src/borrowck/mod.rs: run_region_inference now converts
+RegionInferenceError to BorrowError:
+- RegionEscapesUniversal → "lifetime error: region {:?} escapes universal region {:?}"
+- TypeTestFailed → "lifetime error: type {:?} does not outlive region {:?}"
+
+Previously the result was silently ignored (let _result = ...).
+
+Per §1.0 原則 5 "报错 > 静默": errors are reported, not silently ignored.
+
+### 3. Effect
+
+The region inference is now fully integrated:
+1. MIR region assignment (Stage 15.49) — each &T gets a fresh Region::Var(vid).
+2. Constraint collection (Stage 15.50) — outlives constraints from MIR.
+3. Region inference (Stage 7.2) — fixpoint iteration with SCC compression.
+4. Error reporting (Stage 15.51) — errors converted to BorrowError.
+
+No false positives on existing code (all 5216 conformance tests pass).
+The simplified constraints don't cause spurious violations because all
+regions effectively map to 'static (vid 0) in the current implementation.
+
+### 4. Created documentation
+
+- docs/develop/v0/stage-15/stage-15.51-error-reporting.md
+- docs/tests/v0/stage15/stage-15.51-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean build, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS (no false positives)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.176.0 → v0.177.0
+
+Stage Summary:
+- Stage 15.51 PASSED — error reporting for region inference implemented
+- LifetimeError variant added to BorrowErrorKind
+- run_region_inference now reports errors instead of silently ignoring them
+- Zero regression — all 5216 conformance tests pass (no false positives)
+- v0.177.0: minor bump (Phase 2 — Region allocation error reporting)

@@ -31,6 +31,10 @@ pub enum BorrowErrorKind {
     /// G7 fix (Stage 2.4f): Borrowing an immutable variable as mutable.
     /// `let x = 1; let r = &mut x;` triggers this.
     BorrowImmutable,
+    /// Stage 15.51 (HP-5 step 4): Lifetime error from region inference.
+    /// A reference's lifetime doesn't satisfy the required outlives
+    /// constraints (e.g., a reference outlives its referent).
+    LifetimeError,
 }
 
 impl BorrowError {

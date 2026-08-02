@@ -194,17 +194,57 @@ impl<'a> BorrowChecker<'a> {
 
         // Run region inference.
         // Stage 15.49: MIR now has real Region::Var(vid) for each reference.
-        // The inference will compute the region graph and check constraints.
-        // Stage 15.50: constraints are now collected from MIR statements.
-        // Stage 15.51 (future): errors will be converted to BorrowErrors.
-        let _result = ctx.infer_regions();
+        // Stage 15.50: constraints collected from MIR statements.
+        // Stage 15.51: errors are now converted to BorrowErrors.
+        let result = ctx.infer_regions();
+
+        // Stage 15.51: Convert region inference errors to BorrowErrors.
+        // Per §1.0 原則 5 "报错 > 静默": errors are reported, not silently
+        // ignored. Per §23: BorrowErrorKind::LifetimeError follows the
+        // `<Noun>Error` naming convention.
+        if let Err(region_errors) = result {
+            for err in region_errors {
+                let (message, span) = match &err {
+                    crate::borrowck::region_inference::RegionInferenceError::RegionEscapesUniversal {
+                        escaping_region,
+                        universal_region,
+                        ..
+                    } => {
+                        (
+                            format!(
+                                "lifetime error: region {:?} escapes universal region {:?}",
+                                escaping_region, universal_region
+                            ),
+                            Span::DUMMY, // TODO: track span from constraint cause
+                        )
+                    }
+                    crate::borrowck::region_inference::RegionInferenceError::TypeTestFailed {
+                        universal_region,
+                        ty,
+                        span,
+                        ..
+                    } => {
+                        (
+                            format!(
+                                "lifetime error: type {:?} does not outlive region {:?}",
+                                ty.kind, universal_region
+                            ),
+                            *span,
+                        )
+                    }
+                };
+                self.errors.push(BorrowError::new(
+                    &message,
+                    span,
+                    BorrowErrorKind::LifetimeError,
+                ));
+            }
+        }
 
         // Per §14.4: we do NOT replace the existing NLL — we run region
         // inference as an additional check. The dataflow borrow checker
         // remains the primary borrow checker. Region inference provides
         // additional lifetime checking.
-        // Per §1.0 原則 5 "报错 > 静默": when region inference finds
-        // violations, they will be converted to BorrowErrors (Stage 15.51).
     }
 
     // Stage 15.41: The legacy `kill_expired_borrows` method (the single-pass

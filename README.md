@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.176.0 (v0.2 Phase 2 — Region allocation constraint collection)
+**Version**: v0.177.0 (v0.2 Phase 2 — Region allocation error reporting)
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for

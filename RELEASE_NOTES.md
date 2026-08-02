@@ -1,9 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.176.0
+**Current version**: v0.177.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2085 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.177.0 — Stage 15.51 (Error Reporting + Integration)
+
+### Overview
+
+Stage 15.51 implements error reporting for region inference. When
+`infer_regions()` finds constraint violations, they are now converted
+to `BorrowError`s with `BorrowErrorKind::LifetimeError` and added to
+the error list. Previously, the result was silently ignored.
+
+### What Changed
+
+**`src/borrowck/error.rs`**:
+- Added `LifetimeError` variant to `BorrowErrorKind`.
+
+**`src/borrowck/mod.rs`**:
+- `run_region_inference` now converts `RegionInferenceError` to `BorrowError`.
+- `RegionEscapesUniversal` → "lifetime error: region escapes universal region".
+- `TypeTestFailed` → "lifetime error: type does not outlive region".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS (no false positives)
+
+### Migration Plan (Stages 15.48-15.52) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.48 | ✅ DONE (v0.174.0) | Design doc |
+| 15.49 | ✅ DONE (v0.175.0) | Lifetime elision + MIR region assignment |
+| 15.50 | ✅ DONE (v0.176.0) | Constraint collection from MIR |
+| **15.51** | **✅ DONE (v0.177.0)** | **Error reporting + integration (this release)** |
+| 15.52 | ⏳ NEXT | Conformance tests + gate review |
 
 ---
 ## v0.176.0 — Stage 15.50 (Constraint Collection from MIR)
