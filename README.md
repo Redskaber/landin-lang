@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.178.0 (v0.2 Phase 2 — Region allocation gate review, Task 9 closure)
+**Version**: v0.179.0 (v0.2 Phase 2 — Closure redesign design started)
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for

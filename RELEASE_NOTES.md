@@ -1,9 +1,46 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.178.0
+**Current version**: v0.179.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2091 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.179.0 — Stage 15.53 (Closure Redesign Design Doc — Task 10 Started)
+
+### Overview
+
+Stage 15.53 is a **design-only stage** — no code changes. It creates the
+design document for closure redesign (Task 10, HP-3), which is the final
+v0.2 Phase 2 task.
+
+### What Changed
+
+**New design doc** (`docs/lang-design/27-closure-redesign.md`):
+- Problem statement: inline approach (Stage 13.3a) has limitations.
+- Design: Strategy A — synthesize a separate `call` function per closure.
+- What's already implemented: closure capture, inline call, closure struct type.
+- What needs to be implemented: synthesized `call` function, fat pointer, call codegen, Fn/FnMut/FnOnce.
+- Migration strategy: 6 stages (15.53-15.58), ~2-3 weeks total.
+- Open questions: capture layout, by-value vs by-reference, drop/region interaction.
+
+### Migration Plan (Stages 15.53-15.58) — Task 10
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| **15.53** | **✅ DONE (v0.179.0)** | **Design doc (this release)** |
+| 15.54 | ⏳ NEXT | Synthesize `call` function per closure |
+| 15.55 | ⏳ PLANNED | Closure value as fat pointer + call codegen |
+| 15.56 | ⏳ PLANNED | Fn/FnMut/FnOnce trait impls |
+| 15.57 | ⏳ PLANNED | Conformance tests |
+| 15.58 | ⏳ PLANNED | Gate review |
+
+### Verification
+
+- No code changes — design-only stage.
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.178.0 — Stage 15.52 (Region Allocation Gate Review — Task 9 Closure)

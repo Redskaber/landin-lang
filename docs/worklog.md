@@ -20974,3 +20974,63 @@ Stage Summary:
 - 6 new integration tests, zero regression
 - Task 9 (HP-5) PARTIALLY COMPLETE — infrastructure integrated, simplified constraints
 - v0.178.0: minor bump (Phase 2 — Region allocation gate review, Task 9 closure)
+
+---
+Task ID: stage15.53-closure-redesign-design
+Agent: Super Z (main)
+Task: Stage 15.53 — Closure redesign design doc (Task 10, HP-3). Design alignment per §13.4. v0.178.0 → v0.179.0.
+
+Work Log:
+- Baseline: v0.178.0 / 226 lib + 2091 integration + 5216 conformance
+
+### 1. Reviewed v0.2 roadmap — next task is Task 10 (Closure redesign)
+
+Per docs/develop/v0/stage-15/v0.2-preparation.md Phase 2:
+- Task 7 (NLL) — COMPLETE (Stage 15.41)
+- Task 8 (Drop elaboration) — PARTIALLY COMPLETE (Stage 15.47)
+- Task 9 (Region allocation) — PARTIALLY COMPLETE (Stage 15.52)
+- Task 10 (Closure redesign, HP-3) — 2-3 weeks, needs Ty interning (DONE) — NEXT
+
+### 2. Reviewed existing closure infrastructure
+
+- closure_capture.rs — extracts captures from the environment.
+- expr_operand.rs::inline_closure_call — inlines the body at the call site (Stage 13.3a MVP).
+- TyKind::Closure(def_id, substs) — closure type in MIR.
+- The inline approach works but has limitations: no recursion, no Fn/FnMut/FnOnce,
+  code duplication, no closure-as-value.
+
+### 3. Created design doc (docs/lang-design/27-closure-redesign.md)
+
+Per §13.4 (设计对齐): design before implementation. The doc covers:
+1. Problem statement (inline approach limitations).
+2. Design: Strategy A — synthesize a separate `call` function per closure.
+3. What's already implemented (closure capture, inline call, closure struct type).
+4. What needs to be implemented (5 items: synthesized call function, fat pointer,
+   call codegen, Fn/FnMut/FnOnce, testing).
+5. Migration strategy: retain inline as fallback during migration.
+6. Dependencies: Task 1 (COMPLETE), closure capture (EXISTS).
+7. Open questions: capture layout, by-value vs by-reference, drop interaction,
+   region interaction.
+
+### 4. Created develop + test plan docs
+
+- docs/develop/v0/stage-15/stage-15.53-closure-redesign-design.md
+- docs/tests/v0/stage15/stage-15.53-test-plan.md
+
+### 5. Updated docs
+
+- docs/tests/matrix.md (Stage 15.53 row added)
+- RELEASE_NOTES.md, README.md, worklog.md
+
+### Verification
+- No code changes — design-only stage.
+- `cargo build --features llvm-backend` — ✅ clean build
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS (zero regression)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.178.0 → v0.179.0
+
+Stage Summary:
+- Stage 15.53 PASSED — Closure redesign design doc created
+- Design covers full scope: Strategy A (synthesized call function), fat pointer, Fn/FnMut/FnOnce
+- 6-stage implementation plan (15.53-15.58)
+- v0.179.0: minor bump (Phase 2 — Closure redesign design doc)
