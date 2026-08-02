@@ -16,9 +16,7 @@
 
 #![allow(deprecated)] // We intentionally call the legacy API to verify delegation.
 
-use landin_compiler::borrowck::{
-    check_mir_body, check_mir_body_with_dataflow, compute_last_use_map, BorrowChecker,
-};
+use landin_compiler::borrowck::{check_mir_body, check_mir_body_with_dataflow, BorrowChecker};
 use landin_compiler::compile;
 
 // ============================================================
@@ -91,29 +89,7 @@ fn stage15_41_legacy_method_delegates_to_dataflow() {
     }
 }
 
-// ============================================================
-// Part B — `compute_last_use_map` still available (not removed)
-// ============================================================
-
-/// Stage 15.41 test 3: `compute_last_use_map` is still available and
-/// callable. It's now part of the dataflow path (Stage 15.40 revised
-/// the kill logic to use last-use-based kill).
-#[test]
-fn stage15_41_compute_last_use_map_still_available() {
-    let src = r#"
-        fn main() -> i32 {
-            let x = 1;
-            let y = x + 1;
-            y
-        }
-    "#;
-    let result = compile(src);
-    for mir_body in &result.mirs {
-        let last_use = compute_last_use_map(mir_body);
-        // No panic — function is callable.
-        let _ = last_use.len();
-    }
-}
+// Stage 15.68: Part B (compute_last_use_map test) REMOVED — function removed.
 
 // ============================================================
 // Part C — No behavior change (all patterns still work)

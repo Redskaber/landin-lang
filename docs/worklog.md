@@ -22036,3 +22036,49 @@ Stage Summary:
 - Task 7 (HP-10) TRULY COMPLETE — real NLL, not lexical lifetimes
 - 7575 tests passing (226 lib + 2133 integration + 5216 conformance), 0 failures
 - v0.193.0: minor bump (Phase 2 — true Rust NLL, §1.0 原則 9 added)
+
+---
+Task ID: stage15.68-remove-dead-nll-code
+Agent: Super Z (main)
+Task: Stage 15.68 — Remove dead NLL code (compute_last_use_map, compute_ever_read, LastUseMap). v0.193.0 → v0.194.0.
+
+Work Log:
+- Baseline: v0.193.0 / 221 lib + 2130 integration + 5216 conformance
+
+### 1. Removed dead code from liveness.rs
+
+- Removed `pub type LastUseMap` type alias.
+- Removed `pub fn compute_last_use_map` function (~20 lines).
+- Removed `pub fn compute_ever_read` function (~15 lines).
+- Removed 5 `compute_ever_read` unit tests.
+
+### 2. Updated re-exports in borrowck/mod.rs
+
+- Removed `compute_ever_read`, `compute_last_use_map`, `LastUseMap` from re-exports.
+
+### 3. Updated test files
+
+- option_b_implementation_tests.rs — removed `compute_ever_read` import + 2 API tests.
+- stage15_41_legacy_delegation_tests.rs — removed `compute_last_use_map` import + 1 test.
+
+### 4. Documentation
+
+- docs/develop/v0/stage-15/stage-15.68-remove-dead-nll-code.md
+- docs/tests/v0/stage15/stage-15.68-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.193.0 → v0.194.0
+
+Stage Summary:
+- Stage 15.68 PASSED — dead NLL code removed
+- Per §1.0 原則 5 "去除兼容思维" and §15 "最优 > 最小"
+- 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
+- v0.194.0: minor bump (Phase 2 — dead code cleanup)

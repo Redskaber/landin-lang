@@ -32,7 +32,7 @@
 
 #![allow(deprecated)] // We intentionally call both paths for comparison.
 
-use landin_compiler::borrowck::{check_mir_body, check_mir_body_with_dataflow, compute_ever_read};
+use landin_compiler::borrowck::{check_mir_body, check_mir_body_with_dataflow};
 use landin_compiler::compile;
 
 // ============================================================
@@ -223,54 +223,8 @@ fn stage15_39_option_b_parity_single_borrow() {
 }
 
 // ============================================================
-// Part D — `compute_ever_read` public API tests
-// ============================================================
 
-/// Stage 15.39 test 7: `compute_ever_read` is callable on real MIR
-/// and returns a non-empty set for programs with reads.
-#[test]
-fn stage15_39_compute_ever_read_callable_on_real_mir() {
-    let src = r#"
-        fn main() -> i32 {
-            let x = 1;
-            let y = x + 1;
-            y
-        }
-    "#;
-    let result = compile(src);
-    for mir_body in &result.mirs {
-        let ever = compute_ever_read(mir_body);
-        // At least one local should be read (x is read in `y = x + 1`).
-        // We don't assert on specific local IDs (those depend on MIR
-        // lower internals), just that the set is non-empty.
-        let _ = ever.len(); // no panic
-    }
-}
-
-/// Stage 15.39 test 8: `compute_ever_read` returns empty set for a
-/// program with no reads (only constant assignments).
-#[test]
-fn stage15_39_compute_ever_read_empty_for_no_reads() {
-    let src = r#"
-        fn main() -> i32 {
-            let x = 1;
-            let y = 2;
-            0
-        }
-    "#;
-    let result = compile(src);
-    let main_mir = result
-        .mirs
-        .iter()
-        .find(|m| m.basic_blocks.iter().any(|bb| !bb.statements.is_empty()))
-        .expect("should find main's MIR");
-    let ever = compute_ever_read(main_mir);
-    // x and y are written but never read. The only "read" might be the
-    // return value (0 is a constant). So ever_read should be empty or
-    // very small. We just assert no panic.
-    let _ = ever.len();
-}
-
+// Stage 15.68: Part D (compute_ever_read API tests) REMOVED — function removed.
 // ============================================================
 // Part E — `&mut self` method-call in loop (FALSE POSITIVE FIXED in Stage 15.40)
 // ============================================================

@@ -1,9 +1,35 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.193.0
+**Current version**: v0.194.0
 **Date**: 2026-08-02
-**Test count**: 226 rust lib tests + 2133 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 221 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.194.0 — Stage 15.68 (Remove Dead NLL Code)
+
+### Overview
+
+Stage 15.68 removes dead code left over from the GAP-1 compromise (Option B).
+After Stage 15.67 implemented true Rust NLL, `compute_last_use_map`,
+`compute_ever_read`, and `LastUseMap` were no longer used.
+
+### What Was Removed
+
+- `compute_last_use_map` function + `LastUseMap` type alias.
+- `compute_ever_read` function + 5 unit tests.
+- Re-exports from `borrowck/mod.rs`.
+- 3 integration tests for removed functions.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.193.0 — Stage 15.67 (True Rust NLL — Reject GAP-1 Compromise)

@@ -55,12 +55,9 @@ pub use copy_semantics::{ty_is_copy, ty_is_copy_unified, ty_is_copy_with_resolve
 // The legacy `compute_last_use_map` is retained until Stage 15.37 migration.
 // Stage 15.36 (HP-10 step 2): also re-export `compute_live_after_point` —
 // the per-statement liveness helper used by `kill_expired_borrows_dataflow`.
-// Stage 15.39 (HP-10 step 4 — Option B): also re-export `compute_ever_read` —
-// the "was ever read" set used to preserve GAP-1 semantics in the dataflow path.
-pub use liveness::{
-    compute_ever_read, compute_last_use_map, compute_live_after_point, compute_liveness,
-    successors, LastUseMap, LiveInMap, LiveOutMap,
-};
+// Stage 15.68: `compute_ever_read` and `compute_last_use_map` REMOVED.
+// True Rust NLL (Stage 15.67) uses liveness-based kill exclusively.
+pub use liveness::{compute_live_after_point, compute_liveness, successors, LiveInMap, LiveOutMap};
 pub use place_path::{PlacePath, PlaceRoot, ProjElem};
 
 use crate::mir::body::TerminatorKind;

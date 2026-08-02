@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.193.0 (v0.2 Phase 2 — True Rust NLL, GAP-1 compromise rejected)
+**Version**: v0.194.0 (v0.2 Phase 2 — True Rust NLL, dead code removed)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -68,7 +68,7 @@ backend via the `llvm-sys` crate.
 > (reverse order, no duplicates) — matches Rust exactly.
 >
 > **Test count**: 226 lib tests + 2133 integration tests + 5216 conformance
-> tests = **7575 passing**. 0 clippy warnings, fmt clean.
+> tests = **7567 passing**. 0 clippy warnings, fmt clean.
 
 > **v0.2 Phase 2 — Soundness Closures SUBSTANTIALLY COMPLETE**
 >
@@ -154,7 +154,7 @@ LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
 ### Run tests
 
 ```bash
-# Rust test suite (2359 tests: 226 lib + 2133 integration)
+# Rust test suite (2351 tests: 221 lib + 2130 integration)
 LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
   cargo test --features llvm-backend
 
@@ -329,8 +329,8 @@ src/
 
 | Suite | Count | Pass rate |
 |-------|-------|-----------|
-| Rust lib tests | 226 | 100% |
-| Rust integration tests | 2133 | 100% |
+| Rust lib tests | 221 | 100% |
+| Rust integration tests | 2130 | 100% |
 | Conformance tests (.lin) | 5216 | 100% |
 | - Parse-only (`00-parse`) | 600 | 100% |
 | - Typecheck (`01-typecheck`) | 1020 | 100% |
@@ -342,7 +342,7 @@ src/
 | - Integration (`07-integration`) | 501 | 100% |
 | Examples | 4 | 100% |
 | Benchmarks | 5 | — |
-| **Total** | **7575** | **100%** |
+| **Total** | **7567** | **100%** |
 
 ---
 
@@ -383,4 +383,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.193.0, Stage 15.67 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.194.0, Stage 15.68 — `impl Drop` + RAII COMPLETE)
