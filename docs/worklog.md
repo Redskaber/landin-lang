@@ -21953,3 +21953,86 @@ Stage Summary:
 - Task 13 (impl Drop + RAII) drop semantics FULLY COMPLETE for structs AND enums
 - 7575 tests passing (226 lib + 2133 integration + 5216 conformance), 0 failures
 - v0.192.0: minor bump (Phase 3 — enum recursive drop, Task 13 drop semantics complete)
+
+---
+Task ID: stage15.67-true-rust-nll
+Agent: Super Z (main)
+Task: Stage 15.67 — True Rust NLL (reject GAP-1 compromise). v0.192.0 → v0.193.0. Per §1.0 原則 9 "正确 > 妥协", implement real NLL not Option B compromise.
+
+Work Log:
+- Baseline: v0.192.0 / 226 lib + 2133 integration + 5216 conformance
+
+### 1. User directive: reject GAP-1 compromise
+
+User stated: "正确 > 妥协，不能因为困难而选择妥协" — implement true Rust NLL
+(Option A), not the Option B compromise (ever_read guard that preserves
+lexical lifetimes).
+
+### 2. Added §1.0 原則 9 "正确 > 妥协" to process doc
+
+In docs/stage-committee-process.md (v3.24):
+- Added principle 9: "正确 > 妥协" — prefer semantically correct solutions
+  over compromises. Compromises accumulate as technical debt.
+- Added execution requirements for principle 9.
+
+### 3. Implemented true NLL
+
+In src/borrowck/mod.rs:
+- kill_expired_borrows_dataflow: removed ever_read guard + last_use_map,
+  now uses compute_live_after_point (true liveness-based NLL).
+- check_mir_body_with_dataflow: uses both live_in and live_out; added
+  block-entry kill (kill borrows whose ref_local not in live_in[bb]).
+- check_terminator Call arm: added kill-after-call — after f(tmp), kill
+  tmp's borrow (fixes &mut self false positive).
+
+### 4. Fixed liveness analysis: StorageLive/StorageDead handling
+
+In src/borrowck/liveness.rs:
+- statement_reads: StorageLive(local) treated as a read (local enters scope).
+- statement_writes: StorageDead(local) treated as a write (local exits scope).
+- This ensures locals are dead after StorageDead, not alive until function return.
+
+### 5. Flipped 108 conformance tests
+
+Changed 108 GAP-1 tests from EXPECTED: compile_error to EXPECTED: compile_ok.
+These are valid NLL programs (e.g., let r1 = &mut x; let r2 = &mut x; where
+r1 never read).
+
+### 6. Updated 9 tests to match true NLL
+
+- 2 lib tests (move_borrowed_detected, assign_to_borrowed_detected) — now
+  assert no errors (true NLL allows never-read borrows to expire).
+- 7 integration tests (stage15_37, stage15_40, stage15_41, option_b) — now
+  assert no errors (true NLL allows GAP-1 patterns).
+
+### 7. Runtime verification
+
+The e2e-runok-132-state-machine.lin test (original false positive case) now
+passes — state machine with &mut self method calls in a loop with two
+conditionals compiles and runs correctly (output: true, 10).
+
+### 8. Documentation
+
+- docs/lang-design/28-true-rust-nll.md (NEW design doc, rejects Option B)
+- docs/develop/v0/stage-15/stage-15.67-true-rust-nll.md
+- docs/tests/v0/stage15/stage-15.67-test-plan.md
+- Updated docs/tests/matrix.md (Task 7 truly complete)
+- Updated RELEASE_NOTES.md (v0.193.0 entry)
+- Updated README.md
+- Updated docs/stage-committee-process.md (v3.24, §1.0 原則 9)
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2133/2133 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.192.0 → v0.193.0
+
+Stage Summary:
+- Stage 15.67 PASSED — true Rust NLL implemented, GAP-1 compromise rejected
+- Task 7 (HP-10) TRULY COMPLETE — real NLL, not lexical lifetimes
+- 7575 tests passing (226 lib + 2133 integration + 5216 conformance), 0 failures
+- v0.193.0: minor bump (Phase 2 — true Rust NLL, §1.0 原則 9 added)

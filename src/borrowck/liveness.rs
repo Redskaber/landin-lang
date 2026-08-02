@@ -273,12 +273,25 @@ pub fn successors(term: &TerminatorKind) -> Vec<BasicBlockId> {
 }
 
 /// Collect all locals read by a statement (the RHS operands of an Assign).
+///
+/// Stage 15.67: `StorageLive(local)` is treated as a READ — the local enters
+/// scope and is "used" (it must be live before this point so that the
+/// storage is allocated). This ensures locals are live from their
+/// `StorageLive` point, not from function entry.
 pub fn statement_reads(stmt: &Statement) -> Vec<crate::mir::place::LocalId> {
     let mut out = Vec::new();
-    if let StatementKind::Assign(boxed) = &stmt.kind {
-        let (_place, rvalue) = &**boxed;
-        // The LHS is a write, not a read — skip it.
-        rvalue_reads(rvalue, &mut out);
+    match &stmt.kind {
+        StatementKind::Assign(boxed) => {
+            let (_place, rvalue) = &**boxed;
+            // The LHS is a write, not a read — skip it.
+            rvalue_reads(rvalue, &mut out);
+        }
+        StatementKind::StorageLive(local) => {
+            // StorageLive is a "read" — the local enters scope and must be
+            // live before this point (so the storage is allocated).
+            out.push(*local);
+        }
+        _ => {}
     }
     out
 }
@@ -290,11 +303,26 @@ pub fn statement_reads(stmt: &Statement) -> Vec<crate::mir::place::LocalId> {
 /// liveness purposes — we treat any write to a place as a def of its root
 /// local, which is the standard liveness approximation (matches rustc's
 /// `MutBorrowedPlaces` baseline).
+///
+/// Stage 15.67: `StorageDead(local)` is treated as a WRITE — the local exits
+/// scope and is "killed" (removed from the live set). This ensures locals
+/// are dead after their `StorageDead` point, not alive until function return.
+/// This is critical for true NLL — without it, method-call temps in loops
+/// are considered live across the entire function, causing borrow conflicts.
 pub fn statement_writes(stmt: &Statement) -> Vec<crate::mir::place::LocalId> {
     let mut out = Vec::new();
-    if let StatementKind::Assign(boxed) = &stmt.kind {
-        let (place, _rvalue) = &**boxed;
-        place_root_writes(place, &mut out);
+    match &stmt.kind {
+        StatementKind::Assign(boxed) => {
+            let (place, _rvalue) = &**boxed;
+            place_root_writes(place, &mut out);
+        }
+        StatementKind::StorageDead(local) => {
+            // StorageDead is a "write" — the local exits scope and is killed.
+            // This removes it from the live set, allowing borrows on it to
+            // expire (true NLL).
+            out.push(*local);
+        }
+        _ => {}
     }
     out
 }

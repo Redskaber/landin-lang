@@ -136,9 +136,12 @@ fn stage15_37_driver_preserves_gap1_soundness() {
         }
     "#;
     let result = compile(src);
+    // Stage 15.67 (True Rust NLL): r1 is never read, so its borrow expires
+    // immediately (true NLL). The double mut borrow is ALLOWED.
+    // (Previously, GAP-1 compromise rejected this; now correct NLL accepts it.)
     assert!(
-        result.has_errors(),
-        "GAP-1: double mut borrow should be rejected (got: {:?})",
+        !result.has_errors(),
+        "True NLL: double mut borrow with never-read r1 should be allowed (got: {:?})",
         result.errors
     );
 }
@@ -237,36 +240,35 @@ fn stage15_37_gap1_semantic_conflict_documented() {
         }
     "#;
     let result = compile(src);
-    // The driver uses the legacy path, so the program is rejected.
+    // Stage 15.67 (True Rust NLL): r1 is never read, so its borrow expires
+    // immediately (true NLL). The double mut borrow is ALLOWED.
+    // (Previously, GAP-1 compromise rejected this; now correct NLL accepts it.)
     assert!(
-        result.has_errors(),
-        "Driver (legacy path) must reject double-mut-borrow per GAP-1 fix"
+        !result.has_errors(),
+        "True NLL: double mut borrow with never-read r1 should be allowed (got: {:?})",
+        result.errors
     );
 
     // Now test each borrow-check path directly on the MIR.
-    // Find main's MIR (it has the borrows).
     let main_mir = result
         .mirs
         .iter()
         .find(|m| m.basic_blocks.iter().any(|bb| !bb.statements.is_empty()))
         .expect("should find main's MIR");
 
-    // Legacy path: rejects (GAP-1 fix).
+    // Legacy path: now delegates to dataflow (Stage 15.41), so both agree.
     let legacy_errors = check_mir_body(main_mir);
     assert!(
-        !legacy_errors.is_empty(),
-        "Legacy path must reject double-mut-borrow (GAP-1 soundness fix)"
+        legacy_errors.is_empty(),
+        "True NLL: legacy path (delegates to dataflow) must accept double-mut-borrow with never-read r1. Errors: {:?}",
+        legacy_errors
     );
 
-    // Dataflow path: NOW ALSO REJECTS (Stage 15.39 Option B resolved the conflict).
-    // Before Option B, this would have been empty (the conflict). Now it's
-    // non-empty — both paths agree, GAP-1 is preserved.
+    // Dataflow path: true NLL accepts (r1 never read → borrow expires).
     let dataflow_errors = check_mir_body_with_dataflow(main_mir);
     assert!(
-        !dataflow_errors.is_empty(),
-        "Dataflow path with Option B (Stage 15.39) must reject double-mut-borrow \
-         (GAP-1 preserved). The conflict documented in Stage 15.37 is RESOLVED. \
-         Errors: {:?}",
+        dataflow_errors.is_empty(),
+        "True NLL: dataflow path must accept double-mut-borrow with never-read r1. Errors: {:?}",
         dataflow_errors
     );
 }

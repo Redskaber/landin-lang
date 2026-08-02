@@ -1,9 +1,76 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.192.0
+**Current version**: v0.193.0
 **Date**: 2026-08-02
 **Test count**: 226 rust lib tests + 2133 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.193.0 — Stage 15.67 (True Rust NLL — Reject GAP-1 Compromise)
+
+### Overview
+
+Stage 15.67 implements **true Rust NLL** (Non-Lexical Lifetimes), rejecting
+the Stage 15.39 "Option B" compromise that preserved GAP-1 lexical lifetimes.
+Per §1.0 原則 9 "正确 > 妥协" (added to the process doc in v3.24), the correct
+solution is to implement real NLL, not a compromise that rejects valid programs
+to avoid fixing a false positive.
+
+### What Changed
+
+**`src/borrowck/mod.rs`**:
+- `kill_expired_borrows_dataflow`: removed `ever_read` guard + `last_use_map`,
+  now uses `compute_live_after_point` (true liveness-based NLL).
+- `check_mir_body_with_dataflow`: uses both `live_in` and `live_out`; added
+  block-entry kill (kill borrows whose `ref_local` not in `live_in[bb]`).
+- `check_terminator` Call arm: added kill-after-call — after `f(tmp)`, kill
+  `tmp`'s borrow (fixes `&mut self` false positive).
+
+**`src/borrowck/liveness.rs`**:
+- `statement_reads`: `StorageLive(local)` treated as a read.
+- `statement_writes`: `StorageDead(local)` treated as a write.
+
+**`docs/stage-committee-process.md`** (v3.24):
+- Added §1.0 原則 9 "正确 > 妥协" with execution requirements.
+
+**Conformance tests** (108 files):
+- Flipped from `EXPECTED: compile_error` to `EXPECTED: compile_ok` (valid NLL
+  programs now accepted).
+
+**Integration + lib tests** (9 tests):
+- Updated to assert true NLL acceptance (not GAP-1 rejection).
+
+### Runtime Verification
+
+The `e2e-runok-132-state-machine.lin` test (the original false positive case)
+now passes — state machine with `&mut self` method calls in a loop with two
+conditionals compiles and runs correctly.
+
+### Files Changed
+
+- `src/borrowck/mod.rs` — true NLL + kill-after-call + block-entry kill.
+- `src/borrowck/liveness.rs` — StorageLive/StorageDead handling.
+- `docs/stage-committee-process.md` — §1.0 原則 9 (v3.24).
+- `docs/lang-design/28-true-rust-nll.md` — NEW design doc.
+- 108 conformance tests flipped.
+- 7 integration + 2 lib tests updated.
+- `Cargo.toml` — bumped v0.192.0 → v0.193.0.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2133/2133 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7575 tests passing, 0 failures, 0 warnings.**
+
+### Task 7 Status: True NLL COMPLETE
+
+Task 7 (HP-10: Fixpoint dataflow NLL) is now **truly complete** — the borrow
+checker implements real Rust NLL, not lexical lifetimes with last-use
+optimization. The GAP-1 compromise (Option B) is rejected per §1.0 原則 9.
 
 ---
 ## v0.192.0 — Stage 15.66 (Recursive Drop for Enums — SwitchInt in Drop Glue)

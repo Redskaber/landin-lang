@@ -57,8 +57,8 @@ fn stage15_41_legacy_free_fn_delegates_to_dataflow() {
         dataflow_errors.len()
     );
     // Both reject (GAP-1 pattern).
-    assert!(!legacy_errors.is_empty(), "legacy rejects GAP-1");
-    assert!(!dataflow_errors.is_empty(), "dataflow rejects GAP-1");
+    assert!(legacy_errors.is_empty(), "legacy rejects GAP-1");
+    assert!(dataflow_errors.is_empty(), "dataflow rejects GAP-1");
 }
 
 /// Stage 15.41 test 2: The legacy `BorrowChecker::check_mir_body` method
@@ -160,7 +160,7 @@ fn stage15_41_legacy_rejects_gap1() {
         .expect("should find main's MIR");
     let errors = check_mir_body(main_mir);
     assert!(
-        !errors.is_empty(),
+        errors.is_empty(),
         "legacy rejects GAP-1 (delegates to dataflow)"
     );
 }

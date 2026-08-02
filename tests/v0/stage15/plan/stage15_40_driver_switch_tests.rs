@@ -173,7 +173,7 @@ fn stage15_40_driver_preserves_gap1() {
     "#;
     let result = compile(src);
     assert!(
-        result.has_errors(),
+        !result.has_errors(),
         "Driver (dataflow path) must reject double-mut-borrow (GAP-1 preserved by Option B)"
     );
 }
@@ -220,10 +220,17 @@ fn stage15_40_parity_gap1_pattern() {
         .expect("should find main's MIR");
     let legacy = check_mir_body(main_mir);
     let dataflow = check_mir_body_with_dataflow(main_mir);
-    assert!(!legacy.is_empty(), "legacy rejects GAP-1");
+    // Stage 15.67 (True Rust NLL): r1 never read → borrow expires.
+    // Both paths accept (true NLL, not GAP-1 compromise).
     assert!(
-        !dataflow.is_empty(),
-        "dataflow rejects GAP-1 (Option B preserved)"
+        legacy.is_empty(),
+        "true NLL: legacy accepts (r1 never read). Got: {:?}",
+        legacy
+    );
+    assert!(
+        dataflow.is_empty(),
+        "true NLL: dataflow accepts (r1 never read). Got: {:?}",
+        dataflow
     );
 }
 

@@ -273,84 +273,68 @@ impl<'a> BorrowChecker<'a> {
     ///    (`last_use_map` check — the borrow's useful lifetime ends at its
     ///    last read, which is the standard NLL borrow-lifetime semantics).
     ///
-    /// ## Why last-use instead of liveness (Stage 15.40 revision)
+    /// ## Stage 15.67 (True Rust NLL) — liveness-based kill restored
     ///
-    /// Stage 15.36-15.39 used liveness-based kill (`compute_live_after_point`
-    /// + `LiveOutMap`). This was correct for local lifetimes but wrong for
-    /// borrow lifetimes. A borrow temp in a loop is correctly live across
-    /// the back-edge (its value is re-assigned each iteration), but the
-    /// borrow should expire at the call that uses it (the last read), not
-    /// at the local's last use (the re-assignment).
+    /// Stage 15.67 reverted to liveness-based kill, fixing the `&mut self`
+    /// false positive via kill-after-call semantics in `check_terminator`'s
+    /// Call arm. This is the correct NLL approach: a borrow dies when its
+    /// `ref_local` is no longer live, NOT based on last-use + ever_read guard.
     ///
-    /// The liveness-based kill produced a false positive on `&mut self`
-    /// method calls in loops:
-    /// ```ignore
-    /// while i < 5 { c.increment(); i += 1; }
-    /// // lowers to: tmp = &mut c; call increment(tmp); ...
-    /// ```
-    /// The liveness analysis said `tmp` is live across the back-edge
-    /// (correct for the local), so the borrow was never killed, causing
-    /// the next iteration's `&mut c` to conflict.
+    /// `kill_borrows_on_redefinition` handles re-assigned borrow temps.
+    /// Kill-after-call handles call-consumed borrow temps. Together, they
+    /// implement correct NLL without the GAP-1 compromise.
     ///
-    /// The last-use-based kill correctly expires the borrow at the call
-    /// point (the borrow's last read), matching the legacy path's behavior.
-    ///
-    /// Per §1.0 原則 1 "长期 > 短期": this is the right long-term design
-    /// — borrow lifetimes are tracked separately from local lifetimes.
-    /// Future stages can implement full NLL with borrow regions, but for
-    /// now, the last-use-based kill + ever_read check produces correct
-    /// results on all 5216 conformance tests.
+    /// Per §1.0 原則 9 "正确 > 妥协": this is the correct fix, replacing
+    /// the Stage 15.39 Option B `ever_read` workaround.
     ///
     /// Per §23: method name follows `<verb>_<noun>_<noun>` pattern.
-    /// The `_dataflow` suffix distinguishes it from the legacy
-    /// `kill_expired_borrows`.
-    #[allow(clippy::doc_lazy_continuation)]
+    /// Stage 15.67 (True Rust NLL): Kill expired borrows based on liveness.
+    ///
+    /// This is the **true NLL** implementation — a borrow is killed when its
+    /// `ref_local` is no longer live after the current program point. This
+    /// replaces the Stage 15.39 "Option B" compromise (which used an
+    /// `ever_read` guard to preserve GAP-1 lexical lifetimes).
+    ///
+    /// ## Why true NLL (§1.0 原則 9 "正确 > 妥协")
+    ///
+    /// The Option B compromise kept never-read borrows alive as "strays" to
+    /// avoid fixing the `&mut self` method-call false positive. This rejected
+    /// valid NLL programs like `let r1 = &mut x; let r2 = &mut x;` (r1 never
+    /// read). Per §1.0 原則 9, the correct fix is to implement true NLL and
+    /// fix the false positive properly (via `kill_borrows_on_redefinition`).
+    ///
+    /// ## Algorithm
+    ///
+    /// 1. Compute `live_after` = set of locals live after the current point
+    ///    (using the fixpoint `LiveOutMap` + `compute_live_after_point`).
+    /// 2. Kill any active borrow whose `ref_local` is NOT in `live_after`.
+    ///    - A never-read local is dead immediately → its borrow is killed
+    ///      immediately (correct NLL).
+    ///    - A local read at the current point is still live → its borrow
+    ///      stays (correct NLL).
+    ///    - A local whose last read was before the current point is dead →
+    ///      its borrow is killed (correct NLL).
+    ///
+    /// Per §1.0 原則 9 "正确 > 妥协": this is the correct NLL semantics.
+    /// Per §16: uses `compute_live_after_point` (fixpoint liveness) — no HIR.
+    /// Per §23: method name follows `<verb>_<noun>_<noun>` pattern.
     fn kill_expired_borrows_dataflow(
         &mut self,
-        _mir: &MirBody,
-        last_use_map: &LastUseMap,
-        ever_read: &std::collections::HashSet<crate::mir::place::LocalId>,
+        mir: &MirBody,
+        live_out: &LiveOutMap,
         bb: BasicBlockId,
         stmt_idx: usize,
     ) {
-        let current_point = (bb, stmt_idx);
+        // Compute the set of locals live AFTER the current point.
+        let live_after = compute_live_after_point(mir, live_out, bb, stmt_idx);
 
-        // Kill any active borrow whose `ref_local`'s last read is at the
-        // current point — BUT only if the `ref_local` was ever read.
-        //
-        // Stage 15.39 (Option B): The "was ever read" check preserves
-        // GAP-1 semantics. A borrow whose `ref_local` was never read
-        // (e.g., `let r1 = &mut x;` where `r1` is never used) stays as
-        // a "stray" until scope end, matching the legacy path's behavior.
-        //
-        // Stage 15.40: The last-use check kills borrows at their last read
-        // point, correctly handling borrow temps in loops (the borrow
-        // expires at the call, not at the local's re-assignment).
-        //
-        // Per §1.0 原則 5 "报错 > 静默": preserving the stray borrow is
-        // the safer choice — it errors on the side of rejecting
-        // potentially-unsound programs.
+        // Kill any active borrow whose `ref_local` is NOT live after this
+        // point. This is true NLL — a borrow dies when its ref_local is no
+        // longer needed.
         let locals_to_kill: Vec<crate::mir::place::LocalId> = self
             .borrows
             .active_ref_locals()
-            .filter(|local| {
-                // GAP-1 preservation: never kill a borrow whose ref_local
-                // was never read.
-                if !ever_read.contains(local) {
-                    return false; // do NOT kill
-                }
-                // Kill if the ref_local's last read is at the current point.
-                // This matches the legacy path's kill behavior.
-                if let Some(last_use) = last_use_map.get(local) {
-                    *last_use == current_point
-                } else {
-                    // ref_local is in ever_read but not in last_use_map.
-                    // This shouldn't happen (ever_read is computed from
-                    // reads, and last_use_map records the last read).
-                    // Defensive: don't kill.
-                    false
-                }
-            })
+            .filter(|local| !live_after.contains(local))
             .collect();
         for local in locals_to_kill {
             self.borrows.kill_borrows_of_local(local);
@@ -382,38 +366,52 @@ impl<'a> BorrowChecker<'a> {
     /// legacy `check_mir_body` (no suffix) is the v0.1 default until
     /// Stage 15.37.
     pub fn check_mir_body_with_dataflow(&mut self, mir: &MirBody) {
-        // Pre-pass: compute the last-use map (same as legacy path).
-        // Stage 15.40: We use `compute_last_use_map` for the kill decision
-        // because borrow lifetimes are determined by last READ, not by
-        // liveness. See `kill_expired_borrows_dataflow` doc for why
-        // liveness-based kill was wrong (false positive on `&mut self`
-        // method calls in loops).
-        let last_use_map = compute_last_use_map(mir);
-        // Stage 15.39 (Option B): Compute the set of locals that are read
-        // anywhere in the body. Used by `kill_expired_borrows_dataflow`
-        // to preserve GAP-1 semantics (never kill a borrow whose
-        // ref_local was never read — it stays as a "stray" until scope
-        // end, matching the legacy path's behavior).
-        let ever_read = compute_ever_read(mir);
+        // Stage 15.67 (True Rust NLL): Compute the fixpoint liveness.
+        // `live_in` maps each basic block to the set of locals live at
+        // block ENTRY. `live_out` maps each basic block to the set of
+        // locals live at block EXIT. Both are used by
+        // `kill_expired_borrows_dataflow` to kill borrows whose
+        // `ref_local` is no longer live (true NLL).
+        //
+        // Per §1.0 原則 9 "正确 > 妥协": this replaces the Stage 15.39
+        // Option B compromise (which used `compute_last_use_map` + `ever_read`
+        // to preserve GAP-1 lexical lifetimes). True NLL kills borrows based
+        // on liveness, not last-use + ever_read guard.
+        let (live_in, live_out) = compute_liveness(mir);
 
         // Main walk: forward over all basic blocks.
-        // The walk structure mirrors `check_mir_body` exactly.
         for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
             let bb_id = BasicBlockId(bb_idx as u32);
             let stmt_count = bb.statements.len();
+
+            // Stage 15.67: Kill borrows at the START of each basic block.
+            // A borrow from a previous block whose ref_local is not live at
+            // this block's entry should be killed BEFORE processing this
+            // block's statements. This handles the case where a method-call
+            // temp in a conditional block is dead at the merge point — its
+            // borrow must be killed before the next method call (which may
+            // be in a different conditional block).
+            //
+            // `live_in[bb]` is the set of locals live at block entry. Kill
+            // any active borrow whose `ref_local` is NOT in `live_in[bb]`.
+            let live_before = live_in.get(&bb_id).cloned().unwrap_or_default();
+            let locals_to_kill: Vec<crate::mir::place::LocalId> = self
+                .borrows
+                .active_ref_locals()
+                .filter(|local| !live_before.contains(local))
+                .collect();
+            for local in locals_to_kill {
+                self.borrows.kill_borrows_of_local(local);
+            }
+
             for stmt_idx in 0..stmt_count {
-                // Kill borrows whose ref_local's last read was at the
+                // Kill borrows whose ref_local is not live after the
                 // PREVIOUS statement (stmt_idx - 1). This ensures the
                 // borrow stays alive during the statement that performs
-                // the last read (matches legacy semantics).
+                // the last read (correct NLL — the ref_local is live
+                // during its last read, then dies).
                 if stmt_idx > 0 {
-                    self.kill_expired_borrows_dataflow(
-                        mir,
-                        &last_use_map,
-                        &ever_read,
-                        bb_id,
-                        stmt_idx - 1,
-                    );
+                    self.kill_expired_borrows_dataflow(mir, &live_out, bb_id, stmt_idx - 1);
                 }
                 // Stage 15.40: Kill-on-redefinition. Before processing
                 // an Assign, kill any borrow whose ref_local is the LHS
@@ -425,21 +423,15 @@ impl<'a> BorrowChecker<'a> {
                 self.kill_borrows_on_redefinition(&bb.statements[stmt_idx]);
                 self.check_statement(mir, &bb.statements[stmt_idx], bb_id, stmt_idx);
             }
-            // After the last statement, kill borrows whose ref_local's
-            // last read was at the last statement.
+            // After the last statement, kill borrows whose ref_local is
+            // not live after the last statement.
             if stmt_count > 0 {
-                self.kill_expired_borrows_dataflow(
-                    mir,
-                    &last_use_map,
-                    &ever_read,
-                    bb_id,
-                    stmt_count - 1,
-                );
+                self.kill_expired_borrows_dataflow(mir, &live_out, bb_id, stmt_count - 1);
             }
             // Check terminator (uses are at index == statements.len()).
             let term_idx = stmt_count;
             self.check_terminator(mir, &bb.terminator, bb_id, term_idx);
-            self.kill_expired_borrows_dataflow(mir, &last_use_map, &ever_read, bb_id, term_idx);
+            self.kill_expired_borrows_dataflow(mir, &live_out, bb_id, term_idx);
         }
 
         // Run region inference as an additional check (same as legacy path).
@@ -527,6 +519,32 @@ impl<'a> BorrowChecker<'a> {
                 self.check_operand(mir, func, Span::DUMMY);
                 for arg in args {
                     self.check_operand(mir, arg, Span::DUMMY);
+                }
+                // Stage 15.67: Kill borrows for temp locals used as call args.
+                // After a call `f(tmp)`, the temp `tmp` is dead (its value was
+                // consumed by the call). Any borrow whose `ref_local` is `tmp`
+                // should be killed, allowing the next method call to borrow
+                // the same place without conflict.
+                //
+                // This is the "kill-after-call" semantics that complements
+                // `kill_borrows_on_redefinition` (which handles Assign). Without
+                // this, method-call temps in loops/conditionals keep their
+                // borrows alive across the entire function, causing false
+                // positives on valid method-call-heavy code.
+                //
+                // Per §1.0 原則 9 "正确 > 妥协": this is the correct fix for
+                // the `&mut self` false positive (replaces the Stage 15.39
+                // Option B `ever_read` workaround).
+                let mut temps_to_kill: Vec<crate::mir::place::LocalId> = Vec::new();
+                for arg in args {
+                    if let Operand::Copy(lv) | Operand::Move(lv) = arg {
+                        if let PlaceKind::Local(id) = &lv.kind {
+                            temps_to_kill.push(*id);
+                        }
+                    }
+                }
+                for temp in temps_to_kill {
+                    self.borrows.kill_borrows_of_local(temp);
                 }
             }
             TerminatorKind::SwitchInt { discr, .. } => {
@@ -1087,7 +1105,10 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        // y = move x  <-- move while borrowed!
+        // y = move x
+        // Stage 15.67 (True Rust NLL): `r` is never read, so its borrow
+        // expires immediately (true NLL). The move is ALLOWED — no error.
+        // (Previously, GAP-1 compromise rejected this; now correct NLL accepts it.)
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
                 Place::local(y, Span::DUMMY),
@@ -1098,7 +1119,12 @@ mod tests {
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mir);
-        assert!(!errors.is_empty(), "expected move-borrowed error");
+        // Stage 15.67: True NLL allows this (r never read → borrow expires).
+        assert!(
+            errors.is_empty(),
+            "expected no errors (true NLL: r never read, borrow expires). Got: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -1133,7 +1159,10 @@ mod tests {
             ))),
             span: Span::DUMMY,
         });
-        // x = 42  <-- assign while borrowed!
+        // x = 42
+        // Stage 15.67 (True Rust NLL): `r` is never read, so its borrow
+        // expires immediately (true NLL). The assign is ALLOWED — no error.
+        // (Previously, GAP-1 compromise rejected this; now correct NLL accepts it.)
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
                 Place::local(x, Span::DUMMY),
@@ -1147,7 +1176,12 @@ mod tests {
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body(&mir);
-        assert!(!errors.is_empty(), "expected assign-borrowed error");
+        // Stage 15.67: True NLL allows this (r never read → borrow expires).
+        assert!(
+            errors.is_empty(),
+            "expected no errors (true NLL: r never read, borrow expires). Got: {:?}",
+            errors
+        );
     }
 
     #[test]

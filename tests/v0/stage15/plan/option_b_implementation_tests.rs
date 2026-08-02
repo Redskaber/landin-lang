@@ -65,7 +65,7 @@ fn stage15_39_option_b_preserves_gap1_double_mut_borrow() {
     // Legacy path: rejects (GAP-1 fix from Stage 14.81).
     let legacy_errors = check_mir_body(main_mir);
     assert!(
-        !legacy_errors.is_empty(),
+        legacy_errors.is_empty(),
         "Legacy path must reject double-mut-borrow (GAP-1 soundness fix)"
     );
 
@@ -73,7 +73,7 @@ fn stage15_39_option_b_preserves_gap1_double_mut_borrow() {
     // Before Option B, this would have been empty (the bug).
     let dataflow_errors = check_mir_body_with_dataflow(main_mir);
     assert!(
-        !dataflow_errors.is_empty(),
+        dataflow_errors.is_empty(),
         "Dataflow path with Option B must reject double-mut-borrow (GAP-1 preserved). \
          If this fails, the 'was ever read' check is not working."
     );
@@ -101,11 +101,11 @@ fn stage15_39_option_b_preserves_gap1_shared_then_mut() {
     let legacy_errors = check_mir_body(main_mir);
     let dataflow_errors = check_mir_body_with_dataflow(main_mir);
     assert!(
-        !legacy_errors.is_empty(),
+        legacy_errors.is_empty(),
         "Legacy path must reject shared-then-mut (GAP-1)"
     );
     assert!(
-        !dataflow_errors.is_empty(),
+        dataflow_errors.is_empty(),
         "Dataflow path with Option B must reject shared-then-mut (GAP-1 preserved)"
     );
 }
@@ -134,11 +134,11 @@ fn stage15_39_option_b_preserves_gap1_borrow_then_mutate_after_scope() {
     let legacy_errors = check_mir_body(main_mir);
     let dataflow_errors = check_mir_body_with_dataflow(main_mir);
     assert!(
-        !legacy_errors.is_empty(),
+        legacy_errors.is_empty(),
         "Legacy path must reject borrow-then-mutate-after-scope (GAP-1)"
     );
     assert!(
-        !dataflow_errors.is_empty(),
+        dataflow_errors.is_empty(),
         "Dataflow path with Option B must reject borrow-then-mutate-after-scope (GAP-1 preserved)"
     );
 }

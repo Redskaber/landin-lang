@@ -1,6 +1,6 @@
 // CATEGORY: borrowck
 // DESCRIPTION: mut during shared borrow
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
 // ERROR_PATTERN: cannot borrow
 // STAGE_13.17: Flipped from compile_error (self binding fix)
 // STAGE_14.81: Flipped BACK to compile_error (GAP-1 NLL soundness fix — transfer_borrow_ref for Operand::Copy)

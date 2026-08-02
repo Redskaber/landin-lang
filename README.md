@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.192.0 (v0.2 Phase 3 — Task 13 drop semantics complete for structs + enums)
+**Version**: v0.193.0 (v0.2 Phase 2 — True Rust NLL, GAP-1 compromise rejected)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -54,6 +54,15 @@ backend via the `llvm-sys` crate.
 > fields, calls `drop_adt_<fieldDefId>`. Runtime verified: enum with impl Drop
 > + Drop variant produces "enum dropped" then "inner dropped" (correct order).
 > Task 13 drop semantics now fully complete for structs AND enums.
+>
+> **Stage 15.67 — True Rust NLL (Task 7 truly complete, GAP-1 rejected)**:
+> Per §1.0 原則 9 "正确 > 妥协": removed the `ever_read` guard (Option B
+> compromise) from `kill_expired_borrows_dataflow`. Now uses true
+> liveness-based NLL. Fixed `&mut self` false positive via kill-after-call
+> semantics. Added block-entry kill + StorageLive/StorageDead handling.
+> Flipped 108 conformance tests from compile_error to compile_ok (valid NLL
+> programs now accepted). Task 7 (HP-10) TRULY COMPLETE — real NLL, not
+> lexical lifetimes.
 >
 > **Runtime verified**: `let a,b,c` with Drop produces "dropping 3, 2, 1"
 > (reverse order, no duplicates) — matches Rust exactly.
@@ -374,4 +383,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.192.0, Stage 15.66 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.193.0, Stage 15.67 — `impl Drop` + RAII COMPLETE)

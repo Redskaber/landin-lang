@@ -1,6 +1,6 @@
 // CATEGORY: borrowck
 // DESCRIPTION: GAP-1 fix: double mutable borrow must be rejected (Stage 14.81)
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
 // ERROR_PATTERN: cannot borrow
 // SOURCE: Stage 14.81 — GAP-1 NLL soundness fix (transfer_borrow_ref for Operand::Copy)
 
