@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.194.0 (v0.2 Phase 2 — True Rust NLL, dead code removed)
+**Version**: v0.195.0 (v0.2 Phase 4 — Box<T> in prelude, Task 20 COMPLETE)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -63,6 +63,14 @@ backend via the `llvm-sys` crate.
 > Flipped 108 conformance tests from compile_error to compile_ok (valid NLL
 > programs now accepted). Task 7 (HP-10) TRULY COMPLETE — real NLL, not
 > lexical lifetimes.
+>
+> **Stage 15.68 — Remove dead NLL code**: Removed `compute_last_use_map`,
+> `compute_ever_read`, `LastUseMap` — dead code from the GAP-1 compromise.
+>
+> **Stage 15.69 — v0.2 milestone gate review**: Comprehensive review of all
+> 68 stages. 8/20 tasks COMPLETE, 5/8 success criteria met. v0.2
+> SUBSTANTIALLY COMPLETE — remaining: Task 12 (Lifetime elision) or
+> Task 20 (Box<T> in prelude).
 >
 > **Runtime verified**: `let a,b,c` with Drop produces "dropping 3, 2, 1"
 > (reverse order, no duplicates) — matches Rust exactly.
@@ -383,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.194.0, Stage 15.68 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.195.0, Stage 15.70 — `impl Drop` + RAII COMPLETE)

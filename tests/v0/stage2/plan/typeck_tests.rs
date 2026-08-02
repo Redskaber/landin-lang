@@ -358,7 +358,7 @@ fn type_writeback_resolves_infer_var() {
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
     let mut hir = lower_crate(&krate, &interner);
-    let _ = resolve_crate(&mut hir, &interner);
+    let _ = resolve_crate(&mut hir, &mut interner);
 
     let (mut mir, lower_unify, _) =
         lower_hir_body_to_mir_full(&hir.bodies[0].1, &interner, &hir, None);

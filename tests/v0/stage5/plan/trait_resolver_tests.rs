@@ -22,7 +22,7 @@ fn parse_lower_resolve(src: &str) -> landin_compiler::hir::HirCrate {
     let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     let mut hir = lower_crate(&krate, &interner);
-    let _ = resolve_crate(&mut hir, &interner);
+    let _ = resolve_crate(&mut hir, &mut interner);
     hir
 }
 

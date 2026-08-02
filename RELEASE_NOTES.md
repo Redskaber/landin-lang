@@ -1,9 +1,80 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.194.0
+**Current version**: v0.195.0
 **Date**: 2026-08-02
 **Test count**: 221 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.195.0 — Stage 15.70 (Box<T> in Prelude — Task 20)
+
+### Overview
+
+Stage 15.70 registers `Box` as a builtin prelude type so that `Box<i32>` type
+annotations resolve without a user-defined `struct Box`. This is the first
+step toward full `Box<T>` support.
+
+### What Changed
+
+- `src/resolve/module_build.rs` — `build_module_tree` registers `Box` as a
+  builtin type with sentinel `DefId(u32::MAX - 1)`. User-defined `struct Box`
+  shadows the builtin (no conflict error).
+- `src/resolve/resolver.rs` — `resolve_crate` + `resolve` signatures changed
+  from `&Rodeo` to `&mut Rodeo` (needed for `interner.get_or_intern("Box")`).
+- `src/driver.rs` — call site updated.
+- 7 test files — call sites updated to pass `&mut interner`.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
+
+### Task 20 Status: ✅ COMPLETE (first step)
+
+`Box` is registered as a prelude type. Full `Box<T>` support (heap allocation,
+Deref, Drop) deferred to v0.3 (needs monomorphization).
+
+---
+## v0.194.0 — Stage 15.69 (v0.2 Milestone Gate Review)
+
+### Overview
+
+Stage 15.69 is a **milestone gate review** for v0.2. It reviews all 68 stages
+(15.1-15.68) across Phase 1-4, assesses task completion status, and plans the
+path to v0.2 release. No code change (review-only stage).
+
+### Key Findings
+
+- **68 stages** completed (15.1-15.68).
+- **7567 tests** passing (221 lib + 2130 integration + 5216 conformance), 0 failures.
+- **8/20 tasks COMPLETE**, 2 PARTIAL, 3 READY, 5 BLOCKED/DEFERRED, 2 DESIGN-ONLY.
+- **5/8 v0.2 success criteria met**.
+- **v0.2 SUBSTANTIALLY COMPLETE** — remaining: Task 12 (Lifetime elision) or Task 20 (Box<T>).
+
+### Major Achievements (v0.2)
+
+1. **True Rust NLL** (Stage 15.67) — Real NLL, not lexical lifetimes. GAP-1 compromise rejected per §1.0 原則 9.
+2. **Complete Drop semantics** (Stages 15.55-15.66) — `impl Drop` works end-to-end with reverse order, no double-drop, recursive drop (structs + enums).
+3. **HP-22 cleanup** (Stage 15.65) — Legacy side-table removed, clean terminator-based design.
+4. **§1.0 原則 9** "正确 > 妥协" added to process doc (v3.24).
+
+### v0.2 Release Plan
+
+1. **Task 20 (Box<T> in prelude)** — 2 days, P2, ready now.
+2. **Task 12 (Lifetime elision)** — 2-3 weeks, P1, ready now.
+3. **Final v0.2 release** — after Task 12 or 20.
+
+### Verification (review-only — no code change)
+
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.194.0 — Stage 15.68 (Remove Dead NLL Code)

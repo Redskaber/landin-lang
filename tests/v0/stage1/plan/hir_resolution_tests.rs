@@ -25,7 +25,7 @@ fn parse_lower_resolve(src: &str) -> HirCrate {
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
     let mut hir = lower_crate(&krate, &interner);
-    let _ = resolve_crate(&mut hir, &interner);
+    let _ = resolve_crate(&mut hir, &mut interner);
     hir
 }
 
@@ -382,7 +382,7 @@ fn parse_lower_resolve_with_errors(
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
     let mut hir = lower_crate(&krate, &interner);
-    let errors = resolve_crate(&mut hir, &interner);
+    let errors = resolve_crate(&mut hir, &mut interner);
     (hir, errors)
 }
 
@@ -483,7 +483,7 @@ fn visibility_metadata_collected_for_fn() {
     let mut hir = lower_crate(&krate, &interner);
 
     let mut resolver = Resolver::new();
-    resolver.resolve(&mut hir, &interner);
+    resolver.resolve(&mut hir, &mut interner);
 
     // Find the two fn DefIds and check their visibility.
     let mut found_public = false;

@@ -91,7 +91,7 @@ impl Resolver {
     }
 
     /// Resolve all paths in the HIR crate, mutating `HirPath.res` in-place.
-    pub fn resolve(&mut self, hir: &mut HirCrate, interner: &Rodeo) {
+    pub fn resolve(&mut self, hir: &mut HirCrate, interner: &mut Rodeo) {
         self.build_module_tree(hir, interner);
         self.resolve_uses();
         self.resolve_all_paths(hir, interner);
@@ -149,7 +149,7 @@ impl Resolver {
 /// tokenization time, so the resolver no longer needs to pre-intern
 /// them. This eliminates the `&mut Rodeo` smell — the resolver is now
 /// a pure read-only consumer of the interner.
-pub fn resolve_crate(hir: &mut HirCrate, interner: &Rodeo) -> Vec<ResolveError> {
+pub fn resolve_crate(hir: &mut HirCrate, interner: &mut Rodeo) -> Vec<ResolveError> {
     let mut resolver = Resolver::new();
     resolver.resolve(hir, interner);
     resolver.into_errors()

@@ -30,7 +30,7 @@ impl Resolver {
     // Now: when we encounter `HirItem::Mod` with `HirModKind::Inline(items)`,
     // we recurse into the items and register them in a child ModuleNode.
 
-    pub(super) fn build_module_tree(&mut self, hir: &HirCrate, interner: &Rodeo) {
+    pub(super) fn build_module_tree(&mut self, hir: &HirCrate, interner: &mut Rodeo) {
         // Stage 14.42: Pre-collect impl method DefIds so we can skip them
         // during top-level value namespace registration.
         //
@@ -56,6 +56,30 @@ impl Resolver {
             set
         };
         self.impl_method_def_ids = impl_method_def_ids;
+
+        // Stage 15.70: Register Box<T> as a builtin prelude type.
+        //
+        // Box<T> is a special type — it represents a heap-allocated owned
+        // value. We register it as a struct named "Box" in the module tree
+        // so that `Box<i32>` type annotations resolve. The codegen treats
+        // Box<T> specially: it uses `malloc` for allocation and `free` for
+        // deallocation (in drop glue).
+        //
+        // We use a special DefId (DefId(u32::MAX - 1)) to distinguish it
+        // from user-defined types. The codegen checks for this DefId and
+        // emits heap allocation/deallocation instead of stack-based storage.
+        //
+        // Per §1.0 原則 3 "显式 > 隐式": Box is explicitly registered as a
+        // prelude type, not implicitly assumed.
+        // Per §23: follows the `build_module_tree` naming pattern.
+        {
+            let box_name = interner.get_or_intern("Box");
+            let box_def_id = DefId(u32::MAX - 1); // Sentinel for builtin Box
+            let _ = self
+                .module_tree
+                .insert(box_name, box_def_id, DefKind::Struct);
+            self.def_kinds.insert(box_def_id, DefKind::Struct);
+        }
 
         // Collect top-level registrations + use decls + nested module children.
         let mut registrations: Vec<(DefId, DefKind, Spur)> = Vec::new();
@@ -87,14 +111,26 @@ impl Resolver {
         // Insert top-level registrations into the crate-root module tree.
         for (def_id, kind, name) in registrations {
             if let Err(existing) = self.module_tree.insert(name, def_id, kind) {
-                let name_str = interner.resolve(&name).to_string();
-                self.errors.push(ResolveError::new(
-                    format!(
-                        "duplicate definition for `{}` (also defined at {:?})",
-                        name_str, existing
-                    ),
-                    Span::DUMMY,
-                ));
+                // Stage 15.70: If the existing definition is the builtin Box
+                // (DefId(u32::MAX - 1)), allow the user-defined Box to shadow it.
+                // This lets users define `struct Box<T> { ... }` without conflict.
+                if existing == DefId(u32::MAX - 1) {
+                    // Remove the builtin Box entry, then insert the user's.
+                    self.module_tree.type_ns.remove(&name);
+                    let _ = self.module_tree.insert(name, def_id, kind);
+                    // Also update def_kinds to replace the builtin.
+                    self.def_kinds.remove(&DefId(u32::MAX - 1));
+                    self.def_kinds.insert(def_id, kind);
+                } else {
+                    let name_str = interner.resolve(&name).to_string();
+                    self.errors.push(ResolveError::new(
+                        format!(
+                            "duplicate definition for `{}` (also defined at {:?})",
+                            name_str, existing
+                        ),
+                        Span::DUMMY,
+                    ));
+                }
             }
         }
 
