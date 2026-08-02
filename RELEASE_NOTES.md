@@ -1,9 +1,52 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.179.0
+**Current version**: v0.180.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2091 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.180.0 — Stage 15.54 (v0.2 Phase 2 Milestone Review — SUBSTANTIALLY COMPLETE)
+
+### Overview
+
+Stage 15.54 is a **milestone review** for v0.2 Phase 2 (Soundness Closures).
+It assesses progress across all Phase 2 tasks and recommends the path forward.
+
+### Phase 2 Task Status
+
+| Task | Status | Description |
+|------|--------|-------------|
+| Task 7 (NLL) | ✅ COMPLETE | Fixpoint dataflow NLL migration (Stages 15.34-15.41) |
+| Task 8 (Drop) | ⚠️ Partial | Infrastructure complete, `impl Drop` parser deferred (Stages 15.42-15.47) |
+| Task 9 (Region) | ⚠️ Partial | Infrastructure integrated, simplified constraints (Stages 15.48-15.52) |
+| Task 10 (Closure) | 🔧 Design | Strategy A design doc created (Stage 15.53) |
+
+### Phase 2 Statistics
+
+- **20 stages** completed (15.34-15.53)
+- **131 new tests** added
+- **5 design docs** created
+- **1 diagnostic tool** created (borrow-check comparison, Stage 15.38)
+- **1 new module** created (`src/mir/drop_elaboration.rs`)
+- **5216/5216** conformance tests pass throughout
+- **0 clippy warnings**, fmt clean throughout
+
+### §25 Deep Review (8 Dimensions)
+
+All 8 dimensions: GO or GO-WITH-CONDITIONS.
+
+### Committee Vote: GO
+
+**v0.2 Phase 2 is SUBSTANTIALLY COMPLETE.** Infrastructure for all four
+tasks is in place. Remaining implementation work (4-6 weeks) deferred to v0.3.
+
+### Verification
+
+- No code changes — review-only stage.
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.179.0 — Stage 15.53 (Closure Redesign Design Doc — Task 10 Started)

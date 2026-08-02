@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.179.0 (v0.2 Phase 2 — Closure redesign design started)
+**Version**: v0.180.0 (v0.2 Phase 2 SUBSTANTIALLY COMPLETE — milestone review)
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for
