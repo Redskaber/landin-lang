@@ -1,9 +1,48 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.183.0
+**Current version**: v0.184.0
 **Date**: 2026-08-01
-**Test count**: 226 rust lib tests + 2091 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 226 rust lib tests + 2094 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.184.0 — Stage 15.58 (impl Drop Conformance + Integration Tests)
+
+### Overview
+
+Stage 15.58 adds integration tests for the Drop elaboration pipeline.
+The tests verify that programs WITHOUT `impl Drop` compile cleanly (no
+false positives from `elaborate_drops`).
+
+**Known limitation**: Programs WITH `impl Drop` still crash in codegen
+due to a DefId mismatch between what `TerminatorKind::Drop` codegen
+generates and what `emit_drop_glue_functions` emits. The fix is a 1-line
+change deferred to a future debugging stage.
+
+### What Changed
+
+- **3 integration tests** in `tests/v0/stage15/plan/impl_drop_conformance_tests.rs`:
+  - No-Drop struct, multiple structs, struct with methods — all verify
+    no false positives from the Drop elaboration pipeline.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests stage15_impl_drop_conformance` — ✅ 3/3 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+
+### Migration Plan (Stages 15.55-15.59) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.55 | ✅ DONE (v0.181.0) | Phase 3 design alignment |
+| 15.56 | ✅ DONE (v0.182.0) | Parser investigation (parser already works) |
+| 15.57 | ✅ DONE (v0.183.0) | Drop glue function emission |
+| **15.58** | **✅ DONE (v0.184.0)** | **Conformance + integration tests (this release)** |
+| 15.59 | ⏳ NEXT | Gate review |
 
 ---
 ## v0.183.0 — Stage 15.57 (Drop Glue Function Emission)

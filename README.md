@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.183.0 (v0.2 Phase 3 — Drop glue function emission)
+**Version**: v0.184.0 (v0.2 Phase 3 — impl Drop conformance tests)
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for

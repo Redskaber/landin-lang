@@ -300,6 +300,9 @@ mod stage15_drop_elaboration_integration_tests;
 // Stage 15.52 (HP-5 step 5): Region allocation integration tests + gate review.
 #[path = "v0/stage15/plan/region_allocation_integration_tests.rs"]
 mod stage15_region_allocation_integration_tests;
+// Stage 15.58 (HP-12 step 8): impl Drop conformance + integration tests.
+#[path = "v0/stage15/plan/impl_drop_conformance_tests.rs"]
+mod stage15_impl_drop_conformance_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]
