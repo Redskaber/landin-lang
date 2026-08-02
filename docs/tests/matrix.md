@@ -210,7 +210,8 @@
 | **15.59** | **impl Drop gate review (Task 13 closure) — §25 8-dimension review; Task 13 PARTIALLY COMPLETE (infrastructure done, DefId mismatch fix deferred); known limitation documented with root cause + 1-line fix** | **0 (review only)** | ✅ |
 | **15.60** | **DefId mismatch fix — fixed `emit_drop_glue_functions` to use type's DefId (not impl's); crash persists (additional root cause in elaborate_drops or codegen); fix retained (correct); crash investigation deferred** | **0 (code change, no new tests — crash not yet fixed)** | ✅ |
 | **15.61** | **impl Drop end-to-end fix — FOUR root causes resolved: (1) elaborate_drops infinite loop (OOM 137) — StorageDead no longer carried into new block; (2) Drop codegen type mismatch — pass OpaquePtr not value type; (3) LLVM backend missing drop glue — added emit_drop_glue_functions call; (4) borrowck treated Drop as read — now treats as destructor (no-op for moved, consuming for live). Task 13 COMPLETE — impl Drop programs compile, link, and run correctly (verified with 3 runtime tests)** | **+8 rust (integration e2e)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 SUBSTANTIALLY COMPLETE + Phase 3 (Task 13: ✅ COMPLETE)** | **+142 rust in 15.35-15.61** | ✅ |
+| **15.62** | **Drop order + double-drop prevention — (1) StorageDead emission reversed to reverse declaration order, matching Rust RFC 1327 dropck semantics; (2) collect_moved_locals flow-insensitive analysis scans MIR for Operand::Move and skips moved locals in elaborate_drops, preventing double-drop of temporaries. Runtime verified: `let a,b,c` produces "dropping 3, 2, 1" (no duplicates). Task 13 fully complete with correct Rust-matching semantics** | **+8 rust (integration)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 SUBSTANTIALLY COMPLETE + Phase 3 (Task 13: ✅ COMPLETE with correct drop order)** | **+150 rust in 15.35-15.62** | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

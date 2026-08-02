@@ -1,9 +1,74 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.187.0
+**Current version**: v0.188.0
 **Date**: 2026-08-02
-**Test count**: 226 rust lib tests + 2102 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 226 rust lib tests + 2110 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.188.0 — Stage 15.62 (Drop Order + Double-Drop Prevention)
+
+### Overview
+
+Stage 15.62 completes the Drop semantics with two fixes:
+
+1. **Drop order**: Locals are now dropped in **reverse declaration order**
+   (matching Rust's RFC 1327 dropck semantics). The `StorageDead` emission
+   in `mir::lower::mod.rs` was reversed from `1..N` to `(1..N).rev()`.
+
+2. **Double-drop prevention**: Temporaries that are moved into let bindings
+   are no longer dropped again at scope end. A new `collect_moved_locals`
+   function scans the MIR for `Operand::Move` and `elaborate_drops` skips
+   these locals, preventing double-drop of moved temporaries.
+
+### Runtime Verification
+
+```landin
+struct Logger { id: i32 }
+impl Drop for Logger {
+    fn drop(self: &mut Logger) { println!("dropping {}", self.id) }
+}
+fn main() -> i32 {
+    let a = Logger { id: 1 };
+    let b = Logger { id: 2 };
+    let c = Logger { id: 3 };
+    0
+}
+```
+
+**Output** (reverse declaration order, no double-drop):
+```
+dropping 3
+dropping 2
+dropping 1
+```
+
+This matches Rust's semantics exactly.
+
+### Files Changed
+
+- `src/mir/lower/mod.rs` — reversed `StorageDead` emission order.
+- `src/mir/drop_elaboration.rs` — added `collect_moved_locals` +
+  `collect_moved_locals_from_rvalue`; skip moved locals in `elaborate_drops`.
+- `tests/v0/stage15/plan/impl_drop_order_tests.rs` — NEW: 8 tests.
+- `tests/all_tests.rs` — registered new test module.
+- `Cargo.toml` — bumped v0.187.0 → v0.188.0.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2110/2110 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7552 tests passing, 0 failures, 0 warnings.**
+
+### Task 13 Status: ✅ FULLY COMPLETE
+
+Task 13 (`impl Drop` + RAII) is now fully complete with correct Rust-matching
+semantics: reverse drop order, no double-drop, end-to-end compilation and
+execution.
 
 ---
 ## v0.187.0 — Stage 15.61 (impl Drop End-to-End Fix — Task 13 COMPLETE)

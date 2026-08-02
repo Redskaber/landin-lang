@@ -38,11 +38,79 @@
 //! (calling a nonexistent drop method).
 
 use crate::hir::DefId;
-use crate::mir::body::{AdtLayout, AdtLayouts};
+use crate::mir::body::{AdtLayout, AdtLayouts, StatementKind};
+use crate::mir::place::{LocalId, Operand, PlaceKind, Rvalue};
 use crate::mir::ty::{Ty, TyKind};
 use crate::traits::TraitResolver;
 use lasso::Rodeo;
 use std::collections::HashSet;
+
+/// Stage 15.62: Collect all local IDs that are the source of an `Operand::Move`
+/// anywhere in the MIR body. These locals have been moved (ownership
+/// transferred elsewhere) and should NOT receive a `Drop` terminator —
+/// the value now lives in the destination local, which will be dropped.
+///
+/// This is a **flow-insensitive** analysis: it marks a local as "moved"
+/// if it appears as the source of ANY `Move` operand in ANY block,
+/// regardless of control flow. This is correct for the common case
+/// (unconditional move of a temporary into a let binding) but may
+/// over-approximate for conditional moves (a local moved in one branch
+/// but not another). In the over-approximation case, the local's `Drop`
+/// is skipped, which may cause a leak (the destructor is not called).
+/// This is acceptable for the MVP — leaks are less severe than double-drops
+/// (which could cause use-after-free).
+///
+/// ## Why not use the borrow checker's move tracker?
+///
+/// The borrow checker runs AFTER `elaborate_drops` in the pipeline
+/// (driver.rs: `elaborate_drops` at line 1035, `borrowck` at line 1087).
+/// Moving `elaborate_drops` after borrowck would require passing the
+/// move tracker results across stages, which is a larger refactor. The
+/// flow-insensitive analysis is a pragmatic MVP fix — full drop flags
+/// (runtime tracking) are deferred to v0.3.
+///
+/// Per §16: this function reads `MirBody` only (no HIR, no resolver).
+/// Per §23: function name follows `<verb>_<noun>` pattern.
+fn collect_moved_locals(mir: &crate::mir::body::MirBody) -> HashSet<LocalId> {
+    let mut moved = HashSet::new();
+    for bb in &mir.basic_blocks {
+        for stmt in &bb.statements {
+            if let StatementKind::Assign(boxed) = &stmt.kind {
+                let (_, rvalue) = &**boxed;
+                collect_moved_locals_from_rvalue(rvalue, &mut moved);
+            }
+        }
+    }
+    moved
+}
+
+/// Helper: extract all moved local IDs from an `Rvalue`.
+///
+/// Walks the rvalue's operands and collects any `Operand::Move(Place::Local(id))`.
+fn collect_moved_locals_from_rvalue(rv: &Rvalue, moved: &mut HashSet<LocalId>) {
+    let collect_from_operand = |op: &Operand, moved: &mut HashSet<LocalId>| {
+        if let Operand::Move(place) = op {
+            if let PlaceKind::Local(id) = &place.kind {
+                moved.insert(*id);
+            }
+        }
+    };
+    match rv {
+        Rvalue::Use(op) | Rvalue::Cast(_, op, _) | Rvalue::UnaryOp(_, op) => {
+            collect_from_operand(op, moved);
+        }
+        Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
+            collect_from_operand(a, moved);
+            collect_from_operand(b, moved);
+        }
+        Rvalue::Aggregate(_, operands) => {
+            for op in operands {
+                collect_from_operand(op, moved);
+            }
+        }
+        Rvalue::Ref(_, _, _) => {} // Refs don't move.
+    }
+}
 
 /// Determine whether a type needs drop glue.
 ///
@@ -228,10 +296,35 @@ fn ty_needs_drop_impl(
 ///
 /// ## Drop order
 ///
-/// Locals are dropped in forward declaration order in the current MVP
-/// (matching the `StorageDead` emission order). Rust proper uses reverse
-/// declaration order; a future stage will reverse the `StorageDead`
-/// emission to match.
+/// Stage 15.62: Locals are dropped in **reverse declaration order**,
+/// matching Rust's drop semantics. The `StorageDead` emission in
+/// `mir::lower::mod.rs` emits statements in reverse local-ID order
+/// (last-declared first). Since this pass processes `StorageDead`
+/// statements in block order (finding the first one needing drop,
+/// splitting, then processing the new block), the `Drop` terminators
+/// are inserted in reverse declaration order:
+///
+/// ```text
+/// bb_return:
+///   ...statements before StorageDead chain...
+///   Drop(_N, bb_dropN)     // last-declared local dropped first
+///
+/// bb_dropN:
+///   Drop(_N-1, bb_dropN-1)
+///
+/// ...eventually...
+///
+/// bb_drop1:
+///   Drop(_1, bb_final)     // first-declared local dropped last
+///
+/// bb_final:
+///   Return
+/// ```
+///
+/// This matches Rust's RFC 1327 dropck semantics (simplified for MVP —
+/// no runtime drop flags, no partial moves). Stage 15.62 adds a
+/// compile-time flow-insensitive move analysis to skip `Drop` terminators
+/// for moved locals (preventing double-drop of temporaries).
 ///
 /// Per §23: function name follows `<verb>_<noun>` pattern (free-function
 /// entry point).
@@ -249,6 +342,14 @@ pub fn elaborate_drops(
     use crate::mir::body::{BasicBlockId, Statement, StatementKind, Terminator, TerminatorKind};
     use crate::mir::place::{Place, PlaceKind};
 
+    // Stage 15.62: Pre-compute the set of moved locals. These locals
+    // have been moved (ownership transferred) and should NOT receive
+    // Drop terminators — the value now lives in the destination local.
+    // This prevents double-drop of temporaries (e.g., the `init_local`
+    // that holds `S{x: 0}` is moved into `s`, so only `s` should be
+    // dropped, not `init_local`).
+    let moved_locals = collect_moved_locals(mir);
+
     // We need to process blocks in order. Since we may insert new blocks
     // (which are appended to the end of basic_blocks), we process all
     // blocks including newly created ones. The Stage 15.61 fix guarantees
@@ -260,11 +361,14 @@ pub fn elaborate_drops(
         let bb_id = BasicBlockId(bb_idx as u32);
         let bb = &mir.basic_blocks[bb_idx];
 
-        // Find the first StorageDead(local) where local needs drop.
+        // Find the first StorageDead(local) where local needs drop AND
+        // has NOT been moved. Stage 15.62: skip moved locals to prevent
+        // double-drop of temporaries.
         let split_point = bb.statements.iter().enumerate().find(|(_, stmt)| {
             if let StatementKind::StorageDead(local_id) = &stmt.kind {
                 let local_ty = &mir.local(*local_id).ty;
                 ty_needs_drop(local_ty, resolver, &mir.adt_layouts, interner)
+                    && !moved_locals.contains(local_id)
             } else {
                 false
             }

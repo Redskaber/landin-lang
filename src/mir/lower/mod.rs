@@ -832,8 +832,18 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     //
     // We skip LocalId(0) (the return local) because it's still alive
     // at the point of Return.
+    //
+    // Stage 15.62: Emit StorageDead in REVERSE declaration order so that
+    // `elaborate_drops` produces `Drop` terminators in reverse declaration
+    // order — matching Rust's drop semantics (last-declared local is
+    // dropped first). Previously, forward emission produced forward drop
+    // order, which was incorrect.
+    //
+    // Per §1.0 原則 6 "通用 > 特例": one rule (reverse iteration) handles
+    // all drop-ordering cases — no special-casing per local type.
+    // Per §23: no API change (internal MIR lowering detail).
     let local_count = cx.mir.local_decls.len();
-    for i in 1..local_count {
+    for i in (1..local_count).rev() {
         cx.mir
             .block_mut(cx.current_block)
             .statements

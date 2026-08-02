@@ -306,6 +306,9 @@ mod stage15_impl_drop_conformance_tests;
 // Stage 15.61 (HP-12 fix): impl Drop end-to-end tests (crash + borrowck fix).
 #[path = "v0/stage15/plan/impl_drop_e2e_tests.rs"]
 mod stage15_impl_drop_e2e_tests;
+// Stage 15.62 (HP-12 fix): Drop order + double-drop prevention tests.
+#[path = "v0/stage15/plan/impl_drop_order_tests.rs"]
+mod stage15_impl_drop_order_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]

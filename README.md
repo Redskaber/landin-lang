@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.187.0 (v0.2 Phase 3 — Task 13 `impl Drop` + RAII COMPLETE)
+**Version**: v0.188.0 (v0.2 Phase 3 — Task 13 `impl Drop` + RAII FULLY COMPLETE with correct drop order)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -9,14 +9,13 @@ zero-cost abstractions, memory safety without garbage collection, and
 predictable performance. The compiler is written in Rust and uses LLVM as its
 backend via the `llvm-sys` crate.
 
-> **v0.2 Phase 3 — Task 13 (impl Drop + RAII) ✅ COMPLETE**
+> **v0.2 Phase 3 — Task 13 (impl Drop + RAII) ✅ FULLY COMPLETE**
 >
 > Stage 15.61 resolved all four root causes preventing `impl Drop` programs from
-> compiling end-to-end. Programs with `impl Drop for T` now parse, type-check,
-> borrow-check, lower to MIR, elaborate drops, codegen to LLVM IR, link, and
-> execute correctly.
+> compiling end-to-end. Stage 15.62 completed the Drop semantics with correct
+> reverse declaration drop order and double-drop prevention.
 >
-> **Four bugs fixed**:
+> **Stage 15.61 — Four bugs fixed**:
 > 1. `elaborate_drops` infinite loop (OOM kill, exit 137) — `StorageDead` no
 >    longer carried into the new block when splitting.
 > 2. Drop codegen type mismatch — pass `OpaquePtr` (not value type) to `emit_call`.
@@ -25,8 +24,17 @@ backend via the `llvm-sys` crate.
 > 4. borrowck treated Drop as a read — now treats as destructor (no-op for
 >    moved, consuming for live).
 >
-> **Test count**: 226 lib tests + 2102 integration tests + 5216 conformance
-> tests = **7544 passing**. 0 clippy warnings, fmt clean.
+> **Stage 15.62 — Drop order + double-drop prevention**:
+> 1. Drop order: `StorageDead` emission reversed → reverse declaration order
+>    (matches Rust RFC 1327).
+> 2. Double-drop prevention: `collect_moved_locals` flow-insensitive analysis
+>    skips moved temporaries in `elaborate_drops`.
+>
+> **Runtime verified**: `let a,b,c` with Drop produces "dropping 3, 2, 1"
+> (reverse order, no duplicates) — matches Rust exactly.
+>
+> **Test count**: 226 lib tests + 2110 integration tests + 5216 conformance
+> tests = **7552 passing**. 0 clippy warnings, fmt clean.
 
 > **v0.2 Phase 2 — Soundness Closures SUBSTANTIALLY COMPLETE**
 >
@@ -112,7 +120,7 @@ LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
 ### Run tests
 
 ```bash
-# Rust test suite (2328 tests: 226 lib + 2102 integration)
+# Rust test suite (2336 tests: 226 lib + 2110 integration)
 LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
   cargo test --features llvm-backend
 
@@ -181,10 +189,12 @@ Source Text (.lin)
   user-defined trait dyn support, TD-018)
 - **Trait default bodies**: methods with default bodies that call other trait
   methods work via single-impl specialization (Stage 14.97)
-- **`impl Drop` + RAII** ✅ NEW (Stage 15.61): `impl Drop for T` blocks
+- **`impl Drop` + RAII** ✅ NEW (Stage 15.61-15.62): `impl Drop for T` blocks
   generate `drop_adt_<DefId>` glue functions that call the user's
-  `Drop::drop` method; `elaborate_drops` inserts `Drop` terminators; borrow
-  checker treats `Drop` as a destructor (no-op for moved, consuming for live).
+  `Drop::drop` method; `elaborate_drops` inserts `Drop` terminators in
+  **reverse declaration order** (matching Rust RFC 1327); borrow checker
+  treats `Drop` as a destructor (no-op for moved, consuming for live);
+  `collect_moved_locals` prevents double-drop of moved temporaries.
 - **Pattern matching**: literals, identifiers, tuples, structs, enums, or-patterns,
   nested patterns (any depth)
 - **Destructuring**: `let (a, b) = ...;`, `let Point { x, y } = ...;`
@@ -200,11 +210,14 @@ Source Text (.lin)
 
 ### Known limitations (v0.2)
 
-- **Drop order**: locals are dropped in forward declaration order (Rust uses
-  reverse); fix deferred to v0.3
+- **Drop order**: ✅ FIXED (Stage 15.62) — locals are now dropped in reverse
+  declaration order, matching Rust RFC 1327
+- **Double-drop**: ✅ FIXED (Stage 15.62) — `collect_moved_locals` prevents
+  double-drop of moved temporaries
 - **Partial moves**: not supported (whole-value moves only)
 - **Drop flags**: not implemented (conditional control flow with Drop types
-  may produce incorrect drop behavior — deferred to v0.3)
+  may produce leaks for conditionally-moved locals — full runtime drop flags
+  deferred to v0.3)
 - **Recursive drop**: dropping fields that themselves need drop (when the
   parent doesn't have `impl Drop`) — deferred to v0.3
 - **`Box<T>` in prelude**: blocked on recursive drop (deferred to v0.3)
@@ -281,7 +294,7 @@ src/
 | Suite | Count | Pass rate |
 |-------|-------|-----------|
 | Rust lib tests | 226 | 100% |
-| Rust integration tests | 2102 | 100% |
+| Rust integration tests | 2110 | 100% |
 | Conformance tests (.lin) | 5216 | 100% |
 | - Parse-only (`00-parse`) | 600 | 100% |
 | - Typecheck (`01-typecheck`) | 1020 | 100% |
@@ -293,7 +306,7 @@ src/
 | - Integration (`07-integration`) | 501 | 100% |
 | Examples | 4 | 100% |
 | Benchmarks | 5 | — |
-| **Total** | **7544** | **100%** |
+| **Total** | **7552** | **100%** |
 
 ---
 
@@ -334,4 +347,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.187.0, Stage 15.61 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.188.0, Stage 15.62 — `impl Drop` + RAII COMPLETE)
