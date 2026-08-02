@@ -39,7 +39,7 @@
 
 use crate::hir::DefId;
 use crate::mir::body::{AdtLayout, AdtLayouts, StatementKind};
-use crate::mir::place::{LocalId, Operand, PlaceKind, Rvalue};
+use crate::mir::place::{LocalId, Operand, PlaceKind, ProjectionElem, Rvalue};
 use crate::mir::ty::{Ty, TyKind};
 use crate::traits::TraitResolver;
 use lasso::Rodeo;
@@ -110,6 +110,50 @@ fn collect_moved_locals_from_rvalue(rv: &Rvalue, moved: &mut HashSet<LocalId>) {
         }
         Rvalue::Ref(_, _, _) => {} // Refs don't move.
     }
+}
+
+/// Stage 15.64: Collect all local IDs that are assigned from a `Copy` of a
+/// field projection. These locals hold a "view" of a struct field, not an
+/// owned value — the original struct owns the field. Dropping them would
+/// cause a double-drop (the field is already dropped when the struct is
+/// dropped via recursive drop glue).
+///
+/// Example MIR pattern to detect:
+/// ```text
+/// temp = Use(Copy(Projection(Local(o), Field(0))))  // copies o.inner
+/// ```
+///
+/// The `temp` local should NOT receive a Drop terminator.
+///
+/// This is a **flow-insensitive** analysis (same as `collect_moved_locals`).
+/// It may over-approximate (skip a Drop for a local that was later
+/// re-assigned), but this is acceptable — the worst case is a leak (less
+/// severe than a double-drop).
+///
+/// Per §16: reads `MirBody` only (no HIR, no resolver).
+/// Per §23: function name follows `<verb>_<noun>` pattern.
+fn collect_field_copy_locals(mir: &crate::mir::body::MirBody) -> HashSet<LocalId> {
+    let mut field_copy = HashSet::new();
+    for bb in &mir.basic_blocks {
+        for stmt in &bb.statements {
+            if let StatementKind::Assign(boxed) = &stmt.kind {
+                let (place, rvalue) = &**boxed;
+                // Check if the rvalue is Use(Copy(Projection(...)))
+                if let Rvalue::Use(Operand::Copy(src_place)) = rvalue {
+                    if matches!(
+                        &src_place.kind,
+                        PlaceKind::Projection(_, ProjectionElem::Field(_, _))
+                    ) {
+                        // The destination local is a field-copy temp.
+                        if let PlaceKind::Local(id) = &place.kind {
+                            field_copy.insert(*id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    field_copy
 }
 
 /// Determine whether a type needs drop glue.
@@ -349,6 +393,19 @@ pub fn elaborate_drops(
     // that holds `S{x: 0}` is moved into `s`, so only `s` should be
     // dropped, not `init_local`).
     let moved_locals = collect_moved_locals(mir);
+    // Stage 15.64: Also collect locals that are assigned from a Copy of a
+    // field projection. These locals hold a "view" of the field, not an
+    // owned value — the original struct owns the field. Dropping them would
+    // cause a double-drop (the field is dropped when the struct is dropped).
+    //
+    // Example MIR:
+    //   temp = Use(Copy(Projection(Local(o), Field(0))))  // copies o.inner
+    //
+    // The `temp` local should NOT receive a Drop terminator — it's a copy
+    // of the field, and the field will be dropped when `o` is dropped.
+    let field_copy_locals = collect_field_copy_locals(mir);
+    let skip_drop_locals: HashSet<LocalId> =
+        moved_locals.union(&field_copy_locals).cloned().collect();
 
     // We need to process blocks in order. Since we may insert new blocks
     // (which are appended to the end of basic_blocks), we process all
@@ -362,13 +419,14 @@ pub fn elaborate_drops(
         let bb = &mir.basic_blocks[bb_idx];
 
         // Find the first StorageDead(local) where local needs drop AND
-        // has NOT been moved. Stage 15.62: skip moved locals to prevent
-        // double-drop of temporaries.
+        // has NOT been moved or field-copied. Stage 15.62: skip moved locals.
+        // Stage 15.64: also skip field-copy locals (temps that hold a copy
+        // of a field projection — the original struct owns the field).
         let split_point = bb.statements.iter().enumerate().find(|(_, stmt)| {
             if let StatementKind::StorageDead(local_id) = &stmt.kind {
                 let local_ty = &mir.local(*local_id).ty;
                 ty_needs_drop(local_ty, resolver, &mir.adt_layouts, interner)
-                    && !moved_locals.contains(local_id)
+                    && !skip_drop_locals.contains(local_id)
             } else {
                 false
             }

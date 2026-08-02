@@ -1,9 +1,73 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.189.0
+**Current version**: v0.190.0
 **Date**: 2026-08-02
-**Test count**: 226 rust lib tests + 2118 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 226 rust lib tests + 2126 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.190.0 — Stage 15.64 (Struct Literal Copy→Move + Field-Copy Drop Prevention)
+
+### Overview
+
+Stage 15.64 fixes two root causes of extra drops (double-drop of temporaries)
+when using `impl Drop` types in struct literals and field accesses.
+
+### Two Fixes
+
+1. **Struct literal Copy→Move**: When a struct literal has a field whose
+   type is non-Copy (e.g., a struct with `impl Drop`), the field value is
+   now **moved** (not copied) into the struct. Previously, `Operand::Copy`
+   was used for ALL field values, causing the field's temporary to not be
+   marked as moved → double-drop.
+
+2. **Field-copy drop prevention**: When a field of a struct is accessed
+   (e.g., `o.inner`), the intermediate temp that holds the field value is
+   now **excluded from drop**. Previously, the temp was dropped at scope
+   end, causing a double-drop (the field is also dropped when the struct
+   is dropped via recursive drop glue).
+
+3. **Shared `is_mir_ty_copy_conservative` helper**: Added to `mir::ty` as
+   the single source of truth for conservative Copy detection in MIR
+   lowering (DRY per §23 rule 5). Replaces inline checks in `let` bindings
+   and struct literals.
+
+### Runtime Verification
+
+```landin
+trait Drop { fn drop(&mut self); }
+struct Inner { x: i32 }
+impl Drop for Inner { fn drop(&mut self) { println!("inner dropped") } }
+struct Outer { inner: Inner }
+impl Drop for Outer { fn drop(&mut self) { println!("outer dropped") } }
+fn main() -> i32 {
+    let o = Outer { inner: Inner { x: 42 } };
+    o.inner.x
+}
+```
+
+**Before** (4 drops — 2 extra): `inner, outer, inner, inner`
+**After** (2 drops — correct): `outer, inner`
+
+### Files Changed
+
+- `src/mir/ty.rs` — added `is_mir_ty_copy_conservative` shared helper.
+- `src/mir/lower/expr_operand.rs` — struct literal uses Move for non-Copy fields.
+- `src/mir/lower/control_flow.rs` — `let` binding uses shared helper (DRY).
+- `src/mir/drop_elaboration.rs` — added `collect_field_copy_locals`.
+- `tests/v0/stage15/plan/struct_literal_copy_move_tests.rs` — NEW: 8 tests.
+- `tests/all_tests.rs` — registered new test module.
+- `Cargo.toml` — bumped v0.189.0 → v0.190.0.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2126/2126 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7568 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.189.0 — Stage 15.63 (Recursive Drop — Fields with Drop)

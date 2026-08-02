@@ -21700,3 +21700,98 @@ Stage Summary:
 - Task 13 (impl Drop + RAII) ✅ COMPLETE+ with recursive drop
 - 7560 tests passing (226 lib + 2118 integration + 5216 conformance), 0 failures
 - v0.189.0: minor bump (Phase 3 — recursive drop)
+
+---
+Task ID: stage15.64-struct-literal-copy-move
+Agent: Super Z (main)
+Task: Stage 15.64 — Struct literal Copy→Move + field-copy drop prevention. v0.189.0 → v0.190.0. Fixes extra drops (4→2) when using impl Drop types in struct literals and field accesses.
+
+Work Log:
+- Baseline: v0.189.0 / 226 lib + 2118 integration + 5216 conformance
+
+### 1. Root cause: extra drops with impl Drop types
+
+Test program `let o = Outer { inner: Inner { x: 42 } }; o.inner.x` with
+both having impl Drop + println produced 4 drops:
+  inner dropped   ← extra (field-copy temp)
+  outer dropped   ← correct
+  inner dropped   ← correct (recursive field drop)
+  inner dropped   ← extra (struct literal temp)
+
+Expected: 2 drops (outer + inner recursive).
+
+### 2. Bug #1: Struct literal always uses Operand::Copy
+
+In src/mir/lower/expr_operand.rs, HirExprKind::Struct used Operand::Copy
+for ALL field values. For non-Copy field types (Inner with Drop), this
+didn't mark the field temp as moved → elaborate_drops inserted a Drop
+for it → double-drop.
+
+Fix: Check field type Copy-ness. Use Move for non-Copy types.
+
+### 3. Bug #2: Field access temp is dropped
+
+In HirExprKind::Field, `o.inner` creates temp5 = Copy(Projection(o, Field(0))).
+temp5 has type Inner (needs drop). Not moved → elaborate_drops inserts Drop.
+But o also drops inner via recursive drop glue → double-drop.
+
+Fix: Added collect_field_copy_locals function that finds locals assigned
+from Use(Copy(Projection(...))) and adds them to the skip-drop set.
+
+### 4. Added shared is_mir_ty_copy_conservative helper
+
+In src/mir/ty.rs, added is_mir_ty_copy_conservative(ty) -> bool:
+- True for primitives, refs, fn types, Never, Infer, Error, Foreign
+- False for Adt, Str, Slice, Closure, Param
+- Recursive for Tuple, Array
+- Conservative: treats Adt as non-Copy (sound)
+
+Per §23 rule 5 (DRY): replaces inline checks in control_flow.rs (let
+bindings) and expr_operand.rs (struct literals).
+
+### 5. Updated let binding to use shared helper
+
+In control_flow.rs, replaced inline Copy check with
+is_mir_ty_copy_conservative (DRY).
+
+### 6. Added 8 integration tests
+
+tests/v0/stage15/plan/struct_literal_copy_move_tests.rs:
+- stage15_64_struct_literal_non_copy_field_no_double_drop
+- stage15_64_field_access_no_double_drop
+- stage15_64_nested_struct_literals_no_double_drop
+- stage15_64_struct_literal_copy_fields_no_regression
+- stage15_64_field_access_non_drop_no_regression
+- stage15_64_multiple_field_accesses_no_double_drop
+- stage15_64_struct_literal_mixed_copy_non_copy
+- stage15_64_function_return_struct_with_drop_field
+
+### 7. Runtime verification
+
+Before: 4 drops (2 extra)
+After: 2 drops (correct: outer + inner recursive)
+
+### 8. Documentation
+
+- docs/develop/v0/stage-15/stage-15.64-struct-literal-copy-move.md
+- docs/tests/v0/stage15/stage-15.64-test-plan.md
+- Updated docs/tests/matrix.md (Stage 15 total: +166 rust tests)
+- Updated RELEASE_NOTES.md (v0.190.0 entry)
+- Updated README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2126/2126 PASS
+  (was 2118; +8 new struct literal tests, 2 ignored)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.189.0 → v0.190.0
+
+Stage Summary:
+- Stage 15.64 PASSED — struct literal + field access produce correct drop behavior
+- Task 13 (impl Drop + RAII) ✅ COMPLETE++ with struct literal + field-copy fixes
+- 7568 tests passing (226 lib + 2126 integration + 5216 conformance), 0 failures
+- v0.190.0: minor bump (Phase 3 — struct literal Copy→Move + field-copy prevention)

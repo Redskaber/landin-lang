@@ -263,6 +263,57 @@ pub struct IntVid(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FloatVid(pub u32);
 
+/// Stage 15.64: Conservative Copy-ness check for MIR lowering.
+///
+/// Returns `true` for types that are ALWAYS Copy (primitives, references,
+/// function types, `Never`, `Infer`, `Error`, `Foreign`). Returns `false`
+/// for types that MAY or MAY NOT be Copy (`Adt`, `Str`, `Slice`, `Closure`,
+/// `Param`).
+///
+/// This is the **conservative** check — it's used during MIR lowering
+/// (where `TraitResolver` is not available) to decide between
+/// `Operand::Copy` and `Operand::Move`. For `Adt` types, we conservatively
+/// use `Move` (treating the type as non-Copy). This is sound: a false
+/// negative (using Move for a Copy type) just means an unnecessary move
+/// (the source local is marked as moved and can't be used again); a false
+/// positive (using Copy for a non-Copy type) would be unsound (double-drop).
+///
+/// For the **precise** Copy check (using `TraitResolver` to query
+/// `impl Copy`), use `borrowck::copy_semantics::ty_is_copy_with_resolver`.
+/// The precise check runs during borrow checking (after MIR lowering).
+///
+/// ## Recursion
+///
+/// `Tuple` and `Array` are recursively checked — a tuple is Copy iff all
+/// elements are Copy (conservatively). This matches Rust's `#[derive(Copy)]`
+/// semantics.
+///
+/// Per §23 rule 5 (DRY): single source of truth for conservative Copy
+/// detection in MIR lowering. Replaces inline checks in
+/// `mir::lower::control_flow` (let bindings) and `mir::lower::expr_operand`
+/// (struct literals, closure captures).
+/// Per §1.0 原則 5 "报错 > 静默": conservative (false negative) is preferred
+/// over unsound (false positive).
+/// Per §16: this function reads `Ty` only (no HIR, no resolver).
+pub fn is_mir_ty_copy_conservative(ty: &Ty) -> bool {
+    use crate::mir::ty::TyKind::*;
+    match &ty.kind {
+        Bool | Char | Int(_) | Uint(_) | Float(_) => true,
+        Ref(_, _, _) => true,
+        RawPtr(_, _) => true,
+        FnDef(_, _) | FnPtr(_) => true,
+        Never => true,
+        Tuple(tys) => tys.iter().all(is_mir_ty_copy_conservative),
+        Array(inner, _) => is_mir_ty_copy_conservative(inner),
+        // Infer and Error: assume Copy to avoid spurious errors during
+        // type inference (the type isn't known yet).
+        Infer(_) | Error | Foreign => true,
+        // Adt, Str, Slice, Closure, Param: conservatively non-Copy.
+        // Use `ty_is_copy_with_resolver` for precise Adt Copy detection.
+        Adt(_, _) | Str | Slice(_) | Closure(_, _) | Param(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

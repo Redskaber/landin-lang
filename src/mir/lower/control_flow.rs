@@ -615,23 +615,12 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                     // of Copy types (e.g., `let x = i; i += 1;` where i is i32).
                     // Now we check the type: if it's Copy (i32, bool, etc.), use
                     // Operand::Copy (no move recorded); otherwise use Move.
+                    //
+                    // Stage 15.64: Uses the shared `is_mir_ty_copy_conservative`
+                    // helper from `mir::ty` (DRY per §23 rule 5). Previously
+                    // inlined the same logic here.
                     let init_ty = cx.mir.local(init_local).ty.clone();
-                    let is_copy = matches!(
-                        &init_ty.kind,
-                        crate::mir::ty::TyKind::Bool
-                            | crate::mir::ty::TyKind::Char
-                            | crate::mir::ty::TyKind::Int(_)
-                            | crate::mir::ty::TyKind::Uint(_)
-                            | crate::mir::ty::TyKind::Float(_)
-                            | crate::mir::ty::TyKind::Ref(_, _, _)
-                            | crate::mir::ty::TyKind::RawPtr(_, _)
-                            | crate::mir::ty::TyKind::FnDef(_, _)
-                            | crate::mir::ty::TyKind::FnPtr(_)
-                            | crate::mir::ty::TyKind::Never
-                            | crate::mir::ty::TyKind::Infer(_)
-                            | crate::mir::ty::TyKind::Error
-                            | crate::mir::ty::TyKind::Foreign
-                    );
+                    let is_copy = crate::mir::ty::is_mir_ty_copy_conservative(&init_ty);
                     let operand = if is_copy {
                         Operand::Copy(Place::local(init_local, init.span))
                     } else {

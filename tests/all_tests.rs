@@ -312,6 +312,9 @@ mod stage15_impl_drop_order_tests;
 // Stage 15.63 (HP-12 fix): Recursive drop (fields with Drop) tests.
 #[path = "v0/stage15/plan/recursive_drop_tests.rs"]
 mod stage15_recursive_drop_tests;
+// Stage 15.64 (HP-12 fix): Struct literal Copy→Move + field-copy drop prevention.
+#[path = "v0/stage15/plan/struct_literal_copy_move_tests.rs"]
+mod stage15_struct_literal_copy_move_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]

@@ -1739,9 +1739,30 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .iter()
                 .filter_map(|f| f.expr.as_ref().map(|e| lower_expr_to_operand(cx, e)))
                 .collect();
+            // Stage 15.64: Choose Copy or Move based on the field value's type.
+            // For Copy types (primitives, refs, etc.), use Copy (source remains
+            // valid). For non-Copy types (Adt with Drop, Str, etc.), use Move
+            // (transfers ownership, source is marked as moved).
+            //
+            // Previously, this always used Operand::Copy for ALL fields, which
+            // caused double-drop of non-Copy field temporaries (the temp was
+            // not marked as moved, so elaborate_drops inserted a Drop for it
+            // in addition to the Drop for the struct itself).
+            //
+            // Per §23 rule 5 (DRY): uses the shared `is_mir_ty_copy_conservative`
+            // helper from `mir::ty` (same as `let` bindings in control_flow.rs).
+            // Per §1.0 原則 5 "报错 > 静默": conservative (Move for unknown Adt)
+            // is preferred over unsound (Copy for non-Copy).
             let operands: Vec<Operand> = field_locals
                 .iter()
-                .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
+                .map(|l| {
+                    let field_ty = &cx.mir.local(*l).ty;
+                    if crate::mir::ty::is_mir_ty_copy_conservative(field_ty) {
+                        Operand::Copy(Place::local(*l, Span::DUMMY))
+                    } else {
+                        Operand::Move(Place::local(*l, Span::DUMMY))
+                    }
+                })
                 .collect();
             // Stage 3.30 (per §15): if the path resolves to a known struct
             // DefId, use AggregateKind::Adt (the proper representation).
