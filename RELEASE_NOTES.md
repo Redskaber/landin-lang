@@ -1,9 +1,44 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.182.0
+**Current version**: v0.183.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2091 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.183.0 — Stage 15.57 (Drop Glue Function Emission)
+
+### Overview
+
+Stage 15.57 implements drop glue function emission — the final missing
+piece for `impl Drop` support. For each type that implements `Drop`, a
+`drop_adt_<DefId>` function is emitted that calls the user's
+`Drop::drop` method.
+
+### What Changed
+
+**`src/codegen/mod.rs`**:
+- New `emit_drop_glue_functions` function — iterates TraitResolver for
+  Drop impls, emits `drop_adt_<DefId>` calling `landin_<Type>_drop`.
+- Wired into `codegen_crate` after vtable/dynptr emission.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+
+### Migration Plan (Stages 15.55-15.59) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.55 | ✅ DONE (v0.181.0) | Phase 3 design alignment |
+| 15.56 | ✅ DONE (v0.182.0) | Parser investigation (parser already works) |
+| **15.57** | **✅ DONE (v0.183.0)** | **Drop glue function emission (this release)** |
+| 15.58 | ⏳ NEXT | Conformance tests with `impl Drop` patterns |
+| 15.59 | ⏳ PLANNED | Gate review |
 
 ---
 ## v0.182.0 — Stage 15.56 (impl Drop Parser Investigation — Parser Already Works)

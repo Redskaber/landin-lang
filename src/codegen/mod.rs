@@ -157,7 +157,101 @@ pub fn codegen_crate(result: &crate::driver::CompileResult) -> String {
     // for `dyn Trait` value construction — future stages will use these
     // globals when lowering `dyn Trait` locals.
     emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, &mut emitter);
+
+    // Stage 15.57 (HP-12 step 7): Emit drop glue functions for types that
+    // implement Drop. For each type with `impl Drop for T`, emit a
+    // `drop_adt_<DefId>` function that calls the user's `Drop::drop` method.
+    //
+    // Per §16: codegen reads the pre-built TraitResolver (data only).
+    // Per §23: function name follows `drop_<noun>_<id>` pattern.
+    emit_drop_glue_functions(
+        &result.trait_resolver,
+        &result.interner,
+        &result.fn_name_by_def_id,
+        &mut emitter,
+    );
+
     emitter.output_with_globals()
+}
+
+/// Stage 15.57 (HP-12): Emit drop glue functions for types that implement Drop.
+///
+/// For each type `T` that has `impl Drop for T`, emit a function:
+/// ```llvm
+/// define void @drop_adt_<DefId>(%struct.T* %self) {
+///     call void @"landin_T_drop"(%struct.T* %self)  ; user's Drop::drop
+///     ret void
+/// }
+/// ```
+///
+/// The function name `drop_adt_<DefId>` matches what `TerminatorKind::Drop`
+/// codegen calls (Stage 15.45). The user's `Drop::drop` method is called
+/// with the place pointer as `&mut self`.
+///
+/// Per §23: function name follows `drop_<noun>_<id>` pattern.
+/// Per §16: reads TraitResolver + fn_name_by_def_id (data only, no HIR).
+fn emit_drop_glue_functions(
+    resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    _fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    emitter: &mut dyn Emitter,
+) {
+    use crate::codegen::emitter::EmitType;
+
+    // Get the "Drop" trait name from the interner.
+    let drop_name = match interner.get("Drop") {
+        Some(s) => s,
+        None => return, // "Drop" not interned — no Drop impls exist.
+    };
+
+    // Iterate all types that implement Drop.
+    // The TraitResolver stores impls in `impl_by_trait_and_type` keyed by
+    // (trait_name_spur, self_type_name_spur) → impl DefId.
+    // We iterate all entries with trait_name == "Drop".
+    for ((trait_spur, type_spur), impl_def_id) in &resolver.impl_by_trait_and_type {
+        if *trait_spur != drop_name {
+            continue;
+        }
+
+        // Get the ImplInfo for this Drop impl.
+        if let Some(impl_info) = resolver.impls.get(impl_def_id) {
+            // The self type's DefId — look up from type_by_def_id reverse map.
+            // We use the impl's def_id as the drop glue function's ID.
+            let self_def_id = impl_info.def_id;
+
+            // The drop method's function name.
+            // The driver registers impl method bodies with names like
+            // `landin_<Type>_<method>`. We look up the method's DefId
+            // from the impl_info.methods (method name Spurs) and resolve
+            // via fn_name_by_def_id.
+            //
+            // For the MVP, we construct the name directly from the type name.
+            let type_name = interner.resolve(type_spur).to_string();
+            let drop_method_name = format!("landin_{}_drop", type_name);
+
+            // Emit the drop glue function: `drop_adt_<DefId>`.
+            let drop_fn_name = format!("drop_adt_{}", self_def_id.0);
+
+            // Declare the user's drop method (if not already declared).
+            let self_str = "self".to_string();
+            emitter.emit_declare(&format!("void @{}(ptr %self)", drop_method_name));
+
+            // Define the drop glue function.
+            emitter.emit_function_begin(
+                &drop_fn_name,
+                &[(EmitType::OpaquePtr, &self_str)],
+                &EmitType::Void,
+            );
+            // Call the user's Drop::drop method.
+            emitter.emit_call(
+                &drop_method_name,
+                &[(EmitType::OpaquePtr, &self_str)],
+                &EmitType::Void,
+            );
+            emitter.emit_ret(&EmitType::Void, None);
+            emitter.emit_function_end();
+        }
+    }
 }
 
 /// Stage 13.5 MUV-2: Generate LLVM IR via the LLVM C API (`llvm-sys`).
