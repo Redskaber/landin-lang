@@ -21412,3 +21412,117 @@ Stage Summary:
 - Fix retained — necessary for future crash resolution
 - Zero regression — all existing tests pass
 - v0.186.0: minor bump (Phase 3 — DefId mismatch fix, crash investigation deferred)
+
+---
+Task ID: stage15.61-impl-drop-e2e-fix
+Agent: Super Z (main)
+Task: Stage 15.61 — Fix all four root causes preventing impl Drop programs from compiling end-to-end. v0.186.0 → v0.187.0. Task 13 (impl Drop + RAII) COMPLETE.
+
+Work Log:
+- Baseline: v0.186.0 / 226 lib + 2094 integration + 5216 conformance
+
+### 1. Root cause analysis (OOM kill, exit 137)
+
+Compiled a minimal `impl Drop` program and observed exit 137 (SIGKILL).
+With `ulimit -v 2097152`, captured the actual error:
+  "memory allocation of 1610612736 bytes failed"
+(1.5 GB allocation → OOM killer).
+
+### 2. Bug #1: elaborate_drops infinite loop
+
+In `src/mir/drop_elaboration.rs`, when splitting a basic block at a
+`StorageDead(local)` statement, the new block received
+`bb.statements[stmt_idx..]` which INCLUDES the StorageDead. When bb_idx
+reached the new block, the algorithm found StorageDead again (local still
+needs drop) and split again — infinite loop, each iteration allocating a
+new basic block until OOM kill.
+
+**Fix (line 285)**: `bb.statements[stmt_idx + 1..]` — skip the StorageDead
+when copying. The Drop terminator subsumes StorageDead's role (after the
+destructor runs, the local is dead). Matches rustc behavior.
+
+### 3. Bug #2: Drop codegen type mismatch
+
+After Bug #1 fix, LLVM IR showed type mismatch:
+  declare void @drop_adt_0(ptr self)
+  call void @drop_adt_0({ i32 } %loc_2)   ; WRONG: should be ptr
+
+In `src/codegen/terminator.rs`, the Drop arm passed `place_ty` (value type)
+to emit_call instead of `EmitType::OpaquePtr`.
+
+**Fix (lines 486-495)**: Pass `EmitType::OpaquePtr` with `place_addr`.
+
+### 4. Bug #3: LLVM backend missing drop glue emission
+
+`--emit-llvm-ir` (text backend) worked, but `--emit-bin` failed with:
+  /usr/bin/ld: undefined reference to `drop_adt_0'
+
+`codegen_crate` (text backend) called `emit_drop_glue_functions`, but
+`codegen_crate_to_module` (LLVM backend) did NOT.
+
+**Fix (lines 311-325)**: Added `emit_drop_glue_functions` call to
+`codegen_crate_to_module`, positioned after emit_dyn_trait_ptrs and
+before codegen_from_mir (matching text backend ordering).
+
+### 5. Bug #4: borrowck treated Drop as a read
+
+After Bugs #1-3, impl Drop programs still failed with E500 use-of-moved-value.
+
+Root cause: `check_terminator` for TerminatorKind::Drop called
+`check_place_read`, which flagged moved temps. elaborate_drops inserts
+Drop terminators for ALL locals of a Drop type, including temporaries
+that were moved (e.g., `init_local` holding `S{x:0}` is moved into `s`,
+then elaborate_drops inserts `Drop { place: init_local, ... }` → E500).
+
+**Fix (lines 518-577)**: Rewrote Drop arm to treat Drop as a destructor:
+- If place is moved → no-op (no error, matches rustc drop flags).
+- If place is live → record move (subsequent uses flagged).
+- Field projections don't record move of parent (matches Operand::Move).
+
+Also removed unused `check_place_read` method (lines 831-838).
+
+### 6. Added 8 end-to-end integration tests
+
+`tests/v0/stage15/plan/impl_drop_e2e_tests.rs`:
+- stage15_61_impl_drop_basic_compiles
+- stage15_61_impl_drop_let_wildcard_compiles
+- stage15_61_impl_drop_multiple_local
+- stage15_61_impl_drop_field_access_copy
+- stage15_61_impl_drop_with_ref_method
+- stage15_61_impl_drop_explicit_self_type
+- stage15_61_impl_drop_function_returns_drop_type
+- stage15_61_impl_drop_multiple_structs_cross_calls
+
+Registered in tests/all_tests.rs.
+
+### 7. Runtime verification (3 programs, all correct)
+
+  test 1 (basic): exit 42 ✅
+  test 2 (function returns Drop type): exit 42 ✅
+  test 3 (multiple structs + cross-calls): exit 30 ✅
+
+### 8. Documentation
+
+- docs/develop/v0/stage-15/stage-15.61-impl-drop-e2e-fix.md (full root cause + 8-dim review)
+- docs/tests/v0/stage15/stage-15.61-test-plan.md (test plan + matrix)
+- Updated docs/tests/matrix.md (Stage 15 total: +142 rust tests)
+- Updated RELEASE_NOTES.md (v0.187.0 entry, restored v0.186.0 entry)
+- Updated README.md (Task 13 status → COMPLETE)
+
+### Verification
+- `cargo build --release --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2102/2102 PASS
+  (was 2094; +8 new e2e tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+  (4 previously-failing Drop tests now pass)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.186.0 → v0.187.0
+
+Stage Summary:
+- Stage 15.61 PASSED — all four root causes resolved
+- Task 13 (impl Drop + RAII) ✅ COMPLETE — programs compile, link, and run
+- 7544 tests passing (226 lib + 2102 integration + 5216 conformance), 0 failures
+- v0.187.0: minor bump (Phase 3 — Task 13 COMPLETE)

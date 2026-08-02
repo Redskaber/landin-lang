@@ -65,7 +65,10 @@ fn stage15_52_fn_with_ref_params_no_false_positives() {
         }
     "#;
     let result = compile(src);
-    assert!(!result.has_errors(), "Function with ref params should compile cleanly");
+    assert!(
+        !result.has_errors(),
+        "Function with ref params should compile cleanly"
+    );
 }
 
 /// Stage 15.52 test 4: Function returning a reference compiles cleanly.
@@ -82,7 +85,10 @@ fn stage15_52_fn_returning_ref_no_false_positives() {
         }
     "#;
     let result = compile(src);
-    assert!(!result.has_errors(), "Function returning ref should compile cleanly");
+    assert!(
+        !result.has_errors(),
+        "Function returning ref should compile cleanly"
+    );
 }
 
 /// Stage 15.52 test 5: Loop with references compiles cleanly.
@@ -99,7 +105,10 @@ fn stage15_52_loop_with_refs_no_false_positives() {
         }
     "#;
     let result = compile(src);
-    assert!(!result.has_errors(), "Loop with refs should compile cleanly");
+    assert!(
+        !result.has_errors(),
+        "Loop with refs should compile cleanly"
+    );
 }
 
 /// Stage 15.52 test 6: Struct with reference field compiles cleanly.
@@ -114,5 +123,8 @@ fn stage15_52_struct_with_ref_no_false_positives() {
         }
     "#;
     let result = compile(src);
-    assert!(!result.has_errors(), "Struct with ref field should compile cleanly");
+    assert!(
+        !result.has_errors(),
+        "Struct with ref field should compile cleanly"
+    );
 }

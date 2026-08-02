@@ -39,7 +39,10 @@ fn stage15_46_struct_no_drop_compiles() {
         }
     "#;
     let result = compile(src);
-    assert!(!result.has_errors(), "struct without Drop should compile cleanly");
+    assert!(
+        !result.has_errors(),
+        "struct without Drop should compile cleanly"
+    );
 }
 
 /// Stage 15.46 integration test 3: Complex programs (loops, method calls)
@@ -60,5 +63,8 @@ fn stage15_46_complex_program_compiles() {
         }
     "#;
     let result = compile(src);
-    assert!(!result.has_errors(), "complex program should compile cleanly");
+    assert!(
+        !result.has_errors(),
+        "complex program should compile cleanly"
+    );
 }

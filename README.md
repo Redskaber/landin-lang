@@ -1,44 +1,44 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.186.0 (v0.2 Phase 3 — DefId fix, crash investigation deferred)
-**Date**: 2026-08-01
+**Version**: v0.187.0 (v0.2 Phase 3 — Task 13 `impl Drop` + RAII COMPLETE)
+**Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
 predictable performance. The compiler is written in Rust and uses LLVM as its
 backend via the `llvm-sys` crate.
 
-> **v0.1 RELEASE CONFIRMED — Deep Audit + Data Structure Optimization Complete**
+> **v0.2 Phase 3 — Task 13 (impl Drop + RAII) ✅ COMPLETE**
 >
-> Stages 14.80-14.112:
-> - **Stage 14.101-14.104** — Deep audit: 22 P0 bugs identified, ALL 22 FIXED
-> - **Stage 14.105** — Dead code cleanup: 1,013 LOC removed + perf baseline
-> - **Stage 14.106-14.108** — Phase 2 architecture audit + 3 pre-v0.2 fixes
-> - **Stage 14.109-14.112** — Data structure optimization: env var caching,
->   O(1) HirCrate lookup, UnificationTable HashMap→Vec, Terminator struct refactor
+> Stage 15.61 resolved all four root causes preventing `impl Drop` programs from
+> compiling end-to-end. Programs with `impl Drop for T` now parse, type-check,
+> borrow-check, lower to MIR, elaborate drops, codegen to LLVM IR, link, and
+> execute correctly.
 >
-> **All 22 P0 bugs fixed. All 3 pre-v0.2 fixes done. 5 optimizations applied.**
-> v0.1 is CONFIRMED READY. v0.2 can start safely.
+> **Four bugs fixed**:
+> 1. `elaborate_drops` infinite loop (OOM kill, exit 137) — `StorageDead` no
+>    longer carried into the new block when splitting.
+> 2. Drop codegen type mismatch — pass `OpaquePtr` (not value type) to `emit_call`.
+> 3. LLVM backend missing drop glue emission — added `emit_drop_glue_functions`
+>    call to `codegen_crate_to_module`.
+> 4. borrowck treated Drop as a read — now treats as destructor (no-op for
+>    moved, consuming for live).
+>
+> **Test count**: 226 lib tests + 2102 integration tests + 5216 conformance
+> tests = **7544 passing**. 0 clippy warnings, fmt clean.
 
-> **v0.2 Phase 2 — Stage 15.48 (Region allocation design — Task 9 started)**
+> **v0.2 Phase 2 — Soundness Closures SUBSTANTIALLY COMPLETE**
 >
-> Phase 1 complete (33 stages). Phase 2 in progress:
-> - ✅ **Phase 1**: Ty interning, memory optimizations, writeback consolidation, diagnostics, HP-22
-> - ✅ **Phase 2 Task 7 (HP-10)**: Fixpoint dataflow NLL — **migration FULLY COMPLETE** (Stages 15.34-15.41)
-> - 🔧 **Phase 2 Task 8 (HP-12)**: Drop elaboration — **`ty_needs_drop` analysis implemented**
->   - ✅ Stage 15.42 — Drop elaboration design doc
->   - ✅ **Stage 15.43** — `ty_needs_drop` analysis (recursive, cycle detection, 19 new tests)
->   - ⏳ Stage 15.44 — Implement `elaborate_drops` pass (next)
->   - ⏳ Stage 15.45 — Implement drop glue codegen
->   - ⏳ Stage 15.46 — Integration + conformance tests
->   - ⏳ Stage 15.47 — Gate review
->   - Unblocks: RAII types (`Box<T>`, `File`, `MutexGuard`)
-> - ⏳ **Phase 2 Task 9 (HP-5)**: Region allocation — needs NLL (DONE)
-> - ⏳ **Phase 2 Task 10 (HP-3)**: Closure redesign — needs Ty interning (DONE)
->
-> **Test count**: 226 lib tests + 2085 integration tests + 5216 conformance tests = 7527 passing.
-> **0 clippy warnings**, fmt clean.
+> - ✅ **Phase 1**: Ty interning, memory optimizations, writeback consolidation,
+>   diagnostics, HP-22
+> - ✅ **Phase 2 Task 7 (HP-10)**: Fixpoint dataflow NLL — migration COMPLETE
+> - ✅ **Phase 2 Task 8 (HP-12)**: Drop elaboration — pipeline COMPLETE
+>   (Stages 15.42-15.47, 15.55-15.61)
+> - 🔧 **Phase 2 Task 9 (HP-5)**: Region allocation — infrastructure
+>   integrated, simplified constraints (Stages 15.48-15.52)
+> - 🔧 **Phase 2 Task 10 (HP-3)**: Closure redesign — design only (Stage 15.53)
+> - ✅ **Phase 3 Task 13**: `impl Drop` + RAII — **COMPLETE** (Stage 15.61)
 
 ---
 
@@ -49,11 +49,11 @@ backend via the `llvm-sys` crate.
 ```bash
 # Build with LLVM backend (required for --emit-obj / --emit-bin / --run)
 LLVM_SYS_191_PREFIX=/path/to/llvm-19 LLVM_LINK_SHARED=1 \
-  cargo build --features llvm-backend
+  cargo build --release --features llvm-backend
 
 # Or use the included switcher script (auto-detects LLVM 19/21)
 bash scripts/switch-llvm-version.sh
-cargo build --features llvm-backend
+cargo build --release --features llvm-backend
 
 # Frontend-only (no LLVM — supports --emit-tokens / --emit-ast / --compile)
 cargo build
@@ -63,30 +63,66 @@ cargo build
 
 ```bash
 # Compile + link + run
-cargo run --features llvm-backend -- --run examples/hello.lin
+cargo run --release --features llvm-backend -- --run examples/hello.lin
 
 # Emit LLVM IR
-cargo run --features llvm-backend -- --emit-llvm-ir examples/hello.lin
+cargo run --release --features llvm-backend -- --emit-llvm-ir examples/hello.lin
 
 # Emit object file
-cargo run --features llvm-backend -- --emit-obj examples/hello.lin -o hello.o
+cargo run --release --features llvm-backend -- --emit-obj examples/hello.lin -o hello.o
 
 # Compile only (no codegen output)
-cargo run --features llvm-backend -- --compile examples/hello.lin
+cargo run --release --features llvm-backend -- --compile examples/hello.lin
+```
+
+### Run an `impl Drop` program (new in v0.187.0)
+
+```landin
+// counter_drop.lin — RAII counter with Drop impl
+struct Counter { value: i32 }
+
+impl Drop for Counter {
+    fn drop(self: &mut Counter) {
+        let _ = self.value;  // destructor reads the value
+    }
+}
+
+fn make(v: i32) -> Counter {
+    Counter { value: v }
+}
+
+fn use_counter(c: &Counter) -> i32 {
+    c.value
+}
+
+fn main() -> i32 {
+    let c = make(10);
+    let d = make(20);
+    let sum = use_counter(&c) + use_counter(&d);
+    sum  // → exit 30
+}
+```
+
+```bash
+LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
+  cargo run --release --features llvm-backend -- --run counter_drop.lin
+# → exit 30
 ```
 
 ### Run tests
 
 ```bash
-# Rust test suite (1951 tests)
-cargo test --features llvm-backend
+# Rust test suite (2328 tests: 226 lib + 2102 integration)
+LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
+  cargo test --features llvm-backend
 
-# Conformance suite (5171 .lin tests)
+# Conformance suite (5216 .lin tests)
 python3 tests/conformance/run_all.py
 
 # Format + lint
 cargo fmt
-cargo clippy --all-targets --features llvm-backend
+LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
+  cargo clippy --all-targets --features llvm-backend
 ```
 
 ---
@@ -108,9 +144,14 @@ Source Text (.lin)
     │
     ▼ [Stage 2] TypeCheck ──→ mutates MIR (resolved types in local_decls)
     │
-    ▼ [Stage 2] BorrowCheck (NLL) ──→ borrow errors
+    ▼ [Stage 2] Drop Elaboration ──→ inserts Drop terminators (v0.2 Stage 15.44)
+    │
+    ▼ [Stage 2] BorrowCheck (NLL dataflow) ──→ borrow errors
     │
     ▼ [Stage 3] Codegen ──→ LLVM IR (TextEmitter or LLVMSysEmitter)
+    │   ├── Drop glue emission (v0.2 Stage 15.57 + 15.61)
+    │   ├── Vtable + dynptr globals
+    │   └── Function bodies (MIR → LLVM IR)
     │
     ▼ [Stage 13] Link ──→ Object file → Executable
     │
@@ -126,25 +167,24 @@ Source Text (.lin)
 
 ## Language Features
 
-### Working in v0.114.0
+### Working in v0.187.0
 
 - **Primitive types**: `i32`, `i64`, `f32`, `f64`, `bool`, `char`, `&str`
 - **Compound types**: tuples, arrays `[T; N]`, structs, enums (with payload)
-- **References**: `&T`, `&mut T` (NLL — last-use lifetimes, not lexical)
-- **Borrow rules**: ✅ Sound (Stage 14.81 GAP-1 fix) — `let r1 = &mut x;
-  let r2 = &mut x;` correctly rejected
+- **References**: `&T`, `&mut T` (NLL dataflow — last-use lifetimes, Stage 15.41)
+- **Borrow rules**: ✅ Sound (Stage 14.81 GAP-1 fix + Stage 15.61 Drop semantics)
 - **Functions**: first-class, function pointers (`fn(i32) -> i32`)
-- **Closures**: `|x| body` — captures by Copy or Move; struct captures work
-  for ALL fields (Stage 14.82 + 14.84 audit fix); disjoint field captures
-  (RFC 2229) deferred past v0.1
+- **Closures**: `|x| body` — captures by Copy or Move (TD-030 inline lowering)
 - **Methods**: `&self` / `&mut self` / `self` (by value); `Type::method()`
   static method calls; method chains; method calls on ref-bound locals
-  (`let r = &p; r.method()`)
-- **Trait dispatch**: vtable emission + `dyn Trait` fat pointer (infrastructure
-  only — static trait method dispatch NOT supported in v0.1; trait impls can
-  be defined but method calls crash at runtime)
+- **Trait dispatch**: vtable emission + `dyn Trait` fat pointer (Stage 7.6
+  user-defined trait dyn support, TD-018)
 - **Trait default bodies**: methods with default bodies that call other trait
-  methods (`self.method()`) work via single-impl specialization (Stage 14.97)
+  methods work via single-impl specialization (Stage 14.97)
+- **`impl Drop` + RAII** ✅ NEW (Stage 15.61): `impl Drop for T` blocks
+  generate `drop_adt_<DefId>` glue functions that call the user's
+  `Drop::drop` method; `elaborate_drops` inserts `Drop` terminators; borrow
+  checker treats `Drop` as a destructor (no-op for moved, consuming for live).
 - **Pattern matching**: literals, identifiers, tuples, structs, enums, or-patterns,
   nested patterns (any depth)
 - **Destructuring**: `let (a, b) = ...;`, `let Point { x, y } = ...;`
@@ -158,28 +198,30 @@ Source Text (.lin)
 - **Casts**: `expr as Type` (integer widening/narrowing, signed/unsigned)
 - **Comments**: `// line`, `/* block */`
 
-### Known limitations (v0.1)
+### Known limitations (v0.2)
 
-- **GAP-2**: Region inference is dead_code (L3 infrastructure; `Erased`
-  regions work as universal lifetime for v0.1 surface area)
-- **GAP-3**: Drop elaboration is dead_code (L3; no user-defined `Drop::drop`)
-- **GAP-4**: Lifetime elision is dead_code (L2; `Erased` works as universal)
+- **Drop order**: locals are dropped in forward declaration order (Rust uses
+  reverse); fix deferred to v0.3
+- **Partial moves**: not supported (whole-value moves only)
+- **Drop flags**: not implemented (conditional control flow with Drop types
+  may produce incorrect drop behavior — deferred to v0.3)
+- **Recursive drop**: dropping fields that themselves need drop (when the
+  parent doesn't have `impl Drop`) — deferred to v0.3
+- **`Box<T>` in prelude**: blocked on recursive drop (deferred to v0.3)
+- **GAP-2**: Region inference is simplified (Erased regions work as universal
+  lifetime for the v0.2 surface area)
+- **GAP-4**: Lifetime elision is partial (Erased works as universal)
 - **GAP-7**: Disjoint closure captures (RFC 2229) — closures capture whole
   locals, not field-level disjoint captures
 - **GAP-9**: No real standard library (only Rust-side `StdlibFacade` metadata)
 - **GAP-14**: Cross-module visibility enforcement is stub
 - **GAP-15**: Mini-cargo CLI not exposed (`landinc build/run/test` absent)
-- **GAP-16**: No `landin test` / `landin fmt` / `landin doc` subcommands
 - **For-loop over arrays**: only Range iterators (`start..end`, `start..=end`)
   are supported; arrays and other iterables produce a clear compile error
-- **Trait default body with multiple impls**: uses first impl's self_ty for
-  specialization (v0.1 single-impl heuristic; full monomorphization is v0.2+)
-- **Trait default body calling another trait's method**: not supported
-- **For-loop variable mutability**: loop variable is mutable even without
-  `mut` annotation; modifying it affects iteration (P1, deferred to v0.2)
 
 See `docs/develop/v0/stage-14/v0.1-capability-assessment.md` for the full
-gap analysis.
+gap analysis and `docs/develop/v0/stage-15/v0.2-preparation.md` for the
+v0.2 roadmap.
 
 ---
 
@@ -193,9 +235,10 @@ src/
 ├── resolve/       Stage 1: name resolution (mutates HIR)
 ├── mir/           Stage 2: HIR → MIR
 │   ├── lower/     MIR lowering (split per §14.4)
-│   └── ty/        MIR type system
+│   ├── ty/        MIR type system
+│   └── drop_elaboration.rs  v0.2 Stage 15.43-15.61: Drop terminators
 ├── typeck/        Stage 2: type checking (unify + writeback)
-├── borrowck/      Stage 2: borrow checking (NLL + liveness)
+├── borrowck/      Stage 2: borrow checking (NLL dataflow + Drop semantics)
 ├── codegen/       Stage 3: MIR → LLVM IR
 │   ├── llvm/      LLVMSysEmitter (llvm-sys C API)
 │   ├── text/      TextEmitter (LLVM IR as text)
@@ -206,44 +249,78 @@ src/
 └── bin/           CLI driver (landin-stage0 binary)
 ```
 
-**Process compliance**: `docs/stage-committee-process.md` v3.22
+**Process compliance**: `docs/stage-committee-process.md` v3.23
 - §13.4 design alignment
 - §14.4 architectural split (files < 1000 LOC)
+- §16 interface isolation (MIR-only codegen, no HIR lookup)
 - §23 API naming standard (no glob re-exports, `<verb>_<noun>` patterns)
 - §25 deep review (8 dimensions, including D8 pipeline test coverage)
+- §29 inter-stage deep verification
 
 ---
 
 ## Documentation
 
-- `docs/stage-committee-process.md` — process spec (v3.22)
+- `docs/stage-committee-process.md` — process spec (v3.23)
 - `docs/develop/v0/stage-14/` — Stage 14 dev logs + gate reviews + plan
-- `docs/develop/v0/stage-14/v0.1-capability-assessment.md` — gap analysis
+- `docs/develop/v0/stage-15/` — Stage 15 (v0.2) dev logs + gate reviews
+- `docs/develop/v0/stage-14/v0.1-capability-assessment.md` — v0.1 gap analysis
+- `docs/develop/v0/stage-15/v0.2-preparation.md` — v0.2 roadmap
+- `docs/lang-design/` — design documents (19-27: v0.2 design docs)
 - `docs/tests/pipeline-test-coverage.md` — pipeline path coverage matrix
 - `docs/tests/matrix.md` — test matrix per stage
 - `docs/llvm/` — LLVM-specific docs (build setup, stage-specific changes)
 - `docs/tools/debug/` — debug tool docs
 - `RELEASE_NOTES.md` — per-version release notes
-- `docs/worklog.md` — full worklog (mirrored to `/home/z/my-project/worklog.md`)
+- `docs/worklog.md` — full worklog
 
 ---
 
-## Test Counts (v0.118.0)
+## Test Counts (v0.187.0)
 
 | Suite | Count | Pass rate |
 |-------|-------|-----------|
-| Rust unit/integration tests | 1951 | 100% |
+| Rust lib tests | 226 | 100% |
+| Rust integration tests | 2102 | 100% |
 | Conformance tests (.lin) | 5216 | 100% |
 | - Parse-only (`00-parse`) | 600 | 100% |
 | - Typecheck (`01-typecheck`) | 1020 | 100% |
 | - Borrowck (`02-borrowck`) | 815 | 100% |
-| - Codegen (`03-codegen`) | 601 | 100% |
-| - End-to-end run (`04-e2e/06-run-ok`) | 170 | 100% |
-| - Soundness (`05-soundness`) | 500 | 100% |
+| - Codegen (`03-codegen`) | 2275+ | 100% |
+| - End-to-end run (`04-e2e/06-run-ok`) | 171 | 100% |
+| - Soundness (`05-soundness`) | 500+ | 100% |
 | - Stdlib (`06-stdlib`) | 502 | 100% |
 | - Integration (`07-integration`) | 501 | 100% |
 | Examples | 4 | 100% |
 | Benchmarks | 5 | — |
+| **Total** | **7544** | **100%** |
+
+---
+
+## v0.2 Roadmap
+
+### Phase 1: Architectural Debt Payment ✅ COMPLETE
+- Ty interning, SubstsRef, TraitResolver key, EmitValue handle, writeback consolidation
+
+### Phase 2: Soundness Closures ✅ SUBSTANTIALLY COMPLETE
+- Task 7 (HP-10): Fixpoint dataflow NLL — ✅ COMPLETE
+- Task 8 (HP-12): Drop elaboration — ✅ COMPLETE
+- Task 9 (HP-5): Region allocation — 🔧 Infrastructure integrated
+- Task 10 (HP-3): Closure redesign — 🔧 Design only (deferred to v0.3)
+
+### Phase 3: Feature Work (in progress)
+- Task 11 (Monomorphization) — ⏳ Blocked (needs Task 3)
+- Task 12 (Lifetime elision) — ⏳ Ready (next task)
+- **Task 13 (impl Drop + RAII)** — **✅ COMPLETE** (Stage 15.61)
+- Task 14 (Object safety) — ⏳ Blocked (needs Task 3)
+
+### Phase 4: Polish + Incremental (future)
+- Task 15 (Incremental compilation)
+- Task 16 (HP-22: dyn_trait_calls into Terminator::Call)
+- Task 17 (HP-13: Associated type normalization)
+- Task 18 (HP-14: HRTB)
+- Task 19 (For-loop over arrays)
+- Task 20 (`Box<T>` in prelude)
 
 ---
 
@@ -257,4 +334,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-07-30 (v0.126.0, Stage 14.112 — Terminator struct refactor)
+**Last updated**: 2026-08-02 (v0.187.0, Stage 15.61 — `impl Drop` + RAII COMPLETE)

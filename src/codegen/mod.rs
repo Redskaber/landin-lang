@@ -308,6 +308,21 @@ pub fn codegen_crate_to_module(result: &crate::driver::CompileResult) -> LLVMSys
     // global to not exist yet when functions referenced it.
     emit_vtables(&result.trait_resolver, &result.interner, &mut emitter);
     emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, &mut emitter);
+    // Stage 15.61: Emit drop glue functions in the LLVM backend too.
+    // Previously this was only called in `codegen_crate` (text backend),
+    // causing "undefined reference to `drop_adt_<N>`" link errors when
+    // using `--emit-obj` / `--emit-bin` / `--run` with `impl Drop` programs.
+    // The LLVM backend must emit the same drop glue functions as the text
+    // backend so that `TerminatorKind::Drop` codegen can resolve them.
+    //
+    // Per §16: codegen reads the pre-built TraitResolver (data only).
+    // Per §23: function name follows `drop_<noun>_<id>` pattern.
+    emit_drop_glue_functions(
+        &result.trait_resolver,
+        &result.interner,
+        &result.fn_name_by_def_id,
+        &mut emitter,
+    );
     codegen_from_mir(
         &result.mirs,
         &result.body_metas,

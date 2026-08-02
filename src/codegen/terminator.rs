@@ -408,38 +408,31 @@ pub(crate) fn codegen_terminator(
             }
             emitter.emit_unreachable();
         }
-        // Stage 15.45 (HP-12 step 4): TerminatorKind::Drop now calls drop glue.
+        // Stage 15.45 (HP-12 step 4): TerminatorKind::Drop calls drop glue.
         //
-        // The `Drop` terminator is inserted by `elaborate_drops` (Stage 15.44)
-        // before `StorageDead` for locals whose type needs drop. When this
+        // The `Drop` terminator is inserted by `elaborate_drops` (Stage 15.44,
+        // fixed in Stage 15.61) for locals whose type needs drop. When this
         // terminator is reached, the codegen:
         //   1. Computes the place's address (pointer to the value).
-        //   2. Calls the drop glue function `drop_<Type>` with the pointer.
+        //   2. Calls the drop glue function `drop_adt_<DefId>` with the pointer.
         //   3. Branches to the target block.
         //
-        // The drop glue function (`drop_<Type>`) is emitted by
-        // `emit_drop_glue` (to be implemented in Stage 15.46). For types
-        // that implement `Drop`, it calls the user's `Drop::drop` method,
-        // then recursively drops each field. For types that don't implement
-        // `Drop` but have fields that need drop, it just drops the fields.
+        // The drop glue function (`drop_adt_<DefId>`) is emitted by
+        // `emit_drop_glue_functions` (Stage 15.57). For types that implement
+        // `Drop`, it calls the user's `Drop::drop` method with the pointer.
+        //
+        // Stage 15.61 fix: the call now passes `EmitType::OpaquePtr` (not the
+        // place's value type). The drop glue function is declared as
+        // `void @drop_adt_<DefId>(ptr %self)`, so the argument MUST be a
+        // pointer. Previously, passing `place_ty` (e.g., `{ i32 }`) caused
+        // a type mismatch between call site and declaration.
         //
         // Per §1.0 原則 3 "显式 > 隐式": the drop call is explicit.
-        // Per §23: the drop glue function name follows `drop_<Type>` pattern.
-        //
-        // Note: In v0.170.0, no `Drop` terminators are generated (because
-        // `elaborate_drops` is a no-op — no types implement Drop yet). This
-        // code path is therefore not exercised by existing tests. When
-        // Stage 15.46 adds `impl Drop` support, `Drop` terminators will be
-        // generated and this code path will be tested.
+        // Per §23: the drop glue function name follows `drop_<noun>_<id>`.
         TerminatorKind::Drop { place, target, .. } => {
             // Compute the place's address (pointer to the value to drop).
             let place_addr = crate::codegen::mir_translation::compute_place_address(
                 emitter, mir, place, interner, layouts,
-            );
-
-            // Get the place's LLVM type to pass to emit_call.
-            let place_ty = crate::codegen::mir_translation::detect_place_type(
-                mir, place, layouts,
             );
 
             // Call the drop glue function.
@@ -449,14 +442,8 @@ pub(crate) fn codegen_terminator(
             // from the local's type declaration (e.g., `drop_adt_3` for
             // DefId(3)). For other types, we use a generic name.
             //
-            // Per §23: function name follows `drop_<noun>` pattern.
+            // Per §23: function name follows `drop_<noun>_<id>` pattern.
             // Per §1.0 原則 3 "显式 > 隐式": the drop call is explicit.
-            //
-            // Note: In v0.170.0, no Drop terminators are generated (because
-            // `elaborate_drops` is a no-op). This code path is not exercised
-            // by existing tests. When Stage 15.46 adds `impl Drop` support,
-            // Drop terminators will be generated and this code path will be
-            // tested.
             let drop_fn_name = {
                 // Look up the place's MIR type to get the DefId (if ADT).
                 let mir_ty = match &place.kind {
@@ -473,9 +460,14 @@ pub(crate) fn codegen_terminator(
                 }
             };
 
+            // Stage 15.61: pass `OpaquePtr` (not the place's value type).
+            // The drop glue function expects `ptr %self`, and `place_addr`
+            // is the address of the place (an alloca pointer for a Local,
+            // or a GEP result for a projection). Passing the value type
+            // (e.g., `{ i32 }`) would cause an LLVM type mismatch.
             emitter.emit_call(
                 &drop_fn_name,
-                &[(place_ty.clone(), &place_addr)],
+                &[(EmitType::OpaquePtr, &place_addr)],
                 &EmitType::Void,
             );
 

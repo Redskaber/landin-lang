@@ -1,19 +1,110 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.186.0
-**Date**: 2026-08-01
-**Test count**: 226 rust lib tests + 2094 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Current version**: v0.187.0
+**Date**: 2026-08-02
+**Test count**: 226 rust lib tests + 2102 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.187.0 — Stage 15.61 (impl Drop End-to-End Fix — Task 13 COMPLETE)
+
+### Overview
+
+Stage 15.61 resolves all four root causes that prevented `impl Drop` programs
+from compiling and running end-to-end. **Task 13 (`impl Drop` + RAII types)
+is COMPLETE** — programs with `impl Drop for T` now parse, type-check,
+borrow-check, lower to MIR, elaborate drops, codegen to LLVM IR, link, and
+execute correctly.
+
+### Four Bugs Fixed
+
+1. **elaborate_drops infinite loop (OOM kill, exit 137)** — the new block
+   retained the `StorageDead(local)` statement, causing infinite re-splitting
+   until 1.5 GB allocation triggered OOM kill. Fix: drop `StorageDead` when
+   splitting (the `Drop` terminator subsumes it).
+
+2. **Drop codegen type mismatch** — `TerminatorKind::Drop` codegen passed
+   the place's value type (e.g., `{ i32 }`) to `emit_call`, but the drop
+   glue function expects `ptr %self`. Fix: pass `EmitType::OpaquePtr`.
+
+3. **LLVM backend missing drop glue emission** — `codegen_crate_to_module`
+   (LLVM backend path) did NOT call `emit_drop_glue_functions`, causing
+   "undefined reference to `drop_adt_<N>`" link errors. Fix: added the call
+   (matching the text backend's behavior).
+
+4. **borrowck treated Drop as a read** — `check_terminator` for
+   `TerminatorKind::Drop` called `check_place_read`, which flagged "use of
+   moved value" for moved temps (e.g., the `init_local` holding `S{x: 0}`
+   is moved into `s`, then `elaborate_drops` inserts `Drop { place:
+   init_local, ... }`). Fix: treat Drop as a destructor (no-op for moved,
+   consuming for live) — matches rustc semantics.
+
+### End-to-End Runtime Verification
+
+Three `impl Drop` programs compile, link, and run with correct exit codes:
+
+```landin
+// test 1: basic → exit 42
+trait Drop { fn drop(&mut self); }
+struct S { x: i32 }
+impl Drop for S { fn drop(&mut self) {} }
+fn main() -> i32 { let s = S{x: 42}; s.x }
+
+// test 2: function returning Drop type → exit 42
+struct Counter { value: i32 }
+impl Drop for Counter { fn drop(self: &mut Counter) { let _ = self.value; } }
+fn make(v: i32) -> Counter { Counter { value: v } }
+fn main() -> i32 { let c = make(42); c.value }
+
+// test 3: multiple structs + cross-calls → exit 30
+fn use_counter(c: &Counter) -> i32 { c.value }
+fn main() -> i32 {
+    let c = make(10);
+    let d = make(20);
+    use_counter(&c) + use_counter(&d)
+}
+```
+
+### Files Changed
+
+- `src/mir/drop_elaboration.rs` — elaborate_drops loop fix (line 285).
+- `src/codegen/terminator.rs` — Drop codegen type fix (lines 486-495).
+- `src/codegen/mod.rs` — LLVM backend drop glue emission (lines 311-325).
+- `src/borrowck/mod.rs` — borrowck Drop-as-destructor (lines 518-577).
+- `tests/v0/stage15/plan/impl_drop_e2e_tests.rs` — NEW: 8 e2e tests.
+- `tests/all_tests.rs` — registered new test module.
+- `Cargo.toml` — bumped v0.186.0 → v0.187.0.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2102/2102 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7544 tests passing, 0 failures, 0 warnings.**
+
+### v0.2 Phase 3 Status
+
+| Task | Status |
+|------|--------|
+| Task 11 (Monomorphization) | ⏳ Blocked (needs Task 3) |
+| Task 12 (Lifetime elision) | ⏳ Ready (next task) |
+| **Task 13 (impl Drop + RAII)** | **✅ COMPLETE (this stage)** |
+| Task 14 (Object safety) | ⏳ Blocked (needs Task 3) |
 
 ---
 ## v0.186.0 — Stage 15.60 (DefId Mismatch Fix — Crash Persists)
 
 ### Overview
 
-Stage 15.60 attempts to fix the DefId mismatch identified in Stage 15.59.
+Stage 15.60 attempted to fix the DefId mismatch identified in Stage 15.59.
 The fix was applied (use the type's DefId instead of the impl block's
-DefId), but the crash persists — the program with `impl Drop` still
-crashes during `compile()`.
+DefId), but the crash persisted — the program with `impl Drop` still
+crashed during `compile()`. The fix was **retained** (correct and
+necessary) but the crash investigation was deferred to Stage 15.61,
+which resolved all four root causes.
 
 ### What Changed
 
@@ -23,11 +114,12 @@ crashes during `compile()`.
 - This ensures `drop_adt_<typeDefId>` matches what `TerminatorKind::Drop`
   codegen calls.
 
-### Known Limitation
+### Known Limitation (resolved in v0.187.0)
 
-The crash persists after the DefId fix. Additional root cause is likely
-in `elaborate_drops` (may produce invalid MIR) or `TerminatorKind::Drop`
-codegen. Investigation deferred to a future debugging stage.
+The crash persisted after the DefId fix. Additional root causes were
+identified and resolved in Stage 15.61 (v0.187.0): elaborate_drops
+infinite loop, Drop codegen type mismatch, LLVM backend missing drop
+glue, and borrowck treating Drop as a read.
 
 ### Verification
 

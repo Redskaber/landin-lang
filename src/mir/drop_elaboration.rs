@@ -203,42 +203,35 @@ fn ty_needs_drop_impl(
 ///    `StorageDead` stay in the current block.
 /// 2. The current block's terminator is replaced with
 ///    `Drop { place: local, target: new_block }`.
-/// 3. A new basic block is created with:
-///    - The `StorageDead(local)` statement.
-///    - The remaining statements from the original block.
-///    - The original terminator.
+/// 3. A new basic block is created with the statements AFTER the
+///    `StorageDead` (the `StorageDead` itself is consumed by the
+///    `Drop` terminator — see Stage 15.61 fix below) plus the original
+///    terminator.
 ///
 /// This correctly models the drop semantics: the destructor runs BEFORE
 /// the local is marked as dead. The `Drop` terminator is a control-flow
 /// point (it branches to the target after running the destructor).
 ///
+/// ## Stage 15.61 fix — infinite-loop prevention
+///
+/// **Bug (Stage 15.60)**: The new block used to retain the
+/// `StorageDead(local)` statement. When `bb_idx` reached the new block,
+/// the algorithm found `StorageDead(local)` again (the local still needs
+/// drop) and split again — ad infinitum, until OOM kill (exit 137).
+///
+/// **Fix (Stage 15.61)**: The `StorageDead(local)` statement is **dropped**
+/// when splitting. The `Drop` terminator subsumes its role: after the
+/// destructor runs, the local is dead. The `StorageDead` marker is no
+/// longer needed (it was a stack-slot liveness hint, not a semantic
+/// requirement). This matches rustc's behaviour where `Drop` terminators
+/// replace `StorageDead` for types that need drop glue.
+///
 /// ## Drop order
 ///
-/// Locals are dropped in reverse declaration order (matching Rust's
-/// scope-end drop order). Since `StorageDead` statements are emitted in
-/// declaration order (local 1, 2, 3, ...) at function return, and we
-/// process them in forward order, the first local's `Drop` terminator
-/// is inserted first, creating a chain:
-///
-/// ```text
-/// bb_return:
-///   ...statements before StorageDead chain...
-///   Drop(_1, bb_drop1)   // if _1 needs drop
-///
-/// bb_drop1:
-///   StorageDead(_1)
-///   Drop(_2, bb_drop2)   // if _2 needs drop
-///
-/// bb_drop2:
-///   StorageDead(_2)
-///   ...remaining StorageDead statements...
-///   Return
-/// ```
-///
-/// Wait — this is FORWARD order, not reverse. Rust drops in REVERSE
-/// declaration order. For the MVP, we process `StorageDead` in forward
-/// order (matching the current emission order). A future stage will
-/// reverse the `StorageDead` emission order to match Rust's semantics.
+/// Locals are dropped in forward declaration order in the current MVP
+/// (matching the `StorageDead` emission order). Rust proper uses reverse
+/// declaration order; a future stage will reverse the `StorageDead`
+/// emission to match.
 ///
 /// Per §23: function name follows `<verb>_<noun>` pattern (free-function
 /// entry point).
@@ -246,6 +239,8 @@ fn ty_needs_drop_impl(
 /// transformation, not a cross-stage operation.
 /// Per §1.0 原則 3 "显式 > 隐式": the `Drop` terminators are explicit
 /// in the MIR, not implicit in `StorageDead`.
+/// Per §1.0 原則 5 "报错 > 静默": the pass is total — it terminates
+/// on all inputs (the Stage 15.61 fix guarantees termination).
 pub fn elaborate_drops(
     mir: &mut crate::mir::body::MirBody,
     resolver: &TraitResolver,
@@ -255,9 +250,11 @@ pub fn elaborate_drops(
     use crate::mir::place::{Place, PlaceKind};
 
     // We need to process blocks in order. Since we may insert new blocks
-    // (which are appended to the end of basic_blocks), we record the
-    // original block count and only process blocks up to that count.
-    // New blocks created by splitting are processed in subsequent iterations.
+    // (which are appended to the end of basic_blocks), we process all
+    // blocks including newly created ones. The Stage 15.61 fix guarantees
+    // termination: each split removes a `StorageDead` statement rather
+    // than carrying it forward, so the new block has strictly fewer
+    // `StorageDead` statements needing drop than the original.
     let mut bb_idx = 0;
     while bb_idx < mir.basic_blocks.len() {
         let bb_id = BasicBlockId(bb_idx as u32);
@@ -281,8 +278,11 @@ pub fn elaborate_drops(
             };
 
             // Split the block at stmt_idx.
-            // 1. Save the statements from stmt_idx onwards + the terminator.
-            let remaining_stmts: Vec<Statement> = bb.statements[stmt_idx..].to_vec();
+            // 1. Save the statements AFTER stmt_idx (skip the StorageDead
+            //    itself — Stage 15.61 fix). The StorageDead is consumed
+            //    by the Drop terminator; carrying it into the new block
+            //    would cause the new block to split again (infinite loop).
+            let remaining_stmts: Vec<Statement> = bb.statements[stmt_idx + 1..].to_vec();
             let original_terminator = bb.terminator.clone();
             let original_term_span = bb.terminator_span;
             let block_span = bb.span;
@@ -311,7 +311,9 @@ pub fn elaborate_drops(
             };
             bb_mut.terminator_span = stmt_span;
 
-            // 4. Create a new block with the remaining statements + original terminator.
+            // 4. Create a new block with the remaining statements (AFTER
+            //    the StorageDead) + original terminator. The StorageDead
+            //    is NOT carried forward — see Stage 15.61 fix above.
             let new_block_id = mir.new_block();
             let new_block = mir.block_mut(new_block_id);
             new_block.statements = remaining_stmts;
@@ -319,10 +321,10 @@ pub fn elaborate_drops(
             new_block.terminator_span = original_term_span;
             new_block.span = block_span;
 
-            // Move to the next block. The current block's remaining statements
-            // were all moved to the new block, so the current block no longer
-            // has any StorageDead needing drop. The new block will be processed
-            // when bb_idx reaches its index.
+            // Move to the next block. The current block no longer has
+            // any StorageDead needing drop (truncated). The new block
+            // has strictly fewer StorageDead statements needing drop
+            // (we removed one). The loop terminates.
             bb_idx += 1;
         } else {
             // No StorageDead needing drop in this block — move to the next.
@@ -536,16 +538,8 @@ mod tests {
         let (resolver, interner, _adt_layouts) = build_test_context();
 
         let mut body = MirBody::new(Span::DUMMY);
-        let local_0 = body.new_local(
-            ty(TyKind::Int(IntTy::I32)),
-            None,
-            Span::DUMMY,
-        );
-        let local_1 = body.new_local(
-            ty(TyKind::Bool),
-            None,
-            Span::DUMMY,
-        );
+        let local_0 = body.new_local(ty(TyKind::Int(IntTy::I32)), None, Span::DUMMY);
+        let local_1 = body.new_local(ty(TyKind::Bool), None, Span::DUMMY);
         let bb0 = body.new_block();
         body.block_mut(bb0).statements.push(Statement {
             kind: StatementKind::StorageDead(local_0),

@@ -532,8 +532,40 @@ impl<'a> BorrowChecker<'a> {
             TerminatorKind::SwitchInt { discr, .. } => {
                 self.check_operand(mir, discr, Span::DUMMY);
             }
+            // Stage 15.61 fix: `TerminatorKind::Drop` is a destructor, not a
+            // read. Previously, `check_place_read` was called, which flagged
+            // "use of moved value" for moved temps (e.g., the `init_local`
+            // that holds `S{x: 0}` is moved into `s`, then `elaborate_drops`
+            // inserts `Drop { place: init_local, ... }` at scope end).
+            //
+            // In rustc, `Drop` terminators use drop flags to skip moved
+            // values. For Landin's MVP, we treat `Drop` as a no-op for moved
+            // places (no error) and a consuming operation for live places
+            // (record the move so subsequent uses are flagged).
+            //
+            // Per §1.0 原則 5 "报错 > 静默": dropping a moved value is safe
+            // (no-op); dropping a live value consumes it.
+            // Per §1.0 原則 3 "显式 > 隐式": the `Drop` terminator is
+            // explicit in the MIR, but its semantics allow skipping.
             TerminatorKind::Drop { place, .. } => {
-                self.check_place_read(mir, place, Span::DUMMY);
+                let path = self.place_path(mir, place);
+                // If the place is already moved, the drop is a no-op (the
+                // value has been transferred elsewhere). Do NOT error.
+                if !self.moves.is_moved(&path) {
+                    // The place is live — the drop consumes it. Record the
+                    // move so any subsequent use of the place is flagged.
+                    //
+                    // For field projections (e.g., dropping a single field),
+                    // we don't record a move of the parent (matches the
+                    // Operand::Move behavior in `check_operand`).
+                    let is_field_projection = matches!(
+                        &place.kind,
+                        PlaceKind::Projection(_, ProjectionElem::Field(_, _))
+                    );
+                    if !is_field_projection {
+                        self.moves.record_move(path);
+                    }
+                }
             }
             // Assert reads the condition operand (a bool). Check it
             // for use-after-move just like any other operand.
@@ -794,15 +826,6 @@ impl<'a> BorrowChecker<'a> {
         }
         // Writing re-initializes a moved place
         self.moves.un_move(&path);
-    }
-
-    /// Check a read from a place: ensure it's not moved.
-    fn check_place_read(&mut self, mir: &MirBody, lv: &Place, span: Span) {
-        let path = self.place_path(mir, lv);
-        if self.moves.is_moved(&path) {
-            self.errors
-                .push(BorrowError::use_after_move("use of moved value", span));
-        }
     }
 
     /// Build a field-sensitive `PlacePath` from a place.

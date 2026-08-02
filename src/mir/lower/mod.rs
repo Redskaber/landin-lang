@@ -779,8 +779,9 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
                 // changes to handle ProjectionElem::Deref in field access paths.
                 // See docs/worklog.md Stage 14.18 for details.
                 if param.self_kind.is_some() {
-                    resolve_self_param_type(&cx, body, param.self_kind)
-                        .unwrap_or_else(|| lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter))
+                    resolve_self_param_type(&cx, body, param.self_kind).unwrap_or_else(|| {
+                        lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter)
+                    })
                 } else {
                     lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter)
                 }
@@ -950,10 +951,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
 /// Per §23: function name follows `<verb>_<noun>_<noun>_<prep>_<noun>`
 /// pattern with `_with_regions` suffix.
 /// Per §1.0 原則 3 "显式 > 隐式": regions are explicit in the MIR.
-pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(
-    ty: &HirTy,
-    region_counter: &mut u32,
-) -> Ty {
+pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &mut u32) -> Ty {
     let span = Span::DUMMY;
     match &ty.kind {
         HirTyKind::Bool => Ty::new(TyKind::Bool, span),
@@ -1012,17 +1010,27 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(
                 ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
             };
             Ty::new(
-                TyKind::RawPtr(mir_mut, Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter))),
+                TyKind::RawPtr(
+                    mir_mut,
+                    Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter)),
+                ),
                 span,
             )
         }
-        HirTyKind::Slice(inner) => {
-            Ty::new(TyKind::Slice(Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter))), span)
-        }
+        HirTyKind::Slice(inner) => Ty::new(
+            TyKind::Slice(Box::new(lower_hir_ty_to_mir_ty_with_regions(
+                inner,
+                region_counter,
+            ))),
+            span,
+        ),
         HirTyKind::Array(inner, count_expr) => {
             let len_const = const_eval_array_len(count_expr, span);
             Ty::new(
-                TyKind::Array(Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter)), Box::new(len_const)),
+                TyKind::Array(
+                    Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter)),
+                    Box::new(len_const),
+                ),
                 span,
             )
         }
@@ -1056,7 +1064,10 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(
             abi,
             is_unsafe,
         } => {
-            let mir_inputs: Vec<Ty> = inputs.iter().map(|t| lower_hir_ty_to_mir_ty_with_regions(t, region_counter)).collect();
+            let mir_inputs: Vec<Ty> = inputs
+                .iter()
+                .map(|t| lower_hir_ty_to_mir_ty_with_regions(t, region_counter))
+                .collect();
             let mir_output = Box::new(lower_hir_ty_to_mir_ty_with_regions(output, region_counter));
             Ty::new(
                 TyKind::FnPtr(crate::mir::ty::Sig {

@@ -27,7 +27,10 @@ fn stage15_58_no_drop_still_compiles() {
         }
     "#;
     let result = compile(src);
-    assert!(!result.has_errors(), "Program without Drop should compile cleanly");
+    assert!(
+        !result.has_errors(),
+        "Program without Drop should compile cleanly"
+    );
 }
 
 /// Stage 15.58 test 2: Multiple structs, none with Drop — no regression.
@@ -43,7 +46,10 @@ fn stage15_58_multiple_structs_no_drop() {
         }
     "#;
     let result = compile(src);
-    assert!(!result.has_errors(), "Multiple structs without Drop should compile cleanly");
+    assert!(
+        !result.has_errors(),
+        "Multiple structs without Drop should compile cleanly"
+    );
 }
 
 /// Stage 15.58 test 3: Struct with methods (no Drop) — no regression.
@@ -62,5 +68,8 @@ fn stage15_58_struct_with_methods_no_drop() {
         }
     "#;
     let result = compile(src);
-    assert!(!result.has_errors(), "Struct with methods (no Drop) should compile cleanly");
+    assert!(
+        !result.has_errors(),
+        "Struct with methods (no Drop) should compile cleanly"
+    );
 }

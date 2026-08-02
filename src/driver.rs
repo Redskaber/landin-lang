@@ -1032,11 +1032,7 @@ pub fn compile(src: &str) -> CompileResult {
         // doesn't support `impl Drop for T`), so `elaborate_drops` is a
         // no-op. When `impl Drop` support is added (future stage), the
         // pass will start inserting `Drop` terminators.
-        crate::mir::drop_elaboration::elaborate_drops(
-            &mut mir,
-            &trait_resolver,
-            &interner,
-        );
+        crate::mir::drop_elaboration::elaborate_drops(&mut mir, &trait_resolver, &interner);
 
         // Borrow check
         // Stage 14.106 (HP-1 fix attempt): Pass TraitResolver to BorrowChecker.

@@ -651,8 +651,8 @@ impl RegionInferenceContext {
     /// Per §16: reads only `&MirBody` — no writes, no HIR lookup.
     pub(crate) fn collect_mir_constraints(&mut self, mir: &crate::mir::body::MirBody) {
         use crate::mir::body::{StatementKind, TerminatorKind};
-        use crate::mir::place::Rvalue;
         use crate::mir::place::PlaceKind;
+        use crate::mir::place::Rvalue;
 
         for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
             let _bb_id = crate::mir::body::BasicBlockId(bb_idx as u32);
@@ -742,7 +742,9 @@ impl RegionInferenceContext {
                                 self.add_outlives_constraint(
                                     r,
                                     RegionVid(0),
-                                    ConstraintCause::FnSignature { span: bb.terminator.span },
+                                    ConstraintCause::FnSignature {
+                                        span: bb.terminator.span,
+                                    },
                                 );
                             }
                         }
@@ -753,7 +755,11 @@ impl RegionInferenceContext {
     }
 
     /// Helper: look up the type of a place in the MIR body.
-    fn place_ty(&self, mir: &crate::mir::body::MirBody, lv: &crate::mir::place::Place) -> crate::mir::ty::Ty {
+    fn place_ty(
+        &self,
+        mir: &crate::mir::body::MirBody,
+        lv: &crate::mir::place::Place,
+    ) -> crate::mir::ty::Ty {
         use crate::mir::place::PlaceKind;
         match &lv.kind {
             PlaceKind::Local(id) => {
@@ -763,9 +769,7 @@ impl RegionInferenceContext {
                     crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, lv.span)
                 }
             }
-            PlaceKind::Static(_) => {
-                crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, lv.span)
-            }
+            PlaceKind::Static(_) => crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, lv.span),
             PlaceKind::Projection(base, elem) => {
                 let base_ty = self.place_ty(mir, base);
                 match elem {
