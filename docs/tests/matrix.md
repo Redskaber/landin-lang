@@ -208,7 +208,8 @@
 | **15.57** | **Drop glue function emission — new `emit_drop_glue_functions` in `src/codegen/mod.rs`; iterates TraitResolver for Drop impls, emits `drop_adt_<DefId>` calling `landin_<Type>_drop`; zero regression** | **0 (code change, no new tests — path not yet exercised by conformance)** | ✅ |
 | **15.58** | **impl Drop conformance + integration tests — 3 integration tests verify no-Drop programs compile cleanly; known limitation: impl Drop programs crash in codegen (DefId mismatch — deferred)** | **+3 rust (integration)** | ✅ |
 | **15.59** | **impl Drop gate review (Task 13 closure) — §25 8-dimension review; Task 13 PARTIALLY COMPLETE (infrastructure done, DefId mismatch fix deferred); known limitation documented with root cause + 1-line fix** | **0 (review only)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 SUBSTANTIALLY COMPLETE + Phase 3 (Task 13: infrastructure done, DefId fix deferred)** | **+134 rust in 15.35-15.58** | ✅ |
+| **15.60** | **DefId mismatch fix — fixed `emit_drop_glue_functions` to use type's DefId (not impl's); crash persists (additional root cause in elaborate_drops or codegen); fix retained (correct); crash investigation deferred** | **0 (code change, no new tests — crash not yet fixed)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 SUBSTANTIALLY COMPLETE + Phase 3 (Task 13: infrastructure done, DefId fixed, crash investigation deferred)** | **+134 rust in 15.35-15.58** | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

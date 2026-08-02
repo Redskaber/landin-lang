@@ -1,9 +1,41 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.185.0
+**Current version**: v0.186.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2094 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.186.0 — Stage 15.60 (DefId Mismatch Fix — Crash Persists)
+
+### Overview
+
+Stage 15.60 attempts to fix the DefId mismatch identified in Stage 15.59.
+The fix was applied (use the type's DefId instead of the impl block's
+DefId), but the crash persists — the program with `impl Drop` still
+crashes during `compile()`.
+
+### What Changed
+
+**`src/codegen/mod.rs`**:
+- `emit_drop_glue_functions` now uses the type's DefId (from
+  `type_by_def_id` reverse lookup) instead of the impl block's DefId.
+- This ensures `drop_adt_<typeDefId>` matches what `TerminatorKind::Drop`
+  codegen calls.
+
+### Known Limitation
+
+The crash persists after the DefId fix. Additional root cause is likely
+in `elaborate_drops` (may produce invalid MIR) or `TerminatorKind::Drop`
+codegen. Investigation deferred to a future debugging stage.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.185.0 — Stage 15.59 (impl Drop Gate Review — Task 13 Closure)

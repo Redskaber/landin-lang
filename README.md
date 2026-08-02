@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.185.0 (v0.2 Phase 3 — impl Drop gate review, Task 13 closure)
+**Version**: v0.186.0 (v0.2 Phase 3 — DefId fix, crash investigation deferred)
 **Date**: 2026-08-01
 
 A work-in-progress systems programming language inspired by Rust, designed for

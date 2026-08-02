@@ -215,9 +215,21 @@ fn emit_drop_glue_functions(
 
         // Get the ImplInfo for this Drop impl.
         if let Some(impl_info) = resolver.impls.get(impl_def_id) {
-            // The self type's DefId — look up from type_by_def_id reverse map.
-            // We use the impl's def_id as the drop glue function's ID.
-            let self_def_id = impl_info.def_id;
+            // Stage 15.60: Fix DefId mismatch.
+            // The TerminatorKind::Drop codegen (Stage 15.45) generates
+            // `drop_adt_<DefId>` using the TYPE's DefId (from
+            // `mir.local(local_id).ty` which has `TyKind::Adt(def_id, _)`).
+            // So we must use the TYPE's DefId here, not the impl block's DefId.
+            //
+            // The type's DefId is found by reverse-looking-up
+            // `type_by_def_id`: find the DefId whose Spur matches
+            // `type_spur` (the self type name).
+            let self_def_id = resolver
+                .type_by_def_id
+                .iter()
+                .find(|(_, name)| **name == *type_spur)
+                .map(|(id, _)| *id)
+                .unwrap_or(impl_info.def_id); // fallback to impl's DefId
 
             // The drop method's function name.
             // The driver registers impl method bodies with names like
