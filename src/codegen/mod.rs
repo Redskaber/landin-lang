@@ -274,9 +274,14 @@ fn emit_drop_glue_functions(
         // Get the AdtLayout for this type (to know field types for recursive drop).
         let layout = adt_layouts.get(&def_id);
 
-        // Collect fields that need drop: (field_index, field_def_id, field_llvm_type).
-        // Used for recursive drop (GEP to field + call drop_adt_<fieldDefId>).
+        // Collect struct fields that need drop (for the struct case).
+        // For enums, we handle variant payloads separately (SwitchInt dispatch).
         let mut fields_to_drop: Vec<(u32, Option<crate::hir::DefId>, EmitType)> = Vec::new();
+
+        // Stage 15.66: For enums, collect per-variant payload fields that need drop.
+        // Each entry: (variant_idx, field_offset_within_enum, field_def_id, field_emit_ty).
+        let mut enum_variants_to_drop: Vec<Vec<(u32, Option<crate::hir::DefId>)>> = Vec::new();
+        let mut enum_has_drop_variants = false;
 
         if let Some(layout) = &layout {
             match layout {
@@ -295,24 +300,64 @@ fn emit_drop_glue_functions(
                 AdtLayout::Enum {
                     variant_payloads, ..
                 } => {
-                    // For enums, we'd need to check the discriminant and drop
-                    // the active variant's payload. This is complex (requires
-                    // SwitchInt in the drop glue). For the MVP, we skip
-                    // recursive drop for enum fields — the user's Drop::drop
-                    // (if any) still runs, but fields are not recursively
-                    // dropped. Full enum drop is deferred to v0.3.
-                    let _ = variant_payloads;
+                    // Stage 15.66: Recursive drop for enums.
+                    //
+                    // The enum layout is a flattened struct:
+                    //   { discriminant, variant0_fields..., variant1_fields..., ... }
+                    //
+                    // To drop the active variant's payload:
+                    // 1. Load the discriminant (field 0).
+                    // 2. SwitchInt on the discriminant.
+                    // 3. Each variant's block GEPs to its payload fields and drops them.
+                    // 4. All variants branch to a merge block.
+                    //
+                    // The field offset for variant V's field F is:
+                    //   1 (discriminant) + sum of (variant 0..V-1 payload lengths) + F
+                    let mut field_offset = 1u32; // skip discriminant (field 0)
+                    for payload in variant_payloads {
+                        let mut variant_fields_to_drop: Vec<(u32, Option<crate::hir::DefId>)> =
+                            Vec::new();
+                        for (f_idx, field_ty) in payload.iter().enumerate() {
+                            if ty_needs_drop(field_ty, resolver, adt_layouts, interner) {
+                                let field_def_id = match &field_ty.kind {
+                                    TyKind::Adt(fid, _) => Some(*fid),
+                                    _ => None,
+                                };
+                                variant_fields_to_drop
+                                    .push((field_offset + f_idx as u32, field_def_id));
+                            }
+                        }
+                        if !variant_fields_to_drop.is_empty() {
+                            enum_has_drop_variants = true;
+                        }
+                        enum_variants_to_drop.push(variant_fields_to_drop);
+                        field_offset += payload.len() as u32;
+                    }
                 }
             }
         }
 
         // Build the struct's LLVM type string for GEP (from field types).
-        let struct_llvm_ty = if let Some(AdtLayout::Struct { field_tys }) = layout {
-            let field_emit_tys: Vec<EmitType> =
-                field_tys.iter().map(mir_type_to_emit_type).collect();
-            EmitType::Struct(field_emit_tys)
-        } else {
-            EmitType::OpaquePtr // fallback for enums or missing layout
+        let struct_llvm_ty = match &layout {
+            Some(AdtLayout::Struct { field_tys }) => {
+                let field_emit_tys: Vec<EmitType> =
+                    field_tys.iter().map(mir_type_to_emit_type).collect();
+                EmitType::Struct(field_emit_tys)
+            }
+            Some(AdtLayout::Enum {
+                discriminant_ty,
+                variant_payloads,
+            }) => {
+                // Flatten: { discriminant, all variant payload fields... }
+                let mut field_emit_tys = vec![mir_type_to_emit_type(discriminant_ty)];
+                for payload in variant_payloads {
+                    for t in payload {
+                        field_emit_tys.push(mir_type_to_emit_type(t));
+                    }
+                }
+                EmitType::Struct(field_emit_tys)
+            }
+            None => EmitType::OpaquePtr, // fallback for missing layout
         };
 
         // Define the drop glue function.
@@ -333,22 +378,72 @@ fn emit_drop_glue_functions(
             );
         }
 
-        // Recursively drop each field that needs drop.
-        for (field_idx, field_def_id, _field_emit_ty) in &fields_to_drop {
-            // GEP to the field: %field = getelementptr inbounds <struct_ty>, ptr %self, i32 0, i32 <field_idx>
-            let field_addr = emitter.emit_gep_field(&self_str, &struct_llvm_ty, *field_idx);
+        // Stage 15.66: For enums, emit SwitchInt dispatch to drop the active variant's payload.
+        if enum_has_drop_variants {
+            // Load the discriminant (field 0).
+            let discr_addr = emitter.emit_gep_field(&self_str, &struct_llvm_ty, 0);
+            let discr_ty = match &layout {
+                Some(AdtLayout::Enum {
+                    discriminant_ty, ..
+                }) => mir_type_to_emit_type(discriminant_ty),
+                _ => EmitType::I32,
+            };
+            let discr_val = emitter.emit_load(&discr_ty, &discr_addr);
 
-            // Call drop_adt_<fieldDefId> on the field (if it's an ADT).
-            if let Some(fid) = field_def_id {
-                let field_drop_fn = format!("drop_adt_{}", fid.0);
-                emitter.emit_call(
-                    &field_drop_fn,
-                    &[(EmitType::OpaquePtr, &field_addr)],
-                    &EmitType::Void,
-                );
+            // Build switch cases: one block per variant that has drop fields.
+            // Type alias for readability (avoids clippy::type-complexity).
+            type VariantDropInfo = (Vec<(u32, Option<crate::hir::DefId>)>, String);
+            let merge_label = format!("drop_enum_merge_{}", def_id.0);
+            let mut cases: Vec<(i128, String)> = Vec::new();
+            let mut variant_blocks: Vec<VariantDropInfo> = Vec::new();
+
+            for (v_idx, variant_fields) in enum_variants_to_drop.iter().enumerate() {
+                if !variant_fields.is_empty() {
+                    let block_label = format!("drop_enum_v{}_{}", v_idx, def_id.0);
+                    cases.push((v_idx as i128, block_label.clone()));
+                    variant_blocks.push((variant_fields.clone(), block_label));
+                }
             }
-            // For non-ADT fields that need drop (e.g., tuples, arrays),
-            // we'd need a generic drop glue function. This is deferred to v0.3.
+
+            // Emit the switch (default = merge block, since variants without
+            // drop fields don't need any payload drop).
+            emitter.emit_switch(&discr_val, &discr_ty, &cases, &merge_label);
+
+            // Emit each variant's block: GEP + drop each payload field, then br merge.
+            for (variant_fields, block_label) in &variant_blocks {
+                emitter.emit_block(block_label);
+                for (field_offset, field_def_id) in variant_fields {
+                    let field_addr =
+                        emitter.emit_gep_field(&self_str, &struct_llvm_ty, *field_offset);
+                    if let Some(fid) = field_def_id {
+                        let field_drop_fn = format!("drop_adt_{}", fid.0);
+                        emitter.emit_call(
+                            &field_drop_fn,
+                            &[(EmitType::OpaquePtr, &field_addr)],
+                            &EmitType::Void,
+                        );
+                    }
+                }
+                emitter.emit_br(&merge_label);
+            }
+
+            // Emit merge block.
+            emitter.emit_block(&merge_label);
+        } else {
+            // Struct case: recursively drop each field that needs drop.
+            for (field_idx, field_def_id, _field_emit_ty) in &fields_to_drop {
+                let field_addr = emitter.emit_gep_field(&self_str, &struct_llvm_ty, *field_idx);
+                if let Some(fid) = field_def_id {
+                    let field_drop_fn = format!("drop_adt_{}", fid.0);
+                    emitter.emit_call(
+                        &field_drop_fn,
+                        &[(EmitType::OpaquePtr, &field_addr)],
+                        &EmitType::Void,
+                    );
+                }
+                // For non-ADT fields that need drop (e.g., tuples, arrays),
+                // we'd need a generic drop glue function. This is deferred to v0.3.
+            }
         }
 
         emitter.emit_ret(&EmitType::Void, None);

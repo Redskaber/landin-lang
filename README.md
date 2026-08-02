@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.191.0 (v0.2 Phase 4 — Task 16 HP-22 cleanup COMPLETE)
+**Version**: v0.192.0 (v0.2 Phase 3 — Task 13 drop semantics complete for structs + enums)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -48,11 +48,18 @@ backend via the `llvm-sys` crate.
 > field (Stage 15.30). Removed legacy `codegen_dyn_trait_call` function +
 > legacy codegen dispatch path. 6 test files updated.
 >
+> **Stage 15.66 — Recursive drop for enums (Task 13 drop semantics complete)**:
+> `emit_drop_glue_functions` now handles `AdtLayout::Enum` — loads discriminant,
+> emits `SwitchInt` to dispatch to active variant's block, GEPs to payload
+> fields, calls `drop_adt_<fieldDefId>`. Runtime verified: enum with impl Drop
+> + Drop variant produces "enum dropped" then "inner dropped" (correct order).
+> Task 13 drop semantics now fully complete for structs AND enums.
+>
 > **Runtime verified**: `let a,b,c` with Drop produces "dropping 3, 2, 1"
 > (reverse order, no duplicates) — matches Rust exactly.
 >
-> **Test count**: 226 lib tests + 2125 integration tests + 5216 conformance
-> tests = **7567 passing**. 0 clippy warnings, fmt clean.
+> **Test count**: 226 lib tests + 2133 integration tests + 5216 conformance
+> tests = **7575 passing**. 0 clippy warnings, fmt clean.
 
 > **v0.2 Phase 2 — Soundness Closures SUBSTANTIALLY COMPLETE**
 >
@@ -138,7 +145,7 @@ LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
 ### Run tests
 
 ```bash
-# Rust test suite (2351 tests: 226 lib + 2125 integration)
+# Rust test suite (2359 tests: 226 lib + 2133 integration)
 LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
   cargo test --features llvm-backend
 
@@ -314,7 +321,7 @@ src/
 | Suite | Count | Pass rate |
 |-------|-------|-----------|
 | Rust lib tests | 226 | 100% |
-| Rust integration tests | 2125 | 100% |
+| Rust integration tests | 2133 | 100% |
 | Conformance tests (.lin) | 5216 | 100% |
 | - Parse-only (`00-parse`) | 600 | 100% |
 | - Typecheck (`01-typecheck`) | 1020 | 100% |
@@ -326,7 +333,7 @@ src/
 | - Integration (`07-integration`) | 501 | 100% |
 | Examples | 4 | 100% |
 | Benchmarks | 5 | — |
-| **Total** | **7567** | **100%** |
+| **Total** | **7575** | **100%** |
 
 ---
 
@@ -367,4 +374,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.191.0, Stage 15.65 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.192.0, Stage 15.66 — `impl Drop` + RAII COMPLETE)

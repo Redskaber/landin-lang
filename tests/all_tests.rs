@@ -315,6 +315,9 @@ mod stage15_recursive_drop_tests;
 // Stage 15.64 (HP-12 fix): Struct literal Copy→Move + field-copy drop prevention.
 #[path = "v0/stage15/plan/struct_literal_copy_move_tests.rs"]
 mod stage15_struct_literal_copy_move_tests;
+// Stage 15.66 (HP-12 fix): Recursive drop for enums (SwitchInt in drop glue).
+#[path = "v0/stage15/plan/enum_recursive_drop_tests.rs"]
+mod stage15_enum_recursive_drop_tests;
 #[path = "v0/stage15/plan/substs_ref_rc_tests.rs"]
 mod stage15_substs_ref_rc_tests;
 #[path = "v0/stage15/plan/ty_interner_integration_tests.rs"]

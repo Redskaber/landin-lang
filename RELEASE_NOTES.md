@@ -1,9 +1,74 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.191.0
+**Current version**: v0.192.0
 **Date**: 2026-08-02
-**Test count**: 226 rust lib tests + 2125 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 226 rust lib tests + 2133 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.192.0 — Stage 15.66 (Recursive Drop for Enums — SwitchInt in Drop Glue)
+
+### Overview
+
+Stage 15.66 implements **recursive drop for enums** — when an enum's variant
+payload needs drop, the drop glue function now loads the discriminant, emits
+a `SwitchInt` instruction to dispatch to the active variant's block, and
+recursively drops the variant's payload fields. Previously, enum variant
+payloads were NOT recursively dropped.
+
+### What Changed
+
+**`src/codegen/mod.rs`**:
+- `emit_drop_glue_functions` now handles `AdtLayout::Enum` (not just `Struct`).
+- For enums with drop-variant payloads: loads discriminant (field 0), emits
+  `SwitchInt` with one case per variant that has drop fields, each variant's
+  block GEPs to payload fields and calls `drop_adt_<fieldDefId>`, all variants
+  branch to a merge block.
+- For enums WITHOUT drop-variant payloads: no SwitchInt emitted (no-op).
+- Field offset computation: `1 (discriminant) + sum(payload_len(0..V-1)) + F`.
+
+### Runtime Verification
+
+```landin
+trait Drop { fn drop(&mut self); }
+struct Inner { x: i32 }
+impl Drop for Inner { fn drop(&mut self) { println!("inner dropped") } }
+enum E { A(Inner), B(i32) }
+impl Drop for E { fn drop(&mut self) { println!("enum dropped") } }
+fn main() -> i32 { let e = E::A(Inner { x: 42 }); 0 }
+```
+
+**Output** (correct):
+```
+enum dropped
+inner dropped
+```
+
+The enum's user `Drop::drop` runs first, then the variant's `Inner` payload
+is recursively dropped via SwitchInt dispatch.
+
+### Files Changed
+
+- `src/codegen/mod.rs` — extended `emit_drop_glue_functions` for enums.
+- `tests/v0/stage15/plan/enum_recursive_drop_tests.rs` — NEW: 8 tests.
+- `tests/all_tests.rs` — registered new test module.
+- `Cargo.toml` — bumped v0.191.0 → v0.192.0.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2133/2133 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7575 tests passing, 0 failures, 0 warnings.**
+
+### Task 13 Status: Drop Semantics Fully Complete
+
+Task 13 (`impl Drop` + RAII) drop semantics are now fully complete for both
+**structs** (Stage 15.63) AND **enums** (Stage 15.66). Recursive drop works
+for all ADT kinds.
 
 ---
 ## v0.191.0 — Stage 15.65 (HP-22 Cleanup — Remove Legacy dyn_trait_calls Side-Table)

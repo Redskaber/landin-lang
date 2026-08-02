@@ -21876,3 +21876,80 @@ Stage Summary:
 - Task 16 (HP-22) ✅ COMPLETE — migration started in Stage 15.30, finished here
 - 7567 tests passing (226 lib + 2125 integration + 5216 conformance), 0 failures
 - v0.191.0: minor bump (Phase 4 — Task 16 COMPLETE, legacy code removed)
+
+---
+Task ID: stage15.66-enum-recursive-drop
+Agent: Super Z (main)
+Task: Stage 15.66 — Recursive drop for enums (SwitchInt in drop glue). v0.191.0 → v0.192.0. Task 13 drop semantics fully complete for structs AND enums.
+
+Work Log:
+- Baseline: v0.191.0 / 226 lib + 2125 integration + 5216 conformance
+- Environment: LLVM 19 installed via scripts/setup-llvm-env.sh, Rust 1.97.1 via rustup
+
+### 1. Root cause: enum variant payloads not recursively dropped
+
+In src/codegen/mod.rs, emit_drop_glue_functions handled AdtLayout::Enum by
+explicitly skipping it (deferred to v0.3). This meant enum E { A(Inner) }
+where Inner has impl Drop would NOT recursively drop the Inner payload.
+
+### 2. Implemented enum drop glue
+
+Extended emit_drop_glue_functions to handle AdtLayout::Enum:
+1. Collect per-variant payload fields that need drop (recursive ty_needs_drop).
+   Record (field_offset, field_def_id) for each.
+2. Build enum LLVM struct type: { discriminant, variant0_fields..., variant1_fields... }
+   (flattened, same as codegen).
+3. If any variant has drop fields:
+   - Load discriminant (field 0) via GEP + load.
+   - Emit SwitchInt with one case per variant that has drop fields.
+   - Each variant's block: GEP to payload fields, call drop_adt_<fieldDefId>.
+   - Each variant's block branches to merge block.
+   - Merge block is the default case.
+4. If no variant has drop fields: no SwitchInt emitted (no-op).
+
+Field offset computation:
+  offset = 1 (discriminant) + sum(payload_len(variant 0..V-1)) + F
+
+### 3. Runtime verification
+
+Test: enum E { A(Inner) } with impl Drop for both E and Inner:
+  Output: "enum dropped" then "inner dropped" (correct order)
+  - "enum dropped": user's Drop::drop runs first
+  - "inner dropped": variant payload recursively dropped via SwitchInt
+
+### 4. Added 8 integration tests
+
+tests/v0/stage15/plan/enum_recursive_drop_tests.rs:
+- stage15_66_enum_no_drop_impl_variant_has_drop
+- stage15_66_enum_has_drop_impl_and_variant_has_drop
+- stage15_66_enum_multiple_drop_variants
+- stage15_66_enum_no_drop_variants_no_regression
+- stage15_66_enum_mixed_drop_non_drop_variants
+- stage15_66_enum_drop_runtime_verification
+- stage15_66_nested_enum_in_struct_recursive_drop
+- stage15_66_enum_struct_variant_payload_drop
+
+### 5. Documentation
+
+- docs/develop/v0/stage-15/stage-15.66-enum-recursive-drop.md
+- docs/tests/v0/stage15/stage-15.66-test-plan.md
+- Updated docs/tests/matrix.md (Task 13 drop semantics fully complete)
+- Updated RELEASE_NOTES.md (v0.192.0 entry)
+- Updated README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2133/2133 PASS
+  (was 2125; +8 new enum drop tests, 2 ignored)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.191.0 → v0.192.0
+
+Stage Summary:
+- Stage 15.66 PASSED — recursive drop for enums working via SwitchInt dispatch
+- Task 13 (impl Drop + RAII) drop semantics FULLY COMPLETE for structs AND enums
+- 7575 tests passing (226 lib + 2133 integration + 5216 conformance), 0 failures
+- v0.192.0: minor bump (Phase 3 — enum recursive drop, Task 13 drop semantics complete)
