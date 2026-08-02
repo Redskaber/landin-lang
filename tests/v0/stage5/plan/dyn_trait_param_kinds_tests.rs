@@ -7,11 +7,9 @@
 //! Per §16: tests use the public API only.
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
-use landin_compiler::codegen::{codegen_dyn_trait_call, TextEmitter};
-use landin_compiler::mir::body::MirBody;
+use landin_compiler::codegen::{codegen_dyn_trait_call_direct, TextEmitter};
 use landin_compiler::mir::dyn_trait::DynTraitMethodCall;
 use landin_compiler::mir::place::{LocalId, Operand, Place};
-use landin_compiler::mir::ty::{Ty, TyKind};
 use landin_compiler::mir::DynTraitFatPtr;
 use landin_compiler::session::Span;
 use landin_compiler::stdlib::StdlibTypeKind;
@@ -157,16 +155,9 @@ fn test_param_kinds_empty_for_zero_param() {
 // codegen_dyn_trait_call uses param_kinds tests
 // ============================================================
 
-/// Helper: build a MirBody with one dyn_trait_calls entry with given param_kinds.
-fn make_mir_with_param_kinds(param_kinds: Vec<StdlibTypeKind>) -> MirBody {
-    let mut mir = MirBody::new(Span::DUMMY);
-    mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    // Add locals for params
-    for _ in &param_kinds {
-        mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    }
-    mir.dyn_trait_calls.push(DynTraitMethodCall::new(
+/// Helper: build a DynTraitMethodCall with given param_kinds.
+fn make_call_info_with_param_kinds(param_kinds: Vec<StdlibTypeKind>) -> DynTraitMethodCall {
+    DynTraitMethodCall::new(
         "Foo",
         "S",
         "bar",
@@ -174,14 +165,13 @@ fn make_mir_with_param_kinds(param_kinds: Vec<StdlibTypeKind>) -> MirBody {
         param_kinds.len() as u32,
         StdlibTypeKind::Unit,
         param_kinds,
-    ));
-    mir
+    )
 }
 
 /// Method with I32 param → IR contains i32 arg type.
 #[test]
 fn test_codegen_dyn_trait_call_i32_param() {
-    let mir = make_mir_with_param_kinds(vec![StdlibTypeKind::I32]);
+    let call_info = make_call_info_with_param_kinds(vec![StdlibTypeKind::I32]);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
@@ -191,10 +181,9 @@ fn test_codegen_dyn_trait_call_i32_param() {
         Operand::Copy(Place::local(LocalId(2), Span::DUMMY)),
     ];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -213,7 +202,7 @@ fn test_codegen_dyn_trait_call_i32_param() {
 /// Method with F64 param → IR contains double arg type.
 #[test]
 fn test_codegen_dyn_trait_call_f64_param() {
-    let mir = make_mir_with_param_kinds(vec![StdlibTypeKind::F64]);
+    let call_info = make_call_info_with_param_kinds(vec![StdlibTypeKind::F64]);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
@@ -222,10 +211,9 @@ fn test_codegen_dyn_trait_call_f64_param() {
         Operand::Copy(Place::local(LocalId(2), Span::DUMMY)),
     ];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -243,7 +231,7 @@ fn test_codegen_dyn_trait_call_f64_param() {
 /// Method with Bool param → IR contains i8 arg type.
 #[test]
 fn test_codegen_dyn_trait_call_bool_param() {
-    let mir = make_mir_with_param_kinds(vec![StdlibTypeKind::Bool]);
+    let call_info = make_call_info_with_param_kinds(vec![StdlibTypeKind::Bool]);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
@@ -252,10 +240,9 @@ fn test_codegen_dyn_trait_call_bool_param() {
         Operand::Copy(Place::local(LocalId(2), Span::DUMMY)),
     ];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -269,16 +256,15 @@ fn test_codegen_dyn_trait_call_bool_param() {
 /// Method with no params → IR only has self (OpaquePtr/i32*).
 #[test]
 fn test_codegen_dyn_trait_call_no_params() {
-    let mir = make_mir_with_param_kinds(vec![]);
+    let call_info = make_call_info_with_param_kinds(vec![]);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -297,7 +283,7 @@ fn test_codegen_dyn_trait_call_no_params() {
 /// Method with multiple params → IR contains all param types.
 #[test]
 fn test_codegen_dyn_trait_call_multiple_params() {
-    let mir = make_mir_with_param_kinds(vec![StdlibTypeKind::I32, StdlibTypeKind::F64]);
+    let call_info = make_call_info_with_param_kinds(vec![StdlibTypeKind::I32, StdlibTypeKind::F64]);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
@@ -307,10 +293,9 @@ fn test_codegen_dyn_trait_call_multiple_params() {
         Operand::Copy(Place::local(LocalId(3), Span::DUMMY)),
     ];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,

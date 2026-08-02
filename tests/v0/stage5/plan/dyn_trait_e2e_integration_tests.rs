@@ -15,13 +15,32 @@
 
 use landin_compiler::codegen::codegen_crate;
 use landin_compiler::compile;
+use landin_compiler::mir::body::TerminatorKind;
 
 // ============================================================
-// Helper: count dyn_trait_calls across all mirs
+// Helper: count dyn_trait_call terminators across all mirs
+// (Stage 15.65: side-table removed — count via terminator field)
 // ============================================================
 
 fn total_dyn_trait_calls(result: &landin_compiler::driver::CompileResult) -> usize {
-    result.mirs.iter().map(|m| m.dyn_trait_calls.len()).sum()
+    result
+        .mirs
+        .iter()
+        .map(|m| {
+            m.basic_blocks
+                .iter()
+                .filter(|bb| {
+                    matches!(
+                        &bb.terminator.kind,
+                        TerminatorKind::Call {
+                            dyn_trait_call: Some(_),
+                            ..
+                        }
+                    )
+                })
+                .count()
+        })
+        .sum()
 }
 
 // ============================================================

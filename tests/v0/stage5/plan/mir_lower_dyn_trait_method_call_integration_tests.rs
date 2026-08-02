@@ -91,7 +91,8 @@ fn test_build_dyn_trait_call_terminator_index_zero_for_first() {
     }
 }
 
-/// Side-table index increments for subsequent calls.
+/// Stage 15.65: Each call carries its own dyn_trait_call info on the terminator.
+/// (Previously: side-table index increments. Now: each terminator is self-contained.)
 #[test]
 fn test_build_dyn_trait_call_terminator_index_increments() {
     let mut cx = make_cx();
@@ -106,44 +107,92 @@ fn test_build_dyn_trait_call_terminator_index_increments() {
     let t3 =
         build_dyn_trait_call_terminator(&mut cx, &call3, LocalId(0), &[], LocalId(1), Span::DUMMY);
 
-    if let TerminatorKind::Call {
-        func: Operand::Constant(c1),
+    // Stage 15.65: side-table removed — verify each terminator carries its own call info.
+    let check = |t: &TerminatorKind| {
+        matches!(
+            t,
+            TerminatorKind::Call {
+                dyn_trait_call: Some(_),
+                ..
+            }
+        )
+    };
+    assert!(check(&t1.kind));
+    assert!(check(&t2.kind));
+    assert!(check(&t3.kind));
+
+    // Verify the call info is distinct (different trait names).
+    let info1 = if let TerminatorKind::Call {
+        dyn_trait_call: Some(c),
         ..
     } = &t1.kind
     {
-        assert!(matches!(c1.val, ConstVal::Int(0)));
-    }
-    if let TerminatorKind::Call {
-        func: Operand::Constant(c2),
+        c.trait_name.clone()
+    } else {
+        panic!()
+    };
+    let info2 = if let TerminatorKind::Call {
+        dyn_trait_call: Some(c),
         ..
     } = &t2.kind
     {
-        assert!(matches!(c2.val, ConstVal::Int(1)));
-    }
-    if let TerminatorKind::Call {
-        func: Operand::Constant(c3),
+        c.trait_name.clone()
+    } else {
+        panic!()
+    };
+    let info3 = if let TerminatorKind::Call {
+        dyn_trait_call: Some(c),
         ..
     } = &t3.kind
     {
-        assert!(matches!(c3.val, ConstVal::Int(2)));
-    }
-    assert_eq!(cx.mir.dyn_trait_calls.len(), 3);
+        c.trait_name.clone()
+    } else {
+        panic!()
+    };
+    assert_eq!(info1, "Drop");
+    assert_eq!(info2, "Drop");
+    assert_eq!(info3, "Clone");
+    // call1 and call2 have different type names.
+    let type1 = if let TerminatorKind::Call {
+        dyn_trait_call: Some(c),
+        ..
+    } = &t1.kind
+    {
+        c.type_name.clone()
+    } else {
+        panic!()
+    };
+    let type2 = if let TerminatorKind::Call {
+        dyn_trait_call: Some(c),
+        ..
+    } = &t2.kind
+    {
+        c.type_name.clone()
+    } else {
+        panic!()
+    };
+    assert_ne!(type1, type2);
 }
 
-/// Side-table preserves the call info.
+/// Terminator's `dyn_trait_call` field preserves the call info.
 #[test]
 fn test_build_dyn_trait_call_terminator_preserves_call_info() {
     let mut cx = make_cx();
     let call = DynTraitMethodCall::new("Display", "Vec", "fmt", 2, 1, StdlibTypeKind::Unit, vec![]);
-    let _ =
+    let term =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
-    assert_eq!(cx.mir.dyn_trait_calls.len(), 1);
-    let recorded = &cx.mir.dyn_trait_calls[0];
-    assert_eq!(recorded.trait_name, "Display");
-    assert_eq!(recorded.type_name, "Vec");
-    assert_eq!(recorded.method_name, "fmt");
-    assert_eq!(recorded.slot_index, 2);
-    assert_eq!(recorded.param_count, 1);
+    if let TerminatorKind::Call { dyn_trait_call, .. } = &term.kind {
+        let recorded = dyn_trait_call
+            .as_ref()
+            .expect("dyn_trait_call should be Some");
+        assert_eq!(recorded.trait_name, "Display");
+        assert_eq!(recorded.type_name, "Vec");
+        assert_eq!(recorded.method_name, "fmt");
+        assert_eq!(recorded.slot_index, 2);
+        assert_eq!(recorded.param_count, 1);
+    } else {
+        panic!("expected Call terminator");
+    }
 }
 
 /// Args list: self first, then explicit args.
@@ -240,11 +289,19 @@ fn test_method_call_without_plan_uses_legacy_path() {
 
     let (mir, _unify, _) = lower_hir_body_to_mir_full(&hir.bodies[0].1, &interner, &hir, None);
 
-    // No dyn Trait plan was attached → side-table should be empty.
+    // Stage 15.65: side-table removed — verify no terminator has dyn_trait_call set.
+    let has_dyn_call = mir.basic_blocks.iter().any(|bb| {
+        matches!(
+            &bb.terminator.kind,
+            TerminatorKind::Call {
+                dyn_trait_call: Some(_),
+                ..
+            }
+        )
+    });
     assert!(
-        mir.dyn_trait_calls.is_empty(),
-        "expected no dyn_trait_calls without plan, got {}",
-        mir.dyn_trait_calls.len()
+        !has_dyn_call,
+        "expected no dyn_trait_call terminators without plan"
     );
 }
 
@@ -284,27 +341,22 @@ fn test_method_call_with_matching_plan_records_dyn_call() {
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
 
-    // Verify side-table has the entry.
-    assert_eq!(cx.mir.dyn_trait_calls.len(), 1);
-    assert_eq!(cx.mir.dyn_trait_calls[0].method_name, "drop");
-    assert_eq!(cx.mir.dyn_trait_calls[0].trait_name, "Drop");
-    assert_eq!(cx.mir.dyn_trait_calls[0].type_name, "S");
-
-    // Verify terminator func Const has Int(0) (the index).
-    if let TerminatorKind::Call {
-        func: Operand::Constant(c),
-        ..
-    } = &terminator.kind
-    {
-        assert!(matches!(c.val, ConstVal::Int(0)));
+    // Stage 15.65: side-table removed — verify via terminator's dyn_trait_call field.
+    if let TerminatorKind::Call { dyn_trait_call, .. } = &terminator.kind {
+        let recorded = dyn_trait_call
+            .as_ref()
+            .expect("dyn_trait_call should be Some");
+        assert_eq!(recorded.method_name, "drop");
+        assert_eq!(recorded.trait_name, "Drop");
+        assert_eq!(recorded.type_name, "S");
     } else {
-        panic!("expected Call");
+        panic!("expected Call terminator");
     }
 }
 
-/// Multiple dyn Trait calls in the same body get distinct side-table indices.
+/// Multiple dyn Trait calls each carry distinct call info on their terminators.
 #[test]
-fn test_multiple_dyn_trait_calls_get_distinct_indices() {
+fn test_multiple_dyn_trait_calls_get_distinct_call_info() {
     let mut cx = make_cx();
     let call1 = DynTraitMethodCall::new("Drop", "A", "drop", 0, 0, StdlibTypeKind::Unit, vec![]);
     let call2 = DynTraitMethodCall::new("Clone", "B", "clone", 0, 0, StdlibTypeKind::Unit, vec![]);
@@ -314,41 +366,35 @@ fn test_multiple_dyn_trait_calls_get_distinct_indices() {
     let t2 =
         build_dyn_trait_call_terminator(&mut cx, &call2, LocalId(0), &[], LocalId(1), Span::DUMMY);
 
-    let idx1 = if let TerminatorKind::Call {
-        func: Operand::Constant(c),
+    // Stage 15.65: side-table removed — verify each terminator carries its own call info.
+    let info1 = if let TerminatorKind::Call {
+        dyn_trait_call: Some(c),
         ..
     } = &t1.kind
     {
-        if let ConstVal::Int(i) = c.val {
-            i
-        } else {
-            panic!("expected Int");
-        }
+        c.clone()
     } else {
-        panic!();
+        panic!("t1 should have dyn_trait_call Some");
     };
-
-    let idx2 = if let TerminatorKind::Call {
-        func: Operand::Constant(c),
+    let info2 = if let TerminatorKind::Call {
+        dyn_trait_call: Some(c),
         ..
     } = &t2.kind
     {
-        if let ConstVal::Int(i) = c.val {
-            i
-        } else {
-            panic!("expected Int");
-        }
+        c.clone()
     } else {
-        panic!();
+        panic!("t2 should have dyn_trait_call Some");
     };
 
-    assert_ne!(idx1, idx2);
-    assert_eq!(cx.mir.dyn_trait_calls.len(), 2);
+    // The two calls have distinct trait/type/method names.
+    assert_ne!(info1.trait_name, info2.trait_name);
+    assert_ne!(info1.type_name, info2.type_name);
+    assert_ne!(info1.method_name, info2.method_name);
 }
 
 /// DynTraitMethodCall records the original method_name string faithfully.
 #[test]
-fn test_side_table_records_method_name_verbatim() {
+fn test_terminator_records_method_name_verbatim() {
     let mut cx = make_cx();
     let call = DynTraitMethodCall::new(
         "Iterator",
@@ -359,7 +405,15 @@ fn test_side_table_records_method_name_verbatim() {
         StdlibTypeKind::Unit,
         vec![],
     );
-    let _ =
+    let term =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(1), Span::DUMMY);
-    assert_eq!(cx.mir.dyn_trait_calls[0].method_name, "size_hint");
+    if let TerminatorKind::Call {
+        dyn_trait_call: Some(recorded),
+        ..
+    } = &term.kind
+    {
+        assert_eq!(recorded.method_name, "size_hint");
+    } else {
+        panic!("expected Call terminator with dyn_trait_call Some");
+    }
 }

@@ -168,12 +168,16 @@ pub fn build_dyn_trait_call_terminator(
     dest: LocalId,
     span: Span,
 ) -> Terminator {
-    // Stage 15.31: The side-table push is kept for backward compat with the
-    // legacy codegen path. The dyn_trait_call field on the terminator is the
-    // primary source of truth (Stage 15.30). Future stage will remove the
-    // side-table entirely.
-    let index = cx.mir.dyn_trait_calls.len() as u128;
-    cx.mir.dyn_trait_calls.push(call.clone());
+    // Stage 15.65 (HP-22 cleanup): Removed the side-table push — the
+    // `dyn_trait_call` field on the terminator is now the SOLE source of
+    // truth. The legacy `mir.dyn_trait_calls` side-table and the magic
+    // `Error + Int(index)` func marker have been removed.
+    //
+    // Per §1.0 原則 3 "显式 > 隐式": the dyn Trait info is explicit on the
+    // terminator, not implicit in a side-table indexed by a magic constant.
+    // Per §15 "最优 > 最小": dead code (side-table + legacy codegen path)
+    // is removed, reducing maintenance burden.
+    let _ = cx; // cx no longer needed (was used for side-table push).
 
     // Build the args list: self first, then explicit args.
     let mut arg_operands: Vec<Operand> = vec![Operand::Copy(Place::local(recv_local, span))];
@@ -183,12 +187,13 @@ pub fn build_dyn_trait_call_terminator(
 
     Terminator::new(
         TerminatorKind::Call {
-            // Stage 15.30 (HP-22): dyn_trait_call field is the primary source
-            // of truth. The func operand marker is kept for backward compat
-            // with the legacy codegen path (will be removed in future stage).
+            // Stage 15.65: func is now a placeholder constant (0). Codegen
+            // checks `dyn_trait_call` FIRST — if Some, it uses the call info
+            // directly and never reads `func`. The placeholder is kept only
+            // because `func: Operand` is a required field of `TerminatorKind::Call`.
             func: Operand::Constant(Const {
                 ty: Ty::new(TyKind::Error, Span::DUMMY),
-                val: ConstVal::Int(index),
+                val: ConstVal::Int(0),
             }),
             args: arg_operands,
             destination: Place::local(dest, span),

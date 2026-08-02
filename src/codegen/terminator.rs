@@ -139,50 +139,19 @@ pub(crate) fn codegen_terminator(
                 return;
             }
 
-            // Stage 5.79: Legacy dyn Trait vtable indirect call path.
-            // (Kept for backward compat — will be removed in Stage 15.31.)
-            // If matched, dispatch to `codegen_dyn_trait_call` which emits
-            // the vtable indirect call (getelementptr + load + call).
+            // Stage 15.65 (HP-22 cleanup): Removed the legacy dyn Trait
+            // vtable indirect call path (was Stage 5.79). The `dyn_trait_call`
+            // field on the terminator is now the SOLE source of truth —
+            // codegen checks it FIRST (above) and returns. If we reach here,
+            // it's a regular direct call.
             //
-            // Otherwise fall through to the legacy direct-call path.
+            // The legacy path decoded a magic `Error + Int(index)` marker
+            // from the func operand and looked up `mir.dyn_trait_calls[index]`.
+            // That side-table has been removed.
             //
-            // Per §16: MIR carries the dyn Trait info as data on
-            // `mir.dyn_trait_calls` (populated by Stage 5.78's
-            // `build_dyn_trait_call_terminator`). Codegen doesn't query
-            // HIR or TraitResolver.
-            if let Operand::Constant(c) = func {
-                if matches!(c.ty.kind, crate::mir::ty::TyKind::Error) {
-                    if let ConstVal::Int(idx) = c.val {
-                        if (idx as usize) < mir.dyn_trait_calls.len() {
-                            let ret_val = codegen_dyn_trait_call(
-                                emitter,
-                                mir,
-                                idx,
-                                args,
-                                interner,
-                                layouts,
-                                fn_name_by_def_id,
-                            );
-                            // Store the result to destination local.
-                            if let PlaceKind::Local(id) = &destination.kind {
-                                let dest_ty = mir
-                                    .local_decls
-                                    .get(id.0 as usize)
-                                    .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
-                                    .unwrap_or(EmitType::I32);
-                                emitter.set_local(id.0, ret_val.clone());
-                                if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
-                                    emitter.emit_store(&dest_ty, &ret_val, &ptr);
-                                }
-                            }
-                            if let Some(cont) = target {
-                                emitter.emit_br(&format!("bb{}", cont.0));
-                            }
-                            return;
-                        }
-                    }
-                }
-            }
+            // Per §16: MIR carries the dyn Trait info as data on the
+            // terminator's `dyn_trait_call` field (Stage 15.30).
+            // Per §15 "最优 > 最小": dead code (legacy path) is removed.
 
             let fn_name = if let Operand::Copy(lv) | Operand::Move(lv) = func {
                 if let PlaceKind::Local(id) = &lv.kind {

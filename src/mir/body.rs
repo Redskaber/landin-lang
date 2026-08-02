@@ -10,7 +10,6 @@
 //! HIR** — closing the L-PIPE-1 pipeline-coupling debt carried since
 //! Stage 3.30.
 
-use crate::mir::dyn_trait::DynTraitMethodCall;
 use crate::mir::place::*;
 use crate::mir::ty::*;
 use crate::session::Span;
@@ -77,19 +76,18 @@ pub struct MirBody {
     /// crate-level map once from HIR and shares the Arc across all bodies.
     /// This eliminates per-body HashMap duplication (~500KB for typical crate).
     pub adt_layouts: SharedAdtLayouts,
-    /// Stage 5.78: Dyn Trait method calls sunk from HIR by MIR lower.
-    ///
-    /// Each entry records the (trait, type, method, slot_index, param_count)
-    /// triple for one `HirExprKind::MethodCall` expression whose receiver
-    /// has `dyn Trait` type. The corresponding `TerminatorKind::Call` in
-    /// `basic_blocks` uses a placeholder `Operand::Constant` whose
-    /// `ConstVal::Int` value is the **index** into this Vec — codegen
-    /// (Stage 5.79+) reads this side-table to emit vtable indirect calls.
-    ///
-    /// Per §16: MIR carries the dyn Trait info as data; codegen doesn't
-    /// need to query HIR or TraitResolver. Empty when no dyn Trait calls
-    /// exist in this body (the common case).
-    pub dyn_trait_calls: Vec<DynTraitMethodCall>,
+    // Stage 15.65 (HP-22 cleanup): `dyn_trait_calls` field REMOVED.
+    // The dyn Trait method call info is now carried directly on the
+    // `TerminatorKind::Call` terminator's `dyn_trait_call: Option<DynTraitMethodCall>`
+    // field (Stage 15.30). The legacy side-table (indexed by a magic
+    // `ConstVal::Int(index)` marker on the func operand) has been removed.
+    //
+    // Per §1.0 原则 3 "显式 > 隐式": the dyn Trait info is now explicit on
+    // the terminator, not implicit in a side-table indexed by a magic constant.
+    // Per §15 "最优 > 最小": dead code (side-table + legacy codegen path) removed.
+    // Per §16: MIR carries the info as data on the terminator (still no HIR
+    // lookup in codegen).
+    //
     // Stage 15.12 (v0.2): `lower_type_errors` field REMOVED.
     // Type errors collected during MIR lowering are now returned from
     // `lower_hir_body_to_mir_full*` as a separate `Vec<TypeError>` in
@@ -110,7 +108,6 @@ impl MirBody {
             // Arc is fine — keeps door open for future multi-threaded LSP.
             #[allow(clippy::arc_with_non_send_sync)]
             adt_layouts: Arc::new(AdtLayouts::new()),
-            dyn_trait_calls: Vec::new(),
         }
     }
 

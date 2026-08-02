@@ -1,9 +1,60 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.190.0
+**Current version**: v0.191.0
 **Date**: 2026-08-02
-**Test count**: 226 rust lib tests + 2126 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 226 rust lib tests + 2125 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.191.0 — Stage 15.65 (HP-22 Cleanup — Remove Legacy dyn_trait_calls Side-Table)
+
+### Overview
+
+Stage 15.65 completes the HP-22 migration by removing the legacy
+`dyn_trait_calls` side-table and the magic `Error + Int(index)` func marker.
+The dyn Trait method call info is now carried **solely** on the
+`TerminatorKind::Call`'s `dyn_trait_call: Option<DynTraitMethodCall>` field
+(introduced in Stage 15.30).
+
+### What Was Removed
+
+1. **`MirBody.dyn_trait_calls` field** — the legacy side-table.
+2. **Side-table push in `build_dyn_trait_call_terminator`** — no longer
+   pushes to `cx.mir.dyn_trait_calls`.
+3. **`codegen_dyn_trait_call` function** — the legacy codegen function that
+   read `mir.dyn_trait_calls[index]`.
+4. **Legacy codegen dispatch path** — the `if let Operand::Constant(c) = func`
+   branch that decoded the magic `Error + Int(index)` marker.
+5. **Re-exports** — `codegen_dyn_trait_call` removed from `lib.rs` and
+   `codegen/mod.rs`; replaced by `codegen_dyn_trait_call_direct`.
+
+### Files Changed
+
+- `src/mir/body.rs` — removed `dyn_trait_calls` field + import.
+- `src/mir/lower/expr_operand.rs` — removed side-table push in `build_dyn_trait_call_terminator`.
+- `src/codegen/operand.rs` — removed legacy `codegen_dyn_trait_call` function.
+- `src/codegen/terminator.rs` — removed legacy dispatch path.
+- `src/codegen/mod.rs` — removed legacy re-export.
+- `src/lib.rs` — replaced re-export.
+- 6 test files updated to use `codegen_dyn_trait_call_direct` + verify via
+  terminator field.
+- `Cargo.toml` — bumped v0.190.0 → v0.191.0.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2125/2125 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
+
+### Task 16 Status: ✅ COMPLETE
+
+Task 16 (HP-22: Move `dyn_trait_calls` into `Terminator::Call`) is now
+fully complete. The migration started in Stage 15.30 and is finished in
+Stage 15.65 with the removal of all legacy code.
 
 ---
 ## v0.190.0 — Stage 15.64 (Struct Literal Copy→Move + Field-Copy Drop Prevention)

@@ -12,11 +12,11 @@
 //! Per §16: tests use the public API only.
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
-use landin_compiler::codegen::{codegen_dyn_trait_call, EmitType, EmitValue, Emitter, TextEmitter};
-use landin_compiler::mir::body::MirBody;
+use landin_compiler::codegen::{
+    codegen_dyn_trait_call_direct, EmitType, EmitValue, Emitter, TextEmitter,
+};
 use landin_compiler::mir::dyn_trait::DynTraitMethodCall;
 use landin_compiler::mir::place::{LocalId, Operand, Place};
-use landin_compiler::mir::ty::{Const, ConstVal, Ty, TyKind};
 use landin_compiler::session::Span;
 use landin_compiler::stdlib::StdlibTypeKind;
 use lasso::Rodeo;
@@ -142,41 +142,23 @@ fn test_dyn_trait_call_distinct_from_direct_call() {
 // codegen_dyn_trait_call tests (free function level)
 // ============================================================
 
-/// Helper: build a MirBody with one dyn_trait_calls entry.
-fn make_mir_with_dyn_call() -> MirBody {
-    let mut mir = MirBody::new(Span::DUMMY);
-    // Push a local decl for the receiver (LocalId 0).
-    mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    // Push a local decl for the destination (LocalId 1).
-    mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    // Push the dyn Trait call info.
-    mir.dyn_trait_calls.push(DynTraitMethodCall::new(
-        "Drop",
-        "S",
-        "drop",
-        0,
-        0,
-        StdlibTypeKind::Unit,
-        vec![],
-    ));
-    mir
+/// Helper: build a DynTraitMethodCall for Drop::S::drop.
+fn make_call_info() -> DynTraitMethodCall {
+    DynTraitMethodCall::new("Drop", "S", "drop", 0, 0, StdlibTypeKind::Unit, vec![])
 }
 
-/// codegen_dyn_trait_call returns a non-empty EmitValue for index 0.
+/// codegen_dyn_trait_call_direct returns a non-empty EmitValue.
 #[test]
 fn test_codegen_dyn_trait_call_returns_value() {
-    let mir = make_mir_with_dyn_call();
+    let call_info = make_call_info();
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
-
-    // The receiver operand: Copy(Place::local(LocalId(0), span))
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    let ret = codegen_dyn_trait_call(
+    let ret = codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -185,19 +167,18 @@ fn test_codegen_dyn_trait_call_returns_value() {
     assert!(!ret.is_empty());
 }
 
-/// codegen_dyn_trait_call produces IR with vtable indirect call.
+/// codegen_dyn_trait_call_direct produces IR with vtable indirect call.
 #[test]
 fn test_codegen_dyn_trait_call_produces_vtable_ir() {
-    let mir = make_mir_with_dyn_call();
+    let call_info = make_call_info();
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -208,35 +189,22 @@ fn test_codegen_dyn_trait_call_produces_vtable_ir() {
     assert!(output.contains("@.dynptr.Drop.S"));
     assert!(output.contains("getelementptr"));
     assert!(output.contains("load"));
-    // Stage 5.82: Drop::drop returns Unit → Void, so the indirect call
-    // emits `call void %v` (not `call i32 %v` which was the I32 placeholder).
     assert!(output.contains("call void %v"));
 }
 
-/// codegen_dyn_trait_call uses correct dynptr symbol for trait/type.
+/// codegen_dyn_trait_call_direct uses correct dynptr symbol for trait/type.
 #[test]
 fn test_codegen_dyn_trait_call_uses_correct_dynptr_symbol() {
-    let mut mir = MirBody::new(Span::DUMMY);
-    mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    mir.dyn_trait_calls.push(DynTraitMethodCall::new(
-        "Display",
-        "Vec",
-        "fmt",
-        2,
-        1,
-        StdlibTypeKind::Unit,
-        vec![],
-    ));
-
+    let call_info =
+        DynTraitMethodCall::new("Display", "Vec", "fmt", 2, 1, StdlibTypeKind::Unit, vec![]);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -248,111 +216,60 @@ fn test_codegen_dyn_trait_call_uses_correct_dynptr_symbol() {
     assert!(output.contains("i32 2")); // slot_index
 }
 
-/// codegen_dyn_trait_call panics on out-of-bounds index.
-#[test]
-#[should_panic(expected = "index out of bounds")]
-fn test_codegen_dyn_trait_call_panics_on_oob() {
-    let mir = MirBody::new(Span::DUMMY); // empty side-table
-    let mut emitter = TextEmitter::new();
-    let interner = Rodeo::new();
-    let layouts = std::collections::HashMap::new();
-    let args: Vec<Operand> = vec![];
-
-    // Index 0 but side-table is empty → panic.
-    let _ = codegen_dyn_trait_call(
-        &mut emitter,
-        &mir,
-        0,
-        &args,
-        &interner,
-        &layouts,
-        &std::collections::HashMap::new(),
-    );
-}
+// Stage 15.65: The OOB panic test was removed — the legacy side-table
+// index lookup is gone. codegen_dyn_trait_call_direct takes the call info
+// directly, so there's no index to be out of bounds.
 
 // ============================================================
 // codegen_terminator integration: TerminatorKind::Call dispatch
 // ============================================================
 
-/// When func is the dyn Trait marker, codegen dispatches to dyn Trait path.
-///
-/// We verify by constructing a MirBody with a single Call terminator whose
-/// func is `Operand::Constant(Const { ty: Error, val: Int(0) })` and a
-/// corresponding `dyn_trait_calls[0]` entry. Running `codegen_terminator`
-/// should produce vtable indirect call IR.
-///
-/// Note: codegen_terminator is a private function — we test indirectly
-/// via the public codegen_dyn_trait_call API. The dispatch logic in
-/// codegen_terminator is straightforward pattern matching (see plan 5.79
-/// §2.3) and is verified by the existing vtable_codegen_tests integration
-/// tests passing unchanged (no regression).
+/// Stage 15.65: codegen_dyn_trait_call_direct takes the call info directly.
+/// The legacy marker Const (`Error + Int(index)`) is no longer used.
 #[test]
-fn test_codegen_terminator_dyn_trait_dispatch_via_marker() {
-    // This test constructs the marker Const that codegen_terminator
-    // would detect. We verify the marker shape matches the dispatch
-    // condition: `Operand::Constant(Const { ty: Error, val: Int(0) })`.
-    let marker = Operand::Constant(Const {
-        ty: Ty::new(TyKind::Error, Span::DUMMY),
-        val: ConstVal::Int(0),
-    });
+fn test_codegen_terminator_dyn_trait_dispatch_via_direct() {
+    // The new API takes the call info directly — no marker Const needed.
+    let call_info = make_call_info();
+    let mut emitter = TextEmitter::new();
+    let interner = Rodeo::new();
+    let layouts = std::collections::HashMap::new();
+    let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    // Verify marker shape (this is what codegen_terminator checks).
-    if let Operand::Constant(c) = &marker {
-        assert!(matches!(c.ty.kind, TyKind::Error));
-        if let ConstVal::Int(idx) = c.val {
-            assert_eq!(idx, 0);
-        } else {
-            panic!("expected ConstVal::Int");
-        }
-    } else {
-        panic!("expected Operand::Constant");
-    }
+    let ret = codegen_dyn_trait_call_direct(
+        &mut emitter,
+        &call_info,
+        &args,
+        &interner,
+        &layouts,
+        &std::collections::HashMap::new(),
+    );
+    assert!(!ret.is_empty(), "expected non-empty EmitValue");
 }
 
-/// Multiple dyn Trait calls: codegen_dyn_trait_call handles distinct indices.
+/// Multiple dyn Trait calls: codegen_dyn_trait_call_direct handles distinct call info.
 #[test]
-fn test_codegen_dyn_trait_call_multiple_distinct_indices() {
-    let mut mir = MirBody::new(Span::DUMMY);
-    mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    mir.dyn_trait_calls.push(DynTraitMethodCall::new(
-        "Drop",
-        "A",
-        "drop",
-        0,
-        0,
-        StdlibTypeKind::Unit,
-        vec![],
-    ));
-    mir.dyn_trait_calls.push(DynTraitMethodCall::new(
-        "Drop",
-        "B",
-        "drop",
-        0,
-        0,
-        StdlibTypeKind::Unit,
-        vec![],
-    ));
+fn test_codegen_dyn_trait_call_multiple_distinct() {
+    let call1 = DynTraitMethodCall::new("Drop", "A", "drop", 0, 0, StdlibTypeKind::Unit, vec![]);
+    let call2 = DynTraitMethodCall::new("Drop", "B", "drop", 0, 0, StdlibTypeKind::Unit, vec![]);
 
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    // First call → index 0 → Drop.A
-    codegen_dyn_trait_call(
+    // First call → Drop.A
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call1,
         &args,
         &interner,
         &layouts,
         &std::collections::HashMap::new(),
     );
-    // Second call → index 1 → Drop.B
-    codegen_dyn_trait_call(
+    // Second call → Drop.B
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        1,
+        &call2,
         &args,
         &interner,
         &layouts,
@@ -360,7 +277,6 @@ fn test_codegen_dyn_trait_call_multiple_distinct_indices() {
     );
 
     let output = emitter.output_with_globals();
-    // Both dynptr symbols should appear.
     assert!(output.contains("@.dynptr.Drop.A"));
     assert!(output.contains("@.dynptr.Drop.B"));
 }
@@ -373,7 +289,6 @@ fn test_dyn_trait_call_ir_well_formed() {
     emitter.emit_dyn_trait_method_call(".dynptr.Drop.S", 0, &args, &EmitType::I32);
     let output = emitter.output_with_globals();
 
-    // Should contain exactly 1 getelementptr, 2 loads, 1 call.
     let gep_count = output.matches("getelementptr").count();
     let load_count = output.matches("load").count();
     let call_count = output.matches("call i32 %v").count();

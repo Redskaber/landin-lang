@@ -89,7 +89,7 @@ mod terminator;
 mod trait_dispatch;
 
 // Re-export functions from sub-modules for use within codegen.
-pub use operand::codegen_dyn_trait_call;
+// Stage 15.65: `codegen_dyn_trait_call` (legacy) removed; use `_direct` variant.
 pub use operand::codegen_dyn_trait_call_direct;
 pub(crate) use operand::codegen_operand;
 pub(crate) use rvalue::codegen_rvalue;

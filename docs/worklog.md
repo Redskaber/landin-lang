@@ -21795,3 +21795,84 @@ Stage Summary:
 - Task 13 (impl Drop + RAII) ✅ COMPLETE++ with struct literal + field-copy fixes
 - 7568 tests passing (226 lib + 2126 integration + 5216 conformance), 0 failures
 - v0.190.0: minor bump (Phase 3 — struct literal Copy→Move + field-copy prevention)
+
+---
+Task ID: stage15.65-hp22-cleanup
+Agent: Super Z (main)
+Task: Stage 15.65 — HP-22 cleanup: remove legacy dyn_trait_calls side-table. v0.190.0 → v0.191.0. Task 16 COMPLETE.
+
+Work Log:
+- Baseline: v0.190.0 / 226 lib + 2126 integration + 5216 conformance
+
+### 1. Removed legacy side-table from MirBody
+
+In src/mir/body.rs:
+- Removed `pub dyn_trait_calls: Vec<DynTraitMethodCall>` field.
+- Removed `dyn_trait_calls: Vec::new()` from MirBody::new.
+- Removed `use crate::mir::dyn_trait::DynTraitMethodCall` import.
+- Added doc comment explaining the removal (Stage 15.65).
+
+### 2. Removed side-table push in build_dyn_trait_call_terminator
+
+In src/mir/lower/expr_operand.rs:
+- Removed `let index = cx.mir.dyn_trait_calls.len() as u128;`
+- Removed `cx.mir.dyn_trait_calls.push(call.clone());`
+- func operand is now a placeholder Const { ty: Error, val: Int(0) } (was Int(index)).
+- Added `let _ = cx;` to suppress unused parameter warning.
+
+### 3. Removed legacy codegen_dyn_trait_call function
+
+In src/codegen/operand.rs:
+- Removed the entire `codegen_dyn_trait_call` function (~50 lines).
+- codegen_dyn_trait_call_direct is now the sole entry point.
+
+### 4. Removed legacy codegen dispatch path
+
+In src/codegen/terminator.rs:
+- Removed the `if let Operand::Constant(c) = func` branch that decoded
+  the magic Error+Int(index) marker (~45 lines).
+- Codegen now relies solely on the dyn_trait_call field check (Stage 15.30).
+
+### 5. Updated re-exports
+
+In src/codegen/mod.rs:
+- Removed `pub use operand::codegen_dyn_trait_call;`
+- Kept `pub use operand::codegen_dyn_trait_call_direct;`
+
+In src/lib.rs:
+- Replaced codegen_dyn_trait_call with codegen_dyn_trait_call_direct in
+  the public re-export list.
+
+### 6. Updated 6 test files
+
+- dyn_trait_return_kind_tests.rs — use _direct variant; build DynTraitMethodCall directly
+- dyn_trait_param_kinds_tests.rs — use _direct variant; build DynTraitMethodCall directly
+- codegen_dyn_trait_method_call_tests.rs — use _direct variant; removed OOB panic test
+- mir_lower_dyn_trait_method_call_integration_tests.rs — verify via terminator field
+- driver_dyn_trait_plan_integration_tests.rs — count via TerminatorKind::Call { dyn_trait_call: Some(_) }
+- dyn_trait_e2e_integration_tests.rs — count via terminator field
+
+### 7. Documentation
+
+- docs/develop/v0/stage-15/stage-15.65-hp22-cleanup.md
+- docs/tests/v0/stage15/stage-15.65-test-plan.md
+- Updated docs/tests/matrix.md (Task 16 COMPLETE)
+- Updated RELEASE_NOTES.md (v0.191.0 entry)
+- Updated README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2125/2125 PASS
+  (was 2126; 1 test merged/renamed due to side-table removal, 2 ignored)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.190.0 → v0.191.0
+
+Stage Summary:
+- Stage 15.65 PASSED — HP-22 cleanup complete, legacy side-table removed
+- Task 16 (HP-22) ✅ COMPLETE — migration started in Stage 15.30, finished here
+- 7567 tests passing (226 lib + 2125 integration + 5216 conformance), 0 failures
+- v0.191.0: minor bump (Phase 4 — Task 16 COMPLETE, legacy code removed)

@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.190.0 (v0.2 Phase 3 — Task 13 `impl Drop` + RAII COMPLETE++ with struct literal fix)
+**Version**: v0.191.0 (v0.2 Phase 4 — Task 16 HP-22 cleanup COMPLETE)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -42,11 +42,17 @@ backend via the `llvm-sys` crate.
 > (they're views, not owned values). Added shared `is_mir_ty_copy_conservative`
 > helper in `mir::ty` (DRY). Runtime verified: 4 drops → 2 drops (correct).
 >
+> **Stage 15.65 — HP-22 cleanup (Task 16 COMPLETE)**:
+> Removed the legacy `dyn_trait_calls` side-table from `MirBody`. The dyn
+> Trait call info is now solely on `TerminatorKind::Call`'s `dyn_trait_call`
+> field (Stage 15.30). Removed legacy `codegen_dyn_trait_call` function +
+> legacy codegen dispatch path. 6 test files updated.
+>
 > **Runtime verified**: `let a,b,c` with Drop produces "dropping 3, 2, 1"
 > (reverse order, no duplicates) — matches Rust exactly.
 >
-> **Test count**: 226 lib tests + 2126 integration tests + 5216 conformance
-> tests = **7568 passing**. 0 clippy warnings, fmt clean.
+> **Test count**: 226 lib tests + 2125 integration tests + 5216 conformance
+> tests = **7567 passing**. 0 clippy warnings, fmt clean.
 
 > **v0.2 Phase 2 — Soundness Closures SUBSTANTIALLY COMPLETE**
 >
@@ -132,7 +138,7 @@ LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
 ### Run tests
 
 ```bash
-# Rust test suite (2352 tests: 226 lib + 2126 integration)
+# Rust test suite (2351 tests: 226 lib + 2125 integration)
 LLVM_SYS_191_PREFIX=/tmp/llvm-19-prefix LLVM_LINK_SHARED=1 \
   cargo test --features llvm-backend
 
@@ -308,7 +314,7 @@ src/
 | Suite | Count | Pass rate |
 |-------|-------|-----------|
 | Rust lib tests | 226 | 100% |
-| Rust integration tests | 2126 | 100% |
+| Rust integration tests | 2125 | 100% |
 | Conformance tests (.lin) | 5216 | 100% |
 | - Parse-only (`00-parse`) | 600 | 100% |
 | - Typecheck (`01-typecheck`) | 1020 | 100% |
@@ -320,7 +326,7 @@ src/
 | - Integration (`07-integration`) | 501 | 100% |
 | Examples | 4 | 100% |
 | Benchmarks | 5 | — |
-| **Total** | **7568** | **100%** |
+| **Total** | **7567** | **100%** |
 
 ---
 
@@ -361,4 +367,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.190.0, Stage 15.64 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.191.0, Stage 15.65 — `impl Drop` + RAII COMPLETE)

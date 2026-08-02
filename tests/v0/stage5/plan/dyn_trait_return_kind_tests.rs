@@ -9,14 +9,12 @@
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
 use landin_compiler::codegen::{stdlib_type_kind_to_emit_type, EmitType, TextEmitter};
-use landin_compiler::mir::body::MirBody;
 use landin_compiler::mir::dyn_trait::DynTraitMethodCall;
 use landin_compiler::mir::place::{LocalId, Operand, Place};
-use landin_compiler::mir::ty::{Ty, TyKind};
 use landin_compiler::mir::DynTraitFatPtr;
 use landin_compiler::session::Span;
 use landin_compiler::stdlib::StdlibTypeKind;
-use landin_compiler::{codegen_dyn_trait_call, stdlib_trait_methods};
+use landin_compiler::{codegen_dyn_trait_call_direct, stdlib_trait_methods};
 use lasso::Rodeo;
 
 // ============================================================
@@ -172,36 +170,23 @@ fn test_return_kind_preserved() {
 // codegen_dyn_trait_call uses return_kind tests
 // ============================================================
 
-/// Helper: build a MirBody with one dyn_trait_calls entry with given return_kind.
-fn make_mir_with_return_kind(return_kind: StdlibTypeKind) -> MirBody {
-    let mut mir = MirBody::new(Span::DUMMY);
-    mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    mir.new_local(Ty::new(TyKind::Error, Span::DUMMY), None, Span::DUMMY);
-    mir.dyn_trait_calls.push(DynTraitMethodCall::new(
-        "Foo",
-        "S",
-        "bar",
-        0,
-        0,
-        return_kind,
-        vec![],
-    ));
-    mir
+/// Helper: build a DynTraitMethodCall with given return_kind.
+fn make_call_info_with_return_kind(return_kind: StdlibTypeKind) -> DynTraitMethodCall {
+    DynTraitMethodCall::new("Foo", "S", "bar", 0, 0, return_kind, vec![])
 }
 
 /// Drop::drop (return Unit) → call void %v
 #[test]
 fn test_codegen_dyn_trait_call_void_return() {
-    let mir = make_mir_with_return_kind(StdlibTypeKind::Unit);
+    let call_info = make_call_info_with_return_kind(StdlibTypeKind::Unit);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -219,16 +204,15 @@ fn test_codegen_dyn_trait_call_void_return() {
 /// Method returning I32 → call i32 %v
 #[test]
 fn test_codegen_dyn_trait_call_i32_return() {
-    let mir = make_mir_with_return_kind(StdlibTypeKind::I32);
+    let call_info = make_call_info_with_return_kind(StdlibTypeKind::I32);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -246,16 +230,15 @@ fn test_codegen_dyn_trait_call_i32_return() {
 /// Method returning F64 → call double %v
 #[test]
 fn test_codegen_dyn_trait_call_f64_return() {
-    let mir = make_mir_with_return_kind(StdlibTypeKind::F64);
+    let call_info = make_call_info_with_return_kind(StdlibTypeKind::F64);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -273,16 +256,15 @@ fn test_codegen_dyn_trait_call_f64_return() {
 /// Method returning Bool → call i8 %v
 #[test]
 fn test_codegen_dyn_trait_call_bool_return() {
-    let mir = make_mir_with_return_kind(StdlibTypeKind::Bool);
+    let call_info = make_call_info_with_return_kind(StdlibTypeKind::Bool);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,
@@ -300,16 +282,15 @@ fn test_codegen_dyn_trait_call_bool_return() {
 /// Method returning AllocType (Self) → call ptr %v (OpaquePtr maps to ptr in LLVM 19)
 #[test]
 fn test_codegen_dyn_trait_call_alloc_type_return() {
-    let mir = make_mir_with_return_kind(StdlibTypeKind::AllocType);
+    let call_info = make_call_info_with_return_kind(StdlibTypeKind::AllocType);
     let mut emitter = TextEmitter::new();
     let interner = Rodeo::new();
     let layouts = std::collections::HashMap::new();
     let args = vec![Operand::Copy(Place::local(LocalId(0), Span::DUMMY))];
 
-    codegen_dyn_trait_call(
+    codegen_dyn_trait_call_direct(
         &mut emitter,
-        &mir,
-        0,
+        &call_info,
         &args,
         &interner,
         &layouts,

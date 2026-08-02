@@ -13,6 +13,7 @@
 
 use landin_compiler::hir::lower::lower_crate;
 use landin_compiler::lexer::tokenize;
+use landin_compiler::mir::body::TerminatorKind;
 use landin_compiler::mir::lower::{
     lower_hir_body_to_mir_full, lower_hir_body_to_mir_full_with_dyn_trait_plan,
 };
@@ -21,6 +22,39 @@ use landin_compiler::parser::Parser;
 use landin_compiler::resolve::resolve_crate;
 use landin_compiler::stdlib::StdlibTypeKind;
 use lasso::Rodeo;
+
+// Stage 15.65: side-table removed — helper to count dyn_trait_call terminators.
+fn count_dyn_trait_calls(mir: &landin_compiler::mir::MirBody) -> usize {
+    mir.basic_blocks
+        .iter()
+        .filter(|bb| {
+            matches!(
+                &bb.terminator.kind,
+                TerminatorKind::Call {
+                    dyn_trait_call: Some(_),
+                    ..
+                }
+            )
+        })
+        .count()
+}
+
+fn get_dyn_trait_calls(mir: &landin_compiler::mir::MirBody) -> Vec<&DynTraitMethodCall> {
+    mir.basic_blocks
+        .iter()
+        .filter_map(|bb| {
+            if let TerminatorKind::Call {
+                dyn_trait_call: Some(c),
+                ..
+            } = &bb.terminator.kind
+            {
+                Some(c)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
 
 // ============================================================
 // lower_hir_body_to_mir_full_with_dyn_trait_plan tests
@@ -66,8 +100,8 @@ fn test_with_plan_none_matches_legacy() {
         mir_with_none.basic_blocks.len()
     );
     // No dyn Trait calls in either case.
-    assert!(mir_legacy.dyn_trait_calls.is_empty());
-    assert!(mir_with_none.dyn_trait_calls.is_empty());
+    assert_eq!(count_dyn_trait_calls(&mir_legacy), 0);
+    assert_eq!(count_dyn_trait_calls(&mir_with_none), 0);
 }
 
 /// With plan=Some(empty), MIR is unchanged (no MethodCall matches empty plan).
@@ -86,7 +120,7 @@ fn test_with_empty_plan_no_change() {
     );
 
     // Empty plan → no dyn Trait calls recorded.
-    assert!(mir.dyn_trait_calls.is_empty());
+    assert_eq!(count_dyn_trait_calls(&mir), 0);
 }
 
 /// With plan=Some(non-empty) but source has no MethodCall, side-table is empty.
@@ -116,7 +150,7 @@ fn test_with_plan_no_method_call_no_record() {
     );
 
     // Source has no method call → no dyn Trait call recorded.
-    assert!(mir.dyn_trait_calls.is_empty());
+    assert_eq!(count_dyn_trait_calls(&mir), 0);
 }
 
 /// With plan=Some(non-empty) AND source has matching MethodCall,
@@ -149,12 +183,13 @@ fn test_with_plan_matching_method_call_records_dyn_call() {
 
     // Source has x.foo() — plan has Foo::S::foo → should match.
     assert_eq!(
-        mir.dyn_trait_calls.len(),
+        count_dyn_trait_calls(&mir),
         1,
         "expected 1 dyn Trait call, got {}",
-        mir.dyn_trait_calls.len()
+        count_dyn_trait_calls(&mir)
     );
-    let recorded = &mir.dyn_trait_calls[0];
+    let calls = get_dyn_trait_calls(&mir);
+    let recorded = calls[0];
     assert_eq!(recorded.method_name, "foo");
     assert_eq!(recorded.trait_name, "Foo");
     assert_eq!(recorded.type_name, "S");
@@ -187,7 +222,7 @@ fn test_with_plan_method_name_mismatch_no_record() {
     );
 
     // Source has x.bar() but plan has foo → no match → empty side-table.
-    assert!(mir.dyn_trait_calls.is_empty());
+    assert_eq!(count_dyn_trait_calls(&mir), 0);
 }
 
 /// Multiple method calls in source + matching plan → multiple records.
@@ -214,12 +249,9 @@ fn test_multiple_method_calls_multiple_records() {
         Some(&plan),
     );
 
-    assert_eq!(mir.dyn_trait_calls.len(), 2);
-    let methods: Vec<&str> = mir
-        .dyn_trait_calls
-        .iter()
-        .map(|c| c.method_name.as_str())
-        .collect();
+    assert_eq!(count_dyn_trait_calls(&mir), 2);
+    let calls = get_dyn_trait_calls(&mir);
+    let methods: Vec<&str> = calls.iter().map(|c| c.method_name.as_str()).collect();
     assert!(methods.contains(&"foo"));
     assert!(methods.contains(&"bar"));
 }
