@@ -1,9 +1,46 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.177.0
+**Current version**: v0.178.0
 **Date**: 2026-08-01
-**Test count**: 226 rust lib tests + 2085 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 226 rust lib tests + 2091 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.178.0 — Stage 15.52 (Region Allocation Gate Review — Task 9 Closure)
+
+### Overview
+
+Stage 15.52 is the **gate review** stage for Task 9 (Region allocation,
+HP-5). It adds 6 integration tests verifying the region allocation
+pipeline produces no false positives, and formally closes Task 9 as
+**PARTIALLY COMPLETE**.
+
+### What Changed
+
+- **6 integration tests** in `tests/v0/stage15/plan/region_allocation_integration_tests.rs`:
+  - Simple ref, multiple refs, fn with ref params, fn returning ref, loop with refs, struct with ref field.
+  - All verify no false positives from the region allocation pipeline.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests stage15_region_allocation_integration` — ✅ 6/6 PASS
+
+### Migration Plan (Stages 15.48-15.52) — FINAL
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.48 | ✅ DONE (v0.174.0) | Design doc |
+| 15.49 | ✅ DONE (v0.175.0) | Lifetime elision + MIR region assignment |
+| 15.50 | ✅ DONE (v0.176.0) | Constraint collection from MIR |
+| 15.51 | ✅ DONE (v0.177.0) | Error reporting + integration |
+| **15.52** | **✅ DONE (v0.178.0)** | **Integration tests + gate review (this release)** |
+
+**Task 9 (HP-5): PARTIALLY COMPLETE** — infrastructure fully integrated,
+simplified constraints, no false positives.
 
 ---
 ## v0.177.0 — Stage 15.51 (Error Reporting + Integration)

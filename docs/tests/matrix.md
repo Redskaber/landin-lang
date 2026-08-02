@@ -200,7 +200,8 @@
 | **15.49** | **Lifetime elision + MIR region assignment — new `lower_hir_ty_to_mir_ty_with_regions` function; each `&T` gets a fresh `Region::Var(vid)` instead of `Region::Erased`; zero regression** | **0 (code change, no new tests — infrastructure)** | ✅ |
 | **15.50** | **Constraint collection from MIR — new `collect_mir_constraints` method on `RegionInferenceContext`; collects outlives constraints from `r = &x`, `r = Copy(x)`, `call f(&x)`; wired into `run_region_inference`; zero regression** | **0 (code change, no new tests — infrastructure)** | ✅ |
 | **15.51** | **Error reporting + integration — `LifetimeError` variant added to `BorrowErrorKind`; `run_region_inference` converts `RegionInferenceError` to `BorrowError`; zero regression (no false positives)** | **0 (code change, no new tests — infrastructure)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL COMPLETE + Drop elaboration (partial) + Region allocation (design + region assignment + constraint collection + error reporting)** | **+125 rust in 15.35-15.46** | ✅ |
+| **15.52** | **Region allocation gate review (Task 9 closure) — 6 integration tests verify no false positives on ref patterns (simple, multiple, fn params, fn return, loop, struct); Task 9 PARTIALLY COMPLETE (infrastructure integrated, simplified constraints)** | **+6 rust (integration)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL COMPLETE + Drop elaboration (partial) + Region allocation (infrastructure COMPLETE, simplified constraints)** | **+131 rust in 15.35-15.52** | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 
