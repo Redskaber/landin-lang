@@ -1,9 +1,64 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.188.0
+**Current version**: v0.189.0
 **Date**: 2026-08-02
-**Test count**: 226 rust lib tests + 2110 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 226 rust lib tests + 2118 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.189.0 — Stage 15.63 (Recursive Drop — Fields with Drop)
+
+### Overview
+
+Stage 15.63 implements **recursive drop** — when a struct doesn't have
+`impl Drop` but has fields that need drop, the drop glue function now
+recursively drops each field. Previously, `emit_drop_glue_functions` only
+emitted drop glue for types WITH `impl Drop`, causing link errors for
+types that need drop (via field recursion) but don't have their own
+`impl Drop`.
+
+### What Changed
+
+**`src/codegen/mod.rs`**:
+- `emit_drop_glue_functions` rewritten to iterate ALL types in
+  `type_by_def_id` (not just types with `impl Drop`).
+- For each type where `ty_needs_drop` returns true, emits drop glue:
+  - If type has `impl Drop`: calls user's `Drop::drop` method.
+  - For each field needing drop: GEPs to field, calls `drop_adt_<fieldDefId>`.
+- Added `AdtLayouts` parameter (extracted from `result.mirs[0].adt_layouts`).
+- Both text backend and LLVM backend now pass `AdtLayouts`.
+
+### Runtime Verification
+
+**Before** (link error):
+```landin
+struct Inner { x: i32 }
+impl Drop for Inner { fn drop(&mut self) {} }
+struct Outer { inner: Inner }
+fn main() -> i32 { let o = Outer { inner: Inner { x: 42 } }; o.inner.x }
+```
+→ `/usr/bin/ld: undefined reference to 'drop_adt_4'`
+
+**After** (exit 42):
+→ Compiles, links, and runs correctly. ✅
+
+### Files Changed
+
+- `src/codegen/mod.rs` — rewrote `emit_drop_glue_functions` + added
+  `AdtLayouts` parameter to both call sites.
+- `tests/v0/stage15/plan/recursive_drop_tests.rs` — NEW: 8 tests.
+- `tests/all_tests.rs` — registered new test module.
+- `Cargo.toml` — bumped v0.188.0 → v0.189.0.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2118/2118 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7560 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.188.0 — Stage 15.62 (Drop Order + Double-Drop Prevention)

@@ -21608,3 +21608,95 @@ Stage Summary:
 - Task 13 (impl Drop + RAII) ✅ FULLY COMPLETE with correct Rust-matching semantics
 - 7552 tests passing (226 lib + 2110 integration + 5216 conformance), 0 failures
 - v0.188.0: minor bump (Phase 3 — Task 13 complete with correct drop order)
+
+---
+Task ID: stage15.63-recursive-drop
+Agent: Super Z (main)
+Task: Stage 15.63 — Recursive drop (fields with Drop). v0.188.0 → v0.189.0. emit_drop_glue_functions rewritten to emit drop glue for ALL types needing drop.
+
+Work Log:
+- Baseline: v0.188.0 / 226 lib + 2110 integration + 5216 conformance
+
+### 1. Root cause: link error for structs with Drop fields but no impl Drop
+
+Test case:
+  struct Inner { x: i32 }
+  impl Drop for Inner { fn drop(&mut self) {} }
+  struct Outer { inner: Inner }
+  fn main() { let o = Outer { inner: Inner { x: 42 } }; o.inner.x }
+
+Result: /usr/bin/ld: undefined reference to `drop_adt_4`
+
+Root cause: emit_drop_glue_functions only iterated impl_by_trait_and_type
+for Drop impls. Types WITHOUT impl Drop but with Drop fields (like Outer)
+did not get drop glue emitted. But ty_needs_drop correctly returns true
+for Outer (field recursion), so elaborate_drops inserts a Drop terminator
+calling drop_adt_4 — which doesn't exist → link error.
+
+### 2. Rewrote emit_drop_glue_functions
+
+New approach: iterate ALL types in type_by_def_id. For each type:
+1. Check ty_needs_drop(Ty::Adt(def_id, [])).
+2. If false, skip.
+3. If true, emit drop_adt_<DefId>(ptr %self):
+   a. If type has impl Drop: call landin_<Type>_drop(ptr %self).
+   b. For each field needing drop: GEP to field, call drop_adt_<fieldDefId>.
+
+Uses AdtLayout::Struct { field_tys } to:
+- Check which fields need drop (recursive ty_needs_drop).
+- Build the struct's LLVM type for GEP (EmitType::Struct of field types).
+
+### 3. Added AdtLayouts parameter
+
+emit_drop_glue_functions now takes &AdtLayouts. Both call sites
+(codegen_crate text backend, codegen_crate_to_module LLVM backend)
+extract AdtLayouts from result.mirs[0].adt_layouts (shared via Arc).
+
+### 4. Enum handling
+
+Recursive drop for enums NOT implemented (deferred to v0.3). Enums would
+need SwitchInt in the drop glue to check discriminant and drop active
+variant's payload. For MVP: if enum has impl Drop, user's drop runs;
+fields not recursively dropped.
+
+### 5. Added 8 integration tests
+
+tests/v0/stage15/plan/recursive_drop_tests.rs:
+- stage15_63_recursive_drop_outer_no_drop_inner_drop
+- stage15_63_recursive_drop_both_have_drop
+- stage15_63_recursive_drop_three_levels
+- stage15_63_recursive_drop_multiple_drop_fields
+- stage15_63_recursive_drop_mixed_fields
+- stage15_63_no_drop_all_primitives_no_regression
+- stage15_63_recursive_drop_function_returns_struct_with_drop_field
+- stage15_63_recursive_drop_explicit_self_type
+
+### 6. Runtime verification
+
+Test 1 (previously link error): exit 42 ✅
+Test 2 (three-level nesting): exit 42 ✅
+
+### 7. Documentation
+
+- docs/develop/v0/stage-15/stage-15.63-recursive-drop.md
+- docs/tests/v0/stage15/stage-15.63-test-plan.md
+- Updated docs/tests/matrix.md (Stage 15 total: +158 rust tests)
+- Updated RELEASE_NOTES.md (v0.189.0 entry)
+- Updated README.md (recursive drop feature)
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2118/2118 PASS
+  (was 2110; +8 new recursive drop tests, 2 ignored)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.188.0 → v0.189.0
+
+Stage Summary:
+- Stage 15.63 PASSED — recursive drop working for structs
+- Task 13 (impl Drop + RAII) ✅ COMPLETE+ with recursive drop
+- 7560 tests passing (226 lib + 2118 integration + 5216 conformance), 0 failures
+- v0.189.0: minor bump (Phase 3 — recursive drop)

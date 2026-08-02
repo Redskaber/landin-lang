@@ -159,110 +159,200 @@ pub fn codegen_crate(result: &crate::driver::CompileResult) -> String {
     emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, &mut emitter);
 
     // Stage 15.57 (HP-12 step 7): Emit drop glue functions for types that
-    // implement Drop. For each type with `impl Drop for T`, emit a
-    // `drop_adt_<DefId>` function that calls the user's `Drop::drop` method.
+    // need drop. Stage 15.63: Extended to emit drop glue for ALL types
+    // needing drop (not just types with `impl Drop`). For types with
+    // `impl Drop`, calls the user's `Drop::drop` method then recursively
+    // drops each field. For types without `impl Drop` but with fields
+    // needing drop, recursively drops each field.
     //
-    // Per §16: codegen reads the pre-built TraitResolver (data only).
+    // Per §16: codegen reads the pre-built TraitResolver + AdtLayouts (data only).
     // Per §23: function name follows `drop_<noun>_<id>` pattern.
+    let adt_layouts = result
+        .mirs
+        .first()
+        .map(|m| m.adt_layouts.clone())
+        .unwrap_or_default();
     emit_drop_glue_functions(
         &result.trait_resolver,
         &result.interner,
         &result.fn_name_by_def_id,
+        &adt_layouts,
         &mut emitter,
     );
 
     emitter.output_with_globals()
 }
 
-/// Stage 15.57 (HP-12): Emit drop glue functions for types that implement Drop.
+/// Stage 15.57 (HP-12): Emit drop glue functions for types that need drop.
 ///
-/// For each type `T` that has `impl Drop for T`, emit a function:
+/// Stage 15.63: Extended to emit drop glue for ALL types needing drop
+/// (not just types with `impl Drop`). For each type `T` where
+/// `ty_needs_drop(T)` is true, emit a function:
+///
 /// ```llvm
-/// define void @drop_adt_<DefId>(%struct.T* %self) {
-///     call void @"landin_T_drop"(%struct.T* %self)  ; user's Drop::drop
+/// define void @drop_adt_<DefId>(ptr %self) {
+///     ; If T has impl Drop: call the user's Drop::drop method.
+///     call void @"landin_T_drop"(ptr %self)
+///     ; Recursively drop each field that needs drop.
+///     %field0 = getelementptr inbounds { i32, %struct.Inner }, ptr %self, i32 0, i32 1
+///     call void @drop_adt_<InnerDefId>(ptr %field0)
 ///     ret void
 /// }
 /// ```
 ///
 /// The function name `drop_adt_<DefId>` matches what `TerminatorKind::Drop`
 /// codegen calls (Stage 15.45). The user's `Drop::drop` method is called
-/// with the place pointer as `&mut self`.
+/// with the place pointer as `&mut self` (if the type has `impl Drop`).
+/// Then each field that needs drop is recursively dropped via GEP + call.
+///
+/// ## Recursive drop
+///
+/// For a struct `Outer { inner: Inner }` where `Inner` has `impl Drop`:
+/// - `Outer` does NOT have `impl Drop`, but `ty_needs_drop(Outer)` returns
+///   true (because its field `inner` needs drop).
+/// - `emit_drop_glue_functions` emits `drop_adt_<OuterDefId>` that GEPs to
+///   `inner` and calls `drop_adt_<InnerDefId>`.
+/// - `elaborate_drops` inserts `Drop { place: outer, ... }` at scope end.
+/// - The `Drop` terminator calls `drop_adt_<OuterDefId>`, which calls
+///   `drop_adt_<InnerDefId>`, which calls `landin_Inner_drop`.
+///
+/// This matches Rust's recursive drop semantics.
 ///
 /// Per §23: function name follows `drop_<noun>_<id>` pattern.
-/// Per §16: reads TraitResolver + fn_name_by_def_id (data only, no HIR).
+/// Per §16: reads TraitResolver + AdtLayouts + fn_name_by_def_id (data only, no HIR).
 fn emit_drop_glue_functions(
     resolver: &crate::traits::TraitResolver,
     interner: &Rodeo,
     _fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    adt_layouts: &crate::mir::body::AdtLayouts,
     emitter: &mut dyn Emitter,
 ) {
-    use crate::codegen::emitter::EmitType;
+    use crate::codegen::emitter::{mir_type_to_emit_type, EmitType};
+    use crate::mir::body::AdtLayout;
+    use crate::mir::drop_elaboration::ty_needs_drop;
+    use crate::mir::ty::{Ty, TyKind};
 
-    // Get the "Drop" trait name from the interner.
-    let drop_name = match interner.get("Drop") {
-        Some(s) => s,
-        None => return, // "Drop" not interned — no Drop impls exist.
-    };
+    // Get the "Drop" trait name from the interner (if any types implement Drop).
+    let drop_name = interner.get("Drop");
 
-    // Iterate all types that implement Drop.
-    // The TraitResolver stores impls in `impl_by_trait_and_type` keyed by
-    // (trait_name_spur, self_type_name_spur) → impl DefId.
-    // We iterate all entries with trait_name == "Drop".
-    for ((trait_spur, type_spur), impl_def_id) in &resolver.impl_by_trait_and_type {
-        if *trait_spur != drop_name {
+    // Stage 15.63: Iterate ALL types in `type_by_def_id`, not just types
+    // with `impl Drop`. For each type, check `ty_needs_drop`. If it needs
+    // drop, emit drop glue.
+    //
+    // This handles two cases:
+    // 1. Types WITH `impl Drop`: call user's drop + recursively drop fields.
+    // 2. Types WITHOUT `impl Drop` but with fields needing drop: recursively
+    //    drop fields only.
+    for (&def_id, &type_spur) in &resolver.type_by_def_id {
+        let ty = Ty::new(
+            TyKind::Adt(def_id, Vec::new().into()),
+            crate::session::Span::DUMMY,
+        );
+
+        // Skip types that don't need drop.
+        if !ty_needs_drop(&ty, resolver, adt_layouts, interner) {
             continue;
         }
 
-        // Get the ImplInfo for this Drop impl.
-        if let Some(impl_info) = resolver.impls.get(impl_def_id) {
-            // Stage 15.60: Fix DefId mismatch.
-            // The TerminatorKind::Drop codegen (Stage 15.45) generates
-            // `drop_adt_<DefId>` using the TYPE's DefId (from
-            // `mir.local(local_id).ty` which has `TyKind::Adt(def_id, _)`).
-            // So we must use the TYPE's DefId here, not the impl block's DefId.
-            //
-            // The type's DefId is found by reverse-looking-up
-            // `type_by_def_id`: find the DefId whose Spur matches
-            // `type_spur` (the self type name).
-            let self_def_id = resolver
-                .type_by_def_id
-                .iter()
-                .find(|(_, name)| **name == *type_spur)
-                .map(|(id, _)| *id)
-                .unwrap_or(impl_info.def_id); // fallback to impl's DefId
+        // Check if this type has `impl Drop`.
+        let has_drop_impl = drop_name
+            .map(|dn| resolver.implements(dn, type_spur))
+            .unwrap_or(false);
 
-            // The drop method's function name.
-            // The driver registers impl method bodies with names like
-            // `landin_<Type>_<method>`. We look up the method's DefId
-            // from the impl_info.methods (method name Spurs) and resolve
-            // via fn_name_by_def_id.
-            //
-            // For the MVP, we construct the name directly from the type name.
-            let type_name = interner.resolve(type_spur).to_string();
+        // Get the type name (for the user's drop method name).
+        let type_name = interner.resolve(&type_spur).to_string();
+
+        // Emit the drop glue function: `drop_adt_<DefId>`.
+        let drop_fn_name = format!("drop_adt_{}", def_id.0);
+
+        // Declare the user's drop method (if the type has impl Drop).
+        if has_drop_impl {
             let drop_method_name = format!("landin_{}_drop", type_name);
-
-            // Emit the drop glue function: `drop_adt_<DefId>`.
-            let drop_fn_name = format!("drop_adt_{}", self_def_id.0);
-
-            // Declare the user's drop method (if not already declared).
-            let self_str = "self".to_string();
             emitter.emit_declare(&format!("void @{}(ptr %self)", drop_method_name));
+        }
 
-            // Define the drop glue function.
-            emitter.emit_function_begin(
-                &drop_fn_name,
-                &[(EmitType::OpaquePtr, &self_str)],
-                &EmitType::Void,
-            );
-            // Call the user's Drop::drop method.
+        // Get the AdtLayout for this type (to know field types for recursive drop).
+        let layout = adt_layouts.get(&def_id);
+
+        // Collect fields that need drop: (field_index, field_def_id, field_llvm_type).
+        // Used for recursive drop (GEP to field + call drop_adt_<fieldDefId>).
+        let mut fields_to_drop: Vec<(u32, Option<crate::hir::DefId>, EmitType)> = Vec::new();
+
+        if let Some(layout) = &layout {
+            match layout {
+                AdtLayout::Struct { field_tys } => {
+                    for (idx, field_ty) in field_tys.iter().enumerate() {
+                        if ty_needs_drop(field_ty, resolver, adt_layouts, interner) {
+                            let field_def_id = match &field_ty.kind {
+                                TyKind::Adt(fid, _) => Some(*fid),
+                                _ => None,
+                            };
+                            let field_emit_ty = mir_type_to_emit_type(field_ty);
+                            fields_to_drop.push((idx as u32, field_def_id, field_emit_ty));
+                        }
+                    }
+                }
+                AdtLayout::Enum {
+                    variant_payloads, ..
+                } => {
+                    // For enums, we'd need to check the discriminant and drop
+                    // the active variant's payload. This is complex (requires
+                    // SwitchInt in the drop glue). For the MVP, we skip
+                    // recursive drop for enum fields — the user's Drop::drop
+                    // (if any) still runs, but fields are not recursively
+                    // dropped. Full enum drop is deferred to v0.3.
+                    let _ = variant_payloads;
+                }
+            }
+        }
+
+        // Build the struct's LLVM type string for GEP (from field types).
+        let struct_llvm_ty = if let Some(AdtLayout::Struct { field_tys }) = layout {
+            let field_emit_tys: Vec<EmitType> =
+                field_tys.iter().map(mir_type_to_emit_type).collect();
+            EmitType::Struct(field_emit_tys)
+        } else {
+            EmitType::OpaquePtr // fallback for enums or missing layout
+        };
+
+        // Define the drop glue function.
+        let self_str = "self".to_string();
+        emitter.emit_function_begin(
+            &drop_fn_name,
+            &[(EmitType::OpaquePtr, &self_str)],
+            &EmitType::Void,
+        );
+
+        // If the type has impl Drop, call the user's Drop::drop method.
+        if has_drop_impl {
+            let drop_method_name = format!("landin_{}_drop", type_name);
             emitter.emit_call(
                 &drop_method_name,
                 &[(EmitType::OpaquePtr, &self_str)],
                 &EmitType::Void,
             );
-            emitter.emit_ret(&EmitType::Void, None);
-            emitter.emit_function_end();
         }
+
+        // Recursively drop each field that needs drop.
+        for (field_idx, field_def_id, _field_emit_ty) in &fields_to_drop {
+            // GEP to the field: %field = getelementptr inbounds <struct_ty>, ptr %self, i32 0, i32 <field_idx>
+            let field_addr = emitter.emit_gep_field(&self_str, &struct_llvm_ty, *field_idx);
+
+            // Call drop_adt_<fieldDefId> on the field (if it's an ADT).
+            if let Some(fid) = field_def_id {
+                let field_drop_fn = format!("drop_adt_{}", fid.0);
+                emitter.emit_call(
+                    &field_drop_fn,
+                    &[(EmitType::OpaquePtr, &field_addr)],
+                    &EmitType::Void,
+                );
+            }
+            // For non-ADT fields that need drop (e.g., tuples, arrays),
+            // we'd need a generic drop glue function. This is deferred to v0.3.
+        }
+
+        emitter.emit_ret(&EmitType::Void, None);
+        emitter.emit_function_end();
     }
 }
 
@@ -314,13 +404,20 @@ pub fn codegen_crate_to_module(result: &crate::driver::CompileResult) -> LLVMSys
     // using `--emit-obj` / `--emit-bin` / `--run` with `impl Drop` programs.
     // The LLVM backend must emit the same drop glue functions as the text
     // backend so that `TerminatorKind::Drop` codegen can resolve them.
+    // Stage 15.63: Now passes AdtLayouts for recursive drop support.
     //
-    // Per §16: codegen reads the pre-built TraitResolver (data only).
+    // Per §16: codegen reads the pre-built TraitResolver + AdtLayouts (data only).
     // Per §23: function name follows `drop_<noun>_<id>` pattern.
+    let adt_layouts = result
+        .mirs
+        .first()
+        .map(|m| m.adt_layouts.clone())
+        .unwrap_or_default();
     emit_drop_glue_functions(
         &result.trait_resolver,
         &result.interner,
         &result.fn_name_by_def_id,
+        &adt_layouts,
         &mut emitter,
     );
     codegen_from_mir(
