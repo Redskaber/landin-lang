@@ -1,9 +1,43 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.180.0
+**Current version**: v0.181.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2091 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.181.0 — Stage 15.55 (Phase 3 Design Alignment — Task 13 Selected)
+
+### Overview
+
+Stage 15.55 is a **design alignment** stage for v0.2 Phase 3 (Feature Work).
+It assesses the readiness of each Phase 3 task and selects Task 13
+(`impl Drop` + RAII types) as the first Phase 3 task to implement.
+
+### Why Task 13?
+
+1. **Infrastructure ready**: Drop elaboration infrastructure is complete
+   from Stages 15.42-15.46.
+2. **Lowest effort**: 1 week (vs 2-3 weeks for Tasks 11/12).
+3. **Immediate user value**: RAII types (`File`, `Box<T>`, `MutexGuard`).
+4. **Unblocks Task 20**: `Box<T>` in prelude needs Drop support.
+
+### Migration Plan (Stages 15.55-15.59) — Task 13
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| **15.55** | **✅ DONE (v0.181.0)** | **Phase 3 design alignment (this release)** |
+| 15.56 | ⏳ NEXT | Parser support for `impl Drop for T` |
+| 15.57 | ⏳ PLANNED | TraitResolver registration + drop glue function emission |
+| 15.58 | ⏳ PLANNED | Conformance tests with `impl Drop` patterns |
+| 15.59 | ⏳ PLANNED | Gate review |
+
+### Verification
+
+- No code changes — design-only stage.
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS (zero regression)
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.180.0 — Stage 15.54 (v0.2 Phase 2 Milestone Review — SUBSTANTIALLY COMPLETE)

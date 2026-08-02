@@ -21083,3 +21083,55 @@ Stage Summary:
 - Phase 2 SUBSTANTIALLY COMPLETE (NLL done, Drop/Region infrastructure done, Closure design done)
 - 131 new tests, 5 design docs, 1 diagnostic tool, 1 new module
 - v0.180.0: minor bump (Phase 2 milestone review — SUBSTANTIALLY COMPLETE)
+
+---
+Task ID: stage15.55-phase3-design-alignment
+Agent: Super Z (main)
+Task: Stage 15.55 — Phase 3 design alignment (task selection + planning). v0.180.0 → v0.181.0.
+
+Work Log:
+- Baseline: v0.180.0 / 226 lib + 2091 integration + 5216 conformance
+
+### 1. Assessed Phase 3 task readiness
+
+| Task | Effort | Priority | Dependencies | Readiness |
+|------|--------|----------|--------------|-----------|
+| 11: Monomorphization | 2-3 weeks | P0 | Tasks 1-3 | Blocked (Task 3 not done) |
+| 12: Lifetime elision | 2-3 weeks | P1 | Tasks 7, 9 | Partial |
+| 13: impl Drop + RAII | 1 week | P1 | Task 8 | ✅ Ready |
+| 14: Object safety | 1 week | P2 | Task 3 | Blocked |
+
+### 2. Selected Task 13 as first Phase 3 task
+
+Reasons:
+1. Infrastructure ready (Drop elaboration from Stages 15.42-15.46).
+2. Lowest effort (1 week vs 2-3 weeks).
+3. Immediate user value (RAII types).
+4. Unblocks Task 20 (Box<T> in prelude).
+
+### 3. Created 5-stage implementation plan (15.55-15.59)
+
+- 15.55: Design alignment (this stage)
+- 15.56: Parser support for impl Drop for T
+- 15.57: TraitResolver registration + drop glue function emission
+- 15.58: Conformance tests with impl Drop patterns
+- 15.59: Gate review
+
+### 4. Created documentation
+
+- docs/develop/v0/stage-15/stage-15.55-phase3-design-alignment.md
+- docs/tests/v0/stage15/stage-15.55-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- No code changes — design-only stage.
+- `cargo build --features llvm-backend` — ✅ clean build
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.180.0 → v0.181.0
+
+Stage Summary:
+- Stage 15.55 PASSED — Phase 3 design alignment complete
+- Task 13 (impl Drop + RAII) selected as first Phase 3 task
+- 5-stage implementation plan (15.55-15.59)
+- v0.181.0: minor bump (Phase 3 design alignment — Task 13 selected)
