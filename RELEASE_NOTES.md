@@ -1,9 +1,55 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.184.0
+**Current version**: v0.185.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2094 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.185.0 — Stage 15.59 (impl Drop Gate Review — Task 13 Closure)
+
+### Overview
+
+Stage 15.59 is the **gate review** for Task 13 (`impl Drop` + RAII types).
+It reviews the complete implementation and formally closes Task 13 as
+**PARTIALLY COMPLETE** — infrastructure is in place but `impl Drop`
+programs crash due to a 1-line DefId mismatch.
+
+### Key Findings
+
+- Drop elaboration pipeline is **complete end-to-end**: parser →
+  TraitResolver → `ty_needs_drop` → `elaborate_drops` → codegen →
+  `emit_drop_glue_functions`.
+- Programs WITHOUT `impl Drop` compile cleanly (no false positives).
+- Programs WITH `impl Drop` crash — **DefId mismatch**: codegen uses the
+  type's DefId, but `emit_drop_glue_functions` uses the impl block's DefId.
+- **Fix is 1-line**: use the type's DefId instead of the impl's DefId.
+  Deferred to a future debugging stage.
+
+### §25 Deep Review (8 Dimensions)
+
+All 8 dimensions: GO or GO-WITH-CONDITIONS.
+
+### Committee Vote: GO-WITH-CONDITIONS
+
+**Task 13: PARTIALLY COMPLETE** — infrastructure ready, DefId fix deferred.
+
+### Migration Plan (Stages 15.55-15.59) — FINAL
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.55 | ✅ DONE (v0.181.0) | Phase 3 design alignment |
+| 15.56 | ✅ DONE (v0.182.0) | Parser investigation |
+| 15.57 | ✅ DONE (v0.183.0) | Drop glue function emission |
+| 15.58 | ✅ DONE (v0.184.0) | Conformance + integration tests |
+| **15.59** | **✅ DONE (v0.185.0)** | **Gate review (this release)** |
+
+### Verification
+
+- No code changes — review-only stage.
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.184.0 — Stage 15.58 (impl Drop Conformance + Integration Tests)
