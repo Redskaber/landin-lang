@@ -650,6 +650,25 @@ impl RegionInferenceContext {
     /// Per §23: method name follows `<verb>_<noun>_<noun>` pattern.
     /// Per §16: reads only `&MirBody` — no writes, no HIR lookup.
     pub(crate) fn collect_mir_constraints(&mut self, mir: &crate::mir::body::MirBody) {
+        self.collect_mir_constraints_with_sigs(mir, None);
+    }
+
+    /// Stage 15.71: Collect MIR constraints with optional fn_sigs for
+    /// proper call-argument region constraints.
+    ///
+    /// When `fn_sigs` is `Some`, call arguments' regions are constrained
+    /// against the callee's parameter regions (looked up via fn_sigs[def_id]).
+    /// When `fn_sigs` is `None`, falls back to the simplified `'static`
+    /// constraint (Stage 15.50 behavior).
+    ///
+    /// Per §23: `collect_mir_constraints_with_sigs` follows
+    /// `<verb>_<noun>_<noun>_<prep>_<noun>` pattern.
+    /// Per §1.0 原則 9 "正确 > 妥协": proper constraints instead of 'static fallback.
+    pub(crate) fn collect_mir_constraints_with_sigs(
+        &mut self,
+        mir: &crate::mir::body::MirBody,
+        fn_sigs: Option<&std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>>,
+    ) {
         use crate::mir::body::{StatementKind, TerminatorKind};
         use crate::mir::place::PlaceKind;
         use crate::mir::place::Rvalue;
@@ -721,31 +740,78 @@ impl RegionInferenceContext {
             }
 
             // Collect constraints from terminators (function calls).
-            if let TerminatorKind::Call { args, .. } = &bb.terminator.kind {
-                for arg in args {
+            if let TerminatorKind::Call { func, args, .. } = &bb.terminator.kind {
+                // Stage 15.71: If fn_sigs is available, look up the callee's
+                // signature and add proper region constraints between call
+                // arguments and parameters. Otherwise, fall back to the
+                // simplified 'static constraint.
+                let callee_sig = if let Some(sigs) = fn_sigs {
+                    // Try to resolve the callee's DefId from the func operand.
+                    if let crate::mir::place::Operand::Copy(lv)
+                    | crate::mir::place::Operand::Move(lv) = func
+                    {
+                        if let PlaceKind::Local(id) = &lv.kind {
+                            if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                                if let crate::mir::ty::TyKind::FnDef(def_id, _) = &ld.ty.kind {
+                                    sigs.get(def_id).cloned()
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                for (arg_idx, arg) in args.iter().enumerate() {
                     if let crate::mir::place::Operand::Copy(lv)
                     | crate::mir::place::Operand::Move(lv) = arg
                     {
                         let arg_ty = self.place_ty(mir, lv);
                         let arg_regions = extract_regions_from_ty(&arg_ty);
-                        // For each region in the argument type, add a
-                        // constraint that it outlives 'static (vid 0).
-                        // This is a simplified constraint — the real
-                        // constraint would be between the argument's
-                        // region and the parameter's region, but we don't
-                        // have access to the function signature here.
-                        // TODO (Stage 15.51): use fn_sigs for proper constraints.
-                        for r in arg_regions {
-                            if r != RegionVid(0) {
-                                // r outlives 'static (always true, but
-                                // exercises the constraint collection path).
-                                self.add_outlives_constraint(
-                                    r,
-                                    RegionVid(0),
-                                    ConstraintCause::FnSignature {
-                                        span: bb.terminator.span,
-                                    },
-                                );
+
+                        if let Some(ref sig) = callee_sig {
+                            // Stage 15.71: Use the callee's parameter type
+                            // for proper region constraints.
+                            // arg_region outlives param_region.
+                            if arg_idx < sig.inputs.len() {
+                                let param_ty = &sig.inputs[arg_idx];
+                                let param_regions = extract_regions_from_ty(param_ty);
+                                // Match argument regions with parameter regions
+                                // (simplified: first-to-first).
+                                if let (Some(&arg_r), Some(&param_r)) =
+                                    (arg_regions.first(), param_regions.first())
+                                {
+                                    if arg_r != param_r {
+                                        self.add_outlives_constraint(
+                                            arg_r,
+                                            param_r,
+                                            ConstraintCause::FnSignature {
+                                                span: bb.terminator.span,
+                                            },
+                                        );
+                                    }
+                                }
+                            }
+                        } else {
+                            // Fallback: simplified 'static constraint.
+                            for r in arg_regions {
+                                if r != RegionVid(0) {
+                                    self.add_outlives_constraint(
+                                        r,
+                                        RegionVid(0),
+                                        ConstraintCause::FnSignature {
+                                            span: bb.terminator.span,
+                                        },
+                                    );
+                                }
                             }
                         }
                     }

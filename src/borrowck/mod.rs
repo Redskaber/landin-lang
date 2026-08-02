@@ -87,6 +87,12 @@ pub struct BorrowChecker<'a> {
     resolver: Option<&'a crate::traits::TraitResolver>,
     /// Stage 14.106 (HP-1 fix): Optional interner for resolver-based Copy detection.
     interner: Option<&'a lasso::Rodeo>,
+    /// Stage 15.71: Optional fn_sigs map for region inference constraints.
+    /// Maps DefId → Sig for all functions in the crate. Used by
+    /// `run_region_inference` to add proper outlives constraints between
+    /// call argument regions and parameter regions (instead of the
+    /// simplified `'static` constraint).
+    fn_sigs: Option<&'a std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>>,
 }
 
 impl<'a> BorrowChecker<'a> {
@@ -98,6 +104,7 @@ impl<'a> BorrowChecker<'a> {
             initialized: std::collections::HashSet::new(),
             resolver: None,
             interner: None,
+            fn_sigs: None,
         }
     }
 
@@ -114,6 +121,30 @@ impl<'a> BorrowChecker<'a> {
             initialized: std::collections::HashSet::new(),
             resolver: Some(resolver),
             interner: Some(interner),
+            fn_sigs: None,
+        }
+    }
+
+    /// Stage 15.71: Create a BorrowChecker with fn_sigs for region inference
+    /// constraints, WITHOUT enabling sound Copy detection (resolver stays
+    /// None, so `is_copy` falls back to the unsound `ty_is_copy`).
+    ///
+    /// This is used by the driver to pass fn_sigs for proper call-argument
+    /// region constraints while maintaining backward compatibility with
+    /// existing tests that expect all Adt types to be Copy.
+    ///
+    /// Per §23: `with_fn_sigs` follows `<prep>_<noun>_<noun>` pattern.
+    pub fn with_fn_sigs(
+        fn_sigs: &'a std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
+    ) -> Self {
+        Self {
+            borrows: BorrowSet::new(),
+            moves: MoveTracker::new(),
+            errors: Vec::new(),
+            initialized: std::collections::HashSet::new(),
+            resolver: None,
+            interner: None,
+            fn_sigs: Some(fn_sigs),
         }
     }
 
@@ -183,11 +214,9 @@ impl<'a> BorrowChecker<'a> {
         }
 
         // Stage 15.50: Collect constraints from MIR statements and terminators.
-        // This walks all basic blocks and adds outlives constraints from:
-        // - `r = &x` (Rvalue::Ref): borrowed place's regions outlive borrow region.
-        // - `r = Copy(x)` where x is &T: propagate lifetime.
-        // - `call f(&x)`: argument regions outlive 'static (simplified).
-        ctx.collect_mir_constraints(mir);
+        // Stage 15.71: Pass fn_sigs for proper call-argument region constraints
+        // (instead of the simplified 'static constraint).
+        ctx.collect_mir_constraints_with_sigs(mir, self.fn_sigs);
 
         // Run region inference.
         // Stage 15.49: MIR now has real Region::Var(vid) for each reference.

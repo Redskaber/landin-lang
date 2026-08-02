@@ -1079,7 +1079,15 @@ pub fn compile(src: &str) -> CompileResult {
         // Per §1.0 原則 1 "长期 > 短期": the dataflow path is the correct
         // long-term design. Per §1.0 原則 3 "显式 > 隐式": the choice of
         // analysis is explicit in the method name (`_with_dataflow` suffix).
-        let mut bc: borrowck::BorrowChecker<'_> = borrowck::BorrowChecker::new();
+        // Stage 15.71: Pass fn_sigs to BorrowChecker for proper region inference
+        // constraints (instead of simplified 'static fallback). Uses
+        // `with_fn_sigs` (not `with_resolver_and_sigs`) to maintain backward
+        // compatibility — the resolver is NOT passed, so `is_copy` falls back
+        // to the unsound `ty_is_copy` (treats all Adt as Copy). Enabling the
+        // resolver would break 200+ tests that expect structs to be Copy.
+        // The resolver-based sound Copy detection (HP-1) is deferred to v0.3.
+        let mut bc: borrowck::BorrowChecker<'_> =
+            borrowck::BorrowChecker::with_fn_sigs(&fn_sig_table.sigs);
         bc.check_mir_body_with_dataflow(&mir);
         errors.borrowck.extend(bc.into_errors());
 

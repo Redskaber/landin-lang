@@ -22213,3 +22213,60 @@ Stage Summary:
 - Full Box<T> support (heap alloc, Deref, Drop) deferred to v0.3
 - 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
 - v0.195.0: minor bump (Phase 4 — Box in prelude)
+
+---
+Task ID: stage15.71-fn-sigs-region-inference
+Agent: Super Z (main)
+Task: Stage 15.71 — fn_sigs integration for region inference. v0.195.0 → v0.196.0.
+
+Work Log:
+- Baseline: v0.195.0 / 221 lib + 2130 integration + 5216 conformance
+
+### 1. Added fn_sigs to BorrowChecker
+
+Added `fn_sigs: Option<&HashMap<DefId, Sig>>` field to BorrowChecker.
+Created `with_fn_sigs` constructor that passes fn_sigs WITHOUT resolver
+(backward compat — unsound `ty_is_copy` retained, HP-1 deferred to v0.3).
+
+### 2. Added collect_mir_constraints_with_sigs
+
+New method in RegionInferenceContext that accepts optional fn_sigs.
+When available, call arguments' regions are constrained against callee's
+parameter regions. When not available, falls back to 'static constraint.
+
+### 3. Driver integration
+
+Driver uses `BorrowChecker::with_fn_sigs(&fn_sig_table.sigs)` instead of
+`BorrowChecker::new()`.
+
+### 4. Attempted broader changes (REVERTED)
+
+Initially attempted to also fix struct/enum move issues by:
+- Adding is_place_behind_ref to skip Copy check for field access through refs
+- Using Move for non-Copy return values
+- Using Move for non-Copy call arguments
+- Changing is_mir_ty_copy_conservative to return false for Infer
+
+These caused 107-215 test failures because:
+- MIR lowering runs BEFORE typeck, so types are Infer at lowering time
+- is_mir_ty_copy_conservative returns true for Infer → uses Operand::Copy
+- typeck resolves to Adt → borrowck sees Copy on non-Copy Adt → error
+- The proper fix requires pipeline reordering (writeback before borrowck)
+  or type-aware MIR lowering, both deferred to v0.3
+
+All broad changes reverted. Only fn_sigs integration retained.
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.195.0 → v0.196.0
+
+Stage Summary:
+- Stage 15.71 PASSED — fn_sigs integration for region inference
+- 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
+- v0.196.0: minor bump (Phase 2 — fn_sigs region inference infrastructure)

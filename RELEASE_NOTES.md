@@ -1,9 +1,34 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.195.0
+**Current version**: v0.196.0
 **Date**: 2026-08-02
 **Test count**: 221 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.196.0 — Stage 15.71 (fn_sigs Integration for Region Inference)
+
+### Overview
+
+Stage 15.71 integrates `fn_sigs` into the borrow checker's region inference
+for proper call-argument region constraints. Previously, call arguments used
+a simplified `'static` constraint. Now, the callee's parameter types are used.
+
+### What Changed
+
+- `src/borrowck/mod.rs` — added `fn_sigs` field + `with_fn_sigs` constructor.
+- `src/borrowck/region_inference.rs` — added `collect_mir_constraints_with_sigs`.
+- `src/driver.rs` — uses `BorrowChecker::with_fn_sigs(&fn_sig_table.sigs)`.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.195.0 — Stage 15.70 (Box<T> in Prelude — Task 20)

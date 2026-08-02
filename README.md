@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.195.0 (v0.2 Phase 4 — Box<T> in prelude, Task 20 COMPLETE)
+**Version**: v0.196.0 (v0.2 Phase 2 — fn_sigs region inference)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.195.0, Stage 15.70 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.196.0, Stage 15.71 — `impl Drop` + RAII COMPLETE)
