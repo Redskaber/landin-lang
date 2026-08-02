@@ -185,19 +185,26 @@ impl<'a> BorrowChecker<'a> {
             }
         }
 
+        // Stage 15.50: Collect constraints from MIR statements and terminators.
+        // This walks all basic blocks and adds outlives constraints from:
+        // - `r = &x` (Rvalue::Ref): borrowed place's regions outlive borrow region.
+        // - `r = Copy(x)` where x is &T: propagate lifetime.
+        // - `call f(&x)`: argument regions outlive 'static (simplified).
+        ctx.collect_mir_constraints(mir);
+
         // Run region inference.
-        // Since all MIR regions are currently Erased (mapped to 'static
-        // vid 0), the inference produces empty point sets for all regions.
-        // The universal region check passes because empty ⊆ empty.
-        // This is the expected no-op behavior — infrastructure is activated
-        // without producing false positives.
+        // Stage 15.49: MIR now has real Region::Var(vid) for each reference.
+        // The inference will compute the region graph and check constraints.
+        // Stage 15.50: constraints are now collected from MIR statements.
+        // Stage 15.51 (future): errors will be converted to BorrowErrors.
         let _result = ctx.infer_regions();
 
         // Per §14.4: we do NOT replace the existing NLL — we run region
-        // inference as an additional check. The existing NLL (last-use map)
-        // remains the primary borrow checker. When the MIR carries real
-        // lifetime annotations (future stages), region inference errors
-        // will be converted to BorrowErrors and added to self.errors.
+        // inference as an additional check. The dataflow borrow checker
+        // remains the primary borrow checker. Region inference provides
+        // additional lifetime checking.
+        // Per §1.0 原則 5 "报错 > 静默": when region inference finds
+        // violations, they will be converted to BorrowErrors (Stage 15.51).
     }
 
     // Stage 15.41: The legacy `kill_expired_borrows` method (the single-pass

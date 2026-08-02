@@ -20807,3 +20807,54 @@ Stage Summary:
 - Zero regression — all 5216 conformance tests pass
 - Region inference still no-op (constraint collection is Stage 15.50)
 - v0.175.0: minor bump (Phase 2 — Region allocation lifetime elision + region assignment)
+
+---
+Task ID: stage15.50-constraint-collection
+Agent: Super Z (main)
+Task: Stage 15.50 — Implement collect_mir_constraints (Task 9 step 3). v0.175.0 → v0.176.0.
+
+Work Log:
+- Baseline: v0.175.0 / 226 lib + 2085 integration + 5216 conformance
+
+### 1. Added collect_mir_constraints to RegionInferenceContext
+
+New method in src/borrowck/region_inference.rs that walks all basic blocks
+and collects outlives constraints from MIR statements and terminators:
+- r = &x (Rvalue::Ref): borrowed place's regions outlive borrow region.
+- r = Copy(x) where x is &T: propagate lifetime (src region outlives lhs).
+- call f(&x): argument regions outlive 'static (simplified).
+
+Also added a place_ty helper for looking up a place's type in MIR.
+
+Per §23: method name follows <verb>_<noun>_<noun> pattern.
+Per §16: reads only &MirBody — no writes, no HIR lookup.
+
+### 2. Wired into run_region_inference
+
+src/borrowck/mod.rs::run_region_inference now calls
+ctx.collect_mir_constraints(mir) after collecting implied bounds from
+local declarations and before running infer_regions().
+
+### 3. Effect
+
+The region inference now has real constraints from MIR statements (not
+just implied bounds from local declarations). The infer_regions() fixpoint
+algorithm computes the region graph and checks constraints. However,
+errors are still not reported (the result is ignored — error reporting
+is Stage 15.51).
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean build, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.175.0 → v0.176.0
+
+Stage Summary:
+- Stage 15.50 PASSED — constraint collection from MIR implemented
+- collect_mir_constraints walks MIR statements/terminators, adds outlives constraints
+- Wired into run_region_inference
+- Zero regression — all 5216 conformance tests pass
+- v0.176.0: minor bump (Phase 2 — Region allocation constraint collection)

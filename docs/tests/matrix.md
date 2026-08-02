@@ -198,7 +198,8 @@
 | **15.47** | **Drop elaboration gate review + deep review (Task 8 closure) — §25 8-dimension review; Task 8 PARTIALLY COMPLETE (infrastructure ready, `impl Drop` parser support deferred); 0 new tests (review only)** | **0 (review only)** | ✅ |
 | **15.48** | **Region allocation design doc (Task 9, HP-5) — design alignment per §13.4; covers lifetime elision, MIR region assignment, constraint collection, error reporting; 5-stage implementation plan (15.48-15.52)** | **0 (doc only)** | ✅ |
 | **15.49** | **Lifetime elision + MIR region assignment — new `lower_hir_ty_to_mir_ty_with_regions` function; each `&T` gets a fresh `Region::Var(vid)` instead of `Region::Erased`; zero regression** | **0 (code change, no new tests — infrastructure)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL COMPLETE + Drop elaboration (partial) + Region allocation (design + region assignment)** | **+125 rust in 15.35-15.46** | ✅ |
+| **15.50** | **Constraint collection from MIR — new `collect_mir_constraints` method on `RegionInferenceContext`; collects outlives constraints from `r = &x`, `r = Copy(x)`, `call f(&x)`; wired into `run_region_inference`; zero regression** | **0 (code change, no new tests — infrastructure)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 NLL COMPLETE + Drop elaboration (partial) + Region allocation (design + region assignment + constraint collection)** | **+125 rust in 15.35-15.46** | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

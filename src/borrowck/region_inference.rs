@@ -632,6 +632,161 @@ impl RegionInferenceContext {
         }
     }
 
+    /// Stage 15.50 (HP-5 step 3): Collect outlives constraints from MIR
+    /// statements and terminators.
+    ///
+    /// Walks all basic blocks in the MIR body. For each statement and
+    /// terminator that involves references, adds outlives constraints
+    /// between the regions:
+    ///
+    /// - `r = &x` (Rvalue::Ref): `region(r) >= region(x)` — the borrow's
+    ///   region must outlive the borrowed place's region.
+    /// - `r = Copy(x)` where `x` is `&T`: `region(r) >= region(x)` —
+    ///   copying a reference propagates the lifetime.
+    /// - `call f(&x, &y)` (TerminatorKind::Call): for each `&T` argument,
+    ///   `region(arg) >= region(param)` (simplified: just collect the
+    ///   argument's region for the function's constraint set).
+    ///
+    /// Per §23: method name follows `<verb>_<noun>_<noun>` pattern.
+    /// Per §16: reads only `&MirBody` — no writes, no HIR lookup.
+    pub(crate) fn collect_mir_constraints(&mut self, mir: &crate::mir::body::MirBody) {
+        use crate::mir::body::{StatementKind, TerminatorKind};
+        use crate::mir::place::Rvalue;
+        use crate::mir::place::PlaceKind;
+
+        for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
+            let _bb_id = crate::mir::body::BasicBlockId(bb_idx as u32);
+
+            // Collect constraints from statements.
+            for stmt in &bb.statements {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    match rvalue {
+                        Rvalue::Ref(region, _kind, borrowed_place) => {
+                            // `r = &'a x` → the borrowed place's regions
+                            // must outlive 'a.
+                            let ref_vid = self.region_to_vid(*region);
+                            // Get the borrowed place's type.
+                            let borrowed_ty = self.place_ty(mir, borrowed_place);
+                            let borrowed_regions = extract_regions_from_ty(&borrowed_ty);
+                            for r in borrowed_regions {
+                                // r outlives ref_vid
+                                self.add_outlives_constraint(
+                                    r,
+                                    ref_vid,
+                                    ConstraintCause::Borrow {
+                                        span: stmt.span,
+                                        borrowed_local: match &borrowed_place.kind {
+                                            PlaceKind::Local(id) => *id,
+                                            _ => crate::mir::place::LocalId(0),
+                                        },
+                                    },
+                                );
+                            }
+                        }
+                        Rvalue::Use(op) | Rvalue::Cast(_, op, _) => {
+                            // `r = Copy(x)` where x is `&T` → propagate lifetime.
+                            if let crate::mir::place::Operand::Copy(lv)
+                            | crate::mir::place::Operand::Move(lv) = op
+                            {
+                                let src_ty = self.place_ty(mir, lv);
+                                let src_regions = extract_regions_from_ty(&src_ty);
+                                if !src_regions.is_empty() {
+                                    // The LHS place's type might also have regions.
+                                    let lhs_ty = self.place_ty(mir, place);
+                                    let lhs_regions = extract_regions_from_ty(&lhs_ty);
+                                    // For each pair, add: src_region outlives lhs_region.
+                                    // Simplified: just use the first region of each.
+                                    if let (Some(&src_r), Some(&lhs_r)) =
+                                        (src_regions.first(), lhs_regions.first())
+                                    {
+                                        self.add_outlives_constraint(
+                                            src_r,
+                                            lhs_r,
+                                            ConstraintCause::Borrow {
+                                                span: stmt.span,
+                                                borrowed_local: match &lv.kind {
+                                                    PlaceKind::Local(id) => *id,
+                                                    _ => crate::mir::place::LocalId(0),
+                                                },
+                                            },
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Collect constraints from terminators (function calls).
+            if let TerminatorKind::Call { args, .. } = &bb.terminator.kind {
+                for arg in args {
+                    if let crate::mir::place::Operand::Copy(lv)
+                    | crate::mir::place::Operand::Move(lv) = arg
+                    {
+                        let arg_ty = self.place_ty(mir, lv);
+                        let arg_regions = extract_regions_from_ty(&arg_ty);
+                        // For each region in the argument type, add a
+                        // constraint that it outlives 'static (vid 0).
+                        // This is a simplified constraint — the real
+                        // constraint would be between the argument's
+                        // region and the parameter's region, but we don't
+                        // have access to the function signature here.
+                        // TODO (Stage 15.51): use fn_sigs for proper constraints.
+                        for r in arg_regions {
+                            if r != RegionVid(0) {
+                                // r outlives 'static (always true, but
+                                // exercises the constraint collection path).
+                                self.add_outlives_constraint(
+                                    r,
+                                    RegionVid(0),
+                                    ConstraintCause::FnSignature { span: bb.terminator.span },
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Helper: look up the type of a place in the MIR body.
+    fn place_ty(&self, mir: &crate::mir::body::MirBody, lv: &crate::mir::place::Place) -> crate::mir::ty::Ty {
+        use crate::mir::place::PlaceKind;
+        match &lv.kind {
+            PlaceKind::Local(id) => {
+                if (id.0 as usize) < mir.local_decls.len() {
+                    mir.local(*id).ty.clone()
+                } else {
+                    crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, lv.span)
+                }
+            }
+            PlaceKind::Static(_) => {
+                crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, lv.span)
+            }
+            PlaceKind::Projection(base, elem) => {
+                let base_ty = self.place_ty(mir, base);
+                match elem {
+                    crate::mir::place::ProjectionElem::Deref => match &base_ty.kind {
+                        crate::mir::ty::TyKind::Ref(_, _, inner)
+                        | crate::mir::ty::TyKind::RawPtr(_, inner) => (**inner).clone(),
+                        _ => crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, lv.span),
+                    },
+                    crate::mir::place::ProjectionElem::Field(_, field_ty) => field_ty.clone(),
+                    crate::mir::place::ProjectionElem::Index(_)
+                    | crate::mir::place::ProjectionElem::ConstantIndex { .. }
+                    | crate::mir::place::ProjectionElem::Subslice { .. } => match &base_ty.kind {
+                        crate::mir::ty::TyKind::Array(inner, _)
+                        | crate::mir::ty::TyKind::Slice(inner) => (**inner).clone(),
+                        _ => crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, lv.span),
+                    },
+                }
+            }
+        }
+    }
+
     /// Get the inferred point set for a region (after `infer_regions()`).
     ///
     /// Returns `None` if `infer_regions()` has not been called yet,

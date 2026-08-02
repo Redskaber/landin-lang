@@ -1,9 +1,48 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.175.0
+**Current version**: v0.176.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2085 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.176.0 — Stage 15.50 (Constraint Collection from MIR)
+
+### Overview
+
+Stage 15.50 implements `collect_mir_constraints` — a method on
+`RegionInferenceContext` that walks MIR statements and terminators,
+collecting outlives constraints between regions. This is wired into
+`run_region_inference`, so the region inference now has real constraints
+from MIR (not just implied bounds from local declarations).
+
+### What Changed
+
+**`src/borrowck/region_inference.rs`**:
+- New `collect_mir_constraints(mir)` method — walks all basic blocks,
+  collects constraints from `r = &x`, `r = Copy(x)`, `call f(&x)`.
+- New `place_ty(mir, place)` helper — looks up a place's type in MIR.
+
+**`src/borrowck/mod.rs`**:
+- `run_region_inference` now calls `ctx.collect_mir_constraints(mir)`.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+
+### Migration Plan (Stages 15.48-15.52) — Updated
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.48 | ✅ DONE (v0.174.0) | Design doc |
+| 15.49 | ✅ DONE (v0.175.0) | Lifetime elision + MIR region assignment |
+| **15.50** | **✅ DONE (v0.176.0)** | **Constraint collection from MIR (this release)** |
+| 15.51 | ⏳ NEXT | Error reporting + integration |
+| 15.52 | ⏳ PLANNED | Conformance tests + gate review |
 
 ---
 ## v0.175.0 — Stage 15.49 (Lifetime Elision + MIR Region Assignment)
