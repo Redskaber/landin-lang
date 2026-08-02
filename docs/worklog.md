@@ -21135,3 +21135,65 @@ Stage Summary:
 - Task 13 (impl Drop + RAII) selected as first Phase 3 task
 - 5-stage implementation plan (15.55-15.59)
 - v0.181.0: minor bump (Phase 3 design alignment — Task 13 selected)
+
+---
+Task ID: stage15.56-impl-drop-investigation
+Agent: Super Z (main)
+Task: Stage 15.56 — impl Drop parser investigation. v0.181.0 → v0.182.0.
+
+Work Log:
+- Baseline: v0.181.0 / 226 lib + 2091 integration + 5216 conformance
+
+### 1. Investigated parser support for impl Drop
+
+Key finding: The parser ALREADY supports `impl Drop for T { fn drop(&mut self) { ... } }`
+— it was implemented as part of the general `impl Trait for T` parser
+support (Stage 5.5, `src/parser/items.rs:531`).
+
+The TraitResolver also correctly collects Drop impls via `is_drop_builtin`
+(Stage 5.10). The `elaborate_drops` pass (Stage 15.44) uses `ty_needs_drop`
+which calls `is_drop_builtin` — so if a type implements Drop, the pipeline
+inserts Drop terminators.
+
+### 2. Tested with a real program
+
+Compiled `impl Drop for Counter { fn drop(&mut self) { self.count = 0; } }`:
+- Parser: ✅ parses correctly.
+- TraitResolver: ✅ registers the Drop impl.
+- elaborate_drops: ✅ inserts Drop terminators (ty_needs_drop returns true).
+- Codegen: ❌ CRASHES (exit code 137 — segfault).
+
+### 3. Root cause of crash
+
+The `TerminatorKind::Drop` codegen (Stage 15.45) calls `drop_adt_<DefId>`
+but this function is never emitted. The drop glue function emission was
+identified as remaining work in the Stage 15.47 gate review but was not
+implemented. When codegen tries to call the undefined function, the LLVM
+module is invalid → crash.
+
+### 4. Conclusion
+
+The parser work for Stage 15.56 is ALREADY DONE. The remaining work is
+drop glue function emission (Stage 15.57) — emitting the `drop_adt_<N>`
+function that calls the user's Drop::drop method.
+
+### 5. Created documentation
+
+- docs/develop/v0/stage-15/stage-15.56-impl-drop-investigation.md
+- docs/tests/v0/stage15/stage-15.56-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- No code changes — investigation-only stage.
+- `cargo build --features llvm-backend` — ✅ clean build
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.181.0 → v0.182.0
+
+Stage Summary:
+- Stage 15.56 PASSED — impl Drop parser investigation complete
+- Parser already supports impl Drop (Stage 5.5)
+- TraitResolver already collects Drop impls (Stage 5.10)
+- Crash in codegen because drop_adt_<N> not emitted
+- Remaining work: drop glue function emission (Stage 15.57)
+- v0.182.0: minor bump (Phase 3 — impl Drop parser investigation)

@@ -204,7 +204,8 @@
 | **15.53** | **Closure redesign design doc (Task 10, HP-3) — design alignment per §13.4; covers Strategy A (synthesized `call` function), fat pointer representation, Fn/FnMut/FnOnce; 6-stage implementation plan (15.53-15.58)** | **0 (doc only)** | ✅ |
 | **15.54** | **v0.2 Phase 2 milestone review — §25 8-dimension review; Phase 2 SUBSTANTIALLY COMPLETE; 131 new tests, 5 design docs, 1 diagnostic tool; remaining work (closure impl, impl Drop, region precision) deferred to v0.3** | **0 (review only)** | ✅ |
 | **15.55** | **Phase 3 design alignment — task readiness assessment; Task 13 (impl Drop + RAII) selected as first Phase 3 task; 5-stage implementation plan (15.55-15.59)** | **0 (doc only)** | ✅ |
-| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 SUBSTANTIALLY COMPLETE + Phase 3 design alignment (Task 13 selected)** | **+131 rust in 15.35-15.52** | ✅ |
+| **15.56** | **impl Drop parser investigation — parser already supports `impl Drop for T` (Stage 5.5); TraitResolver already collects Drop impls; crash in codegen because `drop_adt_<N>` function not emitted; remaining work is drop glue function emission (Stage 15.57)** | **0 (investigation only)** | ✅ |
+| **Total Stage 15** | **v0.2 Phase 1 core complete + Phase 2 SUBSTANTIALLY COMPLETE + Phase 3 (Task 13: parser done, codegen emission next)** | **+131 rust in 15.35-15.52** | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

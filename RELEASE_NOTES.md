@@ -1,9 +1,48 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.181.0
+**Current version**: v0.182.0
 **Date**: 2026-08-01
 **Test count**: 226 rust lib tests + 2091 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.182.0 — Stage 15.56 (impl Drop Parser Investigation — Parser Already Works)
+
+### Overview
+
+Stage 15.56 investigates the parser support for `impl Drop for T`.
+**Key finding**: The parser already supports `impl Drop for T` (implemented
+as part of Stage 5.5's general `impl Trait for T` support). The
+TraitResolver also correctly collects Drop impls.
+
+However, compiling a program with `impl Drop` crashes in codegen because
+the `drop_adt_<N>` function (called by `TerminatorKind::Drop` codegen) is
+never emitted. The drop glue function emission is the remaining work
+(Stage 15.57).
+
+### What Was Found
+
+- **Parser**: ✅ Already supports `impl Drop for T { fn drop(&mut self) { ... } }`
+- **TraitResolver**: ✅ Already collects Drop impls via `is_drop_builtin`
+- **Drop elaboration**: ✅ `elaborate_drops` inserts `Drop` terminators
+- **Drop glue codegen**: ❌ Crashes — `drop_adt_<N>` function not emitted
+
+### Revised Migration Plan (Stages 15.55-15.59) — Task 13
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 15.55 | ✅ DONE (v0.181.0) | Phase 3 design alignment |
+| **15.56** | **✅ DONE (v0.182.0)** | **Parser investigation (parser already works)** |
+| 15.57 | ⏳ NEXT | **Drop glue function emission** (the key remaining work) |
+| 15.58 | ⏳ PLANNED | Conformance tests with `impl Drop` patterns |
+| 15.59 | ⏳ PLANNED | Gate review |
+
+### Verification
+
+- No code changes — investigation-only stage.
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 226/226 PASS
+- 0 clippy warnings, fmt clean
 
 ---
 ## v0.181.0 — Stage 15.55 (Phase 3 Design Alignment — Task 13 Selected)
