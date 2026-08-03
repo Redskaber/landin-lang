@@ -761,23 +761,38 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     // Per §23: function names follow conventions.
 
     // Lower param types first, collecting region vids.
-    // Stage 15.90: We need to collect the first region vid from params
-    // for elision rule 2 (output lifetime = input lifetime when there's
-    // exactly one input lifetime).
+    // Stage 15.90/15.91: We need to collect region vids from params
+    // for lifetime elision rules 2 and 3.
+    // - Rule 2: exactly one input lifetime → use it for output.
+    // - Rule 3: multiple input lifetimes, but if one is &self/&mut self,
+    //   use the self lifetime for output.
     let mut param_region_vids_collected: Vec<crate::mir::ty::RegionVid> = Vec::new();
+    // Stage 15.91: Track the self param's region vid for rule 3.
+    let mut self_region_vid: Option<crate::mir::ty::RegionVid> = None;
     // Stage 15.90: Store lowered param types so we don't lower them twice
     // (once for elision collection, once for local allocation). Reusing
     // ensures the region vids match.
     let mut lowered_param_types: Vec<Option<Ty>> = Vec::with_capacity(body.params.len());
 
     // Allocate LocalId(0) as the return value placeholder.
-    // We lower the return type AFTER params so elision rule 2 can apply.
+    // We lower the return type AFTER params so elision rules 2/3 can apply.
     let return_mir_ty = {
         // First, lower all param types to collect region vids.
         for param in &body.params {
             if let Some(t) = &param.ty {
                 if param.self_kind.is_some() {
-                    // Self params are resolved separately — skip for elision.
+                    // Stage 15.91: For &self/&mut self, resolve the self type
+                    // and collect its region vid for elision rule 3.
+                    let self_ty = resolve_self_param_type(&cx, body, param.self_kind);
+                    if let Some(ref mir_ty) = self_ty {
+                        // Collect region vids from the self type.
+                        let mut self_vids = Vec::new();
+                        collect_region_vids(mir_ty, &mut self_vids);
+                        if let Some(&vid) = self_vids.first() {
+                            self_region_vid = Some(vid);
+                            param_region_vids_collected.push(vid);
+                        }
+                    }
                     lowered_param_types.push(None);
                 } else {
                     let mir_ty = lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter);
@@ -793,8 +808,12 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
         match &return_ty {
             Some(t) => {
                 let raw_return_ty = lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter);
-                // Stage 15.90: Apply elision rule 2.
-                apply_elision_rule_2(&raw_return_ty, &param_region_vids_collected)
+                // Stage 15.90/15.91: Apply elision rules 2 and 3.
+                apply_elision_rules(
+                    &raw_return_ty,
+                    &param_region_vids_collected,
+                    self_region_vid,
+                )
             }
             None => cx.fresh_infer_ty(Span::DUMMY),
         }
@@ -1050,68 +1069,89 @@ fn collect_region_vids(ty: &Ty, vids: &mut Vec<crate::mir::ty::RegionVid>) {
     }
 }
 
-/// Stage 15.90: Apply lifetime elision rule 2 to a return type.
+/// Stage 15.90/15.91: Apply lifetime elision rules to a return type.
 ///
-/// Rule 2: If there's exactly one input lifetime (elided or explicit),
-/// it's assigned to all elided output lifetimes.
+/// Implements RFC 141 elision rules:
+///   - Rule 2: If there's exactly one input lifetime (elided or explicit),
+///     it's assigned to all elided output lifetimes.
+///   - Rule 3: If there are multiple input lifetimes but one is `&self`/
+///     `&mut self`, that lifetime is assigned to all elided output lifetimes.
 ///
 /// This function replaces all `Region::Var(vid)` in the return type with
-/// the single input lifetime's vid, if `input_vids` has exactly one entry.
-/// If `input_vids` is empty or has multiple entries, the return type is
-/// returned unchanged (each output lifetime keeps its own fresh vid, per
-/// elision rule 1).
-fn apply_elision_rule_2(return_ty: &Ty, input_vids: &[crate::mir::ty::RegionVid]) -> Ty {
+/// the selected input lifetime's vid.
+///
+/// Per §1.0 原則 3 "显式 > 隐式": elision rules are explicitly applied.
+/// Per §23: function name follows `<verb>_<noun>_<noun>` pattern.
+fn apply_elision_rules(
+    return_ty: &Ty,
+    input_vids: &[crate::mir::ty::RegionVid],
+    self_vid: Option<crate::mir::ty::RegionVid>,
+) -> Ty {
     use crate::mir::ty::{Region, RegionVid, TyKind};
-    // Rule 2 applies only when there's exactly one input lifetime.
-    if input_vids.len() != 1 {
-        return return_ty.clone();
-    }
-    let target_vid = input_vids[0];
-    // Recursively replace all region vids in the return type.
-    fn replace_regions(ty: &Ty, target_vid: RegionVid) -> Ty {
-        let span = crate::session::Span::DUMMY;
-        match &ty.kind {
-            TyKind::Ref(_, mutability, inner) => Ty::new(
-                TyKind::Ref(
-                    Region::Var(target_vid),
-                    *mutability,
-                    Box::new(replace_regions(inner, target_vid)),
-                ),
-                span,
-            ),
-            TyKind::RawPtr(mutability, inner) => Ty::new(
-                TyKind::RawPtr(*mutability, Box::new(replace_regions(inner, target_vid))),
-                span,
-            ),
-            TyKind::Array(inner, count) => Ty::new(
-                TyKind::Array(Box::new(replace_regions(inner, target_vid)), count.clone()),
-                span,
-            ),
-            TyKind::Slice(inner) => Ty::new(
-                TyKind::Slice(Box::new(replace_regions(inner, target_vid))),
-                span,
-            ),
-            TyKind::Tuple(tys) => Ty::new(
-                TyKind::Tuple(tys.iter().map(|t| replace_regions(t, target_vid)).collect()),
-                span,
-            ),
-            TyKind::FnPtr(sig) => Ty::new(
-                TyKind::FnPtr(crate::mir::ty::Sig {
-                    inputs: sig
-                        .inputs
-                        .iter()
-                        .map(|t| replace_regions(t, target_vid))
-                        .collect(),
-                    output: Box::new(replace_regions(&sig.output, target_vid)),
-                    abi: sig.abi,
-                    is_unsafe: sig.is_unsafe,
-                }),
-                span,
-            ),
-            _ => ty.clone(),
+
+    // Determine which input lifetime to use for the output.
+    let target_vid = if input_vids.len() == 1 {
+        // Rule 2: exactly one input lifetime → use it.
+        Some(input_vids[0])
+    } else if input_vids.len() > 1 {
+        // Rule 3: multiple input lifetimes, but if one is &self/&mut self,
+        // use the self lifetime.
+        self_vid
+    } else {
+        // No input lifetimes → no elision (keep fresh output vids).
+        None
+    };
+
+    match target_vid {
+        None => return_ty.clone(),
+        Some(target_vid) => {
+            // Recursively replace all region vids in the return type.
+            fn replace_regions(ty: &Ty, target_vid: RegionVid) -> Ty {
+                let span = crate::session::Span::DUMMY;
+                match &ty.kind {
+                    TyKind::Ref(_, mutability, inner) => Ty::new(
+                        TyKind::Ref(
+                            Region::Var(target_vid),
+                            *mutability,
+                            Box::new(replace_regions(inner, target_vid)),
+                        ),
+                        span,
+                    ),
+                    TyKind::RawPtr(mutability, inner) => Ty::new(
+                        TyKind::RawPtr(*mutability, Box::new(replace_regions(inner, target_vid))),
+                        span,
+                    ),
+                    TyKind::Array(inner, count) => Ty::new(
+                        TyKind::Array(Box::new(replace_regions(inner, target_vid)), count.clone()),
+                        span,
+                    ),
+                    TyKind::Slice(inner) => Ty::new(
+                        TyKind::Slice(Box::new(replace_regions(inner, target_vid))),
+                        span,
+                    ),
+                    TyKind::Tuple(tys) => Ty::new(
+                        TyKind::Tuple(tys.iter().map(|t| replace_regions(t, target_vid)).collect()),
+                        span,
+                    ),
+                    TyKind::FnPtr(sig) => Ty::new(
+                        TyKind::FnPtr(crate::mir::ty::Sig {
+                            inputs: sig
+                                .inputs
+                                .iter()
+                                .map(|t| replace_regions(t, target_vid))
+                                .collect(),
+                            output: Box::new(replace_regions(&sig.output, target_vid)),
+                            abi: sig.abi,
+                            is_unsafe: sig.is_unsafe,
+                        }),
+                        span,
+                    ),
+                    _ => ty.clone(),
+                }
+            }
+            replace_regions(return_ty, target_vid)
         }
     }
-    replace_regions(return_ty, target_vid)
 }
 
 /// Lower a HIR type to a MIR type.
@@ -1444,7 +1484,7 @@ mod stage15_90_tests {
         assert_eq!(vids, vec![RegionVid(1), RegionVid(2)]);
     }
 
-    /// Stage 15.90: Verify `apply_elision_rule_2` with single input lifetime.
+    /// Stage 15.90: Verify `apply_elision_rules` with single input lifetime (rule 2).
     #[test]
     fn apply_elision_rule_2_single_input() {
         // Return type: &i32 with Region::Var(10) (fresh output vid)
@@ -1458,21 +1498,20 @@ mod stage15_90_tests {
         );
         // Input: single lifetime vid 3
         let input_vids = vec![RegionVid(3)];
-        let result = apply_elision_rule_2(&return_ty, &input_vids);
+        let result = apply_elision_rules(&return_ty, &input_vids, None);
         // The output lifetime should be replaced with vid 3.
         match &result.kind {
             TyKind::Ref(region, _, _) => {
-                assert_eq!(*region, Region::Var(RegionVid(3)));
+                assert_eq!(region, &Region::Var(RegionVid(3)));
             }
             _ => panic!("expected Ref"),
         }
     }
 
-    /// Stage 15.90: Verify `apply_elision_rule_2` with multiple input lifetimes
-    /// does NOT apply (keeps original output lifetime).
+    /// Stage 15.90: Verify `apply_elision_rules` with multiple input lifetimes
+    /// and no self → does NOT apply (keeps original output lifetime).
     #[test]
-    fn apply_elision_rule_2_multiple_inputs() {
-        // Return type: &i32 with Region::Var(10) (fresh output vid)
+    fn apply_elision_rule_2_multiple_inputs_no_self() {
         let return_ty = Ty::new(
             TyKind::Ref(
                 Region::Var(RegionVid(10)),
@@ -1481,19 +1520,45 @@ mod stage15_90_tests {
             ),
             Span::DUMMY,
         );
-        // Input: multiple lifetime vids
+        // Input: multiple lifetime vids, no self
         let input_vids = vec![RegionVid(1), RegionVid(2)];
-        let result = apply_elision_rule_2(&return_ty, &input_vids);
+        let result = apply_elision_rules(&return_ty, &input_vids, None);
         // The output lifetime should NOT be replaced (keeps vid 10).
         match &result.kind {
             TyKind::Ref(region, _, _) => {
-                assert_eq!(*region, Region::Var(RegionVid(10)));
+                assert_eq!(region, &Region::Var(RegionVid(10)));
             }
             _ => panic!("expected Ref"),
         }
     }
 
-    /// Stage 15.90: Verify `apply_elision_rule_2` with no input lifetimes
+    /// Stage 15.91: Verify `apply_elision_rules` with multiple input lifetimes
+    /// AND self lifetime (rule 3) → uses self lifetime for output.
+    #[test]
+    fn apply_elision_rule_3_self_lifetime() {
+        let return_ty = Ty::new(
+            TyKind::Ref(
+                Region::Var(RegionVid(10)),
+                Mutability::Immutable,
+                Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+            ),
+            Span::DUMMY,
+        );
+        // Input: multiple lifetime vids (1=self, 2=other param)
+        let input_vids = vec![RegionVid(1), RegionVid(2)];
+        // Self lifetime is vid 1
+        let self_vid = Some(RegionVid(1));
+        let result = apply_elision_rules(&return_ty, &input_vids, self_vid);
+        // Rule 3: the output lifetime should be replaced with self's vid 1.
+        match &result.kind {
+            TyKind::Ref(region, _, _) => {
+                assert_eq!(region, &Region::Var(RegionVid(1)));
+            }
+            _ => panic!("expected Ref"),
+        }
+    }
+
+    /// Stage 15.90: Verify `apply_elision_rules` with no input lifetimes
     /// does NOT apply (keeps original output lifetime).
     #[test]
     fn apply_elision_rule_2_no_inputs() {
@@ -1506,10 +1571,10 @@ mod stage15_90_tests {
             Span::DUMMY,
         );
         let input_vids: Vec<RegionVid> = vec![];
-        let result = apply_elision_rule_2(&return_ty, &input_vids);
+        let result = apply_elision_rules(&return_ty, &input_vids, None);
         match &result.kind {
             TyKind::Ref(region, _, _) => {
-                assert_eq!(*region, Region::Var(RegionVid(10)));
+                assert_eq!(region, &Region::Var(RegionVid(10)));
             }
             _ => panic!("expected Ref"),
         }

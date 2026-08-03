@@ -23805,3 +23805,57 @@ Stage Summary:
   1. Rule 3 (self): self lifetime for output (requires tracking which param is self)
   2. Explicit lifetime tracking: same name → same vid (requires HIR lifetime name → vid mapping)
   3. Region inference activation: use correct region vids for actual lifetime checking
+
+---
+Task ID: stage15.91-lifetime-elision-rule-3
+Agent: Super Z (main)
+Task: Stage 15.91 — Lifetime elision rule 3 (self param). v0.215.0 → v0.216.0.
+
+Work Log:
+- Baseline: v0.215.0 / 241 lib + 2144 integration + 5216 conformance
+
+### 1. Implementation
+
+Unified `apply_elision_rule_2` into `apply_elision_rules` that handles
+both rules 2 and 3:
+- Rule 2: exactly one input lifetime → use it for output
+- Rule 3: multiple input lifetimes + self → use self's lifetime for output
+
+Added `self_region_vid` tracking in the param lowering loop: when a
+&self/&mut self param is encountered, its region vid is collected via
+`resolve_self_param_type` + `collect_region_vids`, and stored for
+`apply_elision_rules`.
+
+### 2. New/updated tests
+
+- NEW: `apply_elision_rule_3_self_lifetime` — verifies rule 3 with
+  multiple input lifetimes + self
+- Updated 3 existing tests to call `apply_elision_rules` (was
+  `apply_elision_rule_2`), passing `None` for self_vid
+
+### 3. Documentation
+
+- docs/develop/v0/stage-15/stage-15.91-lifetime-elision-rule-3.md
+- docs/tests/v0/stage15/stage-15.91-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 242/242 PASS (was 241, +1 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.215.0 → v0.216.0
+
+Stage Summary:
+- Stage 15.91 PASSED — Lifetime elision rule 3 (self param)
+- 7602 tests passing (242 lib + 2144 integration + 5216 conformance), 0 failures
+- 1 new unit test + 3 updated tests
+- 0 conformance test changes
+- v0.216.0: minor bump (Phase 3 — Task 12 Lifetime elision rule 3)
+- Completes ALL three RFC 141 lifetime elision rules (1-3)
+- Next steps for Task 12:
+  1. Explicit lifetime tracking: same name → same vid
+  2. Region inference activation: use correct vids for actual checking

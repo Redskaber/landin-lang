@@ -1,9 +1,59 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.215.0
+**Current version**: v0.216.0
 **Date**: 2026-08-02
-**Test count**: 241 rust lib tests + 2144 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 242 rust lib tests + 2144 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.216.0 — Stage 15.91 (Lifetime Elision Rule 3 — Self Param — Rules 1-3 COMPLETE)
+
+### Overview
+
+Stage 15.91 implements **Lifetime Elision Rule 3** (RFC 141): if there
+are multiple input lifetimes but one is `&self`/`&mut self`, that
+lifetime is assigned to all elided output lifetimes.
+
+This completes **all three** RFC 141 lifetime elision rules:
+
+1. ✅ Each elided input lifetime gets its own fresh lifetime. (Stage 15.49)
+2. ✅ If there's exactly one input lifetime, it's assigned to all elided
+   output lifetimes. (Stage 15.90)
+3. ✅ If there are multiple input lifetimes but one is `&self`/`&mut self`,
+   that lifetime is assigned to all elided output lifetimes. (Stage 15.91)
+
+**What changed**:
+- Unified `apply_elision_rule_2` into `apply_elision_rules` (handles
+  both rules 2 and 3).
+- Added `self_region_vid` tracking: when a `&self`/`&mut self` param is
+  encountered, its region vid is collected and passed to
+  `apply_elision_rules` for rule 3.
+
+Per §1.0 原則 3 "显式 > 隐式": elision rules are explicitly applied.
+Per §23 (API Naming): `apply_elision_rules` follows `<verb>_<noun>_<noun>`
+pattern.
+
+### Test impact
+
+- 1 new unit test (`apply_elision_rule_3_self_lifetime`)
+- 3 existing tests updated to use `apply_elision_rules`
+- 0 conformance test changes
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 242/242 PASS (was 241, +1 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7602 tests passing, 0 failures, 0 warnings.**
+
+### Next steps for Task 12
+
+Elision rules 1-3 are complete. Remaining work:
+1. **Explicit lifetime tracking**: same name → same vid (requires HIR lifetime name → vid mapping)
+2. **Region inference activation**: use correct region vids for actual lifetime checking
 
 ---
 ## v0.215.0 — Stage 15.90 (Lifetime Elision Rule 2 — Task 12 STARTED)
