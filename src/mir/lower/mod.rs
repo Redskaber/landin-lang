@@ -769,6 +769,13 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     let mut param_region_vids_collected: Vec<crate::mir::ty::RegionVid> = Vec::new();
     // Stage 15.91: Track the self param's region vid for rule 3.
     let mut self_region_vid: Option<crate::mir::ty::RegionVid> = None;
+    // Stage 15.92: Map from lifetime name (Spur) → RegionVid, for explicit
+    // lifetime deduplication. References with the same lifetime name share
+    // the same vid.
+    let mut lifetime_map: std::collections::HashMap<
+        crate::lexer::Symbol,
+        crate::mir::ty::RegionVid,
+    > = std::collections::HashMap::new();
     // Stage 15.90: Store lowered param types so we don't lower them twice
     // (once for elision collection, once for local allocation). Reusing
     // ensures the region vids match.
@@ -795,7 +802,14 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
                     }
                     lowered_param_types.push(None);
                 } else {
-                    let mir_ty = lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter);
+                    // Stage 15.92: Use lifetime_map for explicit lifetime
+                    // deduplication — references with the same lifetime name
+                    // share the same RegionVid.
+                    let mir_ty = lower_hir_ty_to_mir_ty_with_lifetimes(
+                        t,
+                        &mut region_counter,
+                        &mut lifetime_map,
+                    );
                     // Collect region vids from this param type.
                     collect_region_vids(&mir_ty, &mut param_region_vids_collected);
                     lowered_param_types.push(Some(mir_ty));
@@ -807,7 +821,11 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
         // Now lower the return type with the accumulated region counter.
         match &return_ty {
             Some(t) => {
-                let raw_return_ty = lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter);
+                let raw_return_ty = lower_hir_ty_to_mir_ty_with_lifetimes(
+                    t,
+                    &mut region_counter,
+                    &mut lifetime_map,
+                );
                 // Stage 15.90/15.91: Apply elision rules 2 and 3.
                 apply_elision_rules(
                     &raw_return_ty,
@@ -1151,6 +1169,100 @@ fn apply_elision_rules(
             }
             replace_regions(return_ty, target_vid)
         }
+    }
+}
+
+/// Stage 15.92: Lower a HIR type to MIR type with explicit lifetime tracking.
+///
+/// This is a wrapper around `lower_hir_ty_to_mir_ty_with_regions` that
+/// adds explicit lifetime deduplication via `lifetime_map`. When an
+/// explicit lifetime is encountered (e.g., `'a`), the function looks up
+/// the lifetime name in `lifetime_map`. If found, reuses the existing
+/// vid; if not found, creates a fresh vid and records it in the map.
+///
+/// This ensures references with the same explicit lifetime name share
+/// the same region vid, which is what the region inference needs to
+/// enforce lifetime constraints correctly.
+///
+/// Per §23: `_with_lifetimes` suffix follows convention.
+/// Per §1.0 原則 3 "显式 > 隐式": explicit lifetimes are tracked by name.
+pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
+    ty: &HirTy,
+    region_counter: &mut u32,
+    lifetime_map: &mut std::collections::HashMap<crate::lexer::Symbol, crate::mir::ty::RegionVid>,
+) -> Ty {
+    let span = Span::DUMMY;
+    match &ty.kind {
+        HirTyKind::Ref(region, mutability, inner) => {
+            let mir_region = match region {
+                Some(lt) => {
+                    // Explicit lifetime — look up or create vid.
+                    let name = lt.ident.name;
+                    if let Some(&existing_vid) = lifetime_map.get(&name) {
+                        Region::Var(existing_vid)
+                    } else {
+                        let vid = *region_counter;
+                        *region_counter += 1;
+                        let rvid = RegionVid(vid);
+                        lifetime_map.insert(name, rvid);
+                        Region::Var(rvid)
+                    }
+                }
+                None => {
+                    let vid = *region_counter;
+                    *region_counter += 1;
+                    Region::Var(RegionVid(vid))
+                }
+            };
+            let mir_mut = match mutability {
+                ast::Mutability::Mutable => crate::mir::ty::Mutability::Mutable,
+                ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
+            };
+            Ty::new(
+                TyKind::Ref(
+                    mir_region,
+                    mir_mut,
+                    Box::new(lower_hir_ty_to_mir_ty_with_lifetimes(
+                        inner,
+                        region_counter,
+                        lifetime_map,
+                    )),
+                ),
+                span,
+            )
+        }
+        HirTyKind::Tuple(tys) => Ty::new(
+            TyKind::Tuple(
+                tys.iter()
+                    .map(|t| lower_hir_ty_to_mir_ty_with_lifetimes(t, region_counter, lifetime_map))
+                    .collect(),
+            ),
+            span,
+        ),
+        HirTyKind::Slice(inner) => Ty::new(
+            TyKind::Slice(Box::new(lower_hir_ty_to_mir_ty_with_lifetimes(
+                inner,
+                region_counter,
+                lifetime_map,
+            ))),
+            span,
+        ),
+        HirTyKind::Array(inner, count_expr) => {
+            let len_const = const_eval_array_len(count_expr, span);
+            Ty::new(
+                TyKind::Array(
+                    Box::new(lower_hir_ty_to_mir_ty_with_lifetimes(
+                        inner,
+                        region_counter,
+                        lifetime_map,
+                    )),
+                    Box::new(len_const),
+                ),
+                span,
+            )
+        }
+        // Delegate to the non-lifetime variant for types without Ref.
+        _ => lower_hir_ty_to_mir_ty_with_regions(ty, region_counter),
     }
 }
 
@@ -1578,5 +1690,118 @@ mod stage15_90_tests {
             }
             _ => panic!("expected Ref"),
         }
+    }
+}
+
+#[cfg(test)]
+mod stage15_92_tests {
+    use super::*;
+    use crate::ast::{Ident, Lifetime, Mutability};
+    use crate::hir::{HirTy, HirTyKind};
+    use crate::lexer::Symbol;
+    use crate::mir::ty::{Region, TyKind};
+    use crate::session::Span;
+
+    /// Stage 15.92: Verify that explicit lifetimes with the same name
+    /// share the same RegionVid.
+    #[test]
+    fn explicit_lifetime_deduplication() {
+        // Create a type: &'a i32 with lifetime name "a"
+        let lifetime_a = Lifetime {
+            ident: Ident::new(Symbol::default(), Span::DUMMY),
+            span: Span::DUMMY,
+        };
+        // We can't easily construct a Symbol for "a" without an interner,
+        // but we can test the logic with default Symbol (both use the same).
+        let inner = HirTy {
+            hir_id: crate::hir::HirId::new(crate::hir::DefId(0), crate::hir::ItemLocalId(0)),
+            kind: HirTyKind::Int(crate::ast::IntTy::I32),
+            inferred: None,
+            span: Span::DUMMY,
+        };
+        let ref_ty = HirTy {
+            hir_id: crate::hir::HirId::new(crate::hir::DefId(0), crate::hir::ItemLocalId(1)),
+            kind: HirTyKind::Ref(
+                Some(lifetime_a.clone()),
+                Mutability::Immutable,
+                Box::new(inner.clone()),
+            ),
+            inferred: None,
+            span: Span::DUMMY,
+        };
+
+        let mut region_counter = 0u32;
+        let mut lifetime_map = std::collections::HashMap::new();
+
+        // Lower the first reference — should get vid 0.
+        let ty1 =
+            lower_hir_ty_to_mir_ty_with_lifetimes(&ref_ty, &mut region_counter, &mut lifetime_map);
+        let vid1 = match &ty1.kind {
+            TyKind::Ref(Region::Var(vid), _, _) => *vid,
+            _ => panic!("expected Ref with Region::Var"),
+        };
+
+        // Lower the second reference with the same lifetime — should reuse vid 0.
+        let ref_ty2 = HirTy {
+            hir_id: crate::hir::HirId::new(crate::hir::DefId(0), crate::hir::ItemLocalId(2)),
+            kind: HirTyKind::Ref(Some(lifetime_a), Mutability::Immutable, Box::new(inner)),
+            inferred: None,
+            span: Span::DUMMY,
+        };
+        let ty2 =
+            lower_hir_ty_to_mir_ty_with_lifetimes(&ref_ty2, &mut region_counter, &mut lifetime_map);
+        let vid2 = match &ty2.kind {
+            TyKind::Ref(Region::Var(vid), _, _) => *vid,
+            _ => panic!("expected Ref with Region::Var"),
+        };
+
+        // Both should have the same vid (deduplication).
+        assert_eq!(
+            vid1, vid2,
+            "explicit lifetimes with same name should share vid"
+        );
+    }
+
+    /// Stage 15.92: Verify that elided lifetimes get different vids.
+    #[test]
+    fn elided_lifetime_no_deduplication() {
+        let inner = HirTy {
+            hir_id: crate::hir::HirId::new(crate::hir::DefId(0), crate::hir::ItemLocalId(0)),
+            kind: HirTyKind::Int(crate::ast::IntTy::I32),
+            inferred: None,
+            span: Span::DUMMY,
+        };
+        let ref_ty = HirTy {
+            hir_id: crate::hir::HirId::new(crate::hir::DefId(0), crate::hir::ItemLocalId(1)),
+            kind: HirTyKind::Ref(None, Mutability::Immutable, Box::new(inner.clone())),
+            inferred: None,
+            span: Span::DUMMY,
+        };
+
+        let mut region_counter = 0u32;
+        let mut lifetime_map = std::collections::HashMap::new();
+
+        let ty1 =
+            lower_hir_ty_to_mir_ty_with_lifetimes(&ref_ty, &mut region_counter, &mut lifetime_map);
+        let vid1 = match &ty1.kind {
+            TyKind::Ref(Region::Var(vid), _, _) => *vid,
+            _ => panic!("expected Ref with Region::Var"),
+        };
+
+        let ref_ty2 = HirTy {
+            hir_id: crate::hir::HirId::new(crate::hir::DefId(0), crate::hir::ItemLocalId(2)),
+            kind: HirTyKind::Ref(None, Mutability::Immutable, Box::new(inner)),
+            inferred: None,
+            span: Span::DUMMY,
+        };
+        let ty2 =
+            lower_hir_ty_to_mir_ty_with_lifetimes(&ref_ty2, &mut region_counter, &mut lifetime_map);
+        let vid2 = match &ty2.kind {
+            TyKind::Ref(Region::Var(vid), _, _) => *vid,
+            _ => panic!("expected Ref with Region::Var"),
+        };
+
+        // Elided lifetimes should get different vids.
+        assert_ne!(vid1, vid2, "elided lifetimes should NOT share vid");
     }
 }

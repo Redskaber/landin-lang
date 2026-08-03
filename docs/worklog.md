@@ -23859,3 +23859,68 @@ Stage Summary:
 - Next steps for Task 12:
   1. Explicit lifetime tracking: same name → same vid
   2. Region inference activation: use correct vids for actual checking
+
+---
+Task ID: stage15.92-explicit-lifetime-tracking
+Agent: Super Z (main)
+Task: Stage 15.92 — Explicit lifetime tracking. v0.216.0 → v0.217.0.
+
+Work Log:
+- Baseline: v0.216.0 / 242 lib + 2144 integration + 5216 conformance
+
+### 1. Implementation
+
+Added `lower_hir_ty_to_mir_ty_with_lifetimes` function in src/mir/lower/mod.rs:
+- Takes a `lifetime_map: HashMap<Symbol, RegionVid>` parameter
+- When an explicit lifetime is encountered (Some(lt)), looks up the
+  lifetime name (lt.ident.name) in the map
+- If found: reuses the existing vid (deduplication)
+- If not found: creates a fresh vid, records it in the map
+- Elided lifetimes (None): get a fresh vid (no dedup, elision rule 1)
+- Non-Ref types (Int, Bool, Adt, etc.): delegate to existing
+  lower_hir_ty_to_mir_ty_with_regions (no lifetime tracking needed)
+
+Updated lower_hir_body_to_mir_full to:
+- Create a lifetime_map: HashMap<Symbol, RegionVid> per body
+- Use lower_hir_ty_to_mir_ty_with_lifetimes for param + return type lowering
+
+Per §1.0 原則 3 "显式 > 隐式": explicit lifetimes are tracked by name.
+Per §23: lower_hir_ty_to_mir_ty_with_lifetimes follows naming convention.
+
+### 2. New unit tests (2 tests)
+
+- explicit_lifetime_deduplication: two &'a i32 with same lifetime name
+  share the same RegionVid
+- elided_lifetime_no_deduplication: two &i32 with elided lifetimes get
+  different RegionVids (elision rule 1)
+
+### 3. Documentation
+
+- docs/develop/v0/stage-15/stage-15.92-explicit-lifetime-tracking.md
+- docs/tests/v0/stage15/stage-15.92-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS (was 242, +2 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.216.0 → v0.217.0
+
+Stage Summary:
+- Stage 15.92 PASSED — Explicit lifetime tracking
+- 7604 tests passing (244 lib + 2144 integration + 5216 conformance), 0 failures
+- 2 new unit tests (dedup + no-dedup)
+- 0 conformance test changes
+- v0.217.0: minor bump (Phase 3 — Task 12 explicit lifetime tracking)
+- Task 12 progress:
+  - Elision rule 1 ✅ (Stage 15.49)
+  - Elision rule 2 ✅ (Stage 15.90)
+  - Elision rule 3 ✅ (Stage 15.91)
+  - Explicit lifetime dedup ✅ (Stage 15.92)
+  - Region inference activation ⏳ (next)
+- Next: Region inference activation — use correct region vids for
+  actual lifetime constraint checking and error reporting

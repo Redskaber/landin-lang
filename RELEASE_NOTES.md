@@ -1,12 +1,66 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.216.0
+**Current version**: v0.217.0
 **Date**: 2026-08-02
-**Test count**: 242 rust lib tests + 2144 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2144 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
 
 ---
-## v0.216.0 — Stage 15.91 (Lifetime Elision Rule 3 — Self Param — Rules 1-3 COMPLETE)
+## v0.217.0 — Stage 15.92 (Explicit Lifetime Tracking)
+
+### Overview
+
+Stage 15.92 implements **explicit lifetime tracking**: references with
+the same explicit lifetime name (e.g., `'a`) now share the same
+`RegionVid` in MIR, instead of each getting a fresh vid.
+
+**What changed**:
+- Added `lower_hir_ty_to_mir_ty_with_lifetimes` function in
+  `src/mir/lower/mod.rs` — a variant that takes a
+  `lifetime_map: HashMap<Symbol, RegionVid>` for deduplication.
+- When an explicit lifetime is encountered, the function looks up the
+  lifetime name in `lifetime_map`. If found, reuses the existing vid;
+  if not found, creates a fresh vid and records it.
+- Updated `lower_hir_body_to_mir_full` to create a `lifetime_map` and
+  pass it to the new function for param and return type lowering.
+
+**Before** (each `&'a` gets a fresh vid):
+```
+fn foo<'a>(x: &'a i32, y: &'a i32) -> &'a i32 { x }
+// x: vid 0, y: vid 1, return: vid 2 (all different!)
+```
+
+**After** (same name → same vid):
+```
+fn foo<'a>(x: &'a i32, y: &'a i32) -> &'a i32 { x }
+// x: vid 0, y: vid 0, return: vid 0 (all same!)
+```
+
+Per §1.0 原則 3 "显式 > 隐式": explicit lifetimes are tracked by name.
+Per §23: `lower_hir_ty_to_mir_ty_with_lifetimes` follows naming convention.
+
+### Task 12 Progress
+
+| Component | Status | Stage |
+|-----------|--------|-------|
+| Elision rule 1 (fresh vid per elided input) | ✅ | 15.49 |
+| Elision rule 2 (single input → output) | ✅ | 15.90 |
+| Elision rule 3 (self → output) | ✅ | 15.91 |
+| Explicit lifetime deduplication | ✅ | 15.92 |
+| Region inference activation | ⏳ | Next |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS (was 242, +2 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7604 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.216.0 — Stage 15.91 (Lifetime Elision Rule 3 — Self Param)
 
 ### Overview
 
