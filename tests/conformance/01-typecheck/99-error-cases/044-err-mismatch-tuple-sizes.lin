@@ -1,6 +1,6 @@
 // CATEGORY: typecheck
 // DESCRIPTION: mismatch tuple sizes
-// EXPECTED: compile_ok
+// EXPECTED: compile_error
 // SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
 
 fn main() { let x: (i32, i32) = (1, 2, 3); }

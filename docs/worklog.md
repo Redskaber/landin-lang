@@ -22511,3 +22511,75 @@ Stage Summary:
 - Stage 15.76 PASSED — binary/unary op type resolution
 - 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
 - v0.201.0: minor bump (Phase 2 — binop/unop type resolution)
+
+---
+Task ID: stage15.77-addr-of-tuple-type-resolution
+Agent: Super Z (main)
+Task: Stage 15.77 — AddrOf + Tuple expression type resolution. v0.201.0 → v0.202.0.
+
+Work Log:
+- Baseline: v0.201.0 / 221 lib + 2130 integration + 5216 conformance
+
+### 1. AddrOf type resolution
+
+In src/mir/lower/expr_operand.rs, HirExprKind::AddrOf now resolves the
+result type from the inner local's type:
+- inner_ty = cx.mir.local(inner_local).ty.clone()
+- result type = TyKind::Ref(Region::Erased, mir_mut, Box::new(inner_ty))
+
+The Region::Erased choice (instead of a fresh Region::Var) is deliberate:
+borrowck has its own region inference (region_inference.rs) that assigns
+region variables to borrows separately. At MIR lowering time, the
+meaningful information is "this is a reference to inner_ty" — the region
+is filled in by region inference, not by the lowerer.
+
+### 2. Tuple type resolution
+
+HirExprKind::Tuple now resolves the result type from the element locals'
+types:
+- elem_tys = elem_locals.map(|l| cx.mir.local(l).ty.clone())
+- result type = TyKind::Tuple(elem_tys)
+
+### 3. Conformance test flips (7 tests)
+
+7 tests flipped from compile_ok to compile_error. The previous behavior
+masked real type errors — tuple element types were never checked against
+the tuple's expected element types because the tuple's type was
+Infer(TyVar) (silently unified with the let binding's annotation).
+
+5 tests: `let t:(T,T)=(0,0);` where T is f64/f32/bool/char/&str — int
+literal can't unify with non-integer type (Landin has no int→float
+coercion).
+
+2 tests: `let t:(i32,i32)=(1,2,3);` — tuple arity mismatch (was
+previously undetected because the Infer(TyVar) tuple type silently
+unified with the 2-element annotation without checking arity).
+
+Per §1.0 原則 9 "正确 > 妥协": correct behavior is to report these
+errors. Same pattern as Stage 15.73 (4 tests flipped).
+
+### 4. Documentation
+
+- docs/develop/v0/stage-15/stage-15.77-addr-of-tuple-type-resolution.md
+- docs/tests/v0/stage15/stage-15.77-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.201.0 → v0.202.0
+
+Stage Summary:
+- Stage 15.77 PASSED — AddrOf + Tuple expression type resolution
+- 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
+- 7 conformance tests flipped (soundness improvement — tuple element types
+  now correctly checked, exposing 5 int-literal-can't-unify-with-non-int
+  cases and 2 tuple arity mismatches)
+- v0.202.0: minor bump (Phase 2 — type resolution improvements + soundness fix)
+- Pattern (Stages 15.73 → 15.77) reduces fresh_infer_ty usage in MIR lowering:
+  let bindings → deref → binop/unop → addr-of + tuple

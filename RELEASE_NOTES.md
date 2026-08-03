@@ -1,9 +1,54 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.201.0
+**Current version**: v0.202.0
 **Date**: 2026-08-02
 **Test count**: 221 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.202.0 — Stage 15.77 (AddrOf + Tuple Type Resolution)
+
+### Overview
+
+Stage 15.77 improves type resolution for `&expr`/`&mut expr` (AddrOf) and
+tuple literals in MIR lowering. Instead of creating fresh `Infer` types
+that stay unresolved at borrowck time (writeback runs after borrowck),
+the result types are now resolved from operand types:
+
+- **AddrOf** (`&expr`, `&mut expr`): result type is
+  `Ref(Region::Erased, inner_ty, mutability)`.
+- **Tuple** (`(a, b, c)`): result type is `Tuple([ty_a, ty_b, ty_c])`.
+
+This continues the pattern established by Stages 15.73 (let bindings),
+15.75 (deref), and 15.76 (binop/unop).
+
+### Soundness improvement
+
+7 conformance tests flipped from `compile_ok` to `compile_error`. The
+previous behavior masked real type errors — tuple element types were
+never checked against the tuple's expected element types because the
+tuple's type was `Infer(TyVar)` (silently unified with the let binding's
+annotation). Now `Tuple([Infer(IntVar); N])` correctly unifies
+element-by-element and reports:
+
+- 5 tests: `let t:(T,T)=(0,0);` where T is f64/f32/bool/char/&str (int
+  literal can't unify with non-integer type — Landin has no int→float
+  coercion)
+- 2 tests: `let t:(i32,i32)=(1,2,3);` (tuple arity mismatch, was
+  previously undetected)
+
+Per §1.0 原則 9 "正确 > 妥协": correct behavior is to report these errors,
+not mask them.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.201.0 — Stage 15.76 (Binary/Unary Op Type Resolution)

@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.201.0 (v0.2 Phase 2 — binop/unop type resolution)
+**Version**: v0.202.0 (v0.2 Phase 2 — addr-of + tuple type resolution)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.201.0, Stage 15.76 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.202.0, Stage 15.77 — `impl Drop` + RAII COMPLETE)

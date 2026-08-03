@@ -943,15 +943,23 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 .iter()
                 .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
                 .collect();
-            // Stage 14.49: Use fresh_infer_ty for the tuple type.
-            // typeck will unify this with the let binding's annotation
-            // (e.g., `let t: (f64, f64) = (0, 0)` — the Infer unifies with
-            // Tuple([Float, Float])).
+            // Stage 15.77: Resolve the tuple type from the element local types
+            // (was: fresh_infer_ty, which stays unresolved at borrowck time
+            // because writeback runs after borrowck). Same pattern as
+            // Stages 15.73 (let bindings), 15.75 (deref), 15.76 (binop/unop).
             //
-            // For nested tuple destructure, a post-typeck writeback step
-            // in the driver resolves the concrete tuple type into local_decls
-            // so that field extraction works.
-            let tuple_ty = cx.fresh_infer_ty(expr.span);
+            // Each element local's type is read from local_decls (the source
+            // of truth for lowered locals). The result is a concrete
+            // `Tuple([ty_0, ty_1, ...])` type that survives borrowck.
+            //
+            // Per §1.0 原則 3 "显式 > 隣式": tuple type is explicitly resolved
+            // from the element locals' types.
+            // Per §16: reads only MIR data (local_decls), no HIR lookup.
+            let elem_tys: Vec<Ty> = elem_locals
+                .iter()
+                .map(|l| cx.mir.local(*l).ty.clone())
+                .collect();
+            let tuple_ty = Ty::new(TyKind::Tuple(elem_tys), expr.span);
             cx.eval_rvalue_to_temp(
                 Rvalue::Aggregate(AggregateKind::Tuple, operands),
                 tuple_ty,
@@ -1044,7 +1052,30 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 crate::ast::Mutability::Mutable => crate::mir::place::BorrowKind::Mut,
                 crate::ast::Mutability::Immutable => crate::mir::place::BorrowKind::Shared,
             };
-            let ref_ty = cx.fresh_infer_ty(expr.span);
+            // Stage 15.77: Resolve the ref type from the inner local's type
+            // (was: fresh_infer_ty, which stays unresolved at borrowck time
+            // because writeback runs after borrowck). Same pattern as
+            // Stages 15.73 (let bindings), 15.75 (deref), 15.76 (binop/unop).
+            //
+            // Result type: `Ref(Region::Erased, inner_ty, mutability)`.
+            // We use Region::Erased (the codegen region) rather than a fresh
+            // RegionVar because borrowck has its own region inference
+            // (region_inference.rs) that assigns region variables to borrows
+            // separately. At MIR lowering time, the meaningful information
+            // is "this is a reference to inner_ty" — the region is filled in
+            // by region inference, not by the lowerer.
+            //
+            // Per §1.0 原則 3 "显式 > 隐式": ref type is explicitly resolved.
+            // Per §16: reads only MIR data (local_decls), no HIR lookup.
+            let inner_ty = cx.mir.local(inner_local).ty.clone();
+            let mir_mut = match mutability {
+                crate::ast::Mutability::Mutable => crate::mir::ty::Mutability::Mutable,
+                crate::ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
+            };
+            let ref_ty = Ty::new(
+                TyKind::Ref(Region::Erased, mir_mut, Box::new(inner_ty)),
+                expr.span,
+            );
             cx.eval_rvalue_to_temp(
                 Rvalue::Ref(Region::Erased, bk, Place::local(inner_local, inner.span)),
                 ref_ty,
