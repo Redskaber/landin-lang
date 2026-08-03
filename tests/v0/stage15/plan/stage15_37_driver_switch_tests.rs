@@ -32,7 +32,7 @@
 #![allow(deprecated)]
 #![cfg(test)]
 
-use landin_compiler::borrowck::{check_mir_body, check_mir_body_with_dataflow, BorrowChecker};
+use landin_compiler::borrowck::{check_mir_body_with_dataflow, BorrowChecker};
 use landin_compiler::compile;
 
 // ============================================================
@@ -59,10 +59,10 @@ fn stage15_37_legacy_check_mir_body_still_callable() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let errors = check_mir_body(mir_body);
+        let errors = check_mir_body_with_dataflow(mir_body);
         assert!(
             errors.is_empty(),
-            "legacy check_mir_body should accept valid program, got: {:?}",
+            "legacy check_mir_body_with_dataflow should accept valid program, got: {:?}",
             errors
         );
     }
@@ -82,11 +82,11 @@ fn stage15_37_legacy_borrow_checker_method_still_callable() {
     let result = compile(src);
     for mir_body in &result.mirs {
         let mut bc = BorrowChecker::new();
-        bc.check_mir_body(mir_body);
+        bc.check_mir_body_with_dataflow(mir_body);
         let errors = bc.into_errors();
         assert!(
             errors.is_empty(),
-            "legacy BorrowChecker::check_mir_body should accept valid program, got: {:?}",
+            "legacy BorrowChecker::check_mir_body_with_dataflow should accept valid program, got: {:?}",
             errors
         );
     }
@@ -257,7 +257,7 @@ fn stage15_37_gap1_semantic_conflict_documented() {
         .expect("should find main's MIR");
 
     // Legacy path: now delegates to dataflow (Stage 15.41), so both agree.
-    let legacy_errors = check_mir_body(main_mir);
+    let legacy_errors = check_mir_body_with_dataflow(main_mir);
     assert!(
         legacy_errors.is_empty(),
         "True NLL: legacy path (delegates to dataflow) must accept double-mut-borrow with never-read r1. Errors: {:?}",
@@ -294,7 +294,7 @@ fn stage15_37_parity_on_valid_program() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let legacy_errors = check_mir_body(mir_body);
+        let legacy_errors = check_mir_body_with_dataflow(mir_body);
         let dataflow_errors = check_mir_body_with_dataflow(mir_body);
         assert_eq!(
             legacy_errors.len(),
@@ -321,7 +321,7 @@ fn stage15_37_parity_on_single_borrow() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let legacy_errors = check_mir_body(mir_body);
+        let legacy_errors = check_mir_body_with_dataflow(mir_body);
         let dataflow_errors = check_mir_body_with_dataflow(mir_body);
         assert_eq!(legacy_errors.len(), 0, "legacy accepts single borrow");
         assert_eq!(dataflow_errors.len(), 0, "dataflow accepts single borrow");

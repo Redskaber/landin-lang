@@ -22270,3 +22270,61 @@ Stage Summary:
 - Stage 15.71 PASSED — fn_sigs integration for region inference
 - 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
 - v0.196.0: minor bump (Phase 2 — fn_sigs region inference infrastructure)
+
+---
+Task ID: stage15.72-remove-deprecated-borrowck
+Agent: Super Z (main)
+Task: Stage 15.72 — Remove deprecated borrowck code. v0.196.0 → v0.197.0.
+
+Work Log:
+- Baseline: v0.196.0 / 221 lib + 2130 integration + 5216 conformance
+
+### 1. Removed deprecated code
+
+- BorrowChecker::check_mir_body (deprecated method alias) — removed.
+- check_mir_body free function (deprecated convenience wrapper) — removed.
+- check_crate free function (§16-violating HIR re-lowering) — removed.
+
+### 2. Updated 14 test files
+
+All test files updated to use check_mir_body_with_dataflow directly:
+- tests/v0/stage2/plan/typeck_tests.rs (TypeChecker::check_mir_body stays — different type)
+- tests/v0/stage7/plan/deep_review_tests.rs
+- tests/v0/stage7/plan/design_writeback_verification_tests.rs
+- tests/v0/stage7/plan/region_inference_tests.rs
+- tests/v0/stage7/plan/systematic_review_v014_tests.rs
+- tests/v0/stage8/plan/deep_review_tests.rs
+- tests/v0/stage8/plan/drop_elaboration_tests.rs
+- tests/v0/stage8/plan/lifetime_elision_tests.rs
+- tests/v0/stage15/plan/borrowck_comparison_diagnostic_tests.rs
+- tests/v0/stage15/plan/kill_borrows_dataflow_tests.rs
+- tests/v0/stage15/plan/option_b_implementation_tests.rs
+- tests/v0/stage15/plan/stage15_37_driver_switch_tests.rs
+- tests/v0/stage15/plan/stage15_40_driver_switch_tests.rs
+- tests/v0/stage15/plan/stage15_41_legacy_delegation_tests.rs
+
+### 3. Updated src/borrowck/mod.rs lib tests
+
+All lib tests in borrowck/mod.rs updated to use check_mir_body_with_dataflow.
+
+### 4. Documentation
+
+- docs/develop/v0/stage-15/stage-15.72-remove-deprecated-borrowck.md
+- docs/tests/v0/stage15/stage-15.72-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.196.0 → v0.197.0
+
+Stage Summary:
+- Stage 15.72 PASSED — deprecated borrowck code removed
+- Per §1.0 原則 5 "去除兼容思维": dead/deprecated code removed
+- 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
+- v0.197.0: minor bump (Phase 2 — deprecated code cleanup)

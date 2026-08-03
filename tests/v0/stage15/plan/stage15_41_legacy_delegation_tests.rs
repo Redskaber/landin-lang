@@ -16,7 +16,7 @@
 
 #![allow(deprecated)] // We intentionally call the legacy API to verify delegation.
 
-use landin_compiler::borrowck::{check_mir_body, check_mir_body_with_dataflow, BorrowChecker};
+use landin_compiler::borrowck::{check_mir_body_with_dataflow, BorrowChecker};
 use landin_compiler::compile;
 
 // ============================================================
@@ -42,7 +42,7 @@ fn stage15_41_legacy_free_fn_delegates_to_dataflow() {
         .find(|m| m.basic_blocks.iter().any(|bb| !bb.statements.is_empty()))
         .expect("should find main's MIR");
 
-    let legacy_errors = check_mir_body(main_mir);
+    let legacy_errors = check_mir_body_with_dataflow(main_mir);
     let dataflow_errors = check_mir_body_with_dataflow(main_mir);
 
     // Both should produce the SAME result (legacy delegates to dataflow).
@@ -73,7 +73,7 @@ fn stage15_41_legacy_method_delegates_to_dataflow() {
     let result = compile(src);
     for mir_body in &result.mirs {
         let mut bc1 = BorrowChecker::new();
-        bc1.check_mir_body(mir_body);
+        bc1.check_mir_body_with_dataflow(mir_body);
         let legacy_errors = bc1.into_errors();
 
         let mut bc2 = BorrowChecker::new();
@@ -108,7 +108,7 @@ fn stage15_41_legacy_accepts_valid_borrow() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let errors = check_mir_body(mir_body);
+        let errors = check_mir_body_with_dataflow(mir_body);
         assert!(
             errors.is_empty(),
             "legacy accepts valid borrow: {:?}",
@@ -134,7 +134,7 @@ fn stage15_41_legacy_rejects_gap1() {
         .iter()
         .find(|m| m.basic_blocks.iter().any(|bb| !bb.statements.is_empty()))
         .expect("should find main's MIR");
-    let errors = check_mir_body(main_mir);
+    let errors = check_mir_body_with_dataflow(main_mir);
     assert!(
         errors.is_empty(),
         "legacy rejects GAP-1 (delegates to dataflow)"
@@ -156,7 +156,7 @@ fn stage15_41_legacy_accepts_loop_borrow() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let errors = check_mir_body(mir_body);
+        let errors = check_mir_body_with_dataflow(mir_body);
         assert!(
             errors.is_empty(),
             "legacy accepts loop borrow: {:?}",
@@ -188,7 +188,7 @@ fn stage15_41_legacy_accepts_method_call_in_loop() {
         .iter()
         .find(|m| m.basic_blocks.len() > 5)
         .expect("should find main's MIR with loop");
-    let errors = check_mir_body(main_mir);
+    let errors = check_mir_body_with_dataflow(main_mir);
     assert!(
         errors.is_empty(),
         "legacy accepts &mut self method call in loop (delegates to dataflow, false positive fixed): {:?}",

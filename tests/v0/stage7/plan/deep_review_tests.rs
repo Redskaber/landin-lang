@@ -8,7 +8,7 @@
 // `check_mir_body_with_dataflow`).
 #![allow(deprecated)]
 
-use landin_compiler::borrowck::{check_mir_body, BorrowChecker};
+use landin_compiler::borrowck::{check_mir_body_with_dataflow, BorrowChecker};
 use landin_compiler::hir::DefId;
 use landin_compiler::mir::body::MirBody;
 use landin_compiler::mir::dyn_trait::{
@@ -57,7 +57,7 @@ fn stage7_deep_review_region_inference_does_not_break_existing() {
     ];
 
     for (i, mir) in test_cases.into_iter().enumerate() {
-        let errors = check_mir_body(&mir);
+        let errors = check_mir_body_with_dataflow(&mir);
         assert!(
             errors.is_empty(),
             "test case {} should have no errors, got: {:?}",
@@ -95,7 +95,7 @@ fn stage7_deep_review_td015_region_inference_active() {
         Span::DUMMY,
     );
 
-    bc.check_mir_body(&mir);
+    bc.check_mir_body_with_dataflow(&mir);
     let errors = bc.into_errors();
     assert!(
         errors.is_empty(),
@@ -207,7 +207,7 @@ fn stage7_deep_review_test_infrastructure_healthy() {
         span: Span::DUMMY,
     });
 
-    let errors = check_mir_body(&mir);
+    let errors = check_mir_body_with_dataflow(&mir);
     assert!(
         errors.is_empty(),
         "comprehensive scenario should pass: {:?}",
@@ -292,12 +292,12 @@ fn stage7_deep_review_borrowck_api_stable() {
     let mut bc = BorrowChecker::new();
     let mut mir = MirBody::new(Span::DUMMY);
     mir.new_block();
-    bc.check_mir_body(&mir);
+    bc.check_mir_body_with_dataflow(&mir);
     let _errors = bc.into_errors();
 
     // Free function entry point
     let mir2 = MirBody::new(Span::DUMMY);
-    let _errors2 = check_mir_body(&mir2);
+    let _errors2 = check_mir_body_with_dataflow(&mir2);
 
     // If we reach here, the API is stable
 }

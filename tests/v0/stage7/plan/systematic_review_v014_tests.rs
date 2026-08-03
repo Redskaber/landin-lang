@@ -7,7 +7,7 @@
 // `check_mir_body_with_dataflow`).
 #![allow(deprecated)]
 
-use landin_compiler::borrowck::{check_mir_body, BorrowChecker};
+use landin_compiler::borrowck::{check_mir_body_with_dataflow, BorrowChecker};
 use landin_compiler::driver::compile;
 use landin_compiler::hir::DefId;
 use landin_compiler::mir::body::MirBody;
@@ -47,7 +47,7 @@ fn stage7_9_td015_region_inference_active() {
         None,
         Span::DUMMY,
     );
-    bc.check_mir_body(&mir);
+    bc.check_mir_body_with_dataflow(&mir);
     assert!(
         bc.into_errors().is_empty(),
         "region inference no false positives"
@@ -140,7 +140,10 @@ fn stage7_9_test_infrastructure() {
         ))),
         span: Span::DUMMY,
     });
-    assert!(check_mir_body(&mir).is_empty(), "valid borrow should pass");
+    assert!(
+        check_mir_body_with_dataflow(&mir).is_empty(),
+        "valid borrow should pass"
+    );
 }
 
 // D5: Design alignment — all 8 docs have §25.8 writeback
@@ -177,7 +180,7 @@ fn stage7_9_architecture_healthy() {
     let mut bc = BorrowChecker::new();
     let mut mir = MirBody::new(Span::DUMMY);
     mir.new_block();
-    bc.check_mir_body(&mir);
+    bc.check_mir_body_with_dataflow(&mir);
     let _ = bc.into_errors(); // should not panic
                               // If we reach here, architecture is healthy
 }

@@ -59,7 +59,7 @@ fn stage8_6_region_inference_and_dyn_trait_active() {
         None,
         Span::DUMMY,
     );
-    bc.check_mir_body(&mir);
+    bc.check_mir_body_with_dataflow(&mir);
     assert!(
         bc.into_errors().is_empty(),
         "region inference + dyn trait should work"

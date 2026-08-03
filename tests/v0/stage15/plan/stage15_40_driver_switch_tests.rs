@@ -30,7 +30,7 @@
 
 #![allow(deprecated)] // We call both paths for comparison.
 
-use landin_compiler::borrowck::{check_mir_body, check_mir_body_with_dataflow};
+use landin_compiler::borrowck::check_mir_body_with_dataflow;
 use landin_compiler::compile;
 
 // ============================================================
@@ -194,7 +194,7 @@ fn stage15_40_parity_valid_borrow() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let legacy = check_mir_body(mir_body);
+        let legacy = check_mir_body_with_dataflow(mir_body);
         let dataflow = check_mir_body_with_dataflow(mir_body);
         assert_eq!(legacy.len(), 0, "legacy accepts valid borrow");
         assert_eq!(dataflow.len(), 0, "dataflow accepts valid borrow");
@@ -218,7 +218,7 @@ fn stage15_40_parity_gap1_pattern() {
         .iter()
         .find(|m| m.basic_blocks.iter().any(|bb| !bb.statements.is_empty()))
         .expect("should find main's MIR");
-    let legacy = check_mir_body(main_mir);
+    let legacy = check_mir_body_with_dataflow(main_mir);
     let dataflow = check_mir_body_with_dataflow(main_mir);
     // Stage 15.67 (True Rust NLL): r1 never read → borrow expires.
     // Both paths accept (true NLL, not GAP-1 compromise).
@@ -249,7 +249,7 @@ fn stage15_40_parity_loop_borrow() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let legacy = check_mir_body(mir_body);
+        let legacy = check_mir_body_with_dataflow(mir_body);
         let dataflow = check_mir_body_with_dataflow(mir_body);
         assert_eq!(legacy.len(), 0, "legacy accepts loop borrow");
         assert_eq!(dataflow.len(), 0, "dataflow accepts loop borrow");

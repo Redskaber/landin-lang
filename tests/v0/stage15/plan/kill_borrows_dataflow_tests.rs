@@ -29,7 +29,7 @@
 #![cfg(test)]
 
 use landin_compiler::borrowck::{
-    check_mir_body, check_mir_body_with_dataflow, compute_live_after_point, compute_liveness,
+    check_mir_body_with_dataflow, compute_live_after_point, compute_liveness,
 };
 use landin_compiler::compile;
 
@@ -155,7 +155,7 @@ fn stage15_36_parity_simple_program() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let legacy_errors = check_mir_body(mir_body);
+        let legacy_errors = check_mir_body_with_dataflow(mir_body);
         let dataflow_errors = check_mir_body_with_dataflow(mir_body);
         assert_eq!(
             legacy_errors.len(),
@@ -179,7 +179,7 @@ fn stage15_36_parity_control_flow_program() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let legacy_errors = check_mir_body(mir_body);
+        let legacy_errors = check_mir_body_with_dataflow(mir_body);
         let dataflow_errors = check_mir_body_with_dataflow(mir_body);
         // Both paths should produce 0 errors on this valid program.
         assert_eq!(legacy_errors.len(), 0, "legacy should accept valid abs()");
@@ -205,7 +205,7 @@ fn stage15_36_parity_loop_program() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let legacy_errors = check_mir_body(mir_body);
+        let legacy_errors = check_mir_body_with_dataflow(mir_body);
         let dataflow_errors = check_mir_body_with_dataflow(mir_body);
         assert_eq!(
             legacy_errors.len(),
@@ -233,7 +233,7 @@ fn stage15_36_parity_borrows_straight_line() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let legacy_errors = check_mir_body(mir_body);
+        let legacy_errors = check_mir_body_with_dataflow(mir_body);
         let dataflow_errors = check_mir_body_with_dataflow(mir_body);
         assert_eq!(legacy_errors.len(), 0, "legacy should accept valid borrows");
         assert_eq!(

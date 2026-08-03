@@ -158,37 +158,8 @@ impl<'a> BorrowChecker<'a> {
         }
     }
 
-    /// Check a single MIR body for borrow/ownership violations.
-    ///
-    /// **Stage 15.41 (HP-10 — legacy cleanup)**: This legacy entry point
-    /// now delegates directly to `check_mir_body_with_dataflow`. The
-    /// original single-pass walk implementation (with `kill_expired_borrows`)
-    /// has been removed — the dataflow path produces identical results on
-    /// all 5028 comparable conformance tests (verified by the Stage 15.38
-    /// diagnostic tool).
-    ///
-    /// The method is retained as `#[deprecated]` for backward compatibility
-    /// with existing tests that call `check_mir_body` directly. New code
-    /// should call `check_mir_body_with_dataflow` instead. The legacy
-    /// method will be removed in v0.3.
-    ///
-    /// Per §23.1 rule 6: deprecated entry points must have a `note = "..."`
-    /// pointing to the sounder alternative.
-    /// Per §1.0 原則 1 "长期 > 短期": delegating to the dataflow path
-    /// eliminates the dead code (the legacy walk) while preserving the
-    /// API for callers that haven't migrated yet.
-    /// Per §15 "最优 > 最小": the legacy walk body is removed (not retained
-    /// as dead code), reducing maintenance burden.
-    #[deprecated(
-        note = "Use `check_mir_body_with_dataflow` (v0.2 sound dataflow analysis) instead — \
-                this legacy path now delegates to it. Will be removed in v0.3."
-    )]
-    pub fn check_mir_body(&mut self, mir: &MirBody) {
-        // Stage 15.41: Delegate directly to the dataflow path. The original
-        // single-pass walk (with `kill_expired_borrows`) has been removed —
-        // the dataflow path produces identical results.
-        self.check_mir_body_with_dataflow(mir);
-    }
+    // Stage 15.72: Removed deprecated `check_mir_body` alias.
+    // Use `check_mir_body_with_dataflow` directly — it's the sole entry point.
 
     /// Stage 7.5 (TD-015 step 5): Run region inference on the MIR body.
     ///
@@ -925,88 +896,28 @@ impl<'a> Default for BorrowChecker<'a> {
     }
 }
 
-/// Check a single MIR body for borrow/ownership errors.
-/// Returns a list of errors (non-fatal).
+/// Stage 15.72: Check a single MIR body for borrow/ownership errors.
 ///
-/// Note: This convenience function does NOT use TraitResolver for Copy detection.
-/// For sound Copy detection, use `BorrowChecker::with_resolver` instead.
+/// Free-function convenience wrapper around
+/// `BorrowChecker::check_mir_body_with_dataflow`. Creates a
+/// `BorrowChecker` with default settings (no resolver, no fn_sigs).
 ///
-/// **Stage 15.37 (HP-10 step 3 of 4)**: This legacy entry point is now
-/// `#[deprecated]`. Use `check_mir_body_with_dataflow` instead — it uses
-/// the fixpoint liveness analysis to correctly handle loops and
-/// conditionals where this legacy path is unsound. This function is
-/// retained for backward compatibility with existing tests; it will be
-/// removed in v0.3.
-///
-/// Per §23.1 rule 6: deprecated entry points must have a `note = "..."`
-/// pointing to the sounder alternative.
-#[deprecated(
-    note = "Use `check_mir_body_with_dataflow` (v0.2 sound dataflow analysis) instead — \
-            this legacy path is unsound for loops and conditionals. Will be removed in v0.3."
-)]
-#[allow(deprecated)]
-pub fn check_mir_body(mir: &MirBody) -> Vec<BorrowError> {
-    let mut bc: BorrowChecker<'_> = BorrowChecker::new();
-    bc.check_mir_body(mir);
-    bc.into_errors()
-}
-
-/// Stage 15.36 (HP-10 step 2 of 4): Dataflow-driven borrow check entry point.
-///
-/// This is the free-function counterpart of
-/// `BorrowChecker::check_mir_body_with_dataflow`, mirroring the relationship
-/// between `check_mir_body` and `BorrowChecker::check_mir_body`. It uses the
-/// fixpoint liveness analysis (Stage 15.35) to expire borrows, correctly
-/// handling loops and conditionals — the legacy `check_mir_body` is unsound
-/// for those patterns.
-///
-/// Per §23: free-function entry point follows `<verb>_<noun>` pattern with
-/// the `_with_dataflow` suffix marking it as the v0.2 analysis. Per §16:
-/// this is a thin wrapper around `BorrowChecker::check_mir_body_with_dataflow`
-/// — no HIR lookup, no MIR re-lowering.
-///
-/// Note: This convenience function does NOT use TraitResolver for Copy
-/// detection. For sound Copy detection, use
-/// `BorrowChecker::with_resolver` + `check_mir_body_with_dataflow`.
+/// Per §23: free-function entry point follows `<verb>_<noun>` pattern.
+/// Per §1.0 原則 5 "去除兼容思维": deprecated `check_mir_body` and
+/// `check_crate` aliases removed.
 pub fn check_mir_body_with_dataflow(mir: &MirBody) -> Vec<BorrowError> {
     let mut bc: BorrowChecker<'_> = BorrowChecker::new();
     bc.check_mir_body_with_dataflow(mir);
     bc.into_errors()
 }
 
-/// Stage 3.63: Deprecated legacy entry point. The driver now uses
-/// `BorrowChecker::check_mir_body_with_dataflow` directly per §16
-/// interface isolation (Stage 15.40 switched the driver to the
-/// dataflow path).
-///
-/// This free function is retained for backwards compatibility with older
-/// callers that pass a `HirCrate`. It internally re-lowers HIR to MIR —
-/// the §16-violating pattern that the driver-based orchestration eliminated.
-/// New code should use the driver or
-/// `BorrowChecker::check_mir_body_with_dataflow` directly.
-///
-/// Stage 15.40: Now uses the dataflow path internally (calls
-/// `check_mir_body_with_dataflow` instead of the legacy `check_mir_body`),
-/// matching the driver's behavior.
-#[deprecated(
-    note = "Use BorrowChecker::check_mir_body_with_dataflow (§16-compliant) or driver::compile instead"
-)]
-pub fn check_crate(hir: &crate::hir::HirCrate, interner: &lasso::Rodeo) -> Vec<BorrowError> {
-    let mut all_errors = Vec::new();
-    for (_, body) in &hir.bodies {
-        let mir = crate::mir::lower::lower_hir_body_to_mir(body, interner, hir);
-        // Use the dataflow path internally so this legacy entry benefits
-        // from the same soundness improvement as the driver (Stage 15.40).
-        all_errors.extend(check_mir_body_with_dataflow(&mir));
-    }
-    all_errors
-}
+// Stage 15.72: Deprecated `check_crate` free function REMOVED.
+// Per §1.0 原則 5 "去除兼容思维": dead code removed.
+// Per §16: this function violated interface isolation (re-lowered HIR
+// to MIR inside borrowck). Use `driver::compile` or
+// `BorrowChecker::check_mir_body_with_dataflow` directly.
 
 #[cfg(test)]
-// Stage 15.37: Allow deprecated — these tests intentionally exercise the
-// legacy `check_mir_body` path to ensure it doesn't regress while it's
-// being phased out. The deprecation warning is expected here.
-#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::ast;
@@ -1050,7 +961,7 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
-        let errors = check_mir_body(&mir);
+        let errors = check_mir_body_with_dataflow(&mir);
         assert!(errors.is_empty(), "expected no errors, got {:?}", errors);
     }
 
@@ -1090,7 +1001,7 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
-        let errors = check_mir_body(&mir);
+        let errors = check_mir_body_with_dataflow(&mir);
         assert!(!errors.is_empty(), "expected use-after-move error");
     }
 
@@ -1144,7 +1055,7 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
-        let errors = check_mir_body(&mir);
+        let errors = check_mir_body_with_dataflow(&mir);
         // Stage 15.67: True NLL allows this (r never read → borrow expires).
         assert!(
             errors.is_empty(),
@@ -1201,7 +1112,7 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
-        let errors = check_mir_body(&mir);
+        let errors = check_mir_body_with_dataflow(&mir);
         // Stage 15.67: True NLL allows this (r never read → borrow expires).
         assert!(
             errors.is_empty(),
@@ -1248,7 +1159,7 @@ mod tests {
         // This test just verifies no crash.
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
-        let _ = check_mir_body(&mir);
+        let _ = check_mir_body_with_dataflow(&mir);
     }
 
     #[test]
@@ -1298,7 +1209,7 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
-        let errors = check_mir_body(&mir);
+        let errors = check_mir_body_with_dataflow(&mir);
         assert!(
             errors.is_empty(),
             "expected no errors after re-init, got {:?}",
@@ -1342,7 +1253,7 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
-        let errors = check_mir_body(&mir);
+        let errors = check_mir_body_with_dataflow(&mir);
         assert!(
             errors.is_empty(),
             "expected no errors for copies, got {:?}",
@@ -1442,7 +1353,7 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
-        let errors = check_mir_body(&mir);
+        let errors = check_mir_body_with_dataflow(&mir);
         assert!(
             errors.is_empty(),
             "expected no errors (NLL should expire the borrow at last use), got {:?}",
@@ -1529,7 +1440,7 @@ mod tests {
         });
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
-        let errors = check_mir_body(&mir);
+        let errors = check_mir_body_with_dataflow(&mir);
         // The borrow on x is alive at "x = 100" because r's last use is
         // at "y = *r" (a later statement). So assigning to x should fail.
         assert!(

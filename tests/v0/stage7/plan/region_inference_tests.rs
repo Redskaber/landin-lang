@@ -15,7 +15,7 @@
 // `check_mir_body_with_dataflow`).
 #![allow(deprecated)]
 
-use landin_compiler::borrowck::{check_mir_body, BorrowChecker};
+use landin_compiler::borrowck::{check_mir_body_with_dataflow, BorrowChecker};
 use landin_compiler::mir::body::MirBody;
 use landin_compiler::mir::ty::{Region, Ty, TyKind};
 use landin_compiler::session::Span;
@@ -31,7 +31,7 @@ fn stage7_region_inference_context_creation() {
     let mut bc = BorrowChecker::new();
     let mut mir = MirBody::new(Span::DUMMY);
     mir.new_block();
-    bc.check_mir_body(&mir);
+    bc.check_mir_body_with_dataflow(&mir);
     let errors = bc.into_errors();
     // Empty MIR body should produce no errors
     assert!(
@@ -59,7 +59,7 @@ fn stage7_region_inference_simple_body() {
     );
 
     // Simple body should have no borrow errors
-    let errors = check_mir_body(&mir);
+    let errors = check_mir_body_with_dataflow(&mir);
     assert!(
         errors.is_empty(),
         "expected no errors for simple i32 body, got: {:?}",
@@ -91,7 +91,7 @@ fn stage7_region_inference_ref_type_body() {
     let _ref_local = mir.new_local(ref_ty, None, Span::DUMMY);
 
     // Reference types should not cause borrow errors in an empty body
-    let errors = check_mir_body(&mir);
+    let errors = check_mir_body_with_dataflow(&mir);
     assert!(
         errors.is_empty(),
         "expected no errors for ref type body, got: {:?}",
@@ -146,7 +146,7 @@ fn stage7_borrow_checker_accepts_valid_borrow() {
         span: Span::DUMMY,
     });
 
-    let errors = check_mir_body(&mir);
+    let errors = check_mir_body_with_dataflow(&mir);
     assert!(
         errors.is_empty(),
         "expected no errors for valid shared borrow, got: {:?}",
@@ -178,7 +178,7 @@ fn stage7_borrow_checker_detects_use_after_move() {
     // x is now moved — any further use should error
     // (The borrow checker should detect this via move tracking)
 
-    let errors = check_mir_body(&mir);
+    let errors = check_mir_body_with_dataflow(&mir);
     // The move itself is valid; we're just checking the checker runs
     // without crashing. Error detection depends on further use of x.
     // For this test, we just verify the checker doesn't panic.
@@ -202,13 +202,13 @@ fn stage7_region_inference_context_standalone() {
     );
     let _bool_local = mir.new_local(Ty::new(TyKind::Bool, Span::DUMMY), None, Span::DUMMY);
 
-    bc.check_mir_body(&mir);
+    bc.check_mir_body_with_dataflow(&mir);
     let errors = bc.into_errors();
     assert!(errors.is_empty());
 
     // Verify into_errors works
     let mut bc2 = BorrowChecker::new();
-    bc2.check_mir_body(&mir);
+    bc2.check_mir_body_with_dataflow(&mir);
     let errors2 = bc2.into_errors();
     assert!(errors2.is_empty());
 }
@@ -221,7 +221,7 @@ fn stage7_region_inference_context_standalone() {
 fn stage7_regression_no_errors_on_simple_body() {
     let mut mir = MirBody::new(Span::DUMMY);
     mir.new_block();
-    let errors = check_mir_body(&mir);
+    let errors = check_mir_body_with_dataflow(&mir);
     assert!(errors.is_empty());
 }
 
@@ -266,7 +266,7 @@ fn stage7_regression_copy_type_not_moved() {
         span: Span::DUMMY,
     });
 
-    let errors = check_mir_body(&mir);
+    let errors = check_mir_body_with_dataflow(&mir);
     assert!(
         errors.is_empty(),
         "Copy type used twice should not error: {:?}",

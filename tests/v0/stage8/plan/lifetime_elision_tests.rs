@@ -36,7 +36,7 @@ fn stage8_1_lifetime_elision_module_exists() {
         None,
         Span::DUMMY,
     );
-    bc.check_mir_body(&mir);
+    bc.check_mir_body_with_dataflow(&mir);
     assert!(bc.into_errors().is_empty());
 }
 

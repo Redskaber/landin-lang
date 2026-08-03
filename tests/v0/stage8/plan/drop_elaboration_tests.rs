@@ -20,7 +20,7 @@ fn stage8_4_drop_elaborator_exists() {
     let mut bc = BorrowChecker::new();
     let mut mir = MirBody::new(Span::DUMMY);
     mir.new_block();
-    bc.check_mir_body(&mir);
+    bc.check_mir_body_with_dataflow(&mir);
     assert!(bc.into_errors().is_empty());
 }
 
@@ -79,7 +79,7 @@ fn stage8_4_mir_with_drop_type() {
         Span::DUMMY,
     );
     // borrowck should handle this without crashing
-    let errors = landin_compiler::borrowck::check_mir_body(&mir);
+    let errors = landin_compiler::borrowck::check_mir_body_with_dataflow(&mir);
     let _ = errors; // may or may not have errors, but should not panic
 }
 

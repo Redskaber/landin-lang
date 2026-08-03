@@ -34,7 +34,7 @@ fn stage7_td015_borrow_checker_runs_region_inference() {
     let mut bc = BorrowChecker::new();
     let mut mir = MirBody::new(Span::DUMMY);
     mir.new_block();
-    bc.check_mir_body(&mir);
+    bc.check_mir_body_with_dataflow(&mir);
     let errors = bc.into_errors();
     assert!(
         errors.is_empty(),
@@ -63,7 +63,7 @@ fn stage7_td015_region_inference_handles_ref_types() {
         None,
         Span::DUMMY,
     );
-    let errors = landin_compiler::borrowck::check_mir_body(&mir);
+    let errors = landin_compiler::borrowck::check_mir_body_with_dataflow(&mir);
     assert!(
         errors.is_empty(),
         "region inference should handle ref types"
@@ -98,7 +98,7 @@ fn stage7_td015_region_inference_nested_refs() {
     );
     let _nested_ref_local = mir.new_local(outer_ref, None, Span::DUMMY);
 
-    let errors = landin_compiler::borrowck::check_mir_body(&mir);
+    let errors = landin_compiler::borrowck::check_mir_body_with_dataflow(&mir);
     assert!(
         errors.is_empty(),
         "region inference should handle nested refs"

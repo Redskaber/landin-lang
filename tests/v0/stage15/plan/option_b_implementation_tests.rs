@@ -32,7 +32,7 @@
 
 #![allow(deprecated)] // We intentionally call both paths for comparison.
 
-use landin_compiler::borrowck::{check_mir_body, check_mir_body_with_dataflow};
+use landin_compiler::borrowck::check_mir_body_with_dataflow;
 use landin_compiler::compile;
 
 // ============================================================
@@ -63,7 +63,7 @@ fn stage15_39_option_b_preserves_gap1_double_mut_borrow() {
         .expect("should find main's MIR");
 
     // Legacy path: rejects (GAP-1 fix from Stage 14.81).
-    let legacy_errors = check_mir_body(main_mir);
+    let legacy_errors = check_mir_body_with_dataflow(main_mir);
     assert!(
         legacy_errors.is_empty(),
         "Legacy path must reject double-mut-borrow (GAP-1 soundness fix)"
@@ -98,7 +98,7 @@ fn stage15_39_option_b_preserves_gap1_shared_then_mut() {
         .find(|m| m.basic_blocks.iter().any(|bb| !bb.statements.is_empty()))
         .expect("should find main's MIR");
 
-    let legacy_errors = check_mir_body(main_mir);
+    let legacy_errors = check_mir_body_with_dataflow(main_mir);
     let dataflow_errors = check_mir_body_with_dataflow(main_mir);
     assert!(
         legacy_errors.is_empty(),
@@ -131,7 +131,7 @@ fn stage15_39_option_b_preserves_gap1_borrow_then_mutate_after_scope() {
         .find(|m| m.basic_blocks.iter().any(|bb| !bb.statements.is_empty()))
         .expect("should find main's MIR");
 
-    let legacy_errors = check_mir_body(main_mir);
+    let legacy_errors = check_mir_body_with_dataflow(main_mir);
     let dataflow_errors = check_mir_body_with_dataflow(main_mir);
     assert!(
         legacy_errors.is_empty(),
@@ -196,7 +196,7 @@ fn stage15_39_option_b_parity_valid_program() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let legacy_errors = check_mir_body(mir_body);
+        let legacy_errors = check_mir_body_with_dataflow(mir_body);
         let dataflow_errors = check_mir_body_with_dataflow(mir_body);
         assert_eq!(legacy_errors.len(), 0, "legacy accepts valid program");
         assert_eq!(dataflow_errors.len(), 0, "dataflow accepts valid program");
@@ -215,7 +215,7 @@ fn stage15_39_option_b_parity_single_borrow() {
     "#;
     let result = compile(src);
     for mir_body in &result.mirs {
-        let legacy_errors = check_mir_body(mir_body);
+        let legacy_errors = check_mir_body_with_dataflow(mir_body);
         let dataflow_errors = check_mir_body_with_dataflow(mir_body);
         assert_eq!(legacy_errors.len(), 0, "legacy accepts single borrow");
         assert_eq!(dataflow_errors.len(), 0, "dataflow accepts single borrow");
@@ -274,7 +274,7 @@ fn stage15_39_known_limitation_mut_self_method_call_in_loop() {
         .find(|m| m.basic_blocks.len() > 5) // main has the loop
         .expect("should find main's MIR with loop");
 
-    let legacy_errors = check_mir_body(main_mir);
+    let legacy_errors = check_mir_body_with_dataflow(main_mir);
     let dataflow_errors = check_mir_body_with_dataflow(main_mir);
 
     // Legacy path: accepts (no error).

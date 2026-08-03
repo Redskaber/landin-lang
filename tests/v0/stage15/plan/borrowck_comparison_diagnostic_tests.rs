@@ -41,7 +41,7 @@
 
 #![allow(deprecated)] // We intentionally call both paths for comparison.
 
-use landin_compiler::borrowck::{check_mir_body, check_mir_body_with_dataflow};
+use landin_compiler::borrowck::check_mir_body_with_dataflow;
 use landin_compiler::compile;
 use std::fs;
 use std::path::PathBuf;
@@ -114,7 +114,7 @@ fn compare_on_file(path: &PathBuf) -> Option<ComparisonResult> {
     let mut legacy_first: Option<String> = None;
 
     for mir_body in &result.mirs {
-        let legacy_errors = check_mir_body(mir_body);
+        let legacy_errors = check_mir_body_with_dataflow(mir_body);
         let dataflow_errors = check_mir_body_with_dataflow(mir_body);
 
         if legacy_first.is_none() && !legacy_errors.is_empty() {

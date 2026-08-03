@@ -1,9 +1,34 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.196.0
+**Current version**: v0.197.0
 **Date**: 2026-08-02
 **Test count**: 221 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.197.0 — Stage 15.72 (Remove Deprecated Borrowck Code)
+
+### Overview
+
+Stage 15.72 removes all deprecated borrow checker code per §1.0 原則 5 "去除兼容思维".
+
+### What Was Removed
+
+- `BorrowChecker::check_mir_body` (deprecated method alias).
+- `check_mir_body` free function (deprecated convenience wrapper).
+- `check_crate` free function (§16-violating HIR re-lowering).
+- `#[allow(deprecated)]` attributes in 8 test files.
+- Updated all 14 test files to use `check_mir_body_with_dataflow` directly.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.196.0 — Stage 15.71 (fn_sigs Integration for Region Inference)
