@@ -1,9 +1,82 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.211.0
+**Current version**: v0.212.0
 **Date**: 2026-08-02
-**Test count**: 235 rust lib tests + 2140 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 235 rust lib tests + 2141 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.212.0 — Stage 15.87 (Resolve Error Span Accuracy Fix)
+
+### Overview
+
+Stage 15.87 fixes a `Span::DUMMY` error site in the resolve error
+system. The `scan_ty_for_unresolved` function in `src/driver.rs` used
+`Span::DUMMY` for the "cannot find type in this scope" error, producing
+"1:1" (file start) instead of the actual type name location.
+
+**Fix**: Use `p.span` (the type path's span) instead of `Span::DUMMY`.
+
+**Before** (`let x: Undefined = 42;`):
+```
+error[E300]: cannot find type in this scope
+  --> /tmp/t.lin:1:1
+```
+
+**After**:
+```
+error[E300]: cannot find type in this scope
+  --> /tmp/t.lin:1:20
+  |
+1 | fn main() { let x: Undefined = 42; }
+  |                    ^^^^^^^^^^^
+```
+
+### Error system cleanup summary (Stages 15.80-15.87)
+
+| Stage | Focus | Sites Fixed |
+|-------|-------|-------------|
+| 15.80 | Human-readable type names (`type_to_string`) | 6 `{:?}` leaks + 2 `({:?})` enum leaks |
+| 15.81 | Typeck terminator span accuracy (`operand_span`, `term.span`) | 7 `Span::DUMMY` sites + 1 `{:?}` leak |
+| 15.82 | Typeck statement/rvalue span accuracy (`stmt_span` in `infer_rvalue`) | 9 `Span::DUMMY` sites + 5 `{:?}` leaks |
+| 15.83 | Typeck aggregate (Array + Adt) span accuracy | 2 `Span::DUMMY` sites |
+| 15.84 | Borrowck Debug leaks (`region_vid_to_string`) | 3 `{:?}` leaks |
+| 15.85 | Borrowck terminator span accuracy (`operand_span`) | 4 `Span::DUMMY` sites |
+| 15.86 | DRY refactor: unify `operand_span` into `mir::place` | 1 duplicate eliminated |
+| 15.87 | Resolve error span accuracy (`scan_ty_for_unresolved`) | 1 `Span::DUMMY` site |
+| **Total** | | **25 `Span::DUMMY` sites + 17 `{:?}` leaks fixed + 1 DRY** |
+
+**Result**: All user-facing typeck, borrowck, AND resolve error messages now:
+- Use human-readable type names (`i32`, `bool`, `&mut T`, etc.) — no
+  Debug format leaks
+- Use human-readable region names (`'r5`, `'r2`) — no `RegionVid(N)`
+  Debug leaks
+- Point to actual source locations (with snippet underlines) — no
+  `Span::DUMMY` / "1:1" errors
+
+The error system is now in good shape for user-facing work.
+
+Per §1.0 原則 3 "显式 > 隐式": error spans are explicitly sourced
+from the type path, not defaulted to Span::DUMMY.
+Per §1.0 原則 4 "报错 > 静默": error locations are accurate, not cryptic.
+
+### Test impact
+
+- 1 new Rust integration test in
+  `tests/v0/stage15/plan/error_system_cleanup_tests.rs`:
+  - `stage15_87_type_resolution_error_span_points_to_type` — verifies
+    `let x: Undefined = 42;` error span points to the `Undefined` type
+- 0 conformance test changes
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 235/235 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2141/2141 PASS (was 2140, +1 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7592 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.211.0 — Stage 15.86 (DRY Refactor: Unify operand_span into mir::place)

@@ -1837,7 +1837,15 @@ fn scan_ty_for_unresolved(ty: &crate::hir::HirTy, errors: &mut CompileErrors) {
             if matches!(p.res, Res::Unknown | Res::Err) {
                 errors.resolve.push(crate::resolve::ResolveError::new(
                     "cannot find type in this scope".to_string(),
-                    Span::DUMMY,
+                    // Stage 15.87: use the type path's span (was:
+                    // Span::DUMMY, producing "1:1" for type resolution
+                    // errors like `let x: Undefined = 42;`).
+                    //
+                    // Per §1.0 原則 3 "显式 > 隐式": error spans are
+                    // explicitly sourced from the type path.
+                    // Per §1.0 原則 4 "报错 > 静默": error locations
+                    // are accurate, not cryptic.
+                    p.span,
                 ));
             }
         }

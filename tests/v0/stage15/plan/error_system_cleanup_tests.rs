@@ -464,3 +464,41 @@ fn stage15_83_struct_field_mismatch_span_points_to_literal() {
         mismatch_err.span.lo
     );
 }
+
+/// Stage 15.87: `let x: Undefined = 42;` should produce a resolve error
+/// whose span points to the `Undefined` type name (not `1:1` / file start).
+///
+/// Previously, `scan_ty_for_unresolved` used `Span::DUMMY` for the
+/// "cannot find type in this scope" error, producing "1:1". Stage 15.87
+/// uses the type path's span (`p.span`).
+#[test]
+fn stage15_87_type_resolution_error_span_points_to_type() {
+    // `Undefined` is at byte offset ~19 in this source.
+    // "fn main() { let x: Undefined = 42; }"
+    //  0123456789012345678 — `U` at index 19.
+    let src = "fn main() { let x: Undefined = 42; }";
+    let result = compile(src);
+    assert!(
+        !result.errors.resolve.is_empty(),
+        "expected resolve error for undefined type `Undefined`"
+    );
+    // Find the error with "cannot find type" message.
+    let type_err = result
+        .errors
+        .resolve
+        .iter()
+        .find(|e| e.message.contains("cannot find type"))
+        .expect("expected 'cannot find type' error");
+    // The span should NOT be Span::DUMMY.
+    assert_ne!(
+        type_err.span.lo, 0,
+        "span.lo should not be 0 (was Span::DUMMY before Stage 15.87); got {}",
+        type_err.span.lo
+    );
+    // The span should point to the `Undefined` type name (byte offset >= 19).
+    assert!(
+        type_err.span.lo >= 19,
+        "span.lo should point into the type name (>= 19); got {}",
+        type_err.span.lo
+    );
+}

@@ -23461,3 +23461,76 @@ Stage Summary:
 - Error system cleanup + DRY refactor is complete. Ready for user-facing work.
 - Recommended next: Start Task 12 (Lifetime elision) — the next major
   v0.2 task (2-3 weeks, P1, ready now).
+
+---
+Task ID: stage15.87-resolve-error-span-accuracy
+Agent: Super Z (main)
+Task: Stage 15.87 — Resolve error span accuracy fix. v0.211.0 → v0.212.0.
+
+Work Log:
+- Baseline: v0.211.0 / 235 lib + 2140 integration + 5216 conformance
+
+### 1. Investigation
+
+After Stages 15.80-15.86 completed the typeck+borrowck error system
+cleanup + DRY refactor, investigated resolve error span quality. Found
+that `scan_ty_for_unresolved` in src/driver.rs used Span::DUMMY for the
+"cannot find type in this scope" error, producing "1:1" (file start)
+instead of the actual type name location.
+
+This was the last remaining Span::DUMMY in the resolve error path:
+- scan_expr_for_unresolved (value paths) — already uses p.span ✅
+- scan_pat_for_unresolved (pattern paths) — already uses path.span ✅
+- scan_ty_for_unresolved (type paths) — was Span::DUMMY, now p.span ✅
+
+### 2. Fixed scan_ty_for_unresolved
+
+In src/driver.rs, changed:
+- Before: Span::DUMMY
+- After: p.span (the type path's span)
+
+The HirPath struct has pub span: Span, so p.span is directly available.
+
+Per §1.0 原則 3 "显式 > 隐式": error spans are explicitly sourced.
+Per §1.0 原則 4 "报错 > 静默": error locations are accurate, not cryptic.
+
+### 3. New integration test (1 test)
+
+Added to tests/v0/stage15/plan/error_system_cleanup_tests.rs:
+- stage15_87_type_resolution_error_span_points_to_type: verifies
+  `let x: Undefined = 42;` error span points to the `Undefined` type
+  name (byte offset >= 19)
+
+### 4. Documentation
+
+- docs/develop/v0/stage-15/stage-15.87-resolve-error-span-accuracy.md
+- docs/tests/v0/stage15/stage-15.87-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 235/235 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2141/2141 PASS (was 2140, +1 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.211.0 → v0.212.0
+
+Stage Summary:
+- Stage 15.87 PASSED — resolve error span accuracy fix
+- 7592 tests passing (235 lib + 2141 integration + 5216 conformance), 0 failures
+- 1 new integration test for type resolution error span
+- 0 conformance test changes (all ERROR_PATTERN matches preserved)
+- v0.212.0: minor bump (Phase 2 — resolve error span accuracy fix)
+- Completes the 8-stage error system cleanup (15.80-15.87):
+  - 25 Span::DUMMY sites fixed (typeck: 18; borrowck: 6; resolve: 1)
+  - 17 {:?} Debug leaks fixed (typeck: 12; borrowck: 5)
+  - 1 DRY refactor (operand_span unified into mir::place)
+- All user-facing typeck AND borrowck AND resolve error messages now:
+  - Use human-readable type names (i32, bool, &mut T, etc.) — no Debug leaks
+  - Use human-readable region names ('r5, 'r2) — no RegionVid(N) leaks
+  - Point to actual source locations (with snippet underlines) — no "1:1" errors
+- Error system cleanup is complete. Ready for user-facing work.
+- Recommended next: Start Task 12 (Lifetime elision) — the next major
+  v0.2 task (2-3 weeks, P1, ready now).
