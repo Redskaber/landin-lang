@@ -600,7 +600,18 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let lhs_local = lower_expr_to_operand(cx, lhs);
             let rhs_local = lower_expr_to_operand(cx, rhs);
             let mir_op = MirLowerCtxt::lower_bin_op(*op);
-            let binop_ty = cx.fresh_infer_ty(expr.span);
+            // Stage 15.76: For comparison ops (==, !=, <, >, <=, >=),
+            // the result type is bool. For arithmetic ops (+, -, *, /, %,
+            // &, |, ^, <<, >>), the result type is the lhs operand's type.
+            let binop_ty = match *op {
+                HirBinOp::Eq
+                | HirBinOp::Ne
+                | HirBinOp::Lt
+                | HirBinOp::Le
+                | HirBinOp::Gt
+                | HirBinOp::Ge => Ty::new(TyKind::Bool, expr.span),
+                _ => cx.mir.local(lhs_local).ty.clone(),
+            };
             let lhs_operand = Operand::Copy(Place::local(lhs_local, lhs.span));
             let rhs_operand = Operand::Copy(Place::local(rhs_local, rhs.span));
             let result = cx.eval_rvalue_to_temp(
@@ -645,7 +656,9 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             }
             let inner_local = lower_expr_to_operand(cx, inner);
             let mir_op = MirLowerCtxt::lower_un_op(*op);
-            let unary_ty = cx.fresh_infer_ty(expr.span);
+            // Stage 15.76: Use inner operand's type for unary op result
+            // (same as Rust: `-a` has type of `a`).
+            let unary_ty = cx.mir.local(inner_local).ty.clone();
             cx.eval_rvalue_to_temp(
                 Rvalue::UnaryOp(mir_op, Operand::Copy(Place::local(inner_local, inner.span))),
                 unary_ty,

@@ -1,9 +1,28 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.200.0
+**Current version**: v0.201.0
 **Date**: 2026-08-02
 **Test count**: 221 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.201.0 — Stage 15.76 (Binary/Unary Op Type Resolution)
+
+### Overview
+
+Stage 15.76 improves type resolution for binary and unary operations.
+Comparison ops result type is `Bool`; arithmetic ops result type is the
+lhs operand's type; unary ops result type is the inner operand's type.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.200.0 — Stage 15.75 (Deref Expression Type Resolution)

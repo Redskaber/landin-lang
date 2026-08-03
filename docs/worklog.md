@@ -22471,3 +22471,43 @@ Stage Summary:
 - Stage 15.75 PASSED — deref expression type resolution
 - 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
 - v0.200.0: 🎉 200 versions milestone!
+
+---
+Task ID: stage15.76-binop-unop-type-resolution
+Agent: Super Z (main)
+Task: Stage 15.76 — Binary/Unary op type resolution. v0.200.0 → v0.201.0.
+
+Work Log:
+- Baseline: v0.200.0 / 221 lib + 2130 integration + 5216 conformance
+
+### 1. Binary op type resolution
+
+In src/mir/lower/expr_operand.rs, BinaryOp now resolves result type:
+- Comparison ops (==, !=, <, >, <=, >=): result type is Bool
+- Arithmetic ops (+, -, *, /, %, &, |, ^, <<, >>): result type is lhs operand's type
+
+### 2. Unary op type resolution
+
+UnaryOp now resolves result type from inner operand's type (same as Rust:
+`-a` has type of `a`).
+
+### 3. Documentation
+
+- docs/develop/v0/stage-15/stage-15.76-binop-unop-type-resolution.md
+- docs/tests/v0/stage15/stage-15.76-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.200.0 → v0.201.0
+
+Stage Summary:
+- Stage 15.76 PASSED — binary/unary op type resolution
+- 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
+- v0.201.0: minor bump (Phase 2 — binop/unop type resolution)
