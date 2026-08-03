@@ -23297,3 +23297,83 @@ Stage Summary:
 - Error system cleanup is substantially complete. Ready for user-facing work.
 - Recommended next: Start Task 12 (Lifetime elision) — the next major
   v0.2 task (2-3 weeks, P1, ready now).
+
+---
+Task ID: stage15.85-borrowck-terminator-span-accuracy
+Agent: Super Z (main)
+Task: Stage 15.85 — Borrowck check_terminator span accuracy fix. v0.209.0 → v0.210.0.
+
+Work Log:
+- Baseline: v0.209.0 / 233 lib + 2140 integration + 5216 conformance
+
+### 1. Investigation
+
+After Stage 15.84 fixed borrowck Debug leaks, investigated remaining
+Span::DUMMY sites in borrowck. Found 4 sites in check_terminator that
+passed Span::DUMMY to check_operand:
+1. Call terminator: func operand (line 523)
+2. Call terminator: each arg operand (line 525)
+3. SwitchInt terminator: discr operand (line 555)
+4. Assert terminator: cond operand (line 595)
+
+These meant use-after-move and not-Copy errors in Call/SwitchInt/Assert
+paths showed "1:1" (file start) instead of the actual source location.
+
+### 2. Added operand_span helper to BorrowChecker
+
+In src/borrowck/mod.rs, added a private associated function:
+- operand_span(op: &Operand) -> Span
+  - Operand::Copy(place) | Operand::Move(place) -> place.span
+  - Operand::Constant(_) -> Span::DUMMY
+
+Per §1.0 原則 3 "显式 > 隐式": error spans are explicitly sourced.
+Per §23 (DRY): mirrors typeck::checker::TypeChecker::operand_span
+(from Stage 15.81). A future stage can unify these into a shared
+mir::place helper.
+
+### 3. Fixed 4 check_terminator sites
+
+1. Call func: Span::DUMMY -> Self::operand_span(func)
+2. Call args: Span::DUMMY -> Self::operand_span(arg)
+3. SwitchInt discr: Span::DUMMY -> Self::operand_span(discr)
+4. Assert cond: Span::DUMMY -> Self::operand_span(cond)
+
+### 4. New unit test (1 test)
+
+Added to src/borrowck/mod.rs::tests:
+- stage15_85_operand_span_extracts_place_span: verifies
+  operand_span extracts Place.span for Copy/Move and returns DUMMY
+  for Constant
+
+### 5. Documentation
+
+- docs/develop/v0/stage-15/stage-15.85-borrowck-terminator-span-accuracy.md
+- docs/tests/v0/stage15/stage-15.85-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 234/234 PASS (was 233, +1 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2140/2140 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.209.0 → v0.210.0
+
+Stage Summary:
+- Stage 15.85 PASSED — borrowck check_terminator span accuracy fix
+- 7590 tests passing (234 lib + 2140 integration + 5216 conformance), 0 failures
+- 1 new unit test for operand_span
+- 0 conformance test changes (all ERROR_PATTERN matches preserved)
+- v0.210.0: minor bump (Phase 2 — error system borrowck span accuracy fix)
+- Completes the 6-stage error system cleanup (15.80-15.85):
+  - 24 Span::DUMMY sites fixed (typeck: 7+9+2 = 18; borrowck: 4+2 = 6)
+  - 17 {:?} Debug leaks fixed (typeck: 6+1+5 = 12; borrowck: 3+2 enum = 5)
+- All user-facing typeck AND borrowck error messages now:
+  - Use human-readable type names (i32, bool, &mut T, etc.) — no Debug leaks
+  - Use human-readable region names ('r5, 'r2) — no RegionVid(N) leaks
+  - Point to actual source locations (with snippet underlines) — no "1:1" errors
+- Error system cleanup is complete. Ready for user-facing work.
+- Recommended next: Start Task 12 (Lifetime elision) — the next major
+  v0.2 task (2-3 weeks, P1, ready now).

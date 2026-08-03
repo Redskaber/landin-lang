@@ -1,9 +1,73 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.209.0
+**Current version**: v0.210.0
 **Date**: 2026-08-02
-**Test count**: 233 rust lib tests + 2140 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 234 rust lib tests + 2140 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.210.0 — Stage 15.85 (Borrowck check_terminator Span Accuracy Fix)
+
+### Overview
+
+Stage 15.85 fixes the 4 `Span::DUMMY` error sites in
+`borrowck::mod::check_terminator`. Previously, `check_terminator`
+passed `Span::DUMMY` to `check_operand` for Call (func + args),
+SwitchInt (discr), and Assert (cond) terminators. This meant
+use-after-move and not-Copy errors in these paths showed "1:1" (file
+start) instead of the actual source location.
+
+**Fix**:
+1. Added `operand_span` helper to `BorrowChecker` (mirrors the
+   `typeck::checker::TypeChecker::operand_span` from Stage 15.81).
+2. Used `Self::operand_span(op)` in 4 `check_terminator` sites:
+   - `Call { func, args, .. }` — func operand + each arg operand
+   - `SwitchInt { discr, .. }` — discr operand
+   - `Assert { cond, .. }` — cond operand
+
+### Error system cleanup summary (Stages 15.80-15.85)
+
+| Stage | Focus | Sites Fixed |
+|-------|-------|-------------|
+| 15.80 | Human-readable type names (`type_to_string`) | 6 `{:?}` leaks + 2 `({:?})` enum leaks |
+| 15.81 | Typeck terminator span accuracy (`operand_span`, `term.span`) | 7 `Span::DUMMY` sites + 1 `{:?}` leak |
+| 15.82 | Typeck statement/rvalue span accuracy (`stmt_span` in `infer_rvalue`) | 9 `Span::DUMMY` sites + 5 `{:?}` leaks |
+| 15.83 | Typeck aggregate (Array + Adt) span accuracy | 2 `Span::DUMMY` sites |
+| 15.84 | Borrowck Debug leaks (`region_vid_to_string`) | 3 `{:?}` leaks |
+| 15.85 | Borrowck terminator span accuracy (`operand_span`) | 4 `Span::DUMMY` sites |
+| **Total** | | **24 `Span::DUMMY` sites + 17 `{:?}` leaks fixed** |
+
+**Result**: All user-facing typeck AND borrowck error messages now:
+- Use human-readable type names (`i32`, `bool`, `&mut T`, etc.) — no
+  Debug format leaks
+- Use human-readable region names (`'r5`, `'r2`) — no `RegionVid(N)`
+  Debug leaks
+- Point to actual source locations (with snippet underlines) — no
+  `Span::DUMMY` / "1:1" errors
+
+The error system is now in good shape for user-facing work.
+
+Per §1.0 原則 3 "显式 > 隐式": error spans are explicitly sourced
+from the operand's Place, not defaulted to Span::DUMMY.
+Per §1.0 原則 4 "报错 > 静默": error locations are accurate, not cryptic.
+
+### Test impact
+
+- 1 new Rust unit test in `src/borrowck/mod.rs::tests`:
+  - `stage15_85_operand_span_extracts_place_span` — verifies
+    `operand_span` extracts Place.span for Copy/Move and returns DUMMY
+    for Constant
+- 0 conformance test changes
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 234/234 PASS (was 233, +1 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2140/2140 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7590 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.209.0 — Stage 15.84 (Borrowck Debug Format Leak Fix + region_vid_to_string)
