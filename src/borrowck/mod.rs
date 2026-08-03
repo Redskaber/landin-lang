@@ -50,6 +50,9 @@ pub use move_tracker::MoveTracker;
 // Re-export BorrowKind from mir::place so callers can `use borrowck::BorrowKind`.
 pub use crate::mir::place::BorrowKind;
 // Stage 6.14: re-export public symbols from sub-modules for backward compat.
+// Stage 16.06: ty_is_copy is deprecated (unsound). Re-export with
+// #[allow(deprecated)] for backward compat with test code that imports it.
+#[allow(deprecated)]
 pub use copy_semantics::{ty_is_copy, ty_is_copy_unified, ty_is_copy_with_resolver};
 // Stage 15.35 (HP-10): re-export fixpoint liveness analysis API for v0.2 Phase 2.
 // The legacy `compute_last_use_map` is retained until Stage 15.37 migration.
@@ -182,6 +185,10 @@ impl<'a> BorrowChecker<'a> {
         if let (Some(resolver), Some(interner)) = (self.resolver, self.interner) {
             copy_semantics::ty_is_copy_with_resolver(ty, resolver, interner)
         } else {
+            // Stage 16.06: ty_is_copy is deprecated (unsound). Test contexts
+            // that construct BorrowChecker::new() without a resolver still
+            // use this fallback. Production code uses with_resolver_and_sigs.
+            #[allow(deprecated)]
             copy_semantics::ty_is_copy(ty)
         }
     }
@@ -983,6 +990,7 @@ pub fn check_mir_body_with_dataflow(mir: &MirBody) -> Vec<BorrowError> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(deprecated)] // Stage 16.06: tests use deprecated ty_is_copy for fallback testing
     use super::*;
     use crate::ast;
     use crate::mir::ty::*;

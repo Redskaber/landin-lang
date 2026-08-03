@@ -1139,23 +1139,31 @@ pub fn compile(src: &str) -> CompileResult {
         // Per §1.0 原則 1 "长期 > 短期": the dataflow path is the correct
         // long-term design. Per §1.0 原則 3 "显式 > 隐式": the choice of
         // analysis is explicit in the method name (`_with_dataflow` suffix).
-        // Stage 15.71/15.99/16.02/16.03: Sound Copy detection migration.
-        // The `with_resolver_and_sigs` path is implemented and the automated
-        // migration script (`tools/migration/add_impl_copy.py`) has been run,
-        // adding `impl Copy` to 393 test structs across 382 files.
-        // However, 69 conformance + 48 integration tests still fail because
-        // some tests have structs used as Copy that the script couldn't
-        // automatically migrate (e.g., structs in Rust test files, not .lin
-        // files; structs with complex patterns).
+        // Stage 15.71/15.99/16.02/16.03/16.06: Sound Copy detection.
+        // Stage 16.06 ENABLED `with_resolver_and_sigs` in the driver.
+        // The sound Copy detection is now active — no more unsound
+        // `Adt => true` fallback in the production path.
         //
-        // The migration is partially complete. For v0.2 compatibility,
-        // `with_fn_sigs` is still used. The remaining 117 test failures
-        // need manual review (v0.3 work item).
+        // Stage 16.06 also added field-level Copy derivation to
+        // TraitResolver: structs/enums whose ALL fields are Copy (and no
+        // `impl Drop`) are DERIVED Copy, mirroring Rust's `#[derive(Copy)]`.
+        // This closed the sound Copy migration gap without requiring 199
+        // test files to add `impl Copy` manually.
         //
-        // Per §1.0 原則 9 "正确 > 妥协": the sound path is ready, migration
-        // is partially complete, remaining failures need manual review.
-        let mut bc: borrowck::BorrowChecker<'_> =
-            borrowck::BorrowChecker::with_fn_sigs(&fn_sig_table.sigs);
+        // The MIR lowerer was also updated to use `Operand::Move` instead
+        // of `Operand::Copy` for let bindings, function returns, and call
+        // arguments. The borrow checker's Operand::Move path (Stage 15.73)
+        // skips move recording for Copy types, so Move is safe for both
+        // Copy and non-Copy types.
+        //
+        // Per §1.0 原則 9 "正确 > 妥协": sound Copy detection is now the
+        // production path. The unsound `ty_is_copy` remains only for
+        // test contexts (BorrowChecker::new without resolver).
+        let mut bc: borrowck::BorrowChecker<'_> = borrowck::BorrowChecker::with_resolver_and_sigs(
+            &trait_resolver,
+            &interner,
+            &fn_sig_table.sigs,
+        );
         bc.check_mir_body_with_dataflow(&mir);
         errors.borrowck.extend(bc.into_errors());
 

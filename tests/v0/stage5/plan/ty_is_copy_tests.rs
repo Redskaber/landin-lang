@@ -7,6 +7,11 @@
 //! fallback behavior (Adt treated as Copy when no `impl Copy` exists).
 //! Stage 5.9 fixed this — Adt without `impl Copy` is now correctly NOT
 //! Copy. The test has been updated to reflect the sound behavior.
+//!
+//! Stage 16.06: `ty_is_copy` is deprecated (unsound). These tests use it
+//! only to verify the fallback path (test contexts without resolver).
+
+#![allow(deprecated)] // Stage 16.06: ty_is_copy is deprecated, tests verify fallback
 
 use landin_compiler::borrowck::{ty_is_copy, ty_is_copy_with_resolver};
 use landin_compiler::mir::ty::{Ty, TyKind};

@@ -628,30 +628,25 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                             kind: StatementKind::StorageLive(local_id),
                             span: local.span,
                         });
-                    // Use Operand::Move instead of Operand::Copy. For Copy
-                    // types, Move is equivalent to Copy (the source remains
-                    // valid). For non-Copy types, Move correctly transfers
-                    // ownership. Using Copy here would fail the borrow
-                    // checker's Copy-ness check on non-Copy types (e.g.,
-                    // `let s = "hello"` where s : Str — Str is not Copy).
+                    // Stage 16.06: Always use Operand::Move for let bindings.
+                    // Previously (Stage 13.25), this used Copy for Copy types
+                    // and Move for non-Copy types, based on the init local's
+                    // type AT LOWERING TIME. But the type may be Infer at
+                    // lowering time and only resolved to Adt (non-Copy) after
+                    // typeck writeback. This caused "does not implement Copy"
+                    // errors for let bindings of non-Copy structs (e.g.,
+                    // `let c = make_counter()` where Counter has impl Drop).
                     //
-                    // Stage 13.25 fix: Use Copy for Copy types, Move for non-Copy.
-                    // Before Stage 13.25, this always used Operand::Move, which
-                    // marked the init local as moved — breaking subsequent uses
-                    // of Copy types (e.g., `let x = i; i += 1;` where i is i32).
-                    // Now we check the type: if it's Copy (i32, bool, etc.), use
-                    // Operand::Copy (no move recorded); otherwise use Move.
+                    // The borrow checker's Operand::Move path (Stage 15.73)
+                    // already skips move recording for Copy types, so using
+                    // Move is safe for both Copy and non-Copy types:
+                    //   - Copy type: no move recorded (source remains valid)
+                    //   - Non-Copy type: move recorded (ownership transferred)
                     //
-                    // Stage 15.64: Uses the shared `is_mir_ty_copy_conservative`
-                    // helper from `mir::ty` (DRY per §23 rule 5). Previously
-                    // inlined the same logic here.
-                    let init_ty = cx.mir.local(init_local).ty.clone();
-                    let is_copy = crate::mir::ty::is_mir_ty_copy_conservative(&init_ty);
-                    let operand = if is_copy {
-                        Operand::Copy(Place::local(init_local, init.span))
-                    } else {
-                        Operand::Move(Place::local(init_local, init.span))
-                    };
+                    // Per §1.0 原則 9 "正确 > 妥协": always-Move is the sound
+                    // default. The borrow checker's `is_copy` (sound, via
+                    // TraitResolver) decides whether to record the move.
+                    let operand = Operand::Move(Place::local(init_local, init.span));
                     cx.push_assign(
                         Place::local(local_id, local.span),
                         Rvalue::Use(operand),

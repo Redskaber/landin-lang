@@ -672,9 +672,16 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             let func_local = lower_expr_to_operand(cx, func);
             let arg_locals: Vec<LocalId> =
                 args.iter().map(|a| lower_expr_to_operand(cx, a)).collect();
+            // Stage 16.06: Use Operand::Move for call arguments.
+            // Previously always used Operand::Copy, which failed the
+            // borrow checker's Copy-ness check for non-Copy types (e.g.,
+            // `E::A(Inner { x: 42 })` where Inner has `impl Drop`).
+            // The borrow checker's Operand::Move path (Stage 15.73) skips
+            // move recording for Copy types, so Move is safe for both.
+            // Per §1.0 原則 9 "正确 > 妥协": always-Move is sound.
             let arg_operands: Vec<Operand> = arg_locals
                 .iter()
-                .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
+                .map(|l| Operand::Move(Place::local(*l, Span::DUMMY)))
                 .collect();
 
             // Stage 13.3a (TD-030): Closure call dispatch.
@@ -872,9 +879,17 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         HirExprKind::Return { expr: ret_expr, .. } => {
             if let Some(ret) = ret_expr {
                 let ret_local = lower_expr_to_operand(cx, ret);
+                // Stage 16.06: Use Operand::Move for return values.
+                // Return semantically moves the value into the caller's
+                // return slot. Using Operand::Copy was unsound for non-Copy
+                // types (e.g., structs with `impl Drop`) — the borrow
+                // checker would reject "use of moved value: does not
+                // implement Copy". With field-level Copy derivation
+                // (Stage 16.06), non-Copy types are now correctly
+                // identified, so we must use Move for correctness.
                 cx.push_assign(
                     Place::local(LocalId(0), Span::DUMMY),
-                    Rvalue::Use(Operand::Copy(Place::local(ret_local, ret.span))),
+                    Rvalue::Use(Operand::Move(Place::local(ret_local, ret.span))),
                     expr.span,
                 );
             } else {

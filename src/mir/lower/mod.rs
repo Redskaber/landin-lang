@@ -928,10 +928,17 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     // terminator, which is dead code that overwrites the return value with
     // an uninitialized local.
     if !cx.is_terminated() {
-        // Assign the value to the return local.
+        // Stage 16.06: Use Operand::Move for the function body's tail
+        // expression. The tail value semantically moves into the return
+        // slot (LocalId(0)). Using Operand::Copy was unsound for non-Copy
+        // types (e.g., structs with `impl Drop`) — the borrow checker
+        // would reject "use of moved value: does not implement Copy".
+        // With field-level Copy derivation (Stage 16.06), non-Copy types
+        // are now correctly identified, so we must use Move for correctness.
+        // For Copy types, Move is equivalent to Copy (no move recorded).
         cx.push_assign(
             Place::local(return_local, Span::DUMMY),
-            Rvalue::Use(Operand::Copy(Place::local(value_local, Span::DUMMY))),
+            Rvalue::Use(Operand::Move(Place::local(value_local, Span::DUMMY))),
             body.span,
         );
     }

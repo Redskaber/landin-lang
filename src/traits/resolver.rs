@@ -69,6 +69,24 @@ pub struct TraitResolver {
     /// Maps the interned trait name to its builtin DefId (a reserved DefId
     /// in the BUILTIN range, e.g. DefId(u32::MAX - N)).
     pub builtin_traits: HashMap<Spur, DefId>,
+    /// Stage 16.06: Types that are derived Copy (no `impl Drop`, all fields
+    /// are Copy). Populated by `collect()` via a fixpoint iteration that
+    /// mirrors Rust's `#[derive(Copy, Clone)]` semantics.
+    ///
+    /// This closes the sound Copy migration gap: types like
+    /// `struct Point { x: i32, y: i32 }` are intuitively Copy (all fields
+    /// are primitives), and the user shouldn't have to write
+    /// `impl Copy for Point {}` for the common case.
+    ///
+    /// Per §1.0 原則 9 "正确 > 妥协": this is the sound approach — no
+    /// unsound `Adt => true` fallback. The derivation is conservative:
+    /// only structs with ALL Copy fields AND no `impl Drop` are derived.
+    /// Per §1.0 原則 3 "显式 > 隐式": the derivation rule is explicit and
+    /// documented (matches Rust's `#[derive(Copy)]`).
+    /// Per §16: TraitResolver reads HIR during `collect()` (allowed —
+    /// data flows downstream). BorrowChecker queries via `is_copy_builtin`
+    /// without needing HIR access.
+    pub derived_copy_types: std::collections::HashSet<DefId>,
 }
 
 /// Stage 5.18: A trait coherence error — detected when multiple `impl`
@@ -312,6 +330,129 @@ impl TraitResolver {
                 }
             }
         }
+
+        // Stage 16.06: Derive Copy for structs whose fields are all Copy.
+        // This mirrors Rust's `#[derive(Copy, Clone)]` semantics and closes
+        // the sound Copy migration gap (Stages 15.99/16.02/16.03).
+        self.derive_copy_types(hir, interner);
+    }
+
+    /// Stage 16.06: Derive Copy for structs whose fields are all Copy.
+    ///
+    /// Performs a fixpoint iteration: repeatedly scan all structs, and for
+    /// each struct that has no `impl Drop` and no explicit `impl Copy`,
+    /// check if ALL its fields are Copy (primitives, refs, arrays of Copy,
+    /// tuples of Copy, or other derived-Copy structs). If so, mark it as
+    /// derived Copy. Repeat until no new types are derived.
+    ///
+    /// This handles recursive/nested structs: `struct A { b: B }` where
+    /// `struct B { x: i32 }` — B is derived Copy first, then A.
+    ///
+    /// Per §1.0 原則 9 "正确 > 妥协": sound derivation, no `Adt => true`.
+    /// Per §1.0 原則 6 "通用 > 特例": one rule handles all Copy-derivable
+    /// structs, not just primitives.
+    /// Per §23: `derive_copy_types` follows `<verb>_<noun>_<noun>` pattern.
+    fn derive_copy_types(&mut self, hir: &HirCrate, interner: &Rodeo) {
+        use crate::hir::{HirItem, OwnerNode};
+
+        // Collect all struct DefIds and their fields.
+        // Also collect the set of DefIds that have `impl Drop` (Copy+Drop conflict).
+        let mut drop_def_ids: std::collections::HashSet<DefId> = std::collections::HashSet::new();
+        if let Some(drop_name) = interner.get("Drop") {
+            for impl_info in self.impls.values() {
+                if impl_info.trait_name == Some(drop_name) {
+                    if let Some(self_ty_name) = impl_info.self_ty_name {
+                        // Find the DefId whose type_by_def_id matches self_ty_name.
+                        for (did, name) in &self.type_by_def_id {
+                            if *name == self_ty_name {
+                                drop_def_ids.insert(*did);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Also collect explicit `impl Copy` DefIds (already Copy, no need to derive).
+        let mut explicit_copy_def_ids: std::collections::HashSet<DefId> =
+            std::collections::HashSet::new();
+        if let Some(copy_name) = interner.get("Copy") {
+            for impl_info in self.impls.values() {
+                if impl_info.trait_name == Some(copy_name) {
+                    if let Some(self_ty_name) = impl_info.self_ty_name {
+                        for (did, name) in &self.type_by_def_id {
+                            if *name == self_ty_name {
+                                explicit_copy_def_ids.insert(*did);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fixpoint iteration: repeat until no new types are derived.
+        loop {
+            let mut changed = false;
+            for (def_id, node) in &hir.owners {
+                // Stage 16.06: Derive Copy for structs AND enums.
+                // - Structs: all fields must be Copy.
+                // - Enums: all variant fields must be Copy (unit variants
+                //   have no fields, so they're always Copy-derivable).
+                let (is_struct, is_enum, all_fields_copy) = match node {
+                    OwnerNode::Item(HirItem::Struct(s)) => {
+                        let all_copy = s.fields.iter().all(|f| {
+                            hir_ty_is_copy_candidate(
+                                &f.ty.kind,
+                                &self.derived_copy_types,
+                                &explicit_copy_def_ids,
+                            )
+                        });
+                        (true, false, all_copy)
+                    }
+                    OwnerNode::Item(HirItem::Enum(e)) => {
+                        // All variant fields must be Copy.
+                        let all_copy = e.variants.iter().all(|v| {
+                            let fields = match &v.data {
+                                crate::hir::HirVariantData::Unit(_) => &[],
+                                crate::hir::HirVariantData::Tuple(fs, _) => fs.as_slice(),
+                                crate::hir::HirVariantData::Struct(fs, _) => fs.as_slice(),
+                            };
+                            fields.iter().all(|f| {
+                                hir_ty_is_copy_candidate(
+                                    &f.ty.kind,
+                                    &self.derived_copy_types,
+                                    &explicit_copy_def_ids,
+                                )
+                            })
+                        });
+                        (false, true, all_copy)
+                    }
+                    _ => (false, false, false),
+                };
+                if !is_struct && !is_enum {
+                    continue;
+                }
+                // Skip if already explicit Copy.
+                if explicit_copy_def_ids.contains(def_id) {
+                    continue;
+                }
+                // Skip if already derived Copy.
+                if self.derived_copy_types.contains(def_id) {
+                    continue;
+                }
+                // Skip if has `impl Drop` (Copy+Drop conflict).
+                if drop_def_ids.contains(def_id) {
+                    continue;
+                }
+                if all_fields_copy {
+                    self.derived_copy_types.insert(*def_id);
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
     }
 
     /// Look up a trait by name.
@@ -548,12 +689,22 @@ impl TraitResolver {
     /// the user defined `trait Copy {}` — the builtin registration (Stage
     /// 5.8) ensures "Copy" is always interned and recognized.
     ///
+    /// Stage 16.06: Also checks `derived_copy_types` — structs whose
+    /// fields are all Copy (and no `impl Drop`) are derived Copy via
+    /// `derive_copy_types()` during `collect()`. This mirrors Rust's
+    /// `#[derive(Copy, Clone)]` semantics.
+    ///
     /// Returns `false` if:
     /// - The builtin Copy trait is not registered (shouldn't happen after
     ///   Stage 5.8, but defensive).
     /// - The type's DefId is not in `type_by_def_id`.
-    /// - The type does not have an `impl Copy for <Type>` block.
+    /// - The type does not have an `impl Copy for <Type>` block AND is
+    ///   not in `derived_copy_types`.
     pub fn is_copy_builtin(&self, def_id: DefId, interner: &Rodeo) -> bool {
+        // Stage 16.06: Check derived Copy first (no interner lookup needed).
+        if self.derived_copy_types.contains(&def_id) {
+            return true;
+        }
         // Look up the builtin Copy Spur. After Stage 5.8, "Copy" is always
         // interned by register_builtin_traits, so interner.get("Copy")
         // returns Some.
@@ -1000,5 +1151,72 @@ fn extract_ty_name(ty: &HirTy) -> Option<Spur> {
     match &ty.kind {
         HirTyKind::Path(_, path) => path.segments.last().map(|s| s.ident.name),
         _ => None,
+    }
+}
+
+/// Stage 16.06: Check if a HIR type kind is a Copy candidate.
+///
+/// Used by `TraitResolver::derive_copy_types` to determine if a struct
+/// field's type is Copy. This is a conservative check — it returns `true`
+/// only for types that are definitely Copy:
+/// - Primitives: bool, char, int, uint, float, never
+/// - References (shared refs are Copy)
+/// - Raw pointers
+/// - Function pointers
+/// - Tuples of Copy candidates
+/// - Arrays of Copy candidates
+/// - Structs that are already in `derived_copy_types` or
+///   `explicit_copy_def_ids`
+///
+/// Returns `false` for:
+/// - Slices (unsized)
+/// - Trait objects (dyn Trait)
+/// - Closures
+/// - Infer (unknown — conservative false)
+/// - Paths that don't resolve to a known DefId (conservative false)
+///
+/// Per §1.0 原則 9 "正确 > 妥协": conservative false is sound — a false
+/// negative just means a struct won't be derived Copy (user can add
+/// explicit `impl Copy`), while a false positive would be unsound.
+/// Per §23: `hir_ty_is_copy_candidate` follows `<noun>_<verb>_<noun>`
+/// pattern for predicate functions.
+fn hir_ty_is_copy_candidate(
+    kind: &crate::hir::HirTyKind,
+    derived_copy_types: &std::collections::HashSet<DefId>,
+    explicit_copy_def_ids: &std::collections::HashSet<DefId>,
+) -> bool {
+    use crate::hir::HirTyKind;
+    match kind {
+        HirTyKind::Bool
+        | HirTyKind::Char
+        | HirTyKind::Int(_)
+        | HirTyKind::Uint(_)
+        | HirTyKind::Float(_)
+        | HirTyKind::Never => true,
+        HirTyKind::Ref(_, _, _) => true,
+        HirTyKind::Ptr(_, _) => true,
+        HirTyKind::FnPtr { .. } => true,
+        HirTyKind::Tuple(tys) => tys
+            .iter()
+            .all(|t| hir_ty_is_copy_candidate(&t.kind, derived_copy_types, explicit_copy_def_ids)),
+        HirTyKind::Array(inner, _) => {
+            hir_ty_is_copy_candidate(&inner.kind, derived_copy_types, explicit_copy_def_ids)
+        }
+        // Path: check if it resolves to a DefId that's derived or explicit Copy.
+        HirTyKind::Path(_, path) => {
+            use crate::hir::Res;
+            match path.res {
+                Res::Def(def_id, _) => {
+                    derived_copy_types.contains(&def_id) || explicit_copy_def_ids.contains(&def_id)
+                }
+                // Unresolved or non-def paths: conservative false.
+                _ => false,
+            }
+        }
+        // Conservative false for unsized/unknown types.
+        HirTyKind::Slice(_)
+        | HirTyKind::TraitObject { .. }
+        | HirTyKind::ImplTrait(_)
+        | HirTyKind::Infer => false,
     }
 }

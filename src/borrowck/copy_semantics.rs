@@ -33,6 +33,20 @@
 /// `Infer` and `Error` are treated as Copy to avoid spurious errors
 /// during type inference (the type isn't known yet, so we give the
 /// benefit of the doubt).
+///
+/// Stage 16.06: DEPRECATED. This function is UNSOUND — it returns `true`
+/// for ALL Adt types, which is incorrect for types with `impl Drop` or
+/// non-Copy fields. The driver now uses `ty_is_copy_with_resolver` (via
+/// `BorrowChecker::with_resolver_and_sigs`) which is sound. This function
+/// remains only for test contexts that construct `BorrowChecker::new()`
+/// without a resolver. New code should use `ty_is_copy_with_resolver` or
+/// `ty_is_copy_unified`.
+///
+/// Per §23.6: deprecated with note pointing to the §16-compliant
+/// alternative.
+#[deprecated(
+    note = "Unsound: returns true for ALL Adt types. Use ty_is_copy_with_resolver (via BorrowChecker::with_resolver_and_sigs) or ty_is_copy_unified instead. (Stage 16.06)"
+)]
 pub fn ty_is_copy(ty: &crate::mir::ty::Ty) -> bool {
     use crate::mir::ty::TyKind::*;
     match &ty.kind {
@@ -45,7 +59,9 @@ pub fn ty_is_copy(ty: &crate::mir::ty::Ty) -> bool {
         RawPtr(_, _) => true,
         FnDef(_, _) | FnPtr(_) => true,
         Never => true,
+        #[allow(deprecated)]
         Tuple(tys) => tys.iter().all(ty_is_copy),
+        #[allow(deprecated)]
         Array(inner, _) => ty_is_copy(inner),
         // Infer and Error: assume Copy to avoid spurious errors.
         Infer(_) | Error | Foreign => true,

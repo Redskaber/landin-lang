@@ -43,17 +43,22 @@ fn test_builtin_copy_works_without_trait_def() {
     );
 }
 
-/// Without `impl Copy for S`, S should NOT be Copy (soundness fix).
+/// Without `impl Copy for S`, S should NOT be Copy if it has a non-Copy field
+/// or `impl Drop` (Stage 5.9 soundness fix + Stage 16.06 field-level derivation).
+///
+/// Stage 16.06: A struct with ALL Copy fields is DERIVED Copy (mirrors
+/// Rust's `#[derive(Copy)]`). To test the "not Copy" path, we use a struct
+/// with `impl Drop` (Copy+Drop conflict → not Copy).
 #[test]
 fn test_no_copy_impl_means_not_copy() {
-    let result = compile("struct S; fn main() {}");
+    let result = compile("struct S; impl Drop for S { fn drop(self: &mut S) {} } fn main() {}");
     let s_def_id = find_type_def_id(&result, "S").expect("S should have a DefId");
 
     assert!(
         !result
             .trait_resolver
             .is_copy_builtin(s_def_id, &result.interner),
-        "S without `impl Copy for S` should NOT be Copy (Stage 5.9 soundness fix)"
+        "S with `impl Drop for S` should NOT be Copy (Copy+Drop conflict, Stage 5.9 soundness + Stage 16.06 derivation)"
     );
 }
 
@@ -72,9 +77,11 @@ fn test_copy_works_with_user_trait_def() {
 }
 
 /// Multiple types: only those with `impl Copy` should be Copy.
+/// Stage 16.06: Uses `impl Drop` to make B non-Copy (unit structs are
+/// derived Copy when all fields — zero of them — are Copy).
 #[test]
 fn test_copy_selective_per_type() {
-    let result = compile("struct A; struct B; impl Copy for A {} fn main() {}");
+    let result = compile("struct A; struct B; impl Copy for A {} impl Drop for B { fn drop(self: &mut B) {} } fn main() {}");
     let a_def_id = find_type_def_id(&result, "A").expect("A should have a DefId");
     let b_def_id = find_type_def_id(&result, "B").expect("B should have a DefId");
 
@@ -88,7 +95,7 @@ fn test_copy_selective_per_type() {
         !result
             .trait_resolver
             .is_copy_builtin(b_def_id, &result.interner),
-        "B (without impl Copy) should NOT be Copy"
+        "B (with impl Drop) should NOT be Copy (Copy+Drop conflict, Stage 16.06)"
     );
 }
 

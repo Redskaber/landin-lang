@@ -88,10 +88,12 @@ fn test_unified_integration_with_impl_copy() {
     );
 }
 
-/// Integration test: struct without `impl Copy` should NOT be Copy.
+/// Integration test: struct with `impl Drop` should NOT be Copy.
+/// Stage 16.06: Unit structs (no fields) are DERIVED Copy. To test the
+/// "not Copy" path, use `impl Drop` (Copy+Drop conflict).
 #[test]
 fn test_unified_integration_without_impl_copy() {
-    let result = compile("struct S; fn main() {}");
+    let result = compile("struct S; impl Drop for S { fn drop(self: &mut S) {} } fn main() {}");
     let s_spur = result.interner.get("S").expect("S interned");
     let s_def_id = result
         .trait_resolver
@@ -104,6 +106,6 @@ fn test_unified_integration_without_impl_copy() {
     let s_ty = Ty::new(TyKind::Adt(s_def_id, vec![].into()), Span::DUMMY);
     assert!(
         !ty_is_copy_unified(&s_ty, &result.trait_resolver, &result.interner),
-        "S without impl Copy should NOT be Copy via unified check"
+        "S with impl Drop should NOT be Copy via unified check (Copy+Drop conflict, Stage 16.06)"
     );
 }

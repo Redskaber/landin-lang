@@ -328,3 +328,5 @@ mod stage15_vtable_interning_and_trait_error_tests;
 mod stage15_writeback_consolidation_tests;
 #[path = "v0/stage15/plan/stage16_05_field_not_found_error_tests.rs"]
 mod stage16_05_field_not_found_error_tests;
+#[path = "v0/stage15/plan/stage16_06_sound_copy_derivation_tests.rs"]
+mod stage16_06_sound_copy_derivation_tests;

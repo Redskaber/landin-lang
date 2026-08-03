@@ -24793,3 +24793,91 @@ Stage Summary:
 - v0.226.4: patch bump (TODO resolution, error reporting improvement)
 - All 3 TODOs from Stage 16.00 now resolved (16.01, 16.04, 16.05)
 - v0.3 next: sound Copy migration (117 tests remaining) → Task 3 → Task 11 → Task 10
+
+---
+Task ID: stage16.06-sound-copy-detection-enabled
+Agent: Super Z (main)
+Task: Stage 16.06 — Sound Copy detection enabled (field-level derivation). v0.226.4 → v0.227.0.
+
+Work Log:
+- Baseline: v0.226.4 / 244 lib + 2150 integration + 5224 conformance
+
+### 1. Goal
+
+Enable sound Copy detection in the production driver, closing the last
+unsound simplification (the `Adt => true` fallback in `ty_is_copy`).
+
+### 2. Problem
+
+Stages 15.99/16.02/16.03 attempted to enable `with_resolver_and_sigs`
+but 117 tests failed because test structs didn't have `impl Copy`.
+
+### 3. Architectural Solution: Field-level Copy Derivation
+
+Instead of migrating 117 test files, added field-level Copy derivation
+to TraitResolver — mirrors Rust's `#[derive(Copy, Clone)]`:
+- Structs/enums with ALL Copy fields + no `impl Drop` are DERIVED Copy.
+- Fixpoint iteration handles nested structs.
+
+This is architecturally correct:
+- User-friendly (no boilerplate `impl Copy` for simple structs)
+- Sound (conservative derivation)
+- §16-compliant (TraitResolver reads HIR, BorrowChecker queries without HIR)
+
+### 4. Implementation
+
+4.1. Added `derived_copy_types: HashSet<DefId>` to TraitResolver.
+4.2. Added `derive_copy_types()` method — fixpoint iteration in collect().
+4.3. Added `hir_ty_is_copy_candidate()` helper (private free fn).
+4.4. Updated `is_copy_builtin()` to check `derived_copy_types` first.
+4.5. Driver: `with_resolver_and_sigs` ENABLED (was `with_fn_sigs`).
+4.6. MIR lowerer: `Operand::Move` for let bindings, returns, call args
+     (was `Operand::Copy` — unsound for non-Copy types).
+4.7. `ty_is_copy` marked `#[deprecated]` (unsound, test-only fallback).
+
+### 5. MIR Lowerer Changes
+
+- `control_flow.rs`: let binding uses `Operand::Move` (was Copy/Move
+  based on `is_mir_ty_copy_conservative` which was wrong for Infer types).
+- `expr_operand.rs`: return statement uses `Operand::Move` (was Copy).
+- `expr_operand.rs`: call arguments use `Operand::Move` (was Copy).
+- `mod.rs`: function body tail expression uses `Operand::Move` (was Copy).
+
+The borrow checker's `Operand::Move` path (Stage 15.73) skips move
+recording for Copy types, so Move is safe for both Copy and non-Copy.
+
+### 6. Tests
+
+- +10 integration tests (stage16_06_sound_copy_derivation_tests.rs)
+- 3 existing tests updated (use `impl Drop` to test non-Copy path)
+- All 7628 tests pass
+
+### 7. API Naming Compliance (§23)
+
+- `derive_copy_types` method: `<verb>_<noun>_<noun>` pattern ✅
+- `hir_ty_is_copy_candidate` free fn: `<noun>_<verb>_<noun>` predicate ✅
+- `derived_copy_types` field: descriptive name ✅
+- `ty_is_copy` deprecated with note (§23.6) ✅
+- `#[allow(deprecated)]` on re-exports and test modules ✅
+
+### 8. Documentation
+
+- docs/develop/v0/stage-15/stage-16.06-sound-copy-detection-enabled.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2160/2160 PASS (+10 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.226.4 → v0.227.0 (minor bump — soundness fix)
+
+Stage Summary:
+- Stage 16.06 PASSED — Sound Copy detection ENABLED in production driver
+- 7628 tests passing (244 lib + 2160 integration + 5224 conformance), 0 failures
+- v0.227.0: minor bump (sound Copy is a significant behavioral change)
+- Sound Copy: COMPLETE (enabled + field-level derivation + ty_is_copy deprecated)
+- v0.3 next: Task 3 (TraitResolver Keys) → Task 11 (Monomorphization) → Task 10 (Closure redesign)

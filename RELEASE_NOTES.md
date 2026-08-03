@@ -1,9 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.226.4
+**Current version**: v0.227.0
 **Date**: 2026-08-03
-**Test count**: 244 rust lib tests + 2150 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2160 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.227.0 — Stage 16.06 (Sound Copy Detection Enabled — Field-level Derivation)
+
+### Overview
+
+Stage 16.06 **ENABLES sound Copy detection in the production driver** —
+closing the last unsound simplification identified in the Stage 16.00
+v0.3 kickoff. The driver now uses `BorrowChecker::with_resolver_and_sigs`
+instead of `with_fn_sigs`, enabling `ty_is_copy_with_resolver` for
+precise Adt Copy detection.
+
+To close the migration gap (117 tests failed with sound Copy), Stage
+16.06 adds **field-level Copy derivation** to `TraitResolver`:
+structs/enums whose ALL fields are Copy (and no `impl Drop`) are DERIVED
+Copy, mirroring Rust's `#[derive(Copy, Clone)]` semantics.
+
+**Key changes**:
+1. `TraitResolver.derived_copy_types: HashSet<DefId>` — populated by
+   `derive_copy_types()` fixpoint iteration during `collect()`.
+2. `is_copy_builtin()` checks `derived_copy_types` first.
+3. Driver uses `with_resolver_and_sigs` (was `with_fn_sigs`).
+4. MIR lowerer uses `Operand::Move` for let bindings, returns, call
+   args (was `Operand::Copy` — unsound for non-Copy types).
+5. `ty_is_copy` marked `#[deprecated]` (unsound, test-only fallback).
+6. +10 integration tests, 3 existing tests updated.
+
+Per §1.0 原則 9 "正确 > 妥协" + §23 API 命名标准化 + §16 接口隔离.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2160/2160 PASS (+10 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7628 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.226.4 — Stage 16.05 (Field-not-found Error Reporting — Last TODO Resolved)
