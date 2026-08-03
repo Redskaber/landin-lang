@@ -1,9 +1,77 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.207.0
+**Current version**: v0.208.0
 **Date**: 2026-08-02
-**Test count**: 232 rust lib tests + 2138 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 232 rust lib tests + 2140 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.208.0 — Stage 15.83 (AggregateKind Array + Adt Span Accuracy Fix)
+
+### Overview
+
+Stage 15.83 fixes the last 2 `Span::DUMMY` error sites in `infer_rvalue`:
+the `AggregateKind::Array` and `AggregateKind::Adt` unify errors. These
+errors occur when array element types or struct field types mismatch
+(e.g., `[1, true, 3]`, `S { x: true }` where `x` is `i32`).
+
+**Fix**: Override the unify error span with `stmt_span` (from Stage
+15.82's `infer_rvalue` parameter) at both call sites.
+
+**Before** (`[1, true, 3]`):
+```
+error[E400]: mismatched types: expected bool, found {integer}
+  --> /tmp/t.lin:1:1
+```
+
+**After**:
+```
+error[E400]: mismatched types: expected bool, found {integer}
+  --> /tmp/t.lin:1:21
+  |
+1 | fn main() { let x = [1, true, 3]; }
+  |                     ^
+```
+
+### Error system cleanup summary (Stages 15.80-15.83)
+
+| Stage | Focus | Sites Fixed |
+|-------|-------|-------------|
+| 15.80 | Human-readable type names (`type_to_string`) | 6 `{:?}` leaks + 2 `({:?})` enum leaks |
+| 15.81 | Terminator span accuracy (`operand_span`, `term.span`) | 7 `Span::DUMMY` sites + 1 `{:?}` leak |
+| 15.82 | Statement/rvalue span accuracy (`stmt_span` in `infer_rvalue`) | 9 `Span::DUMMY` sites + 5 `{:?}` leaks |
+| 15.83 | Aggregate (Array + Adt) span accuracy | 2 `Span::DUMMY` sites |
+| **Total** | | **20 `Span::DUMMY` sites + 14 `{:?}` leaks fixed** |
+
+**Result**: All user-facing typeck error messages now:
+- Use human-readable type names (`i32`, `bool`, `&mut T`, etc.) — no
+  Debug format leaks
+- Point to actual source locations (with snippet underlines) — no
+  `Span::DUMMY` / "1:1" errors
+
+The error system is now in good shape for user-facing work.
+
+Per §1.0 原則 4 "报错 > 静默": error locations are accurate, not cryptic.
+
+### Test impact
+
+- 2 new Rust integration tests in
+  `tests/v0/stage15/plan/error_system_cleanup_tests.rs`:
+  - `stage15_83_array_element_mismatch_span_points_to_array` — `[1, true, 3]`
+    span points to the array literal
+  - `stage15_83_struct_field_mismatch_span_points_to_literal` — `S { x: true }`
+    span points to the struct literal
+- 0 conformance test changes
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 232/232 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2140/2140 PASS (was 2138, +2 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7588 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.207.0 — Stage 15.82 (infer_rvalue Span Accuracy + Remaining Debug Leaks)

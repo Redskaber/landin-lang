@@ -23127,3 +23127,90 @@ Stage Summary:
 - Error system is now in good shape for user-facing work.
 - Recommended next: Start Task 12 (Lifetime elision) — the next major
   v0.2 task (2-3 weeks, P1, ready now).
+
+---
+Task ID: stage15.83-aggregate-span-accuracy
+Agent: Super Z (main)
+Task: Stage 15.83 — AggregateKind (Array + Adt) span accuracy fix. v0.207.0 → v0.208.0.
+
+Work Log:
+- Baseline: v0.207.0 / 232 lib + 2138 integration + 5216 conformance
+
+### 1. Investigation
+
+After Stage 15.82 fixed the BinaryOp/UnaryOp span accuracy, investigated
+remaining Span::DUMMY error sites in infer_rvalue. Found 2 more:
+- AggregateKind::Array: unify error for array element type mismatch
+  (e.g., `[1, true, 3]` — Int + Bool mismatch)
+- AggregateKind::Adt: unify error for struct field type mismatch
+  (e.g., `S { x: true }` where x is i32)
+
+These are the most common type mismatch errors users encounter (array
+literals with mixed element types, struct literals with wrong field
+types). Previously they showed "1:1" (file start).
+
+### 2. Fixed 2 error sites in infer_rvalue
+
+Both sites now use the stmt_span override pattern (from Stage 15.82):
+
+AggregateKind::Array:
+```rust
+if let Err(mut e) = self.unify.unify(&op_ty, elem_ty) {
+    if stmt_span != Span::DUMMY {
+        e.span = stmt_span;
+    }
+    self.errors.push(*e);
+}
+```
+
+AggregateKind::Adt:
+```rust
+if let Err(mut e) = self.unify.unify(&op_ty, field_ty) {
+    if stmt_span != Span::DUMMY {
+        e.span = stmt_span;
+    }
+    self.errors.push(*e);
+}
+```
+
+Per §1.0 原則 4 "报错 > 静默": error locations are accurate, not cryptic.
+
+### 3. New integration tests (2 tests)
+
+Added to tests/v0/stage15/plan/error_system_cleanup_tests.rs:
+- stage15_83_array_element_mismatch_span_points_to_array: verifies
+  `[1, true, 3]` error span points to the array literal (byte offset >= 15)
+- stage15_83_struct_field_mismatch_span_points_to_literal: verifies
+  `S { x: true }` error span points to the struct literal (byte offset >= 40)
+
+### 4. Documentation
+
+- docs/develop/v0/stage-15/stage-15.83-aggregate-span-accuracy.md
+- docs/tests/v0/stage15/stage-15.83-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 232/232 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2140/2140 PASS (was 2138, +2 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.207.0 → v0.208.0
+
+Stage Summary:
+- Stage 15.83 PASSED — AggregateKind (Array + Adt) span accuracy fix
+- 7588 tests passing (232 lib + 2140 integration + 5216 conformance), 0 failures
+- 2 new integration tests verify span accuracy for Array + Adt paths
+- 0 conformance test changes (all ERROR_PATTERN matches preserved)
+- v0.208.0: minor bump (Phase 2 — error system span accuracy fix)
+- Completes the 4-stage error system cleanup (15.80-15.83):
+  - 20 Span::DUMMY sites fixed (7 terminator + 9 statement/rvalue + 2 aggregate + 2 others)
+  - 14 {:?} Debug leaks fixed (6 in 15.80 + 1 in 15.81 + 5 in 15.82 + 2 enum leaks in 15.80)
+- All user-facing typeck error messages now:
+  - Use human-readable type names (i32, bool, &mut T, etc.) — no Debug leaks
+  - Point to actual source locations (with snippet underlines) — no "1:1" errors
+- Error system cleanup is now complete. Ready for user-facing work.
+- Recommended next: Start Task 12 (Lifetime elision) — the next major
+  v0.2 task (2-3 weeks, P1, ready now).

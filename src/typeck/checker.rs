@@ -939,9 +939,14 @@ impl TypeChecker {
                     // G7 fix (Stage 2.4f): unify each element's type with
                     // the array's declared element type. This catches
                     // `[1, true]` (Int + Bool mismatch).
+                    // Stage 15.83: use stmt_span for unify errors (was:
+                    // Span::DUMMY from mismatch(), producing "1:1").
                     for op in operands {
                         let op_ty = self.infer_operand(mir, op);
-                        if let Err(e) = self.unify.unify(&op_ty, elem_ty) {
+                        if let Err(mut e) = self.unify.unify(&op_ty, elem_ty) {
+                            if stmt_span != Span::DUMMY {
+                                e.span = stmt_span;
+                            }
                             self.errors.push(*e);
                         }
                     }
@@ -960,11 +965,16 @@ impl TypeChecker {
                 // field_tys (per §16 data sink from Stage 3.30). Use them
                 // to unify each operand with its declared field type, and
                 // return the Adt type.
+                // Stage 15.83: use stmt_span for unify errors (was:
+                // Span::DUMMY from mismatch(), producing "1:1").
                 AggregateKind::Adt(def_id, _variant, _substs, field_tys) => {
                     for (i, op) in operands.iter().enumerate() {
                         let op_ty = self.infer_operand(mir, op);
                         if let Some(field_ty) = field_tys.get(i) {
-                            if let Err(e) = self.unify.unify(&op_ty, field_ty) {
+                            if let Err(mut e) = self.unify.unify(&op_ty, field_ty) {
+                                if stmt_span != Span::DUMMY {
+                                    e.span = stmt_span;
+                                }
                                 self.errors.push(*e);
                             }
                         }

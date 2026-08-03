@@ -389,3 +389,78 @@ fn stage15_82_binary_op_error_uses_human_readable_type_names() {
         arith_err.message
     );
 }
+
+/// Stage 15.83: `[1, true, 3]` (array element type mismatch) should
+/// produce a typeck error whose span points to the array literal (not
+/// `1:1` / file start).
+///
+/// Previously, the AggregateKind::Array unify error used `Span::DUMMY`
+/// (because the unify error span wasn't overridden). Stage 15.83 uses
+/// `stmt_span` from `infer_rvalue`.
+#[test]
+fn stage15_83_array_element_mismatch_span_points_to_array() {
+    // `[1, true, 3]` — the `[` is at byte offset ~15 in this source.
+    let src = "fn main() { let x = [1, true, 3]; }";
+    let result = compile(src);
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for `[1, true, 3]`"
+    );
+    // Find the error with "mismatched types" message.
+    let mismatch_err = result
+        .errors
+        .typeck
+        .iter()
+        .find(|e| e.message.contains("mismatched types"))
+        .expect("expected mismatched types error");
+    // The span should NOT be Span::DUMMY.
+    assert_ne!(
+        mismatch_err.span.lo, 0,
+        "span.lo should not be 0 (was Span::DUMMY before Stage 15.83); got {}",
+        mismatch_err.span.lo
+    );
+    // The span should point into the statement (byte offset >= 15, the `let`).
+    assert!(
+        mismatch_err.span.lo >= 15,
+        "span.lo should point into the statement (>= 15); got {}",
+        mismatch_err.span.lo
+    );
+}
+
+/// Stage 15.83: `S { x: true }` (struct field type mismatch) should
+/// produce a typeck error whose span points to the struct literal (not
+/// `1:1` / file start).
+///
+/// Previously, the AggregateKind::Adt unify error used `Span::DUMMY`.
+/// Stage 15.83 uses `stmt_span` from `infer_rvalue`.
+#[test]
+fn stage15_83_struct_field_mismatch_span_points_to_literal() {
+    // `S { x: true }` — the `S` (in `let s = S {`) is at byte offset 40.
+    // "struct S { x: i32 } fn main() { let s = S { x: true }; }"
+    //  0123456789012345678901234567890123456789012 — `S {` at index 40.
+    let src = "struct S { x: i32 } fn main() { let s = S { x: true }; }";
+    let result = compile(src);
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for `S {{ x: true }}`"
+    );
+    // Find the error with "mismatched types" message.
+    let mismatch_err = result
+        .errors
+        .typeck
+        .iter()
+        .find(|e| e.message.contains("mismatched types"))
+        .expect("expected mismatched types error");
+    // The span should NOT be Span::DUMMY.
+    assert_ne!(
+        mismatch_err.span.lo, 0,
+        "span.lo should not be 0 (was Span::DUMMY before Stage 15.83); got {}",
+        mismatch_err.span.lo
+    );
+    // The span should point into the struct literal (byte offset >= 40, the `S`).
+    assert!(
+        mismatch_err.span.lo >= 40,
+        "span.lo should point into the struct literal (>= 40); got {}",
+        mismatch_err.span.lo
+    );
+}
