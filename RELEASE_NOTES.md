@@ -1,9 +1,32 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.199.0
+**Current version**: v0.200.0
 **Date**: 2026-08-02
 **Test count**: 221 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.200.0 — Stage 15.75 (Deref Expression Type Resolution)
+
+### Overview
+
+Stage 15.75 improves `lower_deref_expr` to resolve the dereference result
+type from the inner local's type (`&T` → `T`), instead of creating a fresh
+`Infer` type. This follows the same pattern as Stage 15.73 (let binding
+type propagation) — avoid creating `Infer` types at MIR lowering time that
+remain unresolved at borrowck time.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
+
+### 🎉 v0.200.0 Milestone: 200 versions completed!
 
 ---
 ## v0.199.0 — Stage 15.74 (Remove Duplicate Copy Detection — DRY)

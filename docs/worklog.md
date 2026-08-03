@@ -22428,3 +22428,46 @@ Stage Summary:
 - Stage 15.74 PASSED — duplicate Copy detection removed (DRY)
 - 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
 - v0.199.0: minor bump (Phase 2 — DRY cleanup)
+
+---
+Task ID: stage15.75-deref-type-resolution
+Agent: Super Z (main)
+Task: Stage 15.75 — Deref expression type resolution. v0.199.0 → v0.200.0. v0.200.0 milestone!
+
+Work Log:
+- Baseline: v0.199.0 / 221 lib + 2130 integration + 5216 conformance
+
+### 1. Improved lower_deref_expr type resolution
+
+In src/mir/lower/control_flow.rs, lower_deref_expr now resolves the
+dereference result type from the inner local's type:
+- If inner is &T or &mut T → result type is T
+- If inner is *const T or *mut T → result type is T
+- Otherwise → fresh_infer_ty (fallback)
+
+This avoids creating a fresh Infer type that stays unresolved at borrowck
+time (writeback runs after borrowck). Same pattern as Stage 15.73.
+
+Per §1.0 原則 3 "显式 > 隐式": deref result type is explicitly resolved.
+Per §16: reads only MIR data (local_decls), no HIR lookup.
+
+### 2. Documentation
+
+- docs/develop/v0/stage-15/stage-15.75-deref-type-resolution.md
+- docs/tests/v0/stage15/stage-15.75-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.199.0 → v0.200.0
+
+Stage Summary:
+- Stage 15.75 PASSED — deref expression type resolution
+- 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
+- v0.200.0: 🎉 200 versions milestone!

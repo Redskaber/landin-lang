@@ -120,7 +120,17 @@ pub(crate) fn lower_deref_expr(cx: &mut MirLowerCtxt, inner: &HirExpr, span: Spa
         ),
         span,
     };
-    let result_ty = cx.fresh_infer_ty(span);
+    // Stage 15.75: Use the inner local's type to resolve the deref result type.
+    // If the inner is a reference (&T / &mut T), the result is T.
+    // This avoids creating a fresh Infer type that stays unresolved at borrowck
+    // time (writeback runs after borrowck), which caused "does not implement
+    // Copy" errors for dereferenced non-Copy types.
+    let inner_ty = cx.mir.local(inner_local).ty.clone();
+    let result_ty = match &inner_ty.kind {
+        TyKind::Ref(_, _, inner) => (**inner).clone(),
+        TyKind::RawPtr(_, inner) => (**inner).clone(),
+        _ => cx.fresh_infer_ty(span),
+    };
     cx.eval_rvalue_to_temp(Rvalue::Use(Operand::Copy(proj)), result_ty, span)
 }
 /// Stage 14.50: Recursively destructure a nested pattern from a source local.
