@@ -24696,3 +24696,100 @@ Stage Summary:
 - v0.226.3: patch bump (TODO resolution, span tracking)
 - Remaining TODOs: 1 (down from 3 at Stage 16.00)
 - v0.3 next: sound Copy migration (117 tests remaining) → Task 3 → Task 11 → Task 10
+
+---
+Task ID: stage16.05-field-not-found-error-reporting
+Agent: Super Z (main)
+Task: Stage 16.05 — Field-not-found error reporting (last TODO resolution). v0.226.3 → v0.226.4.
+
+Work Log:
+- Baseline: v0.226.3 / 244 lib + 2144 integration + 5224 conformance
+
+### 1. TODO Resolution
+
+Resolved the LAST TODO (of 3 at Stage 16.00): the silent `return 0`
+fallback in `resolve_field_index` (`src/mir/lower/field_resolution.rs:86`).
+
+### 2. Problem
+
+`resolve_field_index` took `cx: &MirLowerCtxt` (immutable). When a field
+access (`s.y`) targets a field that doesn't exist on the receiver's
+struct, the error was silently dropped because the function couldn't
+push to `cx.type_errors`. The fallback was `return 0` (silent wrong
+behavior), with a comment saying "typeck should catch it in most cases."
+
+This violated §1.0 原則 4 "报错 > 静默" (error > silence).
+
+### 3. Implementation
+
+Changed `resolve_field_index` signature:
+- Before: `cx: &MirLowerCtxt`
+- After:  `cx: &mut MirLowerCtxt`
+
+When field is not found in the receiver's struct, push a TypeError:
+```rust
+cx.type_errors.push(crate::typeck::TypeError::new(
+    format!("no field `{}` on struct `{}`", field_name_str, struct_name),
+    receiver.span,
+));
+return 0; // fallback for codegen (error will abort before codegen)
+```
+
+Error message uses human-readable names (resolved from interner), per
+§1.0 原則 3 "显式 > 隐式". Span points to the receiver expression.
+
+Both callers (`lower_expr_to_place`, `lower_expr_to_operand`) already
+had `cx: &mut MirLowerCtxt`, so no caller changes needed (Rust
+auto-reborrows).
+
+### 4. Conformance Test Update
+
+Flipped `tests/conformance/01-typecheck/99-error-cases/026-undefined-struct-field.lin`:
+- Before: `EXPECTED: compile_ok` (Stage 0 limitation — typeck did not catch this)
+- After:  `EXPECTED: compile_error` with `ERROR_PATTERN: no field`
+
+This removes a known limitation and moves the test from "documented
+limitation" to "enforced correctness".
+
+### 5. Integration Tests
+
+Added `tests/v0/stage15/plan/stage16_05_field_not_found_error_tests.rs`
+with 6 tests:
+1. Undefined field reports error
+2. Error message contains field name
+3. Error message contains struct name
+4. Error span points to receiver (not Span::DUMMY)
+5. Valid field access produces no error (regression)
+6. Multiple undefined fields each produce separate errors
+
+Registered in `tests/all_tests.rs`.
+
+### 6. API Naming Compliance (§23)
+
+- §23.1.1: `resolve_field_index` is a free function ✅
+- §23.1.2: `MirLowerCtxt` follows `<Stage>LowerCtxt<'a>` pattern ✅
+- §23.1.7: `resolve_` prefix for name resolution ✅
+- §23.1.8: `TypeError` has `Error` suffix ✅
+
+### 7. Documentation
+
+- docs/develop/v0/stage-15/stage-16.05-field-not-found-error-reporting.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2150/2150 PASS (+6 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.226.3 → v0.226.4
+- **0 TODOs remaining in `src/`** (down from 3 at Stage 16.00)
+
+Stage Summary:
+- Stage 16.05 PASSED — Field-not-found error reporting (last TODO resolution)
+- 7618 tests passing (244 lib + 2150 integration + 5224 conformance), 0 failures
+- v0.226.4: patch bump (TODO resolution, error reporting improvement)
+- All 3 TODOs from Stage 16.00 now resolved (16.01, 16.04, 16.05)
+- v0.3 next: sound Copy migration (117 tests remaining) → Task 3 → Task 11 → Task 10

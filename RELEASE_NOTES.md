@@ -1,12 +1,43 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.226.3
+**Current version**: v0.226.4
 **Date**: 2026-08-03
-**Test count**: 244 rust lib tests + 2144 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2150 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
 
 ---
-## v0.226.3 — Stage 16.04 (Region Error Span Tracking — Last TODO Resolved)
+## v0.226.4 — Stage 16.05 (Field-not-found Error Reporting — Last TODO Resolved)
+
+### Overview
+
+Stage 16.05 resolves the **last remaining TODO** from the Stage 16.00
+v0.3 kickoff audit. Changed `resolve_field_index` to take
+`cx: &mut MirLowerCtxt` so that field-not-found errors (`s.y` where
+struct `S` has no field `y`) are pushed directly to `cx.type_errors`
+instead of being silently dropped with `return 0`.
+
+**Error message**: `no field \`{name}\` on struct \`{struct}\``
+**Span**: points to the receiver expression.
+
+**Result**: 0 TODOs remaining in `src/` (all 3 from Stage 16.00 resolved).
++6 integration tests, +1 conformance test flipped (Stage 0 limitation
+removed).
+
+Per §1.0 原則 4 "报错 > 静默" + §23 API 命名标准化.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2150/2150 PASS (+6 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7618 tests passing, 0 failures, 0 warnings.**
+- **0 TODOs remaining in `src/`** (down from 3 at Stage 16.00)
+
+---
+## v0.226.3 — Stage 16.04 (Region Error Span Tracking)
 
 ### Overview
 

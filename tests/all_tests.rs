@@ -326,3 +326,5 @@ mod stage15_ty_interner_integration_tests;
 mod stage15_vtable_interning_and_trait_error_tests;
 #[path = "v0/stage15/plan/writeback_consolidation_tests.rs"]
 mod stage15_writeback_consolidation_tests;
+#[path = "v0/stage15/plan/stage16_05_field_not_found_error_tests.rs"]
+mod stage16_05_field_not_found_error_tests;

@@ -54,8 +54,15 @@ pub(crate) fn resolve_field_type(
 ///     `let m = Mixed { ... }; m.b` — m's type is Infer(TyVar) at lower
 ///     time), scan all HIR struct owners for one that has a field with
 ///     the given name. If exactly one match is found, use it.
+///
+/// Stage 16.05: Now takes `cx: &mut MirLowerCtxt` so that field-not-found
+/// errors can be pushed directly to `cx.type_errors` (per §1.0 原則 4
+/// "报错 > 静默"). Previously the error was silently dropped because the
+/// immutable borrow forbade mutation; callers were expected to rely on
+/// typeck catching it indirectly. The fallback return value of 0 is
+/// preserved for codegen recovery, but the error is now reported.
 pub(crate) fn resolve_field_index(
-    cx: &MirLowerCtxt,
+    cx: &mut MirLowerCtxt,
     receiver: &HirExpr,
     field_name: &crate::lexer::Symbol,
 ) -> u32 {
@@ -74,19 +81,21 @@ pub(crate) fn resolve_field_index(
                             }
                         }
                     }
-                    // Stage 14.31: Per "报错 > 静默" — field not found in the
-                    // receiver's struct. Emit error instead of silently returning 0.
-                    // Note: cx is &MirLowerCtxt (immutable), so we can't push to
-                    // lower_type_errors here. Instead, we'll rely on typeck to
-                    // catch this — the field_ty resolution returns None, which
-                    // means the result local gets fresh_infer_ty (Infer), and
-                    // typeck will report a type error if the field is used in a
-                    // context that expects a specific type.
-                    //
-                    // TODO: When MirLowerCtxt is made mutable in this function,
-                    // push the error directly. For now, the fallback behavior
-                    // (return 0) is preserved but the field access will produce
-                    // wrong results — typeck should catch it in most cases.
+                    // Stage 16.05: Per §1.0 原則 4 "报错 > 静默" — field not
+                    // found in the receiver's struct. Now that cx is
+                    // `&mut MirLowerCtxt`, push the error directly instead of
+                    // relying on typeck to catch it indirectly. The fallback
+                    // return value of 0 is preserved for codegen recovery
+                    // (the error will abort compilation before codegen runs).
+                    let struct_name = cx
+                        .interner
+                        .try_resolve(&s.ident.name)
+                        .unwrap_or("<anonymous>");
+                    let field_name_str = cx.interner.try_resolve(field_name).unwrap_or("<unknown>");
+                    cx.type_errors.push(crate::typeck::TypeError::new(
+                        format!("no field `{}` on struct `{}`", field_name_str, struct_name),
+                        receiver.span,
+                    ));
                     return 0; // fallback for codegen (error will abort before codegen)
                 }
             }
