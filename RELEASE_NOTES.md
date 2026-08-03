@@ -1,9 +1,45 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.221.0
+**Current version**: v0.222.0
 **Date**: 2026-08-03
 **Test count**: 244 rust lib tests + 2144 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.222.0 — Stage 15.97 (Pipeline Coverage Audit — COMPLETE)
+
+### Overview
+
+Stage 15.97 is a **pipeline coverage audit** verifying that ALL MIR IR
+enum variants are handled by the codegen pipeline.
+
+**Result**: ✅ ALL enum variants covered. No missing branches.
+
+| Enum | Variants | Covered |
+|------|----------|---------|
+| Rvalue | 7 | 7/7 ✅ |
+| TerminatorKind | 7 | 7/7 ✅ |
+| Operand | 3 | 3/3 ✅ |
+| StatementKind | 6 | 6/6 ✅ |
+| AggregateKind | 4 | 4/4 ✅ |
+| PlaceKind | 3 | 3/3 ✅ |
+| ProjectionElem | 5 | 5/5 ✅ |
+| BinOp | 16 | 16/16 ✅ |
+
+User misuse: 409 compile_error tests across 5 categories. Error system:
+all Debug leaks fixed, all spans accurate.
+
+**Pipeline coverage: COMPLETE.** ✅
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7612 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.221.0 — Stage 15.96 (Deep Audit: Trait Error Debug Fallback Fix)

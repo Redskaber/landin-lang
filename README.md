@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.221.0 (v0.2 RELEASE APPROVED + deep audit corrections — True NLL + Drop + Lifetime elision + Error system cleanup)
+**Version**: v0.222.0 (v0.2 RELEASE + pipeline coverage audit COMPLETE — all enum variants covered)
 **Date**: 2026-08-03
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-03 (v0.221.0, Stage 15.96 — v0.2 RELEASE APPROVED + deep audit)
+**Last updated**: 2026-08-03 (v0.222.0, Stage 15.97 — pipeline coverage audit COMPLETE)
