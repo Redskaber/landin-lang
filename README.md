@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.206.0 (v0.2 Phase 2 — typeck error span accuracy fix)
+**Version**: v0.207.0 (v0.2 Phase 2 — error system cleanup complete: accurate spans + human-readable types)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.206.0, Stage 15.81 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.207.0, Stage 15.82 — `impl Drop` + RAII COMPLETE)

@@ -1,9 +1,89 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.206.0
+**Current version**: v0.207.0
 **Date**: 2026-08-02
-**Test count**: 232 rust lib tests + 2135 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 232 rust lib tests + 2138 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.207.0 — Stage 15.82 (infer_rvalue Span Accuracy + Remaining Debug Leaks)
+
+### Overview
+
+Stage 15.82 completes the 3-stage error system cleanup (Stages 15.80-
+15.82). It fixes the remaining `Span::DUMMY` error sites in
+`infer_rvalue` (BinaryOp/UnaryOp type mismatch errors) and the
+`check_statement` Assign coercion unify errors. It also fixes the last
+5 `{:?}` Debug format leaks in those error messages.
+
+**Fix**:
+1. Added `stmt_span: Span` parameter to `infer_rvalue` (was: no span
+   access, all errors used `Span::DUMMY`).
+2. Used `stmt_span` in 8 error sites inside `infer_rvalue`:
+   - BinaryOp comparison/bitwise/shift/arithmetic unify+type errors
+   - BinaryOp2 range expression error
+   - UnaryOp Not/Neg type errors
+3. Used `stmt.span` in `check_statement` Assign coercion unify error.
+4. Replaced 5 `{:?}` Debug leaks with `type_kind_to_string` (shift
+   count, arithmetic ×2, not, neg).
+
+**Before** (`true + false`):
+```
+error[E400]: cannot apply arithmetic to Bool (expected integer or float)
+  --> /tmp/t.lin:1:1
+```
+
+**After**:
+```
+error[E400]: cannot apply arithmetic to bool (expected integer or float)
+  --> /tmp/t.lin:1:21
+  |
+1 | fn main() { let x = true + false; }
+  |                     ^^^^
+```
+
+### Error system cleanup summary (Stages 15.80-15.82)
+
+| Stage | Focus | Sites Fixed |
+|-------|-------|-------------|
+| 15.80 | Human-readable type names (`type_to_string`) | 6 `{:?}` leaks + 2 `({:?})` enum leaks |
+| 15.81 | Terminator span accuracy (`operand_span`, `term.span`) | 7 `Span::DUMMY` sites + 1 `{:?}` leak |
+| 15.82 | Statement/rvalue span accuracy (`stmt_span` in `infer_rvalue`) | 9 `Span::DUMMY` sites + 5 `{:?}` leaks |
+| **Total** | | **18 `Span::DUMMY` sites + 14 `{:?}` leaks fixed** |
+
+**Result**: All user-facing typeck error messages now:
+- Use human-readable type names (`i32`, `bool`, `&mut T`, etc.) — no
+  Debug format leaks
+- Point to actual source locations (with snippet underlines) — no
+  `Span::DUMMY` / "1:1" errors
+
+The error system is now in good shape for user-facing work.
+
+Per §1.0 原則 3 "显式 > 隐式": `stmt_span` is an explicit parameter,
+not hidden state.
+Per §1.0 原則 4 "报错 > 静默": error locations are accurate, not cryptic.
+
+### Test impact
+
+- 3 new Rust integration tests in
+  `tests/v0/stage15/plan/error_system_cleanup_tests.rs`:
+  - `stage15_82_binary_op_error_span_points_to_statement` — `true + false`
+    span points to the statement
+  - `stage15_82_unary_op_error_span_points_to_statement` — `!"hello"`
+    span points to the second statement
+  - `stage15_82_binary_op_error_uses_human_readable_type_names` —
+    verifies Stage 15.80 fix is preserved in BinaryOp path
+- 0 conformance test changes
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 232/232 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2138/2138 PASS (was 2135, +3 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7586 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.206.0 — Stage 15.81 (Typeck Error Span Accuracy Fix)

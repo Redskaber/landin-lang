@@ -482,7 +482,10 @@ impl TypeChecker {
             StatementKind::Assign(boxed) => {
                 let (place, rvalue) = &**boxed;
                 let place_ty = self.infer_place(mir, place);
-                let rvalue_ty = self.infer_rvalue(mir, rvalue);
+                // Stage 15.82: pass stmt.span to infer_rvalue so BinaryOp/
+                // UnaryOp errors get accurate spans (was: Span::DUMMY inside
+                // infer_rvalue).
+                let rvalue_ty = self.infer_rvalue(mir, rvalue, stmt.span);
                 // Stage 3.58: implicit coercion — if place expects Int/Uint
                 // and rvalue is Bool or a narrower integer, allow it (zext).
                 // This fixes the typeck coercion gap where `fn f() -> i32 { a == b }`
@@ -503,7 +506,12 @@ impl TypeChecker {
                     // get bound. If unify fails (e.g., both are concrete
                     // different types that we're coercing), suppress the error.
                     let _ = self.unify.unify(&place_ty, &rvalue_ty);
-                } else if let Err(e) = self.unify.unify(&place_ty, &rvalue_ty) {
+                } else if let Err(mut e) = self.unify.unify(&place_ty, &rvalue_ty) {
+                    // Stage 15.82: use stmt.span for unify errors (was:
+                    // Span::DUMMY from mismatch(), producing "1:1").
+                    if stmt.span != Span::DUMMY {
+                        e.span = stmt.span;
+                    }
                     self.errors.push(*e);
                 }
                 // The resolved type will be written back to local_decls
@@ -755,7 +763,16 @@ impl TypeChecker {
     }
 
     /// Infer the type of an rvalue.
-    fn infer_rvalue(&mut self, mir: &MirBody, rv: &Rvalue) -> Ty {
+    ///
+    /// Stage 15.82: `stmt_span` is the span of the enclosing `Statement`
+    /// (or the terminator span for rvalues embedded in terminators). It's
+    /// used to attach accurate spans to errors produced inside `infer_rvalue`
+    /// (e.g., BinaryOp/UnaryOp type mismatches). Previously these errors
+    /// used `Span::DUMMY` (file start "1:1"), making them hard to locate.
+    ///
+    /// Per §1.0 原則 3 "显式 > 隐式": the span is an explicit parameter,
+    /// not hidden state on `self`.
+    fn infer_rvalue(&mut self, mir: &MirBody, rv: &Rvalue, stmt_span: Span) -> Ty {
         match rv {
             Rvalue::Use(operand) => self.infer_operand(mir, operand),
             Rvalue::BinaryOp(op, a, b) => {
@@ -768,14 +785,22 @@ impl TypeChecker {
                 match op {
                     BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
                         // Comparison: unify a and b, return bool
-                        if let Err(e) = self.unify.unify(&a_ty, &b_ty) {
+                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty) {
+                            // Stage 15.82: use stmt_span for unify errors.
+                            if stmt_span != Span::DUMMY {
+                                e.span = stmt_span;
+                            }
                             self.errors.push(*e);
                         }
                         Ty::new(TyKind::Bool, Span::DUMMY)
                     }
                     // Bitwise ops: Bool or integer types only.
                     BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => {
-                        if let Err(e) = self.unify.unify(&a_ty, &b_ty) {
+                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty) {
+                            // Stage 15.82: use stmt_span for unify errors.
+                            if stmt_span != Span::DUMMY {
+                                e.span = stmt_span;
+                            }
                             self.errors.push(*e);
                         }
                         // Result type matches operand type (Bool or Int).
@@ -785,11 +810,13 @@ impl TypeChecker {
                     BinOp::Shl | BinOp::Shr => {
                         if !is_shift_count_ty(&b_ty) {
                             self.errors.push(TypeError::new(
+                                // Stage 15.80: use human-readable type name.
+                                // Stage 15.82: use stmt_span (was: Span::DUMMY).
                                 format!(
-                                    "shift count must be an integer type, found {:?}",
-                                    b_ty.kind
+                                    "shift count must be an integer type, found {}",
+                                    crate::mir::ty::type_kind_to_string(&b_ty.kind)
                                 ),
-                                Span::DUMMY,
+                                stmt_span,
                             ));
                         }
                         a_ty
@@ -799,23 +826,31 @@ impl TypeChecker {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
                         if !is_arithmetic_ty(&a_ty) {
                             self.errors.push(TypeError::new(
+                                // Stage 15.80: use human-readable type name.
+                                // Stage 15.82: use stmt_span (was: Span::DUMMY).
                                 format!(
-                                    "cannot apply arithmetic to {:?} (expected integer or float)",
-                                    a_ty.kind
+                                    "cannot apply arithmetic to {} (expected integer or float)",
+                                    crate::mir::ty::type_kind_to_string(&a_ty.kind)
                                 ),
-                                Span::DUMMY,
+                                stmt_span,
                             ));
                         }
                         if !is_arithmetic_ty(&b_ty) {
                             self.errors.push(TypeError::new(
+                                // Stage 15.80: use human-readable type name.
+                                // Stage 15.82: use stmt_span (was: Span::DUMMY).
                                 format!(
-                                    "cannot apply arithmetic to {:?} (expected integer or float)",
-                                    b_ty.kind
+                                    "cannot apply arithmetic to {} (expected integer or float)",
+                                    crate::mir::ty::type_kind_to_string(&b_ty.kind)
                                 ),
-                                Span::DUMMY,
+                                stmt_span,
                             ));
                         }
-                        if let Err(e) = self.unify.unify(&a_ty, &b_ty) {
+                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty) {
+                            // Stage 15.82: use stmt_span for unify errors.
+                            if stmt_span != Span::DUMMY {
+                                e.span = stmt_span;
+                            }
                             self.errors.push(*e);
                         }
                         a_ty
@@ -831,10 +866,11 @@ impl TypeChecker {
                 // Per §1.0 原则 5 "报错 > 静默": emit a type error instead of
                 // silently returning Error. The operand type is still inferred
                 // (for use in for-loop desugaring).
+                // Stage 15.82: use stmt_span (was: Span::DUMMY).
                 let _a_ty = self.infer_operand(mir, a);
                 self.errors.push(TypeError::new(
                     "range expressions (start..end) are not supported in type position in v0.1 — use them only in for-loop iterators".to_string(),
-                    Span::DUMMY,
+                    stmt_span,
                 ));
                 Ty::new(TyKind::Error, Span::DUMMY)
             }
@@ -848,11 +884,13 @@ impl TypeChecker {
                         // so TyVar bound to Tuple/Float is correctly rejected.
                         if !is_notable_ty(&inner_ty) {
                             self.errors.push(TypeError::new(
+                                // Stage 15.80: use human-readable type name.
+                                // Stage 15.82: use stmt_span (was: Span::DUMMY).
                                 format!(
-                                    "cannot apply `!` to {:?} (expected bool or integer)",
-                                    inner_ty.kind
+                                    "cannot apply `!` to {} (expected bool or integer)",
+                                    crate::mir::ty::type_kind_to_string(&inner_ty.kind)
                                 ),
-                                Span::DUMMY,
+                                stmt_span,
                             ));
                         }
                         inner_ty
@@ -863,11 +901,13 @@ impl TypeChecker {
                         // G8 fix (Stage 2.4g): resolve before checking.
                         if !is_negatable_ty(&inner_ty) {
                             self.errors.push(TypeError::new(
+                                // Stage 15.80: use human-readable type name.
+                                // Stage 15.82: use stmt_span (was: Span::DUMMY).
                                 format!(
-                                    "cannot apply unary `-` to {:?} (expected integer or float)",
-                                    inner_ty.kind
+                                    "cannot apply unary `-` to {} (expected integer or float)",
+                                    crate::mir::ty::type_kind_to_string(&inner_ty.kind)
                                 ),
-                                Span::DUMMY,
+                                stmt_span,
                             ));
                         }
                         inner_ty

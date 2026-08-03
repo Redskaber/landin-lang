@@ -291,3 +291,101 @@ fn stage15_81_error_uses_human_readable_type_names() {
         mismatch_err.message
     );
 }
+
+/// Stage 15.82: `let x = true + false;` should produce a typeck error
+/// whose span points to the statement (not `1:1` / file start).
+///
+/// Previously, the BinaryOp "cannot apply arithmetic" error used
+/// `Span::DUMMY` (because `infer_rvalue` had no access to the statement
+/// span). Stage 15.82 threads `stmt.span` through `infer_rvalue`.
+#[test]
+fn stage15_82_binary_op_error_span_points_to_statement() {
+    // `true + false` — the `+` is at byte offset ~24 in this source.
+    // The statement span covers `let x = true + false;` starting around byte 13.
+    let src = "fn main() { let x = true + false; }";
+    let result = compile(src);
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for `true + false`"
+    );
+    // Find the error with "cannot apply arithmetic" message.
+    let arith_err = result
+        .errors
+        .typeck
+        .iter()
+        .find(|e| e.message.contains("cannot apply arithmetic"))
+        .expect("expected 'cannot apply arithmetic' error");
+    // The span should NOT be Span::DUMMY.
+    assert_ne!(
+        arith_err.span.lo, 0,
+        "span.lo should not be 0 (was Span::DUMMY before Stage 15.82); got {}",
+        arith_err.span.lo
+    );
+    // The span should point into the statement (byte offset >= 13, the `let`).
+    assert!(
+        arith_err.span.lo >= 13,
+        "span.lo should point into the statement (>= 13); got {}",
+        arith_err.span.lo
+    );
+}
+
+/// Stage 15.82: `let y = !"hello";` should produce a typeck error
+/// whose span points to the statement (not `1:1` / file start).
+///
+/// Previously, the UnaryOp "cannot apply `!`" error used `Span::DUMMY`.
+/// Stage 15.82 threads `stmt.span` through `infer_rvalue`.
+#[test]
+fn stage15_82_unary_op_error_span_points_to_statement() {
+    // `!"hello"` — the `!` is at byte offset ~30 in this source.
+    let src = "fn main() { let x = !true; let y = !\"hello\"; }";
+    let result = compile(src);
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for `!\"hello\"`"
+    );
+    // Find the error with "cannot apply `!`" message (for the &str case).
+    let not_err = result
+        .errors
+        .typeck
+        .iter()
+        .find(|e| e.message.contains("cannot apply `!`") && e.message.contains("str"))
+        .expect("expected 'cannot apply `!` to &str' error");
+    // The span should NOT be Span::DUMMY.
+    assert_ne!(
+        not_err.span.lo, 0,
+        "span.lo should not be 0 (was Span::DUMMY before Stage 15.82); got {}",
+        not_err.span.lo
+    );
+    // The span should point into the second statement (byte offset >= 30).
+    assert!(
+        not_err.span.lo >= 30,
+        "span.lo should point into the second statement (>= 30); got {}",
+        not_err.span.lo
+    );
+}
+
+/// Stage 15.82: BinaryOp/UnaryOp error messages should use human-readable
+/// type names (from Stage 15.80), not Debug format.
+#[test]
+fn stage15_82_binary_op_error_uses_human_readable_type_names() {
+    let src = "fn main() { let x = true + false; }";
+    let result = compile(src);
+    let arith_err = result
+        .errors
+        .typeck
+        .iter()
+        .find(|e| e.message.contains("cannot apply arithmetic"))
+        .expect("expected 'cannot apply arithmetic' error");
+    // Should contain human-readable "bool", not Debug "Bool".
+    assert!(
+        arith_err.message.contains("bool"),
+        "message should contain 'bool' (human-readable), got: {}",
+        arith_err.message
+    );
+    // Should NOT contain Debug format like "Bool".
+    assert!(
+        !arith_err.message.contains("Bool"),
+        "message should NOT contain Debug 'Bool', got: {}",
+        arith_err.message
+    );
+}

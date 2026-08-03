@@ -23025,3 +23025,105 @@ Stage Summary:
 - Recommended next: Start Task 12 (Lifetime elision) — the next major
   v0.2 task (2-3 weeks, P1, ready now). The error system is now in
   good shape for user-facing work.
+
+---
+Task ID: stage15.82-infer-rvalue-span-accuracy
+Agent: Super Z (main)
+Task: Stage 15.82 — infer_rvalue span accuracy + remaining Debug leaks. v0.206.0 → v0.207.0.
+
+Work Log:
+- Baseline: v0.206.0 / 232 lib + 2135 integration + 5216 conformance
+
+### 1. Investigation (continuing error system cleanup)
+
+Stage 15.81 fixed the terminator-path Span::DUMMY sites. Stage 15.82
+continues with the statement/rvalue-path sites in infer_rvalue and
+check_statement. These errors (BinaryOp/UnaryOp type mismatches like
+`true + false`, `!"hello"`) all used Span::DUMMY because infer_rvalue
+had no access to the enclosing statement's span.
+
+### 2. Added stmt_span parameter to infer_rvalue
+
+In src/typeck/checker.rs, changed infer_rvalue signature:
+- Before: fn infer_rvalue(&mut self, mir: &MirBody, rv: &Rvalue) -> Ty
+- After:  fn infer_rvalue(&mut self, mir: &MirBody, rv: &Rvalue, stmt_span: Span) -> Ty
+
+Per §1.0 原則 3 "显式 > 隐式": the span is an explicit parameter, not
+hidden state on self. This keeps TypeChecker stateless w.r.t. the
+current statement, which is cleaner and avoids bugs where the field
+isn't reset between statements.
+
+Only one caller (check_statement), updated to pass stmt.span.
+
+### 3. Fixed 8 error sites in infer_rvalue
+
+1. BinaryOp comparison unify error (span override)
+2. BinaryOp bitwise unify error (span override)
+3. BinaryOp shift "shift count must be an integer type" (stmt_span + type_kind_to_string)
+4. BinaryOp arithmetic "cannot apply arithmetic to T" lhs (stmt_span + type_kind_to_string)
+5. BinaryOp arithmetic "cannot apply arithmetic to T" rhs (stmt_span + type_kind_to_string)
+6. BinaryOp arithmetic unify error (span override)
+7. BinaryOp2 range expression error (stmt_span)
+8. UnaryOp Not "cannot apply `!` to T" (stmt_span + type_kind_to_string)
+9. UnaryOp Neg "cannot apply unary `-` to T" (stmt_span + type_kind_to_string)
+
+### 4. Fixed check_statement Assign coercion unify error
+
+In check_statement, the Assign coercion unify error now overrides
+the span with stmt.span (was: Span::DUMMY from mismatch()).
+
+### 5. Fixed 5 {:?} Debug format leaks
+
+The 5 remaining {:?} leaks in infer_rvalue error messages are now
+replaced with type_kind_to_string:
+- shift count: "found {:?}" -> "found {}"
+- arithmetic lhs: "to {:?}" -> "to {}"
+- arithmetic rhs: "to {:?}" -> "to {}"
+- UnaryOp Not: "to {:?}" -> "to {}"
+- UnaryOp Neg: "to {:?}" -> "to {}"
+
+This completes the Debug format leak cleanup started in Stage 15.80.
+All typeck error messages now use human-readable type names.
+
+### 6. New integration tests (3 tests)
+
+Added to tests/v0/stage15/plan/error_system_cleanup_tests.rs:
+- stage15_82_binary_op_error_span_points_to_statement: verifies
+  `true + false` error span points to the statement (byte offset >= 13)
+- stage15_82_unary_op_error_span_points_to_statement: verifies
+  `!"hello"` error span points to the second statement (byte offset >= 30)
+- stage15_82_binary_op_error_uses_human_readable_type_names: verifies
+  Stage 15.80 fix is preserved in BinaryOp path (message contains
+  "bool", not "Bool")
+
+### 7. Documentation
+
+- docs/develop/v0/stage-15/stage-15.82-infer-rvalue-span-accuracy.md
+- docs/tests/v0/stage15/stage-15.82-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 232/232 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2138/2138 PASS (was 2135, +3 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.206.0 → v0.207.0
+
+Stage Summary:
+- Stage 15.82 PASSED — infer_rvalue span accuracy + remaining Debug leaks
+- 7586 tests passing (232 lib + 2138 integration + 5216 conformance), 0 failures
+- 3 new integration tests verify span accuracy for BinaryOp/UnaryOp paths
+- 0 conformance test changes (all ERROR_PATTERN matches preserved)
+- v0.207.0: minor bump (Phase 2 — error system span accuracy fix)
+- Completes the 3-stage error system cleanup (15.80-15.82):
+  - 18 Span::DUMMY sites fixed (7 terminator + 9 statement/rvalue + 2 others)
+  - 14 {:?} Debug leaks fixed (6 in 15.80 + 1 in 15.81 + 5 in 15.82 + 2 enum leaks in 15.80)
+- All user-facing typeck error messages now:
+  - Use human-readable type names (i32, bool, &mut T, etc.) — no Debug leaks
+  - Point to actual source locations (with snippet underlines) — no "1:1" errors
+- Error system is now in good shape for user-facing work.
+- Recommended next: Start Task 12 (Lifetime elision) — the next major
+  v0.2 task (2-3 weeks, P1, ready now).
