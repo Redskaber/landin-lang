@@ -148,6 +148,34 @@ impl<'a> BorrowChecker<'a> {
         }
     }
 
+    /// Stage 15.99: Create a BorrowChecker with BOTH resolver (for sound
+    /// Copy detection) AND fn_sigs (for region inference constraints).
+    ///
+    /// This is the **preferred constructor** for production use — it
+    /// enables both sound Copy detection (HP-1) and proper region
+    /// inference constraints (HP-5). The driver should use this instead
+    /// of `with_fn_sigs` to close the last unsound simplification.
+    ///
+    /// Per §23: `with_resolver_and_sigs` follows `<prep>_<noun>_<prep>_<noun>`
+    /// pattern.
+    /// Per §1.0 原則 9 "正确 > 妥协": sound Copy detection is the correct
+    /// approach, not the unsound fallback.
+    pub fn with_resolver_and_sigs(
+        resolver: &'a crate::traits::TraitResolver,
+        interner: &'a lasso::Rodeo,
+        fn_sigs: &'a std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
+    ) -> Self {
+        Self {
+            borrows: BorrowSet::new(),
+            moves: MoveTracker::new(),
+            errors: Vec::new(),
+            initialized: std::collections::HashSet::new(),
+            resolver: Some(resolver),
+            interner: Some(interner),
+            fn_sigs: Some(fn_sigs),
+        }
+    }
+
     /// Stage 14.106 (HP-1 fix): Sound Copy check — uses TraitResolver when
     /// available, falls back to unsound `ty_is_copy` in test contexts.
     fn is_copy(&self, ty: &crate::mir::ty::Ty) -> bool {
