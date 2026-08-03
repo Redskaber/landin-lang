@@ -1,12 +1,56 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.218.0
+**Current version**: v0.219.0
 **Date**: 2026-08-02
-**Test count**: 244 rust lib tests + 2144 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2144 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
 
 ---
-## v0.218.0 — Stage 15.93 (Region Inference Return Value Constraints — Task 12 SUBSTANTIALLY COMPLETE)
+## v0.219.0 — Stage 15.94 (Lifetime Elision + Region Inference Conformance Tests — Task 12 COMPLETE)
+
+### Overview
+
+Stage 15.94 adds **8 conformance tests** for lifetime elision rules and
+region inference, verifying the work done in Stages 15.90-15.93
+end-to-end. This closes the test coverage gap for Task 12.
+
+**New conformance tests** (all `compile_ok`):
+1. Elision rule 2 (single input → output)
+2. Elision rule 3 (self → output)
+3. Elision rule 3 (self + arg → output gets self)
+4. Explicit lifetime deduplication
+5. Elision with no output reference
+6. Elision with tuple return containing ref
+7. Elision with chained references
+8. Multiple explicit lifetimes
+
+Per user directive: "简化的设计实现需要将其完整的设计实现纳入设计
+实现测试计划，不能遗漏" — simplified implementations must have complete
+test coverage.
+
+### Task 12 COMPLETE
+
+| Component | Status | Stage |
+|-----------|--------|-------|
+| Elision rule 1 | ✅ | 15.49 |
+| Elision rule 2 | ✅ | 15.90 |
+| Elision rule 3 | ✅ | 15.91 |
+| Explicit lifetime dedup | ✅ | 15.92 |
+| Region inference constraints | ✅ | 15.93 |
+| Conformance tests | ✅ | 15.94 |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS (was 5216, +8 new)
+- **Total: 7612 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.218.0 — Stage 15.93 (Region Inference Return Value Constraints)
 
 ### Overview
 

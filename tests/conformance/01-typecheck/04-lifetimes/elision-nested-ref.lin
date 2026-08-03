@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: elision with reference to reference (via let binding)
+// EXPECTED: compile_ok
+// SOURCE: Stage 15.94 — Lifetime elision conformance tests
+
+fn get_ref(x: &i32) -> &i32 { x }
+fn main() { let v = 42; let r = get_ref(&v); let _ = *r; }

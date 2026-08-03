@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: explicit lifetime deduplication - same name shares vid
+// EXPECTED: compile_ok
+// SOURCE: Stage 15.94 — Lifetime elision conformance tests
+
+fn foo<'a>(x: &'a i32, y: &'a i32) -> &'a i32 { x }
+fn main() { let a = 1; let b = 2; let _ = foo(&a, &b); }

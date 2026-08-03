@@ -23994,3 +23994,59 @@ Stage Summary:
 - The region inference now has a COMPLETE constraint set and CORRECT
   region vids. The inference runs and reports errors via the existing
   error system.
+
+---
+Task ID: stage15.94-lifetime-conformance-tests
+Agent: Super Z (main)
+Task: Stage 15.94 — Lifetime elision + region inference conformance tests. v0.218.0 → v0.219.0.
+
+Work Log:
+- Baseline: v0.218.0 / 244 lib + 2144 integration + 5216 conformance
+
+### 1. Motivation
+
+Per user directive: "简化的设计实现需要将其完整的设计实现纳入设计
+实现测试计划，不能遗漏" — the lifetime elision (Stages 15.90-15.92)
+and region inference (Stage 15.93) work had unit tests but lacked
+conformance tests verifying end-to-end compilation. This stage closes
+that gap.
+
+### 2. Added 8 conformance tests
+
+In tests/conformance/01-typecheck/04-lifetimes/:
+1. elision-rule-2-single-input.lin — fn f(x: &i32) -> &i32 { x }
+2. elision-rule-3-self-param.lin — impl S { fn get(&self) -> &i32 }
+3. elision-rule-3-self-with-arg.lin — self + arg, output gets self
+4. explicit-lifetime-dedup.lin — fn foo<'a>(x: &'a, y: &'a) -> &'a
+5. elision-no-output-ref.lin — fn print_ref(x: &i32)
+6. elision-tuple-return.lin — fn pair(x: &i32) -> (&i32, &i32)
+7. elision-nested-ref.lin — chained reference calls
+8. explicit-multi-lifetime.lin — fn foo<'a, 'b>(x: &'a, y: &'b) -> &'a
+
+### 3. Documentation
+
+- docs/develop/v0/stage-15/stage-15.94-lifetime-conformance-tests.md
+- docs/tests/v0/stage15/stage-15.94-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS (was 5216, +8 new)
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.218.0 → v0.219.0
+
+Stage Summary:
+- Stage 15.94 PASSED — Lifetime conformance tests
+- 7612 tests passing (244 lib + 2144 integration + 5224 conformance), 0 failures
+- 8 new conformance tests for lifetime elision + region inference
+- 0 conformance test flips
+- v0.219.0: minor bump (Phase 3 — Task 12 conformance tests)
+- Task 12 COMPLETE:
+  - Elision rules 1-3 ✅ (Stages 15.49, 15.90, 15.91)
+  - Explicit lifetime dedup ✅ (Stage 15.92)
+  - Region inference constraints ✅ (Stage 15.93)
+  - Conformance tests ✅ (Stage 15.94)

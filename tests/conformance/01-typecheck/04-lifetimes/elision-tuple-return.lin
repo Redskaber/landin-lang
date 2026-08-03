@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: elision rule 2 with tuple return containing ref
+// EXPECTED: compile_ok
+// SOURCE: Stage 15.94 — Lifetime elision conformance tests
+
+fn pair(x: &i32) -> (&i32, &i32) { (x, x) }
+fn main() { let v = 42; let (a, b) = pair(&v); let _ = *a + *b; }
