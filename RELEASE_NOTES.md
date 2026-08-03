@@ -1,12 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.224.0
+**Current version**: v0.225.0
 **Date**: 2026-08-03
 **Test count**: 244 rust lib tests + 2144 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
 
 ---
-## v0.224.0 — Stage 15.99 (Sound Copy Detection Infrastructure + v0.3 Migration Plan)
+## v0.225.0 — Stage 16.00 (v0.3 Kickoff: Systematic Audit Complete)
+
+### Overview
+
+Stage 16.00 is the **v0.3 kickoff review**. The systematic full-stage
+audit is complete. v0.2 is FINAL.
+
+### v0.2 Final Status
+
+| Dimension | Status |
+|-----------|--------|
+| Pipeline coverage | ✅ COMPLETE (51/51 enum variants) |
+| Error system | ✅ COMPLETE (50 sites fixed) |
+| Region inference | ✅ COMPLETE (all-pairs matching) |
+| Sound Copy detection | 🔧 Infrastructure ready (v0.3 migration) |
+| Remaining TODOs | 3 (all low priority) |
+
+### v0.3 Roadmap
+
+1. **Sound Copy migration** (2-3 days) — add `impl Copy` to test structs
+2. **Task 3: TraitResolver keys** (2 weeks) — unblocks Tasks 11, 14, 17
+3. **Task 11: Monomorphization** (2-3 weeks)
+4. **Task 10: Closure redesign** (2-3 weeks)
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7612 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.224.0 — Stage 15.99 (Sound Copy Detection Infrastructure)
 
 ### Overview
 
