@@ -574,9 +574,25 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                     // it directly; this lets typeck unify the init's type
                     // with the annotation, catching mismatches like
                     // `let x: bool = 42`.
+                    //
+                    // Stage 15.73: If there's no annotation, use the init
+                    // expression's type directly (from the init_local's
+                    // local_decl). This avoids creating a fresh Infer type
+                    // that remains unresolved at borrowck time (writeback
+                    // runs AFTER borrowck). This fixes struct/enum move
+                    // errors where `let s2 = s` used Operand::Copy because
+                    // s2's type was Infer (treated as Copy).
                     let ty = match &local.ty {
                         Some(t) => super::lower_hir_ty_to_mir_ty(t),
-                        None => cx.fresh_infer_ty(local.span),
+                        None => {
+                            // Use the init_local's type if it's not Infer.
+                            let init_ty = cx.mir.local(init_local).ty.clone();
+                            if matches!(init_ty.kind, crate::mir::ty::TyKind::Infer(_)) {
+                                cx.fresh_infer_ty(local.span)
+                            } else {
+                                init_ty
+                            }
+                        }
                     };
                     // G1 fix (Stage 2.4e): use `local.pat.hir_id` (not
                     // `local.hir_id`) as the local_map key. The resolver

@@ -1,6 +1,6 @@
 // CATEGORY: typecheck
 // DESCRIPTION: trait method call without impl
-// EXPECTED: compile_ok
+// EXPECTED: compile_error
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — typeck does not catch this error)
 
 trait T { fn f(&self); } struct S; fn main() { let s = S; s.f(); }

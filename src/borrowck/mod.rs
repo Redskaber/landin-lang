@@ -750,11 +750,24 @@ impl<'a> BorrowChecker<'a> {
                 // Moving a field (e.g., extracting enum discriminant) doesn't
                 // move the whole parent value. This allows `match` on enums
                 // to work without spurious "use of moved value" errors.
+                //
+                // Stage 15.73: Don't record moves for Copy types.
+                // `Move` of a Copy type is semantically a copy (the source
+                // remains valid). This is needed because MIR lowerer uses
+                // `is_mir_ty_copy_conservative` (returns false for Adt) while
+                // borrow checker uses `is_copy` (returns true for Adt via
+                // unsound `ty_is_copy`). Without this check, `let s2 = s`
+                // where s is a struct would mark s as moved (because MIR
+                // lowerer uses Move), but the borrow checker considers
+                // structs as Copy (unsound) — so the move shouldn't be
+                // recorded. This preserves backward compatibility.
                 let is_field_projection = matches!(
                     &lv.kind,
                     PlaceKind::Projection(_, ProjectionElem::Field(_, _))
                 );
-                if !is_field_projection {
+                let ty = self.place_ty(mir, lv);
+                let is_copy = self.is_copy(&ty);
+                if !is_field_projection && !is_copy {
                     self.moves.record_move(path);
                 }
             }
@@ -1002,7 +1015,14 @@ mod tests {
         mir.block_mut(BasicBlockId(0)).terminator =
             Terminator::new(TerminatorKind::Return, Span::DUMMY);
         let errors = check_mir_body_with_dataflow(&mir);
-        assert!(!errors.is_empty(), "expected use-after-move error");
+        // Stage 15.73: i32 is Copy, so Move(x) doesn't record a move.
+        // Copy(x) after Move(x) is valid (no use-after-move).
+        // This test now verifies that Copy types don't trigger use-after-move.
+        assert!(
+            errors.is_empty(),
+            "expected no errors (i32 is Copy, Move of Copy = no-op). Got: {:?}",
+            errors
+        );
     }
 
     #[test]

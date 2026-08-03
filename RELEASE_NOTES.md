@@ -1,9 +1,36 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.197.0
+**Current version**: v0.198.0
 **Date**: 2026-08-02
 **Test count**: 221 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.198.0 — Stage 15.73 (Type Propagation + Move-of-Copy Fix)
+
+### Overview
+
+Stage 15.73 fixes two long-standing issues: let binding type propagation
+and Move-of-Copy no-op in the borrow checker.
+
+### What Changed
+
+- `src/mir/lower/control_flow.rs` — let bindings without annotation now use
+  init expression's type (fixes struct/enum move errors).
+- `src/borrowck/mod.rs` — borrow checker skips recording moves for Copy types.
+- 4 conformance tests flipped compile_ok → compile_error (method-not-found
+  now correctly caught because types are properly propagated).
+- 1 lib test updated (use_after_move_detected expects no errors for i32).
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.197.0 — Stage 15.72 (Remove Deprecated Borrowck Code)
