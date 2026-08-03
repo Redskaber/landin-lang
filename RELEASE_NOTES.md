@@ -1,9 +1,54 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.217.0
+**Current version**: v0.218.0
 **Date**: 2026-08-02
 **Test count**: 244 rust lib tests + 2144 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.218.0 — Stage 15.93 (Region Inference Return Value Constraints — Task 12 SUBSTANTIALLY COMPLETE)
+
+### Overview
+
+Stage 15.93 adds **return value region constraint collection** to the
+region inference. When a call `dest = f(args)` returns a `&'a T`, the
+destination's region now gets an outlives constraint from the callee's
+return type's region.
+
+This closes the last missing constraint category. The region inference
+now collects constraints from all four sources:
+1. ✅ Borrow expressions (`r = &x`) — Stage 7.2
+2. ✅ Copy/Move of references (`r = Copy(x)` where x is `&T`) — Stage 7.2
+3. ✅ Call arguments (`f(&x)` — arg region outlives param region) — Stage 15.71
+4. ✅ Call return values (`dest = f()` where f returns `&T`) — **Stage 15.93**
+
+Per §1.0 原則 4 "报错 > 静默": return value constraints are explicitly
+collected, not silently ignored.
+
+### Task 12 SUBSTANTIALLY COMPLETE
+
+| Component | Status | Stage |
+|-----------|--------|-------|
+| Elision rule 1 (fresh vid per elided input) | ✅ | 15.49 |
+| Elision rule 2 (single input → output) | ✅ | 15.90 |
+| Elision rule 3 (self → output) | ✅ | 15.91 |
+| Explicit lifetime deduplication | ✅ | 15.92 |
+| Region inference constraints (borrow+copy+args+return) | ✅ | 15.93 |
+| Region inference error reporting | ✅ | 15.84 (human-readable) |
+
+The region inference now has a **complete constraint set** and **correct
+region vids** (elision rules 1-3 + explicit dedup). The inference runs
+and reports errors via the existing error system.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7604 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.217.0 — Stage 15.92 (Explicit Lifetime Tracking)

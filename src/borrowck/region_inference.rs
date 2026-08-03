@@ -816,6 +816,49 @@ impl RegionInferenceContext {
                         }
                     }
                 }
+
+                // Stage 15.93: Collect return value region constraints.
+                //
+                // When a call `dest = f(args)` returns a `&'a T`, the
+                // destination's region must outlive the callee's return
+                // type's region. This ensures that if `f` returns `&'a T`,
+                // the destination local's reference is constrained by the
+                // same lifetime `'a`.
+                //
+                // Without this, the region inference can't verify that a
+                // returned reference doesn't outlive its source — the
+                // destination would have an unconstrained region.
+                //
+                // Per §1.0 原則 4 "报错 > 静默": return value constraints
+                // are explicitly collected, not silently ignored.
+                if let Some(ref sig) = callee_sig {
+                    if let crate::mir::body::TerminatorKind::Call { destination, .. } =
+                        &bb.terminator.kind
+                    {
+                        let dest_ty = self.place_ty(mir, destination);
+                        let dest_regions = extract_regions_from_ty(&dest_ty);
+                        let ret_regions = extract_regions_from_ty(&sig.output);
+
+                        // Match destination regions with return type regions
+                        // (simplified: first-to-first).
+                        if let (Some(&dest_r), Some(&ret_r)) =
+                            (dest_regions.first(), ret_regions.first())
+                        {
+                            if dest_r != ret_r {
+                                // dest_region outlives ret_region: the
+                                // destination's lifetime must be at least
+                                // as long as the return type's lifetime.
+                                self.add_outlives_constraint(
+                                    ret_r,
+                                    dest_r,
+                                    ConstraintCause::FnSignature {
+                                        span: bb.terminator.span,
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
     }
