@@ -24114,3 +24114,64 @@ Stage Summary:
   - 7612 tests, 0 failures, 0 warnings
 - **v0.2 RELEASE APPROVED.**
 - Next: v0.3 planning (Tasks 3, 4, 10, 11, 14, 17)
+
+---
+Task ID: stage15.96-deep-audit-trait-error-fallback
+Agent: Super Z (main)
+Task: Stage 15.96 — Deep audit: trait error Debug fallback fix. v0.220.0 → v0.221.0.
+
+Work Log:
+- Baseline: v0.220.0 / 244 lib + 2144 integration + 5224 conformance
+
+### 1. Deep Audit (per user directive)
+
+User directive: "审查项目简化（设计、实现、测试），判断当前阶段是否能闭合完整".
+
+Audited all remaining {:?} Debug format sites in src/:
+- Found 2 remaining {:?} fallback sites in driver.rs for trait errors
+  (format_for_user + to_diagnostics) — triggered when interner is None
+  (test contexts), leaking Debug format like Coherence(CoherenceError { ... })
+- Other {:?} sites audited and confirmed OK:
+  - lexer/reader.rs:332 — char Debug (acceptable for unexpected chars)
+  - codegen/llvm/mod.rs:421 — internal cache key (not user-facing)
+  - resolve/resolver.rs:114,123 — Debug impl (not user-facing error)
+  - borrowck/copy_semantics.rs:91 — internal lookup (not user-facing)
+
+### 2. Added format_without_interner method
+
+Added TraitError::format_without_interner() in src/driver.rs:
+- Coherence: "conflicting implementations of trait `<unknown>` for type `<unknown>` (N impl blocks)"
+- Incomplete: "impl `<unknown>` for `<unknown>` is missing method(s): <N method(s)>"
+
+Updated 2 fallback sites in format_for_user + to_diagnostics to use
+format_without_interner() instead of format!("{:?}", e).
+
+Per §1.0 原則 4 "报错 > 静默": errors are always human-readable.
+Per §23: format_without_interner follows <verb>_<prep>_<noun> pattern.
+
+### 3. Documentation
+
+- docs/develop/v0/stage-15/stage-15.96-deep-audit-trait-error-fallback.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.220.0 → v0.221.0
+
+Stage Summary:
+- Stage 15.96 PASSED — Deep audit: trait error Debug fallback fix
+- 7612 tests passing (244 lib + 2144 integration + 5224 conformance), 0 failures
+- 0 new tests (fallback path only, no behavior change with interner)
+- 0 conformance test changes
+- v0.221.0: minor bump (deep audit correction)
+- Completes the error system cleanup — ALL {:?} Debug leaks in user-facing
+  error messages are now fixed (including fallback paths without interner).
+- Error system cleanup final count: 27 Span::DUMMY + 22 {:?} + 1 DRY
+  (was 27 Span::DUMMY + 20 {:?} + 1 DRY — the +2 {:?} are the fallback
+  sites fixed in this stage).

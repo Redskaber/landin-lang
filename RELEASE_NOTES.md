@@ -1,9 +1,36 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.220.0
+**Current version**: v0.221.0
 **Date**: 2026-08-03
 **Test count**: 244 rust lib tests + 2144 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.221.0 — Stage 15.96 (Deep Audit: Trait Error Debug Fallback Fix)
+
+### Overview
+
+Stage 15.96 is a **deep audit and correction** stage. The audit found
+2 remaining `{:?}` Debug format fallback sites in `driver.rs` for trait
+errors — these triggered when the interner was `None` (test contexts),
+leaking Debug format like `Coherence(CoherenceError { trait_name:
+Spur(5), ... })`.
+
+**Fix**: Added `TraitError::format_without_interner()` method that
+produces human-readable messages without an interner.
+
+Per §1.0 原則 4 "报错 > 静默": errors are always human-readable, even
+without an interner.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7612 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.220.0 — Stage 15.95 (v0.2 FINAL GATE REVIEW — v0.2 RELEASE APPROVED 🎉)

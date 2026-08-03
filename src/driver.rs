@@ -108,6 +108,36 @@ impl TraitError {
             }
         }
     }
+
+    /// Stage 15.96: Format the error as a human-readable string without
+    /// an interner. Uses "?" for unresolved symbols instead of Debug format.
+    ///
+    /// This is the fallback path used when `format_for_user` or
+    /// `to_diagnostics` is called without an interner (e.g., in test
+    /// contexts). Previously, this path used `format!("{:?}", e)` which
+    /// leaked Debug format like `Coherence(CoherenceError { trait_name:
+    /// Spur(5), ... })`.
+    ///
+    /// Per §1.0 原則 4 "报错 > 静默": errors are always human-readable,
+    /// even without an interner.
+    /// Per §23: `format_without_interner` follows `<verb>_<noun>_<noun>`
+    /// pattern.
+    pub fn format_without_interner(&self) -> String {
+        match self {
+            TraitError::Coherence(ce) => {
+                format!(
+                    "conflicting implementations of trait `<unknown>` for type `<unknown>` ({} impl blocks)",
+                    ce.impl_def_ids.len()
+                )
+            }
+            TraitError::Incomplete(inc) => {
+                format!(
+                    "impl `<unknown>` for `<unknown>` is missing method(s): <{} method(s)>",
+                    inc.missing_methods.len()
+                )
+            }
+        }
+    }
 }
 
 /// Errors collected from one or more passes.
@@ -246,7 +276,8 @@ impl CompileErrors {
             let msg = if let Some(interner) = interner {
                 e.format_with_interner(interner)
             } else {
-                format!("{:?}", e)
+                // Stage 15.96: use human-readable fallback (was: Debug {:?}).
+                e.format_without_interner()
             };
             out.push_str(&format!("  [trait] {}\n", msg));
         }
@@ -330,7 +361,8 @@ impl CompileErrors {
             let msg = if let Some(interner) = interner {
                 e.format_with_interner(interner)
             } else {
-                format!("{:?}", e)
+                // Stage 15.96: use human-readable fallback (was: Debug {:?}).
+                e.format_without_interner()
             };
             // Stage 15.89: use the trait error's span (was: Span::DUMMY,
             // producing "1:1"). The span is stored in CoherenceError/
