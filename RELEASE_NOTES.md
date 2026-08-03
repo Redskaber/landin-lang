@@ -1,9 +1,28 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.198.0
+**Current version**: v0.199.0
 **Date**: 2026-08-02
 **Test count**: 221 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.199.0 — Stage 15.74 (Remove Duplicate Copy Detection — DRY)
+
+### Overview
+
+Stage 15.74 removes the duplicate `is_capture_ty_copy` function from
+`src/mir/lower/expr_operand.rs`. The closure capture code now uses the
+shared `is_mir_ty_copy_conservative` from `mir::ty` (Stage 15.64).
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7567 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.198.0 — Stage 15.73 (Type Propagation + Move-of-Copy Fix)

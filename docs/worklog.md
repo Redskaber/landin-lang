@@ -22390,3 +22390,41 @@ Stage Summary:
 - Struct/enum move errors fixed (let s2 = s works correctly)
 - 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
 - v0.198.0: minor bump (Phase 2 — type propagation + Move-of-Copy fix)
+
+---
+Task ID: stage15.74-remove-duplicate-copy-detection
+Agent: Super Z (main)
+Task: Stage 15.74 — Remove duplicate Copy detection (DRY). v0.198.0 → v0.199.0.
+
+Work Log:
+- Baseline: v0.198.0 / 221 lib + 2130 integration + 5216 conformance
+
+### 1. Removed is_capture_ty_copy
+
+Removed `is_capture_ty_copy` from `src/mir/lower/expr_operand.rs`. This was
+a duplicate of `is_mir_ty_copy_conservative` from `src/mir/ty.rs` (added in
+Stage 15.64). The closure capture code now uses the shared helper directly.
+
+Per §23 rule 5 (DRY): single source of truth for conservative Copy detection.
+Per §1.0 原則 5 "去除兼容思维": duplicate code removed.
+
+### 2. Documentation
+
+- docs/develop/v0/stage-15/stage-15.74-remove-duplicate-copy-detection.md
+- docs/tests/v0/stage15/stage-15.74-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 221/221 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.198.0 → v0.199.0
+
+Stage Summary:
+- Stage 15.74 PASSED — duplicate Copy detection removed (DRY)
+- 7567 tests passing (221 lib + 2130 integration + 5216 conformance), 0 failures
+- v0.199.0: minor bump (Phase 2 — DRY cleanup)

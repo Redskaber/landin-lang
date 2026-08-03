@@ -366,41 +366,9 @@ fn lower_closure_call_inline(
     result_local
 }
 
-/// Stage 13.3a (TD-030): Determine whether a capture's type is Copy.
-///
-/// This is a duplicate of `borrowck::copy_semantics::ty_is_copy` — inlined
-/// here to avoid a `mir::lower → borrowck` dependency (§16 violation:
-/// borrowck runs after mir::lower in the pipeline).
-///
-/// Returns `true` for:
-/// - Primitives: bool, char, int, uint, float
-/// - References (`&T`), raw pointers, fn defs, fn ptrs
-/// - Tuples/arrays of Copy types
-/// - Infer/Error (assumed Copy to avoid spurious errors during inference)
-/// - Adt (assumed Copy as a fallback — precise check needs TraitResolver,
-///   which is not available at MIR lower time)
-///
-/// Returns `false` for:
-/// - `Str`, `Slice(_)`, `Closure(_, _)`, `Param(_)` — these are non-Copy
-///
-/// A future refactor should move Copy-ness detection to a neutral location
-/// (e.g., `mir::ty` or a new `ty::copy_semantics` module) so both
-/// `mir::lower` and `borrowck` can share the same logic without violating §16.
-fn is_capture_ty_copy(ty: &Ty) -> bool {
-    use crate::mir::ty::TyKind::*;
-    match &ty.kind {
-        Bool | Char | Int(_) | Uint(_) | Float(_) => true,
-        Ref(_, _, _) => true,
-        RawPtr(_, _) => true,
-        FnDef(_, _) | FnPtr(_) => true,
-        Never => true,
-        Tuple(tys) => tys.iter().all(is_capture_ty_copy),
-        Array(inner, _) => is_capture_ty_copy(inner),
-        Infer(_) | Error | Foreign => true,
-        Adt(_, _) => true,
-        Str | Slice(_) | Closure(_, _) | Param(_) => false,
-    }
-}
+// Stage 15.74: `is_capture_ty_copy` REMOVED — replaced by shared
+// `is_mir_ty_copy_conservative` from `mir::ty` (DRY per §23 rule 5).
+// Per §1.0 原則 5 "去除兼容思维": duplicate Copy detection removed.
 
 /// Lower a HIR expression to a MIR Operand (a value that can be used
 /// as an argument to a binary op, call, etc.).
@@ -1499,7 +1467,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             for (_cap_hir_id, local_id) in &captured {
                 let ty = cx.mir.local(*local_id).ty.clone();
                 capture_tys.push(ty.clone());
-                let operand = if is_capture_ty_copy(&ty) {
+                let operand = if crate::mir::ty::is_mir_ty_copy_conservative(&ty) {
                     Operand::Copy(Place::local(*local_id, expr.span))
                 } else {
                     Operand::Move(Place::local(*local_id, expr.span))
