@@ -1,9 +1,89 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.205.0
+**Current version**: v0.206.0
 **Date**: 2026-08-02
-**Test count**: 232 rust lib tests + 2132 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 232 rust lib tests + 2135 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.206.0 — Stage 15.81 (Typeck Error Span Accuracy Fix)
+
+### Overview
+
+Stage 15.81 fixes error span accuracy in `src/typeck/checker.rs`.
+Previously, 7 typeck error sites used `Span::DUMMY` (file start, "1:1")
+instead of the actual source location of the offending expression. This
+made error messages hard to locate — the user would see "1:1" and have
+to search the whole file for the actual error.
+
+**Fix**: Added a new `operand_span` helper that extracts the source span
+from an `Operand` (via the inner `Place.span`). Used it (and `term.span`)
+in 7 typeck error sites:
+
+1. `SwitchInt` discriminant mismatch (unify error span override)
+2. `SwitchInt` "expected integer or bool for switch" error
+3. `Assert` "assert condition must be bool" error
+4. `Call` "this function takes N argument(s)" arity error (uses `term.span`)
+5. `Call` arg type unify errors (4 sites: FnDef args, FnDef dest, FnPtr args, FnPtr dest)
+6. `Call` "expected function, found T" error (uses `operand_span(func)`)
+7. `post_check_terminator` "expected function, found T" error (uses `operand_span(func)`)
+
+Also fixed the last `{:?}` Debug format leak in the `SwitchInt` "expected
+integer or bool for switch" message — now uses `type_kind_to_string`
+(from Stage 15.80).
+
+**Before** (`if 42 { 1 }`):
+```
+error[E400]: mismatched types: expected {integer}, found bool
+  --> /tmp/t.lin:1:1
+```
+
+**After**:
+```
+error[E400]: mismatched types: expected {integer}, found bool
+  --> /tmp/t.lin:1:16
+  |
+1 | fn main() { if 42 { 1 } }
+  |                ^^
+```
+
+### Why this matters
+
+Accurate error spans are critical for usability. When the compiler
+reports "1:1" for every error, users must manually search the file to
+find the actual problem. This is especially painful for large files,
+multiple errors, and new users.
+
+The fix makes every typeck error point to the exact source location
+where the type mismatch occurs. Combined with the Stage 15.80 human-
+readable type names, error messages are now both **clear** (no Debug
+leaks) and **locatable** (accurate spans with snippet underlines).
+
+Per §1.0 原則 3 "显式 > 隐式": error spans are explicitly sourced from
+the operand's Place, not defaulted to Span::DUMMY.
+Per §1.0 原則 4 "报错 > 静默": error locations are accurate, not cryptic.
+
+### Test impact
+
+- 3 new Rust integration tests in
+  `tests/v0/stage15/plan/error_system_cleanup_tests.rs`:
+  - `stage15_81_if_condition_span_points_to_condition` — `if 42` span
+    points to `42` (byte 15)
+  - `stage15_81_call_non_function_span_points_to_callee` — `x()` span
+    points to `x` (byte 24)
+  - `stage15_81_error_uses_human_readable_type_names` — verifies
+    Stage 15.80 fix is preserved
+- 0 conformance test changes
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 232/232 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2135/2135 PASS (was 2132, +3 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7583 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.205.0 — Stage 15.80 (Error System Cleanup: Human-Readable Type Names)

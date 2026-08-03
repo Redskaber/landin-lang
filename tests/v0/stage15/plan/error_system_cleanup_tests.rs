@@ -181,3 +181,113 @@ fn stage15_12_mirbody_no_lower_type_errors_field() {
     assert!(mir.local_decls.is_empty());
     // Note: cannot access mir.lower_type_errors — field was removed.
 }
+
+// === Stage 15.81: Span accuracy tests ===
+
+/// Stage 15.81: `if 42 { 1 }` should produce a typeck error whose span
+/// points to the `42` literal (not `1:1` / file start).
+///
+/// Previously, the SwitchInt discriminant mismatch used `Span::DUMMY`
+/// (producing "1:1" in the error location). Stage 15.81 uses the
+/// discriminant operand's span.
+#[test]
+fn stage15_81_if_condition_span_points_to_condition() {
+    // `if 42` — 42 is at byte offset 15 in this source.
+    // "fn main() { if 42 { 1 } }"
+    //  0123456789012345 — `42` starts at index 15.
+    let src = "fn main() { if 42 { 1 } }";
+    let result = compile(src);
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for `if 42`"
+    );
+    // Find the error with "mismatched types" message.
+    let mismatch_err = result
+        .errors
+        .typeck
+        .iter()
+        .find(|e| e.message.contains("mismatched types"))
+        .expect("expected mismatched types error");
+    // The span should NOT be Span::DUMMY (lo=0, hi=0).
+    assert_ne!(
+        mismatch_err.span.lo, 0,
+        "span.lo should not be 0 (was Span::DUMMY before Stage 15.81); got {}",
+        mismatch_err.span.lo
+    );
+    // The span should point to the `42` literal (byte offset 15).
+    assert_eq!(
+        mismatch_err.span.lo, 15,
+        "span.lo should point to `42` at byte 15; got {}",
+        mismatch_err.span.lo
+    );
+}
+
+/// Stage 15.81: `let x = 42; x();` should produce a typeck error whose
+/// span points to the `x` in `x()` (not `1:1` / file start).
+///
+/// Previously, the Call "expected function, found i32" error used
+/// `Span::DUMMY`. Stage 15.81 uses the func operand's span.
+#[test]
+fn stage15_81_call_non_function_span_points_to_callee() {
+    // `x()` — the second `x` (in `x()`) is at byte offset 24.
+    // "fn main() { let x = 42; x(); }"
+    //  0123456789012345678901234 — second `x` is at index 24.
+    let src = "fn main() { let x = 42; x(); }";
+    let result = compile(src);
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for `x()` on non-function"
+    );
+    // Find the error with "expected function" message.
+    let call_err = result
+        .errors
+        .typeck
+        .iter()
+        .find(|e| e.message.contains("expected function"))
+        .expect("expected 'expected function' error");
+    // The span should NOT be Span::DUMMY.
+    assert_ne!(
+        call_err.span.lo, 0,
+        "span.lo should not be 0 (was Span::DUMMY before Stage 15.81); got {}",
+        call_err.span.lo
+    );
+    // The span should point to the `x` in `x()` (byte offset 24).
+    assert_eq!(
+        call_err.span.lo, 24,
+        "span.lo should point to `x` in `x()` at byte 24; got {}",
+        call_err.span.lo
+    );
+}
+
+/// Stage 15.81: error messages should use human-readable type names
+/// (from Stage 15.80), not Debug format. This test verifies the
+/// `if 42` error mentions `bool` and `{integer}`, not `Bool` and
+/// `Infer(IntVar(...))`.
+#[test]
+fn stage15_81_error_uses_human_readable_type_names() {
+    let src = "fn main() { if 42 { 1 } }";
+    let result = compile(src);
+    let mismatch_err = result
+        .errors
+        .typeck
+        .iter()
+        .find(|e| e.message.contains("mismatched types"))
+        .expect("expected mismatched types error");
+    // Should contain human-readable "bool", not Debug "Bool".
+    assert!(
+        mismatch_err.message.contains("bool"),
+        "message should contain 'bool' (human-readable), got: {}",
+        mismatch_err.message
+    );
+    // Should NOT contain Debug format like "Bool" or "Infer(IntVar".
+    assert!(
+        !mismatch_err.message.contains("Bool"),
+        "message should NOT contain Debug 'Bool', got: {}",
+        mismatch_err.message
+    );
+    assert!(
+        !mismatch_err.message.contains("Infer("),
+        "message should NOT contain Debug 'Infer(...', got: {}",
+        mismatch_err.message
+    );
+}

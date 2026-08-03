@@ -465,11 +465,12 @@ impl TypeChecker {
             ) {
                 self.errors.push(TypeError::new(
                     // Stage 15.80: use human-readable type name.
+                    // Stage 15.81: use func operand span (was: Span::DUMMY).
                     format!(
                         "expected function, found {}",
                         crate::mir::ty::type_kind_to_string(&func_ty.kind)
                     ),
-                    Span::DUMMY,
+                    Self::operand_span(func),
                 ));
             }
         }
@@ -558,16 +559,27 @@ impl TypeChecker {
                                     sig.inputs.len(),
                                     arg_tys.len()
                                 ),
-                                Span::DUMMY,
+                                // Stage 15.81: use the call terminator's span
+                                // (was: Span::DUMMY, producing "1:1").
+                                term.span,
                             ));
                         } else {
                             for (arg_ty, input_ty) in arg_tys.iter().zip(sig.inputs.iter()) {
-                                if let Err(e) = self.unify.unify(arg_ty, input_ty) {
+                                if let Err(mut e) = self.unify.unify(arg_ty, input_ty) {
+                                    // Stage 15.81: use term.span for unify errors
+                                    // (was: Span::DUMMY from mismatch()).
+                                    if term.span != Span::DUMMY {
+                                        e.span = term.span;
+                                    }
                                     self.errors.push(*e);
                                 }
                             }
                         }
-                        if let Err(e) = self.unify.unify(&dest_ty, &sig.output) {
+                        if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output) {
+                            // Stage 15.81: use term.span for unify errors.
+                            if term.span != Span::DUMMY {
+                                e.span = term.span;
+                            }
                             self.errors.push(*e);
                         }
                     }
@@ -579,12 +591,20 @@ impl TypeChecker {
                 if let TyKind::FnPtr(sig) = &func_ty.kind {
                     // Unify each arg with the corresponding input
                     for (arg_ty, input_ty) in arg_tys.iter().zip(sig.inputs.iter()) {
-                        if let Err(e) = self.unify.unify(arg_ty, input_ty) {
+                        if let Err(mut e) = self.unify.unify(arg_ty, input_ty) {
+                            // Stage 15.81: use term.span for unify errors.
+                            if term.span != Span::DUMMY {
+                                e.span = term.span;
+                            }
                             self.errors.push(*e);
                         }
                     }
                     // Unify destination with output
-                    if let Err(e) = self.unify.unify(&dest_ty, &sig.output) {
+                    if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output) {
+                        // Stage 15.81: use term.span for unify errors.
+                        if term.span != Span::DUMMY {
+                            e.span = term.span;
+                        }
                         self.errors.push(*e);
                     }
                 }
@@ -598,17 +618,21 @@ impl TypeChecker {
                 ) {
                     self.errors.push(TypeError::new(
                         // Stage 15.80: use human-readable type name.
+                        // Stage 15.81: use func operand span (was: Span::DUMMY).
                         format!(
                             "expected function, found {}",
                             crate::mir::ty::type_kind_to_string(&func_ty.kind)
                         ),
-                        Span::DUMMY,
+                        Self::operand_span(func),
                     ));
                 }
             }
             TerminatorKind::SwitchInt { discr, targets, .. } => {
                 // The discriminant must be an integer or bool
                 let discr_ty = self.infer_operand(mir, discr);
+                // Stage 15.81: use the discriminant operand's span for
+                // error reporting (was: Span::DUMMY, producing "1:1").
+                let discr_span = Self::operand_span(discr);
                 // G7 fix (Stage 2.4f): if any target is ConstVal::Bool(_),
                 // this SwitchInt came from an `if` or `while` condition,
                 // and the discriminant must be bool (not just any int).
@@ -617,7 +641,12 @@ impl TypeChecker {
                     .any(|(val, _)| matches!(val, ConstVal::Bool(_)));
                 if requires_bool {
                     let bool_ty = Ty::new(TyKind::Bool, Span::DUMMY);
-                    if let Err(e) = self.unify.unify(&discr_ty, &bool_ty) {
+                    if let Err(mut e) = self.unify.unify(&discr_ty, &bool_ty) {
+                        // Stage 15.81: override the dummy span with the
+                        // actual discriminant span (was: Span::DUMMY).
+                        if discr_span != Span::DUMMY {
+                            e.span = discr_span;
+                        }
                         self.errors.push(*e);
                     }
                 } else {
@@ -633,11 +662,13 @@ impl TypeChecker {
                         TyKind::Error => {}
                         _ => {
                             self.errors.push(TypeError::new(
+                                // Stage 15.80: use human-readable type name.
+                                // Stage 15.81: use discriminant span (was: Span::DUMMY).
                                 format!(
-                                    "expected integer or bool for switch, found {:?}",
-                                    discr_ty.kind
+                                    "expected integer or bool for switch, found {}",
+                                    crate::mir::ty::type_kind_to_string(&discr_ty.kind)
                                 ),
-                                Span::DUMMY,
+                                discr_span,
                             ));
                         }
                     }
@@ -652,16 +683,20 @@ impl TypeChecker {
                 // strictly (codegen will handle the runtime check) but
                 // we do infer the type to catch obvious mismatches.
                 let cond_ty = self.infer_operand(mir, cond);
+                // Stage 15.81: use the condition operand's span for
+                // error reporting (was: Span::DUMMY).
+                let cond_span = Self::operand_span(cond);
                 match &cond_ty.kind {
                     TyKind::Bool | TyKind::Infer(_) | TyKind::Error => {}
                     _ => {
                         self.errors.push(TypeError::new(
                             // Stage 15.80: use human-readable type name.
+                            // Stage 15.81: use condition span (was: Span::DUMMY).
                             format!(
                                 "assert condition must be bool, found {}",
                                 crate::mir::ty::type_kind_to_string(&cond_ty.kind)
                             ),
-                            Span::DUMMY,
+                            cond_span,
                         ));
                     }
                 }
@@ -918,6 +953,25 @@ impl TypeChecker {
         match op {
             Operand::Copy(lv) | Operand::Move(lv) => self.infer_place(mir, lv),
             Operand::Constant(c) => c.ty.clone(),
+        }
+    }
+
+    /// Stage 15.81: Extract the source span from an `Operand`.
+    ///
+    /// Used to attach accurate spans to type errors that originate from
+    /// operand type mismatches (e.g., `if 42 { ... }` — the `42` literal
+    /// is the discriminant operand, and its span should be used for the
+    /// "expected bool, found integer" error).
+    ///
+    /// - `Operand::Copy(place)` / `Operand::Move(place)` → `place.span`
+    /// - `Operand::Constant(const)` → `Span::DUMMY` (Const has no span field)
+    ///
+    /// Per §1.0 原則 3 "显式 > 隐式": error spans are explicitly sourced
+    /// from the operand's Place, not defaulted to Span::DUMMY.
+    fn operand_span(op: &Operand) -> Span {
+        match op {
+            Operand::Copy(lv) | Operand::Move(lv) => lv.span,
+            Operand::Constant(_) => Span::DUMMY,
         }
     }
 

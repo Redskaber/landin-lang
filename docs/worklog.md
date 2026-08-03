@@ -22913,3 +22913,115 @@ Stage Summary:
 - Recommended Stage 15.81: HirExprKind::Loop result type resolution (last
   fresh_infer_ty target in the type-resolution pattern) OR start Task 12
   (Lifetime elision, 2-3 weeks).
+
+---
+Task ID: stage15.81-typeck-error-span-accuracy
+Agent: Super Z (main)
+Task: Stage 15.81 — Typeck error span accuracy fix. v0.205.0 → v0.206.0.
+
+Work Log:
+- Baseline: v0.205.0 / 232 lib + 2132 integration + 5216 conformance
+
+### 1. Investigation (src/diagnostics/ focus)
+
+Per user directive to focus on the error system (src/diagnostics/),
+investigated the diagnostics module and found that many typeck errors
+used Span::DUMMY (file start "1:1") instead of the actual source
+location. This made error messages hard to locate — users would see
+"1:1" and have to search the whole file.
+
+### 2. Added operand_span helper
+
+In src/typeck/checker.rs, added a new private associated function:
+- operand_span(op: &Operand) -> Span
+  - Operand::Copy(place) | Operand::Move(place) -> place.span
+  - Operand::Constant(_) -> Span::DUMMY (Const has no span field)
+
+Per §1.0 原則 3 "显式 > 隐式": error spans are explicitly sourced from
+the operand's Place, not defaulted to Span::DUMMY.
+Per §23: operand_span follows <noun>_<noun> pattern (property accessor,
+no get_ prefix).
+
+### 3. Fixed 7 typeck error sites that used Span::DUMMY
+
+1. SwitchInt discriminant mismatch (unify error span override):
+   Before: e.span is Span::DUMMY from mismatch()
+   After: if discr_span != Span::DUMMY { e.span = discr_span; }
+
+2. SwitchInt "expected integer or bool for switch":
+   Before: Span::DUMMY + format!("...found {:?}", discr_ty.kind)
+   After: discr_span + format!("...found {}", type_kind_to_string(...))
+   (Also fixed the last {:?} Debug format leak.)
+
+3. Assert "assert condition must be bool":
+   Before: Span::DUMMY
+   After: cond_span (from operand_span(cond))
+
+4. Call arity error "this function takes N argument(s)":
+   Before: Span::DUMMY
+   After: term.span (the call terminator's span)
+
+5. Call arg/dest unify errors (4 sites: FnDef args, FnDef dest,
+   FnPtr args, FnPtr dest):
+   Before: e.span is Span::DUMMY from mismatch()
+   After: if term.span != Span::DUMMY { e.span = term.span; }
+
+6. Call "expected function, found T" (check_terminator):
+   Before: Span::DUMMY
+   After: Self::operand_span(func)
+
+7. post_check_terminator "expected function, found T":
+   Before: Span::DUMMY
+   After: Self::operand_span(func)
+
+### 4. Fixed last {:?} Debug format leak
+
+In SwitchInt "expected integer or bool for switch" message:
+Before: format!("...found {:?}", discr_ty.kind)
+After: format!("...found {}", type_kind_to_string(&discr_ty.kind))
+
+This was the last {:?} leak in typeck error messages (Stage 15.80
+fixed the other 6).
+
+### 5. New integration tests (3 tests)
+
+Added to tests/v0/stage15/plan/error_system_cleanup_tests.rs:
+- stage15_81_if_condition_span_points_to_condition: verifies `if 42`
+  error span points to `42` (byte offset 15)
+- stage15_81_call_non_function_span_points_to_callee: verifies `x()`
+  error span points to `x` (byte offset 24)
+- stage15_81_error_uses_human_readable_type_names: verifies Stage 15.80
+  fix is preserved (message contains "bool", not "Bool" or "Infer(")
+
+### 6. Documentation
+
+- docs/develop/v0/stage-15/stage-15.81-typeck-error-span-accuracy.md
+- docs/tests/v0/stage15/stage-15.81-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 232/232 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2135/2135 PASS (was 2132, +3 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.205.0 → v0.206.0
+
+Stage Summary:
+- Stage 15.81 PASSED — typeck error span accuracy fix
+- 7583 tests passing (232 lib + 2135 integration + 5216 conformance), 0 failures
+- 3 new integration tests verify exact byte offsets for span accuracy
+- 0 conformance test changes (all ERROR_PATTERN matches preserved)
+- v0.206.0: minor bump (Phase 2 — error system span accuracy fix)
+- Error messages now point to the exact source location (was: "1:1" for
+  7 typeck error sites). Combined with Stage 15.80 human-readable type
+  names, error messages are now both clear (no Debug leaks) and
+  locatable (accurate spans with snippet underlines).
+- Remaining Span::DUMMY sites in check_statement/infer_rvalue are
+  deferred (lower priority — they're not in the terminator path that
+  produces the most user-visible errors).
+- Recommended next: Start Task 12 (Lifetime elision) — the next major
+  v0.2 task (2-3 weeks, P1, ready now). The error system is now in
+  good shape for user-facing work.
