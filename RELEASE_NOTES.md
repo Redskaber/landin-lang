@@ -1,9 +1,65 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.202.0
+**Current version**: v0.203.0
 **Date**: 2026-08-02
-**Test count**: 221 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 224 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.203.0 — Stage 15.78 (Array Length Unify Fix + Error Test Audit)
+
+### Overview
+
+Stage 15.78 fixes a long-standing soundness bug in `typeck::unify`: the
+`TyKind::Array` arm previously ignored the length `Const` value, silently
+accepting `let x: [i32; 3] = [1, 2];` (3 vs 2 elements). The resulting
+size-mismatched LLVM IR could cause undefined behavior at runtime.
+
+The fix compares the length `Const` values and reports a `TypeError` if
+they differ. This mirrors the existing `TyKind::Tuple` arm pattern
+(length check + element-wise unify).
+
+Per the user's directive, this stage also audited the 416
+`EXPECTED: compile_error` tests in `tests/conformance/` against current
+compiler capability. Findings:
+
+- All 9 e2e `compile_error` tests correctly remain `compile_error`
+  (underlying limitations still apply — parser doesn't support compound
+  assignment in expressions, generic struct literal construction needs
+  Task 11, etc.)
+- The array length mismatch category was identified as a soundness fix
+  the compiler is now ready for, and is shipped in this stage.
+
+### Soundness improvement
+
+4 conformance tests flipped from `compile_ok` to `compile_error`:
+
+- 2 tests: `let x: [i32; 3] = [1, 2];` — array length mismatch (3 vs 2)
+- 2 tests: `Container { data: [], len: 0 }` where field type is
+  `[T; 10]` — `[]` has length 0, which correctly fails to unify with
+  `[T; 10]`
+
+Per §1.0 原則 4 "报错 > 静默": previously-silent errors are now reported.
+Per §1.0 原則 9 "正确 > 妥协": correct behavior prioritized over
+convenience.
+
+### New tests
+
+3 new Rust unit tests in `src/typeck/unify.rs::tests`:
+- `unify_array_same_length` — same-length arrays unify OK
+- `unify_array_different_length` — different-length arrays fail (new check)
+- `unify_array_unevaluated_length_lenient` — Unevaluated length falls
+  back to lenient (element-type-only) unify (avoids false positives)
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 224/224 PASS (was 221, +3 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2130/2130 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7570 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.202.0 — Stage 15.77 (AddrOf + Tuple Type Resolution)

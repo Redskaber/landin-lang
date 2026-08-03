@@ -1,6 +1,6 @@
 // CATEGORY: typecheck
 // DESCRIPTION: array type mismatch
-// EXPECTED: compile_ok
+// EXPECTED: compile_error
 // SOURCE: Stage 10.8 typecheck expansion (Stage 0 limitation — typeck does not catch this)
 
 fn main() { let arr: [i32; 3] = [1, 2]; }

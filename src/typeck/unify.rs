@@ -447,8 +447,41 @@ impl UnificationTable {
                 Ok(())
             }
 
-            // Array with Array
-            (TyKind::Array(a_t, _), TyKind::Array(b_t, _)) => self.unify_resolved(a_t, b_t),
+            // Array with Array: unify element types AND compare lengths.
+            //
+            // Stage 15.78 (soundness fix): previously, array unify ignored
+            // the length Const, silently accepting `let x: [i32; 3] = [1, 2];`
+            // (3 vs 2 elements). This produced size-mismatched LLVM IR that
+            // could lead to undefined behavior at runtime (reading past the
+            // array end, etc.).
+            //
+            // Per §1.0 原則 4 "报错 > 静默" and §1.0 原則 9 "正确 > 妥协":
+            // array length mismatches MUST be reported as type errors.
+            //
+            // The Const carries a `ConstVal::Uint(length)` value set during
+            // MIR lowering (see `infer_rvalue` AggregateKind::Array arm in
+            // checker.rs). We compare the lengths directly — if either is
+            // `Unevaluated` (not yet const-evaluated), we fall back to the
+            // old lenient behavior (unify element types only) to avoid
+            // false positives.
+            (TyKind::Array(a_t, a_len), TyKind::Array(b_t, b_len)) => {
+                self.unify_resolved(a_t, b_t)?;
+                if let (ConstVal::Uint(a_n), ConstVal::Uint(b_n)) = (&a_len.val, &b_len.val) {
+                    if a_n != b_n {
+                        return Err(Box::new(TypeError::mismatch(
+                            a.clone(),
+                            b.clone(),
+                            Span::DUMMY,
+                        )));
+                    }
+                }
+                // Unevaluated or non-uint lengths: fall back to lenient
+                // (element-type-only) unify. This preserves backward
+                // compatibility for code paths that produce symbolic
+                // array lengths (currently none in v0.2, but the
+                // fallback is safe).
+                Ok(())
+            }
 
             // Slice with Slice
             (TyKind::Slice(a_t), TyKind::Slice(b_t)) => self.unify_resolved(a_t, b_t),
@@ -739,6 +772,77 @@ mod tests {
             Span::DUMMY,
         );
         assert!(t.unify(&a, &b).is_err());
+    }
+
+    /// Stage 15.78: Array unify now compares length Const values.
+    /// Same length + same element type → OK.
+    #[test]
+    fn unify_array_same_length() {
+        let mut t = UnificationTable::new();
+        let len = || Const {
+            ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
+            val: ConstVal::Uint(3),
+        };
+        let a = Ty::new(
+            TyKind::Array(Box::new(ty_int(ast::IntTy::I32)), Box::new(len())),
+            Span::DUMMY,
+        );
+        let b = Ty::new(
+            TyKind::Array(Box::new(ty_int(ast::IntTy::I32)), Box::new(len())),
+            Span::DUMMY,
+        );
+        assert!(t.unify(&a, &b).is_ok());
+    }
+
+    /// Stage 15.78: Array unify now compares length Const values.
+    /// Different lengths (3 vs 2) → ERR (was: silently OK, soundness bug).
+    #[test]
+    fn unify_array_different_length() {
+        let mut t = UnificationTable::new();
+        let len_a = || Const {
+            ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
+            val: ConstVal::Uint(3),
+        };
+        let len_b = || Const {
+            ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
+            val: ConstVal::Uint(2),
+        };
+        let a = Ty::new(
+            TyKind::Array(Box::new(ty_int(ast::IntTy::I32)), Box::new(len_a())),
+            Span::DUMMY,
+        );
+        let b = Ty::new(
+            TyKind::Array(Box::new(ty_int(ast::IntTy::I32)), Box::new(len_b())),
+            Span::DUMMY,
+        );
+        assert!(t.unify(&a, &b).is_err());
+    }
+
+    /// Stage 15.78: Array unify with `Unevaluated` length falls back to
+    /// lenient (element-type-only) unify — no false positives.
+    #[test]
+    fn unify_array_unevaluated_length_lenient() {
+        let mut t = UnificationTable::new();
+        let len_concrete = || Const {
+            ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
+            val: ConstVal::Uint(3),
+        };
+        let len_unevaluated = || Const {
+            ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
+            val: ConstVal::Unevaluated,
+        };
+        let a = Ty::new(
+            TyKind::Array(Box::new(ty_int(ast::IntTy::I32)), Box::new(len_concrete())),
+            Span::DUMMY,
+        );
+        let b = Ty::new(
+            TyKind::Array(
+                Box::new(ty_int(ast::IntTy::I32)),
+                Box::new(len_unevaluated()),
+            ),
+            Span::DUMMY,
+        );
+        assert!(t.unify(&a, &b).is_ok());
     }
 
     #[test]
