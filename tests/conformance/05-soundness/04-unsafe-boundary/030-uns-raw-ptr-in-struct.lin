@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 struct S{p:*const i32} fn main(){let s=S{p:0 as *const i32};}
+impl Copy for S {}

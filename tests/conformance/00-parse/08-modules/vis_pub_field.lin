@@ -3,4 +3,5 @@
 //! description: pub struct field
 //! source: Stage 9.9 conformance expansion
 struct S { pub x: i32 }
+impl Copy for S {}
 fn main(){ let _ = S{x: 0}; }

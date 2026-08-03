@@ -7,7 +7,9 @@
 //         correctly extracts inner struct to temp local before recursing.
 
 struct Inner { a: i32, b: i32 }
+impl Copy for Inner {}
 struct Outer { inner: Inner, c: i32 }
+impl Copy for Outer {}
 fn main() -> i32 {
     let o = Outer { inner: Inner { a: 1, b: 2 }, c: 3 };
     match o {

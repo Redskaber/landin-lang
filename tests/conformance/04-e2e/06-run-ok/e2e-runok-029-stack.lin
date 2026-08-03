@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.21 — &mut self + array field + index assignment verification
 
 struct Stack { data: [i32; 5], top: i32 }
+impl Copy for Stack {}
 impl Stack {
     fn new() -> Stack { Stack { data: [0; 5], top: 0 } }
     fn push(&mut self, val: i32) { self.data[self.top] = val; self.top += 1; }

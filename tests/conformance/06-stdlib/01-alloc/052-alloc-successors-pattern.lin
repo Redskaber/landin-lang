@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 struct Succ{prev:i32} fn main(){let s=Succ{prev:0};}
+impl Copy for Succ {}

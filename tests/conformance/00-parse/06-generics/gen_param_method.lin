@@ -3,4 +3,5 @@
 //! description: generic method
 //! source: Stage 9.7 conformance expansion
 struct S; impl S { fn f<T>(&self, x: T) {} }
+impl Copy for S {}
 fn main(){ let _ = S; }

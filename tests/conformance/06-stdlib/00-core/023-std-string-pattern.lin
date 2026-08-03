@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 struct String{data:[i8;0],len:i32} fn main(){let s=String{data:[],len:0};}
+impl Copy for String {}

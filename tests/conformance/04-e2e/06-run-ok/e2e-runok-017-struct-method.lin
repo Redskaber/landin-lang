@@ -6,6 +6,7 @@
 // SOURCE: Stage 14.16 — struct + impl method + self.x field access verification
 
 struct Pair { x: i32, y: i32 }
+impl Copy for Pair {}
 impl Pair {
     fn sum(self) -> i32 { self.x + self.y }
 }

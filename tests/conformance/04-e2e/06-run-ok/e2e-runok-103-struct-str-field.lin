@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.60 — struct with &str field + constructor + method + field access
 
 struct Person { name: &str, age: i32 }
+impl Copy for Person {}
 impl Person {
     fn new(name: &str, age: i32) -> Person { Person { name, age } }
     fn greet(&self) -> i32 { self.age }

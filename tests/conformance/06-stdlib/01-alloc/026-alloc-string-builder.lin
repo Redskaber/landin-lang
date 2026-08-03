@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 struct SB{buf:[i8;256],len:i32} fn main()->SB{SB{buf:[0;256],len:0}}
+impl Copy for SB {}

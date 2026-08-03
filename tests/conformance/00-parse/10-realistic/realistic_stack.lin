@@ -3,4 +3,5 @@
 //! description: stack with push/pop
 //! source: Stage 9.11 conformance expansion
 struct Stack { data: [i32; 10], top: i32 } fn push(s: &mut Stack, v: i32) { s.data[s.top as usize] = v; s.top += 1; } fn pop(s: &mut Stack) -> i32 { s.top -= 1; s.data[s.top as usize] }
+impl Copy for Stack {}
 fn main(){ let _ref_0 = Stack{data:[0;10],top:0}; let _ref_1 = Stack{data:[0;10],top:0}; let _ = Stack{data:[0;10],top:0}; push(&_ref_0,0); let _ = pop(&_ref_1); }

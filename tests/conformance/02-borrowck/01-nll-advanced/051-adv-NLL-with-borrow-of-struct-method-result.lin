@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.2 borrowck expansion
 
 struct S{x:i32} impl S { fn f(&self)->i32 { self.x } } fn main() { let s=S{x:1}; let r=&s.f(); }
+impl Copy for S {}

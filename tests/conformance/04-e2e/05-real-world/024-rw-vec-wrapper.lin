@@ -4,4 +4,5 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 struct Vec{T,data:[i32;10],len:i32}
+impl Copy for Vec {}
 fn main(){ let _ = Vec{data:[0;10],len:0}; }

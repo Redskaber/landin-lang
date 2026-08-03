@@ -4,4 +4,5 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct S{x:i32} enum E{A(S),B}
+impl Copy for S {}
 fn main(){ let _ = S{x: 0}; let _ = E::A; }

@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.2 conformance expansion (Stage 0 limitation) (Stage 13.3a closure call lowering — TD-030 closed)
 
 struct S { x: i32 } fn main() { let s = S { x: 1 }; let f = || s.x; let _ = f(); }
+impl Copy for S {}

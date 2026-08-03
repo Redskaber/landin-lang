@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.8 typecheck expansion (Stage 0 limitation — typeck does not catch this)
 
 struct S { x: i32 } fn main() { let s = S { x: 1 }; s.y; }
+impl Copy for S {}

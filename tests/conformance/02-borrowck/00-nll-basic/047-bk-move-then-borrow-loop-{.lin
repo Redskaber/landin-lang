@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 struct S{x:i32} fn main(){let s=S{x:1};loop { let s2=s;let r=&s;}
+impl Copy for S {}

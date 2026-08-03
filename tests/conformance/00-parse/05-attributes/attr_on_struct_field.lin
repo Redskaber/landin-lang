@@ -4,4 +4,5 @@
 //! error_pattern: parse error
 //! source: Stage 9.6 conformance expansion
 struct S { #[foo] x: i32 }
+impl Copy for S {}
 fn main(){ let _ = S{x: 0}; }

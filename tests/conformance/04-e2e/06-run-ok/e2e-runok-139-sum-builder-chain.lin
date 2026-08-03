@@ -6,6 +6,7 @@
 // calling add (GAP-6: &mut self calling &mut self)
 
 struct Sum { total: i32 }
+impl Copy for Sum {}
 impl Sum {
     fn new() -> Sum { Sum { total: 0 } }
     fn add(&mut self, n: i32) -> &mut Sum { self.total = self.total + n; self }

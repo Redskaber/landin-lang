@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.63 — zero-field structs were mapped to EmitType::Void, causing method calls to pass null as &self
 
 struct Unit;
+impl Copy for Unit {}
 impl Unit {
     fn new() -> Unit { Unit }
     fn value(&self) -> i32 { 42 }

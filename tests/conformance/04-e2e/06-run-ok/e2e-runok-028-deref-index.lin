@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.21 — &self + array field + index verification
 
 struct S { data: [i32; 3] }
+impl Copy for S {}
 impl S {
     fn get(&self, i: i32) -> i32 { self.data[i] }
 }

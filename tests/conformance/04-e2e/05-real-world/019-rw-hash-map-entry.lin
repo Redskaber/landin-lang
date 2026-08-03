@@ -4,4 +4,5 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 struct Entry{key:i32,val:i32,next:i32} fn new(k:i32,v:i32)->Entry{Entry{key:k,val:v,next:-1}}
+impl Copy for Entry {}
 fn main(){ let _ = Entry{key: 0,val: 0,next: 0}; let _ = new(0,0); }

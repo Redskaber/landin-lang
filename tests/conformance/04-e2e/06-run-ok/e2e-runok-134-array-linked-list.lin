@@ -10,6 +10,7 @@ struct List {
     head: i32,
     size: i32,
 }
+impl Copy for List {}
 impl List {
     fn new() -> List {
         List { data: [0; 20], next: [-1; 20], head: -1, size: 0 }

@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.42 — verifies struct construction in if/else if/else branches
 
 struct Point { x: i32, y: i32 }
+impl Copy for Point {}
 fn make_point(cond: i32) -> Point {
     if cond == 0 {
         Point { x: 10, y: 20 }

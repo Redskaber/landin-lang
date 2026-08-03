@@ -7,6 +7,7 @@
 // a new reference (which produced &&mut T, causing type mismatch).
 
 struct Counter { count: i32 }
+impl Copy for Counter {}
 impl Counter {
     fn new() -> Counter { Counter { count: 0 } }
     fn inc(&mut self) { self.count = self.count + 1; }

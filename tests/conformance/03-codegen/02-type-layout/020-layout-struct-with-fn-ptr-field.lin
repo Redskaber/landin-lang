@@ -4,4 +4,5 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct S{f:fn(i32)->i32}
+impl Copy for S {}
 fn main(){ 0 }

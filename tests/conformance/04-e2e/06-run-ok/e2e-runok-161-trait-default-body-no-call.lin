@@ -12,6 +12,7 @@ trait Counter {
 }
 
 struct Pair { x: i32 }
+impl Copy for Pair {}
 
 impl Counter for Pair {
 }

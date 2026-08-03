@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.44 — array of structs + Index+Field projection + LLVM module verification
 
 struct Point { x: i32, y: i32 }
+impl Copy for Point {}
 fn main() -> i32 {
     let points = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }, Point { x: 5, y: 6 }];
     let sum_x = points[0].x + points[1].x + points[2].x;

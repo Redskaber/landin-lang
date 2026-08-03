@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 struct S{x:i32,y:i32} fn main(){let s=S{x:1,y:2};}
+impl Copy for S {}

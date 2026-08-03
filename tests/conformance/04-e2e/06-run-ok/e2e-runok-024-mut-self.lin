@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.19 (GAP-31) — &mut self field mutation now propagates to caller
 
 struct Counter { val: i32 }
+impl Copy for Counter {}
 impl Counter {
     fn new(start: i32) -> Counter { Counter { val: start } }
     fn increment(&mut self) { self.val += 1; }

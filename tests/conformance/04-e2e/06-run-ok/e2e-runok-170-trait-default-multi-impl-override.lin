@@ -11,7 +11,9 @@ trait Counter {
 }
 
 struct A { x: i32 }
+impl Copy for A {}
 struct B { x: i32 }
+impl Copy for B {}
 
 impl Counter for A {
     fn value(&self) -> i32 { self.x }

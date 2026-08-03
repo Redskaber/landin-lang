@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct S{x:i32,y:i32} fn main(){let s=S{x:1,y:2};match s{S{x,y}=>x+y}}
+impl Copy for S {}

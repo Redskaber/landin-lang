@@ -4,4 +4,5 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct S{x:i32} extern "C" { fn f(s:S)->i32; }
+impl Copy for S {}
 fn main(){ let _ = S{x: 0}; let _ = f(S{x: 0}); }

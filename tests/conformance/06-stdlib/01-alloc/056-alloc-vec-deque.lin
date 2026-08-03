@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 struct VecDeque{data:[i32;100],head:i32,tail:i32} fn main(){let d=VecDeque{data:[0;100],head:0,tail:0};}
+impl Copy for VecDeque {}

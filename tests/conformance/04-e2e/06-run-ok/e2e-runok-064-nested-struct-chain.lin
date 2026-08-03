@@ -5,11 +5,13 @@
 // SOURCE: Stage 14.42 — verifies nested struct construction + method resolution across types
 
 struct Inner { val: i32 }
+impl Copy for Inner {}
 impl Inner {
     fn new(v: i32) -> Inner { Inner { val: v } }
     fn double(self) -> Inner { Inner { val: self.val * 2 } }
 }
 struct Outer { inner: Inner }
+impl Copy for Outer {}
 impl Outer {
     fn new(v: i32) -> Outer { Outer { inner: Inner::new(v) } }
     fn double_inner(self) -> Outer { Outer { inner: self.inner.double() } }

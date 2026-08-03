@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.41 — static method call + array field access after mutation
 
 struct Vec { data: [i32; 10], len: i32 }
+impl Copy for Vec {}
 impl Vec {
     fn new() -> Vec { Vec { data: [0; 10], len: 0 } }
     fn len(&self) -> i32 { self.len }

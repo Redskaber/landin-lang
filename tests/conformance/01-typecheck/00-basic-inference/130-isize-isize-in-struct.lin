@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 struct S{x:isize} fn main(){let s=S{x:0};}
+impl Copy for S {}

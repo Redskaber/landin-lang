@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
 
 struct S{x:char} fn main(){let s=S{x:0};}
+impl Copy for S {}

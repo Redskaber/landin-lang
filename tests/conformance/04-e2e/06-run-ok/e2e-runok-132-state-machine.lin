@@ -7,6 +7,7 @@
 
 enum State { Idle, Active, Paused, Done }
 struct Machine { state: State, count: i32 }
+impl Copy for Machine {}
 impl Machine {
     fn new() -> Machine { Machine { state: State::Idle, count: 0 } }
     fn start(&mut self) {

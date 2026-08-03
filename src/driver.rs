@@ -1139,18 +1139,21 @@ pub fn compile(src: &str) -> CompileResult {
         // Per §1.0 原則 1 "长期 > 短期": the dataflow path is the correct
         // long-term design. Per §1.0 原則 3 "显式 > 隐式": the choice of
         // analysis is explicit in the method name (`_with_dataflow` suffix).
-        // Stage 15.71: Pass fn_sigs to BorrowChecker for proper region inference
-        // constraints (instead of simplified 'static fallback).
-        // Stage 15.99: `with_resolver_and_sigs` is available for sound Copy
-        // detection, but enabling it causes 199 test failures because many
-        // tests rely on the unsound behavior (structs without `impl Copy`
-        // being treated as Copy). This is a v0.3 migration item — the tests
-        // need to be updated to add `impl Copy` where structs are used as
-        // Copy. For now, `with_fn_sigs` is used to maintain compatibility.
+        // Stage 15.71/15.99/16.02/16.03: Sound Copy detection migration.
+        // The `with_resolver_and_sigs` path is implemented and the automated
+        // migration script (`tools/migration/add_impl_copy.py`) has been run,
+        // adding `impl Copy` to 393 test structs across 382 files.
+        // However, 69 conformance + 48 integration tests still fail because
+        // some tests have structs used as Copy that the script couldn't
+        // automatically migrate (e.g., structs in Rust test files, not .lin
+        // files; structs with complex patterns).
         //
-        // Per §1.0 原則 9 "正确 > 妥协": the sound path is implemented and
-        // ready (`with_resolver_and_sigs`), but the test suite migration is
-        // deferred to v0.3 to avoid breaking 199 tests in the v0.2 release.
+        // The migration is partially complete. For v0.2 compatibility,
+        // `with_fn_sigs` is still used. The remaining 117 test failures
+        // need manual review (v0.3 work item).
+        //
+        // Per §1.0 原則 9 "正确 > 妥协": the sound path is ready, migration
+        // is partially complete, remaining failures need manual review.
         let mut bc: borrowck::BorrowChecker<'_> =
             borrowck::BorrowChecker::with_fn_sigs(&fn_sig_table.sigs);
         bc.check_mir_body_with_dataflow(&mir);

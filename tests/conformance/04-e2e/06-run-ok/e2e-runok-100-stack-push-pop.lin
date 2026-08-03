@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.60 — comprehensive Stack data structure with &mut self methods
 
 struct Stack { data: [i32; 5], top: i32 }
+impl Copy for Stack {}
 impl Stack {
     fn new() -> Stack { Stack { data: [0; 5], top: 0 } }
     fn push(&mut self, val: i32) {

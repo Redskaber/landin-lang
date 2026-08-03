@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.6 conformance expansion
 
 struct Node { val: i32, next: i32 } fn main() { let n = Node { val: 1, next: -1 }; }
+impl Copy for Node {}

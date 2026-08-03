@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.53 — struct return for error handling pattern
 
 struct Result { val: i32, ok: i32 }
+impl Copy for Result {}
 fn divide(a: i32, b: i32) -> Result {
     if b == 0 {
         Result { val: 0, ok: 0 }

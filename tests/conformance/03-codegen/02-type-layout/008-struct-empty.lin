@@ -4,4 +4,5 @@
 // SOURCE: Stage 10.3 conformance expansion
 
 struct S;
+impl Copy for S {}
 fn main(){ let _ = S; }

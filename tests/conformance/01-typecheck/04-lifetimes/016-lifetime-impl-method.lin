@@ -5,4 +5,5 @@
 // SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — compiler does not fully support this feature)
 
 struct S { x: i32 } impl S { fn get(&self) -> &i32 { &self.x } }
+impl Copy for S {}
 fn main(){ let _ = S{x: 0}; }

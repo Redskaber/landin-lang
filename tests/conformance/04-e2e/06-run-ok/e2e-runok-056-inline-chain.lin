@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.40 — verifies that V::new(1, 2).add(V::new(3, 4)).get() works inline
 
 struct V { x: i32, y: i32 }
+impl Copy for V {}
 impl V {
     fn new(x: i32, y: i32) -> V { V { x, y } }
     fn add(self, o: V) -> V { V { x: self.x + o.x, y: self.y + o.y } }

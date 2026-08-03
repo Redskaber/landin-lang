@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.54 — mixed &mut self / self / &self methods + reset pattern
 
 struct Counter { val: i32 }
+impl Copy for Counter {}
 impl Counter {
     fn new() -> Counter { Counter { val: 0 } }
     fn add(&mut self, n: i32) -> &mut Counter { self.val = self.val + n; self }

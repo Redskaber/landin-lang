@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 struct Node{val:i32,next:i32} fn main(){let n=Node{val:1,next:-1};}
+impl Copy for Node {}

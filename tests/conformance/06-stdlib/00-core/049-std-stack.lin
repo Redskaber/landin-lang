@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 struct Stack{data:[i32;10],top:i32} fn main()->Stack{Stack{data:[0;10],top:0}}
+impl Copy for Stack {}

@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.50 — struct field with tuple destructure `let Wrapper { data: (a, b), label } = w`
 
 struct Wrapper { data: (i32, i32), label: i32 }
+impl Copy for Wrapper {}
 fn main() -> i32 {
     let w = Wrapper { data: (10, 20), label: 99 };
     let Wrapper { data: (a, b), label } = w;

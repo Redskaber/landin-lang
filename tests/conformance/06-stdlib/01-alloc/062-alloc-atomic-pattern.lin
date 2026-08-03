@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 struct AtomicI32{val:i32} fn main(){let a=AtomicI32{val:0};}
+impl Copy for AtomicI32 {}

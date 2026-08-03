@@ -6,7 +6,9 @@
 // field name (ambiguous), causing u.y to read field 0 (x) instead of field 1 (y)
 
 struct Vec2 { x: i32, y: i32 }
+impl Copy for Vec2 {}
 struct Point2 { x: i32, y: i32 }
+impl Copy for Point2 {}
 fn origin() -> Vec2 {
     Vec2 { x: 0, y: 0 }
 }

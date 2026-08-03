@@ -5,4 +5,5 @@
 // SOURCE: Stage 10.2 conformance expansion (Stage 0 limitation)
 
 struct S { x: i32 } impl S { fn get(&self) -> i32 { self.x } fn set(&mut self, v: i32) { self.x = v; } }
+impl Copy for S {}
 fn main(){ 0 }

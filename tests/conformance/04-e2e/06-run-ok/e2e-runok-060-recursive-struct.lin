@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.42 — verifies struct return + method chain in recursive context
 
 struct Acc { sum: i32 }
+impl Copy for Acc {}
 impl Acc {
     fn new() -> Acc { Acc { sum: 0 } }
     fn add(self, v: i32) -> Acc { Acc { sum: self.sum + v } }

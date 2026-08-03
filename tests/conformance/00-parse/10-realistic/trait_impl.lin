@@ -2,6 +2,7 @@
 //! category: realistic
 //! description: trait impl with self method and struct literal
 struct Point { x: i32, y: i32 }
+impl Copy for Point {}
 
 impl Point {
     fn new(x: i32, y: i32) -> Self {

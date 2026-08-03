@@ -8,6 +8,7 @@ struct Bank {
     accounts: [i32; 5],
     count: i32,
 }
+impl Copy for Bank {}
 impl Bank {
     fn new() -> Bank { Bank { accounts: [0; 5], count: 0 } }
     fn open(&mut self, initial: i32) -> i32 {

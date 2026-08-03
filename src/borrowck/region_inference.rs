@@ -422,6 +422,10 @@ pub(crate) enum RegionInferenceError {
         universal_region: RegionVid,
         /// The points that caused the escape (in escaping but not in universal).
         escape_points: Vec<PointIndex>,
+        /// Stage 16.04: The span of the first escape point's constraint cause.
+        /// Used for accurate error reporting (was: Span::DUMMY in borrowck/mod.rs).
+        /// If no constraint cause is available, falls back to Span::DUMMY.
+        span: crate::session::Span,
     },
     /// A type test failed: `ty` does not outlive `universal_region` (§4.6.4).
     ///
@@ -553,10 +557,24 @@ impl RegionInferenceContext {
                     .copied()
                     .collect();
                 if !escape_points.is_empty() {
+                    // Stage 16.04: Find the span from the first escape point.
+                    // Walk constraints to find one matching the escaping region.
+                    let escape_span = self
+                        .constraints
+                        .iter()
+                        .find(|c| c.sup == RegionVid(idx as u32) || c.sub == RegionVid(idx as u32))
+                        .map(|c| match &c.cause {
+                            ConstraintCause::FnSignature { span } => *span,
+                            ConstraintCause::ImpliedBound { span } => *span,
+                            ConstraintCause::Borrow { span, .. } => *span,
+                            ConstraintCause::TypeTest { span } => *span,
+                        })
+                        .unwrap_or(crate::session::Span::DUMMY);
                     errors.push(RegionInferenceError::RegionEscapesUniversal {
                         escaping_region: RegionVid(idx as u32),
                         universal_region: *ur_vid,
                         escape_points,
+                        span: escape_span,
                     });
                 }
             }
@@ -1396,6 +1414,7 @@ fn test_infer_regions_universal_escape_detected() {
             escaping_region,
             universal_region,
             escape_points,
+            span: _,
         } => {
             assert_eq!(*escaping_region, vid_a);
             assert_eq!(*universal_region, RegionVid(0)); // 'static

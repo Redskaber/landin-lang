@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 struct Arena{data:[i32;100],pos:i32} fn main(){let a=Arena{data:[0;100],pos:0};}
+impl Copy for Arena {}

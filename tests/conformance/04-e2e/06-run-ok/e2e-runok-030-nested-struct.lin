@@ -5,7 +5,9 @@
 // SOURCE: Stage 14.22 — nested struct field type resolution fix
 
 struct Point { x: i32, y: i32 }
+impl Copy for Point {}
 struct Rect { tl: Point, br: Point }
+impl Copy for Rect {}
 fn main() -> i32 {
     let r = Rect { tl: Point { x: 0, y: 0 }, br: Point { x: 10, y: 20 } };
     println!("tl.x={}, br.y={}", r.tl.x, r.br.y);

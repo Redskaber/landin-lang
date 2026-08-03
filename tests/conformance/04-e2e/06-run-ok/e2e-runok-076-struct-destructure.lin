@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.48 — struct destructure `let Point { x, y } = p` now works
 
 struct Point { x: i32, y: i32 }
+impl Copy for Point {}
 fn main() -> i32 {
     let p = Point { x: 10, y: 20 };
     let Point { x, y } = p;

@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.41 — resolver + MIR lower fixes for Type::method paths
 
 struct Counter { val: i32 }
+impl Copy for Counter {}
 impl Counter {
     fn new(start: i32) -> Counter { Counter { val: start + 100 } }
 }

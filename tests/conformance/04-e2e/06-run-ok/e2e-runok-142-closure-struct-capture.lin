@@ -11,6 +11,7 @@
 //         || p.y returned garbage (silent truncation to first 4 bytes)
 
 struct Point { x: i32, y: i32 }
+impl Copy for Point {}
 fn main() -> i32 {
     let p = Point { x: 10, y: 20 };
     let f = || p.x;

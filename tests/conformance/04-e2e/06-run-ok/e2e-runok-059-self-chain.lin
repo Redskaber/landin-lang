@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.42 — method chain resolution for MethodCall receivers + auto-deref
 
 struct Counter { val: i32 }
+impl Copy for Counter {}
 impl Counter {
     fn new() -> Counter { Counter { val: 0 } }
     fn inc(self) -> Counter { Counter { val: self.val + 1 } }

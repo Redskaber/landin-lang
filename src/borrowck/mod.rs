@@ -233,6 +233,7 @@ impl<'a> BorrowChecker<'a> {
                     crate::borrowck::region_inference::RegionInferenceError::RegionEscapesUniversal {
                         escaping_region,
                         universal_region,
+                        span,
                         ..
                     } => {
                         (
@@ -243,7 +244,9 @@ impl<'a> BorrowChecker<'a> {
                                 crate::mir::ty::region_vid_to_string(*escaping_region),
                                 crate::mir::ty::region_vid_to_string(*universal_region),
                             ),
-                            Span::DUMMY, // TODO: track span from constraint cause
+                            // Stage 16.04: use span from constraint cause
+                            // (was: Span::DUMMY, producing "1:1").
+                            *span,
                         )
                     }
                     crate::borrowck::region_inference::RegionInferenceError::TypeTestFailed {

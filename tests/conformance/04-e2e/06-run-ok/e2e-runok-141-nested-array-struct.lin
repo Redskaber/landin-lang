@@ -8,6 +8,7 @@
 struct Grid {
     cells: [[i32; 5]; 5],
 }
+impl Copy for Grid {}
 impl Grid {
     fn new() -> Grid { Grid { cells: [[0; 5]; 5] } }
     fn set(&mut self, r: i32, c: i32, v: i32) { self.cells[r][c] = v; }

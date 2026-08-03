@@ -5,4 +5,5 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct S{x:i32} impl S{fn set(&mut self,v:i32){self.x=v;}}
+impl Copy for S {}
 fn main(){ let _ = S{x: 0}; }

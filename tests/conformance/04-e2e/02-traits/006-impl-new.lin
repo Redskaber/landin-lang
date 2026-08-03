@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.4 conformance expansion (Stage 0 — compiles but runtime behavior may differ)
 
 struct S { x: i32 } impl S { fn new(x: i32) -> S { S { x } } } fn main() { let s = S::new(42); }
+impl Copy for S {}

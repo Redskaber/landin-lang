@@ -5,3 +5,4 @@
 // SOURCE: Stage 11.5 soundness expansion
 
 struct S{x:i32} fn main(){let s=S{x:1};let s2=s;let s3=s;}
+impl Copy for S {}

@@ -4,4 +4,5 @@
 // SOURCE: Stage 10.4 conformance expansion
 
 struct Point { x: i32, y: i32 } fn distance(p1: Point, p2: Point) -> i32 { let dx = p1.x - p2.x; let dy = p1.y - p2.y; dx * dx + dy * dy }
+impl Copy for Point {}
 fn main(){ let _ = Point{x: 0,y: 0}; let _ = distance(Point{x: 0,y: 0},Point{x: 0,y: 0}); }

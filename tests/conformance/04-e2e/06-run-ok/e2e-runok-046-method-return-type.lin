@@ -6,6 +6,7 @@
 // SOURCE: Stage 14.29 — method return type propagation with annotation
 
 struct Calc { val: i32 }
+impl Copy for Calc {}
 impl Calc {
     fn new(v: i32) -> Calc { Calc { val: v } }
     fn add(self, n: i32) -> Calc { Calc { val: self.val + n } }

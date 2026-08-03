@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct A{x:i32} struct B{a:A} fn main(){let b=B{a:A{x:1}};let _=b.a.x;}
+impl Copy for A {}

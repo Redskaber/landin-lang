@@ -5,8 +5,11 @@
 // SOURCE: Stage 14.43 — recursive adt_layouts registration (was 1-level only) + nested Field projection
 
 struct L3 { val: i32 }
+impl Copy for L3 {}
 struct L2 { inner: L3 }
+impl Copy for L2 {}
 struct L1 { inner: L2 }
+impl Copy for L1 {}
 impl L1 {
     fn new(v: i32) -> L1 { L1 { inner: L2 { inner: L3 { val: v } } } }
     fn set(&mut self, v: i32) {

@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.8 batch expansion
 
 struct Config{w:i32,h:i32} fn main()->Config{Config{w:800,h:600}}
+impl Copy for Config {}

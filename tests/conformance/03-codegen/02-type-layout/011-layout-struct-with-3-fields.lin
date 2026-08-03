@@ -4,4 +4,5 @@
 // SOURCE: Stage 11.3 codegen expansion
 
 struct S{x:i32,y:i32,z:i32}
+impl Copy for S {}
 fn main(){ let _ = S{x: 0,y: 0,z: 0}; }

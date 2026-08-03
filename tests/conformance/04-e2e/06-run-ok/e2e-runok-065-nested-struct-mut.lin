@@ -5,7 +5,9 @@
 // SOURCE: Stage 14.43 — nested Field projection codegen + adt_layouts recursive registration
 
 struct Inner { val: i32 }
+impl Copy for Inner {}
 struct Outer { inner: Inner }
+impl Copy for Outer {}
 impl Outer {
     fn new(v: i32) -> Outer { Outer { inner: Inner { val: v } } }
     fn mutate_inner(&mut self, v: i32) {

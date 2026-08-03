@@ -6,6 +6,7 @@
 // can be matched and fields accessed
 
 struct Point { x: i32, y: i32 }
+impl Copy for Point {}
 impl Point {
     fn sum(&self) -> i32 { self.x + self.y }
 }

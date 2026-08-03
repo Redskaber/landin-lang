@@ -8,6 +8,7 @@ struct Stack {
     data: [i32; 10],
     top: i32,
 }
+impl Copy for Stack {}
 impl Stack {
     fn new() -> Stack {
         Stack { data: [0; 10], top: 0 }

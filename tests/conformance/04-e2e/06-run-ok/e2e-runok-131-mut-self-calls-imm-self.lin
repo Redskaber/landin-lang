@@ -6,6 +6,7 @@
 // &mut self methods to call &self methods (check_balance) then &mut self methods (withdraw).
 
 struct Account { balance: i32 }
+impl Copy for Account {}
 impl Account {
     fn new() -> Account { Account { balance: 0 } }
     fn deposit(&mut self, amount: i32) { self.balance = self.balance + amount; }

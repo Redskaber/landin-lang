@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.226.0 (v0.2 FINAL + v0.3 in progress — TODO cleanup, 2 remaining)
+**Version**: v0.226.3 (v0.2 FINAL + v0.3 in progress — region error span tracking, 1 TODO remaining)
 **Date**: 2026-08-03
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-03 (v0.226.0, Stage 16.01 — TODO cleanup)
+**Last updated**: 2026-08-03 (v0.226.3, Stage 16.04 — region error span tracking)

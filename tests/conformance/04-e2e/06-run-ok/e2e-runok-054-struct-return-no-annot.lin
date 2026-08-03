@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.37 — Call dest type writeback + Assign type propagation
 
 struct V { x: i32, y: i32 }
+impl Copy for V {}
 impl V {
     fn new(x: i32, y: i32) -> V { V { x, y } }
     fn add(self, o: V) -> V { V { x: self.x + o.x, y: self.y + o.y } }

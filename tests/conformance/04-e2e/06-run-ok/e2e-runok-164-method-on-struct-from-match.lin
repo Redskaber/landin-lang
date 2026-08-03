@@ -6,6 +6,7 @@
 // SOURCE: Stage 14.98 — Bug Z2 fix (Match arm init type resolution)
 
 struct N { v: i32 }
+impl Copy for N {}
 impl N { fn base(&self) -> i32 { self.v } }
 fn main() {
     let x = 1;

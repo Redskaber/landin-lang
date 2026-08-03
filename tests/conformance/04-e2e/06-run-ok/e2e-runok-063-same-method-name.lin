@@ -5,11 +5,13 @@
 // SOURCE: Stage 14.42 — impl methods no longer registered in top-level value namespace (fixes collision)
 
 struct A { val: i32 }
+impl Copy for A {}
 impl A {
     fn new(v: i32) -> A { A { val: v } }
     fn get(self) -> i32 { self.val }
 }
 struct B { val: i32 }
+impl Copy for B {}
 impl B {
     fn new(v: i32) -> B { B { val: v } }
     fn get(self) -> i32 { self.val }

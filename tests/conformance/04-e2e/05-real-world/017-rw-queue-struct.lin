@@ -4,4 +4,5 @@
 // SOURCE: Stage 11.4 e2e expansion
 
 struct Queue{data:[i32;10],head:i32,tail:i32} fn enq(q:&mut Queue,v:i32){q.data[q.tail as usize]=v;q.tail+=1;} fn deq(q:&mut Queue)->i32{let v=q.data[q.head as usize];q.head+=1;v}
+impl Copy for Queue {}
 fn main(){ let mut _r0 = Queue{data:[0;10],head:0,tail:0}; let mut _r1 = Queue{data:[0;10],head:0,tail:0}; let _ = Queue{data:[0;10],head:0,tail:0}; enq(&mut _r0,0); let _ = deq(&mut _r1); }

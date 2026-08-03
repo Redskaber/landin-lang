@@ -4,3 +4,4 @@
 // SOURCE: Stage 11.6+11.7 expansion
 
 struct HashSet{map:i32} fn main(){let s=HashSet{map:0};}
+impl Copy for HashSet {}

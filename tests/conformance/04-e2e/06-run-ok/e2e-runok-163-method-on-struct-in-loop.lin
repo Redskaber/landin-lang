@@ -6,6 +6,7 @@
 // SOURCE: Stage 14.98 — Bug Z1/Z2/Z4 fix (search_expr_for_local_init recursion)
 
 struct N { v: i32 }
+impl Copy for N {}
 impl N { fn base(&self) -> i32 { self.v } }
 fn main() {
     let mut sum = 0;

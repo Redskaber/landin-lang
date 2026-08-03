@@ -4,3 +4,4 @@
 // SOURCE: Stage 10.5 conformance expansion
 
 struct S { x: i32 } fn main() { let s = S { x: 1 }; }
+impl Copy for S {}

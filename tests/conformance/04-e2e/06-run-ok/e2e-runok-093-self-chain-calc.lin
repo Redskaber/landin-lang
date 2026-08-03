@@ -5,6 +5,7 @@
 // SOURCE: Stage 14.55 — comprehensive self-chain calculator (add+add+mul)
 
 struct Calc { result: i32 }
+impl Copy for Calc {}
 impl Calc {
     fn new() -> Calc { Calc { result: 0 } }
     fn add(self, n: i32) -> Calc { Calc { result: self.result + n } }

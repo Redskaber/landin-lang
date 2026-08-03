@@ -4,4 +4,5 @@
 // SOURCE: Stage 10.3 conformance expansion
 
 struct Inner { x: i32 } struct Outer { inner: Inner }
+impl Copy for Inner {}
 fn main(){ let _ = Inner{x: 0}; }
