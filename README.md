@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.214.0 (v0.2 Phase 2 — error system cleanup COMPLETE: 10 stages, all error categories fixed)
+**Version**: v0.215.0 (v0.2 Phase 3 — Task 12 Lifetime elision STARTED: rule 2 implemented)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.214.0, Stage 15.89 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.215.0, Stage 15.90 — `impl Drop` + RAII COMPLETE)

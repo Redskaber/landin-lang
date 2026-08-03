@@ -23717,3 +23717,91 @@ Stage Summary:
 - Error system cleanup is COMPLETE. Ready for user-facing work.
 - Recommended next: Start Task 12 (Lifetime elision) — the next major
   v0.2 task (2-3 weeks, P1, ready now).
+
+---
+Task ID: stage15.90-lifetime-elision-rule-2
+Agent: Super Z (main)
+Task: Stage 15.90 — Lifetime elision rule 2 (Task 12 START). v0.214.0 → v0.215.0.
+
+Work Log:
+- Baseline: v0.214.0 / 236 lib + 2144 integration + 5216 conformance
+
+### 1. Investigation
+
+Reviewed the v0.2 gate review (Stage 15.69) and v0.2-preparation.md to
+identify the next task. Task 12 (Lifetime elision) is the last remaining
+P1 task for v0.2 release. The error system cleanup (Stages 15.80-15.89)
+is complete, so Task 12 is the logical next step.
+
+Investigated the current state:
+- Stage 15.49: Each reference type gets a fresh RegionVid (elision rule 1)
+- Stage 15.71: Region inference collects constraints using fn_sigs
+- Missing: Elision rule 2 (output lifetime = input lifetime)
+- Missing: Elision rule 3 (self lifetime for output)
+- Missing: Explicit lifetime name tracking (same name → same vid)
+- Missing: Region inference error reporting (currently no-op)
+
+### 2. Implemented elision rule 2
+
+In src/mir/lower/mod.rs, modified lower_hir_body_to_mir_full to:
+1. Lower param types FIRST (collecting their region vids)
+2. Lower the return type AFTER (so elision rule 2 can apply)
+3. If there's exactly one input lifetime, replace all output lifetimes
+   with that vid
+
+Added 2 new private helpers:
+- collect_region_vids(ty, vids) — recursively collects RegionVids from
+  Ref/RawPtr/Array/Slice/Tuple/FnPtr types
+- apply_elision_rule_2(return_ty, input_vids) — if input_vids has exactly
+  one entry, replaces all region vids in return_ty with that vid
+
+Per §1.0 原則 3 "显式 > 隐式": elision rules are explicitly applied.
+Per §23: collect_region_vids and apply_elision_rule_2 follow <verb>_<noun>
+pattern.
+
+### 3. Param type reuse
+
+Param types are lowered once and stored in lowered_param_types: Vec<Option<Ty>>.
+The param local allocation loop reuses these types instead of re-lowering,
+ensuring the region vids match what was collected for elision. This avoids
+the double-lowering problem where param vids would differ between the
+elision collection pass and the local allocation pass.
+
+### 4. New unit tests (5 tests)
+
+Added to src/mir/lower/mod.rs::stage15_90_tests:
+- collect_region_vids_basic: collects vid from &i32 with Region::Var(5)
+- collect_region_vids_nested: collects vids from tuple of refs
+- apply_elision_rule_2_single_input: replaces output vid with input vid
+- apply_elision_rule_2_multiple_inputs: does NOT replace (multiple inputs)
+- apply_elision_rule_2_no_inputs: does NOT replace (no inputs)
+
+### 5. Documentation
+
+- docs/develop/v0/stage-15/stage-15.90-lifetime-elision-rule-2.md
+- docs/tests/v0/stage15/stage-15.90-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 241/241 PASS (was 236, +5 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.214.0 → v0.215.0
+
+Stage Summary:
+- Stage 15.90 PASSED — Lifetime elision rule 2 (Task 12 START)
+- 7601 tests passing (241 lib + 2144 integration + 5216 conformance), 0 failures
+- 5 new unit tests for collect_region_vids + apply_elision_rule_2
+- 0 conformance test changes
+- v0.215.0: minor bump (Phase 3 — Task 12 Lifetime elision rule 2)
+- First stage of Task 12 (Lifetime elision) — the last remaining P1 task for v0.2
+- Implements RFC 141 elision rule 2: output lifetime = input lifetime
+  when there's exactly one input lifetime
+- Next steps for Task 12:
+  1. Rule 3 (self): self lifetime for output (requires tracking which param is self)
+  2. Explicit lifetime tracking: same name → same vid (requires HIR lifetime name → vid mapping)
+  3. Region inference activation: use correct region vids for actual lifetime checking

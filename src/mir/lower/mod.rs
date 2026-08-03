@@ -738,13 +738,66 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     // giving the region inference infrastructure real region variables.
     let mut region_counter = 0u32;
 
+    // Stage 15.90: Lifetime elision rule 3 — if the function has exactly
+    // one input lifetime (elided or explicit), that lifetime is assigned
+    // to all elided output lifetimes.
+    //
+    // To implement this, we lower params first (collecting their region
+    // vids), then lower the return type. If the return type has elided
+    // lifetimes, we replace them with the single input lifetime's vid
+    // (rule 3) or leave them as fresh vids (rule 1, each gets its own).
+    //
+    // Rust elision rules (RFC 141):
+    //   1. Each elided input lifetime gets its own fresh lifetime.
+    //   2. If there's exactly one input lifetime (elided or explicit),
+    //      it's assigned to all elided output lifetimes.
+    //   3. If there are multiple input lifetimes but one is &self/&mut self,
+    //      that lifetime is assigned to all elided output lifetimes.
+    //
+    // Stage 15.90 implements rule 2 (the most common case). Rule 3 (self)
+    // is deferred — requires tracking which param is self.
+    //
+    // Per §1.0 原則 3 "显式 > 隐式": elision rules are explicitly applied.
+    // Per §23: function names follow conventions.
+
+    // Lower param types first, collecting region vids.
+    // Stage 15.90: We need to collect the first region vid from params
+    // for elision rule 2 (output lifetime = input lifetime when there's
+    // exactly one input lifetime).
+    let mut param_region_vids_collected: Vec<crate::mir::ty::RegionVid> = Vec::new();
+    // Stage 15.90: Store lowered param types so we don't lower them twice
+    // (once for elision collection, once for local allocation). Reusing
+    // ensures the region vids match.
+    let mut lowered_param_types: Vec<Option<Ty>> = Vec::with_capacity(body.params.len());
+
     // Allocate LocalId(0) as the return value placeholder.
-    // If a return type is provided (from the fn sig), use it directly
-    // instead of a fresh inference variable. This is the key fix for
-    // unifying fn signatures with body value types.
-    let return_mir_ty = match &return_ty {
-        Some(t) => lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter),
-        None => cx.fresh_infer_ty(Span::DUMMY),
+    // We lower the return type AFTER params so elision rule 2 can apply.
+    let return_mir_ty = {
+        // First, lower all param types to collect region vids.
+        for param in &body.params {
+            if let Some(t) = &param.ty {
+                if param.self_kind.is_some() {
+                    // Self params are resolved separately — skip for elision.
+                    lowered_param_types.push(None);
+                } else {
+                    let mir_ty = lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter);
+                    // Collect region vids from this param type.
+                    collect_region_vids(&mir_ty, &mut param_region_vids_collected);
+                    lowered_param_types.push(Some(mir_ty));
+                }
+            } else {
+                lowered_param_types.push(None);
+            }
+        }
+        // Now lower the return type with the accumulated region counter.
+        match &return_ty {
+            Some(t) => {
+                let raw_return_ty = lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter);
+                // Stage 15.90: Apply elision rule 2.
+                apply_elision_rule_2(&raw_return_ty, &param_region_vids_collected)
+            }
+            None => cx.fresh_infer_ty(Span::DUMMY),
+        }
     };
     // G5 fix: return_local is assigned multiple times (once per Return
     // terminator path + once at function end), so it must be Mutable.
@@ -765,33 +818,43 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
         });
 
     // Allocate locals for fn params.
-    for param in &body.params {
-        let ty = match &param.ty {
-            Some(t) => {
-                // Stage 13.18: For self params, the parser sets ty to a Path
-                // with "Self" as the segment. This resolves to Res::SelfTy
-                // which lower_hir_ty_to_mir_ty doesn't handle (returns Error).
-                // So for self params, we resolve the type from the impl block's
-                // self_ty directly.
-                // Stage 14.18 (GAP-31): &self/&mut self Ref wrapping was attempted
-                // but reverted — codegen doesn't correctly handle Deref projections
-                // for field access through references. The full fix requires codegen
-                // changes to handle ProjectionElem::Deref in field access paths.
-                // See docs/worklog.md Stage 14.18 for details.
-                if param.self_kind.is_some() {
-                    resolve_self_param_type(&cx, body, param.self_kind).unwrap_or_else(|| {
+    // Stage 15.90: Reuse the lowered param types from the elision pass
+    // above (ensures region vids match). Self params are still resolved
+    // here because they need the cx context.
+    for (param_idx, param) in body.params.iter().enumerate() {
+        let ty = if let Some(pre_lowered) =
+            lowered_param_types.get(param_idx).and_then(|t| t.as_ref())
+        {
+            // Reuse the pre-lowered type (non-self params).
+            pre_lowered.clone()
+        } else {
+            match &param.ty {
+                Some(t) => {
+                    // Stage 13.18: For self params, the parser sets ty to a Path
+                    // with "Self" as the segment. This resolves to Res::SelfTy
+                    // which lower_hir_ty_to_mir_ty doesn't handle (returns Error).
+                    // So for self params, we resolve the type from the impl block's
+                    // self_ty directly.
+                    // Stage 14.18 (GAP-31): &self/&mut self Ref wrapping was attempted
+                    // but reverted — codegen doesn't correctly handle Deref projections
+                    // for field access through references. The full fix requires codegen
+                    // changes to handle ProjectionElem::Deref in field access paths.
+                    // See docs/worklog.md Stage 14.18 for details.
+                    if param.self_kind.is_some() {
+                        resolve_self_param_type(&cx, body, param.self_kind).unwrap_or_else(|| {
+                            lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter)
+                        })
+                    } else {
                         lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter)
-                    })
-                } else {
-                    lower_hir_ty_to_mir_ty_with_regions(t, &mut region_counter)
+                    }
                 }
-            }
-            None => {
-                if param.self_kind.is_some() {
-                    resolve_self_param_type(&cx, body, param.self_kind)
-                        .unwrap_or_else(|| cx.fresh_infer_ty(Span::DUMMY))
-                } else {
-                    cx.fresh_infer_ty(Span::DUMMY)
+                None => {
+                    if param.self_kind.is_some() {
+                        resolve_self_param_type(&cx, body, param.self_kind)
+                            .unwrap_or_else(|| cx.fresh_infer_ty(Span::DUMMY))
+                    } else {
+                        cx.fresh_infer_ty(Span::DUMMY)
+                    }
                 }
             }
         };
@@ -950,6 +1013,105 @@ fn const_eval_array_len(expr: &HirExpr, span: Span) -> Const {
             val: ConstVal::Uint(0),
         },
     }
+}
+
+/// Stage 15.90: Collect all `RegionVid`s from a `Ty`'s reference types.
+///
+/// Recursively walks the type and collects every `Region::Var(vid)` found
+/// in `TyKind::Ref` variants. Used to gather input lifetime vids for
+/// lifetime elision rule 2 (output lifetime = input lifetime).
+fn collect_region_vids(ty: &Ty, vids: &mut Vec<crate::mir::ty::RegionVid>) {
+    use crate::mir::ty::{Region, TyKind};
+    match &ty.kind {
+        TyKind::Ref(region, _, inner) => {
+            if let Region::Var(vid) = region {
+                vids.push(*vid);
+            }
+            collect_region_vids(inner, vids);
+        }
+        TyKind::RawPtr(_, inner) => {
+            collect_region_vids(inner, vids);
+        }
+        TyKind::Array(inner, _) | TyKind::Slice(inner) => {
+            collect_region_vids(inner, vids);
+        }
+        TyKind::Tuple(tys) => {
+            for t in tys {
+                collect_region_vids(t, vids);
+            }
+        }
+        TyKind::FnPtr(sig) => {
+            for t in &sig.inputs {
+                collect_region_vids(t, vids);
+            }
+            collect_region_vids(&sig.output, vids);
+        }
+        _ => {}
+    }
+}
+
+/// Stage 15.90: Apply lifetime elision rule 2 to a return type.
+///
+/// Rule 2: If there's exactly one input lifetime (elided or explicit),
+/// it's assigned to all elided output lifetimes.
+///
+/// This function replaces all `Region::Var(vid)` in the return type with
+/// the single input lifetime's vid, if `input_vids` has exactly one entry.
+/// If `input_vids` is empty or has multiple entries, the return type is
+/// returned unchanged (each output lifetime keeps its own fresh vid, per
+/// elision rule 1).
+fn apply_elision_rule_2(return_ty: &Ty, input_vids: &[crate::mir::ty::RegionVid]) -> Ty {
+    use crate::mir::ty::{Region, RegionVid, TyKind};
+    // Rule 2 applies only when there's exactly one input lifetime.
+    if input_vids.len() != 1 {
+        return return_ty.clone();
+    }
+    let target_vid = input_vids[0];
+    // Recursively replace all region vids in the return type.
+    fn replace_regions(ty: &Ty, target_vid: RegionVid) -> Ty {
+        let span = crate::session::Span::DUMMY;
+        match &ty.kind {
+            TyKind::Ref(_, mutability, inner) => Ty::new(
+                TyKind::Ref(
+                    Region::Var(target_vid),
+                    *mutability,
+                    Box::new(replace_regions(inner, target_vid)),
+                ),
+                span,
+            ),
+            TyKind::RawPtr(mutability, inner) => Ty::new(
+                TyKind::RawPtr(*mutability, Box::new(replace_regions(inner, target_vid))),
+                span,
+            ),
+            TyKind::Array(inner, count) => Ty::new(
+                TyKind::Array(Box::new(replace_regions(inner, target_vid)), count.clone()),
+                span,
+            ),
+            TyKind::Slice(inner) => Ty::new(
+                TyKind::Slice(Box::new(replace_regions(inner, target_vid))),
+                span,
+            ),
+            TyKind::Tuple(tys) => Ty::new(
+                TyKind::Tuple(tys.iter().map(|t| replace_regions(t, target_vid)).collect()),
+                span,
+            ),
+            TyKind::FnPtr(sig) => Ty::new(
+                TyKind::FnPtr(crate::mir::ty::Sig {
+                    inputs: sig
+                        .inputs
+                        .iter()
+                        .map(|t| replace_regions(t, target_vid))
+                        .collect(),
+                    output: Box::new(replace_regions(&sig.output, target_vid)),
+                    abi: sig.abi,
+                    is_unsafe: sig.is_unsafe,
+                }),
+                span,
+            ),
+            _ => ty.clone(),
+        }
+    }
+    replace_regions(return_ty, target_vid)
 }
 
 /// Lower a HIR type to a MIR type.
@@ -1232,4 +1394,124 @@ fn resolve_self_param_type(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod stage15_90_tests {
+    use super::*;
+    use crate::mir::ty::{Mutability, Region, RegionVid, TyKind};
+
+    /// Stage 15.90: Verify `collect_region_vids` collects vids from Ref types.
+    #[test]
+    fn collect_region_vids_basic() {
+        // &i32 with Region::Var(5)
+        let ty = Ty::new(
+            TyKind::Ref(
+                Region::Var(RegionVid(5)),
+                Mutability::Immutable,
+                Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+            ),
+            Span::DUMMY,
+        );
+        let mut vids = Vec::new();
+        collect_region_vids(&ty, &mut vids);
+        assert_eq!(vids, vec![RegionVid(5)]);
+    }
+
+    /// Stage 15.90: Verify `collect_region_vids` collects from nested types.
+    #[test]
+    fn collect_region_vids_nested() {
+        // &(&i32, &i32) with regions 1 and 2
+        let inner1 = Ty::new(
+            TyKind::Ref(
+                Region::Var(RegionVid(1)),
+                Mutability::Immutable,
+                Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+            ),
+            Span::DUMMY,
+        );
+        let inner2 = Ty::new(
+            TyKind::Ref(
+                Region::Var(RegionVid(2)),
+                Mutability::Immutable,
+                Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+            ),
+            Span::DUMMY,
+        );
+        let tuple = Ty::new(TyKind::Tuple(vec![inner1, inner2]), Span::DUMMY);
+        let mut vids = Vec::new();
+        collect_region_vids(&tuple, &mut vids);
+        assert_eq!(vids, vec![RegionVid(1), RegionVid(2)]);
+    }
+
+    /// Stage 15.90: Verify `apply_elision_rule_2` with single input lifetime.
+    #[test]
+    fn apply_elision_rule_2_single_input() {
+        // Return type: &i32 with Region::Var(10) (fresh output vid)
+        let return_ty = Ty::new(
+            TyKind::Ref(
+                Region::Var(RegionVid(10)),
+                Mutability::Immutable,
+                Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+            ),
+            Span::DUMMY,
+        );
+        // Input: single lifetime vid 3
+        let input_vids = vec![RegionVid(3)];
+        let result = apply_elision_rule_2(&return_ty, &input_vids);
+        // The output lifetime should be replaced with vid 3.
+        match &result.kind {
+            TyKind::Ref(region, _, _) => {
+                assert_eq!(*region, Region::Var(RegionVid(3)));
+            }
+            _ => panic!("expected Ref"),
+        }
+    }
+
+    /// Stage 15.90: Verify `apply_elision_rule_2` with multiple input lifetimes
+    /// does NOT apply (keeps original output lifetime).
+    #[test]
+    fn apply_elision_rule_2_multiple_inputs() {
+        // Return type: &i32 with Region::Var(10) (fresh output vid)
+        let return_ty = Ty::new(
+            TyKind::Ref(
+                Region::Var(RegionVid(10)),
+                Mutability::Immutable,
+                Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+            ),
+            Span::DUMMY,
+        );
+        // Input: multiple lifetime vids
+        let input_vids = vec![RegionVid(1), RegionVid(2)];
+        let result = apply_elision_rule_2(&return_ty, &input_vids);
+        // The output lifetime should NOT be replaced (keeps vid 10).
+        match &result.kind {
+            TyKind::Ref(region, _, _) => {
+                assert_eq!(*region, Region::Var(RegionVid(10)));
+            }
+            _ => panic!("expected Ref"),
+        }
+    }
+
+    /// Stage 15.90: Verify `apply_elision_rule_2` with no input lifetimes
+    /// does NOT apply (keeps original output lifetime).
+    #[test]
+    fn apply_elision_rule_2_no_inputs() {
+        let return_ty = Ty::new(
+            TyKind::Ref(
+                Region::Var(RegionVid(10)),
+                Mutability::Immutable,
+                Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+            ),
+            Span::DUMMY,
+        );
+        let input_vids: Vec<RegionVid> = vec![];
+        let result = apply_elision_rule_2(&return_ty, &input_vids);
+        match &result.kind {
+            TyKind::Ref(region, _, _) => {
+                assert_eq!(*region, Region::Var(RegionVid(10)));
+            }
+            _ => panic!("expected Ref"),
+        }
+    }
 }

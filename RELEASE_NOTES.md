@@ -1,9 +1,74 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.214.0
+**Current version**: v0.215.0
 **Date**: 2026-08-02
-**Test count**: 236 rust lib tests + 2144 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 241 rust lib tests + 2144 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.215.0 — Stage 15.90 (Lifetime Elision Rule 2 — Task 12 STARTED)
+
+### Overview
+
+Stage 15.90 implements **Lifetime Elision Rule 2** (RFC 141): if a
+function has exactly one input lifetime (elided or explicit), that
+lifetime is assigned to all elided output lifetimes.
+
+This is the first stage of **Task 12 (Lifetime elision)** — the last
+remaining P1 task for v0.2 release.
+
+**What changed**:
+- Modified `lower_hir_body_to_mir_full` in `src/mir/lower/mod.rs` to
+  lower param types BEFORE the return type, collecting their region vids.
+- Added `collect_region_vids` helper — recursively collects all
+  `RegionVid`s from a `Ty`'s reference types.
+- Added `apply_elision_rule_2` helper — if there's exactly one input
+  lifetime, replaces all output lifetimes with that vid.
+- Param types are now lowered once (reused for both elision collection
+  and local allocation), ensuring region vids match.
+
+**Rust Elision Rules (RFC 141)**:
+1. Each elided input lifetime gets its own fresh lifetime. ✅ (Stage 15.49)
+2. If there's exactly one input lifetime, it's assigned to all elided
+   output lifetimes. ✅ **(Stage 15.90 — this stage)**
+3. If there are multiple input lifetimes but one is `&self`/`&mut self`,
+   that lifetime is assigned to all elided output lifetimes. ⏳ (deferred)
+
+Per §1.0 原則 3 "显式 > 隐式": elision rules are explicitly applied.
+Per §23 (API Naming): `collect_region_vids` and `apply_elision_rule_2`
+follow `<verb>_<noun>` pattern.
+
+### Test impact
+
+- 5 new Rust unit tests in `src/mir/lower/mod.rs::stage15_90_tests`:
+  - `collect_region_vids_basic` — collects vid from `&i32`
+  - `collect_region_vids_nested` — collects vids from tuple of refs
+  - `apply_elision_rule_2_single_input` — replaces output vid with input vid
+  - `apply_elision_rule_2_multiple_inputs` — does NOT replace (multiple inputs)
+  - `apply_elision_rule_2_no_inputs` — does NOT replace (no inputs)
+- 0 conformance test changes
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 241/241 PASS (was 236, +5 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7601 tests passing, 0 failures, 0 warnings.**
+
+### Next steps for Task 12
+
+1. **Rule 3 (self)**: If there are multiple input lifetimes but one is
+   `&self`/`&mut self`, that lifetime is assigned to all elided output
+   lifetimes. Requires tracking which param is self.
+2. **Explicit lifetime tracking**: Currently, explicit lifetimes (`'a`)
+   each get a fresh vid — references with the same lifetime name should
+   share a vid. Requires HIR lifetime name → vid mapping.
+3. **Region inference activation**: The region inference infrastructure
+   (Stages 7.1-7.5, 15.48-15.52) needs to use the now-correct region
+   vids to actually check lifetime constraints.
 
 ---
 ## v0.214.0 — Stage 15.89 (Trait Error Span Accuracy Fix — Error System Cleanup COMPLETE)
