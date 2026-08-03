@@ -1,9 +1,69 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.203.0
+**Current version**: v0.204.0
 **Date**: 2026-08-02
-**Test count**: 224 rust lib tests + 2130 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 224 rust lib tests + 2132 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.204.0 — Stage 15.79 (Parser `mut name: Type` Mis-Parse Fix + Param Mutability)
+
+### Overview
+
+Stage 15.79 fixes two long-standing bugs discovered during the Stage 15.78
+conformance error test audit:
+
+**Bug 1 — Parser**: The `is_self_param` check in `parse_params`
+(`src/parser/generics.rs`) matched ANY parameter starting with `KwMut`,
+including regular params like `mut n: i32`. The parser would then consume
+`n` as if it were the `self` keyword, silently renaming the binding to
+"self" and producing "cannot find value `n` in this scope" errors for
+any reference to `n` in the function body.
+
+**Bug 2 — MIR lowerer**: Even after the parser correctly identified
+`mut n` as a regular param (with `BindingMode::ByValue(Mutable)`), the
+MIR lowerer in `src/mir/lower/mod.rs` ignored the pattern's mutability
+when allocating the local — always using `new_local` (Immutable). So
+`fn f(mut n: i32) { n = 0; }` would fail with `AssignImmutable` at the
+assignment site.
+
+**Both fixed**:
+
+1. Parser: `is_self_param` now requires `KwMut` to be followed by
+   `KwSelf_` (or `&` + `KwMut` + `KwSelf_`) before treating the
+   parameter as a self receiver.
+2. MIR lowerer: param locals now use `new_local_with_mut` with the
+   pattern's mutability (symmetric with `let mut x` lowering in
+   `control_flow.rs`).
+
+Per §1.0 原則 4 "报错 > 静默": the mis-parse was silently producing
+wrong AST instead of correctly recognizing the regular param.
+Per §1.0 原則 3 "显式 > 隐式": mutability is now explicitly propagated.
+Per §1.0 原則 6 "通用 > 特例": param lowering now uses the same code
+path as `let mut` lowering.
+
+### Test impact
+
+- 4 conformance tests flipped `compile_error → compile_ok`:
+  - `015-fib-count-digits.lin` (parser fix only)
+  - `016-fib-reverse-number.lin` (parser fix only)
+  - `011-fib-gcd-iterative.lin` (parser fix only — 2 mut params)
+  - `017-fib-collatz-steps.lin` (both fixes — parser + MIR lowerer
+    for `n = 3*n+1` assignment to mutable param)
+- 2 new Rust regression tests in
+  `tests/v0/stage0/plan/ast_structure_tests.rs`:
+  - `test_mut_param_not_self_regression` — `mut n: i32` is NOT self
+  - `test_ref_mut_param_not_self_regression` — `n: &mut i32` is NOT self
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 224/224 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2132/2132 PASS (was 2130, +2 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7572 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.203.0 — Stage 15.78 (Array Length Unify Fix + Error Test Audit)

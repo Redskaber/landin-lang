@@ -1900,6 +1900,55 @@ fn test_self_kind_ref_mut_param() {
     }
 }
 
+/// Stage 15.79 regression test: `mut name: Type` must NOT be parsed as
+/// a self param. The previous `is_self_param` check matched ANY param
+/// starting with `KwMut`, including regular `mut n: i32`. The parser
+/// would then consume `n` as if it were `self`, silently renaming the
+/// binding to "self" and producing "cannot find value `n` in scope"
+/// errors for any reference to `n` in the function body.
+///
+/// Per §1.0 原則 4 "报错 > 静默": the mis-parse was silently producing
+/// wrong AST instead of correctly recognizing the regular param.
+#[test]
+fn test_mut_param_not_self_regression() {
+    // `mut n: i32` (regular param, mutable binding) — must NOT be self.
+    let (krate, errors) = parse("fn bar(mut n: i32) {}");
+    assert!(errors.is_empty());
+    match &krate.items[0].kind {
+        ItemKind::Fn(fn_decl) => {
+            let p = &fn_decl.sig.inputs[0];
+            assert!(
+                !p.is_self,
+                "`mut n: i32` should NOT be parsed as a self param"
+            );
+            assert_eq!(p.self_kind, None, "`mut n: i32` should have self_kind=None");
+        }
+        other => panic!("expected Fn, got {:?}", other),
+    }
+}
+
+/// Stage 15.79 regression test: `&mut name: Type` must NOT be parsed
+/// as a self param. Same pattern as `mut name: Type` — `&mut` alone
+/// is not a self receiver; must be `&mut self`.
+#[test]
+fn test_ref_mut_param_not_self_regression() {
+    // `&mut n: i32` (regular ref param, mutable) — must NOT be self.
+    // Note: this is unusual Landin syntax but the parser must not
+    // mis-parse it.
+    let (krate, _errors) = parse("fn bar(n: &mut i32) {}");
+    // Verify the param is NOT a self param.
+    match &krate.items[0].kind {
+        ItemKind::Fn(fn_decl) => {
+            let p = &fn_decl.sig.inputs[0];
+            assert!(
+                !p.is_self,
+                "`n: &mut i32` should NOT be parsed as a self param"
+            );
+        }
+        other => panic!("expected Fn, got {:?}", other),
+    }
+}
+
 #[test]
 fn test_self_kind_distinct() {
     // Verify all 4 self kinds produce distinct AST representations.

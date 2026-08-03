@@ -22697,3 +22697,99 @@ Stage Summary:
 - Recommended Stage 15.79: Empty array `[]` length inference (set Const
   to Unevaluated for empty array literals so lenient fallback applies —
   unflips 2 container tests, unblocks Vec<T> stdlib pattern).
+
+---
+Task ID: stage15.79-parser-mut-param-fix
+Agent: Super Z (main)
+Task: Stage 15.79 — Parser `mut name: Type` mis-parse fix + param mutability propagation. v0.203.0 → v0.204.0.
+
+Work Log:
+- Baseline: v0.203.0 / 224 lib + 2130 integration + 5216 conformance
+
+### 1. Investigation (parser bug)
+
+During Stage 15.78 conformance error test audit, 4 fib e2e tests were
+identified as potentially fixable. Investigation revealed they were
+failing due to a parser bug:
+
+`fn count_digits(mut n:i32)` was being mis-parsed — the `is_self_param`
+check in src/parser/generics.rs:23 matched ANY param starting with
+KwMut, treating `mut n: i32` as if it were `mut self: i32`. The parser
+would consume `n` as the "self" keyword, rename the binding to "self"
+(Spur(9)), and all references to `n` in the body failed to resolve
+(Spur(4) ≠ Spur(9)).
+
+### 2. Parser fix
+
+In src/parser/generics.rs, the is_self_param check now requires KwMut
+to be followed by KwSelf_ (or & + KwMut + KwSelf_) before treating the
+parameter as a self receiver. Three arms:
+1. self (bare)
+2. mut self (KwMut followed by KwSelf_)
+3. &self OR &mut self (& + (KwSelf_ | (KwMut + KwSelf_)))
+
+This correctly rejects `mut n: i32` (KwMut + Ident, not KwSelf_) and
+`&mut n: i32` (KwMut + Ident, not KwSelf_).
+
+Per §1.0 原則 4 "报错 > 静默": the previous mis-parse was silently
+producing wrong AST.
+
+### 3. MIR lowerer fix (follow-up bug)
+
+After the parser fix, 3 of 4 fib tests compiled but `017-fib-collatz-steps`
+still failed with AssignImmutable at `n = 3*n+1`. Investigation showed
+the MIR lowerer was creating param locals with `new_local` (Immutable),
+ignoring the pattern's mutability.
+
+Fix in src/mir/lower/mod.rs: param locals now use `new_local_with_mut`
+with `pattern_bindings::pat_mutability(&param.pat)` — symmetric with
+the `let mut x` lowering in control_flow.rs:700.
+
+Per §1.0 原則 3 "显式 > 隐式": mutability is now explicitly propagated
+from pattern to local.
+Per §1.0 原則 6 "通用 > 特例": param lowering uses the same code path
+as `let mut` lowering.
+
+### 4. Conformance test flips (4 tests, compile_error → compile_ok)
+
+- 04-e2e/01-fib/015-fib-count-digits.lin (parser fix only)
+- 04-e2e/01-fib/016-fib-reverse-number.lin (parser fix only)
+- 04-e2e/01-fib/011-fib-gcd-iterative.lin (parser fix only, 2 mut params)
+- 04-e2e/01-fib/017-fib-collatz-steps.lin (both fixes — parser + MIR
+  lowerer for `n = 3*n+1` assignment)
+
+### 5. New regression tests (2 tests)
+
+Added to tests/v0/stage0/plan/ast_structure_tests.rs:
+- test_mut_param_not_self_regression: `fn bar(mut n: i32) {}` —
+  verifies is_self == false, self_kind == None
+- test_ref_mut_param_not_self_regression: `fn bar(n: &mut i32) {}` —
+  verifies is_self == false
+
+### 6. Documentation
+
+- docs/develop/v0/stage-15/stage-15.79-parser-mut-param-fix.md
+- docs/tests/v0/stage15/stage-15.79-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 224/224 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2132/2132 PASS (was 2130, +2 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.203.0 → v0.204.0
+
+Stage Summary:
+- Stage 15.79 PASSED — parser mut-param mis-parse fix + param mutability propagation
+- 7572 tests passing (224 lib + 2132 integration + 5216 conformance), 0 failures
+- 4 conformance tests correctly flipped (parser bug fix — fib e2e tests now work)
+- 2 new regression tests for the parser bug
+- v0.204.0: minor bump (Phase 2 — parser bug fix + MIR lowerer symmetry)
+- Audit update: 412 compile_error tests remain (was 416); 4 flipped to compile_ok
+- The mut-param parser bug was likely affecting many user programs that
+  used `fn f(mut x: T)` syntax — significant usability improvement.
+- Recommended Stage 15.80: Vec{T} shorthand parser support (1-2 hours,
+  unflips 1 conformance test) OR start Task 12 (Lifetime elision, 2-3 weeks).

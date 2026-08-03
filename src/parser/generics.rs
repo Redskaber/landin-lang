@@ -20,9 +20,29 @@ impl<'a> Parser<'a> {
         let mut params = Vec::new();
         while !matches!(self.peek(), TokenKind::RParen | TokenKind::Eof) {
             // self parameter: self, &self, &mut self, mut self, self: Type
-            let is_self_param = matches!(self.peek(), TokenKind::KwSelf_ | TokenKind::KwMut)
+            //
+            // Stage 15.79 (parser bug fix): the `is_self_param` check
+            // previously matched ANY parameter starting with `KwMut`,
+            // including regular params like `mut n: i32`. The parser
+            // would then consume `n` as if it were the `self` keyword,
+            // silently renaming the binding to "self" and producing
+            // "cannot find value `n` in this scope" errors for any
+            // reference to `n` in the function body.
+            //
+            // Fix: `mut` alone is NOT a self param — must be `mut self`.
+            // The check now verifies that `KwMut` is followed by `KwSelf_`
+            // before treating the parameter as a self receiver.
+            //
+            // Per §1.0 原則 4 "报错 > 静默": the previous behavior silently
+            // mis-parsed `mut name: Type` as `mut self: Type`, producing
+            // confusing downstream errors instead of correct AST.
+            let is_self_param = matches!(self.peek(), TokenKind::KwSelf_)
+                || (*self.peek() == TokenKind::KwMut
+                    && matches!(self.peek_at(1), TokenKind::KwSelf_))
                 || (*self.peek() == TokenKind::And
-                    && matches!(self.peek_at(1), TokenKind::KwSelf_ | TokenKind::KwMut));
+                    && (matches!(self.peek_at(1), TokenKind::KwSelf_)
+                        || (*self.peek_at(1) == TokenKind::KwMut
+                            && matches!(self.peek_at(2), TokenKind::KwSelf_))));
             if is_self_param {
                 let span = self.current_span();
                 // Track the receiver kind: by-value vs by-ref, and mutability.

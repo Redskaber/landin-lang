@@ -1,6 +1,6 @@
 // CATEGORY: e2e
 // DESCRIPTION: count digits
-// EXPECTED: compile_error
+// EXPECTED: compile_ok
 // ERROR_PATTERN: error
 // SOURCE: Stage 11.4 e2e expansion (Stage 0 limitation)
 

@@ -795,7 +795,19 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
                 }
             }
         };
-        let param_local = cx.new_local(param.pat.hir_id, ty, None);
+        // Stage 15.79 (parser bug fix follow-up): propagate the param
+        // pattern's mutability into the local. Previously this used the
+        // default `new_local` (Immutable), so `fn f(mut n: i32) { n = 0; }`
+        // would fail with AssignImmutable — the param was correctly
+        // parsed as `BindingMode::ByValue(Mutable)` but the local was
+        // always immutable. Symmetric with the `let mut x` lowering in
+        // control_flow.rs (which uses pat_mutability + new_local_with_mut).
+        //
+        // Per §1.0 原則 3 "显式 > 隐式": mutability is explicitly
+        // propagated from pattern to local, not silently dropped.
+        // Per §1.0 原則 6 "通用 > 特例": same code path as `let` bindings.
+        let mutability = pattern_bindings::pat_mutability(&param.pat);
+        let param_local = cx.new_local_with_mut(param.pat.hir_id, ty, None, mutability);
         // StorageLive for each parameter at function entry.
         cx.mir
             .block_mut(cx.current_block)
