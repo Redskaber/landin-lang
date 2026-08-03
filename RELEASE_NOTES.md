@@ -1,9 +1,79 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.213.0
+**Current version**: v0.214.0
 **Date**: 2026-08-02
-**Test count**: 236 rust lib tests + 2142 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 236 rust lib tests + 2144 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.214.0 — Stage 15.89 (Trait Error Span Accuracy Fix — Error System Cleanup COMPLETE)
+
+### Overview
+
+Stage 15.89 fixes the last `Span::DUMMY` error category: trait errors.
+Previously, trait coherence errors ("conflicting implementations") and
+incomplete impl errors ("missing method") both showed "1:1" (file start)
+because the `CoherenceError` and `IncompleteImpl` structs had no `span`
+field.
+
+**Fix**: Added `span: Span` field to `ImplInfo`, `CoherenceError`, and
+`IncompleteImpl`; populated from `HirImpl.span` during `collect`; used
+in `to_diagnostics` instead of `Span::DUMMY`.
+
+**Before** (`impl T for S {} impl T for S {}`):
+```
+error[E600]: conflicting implementations of trait `T` for type `S` (2 impl blocks)
+  --> /tmp/t.lin:1:1
+```
+
+**After**:
+```
+error[E600]: conflicting implementations of trait `T` for type `S` (2 impl blocks)
+  --> /tmp/t.lin:1:22
+  |
+1 | trait T {} struct S; impl T for S {} impl T for S {} fn main() {}
+  |                      ^^^^
+```
+
+### Error system cleanup COMPLETE (Stages 15.80-15.89)
+
+| Stage | Focus | Sites Fixed |
+|-------|-------|-------------|
+| 15.80 | Human-readable type names (`type_to_string`) | 6 `{:?}` + 2 `({:?})` |
+| 15.81 | Typeck terminator span accuracy | 7 `Span::DUMMY` + 1 `{:?}` |
+| 15.82 | Typeck statement/rvalue span accuracy | 9 `Span::DUMMY` + 5 `{:?}` |
+| 15.83 | Typeck aggregate span accuracy | 2 `Span::DUMMY` |
+| 15.84 | Borrowck Debug leaks (`region_vid_to_string`) | 3 `{:?}` |
+| 15.85 | Borrowck terminator span accuracy | 4 `Span::DUMMY` |
+| 15.86 | DRY refactor: unify `operand_span` | 1 duplicate |
+| 15.87 | Resolve error span accuracy | 1 `Span::DUMMY` |
+| 15.88 | MIR lowerer Debug leaks (`hir_expr_kind_to_string`) | 3 `{:?}` |
+| 15.89 | Trait error span accuracy | 2 `Span::DUMMY` (last category) |
+| **Total** | | **27 `Span::DUMMY` + 20 `{:?}` + 1 DRY** |
+
+**Result**: ALL user-facing error messages (typeck, borrowck, resolve,
+MIR lowerer, AND trait errors) now:
+- Use human-readable type/region/expression-kind names — no Debug leaks
+- Point to actual source locations (with snippet underlines) — no "1:1"
+
+The error system is now fully cleaned up. Ready for user-facing work.
+
+Per §1.0 原則 3 "显式 > 隐式" + §1.0 原則 4 "报错 > 静默".
+
+### Test impact
+
+- 2 new Rust integration tests (coherence + incomplete impl span accuracy)
+- 0 conformance test changes
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 236/236 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS (was 2142, +2 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7596 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.213.0 — Stage 15.88 (MIR Lowerer Debug Leak Fix + hir_expr_kind_to_string)

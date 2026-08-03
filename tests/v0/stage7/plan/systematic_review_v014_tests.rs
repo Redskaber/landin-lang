@@ -82,6 +82,7 @@ fn stage7_9_td018_user_trait_dyn_active() {
             self_ty_name: Some(ty),
             methods: vec![mn],
             is_unsafe: false,
+            span: Span::DUMMY,
         },
     );
     resolver.impl_by_trait_and_type.insert((tn, ty), DefId(101));

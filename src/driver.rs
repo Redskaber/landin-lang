@@ -332,8 +332,15 @@ impl CompileErrors {
             } else {
                 format!("{:?}", e)
             };
+            // Stage 15.89: use the trait error's span (was: Span::DUMMY,
+            // producing "1:1"). The span is stored in CoherenceError/
+            // IncompleteImpl, populated from HirImpl.span during collect().
+            let span = match e {
+                TraitError::Coherence(ce) => ce.span,
+                TraitError::Incomplete(inc) => inc.span,
+            };
             diags.push(
-                DiagnosticBuilder::error(&msg, crate::session::Span::DUMMY)
+                DiagnosticBuilder::error(&msg, span)
                     .with_code(crate::diagnostics::ErrorCode::Trait.to_string())
                     .build(),
             );

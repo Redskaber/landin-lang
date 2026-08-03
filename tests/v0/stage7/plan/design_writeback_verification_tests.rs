@@ -157,6 +157,7 @@ fn stage7_td018_user_defined_trait_resolved() {
             self_ty_name: Some(type_name),
             methods: vec![method_name],
             is_unsafe: false,
+            span: Span::DUMMY,
         },
     );
     resolver
@@ -228,6 +229,7 @@ fn stage7_td018_stdlib_and_user_traits_coexist() {
             self_ty_name: Some(type_name),
             methods: vec![method_name],
             is_unsafe: false,
+            span: Span::DUMMY,
         },
     );
     resolver

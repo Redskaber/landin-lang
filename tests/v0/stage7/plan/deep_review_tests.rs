@@ -133,6 +133,7 @@ fn stage7_deep_review_td018_user_trait_dyn_active() {
             self_ty_name: Some(type_name),
             methods: vec![method_name],
             is_unsafe: false,
+            span: Span::DUMMY,
         },
     );
     resolver
@@ -249,6 +250,7 @@ fn stage7_deep_review_design_alignment_dyn_trait() {
             self_ty_name: Some(type_name),
             methods: vec![],
             is_unsafe: false,
+            span: Span::DUMMY,
         },
     );
     resolver

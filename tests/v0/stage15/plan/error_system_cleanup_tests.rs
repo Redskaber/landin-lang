@@ -539,3 +539,77 @@ fn stage15_88_no_method_found_uses_human_readable_type_name() {
         method_err.message
     );
 }
+
+/// Stage 15.89: `impl T for S {} impl T for S {}` (conflicting impls)
+/// should produce a trait error whose span points to the first impl block
+/// (not `1:1` / file start).
+#[test]
+fn stage15_89_coherence_error_span_points_to_impl() {
+    let src = "trait T {} struct S; impl T for S {} impl T for S {} fn main() {}";
+    let result = compile(src);
+    assert!(
+        !result.errors.trait_errors.is_empty(),
+        "expected trait coherence error for conflicting impls"
+    );
+    let ce = &result.errors.trait_errors[0];
+    let formatted = ce.format_with_interner(&result.interner);
+    assert!(
+        formatted.contains("conflicting implementations"),
+        "expected 'conflicting implementations', got: {}",
+        formatted
+    );
+    // The span should NOT be Span::DUMMY.
+    use landin_compiler::traits::resolver::CoherenceError;
+    let span = match ce {
+        landin_compiler::driver::TraitError::Coherence(CoherenceError { span, .. }) => *span,
+        _ => panic!("expected Coherence error"),
+    };
+    assert_ne!(
+        span.lo, 0,
+        "span.lo should not be 0 (was Span::DUMMY before Stage 15.87); got {}",
+        span.lo
+    );
+    // The span should point into the first impl block (byte offset >= 21).
+    assert!(
+        span.lo >= 21,
+        "span.lo should point into the first impl block (>= 21); got {}",
+        span.lo
+    );
+}
+
+/// Stage 15.89: `impl T for S {}` where T requires method `f` should
+/// produce a trait error whose span points to the incomplete impl block
+/// (not `1:1` / file start).
+#[test]
+fn stage15_89_incomplete_impl_error_span_points_to_impl() {
+    let src = "trait T { fn f(&self); } struct S; impl T for S {} fn main() {}";
+    let result = compile(src);
+    assert!(
+        !result.errors.trait_errors.is_empty(),
+        "expected trait incomplete impl error"
+    );
+    let inc = &result.errors.trait_errors[0];
+    let formatted = inc.format_with_interner(&result.interner);
+    assert!(
+        formatted.contains("missing method"),
+        "expected 'missing method', got: {}",
+        formatted
+    );
+    // The span should NOT be Span::DUMMY.
+    use landin_compiler::traits::resolver::IncompleteImpl;
+    let span = match inc {
+        landin_compiler::driver::TraitError::Incomplete(IncompleteImpl { span, .. }) => *span,
+        _ => panic!("expected Incomplete error"),
+    };
+    assert_ne!(
+        span.lo, 0,
+        "span.lo should not be 0 (was Span::DUMMY before Stage 15.89); got {}",
+        span.lo
+    );
+    // The span should point into the impl block (byte offset >= 35).
+    assert!(
+        span.lo >= 35,
+        "span.lo should point into the impl block (>= 35); got {}",
+        span.lo
+    );
+}

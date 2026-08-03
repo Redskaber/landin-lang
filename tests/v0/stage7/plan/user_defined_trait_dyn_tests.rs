@@ -14,6 +14,7 @@ use landin_compiler::hir::DefId;
 use landin_compiler::mir::dyn_trait::{
     build_dyn_trait_fat_ptrs_from_resolver, build_dyn_trait_method_calls_from_resolver,
 };
+use landin_compiler::session::Span;
 use landin_compiler::traits::resolver::{ImplInfo, TraitInfo, TraitResolver};
 use landin_compiler::traits::vtable::{Vtable, VtableEntry};
 use lasso::{Rodeo, Spur};
@@ -60,6 +61,7 @@ fn make_resolver_with_user_trait(
             self_ty_name: Some(type_spur),
             methods: methods.clone(),
             is_unsafe: false,
+            span: Span::DUMMY,
         },
     );
     resolver
@@ -216,6 +218,7 @@ fn stage7_user_defined_trait_multiple_traits() {
             self_ty_name: Some(person_spur),
             methods: vec![method_spur],
             is_unsafe: false,
+            span: Span::DUMMY,
         },
     );
     resolver
@@ -312,6 +315,7 @@ fn stage7_user_defined_trait_multiple_types_same_trait() {
             self_ty_name: Some(robot_spur),
             methods: vec![hello_spur],
             is_unsafe: false,
+            span: Span::DUMMY,
         },
     );
     resolver

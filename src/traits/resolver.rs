@@ -44,6 +44,9 @@ pub struct ImplInfo {
     pub methods: Vec<Spur>,
     /// Whether this is an unsafe impl.
     pub is_unsafe: bool,
+    /// Stage 15.89: Source span of the impl block (from HirImpl.span).
+    /// Used to attach accurate spans to trait coherence/incomplete errors.
+    pub span: crate::session::Span,
 }
 
 #[derive(Debug, Default)]
@@ -83,6 +86,10 @@ pub struct CoherenceError {
     pub self_ty_name: Spur,
     /// The DefIds of all impl blocks for this (trait, type) pair.
     pub impl_def_ids: Vec<DefId>,
+    /// Stage 15.89: Source span of the first conflicting impl block.
+    /// Used to attach accurate spans to coherence error messages
+    /// (was: Span::DUMMY, producing "1:1").
+    pub span: crate::session::Span,
 }
 
 /// Stage 5.20: An incomplete impl — a `impl Trait for Type` block that
@@ -99,6 +106,10 @@ pub struct IncompleteImpl {
     /// Method names (interned symbols) declared in the trait but not
     /// implemented in the impl block.
     pub missing_methods: Vec<Spur>,
+    /// Stage 15.89: Source span of the incomplete impl block.
+    /// Used to attach accurate spans to incomplete impl error messages
+    /// (was: Span::DUMMY, producing "1:1").
+    pub span: crate::session::Span,
 }
 
 /// Stage 5.20: A comprehensive validation report for all trait impls.
@@ -277,6 +288,9 @@ impl TraitResolver {
                             self_ty_name,
                             methods: method_names,
                             is_unsafe: i.is_unsafe,
+                            // Stage 15.89: store the impl block's source span
+                            // for accurate trait error reporting.
+                            span: i.span,
                         };
 
                         // Stage 5.5: Build and store vtable if this is a trait impl.
@@ -784,27 +798,31 @@ impl TraitResolver {
         use std::collections::HashMap as StdHashMap;
 
         // Group impl DefIds by (trait_name, self_ty_name)
-        let mut groups: StdHashMap<(Spur, Spur), Vec<DefId>> = StdHashMap::new();
+        // Stage 15.89: also track the first impl's span for error reporting.
+        let mut groups: StdHashMap<(Spur, Spur), (Vec<DefId>, crate::session::Span)> =
+            StdHashMap::new();
         for impl_info in self.impls.values() {
             if let (Some(trait_name), Some(self_ty_name)) =
                 (impl_info.trait_name, impl_info.self_ty_name)
             {
-                groups
+                let entry = groups
                     .entry((trait_name, self_ty_name))
-                    .or_default()
-                    .push(impl_info.def_id);
+                    .or_insert_with(|| (Vec::new(), impl_info.span));
+                entry.0.push(impl_info.def_id);
+                // Keep the first impl's span (already set by or_insert_with).
             }
         }
 
         // Any group with >1 impl is a coherence error
         groups
             .into_iter()
-            .filter(|(_, def_ids)| def_ids.len() > 1)
+            .filter(|(_, (def_ids, _))| def_ids.len() > 1)
             .map(
-                |((trait_name, self_ty_name), impl_def_ids)| CoherenceError {
+                |((trait_name, self_ty_name), (impl_def_ids, span))| CoherenceError {
                     trait_name,
                     self_ty_name,
                     impl_def_ids,
+                    span,
                 },
             )
             .collect()
@@ -923,6 +941,9 @@ impl TraitResolver {
                         trait_name,
                         self_ty_name,
                         missing_methods: missing,
+                        // Stage 15.89: store the impl block's source span
+                        // for accurate error reporting.
+                        span: impl_info.span,
                     });
                 }
             }

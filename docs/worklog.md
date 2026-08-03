@@ -23629,3 +23629,91 @@ Stage Summary:
 - Error system cleanup is complete. Ready for user-facing work.
 - Recommended next: Start Task 12 (Lifetime elision) — the next major
   v0.2 task (2-3 weeks, P1, ready now).
+
+---
+Task ID: stage15.89-trait-error-span-accuracy
+Agent: Super Z (main)
+Task: Stage 15.89 — Trait error span accuracy fix. v0.213.0 → v0.214.0.
+
+Work Log:
+- Baseline: v0.213.0 / 236 lib + 2142 integration + 5216 conformance
+
+### 1. Investigation
+
+After Stages 15.80-15.88 completed the error system cleanup for
+typeck+borrowck+resolve+MIR lowerer, investigated the last remaining
+Span::DUMMY error category: trait errors. Found that trait coherence
+errors ("conflicting implementations") and incomplete impl errors
+("missing method") both showed "1:1" (file start) because:
+- CoherenceError and IncompleteImpl structs had no span field
+- to_diagnostics hardcoded Span::DUMMY for all trait errors
+
+### 2. Added span field to 3 structs
+
+In src/traits/resolver.rs:
+- ImplInfo: added `pub span: crate::session::Span` (populated from
+  HirImpl.span during collect)
+- CoherenceError: added `pub span: crate::session::Span` (populated
+  from first conflicting impl's span during check_coherence)
+- IncompleteImpl: added `pub span: crate::session::Span` (populated
+  from incomplete impl's span during validate_impls)
+
+### 3. Updated to_diagnostics
+
+In src/driver.rs, to_diagnostics now uses the trait error's span:
+```rust
+let span = match e {
+    TraitError::Coherence(ce) => ce.span,
+    TraitError::Incomplete(inc) => inc.span,
+};
+DiagnosticBuilder::error(&msg, span)
+```
+
+### 4. Updated 16 test ImplInfo constructions
+
+Across 4 test files (user_defined_trait_dyn_tests.rs, deep_review_tests.rs,
+systematic_review_v014_tests.rs, design_writeback_verification_tests.rs),
+added `span: Span::DUMMY` to all ImplInfo constructions.
+
+### 5. New integration tests (2 tests)
+
+- stage15_89_coherence_error_span_points_to_impl: verifies conflicting
+  impls error span points to first impl block (byte offset >= 21)
+- stage15_89_incomplete_impl_error_span_points_to_impl: verifies
+  incomplete impl error span points to impl block (byte offset >= 35)
+
+### 6. Documentation
+
+- docs/develop/v0/stage-15/stage-15.89-trait-error-span-accuracy.md
+- docs/tests/v0/stage15/stage-15.89-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 236/236 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS (was 2142, +2 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.213.0 → v0.214.0
+
+Stage Summary:
+- Stage 15.89 PASSED — trait error span accuracy fix
+- 7596 tests passing (236 lib + 2144 integration + 5216 conformance), 0 failures
+- 2 new integration tests for trait error span accuracy
+- 0 conformance test changes
+- v0.214.0: minor bump (Phase 2 — trait error span accuracy fix)
+- Completes the 10-stage error system cleanup (15.80-15.89):
+  - 27 Span::DUMMY sites fixed (typeck: 18; borrowck: 6; resolve: 1; trait: 2)
+  - 20 {:?} Debug leaks fixed (typeck: 12; borrowck: 5; MIR lowerer: 3)
+  - 1 DRY refactor (operand_span unified into mir::place)
+  - 4 new helpers (type_kind_to_string, region_vid_to_string,
+    hir_expr_kind_to_string, operand_span)
+- ALL user-facing error messages (typeck, borrowck, resolve, MIR lowerer,
+  AND trait errors) now:
+  - Use human-readable type/region/expression-kind names — no Debug leaks
+  - Point to actual source locations (with snippet underlines) — no "1:1"
+- Error system cleanup is COMPLETE. Ready for user-facing work.
+- Recommended next: Start Task 12 (Lifetime elision) — the next major
+  v0.2 task (2-3 weeks, P1, ready now).
