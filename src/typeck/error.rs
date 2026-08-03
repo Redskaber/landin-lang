@@ -27,10 +27,21 @@ impl TypeError {
     }
 
     pub fn mismatch(expected: Ty, found: Ty, span: Span) -> Self {
+        // Stage 15.80: use human-readable type names instead of Debug
+        // format. Previously: `expected {:?}, found {:?}` leaked
+        // `Int(I32)`, `Infer(IntVar(IntVid(0)))`, etc. into user-facing
+        // messages. Now: `expected i32, found {integer}` etc.
+        //
+        // Per §1.0 原則 3 "显式 > 隐式": user-facing type names are
+        // explicit (e.g., "i32", not "Int(I32)").
+        // Per §1.0 原則 4 "报错 > 静默": the error message is clear about
+        // what types mismatched, not cryptic about internal enum variants.
+        use crate::mir::ty::type_kind_to_string;
         Self {
             message: format!(
-                "mismatched types: expected {:?}, found {:?}",
-                expected.kind, found.kind
+                "mismatched types: expected {}, found {}",
+                type_kind_to_string(&expected.kind),
+                type_kind_to_string(&found.kind),
             ),
             span,
             expected: Some(expected),

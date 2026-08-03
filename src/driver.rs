@@ -221,7 +221,13 @@ impl CompileErrors {
             }
         }
         for e in &self.borrowck {
-            out.push_str(&format!("  [borrowck] {} ({:?})\n", e.message, e.kind));
+            // Stage 15.80: remove `({:?})` enum variant name leak.
+            // Previously: `{} ({:?})` appended `(AssignImmutable)`,
+            // `(BorrowImmutable)`, etc. to user-facing messages. The
+            // message is already descriptive; the Debug enum name adds
+            // noise without value. Per §1.0 原則 3 "显式 > 隐式": the
+            // message alone is explicit enough.
+            out.push_str(&format!("  [borrowck] {}\n", e.message));
             if let Some(s) = src {
                 out.push_str(&format_snippet(s, &e.span));
             }
@@ -291,16 +297,31 @@ impl CompileErrors {
         for e in &self.typeck {
             let mut builder = DiagnosticBuilder::error(&e.message, e.span)
                 .with_code(crate::diagnostics::ErrorCode::Type.to_string());
-            // Stage 15.14: Add expected/found as notes if present.
+            // Stage 15.80: use human-readable type names instead of Debug
+            // format. Previously: `expected: {:?}` leaked `Int(I32)`,
+            // `Infer(IntVar(IntVid(0)))`, etc. into user-facing notes.
+            // Now: `expected: i32`, `expected: {integer}` etc.
+            //
+            // Per §1.0 原則 3 "显式 > 隐式": user-facing type names are
+            // explicit (e.g., "i32", not "Int(I32)").
             if let (Some(expected), Some(found)) = (&e.expected, &e.found) {
-                builder = builder.with_note(format!("expected: {:?}", expected.kind), e.span);
-                builder = builder.with_note(format!("found: {:?}", found.kind), e.span);
+                use crate::mir::ty::type_kind_to_string;
+                builder = builder.with_note(
+                    format!("expected: {}", type_kind_to_string(&expected.kind)),
+                    e.span,
+                );
+                builder = builder.with_note(
+                    format!("found: {}", type_kind_to_string(&found.kind)),
+                    e.span,
+                );
             }
             diags.push(builder.build());
         }
         for e in &self.borrowck {
+            // Stage 15.80: remove `({:?})` enum variant name leak (see
+            // comment in `format_for_user` above for rationale).
             diags.push(
-                DiagnosticBuilder::error(format!("{} ({:?})", e.message, e.kind), e.span)
+                DiagnosticBuilder::error(&e.message, e.span)
                     .with_code(crate::diagnostics::ErrorCode::Borrow.to_string())
                     .build(),
             );

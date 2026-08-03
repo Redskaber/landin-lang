@@ -1,9 +1,88 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.204.0
+**Current version**: v0.205.0
 **Date**: 2026-08-02
-**Test count**: 224 rust lib tests + 2132 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 232 rust lib tests + 2132 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.205.0 — Stage 15.80 (Error System Cleanup: Human-Readable Type Names)
+
+### Overview
+
+Stage 15.80 cleans up the user-facing error system by replacing `{:?}`
+Debug formatting with human-readable type names, and removing enum
+variant name leaks from borrowck errors.
+
+**Before** (typical error output):
+```
+error[E500]: cannot assign twice to immutable variable (AssignImmutable)
+error[E400]: expected function, found Int(I32)
+note: expected: Infer(IntVar(IntVid(0)))
+note: found: Bool
+```
+
+**After**:
+```
+error[E500]: cannot assign twice to immutable variable
+error[E400]: expected function, found i32
+note: expected: {integer}
+note: found: bool
+```
+
+### What changed
+
+1. **New `type_to_string` / `type_kind_to_string` helpers** in
+   `src/mir/ty.rs` — format `Ty` / `TyKind` as human-readable strings
+   (e.g., `i32`, `&mut bool`, `[i32; 10]`, `(i32, bool)`, `{integer}`,
+   `_`) matching Rust's type display convention.
+2. **Replaced `{:?}` Debug formatting** in 6 user-facing error message
+   sites:
+   - `typeck::error::TypeError::mismatch`
+   - `typeck::checker` (3 sites: 2x "expected function", 1x "assert
+     condition must be bool")
+   - `driver.rs::to_diagnostics` typeck notes (expected/found)
+3. **Removed `({:?})` enum variant name leak** from borrowck errors in
+   `driver.rs::format_for_user` and `driver.rs::to_diagnostics`.
+
+### Why this matters
+
+The previous error messages leaked internal compiler implementation
+details (`Int(I32)`, `Infer(IntVar(IntVid(0)))`, `AssignImmutable`) that
+are meaningless to users. They make the compiler look unpolished and
+unprofessional, particularly for new users. The new messages are clean,
+descriptive, and match Rust's type display convention.
+
+Per §1.0 原則 3 "显式 > 隐式": user-facing type names are explicit.
+Per §1.0 原則 4 "报错 > 静默": error messages are clear, not cryptic.
+Per §23 (API Naming): `type_to_string` follows `<noun>_<verb>_<noun>`
+pattern (matches Rust convention).
+
+### Test impact
+
+- 8 new Rust unit tests for `type_to_string` (primitives, references,
+  raw pointers, arrays, tuples, inference vars, special types, nested)
+- 0 conformance test changes (all `ERROR_PATTERN` matches preserved —
+  they check for descriptive substrings like "immutable", "cannot
+  borrow", not Debug enum names)
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 232/232 PASS (was 224, +8 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2132/2132 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7580 tests passing, 0 failures, 0 warnings.**
+
+### Note on audit direction
+
+Per the user's new constraint ("前期内容(尤其是在开发期)不要单一的简写
+语法"), the Vec{T} shorthand syntax work was NOT pursued in this stage.
+Shorthand syntax belongs in the stable phase, not the development phase.
+Instead, this stage focused on error system quality — a cross-cutting
+concern that improves all error paths without changing language syntax.
 
 ---
 ## v0.204.0 — Stage 15.79 (Parser `mut name: Type` Mis-Parse Fix + Param Mutability)

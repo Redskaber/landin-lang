@@ -314,6 +314,187 @@ pub fn is_mir_ty_copy_conservative(ty: &Ty) -> bool {
     }
 }
 
+/// Stage 15.80: Format a `TyKind` as a human-readable type string for
+/// user-facing diagnostics.
+///
+/// This replaces the previous `{:?}` (Debug) formatting that leaked
+/// internal enum variant names (e.g., `Int(I32)`, `Infer(IntVar(IntVid(0)))`)
+/// into user-facing error messages. The Debug format is useful for
+/// compiler developers but confusing for users.
+///
+/// Examples:
+///   - `Int(I32)` → `"i32"`
+///   - `Uint(U8)` → `"u8"`
+///   - `Float(F64)` → `"f64"`
+///   - `Bool` → `"bool"`
+///   - `Str` → `"str"`
+///   - `Never` → `"!"`
+///   - `Ref(_, Immutable, T)` → `"&T"`
+///   - `Ref(_, Mutable, T)` → `"&mut T"`
+///   - `RawPtr(Immutable, T)` → `"*const T"`
+///   - `RawPtr(Mutable, T)` → `"*mut T"`
+///   - `Array(T, n)` → `"[T; n]"`
+///   - `Slice(T)` → `"[T]"`
+///   - `Tuple([A, B])` → `"(A, B)"`
+///   - `Tuple([])` → `"()"`
+///   - `Tuple([A])` → `"(A,)"`
+///   - `FnDef(_, _)` → `"fn"` (def_id is not user-meaningful)
+///   - `FnPtr(sig)` → `"fn(...) -> ..."` (sig formatted)
+///   - `Closure(_, _)` → `"{closure}"`
+///   - `Adt(_, _)` → `"<adt>"` (def_id is not user-meaningful without resolver)
+///   - `Foreign` → `"<foreign type>"`
+///   - `Param(p)` → `"<type param>"`
+///   - `Infer(TyVar(_))` → `"_"`
+///   - `Infer(IntVar(_))` → `"{integer}"`
+///   - `Infer(FloatVar(_))` → `"{float}"`
+///   - `Error` → `"<type error>"`
+///
+/// Per §1.0 原則 3 "显式 > 隐式": user-facing type names are explicit.
+/// Per §23 (API Naming): `type_to_string` follows `<noun>_<verb>_<noun>`
+/// pattern (matches Rust convention `ty::type_to_string`).
+///
+/// Note: this function does NOT resolve `Adt` DefIds to type names —
+/// that requires resolver access (the `DefId` → name mapping lives in
+/// `driver::fn_name_by_def_id`). For richer type display in diagnostics,
+/// a future stage can add a `type_to_string_with_resolver` variant.
+/// For now, the simple `<adt>` placeholder is sufficient to remove the
+/// Debug format leak.
+pub fn type_to_string(ty: &Ty) -> String {
+    type_kind_to_string(&ty.kind)
+}
+
+/// Format a `TyKind` as a human-readable type string.
+///
+/// Stage 15.80: extracted from `type_to_string` so callers that have
+/// a `TyKind` directly (e.g., `expected.kind`, `found.kind`) don't need
+/// to wrap it in a `Ty` just to format it.
+pub fn type_kind_to_string(kind: &TyKind) -> String {
+    use std::fmt::Write;
+    match kind {
+        TyKind::Bool => "bool".to_string(),
+        TyKind::Char => "char".to_string(),
+        TyKind::Int(i) => int_ty_to_string(*i).to_string(),
+        TyKind::Uint(u) => uint_ty_to_string(*u).to_string(),
+        TyKind::Float(f) => float_ty_to_string(*f).to_string(),
+        TyKind::Str => "str".to_string(),
+        TyKind::Never => "!".to_string(),
+        TyKind::Ref(_, mutability, inner) => {
+            let prefix = match mutability {
+                Mutability::Mutable => "&mut ",
+                Mutability::Immutable => "&",
+            };
+            format!("{prefix}{}", type_to_string(inner))
+        }
+        TyKind::RawPtr(mutability, inner) => {
+            let prefix = match mutability {
+                Mutability::Mutable => "*mut ",
+                Mutability::Immutable => "*const ",
+            };
+            format!("{prefix}{}", type_to_string(inner))
+        }
+        TyKind::Array(inner, count) => {
+            // Format the array length if it's a concrete value.
+            let len_str = match &count.val {
+                ConstVal::Uint(n) => n.to_string(),
+                ConstVal::Int(n) => n.to_string(),
+                _ => "_".to_string(),
+            };
+            format!("[{}; {}]", type_to_string(inner), len_str)
+        }
+        TyKind::Slice(inner) => format!("[{}]", type_to_string(inner)),
+        TyKind::Tuple(tys) => {
+            if tys.is_empty() {
+                "()".to_string()
+            } else if tys.len() == 1 {
+                format!("({},)", type_to_string(&tys[0]))
+            } else {
+                let mut s = String::from("(");
+                for (i, t) in tys.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(", ");
+                    }
+                    let _ = write!(s, "{}", type_to_string(t));
+                }
+                s.push(')');
+                s
+            }
+        }
+        TyKind::FnDef(_, _) => "fn".to_string(),
+        TyKind::FnPtr(sig) => fn_sig_to_string(sig),
+        TyKind::Closure(_, _) => "{closure}".to_string(),
+        TyKind::Adt(_, _) => "<adt>".to_string(),
+        TyKind::Foreign => "<foreign type>".to_string(),
+        TyKind::Param(_) => "<type param>".to_string(),
+        TyKind::Infer(infer_var) => infer_var_to_string(infer_var).to_string(),
+        TyKind::Error => "<type error>".to_string(),
+    }
+}
+
+/// Format an `IntTy` as a lowercase string.
+fn int_ty_to_string(i: IntTy) -> &'static str {
+    match i {
+        IntTy::I8 => "i8",
+        IntTy::I16 => "i16",
+        IntTy::I32 => "i32",
+        IntTy::I64 => "i64",
+        IntTy::I128 => "i128",
+        IntTy::Isize => "isize",
+    }
+}
+
+/// Format a `UintTy` as a lowercase string.
+fn uint_ty_to_string(u: UintTy) -> &'static str {
+    match u {
+        UintTy::U8 => "u8",
+        UintTy::U16 => "u16",
+        UintTy::U32 => "u32",
+        UintTy::U64 => "u64",
+        UintTy::U128 => "u128",
+        UintTy::Usize => "usize",
+    }
+}
+
+/// Format a `FloatTy` as a lowercase string.
+fn float_ty_to_string(f: FloatTy) -> &'static str {
+    match f {
+        FloatTy::F32 => "f32",
+        FloatTy::F64 => "f64",
+    }
+}
+
+/// Format an `InferVar` as a human-readable placeholder.
+///
+/// Matches Rust's convention: integer inference vars display as `{integer}`,
+/// float inference vars as `{float}`, and general type vars as `_`.
+fn infer_var_to_string(infer: &InferVar) -> &'static str {
+    match infer {
+        InferVar::TyVar(_) => "_",
+        InferVar::IntVar(_) => "{integer}",
+        InferVar::FloatVar(_) => "{float}",
+    }
+}
+
+/// Format an `FnSig` (function pointer signature) as a string.
+///
+/// Stage 15.80: simple format `fn(args) -> ret`. For unit return, omits
+/// the `-> ()`.
+fn fn_sig_to_string(sig: &Sig) -> String {
+    use std::fmt::Write;
+    let mut s = String::from("fn(");
+    for (i, input) in sig.inputs.iter().enumerate() {
+        if i > 0 {
+            s.push_str(", ");
+        }
+        let _ = write!(s, "{}", type_to_string(input));
+    }
+    s.push(')');
+    // Omit `-> ()` for unit return (matches Rust convention).
+    if !matches!(sig.output.kind, TyKind::Tuple(ref tys) if tys.is_empty()) {
+        let _ = write!(s, " -> {}", type_to_string(&sig.output));
+    }
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,5 +546,171 @@ mod tests {
         let r = Region::Var(RegionVid(5));
         assert_eq!(r, Region::Var(RegionVid(5)));
         assert_ne!(r, Region::Static);
+    }
+
+    // === Stage 15.80: type_to_string tests ===
+
+    #[test]
+    fn type_to_string_primitives() {
+        assert_eq!(type_to_string(&Ty::new(TyKind::Bool, Span::DUMMY)), "bool");
+        assert_eq!(type_to_string(&Ty::new(TyKind::Char, Span::DUMMY)), "char");
+        assert_eq!(type_to_string(&Ty::new(TyKind::Str, Span::DUMMY)), "str");
+        assert_eq!(type_to_string(&Ty::new(TyKind::Never, Span::DUMMY)), "!");
+        assert_eq!(
+            type_to_string(&Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY)),
+            "i32"
+        );
+        assert_eq!(
+            type_to_string(&Ty::new(TyKind::Int(IntTy::Isize), Span::DUMMY)),
+            "isize"
+        );
+        assert_eq!(
+            type_to_string(&Ty::new(TyKind::Uint(UintTy::U8), Span::DUMMY)),
+            "u8"
+        );
+        assert_eq!(
+            type_to_string(&Ty::new(TyKind::Uint(UintTy::Usize), Span::DUMMY)),
+            "usize"
+        );
+        assert_eq!(
+            type_to_string(&Ty::new(TyKind::Float(FloatTy::F32), Span::DUMMY)),
+            "f32"
+        );
+        assert_eq!(
+            type_to_string(&Ty::new(TyKind::Float(FloatTy::F64), Span::DUMMY)),
+            "f64"
+        );
+    }
+
+    #[test]
+    fn type_to_string_references() {
+        let inner = Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY);
+        let shared_ref = Ty::new(
+            TyKind::Ref(Region::Static, Mutability::Immutable, Box::new(inner)),
+            Span::DUMMY,
+        );
+        assert_eq!(type_to_string(&shared_ref), "&i32");
+
+        let inner = Ty::new(TyKind::Bool, Span::DUMMY);
+        let mut_ref = Ty::new(
+            TyKind::Ref(Region::Erased, Mutability::Mutable, Box::new(inner)),
+            Span::DUMMY,
+        );
+        assert_eq!(type_to_string(&mut_ref), "&mut bool");
+    }
+
+    #[test]
+    fn type_to_string_raw_pointers() {
+        let inner = Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY);
+        let const_ptr = Ty::new(
+            TyKind::RawPtr(Mutability::Immutable, Box::new(inner)),
+            Span::DUMMY,
+        );
+        assert_eq!(type_to_string(&const_ptr), "*const i32");
+
+        let inner = Ty::new(TyKind::Bool, Span::DUMMY);
+        let mut_ptr = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(inner)),
+            Span::DUMMY,
+        );
+        assert_eq!(type_to_string(&mut_ptr), "*mut bool");
+    }
+
+    #[test]
+    fn type_to_string_arrays() {
+        let inner = Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY);
+        let count = Const {
+            ty: Ty::new(TyKind::Uint(UintTy::Usize), Span::DUMMY),
+            val: ConstVal::Uint(10),
+        };
+        let arr = Ty::new(TyKind::Array(Box::new(inner), Box::new(count)), Span::DUMMY);
+        assert_eq!(type_to_string(&arr), "[i32; 10]");
+    }
+
+    #[test]
+    fn type_to_string_tuples() {
+        let unit = Ty::new(TyKind::Tuple(vec![]), Span::DUMMY);
+        assert_eq!(type_to_string(&unit), "()");
+
+        let single = Ty::new(
+            TyKind::Tuple(vec![Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY)]),
+            Span::DUMMY,
+        );
+        assert_eq!(type_to_string(&single), "(i32,)");
+
+        let pair = Ty::new(
+            TyKind::Tuple(vec![
+                Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY),
+                Ty::new(TyKind::Bool, Span::DUMMY),
+            ]),
+            Span::DUMMY,
+        );
+        assert_eq!(type_to_string(&pair), "(i32, bool)");
+    }
+
+    #[test]
+    fn type_to_string_inference_vars() {
+        let ty_var = Ty::new(TyKind::Infer(InferVar::TyVar(TyVid(0))), Span::DUMMY);
+        assert_eq!(type_to_string(&ty_var), "_");
+
+        let int_var = Ty::new(TyKind::Infer(InferVar::IntVar(IntVid(0))), Span::DUMMY);
+        assert_eq!(type_to_string(&int_var), "{integer}");
+
+        let float_var = Ty::new(TyKind::Infer(InferVar::FloatVar(FloatVid(0))), Span::DUMMY);
+        assert_eq!(type_to_string(&float_var), "{float}");
+    }
+
+    #[test]
+    fn type_to_string_special() {
+        let err = Ty::new(TyKind::Error, Span::DUMMY);
+        assert_eq!(type_to_string(&err), "<type error>");
+
+        let foreign = Ty::new(TyKind::Foreign, Span::DUMMY);
+        assert_eq!(type_to_string(&foreign), "<foreign type>");
+
+        let closure = Ty::new(
+            TyKind::Closure(DefId(0), Rc::from([] as [Ty; 0])),
+            Span::DUMMY,
+        );
+        assert_eq!(type_to_string(&closure), "{closure}");
+
+        let fn_def = Ty::new(
+            TyKind::FnDef(DefId(0), Rc::from([] as [Ty; 0])),
+            Span::DUMMY,
+        );
+        assert_eq!(type_to_string(&fn_def), "fn");
+    }
+
+    #[test]
+    fn type_to_string_nested() {
+        // &[i32; 3]
+        let inner = Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY);
+        let count = Const {
+            ty: Ty::new(TyKind::Uint(UintTy::Usize), Span::DUMMY),
+            val: ConstVal::Uint(3),
+        };
+        let arr = Ty::new(TyKind::Array(Box::new(inner), Box::new(count)), Span::DUMMY);
+        let ref_arr = Ty::new(
+            TyKind::Ref(Region::Erased, Mutability::Immutable, Box::new(arr)),
+            Span::DUMMY,
+        );
+        assert_eq!(type_to_string(&ref_arr), "&[i32; 3]");
+
+        // (*mut bool, i32)
+        let bool_ptr = Ty::new(
+            TyKind::RawPtr(
+                Mutability::Mutable,
+                Box::new(Ty::new(TyKind::Bool, Span::DUMMY)),
+            ),
+            Span::DUMMY,
+        );
+        let tuple = Ty::new(
+            TyKind::Tuple(vec![
+                bool_ptr,
+                Ty::new(TyKind::Int(IntTy::I32), Span::DUMMY),
+            ]),
+            Span::DUMMY,
+        );
+        assert_eq!(type_to_string(&tuple), "(*mut bool, i32)");
     }
 }

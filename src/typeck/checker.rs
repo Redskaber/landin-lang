@@ -464,7 +464,11 @@ impl TypeChecker {
                 TyKind::FnDef(_, _) | TyKind::FnPtr(_) | TyKind::Error
             ) {
                 self.errors.push(TypeError::new(
-                    format!("expected function, found {:?}", func_ty.kind),
+                    // Stage 15.80: use human-readable type name.
+                    format!(
+                        "expected function, found {}",
+                        crate::mir::ty::type_kind_to_string(&func_ty.kind)
+                    ),
                     Span::DUMMY,
                 ));
             }
@@ -593,7 +597,11 @@ impl TypeChecker {
                     TyKind::FnDef(_, _) | TyKind::FnPtr(_) | TyKind::Infer(_) | TyKind::Error
                 ) {
                     self.errors.push(TypeError::new(
-                        format!("expected function, found {:?}", func_ty.kind),
+                        // Stage 15.80: use human-readable type name.
+                        format!(
+                            "expected function, found {}",
+                            crate::mir::ty::type_kind_to_string(&func_ty.kind)
+                        ),
                         Span::DUMMY,
                     ));
                 }
@@ -648,7 +656,11 @@ impl TypeChecker {
                     TyKind::Bool | TyKind::Infer(_) | TyKind::Error => {}
                     _ => {
                         self.errors.push(TypeError::new(
-                            format!("assert condition must be bool, found {:?}", cond_ty.kind),
+                            // Stage 15.80: use human-readable type name.
+                            format!(
+                                "assert condition must be bool, found {}",
+                                crate::mir::ty::type_kind_to_string(&cond_ty.kind)
+                            ),
                             Span::DUMMY,
                         ));
                     }
