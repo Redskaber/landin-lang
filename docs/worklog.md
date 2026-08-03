@@ -24440,3 +24440,60 @@ Stage Summary:
 - v0.225.0: minor bump (v0.3 kickoff, review-only)
 - v0.2 FINAL: 99 stages (15.1-15.99), 10/20 tasks, 7612 tests
 - v0.3 roadmap defined: sound Copy → TraitResolver → Monomorphization → Closures
+
+---
+Task ID: stage16.01-todo-cleanup-lifetime-tracking
+Agent: Super Z (main)
+Task: Stage 16.01 — TODO cleanup: lifetime tracking documentation. v0.225.0 → v0.226.0.
+
+Work Log:
+- Baseline: v0.225.0 / 244 lib + 2144 integration + 5224 conformance
+
+### 1. TODO Resolution
+
+Updated the TODO comment in `lower_hir_ty_to_mir_ty_with_regions` (src/mir/lower/mod.rs)
+to reflect that lifetime name tracking is now implemented in
+`lower_hir_ty_to_mir_ty_with_lifetimes` (Stage 15.92).
+
+Before:
+```
+// TODO (future): track the lifetime name so we can unify
+// references with the same explicit lifetime.
+```
+
+After:
+```
+// Stage 15.92: Lifetime name tracking is now implemented in
+// `lower_hir_ty_to_mir_ty_with_lifetimes` (uses a
+// `lifetime_map: HashMap<Symbol, RegionVid>` for deduplication).
+// This legacy function is retained for callers that don't need
+// lifetime deduplication (fn_sigs building, self type resolution).
+// Use `lower_hir_ty_to_mir_ty_with_lifetimes` for lifetime tracking.
+```
+
+### 2. Remaining TODOs (2 items, all low priority)
+
+1. `borrowck/mod.rs:246` Span::DUMMY — region error span (needs constraint cause tracking)
+2. `mir/lower/field_resolution.rs:86` — MirLowerCtxt mutability (internal improvement)
+
+### 3. Documentation
+
+- docs/develop/v0/stage-15/stage-16.01-todo-cleanup-lifetime-tracking.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.225.0 → v0.226.0
+
+Stage Summary:
+- Stage 16.01 PASSED — TODO cleanup
+- 7612 tests passing (244 lib + 2144 integration + 5224 conformance), 0 failures
+- v0.226.0: minor bump (documentation update, TODO resolution)
+- Remaining TODOs: 2 (both low priority)
+- v0.3 next steps: sound Copy migration → Task 3 → Task 11 → Task 10

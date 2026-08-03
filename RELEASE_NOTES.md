@@ -1,9 +1,31 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.225.0
+**Current version**: v0.226.0
 **Date**: 2026-08-03
 **Test count**: 244 rust lib tests + 2144 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.226.0 — Stage 16.01 (TODO Cleanup: Lifetime Tracking Documentation)
+
+### Overview
+
+Stage 16.01 resolves the last TODO in `lower_hir_ty_to_mir_ty_with_regions`
+by updating the comment to reflect that lifetime name tracking is now
+implemented in `lower_hir_ty_to_mir_ty_with_lifetimes` (Stage 15.92).
+
+Remaining TODOs: 2 (both low priority — region error span, field resolution
+MirLowerCtxt mutability).
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2144/2144 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7612 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.225.0 — Stage 16.00 (v0.3 Kickoff: Systematic Audit Complete)

@@ -1311,11 +1311,18 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
             //   reference, which is what the region inference needs).
             // - Elided lifetimes: assign a fresh vid (lifetime elision rule 1:
             //   each elided input lifetime gets its own fresh lifetime).
+            //
+            // Stage 15.92: Lifetime name tracking is now implemented in
+            // `lower_hir_ty_to_mir_ty_with_lifetimes` (uses a
+            // `lifetime_map: HashMap<Symbol, RegionVid>` for deduplication).
+            // This legacy function is retained for callers that don't need
+            // lifetime deduplication (fn_sigs building, self type resolution).
+            // Use `lower_hir_ty_to_mir_ty_with_lifetimes` for lifetime tracking.
             let mir_region = match region {
                 Some(_lt) => {
                     // Explicit lifetime — assign a fresh vid.
-                    // TODO (future): track the lifetime name so we can unify
-                    // references with the same explicit lifetime.
+                    // For lifetime deduplication, use
+                    // `lower_hir_ty_to_mir_ty_with_lifetimes` instead.
                     let vid = *region_counter;
                     *region_counter += 1;
                     Region::Var(RegionVid(vid))
