@@ -714,22 +714,27 @@ impl RegionInferenceContext {
                                     // The LHS place's type might also have regions.
                                     let lhs_ty = self.place_ty(mir, place);
                                     let lhs_regions = extract_regions_from_ty(&lhs_ty);
-                                    // For each pair, add: src_region outlives lhs_region.
-                                    // Simplified: just use the first region of each.
-                                    if let (Some(&src_r), Some(&lhs_r)) =
-                                        (src_regions.first(), lhs_regions.first())
-                                    {
-                                        self.add_outlives_constraint(
-                                            src_r,
-                                            lhs_r,
-                                            ConstraintCause::Borrow {
-                                                span: stmt.span,
-                                                borrowed_local: match &lv.kind {
-                                                    PlaceKind::Local(id) => *id,
-                                                    _ => crate::mir::place::LocalId(0),
-                                                },
-                                            },
-                                        );
+                                    // Stage 15.98: All-pairs matching (was: first-to-first).
+                                    // For each src region and each lhs region, add:
+                                    // src_region outlives lhs_region.
+                                    // This handles types like &(&a i32, &b i32) → &(&c i32, &d i32)
+                                    // where 'a:'c and 'b:'d (not just 'a:'c).
+                                    for &src_r in &src_regions {
+                                        for &lhs_r in &lhs_regions {
+                                            if src_r != lhs_r {
+                                                self.add_outlives_constraint(
+                                                    src_r,
+                                                    lhs_r,
+                                                    ConstraintCause::Borrow {
+                                                        span: stmt.span,
+                                                        borrowed_local: match &lv.kind {
+                                                            PlaceKind::Local(id) => *id,
+                                                            _ => crate::mir::place::LocalId(0),
+                                                        },
+                                                    },
+                                                );
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -784,19 +789,20 @@ impl RegionInferenceContext {
                             if arg_idx < sig.inputs.len() {
                                 let param_ty = &sig.inputs[arg_idx];
                                 let param_regions = extract_regions_from_ty(param_ty);
-                                // Match argument regions with parameter regions
-                                // (simplified: first-to-first).
-                                if let (Some(&arg_r), Some(&param_r)) =
-                                    (arg_regions.first(), param_regions.first())
-                                {
-                                    if arg_r != param_r {
-                                        self.add_outlives_constraint(
-                                            arg_r,
-                                            param_r,
-                                            ConstraintCause::FnSignature {
-                                                span: bb.terminator.span,
-                                            },
-                                        );
+                                // Stage 15.98: All-pairs matching (was: first-to-first).
+                                // For each arg region and each param region, add:
+                                // arg_region outlives param_region.
+                                for &arg_r in &arg_regions {
+                                    for &param_r in &param_regions {
+                                        if arg_r != param_r {
+                                            self.add_outlives_constraint(
+                                                arg_r,
+                                                param_r,
+                                                ConstraintCause::FnSignature {
+                                                    span: bb.terminator.span,
+                                                },
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -839,22 +845,23 @@ impl RegionInferenceContext {
                         let dest_regions = extract_regions_from_ty(&dest_ty);
                         let ret_regions = extract_regions_from_ty(&sig.output);
 
-                        // Match destination regions with return type regions
-                        // (simplified: first-to-first).
-                        if let (Some(&dest_r), Some(&ret_r)) =
-                            (dest_regions.first(), ret_regions.first())
-                        {
-                            if dest_r != ret_r {
-                                // dest_region outlives ret_region: the
-                                // destination's lifetime must be at least
-                                // as long as the return type's lifetime.
-                                self.add_outlives_constraint(
-                                    ret_r,
-                                    dest_r,
-                                    ConstraintCause::FnSignature {
-                                        span: bb.terminator.span,
-                                    },
-                                );
+                        // Stage 15.98: All-pairs matching (was: first-to-first).
+                        // For each ret region and each dest region, add:
+                        // ret_region outlives dest_region.
+                        for &ret_r in &ret_regions {
+                            for &dest_r in &dest_regions {
+                                if ret_r != dest_r {
+                                    // dest_region outlives ret_region: the
+                                    // destination's lifetime must be at least
+                                    // as long as the return type's lifetime.
+                                    self.add_outlives_constraint(
+                                        ret_r,
+                                        dest_r,
+                                        ConstraintCause::FnSignature {
+                                            span: bb.terminator.span,
+                                        },
+                                    );
+                                }
                             }
                         }
                     }
