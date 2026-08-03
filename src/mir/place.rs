@@ -196,6 +196,29 @@ pub enum Operand {
 // Note: Const and ConstVal are defined in ty.rs and re-exported from mod.rs.
 // The Operand::Constant variant uses ty::Const.
 
+/// Stage 15.86: Extract the source span from an `Operand`.
+///
+/// Shared helper used by both `typeck::checker::TypeChecker` and
+/// `borrowck::mod::BorrowChecker` to attach accurate spans to errors
+/// that originate from operand checks (e.g., type mismatches,
+/// use-after-move, not-Copy).
+///
+/// - `Operand::Copy(place)` / `Operand::Move(place)` → `place.span`
+/// - `Operand::Constant(const)` → `Span::DUMMY` (Const has no span field)
+///
+/// Per §1.0 原則 3 "显式 > 隐式": error spans are explicitly sourced
+/// from the operand's Place, not defaulted to Span::DUMMY.
+/// Per §23 rule 5 (DRY): single source of truth for operand span
+/// extraction. Previously duplicated as private methods on
+/// `TypeChecker` (Stage 15.81) and `BorrowChecker` (Stage 15.85) —
+/// now unified here.
+pub fn operand_span(op: &Operand) -> Span {
+    match op {
+        Operand::Copy(lv) | Operand::Move(lv) => lv.span,
+        Operand::Constant(_) => Span::DUMMY,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,5 +277,25 @@ mod tests {
             rv,
             Rvalue::Ref(Region::Static, BorrowKind::Shared, _)
         ));
+    }
+
+    /// Stage 15.86: Verify the shared `operand_span` helper extracts the
+    /// Place span from Copy/Move operands and returns DUMMY for Constant.
+    #[test]
+    fn stage15_86_operand_span_extracts_place_span() {
+        let span = Span::new(42, 45);
+        let place = Place::local(LocalId(0), span);
+        // Copy operand → returns the place's span.
+        let copy_op = Operand::Copy(place.clone());
+        assert_eq!(operand_span(&copy_op), span);
+        // Move operand → returns the place's span.
+        let move_op = Operand::Move(place);
+        assert_eq!(operand_span(&move_op), span);
+        // Constant operand → returns Span::DUMMY (Const has no span field).
+        let const_op = Operand::Constant(Const {
+            ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
+            val: ConstVal::Int(42),
+        });
+        assert_eq!(operand_span(&const_op), Span::DUMMY);
     }
 }

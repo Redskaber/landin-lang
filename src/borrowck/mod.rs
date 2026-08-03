@@ -523,9 +523,9 @@ impl<'a> BorrowChecker<'a> {
                 // Stage 15.85: use operand span instead of Span::DUMMY
                 // so use-after-move / not-Copy errors point to the actual
                 // source location (was: "1:1" file start).
-                self.check_operand(mir, func, Self::operand_span(func));
+                self.check_operand(mir, func, crate::mir::place::operand_span(func));
                 for arg in args {
-                    self.check_operand(mir, arg, Self::operand_span(arg));
+                    self.check_operand(mir, arg, crate::mir::place::operand_span(arg));
                 }
                 // Stage 15.67: Kill borrows for temp locals used as call args.
                 // After a call `f(tmp)`, the temp `tmp` is dead (its value was
@@ -556,7 +556,7 @@ impl<'a> BorrowChecker<'a> {
             }
             TerminatorKind::SwitchInt { discr, .. } => {
                 // Stage 15.85: use operand span (was: Span::DUMMY).
-                self.check_operand(mir, discr, Self::operand_span(discr));
+                self.check_operand(mir, discr, crate::mir::place::operand_span(discr));
             }
             // Stage 15.61 fix: `TerminatorKind::Drop` is a destructor, not a
             // read. Previously, `check_place_read` was called, which flagged
@@ -597,7 +597,7 @@ impl<'a> BorrowChecker<'a> {
             // for use-after-move just like any other operand.
             TerminatorKind::Assert { cond, .. } => {
                 // Stage 15.85: use operand span (was: Span::DUMMY).
-                self.check_operand(mir, cond, Self::operand_span(cond));
+                self.check_operand(mir, cond, crate::mir::place::operand_span(cond));
             }
             _ => {}
         }
@@ -789,27 +789,11 @@ impl<'a> BorrowChecker<'a> {
         }
     }
 
-    /// Stage 15.85: Extract the source span from an `Operand`.
-    ///
-    /// Used to attach accurate spans to borrowck errors that originate
-    /// from operand checks (e.g., use-after-move, not-Copy) in
-    /// `check_terminator`. Previously these errors used `Span::DUMMY`
-    /// (file start "1:1") because `check_terminator` passed `Span::DUMMY`
-    /// to `check_operand`.
-    ///
-    /// - `Operand::Copy(place)` / `Operand::Move(place)` → `place.span`
-    /// - `Operand::Constant(const)` → `Span::DUMMY` (Const has no span field)
-    ///
-    /// Per §1.0 原則 3 "显式 > 隐式": error spans are explicitly sourced
-    /// from the operand's Place, not defaulted to Span::DUMMY.
-    /// Per §23 (DRY): mirrors `typeck::checker::TypeChecker::operand_span`
-    /// — a future stage can unify these into a shared `mir::place` helper.
-    fn operand_span(op: &Operand) -> Span {
-        match op {
-            Operand::Copy(lv) | Operand::Move(lv) => lv.span,
-            Operand::Constant(_) => Span::DUMMY,
-        }
-    }
+    // Stage 15.86: `operand_span` moved to `mir::place::operand_span` (shared
+    // helper, DRY per §23 rule 5). Callers now use
+    // `crate::mir::place::operand_span(op)` directly. Previously duplicated
+    // as a private method here (Stage 15.85) and in `typeck::checker` (Stage
+    // 15.81).
 
     /// Look up the resolved type of a place.
     ///
@@ -1606,21 +1590,25 @@ mod tests {
 
     /// Stage 15.85: Verify `operand_span` extracts the Place span from
     /// Copy/Move operands and returns DUMMY for Constant.
+    ///
+    /// Stage 15.86: `operand_span` moved to `mir::place::operand_span`
+    /// (shared helper, DRY). Test updated to call the shared function.
     #[test]
     fn stage15_85_operand_span_extracts_place_span() {
+        use crate::mir::place::operand_span;
         let span = Span::new(42, 45);
         let place = Place::local(LocalId(0), span);
         // Copy operand → returns the place's span.
         let copy_op = Operand::Copy(place.clone());
-        assert_eq!(BorrowChecker::operand_span(&copy_op), span);
+        assert_eq!(operand_span(&copy_op), span);
         // Move operand → returns the place's span.
         let move_op = Operand::Move(place);
-        assert_eq!(BorrowChecker::operand_span(&move_op), span);
+        assert_eq!(operand_span(&move_op), span);
         // Constant operand → returns Span::DUMMY (Const has no span field).
         let const_op = Operand::Constant(crate::mir::ty::Const {
             ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
             val: crate::mir::ty::ConstVal::Int(42),
         });
-        assert_eq!(BorrowChecker::operand_span(&const_op), Span::DUMMY);
+        assert_eq!(operand_span(&const_op), Span::DUMMY);
     }
 }

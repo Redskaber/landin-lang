@@ -23377,3 +23377,87 @@ Stage Summary:
 - Error system cleanup is complete. Ready for user-facing work.
 - Recommended next: Start Task 12 (Lifetime elision) — the next major
   v0.2 task (2-3 weeks, P1, ready now).
+
+---
+Task ID: stage15.86-dry-unify-operand-span
+Agent: Super Z (main)
+Task: Stage 15.86 — DRY refactor: unify operand_span into mir::place. v0.210.0 → v0.211.0.
+
+Work Log:
+- Baseline: v0.210.0 / 234 lib + 2140 integration + 5216 conformance
+
+### 1. Investigation (DRY opportunity)
+
+After Stages 15.80-15.85 completed the error system cleanup, identified
+a DRY violation: the `operand_span` helper was duplicated as a private
+method on both TypeChecker (Stage 15.81) and BorrowChecker (Stage 15.85).
+The two methods were identical (same signature, same body, same doc
+comment). Per §23 rule 5 (DRY), this should be unified.
+
+### 2. Added shared operand_span to mir::place
+
+In src/mir/place.rs, added:
+- pub fn operand_span(op: &Operand) -> Span
+  - Operand::Copy(place) | Operand::Move(place) -> place.span
+  - Operand::Constant(_) -> Span::DUMMY
+
+This is the architecturally correct location: `Operand` is defined in
+`mir::place`, so span extraction (a property of `Operand`) should also
+live there. Per §16 (interface isolation): the helper reads only
+`Operand` data, no cross-stage access.
+
+### 3. Removed private duplicates
+
+- src/typeck/checker.rs: removed `fn operand_span` on TypeChecker
+- src/borrowck/mod.rs: removed `fn operand_span` on BorrowChecker
+
+### 4. Updated all 8 callers
+
+Typeck (4 sites):
+- check_terminator Call: Self::operand_span(func) -> crate::mir::place::operand_span(func)
+- check_terminator Call: Self::operand_span(arg) -> crate::mir::place::operand_span(arg)
+- check_terminator SwitchInt: Self::operand_span(discr) -> crate::mir::place::operand_span(discr)
+- check_terminator Assert: Self::operand_span(cond) -> crate::mir::place::operand_span(cond)
+
+Borrowck (4 sites):
+- check_terminator Call: Self::operand_span(func/arg) -> crate::mir::place::operand_span(...)
+- check_terminator SwitchInt: Self::operand_span(discr) -> crate::mir::place::operand_span(discr)
+- check_terminator Assert: Self::operand_span(cond) -> crate::mir::place::operand_span(cond)
+
+### 5. Updated existing test
+
+The borrowck test stage15_85_operand_span_extracts_place_span was
+updated to call the shared function (was: BorrowChecker::operand_span).
+
+### 6. New unit test in mir::place
+
+Added stage15_86_operand_span_extracts_place_span to src/mir/place.rs::tests.
+
+### 7. Documentation
+
+- docs/develop/v0/stage-15/stage-15.86-dry-unify-operand-span.md
+- docs/tests/v0/stage15/stage-15.86-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 235/235 PASS (was 234, +1 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2140/2140 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.210.0 → v0.211.0
+
+Stage Summary:
+- Stage 15.86 PASSED — DRY refactor: unify operand_span into mir::place
+- 7591 tests passing (235 lib + 2140 integration + 5216 conformance), 0 failures
+- 1 new unit test in mir::place for the shared helper
+- 0 conformance test changes (pure refactor — no behavior change)
+- v0.211.0: minor bump (Phase 2 — DRY refactor)
+- Eliminates the operand_span duplication noted in Stage 15.85's doc
+  comment ("a future stage can unify these into a shared mir::place helper")
+- Per §1.0 原則 5 "去除兼容思维" + §23 rule 5 (DRY) + §14.4 (重构即架构设计)
+- Error system cleanup + DRY refactor is complete. Ready for user-facing work.
+- Recommended next: Start Task 12 (Lifetime elision) — the next major
+  v0.2 task (2-3 weeks, P1, ready now).

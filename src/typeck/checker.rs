@@ -470,7 +470,7 @@ impl TypeChecker {
                         "expected function, found {}",
                         crate::mir::ty::type_kind_to_string(&func_ty.kind)
                     ),
-                    Self::operand_span(func),
+                    crate::mir::place::operand_span(func),
                 ));
             }
         }
@@ -631,7 +631,7 @@ impl TypeChecker {
                             "expected function, found {}",
                             crate::mir::ty::type_kind_to_string(&func_ty.kind)
                         ),
-                        Self::operand_span(func),
+                        crate::mir::place::operand_span(func),
                     ));
                 }
             }
@@ -640,7 +640,7 @@ impl TypeChecker {
                 let discr_ty = self.infer_operand(mir, discr);
                 // Stage 15.81: use the discriminant operand's span for
                 // error reporting (was: Span::DUMMY, producing "1:1").
-                let discr_span = Self::operand_span(discr);
+                let discr_span = crate::mir::place::operand_span(discr);
                 // G7 fix (Stage 2.4f): if any target is ConstVal::Bool(_),
                 // this SwitchInt came from an `if` or `while` condition,
                 // and the discriminant must be bool (not just any int).
@@ -693,7 +693,7 @@ impl TypeChecker {
                 let cond_ty = self.infer_operand(mir, cond);
                 // Stage 15.81: use the condition operand's span for
                 // error reporting (was: Span::DUMMY).
-                let cond_span = Self::operand_span(cond);
+                let cond_span = crate::mir::place::operand_span(cond);
                 match &cond_ty.kind {
                     TyKind::Bool | TyKind::Infer(_) | TyKind::Error => {}
                     _ => {
@@ -1006,24 +1006,11 @@ impl TypeChecker {
         }
     }
 
-    /// Stage 15.81: Extract the source span from an `Operand`.
-    ///
-    /// Used to attach accurate spans to type errors that originate from
-    /// operand type mismatches (e.g., `if 42 { ... }` — the `42` literal
-    /// is the discriminant operand, and its span should be used for the
-    /// "expected bool, found integer" error).
-    ///
-    /// - `Operand::Copy(place)` / `Operand::Move(place)` → `place.span`
-    /// - `Operand::Constant(const)` → `Span::DUMMY` (Const has no span field)
-    ///
-    /// Per §1.0 原則 3 "显式 > 隐式": error spans are explicitly sourced
-    /// from the operand's Place, not defaulted to Span::DUMMY.
-    fn operand_span(op: &Operand) -> Span {
-        match op {
-            Operand::Copy(lv) | Operand::Move(lv) => lv.span,
-            Operand::Constant(_) => Span::DUMMY,
-        }
-    }
+    // Stage 15.86: `operand_span` moved to `mir::place::operand_span` (shared
+    // helper, DRY per §23 rule 5). Callers now use
+    // `crate::mir::place::operand_span(op)` directly. Previously duplicated
+    // as a private method here (Stage 15.81) and in `borrowck::mod` (Stage
+    // 15.85).
 
     /// Consume the type checker and return all errors.
     pub fn into_errors(mut self) -> Vec<TypeError> {

@@ -1,9 +1,56 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.210.0
+**Current version**: v0.211.0
 **Date**: 2026-08-02
-**Test count**: 234 rust lib tests + 2140 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 235 rust lib tests + 2140 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.211.0 — Stage 15.86 (DRY Refactor: Unify operand_span into mir::place)
+
+### Overview
+
+Stage 15.86 is a pure DRY refactor that unifies the two duplicate
+`operand_span` helpers into a single shared function in `mir::place`.
+This follows §23 rule 5 (DRY) and §1.0 原則 5 "去除兼容思维".
+
+**Background**: Stages 15.81 and 15.85 each added a private
+`operand_span` method to `TypeChecker` and `BorrowChecker` respectively.
+The two methods were identical. Per §23 rule 5, this duplication should
+be eliminated.
+
+**Fix**:
+1. Added `pub fn operand_span(op: &Operand) -> Span` to `mir::place`
+   (the module that defines `Operand`).
+2. Removed the private `operand_span` method from `TypeChecker`
+   (`src/typeck/checker.rs`).
+3. Removed the private `operand_span` method from `BorrowChecker`
+   (`src/borrowck/mod.rs`).
+4. Updated all 8 callers (4 in typeck, 4 in borrowck) to use
+   `crate::mir::place::operand_span(op)`.
+5. Added a new unit test in `mir::place::tests` for the shared function.
+
+Per §1.0 原則 5 "去除兼容思维": duplicate code removed.
+Per §23 rule 5 (DRY): single source of truth for operand span extraction.
+Per §14.4 (重构即架构设计): span extraction is a property of `Operand`,
+not of the checker that uses it.
+
+### Test impact
+
+- 1 new Rust unit test in `src/mir/place.rs::tests`:
+  - `stage15_86_operand_span_extracts_place_span` — verifies the shared
+    helper
+- 0 conformance test changes (pure refactor — no behavior change)
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 235/235 PASS (was 234, +1 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2140/2140 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7591 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.210.0 — Stage 15.85 (Borrowck check_terminator Span Accuracy Fix)
