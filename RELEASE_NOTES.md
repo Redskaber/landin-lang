@@ -1,9 +1,70 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.208.0
+**Current version**: v0.209.0
 **Date**: 2026-08-02
-**Test count**: 232 rust lib tests + 2140 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 233 rust lib tests + 2140 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.209.0 — Stage 15.84 (Borrowck Debug Format Leak Fix + region_vid_to_string)
+
+### Overview
+
+Stage 15.84 extends the error system cleanup to borrowck. It fixes 3
+`{:?}` Debug format leaks in borrowck error messages that were not
+covered by Stages 15.80-15.83 (which focused on typeck):
+
+1. **Lifetime error (RegionEscapesUniversal)**: `region {:?} escapes
+   universal region {:?}` → `region 'r5 escapes universal region 'r2`
+2. **Lifetime error (TypeTestFailed)**: `type {:?} does not outlive
+   region {:?}` → `type i32 does not outlive region 'r2`
+3. **NotCopy error**: `use of moved value: {:?} does not implement
+   Copy` → `use of moved value: <adt> does not implement Copy`
+
+**New helper**: `region_vid_to_string(vid: RegionVid) -> String` in
+`src/mir/ty.rs` — formats `RegionVid(N)` as `'rN` (matches Rust's
+convention for region variables).
+
+### Error system cleanup summary (Stages 15.80-15.84)
+
+| Stage | Focus | Sites Fixed |
+|-------|-------|-------------|
+| 15.80 | Human-readable type names (`type_to_string`) | 6 `{:?}` leaks + 2 `({:?})` enum leaks |
+| 15.81 | Terminator span accuracy (`operand_span`, `term.span`) | 7 `Span::DUMMY` sites + 1 `{:?}` leak |
+| 15.82 | Statement/rvalue span accuracy (`stmt_span` in `infer_rvalue`) | 9 `Span::DUMMY` sites + 5 `{:?}` leaks |
+| 15.83 | Aggregate (Array + Adt) span accuracy | 2 `Span::DUMMY` sites |
+| 15.84 | Borrowck Debug leaks (`region_vid_to_string`) | 3 `{:?}` leaks |
+| **Total** | | **20 `Span::DUMMY` sites + 17 `{:?}` leaks fixed** |
+
+**Result**: All user-facing typeck AND borrowck error messages now:
+- Use human-readable type names (`i32`, `bool`, `&mut T`, etc.) — no
+  Debug format leaks
+- Use human-readable region names (`'r5`, `'r2`) — no `RegionVid(N)`
+  Debug leaks
+- Point to actual source locations (with snippet underlines) — no
+  `Span::DUMMY` / "1:1" errors (typeck only; borrowck still has some
+  DUMMY spans in check_terminator callers, deferred)
+
+The error system is now in good shape for user-facing work.
+
+Per §1.0 原則 3 "显式 > 隐式": user-facing region names are explicit.
+Per §1.0 原則 4 "报错 > 静默": error messages are clear, not cryptic.
+
+### Test impact
+
+- 1 new Rust unit test in `src/mir/ty.rs::tests`:
+  - `region_vid_to_string_basic` — verifies `RegionVid(N)` → `'rN`
+- 0 conformance test changes
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 233/233 PASS (was 232, +1 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2140/2140 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7589 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.208.0 — Stage 15.83 (AggregateKind Array + Adt Span Accuracy Fix)

@@ -23214,3 +23214,86 @@ Stage Summary:
 - Error system cleanup is now complete. Ready for user-facing work.
 - Recommended next: Start Task 12 (Lifetime elision) — the next major
   v0.2 task (2-3 weeks, P1, ready now).
+
+---
+Task ID: stage15.84-borrowck-debug-leak-fix
+Agent: Super Z (main)
+Task: Stage 15.84 — Borrowck Debug format leak fix + region_vid_to_string. v0.208.0 → v0.209.0.
+
+Work Log:
+- Baseline: v0.208.0 / 232 lib + 2140 integration + 5216 conformance
+
+### 1. Investigation
+
+After Stages 15.80-15.83 cleaned up typeck error messages, investigated
+borrowck error messages for remaining {:?} Debug leaks. Found 3 sites:
+1. Lifetime error (RegionEscapesUniversal): "region {:?} escapes
+   universal region {:?}" — leaks RegionVid(N) Debug format
+2. Lifetime error (TypeTestFailed): "type {:?} does not outlive region
+   {:?}" — leaks TyKind + RegionVid(N) Debug format
+3. NotCopy error: "use of moved value: {:?} does not implement Copy"
+   — leaks TyKind Debug format
+
+### 2. Added region_vid_to_string helper
+
+In src/mir/ty.rs, added:
+- region_vid_to_string(vid: RegionVid) -> String
+  - formats RegionVid(N) as 'rN (matches Rust convention)
+
+Per §1.0 原則 3 "显式 > 隐式": user-facing region names are explicit.
+Per §23: region_vid_to_string follows <noun>_<verb>_<noun> pattern
+(matches type_to_string).
+
+### 3. Fixed 3 borrowck error messages
+
+1. RegionEscapesUniversal:
+   "region {:?} escapes universal region {:?}" ->
+   "region {} escapes universal region {}" (region_vid_to_string)
+
+2. TypeTestFailed:
+   "type {:?} does not outlive region {:?}" ->
+   "type {} does not outlive region {}" (type_kind_to_string + region_vid_to_string)
+
+3. NotCopy:
+   "use of moved value: {:?} does not implement Copy" ->
+   "use of moved value: {} does not implement Copy" (type_kind_to_string)
+
+### 4. New unit test (1 test)
+
+Added to src/mir/ty.rs::tests:
+- region_vid_to_string_basic: verifies RegionVid(0)->'r0, RegionVid(1)->'r1,
+  RegionVid(42)->'r42
+
+### 5. Documentation
+
+- docs/develop/v0/stage-15/stage-15.84-borrowck-debug-leak-fix.md
+- docs/tests/v0/stage15/stage-15.84-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 233/233 PASS (was 232, +1 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2140/2140 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.208.0 → v0.209.0
+
+Stage Summary:
+- Stage 15.84 PASSED — borrowck Debug format leak fix + region_vid_to_string
+- 7589 tests passing (233 lib + 2140 integration + 5216 conformance), 0 failures
+- 1 new unit test for region_vid_to_string
+- 0 conformance test changes (all ERROR_PATTERN matches preserved)
+- v0.209.0: minor bump (Phase 2 — error system borrowck Debug leak fix)
+- Completes the 5-stage error system cleanup (15.80-15.84):
+  - 20 Span::DUMMY sites fixed (typeck: 7 terminator + 9 statement/rvalue + 2 aggregate + 2 others)
+  - 17 {:?} Debug leaks fixed (typeck: 6+1+5 = 12; borrowck: 3+2 enum = 5)
+- All user-facing typeck AND borrowck error messages now:
+  - Use human-readable type names (i32, bool, &mut T, etc.) — no Debug leaks
+  - Use human-readable region names ('r5, 'r2) — no RegionVid(N) leaks
+  - Point to actual source locations (typeck only; borrowck check_terminator
+    DUMMY spans deferred)
+- Error system cleanup is substantially complete. Ready for user-facing work.
+- Recommended next: Start Task 12 (Lifetime elision) — the next major
+  v0.2 task (2-3 weeks, P1, ready now).

@@ -208,9 +208,12 @@ impl<'a> BorrowChecker<'a> {
                         ..
                     } => {
                         (
+                            // Stage 15.84: use human-readable region names
+                            // (was: {:?} Debug format leaking RegionVid(N)).
                             format!(
-                                "lifetime error: region {:?} escapes universal region {:?}",
-                                escaping_region, universal_region
+                                "lifetime error: region {} escapes universal region {}",
+                                crate::mir::ty::region_vid_to_string(*escaping_region),
+                                crate::mir::ty::region_vid_to_string(*universal_region),
                             ),
                             Span::DUMMY, // TODO: track span from constraint cause
                         )
@@ -222,9 +225,13 @@ impl<'a> BorrowChecker<'a> {
                         ..
                     } => {
                         (
+                            // Stage 15.84: use human-readable type + region
+                            // names (was: {:?} Debug format leaking
+                            // TyKind + RegionVid(N)).
                             format!(
-                                "lifetime error: type {:?} does not outlive region {:?}",
-                                ty.kind, universal_region
+                                "lifetime error: type {} does not outlive region {}",
+                                crate::mir::ty::type_kind_to_string(&ty.kind),
+                                crate::mir::ty::region_vid_to_string(*universal_region),
                             ),
                             *span,
                         )
@@ -722,10 +729,12 @@ impl<'a> BorrowChecker<'a> {
                 let ty = self.place_ty(mir, lv);
                 if !self.is_copy(&ty) && !is_field_projection {
                     self.errors.push(BorrowError::not_copy(
+                        // Stage 15.84: use human-readable type name
+                        // (was: {:?} Debug format leaking TyKind).
                         format!(
-                            "use of moved value: {:?} does not implement Copy; \
+                            "use of moved value: {} does not implement Copy; \
                              use an explicit move (`let y = move x;`) or borrow",
-                            ty.kind
+                            crate::mir::ty::type_kind_to_string(&ty.kind)
                         ),
                         span,
                     ));

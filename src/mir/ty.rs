@@ -495,6 +495,19 @@ fn fn_sig_to_string(sig: &Sig) -> String {
     s
 }
 
+/// Stage 15.84: Format a `RegionVid` as a human-readable region string.
+///
+/// Matches Rust's convention: region variables display as `'r<N>` (e.g.,
+/// `'r0`, `'r5`). This replaces the previous `{:?}` Debug formatting that
+/// leaked `RegionVid(5)` into user-facing lifetime error messages.
+///
+/// Per §1.0 原則 3 "显式 > 隐式": user-facing region names are explicit.
+/// Per §23 (API Naming): `region_vid_to_string` follows `<noun>_<verb>_<noun>`
+/// pattern (matches `type_to_string`).
+pub fn region_vid_to_string(vid: RegionVid) -> String {
+    format!("'r{}", vid.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -712,5 +725,14 @@ mod tests {
             Span::DUMMY,
         );
         assert_eq!(type_to_string(&tuple), "(*mut bool, i32)");
+    }
+
+    // === Stage 15.84: region_vid_to_string tests ===
+
+    #[test]
+    fn region_vid_to_string_basic() {
+        assert_eq!(region_vid_to_string(RegionVid(0)), "'r0");
+        assert_eq!(region_vid_to_string(RegionVid(1)), "'r1");
+        assert_eq!(region_vid_to_string(RegionVid(42)), "'r42");
     }
 }
