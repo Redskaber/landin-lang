@@ -1,8 +1,8 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.219.0 (v0.2 Phase 3 — Task 12 Lifetime elision + region inference + conformance tests COMPLETE)
-**Date**: 2026-08-02
+**Version**: v0.220.0 (v0.2 RELEASE APPROVED 🎉 — True NLL + Drop + Lifetime elision + Error system cleanup)
+**Date**: 2026-08-03
 
 A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.219.0, Stage 15.94 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-03 (v0.220.0, Stage 15.95 — v0.2 RELEASE APPROVED 🎉)
