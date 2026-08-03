@@ -502,3 +502,40 @@ fn stage15_87_type_resolution_error_span_points_to_type() {
         type_err.span.lo
     );
 }
+
+/// Stage 15.88: `s.f()` where `f` is not a method of `S` should produce
+/// a typeck error whose message uses a human-readable type name, not
+/// Debug format like `Adt(DefId(1), [])`.
+#[test]
+fn stage15_88_no_method_found_uses_human_readable_type_name() {
+    let src = "trait T { fn f(&self); } struct S; fn main() { let s = S; s.f(); }";
+    let result = compile(src);
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for `s.f()` on type without method `f`"
+    );
+    // Find the error with "no method" message.
+    let method_err = result
+        .errors
+        .typeck
+        .iter()
+        .find(|e| e.message.contains("no method"))
+        .expect("expected 'no method' error");
+    // Should contain human-readable "<adt>", not Debug "Adt(DefId(1), [])".
+    assert!(
+        method_err.message.contains("<adt>"),
+        "message should contain '<adt>' (human-readable), got: {}",
+        method_err.message
+    );
+    // Should NOT contain Debug format like "Adt(".
+    assert!(
+        !method_err.message.contains("Adt("),
+        "message should NOT contain Debug 'Adt(', got: {}",
+        method_err.message
+    );
+    assert!(
+        !method_err.message.contains("DefId("),
+        "message should NOT contain Debug 'DefId(', got: {}",
+        method_err.message
+    );
+}

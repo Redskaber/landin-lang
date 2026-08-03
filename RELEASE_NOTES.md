@@ -1,9 +1,73 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.212.0
+**Current version**: v0.213.0
 **Date**: 2026-08-02
-**Test count**: 235 rust lib tests + 2141 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 236 rust lib tests + 2142 integration tests + 5 benchmarks + 5216 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.213.0 — Stage 15.88 (MIR Lowerer Debug Leak Fix + hir_expr_kind_to_string)
+
+### Overview
+
+Stage 15.88 extends the error system cleanup to the MIR lowerer. It
+fixes 3 `{:?}` Debug format leaks in MIR lowering error messages that
+were not covered by Stages 15.80-15.87 (which focused on typeck,
+borrowck, and resolve):
+
+1. **"no method found" error**: `no method `{}` found for type `{:?}``
+   → `no method `{}` found for type `<adt>`` (uses `type_kind_to_string`)
+2. **"for-loop only supports Range" error**: `found {:?}` →
+   `found {}` (uses new `hir_expr_kind_to_string`)
+3. **"array repeat count" error**: `(found {:?})` →
+   `(found {})` (uses new `hir_expr_kind_to_string`)
+
+**New helper**: `hir_expr_kind_to_string(kind: &HirExprKind) -> &'static str`
+in `src/hir/kinds.rs` — formats `HirExprKind` as a human-readable label
+(e.g., `"literal"`, `"function call"`, `"range expression"`) instead of
+Debug format.
+
+### Error system cleanup summary (Stages 15.80-15.88)
+
+| Stage | Focus | Sites Fixed |
+|-------|-------|-------------|
+| 15.80 | Human-readable type names (`type_to_string`) | 6 `{:?}` leaks + 2 `({:?})` enum leaks |
+| 15.81 | Typeck terminator span accuracy | 7 `Span::DUMMY` sites + 1 `{:?}` leak |
+| 15.82 | Typeck statement/rvalue span accuracy | 9 `Span::DUMMY` sites + 5 `{:?}` leaks |
+| 15.83 | Typeck aggregate span accuracy | 2 `Span::DUMMY` sites |
+| 15.84 | Borrowck Debug leaks (`region_vid_to_string`) | 3 `{:?}` leaks |
+| 15.85 | Borrowck terminator span accuracy | 4 `Span::DUMMY` sites |
+| 15.86 | DRY refactor: unify `operand_span` | 1 duplicate eliminated |
+| 15.87 | Resolve error span accuracy | 1 `Span::DUMMY` site |
+| 15.88 | MIR lowerer Debug leaks (`hir_expr_kind_to_string`) | 3 `{:?}` leaks |
+| **Total** | | **25 `Span::DUMMY` sites + 20 `{:?}` leaks fixed + 1 DRY** |
+
+**Result**: All user-facing typeck, borrowck, resolve, AND MIR lowerer
+error messages now use human-readable type names, region names, and
+expression kind names — no Debug format leaks.
+
+Per §1.0 原則 3 "显式 > 隐式": user-facing expression kind names are explicit.
+Per §1.0 原則 4 "报错 > 静默": error messages are clear, not cryptic.
+
+### Test impact
+
+- 1 new Rust unit test in `src/hir/kinds.rs::tests`:
+  - `stage15_88_hir_expr_kind_to_string_basic` — verifies 7 expression kinds
+- 1 new Rust integration test in
+  `tests/v0/stage15/plan/error_system_cleanup_tests.rs`:
+  - `stage15_88_no_method_found_uses_human_readable_type_name` — verifies
+    `s.f()` error uses `<adt>`, not `Adt(DefId(1), [])`
+- 0 conformance test changes
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 236/236 PASS (was 235, +1 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2142/2142 PASS (was 2141, +1 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- **Total: 7594 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.212.0 — Stage 15.87 (Resolve Error Span Accuracy Fix)

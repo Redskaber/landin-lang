@@ -1229,9 +1229,11 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 _ => {
                     // Non-Range iter — emit a typeck error.
                     cx.type_errors.push(crate::typeck::TypeError::new(
+                        // Stage 15.88: use human-readable expression kind
+                        // (was: {:?} Debug format leaking HirExprKind::...).
                         format!(
-                            "for-loop only supports Range iterators (start..end or start..=end); found {:?}",
-                            iter.kind
+                            "for-loop only supports Range iterators (start..end or start..=end); found {}",
+                            crate::hir::hir_expr_kind_to_string(&iter.kind)
                         ),
                         expr.span,
                     ));
@@ -1685,9 +1687,11 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     // Non-literal count — emit error, fall back to 1 element
                     // for recovery (so downstream codegen doesn't crash).
                     cx.type_errors.push(crate::typeck::TypeError::new(
+                        // Stage 15.88: use human-readable expression kind
+                        // (was: {:?} Debug format leaking HirExprKind::...).
                         format!(
-                            "array repeat count must be a literal integer in v0.1; const-eval for non-literal counts is v0.2+ work (found {:?})",
-                            count.kind
+                            "array repeat count must be a literal integer in v0.1; const-eval for non-literal counts is v0.2+ work (found {})",
+                            crate::hir::hir_expr_kind_to_string(&count.kind)
                         ),
                         expr.span,
                     ));
@@ -2373,9 +2377,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 );
                 if !is_known_unsupported {
                     cx.type_errors.push(crate::typeck::TypeError::new(
+                        // Stage 15.88: use human-readable type name
+                        // (was: {:?} Debug format leaking Adt(DefId(N), [])).
                         format!(
-                            "no method `{}` found for type `{:?}`",
-                            method_name_str, recv_ty.kind
+                            "no method `{}` found for type `{}`",
+                            method_name_str,
+                            crate::mir::ty::type_kind_to_string(&recv_ty.kind)
                         ),
                         expr.span,
                     ));

@@ -27,5 +27,7 @@ pub use kinds::{
     HirTypeParam, HirUnaryOp, HirUse, HirUseTree, HirVariant, HirVariantData, HirWherePredicate,
     InferTy, InferTyCounter, OwnerNode, PrimTy, Res,
 };
+// Stage 15.88: hir_expr_kind_to_string — human-readable HirExprKind formatter.
+pub use kinds::hir_expr_kind_to_string;
 pub use lower::{lower_crate, HirLowerCtxt, LowerError};
 pub use map::{DefIdMap, DefIdSet, HirIdMap, HirIdSet};

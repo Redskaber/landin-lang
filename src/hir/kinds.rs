@@ -948,6 +948,89 @@ impl InferTyCounter {
     }
 }
 
+/// Stage 15.88: Format an `HirExprKind` as a human-readable string for
+/// user-facing diagnostics.
+///
+/// This replaces the previous `{:?}` Debug formatting that leaked
+/// internal enum variant names (e.g., `Lit(Int(42, None))`,
+/// `Path(HirPath { ... })`, `Call { func: ..., args: [...] }`) into
+/// user-facing error messages. The Debug format is useful for compiler
+/// developers but confusing for users.
+///
+/// Examples:
+///   - `Lit(Int(42, None))` → `"integer literal"`
+///   - `Lit(Bool(true))` → `"bool literal"`
+///   - `Path(...)` → `"path"`
+///   - `Call { ... }` → `"function call"`
+///   - `MethodCall { ... }` → `"method call"`
+///   - `Field { ... }` → `"field access"`
+///   - `Index { ... }` → `"index"`
+///   - `Unary { ... }` → `"unary op"`
+///   - `Binary { ... }` → `"binary op"`
+///   - `Assign { ... }` → `"assignment"`
+///   - `AddrOf { ... }` → `"borrow"`
+///   - `Cast { ... }` → `"cast"`
+///   - `If { ... }` → `"if expression"`
+///   - `Match { ... }` → `"match expression"`
+///   - `Loop { ... }` → `"loop expression"`
+///   - `While { ... }` → `"while expression"`
+///   - `For { ... }` → `"for expression"`
+///   - `Closure { ... }` → `"closure"`
+///   - `Range { ... }` → `"range expression"`
+///   - `Tuple { ... }` → `"tuple"`
+///   - `Array { ... }` → `"array"`
+///   - `Repeat { ... }` → `"repeat expression"`
+///   - `Struct { ... }` → `"struct literal"`
+///   - `Println { ... }` → `"println! macro"`
+///   - `Unit` → `"unit"`
+///   - etc.
+///
+/// Per §1.0 原則 3 "显式 > 隐式": user-facing expression kind names are
+/// explicit.
+/// Per §23 (API Naming): `hir_expr_kind_to_string` follows
+/// `<noun>_<verb>_<noun>` pattern (matches `type_kind_to_string`).
+///
+/// Note: this function does NOT recurse into sub-expressions — it returns
+/// a short human-readable label for the *kind*, not a full pretty-print.
+/// For full expression display, a future stage can add `hir_expr_to_string`.
+pub fn hir_expr_kind_to_string(kind: &HirExprKind) -> &'static str {
+    match kind {
+        HirExprKind::Lit(_) => "literal",
+        HirExprKind::Path(_) => "path",
+        HirExprKind::Block(_) => "block",
+        HirExprKind::Call { .. } => "function call",
+        HirExprKind::MethodCall { .. } => "method call",
+        HirExprKind::Field { .. } => "field access",
+        HirExprKind::Index { .. } => "index",
+        HirExprKind::Unary { .. } => "unary op",
+        HirExprKind::Binary { .. } => "binary op",
+        HirExprKind::Assign { .. } => "assignment",
+        HirExprKind::AddrOf { .. } => "borrow",
+        HirExprKind::Cast { .. } => "cast",
+        HirExprKind::Try { .. } => "try expression",
+        HirExprKind::If { .. } => "if expression",
+        HirExprKind::Match { .. } => "match expression",
+        HirExprKind::Loop { .. } => "loop expression",
+        HirExprKind::While { .. } => "while expression",
+        HirExprKind::For { .. } => "for expression",
+        HirExprKind::Closure { .. } => "closure",
+        HirExprKind::Return { .. } => "return",
+        HirExprKind::Break { .. } => "break",
+        HirExprKind::Continue => "continue",
+        HirExprKind::Range { .. } => "range expression",
+        HirExprKind::Tuple { .. } => "tuple",
+        HirExprKind::Array { .. } => "array",
+        HirExprKind::Repeat { .. } => "repeat expression",
+        HirExprKind::Struct { .. } => "struct literal",
+        HirExprKind::MacroCall { .. } => "macro call",
+        HirExprKind::Println { .. } => "println! macro",
+        HirExprKind::Unsafe(_) => "unsafe block",
+        HirExprKind::Unit => "unit",
+        HirExprKind::Await { .. } => "await expression",
+        HirExprKind::Async { .. } => "async block",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -993,5 +1076,58 @@ mod tests {
             span: Span::DUMMY,
         };
         assert_eq!(p.res, Res::Unknown);
+    }
+
+    /// Stage 15.88: Verify `hir_expr_kind_to_string` produces human-readable
+    /// labels for common expression kinds.
+    #[test]
+    fn stage15_88_hir_expr_kind_to_string_basic() {
+        use crate::session::Span;
+        // Lit — literal
+        let lit = HirExprKind::Lit(HirLitKind::Int(42, None));
+        assert_eq!(hir_expr_kind_to_string(&lit), "literal");
+        // Unit
+        assert_eq!(hir_expr_kind_to_string(&HirExprKind::Unit), "unit");
+        // Continue
+        assert_eq!(hir_expr_kind_to_string(&HirExprKind::Continue), "continue");
+        // Range — needs dummy exprs
+        let range = HirExprKind::Range {
+            start: None,
+            end: None,
+            end_kind: crate::ast::RangeEnd::Excluded,
+        };
+        assert_eq!(hir_expr_kind_to_string(&range), "range expression");
+        // Tuple
+        assert_eq!(
+            hir_expr_kind_to_string(&HirExprKind::Tuple { elems: vec![] }),
+            "tuple"
+        );
+        // Array
+        assert_eq!(
+            hir_expr_kind_to_string(&HirExprKind::Array { elems: vec![] }),
+            "array"
+        );
+        // Call — needs dummy exprs
+        let call = HirExprKind::Call {
+            func: Box::new(HirExpr {
+                hir_id: HirId::new(DefId(0), ItemLocalId(0)),
+                kind: HirExprKind::Unit,
+                span: Span::DUMMY,
+            }),
+            args: vec![],
+        };
+        assert_eq!(hir_expr_kind_to_string(&call), "function call");
+        // MethodCall
+        let mcall = HirExprKind::MethodCall {
+            receiver: Box::new(HirExpr {
+                hir_id: HirId::new(DefId(0), ItemLocalId(0)),
+                kind: HirExprKind::Unit,
+                span: Span::DUMMY,
+            }),
+            method: Ident::new(Symbol::default(), Span::DUMMY),
+            args: vec![],
+            generic_args: None,
+        };
+        assert_eq!(hir_expr_kind_to_string(&mcall), "method call");
     }
 }

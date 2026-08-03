@@ -23534,3 +23534,98 @@ Stage Summary:
 - Error system cleanup is complete. Ready for user-facing work.
 - Recommended next: Start Task 12 (Lifetime elision) — the next major
   v0.2 task (2-3 weeks, P1, ready now).
+
+---
+Task ID: stage15.88-mir-lowerer-debug-leak-fix
+Agent: Super Z (main)
+Task: Stage 15.88 — MIR lowerer Debug leak fix + hir_expr_kind_to_string. v0.212.0 → v0.213.0.
+
+Work Log:
+- Baseline: v0.212.0 / 235 lib + 2141 integration + 5216 conformance
+
+### 1. Investigation
+
+After Stages 15.80-15.87 completed the typeck+borrowck+resolve error
+system cleanup + DRY refactor, investigated MIR lowerer error messages
+for remaining {:?} Debug leaks. Found 3 sites in src/mir/lower/expr_operand.rs:
+1. Line 1233: "for-loop only supports Range iterators... found {:?}" —
+   leaks HirExprKind Debug format
+2. Line 1689: "array repeat count must be a literal integer... (found {:?})" —
+   leaks HirExprKind Debug format
+3. Line 2377: "no method `{}` found for type `{:?}`" — leaks TyKind
+   Debug format (Adt(DefId(N), []))
+
+Site 3 (no method found) was already fixed in a prior partial Stage 15.88
+pass (uses type_kind_to_string). This stage completes the work by
+fixing sites 1 and 2, which require a new hir_expr_kind_to_string helper.
+
+### 2. Added hir_expr_kind_to_string helper
+
+In src/hir/kinds.rs, added:
+- pub fn hir_expr_kind_to_string(kind: &HirExprKind) -> &'static str
+  - Formats HirExprKind as human-readable labels:
+    - Lit(_) -> "literal"
+    - Path(_) -> "path"
+    - Call { .. } -> "function call"
+    - MethodCall { .. } -> "method call"
+    - Range { .. } -> "range expression"
+    - Tuple { .. } -> "tuple"
+    - Array { .. } -> "array"
+    - etc.
+
+Re-exported from src/hir/mod.rs as pub use kinds::hir_expr_kind_to_string.
+
+Per §1.0 原則 3 "显式 > 隐式": user-facing expression kind names are explicit.
+Per §23: hir_expr_kind_to_string follows <noun>_<verb>_<noun> pattern
+(matches type_kind_to_string from Stage 15.80).
+
+### 3. Fixed 2 remaining {:?} Debug leaks in MIR lowerer
+
+1. "for-loop only supports Range iterators... found {:?}" ->
+   "found {}" (hir_expr_kind_to_string)
+2. "array repeat count must be a literal integer... (found {:?})" ->
+   "(found {})" (hir_expr_kind_to_string)
+
+### 4. New tests (2 tests)
+
+- src/hir/kinds.rs::tests: stage15_88_hir_expr_kind_to_string_basic —
+  verifies 7 expression kinds (Lit, Unit, Continue, Range, Tuple, Array,
+  Call, MethodCall)
+- tests/v0/stage15/plan/error_system_cleanup_tests.rs:
+  stage15_88_no_method_found_uses_human_readable_type_name — verifies
+  s.f() error uses <adt>, not Adt(DefId(1), [])
+
+### 5. Documentation
+
+- docs/develop/v0/stage-15/stage-15.88-mir-lowerer-debug-leak-fix.md
+- docs/tests/v0/stage15/stage-15.88-test-plan.md
+- Updated docs/tests/matrix.md, RELEASE_NOTES.md, README.md
+
+### Verification
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 236/236 PASS (was 235, +1 new)
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2142/2142 PASS (was 2141, +1 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5216/5216 PASS
+- 0 clippy warnings, fmt clean
+- Bumped Cargo.toml v0.212.0 → v0.213.0
+
+Stage Summary:
+- Stage 15.88 PASSED — MIR lowerer Debug leak fix + hir_expr_kind_to_string
+- 7594 tests passing (236 lib + 2142 integration + 5216 conformance), 0 failures
+- 2 new tests (1 unit + 1 integration)
+- 0 conformance test changes (all ERROR_PATTERN matches preserved)
+- v0.213.0: minor bump (Phase 2 — MIR lowerer Debug leak fix)
+- Completes the 9-stage error system cleanup (15.80-15.88):
+  - 25 Span::DUMMY sites fixed (typeck: 18; borrowck: 6; resolve: 1)
+  - 20 {:?} Debug leaks fixed (typeck: 12; borrowck: 5; MIR lowerer: 3)
+  - 1 DRY refactor (operand_span unified into mir::place)
+  - 2 new helpers (type_kind_to_string, region_vid_to_string, hir_expr_kind_to_string,
+    operand_span — all in their architecturally correct modules)
+- All user-facing typeck AND borrowck AND resolve AND MIR lowerer error
+  messages now use human-readable type names, region names, and expression
+  kind names — no Debug format leaks.
+- Error system cleanup is complete. Ready for user-facing work.
+- Recommended next: Start Task 12 (Lifetime elision) — the next major
+  v0.2 task (2-3 weeks, P1, ready now).

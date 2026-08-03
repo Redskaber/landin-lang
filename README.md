@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.212.0 (v0.2 Phase 2 — error system cleanup complete: 8 stages, typeck + borrowck + resolve)
+**Version**: v0.213.0 (v0.2 Phase 2 — error system cleanup complete: 9 stages, 25 Span::DUMMY + 20 Debug leaks + 1 DRY fixed)
 **Date**: 2026-08-02
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-02 (v0.212.0, Stage 15.87 — `impl Drop` + RAII COMPLETE)
+**Last updated**: 2026-08-02 (v0.213.0, Stage 15.88 — `impl Drop` + RAII COMPLETE)
