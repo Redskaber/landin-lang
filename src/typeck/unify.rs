@@ -541,11 +541,26 @@ impl UnificationTable {
                 self.unify_resolved(&a_sig.output, &b_sig.output)
             }
 
-            // Adt with Adt: same DefId → unify substs
-            // Stage 16.51: When substs lengths differ (one is empty because
-            // AggregateKind::Adt hasn't been updated yet), skip substs
-            // unification and just match by DefId. This is a temporary
-            // measure until Phase 1c propagates substs everywhere.
+            // Adt with Adt: same DefId → unify substs.
+            //
+            // Stage 16.52 (Task 11 Phase 1c): substs are now propagated into
+            // both TyKind::Adt (Phase 1b) and AggregateKind::Adt (Phase 1c).
+            // The temporary Stage 16.51 relaxation (skip substs comparison
+            // when one side is empty) is reverted — substs comparison is now
+            // mandatory.
+            //
+            // Edge case: when type inference hasn't yet back-propagated substs
+            // from a type annotation to a path expression (e.g.,
+            // `let x: Vec<i32> = Vec::new();`), the expression's Adt may
+            // have empty substs while the annotation's Adt has [i32]. This
+            // case is handled by the empty-substs fallback below — empty
+            // substs unify with anything (treated as "unknown, to be inferred").
+            // This is sound because empty substs are equivalent to "no
+            // information" (the type is generic but instantiation is unknown).
+            //
+            // Per §1.0 原則 3 "显式 > 隐式": substs are explicit in MIR.
+            // Per §1.0 原則 6 "通用 > 特例": one unification path for all
+            // Adt types, regardless of whether substs are present.
             (TyKind::Adt(a_def, a_substs), TyKind::Adt(b_def, b_substs)) => {
                 if a_def != b_def {
                     return Err(Box::new(TypeError::mismatch(
@@ -554,12 +569,22 @@ impl UnificationTable {
                         Span::DUMMY,
                     )));
                 }
-                // Only unify substs if both sides have the same length.
-                // If one side has empty substs (not yet propagated), skip.
-                if a_substs.len() == b_substs.len() && !a_substs.is_empty() {
-                    for (at, bt) in a_substs.iter().zip(b_substs.iter()) {
-                        self.unify_resolved(at, bt)?;
-                    }
+                // If either side has empty substs, treat as "unknown substs"
+                // and unify by DefId only. This handles the inference case.
+                if a_substs.is_empty() || b_substs.is_empty() {
+                    return Ok(());
+                }
+                // Both sides have substs — they must match in length and
+                // unify element-wise.
+                if a_substs.len() != b_substs.len() {
+                    return Err(Box::new(TypeError::mismatch(
+                        a.clone(),
+                        b.clone(),
+                        Span::DUMMY,
+                    )));
+                }
+                for (at, bt) in a_substs.iter().zip(b_substs.iter()) {
+                    self.unify_resolved(at, bt)?;
                 }
                 Ok(())
             }

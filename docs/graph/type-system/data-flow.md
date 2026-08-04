@@ -1,7 +1,7 @@
 # Type System Data Flow (Typeck + Borrowck)
 
 > **Date**: 2026-08-04
-> **Version**: v0.235.1
+> **Version**: v0.238.0 (Stage 16.52 — Task 11 Phase 1c complete)
 
 ## Type Checking Data Flow
 
@@ -129,3 +129,85 @@ TyKind::Adt(def_id, _)    → EmitType::Struct(field_tys) via AdtLayouts
 TyKind::Closure(_, substs)→ EmitType::Struct(substs)
 TyKind::FnDef(_, _)       → EmitType::OpaquePtr
 ```
+
+## Generic Substs Data Flow (Task 11 Phase 1 — Stages 16.50-16.52)
+
+```
+Parser (parse_generics, try_parse_generic_args, turbofish)
+    │
+    ▼
+AST (Generics, GenericParam, GenericArg, PathSegment.args)
+    │
+    ▼
+HIR (HirGenerics, HirPathSegment.args preserved)
+    │
+    ├─────────────────────────────────────────────────┐
+    ▼                                                 ▼
+┌────────────────────────────────────┐    ┌────────────────────────────────────┐
+│  generics_of query (Stage 16.50)   │    │  lower_path_generic_args (16.51)   │
+│                                    │    │                                    │
+│  src/hir/generics.rs:              │    │  src/mir/lower/mod.rs:             │
+│    build_generics_map(hir)         │    │    path → SubstsRef                │
+│      → HashMap<DefId, ParamTy[]>   │    │                                    │
+│    generics_of(def_id, hir)        │    │  Walks path.segments.last().args,  │
+│      → Vec<ParamTy>                │    │  extracts Type args, lowers each   │
+│                                    │    │  to MIR Ty via lower_ast_ty_to_    │
+│  Walks HIR owners, extracts        │    │  mir_ty (minimal AST→MIR).         │
+│  HirGenerics, filters type params  │    │                                    │
+│  (skip lifetimes).                 │    │  Lifetime + Assoc args skipped.    │
+└────────────────┬───────────────────┘    └────────────────┬───────────────────┘
+                 │                                         │
+                 │           ┌─────────────────────────────┘
+                 │           │
+                 │           ▼
+                 │  ┌──────────────────────────────────────────────────┐
+                 │  │  TyKind::Adt substs (Stage 16.51, Phase 1b)     │
+                 │  │                                                  │
+                 │  │  lower_hir_ty_to_mir_ty_with_regions:           │
+                 │  │    Res::Def(def_id) →                            │
+                 │  │      Ty::new(Adt(def_id, substs), span)          │
+                 │  │                                                  │
+                 │  │  Affects: type annotations, fn sigs, local decls│
+                 │  └──────────────────┬───────────────────────────────┘
+                 │                     │
+                 │                     ▼
+                 │  ┌──────────────────────────────────────────────────┐
+                 │  │  AggregateKind::Adt substs (Stage 16.52, 1c)    │
+                 │  │                                                  │
+                 │  │  mir/lower/expr_operand.rs — 5 sites:           │
+                 │  │    1. Enum unit variant path (Color::Red)        │
+                 │  │    2. ADT ctor call (Pair(1, 2))                 │
+                 │  │    3. Struct literal (Pair { a: 1, b: 2 })       │
+                 │  │    4. Enum struct variant (Shape::Circle { r })  │
+                 │  │    5. Fall-through ADT ctor path                 │
+                 │  │                                                  │
+                 │  │  All path-based sites use lower_path_generic_    │
+                 │  │  args(path, &mut 0) (通解 — one helper).         │
+                 │  │  Call-based site reuses adt_substs from          │
+                 │  │  func_local_decl.ty.kind (DRY).                  │
+                 │  └──────────────────┬───────────────────────────────┘
+                 │                     │
+                 ▼                     ▼
+┌────────────────────────────────────────────────────────────────────┐
+│  Typeck Unification (Stage 16.52)                                  │
+│                                                                    │
+│  typeck/unify.rs Adt arm:                                          │
+│    LHS substs empty OR RHS substs empty → match by DefId only      │
+│      (empty = "unknown, to be inferred")                           │
+│    Both non-empty: must match length + unify element-wise          │
+│                                                                    │
+│  This is the principled rule (replaces Stage 16.51 relaxation).    │
+│  Sound because empty substs = "no information".                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### Generic Substs Status
+
+| Phase | Status | Stage | Description |
+|-------|--------|-------|-------------|
+| 1a | ✅ | 16.50 | `generics_of` query |
+| 1b | ✅ | 16.51 | Substs in `TyKind::Adt` (type annotations) |
+| 1c | ✅ | 16.52 | Substs in `AggregateKind::Adt` (literal construction) |
+| 2 | 🔧 | — | `substitute(ty, substs)` — replace `Param` with actual |
+| 3 | 🔧 | — | `collect_mono_items` — walk MIR, dedup (def_id, substs) |
+| 4 | 🔧 | — | Per-mono codegen — layouts keyed by (DefId, SubstsRef) |

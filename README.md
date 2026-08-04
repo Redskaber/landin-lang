@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.237.0 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF + Task 11 Phase 1b: substs propagation)
+**Version**: v0.238.0 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF + Task 11 Phase 1 complete: substs propagation)
 **Date**: 2026-08-04
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -49,7 +49,7 @@ self-hosted (Stage 0 bootstrap) and uses LLVM 19 for code generation.
 - `impl Drop` + RAII (recursive drop, double-drop prevention)
 - `dyn Trait` fat-pointer dispatch (vtable + dynptr globals)
 - Stdlib MVP (Copy/Clone/Drop, arithmetic traits, IO traits)
-- 7700+ tests (100% pass rate)
+- 7900+ tests (100% pass rate)
 
 ---
 
@@ -71,22 +71,22 @@ source scripts/setup-llvm-env.sh
 cargo build --features llvm-backend
 
 # Run tests
-cargo test --features llvm-backend --lib          # 244 lib tests
-cargo test --features llvm-backend --test all_tests  # 2414 integration tests
+cargo test --features llvm-backend --lib          # 250 lib tests
+cargo test --features llvm-backend --test all_tests  # 2452 integration tests
 python3 tests/conformance/run_all.py              # 5224 conformance tests
 
 # Run a Landin program
 cargo run --features llvm-backend -- --run examples/hello.lin
 ```
 
-### Test Statistics (v0.235.0)
+### Test Statistics (v0.238.0)
 
 | Test Type | Count | Pass Rate |
 |-----------|-------|-----------|
-| Lib tests | 244 | 100% |
-| Integration tests | 2414 | 100% |
+| Lib tests | 250 | 100% |
+| Integration tests | 2452 | 100% |
 | Conformance tests | 5224 | 100% |
-| **Total** | **7882** | **100%** |
+| **Total** | **7926** | **100%** |
 
 ---
 
@@ -168,11 +168,11 @@ src/
 
 | Metric | Value |
 |--------|-------|
-| Stage 16 design docs | 54 |
-| Stage 16 test files | 31 |
-| Stage 16 tests | 256 |
+| Stage 16 design docs | 58 |
+| Stage 16 test files | 35 |
+| Stage 16 tests | 271 |
 | Deep review reports | 8 (Round 1-8, all GO) |
-| Graph diagrams | 8 |
+| Graph diagrams | 11 |
 | LLVM docs | 21 |
 
 ---

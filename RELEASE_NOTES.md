@@ -1,9 +1,48 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.237.0
+**Current version**: v0.238.0
 **Date**: 2026-08-04
-**Test count**: 250 rust lib tests + 2437 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 250 rust lib tests + 2452 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.238.0 — Stage 16.52 (Task 11 Phase 1c: AggregateKind::Adt Substs Propagation)
+
+### Overview
+
+Completed Task 11 Phase 1c — propagating generic args into
+`AggregateKind::Adt` at all 5 construction sites in
+`src/mir/lower/expr_operand.rs`. Phase 1b (Stage 16.51) propagated substs
+into `TyKind::Adt` for type annotations; Phase 1c extends this to
+aggregate construction so the two stay consistent under typeck unification.
+
+**Key results**:
+- `let x: Opt<i32> = Opt::Some(42);` compiles end-to-end
+- `let x: Opt<i32> = Opt::None;` compiles (empty substs unify with non-empty)
+- Generic struct literals, generic enum variants (tuple/struct/unit), and
+  generic enums in return/match positions all compile
+
+**Changes**:
+1. `src/mir/lower/expr_operand.rs` — 5 `AggregateKind::Adt` sites updated
+   to use `lower_path_generic_args(path, &mut 0)` for substs (or reuse
+   `adt_substs` from `func_local_decl.ty.kind` for Call-based ctor)
+2. `src/typeck/unify.rs` — replaced the temporary Stage 16.51 relaxation
+   with the principled "empty substs = unknown" rule:
+   - Either side empty → match by DefId only (inference case)
+   - Both non-empty → must match length + unify element-wise
+
+**Tests**: +15 integration tests in
+`tests/v0/stage16/plan/stage16_52_aggregate_substs_tests.rs` covering
+generic struct/enum construction, MIR inspection, edge cases, and
+no-regression checks.
+
+Per §1.0 原則 6 "通用 > 特例": one `lower_path_generic_args` helper for
+all path-based sites (4 of 5). Per §23 rule 5 (DRY): Call-based site
+reuses `adt_substs` already extracted from the func operand's type.
+
+### Verification
+
+- **Total: 7926 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.237.0 — Stage 16.51 (Task 11 Phase 1b: Substs Propagation)

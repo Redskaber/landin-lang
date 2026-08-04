@@ -44,7 +44,7 @@ use crate::mir::ty::*;
 use crate::session::Span;
 
 // Re-exports from the parent module — see §16 (interface isolation).
-use super::{lower_hir_ty_to_mir_ty, MirLowerCtxt};
+use super::{lower_hir_ty_to_mir_ty, lower_path_generic_args, MirLowerCtxt};
 // Sibling helper modules — each owns a specialized sub-algorithm.
 // (`adt_layout` is not used here: it runs from mod.rs's body entry points,
 //  not from expression lowering.)
@@ -430,13 +430,14 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                 if field_tys.len() == 1 {
                                     // Unit variant — construct directly with
                                     // discriminant operand.
-                                    let adt_ty = Ty::new(
-                                        TyKind::Adt(
-                                            def_id,
-                                            Vec::<crate::mir::ty::Ty>::new().into(),
-                                        ),
-                                        expr.span,
-                                    );
+                                    //
+                                    // Stage 16.52 (Task 11 Phase 1c): propagate
+                                    // generic args from path into Adt substs.
+                                    // Per §1.0 原則 6 "通用 > 特例": one path
+                                    // for all generic enum variants.
+                                    let substs = lower_path_generic_args(path, &mut 0);
+                                    let adt_ty =
+                                        Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
                                     let discr = Operand::Constant(Const {
                                         ty: Ty::new(
                                             TyKind::Int(crate::ast::IntTy::I32),
@@ -449,7 +450,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                             AggregateKind::Adt(
                                                 def_id,
                                                 variant_idx,
-                                                Vec::new().into(),
+                                                substs,
                                                 field_tys,
                                             ),
                                             vec![discr],
@@ -463,10 +464,11 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                 // Fall through to create the Adt-typed operand.
                             }
                         }
-                        let adt_ty = Ty::new(
-                            TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
-                            expr.span,
-                        );
+                        // Stage 16.52 (Task 11 Phase 1c): propagate generic
+                        // args from path into Adt substs (consistent with
+                        // lower_hir_ty_to_mir_ty_with_regions).
+                        let substs = lower_path_generic_args(path, &mut 0);
+                        let adt_ty = Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
                         return cx.eval_rvalue_to_temp(
                             Rvalue::Use(Operand::Constant(Const {
                                 ty: adt_ty.clone(),
@@ -811,12 +813,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     all_operands.push(discr);
                 }
                 all_operands.extend(arg_operands);
-                let dest_ty = Ty::new(TyKind::Adt(adt_def_id, adt_substs), expr.span);
+                let dest_ty = Ty::new(TyKind::Adt(adt_def_id, adt_substs.clone()), expr.span);
                 let dest = cx.mir.new_local(dest_ty, None, expr.span);
                 cx.push_assign(
                     Place::local(dest, expr.span),
                     Rvalue::Aggregate(
-                        AggregateKind::Adt(adt_def_id, variant_idx, Vec::new().into(), field_tys),
+                        AggregateKind::Adt(adt_def_id, variant_idx, adt_substs, field_tys),
                         all_operands,
                     ),
                     expr.span,
@@ -1833,17 +1835,15 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // DefId, use AggregateKind::Adt (the proper representation).
             // Stage 3.38 (L-ENUM): also handle enum struct variants
             // (e.g., `Shape::Circle { r: 1.0 }`).
+            //
+            // Stage 16.52 (Task 11 Phase 1c): propagate generic args from
+            // path into Adt substs (consistent with lower_hir_ty_to_mir_ty).
             if let Res::Def(def_id, DefKind::Struct) = path.res {
                 let field_tys = field_resolution::resolve_adt_field_tys(cx, def_id);
-                let struct_ty = Ty::new(
-                    TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
-                    expr.span,
-                );
+                let substs = lower_path_generic_args(path, &mut 0);
+                let struct_ty = Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
                 return cx.eval_rvalue_to_temp(
-                    Rvalue::Aggregate(
-                        AggregateKind::Adt(def_id, 0, Vec::new().into(), field_tys),
-                        operands,
-                    ),
+                    Rvalue::Aggregate(AggregateKind::Adt(def_id, 0, substs, field_tys), operands),
                     struct_ty,
                     expr.span,
                 );
@@ -1862,18 +1862,11 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         });
                         let mut all_operands = vec![discr];
                         all_operands.extend(operands);
-                        let enum_ty = Ty::new(
-                            TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
-                            expr.span,
-                        );
+                        let substs = lower_path_generic_args(path, &mut 0);
+                        let enum_ty = Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
                         return cx.eval_rvalue_to_temp(
                             Rvalue::Aggregate(
-                                AggregateKind::Adt(
-                                    def_id,
-                                    variant_idx,
-                                    Vec::new().into(),
-                                    field_tys,
-                                ),
+                                AggregateKind::Adt(def_id, variant_idx, substs, field_tys),
                                 all_operands,
                             ),
                             enum_ty,

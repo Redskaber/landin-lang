@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-04 (Stage 16.49)
-> **Version**: v0.236.0
+> **Version**: v0.238.0 (Stage 16.52)
 > **Process**: stage-committee-process.md v3.24 §13.4 (stage-start design alignment)
-> **Status**: Design phase — investigation complete, implementation planned
+> **Status**: Phase 1 complete (1a + 1b + 1c), Phase 2-4 planned
 
 ## 1. Executive Summary
 
@@ -41,30 +41,39 @@ the HIR→MIR boundary.
 
 ## 3. Design
 
-### 3.1 Phase 1: Substs Propagation
+### 3.1 Phase 1: Substs Propagation ✅ COMPLETE (Stages 16.50-16.52)
 
-**Goal**: `let x: Vec<i32>` produces `Adt(Vec_def_id, [i32])` in MIR.
+**Goal**: `let x: Vec<i32>` produces `Adt(Vec_def_id, [i32])` in MIR,
+and `Vec { ... }` aggregate construction carries the same substs.
 
-**Step 1a**: Create `generics_of` query
+**Step 1a (Stage 16.50)** ✅: Create `generics_of` query
 ```rust
-// In src/hir/ or src/typeck/
+// In src/hir/generics.rs
 pub fn generics_of(hir: &HirCrate, def_id: DefId) -> Vec<ParamTy>
 ```
 Walks HIR items, collects type parameters into a `DefId → Vec<ParamTy>` map.
 
-**Step 1b**: Modify `lower_hir_ty_to_mir_ty`
+**Step 1b (Stage 16.51)** ✅: Propagate substs into `TyKind::Adt`
 ```rust
-// Before:
-TyKind::Adt(def_id, Vec::new().into())
-
-// After:
-let substs = lower_generic_args(path.segments.last().args, hir);
-TyKind::Adt(def_id, substs.into())
+// In src/mir/lower/mod.rs
+Res::Def(def_id, _) => {
+    let substs = lower_path_generic_args(path, region_counter);
+    Ty::new(TyKind::Adt(def_id, substs), span)
+}
 ```
 
-**Step 1c**: Same for `AggregateKind::Adt` in struct/enum literal construction.
+**Step 1c (Stage 16.52)** ✅: Propagate substs into `AggregateKind::Adt`
+at all 5 construction sites in `src/mir/lower/expr_operand.rs`:
+- Enum unit variant path (`Color::Red`)
+- ADT ctor call (`Pair(1, 2)`)
+- Struct literal (`Pair { a: 1, b: 2 }`)
+- Enum struct variant (`Shape::Circle { r: 1.0 }`)
+- Fall-through ADT ctor path
 
-### 3.2 Phase 2: Substitution
+Plus: reworked `typeck/unify.rs` Adt unification — replaced the temporary
+Stage 16.51 relaxation with the principled "empty substs = unknown" rule.
+
+### 3.2 Phase 2: Substitution 🔧 NEXT
 
 **Goal**: Given `struct Vec<T> { data: [T; N], len: usize }` and substs `[i32]`,
 produce field type `[i32; N]` for the `data` field.
@@ -133,10 +142,13 @@ pub fn collect_mono_items(mirs: &[MirBody]) -> Vec<MonoItem> {
 
 ## 5. Test Plan
 
-### Phase 1 Tests
-- `let x: Vec<i32>` → MIR type `Adt(Vec_def_id, [i32])`
-- `let x: Vec<Vec<i32>>` → nested substs
-- `struct Pair<A, B> { a: A, b: B }` → `Adt(Pair_def_id, [T1, T2])`
+### Phase 1 Tests ✅ COMPLETE
+- ✅ `let x: Vec<i32>` → MIR type `Adt(Vec_def_id, [i32])` (Stage 16.51)
+- ✅ `struct Pair<A, B> { a: A, b: B }` → `Adt(Pair_def_id, [T1, T2])` (Stage 16.51)
+- ✅ `let x: Opt<i32> = Opt::Some(42)` → annot substs unify with aggregate (Stage 16.52)
+- ✅ `let x: Opt<i32> = Opt::None` → empty substs unify with non-empty (Stage 16.52)
+- ✅ Generic enum in return position and match scrutinee (Stage 16.52)
+- 🔧 `let x: Vec<Vec<i32>>` → nested substs (Phase 2)
 
 ### Phase 2 Tests
 - `substitute(Vec<T>.data, [i32])` → `[i32; N]`
@@ -153,5 +165,8 @@ pub fn collect_mono_items(mirs: &[MirBody]) -> Vec<MonoItem> {
 ## 6. References
 
 - Stage 16.49 investigation: `docs/develop/v0/stage-16/stage-16.49-generic-parser-investigation.md`
+- Stage 16.50 design (Phase 1a): `docs/develop/v0/stage-16/stage-16.50-generics-of-query.md`
+- Stage 16.51 design (Phase 1b): `docs/develop/v0/stage-16/stage-16.51-substs-propagation.md`
+- Stage 16.52 design (Phase 1c): `docs/develop/v0/stage-16/stage-16.52-aggregate-substs-propagation.md`
 - v0.3 design: `docs/develop/v0/v0.3-complete-design.md` (Task 11 section)
 - Type system data flow: `docs/graph/type-system/data-flow.md`

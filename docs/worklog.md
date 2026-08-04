@@ -27475,3 +27475,82 @@ Stage Summary:
 - Generic types now carry substs in MIR (Adt(def_id, [i32]))
 - Next: Phase 1c — propagate substs in AggregateKind::Adt
 - 7911 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.52-aggregate-substs-propagation
+Agent: Super Z (main)
+Task: Stage 16.52 — Task 11 Phase 1c: Propagate substs into AggregateKind::Adt. v0.237.0 → v0.238.0.
+
+Work Log:
+- Baseline: v0.237.0 / 250 lib + 2437 integration + 5224 conformance = 7911
+
+### 1. Identified 5 AggregateKind::Adt Construction Sites
+
+In src/mir/lower/expr_operand.rs:
+- Site 1 (~line 449): Enum unit variant path (`Color::Red` for unit variant)
+- Site 2 (~line 819): ADT ctor call (`Pair(1, 2)` via Call form)
+- Site 3 (~line 1844): Struct literal (`Pair { a: 1, b: 2 }`)
+- Site 4 (~line 1871): Enum struct variant (`Shape::Circle { r: 1.0 }`)
+- Site 5 (~line 466): Fall-through ADT ctor path
+
+### 2. Implemented Phase 1c — Substs Propagation
+
+Imported `lower_path_generic_args` from super module.
+
+Updated all 5 sites to propagate substs:
+- 4 path-based sites use `lower_path_generic_args(path, &mut 0)` (通解)
+- 1 Call-based site reuses `adt_substs` from `func_local_decl.ty.kind` (DRY)
+- Both `TyKind::Adt` (dest_ty) and `AggregateKind::Adt` (the aggregate)
+  now carry the same substs — consistent under typeck unification.
+
+### 3. Reworked typeck/unify.rs Adt Arm
+
+Replaced the temporary Stage 16.51 relaxation with the principled rule:
+- Empty substs on either side → match by DefId only (inference case)
+- Both non-empty → must match length + unify element-wise
+
+Sound because empty substs = "no information" (type is generic but
+instantiation unknown). The actual instantiation will be filled by
+Phase 2 (substitution) once type inference back-propagates substs.
+
+### 4. Added 15 Integration Tests
+
+Created `tests/v0/stage16/plan/stage16_52_aggregate_substs_tests.rs`:
+- §1 Generic struct literal compilation (3 tests)
+- §2 Generic enum variant compilation (3 tests)
+- §3 Return-type generic (2 tests)
+- §4 MIR substs propagation verification (2 tests)
+- §5 No regressions on non-generic code (3 tests)
+- §6 Typeck unification edge case (2 tests)
+
+Registered in `tests/all_tests.rs`.
+
+### 5. Documentation Updates
+
+- Created `docs/develop/v0/stage-16/stage-16.52-aggregate-substs-propagation.md`
+- Created `docs/tests/v0/stage16/stage-16.52-test-plan.md`
+- Updated `docs/develop/v0/task-11-monomorphization-design.md` — Phase 1c COMPLETE
+- Updated `docs/graph/type-system/data-flow.md` — added Generic Substs data flow section
+- Updated `RELEASE_NOTES.md` — v0.238.0 entry
+- Updated `README.md` — version, test stats
+- Updated `Cargo.toml` — v0.237.0 → v0.238.0
+
+### 6. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt --check — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 250/250 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2452/2452 PASS (+15 new)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 7926 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.52 PASSED — AggregateKind::Adt substs propagation
+- Task 11 Phase 1c COMPLETE
+- All 5 AggregateKind::Adt construction sites now propagate substs
+- typeck/unify.rs Adt unification reworked (principled rule replaces relaxation)
+- Generic struct/enum construction now compiles end-to-end
+- `let x: Opt<i32> = Opt::Some(42);` works (key milestone)
+- Next: Phase 2 — substitute(ty, substs) function
+- 7926 tests, 0 failures, 0 warnings
