@@ -342,3 +342,13 @@ mod stage16_10_vtable_def_id_lookup_tests;
 mod stage16_11_spur_deprecation_tests;
 #[path = "v0/stage16/plan/stage16_12_deep_review_round2_tests.rs"]
 mod stage16_12_deep_review_round2_tests;
+#[path = "v0/stage16/plan/stage16_13_synthesized_closure_infrastructure_tests.rs"]
+mod stage16_13_synthesized_closure_infrastructure_tests;
+#[path = "v0/stage16/plan/stage16_14_synthesized_closure_mir_body_tests.rs"]
+mod stage16_14_synthesized_closure_mir_body_tests;
+#[path = "v0/stage16/plan/stage16_15_deep_review_round3_tests.rs"]
+mod stage16_15_deep_review_round3_tests;
+#[path = "v0/stage16/plan/stage16_18_deep_review_round4_tests.rs"]
+mod stage16_18_deep_review_round4_tests;
+#[path = "v0/stage16/plan/stage16_19_design_writeback_tests.rs"]
+mod stage16_19_design_writeback_tests;

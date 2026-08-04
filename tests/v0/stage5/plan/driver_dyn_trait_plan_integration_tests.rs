@@ -81,8 +81,8 @@ fn test_with_plan_none_matches_legacy() {
     let src = "fn f() { let x = 42; }";
     let (hir, interner) = parse_lower(src);
 
-    let (mir_legacy, _, _) = lower_hir_body_to_mir_full(&hir.bodies[0].1, &interner, &hir, None);
-    let (mir_with_none, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
+    let (mir_legacy, _, _, _) = lower_hir_body_to_mir_full(&hir.bodies[0].1, &interner, &hir, None);
+    let (mir_with_none, _, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
         &hir.bodies[0].1,
         &interner,
         &hir,
@@ -111,7 +111,7 @@ fn test_with_empty_plan_no_change() {
     let (hir, interner) = parse_lower(src);
     let plan = build_dyn_trait_mir_plan(&[], &[]);
 
-    let (mir, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
+    let (mir, _, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
         &hir.bodies[0].1,
         &interner,
         &hir,
@@ -141,7 +141,7 @@ fn test_with_plan_no_method_call_no_record() {
         )],
     );
 
-    let (mir, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
+    let (mir, _, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
         &hir.bodies[0].1,
         &interner,
         &hir,
@@ -173,7 +173,7 @@ fn test_with_plan_matching_method_call_records_dyn_call() {
         )],
     );
 
-    let (mir, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
+    let (mir, _, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
         &hir.bodies[0].1,
         &interner,
         &hir,
@@ -213,7 +213,7 @@ fn test_with_plan_method_name_mismatch_no_record() {
         )], // "foo" not "bar"
     );
 
-    let (mir, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
+    let (mir, _, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
         &hir.bodies[0].1,
         &interner,
         &hir,
@@ -241,7 +241,7 @@ fn test_multiple_method_calls_multiple_records() {
         ],
     );
 
-    let (mir, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
+    let (mir, _, _, _) = lower_hir_body_to_mir_full_with_dyn_trait_plan(
         &hir.bodies[0].1,
         &interner,
         &hir,

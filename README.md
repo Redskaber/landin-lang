@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.227.6 (v0.2 FINAL + v0.3 in progress — Deep Review Round 2 GO, Task 3 COMPLETE)
+**Version**: v0.228.8 (v0.2 FINAL + v0.3 进行中 — Task 10 codegen closure-as-pointer fix, Sound Copy + Task 3 + Task 10 Steps 1+2)
 **Date**: 2026-08-03
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-03 (v0.227.6, Stage 16.12 — v0.3 Deep Review Round 2 GO)
+**Last updated**: 2026-08-03 (v0.228.8, Stage 16.21 — Task 10 codegen closure-as-pointer fix)

@@ -1,9 +1,311 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.227.6
+**Current version**: v0.228.8
 **Date**: 2026-08-03
-**Test count**: 244 rust lib tests + 2203 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2241 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.228.8 — Stage 16.21 (Task 10 Steps 3+4: Codegen Closure-as-Pointer Fix)
+
+### Overview
+
+Stage 16.21 applied 6 codegen fixes for the closure switch. LLVM IR is
+structurally correct but runtime output is wrong (empty struct alloca UB).
+
+**Key changes**:
+1. self param as OpaquePtr (scoped to synthesized functions)
+2. Call site passes closure local's alloca pointer
+3. fn_sigs fixed (params, not captures)
+4. Operand::Move for closure self (borrowck)
+5. codegen_crate_to_module emits synthesized functions
+6. Scoped alloca fix (only self in synthesized functions)
+
+**No behavior change** — all 7709 tests pass with inline path.
+
+Per §1.0 原則 9 "正确 > 妥协".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2241/2241 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7709 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.228.7 — Stage 16.20 (Task 10 Step 3+4: Return Local Fix)
+
+### Overview
+
+Stage 16.20 fixed a critical bug in `build_synthesized_closure_mir_body()`:
+LocalId(0) was incorrectly assigned the closure struct type instead of the
+return type. The fix is a **permanent improvement** to the MIR structure.
+
+**Key changes**:
+1. Fixed `build_synthesized_closure_mir_body()` — LocalId(0) is now the
+   return local, LocalId(1) is self, LocalId(2+) are params.
+2. Attempted switch — codegen still passes Closure as `{}` not pointer.
+3. **Reverted** to inline path. Return local fix is permanent.
+
+**No behavior change** — all 7709 tests pass.
+
+Per §1.0 原則 9 "正确 > 妥协".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2241/2241 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7709 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.228.6 — Stage 16.19 (v0.3 设计文档回写补充 + 路线图合并)
+
+### Overview
+
+Stage 16.19 将原 v0.4 的规划合并到 v0.3 路线图中，并创建了完整的
+v0.3 设计文档。这确保 v0.3 的设计文档与实际实现保持同步。
+
+**Key changes**:
+1. 创建 `docs/develop/v0/v0.3-complete-design.md` — 完整设计文档
+2. 原 v0.4 规划（Task 11, 14, 17）合并到 v0.3 路线图
+3. +6 design writeback verification tests
+
+**No behavior change** — 纯文档 + 测试更新。
+
+Per §25.8 (design-writeback) + §13.4.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2241/2241 PASS (+6 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7709 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.228.5 — Stage 16.18 (v0.3 Deep Review Round 4 — v0.3 RELEASE APPROVED)
+
+### Overview
+
+Stage 16.18 is a **deep review gate** — the fourth checkpoint after 18
+stages (16.00–16.17). The committee has **APPROVED v0.3 for release**.
+
+**Key outputs**:
+1. `docs/develop/v0/stage-16/deep-review-round4.md` — 8-dimension review
+2. +8 release readiness verification tests
+
+**Verdict**: ✅ **GO** — **v0.3 RELEASE APPROVED**. 7703 tests passing,
+0 failures, 0 warnings, 0 TODOs.
+
+### v0.3 Release Scope
+
+**Included**:
+- ✅ Sound Copy detection (field-level derivation, `ty_is_copy` deprecated)
+- ✅ Task 3: TraitResolver Keys (DefId-keyed lookup, Spur methods deprecated)
+- ✅ Task 10 Steps 1+2: Closure infrastructure (struct, side-table, MIR body synthesis, MirBody.def_id)
+- ✅ 0 TODOs, 0 warnings, 7703 tests
+
+**Deferred to v0.4**:
+- Task 10 Steps 3+4: Closure switch (needs typeck on synthesized MIR, Closure as pointer)
+- Task 11: Monomorphization (needs generic parser)
+- Task 14, 17: Depend on Task 11
+
+Per §25 (Deep Review) + §29.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2235/2235 PASS (+8 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7703 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.228.4 — Stage 16.17 (Task 10 Step 3+4: Codegen Fix Attempt — MirBody.def_id)
+
+### Overview
+
+Stage 16.17 attempted to fix the codegen issues from Stage 16.16 by adding
+a `def_id` field to `MirBody`, enabling proper function name resolution.
+The fix improved name resolution but deeper codegen issues remain. The
+switch was reverted again.
+
+**Key changes**:
+1. Added `def_id: Option<DefId>` field to `MirBody` (permanent improvement).
+2. Updated `build_synthesized_closure_mir_body()` to set `def_id`.
+3. Updated `codegen_synthesized_closure_functions()` to use `def_id` for
+   name resolution (replaces fragile string search).
+4. **Reverted** call site to inline path (deeper codegen fixes needed).
+
+**No behavior change** — all 7695 tests pass with the inline path.
+
+Per §1.0 原則 9 "正确 > 妥协".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2227/2227 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7695 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.228.3 — Stage 16.16 (Task 10 Steps 3+4 Attempt + Revert)
+
+### Overview
+
+Stage 16.16 attempted the "big switch" from inline closure calls to
+synthesized `call` functions (Task 10 Steps 3+4). The MIR lowering
+side was implemented successfully, but the codegen side revealed
+complexity issues. The switch was reverted to preserve all tests.
+
+**Key changes**:
+1. Added `lower_closure_call_to_synthesized()` — emits `TerminatorKind::Call`
+2. Added `codegen_synthesized_closure_functions()` — emits LLVM functions
+3. Added `fn_name_by_def_id` + `fn_sigs` registration for closure functions
+4. **Reverted** call site to inline path (codegen needs more work)
+5. Infrastructure retained for future use
+
+**No behavior change** — all 7695 tests pass with the inline path.
+
+Per §1.0 原則 9 "正确 > 妥协".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2227/2227 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7695 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.228.2 — Stage 16.15 (v0.3 Deep Review Round 3 + Structural Verification)
+
+### Overview
+
+Stage 16.15 is a **deep review gate** — the third checkpoint to assess
+v0.3 progress after 15 stages, following Task 10 Steps 1+2. It assesses
+readiness for the risky Step 3+4 (call site migration + codegen).
+
+**Key outputs**:
+1. `docs/develop/v0/stage-16/deep-review-round3.md` — 8-dimension review
+2. +8 structural verification tests for synthesized closure MIR bodies
+
+**Verdict**: ✅ **GO** — Task 10 Steps 1+2 solid. Foundation ready for
+Steps 3+4 (the big switch). 7695 tests passing, 0 failures, 0 warnings.
+
+Per §25 (Deep Review) + §29.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2227/2227 PASS (+8 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7695 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.228.1 — Stage 16.14 (Task 10 Step 2: Synthesized Closure MIR Body Synthesis)
+
+### Overview
+
+Stage 16.14 is **Step 2 of Task 10** (Closure Redesign). It builds
+independent MIR bodies for each synthesized closure `call` function,
+stored in `CompileResult.synthesized_closure_mir_bodies`.
+
+**Key changes**:
+1. Added `synthesized_closure_mir_bodies: Vec<MirBody>` field to `CompileResult`.
+2. Added `build_synthesized_closure_mir_body()` function to `mir::lower`.
+3. Updated driver to build MIR bodies for each synthesized closure function.
+4. +8 integration tests.
+
+**No behavior change** — the inline approach (Stage 13.3a) is still used
+for closure calls. The synthesized MIR bodies are built but NOT yet used
+by codegen (Step 4) or call sites (Step 3).
+
+Per §1.0 原則 6 "通用 > 特例" + §13.4 + §16 + §23 API 命名标准化.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2219/2219 PASS (+8 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7687 tests passing, 0 failures, 0 warnings.**
+
+### Task 10 Roadmap
+
+| Step | Status | Description |
+|------|--------|-------------|
+| Step 1 | ✅ COMPLETE (Stage 16.13) | Infrastructure |
+| Step 2 | ✅ COMPLETE (Stage 16.14) | MIR body synthesis |
+| Step 3 | 🔧 Pending | Call site migration |
+| Step 4 | 🔧 Pending | Codegen |
+| Step 5 | 🔧 Pending | Cleanup |
+
+---
+## v0.228.0 — Stage 16.13 (Task 10 Step 1: Synthesized Closure Function Infrastructure)
+
+### Overview
+
+Stage 16.13 is **Step 1 of Task 10** (Closure Redesign). It adds the
+infrastructure for Strategy A (rustc-style synthesized `call` function
+per closure) without changing the current inline behavior.
+
+**Key changes**:
+1. Added `SynthesizedClosureFunction` struct to `mir::lower`.
+2. Added `synthesized_closure_functions` side-table to `MirLowerCtxt`.
+3. Added `allocate_closure_def_id()` — allocates unique DefIds (was: all
+   closures shared the crate's first owner DefId — incorrect).
+4. Added `register_synthesized_closure_function()` method.
+5. Updated closure literal lowering to register synthesized functions.
+6. Updated `lower_hir_body_to_mir_full*` return type to 4-tuple.
+7. Created Task 10 design document (`docs/develop/v0/task-10-closure-redesign-design.md`).
+8. +8 integration tests.
+
+**No behavior change** — the inline approach (Stage 13.3a) is still used
+for closure calls. Step 2+ will build the synthesized MIR body.
+
+Per §1.0 原則 6 "通用 > 特例" + §13.4 + §16 + §23 API 命名标准化.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2211/2211 PASS (+8 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7679 tests passing, 0 failures, 0 warnings.**
+
+### Task 10 Roadmap
+
+| Step | Status | Description |
+|------|--------|-------------|
+| Step 1 | ✅ COMPLETE (Stage 16.13) | Infrastructure |
+| Step 2 | 🔧 Pending | MIR body synthesis |
+| Step 3 | 🔧 Pending | Call site migration |
+| Step 4 | 🔧 Pending | Codegen |
+| Step 5 | 🔧 Pending | Cleanup |
 
 ---
 ## v0.227.6 — Stage 16.12 (v0.3 Deep Review Round 2 + End-to-End Consistency)

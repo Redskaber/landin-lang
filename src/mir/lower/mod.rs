@@ -134,6 +134,51 @@ pub struct MirLowerCtxt<'a> {
     pub method_return_type_cache: std::cell::RefCell<
         std::collections::HashMap<crate::hir::DefId, Option<crate::mir::ty::Ty>>,
     >,
+    /// Stage 16.13 (Task 10 Step 1): Synthesized closure `call` functions.
+    /// Each entry represents a closure literal that will get a synthesized
+    /// `call` function in Strategy A (rustc-style). The function is built
+    /// during MIR lowering and emitted as a separate MIR body by codegen
+    /// (Step 2+).
+    ///
+    /// Keyed by the closure's DefId (allocated via `allocate_closure_def_id`).
+    ///
+    /// Per §16: side-table carries HIR-derived data downstream. Codegen
+    /// reads this without needing HIR access.
+    /// Per §23: `synthesized_closure_functions` follows `<adj>_<noun>_<noun>`
+    /// pattern.
+    pub synthesized_closure_functions:
+        std::collections::HashMap<crate::hir::DefId, SynthesizedClosureFunction>,
+    /// Stage 16.13: Counter for allocating unique closure DefIds.
+    /// Uses the reserved range `CLOSURE_DEF_ID_BASE` downward.
+    pub closure_def_id_counter: u32,
+}
+
+/// Stage 16.13 (Task 10 Step 1): A synthesized `call` function for a closure.
+///
+/// Represents the metadata needed to synthesize a `call` function for a
+/// closure literal. The actual MIR body synthesis is deferred to Step 2.
+///
+/// Per §23: `SynthesizedClosureFunction` follows `<Adj><Noun>` pattern.
+#[derive(Clone, Debug)]
+pub struct SynthesizedClosureFunction {
+    /// The closure's DefId (unique per closure literal, allocated via
+    /// `allocate_closure_def_id`).
+    pub def_id: crate::hir::DefId,
+    /// The closure's parameters (HIR). At the call site, each param is
+    /// bound to the corresponding call argument.
+    pub params: Vec<crate::hir::HirParam>,
+    /// The closure's body expression (HIR). Lowered into the synthesized
+    /// function's MIR in Step 2.
+    pub body: Box<crate::hir::HirExpr>,
+    /// The capture info: (HirId of captured binding, field index in
+    /// closure struct, field type). Used to extract captures from `self`
+    /// in the synthesized function.
+    pub captures: Vec<(crate::hir::HirId, u32, crate::mir::ty::Ty)>,
+    /// The closure struct type (for the `self` parameter).
+    pub closure_struct_ty: crate::mir::ty::Ty,
+    /// The function name for codegen (e.g., "closure_call_fn_0").
+    /// Unique per closure literal.
+    pub fn_name: String,
 }
 
 /// Stage 13.3a (TD-030): Information about a closure literal, stored in
@@ -182,7 +227,36 @@ impl<'a> MirLowerCtxt<'a> {
             loop_result_locals: Vec::new(),
             type_errors: Vec::new(),
             method_return_type_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+            synthesized_closure_functions: std::collections::HashMap::new(),
+            closure_def_id_counter: 0,
         }
+    }
+
+    /// Stage 16.13 (Task 10 Step 1): Allocate a unique DefId for a closure.
+    ///
+    /// Uses a reserved range (`CLOSURE_DEF_ID_BASE` downward) to avoid
+    /// collision with user-defined items and builtin traits.
+    ///
+    /// Per §23: `allocate_closure_def_id` follows `<verb>_<noun>_<noun>`
+    /// pattern.
+    pub fn allocate_closure_def_id(&mut self) -> crate::hir::DefId {
+        // CLOSURE_DEF_ID_BASE is u32::MAX - 1000, leaving room for builtin
+        // traits (u32::MAX, u32::MAX-1, ...) above and user items below.
+        const CLOSURE_DEF_ID_BASE: u32 = u32::MAX - 1000;
+        let id = CLOSURE_DEF_ID_BASE - self.closure_def_id_counter;
+        self.closure_def_id_counter += 1;
+        crate::hir::DefId::new(id)
+    }
+
+    /// Stage 16.13 (Task 10 Step 1): Register a synthesized closure function.
+    ///
+    /// Stores the closure metadata in `synthesized_closure_functions` for
+    /// later MIR body synthesis (Step 2) and codegen (Step 4).
+    ///
+    /// Per §23: `register_synthesized_closure_function` follows
+    /// `<verb>_<adj>_<noun>_<noun>` pattern.
+    pub fn register_synthesized_closure_function(&mut self, func: SynthesizedClosureFunction) {
+        self.synthesized_closure_functions.insert(func.def_id, func);
     }
 
     /// Allocate a fresh inference type variable and return it as a Ty.
@@ -647,9 +721,9 @@ pub fn lower_hir_body_to_mir_with_return_ty(
     hir: &HirCrate,
     return_ty: Option<HirTy>,
 ) -> MirBody {
-    // Stage 15.12: lower_full now returns 3-tuple (mir, unify, type_errors).
-    // The convenience wrappers discard unify + type_errors for callers that
-    // only need the MirBody (e.g., tests).
+    // Stage 15.12: lower_full now returns 4-tuple (mir, unify, type_errors, closures).
+    // The convenience wrappers discard unify + type_errors + closures for
+    // callers that only need the MirBody (e.g., tests).
     lower_hir_body_to_mir_full(body, interner, hir, return_ty).0
 }
 
@@ -675,7 +749,12 @@ pub fn lower_hir_body_to_mir_full(
     interner: &Rodeo,
     hir: &HirCrate,
     return_ty: Option<HirTy>,
-) -> (MirBody, UnificationTable, Vec<crate::typeck::TypeError>) {
+) -> (
+    MirBody,
+    UnificationTable,
+    Vec<crate::typeck::TypeError>,
+    std::collections::HashMap<crate::hir::DefId, SynthesizedClosureFunction>,
+) {
     // Stage 5.80: delegate to the new entry point with plan = None.
     // Backward-compatible: all existing callers see identical behavior.
     lower_hir_body_to_mir_full_with_dyn_trait_plan(body, interner, hir, return_ty, None)
@@ -721,7 +800,12 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     hir: &HirCrate,
     return_ty: Option<HirTy>,
     plan: Option<&DynTraitMIRPlan>,
-) -> (MirBody, UnificationTable, Vec<crate::typeck::TypeError>) {
+) -> (
+    MirBody,
+    UnificationTable,
+    Vec<crate::typeck::TypeError>,
+    std::collections::HashMap<crate::hir::DefId, SynthesizedClosureFunction>,
+) {
     let mut cx = MirLowerCtxt::new(interner, body.span);
     cx.hir = Some(hir);
 
@@ -993,9 +1077,126 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     // Extract the unify table + type_errors before consuming cx.
     // Stage 15.12: type_errors now returned from the lowering function
     // (was stored on MirBody.lower_type_errors — mixed IR + error collection).
+    // Stage 16.13: synthesized_closure_functions also returned for codegen.
     let unify = std::mem::take(&mut cx.unify);
     let type_errors = std::mem::take(&mut cx.type_errors);
-    (cx.mir, unify, type_errors)
+    let synthesized_closure_functions = std::mem::take(&mut cx.synthesized_closure_functions);
+    (cx.mir, unify, type_errors, synthesized_closure_functions)
+}
+
+/// Stage 16.14 (Task 10 Step 2): Build a MIR body for a synthesized closure
+/// `call` function.
+///
+/// Given the `SynthesizedClosureFunction` metadata (collected during the
+/// main function's MIR lowering), this function builds a separate MirBody
+/// representing the closure's `call` function:
+///
+/// ```text
+/// fn closure_call_fn_N(self: Closure_N, param1: T1, param2: T2, ...) -> Ret {
+///     // Extract captures from self:
+///     local_cap_0 = Projection(self, Field(0, cap_ty_0))
+///     local_cap_1 = Projection(self, Field(1, cap_ty_1))
+///     ...
+///     // Lower closure body (references to captures resolve to local_cap_i)
+///     <body>
+///     return <body_result>
+/// }
+/// ```
+///
+/// The built MirBody is NOT yet used by codegen (Step 4) or call sites
+/// (Step 3) — the inline approach (Stage 13.3a) is still active. This is
+/// infrastructure for the gradual migration to Strategy A.
+///
+/// Per §16: this function reads HIR (the closure body) — allowed during
+/// MIR lowering.
+/// Per §23: `build_synthesized_closure_mir_body` follows
+/// `<verb>_<adj>_<noun>_<noun>` pattern.
+pub fn build_synthesized_closure_mir_body(
+    func: &SynthesizedClosureFunction,
+    interner: &Rodeo,
+    hir: &HirCrate,
+) -> MirBody {
+    let mut cx = MirLowerCtxt::new(interner, func.body.span);
+    cx.hir = Some(hir);
+
+    // Stage 16.20: MirBody::new() creates an empty local_decls vec.
+    // We need to explicitly create LocalId(0) as the return local FIRST,
+    // then LocalId(1) as `self`, then LocalId(2+) as closure params.
+    //
+    // LocalId(0): return local (fresh infer type — will be resolved
+    // from the body expression type by typeck writeback).
+    let return_ty = cx.fresh_infer_ty(func.body.span);
+    let return_local = cx.mir.new_local(return_ty, None, func.body.span);
+    debug_assert_eq!(return_local, crate::mir::place::LocalId(0));
+
+    // LocalId(1): `self` parameter — the closure struct.
+    let self_local = cx
+        .mir
+        .new_local(func.closure_struct_ty.clone(), None, func.body.span);
+    // Note: LocalId(0) is the return local, LocalId(1) is `self`.
+
+    // LocalId(2), (3), ...: closure parameters.
+    let mut param_locals: Vec<crate::mir::place::LocalId> = Vec::new();
+    for param in &func.params {
+        let ty = cx.fresh_infer_ty(param.pat.span);
+        let local = cx.mir.new_local(ty, None, param.pat.span);
+        // Register param's hir_id → local in local_map.
+        cx.local_map.insert(param.pat.hir_id, local);
+        param_locals.push(local);
+    }
+
+    // Extract captures from `self` and register their hir_ids.
+    for (cap_hir_id, field_idx, cap_ty) in &func.captures {
+        let extract_local = cx.mir.new_local(cap_ty.clone(), None, func.body.span);
+        // Assign: extract_local = Copy(Projection(self, Field(field_idx, cap_ty)))
+        cx.push_assign(
+            crate::mir::place::Place::local(extract_local, func.body.span),
+            crate::mir::place::Rvalue::Use(crate::mir::place::Operand::Copy(
+                crate::mir::place::Place {
+                    kind: crate::mir::place::PlaceKind::Projection(
+                        Box::new(crate::mir::place::Place::local(self_local, func.body.span)),
+                        crate::mir::place::ProjectionElem::Field(
+                            crate::mir::place::FieldId(*field_idx),
+                            cap_ty.clone(),
+                        ),
+                    ),
+                    span: func.body.span,
+                },
+            )),
+            func.body.span,
+        );
+        // Register captured binding's hir_id → extract_local.
+        cx.local_map.insert(*cap_hir_id, extract_local);
+    }
+
+    // Lower the closure body expression into a local.
+    let body_result_local = lower_expr_to_operand(&mut cx, &func.body);
+
+    // Assign the body result to the return local (LocalId(0)).
+    if !cx.is_terminated() {
+        cx.push_assign(
+            crate::mir::place::Place::local(
+                crate::mir::place::LocalId(0),
+                crate::session::Span::DUMMY,
+            ),
+            crate::mir::place::Rvalue::Use(crate::mir::place::Operand::Move(
+                crate::mir::place::Place::local(body_result_local, crate::session::Span::DUMMY),
+            )),
+            func.body.span,
+        );
+    }
+
+    // Terminate with Return.
+    cx.terminate_kind(crate::mir::body::TerminatorKind::Return);
+
+    // Populate adt_layouts (same as main function lowering).
+    adt_layout::populate_adt_layouts(&mut cx.mir, hir);
+
+    // Stage 16.17: Set the DefId on the MirBody so codegen can resolve
+    // the function name via fn_name_by_def_id.
+    cx.mir.def_id = Some(func.def_id);
+
+    cx.mir
 }
 
 // ================================================================
@@ -1030,7 +1231,12 @@ pub fn lower_body_full(
     interner: &Rodeo,
     hir: &HirCrate,
     return_ty: Option<HirTy>,
-) -> (MirBody, UnificationTable, Vec<crate::typeck::TypeError>) {
+) -> (
+    MirBody,
+    UnificationTable,
+    Vec<crate::typeck::TypeError>,
+    std::collections::HashMap<crate::hir::DefId, SynthesizedClosureFunction>,
+) {
     lower_hir_body_to_mir_full(body, interner, hir, return_ty)
 }
 

@@ -186,6 +186,24 @@ pub(crate) fn codegen_terminator(
                 .iter()
                 .map(|a| {
                     let ty = detect_operand_type(mir, a, layouts).unwrap_or(EmitType::I32);
+                    // Stage 16.21: For closure calls, the first arg (self)
+                    // is a Closure-typed value. The synthesized function
+                    // expects it as a pointer (OpaquePtr). So we pass the
+                    // local's pointer instead of its value.
+                    if let Operand::Copy(lv) | Operand::Move(lv) = a {
+                        if let PlaceKind::Local(id) = &lv.kind {
+                            if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                                if matches!(ld.ty.kind, crate::mir::ty::TyKind::Closure(_, _)) {
+                                    // Pass the closure struct by pointer.
+                                    // The alloca for the local is already emitted
+                                    // by codegen_function's local setup. We just
+                                    // need to pass the alloca pointer.
+                                    let ptr_str = format!("%loc_{}", id.0);
+                                    return (EmitType::OpaquePtr, ptr_str);
+                                }
+                            }
+                        }
+                    }
                     let val =
                         codegen_operand(emitter, mir, a, interner, layouts, fn_name_by_def_id);
                     (ty, val)

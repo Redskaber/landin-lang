@@ -95,6 +95,17 @@ pub struct MirBody {
     // (was an architectural smell — IR carrying error collection).
     // Per §1.0 原则 3 "显式 > 隐式": errors are now explicit in the
     // function signature, not implicit on the IR struct.
+    /// Stage 16.17 (Task 10 Step 3+4 fix): The DefId of the function
+    /// this MirBody belongs to. For regular functions, this is the fn's
+    /// DefId. For synthesized closure `call` functions, this is the
+    /// closure's DefId (allocated via `allocate_closure_def_id`).
+    ///
+    /// Used by codegen to resolve the function name via `fn_name_by_def_id`.
+    /// `None` for test contexts where MIR bodies are constructed without
+    /// a DefId.
+    ///
+    /// Per §16: data carried on the IR, not looked up from HIR.
+    pub def_id: Option<crate::hir::DefId>,
 }
 
 impl MirBody {
@@ -108,6 +119,7 @@ impl MirBody {
             // Arc is fine — keeps door open for future multi-threaded LSP.
             #[allow(clippy::arc_with_non_send_sync)]
             adt_layouts: Arc::new(AdtLayouts::new()),
+            def_id: None,
         }
     }
 

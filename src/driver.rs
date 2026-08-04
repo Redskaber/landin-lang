@@ -508,6 +508,19 @@ pub struct CompileResult {
     /// Currently not wired into Ty::new (that requires migrating all call
     /// sites). Available for debugging/stats and future wiring.
     pub type_interner: crate::mir::ty_interner::TypeInterner,
+    /// Stage 16.14 (Task 10 Step 2): Synthesized closure `call` function
+    /// MIR bodies. Each entry is a MirBody for a closure's synthesized
+    /// `call` function, built from the `SynthesizedClosureFunction`
+    /// metadata collected during MIR lowering.
+    ///
+    /// These are NOT yet used by codegen (Step 4) or call sites (Step 3) —
+    /// the inline approach (Stage 13.3a) is still active. This field is
+    /// infrastructure for the gradual migration to Strategy A.
+    ///
+    /// Per §16: data flows downstream from MIR lower to codegen.
+    /// Per §23: `synthesized_closure_mir_bodies` follows `<adj>_<noun>_<noun>`
+    /// pattern.
+    pub synthesized_closure_mir_bodies: Vec<crate::mir::body::MirBody>,
 }
 
 /// Stage 3.56: Per-body metadata for codegen.
@@ -545,6 +558,7 @@ impl CompileResult {
             stdlib_prelude: crate::stdlib::default_prelude(),
             stdlib_facade: crate::stdlib::StdlibFacade::default(),
             type_interner: crate::mir::ty_interner::TypeInterner::new(),
+            synthesized_closure_mir_bodies: Vec::new(),
         }
     }
 }
@@ -610,6 +624,11 @@ pub fn compile(src: &str) -> CompileResult {
     }
 
     let mut fn_sig_table = typeck::FnSigTable::default();
+
+    // Stage 16.16: Declare fn_name_by_def_id early so the per-body loop
+    // can register synthesized closure function names.
+    let mut fn_name_by_def_id: std::collections::HashMap<crate::hir::DefId, String> =
+        std::collections::HashMap::new();
 
     // Stage 15.2 (perf): Pre-build method→impl index for O(1) lookup.
     let method_to_impl_index = build_method_to_impl_index(&hir);
@@ -941,6 +960,8 @@ pub fn compile(src: &str) -> CompileResult {
     }
     let mut mirs = Vec::with_capacity(hir.bodies.len());
     let mut typeck_results = Vec::with_capacity(hir.bodies.len());
+    // Stage 16.14: Synthesized closure MIR bodies, built per-function.
+    let mut synthesized_closure_mir_bodies: Vec<crate::mir::body::MirBody> = Vec::new();
 
     // Stage 5.2: Build TraitResolver — collect trait definitions + impl blocks.
     // Per §16: pre-computed by driver, passed as data to downstream stages.
@@ -1049,7 +1070,7 @@ pub fn compile(src: &str) -> CompileResult {
 
         let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
 
-        let (mut mir, lower_unify, lower_type_errors) =
+        let (mut mir, lower_unify, lower_type_errors, synthesized_closures) =
             lower_hir_body_to_mir_full_with_dyn_trait_plan(
                 body,
                 &interner,
@@ -1057,6 +1078,55 @@ pub fn compile(src: &str) -> CompileResult {
                 return_ty,
                 Some(&dyn_trait_plan),
             );
+
+        // Stage 16.14 (Task 10 Step 2): Build MIR bodies for synthesized
+        // closure `call` functions. These are NOT yet used by codegen —
+        // the inline approach (Stage 13.3a) is still active. This is
+        // infrastructure for the gradual migration to Strategy A.
+        //
+        // Stage 16.16 (Task 10 Steps 3+4): Now used by codegen! The
+        // synthesized closure function names are registered in
+        // fn_name_by_def_id so codegen can resolve them.
+        for func in synthesized_closures.values() {
+            let closure_mir =
+                crate::mir::lower::build_synthesized_closure_mir_body(func, &interner, &hir);
+            // Stage 16.16: Register the closure function name in fn_name_by_def_id
+            // so codegen can resolve TerminatorKind::Call to the synthesized function.
+            fn_name_by_def_id.insert(func.def_id, func.fn_name.clone());
+            // Stage 16.21: Build fn_sig for the synthesized function.
+            // The sig has:
+            // - inputs: [closure_struct_ty, param_tys...]
+            //   (NOT captures — captures are extracted from self inside
+            //   the function body, not passed as separate arguments)
+            // - output: fresh infer (will be resolved by typeck)
+            let mut inputs = vec![func.closure_struct_ty.clone()];
+            // Add closure params — we don't have their types directly,
+            // but the MIR body's local_decls has them (LocalId(2+)).
+            // For now, use fresh Infer types — typeck will unify.
+            for _ in &func.params {
+                inputs.push(crate::mir::ty::Ty::new(
+                    crate::mir::ty::TyKind::Infer(crate::mir::ty::InferVar::TyVar(
+                        crate::mir::ty::TyVid(0),
+                    )),
+                    crate::session::Span::DUMMY,
+                ));
+            }
+            // Note: the actual param types come from the MIR body's local_decls.
+            // For now, use a placeholder sig — codegen will use the dest local type.
+            let sig = crate::mir::ty::Sig {
+                inputs,
+                output: Box::new(crate::mir::ty::Ty::new(
+                    crate::mir::ty::TyKind::Infer(crate::mir::ty::InferVar::TyVar(
+                        crate::mir::ty::TyVid(0),
+                    )),
+                    crate::session::Span::DUMMY,
+                )),
+                abi: crate::ast::Abi::Landin,
+                is_unsafe: false,
+            };
+            fn_sig_table.sigs.insert(func.def_id, sig);
+            synthesized_closure_mir_bodies.push(closure_mir);
+        }
 
         // Stage 15.12: Collect type errors from MIR lowering (e.g., "no method found").
         // Per "报错 > 静默" principle — these errors were previously silently
@@ -1227,8 +1297,7 @@ pub fn compile(src: &str) -> CompileResult {
     // so codegen becomes a pure MIR consumer (no re-lowering, no re-typeck).
     // Per §16.2.1: this is "data flows downstream" — the driver (orchestrator)
     // builds the metadata and passes it as data, not as HIR references.
-    let mut fn_name_by_def_id: std::collections::HashMap<crate::hir::DefId, String> =
-        std::collections::HashMap::new();
+    // Stage 16.16: fn_name_by_def_id declared early (before per-body loop).
     for (def_id, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
             let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
@@ -1402,6 +1471,7 @@ pub fn compile(src: &str) -> CompileResult {
         stdlib_prelude: crate::stdlib::default_prelude(),
         stdlib_facade: crate::stdlib::StdlibFacade::default(),
         type_interner: crate::mir::ty_interner::TypeInterner::new(),
+        synthesized_closure_mir_bodies,
     }
 }
 

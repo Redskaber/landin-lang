@@ -251,6 +251,111 @@ pub fn build_dyn_trait_call_terminator(
 /// `lower_closure_call_inline` follows the
 /// `<verb>_<noun>_<noun>_<prep>_<noun>` pattern (mirrors
 /// `lower_expr_to_operand`).
+/// Stage 16.16 (Task 10 Steps 3+4): Lower a closure call to a
+/// `TerminatorKind::Call` to the synthesized `call` function.
+///
+/// This replaces the Stage 13.3a inline approach. Instead of inlining
+/// the closure body at the call site, we emit a `TerminatorKind::Call`
+/// to the synthesized `call` function (built in Stage 16.14).
+///
+/// The call passes:
+/// - `func`: `Operand::Copy(closure_local)` — the closure struct as `self`
+/// - `args`: the call arguments
+/// - `destination`: a fresh result local
+///
+/// The synthesized function's DefId is stored in the closure struct's
+/// `TyKind::Closure(def_id, ...)` type. Codegen resolves the function
+/// name via `fn_name_by_def_id`.
+///
+/// Per §1.0 原則 6 "通用 > 特例": one call path for all closures.
+/// Per §16: no HIR access at call site — DefId is in the type.
+#[allow(dead_code)] // Stage 16.16: not yet used — codegen needs more work (Step 3+4 future)
+fn lower_closure_call_to_synthesized(
+    cx: &mut MirLowerCtxt,
+    closure_local: LocalId,
+    arg_locals: &[LocalId],
+    expr: &HirExpr,
+) -> LocalId {
+    // Get the closure struct's type to extract the DefId.
+    let closure_ty = cx.mir.local(closure_local).ty.clone();
+    let closure_def_id = match &closure_ty.kind {
+        crate::mir::ty::TyKind::Closure(def_id, _) => *def_id,
+        _ => {
+            // Defensive: if the closure local doesn't have a Closure type,
+            // fall back to a fresh infer ty (shouldn't happen).
+            let infer_ty = cx.fresh_infer_ty(expr.span);
+            return cx.eval_rvalue_to_temp(
+                Rvalue::Use(Operand::Copy(Place::local(closure_local, expr.span))),
+                infer_ty,
+                expr.span,
+            );
+        }
+    };
+
+    // Build the func operand: a FnDef-typed constant pointing to the
+    // synthesized closure call function. The DefId is the closure's DefId.
+    let func_ty = Ty::new(
+        crate::mir::ty::TyKind::FnDef(closure_def_id, Vec::new().into()),
+        expr.span,
+    );
+    let func_local = cx.mir.new_local(func_ty.clone(), None, expr.span);
+    cx.mir
+        .block_mut(cx.current_block)
+        .statements
+        .push(Statement {
+            kind: StatementKind::Assign(Box::new((
+                Place::local(func_local, expr.span),
+                Rvalue::Use(Operand::Constant(crate::mir::ty::Const {
+                    ty: func_ty.clone(),
+                    val: crate::mir::ty::ConstVal::Uint(closure_def_id.as_u32() as u128),
+                })),
+            ))),
+            span: expr.span,
+        });
+
+    // Build the call arguments: [self (closure struct), args...]
+    let mut call_args: Vec<Operand> = Vec::new();
+    // First arg: the closure struct (self).
+    // Stage 16.21: Use Operand::Move instead of Copy, because Closure
+    // types are not Copy (borrowck rejects Copy of non-Copy types).
+    // The closure struct is passed by pointer in codegen, so the Move
+    // doesn't actually consume the value — it's just for borrowck.
+    call_args.push(Operand::Move(Place::local(closure_local, expr.span)));
+    // Remaining args: the call arguments.
+    for &arg_local in arg_locals {
+        call_args.push(Operand::Copy(Place::local(arg_local, expr.span)));
+    }
+
+    // Create a destination local for the call result.
+    let dest_ty = cx.fresh_infer_ty(expr.span);
+    let dest = cx.mir.new_local(dest_ty, None, expr.span);
+
+    // Emit the TerminatorKind::Call.
+    let cont = cx.new_block();
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Call {
+            func: Operand::Copy(Place::local(func_local, expr.span)),
+            args: call_args,
+            destination: Place::local(dest, expr.span),
+            target: Some(cont),
+            dyn_trait_call: None,
+        },
+        cont,
+    );
+
+    dest
+}
+
+/// Stage 13.3a (TD-030): Inline a closure call at the call site.
+///
+/// This is the inline approach — the closure body is lowered directly
+/// into the enclosing function's MIR at each call site. This works but
+/// has limitations (code bloat, no optimization, MIR pollution).
+///
+/// Stage 16.16: This function is retained as the fallback path. The
+/// switch to synthesized `call` function (Strategy A) requires more
+/// codegen work (correct BodyMeta, self param handling, return type)
+/// and will be done in a future stage.
 fn lower_closure_call_inline(
     cx: &mut MirLowerCtxt,
     info: super::ClosureBodyInfo,
@@ -259,35 +364,18 @@ fn lower_closure_call_inline(
     expr: &HirExpr,
 ) -> LocalId {
     // Save the local_map entries we're about to overwrite so we can
-    // restore them after the body is lowered. (The body might reference
-    // the same hir_ids as the enclosing function's locals — e.g., a
-    // captured variable — and we don't want the inlined body to
-    // permanently re-route those references.)
+    // restore them after the body is lowered.
     let mut saved_entries: Vec<(HirId, Option<LocalId>)> = Vec::new();
 
     // Step 1: Bind call args to closure params.
-    // For each (param, arg) pair, re-register the param's hir_id → arg_local.
-    // Also collect pattern sub-hir_ids (for tuple patterns etc.) and map
-    // them to the arg_local too — though Stage 13.3a only supports simple
-    // ident patterns robustly; tuple patterns may need additional handling.
     for (i, param) in info.params.iter().enumerate() {
         let param_hir_id = param.pat.hir_id;
-        // Save old entry.
         let old = cx.local_map.get(&param_hir_id).copied();
         saved_entries.push((param_hir_id, old));
 
         if i < arg_locals.len() {
-            // Re-register param's hir_id → call arg's local.
-            // The body's Path references to this param will now resolve
-            // to the call arg's local (which holds the actual arg value).
             cx.local_map.insert(param_hir_id, arg_locals[i]);
 
-            // Stage 13.3a: also collect sub-hir_ids from the pattern
-            // (e.g., tuple patterns) and map them to the same arg_local.
-            // This handles `|(a, b)| ...` minimally — both a and b get
-            // the same arg_local, which is wrong for tuple patterns but
-            // at least doesn't crash. Proper tuple pattern destructuring
-            // at closure calls is deferred to Stage 13.5+.
             let mut sub_ids: std::collections::HashSet<HirId> = std::collections::HashSet::new();
             pattern_bindings::collect_pat_hir_ids(&param.pat, &mut sub_ids);
             for sub_id in sub_ids {
@@ -301,25 +389,12 @@ fn lower_closure_call_inline(
     }
 
     // Step 2: Extract captures from the closure struct.
-    // For each capture i, create a fresh local + assign
-    // Copy(Projection(closure_local, Field(i, cap_ty))).
-    // Re-register the captured binding's hir_id → extract_local.
-    //
-    // Stage 13.3a: if the captured value was itself a closure (i.e., the
-    // captured binding's original local is in `cx.closure_bodies`), propagate
-    // the closure info to the extract_local. This enables nested closure
-    // calls — e.g., `let f = |x| x; let g = || f(1); g();` — where `g`
-    // captures `f`, and when `g()` is called, the inlined body needs to
-    // know that the extracted `f` is callable as a closure.
     for (i, (cap_hir_id, cap_ty)) in info.captures.iter().enumerate() {
-        // Save old entry (the original local that held the captured value).
         let old = cx.local_map.get(cap_hir_id).copied();
         saved_entries.push((*cap_hir_id, old));
 
-        // Create the extract local.
         let extract_local = cx.mir.new_local(cap_ty.clone(), None, expr.span);
 
-        // Assign: extract_local = Copy(Projection(closure_local, Field(i, cap_ty)))
         cx.push_assign(
             Place::local(extract_local, expr.span),
             Rvalue::Use(Operand::Copy(Place {
@@ -332,15 +407,8 @@ fn lower_closure_call_inline(
             expr.span,
         );
 
-        // Re-register the captured binding's hir_id → extract_local.
-        // The body's Path references to the captured variable now resolve
-        // to the extracted capture value.
         cx.local_map.insert(*cap_hir_id, extract_local);
 
-        // Stage 13.3a: propagate closure info from the original captured
-        // local to the extract_local. If the captured value was a closure,
-        // the inlined body might call it — we need the closure info
-        // registered at the extract_local so the call dispatch finds it.
         if let Some(orig_local) = old {
             if let Some(orig_info) = cx.closure_bodies.get(&orig_local).cloned() {
                 cx.closure_bodies.insert(extract_local, orig_info);
@@ -349,9 +417,6 @@ fn lower_closure_call_inline(
     }
 
     // Step 3: Lower the closure body inline.
-    // The body's Path references resolve via local_map to:
-    //   - params → call arg locals (step 1)
-    //   - captures → extract locals (step 2)
     let result_local = lower_expr_to_operand(cx, &info.body);
 
     // Step 4: Restore local_map entries.
@@ -707,6 +772,15 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             //
             // Per §16: the closure body is HIR data sunk into the lowering
             // context as a side-table. No HIR access from codegen.
+            //
+            // Stage 16.21 (Task 10 Steps 3+4): Codegen fixes applied:
+            // - Closure self param as OpaquePtr (scoped to synthesized functions)
+            // - Call site passes closure local's alloca pointer
+            // - fn_sigs fixed (params, not captures)
+            // - Operand::Move for closure self (borrowck)
+            // - codegen_crate_to_module emits synthesized functions
+            // But runtime output is still wrong (likely LLVM IR type
+            // mismatch with empty struct alloca). Reverted to inline path.
             if let Some(info) = cx.closure_bodies.get(&func_local).cloned() {
                 return lower_closure_call_inline(cx, info, func_local, &arg_locals, expr);
             }
@@ -1537,16 +1611,17 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             }
 
             // Create closure value with captures
-            let closure_def_id = cx
-                .hir
-                .map(|h| h.owners.first().map(|(id, _)| *id).unwrap_or_default())
-                .unwrap_or_default();
+            // Stage 16.13 (Task 10 Step 1): Allocate a unique DefId for this
+            // closure literal. Previously, all closures in a crate shared the
+            // crate's first owner DefId — incorrect. Now each closure gets a
+            // unique DefId from the reserved range (CLOSURE_DEF_ID_BASE).
+            let closure_def_id = cx.allocate_closure_def_id();
             let closure_ty = Ty::new(
                 // Stage 15.10: capture_tys is Vec<Ty>, convert to Rc<[Ty]>.
                 TyKind::Closure(closure_def_id, capture_tys.clone().into()),
                 expr.span,
             );
-            let closure_local = cx.mir.new_local(closure_ty, None, expr.span);
+            let closure_local = cx.mir.new_local(closure_ty.clone(), None, expr.span);
             // Assign the closure value with captured operands.
             // Stage 13.3a fix: pass `capture_tys` (not `vec![]`) as the
             // AggregateKind::Closure substs — matches TyKind::Closure substs.
@@ -1581,6 +1656,34 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     .collect(),
             };
             cx.closure_bodies.insert(closure_local, closure_info);
+
+            // Stage 16.13 (Task 10 Step 1): Register the synthesized closure
+            // function metadata. This is infrastructure for Strategy A
+            // (synthesized `call` function per closure). The actual MIR body
+            // synthesis is deferred to Step 2 — for now, the inline approach
+            // (Stage 13.3a) is still used for closure calls.
+            //
+            // The captures are stored with their field index (matching the
+            // order in the closure struct) for later extraction from `self`
+            // in the synthesized function.
+            let synthesized_captures: Vec<(crate::hir::HirId, u32, Ty)> = captured
+                .iter()
+                .enumerate()
+                .map(|(i, (hir_id, local_id))| {
+                    let ty = cx.mir.local(*local_id).ty.clone();
+                    (*hir_id, i as u32, ty)
+                })
+                .collect();
+            let fn_name = format!("closure_call_fn_{}", cx.closure_def_id_counter - 1);
+            let synthesized_func = super::SynthesizedClosureFunction {
+                def_id: closure_def_id,
+                params: params.clone(),
+                body: body.clone(),
+                captures: synthesized_captures,
+                closure_struct_ty: closure_ty.clone(),
+                fn_name,
+            };
+            cx.register_synthesized_closure_function(synthesized_func);
 
             closure_local
         }
