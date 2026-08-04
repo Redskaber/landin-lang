@@ -1,9 +1,55 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.238.0
+**Current version**: v0.239.0
 **Date**: 2026-08-04
-**Test count**: 250 rust lib tests + 2452 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 279 rust lib tests + 2470 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.239.0 — Stage 16.53 (Task 11 Phase 2: Type Substitution)
+
+### Overview
+
+Implemented the `substitute(ty, substs)` function — the core algorithm for
+monomorphization. Given a generic type (e.g., field type `T` in
+`struct Box<T> { val: T }`) and a substitution slice (e.g., `[i32]`),
+`substitute` produces the concrete type (`i32`).
+
+**Key result**: `let b: Box<i32> = Box { val: 42 }; b.val` now compiles
+end-to-end. The field `val: T` is lowered as `Param(ParamTy { index: 0 })`,
+substituted with `i32` (from `b`'s substs), producing the concrete type
+`i32` for `b.val`.
+
+**New module**: `src/mir/substitute.rs`
+- `substitute(ty, substs) -> Ty` — pure function, replaces `Param(idx)` with
+  `substs[idx]`, recursively substitutes inner types
+- `substitute_substs(inner_substs, outer_substs) -> Vec<Ty>` — for nested generics
+- `substitute_const` / `substitute_sig` — helpers for Const and Sig
+- 29 unit tests covering all TyKind variants
+
+**New functions** in `src/mir/lower/`:
+- `lower_hir_ty_to_mir_ty_with_generics` — resolves type params to `TyKind::Param`
+- `resolve_adt_field_tys_with_substs` — lowers fields with generics + substitutes
+- `find_receiver_substs` — extracts substs from receiver's MIR type
+
+**Updated**:
+- `is_mir_ty_copy_conservative` + `ty_is_copy` + `ty_is_copy_with_resolver`:
+  `Param` now treated as Copy (same as `Infer`/`Error`) — avoids spurious
+  move errors during inference
+- `lower_ast_ty_to_mir_ty`: produces `Error` (not `Adt(DefId(0), [])`) for
+  unresolved paths in generic args
+- `resolve_field_type`: uses substitution when receiver has substs
+- `expr_operand.rs` Sites 2 & 3: use `resolve_adt_field_tys_with_substs`
+
+**Tests**: +47 tests (29 unit + 18 integration) covering substitute function,
+generic struct/enum field access, MIR inspection, and no-regression checks.
+
+Per §1.0 原則 6 "通用 > 特例": one `substitute` function for all type kinds.
+Per §16: pure function (no HIR) + separate integration (reads HIR).
+
+### Verification
+
+- **Total: 7973 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.238.0 — Stage 16.52 (Task 11 Phase 1c: AggregateKind::Adt Substs Propagation)

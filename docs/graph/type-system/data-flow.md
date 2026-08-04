@@ -1,7 +1,7 @@
 # Type System Data Flow (Typeck + Borrowck)
 
 > **Date**: 2026-08-04
-> **Version**: v0.238.0 (Stage 16.52 — Task 11 Phase 1c complete)
+> **Version**: v0.239.0 (Stage 16.53 — Task 11 Phase 2 complete)
 
 ## Type Checking Data Flow
 
@@ -208,6 +208,41 @@ HIR (HirGenerics, HirPathSegment.args preserved)
 | 1a | ✅ | 16.50 | `generics_of` query |
 | 1b | ✅ | 16.51 | Substs in `TyKind::Adt` (type annotations) |
 | 1c | ✅ | 16.52 | Substs in `AggregateKind::Adt` (literal construction) |
-| 2 | 🔧 | — | `substitute(ty, substs)` — replace `Param` with actual |
+| 2 | ✅ | 16.53 | `substitute(ty, substs)` + field type resolution |
 | 3 | 🔧 | — | `collect_mono_items` — walk MIR, dedup (def_id, substs) |
 | 4 | 🔧 | — | Per-mono codegen — layouts keyed by (DefId, SubstsRef) |
+
+### Type Substitution Data Flow (Stage 16.53, Phase 2)
+
+```
+Generic struct field type (HIR)         Concrete field type (MIR)
+  struct Box<T> { val: T }                b.val : i32
+         │                                      ▲
+         ▼                                      │
+┌────────────────────────────────────┐   ┌──────┴──────────────────────────┐
+│  lower_hir_ty_to_mir_ty_with_     │   │  substitute(field_ty, substs)   │
+│  generics(ty, generic_params)     │   │                                  │
+│                                   │   │  Param(0) + [i32] → i32         │
+│  Resolves T → Param(ParamTy {     │   │  Adt(Box, [Param(0)]) + [i32]  │
+│    index: 0, name: T })           │   │    → Adt(Box, [i32])            │
+│                                   │   │                                  │
+│  Per §23: <verb>_<noun>_<noun>    │   │  Per §23: <verb> (pure fn)      │
+│  _<prep>_<noun> pattern           │   │  Per §16: reads Ty only          │
+└────────────────┬───────────────────┘   └──────────────┬───────────────────┘
+                 │                                       │
+                 └───────────────────┬───────────────────┘
+                                     │
+                                     ▼
+                ┌────────────────────────────────────────────┐
+                │  resolve_adt_field_tys_with_substs         │
+                │  resolve_field_type                        │
+                │                                            │
+                │  1. Get generic_params via generics_of     │
+                │  2. Lower field type with generics          │
+                │  3. Apply substitute(field_ty, substs)      │
+                │  4. Return concrete field type              │
+                │                                            │
+                │  Per §23: <verb>_<noun>_<noun>_<noun>      │
+                │  _<prep>_<noun> pattern                     │
+                └────────────────────────────────────────────┘
+```

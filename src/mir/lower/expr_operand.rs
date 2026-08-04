@@ -781,20 +781,51 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 // types from the HIR enum definition. The func expression
                 // is a Path like `Opt::Some` — check its HIR to find the
                 // variant name.
+                //
+                // Stage 16.53 (Task 11 Phase 2): Use
+                // `resolve_adt_field_tys_with_substs` when adt_substs is
+                // non-empty, so generic struct fields get substituted.
                 let (variant_idx, field_tys) = if let HirExprKind::Path(path) = &func.kind {
                     if path.segments.len() >= 2 {
                         if let Some((idx, tys)) =
                             resolve_enum_variant(cx, adt_def_id, &path.segments[1].ident.name)
                         {
                             (idx, tys)
-                        } else {
+                        } else if adt_substs.is_empty() {
                             (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
+                        } else {
+                            (
+                                0,
+                                field_resolution::resolve_adt_field_tys_with_substs(
+                                    cx,
+                                    adt_def_id,
+                                    &adt_substs,
+                                ),
+                            )
                         }
-                    } else {
+                    } else if adt_substs.is_empty() {
                         (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
+                    } else {
+                        (
+                            0,
+                            field_resolution::resolve_adt_field_tys_with_substs(
+                                cx,
+                                adt_def_id,
+                                &adt_substs,
+                            ),
+                        )
                     }
-                } else {
+                } else if adt_substs.is_empty() {
                     (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
+                } else {
+                    (
+                        0,
+                        field_resolution::resolve_adt_field_tys_with_substs(
+                            cx,
+                            adt_def_id,
+                            &adt_substs,
+                        ),
+                    )
                 };
                 // For enum variants, the Aggregate operands need to include
                 // the discriminant as the first element. For structs,
@@ -1838,9 +1869,15 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             //
             // Stage 16.52 (Task 11 Phase 1c): propagate generic args from
             // path into Adt substs (consistent with lower_hir_ty_to_mir_ty).
+            // Stage 16.53 (Task 11 Phase 2): use resolve_adt_field_tys_with_substs
+            // so generic struct fields get substituted with the Adt's substs.
             if let Res::Def(def_id, DefKind::Struct) = path.res {
-                let field_tys = field_resolution::resolve_adt_field_tys(cx, def_id);
                 let substs = lower_path_generic_args(path, &mut 0);
+                let field_tys = if substs.is_empty() {
+                    field_resolution::resolve_adt_field_tys(cx, def_id)
+                } else {
+                    field_resolution::resolve_adt_field_tys_with_substs(cx, def_id, &substs)
+                };
                 let struct_ty = Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
                 return cx.eval_rvalue_to_temp(
                     Rvalue::Aggregate(AggregateKind::Adt(def_id, 0, substs, field_tys), operands),

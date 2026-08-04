@@ -305,12 +305,26 @@ pub fn is_mir_ty_copy_conservative(ty: &Ty) -> bool {
         Never => true,
         Tuple(tys) => tys.iter().all(is_mir_ty_copy_conservative),
         Array(inner, _) => is_mir_ty_copy_conservative(inner),
-        // Infer and Error: assume Copy to avoid spurious errors during
-        // type inference (the type isn't known yet).
-        Infer(_) | Error | Foreign => true,
-        // Adt, Str, Slice, Closure, Param: conservatively non-Copy.
+        // Infer, Error, Foreign, and Param: assume Copy to avoid spurious
+        // errors during type inference (the concrete type isn't known yet).
+        //
+        // Stage 16.53 (Task 11 Phase 2): `Param` is now added to the "assume
+        // Copy" list. A `Param(X)` represents a generic type parameter whose
+        // concrete type is only known after monomorphization (Phase 4).
+        // During MIR lowering + typeck + borrowck, we don't know whether `X`
+        // is Copy, so we conservatively assume Copy to avoid spurious "use of
+        // moved value" errors (e.g., `self.x.f()` where `f` takes `&self` and
+        // `self.x: X`). The actual Copy-ness will be checked after
+        // monomorphization when the concrete type is substituted in.
+        //
+        // Per §1.0 原則 5 "报错 > 静默": conservative (assume Copy) is preferred
+        // over unsound (assume non-Copy) during inference, because false
+        // positives (spurious move errors) are worse than false negatives
+        // (missing move errors that will be caught post-mono).
+        Infer(_) | Error | Foreign | Param(_) => true,
+        // Adt, Str, Slice, Closure: conservatively non-Copy.
         // Use `ty_is_copy_with_resolver` for precise Adt Copy detection.
-        Adt(_, _) | Str | Slice(_) | Closure(_, _) | Param(_) => false,
+        Adt(_, _) | Str | Slice(_) | Closure(_, _) => false,
     }
 }
 

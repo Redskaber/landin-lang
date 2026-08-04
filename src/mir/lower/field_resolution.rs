@@ -3,14 +3,22 @@
 //! Extracted from `mir/lower/mod.rs` to reduce its LOC (2656 → ~2380).
 //! Contains functions for resolving field types, field indices, struct DefIds,
 //! index element types, and ADT field types from HIR.
+//!
+//! Stage 16.53 (Task 11 Phase 2): Added `resolve_adt_field_tys_with_substs`
+//! which applies generic type substitution to field types. This is the
+//! integration point for the `substitute` function — when a generic struct
+//! like `Box<T>` has field `val: T`, the field type is lowered as
+//! `Param(ParamTy { index: 0, .. })` and then substituted with the Adt's
+//! substs (e.g., `[i32]`) to produce the concrete field type `i32`.
 
 use crate::ast;
 use crate::hir::*;
 use crate::mir::place::LocalId;
 use crate::mir::ty::*;
+
 use crate::session::Span;
 
-use super::{lower_hir_ty_to_mir_ty, MirLowerCtxt};
+use super::{lower_hir_ty_to_mir_ty, lower_hir_ty_to_mir_ty_with_generics, MirLowerCtxt};
 
 /// Resolve the type of a specific field of a struct, given the receiver
 /// expression and the field index.
@@ -20,6 +28,11 @@ use super::{lower_hir_ty_to_mir_ty, MirLowerCtxt};
 /// HIR struct definition. Returns `None` if the receiver isn't a struct
 /// or the field index is out of bounds — caller falls back to
 /// `fresh_infer_ty`.
+///
+/// Stage 16.53 (Task 11 Phase 2): when the receiver's type has non-empty
+/// substs (e.g., `Box<i32>`), the field type is lowered with generic param
+/// resolution and then substituted. This makes `box.val` produce `i32`
+/// instead of `Param(0)` or `Error`.
 ///
 /// Per §16: this is MIR lower reading HIR (allowed — data flows downstream).
 /// The resolved type is sunk into `ProjectionElem::Field(_, field_ty)` so
@@ -31,12 +44,60 @@ pub(crate) fn resolve_field_type(
 ) -> Option<Ty> {
     let hir = cx.hir?;
     let struct_def_id = find_receiver_struct_def_id(cx, receiver)?;
+
+    // Stage 16.53: Extract substs from the receiver's type. If the receiver
+    // is `box: Box<i32>`, the substs are `[i32]`. These are used to
+    // substitute the field type's Param placeholders.
+    let receiver_substs = find_receiver_substs(cx, receiver);
+
     let owner = hir.owner(struct_def_id)?;
     if let OwnerNode::Item(HirItem::Struct(s)) = owner {
         let field = s.fields.get(field_index as usize)?;
+        // Stage 16.53: If we have substs, lower with generics + substitute.
+        // Otherwise, use the plain lowerer (non-generic fast path).
+        if let Some(substs) = receiver_substs {
+            if !substs.is_empty() {
+                let generic_params = crate::hir::generics::generics_of(struct_def_id, hir);
+                let field_ty = lower_hir_ty_to_mir_ty_with_generics(&field.ty, &generic_params);
+                return Some(crate::mir::substitute::substitute(&field_ty, &substs));
+            }
+        }
         Some(lower_hir_ty_to_mir_ty(&field.ty))
     } else {
         None
+    }
+}
+
+/// Stage 16.53: Extract the substs from a receiver expression's type.
+///
+/// For `box: Box<i32>`, returns `Some([i32])`. For non-Adt types or Adt
+/// types with empty substs, returns `Some([])`. Returns `None` if the
+/// receiver's type can't be determined.
+///
+/// Per §23: `find_receiver_substs` follows `<verb>_<noun>_<noun>` pattern.
+fn find_receiver_substs(cx: &MirLowerCtxt, receiver: &HirExpr) -> Option<SubstsRef> {
+    match &receiver.kind {
+        HirExprKind::Path(path) => {
+            if let Res::Local(hir_id) = path.res {
+                let local_id = cx.local_map.get(&hir_id)?;
+                let ld = cx.mir.local_decls.get(local_id.0 as usize)?;
+                // Unwrap Ref for &self/&mut self field access.
+                match &ld.ty.kind {
+                    TyKind::Adt(_, substs) => Some(substs.clone()),
+                    TyKind::Ref(_, _, inner) => {
+                        if let TyKind::Adt(_, substs) = &inner.kind {
+                            Some(substs.clone())
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
@@ -204,6 +265,13 @@ pub(crate) fn resolve_index_element_type(cx: &MirLowerCtxt, base_local: LocalId)
 }
 
 /// Resolve the declared field types of an ADT (struct or enum variant).
+///
+/// For non-generic ADTs, this is the same as the field types in HIR.
+/// For generic ADTs, the field types contain `TyKind::Param` placeholders
+/// that should be substituted with the Adt's substs using
+/// `resolve_adt_field_tys_with_substs`.
+///
+/// Per §16: reads HIR (allowed — data flows downstream).
 pub(crate) fn resolve_adt_field_tys(cx: &MirLowerCtxt, def_id: crate::hir::DefId) -> Vec<Ty> {
     let hir = match cx.hir {
         Some(h) => h,
@@ -216,6 +284,65 @@ pub(crate) fn resolve_adt_field_tys(cx: &MirLowerCtxt, def_id: crate::hir::DefId
             .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
             .collect(),
         Some(OwnerNode::Item(HirItem::Enum(_))) => {
+            vec![Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Stage 16.53 (Task 11 Phase 2): Resolve field types of an ADT with
+/// generic type substitution applied.
+///
+/// Given a generic struct `Box<T>` with field `val: T` and substs `[i32]`,
+/// this function:
+/// 1. Gets the struct's generic params via `generics_of` (e.g., `[T]`)
+/// 2. Lowers each field type with generic param resolution:
+///    - `val: T` → `Param(ParamTy { index: 0, name: T })`
+/// 3. Applies `substitute(field_ty, substs)` to each field:
+///    - `Param(0)` with substs `[i32]` → `i32`
+/// 4. Returns the substituted field types: `[i32]`
+///
+/// For non-generic ADTs (empty substs or no generic params), this falls
+/// back to the plain `resolve_adt_field_tys` behavior.
+///
+/// Per §23: `resolve_adt_field_tys_with_substs` follows
+/// `<verb>_<noun>_<noun>_<noun>_<prep>_<noun>` pattern.
+/// Per §16: reads HIR + applies substitution (pure data transformation).
+/// Per §1.0 原則 6 "通用 > 特例": one function for generic + non-generic ADTs.
+pub(crate) fn resolve_adt_field_tys_with_substs(
+    cx: &MirLowerCtxt,
+    def_id: crate::hir::DefId,
+    substs: &SubstsRef,
+) -> Vec<Ty> {
+    let hir = match cx.hir {
+        Some(h) => h,
+        None => return Vec::new(),
+    };
+
+    // Get the ADT's generic params (empty for non-generic ADTs).
+    let generic_params = crate::hir::generics::generics_of(def_id, hir);
+
+    // If no generic params or no substs, fall back to plain resolution.
+    // This is the non-generic fast path — no substitution needed.
+    if generic_params.is_empty() || substs.is_empty() {
+        return resolve_adt_field_tys(cx, def_id);
+    }
+
+    // Generic ADT with substs — lower fields with generic param resolution,
+    // then apply substitution.
+    match hir.owner(def_id) {
+        Some(OwnerNode::Item(HirItem::Struct(s))) => s
+            .fields
+            .iter()
+            .map(|f| {
+                // Lower with generic param resolution → may produce Param
+                let field_ty = lower_hir_ty_to_mir_ty_with_generics(&f.ty, &generic_params);
+                // Apply substitution → replace Param with actual type
+                crate::mir::substitute::substitute(&field_ty, substs)
+            })
+            .collect(),
+        Some(OwnerNode::Item(HirItem::Enum(_))) => {
+            // Enum variants have a discriminant field (i32) — no substitution needed.
             vec![Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)]
         }
         _ => Vec::new(),

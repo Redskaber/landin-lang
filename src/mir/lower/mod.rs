@@ -1688,28 +1688,22 @@ pub(crate) fn lower_ast_ty_to_mir_ty(ty: &crate::ast::Ty) -> crate::mir::ty::Ty 
             crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Tuple(mir_tys), span)
         }
         ATy::Path(_, path, _) => {
-            // For AST paths in generic args, we don't have Res (not yet
-            // resolved). Create an Adt with DefId(0) and recursively
-            // lowered substs. The typeck will resolve the actual DefId.
-            let substs: Vec<_> = path
-                .segments
-                .last()
-                .and_then(|s| s.args.as_ref())
-                .map(|args| match args {
-                    crate::ast::GenericArgs::AngleBracketed(args) => args
-                        .iter()
-                        .filter_map(|a| match a {
-                            crate::ast::GenericArg::Type(t) => Some(lower_ast_ty_to_mir_ty(t)),
-                            _ => None,
-                        })
-                        .collect(),
-                    _ => Vec::new(),
-                })
-                .unwrap_or_default();
-            crate::mir::ty::Ty::new(
-                crate::mir::ty::TyKind::Adt(crate::hir::DefId::new(0), substs.into()),
-                span,
-            )
+            // Stage 16.53 (Task 11 Phase 2): For AST paths in generic args,
+            // we don't have Res (not yet resolved). Previously, this produced
+            // `Adt(DefId(0), [])` — a dummy Adt that caused spurious "use of
+            // moved value" errors when used as a subst (Adt is not Copy).
+            //
+            // Now: produce `Error` for unresolved paths. Error is:
+            // - Copy (so no spurious move errors in borrowck)
+            // - Not an Infer var (so no bind_ty_var panic in typeck)
+            // - The existing convention for "unresolved type" throughout the
+            //   compiler (lower_hir_ty_to_mir_ty produces Error for Res::Err)
+            //
+            // Per §1.0 原則 5 "报错 > 静默": Error (explicitly unresolved) is
+            // preferred over Adt(DefId(0)) (dummy concrete type) or
+            // Infer(TyVid(u32::MAX)) (sentinel that panics on bind).
+            let _ = path; // path is not used — we can't resolve it without HIR context
+            crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, span)
         }
         // For unsupported types, return Infer (will be resolved by typeck)
         _ => crate::mir::ty::Ty::new(
@@ -1887,6 +1881,154 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
             )
         }
         _ => Ty::new(TyKind::Error, span), // complex types → Error for now
+    }
+}
+
+/// Stage 16.53 (Task 11 Phase 2): Lower a HIR type to MIR type with generic
+/// type parameter resolution.
+///
+/// This is an extension of `lower_hir_ty_to_mir_ty_with_regions` that
+/// resolves generic type parameters (e.g., `T` in `struct Box<T> { val: T }`)
+/// to `TyKind::Param(ParamTy { index, name })`.
+///
+/// ## Generic Param Resolution
+///
+/// When the HIR path's `Res` is `Res::Err` (unresolved by the name resolver),
+/// we check if the path's single segment name matches one of the `generic_params`.
+/// If it matches, we produce `TyKind::Param(ParamTy { index, name })` instead
+/// of `TyKind::Error`. This is the key step that makes `substitute` useful —
+/// without it, generic field types would be `Error` and substitution would
+/// be a no-op.
+///
+/// ## When to Use
+///
+/// Use this function when lowering types inside a generic context (e.g.,
+/// struct/enum field types, generic fn signatures). Use the plain
+/// `lower_hir_ty_to_mir_ty` for non-generic contexts.
+///
+/// Per §23: `lower_hir_ty_to_mir_ty_with_generics` follows
+/// `<verb>_<noun>_<noun>_<prep>_<noun>` pattern.
+/// Per §16: reads HIR (allowed during MIR lowering).
+/// Per §1.0 原則 6 "通用 > 特例": one function for all generic type lowering.
+pub(crate) fn lower_hir_ty_to_mir_ty_with_generics(
+    ty: &HirTy,
+    generic_params: &[crate::mir::ty::ParamTy],
+) -> Ty {
+    let mut region_counter = 0u32;
+    lower_hir_ty_to_mir_ty_with_generics_and_regions(ty, generic_params, &mut region_counter)
+}
+
+/// Stage 16.53: Region-aware variant of `lower_hir_ty_to_mir_ty_with_generics`.
+///
+/// Per §23: `lower_hir_ty_to_mir_ty_with_generics_and_regions` follows
+/// `<verb>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>` pattern.
+pub(crate) fn lower_hir_ty_to_mir_ty_with_generics_and_regions(
+    ty: &HirTy,
+    generic_params: &[crate::mir::ty::ParamTy],
+    region_counter: &mut u32,
+) -> Ty {
+    let span = Span::DUMMY;
+    match &ty.kind {
+        // For Path types, check if it's a generic type param first.
+        HirTyKind::Path(_, path) => {
+            // Single-segment path with unresolved Res → might be a type param.
+            if path.segments.len() == 1 && matches!(path.res, Res::Err | Res::Unknown) {
+                let seg_name = path.segments[0].ident.name;
+                for param in generic_params {
+                    if param.name == seg_name {
+                        return Ty::new(TyKind::Param(*param), span);
+                    }
+                }
+            }
+            // Not a type param — delegate to the standard lowerer.
+            lower_hir_ty_to_mir_ty_with_regions(ty, region_counter)
+        }
+        // For recursive types (Tuple, Ref, Array, etc.), recurse with generics.
+        HirTyKind::Tuple(tys) => Ty::new(
+            TyKind::Tuple(
+                tys.iter()
+                    .map(|t| {
+                        lower_hir_ty_to_mir_ty_with_generics_and_regions(
+                            t,
+                            generic_params,
+                            region_counter,
+                        )
+                    })
+                    .collect(),
+            ),
+            span,
+        ),
+        HirTyKind::Ref(region, mutability, inner) => {
+            let mir_region = match region {
+                Some(_) => {
+                    let vid = *region_counter;
+                    *region_counter += 1;
+                    crate::mir::ty::Region::Var(crate::mir::ty::RegionVid(vid))
+                }
+                None => {
+                    let vid = *region_counter;
+                    *region_counter += 1;
+                    crate::mir::ty::Region::Var(crate::mir::ty::RegionVid(vid))
+                }
+            };
+            let mir_mut = match mutability {
+                ast::Mutability::Mutable => crate::mir::ty::Mutability::Mutable,
+                ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
+            };
+            Ty::new(
+                TyKind::Ref(
+                    mir_region,
+                    mir_mut,
+                    Box::new(lower_hir_ty_to_mir_ty_with_generics_and_regions(
+                        inner,
+                        generic_params,
+                        region_counter,
+                    )),
+                ),
+                span,
+            )
+        }
+        HirTyKind::Ptr(mutability, inner) => {
+            let mir_mut = match mutability {
+                ast::Mutability::Mutable => crate::mir::ty::Mutability::Mutable,
+                ast::Mutability::Immutable => crate::mir::ty::Mutability::Immutable,
+            };
+            Ty::new(
+                TyKind::RawPtr(
+                    mir_mut,
+                    Box::new(lower_hir_ty_to_mir_ty_with_generics_and_regions(
+                        inner,
+                        generic_params,
+                        region_counter,
+                    )),
+                ),
+                span,
+            )
+        }
+        HirTyKind::Slice(inner) => Ty::new(
+            TyKind::Slice(Box::new(lower_hir_ty_to_mir_ty_with_generics_and_regions(
+                inner,
+                generic_params,
+                region_counter,
+            ))),
+            span,
+        ),
+        HirTyKind::Array(inner, count_expr) => {
+            let len_const = const_eval_array_len(count_expr, span);
+            Ty::new(
+                TyKind::Array(
+                    Box::new(lower_hir_ty_to_mir_ty_with_generics_and_regions(
+                        inner,
+                        generic_params,
+                        region_counter,
+                    )),
+                    Box::new(len_const),
+                ),
+                span,
+            )
+        }
+        // All other kinds delegate to the standard lowerer (no generics needed).
+        _ => lower_hir_ty_to_mir_ty_with_regions(ty, region_counter),
     }
 }
 

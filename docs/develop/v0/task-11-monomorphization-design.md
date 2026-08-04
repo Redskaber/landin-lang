@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-04 (Stage 16.49)
-> **Version**: v0.238.0 (Stage 16.52)
+> **Version**: v0.239.0 (Stage 16.53)
 > **Process**: stage-committee-process.md v3.24 §13.4 (stage-start design alignment)
-> **Status**: Phase 1 complete (1a + 1b + 1c), Phase 2-4 planned
+> **Status**: Phase 1-2 complete (1a + 1b + 1c + 2), Phase 3-4 planned
 
 ## 1. Executive Summary
 
@@ -73,26 +73,43 @@ at all 5 construction sites in `src/mir/lower/expr_operand.rs`:
 Plus: reworked `typeck/unify.rs` Adt unification — replaced the temporary
 Stage 16.51 relaxation with the principled "empty substs = unknown" rule.
 
-### 3.2 Phase 2: Substitution 🔧 NEXT
+### 3.2 Phase 2: Substitution ✅ COMPLETE (Stage 16.53)
 
 **Goal**: Given `struct Vec<T> { data: [T; N], len: usize }` and substs `[i32]`,
 produce field type `[i32; N]` for the `data` field.
 
+**Step 2a** ✅: Create `substitute(ty, substs)` function
 ```rust
-// In src/mir/ty.rs
+// In src/mir/substitute.rs
 pub fn substitute(ty: &Ty, substs: &[Ty]) -> Ty {
     match &ty.kind {
         TyKind::Param(ParamTy { index, .. }) => substs[*index as usize].clone(),
         TyKind::Adt(def_id, inner_substs) => {
             let substituted = inner_substs.iter().map(|t| substitute(t, substs));
-            Ty::new(TyKind::Adt(*def_id, substituted.collect::<Vec<_>>().into()), ty.span)
+            Ty::new(TyKind::Adt(*def_id, substituted.collect::<Vec<_>>().into()), span)
         }
         // ... recursively handle Ref, Tuple, Array, etc.
     }
 }
 ```
 
-### 3.3 Phase 3: Monomorphization Collection
+**Step 2b** ✅: Create `lower_hir_ty_to_mir_ty_with_generics` — resolves type
+parameters (e.g., `T`) to `TyKind::Param(ParamTy { index, name })` instead of
+`TyKind::Error`.
+
+**Step 2c** ✅: Integrate into `resolve_adt_field_tys_with_substs` — lowers
+field types with generic param resolution, then applies substitution.
+
+**Step 2d** ✅: Update `resolve_field_type` to use substitution when receiver
+has substs. Added `find_receiver_substs` helper.
+
+**Step 2e** ✅: Update `is_mir_ty_copy_conservative` + `ty_is_copy` +
+`ty_is_copy_with_resolver` to treat `Param` as Copy (same as `Infer`/`Error`).
+
+**Step 2f** ✅: Update `lower_ast_ty_to_mir_ty` to produce `Error` (not
+`Adt(DefId(0), [])`) for unresolved paths in generic args.
+
+### 3.3 Phase 3: Monomorphization Collection 🔧 NEXT
 
 **Goal**: Walk all MIR bodies, collect `MonoItem { def_id, substs }` pairs,
 dedup.
@@ -150,9 +167,13 @@ pub fn collect_mono_items(mirs: &[MirBody]) -> Vec<MonoItem> {
 - ✅ Generic enum in return position and match scrutinee (Stage 16.52)
 - 🔧 `let x: Vec<Vec<i32>>` → nested substs (Phase 2)
 
-### Phase 2 Tests
-- `substitute(Vec<T>.data, [i32])` → `[i32; N]`
-- `substitute(Pair<A, B>.a, [i32, bool])` → `i32`
+### Phase 2 Tests ✅ COMPLETE (Stage 16.53)
+- ✅ `substitute(Param(0), [i32])` → `i32` (29 unit tests)
+- ✅ `substitute(Adt(Box, [Param(0)]), [i32])` → `Adt(Box, [i32])` (unit test)
+- ✅ `let b: Box<i32> = Box { val: 42 }; b.val` compiles (integration test)
+- ✅ `impl<X> S<X> { fn get(&self) -> X { self.x } }` compiles (integration test)
+- ✅ `impl<X: T> T for S<X> { fn f(&self) -> i32 { self.x.f() } }` compiles (integration test)
+- ✅ Generic struct field access produces concrete type in MIR (MIR inspection test)
 
 ### Phase 3 Tests
 - `Vec<i32>` + `Vec<bool>` → 2 MonoItems
@@ -168,5 +189,6 @@ pub fn collect_mono_items(mirs: &[MirBody]) -> Vec<MonoItem> {
 - Stage 16.50 design (Phase 1a): `docs/develop/v0/stage-16/stage-16.50-generics-of-query.md`
 - Stage 16.51 design (Phase 1b): `docs/develop/v0/stage-16/stage-16.51-substs-propagation.md`
 - Stage 16.52 design (Phase 1c): `docs/develop/v0/stage-16/stage-16.52-aggregate-substs-propagation.md`
+- Stage 16.53 design (Phase 2): `docs/develop/v0/stage-16/stage-16.53-type-substitution.md`
 - v0.3 design: `docs/develop/v0/v0.3-complete-design.md` (Task 11 section)
 - Type system data flow: `docs/graph/type-system/data-flow.md`

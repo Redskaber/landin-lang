@@ -27554,3 +27554,105 @@ Stage Summary:
 - `let x: Opt<i32> = Opt::Some(42);` works (key milestone)
 - Next: Phase 2 — substitute(ty, substs) function
 - 7926 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.53-type-substitution
+Agent: Super Z (main)
+Task: Stage 16.53 — Task 11 Phase 2: Type substitution. v0.238.0 → v0.239.0.
+
+Work Log:
+- Baseline: v0.238.0 / 250 lib + 2452 integration + 5224 conformance = 7926
+
+### 1. Created substitute Module (src/mir/substitute.rs)
+
+Pure function module with:
+- substitute(ty, substs) -> Ty — replaces Param(idx) with substs[idx]
+- substitute_substs(inner_substs, outer_substs) -> Vec<Ty>
+- substitute_const(c, substs) -> Const
+- substitute_sig(sig, substs) -> Sig
+- Handles all TyKind variants: leaf, Param, Ref, RawPtr, Array, Slice,
+  Tuple, Adt, FnDef, Closure, FnPtr, Infer
+- Bounds-safe: out-of-range Param index returns original (no panic)
+- 29 unit tests covering all variants + nested types + idempotency
+
+### 2. Added lower_hir_ty_to_mir_ty_with_generics (src/mir/lower/mod.rs)
+
+Resolves generic type parameters (T, U, etc.) to TyKind::Param:
+- Single-segment path with Res::Err/Unknown → check generic_params
+- If name matches → Param(ParamTy { index, name })
+- Recursively handles Tuple, Ref, Ptr, Slice, Array
+- Delegates to lower_hir_ty_to_mir_ty_with_regions for other kinds
+
+### 3. Integrated substitute into field_resolution.rs
+
+New function: resolve_adt_field_tys_with_substs(cx, def_id, substs)
+- Gets generic_params via generics_of
+- Lowers fields with lower_hir_ty_to_mir_ty_with_generics
+- Applies substitute(field_ty, substs)
+- Falls back to plain resolve_adt_field_tys for non-generic ADTs
+
+Updated resolve_field_type to use substitution when receiver has substs.
+Added find_receiver_substs helper.
+
+Updated AggregateKind::Adt sites 2 and 3 in expr_operand.rs to use
+resolve_adt_field_tys_with_substs when substs are non-empty.
+
+### 4. Fixed Param Copy Semantics
+
+Updated is_mir_ty_copy_conservative (mir/ty.rs), ty_is_copy, and
+ty_is_copy_with_resolver (borrowck/copy_semantics.rs) to treat Param
+as Copy (same as Infer/Error/Foreign).
+
+Rationale: Param represents a generic type whose concrete type is only
+known after monomorphization. During inference/borrowck, we can't know
+if it's Copy, so conservatively assume Copy to avoid spurious move errors.
+
+### 5. Fixed lower_ast_ty_to_mir_ty Path Handling
+
+Changed ATy::Path arm from producing Adt(DefId(0), []) to producing Error.
+The dummy Adt was causing spurious "use of moved value" errors when used
+as a subst (Adt is not Copy). Error is Copy and is the existing convention
+for unresolved types.
+
+### 6. Added 18 Integration Tests
+
+Created tests/v0/stage16/plan/stage16_53_substitute_tests.rs:
+- §1 substitute function (3 tests)
+- §2 Generic struct field access (4 tests)
+- §3 Generic enum (2 tests)
+- §4 No regressions (3 tests)
+- §5 MIR inspection (2 tests)
+- §6 Complex generic patterns (4 tests)
+
+Registered in tests/all_tests.rs.
+
+### 7. Documentation Updates
+
+- Created docs/develop/v0/stage-16/stage-16.53-type-substitution.md
+- Created docs/tests/v0/stage16/stage-16.53-test-plan.md
+- Updated docs/develop/v0/task-11-monomorphization-design.md — Phase 2 COMPLETE
+- Updated docs/graph/type-system/data-flow.md — added substitution data flow
+- Updated RELEASE_NOTES.md — v0.239.0 entry
+- Updated README.md — version, test stats
+- Updated Cargo.toml — v0.238.0 → v0.239.0
+
+### 8. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt --check — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 279/279 PASS (+29 new)
+- cargo test --features llvm-backend --test all_tests — ✅ 2470/2470 PASS (+18 new)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 7973 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.53 PASSED — Type substitution implemented
+- Task 11 Phase 2 COMPLETE
+- substitute(ty, substs) pure function (29 unit tests)
+- lower_hir_ty_to_mir_ty_with_generics — resolves type params to Param
+- resolve_adt_field_tys_with_substs — integrates substitute into field resolution
+- Param treated as Copy during inference (avoids spurious move errors)
+- Key milestone: let b: Box<i32> = Box { val: 42 }; b.val compiles end-to-end
+- Next: Phase 3 — collect_mono_items (monomorphization collection)
+- 7973 tests, 0 failures, 0 warnings

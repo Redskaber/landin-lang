@@ -12,6 +12,9 @@ pub mod drop_elaboration;
 pub mod dyn_trait;
 pub mod lower;
 pub mod place;
+// Stage 16.53 (Task 11 Phase 2): Type substitution — replace Param with
+// concrete types from a SubstsRef slice.
+pub mod substitute;
 pub mod ty;
 pub mod ty_interner;
 
@@ -41,6 +44,9 @@ pub use ty::{
     Const, ConstVal, FloatVid, InferVar, IntVid, Mutability, ParamTy, Region, RegionVid, Sig,
     SubstsRef, Ty, TyKind, TyVid,
 };
+
+// Stage 16.53 (Task 11 Phase 2): Type substitution re-exports.
+pub use substitute::{substitute, substitute_substs};
 
 // Stage 5.61: dyn Trait fat pointer MIR representation
 // Stage 5.62: bridge function from TraitResolver

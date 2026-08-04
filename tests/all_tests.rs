@@ -398,3 +398,5 @@ mod stage16_48_final_verification_tests;
 mod stage16_49_generic_investigation_tests;
 #[path = "v0/stage16/plan/stage16_52_aggregate_substs_tests.rs"]
 mod stage16_52_aggregate_substs_tests;
+#[path = "v0/stage16/plan/stage16_53_substitute_tests.rs"]
+mod stage16_53_substitute_tests;
