@@ -11,6 +11,9 @@ pub mod body;
 pub mod drop_elaboration;
 pub mod dyn_trait;
 pub mod lower;
+// Stage 16.54 (Task 11 Phase 3): Monomorphization collection — walk MIR
+// bodies and collect MonoItem { def_id, substs } pairs for codegen.
+pub mod monomorphize;
 pub mod place;
 // Stage 16.53 (Task 11 Phase 2): Type substitution — replace Param with
 // concrete types from a SubstsRef slice.
@@ -47,6 +50,9 @@ pub use ty::{
 
 // Stage 16.53 (Task 11 Phase 2): Type substitution re-exports.
 pub use substitute::{substitute, substitute_substs};
+
+// Stage 16.54 (Task 11 Phase 3): Monomorphization collection re-exports.
+pub use monomorphize::{collect_mono_items, MonoItem};
 
 // Stage 5.61: dyn Trait fat pointer MIR representation
 // Stage 5.62: bridge function from TraitResolver

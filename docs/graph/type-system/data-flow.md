@@ -1,7 +1,7 @@
 # Type System Data Flow (Typeck + Borrowck)
 
 > **Date**: 2026-08-04
-> **Version**: v0.239.0 (Stage 16.53 — Task 11 Phase 2 complete)
+> **Version**: v0.240.0 (Stage 16.54 — Task 11 Phase 3 complete)
 
 ## Type Checking Data Flow
 
@@ -209,8 +209,51 @@ HIR (HirGenerics, HirPathSegment.args preserved)
 | 1b | ✅ | 16.51 | Substs in `TyKind::Adt` (type annotations) |
 | 1c | ✅ | 16.52 | Substs in `AggregateKind::Adt` (literal construction) |
 | 2 | ✅ | 16.53 | `substitute(ty, substs)` + field type resolution |
-| 3 | 🔧 | — | `collect_mono_items` — walk MIR, dedup (def_id, substs) |
+| 3 | ✅ | 16.54 | `collect_mono_items` — walk MIR, dedup (def_id, substs) |
 | 4 | 🔧 | — | Per-mono codegen — layouts keyed by (DefId, SubstsRef) |
+
+### Monomorphization Collection Data Flow (Stage 16.54, Phase 3)
+
+```
+MIR Bodies (Vec<MirBody>)
+    │
+    ▼
+┌────────────────────────────────────────────────────────────┐
+│  collect_mono_items(mirs) -> Vec<MonoItem>                  │
+│                                                            │
+│  Walks each MIR body:                                      │
+│    1. local_decls[i].ty — local variable types             │
+│    2. statements — Rvalue::Aggregate, Rvalue::Cast         │
+│    3. terminators — Call { func, args }                    │
+│    4. projection elements — Field(_, ty)                   │
+│                                                            │
+│  For each type, calls collect_from_ty:                     │
+│    Adt(def_id, substs)   → MonoItem::Type (if non-empty)   │
+│    FnDef(def_id, substs) → MonoItem::Fn   (if non-empty)   │
+│    Closure(def_id, substs) → MonoItem::Closure (if non-    │
+│                              empty)                        │
+│    Recursively walks inner substs, Ref, Tuple, Array, etc. │
+│                                                            │
+│  Deduplicates via HashSet<MonoItem>                        │
+│  Per §23: <verb>_<noun>_<noun> pattern                     │
+│  Per §16: reads MIR only (no HIR access)                   │
+└────────────────────────┬───────────────────────────────────┘
+                         │
+                         ▼
+┌────────────────────────────────────────────────────────────┐
+│  Vec<MonoItem> — deduplicated specializations              │
+│                                                            │
+│  Each MonoItem = one concrete instantiation:               │
+│    Type { def_id: Vec, substs: [i32] }   = Vec<i32>        │
+│    Type { def_id: Vec, substs: [bool] }  = Vec<bool>       │
+│    Fn { def_id: id, substs: [i32] }      = id::<i32>       │
+│    Fn { def_id: id, substs: [bool] }     = id::<bool>      │
+│                                                            │
+│  Consumed by Phase 4 (per-mono codegen):                   │
+│    Layouts keyed by (DefId, SubstsRef)                     │
+│    Functions: landin_vec_push_i32, landin_vec_push_bool    │
+└────────────────────────────────────────────────────────────┘
+```
 
 ### Type Substitution Data Flow (Stage 16.53, Phase 2)
 

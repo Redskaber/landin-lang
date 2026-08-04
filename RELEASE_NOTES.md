@@ -1,9 +1,46 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.239.0
+**Current version**: v0.240.0
 **Date**: 2026-08-04
-**Test count**: 279 rust lib tests + 2470 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 303 rust lib tests + 2482 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.240.0 — Stage 16.54 (Task 11 Phase 3: Monomorphization Collection)
+
+### Overview
+
+Implemented the `collect_mono_items` function — walks all MIR bodies and
+collects `MonoItem { def_id, substs }` pairs for codegen. Each MonoItem
+represents one specialization of a generic type or function.
+
+**Key result**: `let b: Box<i32> = Box { val: 42 };` produces 1 MonoItem
+(`Type { def_id: Box, substs: [i32] }`). Two different instantiations
+(`Box<i32>` + `Box<bool>`) produce 2 MonoItems. The same instantiation
+used twice produces 1 MonoItem (dedup via HashSet).
+
+**New module**: `src/mir/monomorphize.rs`
+- `MonoItem` enum — `Type`, `Fn`, `Closure` variants, each with `def_id`
+  and `substs`. Derives `Eq + Hash` for HashSet dedup.
+- `collect_mono_items(mirs) -> Vec<MonoItem>` — walks all MIR bodies,
+  collects MonoItems from local_decls, statements, terminators
+- `collect_from_ty(ty, collected)` — recursive type walker
+- 8 private helpers for walking each MIR construct
+- 24 unit tests covering all collection paths
+
+**Re-exports** in `src/mir/mod.rs`:
+- `pub use monomorphize::{collect_mono_items, MonoItem}`
+
+**Tests**: +36 tests (24 unit + 12 integration) covering MonoItem struct,
+collect_from_ty, collect_mono_items, statement/rvalue/terminator walking,
+dedup, nested generics, and no-regression checks.
+
+Per §1.0 原則 6 "通用 > 特例": one collection function for all type kinds.
+Per §16: reads MIR only (no HIR access during collection).
+
+### Verification
+
+- **Total: 8009 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.239.0 — Stage 16.53 (Task 11 Phase 2: Type Substitution)

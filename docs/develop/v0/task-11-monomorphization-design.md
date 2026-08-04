@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-04 (Stage 16.49)
-> **Version**: v0.239.0 (Stage 16.53)
+> **Version**: v0.240.0 (Stage 16.54)
 > **Process**: stage-committee-process.md v3.24 §13.4 (stage-start design alignment)
-> **Status**: Phase 1-2 complete (1a + 1b + 1c + 2), Phase 3-4 planned
+> **Status**: Phase 1-3 complete (1a + 1b + 1c + 2 + 3), Phase 4 planned
 
 ## 1. Executive Summary
 
@@ -109,28 +109,48 @@ has substs. Added `find_receiver_substs` helper.
 **Step 2f** ✅: Update `lower_ast_ty_to_mir_ty` to produce `Error` (not
 `Adt(DefId(0), [])`) for unresolved paths in generic args.
 
-### 3.3 Phase 3: Monomorphization Collection 🔧 NEXT
+### 3.3 Phase 3: Monomorphization Collection ✅ COMPLETE (Stage 16.54)
 
 **Goal**: Walk all MIR bodies, collect `MonoItem { def_id, substs }` pairs,
 dedup.
 
 ```rust
 // In src/mir/monomorphize.rs
-pub struct MonoItem {
-    pub def_id: DefId,
-    pub substs: SubstsRef,
+pub enum MonoItem {
+    Type { def_id: DefId, substs: SubstsRef },
+    Fn { def_id: DefId, substs: SubstsRef },
+    Closure { def_id: DefId, substs: SubstsRef },
 }
 
 pub fn collect_mono_items(mirs: &[MirBody]) -> Vec<MonoItem> {
-    // Walk all types and function calls
+    // Walk all MIR bodies
     // For each Adt(def_id, substs) where !substs.is_empty(): collect
     // For each FnDef(def_id, substs) where !substs.is_empty(): collect
+    // For each Closure(def_id, substs) where !substs.is_empty(): collect
     // Recursively substitute into generic function bodies
-    // Dedup by (def_id, substs)
+    // Dedup by (def_id, substs) via HashSet
 }
 ```
 
-### 3.4 Phase 4: Per-Mono Codegen
+**Step 3a** ✅: Created `MonoItem` enum with `Type`, `Fn`, `Closure` variants.
+Each carries `def_id` and `substs`. Derives `Eq + Hash` for HashSet dedup.
+
+**Step 3b** ✅: Created `collect_mono_items(mirs) -> Vec<MonoItem>` — walks
+all MIR bodies, collects MonoItems from local_decls, statements, terminators.
+
+**Step 3c** ✅: Created `collect_from_ty(ty, collected)` — recursive type
+walker that extracts MonoItems from `Adt`/`FnDef`/`Closure` with non-empty
+substs. Recursively walks inner substs, Ref, Tuple, Array, etc.
+
+**Step 3d** ✅: Created 8 private helpers for walking each MIR construct:
+`collect_from_mir_body`, `collect_from_statement`, `collect_from_rvalue`,
+`collect_from_aggregate_kind`, `collect_from_operand`, `collect_from_place`,
+`collect_from_projection_elem`, `collect_from_terminator`.
+
+**Step 3e** ✅: 24 unit tests + 12 integration tests covering all collection
+paths, dedup, nested generics, and no-regression checks.
+
+### 3.4 Phase 4: Per-Mono Codegen 🔧 NEXT
 
 **Goal**: Each `MonoItem` gets its own specialized LLVM type/function.
 
@@ -175,9 +195,12 @@ pub fn collect_mono_items(mirs: &[MirBody]) -> Vec<MonoItem> {
 - ✅ `impl<X: T> T for S<X> { fn f(&self) -> i32 { self.x.f() } }` compiles (integration test)
 - ✅ Generic struct field access produces concrete type in MIR (MIR inspection test)
 
-### Phase 3 Tests
-- `Vec<i32>` + `Vec<bool>` → 2 MonoItems
-- `Vec<i32>` + `Vec<i32>` → 1 MonoItem (dedup)
+### Phase 3 Tests ✅ COMPLETE (Stage 16.54)
+- ✅ `collect_mono_items` walks MIR bodies (24 unit tests)
+- ✅ `Vec<i32>` + `Vec<bool>` → 2 MonoItems (integration test)
+- ✅ `Vec<i32>` + `Vec<i32>` → 1 MonoItem (dedup, integration test)
+- ✅ Non-generic code → 0 MonoItems (integration test)
+- ✅ Nested generics produce MonoItems (integration test, with known limitation)
 
 ### Phase 4 Tests
 - `Vec<i32>` and `Vec<bool>` produce different LLVM types
@@ -190,5 +213,6 @@ pub fn collect_mono_items(mirs: &[MirBody]) -> Vec<MonoItem> {
 - Stage 16.51 design (Phase 1b): `docs/develop/v0/stage-16/stage-16.51-substs-propagation.md`
 - Stage 16.52 design (Phase 1c): `docs/develop/v0/stage-16/stage-16.52-aggregate-substs-propagation.md`
 - Stage 16.53 design (Phase 2): `docs/develop/v0/stage-16/stage-16.53-type-substitution.md`
+- Stage 16.54 design (Phase 3): `docs/develop/v0/stage-16/stage-16.54-monomorphization-collection.md`
 - v0.3 design: `docs/develop/v0/v0.3-complete-design.md` (Task 11 section)
 - Type system data flow: `docs/graph/type-system/data-flow.md`

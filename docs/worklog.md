@@ -27656,3 +27656,87 @@ Stage Summary:
 - Key milestone: let b: Box<i32> = Box { val: 42 }; b.val compiles end-to-end
 - Next: Phase 3 — collect_mono_items (monomorphization collection)
 - 7973 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.54-monomorphization-collection
+Agent: Super Z (main)
+Task: Stage 16.54 — Task 11 Phase 3: Monomorphization collection. v0.239.0 → v0.240.0.
+
+Work Log:
+- Baseline: v0.239.0 / 279 lib + 2470 integration + 5224 conformance = 7973
+
+### 1. Created monomorphize Module (src/mir/monomorphize.rs)
+
+New module with:
+- MonoItem enum: Type, Fn, Closure variants (each with def_id + substs)
+  - Derives Eq + Hash for HashSet dedup
+  - def_id() and substs() accessors
+  - debug_string() helper
+- collect_mono_items(mirs) -> Vec<MonoItem>
+  - Walks all MIR bodies
+  - Collects from local_decls, statements, terminators
+  - Deduplicates via HashSet
+- collect_from_ty(ty, collected) — recursive type walker
+  - Adt/FnDef/Closure with non-empty substs → collect
+  - Recursively walks inner substs, Ref, Tuple, Array, etc.
+- 8 private helpers: collect_from_mir_body, collect_from_statement,
+  collect_from_rvalue, collect_from_aggregate_kind, collect_from_operand,
+  collect_from_place, collect_from_projection_elem, collect_from_terminator
+- 24 unit tests
+
+### 2. Re-exports in src/mir/mod.rs
+
+- pub use monomorphize::{collect_mono_items, MonoItem}
+
+### 3. Added 12 Integration Tests
+
+Created tests/v0/stage16/plan/stage16_54_monomorphize_tests.rs:
+- §1 Basic collection (2 tests)
+- §2 Dedup (1 test)
+- §3 Nested generics (1 test, with known limitation)
+- §4 Generic enum (2 tests)
+- §5 Multiple generics (1 test)
+- §6 No regressions (3 tests)
+- §7 Accessor methods (2 tests)
+
+Registered in tests/all_tests.rs.
+
+### 4. Known Limitation: Nested Generic Args
+
+When Box<i32> appears as a generic arg in Box<Box<i32>>, the inner Box<i32>
+is lowered as Error (AST path can't be resolved without HIR context).
+So Box<Box<i32>> produces only 1 MonoItem (outer Box with [Error] substs)
+instead of 2. This is documented in the test and design doc. The collection
+algorithm is correct — it would collect 2 if the inner type were properly
+lowered as Adt(Box, [i32]).
+
+### 5. Documentation Updates
+
+- Created docs/develop/v0/stage-16/stage-16.54-monomorphization-collection.md
+- Created docs/tests/v0/stage16/stage-16.54-test-plan.md
+- Updated docs/develop/v0/task-11-monomorphization-design.md — Phase 3 COMPLETE
+- Updated docs/graph/type-system/data-flow.md — added monomorphization collection data flow
+- Updated RELEASE_NOTES.md — v0.240.0 entry
+- Updated README.md — version, test stats
+- Updated Cargo.toml — v0.239.0 → v0.240.0
+
+### 6. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt --check — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 303/303 PASS (+24 new)
+- cargo test --features llvm-backend --test all_tests — ✅ 2482/2482 PASS (+12 new)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 8009 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.54 PASSED — Monomorphization collection implemented
+- Task 11 Phase 3 COMPLETE
+- MonoItem enum (Type/Fn/Closure) with Eq+Hash for dedup
+- collect_mono_items walks MIR bodies, deduplicates via HashSet
+- collect_from_ty recursive type walker
+- 8 private helpers for each MIR construct
+- Key milestone: Box<i32> produces 1 MonoItem, Box<i32> + Box<bool> → 2, dedup works
+- Next: Phase 4 — per-mono codegen (layouts keyed by (DefId, SubstsRef))
+- 8009 tests, 0 failures, 0 warnings
