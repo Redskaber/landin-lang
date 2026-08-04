@@ -27906,3 +27906,81 @@ Stage Summary:
 - Key milestone: Box<Box<i32>> → 2 MonoItems, Box<Box<Box<i32>>> → 3 MonoItems
 - Next: Phase 4b — layouts keyed by (DefId, SubstsRef)
 - 8043 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.57-per-mono-layouts
+Agent: Super Z (main)
+Task: Stage 16.57 — Task 11 Phase 4b: Per-mono layouts. v0.242.0 → v0.243.0.
+
+Work Log:
+- Baseline: v0.242.0 / 327 lib + 2492 integration + 5224 conformance = 8043
+
+### 1. Created MonoLayoutKey + MonoLayoutMap (src/mir/monomorphize.rs)
+
+- MonoLayoutKey: hashable key wrapping (DefId, Vec<TyKind>)
+  - Uses TyKind (not Ty) because TyKind derives Hash+Eq, Ty doesn't
+  - new(def_id, substs) extracts TyKind from each Ty in substs
+  - from_mono_item(item) creates key from any MonoItem variant
+  - Derives Debug, Clone, PartialEq, Eq, Hash
+
+- MonoLayoutMap: type alias for HashMap<MonoLayoutKey, AdtLayout>
+  - Each entry = one specialized layout for a generic type instantiation
+
+### 2. Implemented build_mono_layouts (src/mir/monomorphize.rs)
+
+build_mono_layouts(items, hir) -> MonoLayoutMap:
+- For each MonoItem::Type with non-empty substs:
+  1. Get generic params via generics_of(def_id, hir)
+  2. Lower each field type with lower_hir_ty_to_mir_ty_with_generics
+     (resolves T → Param(ParamTy { index: 0, ... }))
+  3. Apply substitute(field_ty, substs) → replaces Param with actual type
+  4. Build AdtLayout::Struct or AdtLayout::Enum with substituted field types
+  5. Insert into map keyed by MonoLayoutKey
+- Non-generic types (empty substs) are skipped
+- Dedup by MonoLayoutKey (same DefId + same substs → one entry)
+
+### 3. Re-exports in src/mir/mod.rs
+
+Updated to include all Phase 4b types:
+pub use monomorphize::{
+    build_mono_item_names, build_mono_layouts, collect_mono_items, mangle_ty,
+    mangle_ty_with_interner, mono_item_name, MonoItem, MonoLayoutKey, MonoLayoutMap,
+};
+
+### 4. Added 16 Unit Tests
+
+In src/mir/monomorphize.rs:
+- §9 MonoLayoutKey tests (8 tests): new, empty_substs, equality, inequality
+  (def_id + substs), from_mono_item (Type + Fn), hashable
+- §10 build_mono_layouts tests (8 tests): empty, non-generic skip, generic
+  struct, two instantiations, dedup, nested, correct field type, generic enum
+
+### 5. Documentation Updates
+
+- Created docs/develop/v0/stage-16/stage-16.57-per-mono-layouts.md
+- Created docs/tests/v0/stage16/stage-16.57-test-plan.md
+- Updated docs/develop/v0/task-11-monomorphization-design.md — Phase 4b COMPLETE
+- Updated docs/graph/type-system/data-flow.md — version + status table
+- Updated RELEASE_NOTES.md — v0.243.0 entry
+- Updated README.md — version, test stats
+- Updated Cargo.toml — v0.242.0 → v0.243.0
+
+### 6. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt --check — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 343/343 PASS (+16 new)
+- cargo test --features llvm-backend --test all_tests — ✅ 2492/2492 PASS
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 8059 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.57 PASSED — Per-mono layouts implemented
+- Task 11 Phase 4b COMPLETE
+- MonoLayoutKey: hashable (DefId, Vec<TyKind>) key
+- MonoLayoutMap: HashMap<MonoLayoutKey, AdtLayout>
+- build_mono_layouts: builds per-mono layouts with substituted field types
+- Key milestone: Box<i32> → AdtLayout::Struct { field_tys: [i32] } (substituted)
+- Next: Phase 4c — codegen integration (use MonoLayoutMap in codegen)
+- 8059 tests, 0 failures, 0 warnings

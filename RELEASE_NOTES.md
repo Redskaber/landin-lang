@@ -1,9 +1,46 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.242.0
+**Current version**: v0.243.0
 **Date**: 2026-08-04
-**Test count**: 327 rust lib tests + 2492 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 343 rust lib tests + 2492 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.243.0 — Stage 16.57 (Task 11 Phase 4b: Per-Mono Layouts)
+
+### Overview
+
+Implemented per-mono layouts — each generic type instantiation gets its own
+specialized `AdtLayout` with substituted field types. This is the foundation
+for Phase 4c (codegen integration).
+
+**Key result**: `let b: Box<i32> = Box { val: 42 };` produces a MonoLayoutMap
+with one entry: `MonoLayoutKey { Box, [i32] } → AdtLayout::Struct { field_tys: [i32] }`.
+The field type is `i32` (substituted from `Param(T)`), not `Param` or `Error`.
+
+**New types** in `src/mir/monomorphize.rs`:
+- `MonoLayoutKey` — hashable key wrapping `(DefId, Vec<TyKind>)`. Derives
+  `Hash+Eq` for use as HashMap key. Two keys equal iff same DefId + same substs.
+- `MonoLayoutMap` — type alias for `HashMap<MonoLayoutKey, AdtLayout>`
+
+**New function**:
+- `build_mono_layouts(items, hir) -> MonoLayoutMap` — builds per-mono layouts
+  for all `MonoItem::Type` with non-empty substs. For each: gets generic params,
+  lowers fields with generics, applies substitute, builds AdtLayout.
+
+**Re-exports** in `src/mir/mod.rs`:
+- `pub use monomorphize::{build_mono_layouts, MonoLayoutKey, MonoLayoutMap, ...}`
+
+**Tests**: +16 unit tests covering MonoLayoutKey (8 tests) and build_mono_layouts
+(8 tests: empty, non-generic skip, generic struct, two instantiations, dedup,
+nested, correct field type, generic enum).
+
+Per §1.0 原則 6 "通用 > 特例": one key type for all generic instantiations.
+Per §16: separate data structure (doesn't interfere with existing AdtLayouts).
+
+### Verification
+
+- **Total: 8059 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.242.0 — Stage 16.56 (Nested Generic Args Resolution)
