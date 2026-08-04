@@ -1,4 +1,5 @@
 //! Stage 5.5: vtable generation tests
+#![allow(deprecated)] // Stage 16.11: tests verify deprecated Spur-based methods for backward compat
 //!
 //! Tests that TraitResolver correctly builds vtables for trait impls.
 //!

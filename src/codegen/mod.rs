@@ -232,8 +232,14 @@ fn emit_drop_glue_functions(
     use crate::mir::drop_elaboration::ty_needs_drop;
     use crate::mir::ty::{Ty, TyKind};
 
-    // Get the "Drop" trait name from the interner (if any types implement Drop).
-    let drop_name = interner.get("Drop");
+    // Stage 16.08: `is_drop_builtin` now uses DefId-keyed lookup internally
+    // (Task 3 Step 3). No need to pre-resolve the Drop trait DefId here —
+    // the method handles it. This simplifies the codegen path.
+    //
+    // The old Stage 16.07 code pre-resolved `drop_def_id` and called
+    // `implements_by_def_ids` directly, with a Spur-based fallback. Now
+    // that `is_drop_builtin` uses DefId-keyed lookup, we can just call it
+    // directly — it's both cleaner and handles the fallback internally.
 
     // Stage 15.63: Iterate ALL types in `type_by_def_id`, not just types
     // with `impl Drop`. For each type, check `ty_needs_drop`. If it needs
@@ -254,10 +260,9 @@ fn emit_drop_glue_functions(
             continue;
         }
 
-        // Check if this type has `impl Drop`.
-        let has_drop_impl = drop_name
-            .map(|dn| resolver.implements(dn, type_spur))
-            .unwrap_or(false);
+        // Stage 16.08: Check if this type has `impl Drop` via `is_drop_builtin`,
+        // which now uses DefId-keyed lookup (Task 3 Step 3).
+        let has_drop_impl = resolver.is_drop_builtin(def_id, interner);
 
         // Get the type name (for the user's drop method name).
         let type_name = interner.resolve(&type_spur).to_string();

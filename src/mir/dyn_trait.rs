@@ -359,7 +359,27 @@ pub fn build_dyn_trait_method_calls_from_resolver(
             }
 
             // User-defined trait — use TraitResolver vtable (TD-018)
-            if let Some(vtable) = trait_resolver.vtables.get(&(tn, ty)) {
+            // Stage 16.10: Use DefId-keyed lookup via find_vtable_by_def_ids,
+            // with Spur-based fallback for test contexts that construct
+            // TraitResolver manually without calling collect() (which
+            // populates vtables_by_def_ids).
+            let vtable_opt = {
+                // Try DefId-keyed lookup first (preferred path).
+                let def_id_vtable = trait_resolver
+                    .find_trait_def_id(tn)
+                    .and_then(|trait_def_id| {
+                        trait_resolver
+                            .type_by_def_id
+                            .iter()
+                            .find(|(_, &name)| name == ty)
+                            .and_then(|(&d, _)| {
+                                trait_resolver.find_vtable_by_def_ids(trait_def_id, d)
+                            })
+                    });
+                // Fall back to Spur-based lookup if DefId-keyed fails.
+                def_id_vtable.or_else(|| trait_resolver.vtables.get(&(tn, ty)))
+            };
+            if let Some(vtable) = vtable_opt {
                 for (slot_index, entry) in vtable.entries.iter().enumerate() {
                     let method_name = interner.resolve(&entry.method_name);
                     calls.push(DynTraitMethodCall::from_fat_ptr(

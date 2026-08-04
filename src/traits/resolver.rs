@@ -59,11 +59,35 @@ pub struct TraitResolver {
     pub trait_by_name: HashMap<Spur, DefId>,
     /// (trait_name, self_ty_name) → impl DefId (for impl lookup).
     pub impl_by_trait_and_type: HashMap<(Spur, Spur), DefId>,
+    /// Stage 16.07 (Task 3 step 1): (trait_def_id, self_type_def_id) →
+    /// impl DefId. DefId-keyed lookup — type-safe, no interner needed,
+    /// and prepares for generic SubstsRef support (Task 3 step 2).
+    ///
+    /// This map is populated alongside `impl_by_trait_and_type` during
+    /// `collect()`. For non-generic types, both maps give the same result.
+    /// For generic types (future), this map will be extended to
+    /// `(DefId, SubstsRef)` keys.
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one DefId-keyed lookup replaces
+    /// the Spur-based lookup for new callers.
+    /// Per §23: `impls_by_def_ids` follows `<noun>_<prep>_<noun>` pattern.
+    pub impls_by_def_ids: HashMap<(DefId, DefId), DefId>,
     /// Stage 5.4: DefId → type name (for struct/enum/trait).
     pub type_by_def_id: HashMap<DefId, Spur>,
     /// Stage 5.5: Vtables keyed by (trait_name, self_ty_name).
     /// Each vtable maps trait method names to concrete fn DefIds.
     pub vtables: HashMap<(Spur, Spur), Vtable>,
+    /// Stage 16.10 (Task 3 Step 3 continuation): Vtables keyed by
+    /// (trait_def_id, self_type_def_id). DefId-keyed lookup — type-safe,
+    /// no interner needed, parallel to `impls_by_def_ids`.
+    ///
+    /// This map is populated alongside `vtables` during `collect()`.
+    /// For non-generic types, both maps give the same result.
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one DefId-keyed lookup replaces
+    /// the Spur-based lookup for new callers.
+    /// Per §23: `vtables_by_def_ids` follows `<noun>_<prep>_<noun>` pattern.
+    pub vtables_by_def_ids: HashMap<(DefId, DefId), Vtable>,
     /// Stage 5.8: Builtin traits registry — standard traits recognized by
     /// the compiler without user definition (Copy, Clone, Drop, Sized, etc.).
     /// Maps the interned trait name to its builtin DefId (a reserved DefId
@@ -323,6 +347,13 @@ impl TraitResolver {
                                 entries: vtable_entries,
                             };
                             self.vtables.insert((tn, stn), vtable);
+
+                            // Stage 16.10: DefId-keyed maps (impls_by_def_ids,
+                            // vtables_by_def_ids) are now populated in a post-pass
+                            // after the main collect() loop, to handle HIR
+                            // iteration ordering (user-defined traits may not be
+                            // in trait_by_name yet when their impls are processed).
+                            // See populate_def_id_keyed_maps().
                         }
                         self.impls.insert(*def_id, info);
                     }
@@ -331,10 +362,68 @@ impl TraitResolver {
             }
         }
 
+        // Stage 16.10: Post-pass to populate DefId-keyed maps.
+        // The main loop above populates impls_by_def_ids and vtables_by_def_ids
+        // inline, but this fails for user-defined traits when the impl block
+        // is processed BEFORE the trait definition (due to HashMap iteration
+        // order). This post-pass runs after ALL traits, types, and impls have
+        // been collected, so all lookups will succeed.
+        self.populate_def_id_keyed_maps();
+
         // Stage 16.06: Derive Copy for structs whose fields are all Copy.
         // This mirrors Rust's `#[derive(Copy, Clone)]` semantics and closes
         // the sound Copy migration gap (Stages 15.99/16.02/16.03).
         self.derive_copy_types(hir, interner);
+    }
+
+    /// Stage 16.10: Populate DefId-keyed maps (impls_by_def_ids, vtables_by_def_ids).
+    ///
+    /// This post-pass runs after the main `collect()` loop, ensuring all
+    /// traits and types are registered before resolving DefId keys.
+    /// The inline population during the main loop may miss impls for
+    /// user-defined traits that appear later in the HIR iteration order.
+    ///
+    /// Per §23: `populate_def_id_keyed_maps` follows `<verb>_<noun>_<noun>`
+    /// pattern.
+    fn populate_def_id_keyed_maps(&mut self) {
+        // Clear any partial data from inline population (some entries may
+        // have been added during the main loop; we rebuild from scratch
+        // to ensure completeness and consistency).
+        self.impls_by_def_ids.clear();
+        self.vtables_by_def_ids.clear();
+
+        for (impl_def_id, info) in &self.impls {
+            // Skip impls without trait or self type info.
+            let (Some(trait_name), Some(self_ty_name)) = (info.trait_name, info.self_ty_name)
+            else {
+                continue;
+            };
+
+            // Resolve trait_name Spur → trait DefId via trait_by_name.
+            let Some(trait_def_id) = self.trait_by_name.get(&trait_name).copied() else {
+                continue;
+            };
+
+            // Resolve self_ty_name Spur → self type DefId via reverse lookup.
+            let self_def_id = self
+                .type_by_def_id
+                .iter()
+                .find(|(_, &name)| name == self_ty_name)
+                .map(|(&d, _)| d);
+            let Some(self_def_id) = self_def_id else {
+                continue;
+            };
+
+            // Populate impls_by_def_ids.
+            self.impls_by_def_ids
+                .insert((trait_def_id, self_def_id), *impl_def_id);
+
+            // Populate vtables_by_def_ids (clone from Spur-keyed map).
+            if let Some(vtable) = self.vtables.get(&(trait_name, self_ty_name)) {
+                self.vtables_by_def_ids
+                    .insert((trait_def_id, self_def_id), vtable.clone());
+            }
+        }
     }
 
     /// Stage 16.06: Derive Copy for structs whose fields are all Copy.
@@ -463,10 +552,66 @@ impl TraitResolver {
     }
 
     /// Look up an impl block by (trait_name, self_ty_name).
+    ///
+    /// Stage 16.11 (Task 3 Step 4): DEPRECATED. Use `find_impl_by_def_ids`
+    /// instead — it's type-safe and doesn't require an interner.
+    #[deprecated(
+        note = "Use find_impl_by_def_ids (DefId-keyed, type-safe, no interner needed) instead. (Stage 16.11)"
+    )]
     pub fn find_impl(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&ImplInfo> {
         self.impl_by_trait_and_type
             .get(&(trait_name, self_ty_name))
             .and_then(|id| self.impls.get(id))
+    }
+
+    /// Stage 16.07 (Task 3 step 1): Look up an impl block by DefIds.
+    ///
+    /// This is the **preferred lookup method** for new code — it uses
+    /// `DefId`s instead of `Spur`s, providing:
+    /// 1. **Type safety**: DefId is a unique identifier, not a string hash.
+    /// 2. **No interner needed**: callers don't need `&Rodeo` to look up.
+    /// 3. **Prepares for generics**: Task 3 step 2 will extend the key to
+    ///    `(DefId, SubstsRef)` for generic type support.
+    ///
+    /// For non-generic types (v0.1), this gives the same result as
+    /// `find_impl(trait_name_spur, self_ty_name_spur)`.
+    ///
+    /// Per §23: `find_impl_by_def_ids` follows `<verb>_<noun>_<prep>_<noun>`
+    /// pattern. The `_by_def_ids` suffix distinguishes from the Spur-based
+    /// `find_impl`.
+    /// Per §1.0 原則 6 "通用 > 特例": one DefId-keyed lookup for all callers.
+    pub fn find_impl_by_def_ids(
+        &self,
+        trait_def_id: DefId,
+        self_type_def_id: DefId,
+    ) -> Option<&ImplInfo> {
+        self.impls_by_def_ids
+            .get(&(trait_def_id, self_type_def_id))
+            .and_then(|id| self.impls.get(id))
+    }
+
+    /// Stage 16.07 (Task 3 step 1): Check if a type implements a trait,
+    /// keyed by DefIds.
+    ///
+    /// This is the DefId-based equivalent of `implements(trait_name_spur,
+    /// self_ty_name_spur)`. Preferred for new code.
+    ///
+    /// Per §23: `implements_by_def_ids` follows `<verb>_<prep>_<noun>`
+    /// pattern.
+    pub fn implements_by_def_ids(&self, trait_def_id: DefId, self_type_def_id: DefId) -> bool {
+        self.find_impl_by_def_ids(trait_def_id, self_type_def_id)
+            .is_some()
+    }
+
+    /// Stage 16.07 (Task 3 step 1): Look up a trait DefId by name.
+    ///
+    /// Convenience method to convert a trait name Spur to DefId, then
+    /// use with `find_impl_by_def_ids`. Returns `None` if the trait
+    /// name is not registered.
+    ///
+    /// Per §23: `find_trait_def_id` follows `<verb>_<noun>_<noun>` pattern.
+    pub fn find_trait_def_id(&self, trait_name: Spur) -> Option<DefId> {
+        self.trait_by_name.get(&trait_name).copied()
     }
 
     /// Stage 5.14: Get the method names declared in a trait (by Spur).
@@ -483,8 +628,29 @@ impl TraitResolver {
     ///
     /// Per API-naming-standard §3: `impl_methods` follows `<noun>_<noun>`
     /// pattern; parallels `trait_methods`.
+    ///
+    /// Stage 16.11 (Task 3 Step 4): DEPRECATED. Use `impl_methods_by_def_ids`
+    /// instead — it's type-safe and doesn't require an interner.
+    #[deprecated(
+        note = "Use impl_methods_by_def_ids (DefId-keyed, type-safe) instead. (Stage 16.11)"
+    )]
     pub fn impl_methods(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&Vec<Spur>> {
+        #[allow(deprecated)]
         self.find_impl(trait_name, self_ty_name).map(|i| &i.methods)
+    }
+
+    /// Stage 16.11 (Task 3 Step 4): Get the method names implemented in an
+    /// impl block, keyed by DefIds. DefId-keyed equivalent of `impl_methods`.
+    ///
+    /// Per §23: `impl_methods_by_def_ids` follows `<noun>_<noun>_<prep>_<noun>`
+    /// pattern.
+    pub fn impl_methods_by_def_ids(
+        &self,
+        trait_def_id: DefId,
+        self_type_def_id: DefId,
+    ) -> Option<&Vec<Spur>> {
+        self.find_impl_by_def_ids(trait_def_id, self_type_def_id)
+            .map(|i| &i.methods)
     }
 
     /// Stage 5.14: Check if a trait declares a method (by name).
@@ -578,6 +744,7 @@ impl TraitResolver {
         self_ty_name: Spur,
         method_name: Spur,
     ) -> Option<&VtableEntry> {
+        #[allow(deprecated)]
         let vtable = self.find_vtable(trait_name, self_ty_name)?;
         vtable.entries.iter().find(|e| e.method_name == method_name)
     }
@@ -629,6 +796,7 @@ impl TraitResolver {
         trait_name: Spur,
         self_ty_name: Spur,
     ) -> Vec<&'a str> {
+        #[allow(deprecated)]
         if let Some(vtable) = self.find_vtable(trait_name, self_ty_name) {
             vtable
                 .entries
@@ -661,13 +829,27 @@ impl TraitResolver {
     }
 
     /// Check if a type implements a trait (by name).
+    ///
+    /// Stage 16.11 (Task 3 Step 4): DEPRECATED. Use `implements_by_def_ids`
+    /// instead — it's type-safe and doesn't require an interner.
+    #[deprecated(
+        note = "Use implements_by_def_ids (DefId-keyed, type-safe, no interner needed) instead. (Stage 16.11)"
+    )]
     pub fn implements(&self, trait_name: Spur, self_ty_name: Spur) -> bool {
+        #[allow(deprecated)]
         self.find_impl(trait_name, self_ty_name).is_some()
     }
 
     /// Stage 5.4: Check if a type (by DefId) implements a trait (by name).
+    ///
+    /// Stage 16.11 (Task 3 Step 4): DEPRECATED. Use `implements_by_def_ids`
+    /// instead — it takes both DefIds and is fully type-safe.
+    #[deprecated(
+        note = "Use implements_by_def_ids (both args are DefIds, type-safe) instead. (Stage 16.11)"
+    )]
     pub fn implements_by_def_id(&self, trait_name: Spur, def_id: DefId) -> bool {
         if let Some(type_name) = self.type_by_def_id.get(&def_id) {
+            #[allow(deprecated)]
             self.implements(trait_name, *type_name)
         } else {
             false
@@ -676,6 +858,7 @@ impl TraitResolver {
 
     /// Stage 5.4: Check if a type (by DefId) implements Copy.
     pub fn is_copy(&self, def_id: DefId, copy_name: Spur) -> bool {
+        #[allow(deprecated)]
         self.implements_by_def_id(copy_name, def_id)
     }
 
@@ -705,11 +888,22 @@ impl TraitResolver {
         if self.derived_copy_types.contains(&def_id) {
             return true;
         }
-        // Look up the builtin Copy Spur. After Stage 5.8, "Copy" is always
-        // interned by register_builtin_traits, so interner.get("Copy")
-        // returns Some.
+        // Stage 16.08 (Task 3 Step 3): Use DefId-keyed lookup instead of
+        // Spur-based `is_copy`. Resolve "Copy" Spur → trait DefId via
+        // `find_trait_def_id` (which uses `trait_by_name`, so user-defined
+        // `trait Copy {}` takes precedence over the builtin).
+        // Then call `implements_by_def_ids` (DefId-keyed, no interner needed
+        // for the actual lookup).
+        //
+        // The `interner` parameter is retained for backward compatibility
+        // and to resolve the "Copy" string to a Spur. Future Step 4 can
+        // remove it once all callers pre-resolve the trait DefId.
         if let Some(copy_name) = interner.get("Copy") {
-            self.is_copy(def_id, copy_name)
+            if let Some(trait_def_id) = self.find_trait_def_id(copy_name) {
+                self.implements_by_def_ids(trait_def_id, def_id)
+            } else {
+                false
+            }
         } else {
             // Defensive: if "Copy" is not interned (e.g. register_builtin_traits
             // wasn't called), fall back to false. This is safer than the old
@@ -725,8 +919,13 @@ impl TraitResolver {
     /// Returns `false` if "Clone" is not interned or the type has no
     /// `impl Clone for <Type>` block.
     pub fn is_clone_builtin(&self, def_id: DefId, interner: &Rodeo) -> bool {
+        // Stage 16.08 (Task 3 Step 3): Use DefId-keyed lookup.
         if let Some(clone_name) = interner.get("Clone") {
-            self.implements_by_def_id(clone_name, def_id)
+            if let Some(trait_def_id) = self.find_trait_def_id(clone_name) {
+                self.implements_by_def_ids(trait_def_id, def_id)
+            } else {
+                false
+            }
         } else {
             false
         }
@@ -738,8 +937,13 @@ impl TraitResolver {
     /// Returns `false` if "Drop" is not interned or the type has no
     /// `impl Drop for <Type>` block.
     pub fn is_drop_builtin(&self, def_id: DefId, interner: &Rodeo) -> bool {
+        // Stage 16.08 (Task 3 Step 3): Use DefId-keyed lookup.
         if let Some(drop_name) = interner.get("Drop") {
-            self.implements_by_def_id(drop_name, def_id)
+            if let Some(trait_def_id) = self.find_trait_def_id(drop_name) {
+                self.implements_by_def_ids(trait_def_id, def_id)
+            } else {
+                false
+            }
         } else {
             false
         }
@@ -763,8 +967,13 @@ impl TraitResolver {
         trait_name: &str,
         interner: &Rodeo,
     ) -> bool {
+        // Stage 16.08 (Task 3 Step 3): Use DefId-keyed lookup.
         if let Some(trait_spur) = interner.get(trait_name) {
-            self.implements_by_def_id(trait_spur, def_id)
+            if let Some(trait_def_id) = self.find_trait_def_id(trait_spur) {
+                self.implements_by_def_ids(trait_def_id, def_id)
+            } else {
+                false
+            }
         } else {
             false
         }
@@ -772,8 +981,41 @@ impl TraitResolver {
 
     /// Stage 5.5: Look up a vtable by (trait_name, self_ty_name).
     /// Returns the vtable containing method dispatch entries.
+    ///
+    /// Stage 16.11 (Task 3 Step 4): DEPRECATED for query-only callers.
+    /// Use `find_vtable_by_def_ids` instead — it's type-safe and doesn't
+    /// require an interner. This method is retained for callers that
+    /// need string-keyed access (e.g., `build_dyn_trait_fat_ptrs_from_resolver`
+    /// which iterates `vtables.keys()` for string names).
+    #[deprecated(
+        note = "Use find_vtable_by_def_ids (DefId-keyed, type-safe) instead. Retained for string-keyed iteration callers. (Stage 16.11)"
+    )]
     pub fn find_vtable(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&Vtable> {
         self.vtables.get(&(trait_name, self_ty_name))
+    }
+
+    /// Stage 16.10 (Task 3 Step 3 continuation): Look up a vtable by DefIds.
+    ///
+    /// This is the **preferred vtable lookup method** for new code — it uses
+    /// `DefId`s instead of `Spur`s, providing:
+    /// 1. **Type safety**: DefId is a unique identifier, not a string hash.
+    /// 2. **No interner needed**: callers don't need `&Rodeo` to look up.
+    /// 3. **Consistency**: parallels `find_impl_by_def_ids` (Stage 16.07).
+    ///
+    /// For non-generic types (v0.1), this gives the same result as
+    /// `find_vtable(trait_name_spur, self_ty_name_spur)`.
+    ///
+    /// Per §23: `find_vtable_by_def_ids` follows `<verb>_<noun>_<prep>_<noun>`
+    /// pattern. The `_by_def_ids` suffix distinguishes from the Spur-based
+    /// `find_vtable`.
+    /// Per §1.0 原則 6 "通用 > 特例": one DefId-keyed lookup for all callers.
+    pub fn find_vtable_by_def_ids(
+        &self,
+        trait_def_id: DefId,
+        self_type_def_id: DefId,
+    ) -> Option<&Vtable> {
+        self.vtables_by_def_ids
+            .get(&(trait_def_id, self_type_def_id))
     }
 
     /// Stage 5.5: Get the number of collected vtables.
@@ -1021,6 +1263,7 @@ impl TraitResolver {
         };
         let trait_methods = &trait_info.methods;
         let default_methods = &trait_info.default_methods;
+        #[allow(deprecated)]
         let impl_methods = match self.impl_methods(trait_name, self_ty_name) {
             Some(m) => m,
             None => return false,
@@ -1048,6 +1291,7 @@ impl TraitResolver {
         };
         let trait_methods = &trait_info.methods;
         let default_methods = &trait_info.default_methods;
+        #[allow(deprecated)]
         let impl_methods = match self.impl_methods(trait_name, self_ty_name) {
             Some(m) => m,
             None => return Vec::new(),

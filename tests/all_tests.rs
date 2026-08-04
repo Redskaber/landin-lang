@@ -326,7 +326,19 @@ mod stage15_ty_interner_integration_tests;
 mod stage15_vtable_interning_and_trait_error_tests;
 #[path = "v0/stage15/plan/writeback_consolidation_tests.rs"]
 mod stage15_writeback_consolidation_tests;
-#[path = "v0/stage15/plan/stage16_05_field_not_found_error_tests.rs"]
+#[path = "v0/stage16/plan/stage16_05_field_not_found_error_tests.rs"]
 mod stage16_05_field_not_found_error_tests;
-#[path = "v0/stage15/plan/stage16_06_sound_copy_derivation_tests.rs"]
+#[path = "v0/stage16/plan/stage16_06_sound_copy_derivation_tests.rs"]
 mod stage16_06_sound_copy_derivation_tests;
+#[path = "v0/stage16/plan/stage16_07_def_id_keyed_lookup_tests.rs"]
+mod stage16_07_def_id_keyed_lookup_tests;
+#[path = "v0/stage16/plan/stage16_08_builtin_trait_migration_tests.rs"]
+mod stage16_08_builtin_trait_migration_tests;
+#[path = "v0/stage16/plan/stage16_09_deep_review_gap_closure_tests.rs"]
+mod stage16_09_deep_review_gap_closure_tests;
+#[path = "v0/stage16/plan/stage16_10_vtable_def_id_lookup_tests.rs"]
+mod stage16_10_vtable_def_id_lookup_tests;
+#[path = "v0/stage16/plan/stage16_11_spur_deprecation_tests.rs"]
+mod stage16_11_spur_deprecation_tests;
+#[path = "v0/stage16/plan/stage16_12_deep_review_round2_tests.rs"]
+mod stage16_12_deep_review_round2_tests;

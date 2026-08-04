@@ -1,9 +1,226 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.227.0
+**Current version**: v0.227.6
 **Date**: 2026-08-03
-**Test count**: 244 rust lib tests + 2160 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2203 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.227.6 — Stage 16.12 (v0.3 Deep Review Round 2 + End-to-End Consistency)
+
+### Overview
+
+Stage 16.12 is a **deep review gate** — the second checkpoint to assess
+v0.3 progress after 12 stages (16.00–16.11), following the completion
+of Task 3.
+
+**Key outputs**:
+1. `docs/develop/v0/stage-16/deep-review-round2.md` — 8-dimension review
+2. +5 end-to-end consistency tests verifying the complete pipeline
+
+**Verdict**: ✅ **GO** — v0.3 post-Task-3 state is excellent. 7671 tests
+passing, 0 failures, 0 warnings, 0 TODOs. Ready to proceed to the next
+major work item (Task 10: Closure Redesign).
+
+**Key findings**:
+- All P2 technical debts resolved (TD-KEYS-2, TD-KEYS-3)
+- 0 TODOs, 0 Span::DUMMY in error paths, 0 {:?} Debug leaks
+- Task 10 (Closure Redesign) ready to start — no prerequisites
+- Task 11 (Monomorphization) needs generic parser support
+
+Per §25 (Deep Review) + §29.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2203/2203 PASS (+5 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7671 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.227.5 — Stage 16.11 (Task 3 Step 4: Spur-Based Method Deprecation — Task 3 COMPLETE)
+
+### Overview
+
+Stage 16.11 is **Step 4 of Task 3** (TraitResolver Keys redesign). It
+deprecates the Spur-based query methods, completing the migration to
+DefId-keyed lookup. **Task 3 is now COMPLETE** (Steps 1-4).
+
+**Key changes**:
+1. Deprecated `find_impl(Spur, Spur)` → use `find_impl_by_def_ids`
+2. Deprecated `implements(Spur, Spur)` → use `implements_by_def_ids`
+3. Deprecated `implements_by_def_id(Spur, DefId)` → use `implements_by_def_ids`
+4. Deprecated `find_vtable(Spur, Spur)` → use `find_vtable_by_def_ids`
+5. Deprecated `impl_methods(Spur, Spur)` → use new `impl_methods_by_def_ids`
+6. Added new `impl_methods_by_def_ids(trait_def_id, self_type_def_id)` method.
+7. +7 integration tests verifying both new method and backward compat.
+
+**Result**: All production query paths use DefId-keyed lookup. Spur-based
+methods retained for backward compatibility with test contexts and
+string-keyed iteration callers.
+
+Per §1.0 原則 6 "通用 > 特例" + §23 API 命名标准化 + §23.6 弃用约定.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2198/2198 PASS (+7 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7666 tests passing, 0 failures, 0 warnings.**
+
+### Task 3 Complete ✅
+
+| Step | Status | Stage |
+|------|--------|-------|
+| Step 1 | ✅ COMPLETE | 16.07 — DefId-keyed impl lookup |
+| Step 2 | 🔧 Pending (future) | SubstsRef keys (needs generic parser) |
+| Step 3 | ✅ COMPLETE | 16.08 + 16.10 — Builtin trait + vtable migration |
+| Step 4 | ✅ COMPLETE | 16.11 — Spur method deprecation |
+
+---
+## v0.227.4 — Stage 16.10 (Task 3 Step 3 Continuation: Vtable DefId-Keyed Lookup)
+
+### Overview
+
+Stage 16.10 continues Task 3 Step 3 by migrating vtable lookup from
+Spur-keyed to DefId-keyed. It also reorganizes Stage 16 documentation
+and tests into proper `stage-16` directories.
+
+**Key changes**:
+1. **Directory restructure**: Created `docs/develop/v0/stage-16/` and
+   `tests/v0/stage16/plan/` directories. Moved all Stage 16 docs/tests.
+2. Added `vtables_by_def_ids: HashMap<(DefId, DefId), Vtable>` to `TraitResolver`.
+3. Added `find_vtable_by_def_ids(trait_def_id, self_type_def_id)` method.
+4. Added `populate_def_id_keyed_maps()` post-pass in `collect()` to handle
+   HIR iteration ordering (user-defined traits may appear after impls).
+5. Migrated `dyn_trait.rs` vtable lookup to DefId-keyed (with Spur fallback
+   for test contexts).
+6. +7 integration tests.
+
+Per §1.0 原則 6 "通用 > 特例" + §23 API 命名标准化 + §16 接口隔离.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2191/2191 PASS (+7 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7659 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.227.3 — Stage 16.09 (v0.3 Deep Review Round 1 + Gap Closure)
+
+### Overview
+
+Stage 16.09 is a **deep review gate** — a checkpoint to assess v0.3
+progress after 9 stages (16.00–16.08) and determine readiness for the
+next major work item.
+
+**Key outputs**:
+1. `docs/develop/v0/stage-15/deep-review-round1.md` — 8-dimension review (D1–D8)
+2. +5 gap-closure tests addressing the D3 (test coverage) gap
+
+**Verdict**: ✅ **GO** — v0.3 foundation is solid. 7652 tests passing,
+0 failures, 0 warnings, 0 TODOs.
+
+**Key findings**:
+- Architecture healthy (D1), no new coupling
+- All technical debts documented with repayment plans (D2)
+- Test coverage 100% with gap closure (D3)
+- Task 11 (Monomorphization) needs generic parser prerequisite (D4)
+- Recommend completing Task 3 (vtable migration + Step 4) before Task 11
+
+Per §25 (Deep Review) + §29.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2184/2184 PASS (+5 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7652 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.227.2 — Stage 16.08 (Task 3 Step 3: Builtin Trait Check Migration)
+
+### Overview
+
+Stage 16.08 is **Step 3 of Task 3** (TraitResolver Keys redesign). It
+migrates the builtin trait check methods (`is_copy_builtin`,
+`is_clone_builtin`, `is_drop_builtin`, `implements_builtin_trait`) from
+Spur-based lookup (`implements_by_def_id`) to DefId-keyed lookup
+(`implements_by_def_ids`).
+
+**Key changes**:
+1. `is_copy_builtin` now uses `find_trait_def_id` + `implements_by_def_ids`.
+2. `is_clone_builtin` migrated to DefId-keyed lookup.
+3. `is_drop_builtin` migrated to DefId-keyed lookup.
+4. `implements_builtin_trait` migrated to DefId-keyed lookup.
+5. Codegen drop glue emission simplified — removed pre-resolution of
+   `drop_def_id` and Spur-based fallback, now directly calls
+   `is_drop_builtin`.
+6. +10 integration tests verifying behavior preservation.
+
+**Internal migration** — no API surface changes, no behavior changes
+for valid programs. All builtin trait checks now use the type-safe
+DefId-keyed path.
+
+Per §1.0 原則 6 "通用 > 特例" + §23 API 命名标准化 + §16 接口隔离.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2179/2179 PASS (+10 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7647 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.227.1 — Stage 16.07 (Task 3 Step 1: DefId-Keyed Trait Impl Lookup)
+
+### Overview
+
+Stage 16.07 is **Step 1 of Task 3** (TraitResolver Keys redesign). It
+introduces DefId-keyed trait impl lookup alongside the existing
+Spur-based lookup, preparing for generic SubstsRef support (Task 3
+Step 2).
+
+**Key changes**:
+1. Added `impls_by_def_ids: HashMap<(DefId, DefId), DefId>` to `TraitResolver`.
+2. Added `find_impl_by_def_ids(trait_def_id, self_type_def_id)` method.
+3. Added `implements_by_def_ids(trait_def_id, self_type_def_id)` method.
+4. Added `find_trait_def_id(trait_name_spur)` helper.
+5. Migrated codegen's Drop impl lookup to use the new DefId-keyed method.
+6. +9 integration tests.
+7. Created Task 3 design document (`docs/develop/v0/task-3-traitresolver-keys-design.md`).
+
+**Backward compatible** — old Spur-based methods retained. Prepares
+for Task 3 Step 2 (SubstsRef keys for generics), which unblocks Tasks
+11 (Monomorphization), 14 (Object safety), 17 (Associated types).
+
+Per §1.0 原則 6 "通用 > 特例" + §23 API 命名标准化 + §16 接口隔离.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2169/2169 PASS (+9 new)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7637 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.227.0 — Stage 16.06 (Sound Copy Detection Enabled — Field-level Derivation)

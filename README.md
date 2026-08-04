@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.227.0 (v0.2 FINAL + v0.3 in progress — sound Copy detection enabled, field-level derivation)
+**Version**: v0.227.6 (v0.2 FINAL + v0.3 in progress — Deep Review Round 2 GO, Task 3 COMPLETE)
 **Date**: 2026-08-03
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-03 (v0.227.0, Stage 16.06 — sound Copy detection enabled, field-level derivation)
+**Last updated**: 2026-08-03 (v0.227.6, Stage 16.12 — v0.3 Deep Review Round 2 GO)

@@ -1,4 +1,5 @@
 //! Stage 5.14: Trait method query API tests
+#![allow(deprecated)] // Stage 16.11: tests verify deprecated Spur-based methods for backward compat
 //!
 //! Tests `trait_methods()`, `impl_methods()`, `trait_has_method()`,
 //! `traits_with_method()`, and `method_count_for_trait()`.
