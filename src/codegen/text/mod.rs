@@ -164,9 +164,6 @@ impl TextEmitter {
     }
 }
 
-// Stage 16.36: TextEmitter implements Emitter (single trait, all methods).
-// `emit_output` removed (dead code — use `output_with_globals()` instead).
-
 impl Emitter for TextEmitter {
     fn emit_header(&mut self) {
         self.line("; Landin compiler v0.8.6 — LLVM IR output");

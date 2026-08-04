@@ -66,10 +66,6 @@ use lasso::Rodeo;
 
 pub mod emitter;
 pub use emitter::{emit_fat_ptr_type, mir_type_to_emit_type, EmitType, EmitValue, Emitter};
-// Stage 16.35: `emit_type_to_llvm_str` and `binop_to_llvm_str` moved to
-// `text/mod.rs` (text-backend-specific). `emit_dyn_trait_ptr_type` removed
-// (dead code).
-// Stage 16.36: `emit_output` removed from Emitter trait (dead code).
 
 pub mod text;
 pub use text::TextEmitter;

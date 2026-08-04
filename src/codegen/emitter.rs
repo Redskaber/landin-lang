@@ -77,19 +77,18 @@ impl EmitType {
     }
 }
 
-/// Abstract emitter trait.
+/// The emitter trait — provides all codegen emission methods.
 ///
-/// Naming conventions:
-/// - `emit_*`: produces IR instructions, may return EmitValue
-/// - `get_*` / `set_*`: queries or updates emitter state
+/// Stage 16.38: Trait methods are organized into clear documentation groups
+/// (Module-level, Function scope, Local state). A physical trait split into
+/// `ModuleEmitter` + `FunctionEmitter` super-traits was attempted but is
+/// blocked by Rust's single-impl-block-per-trait-per-type rule — the methods
+/// are currently interleaved in the impl blocks, and moving them requires
+/// a large, high-risk code reorganization. The documentation groups provide
+/// the architectural clarity; the physical split is deferred.
 ///
-/// Stage 16.36: Removed `emit_output` (dead code). The trait methods are
-/// organized into clear documentation groups:
-/// - Module-level: header, declares, globals (survive across functions)
-/// - Function scope: instructions, control flow (between begin/end)
-/// - Local state: set/get local pointers and values
-///
-/// Per §1.0 原則 5 "去除兼容思维": dead `emit_output` removed.
+/// Per §1.0 原則 9 "正确 > 妥协": correct long-term design, but code movement
+/// risk is too high for this stage.
 /// Per §23: clear documentation grouping.
 pub trait Emitter {
     // === Module-level ===

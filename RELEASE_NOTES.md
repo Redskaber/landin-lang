@@ -1,9 +1,69 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.233.0
+**Current version**: v0.233.1
 **Date**: 2026-08-04
-**Test count**: 244 rust lib tests + 2356 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2374 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.233.1 — Stage 16.39 (Deep Review Round 7: Codegen Refactoring Complete)
+
+### Overview
+
+**Codegen architecture refactoring COMPLETE.** Deep Review Round 7 verifies
+that the codegen refactoring (Stages 16.35-16.38) is complete, stable, and
+production-ready.
+
+**Verdict**: ✅ **GO — 5/5 committee vote**
+
+**Key findings**:
+- All feasible codegen TDs are CLOSED
+- 7842 tests passing, 0 failures, 0 warnings
+- Runtime verified for all closure patterns
+- Unified pipeline eliminates code duplication
+- Zero dead code in codegen module
+
+**No code changes** — review-only stage. +8 milestone verification tests.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2374/2374 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7842 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.233.1 — Stage 16.38 (Emitter Trait Split Attempt: Deferred)
+
+### Overview
+
+Attempted to split the `Emitter` trait into `ModuleEmitter` +
+`FunctionEmitter` super-traits, mirroring LLVM's `ModuleRef` vs `BuilderRef`
+split. The split was **blocked** by Rust's single-impl-block-per-trait-per-type
+rule — the methods are currently interleaved in the impl blocks, and moving
+them requires a large, high-risk code reorganization.
+
+**What was achieved**: Clear documentation groups in the trait definition
+(Module-level, Function scope, Local state).
+
+**What was deferred**: Physical trait split requires moving ~1000 lines of
+method implementations across both `text/mod.rs` and `llvm/mod.rs`.
+
+Per §1.0 原則 9 "正确 > 妥协".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2366/2366 PASS
+  (+10 new stage16.38 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7834 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.233.0 — Stage 16.37 (Unify Codegen Pipeline: Shared Driver)

@@ -372,3 +372,7 @@ mod stage16_35_codegen_refactoring_tests;
 mod stage16_36_emitter_cleanup_tests;
 #[path = "v0/stage16/plan/stage16_37_unified_pipeline_tests.rs"]
 mod stage16_37_unified_pipeline_tests;
+#[path = "v0/stage16/plan/stage16_38_emitter_split_attempt_tests.rs"]
+mod stage16_38_emitter_split_attempt_tests;
+#[path = "v0/stage16/plan/stage16_39_deep_review_round7_tests.rs"]
+mod stage16_39_deep_review_round7_tests;

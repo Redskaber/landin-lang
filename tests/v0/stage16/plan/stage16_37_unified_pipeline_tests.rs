@@ -44,7 +44,8 @@ fn stage16_37_dyn_trait_unified() {
 /// Stage 16.37 test 5: Drop glue with unified pipeline.
 #[test]
 fn stage16_37_drop_glue_unified() {
-    let src = "struct R; impl Drop for R { fn drop(&mut self) {} } fn main() -> i32 { let _r = R; 0 }";
+    let src =
+        "struct R; impl Drop for R { fn drop(&mut self) {} } fn main() -> i32 { let _r = R; 0 }";
     let result = compile(src);
     assert!(!result.has_errors());
 }
