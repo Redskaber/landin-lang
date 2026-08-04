@@ -26817,3 +26817,62 @@ Stage Summary:
 - Added documentation groups (Module-level / Function scope / Local state)
 - Trait split deferred (requires code movement, high risk)
 - 7814 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.37-unify-codegen-pipeline
+Agent: Super Z (main)
+Task: Stage 16.37 — Unify codegen pipeline: shared driver for all backends. v0.232.1 → v0.233.0.
+
+Work Log:
+- Baseline: v0.232.1 / 244 lib + 2346 integration + 5224 conformance = 7814
+
+### 1. Problem: Divergent Entry Points
+
+Before Stage 16.37, codegen_crate (text) and codegen_crate_to_module (LLVM)
+had divergent logic:
+- Different emission orders (text: globals after; LLVM: globals before)
+- Duplicated 6-step pipeline logic, copy-pasted with different orders
+- Maintenance risk: changes to one could be forgotten in the other
+
+### 2. 通解 Fix: run_codegen_pipeline
+
+Extracted unified `run_codegen_pipeline(result, &mut dyn Emitter)` function
+with a single emission order:
+1. Module header + panic declarations
+2. Vtable globals (before function bodies — LLVM needs forward refs)
+3. Dyn trait fat-pointer globals
+4. Drop glue functions
+5. Main MIR function bodies (codegen_from_mir)
+6. Synthesized closure function bodies
+
+Both entry points are now thin wrappers:
+- codegen_crate: TextEmitter::new() → run_codegen_pipeline → output_with_globals()
+- codegen_crate_to_module: LLVMSysEmitter::new() → set_fn_sigs → run_codegen_pipeline → return
+
+Text backend buffers globals separately (globals: Vec<String>) and appends
+at output time (output_with_globals), so "globals first" order works for both.
+
+### 3. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 244/244 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2356/2356 PASS
+  (+10 new stage16.37 tests)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 7824 tests passing, 0 failures, 0 warnings.
+- Runtime: f(10)=11 ✅, f()()()=42 ✅, mut_cap=3 ✅
+
+### 4. Documentation
+
+- docs/develop/v0/stage-16/stage-16.37-unify-codegen-pipeline.md
+- tests/v0/stage16/plan/stage16_37_unified_pipeline_tests.rs (+10 tests)
+- Updated Cargo.toml (v0.233.0), RELEASE_NOTES.md, README.md
+
+Stage Summary:
+- Stage 16.37 PASSED — Unified codegen pipeline
+- One pipeline, one emission order, zero duplication
+- New public API: run_codegen_pipeline(result, &mut dyn Emitter)
+- 7824 tests, 0 failures, 0 warnings
+- Codegen architecture refactoring Priority 4 COMPLETE

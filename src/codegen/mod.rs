@@ -123,66 +123,50 @@ pub use dyn_trait_emit::{
 ///
 /// Now: codegen reads pre-built MIR + pre-computed metadata. Zero
 /// calls to upstream stage functions.
+///
+/// Stage 16.37: Both `codegen_crate` and `codegen_crate_to_module` now
+/// delegate to the shared `run_codegen_pipeline` function, which contains
+/// the unified emission order. This eliminates the duplicate entry-point
+/// logic and the inverted emission order between text and LLVM backends.
 pub fn codegen_crate(result: &crate::driver::CompileResult) -> String {
     let mut emitter = TextEmitter::new();
+    run_codegen_pipeline(result, &mut emitter);
+    emitter.output_with_globals()
+}
+
+/// Stage 16.37: Unified codegen pipeline — shared by both text and LLVM backends.
+///
+/// This function contains the single emission order used by ALL backends:
+///   1. Module header + panic declarations
+///   2. Vtable globals (BEFORE function bodies — LLVM needs forward refs)
+///   3. Dyn trait fat-pointer globals
+///   4. Drop glue functions
+///   5. Main MIR function bodies (codegen_from_mir)
+///   6. Synthesized closure function bodies
+///
+/// The text backend buffers globals separately and appends them at output
+/// time (via `output_with_globals`), so the "globals first" order works
+/// for both backends — text IR allows globals before function definitions.
+///
+/// Per §1.0 原則 6 "通用 > 特例": one pipeline for all backends.
+/// Per §23: clear single entry point for the codegen pipeline.
+pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut dyn Emitter) {
+    // 1. Module header + panic declarations
     emitter.emit_header();
     emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
     emitter.emit_declare("void @__landin_panic_bounds_check(i64 %index, i64 %len)");
     emitter.emit_declare("void @__landin_panic_div_by_zero()");
-    // Stage 14.69: __landin_str_eq is NOT pre-declared here because emit_declare
-    // treats all args as i32 (heuristic). The function needs (ptr, i64, ptr, i64)
-    // args. emit_call will create the declaration with correct types on first use.
-    codegen_from_mir(
-        &result.mirs,
-        &result.body_metas,
-        &result.fn_name_by_def_id,
-        &result.fn_sigs,
-        &result.interner,
-        &mut emitter,
-    );
+    // Stage 14.69: __landin_str_eq is NOT pre-declared (emit_declare treats
+    // all args as i32; this function needs ptr, i64 args). emit_call creates
+    // the declaration with correct types on first use.
 
-    // Stage 16.16 (Task 10 Steps 3+4): Emit LLVM functions for synthesized
-    // closure `call` functions. Each entry in `synthesized_closure_mir_bodies`
-    // is a MirBody for a closure's synthesized `call` function. The function
-    // name is resolved from `fn_name_by_def_id` (registered in the driver).
-    //
-    // Per §16: codegen reads MirBody + fn_name_by_def_id (data only, no HIR).
-    // Per §23: function name follows `closure_call_fn_N` pattern.
-    codegen_synthesized_closure_functions(
-        &result.synthesized_closure_mir_bodies,
-        &result.fn_name_by_def_id,
-        &result.fn_sigs,
-        &result.interner,
-        &mut emitter,
-    );
+    // 2. Vtable globals (before function bodies — LLVM needs forward refs)
+    emit_vtables(&result.trait_resolver, &result.interner, emitter);
 
-    // Stage 5.6: emit vtable globals for all (trait, type) pairs collected
-    // by TraitResolver. Each vtable is a constant array of opaque function
-    // pointers, one per trait method, pointing at the concrete impl method
-    // symbol (`landin_<Type>_<method>`). This is the L5 trait dispatch
-    // foundation — future stages will use these globals when constructing
-    // `dyn Trait` fat pointers.
-    //
-    // Per §16: codegen reads the pre-built TraitResolver (data only, no
-    // HIR access). The fn_name strings are already resolved at collect
-    // time, so no further upstream lookup is needed here.
-    emit_vtables(&result.trait_resolver, &result.interner, &mut emitter);
-    // Stage 5.7: emit `dyn Trait` fat-pointer constant globals for every
-    // (trait, type) pair. Each fat pointer is `{ ptr, ptr }` (data + vtable),
-    // referencing the vtable globals emitted above. This is the foundation
-    // for `dyn Trait` value construction — future stages will use these
-    // globals when lowering `dyn Trait` locals.
-    emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, &mut emitter);
+    // 3. Dyn trait fat-pointer globals
+    emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, emitter);
 
-    // Stage 15.57 (HP-12 step 7): Emit drop glue functions for types that
-    // need drop. Stage 15.63: Extended to emit drop glue for ALL types
-    // needing drop (not just types with `impl Drop`). For types with
-    // `impl Drop`, calls the user's `Drop::drop` method then recursively
-    // drops each field. For types without `impl Drop` but with fields
-    // needing drop, recursively drops each field.
-    //
-    // Per §16: codegen reads the pre-built TraitResolver + AdtLayouts (data only).
-    // Per §23: function name follows `drop_<noun>_<id>` pattern.
+    // 4. Drop glue functions
     let adt_layouts = result
         .mirs
         .first()
@@ -193,10 +177,27 @@ pub fn codegen_crate(result: &crate::driver::CompileResult) -> String {
         &result.interner,
         &result.fn_name_by_def_id,
         &adt_layouts,
-        &mut emitter,
+        emitter,
     );
 
-    emitter.output_with_globals()
+    // 5. Main MIR function bodies
+    codegen_from_mir(
+        &result.mirs,
+        &result.body_metas,
+        &result.fn_name_by_def_id,
+        &result.fn_sigs,
+        &result.interner,
+        emitter,
+    );
+
+    // 6. Synthesized closure function bodies
+    codegen_synthesized_closure_functions(
+        &result.synthesized_closure_mir_bodies,
+        &result.fn_name_by_def_id,
+        &result.fn_sigs,
+        &result.interner,
+        emitter,
+    );
 }
 
 /// Stage 15.57 (HP-12): Emit drop glue functions for types that need drop.
@@ -483,76 +484,17 @@ fn emit_drop_glue_functions(
 ///
 /// Per §16: same MIR-only consumer contract as `codegen_crate` —
 /// zero upstream calls to `crate::mir::lower` / `crate::typeck`.
+///
+/// Stage 16.37: Delegates to the shared `run_codegen_pipeline` function.
+/// The LLVM-specific setup (`set_fn_sigs`) is done via a trait-based hook
+/// so the pipeline remains backend-agnostic.
 #[cfg(feature = "llvm-backend")]
 pub fn codegen_crate_to_module(result: &crate::driver::CompileResult) -> LLVMSysEmitter {
     let mut emitter = LLVMSysEmitter::new();
-    emitter.emit_header();
-    emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
-    emitter.emit_declare("void @__landin_panic_bounds_check(i64 %index, i64 %len)");
-    emitter.emit_declare("void @__landin_panic_div_by_zero()");
-    // Stage 14.69: __landin_str_eq is NOT pre-declared (emit_declare treats
-    // all args as i32; this function needs ptr, i64 args). emit_call creates
-    // the declaration with correct types on first use.
     // Stage 14.91 (Bug X3 fix): Populate fn_sigs BEFORE vtable emission.
-    // The vtable globals reference function symbols (e.g., `ptr @landin_Square_area`),
-    // which causes LLVM to auto-create declarations with 0 args (wrong). By
-    // setting fn_sigs first, get_or_declare_function (if called during vtable
-    // emission) will create the correct declaration. And even if LLVM auto-creates
-    // a declaration, emit_function_begin will find the fn_sigs entry and create
-    // a matching declaration that gets reused.
-    //
-    // Previously, set_fn_sigs was called AFTER vtable emission (line 222),
-    // so the vtable's auto-created declaration had 0 args, causing a signature
-    // mismatch in emit_function_begin → duplicate function (.1 suffix) →
-    // "undefined reference" link error.
     let fn_sigs_map = build_fn_sigs_map(&result.fn_name_by_def_id, &result.fn_sigs);
     emitter.set_fn_sigs(fn_sigs_map);
-    // Stage 14.13 (GAP-30): Emit vtable + dynptr globals BEFORE function
-    // bodies, so that `emit_dyn_trait_method_call` can look up the dynptr
-    // global by name via LLVMGetNamedGlobal when generating indirect calls.
-    // Previously this came AFTER codegen_from_mir, causing the dynptr
-    // global to not exist yet when functions referenced it.
-    emit_vtables(&result.trait_resolver, &result.interner, &mut emitter);
-    emit_dyn_trait_ptrs(&result.trait_resolver, &result.interner, &mut emitter);
-    // Stage 15.61: Emit drop glue functions in the LLVM backend too.
-    // Previously this was only called in `codegen_crate` (text backend),
-    // causing "undefined reference to `drop_adt_<N>`" link errors when
-    // using `--emit-obj` / `--emit-bin` / `--run` with `impl Drop` programs.
-    // The LLVM backend must emit the same drop glue functions as the text
-    // backend so that `TerminatorKind::Drop` codegen can resolve them.
-    // Stage 15.63: Now passes AdtLayouts for recursive drop support.
-    //
-    // Per §16: codegen reads the pre-built TraitResolver + AdtLayouts (data only).
-    // Per §23: function name follows `drop_<noun>_<id>` pattern.
-    let adt_layouts = result
-        .mirs
-        .first()
-        .map(|m| m.adt_layouts.clone())
-        .unwrap_or_default();
-    emit_drop_glue_functions(
-        &result.trait_resolver,
-        &result.interner,
-        &result.fn_name_by_def_id,
-        &adt_layouts,
-        &mut emitter,
-    );
-    codegen_from_mir(
-        &result.mirs,
-        &result.body_metas,
-        &result.fn_name_by_def_id,
-        &result.fn_sigs,
-        &result.interner,
-        &mut emitter,
-    );
-    // Stage 16.21: Emit synthesized closure functions in LLVM backend too.
-    // This was missing from codegen_crate_to_module (only in codegen_crate).
-    codegen_synthesized_closure_functions(
-        &result.synthesized_closure_mir_bodies,
-        &result.fn_name_by_def_id,
-        &result.fn_sigs,
-        &result.interner,
-        &mut emitter,
-    );
+    run_codegen_pipeline(result, &mut emitter);
     emitter
 }
 

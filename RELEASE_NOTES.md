@@ -1,9 +1,44 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.232.1
+**Current version**: v0.233.0
 **Date**: 2026-08-04
-**Test count**: 244 rust lib tests + 2346 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2356 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.233.0 — Stage 16.37 (Unify Codegen Pipeline: Shared Driver)
+
+### Overview
+
+Unified the codegen pipeline by extracting a single shared
+`run_codegen_pipeline` function that both `codegen_crate` (text backend)
+and `codegen_crate_to_module` (LLVM backend) delegate to. This eliminates
+the duplicate entry-point logic and the inverted emission order between
+text and LLVM backends.
+
+**Key achievement**: One pipeline, one emission order, zero duplication.
+
+**Before**: Two divergent entry points with different emission orders
+(text: globals after function bodies; LLVM: globals before function bodies).
+**After**: One shared `run_codegen_pipeline` function with unified order.
+
+**New public API**:
+```rust
+pub fn run_codegen_pipeline(result: &CompileResult, emitter: &mut dyn Emitter)
+```
+
+Per §1.0 原則 6 "通用 > 特例".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2356/2356 PASS
+  (+10 new stage16.37 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7824 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.232.1 — Stage 16.36 (Emitter Trait Cleanup: Remove Dead `emit_output`)

@@ -370,3 +370,5 @@ mod stage16_34_cleanup_inline_path_tests;
 mod stage16_35_codegen_refactoring_tests;
 #[path = "v0/stage16/plan/stage16_36_emitter_cleanup_tests.rs"]
 mod stage16_36_emitter_cleanup_tests;
+#[path = "v0/stage16/plan/stage16_37_unified_pipeline_tests.rs"]
+mod stage16_37_unified_pipeline_tests;
