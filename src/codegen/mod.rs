@@ -65,10 +65,11 @@ use crate::mir::body::*;
 use lasso::Rodeo;
 
 pub mod emitter;
-pub use emitter::{
-    emit_dyn_trait_ptr_type, emit_fat_ptr_type, emit_type_to_llvm_str, mir_type_to_emit_type,
-    EmitType, EmitValue, Emitter,
-};
+pub use emitter::{emit_fat_ptr_type, mir_type_to_emit_type, EmitType, EmitValue, Emitter};
+// Stage 16.35: `emit_type_to_llvm_str` and `binop_to_llvm_str` moved to
+// `text/mod.rs` (text-backend-specific). `emit_dyn_trait_ptr_type` removed
+// (dead code).
+// Stage 16.36: `emit_output` removed from Emitter trait (dead code).
 
 pub mod text;
 pub use text::TextEmitter;
@@ -665,6 +666,11 @@ pub fn codegen_from_mir(
 /// Per §16: codegen reads MirBody + fn_name_by_def_id (data only, no HIR).
 /// Per §23: `codegen_synthesized_closure_functions` follows
 /// `<verb>_<adj>_<noun>_<noun>` pattern.
+///
+/// Stage 16.35: Removed incorrect `#[cfg(feature = "llvm-backend")]` gate.
+/// This function is fully backend-agnostic (operates on `&mut dyn Emitter`),
+/// so it must be available for the text-only build too. The gate was a bug
+/// that broke `cargo check` without `--features llvm-backend`.
 fn codegen_synthesized_closure_functions(
     synthesized_mirs: &[MirBody],
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,

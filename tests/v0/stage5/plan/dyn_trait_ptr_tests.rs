@@ -87,13 +87,18 @@ fn test_multiple_dyn_trait_ptrs_emitted() {
     );
 }
 
-/// The `emit_dyn_trait_ptr_type` helper should return a `{ ptr, ptr }`
-/// EmitType (two opaque pointers — data + vtable).
+/// The dyn Trait fat pointer type should be a `{ ptr, ptr }` EmitType
+/// (two opaque pointers — data + vtable).
+///
+/// Stage 16.35: `emit_dyn_trait_ptr_type` was removed (dead code).
+/// The type is now constructed inline via `EmitType::struct_of(...)`.
+/// This test verifies the expected shape using the inline construction.
 #[test]
 fn test_emit_dyn_trait_ptr_type_shape() {
-    use landin_compiler::codegen::{emit_dyn_trait_ptr_type, EmitType};
+    use landin_compiler::codegen::EmitType;
 
-    let ty = emit_dyn_trait_ptr_type();
+    // Construct the dyn Trait fat pointer type inline (was emit_dyn_trait_ptr_type).
+    let ty = EmitType::struct_of(vec![EmitType::OpaquePtr, EmitType::OpaquePtr]);
     match ty {
         EmitType::Struct(fields) => {
             assert_eq!(

@@ -1,9 +1,79 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.231.0
+**Current version**: v0.232.1
 **Date**: 2026-08-04
-**Test count**: 244 rust lib tests + 2324 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2346 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.232.1 — Stage 16.36 (Emitter Trait Cleanup: Remove Dead `emit_output`)
+
+### Overview
+
+Continued codegen architecture refactoring by removing the dead
+`emit_output` method from the `Emitter` trait and reorganizing the trait
+methods into clear documentation groups.
+
+**What was removed**:
+- `emit_output(&self) -> &str` from the `Emitter` trait
+- `emit_output` implementation from `TextEmitter` (returned `&self.output`)
+- `emit_output` implementation from `LLVMSysEmitter` (returned `""`)
+
+**Why it was dead**: Both backends use concrete methods for output:
+- `TextEmitter`: `output_with_globals()`
+- `LLVMSysEmitter`: `to_module()` / `to_object_file()`
+
+**Documentation groups added**: Module-level (5 methods), Function scope
+(30 methods), Local state (4 methods).
+
+**Trait split deferred**: Splitting `Emitter` into `ModuleEmitter` +
+`FunctionEmitter` super-traits requires physically moving ~1000 lines of
+code (Rust doesn't allow multiple impl blocks for the same trait). Deferred
+to a future stage.
+
+Per §1.0 原則 5 "去除兼容思维".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2346/2346 PASS
+  (+10 new stage16.36 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7814 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.232.0 — Stage 16.35 (Codegen Architecture Refactoring)
+
+### Overview
+
+Systemic codegen architecture refactoring — the first major refactoring of
+the codegen module since Stage 6.7-6.8. Goal: truly abstract the codegen
+pipeline and properly organize the LLVM and text backends.
+
+**Key achievements**:
+1. **Fixed compile bug** — `codegen_synthesized_closure_functions` was incorrectly `#[cfg]`-gated
+2. **Moved text-backend utilities** — `emit_type_to_llvm_str`, `binop_to_llvm_str` from `emitter.rs` to `text/mod.rs`
+3. **Removed dead code** — `emit_dyn_trait_ptr_type`, `llvm_ptr_str`, `to_context`, `predeclare_function`
+4. **Created docs/graph/** — standardized pipeline data flow diagrams
+5. **Clean API surface** — no dead code, no `#[allow(dead_code)]`
+
+**No behavior change** — all 7804 tests pass identically.
+
+Per §1.0 原則 5 "去除兼容思维" + §1.0 原則 6 "通用 > 特例" + §23 rule 5 (DRY).
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2336/2336 PASS
+  (+12 new stage16.35 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7804 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.231.0 — Stage 16.34 (Task 10 Step 5: Clean Up Inline Closure Path)

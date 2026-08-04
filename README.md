@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.231.0 (v0.2 FINAL + v0.3 RELEASE APPROVED — Closure redesign 100% COMPLETE: all closures use synthesized call function; inline path removed; clean API surface; typeck + borrowck + codegen all work)
+**Version**: v0.232.1 (v0.2 FINAL + v0.3 RELEASE APPROVED — Closure redesign 100% COMPLETE + codegen architecture refactored: text/LLVM backends properly separated, dead code removed, emit_output removed, pipeline diagrams in docs/graph/)
 **Date**: 2026-08-04
 
 A work-in-progress systems programming language inspired by Rust, designed for

@@ -82,7 +82,15 @@ impl EmitType {
 /// Naming conventions:
 /// - `emit_*`: produces IR instructions, may return EmitValue
 /// - `get_*` / `set_*`: queries or updates emitter state
-/// - `emit_declare_*`: module-level declarations
+///
+/// Stage 16.36: Removed `emit_output` (dead code). The trait methods are
+/// organized into clear documentation groups:
+/// - Module-level: header, declares, globals (survive across functions)
+/// - Function scope: instructions, control flow (between begin/end)
+/// - Local state: set/get local pointers and values
+///
+/// Per §1.0 原則 5 "去除兼容思维": dead `emit_output` removed.
+/// Per §23: clear documentation grouping.
 pub trait Emitter {
     // === Module-level ===
 
@@ -92,6 +100,20 @@ pub trait Emitter {
     /// Emit an external function declaration.
     fn emit_declare(&mut self, signature: &str);
 
+    /// Emit (or look up) a module-level string constant global.
+    fn emit_string_global(&mut self, bytes: &[u8]) -> EmitValue;
+
+    /// Emit a vtable as a module-level constant global.
+    fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue;
+
+    /// Emit a `dyn Trait` fat-pointer constant global.
+    fn emit_dyn_trait_const(
+        &mut self,
+        global_name: &str,
+        data_symbol: &str,
+        vtable_symbol: &str,
+    ) -> EmitValue;
+
     // === Function scope ===
 
     /// Begin a new function definition.
@@ -100,12 +122,8 @@ pub trait Emitter {
     /// End the current function definition.
     fn emit_function_end(&mut self);
 
-    // === Constants ===
-
     /// Emit a constant value and return its handle.
     fn emit_const(&mut self, val: &ConstVal) -> EmitValue;
-
-    // === Arithmetic ===
 
     /// Emit a binary operation and return the result value.
     fn emit_binop(
@@ -118,8 +136,6 @@ pub trait Emitter {
 
     /// Emit a unary operation and return the result value.
     fn emit_unop(&mut self, op: UnOp, ty: &EmitType, operand: &EmitValue) -> EmitValue;
-
-    // === Control flow ===
 
     /// Emit a return instruction.
     fn emit_ret(&mut self, ty: &EmitType, val: Option<&EmitValue>);
@@ -136,7 +152,7 @@ pub trait Emitter {
     /// Begin a new basic block with the given label.
     fn emit_block(&mut self, label: &str);
 
-    /// Emit a switch instruction (typed: i32 or i64).
+    /// Emit a switch instruction.
     fn emit_switch(
         &mut self,
         discr: &EmitValue,
@@ -144,8 +160,6 @@ pub trait Emitter {
         cases: &[(i128, String)],
         default_label: &str,
     );
-
-    // === Memory ===
 
     /// Allocate stack space for a local variable.
     fn emit_alloca(&mut self, ty: &EmitType, name: &str) -> EmitValue;
@@ -156,8 +170,6 @@ pub trait Emitter {
     /// Load a value from a pointer.
     fn emit_load(&mut self, ty: &EmitType, ptr: &EmitValue) -> EmitValue;
 
-    // === Calls ===
-
     /// Emit a function call with typed arguments.
     fn emit_call(
         &mut self,
@@ -166,23 +178,7 @@ pub trait Emitter {
         ret_ty: &EmitType,
     ) -> EmitValue;
 
-    /// Stage 5.79: Emit a dyn Trait vtable indirect call.
-    ///
-    /// Produces LLVM IR that:
-    /// 1. Loads the vtable pointer from the dynptr global
-    ///    `@.dynptr.<trait>.<type>` (second field, index 1)
-    /// 2. Loads the method function pointer from the vtable at `slot_index`
-    /// 3. Calls the loaded function pointer with `args` (self first)
-    ///
-    /// The `dynptr_symbol` is the LLVM symbol for the dynptr global
-    /// (e.g. `.dynptr.Drop.S`). The `slot_index` is the vtable slot
-    /// offset (from `DynTraitMethodCall.slot_index`). The `args` list
-    /// already includes `self` as the first element.
-    ///
-    /// Per API-naming-standard §3 + §8.1: `emit_dyn_trait_method_call`
-    /// follows the `<verb>_<noun>_<noun>_<noun>_<noun>` pattern
-    /// (`emit_` prefix per §8.1 codegen emit convention, mirrors
-    /// `emit_call`).
+    /// Emit a dyn Trait vtable indirect call.
     fn emit_dyn_trait_method_call(
         &mut self,
         dynptr_symbol: &str,
@@ -190,8 +186,6 @@ pub trait Emitter {
         args: &[(EmitType, &EmitValue)],
         ret_ty: &EmitType,
     ) -> EmitValue;
-
-    // === Comparisons ===
 
     /// Emit an integer comparison (icmp).
     fn emit_icmp(&mut self, op: &str, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue)
@@ -201,33 +195,19 @@ pub trait Emitter {
     fn emit_fcmp(&mut self, op: &str, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue)
         -> EmitValue;
 
-    /// Stage 3.49 (L13 closure): Emit a bitwise AND (`and ty lhs, rhs`).
-    /// Used for fat-pointer equality comparison (AND of ptr-eq and len-eq).
+    /// Emit a bitwise AND.
     fn emit_and(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
 
-    /// Stage 3.49 (L13 closure): Emit a bitwise OR (`or ty lhs, rhs`).
-    /// Used for fat-pointer inequality comparison (OR of ptr-ne and len-ne).
+    /// Emit a bitwise OR.
     fn emit_or(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
 
-    // === Type conversions ===
-
-    /// Emit a zero-extend (zext) from one type to another.
+    /// Emit a zero-extend (zext).
     fn emit_zext(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue;
 
-    /// Emit a type cast (trunc/sext/zext/sitofp/fptosi/fpext/fptrunc).
+    /// Emit a type cast.
     fn emit_cast(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue;
 
-    /// Stage 14.12 (GAP-18): Emit a `select` instruction — chooses between
-    /// two values based on a boolean condition, without branching.
-    ///
-    /// LLVM IR: `%result = select i1 %cond, <ty> %true_val, <ty> %false_val`
-    ///
-    /// Used for bool → "true"/"false" string selection in printf codegen
-    /// (avoids the need for diamond control flow in the middle of a print
-    /// statement).
-    ///
-    /// Per API-naming-standard §3: `emit_select` follows the `emit_<noun>`
-    /// pattern consistent with `emit_zext`, `emit_cast`, etc.
+    /// Emit a `select` instruction.
     fn emit_select(
         &mut self,
         ty: &EmitType,
@@ -236,10 +216,7 @@ pub trait Emitter {
         false_val: &EmitValue,
     ) -> EmitValue;
 
-    // === Aggregates ===
-
     /// Emit a getelementptr for struct field access.
-    /// `struct_ty` is the struct's LLVM type (used to render the GEP).
     fn emit_gep_field(
         &mut self,
         base_ptr: &EmitValue,
@@ -248,7 +225,6 @@ pub trait Emitter {
     ) -> EmitValue;
 
     /// Emit a getelementptr for array index access.
-    /// `array_ty` is the array's LLVM type (`[N x T]`).
     fn emit_gep_index(
         &mut self,
         base_ptr: &EmitValue,
@@ -256,11 +232,7 @@ pub trait Emitter {
         index: &EmitValue,
     ) -> EmitValue;
 
-    /// Stage 3.51: Emit a getelementptr for element access via a raw
-    /// element pointer (not an array pointer). Used for slice indexing
-    /// where the data pointer is `T*` (not `[N x T]*`).
-    ///
-    /// Emits: `%r = getelementptr inbounds <elem_ty>, <elem_ty>* %base, i32 %idx`
+    /// Emit a getelementptr for element access via a raw element pointer.
     fn emit_gep_index_ptr(
         &mut self,
         base_ptr: &EmitValue,
@@ -268,11 +240,10 @@ pub trait Emitter {
         index: &EmitValue,
     ) -> EmitValue;
 
-    /// Emit a PHI node for merging values from multiple predecessor blocks.
+    /// Emit a PHI node.
     fn emit_phi(&mut self, ty: &EmitType, incoming: &[(EmitValue, String)]) -> EmitValue;
 
     /// Emit insertvalue for tuple/struct construction.
-    /// `val_ty` is the type of the value being inserted (so we render it correctly).
     fn emit_insertvalue(
         &mut self,
         agg_ty: &EmitType,
@@ -285,78 +256,13 @@ pub trait Emitter {
     /// Emit extractvalue for tuple/struct field extraction.
     fn emit_extractvalue(&mut self, agg_ty: &EmitType, agg: &EmitValue, index: u32) -> EmitValue;
 
-    /// Emit a checked-binary-op intrinsic call (e.g.
-    /// `llvm.sadd.with.overflow.i32`) and return the aggregate result
-    /// `{T, i1}`. Caller then `extractvalue`s index 1 for the overflow flag.
-    ///
-    /// Stage 3.24: only Add/Sub/Mul on i32/i64 are supported (matching
-    /// the LLVM intrinsic family). Other ops return `undef` of the right
-    /// aggregate type with i1 = 0 (i.e., assume no overflow).
+    /// Emit a checked-binary-op intrinsic call.
     fn emit_checked_binop(
         &mut self,
         op: BinOp,
         ty: &EmitType,
         lhs: &EmitValue,
         rhs: &EmitValue,
-    ) -> EmitValue;
-
-    /// Emit (or look up) a module-level string constant global and return
-    /// its symbolic name (e.g. `@.str.0`).
-    ///
-    /// Stage 3.27: emitted as `@.str.N = private unnamed_addr constant [M x i8] c"..."`
-    /// at module scope. Returns the global's name (without leading `@`).
-    /// The same content should yield the same global (deduplicated) so that
-    /// repeated literals don't bloat the module.
-    ///
-    /// `bytes` is the raw byte content (no null terminator added — caller
-    /// controls the encoding).
-    fn emit_string_global(&mut self, bytes: &[u8]) -> EmitValue;
-
-    /// Stage 5.6: Emit a vtable as a module-level constant global.
-    ///
-    /// Emits (at module scope):
-    /// ```text
-    /// @.vtable.<trait>.<type> = private unnamed_addr constant
-    ///     [N x ptr] [ptr @landin_<Type>_<m1>, ptr @landin_<Type>_<m2>, ...]
-    /// ```
-    ///
-    /// The vtable is an array of opaque `ptr` (opaque pointer type, LLVM 15+).
-    /// Each entry is a `ptr` reference to the concrete impl method symbol.
-    /// The caller (codegen `emit_vtables`) computes the global name from
-    /// `(trait_name, self_ty_name)` and passes the resolved symbol names.
-    ///
-    /// Returns the global's symbolic name (e.g. `.vtable.Foo.S`) so callers
-    /// can reference it later (e.g. for `dyn Trait` fat-pointer construction
-    /// in a future stage).
-    ///
-    /// Per API-naming-standard §3: uses the `emit_` prefix consistent with
-    /// `emit_string_global` and other module-level emission methods.
-    fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue;
-
-    /// Stage 5.7: Emit a `dyn Trait` fat-pointer constant global.
-    ///
-    /// Emits (at module scope):
-    /// ```text
-    /// @.dynptr.<trait>.<type> = private unnamed_addr constant
-    ///     { ptr, ptr } { ptr @<data_global>, ptr @.vtable.<trait>.<type> }
-    /// ```
-    ///
-    /// The fat pointer is a `{ ptr, ptr }` struct: the first `ptr` is the
-    /// data pointer (pointing at a concrete value), the second `ptr` is the
-    /// vtable pointer (pointing at the `@.vtable.<trait>.<type>` global
-    /// emitted by `emit_vtable_global` in Stage 5.6).
-    ///
-    /// This is the foundation for `dyn Trait` values — when codegen sees a
-    /// `dyn Trait` local, it can reference this global (or construct an
-    /// equivalent inline `{ ptr, ptr }` value) to represent the trait object.
-    ///
-    /// Per API-naming-standard §3: uses the `emit_` prefix consistent with
-    /// `emit_vtable_global` and `emit_string_global`.
-    fn emit_dyn_trait_const(
-        &mut self,
-        global_name: &str,
-        data_symbol: &str,
-        vtable_symbol: &str,
     ) -> EmitValue;
 
     // === Local state ===
@@ -367,25 +273,15 @@ pub trait Emitter {
     /// Get a local's pointer handle.
     fn get_local_ptr(&self, local_id: u32) -> Option<&EmitValue>;
 
-    /// Store a local's value handle (for later lookups).
+    /// Store a local's value handle.
     fn set_local(&mut self, local_id: u32, val: EmitValue);
 
     /// Get a local's stored value handle.
     fn get_local(&self, local_id: u32) -> Option<&EmitValue>;
-
-    // === Output ===
-
-    /// Return the accumulated output (for text backends).
-    ///
-    /// Stage 3.64 (P3 fix): renamed from `output()` to `emit_output()`
-    /// for prefix consistency with the other `emit_*` trait methods.
-    /// The old name was the only state-query method without an `emit_*`
-    /// prefix, breaking the convention.
-    fn emit_output(&self) -> &str;
 }
 
 // ================================================================
-// Type mapping helpers
+// Type mapping helpers (shared between all backends)
 // ================================================================
 
 /// Map a MIR Ty to an EmitType.
@@ -406,23 +302,11 @@ pub fn emit_fat_ptr_type(elem: EmitType) -> EmitType {
     EmitType::Struct(vec![EmitType::ptr_to(elem), EmitType::I64])
 }
 
-/// Stage 5.7: Construct the `EmitType` for a `dyn Trait` fat pointer
-/// (`{ ptr, ptr }`). The first `ptr` is the data pointer (pointing at
-/// the concrete value on the stack/heap), the second `ptr` is the
-/// vtable pointer (pointing at the `@.vtable.<trait>.<type>` global
-/// emitted by `emit_vtables` in Stage 5.6).
-///
-/// Unlike `emit_fat_ptr_type` (which is `{ ptr, i64 }` for `&str`/`&[T]`
-/// — pointer + length), a `dyn Trait` fat pointer is `{ ptr, ptr }` —
-/// pointer + vtable. Both components are opaque pointers because the
-/// concrete type is erased at the `dyn` boundary.
-///
-/// Per §15 (最优 > 最小): this is the architecturally correct
-/// representation for trait objects, matching rustc's layout. Future
-/// stages will use this when lowering `dyn Trait` values to LLVM IR.
-pub fn emit_dyn_trait_ptr_type() -> EmitType {
-    EmitType::Struct(vec![EmitType::OpaquePtr, EmitType::OpaquePtr])
-}
+// Stage 16.35: Removed `emit_dyn_trait_ptr_type` — dead code.
+// Was: `EmitType::Struct(vec![EmitType::OpaquePtr, EmitType::OpaquePtr])`.
+// Never called by any codegen path. The dyn Trait fat pointer is
+// constructed inline where needed via `EmitType::struct_of(...)`.
+// Per §1.0 原則 5 "去除兼容思维": dead code removed.
 
 /// Translate a MIR `Ty` to an `EmitType` (legacy fallback, no ADT layouts).
 ///
@@ -516,90 +400,16 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
     }
 }
 
-/// Map a BinOp + EmitType to the LLVM instruction string.
-///
-/// Stage 3.46: generic integer type support — generates the instruction
-/// with the correct type suffix for all integer widths (i8/i16/i32/i64/i128).
-pub fn binop_to_llvm_str(op: BinOp, ty: &EmitType) -> String {
-    let ty_str = emit_type_to_llvm_str(ty);
-    let is_int = matches!(
-        ty,
-        EmitType::I1
-            | EmitType::I8
-            | EmitType::I16
-            | EmitType::I32
-            | EmitType::I64
-            | EmitType::I128
-    );
-    match (op, ty) {
-        // Integer arithmetic
-        (BinOp::Add, _) if is_int => format!("add nsw {}", ty_str),
-        (BinOp::Sub, _) if is_int => format!("sub nsw {}", ty_str),
-        (BinOp::Mul, _) if is_int => format!("mul nsw {}", ty_str),
-        (BinOp::Div, _) if is_int => format!("sdiv {}", ty_str),
-        (BinOp::Rem, _) if is_int => format!("srem {}", ty_str),
-        // Float arithmetic
-        (BinOp::Add, EmitType::F64) => "fadd double".into(),
-        (BinOp::Add, EmitType::F32) => "fadd float".into(),
-        (BinOp::Sub, EmitType::F64) => "fsub double".into(),
-        (BinOp::Sub, EmitType::F32) => "fsub float".into(),
-        (BinOp::Mul, EmitType::F64) => "fmul double".into(),
-        (BinOp::Mul, EmitType::F32) => "fmul float".into(),
-        (BinOp::Div, EmitType::F64) => "fdiv double".into(),
-        (BinOp::Div, EmitType::F32) => "fdiv float".into(),
-        (BinOp::Rem, EmitType::F64) => "frem double".into(),
-        (BinOp::Rem, EmitType::F32) => "frem float".into(),
-        // Bitwise (all integer types)
-        (BinOp::BitAnd, _) if is_int => format!("and {}", ty_str),
-        (BinOp::BitOr, _) if is_int => format!("or {}", ty_str),
-        (BinOp::BitXor, _) if is_int => format!("xor {}", ty_str),
-        (BinOp::Shl, _) if is_int => format!("shl {}", ty_str),
-        (BinOp::Shr, _) if is_int => format!("ashr {}", ty_str),
-        _ => "add i32".into(),
-    }
-}
-
-/// Map an EmitType to its LLVM type string.
-///
-/// Stage 3.21: returns `String` (was `&'static str`) because struct and
-/// array layouts must be rendered dynamically from their element types.
-pub fn emit_type_to_llvm_str(ty: &EmitType) -> String {
-    match ty {
-        EmitType::I1 => "i1".into(),
-        EmitType::I8 => "i8".into(),
-        EmitType::I16 => "i16".into(),
-        EmitType::I32 => "i32".into(),
-        EmitType::I64 => "i64".into(),
-        EmitType::I128 => "i128".into(),
-        EmitType::F32 => "float".into(),
-        EmitType::F64 => "double".into(),
-        // Stage 14.59: LLVM 19+ uses opaque pointers — all pointer types
-        // emit as "ptr" regardless of pointee type. Was: "{}*" with pointee.
-        EmitType::Ptr(_) | EmitType::OpaquePtr => "ptr".into(),
-        EmitType::Void => "void".into(),
-        EmitType::Struct(fields) => {
-            if fields.is_empty() {
-                // Stage 16.22: Empty struct ({}) has size 0 in LLVM, which
-                // causes undefined behavior when used with alloca (the
-                // pointer is invalid). Use i8 (size 1) instead to ensure
-                // the pointer is valid. This is safe because empty structs
-                // carry no data — the i8 byte is never read.
-                // Per §1.0 原則 9 "正确 > 妥协": correct runtime behavior
-                // over matching the conceptual type exactly.
-                "i8".into()
-            } else {
-                let parts: Vec<String> = fields.iter().map(emit_type_to_llvm_str).collect();
-                format!("{{ {} }}", parts.join(", "))
-            }
-        }
-        EmitType::Array(elem, n) => format!("[{} x {}]", n, emit_type_to_llvm_str(elem)),
-    }
-}
-
-/// Render a pointer-to-`ty` LLVM type string (convenience).
-pub fn llvm_ptr_str(ty: &EmitType) -> String {
-    format!("{}*", emit_type_to_llvm_str(ty))
-}
+// Stage 16.35: Removed `binop_to_llvm_str`, `emit_type_to_llvm_str`,
+// `llvm_ptr_str` — text-backend-specific functions moved to
+// `text/mod.rs`. The LLVM C-API backend uses `LLVMSysEmitter::llvm_type()`
+// (returns `LLVMTypeRef`) and `LLVMBuildAdd` etc. directly, not strings.
+//
+// Per §1.0 原則 5 "去除兼容思维": text utilities removed from shared module.
+// Per §1.0 原則 6 "通用 > 特例": each backend owns its own rendering logic.
+// Per §23 rule 5 (DRY): no duplicate type-rendering logic in shared module.
+//
+// `llvm_ptr_str` was dead code (never called) — deleted entirely.
 
 #[cfg(test)]
 mod tests {
@@ -614,22 +424,8 @@ mod tests {
         let _: &dyn Emitter = &TextEmitter::new();
     }
 
-    /// Stage 3.57: Verify emit_type_to_llvm_str roundtrips for key types.
-    #[test]
-    fn emit_type_to_llvm_str_roundtrips() {
-        assert_eq!(emit_type_to_llvm_str(&EmitType::I32), "i32");
-        assert_eq!(emit_type_to_llvm_str(&EmitType::I64), "i64");
-        assert_eq!(emit_type_to_llvm_str(&EmitType::F64), "double");
-        assert_eq!(emit_type_to_llvm_str(&EmitType::Void), "void");
-        assert_eq!(
-            emit_type_to_llvm_str(&EmitType::Struct(vec![EmitType::I32, EmitType::I64])),
-            "{ i32, i64 }"
-        );
-        assert_eq!(
-            emit_type_to_llvm_str(&EmitType::Array(Box::new(EmitType::I8), 5)),
-            "[5 x i8]"
-        );
-    }
+    // Stage 16.35: `emit_type_to_llvm_str_roundtrips` test moved to
+    // `text/mod.rs` (the function now lives there).
 
     /// Stage 3.57: Verify emit_fat_ptr_type produces the correct { Ptr, I64 } shape.
     #[test]

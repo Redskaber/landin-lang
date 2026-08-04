@@ -26687,3 +26687,133 @@ Stage Summary:
 - Task 10 100% COMPLETE (all 5 steps done)
 - 7792 tests, 0 failures, 0 warnings
 - v0.3 closure redesign FULLY COMPLETE with clean codebase
+
+---
+Task ID: stage16.35-codegen-architecture-refactoring
+Agent: Super Z (main)
+Task: Stage 16.35 — Codegen architecture refactoring: abstract codegen, organize llvm/text. v0.231.0 → v0.232.0.
+
+Work Log:
+- Baseline: v0.231.0 / 244 lib + 2324 integration + 5224 conformance = 7792
+
+### 1. Architecture Analysis
+
+Conducted thorough analysis of codegen module (8527 LOC, 9 files).
+Key findings:
+- Compile bug: codegen_synthesized_closure_functions incorrectly #[cfg]-gated
+- Misplaced utilities: emit_type_to_llvm_str, binop_to_llvm_str in shared emitter.rs
+- Dead code: emit_dyn_trait_ptr_type, llvm_ptr_str, to_context, predeclare_function
+- Trait bloat: 40 methods mixing 4 concerns (future refactoring target)
+- EmitValue = String leaks text-IR assumptions (future refactoring target)
+
+### 2. Fixes Applied
+
+Priority 1: Fixed compile bug — removed #[cfg(feature = "llvm-backend")] from
+  codegen_synthesized_closure_functions (it's backend-agnostic)
+
+Priority 5: Moved text-backend utilities from emitter.rs to text/mod.rs:
+  - emit_type_to_llvm_str (EmitType → LLVM IR type string)
+  - binop_to_llvm_str (BinOp → LLVM IR instruction string)
+
+Priority 5: Removed dead code:
+  - emit_dyn_trait_ptr_type (never called)
+  - llvm_ptr_str (never called)
+  - to_context (LLVMSysEmitter, never called)
+  - predeclare_function (LLVMSysEmitter, #[allow(dead_code)])
+
+### 3. Created docs/graph/ Directory
+
+- docs/graph/README.md — Index
+- docs/graph/codegen/architecture.md — Codegen module architecture
+- docs/graph/pipeline/overview.md — End-to-end compiler pipeline
+- docs/graph/closure/data-flow.md — Closure data flow (HIR → MIR → Codegen)
+
+### 4. Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2336/2336 PASS
+  (+12 new stage16.35 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7804 tests passing, 0 failures, 0 warnings.**
+
+### 5. Documentation
+
+- docs/develop/v0/stage-16/stage-16.35-codegen-architecture-refactoring.md
+- tests/v0/stage16/plan/stage16_35_codegen_refactoring_tests.rs (+12 tests)
+- docs/graph/ (new directory with 4 diagram files)
+- Updated Cargo.toml (v0.232.0), RELEASE_NOTES.md, README.md, lib.rs
+
+Stage Summary:
+- Stage 16.35 PASSED — Codegen architecture refactoring
+- Fixed compile bug (Priority 1)
+- Moved text-backend utilities to text/mod.rs (Priority 5)
+- Removed 4 dead code items (Priority 5)
+- Created docs/graph/ with pipeline diagrams
+- 7804 tests, 0 failures, 0 warnings
+- Future: Split Emitter trait, replace EmitValue=String, unify pipeline
+
+---
+Task ID: stage16.36-emitter-trait-cleanup
+Agent: Super Z (main)
+Task: Stage 16.36 — Emitter trait cleanup: remove dead emit_output + documentation groups. v0.232.0 → v0.232.1.
+
+Work Log:
+- Baseline: v0.232.0 / 244 lib + 2336 integration + 5224 conformance = 7804
+
+### 1. Removed Dead Code
+
+- `emit_output(&self) -> &str` from the Emitter trait
+- `emit_output` implementation from TextEmitter (returned &self.output)
+- `emit_output` implementation from LLVMSysEmitter (returned "")
+
+Both backends use concrete methods for output:
+- TextEmitter: output_with_globals()
+- LLVMSysEmitter: to_module() / to_object_file()
+
+### 2. Documentation Groups
+
+Reorganized trait methods into clear documentation groups:
+- Module-level (5): emit_header, emit_declare, emit_string_global,
+  emit_vtable_global, emit_dyn_trait_const
+- Function scope (30): emit_function_begin/end + all instructions
+- Local state (4): set/get_local_ptr, set/get_local
+
+### 3. Architecture Decision: Trait Split Deferred
+
+The original plan was to split Emitter into ModuleEmitter + FunctionEmitter
+super-traits. However, Rust doesn't allow multiple impl blocks for the
+same trait on the same type. The current code has methods interleaved,
+so splitting would require physically moving ~1000 lines of code.
+
+Deferred to a future stage that can do the code movement safely.
+The documentation groups provide architectural clarity without the risk.
+
+Per §1.0 原則 9 "正确 > 妥协": correct long-term design, but code movement
+risk is too high for this stage.
+
+### 4. Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2346/2346 PASS
+  (+10 new stage16.36 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7814 tests passing, 0 failures, 0 warnings.**
+
+### 5. Documentation
+
+- docs/develop/v0/stage-16/stage-16.36-emitter-trait-cleanup.md
+- tests/v0/stage16/plan/stage16_36_emitter_cleanup_tests.rs (+10 tests)
+- Updated Cargo.toml (v0.232.1), RELEASE_NOTES.md, README.md
+
+Stage Summary:
+- Stage 16.36 PASSED — Emitter trait cleanup
+- Removed dead emit_output from trait and both implementations
+- Added documentation groups (Module-level / Function scope / Local state)
+- Trait split deferred (requires code movement, high risk)
+- 7814 tests, 0 failures, 0 warnings

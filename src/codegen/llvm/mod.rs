@@ -129,10 +129,8 @@ impl LLVMSysEmitter {
         self.module
     }
 
-    /// Return the underlying `LLVMContextRef`.
-    pub fn to_context(&self) -> LLVMContextRef {
-        self.ctx
-    }
+    // Stage 16.35: Removed `to_context` — dead code (never called).
+    // Per §1.0 原則 5 "去除兼容思维": dead code removed.
 
     /// Emit an object file via `LLVMTargetMachineEmitToFile`.
     ///
@@ -494,24 +492,11 @@ impl LLVMSysEmitter {
         }
     }
 
-    /// Stage 14.65: Pre-declare a function with its correct signature.
-    ///
-    /// This is called by `predeclare_all_functions` BEFORE any function
-    /// bodies are emitted, so that forward references (FnDef constants,
-    /// indirect calls) resolve to a real function value with the correct
-    /// type — not a placeholder with a wrong signature.
-    ///
-    /// Uses `get_or_declare_function` internally (which checks the declared
-    /// cache + LLVMGetNamedFunction before creating a new function).
-    #[allow(dead_code)]
-    pub(crate) fn predeclare_function(
-        &mut self,
-        name: &str,
-        ret_ty: &EmitType,
-        arg_tys: &[EmitType],
-    ) {
-        self.get_or_declare_function(name, ret_ty, arg_tys);
-    }
+    // Stage 16.35: Removed `predeclare_function` — dead code.
+    // Was a wrapper around `get_or_declare_function`, marked
+    // `#[allow(dead_code)]` and never called. Its docstring referenced
+    // a non-existent `predeclare_all_functions`.
+    // Per §1.0 原則 5 "去除兼容思维": dead code removed.
 
     /// Get or create the basic block for `label`, mirroring `TextEmitter::emit_block`.
     fn block_for(&mut self, label: &str) -> LLVMBasicBlockRef {
@@ -556,6 +541,8 @@ impl Drop for LLVMSysEmitter {
 // Emitter trait implementation
 // =====================================================================
 
+// Stage 16.36: LLVMSysEmitter implements Emitter (single trait, all methods).
+// `emit_output` removed (dead code — use `to_module()` instead).
 impl Emitter for LLVMSysEmitter {
     fn emit_header(&mut self) {
         unsafe {
@@ -1838,16 +1825,10 @@ impl Emitter for LLVMSysEmitter {
     fn get_local(&self, local_id: u32) -> Option<&EmitValue> {
         self.locals.get(&local_id)
     }
-
-    fn emit_output(&self) -> &str {
-        // LLVMSysEmitter does not produce a textual buffer — use
-        // `to_module()` + `LLVMPrintModuleToString` to render IR text.
-        // The trait requires us to return a &str; we keep an empty
-        // string here. Callers wanting IR text should use a TextEmitter
-        // or call `LLVMPrintModuleToString` directly.
-        ""
-    }
 }
+
+// Stage 16.36: Removed `emit_output` from the Emitter trait (dead code).
+// LLVMSysEmitter uses `to_module()` / `to_object_file()` for output.
 
 // =====================================================================
 // Free helper functions

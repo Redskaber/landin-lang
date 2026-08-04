@@ -1,9 +1,108 @@
 //! Text emitter: implements Emitter trait by generating LLVM IR text (.ll).
+//!
+//! Stage 16.35: This module now owns the text-backend-specific string
+//! rendering functions (`emit_type_to_llvm_str`, `binop_to_llvm_str`).
+//! These were previously in the shared `emitter.rs` but are only used
+//! by `TextEmitter` — the LLVM C-API backend has its own `llvm_type()`
+//! method. Moving them here follows §23 rule 5 (DRY) and §1.0 原則 6
+//! (通用 > 特例 — each backend owns its own rendering logic).
 
 use crate::codegen::emitter::*;
 use crate::mir::place::{BinOp, UnOp};
 use crate::mir::ty::ConstVal;
 use std::collections::HashMap;
+
+// ================================================================
+// Stage 16.35: Text-backend-specific string rendering functions.
+// Moved from emitter.rs — these are only used by TextEmitter.
+// ================================================================
+
+/// Map an EmitType to its LLVM type string (text backend only).
+///
+/// Stage 3.21: returns `String` (was `&'static str`) because struct and
+/// array layouts must be rendered dynamically from their element types.
+///
+/// Stage 16.35: Moved from `emitter.rs` to `text/mod.rs`. The LLVM
+/// C-API backend uses `LLVMSysEmitter::llvm_type()` (returns
+/// `LLVMTypeRef`) instead of this string-based function.
+pub(crate) fn emit_type_to_llvm_str(ty: &EmitType) -> String {
+    match ty {
+        EmitType::I1 => "i1".into(),
+        EmitType::I8 => "i8".into(),
+        EmitType::I16 => "i16".into(),
+        EmitType::I32 => "i32".into(),
+        EmitType::I64 => "i64".into(),
+        EmitType::I128 => "i128".into(),
+        EmitType::F32 => "float".into(),
+        EmitType::F64 => "double".into(),
+        // Stage 14.59: LLVM 19+ uses opaque pointers — all pointer types
+        // emit as "ptr" regardless of pointee type. Was: "{}*" with pointee.
+        EmitType::Ptr(_) | EmitType::OpaquePtr => "ptr".into(),
+        EmitType::Void => "void".into(),
+        EmitType::Struct(fields) => {
+            if fields.is_empty() {
+                // Stage 16.22: Empty struct ({}) has size 0 in LLVM, which
+                // causes undefined behavior when used with alloca (the
+                // pointer is invalid). Use i8 (size 1) instead to ensure
+                // the pointer is valid. This is safe because empty structs
+                // carry no data — the i8 byte is never read.
+                // Per §1.0 原則 9 "正确 > 妥协": correct runtime behavior
+                // over matching the conceptual type exactly.
+                "i8".into()
+            } else {
+                let parts: Vec<String> = fields.iter().map(emit_type_to_llvm_str).collect();
+                format!("{{ {} }}", parts.join(", "))
+            }
+        }
+        EmitType::Array(elem, n) => format!("[{} x {}]", n, emit_type_to_llvm_str(elem)),
+    }
+}
+
+/// Render a BinOp as its LLVM instruction string (text backend only).
+///
+/// Stage 3.46: generic integer type support — generates the instruction
+/// with the correct type suffix for all integer widths (i8/i16/i32/i64/i128).
+///
+/// Stage 16.35: Moved from `emitter.rs` to `text/mod.rs`. The LLVM
+/// C-API backend uses `LLVMBuildAdd` etc. directly.
+pub(crate) fn binop_to_llvm_str(op: BinOp, ty: &EmitType) -> String {
+    let ty_str = emit_type_to_llvm_str(ty);
+    let is_int = matches!(
+        ty,
+        EmitType::I1
+            | EmitType::I8
+            | EmitType::I16
+            | EmitType::I32
+            | EmitType::I64
+            | EmitType::I128
+    );
+    match (op, ty) {
+        // Integer arithmetic
+        (BinOp::Add, _) if is_int => format!("add nsw {}", ty_str),
+        (BinOp::Sub, _) if is_int => format!("sub nsw {}", ty_str),
+        (BinOp::Mul, _) if is_int => format!("mul nsw {}", ty_str),
+        (BinOp::Div, _) if is_int => format!("sdiv {}", ty_str),
+        (BinOp::Rem, _) if is_int => format!("srem {}", ty_str),
+        // Float arithmetic
+        (BinOp::Add, EmitType::F64) => "fadd double".into(),
+        (BinOp::Add, EmitType::F32) => "fadd float".into(),
+        (BinOp::Sub, EmitType::F64) => "fsub double".into(),
+        (BinOp::Sub, EmitType::F32) => "fsub float".into(),
+        (BinOp::Mul, EmitType::F64) => "fmul double".into(),
+        (BinOp::Mul, EmitType::F32) => "fmul float".into(),
+        (BinOp::Div, EmitType::F64) => "fdiv double".into(),
+        (BinOp::Div, EmitType::F32) => "fdiv float".into(),
+        (BinOp::Rem, EmitType::F64) => "frem double".into(),
+        (BinOp::Rem, EmitType::F32) => "frem float".into(),
+        // Bitwise (all integer types)
+        (BinOp::BitAnd, _) if is_int => format!("and {}", ty_str),
+        (BinOp::BitOr, _) if is_int => format!("or {}", ty_str),
+        (BinOp::BitXor, _) if is_int => format!("xor {}", ty_str),
+        (BinOp::Shl, _) if is_int => format!("shl {}", ty_str),
+        (BinOp::Shr, _) if is_int => format!("ashr {}", ty_str),
+        _ => "add i32".into(),
+    }
+}
 
 pub struct TextEmitter {
     output: String,
@@ -64,6 +163,9 @@ impl TextEmitter {
         out
     }
 }
+
+// Stage 16.36: TextEmitter implements Emitter (single trait, all methods).
+// `emit_output` removed (dead code — use `output_with_globals()` instead).
 
 impl Emitter for TextEmitter {
     fn emit_header(&mut self) {
@@ -713,14 +815,30 @@ impl Emitter for TextEmitter {
     fn get_local(&self, local_id: u32) -> Option<&EmitValue> {
         self.locals.get(&local_id)
     }
+}
 
-    fn emit_output(&self) -> &str {
-        // Note: globals are emitted at the END of the module (after all
-        // functions). The codegen_crate entry point calls `emit_output()` to
-        // get the function bodies, then separately calls `globals_output()`
-        // to get the trailing globals. To keep backward compatibility, we
-        // return just the function bodies here. See `output_with_globals()`
-        // for the combined output.
-        &self.output
+// Stage 16.36: Removed `emit_output` from the Emitter trait (dead code).
+// TextEmitter uses `output_with_globals()` (concrete method) for output.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Stage 16.35: Verify emit_type_to_llvm_str roundtrips for key types.
+    /// Moved from emitter.rs — the function now lives in text/mod.rs.
+    #[test]
+    fn emit_type_to_llvm_str_roundtrips() {
+        assert_eq!(emit_type_to_llvm_str(&EmitType::I32), "i32");
+        assert_eq!(emit_type_to_llvm_str(&EmitType::I64), "i64");
+        assert_eq!(emit_type_to_llvm_str(&EmitType::F64), "double");
+        assert_eq!(emit_type_to_llvm_str(&EmitType::Void), "void");
+        assert_eq!(
+            emit_type_to_llvm_str(&EmitType::Struct(vec![EmitType::I32, EmitType::I64])),
+            "{ i32, i64 }"
+        );
+        assert_eq!(
+            emit_type_to_llvm_str(&EmitType::Array(Box::new(EmitType::I8), 5)),
+            "[5 x i8]"
+        );
     }
 }
