@@ -394,3 +394,5 @@ mod stage16_46_final_cleanup_tests;
 mod stage16_47_graph_diagrams_tests;
 #[path = "v0/stage16/plan/stage16_48_final_verification_tests.rs"]
 mod stage16_48_final_verification_tests;
+#[path = "v0/stage16/plan/stage16_49_generic_investigation_tests.rs"]
+mod stage16_49_generic_investigation_tests;

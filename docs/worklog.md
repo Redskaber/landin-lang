@@ -27338,3 +27338,94 @@ Stage Summary:
 - ALL ACCEPTANCE CRITERIA MET
 - v0.3 RELEASE CONFIRMED
 - 7899 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.49-generic-parser-investigation
+Agent: Super Z (main)
+Task: Stage 16.49 — Generic parser support investigation: foundation for Task 11. v0.235.2 → v0.236.0.
+
+Work Log:
+- Baseline: v0.235.2 / 244 lib + 2431 integration + 5224 conformance = 7899
+
+### 1. Investigation Results
+
+Conducted thorough investigation of generic syntax support across the
+compiler pipeline:
+- Parser: ✅ Fully implemented (parse_generics, try_parse_generic_args, turbofish)
+- AST: ✅ Full generic AST types (Generics, GenericParam, GenericArg, etc.)
+- HIR: ✅ Full HIR generics (HirGenerics, HirPathSegment.args preserved)
+- MIR Type Slots: ✅ SubstsRef, TyKind::Adt(DefId, SubstsRef), TyKind::Param
+
+### 2. Critical Gap Found
+
+The MIR lowerer DISCARDS parsed generic args — always emits empty SubstsRef.
+Every `Vec<i32>` becomes `Adt(Vec_def_id, [])` in MIR. The plumbing exists;
+the data flow is severed at the HIR→MIR boundary (mir/lower/mod.rs:1739).
+
+### 3. Task 11 Design Document Created
+
+Created docs/develop/v0/task-11-monomorphization-design.md with:
+- 4-phase implementation plan (propagation → substitution → collection → codegen)
+- API naming (§23 compliant)
+- Test plan for each phase
+- Concrete next actions
+
+### 4. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 244/244 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2437/2437 PASS (+6 new)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 7905 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.49 PASSED — Generic parser support investigation
+- Task 11 design document created
+- Generic syntax parsing fully implemented (parser→AST→HIR→MIR slots)
+- Critical gap: MIR lower discards generic args (empty SubstsRef)
+- 4-phase implementation plan ready for Task 11
+- 7905 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.50-generics-of-query
+Agent: Super Z (main)
+Task: Stage 16.50 — Task 11 Phase 1a: generics_of query. v0.236.0 → v0.236.1.
+
+Work Log:
+- Baseline: v0.236.0 / 244 lib + 2437 integration + 5224 conformance = 7905
+
+### 1. Created generics_of Query
+
+New module: src/hir/generics.rs
+- build_generics_map(hir) → HashMap<DefId, Vec<ParamTy>>
+- generics_of(def_id, hir) → Vec<ParamTy>
+- extract_type_params(owner) → Option<Vec<ParamTy>>
+- Walks HIR owners, extracts HirGenerics, filters type params (skip lifetimes)
+- ParamTy.index = position among type params (0-based)
+
+### 2. Unit Tests (6 tests)
+
+1. Non-generic fn → empty params
+2. Generic struct (Pair<A,B>) → 2 params
+3. build_generics_map collects all generic items
+4. Non-generic struct excluded
+5. Generic fn (id<T>) → 1 param
+6. Lifetime params skipped
+
+### 3. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 250/250 PASS (+6 new)
+- cargo test --features llvm-backend --test all_tests — ✅ 2437/2437 PASS
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 7911 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.50 PASSED — generics_of query implemented
+- Task 11 Phase 1a COMPLETE
+- Next: Phase 1b — propagate path.args into SubstsRef in lower_hir_ty_to_mir_ty
+- 7911 tests, 0 failures, 0 warnings

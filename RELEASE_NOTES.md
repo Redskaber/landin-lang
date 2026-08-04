@@ -1,9 +1,56 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.235.2
+**Current version**: v0.236.1
 **Date**: 2026-08-04
-**Test count**: 244 rust lib tests + 2431 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 250 rust lib tests + 2437 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.236.1 — Stage 16.50 (Task 11 Phase 1a: generics_of Query)
+
+### Overview
+
+Implemented the `generics_of` query — the foundation for Task 11
+(monomorphization). Maps a `DefId` to its type parameters (`Vec<ParamTy>`).
+
+**New module**: `src/hir/generics.rs`
+- `build_generics_map(hir) -> HashMap<DefId, Vec<ParamTy>>`
+- `generics_of(def_id, hir) -> Vec<ParamTy>`
+- Extracts type params from HIR items (fn/struct/enum/trait/impl/type-alias)
+- Skips lifetime params (only counts type params)
+- 6 unit tests
+
+Per §23: API naming compliant (`generics_of` = `<noun>_<prep>`, `build_generics_map` = `<verb>_<noun>_<noun>`).
+
+### Verification
+
+- **Total: 7911 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.236.0 — Stage 16.49 (Generic Parser Support Investigation)
+
+### Overview
+
+Investigated generic syntax support across the compiler pipeline and created
+the Task 11 (monomorphization) design document.
+
+**Key finding**: Generic syntax parsing is **fully implemented** (parser →
+AST → HIR → MIR type slots). The MIR lowerer **discards** parsed generic
+args — always emitting empty `SubstsRef`. The plumbing exists; the data flow
+is severed at the HIR→MIR boundary.
+
+**Task 11 design document created**: `docs/develop/v0/task-11-monomorphization-design.md`
+with a 4-phase implementation plan:
+1. Substs propagation (generics_of query + lower_hir_ty_to_mir_ty fix)
+2. Substitution (substitute function)
+3. Monomorphization collection (collect_mono_items)
+4. Per-mono codegen (specialized layouts + functions)
+
+**No code changes** — investigation + design document only.
+
+### Verification
+
+- **Total: 7905 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.235.2 — Stage 16.48 (Final v0.3 Release Verification)

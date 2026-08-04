@@ -8,6 +8,7 @@
 //! - Stage 2: Type inference (populates `InferTy` in `HirTy`)
 //! - Stage 2: Borrow check (uses `HirId` to key borrow info)
 
+pub mod generics;
 pub mod id;
 pub mod kinds;
 pub mod lower;
