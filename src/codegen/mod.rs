@@ -96,7 +96,10 @@ pub(crate) use terminator::codegen_terminator;
 // mir_translation helpers — pub so lib.rs can re-export; pub(crate) for
 // sub-module access via super::*
 pub(crate) mod mir_translation;
-pub use mir_translation::{mir_type_to_emit_type_with_layouts, stdlib_type_kind_to_emit_type};
+pub use mir_translation::{
+    mir_type_to_emit_type_with_layouts, mir_type_to_emit_type_with_layouts_and_mono,
+    stdlib_type_kind_to_emit_type,
+};
 
 // Stage 13.1 (TD-028): dyn Trait LLVM IR text emission relocated from
 // `mir::dyn_trait` per §16 interface isolation fix. These 7 emit_*

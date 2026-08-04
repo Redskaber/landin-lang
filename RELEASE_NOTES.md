@@ -1,9 +1,57 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.243.0
+**Current version**: v0.244.0
 **Date**: 2026-08-04
-**Test count**: 343 rust lib tests + 2492 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 343 rust lib tests + 2504 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.244.0 — Stage 16.58 (Task 11 Phase 4c: Codegen Integration — TASK 11 COMPLETE)
+
+### Overview
+
+Implemented codegen integration with per-mono layouts — the final
+monomorphization step. The new `mir_type_to_emit_type_with_layouts_and_mono`
+function checks `lookup_mono_layout` for generic types, falling back to
+`AdtLayouts` for non-generic types.
+
+**Task 11 COMPLETE** — all phases done:
+- Phase 1 (1a-1c): Substs propagation (Stages 16.50-16.52)
+- Phase 2: Type substitution (Stage 16.53)
+- Phase 3: MonoItem collection (Stage 16.54)
+- Phase 4a: Specialized naming (Stage 16.55)
+- Phase 4b-pre: Nested generic args resolution (Stage 16.56)
+- Phase 4b: Per-mono layouts (Stage 16.57)
+- Phase 4c: Codegen integration (Stage 16.58)
+
+**Key result**: `Box<i32>` and `Box<bool>` now have distinct specialized
+layouts in the `MonoLayoutMap`. The codegen function resolves these to
+distinct `EmitType::Struct` values (field_tys: [i32] vs [bool]).
+
+**New function** in `src/mir/monomorphize.rs`:
+- `lookup_mono_layout(def_id, substs, mono_layouts) -> Option<&AdtLayout>`
+  — looks up specialized layout by (DefId, substs) key
+
+**New functions** in `src/codegen/mir_translation.rs`:
+- `mir_type_to_emit_type_with_layouts_and_mono(ty, layouts, mono_layouts) -> EmitType`
+  — codegen integration: checks mono layouts first for generic types
+- `adt_layout_to_emit_type(layout, layouts, mono_layouts) -> EmitType`
+  — private helper, recurses with mono_layouts
+
+**Re-exports**:
+- `src/mir/mod.rs`: `pub use monomorphize::{lookup_mono_layout, ...}`
+- `src/codegen/mod.rs`: `pub use mir_translation::{mir_type_to_emit_type_with_layouts_and_mono, ...}`
+
+**Tests**: +12 integration tests covering lookup_mono_layout (4 tests),
+build + lookup integration (3 tests), no regressions (2 tests), complex
+patterns (3 tests).
+
+Per §1.0 原則 6 "通用 > 特例": one function for generic + non-generic.
+Per §16: optional mono_layouts — backward compatible when None.
+
+### Verification
+
+- **Total: 8071 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.243.0 — Stage 16.57 (Task 11 Phase 4b: Per-Mono Layouts)

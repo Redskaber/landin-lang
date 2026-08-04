@@ -172,6 +172,156 @@ pub fn mir_type_to_emit_type_with_layouts(
     }
 }
 
+/// Stage 16.58 (Task 11 Phase 4c): Map a MIR Ty to an EmitType, resolving
+/// generic ADT instantiations via per-mono layouts.
+///
+/// This is the codegen integration point for monomorphization. It first
+/// checks `lookup_mono_layout` for generic types (non-empty substs). If
+/// found, it uses the specialized layout (with substituted field types).
+/// Otherwise, it falls back to the existing `AdtLayouts` map (non-generic
+/// types) or `mir_type_to_emit_type_with_layouts` (primitives, etc.).
+///
+/// ## Data Flow
+///
+/// ```text
+/// TyKind::Adt(def_id, substs)
+///     │
+///     ├─ if !substs.is_empty():
+///     │   └─ lookup_mono_layout(def_id, substs, mono_layouts)
+///     │       ├─ Some(layout) → use specialized layout (substituted fields)
+///     │       └─ None → fall through to AdtLayouts (legacy)
+///     │
+///     └─ else (empty substs):
+///         └─ AdtLayouts.get(def_id) (legacy non-generic path)
+/// ```
+///
+/// Per §23: `mir_type_to_emit_type_with_layouts_and_mono` follows
+/// `<verb>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>` pattern.
+/// Per §16: reads MonoLayoutMap + AdtLayouts (data only, no HIR).
+/// Per §1.0 原則 6 "通用 > 特例": one function for generic + non-generic.
+pub fn mir_type_to_emit_type_with_layouts_and_mono(
+    ty: &crate::mir::ty::Ty,
+    layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::monomorphize::MonoLayoutMap>,
+) -> EmitType {
+    use crate::mir::ty::TyKind;
+
+    match &ty.kind {
+        TyKind::Adt(def_id, substs) => {
+            // Stage 16.58: First, try the per-mono layout (for generic types).
+            if let Some(mono_layout) =
+                crate::mir::monomorphize::lookup_mono_layout(*def_id, substs, mono_layouts)
+            {
+                return adt_layout_to_emit_type(mono_layout, layouts, mono_layouts);
+            }
+            // Fall back to the legacy AdtLayouts map (non-generic types).
+            match layouts.get(def_id) {
+                Some(layout) => adt_layout_to_emit_type(layout, layouts, mono_layouts),
+                None => EmitType::I32, // test-context fallback
+            }
+        }
+        // Recursive types — recurse with mono_layouts so nested generic
+        // Adts resolve their specialized layouts.
+        TyKind::Tuple(tys) => {
+            if tys.is_empty() {
+                EmitType::Void
+            } else {
+                EmitType::Struct(
+                    tys.iter()
+                        .map(|t| {
+                            mir_type_to_emit_type_with_layouts_and_mono(t, layouts, mono_layouts)
+                        })
+                        .collect(),
+                )
+            }
+        }
+        TyKind::Array(elem, len) => {
+            let n = match &len.val {
+                ConstVal::Int(n) | ConstVal::Uint(n) => *n as u64,
+                _ => 0,
+            };
+            EmitType::array_of(
+                mir_type_to_emit_type_with_layouts_and_mono(elem, layouts, mono_layouts),
+                n,
+            )
+        }
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) => match &inner.kind {
+            TyKind::Str => crate::codegen::emit_fat_ptr_type(EmitType::I8),
+            TyKind::Slice(elem) => crate::codegen::emit_fat_ptr_type(
+                mir_type_to_emit_type_with_layouts_and_mono(elem, layouts, mono_layouts),
+            ),
+            _ => EmitType::ptr_to(mir_type_to_emit_type_with_layouts_and_mono(
+                inner,
+                layouts,
+                mono_layouts,
+            )),
+        },
+        TyKind::Slice(elem) => EmitType::ptr_to(mir_type_to_emit_type_with_layouts_and_mono(
+            elem,
+            layouts,
+            mono_layouts,
+        )),
+        TyKind::Closure(_, substs) => {
+            let fields: Vec<EmitType> = substs
+                .iter()
+                .map(|ty| mir_type_to_emit_type_with_layouts_and_mono(ty, layouts, mono_layouts))
+                .collect();
+            EmitType::Struct(fields)
+        }
+        // All other kinds — delegate to the existing function.
+        _ => mir_type_to_emit_type_with_layouts(ty, layouts),
+    }
+}
+
+/// Stage 16.58: Convert an AdtLayout to EmitType, recursing with mono_layouts.
+///
+/// Helper for `mir_type_to_emit_type_with_layouts_and_mono`. Handles both
+/// Struct and Enum layouts, recursing into field types with the mono_layouts
+/// parameter so nested generic Adts resolve correctly.
+fn adt_layout_to_emit_type(
+    layout: &crate::mir::body::AdtLayout,
+    layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::monomorphize::MonoLayoutMap>,
+) -> EmitType {
+    use crate::mir::body::AdtLayout;
+    match layout {
+        AdtLayout::Struct { field_tys } => {
+            if field_tys.is_empty() {
+                EmitType::Struct(vec![])
+            } else {
+                EmitType::Struct(
+                    field_tys
+                        .iter()
+                        .map(|t| {
+                            mir_type_to_emit_type_with_layouts_and_mono(t, layouts, mono_layouts)
+                        })
+                        .collect(),
+                )
+            }
+        }
+        AdtLayout::Enum {
+            discriminant_ty,
+            variant_payloads,
+        } => {
+            let mut field_tys = vec![mir_type_to_emit_type_with_layouts_and_mono(
+                discriminant_ty,
+                layouts,
+                mono_layouts,
+            )];
+            for payload in variant_payloads {
+                for t in payload {
+                    field_tys.push(mir_type_to_emit_type_with_layouts_and_mono(
+                        t,
+                        layouts,
+                        mono_layouts,
+                    ));
+                }
+            }
+            EmitType::Struct(field_tys)
+        }
+    }
+}
+
 /// Stage 5.82: Convert `StdlibTypeKind` to `EmitType` for codegen.
 ///
 /// Used by `codegen_dyn_trait_call` to emit the correct LLVM return type

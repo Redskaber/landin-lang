@@ -54,8 +54,9 @@ pub use substitute::{substitute, substitute_substs};
 // Stage 16.54 (Task 11 Phase 3): Monomorphization collection re-exports.
 // Stage 16.55 (Task 11 Phase 4a): Per-mono codegen — specialized naming.
 // Stage 16.57 (Task 11 Phase 4b): Per-mono layouts.
+// Stage 16.58 (Task 11 Phase 4c): Codegen integration — lookup_mono_layout.
 pub use monomorphize::{
-    build_mono_item_names, build_mono_layouts, collect_mono_items, mangle_ty,
+    build_mono_item_names, build_mono_layouts, collect_mono_items, lookup_mono_layout, mangle_ty,
     mangle_ty_with_interner, mono_item_name, MonoItem, MonoLayoutKey, MonoLayoutMap,
 };
 

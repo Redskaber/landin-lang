@@ -820,6 +820,33 @@ pub fn build_mono_layouts(items: &[MonoItem], hir: &crate::hir::HirCrate) -> Mon
     map
 }
 
+/// Stage 16.58 (Task 11 Phase 4c): Look up a per-mono layout for a Ty.
+///
+/// Given a `TyKind::Adt(def_id, substs)` and an optional `MonoLayoutMap`,
+/// returns the specialized `AdtLayout` if one exists for this instantiation.
+/// Returns `None` if:
+/// - `mono_layouts` is `None` (not built)
+/// - `substs` is empty (non-generic — use the existing AdtLayouts map)
+/// - No layout was built for this (def_id, substs) pair
+///
+/// This is the codegen integration point — codegen calls this first for
+/// Adt types, falling back to `AdtLayouts` when it returns `None`.
+///
+/// Per §23: `lookup_mono_layout` follows `<verb>_<noun>_<noun>` pattern.
+/// Per §16: reads MonoLayoutMap (built from MIR + HIR, no HIR at lookup time).
+pub fn lookup_mono_layout<'a>(
+    def_id: DefId,
+    substs: &crate::mir::ty::SubstsRef,
+    mono_layouts: Option<&'a MonoLayoutMap>,
+) -> Option<&'a crate::mir::body::AdtLayout> {
+    let map = mono_layouts?;
+    if substs.is_empty() {
+        return None;
+    }
+    let key = MonoLayoutKey::new(def_id, substs);
+    map.get(&key)
+}
+
 // =====================================================================
 // Unit Tests
 // =====================================================================

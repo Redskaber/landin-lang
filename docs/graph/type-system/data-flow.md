@@ -1,7 +1,7 @@
 # Type System Data Flow (Typeck + Borrowck)
 
 > **Date**: 2026-08-04
-> **Version**: v0.243.0 (Stage 16.57 — Task 11 Phase 4b complete)
+> **Version**: v0.244.0 (Stage 16.58 — Task 11 ALL PHASES COMPLETE)
 
 ## Type Checking Data Flow
 
@@ -213,7 +213,7 @@ HIR (HirGenerics, HirPathSegment.args preserved)
 | 4a | ✅ | 16.55 | Specialized naming (`mangle_ty`, `mono_item_name`) |
 | 4b-pre | ✅ | 16.56 | Nested generic args resolution (prerequisite for 4b) |
 | 4b | ✅ | 16.57 | Per-mono layouts (`MonoLayoutKey`, `build_mono_layouts`) |
-| 4c | 🔧 | — | Codegen integration — use MonoLayoutMap in codegen |
+| 4c | ✅ | 16.58 | Codegen integration (`lookup_mono_layout`, `_and_mono`) |
 
 ### Per-Mono Codegen Naming Data Flow (Stage 16.55, Phase 4a)
 

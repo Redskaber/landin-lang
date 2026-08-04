@@ -27984,3 +27984,79 @@ Stage Summary:
 - Key milestone: Box<i32> → AdtLayout::Struct { field_tys: [i32] } (substituted)
 - Next: Phase 4c — codegen integration (use MonoLayoutMap in codegen)
 - 8059 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.58-codegen-integration
+Agent: Super Z (main)
+Task: Stage 16.58 — Task 11 Phase 4c: Codegen integration. v0.243.0 → v0.244.0. TASK 11 COMPLETE.
+
+Work Log:
+- Baseline: v0.243.0 / 343 lib + 2492 integration + 5224 conformance = 8059
+
+### 1. Implemented lookup_mono_layout (src/mir/monomorphize.rs)
+
+New helper function:
+- lookup_mono_layout(def_id, substs, mono_layouts) -> Option<&AdtLayout>
+  - Looks up specialized layout by (DefId, substs) key
+  - Returns None for: None map, empty substs, key not found
+  - Lifetime parameter ensures borrowed layout outlives caller
+
+### 2. Implemented mir_type_to_emit_type_with_layouts_and_mono (src/codegen/mir_translation.rs)
+
+New codegen function:
+- mir_type_to_emit_type_with_layouts_and_mono(ty, layouts, mono_layouts) -> EmitType
+  - For TyKind::Adt(def_id, substs):
+    - If substs non-empty: try lookup_mono_layout first
+    - Fall back to AdtLayouts (non-generic types)
+    - Fall back to EmitType::I32 (test-context)
+  - Recurses into Tuple, Array, Ref, Slice, Closure with mono_layouts
+  - All other kinds: delegate to mir_type_to_emit_type_with_layouts
+
+Private helper:
+- adt_layout_to_emit_type(layout, layouts, mono_layouts) -> EmitType
+  - Converts AdtLayout to EmitType, recursing with mono_layouts
+  - Handles Struct (zero-field, non-empty) and Enum layouts
+
+### 3. Re-exports
+
+- src/mir/mod.rs: pub use monomorphize::{..., lookup_mono_layout, ...}
+- src/codegen/mod.rs: pub use mir_translation::{mir_type_to_emit_type_with_layouts_and_mono, ...}
+
+### 4. Added 12 Integration Tests
+
+Created tests/v0/stage16/plan/stage16_58_codegen_integration_tests.rs:
+- §1 lookup_mono_layout (4 tests): finds generic, non-generic, None map, empty substs
+- §2 build + lookup integration (3 tests): Box<i32>, Box<bool>, different instantiations
+- §3 No regressions (2 tests): non-generic, simple program
+- §4 Complex patterns (3 tests): Pair, nested, generic enum
+
+### 5. Documentation Updates
+
+- Created docs/develop/v0/stage-16/stage-16.58-codegen-integration.md
+- Created docs/tests/v0/stage16/stage-16.58-test-plan.md
+- Updated docs/develop/v0/task-11-monomorphization-design.md — ALL PHASES COMPLETE
+- Updated docs/graph/type-system/data-flow.md — version + status table (4c ✅)
+- Updated RELEASE_NOTES.md — v0.244.0 entry (Task 11 COMPLETE)
+- Updated README.md — version, test stats
+- Updated Cargo.toml — v0.243.0 → v0.244.0
+
+### 6. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt --check — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 343/343 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2504/2504 PASS (+12 new)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 8071 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.58 PASSED — Codegen integration implemented
+- Task 11 Phase 4c COMPLETE
+- TASK 11 ALL PHASES COMPLETE (1a-1c, 2, 3, 4a, 4b-pre, 4b, 4c)
+- lookup_mono_layout: looks up specialized layout by (DefId, substs)
+- mir_type_to_emit_type_with_layouts_and_mono: codegen integration
+- adt_layout_to_emit_type: private helper, recurses with mono_layouts
+- Key milestone: Box<i32> and Box<bool> produce distinct specialized layouts
+- Monomorphization infrastructure fully in place
+- 8071 tests, 0 failures, 0 warnings
