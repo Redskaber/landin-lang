@@ -4,15 +4,10 @@
 //! Handles `TerminatorKind::Return`, `Goto`, `SwitchInt`, `Call`, `Drop`,
 //! `Assert`, `Unreachable`.
 
-#![allow(unused_imports)]
-use super::mir_translation::{
-    codegen_place_load, codegen_place_load_typed, compute_place_address, detect_operand_type,
-    detect_place_storage_type, detect_place_type, unwrap_fat_ptr_for_index,
-};
+// Stage 16.42: Removed `#[allow(unused_imports)]` — fixed the underlying
+// unused imports instead. Per §1.0 原則 5 "去除兼容思维".
+use super::mir_translation::detect_operand_type;
 use super::*;
-#[allow(unused_imports)]
-use crate::mir::body::TerminatorKind;
-use crate::mir::body::*;
 use crate::mir::place::*;
 use crate::mir::ty::ConstVal;
 #[allow(clippy::too_many_arguments)]

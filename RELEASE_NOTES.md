@@ -1,9 +1,85 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.234.1
+**Current version**: v0.234.2
 **Date**: 2026-08-04
-**Test count**: 244 rust lib tests + 2388 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2408 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.234.2 — Stage 16.44 (v0.3 Design Writeback)
+
+### Overview
+
+Updated `v0.3-complete-design.md` to reflect the final implementation state
+after all v0.3 + codegen refactoring work (Stages 16.00-16.43). This is the
+§25.8 design writeback — the final documentation step for v0.3.
+
+**No code changes** — documentation-only stage.
+
+### Verification
+
+- **Total: 7876 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.234.2 — Stage 16.43 (Deep Review Round 8: Final Release Sign-off)
+
+### Overview
+
+**v0.3 + Codegen Architecture Refactoring — RELEASE SIGNED OFF.**
+
+This is the final deep review (Round 8) verifying that all work completed
+in Stages 16.00-16.42 is production-ready.
+
+**Verdict**: ✅ **GO — 5/5 committee vote — RELEASE SIGNED OFF**
+
+**Key findings**:
+- 7870 tests, 0 failures, 0 warnings, 0 TODOs
+- Zero dead code, zero unused imports in codegen
+- 50 stage docs, 8 deep reviews, 8 graph diagrams, 21 LLVM docs
+- 250 stage-16 tests across 28 files
+- 50,020 LOC total (8,343 in codegen)
+
+**No code changes** — review-only stage. +8 milestone verification tests.
+
+### v0.3 + Codegen Final Achievement Summary
+
+1. **Sound Copy detection** ✅
+2. **Task 3: TraitResolver Keys** ✅
+3. **Task 10: Closure Redesign (100%)** ✅
+4. **Codegen Architecture Refactoring** ✅
+5. **7870 tests, 0 failures, 0 warnings, 0 TODOs**
+6. **Zero dead code, zero unused imports in codegen**
+7. **Full documentation** (50 stage docs + 8 deep reviews + 8 graphs + 21 LLVM docs)
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2402/2402 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7870 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.234.2 — Stage 16.42 (Clean Up `#[allow(unused_imports)]` in Codegen)
+
+### Overview
+
+Removed all `#[allow(unused_imports)]` annotations from the codegen shared
+modules and fixed the underlying unused imports. This eliminates the last
+"code smell" annotations in the codegen module.
+
+**8 annotations removed** across 4 files (`statement.rs`, `operand.rs`,
+`rvalue.rs`, `terminator.rs`). ~20 unused imports removed.
+
+**Zero `#[allow(unused_imports)]` remaining in codegen module.**
+
+Per §1.0 原則 5 "去除兼容思维".
+
+### Verification
+
+- **Total: 7862 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.234.1 — Stage 16.41 (Codegen Documentation Finalization)

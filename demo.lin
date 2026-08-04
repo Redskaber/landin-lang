@@ -2,6 +2,5 @@
 fn main() -> i32 {
   let welcome: &'static str = "hello,world!";
   println!("landin: {}", welcome);
-  println!("lambda: {}", (|x: i32| x + 1)(1023));
   0
 }

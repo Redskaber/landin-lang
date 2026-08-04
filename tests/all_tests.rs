@@ -380,3 +380,9 @@ mod stage16_39_deep_review_round7_tests;
 mod stage16_40_dead_code_sweep_tests;
 #[path = "v0/stage16/plan/stage16_41_codegen_docs_tests.rs"]
 mod stage16_41_codegen_docs_tests;
+#[path = "v0/stage16/plan/stage16_42_cleanup_imports_tests.rs"]
+mod stage16_42_cleanup_imports_tests;
+#[path = "v0/stage16/plan/stage16_43_deep_review_round8_tests.rs"]
+mod stage16_43_deep_review_round8_tests;
+#[path = "v0/stage16/plan/stage16_44_design_writeback_tests.rs"]
+mod stage16_44_design_writeback_tests;

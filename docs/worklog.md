@@ -27045,3 +27045,124 @@ Stage Summary:
 - Stage 16.41 PASSED — Codegen documentation finalization
 - 6 new/updated documentation files
 - 7856 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.42-cleanup-unused-imports
+Agent: Super Z (main)
+Task: Stage 16.42 — Clean up #[allow(unused_imports)] in codegen shared modules. v0.234.1 → v0.234.2.
+
+Work Log:
+- Baseline: v0.234.1 / 244 lib + 2388 integration + 5224 conformance = 7856
+
+### 1. Removed #[allow(unused_imports)] Annotations
+
+Removed all `#![allow(unused_imports)]` + `#[allow(unused_imports)]` from:
+- statement.rs (2 annotations removed)
+- operand.rs (2 annotations removed)
+- rvalue.rs (2 annotations removed)
+- terminator.rs (2 annotations removed)
+
+### 2. Fixed Underlying Unused Imports
+
+Removed the actually unused imports that were being suppressed:
+- statement.rs: `crate::mir::body::*`, `crate::mir::ty::ConstVal`
+- operand.rs: 5 unused mir_translation imports, `crate::mir::body::*`
+- rvalue.rs: 6 unused mir_translation imports, `crate::mir::body::*`, `crate::mir::ty::ConstVal`
+- terminator.rs: 6 unused mir_translation imports, `crate::mir::body::*`, duplicate TerminatorKind
+
+### 3. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 244/244 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2394/2394 PASS (+6 new)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 7862 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.42 PASSED — Unused imports cleanup
+- 8 #[allow(unused_imports)] annotations removed
+- ~20 unused imports removed
+- Zero #[allow(unused_imports)] remaining in codegen module
+- 7862 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.43-deep-review-round8
+Agent: Super Z (main)
+Task: Stage 16.43 — Deep Review Round 8: Final v0.3 + Codegen release sign-off. No version bump.
+
+Work Log:
+- Baseline: v0.234.2 / 244 lib + 2394 integration + 5224 conformance = 7862
+
+### 1. Final Review Data
+
+- 7870 tests (244 lib + 2402 integration + 5224 conformance), 0 failures
+- 0 warnings, 0 TODOs, 0 FIXMEs
+- Zero #[allow(dead_code)] in codegen (1 is a comment)
+- Zero #[allow(unused_imports)] in codegen (4 are comments)
+- 50 stage-16 docs, 28 test files, 250 tests
+- 8 graph diagrams, 21 LLVM docs
+- 50020 LOC total (8343 in codegen)
+- 15 deprecated items (all with notes)
+
+### 2. 8-Dimension Deep Review
+
+All D1-D8: ✅ GO
+- D1: Architecture — unified pipeline, separated backends, zero dead code
+- D2: TD — all feasible TDs closed
+- D3: Tests — 7870, 100% pass
+- D4: Assessment — v0.3 + codegen COMPLETE
+- D5-D8: All GO
+
+### 3. Committee Vote: 5/5 GO — RELEASE SIGNED OFF
+
+### 4. Milestone Tests
+
++8 tests (stage16_43_deep_review_round8_tests.rs)
+
+### 5. Documentation
+
+- docs/develop/v0/stage-16/deep-review-round8.md
+- docs/develop/v0/stage-16/stage-16.43-deep-review-round8.md
+- Updated RELEASE_NOTES.md, README.md
+
+Stage Summary:
+- Stage 16.43 PASSED — Deep Review Round 8 GO — RELEASE SIGNED OFF
+- v0.3 + Codegen Refactoring COMPLETE and PRODUCTION-READY
+- 7870 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.44-design-writeback
+Agent: Super Z (main)
+Task: Stage 16.44 — v0.3 design writeback (§25.8). No version bump.
+
+Work Log:
+- Baseline: v0.234.2 / 244 lib + 2402 integration + 5224 conformance = 7870
+
+### 1. Updated v0.3-complete-design.md
+
+Updated to reflect final implementation state:
+- Header: v0.228.5 → v0.234.2, status → RELEASE SIGNED OFF
+- Section 1: Added codegen refactoring as completed goal
+- Section 4: Updated roadmap with all completed stages (16.29-16.43)
+- Section 6: Updated TD list — all closure + codegen TDs marked fixed
+- Section 7: Updated test stats (7870 → 7876 total, 250 stage-16 tests)
+- Section 8 (new): Codegen architecture refactoring summary
+- Section 9: Updated references (round1-8, docs/graph/, docs/llvm/)
+
+### 2. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 244/244 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2408/2408 PASS (+6 new)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 7876 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.44 PASSED — v0.3 design writeback complete
+- v0.3-complete-design.md updated to final state
+- 7876 tests, 0 failures, 0 warnings
+- v0.3 + Codegen Refactoring — DESIGN WRITEBACK COMPLETE

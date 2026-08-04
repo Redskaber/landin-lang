@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.234.1 (v0.2 FINAL + v0.3 RELEASE APPROVED — Closure redesign 100% COMPLETE + codegen architecture refactoring COMPLETE: unified pipeline, text/LLVM backends separated, all dead code removed, full documentation in docs/graph/ + docs/llvm/, Deep Review Round 7 GO)
+**Version**: v0.234.2 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF — Closure redesign 100% COMPLETE + codegen architecture refactoring COMPLETE: unified pipeline, text/LLVM backends separated, all dead code + unused imports removed, full documentation, Deep Review Round 8 GO — RELEASE SIGNED OFF)
 **Date**: 2026-08-04
 
 A work-in-progress systems programming language inspired by Rust, designed for

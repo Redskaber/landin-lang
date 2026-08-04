@@ -3,17 +3,11 @@
 //! Extracted from codegen/mod.rs per Stage 13.28 codegen reorganization.
 //! Handles `Rvalue::Use`, `BinaryOp`, `UnaryOp`, `Ref`, `Aggregate`, etc.
 
-#![allow(unused_imports)]
-#[allow(unused_imports)]
-use super::mir_translation::{
-    codegen_place_load, codegen_place_load_typed, compute_place_address, detect_operand_type,
-    detect_place_storage_type, detect_place_type, mir_type_to_emit_type_with_layouts,
-    unwrap_fat_ptr_for_index,
-};
+// Stage 16.42: Removed `#[allow(unused_imports)]` — fixed the underlying
+// unused imports instead. Per §1.0 原則 5 "去除兼容思维".
+use super::mir_translation::{detect_operand_type, mir_type_to_emit_type_with_layouts};
 use super::*;
-use crate::mir::body::*;
 use crate::mir::place::*;
-use crate::mir::ty::ConstVal;
 pub(crate) fn codegen_rvalue(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
