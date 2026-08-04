@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.228.8 (v0.2 FINAL + v0.3 进行中 — Task 10 codegen closure-as-pointer fix, Sound Copy + Task 3 + Task 10 Steps 1+2)
+**Version**: v0.229.6 (v0.2 FINAL + v0.3 进行中 — Closure switch 通解: no-capture + i32 capture use synthesized call, complex captures use inline)
 **Date**: 2026-08-03
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -391,4 +391,4 @@ https://github.com/redskaber/landin-lang
 
 ---
 
-**Last updated**: 2026-08-03 (v0.228.8, Stage 16.21 — Task 10 codegen closure-as-pointer fix)
+**Last updated**: 2026-08-03 (v0.229.6, Stage 16.28 — Closure switch 通解: complex capture analysis + typeck gap found)

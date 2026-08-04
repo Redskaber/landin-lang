@@ -579,7 +579,14 @@ pub fn emit_type_to_llvm_str(ty: &EmitType) -> String {
         EmitType::Void => "void".into(),
         EmitType::Struct(fields) => {
             if fields.is_empty() {
-                "{}".into()
+                // Stage 16.22: Empty struct ({}) has size 0 in LLVM, which
+                // causes undefined behavior when used with alloca (the
+                // pointer is invalid). Use i8 (size 1) instead to ensure
+                // the pointer is valid. This is safe because empty structs
+                // carry no data — the i8 byte is never read.
+                // Per §1.0 原則 9 "正确 > 妥协": correct runtime behavior
+                // over matching the conceptual type exactly.
+                "i8".into()
             } else {
                 let parts: Vec<String> = fields.iter().map(emit_type_to_llvm_str).collect();
                 format!("{{ {} }}", parts.join(", "))

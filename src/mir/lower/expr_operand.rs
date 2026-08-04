@@ -316,11 +316,28 @@ fn lower_closure_call_to_synthesized(
     // Build the call arguments: [self (closure struct), args...]
     let mut call_args: Vec<Operand> = Vec::new();
     // First arg: the closure struct (self).
-    // Stage 16.21: Use Operand::Move instead of Copy, because Closure
-    // types are not Copy (borrowck rejects Copy of non-Copy types).
-    // The closure struct is passed by pointer in codegen, so the Move
-    // doesn't actually consume the value — it's just for borrowck.
-    call_args.push(Operand::Move(Place::local(closure_local, expr.span)));
+    // Stage 16.22: For closures without captures (empty struct), use
+    // Operand::Copy — the empty struct is effectively Copy, and this
+    // allows chained calls like f(f(f(0))).
+    // For closures WITH captures, use Operand::Move (borrowck requires
+    // it for non-Copy types). But capture closures use the inline path,
+    // so this code is only reached for no-capture closures.
+    // Stage 16.23: For closures WITH captures, Closure is not Copy.
+    // Use Operand::Move (borrowck requires it). But codegen passes the
+    // closure struct by pointer (alloca), so the Move doesn't actually
+    // consume the value — the pointer is just passed to the callee.
+    // For no-capture closures, Copy is used (Closure is Copy when empty).
+    let closure_ty = cx.mir.local(closure_local).ty.clone();
+    let is_copy_closure = matches!(
+        &closure_ty.kind,
+        crate::mir::ty::TyKind::Closure(_, substs) if substs.is_empty()
+    );
+    let self_operand = if is_copy_closure {
+        Operand::Copy(Place::local(closure_local, expr.span))
+    } else {
+        Operand::Move(Place::local(closure_local, expr.span))
+    };
+    call_args.push(self_operand);
     // Remaining args: the call arguments.
     for &arg_local in arg_locals {
         call_args.push(Operand::Copy(Place::local(arg_local, expr.span)));
@@ -773,16 +790,31 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Per §16: the closure body is HIR data sunk into the lowering
             // context as a side-table. No HIR access from codegen.
             //
-            // Stage 16.21 (Task 10 Steps 3+4): Codegen fixes applied:
-            // - Closure self param as OpaquePtr (scoped to synthesized functions)
-            // - Call site passes closure local's alloca pointer
-            // - fn_sigs fixed (params, not captures)
-            // - Operand::Move for closure self (borrowck)
-            // - codegen_crate_to_module emits synthesized functions
-            // But runtime output is still wrong (likely LLVM IR type
-            // mismatch with empty struct alloca). Reverted to inline path.
-            if let Some(info) = cx.closure_bodies.get(&func_local).cloned() {
-                return lower_closure_call_inline(cx, info, func_local, &arg_locals, expr);
+            // Stage 16.28 (Task 10 Steps 3+4): Switch from inline to
+            // synthesized `call` function for closures WITHOUT captures
+            // and with i32 captures. Struct captures still use inline
+            // because LLVMSysEmitter crashes during GEP building for
+            // struct-typed capture fields.
+            if cx.closure_bodies.contains_key(&func_local) {
+                let has_complex_captures = cx
+                    .closure_bodies
+                    .get(&func_local)
+                    .map(|info| {
+                        info.captures.iter().any(|(_, ty)| {
+                            matches!(
+                                ty.kind,
+                                crate::mir::ty::TyKind::Adt(_, _)
+                                    | crate::mir::ty::TyKind::Closure(_, _)
+                            )
+                        })
+                    })
+                    .unwrap_or(false);
+                if !has_complex_captures {
+                    return lower_closure_call_to_synthesized(cx, func_local, &arg_locals, expr);
+                } else {
+                    let info = cx.closure_bodies.get(&func_local).cloned().unwrap();
+                    return lower_closure_call_inline(cx, info, func_local, &arg_locals, expr);
+                }
             }
 
             // Stage 3.30 (per §15): inspect the func operand's type to decide

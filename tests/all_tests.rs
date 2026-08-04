@@ -352,3 +352,5 @@ mod stage16_15_deep_review_round3_tests;
 mod stage16_18_deep_review_round4_tests;
 #[path = "v0/stage16/plan/stage16_19_design_writeback_tests.rs"]
 mod stage16_19_design_writeback_tests;
+#[path = "v0/stage16/plan/stage16_25_deep_review_round5_tests.rs"]
+mod stage16_25_deep_review_round5_tests;

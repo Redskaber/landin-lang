@@ -116,6 +116,11 @@ pub fn ty_is_copy_with_resolver(
         // Old fallback of `true` (treating all Adt as Copy) was unsound —
         // now correctly returns false if no `impl Copy for <Type>` exists.
         Adt(def_id, _) => resolver.is_copy_builtin(*def_id, interner),
+        // Stage 16.22: Closures with no captures (empty substs) are Copy.
+        // This allows chained calls like f(f(f(0))) where f is a no-capture
+        // closure. Closures with captures are NOT Copy (they own captured
+        // values that may not be Copy).
+        Closure(_, substs) if substs.is_empty() => true,
         Str | Slice(_) | Closure(_, _) | Param(_) => false,
     }
 }

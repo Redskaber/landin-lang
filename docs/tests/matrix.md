@@ -270,7 +270,8 @@
 | **16.19** | **v0.3 设计文档回写补充 — 创建 `v0.3-complete-design.md` 完整设计文档（路线图、架构决策、技术债、测试统计）。原 v0.4 规划合并到 v0.3 路线图。+6 design writeback verification tests。Per §25.8 design-writeback + §13.4.** | **+6 rust (2241 total), 0 conformance changes (5224 total)** | ✅ |
 | **16.20** | **Task 10 Step 3+4 return local fix — 修复 `build_synthesized_closure_mir_body()` 中 LocalId(0) 被错误分配为闭包结构体类型（应为返回类型）。现在 LocalId(0)=返回, LocalId(1)=self, LocalId(2+)=参数。永久性改进。切换仍回退（codegen 需要将 Closure 类型参数按指针传递）。Per §1.0 原則 9.** | **0 (return local fix, switch still deferred)** | ✅ |
 | **16.21** | **Task 10 Steps 3+4 codegen closure-as-pointer fix — 6 项 codegen 修复（self OpaquePtr, 调用点指针, fn_sigs, Operand::Move, codegen_crate_to_module, scoped alloca）。LLVM IR 结构正确但运行时输出错误（空结构体 alloca UB）。切换回退。永久性 codegen 改进。Per §1.0 原則 9.** | **0 (codegen fixes, switch still deferred)** | ✅ |
-| **Total Stage 15+16** | **v0.2 COMPLETE + v0.3 进行中: Sound Copy: COMPLETE. Task 3: COMPLETE. Task 10: Steps 1+2 COMPLETE + Steps 3+4 codegen fixes (return local + pointer + fn_sigs + alloca). 设计文档回写: COMPLETE. Deep Review Round 1+2+3+4: GO. 0 TODOs remaining. 7709 tests, 0 failures, 0 warnings. v0.228.8!** | **+299 rust, +8 conformance** | ✅ |
+| **16.22** | **🎉 Task 10 Steps 3+4 CLOSURE SWITCH SUCCESS — 无捕获闭包切换到合成 call 函数！空结构体 alloca 修复（{} → i8）。无捕获 Closure 是 Copy（substs.is_empty()）。运行时验证：f(10)=11 ✅。所有 7709 测试通过。捕获闭包仍用内联路径（需要 GEP-from-pointer）。minor bump。Per §1.0 原則 9.** | **0 (switch for no-capture closures, capture closures still inline)** | ✅ |
+| **Total Stage 15+16** | **v0.2 COMPLETE + v0.3 进行中: Sound Copy: COMPLETE. Task 3: COMPLETE. **Task 10: Steps 1-4 COMPLETE for no-capture closures!** + capture Deref projection + scoped codegen fixes (LLVMSysEmitter crash for capture closures). 设计文档回写: COMPLETE. Deep Review Round 1+2+3+4: GO. 0 TODOs remaining. 7709 tests, 0 failures, 0 warnings. v0.229.1!** | **+299 rust, +8 conformance** | ✅ |
 
 ## Deferred Items (≤5% allowed per §17.3)
 

@@ -1146,15 +1146,28 @@ pub fn build_synthesized_closure_mir_body(
     }
 
     // Extract captures from `self` and register their hir_ids.
+    // Stage 16.23: `self` is passed as a pointer (OpaquePtr) in codegen.
+    // To access capture fields, we need to first Deref the pointer, then
+    // project the field. This generates GEP in LLVM:
+    //   getelementptr inbounds { ty0, ty1, ... }, ptr %self, i32 0, i32 field_idx
     for (cap_hir_id, field_idx, cap_ty) in &func.captures {
         let extract_local = cx.mir.new_local(cap_ty.clone(), None, func.body.span);
-        // Assign: extract_local = Copy(Projection(self, Field(field_idx, cap_ty)))
+        // Assign: extract_local = Copy(Projection(Projection(self, Deref), Field(field_idx, cap_ty)))
         cx.push_assign(
             crate::mir::place::Place::local(extract_local, func.body.span),
             crate::mir::place::Rvalue::Use(crate::mir::place::Operand::Copy(
                 crate::mir::place::Place {
                     kind: crate::mir::place::PlaceKind::Projection(
-                        Box::new(crate::mir::place::Place::local(self_local, func.body.span)),
+                        Box::new(crate::mir::place::Place {
+                            kind: crate::mir::place::PlaceKind::Projection(
+                                Box::new(crate::mir::place::Place::local(
+                                    self_local,
+                                    func.body.span,
+                                )),
+                                crate::mir::place::ProjectionElem::Deref,
+                            ),
+                            span: func.body.span,
+                        }),
                         crate::mir::place::ProjectionElem::Field(
                             crate::mir::place::FieldId(*field_idx),
                             cap_ty.clone(),

@@ -221,11 +221,29 @@ pub(crate) fn detect_place_storage_type(
     layouts: &crate::mir::body::AdtLayouts,
 ) -> EmitType {
     match &lv.kind {
-        PlaceKind::Local(id) => mir
-            .local_decls
-            .get(id.0 as usize)
-            .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
-            .unwrap_or(EmitType::I32),
+        PlaceKind::Local(id) => {
+            // Stage 16.23: For Closure-typed self in synthesized functions,
+            // the storage type is the struct layout (with capture fields).
+            // Only applies to synthesized functions (mir.def_id.is_some()).
+            let ld = mir.local_decls.get(id.0 as usize);
+            if let Some(ld) = ld {
+                if mir.def_id.is_some()
+                    && id.0 == 1
+                    && matches!(ld.ty.kind, crate::mir::ty::TyKind::Closure(_, _))
+                {
+                    if let crate::mir::ty::TyKind::Closure(_, substs) = &ld.ty.kind {
+                        let fields: Vec<EmitType> = substs
+                            .iter()
+                            .map(|t| mir_type_to_emit_type_with_layouts(t, layouts))
+                            .collect();
+                        return EmitType::Struct(fields);
+                    }
+                }
+                mir_type_to_emit_type_with_layouts(&ld.ty, layouts)
+            } else {
+                EmitType::I32
+            }
+        }
         // Stage 3.54: for Field projection, return the FIELD's type (not the
         // base's type). Was: returned detect_place_storage_type(base), which
         // gave the struct type instead of the field type — causing
@@ -305,11 +323,25 @@ pub(crate) fn detect_place_type(
     layouts: &crate::mir::body::AdtLayouts,
 ) -> EmitType {
     match &lv.kind {
-        PlaceKind::Local(id) => mir
-            .local_decls
-            .get(id.0 as usize)
-            .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
-            .unwrap_or(EmitType::I32),
+        PlaceKind::Local(id) => {
+            let ld = mir.local_decls.get(id.0 as usize);
+            // Stage 16.23: In synthesized closure functions, the `self`
+            // parameter (LocalId(1)) has a Closure type but is stored as
+            // a pointer (OpaquePtr) in the alloca. When detecting the
+            // place type for loading, return OpaquePtr so the load
+            // produces a pointer value (not a struct value).
+            if let Some(ld) = ld {
+                if id.0 == 1
+                    && matches!(ld.ty.kind, crate::mir::ty::TyKind::Closure(_, _))
+                    && mir.def_id.is_some()
+                {
+                    return EmitType::OpaquePtr;
+                }
+                mir_type_to_emit_type_with_layouts(&ld.ty, layouts)
+            } else {
+                EmitType::I32
+            }
+        }
         PlaceKind::Projection(base, elem) => match elem {
             ProjectionElem::Deref => {
                 let base_ty = detect_place_type(mir, base, layouts);
@@ -700,10 +732,19 @@ pub(crate) fn codegen_place_load_typed(
                     // load the reference value (the pointer) — don't use
                     // the alloca pointer directly. The alloca points to a
                     // POINTER (the reference), not the struct.
+                    // Stage 16.23: Also handle Closure types — the `self`
+                    // parameter in synthesized closure functions is a
+                    // Closure-typed local whose alloca stores a pointer
+                    // (passed as OpaquePtr). We need to load the pointer
+                    // value from the alloca before GEP-ing into it.
                     let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone());
                     if let Some(ty) = local_ty {
-                        if matches!(&ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
-                            // Ref — load the pointer value
+                        if matches!(&ty.kind, crate::mir::ty::TyKind::Ref(_, _, _))
+                            || (mir.def_id.is_some()
+                                && id.0 == 1
+                                && matches!(&ty.kind, crate::mir::ty::TyKind::Closure(_, _)))
+                        {
+                            // Ref or Closure — load the pointer value
                             let ptr_ty = detect_place_type(mir, base, layouts);
                             codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
                         } else {
@@ -752,12 +793,24 @@ pub(crate) fn codegen_place_load_typed(
                         // Try MIR resolution
                         if let PlaceKind::Local(id) = &base.kind {
                             if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                                // Stage 16.28: Handle Ref types — resolve pointee
                                 if let crate::mir::ty::TyKind::Ref(_, _, inner) = &ld.ty.kind {
                                     let resolved =
                                         mir_type_to_emit_type_with_layouts(inner, layouts);
                                     if matches!(resolved, EmitType::Struct(_)) {
                                         struct_ty = resolved;
                                     }
+                                }
+                                // Stage 16.28 (通解): Handle Closure types —
+                                // resolve struct layout from substs (capture fields).
+                                // This is the general solution for ALL capture types
+                                // (i32, struct, nested struct, etc.), not just i32.
+                                if let crate::mir::ty::TyKind::Closure(_, substs) = &ld.ty.kind {
+                                    let fields: Vec<EmitType> = substs
+                                        .iter()
+                                        .map(|t| mir_type_to_emit_type_with_layouts(t, layouts))
+                                        .collect();
+                                    struct_ty = EmitType::Struct(fields);
                                 }
                             }
                         }
@@ -919,9 +972,20 @@ pub(crate) fn detect_operand_type(
         }
         Operand::Copy(lv) | Operand::Move(lv) => {
             if let PlaceKind::Local(id) = &lv.kind {
-                mir.local_decls
-                    .get(id.0 as usize)
-                    .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
+                mir.local_decls.get(id.0 as usize).map(|ld| {
+                    // Stage 16.27: For Closure-typed operands at call sites,
+                    // use OpaquePtr. This ensures the forward declaration
+                    // matches the function definition's param type.
+                    // But only for Move (which is the self arg in closure calls) —
+                    // Copy is used for regular closure struct values.
+                    if matches!(ld.ty.kind, crate::mir::ty::TyKind::Closure(_, _))
+                        && matches!(op, Operand::Move(_))
+                    {
+                        EmitType::OpaquePtr
+                    } else {
+                        mir_type_to_emit_type_with_layouts(&ld.ty, layouts)
+                    }
+                })
             } else {
                 Some(detect_place_type(mir, lv, layouts))
             }

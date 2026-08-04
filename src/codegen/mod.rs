@@ -585,7 +585,25 @@ fn build_fn_sigs_map(
     for (def_id, name) in fn_name_by_def_id {
         if let Some(sig) = fn_sigs.get(def_id) {
             let ret_ty = mir_type_to_emit_type(&sig.output);
-            let param_tys: Vec<EmitType> = sig.inputs.iter().map(mir_type_to_emit_type).collect();
+            let param_tys: Vec<EmitType> = sig
+                .inputs
+                .iter()
+                .map(|t| {
+                    // Stage 16.27: For Closure-typed params, use OpaquePtr
+                    // (not Struct). This ensures the forward declaration
+                    // created by get_or_declare_function matches the
+                    // function definition's param type (OpaquePtr).
+                    // Without this, the forward declaration uses Struct
+                    // type from mir_type_to_emit_type, but the function
+                    // definition uses OpaquePtr from the is_self_param
+                    // check → type mismatch → segfault.
+                    if matches!(t.kind, crate::mir::ty::TyKind::Closure(_, _)) {
+                        EmitType::OpaquePtr
+                    } else {
+                        mir_type_to_emit_type(t)
+                    }
+                })
+                .collect();
             map.insert(name.clone(), (ret_ty, param_tys));
         }
     }
@@ -647,6 +665,7 @@ pub fn codegen_from_mir(
 /// Per §16: codegen reads MirBody + fn_name_by_def_id (data only, no HIR).
 /// Per §23: `codegen_synthesized_closure_functions` follows
 /// `<verb>_<adj>_<noun>_<noun>` pattern.
+#[cfg(feature = "llvm-backend")]
 fn codegen_synthesized_closure_functions(
     synthesized_mirs: &[MirBody],
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,

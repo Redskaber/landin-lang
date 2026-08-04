@@ -412,6 +412,12 @@ impl LLVMSysEmitter {
                 EmitType::Void => LLVMVoidTypeInContext(self.ctx),
                 EmitType::Ptr(_) | EmitType::OpaquePtr => LLVMPointerTypeInContext(self.ctx, 0),
                 EmitType::Struct(fields) => {
+                    // Stage 16.22: Empty struct has size 0 in LLVM → UB with
+                    // alloca. Use i8 (size 1) instead, matching the text
+                    // emitter fix in emit_type_to_llvm_str.
+                    if fields.is_empty() {
+                        return LLVMInt8TypeInContext(self.ctx);
+                    }
                     // Stage 14.22: Cache struct types by their field layout
                     // to ensure structurally-identical structs resolve to the
                     // SAME LLVM type. Without this, LLVMStructTypeInContext
