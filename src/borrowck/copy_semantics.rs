@@ -118,10 +118,26 @@ pub fn ty_is_copy_with_resolver(
         Adt(def_id, _) => resolver.is_copy_builtin(*def_id, interner),
         // Stage 16.22: Closures with no captures (empty substs) are Copy.
         // This allows chained calls like f(f(f(0))) where f is a no-capture
-        // closure. Closures with captures are NOT Copy (they own captured
-        // values that may not be Copy).
-        Closure(_, substs) if substs.is_empty() => true,
-        Str | Slice(_) | Closure(_, _) | Param(_) => false,
+        // closure.
+        //
+        // Stage 16.29 (通解 — field-level Copy derivation for closures):
+        // Closures with ALL-Copy captures are also Copy. This mirrors
+        // Rust's `#[derive(Copy)]` for closure structs — if every field
+        // (capture) is Copy, the closure struct is Copy.
+        //
+        // This fixes borrowck false positives for `f()()` patterns where
+        // f returns a closure with i32 captures. Without this, borrowck
+        // flags `Operand::Move` on the returned closure as "use of moved
+        // value: {closure} does not implement Copy".
+        //
+        // Per §1.0 原則 6 "通用 > 特例": one rule for all closures —
+        // Copy iff all captures are Copy (including zero captures).
+        // Per §1.0 原則 9 "正确 > 妥协": match Rust's semantics for
+        // closure Copy derivation.
+        Closure(_, substs) => substs
+            .iter()
+            .all(|t| ty_is_copy_with_resolver(t, resolver, interner)),
+        Str | Slice(_) | Param(_) => false,
     }
 }
 

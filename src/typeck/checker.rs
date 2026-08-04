@@ -459,9 +459,17 @@ impl TypeChecker {
             // G7 fix: if func is neither FnDef nor FnPtr (after defaulting),
             // emit an error. Infer should be resolved by now; if it's still
             // Infer, it means no constraint was applied (rare).
+            //
+            // Stage 16.29: Also accept TyKind::Closure as callable —
+            // closures are called via the synthesized `call` function,
+            // and the Closure type is the func type at the call site.
+            // Without this, `f()()` patterns (where f returns a closure)
+            // would emit false "expected function, found {closure}" errors.
+            //
+            // Per §1.0 原則 9 "正确 > 妥协": Closure IS a callable type.
             if !matches!(
                 &func_ty.kind,
-                TyKind::FnDef(_, _) | TyKind::FnPtr(_) | TyKind::Error
+                TyKind::FnDef(_, _) | TyKind::FnPtr(_) | TyKind::Closure(_, _) | TyKind::Error
             ) {
                 self.errors.push(TypeError::new(
                     // Stage 15.80: use human-readable type name.
@@ -617,12 +625,70 @@ impl TypeChecker {
                     }
                 }
 
+                // Stage 16.32 (通解 — Closure-typed func in typeck):
+                // If func is a Closure(def_id, _), look up the synthesized
+                // function's sig from fn_sigs (same as FnDef). This unifies
+                // the dest type with the closure's return type, which is
+                // essential for nested closures (`f()()` where f returns a
+                // closure).
+                //
+                // Without this, the dest type stays Infer → "expected
+                // function, found _" when the result is called.
+                //
+                // Note: The closure's sig has inputs = [self, params...].
+                // The MIR Call terminator's args = [params...] (self is
+                // prepended by codegen, not by MIR lowering). So we skip
+                // the first input (self) when checking arg count and unify.
+                //
+                // Per §1.0 原則 6 "通用 > 特例": handle Closure the same
+                // way as FnDef — both are callable types with sigs in
+                // fn_sigs.
+                if let TyKind::Closure(def_id, _) = &func_ty.kind {
+                    if let Some(sig) = self.fn_sigs.get(def_id).cloned() {
+                        // Skip the first input (self) — it's not in the
+                        // MIR Call terminator's args.
+                        let sig_params = &sig.inputs[1.min(sig.inputs.len())..];
+                        if arg_tys.len() != sig_params.len() {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "this closure takes {} argument(s) but {} were supplied",
+                                    sig_params.len(),
+                                    arg_tys.len()
+                                ),
+                                term.span,
+                            ));
+                        } else {
+                            for (arg_ty, input_ty) in arg_tys.iter().zip(sig_params.iter()) {
+                                if let Err(mut e) = self.unify.unify(arg_ty, input_ty) {
+                                    if term.span != Span::DUMMY {
+                                        e.span = term.span;
+                                    }
+                                    self.errors.push(*e);
+                                }
+                            }
+                        }
+                        if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output) {
+                            if term.span != Span::DUMMY {
+                                e.span = term.span;
+                            }
+                            self.errors.push(*e);
+                        }
+                    }
+                }
+
                 // G7 fix (Stage 2.4f): if func is neither FnDef nor FnPtr
                 // (e.g., calling an Int, Bool, Str, Tuple), emit an error.
                 // Infer and Error are deferred (might resolve to a fn type).
+                //
+                // Stage 16.29: Also accept TyKind::Closure as callable —
+                // closures are called via the synthesized `call` function.
                 if !matches!(
                     &func_ty.kind,
-                    TyKind::FnDef(_, _) | TyKind::FnPtr(_) | TyKind::Infer(_) | TyKind::Error
+                    TyKind::FnDef(_, _)
+                        | TyKind::FnPtr(_)
+                        | TyKind::Closure(_, _)
+                        | TyKind::Infer(_)
+                        | TyKind::Error
                 ) {
                     self.errors.push(TypeError::new(
                         // Stage 15.80: use human-readable type name.
@@ -981,18 +1047,26 @@ impl TypeChecker {
                     }
                     Ty::new(TyKind::Adt(*def_id, _substs.clone()), Span::DUMMY)
                 }
-                // Stage 14.102 (ME-1 fix): AggregateKind::Closure previously
-                // fell through to the catch-all and silently returned Ty::Error.
-                // Now explicitly handled — closures get a fresh type variable.
-                AggregateKind::Closure(_def_id, _substs) => {
+                // Stage 16.29 (通解 — fix closure type inference):
+                // Previously, AggregateKind::Closure returned a fresh Infer
+                // var, which caused the closure literal's type to be lost.
+                // This broke nested closures (`|| || x`) — the outer
+                // closure's return type stayed Infer, causing "expected
+                // function, found _" errors.
+                //
+                // The fix: return the actual Closure type
+                // (`Closure(def_id, substs)`), which is the correct type
+                // of a closure literal. This matches how Rust handles
+                // closure literals — their type is determined at lowering
+                // time, not inferred.
+                //
+                // Per §1.0 原則 9 "正确 > 妥协": fix the root cause
+                // (return correct type), not the symptom ( Infer var).
+                AggregateKind::Closure(def_id, substs) => {
                     for op in operands {
                         let _ = self.infer_operand(mir, op);
                     }
-                    let vid = self.unify.new_ty_var();
-                    Ty::new(
-                        TyKind::Infer(crate::mir::ty::InferVar::TyVar(vid)),
-                        Span::DUMMY,
-                    )
+                    Ty::new(TyKind::Closure(*def_id, substs.clone()), Span::DUMMY)
                 }
             },
         }
@@ -1024,6 +1098,23 @@ impl TypeChecker {
         let mut errors = self.errors;
         errors.extend(self.unify.take_errors());
         (errors, std::mem::take(&mut self.results))
+    }
+
+    /// Stage 16.29 (通解): Consume the type checker and return
+    /// (errors, results, unify_table). The unify table is returned so the
+    /// caller can pass it to the next TypeChecker (for chained typeck on
+    /// main body + closure MIR bodies sharing the same unify table).
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one unify table for main body +
+    /// all closures — no special-case handling per closure type.
+    pub fn into_results_with_unify(mut self) -> (Vec<TypeError>, TypeckResults, UnificationTable) {
+        let mut errors = self.errors;
+        errors.extend(self.unify.take_errors());
+        (
+            errors,
+            std::mem::take(&mut self.results),
+            std::mem::take(&mut self.unify),
+        )
     }
 }
 

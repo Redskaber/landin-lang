@@ -153,14 +153,47 @@ pub(crate) fn codegen_terminator(
             // terminator's `dyn_trait_call` field (Stage 15.30).
             // Per §15 "最优 > 最小": dead code (legacy path) is removed.
 
+            // Stage 16.30 (通解 — Closure-typed call sites):
+            // When the func operand has TyKind::Closure(def_id, _), the call
+            // is to a closure value (not a FnDef). This happens for:
+            //   - `f()()` where f returns a closure (the inner call's func
+            //     is the result of f(), which has Closure type after typeck)
+            //   - `let g = f(); g()` where g is a closure-typed let binding
+            //     that didn't propagate through closure_bodies
+            //
+            // The 通解: resolve the function name from the Closure's def_id
+            // (via fn_name_by_def_id), and PREPEND the closure struct as
+            // the first arg (self). The synthesized `call` function expects:
+            //   fn closure_call_fn_N(self: Closure_N, params...) -> Ret
+            //
+            // This handles ALL closure-typed call sites uniformly, regardless
+            // of how the closure value was produced (literal, let binding,
+            // call result, etc.).
+            //
+            // Per §1.0 原則 6 "通用 > 特例": one codegen path for all
+            // closure-typed calls.
+            // Per §1.0 原則 9 "正确 > 妥协": fix the root cause (codegen
+            // doesn't handle Closure-typed func), not the symptom (indirect
+            // call on closure struct).
+            let mut closure_self_local: Option<crate::mir::place::LocalId> = None;
+
             let fn_name = if let Operand::Copy(lv) | Operand::Move(lv) = func {
                 if let PlaceKind::Local(id) = &lv.kind {
                     let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| &ld.ty);
                     if let Some(ty) = local_ty {
-                        if let crate::mir::ty::TyKind::FnDef(def_id, _) = &ty.kind {
-                            fn_name_by_def_id.get(def_id).cloned()
-                        } else {
-                            None
+                        match &ty.kind {
+                            // Direct function call (FnDef-typed func local).
+                            crate::mir::ty::TyKind::FnDef(def_id, _) => {
+                                fn_name_by_def_id.get(def_id).cloned()
+                            }
+                            // Stage 16.30: Closure-typed func local → resolve
+                            // to synthesized function name. The closure struct
+                            // itself is passed as self (first arg).
+                            crate::mir::ty::TyKind::Closure(def_id, _) => {
+                                closure_self_local = Some(*id);
+                                fn_name_by_def_id.get(def_id).cloned()
+                            }
+                            _ => None,
                         }
                     } else {
                         None
@@ -182,39 +215,49 @@ pub(crate) fn codegen_terminator(
                 None
             };
 
-            let arg_pairs: Vec<(EmitType, EmitValue)> = args
-                .iter()
-                .map(|a| {
-                    let ty = detect_operand_type(mir, a, layouts).unwrap_or(EmitType::I32);
-                    // Stage 16.21: For closure calls, the first arg (self)
-                    // is a Closure-typed value. The synthesized function
-                    // expects it as a pointer (OpaquePtr). So we pass the
-                    // local's pointer instead of its value.
-                    if let Operand::Copy(lv) | Operand::Move(lv) = a {
-                        if let PlaceKind::Local(id) = &lv.kind {
-                            if let Some(ld) = mir.local_decls.get(id.0 as usize) {
-                                if matches!(ld.ty.kind, crate::mir::ty::TyKind::Closure(_, _)) {
-                                    // Pass the closure struct by pointer.
-                                    // The alloca for the local is already emitted
-                                    // by codegen_function's local setup. We just
-                                    // need to pass the alloca pointer.
-                                    let ptr_str = format!("%loc_{}", id.0);
-                                    return (EmitType::OpaquePtr, ptr_str);
-                                }
+            // Stage 16.30: Build arg pairs. If this is a closure-typed call
+            // (closure_self_local is Some), PREPEND the closure struct as self.
+            let mut arg_pairs: Vec<(EmitType, EmitValue)> = Vec::new();
+
+            // Stage 16.30: Prepend closure self arg if applicable.
+            if let Some(self_id) = closure_self_local {
+                // The synthesized function expects self as a pointer
+                // (OpaquePtr). Pass the local's alloca pointer.
+                let ptr_str = format!("%loc_{}", self_id.0);
+                arg_pairs.push((EmitType::OpaquePtr, ptr_str));
+            }
+
+            // Process the remaining args from the terminator.
+            for a in args {
+                let ty = detect_operand_type(mir, a, layouts).unwrap_or(EmitType::I32);
+                // Stage 16.21: For closure calls, the first arg (self)
+                // is a Closure-typed value. The synthesized function
+                // expects it as a pointer (OpaquePtr). So we pass the
+                // local's pointer instead of its value.
+                if let Operand::Copy(lv) | Operand::Move(lv) = a {
+                    if let PlaceKind::Local(id) = &lv.kind {
+                        if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                            if matches!(ld.ty.kind, crate::mir::ty::TyKind::Closure(_, _)) {
+                                // Pass the closure struct by pointer.
+                                let ptr_str = format!("%loc_{}", id.0);
+                                arg_pairs.push((EmitType::OpaquePtr, ptr_str));
+                                continue;
                             }
                         }
                     }
-                    let val =
-                        codegen_operand(emitter, mir, a, interner, layouts, fn_name_by_def_id);
-                    (ty, val)
-                })
-                .collect();
+                }
+                let val = codegen_operand(emitter, mir, a, interner, layouts, fn_name_by_def_id);
+                arg_pairs.push((ty, val));
+            }
             let arg_refs: Vec<(EmitType, &EmitValue)> =
                 arg_pairs.iter().map(|(t, v)| (t.clone(), v)).collect();
 
             // Stage 14.35: Extract the callee's DefId from the func operand
             // so we can look up its return type in fn_sigs. This fixes
             // struct-returning method calls where dest local type defaults to i32.
+            //
+            // Stage 16.30: Also extract from Closure-typed func (the
+            // closure's def_id is the callee def_id).
             let callee_def_id: Option<crate::hir::DefId> = if let Operand::Constant(c) = func {
                 match &c.val {
                     ConstVal::Uint(n) => Some(crate::hir::DefId(*n as u32)),
@@ -224,10 +267,12 @@ pub(crate) fn codegen_terminator(
             } else if let Operand::Copy(lv) | Operand::Move(lv) = func {
                 if let PlaceKind::Local(id) = &lv.kind {
                     mir.local_decls.get(id.0 as usize).and_then(|ld| {
-                        if let crate::mir::ty::TyKind::FnDef(did, _) = &ld.ty.kind {
-                            Some(*did)
-                        } else {
-                            None
+                        match &ld.ty.kind {
+                            crate::mir::ty::TyKind::FnDef(did, _) => Some(*did),
+                            // Stage 16.30: Closure-typed func → callee def_id
+                            // is the closure's def_id.
+                            crate::mir::ty::TyKind::Closure(did, _) => Some(*did),
+                            _ => None,
                         }
                     })
                 } else {

@@ -267,9 +267,15 @@ pub fn build_dyn_trait_call_terminator(
 /// `TyKind::Closure(def_id, ...)` type. Codegen resolves the function
 /// name via `fn_name_by_def_id`.
 ///
+/// Stage 16.29 (通解): This is now the SOLE closure call lowering path
+/// — ALL closures (no-capture, i32-capture, struct-capture, nested-capture)
+/// go through this function. The `lower_closure_call_inline` path is
+/// retained as `#[deprecated]` for backward compatibility with tests
+/// that might still reference it, but is no longer invoked by the
+/// production closure call dispatch.
+///
 /// Per §1.0 原則 6 "通用 > 特例": one call path for all closures.
 /// Per §16: no HIR access at call site — DefId is in the type.
-#[allow(dead_code)] // Stage 16.16: not yet used — codegen needs more work (Step 3+4 future)
 fn lower_closure_call_to_synthesized(
     cx: &mut MirLowerCtxt,
     closure_local: LocalId,
@@ -369,10 +375,25 @@ fn lower_closure_call_to_synthesized(
 /// into the enclosing function's MIR at each call site. This works but
 /// has limitations (code bloat, no optimization, MIR pollution).
 ///
-/// Stage 16.16: This function is retained as the fallback path. The
-/// switch to synthesized `call` function (Strategy A) requires more
-/// codegen work (correct BodyMeta, self param handling, return type)
-/// and will be done in a future stage.
+/// Stage 16.16: This function was retained as the fallback path while
+/// the synthesized `call` function (Strategy A) required more codegen
+/// work.
+///
+/// Stage 16.29 (通解 — Typeck on synthesized closure MIR bodies):
+/// This function is now `#[deprecated]` and no longer invoked by the
+/// production closure call dispatch. ALL closures use the synthesized
+/// `call` function path (`lower_closure_call_to_synthesized`). The
+/// typeck gap that forced the inline fallback is fixed.
+///
+/// Per §1.0 原則 5 "去除兼容思维": the inline path is retained only
+/// as `#[deprecated]` for transition — it will be removed in a future
+/// stage once all tests confirm the synthesized path handles every
+/// case correctly. Per §23: deprecated items must have `note = "..."`
+/// pointing to the §16-compliant replacement.
+#[deprecated(
+    note = "Use lower_closure_call_to_synthesized (§16-compliant Strategy A path). The inline path is deprecated as of Stage 16.29 — all closures now use the synthesized `call` function."
+)]
+#[allow(dead_code)]
 fn lower_closure_call_inline(
     cx: &mut MirLowerCtxt,
     info: super::ClosureBodyInfo,
@@ -771,7 +792,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Before falling through to the existing FnDef / Adt / placeholder
             // dispatch, check if `func_local` is registered in the
             // `cx.closure_bodies` side-table. If yes, this is a closure call —
-            // inline the closure body at the call site.
+            // lower it to a `TerminatorKind::Call` to the synthesized `call`
+            // function (Strategy A).
             //
             // The side-table is keyed by LocalId (not DefId) because:
             // (a) at MIR lowering time, we don't have a unique per-closure
@@ -781,40 +803,22 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             //     lowering in `control_flow::lower_block` propagates the
             //     info from init_local to let_local).
             //
-            // The inline approach is the Stage 13.3a pragmatic subset of
-            // Strategy A (per `stage-13.3-design-alignment.md` §4): each
-            // call site gets a copy of the closure body. LLVM's optimizer
-            // can deduplicate. Strategy A's full synthesized `call` function
-            // is deferred to Stage 13.5+.
-            //
             // Per §16: the closure body is HIR data sunk into the lowering
             // context as a side-table. No HIR access from codegen.
             //
-            // Stage 16.28 (Task 10 Steps 3+4): Switch from inline to
-            // synthesized `call` function for closures WITHOUT captures
-            // and with i32 captures. Struct captures still use inline
-            // because LLVMSysEmitter crashes during GEP building for
-            // struct-typed capture fields.
+            // Stage 16.29 (通解 — Typeck on synthesized closure MIR bodies):
+            // ALL closures now use the synthesized `call` function path.
+            // The previous `has_complex_captures` special-case routing is
+            // removed because the typeck gap is fixed — the driver runs
+            // typeck on each synthesized closure MIR body, resolving all
+            // Infer types (return type, param types) for ANY capture type,
+            // including Adt and Closure captures.
+            //
+            // Per §1.0 原則 6 "通用 > 特例": one call path for all closures.
+            // Per §1.0 原則 9 "正确 > 妥协": fix the typeck gap properly,
+            // not patch it with special-case routing.
             if cx.closure_bodies.contains_key(&func_local) {
-                let has_complex_captures = cx
-                    .closure_bodies
-                    .get(&func_local)
-                    .map(|info| {
-                        info.captures.iter().any(|(_, ty)| {
-                            matches!(
-                                ty.kind,
-                                crate::mir::ty::TyKind::Adt(_, _)
-                                    | crate::mir::ty::TyKind::Closure(_, _)
-                            )
-                        })
-                    })
-                    .unwrap_or(false);
-                if !has_complex_captures {
-                    return lower_closure_call_to_synthesized(cx, func_local, &arg_locals, expr);
-                } else {
-                    let info = cx.closure_bodies.get(&func_local).cloned().unwrap();
-                    return lower_closure_call_inline(cx, info, func_local, &arg_locals, expr);
-                }
+                return lower_closure_call_to_synthesized(cx, func_local, &arg_locals, expr);
             }
 
             // Stage 3.30 (per §15): inspect the func operand's type to decide
@@ -891,87 +895,38 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 );
                 dest
             } else {
-                // Stage 4.9: Check if func is a closure type.
-                // Closures are not FnDef — they're values of type TyKind::Closure.
-                // Calling a closure requires extracting the captured environment
-                // and invoking the closure body. For now (simplified), we detect
-                // closure calls and produce a placeholder result (unit type),
-                // avoiding the incorrect TerminatorKind::Call that would treat the
-                // closure struct as a function pointer.
-                let is_closure = {
-                    let func_local_decl = cx.mir.local_decls.get(func_local.0 as usize);
-                    func_local_decl
-                        .map(|ld| matches!(&ld.ty.kind, TyKind::Closure(_, _)))
-                        .unwrap_or(false)
-                };
-
-                if is_closure {
-                    // Stage 4.13: Full closure call lowering — inline approach.
-                    //
-                    // When calling a closure, we:
-                    // 1. Extract captured fields from the closure struct local
-                    //    (each field is a Projection::Field on the closure local)
-                    // 2. Bind captured values to fresh locals (so the inlined
-                    //    body can reference them via the original local_map)
-                    // 3. Bind call arguments to the closure's parameter locals
-                    // 4. Lower the closure body inline at the call site
-                    //
-                    // This is the "inline" approach — no separate function is
-                    // generated. The closure body is lowered directly at each
-                    // call site. This is simple and correct, at the cost of
-                    // code duplication (which LLVM's optimizer can handle).
-                    //
-                    // However, we don't have access to the HIR closure definition
-                    // from here (we only have the func operand's type). So we
-                    // use a pragmatic approach: extract captures from the closure
-                    // struct, produce a fresh infer type for the result, and
-                    // lower the call arguments. The actual body inlining requires
-                    // HIR access which would need restructuring the lowering
-                    // pipeline (deferred to Stage 5).
-                    //
-                    // For now (Stage 4.13): extract captures + produce result
-                    // local with inferred type. This is more useful than the
-                    // Stage 4.9 unit placeholder.
-
-                    // Get the closure type's capture field types
-                    let closure_ty = &cx.mir.local(func_local).ty;
-                    // Stage 15.10: substs is now Rc<[Ty]>, convert to Vec for local use.
-                    let capture_tys: Vec<Ty> = match &closure_ty.kind {
-                        TyKind::Closure(_, substs) => substs.iter().cloned().collect(),
-                        _ => vec![],
-                    };
-
-                    // Extract each captured field from the closure struct
-                    for cap_ty in &capture_tys {
-                        let field_ty = cap_ty.clone();
-                        let _extracted_local = cx.mir.new_local(field_ty, None, expr.span);
-                        // In a full implementation, we'd assign:
-                        // extracted_local = Copy(Projection(closure_local, Field(i, cap_ty)))
-                        // But since we can't map back to the original HirId here,
-                        // we skip the binding. The inlined body would need
-                        // these locals registered in local_map.
-                    }
-
-                    // Produce a result local with inferred type
-                    let dest_ty = cx.fresh_infer_ty(expr.span);
-                    cx.mir.new_local(dest_ty, None, expr.span)
-                } else {
-                    // Real function call.
-                    let dest_ty = cx.fresh_infer_ty(Span::DUMMY);
-                    let dest = cx.mir.new_local(dest_ty, None, expr.span);
-                    let cont = cx.new_block();
-                    cx.terminate_kind_and_goto(
-                        TerminatorKind::Call {
-                            func: Operand::Copy(Place::local(func_local, func.span)),
-                            args: arg_operands,
-                            destination: Place::local(dest, expr.span),
-                            target: Some(cont),
-                            dyn_trait_call: None,
-                        },
-                        cont,
-                    );
-                    dest
-                }
+                // Stage 16.30 (通解 — dead code cleanup):
+                // The old Stage 4.13 `is_closure` inline path is removed.
+                // It was dead code because:
+                // 1. If the closure is a literal or let-bound from a literal
+                //    → `closure_bodies.contains_key` is TRUE → handled above
+                //    by `lower_closure_call_to_synthesized`.
+                // 2. If the closure is a call result (e.g., `f()()`) → the
+                //    type is Infer at lowering time → `is_closure` was FALSE.
+                //
+                // For case 2, the "Real function call" path below emits a
+                // generic `Call { func: Copy(func_local), args }`. The
+                // codegen (Stage 16.30) handles Closure-typed func operands
+                // by resolving the synthesized function name and prepending
+                // the closure struct as self.
+                //
+                // Per §1.0 原則 5 "去除兼容思维": dead code is removed.
+                // Per §1.0 原則 6 "通用 > 特例": one codegen path for
+                // all closure-typed calls.
+                let dest_ty = cx.fresh_infer_ty(Span::DUMMY);
+                let dest = cx.mir.new_local(dest_ty, None, expr.span);
+                let cont = cx.new_block();
+                cx.terminate_kind_and_goto(
+                    TerminatorKind::Call {
+                        func: Operand::Copy(Place::local(func_local, func.span)),
+                        args: arg_operands,
+                        destination: Place::local(dest, expr.span),
+                        target: Some(cont),
+                        dyn_trait_call: None,
+                    },
+                    cont,
+                );
+                dest
             }
         }
         HirExprKind::If {
@@ -1698,12 +1653,25 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // The captures are stored with their field index (matching the
             // order in the closure struct) for later extraction from `self`
             // in the synthesized function.
-            let synthesized_captures: Vec<(crate::hir::HirId, u32, Ty)> = captured
+            //
+            // Stage 16.31 (通解 — capture mutability): Also collect the
+            // mutability of each captured variable from its local_decl.
+            // This is propagated to the extract local in the closure MIR
+            // body so that borrowck doesn't flag `x += 1` (where `x` is
+            // a captured `mut`) as "cannot assign twice to immutable".
+            let synthesized_captures: Vec<(
+                crate::hir::HirId,
+                u32,
+                Ty,
+                crate::mir::ty::Mutability,
+            )> = captured
                 .iter()
                 .enumerate()
                 .map(|(i, (hir_id, local_id))| {
-                    let ty = cx.mir.local(*local_id).ty.clone();
-                    (*hir_id, i as u32, ty)
+                    let local_decl = cx.mir.local(*local_id);
+                    let ty = local_decl.ty.clone();
+                    let mutability = local_decl.mutability;
+                    (*hir_id, i as u32, ty, mutability)
                 })
                 .collect();
             let fn_name = format!("closure_call_fn_{}", cx.closure_def_id_counter - 1);

@@ -70,8 +70,33 @@ pub struct UnificationTable {
 }
 
 impl UnificationTable {
+    /// Stage 16.29 DEBUG: Get the number of ty_vars (for debugging).
+    pub fn num_ty_vars(&self) -> usize {
+        self.ty_vars.len()
+    }
+
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Stage 16.32: Clear all bindings but keep the TyVid/IntVid/FloatVid
+    /// allocation. Used by the iterative typeck passes — the MIR bodies
+    /// have Infer vars referencing specific TyVids, so we can't reset the
+    /// allocation. But we CAN clear the bindings so re-typeck can re-resolve
+    /// with updated fn_sigs.
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one clear method for all variable kinds.
+    pub fn clear_bindings(&mut self) {
+        for tv in &mut self.ty_vars {
+            *tv = None;
+        }
+        for iv in &mut self.int_vars {
+            *iv = IntVarBinding::Unbound;
+        }
+        for fv in &mut self.float_vars {
+            *fv = FloatVarBinding::Unbound;
+        }
+        self.errors.clear();
     }
 
     // ================================================================

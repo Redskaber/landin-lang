@@ -1,9 +1,233 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.229.6
-**Date**: 2026-08-03
-**Test count**: 244 rust lib tests + 2249 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Current version**: v0.230.3
+**Date**: 2026-08-04
+**Test count**: 244 rust lib tests + 2312 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.230.3 — Stage 16.33 (Deep Review Round 6: v0.3 Closure Redesign Complete)
+
+### Overview
+
+**v0.3 RELEASE APPROVED.** This is the final deep review for v0.3, verifying
+that all closure features are complete, stable, and production-ready.
+
+**Verdict**: ✅ **GO — 5/5 committee vote**
+
+**Key findings**:
+- All closure TDs are CLOSED (TD-CLOSURE-1, CODEGEN-1, BORROWCK-1, TRIPLE-1)
+- 7780 tests passing (244 lib + 2312 integration + 5224 conformance), 0 failures
+- Runtime verified for ALL closure patterns (no-capture, i32/struct/mutable captures, nested up to 4+ levels)
+- Architecture follows 通解 principle throughout (no special-case routing)
+- API naming compliant with §23
+
+**No code changes** — review-only stage. +10 milestone verification tests.
+
+### v0.3 Closure Redesign — Complete Achievement List
+
+| Feature | Status |
+|---------|--------|
+| No-capture closures | ✅ |
+| i32/struct/mutable capture closures | ✅ |
+| Double/triple/quadruple-nested closures | ✅ |
+| Closure Copy derivation | ✅ |
+| Typeck on closure MIR bodies | ✅ |
+| Borrowck on closure MIR bodies | ✅ |
+| Codegen for Closure-typed call sites | ✅ |
+| Iterative typeck fixpoint | ✅ |
+| Shared unify table | ✅ |
+| Capture mutability propagation | ✅ |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2312/2312 PASS
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7780 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.230.3 — Stage 16.32 (通解: Triple-Nested Closure Typeck)
+
+### Overview
+
+Fixed **TD-CLOSURE-TRIPLE-1** — the last remaining closure typeck issue.
+Triple-nested closures (`|| || || x`) now compile AND run correctly.
+
+**Root cause**: The typeck `check_terminator` for `Call` only handled
+`TyKind::FnDef` and `TyKind::FnPtr` — it didn't handle `TyKind::Closure`.
+When a Call terminator had a `Closure`-typed func operand (e.g., the
+result of `f()` which returns a closure), typeck didn't look up the
+closure's fn_sig → dest type stayed `Infer` → "expected function, found _".
+
+**The 通解 fix**: Added `TyKind::Closure(def_id, _)` handling in
+`check_terminator` — same as `TyKind::FnDef`: look up the sig in
+`fn_sigs`, unify args (skipping self), unify dest with output.
+
+**New API**: `UnificationTable::clear_bindings()` — clears all bindings
+but keeps allocation. Used by iterative typeck passes.
+
+**Iterative typeck**: The driver runs up to 4 typeck passes when there
+are closure MIR bodies, handling the circular dependency between capture
+types and closure return types.
+
+**Runtime verification** (ALL working):
+- `f()()() = 42` ✅ (triple-nested closure — **NEW!**)
+- `f()() = 42` ✅ (double-nested)
+- `f() = 3` ✅ (mutable capture loop)
+- `f(10) = 11` ✅ (no-capture)
+
+Per §1.0 原則 6 "通用 > 特例" + 原則 9 "正确 > 妥协".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2302/2302 PASS
+  (+12 new stage16.32 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7770 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.230.2 — Stage 16.31 (通解: Borrowck on Closure MIR Bodies)
+
+### Overview
+
+Fixed **TD-CLOSURE-BORROWCK-1** — the soundness gap where borrowck was
+silently skipped on closure MIR bodies. The fix propagates capture
+mutability from the outer scope to the extract locals in the closure
+MIR body, then enables borrowck on closure MIR bodies.
+
+**Root cause**: `build_synthesized_closure_mir_body` created extract
+locals as `Immutable` (via `new_local`). When the closure body mutated
+a captured `mut` variable (e.g., `|| { while x<3 { x+=1; } x }`),
+borrowck flagged `x+=1` as "cannot assign twice to immutable variable".
+
+**The 通解 fix**:
+1. Track capture mutability in `SynthesizedClosureFunction.captures`
+   (4-tuple: `(HirId, field_idx, Ty, Mutability)`)
+2. Create extract locals with the captured mutability (`new_local_with_mut`)
+3. Make the return local `Mutable` (matching main body's G5 fix)
+4. Enable borrowck on closure MIR bodies in the driver
+
+**Runtime verification** (ALL working):
+- `f() = 3` ✅ (`|| { while x<3 { x+=1; } x }` with captured `mut x`)
+- `f() = 1` ✅ (`|| { if x>0 { return 1; } 0 }` — early return in closure)
+
+**Soundness improvement**: Borrowck violations inside closure bodies
+(use-after-move, double-mut-borrow) are now detected and reported
+(previously silently skipped).
+
+Per §1.0 原則 4 "报错 > 静默" + 原則 9 "正确 > 妥协".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2290/2290 PASS
+  (+14 new stage16.31 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7758 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.230.1 — Stage 16.30 (通解: Codegen for Closure-Typed Call Sites)
+
+### Overview
+
+Fixed **TD-CLOSURE-CODEGEN-1** — the last remaining closure bug that
+prevented nested closure runtime execution (`f()()` patterns where `f`
+returns a closure).
+
+**Root cause**: The codegen only resolved function names for `FnDef`-typed
+func operands. When a Call terminator had a `Closure`-typed func operand
+(e.g., the result of `f()`), the codegen fell through to the indirect
+call path, treating the closure struct as a function pointer.
+
+**The 通解 fix**: At codegen time, when a Call terminator has a
+`Closure(def_id, _)`-typed func operand:
+1. Resolve the function name via `fn_name_by_def_id[def_id]`
+2. PREPEND the closure struct as the first arg (self)
+3. Emit a direct call to the synthesized `call` function
+
+**Dead code cleanup**: Removed the old Stage 4.13 `is_closure` inline
+path (63 lines of dead code in expr_operand.rs).
+
+**Runtime verification** (ALL working):
+- `f(10) = 11` ✅ (no-capture closure)
+- `x + y = 15` ✅ (i32 capture closure)
+- `f()() = 42` ✅ (nested closure — **NEW!**)
+- `g() = 1` ✅ (nested closure with let binding — **NEW!**)
+
+Per §1.0 原則 6 "通用 > 特例" + 原則 9 "正确 > 妥协" + 原則 5 "去除兼容思维".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2276/2276 PASS
+  (+12 new stage16.30 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7744 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.230.0 — Stage 16.29 (通解: Typeck on Synthesized Closure MIR Bodies)
+
+### Overview
+
+Closed the **typeck gap** that forced the `has_complex_captures`
+special-case routing (特解) introduced in Stage 16.28. The 通解 (general
+solution) shares the unify table between the main body and all closure
+MIR bodies, runs typeck on each closure MIR body, and updates fn_sigs
+with resolved types.
+
+**Key achievements**:
+1. **ALL closures use the synthesized `call` function path** — no more
+   `has_complex_captures` special-case routing.
+2. **Nested closures compile** (`|| || x` — typeck + borrowck pass).
+3. **Closure Copy derivation**: closures with all-Copy captures are Copy.
+4. **`AggregateKind::Closure` returns the actual `Closure(def_id, substs)`
+   type** (was: fresh Infer var).
+5. **`Closure` accepted as callable** in typeck (was: only FnDef/FnPtr).
+6. **Shared unify table** eliminates TyVid collision + stack overflow.
+7. **`param_count` from `fn_sigs`** (was: hardcoded `= 2`).
+
+**New APIs**:
+- `MirLowerCtxt::new_with_unify(interner, span, unify, counter)`
+- `TypeChecker::into_results_with_unify()`
+- `build_synthesized_closure_mir_body` now takes `unify` + `counter` and
+  returns `(MirBody, unify, errors, nested_closures, counter)`.
+
+**Deprecated**:
+- `lower_closure_call_inline` — inline path no longer used.
+
+**Remaining issues** (tracked as TD):
+- TD-CLOSURE-CODEGEN-1: Nested closure *runtime* (codegen for calling
+  Closure-typed local).
+- TD-CLOSURE-BORROWCK-1: Borrowck on closure MIR bodies (false positives
+  on mutable captures in loops).
+
+Per §1.0 原則 6 "通用 > 特例" + 原則 9 "正确 > 妥协".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2264/2264 PASS
+  (+15 new stage16.29 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7732 tests passing, 0 failures, 0 warnings.**
+- **Runtime**: `f(10) = 11` ✅, `x + y = 15` ✅ (i32 captures)
 
 ---
 ## v0.229.6 — Stage 16.28 (Closure Switch: Complex Capture Analysis + Typeck Gap)

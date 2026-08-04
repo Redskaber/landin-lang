@@ -171,9 +171,20 @@ pub struct SynthesizedClosureFunction {
     /// function's MIR in Step 2.
     pub body: Box<crate::hir::HirExpr>,
     /// The capture info: (HirId of captured binding, field index in
-    /// closure struct, field type). Used to extract captures from `self`
-    /// in the synthesized function.
-    pub captures: Vec<(crate::hir::HirId, u32, crate::mir::ty::Ty)>,
+    /// closure struct, field type, field mutability). Used to extract
+    /// captures from `self` in the synthesized function.
+    ///
+    /// Stage 16.31 (通解 — capture mutability): The 4th element is the
+    /// mutability of the captured variable in the outer scope. This is
+    /// propagated to the extract local in the closure MIR body so that
+    /// borrowck doesn't flag `x += 1` (where `x` is a captured `mut`)
+    /// as "cannot assign twice to immutable variable".
+    pub captures: Vec<(
+        crate::hir::HirId,
+        u32,
+        crate::mir::ty::Ty,
+        crate::mir::ty::Mutability,
+    )>,
     /// The closure struct type (for the `self` parameter).
     pub closure_struct_ty: crate::mir::ty::Ty,
     /// The function name for codegen (e.g., "closure_call_fn_0").
@@ -230,6 +241,58 @@ impl<'a> MirLowerCtxt<'a> {
             synthesized_closure_functions: std::collections::HashMap::new(),
             closure_def_id_counter: 0,
         }
+    }
+
+    /// Stage 16.29 (通解): Construct a MirLowerCtxt with an EXISTING
+    /// UnificationTable. Used by `build_synthesized_closure_mir_body` to
+    /// share the unify table with the main body.
+    ///
+    /// This is the key fix for the typeck gap: the closure_struct_ty and
+    /// cap_tys have Infer vars from the main body's unify table. If we
+    /// create a fresh unify table for the closure MIR body, these Infer
+    /// vars collide with the closure's fresh Infer vars (same TyVid
+    /// values, different tables), causing cycles in the unify table
+    /// during typeck.
+    ///
+    /// By sharing the unify table, all Infer vars are in the same
+    /// namespace. typeck on the closure MIR body can correctly resolve
+    /// the closure_struct_ty's Infer vars (which were created during
+    /// main body lowering).
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one unify table for the whole
+    /// compilation unit (main body + all closures).
+    /// Per §1.0 原則 9 "正确 > 妥协": fix the root cause (unify table
+    /// isolation), not the symptom (cycle detection).
+    pub fn new_with_unify(
+        interner: &'a Rodeo,
+        span: Span,
+        unify: UnificationTable,
+        closure_def_id_counter: u32,
+    ) -> Self {
+        let mut mir = MirBody::new(span);
+        let current_block = mir.new_block();
+        Self {
+            interner,
+            mir,
+            local_map: std::collections::HashMap::new(),
+            current_block,
+            unify,
+            hir: None,
+            dyn_trait_plan: None,
+            closure_bodies: std::collections::HashMap::new(),
+            loop_stack: Vec::new(),
+            loop_result_locals: Vec::new(),
+            type_errors: Vec::new(),
+            method_return_type_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+            synthesized_closure_functions: std::collections::HashMap::new(),
+            closure_def_id_counter,
+        }
+    }
+
+    /// Stage 16.29: Getter for closure_def_id_counter (to propagate to
+    /// nested closure MIR body building).
+    pub fn closure_def_id_counter(&self) -> u32 {
+        self.closure_def_id_counter
     }
 
     /// Stage 16.13 (Task 10 Step 1): Allocate a unique DefId for a closure.
@@ -1103,10 +1166,33 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
 /// }
 /// ```
 ///
-/// The built MirBody is NOT yet used by codegen (Step 4) or call sites
-/// (Step 3) — the inline approach (Stage 13.3a) is still active. This is
-/// infrastructure for the gradual migration to Strategy A.
+/// Stage 16.29 (通解 — Typeck on synthesized closure MIR bodies):
+/// This function now takes `unify: UnificationTable` as input (the SHARED
+/// unify table from the main body) and returns it back. The closure MIR
+/// body's fresh Infer vars are allocated from this shared table, so they
+/// don't collide with the closure_struct_ty's Infer vars (which were
+/// created during main body lowering).
 ///
+/// Stage 16.29 (nested closures): This function ALSO returns any nested
+/// `synthesized_closure_functions` discovered while lowering the closure
+/// body (e.g., `|| || x` — the outer closure's body contains an inner
+/// closure literal). The driver processes these recursively.
+///
+/// The driver flow:
+///   1. Lower main body → main_mir, main_unify, synthesized_closures
+///   2. For each closure: pass main_unify into this function, get back
+///      (closure_mir, main_unify, errors, nested_closures). main_unify is
+///      updated with the closure's fresh Infer vars.
+///   3. Typeck main body with main_unify → resolves closure_struct_ty's
+///      Infer vars.
+///   4. Typeck closure MIR bodies with main_unify → resolves closure
+///      body's Infer vars.
+///   5. Recursively process nested closures (from step 2).
+///
+/// Per §1.0 原則 6 "通用 > 特例": one unify table for main body + all
+/// closures (including nested) — no special-case handling per closure type.
+/// Per §1.0 原則 9 "正确 > 妥协": fix the root cause (unify table
+/// isolation), not the symptom (cycle detection in resolve_ty_var).
 /// Per §16: this function reads HIR (the closure body) — allowed during
 /// MIR lowering.
 /// Per §23: `build_synthesized_closure_mir_body` follows
@@ -1115,8 +1201,17 @@ pub fn build_synthesized_closure_mir_body(
     func: &SynthesizedClosureFunction,
     interner: &Rodeo,
     hir: &HirCrate,
-) -> MirBody {
-    let mut cx = MirLowerCtxt::new(interner, func.body.span);
+    unify: UnificationTable,
+    closure_def_id_counter: u32,
+) -> (
+    MirBody,
+    UnificationTable,
+    Vec<crate::typeck::TypeError>,
+    std::collections::HashMap<crate::hir::DefId, SynthesizedClosureFunction>,
+    u32,
+) {
+    let mut cx =
+        MirLowerCtxt::new_with_unify(interner, func.body.span, unify, closure_def_id_counter);
     cx.hir = Some(hir);
 
     // Stage 16.20: MirBody::new() creates an empty local_decls vec.
@@ -1125,8 +1220,21 @@ pub fn build_synthesized_closure_mir_body(
     //
     // LocalId(0): return local (fresh infer type — will be resolved
     // from the body expression type by typeck writeback).
+    //
+    // Stage 16.31 (通解 — return local mutability): The return local
+    // is Mutable, matching the main body's lowering (G5 fix). This
+    // allows `return expr;` inside closure bodies to assign to
+    // LocalId(0) without borrowck flagging "cannot assign twice to
+    // immutable variable" (the first assign is the body result, the
+    // second is the early return — both are valid writes to the
+    // mutable return local).
     let return_ty = cx.fresh_infer_ty(func.body.span);
-    let return_local = cx.mir.new_local(return_ty, None, func.body.span);
+    let return_local = cx.mir.new_local_with_mut(
+        return_ty,
+        None,
+        func.body.span,
+        crate::mir::ty::Mutability::Mutable,
+    );
     debug_assert_eq!(return_local, crate::mir::place::LocalId(0));
 
     // LocalId(1): `self` parameter — the closure struct.
@@ -1150,8 +1258,17 @@ pub fn build_synthesized_closure_mir_body(
     // To access capture fields, we need to first Deref the pointer, then
     // project the field. This generates GEP in LLVM:
     //   getelementptr inbounds { ty0, ty1, ... }, ptr %self, i32 0, i32 field_idx
-    for (cap_hir_id, field_idx, cap_ty) in &func.captures {
-        let extract_local = cx.mir.new_local(cap_ty.clone(), None, func.body.span);
+    //
+    // Stage 16.31 (通解 — capture mutability): The extract local is
+    // created with the captured variable's mutability (from the outer
+    // scope). This allows the closure body to mutate the captured
+    // variable (e.g., `x += 1` where `x` is a captured `mut`).
+    // Without this, borrowck would flag the assignment as
+    // "cannot assign twice to immutable variable".
+    for (cap_hir_id, field_idx, cap_ty, cap_mutability) in &func.captures {
+        let extract_local =
+            cx.mir
+                .new_local_with_mut(cap_ty.clone(), None, func.body.span, *cap_mutability);
         // Assign: extract_local = Copy(Projection(Projection(self, Deref), Field(field_idx, cap_ty)))
         cx.push_assign(
             crate::mir::place::Place::local(extract_local, func.body.span),
@@ -1209,7 +1326,26 @@ pub fn build_synthesized_closure_mir_body(
     // the function name via fn_name_by_def_id.
     cx.mir.def_id = Some(func.def_id);
 
-    cx.mir
+    // Stage 16.29 (通解): Return the unify table and type errors so the
+    // driver can run TypeChecker::with_unify + check_mir_body_with_tables
+    // on this MIR body. This resolves all Infer types (return type, param
+    // types) — eliminating the typeck gap that forced the
+    // `has_complex_captures` special-case routing.
+    //
+    // Stage 16.29 (nested closures): Also return any nested
+    // synthesized_closure_functions discovered while lowering the closure
+    // body. The driver processes these recursively.
+    let unify = std::mem::take(&mut cx.unify);
+    let type_errors = std::mem::take(&mut cx.type_errors);
+    let nested_closures = std::mem::take(&mut cx.synthesized_closure_functions);
+    let closure_def_id_counter = cx.closure_def_id_counter();
+    (
+        cx.mir,
+        unify,
+        type_errors,
+        nested_closures,
+        closure_def_id_counter,
+    )
 }
 
 // ================================================================

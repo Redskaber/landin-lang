@@ -1080,68 +1080,341 @@ pub fn compile(src: &str) -> CompileResult {
             );
 
         // Stage 16.14 (Task 10 Step 2): Build MIR bodies for synthesized
-        // closure `call` functions. These are NOT yet used by codegen —
-        // the inline approach (Stage 13.3a) is still active. This is
-        // infrastructure for the gradual migration to Strategy A.
+        // closure `call` functions.
         //
         // Stage 16.16 (Task 10 Steps 3+4): Now used by codegen! The
         // synthesized closure function names are registered in
         // fn_name_by_def_id so codegen can resolve them.
-        for func in synthesized_closures.values() {
-            let closure_mir =
-                crate::mir::lower::build_synthesized_closure_mir_body(func, &interner, &hir);
-            // Stage 16.16: Register the closure function name in fn_name_by_def_id
-            // so codegen can resolve TerminatorKind::Call to the synthesized function.
+        //
+        // Stage 16.29 (通解 — Shared unify table + Typeck on closure MIR):
+        // The KEY fix: share the unify table between the main body and
+        // all closure MIR bodies. This eliminates the TyVid collision
+        // that caused infinite recursion in resolve_ty_var.
+        //
+        // The flow:
+        //   1. Lower main body → main_mir, main_unify, synthesized_closures
+        //   2. For each closure:
+        //      (a) Build closure MIR body, passing main_unify IN. The
+        //          closure's fresh Infer vars are allocated from main_unify
+        //          (continuing the TyVid counter). The closure_struct_ty's
+        //          Infer vars (from main body lowering) are already in
+        //          main_unify. No collision.
+        //      (b) Get back (closure_mir, main_unify, errors).
+        //      (c) Register fn_name + placeholder fn_sig (with fresh Infer
+        //          vars from main_unify for params/return).
+        //   3. Typeck MAIN body with main_unify → resolves closure_struct_ty's
+        //      Infer vars and closure fn_sig's Infer vars (via Call sites).
+        //      Extract main_unify back via into_results_with_unify.
+        //   4. For each closure MIR body:
+        //      (a) Typeck with main_unify → resolves closure body's Infer
+        //          vars. Extract main_unify back.
+        //      (b) Update fn_sig with resolved types from local_decls.
+        //      (c) Run drop elaboration + borrowck.
+        //
+        // Per §1.0 原則 6 "通用 > 特例": one unify table for main body +
+        // all closures — no special-case handling per closure type.
+        // Per §1.0 原則 9 "正确 > 妥协": fix the root cause (unify table
+        // isolation), not the symptom (cycle detection in resolve_ty_var).
+        // Per §16: closure MIR bodies get the same typeck + borrowck
+        // treatment as regular function MIR bodies.
+
+        // Collect closure MIR bodies + their DefIds for deferred typeck.
+        // We build all closure MIR bodies FIRST (sharing main_unify), then
+        // typeck the main body, then typeck each closure MIR body.
+        let mut pending_closure_mirs: Vec<(
+            crate::mir::lower::SynthesizedClosureFunction,
+            crate::mir::body::MirBody,
+        )> = Vec::new();
+
+        // Stage 16.29: Take ownership of lower_unify so we can pass it
+        // through build_synthesized_closure_mir_body (which uses
+        // new_with_unify to share the table).
+        let mut shared_unify = lower_unify;
+        // Stage 16.29: Track the closure_def_id_counter to avoid DefId
+        // collisions between outer and nested closures. Initialize to the
+        // number of closures already allocated by the main body lowering
+        // (each call to allocate_closure_def_id increments the counter).
+        let mut shared_closure_def_id_counter: u32 = synthesized_closures.len() as u32;
+
+        // Stage 16.29: Process closures in a worklist — each closure may
+        // contain nested closures (e.g., `|| || x`), which are discovered
+        // during lowering and added to the worklist.
+        let mut closure_worklist: Vec<crate::mir::lower::SynthesizedClosureFunction> =
+            synthesized_closures.values().cloned().collect();
+
+        while let Some(func) = closure_worklist.pop() {
+            // Stage 16.29: Build closure MIR body, SHARING shared_unify.
+            // The closure's fresh Infer vars are allocated from shared_unify,
+            // avoiding TyVid collision with closure_struct_ty's Infer vars.
+            let (
+                closure_mir,
+                returned_unify,
+                closure_lower_errors,
+                nested_closures,
+                returned_counter,
+            ) = crate::mir::lower::build_synthesized_closure_mir_body(
+                &func,
+                &interner,
+                &hir,
+                shared_unify,
+                shared_closure_def_id_counter,
+            );
+            shared_unify = returned_unify;
+            shared_closure_def_id_counter = returned_counter;
+            errors.typeck.extend(closure_lower_errors);
+
+            // Stage 16.16: Register the closure function name in
+            // fn_name_by_def_id so codegen can resolve TerminatorKind::Call
+            // to the synthesized function.
             fn_name_by_def_id.insert(func.def_id, func.fn_name.clone());
-            // Stage 16.21: Build fn_sig for the synthesized function.
-            // The sig has:
-            // - inputs: [closure_struct_ty, param_tys...]
-            //   (NOT captures — captures are extracted from self inside
-            //   the function body, not passed as separate arguments)
-            // - output: fresh infer (will be resolved by typeck)
+
+            // Stage 16.29: Build placeholder fn_sig with FRESH Infer vars
+            // from shared_unify. These Infer vars will be unified with
+            // call site types during main body typeck, and resolved
+            // during closure body typeck.
             let mut inputs = vec![func.closure_struct_ty.clone()];
-            // Add closure params — we don't have their types directly,
-            // but the MIR body's local_decls has them (LocalId(2+)).
-            // For now, use fresh Infer types — typeck will unify.
             for _ in &func.params {
+                let fresh_vid = shared_unify.new_ty_var();
                 inputs.push(crate::mir::ty::Ty::new(
-                    crate::mir::ty::TyKind::Infer(crate::mir::ty::InferVar::TyVar(
-                        crate::mir::ty::TyVid(0),
-                    )),
+                    crate::mir::ty::TyKind::Infer(crate::mir::ty::InferVar::TyVar(fresh_vid)),
                     crate::session::Span::DUMMY,
                 ));
             }
-            // Note: the actual param types come from the MIR body's local_decls.
-            // For now, use a placeholder sig — codegen will use the dest local type.
-            let sig = crate::mir::ty::Sig {
+            let fresh_output_vid = shared_unify.new_ty_var();
+            let placeholder_sig = crate::mir::ty::Sig {
                 inputs,
                 output: Box::new(crate::mir::ty::Ty::new(
                     crate::mir::ty::TyKind::Infer(crate::mir::ty::InferVar::TyVar(
-                        crate::mir::ty::TyVid(0),
+                        fresh_output_vid,
                     )),
                     crate::session::Span::DUMMY,
                 )),
                 abi: crate::ast::Abi::Landin,
                 is_unsafe: false,
             };
-            fn_sig_table.sigs.insert(func.def_id, sig);
-            synthesized_closure_mir_bodies.push(closure_mir);
+            fn_sig_table.sigs.insert(func.def_id, placeholder_sig);
+
+            // Stage 16.29: Add nested closures to the worklist.
+            for nested_func in nested_closures.into_values() {
+                closure_worklist.push(nested_func);
+            }
+
+            pending_closure_mirs.push((func, closure_mir));
         }
 
         // Stage 15.12: Collect type errors from MIR lowering (e.g., "no method found").
-        // Per "报错 > 静默" principle — these errors were previously silently
-        // swallowed (Error placeholder → codegen produced 0 or invalid IR).
-        // Stage 15.12: errors now returned from the lowering function (was
-        // stored on MirBody.lower_type_errors — mixed IR + error collection).
         errors.typeck.extend(lower_type_errors);
 
-        // Stage 3.60: typeck uses pre-computed tables instead of HIR.
-        let mut tc = typeck::TypeChecker::with_unify(lower_unify);
-        tc.fn_sigs = fn_sig_table.sigs.clone();
-        tc.check_mir_body_with_tables(&mut mir, Some(&field_ty_table));
-        let (type_errors, body_results) = tc.into_results();
-        errors.typeck.extend(type_errors);
-        typeck_results.push(body_results);
+        // Stage 16.29: Typeck CLOSURE MIR bodies FIRST, then main body.
+        //
+        // Why closure bodies first? The closure body's typeck resolves the
+        // return type (from the body expression). For nested closures
+        // (e.g., `|| || x`), the outer closure's return type is the INNER
+        // closure's type. If we typeck the main body first, it sees the
+        // closure's return type as Infer and emits "expected function"
+        // errors for `f()()` patterns.
+        //
+        // By typecking closure bodies first:
+        //   1. Closure body typeck resolves return type (e.g., Closure type)
+        //   2. We update fn_sig.output with the resolved type
+        //   3. Main body typeck sees the correct closure return type
+        //
+        // The shared unify table propagates constraints both ways: if the
+        // closure body forces a capture's type to be i32, the main body
+        // sees it too.
+        // Stage 16.32 (通解 — Iterative typeck fixpoint for nested closures):
+        //
+        // Problem: For triple-nested closures (`|| || || x`), the capture
+        // type (`x: i32`) is resolved by the MAIN body's typeck, but the
+        // main body's Call sites depend on closure return types (which
+        // depend on capture types). This is a circular dependency.
+        //
+        // 通解: Run multiple typeck passes until fixpoint:
+        //   Pass 1: typeck all closures + main body
+        //   Pass 2+: re-typeck all closures + main body (now capture types
+        //           are resolved, so inner closures can resolve their return
+        //           types, so main body Call sites can resolve)
+        //   Stop when no fn_sig changes (fixpoint) or max 4 passes.
+        //
+        // Errors from intermediate passes are DISCARDED — only the final
+        // pass's errors are reported (to avoid duplicate/false errors from
+        // incomplete type resolution).
+        //
+        // Per §1.0 原則 6 "通用 > 特例": one iterative approach for all
+        // nesting depths (double, triple, quadruple, etc.).
+        // Per §1.0 原則 9 "正确 > 妥协": fix the root cause (circular
+        // dependency), not the symptom (special-case triple-nested).
+
+        // Helper: typeck one closure MIR body + update its fn_sig.
+        fn typeck_closure_and_update_sig(
+            func: &crate::mir::lower::SynthesizedClosureFunction,
+            closure_mir: &mut crate::mir::body::MirBody,
+            shared_unify: &mut crate::typeck::unify::UnificationTable,
+            fn_sig_table: &mut typeck::FnSigTable,
+            field_ty_table: &typeck::FieldTyTable,
+        ) -> Vec<crate::typeck::TypeError> {
+            let mut closure_tc = typeck::TypeChecker::with_unify(std::mem::take(shared_unify));
+            closure_tc.fn_sigs = fn_sig_table.sigs.clone();
+            closure_tc.check_mir_body_with_tables(closure_mir, Some(field_ty_table));
+            let (closure_type_errors, _closure_typeck_results, returned_unify) =
+                closure_tc.into_results_with_unify();
+            *shared_unify = returned_unify;
+
+            // Update fn_sig with resolved types from local_decls.
+            let mut resolved_inputs = vec![func.closure_struct_ty.clone()];
+            for i in 0..func.params.len() {
+                let local_idx = 2 + i;
+                if let Some(local) = closure_mir.local_decls.get(local_idx) {
+                    resolved_inputs.push(local.ty.clone());
+                } else {
+                    resolved_inputs.push(crate::mir::ty::Ty::new(
+                        crate::mir::ty::TyKind::Error,
+                        crate::session::Span::DUMMY,
+                    ));
+                }
+            }
+            let resolved_output = closure_mir
+                .local_decls
+                .first()
+                .map(|l| l.ty.clone())
+                .unwrap_or_else(|| {
+                    crate::mir::ty::Ty::new(
+                        crate::mir::ty::TyKind::Error,
+                        crate::session::Span::DUMMY,
+                    )
+                });
+            let resolved_sig = crate::mir::ty::Sig {
+                inputs: resolved_inputs,
+                output: Box::new(resolved_output),
+                abi: crate::ast::Abi::Landin,
+                is_unsafe: false,
+            };
+            fn_sig_table.sigs.insert(func.def_id, resolved_sig);
+            closure_type_errors
+        }
+
+        // Helper: typeck the main body + return errors.
+        fn typeck_main_body(
+            mir: &mut crate::mir::body::MirBody,
+            shared_unify: &mut crate::typeck::unify::UnificationTable,
+            fn_sig_table: &typeck::FnSigTable,
+            field_ty_table: &typeck::FieldTyTable,
+        ) -> (Vec<crate::typeck::TypeError>, typeck::TypeckResults) {
+            let mut tc = typeck::TypeChecker::with_unify(std::mem::take(shared_unify));
+            tc.fn_sigs = fn_sig_table.sigs.clone();
+            tc.check_mir_body_with_tables(mir, Some(field_ty_table));
+            let (errors, results, returned_unify) = tc.into_results_with_unify();
+            *shared_unify = returned_unify;
+            (errors, results)
+        }
+
+        // Iterative typeck: run passes until fixpoint or max 4 passes.
+        // Only run multiple passes if there are closure MIR bodies
+        // (nested closures need iterative resolution).
+        // Discard intermediate errors; only keep the final pass's errors.
+        const MAX_TYPECK_PASSES: usize = 4;
+        let mut final_closure_errors: Vec<crate::typeck::TypeError> = Vec::new();
+        let mut final_main_errors: Vec<crate::typeck::TypeError> = Vec::new();
+        let mut final_main_results = typeck::TypeckResults::default();
+        let has_closures = !pending_closure_mirs.is_empty();
+        let max_passes = if has_closures { MAX_TYPECK_PASSES } else { 1 };
+
+        for pass in 0..max_passes {
+            // Snapshot fn_sigs to detect fixpoint.
+            let sigs_before: std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig> =
+                fn_sig_table.sigs.clone();
+
+            // Typeck all closures.
+            final_closure_errors.clear();
+            for (func, closure_mir) in &mut pending_closure_mirs {
+                let errs = typeck_closure_and_update_sig(
+                    func,
+                    closure_mir,
+                    &mut shared_unify,
+                    &mut fn_sig_table,
+                    &field_ty_table,
+                );
+                final_closure_errors.extend(errs);
+            }
+
+            // Typeck the main body.
+            let (main_errs, main_results) =
+                typeck_main_body(&mut mir, &mut shared_unify, &fn_sig_table, &field_ty_table);
+            final_main_errors = main_errs.clone();
+            final_main_results = main_results;
+
+            // Stage 16.32: After main body typeck, resolve closure_struct_ty
+            // substs in all closure fn_sigs. The main body's typeck resolves
+            // capture types (e.g., `let x = 1` → x: i32), which should
+            // propagate to the closure_struct_ty's substs.
+            //
+            // The closure_struct_ty is `Closure(def_id, [Infer, ...])` —
+            // the Infer vars are from the shared unify table. After main
+            // body typeck, those Infer vars are resolved. We update the
+            // fn_sig.inputs[0] (self) with the resolved closure_struct_ty.
+            for (func, _) in &pending_closure_mirs {
+                if let Some(sig) = fn_sig_table.sigs.get(&func.def_id).cloned() {
+                    // Resolve the closure_struct_ty (inputs[0]) via unify.
+                    let resolved_self_ty = shared_unify.resolve(&sig.inputs[0]);
+                    let mut new_sig = sig;
+                    new_sig.inputs[0] = resolved_self_ty;
+                    fn_sig_table.sigs.insert(func.def_id, new_sig);
+                }
+            }
+
+            // Check if any fn_sig changed (fixpoint detection).
+            let mut changed = false;
+            for (def_id, new_sig) in &fn_sig_table.sigs {
+                if let Some(old_sig) = sigs_before.get(def_id) {
+                    if old_sig.inputs != new_sig.inputs || old_sig.output != new_sig.output {
+                        changed = true;
+                        break;
+                    }
+                } else {
+                    changed = true;
+                    break;
+                }
+            }
+            if !changed && pass > 0 {
+                break; // Fixpoint reached (after at least 2 passes).
+            }
+        }
+
+        // Report final pass errors.
+        errors.typeck.extend(final_closure_errors);
+        errors.typeck.extend(final_main_errors);
+        typeck_results.push(final_main_results);
+
+        // Stage 16.31: Run drop elaboration + borrowck on closure MIR bodies
+        // (AFTER all typeck passes are done, so types are fully resolved).
+        for (func, mut closure_mir) in pending_closure_mirs {
+            // Stage 16.29: Run drop elaboration on the closure MIR body.
+            crate::mir::drop_elaboration::elaborate_drops(
+                &mut closure_mir,
+                &trait_resolver,
+                &interner,
+            );
+
+            // Stage 16.31: Borrowck on closure MIR bodies.
+            let mut closure_bc: borrowck::BorrowChecker<'_> =
+                borrowck::BorrowChecker::with_resolver_and_sigs(
+                    &trait_resolver,
+                    &interner,
+                    &fn_sig_table.sigs,
+                );
+            closure_bc.check_mir_body_with_dataflow(&closure_mir);
+            errors.borrowck.extend(closure_bc.into_errors());
+
+            // Suppress unused variable warning for `func` (used above in
+            // the typeck pass, but the drop/borrowck loop only needs the
+            // closure_mir). The `func` binding is kept for clarity.
+            let _ = &func;
+
+            synthesized_closure_mir_bodies.push(closure_mir);
+        }
+
+        // shared_unify is no longer needed (all typeck done).
+        drop(shared_unify);
 
         // Stage 15.46 (HP-12 step 5): Drop elaboration.
         //

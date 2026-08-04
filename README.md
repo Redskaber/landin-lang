@@ -1,8 +1,8 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.229.6 (v0.2 FINAL + v0.3 进行中 — Closure switch 通解: no-capture + i32 capture use synthesized call, complex captures use inline)
-**Date**: 2026-08-03
+**Version**: v0.230.3 (v0.2 FINAL + v0.3 RELEASE APPROVED — Closure redesign FULLY COMPLETE: all closures (no-capture, i32/struct/mutable captures, nested up to 4+ levels) use synthesized call function; typeck + borrowck + codegen all work; Deep Review Round 6 GO)
+**Date**: 2026-08-04
 
 A work-in-progress systems programming language inspired by Rust, designed for
 zero-cost abstractions, memory safety without garbage collection, and

@@ -354,3 +354,13 @@ mod stage16_18_deep_review_round4_tests;
 mod stage16_19_design_writeback_tests;
 #[path = "v0/stage16/plan/stage16_25_deep_review_round5_tests.rs"]
 mod stage16_25_deep_review_round5_tests;
+#[path = "v0/stage16/plan/stage16_29_typeck_on_closure_mir_tests.rs"]
+mod stage16_29_typeck_on_closure_mir_tests;
+#[path = "v0/stage16/plan/stage16_30_closure_call_codegen_tests.rs"]
+mod stage16_30_closure_call_codegen_tests;
+#[path = "v0/stage16/plan/stage16_31_borrowck_on_closure_mir_tests.rs"]
+mod stage16_31_borrowck_on_closure_mir_tests;
+#[path = "v0/stage16/plan/stage16_32_triple_nested_closure_tests.rs"]
+mod stage16_32_triple_nested_closure_tests;
+#[path = "v0/stage16/plan/stage16_33_deep_review_round6_tests.rs"]
+mod stage16_33_deep_review_round6_tests;

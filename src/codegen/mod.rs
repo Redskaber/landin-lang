@@ -665,7 +665,6 @@ pub fn codegen_from_mir(
 /// Per §16: codegen reads MirBody + fn_name_by_def_id (data only, no HIR).
 /// Per §23: `codegen_synthesized_closure_functions` follows
 /// `<verb>_<adj>_<noun>_<noun>` pattern.
-#[cfg(feature = "llvm-backend")]
 fn codegen_synthesized_closure_functions(
     synthesized_mirs: &[MirBody],
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
@@ -687,32 +686,24 @@ fn codegen_synthesized_closure_functions(
             None => continue, // Skip if name not registered (shouldn't happen)
         };
 
-        // Stage 16.17: Synthesize correct BodyMeta.
-        // - param_count: 1 (self) + number of closure params.
-        //   LocalId(0) = return, LocalId(1) = self, LocalId(2+) = params.
-        //   So param_count = local_decls.len() - 1 (return local).
-        //   But we need to account for capture extract locals which come
-        //   after params. The actual param_count is: 1 (self) + len(params).
-        //   Since we don't track params separately, use a conservative
-        //   estimate: all locals except return are "params" for codegen
-        //   purposes (codegen only uses param_count for arg setup).
-        //   Actually, codegen_function uses param_count to determine
-        //   which locals are function parameters. For closure functions,
-        //   the params are: self (1) + closure params (2...N).
-        //   Capture extract locals (N+1...) are NOT params — they're
-        //   locals initialized from self.
-        //   For now, use 1 (self) + a reasonable param count.
-        //   The simplest correct approach: param_count = 1 (self only),
-        //   since codegen treats extra locals as regular locals.
-        //   Actually, this won't work — the closure params need to be
-        //   set up as function arguments. Let me use the count from
-        //   local_decls: all locals up to the first capture extract.
-        //   For simplicity, use: 1 (self) + (total - 1 return - captures - body_temps).
-        //   Since we can't easily distinguish, use a safe default:
-        //   param_count = 2 (self + 1 param), which handles the common
-        //   case of |x| ... (one param). Multi-param closures will need
-        //   a proper fix (store param_count in SynthesizedClosureFunction).
-        let param_count = 2; // self + 1 param (common case)
+        // Stage 16.29 (通解 — fix hardcoded param_count):
+        // The previous code hardcoded `param_count = 2` (self + 1 param)
+        // — a 特解 (special-case) that breaks for closures with 0 params
+        // (e.g., `|| 42`) or 2+ params (e.g., `|x, y| x + y`).
+        //
+        // The 通解 (general solution) is to read the actual param_count
+        // from `fn_sigs[def_id].inputs.len()`. The driver now populates
+        // `fn_sig_table` with the resolved sig (after closure typeck),
+        // so `inputs.len()` = 1 (self) + N (closure params) = correct
+        // param_count for codegen.
+        //
+        // Per §1.0 原則 6 "通用 > 特例": one source of truth (fn_sigs)
+        // for the param_count, not a hardcoded constant.
+        // Per §16: codegen reads MirBody + fn_sigs (data only, no HIR).
+        let param_count = fn_sigs
+            .get(&def_id)
+            .map(|sig| sig.inputs.len())
+            .unwrap_or(1); // Defensive: self only (shouldn't happen)
 
         let meta = crate::driver::BodyMeta {
             fn_name: fn_name.clone(),
