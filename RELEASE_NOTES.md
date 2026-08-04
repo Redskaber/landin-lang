@@ -1,9 +1,46 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.241.0
+**Current version**: v0.242.0
 **Date**: 2026-08-04
-**Test count**: 327 rust lib tests + 2482 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 327 rust lib tests + 2492 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.242.0 — Stage 16.56 (Nested Generic Args Resolution)
+
+### Overview
+
+Fixed the nested generic args limitation that was blocking Task 11 Phase 4b.
+Previously, `Box<Box<i32>>` lowered the inner `Box<i32>` as `Error` because
+`lower_ast_ty_to_mir_ty` couldn't resolve AST paths without HIR context.
+
+**Key result**: `let b: Box<Box<i32>>` now produces 2 MonoItems (outer + inner).
+Triple-nested `Box<Box<Box<i32>>>` produces 3 MonoItems.
+
+**New functions** in `src/mir/lower/mod.rs`:
+- `lookup_type_def_id_by_name(hir, name) -> Option<DefId>` — scans HIR for
+  matching type name
+- `lower_hir_ty_to_mir_ty_with_hir(ty, hir) -> Ty` — HIR-aware entry point
+- `lower_hir_ty_to_mir_ty_with_regions_and_hir(ty, rc, hir) -> Ty` — main impl
+
+**Updated functions**:
+- `lower_ast_ty_to_mir_ty(ty, hir: Option<&HirCrate>)` — resolves paths when
+  HIR is available
+- `lower_path_generic_args(path, rc, hir: Option<&HirCrate>)` — passes HIR
+  through to `lower_ast_ty_to_mir_ty`
+
+**Updated call sites**: `control_flow.rs`, `field_resolution.rs`,
+`expr_operand.rs` — now pass `cx.hir` for type annotations.
+
+**Tests**: +10 integration tests covering nested generics (Box<Box<i32>>,
+triple-nested, different inner types, Pair with nested generics, no regressions).
+
+Per §1.0 原則 6 "通用 > 特例": one path resolution strategy for all AST paths.
+Per §1.0 原則 5 "报错 > 静默": Error for unresolved names (not dummy DefId(0)).
+
+### Verification
+
+- **Total: 8043 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.241.0 — Stage 16.55 (Task 11 Phase 4a: Per-Mono Codegen Specialized Naming)

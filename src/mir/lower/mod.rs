@@ -1623,12 +1623,19 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
 ///
 /// Returns an empty `SubstsRef` if the path has no generic args.
 ///
+/// Stage 16.56 (Task 11 Phase 4b prerequisite): Now accepts `hir` parameter
+/// to resolve nested generic type paths (e.g., `Box` in `Box<Box<i32>>`).
+/// When `hir` is `Some`, AST paths in generic args are resolved to DefIds
+/// by scanning HIR owners for matching type names. When `hir` is `None`,
+/// unresolved paths produce `Error` (same as before).
+///
 /// Per §23: `lower_path_generic_args` follows `<verb>_<noun>_<adj>_<noun>`
 /// pattern.
 /// Per §16: reads HIR (path.args) during MIR lowering.
 pub(crate) fn lower_path_generic_args(
     path: &crate::hir::HirPath,
     _region_counter: &mut u32,
+    hir: Option<&HirCrate>,
 ) -> crate::mir::ty::SubstsRef {
     use crate::ast::GenericArg;
 
@@ -1646,13 +1653,12 @@ pub(crate) fn lower_path_generic_args(
     };
 
     // Lower each Type arg to MIR Ty, skip Lifetime and Assoc args.
-    // The GenericArg::Type carries an AST Ty (not HirTy), so we use
-    // lower_ast_ty_to_mir_ty — a minimal AST→MIR type lowerer that
-    // handles the common cases (primitives, paths, tuples, arrays).
+    // Stage 16.56: Pass HIR to lower_ast_ty_to_mir_ty so nested generic
+    // paths can be resolved (e.g., Box<Box<i32>> → inner Box resolved).
     let substs: Vec<crate::mir::ty::Ty> = arg_list
         .iter()
         .filter_map(|arg| match arg {
-            GenericArg::Type(ty) => Some(lower_ast_ty_to_mir_ty(ty)),
+            GenericArg::Type(ty) => Some(lower_ast_ty_to_mir_ty(ty, hir)),
             _ => None, // Skip Lifetime and Assoc args
         })
         .collect();
@@ -1660,17 +1666,52 @@ pub(crate) fn lower_path_generic_args(
     substs.into()
 }
 
+/// Stage 16.56: Look up a type DefId by name from HIR owners.
+///
+/// Scans all HIR owners for a struct or enum with the given name.
+/// Returns the first match (DefId). If multiple types share the same
+/// name, the first one found is returned (this is a limitation — full
+/// name resolution with module paths is future work).
+///
+/// Per §23: `lookup_type_def_id_by_name` follows `<verb>_<noun>_<noun>`
+/// _<prep>_<noun>` pattern.
+/// Per §16: reads HIR (allowed during MIR lowering).
+fn lookup_type_def_id_by_name(
+    hir: &HirCrate,
+    name: crate::lexer::Symbol,
+) -> Option<crate::hir::DefId> {
+    for (def_id, owner) in &hir.owners {
+        match owner {
+            crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) if s.ident.name == name => {
+                return Some(*def_id);
+            }
+            crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) if e.ident.name == name => {
+                return Some(*def_id);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Stage 16.51 (Task 11 Phase 1b): Lower an AST `Ty` to a MIR `Ty`.
 ///
 /// This is a minimal lowerer for generic type arguments (e.g., `i32` in
 /// `Vec<i32>`). It handles the common cases: primitives, paths (struct/enum
-/// refs), tuples, arrays, references. It does NOT handle full HIR resolution
-/// — for resolved paths, it creates `Adt(def_id, substs)` with recursively
-/// lowered substs.
+/// refs), tuples, arrays, references.
+///
+/// Stage 16.56 (Task 11 Phase 4b prerequisite): Now accepts `hir` parameter.
+/// When `hir` is `Some`, AST paths are resolved to DefIds by scanning HIR
+/// owners for matching type names. This enables nested generic types like
+/// `Box<Box<i32>>` where the inner `Box<i32>` is an AST path that needs
+/// resolution.
 ///
 /// Per §23: `lower_ast_ty_to_mir_ty` follows `<verb>_<noun>_<noun>_<noun>`
 /// pattern.
-pub(crate) fn lower_ast_ty_to_mir_ty(ty: &crate::ast::Ty) -> crate::mir::ty::Ty {
+pub(crate) fn lower_ast_ty_to_mir_ty(
+    ty: &crate::ast::Ty,
+    hir: Option<&HirCrate>,
+) -> crate::mir::ty::Ty {
     use crate::ast::Ty as ATy;
     let span = crate::session::Span::DUMMY;
     match ty {
@@ -1684,25 +1725,51 @@ pub(crate) fn lower_ast_ty_to_mir_ty(ty: &crate::ast::Ty) -> crate::mir::ty::Ty 
             crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Float(*float_ty), span)
         }
         ATy::Tuple(tys, _) => {
-            let mir_tys: Vec<_> = tys.iter().map(lower_ast_ty_to_mir_ty).collect();
+            let mir_tys: Vec<_> = tys.iter().map(|t| lower_ast_ty_to_mir_ty(t, hir)).collect();
             crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Tuple(mir_tys), span)
         }
         ATy::Path(_, path, _) => {
-            // Stage 16.53 (Task 11 Phase 2): For AST paths in generic args,
-            // we don't have Res (not yet resolved). Previously, this produced
-            // `Adt(DefId(0), [])` — a dummy Adt that caused spurious "use of
-            // moved value" errors when used as a subst (Adt is not Copy).
+            // Stage 16.56: When HIR is available, try to resolve the AST path
+            // to a DefId by looking up the type name in HIR owners.
             //
-            // Now: produce `Error` for unresolved paths. Error is:
-            // - Copy (so no spurious move errors in borrowck)
-            // - Not an Infer var (so no bind_ty_var panic in typeck)
-            // - The existing convention for "unresolved type" throughout the
-            //   compiler (lower_hir_ty_to_mir_ty produces Error for Res::Err)
+            // This enables nested generic types like `Box<Box<i32>>` where
+            // the inner `Box<i32>` is an AST path in a generic arg. Without
+            // HIR access, the path can't be resolved and produces `Error`.
             //
-            // Per §1.0 原則 5 "报错 > 静默": Error (explicitly unresolved) is
-            // preferred over Adt(DefId(0)) (dummy concrete type) or
-            // Infer(TyVid(u32::MAX)) (sentinel that panics on bind).
-            let _ = path; // path is not used — we can't resolve it without HIR context
+            // Per §1.0 原則 6 "通用 > 特例": one path resolution strategy
+            // for all AST paths in generic args.
+            if let Some(hir_crate) = hir {
+                // Get the last segment's name (e.g., "Box" in `mod::Box`)
+                if let Some(last_seg) = path.segments.last() {
+                    if let Some(def_id) = lookup_type_def_id_by_name(hir_crate, last_seg.ident.name)
+                    {
+                        // Resolve the path's generic args recursively.
+                        let inner_substs: Vec<_> = last_seg
+                            .args
+                            .as_ref()
+                            .map(|args| match args {
+                                crate::ast::GenericArgs::AngleBracketed(args) => args
+                                    .iter()
+                                    .filter_map(|a| match a {
+                                        crate::ast::GenericArg::Type(t) => {
+                                            Some(lower_ast_ty_to_mir_ty(t, hir))
+                                        }
+                                        _ => None,
+                                    })
+                                    .collect(),
+                                _ => Vec::new(),
+                            })
+                            .unwrap_or_default();
+                        return crate::mir::ty::Ty::new(
+                            crate::mir::ty::TyKind::Adt(def_id, inner_substs.into()),
+                            span,
+                        );
+                    }
+                }
+            }
+            // HIR not available or name not found → Error.
+            // Per §1.0 原則 5 "报错 > 静默": Error is preferred over a
+            // dummy Adt(DefId(0)) that could cause confusion.
             crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, span)
         }
         // For unsupported types, return Infer (will be resolved by typeck)
@@ -1716,11 +1783,20 @@ pub(crate) fn lower_ast_ty_to_mir_ty(ty: &crate::ast::Ty) -> crate::mir::ty::Ty 
 }
 
 pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
-    // Stage 15.49: delegate to the region-aware variant with a throwaway
-    // counter. The legacy callers that don't need region tracking get
-    // `Region::Erased` for elided lifetimes (same as before).
+    lower_hir_ty_to_mir_ty_with_hir(ty, None)
+}
+
+/// Stage 16.56: Lower a HIR type to MIR type with optional HIR access.
+///
+/// This is the preferred entry point for callers that have HIR access.
+/// When `hir` is `Some`, nested generic type paths are resolved correctly
+/// (e.g., `Box<Box<i32>>` → inner `Box` resolved to its DefId).
+///
+/// Per §23: `lower_hir_ty_to_mir_ty_with_hir` follows
+/// `<verb>_<noun>_<noun>_<prep>_<noun>` pattern.
+pub(crate) fn lower_hir_ty_to_mir_ty_with_hir(ty: &HirTy, hir: Option<&HirCrate>) -> Ty {
     let mut region_counter = 0u32;
-    lower_hir_ty_to_mir_ty_with_regions(ty, &mut region_counter)
+    lower_hir_ty_to_mir_ty_with_regions_and_hir(ty, &mut region_counter, hir)
 }
 
 /// Stage 15.49 (HP-5 step 2): Lower a HIR type to MIR type with proper
@@ -1736,6 +1812,22 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
 /// pattern with `_with_regions` suffix.
 /// Per §1.0 原則 3 "显式 > 隐式": regions are explicit in the MIR.
 pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &mut u32) -> Ty {
+    lower_hir_ty_to_mir_ty_with_regions_and_hir(ty, region_counter, None)
+}
+
+/// Stage 16.56: Region-aware HIR→MIR type lowering with optional HIR access.
+///
+/// This is the main implementation. When `hir` is `Some`, nested generic
+/// type paths are resolved correctly (e.g., `Box<Box<i32>>` → inner `Box`
+/// resolved to its DefId).
+///
+/// Per §23: function name follows `<verb>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>`
+/// pattern with `_with_regions_and_hir` suffix.
+pub(crate) fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
+    ty: &HirTy,
+    region_counter: &mut u32,
+    hir: Option<&HirCrate>,
+) -> Ty {
     let span = Span::DUMMY;
     match &ty.kind {
         HirTyKind::Bool => Ty::new(TyKind::Bool, span),
@@ -1747,36 +1839,19 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
         HirTyKind::Tuple(tys) => Ty::new(
             TyKind::Tuple(
                 tys.iter()
-                    .map(|t| lower_hir_ty_to_mir_ty_with_regions(t, region_counter))
+                    .map(|t| lower_hir_ty_to_mir_ty_with_regions_and_hir(t, region_counter, hir))
                     .collect(),
             ),
             span,
         ),
         HirTyKind::Ref(region, mutability, inner) => {
-            // Stage 15.49: Assign a fresh Region::Var for each reference.
-            // - Explicit lifetimes: assign a fresh vid (we don't yet track
-            //   the source-level lifetime name, but the vid is unique per
-            //   reference, which is what the region inference needs).
-            // - Elided lifetimes: assign a fresh vid (lifetime elision rule 1:
-            //   each elided input lifetime gets its own fresh lifetime).
-            //
-            // Stage 15.92: Lifetime name tracking is now implemented in
-            // `lower_hir_ty_to_mir_ty_with_lifetimes` (uses a
-            // `lifetime_map: HashMap<Symbol, RegionVid>` for deduplication).
-            // This legacy function is retained for callers that don't need
-            // lifetime deduplication (fn_sigs building, self type resolution).
-            // Use `lower_hir_ty_to_mir_ty_with_lifetimes` for lifetime tracking.
             let mir_region = match region {
-                Some(_lt) => {
-                    // Explicit lifetime — assign a fresh vid.
-                    // For lifetime deduplication, use
-                    // `lower_hir_ty_to_mir_ty_with_lifetimes` instead.
+                Some(_) => {
                     let vid = *region_counter;
                     *region_counter += 1;
                     Region::Var(RegionVid(vid))
                 }
                 None => {
-                    // Elided lifetime — assign a fresh vid (elision rule 1).
                     let vid = *region_counter;
                     *region_counter += 1;
                     Region::Var(RegionVid(vid))
@@ -1790,7 +1865,11 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
                 TyKind::Ref(
                     mir_region,
                     mir_mut,
-                    Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter)),
+                    Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir(
+                        inner,
+                        region_counter,
+                        hir,
+                    )),
                 ),
                 span,
             )
@@ -1803,15 +1882,20 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
             Ty::new(
                 TyKind::RawPtr(
                     mir_mut,
-                    Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter)),
+                    Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir(
+                        inner,
+                        region_counter,
+                        hir,
+                    )),
                 ),
                 span,
             )
         }
         HirTyKind::Slice(inner) => Ty::new(
-            TyKind::Slice(Box::new(lower_hir_ty_to_mir_ty_with_regions(
+            TyKind::Slice(Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir(
                 inner,
                 region_counter,
+                hir,
             ))),
             span,
         ),
@@ -1819,46 +1903,27 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
             let len_const = const_eval_array_len(count_expr, span);
             Ty::new(
                 TyKind::Array(
-                    Box::new(lower_hir_ty_to_mir_ty_with_regions(inner, region_counter)),
+                    Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir(
+                        inner,
+                        region_counter,
+                        hir,
+                    )),
                     Box::new(len_const),
                 ),
                 span,
             )
         }
-        HirTyKind::Infer => {
-            // For type `_` (inference placeholder), we use a special
-            // sentinel TyVid(u32::MAX) that the type checker will
-            // replace with a fresh variable. This avoids borrowing cx
-            // in the free function lower_hir_ty_to_mir_ty.
-            Ty::new(TyKind::Infer(InferVar::TyVar(TyVid(u32::MAX))), span)
-        }
-        // Stage 3.30: resolve named types (struct/enum/etc.) via the path's
-        // Res. Was: fell through to `Ty::Error`, which made `Point`-typed
-        // params/locals lose their type info and codegen treat them as i32.
-        // Stage 3.42: also handle PrimTy::Str → TyKind::Str (was: fell
-        // through to Error, breaking `&str` type annotations).
+        HirTyKind::Infer => Ty::new(TyKind::Infer(InferVar::TyVar(TyVid(u32::MAX))), span),
         HirTyKind::Path(_, path) => match path.res {
             Res::Def(def_id, _) => {
-                // Stage 16.51 (Task 11 Phase 1b): Propagate generic args
-                // from path.segments into SubstsRef. Previously, all
-                // generic args were silently discarded (empty SubstsRef).
-                //
-                // Walk path.segments.last().args (if any), extract Type
-                // args, lower each to MIR Ty, and collect into SubstsRef.
-                //
-                // Per §1.0 原則 6 "通用 > 特例": one path for all generic
-                // types (Vec<i32>, Pair<A,B>, etc.).
-                // Per §16: reads HIR (path.args) during MIR lowering.
-                let substs = lower_path_generic_args(path, region_counter);
+                // Stage 16.56: Pass HIR to lower_path_generic_args so
+                // nested generic paths can be resolved.
+                let substs = lower_path_generic_args(path, region_counter, hir);
                 Ty::new(TyKind::Adt(def_id, substs), span)
             }
             Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),
             _ => Ty::new(TyKind::Error, span),
         },
-        // Stage 14.57: Handle fn pointer type annotations (e.g., `fn(i32) -> i32`).
-        // Previously fell through to Error, causing fn pointer params to be
-        // treated as i32 — function references were passed as `0` instead of
-        // the actual function pointer.
         HirTyKind::FnPtr {
             inputs,
             output,
@@ -1867,9 +1932,13 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
         } => {
             let mir_inputs: Vec<Ty> = inputs
                 .iter()
-                .map(|t| lower_hir_ty_to_mir_ty_with_regions(t, region_counter))
+                .map(|t| lower_hir_ty_to_mir_ty_with_regions_and_hir(t, region_counter, hir))
                 .collect();
-            let mir_output = Box::new(lower_hir_ty_to_mir_ty_with_regions(output, region_counter));
+            let mir_output = Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir(
+                output,
+                region_counter,
+                hir,
+            ));
             Ty::new(
                 TyKind::FnPtr(crate::mir::ty::Sig {
                     inputs: mir_inputs,
@@ -1880,7 +1949,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
                 span,
             )
         }
-        _ => Ty::new(TyKind::Error, span), // complex types → Error for now
+        _ => Ty::new(TyKind::Error, span),
     }
 }
 

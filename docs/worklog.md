@@ -27819,3 +27819,90 @@ Stage Summary:
 - Key milestone: Box<i32> → "Box_i32", id<i32> → "id_i32", closure<i32> → "closure_3_i32"
 - Next: Phase 4b — layouts keyed by (DefId, SubstsRef); Phase 4c — emit specialized functions
 - 8033 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.56-nested-generic-args-resolution
+Agent: Super Z (main)
+Task: Stage 16.56 — Nested generic args resolution (Phase 4b prerequisite). v0.241.0 → v0.242.0.
+
+Work Log:
+- Baseline: v0.241.0 / 327 lib + 2482 integration + 5224 conformance = 8033
+
+### 1. Root Cause Analysis
+
+The nested generic limitation: `Box<Box<i32>>` lowered the inner `Box<i32>`
+as `Error` because:
+- `lower_path_generic_args` calls `lower_ast_ty_to_mir_ty` for generic args
+- `lower_ast_ty_to_mir_ty` is a free function without HIR access
+- AST paths in generic args can't be resolved without HIR
+- Result: inner `Box<i32>` → `Error` instead of `Adt(Box_def_id, [i32])`
+
+### 2. Implemented HIR Threading
+
+New functions in src/mir/lower/mod.rs:
+- lookup_type_def_id_by_name(hir, name) → Option<DefId>
+  Scans HIR owners for struct/enum with matching name
+- lower_hir_ty_to_mir_ty_with_hir(ty, hir) → Ty
+  HIR-aware entry point
+- lower_hir_ty_to_mir_ty_with_regions_and_hir(ty, rc, hir) → Ty
+  Main implementation with HIR threading
+
+Updated functions (now accept hir: Option<&HirCrate>):
+- lower_ast_ty_to_mir_ty(ty, hir) — resolves AST paths when HIR is Some
+- lower_path_generic_args(path, rc, hir) — passes HIR to lower_ast_ty_to_mir_ty
+
+Old functions preserved as wrappers (backward compatible):
+- lower_hir_ty_to_mir_ty(ty) → calls _with_hir(ty, None)
+- lower_hir_ty_to_mir_ty_with_regions(ty, rc) → calls _and_hir(ty, rc, None)
+
+### 3. Updated Call Sites
+
+- control_flow.rs (2 sites): let binding type annotations now use
+  lower_hir_ty_to_mir_ty_with_hir with cx.hir
+- field_resolution.rs (1 site): resolve_field_type now uses
+  lower_hir_ty_to_mir_ty_with_hir with Some(hir)
+- expr_operand.rs (4 sites): lower_path_generic_args now passes cx.hir
+
+### 4. Added 10 Integration Tests
+
+Created tests/v0/stage16/plan/stage16_56_nested_generics_tests.rs:
+- §1 Basic nested generics (3 tests): Box<Box<i32>>, Box<Box<bool>>, triple
+- §2 MonoItem collection (2 tests): 2+ items, 3+ items
+- §3 Different inner types (1 test): 4+ items
+- §4 Pair with nested (2 tests): compilation + MonoItems
+- §5 No regressions (2 tests): non-nested, non-generic
+
+### 5. Updated Stage 16.54 Test
+
+stage16_54_nested_generic_produces_nested_mono_items (renamed from
+..._produces_mono_item) now expects 2+ MonoItems instead of 1+.
+
+### 6. Documentation Updates
+
+- Created docs/develop/v0/stage-16/stage-16.56-nested-generic-args-resolution.md
+- Created docs/tests/v0/stage16/stage-16.56-test-plan.md
+- Updated docs/develop/v0/task-11-monomorphization-design.md — Phase 4b-pre COMPLETE
+- Updated docs/graph/type-system/data-flow.md — version + status table
+- Updated RELEASE_NOTES.md — v0.242.0 entry
+- Updated README.md — version, test stats
+- Updated Cargo.toml — v0.241.0 → v0.242.0
+
+### 7. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt --check — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 327/327 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2492/2492 PASS (+10 new)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 8043 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.56 PASSED — Nested generic args resolution implemented
+- Task 11 Phase 4b-pre COMPLETE (prerequisite for Phase 4b)
+- lookup_type_def_id_by_name scans HIR for type names
+- lower_ast_ty_to_mir_ty now accepts optional HIR for path resolution
+- lower_hir_ty_to_mir_ty_with_hir threads HIR through the lowering chain
+- Key milestone: Box<Box<i32>> → 2 MonoItems, Box<Box<Box<i32>>> → 3 MonoItems
+- Next: Phase 4b — layouts keyed by (DefId, SubstsRef)
+- 8043 tests, 0 failures, 0 warnings

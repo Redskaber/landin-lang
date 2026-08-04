@@ -18,7 +18,10 @@ use crate::mir::ty::*;
 
 use crate::session::Span;
 
-use super::{lower_hir_ty_to_mir_ty, lower_hir_ty_to_mir_ty_with_generics, MirLowerCtxt};
+use super::{
+    lower_hir_ty_to_mir_ty, lower_hir_ty_to_mir_ty_with_generics, lower_hir_ty_to_mir_ty_with_hir,
+    MirLowerCtxt,
+};
 
 /// Resolve the type of a specific field of a struct, given the receiver
 /// expression and the field index.
@@ -55,6 +58,8 @@ pub(crate) fn resolve_field_type(
         let field = s.fields.get(field_index as usize)?;
         // Stage 16.53: If we have substs, lower with generics + substitute.
         // Otherwise, use the plain lowerer (non-generic fast path).
+        // Stage 16.56: Use lower_hir_ty_to_mir_ty_with_hir to pass HIR
+        // through, so nested generic paths in field types are resolved.
         if let Some(substs) = receiver_substs {
             if !substs.is_empty() {
                 let generic_params = crate::hir::generics::generics_of(struct_def_id, hir);
@@ -62,7 +67,7 @@ pub(crate) fn resolve_field_type(
                 return Some(crate::mir::substitute::substitute(&field_ty, &substs));
             }
         }
-        Some(lower_hir_ty_to_mir_ty(&field.ty))
+        Some(lower_hir_ty_to_mir_ty_with_hir(&field.ty, Some(hir)))
     } else {
         None
     }

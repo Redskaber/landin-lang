@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-04 (Stage 16.49)
-> **Version**: v0.241.0 (Stage 16.55)
+> **Version**: v0.242.0 (Stage 16.56)
 > **Process**: stage-committee-process.md v3.24 §13.4 (stage-start design alignment)
-> **Status**: Phase 1-3 + 4a complete, Phase 4b-4c planned
+> **Status**: Phase 1-3 + 4a + 4b-pre complete, Phase 4b-4c planned
 
 ## 1. Executive Summary
 

@@ -402,3 +402,5 @@ mod stage16_52_aggregate_substs_tests;
 mod stage16_53_substitute_tests;
 #[path = "v0/stage16/plan/stage16_54_monomorphize_tests.rs"]
 mod stage16_54_monomorphize_tests;
+#[path = "v0/stage16/plan/stage16_56_nested_generics_tests.rs"]
+mod stage16_56_nested_generics_tests;

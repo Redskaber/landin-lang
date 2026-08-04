@@ -98,27 +98,26 @@ fn stage16_54_dedup_same_instantiation() {
 // §3. Nested generics
 // =====================================================================
 
-/// Stage 16.54 test 5: Nested generic produces MonoItem.
+/// Stage 16.54 test 5: Nested generic produces nested MonoItems.
 ///
-/// Note: The inner `Box<i32>` in `Box<Box<i32>>` is currently lowered as
-/// `Error` (the AST path can't be resolved without HIR context). So only
-/// the outer `Box` with `[Error]` substs produces a MonoItem. This is a
-/// known limitation that will be fixed when AST→MIR type lowering gains
-/// HIR context access (Phase 4 work).
+/// Stage 16.56 fix: The inner `Box<i32>` in `Box<Box<i32>>` is now
+/// correctly resolved via `lookup_type_def_id_by_name`. Both the outer
+/// `Box<Box<i32>>` and inner `Box<i32>` produce MonoItems.
 #[test]
-fn stage16_54_nested_generic_produces_mono_item() {
+fn stage16_54_nested_generic_produces_nested_mono_items() {
     let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<i32>> = Box { val: Box { val: 42 } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let items = collect_mono_items(&result.mirs);
-    // Should have at least one Type MonoItem (Box<Error> — the outer Box)
-    let has_type_item = items
+    // Should have 2 Type MonoItems: Box<Box<i32>> (outer) and Box<i32> (inner)
+    let type_items: Vec<_> = items
         .iter()
-        .any(|item| matches!(item, MonoItem::Type { .. }));
+        .filter(|item| matches!(item, MonoItem::Type { .. }))
+        .collect();
     assert!(
-        has_type_item,
-        "Expected at least 1 Type MonoItem (outer Box), got: {:?}",
-        items
+        type_items.len() >= 2,
+        "Expected at least 2 Type MonoItems (outer Box + inner Box), got: {}",
+        type_items.len()
     );
 }
 

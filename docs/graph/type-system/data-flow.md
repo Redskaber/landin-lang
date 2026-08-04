@@ -1,7 +1,7 @@
 # Type System Data Flow (Typeck + Borrowck)
 
 > **Date**: 2026-08-04
-> **Version**: v0.241.0 (Stage 16.55 — Task 11 Phase 4a complete)
+> **Version**: v0.242.0 (Stage 16.56 — nested generic args resolution)
 
 ## Type Checking Data Flow
 
@@ -211,6 +211,7 @@ HIR (HirGenerics, HirPathSegment.args preserved)
 | 2 | ✅ | 16.53 | `substitute(ty, substs)` + field type resolution |
 | 3 | ✅ | 16.54 | `collect_mono_items` — walk MIR, dedup (def_id, substs) |
 | 4a | ✅ | 16.55 | Specialized naming (`mangle_ty`, `mono_item_name`) |
+| 4b-pre | ✅ | 16.56 | Nested generic args resolution (prerequisite for 4b) |
 | 4b | 🔧 | — | Layouts keyed by (DefId, SubstsRef) |
 | 4c | 🔧 | — | Emit specialized function definitions |
 

@@ -593,7 +593,7 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                     // errors where `let s2 = s` used Operand::Copy because
                     // s2's type was Infer (treated as Copy).
                     let ty = match &local.ty {
-                        Some(t) => super::lower_hir_ty_to_mir_ty(t),
+                        Some(t) => super::lower_hir_ty_to_mir_ty_with_hir(t, cx.hir),
                         None => {
                             // Use the init_local's type if it's not Infer.
                             let init_ty = cx.mir.local(init_local).ty.clone();
@@ -668,7 +668,7 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                     // No init: just allocate the local. If a type annotation
                     // is present, use it; otherwise fresh Infer var.
                     let ty = match &local.ty {
-                        Some(t) => super::lower_hir_ty_to_mir_ty(t),
+                        Some(t) => super::lower_hir_ty_to_mir_ty_with_hir(t, cx.hir),
                         None => cx.fresh_infer_ty(local.span),
                     };
                     // G1 fix: use pat.hir_id (see comment above).
