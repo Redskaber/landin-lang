@@ -6,7 +6,7 @@
 //! Per §16: tests use the public API only.
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
-use landin_compiler::codegen::emit_dyn_trait_method_call_text;
+use landin_compiler::codegen::dyn_trait_emit::emit_dyn_trait_method_call_text;
 use landin_compiler::mir::DynTraitMethodCall;
 use landin_compiler::stdlib::StdlibTypeKind;
 

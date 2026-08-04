@@ -1,9 +1,59 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.233.1
+**Current version**: v0.234.1
 **Date**: 2026-08-04
-**Test count**: 244 rust lib tests + 2374 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2388 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.234.1 — Stage 16.41 (Codegen Documentation Finalization)
+
+### Overview
+
+Finalized codegen documentation by updating all `docs/graph/codegen/` diagrams
+to reflect the post-refactoring final state and creating the LLVM backend
+architecture document in `docs/llvm/`.
+
+**6 new/updated documentation files**:
+- `docs/graph/codegen/README.md` — Index for codegen graph directory
+- `docs/graph/codegen/architecture.md` — Final post-refactoring architecture
+- `docs/graph/codegen/emitter-trait.md` — Emitter trait hierarchy
+- `docs/graph/codegen/data-flow.md` — Unified pipeline data flow
+- `docs/graph/codegen/backend-comparison.md` — Text vs LLVM backend
+- `docs/llvm/backend-architecture.md` — LLVM backend architecture
+
+**No code changes** — documentation-only stage.
+
+### Verification
+
+- **Total: 7856 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.234.0 — Stage 16.40 (Dead dyn_trait_emit Re-exports Cleanup)
+
+### Overview
+
+Completed the codegen dead code cleanup by removing 7 dead re-exports of
+`dyn_trait_emit` functions from `codegen/mod.rs`. These functions were only
+used by tests, not by the production codegen pipeline (which uses `Emitter`
+trait methods).
+
+**What was removed**: 7 `pub use` re-exports from `codegen/mod.rs`
+**What was updated**: 6 test files to use full module path
+**No behavior change** — all 7850 tests pass identically.
+
+Per §1.0 原則 5 "去除兼容思维".
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2382/2382 PASS
+  (+8 new stage16.40 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7850 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.233.1 — Stage 16.39 (Deep Review Round 7: Codegen Refactoring Complete)

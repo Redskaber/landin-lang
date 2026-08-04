@@ -26966,3 +26966,82 @@ Stage Summary:
 - Stage 16.39 PASSED — Deep Review Round 7 GO
 - Codegen architecture refactoring COMPLETE
 - v0.3 + Codegen Refactoring READY
+
+---
+Task ID: stage16.40-dead-code-sweep
+Agent: Super Z (main)
+Task: Stage 16.40 — Clean up dead dyn_trait_emit re-exports + final codegen dead code sweep. v0.233.1 → v0.234.0.
+
+Work Log:
+- Baseline: v0.233.1 / 244 lib + 2374 integration + 5224 conformance = 7842
+
+### 1. Removed Dead Re-exports
+
+Removed 7 `pub use` re-exports from `codegen/mod.rs` for `dyn_trait_emit::*`
+functions:
+- emit_dyn_trait_fat_ptr_text
+- emit_dyn_trait_fat_ptrs_text_batch
+- emit_dyn_trait_fat_ptrs_text_batch_from_resolver
+- emit_dyn_trait_method_call_text
+- emit_dyn_trait_method_calls_text_batch
+- emit_dyn_trait_method_calls_text_batch_from_resolver
+- emit_dyn_trait_mir_plan_text
+
+These functions are only used by tests (not by production codegen pipeline,
+which uses Emitter trait methods). The `pub mod dyn_trait_emit` declaration
+remains, so tests can access via `landin_compiler::codegen::dyn_trait_emit::*`.
+
+### 2. Updated Test Imports
+
+Updated 6 test files to use full module path instead of convenience re-exports.
+
+### 3. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 244/244 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2382/2382 PASS
+  (+8 new stage16.40 tests)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 7850 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.40 PASSED — Dead dyn_trait_emit re-exports cleaned up
+- 7 dead re-exports removed from public API
+- 6 test files updated to use full module path
+- 7850 tests, 0 failures, 0 warnings
+- Codegen module dead code cleanup COMPLETE
+
+---
+Task ID: stage16.41-codegen-docs-finalization
+Agent: Super Z (main)
+Task: Stage 16.41 — Codegen documentation finalization. v0.234.0 → v0.234.1.
+
+Work Log:
+- Baseline: v0.234.0 / 244 lib + 2382 integration + 5224 conformance = 7850
+
+### 1. Documentation Created/Updated
+
+- docs/graph/codegen/README.md — New index for codegen graph directory
+- docs/graph/codegen/architecture.md — Updated to final post-refactoring state
+- docs/graph/codegen/emitter-trait.md — New: Emitter trait hierarchy diagram
+- docs/graph/codegen/data-flow.md — New: Unified pipeline data flow diagram
+- docs/graph/codegen/backend-comparison.md — New: Text vs LLVM backend comparison
+- docs/llvm/backend-architecture.md — New: LLVM backend architecture document
+
+### 2. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 244/244 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2388/2388 PASS
+  (+6 new stage16.41 tests)
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 7856 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.41 PASSED — Codegen documentation finalization
+- 6 new/updated documentation files
+- 7856 tests, 0 failures, 0 warnings

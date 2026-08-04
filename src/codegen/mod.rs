@@ -103,12 +103,11 @@ pub use mir_translation::{mir_type_to_emit_type_with_layouts, stdlib_type_kind_t
 // functions are pure "MIR data → LLVM IR text" converters and belong
 // in codegen, not MIR.
 pub mod dyn_trait_emit;
-pub use dyn_trait_emit::{
-    emit_dyn_trait_fat_ptr_text, emit_dyn_trait_fat_ptrs_text_batch,
-    emit_dyn_trait_fat_ptrs_text_batch_from_resolver, emit_dyn_trait_method_call_text,
-    emit_dyn_trait_method_calls_text_batch, emit_dyn_trait_method_calls_text_batch_from_resolver,
-    emit_dyn_trait_mir_plan_text,
-};
+// Stage 16.40: Removed dead re-exports of dyn_trait_emit functions.
+// These 7 functions are only used by tests (not by production codegen
+// pipeline, which uses Emitter trait methods). Tests should use the
+// full module path: `landin_compiler::codegen::dyn_trait_emit::*`.
+// Per §1.0 原則 5 "去除兼容思维": dead re-exports removed.
 
 /// Stage 3.56 (Phase A §16 refactoring): Generate LLVM IR from a
 /// `CompileResult` — codegen is now a **pure MIR consumer**.

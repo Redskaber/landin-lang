@@ -376,3 +376,7 @@ mod stage16_37_unified_pipeline_tests;
 mod stage16_38_emitter_split_attempt_tests;
 #[path = "v0/stage16/plan/stage16_39_deep_review_round7_tests.rs"]
 mod stage16_39_deep_review_round7_tests;
+#[path = "v0/stage16/plan/stage16_40_dead_code_sweep_tests.rs"]
+mod stage16_40_dead_code_sweep_tests;
+#[path = "v0/stage16/plan/stage16_41_codegen_docs_tests.rs"]
+mod stage16_41_codegen_docs_tests;
