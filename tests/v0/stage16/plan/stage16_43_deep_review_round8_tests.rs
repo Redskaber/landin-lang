@@ -61,7 +61,8 @@ fn stage16_43_dyn_trait() {
 /// Stage 16.43 test 7: Drop glue.
 #[test]
 fn stage16_43_drop_glue() {
-    let src = "struct R; impl Drop for R { fn drop(&mut self) {} } fn main() -> i32 { let _r = R; 0 }";
+    let src =
+        "struct R; impl Drop for R { fn drop(&mut self) {} } fn main() -> i32 { let _r = R; 0 }";
     let result = compile(src);
     assert!(!result.has_errors());
 }

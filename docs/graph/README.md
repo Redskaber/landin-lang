@@ -1,36 +1,39 @@
-# Codegen Architecture Data Flow Diagrams
+# Pipeline Diagrams Index
 
-> **Author**: redskaber
-> **Date**: 2026-08-04 (Stage 16.35)
-> **Purpose**: Standardized codegen architecture diagrams for the Landin compiler.
+> **Date**: 2026-08-04
+> **Version**: v0.235.1
 
 ## Directory Structure
 
-- `codegen/` — Codegen module architecture diagrams
-- `pipeline/` — End-to-end compiler pipeline diagrams
-- `closure/` — Closure-specific data flow diagrams
+| Directory | Files | Description |
+|-----------|-------|-------------|
+| `codegen/` | 5 | Codegen module architecture, emitter trait, data flow, backend comparison |
+| `closure/` | 1 | Closure data flow (HIR → MIR → Codegen) |
+| `pipeline/` | 1 | End-to-end compiler pipeline overview |
+| `error-system/` | 1 | Error types, error flow, error codes, reporting |
+| `type-system/` | 1 | Type checking + borrow checking data flow |
+| `trait-system/` | 1 | Static + dynamic dispatch, vtable layout, Copy detection |
 
-## Diagram Types
+## Complete Diagram List
 
-1. **Module architecture diagrams** — show the module/file structure
-2. **Data flow diagrams** — show how data flows through the pipeline
-3. **Stage diagrams** — show the pipeline stages and their inputs/outputs
-4. **Keyword diagrams** — show specific feature data flows (e.g., closure, dyn Trait)
+| File | Description |
+|------|-------------|
+| `codegen/README.md` | Codegen graph directory index |
+| `codegen/architecture.md` | Codegen module architecture (final post-refactoring) |
+| `codegen/emitter-trait.md` | Emitter trait hierarchy (39 methods, 3 doc groups) |
+| `codegen/data-flow.md` | Unified pipeline data flow (MIR → LLVM IR) |
+| `codegen/backend-comparison.md` | TextEmitter vs LLVMSysEmitter comparison |
+| `closure/data-flow.md` | Closure data flow (HIR → MIR → Codegen) |
+| `pipeline/overview.md` | End-to-end compiler pipeline |
+| `error-system/data-flow.md` | Error types, flow, codes, reporting |
+| `type-system/data-flow.md` | Typeck + borrowck + iterative typeck data flow |
+| `trait-system/data-flow.md` | Static/dynamic dispatch, vtable, Copy detection, DefId lookup |
 
-## Notation
+## Stage 16.47 Update
 
-- `[Box]` = module/file
-- `{Box}` = data structure
-- `→` = data flow
-- `⇒` = transformation
-- `|` = alternative path
-- `▼` = entry point
+Added 3 new diagram directories:
+- `error-system/` — Error system data flow
+- `type-system/` — Type system data flow (typeck + borrowck)
+- `trait-system/` — Trait system data flow (static + dynamic dispatch)
 
-## Files
-
-- `codegen/architecture.md` — Codegen module architecture (post-Stage 16.35)
-- `codegen/data-flow.md` — Codegen data flow (MIR → IR)
-- `codegen/emitter-trait.md` — Emitter trait hierarchy
-- `pipeline/overview.md` — End-to-end compiler pipeline
-- `pipeline/codegen-stage.md` — Codegen stage detail
-- `closure/data-flow.md` — Closure data flow (HIR → MIR → Codegen)
+Total graph diagrams: 11 (was 8)

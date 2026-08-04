@@ -6,7 +6,6 @@
 //! design alignment with 02-grammar.md §3.1-§3.7).
 //!
 //! Owns:
-//! - `make_path` (path constructor helper)
 //! - `parse_path` / `parse_path_in_expr` / `parse_path_in_pat` /
 //!   `parse_path_with_ctx` (path parsing in 3 contexts)
 //! - `try_parse_turbofish_or_generic_args` / `try_parse_generic_args`
@@ -27,20 +26,6 @@ use crate::session::Span;
 use super::parser::{Parser, PathContext};
 
 impl<'a> Parser<'a> {
-    #[allow(dead_code)]
-    pub(super) fn make_path(
-        &self,
-        segments: Vec<PathSegment>,
-        leading: PathLeading,
-        span: Span,
-    ) -> Path {
-        Path {
-            segments,
-            leading,
-            span,
-        }
-    }
-
     pub(super) fn parse_path(&mut self) -> Path {
         self.parse_path_with_ctx(PathContext::Type)
     }

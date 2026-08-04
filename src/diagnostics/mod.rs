@@ -126,7 +126,6 @@ pub enum Color {
     Yellow,
     Cyan,
     Green,
-    #[allow(dead_code)]
     Bold,
     Reset,
 }

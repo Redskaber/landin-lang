@@ -1,9 +1,68 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.234.2
+**Current version**: v0.235.2
 **Date**: 2026-08-04
-**Test count**: 244 rust lib tests + 2408 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2423 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.235.2 — Stage 16.47 (Supplement Graph Diagrams)
+
+### Overview
+
+Supplemented `docs/graph/` with 3 new diagram subdirectories covering the
+error system, type system, and trait system data flows.
+
+**New diagrams**:
+- `docs/graph/error-system/data-flow.md` — Error types, flow, codes, reporting
+- `docs/graph/type-system/data-flow.md` — Typeck + borrowck + iterative typeck
+- `docs/graph/trait-system/data-flow.md` — Static/dynamic dispatch, vtable, Copy, DefId
+
+**Total graph diagrams**: 11 (was 8)
+
+**No code changes** — documentation-only stage.
+
+### Verification
+
+- **Total: 7891 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.235.1 — Stage 16.46 (Final Project Cleanup: README Rewrite)
+
+### Overview
+
+Complete README.md rewrite (394 → 180 lines) reflecting the final v0.3 state.
+Documentation synchronization check across all docs.
+
+**No code changes** — documentation-only stage.
+
+### Verification
+
+- **Total: 7886 tests passing, 0 failures, 0 warnings.**
+
+---
+## v0.235.0 — Stage 16.45 (Project-Wide Dead Code Audit)
+
+### Overview
+
+Performed a project-wide dead code audit across ALL modules (not just codegen).
+Found and removed dead code and unnecessary `#[allow]` annotations.
+
+**Removed**:
+- `make_path` function in `parser/path.rs` — truly dead (never called)
+- `#[allow(dead_code)]` on `Color::Bold` in `diagnostics/mod.rs` — unnecessary
+
+**Kept (justified)**:
+- `async_marker` module — future async/await support (Stage 8.5)
+- `region_inference` module — partially used, documented
+
+**Project-wide `#[allow(dead_code)]` count**: 2 (both justified, both documented)
+
+Per §1.0 原則 5 "去除兼容思维".
+
+### Verification
+
+- **Total: 7882 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.234.2 — Stage 16.44 (v0.3 Design Writeback)
