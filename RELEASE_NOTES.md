@@ -1,9 +1,34 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.236.1
+**Current version**: v0.237.0
 **Date**: 2026-08-04
 **Test count**: 250 rust lib tests + 2437 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.237.0 — Stage 16.51 (Task 11 Phase 1b: Substs Propagation)
+
+### Overview
+
+Implemented generic args propagation — parsed generic args from HIR path
+segments are now propagated into MIR `SubstsRef`. Previously, all generic
+args were silently discarded (always empty `SubstsRef`).
+
+**Key result**: `enum Option<T> { Some(T), None } fn main() -> Option<i32>`
+now compiles successfully. `Option<i32>` produces `Adt(Option_def_id, [i32])`
+in MIR.
+
+**New functions**:
+- `lower_path_generic_args(path) -> SubstsRef` — extract type args from path
+- `lower_ast_ty_to_mir_ty(ty) -> Ty` — minimal AST→MIR type lowerer
+
+**Modified**: `lower_hir_ty_to_mir_ty_with_regions` now propagates substs.
+Typeck Adt unification relaxed (temporary) to handle mixed empty/non-empty
+substs until Phase 1c completes.
+
+### Verification
+
+- **Total: 7911 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.236.1 — Stage 16.50 (Task 11 Phase 1a: generics_of Query)

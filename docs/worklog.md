@@ -27429,3 +27429,49 @@ Stage Summary:
 - Task 11 Phase 1a COMPLETE
 - Next: Phase 1b — propagate path.args into SubstsRef in lower_hir_ty_to_mir_ty
 - 7911 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.51-substs-propagation
+Agent: Super Z (main)
+Task: Stage 16.51 — Task 11 Phase 1b: Propagate generic args into SubstsRef. v0.236.1 → v0.237.0.
+
+Work Log:
+- Baseline: v0.236.1 / 250 lib + 2437 integration + 5224 conformance = 7911
+
+### 1. Implemented Substs Propagation
+
+New functions in src/mir/lower/mod.rs:
+- lower_path_generic_args(path, region_counter) → SubstsRef
+- lower_ast_ty_to_mir_ty(ty) → Ty (minimal AST→MIR for generic args)
+
+Modified lower_hir_ty_to_mir_ty_with_regions:
+- Res::Def arm now calls lower_path_generic_args instead of empty Vec
+- Adt(def_id, substs) now carries actual type arguments
+
+### 2. Relaxed Typeck Adt Unification
+
+Modified typeck/unify.rs: when substs lengths differ (one empty due to
+incomplete AggregateKind propagation), skip substs comparison and match
+by DefId only. Temporary until Phase 1c.
+
+### 3. Key Result
+
+`enum Option<T> { Some(T), None } fn main() -> Option<i32>` now compiles!
+Option<i32> produces Adt(Option_def_id, [i32]) in MIR.
+
+### 4. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 250/250 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2437/2437 PASS
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 7911 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.51 PASSED — Substs propagation implemented
+- Task 11 Phase 1b COMPLETE
+- Generic types now carry substs in MIR (Adt(def_id, [i32]))
+- Next: Phase 1c — propagate substs in AggregateKind::Adt
+- 7911 tests, 0 failures, 0 warnings

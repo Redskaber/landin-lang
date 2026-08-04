@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.236.1 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF + Task 11 Phase 1a: generics_of query)
+**Version**: v0.237.0 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF + Task 11 Phase 1b: substs propagation)
 **Date**: 2026-08-04
 
 A work-in-progress systems programming language inspired by Rust, designed for

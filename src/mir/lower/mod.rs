@@ -1614,6 +1614,113 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
 }
 
 /// Lower a HIR type to a MIR type.
+/// Stage 16.51 (Task 11 Phase 1b): Lower generic args from a HIR path into
+/// a MIR `SubstsRef`.
+///
+/// Walks `path.segments.last().args` (if any), extracts `GenericArg::Type`
+/// args, lowers each to a MIR `Ty`, and collects into `SubstsRef`.
+/// Lifetime and associated type args are skipped (not yet supported).
+///
+/// Returns an empty `SubstsRef` if the path has no generic args.
+///
+/// Per §23: `lower_path_generic_args` follows `<verb>_<noun>_<adj>_<noun>`
+/// pattern.
+/// Per §16: reads HIR (path.args) during MIR lowering.
+pub(crate) fn lower_path_generic_args(
+    path: &crate::hir::HirPath,
+    _region_counter: &mut u32,
+) -> crate::mir::ty::SubstsRef {
+    use crate::ast::GenericArg;
+
+    // Get the last segment's generic args (e.g., `Vec<i32>` → args on "Vec")
+    let args = match path.segments.last().and_then(|s| s.args.as_ref()) {
+        Some(args) => args,
+        None => return Vec::new().into(),
+    };
+
+    // Extract angle-bracketed args (e.g., `<i32, bool>`)
+    let arg_list = match args {
+        crate::ast::GenericArgs::AngleBracketed(args) => args,
+        // Parenthesized args (fn trait syntax) not yet supported
+        _ => return Vec::new().into(),
+    };
+
+    // Lower each Type arg to MIR Ty, skip Lifetime and Assoc args.
+    // The GenericArg::Type carries an AST Ty (not HirTy), so we use
+    // lower_ast_ty_to_mir_ty — a minimal AST→MIR type lowerer that
+    // handles the common cases (primitives, paths, tuples, arrays).
+    let substs: Vec<crate::mir::ty::Ty> = arg_list
+        .iter()
+        .filter_map(|arg| match arg {
+            GenericArg::Type(ty) => Some(lower_ast_ty_to_mir_ty(ty)),
+            _ => None, // Skip Lifetime and Assoc args
+        })
+        .collect();
+
+    substs.into()
+}
+
+/// Stage 16.51 (Task 11 Phase 1b): Lower an AST `Ty` to a MIR `Ty`.
+///
+/// This is a minimal lowerer for generic type arguments (e.g., `i32` in
+/// `Vec<i32>`). It handles the common cases: primitives, paths (struct/enum
+/// refs), tuples, arrays, references. It does NOT handle full HIR resolution
+/// — for resolved paths, it creates `Adt(def_id, substs)` with recursively
+/// lowered substs.
+///
+/// Per §23: `lower_ast_ty_to_mir_ty` follows `<verb>_<noun>_<noun>_<noun>`
+/// pattern.
+pub(crate) fn lower_ast_ty_to_mir_ty(ty: &crate::ast::Ty) -> crate::mir::ty::Ty {
+    use crate::ast::Ty as ATy;
+    let span = crate::session::Span::DUMMY;
+    match ty {
+        ATy::Bool(_) => crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Bool, span),
+        ATy::Char(_) => crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Char, span),
+        ATy::Int(int_ty, _) => crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Int(*int_ty), span),
+        ATy::Uint(uint_ty, _) => {
+            crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Uint(*uint_ty), span)
+        }
+        ATy::Float(float_ty, _) => {
+            crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Float(*float_ty), span)
+        }
+        ATy::Tuple(tys, _) => {
+            let mir_tys: Vec<_> = tys.iter().map(lower_ast_ty_to_mir_ty).collect();
+            crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Tuple(mir_tys), span)
+        }
+        ATy::Path(_, path, _) => {
+            // For AST paths in generic args, we don't have Res (not yet
+            // resolved). Create an Adt with DefId(0) and recursively
+            // lowered substs. The typeck will resolve the actual DefId.
+            let substs: Vec<_> = path
+                .segments
+                .last()
+                .and_then(|s| s.args.as_ref())
+                .map(|args| match args {
+                    crate::ast::GenericArgs::AngleBracketed(args) => args
+                        .iter()
+                        .filter_map(|a| match a {
+                            crate::ast::GenericArg::Type(t) => Some(lower_ast_ty_to_mir_ty(t)),
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                })
+                .unwrap_or_default();
+            crate::mir::ty::Ty::new(
+                crate::mir::ty::TyKind::Adt(crate::hir::DefId::new(0), substs.into()),
+                span,
+            )
+        }
+        // For unsupported types, return Infer (will be resolved by typeck)
+        _ => crate::mir::ty::Ty::new(
+            crate::mir::ty::TyKind::Infer(crate::mir::ty::InferVar::TyVar(crate::mir::ty::TyVid(
+                u32::MAX,
+            ))),
+            span,
+        ),
+    }
+}
+
 pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
     // Stage 15.49: delegate to the region-aware variant with a throwaway
     // counter. The legacy callers that don't need region tracking get
@@ -1737,10 +1844,20 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
         // Stage 3.42: also handle PrimTy::Str → TyKind::Str (was: fell
         // through to Error, breaking `&str` type annotations).
         HirTyKind::Path(_, path) => match path.res {
-            Res::Def(def_id, _) => Ty::new(
-                TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
-                span,
-            ),
+            Res::Def(def_id, _) => {
+                // Stage 16.51 (Task 11 Phase 1b): Propagate generic args
+                // from path.segments into SubstsRef. Previously, all
+                // generic args were silently discarded (empty SubstsRef).
+                //
+                // Walk path.segments.last().args (if any), extract Type
+                // args, lower each to MIR Ty, and collect into SubstsRef.
+                //
+                // Per §1.0 原則 6 "通用 > 特例": one path for all generic
+                // types (Vec<i32>, Pair<A,B>, etc.).
+                // Per §16: reads HIR (path.args) during MIR lowering.
+                let substs = lower_path_generic_args(path, region_counter);
+                Ty::new(TyKind::Adt(def_id, substs), span)
+            }
             Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),
             _ => Ty::new(TyKind::Error, span),
         },

@@ -542,6 +542,10 @@ impl UnificationTable {
             }
 
             // Adt with Adt: same DefId → unify substs
+            // Stage 16.51: When substs lengths differ (one is empty because
+            // AggregateKind::Adt hasn't been updated yet), skip substs
+            // unification and just match by DefId. This is a temporary
+            // measure until Phase 1c propagates substs everywhere.
             (TyKind::Adt(a_def, a_substs), TyKind::Adt(b_def, b_substs)) => {
                 if a_def != b_def {
                     return Err(Box::new(TypeError::mismatch(
@@ -550,15 +554,12 @@ impl UnificationTable {
                         Span::DUMMY,
                     )));
                 }
-                if a_substs.len() != b_substs.len() {
-                    return Err(Box::new(TypeError::mismatch(
-                        a.clone(),
-                        b.clone(),
-                        Span::DUMMY,
-                    )));
-                }
-                for (at, bt) in a_substs.iter().zip(b_substs.iter()) {
-                    self.unify_resolved(at, bt)?;
+                // Only unify substs if both sides have the same length.
+                // If one side has empty substs (not yet propagated), skip.
+                if a_substs.len() == b_substs.len() && !a_substs.is_empty() {
+                    for (at, bt) in a_substs.iter().zip(b_substs.iter()) {
+                        self.unify_resolved(at, bt)?;
+                    }
                 }
                 Ok(())
             }
