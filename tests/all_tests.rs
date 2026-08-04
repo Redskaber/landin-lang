@@ -364,3 +364,5 @@ mod stage16_31_borrowck_on_closure_mir_tests;
 mod stage16_32_triple_nested_closure_tests;
 #[path = "v0/stage16/plan/stage16_33_deep_review_round6_tests.rs"]
 mod stage16_33_deep_review_round6_tests;
+#[path = "v0/stage16/plan/stage16_34_cleanup_inline_path_tests.rs"]
+mod stage16_34_cleanup_inline_path_tests;

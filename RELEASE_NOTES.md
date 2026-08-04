@@ -1,9 +1,45 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.230.3
+**Current version**: v0.231.0
 **Date**: 2026-08-04
-**Test count**: 244 rust lib tests + 2312 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 244 rust lib tests + 2324 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.231.0 — Stage 16.34 (Task 10 Step 5: Clean Up Inline Closure Path)
+
+### Overview
+
+Completed **Task 10 Step 5** — the final cleanup of the closure redesign.
+All deprecated inline closure path code is removed, and the `closure_bodies`
+side-table (TD-CLOSURE-2) is eliminated.
+
+**What was removed**:
+1. `lower_closure_call_inline` function (100 lines, deprecated since 16.29)
+2. `ClosureBodyInfo` struct (only used by inline path)
+3. `closure_bodies` field on `MirLowerCtxt` (side-table for inline path)
+4. `closure_bodies` insertion in closure literal lowering
+5. `closure_bodies` propagation in let binding lowering
+
+**What replaced it**:
+- Type-based check: `TyKind::Closure(_, _)` on the func local's type
+- The `SynthesizedClosureFunction` metadata is the single source of truth
+
+**No behavior change** — all closure patterns still work identically.
+**All closure TDs are now CLOSED.** Task 10 is 100% COMPLETE (all 5 steps).
+
+Per §1.0 原則 5 "去除兼容思维" + §23 rule 5 (DRY).
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2324/2324 PASS
+  (+12 new stage16.34 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7792 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.230.3 — Stage 16.33 (Deep Review Round 6: v0.3 Closure Redesign Complete)

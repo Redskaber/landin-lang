@@ -26632,3 +26632,58 @@ Stage Summary:
 - All closure TDs closed
 - 7780 tests, 0 failures, 0 warnings
 - v0.3 RELEASE APPROVED — ready for next workstream
+
+---
+Task ID: stage16.34-cleanup-inline-closure-path
+Agent: Super Z (main)
+Task: Stage 16.34 — Task 10 Step 5: Clean up deprecated inline closure path. v0.230.3 → v0.231.0.
+
+Work Log:
+- Baseline: v0.230.3 / 244 lib + 2312 integration + 5224 conformance = 7780
+
+### 1. Removed Dead Code
+
+- `lower_closure_call_inline` function (100 lines, deprecated since 16.29)
+- `ClosureBodyInfo` struct (only used by inline path)
+- `closure_bodies` field on `MirLowerCtxt` (side-table for inline path)
+- `closure_bodies` insertion in closure literal lowering
+- `closure_bodies` propagation in let binding lowering
+
+### 2. Type-Based Check (通解)
+
+Replaced `closure_bodies.contains_key(&func_local)` with:
+```rust
+matches!(&ld.ty.kind, TyKind::Closure(_, _))
+```
+
+This works because:
+- Closure literal's local has type `Closure(def_id, substs)` (concrete)
+- Let-bound closures inherit this type via let lowering
+- Type system is the single source of truth (DRY §23 rule 5)
+
+### 3. Verification
+
+- `cargo build --features llvm-backend` — ✅ clean, 0 warnings
+- `cargo fmt` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend --lib` — ✅ 244/244 PASS
+- `cargo test --features llvm-backend --test all_tests` — ✅ 2324/2324 PASS
+  (+12 new stage16.34 tests)
+- `python3 tests/conformance/run_all.py` — ✅ 5224/5224 PASS
+- **Total: 7792 tests passing, 0 failures, 0 warnings.**
+- **Runtime**: f(10)=11 ✅, f()()()=42 ✅, mut_cap=3 ✅
+
+### 4. Documentation
+
+- docs/develop/v0/stage-16/stage-16.34-cleanup-inline-closure-path.md
+- tests/v0/stage16/plan/stage16_34_cleanup_inline_path_tests.rs (+12 tests)
+- Updated Cargo.toml (v0.231.0), RELEASE_NOTES.md, README.md
+
+Stage Summary:
+- Stage 16.34 PASSED — Task 10 Step 5 complete
+- TD-CLOSURE-2 FIXED ✅
+- All closure TDs now CLOSED
+- No deprecated closure APIs remain — clean API surface
+- Task 10 100% COMPLETE (all 5 steps done)
+- 7792 tests, 0 failures, 0 warnings
+- v0.3 closure redesign FULLY COMPLETE with clean codebase

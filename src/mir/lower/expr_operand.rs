@@ -369,105 +369,14 @@ fn lower_closure_call_to_synthesized(
     dest
 }
 
-/// Stage 13.3a (TD-030): Inline a closure call at the call site.
-///
-/// This is the inline approach — the closure body is lowered directly
-/// into the enclosing function's MIR at each call site. This works but
-/// has limitations (code bloat, no optimization, MIR pollution).
-///
-/// Stage 16.16: This function was retained as the fallback path while
-/// the synthesized `call` function (Strategy A) required more codegen
-/// work.
-///
-/// Stage 16.29 (通解 — Typeck on synthesized closure MIR bodies):
-/// This function is now `#[deprecated]` and no longer invoked by the
-/// production closure call dispatch. ALL closures use the synthesized
-/// `call` function path (`lower_closure_call_to_synthesized`). The
-/// typeck gap that forced the inline fallback is fixed.
-///
-/// Per §1.0 原則 5 "去除兼容思维": the inline path is retained only
-/// as `#[deprecated]` for transition — it will be removed in a future
-/// stage once all tests confirm the synthesized path handles every
-/// case correctly. Per §23: deprecated items must have `note = "..."`
-/// pointing to the §16-compliant replacement.
-#[deprecated(
-    note = "Use lower_closure_call_to_synthesized (§16-compliant Strategy A path). The inline path is deprecated as of Stage 16.29 — all closures now use the synthesized `call` function."
-)]
-#[allow(dead_code)]
-fn lower_closure_call_inline(
-    cx: &mut MirLowerCtxt,
-    info: super::ClosureBodyInfo,
-    closure_local: LocalId,
-    arg_locals: &[LocalId],
-    expr: &HirExpr,
-) -> LocalId {
-    // Save the local_map entries we're about to overwrite so we can
-    // restore them after the body is lowered.
-    let mut saved_entries: Vec<(HirId, Option<LocalId>)> = Vec::new();
-
-    // Step 1: Bind call args to closure params.
-    for (i, param) in info.params.iter().enumerate() {
-        let param_hir_id = param.pat.hir_id;
-        let old = cx.local_map.get(&param_hir_id).copied();
-        saved_entries.push((param_hir_id, old));
-
-        if i < arg_locals.len() {
-            cx.local_map.insert(param_hir_id, arg_locals[i]);
-
-            let mut sub_ids: std::collections::HashSet<HirId> = std::collections::HashSet::new();
-            pattern_bindings::collect_pat_hir_ids(&param.pat, &mut sub_ids);
-            for sub_id in sub_ids {
-                if sub_id != param_hir_id {
-                    let old_sub = cx.local_map.get(&sub_id).copied();
-                    saved_entries.push((sub_id, old_sub));
-                    cx.local_map.insert(sub_id, arg_locals[i]);
-                }
-            }
-        }
-    }
-
-    // Step 2: Extract captures from the closure struct.
-    for (i, (cap_hir_id, cap_ty)) in info.captures.iter().enumerate() {
-        let old = cx.local_map.get(cap_hir_id).copied();
-        saved_entries.push((*cap_hir_id, old));
-
-        let extract_local = cx.mir.new_local(cap_ty.clone(), None, expr.span);
-
-        cx.push_assign(
-            Place::local(extract_local, expr.span),
-            Rvalue::Use(Operand::Copy(Place {
-                kind: PlaceKind::Projection(
-                    Box::new(Place::local(closure_local, expr.span)),
-                    ProjectionElem::Field(FieldId(i as u32), cap_ty.clone()),
-                ),
-                span: expr.span,
-            })),
-            expr.span,
-        );
-
-        cx.local_map.insert(*cap_hir_id, extract_local);
-
-        if let Some(orig_local) = old {
-            if let Some(orig_info) = cx.closure_bodies.get(&orig_local).cloned() {
-                cx.closure_bodies.insert(extract_local, orig_info);
-            }
-        }
-    }
-
-    // Step 3: Lower the closure body inline.
-    let result_local = lower_expr_to_operand(cx, &info.body);
-
-    // Step 4: Restore local_map entries.
-    for (hir_id, old) in saved_entries {
-        if let Some(lid) = old {
-            cx.local_map.insert(hir_id, lid);
-        } else {
-            cx.local_map.remove(&hir_id);
-        }
-    }
-
-    result_local
-}
+// Stage 16.34 (Task 10 Step 5 — cleanup): Removed `lower_closure_call_inline`.
+// The inline closure call path is no longer needed — ALL closures use
+// the synthesized `call` function path (`lower_closure_call_to_synthesized`).
+// The typeck gap (Stage 16.29), codegen gap (Stage 16.30), borrowck gap
+// (Stage 16.31), and triple-nested gap (Stage 16.32) are all fixed.
+//
+// Per §1.0 原則 5 "去除兼容思维": dead code removed.
+// Per §23: no deprecated items remain — clean API surface.
 
 // Stage 15.74: `is_capture_ty_copy` REMOVED — replaced by shared
 // `is_mir_ty_copy_conservative` from `mir::ty` (DRY per §23 rule 5).
@@ -814,10 +723,29 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Infer types (return type, param types) for ANY capture type,
             // including Adt and Closure captures.
             //
-            // Per §1.0 原則 6 "通用 > 特例": one call path for all closures.
-            // Per §1.0 原則 9 "正确 > 妥协": fix the typeck gap properly,
-            // not patch it with special-case routing.
-            if cx.closure_bodies.contains_key(&func_local) {
+            // Stage 16.34 (Task 10 Step 5 — cleanup): Replaced the
+            // `closure_bodies.contains_key` side-table lookup with a
+            // type-based check. The closure literal's local has type
+            // `Closure(def_id, substs)` (concrete, not Infer) at MIR
+            // lowering time. Let-bound closures (`let g = |x| ...;`)
+            // inherit this type via the let lowering (control_flow.rs
+            // line 598-604: uses init_local's type if not Infer).
+            //
+            // This eliminates the `closure_bodies` side-table (TD-CLOSURE-2)
+            // and the `ClosureBodyInfo` struct — the type system is the
+            // single source of truth for "is this local a closure?".
+            //
+            // Per §1.0 原則 5 "去除兼容思维": dead side-table removed.
+            // Per §1.0 原則 6 "通用 > 特例": one type-based check for all
+            // closure-typed locals (literal, let-bound, re-let-bound).
+            // Per §23 rule 5 (DRY): type is the single source of truth.
+            let is_closure_typed = {
+                let func_local_decl = cx.mir.local_decls.get(func_local.0 as usize);
+                func_local_decl
+                    .map(|ld| matches!(&ld.ty.kind, TyKind::Closure(_, _)))
+                    .unwrap_or(false)
+            };
+            if is_closure_typed {
                 return lower_closure_call_to_synthesized(cx, func_local, &arg_locals, expr);
             }
 
@@ -1628,21 +1556,19 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     span: expr.span,
                 });
 
-            // Stage 13.3a: store the closure's (params, body, captures) in
-            // the side-table keyed by closure_local. The `HirExprKind::Call`
-            // arm will look this up to inline the body at the call site.
-            let closure_info = super::ClosureBodyInfo {
-                params: params.clone(),
-                body: body.clone(),
-                captures: captured
-                    .iter()
-                    .map(|(hir_id, local_id)| {
-                        let ty = cx.mir.local(*local_id).ty.clone();
-                        (*hir_id, ty)
-                    })
-                    .collect(),
-            };
-            cx.closure_bodies.insert(closure_local, closure_info);
+            // Stage 16.34 (Task 10 Step 5 — cleanup): Removed the
+            // `closure_bodies` side-table insertion. The closure dispatch
+            // at the call site now uses the type-based check
+            // (`TyKind::Closure(_, _)`) instead of the side-table lookup.
+            //
+            // The `ClosureBodyInfo` struct and `closure_bodies` field are
+            // no longer needed — the `SynthesizedClosureFunction` metadata
+            // (registered below) carries all the information needed for
+            // the synthesized `call` function.
+            //
+            // Per §1.0 原則 5 "去除兼容思维": dead side-table removed.
+            // Per §23 rule 5 (DRY): `SynthesizedClosureFunction` is the
+            // single source of truth for closure metadata.
 
             // Stage 16.13 (Task 10 Step 1): Register the synthesized closure
             // function metadata. This is infrastructure for Strategy A

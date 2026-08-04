@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.230.3 (v0.2 FINAL + v0.3 RELEASE APPROVED — Closure redesign FULLY COMPLETE: all closures (no-capture, i32/struct/mutable captures, nested up to 4+ levels) use synthesized call function; typeck + borrowck + codegen all work; Deep Review Round 6 GO)
+**Version**: v0.231.0 (v0.2 FINAL + v0.3 RELEASE APPROVED — Closure redesign 100% COMPLETE: all closures use synthesized call function; inline path removed; clean API surface; typeck + borrowck + codegen all work)
 **Date**: 2026-08-04
 
 A work-in-progress systems programming language inspired by Rust, designed for

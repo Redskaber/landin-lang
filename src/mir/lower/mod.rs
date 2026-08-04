@@ -105,12 +105,17 @@ pub struct MirLowerCtxt<'a> {
     /// that received the closure via Move/Copy (propagated by the let
     /// lowering in `control_flow::lower_block`).
     ///
-    /// Per `stage-13.3-design-alignment.md` §4, the long-term plan is
-    /// Strategy A (synthesized `call` function per closure); Stage 13.3a
-    /// implements the inline approach as a pragmatic subset to make the
-    /// common case (`let f = |x| ...; f(5);`) work without the full
-    /// synthesized-MirBody infrastructure.
-    pub closure_bodies: std::collections::HashMap<LocalId, ClosureBodyInfo>,
+    /// Stage 16.34 (Task 10 Step 5 — cleanup): Removed the `closure_bodies`
+    /// side-table. The closure dispatch at the call site now uses the
+    /// type-based check (`TyKind::Closure(_, _)`) instead of the side-table
+    /// lookup. The `SynthesizedClosureFunction` metadata (in
+    /// `synthesized_closure_functions` below) is the single source of truth
+    /// for closure metadata.
+    ///
+    /// Per §1.0 原則 5 "去除兼容思维": dead side-table removed.
+    /// Per §23 rule 5 (DRY): type + SynthesizedClosureFunction is the
+    /// single source of truth.
+
     /// Stage 13.19: Stack of (continue_target, break_target) block IDs for
     /// the enclosing loops. Used by `break` and `continue` to emit the
     /// correct branch target. Empty when not inside a loop.
@@ -192,34 +197,16 @@ pub struct SynthesizedClosureFunction {
     pub fn_name: String,
 }
 
-/// Stage 13.3a (TD-030): Information about a closure literal, stored in
-/// `MirLowerCtxt.closure_bodies` keyed by the LocalId holding the closure
-/// struct value. Used by `HirExprKind::Call` to inline the closure body at
-/// the call site.
-///
-/// Fields:
-/// - `params`: the closure's declared parameters (HIR). At the call site,
-///   each param is bound to the corresponding call argument local.
-/// - `body`: the closure's body expression (HIR). Lowered inline at each
-///   call site.
-/// - `captures`: list of (HirId of the captured binding, capture field type).
-///   The capture field index in the closure struct = the vec index. At the
-///   call site, each capture is extracted via
-///   `Place::Projection(closure_local, Field(i, cap_ty))`.
-///
-/// Per §16: this side-table carries HIR-derived data downstream to the call
-/// site. The lowering context reads HIR (allowed — MIR lower is downstream
-/// of HIR). No HIR access from codegen.
-#[derive(Clone, Debug)]
-pub struct ClosureBodyInfo {
-    /// The closure's declared parameters (HIR).
-    pub params: Vec<HirParam>,
-    /// The closure's body expression (HIR).
-    pub body: Box<HirExpr>,
-    /// Captured locals: (HirId of the captured binding, capture field type).
-    /// The capture field index in the closure struct = the vec index.
-    pub captures: Vec<(HirId, Ty)>,
-}
+// Stage 16.34 (Task 10 Step 5 — cleanup): Removed `ClosureBodyInfo` struct.
+// The `closure_bodies` side-table is no longer needed — the closure
+// dispatch at the call site uses the type-based check
+// (`TyKind::Closure(_, _)`), and the `SynthesizedClosureFunction`
+// metadata carries all the information needed for the synthesized
+// `call` function.
+//
+// Per §1.0 原則 5 "去除兼容思维": dead struct removed.
+// Per §23 rule 5 (DRY): `SynthesizedClosureFunction` is the single
+// source of truth for closure metadata.
 
 impl<'a> MirLowerCtxt<'a> {
     pub fn new(interner: &'a Rodeo, span: Span) -> Self {
@@ -233,7 +220,6 @@ impl<'a> MirLowerCtxt<'a> {
             unify: UnificationTable::new(),
             hir: None,
             dyn_trait_plan: None,
-            closure_bodies: std::collections::HashMap::new(),
             loop_stack: Vec::new(),
             loop_result_locals: Vec::new(),
             type_errors: Vec::new(),
@@ -279,7 +265,6 @@ impl<'a> MirLowerCtxt<'a> {
             unify,
             hir: None,
             dyn_trait_plan: None,
-            closure_bodies: std::collections::HashMap::new(),
             loop_stack: Vec::new(),
             loop_result_locals: Vec::new(),
             type_errors: Vec::new(),
