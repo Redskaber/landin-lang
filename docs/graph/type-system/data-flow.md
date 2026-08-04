@@ -1,7 +1,7 @@
 # Type System Data Flow (Typeck + Borrowck)
 
 > **Date**: 2026-08-04
-> **Version**: v0.240.0 (Stage 16.54 — Task 11 Phase 3 complete)
+> **Version**: v0.241.0 (Stage 16.55 — Task 11 Phase 4a complete)
 
 ## Type Checking Data Flow
 
@@ -210,7 +210,49 @@ HIR (HirGenerics, HirPathSegment.args preserved)
 | 1c | ✅ | 16.52 | Substs in `AggregateKind::Adt` (literal construction) |
 | 2 | ✅ | 16.53 | `substitute(ty, substs)` + field type resolution |
 | 3 | ✅ | 16.54 | `collect_mono_items` — walk MIR, dedup (def_id, substs) |
-| 4 | 🔧 | — | Per-mono codegen — layouts keyed by (DefId, SubstsRef) |
+| 4a | ✅ | 16.55 | Specialized naming (`mangle_ty`, `mono_item_name`) |
+| 4b | 🔧 | — | Layouts keyed by (DefId, SubstsRef) |
+| 4c | 🔧 | — | Emit specialized function definitions |
+
+### Per-Mono Codegen Naming Data Flow (Stage 16.55, Phase 4a)
+
+```
+MonoItem { def_id, substs }
+    │
+    ▼
+┌────────────────────────────────────────────────────────────┐
+│  build_mono_item_names(items, fn_names, type_names, interner)│
+│                                                            │
+│  For each MonoItem:                                        │
+│    Type { def_id, .. } → base from type_name_by_def_id     │
+│    Fn { def_id, .. } → base from fn_name_by_def_id         │
+│                         (stripped of "landin_" prefix)     │
+│    Closure { def_id, .. } → "closure_<def_id>"             │
+│                                                            │
+│  Then: mono_item_name(item, base_name, type_names, interner)│
+│    → mangle_ty_with_interner(subst, type_names, interner)  │
+│      for each subst                                        │
+│    → "<base>_<mangled_subst1>_<mangled_subst2>..."         │
+│                                                            │
+│  Per §23: <verb>_<noun>_<noun>_<noun> pattern              │
+└────────────────────────┬───────────────────────────────────┘
+                         │
+                         ▼
+┌────────────────────────────────────────────────────────────┐
+│  HashMap<MonoItem, String> — specialized names             │
+│                                                            │
+│  Examples:                                                 │
+│    Type { Box, [i32] }  → "Box_i32"                        │
+│    Type { Box, [bool] } → "Box_bool"                       │
+│    Fn { id, [i32] }     → "id_i32"                         │
+│    Fn { id, [bool] }    → "id_bool"                        │
+│    Closure { 3, [i32] } → "closure_3_i32"                  │
+│                                                            │
+│  Consumed by Phase 4b-4c (codegen integration):            │
+│    Layouts keyed by (DefId, SubstsRef)                     │
+│    Functions: landin_Box_i32, landin_Box_bool              │
+└────────────────────────────────────────────────────────────┘
+```
 
 ### Monomorphization Collection Data Flow (Stage 16.54, Phase 3)
 

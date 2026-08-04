@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-04 (Stage 16.49)
-> **Version**: v0.240.0 (Stage 16.54)
+> **Version**: v0.241.0 (Stage 16.55)
 > **Process**: stage-committee-process.md v3.24 §13.4 (stage-start design alignment)
-> **Status**: Phase 1-3 complete (1a + 1b + 1c + 2 + 3), Phase 4 planned
+> **Status**: Phase 1-3 + 4a complete, Phase 4b-4c planned
 
 ## 1. Executive Summary
 
@@ -150,17 +150,26 @@ substs. Recursively walks inner substs, Ref, Tuple, Array, etc.
 **Step 3e** ✅: 24 unit tests + 12 integration tests covering all collection
 paths, dedup, nested generics, and no-regression checks.
 
-### 3.4 Phase 4: Per-Mono Codegen 🔧 NEXT
+### 3.4 Phase 4: Per-Mono Codegen 🔧 IN PROGRESS (Stage 16.55 = 4a complete)
 
 **Goal**: Each `MonoItem` gets its own specialized LLVM type/function.
 
-**Layouts**: Keyed by `(DefId, SubstsRef)` instead of just `DefId`.
+**Step 4a (Stage 16.55)** ✅: Specialized naming scheme
 ```rust
-// Before: HashMap<DefId, Vec<Ty>>
-// After: HashMap<(DefId, SubstsRef), Vec<Ty>>
+// In src/mir/monomorphize.rs
+pub fn mangle_ty(ty: &Ty) -> String  // "i32", "Adt_5_i32", "ref_i32", etc.
+pub fn mangle_ty_with_interner(ty, type_names, interner) -> String  // "Box_i32"
+pub fn mono_item_name(item, base_name, type_names, interner) -> String  // "Box_i32"
+pub fn build_mono_item_names(items, fn_names, type_names, interner) -> HashMap<MonoItem, String>
 ```
 
-**Functions**: Emit `landin_<name>_<mono_hash>` for each `MonoItem`.
+**Step 4b** 🔧: Layouts keyed by `(DefId, SubstsRef)`
+```rust
+// Before: HashMap<DefId, AdtLayout>
+// After:  HashMap<(DefId, SubstsRef), AdtLayout>
+```
+
+**Step 4c** 🔧: Emit specialized function definitions
 ```llvm
 ; Before: define i32 @landin_vec_push(...)
 ; After:  define i32 @landin_vec_push_i32(...)
@@ -202,7 +211,13 @@ paths, dedup, nested generics, and no-regression checks.
 - ✅ Non-generic code → 0 MonoItems (integration test)
 - ✅ Nested generics produce MonoItems (integration test, with known limitation)
 
-### Phase 4 Tests
+### Phase 4a Tests ✅ COMPLETE (Stage 16.55)
+- ✅ `mangle_ty(i32)` → `"i32"` (16 unit tests covering all TyKind variants)
+- ✅ `mangle_ty(Adt(Box, [i32]))` → `"Adt_5_i32"` (DefId fallback)
+- ✅ `mono_item_name(Type{Box, [i32]}, "Box")` → `"Box_i32"` (5 tests)
+- ✅ `build_mono_item_names` builds full map (3 tests: basic, empty, mixed)
+
+### Phase 4b-4c Tests
 - `Vec<i32>` and `Vec<bool>` produce different LLVM types
 - `fn id<T>(x: T) -> T` called with `i32` and `bool` → 2 functions
 
@@ -214,5 +229,6 @@ paths, dedup, nested generics, and no-regression checks.
 - Stage 16.52 design (Phase 1c): `docs/develop/v0/stage-16/stage-16.52-aggregate-substs-propagation.md`
 - Stage 16.53 design (Phase 2): `docs/develop/v0/stage-16/stage-16.53-type-substitution.md`
 - Stage 16.54 design (Phase 3): `docs/develop/v0/stage-16/stage-16.54-monomorphization-collection.md`
+- Stage 16.55 design (Phase 4a): `docs/develop/v0/stage-16/stage-16.55-per-mono-codegen-naming.md`
 - v0.3 design: `docs/develop/v0/v0.3-complete-design.md` (Task 11 section)
 - Type system data flow: `docs/graph/type-system/data-flow.md`

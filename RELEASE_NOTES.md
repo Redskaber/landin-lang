@@ -1,9 +1,45 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.240.0
+**Current version**: v0.241.0
 **Date**: 2026-08-04
-**Test count**: 303 rust lib tests + 2482 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 327 rust lib tests + 2482 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.241.0 — Stage 16.55 (Task 11 Phase 4a: Per-Mono Codegen Specialized Naming)
+
+### Overview
+
+Implemented the specialized naming scheme for monomorphized items — the
+foundation of per-mono codegen. Each `MonoItem` gets a unique specialized
+name that can be used as an LLVM symbol.
+
+**Key result**: `let b: Box<i32> = Box { val: 42 };` collects a MonoItem
+`Type { Box, [i32] }`, which gets the specialized name `"Box_i32"`. This
+name can be used as an LLVM symbol for the specialized type layout.
+
+**New functions** in `src/mir/monomorphize.rs`:
+- `mangle_ty(ty) -> String` — mangles Ty to compact string (no interner)
+  - `i32` → `"i32"`, `Adt(5, [i32])` → `"Adt_5_i32"`, `Ref(_, _, i32)` → `"ref_i32"`
+- `mangle_ty_with_interner(ty, type_names, interner) -> String` — readable names
+  - `Adt(Box, [i32])` → `"Box_i32"`
+- `mono_item_name(item, base_name, type_names, interner) -> String` — specialized name
+  - `Type{Box, [i32]}` + "Box" → `"Box_i32"`
+- `build_mono_item_names(items, fn_names, type_names, interner) -> HashMap<MonoItem, String>`
+  - Builds full map from MonoItem to specialized name
+
+**Re-exports** in `src/mir/mod.rs`:
+- `pub use monomorphize::{build_mono_item_names, mangle_ty, mangle_ty_with_interner, mono_item_name, ...}`
+
+**Tests**: +24 unit tests covering mangle_ty (16 tests), mono_item_name (5 tests),
+build_mono_item_names (3 tests).
+
+Per §1.0 原則 6 "通用 > 特例": two mangle_ty variants (with/without interner).
+Per §1.0 原則 5 "报错 > 静默": DefId fallback for unresolved type names.
+
+### Verification
+
+- **Total: 8033 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.240.0 — Stage 16.54 (Task 11 Phase 3: Monomorphization Collection)

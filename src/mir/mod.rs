@@ -52,7 +52,11 @@ pub use ty::{
 pub use substitute::{substitute, substitute_substs};
 
 // Stage 16.54 (Task 11 Phase 3): Monomorphization collection re-exports.
-pub use monomorphize::{collect_mono_items, MonoItem};
+// Stage 16.55 (Task 11 Phase 4): Per-mono codegen — specialized naming.
+pub use monomorphize::{
+    build_mono_item_names, collect_mono_items, mangle_ty, mangle_ty_with_interner, mono_item_name,
+    MonoItem,
+};
 
 // Stage 5.61: dyn Trait fat pointer MIR representation
 // Stage 5.62: bridge function from TraitResolver

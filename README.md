@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.240.0 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF + Task 11 Phase 1-3 complete: substs + substitution + mono collection)
+**Version**: v0.241.0 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF + Task 11 Phase 1-3 + 4a complete: substs + substitution + mono collection + naming)
 **Date**: 2026-08-04
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -71,7 +71,7 @@ source scripts/setup-llvm-env.sh
 cargo build --features llvm-backend
 
 # Run tests
-cargo test --features llvm-backend --lib          # 303 lib tests
+cargo test --features llvm-backend --lib          # 327 lib tests
 cargo test --features llvm-backend --test all_tests  # 2482 integration tests
 python3 tests/conformance/run_all.py              # 5224 conformance tests
 
@@ -79,14 +79,14 @@ python3 tests/conformance/run_all.py              # 5224 conformance tests
 cargo run --features llvm-backend -- --run examples/hello.lin
 ```
 
-### Test Statistics (v0.240.0)
+### Test Statistics (v0.241.0)
 
 | Test Type | Count | Pass Rate |
 |-----------|-------|-----------|
-| Lib tests | 303 | 100% |
+| Lib tests | 327 | 100% |
 | Integration tests | 2482 | 100% |
 | Conformance tests | 5224 | 100% |
-| **Total** | **8009** | **100%** |
+| **Total** | **8033** | **100%** |
 
 ---
 

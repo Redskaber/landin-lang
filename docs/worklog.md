@@ -27740,3 +27740,82 @@ Stage Summary:
 - Key milestone: Box<i32> produces 1 MonoItem, Box<i32> + Box<bool> → 2, dedup works
 - Next: Phase 4 — per-mono codegen (layouts keyed by (DefId, SubstsRef))
 - 8009 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.55-per-mono-codegen-naming
+Agent: Super Z (main)
+Task: Stage 16.55 — Task 11 Phase 4a: Per-mono codegen specialized naming. v0.240.0 → v0.241.0.
+
+Work Log:
+- Baseline: v0.240.0 / 303 lib + 2482 integration + 5224 conformance = 8009
+
+### 1. Implemented Specialized Naming Functions (src/mir/monomorphize.rs)
+
+Added 4 new public functions:
+- mangle_ty(ty) -> String — no interner, DefId fallback for Adt
+  - Leaf types: i32, bool, str, never, etc.
+  - Recursive: ref, refmut, ptr, ptrmut, array, slice, tuple, fnptr
+  - Generic: Adt (DefId fallback), FnDef, Closure
+  - Param: param_<index>
+  - Infer: "infer"
+
+- mangle_ty_with_interner(ty, type_name_by_def_id, interner) -> String
+  - Resolves Symbol to string for readable Adt names
+  - Falls back to Adt_<def_id> when name not in map
+  - Delegates to mangle_ty for leaf types
+
+- mono_item_name(item, base_name, type_name_by_def_id, interner) -> String
+  - Generates "<base>_<mangled_subst1>_<mangled_subst2>..."
+  - Empty substs → just base_name
+
+- build_mono_item_names(items, fn_name_by_def_id, type_name_by_def_id, interner)
+  - Builds HashMap<MonoItem, String>
+  - Type → base from type_name_by_def_id
+  - Fn → base from fn_name_by_def_id (stripped of "landin_" prefix)
+  - Closure → "closure_<def_id>"
+
+### 2. Re-exports in src/mir/mod.rs
+
+Updated to include all 5 Phase 4 functions:
+pub use monomorphize::{
+    build_mono_item_names, collect_mono_items, mangle_ty, mangle_ty_with_interner, mono_item_name,
+    MonoItem,
+};
+
+### 3. Added 24 Unit Tests
+
+In src/mir/monomorphize.rs:
+- §6 mangle_ty tests (16 tests): bool, i32, adt with/without substs, ref, refmut, tuple, empty tuple, array, slice, nested adt, fn_def, closure, param, str, never
+- §7 mono_item_name tests (5 tests): type with substs, fn with substs, empty substs, multiple substs, nested substs
+- §8 build_mono_item_names tests (3 tests): basic, empty, mixed (Fn + Type + Closure)
+
+### 4. Documentation Updates
+
+- Created docs/develop/v0/stage-16/stage-16.55-per-mono-codegen-naming.md
+- Created docs/tests/v0/stage16/stage-16.55-test-plan.md
+- Updated docs/develop/v0/task-11-monomorphization-design.md — Phase 4a COMPLETE
+- Updated docs/graph/type-system/data-flow.md — added per-mono codegen naming data flow
+- Updated RELEASE_NOTES.md — v0.241.0 entry
+- Updated README.md — version, test stats
+- Updated Cargo.toml — v0.240.0 → v0.241.0
+
+### 5. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt --check — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 327/327 PASS (+24 new)
+- cargo test --features llvm-backend --test all_tests — ✅ 2482/2482 PASS
+- python3 tests/conformance/run_all.py — ✅ 5224/5224 PASS
+- Total: 8033 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.55 PASSED — Per-mono codegen specialized naming implemented
+- Task 11 Phase 4a COMPLETE
+- mangle_ty: pure function, no interner (DefId fallback)
+- mangle_ty_with_interner: readable names via interner
+- mono_item_name: generates specialized name from MonoItem
+- build_mono_item_names: builds full map from MonoItem to specialized name
+- Key milestone: Box<i32> → "Box_i32", id<i32> → "id_i32", closure<i32> → "closure_3_i32"
+- Next: Phase 4b — layouts keyed by (DefId, SubstsRef); Phase 4c — emit specialized functions
+- 8033 tests, 0 failures, 0 warnings
