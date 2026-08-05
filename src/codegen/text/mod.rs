@@ -1,5 +1,12 @@
 //! Text emitter: implements Emitter trait by generating LLVM IR text (.ll).
 //!
+//! Stage 16.76 MUV-1: `Emitter` was split into 6 sub-traits
+//! (`ModuleEmitter`, `FunctionEmitter`, `ArithmeticEmitter`,
+//! `MemoryEmitter`, `AggregateEmitter`, `LocalStateEmitter`).
+//! `TextEmitter` now implements each sub-trait in a separate `impl`
+//! block below — the `Emitter` super-trait is auto-implemented via the
+//! blanket `impl<T: ...> Emitter for T` in `emitter/mod.rs`.
+//!
 //! Stage 16.35: This module now owns the text-backend-specific string
 //! rendering functions (`emit_type_to_llvm_str`, `binop_to_llvm_str`).
 //! These were previously in the shared `emitter.rs` but are only used
@@ -164,7 +171,15 @@ impl TextEmitter {
     }
 }
 
-impl Emitter for TextEmitter {
+// ================================================================
+// Stage 16.76 MUV-1: TextEmitter implements 6 sub-traits.
+// `Emitter` (super-trait) is auto-implemented via the blanket impl
+// in `emitter/mod.rs`. Method bodies are unchanged from the previous
+// single `impl Emitter for TextEmitter` block — only the grouping
+// into impl blocks differs.
+// ================================================================
+
+impl ModuleEmitter for TextEmitter {
     fn emit_header(&mut self) {
         self.line("; Landin compiler v0.8.6 — LLVM IR output");
         self.line("; Stage 3.21 codegen (typed aggregates + typed call args)");
@@ -177,6 +192,84 @@ impl Emitter for TextEmitter {
         self.line(&format!("declare {}", signature));
     }
 
+    fn emit_string_global(&mut self, bytes: &[u8]) -> EmitValue {
+        // Stage 3.27: dedupe by content. Same bytes → same global.
+        if let Some(name) = self.string_globals.get(bytes) {
+            return name.clone();
+        }
+        let name = format!(".str.{}", self.next_str);
+        self.next_str += 1;
+        // LLVM c"..." literal: bytes are printed as `c` + quoted string with
+        // `\NN` hex escapes for non-printable bytes. We always emit the bytes
+        // verbatim (using `\NN` for non-ASCII / control chars to be safe).
+        let mut literal = String::from("c\"");
+        for &b in bytes {
+            match b {
+                // Printable ASCII except `"` and `\` (those need escaping).
+                b' '..=b'~' if b != b'"' && b != b'\\' => literal.push(b as char),
+                _ => literal.push_str(&format!("\\{:02X}", b)),
+            }
+        }
+        literal.push('"');
+        let global_def = format!(
+            "@{} = private unnamed_addr constant [{} x i8] {}",
+            name,
+            bytes.len(),
+            literal
+        );
+        self.globals.push(global_def);
+        self.string_globals.insert(bytes.to_vec(), name.clone());
+        // Return the global's *name*; callers reference it as `@.str.N`.
+        // The pointer-typed value is `getelementptr inbounds ([N x i8], [N x i8]* @.str.N, i32 0, i32 0)`.
+        // To keep the API simple we return the name and let the codegen
+        // translation layer emit the GEP if it needs an `i8*`.
+        name
+    }
+
+    fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue {
+        // Stage 5.57: delegate to emit_vtable_global_text() (Stage 5.44 free function).
+        // This also fixes the latent null-handling bug — the old inline code (Stage
+        // 5.6) would emit `ptr @null` for "null" strings, while the free function
+        // correctly emits `ptr null`.
+        //
+        // Layout (e.g. trait Foo with method `bar` impl'd for type S):
+        //   @.vtable.Foo.S = private unnamed_addr constant [1 x ptr] [ptr @landin_S_bar]
+        //
+        // We do NOT dedupe: each (trait, type) pair is distinct by name,
+        // and the caller (codegen `emit_vtables`) already guarantees a
+        // unique global_name per vtable. If `method_symbols` is empty we
+        // still emit the global as a zero-size array so downstream stages
+        // can reference it unconditionally.
+        let global_def = crate::codegen::emit_vtable_global_text(global_name, method_symbols);
+        self.globals.push(global_def);
+        // Return the global's name (without leading `@`).
+        global_name.to_string()
+    }
+
+    fn emit_dyn_trait_const(
+        &mut self,
+        global_name: &str,
+        data_symbol: &str,
+        vtable_symbol: &str,
+    ) -> EmitValue {
+        // Stage 5.58: delegate to emit_dynptr_global_text() (Stage 5.48 free function).
+        //
+        // Layout (e.g. dyn Foo for type S, with data global @.data.S and
+        // vtable global @.vtable.Foo.S):
+        //   @.dynptr.Foo.S = private unnamed_addr constant
+        //       { ptr, ptr } { ptr @.data.S, ptr @.vtable.Foo.S }
+        //
+        // The fat pointer is { ptr (data), ptr (vtable) } — both opaque
+        // because the concrete type is erased at the `dyn` boundary.
+        let global_def =
+            crate::codegen::emit_dynptr_global_text(global_name, data_symbol, vtable_symbol);
+        self.globals.push(global_def);
+        // Return the global's name (without leading `@`).
+        global_name.to_string()
+    }
+}
+
+impl FunctionEmitter for TextEmitter {
     fn emit_function_begin(&mut self, name: &str, params: &[(EmitType, &str)], ret: &EmitType) {
         let ret_str = emit_type_to_llvm_str(ret);
         let param_strs: Vec<String> = params
@@ -199,6 +292,61 @@ impl Emitter for TextEmitter {
         self.line("");
     }
 
+    fn emit_ret(&mut self, ty: &EmitType, val: Option<&EmitValue>) {
+        let ty_str = emit_type_to_llvm_str(ty);
+        match val {
+            Some(v) => self.line(&format!("  ret {} {}", ty_str, v)),
+            None => self.line("  ret void"),
+        }
+    }
+
+    fn emit_unreachable(&mut self) {
+        self.line("  unreachable");
+    }
+
+    fn emit_br(&mut self, label: &str) {
+        self.line(&format!("  br label %{}", label));
+    }
+
+    fn emit_br_cond(&mut self, cond: &EmitValue, then_label: &str, else_label: &str) {
+        self.line(&format!(
+            "  br i1 {}, label %{}, label %{}",
+            cond, then_label, else_label
+        ));
+    }
+
+    fn emit_block(&mut self, label: &str) {
+        self.line(&format!("{}:", label));
+        // Stage 3.22: invalidate the local value cache at block boundaries.
+        // Values assigned in a predecessor block must be reloaded from their
+        // alloca slots — otherwise we'd leak the most-recent assignment into
+        // successor blocks, which is unsound for if/match/while joins where
+        // a local takes different values along different predecessors.
+        // `local_ptrs` (the alloca handles) are NOT cleared — they persist
+        // for the whole function.
+        self.locals.clear();
+    }
+
+    fn emit_switch(
+        &mut self,
+        discr: &EmitValue,
+        discr_ty: &EmitType,
+        cases: &[(i128, String)],
+        default_label: &str,
+    ) {
+        let ty_str = emit_type_to_llvm_str(discr_ty);
+        self.line(&format!(
+            "  switch {} {}, label %{} [",
+            ty_str, discr, default_label
+        ));
+        for (val, label) in cases {
+            self.line(&format!("    {} {}, label %{}", ty_str, val, label));
+        }
+        self.line("  ]");
+    }
+}
+
+impl ArithmeticEmitter for TextEmitter {
     fn emit_const(&mut self, val: &ConstVal) -> EmitValue {
         match val {
             ConstVal::Int(n) => format!("{}", n),
@@ -268,169 +416,6 @@ impl Emitter for TextEmitter {
             }
         }
         format!("%v{}", r)
-    }
-
-    fn emit_ret(&mut self, ty: &EmitType, val: Option<&EmitValue>) {
-        let ty_str = emit_type_to_llvm_str(ty);
-        match val {
-            Some(v) => self.line(&format!("  ret {} {}", ty_str, v)),
-            None => self.line("  ret void"),
-        }
-    }
-
-    fn emit_unreachable(&mut self) {
-        self.line("  unreachable");
-    }
-
-    fn emit_alloca(&mut self, ty: &EmitType, name: &str) -> EmitValue {
-        let ty_str = emit_type_to_llvm_str(ty);
-        self.line(&format!("  {} = alloca {}", name, ty_str));
-        name.to_string()
-    }
-
-    fn emit_store(&mut self, ty: &EmitType, val: &EmitValue, ptr: &EmitValue) {
-        let ty_str = emit_type_to_llvm_str(ty);
-        self.line(&format!("  store {} {}, {}", ty_str, val, ptr));
-    }
-
-    fn emit_load(&mut self, ty: &EmitType, ptr: &EmitValue) -> EmitValue {
-        let r = self.fresh();
-        let ty_str = emit_type_to_llvm_str(ty);
-        self.line(&format!("  %v{} = load {}, {}", r, ty_str, ptr));
-        format!("%v{}", r)
-    }
-
-    fn emit_br(&mut self, label: &str) {
-        self.line(&format!("  br label %{}", label));
-    }
-
-    fn emit_br_cond(&mut self, cond: &EmitValue, then_label: &str, else_label: &str) {
-        self.line(&format!(
-            "  br i1 {}, label %{}, label %{}",
-            cond, then_label, else_label
-        ));
-    }
-
-    fn emit_block(&mut self, label: &str) {
-        self.line(&format!("{}:", label));
-        // Stage 3.22: invalidate the local value cache at block boundaries.
-        // Values assigned in a predecessor block must be reloaded from their
-        // alloca slots — otherwise we'd leak the most-recent assignment into
-        // successor blocks, which is unsound for if/match/while joins where
-        // a local takes different values along different predecessors.
-        // `local_ptrs` (the alloca handles) are NOT cleared — they persist
-        // for the whole function.
-        self.locals.clear();
-    }
-
-    fn emit_switch(
-        &mut self,
-        discr: &EmitValue,
-        discr_ty: &EmitType,
-        cases: &[(i128, String)],
-        default_label: &str,
-    ) {
-        let ty_str = emit_type_to_llvm_str(discr_ty);
-        self.line(&format!(
-            "  switch {} {}, label %{} [",
-            ty_str, discr, default_label
-        ));
-        for (val, label) in cases {
-            self.line(&format!("    {} {}, label %{}", ty_str, val, label));
-        }
-        self.line("  ]");
-    }
-
-    fn emit_call(
-        &mut self,
-        fn_name: &str,
-        args: &[(EmitType, &EmitValue)],
-        ret_ty: &EmitType,
-    ) -> EmitValue {
-        let r = self.fresh();
-        let ret_str = emit_type_to_llvm_str(ret_ty);
-        let args_str = args
-            .iter()
-            .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
-            .collect::<Vec<_>>()
-            .join(", ");
-        // For void calls we don't assign a result register.
-        // Stage 14.58: For indirect calls, fn_name may be an SSA value (%vN)
-        // or a function reference (@landin_name). Use the appropriate prefix.
-        let call_target = if fn_name.starts_with('%') || fn_name.starts_with('@') {
-            fn_name.to_string()
-        } else {
-            format!("@{}", fn_name)
-        };
-        if *ret_ty == EmitType::Void {
-            self.line(&format!("  call void {}({})", call_target, args_str));
-            "0".to_string()
-        } else {
-            self.line(&format!(
-                "  %v{} = call {} {}({})",
-                r, ret_str, call_target, args_str
-            ));
-            format!("%v{}", r)
-        }
-    }
-
-    /// Stage 5.79: Emit a dyn Trait vtable indirect call.
-    ///
-    /// Three LLVM instructions:
-    /// 1. `%vN = getelementptr { ptr, ptr }, ptr @<dynptr_symbol>, i32 0, i32 1`
-    ///    — get vtable pointer slot (second field of the dynptr global)
-    /// 2. `%vN+1 = load ptr, ptr %vN` — load the vtable pointer
-    /// 3. `%vN+2 = load ptr, ptr %vN+1, i32 <slot_index>` — load the method fn ptr
-    /// 4. `%vN+3 = call <ret_ty> %vN+2(<args>)` — indirect call
-    ///
-    /// Per §16 + Stage 5.78 marker convention: this method is invoked
-    /// when codegen detects a `TerminatorKind::Call` whose `func` is
-    /// `Operand::Constant(Const { ty: Error, val: Int(index) })` where
-    /// `index < mir.dyn_trait_calls.len()`.
-    fn emit_dyn_trait_method_call(
-        &mut self,
-        dynptr_symbol: &str,
-        slot_index: u32,
-        args: &[(EmitType, &EmitValue)],
-        ret_ty: &EmitType,
-    ) -> EmitValue {
-        // 1. Get the vtable pointer slot from the dynptr global.
-        //    dynptr global is `{ ptr, ptr }` — first field is data ptr,
-        //    second field (index 1) is vtable ptr.
-        let gep_r = self.fresh();
-        self.line(&format!(
-            "  %v{gep_r} = getelementptr {{ ptr, ptr }}, ptr @{dynptr_symbol}, i32 0, i32 1"
-        ));
-
-        // 2. Load the vtable pointer.
-        let vtable_r = self.fresh();
-        self.line(&format!("  %v{vtable_r} = load ptr, ptr %v{gep_r}"));
-
-        // 3. Load the method function pointer from the vtable at slot_index.
-        //    The vtable is laid out as `[ptr; N]` — slot_index is the array index.
-        let method_fn_r = self.fresh();
-        self.line(&format!(
-            "  %v{method_fn_r} = load ptr, ptr %v{vtable_r}, i32 {slot_index}"
-        ));
-
-        // 4. Call the loaded function pointer (indirect call).
-        let args_str = args
-            .iter()
-            .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        if *ret_ty == EmitType::Void {
-            self.line(&format!("  call void %v{method_fn_r}({args_str})"));
-            "0".to_string()
-        } else {
-            let call_r = self.fresh();
-            let ret_str = emit_type_to_llvm_str(ret_ty);
-            self.line(&format!(
-                "  %v{call_r} = call {ret_str} %v{method_fn_r}({args_str})"
-            ));
-            format!("%v{call_r}")
-        }
     }
 
     fn emit_icmp(
@@ -583,6 +568,73 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
+    fn emit_checked_binop(
+        &mut self,
+        op: BinOp,
+        ty: &EmitType,
+        lhs: &EmitValue,
+        rhs: &EmitValue,
+    ) -> EmitValue {
+        // Stage 3.24: emit `llvm.{sadd,ssub,smul}.with.overflow.{i32,i64}`.
+        // Returns `{ T, i1 }` — caller extracts index 1 for the overflow flag.
+        let elem_str = emit_type_to_llvm_str(ty);
+        let intrinsic = match (op, ty) {
+            (BinOp::Add, EmitType::I8) => "llvm.sadd.with.overflow.i8",
+            (BinOp::Add, EmitType::I16) => "llvm.sadd.with.overflow.i16",
+            (BinOp::Add, EmitType::I32) => "llvm.sadd.with.overflow.i32",
+            (BinOp::Add, EmitType::I64) => "llvm.sadd.with.overflow.i64",
+            (BinOp::Add, EmitType::I128) => "llvm.sadd.with.overflow.i128",
+            (BinOp::Sub, EmitType::I8) => "llvm.ssub.with.overflow.i8",
+            (BinOp::Sub, EmitType::I16) => "llvm.ssub.with.overflow.i16",
+            (BinOp::Sub, EmitType::I32) => "llvm.ssub.with.overflow.i32",
+            (BinOp::Sub, EmitType::I64) => "llvm.ssub.with.overflow.i64",
+            (BinOp::Sub, EmitType::I128) => "llvm.ssub.with.overflow.i128",
+            (BinOp::Mul, EmitType::I8) => "llvm.smul.with.overflow.i8",
+            (BinOp::Mul, EmitType::I16) => "llvm.smul.with.overflow.i16",
+            (BinOp::Mul, EmitType::I32) => "llvm.smul.with.overflow.i32",
+            (BinOp::Mul, EmitType::I64) => "llvm.smul.with.overflow.i64",
+            (BinOp::Mul, EmitType::I128) => "llvm.smul.with.overflow.i128",
+            // Unsupported op or type — fall back to "no overflow".
+            // Synthesize `{ T, i1 } undef` with the overflow flag zeroed.
+            _ => {
+                let r = self.fresh();
+                let agg_str = format!("{{ {}, i1 }}", elem_str);
+                self.line(&format!(
+                    "  %v{} = insertvalue {} undef, {} 0, 1",
+                    r, agg_str, elem_str
+                ));
+                return format!("%v{}", r);
+            }
+        };
+        let r = self.fresh();
+        let agg_str = format!("{{ {}, i1 }}", elem_str);
+        self.line(&format!(
+            "  %v{} = call {} @{}({} {}, {} {})",
+            r, agg_str, intrinsic, elem_str, lhs, elem_str, rhs
+        ));
+        format!("%v{}", r)
+    }
+}
+
+impl MemoryEmitter for TextEmitter {
+    fn emit_alloca(&mut self, ty: &EmitType, name: &str) -> EmitValue {
+        let ty_str = emit_type_to_llvm_str(ty);
+        self.line(&format!("  {} = alloca {}", name, ty_str));
+        name.to_string()
+    }
+
+    fn emit_store(&mut self, ty: &EmitType, val: &EmitValue, ptr: &EmitValue) {
+        let ty_str = emit_type_to_llvm_str(ty);
+        self.line(&format!("  store {} {}, {}", ty_str, val, ptr));
+    }
+
+    fn emit_load(&mut self, ty: &EmitType, ptr: &EmitValue) -> EmitValue {
+        let r = self.fresh();
+        let ty_str = emit_type_to_llvm_str(ty);
+        self.line(&format!("  %v{} = load {}, {}", r, ty_str, ptr));
+        format!("%v{}", r)
+    }
+
     fn emit_gep_field(
         &mut self,
         base_ptr: &EmitValue,
@@ -633,7 +685,9 @@ impl Emitter for TextEmitter {
         ));
         format!("%v{}", r)
     }
+}
 
+impl AggregateEmitter for TextEmitter {
     fn emit_phi(&mut self, ty: &EmitType, incoming: &[(EmitValue, String)]) -> EmitValue {
         let r = self.fresh();
         let ty_str = emit_type_to_llvm_str(ty);
@@ -674,129 +728,100 @@ impl Emitter for TextEmitter {
         format!("%v{}", r)
     }
 
-    fn emit_checked_binop(
+    fn emit_call(
         &mut self,
-        op: BinOp,
-        ty: &EmitType,
-        lhs: &EmitValue,
-        rhs: &EmitValue,
+        fn_name: &str,
+        args: &[(EmitType, &EmitValue)],
+        ret_ty: &EmitType,
     ) -> EmitValue {
-        // Stage 3.24: emit `llvm.{sadd,ssub,smul}.with.overflow.{i32,i64}`.
-        // Returns `{ T, i1 }` — caller extracts index 1 for the overflow flag.
-        let elem_str = emit_type_to_llvm_str(ty);
-        let intrinsic = match (op, ty) {
-            (BinOp::Add, EmitType::I8) => "llvm.sadd.with.overflow.i8",
-            (BinOp::Add, EmitType::I16) => "llvm.sadd.with.overflow.i16",
-            (BinOp::Add, EmitType::I32) => "llvm.sadd.with.overflow.i32",
-            (BinOp::Add, EmitType::I64) => "llvm.sadd.with.overflow.i64",
-            (BinOp::Add, EmitType::I128) => "llvm.sadd.with.overflow.i128",
-            (BinOp::Sub, EmitType::I8) => "llvm.ssub.with.overflow.i8",
-            (BinOp::Sub, EmitType::I16) => "llvm.ssub.with.overflow.i16",
-            (BinOp::Sub, EmitType::I32) => "llvm.ssub.with.overflow.i32",
-            (BinOp::Sub, EmitType::I64) => "llvm.ssub.with.overflow.i64",
-            (BinOp::Sub, EmitType::I128) => "llvm.ssub.with.overflow.i128",
-            (BinOp::Mul, EmitType::I8) => "llvm.smul.with.overflow.i8",
-            (BinOp::Mul, EmitType::I16) => "llvm.smul.with.overflow.i16",
-            (BinOp::Mul, EmitType::I32) => "llvm.smul.with.overflow.i32",
-            (BinOp::Mul, EmitType::I64) => "llvm.smul.with.overflow.i64",
-            (BinOp::Mul, EmitType::I128) => "llvm.smul.with.overflow.i128",
-            // Unsupported op or type — fall back to "no overflow".
-            // Synthesize `{ T, i1 } undef` with the overflow flag zeroed.
-            _ => {
-                let r = self.fresh();
-                let agg_str = format!("{{ {}, i1 }}", elem_str);
-                self.line(&format!(
-                    "  %v{} = insertvalue {} undef, {} 0, 1",
-                    r, agg_str, elem_str
-                ));
-                return format!("%v{}", r);
-            }
-        };
         let r = self.fresh();
-        let agg_str = format!("{{ {}, i1 }}", elem_str);
-        self.line(&format!(
-            "  %v{} = call {} @{}({} {}, {} {})",
-            r, agg_str, intrinsic, elem_str, lhs, elem_str, rhs
-        ));
-        format!("%v{}", r)
-    }
-
-    fn emit_string_global(&mut self, bytes: &[u8]) -> EmitValue {
-        // Stage 3.27: dedupe by content. Same bytes → same global.
-        if let Some(name) = self.string_globals.get(bytes) {
-            return name.clone();
+        let ret_str = emit_type_to_llvm_str(ret_ty);
+        let args_str = args
+            .iter()
+            .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
+            .collect::<Vec<_>>()
+            .join(", ");
+        // For void calls we don't assign a result register.
+        // Stage 14.58: For indirect calls, fn_name may be an SSA value (%vN)
+        // or a function reference (@landin_name). Use the appropriate prefix.
+        let call_target = if fn_name.starts_with('%') || fn_name.starts_with('@') {
+            fn_name.to_string()
+        } else {
+            format!("@{}", fn_name)
+        };
+        if *ret_ty == EmitType::Void {
+            self.line(&format!("  call void {}({})", call_target, args_str));
+            "0".to_string()
+        } else {
+            self.line(&format!(
+                "  %v{} = call {} {}({})",
+                r, ret_str, call_target, args_str
+            ));
+            format!("%v{}", r)
         }
-        let name = format!(".str.{}", self.next_str);
-        self.next_str += 1;
-        // LLVM c"..." literal: bytes are printed as `c` + quoted string with
-        // `\NN` hex escapes for non-printable bytes. We always emit the bytes
-        // verbatim (using `\NN` for non-ASCII / control chars to be safe).
-        let mut literal = String::from("c\"");
-        for &b in bytes {
-            match b {
-                // Printable ASCII except `"` and `\` (those need escaping).
-                b' '..=b'~' if b != b'"' && b != b'\\' => literal.push(b as char),
-                _ => literal.push_str(&format!("\\{:02X}", b)),
-            }
-        }
-        literal.push('"');
-        let global_def = format!(
-            "@{} = private unnamed_addr constant [{} x i8] {}",
-            name,
-            bytes.len(),
-            literal
-        );
-        self.globals.push(global_def);
-        self.string_globals.insert(bytes.to_vec(), name.clone());
-        // Return the global's *name*; callers reference it as `@.str.N`.
-        // The pointer-typed value is `getelementptr inbounds ([N x i8], [N x i8]* @.str.N, i32 0, i32 0)`.
-        // To keep the API simple we return the name and let the codegen
-        // translation layer emit the GEP if it needs an `i8*`.
-        name
     }
 
-    fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue {
-        // Stage 5.57: delegate to emit_vtable_global_text() (Stage 5.44 free function).
-        // This also fixes the latent null-handling bug — the old inline code (Stage
-        // 5.6) would emit `ptr @null` for "null" strings, while the free function
-        // correctly emits `ptr null`.
-        //
-        // Layout (e.g. trait Foo with method `bar` impl'd for type S):
-        //   @.vtable.Foo.S = private unnamed_addr constant [1 x ptr] [ptr @landin_S_bar]
-        //
-        // We do NOT dedupe: each (trait, type) pair is distinct by name,
-        // and the caller (codegen `emit_vtables`) already guarantees a
-        // unique global_name per vtable. If `method_symbols` is empty we
-        // still emit the global as a zero-size array so downstream stages
-        // can reference it unconditionally.
-        let global_def = crate::codegen::emit_vtable_global_text(global_name, method_symbols);
-        self.globals.push(global_def);
-        // Return the global's name (without leading `@`).
-        global_name.to_string()
-    }
-
-    fn emit_dyn_trait_const(
+    /// Stage 5.79: Emit a dyn Trait vtable indirect call.
+    ///
+    /// Three LLVM instructions:
+    /// 1. `%vN = getelementptr { ptr, ptr }, ptr @<dynptr_symbol>, i32 0, i32 1`
+    ///    — get vtable pointer slot (second field of the dynptr global)
+    /// 2. `%vN+1 = load ptr, ptr %vN` — load the vtable pointer
+    /// 3. `%vN+2 = load ptr, ptr %vN+1, i32 <slot_index>` — load the method fn ptr
+    /// 4. `%vN+3 = call <ret_ty> %vN+2(<args>)` — indirect call
+    ///
+    /// Per §16 + Stage 5.78 marker convention: this method is invoked
+    /// when codegen detects a `TerminatorKind::Call` whose `func` is
+    /// `Operand::Constant(Const { ty: Error, val: Int(index) })` where
+    /// `index < mir.dyn_trait_calls.len()`.
+    fn emit_dyn_trait_method_call(
         &mut self,
-        global_name: &str,
-        data_symbol: &str,
-        vtable_symbol: &str,
+        dynptr_symbol: &str,
+        slot_index: u32,
+        args: &[(EmitType, &EmitValue)],
+        ret_ty: &EmitType,
     ) -> EmitValue {
-        // Stage 5.58: delegate to emit_dynptr_global_text() (Stage 5.48 free function).
-        //
-        // Layout (e.g. dyn Foo for type S, with data global @.data.S and
-        // vtable global @.vtable.Foo.S):
-        //   @.dynptr.Foo.S = private unnamed_addr constant
-        //       { ptr, ptr } { ptr @.data.S, ptr @.vtable.Foo.S }
-        //
-        // The fat pointer is { ptr (data), ptr (vtable) } — both opaque
-        // because the concrete type is erased at the `dyn` boundary.
-        let global_def =
-            crate::codegen::emit_dynptr_global_text(global_name, data_symbol, vtable_symbol);
-        self.globals.push(global_def);
-        // Return the global's name (without leading `@`).
-        global_name.to_string()
-    }
+        // 1. Get the vtable pointer slot from the dynptr global.
+        //    dynptr global is `{ ptr, ptr }` — first field is data ptr,
+        //    second field (index 1) is vtable ptr.
+        let gep_r = self.fresh();
+        self.line(&format!(
+            "  %v{gep_r} = getelementptr {{ ptr, ptr }}, ptr @{dynptr_symbol}, i32 0, i32 1"
+        ));
 
+        // 2. Load the vtable pointer.
+        let vtable_r = self.fresh();
+        self.line(&format!("  %v{vtable_r} = load ptr, ptr %v{gep_r}"));
+
+        // 3. Load the method function pointer from the vtable at slot_index.
+        //    The vtable is laid out as `[ptr; N]` — slot_index is the array index.
+        let method_fn_r = self.fresh();
+        self.line(&format!(
+            "  %v{method_fn_r} = load ptr, ptr %v{vtable_r}, i32 {slot_index}"
+        ));
+
+        // 4. Call the loaded function pointer (indirect call).
+        let args_str = args
+            .iter()
+            .map(|(ty, a)| format!("{} {}", emit_type_to_llvm_str(ty), a))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        if *ret_ty == EmitType::Void {
+            self.line(&format!("  call void %v{method_fn_r}({args_str})"));
+            "0".to_string()
+        } else {
+            let call_r = self.fresh();
+            let ret_str = emit_type_to_llvm_str(ret_ty);
+            self.line(&format!(
+                "  %v{call_r} = call {ret_str} %v{method_fn_r}({args_str})"
+            ));
+            format!("%v{call_r}")
+        }
+    }
+}
+
+impl LocalStateEmitter for TextEmitter {
     fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue) {
         self.local_ptrs.insert(local_id, ptr);
     }

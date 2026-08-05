@@ -13,7 +13,7 @@
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
 use landin_compiler::codegen::{
-    codegen_dyn_trait_call_direct, EmitType, EmitValue, Emitter, TextEmitter,
+    codegen_dyn_trait_call_direct, AggregateEmitter, EmitType, EmitValue, TextEmitter,
 };
 use landin_compiler::mir::dyn_trait::DynTraitMethodCall;
 use landin_compiler::mir::place::{LocalId, Operand, Place};

@@ -1,9 +1,143 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.247.0
-**Date**: 2026-08-04
+**Current version**: v0.262.0
+**Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.262.0 — Stage 16.76 (Codegen Pipeline Refactoring — 3 MUVs)
+
+### Overview
+
+Bold-but-careful refactoring of the codegen pipeline per §13.2 (stage
+transition refactoring). Three Minimum Verifiable Units (MUVs) executed
+in risk-increasing order, each with full test suite as guardrail.
+
+Per §13.5 (design-review agent loop), the refactoring plan went through
+2 rounds of design + critique:
+- Round 1: design-v1 → review-v1 found 4 P1 + 4 P2 + 4 P3 defects
+- Round 2: design-v2 (resolved all P1 + most P2) → review-v2 confirmed
+  定稿 (0 P0 + 0 P1 + 1 P2 implementation-phase + 4 P3)
+
+### MUV-3: mir_translation.rs Split (Lowest Risk)
+
+Split 1144-LOC `mir_translation.rs` into 4 sub-modules aligned with
+`docs/lang-design/07-codegen.md`:
+
+- `types.rs` (241 LOC, §2.1-§2.3) — MIR Ty → EmitType translation
+- `layouts.rs` (72 LOC, §2.3-§2.4) — AdtLayout → EmitType
+- `places.rs` (791 LOC, §4.4) — Place projection + load (7 functions)
+- `stdlib.rs` (31 LOC, cross-§) — StdlibTypeKind → EmitType bridge
+
+### MUV-2: codegen/mod.rs Split (Low Risk)
+
+Split 931-LOC `mod.rs` into 4 sub-modules:
+
+- `pipeline.rs` (92 LOC) — `run_codegen_pipeline` orchestrator
+- `function.rs` (371 LOC) — `codegen_function` + `codegen_from_mir` +
+  `codegen_synthesized_closure_functions` + `get_call_dest_type`
+- `drop_glue.rs` (281 LOC) — `emit_drop_glue_functions`
+- `llvm/function_sigs.rs` (56 LOC) — `build_fn_sigs_map` (LLVM-only)
+
+Fixed stale comments at `mod.rs` L60-62 (36→39 methods, 1→2 impls) and
+L504-506 ("trait-based hook" → "concrete-type pre-pipeline setup").
+
+### MUV-1: Emitter Trait Split (Medium Risk, Atomic)
+
+Split 39-method `Emitter` trait into 6 single-responsibility sub-traits
+per §13.4 J2:
+
+| Sub-trait | Methods | Responsibility |
+|-----------|---------|----------------|
+| `ModuleEmitter` | 5 | module-level globals & declarations |
+| `FunctionEmitter` | 8 | function scope & control flow |
+| `ArithmeticEmitter` | 11 | value computation from operands |
+| `MemoryEmitter` | 6 | stack allocation & pointer arithmetic |
+| `AggregateEmitter` | 5 | aggregate construction & calls |
+| `LocalStateEmitter` | 4 | local value/pointer mapping |
+| **Total** | **39** | (matches original Emitter trait) |
+
+Created `src/codegen/emitter/` directory with 7 files (mod.rs + 6
+sub-trait files). Re-split `impl Emitter for TextEmitter` (648 LOC) and
+`impl Emitter for LLVMSysEmitter` (1279 LOC) into 6 impl blocks each.
+
+**Breaking change** for external `Emitter` implementers: must now
+implement 6 sub-traits instead of 1 Emitter trait. The blanket impl
+`impl<T: ...> Emitter for T where T: ModuleEmitter + FunctionEmitter +
+ArithmeticEmitter + MemoryEmitter + AggregateEmitter + LocalStateEmitter
+{}` preserves `dyn Emitter` compatibility for the 20+ caller sites.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 350 lib + 2494 integration = 2844 unit tests + conformance embedded, 0 failures
+
+### Process Compliance
+
+- §13.1 阶段开始设计对齐 — referenced `docs/lang-design/07-codegen.md`
+- §13.2 阶段切换期重构 — bold-but-careful, stage transition period
+- §13.4 重构即架构设计 — J1-J6 all satisfied
+- §13.5 设计-审查 Agent 循环 — 2 rounds, design-v2 定稿
+- §15 项目图管理 — graph diagrams to be updated in Stage 16.77
+- §3.2 交付前验收 — full cargo clean+build+fmt+clippy+test all green
+
+### Design Documents
+
+- `docs/develop/v0/stage-16/stage-16.76-codegen-refactor-design-v1.md`
+- `docs/develop/v0/stage-16/stage-16.76-codegen-refactor-design-v2.md` (定稿)
+- `docs/develop/v0/stage-16/stage-16.76-codegen-refactor-design-review-v1.md`
+- `docs/develop/v0/stage-16/stage-16.76-codegen-refactor-design-review-v2.md` (定稿确认)
+
+---
+## v0.261.0 — Stage 16.75 (Stage Committee Process v5.0 Refactoring)
+
+### Overview
+
+Refactored `docs/stage-committee-process.md` from v4.0 (2633 lines) to v5.0
+(2524 lines) — 100% coverage of original intent with more concise expression.
+This is a process-document refactoring, not a code change. All 8,111 tests
+continue to pass.
+
+### Key Improvements
+
+1. **精简化** (streamlining):
+   - Removed all "v4.0 新增" markers (now baseline)
+   - Removed v3.23→v4.0 historical coverage matrix (purely descriptive)
+   - Removed "设计意图来源" and "反臃肿检查" sections (descriptive only)
+   - Condensed version history: 25+ rows → 12 rows (key milestones only)
+
+2. **表达精要化** (concise expression):
+   - Replaced prose paragraphs with tables (§3.1 check timing, §6.6 calibration,
+     §13.3 scope)
+   - Replaced prose with lists (§13.3 refactoring principles)
+
+3. **补充 v4.0 缺失规则** (filled v4.0 gaps):
+   - §3.2 acceptance command now includes `--features llvm-backend`
+   - §5.3 inner-loop exit criteria #3 now includes `--features llvm-backend`
+   - §13.3 #6 added: "development period does not introduce shorthand syntax;
+     stable period is the right time (integrated holistically)"
+
+4. **100% 保留所有硬性规则** (100% rule preservation):
+   - All 9 core design decision principles
+   - All MUV fields, defect levels, integration test requirements
+   - All review protocols (§7.3.1-§7.3.3, §14.5 D1-D8, §14.6 4 items, §14.7 6
+     dimensions, §14.8 B1-B4)
+   - All naming standards, interface isolation rules, graph management rules
+
+### Verification
+
+- cargo build --features llvm-backend — ✅ clean
+- cargo fmt — ✅ clean
+- cargo clippy --all-targets — ✅ 0 warnings
+- cargo test — ✅ 2843 unit tests + conformance embedded, 0 failures
+
+### Process
+
+- Effective from Stage 16.75+
+- v5.0 is the single source of truth for the Landin development process
 
 ---
 ## v0.260.0 — Stage 16.74 (v0.4 Design Writeback + Final Release Verification)

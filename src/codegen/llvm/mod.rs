@@ -4,6 +4,9 @@
 //! Unlike `TextEmitter` (which emits textual `.ll` IR), this emitter
 //! constructs an in-memory `LLVMModuleRef` directly via the C API.
 //!
+//! Stage 16.76 MUV-2: `build_fn_sigs_map` extracted to `function_sigs.rs`
+//! (LLVM-only helper for forward-reference resolution).
+//!
 //! ## Bridging `EmitValue = String` and `LLVMValueRef`
 //!
 //! The `Emitter` trait uses `EmitValue = String` (e.g. `"%v3"`) so that
@@ -33,6 +36,10 @@
 #![cfg(feature = "llvm-backend")]
 
 use crate::codegen::emitter::*;
+use crate::codegen::emitter::{
+    AggregateEmitter, ArithmeticEmitter, FunctionEmitter, LocalStateEmitter, MemoryEmitter,
+    ModuleEmitter,
+};
 use crate::mir::place::{BinOp, UnOp};
 use crate::mir::ty::ConstVal;
 use llvm_sys::analysis::{LLVMVerifierFailureAction, LLVMVerifyModule};
@@ -41,6 +48,9 @@ use llvm_sys::prelude::*;
 use llvm_sys::target_machine::*;
 use std::collections::HashMap;
 use std::ffi::CString;
+
+// Stage 16.76 MUV-2: LLVM-only function signature map builder.
+pub(crate) mod function_sigs;
 
 /// LLVM C-API emitter.
 pub struct LLVMSysEmitter {
@@ -543,7 +553,7 @@ impl Drop for LLVMSysEmitter {
 
 // Stage 16.36: LLVMSysEmitter implements Emitter (single trait, all methods).
 // `emit_output` removed (dead code — use `to_module()` instead).
-impl Emitter for LLVMSysEmitter {
+impl ModuleEmitter for LLVMSysEmitter {
     fn emit_header(&mut self) {
         unsafe {
             let triple = CString::new("x86_64-unknown-linux-gnu").unwrap();
@@ -575,6 +585,185 @@ impl Emitter for LLVMSysEmitter {
         }
     }
 
+    fn emit_string_global(&mut self, bytes: &[u8]) -> EmitValue {
+        // Emit a module-level global string constant, return its name.
+        // Matches TextEmitter semantics: name is ".str.N" (no leading '@').
+        let name = format!(".str.{}", self.next_str);
+        self.next_str += 1;
+        unsafe {
+            let array_ty = LLVMArrayType2(LLVMInt8TypeInContext(self.ctx), bytes.len() as u64);
+            let name_c = CString::new(name.as_str()).unwrap();
+            let global = LLVMAddGlobal(self.module, array_ty, name_c.as_ptr());
+            // Initialiser: LLVMConstString adds a null terminator by default;
+            // we use the in-context variant with DontNullTerminate=1 to match
+            // the byte count exactly.
+            let init = LLVMConstStringInContext2(
+                self.ctx,
+                bytes.as_ptr() as *const std::os::raw::c_char,
+                bytes.len(),
+                1,
+            );
+            LLVMSetInitializer(global, init);
+            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
+            LLVMSetUnnamedAddress(global, llvm_sys::LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
+            LLVMSetGlobalConstant(global, 1);
+            // Register the global's *pointer* under its name so callers
+            // can reference it directly.
+            self.values.insert(name.clone(), global);
+        }
+        name
+    }
+
+    fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue {
+        // Stage 14.13 (GAP-30): Emit `[N x ptr]` global with each method
+        // symbol resolved to a real function pointer. Previously (MUV-2)
+        // these were null pointers, causing dyn Trait method calls to
+        // segfault at runtime. Now we resolve each symbol name (e.g.
+        // `landin_S_hello`) via LLVMGetNamedFunction — the function must
+        // already be defined in the module (codegen_from_mir emits all
+        // user functions first, then vtables are emitted).
+        //
+        // Symbols that are the literal string "null" (missing slots in
+        // stdlib traits) remain null pointers.
+        unsafe {
+            let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+            let array_ty = LLVMArrayType2(ptr_ty, method_symbols.len() as u64);
+            let name_c = CString::new(global_name).unwrap();
+            let global = LLVMAddGlobal(self.module, array_ty, name_c.as_ptr());
+            // Build a constant array — resolve each symbol to a function
+            // pointer, or use null for "null" / unresolvable symbols.
+            let entries: Vec<LLVMValueRef> = method_symbols
+                .iter()
+                .map(|sym| {
+                    if sym == "null" {
+                        LLVMConstNull(ptr_ty)
+                    } else {
+                        // Try to look up the function in the module.
+                        let sym_c = CString::new(sym.as_str()).unwrap();
+                        let func = LLVMGetNamedFunction(self.module, sym_c.as_ptr());
+                        if func.is_null() {
+                            // Stage 14.92 (Bug X3 complete fix): Function not
+                            // yet defined — declare it using the correct
+                            // signature from fn_sigs if available, or fall back
+                            // to a generic ptr-taking i32-returning function.
+                            //
+                            // Previously (Stage 14.13), this created a
+                            // declaration with `i32(void)` — 0 args. This
+                            // caused emit_function_begin to find a mismatch
+                            // (0 args vs N args) and create a duplicate (.1).
+                            //
+                            // Fix: use fn_sigs to get the correct signature.
+                            // If fn_sigs doesn't have it, use a generic
+                            // `i32(ptr)` — most trait methods take &self (ptr).
+                            let (ret_ty, param_tys) = self
+                                .fn_sigs
+                                .get(sym)
+                                .cloned()
+                                .unwrap_or((EmitType::I32, vec![EmitType::OpaquePtr]));
+                            let ret_llvm_ty = self.llvm_type(&ret_ty);
+                            let param_llvm_tys: Vec<LLVMTypeRef> =
+                                param_tys.iter().map(|t| self.llvm_type(t)).collect();
+                            let fty = LLVMFunctionType(
+                                ret_llvm_ty,
+                                param_llvm_tys.as_ptr() as *mut LLVMTypeRef,
+                                param_llvm_tys.len() as u32,
+                                0,
+                            );
+                            let fwd = LLVMAddFunction(self.module, sym_c.as_ptr(), fty);
+                            self.declared.insert(sym.clone(), fwd);
+                            fwd
+                        } else {
+                            func
+                        }
+                    }
+                })
+                .collect();
+            let init = LLVMConstArray2(
+                ptr_ty,
+                entries.as_ptr() as *mut LLVMValueRef,
+                method_symbols.len() as u64,
+            );
+            LLVMSetInitializer(global, init);
+            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
+            LLVMSetUnnamedAddress(global, llvm_sys::LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
+            LLVMSetGlobalConstant(global, 1);
+            self.values.insert(global_name.to_string(), global);
+        }
+        global_name.to_string()
+    }
+
+    fn emit_dyn_trait_const(
+        &mut self,
+        global_name: &str,
+        data_symbol: &str,
+        vtable_symbol: &str,
+    ) -> EmitValue {
+        // Stage 14.13 (GAP-30): Emit `{ ptr, ptr }` global with real data
+        // and vtable pointers. Previously (MUV-2) both were null, causing
+        // dyn Trait method calls to segfault. Now we resolve the symbols:
+        //   - data_symbol (e.g. `.data.S`) — references a per-type data
+        //     global. We emit it as a global zero-initialized struct if it
+        //     doesn't exist yet (placeholder for the actual instance data).
+        //   - vtable_symbol (e.g. `.vtable.Greet.S`) — references the
+        //     vtable global emitted by emit_vtable_global above.
+        unsafe {
+            let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+            let fields = [ptr_ty, ptr_ty];
+            let struct_ty =
+                LLVMStructTypeInContext(self.ctx, fields.as_ptr() as *mut LLVMTypeRef, 2, 0);
+            let name_c = CString::new(global_name).unwrap();
+            let global = LLVMAddGlobal(self.module, struct_ty, name_c.as_ptr());
+
+            // Resolve vtable symbol — look up the existing vtable global.
+            let vtable_ptr = {
+                let vtable_c = CString::new(vtable_symbol).unwrap();
+                let vtable_global = LLVMGetNamedGlobal(self.module, vtable_c.as_ptr());
+                if vtable_global.is_null() {
+                    // Vtable not yet emitted — declare as external global.
+                    let extern_global = LLVMAddGlobal(self.module, struct_ty, vtable_c.as_ptr());
+                    LLVMSetLinkage(extern_global, llvm_sys::LLVMLinkage::LLVMExternalLinkage);
+                    extern_global
+                } else {
+                    vtable_global
+                }
+            };
+
+            // Resolve data symbol — emit a zero-initialized data global if
+            // it doesn't exist. This is a placeholder; real instance data
+            // would come from the actual struct value (future work).
+            let data_ptr = {
+                let data_c = CString::new(data_symbol).unwrap();
+                let existing = LLVMGetNamedGlobal(self.module, data_c.as_ptr());
+                if existing.is_null() {
+                    // Create a zero-initialized i8 global as placeholder.
+                    let i8_ty = LLVMInt8TypeInContext(self.ctx);
+                    let data_global = LLVMAddGlobal(self.module, i8_ty, data_c.as_ptr());
+                    let zero = LLVMConstInt(i8_ty, 0, 0);
+                    LLVMSetInitializer(data_global, zero);
+                    LLVMSetLinkage(data_global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
+                    data_global
+                } else {
+                    existing
+                }
+            };
+
+            // Cast both to opaque ptr for the struct initializer.
+            let data_val = LLVMConstBitCast(data_ptr, ptr_ty);
+            let vtable_val = LLVMConstBitCast(vtable_ptr, ptr_ty);
+            let inits = [data_val, vtable_val];
+            let init =
+                LLVMConstStructInContext(self.ctx, inits.as_ptr() as *mut LLVMValueRef, 2, 0);
+            LLVMSetInitializer(global, init);
+            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
+            LLVMSetUnnamedAddress(global, llvm_sys::LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
+            LLVMSetGlobalConstant(global, 1);
+            self.values.insert(global_name.to_string(), global);
+        }
+        global_name.to_string()
+    }
+}
+
+impl FunctionEmitter for LLVMSysEmitter {
     fn emit_function_begin(&mut self, name: &str, params: &[(EmitType, &str)], ret: &EmitType) {
         unsafe {
             // Build function type.
@@ -672,6 +861,129 @@ impl Emitter for LLVMSysEmitter {
         self.cur_fn = None;
     }
 
+    fn emit_ret(&mut self, ty: &EmitType, val: Option<&EmitValue>) {
+        unsafe {
+            match val {
+                Some(v) => {
+                    let _ = ty;
+                    let v_ref = self.lookup(v);
+                    LLVMBuildRet(self.builder, v_ref);
+                }
+                None => {
+                    LLVMBuildRetVoid(self.builder);
+                }
+            }
+        }
+    }
+
+    fn emit_unreachable(&mut self) {
+        unsafe {
+            LLVMBuildUnreachable(self.builder);
+        }
+    }
+
+    fn emit_br(&mut self, label: &str) {
+        unsafe {
+            let bb = self.block_for(label);
+            LLVMBuildBr(self.builder, bb);
+        }
+    }
+
+    fn emit_br_cond(&mut self, cond: &EmitValue, then_label: &str, else_label: &str) {
+        unsafe {
+            let cond_v = self.lookup(cond);
+            let then_bb = self.block_for(then_label);
+            let else_bb = self.block_for(else_label);
+            // Stage 14.44: Ensure the condition is i1 (boolean).
+            // Comparison operators (Eq/Lt/etc.) produce i1, but the result may
+            // be stored in an i32 alloca (when the local's type is Infer→i32)
+            // and loaded back as i32. LLVM requires br conditions to be i1.
+            // Was: passed i32 directly → "Branch condition is not 'i1' type"
+            // verifier error (caught now that we added LLVMVerifyModule).
+            let cond_ty = LLVMTypeOf(cond_v);
+            let i1_ty = LLVMInt1TypeInContext(self.ctx);
+            let cond_i1 = if LLVMGetTypeKind(cond_ty) == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                && LLVMGetIntTypeWidth(cond_ty) != 1
+            {
+                // Truncate i32 → i1 (non-zero is true)
+                let name_c = CString::new("tobool").unwrap();
+                LLVMBuildTrunc(self.builder, cond_v, i1_ty, name_c.as_ptr())
+            } else if LLVMGetTypeKind(cond_ty) == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                && LLVMGetIntTypeWidth(cond_ty) == 1
+            {
+                cond_v
+            } else {
+                // Other types — try ICMP ne 0 to convert to i1
+                let zero = LLVMConstInt(cond_ty, 0, 0);
+                let name_c = CString::new("tobool").unwrap();
+                LLVMBuildICmp(
+                    self.builder,
+                    llvm_sys::LLVMIntPredicate::LLVMIntNE,
+                    cond_v,
+                    zero,
+                    name_c.as_ptr(),
+                )
+            };
+            LLVMBuildCondBr(self.builder, cond_i1, then_bb, else_bb);
+        }
+    }
+
+    fn emit_block(&mut self, label: &str) {
+        // Stage 13.6 fix: For the first block after emit_function_begin,
+        // reuse the entry block instead of creating a new one.
+        // emit_function_begin creates an entry BB and registers it as "%entry".
+        // codegen_from_mir then calls emit_block("bb0") — this should reuse
+        // the entry BB (rename it) rather than creating a second orphan BB.
+        let key = if label.starts_with('%') {
+            label.to_string()
+        } else {
+            format!("%{}", label)
+        };
+
+        // Check if this is the first emit_block call (entry BB exists, no other
+        // blocks registered yet besides %entry)
+        if self.blocks.len() == 1 && self.blocks.contains_key("%entry") {
+            // Reuse the entry block — just register it under the new label.
+            let entry_bb = self.blocks["%entry"];
+            self.blocks.insert(key.clone(), entry_bb);
+            self.blocks.remove("%entry");
+            unsafe {
+                LLVMPositionBuilderAtEnd(self.builder, entry_bb);
+            }
+        } else {
+            // Normal case: create or look up the BB.
+            unsafe {
+                let bb = self.block_for(label);
+                LLVMPositionBuilderAtEnd(self.builder, bb);
+            }
+        }
+
+        // Invalidate the local value cache at block boundaries.
+        self.locals.clear();
+    }
+
+    fn emit_switch(
+        &mut self,
+        discr: &EmitValue,
+        discr_ty: &EmitType,
+        cases: &[(i128, String)],
+        default_label: &str,
+    ) {
+        unsafe {
+            let discr_v = self.lookup(discr);
+            let default_bb = self.block_for(default_label);
+            let sw = LLVMBuildSwitch(self.builder, discr_v, default_bb, cases.len() as u32);
+            let case_ty = self.llvm_type(discr_ty);
+            for (val, label) in cases {
+                let case_bb = self.block_for(label);
+                let case_v = LLVMConstInt(case_ty, *val as u64, 1);
+                LLVMAddCase(sw, case_v, case_bb);
+            }
+        }
+    }
+}
+
+impl ArithmeticEmitter for LLVMSysEmitter {
     fn emit_const(&mut self, val: &ConstVal) -> EmitValue {
         unsafe {
             let v = match val {
@@ -825,127 +1137,258 @@ impl Emitter for LLVMSysEmitter {
         }
     }
 
-    fn emit_ret(&mut self, ty: &EmitType, val: Option<&EmitValue>) {
+    fn emit_icmp(
+        &mut self,
+        op: &str,
+        ty: &EmitType,
+        lhs: &EmitValue,
+        rhs: &EmitValue,
+    ) -> EmitValue {
+        let _ = ty;
+        let pred = parse_int_predicate(op);
+        let lhs_v = self.lookup(lhs);
+        let rhs_v = self.lookup(rhs);
         unsafe {
-            match val {
-                Some(v) => {
-                    let _ = ty;
-                    let v_ref = self.lookup(v);
-                    LLVMBuildRet(self.builder, v_ref);
+            let name_c = CString::new("icmp").unwrap();
+            let v = LLVMBuildICmp(self.builder, pred, lhs_v, rhs_v, name_c.as_ptr());
+            self.fresh_named(v)
+        }
+    }
+
+    fn emit_fcmp(
+        &mut self,
+        op: &str,
+        ty: &EmitType,
+        lhs: &EmitValue,
+        rhs: &EmitValue,
+    ) -> EmitValue {
+        let _ = ty;
+        let pred = parse_real_predicate(op);
+        let lhs_v = self.lookup(lhs);
+        let rhs_v = self.lookup(rhs);
+        unsafe {
+            let name_c = CString::new("fcmp").unwrap();
+            let v = LLVMBuildFCmp(self.builder, pred, lhs_v, rhs_v, name_c.as_ptr());
+            self.fresh_named(v)
+        }
+    }
+
+    fn emit_and(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
+        let _ = ty;
+        unsafe {
+            let lhs_v = self.lookup(lhs);
+            let rhs_v = self.lookup(rhs);
+            let name_c = CString::new("and").unwrap();
+            let v = LLVMBuildAnd(self.builder, lhs_v, rhs_v, name_c.as_ptr());
+            self.fresh_named(v)
+        }
+    }
+
+    fn emit_or(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
+        let _ = ty;
+        unsafe {
+            let lhs_v = self.lookup(lhs);
+            let rhs_v = self.lookup(rhs);
+            let name_c = CString::new("or").unwrap();
+            let v = LLVMBuildOr(self.builder, lhs_v, rhs_v, name_c.as_ptr());
+            self.fresh_named(v)
+        }
+    }
+
+    fn emit_zext(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue {
+        let _ = src;
+        unsafe {
+            let v = self.lookup(val);
+            let dst_ty = self.llvm_type(dst);
+            let name_c = CString::new("zext").unwrap();
+            let r = LLVMBuildZExt(self.builder, v, dst_ty, name_c.as_ptr());
+            self.fresh_named(r)
+        }
+    }
+
+    fn emit_cast(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue {
+        // Same-typecast short-circuit (mirrors TextEmitter behaviour).
+        if src == dst {
+            return val.clone();
+        }
+        unsafe {
+            let v = self.lookup(val);
+            let dst_ty = self.llvm_type(dst);
+            let name_c = CString::new("cast").unwrap();
+            // Stage 14.65: Generalize integer-to-integer casts.
+            //
+            // Previously, `emit_cast` only handled specific pairs:
+            // (I32, I64) → SExt, (I1, I32) → ZExt, (I64, I32)/(I32, I1) → Trunc.
+            // All other integer pairs (e.g., I32 → I8 for `c as char`, I8 → I32
+            // for `char as i32`) fell through to `LLVMBuildBitCast`, which is
+            // INVALID for integers of different widths — produces
+            // "Invalid bitcast" LLVM verification errors.
+            //
+            // Fix: for ANY integer-to-integer cast, use `LLVMBuildIntCast2`
+            // with `is_signed=1` (Landin integers default to signed). This
+            // handles zext (wider), sext (wider, signed), and trunc (narrower)
+            // automatically based on source/destination widths.
+            //
+            // Per §1.0 原则 6 "通用 > 特例": one rule for all integer pairs
+            // instead of enumerating each combination.
+            let src_kind = LLVMGetTypeKind(self.llvm_type(src));
+            let dst_kind = LLVMGetTypeKind(dst_ty);
+            let r = if src_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                && dst_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+            {
+                // Integer-to-integer: use IntCast2 (handles zext/sext/trunc).
+                // Sign=1 means signed (SExt for widening, Trunc for narrowing).
+                LLVMBuildIntCast2(self.builder, v, dst_ty, 1, name_c.as_ptr())
+            } else {
+                match (src, dst) {
+                    (EmitType::I32, EmitType::F64)
+                    | (EmitType::I64, EmitType::F64)
+                    | (EmitType::I32, EmitType::F32)
+                    | (EmitType::I64, EmitType::F32)
+                    | (EmitType::I8, EmitType::F64)
+                    | (EmitType::I8, EmitType::F32)
+                    | (EmitType::I16, EmitType::F64)
+                    | (EmitType::I16, EmitType::F32) => {
+                        LLVMBuildSIToFP(self.builder, v, dst_ty, name_c.as_ptr())
+                    }
+                    (EmitType::F64, EmitType::I32)
+                    | (EmitType::F64, EmitType::I64)
+                    | (EmitType::F32, EmitType::I32)
+                    | (EmitType::F32, EmitType::I64)
+                    | (EmitType::F64, EmitType::I8)
+                    | (EmitType::F32, EmitType::I8)
+                    | (EmitType::F64, EmitType::I16)
+                    | (EmitType::F32, EmitType::I16) => {
+                        LLVMBuildFPToSI(self.builder, v, dst_ty, name_c.as_ptr())
+                    }
+                    (EmitType::F64, EmitType::F32) => {
+                        LLVMBuildFPTrunc(self.builder, v, dst_ty, name_c.as_ptr())
+                    }
+                    (EmitType::F32, EmitType::F64) => {
+                        LLVMBuildFPExt(self.builder, v, dst_ty, name_c.as_ptr())
+                    }
+                    _ => LLVMBuildBitCast(self.builder, v, dst_ty, name_c.as_ptr()),
                 }
-                None => {
-                    LLVMBuildRetVoid(self.builder);
-                }
-            }
+            };
+            self.fresh_named(r)
         }
     }
 
-    fn emit_unreachable(&mut self) {
-        unsafe {
-            LLVMBuildUnreachable(self.builder);
-        }
-    }
+    /// Stage 14.12 (GAP-18): LLVMSysEmitter select instruction.
+    /// Uses LLVMBuildSelect to emit a `select` instruction that chooses
+    /// between two values based on a boolean condition.
 
-    fn emit_br(&mut self, label: &str) {
-        unsafe {
-            let bb = self.block_for(label);
-            LLVMBuildBr(self.builder, bb);
-        }
-    }
-
-    fn emit_br_cond(&mut self, cond: &EmitValue, then_label: &str, else_label: &str) {
+    /// Stage 14.12 (GAP-18): LLVMSysEmitter select instruction.
+    /// Uses LLVMBuildSelect to emit a `select` instruction that chooses
+    /// between two values based on a boolean condition.
+    fn emit_select(
+        &mut self,
+        ty: &EmitType,
+        cond: &EmitValue,
+        true_val: &EmitValue,
+        false_val: &EmitValue,
+    ) -> EmitValue {
         unsafe {
             let cond_v = self.lookup(cond);
-            let then_bb = self.block_for(then_label);
-            let else_bb = self.block_for(else_label);
-            // Stage 14.44: Ensure the condition is i1 (boolean).
-            // Comparison operators (Eq/Lt/etc.) produce i1, but the result may
-            // be stored in an i32 alloca (when the local's type is Infer→i32)
-            // and loaded back as i32. LLVM requires br conditions to be i1.
-            // Was: passed i32 directly → "Branch condition is not 'i1' type"
-            // verifier error (caught now that we added LLVMVerifyModule).
-            let cond_ty = LLVMTypeOf(cond_v);
-            let i1_ty = LLVMInt1TypeInContext(self.ctx);
-            let cond_i1 = if LLVMGetTypeKind(cond_ty) == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
-                && LLVMGetIntTypeWidth(cond_ty) != 1
-            {
-                // Truncate i32 → i1 (non-zero is true)
-                let name_c = CString::new("tobool").unwrap();
-                LLVMBuildTrunc(self.builder, cond_v, i1_ty, name_c.as_ptr())
-            } else if LLVMGetTypeKind(cond_ty) == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
-                && LLVMGetIntTypeWidth(cond_ty) == 1
-            {
-                cond_v
-            } else {
-                // Other types — try ICMP ne 0 to convert to i1
-                let zero = LLVMConstInt(cond_ty, 0, 0);
-                let name_c = CString::new("tobool").unwrap();
-                LLVMBuildICmp(
-                    self.builder,
-                    llvm_sys::LLVMIntPredicate::LLVMIntNE,
-                    cond_v,
-                    zero,
-                    name_c.as_ptr(),
-                )
-            };
-            LLVMBuildCondBr(self.builder, cond_i1, then_bb, else_bb);
+            let true_v = self.lookup(true_val);
+            let false_v = self.lookup(false_val);
+            let _ = ty; // LLVM type is inferred from the values
+            let name_c = CString::new("select").unwrap();
+            let r = LLVMBuildSelect(self.builder, cond_v, true_v, false_v, name_c.as_ptr());
+            self.fresh_named(r)
         }
     }
 
-    fn emit_block(&mut self, label: &str) {
-        // Stage 13.6 fix: For the first block after emit_function_begin,
-        // reuse the entry block instead of creating a new one.
-        // emit_function_begin creates an entry BB and registers it as "%entry".
-        // codegen_from_mir then calls emit_block("bb0") — this should reuse
-        // the entry BB (rename it) rather than creating a second orphan BB.
-        let key = if label.starts_with('%') {
-            label.to_string()
-        } else {
-            format!("%{}", label)
-        };
-
-        // Check if this is the first emit_block call (entry BB exists, no other
-        // blocks registered yet besides %entry)
-        if self.blocks.len() == 1 && self.blocks.contains_key("%entry") {
-            // Reuse the entry block — just register it under the new label.
-            let entry_bb = self.blocks["%entry"];
-            self.blocks.insert(key.clone(), entry_bb);
-            self.blocks.remove("%entry");
-            unsafe {
-                LLVMPositionBuilderAtEnd(self.builder, entry_bb);
-            }
-        } else {
-            // Normal case: create or look up the BB.
-            unsafe {
-                let bb = self.block_for(label);
-                LLVMPositionBuilderAtEnd(self.builder, bb);
-            }
-        }
-
-        // Invalidate the local value cache at block boundaries.
-        self.locals.clear();
-    }
-
-    fn emit_switch(
+    fn emit_checked_binop(
         &mut self,
-        discr: &EmitValue,
-        discr_ty: &EmitType,
-        cases: &[(i128, String)],
-        default_label: &str,
-    ) {
+        op: BinOp,
+        ty: &EmitType,
+        lhs: &EmitValue,
+        rhs: &EmitValue,
+    ) -> EmitValue {
+        // Stage 14.103 (SH-5 fix): Implement real checked binop using LLVM
+        // intrinsics `llvm.{sadd,ssub,smul}.with.overflow.{i8,i16,i32,i64,i128}`.
+        //
+        // Previously this was a stub that always returned overflow=0, silently
+        // disabling overflow detection on the --emit-obj/--run path.
+        //
+        // Per §1.0 原则 5 "报错 > 静默": overflow checks must actually work.
+        // Per §1.0 原则 6 "通用 > 特例": one intrinsic-name function handles
+        // all op/type combinations.
         unsafe {
-            let discr_v = self.lookup(discr);
-            let default_bb = self.block_for(default_label);
-            let sw = LLVMBuildSwitch(self.builder, discr_v, default_bb, cases.len() as u32);
-            let case_ty = self.llvm_type(discr_ty);
-            for (val, label) in cases {
-                let case_bb = self.block_for(label);
-                let case_v = LLVMConstInt(case_ty, *val as u64, 1);
-                LLVMAddCase(sw, case_v, case_bb);
+            let elem_ty = self.llvm_type(ty);
+            let i1_ty = LLVMInt1TypeInContext(self.ctx);
+            let fields = [elem_ty, i1_ty];
+            let agg_ty =
+                LLVMStructTypeInContext(self.ctx, fields.as_ptr() as *mut LLVMTypeRef, 2, 0);
+
+            // Determine the intrinsic name based on op + type.
+            let intrinsic_name: Option<String> = match (op, ty) {
+                (BinOp::Add, EmitType::I8) => Some("llvm.sadd.with.overflow.i8".to_string()),
+                (BinOp::Add, EmitType::I16) => Some("llvm.sadd.with.overflow.i16".to_string()),
+                (BinOp::Add, EmitType::I32) => Some("llvm.sadd.with.overflow.i32".to_string()),
+                (BinOp::Add, EmitType::I64) => Some("llvm.sadd.with.overflow.i64".to_string()),
+                (BinOp::Add, EmitType::I128) => Some("llvm.sadd.with.overflow.i128".to_string()),
+                (BinOp::Sub, EmitType::I8) => Some("llvm.ssub.with.overflow.i8".to_string()),
+                (BinOp::Sub, EmitType::I16) => Some("llvm.ssub.with.overflow.i16".to_string()),
+                (BinOp::Sub, EmitType::I32) => Some("llvm.ssub.with.overflow.i32".to_string()),
+                (BinOp::Sub, EmitType::I64) => Some("llvm.ssub.with.overflow.i64".to_string()),
+                (BinOp::Sub, EmitType::I128) => Some("llvm.ssub.with.overflow.i128".to_string()),
+                (BinOp::Mul, EmitType::I8) => Some("llvm.smul.with.overflow.i8".to_string()),
+                (BinOp::Mul, EmitType::I16) => Some("llvm.smul.with.overflow.i16".to_string()),
+                (BinOp::Mul, EmitType::I32) => Some("llvm.smul.with.overflow.i32".to_string()),
+                (BinOp::Mul, EmitType::I64) => Some("llvm.smul.with.overflow.i64".to_string()),
+                (BinOp::Mul, EmitType::I128) => Some("llvm.smul.with.overflow.i128".to_string()),
+                _ => None,
+            };
+
+            if let Some(name) = intrinsic_name {
+                // Declare the intrinsic if not already declared.
+                let fn_ty = LLVMFunctionType(
+                    agg_ty,
+                    [elem_ty, elem_ty].as_ptr() as *mut LLVMTypeRef,
+                    2,
+                    0,
+                );
+                let name_c = CString::new(name.as_str()).unwrap();
+                let intrinsic_fn = if self.values.contains_key(&name) {
+                    *self.values.get(&name).unwrap()
+                } else {
+                    let f = LLVMAddFunction(self.module, name_c.as_ptr(), fn_ty);
+                    self.values.insert(name, f);
+                    f
+                };
+
+                // Call the intrinsic: %r = call { T, i1 } @intrinsic(T %lhs, T %rhs)
+                let lhs_val = self.lookup(lhs);
+                let rhs_val = self.lookup(rhs);
+                let mut args = [lhs_val, rhs_val];
+                let name_c = CString::new("cbo").unwrap();
+                // Stage 14.103: LLVMBuildCall2 requires the FUNCTION type (fn_ty),
+                // NOT the return type (agg_ty). Passing agg_ty caused segfaults.
+                let r = LLVMBuildCall2(
+                    self.builder,
+                    fn_ty,
+                    intrinsic_fn,
+                    args.as_mut_ptr(),
+                    2,
+                    name_c.as_ptr(),
+                );
+                return self.fresh_named(r);
             }
+
+            // Unsupported op or type — fall back to "no overflow".
+            // Synthesize `{ T, i1 } undef` with the overflow flag zeroed.
+            let agg = LLVMGetUndef(agg_ty);
+            let zero_i1 = LLVMConstInt(i1_ty, 0, 0);
+            let name_c = CString::new("cbo").unwrap();
+            let r = LLVMBuildInsertValue(self.builder, agg, zero_i1, 1, name_c.as_ptr());
+            self.fresh_named(r)
         }
     }
+}
 
+impl MemoryEmitter for LLVMSysEmitter {
     fn emit_alloca(&mut self, ty: &EmitType, name: &str) -> EmitValue {
         unsafe {
             let llvm_ty = self.llvm_type(ty);
@@ -1013,6 +1456,83 @@ impl Emitter for LLVMSysEmitter {
         }
     }
 
+    fn emit_gep_field(
+        &mut self,
+        base_ptr: &EmitValue,
+        struct_ty: &EmitType,
+        field_index: u32,
+    ) -> EmitValue {
+        unsafe {
+            let base = self.lookup(base_ptr);
+            let llvm_struct_ty = self.llvm_type(struct_ty);
+            // Indices: [0, field_index] — first 0 indexes through the pointer.
+            let zero = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0, 0);
+            let idx = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), field_index as u64, 0);
+            let mut indices = [zero, idx];
+            let name_c = CString::new("gep").unwrap();
+            let v = LLVMBuildInBoundsGEP2(
+                self.builder,
+                llvm_struct_ty,
+                base,
+                indices.as_mut_ptr(),
+                indices.len() as u32,
+                name_c.as_ptr(),
+            );
+            self.fresh_named(v)
+        }
+    }
+
+    fn emit_gep_index(
+        &mut self,
+        base_ptr: &EmitValue,
+        array_ty: &EmitType,
+        index: &EmitValue,
+    ) -> EmitValue {
+        unsafe {
+            let base = self.lookup(base_ptr);
+            let llvm_array_ty = self.llvm_type(array_ty);
+            let zero = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0, 0);
+            let idx_v = self.lookup(index);
+            let mut indices = [zero, idx_v];
+            let name_c = CString::new("gep").unwrap();
+            let v = LLVMBuildInBoundsGEP2(
+                self.builder,
+                llvm_array_ty,
+                base,
+                indices.as_mut_ptr(),
+                indices.len() as u32,
+                name_c.as_ptr(),
+            );
+            self.fresh_named(v)
+        }
+    }
+
+    fn emit_gep_index_ptr(
+        &mut self,
+        base_ptr: &EmitValue,
+        elem_ty: &EmitType,
+        index: &EmitValue,
+    ) -> EmitValue {
+        unsafe {
+            let base = self.lookup(base_ptr);
+            let llvm_elem_ty = self.llvm_type(elem_ty);
+            let idx_v = self.lookup(index);
+            let mut indices = [idx_v];
+            let name_c = CString::new("gep").unwrap();
+            let v = LLVMBuildInBoundsGEP2(
+                self.builder,
+                llvm_elem_ty,
+                base,
+                indices.as_mut_ptr(),
+                indices.len() as u32,
+                name_c.as_ptr(),
+            );
+            self.fresh_named(v)
+        }
+    }
+}
+
+impl AggregateEmitter for LLVMSysEmitter {
     fn emit_call(
         &mut self,
         fn_name: &str,
@@ -1202,239 +1722,6 @@ impl Emitter for LLVMSysEmitter {
         }
     }
 
-    fn emit_icmp(
-        &mut self,
-        op: &str,
-        ty: &EmitType,
-        lhs: &EmitValue,
-        rhs: &EmitValue,
-    ) -> EmitValue {
-        let _ = ty;
-        let pred = parse_int_predicate(op);
-        let lhs_v = self.lookup(lhs);
-        let rhs_v = self.lookup(rhs);
-        unsafe {
-            let name_c = CString::new("icmp").unwrap();
-            let v = LLVMBuildICmp(self.builder, pred, lhs_v, rhs_v, name_c.as_ptr());
-            self.fresh_named(v)
-        }
-    }
-
-    fn emit_fcmp(
-        &mut self,
-        op: &str,
-        ty: &EmitType,
-        lhs: &EmitValue,
-        rhs: &EmitValue,
-    ) -> EmitValue {
-        let _ = ty;
-        let pred = parse_real_predicate(op);
-        let lhs_v = self.lookup(lhs);
-        let rhs_v = self.lookup(rhs);
-        unsafe {
-            let name_c = CString::new("fcmp").unwrap();
-            let v = LLVMBuildFCmp(self.builder, pred, lhs_v, rhs_v, name_c.as_ptr());
-            self.fresh_named(v)
-        }
-    }
-
-    fn emit_and(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
-        let _ = ty;
-        unsafe {
-            let lhs_v = self.lookup(lhs);
-            let rhs_v = self.lookup(rhs);
-            let name_c = CString::new("and").unwrap();
-            let v = LLVMBuildAnd(self.builder, lhs_v, rhs_v, name_c.as_ptr());
-            self.fresh_named(v)
-        }
-    }
-
-    fn emit_or(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue {
-        let _ = ty;
-        unsafe {
-            let lhs_v = self.lookup(lhs);
-            let rhs_v = self.lookup(rhs);
-            let name_c = CString::new("or").unwrap();
-            let v = LLVMBuildOr(self.builder, lhs_v, rhs_v, name_c.as_ptr());
-            self.fresh_named(v)
-        }
-    }
-
-    fn emit_zext(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue {
-        let _ = src;
-        unsafe {
-            let v = self.lookup(val);
-            let dst_ty = self.llvm_type(dst);
-            let name_c = CString::new("zext").unwrap();
-            let r = LLVMBuildZExt(self.builder, v, dst_ty, name_c.as_ptr());
-            self.fresh_named(r)
-        }
-    }
-
-    fn emit_cast(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue {
-        // Same-typecast short-circuit (mirrors TextEmitter behaviour).
-        if src == dst {
-            return val.clone();
-        }
-        unsafe {
-            let v = self.lookup(val);
-            let dst_ty = self.llvm_type(dst);
-            let name_c = CString::new("cast").unwrap();
-            // Stage 14.65: Generalize integer-to-integer casts.
-            //
-            // Previously, `emit_cast` only handled specific pairs:
-            // (I32, I64) → SExt, (I1, I32) → ZExt, (I64, I32)/(I32, I1) → Trunc.
-            // All other integer pairs (e.g., I32 → I8 for `c as char`, I8 → I32
-            // for `char as i32`) fell through to `LLVMBuildBitCast`, which is
-            // INVALID for integers of different widths — produces
-            // "Invalid bitcast" LLVM verification errors.
-            //
-            // Fix: for ANY integer-to-integer cast, use `LLVMBuildIntCast2`
-            // with `is_signed=1` (Landin integers default to signed). This
-            // handles zext (wider), sext (wider, signed), and trunc (narrower)
-            // automatically based on source/destination widths.
-            //
-            // Per §1.0 原则 6 "通用 > 特例": one rule for all integer pairs
-            // instead of enumerating each combination.
-            let src_kind = LLVMGetTypeKind(self.llvm_type(src));
-            let dst_kind = LLVMGetTypeKind(dst_ty);
-            let r = if src_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
-                && dst_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
-            {
-                // Integer-to-integer: use IntCast2 (handles zext/sext/trunc).
-                // Sign=1 means signed (SExt for widening, Trunc for narrowing).
-                LLVMBuildIntCast2(self.builder, v, dst_ty, 1, name_c.as_ptr())
-            } else {
-                match (src, dst) {
-                    (EmitType::I32, EmitType::F64)
-                    | (EmitType::I64, EmitType::F64)
-                    | (EmitType::I32, EmitType::F32)
-                    | (EmitType::I64, EmitType::F32)
-                    | (EmitType::I8, EmitType::F64)
-                    | (EmitType::I8, EmitType::F32)
-                    | (EmitType::I16, EmitType::F64)
-                    | (EmitType::I16, EmitType::F32) => {
-                        LLVMBuildSIToFP(self.builder, v, dst_ty, name_c.as_ptr())
-                    }
-                    (EmitType::F64, EmitType::I32)
-                    | (EmitType::F64, EmitType::I64)
-                    | (EmitType::F32, EmitType::I32)
-                    | (EmitType::F32, EmitType::I64)
-                    | (EmitType::F64, EmitType::I8)
-                    | (EmitType::F32, EmitType::I8)
-                    | (EmitType::F64, EmitType::I16)
-                    | (EmitType::F32, EmitType::I16) => {
-                        LLVMBuildFPToSI(self.builder, v, dst_ty, name_c.as_ptr())
-                    }
-                    (EmitType::F64, EmitType::F32) => {
-                        LLVMBuildFPTrunc(self.builder, v, dst_ty, name_c.as_ptr())
-                    }
-                    (EmitType::F32, EmitType::F64) => {
-                        LLVMBuildFPExt(self.builder, v, dst_ty, name_c.as_ptr())
-                    }
-                    _ => LLVMBuildBitCast(self.builder, v, dst_ty, name_c.as_ptr()),
-                }
-            };
-            self.fresh_named(r)
-        }
-    }
-
-    /// Stage 14.12 (GAP-18): LLVMSysEmitter select instruction.
-    /// Uses LLVMBuildSelect to emit a `select` instruction that chooses
-    /// between two values based on a boolean condition.
-    fn emit_select(
-        &mut self,
-        ty: &EmitType,
-        cond: &EmitValue,
-        true_val: &EmitValue,
-        false_val: &EmitValue,
-    ) -> EmitValue {
-        unsafe {
-            let cond_v = self.lookup(cond);
-            let true_v = self.lookup(true_val);
-            let false_v = self.lookup(false_val);
-            let _ = ty; // LLVM type is inferred from the values
-            let name_c = CString::new("select").unwrap();
-            let r = LLVMBuildSelect(self.builder, cond_v, true_v, false_v, name_c.as_ptr());
-            self.fresh_named(r)
-        }
-    }
-
-    fn emit_gep_field(
-        &mut self,
-        base_ptr: &EmitValue,
-        struct_ty: &EmitType,
-        field_index: u32,
-    ) -> EmitValue {
-        unsafe {
-            let base = self.lookup(base_ptr);
-            let llvm_struct_ty = self.llvm_type(struct_ty);
-            // Indices: [0, field_index] — first 0 indexes through the pointer.
-            let zero = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0, 0);
-            let idx = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), field_index as u64, 0);
-            let mut indices = [zero, idx];
-            let name_c = CString::new("gep").unwrap();
-            let v = LLVMBuildInBoundsGEP2(
-                self.builder,
-                llvm_struct_ty,
-                base,
-                indices.as_mut_ptr(),
-                indices.len() as u32,
-                name_c.as_ptr(),
-            );
-            self.fresh_named(v)
-        }
-    }
-
-    fn emit_gep_index(
-        &mut self,
-        base_ptr: &EmitValue,
-        array_ty: &EmitType,
-        index: &EmitValue,
-    ) -> EmitValue {
-        unsafe {
-            let base = self.lookup(base_ptr);
-            let llvm_array_ty = self.llvm_type(array_ty);
-            let zero = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0, 0);
-            let idx_v = self.lookup(index);
-            let mut indices = [zero, idx_v];
-            let name_c = CString::new("gep").unwrap();
-            let v = LLVMBuildInBoundsGEP2(
-                self.builder,
-                llvm_array_ty,
-                base,
-                indices.as_mut_ptr(),
-                indices.len() as u32,
-                name_c.as_ptr(),
-            );
-            self.fresh_named(v)
-        }
-    }
-
-    fn emit_gep_index_ptr(
-        &mut self,
-        base_ptr: &EmitValue,
-        elem_ty: &EmitType,
-        index: &EmitValue,
-    ) -> EmitValue {
-        unsafe {
-            let base = self.lookup(base_ptr);
-            let llvm_elem_ty = self.llvm_type(elem_ty);
-            let idx_v = self.lookup(index);
-            let mut indices = [idx_v];
-            let name_c = CString::new("gep").unwrap();
-            let v = LLVMBuildInBoundsGEP2(
-                self.builder,
-                llvm_elem_ty,
-                base,
-                indices.as_mut_ptr(),
-                indices.len() as u32,
-                name_c.as_ptr(),
-            );
-            self.fresh_named(v)
-        }
-    }
-
     fn emit_phi(&mut self, ty: &EmitType, incoming: &[(EmitValue, String)]) -> EmitValue {
         unsafe {
             let llvm_ty = self.llvm_type(ty);
@@ -1544,272 +1831,9 @@ impl Emitter for LLVMSysEmitter {
             self.fresh_named(r)
         }
     }
+}
 
-    fn emit_checked_binop(
-        &mut self,
-        op: BinOp,
-        ty: &EmitType,
-        lhs: &EmitValue,
-        rhs: &EmitValue,
-    ) -> EmitValue {
-        // Stage 14.103 (SH-5 fix): Implement real checked binop using LLVM
-        // intrinsics `llvm.{sadd,ssub,smul}.with.overflow.{i8,i16,i32,i64,i128}`.
-        //
-        // Previously this was a stub that always returned overflow=0, silently
-        // disabling overflow detection on the --emit-obj/--run path.
-        //
-        // Per §1.0 原则 5 "报错 > 静默": overflow checks must actually work.
-        // Per §1.0 原则 6 "通用 > 特例": one intrinsic-name function handles
-        // all op/type combinations.
-        unsafe {
-            let elem_ty = self.llvm_type(ty);
-            let i1_ty = LLVMInt1TypeInContext(self.ctx);
-            let fields = [elem_ty, i1_ty];
-            let agg_ty =
-                LLVMStructTypeInContext(self.ctx, fields.as_ptr() as *mut LLVMTypeRef, 2, 0);
-
-            // Determine the intrinsic name based on op + type.
-            let intrinsic_name: Option<String> = match (op, ty) {
-                (BinOp::Add, EmitType::I8) => Some("llvm.sadd.with.overflow.i8".to_string()),
-                (BinOp::Add, EmitType::I16) => Some("llvm.sadd.with.overflow.i16".to_string()),
-                (BinOp::Add, EmitType::I32) => Some("llvm.sadd.with.overflow.i32".to_string()),
-                (BinOp::Add, EmitType::I64) => Some("llvm.sadd.with.overflow.i64".to_string()),
-                (BinOp::Add, EmitType::I128) => Some("llvm.sadd.with.overflow.i128".to_string()),
-                (BinOp::Sub, EmitType::I8) => Some("llvm.ssub.with.overflow.i8".to_string()),
-                (BinOp::Sub, EmitType::I16) => Some("llvm.ssub.with.overflow.i16".to_string()),
-                (BinOp::Sub, EmitType::I32) => Some("llvm.ssub.with.overflow.i32".to_string()),
-                (BinOp::Sub, EmitType::I64) => Some("llvm.ssub.with.overflow.i64".to_string()),
-                (BinOp::Sub, EmitType::I128) => Some("llvm.ssub.with.overflow.i128".to_string()),
-                (BinOp::Mul, EmitType::I8) => Some("llvm.smul.with.overflow.i8".to_string()),
-                (BinOp::Mul, EmitType::I16) => Some("llvm.smul.with.overflow.i16".to_string()),
-                (BinOp::Mul, EmitType::I32) => Some("llvm.smul.with.overflow.i32".to_string()),
-                (BinOp::Mul, EmitType::I64) => Some("llvm.smul.with.overflow.i64".to_string()),
-                (BinOp::Mul, EmitType::I128) => Some("llvm.smul.with.overflow.i128".to_string()),
-                _ => None,
-            };
-
-            if let Some(name) = intrinsic_name {
-                // Declare the intrinsic if not already declared.
-                let fn_ty = LLVMFunctionType(
-                    agg_ty,
-                    [elem_ty, elem_ty].as_ptr() as *mut LLVMTypeRef,
-                    2,
-                    0,
-                );
-                let name_c = CString::new(name.as_str()).unwrap();
-                let intrinsic_fn = if self.values.contains_key(&name) {
-                    *self.values.get(&name).unwrap()
-                } else {
-                    let f = LLVMAddFunction(self.module, name_c.as_ptr(), fn_ty);
-                    self.values.insert(name, f);
-                    f
-                };
-
-                // Call the intrinsic: %r = call { T, i1 } @intrinsic(T %lhs, T %rhs)
-                let lhs_val = self.lookup(lhs);
-                let rhs_val = self.lookup(rhs);
-                let mut args = [lhs_val, rhs_val];
-                let name_c = CString::new("cbo").unwrap();
-                // Stage 14.103: LLVMBuildCall2 requires the FUNCTION type (fn_ty),
-                // NOT the return type (agg_ty). Passing agg_ty caused segfaults.
-                let r = LLVMBuildCall2(
-                    self.builder,
-                    fn_ty,
-                    intrinsic_fn,
-                    args.as_mut_ptr(),
-                    2,
-                    name_c.as_ptr(),
-                );
-                return self.fresh_named(r);
-            }
-
-            // Unsupported op or type — fall back to "no overflow".
-            // Synthesize `{ T, i1 } undef` with the overflow flag zeroed.
-            let agg = LLVMGetUndef(agg_ty);
-            let zero_i1 = LLVMConstInt(i1_ty, 0, 0);
-            let name_c = CString::new("cbo").unwrap();
-            let r = LLVMBuildInsertValue(self.builder, agg, zero_i1, 1, name_c.as_ptr());
-            self.fresh_named(r)
-        }
-    }
-
-    fn emit_string_global(&mut self, bytes: &[u8]) -> EmitValue {
-        // Emit a module-level global string constant, return its name.
-        // Matches TextEmitter semantics: name is ".str.N" (no leading '@').
-        let name = format!(".str.{}", self.next_str);
-        self.next_str += 1;
-        unsafe {
-            let array_ty = LLVMArrayType2(LLVMInt8TypeInContext(self.ctx), bytes.len() as u64);
-            let name_c = CString::new(name.as_str()).unwrap();
-            let global = LLVMAddGlobal(self.module, array_ty, name_c.as_ptr());
-            // Initialiser: LLVMConstString adds a null terminator by default;
-            // we use the in-context variant with DontNullTerminate=1 to match
-            // the byte count exactly.
-            let init = LLVMConstStringInContext2(
-                self.ctx,
-                bytes.as_ptr() as *const std::os::raw::c_char,
-                bytes.len(),
-                1,
-            );
-            LLVMSetInitializer(global, init);
-            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
-            LLVMSetUnnamedAddress(global, llvm_sys::LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
-            LLVMSetGlobalConstant(global, 1);
-            // Register the global's *pointer* under its name so callers
-            // can reference it directly.
-            self.values.insert(name.clone(), global);
-        }
-        name
-    }
-
-    fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue {
-        // Stage 14.13 (GAP-30): Emit `[N x ptr]` global with each method
-        // symbol resolved to a real function pointer. Previously (MUV-2)
-        // these were null pointers, causing dyn Trait method calls to
-        // segfault at runtime. Now we resolve each symbol name (e.g.
-        // `landin_S_hello`) via LLVMGetNamedFunction — the function must
-        // already be defined in the module (codegen_from_mir emits all
-        // user functions first, then vtables are emitted).
-        //
-        // Symbols that are the literal string "null" (missing slots in
-        // stdlib traits) remain null pointers.
-        unsafe {
-            let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
-            let array_ty = LLVMArrayType2(ptr_ty, method_symbols.len() as u64);
-            let name_c = CString::new(global_name).unwrap();
-            let global = LLVMAddGlobal(self.module, array_ty, name_c.as_ptr());
-            // Build a constant array — resolve each symbol to a function
-            // pointer, or use null for "null" / unresolvable symbols.
-            let entries: Vec<LLVMValueRef> = method_symbols
-                .iter()
-                .map(|sym| {
-                    if sym == "null" {
-                        LLVMConstNull(ptr_ty)
-                    } else {
-                        // Try to look up the function in the module.
-                        let sym_c = CString::new(sym.as_str()).unwrap();
-                        let func = LLVMGetNamedFunction(self.module, sym_c.as_ptr());
-                        if func.is_null() {
-                            // Stage 14.92 (Bug X3 complete fix): Function not
-                            // yet defined — declare it using the correct
-                            // signature from fn_sigs if available, or fall back
-                            // to a generic ptr-taking i32-returning function.
-                            //
-                            // Previously (Stage 14.13), this created a
-                            // declaration with `i32(void)` — 0 args. This
-                            // caused emit_function_begin to find a mismatch
-                            // (0 args vs N args) and create a duplicate (.1).
-                            //
-                            // Fix: use fn_sigs to get the correct signature.
-                            // If fn_sigs doesn't have it, use a generic
-                            // `i32(ptr)` — most trait methods take &self (ptr).
-                            let (ret_ty, param_tys) = self
-                                .fn_sigs
-                                .get(sym)
-                                .cloned()
-                                .unwrap_or((EmitType::I32, vec![EmitType::OpaquePtr]));
-                            let ret_llvm_ty = self.llvm_type(&ret_ty);
-                            let param_llvm_tys: Vec<LLVMTypeRef> =
-                                param_tys.iter().map(|t| self.llvm_type(t)).collect();
-                            let fty = LLVMFunctionType(
-                                ret_llvm_ty,
-                                param_llvm_tys.as_ptr() as *mut LLVMTypeRef,
-                                param_llvm_tys.len() as u32,
-                                0,
-                            );
-                            let fwd = LLVMAddFunction(self.module, sym_c.as_ptr(), fty);
-                            self.declared.insert(sym.clone(), fwd);
-                            fwd
-                        } else {
-                            func
-                        }
-                    }
-                })
-                .collect();
-            let init = LLVMConstArray2(
-                ptr_ty,
-                entries.as_ptr() as *mut LLVMValueRef,
-                method_symbols.len() as u64,
-            );
-            LLVMSetInitializer(global, init);
-            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
-            LLVMSetUnnamedAddress(global, llvm_sys::LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
-            LLVMSetGlobalConstant(global, 1);
-            self.values.insert(global_name.to_string(), global);
-        }
-        global_name.to_string()
-    }
-
-    fn emit_dyn_trait_const(
-        &mut self,
-        global_name: &str,
-        data_symbol: &str,
-        vtable_symbol: &str,
-    ) -> EmitValue {
-        // Stage 14.13 (GAP-30): Emit `{ ptr, ptr }` global with real data
-        // and vtable pointers. Previously (MUV-2) both were null, causing
-        // dyn Trait method calls to segfault. Now we resolve the symbols:
-        //   - data_symbol (e.g. `.data.S`) — references a per-type data
-        //     global. We emit it as a global zero-initialized struct if it
-        //     doesn't exist yet (placeholder for the actual instance data).
-        //   - vtable_symbol (e.g. `.vtable.Greet.S`) — references the
-        //     vtable global emitted by emit_vtable_global above.
-        unsafe {
-            let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
-            let fields = [ptr_ty, ptr_ty];
-            let struct_ty =
-                LLVMStructTypeInContext(self.ctx, fields.as_ptr() as *mut LLVMTypeRef, 2, 0);
-            let name_c = CString::new(global_name).unwrap();
-            let global = LLVMAddGlobal(self.module, struct_ty, name_c.as_ptr());
-
-            // Resolve vtable symbol — look up the existing vtable global.
-            let vtable_ptr = {
-                let vtable_c = CString::new(vtable_symbol).unwrap();
-                let vtable_global = LLVMGetNamedGlobal(self.module, vtable_c.as_ptr());
-                if vtable_global.is_null() {
-                    // Vtable not yet emitted — declare as external global.
-                    let extern_global = LLVMAddGlobal(self.module, struct_ty, vtable_c.as_ptr());
-                    LLVMSetLinkage(extern_global, llvm_sys::LLVMLinkage::LLVMExternalLinkage);
-                    extern_global
-                } else {
-                    vtable_global
-                }
-            };
-
-            // Resolve data symbol — emit a zero-initialized data global if
-            // it doesn't exist. This is a placeholder; real instance data
-            // would come from the actual struct value (future work).
-            let data_ptr = {
-                let data_c = CString::new(data_symbol).unwrap();
-                let existing = LLVMGetNamedGlobal(self.module, data_c.as_ptr());
-                if existing.is_null() {
-                    // Create a zero-initialized i8 global as placeholder.
-                    let i8_ty = LLVMInt8TypeInContext(self.ctx);
-                    let data_global = LLVMAddGlobal(self.module, i8_ty, data_c.as_ptr());
-                    let zero = LLVMConstInt(i8_ty, 0, 0);
-                    LLVMSetInitializer(data_global, zero);
-                    LLVMSetLinkage(data_global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
-                    data_global
-                } else {
-                    existing
-                }
-            };
-
-            // Cast both to opaque ptr for the struct initializer.
-            let data_val = LLVMConstBitCast(data_ptr, ptr_ty);
-            let vtable_val = LLVMConstBitCast(vtable_ptr, ptr_ty);
-            let inits = [data_val, vtable_val];
-            let init =
-                LLVMConstStructInContext(self.ctx, inits.as_ptr() as *mut LLVMValueRef, 2, 0);
-            LLVMSetInitializer(global, init);
-            LLVMSetLinkage(global, llvm_sys::LLVMLinkage::LLVMPrivateLinkage);
-            LLVMSetUnnamedAddress(global, llvm_sys::LLVMUnnamedAddr::LLVMGlobalUnnamedAddr);
-            LLVMSetGlobalConstant(global, 1);
-            self.values.insert(global_name.to_string(), global);
-        }
-        global_name.to_string()
-    }
-
+impl LocalStateEmitter for LLVMSysEmitter {
     fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue) {
         self.local_ptrs.insert(local_id, ptr);
     }

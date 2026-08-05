@@ -28962,3 +28962,82 @@ Stage Summary:
 - v0.4 all major tasks complete (Task 11, 14, 17, Where clauses partial)
 - 10 deep review rounds, all GO
 - 8111 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.75
+Agent: Super Z (main)
+Task: 重构 docs/stage-committee-process.md v4.0 → v5.0 (100% 覆盖原版意图，精简表达)
+
+Work Log:
+- 同步项目到 v0.260.0 tarball（landin-stage0-v0.260.0-stage16.74-v0.4.tar.gz）
+- 完整读取 v4.0 (2633 行) 所有 16 章节
+- 按 §3.3 反臃肿原则重构：
+  - 移除"v4.0 新增"标记（v5.0 已是基线，标记无操作意义）
+  - 移除纯历史性 v3.23→v4.0 覆盖矩阵表格（25 行 → 0 行，仅历史描述）
+  - 移除"设计意图来源"小节（§16.4，纯描述性内容，非操作规则）
+  - 移除"反臃肿检查"小节（§16.5，纯描述性内容）
+  - 合并 §16.1 流程版本历史 25+ 行 → 12 行（保留版本号+阶段+关键变更三列）
+- 用表格替代段落：§3.1 检查时机、§6.6 校准基线、§13.3 适用范围
+- 用列表替代散文：§13.3 重构指导原则
+- 补充 v4.0 缺失规则：
+  - §3.2 验收命令补充 `--features llvm-backend`（v4.0 验收命令与 §5.3 退出标准未对齐）
+  - §5.3 退出标准第 3 条补充 `--features llvm-backend`
+  - §13.3 新增第 6 条"开发期不引入简写语法，稳定期才是好时机（整体引入）"
+- 100% 保留所有硬性规则：9 条核心决策原则、所有 MUV 字段、所有缺陷等级、所有集成测试要求、所有审查协议（§7.3.1-§7.3.3、§14.5 D1-D8、§14.6 4 项、§14.7 6 维度、§14.8 B1-B4）、所有命名标准、所有接口隔离规则、所有图管理规则
+- v5.0 总行数：2524 行（v4.0: 2633 行，减少 4.1%，主要在 changelog 与历史描述）
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 349 lib + 2494 integration = 2843 unit tests + conformance embedded, 0 failures
+
+Stage Summary:
+- v5.0 重构完成，100% 覆盖 v4.0 全部规则，表达更精要
+- 关键改进：精简化（移除冗余 changelog 与历史覆盖矩阵）+ 表达精要化（用表格替代段落）+ 补充缺失规则（llvm-backend 验收命令 + 不引入简写语法）
+- v5.0 effective from Stage 16.75+
+- 项目保持在 v0.260.0，所有测试通过
+
+
+---
+Task ID: stage16.76
+Agent: Super Z (main) + Plan subagent (REV-A, 2 rounds) + full-stack-developer subagent (partial MUV-1) + scripts (split_mir_translation.py, split_codegen_mod.py, split_llvm_emitter_impl.py)
+Task: Stage 16.76 — Codegen Pipeline Refactoring (3 MUVs)
+
+Work Log:
+- §13.5 设计-审查 Agent 循环（2 轮）：
+  - Round 1: ARCH-A 产出 design-v1 → REV-A 审查 → 4 P1 + 4 P2 + 4 P3 缺陷
+  - Round 2: ARCH-A 产出 design-v2（解决全部 P1 + 大部分 P2）→ REV-A 审查 → 0 P0 + 0 P1 + 1 P2 + 4 P3 → 定稿
+- MUV-3 mir_translation.rs 拆分（lowest risk, done first）：
+  - 1144 LOC 单文件 → 5 文件（mod.rs 33 + types.rs 241 + layouts.rs 72 + stdlib.rs 31 + places.rs 791）
+  - 按 07-codegen.md 章节对齐：types↔§2.1-§2.3, layouts↔§2.3-§2.4, places↔§4.4, stdlib 跨章节
+  - 修复函数边界（doc comment 归属）、visibility (pub(crate))、循环依赖（types↔layouts 互相 import）
+- MUV-2 mod.rs 职责拆分（low risk）：
+  - 931 LOC mod.rs → 5 文件（mod.rs 156 + pipeline.rs 92 + function.rs 371 + drop_glue.rs 281 + llvm/function_sigs.rs 56）
+  - 移除 mod.rs L60-62 过期注释 + L504-506 误导注释
+  - 修复 super::* 依赖（保留 use crate::mir::body::* + use lasso::Rodeo）
+  - 修复函数 visibility (pub(crate))
+- MUV-1 Emitter trait 拆分（medium risk, atomic commit）：
+  - 39-method Emitter trait → 6 sub-traits (ModuleEmitter 5 + FunctionEmitter 8 + ArithmeticEmitter 11 + MemoryEmitter 6 + AggregateEmitter 5 + LocalStateEmitter 4 = 39)
+  - 创建 src/codegen/emitter/{mod,module,function,arithmetic,memory,aggregate,local_state}.rs 7 文件
+  - 删除旧 src/codegen/emitter.rs
+  - Re-split impl Emitter for TextEmitter (648 LOC) → 6 impl blocks in text/mod.rs
+  - Re-split impl Emitter for LLVMSysEmitter (1279 LOC) → 6 impl blocks in llvm/mod.rs (via split_llvm_emitter_impl.py)
+  - 添加 blanket impl: impl<T: ...> Emitter for T where T: ModuleEmitter + FunctionEmitter + ArithmeticEmitter + MemoryEmitter + AggregateEmitter + LocalStateEmitter {}
+  - 修复测试文件 imports (添加 AggregateEmitter / ModuleEmitter 到 6 个测试文件)
+  - 修复 codegen/mod.rs re-exports (添加 6 个 sub-traits)
+  - Breaking change for external Emitter implementers (none currently exist in tree)
+- 验收：
+  - cargo clean && cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt + cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 350 lib + 2494 integration = 2844 unit tests + conformance embedded, 0 failures
+
+Stage Summary:
+- Stage 16.76 全部 3 MUVs 完成（design-v2 定稿后实现）
+- §13.5 设计-审查循环 2 轮收敛，符合 §3.3 反臃肿原则
+- codegen 模块总 LOC 略增（新增 mod.rs 头部 + sub-trait 定义），但单一职责清晰
+- Emitter trait bloat 架构债 CLOSED：39 方法分布到 6 个单一职责 sub-trait
+- mod.rs 职责混合 CLOSED：5 文件各司其职
+- mir_translation 过大 CLOSED：4 子模块按 07-codegen.md 章节对齐
+- dyn Emitter 兼容性保留（14+ 调用点未改）
+- v0.261.0 → 准备打包

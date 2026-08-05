@@ -11,7 +11,7 @@
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
 use landin_compiler::codegen::{
-    emit_dyn_trait_ptrs, emit_dynptr_global_text, Emitter, TextEmitter,
+    emit_dyn_trait_ptrs, emit_dynptr_global_text, ModuleEmitter, TextEmitter,
 };
 use landin_compiler::traits::{TraitResolver, Vtable, VtableEntry};
 use lasso::Rodeo;

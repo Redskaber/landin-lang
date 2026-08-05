@@ -1,5 +1,24 @@
 //! Emitter trait: abstracts the codegen backend.
 //!
+//! Stage 16.76 MUV-1: The original 39-method `Emitter` trait has been
+//! split into 6 sub-traits per §13.4 J2 single responsibility:
+//!
+//! - [`ModuleEmitter`] (5 methods) — module-level globals & declarations
+//! - [`FunctionEmitter`] (8 methods) — function scope & control flow
+//! - [`ArithmeticEmitter`] (11 methods) — value computation from operands
+//! - [`MemoryEmitter`] (6 methods) — stack allocation & pointer arithmetic
+//! - [`AggregateEmitter`] (5 methods) — aggregate construction & calls
+//! - [`LocalStateEmitter`] (4 methods) — local value/pointer mapping
+//!
+//! [`Emitter`] is now a super-trait that requires all 6 sub-traits. A
+//! blanket impl preserves backward compatibility for callers that use
+//! `&mut dyn Emitter` (the 20 call sites in `codegen/` keep working
+//! unchanged).
+//!
+//! **Breaking change for implementers**: external backends that previously
+//! wrote a single `impl Emitter for MyBackend` must now implement the 6
+//! sub-traits separately. See `RELEASE_NOTES.md` for the migration note.
+//!
 //! Naming conventions (per §14 review):
 //! - All IR-producing methods use `emit_` prefix
 //! - State query methods use `get_` / `set_` prefix
@@ -12,11 +31,38 @@
 //! - `Array(Box<EmitType>, u64)` for `[T; N]`
 //! - `Ptr(Box<EmitType>)` for typed pointers (pointee tracked)
 //!
-//! `emit_type_to_llvm_str` returns `String` (was `&'static str`) so that
-//! dynamic struct/array layouts can be rendered.
+//! `emit_type_to_llvm_str` (text-backend-specific) lives in
+//! `text/mod.rs` since Stage 16.35 — moved out of this shared module
+//! because the LLVM C-API backend uses `LLVMSysEmitter::llvm_type()`
+//! (returns `LLVMTypeRef`) instead of string-based rendering.
 
-use crate::mir::place::{BinOp, UnOp};
 use crate::mir::ty::ConstVal;
+
+// ================================================================
+// Sub-trait modules
+// ================================================================
+
+pub mod aggregate;
+pub mod arithmetic;
+pub mod function;
+pub mod local_state;
+pub mod memory;
+pub mod module;
+
+// Re-export all sub-traits + their methods for backward compatibility.
+// Callers that previously wrote `use crate::codegen::emitter::*;`
+// (text/mod.rs, llvm/mod.rs) continue to work — they pick up the 6
+// sub-traits + the super-trait + the helper types/functions.
+pub use aggregate::AggregateEmitter;
+pub use arithmetic::ArithmeticEmitter;
+pub use function::FunctionEmitter;
+pub use local_state::LocalStateEmitter;
+pub use memory::MemoryEmitter;
+pub use module::ModuleEmitter;
+
+// ================================================================
+// EmitType + EmitValue (shared types)
+// ================================================================
 
 /// A value produced by the emitter — opaque to the translation layer.
 pub type EmitValue = String;
@@ -77,206 +123,38 @@ impl EmitType {
     }
 }
 
-/// The emitter trait — provides all codegen emission methods.
+// ================================================================
+// Emitter super-trait + blanket impl
+// ================================================================
+
+/// Super-trait that combines all 6 emission sub-traits.
 ///
-/// Stage 16.38: Trait methods are organized into clear documentation groups
-/// (Module-level, Function scope, Local state). A physical trait split into
-/// `ModuleEmitter` + `FunctionEmitter` super-traits was attempted but is
-/// blocked by Rust's single-impl-block-per-trait-per-type rule — the methods
-/// are currently interleaved in the impl blocks, and moving them requires
-/// a large, high-risk code reorganization. The documentation groups provide
-/// the architectural clarity; the physical split is deferred.
+/// Stage 16.76 MUV-1: previously a single 39-method trait; now a thin
+/// super-trait that requires the 6 sub-traits. The blanket impl below
+/// means any type implementing all 6 sub-traits automatically implements
+/// `Emitter`, so `&mut dyn Emitter` continues to work for the 20 call
+/// sites in `codegen/`.
 ///
-/// Per §1.0 原則 9 "正确 > 妥协": correct long-term design, but code movement
-/// risk is too high for this stage.
-/// Per §23: clear documentation grouping.
-pub trait Emitter {
-    // === Module-level ===
+/// External backends: implement the 6 sub-traits individually — do NOT
+/// implement `Emitter` directly (the blanket impl handles that).
+pub trait Emitter:
+    ModuleEmitter
+    + FunctionEmitter
+    + ArithmeticEmitter
+    + MemoryEmitter
+    + AggregateEmitter
+    + LocalStateEmitter
+{
+}
 
-    /// Emit module header (target triple, datalayout).
-    fn emit_header(&mut self);
-
-    /// Emit an external function declaration.
-    fn emit_declare(&mut self, signature: &str);
-
-    /// Emit (or look up) a module-level string constant global.
-    fn emit_string_global(&mut self, bytes: &[u8]) -> EmitValue;
-
-    /// Emit a vtable as a module-level constant global.
-    fn emit_vtable_global(&mut self, global_name: &str, method_symbols: &[String]) -> EmitValue;
-
-    /// Emit a `dyn Trait` fat-pointer constant global.
-    fn emit_dyn_trait_const(
-        &mut self,
-        global_name: &str,
-        data_symbol: &str,
-        vtable_symbol: &str,
-    ) -> EmitValue;
-
-    // === Function scope ===
-
-    /// Begin a new function definition.
-    fn emit_function_begin(&mut self, name: &str, params: &[(EmitType, &str)], ret: &EmitType);
-
-    /// End the current function definition.
-    fn emit_function_end(&mut self);
-
-    /// Emit a constant value and return its handle.
-    fn emit_const(&mut self, val: &ConstVal) -> EmitValue;
-
-    /// Emit a binary operation and return the result value.
-    fn emit_binop(
-        &mut self,
-        op: BinOp,
-        ty: &EmitType,
-        lhs: &EmitValue,
-        rhs: &EmitValue,
-    ) -> EmitValue;
-
-    /// Emit a unary operation and return the result value.
-    fn emit_unop(&mut self, op: UnOp, ty: &EmitType, operand: &EmitValue) -> EmitValue;
-
-    /// Emit a return instruction.
-    fn emit_ret(&mut self, ty: &EmitType, val: Option<&EmitValue>);
-
-    /// Emit an unreachable instruction.
-    fn emit_unreachable(&mut self);
-
-    /// Emit an unconditional branch to a label.
-    fn emit_br(&mut self, label: &str);
-
-    /// Emit a conditional branch.
-    fn emit_br_cond(&mut self, cond: &EmitValue, then_label: &str, else_label: &str);
-
-    /// Begin a new basic block with the given label.
-    fn emit_block(&mut self, label: &str);
-
-    /// Emit a switch instruction.
-    fn emit_switch(
-        &mut self,
-        discr: &EmitValue,
-        discr_ty: &EmitType,
-        cases: &[(i128, String)],
-        default_label: &str,
-    );
-
-    /// Allocate stack space for a local variable.
-    fn emit_alloca(&mut self, ty: &EmitType, name: &str) -> EmitValue;
-
-    /// Store a value to a pointer.
-    fn emit_store(&mut self, ty: &EmitType, val: &EmitValue, ptr: &EmitValue);
-
-    /// Load a value from a pointer.
-    fn emit_load(&mut self, ty: &EmitType, ptr: &EmitValue) -> EmitValue;
-
-    /// Emit a function call with typed arguments.
-    fn emit_call(
-        &mut self,
-        fn_name: &str,
-        args: &[(EmitType, &EmitValue)],
-        ret_ty: &EmitType,
-    ) -> EmitValue;
-
-    /// Emit a dyn Trait vtable indirect call.
-    fn emit_dyn_trait_method_call(
-        &mut self,
-        dynptr_symbol: &str,
-        slot_index: u32,
-        args: &[(EmitType, &EmitValue)],
-        ret_ty: &EmitType,
-    ) -> EmitValue;
-
-    /// Emit an integer comparison (icmp).
-    fn emit_icmp(&mut self, op: &str, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue)
-        -> EmitValue;
-
-    /// Emit a float comparison (fcmp).
-    fn emit_fcmp(&mut self, op: &str, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue)
-        -> EmitValue;
-
-    /// Emit a bitwise AND.
-    fn emit_and(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
-
-    /// Emit a bitwise OR.
-    fn emit_or(&mut self, ty: &EmitType, lhs: &EmitValue, rhs: &EmitValue) -> EmitValue;
-
-    /// Emit a zero-extend (zext).
-    fn emit_zext(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue;
-
-    /// Emit a type cast.
-    fn emit_cast(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue;
-
-    /// Emit a `select` instruction.
-    fn emit_select(
-        &mut self,
-        ty: &EmitType,
-        cond: &EmitValue,
-        true_val: &EmitValue,
-        false_val: &EmitValue,
-    ) -> EmitValue;
-
-    /// Emit a getelementptr for struct field access.
-    fn emit_gep_field(
-        &mut self,
-        base_ptr: &EmitValue,
-        struct_ty: &EmitType,
-        field_index: u32,
-    ) -> EmitValue;
-
-    /// Emit a getelementptr for array index access.
-    fn emit_gep_index(
-        &mut self,
-        base_ptr: &EmitValue,
-        array_ty: &EmitType,
-        index: &EmitValue,
-    ) -> EmitValue;
-
-    /// Emit a getelementptr for element access via a raw element pointer.
-    fn emit_gep_index_ptr(
-        &mut self,
-        base_ptr: &EmitValue,
-        elem_ty: &EmitType,
-        index: &EmitValue,
-    ) -> EmitValue;
-
-    /// Emit a PHI node.
-    fn emit_phi(&mut self, ty: &EmitType, incoming: &[(EmitValue, String)]) -> EmitValue;
-
-    /// Emit insertvalue for tuple/struct construction.
-    fn emit_insertvalue(
-        &mut self,
-        agg_ty: &EmitType,
-        agg: &EmitValue,
-        val_ty: &EmitType,
-        val: &EmitValue,
-        index: u32,
-    ) -> EmitValue;
-
-    /// Emit extractvalue for tuple/struct field extraction.
-    fn emit_extractvalue(&mut self, agg_ty: &EmitType, agg: &EmitValue, index: u32) -> EmitValue;
-
-    /// Emit a checked-binary-op intrinsic call.
-    fn emit_checked_binop(
-        &mut self,
-        op: BinOp,
-        ty: &EmitType,
-        lhs: &EmitValue,
-        rhs: &EmitValue,
-    ) -> EmitValue;
-
-    // === Local state ===
-
-    /// Store a local's pointer handle (alloca result).
-    fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue);
-
-    /// Get a local's pointer handle.
-    fn get_local_ptr(&self, local_id: u32) -> Option<&EmitValue>;
-
-    /// Store a local's value handle.
-    fn set_local(&mut self, local_id: u32, val: EmitValue);
-
-    /// Get a local's stored value handle.
-    fn get_local(&self, local_id: u32) -> Option<&EmitValue>;
+impl<T> Emitter for T where
+    T: ModuleEmitter
+        + FunctionEmitter
+        + ArithmeticEmitter
+        + MemoryEmitter
+        + AggregateEmitter
+        + LocalStateEmitter
+{
 }
 
 // ================================================================
@@ -410,6 +288,10 @@ pub fn mir_type_to_emit_type(ty: &crate::mir::ty::Ty) -> EmitType {
 //
 // `llvm_ptr_str` was dead code (never called) — deleted entirely.
 
+// ================================================================
+// Tests
+// ================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,5 +367,48 @@ mod tests {
         let output = emitter.output_with_globals();
         assert!(!output.is_empty());
         assert!(output.contains("target triple"));
+    }
+}
+
+// ================================================================
+// Stage 16.76 MUV-1: Sub-trait satisfaction tests (compile-time)
+// ================================================================
+//
+// These tests verify that each backend implements all 6 sub-traits (and
+// thus `Emitter` via the blanket impl). If a sub-trait method is removed
+// or renamed, the corresponding test fails to compile.
+//
+// 6 sub-traits × 2 backends = 12 type assertions + 2 super-trait
+// assertions = 14 compile-time checks total.
+
+#[cfg(test)]
+mod trait_satisfaction_tests {
+    use super::*;
+    use crate::codegen::TextEmitter;
+
+    #[cfg(feature = "llvm-backend")]
+    use crate::codegen::llvm::LLVMSysEmitter;
+
+    #[test]
+    fn text_emitter_satisfies_all_sub_traits() {
+        let _: &dyn ModuleEmitter = &TextEmitter::new();
+        let _: &dyn FunctionEmitter = &TextEmitter::new();
+        let _: &dyn ArithmeticEmitter = &TextEmitter::new();
+        let _: &dyn MemoryEmitter = &TextEmitter::new();
+        let _: &dyn AggregateEmitter = &TextEmitter::new();
+        let _: &dyn LocalStateEmitter = &TextEmitter::new();
+        let _: &dyn Emitter = &TextEmitter::new();
+    }
+
+    #[cfg(feature = "llvm-backend")]
+    #[test]
+    fn llvm_emitter_satisfies_all_sub_traits() {
+        let _: &dyn ModuleEmitter = &LLVMSysEmitter::new();
+        let _: &dyn FunctionEmitter = &LLVMSysEmitter::new();
+        let _: &dyn ArithmeticEmitter = &LLVMSysEmitter::new();
+        let _: &dyn MemoryEmitter = &LLVMSysEmitter::new();
+        let _: &dyn AggregateEmitter = &LLVMSysEmitter::new();
+        let _: &dyn LocalStateEmitter = &LLVMSysEmitter::new();
+        let _: &dyn Emitter = &LLVMSysEmitter::new();
     }
 }

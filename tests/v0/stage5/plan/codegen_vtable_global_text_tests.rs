@@ -12,7 +12,7 @@
 //! Per §16: tests use the public API only (no driver/hir/mir access).
 //! Per §17.3: tests live under `tests/v0/stage5/plan/`.
 
-use landin_compiler::codegen::{emit_vtable_global_text, Emitter, TextEmitter};
+use landin_compiler::codegen::{emit_vtable_global_text, ModuleEmitter, TextEmitter};
 
 // ---------------------------------------------------------------------------
 // Basic emission
