@@ -1,9 +1,75 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.263.0
+**Current version**: v0.264.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.264.0 — Stage 16.78 (Task 14 Phase 3: Supertrait Object Safety)
+
+### Overview
+
+Completes Task 14 (Object Safety) by adding supertrait recursive checking.
+When `dyn Trait` is used, all supertraits must also be object-safe because
+the vtable includes their methods.
+
+### Implementation
+
+1. **New `SupertraitNotObjectSafe` variant** in `ObjectSafetyViolation` enum,
+   carrying the supertrait name, span, and nested violations for detailed
+   error reporting.
+
+2. **Extended `check_trait_object_safety` signature** to accept
+   `trait_defs: &HashMap<DefId, &HirTrait>` and `interner: &Rodeo` — needed
+   to look up supertrait definitions and format error messages.
+
+3. **New `check_supertraits` recursive function** that traverses the
+   supertrait chain, checking each supertrait's methods and recursing into
+   its supertraits. A `visited: HashSet<DefId>` prevents infinite loops on
+   circular supertrait declarations.
+
+4. **Nested error messages** with `└─` indentation:
+   ```
+   trait `Foo` is not object-safe: supertrait `Bar` is not object-safe
+     └─ trait `Bar` is not object-safe: method `bar` returns `Self`
+   ```
+
+### Tests (§9.4.3 1:3+ ratio: 1 positive + 7 negative = 1:7)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | safe_trait_with_safe_supertrait | positive | Safe supertrait → no violation |
+| 2 | supertrait_self_return | negative | Supertrait has Self return |
+| 3 | supertrait_generic_method | negative | Supertrait has generic method |
+| 4 | supertrait_no_receiver | negative | Supertrait has associated function |
+| 5 | supertrait_by_value_receiver | negative | Supertrait has by-value receiver |
+| 6 | supertrait_self_in_arg | negative | Supertrait has Self in argument |
+| 7 | transitive_supertrait_not_safe | negative | A:B, B:C, C unsafe → A unsafe |
+| 8 | circular_supertrait_no_infinite_loop | negative | A:B, B:A → no hang |
+
+### Breaking Change
+
+`check_trait_object_safety` public API signature changed. All 13 call sites
+(3 in driver.rs + 10 in object_safety.rs tests) updated. Per §13.3 early-stage
+breaking changes allowed.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 357 lib (+8 new) + 2494 integration = 2851 unit tests, 0 failures
+
+### Process Compliance
+
+- §13.1 阶段开始设计对齐 — referenced v0.4-roadmap.md
+- §13.4 重构六大判据 — J1-J6 all satisfied
+- §13.5 设计-审查 Agent 循环 — 1 round self-review (scope clear)
+- §9.4.3 1:3+ 正负比例 — 1:7 achieved
+- §1.0 原則 4 "报错 > 静默" — non-object-safe supertraits produce hard errors
+- §1.0 原則 6 "通用 > 特例" — one recursive function handles arbitrary depth
+- §3.2 交付前验收 — full cargo clean+build+fmt+clippy+test all green
 
 ---
 ## v0.263.0 — Stage 16.77 (Backend File Organization + Graph Sync + Design Writeback)

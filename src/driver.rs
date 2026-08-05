@@ -2296,7 +2296,8 @@ fn check_object_safety_for_dyn_trait_usage(
                     if let HirTypeBound::Trait(tc) = bound {
                         if let Res::Def(trait_def_id, _) = tc.path.res {
                             if let Some(trait_def) = trait_defs.get(&trait_def_id) {
-                                let violations = check_trait_object_safety(trait_def);
+                                let violations =
+                                    check_trait_object_safety(trait_def, &trait_defs, interner);
                                 if !violations.is_empty() {
                                     let trait_name = interner
                                         .try_resolve(&trait_def.ident.name)
@@ -2394,7 +2395,7 @@ fn check_trait_object_ty(
             if let HirTypeBound::Trait(tc) = bound {
                 if let Res::Def(trait_def_id, _) = tc.path.res {
                     if let Some(trait_def) = trait_defs.get(&trait_def_id) {
-                        let violations = check_trait_object_safety(trait_def);
+                        let violations = check_trait_object_safety(trait_def, trait_defs, interner);
                         if !violations.is_empty() {
                             let trait_name = interner
                                 .try_resolve(&trait_def.ident.name)

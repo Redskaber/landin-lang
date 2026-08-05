@@ -29082,3 +29082,39 @@ Stage Summary:
 - §15 项目图管理同步完成（2 个图文件更新）
 - §14.8 设计回写完成（07-codegen.md §16 补写）
 - v0.262.0 → v0.263.0
+
+---
+Task ID: stage16.78
+Agent: Super Z (main)
+Task: Stage 16.78 — Task 14 Phase 3: Supertrait Object Safety
+
+Work Log:
+- §13.1 阶段开始设计对齐：查阅 v0.4-roadmap.md，确认 Task 14 Phase 3 (supertrait safety) 为下一 P2 优先级
+- §13.5 设计-审查 Agent 循环（1 轮自审定稿）：
+  - Design v1: stage-16.78-supertrait-safety-design.md
+  - 自审清单 7 项全部通过，无 P0/P1 缺陷
+  - 风险：公共 API 签名变更（per §13.3 早期阶段允许）
+- 实现内容：
+  1. 新增 `ObjectSafetyViolation::SupertraitNotObjectSafe` variant（含 supertrait Symbol + span + nested violations Vec）
+  2. 扩展 `check_trait_object_safety` 签名：新增 `trait_defs: &HashMap<DefId, &HirTrait>` + `interner: &Rodeo` 参数
+  3. 新增 `check_supertraits` 递归函数（含 `visited: &mut HashSet<DefId>` 防止循环依赖）
+  4. 更新 `error_message` 处理嵌套 violations（缩进 `└─` 显示）
+  5. 更新 `span()` 方法覆盖新 variant
+  6. 更新 driver.rs 2 处调用点
+  7. 更新 object_safety.rs 10 个旧测试（提取 `check_first_trait` helper 适配新签名）
+  8. 新增 8 个 Stage 16.78 测试（1 positive + 7 negative，比例 1:7 远超 1:3+）
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - positive: safe_trait_with_safe_supertrait
+  - negative: supertrait_self_return / generic_method / no_receiver / by_value_receiver / self_in_arg / transitive_not_safe / circular_no_infinite_loop
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 357 lib (349→357, +8 new) + 2494 integration = 2851 unit tests, 0 failures
+
+Stage Summary:
+- Task 14 Phase 3 (supertrait safety) 完成
+- check_trait_object_safety 现在递归检查所有 supertraits
+- 循环依赖保护（visited set）防止无限递归
+- 嵌套错误消息（└─ 缩进）提供详细诊断
+- v0.263.0 → v0.264.0
