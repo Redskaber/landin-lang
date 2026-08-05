@@ -1,9 +1,76 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.264.0
+**Current version**: v0.265.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.265.0 — Stage 16.79 (Where Clause Semantic Checking Phase 2)
+
+### Overview
+
+Completes Where Clauses Phase 2 by adding semantic checking for concrete
+types. When a where clause specifies `where S: Foo` and `S` is a concrete
+struct/enum, the checker now verifies that `S` actually implements `Foo`
+via `TraitResolver::implements_by_def_ids`.
+
+### Implementation
+
+1. **Extended `check_where_clause_for_generics`** — Phase 1 (trait existence)
+   preserved, Phase 2 (concrete type impl verification) added. The
+   `resolver` parameter is now actually used (was `_resolver` in Phase 1).
+
+2. **New `resolve_bounded_type_def_id`** — resolves the bounded type in a
+   where clause to a `DefId`, returning `Some(def_id)` only for concrete
+   types (struct, enum). Returns `None` for type parameters (T), Self,
+   primitive types — these are declarative constraints, not checkable
+   assertions (matches Rust semantics).
+
+3. **New `format_hir_ty_name` + `format_trait_name`** — user-friendly name
+   formatting for error messages.
+
+4. **Unified error message prefix** `"where clause error:"` for all where
+   clause errors, with three categories:
+   - `"trait `{}` not found"` — Phase 1 (trait doesn't exist)
+   - `"type `{}` does not implement trait `{}`"` — Phase 2 (concrete type)
+   - `"``{}` is not a trait"` — bound resolves to non-trait definition
+
+### Design Decision
+
+Type parameters (`T` in `fn f<T>() where T: Clone`) are **not** checked at
+compile time — they are declarative constraints verified at monomorphization
+time. This matches Rust's behavior. Deferred to v0.5+ (requires trait solver).
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | concrete_type_implements_trait | positive | S impl Foo → no error |
+| 2 | type_param_no_error | positive | T: Clone → no error (deferred) |
+| 3 | concrete_struct_does_not_implement | negative | S not impl Foo → error |
+| 4 | concrete_enum_does_not_implement | negative | E not impl Foo → error |
+| 5 | multiple_bounds_one_unsatisfied | negative | S: Foo+Bar, only Foo → Bar error |
+| 6 | where_clause_on_other_struct | negative | A: Foo, A not impl → error |
+| 7 | trait_not_found_phase1_regression | negative | Phase 1 regression |
+| 8 | multiple_where_preds_one_fails | negative | Multiple predicates, one fails |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 365 lib (+8 new) + 2494 integration = 2859 unit tests, 0 failures
+
+### Process Compliance
+
+- §13.1 阶段开始设计对齐 — referenced v0.4-roadmap.md
+- §13.4 重构六大判据 — J1-J6 all satisfied
+- §13.5 设计-审查 Agent 循环 — 1 round self-review (scope clear)
+- §9.4.3 1:3+ 正负比例 — 1:3 achieved
+- §1.0 原則 4 "报错 > 静默" — unsatisfied bounds produce hard errors
+- §1.0 原則 6 "通用 > 特例" — one function handles all concrete type cases
+- §3.2 交付前验收 — full cargo clean+build+fmt+clippy+test all green
 
 ---
 ## v0.264.0 — Stage 16.78 (Task 14 Phase 3: Supertrait Object Safety)

@@ -29118,3 +29118,40 @@ Stage Summary:
 - 循环依赖保护（visited set）防止无限递归
 - 嵌套错误消息（└─ 缩进）提供详细诊断
 - v0.263.0 → v0.264.0
+
+---
+Task ID: stage16.79
+Agent: Super Z (main)
+Task: Stage 16.79 — Where Clause Semantic Checking (Phase 2)
+
+Work Log:
+- §13.1 阶段开始设计对齐：查阅 v0.4-roadmap.md，确认 Where Clauses Phase 2 为下一 P2 优先级
+- §13.5 设计-审查 Agent 循环（1 轮自审定稿）：
+  - Design v1: stage-16.79-where-clause-semantic-design.md
+  - 自审清单 7 项全部通过，无 P0/P1 缺陷
+  - 设计决策：类型参数 T 推迟检查（Rust 语义——声明性约束）
+- 实现内容：
+  1. 重写 check_where_clause_for_generics：Phase 1 (trait 存在) + Phase 2 (具体类型实现验证)
+  2. 新增 resolve_bounded_type_def_id：解析 bounded_ty 为 DefId（仅 Struct/Enum）
+  3. 新增 format_hir_ty_name + format_trait_name：用户友好的错误消息
+  4. 统一错误消息前缀 "where clause error:" 便于测试和诊断
+  5. 新增 "is not a trait" 错误（当 bound 解析为非 trait 定义时）
+  6. 移除 _resolver 前缀（Phase 2 实际使用 resolver）
+  7. 更新模块文档说明 Phase 1/2 范围和推迟项
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - positive: concrete_type_implements_trait + type_param_no_error (2)
+  - negative: concrete_struct_does_not_implement + concrete_enum_does_not_implement + multiple_bounds_one_unsatisfied + where_clause_on_other_struct + trait_not_found_phase1_regression + multiple_where_preds_one_fails (6)
+  - 比例 2:6 = 1:3 ✓
+- 修复 clippy collapsible_match 警告（用 or-pattern 替代嵌套 match）
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 365 lib (357→365, +8 new) + 2494 integration = 2859 unit tests, 0 failures
+
+Stage Summary:
+- Where Clauses Phase 2 (concrete type impl verification) 完成
+- 当 where clause bounded type 是具体类型（struct/enum）时，验证 trait 实现
+- 类型参数 T 推迟（Rust 语义——声明性约束，monomorphization 时验证）
+- Phase 1 (trait 存在检查) 完全保留，新增 Phase 2 语义检查
+- v0.264.0 → v0.265.0
