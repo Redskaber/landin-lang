@@ -820,3 +820,108 @@ variant，是因为 Landin MIR 的 `Terminator::Call` 已有足够字段承载�
 
 **关键变化**: extern "C" ABI 已实现。ABI 信息从 HIR → driver → codegen 全管线跟踪。
 MVP 中 Landin ABI 和 C ABI 使用相同 LLVM 调用约定，未来可添加自定义 CC。
+
+---
+
+## 16. Emitter trait 架构（v0.263.0 §25.8 回写）
+
+> **回写触发**: Stage 16.76 + 16.77 完成 codegen pipeline 重构后，按 §14.8 阶段末尾设计回写协议补写本节。本节描述 Stage 16.76-16.77 引入的 6 子 trait 拆分 + backend 文件组织架构。
+
+### 16.1 6 子 trait 拆分（Stage 16.76 MUV-1）
+
+Stage 16.76 MUV-1 把 39-method `Emitter` trait 拆分为 6 个单一职责子 trait（per §13.4 J2）：
+
+| Sub-trait | 方法数 | 职责 |
+|-----------|--------|------|
+| `ModuleEmitter` | 5 | module-level globals & declarations |
+| `FunctionEmitter` | 8 | function scope & control flow |
+| `ArithmeticEmitter` | 11 | value computation from operands |
+| `MemoryEmitter` | 6 | stack allocation & pointer arithmetic |
+| `AggregateEmitter` | 5 | aggregate construction & calls |
+| `LocalStateEmitter` | 4 | local value/pointer mapping |
+| **Total** | **39** | (matches original `Emitter` trait) |
+
+`Emitter` 是 super-trait，通过 blanket impl 自动为实现了全部 6 子 trait 的类型提供实现：
+
+```rust
+pub trait Emitter: ModuleEmitter + FunctionEmitter + ArithmeticEmitter
+                 + MemoryEmitter + AggregateEmitter + LocalStateEmitter {}
+impl<T> Emitter for T where
+    T: ModuleEmitter + FunctionEmitter + ArithmeticEmitter
+     + MemoryEmitter + AggregateEmitter + LocalStateEmitter {}
+```
+
+**设计理由**：
+- §13.4 J2 单一职责：原 39-method trait 是"fat trait"，拆分后每个子 trait 可用一句话描述职责
+- 未来扩展：添加第三 backend 时，各子 trait 独立演进
+- 测试隔离：每个子 trait 可独立做 compile-time trait satisfaction 测试
+
+**Breaking change**: 外部 `Emitter` 实现者需改为实现 6 子 trait。Blanket impl 保证 `dyn Emitter` 对调用者兼容（20+ 调用点未改）。
+
+### 16.2 Backend 文件组织（Stage 16.77 MUV-1/2）
+
+Stage 16.77 把每个 backend 的 6 个 impl 块拆分到独立文件：
+
+```
+src/codegen/llvm/
+├── mod.rs          — LLVMSysEmitter struct + new() + Drop + public API (to_module, to_object_file, set_fn_sigs)
+├── module.rs       — impl ModuleEmitter for LLVMSysEmitter (5 methods)
+├── function.rs     — impl FunctionEmitter for LLVMSysEmitter (8 methods)
+├── arithmetic.rs   — impl ArithmeticEmitter for LLVMSysEmitter (11 methods)
+├── memory.rs       — impl MemoryEmitter for LLVMSysEmitter (6 methods)
+├── aggregate.rs    — impl AggregateEmitter for LLVMSysEmitter (5 methods)
+├── local_state.rs  — impl LocalStateEmitter for LLVMSysEmitter (4 methods)
+├── helpers.rs      — 私有 helpers (cstr, is_float, parse_*, collect_cstring)
+├── function_sigs.rs — build_fn_sigs_map (LLVM-only, forward-reference resolution)
+└── tests.rs        — 单元测试
+```
+
+text backend 同结构（无 helpers.rs 和 function_sigs.rs）：
+
+```
+src/codegen/text/
+├── mod.rs          — TextEmitter struct + new() + output_with_globals + helpers (emit_type_to_llvm_str, binop_to_llvm_str)
+├── module.rs       — impl ModuleEmitter for TextEmitter
+├── function.rs     — impl FunctionEmitter for TextEmitter
+├── arithmetic.rs   — impl ArithmeticEmitter for TextEmitter
+├── memory.rs       — impl MemoryEmitter for TextEmitter
+├── aggregate.rs    — impl AggregateEmitter for TextEmitter
+└── local_state.rs  — impl LocalStateEmitter for TextEmitter
+```
+
+**设计理由**：
+- §13.4 J2 单一职责：每个文件承担一个 impl 块或 struct 定义
+- §13.4 J6 科学合理粒度：最大文件 arithmetic.rs ~420 LOC（远低于 1500 阈值）
+- 可维护性：修改一个子 trait 实现 only 影响对应文件
+- 可测试性：每个 impl 块可独立做 trait satisfaction 测试
+
+### 16.3 dyn Emitter 兼容性
+
+20+ 调用点使用 `&mut dyn Emitter`，super-trait + blanket impl 模式保证 dyn 兼容性。所有子 trait 都是 object-safe（方法均为 `&mut self`/`&self`，返回 `EmitValue`/`Option<&EmitValue>`/tuple，无泛型方法）。
+
+### 16.4 共享翻译层（mir_translation/）
+
+Stage 16.76 MUV-3 把 1144-LOC `mir_translation.rs` 拆分为 4 子模块，按本节 §2-§4 章节对齐：
+
+| 子模块 | 对应章节 | 内容 |
+|--------|---------|------|
+| `types.rs` | §2.1-§2.3 | `mir_type_to_emit_type_with_layouts[_and_mono]` |
+| `layouts.rs` | §2.3-§2.4 | `adt_layout_to_emit_type` |
+| `places.rs` | §4.4 | 7 个 place codegen 函数 |
+| `stdlib.rs` | 跨章节 | `stdlib_type_kind_to_emit_type` |
+
+### 16.5 历史背景
+
+- **Stage 3.21**: `Emitter` trait 引入（36 methods, 单 trait, 单 impl TextEmitter）
+- **Stage 3.59**: Issue #5 标记 trait bloat（36 methods，deferred decomposition）
+- **Stage 13.5**: 第二 backend `LLVMSysEmitter` 加入 → 39 methods, 2 impls
+- **Stage 16.38**: 尝试 2-trait 拆分（ModuleEmitter + FunctionEmitter）— 因 ~1000 LOC 跨文件迁移风险被 defer，留下 documentation groups 妥协方案
+- **Stage 16.76 MUV-1**: 6-trait 拆分执行完成（39 methods → 5+8+11+6+5+4），blanket impl 保 dyn 兼容
+- **Stage 16.76 MUV-2**: `mod.rs` 拆分为 pipeline/function/drop_glue/llvm/function_sigs
+- **Stage 16.76 MUV-3**: `mir_translation.rs` 拆分为 types/layouts/places/stdlib
+- **Stage 16.77 MUV-1**: `llvm/mod.rs` 拆分为 8 文件（6 impl 块 + helpers + tests）
+- **Stage 16.77 MUV-2**: `text/mod.rs` 拆分为 7 文件（6 impl 块）
+
+### 16.6 偏差处理
+
+无偏差。本节描述的实现与 §2-§4 设计文档完全一致，6 子 trait 拆分 + backend 文件组织是 §13.4 J2 单一职责原则在 codegen 模块的具体应用。

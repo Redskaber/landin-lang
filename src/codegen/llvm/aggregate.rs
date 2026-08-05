@@ -1,0 +1,313 @@
+//! Stage 16.77 MUV-1: `impl AggregateEmitter for LLVMSysEmitter`.
+//!
+//! Extracted from `llvm/mod.rs` per §13.4 J2 (single responsibility).
+//! Per `docs/lang-design/07-codegen.md` §4 (MIR → LLVM IR mapping).
+
+use crate::codegen::emitter::AggregateEmitter;
+use crate::codegen::emitter::*;
+use llvm_sys::core::*;
+use llvm_sys::prelude::*;
+use std::ffi::CString;
+
+use super::LLVMSysEmitter;
+
+impl AggregateEmitter for LLVMSysEmitter {
+    fn emit_call(
+        &mut self,
+        fn_name: &str,
+        args: &[(EmitType, &EmitValue)],
+        ret_ty: &EmitType,
+    ) -> EmitValue {
+        let arg_tys: Vec<EmitType> = args.iter().map(|(t, _)| t.clone()).collect();
+        // Stage 14.58: Support indirect calls through function pointers.
+        // When fn_name is an SSA value (starts with %), look it up as a
+        // value instead of declaring a function.
+        let callee = if fn_name.starts_with('%') || fn_name.starts_with('@') {
+            self.lookup(&fn_name.to_string())
+        } else {
+            self.get_or_declare_function(fn_name, ret_ty, &arg_tys)
+        };
+        if crate::session::debug_codegen_enabled() {
+            eprintln!(
+                "[CODEGEN] emit_call: fn_name={} callee={:?}",
+                fn_name, callee
+            );
+        }
+        unsafe {
+            let mut arg_vals: Vec<LLVMValueRef> =
+                args.iter().map(|(_, v)| self.lookup(v)).collect();
+            // Build function type — assume same signature.
+            let ret_llvm_ty = self.llvm_type(ret_ty);
+            let param_tys: Vec<LLVMTypeRef> = args.iter().map(|(t, _)| self.llvm_type(t)).collect();
+            // Stage 13.16: printf and __landin_eprintf are variadic — declare
+            // them with isVariadic=1 so LLVM doesn't complain about arg count
+            // mismatches when the call site has more args than the declaration.
+            // (The actual libc printf is variadic; our auto-declaration with
+            // fixed args would cause LLVM verifier errors for variadic calls.)
+            let is_variadic: i32 = if fn_name == "printf" || fn_name == "__landin_eprintf" {
+                1
+            } else {
+                0
+            };
+            let fty = LLVMFunctionType(
+                ret_llvm_ty,
+                param_tys.as_ptr() as *mut LLVMTypeRef,
+                param_tys.len() as u32,
+                is_variadic,
+            );
+            // Stage 14.44: For void-returning calls, pass an EMPTY name string
+            // to LLVMBuildCall2. Was: always passed "call" as the name, which
+            // caused "Instruction has a name, but provides a void value" verifier
+            // error for calls to void functions (e.g., __landin_panic_overflow).
+            let name_c = if *ret_ty == EmitType::Void {
+                CString::new("").unwrap()
+            } else {
+                CString::new("call").unwrap()
+            };
+            let v = LLVMBuildCall2(
+                self.builder,
+                fty,
+                callee,
+                arg_vals.as_mut_ptr(),
+                arg_vals.len() as u32,
+                name_c.as_ptr(),
+            );
+            if *ret_ty == EmitType::Void {
+                // Don't register a name for void calls — return "0" sentinel.
+                "0".to_string()
+            } else {
+                self.fresh_named(v)
+            }
+        }
+    }
+
+    fn emit_dyn_trait_method_call(
+        &mut self,
+        dynptr_symbol: &str,
+        slot_index: u32,
+        args: &[(EmitType, &EmitValue)],
+        ret_ty: &EmitType,
+    ) -> EmitValue {
+        // Stage 14.13 (GAP-30): Implement dyn Trait method dispatch via
+        // vtable indirect call. The dynptr global is `{ ptr, ptr }` where
+        // field 0 = data pointer, field 1 = vtable pointer. The vtable is
+        // `[N x ptr]` where slot_index selects the method function pointer.
+        //
+        // LLVM IR sequence (mirrors TextEmitter's reference implementation):
+        //   %gep_vtable = getelementptr { ptr, ptr }, ptr @dynptr, i32 0, i32 1
+        //   %vtable     = load ptr, ptr %gep_vtable
+        //   %gep_method = getelementptr [N x ptr], ptr %vtable, i32 0, i32 slot_index
+        //   %method_fn  = load ptr, ptr %gep_method
+        //   %result     = call <ret_ty> %method_fn(<args>)
+        //
+        // Note: We use the opaque pointer mode (ptr) for all GEPs and loads,
+        // matching LLVM 15+ opaque pointer semantics. The dynptr global must
+        // already exist in the module (emitted by emit_dyn_trait_ptrs before
+        // codegen_from_mir — see codegen_crate_to_module reorder).
+        unsafe {
+            let dynptr_name_c = CString::new(dynptr_symbol).unwrap();
+            let dynptr = LLVMGetNamedGlobal(self.module, dynptr_name_c.as_ptr());
+            if dynptr.is_null() {
+                // Graceful degradation: if the dynptr global doesn't exist
+                // (e.g., trait resolver didn't build a vtable for this pair),
+                // emit a zero-valued result instead of panicking. This
+                // prevents the compiler from crashing on programs that use
+                // dyn Trait but have a resolver gap. The program will produce
+                // wrong results but will compile and link.
+                let ret_llvm_ty = self.llvm_type(ret_ty);
+                let zero = LLVMConstInt(ret_llvm_ty, 0, 1);
+                return self.fresh_named(zero);
+            }
+
+            // 1. GEP to get the vtable pointer slot (field 1 of {ptr, ptr}).
+            let fat_ptr_ty = self.llvm_type(&EmitType::Struct(vec![
+                EmitType::OpaquePtr,
+                EmitType::OpaquePtr,
+            ]));
+            let zero = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0, 0);
+            let one = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 1, 0);
+            let mut vtable_indices = [zero, one];
+            let gep_name = CString::new("gep_vtable").unwrap();
+            let gep_vtable = LLVMBuildInBoundsGEP2(
+                self.builder,
+                fat_ptr_ty,
+                dynptr,
+                vtable_indices.as_mut_ptr(),
+                vtable_indices.len() as u32,
+                gep_name.as_ptr(),
+            );
+
+            // 2. Load the vtable pointer.
+            let opaque_ptr_ty = self.llvm_type(&EmitType::OpaquePtr);
+            let load_vtable_name = CString::new("vtable").unwrap();
+            let vtable = LLVMBuildLoad2(
+                self.builder,
+                opaque_ptr_ty,
+                gep_vtable,
+                load_vtable_name.as_ptr(),
+            );
+
+            // 3. GEP to get the method function pointer slot (slot_index of [N x ptr]).
+            let slot_idx = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), slot_index as u64, 0);
+            let mut method_indices = [zero, slot_idx];
+            let gep_method_name = CString::new("gep_method").unwrap();
+            let gep_method = LLVMBuildInBoundsGEP2(
+                self.builder,
+                opaque_ptr_ty, // vtable is [N x ptr], element type is ptr (opaque)
+                vtable,
+                method_indices.as_mut_ptr(),
+                method_indices.len() as u32,
+                gep_method_name.as_ptr(),
+            );
+
+            // 4. Load the method function pointer.
+            let load_method_name = CString::new("method_fn").unwrap();
+            let method_fn = LLVMBuildLoad2(
+                self.builder,
+                opaque_ptr_ty,
+                gep_method,
+                load_method_name.as_ptr(),
+            );
+
+            // 5. Build the function type from arg types + return type.
+            let ret_llvm_ty = self.llvm_type(ret_ty);
+            let param_tys: Vec<LLVMTypeRef> = args.iter().map(|(t, _)| self.llvm_type(t)).collect();
+            let fty = LLVMFunctionType(
+                ret_llvm_ty,
+                param_tys.as_ptr() as *mut LLVMTypeRef,
+                param_tys.len() as u32,
+                0, // not variadic
+            );
+
+            // 6. Call the loaded function pointer (indirect call).
+            let mut arg_vals: Vec<LLVMValueRef> =
+                args.iter().map(|(_, v)| self.lookup(v)).collect();
+            let call_name = CString::new("dyncall").unwrap();
+            let call_val = LLVMBuildCall2(
+                self.builder,
+                fty,
+                method_fn,
+                arg_vals.as_mut_ptr(),
+                arg_vals.len() as u32,
+                call_name.as_ptr(),
+            );
+
+            if *ret_ty == EmitType::Void {
+                // Don't register a name for void calls — return "0" sentinel.
+                "0".to_string()
+            } else {
+                self.fresh_named(call_val)
+            }
+        }
+    }
+
+    fn emit_phi(&mut self, ty: &EmitType, incoming: &[(EmitValue, String)]) -> EmitValue {
+        unsafe {
+            let llvm_ty = self.llvm_type(ty);
+            let name_c = CString::new("phi").unwrap();
+            let phi = LLVMBuildPhi(self.builder, llvm_ty, name_c.as_ptr());
+            let vals: Vec<LLVMValueRef> = incoming.iter().map(|(v, _)| self.lookup(v)).collect();
+            let blocks: Vec<LLVMBasicBlockRef> = incoming
+                .iter()
+                .map(|(_, lbl)| self.block_for(lbl))
+                .collect();
+            LLVMAddIncoming(
+                phi,
+                vals.as_ptr() as *mut LLVMValueRef,
+                blocks.as_ptr() as *mut LLVMBasicBlockRef,
+                incoming.len() as u32,
+            );
+            self.fresh_named(phi)
+        }
+    }
+
+    fn emit_insertvalue(
+        &mut self,
+        agg_ty: &EmitType,
+        agg: &EmitValue,
+        val_ty: &EmitType,
+        val: &EmitValue,
+        index: u32,
+    ) -> EmitValue {
+        // Stage 13.5 MUV-2: emit_insertvalue is called for two cases:
+        // 1. Constructing &str fat pointers (from `codegen_operand`) — `agg`
+        //    is "undef" (textual), `val` is a GEP-text string. We stub these
+        //    with `undef` of the aggregate type.
+        // 2. Building aggregate values from real LLVM values — handled by
+        //    `LLVMBuildInsertValue`.
+        let _ = val_ty;
+        unsafe {
+            let agg_v = self.lookup(agg);
+            let mut val_v = self.lookup(val);
+            let llvm_agg_ty = self.llvm_type(agg_ty);
+            // If agg is the textual "undef" sentinel, build a fresh undef.
+            let agg_real = if agg == "undef" {
+                LLVMGetUndef(llvm_agg_ty)
+            } else {
+                agg_v
+            };
+
+            // Stage 14.70: Coerce val_v to the field's type.
+            //
+            // `interpret_adhoc` parses integer literals as i32 (default).
+            // When inserting into an i64 field (e.g., fat pointer's len),
+            // the i32 value must be cast to i64. Without this, LLVM stores
+            // only 4 bytes (movl) instead of 8 bytes (movq), leaving the
+            // upper 4 bytes as stack garbage — causing corrupted lengths
+            // on subsequent function calls.
+            //
+            // Per §1.0 原则 5 "报错 > 静默": explicit cast prevents silent
+            // stack garbage corruption.
+            let field_ty = {
+                let kind = LLVMGetTypeKind(llvm_agg_ty);
+                if kind == llvm_sys::LLVMTypeKind::LLVMStructTypeKind {
+                    let count = LLVMCountStructElementTypes(llvm_agg_ty);
+                    if index < count {
+                        let mut types: Vec<LLVMTypeRef> =
+                            vec![std::ptr::null_mut(); count as usize];
+                        LLVMGetStructElementTypes(llvm_agg_ty, types.as_mut_ptr());
+                        types[index as usize]
+                    } else {
+                        std::ptr::null_mut()
+                    }
+                } else {
+                    std::ptr::null_mut()
+                }
+            };
+            if !field_ty.is_null() {
+                let val_kind = LLVMGetTypeKind(LLVMTypeOf(val_v));
+                let field_kind = LLVMGetTypeKind(field_ty);
+                if val_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                    && field_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                {
+                    let val_width = LLVMGetIntTypeWidth(LLVMTypeOf(val_v));
+                    let field_width = LLVMGetIntTypeWidth(field_ty);
+                    if val_width != field_width {
+                        let name_c = CString::new("icast").unwrap();
+                        val_v = LLVMBuildIntCast2(
+                            self.builder,
+                            val_v,
+                            field_ty,
+                            1, // signed
+                            name_c.as_ptr(),
+                        );
+                    }
+                }
+            }
+
+            let name_c = CString::new("iv").unwrap();
+            let r = LLVMBuildInsertValue(self.builder, agg_real, val_v, index, name_c.as_ptr());
+            self.fresh_named(r)
+        }
+    }
+
+    fn emit_extractvalue(&mut self, agg_ty: &EmitType, agg: &EmitValue, index: u32) -> EmitValue {
+        unsafe {
+            let agg_v = self.lookup(agg);
+            let _ = self.llvm_type(agg_ty); // for type-context (not used by API)
+            let name_c = CString::new("ev").unwrap();
+            let r = LLVMBuildExtractValue(self.builder, agg_v, index, name_c.as_ptr());
+            self.fresh_named(r)
+        }
+    }
+}

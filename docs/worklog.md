@@ -29041,3 +29041,44 @@ Stage Summary:
 - mir_translation 过大 CLOSED：4 子模块按 07-codegen.md 章节对齐
 - dyn Emitter 兼容性保留（14+ 调用点未改）
 - v0.261.0 → 准备打包
+
+---
+Task ID: stage16.77
+Agent: Super Z (main) + scripts (split_llvm_backend.py, split_text_backend.py)
+Task: Stage 16.77 — Backend File Organization + Graph Sync + Design Writeback
+
+Work Log:
+- 同步项目到 v0.262.0 tarball（landin-stage0-v0.262.0-stage16.76-codegen-pipeline-refactoring.tar.gz）
+- 安装 rustup（环境缺失）+ setup LLVM 19
+- 设计 Stage 16.77（自审定稿，1 轮）：
+  - MUV-1: llvm/mod.rs 2157 LOC → 8 文件（mod + 6 impl + helpers + tests + function_sigs）
+  - MUV-2: text/mod.rs 866 LOC → 7 文件（mod + 6 impl）
+  - MUV-3: §15 项目图管理同步（emitter-trait.md + architecture.md）
+  - MUV-4: §14.8 设计回写（07-codegen.md §16）
+- MUV-1 执行（split_llvm_backend.py）：
+  - 2157 LOC → mod.rs 562 + module.rs 225 + function.rs 235 + arithmetic.rs 420 + memory.rs 159 + aggregate.rs 316 + local_state.rs 33 + helpers.rs 143 + tests.rs 173
+  - 修复 helpers visibility (pub(crate))
+  - 修复 tests.rs 缩进 + 缺失 }
+- MUV-2 执行（split_text_backend.py + 手动修复 FunctionEmitter）：
+  - 866 LOC → mod.rs 189 + module.rs 100 + function.rs 87 + arithmetic.rs 280 + memory.rs 81 + aggregate.rs 144 + local_state.rs 28
+  - 修复 FunctionEmitter 块未提取（脚本 brace counting bug，手动提取）
+  - 添加 emit_type_to_llvm_str + binop_to_llvm_str imports
+- MUV-3 执行：
+  - 重写 docs/graph/codegen/emitter-trait.md（v0.263.0，含 mermaid class diagram + backend file organization flowchart）
+  - 重写 docs/graph/codegen/architecture.md（v0.263.0，含完整模块结构 + architecture layers + data flow + history）
+- MUV-4 执行：
+  - 在 docs/lang-design/07-codegen.md 追加 §16 "Emitter trait 架构"（6 小节：6 子 trait 拆分 + backend 文件组织 + dyn 兼容性 + 共享翻译层 + 历史背景 + 偏差处理）
+- 验收：
+  - cargo clean && cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 349 lib + 2494 integration = 2843 unit tests + conformance embedded, 0 failures
+
+Stage Summary:
+- Stage 16.77 全部 4 MUVs 完成
+- codegen 模块"真正组织 llvm 和 text"目标达成：
+  - llvm/ 从 1 文件 2157 LOC → 9 文件最大 562 LOC
+  - text/ 从 1 文件 866 LOC → 7 文件最大 280 LOC
+- §15 项目图管理同步完成（2 个图文件更新）
+- §14.8 设计回写完成（07-codegen.md §16 补写）
+- v0.262.0 → v0.263.0

@@ -1,9 +1,88 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.262.0
+**Current version**: v0.263.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.263.0 — Stage 16.77 (Backend File Organization + Graph Sync + Design Writeback)
+
+### Overview
+
+Continuation of the codegen pipeline refactoring from Stage 16.76. This stage
+completes the "真正组织 llvm 和 text" goal by splitting each backend's 6
+impl blocks into separate files, matching the 6 sub-trait structure
+introduced in Stage 16.76 MUV-1.
+
+4 MUVs executed (1-round self-review design, scope was clear):
+- MUV-1: `llvm/mod.rs` (2157 LOC) → 9 files
+- MUV-2: `text/mod.rs` (866 LOC) → 7 files
+- MUV-3: §15 graph diagrams updated (emitter-trait.md + architecture.md)
+- MUV-4: §14.8 design writeback (07-codegen.md §16 added)
+
+### MUV-1: llvm/mod.rs Split
+
+Split 2157-LOC `llvm/mod.rs` into 9 files:
+
+| File | LOC | Responsibility |
+|------|-----|----------------|
+| `mod.rs` | 562 | struct + new() + Drop + public API + module declarations |
+| `module.rs` | 225 | impl ModuleEmitter (5 methods) |
+| `function.rs` | 235 | impl FunctionEmitter (8 methods) |
+| `arithmetic.rs` | 420 | impl ArithmeticEmitter (11 methods) |
+| `memory.rs` | 159 | impl MemoryEmitter (6 methods) |
+| `aggregate.rs` | 316 | impl AggregateEmitter (5 methods) |
+| `local_state.rs` | 33 | impl LocalStateEmitter (4 methods) |
+| `helpers.rs` | 143 | private helpers (cstr, is_float, parse_*, collect_cstring) |
+| `tests.rs` | 173 | unit tests |
+
+### MUV-2: text/mod.rs Split
+
+Split 866-LOC `text/mod.rs` into 7 files:
+
+| File | LOC | Responsibility |
+|------|-----|----------------|
+| `mod.rs` | 189 | struct + new() + output_with_globals + helpers |
+| `module.rs` | 100 | impl ModuleEmitter (5 methods) |
+| `function.rs` | 87 | impl FunctionEmitter (8 methods) |
+| `arithmetic.rs` | 280 | impl ArithmeticEmitter (11 methods) |
+| `memory.rs` | 81 | impl MemoryEmitter (6 methods) |
+| `aggregate.rs` | 144 | impl AggregateEmitter (5 methods) |
+| `local_state.rs` | 28 | impl LocalStateEmitter (4 methods) |
+
+### MUV-3: §15 Graph Diagrams
+
+Updated 2 graph files to reflect the new 6 sub-trait + backend file
+organization structure:
+
+- `docs/graph/codegen/emitter-trait.md` — rewritten with mermaid class
+  diagram showing 6 sub-traits + 2 backends + super-trait relationship
+- `docs/graph/codegen/architecture.md` — rewritten with complete module
+  structure (llvm/ 9 files + text/ 7 files) + architecture layers mermaid +
+  data flow + key design decisions + history
+
+### MUV-4: §14.8 Design Writeback
+
+Added §16 "Emitter trait 架构" to `docs/lang-design/07-codegen.md` with 6
+subsections covering: 6 sub-trait split, backend file organization, dyn
+Emitter compatibility, shared translation layer, history, deviation handling.
+
+### Verification
+
+- `cargo clean && cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 349 lib + 2494 integration = 2843 unit tests + conformance embedded, 0 failures
+
+### Process Compliance
+
+- §13.1 阶段开始设计对齐 — referenced `docs/lang-design/07-codegen.md`
+- §13.4 重构六大判据 — J1-J6 all satisfied
+- §13.5 设计-审查 Agent 循环 — 1 round self-review (scope clear, no P0/P1)
+- §14.8 阶段末尾设计回写 — 07-codegen.md §16 added
+- §15 项目图管理 — 2 graph files updated
+- §3.2 交付前验收 — full cargo clean+build+fmt+clippy+test all green
 
 ---
 ## v0.262.0 — Stage 16.76 (Codegen Pipeline Refactoring — 3 MUVs)

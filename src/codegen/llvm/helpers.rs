@@ -1,0 +1,141 @@
+//! Stage 16.77 MUV-1: Private helper functions for LLVMSysEmitter.
+//!
+//! Extracted from `llvm/mod.rs` per §13.4 J2 (single responsibility).
+//! These helpers are used by all 6 sub-trait impl blocks.
+
+use crate::codegen::emitter::EmitType;
+use std::ffi::CString;
+
+// =====================================================================
+// Free helper functions
+// =====================================================================
+
+/// Build a `*const c_char` from a short static literal — panics on null
+/// bytes (which would indicate a bug in the literal). The returned pointer
+/// is borrowed from a leaked `CString` (the string is short and lives for
+/// the duration of the program — acceptable for LLVM name tags).
+/// Stage 15.3 (perf fix): Convert &str to C string pointer.
+///
+/// **Before**: `CString::new(s).unwrap().into_raw()` — leaks every CString
+/// (memory grows unbounded in LSP mode).
+/// **After**: Uses a thread-local cache of CStrings. Repeated strings reuse
+/// the same allocation. Memory is bounded by the number of unique strings
+/// (typically <1000 per compilation unit).
+///
+/// Per Phase 2 audit HP-B6: "cstr() leaks every CString."
+/// Per §1.0 原則 6 "通用 > 特例": one cache handles all string-to-CString conversions.
+pub(crate) fn cstr(s: &str) -> *const std::os::raw::c_char {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    thread_local! {
+        static CSTR_CACHE: RefCell<HashMap<String, CString>> = RefCell::new(HashMap::new());
+    }
+
+    CSTR_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if !cache.contains_key(s) {
+            cache.insert(s.to_string(), CString::new(s).unwrap());
+        }
+        // Safe: the CString is stored in the HashMap and won't be moved
+        // or dropped until the thread exits. HashMap doesn't move values
+        // after insertion (only rehashes the bucket array).
+        cache[s].as_ptr()
+    })
+}
+
+/// True iff `ty` is a floating-point type.
+pub(crate) fn is_float(ty: &EmitType) -> bool {
+    matches!(ty, EmitType::F32 | EmitType::F64)
+}
+
+/// Convert a Landin icmp op string ("eq", "ne", "slt", etc.) to an
+/// `LLVMIntPredicate`.
+pub(crate) fn parse_int_predicate(op: &str) -> llvm_sys::LLVMIntPredicate {
+    use llvm_sys::LLVMIntPredicate::*;
+    match op {
+        "eq" => LLVMIntEQ,
+        "ne" => LLVMIntNE,
+        "ugt" => LLVMIntUGT,
+        "uge" => LLVMIntUGE,
+        "ult" => LLVMIntULT,
+        "ule" => LLVMIntULE,
+        "sgt" => LLVMIntSGT,
+        "sge" => LLVMIntSGE,
+        "slt" => LLVMIntSLT,
+        "sle" => LLVMIntSLE,
+        _ => LLVMIntEQ,
+    }
+}
+
+/// Convert a Landin fcmp op string ("oeq", "olt", etc.) to an
+/// `LLVMRealPredicate`.
+pub(crate) fn parse_real_predicate(op: &str) -> llvm_sys::LLVMRealPredicate {
+    use llvm_sys::LLVMRealPredicate::*;
+    match op {
+        "false" => LLVMRealPredicateFalse,
+        "oeq" => LLVMRealOEQ,
+        "ogt" => LLVMRealOGT,
+        "oge" => LLVMRealOGE,
+        "olt" => LLVMRealOLT,
+        "ole" => LLVMRealOLE,
+        "one" => LLVMRealONE,
+        "ord" => LLVMRealORD,
+        "uno" => LLVMRealUNO,
+        "ueq" => LLVMRealUEQ,
+        "ugt" => LLVMRealUGT,
+        "uge" => LLVMRealUGE,
+        "ult" => LLVMRealULT,
+        "ule" => LLVMRealULE,
+        "une" => LLVMRealUNE,
+        "true" => LLVMRealPredicateTrue,
+        _ => LLVMRealOEQ,
+    }
+}
+
+/// Parse the function name out of a `declare <retty> @<name>(...)` signature.
+/// Returns `None` if no `@name` token is found.
+pub(crate) fn parse_declare_name(sig: &str) -> Option<String> {
+    let at = sig.find('@')?;
+    let rest = &sig[at + 1..];
+    let end = rest.find(['(', ' ', '\t']).unwrap_or(rest.len());
+    Some(rest[..end].to_string())
+}
+
+/// Count commas at the top level inside the parens of a signature.
+/// Used as a rough arg-count heuristic when no type info is available.
+pub(crate) fn count_args_in_signature(sig: &str) -> usize {
+    let open = match sig.find('(') {
+        Some(i) => i,
+        None => return 0,
+    };
+    let close = match sig[open..].find(')') {
+        Some(i) => open + i,
+        None => return 0,
+    };
+    let inside = &sig[open + 1..close];
+    if inside.trim().is_empty() {
+        0
+    } else {
+        inside.split(',').count()
+    }
+}
+
+/// Copy a C string (NUL-terminated) from a `*const c_char` into an
+/// owned `String`. Does NOT free the original — the caller is
+/// responsible for `LLVMDisposeMessage` if applicable.
+pub(crate) unsafe fn collect_cstring(ptr: *const std::os::raw::c_char) -> String {
+    if ptr.is_null() {
+        return String::new();
+    }
+    let mut len = 0;
+    while *ptr.add(len) != 0 {
+        len += 1;
+    }
+    let bytes = std::slice::from_raw_parts(ptr as *const u8, len);
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+// =====================================================================
+// Tests
+// =====================================================================
