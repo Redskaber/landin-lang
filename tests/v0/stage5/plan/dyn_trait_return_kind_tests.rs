@@ -190,6 +190,7 @@ fn test_codegen_dyn_trait_call_void_return() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
@@ -216,6 +217,7 @@ fn test_codegen_dyn_trait_call_i32_return() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
@@ -242,6 +244,7 @@ fn test_codegen_dyn_trait_call_f64_return() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
@@ -268,6 +271,7 @@ fn test_codegen_dyn_trait_call_bool_return() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
@@ -294,6 +298,7 @@ fn test_codegen_dyn_trait_call_alloc_type_return() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 

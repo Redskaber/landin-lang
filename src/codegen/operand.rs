@@ -16,6 +16,7 @@ pub(crate) fn codegen_operand(
     op: &Operand,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
 ) -> EmitValue {
     match op {
@@ -54,7 +55,8 @@ pub(crate) fn codegen_operand(
                                      //
                                      // We compute the fat pointer's EmitType from the constant's
                                      // declared type, then `insertvalue` the ptr and len.
-                let fat_ty = mir_type_to_emit_type_with_layouts(&c.ty, layouts);
+                let fat_ty =
+                    mir_type_to_emit_type_with_layouts_and_mono(&c.ty, layouts, mono_layouts);
                 // Stage 13.20: GEP array size must match the global's actual
                 // size (n+1 to include the null terminator). Using the original
                 // length `n` here would create a type mismatch with the global
@@ -109,7 +111,8 @@ pub(crate) fn codegen_operand(
                 // Per §1.0 原则 6 "通用 > 特例": one rule for all integer
                 // constants, regardless of width.
                 let raw = emitter.emit_const(&c.val);
-                let target_ty = mir_type_to_emit_type_with_layouts(&c.ty, layouts);
+                let target_ty =
+                    mir_type_to_emit_type_with_layouts_and_mono(&c.ty, layouts, mono_layouts);
                 // Determine the source type based on the ConstVal variant.
                 // This must match what `emit_const` creates internally.
                 let src_ty = match &c.val {
@@ -203,6 +206,7 @@ pub fn codegen_dyn_trait_call_direct(
     args: &[Operand],
     _interner: &Rodeo,
     _layouts: &crate::mir::body::AdtLayouts,
+    _mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     _fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
 ) -> EmitValue {
     let dynptr_symbol = format!(".dynptr.{}.{}", call_info.trait_name, call_info.type_name);

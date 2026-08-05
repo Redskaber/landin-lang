@@ -20,6 +20,7 @@ pub(crate) fn codegen_terminator(
     fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
 ) {
     match &term.kind {
         TerminatorKind::Return => {
@@ -45,8 +46,15 @@ pub(crate) fn codegen_terminator(
             targets,
             otherwise,
         } => {
-            let discr_val =
-                codegen_operand(emitter, mir, discr, interner, layouts, fn_name_by_def_id);
+            let discr_val = codegen_operand(
+                emitter,
+                mir,
+                discr,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
             let is_bool_switch = targets
                 .iter()
                 .any(|(val, _)| matches!(val, ConstVal::Bool(_)));
@@ -115,13 +123,20 @@ pub(crate) fn codegen_terminator(
                     args,
                     interner,
                     layouts,
+                    mono_layouts,
                     fn_name_by_def_id,
                 );
                 if let PlaceKind::Local(id) = &destination.kind {
                     let dest_ty = mir
                         .local_decls
                         .get(id.0 as usize)
-                        .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
+                        .map(|ld| {
+                            mir_type_to_emit_type_with_layouts_and_mono(
+                                &ld.ty,
+                                layouts,
+                                mono_layouts,
+                            )
+                        })
                         .unwrap_or(EmitType::I32);
                     emitter.set_local(id.0, ret_val.clone());
                     if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
@@ -241,7 +256,15 @@ pub(crate) fn codegen_terminator(
                         }
                     }
                 }
-                let val = codegen_operand(emitter, mir, a, interner, layouts, fn_name_by_def_id);
+                let val = codegen_operand(
+                    emitter,
+                    mir,
+                    a,
+                    interner,
+                    layouts,
+                    mono_layouts,
+                    fn_name_by_def_id,
+                );
                 arg_pairs.push((ty, val));
             }
             let arg_refs: Vec<(EmitType, &EmitValue)> =
@@ -281,12 +304,24 @@ pub(crate) fn codegen_terminator(
                 // Stage 14.35: Use the callee's actual return type from fn_sigs
                 let call_ret_ty = callee_def_id
                     .and_then(|did| fn_sigs.get(&did))
-                    .map(|sig| mir_type_to_emit_type_with_layouts(&sig.output, layouts))
+                    .map(|sig| {
+                        mir_type_to_emit_type_with_layouts_and_mono(
+                            &sig.output,
+                            layouts,
+                            mono_layouts,
+                        )
+                    })
                     .unwrap_or_else(|| {
                         if let PlaceKind::Local(id) = &destination.kind {
                             mir.local_decls
                                 .get(id.0 as usize)
-                                .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
+                                .map(|ld| {
+                                    mir_type_to_emit_type_with_layouts_and_mono(
+                                        &ld.ty,
+                                        layouts,
+                                        mono_layouts,
+                                    )
+                                })
                                 .unwrap_or(EmitType::I32)
                         } else {
                             EmitType::I32
@@ -298,13 +333,26 @@ pub(crate) fn codegen_terminator(
                 // When fn_name is None but the func operand is a FnPtr-typed
                 // local, we need to call through the pointer value.
                 // Get the function pointer value from the operand.
-                let fn_ptr_val =
-                    codegen_operand(emitter, mir, func, interner, layouts, fn_name_by_def_id);
+                let fn_ptr_val = codegen_operand(
+                    emitter,
+                    mir,
+                    func,
+                    interner,
+                    layouts,
+                    mono_layouts,
+                    fn_name_by_def_id,
+                );
                 // Determine return type from fn_sigs or dest local
                 let call_ret_ty = if let PlaceKind::Local(id) = &destination.kind {
                     mir.local_decls
                         .get(id.0 as usize)
-                        .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
+                        .map(|ld| {
+                            mir_type_to_emit_type_with_layouts_and_mono(
+                                &ld.ty,
+                                layouts,
+                                mono_layouts,
+                            )
+                        })
                         .unwrap_or(EmitType::I32)
                 } else {
                     EmitType::I32
@@ -316,11 +364,23 @@ pub(crate) fn codegen_terminator(
                 // Stage 14.35: Use the callee's return type for the store too
                 let dest_ty = callee_def_id
                     .and_then(|did| fn_sigs.get(&did))
-                    .map(|sig| mir_type_to_emit_type_with_layouts(&sig.output, layouts))
+                    .map(|sig| {
+                        mir_type_to_emit_type_with_layouts_and_mono(
+                            &sig.output,
+                            layouts,
+                            mono_layouts,
+                        )
+                    })
                     .unwrap_or_else(|| {
                         mir.local_decls
                             .get(id.0 as usize)
-                            .map(|ld| mir_type_to_emit_type_with_layouts(&ld.ty, layouts))
+                            .map(|ld| {
+                                mir_type_to_emit_type_with_layouts_and_mono(
+                                    &ld.ty,
+                                    layouts,
+                                    mono_layouts,
+                                )
+                            })
                             .unwrap_or(EmitType::I32)
                     });
                 emitter.set_local(id.0, ret_val.clone());
@@ -341,10 +401,24 @@ pub(crate) fn codegen_terminator(
                     let op_ty = detect_operand_type(mir, lhs, layouts)
                         .or(detect_operand_type(mir, rhs, layouts))
                         .unwrap_or(EmitType::I32);
-                    let lhs_val =
-                        codegen_operand(emitter, mir, lhs, interner, layouts, fn_name_by_def_id);
-                    let rhs_val =
-                        codegen_operand(emitter, mir, rhs, interner, layouts, fn_name_by_def_id);
+                    let lhs_val = codegen_operand(
+                        emitter,
+                        mir,
+                        lhs,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                        fn_name_by_def_id,
+                    );
+                    let rhs_val = codegen_operand(
+                        emitter,
+                        mir,
+                        rhs,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                        fn_name_by_def_id,
+                    );
                     match op {
                         crate::mir::place::BinOp::Shl | crate::mir::place::BinOp::Shr => {
                             let bit_width: u32 = match op_ty {
@@ -382,15 +456,29 @@ pub(crate) fn codegen_terminator(
                     }
                 }
                 crate::mir::body::AssertMessage::DivisionByZero(rhs) => {
-                    let rhs_val =
-                        codegen_operand(emitter, mir, rhs, interner, layouts, fn_name_by_def_id);
+                    let rhs_val = codegen_operand(
+                        emitter,
+                        mir,
+                        rhs,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                        fn_name_by_def_id,
+                    );
                     let rhs_ty = detect_operand_type(mir, rhs, layouts).unwrap_or(EmitType::I32);
                     let is_zero = emitter.emit_icmp("eq", &rhs_ty, &rhs_val, &"0".to_string());
                     emitter.emit_br_cond(&is_zero, &panic_label, &format!("bb{}", target.0));
                 }
                 crate::mir::body::AssertMessage::BoundsCheck => {
-                    let cond_val =
-                        codegen_operand(emitter, mir, cond, interner, layouts, fn_name_by_def_id);
+                    let cond_val = codegen_operand(
+                        emitter,
+                        mir,
+                        cond,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                        fn_name_by_def_id,
+                    );
                     emitter.emit_br_cond(&cond_val, &format!("bb{}", target.0), &panic_label);
                 }
             }

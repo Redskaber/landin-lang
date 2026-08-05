@@ -663,8 +663,11 @@ pub fn build_mono_item_names(
 /// A hashable key for per-mono layouts.
 ///
 /// Wraps `(DefId, Vec<TyKind>)` — the DefId of the generic type plus the
-/// TyKind values of its substs. Uses TyKind (not Ty) because Ty doesn't
-/// implement Hash/Eq (it's interned), while TyKind derives them.
+/// TyKind values of its substs. Uses `Vec<TyKind>` (extracted from substs)
+/// rather than `SubstsRef` (`Rc<[Ty]>`) because:
+/// - `Vec<TyKind>` implements `Hash`/`Eq` out of the box (no deref needed)
+/// - `Rc<[Ty]>` does NOT implement `Hash`/`Eq` (would need manual deref)
+/// - `TyKind::clone()` is cheaper than `Ty::clone()` (Ty goes through interner)
 ///
 /// Two MonoLayoutKeys are equal iff they have the same DefId and the same
 /// substs (element-wise TyKind comparison). This ensures `Box<i32>` and

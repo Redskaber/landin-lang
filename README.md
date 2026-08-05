@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.244.0 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF + Task 11 COMPLETE: monomorphization infrastructure)
+**Version**: v0.245.0 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF + Task 11 COMPLETE + Deep Review Round 9 GO)
 **Date**: 2026-08-04
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -79,7 +79,7 @@ python3 tests/conformance/run_all.py              # 5224 conformance tests
 cargo run --features llvm-backend -- --run examples/hello.lin
 ```
 
-### Test Statistics (v0.244.0)
+### Test Statistics (v0.245.0)
 
 | Test Type | Count | Pass Rate |
 |-----------|-------|-----------|

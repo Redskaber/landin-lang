@@ -187,6 +187,7 @@ fn test_codegen_dyn_trait_call_i32_param() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
@@ -217,6 +218,7 @@ fn test_codegen_dyn_trait_call_f64_param() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
@@ -246,6 +248,7 @@ fn test_codegen_dyn_trait_call_bool_param() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
@@ -268,6 +271,7 @@ fn test_codegen_dyn_trait_call_no_params() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
@@ -299,6 +303,7 @@ fn test_codegen_dyn_trait_call_multiple_params() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 

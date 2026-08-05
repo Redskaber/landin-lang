@@ -1,9 +1,43 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.244.0
+**Current version**: v0.245.0
 **Date**: 2026-08-04
 **Test count**: 343 rust lib tests + 2504 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.245.0 — Stage 16.59 (Deep Review Round 9: Phase 4c Pipeline Integration Fix)
+
+### Overview
+
+Deep review Round 9 found and fixed a critical issue: Phase 4c (codegen
+integration) was API-complete but NOT wired into the production codegen
+pipeline. The `mir_type_to_emit_type_with_layouts_and_mono` function existed
+and was tested, but the actual codegen pipeline still called the legacy
+`mir_type_to_emit_type_with_layouts`. All MonoLayoutMap machinery was dead
+code from the production codegen path's perspective.
+
+**Fix**: Wired `MonoLayoutMap` through the entire codegen pipeline:
+- `run_codegen_pipeline` now builds `MonoLayoutMap` from collected MonoItems
+- `codegen_from_mir` and `codegen_synthesized_closure_functions` receive
+  `mono_layouts` parameter
+- `codegen_function` threads `mono_layouts` to all sub-modules
+- All ~25 call sites of `mir_type_to_emit_type_with_layouts` replaced with
+  `mir_type_to_emit_type_with_layouts_and_mono`
+- `get_call_dest_type` updated to accept and use `mono_layouts`
+- Updated 3 test files to pass `None` for the new parameter
+
+**Also fixed**: Misleading doc comment on `MonoLayoutKey` (incorrectly
+claimed `Ty` doesn't implement `Hash`/`Eq`).
+
+**Deep Review Recommendation**: **GO** — critical integration gap fixed.
+
+Per §1.0 原則 6 "通用 > 特例": one codegen pipeline for generic + non-generic.
+Per §25: deep review found and fixed the critical gap before release.
+
+### Verification
+
+- **Total: 8071 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.244.0 — Stage 16.58 (Task 11 Phase 4c: Codegen Integration — TASK 11 COMPLETE)

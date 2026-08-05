@@ -178,6 +178,22 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
         emitter,
     );
 
+    // Stage 16.59 (Task 11 Phase 4c integration): Build per-mono layouts
+    // from collected MonoItems. This is the actual codegen integration —
+    // the MonoLayoutMap is threaded through codegen_from_mir →
+    // codegen_function → all sub-modules, replacing the legacy
+    // mir_type_to_emit_type_with_layouts calls with
+    // mir_type_to_emit_type_with_layouts_and_mono.
+    //
+    // Per §16: builds from MIR + HIR (allowed at pipeline start).
+    // Per §1.0 原則 6 "通用 > 特例": one pipeline for all backends.
+    let mono_layouts: crate::mir::MonoLayoutMap = if let Some(hir) = &result.hir {
+        let mono_items = crate::mir::collect_mono_items(&result.mirs);
+        crate::mir::build_mono_layouts(&mono_items, hir)
+    } else {
+        std::collections::HashMap::new()
+    };
+
     // 5. Main MIR function bodies
     codegen_from_mir(
         &result.mirs,
@@ -185,6 +201,7 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
         &result.fn_name_by_def_id,
         &result.fn_sigs,
         &result.interner,
+        &mono_layouts,
         emitter,
     );
 
@@ -194,6 +211,7 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
         &result.fn_name_by_def_id,
         &result.fn_sigs,
         &result.interner,
+        &mono_layouts,
         emitter,
     );
 }
@@ -571,6 +589,7 @@ pub fn codegen_from_mir(
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
     fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
     interner: &Rodeo,
+    mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
 ) {
     for (mir, meta) in mirs.iter().zip(body_metas.iter()) {
@@ -585,6 +604,7 @@ pub fn codegen_from_mir(
             // Stage 15.8: Arc<AdtLayouts> auto-derefs to &AdtLayouts.
             // Per clippy::explicit_auto_deref, use &mir.adt_layouts (auto-deref).
             &mir.adt_layouts,
+            Some(mono_layouts),
             meta.is_void,
             meta.abi,
         );
@@ -616,6 +636,7 @@ fn codegen_synthesized_closure_functions(
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
     fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
     interner: &Rodeo,
+    mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
 ) {
     for mir in synthesized_mirs {
@@ -666,6 +687,7 @@ fn codegen_synthesized_closure_functions(
             meta.param_count,
             interner,
             &mir.adt_layouts,
+            Some(mono_layouts),
             meta.is_void,
             meta.abi,
         );
@@ -683,6 +705,7 @@ fn codegen_function(
     param_count: usize,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     is_void: bool,
     abi: crate::ast::Abi,
 ) {
@@ -718,7 +741,11 @@ fn codegen_function(
                     EmitType::Void
                 }
             }
-            _ => mir_type_to_emit_type_with_layouts(&mir.local_decls[0].ty, layouts),
+            _ => mir_type_to_emit_type_with_layouts_and_mono(
+                &mir.local_decls[0].ty,
+                layouts,
+                mono_layouts,
+            ),
         }
     };
 
@@ -742,7 +769,7 @@ fn codegen_function(
                     {
                         EmitType::OpaquePtr
                     } else {
-                        mir_type_to_emit_type_with_layouts(&ld.ty, layouts)
+                        mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, mono_layouts)
                     }
                 })
                 .unwrap_or(EmitType::I32);
@@ -774,7 +801,7 @@ fn codegen_function(
         let ty = if is_self_param {
             EmitType::OpaquePtr
         } else {
-            mir_type_to_emit_type_with_layouts(&ld.ty, layouts)
+            mir_type_to_emit_type_with_layouts_and_mono(&ld.ty, layouts, mono_layouts)
         };
         if ty == EmitType::Void {
             continue;
@@ -783,11 +810,12 @@ fn codegen_function(
         // override its type with the callee's return type from fn_sigs. This
         // fixes struct-returning method calls where the local's type is
         // Infer→i32 after typeck writeback but the actual value is a struct.
-        let ty = if let Some(override_ty) = get_call_dest_type(mir, i, fn_sigs, layouts) {
-            override_ty
-        } else {
-            ty
-        };
+        let ty =
+            if let Some(override_ty) = get_call_dest_type(mir, i, fn_sigs, layouts, mono_layouts) {
+                override_ty
+            } else {
+                ty
+            };
         let ptr_name = format!("%loc_{}", i);
         let ptr = emitter.emit_alloca(&ty, &ptr_name);
         emitter.set_local_ptr(i as u32, ptr);
@@ -804,7 +832,15 @@ fn codegen_function(
         let label = format!("bb{}", bb_idx);
         emitter.emit_block(&label);
         for stmt in &bb.statements {
-            codegen_statement(emitter, mir, stmt, interner, layouts, fn_name_by_def_id);
+            codegen_statement(
+                emitter,
+                mir,
+                stmt,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
         }
         codegen_terminator(
             emitter,
@@ -815,6 +851,7 @@ fn codegen_function(
             fn_sigs,
             interner,
             layouts,
+            mono_layouts,
         );
     }
 
@@ -844,6 +881,7 @@ fn get_call_dest_type(
     local_idx: usize,
     fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
     layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
 ) -> Option<EmitType> {
     for bb in &mir.basic_blocks {
         if let crate::mir::body::TerminatorKind::Call {
@@ -878,7 +916,11 @@ fn get_call_dest_type(
                     };
                     if let Some(did) = callee_def_id {
                         if let Some(sig) = fn_sigs.get(&did) {
-                            return Some(mir_type_to_emit_type_with_layouts(&sig.output, layouts));
+                            return Some(mir_type_to_emit_type_with_layouts_and_mono(
+                                &sig.output,
+                                layouts,
+                                mono_layouts,
+                            ));
                         }
                     }
                 }

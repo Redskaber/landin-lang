@@ -5,7 +5,7 @@
 
 // Stage 16.42: Removed `#[allow(unused_imports)]` — fixed the underlying
 // unused imports instead. Per §1.0 原則 5 "去除兼容思维".
-use super::mir_translation::{detect_operand_type, mir_type_to_emit_type_with_layouts};
+use super::mir_translation::detect_operand_type;
 use super::*;
 use crate::mir::place::*;
 pub(crate) fn codegen_rvalue(
@@ -14,13 +14,38 @@ pub(crate) fn codegen_rvalue(
     rv: &Rvalue,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
 ) -> EmitValue {
     match rv {
-        Rvalue::Use(op) => codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id),
+        Rvalue::Use(op) => codegen_operand(
+            emitter,
+            mir,
+            op,
+            interner,
+            layouts,
+            mono_layouts,
+            fn_name_by_def_id,
+        ),
         Rvalue::BinaryOp(op, a, b) => {
-            let a_val = codegen_operand(emitter, mir, a, interner, layouts, fn_name_by_def_id);
-            let b_val = codegen_operand(emitter, mir, b, interner, layouts, fn_name_by_def_id);
+            let a_val = codegen_operand(
+                emitter,
+                mir,
+                a,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
+            let b_val = codegen_operand(
+                emitter,
+                mir,
+                b,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
             let ty = detect_operand_type(mir, a, layouts)
                 .or(detect_operand_type(mir, b, layouts))
                 .unwrap_or(EmitType::I32);
@@ -178,7 +203,15 @@ pub(crate) fn codegen_rvalue(
             }
         }
         Rvalue::UnaryOp(op, operand) => {
-            let val = codegen_operand(emitter, mir, operand, interner, layouts, fn_name_by_def_id);
+            let val = codegen_operand(
+                emitter,
+                mir,
+                operand,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
             let ty = detect_operand_type(mir, operand, layouts).unwrap_or(EmitType::I32);
             emitter.emit_unop(*op, &ty, &val)
         }
@@ -200,6 +233,7 @@ pub(crate) fn codegen_rvalue(
                     &operands[0],
                     interner,
                     layouts,
+                    mono_layouts,
                     fn_name_by_def_id,
                 )
             } else {
@@ -210,8 +244,15 @@ pub(crate) fn codegen_rvalue(
                 let agg_ty = EmitType::Struct(field_tys.clone());
                 let mut agg = "undef".to_string();
                 for (i, op) in operands.iter().enumerate() {
-                    let val =
-                        codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
+                    let val = codegen_operand(
+                        emitter,
+                        mir,
+                        op,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                        fn_name_by_def_id,
+                    );
                     let val_ty = &field_tys[i];
                     agg = emitter.emit_insertvalue(&agg_ty, &agg, val_ty, &val, i as u32);
                 }
@@ -235,7 +276,8 @@ pub(crate) fn codegen_rvalue(
             // arrays of structs like `[Point { x: 1, y: 2 }, Point { x: 3, y: 4 }]`
             // where elem_ty is Infer but the operands are Adt values.
             let elem_emit_ty = {
-                let from_elem_ty = mir_type_to_emit_type_with_layouts(elem_ty, layouts);
+                let from_elem_ty =
+                    mir_type_to_emit_type_with_layouts_and_mono(elem_ty, layouts, mono_layouts);
                 if matches!(from_elem_ty, EmitType::I32) && !operands.is_empty() {
                     // elem_ty might be Infer → try detecting from first operand
                     if let Some(detected) = detect_operand_type(mir, &operands[0], layouts) {
@@ -251,7 +293,15 @@ pub(crate) fn codegen_rvalue(
             let agg_ty = EmitType::array_of(elem_emit_ty.clone(), n);
             let mut agg = "undef".to_string();
             for (i, op) in operands.iter().enumerate() {
-                let val = codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
+                let val = codegen_operand(
+                    emitter,
+                    mir,
+                    op,
+                    interner,
+                    layouts,
+                    mono_layouts,
+                    fn_name_by_def_id,
+                );
                 agg = emitter.emit_insertvalue(&agg_ty, &agg, &elem_emit_ty, &val, i as u32);
             }
             agg
@@ -280,7 +330,7 @@ pub(crate) fn codegen_rvalue(
             if is_enum {
                 // Enum variant construction.
                 // Look up the full storage type from the Adt layout.
-                let storage_ty = mir_type_to_emit_type_with_layouts(
+                let storage_ty = mir_type_to_emit_type_with_layouts_and_mono(
                     &crate::mir::ty::Ty::new(
                         crate::mir::ty::TyKind::Adt(
                             *def_id,
@@ -289,6 +339,7 @@ pub(crate) fn codegen_rvalue(
                         crate::session::Span::DUMMY,
                     ),
                     layouts,
+                    mono_layouts,
                 );
                 // Compute the starting field_idx for this variant's payload.
                 // = 1 (for discriminant) + sum(field_counts of variants 0..V-1)
@@ -314,8 +365,15 @@ pub(crate) fn codegen_rvalue(
                 // for enum variants — see `lower_expr_to_operand`'s Call path).
                 // Insert it at field 0 of the storage.
                 let discr_op = &operands[0];
-                let discr_val =
-                    codegen_operand(emitter, mir, discr_op, interner, layouts, fn_name_by_def_id);
+                let discr_val = codegen_operand(
+                    emitter,
+                    mir,
+                    discr_op,
+                    interner,
+                    layouts,
+                    mono_layouts,
+                    fn_name_by_def_id,
+                );
                 let discr_ty = detect_operand_type(mir, discr_op, layouts).unwrap_or(EmitType::I32);
                 agg = emitter.emit_insertvalue(&storage_ty, &agg, &discr_ty, &discr_val, 0);
 
@@ -325,8 +383,15 @@ pub(crate) fn codegen_rvalue(
                 // element 0 (per `resolve_enum_variant`), so payload field i
                 // is at `field_tys[i+1]`.
                 for (i, op) in operands.iter().enumerate().skip(1) {
-                    let val =
-                        codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
+                    let val = codegen_operand(
+                        emitter,
+                        mir,
+                        op,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                        fn_name_by_def_id,
+                    );
                     // field_tys[i] is this operand's type (field_tys[0]=discr,
                     // field_tys[1]=payload_field_0, ...).
                     let val_ty = field_tys
@@ -354,14 +419,23 @@ pub(crate) fn codegen_rvalue(
                 } else {
                     field_tys
                         .iter()
-                        .map(|t| mir_type_to_emit_type_with_layouts(t, layouts))
+                        .map(|t| {
+                            mir_type_to_emit_type_with_layouts_and_mono(t, layouts, mono_layouts)
+                        })
                         .collect()
                 };
                 let agg_ty = EmitType::Struct(field_tys.clone());
                 let mut agg = "undef".to_string();
                 for (i, op) in operands.iter().enumerate() {
-                    let val =
-                        codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
+                    let val = codegen_operand(
+                        emitter,
+                        mir,
+                        op,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                        fn_name_by_def_id,
+                    );
                     let val_ty = field_tys.get(i).cloned().unwrap_or(EmitType::I32);
                     agg = emitter.emit_insertvalue(&agg_ty, &agg, &val_ty, &val, i as u32);
                 }
@@ -404,19 +478,35 @@ pub(crate) fn codegen_rvalue(
             // variant surfaces the correct type.
             let field_tys: Vec<EmitType> = substs
                 .iter()
-                .map(|ty| mir_type_to_emit_type_with_layouts(ty, layouts))
+                .map(|ty| mir_type_to_emit_type_with_layouts_and_mono(ty, layouts, mono_layouts))
                 .collect();
             let agg_ty = EmitType::Struct(field_tys.clone());
             let mut agg = "undef".to_string();
             for (i, op) in operands.iter().enumerate() {
-                let val = codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
+                let val = codegen_operand(
+                    emitter,
+                    mir,
+                    op,
+                    interner,
+                    layouts,
+                    mono_layouts,
+                    fn_name_by_def_id,
+                );
                 let val_ty = field_tys.get(i).cloned().unwrap_or(EmitType::I32);
                 agg = emitter.emit_insertvalue(&agg_ty, &agg, &val_ty, &val, i as u32);
             }
             agg
         }
         Rvalue::Cast(_, op, target_ty) => {
-            let val = codegen_operand(emitter, mir, op, interner, layouts, fn_name_by_def_id);
+            let val = codegen_operand(
+                emitter,
+                mir,
+                op,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
             let src_ty = detect_operand_type(mir, op, layouts).unwrap_or(EmitType::I32);
             let dst_ty = mir_type_to_emit_type(target_ty);
             emitter.emit_cast(&src_ty, &dst_ty, &val)

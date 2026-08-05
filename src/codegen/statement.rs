@@ -18,13 +18,21 @@ pub(crate) fn codegen_statement(
     stmt: &Statement,
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
 ) {
     match &stmt.kind {
         StatementKind::Assign(boxed) => {
             let (place, rvalue) = &**boxed;
-            let mut val =
-                codegen_rvalue(emitter, mir, rvalue, interner, layouts, fn_name_by_def_id);
+            let mut val = codegen_rvalue(
+                emitter,
+                mir,
+                rvalue,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
             match &place.kind {
                 PlaceKind::Local(id) => {
                     let default_ty = crate::mir::ty::Ty::new(
@@ -36,7 +44,11 @@ pub(crate) fn codegen_statement(
                         .get(id.0 as usize)
                         .map(|ld| &ld.ty)
                         .unwrap_or(&default_ty);
-                    let ty = mir_type_to_emit_type_with_layouts(local_ty, layouts);
+                    let ty = mir_type_to_emit_type_with_layouts_and_mono(
+                        local_ty,
+                        layouts,
+                        mono_layouts,
+                    );
                     // Stage 14.64: Coerce comparison results to the local's type.
                     //
                     // Comparison ops (Eq/Ne/Lt/Le/Gt/Ge) in codegen_rvalue
@@ -158,8 +170,10 @@ pub(crate) fn codegen_statement(
                                                 if let crate::mir::ty::TyKind::Ref(_, _, inner) =
                                                     &ld.ty.kind
                                                 {
-                                                    mir_type_to_emit_type_with_layouts(
-                                                        inner, layouts,
+                                                    mir_type_to_emit_type_with_layouts_and_mono(
+                                                        inner,
+                                                        layouts,
+                                                        mono_layouts,
                                                     )
                                                 } else {
                                                     raw_ty
@@ -264,6 +278,7 @@ pub(crate) fn codegen_statement(
                             arg,
                             interner,
                             layouts,
+                            mono_layouts,
                             fn_name_by_def_id,
                         );
                         // Determine the C conversion specifier + cast

@@ -162,6 +162,7 @@ fn test_codegen_dyn_trait_call_returns_value() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
     assert!(!ret.is_empty());
@@ -182,6 +183,7 @@ fn test_codegen_dyn_trait_call_produces_vtable_ir() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
@@ -208,6 +210,7 @@ fn test_codegen_dyn_trait_call_uses_correct_dynptr_symbol() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
@@ -241,6 +244,7 @@ fn test_codegen_terminator_dyn_trait_dispatch_via_direct() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
     assert!(!ret.is_empty(), "expected non-empty EmitValue");
@@ -264,6 +268,7 @@ fn test_codegen_dyn_trait_call_multiple_distinct() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
     // Second call → Drop.B
@@ -273,6 +278,7 @@ fn test_codegen_dyn_trait_call_multiple_distinct() {
         &args,
         &interner,
         &layouts,
+        None,
         &std::collections::HashMap::new(),
     );
 
