@@ -406,3 +406,5 @@ mod stage16_54_monomorphize_tests;
 mod stage16_56_nested_generics_tests;
 #[path = "v0/stage16/plan/stage16_58_codegen_integration_tests.rs"]
 mod stage16_58_codegen_integration_tests;
+#[path = "v0/stage16/plan/stage16_60_design_writeback_tests.rs"]
+mod stage16_60_design_writeback_tests;

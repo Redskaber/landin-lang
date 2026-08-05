@@ -28145,3 +28145,68 @@ Stage Summary:
 - All ~25 call sites updated from _with_layouts to _and_mono
 - Deep Review Recommendation: GO
 - 8071 tests, 0 failures, 0 warnings
+
+---
+Task ID: stage16.60-design-writeback
+Agent: Super Z (main)
+Task: Stage 16.60 — Design writeback (§25.8) + runtime verification. v0.245.0 → v0.246.0.
+
+Work Log:
+- Baseline: v0.245.0 / 343 lib + 2504 integration + 5224 conformance = 8071
+
+### 1. Design Writeback (§25.8)
+
+Updated docs/develop/v0/v0.3-complete-design.md with Task 11 final state:
+- Section 1: Task 11 🔧 → ✅, Task 14/17 dependency notes updated
+- Section 3.2: Complete rewrite with implementation summary table (9 stages)
+  - Added key architectural decisions (6 items)
+  - Added verification status (8071 tests)
+- Section 4: Roadmap table updated (Task 11 ✅, Task 14/17 已就绪)
+
+### 2. End-to-End Runtime Verification
+
+Built release binary and tested 3 generic programs with --run:
+1. Box<i32> with field access → exit 0 ✅
+2. Pair<i32, i32> with methods (first/second) → exit 0 ✅
+3. Opt<i32> enum with match → exit 0 ✅
+
+All 3 programs compiled, linked, and ran successfully — confirming the
+monomorphization infrastructure works end-to-end in production codegen.
+
+### 3. Added 10 Regression Tests
+
+Created tests/v0/stage16/plan/stage16_60_design_writeback_tests.rs:
+- §1 Generic struct (3 tests): field access, two params, method
+- §2 Generic enum (2 tests): match, unit variant
+- §3 Nested generics (2 tests): double, triple
+- §4 Multiple instantiations (1 test): Box<i32> + Box<bool>
+- §5 No regressions (2 tests): non-generic, simple program
+
+Registered in tests/all_tests.rs.
+
+### 4. Documentation Updates
+
+- Created docs/develop/v0/stage-16/stage-16.60-design-writeback.md
+- Created docs/tests/v0/stage16/stage-16.60-test-plan.md
+- Updated docs/develop/v0/v0.3-complete-design.md — Task 11 writeback
+- Updated docs/graph/type-system/data-flow.md — version
+- Updated RELEASE_NOTES.md — v0.246.0 entry
+- Updated README.md — version, test stats
+- Updated Cargo.toml — v0.245.0 → v0.246.0
+
+### 5. Verification
+
+- cargo build --features llvm-backend — ✅ clean, 0 warnings
+- cargo fmt --check — ✅ clean
+- cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+- cargo test --features llvm-backend --lib — ✅ 343/343 PASS
+- cargo test --features llvm-backend --test all_tests — ✅ 2514/2514 PASS (+10 new)
+- Runtime tests (3 programs) — ✅ all exit 0
+- Total: 8081 tests passing, 0 failures, 0 warnings.
+
+Stage Summary:
+- Stage 16.60 PASSED — Design writeback + runtime verification
+- v0.3-complete-design.md updated with Task 11 final state
+- 3 generic programs verified end-to-end (compile + link + run)
+- 10 regression tests added
+- 8081 tests, 0 failures, 0 warnings

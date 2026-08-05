@@ -1,7 +1,7 @@
 # Landin
 
 **Author**: redskaber
-**Version**: v0.245.0 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF + Task 11 COMPLETE + Deep Review Round 9 GO)
+**Version**: v0.246.0 (v0.2 FINAL + v0.3 RELEASE SIGNED OFF + Task 11 COMPLETE + Round 9 GO + Design Writeback)
 **Date**: 2026-08-04
 
 A work-in-progress systems programming language inspired by Rust, designed for
@@ -72,21 +72,21 @@ cargo build --features llvm-backend
 
 # Run tests
 cargo test --features llvm-backend --lib          # 343 lib tests
-cargo test --features llvm-backend --test all_tests  # 2504 integration tests
+cargo test --features llvm-backend --test all_tests  # 2514 integration tests
 python3 tests/conformance/run_all.py              # 5224 conformance tests
 
 # Run a Landin program
 cargo run --features llvm-backend -- --run examples/hello.lin
 ```
 
-### Test Statistics (v0.245.0)
+### Test Statistics (v0.246.0)
 
 | Test Type | Count | Pass Rate |
 |-----------|-------|-----------|
 | Lib tests | 343 | 100% |
-| Integration tests | 2504 | 100% |
+| Integration tests | 2514 | 100% |
 | Conformance tests | 5224 | 100% |
-| **Total** | **8071** | **100%** |
+| **Total** | **8081** | **100%** |
 
 ---
 

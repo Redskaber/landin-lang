@@ -1,7 +1,7 @@
 # Type System Data Flow (Typeck + Borrowck)
 
 > **Date**: 2026-08-04
-> **Version**: v0.245.0 (Stage 16.59 — Task 11 COMPLETE + Deep Review Round 9 GO)
+> **Version**: v0.246.0 (Stage 16.60 — Task 11 COMPLETE + Design Writeback §25.8)
 
 ## Type Checking Data Flow
 

@@ -1,9 +1,39 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.245.0
+**Current version**: v0.246.0
 **Date**: 2026-08-04
-**Test count**: 343 rust lib tests + 2504 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.246.0 — Stage 16.60 (Design Writeback §25.8 + Runtime Verification)
+
+### Overview
+
+Design writeback stage (§25.8) — updated `v0.3-complete-design.md` with
+Task 11's final state after Deep Review Round 9. Also performed end-to-end
+runtime verification of generic types and added regression tests.
+
+**Design writeback**:
+- Task 11 status: 🔧 规划中 → ✅ 完成（Stages 16.49-16.59）
+- Added full implementation summary table (9 stages)
+- Added key architectural decisions (6 items)
+- Updated roadmap table
+- Task 14/17 dependency notes updated (Task 11 now ready)
+
+**Runtime verification** — 3 generic programs verified with `--run`:
+- `Box<i32>` with field access → exit 0 ✅
+- `Pair<i32, i32>` with methods → exit 0 ✅
+- `Opt<i32>` enum with match → exit 0 ✅
+
+**Tests**: +10 integration tests covering generic struct/enum/nested/instantiations.
+
+Per §25.8: design writeback ensures design docs reflect actual implementation.
+Per §1.0 原則 3 "显式 > 隐式": explicit runtime verification, not just compilation.
+
+### Verification
+
+- **Total: 8081 tests passing, 0 failures, 0 warnings.**
 
 ---
 ## v0.245.0 — Stage 16.59 (Deep Review Round 9: Phase 4c Pipeline Integration Fix)
