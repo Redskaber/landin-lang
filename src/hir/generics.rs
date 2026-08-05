@@ -13,7 +13,6 @@
 
 use crate::hir::{HirCrate, HirGenericParam, HirItem, OwnerNode};
 use crate::mir::ty::ParamTy;
-use std::collections::HashMap;
 
 /// Build a map from DefId → Vec<ParamTy> for all generic items in the crate.
 ///
@@ -24,9 +23,16 @@ use std::collections::HashMap;
 /// The `index` field of `ParamTy` is the position of the type param in
 /// the generic params list (counting only type params, not lifetimes).
 ///
+/// Stage 16.62: Gated behind `#[cfg(test)]` — only used by unit tests.
+/// Per §1.0 原則 5 "去除兼容思维": test-only code shouldn't be in the
+/// public production API.
+///
 /// Per §23: `build_generics_map` follows `<verb>_<noun>_<noun>` pattern.
-pub fn build_generics_map(hir: &HirCrate) -> HashMap<crate::hir::DefId, Vec<ParamTy>> {
-    let mut map = HashMap::new();
+#[cfg(test)]
+pub fn build_generics_map(
+    hir: &HirCrate,
+) -> std::collections::HashMap<crate::hir::DefId, Vec<ParamTy>> {
+    let mut map = std::collections::HashMap::new();
     for (def_id, owner) in &hir.owners {
         if let Some(params) = extract_type_params(owner) {
             if !params.is_empty() {

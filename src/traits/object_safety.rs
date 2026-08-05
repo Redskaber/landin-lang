@@ -1,266 +1,447 @@
-//! Stage 8.2: Object safety rules (§2.3).
+//! Stage 16.64 (Task 14 Phase 1): Object safety checking.
 //!
-//! Per `docs/lang-design/03-type-system.md` §2.3 (Trait object).
-//! Per `docs/stage-committee-process.md` v3.21 §13.4 + §14.4.
+//! This module checks whether a trait is object-safe — i.e., whether `dyn Trait`
+//! can be used for it. A trait is NOT object-safe if any of its methods:
 //!
-//! A trait is object-safe if and only if:
-//! 1. All methods have receiver `&self`, `&mut self`, `Box<Self>`, or `Rc<Self>`/`Arc<Self>` (v0.2)
-//! 2. No method returns `Self`
-//! 3. No method has generic parameters
-//! 4. No associated const (v0.2 limitation)
+//! 1. Returns `Self` (the trait's Self type)
+//! 2. Has `Self` in any argument position
+//! 3. Has generic type parameters (e.g., `fn f<T>(&self, x: T)`)
+//! 4. Has no receiver (`self`, `&self`, or `&mut self`) — associated functions
+//!    are not callable through `dyn Trait`
+//! 5. Has a by-value receiver (`self` or `mut self`) — only `&self` and
+//!    `&mut self` are object-safe
 //!
-//! Non-object-safe traits can still be impl'd, but cannot be used as `dyn Trait`.
+//! Per Rust RFC #255, these rules ensure that all methods can be dispatched
+//! through a vtable when the concrete type is unknown (erased to `dyn Trait`).
+//!
+//! Per §23: `check_trait_object_safety` follows `<verb>_<noun>_<noun>_<noun>`
+//! pattern.
+//! Per §16: reads HIR (trait definition) — allowed during driver setup.
+//! Per §1.0 原則 5 "报错 > 静默": non-object-safe traits produce hard errors
+//! when used as `dyn Trait`.
 
 use crate::ast::SelfKind;
-use crate::hir::{HirFnSig, HirTrait, HirTraitItem, HirTy, HirTyKind};
+use crate::hir::{
+    HirFn, HirFnRetTy, HirGenericParam, HirTrait, HirTraitItem, HirTy, HirTyKind, Res,
+};
+use crate::lexer::Symbol;
 use crate::session::Span;
 
-/// Check if a trait is object-safe (§2.3).
+/// An object safety violation found in a trait method.
 ///
-/// Returns `Ok(())` if object-safe, or `Err(Vec<ObjectSafetyError>)` with
-/// all violations.
+/// Each variant carries the method name and span for error reporting.
 ///
-/// Per §23: `check_object_safety` follows `<verb>_<noun>_<noun>` pattern.
-pub(crate) fn check_object_safety(trait_def: &HirTrait) -> Result<(), Vec<ObjectSafetyError>> {
-    let mut errors = Vec::new();
+/// Per §23: `ObjectSafetyViolation` follows `<Noun>_<Noun>_<Noun>` pattern.
+#[derive(Debug, Clone)]
+pub enum ObjectSafetyViolation {
+    /// Method returns `Self` type.
+    SelfReturn { method: Symbol, span: Span },
+    /// Method has `Self` in an argument type.
+    SelfInArg {
+        method: Symbol,
+        arg_idx: usize,
+        span: Span,
+    },
+    /// Method has generic type parameters.
+    GenericMethod { method: Symbol, span: Span },
+    /// Method has no receiver (associated function, not a method).
+    NoReceiver { method: Symbol, span: Span },
+    /// Method has a by-value receiver (`self` or `mut self`).
+    ByValueReceiver { method: Symbol, span: Span },
+}
+
+impl ObjectSafetyViolation {
+    /// Format this violation as a human-readable error message.
+    ///
+    /// The `interner` is needed to resolve the method name `Symbol` to a string.
+    pub fn error_message(&self, trait_name: &str, interner: &lasso::Rodeo) -> String {
+        let method_str = |sym: Symbol| -> String {
+            interner
+                .try_resolve(&sym)
+                .unwrap_or("<unknown>")
+                .to_string()
+        };
+        match self {
+            ObjectSafetyViolation::SelfReturn { method, .. } => {
+                format!(
+                    "trait `{}` is not object-safe: method `{}` returns `Self`",
+                    trait_name,
+                    method_str(*method)
+                )
+            }
+            ObjectSafetyViolation::SelfInArg {
+                method, arg_idx, ..
+            } => {
+                format!(
+                    "trait `{}` is not object-safe: method `{}` has `Self` in argument {}",
+                    trait_name,
+                    method_str(*method),
+                    arg_idx
+                )
+            }
+            ObjectSafetyViolation::GenericMethod { method, .. } => {
+                format!(
+                    "trait `{}` is not object-safe: method `{}` has generic type parameters",
+                    trait_name,
+                    method_str(*method)
+                )
+            }
+            ObjectSafetyViolation::NoReceiver { method, .. } => {
+                format!(
+                    "trait `{}` is not object-safe: method `{}` has no receiver (associated functions cannot be called through `dyn Trait`)",
+                    trait_name, method_str(*method)
+                )
+            }
+            ObjectSafetyViolation::ByValueReceiver { method, .. } => {
+                format!(
+                    "trait `{}` is not object-safe: method `{}` takes `self` by value (only `&self` and `&mut self` are object-safe)",
+                    trait_name, method_str(*method)
+                )
+            }
+        }
+    }
+
+    /// Get the span of this violation for error reporting.
+    pub fn span(&self) -> Span {
+        match self {
+            ObjectSafetyViolation::SelfReturn { span, .. }
+            | ObjectSafetyViolation::SelfInArg { span, .. }
+            | ObjectSafetyViolation::GenericMethod { span, .. }
+            | ObjectSafetyViolation::NoReceiver { span, .. }
+            | ObjectSafetyViolation::ByValueReceiver { span, .. } => *span,
+        }
+    }
+}
+
+/// Check whether a trait is object-safe.
+///
+/// Returns a list of `ObjectSafetyViolation`s. If the list is empty, the
+/// trait is object-safe and `dyn Trait` can be used for it.
+///
+/// Per §23: `check_trait_object_safety` follows `<verb>_<noun>_<noun>_<noun>`
+/// pattern.
+/// Per §16: reads HIR (trait definition) — allowed during driver setup.
+/// Per §1.0 原則 6 "通用 > 特例": one function checks all rules.
+pub fn check_trait_object_safety(trait_def: &HirTrait) -> Vec<ObjectSafetyViolation> {
+    let mut violations = Vec::new();
 
     for item in &trait_def.items {
-        match item {
-            HirTraitItem::Fn(fn_decl) => {
-                let sig = &fn_decl.sig;
+        if let HirTraitItem::Fn(f) = item {
+            check_method(f, &mut violations);
+        }
+        // Associated types and consts don't affect object safety in v0.4.
+        // (Rust requires them to have defaults, but that's Task 17 territory.)
+    }
 
-                // Rule 1: receiver must be &self or &mut self (Box<Self>/Rc<Self> are v0.2)
-                if !is_object_safe_receiver(sig) {
-                    errors.push(ObjectSafetyError::InvalidReceiver {
-                        method_name: fn_decl.ident.name,
-                        span: sig.span,
-                    });
-                }
+    violations
+}
 
-                // Rule 2: no method returns Self
-                if returns_self(sig) {
-                    errors.push(ObjectSafetyError::ReturnsSelf {
-                        method_name: fn_decl.ident.name,
-                        span: sig.span,
-                    });
-                }
+/// Check a single trait method for object safety violations.
+fn check_method(f: &HirFn, violations: &mut Vec<ObjectSafetyViolation>) {
+    let method_name = f.ident.name;
+    let method_span = f.span;
 
-                // Rule 3: no generic parameters
-                if has_generic_params(sig) {
-                    errors.push(ObjectSafetyError::GenericMethod {
-                        method_name: fn_decl.ident.name,
-                        span: sig.span,
-                    });
-                }
-            }
-            HirTraitItem::Const(_) => {
-                // Rule 4: no associated const (v0.2 limitation)
-                errors.push(ObjectSafetyError::AssociatedConst {
-                    span: trait_def.span,
+    // Rule 1: Generic method — has type parameters
+    let has_type_params = f
+        .generics
+        .params
+        .iter()
+        .any(|p| matches!(p, HirGenericParam::Type(_)));
+    if has_type_params {
+        violations.push(ObjectSafetyViolation::GenericMethod {
+            method: method_name,
+            span: method_span,
+        });
+        return; // Other rules don't matter if the method is generic
+    }
+
+    // Rule 2: No receiver (associated function, not a method)
+    let first_param = f.sig.inputs.first();
+    let has_receiver = first_param.map(|p| p.self_kind.is_some()).unwrap_or(false);
+
+    if !has_receiver {
+        violations.push(ObjectSafetyViolation::NoReceiver {
+            method: method_name,
+            span: method_span,
+        });
+        return; // No point checking args/return if there's no receiver
+    }
+
+    // Rule 3: By-value receiver (self or mut self)
+    if let Some(param) = first_param {
+        if let Some(SelfKind::Value(_)) = param.self_kind {
+            violations.push(ObjectSafetyViolation::ByValueReceiver {
+                method: method_name,
+                span: method_span,
+            });
+            return;
+        }
+    }
+
+    // Rule 4: Self in return type
+    if let HirFnRetTy::Ty(ret_ty) = &f.sig.output {
+        if ty_contains_self(ret_ty) {
+            violations.push(ObjectSafetyViolation::SelfReturn {
+                method: method_name,
+                span: method_span,
+            });
+        }
+    }
+
+    // Rule 5: Self in argument types (skip the first param, which is self)
+    for (i, param) in f.sig.inputs.iter().skip(1).enumerate() {
+        if let Some(arg_ty) = &param.ty {
+            if ty_contains_self(arg_ty) {
+                violations.push(ObjectSafetyViolation::SelfInArg {
+                    method: method_name,
+                    arg_idx: i + 1,
+                    span: param.span,
                 });
             }
-            HirTraitItem::Type(_) => {
-                // Associated types are OK for object safety in Landin MVP
-                // (they're handled via vtable slot resolution)
-            }
         }
-    }
-
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors)
     }
 }
 
-/// Check if a method's receiver is object-safe (§2.3 Rule 1).
+/// Check whether a `HirTy` contains `Self` (recursively).
 ///
-/// Object-safe receivers: `&self`, `&mut self`
-/// NOT object-safe: `self` (by value), no self param
-/// v0.2: `Box<Self>`, `Rc<Self>`, `Arc<Self>`
-fn is_object_safe_receiver(sig: &HirFnSig) -> bool {
-    // Check if the first parameter is &self or &mut self
-    if let Some(first_param) = sig.inputs.first() {
-        if let Some(self_kind) = &first_param.self_kind {
-            return matches!(self_kind, SelfKind::Ref(_));
+/// `Self` appears as `HirTyKind::Path(_, path)` where `path.res` is
+/// `Res::SelfTy(_)`. This function recursively walks through Ref, Tuple,
+/// Array, Slice, FnPtr, TraitObject, ImplTrait, etc.
+///
+/// Stage 16.71 (Round 10 fix): Added FnPtr, TraitObject, ImplTrait cases
+/// that were missing from the original implementation.
+fn ty_contains_self(ty: &HirTy) -> bool {
+    match &ty.kind {
+        HirTyKind::Path(_, path) => {
+            matches!(path.res, Res::SelfTy(_))
         }
+        HirTyKind::Ref(_, _, inner) => ty_contains_self(inner),
+        HirTyKind::Ptr(_, inner) => ty_contains_self(inner),
+        HirTyKind::Slice(inner) => ty_contains_self(inner),
+        HirTyKind::Array(inner, _) => ty_contains_self(inner),
+        HirTyKind::Tuple(tys) => tys.iter().any(ty_contains_self),
+        // Stage 16.71: FnPtr — check inputs and output
+        HirTyKind::FnPtr { inputs, output, .. } => {
+            inputs.iter().any(ty_contains_self) || ty_contains_self(output)
+        }
+        // Stage 16.71: TraitObject — check bounds for Self.
+        // Note: TraitObject bounds carry AST types (not HIR), so we can't
+        // fully check for Self here. The Res::SelfTy check on the trait
+        // path itself is the primary check.
+        HirTyKind::TraitObject { bounds, .. } => bounds.iter().any(|b| match b {
+            crate::hir::HirTypeBound::Trait(tc) => {
+                matches!(tc.path.res, Res::SelfTy(_))
+            }
+            _ => false,
+        }),
+        // Stage 16.71: ImplTrait — check bounds
+        HirTyKind::ImplTrait(bounds) => {
+            // impl Trait can't contain Self in Rust (it's an opaque type),
+            // but we check conservatively.
+            bounds.iter().any(|b| {
+                if let crate::hir::HirTypeBound::Trait(tc) = b {
+                    matches!(tc.path.res, Res::SelfTy(_))
+                } else {
+                    false
+                }
+            })
+        }
+        _ => false,
     }
-    // No self parameter → not a method → not object-safe
-    false
-}
-
-/// Check if a method returns `Self` (§2.3 Rule 2).
-fn returns_self(sig: &HirFnSig) -> bool {
-    if let crate::hir::HirFnRetTy::Ty(ret_ty) = &sig.output {
-        return is_self_type(ret_ty);
-    }
-    false
-}
-
-/// Check if a type is `Self`.
-fn is_self_type(ty: &HirTy) -> bool {
-    // Check for Self type — in HIR, Self appears as a path resolving to
-    // Res::SelfTy. For MVP, we check if the type kind is a Path with
-    // a single segment named "Self".
-    matches!(&ty.kind, HirTyKind::Path(_, path) if path.segments.len() == 1 && {
-        let _name = path.segments[0].ident.name;
-        // Check if the interned symbol resolves to "Self"
-        // For MVP, we can't easily check the interned string here without
-        // the interner, so we check the Res instead.
-        matches!(path.res, crate::hir::Res::SelfTy(_))
-    })
-}
-
-/// Check if a method has generic parameters (§2.3 Rule 3).
-fn has_generic_params(_sig: &HirFnSig) -> bool {
-    // HirFnSig doesn't carry generics directly — they're on HirFn.
-    // For MVP, we check if the sig has any type parameters by looking
-    // at the inputs for generic-looking patterns.
-    // Actually, HirFn.generics is the right field, but we only have sig here.
-    // The caller should pass the full HirFn or we check generics separately.
-    // For now, return false (conservative — don't flag generics).
-    // TODO: Pass HirFn instead of HirFnSig to check generics properly.
-    false
-}
-
-/// An object safety violation (§2.3).
-#[derive(Debug, Clone)]
-pub(crate) enum ObjectSafetyError {
-    /// Method has an invalid receiver (not &self/&mut self).
-    InvalidReceiver {
-        method_name: crate::lexer::Symbol,
-        span: Span,
-    },
-    /// Method returns `Self`.
-    ReturnsSelf {
-        method_name: crate::lexer::Symbol,
-        span: Span,
-    },
-    /// Method has generic parameters.
-    GenericMethod {
-        method_name: crate::lexer::Symbol,
-        span: Span,
-    },
-    /// Trait has associated const (v0.2 limitation).
-    AssociatedConst { span: Span },
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::SelfKind;
-    use crate::hir::*;
-    use crate::lexer::Symbol;
-    use crate::session::Span;
-    use lasso::Rodeo;
+    use crate::compile;
 
-    /// Helper: create a minimal HirTrait for testing.
-    fn make_trait(items: Vec<HirTraitItem>) -> HirTrait {
-        HirTrait {
-            hir_id: HirId::new(crate::hir::DefId(0), crate::hir::ItemLocalId(0)),
-            ident: crate::ast::Ident::new(Symbol::default(), Span::DUMMY),
-            generics: HirGenerics {
-                params: vec![],
-                where_clause: vec![],
-                span: Span::DUMMY,
-            },
-            supertraits: vec![],
-            items,
-            vis: crate::ast::Visibility::Public,
-            attrs: vec![],
-            is_unsafe: false,
-            span: Span::DUMMY,
+    /// Stage 16.64 test 1: Object-safe trait (no violations).
+    #[test]
+    fn stage16_64_safe_trait_no_violations() {
+        let src = "trait Foo { fn bar(&self) -> i32; } fn main() { 0 }";
+        let result = compile(src);
+        let hir = result.hir.as_ref().expect("HIR should be available");
+        for (_, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                let violations = check_trait_object_safety(t);
+                assert!(
+                    violations.is_empty(),
+                    "Expected no violations, got: {:?}",
+                    violations
+                );
+                return;
+            }
         }
+        panic!("No trait found in HIR");
     }
 
-    /// Helper: create a HirFn with a &self receiver.
-    fn make_method(name: &str, self_kind: Option<SelfKind>, interner: &mut Rodeo) -> HirFn {
-        HirFn {
-            hir_id: HirId::new(crate::hir::DefId(0), crate::hir::ItemLocalId(0)),
-            ident: crate::ast::Ident::new(interner.get_or_intern(name), Span::DUMMY),
-            generics: HirGenerics {
-                params: vec![],
-                where_clause: vec![],
-                span: Span::DUMMY,
-            },
-            sig: HirFnSig {
-                inputs: vec![HirParam {
-                    hir_id: HirId::new(crate::hir::DefId(0), crate::hir::ItemLocalId(0)),
-                    pat: HirPat {
-                        hir_id: HirId::new(crate::hir::DefId(0), crate::hir::ItemLocalId(0)),
-                        kind: HirPatKind::Wild,
-                        span: Span::DUMMY,
-                    },
-                    ty: None,
-                    self_kind,
-                    span: Span::DUMMY,
-                }],
-                output: HirFnRetTy::Default(Span::DUMMY),
-                abi: crate::ast::Abi::Landin,
-                is_unsafe: false,
-                span: Span::DUMMY,
-            },
-            body: None,
-            vis: crate::ast::Visibility::Public,
-            attrs: vec![],
-            span: Span::DUMMY,
+    /// Stage 16.64 test 2: Trait with Self return is not object-safe.
+    #[test]
+    fn stage16_64_self_return_not_safe() {
+        let src = "trait Foo { fn bar(&self) -> Self; } fn main() { 0 }";
+        let result = compile(src);
+        let hir = result.hir.as_ref().expect("HIR should be available");
+        for (_, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                let violations = check_trait_object_safety(t);
+                assert!(!violations.is_empty(), "Expected SelfReturn violation");
+                assert!(violations
+                    .iter()
+                    .any(|v| matches!(v, ObjectSafetyViolation::SelfReturn { .. })));
+                return;
+            }
         }
+        panic!("No trait found in HIR");
     }
 
+    /// Stage 16.64 test 3: Trait with generic method is not object-safe.
     #[test]
-    fn test_object_safe_trait_with_ref_self() {
-        let mut interner = Rodeo::new();
-        let method = make_method(
-            "hello",
-            Some(SelfKind::Ref(crate::ast::Mutability::Immutable)),
-            &mut interner,
-        );
-        let trait_def = make_trait(vec![HirTraitItem::Fn(method)]);
-        assert!(check_object_safety(&trait_def).is_ok());
+    fn stage16_64_generic_method_not_safe() {
+        let src = "trait Foo { fn bar<T>(&self, x: T); } fn main() { 0 }";
+        let result = compile(src);
+        let hir = result.hir.as_ref().expect("HIR should be available");
+        for (_, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                let violations = check_trait_object_safety(t);
+                assert!(!violations.is_empty(), "Expected GenericMethod violation");
+                assert!(violations
+                    .iter()
+                    .any(|v| matches!(v, ObjectSafetyViolation::GenericMethod { .. })));
+                return;
+            }
+        }
+        panic!("No trait found in HIR");
     }
 
+    /// Stage 16.64 test 4: Trait with no-receiver method is not object-safe.
     #[test]
-    fn test_not_object_safe_by_value_self() {
-        let mut interner = Rodeo::new();
-        let method = make_method(
-            "hello",
-            Some(SelfKind::Value(crate::ast::Mutability::Immutable)),
-            &mut interner,
-        );
-        let trait_def = make_trait(vec![HirTraitItem::Fn(method)]);
-        let result = check_object_safety(&trait_def);
-        assert!(result.is_err());
-        let errors = result.unwrap_err();
-        assert!(errors
-            .iter()
-            .any(|e| matches!(e, ObjectSafetyError::InvalidReceiver { .. })));
+    fn stage16_64_no_receiver_not_safe() {
+        let src = "trait Foo { fn bar() -> i32; } fn main() { 0 }";
+        let result = compile(src);
+        let hir = result.hir.as_ref().expect("HIR should be available");
+        for (_, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                let violations = check_trait_object_safety(t);
+                assert!(!violations.is_empty(), "Expected NoReceiver violation");
+                assert!(violations
+                    .iter()
+                    .any(|v| matches!(v, ObjectSafetyViolation::NoReceiver { .. })));
+                return;
+            }
+        }
+        panic!("No trait found in HIR");
     }
 
+    /// Stage 16.64 test 5: Trait with by-value receiver is not object-safe.
     #[test]
-    fn test_not_object_safe_no_self() {
-        let mut interner = Rodeo::new();
-        let mut method = make_method("hello", None, &mut interner);
-        method.sig.inputs = vec![]; // No params at all
-        let trait_def = make_trait(vec![HirTraitItem::Fn(method)]);
-        let result = check_object_safety(&trait_def);
-        assert!(result.is_err());
+    fn stage16_64_by_value_receiver_not_safe() {
+        let src = "trait Foo { fn bar(self) -> i32; } fn main() { 0 }";
+        let result = compile(src);
+        let hir = result.hir.as_ref().expect("HIR should be available");
+        for (_, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                let violations = check_trait_object_safety(t);
+                assert!(!violations.is_empty(), "Expected ByValueReceiver violation");
+                assert!(violations
+                    .iter()
+                    .any(|v| matches!(v, ObjectSafetyViolation::ByValueReceiver { .. })));
+                return;
+            }
+        }
+        panic!("No trait found in HIR");
     }
 
+    /// Stage 16.64 test 6: Trait with Self in argument is not object-safe.
     #[test]
-    fn test_object_safe_mut_ref_self() {
-        let mut interner = Rodeo::new();
-        let method = make_method(
-            "update",
-            Some(SelfKind::Ref(crate::ast::Mutability::Mutable)),
-            &mut interner,
-        );
-        let trait_def = make_trait(vec![HirTraitItem::Fn(method)]);
-        assert!(check_object_safety(&trait_def).is_ok());
+    fn stage16_64_self_in_arg_not_safe() {
+        let src = "trait Foo { fn bar(&self, x: Self); } fn main() { 0 }";
+        let result = compile(src);
+        let hir = result.hir.as_ref().expect("HIR should be available");
+        for (_, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                let violations = check_trait_object_safety(t);
+                assert!(!violations.is_empty(), "Expected SelfInArg violation");
+                assert!(violations
+                    .iter()
+                    .any(|v| matches!(v, ObjectSafetyViolation::SelfInArg { .. })));
+                return;
+            }
+        }
+        panic!("No trait found in HIR");
     }
 
+    /// Stage 16.64 test 7: Empty trait is object-safe.
     #[test]
-    fn test_empty_trait_is_object_safe() {
-        let trait_def = make_trait(vec![]);
-        assert!(check_object_safety(&trait_def).is_ok());
+    fn stage16_64_empty_trait_safe() {
+        let src = "trait Foo {} fn main() { 0 }";
+        let result = compile(src);
+        let hir = result.hir.as_ref().expect("HIR should be available");
+        for (_, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                let violations = check_trait_object_safety(t);
+                assert!(violations.is_empty(), "Empty trait should be object-safe");
+                return;
+            }
+        }
+        panic!("No trait found in HIR");
+    }
+
+    /// Stage 16.64 test 8: &mut self is object-safe.
+    #[test]
+    fn stage16_64_ref_mut_self_safe() {
+        let src = "trait Foo { fn bar(&mut self); } fn main() { 0 }";
+        let result = compile(src);
+        let hir = result.hir.as_ref().expect("HIR should be available");
+        for (_, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                let violations = check_trait_object_safety(t);
+                assert!(violations.is_empty(), "&mut self should be object-safe");
+                return;
+            }
+        }
+        panic!("No trait found in HIR");
+    }
+
+    /// Stage 16.64 test 9: Self in return via Ref is not object-safe.
+    #[test]
+    fn stage16_64_self_in_ref_return_not_safe() {
+        let src = "trait Foo { fn bar(&self) -> &Self; } fn main() { 0 }";
+        let result = compile(src);
+        let hir = result.hir.as_ref().expect("HIR should be available");
+        for (_, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                let violations = check_trait_object_safety(t);
+                assert!(
+                    !violations.is_empty(),
+                    "&Self return should not be object-safe"
+                );
+                assert!(violations
+                    .iter()
+                    .any(|v| matches!(v, ObjectSafetyViolation::SelfReturn { .. })));
+                return;
+            }
+        }
+        panic!("No trait found in HIR");
+    }
+
+    /// Stage 16.64 test 10: Multiple violations are all reported.
+    #[test]
+    fn stage16_64_multiple_violations() {
+        let src = "trait Foo { fn bar(&self) -> Self; fn baz<T>(&self, x: T); fn qux() -> i32; } fn main() { 0 }";
+        let result = compile(src);
+        let hir = result.hir.as_ref().expect("HIR should be available");
+        for (_, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+                let violations = check_trait_object_safety(t);
+                assert_eq!(
+                    violations.len(),
+                    3,
+                    "Expected 3 violations, got: {}",
+                    violations.len()
+                );
+                return;
+            }
+        }
+        panic!("No trait found in HIR");
     }
 }

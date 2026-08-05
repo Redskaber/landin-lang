@@ -42,7 +42,7 @@
 //! Per §1.0 原則 6 "通用 > 特例": one substitute function for all type
 //! kinds, dispatched via match.
 
-use crate::mir::ty::{Const, Sig, SubstsRef, Ty, TyKind};
+use crate::mir::ty::{Const, Sig, Ty, TyKind};
 use crate::session::Span;
 
 /// Substitute type parameters in a `Ty` with concrete types from `substs`.
@@ -127,6 +127,11 @@ pub fn substitute(ty: &Ty, substs: &[Ty]) -> Ty {
             let new_substs: Vec<Ty> = inner_substs.iter().map(|t| substitute(t, substs)).collect();
             Ty::new(TyKind::Closure(*def_id, new_substs.into()), Span::DUMMY)
         }
+        // Stage 16.67 (Task 17): Projection — substitute inner substs.
+        TyKind::Projection(def_id, inner_substs) => {
+            let new_substs: Vec<Ty> = inner_substs.iter().map(|t| substitute(t, substs)).collect();
+            Ty::new(TyKind::Projection(*def_id, new_substs.into()), Span::DUMMY)
+        }
 
         // === FnPtr: substitute inputs + output ===
         TyKind::FnPtr(sig) => Ty::new(TyKind::FnPtr(substitute_sig(sig, substs)), Span::DUMMY),
@@ -167,8 +172,13 @@ fn substitute_sig(sig: &Sig, substs: &[Ty]) -> Sig {
 /// `[i32]`). Applying the outer substs to the inner substs produces
 /// the fully substituted slice.
 ///
+/// Stage 16.62: Marked `#[doc(hidden)]` — test-only API not in production use.
+/// Kept public because integration tests (separate crate) need it.
+/// Per §1.0 原則 5 "去除兼容思维": documented as test-only.
+///
 /// Per §23: `substitute_substs` follows `<verb>_<noun>` pattern.
-pub fn substitute_substs(inner_substs: &SubstsRef, outer_substs: &[Ty]) -> Vec<Ty> {
+#[doc(hidden)]
+pub fn substitute_substs(inner_substs: &crate::mir::ty::SubstsRef, outer_substs: &[Ty]) -> Vec<Ty> {
     inner_substs
         .iter()
         .map(|t| substitute(t, outer_substs))
@@ -184,7 +194,7 @@ mod tests {
     use super::*;
     use crate::ast::{Abi, FloatTy, IntTy, UintTy};
     use crate::hir::DefId;
-    use crate::mir::ty::{InferVar, TyVid};
+    use crate::mir::ty::{InferVar, SubstsRef, TyVid};
     use crate::session::Span;
 
     /// Helper: create a Ty of the given kind with DUMMY span.

@@ -232,7 +232,7 @@ fn ty_needs_drop_impl(
         }
 
         // ADTs (struct/enum): check Drop impl + field types.
-        TyKind::Adt(def_id, _) => {
+        TyKind::Adt(def_id, _) | TyKind::Projection(def_id, _) => {
             // Cycle detection: if we've already visited this DefId, return
             // false (the cycle is broken by the indirection that led us
             // here, e.g., Box<Self>).

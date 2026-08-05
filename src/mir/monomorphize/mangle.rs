@@ -83,9 +83,16 @@ pub fn mangle_ty(ty: &Ty) -> String {
             }
         }
         TyKind::Adt(def_id, substs) => {
-            // Without an interner, we can't resolve Symbol to a string.
-            // Use DefId fallback. Use mangle_ty_with_interner for readable names.
             let base_name = format!("Adt_{}", def_id.as_u32());
+            if substs.is_empty() {
+                base_name
+            } else {
+                let substs_str: Vec<String> = substs.iter().map(mangle_ty).collect();
+                format!("{}_{}", base_name, substs_str.join("_"))
+            }
+        }
+        TyKind::Projection(def_id, substs) => {
+            let base_name = format!("Proj_{}", def_id.as_u32());
             if substs.is_empty() {
                 base_name
             } else {

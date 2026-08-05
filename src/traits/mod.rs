@@ -11,15 +11,16 @@
 //! then provides data to typeck/borrowck/codegen.
 
 pub mod builtin;
-// Stage 14.105 (dead code cleanup): `object_safety` module removed.
-// It was `#[allow(dead_code)]` since Stage 8.2 and never called.
-// Object safety will be re-implemented in v0.2 when dyn Trait is fully supported.
+// Stage 16.64 (Task 14 Phase 1): Object safety checking re-implemented.
+// Checks whether a trait is object-safe (whether `dyn Trait` can be used).
+pub mod object_safety;
 pub mod resolver;
 pub mod vtable;
 
 pub use builtin::{
     is_primitive_copy_kind, BUILTIN_DEF_ID_BASE, BUILTIN_PRIMITIVE_COPY_KINDS, BUILTIN_TRAIT_NAMES,
 };
+pub use object_safety::{check_trait_object_safety, ObjectSafetyViolation};
 pub use resolver::{
     extract_impl_self_ty_name, CoherenceError, ImplInfo, ImplValidationReport, IncompleteImpl,
     TraitInfo, TraitResolver,

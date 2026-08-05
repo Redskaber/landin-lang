@@ -126,6 +126,10 @@ pub enum TyKind {
     Closure(DefId, SubstsRef),
     /// Algebraic data type (struct/enum): `Foo<T1, T2>`
     Adt(DefId, SubstsRef),
+    /// Stage 16.67 (Task 17 Phase 2): Associated type projection
+    /// `<T as Trait>::Item` — unresolved associated type.
+    /// Resolved to concrete type during typeck from the impl block.
+    Projection(DefId, SubstsRef),
     /// Foreign type (`extern { type Foo; }`)
     Foreign,
     /// Type parameter: `T` in a generic context
@@ -324,7 +328,7 @@ pub fn is_mir_ty_copy_conservative(ty: &Ty) -> bool {
         Infer(_) | Error | Foreign | Param(_) => true,
         // Adt, Str, Slice, Closure: conservatively non-Copy.
         // Use `ty_is_copy_with_resolver` for precise Adt Copy detection.
-        Adt(_, _) | Str | Slice(_) | Closure(_, _) => false,
+        Adt(_, _) | Projection(_, _) | Str | Slice(_) | Closure(_, _) => false,
     }
 }
 
@@ -437,6 +441,7 @@ pub fn type_kind_to_string(kind: &TyKind) -> String {
         TyKind::FnPtr(sig) => fn_sig_to_string(sig),
         TyKind::Closure(_, _) => "{closure}".to_string(),
         TyKind::Adt(_, _) => "<adt>".to_string(),
+        TyKind::Projection(_, _) => "<projection>".to_string(),
         TyKind::Foreign => "<foreign type>".to_string(),
         TyKind::Param(_) => "<type param>".to_string(),
         TyKind::Infer(infer_var) => infer_var_to_string(infer_var).to_string(),

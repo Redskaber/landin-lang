@@ -408,3 +408,7 @@ mod stage16_56_nested_generics_tests;
 mod stage16_58_codegen_integration_tests;
 #[path = "v0/stage16/plan/stage16_60_design_writeback_tests.rs"]
 mod stage16_60_design_writeback_tests;
+#[path = "v0/stage16/plan/stage16_65_object_safety_driver_tests.rs"]
+mod stage16_65_object_safety_driver_tests;
+#[path = "v0/stage16/plan/stage16_69_assoc_type_driver_tests.rs"]
+mod stage16_69_assoc_type_driver_tests;

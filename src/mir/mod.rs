@@ -49,7 +49,10 @@ pub use ty::{
 };
 
 // Stage 16.53 (Task 11 Phase 2): Type substitution re-exports.
-pub use substitute::{substitute, substitute_substs};
+// Stage 16.62: substitute_substs marked #[doc(hidden)] — test-only.
+pub use substitute::substitute;
+#[doc(hidden)]
+pub use substitute::substitute_substs;
 
 // Stage 16.54 (Task 11 Phase 3): Monomorphization collection re-exports.
 // Stage 16.55 (Task 11 Phase 4a): Per-mono codegen — specialized naming.

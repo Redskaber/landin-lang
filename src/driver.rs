@@ -988,6 +988,18 @@ pub fn compile(src: &str) -> CompileResult {
     // vtable symbol names (VtableEntry.fn_name is now Spur, was String).
     trait_resolver.collect(&hir, &mut interner);
 
+    // Stage 16.65 (Task 14 Phase 2): Object safety check.
+    //
+    // Scan all HIR types for `dyn Trait` usage (HirTyKind::TraitObject).
+    // For each, look up the trait definition and check if it's object-safe.
+    // If not, emit a typeck error — the user must fix the trait or avoid
+    // using `dyn Trait`.
+    //
+    // Per §16: driver reads HIR + TraitResolver (allowed during pre-computation).
+    // Per §1.0 原則 5 "报错 > 静默": hard errors for non-object-safe traits.
+    // Per §1.0 原則 6 "通用 > 特例": one scan function handles all TraitObject uses.
+    check_object_safety_for_dyn_trait_usage(&hir, &trait_resolver, &interner, &mut errors);
+
     // Stage 5.80: build DynTraitMIRPlan once for the whole crate.
     //
     // Per §16: the driver is the sole orchestrator that connects
@@ -1436,6 +1448,17 @@ pub fn compile(src: &str) -> CompileResult {
         // no-op. When `impl Drop` support is added (future stage), the
         // pass will start inserting `Drop` terminators.
         crate::mir::drop_elaboration::elaborate_drops(&mut mir, &trait_resolver, &interner);
+
+        // Stage 16.69 (Task 17 Phase 4): Resolve associated type projections.
+        //
+        // After typeck writeback, some local types may contain
+        // `TyKind::Projection` (unresolved associated types like
+        // `<T as Trait>::Item`). This pass resolves them to concrete types
+        // by looking up the impl block.
+        //
+        // Per §16: reads HIR (allowed during driver post-typeck).
+        // Per §1.0 原則 6 "通用 > 特例": one pass for all projections.
+        crate::typeck::projection_resolver::resolve_projections_in_mir(&mut mir, &hir);
 
         // Borrow check
         // Stage 14.106 (HP-1 fix attempt): Pass TraitResolver to BorrowChecker.
@@ -2225,6 +2248,285 @@ fn scan_pat_for_unresolved(pat: &crate::hir::HirPat, errors: &mut CompileErrors)
         HirPatKind::Ref(sub, _) => {
             scan_pat_for_unresolved(sub, errors);
         }
+    }
+}
+
+/// Stage 16.65 (Task 14 Phase 2): Check object safety for all `dyn Trait` usages.
+///
+/// Scans all HIR types for `HirTyKind::TraitObject`. For each, resolves the
+/// trait DefId from the bound's path, looks up the `HirTrait` definition,
+/// and calls `check_trait_object_safety`. If any violations are found, emits
+/// typeck errors.
+///
+/// Per §23: `check_object_safety_for_dyn_trait_usage` follows
+/// `<verb>_<noun>_<noun>_<prep>_<noun>` pattern.
+/// Per §16: reads HIR + TraitResolver (allowed during driver pre-computation).
+fn check_object_safety_for_dyn_trait_usage(
+    hir: &crate::hir::HirCrate,
+    resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    errors: &mut CompileErrors,
+) {
+    use crate::hir::{HirItem, HirTyKind, HirTypeBound, OwnerNode, Res};
+    use crate::traits::object_safety::check_trait_object_safety;
+
+    // Build a map from trait DefId → HirTrait for quick lookup.
+    let mut trait_defs: std::collections::HashMap<crate::hir::DefId, &crate::hir::HirTrait> =
+        std::collections::HashMap::new();
+    for (def_id, owner) in &hir.owners {
+        if let OwnerNode::Item(HirItem::Trait(t)) = owner {
+            trait_defs.insert(*def_id, t);
+        }
+    }
+
+    // Walk all HIR bodies for TraitObject types.
+    for (_body_id, body) in &hir.bodies {
+        walk_hir_ty_in_body(&body.value, &mut |ty| {
+            if let HirTyKind::TraitObject { bounds, .. } = &ty.kind {
+                for bound in bounds {
+                    if let HirTypeBound::Trait(tc) = bound {
+                        if let Res::Def(trait_def_id, _) = tc.path.res {
+                            if let Some(trait_def) = trait_defs.get(&trait_def_id) {
+                                let violations = check_trait_object_safety(trait_def);
+                                if !violations.is_empty() {
+                                    let trait_name = interner
+                                        .try_resolve(&trait_def.ident.name)
+                                        .unwrap_or("<anonymous>");
+                                    for v in &violations {
+                                        errors.typeck.push(crate::typeck::TypeError::new(
+                                            v.error_message(trait_name, interner),
+                                            v.span(),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Also walk fn signatures, struct fields, etc. for TraitObject types.
+    for (_, owner) in &hir.owners {
+        match owner {
+            OwnerNode::Item(HirItem::Fn(f)) => {
+                for param in &f.sig.inputs {
+                    if let Some(ty) = &param.ty {
+                        walk_hir_ty(ty, &mut |ty| {
+                            check_trait_object_ty(ty, &trait_defs, resolver, interner, errors);
+                        });
+                    }
+                }
+                if let crate::hir::HirFnRetTy::Ty(ret_ty) = &f.sig.output {
+                    walk_hir_ty(ret_ty, &mut |ty| {
+                        check_trait_object_ty(ty, &trait_defs, resolver, interner, errors);
+                    });
+                }
+            }
+            OwnerNode::Item(HirItem::Struct(s)) => {
+                for field in &s.fields {
+                    walk_hir_ty(&field.ty, &mut |ty| {
+                        check_trait_object_ty(ty, &trait_defs, resolver, interner, errors);
+                    });
+                }
+            }
+            OwnerNode::Item(HirItem::Enum(e)) => {
+                for variant in &e.variants {
+                    match &variant.data {
+                        crate::hir::HirVariantData::Tuple(fields, _) => {
+                            for f in fields {
+                                walk_hir_ty(&f.ty, &mut |ty| {
+                                    check_trait_object_ty(
+                                        ty,
+                                        &trait_defs,
+                                        resolver,
+                                        interner,
+                                        errors,
+                                    );
+                                });
+                            }
+                        }
+                        crate::hir::HirVariantData::Struct(fields, _) => {
+                            for f in fields {
+                                walk_hir_ty(&f.ty, &mut |ty| {
+                                    check_trait_object_ty(
+                                        ty,
+                                        &trait_defs,
+                                        resolver,
+                                        interner,
+                                        errors,
+                                    );
+                                });
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Helper: check a single TraitObject type for object safety.
+fn check_trait_object_ty(
+    ty: &crate::hir::HirTy,
+    trait_defs: &std::collections::HashMap<crate::hir::DefId, &crate::hir::HirTrait>,
+    _resolver: &crate::traits::TraitResolver,
+    interner: &Rodeo,
+    errors: &mut CompileErrors,
+) {
+    use crate::hir::{HirTyKind, HirTypeBound, Res};
+    use crate::traits::object_safety::check_trait_object_safety;
+
+    if let HirTyKind::TraitObject { bounds, .. } = &ty.kind {
+        for bound in bounds {
+            if let HirTypeBound::Trait(tc) = bound {
+                if let Res::Def(trait_def_id, _) = tc.path.res {
+                    if let Some(trait_def) = trait_defs.get(&trait_def_id) {
+                        let violations = check_trait_object_safety(trait_def);
+                        if !violations.is_empty() {
+                            let trait_name = interner
+                                .try_resolve(&trait_def.ident.name)
+                                .unwrap_or("<anonymous>");
+                            for v in &violations {
+                                errors.typeck.push(crate::typeck::TypeError::new(
+                                    v.error_message(trait_name, interner),
+                                    v.span(),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Walk a HirTy and call f for each type (including nested).
+///
+/// Stage 16.71 (Round 10 fix): Added FnPtr inputs/output recursion.
+fn walk_hir_ty<F>(ty: &crate::hir::HirTy, f: &mut F)
+where
+    F: FnMut(&crate::hir::HirTy),
+{
+    use crate::hir::HirTyKind;
+    f(ty);
+    match &ty.kind {
+        HirTyKind::Ref(_, _, inner) | HirTyKind::Ptr(_, inner) | HirTyKind::Slice(inner) => {
+            walk_hir_ty(inner, f);
+        }
+        HirTyKind::Array(inner, _) => walk_hir_ty(inner, f),
+        HirTyKind::Tuple(tys) => {
+            for t in tys {
+                walk_hir_ty(t, f);
+            }
+        }
+        // Stage 16.71: FnPtr — recurse into inputs and output
+        HirTyKind::FnPtr { inputs, output, .. } => {
+            for t in inputs {
+                walk_hir_ty(t, f);
+            }
+            walk_hir_ty(output, f);
+        }
+        _ => {}
+    }
+}
+
+/// Walk a HirExpr for HirTy occurrences (in cast expressions, let bindings, etc.).
+fn walk_hir_ty_in_body<F>(expr: &crate::hir::HirExpr, f: &mut F)
+where
+    F: FnMut(&crate::hir::HirTy),
+{
+    use crate::hir::HirExprKind;
+    match &expr.kind {
+        HirExprKind::Cast { expr, ty } => {
+            walk_hir_ty_in_body(expr, f);
+            walk_hir_ty(ty, f);
+        }
+        HirExprKind::Call { func, args } => {
+            walk_hir_ty_in_body(func, f);
+            for arg in args {
+                walk_hir_ty_in_body(arg, f);
+            }
+        }
+        HirExprKind::MethodCall { receiver, args, .. } => {
+            walk_hir_ty_in_body(receiver, f);
+            for arg in args {
+                walk_hir_ty_in_body(arg, f);
+            }
+        }
+        HirExprKind::Field { receiver, .. } => {
+            walk_hir_ty_in_body(receiver, f);
+        }
+        HirExprKind::Index { receiver, index } => {
+            walk_hir_ty_in_body(receiver, f);
+            walk_hir_ty_in_body(index, f);
+        }
+        HirExprKind::AddrOf { expr, .. } => {
+            walk_hir_ty_in_body(expr, f);
+        }
+        HirExprKind::Unary { expr, .. } => {
+            walk_hir_ty_in_body(expr, f);
+        }
+        HirExprKind::Binary { lhs, rhs, .. } => {
+            walk_hir_ty_in_body(lhs, f);
+            walk_hir_ty_in_body(rhs, f);
+        }
+        HirExprKind::If {
+            cond, then, else_, ..
+        } => {
+            walk_hir_ty_in_body(cond, f);
+            walk_hir_block(then, f);
+            if let Some(e) = else_ {
+                walk_hir_ty_in_body(e, f);
+            }
+        }
+        HirExprKind::Match { expr, arms } => {
+            walk_hir_ty_in_body(expr, f);
+            for arm in arms {
+                walk_hir_ty_in_body(&arm.body, f);
+            }
+        }
+        HirExprKind::Block(block) => {
+            walk_hir_block(block, f);
+        }
+        _ => {}
+    }
+}
+
+/// Walk a HirBlock for HirTy occurrences.
+fn walk_hir_block<F>(block: &crate::hir::HirBlock, f: &mut F)
+where
+    F: FnMut(&crate::hir::HirTy),
+{
+    for stmt in &block.stmts {
+        walk_hir_ty_in_stmt(stmt, f);
+    }
+    if let Some(expr) = &block.expr {
+        walk_hir_ty_in_body(expr, f);
+    }
+}
+
+/// Walk a HirStmt for HirTy occurrences.
+fn walk_hir_ty_in_stmt<F>(stmt: &crate::hir::HirStmt, f: &mut F)
+where
+    F: FnMut(&crate::hir::HirTy),
+{
+    match stmt {
+        crate::hir::HirStmt::Local(local) => {
+            if let Some(ty) = &local.ty {
+                walk_hir_ty(ty, f);
+            }
+            if let Some(init) = &local.init {
+                walk_hir_ty_in_body(init, f);
+            }
+        }
+        crate::hir::HirStmt::Expr(expr, _) => {
+            walk_hir_ty_in_body(expr, f);
+        }
+        _ => {}
     }
 }
 

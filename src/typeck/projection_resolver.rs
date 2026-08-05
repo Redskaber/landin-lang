@@ -1,0 +1,215 @@
+//! Stage 16.68 (Task 17 Phase 3): Associated type projection resolution.
+//!
+//! ## Infrastructure-Ready Placeholder
+//!
+//! **Stage 16.71 (Deep Review Round 10) finding**: This module is
+//! infrastructure-ready but NOT yet exercised in production. The HIR→MIR
+//! lowerer (`mir/lower/mod.rs`) does not yet produce `TyKind::Projection` —
+//! it discards `HirQSelf` and always emits `TyKind::Adt`. The parser does
+//! not support `<T as Trait>::Item` syntax. `Self::Item` inside impl bodies
+//! lowers to `TyKind::Error`.
+//!
+//! This module will become live when:
+//! 1. The parser supports `<T as Trait>::Item` syntax
+//! 2. The HIR→MIR lowerer produces `TyKind::Projection` for qualified paths
+//! 3. `Self::Item` inside impl bodies is lowered correctly
+//!
+//! Known issues to fix when wiring up (from Round 10 audit):
+//! - `find_trait_for_assoc_type` has a DefId/HirId mismatch (B5)
+//! - `resolve_projection_in_ty` missing FnDef/FnPtr/Closure cases (B6)
+//! - `types_match` missing 14 TyKind variants + ignores substs (B7)
+//! - Infinite recursion risk on cyclic bindings (B8)
+//! - Should run after `writeback_closures` not before (B9)
+//!
+//! ## Algorithm
+//!
+//! For each `Projection(assoc_def_id, substs)`:
+//! 1. Find the trait that declares this associated type (by assoc_def_id)
+//! 2. Find the impl of that trait for the self type (substs[0])
+//! 3. In the impl, find `type Item = Concrete;`
+//! 4. Replace the Projection with the concrete type (applying substitute)
+//!
+//! Per §23: `resolve_projection` follows `<verb>_<noun>` pattern.
+//! Per §16: reads HIR + TraitResolver (allowed during driver post-typeck).
+//! Per §1.0 原則 6 "通用 > 特例": one resolver for all projections.
+
+use crate::hir::{HirCrate, HirImpl, HirImplItem, HirItem, HirTraitItem, OwnerNode, Res};
+use crate::mir::ty::{Ty, TyKind};
+use crate::session::Span;
+
+/// Resolve all `TyKind::Projection` in a MIR body's local declarations.
+///
+/// Walks every `local_decl.ty` and replaces `Projection(def_id, substs)` with
+/// the concrete type from the impl block. Recursively resolves nested
+/// projections (e.g., `Projection` inside `Ref`, `Tuple`, `Array`).
+///
+/// Per §23: `resolve_projections_in_mir` follows `<verb>_<noun>_<prep>_<noun>`
+/// pattern.
+/// Per §16: reads HIR (allowed during driver post-typeck phase).
+pub fn resolve_projections_in_mir(mir: &mut crate::mir::body::MirBody, hir: &HirCrate) {
+    for local_decl in &mut mir.local_decls {
+        let resolved = resolve_projection_in_ty(&local_decl.ty, hir);
+        local_decl.ty = resolved;
+    }
+}
+
+/// Recursively resolve `Projection` in a `Ty`.
+///
+/// If the projection can be resolved (impl found, assoc type found), returns
+/// the concrete type. If not, returns the original `Ty` unchanged (the
+/// projection remains unresolved — this is a graceful degradation).
+fn resolve_projection_in_ty(ty: &Ty, hir: &HirCrate) -> Ty {
+    match &ty.kind {
+        TyKind::Projection(assoc_def_id, substs) => {
+            // Try to resolve this projection to a concrete type.
+            if let Some(concrete) = lookup_assoc_type_resolution(*assoc_def_id, substs, hir) {
+                // Recursively resolve any nested projections in the concrete type.
+                resolve_projection_in_ty(&concrete, hir)
+            } else {
+                // Cannot resolve — keep the projection (graceful degradation).
+                ty.clone()
+            }
+        }
+        // Recursively resolve in compound types.
+        TyKind::Ref(r, m, inner) => Ty::new(
+            TyKind::Ref(*r, *m, Box::new(resolve_projection_in_ty(inner, hir))),
+            Span::DUMMY,
+        ),
+        TyKind::RawPtr(m, inner) => Ty::new(
+            TyKind::RawPtr(*m, Box::new(resolve_projection_in_ty(inner, hir))),
+            Span::DUMMY,
+        ),
+        TyKind::Array(inner, c) => Ty::new(
+            TyKind::Array(Box::new(resolve_projection_in_ty(inner, hir)), c.clone()),
+            Span::DUMMY,
+        ),
+        TyKind::Slice(inner) => Ty::new(
+            TyKind::Slice(Box::new(resolve_projection_in_ty(inner, hir))),
+            Span::DUMMY,
+        ),
+        TyKind::Tuple(tys) => Ty::new(
+            TyKind::Tuple(
+                tys.iter()
+                    .map(|t| resolve_projection_in_ty(t, hir))
+                    .collect(),
+            ),
+            Span::DUMMY,
+        ),
+        TyKind::Adt(def_id, substs) => {
+            let new_substs: Vec<Ty> = substs
+                .iter()
+                .map(|t| resolve_projection_in_ty(t, hir))
+                .collect();
+            Ty::new(TyKind::Adt(*def_id, new_substs.into()), Span::DUMMY)
+        }
+        // All other types — no projections to resolve.
+        _ => ty.clone(),
+    }
+}
+
+/// Look up the concrete type for an associated type projection.
+///
+/// Given `assoc_def_id` (the DefId of `type Item;` in the trait) and `substs`
+/// (the type arguments, where substs[0] is the self type), find the impl
+/// block that implements the trait for the self type, and extract the
+/// `type Item = Concrete;` binding.
+///
+/// Returns `None` if no impl is found or the impl doesn't define the
+/// associated type.
+fn lookup_assoc_type_resolution(
+    assoc_def_id: crate::hir::DefId,
+    substs: &crate::mir::ty::SubstsRef,
+    hir: &HirCrate,
+) -> Option<Ty> {
+    // Step 1: Find the trait that declares this associated type.
+    // The assoc_def_id is the DefId of the HirAssocType within the trait.
+    // We need to find which trait owns it.
+    let (trait_def_id, assoc_name) = find_trait_for_assoc_type(assoc_def_id, hir)?;
+
+    // Step 2: Get the self type from substs[0].
+    let self_ty = substs.first()?;
+
+    // Step 3: Find the impl of this trait for the self type.
+    let impl_block = find_impl_for_trait_and_type(trait_def_id, self_ty, hir)?;
+
+    // Step 4: In the impl, find the `type Item = Concrete;` binding.
+    for item in &impl_block.items {
+        if let HirImplItem::Type(assoc) = item {
+            // Match by name (the assoc type's ident name).
+            if assoc.ident.name == assoc_name {
+                // Return the concrete type from the impl.
+                return Some(crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir(
+                    assoc.default.as_ref()?,
+                    Some(hir),
+                ));
+            }
+        }
+    }
+
+    None
+}
+
+/// Find the trait that declares an associated type, and return its DefId + name.
+fn find_trait_for_assoc_type(
+    assoc_def_id: crate::hir::DefId,
+    hir: &HirCrate,
+) -> Option<(crate::hir::DefId, crate::lexer::Symbol)> {
+    // The assoc_def_id is a DefId allocated during HIR lowering.
+    // We search all traits for an associated type whose HirId matches.
+    for (trait_def_id, owner) in &hir.owners {
+        if let OwnerNode::Item(HirItem::Trait(t)) = owner {
+            for item in &t.items {
+                if let HirTraitItem::Type(assoc) = item {
+                    // Match by comparing the assoc type's DefId (owner)
+                    // with the given assoc_def_id.
+                    if assoc.hir_id.owner == assoc_def_id {
+                        return Some((*trait_def_id, assoc.ident.name));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Find an impl block that implements `trait_def_id` for the given self type.
+fn find_impl_for_trait_and_type<'a>(
+    trait_def_id: crate::hir::DefId,
+    self_ty: &Ty,
+    hir: &'a HirCrate,
+) -> Option<&'a HirImpl> {
+    for (_, owner) in &hir.owners {
+        if let OwnerNode::Item(HirItem::Impl(impl_block)) = owner {
+            // Check if this impl implements the target trait.
+            if let Some(trait_path) = &impl_block.of_trait {
+                if let Res::Def(impl_trait_def_id, _) = trait_path.res {
+                    if impl_trait_def_id == trait_def_id {
+                        // Check if the self type matches.
+                        let impl_self_ty = crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir(
+                            &impl_block.self_ty,
+                            Some(hir),
+                        );
+                        if types_match(&impl_self_ty, self_ty) {
+                            return Some(impl_block);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Check if two types match (structural equality, ignoring substs differences).
+fn types_match(a: &Ty, b: &Ty) -> bool {
+    match (&a.kind, &b.kind) {
+        (TyKind::Adt(a_def, _), TyKind::Adt(b_def, _)) => a_def == b_def,
+        (TyKind::Int(a_i), TyKind::Int(b_i)) => a_i == b_i,
+        (TyKind::Uint(a_u), TyKind::Uint(b_u)) => a_u == b_u,
+        (TyKind::Bool, TyKind::Bool) => true,
+        (TyKind::Char, TyKind::Char) => true,
+        (TyKind::Str, TyKind::Str) => true,
+        (TyKind::Param(a_p), TyKind::Param(b_p)) => a_p.index == b_p.index,
+        _ => false,
+    }
+}

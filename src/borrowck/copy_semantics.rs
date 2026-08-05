@@ -68,6 +68,9 @@ pub fn ty_is_copy(ty: &crate::mir::ty::Ty) -> bool {
         // Stage 5.3: Treat Adt (struct/enum) as Copy by default (fallback).
         // Use `ty_is_copy_with_resolver` for precise Copy detection.
         Adt(_, _) => true,
+        // Stage 16.67 (Task 17): Projection treated as Copy (conservative,
+        // same as Adt — will be resolved to concrete type during typeck).
+        Projection(_, _) => true,
         // Stage 16.53 (Task 11 Phase 2): Param is now assumed Copy during
         // borrowck — the concrete type is only known after monomorphization.
         // Same rationale as Infer/Error: avoid spurious "use of moved value"
@@ -150,6 +153,9 @@ pub fn ty_is_copy_with_resolver(
         // is preferred over false positive (spurious move error) during
         // inference. Post-mono codegen will catch real move errors.
         Param(_) => true,
+        // Stage 16.67 (Task 17): Projection treated as non-Copy (conservative).
+        // Will be resolved to concrete type during typeck.
+        Projection(_, _) => false,
         Str | Slice(_) => false,
     }
 }

@@ -52,6 +52,11 @@ impl MonoItem {
     }
 
     /// Format this MonoItem as a human-readable string (for debugging).
+    ///
+    /// Stage 16.62: Gated behind `#[cfg(test)]` — only used by unit tests.
+    /// Per §1.0 原則 5 "去除兼容思维": test-only code shouldn't be in the
+    /// public production API.
+    #[cfg(test)]
     pub fn debug_string(&self) -> String {
         format!(
             "MonoItem::{}({:?}, {:?})",
@@ -61,6 +66,7 @@ impl MonoItem {
         )
     }
 
+    #[cfg(test)]
     fn kind_str(&self) -> &'static str {
         match self {
             MonoItem::Type { .. } => "Type",
@@ -267,6 +273,12 @@ pub(crate) fn collect_from_ty(ty: &Ty, collected: &mut HashSet<MonoItem>) {
                 });
             }
             // Recursively collect from inner substs (e.g., Vec<Vec<i32>>).
+            for inner_ty in substs.iter() {
+                collect_from_ty(inner_ty, collected);
+            }
+        }
+        TyKind::Projection(_def_id, substs) => {
+            // Stage 16.67: Collect from projection substs.
             for inner_ty in substs.iter() {
                 collect_from_ty(inner_ty, collected);
             }

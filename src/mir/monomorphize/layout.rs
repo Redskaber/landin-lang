@@ -46,6 +46,9 @@ impl MonoLayoutKey {
     }
 
     /// Create a MonoLayoutKey from a MonoItem.
+    ///
+    /// Stage 16.62: Gated behind `#[cfg(test)]` — only used by unit tests.
+    #[cfg(test)]
     pub fn from_mono_item(item: &MonoItem) -> Self {
         match item {
             MonoItem::Type { def_id, substs }
