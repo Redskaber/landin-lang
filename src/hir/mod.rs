@@ -14,6 +14,10 @@ pub mod kinds;
 pub mod lower;
 pub mod map;
 
+// Stage 16.61: Re-export generics_of for consistency with mir/mod.rs
+// re-exports. Per §5.1 (explicit list) + §5.2 (stage-tracking).
+pub use generics::{build_generics_map, generics_of};
+
 // Re-export the most-used types at the module root for convenience.
 // Stage 3.57 (P0-3 fix): explicit list instead of `pub use kinds::*;`
 // to prevent accidental leakage of internal types.

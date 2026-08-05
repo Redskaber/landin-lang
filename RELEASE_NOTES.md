@@ -1,12 +1,12 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.246.0
+**Current version**: v0.247.0
 **Date**: 2026-08-04
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
 
 ---
-## v0.246.0 — Stage 16.60 (Design Writeback §25.8 + Runtime Verification)
+## v0.247.0 — Stage 16.60 (Design Writeback §25.8 + Runtime Verification)
 
 ### Overview
 
