@@ -22,6 +22,8 @@ mod predicates;
 // Stage 16.68 (Task 17 Phase 3): Associated type projection resolution.
 pub mod projection_resolver;
 mod tables;
+// Stage 16.73: Where clause checking.
+pub mod where_clause;
 // Stage 14.105 (dead code cleanup): `lifetime_elision` module removed.
 // It was `#[allow(dead_code)]` since Stage 8.1 and never called.
 // Lifetime elision will be re-implemented in v0.2 when real lifetimes are added.

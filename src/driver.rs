@@ -1000,6 +1000,15 @@ pub fn compile(src: &str) -> CompileResult {
     // Per §1.0 原則 6 "通用 > 特例": one scan function handles all TraitObject uses.
     check_object_safety_for_dyn_trait_usage(&hir, &trait_resolver, &interner, &mut errors);
 
+    // Stage 16.73: Where clause checking.
+    //
+    // Verify that all where clause bounds reference valid traits.
+    // Full semantic checking (does the type implement the trait?) is
+    // deferred to future work — for now we verify trait existence.
+    let where_errors =
+        crate::typeck::where_clause::check_where_clauses(&hir, &trait_resolver, &interner);
+    errors.typeck.extend(where_errors);
+
     // Stage 5.80: build DynTraitMIRPlan once for the whole crate.
     //
     // Per §16: the driver is the sole orchestrator that connects
