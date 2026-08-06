@@ -1,9 +1,60 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.272.0
+**Current version**: v0.273.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.273.0 — Stage 16.87 (v0.4 Deep Review + v0.5 Roadmap)
+
+### Overview
+
+v0.4 deep review (§14.5 D1-D8) confirms all v0.4 tasks complete. v0.5
+roadmap planned with 7 tasks (23-33 estimated stages).
+
+### v0.4 Final Statistics
+
+- 12 stages completed (16.75-16.86)
+- 2,944 tests (415 lib + 2529 integration), 100% pass
+- 57,073 source lines, 46,617 test lines, 103,690 total
+- 0 clippy warnings, 0 TODO/FIXME, 0 dead code
+- 1,106 documentation files, 11 graph diagrams
+- 5,224 conformance tests
+
+### v0.4 Deep Review (§14.5)
+
+| Dimension | Status | Key Finding |
+|-----------|--------|-------------|
+| D1 Architecture | ✅ | Codegen 6 sub-trait + backend file org complete |
+| D2 Tech Debt | ✅ | 4 deferred items (CodegenError, type param where, Self, primitive) |
+| D3 Test Coverage | ✅ | 2944 tests, 1:3+ ratio, 0 TODO/warnings/dead code |
+| D4 Next Stage Ready | ✅ | v0.5 infrastructure ready |
+| D5 Design Quality | ✅ | §13.5 design-review loop validated |
+| D6 Performance | ✅ | MonoLayoutKey clone eliminated |
+| D7 Documentation | ✅ | 1106 docs, 109 stage-16 docs |
+| D8 Pipeline Coverage | ✅ | Full pipeline + 1:3+ positive:negative ratio |
+
+**Committee Vote**: 5/5 GO
+
+### v0.5 Roadmap
+
+| Priority | Task | Est. Stages |
+|----------|------|-------------|
+| P1 | Trait Solver | 6-8 |
+| P1 | CodegenError Error System | 2-3 |
+| P2 | GATs (Generic Associated Types) | 4-6 |
+| P2 | Trait Coherence Enhancement | 2-3 |
+| P3 | MIR Optimization Passes | 3-4 |
+| P3 | Incremental Compilation | 4-6 |
+| P3 | Cross-compilation | 2-3 |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 415 lib + 2529 integration = 2944 unit tests, 0 failures
 
 ---
 ## v0.272.0 — Stage 16.86 (MonoLayoutKey Clone Elimination — Performance)
