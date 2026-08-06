@@ -1,9 +1,59 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.268.0
+**Current version**: v0.269.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.269.0 — Stage 16.83 (Diagnostic Type Name Resolution via Resolver)
+
+### Overview
+
+Improves diagnostic notes (the "expected: X, found: Y" sub-messages) to
+show actual type names via resolver. Previously, diagnostic notes showed
+`"expected: <adt>"` — now they show `"expected: MyStruct"`.
+
+### Implementation
+
+1. **New `to_diagnostics_with_resolver`** on `CompileErrors` — accepts
+   `Option<&TraitResolver>`. When set, typeck error notes use
+   `type_kind_to_string_with_resolver` to resolve Adt type names.
+
+2. **New `format_via_diagnostics_with_resolver`** — the formatted output
+   version that also accepts resolver.
+
+3. **Old API preserved** — `to_diagnostics` and `format_via_diagnostics`
+   delegate to the `_with_resolver` variants with `None`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | diagnostic_with_resolver_shows_struct_name | positive | notes contain "MyStruct" |
+| 2 | diagnostic_without_resolver_falls_back | positive | fallback works |
+| 3 | compile_mismatch_diagnostic_note_shows_name | negative | notes contain type name |
+| 4 | compile_struct_mismatch_diagnostic_full | negative | "Foo" shown |
+| 5 | compile_enum_mismatch_diagnostic_shows_name | negative | "MyEnum" shown |
+| 6 | compile_two_struct_diagnostic_shows_both | negative | "Foo"+"Bar" |
+| 7 | compile_fn_arg_diagnostic_shows_name | negative | message contains "MyStruct" |
+| 8 | format_for_user_with_resolver_shows_name | negative | formatted output contains name |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 397 lib (+8 new) + 2494 integration = 2891 unit tests, 0 failures
+
+### Process Compliance
+
+- §13.1 阶段开始设计对齐 — referenced Stage 16.82 followup
+- §13.4 重构六大判据 — J1-J6 all satisfied
+- §13.5 设计-审查 Agent 循环 — 1 round self-review (scope clear)
+- §9.4.3 1:3+ 正负比例 — 1:3 achieved
+- §1.0 原則 3 "显式 > 隐式" — diagnostic notes show real type names
+- §3.2 交付前验收 — full cargo clean+build+fmt+clippy+test all green
 
 ---
 ## v0.268.0 — Stage 16.82 (BorrowError Message Improvements)

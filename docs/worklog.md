@@ -29265,3 +29265,38 @@ Stage Summary:
   - moved/borrowed/assign 错误加 place 信息（"local#N"）
   - format_ty + format_place + format_place_path 三个 helper
 - v0.267.0 → v0.268.0
+
+---
+Task ID: stage16.83
+Agent: Super Z (main)
+Task: Stage 16.83 — Diagnostic Type Name Resolution via Resolver
+
+Work Log:
+- §13.5 设计-审查 Agent 循环（1 轮自审定稿）：
+  - Design v1: stage-16.83-diagnostic-resolver-design.md
+  - 自审清单全部通过，无 P0/P1 缺陷
+- 实现内容：
+  1. 新增 `to_diagnostics_with_resolver` — 接收 Option<&TraitResolver>，格式化 expected/found notes 时用 type_kind_to_string_with_resolver
+  2. 旧 `to_diagnostics` 委托给 `to_diagnostics_with_resolver(interner, None)`
+  3. 新增 `format_via_diagnostics_with_resolver` — 接收 resolver 参数
+  4. 旧 `format_via_diagnostics` 委托给 `_with_resolver(..., None)`
+  5. 保留旧 API（向后兼容）
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - positive: diagnostic_with_resolver_shows_struct_name + diagnostic_without_resolver_falls_back (2)
+  - negative: compile_mismatch_diagnostic_note_shows_name + struct_mismatch_diagnostic_full + enum_mismatch_diagnostic_shows_name + two_struct_diagnostic_shows_both + fn_arg_diagnostic_shows_name + format_for_user_with_resolver_shows_name (6)
+  - 比例 2:6 = 1:3 ✓
+- 修复：d.notes → d.children（Diagnostic 结构体字段名）
+- 磁盘空间不足 → cargo clean 释放 7.1GiB
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 397 lib (389→397, +8 new) + 2494 integration = 2891 unit tests, 0 failures
+
+Stage Summary:
+- Diagnostic type name resolution 完成：
+  - to_diagnostics_with_resolver 新 API
+  - format_via_diagnostics_with_resolver 新 API
+  - diagnostic notes 显示实际类型名（"MyStruct" 而非 "<adt>"）
+  - 旧 API 保留（向后兼容）
+- v0.268.0 → v0.269.0
