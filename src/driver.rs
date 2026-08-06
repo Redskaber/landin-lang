@@ -1320,9 +1320,13 @@ pub fn compile(src: &str) -> CompileResult {
             shared_unify: &mut crate::typeck::unify::UnificationTable,
             fn_sig_table: &typeck::FnSigTable,
             field_ty_table: &typeck::FieldTyTable,
+            resolver: &crate::traits::TraitResolver,
+            interner: &Rodeo,
         ) -> (Vec<crate::typeck::TypeError>, typeck::TypeckResults) {
             let mut tc = typeck::TypeChecker::with_unify(std::mem::take(shared_unify));
             tc.fn_sigs = fn_sig_table.sigs.clone();
+            // Stage 16.81: Set resolver for rich error messages (Adt type names).
+            tc.unify.set_resolver(resolver, interner);
             tc.check_mir_body_with_tables(mir, Some(field_ty_table));
             let (errors, results, returned_unify) = tc.into_results_with_unify();
             *shared_unify = returned_unify;
@@ -1359,8 +1363,14 @@ pub fn compile(src: &str) -> CompileResult {
             }
 
             // Typeck the main body.
-            let (main_errs, main_results) =
-                typeck_main_body(&mut mir, &mut shared_unify, &fn_sig_table, &field_ty_table);
+            let (main_errs, main_results) = typeck_main_body(
+                &mut mir,
+                &mut shared_unify,
+                &fn_sig_table,
+                &field_ty_table,
+                &trait_resolver,
+                &interner,
+            );
             final_main_errors = main_errs.clone();
             final_main_results = main_results;
 

@@ -490,6 +490,61 @@ pub fn type_kind_to_string_with_resolver(
                 .map(|s| format!("<{}>::Item", s))
                 .unwrap_or_else(|| format!("<projection#{}>", def_id.0))
         }
+        // Stage 16.81: Recurse into compound types with resolver.
+        TyKind::Ref(_, mutability, inner) => {
+            let prefix = match mutability {
+                Mutability::Mutable => "&mut ",
+                Mutability::Immutable => "&",
+            };
+            format!(
+                "{}{}",
+                prefix,
+                type_to_string_with_resolver(inner, resolver, interner)
+            )
+        }
+        TyKind::RawPtr(mutability, inner) => {
+            let prefix = match mutability {
+                Mutability::Mutable => "*mut ",
+                Mutability::Immutable => "*const ",
+            };
+            format!(
+                "{}{}",
+                prefix,
+                type_to_string_with_resolver(inner, resolver, interner)
+            )
+        }
+        TyKind::Array(inner, _) => {
+            format!(
+                "[{}]",
+                type_to_string_with_resolver(inner, resolver, interner)
+            )
+        }
+        TyKind::Slice(inner) => {
+            format!(
+                "[{}]",
+                type_to_string_with_resolver(inner, resolver, interner)
+            )
+        }
+        TyKind::Tuple(tys) => {
+            if tys.is_empty() {
+                "()".to_string()
+            } else if tys.len() == 1 {
+                format!(
+                    "({},)",
+                    type_to_string_with_resolver(&tys[0], resolver, interner)
+                )
+            } else {
+                let mut s = String::from("(");
+                for (i, t) in tys.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(", ");
+                    }
+                    s.push_str(&type_to_string_with_resolver(t, resolver, interner));
+                }
+                s.push(')');
+                s
+            }
+        }
         // All other cases delegate to the existing type_kind_to_string.
         _ => type_kind_to_string(kind),
     }

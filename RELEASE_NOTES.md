@@ -1,9 +1,71 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.266.0
+**Current version**: v0.267.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.267.0 — Stage 16.81 (Migrate unify.rs to mismatch_with_resolver)
+
+### Overview
+
+Completes the improved error messages work by migrating `unify.rs` to use
+`mismatch_with_resolver`. Actual compiler type errors now show real type
+names (e.g., "expected MyStruct, found i32") instead of placeholders
+("expected <adt>, found i32").
+
+### Implementation
+
+1. **UnificationTable gains resolver/interner fields** — Optional raw
+   pointers to `TraitResolver` and `Rodeo`. Uses raw pointers to avoid
+   lifetime parameters that would infect all 15+ call sites.
+
+2. **New `set_resolver` method** — called once by the driver before
+   typeck begins. SAFETY: references outlive the table (guaranteed by
+   driver).
+
+3. **New `make_mismatch` helper** — uses `mismatch_with_resolver` when
+   resolver is set, falls back to legacy `mismatch` otherwise.
+
+4. **10 `TypeError::mismatch` calls replaced** with `self.make_mismatch`
+   in `unify_resolved`.
+
+5. **driver.rs integration** — `typeck_main_body` now accepts resolver +
+   interner parameters and calls `set_resolver` before typeck.
+
+6. **Recursive type name resolution** — `type_kind_to_string_with_resolver`
+   now recurses into `Ref`, `RawPtr`, `Array`, `Slice`, `Tuple` to resolve
+   nested `Adt` types (e.g., `&MyStruct` shows as `&MyStruct`, not `&<adt>`).
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | unify_with_resolver_shows_struct_name | positive | unify error shows struct name |
+| 2 | unify_without_resolver_falls_back | positive | no resolver → `<adt>` fallback |
+| 3 | compile_mismatch_struct_int_shows_name | negative | compile error contains "MyStruct" |
+| 4 | compile_mismatch_two_structs_shows_names | negative | both "Foo" and "Bar" shown |
+| 5 | compile_mismatch_enum_int_shows_name | negative | enum name shown |
+| 6 | compile_mismatch_struct_ref_shows_name | negative | `&MyStruct` name shown |
+| 7 | compile_mismatch_fn_arg_shows_name | negative | fn arg error shows struct name |
+| 8 | compile_mismatch_return_type_shows_name | negative | return type error shows struct name |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 381 lib (+8 new) + 2494 integration = 2875 unit tests, 0 failures
+
+### Process Compliance
+
+- §13.1 阶段开始设计对齐 — referenced Stage 16.80 followup
+- §13.4 重构六大判据 — J1-J6 all satisfied
+- §13.5 设计-审查 Agent 循环 — 1 round self-review (scope clear)
+- §9.4.3 1:3+ 正负比例 — 1:3 achieved
+- §1.0 原則 3 "显式 > 隐式" — actual type names in error messages
+- §3.2 交付前验收 — full cargo clean+build+fmt+clippy+test all green
 
 ---
 ## v0.266.0 — Stage 16.80 (Improved Error Messages: Adt Type Names)

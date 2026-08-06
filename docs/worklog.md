@@ -29195,3 +29195,37 @@ Stage Summary:
   - TypeError::mismatch_with_resolver 新 API
 - 旧 API 保留，逐步迁移调用点（unify.rs 仍用旧 mismatch，未来阶段迁移）
 - v0.265.0 → v0.266.0
+
+---
+Task ID: stage16.81
+Agent: Super Z (main)
+Task: Stage 16.81 — Migrate unify.rs to mismatch_with_resolver
+
+Work Log:
+- §13.5 设计-审查 Agent 循环（1 轮自审定稿）：
+  - Design v1: stage-16.81-unify-resolver-design.md
+  - 自审清单全部通过，无 P0/P1 缺陷
+  - SAFETY 审查：裸指针安全性论证（set once, outlive table, &mut self + &resolver 不冲突）
+- 实现内容：
+  1. UnificationTable 新增 resolver + interner 字段（Option<*const>）
+  2. 新增 set_resolver 方法（设置 resolver/interner 引用）
+  3. 新增 make_mismatch 私有 helper（有 resolver 时用 mismatch_with_resolver，否则 fallback）
+  4. 替换 10 处 TypeError::mismatch 为 self.make_mismatch
+  5. driver.rs typeck_main_body 新增 resolver + interner 参数，调用 set_resolver
+  6. 修复 type_kind_to_string_with_resolver 递归：Ref/Ptr/Array/Slice/Tuple 内部 Adt 也解析
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - positive: unify_with_resolver_shows_struct_name + unify_without_resolver_falls_back (2)
+  - negative: compile_mismatch_struct_int + two_structs + enum_int + struct_ref + fn_arg + return_type (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 381 lib (373→381, +8 new) + 2494 integration = 2875 unit tests, 0 failures
+
+Stage Summary:
+- unify.rs 现在使用 resolver-backed 类型名，实际编译错误显示 "expected MyStruct, found i32"
+- 修复了 Ref/Ptr/Array/Slice/Tuple 内部 Adt 的递归解析
+- 裸指针方案避免了 lifetime 传染所有调用点
+- 旧 API 保留（无 resolver 时 fallback 到 mismatch）
+- v0.266.0 → v0.267.0
