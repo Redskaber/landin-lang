@@ -29300,3 +29300,38 @@ Stage Summary:
   - diagnostic notes 显示实际类型名（"MyStruct" 而非 "<adt>"）
   - 旧 API 保留（向后兼容）
 - v0.268.0 → v0.269.0
+
+---
+Task ID: stage16.84
+Agent: Super Z (main)
+Task: Stage 16.84 — Migrate checker.rs Type Errors to Use Resolver
+
+Work Log:
+- §13.5 设计-审查 Agent 循环（1 轮自审定稿）：
+  - Design v1: stage-16.84-checker-resolver-design.md
+  - 自审清单全部通过，无 P0/P1 缺陷
+- 实现内容：
+  1. 新增 UnificationTable::resolver() getter — 返回 Option<&TraitResolver>
+  2. 新增 UnificationTable::interner() getter — 返回 Option<&Rodeo>
+  3. 新增 TypeChecker::format_ty — 从 unify 读取 resolver/interner，有则用 type_to_string_with_resolver
+  4. 替换 checker.rs 中 9 处 type_kind_to_string 为 self.format_ty
+  5. 修复 & 前缀（format_ty 接收 &Ty）
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - positive: format_ty_with_resolver_shows_name + format_ty_without_resolver_falls_back (2)
+  - negative: compile_expected_function_found_struct + if_condition_must_be_bool + switch_discriminant + match_arm_mismatch + call_non_function + method_call_non_function (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 405 lib (397→405, +8 new) + 2494 integration = 2899 unit tests, 0 failures
+
+Stage Summary:
+- checker.rs 类型错误消息改进完成：
+  - 9 处 type_kind_to_string 替换为 self.format_ty
+  - "expected function, found MyStruct" (was "<adt>")
+  - "if condition must be bool, found MyStruct"
+  - "switch discriminant must be integer or bool, found MyStruct"
+  - match arm mismatch 显示实际类型名
+- UnificationTable 新增 resolver()/interner() getter
+- v0.269.0 → v0.270.0

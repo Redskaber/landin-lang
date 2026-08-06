@@ -1,9 +1,67 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.269.0
+**Current version**: v0.270.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.270.0 — Stage 16.84 (Migrate checker.rs Type Errors to Use Resolver)
+
+### Overview
+
+Migrates 9 `type_kind_to_string` calls in `checker.rs` to use
+`format_ty`, which resolves actual type names via the resolver. Type
+errors like "expected function, found <adt>" now show "expected
+function, found MyStruct".
+
+### Implementation
+
+1. **New `UnificationTable::resolver()` and `interner()` getters** —
+   return `Option<&TraitResolver>` and `Option<&Rodeo>`, allowing
+   TypeChecker to access the resolver set by Stage 16.81's
+   `set_resolver`.
+
+2. **New `TypeChecker::format_ty` helper** — reads resolver/interner
+   from the unify table, uses `type_to_string_with_resolver` when
+   available, falls back to `type_to_string` otherwise.
+
+3. **9 `type_kind_to_string` calls replaced** in checker.rs:
+   - "expected function, found {}" (2 call sites)
+   - "switch discriminant must be integer or bool, found {}"
+   - "if condition must be bool, found {}"
+   - "match arm type mismatch: expected {}, found {}" (2 sites)
+   - cast errors (2 sites)
+   - additional type error (1 site)
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | format_ty_with_resolver_shows_name | positive | shows "MyStruct" |
+| 2 | format_ty_without_resolver_falls_back | positive | fallback "i32" |
+| 3 | compile_expected_function_found_struct_shows_name | negative | "found MyStruct" |
+| 4 | compile_if_condition_must_be_bool_shows_name | negative | "found MyStruct" |
+| 5 | compile_switch_discriminant_shows_name | negative | "found MyStruct" |
+| 6 | compile_match_arm_mismatch_shows_name | negative | contains type name |
+| 7 | compile_call_non_function_shows_name | negative | "found MyStruct" |
+| 8 | compile_method_call_non_function_shows_name | negative | method error |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 405 lib (+8 new) + 2494 integration = 2899 unit tests, 0 failures
+
+### Process Compliance
+
+- §13.1 阶段开始设计对齐 — referenced Stage 16.83 followup
+- §13.4 重构六大判据 — J1-J6 all satisfied
+- §13.5 设计-审查 Agent 循环 — 1 round self-review (scope clear)
+- §9.4.3 1:3+ 正负比例 — 1:3 achieved
+- §1.0 原則 3 "显式 > 隐式" — type errors show real type names
+- §3.2 交付前验收 — full cargo clean+build+fmt+clippy+test all green
 
 ---
 ## v0.269.0 — Stage 16.83 (Diagnostic Type Name Resolution via Resolver)

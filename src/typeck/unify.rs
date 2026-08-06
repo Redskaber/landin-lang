@@ -106,6 +106,31 @@ impl UnificationTable {
         self.interner = Some(interner as *const _);
     }
 
+    /// Stage 16.84: Get the resolver reference (if set).
+    ///
+    /// Returns `Some(&TraitResolver)` if `set_resolver` was called, else `None`.
+    /// Used by TypeChecker to format type names in error messages.
+    ///
+    /// Per §23: `resolver` follows `<noun>` pattern (getter).
+    pub fn resolver(&self) -> Option<&crate::traits::TraitResolver> {
+        self.resolver.map(|ptr| {
+            // SAFETY: resolver is set once before typeck and remains valid
+            // for the lifetime of the UnificationTable.
+            unsafe { &*ptr }
+        })
+    }
+
+    /// Stage 16.84: Get the interner reference (if set).
+    ///
+    /// Per §23: `interner` follows `<noun>` pattern (getter).
+    pub fn interner(&self) -> Option<&lasso::Rodeo> {
+        self.interner.map(|ptr| {
+            // SAFETY: interner is set once before typeck and remains valid
+            // for the lifetime of the UnificationTable.
+            unsafe { &*ptr }
+        })
+    }
+
     /// Stage 16.81: Construct a mismatch error, using resolver if available.
     ///
     /// When `set_resolver` was called, produces `mismatch_with_resolver`
