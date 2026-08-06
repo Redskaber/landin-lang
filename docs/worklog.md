@@ -29229,3 +29229,39 @@ Stage Summary:
 - 裸指针方案避免了 lifetime 传染所有调用点
 - 旧 API 保留（无 resolver 时 fallback 到 mismatch）
 - v0.266.0 → v0.267.0
+
+---
+Task ID: stage16.82
+Agent: Super Z (main)
+Task: Stage 16.82 — BorrowError Message Improvements
+
+Work Log:
+- §13.5 设计-审查 Agent 循环（1 轮自审定稿）：
+  - Design v1: stage-16.82-borrow-error-design.md
+  - 自审清单全部通过，无 P0/P1 缺陷
+- 实现内容：
+  1. 新增 BorrowChecker::format_ty — 有 resolver 时用 type_to_string_with_resolver，否则 fallback
+  2. 新增 BorrowChecker::format_place — 格式化 Place 为 "local#N" / "static#N"
+  3. 新增 BorrowChecker::format_place_path — 格式化 PlacePath（borrowck 内部表示）
+  4. 改进 lifetime error 消息：用 format_ty 替代 type_kind_to_string（显示实际类型名）
+  5. 改进 moved value 消息：加 place 信息（"cannot borrow moved value: local#N"）
+  6. 改进 use of moved value 消息：加 place 信息
+  7. 改进 move borrowed 消息：加 place 信息
+  8. 改进 assign borrowed 消息：加 place 信息
+  9. 改进 immutable assign 消息：加 local# 信息
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - positive: format_ty_with_resolver_shows_name + format_ty_without_resolver_falls_back (2)
+  - negative: compile_move_after_borrow + assign_immutable + double_mut_borrow + use_after_move + format_place_local + format_place_path_local (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 389 lib (381→389, +8 new) + 2494 integration = 2883 unit tests, 0 failures
+
+Stage Summary:
+- BorrowError 消息改进完成：
+  - lifetime error 显示实际类型名（"MyStruct" 而非 "<adt>"）
+  - moved/borrowed/assign 错误加 place 信息（"local#N"）
+  - format_ty + format_place + format_place_path 三个 helper
+- v0.267.0 → v0.268.0

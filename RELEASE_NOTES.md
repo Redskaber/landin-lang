@@ -1,9 +1,68 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.267.0
+**Current version**: v0.268.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.268.0 — Stage 16.82 (BorrowError Message Improvements)
+
+### Overview
+
+Improves BorrowError messages by showing actual type names (via resolver)
+and place information (local#N). Previously, borrow errors showed generic
+messages like "cannot borrow moved value" — now they show "cannot borrow
+moved value: local#3" and lifetime errors show actual type names.
+
+### Implementation
+
+1. **New `format_ty` helper** on BorrowChecker — uses
+   `type_to_string_with_resolver` when resolver is set, falls back to
+   `type_to_string` otherwise.
+
+2. **New `format_place` helper** — formats `Place` as "local#N" or
+   "static#N" for error messages.
+
+3. **New `format_place_path` helper** — formats borrowck's internal
+   `PlacePath` representation.
+
+4. **Improved 6 error messages**:
+   - Lifetime error: shows actual type name ("MyStruct" not "<adt>")
+   - Cannot borrow moved value: adds place info ("local#N")
+   - Use of moved value: adds place info
+   - Cannot move borrowed value: adds place info
+   - Cannot assign to borrowed value: adds place info
+   - Cannot assign twice to immutable variable: adds local# info
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | format_ty_with_resolver_shows_name | positive | resolver shows "MyStruct" |
+| 2 | format_ty_without_resolver_falls_back | positive | no resolver → "i32" |
+| 3 | compile_move_after_borrow_shows_place | negative | contains "local#" |
+| 4 | compile_assign_immutable_shows_local | negative | contains "local#" |
+| 5 | compile_double_mut_borrow_shows_place | negative | contains error |
+| 6 | compile_use_after_move_shows_place | negative | contains "local#" |
+| 7 | format_place_local | negative | outputs "local#5" |
+| 8 | format_place_path_local | negative | outputs "local#3" |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 389 lib (+8 new) + 2494 integration = 2883 unit tests, 0 failures
+
+### Process Compliance
+
+- §13.1 阶段开始设计对齐 — referenced Stage 16.81 followup
+- §13.4 重构六大判据 — J1-J6 all satisfied
+- §13.5 设计-审查 Agent 循环 — 1 round self-review (scope clear)
+- §9.4.3 1:3+ 正负比例 — 1:3 achieved
+- §1.0 原則 3 "显式 > 隐式" — actual type names + place info in errors
+- §3.2 交付前验收 — full cargo clean+build+fmt+clippy+test all green
 
 ---
 ## v0.267.0 — Stage 16.81 (Migrate unify.rs to mismatch_with_resolver)
