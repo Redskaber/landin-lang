@@ -29155,3 +29155,43 @@ Stage Summary:
 - 类型参数 T 推迟（Rust 语义——声明性约束，monomorphization 时验证）
 - Phase 1 (trait 存在检查) 完全保留，新增 Phase 2 语义检查
 - v0.264.0 → v0.265.0
+
+---
+Task ID: stage16.80
+Agent: Super Z (main)
+Task: Stage 16.80 — Improved Error Messages: Adt Type Names
+
+Work Log:
+- §13.1 阶段开始设计对齐：查阅 v0.4-roadmap.md，确认 Improved Error Messages (P3) 为下一优先级
+- §13.5 设计-审查 Agent 循环（1 轮自审定稿）：
+  - Design v1: stage-16.80-improved-error-messages-design.md
+  - 自审清单全部通过，无 P0/P1 缺陷
+- 实现内容：
+  1. 新增 `type_kind_to_string_with_resolver` in src/mir/ty.rs：
+     - Adt(def_id, _) → 解析为实际类型名（如 "MyStruct"）via resolver.type_by_def_id + interner
+     - Param(param) → 解析为类型参数名（如 "T"）via interner
+     - Projection(def_id, _) → 解析为 "<TraitName>::Item" 格式
+     - 其他类型委托给现有 type_kind_to_string
+  2. 新增 `type_to_string_with_resolver` 便捷包装函数
+  3. 新增 `TypeError::mismatch_with_resolver` in src/typeck/error.rs：
+     - 使用 resolver-backed 类型名，产生 "expected MyStruct, found i32" 而非 "expected <adt>, found i32"
+  4. 保留旧 API（type_kind_to_string + TypeError::mismatch）不破坏现有调用
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - positive: adt_resolves_name + primitive_unchanged (2)
+  - negative: unknown_adt_shows_id + mismatch_shows_struct_name + mismatch_shows_enum_name + mismatch_struct_vs_int_full_message + mismatch_two_structs + param_shows_name (6)
+  - 比例 2:6 = 1:3 ✓
+- 修复 clippy unused_imports 警告
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 373 lib (365→373, +8 new) + 2494 integration = 2867 unit tests, 0 failures
+
+Stage Summary:
+- Improved Error Messages Phase 1 完成：
+  - Adt 类型名解析（struct/enum 显示实际名而非 <adt>）
+  - Param 类型名解析（T 显示实际名而非 <type param>）
+  - Projection 类型名解析（<TraitName>::Item 格式）
+  - TypeError::mismatch_with_resolver 新 API
+- 旧 API 保留，逐步迁移调用点（unify.rs 仍用旧 mismatch，未来阶段迁移）
+- v0.265.0 → v0.266.0

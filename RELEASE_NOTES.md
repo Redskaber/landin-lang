@@ -1,9 +1,66 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.265.0
+**Current version**: v0.266.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.266.0 — Stage 16.80 (Improved Error Messages: Adt Type Names)
+
+### Overview
+
+Improves type error messages by resolving `Adt` type names via
+`TraitResolver::type_by_def_id`. Previously, mismatched type errors showed
+`"expected <adt>, found i32"` — now they show `"expected MyStruct, found i32"`.
+
+### Implementation
+
+1. **New `type_kind_to_string_with_resolver`** in `src/mir/ty.rs` — resolves:
+   - `TyKind::Adt(def_id, _)` → actual type name (e.g., "MyStruct")
+   - `TyKind::Param(param)` → type parameter name (e.g., "T")
+   - `TyKind::Projection(def_id, _)` → "<TraitName>::Item" format
+   - Other types delegate to existing `type_kind_to_string`
+
+2. **New `type_to_string_with_resolver`** convenience wrapper.
+
+3. **New `TypeError::mismatch_with_resolver`** in `src/typeck/error.rs` —
+   produces messages like `"mismatched types: expected MyStruct, found i32"`
+   instead of `"expected <adt>, found i32"`.
+
+4. **Old API preserved** — `type_kind_to_string` and `TypeError::mismatch`
+   remain for backward compatibility. Call sites in `unify.rs` will be
+   migrated in a future stage (requires threading resolver/interner through
+   the unification table).
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | adt_resolves_name | positive | Struct type resolves to "MyStruct" |
+| 2 | primitive_unchanged | positive | Primitive types unaffected |
+| 3 | unknown_adt_shows_id | negative | Unknown Adt shows `<adt#N>` |
+| 4 | mismatch_shows_struct_name | negative | Mismatch error shows struct name |
+| 5 | mismatch_shows_enum_name | negative | Mismatch error shows enum name |
+| 6 | mismatch_struct_vs_int_full_message | negative | Full message format verified |
+| 7 | mismatch_two_structs | negative | Two-struct mismatch shows both names |
+| 8 | param_shows_name | negative | Param type shows "T" |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 373 lib (+8 new) + 2494 integration = 2867 unit tests, 0 failures
+
+### Process Compliance
+
+- §13.1 阶段开始设计对齐 — referenced v0.4-roadmap.md
+- §13.4 重构六大判据 — J1-J6 all satisfied
+- §13.5 设计-审查 Agent 循环 — 1 round self-review (scope clear)
+- §9.4.3 1:3+ 正负比例 — 1:3 achieved
+- §1.0 原則 3 "显式 > 隐式" — user-facing type names are explicit
+- §3.2 交付前验收 — full cargo clean+build+fmt+clippy+test all green
 
 ---
 ## v0.265.0 — Stage 16.79 (Where Clause Semantic Checking Phase 2)

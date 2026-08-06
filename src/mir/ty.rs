@@ -449,6 +449,64 @@ pub fn type_kind_to_string(kind: &TyKind) -> String {
     }
 }
 
+/// Stage 16.80: Format a `TyKind` with resolver access for Adt/Param/Projection
+/// name resolution.
+///
+/// Unlike `type_kind_to_string`, this resolves:
+/// - `TyKind::Adt(def_id, _)` → actual type name (e.g., "MyStruct") via
+///   `TraitResolver::type_by_def_id` + interner
+/// - `TyKind::Param(p)` → type parameter name (e.g., "T") via interner
+/// - `TyKind::Projection(def_id, _)` → "<TraitName>::Item" format
+///
+/// All other cases delegate to `type_kind_to_string`.
+///
+/// Per §1.0 原則 3 "显式 > 隐式": user-facing type names are explicit.
+/// Per §13.4 J2: single responsibility — type formatting only.
+pub fn type_kind_to_string_with_resolver(
+    kind: &TyKind,
+    resolver: &crate::traits::TraitResolver,
+    interner: &lasso::Rodeo,
+) -> String {
+    match kind {
+        TyKind::Adt(def_id, _) => resolver
+            .type_by_def_id
+            .get(def_id)
+            .and_then(|spur| interner.try_resolve(spur))
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("<adt#{}>", def_id.0)),
+        TyKind::Param(param) => {
+            // Type parameter — `param.name` is a Symbol (Spur) for the name.
+            interner
+                .try_resolve(&param.name)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("<type param #{}>", param.index))
+        }
+        TyKind::Projection(def_id, _) => {
+            // Associated type projection — show as "<TraitName>::Item".
+            resolver
+                .type_by_def_id
+                .get(def_id)
+                .and_then(|spur| interner.try_resolve(spur))
+                .map(|s| format!("<{}>::Item", s))
+                .unwrap_or_else(|| format!("<projection#{}>", def_id.0))
+        }
+        // All other cases delegate to the existing type_kind_to_string.
+        _ => type_kind_to_string(kind),
+    }
+}
+
+/// Stage 16.80: Convenience wrapper — format a `Ty` with resolver.
+///
+/// Per §23 (API Naming): `type_to_string_with_resolver` follows
+/// `<noun>_<verb>_<prep>_<noun>` pattern.
+pub fn type_to_string_with_resolver(
+    ty: &Ty,
+    resolver: &crate::traits::TraitResolver,
+    interner: &lasso::Rodeo,
+) -> String {
+    type_kind_to_string_with_resolver(&ty.kind, resolver, interner)
+}
+
 /// Format an `IntTy` as a lowercase string.
 fn int_ty_to_string(i: IntTy) -> &'static str {
     match i {
