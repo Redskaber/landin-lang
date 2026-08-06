@@ -29372,3 +29372,35 @@ Stage Summary:
 - MirLowerCtxt 新增 resolver 字段 + set_resolver + format_ty
 - 公共 API 变更：lower_hir_body_to_mir_full_with_dyn_trait_plan 新增 resolver 参数
 - v0.270.0 → v0.271.0
+
+---
+Task ID: stage16.86
+Agent: Super Z (main)
+Task: Stage 16.86 — MonoLayoutKey Clone Elimination (Performance)
+
+Work Log:
+- §13.5 设计-审查 Agent 循环（1 轮自审定稿）：
+  - Design v1: stage-16.86-mono-layout-perf-design.md
+  - 自审清单全部通过，无 P0/P1 缺陷
+- 实现内容：
+  1. MonoLayoutMap 从 HashMap<MonoLayoutKey, AdtLayout> 改为 HashMap<DefId, Vec<(Vec<TyKind>, AdtLayout)>>
+  2. lookup_mono_layout 不再构造 MonoLayoutKey（避免 TyKind::clone()），改为线性扫描 Vec 比较 &[Ty]
+  3. build_mono_layouts 更新为用 map.entry(def_id).or_default().push((substs_kinds, layout))
+  4. 更新测试：layouts.len() → layouts.values().map(|v| v.len()).sum()（因为现在按 DefId 分组）
+  5. 更新测试：layouts.values() → layouts.values().flatten()（因为 value 现在是 Vec）
+- 性能改进：
+  - lookup_mono_layout 消除每次 TyKind::clone()（可能含 Vec/Box 分配）
+  - 改为 O(n) 线性扫描（n = 每个 DefId 的 monomorphization 数，通常 1-3）
+  - 对于少量 monomorphization 的情况，线性扫描比 clone+hash 更快
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 415 lib + 2529 integration = 2944 unit tests, 0 failures
+
+Stage Summary:
+- MonoLayoutKey clone 消除完成：
+  - lookup_mono_layout 不再 clone TyKind
+  - MonoLayoutMap 改为 DefId → Vec<(substs_kinds, layout)> 结构
+  - 线性扫描替代 clone+hash（O(n) n=1-3 vs clone with Vec/Box）
+- v0.271.0 → v0.272.0

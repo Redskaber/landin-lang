@@ -1,9 +1,51 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.271.0
+**Current version**: v0.272.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.272.0 — Stage 16.86 (MonoLayoutKey Clone Elimination — Performance)
+
+### Overview
+
+Performance optimization: eliminates `TyKind::clone()` on every
+`lookup_mono_layout` call (codegen hot path). Changes `MonoLayoutMap`
+from `HashMap<MonoLayoutKey, AdtLayout>` to
+`HashMap<DefId, Vec<(Vec<TyKind>, AdtLayout)>>`, using linear scan
+instead of clone+hash for lookups.
+
+### Problem
+
+`MonoLayoutKey::new(def_id, substs)` clones all `TyKind` values from
+substs on every lookup. `TyKind` may contain `Vec<Ty>` (Tuple/Adt) or
+`Box<Ty>` (Array/Slice/Ref/Ptr), making clone expensive. This was called
+on every Adt type access during codegen.
+
+### Solution
+
+1. **MonoLayoutMap restructured**: `HashMap<DefId, Vec<(Vec<TyKind>, AdtLayout)>>`
+   — keyed by DefId, with a Vec of (substs_kinds, layout) pairs.
+
+2. **lookup_mono_layout**: linear scan of the Vec (typically 1-3 entries
+   per DefId), comparing `&[Ty]` element-wise. No `TyKind::clone()`.
+
+3. **build_mono_layouts**: uses `map.entry(def_id).or_default().push(...)`.
+   Clone still happens here (acceptable — runs once per instantiation).
+
+### Performance Analysis
+
+- **Before**: O(1) HashMap lookup + O(n) TyKind::clone() (n = substs len)
+- **After**: O(m) linear scan (m = monomorphizations per DefId, typically 1-3)
+- For m ≤ 3, linear scan is faster than clone+hash (no allocation overhead)
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 415 lib + 2529 integration = 2944 unit tests, 0 failures
 
 ---
 ## v0.271.0 — Stage 16.85 (Migrate expr_operand.rs Type Errors to Use Resolver)

@@ -9,7 +9,7 @@
 
 use super::item::MonoItem;
 use crate::hir::DefId;
-use crate::mir::ty::TyKind;
+use crate::mir::ty::{SubstsRef, TyKind};
 
 // =====================================================================
 // Stage 16.57 (Task 11 Phase 4b): Per-mono layouts
@@ -18,16 +18,12 @@ use crate::mir::ty::TyKind;
 /// A hashable key for per-mono layouts.
 ///
 /// Wraps `(DefId, Vec<TyKind>)` — the DefId of the generic type plus the
-/// TyKind values of its substs. Uses `Vec<TyKind>` (extracted from substs)
-/// rather than `SubstsRef` (`Rc<[Ty]>`) because:
-/// - `Vec<TyKind>` implements `Hash`/`Eq` out of the box (no deref needed)
-/// - `Rc<[Ty]>` does NOT implement `Hash`/`Eq` (would need manual deref)
-/// - `TyKind::clone()` is cheaper than `Ty::clone()` (Ty goes through interner)
+/// TyKind values of its substs. Used during `build_mono_layouts` (insert).
 ///
-/// Two MonoLayoutKeys are equal iff they have the same DefId and the same
-/// substs (element-wise TyKind comparison). This ensures `Box<i32>` and
-/// `Box<i32>` map to the same layout, while `Box<i32>` and `Box<bool>` map
-/// to different layouts.
+/// Stage 16.86 (Performance): `lookup_mono_layout` no longer constructs
+/// this key — it uses `lookup_mono_layout_fast` which compares `&[Ty]`
+/// directly against stored entries, avoiding `TyKind::clone()` on every
+/// codegen type access.
 ///
 /// Per §23: `MonoLayoutKey` follows `<Noun>_<Noun>_<Noun>` pattern.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -40,7 +36,8 @@ impl MonoLayoutKey {
     /// Create a MonoLayoutKey from a DefId and substs slice.
     ///
     /// Extracts the TyKind from each Ty in the substs.
-    pub fn new(def_id: DefId, substs: &crate::mir::ty::SubstsRef) -> Self {
+    /// Used during `build_mono_layouts` (insert path — clone is acceptable).
+    pub fn new(def_id: DefId, substs: &SubstsRef) -> Self {
         let substs = substs.iter().map(|t| t.kind.clone()).collect();
         MonoLayoutKey { def_id, substs }
     }
@@ -58,18 +55,22 @@ impl MonoLayoutKey {
     }
 }
 
-/// A map from MonoLayoutKey to AdtLayout.
+/// A map from DefId to a list of (substs, AdtLayout) pairs.
 ///
 /// Each entry represents one specialized layout for a generic type
 /// instantiation. For example, `Box<i32>` and `Box<bool>` have distinct
 /// entries because their field types differ (i32 vs bool).
 ///
-/// Built by `build_mono_layouts` from collected MonoItems. The layouts use
-/// substituted field types — e.g., for `struct Box<T> { val: T }` with
-/// substs `[i32]`, the field type is `i32` (not `Param(T)` or `Error`).
+/// Stage 16.86 (Performance): Changed from `HashMap<MonoLayoutKey, AdtLayout>`
+/// to `HashMap<DefId, Vec<(Vec<TyKind>, AdtLayout)>>` to eliminate `TyKind::clone()`
+/// on every `lookup_mono_layout` call. The lookup now does a linear scan of
+/// the Vec (typically 1-3 entries per DefId), comparing `&[Ty]` directly.
+/// This is faster than cloning `TyKind` (which may contain `Vec`/`Box`) for
+/// the common case of few monomorphizations per type.
 ///
 /// Per §23: `MonoLayoutMap` follows `<Noun>_<Noun>_<Noun>` pattern.
-pub type MonoLayoutMap = std::collections::HashMap<MonoLayoutKey, crate::mir::body::AdtLayout>;
+pub type MonoLayoutMap =
+    std::collections::HashMap<DefId, Vec<(Vec<TyKind>, crate::mir::body::AdtLayout)>>;
 
 /// Build per-mono layouts for all Type MonoItems.
 ///
@@ -103,10 +104,18 @@ pub fn build_mono_layouts(items: &[MonoItem], hir: &crate::hir::HirCrate) -> Mon
             _ => continue,
         };
 
-        // Skip if already built (dedup by key).
-        let key = MonoLayoutKey::new(def_id, &substs);
-        if map.contains_key(&key) {
-            continue;
+        // Stage 16.86: Extract TyKinds for the key (clone here is acceptable —
+        // build path runs once per type instantiation, not on every codegen lookup).
+        let substs_kinds: Vec<TyKind> = substs.iter().map(|t| t.kind.clone()).collect();
+
+        // Skip if already built (dedup by DefId + substs_kinds).
+        if let Some(entries) = map.get(&def_id) {
+            if entries
+                .iter()
+                .any(|(existing_kinds, _)| *existing_kinds == substs_kinds)
+            {
+                continue;
+            }
         }
 
         // Get the HIR owner for this DefId.
@@ -118,7 +127,7 @@ pub fn build_mono_layouts(items: &[MonoItem], hir: &crate::hir::HirCrate) -> Mon
         // Get generic params for this type.
         let generic_params = crate::hir::generics::generics_of(def_id, hir);
 
-        match owner {
+        let layout = match owner {
             OwnerNode::Item(HirItem::Struct(s)) => {
                 // Lower each field type with generics, then substitute.
                 let field_tys: Vec<crate::mir::ty::Ty> = s
@@ -132,7 +141,7 @@ pub fn build_mono_layouts(items: &[MonoItem], hir: &crate::hir::HirCrate) -> Mon
                         crate::mir::substitute::substitute(&field_ty, &substs)
                     })
                     .collect();
-                map.insert(key, AdtLayout::Struct { field_tys });
+                AdtLayout::Struct { field_tys }
             }
             OwnerNode::Item(HirItem::Enum(e)) => {
                 let discriminant_ty =
@@ -166,16 +175,16 @@ pub fn build_mono_layouts(items: &[MonoItem], hir: &crate::hir::HirCrate) -> Mon
                             .collect(),
                     })
                     .collect();
-                map.insert(
-                    key,
-                    AdtLayout::Enum {
-                        discriminant_ty,
-                        variant_payloads,
-                    },
-                );
+                AdtLayout::Enum {
+                    discriminant_ty,
+                    variant_payloads,
+                }
             }
-            _ => {}
-        }
+            _ => continue,
+        };
+
+        // Stage 16.86: Insert into the new map structure.
+        map.entry(def_id).or_default().push((substs_kinds, layout));
     }
 
     map
@@ -193,6 +202,13 @@ pub fn build_mono_layouts(items: &[MonoItem], hir: &crate::hir::HirCrate) -> Mon
 /// This is the codegen integration point — codegen calls this first for
 /// Adt types, falling back to `AdtLayouts` when it returns `None`.
 ///
+/// Stage 16.86 (Performance): No longer constructs `MonoLayoutKey` (which
+/// requires `TyKind::clone()`). Instead, does a linear scan of the Vec
+/// for this DefId, comparing `&[Ty]` element-wise. This avoids cloning
+/// `TyKind` (which may contain `Vec`/`Box`) on every codegen type access.
+/// The linear scan is O(n) where n is the number of monomorphizations
+/// for this DefId (typically 1-3), making it faster than clone+hash.
+///
 /// Per §23: `lookup_mono_layout` follows `<verb>_<noun>_<noun>` pattern.
 /// Per §16: reads MonoLayoutMap (built from MIR + HIR, no HIR at lookup time).
 pub fn lookup_mono_layout<'a>(
@@ -204,8 +220,20 @@ pub fn lookup_mono_layout<'a>(
     if substs.is_empty() {
         return None;
     }
-    let key = MonoLayoutKey::new(def_id, substs);
-    map.get(&key)
+    // Stage 16.86: Linear scan — avoid cloning TyKind for MonoLayoutKey.
+    let entries = map.get(&def_id)?;
+    for (stored_kinds, layout) in entries {
+        // Compare element-wise: substs[i].kind == stored_kinds[i]
+        if substs.len() == stored_kinds.len()
+            && substs
+                .iter()
+                .zip(stored_kinds.iter())
+                .all(|(ty, kind)| &ty.kind == kind)
+        {
+            return Some(layout);
+        }
+    }
+    None
 }
 
 // =====================================================================
@@ -370,12 +398,14 @@ mod tests {
         let hir = result.hir.as_ref().expect("HIR should be available");
         let items = collect_mono_items(&result.mirs);
         let layouts = build_mono_layouts(&items, hir);
-        // Should have 2 layouts (Box<i32> and Box<bool>)
+        // Stage 16.86: Map is now keyed by DefId, so Box<i32> + Box<bool>
+        // share 1 DefId key with 2 entries in the Vec.
+        // Should have 2 total layouts (Box<i32> and Box<bool>).
+        let total_layouts: usize = layouts.values().map(|v| v.len()).sum();
         assert_eq!(
-            layouts.len(),
-            2,
+            total_layouts, 2,
             "Expected exactly 2 mono layouts (Box<i32> + Box<bool>), got: {}",
-            layouts.len()
+            total_layouts
         );
     }
 
@@ -404,11 +434,14 @@ mod tests {
         let hir = result.hir.as_ref().expect("HIR should be available");
         let items = collect_mono_items(&result.mirs);
         let layouts = build_mono_layouts(&items, hir);
-        // Should have 2 layouts (Box<Box<i32>> and Box<i32>)
+        // Stage 16.86: Map is now keyed by DefId, so Box<Box<i32>> and Box<i32>
+        // share 1 DefId key with 2 entries in the Vec.
+        // Should have at least 2 total layouts.
+        let total_layouts: usize = layouts.values().map(|v| v.len()).sum();
         assert!(
-            layouts.len() >= 2,
+            total_layouts >= 2,
             "Expected at least 2 mono layouts (nested Box), got: {}",
-            layouts.len()
+            total_layouts
         );
     }
 
@@ -420,8 +453,9 @@ mod tests {
         let hir = result.hir.as_ref().expect("HIR should be available");
         let items = collect_mono_items(&result.mirs);
         let layouts = build_mono_layouts(&items, hir);
+        // Stage 16.86: Map values are now Vec<(Vec<TyKind>, AdtLayout)>.
         // Find the Box<i32> layout and verify its field type is i32 (not Param or Error)
-        let has_i32_field = layouts.values().any(|layout| match layout {
+        let has_i32_field = layouts.values().flatten().any(|(_, layout)| match layout {
             AdtLayout::Struct { field_tys } => {
                 field_tys.len() == 1 && matches!(field_tys[0].kind, TyKind::Int(IntTy::I32))
             }
@@ -442,10 +476,12 @@ mod tests {
         let hir = result.hir.as_ref().expect("HIR should be available");
         let items = collect_mono_items(&result.mirs);
         let layouts = build_mono_layouts(&items, hir);
+        // Stage 16.86: Map values are now Vec<(Vec<TyKind>, AdtLayout)>.
         // Should have at least 1 layout (Opt<i32>)
         let has_enum_layout = layouts
             .values()
-            .any(|layout| matches!(layout, AdtLayout::Enum { .. }));
+            .flatten()
+            .any(|(_, layout)| matches!(layout, AdtLayout::Enum { .. }));
         assert!(
             has_enum_layout,
             "Expected at least 1 enum layout (Opt<i32>), got: {:?}",

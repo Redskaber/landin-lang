@@ -109,7 +109,7 @@ fn stage16_58_box_i32_layout_has_i32_field() {
 
     // Find the Box<i32> layout.
     let mut found_i32_field = false;
-    for layout in layouts.values() {
+    for (_, layout) in layouts.values().flatten() {
         if let AdtLayout::Struct { field_tys } = layout {
             if field_tys.len() == 1 && matches!(field_tys[0].kind, TyKind::Int(IntTy::I32)) {
                 found_i32_field = true;
@@ -135,7 +135,7 @@ fn stage16_58_box_bool_layout_has_bool_field() {
 
     // Find the Box<bool> layout.
     let mut found_bool_field = false;
-    for layout in layouts.values() {
+    for (_, layout) in layouts.values().flatten() {
         if let AdtLayout::Struct { field_tys } = layout {
             if field_tys.len() == 1 && matches!(field_tys[0].kind, TyKind::Bool) {
                 found_bool_field = true;
@@ -160,13 +160,17 @@ fn stage16_58_different_instantiations_different_layouts() {
     let layouts = build_mono_layouts(&items, hir);
 
     // Should have 2 layouts (Box<i32> and Box<bool>).
-    assert_eq!(layouts.len(), 2, "Expected 2 mono layouts");
+    assert_eq!(
+        layouts.values().map(|v| v.len()).sum::<usize>(),
+        2,
+        "Expected 2 mono layouts"
+    );
 
     // Verify one has i32 field and the other has bool field.
-    let has_i32 = layouts.values().any(|l| {
+    let has_i32 = layouts.values().flatten().any(|(_, l)| {
         matches!(l, AdtLayout::Struct { field_tys } if field_tys.len() == 1 && matches!(field_tys[0].kind, TyKind::Int(IntTy::I32)))
     });
-    let has_bool = layouts.values().any(|l| {
+    let has_bool = layouts.values().flatten().any(|(_, l)| {
         matches!(l, AdtLayout::Struct { field_tys } if field_tys.len() == 1 && matches!(field_tys[0].kind, TyKind::Bool))
     });
     assert!(has_i32, "Expected layout with i32 field");
@@ -216,7 +220,7 @@ fn stage16_58_pair_layout_two_fields() {
 
     // Find the Pair<i32, bool> layout.
     let mut found_pair = false;
-    for layout in layouts.values() {
+    for (_, layout) in layouts.values().flatten() {
         if let AdtLayout::Struct { field_tys } = layout {
             if field_tys.len() == 2
                 && matches!(field_tys[0].kind, TyKind::Int(IntTy::I32))
@@ -245,9 +249,9 @@ fn stage16_58_nested_generic_layouts() {
 
     // Should have 2 layouts: Box<Box<i32>> (outer) and Box<i32> (inner).
     assert!(
-        layouts.len() >= 2,
+        layouts.values().map(|v| v.len()).sum::<usize>() >= 2,
         "Expected at least 2 mono layouts (nested Box), got: {}",
-        layouts.len()
+        layouts.values().map(|v| v.len()).sum::<usize>()
     );
 }
 
@@ -264,6 +268,7 @@ fn stage16_58_generic_enum_layout() {
     // Find the Opt<i32> enum layout.
     let has_enum = layouts
         .values()
-        .any(|l| matches!(l, AdtLayout::Enum { .. }));
+        .flatten()
+        .any(|(_, l)| matches!(l, AdtLayout::Enum { .. }));
     assert!(has_enum, "Expected enum layout for Opt<i32>");
 }
