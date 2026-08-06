@@ -1,9 +1,55 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.270.0
+**Current version**: v0.271.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.271.0 — Stage 16.85 (Migrate expr_operand.rs Type Errors to Use Resolver)
+
+### Overview
+
+Completes the error message improvement series by migrating the last
+`type_kind_to_string` caller in MIR lower. "no method found" errors now
+show actual type names (e.g., "no method `f` found for type `S`") instead
+of placeholders ("no method `f` found for type `<adt>`").
+
+### Implementation
+
+1. **MirLowerCtxt gains `resolver` field** — `Option<&'a TraitResolver>`,
+   set via new `set_resolver` method before lowering begins.
+
+2. **New `format_ty` helper** on MirLowerCtxt — uses
+   `type_to_string_with_resolver` when resolver is set, falls back to
+   `type_to_string` otherwise.
+
+3. **`lower_hir_body_to_mir_full_with_dyn_trait_plan` gains `resolver`
+   parameter** — driver passes `Some(&trait_resolver)`.
+
+4. **expr_operand.rs**: `type_kind_to_string(&recv_ty.kind)` →
+   `cx.format_ty(&recv_ty)` — "no method found" shows actual type name.
+
+5. **borrowck/mod.rs**: Fixed remaining `type_kind_to_string` →
+   `self.format_ty(&ty)` — "use of moved value: S does not implement Copy".
+
+6. **Test update**: stage15_88 regression test updated to expect "S"
+   instead of "<adt>" (reflecting the improvement).
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 415 lib + 2529 integration = 2944 unit tests, 0 failures
+
+### Process Compliance
+
+- §13.1 阶段开始设计对齐 — referenced Stage 16.84 followup
+- §13.4 重构六大判据 — J1-J6 all satisfied
+- §13.5 设计-审查 Agent 循环 — 1 round self-review (scope clear)
+- §1.0 原則 3 "显式 > 隐式" — all type errors now show real type names
+- §3.2 交付前验收 — full cargo clean+build+fmt+clippy+test all green
 
 ---
 ## v0.270.0 — Stage 16.84 (Migrate checker.rs Type Errors to Use Resolver)

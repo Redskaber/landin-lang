@@ -29335,3 +29335,40 @@ Stage Summary:
   - match arm mismatch 显示实际类型名
 - UnificationTable 新增 resolver()/interner() getter
 - v0.269.0 → v0.270.0
+
+---
+Task ID: stage16.85
+Agent: Super Z (main)
+Task: Stage 16.85 — Migrate expr_operand.rs Type Errors to Use Resolver
+
+Work Log:
+- §13.5 设计-审查 Agent 循环（1 轮自审定稿）：
+  - Design v1: stage-16.85-mir-lower-resolver-design.md
+  - 自审清单全部通过，无 P0/P1 缺陷
+- 实现内容：
+  1. MirLowerCtxt 新增 resolver: Option<&'a TraitResolver> 字段
+  2. 新增 set_resolver + format_ty 方法
+  3. 更新 new + new_with_unify 构造函数初始化 resolver: None
+  4. lower_hir_body_to_mir_full_with_dyn_trait_plan 新增 resolver 参数
+  5. driver.rs 调用点传入 Some(&trait_resolver)
+  6. expr_operand.rs 替换 type_kind_to_string 为 cx.format_ty
+  7. 修复 borrowck/mod.rs:830 type_kind_to_string → format_ty
+  8. 修复 llvm/tests.rs 缺失 ConstVal import
+  9. 修复 arithmetic.rs 重复 doc comment
+  10. 更新 stage15_88 回归测试（<adt> → S）
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - 无需新增测试（stage15_88 回归测试已验证改进效果）
+  - 全量回归通过
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 415 lib + 2529 integration = 2944 unit tests, 0 failures
+
+Stage Summary:
+- MIR lower 类型错误消息改进完成：
+  - "no method `f` found for type `S`" (was "<adt>")
+  - "use of moved value: S does not implement Copy" (was "<adt>")
+- MirLowerCtxt 新增 resolver 字段 + set_resolver + format_ty
+- 公共 API 变更：lower_hir_body_to_mir_full_with_dyn_trait_plan 新增 resolver 参数
+- v0.270.0 → v0.271.0

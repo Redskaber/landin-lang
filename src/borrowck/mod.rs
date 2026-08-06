@@ -824,10 +824,11 @@ impl<'a> BorrowChecker<'a> {
                     self.errors.push(BorrowError::not_copy(
                         // Stage 15.84: use human-readable type name
                         // (was: {:?} Debug format leaking TyKind).
+                        // Stage 16.85: use format_ty for resolver-backed names.
                         format!(
                             "use of moved value: {} does not implement Copy; \
                              use an explicit move (`let y = move x;`) or borrow",
-                            crate::mir::ty::type_kind_to_string(&ty.kind)
+                            self.format_ty(&ty)
                         ),
                         span,
                     ));

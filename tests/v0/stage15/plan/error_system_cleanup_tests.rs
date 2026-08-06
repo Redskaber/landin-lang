@@ -521,10 +521,11 @@ fn stage15_88_no_method_found_uses_human_readable_type_name() {
         .iter()
         .find(|e| e.message.contains("no method"))
         .expect("expected 'no method' error");
-    // Should contain human-readable "<adt>", not Debug "Adt(DefId(1), [])".
+    // Stage 16.85: Now shows actual type name "S" instead of "<adt>".
+    // Should contain "S" (the struct name), not Debug "Adt(DefId(1), [])".
     assert!(
-        method_err.message.contains("<adt>"),
-        "message should contain '<adt>' (human-readable), got: {}",
+        method_err.message.contains("S"),
+        "message should contain 'S' (actual type name), got: {}",
         method_err.message
     );
     // Should NOT contain Debug format like "Adt(".

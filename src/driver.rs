@@ -1148,6 +1148,7 @@ pub fn compile(src: &str) -> CompileResult {
                 &hir,
                 return_ty,
                 Some(&dyn_trait_plan),
+                Some(&trait_resolver),
             );
 
         // Stage 16.14 (Task 10 Step 2): Build MIR bodies for synthesized

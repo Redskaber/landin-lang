@@ -2453,10 +2453,11 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     cx.type_errors.push(crate::typeck::TypeError::new(
                         // Stage 15.88: use human-readable type name
                         // (was: {:?} Debug format leaking Adt(DefId(N), [])).
+                        // Stage 16.85: use cx.format_ty for resolver-backed names.
                         format!(
                             "no method `{}` found for type `{}`",
                             method_name_str,
-                            crate::mir::ty::type_kind_to_string(&recv_ty.kind)
+                            cx.format_ty(&recv_ty)
                         ),
                         expr.span,
                     ));

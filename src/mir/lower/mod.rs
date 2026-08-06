@@ -95,6 +95,11 @@ pub struct MirLowerCtxt<'a> {
     /// `build_dyn_trait_mir_plan_from_resolver()`) and passed in as a
     /// read-only value. `MirLowerCtxt` does not own a TraitResolver.
     pub dyn_trait_plan: Option<DynTraitMIRPlan>,
+    /// Stage 16.85: Optional resolver for rich error messages.
+    /// When set, "no method found" errors show actual type names
+    /// (e.g., "MyStruct") instead of placeholders ("<adt>").
+    /// Set by `set_resolver` before lowering begins.
+    resolver: Option<&'a crate::traits::TraitResolver>,
     /// Stage 13.3a (TD-030): Side-table mapping the LocalId that holds a
     /// closure struct value → the closure's HIR body + params + capture
     /// info. Used by `HirExprKind::Call` to inline the closure body at the
@@ -220,12 +225,35 @@ impl<'a> MirLowerCtxt<'a> {
             unify: UnificationTable::new(),
             hir: None,
             dyn_trait_plan: None,
+            resolver: None,
             loop_stack: Vec::new(),
             loop_result_locals: Vec::new(),
             type_errors: Vec::new(),
             method_return_type_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             synthesized_closure_functions: std::collections::HashMap::new(),
             closure_def_id_counter: 0,
+        }
+    }
+
+    /// Stage 16.85: Set the resolver for rich error messages.
+    ///
+    /// After calling this, "no method found" errors use
+    /// `type_to_string_with_resolver` to show actual type names.
+    ///
+    /// Per §23: `set_resolver` follows `<verb>_<noun>` pattern.
+    pub fn set_resolver(&mut self, resolver: &'a crate::traits::TraitResolver) {
+        self.resolver = Some(resolver);
+    }
+
+    /// Stage 16.85: Format a `Ty` for error messages, using resolver if available.
+    ///
+    /// Per §1.0 原則 3 "显式 > 隐式": user-facing type names are explicit.
+    /// Per §23: `format_ty` follows `<verb>_<noun>` pattern.
+    pub fn format_ty(&self, ty: &Ty) -> String {
+        if let Some(resolver) = self.resolver {
+            crate::mir::ty::type_to_string_with_resolver(ty, resolver, self.interner)
+        } else {
+            crate::mir::ty::type_to_string(ty)
         }
     }
 
@@ -265,6 +293,7 @@ impl<'a> MirLowerCtxt<'a> {
             unify,
             hir: None,
             dyn_trait_plan: None,
+            resolver: None,
             loop_stack: Vec::new(),
             loop_result_locals: Vec::new(),
             type_errors: Vec::new(),
@@ -805,7 +834,8 @@ pub fn lower_hir_body_to_mir_full(
 ) {
     // Stage 5.80: delegate to the new entry point with plan = None.
     // Backward-compatible: all existing callers see identical behavior.
-    lower_hir_body_to_mir_full_with_dyn_trait_plan(body, interner, hir, return_ty, None)
+    // Stage 16.85: resolver = None (legacy path, no rich error messages).
+    lower_hir_body_to_mir_full_with_dyn_trait_plan(body, interner, hir, return_ty, None, None)
 }
 
 /// Stage 5.80: Full lowering entry point with optional `DynTraitMIRPlan`.
@@ -848,6 +878,7 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     hir: &HirCrate,
     return_ty: Option<HirTy>,
     plan: Option<&DynTraitMIRPlan>,
+    resolver: Option<&crate::traits::TraitResolver>,
 ) -> (
     MirBody,
     UnificationTable,
@@ -856,6 +887,11 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
 ) {
     let mut cx = MirLowerCtxt::new(interner, body.span);
     cx.hir = Some(hir);
+
+    // Stage 16.85: Set resolver for rich error messages (Adt type names).
+    if let Some(resolver) = resolver {
+        cx.set_resolver(resolver);
+    }
 
     // Stage 5.80: attach the dyn Trait plan if provided.
     // Per §16: plan was built upstream by the driver via

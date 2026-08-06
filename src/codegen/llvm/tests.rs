@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::codegen::llvm::LLVMSysEmitter;
+use crate::mir::ty::ConstVal;
 
 /// Stage 13.5 MUV-2: Verify LLVMSysEmitter implements the Emitter trait.
 /// This is a compile-time check — if Emitter trait changes and
@@ -41,7 +42,6 @@ fn emit_simple_function() {
 /// Verify `emit_const` produces a registered value.
 #[test]
 fn emit_const_int() {
-    use crate::mir::ty::ConstVal;
     let mut e = LLVMSysEmitter::new();
     e.emit_header();
     e.emit_function_begin("c", &[], &EmitType::Void);
