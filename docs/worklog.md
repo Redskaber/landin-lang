@@ -29495,3 +29495,33 @@ Stage Summary:
 - 3 处 unwrap 消除，改用 cstr_result()?
 - to_object_file 返回 CodegenResult<()> 而非 Result<(), String>
 - v0.274.0 → v0.275.0
+
+---
+Task ID: stage17.03
+Agent: Super Z (main)
+Task: Stage 17.03 — Trait Solver Phase 1 (Data Structures)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 实现 Trait Solver Phase 1 数据结构：
+  1. TraitPredicate { ty, trait_def_id } — "Type: Trait" 断言
+  2. Goal enum — Implies(TraitPredicate) 变体
+  3. GoalEvaluationResult enum — Yes/No/Ambiguous
+  4. TraitSolverCtxt { resolver, interner } — solver 上下文
+  5. evaluate() stub: 具体类型 → resolver.implements_by_def_ids, 类型参数/Infer → Ambiguous, Error → Yes
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - positive: trait_predicate_construction + goal_evaluation_concrete_type_implements (2)
+  - negative: concrete_not_implements + type_param_ambiguous + infer_var_ambiguous + error_type_yes + ctxt_new + goal_implies_variant (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收：
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 431 lib (+8 new) + 2529 integration = 2960 unit tests, 0 failures
+
+Stage Summary:
+- Trait Solver Phase 1 完成（数据结构 + stub evaluate）
+- 4 个核心类型: TraitPredicate, Goal, GoalEvaluationResult, TraitSolverCtxt
+- evaluate() 对具体类型返回 Yes/No, 对类型参数/Infer 返回 Ambiguous, 对 Error 返回 Yes
+- Phase 2 将添加 where clause assumptions + supertrait expansion
+- v0.275.0 → v0.276.0

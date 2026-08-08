@@ -1,9 +1,56 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.275.0
+**Current version**: v0.276.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.276.0 — Stage 17.03 (Trait Solver Phase 1 — Data Structures)
+
+### Overview
+
+First stage of the Trait Solver (v0.5 P1). Defines core data structures:
+`TraitPredicate`, `Goal`, `GoalEvaluationResult`, `TraitSolverCtxt`.
+Includes a stub `evaluate()` that handles concrete types via
+`resolver.implements_by_def_ids` and returns `Ambiguous` for type
+parameters and inference variables.
+
+### Implementation
+
+1. **`src/typeck/solver.rs`** — new module with 4 core types:
+   - `TraitPredicate { ty, trait_def_id }` — "Type: Trait" assertion
+   - `Goal enum { Implies(TraitPredicate) }` — solver goal
+   - `GoalEvaluationResult enum { Yes, No, Ambiguous }` — result
+   - `TraitSolverCtxt { resolver, interner }` — solver context
+
+2. **`evaluate()` stub**:
+   - Concrete ADT type → `resolver.implements_by_def_ids` → Yes/No
+   - Type parameter (Param) → Ambiguous (declarative, checked at monomorphization)
+   - Inference variable (Infer) → Ambiguous (not yet resolved)
+   - Error type → Yes (suppressed, avoid cascading errors)
+
+3. **Module registration** in `src/typeck/mod.rs`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | trait_predicate_construction | positive | Predicate constructs correctly |
+| 2 | goal_evaluation_concrete_type_implements | positive | S impl Foo → Yes |
+| 3 | concrete_type_not_implements | negative | S not impl Foo → No |
+| 4 | type_param_ambiguous | negative | T → Ambiguous |
+| 5 | infer_var_ambiguous | negative | Infer → Ambiguous |
+| 6 | error_type_yes | negative | Error → Yes (suppressed) |
+| 7 | trait_solver_ctxt_new | negative | Context constructs |
+| 8 | goal_implies_variant | negative | Goal variant correct |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 431 lib (+8 new) + 2529 integration = 2960 unit tests, 0 failures
 
 ---
 ## v0.275.0 — Stage 17.02 (CodegenError Phase 2 — to_object_file migration)
