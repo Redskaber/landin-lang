@@ -70,10 +70,16 @@ use crate::mir::body::*; // Re-exported for sub-modules via `super::*`
 use lasso::Rodeo; // Re-exported for sub-modules via `super::*`
 
 pub mod emitter;
+// Stage 17.01: CodegenError error system (Phase 1 — type definition + cstr_result helper).
+// Phase 2 (next stage) will migrate unwrap() calls to use CodegenResult.
+#[allow(dead_code)] // Phase 1: types defined but not yet used in production code paths.
+pub mod error;
 pub use emitter::{
     emit_fat_ptr_type, mir_type_to_emit_type, AggregateEmitter, ArithmeticEmitter, EmitType,
     EmitValue, Emitter, FunctionEmitter, LocalStateEmitter, MemoryEmitter, ModuleEmitter,
 };
+#[allow(unused_imports)]
+pub use error::{CodegenError, CodegenResult};
 
 pub mod text;
 pub use text::TextEmitter;

@@ -1,9 +1,12 @@
 //! Stage 16.77 MUV-1: Private helper functions for LLVMSysEmitter.
+//! Stage 17.01: Added `cstr_result` for error-safe CString construction.
 //!
 //! Extracted from `llvm/mod.rs` per §13.4 J2 (single responsibility).
 //! These helpers are used by all 6 sub-trait impl blocks.
 
 use crate::codegen::emitter::EmitType;
+use crate::codegen::error::{CodegenError, CodegenResult};
+use crate::session::Span;
 use std::ffi::CString;
 
 // =====================================================================
@@ -41,6 +44,24 @@ pub(crate) fn cstr(s: &str) -> *const std::os::raw::c_char {
         // or dropped until the thread exits. HashMap doesn't move values
         // after insertion (only rehashes the bucket array).
         cache[s].as_ptr()
+    })
+}
+
+/// Stage 17.01: Convert a string to a `CString`, returning `CodegenError` on failure.
+///
+/// This is the error-safe variant of `cstr()`. NUL bytes in the string are
+/// the only failure case (Landin identifiers don't contain NUL, but this
+/// provides proper error propagation instead of panicking).
+///
+/// Per §1.0 原則 4 "报错 > 静默": NUL bytes produce a hard error, not a panic.
+/// Per §23: `cstr_result` follows `<noun>_<noun>` pattern.
+#[allow(dead_code)] // Phase 1: defined for Phase 2 migration.
+pub(crate) fn cstr_result(s: &str) -> CodegenResult<CString> {
+    CString::new(s).map_err(|_| {
+        CodegenError::new(
+            format!("invalid string containing NUL byte: {:?}", s),
+            Span::DUMMY,
+        )
     })
 }
 

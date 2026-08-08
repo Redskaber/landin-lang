@@ -1,9 +1,50 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.273.0
+**Current version**: v0.274.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.274.0 — Stage 17.01 (CodegenError Error System Phase 1)
+
+### Overview
+
+First stage of v0.5. Introduces `CodegenError` type and `cstr_result`
+helper for error-safe CString construction. Phase 1 of 3 — type definitions
+and helper ready for Phase 2 migration of 45 `unwrap()` calls.
+
+### Implementation
+
+1. **New `src/codegen/error.rs`** — `CodegenError { message, span }` +
+   `CodegenResult<T>` type alias. Implements `Display` + `std::error::Error`.
+
+2. **New `cstr_result` helper** in `llvm/helpers.rs` — error-safe
+   `CString::new()` that returns `CodegenResult<CString>` instead of
+   panicking on NUL bytes.
+
+3. **Module registration** in `codegen/mod.rs` — `pub mod error` +
+   re-exports.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | codegen_error_new_creates_error | positive | Error constructs correctly |
+| 2 | cstr_valid_string_returns_ok | positive | Valid string → Ok |
+| 3 | cstr_nul_byte_returns_error | negative | NUL byte → Err |
+| 4 | codegen_error_message_correct | negative | Message content |
+| 5 | codegen_error_span_correct | negative | Span content |
+| 6 | codegen_result_ok_variant | negative | Ok variant |
+| 7 | codegen_result_err_variant | negative | Err variant |
+| 8 | cstr_empty_string_returns_ok | negative | Empty string → Ok |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 423 lib (+8 new) + 2529 integration = 2952 unit tests, 0 failures
 
 ---
 ## v0.273.0 — Stage 16.87 (v0.4 Deep Review + v0.5 Roadmap)

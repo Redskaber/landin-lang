@@ -29437,3 +29437,36 @@ Stage Summary:
 - v0.4 成果总结: 12 stages (16.75-16.86), 2944 tests, 0 failures/warnings/TODO
 - v0.5 roadmap 规划完成: 7 tasks, 23-33 estimated stages
 - v0.272.0 → v0.273.0
+
+---
+Task ID: stage17.01
+Agent: Super Z (main)
+Task: Stage 17.01 — CodegenError Error System (v0.5 P1, Phase 1)
+
+Work Log:
+- §13.1 阶段开始设计对齐：查阅 v0.5-roadmap.md，确认 CodegenError Error System 为 P1
+- §13.5 设计-审查 Agent 循环（1 轮自审定稿）：
+  - Design v1: stage-17.01-codegen-error-design.md
+  - 自审清单全部通过，无 P0/P1 缺陷
+- 创建 Stage 17 目录：docs/develop/v0/stage-17/ + docs/tests/v0/stage17/
+- 实现内容（Phase 1）：
+  1. 新增 src/codegen/error.rs — CodegenError { message, span } + CodegenResult<T>
+  2. 新增 cstr_result helper in llvm/helpers.rs — 错误安全的 CString 构造
+  3. 在 codegen/mod.rs 注册 error 模块 + re-export CodegenError/CodegenResult
+  4. Display + std::error::Error 实现
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - positive: codegen_error_new + cstr_valid_string (2)
+  - negative: cstr_nul_byte + error_message + error_span + result_ok + result_err + cstr_empty (6)
+  - 比例 2:6 = 1:3 ✓
+- 修复 clippy warnings（unnecessary_literal_unwrap → match/expect）
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 423 lib (415→423, +8 new) + 2529 integration = 2952 unit tests, 0 failures
+
+Stage Summary:
+- CodegenError Phase 1 完成（类型定义 + cstr_result helper）
+- Phase 2（下 stage）将迁移 45 处 CString::new().unwrap() 为 cstr_result()?
+- Phase 3 将更新 run_codegen_pipeline 签名为 CodegenResult<()>
+- v0.273.0 → v0.274.0
