@@ -55,7 +55,6 @@ pub(crate) fn cstr(s: &str) -> *const std::os::raw::c_char {
 ///
 /// Per §1.0 原則 4 "报错 > 静默": NUL bytes produce a hard error, not a panic.
 /// Per §23: `cstr_result` follows `<noun>_<noun>` pattern.
-#[allow(dead_code)] // Phase 1: defined for Phase 2 migration.
 pub(crate) fn cstr_result(s: &str) -> CodegenResult<CString> {
     CString::new(s).map_err(|_| {
         CodegenError::new(

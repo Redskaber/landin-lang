@@ -1,9 +1,33 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.274.0
+**Current version**: v0.275.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.275.0 — Stage 17.02 (CodegenError Phase 2 — to_object_file migration)
+
+### Overview
+
+Migrates `to_object_file` from `Result<(), String>` to `Result<(), CodegenError>`,
+eliminating 3 `unwrap()` calls and providing structured error reporting with span.
+
+### Implementation
+
+1. **`to_object_file` return type**: `Result<(), String>` → `CodegenResult<()>`
+2. **4 error paths**: `Err(String)` → `Err(CodegenError::new(..., Span::DUMMY))`
+3. **3 `unwrap()` / `map_err` calls**: replaced with `cstr_result()?`
+4. **Removed `#[allow(dead_code)]`**: `cstr_result` now used in production code
+5. **No caller changes needed**: `CodegenError` implements `Display`, compatible
+   with `{e}` format strings in `main.rs` and `tests.rs`
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 423 lib + 2529 integration = 2952 unit tests, 0 failures
 
 ---
 ## v0.274.0 — Stage 17.01 (CodegenError Error System Phase 1)

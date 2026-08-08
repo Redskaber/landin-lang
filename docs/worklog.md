@@ -29470,3 +29470,28 @@ Stage Summary:
 - Phase 2（下 stage）将迁移 45 处 CString::new().unwrap() 为 cstr_result()?
 - Phase 3 将更新 run_codegen_pipeline 签名为 CodegenResult<()>
 - v0.273.0 → v0.274.0
+
+---
+Task ID: stage17.02
+Agent: Super Z (main)
+Task: Stage 17.02 — CodegenError Phase 2 (to_object_file migration)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 实现内容（Phase 2）：
+  1. to_object_file 返回类型从 Result<(), String> 改为 Result<(), CodegenError>
+  2. 4 处 Err(String) 改为 Err(CodegenError::new(...))
+  3. 3 处 CString::new().unwrap() / .map_err(|e| e.to_string())? 改为 cstr_result()?
+  4. 移除 #[allow(dead_code)] 和 #[allow(unused_imports)]（cstr_result 现已被使用）
+  5. 调用者无需修改（CodegenError 实现 Display，{e} 格式化兼容）
+- 验收：
+  - cargo build --features llvm-backend — ✅ 编译成功
+  - cargo fmt --check — ✅ clean
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 423 lib + 2529 integration = 2952 unit tests, 0 failures
+
+Stage Summary:
+- CodegenError Phase 2 完成（to_object_file 迁移）
+- 3 处 unwrap 消除，改用 cstr_result()?
+- to_object_file 返回 CodegenResult<()> 而非 Result<(), String>
+- v0.274.0 → v0.275.0

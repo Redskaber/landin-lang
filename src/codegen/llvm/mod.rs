@@ -155,14 +155,21 @@ impl LLVMSysEmitter {
     ///
     /// Initializes all LLVM target components, looks up the host triple's
     /// target, builds a target machine, and emits `out_path` as an object
-    /// file. Returns `Ok(())` on success or `Err(String)` describing the
-    /// LLVM error.
-    pub fn to_object_file(&self, out_path: &str) -> Result<(), String> {
+    /// file. Returns `Ok(())` on success or `Err(CodegenError)` describing
+    /// the LLVM error.
+    ///
+    /// Stage 17.02: Changed return type from `Result<(), String>` to
+    /// `Result<(), CodegenError>` for structured error reporting with span.
+    /// Replaced `unwrap()` calls with `cstr_result()?` for error safety.
+    ///
+    /// Per §1.0 原則 4 "报错 > 静默": LLVM errors are reported, not panicked.
+    /// Per §10.1.8: CodegenError follows `{ message, span }` minimal form.
+    pub fn to_object_file(&self, out_path: &str) -> crate::codegen::CodegenResult<()> {
+        use crate::codegen::error::CodegenError;
+        use crate::codegen::llvm::helpers::cstr_result;
+        use crate::session::Span;
         unsafe {
             // Stage 14.44: Verify the module before emitting.
-            // This catches invalid IR early (instead of silently producing
-            // empty object files). The error message helps diagnose issues
-            // like type mismatches in insertvalue/extractvalue.
             let mut verify_err: *mut std::os::raw::c_char = std::ptr::null_mut();
             let verify_rc = LLVMVerifyModule(
                 self.module,
@@ -173,7 +180,10 @@ impl LLVMSysEmitter {
                 LLVMDisposeMessage(verify_err);
             }
             if verify_rc != 0 {
-                return Err("LLVM module verification failed (see messages above)".into());
+                return Err(CodegenError::new(
+                    "LLVM module verification failed (see messages above)",
+                    Span::DUMMY,
+                ));
             }
 
             // 1. Initialise all targets / asm printers.
@@ -185,13 +195,16 @@ impl LLVMSysEmitter {
             // 2. Get the host triple.
             let triple_ptr = LLVMGetDefaultTargetTriple();
             if triple_ptr.is_null() {
-                return Err("LLVMGetDefaultTargetTriple returned null".into());
+                return Err(CodegenError::new(
+                    "LLVMGetDefaultTargetTriple returned null",
+                    Span::DUMMY,
+                ));
             }
             let triple = collect_cstring(triple_ptr);
             LLVMDisposeMessage(triple_ptr);
 
             // 3. Look up the target.
-            let triple_c = CString::new(triple.as_str()).map_err(|e| e.to_string())?;
+            let triple_c = cstr_result(&triple)?;
             let mut target: LLVMTargetRef = std::ptr::null_mut();
             let mut err_buf: *mut std::os::raw::c_char = std::ptr::null_mut();
             let rc = LLVMGetTargetFromTriple(triple_c.as_ptr(), &mut target, &mut err_buf);
@@ -203,12 +216,16 @@ impl LLVMSysEmitter {
                     LLVMDisposeMessage(err_buf);
                     m
                 };
-                return Err(format!("LLVMGetTargetFromTriple failed: {}", msg));
+                return Err(CodegenError::new(
+                    format!("LLVMGetTargetFromTriple failed: {}", msg),
+                    Span::DUMMY,
+                ));
             }
 
             // 4. Build the target machine.
-            let cpu_c = CString::new("generic").unwrap();
-            let feat_c = CString::new("").unwrap();
+            // Stage 17.02: Use cstr_result instead of unwrap for error safety.
+            let cpu_c = cstr_result("generic")?;
+            let feat_c = cstr_result("")?;
             let tm = LLVMCreateTargetMachine(
                 target,
                 triple_c.as_ptr(),
@@ -219,11 +236,14 @@ impl LLVMSysEmitter {
                 LLVMCodeModel::LLVMCodeModelDefault,
             );
             if tm.is_null() {
-                return Err("LLVMCreateTargetMachine returned null".into());
+                return Err(CodegenError::new(
+                    "LLVMCreateTargetMachine returned null",
+                    Span::DUMMY,
+                ));
             }
 
             // 5. Emit to file.
-            let path_c = CString::new(out_path).map_err(|e| e.to_string())?;
+            let path_c = cstr_result(out_path)?;
             let mut err2: *mut std::os::raw::c_char = std::ptr::null_mut();
             let rc2 = LLVMTargetMachineEmitToFile(
                 tm,
@@ -241,7 +261,10 @@ impl LLVMSysEmitter {
                     LLVMDisposeMessage(err2);
                     m
                 };
-                return Err(format!("LLVMTargetMachineEmitToFile failed: {}", msg));
+                return Err(CodegenError::new(
+                    format!("LLVMTargetMachineEmitToFile failed: {}", msg),
+                    Span::DUMMY,
+                ));
             }
             Ok(())
         }
