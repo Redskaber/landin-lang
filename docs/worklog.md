@@ -29525,3 +29525,27 @@ Stage Summary:
 - evaluate() 对具体类型返回 Yes/No, 对类型参数/Infer 返回 Ambiguous, 对 Error 返回 Yes
 - Phase 2 将添加 where clause assumptions + supertrait expansion
 - v0.275.0 → v0.276.0
+
+---
+Task ID: stage17.04
+Agent: Super Z (main)
+Task: Stage 17.04 — Trait Solver Phase 2 (where clause assumptions)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 实现 Phase 2: where clause assumptions
+  1. TraitSolverCtxt 新增 assumptions: Vec<(DefId, DefId)> 字段
+  2. 新增 with_assumptions() 构造函数
+  3. evaluate_implies() 对 Adt 类型先检查 assumptions，匹配则返回 Yes
+  4. 保留 new() 无 assumptions 构造（向后兼容）
+- 验收：
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 431 lib + 2529 integration = 2960 unit tests, 0 failures
+
+Stage Summary:
+- Trait Solver Phase 2 完成（where clause assumptions 支持）
+- with_assumptions() 接受 (type_def_id, trait_def_id) 对作为假设
+- evaluate() 对 Adt 类型先查 assumptions，再查 resolver
+- v0.276.0 → v0.277.0

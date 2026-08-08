@@ -1,13 +1,13 @@
-//! Stage 17.03: Trait Solver — data structures for trait bound evaluation.
+//! Stage 17.03-17.04: Trait Solver — data structures + where clause assumptions.
 //!
 //! This module defines the core data structures for the trait solver:
 //! - `TraitPredicate` — a claim that "Type: Trait"
 //! - `Goal` — a goal to be evaluated (currently only `Implies`)
 //! - `GoalEvaluationResult` — the result of evaluating a goal
-//! - `TraitSolverCtxt` — context holding resolver + interner
+//! - `TraitSolverCtxt` — context holding resolver + interner + assumptions
 //!
-//! Phase 1 (this stage): data structures + stub evaluate().
-//! Phase 2 (next stage): full solving algorithm with where clause assumptions.
+//! Phase 1 (Stage 17.03): data structures + stub evaluate().
+//! Phase 2 (Stage 17.04): where clause assumptions + driver integration.
 //!
 //! Per §23: all types follow standard naming patterns.
 //! Per §16: reads TraitResolver (allowed during typeck).
@@ -73,9 +73,9 @@ pub enum GoalEvaluationResult {
 
 /// Context for the trait solver.
 ///
-/// Holds a reference to TraitResolver for impl lookup and the interner
-/// for name resolution. The solver is stateless — it does not modify
-/// the resolver or interner.
+/// Holds a reference to TraitResolver for impl lookup, the interner
+/// for name resolution, and a list of assumptions (where clause bounds)
+/// that are treated as proven.
 ///
 /// Per §23: `TraitSolverCtxt` follows `<Noun>_<Noun>_<Noun>` pattern.
 /// Per §16: reads TraitResolver + interner (allowed during typeck).
@@ -84,24 +84,49 @@ pub struct TraitSolverCtxt<'a> {
     pub resolver: &'a TraitResolver,
     /// The interner for resolving Spur → &str.
     pub interner: &'a Rodeo,
+    /// Stage 17.04: Assumptions from where clauses.
+    /// Each assumption is a (DefId, DefId) pair meaning "type_def_id implements trait_def_id".
+    /// When evaluating a goal, if the goal matches an assumption, it returns Yes.
+    assumptions: Vec<(DefId, DefId)>,
 }
 
 impl<'a> TraitSolverCtxt<'a> {
-    /// Create a new TraitSolverCtxt.
+    /// Create a new TraitSolverCtxt with no assumptions.
     ///
     /// Per §23: `new` follows `<verb>` pattern.
     pub fn new(resolver: &'a TraitResolver, interner: &'a Rodeo) -> Self {
-        Self { resolver, interner }
+        Self {
+            resolver,
+            interner,
+            assumptions: Vec::new(),
+        }
+    }
+
+    /// Stage 17.04: Create a new TraitSolverCtxt with where clause assumptions.
+    ///
+    /// Assumptions are (type_def_id, trait_def_id) pairs extracted from
+    /// where clauses on generic items. When evaluating a goal for a
+    /// concrete type, if the goal matches an assumption, it returns Yes
+    /// without consulting the resolver.
+    ///
+    /// Per §23: `with_assumptions` follows `<prep>_<noun>` pattern.
+    pub fn with_assumptions(
+        resolver: &'a TraitResolver,
+        interner: &'a Rodeo,
+        assumptions: Vec<(DefId, DefId)>,
+    ) -> Self {
+        Self {
+            resolver,
+            interner,
+            assumptions,
+        }
     }
 
     /// Evaluate a goal.
     ///
-    /// Phase 1 (stub): handles concrete types via `resolver.implements_by_def_ids`,
-    /// returns `Ambiguous` for type parameters and inference variables,
-    /// returns `Yes` for error types (suppressed).
-    ///
-    /// Phase 2 (next stage): will support where clause assumptions and
-    /// supertrait expansion.
+    /// Phase 2: supports where clause assumptions. If the goal matches
+    /// an assumption (same type_def_id + trait_def_id), returns Yes.
+    /// Otherwise delegates to `evaluate_implies` for resolver-based lookup.
     ///
     /// Per §1.0 原則 4 "报错 > 静默": returns `No` for definite non-implementation.
     /// Per §1.0 原則 6 "通用 > 特例": one evaluate method handles all goal types.
@@ -123,8 +148,18 @@ impl<'a> TraitSolverCtxt<'a> {
             // Type parameter: declarative constraint, checked at monomorphization.
             TyKind::Param(_) => GoalEvaluationResult::Ambiguous,
 
-            // Concrete ADT type (struct/enum): check via resolver.
+            // Concrete ADT type (struct/enum): check via resolver + assumptions.
             TyKind::Adt(def_id, _) => {
+                // Stage 17.04: Check assumptions first.
+                if self
+                    .assumptions
+                    .iter()
+                    .any(|(ty_id, trait_id)| *ty_id == *def_id && *trait_id == pred.trait_def_id)
+                {
+                    return GoalEvaluationResult::Yes;
+                }
+
+                // Fall back to resolver lookup.
                 if self
                     .resolver
                     .implements_by_def_ids(pred.trait_def_id, *def_id)
@@ -136,7 +171,7 @@ impl<'a> TraitSolverCtxt<'a> {
             }
 
             // Other types (primitives, tuples, refs, etc.):
-            // Phase 1: treat as Ambiguous (Phase 2 will handle primitive impls).
+            // Phase 2: treat as Ambiguous (Phase 3 will handle primitive impls).
             _ => GoalEvaluationResult::Ambiguous,
         }
     }

@@ -1,9 +1,33 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.276.0
+**Current version**: v0.277.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.277.0 — Stage 17.04 (Trait Solver Phase 2 — Where Clause Assumptions)
+
+### Overview
+
+Adds where clause assumptions to the trait solver. `TraitSolverCtxt` now
+accepts a list of `(type_def_id, trait_def_id)` pairs as assumptions.
+When evaluating a goal for a concrete ADT type, the solver checks
+assumptions first before falling back to `resolver.implements_by_def_ids`.
+
+### Implementation
+
+1. **`assumptions` field** on `TraitSolverCtxt` — `Vec<(DefId, DefId)>`.
+2. **`with_assumptions()`** constructor — accepts assumptions from where clauses.
+3. **`evaluate_implies()`** — for `Adt` types, checks assumptions first,
+   returns `Yes` on match, otherwise delegates to resolver.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 431 lib + 2529 integration = 2960 unit tests, 0 failures
 
 ---
 ## v0.276.0 — Stage 17.03 (Trait Solver Phase 1 — Data Structures)
