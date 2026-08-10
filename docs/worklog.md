@@ -29740,3 +29740,29 @@ Stage Summary:
 - 通解方案设计记录：macro_rules! + format_args + __landin_println
 - 4 层 TODO(Stage 18) 标注完成
 - v0.283.0 → v0.284.0
+
+---
+Task ID: stage17.12
+Agent: Super Z (main)
+Task: Stage 17.12 — v0.5 Mid-Review + Roadmap Update
+
+Work Log:
+- §14.5 阶段末尾深度审查（8 维度 D1-D8）
+- v0.5 完成状态：
+  - P1: CodegenError (17.01-17.02) + Trait Solver (17.03-17.07) ✅
+  - P2: Trait Coherence Enhancement (17.09) ✅
+  - P3: MIR Optimization DCE (17.10) ✅
+  - println! 通解分析 (17.11) ✅
+  - 11 stages, +40 tests, 2984 total
+- 委员会投票: 5/5 GO
+- 验收：
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 447 lib + 2537 integration = 2984 unit tests, 0 failures
+
+Stage Summary:
+- v0.5 中期审查完成: GO
+- v0.5 P1 完成, P2 部分完成, P3 开始
+- 2984 tests, 0 failures, 0 warnings
+- v0.284.0 → v0.285.0

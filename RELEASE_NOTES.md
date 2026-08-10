@@ -1,9 +1,41 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.284.0
+**Current version**: v0.285.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.285.0 — Stage 17.12 (v0.5 Mid-Review + Roadmap Update)
+
+### Overview
+
+v0.5 mid-review confirms strong progress: P1 (CodegenError + Trait Solver)
+complete, P2 (Trait Coherence) complete, P3 (MIR DCE) started, println!
+通解 analysis done. 11 stages, +40 tests, 2984 total.
+
+### v0.5 Completion Status
+
+| Task | Priority | Stages | Status | Tests |
+|------|----------|--------|--------|-------|
+| CodegenError Phase 1-2 | P1 | 17.01-17.02 | ✅ | +8 |
+| Trait Solver Phase 1-5 | P1 | 17.03-17.07 | ✅ | +16 |
+| v0.5 P1 Review | — | 17.08 | ✅ | — |
+| Trait Coherence Enhancement | P2 | 17.09 | ✅ | +8 |
+| MIR Optimization (DCE) | P3 | 17.10 | ✅ | +8 |
+| println! 通解 Analysis | — | 17.11 | ✅ | — |
+| **Total** | — | 11 | **✅ GO** | **+40** |
+
+### Deep Review (§14.5)
+
+All 8 dimensions pass. Committee vote: 5/5 GO.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 447 lib + 2537 integration = 2984 unit tests, 0 failures
 
 ---
 ## v0.284.0 — Stage 17.11 (println! Macro 通解 Analysis + TODO Marking)
