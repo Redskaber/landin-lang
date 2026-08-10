@@ -1,9 +1,52 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.278.0
+**Current version**: v0.279.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.279.0 — Stage 17.06 (Trait Solver Phase 4 — Supertrait Expansion)
+
+### Overview
+
+Adds supertrait expansion to the trait solver. When evaluating "Type: Trait",
+the solver now recursively verifies that the type also implements all
+supertraits of the trait. Completes the Trait Solver basic infrastructure
+(Phase 1-4).
+
+### Implementation
+
+1. **Refactored `evaluate()`** into three methods:
+   - `evaluate_implies()`: calls `evaluate_direct()`, then `evaluate_supertraits()`
+   - `evaluate_direct()`: original logic (assumptions + resolver lookup)
+   - `evaluate_supertraits()`: recursive supertrait verification
+
+2. **Supertrait lookup**: Uses `resolver.trait_supertraits(spur)` to get
+   supertrait name Spur list, then `resolver.find_trait_def_id(spur)` to
+   convert to DefId.
+
+3. **Cycle protection**: Uses `visited: HashSet<DefId>` to prevent infinite
+   loops on circular supertrait declarations.
+
+4. **Recursive logic**: Any supertrait `No` → overall `No`; `Ambiguous` →
+   continue checking remaining supertraits; all `Yes` → `Yes`.
+
+### Trait Solver Complete (Phase 1-4)
+
+| Phase | Stage | Content |
+|-------|-------|---------|
+| 1 | 17.03 | Data structures |
+| 2 | 17.04 | Where clause assumptions |
+| 3 | 17.05 | Driver integration |
+| 4 | 17.06 | Supertrait expansion |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 431 lib + 2529 integration = 2960 unit tests, 0 failures
 
 ---
 ## v0.278.0 — Stage 17.05 (Trait Solver Phase 3 — Driver Integration)

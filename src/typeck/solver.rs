@@ -1,4 +1,4 @@
-//! Stage 17.03-17.04: Trait Solver — data structures + where clause assumptions.
+//! Stage 17.03-17.06: Trait Solver — data structures + assumptions + driver integration + supertraits.
 //!
 //! This module defines the core data structures for the trait solver:
 //! - `TraitPredicate` — a claim that "Type: Trait"
@@ -8,6 +8,8 @@
 //!
 //! Phase 1 (Stage 17.03): data structures + stub evaluate().
 //! Phase 2 (Stage 17.04): where clause assumptions + driver integration.
+//! Phase 3 (Stage 17.05): driver integration (where_clause.rs uses solver).
+//! Phase 4 (Stage 17.06): supertrait expansion + error reporting.
 //!
 //! Per §23: all types follow standard naming patterns.
 //! Per §16: reads TraitResolver (allowed during typeck).
@@ -17,6 +19,7 @@ use crate::hir::DefId;
 use crate::mir::ty::{Ty, TyKind};
 use crate::traits::TraitResolver;
 use lasso::Rodeo;
+use std::collections::HashSet;
 
 /// A trait predicate: "Type: Trait"
 ///
@@ -124,9 +127,9 @@ impl<'a> TraitSolverCtxt<'a> {
 
     /// Evaluate a goal.
     ///
-    /// Phase 2: supports where clause assumptions. If the goal matches
-    /// an assumption (same type_def_id + trait_def_id), returns Yes.
-    /// Otherwise delegates to `evaluate_implies` for resolver-based lookup.
+    /// Phase 4: supports supertrait expansion. When evaluating "Type: Trait",
+    /// if the trait has supertraits, also verifies that the type implements
+    /// all supertraits recursively.
     ///
     /// Per §1.0 原則 4 "报错 > 静默": returns `No` for definite non-implementation.
     /// Per §1.0 原則 6 "通用 > 特例": one evaluate method handles all goal types.
@@ -137,20 +140,31 @@ impl<'a> TraitSolverCtxt<'a> {
     }
 
     /// Evaluate a "Type: Trait" predicate.
+    ///
+    /// Phase 4: After checking the main trait, also checks all supertraits
+    /// recursively. If any supertrait is `No`, the whole result is `No`.
+    /// If any is `Ambiguous`, the result is `Ambiguous`.
     fn evaluate_implies(&self, pred: &TraitPredicate) -> GoalEvaluationResult {
+        let direct_result = self.evaluate_direct(pred);
+
+        // Phase 4: If direct check failed or is ambiguous, don't check supertraits.
+        if direct_result != GoalEvaluationResult::Yes {
+            return direct_result;
+        }
+
+        // Phase 4: Check supertraits recursively.
+        // If the trait has supertraits, the type must also implement all of them.
+        self.evaluate_supertraits(pred, &mut HashSet::new())
+    }
+
+    /// Direct evaluation without supertrait expansion.
+    fn evaluate_direct(&self, pred: &TraitPredicate) -> GoalEvaluationResult {
         match &pred.ty.kind {
-            // Error type: suppress (treat as satisfied to avoid cascading errors).
             TyKind::Error => GoalEvaluationResult::Yes,
-
-            // Inference variable: cannot determine yet.
             TyKind::Infer(_) => GoalEvaluationResult::Ambiguous,
-
-            // Type parameter: declarative constraint, checked at monomorphization.
             TyKind::Param(_) => GoalEvaluationResult::Ambiguous,
-
-            // Concrete ADT type (struct/enum): check via resolver + assumptions.
             TyKind::Adt(def_id, _) => {
-                // Stage 17.04: Check assumptions first.
+                // Check assumptions first.
                 if self
                     .assumptions
                     .iter()
@@ -158,8 +172,6 @@ impl<'a> TraitSolverCtxt<'a> {
                 {
                     return GoalEvaluationResult::Yes;
                 }
-
-                // Fall back to resolver lookup.
                 if self
                     .resolver
                     .implements_by_def_ids(pred.trait_def_id, *def_id)
@@ -169,11 +181,81 @@ impl<'a> TraitSolverCtxt<'a> {
                     GoalEvaluationResult::No
                 }
             }
-
-            // Other types (primitives, tuples, refs, etc.):
-            // Phase 2: treat as Ambiguous (Phase 3 will handle primitive impls).
             _ => GoalEvaluationResult::Ambiguous,
         }
+    }
+
+    /// Stage 17.06: Evaluate supertraits of the trait in `pred`.
+    ///
+    /// Recursively checks that `pred.ty` implements all supertraits of
+    /// `pred.trait_def_id`. Uses a `visited` set to prevent infinite loops
+    /// on circular supertrait declarations.
+    ///
+    /// Returns `No` if any supertrait is not implemented, `Ambiguous` if
+    /// any is undetermined, `Yes` only if all supertraits are satisfied.
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": handles arbitrary supertrait depth.
+    fn evaluate_supertraits(
+        &self,
+        pred: &TraitPredicate,
+        visited: &mut HashSet<DefId>,
+    ) -> GoalEvaluationResult {
+        // Prevent infinite loops on circular supertraits.
+        if visited.contains(&pred.trait_def_id) {
+            return GoalEvaluationResult::Yes;
+        }
+        visited.insert(pred.trait_def_id);
+
+        // Look up the trait's supertraits from the resolver.
+        // The resolver stores supertraits by Spur (trait name), not DefId.
+        // We need to find the trait's name Spur from its DefId.
+        let trait_name_spur = self
+            .resolver
+            .trait_by_name
+            .iter()
+            .find(|(_, def_id)| **def_id == pred.trait_def_id)
+            .map(|(spur, _)| *spur);
+
+        let supertrait_spurs = match trait_name_spur {
+            Some(spur) => match self.resolver.trait_supertraits(spur) {
+                Some(sts) => sts.clone(),
+                None => return GoalEvaluationResult::Yes,
+            },
+            None => return GoalEvaluationResult::Yes,
+        };
+
+        // For each supertrait, resolve its DefId and evaluate recursively.
+        for st_spur in &supertrait_spurs {
+            let st_def_id = match self.resolver.find_trait_def_id(*st_spur) {
+                Some(def_id) => def_id,
+                None => continue, // Unknown supertrait — skip (already reported elsewhere)
+            };
+
+            let st_pred = TraitPredicate::new(pred.ty.clone(), st_def_id);
+            let st_result = self.evaluate_direct(&st_pred);
+
+            match st_result {
+                GoalEvaluationResult::No => return GoalEvaluationResult::No,
+                GoalEvaluationResult::Ambiguous => {
+                    // Continue checking other supertraits, but remember we saw Ambiguous.
+                    // We'll return Ambiguous if no supertrait is No.
+                    let recursive_result = self.evaluate_supertraits(&st_pred, visited);
+                    if recursive_result == GoalEvaluationResult::No {
+                        return GoalEvaluationResult::No;
+                    }
+                    // Don't return yet — check remaining supertraits.
+                }
+                GoalEvaluationResult::Yes => {
+                    // Recursively check this supertrait's own supertraits.
+                    let recursive_result = self.evaluate_supertraits(&st_pred, visited);
+                    if recursive_result == GoalEvaluationResult::No {
+                        return GoalEvaluationResult::No;
+                    }
+                }
+            }
+        }
+
+        GoalEvaluationResult::Yes
     }
 }
 

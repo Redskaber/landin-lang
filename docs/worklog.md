@@ -29577,3 +29577,33 @@ Stage Summary:
   - Phase 2: where clause assumptions 支持 (with_assumptions)
   - Phase 3: driver 集成 (where_clause.rs 使用 solver)
 - v0.277.0 → v0.278.0
+
+---
+Task ID: stage17.06
+Agent: Super Z (main)
+Task: Stage 17.06 — Trait Solver Phase 4 (Supertrait Expansion + Error Reporting)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 实现 Phase 4: supertrait expansion
+  1. 重构 evaluate() 为 evaluate_implies() + evaluate_direct() + evaluate_supertraits()
+  2. evaluate_direct(): 原有逻辑（assumptions + resolver lookup）
+  3. evaluate_supertraits(): 递归检查所有 supertraits，使用 visited HashSet 防止循环
+  4. evaluate_implies(): 先 evaluate_direct，Yes 后再 evaluate_supertraits
+  5. 任何 supertrait 为 No → 整体 No；Ambiguous → 继续检查其他 supertrait
+- 验收：
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 431 lib + 2529 integration = 2960 unit tests, 0 failures
+
+Stage Summary:
+- Trait Solver Phase 4 完成（supertrait expansion）
+- evaluate() 现在递归检查 supertraits: Type: Foo 且 Foo: Bar → 也检查 Type: Bar
+- 循环依赖保护（visited HashSet）
+- Trait Solver 完整 Phase 1-4:
+  - Phase 1: 数据结构
+  - Phase 2: where clause assumptions
+  - Phase 3: driver integration
+  - Phase 4: supertrait expansion
+- v0.278.0 → v0.279.0
