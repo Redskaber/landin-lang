@@ -1,9 +1,54 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.285.0
+**Current version**: v0.286.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.286.0 — Stage 17.13 (MIR Optimization Phase 2 — Constant Propagation + Folding)
+
+### Overview
+
+Adds constant propagation and constant folding MIR optimization pass.
+When a local is assigned a constant (`x = 42`), subsequent uses of
+`Copy(x)` are replaced with `Constant(42)`. Binary/unary operations on
+all-constant operands are evaluated at compile time.
+
+### Implementation
+
+1. **`run_const_prop()`** — new optimization pass in `src/mir/optimization.rs`:
+   - Maintains a `const_map: HashMap<LocalId, Const>` tracking constant assignments
+   - Propagates constants into `Copy(local)` / `Move(local)` operands
+   - Folds `BinaryOp` / `UnaryOp` with all-constant operands into single `Constant`
+   - Invalidates entries on non-constant assignments
+
+2. **Supported operations**:
+   - Integer (Int/Uint): Add, Sub, Mul, Div, Rem, BitAnd, BitOr, BitXor, Shl, Shr
+   - Comparisons (Int/Uint/Bool): Eq, Lt, Le, Ne, Ge, Gt
+   - Boolean: BitAnd, BitOr, BitXor, Eq, Ne
+   - Unary: Neg (Int), Not (Int/Uint/Bool)
+   - Division by zero: not folded (returns None, preserves runtime check)
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | const_prop_does_not_break | positive | No crash after const prop |
+| 2 | const_prop_handles_empty | positive | Empty MIR handled |
+| 3 | const_prop_then_dce_reduces | negative | Const prop + DCE reduces code |
+| 4 | const_prop_preserves_used | negative | Used variables preserved |
+| 5 | const_prop_handles_arithmetic | negative | Arithmetic expressions |
+| 6 | const_prop_handles_bool | negative | Boolean operations |
+| 7 | fold_int_add | negative | 10 + 20 = 30 |
+| 8 | fold_div_by_zero_none | negative | Division by zero not folded |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 455 lib (+8 new) + 2537 integration = 2992 unit tests, 0 failures
 
 ---
 ## v0.285.0 — Stage 17.12 (v0.5 Mid-Review + Roadmap Update)
