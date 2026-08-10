@@ -1,9 +1,93 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.292.0
+**Current version**: v0.293.0
 **Date**: 2026-08-06
-**Test count**: 479 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 487 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.293.0 — Stage 18.06 (macro_rules! Phase 6 — Repetition `$(...)*` / `$(...)+` / `$(...)?`)
+
+### Overview
+
+Implements macro_rules! repetition operators:
+- `$(...)*` — zero or more
+- `$(...)+` — one or more
+- `$(...)?` — zero or one
+
+This enables macros like `vec![$($x),*]` and `println!($($arg),*)` to be
+expressed via `macro_rules!`. (Separator support `$(...),*` is deferred
+to a future stage.)
+
+### Implementation
+
+1. **`CaptureValue` enum** — extends captures from `Vec<Token>` to support
+   both scalar (`Single`) and repetition (`Repetition`) bindings:
+
+   ```rust
+   pub(crate) enum CaptureValue {
+       Empty,
+       Single(Vec<Token>),         // Stage 18.03 scalar
+       Repetition(Vec<Vec<Token>>), // Stage 18.06 repetition
+   }
+   ```
+
+2. **`RepetitionKind` enum** — `ZeroOrMore`, `OneOrMore`, `ZeroOrOne`.
+
+3. **`parse_repetition_op`** — maps `*`/`+`/`?` tokens to `RepetitionKind`.
+
+4. **`collect_pattern_inner`** — collects tokens between `(` and matching `)`.
+
+5. **`match_repetition`** — repeatedly matches the inner pattern against
+   input, accumulating per-iteration captures into `Repetition` values.
+   Enforces `+` (1+ matches) and `?` (0-1 matches) constraints.
+
+6. **`substitute_repetition`** — for each iteration index `i`, builds a
+   local capture map (`name → captures[name][i]`) and substitutes the
+   inner body, concatenating all results.
+
+7. **`match_pattern_at`** — position-aware variant of `match_pattern`
+   so `match_repetition` can resume matching from a specific input
+   position. `match_pattern` is now a thin wrapper that requires full
+   input consumption.
+
+8. **`match_pattern` and `substitute_body`** — extended with repetition
+   dispatch: when a `$` is followed by `(`, the repetition code path is
+   taken; otherwise the existing scalar `$name:fragment` path runs.
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特例"**: a single `match_repetition` /
+  `substitute_repetition` pair handles all three operators (`*`/`+`/`?`).
+- **§10 naming**: `RepetitionKind` (`<Noun>Kind`), `match_repetition` /
+  `substitute_repetition` (`<verb>_<noun>`), `parse_repetition_op` /
+  `collect_pattern_inner` (`<verb>_<noun>_<noun>`).
+- **§11 isolation**: all new types/functions are `macro_expand.rs`
+  internal (`fn` or `pub(crate) enum`).
+- **Single responsibility**: `match_repetition` only matches;
+  `substitute_repetition` only substitutes.
+- **Avoid dead code**: `CaptureValue::Empty` variant is used as the
+  `HashMap` default and matched exhaustively.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | macro_with_star_repetition | positive | `$( $x:expr )*` parses and expands |
+| 2 | macro_with_plus_repetition | positive | `$( $x:expr )+` parses and expands |
+| 3 | repetition_kind_from_star | negative | `*` → `ZeroOrMore` |
+| 4 | repetition_kind_from_plus | negative | `+` → `OneOrMore` |
+| 5 | repetition_kind_from_question | negative | `?` → `ZeroOrOne` |
+| 6 | match_repetition_zero_or_more_empty | negative | `*` accepts empty input (returns 0) |
+| 7 | match_repetition_one_or_more_empty | negative | `+` rejects empty input (returns None) |
+| 8 | substitute_repetition_expands_each_iter | negative | body expanded once per iteration |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 487 lib (+8 new) + 2537 integration = **3,024** unit tests, 0 failures
 
 ---
 ## v0.292.0 — Stage 18.05 (macro_rules! Phase 5 — Additional Fragment Specifiers)

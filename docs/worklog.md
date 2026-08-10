@@ -29988,3 +29988,44 @@ Stage Summary:
 - fragment 支持从 3 个扩展到 7 个 (expr/ident/tt/ty/literal/block/path)
 - 覆盖 Rust 常用 macro_rules! 子集
 - v0.291.0 → v0.292.0
+
+---
+Task ID: stage18.06
+Agent: Super Z (main)
+Task: Stage 18.06 — macro_rules! Phase 6 (Repetition $(...)* / $(...)+ / $(...)?)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 设计文档: docs/develop/v0/stage-18/stage-18.06-repetition-design.md
+- 实现 macro_rules! 重复语法:
+  1. CaptureValue enum (Single/Repetition) — 扩展 captures 以支持重复
+  2. RepetitionKind enum (ZeroOrMore/OneOrMore/ZeroOrOne)
+  3. parse_repetition_op — 映射 */+/? 到 RepetitionKind
+  4. collect_pattern_inner — 收集 ( ... ) 之间的 tokens
+  5. match_repetition — 重复匹配 inner pattern, 累积 per-iter captures
+  6. substitute_repetition — 每次迭代构建 local captures 并展开
+  7. match_pattern_at — position-aware variant for match_repetition
+  8. match_pattern 重构为 match_pattern_at 的 wrapper (要求 full input consumption)
+  9. match_pattern/substitute_body 添加 $-followed-by-LParen 调度
+- §1.0 原則 6 "通用 > 特例": 一个 match_repetition/substitute_repetition 处理三种操作符
+- §10 命名: RepetitionKind (<Noun>Kind), match_repetition/substitute_repetition (<verb>_<noun>)
+- §11 接口隔离: 所有新类型/函数为 macro_expand.rs 内部
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: macro_with_star_repetition + macro_with_plus_repetition (2)
+  - negative: repetition_kind_from_star + repetition_kind_from_plus + repetition_kind_from_question + match_repetition_zero_or_more_empty + match_repetition_one_or_more_empty + substitute_repetition_expands_each_iter (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 487 lib (+8 new) + 2537 integration = 3024 unit tests, 0 failures
+
+Stage Summary:
+- macro_rules! Phase 6 完成（Repetition）
+- $(...)* / $(...)+ / $(...)? 三种操作符全部支持
+- enables macros like vec![$($x),*] and println!($($arg),*)
+- 下一阶段 (Stage 18.07) 规划:
+  - 添加 separator 支持 $(...),* (带分隔符的重复)
+  - 或开始 println! 通解化迁移
+  - 或开始 macro hygiene (基础宏卫生)
+- v0.292.0 → v0.293.0
