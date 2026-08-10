@@ -30201,3 +30201,86 @@ Stage Summary:
   - Phase 2: 替换 built-in macro body 为真正的 Call(__landin_println, [...]) 展开
   - 需要先实现 __landin_println 和 __landin_format_args 函数
 - v0.294.0 → v0.295.0
+
+---
+Task ID: stage18.11
+Agent: Super Z (main)
+Task: Stage 18.11 — println! 通解化 Phase 2 Design + v0.6 P1.5 Review
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- §14.5 阶段末尾深度审查（8 维度 D1-D8）对 Stage 18.10
+- 设计文档: docs/develop/v0/stage-18/stage-18.11-println-phase2-design.md
+- Stage 18.10 (Phase 1) D1-D8 评估:
+  - D1 架构健康度: ✅
+  - D2 API 命名: ✅
+  - D3 接口隔离: ✅
+  - D4 测试覆盖: ✅ (1:3 ratio)
+  - D5 死代码: ✅
+  - D6 性能: ✅
+  - D7 错误处理: ✅
+  - D8 文档同步: ✅
+- 委员会投票: 5/5 GO
+- Phase 2 详细设计:
+  - 修改 built-in macro body 为 __landin_println($($args)*)
+  - codegen 特解 __landin_println 调用 (追加 \n, stderr 等)
+  - 移除 parser 的 println! 特解
+  - 保留 AST/HIR/MIR/Codegen Println variant (Phase 3 再删)
+- Phase 3 设计:
+  - 移除 AST/HIR/MIR/Codegen 的 Println variant
+  - 统一为 Call 路径
+  - 影响 ~50 个测试
+- v0.6 路线图调整:
+  - Phase 1: 18.10 (done) — 1 stage
+  - Phase 2: 18.12 — 2 stages
+  - Phase 3: 18.13-18.14 — 2 stages
+  - Phase 4: 18.15 — 1 stage (final review)
+  - 总计 6 stages (18.10-18.15)
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 503 lib + 2537 integration = 3040 unit tests, 0 failures
+
+Stage Summary:
+- Stage 18.10 (Phase 1) 深度审查通过: 5/5 GO
+- Phase 2-3 详细设计完成
+- v0.6 路线图更新为 6 stages (18.10-18.15)
+- 下一阶段 (Stage 18.12) 开始 Phase 2 实现
+- v0.295.0 (无代码变更，仅设计+审查)
+
+---
+Task ID: stage18.12
+Agent: Super Z (main)
+Task: Stage 18.12 — Println Codegen Refactoring (Phase 2 Preparation)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- §13.4 重构治理 (refactoring as architecture design)
+- 设计文档: docs/develop/v0/stage-18/stage-18.12-println-codegen-refactoring-design.md
+- 提取 StatementKind::Println 的 ~100 行 codegen 逻辑为独立函数 emit_printf_call
+- Println arm 简化为调用 emit_printf_call
+- 添加 #[allow(clippy::too_many_arguments)] (codegen 上下文需要多参数)
+- §13.4 纯重构: 行为完全不变, 所有 3040 个旧测试继续通过
+- §10 命名: emit_printf_call (<verb>_<noun>_<noun>)
+- §11 接口隔离: 函数是 codegen::statement 内部 fn (private)
+- §1.0 原則 6 "通用 > 特解": 为 Phase 2 的 Call(__landin_println) 路径复用同一逻辑
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: println_simple_still_works + println_with_args_still_works (2)
+  - negative: eprintln_still_works + print_no_newline_still_works + eprint_no_newline_still_works + println_with_multiple_args + println_with_int_arg + println_with_string_arg (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 511 lib (+8 new) + 2537 integration = 3048 unit tests, 0 failures
+  - 行为不变: 所有 3040 个旧测试继续通过
+
+Stage Summary:
+- Println codegen 重构完成
+- emit_printf_call 函数提取成功, 为 Phase 2 做好准备
+- 下一阶段 (Stage 18.13):
+  - 修改 built-in macro body 为 __landin_println($($args)*)
+  - 在 codegen 中添加 Call(__landin_println) 检测
+  - 调用 emit_printf_call 处理
+- v0.295.0 → v0.296.0

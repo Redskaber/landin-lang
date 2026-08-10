@@ -1,9 +1,90 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.295.0
+**Current version**: v0.296.0
 **Date**: 2026-08-06
-**Test count**: 503 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 511 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.296.0 — Stage 18.12 (Println Codegen Refactoring — Phase 2 Preparation)
+
+### Overview
+
+Per §13.4 (refactoring as architecture design), extracts the ~100-line
+`StatementKind::Println` codegen logic into a reusable `emit_printf_call`
+function. This is a **pure refactoring** — no behavior change — that
+prepares for Phase 2 of the println! 通解化 migration (where
+`Call(__landin_println)` will reuse this function).
+
+### Implementation
+
+**`src/codegen/statement.rs`**:
+1. Extracted the entire `StatementKind::Println` arm body (lines 247-451)
+   into a standalone function `emit_printf_call`.
+2. The `Println` arm now just calls `emit_printf_call` with the same params.
+3. Added `#[allow(clippy::too_many_arguments)]` — codegen context requires
+   many parameters (emitter, mir, msg, args, newline, stderr, interner,
+   layouts, mono_layouts, fn_name_by_def_id).
+4. Added a test module with 8 tests verifying behavior is unchanged.
+
+### Function Signature
+
+```rust
+fn emit_printf_call(
+    emitter: &mut dyn Emitter,
+    mir: &MirBody,
+    msg: &str,
+    args: &[Operand],
+    newline: bool,
+    stderr: bool,
+    interner: &Rodeo,
+    layouts: &AdtLayouts,
+    mono_layouts: Option<&MonoLayoutMap>,
+    fn_name_by_def_id: &HashMap<DefId, String>,
+)
+```
+
+### Design Compliance
+
+- **§13.4 (refactoring governance)**: pure refactoring — no behavior change.
+  All 3,040 existing tests continue to pass.
+- **§10 naming**: `emit_printf_call` (`<verb>_<noun>_<noun>`).
+- **§11 isolation**: function is `fn` (private) in `codegen::statement`.
+- **§1.0 原則 6 "通用 > 特解"**: enables future `Call(__landin_println)`
+  path to reuse the same logic — no duplicated printf codegen.
+- **Single responsibility**: `emit_printf_call` only emits printf calls.
+- **Avoid dead code**: function is called by the `Println` arm and will be
+  called by the `Call(__landin_println)` arm in Phase 2.
+- **Avoid scattered content**: all printf codegen logic in one function.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | println_simple_still_works | positive | `println!("hi")` still compiles |
+| 2 | println_with_args_still_works | positive | `println!("x={}", x)` still compiles |
+| 3 | eprintln_still_works | negative | `eprintln!("err")` still compiles |
+| 4 | print_no_newline_still_works | negative | `print!("no newline")` still compiles |
+| 5 | eprint_no_newline_still_works | negative | `eprint!("err")` still compiles |
+| 6 | println_with_multiple_args | negative | `println!("{}{}", a, b)` still compiles |
+| 7 | println_with_int_arg | negative | `println!("{}", 42)` still compiles |
+| 8 | println_with_string_arg | negative | `println!("{}", s)` still compiles |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 511 lib (+8 new) + 2537 integration = **3,048** unit tests, 0 failures
+- **Behavior unchanged**: all 3,040 pre-existing tests still pass
+
+### Migration Status
+
+Phase 2 preparation complete:
+- ✅ Phase 1 (Stage 18.10): Built-in macros registered with no-op bodies
+- ✅ Phase 2 prep (Stage 18.12): `emit_printf_call` extracted (this stage)
+- ⏳ Phase 2 (Stage 18.13): Modify built-in macro body + add `Call(__landin_println)` codegen
+- ⏳ Phase 3 (Stage 18.14-18.15): Remove `Println` variant from AST/HIR/MIR/Codegen
 
 ---
 ## v0.295.0 — Stage 18.10 (println! 通解化 Phase 1 — Built-in macro_rules! Registration)

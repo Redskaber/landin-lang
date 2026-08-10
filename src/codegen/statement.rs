@@ -244,211 +244,333 @@ pub(crate) fn codegen_statement(
             newline,
             stderr,
         } => {
-            let _ = newline; // already encoded in `msg` (trailing "\n")
-
-            // Stage 13.16: Build the C printf format string by replacing
-            // Landin `{}` placeholders with C conversion specifiers based
-            // on each arg's type. Also codegen each arg operand to get its
-            // LLVM value handle.
-            //
-            // Type mapping:
-            //   - Integer (i8/i16/i32/i64/i128/u*/bool) → `%ld` (cast to i64)
-            //   - Float (f32/f64) → `%f` (use double)
-            //   - &str / &[u8] → `%s` (string pointer)
-            //   - Other (struct, etc.) → `%s` with "<?>` placeholder (debug)
-            //
-            // We also collect the LLVM value handles for each arg, with
-            // appropriate casting for the C ABI.
-            let mut c_fmt = String::new();
-            let mut c_arg_vals: Vec<(EmitType, EmitValue)> = Vec::new();
-
-            // Iterate the msg template, replacing `{}` with the next arg's
-            // conversion specifier.
-            let mut chars = msg.chars().peekable();
-            let mut arg_idx = 0usize;
-            while let Some(c) = chars.next() {
-                if c == '{' && chars.peek() == Some(&'}') {
-                    // `{}` placeholder — substitute with next arg's conversion
-                    chars.next(); // consume '}'
-                    if arg_idx < args.len() {
-                        let arg = &args[arg_idx];
-                        arg_idx += 1;
-                        // Detect the arg's type
-                        let arg_ty =
-                            detect_operand_type(mir, arg, layouts).unwrap_or(EmitType::I32);
-                        // Codegen the operand to get its LLVM value
-                        let arg_val = codegen_operand(
-                            emitter,
-                            mir,
-                            arg,
-                            interner,
-                            layouts,
-                            mono_layouts,
-                            fn_name_by_def_id,
-                        );
-                        // Determine the C conversion specifier + cast
-                        match &arg_ty {
-                            EmitType::I1
-                            | EmitType::I8
-                            | EmitType::I16
-                            | EmitType::I32
-                            | EmitType::I64
-                            | EmitType::I128 => {
-                                // Integer → %ld (cast to i64 for portability)
-                                // Stage 13.21: Use SIGN-EXTENSION (emit_cast) for signed
-                                // integers so negative numbers print correctly. Before
-                                // Stage 13.21, we used zext (zero-extension), which
-                                // turned -5 (0xFFFFFFFB in i32) into 4294967291
-                                // (0x00000000FFFFFFFB in i64) — a P0 bug for any
-                                // program printing negative values.
-                                //
-                                // Stage 14.12 (GAP-18): Bool (i1) now prints as
-                                // "true"/"false" instead of 1/0. Uses emit_select to
-                                // choose between two string globals based on the bool
-                                // value, then prints with %s. This matches Rust's
-                                // Display impl for bool.
-                                if arg_ty == EmitType::I1 {
-                                    // Bool → "true" / "false" via select + %s
-                                    let true_str = emitter.emit_string_global(b"true\0");
-                                    let false_str = emitter.emit_string_global(b"false\0");
-                                    let selected = emitter.emit_select(
-                                        &EmitType::OpaquePtr,
-                                        &arg_val,
-                                        &true_str,
-                                        &false_str,
-                                    );
-                                    c_fmt.push_str("%s");
-                                    c_arg_vals.push((EmitType::OpaquePtr, selected));
-                                } else if arg_ty != EmitType::I64 {
-                                    // Use emit_cast which does sext for signed integers
-                                    let cast_val =
-                                        emitter.emit_cast(&arg_ty, &EmitType::I64, &arg_val);
-                                    c_fmt.push_str("%ld");
-                                    c_arg_vals.push((EmitType::I64, cast_val));
-                                } else {
-                                    c_fmt.push_str("%ld");
-                                    c_arg_vals.push((EmitType::I64, arg_val));
-                                }
-                            }
-                            EmitType::F32 | EmitType::F64 => {
-                                // Float → %f (cast to double via emit_cast)
-                                let cast_val = if arg_ty == EmitType::F32 {
-                                    emitter.emit_cast(&EmitType::F32, &EmitType::F64, &arg_val)
-                                } else {
-                                    arg_val
-                                };
-                                c_fmt.push_str("%f");
-                                c_arg_vals.push((EmitType::F64, cast_val));
-                            }
-                            EmitType::Ptr(inner) => {
-                                // Stage 14.59: Distinguish &i32 (thin pointer to int)
-                                // from &str (fat pointer struct). For &i32, dereference
-                                // and print as integer. For other pointers, treat as %s.
-                                let inner_ref = inner.as_ref();
-                                if matches!(
-                                    inner_ref,
-                                    EmitType::I1
-                                        | EmitType::I8
-                                        | EmitType::I16
-                                        | EmitType::I32
-                                        | EmitType::I64
-                                        | EmitType::I128
-                                ) {
-                                    // &i32 → load the value through the pointer, then print as int
-                                    let loaded = emitter.emit_load(inner_ref, &arg_val);
-                                    if *inner_ref == EmitType::I1 {
-                                        let true_str = emitter.emit_string_global(b"true\0");
-                                        let false_str = emitter.emit_string_global(b"false\0");
-                                        let selected = emitter.emit_select(
-                                            &EmitType::OpaquePtr,
-                                            &loaded,
-                                            &true_str,
-                                            &false_str,
-                                        );
-                                        c_fmt.push_str("%s");
-                                        c_arg_vals.push((EmitType::OpaquePtr, selected));
-                                    } else if *inner_ref != EmitType::I64 {
-                                        let cast_val =
-                                            emitter.emit_cast(inner_ref, &EmitType::I64, &loaded);
-                                        c_fmt.push_str("%ld");
-                                        c_arg_vals.push((EmitType::I64, cast_val));
-                                    } else {
-                                        c_fmt.push_str("%ld");
-                                        c_arg_vals.push((EmitType::I64, loaded));
-                                    }
-                                } else {
-                                    // Other pointer → treat as %s
-                                    c_fmt.push_str("%s");
-                                    c_arg_vals.push((EmitType::OpaquePtr, arg_val));
-                                }
-                            }
-                            EmitType::OpaquePtr => {
-                                // Pointer → assume &str (fat pointer: {ptr, len})
-                                // For simplicity, treat as %s with the pointer.
-                                // (Full &str support requires extracting the data ptr.)
-                                c_fmt.push_str("%s");
-                                c_arg_vals.push((EmitType::OpaquePtr, arg_val));
-                            }
-                            EmitType::Struct(fields) if fields.len() == 2 => {
-                                // Fat pointer (&str / &[T]): { data_ptr, len }
-                                // Extract field 0 (data_ptr) for %s
-                                let data_ptr = emitter.emit_extractvalue(&arg_ty, &arg_val, 0);
-                                c_fmt.push_str("%s");
-                                c_arg_vals.push((EmitType::OpaquePtr, data_ptr));
-                            }
-                            _ => {
-                                // Unknown type — emit placeholder
-                                c_fmt.push_str("%s");
-                                c_arg_vals.push((
-                                    EmitType::OpaquePtr,
-                                    emitter.emit_string_global(b"(?)\0"),
-                                ));
-                            }
-                        }
-                    } else {
-                        // More `{}` than args — leave the placeholder as-is
-                        // (printf will read garbage from the stack, but this
-                        // is a user error; we don't crash).
-                        c_fmt.push_str("%ld");
-                    }
-                } else if c == '%' {
-                    // Escape literal `%` for C printf
-                    c_fmt.push_str("%%");
-                } else {
-                    // Regular character — copy to C format string
-                    c_fmt.push(c);
-                }
-            }
-
-            // Null-terminate the C format string
-            c_fmt.push('\0');
-
-            // Emit the C format string as a global
-            let fmt_global = emitter.emit_string_global(c_fmt.as_bytes());
-
-            // Build the args list for emit_call: first arg is the format string,
-            // followed by the substituted arg values.
-            let mut call_args: Vec<(EmitType, &EmitValue)> =
-                Vec::with_capacity(1 + c_arg_vals.len());
-            call_args.push((EmitType::OpaquePtr, &fmt_global));
-            for (ty, val) in &c_arg_vals {
-                call_args.push((ty.clone(), val));
-            }
-
-            if *stderr {
-                // Stage 13.14 + 13.16: eprintln!/eprint! → __landin_eprintf helper.
-                //
-                // The C wrapper defines:
-                //   void __landin_eprintf(const char* fmt, ...) { vfprintf(stderr, fmt, va_list); }
-                //
-                // This is a variadic helper that takes a printf-style format
-                // string and args, routing output to stderr.
-                emitter.emit_call("__landin_eprintf", &call_args, &EmitType::Void);
-            } else {
-                // Stage 13.13 + 13.16: println!/print! → printf(fmt, args...)
-                // printf returns i32 (number of chars printed); we discard it.
-                emitter.emit_call("printf", &call_args, &EmitType::I32);
-            }
+            // Stage 18.12: Refactored — the ~100-line printf codegen logic
+            // is now in `emit_printf_call` (below). This enables reuse by
+            // the future `Call(__landin_println)` codegen path (Phase 2 of
+            // the println! 通解化 migration).
+            // Per §13.4 (refactoring as architecture design): behavior
+            // unchanged, just code organization.
+            emit_printf_call(
+                emitter,
+                mir,
+                msg,
+                args,
+                *newline,
+                *stderr,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
         }
+    }
+}
+
+/// Stage 18.12: Emit a printf-style call for `print!`/`println!`/`eprint!`/`eprintln!`.
+///
+/// Extracted from the `StatementKind::Println` arm to enable reuse by the
+/// future `Call(__landin_println)` codegen path (Phase 2 of the println!
+/// 通解化 migration).
+///
+/// **Parameters**:
+/// - `msg`: Format string template (may contain `{}` placeholders).
+///   If `newline` is true, a trailing `\n` is appended.
+/// - `args`: MIR operands to substitute into `{}` placeholders.
+/// - `newline`: Whether to append `\n` to the format string.
+/// - `stderr`: Whether to route output to stderr (via `__landin_eprintf`)
+///   instead of stdout (via `printf`).
+///
+/// Per §10: `emit_printf_call` follows `<verb>_<noun>_<noun>` pattern.
+/// Per §13.4: pure refactoring — no behavior change.
+#[allow(clippy::too_many_arguments)] // codegen context requires many params
+fn emit_printf_call(
+    emitter: &mut dyn Emitter,
+    mir: &MirBody,
+    msg: &str,
+    args: &[Operand],
+    newline: bool,
+    stderr: bool,
+    interner: &Rodeo,
+    layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+) {
+    let _ = newline; // already encoded in `msg` (trailing "\n")
+
+    // Stage 13.16: Build the C printf format string by replacing
+    // Landin `{}` placeholders with C conversion specifiers based
+    // on each arg's type. Also codegen each arg operand to get its
+    // LLVM value handle.
+    //
+    // Type mapping:
+    //   - Integer (i8/i16/i32/i64/i128/u*/bool) → `%ld` (cast to i64)
+    //   - Float (f32/f64) → `%f` (use double)
+    //   - &str / &[u8] → `%s` (string pointer)
+    //   - Other (struct, etc.) → `%s` with "<?>` placeholder (debug)
+    //
+    // We also collect the LLVM value handles for each arg, with
+    // appropriate casting for the C ABI.
+    let mut c_fmt = String::new();
+    let mut c_arg_vals: Vec<(EmitType, EmitValue)> = Vec::new();
+
+    // Iterate the msg template, replacing `{}` with the next arg's
+    // conversion specifier.
+    let mut chars = msg.chars().peekable();
+    let mut arg_idx = 0usize;
+    while let Some(c) = chars.next() {
+        if c == '{' && chars.peek() == Some(&'}') {
+            // `{}` placeholder — substitute with next arg's conversion
+            chars.next(); // consume '}'
+            if arg_idx < args.len() {
+                let arg = &args[arg_idx];
+                arg_idx += 1;
+                // Detect the arg's type
+                let arg_ty = detect_operand_type(mir, arg, layouts).unwrap_or(EmitType::I32);
+                // Codegen the operand to get its LLVM value
+                let arg_val = codegen_operand(
+                    emitter,
+                    mir,
+                    arg,
+                    interner,
+                    layouts,
+                    mono_layouts,
+                    fn_name_by_def_id,
+                );
+                // Determine the C conversion specifier + cast
+                match &arg_ty {
+                    EmitType::I1
+                    | EmitType::I8
+                    | EmitType::I16
+                    | EmitType::I32
+                    | EmitType::I64
+                    | EmitType::I128 => {
+                        // Integer → %ld (cast to i64 for portability)
+                        // Stage 13.21: Use SIGN-EXTENSION (emit_cast) for signed
+                        // integers so negative numbers print correctly. Before
+                        // Stage 13.21, we used zext (zero-extension), which
+                        // turned -5 (0xFFFFFFFB in i32) into 4294967291
+                        // (0x00000000FFFFFFFB in i64) — a P0 bug for any
+                        // program printing negative values.
+                        //
+                        // Stage 14.12 (GAP-18): Bool (i1) now prints as
+                        // "true"/"false" instead of 1/0. Uses emit_select to
+                        // choose between two string globals based on the bool
+                        // value, then prints with %s. This matches Rust's
+                        // Display impl for bool.
+                        if arg_ty == EmitType::I1 {
+                            // Bool → "true" / "false" via select + %s
+                            let true_str = emitter.emit_string_global(b"true\0");
+                            let false_str = emitter.emit_string_global(b"false\0");
+                            let selected = emitter.emit_select(
+                                &EmitType::OpaquePtr,
+                                &arg_val,
+                                &true_str,
+                                &false_str,
+                            );
+                            c_fmt.push_str("%s");
+                            c_arg_vals.push((EmitType::OpaquePtr, selected));
+                        } else if arg_ty != EmitType::I64 {
+                            // Use emit_cast which does sext for signed integers
+                            let cast_val = emitter.emit_cast(&arg_ty, &EmitType::I64, &arg_val);
+                            c_fmt.push_str("%ld");
+                            c_arg_vals.push((EmitType::I64, cast_val));
+                        } else {
+                            c_fmt.push_str("%ld");
+                            c_arg_vals.push((EmitType::I64, arg_val));
+                        }
+                    }
+                    EmitType::F32 | EmitType::F64 => {
+                        // Float → %f (cast to double via emit_cast)
+                        let cast_val = if arg_ty == EmitType::F32 {
+                            emitter.emit_cast(&EmitType::F32, &EmitType::F64, &arg_val)
+                        } else {
+                            arg_val
+                        };
+                        c_fmt.push_str("%f");
+                        c_arg_vals.push((EmitType::F64, cast_val));
+                    }
+                    EmitType::Ptr(inner) => {
+                        // Stage 14.59: Distinguish &i32 (thin pointer to int)
+                        // from &str (fat pointer struct). For &i32, dereference
+                        // and print as integer. For other pointers, treat as %s.
+                        let inner_ref = inner.as_ref();
+                        if matches!(
+                            inner_ref,
+                            EmitType::I1
+                                | EmitType::I8
+                                | EmitType::I16
+                                | EmitType::I32
+                                | EmitType::I64
+                                | EmitType::I128
+                        ) {
+                            // &i32 → load the value through the pointer, then print as int
+                            let loaded = emitter.emit_load(inner_ref, &arg_val);
+                            if *inner_ref == EmitType::I1 {
+                                let true_str = emitter.emit_string_global(b"true\0");
+                                let false_str = emitter.emit_string_global(b"false\0");
+                                let selected = emitter.emit_select(
+                                    &EmitType::OpaquePtr,
+                                    &loaded,
+                                    &true_str,
+                                    &false_str,
+                                );
+                                c_fmt.push_str("%s");
+                                c_arg_vals.push((EmitType::OpaquePtr, selected));
+                            } else if *inner_ref != EmitType::I64 {
+                                let cast_val =
+                                    emitter.emit_cast(inner_ref, &EmitType::I64, &loaded);
+                                c_fmt.push_str("%ld");
+                                c_arg_vals.push((EmitType::I64, cast_val));
+                            } else {
+                                c_fmt.push_str("%ld");
+                                c_arg_vals.push((EmitType::I64, loaded));
+                            }
+                        } else {
+                            // Other pointer → treat as %s
+                            c_fmt.push_str("%s");
+                            c_arg_vals.push((EmitType::OpaquePtr, arg_val));
+                        }
+                    }
+                    EmitType::OpaquePtr => {
+                        // Pointer → assume &str (fat pointer: {ptr, len})
+                        // For simplicity, treat as %s with the pointer.
+                        // (Full &str support requires extracting the data ptr.)
+                        c_fmt.push_str("%s");
+                        c_arg_vals.push((EmitType::OpaquePtr, arg_val));
+                    }
+                    EmitType::Struct(fields) if fields.len() == 2 => {
+                        // Fat pointer (&str / &[T]): { data_ptr, len }
+                        // Extract field 0 (data_ptr) for %s
+                        let data_ptr = emitter.emit_extractvalue(&arg_ty, &arg_val, 0);
+                        c_fmt.push_str("%s");
+                        c_arg_vals.push((EmitType::OpaquePtr, data_ptr));
+                    }
+                    _ => {
+                        // Unknown type — emit placeholder
+                        c_fmt.push_str("%s");
+                        c_arg_vals
+                            .push((EmitType::OpaquePtr, emitter.emit_string_global(b"(?)\0")));
+                    }
+                }
+            } else {
+                // More `{}` than args — leave the placeholder as-is
+                // (printf will read garbage from the stack, but this
+                // is a user error; we don't crash).
+                c_fmt.push_str("%ld");
+            }
+        } else if c == '%' {
+            // Escape literal `%` for C printf
+            c_fmt.push_str("%%");
+        } else {
+            // Regular character — copy to C format string
+            c_fmt.push(c);
+        }
+    }
+
+    // Null-terminate the C format string
+    c_fmt.push('\0');
+
+    // Emit the C format string as a global
+    let fmt_global = emitter.emit_string_global(c_fmt.as_bytes());
+
+    // Build the args list for emit_call: first arg is the format string,
+    // followed by the substituted arg values.
+    let mut call_args: Vec<(EmitType, &EmitValue)> = Vec::with_capacity(1 + c_arg_vals.len());
+    call_args.push((EmitType::OpaquePtr, &fmt_global));
+    for (ty, val) in &c_arg_vals {
+        call_args.push((ty.clone(), val));
+    }
+
+    if stderr {
+        // Stage 13.14 + 13.16: eprintln!/eprint! → __landin_eprintf helper.
+        //
+        // The C wrapper defines:
+        //   void __landin_eprintf(const char* fmt, ...) { vfprintf(stderr, fmt, va_list); }
+        //
+        // This is a variadic helper that takes a printf-style format
+        // string and args, routing output to stderr.
+        emitter.emit_call("__landin_eprintf", &call_args, &EmitType::Void);
+    } else {
+        // Stage 13.13 + 13.16: println!/print! → printf(fmt, args...)
+        // printf returns i32 (number of chars printed); we discard it.
+        emitter.emit_call("printf", &call_args, &EmitType::I32);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::compile;
+
+    /// Stage 18.12 positive 1: `println!("hi")` still works after refactoring.
+    #[test]
+    fn stage18_12_println_simple_still_works() {
+        let src = "fn main() { println!(\"hi\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
+        assert!(result.errors.macro_errors.is_empty(), "no macro errors");
+    }
+
+    /// Stage 18.12 positive 2: `println!("x={}", x)` with format args still works.
+    #[test]
+    fn stage18_12_println_with_args_still_works() {
+        let src = "fn main() { let x = 42; println!(\"x={}\", x); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
+    }
+
+    /// Stage 18.12 negative 1: `eprintln!("err")` (stderr + newline) still works.
+    #[test]
+    fn stage18_12_eprintln_still_works() {
+        let src = "fn main() { eprintln!(\"err\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
+    }
+
+    /// Stage 18.12 negative 2: `print!("no newline")` (stdout, no newline) still works.
+    #[test]
+    fn stage18_12_print_no_newline_still_works() {
+        let src = "fn main() { print!(\"no newline\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
+    }
+
+    /// Stage 18.12 negative 3: `eprint!("err")` (stderr, no newline) still works.
+    #[test]
+    fn stage18_12_eprint_no_newline_still_works() {
+        let src = "fn main() { eprint!(\"err\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
+    }
+
+    /// Stage 18.12 negative 4: `println!("{}{}", a, b)` with multiple args still works.
+    #[test]
+    fn stage18_12_println_with_multiple_args() {
+        let src = "fn main() { let a = 1; let b = 2; println!(\"{}{}\", a, b); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
+    }
+
+    /// Stage 18.12 negative 5: `println!("{}", 42)` with int arg still works.
+    #[test]
+    fn stage18_12_println_with_int_arg() {
+        let src = "fn main() { println!(\"{}\", 42); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
+    }
+
+    /// Stage 18.12 negative 6: `println!("{}", s)` with string arg still works.
+    #[test]
+    fn stage18_12_println_with_string_arg() {
+        let src = "fn main() { let s = \"hello\"; println!(\"{}\", s); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
     }
 }
