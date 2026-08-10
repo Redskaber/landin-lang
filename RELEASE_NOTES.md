@@ -1,9 +1,37 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.281.0
+**Current version**: v0.282.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.282.0 — Stage 17.09 (Trait Coherence Enhancement — v0.5 P2)
+
+### Overview
+
+Enhances trait coherence checking with DefId-level dedup and adds 8
+comprehensive tests covering all coherence scenarios.
+
+### Implementation
+
+1. **`check_coherence()` enhancement**: DefId-level dedup — prevents
+   false positive when the same impl block is registered twice (e.g.,
+   due to a driver bug). Previously, two entries with the same DefId
+   would be counted as a coherence error. Now, only *distinct* impls
+   are counted.
+
+2. **8 new tests** (§9.4.3 1:3 ratio):
+   - 2 positive: single impl, multiple traits on same type
+   - 6 negative: duplicate impl, multiple duplicates, has_coherence_error,
+     validate_impls, compile trait_errors, different types same trait
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 439 lib + 2537 integration (+8 new) = 2976 unit tests, 0 failures
 
 ---
 ## v0.281.0 — Stage 17.08 (v0.5 P1 Completion Review)

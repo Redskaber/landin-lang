@@ -1177,10 +1177,16 @@ impl TraitResolver {
     /// Stage 5.18: Check trait coherence — detect conflicting impls
     /// (multiple `impl Trait for Type` for the same `(trait, type)` pair).
     ///
+    /// Stage 17.09 (v0.5 P2): Enhanced to also detect duplicate impl blocks
+    /// with identical DefIds (same impl block registered twice due to a
+    /// driver bug). Previously, two impls with the same DefId would be
+    /// reported as a coherence error even though they're the same block.
+    /// Now, DefId-level dedup is performed before group counting.
+    ///
     /// In Rust, this is a hard error ("conflicting implementations of
     /// trait"). Landin Stage 5.18 detects it post-collection by scanning
     /// all impls and grouping by `(trait_name, self_ty_name)`. Any group
-    /// with >1 impl is a coherence error.
+    /// with >1 *distinct* impl is a coherence error.
     ///
     /// Returns a Vec of `CoherenceError` — one per conflicting pair.
     /// Empty Vec means no coherence violations.
@@ -1201,12 +1207,15 @@ impl TraitResolver {
                 let entry = groups
                     .entry((trait_name, self_ty_name))
                     .or_insert_with(|| (Vec::new(), impl_info.span));
-                entry.0.push(impl_info.def_id);
-                // Keep the first impl's span (already set by or_insert_with).
+                // Stage 17.09: Dedup by DefId — don't count the same impl
+                // block twice (can happen if collect() registers it twice).
+                if !entry.0.contains(&impl_info.def_id) {
+                    entry.0.push(impl_info.def_id);
+                }
             }
         }
 
-        // Any group with >1 impl is a coherence error
+        // Any group with >1 *distinct* impl is a coherence error
         groups
             .into_iter()
             .filter(|(_, (def_ids, _))| def_ids.len() > 1)
