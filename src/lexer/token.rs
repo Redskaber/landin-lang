@@ -144,6 +144,8 @@ pub enum TokenKind {
     Dot,       // .
     /// `#` for attributes
     Hash,
+    /// Stage 18.02: `$` — used in macro_rules! patterns (`$name:fragment`).
+    Dollar,
     /// `@` for pattern binding (`ident @ pat`)
     At,
 
@@ -337,6 +339,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Colon => write!(f, "`:`"),
             TokenKind::Dot => write!(f, "`.`"),
             TokenKind::Hash => write!(f, "`#`"),
+            TokenKind::Dollar => write!(f, "`$`"),
             TokenKind::At => write!(f, "`@`"),
             TokenKind::Underscore => write!(f, "`_`"),
             _ => write!(f, "token"),

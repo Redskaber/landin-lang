@@ -25,6 +25,8 @@ pub mod parser;
 mod expr;
 mod generics;
 mod items;
+// Stage 18.03: macro_rules! expansion engine.
+pub mod macro_expand;
 mod pat;
 mod path;
 mod stmt;

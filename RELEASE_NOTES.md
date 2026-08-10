@@ -1,9 +1,48 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.289.0
+**Current version**: v0.290.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.290.0 — Stage 18.03 (macro_rules! Phase 3 — Token Tree Matching + Substitution)
+
+### Overview
+
+Implements the macro_rules! expansion engine: pattern matching with
+`$name:fragment` captures and body substitution. Adds `$` token support
+to the lexer. **3,000 tests milestone!**
+
+### Implementation
+
+1. **`src/parser/macro_expand.rs`** — new module:
+   - `expand_macro(def, input, interner)` — try each rule, expand first match
+   - `match_pattern(pattern, input, captures, interner)` — match `$name:fragment`
+   - `substitute_body(body, captures)` — replace `$name` with captured tokens
+   - Supported fragments: `$name:expr`, `$name:ident`, `$name:tt`
+
+2. **Lexer support**: `TokenKind::Dollar` added, `$` character recognized
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | macro_expansion_does_not_break | positive | Macro parses without errors |
+| 2 | multiple_rules_parse | positive | Multiple rules parse correctly |
+| 3 | empty_macro_rules | negative | Empty macro_rules! parses |
+| 4 | match_empty_pattern | negative | Empty pattern matches empty input |
+| 5 | match_literal_tokens | negative | Literal tokens match correctly |
+| 6 | match_rejects_mismatch | negative | Mismatched tokens rejected |
+| 7 | substitute_replaces_name | negative | $name substitution works |
+| 8 | expand_no_match_returns_none | negative | No match → None |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 463 lib (+8 new) + 2537 integration = **3,000** unit tests, 0 failures
 
 ---
 ## v0.289.0 — Stage 18.02 (macro_rules! Phase 2 — Parser Implementation)

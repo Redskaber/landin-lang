@@ -313,6 +313,14 @@ impl<'a> Lexer<'a> {
                     span: self.span_from(start),
                 }
             }
+            // Stage 18.02: `$` for macro_rules! patterns.
+            b'$' => {
+                self.bump();
+                Token {
+                    kind: TokenKind::Dollar,
+                    span: self.span_from(start),
+                }
+            }
             b'?' => {
                 self.bump();
                 Token {
