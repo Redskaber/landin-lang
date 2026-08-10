@@ -638,6 +638,14 @@ pub fn compile(src: &str) -> CompileResult {
         return CompileResult::empty(interner, errors);
     }
 
+    // === Stage 18.04: Macro expansion ===
+    // Expand `macro_rules!`-defined macro calls in the token stream
+    // before parsing. Built-in macros (println!) are left for the parser
+    // to handle via its existing special cases.
+    // Per §11: this is a parser-stage sub-module; driver only sees the
+    // free-function entry `parser::macro_expand::expand_macros`.
+    let tokens = crate::parser::macro_expand::expand_macros(tokens, &interner);
+
     // === Stage 0: Parse ===
     let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();

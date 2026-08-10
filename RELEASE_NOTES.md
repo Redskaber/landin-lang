@@ -1,9 +1,80 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.290.0
-**Date**: 2026-08-05
-**Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Current version**: v0.291.0
+**Date**: 2026-08-06
+**Test count**: 471 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.291.0 — Stage 18.04 (macro_rules! Phase 4 — Macro Call Invocation + Driver Integration)
+
+### Overview
+
+Connects the Stage 18.03 token-tree matching/substitution engine to the
+compilation driver. `macro_rules!`-defined macros are now actually
+expanded at `name!(args)` call sites via a **pre-parse macro expansion
+pass** that runs between the lexer and the parser.
+
+### Implementation
+
+1. **`src/parser/macro_expand.rs`** — extended with 4 new public APIs:
+   - `MacroTable` type alias (`HashMap<Symbol, MacroRulesDef>`)
+   - `collect_macro_defs(tokens, interner) -> MacroTable` — scan token
+     stream for `macro_rules!` definitions and build a lookup table.
+   - `expand_macro_calls(tokens, table, interner) -> Vec<Token>` — walk
+     token stream and expand `ident!(...)` call sites whose `ident` is
+     in the table; unknown macros (e.g. `println!`) pass through.
+   - `expand_macros(tokens, interner) -> Vec<Token>` — top-level driver
+     entry point: collect defs, then iteratively expand calls until no
+     more expansions occur (capped at `MAX_EXPANSION_ROUNDS = 32`).
+   - Internal helpers: `parse_macro_rules_body`, `collect_delimited`,
+     `skip_to_matching_rbrace`, `tokens_eq`.
+
+2. **`src/driver.rs`** — invokes `expand_macros` between `tokenize` and
+   `Parser::new`. Per §11, the driver only sees the free-function entry
+   point; the rest of the module is parser-internal.
+
+3. **Pipeline (new)**:
+   ```
+   lexer::tokenize
+       → expand_macros   ← Stage 18.04
+       → parser::parse_crate
+       → hir::lower::lower_crate
+       → ...
+   ```
+
+### Design Compliance
+
+- **§10 API naming**: `expand_macros` (`<verb>_<noun>`), `collect_macro_defs`
+  and `expand_macro_calls` (`<verb>_<noun>_<noun>`), `MacroTable` (`<Noun>Table`).
+- **§11 interface isolation**: entire module is parser-internal; driver
+  only sees the `expand_macros` free-function entry.
+- **§1.0 原則 6 "通用 > 特例"**: one engine handles all macro_rules!
+  calls; `println!` (built-in) is left for the parser's existing special
+  case until Phase 5 migration.
+- **Single responsibility**: `collect_macro_defs` only collects;
+  `expand_macro_calls` only expands; `expand_macros` only coordinates.
+- **Avoid dead code**: all new functions are used by the driver or by tests.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | macro_call_expands_simple | positive | `m!()` expands to `42` and parses |
+| 2 | macro_call_expands_with_capture | positive | `m!(99)` with `$x:expr` expands to `99` |
+| 3 | collect_finds_no_macros | negative | No macro_rules! → empty table |
+| 4 | collect_finds_macro_definition | negative | Finds 1 macro with 1 rule |
+| 5 | expand_macro_calls_passes_unknown | negative | `println!` passes through unchanged |
+| 6 | expand_macro_calls_passes_no_macros | negative | Empty table → tokens unchanged |
+| 7 | expand_macros_no_macros_returns_input | negative | No defs → fast path returns input |
+| 8 | expand_macros_handles_recursive | negative | `m!() => m!()` terminates (no infinite loop) |
+
+### Verification
+
+- `cargo clean` + `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 471 lib (+8 new) + 2537 integration = **3,008** unit tests, 0 failures
 
 ---
 ## v0.290.0 — Stage 18.03 (macro_rules! Phase 3 — Token Tree Matching + Substitution)

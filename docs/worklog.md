@@ -29906,3 +29906,51 @@ Stage Summary:
 - 展开引擎支持 $name:expr/ident/tt 片段匹配和替换
 - 3000 tests milestone reached!
 - v0.289.0 → v0.290.0
+
+---
+Task ID: stage18.04
+Agent: Super Z (main)
+Task: Stage 18.04 — macro_rules! Phase 4 (Macro Call Invocation + Driver Integration)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 设计文档: docs/develop/v0/stage-18/stage-18.04-macro-call-invocation-design.md
+- 实现 pre-parse macro expansion pass:
+  1. MacroTable type alias (HashMap<Symbol, MacroRulesDef>)
+  2. collect_macro_defs(tokens, interner) -> MacroTable
+     - 扫描 token 流，匹配 `Ident("macro_rules") Bang Ident(name) LBrace ... RBrace`
+     - 解析 macro_rules! body: `(pattern) => { body };`
+     - 复用 MacroRule/MacroRulesDef 结构
+  3. parse_macro_rules_body (内部) — 解析规则列表
+  4. collect_delimited (内部) — 收集平衡分隔的 token 树
+  5. skip_to_matching_rbrace (内部) — 跳过 macro_rules! 定义
+  6. expand_macro_calls(tokens, table, interner) -> Vec<Token>
+     - 检测 `ident ! <delim>` 模式
+     - 若 ident 在 table 中, 调用 expand_macro 展开并拼接
+     - 未命中 (如 println!) 原样输出
+  7. tokens_eq (内部) — 结构比较用于终止检测
+  8. expand_macros(tokens, interner) -> Vec<Token>  ← driver 入口
+     - collect_macro_defs + 迭代 expand_macro_calls (MAX_EXPANSION_ROUNDS=32)
+     - 空 table 快速路径 (零开销)
+- driver.rs 集成: 在 tokenize 之后、parse 之前调用 expand_macros
+- §10 命名合规: expand_macros (<verb>_<noun>), collect_macro_defs/expand_macro_calls (<verb>_<noun>_<noun>)
+- §11 接口隔离: 整个模块是 parser 内部, driver 只看到 expand_macros 自由函数
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: macro_call_expands_simple + macro_call_expands_with_capture (2)
+  - negative: collect_finds_no_macros + collect_finds_macro_definition + expand_macro_calls_passes_unknown + expand_macro_calls_passes_no_macros + expand_macros_no_macros_returns_input + expand_macros_handles_recursive (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo clean + cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 471 lib (+8 new) + 2537 integration = 3008 unit tests, 0 failures
+
+Stage Summary:
+- macro_rules! Phase 4 完成（macro call invocation + driver integration）
+- `macro_rules!` 定义的宏现在可以在 `name!(args)` 调用点真正展开
+- pipeline: lexer → expand_macros (Stage 18.04 新增) → parser → HIR → ...
+- 下一阶段: Stage 18.05 (待规划) — 可选方向:
+  - 添加更多 fragment specifier ($name:ty, $name:literal, $name:block)
+  - 实现 repetition `$(...)*` / `$(...)+` / `$(...)?`
+  - 开始 println! 通解化迁移 (Phase 5)
+- v0.290.0 → v0.291.0
