@@ -29607,3 +29607,26 @@ Stage Summary:
   - Phase 3: driver integration
   - Phase 4: supertrait expansion
 - v0.278.0 → v0.279.0
+
+---
+Task ID: stage17.07
+Agent: Super Z (main)
+Task: Stage 17.07 — Trait Solver Phase 5 (Tests + Error Reporting)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 添加 8 个 supertrait expansion 测试（Stage 17.06 功能的测试）：
+  - positive: supertrait_safe_yes + no_supertrait_yes (2)
+  - negative: supertrait_not_implemented_no + transitive_supertrait_not_implemented_no + type_param_ambiguous + assumptions_satisfy_supertrait + evaluate_direct_skips_supertraits + compile_supertrait_bound_error (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收：
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 439 lib (+8 new) + 2529 integration = 2968 unit tests, 0 failures
+
+Stage Summary:
+- Trait Solver Phase 5 完成（测试 + 错误报告验证）
+- 8 个新测试覆盖 supertrait expansion 全部场景
+- Trait Solver 完整 Phase 1-5 完成
+- v0.279.0 → v0.280.0

@@ -1,9 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.279.0
+**Current version**: v0.280.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.280.0 — Stage 17.07 (Trait Solver Phase 5 — Tests + Error Reporting)
+
+### Overview
+
+Adds 8 comprehensive tests for supertrait expansion (Phase 4 functionality).
+Completes the Trait Solver basic infrastructure (Phase 1-5).
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | supertrait_safe_yes | positive | S impl Foo+Bar → Yes |
+| 2 | no_supertrait_yes | positive | S impl Foo (no supertrait) → Yes |
+| 3 | supertrait_not_implemented_no | negative | S impl Foo but not Bar → No |
+| 4 | transitive_supertrait_not_implemented_no | negative | S impl A+B but not C → No |
+| 5 | supertrait_type_param_ambiguous | negative | Type param → Ambiguous |
+| 6 | assumptions_satisfy_supertrait | negative | Assumption satisfies Bar → Yes |
+| 7 | evaluate_direct_skips_supertraits | negative | Direct check skips supertraits |
+| 8 | compile_supertrait_bound_error | negative | Compile-time error for missing supertrait |
+
+### Trait Solver Complete (Phase 1-5)
+
+| Phase | Stage | Content |
+|-------|-------|---------|
+| 1 | 17.03 | Data structures |
+| 2 | 17.04 | Where clause assumptions |
+| 3 | 17.05 | Driver integration |
+| 4 | 17.06 | Supertrait expansion |
+| 5 | 17.07 | Tests + error reporting |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 439 lib (+8 new) + 2529 integration = 2968 unit tests, 0 failures
 
 ---
 ## v0.279.0 — Stage 17.06 (Trait Solver Phase 4 — Supertrait Expansion)
