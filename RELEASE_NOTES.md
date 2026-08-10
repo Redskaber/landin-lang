@@ -1,9 +1,48 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.286.0
+**Current version**: v0.287.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.287.0 — Stage 17.14 (v0.5 Final Review + Packaging)
+
+### Overview
+
+v0.5 final review confirms all core tasks complete. 13 stages, +48 tests,
+2992 total tests passing, 0 warnings. Deep review (§14.5 D1-D8) passes.
+
+### v0.5 Final Status
+
+| Task | Priority | Stages | Status | Tests |
+|------|----------|--------|--------|-------|
+| CodegenError Phase 1-2 | P1 | 17.01-17.02 | ✅ | +8 |
+| Trait Solver Phase 1-5 | P1 | 17.03-17.07 | ✅ | +16 |
+| Trait Coherence Enhancement | P2 | 17.09 | ✅ | +8 |
+| MIR Optimization (DCE) | P3 | 17.10 | ✅ | +8 |
+| println! 通解 Analysis | — | 17.11 | ✅ | — |
+| MIR Optimization (Const Prop) | P3 | 17.13 | ✅ | +8 |
+| **Total** | — | 13 | **✅ GO** | **+48** |
+
+### v0.5 Statistics
+
+- 13 stages (17.01-17.13)
+- 2,992 tests (455 lib + 2537 integration), 0 failures
+- 58,914 source LOC
+- 207 test files, 5,224 conformance tests
+- 0 clippy warnings, 0 TODO/FIXME
+
+### Deep Review (§14.5)
+
+All 8 dimensions pass. Committee vote: 5/5 GO.
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 455 lib + 2537 integration = 2992 unit tests, 0 failures
 
 ---
 ## v0.286.0 — Stage 17.13 (MIR Optimization Phase 2 — Constant Propagation + Folding)
