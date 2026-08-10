@@ -1,9 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.280.0
+**Current version**: v0.281.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.281.0 — Stage 17.08 (v0.5 P1 Completion Review)
+
+### Overview
+
+v0.5 P1 tasks complete. Deep review (§14.5 D1-D8) confirms CodegenError
+(Stage 17.01-17.02) and Trait Solver (Stage 17.03-17.07) are fully
+implemented. 7 stages, +24 tests, 2968 total tests passing.
+
+### v0.5 P1 Completion
+
+| Task | Stages | Status |
+|------|--------|--------|
+| CodegenError Phase 1-2 | 17.01-17.02 | ✅ |
+| Trait Solver Phase 1-5 | 17.03-17.07 | ✅ |
+| **Total** | 7 | **✅ GO** |
+
+### Deep Review (§14.5)
+
+All 8 dimensions pass:
+- D1 Architecture: solver.rs + error.rs independent modules
+- D2 Tech Debt: type param where clause deferred to v0.6+
+- D3 Tests: 2968 tests, 1:3+ ratio
+- D4 Next Stage Ready: P2 can begin
+- D5 Design: §13.5 design-review loop validated
+- D6 Performance: O(1) + O(m=1-3) supertrait scan
+- D7 Docs: 7 stage + 7 design docs
+- D8 Pipeline: unified solver.evaluate() API
+
+**Committee Vote**: 5/5 GO
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 439 lib + 2529 integration = 2968 unit tests, 0 failures
 
 ---
 ## v0.280.0 — Stage 17.07 (Trait Solver Phase 5 — Tests + Error Reporting)
