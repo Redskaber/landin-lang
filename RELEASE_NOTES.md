@@ -1,9 +1,46 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.277.0
+**Current version**: v0.278.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.278.0 — Stage 17.05 (Trait Solver Phase 3 — Driver Integration)
+
+### Overview
+
+Integrates the trait solver into the where clause checking pipeline.
+`check_where_clause_for_generics` now uses `TraitSolverCtxt::evaluate()`
+instead of directly calling `resolver.implements_by_def_ids`. This
+completes the Trait Solver basic infrastructure (Phase 1-3).
+
+### Implementation
+
+1. **`where_clause.rs`** — `check_where_clause_for_generics` now:
+   - Creates `TraitSolverCtxt::new(resolver, interner)`
+   - For concrete ADT types with where clause bounds, builds
+     `TraitPredicate` + `Goal::Implies`
+   - Calls `solver.evaluate(&goal)` → checks `GoalEvaluationResult::No`
+   - Reports error if the type does not implement the trait
+
+2. **Variable rename** — `pred` → `hir_pred` (HIR where predicate) +
+   `solver_pred` (solver's TraitPredicate) to avoid name collision.
+
+### Trait Solver Infrastructure Complete
+
+| Phase | Stage | Content |
+|-------|-------|---------|
+| 1 | 17.03 | Data structures (TraitPredicate, Goal, GoalEvaluationResult, TraitSolverCtxt) |
+| 2 | 17.04 | Where clause assumptions (with_assumptions) |
+| 3 | 17.05 | Driver integration (where_clause.rs uses solver) |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 431 lib + 2529 integration = 2960 unit tests, 0 failures
 
 ---
 ## v0.277.0 — Stage 17.04 (Trait Solver Phase 2 — Where Clause Assumptions)

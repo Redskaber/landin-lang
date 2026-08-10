@@ -29549,3 +29549,31 @@ Stage Summary:
 - with_assumptions() 接受 (type_def_id, trait_def_id) 对作为假设
 - evaluate() 对 Adt 类型先查 assumptions，再查 resolver
 - v0.276.0 → v0.277.0
+
+---
+Task ID: stage17.05
+Agent: Super Z (main)
+Task: Stage 17.05 — Trait Solver Phase 3 (Driver Integration)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 实现 Phase 3: driver integration
+  1. where_clause.rs 的 check_where_clause_for_generics 中创建 TraitSolverCtxt
+  2. 对具体类型 (Adt) 的 where clause bound，构建 TraitPredicate + Goal
+  3. 调用 solver.evaluate() 替代直接 resolver.implements_by_def_ids
+  4. 修复变量名冲突（pred → hir_pred，solver_pred）
+  5. Phase 2 的所有测试回归通过（solver 内部仍用 resolver.implements_by_def_ids）
+- 验收：
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 431 lib + 2529 integration = 2960 unit tests, 0 failures
+
+Stage Summary:
+- Trait Solver Phase 3 完成（driver integration）
+- where_clause 检查现在通过 TraitSolverCtxt.evaluate() 而非直接 resolver 调用
+- Trait Solver 基础架构完成（Phase 1-3）:
+  - Phase 1: 数据结构 (TraitPredicate, Goal, GoalEvaluationResult, TraitSolverCtxt)
+  - Phase 2: where clause assumptions 支持 (with_assumptions)
+  - Phase 3: driver 集成 (where_clause.rs 使用 solver)
+- v0.277.0 → v0.278.0

@@ -113,6 +113,8 @@ pub fn check_where_clauses(
 /// Stage 16.73 (Phase 1): Verify trait bounds reference existing traits.
 /// Stage 16.79 (Phase 2): For concrete bounded types (struct/enum), verify
 /// the type actually implements the trait via `resolver.implements_by_def_ids`.
+/// Stage 17.05 (Phase 3): Use TraitSolverCtxt for evaluation, supporting
+/// where clause assumptions from impl blocks.
 fn check_where_clause_for_generics(
     generics: &crate::hir::HirGenerics,
     item_name: &str,
@@ -120,36 +122,44 @@ fn check_where_clause_for_generics(
     interner: &Rodeo,
     errors: &mut Vec<crate::typeck::TypeError>,
 ) {
-    for pred in &generics.where_clause {
-        // Stage 16.79: Resolve the bounded type's DefId (if concrete).
-        // Returns None for type params (T), Self, primitives — those are
-        // declarative constraints, not checkable assertions.
-        let bounded_type_def_id = resolve_bounded_type_def_id(&pred.bounded_ty);
+    // Stage 17.05: Build TraitSolverCtxt for this item.
+    // Phase 3: No assumptions yet (assumptions come from impl blocks, not
+    // from the generic item itself). The solver is used for concrete type
+    // verification, which is the same as Phase 2's resolver.implements_by_def_ids
+    // but through the solver's unified evaluate() API.
+    let solver = crate::typeck::solver::TraitSolverCtxt::new(resolver, interner);
 
-        // Each predicate is `Type: Bound1 + Bound2 + ...`
-        // We check that each bound is a valid trait reference.
-        for bound in &pred.bounds {
+    for hir_pred in &generics.where_clause {
+        // Stage 16.79: Resolve the bounded type's DefId (if concrete).
+        let bounded_type_def_id = resolve_bounded_type_def_id(&hir_pred.bounded_ty);
+
+        for bound in &hir_pred.bounds {
             if let HirTypeBound::Trait(tc) = bound {
                 match tc.path.res {
                     Res::Def(trait_def_id, DefKind::Trait) => {
-                        // Phase 1: The trait is resolved — the bound is syntactically valid.
-
-                        // Phase 2: If bounded type is concrete, verify implementation.
+                        // Phase 3: Use TraitSolverCtxt for evaluation.
                         if let Some(type_def_id) = bounded_type_def_id {
-                            if !resolver.implements_by_def_ids(trait_def_id, type_def_id) {
-                                let type_name = format_hir_ty_name(&pred.bounded_ty, interner);
+                            let ty = crate::mir::ty::Ty::new(
+                                crate::mir::ty::TyKind::Adt(type_def_id, Vec::new().into()),
+                                crate::session::Span::DUMMY,
+                            );
+                            let solver_pred =
+                                crate::typeck::solver::TraitPredicate::new(ty, trait_def_id);
+                            let goal = crate::typeck::solver::Goal::Implies(solver_pred);
+                            let result = solver.evaluate(&goal);
+
+                            if result == crate::typeck::solver::GoalEvaluationResult::No {
+                                let type_name = format_hir_ty_name(&hir_pred.bounded_ty, interner);
                                 let trait_name = format_trait_name(tc, interner);
                                 errors.push(crate::typeck::TypeError::new(
                                     format!(
                                         "where clause error: type `{}` does not implement trait `{}` in {}",
                                         type_name, trait_name, item_name
                                     ),
-                                    pred.span,
+                                    hir_pred.span,
                                 ));
                             }
                         }
-                        // If bounded_type_def_id is None (type param T, Self, etc.),
-                        // skip — declarative constraint, not checkable.
                     }
                     Res::Def(_, _) => {
                         // The bound resolves to a non-trait definition (e.g., struct).
@@ -160,7 +170,7 @@ fn check_where_clause_for_generics(
                                 "where clause error: `{}` is not a trait in {}",
                                 trait_name, item_name
                             ),
-                            pred.span,
+                            hir_pred.span,
                         ));
                     }
                     Res::Unknown | Res::Err => {
@@ -171,7 +181,7 @@ fn check_where_clause_for_generics(
                                 "where clause error: trait `{}` not found in {}",
                                 trait_name, item_name
                             ),
-                            pred.span,
+                            hir_pred.span,
                         ));
                     }
                     _ => {}
