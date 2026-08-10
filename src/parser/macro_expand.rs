@@ -82,10 +82,17 @@ fn match_pattern(
                     let name = *name_sym;
                     if let TokenKind::Ident(frag_sym) = &pattern[pi + 3].kind {
                         let frag = interner.resolve(frag_sym);
+                        // Stage 18.05: extended fragment dispatch — one match
+                        // handles all 7 supported fragments (expr/ident/tt
+                        // from Stage 18.03 + ty/literal/block/path new).
                         let captured = match frag {
                             "expr" => capture_expr(input, &mut ii),
                             "ident" => capture_ident(input, &mut ii),
                             "tt" => capture_tt(input, &mut ii),
+                            "ty" => capture_ty(input, &mut ii),
+                            "literal" => capture_literal(input, &mut ii),
+                            "block" => capture_block(input, &mut ii),
+                            "path" => capture_path(input, &mut ii),
                             _ => return false,
                         };
                         if captured.is_empty() {
@@ -159,19 +166,51 @@ fn capture_tt(input: &[Token], idx: &mut usize) -> Vec<Token> {
         return Vec::new();
     }
 
-    let open = match &input[*idx].kind {
-        TokenKind::LParen => TokenKind::RParen,
-        TokenKind::LBracket => TokenKind::RBracket,
-        TokenKind::LBrace => TokenKind::RBrace,
+    match &input[*idx].kind {
+        TokenKind::LParen | TokenKind::LBracket | TokenKind::LBrace => {
+            // Balanced group — delegate to the existing balance-tracking loop.
+            let mut tokens = Vec::new();
+            let mut depth = 0i32;
+
+            while *idx < input.len() {
+                match &input[*idx].kind {
+                    TokenKind::LParen | TokenKind::LBracket | TokenKind::LBrace => {
+                        depth += 1;
+                        tokens.push(input[*idx].clone());
+                    }
+                    TokenKind::RParen | TokenKind::RBracket | TokenKind::RBrace => {
+                        depth -= 1;
+                        tokens.push(input[*idx].clone());
+                        if depth == 0 {
+                            *idx += 1;
+                            break;
+                        }
+                    }
+                    _ => tokens.push(input[*idx].clone()),
+                }
+                *idx += 1;
+            }
+            tokens
+        }
         _ => {
             // Single token
             let token = input[*idx].clone();
             *idx += 1;
-            return vec![token];
+            vec![token]
         }
-    };
+    }
+}
 
-    // Balanced group
+// =============================================================================
+// Stage 18.05: Additional Fragment Specifiers (ty/literal/block/path)
+// =============================================================================
+
+/// Stage 18.05: Capture a type: tokens until top-level `,`, `;`, `)`,
+/// `}`, or `=>`. Tracks nested `<...>` and `(...)` so generic types
+/// like `Vec<HashMap<K, V>>` are captured as a single type.
+///
+/// Per §10: internal helper, named `capture_<fragment>`.
+fn capture_ty(input: &[Token], idx: &mut usize) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut depth = 0i32;
 
@@ -182,6 +221,79 @@ fn capture_tt(input: &[Token], idx: &mut usize) -> Vec<Token> {
                 tokens.push(input[*idx].clone());
             }
             TokenKind::RParen | TokenKind::RBracket | TokenKind::RBrace => {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+                tokens.push(input[*idx].clone());
+            }
+            TokenKind::Lt => {
+                depth += 1;
+                tokens.push(input[*idx].clone());
+            }
+            TokenKind::Gt => {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+                tokens.push(input[*idx].clone());
+            }
+            TokenKind::Comma | TokenKind::Semicolon | TokenKind::FatArrow if depth == 0 => break,
+            _ => tokens.push(input[*idx].clone()),
+        }
+        *idx += 1;
+    }
+
+    tokens
+}
+
+/// Stage 18.05: Capture a literal: a single `IntLit` / `FloatLit` /
+/// `StrLit` / `CharLit` / `KwTrue` / `KwFalse` token. Returns empty
+/// if the current token is not a literal.
+///
+/// Per §10: internal helper, named `capture_<fragment>`.
+fn capture_literal(input: &[Token], idx: &mut usize) -> Vec<Token> {
+    if *idx >= input.len() {
+        return Vec::new();
+    }
+    match &input[*idx].kind {
+        TokenKind::IntLit(_, _)
+        | TokenKind::FloatLit(_, _)
+        | TokenKind::StrLit(_)
+        | TokenKind::CharLit(_)
+        | TokenKind::KwTrue
+        | TokenKind::KwFalse => {
+            let token = input[*idx].clone();
+            *idx += 1;
+            vec![token]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Stage 18.05: Capture a block: a balanced `{ ... }` (delimiters included).
+/// Returns empty if the current token is not `{` or if the block is
+/// unbalanced.
+///
+/// Per §10: internal helper, named `capture_<fragment>`.
+fn capture_block(input: &[Token], idx: &mut usize) -> Vec<Token> {
+    if *idx >= input.len() {
+        return Vec::new();
+    }
+    if !matches!(&input[*idx].kind, TokenKind::LBrace) {
+        return Vec::new();
+    }
+
+    let mut tokens = Vec::new();
+    let mut depth = 0i32;
+
+    while *idx < input.len() {
+        match &input[*idx].kind {
+            TokenKind::LBrace => {
+                depth += 1;
+                tokens.push(input[*idx].clone());
+            }
+            TokenKind::RBrace => {
                 depth -= 1;
                 tokens.push(input[*idx].clone());
                 if depth == 0 {
@@ -189,12 +301,65 @@ fn capture_tt(input: &[Token], idx: &mut usize) -> Vec<Token> {
                     break;
                 }
             }
+            TokenKind::Eof => return Vec::new(),
             _ => tokens.push(input[*idx].clone()),
         }
         *idx += 1;
     }
 
-    let _ = open;
+    tokens
+}
+
+/// Stage 18.05: Capture a path: `a`, `a::b`, `a::b::c`, etc.
+/// First segment must be `Ident` / `RawIdent` / `self` / `Self` /
+/// `crate` / `super`. Subsequent segments must be `::` followed by
+/// an identifier-like token.
+///
+/// Per §10: internal helper, named `capture_<fragment>`.
+fn capture_path(input: &[Token], idx: &mut usize) -> Vec<Token> {
+    if *idx >= input.len() {
+        return Vec::new();
+    }
+
+    // First segment must be an identifier or path keyword.
+    let first_ok = matches!(
+        &input[*idx].kind,
+        TokenKind::Ident(_)
+            | TokenKind::RawIdent(_)
+            | TokenKind::KwSelf_
+            | TokenKind::KwSelfType
+            | TokenKind::KwCrate
+            | TokenKind::KwSuper
+    );
+    if !first_ok {
+        return Vec::new();
+    }
+
+    let mut tokens = vec![input[*idx].clone()];
+    *idx += 1;
+
+    // Optional `:: Ident` repetitions.
+    while *idx + 1 < input.len() {
+        if matches!(&input[*idx].kind, TokenKind::PathSep)
+            && matches!(
+                &input[*idx + 1].kind,
+                TokenKind::Ident(_)
+                    | TokenKind::RawIdent(_)
+                    | TokenKind::KwSelf_
+                    | TokenKind::KwSelfType
+                    | TokenKind::KwCrate
+                    | TokenKind::KwSuper
+            )
+        {
+            tokens.push(input[*idx].clone()); // ::
+            *idx += 1;
+            tokens.push(input[*idx].clone()); // ident
+            *idx += 1;
+        } else {
+            break;
+        }
+    }
+
     tokens
 }
 
@@ -926,5 +1091,175 @@ mod tests {
         // should not hang. We just check it returns.
         let _ = result;
         // If we get here without timeout, the test passes.
+    }
+
+    // =====================================================================
+    // Stage 18.05 tests — Additional Fragment Specifiers
+    // =====================================================================
+
+    /// Stage 18.05 positive 1: A macro using the `:ty` fragment parses
+    /// and expands correctly.
+    #[test]
+    fn stage18_05_macro_with_ty_fragment() {
+        let src = "macro_rules! m { ($t:ty) => { let x: $t; } } fn main() { m!(i32) }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(
+            result.errors.parse.is_empty(),
+            "macro with $t:ty should expand and parse — errors: {:?}",
+            result.errors.parse
+        );
+    }
+
+    /// Stage 18.05 positive 2: A macro using the `:literal` fragment
+    /// parses and expands correctly.
+    #[test]
+    fn stage18_05_macro_with_literal_fragment() {
+        let src = "macro_rules! m { ($l:literal) => { $l } } fn main() { m!(42) }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(
+            result.errors.parse.is_empty(),
+            "macro with $l:literal should expand and parse — errors: {:?}",
+            result.errors.parse
+        );
+    }
+
+    /// Stage 18.05 negative 1: capture_ty collects a single type token
+    /// like `i32`.
+    #[test]
+    fn stage18_05_capture_ty_simple() {
+        let mut interner = Rodeo::new();
+        let i32_sym = interner.get_or_intern("i32");
+        let tokens = vec![Token {
+            kind: TokenKind::Ident(i32_sym),
+            span: crate::session::Span::DUMMY,
+        }];
+        let mut idx = 0;
+        let captured = capture_ty(&tokens, &mut idx);
+        assert_eq!(captured.len(), 1, "should capture 1 token for i32");
+        assert_eq!(idx, 1, "should advance idx by 1");
+    }
+
+    /// Stage 18.05 negative 2: capture_literal collects an int literal.
+    #[test]
+    fn stage18_05_capture_literal_int() {
+        let tokens = vec![Token {
+            kind: TokenKind::IntLit(42, None),
+            span: crate::session::Span::DUMMY,
+        }];
+        let mut idx = 0;
+        let captured = capture_literal(&tokens, &mut idx);
+        assert_eq!(captured.len(), 1, "should capture 1 literal token");
+        assert!(matches!(captured[0].kind, TokenKind::IntLit(42, _)));
+        assert_eq!(idx, 1, "should advance idx by 1");
+    }
+
+    /// Stage 18.05 negative 3: capture_block collects `{ 1; 2 }` as
+    /// 5 tokens (including the delimiters).
+    #[test]
+    fn stage18_05_capture_block_balanced() {
+        let tokens = vec![
+            Token {
+                kind: TokenKind::LBrace,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::IntLit(1, None),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Semicolon,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::IntLit(2, None),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::RBrace,
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let mut idx = 0;
+        let captured = capture_block(&tokens, &mut idx);
+        assert_eq!(
+            captured.len(),
+            5,
+            "should capture all 5 tokens including delims"
+        );
+        assert_eq!(idx, 5, "should advance idx past closing brace");
+    }
+
+    /// Stage 18.05 negative 4: capture_path collects `a::b::c` as 5
+    /// tokens (3 idents + 2 path separators).
+    #[test]
+    fn stage18_05_capture_path_segments() {
+        let mut interner = Rodeo::new();
+        let a = interner.get_or_intern("a");
+        let b = interner.get_or_intern("b");
+        let c = interner.get_or_intern("c");
+        let tokens = vec![
+            Token {
+                kind: TokenKind::Ident(a),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::PathSep,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(b),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::PathSep,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(c),
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let mut idx = 0;
+        let captured = capture_path(&tokens, &mut idx);
+        assert_eq!(captured.len(), 5, "should capture all 5 tokens");
+        assert_eq!(idx, 5, "should advance idx past last segment");
+    }
+
+    /// Stage 18.05 negative 5: capture_literal returns empty when the
+    /// current token is not a literal (e.g. an identifier).
+    #[test]
+    fn stage18_05_capture_literal_rejects_ident() {
+        let mut interner = Rodeo::new();
+        let sym = interner.get_or_intern("foo");
+        let tokens = vec![Token {
+            kind: TokenKind::Ident(sym),
+            span: crate::session::Span::DUMMY,
+        }];
+        let mut idx = 0;
+        let captured = capture_literal(&tokens, &mut idx);
+        assert!(
+            captured.is_empty(),
+            "ident should not be captured as literal"
+        );
+        assert_eq!(idx, 0, "idx should not advance");
+    }
+
+    /// Stage 18.05 negative 6: capture_block returns empty when the
+    /// current token is not `{`.
+    #[test]
+    fn stage18_05_capture_block_rejects_non_brace() {
+        let tokens = vec![Token {
+            kind: TokenKind::IntLit(42, None),
+            span: crate::session::Span::DUMMY,
+        }];
+        let mut idx = 0;
+        let captured = capture_block(&tokens, &mut idx);
+        assert!(
+            captured.is_empty(),
+            "non-brace should not be captured as block"
+        );
+        assert_eq!(idx, 0, "idx should not advance");
     }
 }

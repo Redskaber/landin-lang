@@ -29954,3 +29954,37 @@ Stage Summary:
   - 实现 repetition `$(...)*` / `$(...)+` / `$(...)?`
   - 开始 println! 通解化迁移 (Phase 5)
 - v0.290.0 → v0.291.0
+
+---
+Task ID: stage18.05
+Agent: Super Z (main)
+Task: Stage 18.05 — macro_rules! Phase 5 (Additional Fragment Specifiers)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 设计文档: docs/develop/v0/stage-18/stage-18.05-additional-fragment-specifiers-design.md
+- 扩展 fragment 支持: 3 → 7 specifiers
+  1. capture_ty — 收集类型 token (跟踪 <...> 和 (...) 嵌套)
+  2. capture_literal — 收集字面量 (IntLit/FloatLit/StrLit/CharLit/KwTrue/KwFalse)
+  3. capture_block — 收集 { ... } 块 (含分隔符)
+  4. capture_path — 收集 a::b::c 路径
+  5. match_pattern — 一个 match frag {...} 调度所有 7 个 fragment
+  6. capture_tt cleanup — 移除 dead code `let _ = open;`
+- §1.0 原則 6 "通用 > 特例": 一个 match 调度所有 fragment, 不分散特解
+- §10 命名: 所有新函数遵循 capture_<fragment> 模式
+- §11 接口隔离: 所有新函数为 macro_expand.rs 内部 fn (无 pub)
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: macro_with_ty_fragment + macro_with_literal_fragment (2)
+  - negative: capture_ty_simple + capture_literal_int + capture_block_balanced + capture_path_segments + capture_literal_rejects_ident + capture_block_rejects_non_brace (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 479 lib (+8 new) + 2537 integration = 3016 unit tests, 0 failures
+
+Stage Summary:
+- macro_rules! Phase 5 完成（Additional Fragment Specifiers）
+- fragment 支持从 3 个扩展到 7 个 (expr/ident/tt/ty/literal/block/path)
+- 覆盖 Rust 常用 macro_rules! 子集
+- v0.291.0 → v0.292.0

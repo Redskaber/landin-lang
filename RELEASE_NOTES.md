@@ -1,9 +1,81 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.291.0
+**Current version**: v0.292.0
 **Date**: 2026-08-06
-**Test count**: 471 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 479 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.292.0 — Stage 18.05 (macro_rules! Phase 5 — Additional Fragment Specifiers)
+
+### Overview
+
+Extends the macro_rules! fragment support from 3 to 7 specifiers. Adds
+`$name:ty`, `$name:literal`, `$name:block`, and `$name:path` to the
+existing `$name:expr`, `$name:ident`, `$name:tt`. This brings the
+macro_rules! system to feature parity with the Rust common subset.
+
+### Implementation
+
+All new code is in `src/parser/macro_expand.rs`:
+
+1. **`capture_ty`** — collect a type. Tracks nested `<...>` and `(...)`
+   so `Vec<HashMap<K, V>>` is captured as one type.
+
+2. **`capture_literal`** — single IntLit / FloatLit / StrLit / CharLit
+   / KwTrue / KwFalse token.
+
+3. **`capture_block`** — balanced `{ ... }` (delimiters included).
+
+4. **`capture_path`** — `a`, `a::b`, `a::b::c`, ... (segments separated
+   by `::`).
+
+5. **`match_pattern`** — extended fragment dispatch:
+   ```rust
+   let captured = match frag {
+       "expr" => capture_expr(input, &mut ii),
+       "ident" => capture_ident(input, &mut ii),
+       "tt" => capture_tt(input, &mut ii),
+       "ty" => capture_ty(input, &mut ii),              // Stage 18.05
+       "literal" => capture_literal(input, &mut ii),    // Stage 18.05
+       "block" => capture_block(input, &mut ii),        // Stage 18.05
+       "path" => capture_path(input, &mut ii),          // Stage 18.05
+       _ => return false,
+   };
+   ```
+
+6. **`capture_tt` cleanup** — removed dead `let _ = open;` binding
+   (eliminated a `TokenKind` clone). Same behavior, less dead code.
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特例"**: a single `match frag { ... }` block
+  dispatches all 7 fragments — no per-fragment special-case sites.
+- **§10 naming**: all new functions follow `capture_<fragment>` pattern.
+- **§11 isolation**: all new functions are `macro_expand.rs` internal
+  `fn`s (no `pub`); only `match_pattern` is reached via dispatch.
+- **Single responsibility**: each `capture_*` handles exactly one fragment.
+- **Avoid dead code**: removed `let _ = open;` dead binding in `capture_tt`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | macro_with_ty_fragment | positive | `m!(i32)` with `$t:ty` expands and parses |
+| 2 | macro_with_literal_fragment | positive | `m!(42)` with `$l:literal` expands and parses |
+| 3 | capture_ty_simple | negative | `capture_ty` collects `i32` as 1 token |
+| 4 | capture_literal_int | negative | `capture_literal` collects `42` as 1 token |
+| 5 | capture_block_balanced | negative | `capture_block` collects `{ 1; 2 }` as 5 tokens |
+| 6 | capture_path_segments | negative | `capture_path` collects `a::b::c` as 5 tokens |
+| 7 | capture_literal_rejects_ident | negative | `capture_literal` rejects identifiers |
+| 8 | capture_block_rejects_non_brace | negative | `capture_block` rejects non-`{` tokens |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 479 lib (+8 new) + 2537 integration = **3,016** unit tests, 0 failures
 
 ---
 ## v0.291.0 — Stage 18.04 (macro_rules! Phase 4 — Macro Call Invocation + Driver Integration)
