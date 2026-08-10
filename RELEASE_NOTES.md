@@ -1,9 +1,41 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.287.0
+**Current version**: v0.288.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.288.0 — Stage 18.01 (v0.6 Roadmap + macro_rules! System Phase 1 Design)
+
+### Overview
+
+First stage of v0.6. Creates v0.6 roadmap and designs macro_rules! system
+Phase 1 (macro definition parsing). This is the prerequisite for println!
+通解化 (removing the 4-layer 特解).
+
+### v0.6 Roadmap
+
+| Priority | Task | Est. Stages |
+|----------|------|-------------|
+| P1 | macro_rules! System | 6-8 |
+| P2 | GATs | 4-6 |
+| P2 | Incremental Compilation | 4-6 |
+| P3 | Cross-compilation | 2-3 |
+
+### macro_rules! Phase 1 Design
+
+- **AST structure**: `Item::MacroRules { name, rules: Vec<MacroRule> }`
+- **MacroRule**: `{ pattern: TokenTree, body: TokenTree }`
+- **Phase 1**: Parse `macro_rules! name { ... }` syntax only (no expansion)
+- **Phase 2** (next stage): Token tree matching + substitution
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 455 lib + 2537 integration = 2992 unit tests, 0 failures
 
 ---
 ## v0.287.0 — Stage 17.14 (v0.5 Final Review + Packaging)

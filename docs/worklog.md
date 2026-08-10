@@ -29820,3 +29820,32 @@ Stage Summary:
 - v0.5 最终审查完成: GO
 - 13 stages, 2992 tests, 58914 source LOC
 - v0.286.0 → v0.287.0
+
+---
+Task ID: stage18.01
+Agent: Super Z (main)
+Task: Stage 18.01 — v0.6 Roadmap + macro_rules! System Phase 1 (Design)
+
+Work Log:
+- v0.5 最终审查完成 (Stage 17.14): GO, 2992 tests
+- v0.6 roadmap 规划:
+  - P1: macro_rules! 系统 (6-8 stages) — println! 通解化前置条件
+  - P2: GATs (4-6 stages)
+  - P2: Incremental Compilation (4-6 stages)
+  - P3: Cross-compilation (2-3 stages)
+- macro_rules! Phase 1 设计:
+  - AST 结构: Item::MacroRules { name, rules: Vec<MacroRule> }
+  - MacroRule { pattern: TokenTree, body: TokenTree }
+  - Phase 1 仅解析语法，不实现展开
+- 创建 v0.6-roadmap.md
+- 创建 stage-18.01 设计文档
+- 验收：
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 455 lib + 2537 integration = 2992 unit tests, 0 failures
+
+Stage Summary:
+- v0.6 roadmap 规划完成
+- macro_rules! Phase 1 设计完成
+- v0.287.0 → v0.288.0
