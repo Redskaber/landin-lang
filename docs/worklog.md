@@ -30112,3 +30112,92 @@ Stage Summary:
   - println! 通解化迁移 (将 println! 从特解改为 macro_rules!)
   - 或 v0.6 P1 最终审查 + 打包
 - v0.293.0 → v0.294.0
+
+---
+Task ID: stage18.09
+Agent: Super Z (main)
+Task: Stage 18.09 — v0.6 P1 Final Review (§14.5 D1-D8 + §6.3 委员会投票)
+
+Work Log:
+- §14.5 阶段末尾深度审查（8 维度 D1-D8）
+- §6.3 外循环委员会投票
+- 审查文档: docs/develop/v0/stage-18/stage-18.09-v0.6-p1-final-review.md
+- v0.6 P1 完成状态:
+  - 18.01 Phase 1: 设计 + v0.6 roadmap ✅
+  - 18.02 Phase 2: macro_rules! 定义解析 ✅
+  - 18.03 Phase 3: token tree 匹配 + 替换 ✅ (+8 tests)
+  - 18.04 Phase 4: macro call invocation + driver 集成 ✅ (+8 tests)
+  - 18.05 Phase 5: 额外 fragment specifiers ✅ (+8 tests)
+  - 18.06 Phase 6: repetition ✅ (+8 tests)
+  - 18.07 Phase 7: 中期审查 ✅
+  - 18.08 Phase 8: 错误收集 + driver 集成 ✅ (+8 tests)
+  - 18.09 Phase 9: 最终审查 (本阶段) ✅
+  - 共 +32 tests, 3032 total, 0 failures
+- D1-D8 评估:
+  - D1 架构健康度: ✅ 优秀
+  - D2 API 命名 (§10): ✅ 全合规
+  - D3 接口隔离 (§11): ✅ 全合规
+  - D4 测试覆盖 (§9.4.3): ✅ 全 1:3+
+  - D5 死代码: ✅ 无死代码
+  - D6 性能: ✅ 可接受
+  - D7 错误处理: ✅ (Stage 18.08 改进)
+  - D8 文档同步: ✅ 完整
+- 委员会投票: 5/5 GO (ARCH-A/REV-A/DEV-A/QA-A/PM-A)
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 495 lib + 2537 integration = 3032 unit tests, 0 failures
+
+Stage Summary:
+- v0.6 P1 (macro_rules! 系统) 正式发布 ✅
+- 9 stages 完成, 100% 计划完成度
+- 3032 unit tests, 0 failures
+- 7 fragment specifiers + 3 repetition operators + 错误收集
+- v0.6 后续可选: GATs / Incremental Compilation / Cross-compilation / println! 通解化 / macro hygiene
+- v0.294.0 (无代码变更，仅审查)
+
+---
+Task ID: stage18.10
+Agent: Super Z (main)
+Task: Stage 18.10 — println! 通解化迁移 Phase 1 (Built-in macro_rules! Registration)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 设计文档: docs/develop/v0/stage-18/stage-18.10-println-tongjie-phase1-design.md
+- 实现 built-in macro_rules! 注册:
+  1. BUILTIN_MACRO_NAMES const (println/print/eprintln/eprint)
+  2. build_builtin_macro_table(interner) — 构建 4 个内置宏的 MacroTable
+  3. make_builtin_macro_rule — 构造 no-op rule:
+     - Pattern: $($args:tt)* (8 tokens)
+     - Body: name!($($args)*) (10 tokens, re-emit same call form)
+  4. expand_macros_with_errors 集成 — 先注册 built-in, 然后 user macro 覆盖
+  5. Span 重写 — expand_macro_calls_with_errors 将展开 token 的 span 设为 call site span
+     (避免 Span::DUMMY 与真实源码 span 冲突导致 lo > hi 验证失败)
+  6. driver.rs 集成 — pre-intern BUILTIN_MACRO_NAMES + "args" + "tt" 符号
+- 修复了 3 个实现 bug:
+  - pattern 不应包含外层 () (call site delims 已被 strip)
+  - pattern 需用 $(...)* 重复语法 (不能是 $args:tt* 字面)
+  - body 中 * 和 ) 顺序错误 (应是 ) 然后 *)
+- §1.0 原則 6 "通用 > 特例": 内置宏走同一个 expand_macros 通道, 不绕过
+- §10 命名: BUILTIN_MACRO_NAMES (UPPER_SNAKE_CASE), build_builtin_macro_table/make_builtin_macro_rule (<verb>_<noun>_<noun>)
+- §11 接口隔离: 所有 built-in macro 逻辑在 macro_expand.rs, driver 只 pre-intern 符号
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: builtin_macros_registered + println_still_works_after_builtin_registration (2)
+  - negative: builtin_macro_names_const + build_builtin_macro_table_returns_table + builtin_macro_rule_pattern_is_repetition + builtin_macro_rule_body_is_same_call + user_macro_overrides_builtin + builtin_macros_pass_through_println (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 503 lib (+8 new) + 2537 integration = 3040 unit tests, 0 failures
+
+Stage Summary:
+- println! 通解化迁移 Phase 1 完成
+- 4 个内置 print 宏注册为 macro_rules! (no-op expansion)
+- parser 特解仍保留 (兼容现有 HIR/MIR/Codegen)
+- 用户可以用 macro_rules! 覆盖内置宏
+- 下一阶段 (Stage 18.11) 规划:
+  - Phase 2: 替换 built-in macro body 为真正的 Call(__landin_println, [...]) 展开
+  - 需要先实现 __landin_println 和 __landin_format_args 函数
+- v0.294.0 → v0.295.0

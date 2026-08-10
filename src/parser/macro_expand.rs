@@ -755,6 +755,167 @@ impl MacroError {
     }
 }
 
+// =============================================================================
+// Stage 18.10: Built-in macro_rules! registration (println! 通解化 Phase 1)
+// =============================================================================
+
+/// Stage 18.10: Names of the built-in macros that are always available
+/// (registered into every `MacroTable` before user macros).
+///
+/// These macros are pre-registered so that `expand_macros` recognizes
+/// them. In Phase 1 (this stage), each built-in macro has a no-op
+/// rule body that re-expands to the same call form — so the parser's
+/// existing special-case path still handles them. In Phase 2, the
+/// bodies will be replaced with real expansions to
+/// `Call(__landin_println, [...])`.
+///
+/// Per §10: const naming follows `UPPER_SNAKE_CASE`.
+pub const BUILTIN_MACRO_NAMES: &[&str] = &["println", "print", "eprintln", "eprint"];
+
+/// Stage 18.10: Build the table of built-in `macro_rules!` definitions.
+///
+/// Each built-in macro has a single rule:
+/// - **Pattern**: `($($args:tt)*)` — matches any token sequence inside `()`.
+/// - **Body**: `name!($($args)*)` — re-emits the same call form (no-op).
+///
+/// This means `expand_macros` recognizes the macro name but the
+/// expanded tokens are identical to the input, so the parser's
+/// existing special-case code path still runs. Phase 2 will replace
+/// the body with a real expansion to `Call(__landin_println, [...])`.
+///
+/// **Pre-condition**: `interner` must already contain the built-in
+/// macro names (driver pre-interns them via `BUILTIN_MACRO_NAMES`).
+/// Names not yet interned are silently skipped.
+///
+/// Per §10: `build_builtin_macro_table` follows `<verb>_<noun>_<noun>`.
+pub fn build_builtin_macro_table(interner: &Rodeo) -> MacroTable {
+    let mut table = MacroTable::new();
+    for name in BUILTIN_MACRO_NAMES {
+        if let Some(name_sym) = interner.get(name) {
+            let rule = make_builtin_macro_rule(name, name_sym, interner);
+            table.insert(
+                name_sym,
+                MacroRulesDef {
+                    name: name_sym,
+                    rules: vec![rule],
+                    span: crate::session::Span::DUMMY,
+                },
+            );
+        }
+    }
+    table
+}
+
+/// Stage 18.10: Construct a no-op rule for a built-in macro.
+///
+/// Pattern: `$($args:tt)*` (NO outer `()` — call site delimiters are
+/// already stripped by `expand_macro_calls` before matching)
+/// Body:    `name!($($args)*)` (re-emit the same call form)
+///
+/// **Pre-condition**: `args` and `tt` symbols must already be interned
+/// (driver pre-interns them).
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_builtin_macro_rule(
+    name: &str,
+    name_sym: crate::lexer::Symbol,
+    interner: &Rodeo,
+) -> MacroRule {
+    // Pre-condition: args and tt must be interned by the driver.
+    let args_sym = interner.get("args").unwrap_or_default();
+    let tt_sym = interner.get("tt").unwrap_or_default();
+
+    // Pattern: $ ( $ args : tt ) *  — repetition of $args:tt
+    // 8 tokens: Dollar LParen Dollar Ident(args) Colon Ident(tt) RParen Star
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(tt_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: name!($($args)*)
+    // Rust syntax: println ! ( $ ( $ args ) * )
+    // 10 tokens: Ident(name) Not LParen Dollar LParen Dollar Ident(args) RParen Star RParen
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(name_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Not,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    let _ = name; // name is only used for documentation; symbol is what matters
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
 /// Stage 18.04: Collect all `macro_rules!` definitions from a token stream.
 ///
 /// Walks the token stream looking for the pattern:
@@ -1062,6 +1223,16 @@ pub fn expand_macro_calls_with_errors(
             if let Some((input, after_close)) = collect_delimited(tokens, i + 2) {
                 // Try to expand.
                 if let Some(expanded) = expand_macro(def, &input, interner) {
+                    // Stage 18.10: Rewrite expanded token spans to the call
+                    // site span. Built-in macro rule bodies use Span::DUMMY,
+                    // which would conflict with real source spans (lo > hi
+                    // validation). By rewriting all expanded tokens to the
+                    // call site span, we ensure span monotonicity.
+                    let call_span = tokens[i].span;
+                    let mut expanded = expanded;
+                    for tok in &mut expanded {
+                        tok.span = call_span;
+                    }
                     out.extend(expanded);
                 } else {
                     // Stage 18.08: collect no-match error.
@@ -1129,7 +1300,14 @@ pub fn expand_macros_with_errors(
     interner: &Rodeo,
 ) -> (Vec<Token>, Vec<MacroError>) {
     let mut errors = Vec::new();
-    let table = collect_macro_defs_with_errors(&tokens, interner, &mut errors);
+    // Stage 18.10: Register built-in macros first (println/print/eprintln/eprint).
+    // Built-in macros have no-op rule bodies in Phase 1, so they pass through
+    // unchanged and the parser's existing special-case path still handles them.
+    let mut table = build_builtin_macro_table(interner);
+    // Then collect user-defined macros. User macros override built-ins
+    // (extend() overwrites existing keys with the user's version).
+    let user_table = collect_macro_defs_with_errors(&tokens, interner, &mut errors);
+    table.extend(user_table);
     if table.is_empty() {
         return (tokens, errors);
     }
@@ -2041,5 +2219,177 @@ mod tests {
         let result: (Vec<Token>, Vec<MacroError>) = expand_macros_with_errors(tokens, &interner);
         assert_eq!(result.0.len(), 1, "tokens preserved");
         assert!(result.1.is_empty(), "no errors");
+    }
+
+    // =====================================================================
+    // Stage 18.10 tests — Built-in macro_rules! registration
+    // =====================================================================
+
+    /// Stage 18.10 positive 1: build_builtin_macro_table returns a table
+    /// with 4 entries (println/print/eprintln/eprint) when all names
+    /// are pre-interned.
+    #[test]
+    fn stage18_10_builtin_macros_registered() {
+        let mut interner = Rodeo::new();
+        // Pre-intern all built-in macro names + helper symbols.
+        for name in BUILTIN_MACRO_NAMES {
+            interner.get_or_intern(name);
+        }
+        interner.get_or_intern("args");
+        interner.get_or_intern("tt");
+
+        let table = build_builtin_macro_table(&interner);
+        assert_eq!(table.len(), 4, "should register 4 built-in macros");
+        for name in BUILTIN_MACRO_NAMES {
+            let sym = interner.get(name).expect("name was interned");
+            assert!(table.contains_key(&sym), "table should contain '{name}'");
+        }
+    }
+
+    /// Stage 18.10 positive 2: println! still works correctly after
+    /// built-in macro registration (no-op expansion, parser handles it).
+    #[test]
+    fn stage18_10_println_still_works_after_builtin_registration() {
+        let src = "fn main() { println!(\"hello\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
+        assert!(result.errors.macro_errors.is_empty(), "no macro errors");
+    }
+
+    /// Stage 18.10 negative 1: BUILTIN_MACRO_NAMES contains exactly
+    /// the 4 expected names.
+    #[test]
+    fn stage18_10_builtin_macro_names_const() {
+        assert_eq!(BUILTIN_MACRO_NAMES.len(), 4);
+        assert!(BUILTIN_MACRO_NAMES.contains(&"println"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"print"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"eprintln"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"eprint"));
+    }
+
+    /// Stage 18.10 negative 2: build_builtin_macro_table returns an
+    /// empty table when no names are interned (cold-start scenario).
+    #[test]
+    fn stage18_10_build_builtin_macro_table_returns_table() {
+        let interner = Rodeo::new();
+        let table = build_builtin_macro_table(&interner);
+        // No names interned → empty table.
+        assert!(table.is_empty(), "empty interner → empty table");
+    }
+
+    /// Stage 18.10 negative 3: Each built-in macro rule pattern is a
+    /// repetition: `$ ( $ args : tt ) *` (8 tokens).
+    #[test]
+    fn stage18_10_builtin_macro_rule_pattern_is_repetition() {
+        let mut interner = Rodeo::new();
+        for name in BUILTIN_MACRO_NAMES {
+            interner.get_or_intern(name);
+        }
+        interner.get_or_intern("args");
+        interner.get_or_intern("tt");
+
+        let table = build_builtin_macro_table(&interner);
+        let println_sym = interner.get("println").unwrap();
+        let def = &table[&println_sym];
+        assert_eq!(def.rules.len(), 1, "should have 1 rule");
+        let pattern = &def.rules[0].pattern;
+        // Pattern: $ ( $ args : tt ) *  = 8 tokens
+        assert_eq!(pattern.len(), 8, "pattern should be 8 tokens");
+        assert!(matches!(pattern[0].kind, TokenKind::Dollar));
+        assert!(matches!(pattern[1].kind, TokenKind::LParen));
+        assert!(matches!(pattern[2].kind, TokenKind::Dollar));
+        assert!(matches!(pattern[6].kind, TokenKind::RParen));
+        assert!(matches!(pattern[7].kind, TokenKind::Star));
+    }
+
+    /// Stage 18.10 negative 4: Each built-in macro rule body is
+    /// `name!($($args)*)` (10 tokens) — re-emits the same call form.
+    #[test]
+    fn stage18_10_builtin_macro_rule_body_is_same_call() {
+        let mut interner = Rodeo::new();
+        for name in BUILTIN_MACRO_NAMES {
+            interner.get_or_intern(name);
+        }
+        interner.get_or_intern("args");
+        interner.get_or_intern("tt");
+
+        let table = build_builtin_macro_table(&interner);
+        let println_sym = interner.get("println").unwrap();
+        let def = &table[&println_sym];
+        let body = &def.rules[0].body;
+        // Body: name ! ( $ ( $ args ) * )  = 10 tokens
+        assert_eq!(body.len(), 10, "body should be 10 tokens");
+        assert!(matches!(body[0].kind, TokenKind::Ident(_)));
+        assert!(matches!(body[1].kind, TokenKind::Not));
+        assert!(matches!(body[2].kind, TokenKind::LParen));
+        assert!(matches!(body[9].kind, TokenKind::RParen));
+    }
+
+    /// Stage 18.10 negative 5: User-defined macro_rules! with the same
+    /// name as a built-in overrides the built-in.
+    #[test]
+    fn stage18_10_user_macro_overrides_builtin() {
+        let src = "macro_rules! println { () => { 42 } } fn main() { println!() }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        // User's println!() => 42, which should parse as an integer expression.
+        // (The built-in println! would have been a no-op pass-through.)
+        assert!(
+            result.errors.parse.is_empty(),
+            "user macro should override built-in — errors: {:?}",
+            result.errors.parse
+        );
+    }
+
+    /// Stage 18.10 negative 6: println! call's tokens pass through
+    /// expand_macros unchanged (no-op expansion in Phase 1).
+    #[test]
+    fn stage18_10_builtin_macros_pass_through_println() {
+        let mut interner = Rodeo::new();
+        for name in BUILTIN_MACRO_NAMES {
+            interner.get_or_intern(name);
+        }
+        interner.get_or_intern("args");
+        interner.get_or_intern("tt");
+
+        let println_sym = interner.get_or_intern("println");
+        let hi_sym = interner.get_or_intern("hi");
+        let span = crate::session::Span::new(0, 10);
+        // Input: println ! ( "hi" )
+        let tokens = vec![
+            Token {
+                kind: TokenKind::Ident(println_sym),
+                span,
+            },
+            Token {
+                kind: TokenKind::Not,
+                span,
+            },
+            Token {
+                kind: TokenKind::LParen,
+                span,
+            },
+            Token {
+                kind: TokenKind::StrLit(hi_sym),
+                span,
+            },
+            Token {
+                kind: TokenKind::RParen,
+                span,
+            },
+        ];
+        let (out, errors) = expand_macros_with_errors(tokens, &interner);
+        assert!(errors.is_empty(), "no macro errors");
+        // After no-op expansion: println ! ( "hi" ) — same 5 tokens.
+        assert_eq!(
+            out.len(),
+            5,
+            "println! should pass through (no-op expansion)"
+        );
+        // First token should still be `println`.
+        assert!(matches!(out[0].kind, TokenKind::Ident(_)));
+        // Second should be `!`.
+        assert!(matches!(out[1].kind, TokenKind::Not));
     }
 }

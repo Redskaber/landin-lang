@@ -653,6 +653,17 @@ pub fn compile(src: &str) -> CompileResult {
     // free-function entry `parser::macro_expand::expand_macros_with_errors`.
     //
     // Stage 18.08: collect macro expansion errors into `errors.macro_errors`.
+    //
+    // Stage 18.10: pre-intern built-in macro names so the macro_expand
+    // module can register them into the MacroTable (println/print/
+    // eprintln/eprint). Phase 1 uses no-op rule bodies so the parser's
+    // existing special-case path still handles them.
+    for name in crate::parser::macro_expand::BUILTIN_MACRO_NAMES {
+        interner.get_or_intern(name);
+    }
+    // Pre-intern symbols used in built-in macro rule patterns/bodies.
+    interner.get_or_intern("args");
+    interner.get_or_intern("tt");
     let (tokens, macro_errs) =
         crate::parser::macro_expand::expand_macros_with_errors(tokens, &interner);
     errors.macro_errors = macro_errs;

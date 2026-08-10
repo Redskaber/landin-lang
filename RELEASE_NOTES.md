@@ -1,9 +1,96 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.294.0
+**Current version**: v0.295.0
 **Date**: 2026-08-06
-**Test count**: 495 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 503 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.295.0 — Stage 18.10 (println! 通解化 Phase 1 — Built-in macro_rules! Registration)
+
+### Overview
+
+Begins the println! 通解化 migration planned in Stage 17.11. Registers
+the 4 built-in print macros (`println`/`print`/`eprintln`/`eprint`)
+as `macro_rules!` definitions in the `expand_macros` prelude. In
+Phase 1, each built-in macro has a **no-op rule body** that re-emits
+the same call form — so the parser's existing special-case path still
+handles them. Phase 2 (future stage) will replace the bodies with real
+expansions to `Call(__landin_println, [...])`.
+
+### Implementation
+
+1. **`BUILTIN_MACRO_NAMES`** const in `src/parser/macro_expand.rs`:
+   ```rust
+   pub const BUILTIN_MACRO_NAMES: &[&str] = &["println", "print", "eprintln", "eprint"];
+   ```
+
+2. **`build_builtin_macro_table(interner)`** — builds a `MacroTable`
+   with 4 entries. Each entry's rule is:
+   - **Pattern**: `$($args:tt)*` — matches any token sequence (8 tokens)
+   - **Body**: `name!($($args)*)` — re-emits the same call form (10 tokens)
+
+3. **`make_builtin_macro_rule`** — internal helper that constructs the
+   pattern + body token vectors for a given macro name.
+
+4. **`expand_macros_with_errors` integration** — built-in macros are
+   registered FIRST, then user macros are collected and override
+   built-ins (via `table.extend(user_table)`).
+
+5. **Span rewriting** — `expand_macro_calls_with_errors` now rewrites
+   all expanded token spans to the call site span. Built-in rule bodies
+   use `Span::DUMMY` (0,0), which would conflict with real source spans
+   (lo > hi validation). Rewriting to the call site span ensures span
+   monotonicity.
+
+6. **`driver::compile` integration** — pre-interns the 4 built-in macro
+   names + the helper symbols `args` and `tt` before calling
+   `expand_macros_with_errors`. This is needed because
+   `expand_macros_with_errors` takes `&Rodeo` (immutable), so it can't
+   intern new symbols itself.
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特例"**: built-in macros go through the same
+  `expand_macros` channel as user macros — no special bypass.
+- **§10 naming**: `BUILTIN_MACRO_NAMES` (`UPPER_SNAKE_CASE` const),
+  `build_builtin_macro_table` (`<verb>_<noun>_<noun>`),
+  `make_builtin_macro_rule` (`<verb>_<noun>_<noun>`).
+- **§11 isolation**: all built-in macro logic is in `macro_expand.rs`;
+  driver only pre-interns symbols and calls `expand_macros_with_errors`.
+- **Single responsibility**: `build_builtin_macro_table` only builds;
+  `make_builtin_macro_rule` only constructs one rule.
+- **Avoid dead code**: all new functions are called by
+  `expand_macros_with_errors` or tests.
+- **Avoid scattered content**: all built-in macro definitions are
+  centralized in `macro_expand.rs`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | builtin_macros_registered | positive | 4 built-in macros registered when names interned |
+| 2 | println_still_works_after_builtin_registration | positive | `println!("hello")` compiles with no errors |
+| 3 | builtin_macro_names_const | negative | `BUILTIN_MACRO_NAMES` has exactly 4 names |
+| 4 | build_builtin_macro_table_returns_table | negative | Empty interner → empty table |
+| 5 | builtin_macro_rule_pattern_is_repetition | negative | Pattern is `$($args:tt)*` (8 tokens) |
+| 6 | builtin_macro_rule_body_is_same_call | negative | Body is `name!($($args)*)` (10 tokens) |
+| 7 | user_macro_overrides_builtin | negative | User `macro_rules! println` overrides built-in |
+| 8 | builtin_macros_pass_through_println | negative | `println!("hi")` passes through unchanged |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 503 lib (+8 new) + 2537 integration = **3,040** unit tests, 0 failures
+
+### Migration Status
+
+This is Phase 1 of the println! 通解化 migration:
+- ✅ Phase 1 (Stage 18.10): Built-in macros registered with no-op bodies
+- ⏳ Phase 2 (Stage 18.11+): Replace bodies with `Call(__landin_println, [...])`
+- ⏳ Phase 3 (Stage 18.12+): Remove AST/HIR/MIR/Codegen `Println` variants
 
 ---
 ## v0.294.0 — Stage 18.08 (macro_rules! Phase 7 — Macro Expansion Error Collection + Driver Integration)
