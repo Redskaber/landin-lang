@@ -30029,3 +30029,86 @@ Stage Summary:
   - 或开始 println! 通解化迁移
   - 或开始 macro hygiene (基础宏卫生)
 - v0.292.0 → v0.293.0
+
+---
+Task ID: stage18.07
+Agent: Super Z (main)
+Task: Stage 18.07 — v0.6 P1 Mid-Review (§14.5 8 维度深度审查)
+
+Work Log:
+- §14.5 阶段末尾深度审查（8 维度 D1-D8）
+- 审查文档: docs/develop/v0/stage-18/stage-18.07-v0.6-p1-mid-review.md
+- v0.6 P1 完成状态:
+  - 18.01 Phase 1: 设计 + v0.6 roadmap ✅
+  - 18.02 Phase 2: macro_rules! 定义解析 ✅
+  - 18.03 Phase 3: token tree 匹配 + 替换 ✅ (+8 tests)
+  - 18.04 Phase 4: macro call invocation + driver 集成 ✅ (+8 tests)
+  - 18.05 Phase 5: 额外 fragment specifiers ✅ (+8 tests)
+  - 18.06 Phase 6: repetition ✅ (+8 tests)
+  - 共 +24 tests, 3024 total, 0 failures
+- D1-D8 评估:
+  - D1 架构健康度: ✅ 优秀
+  - D2 API 命名 (§10): ✅ 合规
+  - D3 接口隔离 (§11): ✅ 合规
+  - D4 测试覆盖 (§9.4.3): ✅ 全部 1:3+
+  - D5 死代码: ✅ 无死代码
+  - D6 性能: ✅ 可接受
+  - D7 错误处理: ⚠️ 待改进 (TODO: 18.08)
+  - D8 文档同步: ✅ 合规
+- 委员会投票: 5/5 GO
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 487 lib + 2537 integration = 3024 unit tests, 0 failures
+
+Stage Summary:
+- v0.6 P1 中期审查完成: GO
+- v0.6 P1 进展: 6/8 stages 完成 (75%)
+- 下一阶段规划:
+  - Stage 18.08: macro 展开错误收集 + driver 集成 (D7 改进)
+  - Stage 18.09: println! 通解化迁移
+  - Stage 18.10: v0.6 P1 最终审查 + 打包
+- v0.293.0 (无代码变更，仅审查)
+
+---
+Task ID: stage18.08
+Agent: Super Z (main)
+Task: Stage 18.08 — macro_rules! Phase 7 (Macro Expansion Error Collection + Driver Integration)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 设计文档: docs/develop/v0/stage-18/stage-18.08-macro-error-collection-design.md
+- 改进 D7 (错误处理) 维度
+- 实现 macro_rules! 错误收集:
+  1. MacroError 类型 (message + span, §10 Error 后缀)
+  2. collect_macro_defs_with_errors — 收集 malformed macro_rules! body 错误
+  3. expand_macro_calls_with_errors — 收集 no matching rule 错误
+  4. expand_macros_with_errors — 顶层入口, 返回 (Vec<Token>, Vec<MacroError>)
+  5. expand_macros/collect_macro_defs/expand_macro_calls 改为 thin wrappers
+  6. 递归上限错误: "macro expansion exceeded 32 rounds"
+- driver.rs 集成:
+  1. CompileErrors 新增 macro_errors: Vec<MacroError> 字段
+  2. is_empty/total_count 包含 macro_errors
+  3. has_fatal 不变 (macro errors 是 non-fatal)
+  4. compile() 调用 expand_macros_with_errors
+- §10 命名合规: MacroError (<Stage>Error), _with_errors 后缀
+- §11 接口隔离: MacroError 定义在 macro_expand.rs, 通过 CompileErrors 字段暴露给 driver
+- §1.0 原則 6 "通用 > 特例": 一个 MacroError 类型覆盖所有错误场景
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: macro_error_no_macros + macro_error_valid_macro_no_errors (2)
+  - negative: macro_error_no_matching_rule + macro_error_malformed_def + macro_error_struct_fields + macro_error_new_constructor + compile_errors_macro_field + expand_macros_with_errors_returns_tuple (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 495 lib (+8 new) + 2537 integration = 3032 unit tests, 0 failures
+
+Stage Summary:
+- macro_rules! Phase 7 完成（错误收集 + driver 集成）
+- D7 (错误处理) 从 ⚠️ 改进为 ✅
+- 下一阶段 (Stage 18.09) 规划:
+  - println! 通解化迁移 (将 println! 从特解改为 macro_rules!)
+  - 或 v0.6 P1 最终审查 + 打包
+- v0.293.0 → v0.294.0

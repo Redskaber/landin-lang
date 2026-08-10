@@ -160,6 +160,11 @@ pub struct CompileErrors {
     /// to preserve the structured CoherenceError/IncompleteImpl data.
     /// Closes Phase 2 audit item: "Stop stringifying CoherenceError/IncompleteImpl".
     pub trait_errors: Vec<TraitError>,
+    /// Stage 18.08: macro_rules! expansion errors (non-fatal —
+    /// compilation continues with whatever tokens were produced).
+    /// Captures malformed macro_rules! definitions, no-matching-rule
+    /// macro calls, and recursion-limit violations.
+    pub macro_errors: Vec<crate::parser::macro_expand::MacroError>,
 }
 
 impl CompileErrors {
@@ -170,6 +175,7 @@ impl CompileErrors {
             && self.typeck.is_empty()
             && self.borrowck.is_empty()
             && self.trait_errors.is_empty()
+            && self.macro_errors.is_empty()
     }
 
     pub fn total_count(&self) -> usize {
@@ -179,6 +185,7 @@ impl CompileErrors {
             + self.typeck.len()
             + self.borrowck.len()
             + self.trait_errors.len()
+            + self.macro_errors.len()
     }
 
     pub fn has_fatal(&self) -> bool {
@@ -643,8 +650,12 @@ pub fn compile(src: &str) -> CompileResult {
     // before parsing. Built-in macros (println!) are left for the parser
     // to handle via its existing special cases.
     // Per §11: this is a parser-stage sub-module; driver only sees the
-    // free-function entry `parser::macro_expand::expand_macros`.
-    let tokens = crate::parser::macro_expand::expand_macros(tokens, &interner);
+    // free-function entry `parser::macro_expand::expand_macros_with_errors`.
+    //
+    // Stage 18.08: collect macro expansion errors into `errors.macro_errors`.
+    let (tokens, macro_errs) =
+        crate::parser::macro_expand::expand_macros_with_errors(tokens, &interner);
+    errors.macro_errors = macro_errs;
 
     // === Stage 0: Parse ===
     let mut parser = Parser::new(tokens, &mut interner);

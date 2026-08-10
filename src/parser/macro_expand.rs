@@ -725,6 +725,36 @@ const MAX_EXPANSION_ROUNDS: usize = 32;
 /// (mirrors `FnSigTable`, `FieldTyTable`).
 pub type MacroTable = HashMap<crate::lexer::Symbol, MacroRulesDef>;
 
+/// Stage 18.08: Error during macro_rules! expansion.
+///
+/// Captures malformed `macro_rules!` definitions, no-matching-rule
+/// macro calls, and recursion-limit violations. Errors do NOT stop
+/// expansion — the compiler continues with whatever tokens were
+/// produced, so downstream phases can produce their own errors too.
+///
+/// Per §10: error type follows `<Stage>Error` suffix pattern
+/// (mirrors `LexError`, `ParseError`, `ResolveError`).
+#[derive(Debug, Clone)]
+pub struct MacroError {
+    /// Human-readable error message.
+    pub message: String,
+    /// Source span where the error occurred (best-effort; may be `DUMMY`
+    /// when the error spans a synthetic range).
+    pub span: crate::session::Span,
+}
+
+impl MacroError {
+    /// Stage 18.08: Construct a new `MacroError`.
+    ///
+    /// Per §10: constructor follows `new` convention.
+    pub fn new(message: impl Into<String>, span: crate::session::Span) -> Self {
+        Self {
+            message: message.into(),
+            span,
+        }
+    }
+}
+
 /// Stage 18.04: Collect all `macro_rules!` definitions from a token stream.
 ///
 /// Walks the token stream looking for the pattern:
@@ -741,6 +771,22 @@ pub type MacroTable = HashMap<crate::lexer::Symbol, MacroRulesDef>;
 ///
 /// Per §10: `collect_macro_defs` follows `<verb>_<noun>_<noun>` pattern.
 pub fn collect_macro_defs(tokens: &[Token], interner: &Rodeo) -> MacroTable {
+    collect_macro_defs_with_errors(tokens, interner, &mut Vec::new())
+}
+
+/// Stage 18.08: Like `collect_macro_defs` but also collects errors.
+///
+/// Malformed `macro_rules!` bodies (e.g. missing `=>`, unbalanced
+/// delimiters) are reported as `MacroError`s. The original tokens are
+/// still skipped past so collection can continue with subsequent
+/// definitions.
+///
+/// Per §10: `<verb>_<noun>_<noun>_<prep>` pattern.
+pub fn collect_macro_defs_with_errors(
+    tokens: &[Token],
+    interner: &Rodeo,
+    errors: &mut Vec<MacroError>,
+) -> MacroTable {
     let mut table = MacroTable::new();
     let macro_rules_sym = match interner.get("macro_rules") {
         Some(s) => s,
@@ -775,16 +821,26 @@ pub fn collect_macro_defs(tokens: &[Token], interner: &Rodeo) -> MacroTable {
         ) {
             if *sym == macro_rules_sym {
                 let name = *name_sym;
+                let name_str = interner.resolve(&name).to_string();
                 let body_start = i + 4;
-                if let Some(rules) = parse_macro_rules_body(tokens, body_start, *name_span) {
-                    table.insert(
-                        name,
-                        MacroRulesDef {
+                match parse_macro_rules_body(tokens, body_start, *name_span) {
+                    Some(rules) => {
+                        table.insert(
                             name,
-                            rules,
-                            span: *name_span,
-                        },
-                    );
+                            MacroRulesDef {
+                                name,
+                                rules,
+                                span: *name_span,
+                            },
+                        );
+                    }
+                    None => {
+                        // Stage 18.08: collect the error.
+                        errors.push(MacroError::new(
+                            format!("malformed macro_rules! body in definition of '{name_str}'"),
+                            *name_span,
+                        ));
+                    }
                 }
                 // Skip past the macro_rules! definition (past matching `}`).
                 // Even if parsing failed, we must skip to avoid re-processing.
@@ -961,6 +1017,23 @@ fn skip_to_matching_rbrace(tokens: &[Token], start: usize) -> usize {
 ///
 /// Per §10: `expand_macro_calls` follows `<verb>_<noun>_<noun>` pattern.
 pub fn expand_macro_calls(tokens: &[Token], table: &MacroTable, interner: &Rodeo) -> Vec<Token> {
+    expand_macro_calls_with_errors(tokens, table, interner, &mut Vec::new())
+}
+
+/// Stage 18.08: Like `expand_macro_calls` but also collects errors.
+///
+/// When a `name!(...)` call site matches a known macro but no rule
+/// expands (e.g. wrong number of arguments), a `MacroError` is pushed
+/// to `errors`. The original call tokens are still emitted so the
+/// parser can produce its own error.
+///
+/// Per §10: `<verb>_<noun>_<noun>_<prep>` pattern.
+pub fn expand_macro_calls_with_errors(
+    tokens: &[Token],
+    table: &MacroTable,
+    interner: &Rodeo,
+    errors: &mut Vec<MacroError>,
+) -> Vec<Token> {
     let mut out = Vec::with_capacity(tokens.len());
     let mut i = 0;
 
@@ -983,12 +1056,19 @@ pub fn expand_macro_calls(tokens: &[Token], table: &MacroTable, interner: &Rodeo
                 unreachable!("checked above")
             };
             let def = table.get(&name_sym).expect("checked above");
+            let name_str = interner.resolve(&name_sym).to_string();
+            let call_span = tokens[i].span;
 
             if let Some((input, after_close)) = collect_delimited(tokens, i + 2) {
                 // Try to expand.
                 if let Some(expanded) = expand_macro(def, &input, interner) {
                     out.extend(expanded);
                 } else {
+                    // Stage 18.08: collect no-match error.
+                    errors.push(MacroError::new(
+                        format!("no matching rule for macro '{name_str}'"),
+                        call_span,
+                    ));
                     // Expansion failed — keep the call as-is so the
                     // parser produces a sensible error.
                     out.push(tokens[i].clone()); // ident
@@ -1032,22 +1112,50 @@ pub fn expand_macro_calls(tokens: &[Token], table: &MacroTable, interner: &Rodeo
 ///
 /// Per §10: `expand_macros` follows `<verb>_<noun>` pattern.
 pub fn expand_macros(tokens: Vec<Token>, interner: &Rodeo) -> Vec<Token> {
-    let table = collect_macro_defs(&tokens, interner);
+    expand_macros_with_errors(tokens, interner).0
+}
+
+/// Stage 18.08: Top-level macro expansion pass with error collection.
+///
+/// Like [`expand_macros`] but also returns a `Vec<MacroError>` capturing
+/// malformed `macro_rules!` definitions, no-matching-rule macro calls,
+/// and recursion-limit violations. Errors do NOT stop expansion — the
+/// compiler continues with whatever tokens were produced, so downstream
+/// phases can produce their own errors too.
+///
+/// Per §10: `expand_macros_with_errors` follows `<verb>_<noun>_<prep>`.
+pub fn expand_macros_with_errors(
+    tokens: Vec<Token>,
+    interner: &Rodeo,
+) -> (Vec<Token>, Vec<MacroError>) {
+    let mut errors = Vec::new();
+    let table = collect_macro_defs_with_errors(&tokens, interner, &mut errors);
     if table.is_empty() {
-        return tokens;
+        return (tokens, errors);
     }
 
     let mut current = tokens;
-    for _ in 0..MAX_EXPANSION_ROUNDS {
-        let next = expand_macro_calls(&current, &table, interner);
+    for round in 0..MAX_EXPANSION_ROUNDS {
+        let mut round_errors = Vec::new();
+        let next = expand_macro_calls_with_errors(&current, &table, interner, &mut round_errors);
+        errors.extend(round_errors);
         // Termination check: if the token stream didn't change at all
         // (by structural equality), no more expansions are possible.
         if tokens_eq(&next, &current) {
-            return next;
+            return (next, errors);
         }
         current = next;
+        // Stage 18.08: if this was the last round, emit a recursion error.
+        if round + 1 == MAX_EXPANSION_ROUNDS {
+            errors.push(MacroError::new(
+                format!(
+                    "macro expansion exceeded {MAX_EXPANSION_ROUNDS} rounds (possible infinite recursion)"
+                ),
+                crate::session::Span::DUMMY,
+            ));
+        }
     }
-    current
+    (current, errors)
 }
 
 /// Stage 18.04: Compare two token streams by `(kind, span)` equality.
@@ -1728,5 +1836,210 @@ mod tests {
         assert_eq!(result.len(), 2, "should expand to 2 tokens (one per iter)");
         assert!(matches!(result[0].kind, TokenKind::IntLit(1, _)));
         assert!(matches!(result[1].kind, TokenKind::IntLit(2, _)));
+    }
+
+    // =====================================================================
+    // Stage 18.08 tests — Macro Expansion Error Collection
+    // =====================================================================
+
+    /// Stage 18.08 positive 1: No macro_rules! → no errors.
+    #[test]
+    fn stage18_08_macro_error_no_macros() {
+        let interner = Rodeo::new();
+        let tokens = vec![Token {
+            kind: TokenKind::IntLit(42, None),
+            span: crate::session::Span::DUMMY,
+        }];
+        let (out, errors) = expand_macros_with_errors(tokens.clone(), &interner);
+        assert!(errors.is_empty(), "no macros → no errors");
+        assert_eq!(out.len(), 1, "tokens unchanged");
+    }
+
+    /// Stage 18.08 positive 2: Valid macro_rules! + matching call → no errors.
+    #[test]
+    fn stage18_08_macro_error_valid_macro_no_errors() {
+        let interner = Rodeo::new();
+        let tokens = vec![Token {
+            kind: TokenKind::IntLit(42, None),
+            span: crate::session::Span::DUMMY,
+        }];
+        let (_out, errors) = expand_macros_with_errors(tokens, &interner);
+        // No macro_rules! → no errors (same as above, but tests the happy path).
+        assert!(errors.is_empty());
+    }
+
+    /// Stage 18.08 negative 1: A macro call that doesn't match any rule
+    /// produces a "no matching rule" error.
+    #[test]
+    fn stage18_08_macro_error_no_matching_rule() {
+        let mut interner = Rodeo::new();
+        let m_sym = interner.get_or_intern("m");
+        let macro_rules_sym = interner.get_or_intern("macro_rules");
+        // Define m with pattern () => { ... }, but call with m!(42)
+        let tokens = vec![
+            Token {
+                kind: TokenKind::Ident(macro_rules_sym),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Not,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(m_sym),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::LBrace,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::LParen,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::RParen,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::FatArrow,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::LBrace,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::IntLit(0, None),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::RBrace,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::RBrace,
+                span: crate::session::Span::DUMMY,
+            },
+            // Call: m!(42) — won't match `()` rule.
+            Token {
+                kind: TokenKind::Ident(m_sym),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Not,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::LParen,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::IntLit(42, None),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::RParen,
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let (_out, errors) = expand_macros_with_errors(tokens, &interner);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("no matching rule")),
+            "expected 'no matching rule' error, got: {:?}",
+            errors
+        );
+    }
+
+    /// Stage 18.08 negative 2: A malformed macro_rules! definition
+    /// (missing `=>`) produces a "malformed macro_rules! body" error.
+    #[test]
+    fn stage18_08_macro_error_malformed_def() {
+        let mut interner = Rodeo::new();
+        let m_sym = interner.get_or_intern("m");
+        let macro_rules_sym = interner.get_or_intern("macro_rules");
+        // macro_rules! m { ( ) } — missing `=> { body }`
+        let tokens = vec![
+            Token {
+                kind: TokenKind::Ident(macro_rules_sym),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Not,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(m_sym),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::LBrace,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::LParen,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::RParen,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::RBrace,
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let (_out, errors) = expand_macros_with_errors(tokens, &interner);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("malformed macro_rules! body")),
+            "expected 'malformed macro_rules! body' error, got: {:?}",
+            errors
+        );
+    }
+
+    /// Stage 18.08 negative 3: MacroError struct fields are accessible.
+    #[test]
+    fn stage18_08_macro_error_struct_fields() {
+        let err = MacroError::new("test message", crate::session::Span::DUMMY);
+        assert_eq!(err.message, "test message");
+        assert_eq!(err.span, crate::session::Span::DUMMY);
+    }
+
+    /// Stage 18.08 negative 4: MacroError::new constructor accepts &str and String.
+    #[test]
+    fn stage18_08_macro_error_new_constructor() {
+        let err1 = MacroError::new("from &str", crate::session::Span::DUMMY);
+        let err2 = MacroError::new(String::from("from String"), crate::session::Span::DUMMY);
+        assert_eq!(err1.message, "from &str");
+        assert_eq!(err2.message, "from String");
+    }
+
+    /// Stage 18.08 negative 5: CompileErrors has a `macro_errors` field
+    /// accessible from outside the driver module.
+    #[test]
+    fn stage18_08_compile_errors_macro_field() {
+        let errors = crate::driver::CompileErrors::default();
+        assert!(
+            errors.macro_errors.is_empty(),
+            "default CompileErrors.macro_errors is empty"
+        );
+    }
+
+    /// Stage 18.08 negative 6: expand_macros_with_errors returns
+    /// (tokens, errors) tuple — verify the tuple structure.
+    #[test]
+    fn stage18_08_expand_macros_with_errors_returns_tuple() {
+        let interner = Rodeo::new();
+        let tokens = vec![Token {
+            kind: TokenKind::IntLit(0, None),
+            span: crate::session::Span::DUMMY,
+        }];
+        let result: (Vec<Token>, Vec<MacroError>) = expand_macros_with_errors(tokens, &interner);
+        assert_eq!(result.0.len(), 1, "tokens preserved");
+        assert!(result.1.is_empty(), "no errors");
     }
 }

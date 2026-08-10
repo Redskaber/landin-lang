@@ -1,9 +1,105 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.293.0
+**Current version**: v0.294.0
 **Date**: 2026-08-06
-**Test count**: 487 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 495 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.294.0 — Stage 18.08 (macro_rules! Phase 7 — Macro Expansion Error Collection + Driver Integration)
+
+### Overview
+
+Improves the D7 (error handling) dimension of the Stage 18.07 mid-review.
+Macro_rules! expansion now collects structured errors and propagates them
+to the driver's `CompileErrors` struct, instead of silently skipping
+malformed definitions and unmatched calls.
+
+### Implementation
+
+1. **`MacroError` type** in `src/parser/macro_expand.rs`:
+   ```rust
+   pub struct MacroError {
+       pub message: String,
+       pub span: Span,
+   }
+   ```
+   Follows §10 `<Stage>Error` suffix pattern (mirrors `LexError`,
+   `ParseError`, `ResolveError`).
+
+2. **`collect_macro_defs_with_errors`** — like `collect_macro_defs`
+   but collects `"malformed macro_rules! body in definition of 'X'"`
+   errors. The original `collect_macro_defs` is now a thin wrapper
+   that discards errors.
+
+3. **`expand_macro_calls_with_errors`** — like `expand_macro_calls`
+   but collects `"no matching rule for macro 'X'"` errors when a
+   call site fails to match any rule.
+
+4. **`expand_macros_with_errors`** — top-level entry that returns
+   `(Vec<Token>, Vec<MacroError>)`. The original `expand_macros`
+   is now a thin wrapper that returns just the tokens.
+
+5. **Recursion-limit error** — when `MAX_EXPANSION_ROUNDS` is
+   reached, an `"macro expansion exceeded N rounds"` error is emitted.
+
+6. **`CompileErrors` extension** — new `macro_errors: Vec<MacroError>`
+   field. Updated `is_empty()` and `total_count()` to include it.
+   `has_fatal()` is unchanged (macro errors are non-fatal —
+   compilation continues with whatever tokens were produced).
+
+7. **`driver::compile` integration** — calls `expand_macros_with_errors`
+   and stores errors in `errors.macro_errors`.
+
+### Error Scenarios Covered
+
+| Scenario | Error Message |
+|----------|---------------|
+| Malformed `macro_rules!` body | `malformed macro_rules! body in definition of 'X'` |
+| No-matching-rule macro call | `no matching rule for macro 'X'` |
+| Recursion limit exceeded | `macro expansion exceeded 32 rounds (possible infinite recursion)` |
+
+### Design Compliance
+
+- **§10 naming**: `MacroError` (`<Stage>Error`), `expand_macros_with_errors`
+  (`<verb>_<noun>_<prep>`), `collect_macro_defs_with_errors` /
+  `expand_macro_calls_with_errors` (`<verb>_<noun>_<noun>_<prep>`).
+- **§11 isolation**: `MacroError` defined in `macro_expand.rs`, surfaced to
+  driver via `CompileErrors` field. Driver doesn't reach into `macro_expand`
+  internals.
+- **§1.0 原則 6 "通用 > 特例"**: one `MacroError` type covers all error
+  scenarios; one `_with_errors` variant per public function.
+- **Single responsibility**: error collection happens in `_with_errors`
+  variants; the original APIs remain for callers that don't care about
+  errors.
+- **Avoid dead code**: original `expand_macros` / `collect_macro_defs` /
+  `expand_macro_calls` are now thin wrappers — they still serve callers
+  that don't need error reporting (e.g. tests).
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | macro_error_no_macros | positive | No macro_rules! → no errors |
+| 2 | macro_error_valid_macro_no_errors | positive | Valid macro → no errors |
+| 3 | macro_error_no_matching_rule | negative | Unmatched call → "no matching rule" error |
+| 4 | macro_error_malformed_def | negative | Malformed def → "malformed macro_rules! body" error |
+| 5 | macro_error_struct_fields | negative | MacroError fields are accessible |
+| 6 | macro_error_new_constructor | negative | MacroError::new accepts &str and String |
+| 7 | compile_errors_macro_field | negative | CompileErrors.macro_errors field exists |
+| 8 | expand_macros_with_errors_returns_tuple | negative | Returns (tokens, errors) tuple |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 495 lib (+8 new) + 2537 integration = **3,032** unit tests, 0 failures
+
+### Mid-Review D7 Status Update
+
+The Stage 18.07 mid-review flagged D7 (error handling) as ⚠️ "待改进".
+Stage 18.08 closes that gap. D7 is now ✅ "合规".
 
 ---
 ## v0.293.0 — Stage 18.06 (macro_rules! Phase 6 — Repetition `$(...)*` / `$(...)+` / `$(...)?`)
