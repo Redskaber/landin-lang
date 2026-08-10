@@ -1,9 +1,42 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.288.0
+**Current version**: v0.289.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.289.0 — Stage 18.02 (macro_rules! Phase 2 — Parser Implementation)
+
+### Overview
+
+Implements `macro_rules!` definition parsing. The parser now accepts
+`macro_rules! name { (pattern) => { body }; }` syntax and stores it
+as `ItemKind::MacroRules(MacroRulesDef)` in the AST.
+
+### Implementation
+
+1. **AST structures** in `src/ast/kinds.rs`:
+   - `ItemKind::MacroRules(MacroRulesDef)` — new item variant
+   - `MacroRulesDef { name, rules: Vec<MacroRule>, span }` — macro definition
+   - `MacroRule { pattern: Vec<Token>, body: Vec<Token>, span }` — single rule
+
+2. **Parser** in `src/parser/items.rs`:
+   - `parse_macro_rules()` — parse `macro_rules! name { ... }`
+   - `collect_token_tree_until_arrow()` — collect pattern tokens until `=>`
+   - `collect_delimited_token_tree()` — collect body tokens (balanced delimiters)
+   - `bump_token()` — return full `Token` (not just `&TokenKind`)
+
+3. **HIR lower**: `MacroRules` → skip (dummy Use item, Phase 3 will expand)
+
+4. **AST exports**: `MacroRulesDef` + `MacroRule` added to `ast/mod.rs`
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 455 lib + 2537 integration = 2992 unit tests, 0 failures
 
 ---
 ## v0.288.0 — Stage 18.01 (v0.6 Roadmap + macro_rules! System Phase 1 Design)

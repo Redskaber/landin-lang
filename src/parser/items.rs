@@ -49,6 +49,13 @@ impl<'a> Parser<'a> {
             TokenKind::KwExtern => ItemKind::ExternBlock(self.parse_extern_block_or_fn()),
             TokenKind::KwMod => ItemKind::Mod(self.parse_mod()),
             TokenKind::KwUse => ItemKind::Use(self.parse_use()),
+            // Stage 18.02: macro_rules! definition
+            TokenKind::Ident(sym)
+                if (self.interner.get("macro_rules") == Some(*sym))
+                    && matches!(self.peek_at(1), TokenKind::Not) =>
+            {
+                ItemKind::MacroRules(self.parse_macro_rules())
+            }
             // unsafe fn — `unsafe` keyword followed by `fn`
             TokenKind::KwUnsafe if matches!(self.peek_at(1), TokenKind::KwFn) => {
                 self.bump(); // consume `unsafe`
@@ -773,5 +780,172 @@ fn ty_to_path(ty: Ty) -> Path {
                 Ty::Path(_, _, s) => *s,
             },
         },
+    }
+}
+
+/// Stage 18.02: Parse `macro_rules! name { ... }` definition.
+///
+/// Syntax:
+/// ```text
+/// macro_rules! name {
+///     (pattern) => { body };
+///     (pattern2) => { body2 };
+/// }
+/// ```
+///
+/// This parser captures raw token trees for patterns and bodies.
+/// Phase 2 will implement token tree matching + substitution.
+///
+/// Per §23: `parse_macro_rules` follows `<verb>_<noun>_<noun>` pattern.
+impl<'a> crate::parser::Parser<'a> {
+    fn parse_macro_rules(&mut self) -> MacroRulesDef {
+        let span = self.current_span();
+
+        // Consume `macro_rules`
+        self.bump();
+
+        // Consume `!`
+        self.bump();
+
+        // Parse macro name (identifier)
+        let name = match self.peek() {
+            TokenKind::Ident(sym) => {
+                let s = *sym;
+                self.bump();
+                s
+            }
+            _ => {
+                self.errors.push(crate::parser::ParseError::new(
+                    format!(
+                        "expected macro name after `macro_rules!`, found {}",
+                        self.peek()
+                    ),
+                    self.current_span(),
+                ));
+                return MacroRulesDef {
+                    name: self.interner.get("").unwrap_or_default(),
+                    rules: Vec::new(),
+                    span,
+                };
+            }
+        };
+
+        // Parse `{ ... }` body
+        if *self.peek() != TokenKind::LBrace {
+            self.errors.push(crate::parser::ParseError::new(
+                format!("expected `{{` after macro name, found {}", self.peek()),
+                self.current_span(),
+            ));
+            return MacroRulesDef {
+                name,
+                rules: Vec::new(),
+                span,
+            };
+        }
+        self.bump(); // consume `{`
+
+        let mut rules = Vec::new();
+
+        // Parse rules until `}`
+        while *self.peek() != TokenKind::RBrace && *self.peek() != TokenKind::Eof {
+            let rule_span = self.current_span();
+
+            // Parse pattern (token tree until `=>`)
+            let pattern = self.collect_token_tree_until_arrow();
+
+            // Expect `=>`
+            if *self.peek() != TokenKind::FatArrow {
+                self.errors.push(crate::parser::ParseError::new(
+                    format!("expected `=>` in macro rule, found {}", self.peek()),
+                    self.current_span(),
+                ));
+                break;
+            }
+            self.bump(); // consume `=>`
+
+            // Parse body (token tree — delimited by `()`, `[]`, or `{}`)
+            let body = self.collect_delimited_token_tree();
+
+            // Optional `;` between rules
+            if *self.peek() == TokenKind::Semicolon {
+                self.bump();
+            }
+
+            rules.push(MacroRule {
+                pattern,
+                body,
+                span: rule_span,
+            });
+        }
+
+        // Consume `}`
+        if *self.peek() == TokenKind::RBrace {
+            self.bump();
+        }
+
+        MacroRulesDef { name, rules, span }
+    }
+
+    /// Collect tokens until `=>` at the top level (depth 0).
+    /// Used for macro rule patterns.
+    fn collect_token_tree_until_arrow(&mut self) -> Vec<crate::lexer::Token> {
+        let mut tokens = Vec::new();
+        let mut depth = 0i32;
+
+        while *self.peek() != TokenKind::Eof {
+            match self.peek() {
+                TokenKind::LParen | TokenKind::LBracket | TokenKind::LBrace => {
+                    depth += 1;
+                }
+                TokenKind::RParen | TokenKind::RBracket | TokenKind::RBrace => {
+                    depth -= 1;
+                }
+                TokenKind::FatArrow if depth == 0 => break,
+                _ => {}
+            }
+            tokens.push(self.bump_token());
+        }
+
+        tokens
+    }
+
+    /// Collect a delimited token tree (until matching close at depth 0).
+    /// Used for macro rule bodies.
+    fn collect_delimited_token_tree(&mut self) -> Vec<crate::lexer::Token> {
+        let mut tokens = Vec::new();
+        let mut depth = 0i32;
+
+        // If the body starts with a delimiter, track depth.
+        loop {
+            match self.peek() {
+                TokenKind::LParen | TokenKind::LBracket | TokenKind::LBrace => {
+                    depth += 1;
+                    tokens.push(self.bump_token());
+                }
+                TokenKind::RParen | TokenKind::RBracket | TokenKind::RBrace => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                    tokens.push(self.bump_token());
+                }
+                TokenKind::Semicolon if depth == 0 => break,
+                TokenKind::Eof => break,
+                _ => {
+                    tokens.push(self.bump_token());
+                }
+            }
+        }
+
+        tokens
+    }
+
+    /// Stage 18.02: Bump and return the full Token (not just &TokenKind).
+    fn bump_token(&mut self) -> crate::lexer::Token {
+        let token = self.tokens[self.pos].clone();
+        if self.pos < self.tokens.len() - 1 {
+            self.pos += 1;
+        }
+        token
     }
 }

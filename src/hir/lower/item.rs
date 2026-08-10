@@ -62,6 +62,14 @@ impl<'a> HirLowerCtxt<'a> {
                 let hir_u = self.lower_use(u, hir_id, vis.clone(), attrs.clone(), span);
                 HirItem::Use(hir_u)
             }
+            // Stage 18.02: macro_rules! — store as no-op for now (Phase 2 will expand).
+            ast::ItemKind::MacroRules(_) => {
+                // Macro definitions are not lowered to HIR items — they're
+                // expanded before HIR lowering in Phase 2.
+                // For now, return early without storing an owner.
+                self.exit_owner();
+                return;
+            }
         };
 
         self.store_owner(def_id, OwnerNode::Item(hir_item));
@@ -684,6 +692,24 @@ impl<'a> HirLowerCtxt<'a> {
                                 item.attrs.clone(),
                                 item.span,
                             )),
+                            // Stage 18.02: macro_rules! — skip (no HIR lowering).
+                            // Return a dummy Use item (will be filtered out).
+                            ast::ItemKind::MacroRules(_) => {
+                                self.exit_owner();
+                                HirItem::Use(crate::hir::HirUse {
+                                    hir_id: item_hir_id,
+                                    tree: crate::hir::HirUseTree::Glob(crate::hir::HirPath {
+                                        hir_id: item_hir_id,
+                                        segments: vec![],
+                                        leading: crate::ast::PathLeading::None,
+                                        res: crate::hir::Res::Unknown,
+                                        span: item.span,
+                                    }),
+                                    vis: item.vis.clone(),
+                                    attrs: item.attrs.clone(),
+                                    span: item.span,
+                                })
+                            }
                         };
                         self.store_owner(def_id, OwnerNode::Item(hir_item.clone()));
                         self.exit_owner();

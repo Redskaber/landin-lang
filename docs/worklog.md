@@ -29849,3 +29849,30 @@ Stage Summary:
 - v0.6 roadmap 规划完成
 - macro_rules! Phase 1 设计完成
 - v0.287.0 → v0.288.0
+
+---
+Task ID: stage18.02
+Agent: Super Z (main)
+Task: Stage 18.02 — macro_rules! Phase 2 (Parser Implementation)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 实现 macro_rules! 定义解析:
+  1. AST: ItemKind::MacroRules(MacroRulesDef) + MacroRule { pattern, body }
+  2. Parser: parse_macro_rules() — 解析 `macro_rules! name { (pat) => { body }; }`
+  3. collect_token_tree_until_arrow() — 收集 pattern tokens 直到 `=>`
+  4. collect_delimited_token_tree() — 收集 body tokens (平衡括号)
+  5. bump_token() — 返回完整 Token (而非 &TokenKind)
+  6. HIR lower: MacroRules → 跳过 (Phase 3 将实现展开)
+  7. ast/mod.rs: 导出 MacroRulesDef + MacroRule
+- 验收：
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 455 lib + 2537 integration = 2992 unit tests, 0 failures
+
+Stage Summary:
+- macro_rules! Phase 2 完成（parser 实现）
+- `macro_rules! name { (pat) => { body }; }` 语法可解析
+- Phase 3 将实现 token tree 匹配 + 替换（macro 展开）
+- v0.288.0 → v0.289.0

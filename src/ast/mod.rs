@@ -16,8 +16,8 @@ pub use kinds::{
     Abi, Arm, Attr, AttrArg, AttrArgs, BinOp, BindingMode, Block, ConstDecl, Crate, EnumDecl,
     EnumVariant, Expr, ExprField, ExternBlock, FloatTy, FnDecl, FnRetTy, FnSig, GenericArg,
     GenericArgs, GenericParam, Generics, Ident, ImplDecl, IntTy, Item, ItemKind, Lifetime,
-    LifetimeParam, LitKind, LocalDecl, MacroDelim, ModDecl, Mutability, Param, Pat, PatField, Path,
-    PathLeading, PathSegment, QSelf, RangeEnd, SelfKind, StaticDecl, Stmt, StructDecl, StructField,
-    TraitBound, TraitDecl, TraitItem, Ty, TypeAliasDecl, TypeBound, TypeParam, UintTy, UnaryOp,
-    UseDecl, UseTree, VariantData, Visibility, WherePredicate,
+    LifetimeParam, LitKind, LocalDecl, MacroDelim, MacroRule, MacroRulesDef, ModDecl, Mutability,
+    Param, Pat, PatField, Path, PathLeading, PathSegment, QSelf, RangeEnd, SelfKind, StaticDecl,
+    Stmt, StructDecl, StructField, TraitBound, TraitDecl, TraitItem, Ty, TypeAliasDecl, TypeBound,
+    TypeParam, UintTy, UnaryOp, UseDecl, UseTree, VariantData, Visibility, WherePredicate,
 };

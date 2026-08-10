@@ -33,6 +33,38 @@ pub enum ItemKind {
     ExternBlock(ExternBlock),
     Mod(ModDecl),
     Use(UseDecl),
+    /// Stage 18.02: `macro_rules! name { ... }` definition.
+    /// Stores the raw token trees for pattern and body — expansion
+    /// is performed in Phase 2 (token tree matching + substitution).
+    MacroRules(MacroRulesDef),
+}
+
+/// Stage 18.02: A `macro_rules!` definition.
+///
+/// Contains the macro name and a list of rules (pattern → body).
+/// Each rule is a pair of token trees: the matcher pattern and the
+/// expansion body. Phase 2 will implement token tree matching.
+///
+/// Per §23: `MacroRulesDef` follows `<Noun>_<Noun>_<Noun>` pattern.
+#[derive(Debug, Clone)]
+pub struct MacroRulesDef {
+    /// The macro name (e.g., `println` in `macro_rules! println { ... }`).
+    pub name: crate::lexer::Symbol,
+    /// The macro rules: each rule is (pattern, body) as raw token sequences.
+    pub rules: Vec<MacroRule>,
+    pub span: Span,
+}
+
+/// Stage 18.02: A single macro rule: `pattern => body`.
+///
+/// Per §23: `MacroRule` follows `<Noun>_<Noun>` pattern.
+#[derive(Debug, Clone)]
+pub struct MacroRule {
+    /// The matcher pattern tokens (e.g., `($name:expr)`).
+    pub pattern: Vec<crate::lexer::Token>,
+    /// The expansion body tokens (e.g., `{ println!("hello, {}", $name); }`).
+    pub body: Vec<crate::lexer::Token>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
