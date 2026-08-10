@@ -1,9 +1,94 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.282.0
+**Current version**: v0.284.0
 **Date**: 2026-08-05
 **Test count**: 343 rust lib tests + 2514 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.284.0 — Stage 17.11 (println! Macro 通解 Analysis + TODO Marking)
+
+### Overview
+
+Analyzes the println! macro's 特解 (special case) problem and designs a
+通解 (general solution). Marks all 4 layers (AST/HIR/MIR/Codegen) with
+TODO(Stage 18) for future refactoring when `macro_rules!` lands.
+
+### Problem Analysis
+
+println!/print!/eprintln!/eprint! currently has special-case handling in
+**4 layers**:
+1. **Parser**: Hardcoded `if matches!(name, "println"|"print"|"eprintln"|"eprint")`
+2. **AST**: Dedicated `Expr::Println { msg, args, newline, stderr }` variant
+3. **HIR**: Dedicated `HirExprKind::Println` variant
+4. **MIR**: Dedicated `StatementKind::Println` variant
+5. **Codegen**: ~100 lines of special-case format string + type mapping logic
+
+### 通解 Design (General Solution)
+
+**Rust's approach**: `println!` → `macro_rules!` → `format_args!` → `_print()` (regular function call)
+
+**Landin's target** (Stage 18+, when `macro_rules!` lands):
+- `println!("x={}", x)` → `Call(__landin_println, [__landin_format_args("x={}", x)])`
+- No Println variant in AST/HIR/MIR
+- No special-case codegen — just regular `emit_call`
+- `__landin_format_args` is a compiler builtin that generates format spec + args
+- `__landin_println` is a regular extern function (pre-declared in codegen)
+
+### Implementation (This Stage)
+
+1. **TODO(Stage 18) annotations** added to all 4 layers:
+   - `src/ast/kinds.rs` — `Expr::Println` variant
+   - `src/hir/kinds.rs` — `HirExprKind::Println` variant
+   - `src/mir/body.rs` — `StatementKind::Println` variant
+   - `src/codegen/statement.rs` — Println codegen arm
+
+2. **Design document**: `docs/develop/v0/stage-17/stage-17.11-println-refactoring.md`
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 447 lib + 2537 integration = 2984 unit tests, 0 failures
+
+---
+## v0.283.0 — Stage 17.10 (MIR Optimization Passes Phase 1 — Dead Code Elimination)
+
+### Overview
+
+First MIR optimization pass: Dead Code Elimination (DCE). Removes
+assignments to locals that are never read, reducing LLVM IR instructions
+and improving codegen quality.
+
+### Implementation
+
+1. **`src/mir/optimization.rs`** — new module with `run_dce()`:
+   - Step 1: Collect all locals that are read (operands, rvalues, terminators)
+   - Step 2: Remove `Assign(place, rvalue)` where `place` is a never-read local
+   - Preserves StorageLive/StorageDead/Nop/Println/Deinit statements
+
+2. **Module registration** in `src/mir/mod.rs`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | dce_removes_dead_assignment | positive | Dead variable removed |
+| 2 | dce_preserves_used_assignment | positive | Used variable kept |
+| 3 | dce_does_not_break_compilation | negative | MIR still valid after DCE |
+| 4 | dce_handles_empty_mir | negative | No panic on empty MIR |
+| 5 | dce_preserves_storage_markers | negative | StorageLive/Dead preserved |
+| 6 | dce_handles_multiple_dead | negative | Multiple dead vars removed |
+| 7 | dce_no_dead_code_no_change | negative | No dead code → keep used |
+| 8 | dce_preserves_println | negative | Println preserved |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets` — ✅ 0 warnings
+- `cargo test` — ✅ 447 lib (+8 new) + 2537 integration = 2984 unit tests, 0 failures
 
 ---
 ## v0.282.0 — Stage 17.09 (Trait Coherence Enhancement — v0.5 P2)

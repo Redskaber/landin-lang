@@ -242,6 +242,13 @@ pub enum StatementKind {
     /// Stage 13.13 + Stage 13.16: Inline `println!` / `print!` / `eprintln!` / `eprint!`
     /// statement with format args support.
     ///
+    /// Stage 17.11 (通解 analysis): This is a 特解 that should be replaced with
+    /// a regular `Assign + TerminatorKind::Call` to `printf`/`__landin_println`
+    /// when `macro_rules!` lands. The current approach carries format string +
+    /// args through MIR as a special statement kind, requiring ~100 lines of
+    /// special-case codegen in `statement.rs`.
+    /// TODO(Stage 18): Remove — replace with regular Call terminator.
+    ///
     /// Carries:
     /// - `msg`: the format string template (e.g., `"x is {}"`), with a trailing
     ///   `"\n"` appended if `newline == true`.

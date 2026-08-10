@@ -563,6 +563,16 @@ pub enum Expr {
     /// macro call that captures the format string AND arguments for codegen
     /// to emit printf with the correct format specifiers.
     ///
+    /// Stage 17.11 (通解 analysis): This is a 特解 (special case) that spans
+    /// 4 layers (AST/HIR/MIR/Codegen). The 通解 (general solution) is to
+    /// expand `println!` into a `Call` to `__landin_println` with
+    /// `__landin_format_args` — but this requires `macro_rules!` (Stage 18+).
+    /// Until then, this parser-level special case is the only 特解 point;
+    /// HIR/MIR/Codegen layers should be refactored to use regular Call/Assign.
+    ///
+    /// TODO(Stage 18): Remove this variant when `macro_rules!` lands.
+    /// Replace with: `Expr::MacroCall` → expand to `Call(__landin_println, [format_args])`.
+    ///
     /// Stage 13.11: introduced with `msg: String` only (single string literal).
     /// Stage 13.16: extended with `args: Vec<Expr>` to support format args
     /// (`println!("x is {}", x)`). The parser now captures all comma-separated

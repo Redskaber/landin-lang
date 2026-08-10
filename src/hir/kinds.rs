@@ -806,6 +806,10 @@ pub enum HirExprKind {
     /// Carries the format string AND arguments through HIR to MIR lowerer for
     /// printf emission with the correct format specifiers.
     ///
+    /// Stage 17.11 (通解 analysis): This is a 特解 that should be replaced with
+    /// `HirExprKind::Call` to `__landin_println` when `macro_rules!` lands.
+    /// TODO(Stage 18): Remove — replace with Call to extern `__landin_println`.
+    ///
     /// Stage 13.12: introduced with `msg: String` only.
     /// Stage 13.16: extended with `args: Vec<HirExpr>` to support format args.
     Println {

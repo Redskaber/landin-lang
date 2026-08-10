@@ -231,6 +231,11 @@ pub(crate) fn codegen_statement(
         // already appended if `newline == true`). The `args` field is the list
         // of MIR operands to substitute into `{}` placeholders, in order.
         //
+        // Stage 17.11 (通解 analysis): This ~100-line Println codegen is a 特解.
+        // The 通解 is to expand `println!` at parser level into a `Call` to
+        // `__landin_println(format_args)` — a regular function call that
+        // codegen handles via the existing `emit_call` path.
+        // TODO(Stage 18): Remove this arm when `macro_rules!` lands.
         // Per `api-naming-standard.md` §8.1: helpers follow the
         // `__landin_<verb>_<noun>` pattern (matches `__landin_panic_*` siblings).
         StatementKind::Println {

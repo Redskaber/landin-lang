@@ -29679,3 +29679,64 @@ Stage Summary:
 - check_coherence() DefId 去重增强
 - 8 个新测试覆盖 coherence 全部场景
 - v0.281.0 → v0.282.0
+
+---
+Task ID: stage17.10
+Agent: Super Z (main)
+Task: Stage 17.10 — MIR Optimization Passes Phase 1 (Dead Code Elimination)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 实现 DCE (Dead Code Elimination) pass:
+  1. 新增 src/mir/optimization.rs — run_dce() 函数
+  2. Step 1: 收集所有被读取的 local（operand/rvalue/terminator 中的 Copy/Move）
+  3. Step 2: 移除赋值给从未被读取的 local 的 Assign 语句
+  4. 保留 StorageLive/StorageDead/Nop/Println/Deinit 语句
+  5. 在 src/mir/mod.rs 注册 optimization 模块
+- 测试覆盖（§9.4.3 1:3+ ratio）：
+  - positive: dce_removes_dead_assignment + dce_preserves_used_assignment (2)
+  - negative: dce_does_not_break_compilation + dce_handles_empty_mir + dce_preserves_storage_markers + dce_handles_multiple_dead + dce_no_dead_code_no_change + dce_preserves_println (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收：
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 447 lib (+8 new) + 2537 integration = 2984 unit tests, 0 failures
+
+Stage Summary:
+- MIR Optimization Phase 1 完成（DCE）
+- run_dce() 消除从未被读取的 local 赋值
+- v0.282.0 → v0.283.0
+
+---
+Task ID: stage17.11
+Agent: Super Z (main)
+Task: Stage 17.11 — println! Macro 通解 Analysis + TODO Marking
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 分析 println! macro 的特解问题：
+  - 当前 println! 在 4 层有特解: Parser → AST → HIR → MIR → Codegen
+  - Rust 的通解: macro_rules! 展开 → format_args! → _print() 普通函数调用
+  - Landin 没有 macro_rules! (Stage 18+)，无法完全通解化
+- 渐进式通解方案：
+  - Parser 层保留特解（因为没有宏系统，这是唯一特解点）
+  - HIR/MIR/Codegen 层标注 TODO(Stage 18)，等 macro_rules! 就绪后重构
+  - 通解目标: println!("x={}",x) → Call(__landin_println, [__landin_format_args("x={}", x)])
+- 实现：
+  1. AST: src/ast/kinds.rs — Println variant 添加通解分析注释 + TODO(Stage 18)
+  2. HIR: src/hir/kinds.rs — HirExprKind::Println 添加 TODO(Stage 18)
+  3. MIR: src/mir/body.rs — StatementKind::Println 添加 TODO(Stage 18)
+  4. Codegen: src/codegen/statement.rs — Println arm 添加 TODO(Stage 18)
+  5. 设计文档: docs/develop/v0/stage-17/stage-17.11-println-refactoring.md
+- 验收：
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets — ✅ 0 warnings
+  - cargo test — ✅ 447 lib + 2537 integration = 2984 unit tests, 0 failures
+
+Stage Summary:
+- println! 特解问题分析完成
+- 通解方案设计记录：macro_rules! + format_args + __landin_println
+- 4 层 TODO(Stage 18) 标注完成
+- v0.283.0 → v0.284.0

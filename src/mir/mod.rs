@@ -14,6 +14,8 @@ pub mod lower;
 // Stage 16.54 (Task 11 Phase 3): Monomorphization collection — walk MIR
 // bodies and collect MonoItem { def_id, substs } pairs for codegen.
 pub mod monomorphize;
+// Stage 17.10: MIR optimization passes (DCE, const propagation).
+pub mod optimization;
 pub mod place;
 // Stage 16.53 (Task 11 Phase 2): Type substitution — replace Param with
 // concrete types from a SubstsRef slice.
