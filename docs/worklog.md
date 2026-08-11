@@ -30792,3 +30792,77 @@ Stage Summary:
 - 新增 lifetime + stmt fragment specifiers
 - 平衡: macro 7 stages : println! 7 stages
 - v0.304.0 → v0.305.0
+
+---
+Task ID: stage18.25
+Agent: Super Z (main)
+Task: Stage 18.25 — v0.6 P3.5 Review (Balance Assessment + Next Steps)
+
+Work Log:
+- §14.5 阶段末尾深度审查（8 维度 D1-D8）
+- §6.3 外循环委员会投票
+- 审查文档: docs/develop/v0/stage-18/stage-18.25-v0.6-p3.5-review.md
+- v0.6 P3.5 完成状态:
+  - 18.10-18.24 共 15 stages (7 macro + 7 println! + 1 design)
+  - +72 tests, 3120 total, 0 failures
+- 平衡性评估:
+  - Macro 系统: 7 stages
+  - println! 迁移: 7 stages
+  - 比例 7:7 = 1:1 ✅ 完美平衡
+- D1-D8 评估: 全 ✅
+- 委员会投票: 5/5 GO
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 583 lib + 2537 integration = 3120 unit tests, 0 failures
+
+Stage Summary:
+- v0.6 P3.5 中期审查通过: 5/5 GO
+- Macro 系统: println! 迁移 = 7:7 stages (完美平衡)
+- 3120 unit tests, 0 failures
+- v0.6 P3.5 后续规划:
+  - 18.26 activate __landin_println macro body (println!)
+  - 18.27 macro hygiene signature change (macro)
+  - 18.28-18.29 println! Phase 3 (println!)
+  - 18.30 v0.6 P4 final review
+- v0.305.0 (无代码变更，仅审查)
+
+---
+Task ID: stage18.26
+Agent: Super Z (main)
+Task: Stage 18.26 — Macro Hygiene Activation (Signature Change + apply_hygiene)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 用户反馈: "println! 系列也是macro 的一部分" + "正确 > 妥协"
+- 设计文档: docs/develop/v0/stage-18/stage-18.26-macro-hygiene-signature-design.md
+- 签名变更: 所有公共函数 &Rodeo → &mut Rodeo
+  - expand_macro
+  - expand_macro_calls / expand_macro_calls_with_errors
+  - expand_macros / expand_macros_with_errors
+  - collect_macro_defs / collect_macro_defs_with_errors
+  - build_builtin_macro_table / make_builtin_macro_rule
+- apply_hygiene 激活:
+  - expand_macro 中创建 HygieneContext
+  - 调用 apply_hygiene 重命名非捕获标识符
+  - 移除 #[allow(dead_code)]
+- driver 传递 &mut interner
+- 修复所有测试中的 &interner → &mut interner
+- §1.0 原則 6 "通用 > 特解": 一个 apply_hygiene 处理所有宏
+- §13.4 重构治理: 签名变更，行为改进
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: println_still_works_after_hygiene + user_macro_still_works_after_hygiene (2)
+  - negative: println_with_args_after_hygiene + eprintln_after_hygiene + macro_repetition_after_hygiene + macro_separator_after_hygiene + macro_capture_after_hygiene + print_after_hygiene (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅ (使用 canonical scripts/setup-llvm-env.sh)
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 591 lib (+8 new) + 2537 integration = 3128 unit tests, 0 failures
+
+Stage Summary:
+- macro hygiene 激活完成 (apply_hygiene 签名变更 + 调用)
+- HygieneContext 和 apply_hygiene 不再标记 dead_code
+- 所有宏展开现在经过 hygiene 处理
+- v0.305.0 → v0.306.0

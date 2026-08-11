@@ -673,7 +673,7 @@ pub fn compile(src: &str) -> CompileResult {
     interner.get_or_intern("args");
     interner.get_or_intern("tt");
     let (tokens, macro_errs) =
-        crate::parser::macro_expand::expand_macros_with_errors(tokens, &interner);
+        crate::parser::macro_expand::expand_macros_with_errors(tokens, &mut interner);
     errors.macro_errors = macro_errs;
 
     // === Stage 0: Parse ===

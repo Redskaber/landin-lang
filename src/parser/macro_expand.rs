@@ -67,11 +67,21 @@ type Captures = HashMap<crate::lexer::Symbol, CaptureValue>;
 /// Returns `Some(expanded_tokens)` if a rule matched, `None` if no rule matched.
 ///
 /// Per §23: `expand_macro` follows `<verb>_<noun>` pattern.
-pub fn expand_macro(def: &MacroRulesDef, input: &[Token], interner: &Rodeo) -> Option<Vec<Token>> {
+pub fn expand_macro(
+    def: &MacroRulesDef,
+    input: &[Token],
+    interner: &mut Rodeo,
+) -> Option<Vec<Token>> {
     for rule in &def.rules {
         let mut captures = HashMap::new();
         if match_pattern(&rule.pattern, input, &mut captures, interner) {
-            return Some(substitute_body(&rule.body, &captures));
+            // Stage 18.26: Apply hygiene before substitution.
+            // Renames non-capture identifiers in the body to unique names
+            // (__landin_macro_<orig>_<n>) to prevent collisions with
+            // caller scope. Per §1.0 原則 6 "通用 > 特解".
+            let mut hygiene = HygieneContext::new();
+            let hygienic_body = apply_hygiene(&rule.body, &captures, interner, &mut hygiene);
+            return Some(substitute_body(&hygienic_body, &captures));
         }
     }
     None
@@ -949,9 +959,8 @@ impl MacroError {
 /// caller's scope.
 ///
 /// Per §10: struct follows `<Noun><Noun>` pattern.
-/// Stage 18.17: Infrastructure only — `apply_hygiene` (future stage)
-/// will use this. Marked `#[allow(dead_code)]` until then.
-#[allow(dead_code)]
+/// Stage 18.26: Now activated — `expand_macro` creates a `HygieneContext`
+/// and calls `apply_hygiene`.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct HygieneContext {
     /// Counter for generating unique names. Incremented each time
@@ -963,7 +972,6 @@ impl HygieneContext {
     /// Stage 18.17: Construct a fresh hygiene context with counter=0.
     ///
     /// Per §10: constructor follows `new` convention.
-    #[allow(dead_code)]
     pub(crate) fn new() -> Self {
         Self::default()
     }
@@ -974,7 +982,6 @@ impl HygieneContext {
     /// internal counter, so successive calls produce different names.
     ///
     /// Per §10: `<verb>_<noun>_<noun>` pattern.
-    #[allow(dead_code)]
     pub(crate) fn gen_unique_name(&mut self, original: &str) -> String {
         let name = format!("__landin_macro_{original}_{}", self.counter);
         self.counter += 1;
@@ -1002,13 +1009,8 @@ impl HygieneContext {
 /// - Built-in macro names (`println`, `print`, `eprintln`, `eprint`)
 /// - Non-identifier tokens (literals, punctuation)
 ///
-/// **Note**: This function is prepared but not yet called from
-/// `expand_macro` due to signature constraints (`expand_macro` takes
-/// `&Rodeo`, but this function needs `&mut Rodeo` to intern new names).
-/// A future stage will change the signature chain to activate it.
-///
 /// Per §10: `<verb>_<noun>` pattern.
-#[allow(dead_code)] // Future stage will activate after signature change
+/// Stage 18.26: Now called from `expand_macro` — `#[allow(dead_code)]` removed.
 fn apply_hygiene(
     body: &[Token],
     _captures: &Captures,
@@ -1092,7 +1094,7 @@ pub const BUILTIN_MACRO_NAMES: &[&str] = &["println", "print", "eprintln", "epri
 /// Names not yet interned are silently skipped.
 ///
 /// Per §10: `build_builtin_macro_table` follows `<verb>_<noun>_<noun>`.
-pub fn build_builtin_macro_table(interner: &Rodeo) -> MacroTable {
+pub fn build_builtin_macro_table(interner: &mut Rodeo) -> MacroTable {
     let mut table = MacroTable::new();
     for name in BUILTIN_MACRO_NAMES {
         if let Some(name_sym) = interner.get(name) {
@@ -1123,7 +1125,7 @@ pub fn build_builtin_macro_table(interner: &Rodeo) -> MacroTable {
 fn make_builtin_macro_rule(
     _name: &str,
     name_sym: crate::lexer::Symbol,
-    interner: &Rodeo,
+    interner: &mut Rodeo,
 ) -> MacroRule {
     // Pre-condition: args and tt must be interned by the driver.
     let args_sym = interner.get("args").unwrap_or_default();
@@ -1248,7 +1250,7 @@ fn make_builtin_macro_rule(
 /// lookup table for the pre-parse expansion pass.
 ///
 /// Per §10: `collect_macro_defs` follows `<verb>_<noun>_<noun>` pattern.
-pub fn collect_macro_defs(tokens: &[Token], interner: &Rodeo) -> MacroTable {
+pub fn collect_macro_defs(tokens: &[Token], interner: &mut Rodeo) -> MacroTable {
     collect_macro_defs_with_errors(tokens, interner, &mut Vec::new())
 }
 
@@ -1262,7 +1264,7 @@ pub fn collect_macro_defs(tokens: &[Token], interner: &Rodeo) -> MacroTable {
 /// Per §10: `<verb>_<noun>_<noun>_<prep>` pattern.
 pub fn collect_macro_defs_with_errors(
     tokens: &[Token],
-    interner: &Rodeo,
+    interner: &mut Rodeo,
     errors: &mut Vec<MacroError>,
 ) -> MacroTable {
     let mut table = MacroTable::new();
@@ -1494,7 +1496,11 @@ fn skip_to_matching_rbrace(tokens: &[Token], start: usize) -> usize {
 /// existing special cases.
 ///
 /// Per §10: `expand_macro_calls` follows `<verb>_<noun>_<noun>` pattern.
-pub fn expand_macro_calls(tokens: &[Token], table: &MacroTable, interner: &Rodeo) -> Vec<Token> {
+pub fn expand_macro_calls(
+    tokens: &[Token],
+    table: &MacroTable,
+    interner: &mut Rodeo,
+) -> Vec<Token> {
     expand_macro_calls_with_errors(tokens, table, interner, &mut Vec::new())
 }
 
@@ -1509,7 +1515,7 @@ pub fn expand_macro_calls(tokens: &[Token], table: &MacroTable, interner: &Rodeo
 pub fn expand_macro_calls_with_errors(
     tokens: &[Token],
     table: &MacroTable,
-    interner: &Rodeo,
+    interner: &mut Rodeo,
     errors: &mut Vec<MacroError>,
 ) -> Vec<Token> {
     let mut out = Vec::with_capacity(tokens.len());
@@ -1599,7 +1605,7 @@ pub fn expand_macro_calls_with_errors(
 /// ```
 ///
 /// Per §10: `expand_macros` follows `<verb>_<noun>` pattern.
-pub fn expand_macros(tokens: Vec<Token>, interner: &Rodeo) -> Vec<Token> {
+pub fn expand_macros(tokens: Vec<Token>, interner: &mut Rodeo) -> Vec<Token> {
     expand_macros_with_errors(tokens, interner).0
 }
 
@@ -1614,7 +1620,7 @@ pub fn expand_macros(tokens: Vec<Token>, interner: &Rodeo) -> Vec<Token> {
 /// Per §10: `expand_macros_with_errors` follows `<verb>_<noun>_<prep>`.
 pub fn expand_macros_with_errors(
     tokens: Vec<Token>,
-    interner: &Rodeo,
+    interner: &mut Rodeo,
 ) -> (Vec<Token>, Vec<MacroError>) {
     let mut errors = Vec::new();
     // Stage 18.10: Register built-in macros first (println/print/eprintln/eprint).
@@ -1800,7 +1806,7 @@ mod tests {
             kind: TokenKind::IntLit(2, None),
             span: crate::session::Span::DUMMY,
         }];
-        let result = expand_macro(&def, &input, &interner);
+        let result = expand_macro(&def, &input, &mut interner);
         assert!(result.is_none(), "non-matching input should return None");
     }
 
@@ -1841,12 +1847,12 @@ mod tests {
     /// when the token stream has no macro_rules! definitions.
     #[test]
     fn stage18_04_collect_finds_no_macros() {
-        let interner = Rodeo::new();
+        let mut interner = Rodeo::new();
         let tokens: Vec<Token> = vec![Token {
             kind: TokenKind::IntLit(42, None),
             span: crate::session::Span::DUMMY,
         }];
-        let table = collect_macro_defs(&tokens, &interner);
+        let table = collect_macro_defs(&tokens, &mut interner);
         assert!(table.is_empty(), "no macro_rules! → empty table");
     }
 
@@ -1903,7 +1909,7 @@ mod tests {
                 span: crate::session::Span::DUMMY,
             },
         ];
-        let table = collect_macro_defs(&tokens, &interner);
+        let table = collect_macro_defs(&tokens, &mut interner);
         assert_eq!(table.len(), 1, "should find 1 macro definition");
         assert!(table.contains_key(&m_sym), "table should contain 'm'");
         let def = &table[&m_sym];
@@ -1938,7 +1944,7 @@ mod tests {
                 span: crate::session::Span::DUMMY,
             },
         ];
-        let out = expand_macro_calls(&tokens, &table, &interner);
+        let out = expand_macro_calls(&tokens, &table, &mut interner);
         assert_eq!(
             out.len(),
             tokens.len(),
@@ -1953,7 +1959,7 @@ mod tests {
     /// unchanged when the macro table is empty (no macros defined).
     #[test]
     fn stage18_04_expand_macro_calls_passes_no_macros() {
-        let interner = Rodeo::new();
+        let mut interner = Rodeo::new();
         let table = MacroTable::new();
         let tokens = vec![
             Token {
@@ -1969,7 +1975,7 @@ mod tests {
                 span: crate::session::Span::DUMMY,
             },
         ];
-        let out = expand_macro_calls(&tokens, &table, &interner);
+        let out = expand_macro_calls(&tokens, &table, &mut interner);
         assert_eq!(out.len(), 3, "no macros → 3 tokens unchanged");
     }
 
@@ -1977,12 +1983,12 @@ mod tests {
     /// returns the input tokens unchanged (zero-overhead fast path).
     #[test]
     fn stage18_04_expand_macros_no_macros_returns_input() {
-        let interner = Rodeo::new();
+        let mut interner = Rodeo::new();
         let tokens = vec![Token {
             kind: TokenKind::IntLit(42, None),
             span: crate::session::Span::DUMMY,
         }];
-        let out = expand_macros(tokens.clone(), &interner);
+        let out = expand_macros(tokens.clone(), &mut interner);
         assert_eq!(out.len(), 1, "no macros → unchanged output");
         assert!(matches!(out[0].kind, TokenKind::IntLit(42, _)));
     }
@@ -2345,12 +2351,12 @@ mod tests {
     /// Stage 18.08 positive 1: No macro_rules! → no errors.
     #[test]
     fn stage18_08_macro_error_no_macros() {
-        let interner = Rodeo::new();
+        let mut interner = Rodeo::new();
         let tokens = vec![Token {
             kind: TokenKind::IntLit(42, None),
             span: crate::session::Span::DUMMY,
         }];
-        let (out, errors) = expand_macros_with_errors(tokens.clone(), &interner);
+        let (out, errors) = expand_macros_with_errors(tokens.clone(), &mut interner);
         assert!(errors.is_empty(), "no macros → no errors");
         assert_eq!(out.len(), 1, "tokens unchanged");
     }
@@ -2358,12 +2364,12 @@ mod tests {
     /// Stage 18.08 positive 2: Valid macro_rules! + matching call → no errors.
     #[test]
     fn stage18_08_macro_error_valid_macro_no_errors() {
-        let interner = Rodeo::new();
+        let mut interner = Rodeo::new();
         let tokens = vec![Token {
             kind: TokenKind::IntLit(42, None),
             span: crate::session::Span::DUMMY,
         }];
-        let (_out, errors) = expand_macros_with_errors(tokens, &interner);
+        let (_out, errors) = expand_macros_with_errors(tokens, &mut interner);
         // No macro_rules! → no errors (same as above, but tests the happy path).
         assert!(errors.is_empty());
     }
@@ -2443,7 +2449,7 @@ mod tests {
                 span: crate::session::Span::DUMMY,
             },
         ];
-        let (_out, errors) = expand_macros_with_errors(tokens, &interner);
+        let (_out, errors) = expand_macros_with_errors(tokens, &mut interner);
         assert!(
             errors
                 .iter()
@@ -2491,7 +2497,7 @@ mod tests {
                 span: crate::session::Span::DUMMY,
             },
         ];
-        let (_out, errors) = expand_macros_with_errors(tokens, &interner);
+        let (_out, errors) = expand_macros_with_errors(tokens, &mut interner);
         assert!(
             errors
                 .iter()
@@ -2533,12 +2539,13 @@ mod tests {
     /// (tokens, errors) tuple — verify the tuple structure.
     #[test]
     fn stage18_08_expand_macros_with_errors_returns_tuple() {
-        let interner = Rodeo::new();
+        let mut interner = Rodeo::new();
         let tokens = vec![Token {
             kind: TokenKind::IntLit(0, None),
             span: crate::session::Span::DUMMY,
         }];
-        let result: (Vec<Token>, Vec<MacroError>) = expand_macros_with_errors(tokens, &interner);
+        let result: (Vec<Token>, Vec<MacroError>) =
+            expand_macros_with_errors(tokens, &mut interner);
         assert_eq!(result.0.len(), 1, "tokens preserved");
         assert!(result.1.is_empty(), "no errors");
     }
@@ -2560,7 +2567,7 @@ mod tests {
         interner.get_or_intern("args");
         interner.get_or_intern("tt");
 
-        let table = build_builtin_macro_table(&interner);
+        let table = build_builtin_macro_table(&mut interner);
         assert_eq!(table.len(), 4, "should register 4 built-in macros");
         for name in BUILTIN_MACRO_NAMES {
             let sym = interner.get(name).expect("name was interned");
@@ -2594,8 +2601,8 @@ mod tests {
     /// empty table when no names are interned (cold-start scenario).
     #[test]
     fn stage18_10_build_builtin_macro_table_returns_table() {
-        let interner = Rodeo::new();
-        let table = build_builtin_macro_table(&interner);
+        let mut interner = Rodeo::new();
+        let table = build_builtin_macro_table(&mut interner);
         // No names interned → empty table.
         assert!(table.is_empty(), "empty interner → empty table");
     }
@@ -2611,7 +2618,7 @@ mod tests {
         interner.get_or_intern("args");
         interner.get_or_intern("tt");
 
-        let table = build_builtin_macro_table(&interner);
+        let table = build_builtin_macro_table(&mut interner);
         let println_sym = interner.get("println").unwrap();
         let def = &table[&println_sym];
         assert_eq!(def.rules.len(), 1, "should have 1 rule");
@@ -2636,7 +2643,7 @@ mod tests {
         interner.get_or_intern("args");
         interner.get_or_intern("tt");
 
-        let table = build_builtin_macro_table(&interner);
+        let table = build_builtin_macro_table(&mut interner);
         let println_sym = interner.get("println").unwrap();
         let def = &table[&println_sym];
         let body = &def.rules[0].body;
@@ -2709,7 +2716,7 @@ mod tests {
                 span,
             },
         ];
-        let (out, errors) = expand_macros_with_errors(tokens, &interner);
+        let (out, errors) = expand_macros_with_errors(tokens, &mut interner);
         assert!(errors.is_empty(), "no macro errors");
         // After no-op expansion: println ! ( "hi" ) — same 5 tokens.
         assert_eq!(
@@ -3625,5 +3632,82 @@ mod tests {
         } else {
             panic!("expected CaptureValue::Single for $l");
         }
+    }
+
+    // =====================================================================
+    // Stage 18.26 tests — Macro hygiene activation
+    // =====================================================================
+
+    /// Stage 18.26 positive 1: println! still works after hygiene activation.
+    #[test]
+    fn stage18_26_println_still_works_after_hygiene() {
+        let src = "fn main() { println!(\"hello\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+        assert!(result.errors.macro_errors.is_empty());
+    }
+
+    /// Stage 18.26 positive 2: User macro still works after hygiene.
+    #[test]
+    fn stage18_26_user_macro_still_works_after_hygiene() {
+        let src = "macro_rules! m { () => { 42 } } fn main() { m!() }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.26 negative 1: println! with args still works.
+    #[test]
+    fn stage18_26_println_with_args_after_hygiene() {
+        let src = "fn main() { let x = 42; println!(\"x={}\", x); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.26 negative 2: eprintln! still works.
+    #[test]
+    fn stage18_26_eprintln_after_hygiene() {
+        let src = "fn main() { eprintln!(\"err\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.26 negative 3: macro with repetition still works.
+    #[test]
+    fn stage18_26_macro_repetition_after_hygiene() {
+        let src = "macro_rules! m { ($($x:expr)*) => { 0 } } fn main() { m!() }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.26 negative 4: macro with separator still works.
+    #[test]
+    fn stage18_26_macro_separator_after_hygiene() {
+        let src = "macro_rules! m { ($($x:expr),*) => { 0 } } fn main() { m!(1, 2, 3) }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.26 negative 5: macro with capture still works.
+    #[test]
+    fn stage18_26_macro_capture_after_hygiene() {
+        let src = "macro_rules! m { ($x:expr) => { $x } } fn main() { m!(42) }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.26 negative 6: print! (no newline) still works.
+    #[test]
+    fn stage18_26_print_after_hygiene() {
+        let src = "fn main() { print!(\"no newline\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
     }
 }
