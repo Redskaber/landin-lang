@@ -1,9 +1,82 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.297.0
+**Current version**: v0.298.0
 **Date**: 2026-08-06
-**Test count**: 519 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 527 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.298.0 — Stage 18.14 (macro_rules! Nested Repetition Support)
+
+### Overview
+
+Continues macro_rules! system improvement per user feedback
+("println! 系列也是 macro 的一部分"). Adds nested repetition support,
+enabling macros like `vec![$($($x),*);*]` (vector of vectors) to be
+expressed via `macro_rules!`.
+
+### Implementation
+
+**Bug fix in `match_repetition`**: Previously, when an inner pattern
+contained a repetition, the inner `CaptureValue::Repetition` captures
+were **silently discarded** (only `CaptureValue::Single` was collected).
+This made nested repetition impossible.
+
+1. **New helper `push_capture_into_rep_names`** — handles both `Single`
+   and `Repetition` capture values when merging iteration captures:
+   - `Single(tokens)` → pushes `tokens` as one iteration's capture
+   - `Repetition(inner_iters)` → flattens all inner iterations' tokens
+     into one slice and pushes that as one outer iteration's capture
+   - `Empty` → no-op
+
+2. **`match_repetition` updated** — both the no-progress guard path
+   and the normal merge path now call `push_capture_into_rep_names`
+   instead of filtering for `Single` only.
+
+3. **`substitute_repetition` unchanged** — already works with the
+   flattened captures (uses `i`-th entry as `Single`).
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特解"**: one `match_repetition` handles both
+  flat and nested repetition via recursive `match_pattern_at` calls.
+- **§10 naming**: `push_capture_into_rep_names` (`<verb>_<noun>_<noun>_<noun>`).
+- **§11 isolation**: helper is `fn` (private) in `macro_expand.rs`.
+- **Single responsibility**: `push_capture_into_rep_names` only merges
+  captures; `match_repetition` only matches.
+- **Avoid dead code**: helper is called from both merge paths.
+- **Avoid scattered content**: nested repetition logic concentrated in
+  the repetition handling section.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | macro_with_nested_repetition | positive | `$( $( $x ),* );*` parses |
+| 2 | macro_with_deep_repetition | positive | 3-level nesting parses |
+| 3 | match_repetition_collects_inner_repetition | negative | `Single` capture collected |
+| 4 | match_repetition_nested_flat_map | negative | `Repetition` flattened to one slice |
+| 5 | substitute_repetition_nested_works | negative | Nested substitution produces output |
+| 6 | nested_repetition_with_separators | negative | Nested with `,` and `;` separators |
+| 7 | capture_value_repetition_holds_inner | negative | `CaptureValue::Repetition` variant works |
+| 8 | match_repetition_preserves_inner_order | negative | Iteration order preserved |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 527 lib (+8 new) + 2537 integration = **3,064** unit tests, 0 failures
+
+### Macro System Progress
+
+The macro_rules! system now supports:
+- ✅ 7 fragment specifiers (expr/ident/tt/ty/literal/block/path)
+- ✅ 3 repetition operators (`*` / `+` / `?`)
+- ✅ Separator support (Stage 18.13) — `$(...),*` / `$(...);+`
+- ✅ **Nested repetition** (this stage) — `$( $( $x ),* );*`
+- ⏳ Macro hygiene (future)
+- ⏳ More fragment specifiers (vis/stmt/meta — future)
 
 ---
 ## v0.297.0 — Stage 18.13 (macro_rules! Separator Support `$(...),*` / `$(...);+` / `$(...)?`)

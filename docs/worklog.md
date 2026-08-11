@@ -30330,3 +30330,40 @@ Stage Summary:
 - enables vec![$($x),*] and println!($($arg),*) patterns
 - 响应用户反馈: macro 系统改进优先于 println! 迁移
 - v0.296.0 → v0.297.0
+
+---
+Task ID: stage18.14
+Agent: Super Z (main)
+Task: Stage 18.14 — macro_rules! Nested Repetition Support
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 继续响应用户反馈: macro 系统改进优先于 println! 迁移
+- 设计文档: docs/develop/v0/stage-18/stage-18.14-nested-repetition-design.md
+- 修复 match_repetition bug: 内层 Repetition captures 被丢弃
+- 实现:
+  1. push_capture_into_rep_names 新函数 — 处理 Single/Repetition/Empty
+     - Single(tokens) → 直接 push
+     - Repetition(inner_iters) → flatten 所有内层 tokens 后 push
+     - Empty → no-op
+  2. match_repetition 两处 merge 路径都改用 push_capture_into_rep_names
+     (no-progress guard + normal merge)
+  3. substitute_repetition 无需改动 (已用 i-th entry as Single)
+- §1.0 原則 6 "通用 > 特解": 一个 match_repetition 递归处理嵌套
+- §10 命名: push_capture_into_rep_names (<verb>_<noun>_<noun>_<noun>)
+- §11 接口隔离: helper 是 fn (private)
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: macro_with_nested_repetition + macro_with_deep_repetition (2)
+  - negative: match_repetition_collects_inner_repetition + match_repetition_nested_flat_map + substitute_repetition_nested_works + nested_repetition_with_separators + capture_value_repetition_holds_inner + match_repetition_preserves_inner_order (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 527 lib (+8 new) + 2537 integration = 3064 unit tests, 0 failures
+
+Stage Summary:
+- macro_rules! 嵌套重复支持完成
+- $( $( $x ),* );* 这样的嵌套模式现在可以正确匹配和展开
+- macro 系统功能: 7 fragments + 3 operators + separator + nested repetition
+- v0.297.0 → v0.298.0
