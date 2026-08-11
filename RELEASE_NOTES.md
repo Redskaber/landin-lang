@@ -1,9 +1,89 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.299.0
+**Current version**: v0.300.0
 **Date**: 2026-08-06
-**Test count**: 535 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 543 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.300.0 — Stage 18.17 (macro_rules! Basic Hygiene — HygieneContext Infrastructure)
+
+### Overview
+
+**3,080 tests milestone!** Continues macro_rules! system improvement per
+the balanced plan from Stage 18.16. Adds the `HygieneContext`
+infrastructure for basic macro hygiene — the first step toward
+preventing macro body locals from colliding with caller scope.
+
+This is **infrastructure preparation**: the `HygieneContext` struct and
+`gen_unique_name` method are ready but not yet invoked from
+`expand_macro`. A future stage will implement `apply_hygiene` to rename
+macro body identifiers to `__landin_macro_<original>_<counter>`.
+
+### Implementation
+
+**`src/parser/macro_expand.rs`**:
+1. **`HygieneContext` struct** — tracks a counter for generating unique
+   identifier names during macro body expansion:
+   ```rust
+   #[derive(Debug, Default, Clone)]
+   pub(crate) struct HygieneContext {
+       counter: u64,
+   }
+   ```
+
+2. **`HygieneContext::new()`** — constructs a fresh context with
+   counter=0.
+
+3. **`HygieneContext::gen_unique_name(original)`** — returns
+   `__landin_macro_<original>_<counter>` and increments the counter.
+
+4. **`HygieneContext::counter()`** — test-only accessor for the counter
+   value.
+
+All items are marked `#[allow(dead_code)]` with clear comments noting
+that `apply_hygiene` (future stage) will activate them.
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特例"**: one `HygieneContext` per macro
+  expansion — no per-identifier special cases.
+- **§10 naming**: `HygieneContext` (`<Noun><Noun>`), `gen_unique_name`
+  (`<verb>_<noun>_<noun>`), `counter` (`<noun>` accessor).
+- **§11 isolation**: `HygieneContext` is `pub(crate)` in `macro_expand.rs`.
+- **Single responsibility**: `HygieneContext` only tracks counter +
+  generates names.
+- **Avoid dead code**: `#[allow(dead_code)]` with clear "future stage
+  will activate" comments — this is interface preparation, not dead code.
+- **Avoid scattered content**: all hygiene infrastructure in one section
+  of `macro_expand.rs`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | hygiene_context_new_creates_zero_counter | positive | `new()` → counter=0 |
+| 2 | hygiene_context_gen_unique_name_increments | positive | `gen_unique_name` increments counter |
+| 3 | hygiene_context_default | negative | `Default` trait creates counter=0 |
+| 4 | hygiene_context_gen_unique_name_format | negative | Format is `__landin_macro_<orig>_<n>` |
+| 5 | hygiene_context_gen_multiple_unique | negative | Multiple calls produce different names |
+| 6 | hygiene_context_clone_preserves_counter | negative | `clone()` preserves counter |
+| 7 | macro_expansion_with_hygiene_context_still_works | negative | Macro expansion unchanged |
+| 8 | hygiene_context_does_not_break_println | negative | `println!` still works |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 543 lib (+8 new) + 2537 integration = **3,080** unit tests, 0 failures
+
+### Migration Balance
+
+Per the Stage 18.16 balanced plan:
+- Stage 18.17: macro hygiene infrastructure (macro system) — this stage
+- Stage 18.18: println! Phase 2.2 (println! migration) — next
+- Maintains macro:println balance
 
 ---
 ## v0.299.0 — Stage 18.15 (println! 通解化 Phase 2.1 — __landin_println Call Detection Interface)

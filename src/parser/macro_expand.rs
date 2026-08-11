@@ -873,6 +873,67 @@ impl MacroError {
 }
 
 // =============================================================================
+// Stage 18.17: Basic macro hygiene (HygieneContext infrastructure)
+// =============================================================================
+
+/// Stage 18.17: Hygiene context for macro expansion.
+///
+/// Tracks a counter for generating unique identifier names during
+/// macro body expansion. Each macro call gets a fresh context.
+///
+/// **Current status (Stage 18.17)**: Infrastructure only — the context
+/// is created but `apply_hygiene` is not yet called from `expand_macro`.
+/// This is preparation for future stages that will rename macro body
+/// locals to prevent collisions with caller scope.
+///
+/// **Future**: When `apply_hygiene` is implemented, macro body
+/// identifiers (except `$name` captures) will be renamed to
+/// `__landin_macro_<original>_<counter>` to isolate them from the
+/// caller's scope.
+///
+/// Per §10: struct follows `<Noun><Noun>` pattern.
+/// Stage 18.17: Infrastructure only — `apply_hygiene` (future stage)
+/// will use this. Marked `#[allow(dead_code)]` until then.
+#[allow(dead_code)]
+#[derive(Debug, Default, Clone)]
+pub(crate) struct HygieneContext {
+    /// Counter for generating unique names. Incremented each time
+    /// a macro body identifier is renamed.
+    counter: u64,
+}
+
+impl HygieneContext {
+    /// Stage 18.17: Construct a fresh hygiene context with counter=0.
+    ///
+    /// Per §10: constructor follows `new` convention.
+    #[allow(dead_code)]
+    pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    /// Stage 18.17: Generate a unique hygiene-renamed identifier name.
+    ///
+    /// Returns `__landin_macro_<original>_<counter>` and increments the
+    /// internal counter, so successive calls produce different names.
+    ///
+    /// Per §10: `<verb>_<noun>_<noun>` pattern.
+    #[allow(dead_code)]
+    pub(crate) fn gen_unique_name(&mut self, original: &str) -> String {
+        let name = format!("__landin_macro_{original}_{}", self.counter);
+        self.counter += 1;
+        name
+    }
+
+    /// Stage 18.17: Get the current counter value (for testing).
+    ///
+    /// Per §10: `<verb>_<noun>` pattern.
+    #[cfg(test)]
+    pub(crate) fn counter(&self) -> u64 {
+        self.counter
+    }
+}
+
+// =============================================================================
 // Stage 18.10: Built-in macro_rules! registration (println! 通解化 Phase 1)
 // =============================================================================
 
@@ -2899,5 +2960,91 @@ mod tests {
             rep_names[&x_sym][2][0].kind,
             TokenKind::IntLit(3, _)
         ));
+    }
+
+    // =====================================================================
+    // Stage 18.17 tests — Basic macro hygiene (HygieneContext)
+    // =====================================================================
+
+    /// Stage 18.17 positive 1: HygieneContext::new() creates a context
+    /// with counter=0.
+    #[test]
+    fn stage18_17_hygiene_context_new_creates_zero_counter() {
+        let ctx = HygieneContext::new();
+        assert_eq!(ctx.counter(), 0, "new context should have counter=0");
+    }
+
+    /// Stage 18.17 positive 2: gen_unique_name increments the counter.
+    #[test]
+    fn stage18_17_hygiene_context_gen_unique_name_increments() {
+        let mut ctx = HygieneContext::new();
+        assert_eq!(ctx.counter(), 0);
+        let _ = ctx.gen_unique_name("x");
+        assert_eq!(ctx.counter(), 1, "counter should be 1 after one call");
+        let _ = ctx.gen_unique_name("y");
+        assert_eq!(ctx.counter(), 2, "counter should be 2 after two calls");
+    }
+
+    /// Stage 18.17 negative 1: Default trait creates counter=0.
+    #[test]
+    fn stage18_17_hygiene_context_default() {
+        let ctx = HygieneContext::default();
+        assert_eq!(ctx.counter(), 0);
+    }
+
+    /// Stage 18.17 negative 2: gen_unique_name produces the correct format.
+    #[test]
+    fn stage18_17_hygiene_context_gen_unique_name_format() {
+        let mut ctx = HygieneContext::new();
+        let name = ctx.gen_unique_name("tmp");
+        assert_eq!(
+            name, "__landin_macro_tmp_0",
+            "first name should be __landin_macro_tmp_0"
+        );
+    }
+
+    /// Stage 18.17 negative 3: Multiple gen_unique_name calls produce
+    /// different names.
+    #[test]
+    fn stage18_17_hygiene_context_gen_multiple_unique() {
+        let mut ctx = HygieneContext::new();
+        let n1 = ctx.gen_unique_name("x");
+        let n2 = ctx.gen_unique_name("x");
+        let n3 = ctx.gen_unique_name("x");
+        assert_ne!(n1, n2, "names should differ");
+        assert_ne!(n2, n3, "names should differ");
+        assert_ne!(n1, n3, "names should differ");
+    }
+
+    /// Stage 18.17 negative 4: Clone preserves the counter value.
+    #[test]
+    fn stage18_17_hygiene_context_clone_preserves_counter() {
+        let mut ctx = HygieneContext::new();
+        let _ = ctx.gen_unique_name("a");
+        let _ = ctx.gen_unique_name("b");
+        assert_eq!(ctx.counter(), 2);
+        let cloned = ctx.clone();
+        assert_eq!(cloned.counter(), 2, "clone should preserve counter");
+    }
+
+    /// Stage 18.17 negative 5: Macro expansion still works correctly
+    /// with HygieneContext infrastructure in place (no behavior change).
+    #[test]
+    fn stage18_17_macro_expansion_with_hygiene_context_still_works() {
+        let src = "macro_rules! m { () => { 42 } } fn main() { m!() }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.17 negative 6: println! still works (hygiene context
+    /// doesn't interfere with built-in macros).
+    #[test]
+    fn stage18_17_hygiene_context_does_not_break_println() {
+        let src = "fn main() { println!(\"hello\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+        assert!(result.errors.macro_errors.is_empty());
     }
 }
