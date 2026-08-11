@@ -1,9 +1,75 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.300.0
+**Current version**: v0.301.0
 **Date**: 2026-08-06
-**Test count**: 543 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 551 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.301.0 — Stage 18.18 (println! 通解化 Phase 2.2 — Activate __landin_println Detection)
+
+### Overview
+
+Activates the `__landin_println` / `__landin_print` / `__landin_eprintln`
+/ `__landin_eprint` call detection in the Call terminator. The
+`is_landin_print_macro` and `codegen_print_call` functions (prepared in
+Stage 18.15) are now invoked from `TerminatorKind::Call` processing,
+routing print macro runtime calls to `emit_printf_call` (Stage 18.12).
+
+`#[allow(dead_code)]` annotations are removed — the functions are now
+used. This maintains the balanced plan: Stage 18.17 (macro hygiene) +
+Stage 18.18 (println! migration).
+
+### Implementation
+
+**`src/codegen/terminator.rs`**:
+1. **Call terminator integration** — in `TerminatorKind::Call` handling,
+   after obtaining `fn_name`, check `is_landin_print_macro(name)`. If
+   true, call `codegen_print_call(...)` and return early (don't fall
+   through to regular call codegen).
+
+2. **Removed `#[allow(dead_code)]`** from `is_landin_print_macro` and
+   `codegen_print_call` — they are now called from the Call terminator.
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特解"**: `__landin_println` calls go through
+  the regular Call terminator, reusing `emit_printf_call`.
+- **§10 naming**: reuses `is_landin_print_macro` / `codegen_print_call`
+  from Stage 18.15.
+- **§11 isolation**: detection in `codegen::terminator`; `emit_printf_call`
+  in `codegen::statement`.
+- **Single responsibility**: detection only detects; `codegen_print_call`
+  only codegens.
+- **Avoid dead code**: `#[allow(dead_code)]` removed — functions now used.
+- **Avoid scattered content**: detection logic concentrated in
+  `terminator.rs`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | println_still_works_after_activation | positive | `println!` still compiles |
+| 2 | eprintln_still_works_after_activation | positive | `eprintln!` still compiles |
+| 3 | is_landin_print_macro_still_detects | negative | All 4 macros detected |
+| 4 | is_landin_print_macro_println_after_activation | negative | `__landin_println` detected |
+| 5 | is_landin_print_macro_eprintln_after_activation | negative | `__landin_eprintln` detected |
+| 6 | regular_call_not_affected | negative | Regular calls unaffected |
+| 7 | print_macro_not_broken_by_activation | negative | `print!` macro unaffected |
+| 8 | macro_rules_user_macro_not_affected | negative | User macros unaffected |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 551 lib (+8 new) + 2537 integration = **3,088** unit tests, 0 failures
+
+### Migration Balance
+
+- Stage 18.17: macro hygiene infrastructure (macro system)
+- Stage 18.18: println! Phase 2.2 activation (println! migration)
+- Balance maintained: macro 4 stages : println! 4 stages
 
 ---
 ## v0.300.0 — Stage 18.17 (macro_rules! Basic Hygiene — HygieneContext Infrastructure)

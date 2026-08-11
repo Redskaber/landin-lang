@@ -30494,3 +30494,38 @@ Stage Summary:
 - 3080 tests milestone!
 - 保持 macro:println 平衡 (18.17 macro + 18.18 println! next)
 - v0.299.0 → v0.300.0
+
+---
+Task ID: stage18.18
+Agent: Super Z (main)
+Task: Stage 18.18 — println! 通解化 Phase 2.2 (Activate __landin_println Detection)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 平衡推进: 18.17 (macro hygiene) + 18.18 (println! Phase 2.2)
+- 设计文档: docs/develop/v0/stage-18/stage-18.18-println-phase2.2-design.md
+- 激活 __landin_println 调用检测:
+  1. 在 TerminatorKind::Call 处理中, 获取 fn_name 后检测 is_landin_print_macro
+  2. 如果是, 调用 codegen_print_call (路由到 emit_printf_call)
+  3. 处理 destination (void/unit return) + branch to target
+  4. 移除 is_landin_print_macro 的 #[allow(dead_code)]
+  5. 移除 codegen_print_call 的 #[allow(dead_code)]
+- §1.0 原則 6 "通用 > 特解": __landin_println 走 Call 路径, 复用 emit_printf_call
+- §10 命名: 复用 is_landin_print_macro / codegen_print_call
+- §11 接口隔离: 检测在 codegen::terminator
+- 避免死代码: 移除 #[allow(dead_code)], 函数现在被使用
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: println_still_works_after_activation + eprintln_still_works_after_activation (2)
+  - negative: is_landin_print_macro_still_detects + is_landin_print_macro_println_after_activation + is_landin_print_macro_eprintln_after_activation + regular_call_not_affected + print_macro_not_broken_by_activation + macro_rules_user_macro_not_affected (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 551 lib (+8 new) + 2537 integration = 3088 unit tests, 0 failures
+
+Stage Summary:
+- println! Phase 2.2 完成 (激活 __landin_println 检测)
+- 移除 #[allow(dead_code)] — 函数现在被 Call terminator 使用
+- 平衡: macro 4 stages (18.10,18.12,18.13,18.14,18.17) : println! 4 stages (18.10,18.12,18.15,18.18)
+- v0.300.0 → v0.301.0

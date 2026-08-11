@@ -301,6 +301,31 @@ pub(crate) fn codegen_terminator(
             };
 
             let ret_val = if let Some(ref name) = fn_name {
+                // Stage 18.18: Detect __landin_println / __landin_print /
+                // __landin_eprintln / __landin_eprint calls and route to
+                // codegen_print_call (which calls emit_printf_call from
+                // Stage 18.12). This is the Phase 2.2 activation of the
+                // Phase 2.1 interface (Stage 18.15).
+                if is_landin_print_macro(name) {
+                    codegen_print_call(
+                        name,
+                        args,
+                        emitter,
+                        mir,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                        fn_name_by_def_id,
+                    );
+                    // The print macros return void/unit — no return value
+                    // to store. Branch to the target block if present.
+                    if let Some(target) = target {
+                        emitter.emit_br(&format!("bb{}", target.0));
+                    } else {
+                        emitter.emit_unreachable();
+                    }
+                    return;
+                }
                 // Stage 14.35: Use the callee's actual return type from fn_sigs
                 let call_ret_ty = callee_def_id
                     .and_then(|did| fn_sigs.get(&did))
@@ -607,10 +632,8 @@ pub(crate) fn codegen_terminator(
 /// instead of the regular call path.
 ///
 /// Per §10: `<verb>_<noun>_<noun>` pattern.
-/// Stage 18.15: Function is prepared but not yet called from the Call
-/// terminator — will be invoked in Phase 2.2 (Stage 18.16) when
-/// built-in macro body is changed to expand to `__landin_println(...)`.
-#[allow(dead_code)] // Phase 2.2 will use it
+/// Stage 18.18: Now called from Call terminator — `#[allow(dead_code)]`
+/// removed (Phase 2.2 activation).
 pub(crate) fn is_landin_print_macro(name: &str) -> bool {
     matches!(
         name,
@@ -631,10 +654,9 @@ pub(crate) fn is_landin_print_macro(name: &str) -> bool {
 /// Remaining arguments are the format args.
 ///
 /// Per §10: `<verb>_<noun>_<noun>` pattern.
-/// Stage 18.15: Function is prepared but not yet called — will be
-/// invoked in Phase 2.2 (Stage 18.16) when built-in macro body is
-/// changed to expand to `__landin_println(...)`.
-#[allow(clippy::too_many_arguments, dead_code)] // codegen context; Phase 2.2 will use it
+/// Stage 18.18: Now called from Call terminator — `#[allow(dead_code)]`
+/// removed (Phase 2.2 activation).
+#[allow(clippy::too_many_arguments)] // codegen context requires many params
 fn codegen_print_call(
     name: &str,
     args: &[Operand],
@@ -750,5 +772,80 @@ mod tests {
     #[test]
     fn stage18_15_is_landin_print_macro_rejects_empty() {
         assert!(!is_landin_print_macro(""));
+    }
+
+    // =====================================================================
+    // Stage 18.18 tests — Phase 2.2 activation
+    // =====================================================================
+
+    /// Stage 18.18 positive 1: println! still works after activation
+    /// (parser special case path still handles it).
+    #[test]
+    fn stage18_18_println_still_works_after_activation() {
+        let src = "fn main() { println!(\"hello\"); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+        assert!(result.errors.macro_errors.is_empty());
+    }
+
+    /// Stage 18.18 positive 2: eprintln! still works after activation.
+    #[test]
+    fn stage18_18_eprintln_still_works_after_activation() {
+        let src = "fn main() { eprintln!(\"err\"); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.18 negative 1: is_landin_print_macro still detects all 4.
+    #[test]
+    fn stage18_18_is_landin_print_macro_still_detects() {
+        assert!(is_landin_print_macro("__landin_println"));
+        assert!(is_landin_print_macro("__landin_print"));
+        assert!(is_landin_print_macro("__landin_eprintln"));
+        assert!(is_landin_print_macro("__landin_eprint"));
+    }
+
+    /// Stage 18.18 negative 2: is_landin_print_macro detects __landin_println.
+    #[test]
+    fn stage18_18_is_landin_print_macro_println_after_activation() {
+        assert!(is_landin_print_macro("__landin_println"));
+    }
+
+    /// Stage 18.18 negative 3: is_landin_print_macro detects __landin_eprintln.
+    #[test]
+    fn stage18_18_is_landin_print_macro_eprintln_after_activation() {
+        assert!(is_landin_print_macro("__landin_eprintln"));
+    }
+
+    /// Stage 18.18 negative 4: Regular function calls are not affected
+    /// by the __landin_println detection.
+    #[test]
+    fn stage18_18_regular_call_not_affected() {
+        let src = "fn foo() -> i32 { 42 } fn main() { let x = foo(); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.18 negative 5: print! macro (not __landin_print) is not
+    /// affected by the activation.
+    #[test]
+    fn stage18_18_print_macro_not_broken_by_activation() {
+        let src = "fn main() { print!(\"no newline\"); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.18 negative 6: User-defined macro_rules! is not affected
+    /// by the __landin_println activation.
+    #[test]
+    fn stage18_18_macro_rules_user_macro_not_affected() {
+        let src = "macro_rules! m { () => { 42 } } fn main() { m!() }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
     }
 }
