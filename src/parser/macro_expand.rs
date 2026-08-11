@@ -130,9 +130,9 @@ fn match_pattern_at(
                 Some(x) => x,
                 None => return false,
             };
-            // Read $op (Star/Plus/Question).
-            let op = match parse_repetition_op(pattern, after_close) {
-                Some(op) => op,
+            // Read $op (Star/Plus/Question), possibly with separator.
+            let (op, after_op) = match parse_repetition_op(pattern, after_close) {
+                Some(x) => x,
                 None => return false,
             };
             // Match repetition.
@@ -141,7 +141,7 @@ fn match_pattern_at(
             if iter_count.is_none() {
                 return false;
             }
-            pi = after_close + 1; // past `)` and `$op`
+            pi = after_op; // past `)` and `$op` (and separator if present)
             continue;
         }
 
@@ -467,9 +467,9 @@ fn substitute_body(body: &[Token], captures: &Captures) -> Vec<Token> {
                     continue;
                 }
             };
-            // Read $op (Star/Plus/Question).
-            let op = match parse_repetition_op(body, after_close) {
-                Some(op) => op,
+            // Read $op (Star/Plus/Question), possibly with separator.
+            let (op, after_op) = match parse_repetition_op(body, after_close) {
+                Some(x) => x,
                 None => {
                     result.push(bt.clone());
                     i += 1;
@@ -478,7 +478,7 @@ fn substitute_body(body: &[Token], captures: &Captures) -> Vec<Token> {
             };
             // Substitute repetition.
             substitute_repetition(&inner_body, captures, op, &mut result);
-            i = after_close + 1; // past `)` and `$op`
+            i = after_op; // past `)` and `$op` (and separator if present)
             continue;
         }
 
@@ -504,31 +504,84 @@ fn substitute_body(body: &[Token], captures: &Captures) -> Vec<Token> {
 // Stage 18.06: Repetition — $(...)* / $(...)+ / $(...)?
 // =============================================================================
 
-/// Stage 18.06: Kind of repetition operator in macro_rules! patterns.
+/// Stage 18.06 + 18.13: Kind of repetition operator in macro_rules! patterns,
+/// with optional separator.
 ///
 /// Per §10: enum follows `<Noun>Kind` pattern (mirrors `BorrowKind`,
 /// `IntTy`, etc.).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 enum RepetitionKind {
-    /// `$(...)*` — zero or more
-    ZeroOrMore,
-    /// `$(...)+` — one or more
-    OneOrMore,
-    /// `$(...)?` — zero or one
-    ZeroOrOne,
+    /// `$(...)*` — zero or more (with optional separator)
+    ZeroOrMore(RepetitionSep),
+    /// `$(...)+` — one or more (with optional separator)
+    OneOrMore(RepetitionSep),
+    /// `$(...)?` — zero or one (with optional separator)
+    ZeroOrOne(RepetitionSep),
 }
 
-/// Stage 18.06: Parse the repetition operator at `tokens[idx]`.
+/// Stage 18.13: Optional separator in a macro_rules! repetition.
 ///
-/// Returns `Some(RepetitionKind)` if `tokens[idx]` is `*`, `+`, or `?`,
-/// otherwise `None`.
+/// `$(...)*`  → `RepetitionSep::None`
+/// `$(...),*` → `RepetitionSep::Token(TokenKind::Comma)`
+/// `$(...);+` → `RepetitionSep::Token(TokenKind::Semicolon)`
+///
+/// Per §10: enum follows `<Noun>` pattern.
+///
+/// Note: does not derive `Eq` because `TokenKind` contains `f64` (FloatLit).
+/// `Default` is derived — `None` is the first variant, so it's the default.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) enum RepetitionSep {
+    /// No separator — `$(...)*` / `+` / `?`
+    #[default]
+    None,
+    /// A single token separator — `$(...),*` / `$(...);+` / etc.
+    /// Stores the token kind (without span) for matching.
+    Token(TokenKind),
+}
+
+/// Stage 18.06 + 18.13: Parse the repetition operator (and optional
+/// separator) at/after `tokens[idx]`.
+///
+/// Syntax:
+///   `*`           → ZeroOrMore(None)
+///   `+`           → OneOrMore(None)
+///   `?`           → ZeroOrOne(None)
+///   `, *`         → ZeroOrMore(Comma)
+///   `; +`         → OneOrMore(Semicolon)
+///   `=> ?`        → ZeroOrOne(FatArrow)  [unusual but valid]
+///
+/// Returns `Some((RepetitionKind, after_op_index))` if a valid operator
+/// (possibly preceded by a separator token) is found, otherwise `None`.
 ///
 /// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
-fn parse_repetition_op(tokens: &[Token], idx: usize) -> Option<RepetitionKind> {
-    match tokens.get(idx).map(|t| &t.kind) {
-        Some(TokenKind::Star) => Some(RepetitionKind::ZeroOrMore),
-        Some(TokenKind::Plus) => Some(RepetitionKind::OneOrMore),
-        Some(TokenKind::Question) => Some(RepetitionKind::ZeroOrOne),
+fn parse_repetition_op(tokens: &[Token], idx: usize) -> Option<(RepetitionKind, usize)> {
+    // Stage 18.13: Check for a separator token before the operator.
+    // A separator is any single token that is NOT `*`/`+`/`?` (those are
+    // the operators themselves) and NOT `)` (end of repetition group).
+    let (sep, op_idx) = match tokens.get(idx).map(|t| &t.kind) {
+        Some(TokenKind::Star) => (RepetitionSep::None, idx),
+        Some(TokenKind::Plus) => (RepetitionSep::None, idx),
+        Some(TokenKind::Question) => (RepetitionSep::None, idx),
+        Some(kind) if !matches!(kind, TokenKind::RParen | TokenKind::Eof) => {
+            // This token is a potential separator.
+            // Verify the NEXT token is a valid operator.
+            if matches!(
+                tokens.get(idx + 1).map(|t| &t.kind),
+                Some(TokenKind::Star | TokenKind::Plus | TokenKind::Question)
+            ) {
+                (RepetitionSep::Token(kind.clone()), idx + 1)
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+
+    let after_op = op_idx + 1;
+    match tokens.get(op_idx).map(|t| &t.kind) {
+        Some(TokenKind::Star) => Some((RepetitionKind::ZeroOrMore(sep), after_op)),
+        Some(TokenKind::Plus) => Some((RepetitionKind::OneOrMore(sep), after_op)),
+        Some(TokenKind::Question) => Some((RepetitionKind::ZeroOrOne(sep), after_op)),
         _ => None,
     }
 }
@@ -587,12 +640,28 @@ fn match_repetition(
     captures: &mut Captures,
     interner: &Rodeo,
 ) -> Option<usize> {
+    // Stage 18.13: Extract separator from op.
+    let sep = match &op {
+        RepetitionKind::ZeroOrMore(s)
+        | RepetitionKind::OneOrMore(s)
+        | RepetitionKind::ZeroOrOne(s) => s,
+    };
     // Local captures for this repetition — each iteration appends to the
     // per-name Vec. We collect here, then merge into `captures` on success.
     let mut rep_names: HashMap<crate::lexer::Symbol, Vec<Vec<Token>>> = HashMap::new();
     let mut iter_count = 0usize;
 
     loop {
+        // Stage 18.13: Before iterations after the first, expect a separator.
+        if iter_count > 0 {
+            if let RepetitionSep::Token(sep_kind) = sep {
+                if *idx < input.len() && tokens_match(sep_kind, &input[*idx].kind) {
+                    *idx += 1; // consume separator
+                } else {
+                    break; // No separator — stop.
+                }
+            }
+        }
         // Try to match `inner` against input starting at *idx.
         let mut iter_captures = Captures::new();
         let mut local_idx = *idx;
@@ -624,13 +693,13 @@ fn match_repetition(
 
     // Apply $op constraints.
     match op {
-        RepetitionKind::ZeroOrMore => { /* 0+ always OK */ }
-        RepetitionKind::OneOrMore => {
+        RepetitionKind::ZeroOrMore(_) => { /* 0+ always OK */ }
+        RepetitionKind::OneOrMore(_) => {
             if iter_count == 0 {
                 return None;
             }
         }
-        RepetitionKind::ZeroOrOne => {
+        RepetitionKind::ZeroOrOne(_) => {
             if iter_count > 1 {
                 // Only keep the first iteration; rewind idx.
                 // This is tricky — we'd need to undo input consumption.
@@ -671,9 +740,15 @@ fn match_repetition(
 fn substitute_repetition(
     inner: &[Token],
     captures: &Captures,
-    _op: RepetitionKind,
+    op: RepetitionKind,
     result: &mut Vec<Token>,
 ) {
+    // Stage 18.13: Extract separator from op.
+    let sep = match &op {
+        RepetitionKind::ZeroOrMore(s)
+        | RepetitionKind::OneOrMore(s)
+        | RepetitionKind::ZeroOrOne(s) => s,
+    };
     // Determine iteration count: look at all Repetition captures referenced
     // in `inner` and take the max (or 0 if none). In well-formed macros
     // all repetition names share the same count.
@@ -705,6 +780,15 @@ fn substitute_repetition(
         }
         let expanded = substitute_body(inner, &local);
         result.extend(expanded);
+        // Stage 18.13: Emit separator between iterations (not after last).
+        if let RepetitionSep::Token(sep_kind) = sep {
+            if i + 1 < iter_count {
+                result.push(Token {
+                    kind: sep_kind.clone(),
+                    span: crate::session::Span::DUMMY,
+                });
+            }
+        }
     }
 }
 
@@ -1889,7 +1973,7 @@ mod tests {
         );
     }
 
-    /// Stage 18.06 negative 1: parse_repetition_op maps `*` to ZeroOrMore.
+    /// Stage 18.06 negative 1: parse_repetition_op maps `*` to ZeroOrMore(None).
     #[test]
     fn stage18_06_repetition_kind_from_star() {
         let tokens = vec![Token {
@@ -1898,11 +1982,11 @@ mod tests {
         }];
         assert_eq!(
             parse_repetition_op(&tokens, 0),
-            Some(RepetitionKind::ZeroOrMore)
+            Some((RepetitionKind::ZeroOrMore(RepetitionSep::None), 1))
         );
     }
 
-    /// Stage 18.06 negative 2: parse_repetition_op maps `+` to OneOrMore.
+    /// Stage 18.06 negative 2: parse_repetition_op maps `+` to OneOrMore(None).
     #[test]
     fn stage18_06_repetition_kind_from_plus() {
         let tokens = vec![Token {
@@ -1911,11 +1995,11 @@ mod tests {
         }];
         assert_eq!(
             parse_repetition_op(&tokens, 0),
-            Some(RepetitionKind::OneOrMore)
+            Some((RepetitionKind::OneOrMore(RepetitionSep::None), 1))
         );
     }
 
-    /// Stage 18.06 negative 3: parse_repetition_op maps `?` to ZeroOrOne.
+    /// Stage 18.06 negative 3: parse_repetition_op maps `?` to ZeroOrOne(None).
     #[test]
     fn stage18_06_repetition_kind_from_question() {
         let tokens = vec![Token {
@@ -1924,7 +2008,7 @@ mod tests {
         }];
         assert_eq!(
             parse_repetition_op(&tokens, 0),
-            Some(RepetitionKind::ZeroOrOne)
+            Some((RepetitionKind::ZeroOrOne(RepetitionSep::None), 1))
         );
     }
 
@@ -1945,7 +2029,7 @@ mod tests {
             &inner,
             &input,
             &mut idx,
-            RepetitionKind::ZeroOrMore,
+            RepetitionKind::ZeroOrMore(RepetitionSep::None),
             &mut captures,
             &interner,
         );
@@ -1969,7 +2053,7 @@ mod tests {
             &inner,
             &input,
             &mut idx,
-            RepetitionKind::OneOrMore,
+            RepetitionKind::OneOrMore(RepetitionSep::None),
             &mut captures,
             &interner,
         );
@@ -2009,7 +2093,12 @@ mod tests {
             },
         ];
         let mut result = Vec::new();
-        substitute_repetition(&inner, &captures, RepetitionKind::ZeroOrMore, &mut result);
+        substitute_repetition(
+            &inner,
+            &captures,
+            RepetitionKind::ZeroOrMore(RepetitionSep::None),
+            &mut result,
+        );
         // Should produce 2 tokens (one per iteration): IntLit(1) and IntLit(2).
         assert_eq!(result.len(), 2, "should expand to 2 tokens (one per iter)");
         assert!(matches!(result[0].kind, TokenKind::IntLit(1, _)));
@@ -2391,5 +2480,212 @@ mod tests {
         assert!(matches!(out[0].kind, TokenKind::Ident(_)));
         // Second should be `!`.
         assert!(matches!(out[1].kind, TokenKind::Not));
+    }
+
+    // =====================================================================
+    // Stage 18.13 tests — Separator support $(...),* / $(...);+ / etc.
+    // =====================================================================
+
+    /// Stage 18.13 positive 1: A macro using `$( $x:expr ),*` (comma-
+    /// separated zero or more expressions) parses and expands.
+    #[test]
+    fn stage18_13_macro_with_comma_separator() {
+        let src = "macro_rules! m { ($($x:expr),*) => { 0 } } fn main() { m!(1, 2, 3) }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(
+            result.errors.parse.is_empty(),
+            "macro with $($x:expr),* should expand and parse — errors: {:?}",
+            result.errors.parse
+        );
+    }
+
+    /// Stage 18.13 positive 2: A macro using `$( $x:expr );+` (semicolon-
+    /// separated one or more expressions) parses and expands.
+    #[test]
+    fn stage18_13_macro_with_semicolon_separator() {
+        let src = "macro_rules! m { ($($x:expr);+) => { 0 } } fn main() { m!(1; 2) }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(
+            result.errors.parse.is_empty(),
+            "macro with $($x:expr);+ should expand and parse — errors: {:?}",
+            result.errors.parse
+        );
+    }
+
+    /// Stage 18.13 negative 1: RepetitionSep::None variant constructs.
+    #[test]
+    fn stage18_13_repetition_sep_none_variant() {
+        let sep = RepetitionSep::None;
+        assert_eq!(sep, RepetitionSep::None);
+    }
+
+    /// Stage 18.13 negative 2: RepetitionSep::Token variant constructs.
+    #[test]
+    fn stage18_13_repetition_sep_token_variant() {
+        let sep = RepetitionSep::Token(TokenKind::Comma);
+        match sep {
+            RepetitionSep::Token(TokenKind::Comma) => { /* OK */ }
+            _ => panic!("expected Token(Comma)"),
+        }
+    }
+
+    /// Stage 18.13 negative 3: parse_repetition_op without separator
+    /// returns ZeroOrMore(None) for `*`.
+    #[test]
+    fn stage18_13_parse_repetition_op_no_separator() {
+        let tokens = vec![Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        }];
+        let result = parse_repetition_op(&tokens, 0);
+        assert_eq!(
+            result,
+            Some((RepetitionKind::ZeroOrMore(RepetitionSep::None), 1))
+        );
+    }
+
+    /// Stage 18.13 negative 4: parse_repetition_op with comma separator
+    /// returns ZeroOrMore(Token(Comma)) for `, *`.
+    #[test]
+    fn stage18_13_parse_repetition_op_with_comma() {
+        let tokens = vec![
+            Token {
+                kind: TokenKind::Comma,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Star,
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let result = parse_repetition_op(&tokens, 0);
+        assert_eq!(
+            result,
+            Some((
+                RepetitionKind::ZeroOrMore(RepetitionSep::Token(TokenKind::Comma)),
+                2
+            ))
+        );
+    }
+
+    /// Stage 18.13 negative 5: match_repetition with separator matches
+    /// comma-separated input.
+    #[test]
+    fn stage18_13_match_repetition_with_separator_matches() {
+        let mut interner = Rodeo::new();
+        let x_sym = interner.get_or_intern("x");
+        let expr_sym = interner.get_or_intern("expr");
+        // inner pattern: $ x : expr
+        let inner = vec![
+            Token {
+                kind: TokenKind::Dollar,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(x_sym),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Colon,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(expr_sym),
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        // input: 1 , 2 , 3
+        let input = vec![
+            Token {
+                kind: TokenKind::IntLit(1, None),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Comma,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::IntLit(2, None),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Comma,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::IntLit(3, None),
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let mut idx = 0usize;
+        let mut captures = Captures::new();
+        let result = match_repetition(
+            &inner,
+            &input,
+            &mut idx,
+            RepetitionKind::ZeroOrMore(RepetitionSep::Token(TokenKind::Comma)),
+            &mut captures,
+            &interner,
+        );
+        assert_eq!(result, Some(3), "should match 3 iterations (1, 2, 3)");
+        assert_eq!(idx, 5, "should consume all 5 input tokens");
+    }
+
+    /// Stage 18.13 negative 6: substitute_repetition emits separator
+    /// between iterations (not after last).
+    #[test]
+    fn stage18_13_substitute_repetition_emits_separator() {
+        let mut interner = Rodeo::new();
+        let x_sym = interner.get_or_intern("x");
+        // captures: $x is a Repetition with 3 iterations.
+        let mut captures: Captures = Captures::new();
+        captures.insert(
+            x_sym,
+            CaptureValue::Repetition(vec![
+                vec![Token {
+                    kind: TokenKind::IntLit(1, None),
+                    span: crate::session::Span::DUMMY,
+                }],
+                vec![Token {
+                    kind: TokenKind::IntLit(2, None),
+                    span: crate::session::Span::DUMMY,
+                }],
+                vec![Token {
+                    kind: TokenKind::IntLit(3, None),
+                    span: crate::session::Span::DUMMY,
+                }],
+            ]),
+        );
+        // inner body: $x
+        let inner = vec![
+            Token {
+                kind: TokenKind::Dollar,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(x_sym),
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let mut result = Vec::new();
+        substitute_repetition(
+            &inner,
+            &captures,
+            RepetitionKind::ZeroOrMore(RepetitionSep::Token(TokenKind::Comma)),
+            &mut result,
+        );
+        // Should produce: 1 , 2 , 3 (5 tokens: 3 values + 2 separators)
+        assert_eq!(
+            result.len(),
+            5,
+            "should expand to 5 tokens (3 values + 2 separators)"
+        );
+        assert!(matches!(result[0].kind, TokenKind::IntLit(1, _)));
+        assert!(matches!(result[1].kind, TokenKind::Comma));
+        assert!(matches!(result[2].kind, TokenKind::IntLit(2, _)));
+        assert!(matches!(result[3].kind, TokenKind::Comma));
+        assert!(matches!(result[4].kind, TokenKind::IntLit(3, _)));
     }
 }

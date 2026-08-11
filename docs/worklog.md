@@ -30284,3 +30284,49 @@ Stage Summary:
   - 在 codegen 中添加 Call(__landin_println) 检测
   - 调用 emit_printf_call 处理
 - v0.295.0 → v0.296.0
+
+---
+Task ID: stage18.13
+Agent: Super Z (main)
+Task: Stage 18.13 — macro_rules! Separator Support $(...),* / $(...);+ / $(...)?
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 响应用户反馈: "println! 系列也是 macro 的一部分，不能只解决 println! 而忽略 macro"
+- 设计文档: docs/develop/v0/stage-18/stage-18.13-macro-separator-design.md
+- 实现 macro_rules! separator 支持:
+  1. RepetitionSep enum (None / Token(TokenKind)) — 携带分隔符信息
+     - #[derive(Default)] — None 是默认值 (clippy 合规)
+  2. RepetitionKind 扩展 — 每个变体携带 RepetitionSep
+     - ZeroOrMore(RepetitionSep), OneOrMore(RepetitionSep), ZeroOrOne(RepetitionSep)
+  3. parse_repetition_op 签名变更 — 返回 (RepetitionKind, after_op_index)
+     - 检测分隔符: 任何非 */+/?/) 的单个 token 后跟 */+/?
+     - `*` → ZeroOrMore(None), advance 1
+     - `, *` → ZeroOrMore(Comma), advance 2
+     - `; +` → OneOrMore(Semicolon), advance 2
+  4. match_repetition separator 处理 — 迭代之间期望分隔符
+     - 第一次迭代后, 如果有 separator, 消费它再继续
+     - 如果没有 separator, 停止匹配
+  5. substitute_repetition separator 发射 — 迭代之间插入分隔符
+     - 不在最后一次迭代后插入
+  6. 更新所有 Stage 18.06 测试使用新签名
+- §1.0 原則 6 "通用 > 特解": 一个 match_repetition 处理有/无分隔符
+- §10 命名: RepetitionSep (<Noun>), parse_repetition_op (<verb>_<noun>_<noun>)
+- §11 接口隔离: RepetitionSep 是 pub(crate)
+- 修复 TokenKind 不实现 Eq 的问题 (含 f64) — 改用 PartialEq only
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: macro_with_comma_separator + macro_with_semicolon_separator (2)
+  - negative: repetition_sep_none_variant + repetition_sep_token_variant + parse_repetition_op_no_separator + parse_repetition_op_with_comma + match_repetition_with_separator_matches + substitute_repetition_emits_separator (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 519 lib (+8 new) + 2537 integration = 3056 unit tests, 0 failures
+
+Stage Summary:
+- macro_rules! separator 支持完成
+- $(...),* / $(...);+ / $(...)? 全部可用
+- enables vec![$($x),*] and println!($($arg),*) patterns
+- 响应用户反馈: macro 系统改进优先于 println! 迁移
+- v0.296.0 → v0.297.0

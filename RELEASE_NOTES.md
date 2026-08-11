@@ -1,9 +1,104 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.296.0
+**Current version**: v0.297.0
 **Date**: 2026-08-06
-**Test count**: 511 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 519 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.297.0 — Stage 18.13 (macro_rules! Separator Support `$(...),*` / `$(...);+` / `$(...)?`)
+
+### Overview
+
+**Responds to user feedback**: "println! 系列也是 macro 的一部分，所以不能
+只解决 println! 而忽略 macro (这本质上也是 通解 > 特解)".
+
+This stage improves the **macro_rules! system itself** rather than continuing
+the println! migration. Adds separator support to repetitions, enabling
+common macros like `vec![$($x),*]` and `println!($($arg),*)` to be
+expressed via `macro_rules!`.
+
+### Implementation
+
+1. **`RepetitionSep` enum** (new) — captures optional separator:
+   ```rust
+   pub(crate) enum RepetitionSep {
+       #[default]
+       None,
+       Token(TokenKind),
+   }
+   ```
+
+2. **`RepetitionKind` extended** — each variant now carries a `RepetitionSep`:
+   ```rust
+   enum RepetitionKind {
+       ZeroOrMore(RepetitionSep),
+       OneOrMore(RepetitionSep),
+       ZeroOrOne(RepetitionSep),
+   }
+   ```
+
+3. **`parse_repetition_op` extended** — signature changed to return
+   `(RepetitionKind, after_op_index)`:
+   - `*`           → `ZeroOrMore(None)`, advance 1
+   - `, *`         → `ZeroOrMore(Comma)`, advance 2
+   - `; +`         → `OneOrMore(Semicolon)`, advance 2
+   - `=> ?`        → `ZeroOrOne(FatArrow)`, advance 2
+
+4. **`match_repetition` separator handling** — between iterations
+   (after the first), expects a separator token. If present, consumes it
+   and continues; if absent, stops matching.
+
+5. **`substitute_repetition` separator emission** — between expanded
+   iterations (not after the last), emits the separator token.
+
+6. **All existing Stage 18.06 tests updated** to use the new
+   `RepetitionKind::ZeroOrMore(RepetitionSep::None)` form.
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特解"**: one `match_repetition` /
+  `substitute_repetition` pair handles both with/without separator —
+  no separate code paths.
+- **§10 naming**: `RepetitionSep` (`<Noun>`), `parse_repetition_op`
+  (`<verb>_<noun>_<noun>`).
+- **§11 isolation**: `RepetitionSep` is `pub(crate)` in `macro_expand.rs`.
+- **Single responsibility**: separator parsing in `parse_repetition_op`;
+  separator matching in `match_repetition`; separator emission in
+  `substitute_repetition`.
+- **Avoid dead code**: all new code paths are exercised by tests.
+- **Avoid scattered content**: separator logic concentrated in the
+  repetition handling section of `macro_expand.rs`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | macro_with_comma_separator | positive | `$( $x:expr ),*` matches `1, 2, 3` |
+| 2 | macro_with_semicolon_separator | positive | `$( $x:expr );+` matches `1; 2` |
+| 3 | repetition_sep_none_variant | negative | `RepetitionSep::None` constructs |
+| 4 | repetition_sep_token_variant | negative | `RepetitionSep::Token(Comma)` constructs |
+| 5 | parse_repetition_op_no_separator | negative | `*` → `ZeroOrMore(None)` |
+| 6 | parse_repetition_op_with_comma | negative | `, *` → `ZeroOrMore(Comma)` |
+| 7 | match_repetition_with_separator_matches | negative | Comma-separated matching works |
+| 8 | substitute_repetition_emits_separator | negative | Separator emitted between iterations |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 519 lib (+8 new) + 2537 integration = **3,056** unit tests, 0 failures
+
+### Migration Balance
+
+Per user feedback, this stage prioritizes **macro system improvement**
+over println! migration. The macro_rules! system now supports:
+- ✅ 7 fragment specifiers (expr/ident/tt/ty/literal/block/path)
+- ✅ 3 repetition operators (`*` / `+` / `?`)
+- ✅ **Separator support** (this stage) — `$(...),*` / `$(...);+` / etc.
+- ⏳ Nested repetition (future)
+- ⏳ Macro hygiene (future)
 
 ---
 ## v0.296.0 — Stage 18.12 (Println Codegen Refactoring — Phase 2 Preparation)
