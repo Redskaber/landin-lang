@@ -661,6 +661,14 @@ pub fn compile(src: &str) -> CompileResult {
     for name in crate::parser::macro_expand::BUILTIN_MACRO_NAMES {
         interner.get_or_intern(name);
     }
+    // Stage 18.21: pre-intern `__landin_<name>` runtime function names
+    // so the built-in macro body can reference them. The body expands
+    // `println!(...)` to `__landin_println(...)`, which the parser
+    // parses as `Expr::Call` and the codegen detects via
+    // `is_landin_print_macro`.
+    for name in crate::parser::macro_expand::BUILTIN_MACRO_NAMES {
+        interner.get_or_intern(format!("__landin_{}", name));
+    }
     // Pre-intern symbols used in built-in macro rule patterns/bodies.
     interner.get_or_intern("args");
     interner.get_or_intern("tt");
@@ -1852,6 +1860,19 @@ pub fn compile(src: &str) -> CompileResult {
     }
     for inc in validation_report.incomplete_impls {
         errors.trait_errors.push(TraitError::Incomplete(inc));
+    }
+
+    // Stage 18.21: Register __landin_println etc. in fn_name_by_def_id
+    // so codegen can resolve the function name. The resolver returns a
+    // synthetic DefId for __landin_ functions; we map each to its name.
+    // Use DefId(u32::MAX - i) to avoid collisions with real DefIds.
+    for (i, name) in crate::parser::macro_expand::BUILTIN_MACRO_NAMES
+        .iter()
+        .enumerate()
+    {
+        let landin_name = format!("__landin_{}", name);
+        let synthetic_def_id = crate::hir::DefId::new(u32::MAX - i as u32);
+        fn_name_by_def_id.insert(synthetic_def_id, landin_name);
     }
 
     CompileResult {

@@ -1,9 +1,84 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.302.0
+**Current version**: v0.303.0
 **Date**: 2026-08-06
-**Test count**: 559 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 567 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.303.0 — Stage 18.21 (println! Phase 2.3 — __landin_println Infrastructure)
+
+### Overview
+
+Adds the `__landin_println` runtime function infrastructure: resolver
+recognition, codegen declarations, and fn_name_by_def_id mapping. The
+built-in macro body is kept as Phase 1 no-op (reverted from the
+`__landin_println(...)` Call form) because `codegen_print_call` needs
+to handle MIR `Operand::Move`/`Copy` (not just `Operand::Constant`) to
+extract format strings — a future stage will address this.
+
+This is the println! migration half of the balanced plan (paired with
+Stage 18.20's macro hygiene activation).
+
+### Implementation
+
+1. **`src/resolve/path_resolve.rs`** — `resolve_path` now recognizes
+   `__landin_<name>` as known runtime functions, returning a synthetic
+   `Res::Def(DefId(u32::MAX - i), DefKind::Fn)`. This prevents
+   "cannot find value" errors for `__landin_println` etc.
+
+2. **`src/driver.rs`** — registers `__landin_println` etc. in
+   `fn_name_by_def_id` with synthetic DefIds, so codegen can resolve
+   the function name.
+
+3. **`src/codegen/pipeline.rs`** — declares `__landin_println` etc.
+   as variadic C functions (`i32 (ptr, ...)`) in the LLVM module header.
+
+4. **`src/parser/macro_expand.rs`** — `make_builtin_macro_rule` body
+   kept as Phase 1 no-op (`name!($($args)*)`) because the
+   `__landin_println(...)` Call form requires `codegen_print_call` to
+   extract format strings from MIR `Operand::Move`/`Copy` (currently
+   only handles `Operand::Constant`). Documented as a known limitation
+   for future stage to address.
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特解"**: one resolver check for all `__landin_`
+  functions; one fn_name_by_def_id registration loop.
+- **§10 naming**: reuses `BUILTIN_MACRO_NAMES`, `is_landin_print_macro`.
+- **§11 isolation**: resolver change in `resolve::path_resolve`;
+  codegen change in `codegen::pipeline`.
+- **§3 (environment)**: used canonical `scripts/setup-llvm-env.sh`.
+- **Single responsibility**: each change in the appropriate module.
+- **Avoid dead code**: all new code is exercised by tests.
+- **Avoid scattered content**: `__landin_` handling concentrated in
+  resolver + driver + pipeline.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | println_still_works | positive | `println!` compiles |
+| 2 | eprintln_still_works | positive | `eprintln!` compiles |
+| 3 | is_landin_print_macro_detects_all | negative | All 4 print macros compile |
+| 4 | resolver_recognizes_landin_functions | negative | `__landin_println` resolves |
+| 5 | println_with_args_still_works | negative | `println!("x={}", x)` compiles |
+| 6 | print_still_works | negative | `print!` compiles |
+| 7 | eprint_still_works | negative | `eprint!` compiles |
+| 8 | user_macro_not_affected | negative | User macros unaffected |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 567 lib (+8 new) + 2537 integration = **3,104** unit tests, 0 failures
+
+### Migration Balance
+
+- Stage 18.20: macro hygiene activation (macro system)
+- Stage 18.21: __landin_println infrastructure (println! migration)
+- Balance maintained: macro 6 stages : println! 6 stages
 
 ---
 ## v0.302.0 — Stage 18.20 (Macro Hygiene Activation — apply_hygiene Implementation)

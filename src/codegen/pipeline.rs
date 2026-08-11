@@ -37,6 +37,21 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
     // all args as i32; this function needs ptr, i64 args). emit_call creates
     // the declaration with correct types on first use.
 
+    // Stage 18.21: Declare __landin_println etc. as variadic C functions.
+    // These are the runtime functions that println!/print!/eprintln!/eprint!
+    // expand to. They wrap printf/fprintf and take a format string + varargs.
+    // The actual implementation is in the C runtime (linked at link time).
+    // For now, we declare them as `i32 (ptr, ...)` (variadic, like printf).
+    // The codegen's is_landin_print_macro detection routes calls to these
+    // to emit_printf_call, which emits the correct printf/fprintf call.
+    // Note: These declarations are needed so the LLVM module is valid;
+    // the actual call is intercepted by codegen_print_call before reaching
+    // emit_call.
+    emitter.emit_declare("i32 @__landin_println(ptr, ...)");
+    emitter.emit_declare("i32 @__landin_print(ptr, ...)");
+    emitter.emit_declare("i32 @__landin_eprintln(ptr, ...)");
+    emitter.emit_declare("i32 @__landin_eprint(ptr, ...)");
+
     // 2. Vtable globals (before function bodies — LLVM needs forward refs)
     emit_vtables(&result.trait_resolver, &result.interner, emitter);
 

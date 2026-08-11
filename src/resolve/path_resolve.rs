@@ -318,6 +318,39 @@ impl Resolver {
             return Res::Err;
         }
 
+        // Stage 18.21: Recognize `__landin_<name>` as known runtime functions.
+        // These are emitted by the built-in macro_rules! definitions
+        // (e.g., `println!(...)` expands to `__landin_println(...)`).
+        // Without this, the resolver would report "cannot find value" for
+        // every println!/print!/eprintln!/eprint! call.
+        // Per §1.0 原則 6 "通用 > 特解": one check for all __landin_ functions.
+        if path.segments.len() == 1 && path.leading == PathLeading::None {
+            let name = interner.resolve(&path.segments[0].ident.name);
+            if name.starts_with("__landin_") {
+                // Return a synthetic Def for the runtime function.
+                // The driver registers each __landin_<name> in
+                // fn_name_by_def_id with a synthetic DefId(u32::MAX - i).
+                // We use the same scheme here so codegen can resolve the name.
+                // For __landin_println → DefId(u32::MAX - 0)
+                // For __landin_print   → DefId(u32::MAX - 1)
+                // For __landin_eprintln→ DefId(u32::MAX - 2)
+                // For __landin_eprint  → DefId(u32::MAX - 3)
+                // For other __landin_  → DefId(u32::MAX) (fallback)
+                let builtin_names = [
+                    "__landin_println",
+                    "__landin_print",
+                    "__landin_eprintln",
+                    "__landin_eprint",
+                ];
+                let idx = builtin_names.iter().position(|n| *n == name);
+                let def_id = match idx {
+                    Some(i) => crate::hir::DefId::new(u32::MAX - i as u32),
+                    None => crate::hir::DefId::new(u32::MAX),
+                };
+                return Res::Def(def_id, crate::hir::DefKind::Fn);
+            }
+        }
+
         // Single-segment, no leading prefix: could be primitive, local name, or Self.
         if path.segments.len() == 1 && path.leading == PathLeading::None {
             let seg = &path.segments[0];
