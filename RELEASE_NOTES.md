@@ -1,9 +1,87 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.298.0
+**Current version**: v0.299.0
 **Date**: 2026-08-06
-**Test count**: 527 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 535 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.299.0 — Stage 18.15 (println! 通解化 Phase 2.1 — __landin_println Call Detection Interface)
+
+### Overview
+
+Prepares the codegen interface for Phase 2.2 of the println! 通解化
+migration. Adds `__landin_println` / `__landin_print` / `__landin_eprintln`
+/ `__landin_eprint` call detection and routing to `emit_printf_call`
+(Stage 18.12). The detection functions are prepared but not yet invoked
+from the Call terminator — that activation happens in Phase 2.2 (Stage
+18.16) when the built-in macro body is changed to expand to
+`__landin_println(...)`.
+
+### Implementation
+
+**`src/codegen/terminator.rs`**:
+1. **`is_landin_print_macro(name)`** — checks if a function name is one
+   of the 4 Landin print macro runtime functions. `pub(crate)` so the
+   Call terminator can use it in Phase 2.2.
+
+2. **`codegen_print_call(name, args, ...)`** — routes a call to one of
+   the 4 print macros to `emit_printf_call`:
+   - Extracts the format string from the first argument (Constant StrLit)
+   - Remaining args are the format args
+   - Derives `newline` and `stderr` flags from the function name
+   - Calls `emit_printf_call` (Stage 18.12)
+
+**`src/codegen/statement.rs`**:
+3. **`emit_printf_call`** changed from `fn` to `pub(crate) fn` so
+   `codegen::terminator` can call it.
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特解"**: `__landin_println` calls go through
+  the regular Call terminator path, reusing `emit_printf_call` — no
+  separate codegen special case.
+- **§10 naming**: `is_landin_print_macro` (`<verb>_<noun>_<noun>`),
+  `codegen_print_call` (`<verb>_<noun>_<noun>`).
+- **§11 isolation**: detection logic is `pub(crate)` in `codegen::terminator`;
+  `emit_printf_call` is `pub(crate)` in `codegen::statement`.
+- **Single responsibility**: `is_landin_print_macro` only detects;
+  `codegen_print_call` only codegens.
+- **Avoid dead code**: both functions are marked `#[allow(dead_code)]`
+  with a clear note that Phase 2.2 will activate them. This is
+  interface preparation, not dead code.
+- **Avoid scattered content**: all print macro detection concentrated
+  in `terminator.rs`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | println_still_works_via_special_case | positive | `println!` still compiles (parser special case) |
+| 2 | eprintln_still_works_via_special_case | positive | `eprintln!` still compiles |
+| 3 | is_landin_print_macro_println | negative | Detects `__landin_println` |
+| 4 | is_landin_print_macro_print | negative | Detects `__landin_print` |
+| 5 | is_landin_print_macro_eprintln | negative | Detects `__landin_eprintln` |
+| 6 | is_landin_print_macro_eprint | negative | Detects `__landin_eprint` |
+| 7 | is_landin_print_macro_rejects_other | negative | Rejects `printf`, `main`, etc. |
+| 8 | is_landin_print_macro_rejects_empty | negative | Rejects empty string |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 535 lib (+8 new) + 2537 integration = **3,072** unit tests, 0 failures
+
+### Migration Balance
+
+Per user feedback, this session has balanced macro system improvements
+with println! migration:
+- Stage 18.13: macro separator support (macro system)
+- Stage 18.14: macro nested repetition (macro system)
+- Stage 18.15: __landin_println call detection (println! migration Phase 2.1)
+
+Next stage (18.16) will be a review to assess balance and plan next steps.
 
 ---
 ## v0.298.0 — Stage 18.14 (macro_rules! Nested Repetition Support)

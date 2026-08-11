@@ -30367,3 +30367,43 @@ Stage Summary:
 - $( $( $x ),* );* 这样的嵌套模式现在可以正确匹配和展开
 - macro 系统功能: 7 fragments + 3 operators + separator + nested repetition
 - v0.297.0 → v0.298.0
+
+---
+Task ID: stage18.15
+Agent: Super Z (main)
+Task: Stage 18.15 — println! 通解化 Phase 2.1 (__landin_println Call Detection Interface)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 平衡推进: macro 系统改进 (18.13-18.14) + println! 迁移 (18.15)
+- 设计文档: docs/develop/v0/stage-18/stage-18.15-println-phase2.1-design.md
+- 实现 __landin_println 调用检测接口:
+  1. is_landin_print_macro(name) — 检测 4 个 print 宏 runtime 函数名
+     - __landin_println / __landin_print / __landin_eprintln / __landin_eprint
+  2. codegen_print_call(name, args, ...) — 路由到 emit_printf_call
+     - 从第一个 arg 提取 format string (Constant StrLit)
+     - 剩余 args 是 format args
+     - 从函数名派生 newline/stderr 标志
+  3. emit_printf_call 从 fn 改为 pub(crate) fn (跨模块调用)
+- 接口准备: 检测函数已就绪但暂未从 Call terminator 调用
+  - Phase 2.2 (Stage 18.16) 将激活: 修改 built-in macro body 展开为 __landin_println(...)
+- §1.0 原則 6 "通用 > 特解": __landin_println 走 Call 路径, 复用 emit_printf_call
+- §10 命名: is_landin_print_macro / codegen_print_call (<verb>_<noun>_<noun>)
+- §11 接口隔离: 检测逻辑在 codegen::terminator (pub(crate))
+- 避免死代码: #[allow(dead_code)] 标注, Phase 2.2 将激活
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: println_still_works_via_special_case + eprintln_still_works_via_special_case (2)
+  - negative: is_landin_print_macro_println + is_landin_print_macro_print + is_landin_print_macro_eprintln + is_landin_print_macro_eprint + is_landin_print_macro_rejects_other + is_landin_print_macro_rejects_empty (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 535 lib (+8 new) + 2537 integration = 3072 unit tests, 0 failures
+
+Stage Summary:
+- println! Phase 2.1 完成 (接口准备)
+- __landin_println 调用检测 + codegen_print_call 路由就绪
+- 平衡推进: 3 个 stage = 2 macro system + 1 println migration
+- 下一阶段 (Stage 18.16): v0.6 P2 review, 评估平衡, 规划下一步
+- v0.298.0 → v0.299.0

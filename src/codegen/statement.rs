@@ -282,8 +282,10 @@ pub(crate) fn codegen_statement(
 ///
 /// Per §10: `emit_printf_call` follows `<verb>_<noun>_<noun>` pattern.
 /// Per §13.4: pure refactoring — no behavior change.
+/// Stage 18.15: made `pub(crate)` so `codegen::terminator` can call it
+/// for `Call(__landin_println)` detection.
 #[allow(clippy::too_many_arguments)] // codegen context requires many params
-fn emit_printf_call(
+pub(crate) fn emit_printf_call(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
     msg: &str,

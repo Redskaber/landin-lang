@@ -591,3 +591,164 @@ pub(crate) fn codegen_terminator(
         }
     }
 }
+
+// =============================================================================
+// Stage 18.15: __landin_println / __landin_print / __landin_eprintln /
+// __landin_eprint call detection (Phase 2.1 — interface preparation)
+// =============================================================================
+
+/// Stage 18.15: Check if a function name is a Landin built-in print macro
+/// runtime function (`__landin_println` / `__landin_print` /
+/// `__landin_eprintln` / `__landin_eprint`).
+///
+/// These are the C ABI names that the built-in macro_rules! definitions
+/// (Stage 18.10) will expand to in Phase 2.2. When codegen detects a
+/// call to one of these, it routes to `emit_printf_call` (Stage 18.12)
+/// instead of the regular call path.
+///
+/// Per §10: `<verb>_<noun>_<noun>` pattern.
+/// Stage 18.15: Function is prepared but not yet called from the Call
+/// terminator — will be invoked in Phase 2.2 (Stage 18.16) when
+/// built-in macro body is changed to expand to `__landin_println(...)`.
+#[allow(dead_code)] // Phase 2.2 will use it
+pub(crate) fn is_landin_print_macro(name: &str) -> bool {
+    matches!(
+        name,
+        "__landin_println" | "__landin_print" | "__landin_eprintln" | "__landin_eprint"
+    )
+}
+
+/// Stage 18.15: Codegen a call to a Landin print macro runtime function.
+///
+/// Routes to `emit_printf_call` (Stage 18.12) with the appropriate
+/// `newline` and `stderr` flags derived from the function name:
+/// - `__landin_println`  → newline=true,  stderr=false
+/// - `__landin_print`    → newline=false, stderr=false
+/// - `__landin_eprintln` → newline=true,  stderr=true
+/// - `__landin_eprint`   → newline=false, stderr=true
+///
+/// The first argument must be a string literal (the format string).
+/// Remaining arguments are the format args.
+///
+/// Per §10: `<verb>_<noun>_<noun>` pattern.
+/// Stage 18.15: Function is prepared but not yet called — will be
+/// invoked in Phase 2.2 (Stage 18.16) when built-in macro body is
+/// changed to expand to `__landin_println(...)`.
+#[allow(clippy::too_many_arguments, dead_code)] // codegen context; Phase 2.2 will use it
+fn codegen_print_call(
+    name: &str,
+    args: &[Operand],
+    emitter: &mut dyn Emitter,
+    mir: &MirBody,
+    interner: &Rodeo,
+    layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+) {
+    // Derive newline/stderr from the function name.
+    let (newline, stderr) = match name {
+        "__landin_println" => (true, false),
+        "__landin_print" => (false, false),
+        "__landin_eprintln" => (true, true),
+        "__landin_eprint" => (false, true),
+        _ => return, // Not a print macro — no-op.
+    };
+
+    // Extract the format string from the first argument.
+    // The first arg should be a Constant(StrLit(sym)).
+    let msg = if let Some(first) = args.first() {
+        match first {
+            crate::mir::place::Operand::Constant(c) => match c.val {
+                ConstVal::Str(sym) => interner
+                    .try_resolve(&sym)
+                    .map(|s| s.to_string())
+                    .unwrap_or_default(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        }
+    } else {
+        String::new()
+    };
+
+    // Remaining args are the format args.
+    let fmt_args = if args.len() > 1 { &args[1..] } else { &[] };
+
+    // Route to emit_printf_call (Stage 18.12).
+    super::statement::emit_printf_call(
+        emitter,
+        mir,
+        &msg,
+        fmt_args,
+        newline,
+        stderr,
+        interner,
+        layouts,
+        mono_layouts,
+        fn_name_by_def_id,
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_landin_print_macro;
+
+    /// Stage 18.15 positive 1: println! still works via parser special case
+    /// (Phase 2.1 doesn't change behavior — built-in macro body is still
+    /// no-op, so parser special case still handles println!).
+    #[test]
+    fn stage18_15_println_still_works_via_special_case() {
+        let src = "fn main() { println!(\"hello\"); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+        assert!(result.errors.macro_errors.is_empty());
+    }
+
+    /// Stage 18.15 positive 2: eprintln! still works via parser special case.
+    #[test]
+    fn stage18_15_eprintln_still_works_via_special_case() {
+        let src = "fn main() { eprintln!(\"err\"); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.15 negative 1: is_landin_print_macro detects __landin_println.
+    #[test]
+    fn stage18_15_is_landin_print_macro_println() {
+        assert!(is_landin_print_macro("__landin_println"));
+    }
+
+    /// Stage 18.15 negative 2: is_landin_print_macro detects __landin_print.
+    #[test]
+    fn stage18_15_is_landin_print_macro_print() {
+        assert!(is_landin_print_macro("__landin_print"));
+    }
+
+    /// Stage 18.15 negative 3: is_landin_print_macro detects __landin_eprintln.
+    #[test]
+    fn stage18_15_is_landin_print_macro_eprintln() {
+        assert!(is_landin_print_macro("__landin_eprintln"));
+    }
+
+    /// Stage 18.15 negative 4: is_landin_print_macro detects __landin_eprint.
+    #[test]
+    fn stage18_15_is_landin_print_macro_eprint() {
+        assert!(is_landin_print_macro("__landin_eprint"));
+    }
+
+    /// Stage 18.15 negative 5: is_landin_print_macro rejects other names.
+    #[test]
+    fn stage18_15_is_landin_print_macro_rejects_other() {
+        assert!(!is_landin_print_macro("printf"));
+        assert!(!is_landin_print_macro("__landin_panic"));
+        assert!(!is_landin_print_macro("main"));
+    }
+
+    /// Stage 18.15 negative 6: is_landin_print_macro rejects empty string.
+    #[test]
+    fn stage18_15_is_landin_print_macro_rejects_empty() {
+        assert!(!is_landin_print_macro(""));
+    }
+}
