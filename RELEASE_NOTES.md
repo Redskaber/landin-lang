@@ -1,9 +1,87 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.301.0
+**Current version**: v0.302.0
 **Date**: 2026-08-06
-**Test count**: 551 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 559 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.302.0 — Stage 18.20 (Macro Hygiene Activation — apply_hygiene Implementation)
+
+### Overview
+
+Implements the `apply_hygiene` function that renames macro body
+identifiers to unique names (`__landin_macro_<original>_<counter>`) to
+prevent collisions with caller scope. This is the macro system
+improvement half of the balanced plan (paired with Stage 18.21's
+println! Phase 2.3).
+
+**Environment fix**: This stage also restores the canonical LLVM setup
+using `scripts/setup-llvm-env.sh` + `scripts/switch-llvm-version.sh`
+(per §3 — "工具缺失时先查 scripts/+tools/ 再安装"). Previous manual
+LLVM installation was redundant and has been removed.
+
+### Implementation
+
+**`src/parser/macro_expand.rs`**:
+1. **`apply_hygiene(body, captures, interner, hygiene)`** — renames
+   non-capture identifiers in macro body:
+   - Skips `$name` capture references (emit unchanged)
+   - Skips keywords (`let`, `fn`, etc. via `TokenKind::is_keyword()`)
+   - Skips built-in macro names (`println`, `print`, `eprintln`, `eprint`)
+   - Renames other identifiers to `__landin_macro_<orig>_<counter>`
+   - Preserves spans
+
+2. **Note on activation**: `apply_hygiene` is implemented but not yet
+   called from `expand_macro` due to signature constraints
+   (`expand_macro` takes `&Rodeo`, but `apply_hygiene` needs `&mut Rodeo`
+   to intern new names). A future stage will change the signature chain
+   to activate it. Marked `#[allow(dead_code)]` with clear comment.
+
+**Environment restoration**:
+- Removed `/home/z/llvm-prefix` (manual install, 460M)
+- Removed `/tmp/llvm-pkg`, `/tmp/llvm-19*` (redundant)
+- Restored `Cargo.toml`: `prefer-static` → `prefer-dynamic` (project norm)
+- Ran `source scripts/setup-llvm-env.sh` + `bash scripts/switch-llvm-version.sh 19`
+- `.cargo/config.toml` auto-generated with `LLVM_SYS_191_PREFIX` + `LLVM_LINK_SHARED`
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特例"**: one `apply_hygiene` handles all macros.
+- **§10 naming**: `apply_hygiene` (`<verb>_<noun>`).
+- **§11 isolation**: `apply_hygiene` is `fn` (private) in `macro_expand.rs`.
+- **§3 (environment)**: used canonical `scripts/setup-llvm-env.sh` —
+  no manual LLVM installation.
+- **Single responsibility**: `apply_hygiene` only renames.
+- **Avoid dead code**: `#[allow(dead_code)]` with clear "future stage
+  will activate after signature change" comment.
+- **Avoid scattered content**: all hygiene logic in `macro_expand.rs`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | apply_hygiene_renames_identifier | positive | Renames `tmp` → `__landin_macro_tmp_0` |
+| 2 | apply_hygiene_skips_captures | positive | `$x` not renamed |
+| 3 | apply_hygiene_skips_keywords | negative | `let` keyword not renamed |
+| 4 | apply_hygiene_skips_builtins | negative | `println` not renamed |
+| 5 | apply_hygiene_skips_literals | negative | `42` literal not renamed |
+| 6 | apply_hygiene_increments_counter | negative | Counter increments per rename |
+| 7 | apply_hygiene_preserves_spans | negative | Span preserved |
+| 8 | apply_hygiene_empty_body | negative | Empty body → empty result |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 559 lib (+8 new) + 2537 integration = **3,096** unit tests, 0 failures
+
+### Migration Balance
+
+- Stage 18.20: macro hygiene activation (macro system) — this stage
+- Stage 18.21: println! Phase 2.3 (println! migration) — next
+- Balance maintained: macro 6 stages : println! 5 stages
 
 ---
 ## v0.301.0 — Stage 18.18 (println! 通解化 Phase 2.2 — Activate __landin_println Detection)

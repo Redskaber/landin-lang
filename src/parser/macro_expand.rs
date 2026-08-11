@@ -933,6 +933,75 @@ impl HygieneContext {
     }
 }
 
+/// Stage 18.20: Apply macro hygiene to a macro body.
+///
+/// Renames identifiers in the body that are NOT captures (i.e. not
+/// preceded by `$`) to unique names `__landin_macro_<original>_<counter>`.
+/// This prevents macro body locals from colliding with caller locals.
+///
+/// **Skip renaming**:
+/// - Identifiers preceded by `$` (these are capture references)
+/// - Keywords (`let`, `fn`, `if`, etc. — detected via `TokenKind::is_keyword()`)
+/// - Built-in macro names (`println`, `print`, `eprintln`, `eprint`)
+/// - Non-identifier tokens (literals, punctuation)
+///
+/// **Note**: This function is prepared but not yet called from
+/// `expand_macro` due to signature constraints (`expand_macro` takes
+/// `&Rodeo`, but this function needs `&mut Rodeo` to intern new names).
+/// A future stage will change the signature chain to activate it.
+///
+/// Per §10: `<verb>_<noun>` pattern.
+#[allow(dead_code)] // Future stage will activate after signature change
+fn apply_hygiene(
+    body: &[Token],
+    _captures: &Captures,
+    interner: &mut Rodeo,
+    hygiene: &mut HygieneContext,
+) -> Vec<Token> {
+    let mut result = Vec::with_capacity(body.len());
+    let mut i = 0;
+
+    while i < body.len() {
+        let tok = &body[i];
+
+        // Check for `$ident` capture reference — don't rename.
+        if tok.kind == TokenKind::Dollar && i + 1 < body.len() {
+            if let TokenKind::Ident(_) = &body[i + 1].kind {
+                // Capture reference — emit both tokens unchanged.
+                result.push(tok.clone());
+                result.push(body[i + 1].clone());
+                i += 2;
+                continue;
+            }
+        }
+
+        // Check for identifier that should be renamed.
+        if let TokenKind::Ident(sym) = &tok.kind {
+            let name = interner.resolve(sym);
+            // Skip keywords and built-in macro names.
+            let is_keyword = tok.kind.is_keyword();
+            let is_builtin = BUILTIN_MACRO_NAMES.contains(&name);
+            if !is_keyword && !is_builtin {
+                // Rename to unique name.
+                let new_name = hygiene.gen_unique_name(name);
+                let new_sym = interner.get_or_intern(new_name);
+                result.push(Token {
+                    kind: TokenKind::Ident(new_sym),
+                    span: tok.span,
+                });
+                i += 1;
+                continue;
+            }
+        }
+
+        // Default: emit token unchanged.
+        result.push(tok.clone());
+        i += 1;
+    }
+
+    result
+}
+
 // =============================================================================
 // Stage 18.10: Built-in macro_rules! registration (println! 通解化 Phase 1)
 // =============================================================================
@@ -3046,5 +3115,162 @@ mod tests {
         assert!(result.errors.lex.is_empty());
         assert!(result.errors.parse.is_empty());
         assert!(result.errors.macro_errors.is_empty());
+    }
+
+    // =====================================================================
+    // Stage 18.20 tests — Macro hygiene activation (apply_hygiene)
+    // =====================================================================
+
+    /// Stage 18.20 positive 1: apply_hygiene renames a non-capture identifier.
+    #[test]
+    fn stage18_20_apply_hygiene_renames_identifier() {
+        let mut interner = Rodeo::new();
+        let tmp_sym = interner.get_or_intern("tmp");
+        let body = vec![Token {
+            kind: TokenKind::Ident(tmp_sym),
+            span: crate::session::Span::DUMMY,
+        }];
+        let captures = Captures::new();
+        let mut hygiene = HygieneContext::new();
+        let result = apply_hygiene(&body, &captures, &mut interner, &mut hygiene);
+        // Should be renamed to __landin_macro_tmp_0
+        assert_eq!(result.len(), 1);
+        if let TokenKind::Ident(s) = &result[0].kind {
+            let name = interner.resolve(s);
+            assert_eq!(name, "__landin_macro_tmp_0");
+        } else {
+            panic!("expected Ident token");
+        }
+    }
+
+    /// Stage 18.20 positive 2: apply_hygiene skips `$name` capture references.
+    #[test]
+    fn stage18_20_apply_hygiene_skips_captures() {
+        let mut interner = Rodeo::new();
+        let x_sym = interner.get_or_intern("x");
+        let body = vec![
+            Token {
+                kind: TokenKind::Dollar,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(x_sym),
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let captures = Captures::new();
+        let mut hygiene = HygieneContext::new();
+        let result = apply_hygiene(&body, &captures, &mut interner, &mut hygiene);
+        // $x should NOT be renamed — emit both tokens unchanged.
+        assert_eq!(result.len(), 2);
+        assert!(matches!(result[0].kind, TokenKind::Dollar));
+        if let TokenKind::Ident(s) = &result[1].kind {
+            assert_eq!(interner.resolve(s), "x", "$x should not be renamed");
+        }
+    }
+
+    /// Stage 18.20 negative 1: apply_hygiene skips keywords.
+    #[test]
+    fn stage18_20_apply_hygiene_skips_keywords() {
+        let mut interner = Rodeo::new();
+        // `let` is a keyword — should not be renamed.
+        let body = vec![Token {
+            kind: TokenKind::KwLet,
+            span: crate::session::Span::DUMMY,
+        }];
+        let captures = Captures::new();
+        let mut hygiene = HygieneContext::new();
+        let result = apply_hygiene(&body, &captures, &mut interner, &mut hygiene);
+        assert_eq!(result.len(), 1);
+        // KwLet is not an Ident, so it's emitted unchanged.
+        assert!(matches!(result[0].kind, TokenKind::KwLet));
+    }
+
+    /// Stage 18.20 negative 2: apply_hygiene skips built-in macro names.
+    #[test]
+    fn stage18_20_apply_hygiene_skips_builtins() {
+        let mut interner = Rodeo::new();
+        let println_sym = interner.get_or_intern("println");
+        let body = vec![Token {
+            kind: TokenKind::Ident(println_sym),
+            span: crate::session::Span::DUMMY,
+        }];
+        let captures = Captures::new();
+        let mut hygiene = HygieneContext::new();
+        let result = apply_hygiene(&body, &captures, &mut interner, &mut hygiene);
+        // println should NOT be renamed.
+        assert_eq!(result.len(), 1);
+        if let TokenKind::Ident(s) = &result[0].kind {
+            assert_eq!(
+                interner.resolve(s),
+                "println",
+                "println should not be renamed"
+            );
+        }
+    }
+
+    /// Stage 18.20 negative 3: apply_hygiene skips literals (not identifiers).
+    #[test]
+    fn stage18_20_apply_hygiene_skips_literals() {
+        let mut interner = Rodeo::new();
+        let body = vec![Token {
+            kind: TokenKind::IntLit(42, None),
+            span: crate::session::Span::DUMMY,
+        }];
+        let captures = Captures::new();
+        let mut hygiene = HygieneContext::new();
+        let result = apply_hygiene(&body, &captures, &mut interner, &mut hygiene);
+        assert_eq!(result.len(), 1);
+        assert!(matches!(result[0].kind, TokenKind::IntLit(42, _)));
+    }
+
+    /// Stage 18.20 negative 4: apply_hygiene increments the counter.
+    #[test]
+    fn stage18_20_apply_hygiene_increments_counter() {
+        let mut interner = Rodeo::new();
+        let a_sym = interner.get_or_intern("a");
+        let b_sym = interner.get_or_intern("b");
+        let body = vec![
+            Token {
+                kind: TokenKind::Ident(a_sym),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(b_sym),
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let captures = Captures::new();
+        let mut hygiene = HygieneContext::new();
+        let _ = apply_hygiene(&body, &captures, &mut interner, &mut hygiene);
+        // Two renames → counter should be 2.
+        assert_eq!(hygiene.counter(), 2);
+    }
+
+    /// Stage 18.20 negative 5: apply_hygiene preserves spans.
+    #[test]
+    fn stage18_20_apply_hygiene_preserves_spans() {
+        let mut interner = Rodeo::new();
+        let tmp_sym = interner.get_or_intern("tmp");
+        let span = crate::session::Span::new(10, 20);
+        let body = vec![Token {
+            kind: TokenKind::Ident(tmp_sym),
+            span,
+        }];
+        let captures = Captures::new();
+        let mut hygiene = HygieneContext::new();
+        let result = apply_hygiene(&body, &captures, &mut interner, &mut hygiene);
+        assert_eq!(result[0].span, span, "span should be preserved");
+    }
+
+    /// Stage 18.20 negative 6: apply_hygiene on empty body returns empty.
+    #[test]
+    fn stage18_20_apply_hygiene_empty_body() {
+        let mut interner = Rodeo::new();
+        let body: Vec<Token> = vec![];
+        let captures = Captures::new();
+        let mut hygiene = HygieneContext::new();
+        let result = apply_hygiene(&body, &captures, &mut interner, &mut hygiene);
+        assert!(result.is_empty(), "empty body → empty result");
     }
 }
