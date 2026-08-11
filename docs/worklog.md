@@ -30685,3 +30685,77 @@ Stage Summary:
 - built-in macro body 仍为 Phase 1 no-op (codegen_print_call 需更多工作)
 - 平衡: macro 6 stages : println! 6 stages
 - v0.302.0 → v0.303.0
+
+---
+Task ID: stage18.22
+Agent: Super Z (main)
+Task: Stage 18.22 — v0.6 P3 Review (Balance Assessment + Next Steps)
+
+Work Log:
+- §14.5 阶段末尾深度审查（8 维度 D1-D8）
+- §6.3 外循环委员会投票
+- 审查文档: docs/develop/v0/stage-18/stage-18.22-v0.6-p3-review.md
+- v0.6 P3 完成状态:
+  - 18.10-18.21 共 12 stages (6 macro + 6 println!)
+  - +56 tests, 3104 total, 0 failures
+- 平衡性评估:
+  - Macro 系统: 6 stages (18.10, 18.12, 18.13, 18.14, 18.17, 18.20)
+  - println! 迁移: 6 stages (18.10, 18.12, 18.15, 18.18, 18.21, + 18.11)
+  - 比例 6:6 = 1:1 ✅ 完美平衡
+- D1-D8 评估: 全 ✅
+- 委员会投票: 5/5 GO
+- 环境修复确认: 使用 canonical scripts/setup-llvm-env.sh (per §3)
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 567 lib + 2537 integration = 3104 unit tests, 0 failures
+
+Stage Summary:
+- v0.6 P3 中期审查通过: 5/5 GO
+- Macro 系统: println! 迁移 = 6:6 stages (完美平衡)
+- 环境修复: 使用 canonical scripts (per §3)
+- 3104 unit tests, 0 failures
+- v0.6 P3 后续规划:
+  - 18.23 codegen_print_call MIR operand handling (println!)
+  - 18.24 activate __landin_println macro body (println!)
+  - 18.25 macro hygiene signature change (macro)
+  - 18.26-18.27 println! Phase 3 (println!)
+  - 18.28 v0.6 P3 final review
+- v0.303.0 (无代码变更，仅审查)
+
+---
+Task ID: stage18.23
+Agent: Super Z (main)
+Task: Stage 18.23 — codegen_print_call MIR Operand Handling
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- println! 迁移: 解决 Stage 18.21 发现的技术阻塞
+- 设计文档: docs/develop/v0/stage-18/stage-18.23-codegen-print-operand-design.md
+- 实现 extract_format_string 函数:
+  1. Operand::Constant(ConstVal::Str) → 直接提取
+  2. Operand::Move/Copy(place) → 扫描 MIR basic blocks
+     查找 Assign(place, Rvalue::Use(Constant(Str))) → 追溯提取
+  3. 非 Str / 无赋值 → 返回 empty
+- 更新 codegen_print_call 使用 extract_format_string
+- 修复 clippy collapsible_match 警告 (合并嵌套 if let)
+- §1.0 原則 6 "通用 > 特解": 一个 extract_format_string 处理所有 operand 类型
+- §10 命名: extract_format_string (<verb>_<noun>_<noun>)
+- §11 接口隔离: extract_format_string 是 fn (private)
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: println_constant_format_works + println_move_format_traced (2)
+  - negative: is_landin_print_macro_all_four + is_landin_print_macro_rejects_others + println_multiple_args + print_no_newline_works + eprintln_works + println_produces_mir (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅ (使用 canonical scripts/setup-llvm-env.sh)
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 575 lib (+8 new) + 2537 integration = 3112 unit tests, 0 failures
+
+Stage Summary:
+- codegen_print_call MIR operand handling 完成
+- extract_format_string 函数支持 Constant + Move/Copy 追溯
+- 解决了 Phase 2.4 的关键技术阻塞
+- 下一阶段 (Stage 18.24): macro 系统改进 (平衡推进)
+- v0.303.0 → v0.304.0

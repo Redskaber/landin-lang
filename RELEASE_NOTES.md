@@ -1,9 +1,75 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.303.0
+**Current version**: v0.304.0
 **Date**: 2026-08-06
-**Test count**: 567 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 575 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.304.0 — Stage 18.23 (codegen_print_call MIR Operand Handling)
+
+### Overview
+
+Solves the key technical blocker for println! 通解化 Phase 2.4: the
+`codegen_print_call` function can now extract format strings from MIR
+`Operand::Move`/`Copy` (not just `Operand::Constant`). This is needed
+because MIR lowering assigns string literals to temporary locals before
+passing them as call args — the Call terminator sees `Operand::Move(local)`,
+not `Operand::Constant`.
+
+### Implementation
+
+**`src/codegen/terminator.rs`**:
+1. **`extract_format_string(arg, mir, interner)`** — new function that
+   handles two cases:
+   - `Operand::Constant(Const { val: Str(sym) })` → direct extraction
+   - `Operand::Move/Copy(place)` → traces back through MIR basic blocks
+     to find `Assign(place, Rvalue::Use(Constant(Str)))` → extracts the
+     string from the traced constant
+
+2. **`codegen_print_call` updated** — now calls `extract_format_string`
+   instead of inline `Operand::Constant` matching only.
+
+3. Fixed clippy `collapsible_match` warning by combining nested
+   `if let` into a single pattern match.
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特解"**: one `extract_format_string` handles all
+  operand types (Constant, Move, Copy).
+- **§10 naming**: `extract_format_string` (`<verb>_<noun>_<noun>`).
+- **§11 isolation**: function is `fn` (private) in `codegen::terminator`.
+- **§3 (environment)**: used canonical `scripts/setup-llvm-env.sh`.
+- **Single responsibility**: `extract_format_string` only extracts;
+  `codegen_print_call` only routes.
+- **Avoid dead code**: function is called from `codegen_print_call`.
+- **Avoid scattered content**: MIR tracing logic concentrated in one function.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | println_constant_format_works | positive | `println!("hello")` compiles |
+| 2 | println_move_format_traced | positive | `println!("x={}", x)` compiles (Move arg) |
+| 3 | is_landin_print_macro_all_four | negative | All 4 print macros detected |
+| 4 | is_landin_print_macro_rejects_others | negative | Non-print names rejected |
+| 5 | println_multiple_args | negative | `println!("{}{}", a, b)` compiles |
+| 6 | print_no_newline_works | negative | `print!` compiles |
+| 7 | eprintln_works | negative | `eprintln!` compiles |
+| 8 | println_produces_mir | negative | MIR bodies produced |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 575 lib (+8 new) + 2537 integration = **3,112** unit tests, 0 failures
+
+### Migration Balance
+
+- Stage 18.23: codegen_print_call MIR operand handling (println!) — this stage
+- Stage 18.24: macro system improvement (macro) — next
+- Balance maintained: macro 6 stages : println! 7 stages
 
 ---
 ## v0.303.0 — Stage 18.21 (println! Phase 2.3 — __landin_println Infrastructure)

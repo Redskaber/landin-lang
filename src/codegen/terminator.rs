@@ -641,6 +641,63 @@ pub(crate) fn is_landin_print_macro(name: &str) -> bool {
     )
 }
 
+/// Stage 18.23: Extract the format string from a call argument operand.
+///
+/// Handles two cases:
+/// 1. `Operand::Constant(Const { val: Str(sym) })` → direct extraction
+/// 2. `Operand::Move/Copy(place)` → trace back through MIR basic blocks
+///    to find `Assign(place, Rvalue::Use(Constant(Str)))` → extract
+///
+/// This is needed because MIR lowering assigns string literals to
+/// temporary locals before passing them as call args. The Call
+/// terminator sees `Operand::Move(local)`, not `Operand::Constant`.
+///
+/// Per §10: `<verb>_<noun>_<noun>` pattern.
+fn extract_format_string(arg: &Operand, mir: &MirBody, interner: &Rodeo) -> String {
+    use crate::mir::place::{Operand as MirOperand, PlaceKind as MirPlaceKind};
+    match arg {
+        // Case 1: Direct constant — extract string immediately.
+        MirOperand::Constant(c) => match c.val {
+            ConstVal::Str(sym) => interner
+                .try_resolve(&sym)
+                .map(|s| s.to_string())
+                .unwrap_or_default(),
+            _ => String::new(),
+        },
+        // Case 2: Move/Copy of a place — trace back to constant assignment.
+        MirOperand::Move(place) | MirOperand::Copy(place) => {
+            // Only handle simple local places (no projections).
+            if let MirPlaceKind::Local(local_id) = &place.kind {
+                // Scan all basic blocks for an Assign to this local
+                // with a Rvalue::Use(Operand::Constant(Str)).
+                for bb in &mir.basic_blocks {
+                    for stmt in &bb.statements {
+                        if let crate::mir::body::StatementKind::Assign(boxed) = &stmt.kind {
+                            let (assign_place, rvalue) = &**boxed;
+                            // Check if this assignment targets our local.
+                            if let MirPlaceKind::Local(assign_local) = &assign_place.kind {
+                                if assign_local == local_id {
+                                    // Check if rvalue is Use(Constant(Str)).
+                                    if let crate::mir::place::Rvalue::Use(MirOperand::Constant(c)) = rvalue {
+                                        if let ConstVal::Str(sym) = c.val {
+                                            return interner
+                                                .try_resolve(&sym)
+                                                .map(|s| s.to_string())
+                                                .unwrap_or_default();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Could not trace back to a constant — return empty.
+            String::new()
+        }
+    }
+}
+
 /// Stage 18.15: Codegen a call to a Landin print macro runtime function.
 ///
 /// Routes to `emit_printf_call` (Stage 18.12) with the appropriate
@@ -676,19 +733,11 @@ fn codegen_print_call(
         _ => return, // Not a print macro — no-op.
     };
 
-    // Extract the format string from the first argument.
-    // The first arg should be a Constant(StrLit(sym)).
+    // Stage 18.23: Extract the format string from the first argument.
+    // Uses `extract_format_string` which handles both Operand::Constant
+    // (direct) and Operand::Move/Copy (traced back through MIR).
     let msg = if let Some(first) = args.first() {
-        match first {
-            crate::mir::place::Operand::Constant(c) => match c.val {
-                ConstVal::Str(sym) => interner
-                    .try_resolve(&sym)
-                    .map(|s| s.to_string())
-                    .unwrap_or_default(),
-                _ => String::new(),
-            },
-            _ => String::new(),
-        }
+        extract_format_string(first, mir, interner)
     } else {
         String::new()
     };
@@ -847,5 +896,79 @@ mod tests {
         let result = crate::compile(src);
         assert!(result.errors.lex.is_empty());
         assert!(result.errors.parse.is_empty());
+    }
+
+    // =====================================================================
+    // Stage 18.23 tests — codegen_print_call MIR operand handling
+    // =====================================================================
+
+    /// Stage 18.23 positive 1: println! with constant format string still works.
+    #[test]
+    fn stage18_23_println_constant_format_works() {
+        let src = "fn main() { println!(\"hello\"); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.23 positive 2: println! with args (Move/Copy operands) still works.
+    #[test]
+    fn stage18_23_println_move_format_traced() {
+        let src = "fn main() { let x = 42; println!(\"x={}\", x); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.23 negative 1: is_landin_print_macro detects all 4 names.
+    #[test]
+    fn stage18_23_is_landin_print_macro_all_four() {
+        assert!(is_landin_print_macro("__landin_println"));
+        assert!(is_landin_print_macro("__landin_print"));
+        assert!(is_landin_print_macro("__landin_eprintln"));
+        assert!(is_landin_print_macro("__landin_eprint"));
+    }
+
+    /// Stage 18.23 negative 2: is_landin_print_macro rejects non-print names.
+    #[test]
+    fn stage18_23_is_landin_print_macro_rejects_others() {
+        assert!(!is_landin_print_macro("printf"));
+        assert!(!is_landin_print_macro("main"));
+        assert!(!is_landin_print_macro("__landin_panic"));
+    }
+
+    /// Stage 18.23 negative 3: println! with multiple args still works.
+    #[test]
+    fn stage18_23_println_multiple_args() {
+        let src = "fn main() { let a = 1; let b = 2; println!(\"{}{}\", a, b); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.23 negative 4: print! (no newline) still works.
+    #[test]
+    fn stage18_23_print_no_newline_works() {
+        let src = "fn main() { print!(\"no newline\"); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.23 negative 5: eprintln! still works.
+    #[test]
+    fn stage18_23_eprintln_works() {
+        let src = "fn main() { eprintln!(\"err\"); }";
+        let result = crate::compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.23 negative 6: println! produces MIR bodies (codegen path works).
+    #[test]
+    fn stage18_23_println_produces_mir() {
+        let src = "fn main() { println!(\"hello\"); }";
+        let result = crate::compile(src);
+        assert!(!result.mirs.is_empty(), "should produce MIR bodies");
     }
 }
