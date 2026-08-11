@@ -166,6 +166,8 @@ fn match_pattern_at(
                             "literal" => capture_literal(input, &mut ii),
                             "block" => capture_block(input, &mut ii),
                             "path" => capture_path(input, &mut ii),
+                            "lifetime" => capture_lifetime(input, &mut ii),
+                            "stmt" => capture_stmt(input, &mut ii),
                             _ => return false,
                         };
                         if captured.is_empty() {
@@ -442,6 +444,61 @@ fn tokens_match(pat: &TokenKind, input: &TokenKind) -> bool {
     // For identifiers, match by discriminant (any ident matches any ident in pattern).
     // For other tokens, match exactly.
     pat == input
+}
+
+// =============================================================================
+// Stage 18.24: Additional Fragment Specifiers (lifetime + stmt)
+// =============================================================================
+
+/// Stage 18.24: Capture a lifetime: a single `Lifetime(Symbol)` token
+/// (e.g., `'a`, `'static`).
+///
+/// Per §10: internal helper, named `capture_<fragment>`.
+fn capture_lifetime(input: &[Token], idx: &mut usize) -> Vec<Token> {
+    if *idx < input.len() {
+        if let TokenKind::Lifetime(_) = &input[*idx].kind {
+            let token = input[*idx].clone();
+            *idx += 1;
+            return vec![token];
+        }
+    }
+    Vec::new()
+}
+
+/// Stage 18.24: Capture a statement: tokens until top-level `;` (inclusive)
+/// or `}` (exclusive). Tracks nested delimiters so `;` inside `{}` or `()`
+/// doesn't end the capture.
+///
+/// Per §10: internal helper, named `capture_<fragment>`.
+fn capture_stmt(input: &[Token], idx: &mut usize) -> Vec<Token> {
+    let mut tokens = Vec::new();
+    let mut depth = 0i32;
+
+    while *idx < input.len() {
+        match &input[*idx].kind {
+            TokenKind::LParen | TokenKind::LBracket | TokenKind::LBrace => {
+                depth += 1;
+                tokens.push(input[*idx].clone());
+            }
+            TokenKind::RParen | TokenKind::RBracket | TokenKind::RBrace => {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+                tokens.push(input[*idx].clone());
+            }
+            TokenKind::Semicolon if depth == 0 => {
+                tokens.push(input[*idx].clone());
+                *idx += 1;
+                break;
+            }
+            TokenKind::Eof => break,
+            _ => tokens.push(input[*idx].clone()),
+        }
+        *idx += 1;
+    }
+
+    tokens
 }
 
 /// Substitute `$name` captures in the body, producing expanded tokens.
@@ -3390,5 +3447,183 @@ mod tests {
         let result = compile(src);
         assert!(result.errors.lex.is_empty());
         assert!(result.errors.parse.is_empty());
+    }
+
+    // =====================================================================
+    // Stage 18.24 tests — Fragment specifier extension (lifetime + stmt)
+    // =====================================================================
+
+    /// Stage 18.24 positive 1: A macro using `:lifetime` fragment parses.
+    #[test]
+    fn stage18_24_macro_with_lifetime_fragment() {
+        let src = "macro_rules! m { ($l:lifetime) => { 0 } } fn main() { 0 }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
+    }
+
+    /// Stage 18.24 positive 2: A macro using `:stmt` fragment parses.
+    #[test]
+    fn stage18_24_macro_with_stmt_fragment() {
+        let src = "macro_rules! m { ($s:stmt) => { 0 } } fn main() { 0 }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty(), "no lex errors");
+        assert!(result.errors.parse.is_empty(), "no parse errors");
+    }
+
+    /// Stage 18.24 negative 1: capture_lifetime collects a Lifetime token.
+    #[test]
+    fn stage18_24_capture_lifetime_simple() {
+        let mut interner = Rodeo::new();
+        let sym = interner.get_or_intern("a");
+        let tokens = vec![Token {
+            kind: TokenKind::Lifetime(sym),
+            span: crate::session::Span::DUMMY,
+        }];
+        let mut idx = 0;
+        let captured = capture_lifetime(&tokens, &mut idx);
+        assert_eq!(captured.len(), 1, "should capture 1 token");
+        assert!(matches!(captured[0].kind, TokenKind::Lifetime(_)));
+        assert_eq!(idx, 1, "should advance idx by 1");
+    }
+
+    /// Stage 18.24 negative 2: capture_lifetime rejects non-lifetime tokens.
+    #[test]
+    fn stage18_24_capture_lifetime_rejects_non_lifetime() {
+        let tokens = vec![Token {
+            kind: TokenKind::IntLit(42, None),
+            span: crate::session::Span::DUMMY,
+        }];
+        let mut idx = 0;
+        let captured = capture_lifetime(&tokens, &mut idx);
+        assert!(captured.is_empty(), "non-lifetime → empty");
+        assert_eq!(idx, 0, "idx should not advance");
+    }
+
+    /// Stage 18.24 negative 3: capture_stmt collects until semicolon.
+    #[test]
+    fn stage18_24_capture_stmt_until_semicolon() {
+        let tokens = vec![
+            Token {
+                kind: TokenKind::Ident(lasso::Spur::default()),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Semicolon,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::IntLit(99, None),
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let mut idx = 0;
+        let captured = capture_stmt(&tokens, &mut idx);
+        // Should capture `ident ;` (2 tokens, semicolon inclusive).
+        assert_eq!(captured.len(), 2, "should capture 2 tokens (ident + ;)");
+        assert_eq!(idx, 2, "should advance past semicolon");
+    }
+
+    /// Stage 18.24 negative 4: capture_stmt stops at rbrace (exclusive).
+    #[test]
+    fn stage18_24_capture_stmt_until_rbrace() {
+        let tokens = vec![
+            Token {
+                kind: TokenKind::IntLit(1, None),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::RBrace,
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let mut idx = 0;
+        let captured = capture_stmt(&tokens, &mut idx);
+        // Should capture `1` (1 token, rbrace exclusive).
+        assert_eq!(
+            captured.len(),
+            1,
+            "should capture 1 token (rbrace exclusive)"
+        );
+        assert_eq!(idx, 1, "should stop at rbrace");
+    }
+
+    /// Stage 18.24 negative 5: capture_stmt handles nested braces correctly.
+    #[test]
+    fn stage18_24_capture_stmt_nested_braces() {
+        let tokens = vec![
+            Token {
+                kind: TokenKind::LBrace,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::IntLit(1, None),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Semicolon,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::RBrace,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Semicolon,
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        let mut idx = 0;
+        let captured = capture_stmt(&tokens, &mut idx);
+        // Should capture `{ 1 ; } ;` (5 tokens — the inner `;` is inside
+        // braces, so depth > 0; the outer `;` ends the capture).
+        assert_eq!(
+            captured.len(),
+            5,
+            "should capture all 5 tokens including outer ;"
+        );
+        assert_eq!(idx, 5, "should advance past outer semicolon");
+    }
+
+    /// Stage 18.24 negative 6: lifetime fragment in pattern matches correctly.
+    #[test]
+    fn stage18_24_lifetime_fragment_in_pattern() {
+        let mut interner = Rodeo::new();
+        let l_sym = interner.get_or_intern("l");
+        let lifetime_sym = interner.get_or_intern("lifetime");
+        let a_sym = interner.get_or_intern("a");
+        // Pattern: $ l : lifetime
+        let pattern = vec![
+            Token {
+                kind: TokenKind::Dollar,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(l_sym),
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Colon,
+                span: crate::session::Span::DUMMY,
+            },
+            Token {
+                kind: TokenKind::Ident(lifetime_sym),
+                span: crate::session::Span::DUMMY,
+            },
+        ];
+        // Input: 'a
+        let input = vec![Token {
+            kind: TokenKind::Lifetime(a_sym),
+            span: crate::session::Span::DUMMY,
+        }];
+        let mut captures = Captures::new();
+        assert!(match_pattern(&pattern, &input, &mut captures, &interner));
+        // $l should be captured as Single with 1 token.
+        if let Some(CaptureValue::Single(tokens)) = captures.get(&l_sym) {
+            assert_eq!(tokens.len(), 1, "should capture 1 lifetime token");
+            assert!(matches!(tokens[0].kind, TokenKind::Lifetime(_)));
+        } else {
+            panic!("expected CaptureValue::Single for $l");
+        }
     }
 }

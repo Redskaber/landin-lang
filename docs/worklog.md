@@ -30759,3 +30759,36 @@ Stage Summary:
 - 解决了 Phase 2.4 的关键技术阻塞
 - 下一阶段 (Stage 18.24): macro 系统改进 (平衡推进)
 - v0.303.0 → v0.304.0
+
+---
+Task ID: stage18.24
+Agent: Super Z (main)
+Task: Stage 18.24 — Macro Fragment Specifier Extension (lifetime + stmt)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 平衡推进: 18.23 (println!) + 18.24 (macro fragment extension)
+- 设计文档: docs/develop/v0/stage-18/stage-18.24-macro-fragment-extension-design.md
+- 实现 2 个新 fragment specifiers:
+  1. capture_lifetime — 匹配 Lifetime(Symbol) token ('a, 'static)
+  2. capture_stmt — 匹配到 top-level ; (inclusive) 或 } (exclusive)
+     跟踪嵌套 ()/[]/{} 深度
+  3. match_pattern dispatch 扩展: 7 → 9 fragments
+- §1.0 原則 6 "通用 > 特解": 一个 match frag 调度所有 9 fragments
+- §10 命名: capture_lifetime / capture_stmt (capture_<fragment>)
+- §11 接口隔离: 两个函数都是 fn (private)
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: macro_with_lifetime_fragment + macro_with_stmt_fragment (2)
+  - negative: capture_lifetime_simple + capture_lifetime_rejects_non_lifetime + capture_stmt_until_semicolon + capture_stmt_until_rbrace + capture_stmt_nested_braces + lifetime_fragment_in_pattern (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 583 lib (+8 new) + 2537 integration = 3120 unit tests, 0 failures
+
+Stage Summary:
+- macro fragment specifier 扩展完成 (7 → 9 fragments)
+- 新增 lifetime + stmt fragment specifiers
+- 平衡: macro 7 stages : println! 7 stages
+- v0.304.0 → v0.305.0

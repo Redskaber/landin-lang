@@ -1,9 +1,81 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.304.0
+**Current version**: v0.305.0
 **Date**: 2026-08-06
-**Test count**: 575 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Test count**: 583 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+
+---
+## v0.305.0 — Stage 18.24 (Macro Fragment Specifier Extension — lifetime + stmt)
+
+### Overview
+
+Extends the macro_rules! fragment specifier support from 7 to 9. Adds
+`$name:lifetime` (matches `'a`, `'static`, etc.) and `$name:stmt` (matches
+a single statement until `;` or `}`). This is the macro system improvement
+half of the balanced plan (paired with Stage 18.23's println! migration).
+
+### Implementation
+
+**`src/parser/macro_expand.rs`**:
+1. **`capture_lifetime`** — matches a single `Lifetime(Symbol)` token
+   (e.g., `'a`, `'static`). Returns 1 token or empty.
+
+2. **`capture_stmt`** — matches tokens until top-level `;` (inclusive) or
+   `}` (exclusive). Tracks nested delimiters `()`/`[]`/`{}` so `;` inside
+   braces doesn't end the capture.
+
+3. **`match_pattern` extended** — dispatch table now handles 9 fragments:
+   `expr`/`ident`/`tt`/`ty`/`literal`/`block`/`path`/`lifetime`/`stmt`.
+
+### Design Compliance
+
+- **§1.0 原則 6 "通用 > 特例"**: one `match frag` dispatch handles all 9
+  fragments — no per-fragment special-case sites.
+- **§10 naming**: `capture_lifetime` / `capture_stmt` (`capture_<fragment>`).
+- **§11 isolation**: both functions are `fn` (private) in `macro_expand.rs`.
+- **Single responsibility**: each `capture_*` handles exactly one fragment.
+- **Avoid dead code**: both functions called from `match_pattern`.
+- **Avoid scattered content**: all fragment logic in `macro_expand.rs`.
+
+### Tests (§9.4.3 1:3 ratio: 2 positive + 6 negative)
+
+| # | Test | Polarity | Description |
+|---|------|----------|-------------|
+| 1 | macro_with_lifetime_fragment | positive | `$l:lifetime` parses |
+| 2 | macro_with_stmt_fragment | positive | `$s:stmt` parses |
+| 3 | capture_lifetime_simple | negative | `capture_lifetime` collects `'a` |
+| 4 | capture_lifetime_rejects_non_lifetime | negative | Non-lifetime → empty |
+| 5 | capture_stmt_until_semicolon | negative | `capture_stmt` collects to `;` |
+| 6 | capture_stmt_until_rbrace | negative | `capture_stmt` stops at `}` |
+| 7 | capture_stmt_nested_braces | negative | Nested `{}` handled correctly |
+| 8 | lifetime_fragment_in_pattern | negative | `$l:lifetime` matches `'a` |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 583 lib (+8 new) + 2537 integration = **3,120** unit tests, 0 failures
+
+### Migration Balance
+
+- Stage 18.23: codegen_print_call MIR operand handling (println!)
+- Stage 18.24: macro fragment specifier extension (macro)
+- Balance maintained: macro 7 stages : println! 7 stages
+
+### Macro System Progress
+
+The macro_rules! system now supports:
+- ✅ 9 fragment specifiers (expr/ident/tt/ty/literal/block/path/lifetime/stmt)
+- ✅ 3 repetition operators (`*` / `+` / `?`)
+- ✅ Separator support — `$(...),*` / `$(...);+`
+- ✅ Nested repetition — `$( $( $x ),* );*`
+- ✅ Macro error collection
+- ✅ Built-in macro registration
+- ✅ HygieneContext + apply_hygiene infrastructure
+- ⏳ Macro hygiene activation (signature change — future)
+- ⏳ More fragment specifiers (vis/meta/item — future)
 
 ---
 ## v0.304.0 — Stage 18.23 (codegen_print_call MIR Operand Handling)

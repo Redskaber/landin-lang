@@ -678,7 +678,9 @@ fn extract_format_string(arg: &Operand, mir: &MirBody, interner: &Rodeo) -> Stri
                             if let MirPlaceKind::Local(assign_local) = &assign_place.kind {
                                 if assign_local == local_id {
                                     // Check if rvalue is Use(Constant(Str)).
-                                    if let crate::mir::place::Rvalue::Use(MirOperand::Constant(c)) = rvalue {
+                                    if let crate::mir::place::Rvalue::Use(MirOperand::Constant(c)) =
+                                        rvalue
+                                    {
                                         if let ConstVal::Str(sym) = c.val {
                                             return interner
                                                 .try_resolve(&sym)
