@@ -693,6 +693,12 @@ pub fn compile(src: &str) -> CompileResult {
     interner.get_or_intern("__landin_line");
     interner.get_or_intern("__landin_module_path");
     interner.get_or_intern("__landin_include_str");
+    // Stage 18.39: Pre-intern symbols for pattern + config macros.
+    interner.get_or_intern("pat");
+    interner.get_or_intern("cfg");
+    interner.get_or_intern("__landin_matches");
+    interner.get_or_intern("__landin_cfg");
+    interner.get_or_intern("__landin_option_env");
     let (tokens, macro_errs) =
         crate::parser::macro_expand::expand_macros_with_errors(tokens, &mut interner);
     errors.macro_errors = macro_errs;

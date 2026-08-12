@@ -1069,14 +1069,16 @@ fn apply_hygiene(
 // Stage 18.10: Built-in macro_rules! registration (println! 通解化 Phase 1)
 // =============================================================================
 
-/// Stage 18.10 + 18.29 + 18.32 + 18.34 + 18.36: Names of the built-in macros
-/// that are always available (registered into every `MacroTable` before user macros).
+/// Stage 18.10 + 18.29 + 18.32 + 18.34 + 18.36 + 18.39: Names of the built-in
+/// macros that are always available (registered into every `MacroTable` before
+/// user macros).
 ///
 /// Stage 18.10: println/print/eprintln/eprint (print macros)
 /// Stage 18.29: assert/panic/vec (non-print macros)
 /// Stage 18.32: format/dbg/todo/unimplemented/write (more non-print macros)
 /// Stage 18.34: stringify/concat/env (compile-time utility macros)
 /// Stage 18.36: file/line/module_path/include_str (source info + file macros)
+/// Stage 18.39: matches/cfg/option_env (pattern + config macros)
 ///
 /// Per §10: const naming follows `UPPER_SNAKE_CASE`.
 pub const BUILTIN_MACRO_NAMES: &[&str] = &[
@@ -1099,6 +1101,9 @@ pub const BUILTIN_MACRO_NAMES: &[&str] = &[
     "line",
     "module_path",
     "include_str", // source info + file macros (Stage 18.36)
+    "matches",
+    "cfg",
+    "option_env", // pattern + config macros (Stage 18.39)
 ];
 
 /// Stage 18.10: Build the table of built-in `macro_rules!` definitions.
@@ -1172,6 +1177,10 @@ fn make_builtin_macro_rule(
         "line" => make_line_macro_rule(interner),
         "module_path" => make_module_path_macro_rule(interner),
         "include_str" => make_include_str_macro_rule(interner),
+        // Stage 18.39: pattern + config macros
+        "matches" => make_matches_macro_rule(interner),
+        "cfg" => make_cfg_macro_rule(interner),
+        "option_env" => make_option_env_macro_rule(interner),
         _ => make_noop_macro_rule(name_sym, interner),
     }
 }
@@ -2268,6 +2277,263 @@ fn make_include_str_macro_rule(interner: &mut Rodeo) -> MacroRule {
             span: crate::session::Span::DUMMY,
         },
     ];
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.39: Construct a `matches!` macro rule.
+///
+/// Pattern: `$expr:expr, $($pat:tt)+` — expression + pattern tokens
+/// Body:    `__landin_matches($expr, $($pat)+)` — function call to runtime matches
+///
+/// `matches!(x, Some(_))` → `__landin_matches(x, Some(_))` → returns bool.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_matches_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let expr_sym = interner.get_or_intern("expr");
+    let pat_sym = interner.get_or_intern("pat");
+    let tt_sym = interner.get_or_intern("tt");
+    let matches_sym = interner.get_or_intern("__landin_matches");
+
+    // Pattern: $ expr : expr , $ ( $ pat : tt ) +
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(pat_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(tt_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Plus,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_matches ( $ expr , $ ( $ pat ) + )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(matches_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(pat_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Plus,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.39: Construct a `cfg!` macro rule.
+///
+/// Pattern: `$cfg:tt` — a single token tree (the cfg expression)
+/// Body:    `__landin_cfg($cfg)` — function call returning bool
+///
+/// `cfg!(target_os = "linux")` → `__landin_cfg(target_os = "linux")`.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_cfg_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let cfg_sym = interner.get_or_intern("cfg");
+    let tt_sym = interner.get_or_intern("tt");
+    let landin_cfg_sym = interner.get_or_intern("__landin_cfg");
+
+    // Pattern: $ cfg : tt
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(cfg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(tt_sym),
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_cfg ( $ cfg )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(landin_cfg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(cfg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.39: Construct an `option_env!` macro rule.
+///
+/// Pattern: `$name:expr` — a single expression (the env var name)
+/// Body:    `__landin_option_env($name)` — returns Option<&str>
+///
+/// `option_env!("HOME")` → `__landin_option_env("HOME")`.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_option_env_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let name_sym = interner.get_or_intern("name");
+    let expr_sym = interner.get_or_intern("expr");
+    let oe_sym = interner.get_or_intern("__landin_option_env");
+
+    // Pattern: $ name : expr
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(name_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_option_env ( $ name )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(oe_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(name_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
     MacroRule {
         pattern,
         body,
@@ -3705,8 +3971,8 @@ mod tests {
         let table = build_builtin_macro_table(&mut interner);
         assert_eq!(
             table.len(),
-            19,
-            "should register 19 built-in macros (4 print + 15 non-print)"
+            22,
+            "should register 22 built-in macros (4 print + 18 non-print)"
         );
         for name in BUILTIN_MACRO_NAMES {
             let sym = interner.get(name).expect("name was interned");
@@ -3729,7 +3995,7 @@ mod tests {
     /// exactly the 12 expected names (4 print + 8 non-print).
     #[test]
     fn stage18_10_builtin_macro_names_const() {
-        assert_eq!(BUILTIN_MACRO_NAMES.len(), 19);
+        assert_eq!(BUILTIN_MACRO_NAMES.len(), 22);
         assert!(BUILTIN_MACRO_NAMES.contains(&"println"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"print"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"eprintln"));
@@ -3753,6 +4019,10 @@ mod tests {
         assert!(BUILTIN_MACRO_NAMES.contains(&"line"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"module_path"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"include_str"));
+        // Stage 18.39: pattern + config macros
+        assert!(BUILTIN_MACRO_NAMES.contains(&"matches"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"cfg"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"option_env"));
     }
 
     /// Stage 18.10 negative 2: build_builtin_macro_table returns an
@@ -5049,6 +5319,10 @@ mod tests {
         assert!(BUILTIN_MACRO_NAMES.contains(&"line"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"module_path"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"include_str"));
+        // Stage 18.39: pattern + config macros
+        assert!(BUILTIN_MACRO_NAMES.contains(&"matches"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"cfg"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"option_env"));
     }
 
     /// Stage 18.29 + 18.32 negative 3: build_builtin_macro_table registers 12 macros.
@@ -5078,12 +5352,17 @@ mod tests {
         interner.get_or_intern("__landin_line");
         interner.get_or_intern("__landin_module_path");
         interner.get_or_intern("__landin_include_str");
+        interner.get_or_intern("pat");
+        interner.get_or_intern("cfg");
+        interner.get_or_intern("__landin_matches");
+        interner.get_or_intern("__landin_cfg");
+        interner.get_or_intern("__landin_option_env");
         for name in BUILTIN_MACRO_NAMES {
             interner.get_or_intern(format!("__landin_{}", name));
         }
 
         let table = build_builtin_macro_table(&mut interner);
-        assert_eq!(table.len(), 19, "should have 19 built-in macros");
+        assert_eq!(table.len(), 22, "should have 22 built-in macros");
     }
 
     /// Stage 18.29 negative 4: vec! with empty args parses.

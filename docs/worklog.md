@@ -31194,3 +31194,33 @@ Stage Summary:
 - 4 处 Println 代码路径标记为 DEPRECATED
 - Phase 3.2 (完整移除 variant) 留待后续 stage
 - v0.312.0 → v0.313.0
+
+---
+Task ID: stage18.39
+Agent: Super Z (main)
+Task: Stage 18.39 — Pattern + Config Macros (matches!/cfg!/option_env!)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 扩展 BUILTIN_MACRO_NAMES: 19 → 22 (添加 matches/cfg/option_env)
+- 新增 3 个 macro rule 构造函数:
+  - make_matches_macro_rule: matches! → __landin_matches($expr, $($pat)+)
+  - make_cfg_macro_rule: cfg! → __landin_cfg($cfg)
+  - make_option_env_macro_rule: option_env! → __landin_option_env($name)
+- dispatcher 更新: make_builtin_macro_rule 新增 3 个 match arm
+- driver 预 intern 新符号 (pat/cfg/__landin_matches/__landin_cfg/__landin_option_env)
+- 更新所有测试中的 count 期望 (19 → 22)
+- §1.0 原則 6 "通用 > 特解": 所有内置宏走同一 expand_macros 通道
+- §10 命名: make_<name>_macro_rule 模式
+- §11 接口隔离: 所有 rule 构造函数在 macro_expand.rs 内部
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2537 integration = 3144 unit tests, 0 failures
+
+Stage Summary:
+- 模式 + 配置宏完成 (matches!/cfg!/option_env!)
+- BUILTIN_MACRO_NAMES 扩展: 19 → 22
+- 内置宏总计: 4 print + 18 non-print = 22
+- v0.313.0 → v0.314.0
