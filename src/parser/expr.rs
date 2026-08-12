@@ -867,6 +867,16 @@ impl<'a> Parser<'a> {
                     // The previous Stage 13.11 implementation silently dropped args after
                     // the format string — a "special case" that violated the user feedback
                     // "少用特例" (use fewer special cases).
+                    //
+                    // Stage 18.30 (DEPRECATED): This special-case code is now DEAD CODE.
+                    // Stage 18.27 activated the `__landin_println` macro body, which
+                    // expands `println!("hi")` to `__landin_println("hi")` BEFORE parsing.
+                    // The parser therefore never encounters `println!(...)` calls —
+                    // they're already expanded to `__landin_println(...)` function calls.
+                    // This code path is kept for safety (in case macro expansion is
+                    // disabled) but will be removed in Phase 3 (Stage 18.31+).
+                    // Per §1.0 原則 6 "通用 > 特解": the 通解 (macro_rules! → Call)
+                    // has replaced the 特解 (parser special case).
                     let macro_name = path.segments.last().map(|s| s.ident.name);
                     let macro_name_str = macro_name
                         .and_then(|spur| self.interner.try_resolve(&spur))

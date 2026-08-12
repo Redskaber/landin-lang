@@ -30967,3 +30967,28 @@ Stage Summary:
 - make_builtin_macro_rule 重构为 dispatcher (5 个构造函数)
 - 用户反馈响应: macro 不只有 print macro
 - v0.307.0 → v0.308.0
+
+---
+Task ID: stage18.30
+Agent: Super Z (main)
+Task: Stage 18.30 — Parser Println Special Case: Dead Code Documentation
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 设计文档: docs/develop/v0/stage-18/stage-18.30-println-dead-code-design.md
+- 在 parser/expr.rs 的 Println 特解代码中添加 DEPRECATED 注释
+- 标记为死代码: Stage 18.27 激活后, parser 永远不会遇到 println!() 调用
+- 不移除代码 (避免破坏测试), 但明确标记状态
+- 为 Phase 3 完整移除做准备
+- §1.0 原則 6 "通用 > 特解": 通解 (macro_rules! → Call) 已取代特解
+- 正确 > 妥协: 不移除代码 (风险), 但明确标记状态
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2537 integration = 3144 unit tests, 0 failures
+
+Stage Summary:
+- parser Println 特解标记为 DEPRECATED (死代码)
+- 为 Phase 3 完整移除做准备
+- v0.308.0 → v0.309.0
