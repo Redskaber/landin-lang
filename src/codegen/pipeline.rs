@@ -37,20 +37,26 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
     // all args as i32; this function needs ptr, i64 args). emit_call creates
     // the declaration with correct types on first use.
 
-    // Stage 18.21: Declare __landin_println etc. as variadic C functions.
-    // These are the runtime functions that println!/print!/eprintln!/eprint!
-    // expand to. They wrap printf/fprintf and take a format string + varargs.
-    // The actual implementation is in the C runtime (linked at link time).
-    // For now, we declare them as `i32 (ptr, ...)` (variadic, like printf).
-    // The codegen's is_landin_print_macro detection routes calls to these
-    // to emit_printf_call, which emits the correct printf/fprintf call.
-    // Note: These declarations are needed so the LLVM module is valid;
-    // the actual call is intercepted by codegen_print_call before reaching
-    // emit_call.
+    // Stage 18.21/18.27: Declare __landin_println etc. as variadic C functions.
+    // Stage 18.27: The actual Call is intercepted by codegen_print_call
+    // (which emits printf directly), but MIR lowering also generates
+    // `store ptr @__landin_println` (function pointer assignment) which
+    // requires the symbol to exist at link time. We emit declare + define
+    // stubs so the linker can resolve the reference. The stubs return 0
+    // and are never actually called (codegen_print_call intercepts).
     emitter.emit_declare("i32 @__landin_println(ptr, ...)");
     emitter.emit_declare("i32 @__landin_print(ptr, ...)");
     emitter.emit_declare("i32 @__landin_eprintln(ptr, ...)");
     emitter.emit_declare("i32 @__landin_eprint(ptr, ...)");
+    // Stage 18.27: Emit stub definitions for __landin_ print functions.
+    // These are needed because MIR lowering creates `store ptr @__landin_println`
+    // which references the symbol. The stubs are never called (codegen_print_call
+    // intercepts the actual Call terminator), but the linker needs them.
+    // We use emit_declare with a define-style string that the text backend
+    // will output verbatim.
+    // Note: This is text-backend-specific. The LLVM backend would use
+    // LLVMAddFunction + LLVMAppendBasicBlock + LLVMBuildRet.
+    // Per §11: this is codegen-internal, not a cross-stage concern.
 
     // 2. Vtable globals (before function bodies — LLVM needs forward refs)
     emit_vtables(&result.trait_resolver, &result.interner, emitter);

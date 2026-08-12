@@ -1037,10 +1037,14 @@ fn apply_hygiene(
         // Check for identifier that should be renamed.
         if let TokenKind::Ident(sym) = &tok.kind {
             let name = interner.resolve(sym);
-            // Skip keywords and built-in macro names.
+            // Skip keywords, built-in macro names, and __landin_ runtime functions.
             let is_keyword = tok.kind.is_keyword();
             let is_builtin = BUILTIN_MACRO_NAMES.contains(&name);
-            if !is_keyword && !is_builtin {
+            // Stage 18.27: __landin_ functions are runtime functions that
+            // must NOT be renamed — they're the expansion target for
+            // built-in print macros.
+            let is_runtime = name.starts_with("__landin_");
+            if !is_keyword && !is_builtin && !is_runtime {
                 // Rename to unique name.
                 let new_name = hygiene.gen_unique_name(name);
                 let new_sym = interner.get_or_intern(new_name);
@@ -1168,29 +1172,25 @@ fn make_builtin_macro_rule(
         },
     ];
 
-    // Stage 18.21: Body is `__landin_<name>($($args)*)` — a function call
+    // Stage 18.27: Body is `__landin_<name>($($args)*)` — a function call
     // (NOT a macro call, no `!`). This expands `println!("hi")` to
     // `__landin_println("hi")`, which the parser parses as `Expr::Call`.
     // The codegen then detects `__landin_println` via `is_landin_print_macro`
     // and routes to `emit_printf_call`.
     //
-    // **REVERTED to Phase 1 no-op** (Stage 18.21): The `__landin_println`
-    // Call path requires codegen_print_call to extract the format string
-    // from MIR operands, which currently only handles Operand::Constant
-    // (not Operand::Move/Copy of string locals). This will be fixed in
-    // a future stage. For now, use the Phase 1 no-op body so the parser's
-    // special-case path handles println!.
+    // Stage 18.23 fixed the key blocker: `extract_format_string` now handles
+    // both `Operand::Constant` and `Operand::Move/Copy` (traced back through
+    // MIR basic blocks). So the `__landin_println(...)` Call path works.
     //
     // Pre-condition: `__landin_<name>` must be interned by the driver.
-    // Body: name!($($args)*)  — Phase 1 no-op (re-emits same call form)
-    // 10 tokens: Ident(name) Not LParen Dollar LParen Dollar Ident(args) RParen Star RParen
+    // Body: __landin_<name> ( $ ( $ args ) * )
+    // 9 tokens: Ident(landin_name) LParen Dollar LParen Dollar Ident(args) RParen Star RParen
+    let landin_name = format!("__landin_{_name}");
+    let landin_name_sym = interner.get(&landin_name).unwrap_or(name_sym);
+
     let body = vec![
         Token {
-            kind: TokenKind::Ident(name_sym),
-            span: crate::session::Span::DUMMY,
-        },
-        Token {
-            kind: TokenKind::Not,
+            kind: TokenKind::Ident(landin_name_sym),
             span: crate::session::Span::DUMMY,
         },
         Token {
@@ -1227,7 +1227,6 @@ fn make_builtin_macro_rule(
         },
     ];
 
-    let _ = interner; // Pre-condition: symbols already interned by driver
     MacroRule {
         pattern,
         body,
@@ -2642,23 +2641,25 @@ mod tests {
         }
         interner.get_or_intern("args");
         interner.get_or_intern("tt");
+        // Stage 18.27: also intern __landin_<name> for the body.
+        for name in BUILTIN_MACRO_NAMES {
+            interner.get_or_intern(format!("__landin_{}", name));
+        }
 
         let table = build_builtin_macro_table(&mut interner);
         let println_sym = interner.get("println").unwrap();
         let def = &table[&println_sym];
         let body = &def.rules[0].body;
-        // Body: name ! ( $ ( $ args ) * )  = 10 tokens
-        // (Phase 1 no-op form — Stage 18.21 kept this form because the
-        // __landin_println Call path needs more work)
+        // Stage 18.27: Body is `__landin_println($($args)*)` — 9 tokens
+        // (function call form, no `!`).
         assert_eq!(
             body.len(),
-            10,
-            "body should be 10 tokens (Phase 1 no-op form)"
+            9,
+            "body should be 9 tokens (Stage 18.27 function call form)"
         );
         assert!(matches!(body[0].kind, TokenKind::Ident(_)));
-        assert!(matches!(body[1].kind, TokenKind::Not));
-        assert!(matches!(body[2].kind, TokenKind::LParen));
-        assert!(matches!(body[9].kind, TokenKind::RParen));
+        assert!(matches!(body[1].kind, TokenKind::LParen));
+        assert!(matches!(body[8].kind, TokenKind::RParen));
     }
 
     /// Stage 18.10 negative 5: User-defined macro_rules! with the same
@@ -2677,20 +2678,21 @@ mod tests {
         );
     }
 
-    /// Stage 18.10 negative 6: println! call's tokens pass through
-    /// expand_macros unchanged (no-op expansion in Phase 1).
-    /// Stage 18.21 kept the no-op form because the __landin_println
-    /// Call path needs codegen_print_call to handle MIR operands.
+    /// Stage 18.10 negative 6 (updated Stage 18.27): println! call now
+    /// expands to `__landin_println("hi")` (function call form).
     #[test]
     fn stage18_10_builtin_macros_pass_through_println() {
         let mut interner = Rodeo::new();
         for name in BUILTIN_MACRO_NAMES {
             interner.get_or_intern(name);
+            // Stage 18.27: also intern __landin_<name>.
+            interner.get_or_intern(format!("__landin_{}", name));
         }
         interner.get_or_intern("args");
         interner.get_or_intern("tt");
 
         let println_sym = interner.get_or_intern("println");
+        let landin_println_sym = interner.get_or_intern("__landin_println");
         let hi_sym = interner.get_or_intern("hi");
         let span = crate::session::Span::new(0, 10);
         // Input: println ! ( "hi" )
@@ -2718,16 +2720,16 @@ mod tests {
         ];
         let (out, errors) = expand_macros_with_errors(tokens, &mut interner);
         assert!(errors.is_empty(), "no macro errors");
-        // After no-op expansion: println ! ( "hi" ) — same 5 tokens.
+        // Stage 18.27: After expansion: __landin_println ( "hi" ) — 4 tokens.
         assert_eq!(
             out.len(),
-            5,
-            "println! should pass through (no-op expansion)"
+            4,
+            "println! should expand to __landin_println(...) — 4 tokens"
         );
-        // First token should still be `println`.
-        assert!(matches!(out[0].kind, TokenKind::Ident(_)));
-        // Second should be `!`.
-        assert!(matches!(out[1].kind, TokenKind::Not));
+        // First token should be `__landin_println`.
+        assert!(matches!(out[0].kind, TokenKind::Ident(s) if s == landin_println_sym));
+        // Second should be `(` (no `!` — function call).
+        assert!(matches!(out[1].kind, TokenKind::LParen));
     }
 
     // =====================================================================
@@ -3706,6 +3708,129 @@ mod tests {
     #[test]
     fn stage18_26_print_after_hygiene() {
         let src = "fn main() { print!(\"no newline\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    // =====================================================================
+    // Stage 18.27 tests — println! Phase 2.5: __landin_println activation
+    // =====================================================================
+
+    /// Stage 18.27 positive 1: println! expands to __landin_println.
+    #[test]
+    fn stage18_27_println_expands_to_landin_println() {
+        let mut interner = Rodeo::new();
+        for name in BUILTIN_MACRO_NAMES {
+            interner.get_or_intern(name);
+            interner.get_or_intern(format!("__landin_{}", name));
+        }
+        interner.get_or_intern("args");
+        interner.get_or_intern("tt");
+
+        let println_sym = interner.get_or_intern("println");
+        let landin_println_sym = interner.get_or_intern("__landin_println");
+        let hi_sym = interner.get_or_intern("hi");
+        let span = crate::session::Span::new(0, 10);
+        let tokens = vec![
+            Token {
+                kind: TokenKind::Ident(println_sym),
+                span,
+            },
+            Token {
+                kind: TokenKind::Not,
+                span,
+            },
+            Token {
+                kind: TokenKind::LParen,
+                span,
+            },
+            Token {
+                kind: TokenKind::StrLit(hi_sym),
+                span,
+            },
+            Token {
+                kind: TokenKind::RParen,
+                span,
+            },
+        ];
+        let (out, errors) = expand_macros_with_errors(tokens, &mut interner);
+        assert!(errors.is_empty());
+        assert_eq!(out.len(), 4, "should expand to __landin_println(\"hi\")");
+        assert!(matches!(out[0].kind, TokenKind::Ident(s) if s == landin_println_sym));
+    }
+
+    /// Stage 18.27 positive 2: println! still compiles end-to-end.
+    #[test]
+    fn stage18_27_println_compiles_end_to_end() {
+        let src = "fn main() { println!(\"hello\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+        assert!(result.errors.macro_errors.is_empty());
+    }
+
+    /// Stage 18.27 negative 1: eprintln! expands to __landin_eprintln.
+    #[test]
+    fn stage18_27_eprintln_expands_correctly() {
+        let src = "fn main() { eprintln!(\"err\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.27 negative 2: print! expands to __landin_print.
+    #[test]
+    fn stage18_27_print_expands_correctly() {
+        let src = "fn main() { print!(\"no newline\"); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.27 negative 3: println! with args compiles.
+    #[test]
+    fn stage18_27_println_with_args_compiles() {
+        let src = "fn main() { let x = 42; println!(\"x={}\", x); }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.27 negative 4: apply_hygiene skips __landin_ functions.
+    #[test]
+    fn stage18_27_hygiene_skips_landin_functions() {
+        let mut interner = Rodeo::new();
+        let lp_sym = interner.get_or_intern("__landin_println");
+        let body = vec![Token {
+            kind: TokenKind::Ident(lp_sym),
+            span: crate::session::Span::DUMMY,
+        }];
+        let captures = Captures::new();
+        let mut hygiene = HygieneContext::new();
+        let result = apply_hygiene(&body, &captures, &mut interner, &mut hygiene);
+        // __landin_println should NOT be renamed.
+        assert_eq!(result.len(), 1);
+        if let TokenKind::Ident(s) = &result[0].kind {
+            assert_eq!(*s, lp_sym, "__landin_println should not be renamed");
+        }
+        // Counter should be 0 (no renames happened).
+        assert_eq!(hygiene.counter(), 0);
+    }
+
+    /// Stage 18.27 negative 5: user macro still works.
+    #[test]
+    fn stage18_27_user_macro_still_works() {
+        let src = "macro_rules! m { () => { 42 } } fn main() { m!() }";
+        let result = compile(src);
+        assert!(result.errors.lex.is_empty());
+        assert!(result.errors.parse.is_empty());
+    }
+
+    /// Stage 18.27 negative 6: eprint! still works.
+    #[test]
+    fn stage18_27_eprint_still_works() {
+        let src = "fn main() { eprint!(\"err\"); }";
         let result = compile(src);
         assert!(result.errors.lex.is_empty());
         assert!(result.errors.parse.is_empty());

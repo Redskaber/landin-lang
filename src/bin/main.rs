@@ -238,23 +238,20 @@ void __landin_panic_div_by_zero(void) {
     fprintf(stderr, "panic: divide by zero\n");
     exit(1);
 }
-/* Stage 13.14: eprintln!/eprint! helper — routes to stderr via fprintf.
-   Codegen calls this when StatementKind::Println.stderr == true AND
-   there are no format args (plain string output).
-   Portable across libc implementations (stderr is a macro in glibc;
-   the helper hides this). The helper takes only the message string
-   (no format string) — the C helper hardcodes "%s" as the format, so
-   `%` in msg is literal (no format-string injection risk).
-   Per api-naming-standard.md §8.1: __landin_<verb>_<noun> pattern. */
-void __landin_eprint(const char* s) {
-    fprintf(stderr, "%s", s);
-}
-/* Stage 13.16: eprintln!/eprint! with format args — variadic helper that
-   takes a printf-style format string and args, routing output to stderr.
-   Codegen calls this when StatementKind::Println.stderr == true AND
-   there are format args (println!("{}", x) etc.).
-   Per api-naming-standard.md §8.1: __landin_<verb>_<noun>_<noun> pattern
-   (matches __landin_panic_bounds_check naming). */
+/* Stage 13.14/18.27: eprint!/eprintln! helpers.
+   Stage 18.27: Replaced the old single-arg __landin_eprint and the
+   variadic __landin_eprintf with unified variadic __landin_eprint and
+   __landin_eprintln stubs (defined below, before main()).
+   The old helpers were:
+     void __landin_eprint(const char* s)  — single-arg, hardcoded "%s"
+     void __landin_eprintf(const char* fmt, ...) — variadic, to stderr
+   The new stubs are:
+     int __landin_eprint(const char* fmt, ...) — variadic, to stderr
+     int __landin_eprintln(const char* fmt, ...) — variadic + newline, to stderr
+   Per §1.0 原則 6 "通用 > 特解": unified variadic interface. */
+/* Stage 18.27: Keep __landin_eprintf for backward compat — emit_printf_call
+   still references it for the stderr=true path. Will be removed in Phase 3
+   when Println variant is removed. */
 void __landin_eprintf(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -276,6 +273,44 @@ int __landin_str_eq(const char* a, long long a_len, const char* b, long long b_l
         if (a[i] != b[i]) return 0;
     }
     return 1;
+}
+/* Stage 18.27: __landin_println / __landin_print / __landin_eprintln /
+   __landin_eprint stubs. These are needed because MIR lowering creates
+   `store ptr @__landin_println` (function pointer assignment) which
+   references the symbol. The actual Call is intercepted by
+   codegen_print_call (which emits printf directly), so these stubs are
+   never actually called. They exist only to satisfy the linker.
+   Per §1.0 原則 6 "通用 > 特解": one set of stubs for all 4 functions.
+   Per api-naming-standard.md §8.1: __landin_<verb> pattern. */
+int __landin_println(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int ret = vprintf(fmt, args);
+    va_end(args);
+    printf("\n");
+    return ret;
+}
+int __landin_print(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int ret = vprintf(fmt, args);
+    va_end(args);
+    return ret;
+}
+int __landin_eprintln(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int ret = vfprintf(stderr, fmt, args);
+    va_end(args);
+    fprintf(stderr, "\n");
+    return ret;
+}
+int __landin_eprint(const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int ret = vfprintf(stderr, fmt, args);
+    va_end(args);
+    return ret;
 }
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()

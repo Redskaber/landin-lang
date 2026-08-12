@@ -738,11 +738,20 @@ fn codegen_print_call(
     // Stage 18.23: Extract the format string from the first argument.
     // Uses `extract_format_string` which handles both Operand::Constant
     // (direct) and Operand::Move/Copy (traced back through MIR).
-    let msg = if let Some(first) = args.first() {
+    let mut msg = if let Some(first) = args.first() {
         extract_format_string(first, mir, interner)
     } else {
         String::new()
     };
+
+    // Stage 18.27: Append newline if needed (println!/eprintln!).
+    // The old Println statement path had newline pre-encoded in msg
+    // (parser added it). The new Call path extracts msg from the raw
+    // string literal, which doesn't include the newline. So we add it
+    // here, matching the old behavior.
+    if newline {
+        msg.push('\n');
+    }
 
     // Remaining args are the format args.
     let fmt_args = if args.len() > 1 { &args[1..] } else { &[] };

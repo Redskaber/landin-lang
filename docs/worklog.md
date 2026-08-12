@@ -30866,3 +30866,51 @@ Stage Summary:
 - HygieneContext 和 apply_hygiene 不再标记 dead_code
 - 所有宏展开现在经过 hygiene 处理
 - v0.305.0 → v0.306.0
+
+---
+Task ID: stage18.26+18.27
+Agent: Super Z (main)
+Task: Stage 18.26 (Macro Hygiene Activation) + Stage 18.27 (println! Phase 2.5)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 用户反馈: "println! 系列也是macro 的一部分" + "正确 > 妥协"
+- 设计文档:
+  - docs/develop/v0/stage-18/stage-18.26-macro-hygiene-signature-design.md
+- Stage 18.26: Macro Hygiene Activation (签名变更)
+  1. 所有公共函数 &Rodeo → &mut Rodeo
+     - expand_macro, expand_macro_calls, expand_macros
+     - expand_macro_calls_with_errors, expand_macros_with_errors
+     - collect_macro_defs, collect_macro_defs_with_errors
+     - build_builtin_macro_table, make_builtin_macro_rule
+  2. expand_macro 中创建 HygieneContext + 调用 apply_hygiene
+  3. 移除 #[allow(dead_code)]
+  4. driver 传递 &mut interner
+  5. 修复所有测试中的 &interner → &mut interner
+  6. +8 tests (1:3 ratio)
+- Stage 18.27: println! Phase 2.5 (__landin_println 激活)
+  1. 修改 make_builtin_macro_rule body: name!(...) → __landin_<name>(...)
+     - 9 tokens (was 10, removed `!`)
+  2. apply_hygiene: 跳过 __landin_ 函数 (is_runtime check)
+  3. codegen_print_call: 追加 \n for println!/eprintln!
+  4. C wrapper: 添加 __landin_println/print/eprintln/eprint stubs
+  5. 保留 __landin_eprintf for backward compat (emit_printf_call still uses it)
+  6. +8 tests (1:3 ratio)
+- 解决的关键问题:
+  - apply_hygiene 重命名 __landin_println → 添加 is_runtime check
+  - 链接器找不到 __landin_println → 添加 C stubs
+  - println! 输出缺少 \n → codegen_print_call 追加 \n
+  - __landin_eprintf 冲突 → 保留 for backward compat
+- 验收:
+  - cargo build --features llvm-backend — ✅ (使用 canonical scripts/setup-llvm-env.sh)
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 599 lib (+16 new) + 2537 integration = 3136 unit tests, 0 failures
+  - 运行时测试全部通过! (33 failures → 0)
+
+Stage Summary:
+- Macro hygiene 激活完成 (apply_hygiene 签名变更 + 调用)
+- println! 通解化 Phase 2.5 完成 (__landin_println 激活)
+- println! 现在走通解路径: macro_rules! → __landin_println(...) → Call → codegen
+- 平衡: macro 8 stages : println! 8 stages
+- v0.305.0 → v0.307.0
