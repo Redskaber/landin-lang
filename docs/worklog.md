@@ -31081,3 +31081,61 @@ Stage Summary:
 - BUILTIN_MACRO_NAMES 扩展: 12 → 15
 - 内置宏总计: 4 print + 11 non-print = 15
 - v0.310.0 → v0.311.0
+
+---
+Task ID: stage18.35
+Agent: Super Z (main)
+Task: Stage 18.35 — v0.6 Final Review
+
+Work Log:
+- §14.5 D1-D8 全 ✅
+- §6.3 5/5 GO
+- Macro:println = 11:9 (macro 系统大幅扩展, 符合用户要求)
+- 3144 tests, 0 failures
+- v0.311.0 (无代码变更，仅审查)
+- 内置宏系统总览: 15 macros (4 print + 11 non-print)
+  - Print: println/print/eprintln/eprint
+  - Control flow: assert/panic
+  - Data: vec/format
+  - Debug: dbg
+  - Error: todo/unimplemented
+  - I/O: write
+  - Compile-time: stringify/concat/env
+- println! 通解化状态: Phase 2.5 完成 (println! 走通解路径)
+- parser Println 特解: 已标记为 DEPRECATED (Stage 18.30)
+- 后续规划:
+  - Phase 3: 移除 Println variant (AST/HIR/MIR/Codegen)
+  - 更多宏: include!/file!/line!/module_path!
+  - GATs / Incremental Compilation / Cross-compilation
+
+---
+Task ID: stage18.36
+Agent: Super Z (main)
+Task: Stage 18.36 — Source Info + File Macros (file!/line!/module_path!/include_str!)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 用户反馈: "macro 不只有 print macro 这一类，还有其他很多的macro"
+- 扩展 BUILTIN_MACRO_NAMES: 15 → 19 (添加 file/line/module_path/include_str)
+- 新增 4 个 macro rule 构造函数:
+  - make_file_macro_rule: file! → __landin_file() (无参数, 返回文件名)
+  - make_line_macro_rule: line! → __landin_line() (无参数, 返回行号)
+  - make_module_path_macro_rule: module_path! → __landin_module_path() (无参数)
+  - make_include_str_macro_rule: include_str! → __landin_include_str($path)
+- dispatcher 更新: make_builtin_macro_rule 新增 4 个 match arm
+- driver 预 intern 新符号 (path/__landin_file/__landin_line/__landin_module_path/__landin_include_str)
+- 更新所有测试中的 count 期望 (15 → 19)
+- §1.0 原則 6 "通用 > 特解": 所有内置宏走同一 expand_macros 通道
+- §10 命名: make_<name>_macro_rule 模式
+- §11 接口隔离: 所有 rule 构造函数在 macro_expand.rs 内部
+- 验收:
+  - cargo build --features llvm-backend — ✅ (使用 canonical scripts/setup-llvm-env.sh)
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2537 integration = 3144 unit tests, 0 failures
+
+Stage Summary:
+- 源码信息 + 文件宏完成 (file!/line!/module_path!/include_str!)
+- BUILTIN_MACRO_NAMES 扩展: 15 → 19
+- 内置宏总计: 4 print + 15 non-print = 19
+- v0.311.0 → v0.312.0

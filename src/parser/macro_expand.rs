@@ -1069,13 +1069,14 @@ fn apply_hygiene(
 // Stage 18.10: Built-in macro_rules! registration (println! 通解化 Phase 1)
 // =============================================================================
 
-/// Stage 18.10 + 18.29 + 18.32 + 18.34: Names of the built-in macros that are
-/// always available (registered into every `MacroTable` before user macros).
+/// Stage 18.10 + 18.29 + 18.32 + 18.34 + 18.36: Names of the built-in macros
+/// that are always available (registered into every `MacroTable` before user macros).
 ///
 /// Stage 18.10: println/print/eprintln/eprint (print macros)
 /// Stage 18.29: assert/panic/vec (non-print macros)
 /// Stage 18.32: format/dbg/todo/unimplemented/write (more non-print macros)
 /// Stage 18.34: stringify/concat/env (compile-time utility macros)
+/// Stage 18.36: file/line/module_path/include_str (source info + file macros)
 ///
 /// Per §10: const naming follows `UPPER_SNAKE_CASE`.
 pub const BUILTIN_MACRO_NAMES: &[&str] = &[
@@ -1094,6 +1095,10 @@ pub const BUILTIN_MACRO_NAMES: &[&str] = &[
     "stringify",
     "concat",
     "env", // compile-time utility macros (Stage 18.34)
+    "file",
+    "line",
+    "module_path",
+    "include_str", // source info + file macros (Stage 18.36)
 ];
 
 /// Stage 18.10: Build the table of built-in `macro_rules!` definitions.
@@ -1162,6 +1167,11 @@ fn make_builtin_macro_rule(
         "stringify" => make_stringify_macro_rule(interner),
         "concat" => make_concat_macro_rule(interner),
         "env" => make_env_macro_rule(interner),
+        // Stage 18.36: source info + file macros
+        "file" => make_file_macro_rule(interner),
+        "line" => make_line_macro_rule(interner),
+        "module_path" => make_module_path_macro_rule(interner),
+        "include_str" => make_include_str_macro_rule(interner),
         _ => make_noop_macro_rule(name_sym, interner),
     }
 }
@@ -2111,6 +2121,153 @@ fn make_env_macro_rule(interner: &mut Rodeo) -> MacroRule {
         },
     ];
 
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.36: Construct a `file!` macro rule.
+///
+/// Pattern: empty (no arguments)
+/// Body:    `__landin_file()` — function call returning the current file name.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_file_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let file_sym = interner.get_or_intern("__landin_file");
+    let pattern: Vec<Token> = vec![];
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(file_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.36: Construct a `line!` macro rule.
+///
+/// Pattern: empty (no arguments)
+/// Body:    `__landin_line()` — function call returning the current line number.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_line_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let line_sym = interner.get_or_intern("__landin_line");
+    let pattern: Vec<Token> = vec![];
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(line_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.36: Construct a `module_path!` macro rule.
+///
+/// Pattern: empty (no arguments)
+/// Body:    `__landin_module_path()` — returns the current module path string.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_module_path_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let mp_sym = interner.get_or_intern("__landin_module_path");
+    let pattern: Vec<Token> = vec![];
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(mp_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.36: Construct an `include_str!` macro rule.
+///
+/// Pattern: `$path:expr` — a single expression (the file path)
+/// Body:    `__landin_include_str($path)` — returns the file contents as a string.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_include_str_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let path_sym = interner.get_or_intern("path");
+    let expr_sym = interner.get_or_intern("expr");
+    let inc_sym = interner.get_or_intern("__landin_include_str");
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(path_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(inc_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(path_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
     MacroRule {
         pattern,
         body,
@@ -3548,8 +3705,8 @@ mod tests {
         let table = build_builtin_macro_table(&mut interner);
         assert_eq!(
             table.len(),
-            15,
-            "should register 15 built-in macros (4 print + 11 non-print)"
+            19,
+            "should register 19 built-in macros (4 print + 15 non-print)"
         );
         for name in BUILTIN_MACRO_NAMES {
             let sym = interner.get(name).expect("name was interned");
@@ -3572,7 +3729,7 @@ mod tests {
     /// exactly the 12 expected names (4 print + 8 non-print).
     #[test]
     fn stage18_10_builtin_macro_names_const() {
-        assert_eq!(BUILTIN_MACRO_NAMES.len(), 15);
+        assert_eq!(BUILTIN_MACRO_NAMES.len(), 19);
         assert!(BUILTIN_MACRO_NAMES.contains(&"println"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"print"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"eprintln"));
@@ -3591,6 +3748,11 @@ mod tests {
         assert!(BUILTIN_MACRO_NAMES.contains(&"stringify"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"concat"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"env"));
+        // Stage 18.36: source info + file macros
+        assert!(BUILTIN_MACRO_NAMES.contains(&"file"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"line"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"module_path"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"include_str"));
     }
 
     /// Stage 18.10 negative 2: build_builtin_macro_table returns an
@@ -4882,6 +5044,11 @@ mod tests {
         assert!(BUILTIN_MACRO_NAMES.contains(&"stringify"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"concat"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"env"));
+        // Stage 18.36: source info + file macros
+        assert!(BUILTIN_MACRO_NAMES.contains(&"file"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"line"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"module_path"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"include_str"));
     }
 
     /// Stage 18.29 + 18.32 negative 3: build_builtin_macro_table registers 12 macros.
@@ -4897,18 +5064,26 @@ mod tests {
         interner.get_or_intern("msg");
         interner.get_or_intern("x");
         interner.get_or_intern("dst");
+        interner.get_or_intern("path");
         interner.get_or_intern("expr");
         interner.get_or_intern("__landin_assert");
         interner.get_or_intern("__landin_panic_msg");
         interner.get_or_intern("__landin_format");
         interner.get_or_intern("__landin_dbg");
         interner.get_or_intern("__landin_write");
+        interner.get_or_intern("__landin_stringify");
+        interner.get_or_intern("__landin_concat");
+        interner.get_or_intern("__landin_env");
+        interner.get_or_intern("__landin_file");
+        interner.get_or_intern("__landin_line");
+        interner.get_or_intern("__landin_module_path");
+        interner.get_or_intern("__landin_include_str");
         for name in BUILTIN_MACRO_NAMES {
             interner.get_or_intern(format!("__landin_{}", name));
         }
 
         let table = build_builtin_macro_table(&mut interner);
-        assert_eq!(table.len(), 15, "should have 15 built-in macros");
+        assert_eq!(table.len(), 19, "should have 19 built-in macros");
     }
 
     /// Stage 18.29 negative 4: vec! with empty args parses.

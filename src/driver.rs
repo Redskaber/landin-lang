@@ -687,6 +687,12 @@ pub fn compile(src: &str) -> CompileResult {
     interner.get_or_intern("__landin_stringify");
     interner.get_or_intern("__landin_concat");
     interner.get_or_intern("__landin_env");
+    // Stage 18.36: Pre-intern symbols for source info + file macros.
+    interner.get_or_intern("path");
+    interner.get_or_intern("__landin_file");
+    interner.get_or_intern("__landin_line");
+    interner.get_or_intern("__landin_module_path");
+    interner.get_or_intern("__landin_include_str");
     let (tokens, macro_errs) =
         crate::parser::macro_expand::expand_macros_with_errors(tokens, &mut interner);
     errors.macro_errors = macro_errs;
