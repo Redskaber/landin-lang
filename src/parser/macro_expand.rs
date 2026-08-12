@@ -1069,12 +1069,13 @@ fn apply_hygiene(
 // Stage 18.10: Built-in macro_rules! registration (println! 通解化 Phase 1)
 // =============================================================================
 
-/// Stage 18.10 + 18.29 + 18.32: Names of the built-in macros that are always
-/// available (registered into every `MacroTable` before user macros).
+/// Stage 18.10 + 18.29 + 18.32 + 18.34: Names of the built-in macros that are
+/// always available (registered into every `MacroTable` before user macros).
 ///
 /// Stage 18.10: println/print/eprintln/eprint (print macros)
 /// Stage 18.29: assert/panic/vec (non-print macros)
 /// Stage 18.32: format/dbg/todo/unimplemented/write (more non-print macros)
+/// Stage 18.34: stringify/concat/env (compile-time utility macros)
 ///
 /// Per §10: const naming follows `UPPER_SNAKE_CASE`.
 pub const BUILTIN_MACRO_NAMES: &[&str] = &[
@@ -1090,6 +1091,9 @@ pub const BUILTIN_MACRO_NAMES: &[&str] = &[
     "todo",
     "unimplemented",
     "write", // more macros (Stage 18.32)
+    "stringify",
+    "concat",
+    "env", // compile-time utility macros (Stage 18.34)
 ];
 
 /// Stage 18.10: Build the table of built-in `macro_rules!` definitions.
@@ -1154,6 +1158,10 @@ fn make_builtin_macro_rule(
         "dbg" => make_dbg_macro_rule(interner),
         "todo" | "unimplemented" => make_panic_msg_macro_rule(name, interner),
         "write" => make_write_macro_rule(interner),
+        // Stage 18.34: compile-time utility macros
+        "stringify" => make_stringify_macro_rule(interner),
+        "concat" => make_concat_macro_rule(interner),
+        "env" => make_env_macro_rule(interner),
         _ => make_noop_macro_rule(name_sym, interner),
     }
 }
@@ -1831,6 +1839,270 @@ fn make_write_macro_rule(interner: &mut Rodeo) -> MacroRule {
         },
         Token {
             kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.34: Construct a `stringify!` macro rule.
+///
+/// Pattern: `$($args:tt)*` — any token sequence
+/// Body:    `__landin_stringify($($args)*)` — function call to runtime stringify
+///
+/// `stringify!(x + 1)` → `__landin_stringify(x + 1)` → returns "x + 1".
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_stringify_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let args_sym = interner.get("args").unwrap_or_default();
+    let tt_sym = interner.get("tt").unwrap_or_default();
+    let stringify_sym = interner.get_or_intern("__landin_stringify");
+
+    // Pattern: $ ( $ args : tt ) *
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(tt_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_stringify ( $ ( $ args ) * )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(stringify_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.34: Construct a `concat!` macro rule.
+///
+/// Pattern: `$( $x:expr ),*` — comma-separated expressions
+/// Body:    `__landin_concat($($x),*)` — function call to runtime concat
+///
+/// `concat!("a", "b")` → `__landin_concat("a", "b")` → returns "ab".
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_concat_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let x_sym = interner.get_or_intern("x");
+    let expr_sym = interner.get_or_intern("expr");
+    let concat_sym = interner.get_or_intern("__landin_concat");
+
+    // Pattern: $ ( $ x : expr ) , *
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(x_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_concat ( $ ( $ x ) , * )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(concat_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(x_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.34: Construct an `env!` macro rule.
+///
+/// Pattern: `$name:expr` — a single expression (the env var name)
+/// Body:    `__landin_env($name)` — function call to runtime env
+///
+/// `env!("CARGO_PKG_NAME")` → `__landin_env("CARGO_PKG_NAME")`.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_env_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let name_sym = interner.get_or_intern("name");
+    let expr_sym = interner.get_or_intern("expr");
+    let env_sym = interner.get_or_intern("__landin_env");
+
+    // Pattern: $ name : expr
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(name_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_env ( $ name )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(env_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(name_sym),
             span: crate::session::Span::DUMMY,
         },
         Token {
@@ -3276,8 +3548,8 @@ mod tests {
         let table = build_builtin_macro_table(&mut interner);
         assert_eq!(
             table.len(),
-            12,
-            "should register 12 built-in macros (4 print + 8 non-print)"
+            15,
+            "should register 15 built-in macros (4 print + 11 non-print)"
         );
         for name in BUILTIN_MACRO_NAMES {
             let sym = interner.get(name).expect("name was interned");
@@ -3300,7 +3572,7 @@ mod tests {
     /// exactly the 12 expected names (4 print + 8 non-print).
     #[test]
     fn stage18_10_builtin_macro_names_const() {
-        assert_eq!(BUILTIN_MACRO_NAMES.len(), 12);
+        assert_eq!(BUILTIN_MACRO_NAMES.len(), 15);
         assert!(BUILTIN_MACRO_NAMES.contains(&"println"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"print"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"eprintln"));
@@ -3315,6 +3587,10 @@ mod tests {
         assert!(BUILTIN_MACRO_NAMES.contains(&"todo"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"unimplemented"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"write"));
+        // Stage 18.34: compile-time utility macros
+        assert!(BUILTIN_MACRO_NAMES.contains(&"stringify"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"concat"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"env"));
     }
 
     /// Stage 18.10 negative 2: build_builtin_macro_table returns an
@@ -4602,6 +4878,10 @@ mod tests {
         assert!(BUILTIN_MACRO_NAMES.contains(&"todo"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"unimplemented"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"write"));
+        // Stage 18.34: compile-time utility macros
+        assert!(BUILTIN_MACRO_NAMES.contains(&"stringify"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"concat"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"env"));
     }
 
     /// Stage 18.29 + 18.32 negative 3: build_builtin_macro_table registers 12 macros.
@@ -4628,7 +4908,7 @@ mod tests {
         }
 
         let table = build_builtin_macro_table(&mut interner);
-        assert_eq!(table.len(), 12, "should have 12 built-in macros");
+        assert_eq!(table.len(), 15, "should have 15 built-in macros");
     }
 
     /// Stage 18.29 negative 4: vec! with empty args parses.

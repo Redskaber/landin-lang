@@ -683,6 +683,10 @@ pub fn compile(src: &str) -> CompileResult {
     interner.get_or_intern("__landin_format");
     interner.get_or_intern("__landin_dbg");
     interner.get_or_intern("__landin_write");
+    // Stage 18.34: Pre-intern symbols for compile-time utility macros.
+    interner.get_or_intern("__landin_stringify");
+    interner.get_or_intern("__landin_concat");
+    interner.get_or_intern("__landin_env");
     let (tokens, macro_errs) =
         crate::parser::macro_expand::expand_macros_with_errors(tokens, &mut interner);
     errors.macro_errors = macro_errs;
