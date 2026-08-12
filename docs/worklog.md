@@ -31139,3 +31139,58 @@ Stage Summary:
 - BUILTIN_MACRO_NAMES 扩展: 15 → 19
 - 内置宏总计: 4 print + 15 non-print = 19
 - v0.311.0 → v0.312.0
+
+---
+Task ID: stage18.37
+Agent: Super Z (main)
+Task: Stage 18.37 — v0.6 P6 Review (Balance Assessment)
+
+Work Log:
+- §14.5 D1-D8 全 ✅
+- §6.3 5/5 GO
+- Macro:println = 12:9 (macro 系统大幅扩展, 符合用户要求)
+- 3144 tests, 0 failures
+- v0.312.0 (无代码变更，仅审查)
+- 内置宏系统总览: 19 macros (4 print + 15 non-print)
+  - Print: println/print/eprintln/eprint
+  - Control flow: assert/panic
+  - Data: vec/format
+  - Debug: dbg
+  - Error: todo/unimplemented
+  - I/O: write
+  - Compile-time: stringify/concat/env
+  - Source info: file/line/module_path
+  - File: include_str
+- println! 通解化状态: Phase 2.5 完成
+- parser Println 特解: 已标记为 DEPRECATED (Stage 18.30)
+- 后续规划:
+  - Phase 3: 移除 Println variant (需要同时修改 MIR optimization 的 Println 引用)
+  - v0.7 规划: GATs / Incremental Compilation / Cross-compilation
+
+---
+Task ID: stage18.38
+Agent: Super Z (main)
+Task: Stage 18.38 — println! Phase 3: Dead Code Documentation in MIR/Codegen
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- println! 迁移 Phase 3: 标记所有死代码 Println 路径为 DEPRECATED
+- 修改的文件:
+  1. src/mir/optimization.rs — collect_read_locals Println arm: 添加 DEPRECATED 注释
+  2. src/mir/optimization.rs — DCE test: 更新注释说明 Println count 现在为 0
+  3. src/mir/lower/expr_operand.rs — HirExprKind::Println arm: 添加 DEPRECATED 注释
+  4. src/codegen/statement.rs — StatementKind::Println arm: 添加 DEPRECATED 注释, 移除 TODO(Stage 18)
+- §1.0 原則 6 "通用 > 特解": 通解 (Call) 已取代特解 (Println)
+- 正确 > 妥协: 不移除 variant (风险), 但明确标记所有死代码路径
+- 避免死代码: 标记为 DEPRECATED, Phase 3.2 将完整移除
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2537 integration = 3144 unit tests, 0 failures
+
+Stage Summary:
+- println! Phase 3 死代码标记完成
+- 4 处 Println 代码路径标记为 DEPRECATED
+- Phase 3.2 (完整移除 variant) 留待后续 stage
+- v0.312.0 → v0.313.0

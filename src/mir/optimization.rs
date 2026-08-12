@@ -61,6 +61,14 @@ fn collect_read_locals(kind: &StatementKind, used: &mut HashSet<crate::mir::plac
             let (_, rvalue) = &**pair;
             collect_rvalue_locals(rvalue, used);
         }
+        // Stage 18.38 (DEPRECATED): This arm is dead code. Stage 18.27
+        // activated the __landin_println macro body, which expands
+        // println!(...) to __landin_println(...) BEFORE parsing. The
+        // parser therefore never generates Expr::Println, so MIR never
+        // contains StatementKind::Println. This arm is kept for safety
+        // but will be removed in Phase 3.2 when the Println variant is
+        // removed from StatementKind.
+        // Per §1.0 原則 6 "通用 > 特解": the 通解 (Call) has replaced the 特解.
         StatementKind::Println { args, .. } => {
             for arg in args {
                 collect_operand_locals(arg, used);
@@ -728,7 +736,13 @@ mod tests {
         );
     }
 
-    /// Stage 17.10 negative 6: DCE preserves println statements.
+    /// Stage 17.10 negative 6 (updated Stage 18.38): DCE preserves
+    /// println statements. Stage 18.27 activated __landin_println macro
+    /// body, so println!(...) now expands to __landin_println(...) BEFORE
+    /// parsing. The parser never generates Expr::Println, so MIR never
+    /// contains StatementKind::Println. This test now verifies that the
+    /// Println count is 0 (all println! goes through the Call path).
+    /// The test still passes because DCE doesn't affect the count (0→0).
     #[test]
     fn stage17_10_dce_preserves_println() {
         let src = "fn main() { let x = 42; println!(\"{}\", x); println!(\"hello\"); }";

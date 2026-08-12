@@ -235,7 +235,11 @@ pub(crate) fn codegen_statement(
         // The 通解 is to expand `println!` at parser level into a `Call` to
         // `__landin_println(format_args)` — a regular function call that
         // codegen handles via the existing `emit_call` path.
-        // TODO(Stage 18): Remove this arm when `macro_rules!` lands.
+        // Stage 18.38 (DEPRECATED): This arm is dead code. Stage 18.27
+        // activated __landin_println macro body, so println!(...) now
+        // goes through the Call path (codegen_print_call → emit_printf_call).
+        // The parser never generates StatementKind::Println anymore.
+        // Kept for safety; will be removed in Phase 3.2.
         // Per `api-naming-standard.md` §8.1: helpers follow the
         // `__landin_<verb>_<noun>` pattern (matches `__landin_panic_*` siblings).
         StatementKind::Println {

@@ -1935,6 +1935,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         // StatementKind::Println variant, so codegen emits printf inline
         // at the source position. (Stage 15.6: the legacy
         // MirBody.println_messages side-table field was removed in 14.x.)
+        //
+        // Stage 18.38 (DEPRECATED): This arm is dead code. Stage 18.27
+        // activated __landin_println macro body, so println!(...) expands
+        // to __landin_println(...) BEFORE parsing. The parser never
+        // generates Expr::Println, so this MIR lowering arm is never
+        // reached. Kept for safety; will be removed in Phase 3.2.
         HirExprKind::Println {
             msg,
             args,
