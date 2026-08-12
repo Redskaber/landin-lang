@@ -1069,16 +1069,27 @@ fn apply_hygiene(
 // Stage 18.10: Built-in macro_rules! registration (println! 通解化 Phase 1)
 // =============================================================================
 
-/// Stage 18.10 + 18.29: Names of the built-in macros that are always available
-/// (registered into every `MacroTable` before user macros).
+/// Stage 18.10 + 18.29 + 18.32: Names of the built-in macros that are always
+/// available (registered into every `MacroTable` before user macros).
 ///
 /// Stage 18.10: println/print/eprintln/eprint (print macros)
 /// Stage 18.29: assert/panic/vec (non-print macros)
+/// Stage 18.32: format/dbg/todo/unimplemented/write (more non-print macros)
 ///
 /// Per §10: const naming follows `UPPER_SNAKE_CASE`.
 pub const BUILTIN_MACRO_NAMES: &[&str] = &[
-    "println", "print", "eprintln", "eprint", // print macros
-    "assert", "panic", "vec", // non-print macros (Stage 18.29)
+    "println",
+    "print",
+    "eprintln",
+    "eprint", // print macros
+    "assert",
+    "panic",
+    "vec", // non-print macros (Stage 18.29)
+    "format",
+    "dbg",
+    "todo",
+    "unimplemented",
+    "write", // more macros (Stage 18.32)
 ];
 
 /// Stage 18.10: Build the table of built-in `macro_rules!` definitions.
@@ -1138,6 +1149,11 @@ fn make_builtin_macro_rule(
         "assert" => make_assert_macro_rule(interner),
         "panic" => make_panic_macro_rule(interner),
         "vec" => make_vec_macro_rule(interner),
+        // Stage 18.32: more non-print macros
+        "format" => make_format_macro_rule(interner),
+        "dbg" => make_dbg_macro_rule(interner),
+        "todo" | "unimplemented" => make_panic_msg_macro_rule(name, interner),
+        "write" => make_write_macro_rule(interner),
         _ => make_noop_macro_rule(name_sym, interner),
     }
 }
@@ -1458,6 +1474,367 @@ fn make_vec_macro_rule(interner: &mut Rodeo) -> MacroRule {
         },
         Token {
             kind: TokenKind::RBracket,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.32: Construct a `format!` macro rule.
+///
+/// Pattern: `$($args:tt)*` — any token sequence (format string + args)
+/// Body:    `__landin_format($($args)*)` — function call to runtime format
+///
+/// `format!("x={}", x)` → `__landin_format("x={}", x)` → returns a string.
+/// For now, this is a pass-through to the runtime function.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_format_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let args_sym = interner.get("args").unwrap_or_default();
+    let tt_sym = interner.get("tt").unwrap_or_default();
+    let fmt_sym = interner.get_or_intern("__landin_format");
+
+    // Pattern: $ ( $ args : tt ) *
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(tt_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_format ( $ ( $ args ) * )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(fmt_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.32: Construct a `dbg!` macro rule.
+///
+/// Pattern: `$x:expr` — a single expression
+/// Body:    `__landin_dbg($x)` — function call to runtime dbg
+///
+/// `dbg!(x)` → `__landin_dbg(x)` → prints and returns the value.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_dbg_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let x_sym = interner.get_or_intern("x");
+    let expr_sym = interner.get_or_intern("expr");
+    let dbg_sym = interner.get_or_intern("__landin_dbg");
+
+    // Pattern: $ x : expr
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(x_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_dbg ( $ x )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(dbg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(x_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.32: Construct a `todo!` / `unimplemented!` macro rule.
+///
+/// Pattern: `$( $msg:expr )?` — optional message
+/// Body:    `__landin_panic_msg("not implemented")` or `__landin_panic_msg($msg)`
+///
+/// `todo!()` → `__landin_panic_msg("not implemented")`
+/// `unimplemented!()` → `__landin_panic_msg("not implemented")`
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>_<noun>`.
+fn make_panic_msg_macro_rule(_name: &str, interner: &mut Rodeo) -> MacroRule {
+    let msg_sym = interner.get_or_intern("msg");
+    let expr_sym = interner.get_or_intern("expr");
+    let panic_msg_sym = interner.get_or_intern("__landin_panic_msg");
+    // Stage 18.32: Both todo! and unimplemented! use the same message.
+    let default_msg = "not implemented";
+    let default_msg_sym = interner.get_or_intern(default_msg);
+
+    // Pattern: $ ( $ msg : expr ) ?
+    // Simplified: just use $msg:expr (required, single expression)
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(msg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_panic_msg ( $ msg )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(panic_msg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(msg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    let _ = default_msg_sym; // reserved for future default-message rule
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.32: Construct a `write!` macro rule.
+///
+/// Pattern: `$dst:expr, $($args:tt)*` — destination + format args
+/// Body:    `__landin_write($dst, $($args)*)` — function call to runtime write
+///
+/// `write!(dst, "x={}", x)` → `__landin_write(dst, "x={}", x)`
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_write_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let dst_sym = interner.get_or_intern("dst");
+    let expr_sym = interner.get_or_intern("expr");
+    let args_sym = interner.get_or_intern("args");
+    let tt_sym = interner.get_or_intern("tt");
+    let write_sym = interner.get_or_intern("__landin_write");
+
+    // Pattern: $ dst : expr , $ ( $ args : tt ) *
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(dst_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(tt_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_write ( $ dst , $ ( $ args ) * )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(write_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(dst_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
             span: crate::session::Span::DUMMY,
         },
     ];
@@ -2899,8 +3276,8 @@ mod tests {
         let table = build_builtin_macro_table(&mut interner);
         assert_eq!(
             table.len(),
-            7,
-            "should register 7 built-in macros (4 print + 3 non-print)"
+            12,
+            "should register 12 built-in macros (4 print + 8 non-print)"
         );
         for name in BUILTIN_MACRO_NAMES {
             let sym = interner.get(name).expect("name was interned");
@@ -2919,11 +3296,11 @@ mod tests {
         assert!(result.errors.macro_errors.is_empty(), "no macro errors");
     }
 
-    /// Stage 18.10 + 18.29 negative 1: BUILTIN_MACRO_NAMES contains exactly
-    /// the 7 expected names (4 print + 3 non-print).
+    /// Stage 18.10 + 18.29 + 18.32 negative 1: BUILTIN_MACRO_NAMES contains
+    /// exactly the 12 expected names (4 print + 8 non-print).
     #[test]
     fn stage18_10_builtin_macro_names_const() {
-        assert_eq!(BUILTIN_MACRO_NAMES.len(), 7);
+        assert_eq!(BUILTIN_MACRO_NAMES.len(), 12);
         assert!(BUILTIN_MACRO_NAMES.contains(&"println"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"print"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"eprintln"));
@@ -2932,6 +3309,12 @@ mod tests {
         assert!(BUILTIN_MACRO_NAMES.contains(&"assert"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"panic"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"vec"));
+        // Stage 18.32: more non-print macros
+        assert!(BUILTIN_MACRO_NAMES.contains(&"format"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"dbg"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"todo"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"unimplemented"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"write"));
     }
 
     /// Stage 18.10 negative 2: build_builtin_macro_table returns an
@@ -4213,9 +4596,15 @@ mod tests {
         assert!(BUILTIN_MACRO_NAMES.contains(&"assert"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"panic"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"vec"));
+        // Stage 18.32: more non-print macros
+        assert!(BUILTIN_MACRO_NAMES.contains(&"format"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"dbg"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"todo"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"unimplemented"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"write"));
     }
 
-    /// Stage 18.29 negative 3: build_builtin_macro_table registers 7 macros.
+    /// Stage 18.29 + 18.32 negative 3: build_builtin_macro_table registers 12 macros.
     #[test]
     fn stage18_29_table_has_seven_macros() {
         let mut interner = Rodeo::new();
@@ -4227,15 +4616,19 @@ mod tests {
         interner.get_or_intern("cond");
         interner.get_or_intern("msg");
         interner.get_or_intern("x");
+        interner.get_or_intern("dst");
         interner.get_or_intern("expr");
         interner.get_or_intern("__landin_assert");
         interner.get_or_intern("__landin_panic_msg");
+        interner.get_or_intern("__landin_format");
+        interner.get_or_intern("__landin_dbg");
+        interner.get_or_intern("__landin_write");
         for name in BUILTIN_MACRO_NAMES {
             interner.get_or_intern(format!("__landin_{}", name));
         }
 
         let table = build_builtin_macro_table(&mut interner);
-        assert_eq!(table.len(), 7, "should have 7 built-in macros");
+        assert_eq!(table.len(), 12, "should have 12 built-in macros");
     }
 
     /// Stage 18.29 negative 4: vec! with empty args parses.

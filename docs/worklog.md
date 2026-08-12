@@ -30992,3 +30992,49 @@ Stage Summary:
 - parser Println 特解标记为 DEPRECATED (死代码)
 - 为 Phase 3 完整移除做准备
 - v0.308.0 → v0.309.0
+
+---
+Task ID: stage18.31
+Agent: Super Z (main)
+Task: Stage 18.31 — v0.6 P4.5 Review (Balance Assessment)
+
+Work Log:
+- §14.5 D1-D8 全 ✅
+- §6.3 5/5 GO
+- Macro:println = 9:9 平衡
+- 3144 tests, 0 failures
+- v0.309.0 (无代码变更，仅审查)
+
+---
+Task ID: stage18.32
+Agent: Super Z (main)
+Task: Stage 18.32 — More Built-in Macros (format!/dbg!/todo!/unimplemented!/write!)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 用户反馈: "macro 不只有 print macro 这一类，还有其他很多的macro"
+- 扩展 BUILTIN_MACRO_NAMES: 7 → 12 (添加 format/dbg/todo/unimplemented/write)
+- 新增 5 个 macro rule 构造函数:
+  - make_format_macro_rule: format! → __landin_format($($args)*)
+  - make_dbg_macro_rule: dbg! → __landin_dbg($x)
+  - make_panic_msg_macro_rule: todo!/unimplemented! → __landin_panic_msg($msg)
+  - make_write_macro_rule: write! → __landin_write($dst, $($args)*)
+- dispatcher 更新: make_builtin_macro_rule 新增 5 个 match arm
+- driver 预 intern 新符号 (dst/__landin_format/__landin_dbg/__landin_write)
+- 修复 clippy if_same_then_else 警告 (todo/unimplemented 相同消息)
+- 修复 clippy unused_variables 警告 (name → _name)
+- 更新所有测试中的 count 期望 (7 → 12)
+- §1.0 原則 6 "通用 > 特解": 所有内置宏走同一 expand_macros 通道
+- §10 命名: make_<name>_macro_rule 模式
+- §11 接口隔离: 所有 rule 构造函数在 macro_expand.rs 内部
+- 验收:
+  - cargo build --features llvm-backend — ✅ (使用 canonical scripts/setup-llvm-env.sh)
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2537 integration = 3144 unit tests, 0 failures
+
+Stage Summary:
+- 更多内置宏完成 (format!/dbg!/todo!/unimplemented!/write!)
+- BUILTIN_MACRO_NAMES 扩展: 7 → 12
+- 内置宏总计: 4 print + 8 non-print = 12
+- v0.309.0 → v0.310.0

@@ -676,8 +676,13 @@ pub fn compile(src: &str) -> CompileResult {
     interner.get_or_intern("cond");
     interner.get_or_intern("msg");
     interner.get_or_intern("x");
+    interner.get_or_intern("dst");
     interner.get_or_intern("__landin_assert");
     interner.get_or_intern("__landin_panic_msg");
+    // Stage 18.32: Pre-intern symbols for more built-in macros.
+    interner.get_or_intern("__landin_format");
+    interner.get_or_intern("__landin_dbg");
+    interner.get_or_intern("__landin_write");
     let (tokens, macro_errs) =
         crate::parser::macro_expand::expand_macros_with_errors(tokens, &mut interner);
     errors.macro_errors = macro_errs;
