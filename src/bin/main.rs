@@ -312,6 +312,20 @@ int __landin_eprint(const char* fmt, ...) {
     va_end(args);
     return ret;
 }
+/* Stage 18.29: Non-print built-in macro runtime stubs.
+   assert! → __landin_assert(cond) — panics if cond is false
+   panic! → __landin_panic_msg(msg) — prints message and exits
+   Per §1.0 原則 6 "通用 > 特解": unified __landin_ runtime interface. */
+void __landin_assert(int cond) {
+    if (!cond) {
+        fprintf(stderr, "panic: assertion failed\n");
+        exit(1);
+    }
+}
+void __landin_panic_msg(const char* msg) {
+    fprintf(stderr, "panic: %s\n", msg);
+    exit(1);
+}
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).

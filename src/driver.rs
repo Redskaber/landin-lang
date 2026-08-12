@@ -672,6 +672,12 @@ pub fn compile(src: &str) -> CompileResult {
     // Pre-intern symbols used in built-in macro rule patterns/bodies.
     interner.get_or_intern("args");
     interner.get_or_intern("tt");
+    // Stage 18.29: Pre-intern symbols for non-print built-in macros.
+    interner.get_or_intern("cond");
+    interner.get_or_intern("msg");
+    interner.get_or_intern("x");
+    interner.get_or_intern("__landin_assert");
+    interner.get_or_intern("__landin_panic_msg");
     let (tokens, macro_errs) =
         crate::parser::macro_expand::expand_macros_with_errors(tokens, &mut interner);
     errors.macro_errors = macro_errs;

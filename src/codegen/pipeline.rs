@@ -48,6 +48,9 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
     emitter.emit_declare("i32 @__landin_print(ptr, ...)");
     emitter.emit_declare("i32 @__landin_eprintln(ptr, ...)");
     emitter.emit_declare("i32 @__landin_eprint(ptr, ...)");
+    // Stage 18.29: Declare non-print built-in macro runtime functions.
+    emitter.emit_declare("void @__landin_assert(i1)");
+    emitter.emit_declare("void @__landin_panic_msg(ptr)");
     // Stage 18.27: Emit stub definitions for __landin_ print functions.
     // These are needed because MIR lowering creates `store ptr @__landin_println`
     // which references the symbol. The stubs are never called (codegen_print_call

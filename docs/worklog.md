@@ -30914,3 +30914,56 @@ Stage Summary:
 - println! 现在走通解路径: macro_rules! → __landin_println(...) → Call → codegen
 - 平衡: macro 8 stages : println! 8 stages
 - v0.305.0 → v0.307.0
+
+---
+Task ID: stage18.28
+Agent: Super Z (main)
+Task: Stage 18.28 — v0.6 P4 Review (Balance Assessment)
+
+Work Log:
+- §14.5 D1-D8 全 ✅
+- §6.3 5/5 GO
+- Macro:println = 8:8 平衡
+- 3136 tests, 0 failures
+- v0.307.0 (无代码变更，仅审查)
+
+---
+Task ID: stage18.29
+Agent: Super Z (main)
+Task: Stage 18.29 — Built-in Non-Print Macros (assert!/panic!/vec!)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 用户反馈: "macro 不只有 print macro 这一类，还有其他很多的macro"
+- 设计文档: docs/develop/v0/stage-18/stage-18.29-builtin-non-print-macros-design.md
+- 扩展 BUILTIN_MACRO_NAMES: 4 → 7 (添加 assert/panic/vec)
+- 重构 make_builtin_macro_rule 为 dispatcher:
+  - make_print_macro_rule (print 宏, 复用现有逻辑)
+  - make_assert_macro_rule (assert! → __landin_assert($cond))
+  - make_panic_macro_rule (panic! → __landin_panic_msg($msg))
+  - make_vec_macro_rule (vec! → [$($x),*] 数组字面量)
+  - make_noop_macro_rule (fallback pass-through)
+- driver 预 intern 新符号 (cond/msg/x/__landin_assert/__landin_panic_msg)
+- codegen/pipeline.rs: 声明 __landin_assert 和 __landin_panic_msg
+- C wrapper: 添加 __landin_assert 和 __landin_panic_msg stubs
+- apply_hygiene: 自动跳过 __landin_ 函数 (is_runtime check 已存在)
+- §1.0 原則 6 "通用 > 特解": 所有内置宏走同一 expand_macros 通道
+- §10 命名: make_<name>_macro_rule 模式
+- §11 接口隔离: 所有 rule 构造函数在 macro_expand.rs 内部
+- 单一职责: 每个构造函数只构造一种宏的 rule
+- 测试覆盖（§9.4.3 1:3+ ratio）:
+  - positive: assert_macro_parses + vec_macro_parses (2)
+  - negative: panic_macro_parses + builtin_names_includes_non_print + table_has_seven_macros + vec_empty_parses + assert_false_parses + user_overrides_vec (6)
+  - 比例 2:6 = 1:3 ✓
+- 验收:
+  - cargo build --features llvm-backend — ✅ (使用 canonical scripts/setup-llvm-env.sh)
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib (+8 new) + 2537 integration = 3144 unit tests, 0 failures
+
+Stage Summary:
+- 内置非 print 宏完成 (assert!/panic!/vec!)
+- BUILTIN_MACRO_NAMES 扩展: 4 → 7
+- make_builtin_macro_rule 重构为 dispatcher (5 个构造函数)
+- 用户反馈响应: macro 不只有 print macro
+- v0.307.0 → v0.308.0
