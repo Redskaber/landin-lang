@@ -1,6 +1,7 @@
 // CATEGORY: soundness
 // DESCRIPTION: if branches type mismatch
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
+// EXPECTED: compile_error
+// ERROR_PATTERN: mismatched types
+// SOURCE: Stage 11.5 soundness expansion (Stage 18.71 fix (was Stage 0 limitation, now correctly rejected))
 
 fn main(){let x=if true{1}else{true};}

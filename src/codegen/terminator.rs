@@ -32,7 +32,29 @@ pub(crate) fn codegen_terminator(
                 } else {
                     emitter.get_local(0).cloned()
                 };
-                emitter.emit_ret(ret_ty, ret_val.as_ref());
+                // Stage 18.71 P0-5: When ret_ty is non-void but ret_val is
+                // None (e.g., `fn main()` where the return local is unit and
+                // has no alloca), emit a default return value.
+                //
+                // For `fn main()` (is_entry=true), the C wrapper expects
+                // `i32` return. The return local is unit (no value stored),
+                // so we emit `ret i32 0` (success exit code).
+                //
+                // Per §1.0 原則 4 "报错 > 静默": don't silently emit `ret void`
+                // when the function signature expects a value.
+                // Per §1.0 原則 9 "正确 > 妥协": match Rust's `fn main()` →
+                // exit code 0 semantics.
+                match (ret_val, ret_ty) {
+                    (Some(v), _) => emitter.emit_ret(ret_ty, Some(&v)),
+                    (None, EmitType::I32) => {
+                        // Default i32 return (exit code 0 for void main).
+                        emitter.emit_ret(ret_ty, Some(&"0".to_string()));
+                    }
+                    (None, _) => {
+                        // Other types: emit ret void (best effort).
+                        emitter.emit_ret(ret_ty, None);
+                    }
+                }
             }
         }
         TerminatorKind::Unreachable => {

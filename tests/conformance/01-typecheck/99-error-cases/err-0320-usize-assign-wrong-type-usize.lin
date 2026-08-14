@@ -1,6 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: assign wrong type usize
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
+// EXPECTED: compile_error
+// ERROR_PATTERN: mismatched types
+// SOURCE: Stage 11.9 batch expansion (Stage 18.71 fix (was Stage 0 limitation, now correctly rejected))
 
 fn main(){let mut x:usize=0;x=true;}

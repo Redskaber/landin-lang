@@ -1804,6 +1804,18 @@ pub fn compile(src: &str) -> CompileResult {
         errors.trait_errors.push(TraitError::Incomplete(inc));
     }
 
+    // Stage 18.71 P0-4: Validate trait impl method signatures against
+    // trait declarations. Catches:
+    //   - return type mismatch (trait: i32, impl: bool)
+    //   - arg count mismatch (trait: 1 arg, impl: 2 args)
+    //   - arg type mismatch (trait: i32, impl: bool)
+    //
+    // Per §1.0 原则 4 "报错 > 静默": signature mismatch must be reported.
+    // Per §1.0 原则 6 "通用 > 特例": one validator covers all impl methods.
+    // Per §10 naming: `validate_impl_method_signatures` follows
+    //   `validate_<noun>_<noun>_<noun>` pattern.
+    validate_impl_method_signatures(&hir, &interner, &mut errors.typeck);
+
     // Stage 18.21: Register __landin_println etc. in fn_name_by_def_id
     // so codegen can resolve the function name. The resolver returns a
     // synthetic DefId for __landin_ functions; we map each to its name.
@@ -1850,6 +1862,246 @@ fn owner_return_ty(owner: &OwnerNode) -> Option<crate::hir::HirTy> {
         OwnerNode::Item(HirItem::Const(c)) => Some(c.ty.clone()),
         OwnerNode::Item(HirItem::Static(s)) => Some(s.ty.clone()),
         _ => None,
+    }
+}
+
+/// Stage 18.71 P0-4: Validate trait impl method signatures against trait
+/// declarations.
+///
+/// For each `impl Trait for Type { fn method(...) -> ... { ... } }` block,
+/// find the corresponding `trait Trait { fn method(...) -> ...; }` declaration
+/// and verify that:
+///   1. The number of inputs matches (after adjusting for self).
+///   2. Each input type matches (after self substitution).
+///   3. The output type matches.
+///
+/// Mismatches produce `TypeErrorKind::SignatureMismatch` errors with the
+/// impl method's span.
+///
+/// Per §1.0 原则 4 "报错 > 静默": trait impl signature mismatch is reported.
+/// Per §1.0 原则 6 "通用 > 特例": one validator walks all impl blocks.
+/// Per §10 naming: `validate_impl_method_signatures` follows
+///   `validate_<noun>_<noun>_<noun>` pattern.
+fn validate_impl_method_signatures(
+    hir: &HirCrate,
+    interner: &lasso::Rodeo,
+    errors: &mut Vec<TypeError>,
+) {
+    use crate::hir::{HirImplItem, HirTraitItem};
+
+    // Build a lookup table: trait_name (Spur) → &HirTrait.
+    // Per §1.0 原則 6: one lookup table for all traits, not per-impl scans.
+    let mut trait_by_name: std::collections::HashMap<lasso::Spur, &crate::hir::HirTrait> =
+        std::collections::HashMap::new();
+    for (_, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(HirItem::Trait(t)) = owner {
+            trait_by_name.insert(t.ident.name, t);
+        }
+    }
+
+    // Walk every impl block that has `of_trait`.
+    for (_, owner) in &hir.owners {
+        let impl_block = match owner {
+            crate::hir::OwnerNode::Item(HirItem::Impl(impl_block))
+                if impl_block.of_trait.is_some() =>
+            {
+                impl_block
+            }
+            _ => continue,
+        };
+        // Resolve the trait name from `of_trait` path's last segment.
+        let trait_name = match impl_block
+            .of_trait
+            .as_ref()
+            .and_then(|p| p.segments.last())
+            .map(|s| s.ident.name)
+        {
+            Some(name) => name,
+            None => continue,
+        };
+        let trait_decl = match trait_by_name.get(&trait_name) {
+            Some(t) => *t,
+            None => continue, // Unknown trait — let trait_resolver handle it.
+        };
+
+        // For each impl method, find the matching trait method by name.
+        // Per §1.0 原則 6: one matching pass per impl method (no per-trait
+        // method scans).
+        for impl_item in &impl_block.items {
+            let impl_fn = match impl_item {
+                HirImplItem::Fn(f) => f,
+                _ => continue,
+            };
+            // Find the matching trait method.
+            let trait_fn = trait_decl.items.iter().find_map(|ti| match ti {
+                HirTraitItem::Fn(f) if f.ident.name == impl_fn.ident.name => Some(f),
+                _ => None,
+            });
+            let trait_fn = match trait_fn {
+                Some(f) => f,
+                None => continue, // Method not in trait — let trait_resolver's
+                                  // incomplete_impls check handle it.
+            };
+
+            // Stage 18.71: Compare signatures.
+            // Note: We compare the *non-self* parameters. Self is implicit
+            // in trait methods but explicit in impl methods (via &self/&mut self).
+            // Both trait and impl methods have self_kind set for self params,
+            // so we filter those out and compare the rest.
+            let trait_inputs: Vec<_> = trait_fn
+                .sig
+                .inputs
+                .iter()
+                .filter(|p| p.self_kind.is_none())
+                .collect();
+            let impl_inputs: Vec<_> = impl_fn
+                .sig
+                .inputs
+                .iter()
+                .filter(|p| p.self_kind.is_none())
+                .collect();
+
+            // 1. Argument count mismatch.
+            if trait_inputs.len() != impl_inputs.len() {
+                let trait_method_name = interner.try_resolve(&impl_fn.ident.name).unwrap_or("?");
+                errors.push(TypeError::new(
+                    format!(
+                        "method `{}` has {} parameter(s) but the trait method has {}",
+                        trait_method_name,
+                        impl_inputs.len(),
+                        trait_inputs.len()
+                    ),
+                    impl_fn.span,
+                ));
+                continue; // Skip type comparison if count mismatches.
+            }
+
+            // 2. Argument type mismatch.
+            // Per §1.0 原則 4: report each mismatch separately for clarity.
+            for (i, (impl_p, trait_p)) in impl_inputs.iter().zip(trait_inputs.iter()).enumerate() {
+                let impl_ty = match &impl_p.ty {
+                    Some(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
+                    None => continue, // Skip if no type (shouldn't happen for non-self).
+                };
+                let trait_ty = match &trait_p.ty {
+                    Some(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
+                    None => continue,
+                };
+                // Use types_match_loose from typeck::checker via a simple
+                // kind comparison. We avoid importing the private fn —
+                // instead do a structural kind compare that handles the
+                // common cases (Int, Bool, Tuple, Adt).
+                if !mir_ty_kinds_compatible(&impl_ty, &trait_ty) {
+                    let method_name = interner.try_resolve(&impl_fn.ident.name).unwrap_or("?");
+                    let impl_ty_str = crate::mir::ty::type_to_string(&impl_ty);
+                    let trait_ty_str = crate::mir::ty::type_to_string(&trait_ty);
+                    errors.push(TypeError::new(
+                        format!(
+                            "method `{}` parameter {} type mismatch: expected `{}`, found `{}`",
+                            method_name,
+                            i + 1,
+                            trait_ty_str,
+                            impl_ty_str
+                        ),
+                        impl_p.span,
+                    ));
+                }
+            }
+
+            // 3. Return type mismatch.
+            let impl_ret_ty = match &impl_fn.sig.output {
+                HirFnRetTy::Ty(t) => Some(crate::mir::lower::lower_hir_ty_to_mir_ty(t)),
+                HirFnRetTy::Default(_) => Some(crate::mir::ty::Ty::new(
+                    crate::mir::ty::TyKind::Tuple(vec![]),
+                    impl_fn.span,
+                )),
+            };
+            let trait_ret_ty = match &trait_fn.sig.output {
+                HirFnRetTy::Ty(t) => Some(crate::mir::lower::lower_hir_ty_to_mir_ty(t)),
+                HirFnRetTy::Default(_) => Some(crate::mir::ty::Ty::new(
+                    crate::mir::ty::TyKind::Tuple(vec![]),
+                    trait_fn.span,
+                )),
+            };
+            if let (Some(impl_ret), Some(trait_ret)) = (impl_ret_ty, trait_ret_ty) {
+                if !mir_ty_kinds_compatible(&impl_ret, &trait_ret) {
+                    let method_name = interner.try_resolve(&impl_fn.ident.name).unwrap_or("?");
+                    let impl_ret_str = crate::mir::ty::type_to_string(&impl_ret);
+                    let trait_ret_str = crate::mir::ty::type_to_string(&trait_ret);
+                    errors.push(TypeError::new(
+                        format!(
+                            "method `{}` return type mismatch: expected `{}`, found `{}`",
+                            method_name, trait_ret_str, impl_ret_str
+                        ),
+                        impl_fn.span,
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// Stage 18.71: Compatibility check for two MIR types (used by
+/// `validate_impl_method_signatures`).
+///
+/// Returns `true` if the types are structurally compatible (same kind or
+/// coercible per Rust semantics). Returns `false` for clear mismatches
+/// (e.g., Int vs Bool, Adt-A vs Adt-B).
+///
+/// This is a conservative check: it only fires on clear mismatches to
+/// avoid false positives on generic types (where substs may differ).
+///
+/// Per §1.0 原則 9 "正确 > 妥协": must not break valid impl code.
+fn mir_ty_kinds_compatible(a: &crate::mir::ty::Ty, b: &crate::mir::ty::Ty) -> bool {
+    use crate::mir::ty::TyKind;
+    match (&a.kind, &b.kind) {
+        // Same primitive kind: ok.
+        (TyKind::Bool, TyKind::Bool)
+        | (TyKind::Char, TyKind::Char)
+        | (TyKind::Str, TyKind::Str)
+        | (TyKind::Never, TyKind::Never) => true,
+        // Any Int with any Int: ok (width differences are coercible).
+        (TyKind::Int(_), TyKind::Int(_)) => true,
+        // Any Uint with any Uint: ok.
+        (TyKind::Uint(_), TyKind::Uint(_)) => true,
+        // Any Float with any Float: ok.
+        (TyKind::Float(_), TyKind::Float(_)) => true,
+        // Int ↔ Uint of same width: ok (lossless reinterpretation).
+        (TyKind::Int(_), TyKind::Uint(_)) | (TyKind::Uint(_), TyKind::Int(_)) => true,
+        // Tuple with same length: recurse.
+        (TyKind::Tuple(a_tys), TyKind::Tuple(b_tys)) if a_tys.len() == b_tys.len() => a_tys
+            .iter()
+            .zip(b_tys.iter())
+            .all(|(x, y)| mir_ty_kinds_compatible(x, y)),
+        // Adt with same DefId: ok (substs may differ in representation).
+        (TyKind::Adt(a_def, _), TyKind::Adt(b_def, _)) => a_def == b_def,
+        // Ref with same inner kind: ok (region may differ).
+        (TyKind::Ref(_, _, a_inner), TyKind::Ref(_, _, b_inner)) => {
+            mir_ty_kinds_compatible(a_inner, b_inner)
+        }
+        // Array with same element: ok (count may differ in representation).
+        (TyKind::Array(a_inner, _), TyKind::Array(b_inner, _)) => {
+            mir_ty_kinds_compatible(a_inner, b_inner)
+        }
+        // FnPtr with same input/output: ok.
+        (TyKind::FnPtr(a_sig), TyKind::FnPtr(b_sig)) => {
+            a_sig.inputs.len() == b_sig.inputs.len()
+                && a_sig
+                    .inputs
+                    .iter()
+                    .zip(b_sig.inputs.iter())
+                    .all(|(x, y)| mir_ty_kinds_compatible(x, y))
+                && mir_ty_kinds_compatible(&a_sig.output, &b_sig.output)
+        }
+        // Param ↔ Param (same index): ok.
+        (TyKind::Param(a_p), TyKind::Param(b_p)) => a_p.index == b_p.index,
+        // Param ↔ concrete: ok (generic, can't compare at this stage).
+        (TyKind::Param(_), _) | (_, TyKind::Param(_)) => true,
+        // Infer/Error: skip (can't determine).
+        (TyKind::Infer(_), _) | (_, TyKind::Infer(_)) => true,
+        (TyKind::Error, _) | (_, TyKind::Error) => true,
+        // Everything else: not compatible.
+        _ => false,
     }
 }
 
@@ -2739,7 +2991,11 @@ mod tests {
 
     #[test]
     fn driver_compiles_return_literal() {
-        let result = compile_expect_ok("fn f() { 42 }");
+        // Stage 18.71: Updated to reflect P0-5 fix — `fn f() { 42 }` now
+        // has a unit return type (the `42` is a discarded trailing
+        // expression, not the return value). To get an Int return type,
+        // the function must declare `-> i32`.
+        let result = compile_expect_ok("fn f() -> i32 { 42 }");
         assert_eq!(result.mirs.len(), 1);
         // The return local should have a concrete Int type after typeck
         let mir = &result.mirs[0];

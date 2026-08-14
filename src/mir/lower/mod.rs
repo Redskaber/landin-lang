@@ -1001,7 +1001,20 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
                     self_region_vid,
                 )
             }
-            None => cx.fresh_infer_ty(Span::DUMMY),
+            // Stage 18.71 P0-5: For void functions (`fn f() { ... }` with
+            // no declared return type), use unit `Tuple([])` as the return
+            // local's type — NOT a fresh Infer variable.
+            //
+            // Previously this used `fresh_infer_ty`, which let
+            // `fn f() { return 42; }` unify Infer with Int and silently
+            // accept the type mismatch. With explicit unit type, the
+            // typeck Assign check fires: place=Tuple([]), rvalue=Int →
+            // mismatch error.
+            //
+            // Per §1.0 原则 3 "显式 > 隐式": void return type is explicit unit.
+            // Per §1.0 原则 4 "报错 > 静默": return-with-value in void fn
+            // must be reported, not silently accepted.
+            None => Ty::new(TyKind::Tuple(vec![]), Span::DUMMY),
         }
     };
     // G5 fix: return_local is assigned multiple times (once per Return
@@ -1095,7 +1108,31 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     // lowering. Without this check, we'd emit an assignment AFTER the Return
     // terminator, which is dead code that overwrites the return value with
     // an uninitialized local.
-    if !cx.is_terminated() {
+    //
+    // Stage 18.71 P0-5: For void functions (`fn f() { ... }` with no declared
+    // return type), the return local's type is unit `Tuple([])`. We must NOT
+    // assign the body's trailing expression to the return local — instead,
+    // the trailing expression is evaluated for side effects (like a statement)
+    // and its result is discarded. This matches Rust's behavior: in a void
+    // function, the trailing expression is treated as a discarded statement.
+    //
+    // Why always skip for void fns: The trailing expression's type may be
+    // Infer(IntVar) (unsuffixed int literal) which would later resolve to
+    // i32. Assigning it to a unit return local would trigger a spurious
+    // type mismatch in post_check_statement. By skipping the assign for
+    // all void fns, we correctly handle `fn f() { 42 }`, `fn f() { () }`,
+    // `fn f() { add(1, 2) }`, etc.
+    //
+    // For non-void fns (`fn f() -> T { expr }`), the assign happens
+    // normally, and post_check_statement catches any type mismatch
+    // (e.g., `fn f() -> i32 { true }`).
+    //
+    // Per §1.0 原則 9 "正确 > 妥协": match Rust's semantics for void fns.
+    let return_ty = cx.mir.local(return_local).ty.clone();
+    let return_is_unit = matches!(&return_ty.kind, TyKind::Tuple(tys) if tys.is_empty());
+    let skip_assign = cx.is_terminated() || return_is_unit;
+
+    if !skip_assign {
         // Stage 16.06: Use Operand::Move for the function body's tail
         // expression. The tail value semantically moves into the return
         // slot (LocalId(0)). Using Operand::Copy was unsound for non-Copy

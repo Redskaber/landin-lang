@@ -1,6 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: let with bool annotation
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
+// EXPECTED: compile_error
+// ERROR_PATTERN: mismatched types
+// SOURCE: Stage 11.8 batch expansion (Stage 18.71 fix (was Stage 0 limitation, now correctly rejected))
 
 fn main(){let x:bool=0;let y:x=x;}

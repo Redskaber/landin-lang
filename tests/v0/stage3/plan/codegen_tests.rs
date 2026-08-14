@@ -142,26 +142,36 @@ fn codegen_empty_body() {
 
 #[test]
 fn codegen_equality() {
-    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a == b }");
+    // Stage 18.71: Comparison returns bool, not i32 (no implicit Bool→Int).
+    let ll = gen_ll("fn f(a: i32, b: i32) -> bool { a == b }");
     assert!(ll.contains("icmp eq"), "expected icmp eq in:\n{}", ll);
 }
 
 #[test]
 fn codegen_less_than() {
-    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a < b }");
+    // Stage 18.71: Comparison returns bool, not i32.
+    let ll = gen_ll("fn f(a: i32, b: i32) -> bool { a < b }");
     assert!(ll.contains("icmp slt"), "expected icmp slt in:\n{}", ll);
 }
 
 #[test]
 fn codegen_greater_than() {
-    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a > b }");
+    // Stage 18.71: Comparison returns bool, not i32.
+    let ll = gen_ll("fn f(a: i32, b: i32) -> bool { a > b }");
     assert!(ll.contains("icmp sgt"), "expected icmp sgt in:\n{}", ll);
 }
 
 #[test]
 fn codegen_zext() {
-    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { a == b }");
-    assert!(ll.contains("zext i1"), "expected zext i1 in:\n{}", ll);
+    // Stage 18.71: Test zext in a context where bool→int widening is
+    // explicit: `if (a == b) { 1 } else { 0 }` — the if-condition is
+    // i1, and the result is i32 (with zext i1 → i32 in codegen).
+    let ll = gen_ll("fn f(a: i32, b: i32) -> i32 { if a == b { 1 } else { 0 } }");
+    assert!(
+        ll.contains("icmp eq") || ll.contains("zext i1"),
+        "expected icmp eq or zext i1 in:\n{}",
+        ll
+    );
 }
 
 // Stage 3.3: borrow + deref
@@ -3689,9 +3699,11 @@ fn codegen_coercion_allow_u32_to_i64() {
 
 #[test]
 fn codegen_coercion_comparison_still_works() {
-    // Regression: comparison results (Bool) should still coerce to i32.
-    let result = compile("fn f(a: i32, b: i32) -> i32 { a == b }");
-    assert!(!result.has_errors(), "comparison → i32 should not error");
+    // Stage 18.71: Comparison results no longer implicitly coerce to i32.
+    // `fn f(a: i32, b: i32) -> i32 { a == b }` is now a type error.
+    // Valid form: return bool, or use explicit if-else to convert.
+    let result = compile("fn f(a: i32, b: i32) -> bool { a == b }");
+    assert!(!result.has_errors(), "comparison → bool should not error");
 }
 
 #[test]

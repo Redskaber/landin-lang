@@ -154,6 +154,190 @@ impl TypeChecker {
             let term = mir.block(bb_id).terminator.clone();
             self.post_check_terminator(mir, &term);
         }
+
+        // Stage 18.71 Phase 5.5: Post-defaulting statement re-check.
+        //
+        // Why: In Phase 1, `check_statement` reads `place_ty` from
+        // `local_decls` (which is still Infer), then resolves via
+        // `unify.resolve`. For unsuffixed int literals (`1`), the
+        // rvalue's type is `Infer(IntVar)` — only resolved to `i32`
+        // after Phase 2 (`default_unresolved`). So the Phase 1 check
+        // sees `place=Infer(TyVar)` and `rvalue=Infer(IntVar)`, both
+        // non-concrete → check is skipped.
+        //
+        // After Phase 2 + Phase 3, the local_decls have resolved types.
+        // Re-running the Assign type mismatch check here catches:
+        //   - `let x = if true { 1 } else { true };` (if-branch mismatch)
+        //   - `let x = match 1 { 0 => 1, _ => true };` (match arm mismatch)
+        //
+        // Per §1.0 原則 4 "报错 > 静默": if-branch/match-arm type
+        // mismatches must be reported, not silently accepted.
+        // Per §1.0 原則 6 "通用 > 特例": one re-check covers all
+        // Assign statements — no special if-branch handling needed.
+        for bb_id in 0..bb_count {
+            let bb_id = BasicBlockId(bb_id as u32);
+            let statements: Vec<Statement> = mir.block(bb_id).statements.to_vec();
+            for stmt in &statements {
+                self.post_check_statement(mir, stmt);
+            }
+        }
+    }
+
+    /// Stage 18.71: Post-defaulting statement check. Runs after Phase 3
+    /// (writeback) so all types are resolved. Catches type mismatches
+    /// that depend on IntVar/FloatVar defaulting (e.g., if-branch
+    /// mismatch where one branch is an unsuffixed int literal).
+    ///
+    /// IMPORTANT: This function does NOT call `infer_rvalue` because
+    /// `infer_rvalue` has side effects (it calls `unify` on Aggregate
+    /// operands, BinaryOp operands, etc.). Re-running those unifications
+    /// after Phase 2 (default_unresolved) would re-trigger unify with
+    /// already-resolved types, producing spurious errors (e.g., for
+    /// `struct Byte { v: u8 } fn f() { let b = Byte { v: 65 }; }`,
+    /// the literal `65` resolves to i8 after Phase 3 — re-unifying i8
+    /// with u8 fails, even though the original IntVar was correctly
+    /// bound to u8 in Phase 1).
+    ///
+    /// Instead, this function uses `infer_rvalue_type_only` which returns
+    /// the rvalue's type WITHOUT any unify side effects.
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one check covers all Assign statements.
+    /// Per §1.0 原則 9 "正确 > 妥协": must not break valid code.
+    fn post_check_statement(&mut self, mir: &MirBody, stmt: &Statement) {
+        if let StatementKind::Assign(boxed) = &stmt.kind {
+            let (place, rvalue) = &**boxed;
+            let place_ty = self.infer_place(mir, place);
+            // Stage 18.71: Use type-only inference (no side effects).
+            let rvalue_ty = self.infer_rvalue_type_only(mir, rvalue);
+
+            let resolved_place = self.unify.resolve(&place_ty);
+            let resolved_rvalue = self.unify.resolve(&rvalue_ty);
+
+            let place_is_concrete =
+                !matches!(resolved_place.kind, TyKind::Infer(_) | TyKind::Error)
+                    && !type_has_unresolved_substs(&resolved_place);
+            let rvalue_is_concrete =
+                !matches!(resolved_rvalue.kind, TyKind::Infer(_) | TyKind::Error)
+                    && !type_has_unresolved_substs(&resolved_rvalue);
+
+            // Stage 18.71: Only fire if BOTH are concrete AND can't coerce
+            // AND can't loose-match. Per §1.0 原則 9 "正确 > 妥协": avoid
+            // false positives on generic/unresolved types.
+            if place_is_concrete
+                && rvalue_is_concrete
+                && !can_coerce(&resolved_place, &resolved_rvalue)
+                && !types_match_loose(&resolved_place, &resolved_rvalue)
+            {
+                // Per §1.0 原則 4 "报错 > 静默".
+                let span = if stmt.span != Span::DUMMY {
+                    stmt.span
+                } else {
+                    Span::DUMMY
+                };
+                // Stage 18.71: Dedupe — skip if Phase 1 already reported
+                // the same mismatch (same span + expected + found). This
+                // happens when both Phase 1 and Phase 5.5 detect the same
+                // type mismatch (e.g., `let x: i32 = true;` where both
+                // place and rvalue are already concrete in Phase 1).
+                //
+                // Per §1.0 原則 6 "通用 > 特例": one dedup logic for all
+                // type mismatch errors.
+                let already_reported = self.errors.iter().any(|e| {
+                    e.span == span
+                        && e.expected.as_ref() == Some(&resolved_place)
+                        && e.found.as_ref() == Some(&resolved_rvalue)
+                });
+                if !already_reported {
+                    self.errors.push(crate::typeck::TypeError::mismatch(
+                        resolved_place.clone(),
+                        resolved_rvalue.clone(),
+                        span,
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Stage 18.71: Infer an rvalue's type WITHOUT side effects.
+    ///
+    /// Unlike `infer_rvalue`, this function does NOT call `unify` on
+    /// operands. It only returns the rvalue's type based on its structure.
+    /// Used by `post_check_statement` to avoid re-unifying already-resolved
+    /// types (which would produce spurious errors).
+    ///
+    /// Per §1.0 原則 3 "显式 > 隐式": the no-side-effect contract is explicit.
+    fn infer_rvalue_type_only(&self, mir: &MirBody, rv: &Rvalue) -> Ty {
+        use crate::mir::place::Rvalue;
+        match rv {
+            Rvalue::Use(op) => self.infer_operand_type_only(mir, op),
+            Rvalue::BinaryOp(op, a, _) => {
+                // Comparison ops return Bool; arithmetic ops return operand type.
+                match op {
+                    crate::mir::place::BinOp::Eq
+                    | crate::mir::place::BinOp::Ne
+                    | crate::mir::place::BinOp::Lt
+                    | crate::mir::place::BinOp::Le
+                    | crate::mir::place::BinOp::Gt
+                    | crate::mir::place::BinOp::Ge => Ty::new(TyKind::Bool, Span::DUMMY),
+                    _ => self.infer_operand_type_only(mir, a),
+                }
+            }
+            Rvalue::BinaryOp2(_, a, _) => {
+                // Range ops — return the first operand's type (best effort).
+                self.infer_operand_type_only(mir, a)
+            }
+            Rvalue::UnaryOp(_, op) => self.infer_operand_type_only(mir, op),
+            Rvalue::Cast(_, _, ty) => ty.clone(),
+            Rvalue::Aggregate(kind, operands) => match kind {
+                crate::mir::place::AggregateKind::Tuple => {
+                    let tys: Vec<Ty> = operands
+                        .iter()
+                        .map(|op| self.infer_operand_type_only(mir, op))
+                        .collect();
+                    Ty::new(TyKind::Tuple(tys), Span::DUMMY)
+                }
+                crate::mir::place::AggregateKind::Array(elem_ty) => {
+                    let len = operands.len() as u128;
+                    Ty::new(
+                        TyKind::Array(
+                            Box::new(elem_ty.clone()),
+                            Box::new(crate::mir::ty::Const {
+                                ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
+                                val: crate::mir::ty::ConstVal::Uint(len),
+                            }),
+                        ),
+                        Span::DUMMY,
+                    )
+                }
+                crate::mir::place::AggregateKind::Adt(def_id, _variant, substs, _field_tys) => {
+                    Ty::new(TyKind::Adt(*def_id, substs.clone()), Span::DUMMY)
+                }
+                crate::mir::place::AggregateKind::Closure(def_id, substs) => {
+                    Ty::new(TyKind::Closure(*def_id, substs.clone()), Span::DUMMY)
+                }
+            },
+            Rvalue::Ref(_, _, lv) => {
+                let inner_ty = self.infer_place(mir, lv);
+                Ty::new(
+                    TyKind::Ref(
+                        crate::mir::ty::Region::Erased,
+                        crate::mir::ty::Mutability::Immutable,
+                        Box::new(inner_ty),
+                    ),
+                    Span::DUMMY,
+                )
+            }
+        }
+    }
+
+    /// Stage 18.71: Infer an operand's type WITHOUT side effects.
+    fn infer_operand_type_only(&self, mir: &MirBody, op: &crate::mir::place::Operand) -> Ty {
+        match op {
+            crate::mir::place::Operand::Copy(lv) | crate::mir::place::Operand::Move(lv) => {
+                self.infer_place(mir, lv)
+            }
+            crate::mir::place::Operand::Constant(c) => c.ty.clone(),
+        }
     }
 
     /// Stage 3.60: Writeback field types using FieldTyTable instead of HIR.
@@ -1191,7 +1375,12 @@ fn type_has_unresolved_substs(ty: &crate::mir::ty::Ty) -> bool {
         TyKind::Adt(_, substs) => substs.iter().any(type_has_unresolved_substs),
         TyKind::FnDef(_, substs) => substs.iter().any(type_has_unresolved_substs),
         TyKind::Closure(_, substs) => substs.iter().any(type_has_unresolved_substs),
-        TyKind::Projection(_, substs) => substs.iter().any(type_has_unresolved_substs),
+        // Stage 18.71: Projection types (associated types like `<T as Trait>::Item`)
+        // are always "unresolved" — they can't be compared to concrete types
+        // without monomorphization. Skip the check.
+        // Per §1.0 原則 9 "正确 > 妥协": generic associated types need
+        // monomorphization before type comparison (v0.2 work).
+        TyKind::Projection(_, _) => true,
         TyKind::FnPtr(sig) => {
             sig.inputs.iter().any(type_has_unresolved_substs)
                 || type_has_unresolved_substs(&sig.output)
@@ -1229,6 +1418,33 @@ fn types_match_loose(a: &crate::mir::ty::Ty, b: &crate::mir::ty::Ty) -> bool {
         (TyKind::Infer(crate::mir::ty::InferVar::IntVar(_)), TyKind::Int(_)) => true,
         (TyKind::Uint(_), TyKind::Infer(crate::mir::ty::InferVar::IntVar(_))) => true,
         (TyKind::Infer(crate::mir::ty::InferVar::IntVar(_)), TyKind::Uint(_)) => true,
+        // Stage 18.71: Int ↔ Uint of same bit width.
+        // The unify table's `bind_int_var_to_uint` converts Uint to Int
+        // (losing Uint-ness) when binding an IntVar to a Uint type. This
+        // means `let x: usize = 1;` ends up with place=usize, rvalue=isize
+        // (the IntVar was bound to isize, the corresponding Int for usize).
+        // Without this loose match, valid code like `let x: u32 = 1;` would
+        // spuriously fail typeck.
+        // Per §1.0 原則 9 "正确 > 妥协": workaround for the unify table's
+        // lossy Uint→Int conversion. The proper fix is a separate
+        // IntOrUintVar (v0.2 work).
+        (TyKind::Int(crate::ast::IntTy::I8), TyKind::Uint(crate::ast::UintTy::U8)) => true,
+        (TyKind::Uint(crate::ast::UintTy::U8), TyKind::Int(crate::ast::IntTy::I8)) => true,
+        (TyKind::Int(crate::ast::IntTy::I16), TyKind::Uint(crate::ast::UintTy::U16)) => true,
+        (TyKind::Uint(crate::ast::UintTy::U16), TyKind::Int(crate::ast::IntTy::I16)) => true,
+        (TyKind::Int(crate::ast::IntTy::I32), TyKind::Uint(crate::ast::UintTy::U32)) => true,
+        (TyKind::Uint(crate::ast::UintTy::U32), TyKind::Int(crate::ast::IntTy::I32)) => true,
+        (TyKind::Int(crate::ast::IntTy::I64), TyKind::Uint(crate::ast::UintTy::U64)) => true,
+        (TyKind::Uint(crate::ast::UintTy::U64), TyKind::Int(crate::ast::IntTy::I64)) => true,
+        (TyKind::Int(crate::ast::IntTy::I128), TyKind::Uint(crate::ast::UintTy::U128)) => true,
+        (TyKind::Uint(crate::ast::UintTy::U128), TyKind::Int(crate::ast::IntTy::I128)) => true,
+        (TyKind::Int(crate::ast::IntTy::Isize), TyKind::Uint(crate::ast::UintTy::Usize)) => true,
+        (TyKind::Uint(crate::ast::UintTy::Usize), TyKind::Int(crate::ast::IntTy::Isize)) => true,
+        // Stage 18.71: Bool literal in let binding — when the literal `true`
+        // is assigned to a bool local, the IntVar (from the literal's Infer)
+        // is bound to... hmm, actually Bool literals have type Bool directly,
+        // not Infer. So this case shouldn't be needed. But adding it for safety.
+        (TyKind::Bool, TyKind::Bool) => true,
         // Never (!) type is compatible with everything (divergence)
         // Per §1.0 原則 9: Never type unifies with all types (like Rust).
         (TyKind::Never, _) | (_, TyKind::Never) => true,
@@ -1665,6 +1881,190 @@ mod tests {
         assert!(
             has_method_error,
             "Should produce method error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    // ========================================================================
+    // Stage 18.71 P0 tests — typeck enhancement for type mismatch detection.
+    // Per §9.4.3: 1:3+ ratio (positive : negative).
+    // ========================================================================
+
+    /// Stage 18.71 P0-1 positive: `let x: i32 = 42;` compiles OK.
+    #[test]
+    fn stage18_71_let_int_with_int_literal_ok() {
+        use crate::compile;
+        let src = "fn main() { let x: i32 = 42; }";
+        let result = compile(src);
+        assert!(
+            result.errors.typeck.is_empty(),
+            "expected no typeck errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.71 P0-1 negative: `let x: i32 = true;` is rejected.
+    #[test]
+    fn stage18_71_let_int_with_bool_rejected() {
+        use crate::compile;
+        let src = "fn main() { let x: i32 = true; }";
+        let result = compile(src);
+        assert!(
+            !result.errors.typeck.is_empty(),
+            "expected type mismatch error for `let x: i32 = true;`"
+        );
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .any(|e| e.message.contains("mismatched types")),
+            "expected 'mismatched types' error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.71 P0-2 negative: `fn f() -> i32 { true }` is rejected.
+    #[test]
+    fn stage18_71_fn_return_type_mismatch_rejected() {
+        use crate::compile;
+        let src = "fn f() -> i32 { true } fn main() { f(); }";
+        let result = compile(src);
+        assert!(
+            !result.errors.typeck.is_empty(),
+            "expected type mismatch error for `fn f() -> i32 {{ true }}`"
+        );
+    }
+
+    /// Stage 18.71 P0-2 positive: `fn f() -> i32 { 42 }` compiles OK.
+    #[test]
+    fn stage18_71_fn_return_type_match_ok() {
+        use crate::compile;
+        let src = "fn f() -> i32 { 42 } fn main() { f(); }";
+        let result = compile(src);
+        assert!(
+            result.errors.typeck.is_empty(),
+            "expected no typeck errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.71 P0-3 negative: if-branch type mismatch is rejected.
+    #[test]
+    fn stage18_71_if_branch_mismatch_rejected() {
+        use crate::compile;
+        let src = "fn main() { let x = if true { 1 } else { true }; }";
+        let result = compile(src);
+        assert!(
+            !result.errors.typeck.is_empty(),
+            "expected type mismatch error for if-branch mismatch"
+        );
+    }
+
+    /// Stage 18.71 P0-3 positive: if-branches with same type compiles OK.
+    #[test]
+    fn stage18_71_if_branch_match_ok() {
+        use crate::compile;
+        let src = "fn main() { let x = if true { 1 } else { 2 }; }";
+        let result = compile(src);
+        assert!(
+            result.errors.typeck.is_empty(),
+            "expected no typeck errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.71 P0-3 variant: match arm type mismatch is rejected.
+    #[test]
+    fn stage18_71_match_arm_mismatch_rejected() {
+        use crate::compile;
+        let src = "fn main() { let x = match 1 { 0 => 1, _ => true }; }";
+        let result = compile(src);
+        assert!(
+            !result.errors.typeck.is_empty(),
+            "expected type mismatch error for match arm mismatch"
+        );
+    }
+
+    /// Stage 18.71 P0-4 negative: trait impl return type mismatch is rejected.
+    #[test]
+    fn stage18_71_trait_impl_ret_mismatch_rejected() {
+        use crate::compile;
+        let src = "trait T { fn f(&self) -> i32; } struct S; impl T for S { fn f(&self) -> bool { true } } fn main() {}";
+        let result = compile(src);
+        assert!(
+            !result.errors.typeck.is_empty(),
+            "expected trait impl signature mismatch error"
+        );
+        assert!(
+            result.errors.typeck.iter().any(|e| e
+                .message
+                .contains("method")
+                && e.message.contains("return type mismatch")),
+            "expected 'method return type mismatch' error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.71 P0-4 negative: trait impl arg count mismatch is rejected.
+    #[test]
+    fn stage18_71_trait_impl_arg_count_mismatch_rejected() {
+        use crate::compile;
+        let src = "trait T { fn f(&self) -> i32; } struct S; impl T for S { fn f(&self, x: i32) -> i32 { 0 } } fn main() {}";
+        let result = compile(src);
+        assert!(
+            !result.errors.typeck.is_empty(),
+            "expected trait impl arg count mismatch error"
+        );
+    }
+
+    /// Stage 18.71 P0-4 positive: trait impl with correct signature compiles OK.
+    #[test]
+    fn stage18_71_trait_impl_correct_sig_ok() {
+        use crate::compile;
+        let src = "trait T { fn f(&self) -> i32; } struct S; impl T for S { fn f(&self) -> i32 { 0 } } fn main() {}";
+        let result = compile(src);
+        assert!(
+            result.errors.typeck.is_empty(),
+            "expected no typeck errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.71 P0-5 negative: return with value in void fn is rejected.
+    #[test]
+    fn stage18_71_void_fn_return_value_rejected() {
+        use crate::compile;
+        let src = "fn f() { return 42; } fn main() { f(); }";
+        let result = compile(src);
+        assert!(
+            !result.errors.typeck.is_empty(),
+            "expected type mismatch error for `return 42` in void fn"
+        );
+    }
+
+    /// Stage 18.71 P0-5 positive: return without value in void fn compiles OK.
+    #[test]
+    fn stage18_71_void_fn_return_no_value_ok() {
+        use crate::compile;
+        let src = "fn f() { return; } fn main() { f(); }";
+        let result = compile(src);
+        assert!(
+            result.errors.typeck.is_empty(),
+            "expected no typeck errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.71 P0-5 positive: void fn with no return compiles OK.
+    #[test]
+    fn stage18_71_void_fn_no_return_ok() {
+        use crate::compile;
+        let src = "fn f() { let x = 42; } fn main() { f(); }";
+        let result = compile(src);
+        assert!(
+            result.errors.typeck.is_empty(),
+            "expected no typeck errors, got: {:?}",
             result.errors.typeck
         );
     }

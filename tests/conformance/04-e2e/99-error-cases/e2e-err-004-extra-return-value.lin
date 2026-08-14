@@ -1,6 +1,7 @@
 // CATEGORY: e2e
 // DESCRIPTION: return with value in void function
-// EXPECTED: compile_ok
-// SOURCE: Stage 18.69 — Stage 0 limitation: void function return value not checked
+// EXPECTED: compile_error
+// ERROR_PATTERN: mismatched types
+// SOURCE: Stage 18.69 — Stage 18.71 fix (was Stage 0 limitation, now correctly rejected): void function return value not checked
 
 fn f() { return 42; } fn main() { f(); }

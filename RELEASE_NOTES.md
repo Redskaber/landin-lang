@@ -1,9 +1,93 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.305.0
-**Date**: 2026-08-06
-**Test count**: 583 rust lib tests + 2537 integration tests + 5 benchmarks + 5224 conformance tests (171 run_ok — **100% pass rate!**) + 4 examples
+**Current version**: v0.339.0
+**Date**: 2026-08-09
+**Test count**: 617 rust lib tests + 2641 integration tests + 5338 conformance tests (5338 — **100% pass rate!**) + 4 examples
+
+---
+## v0.339.0 — Stage 18.71 (P0 Typeck Enhancement — Type Mismatch Checks)
+
+### Overview
+
+Fixes 5 critical P0 typeck deficiencies documented in Stage 18.70's gap
+analysis. The compiler now correctly rejects type mismatches that were
+previously silently accepted (Stage 0 limitations).
+
+### P0 Fixes
+
+| P0 # | Description | Fix |
+|------|-------------|-----|
+| P0-1 | type mismatch in let binding (`let x: i32 = true`) | Remove Bool→Int/Uint coercion rule |
+| P0-2 | type mismatch in fn return (`fn f() -> i32 { true }`) | Same fix (return local now checked) |
+| P0-3 | if branch type mismatch (`let x = if true { 1 } else { true }`) | Add Phase 5.5 post-defaulting statement check |
+| P0-4 | trait impl signature mismatch | New `validate_impl_method_signatures` function |
+| P0-5 | return with value in void fn (`fn f() { return 42 }`) | Use unit type for void fn return local |
+
+### Implementation
+
+**`src/typeck/predicates.rs`** — Removed the `(Int(_)|Uint(_), Bool) => true`
+coercion rule. Per §1.0 原則 9 "正确 > 妥协": Rust does NOT allow implicit
+Bool→Int/Uint coercion, so Landin must not either.
+
+**`src/typeck/checker.rs`** — Added Phase 5.5 `post_check_statement`:
+- Runs after Phase 2 (default_unresolved) + Phase 3 (writeback)
+- Catches type mismatches that depend on IntVar/FloatVar defaulting
+- Uses `infer_rvalue_type_only` (no side effects) to avoid re-unifying
+  already-resolved types
+- Dedupes against Phase 1 errors (same span + expected + found)
+
+**`src/mir/lower/mod.rs`** — Void fn return local now uses `Tuple([])`
+(unit) instead of `fresh_infer_ty()`. Void fn trailing expression is no
+longer assigned to the return local (matches Rust's discard semantics).
+
+**`src/codegen/terminator.rs`** — When `ret_ty=I32` but `ret_val=None`
+(e.g., `fn main()` with unit return local), emit `ret i32 0` instead of
+`ret void` (avoids LLVM module verification failure).
+
+**`src/driver.rs`** — New `validate_impl_method_signatures` function:
+- Walks all `impl Trait for Type` blocks
+- For each impl method, finds matching trait method by name
+- Compares: arg count, arg types (after self substitution), return type
+- Reports mismatches with `method `X` ... mismatch` error messages
+
+### Design Compliance
+
+- **§1.0 原則 3 "显式 > 隐式"**: void return type is explicit unit
+- **§1.0 原則 4 "报错 > 静默"**: type mismatches must be reported
+- **§1.0 原則 6 "通用 > 特例"**: one check covers all Assign statements
+- **§1.0 原則 9 "正确 > 妥协"**: match Rust's stricter type checking
+- **§10 naming**: `validate_impl_method_signatures` follows `validate_<noun>_<noun>_<noun>` pattern
+- **§11 isolation**: new functions are private to their modules
+
+### Tests (§9.4.3 1:3+ ratio)
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Stage 0 limitation tests flipped | 106 | compile_ok → compile_error |
+| New e2e-err tests | 5 | e2e-err-021 to 025 |
+| New Rust unit tests | 13 | stage18_71_* (5 positive + 8 negative) |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 617 lib + 2641 integration = **3258** unit tests, 0 failures
+- `python3 tests/conformance/run_all.py` — ✅ **5338** conformance tests, 0 failures
+
+### Stage 0 Limitation Tests Flipped
+
+106 tests converted from `EXPECTED: compile_ok` to `EXPECTED: compile_error`:
+
+| Category | Count | Pattern |
+|----------|-------|---------|
+| 01-typecheck/99-error-cases | 28 | `let x: i32 = true`, `fn f() -> i32 { true }`, etc. |
+| 01-typecheck/00-basic-inference | 27 | `let x: f64/bool/char = 42` (int literal to non-int) |
+| 05-soundness/00-r5-regression | 35 | type/return/if/match mismatch variants |
+| 03-codegen/99-error-cases | 6 | type mismatch, trait impl, return-in-main |
+| 04-e2e/99-error-cases | 5 | type mismatch let, extra return value, etc. |
+| 07-integration/99-error-cases | 5 | trait method wrong sig, etc. |
 
 ---
 ## v0.305.0 — Stage 18.24 (Macro Fragment Specifier Extension — lifetime + stmt)

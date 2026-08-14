@@ -67,20 +67,23 @@ fn stage15_12_resolve_error_display() {
 fn stage15_12_typeck_error_with_snippet() {
     // Use a real type error: assigning wrong type to let binding.
     // `let x: i32 = true;` should produce a typeck error.
+    // Stage 18.71: typeck now correctly rejects this (P0-1 fix).
     let src = "fn main() { let x: i32 = true; }";
     let result = compile(src);
-    let formatted = result
-        .errors
-        .format_for_user(Some(src), Some(&result.interner));
-    // typeck may or may not catch this (v0.1 typeck is limited), but
-    // if there are errors, the format should be correct.
-    if !result.errors.is_empty() {
-        assert!(
-            formatted.contains(" | ") || formatted.contains("[resolve]"),
-            "expected snippet gutter or resolve prefix, got: {}",
-            formatted
-        );
-    }
+    // Stage 18.71: typeck MUST now catch this (was previously a Stage 0
+    // limitation — typeck didn't check let annotation against initializer).
+    assert!(
+        !result.errors.typeck.is_empty(),
+        "expected typeck error for `let x: i32 = true;`, got: {:?}",
+        result.errors
+    );
+    // Verify the error has expected/found types (for diagnostic display).
+    let typeck_err = &result.errors.typeck[0];
+    assert!(
+        typeck_err.expected.is_some() || typeck_err.found.is_some(),
+        "expected error to have expected or found type, got: {:?}",
+        typeck_err
+    );
 }
 
 /// Stage 15.12 test 5: borrowck errors display with snippet.

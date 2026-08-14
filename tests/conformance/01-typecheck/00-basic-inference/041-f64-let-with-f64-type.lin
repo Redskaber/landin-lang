@@ -1,6 +1,8 @@
 // CATEGORY: typecheck
 // DESCRIPTION: let with f64 type
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.8 batch expansion
+// EXPECTED: compile_error
+// ERROR_PATTERN: mismatched types
+// SOURCE: Stage 11. (Stage 18.71: now correctly rejected — int literal can't coerce to non-int type)
+// ORIG: Stage 11.8 batch expansion
 
 fn main(){let x:f64=42;}

@@ -89,8 +89,12 @@ pub(super) fn can_coerce(place_ty: &Ty, rvalue_ty: &Ty) -> bool {
         // Infer/Error: always coercible
         (TyKind::Infer(_), _) | (_, TyKind::Infer(_)) => true,
         (TyKind::Error, _) | (_, TyKind::Error) => true,
-        // Bool → Int/Uint: comparison result widens to integer
-        (TyKind::Int(_), TyKind::Bool) | (TyKind::Uint(_), TyKind::Bool) => true,
+        // Stage 18.71: REMOVED `(Int(_)|Uint(_), Bool) => true` rule.
+        // Per §1.0 原则 9 "正确 > 妥协": Rust does NOT allow implicit
+        // Bool→Int/Uint coercion. `let x: i32 = true;` is a type error
+        // in Rust, and so it must be in Landin. The previous rule was
+        // overly permissive and masked 36 Stage 0 limitation test cases
+        // (e2e-err-002, snd-*-type-mismatch, etc.).
         // Narrower int → wider int (e.g., i8 → i32, i16 → i64)
         (TyKind::Int(IntTy::I128), TyKind::Int(_)) => true,
         (TyKind::Int(IntTy::I64), TyKind::Int(IntTy::I8 | IntTy::I16 | IntTy::I32)) => true,

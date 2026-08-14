@@ -1,6 +1,8 @@
 // CATEGORY: typecheck
 // DESCRIPTION: f64 cmp lt inference
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
+// EXPECTED: compile_error
+// ERROR_PATTERN: mismatched types
+// SOURCE: Stage 11. (Stage 18.71: now correctly rejected — int literal can't coerce to non-int type)
+// ORIG: Stage 11.9 batch expansion
 
 fn main(){let x:f64=1;let y:x<x;}
