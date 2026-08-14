@@ -36,19 +36,40 @@ impl<'a> Parser<'a> {
             // Per §1.0 原則 4 "报错 > 静默": the previous behavior silently
             // mis-parsed `mut name: Type` as `mut self: Type`, producing
             // confusing downstream errors instead of correct AST.
+            //
+            // Stage 18.53 GATs Phase 2: extend `is_self_param` to recognize
+            // `&'a self`, `&'a mut self` (lifetime-annotated self) so that
+            // GAT trait methods like `fn next<'a>(&'a mut self) -> ...` parse.
+            // Per §1.0 原則 6 "通用 > 特例": one self-param recognition path
+            // handles all of: `self`, `mut self`, `&self`, `&mut self`,
+            // `&'a self`, `&'a mut self`.
             let is_self_param = matches!(self.peek(), TokenKind::KwSelf_)
                 || (*self.peek() == TokenKind::KwMut
                     && matches!(self.peek_at(1), TokenKind::KwSelf_))
                 || (*self.peek() == TokenKind::And
                     && (matches!(self.peek_at(1), TokenKind::KwSelf_)
                         || (*self.peek_at(1) == TokenKind::KwMut
-                            && matches!(self.peek_at(2), TokenKind::KwSelf_))));
+                            && matches!(self.peek_at(2), TokenKind::KwSelf_))
+                        // &'lifetime self or &'lifetime mut self
+                        || (matches!(self.peek_at(1), TokenKind::Lifetime(_))
+                            && (matches!(self.peek_at(2), TokenKind::KwSelf_)
+                                || (*self.peek_at(2) == TokenKind::KwMut
+                                    && matches!(self.peek_at(3), TokenKind::KwSelf_))))));
             if is_self_param {
                 let span = self.current_span();
                 // Track the receiver kind: by-value vs by-ref, and mutability.
                 let mut self_kind = SelfKind::Value(Mutability::Immutable);
+                // Stage 18.53 GATs Phase 2: optional lifetime on `&'a self`.
+                // Per §1.0 原則 3 "显式 > 隐式": lifetime is preserved in
+                // the resulting `Ty::Ref` so typeck can use it.
+                let mut self_lifetime: Option<crate::lexer::Symbol> = None;
                 let binding_mut = if *self.peek() == TokenKind::And {
                     self.bump(); // &
+                    if let TokenKind::Lifetime(_) = self.peek() {
+                        let lt = self.ident_from_token();
+                        self.bump();
+                        self_lifetime = Some(lt.name);
+                    }
                     let ref_mut = if *self.peek() == TokenKind::KwMut {
                         self.bump();
                         Mutability::Mutable
@@ -88,19 +109,29 @@ impl<'a> Parser<'a> {
                     // segment name. The type checker (Stage 2) will resolve this.
                     // Stage 13.17 fix: intern "Self" (capital S) for the type,
                     // matching the resolver's Self type lookup convention.
+                    // Stage 18.53: if there was a `&'a` lifetime, propagate it
+                    // to the default Self ref type so typeck can see the region.
                     let self_ty_spur = self.interner.get_or_intern("Self");
-                    Ty::Path(
-                        QSelf::default(),
-                        Path {
-                            segments: vec![PathSegment {
-                                ident: Ident::new(self_ty_spur, span),
-                                args: None,
-                            }],
-                            leading: PathLeading::None,
-                            span,
-                        },
+                    let self_path = Path {
+                        segments: vec![PathSegment {
+                            ident: Ident::new(self_ty_spur, span),
+                            args: None,
+                        }],
+                        leading: PathLeading::None,
                         span,
-                    )
+                    };
+                    match self_lifetime {
+                        Some(sym) => Ty::Ref(
+                            Some(crate::ast::Lifetime {
+                                ident: crate::ast::Ident::new(sym, span),
+                                span,
+                            }),
+                            crate::ast::Mutability::Immutable,
+                            Box::new(Ty::Path(QSelf::default(), self_path, span)),
+                            span,
+                        ),
+                        None => Ty::Path(QSelf::default(), self_path, span),
+                    }
                 };
                 // Stage 13.17 fix: intern "self" (lowercase) for the binding
                 // name, so the resolver can match `self.x` references in the
@@ -216,14 +247,16 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        // Handle >> (two >) in type context — split into two >
-        if *self.peek() == TokenKind::Shr {
-            // We can't actually split a single token; we just consume it and
-            // treat it as two closes. Caller logic must be aware.
-            // For Stage 0 we just bump it; nested generics like Vec<HashMap<K, V>>
-            // will need real >> splitting (Stage 1).
-            self.bump();
-        } else {
+        // Stage 18.53 GATs Phase 2: Use `eat_gt_or_split` to handle both `>`
+        // and `>>` (in nested generics like `Vec<HashMap<K, V>>` or
+        // `Option<Self::Item<'a>>`). The split is transparent to callers.
+        // Per §1.0 原則 6 "通用 > 特例": one mechanism replaces the prior
+        // ad-hoc `bump()` of `Shr`.
+        if !self.eat_gt_or_split() {
+            // Neither `>` nor `>>` — record parse error for diagnostics.
+            // The original `eat(&TokenKind::Gt)` silently did nothing on
+            // failure; we preserve that behavior but the missing `>` will
+            // be caught by the next expect() at the caller site.
             self.eat(&TokenKind::Gt);
         }
         params

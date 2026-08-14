@@ -1,0 +1,10 @@
+// CATEGORY: typecheck
+// DESCRIPTION: GAT with lifetime arg in trait method return type
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.53 GATs Phase 2
+
+trait LendingIterator {
+    type Item<'a>;
+    fn next<'a>(&'a mut self) -> Self::Item<'a>;
+}
+fn main() { 0 }

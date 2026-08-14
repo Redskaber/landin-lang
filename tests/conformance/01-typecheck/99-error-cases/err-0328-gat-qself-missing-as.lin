@@ -1,0 +1,9 @@
+// CATEGORY: typecheck
+// DESCRIPTION: Qualified path missing `as` keyword (parse error)
+// EXPECTED: compile_error
+// ERROR_PATTERN: expected
+// SOURCE: Stage 18.53 GATs Phase 2
+
+trait C { type Item; }
+fn f<T: C>(x: T) -> <T>::Item { 0 }
+fn main() { 0 }

@@ -422,3 +422,5 @@ mod stage18_50_phase_integration_tests;
 mod stage18_51_fuzz_tests;
 #[path = "v0/stage18/plan/stage18_52_gats_tests.rs"]
 mod stage18_52_gats_tests;
+#[path = "v0/stage18/plan/stage18_53_gats_phase2_tests.rs"]
+mod stage18_53_gats_phase2_tests;

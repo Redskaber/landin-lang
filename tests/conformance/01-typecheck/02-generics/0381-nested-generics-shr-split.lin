@@ -1,0 +1,9 @@
+// CATEGORY: typecheck
+// DESCRIPTION: Nested generics with >> splitting (struct generic in struct generic)
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.53 GATs Phase 2
+
+struct Inner<T> { v: T }
+struct Outer<T> { inner: Inner<T> }
+fn f() -> Outer<Inner<i32>> { Outer { inner: Inner { v: 0 } } }
+fn main() { 0 }

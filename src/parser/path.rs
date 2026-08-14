@@ -52,6 +52,32 @@ impl<'a> Parser<'a> {
     /// turbofish `::<...>` is required (Expr).
     pub(super) fn parse_path_with_ctx(&mut self, ctx: PathContext) -> Path {
         let span = self.current_span();
+
+        // Stage 18.53 GATs Phase 2: Qualified path `<T as Trait>::Name`.
+        // Per §1.0 原則 6 "通用 > 特例": one try_parse_qself handles all
+        // qualified path forms. Only attempted in Type / Pattern context —
+        // in Expr context, `<` is comparison.
+        //
+        // Note: qself info (inner type + position) is stored on the wrapping
+        // `Ty::Path(QSelf, Path, Span)`, NOT on `Path` itself. When called
+        // from `parse_ty`, the caller checks for qself and wraps accordingly.
+        // When called from non-type contexts (Expr, Pattern), qself info is
+        // discarded (qualified paths in expression position require different
+        // handling — turbofish + UFCS — which is out of scope for Phase 2).
+        if matches!(ctx, PathContext::Type | PathContext::Pattern) && *self.peek() == TokenKind::Lt
+        {
+            if let Some((_qself, path)) = self.try_parse_qself(ctx, span) {
+                // QSelf info is preserved via thread-local storage for
+                // parse_ty to pick up. See `take_last_qself` below.
+                // (Stage 18.53: simple approach — store in a field on Parser.)
+                self.last_qself = Some(_qself);
+                return path;
+            }
+            // If qself parse failed (no `as` keyword etc.), fall through to
+            // normal path parsing — the caller will see `<` and produce an
+            // error or treat as comparison depending on context.
+        }
+
         let leading = match self.peek() {
             TokenKind::PathSep => {
                 self.bump();
@@ -210,6 +236,7 @@ impl<'a> Parser<'a> {
             | TokenKind::KwDyn    // dyn Trait
             | TokenKind::Gt       // `<>` (rare, e.g. `PhantomData<>`)
             | TokenKind::Shr // `>>`
+            | TokenKind::Lt // `<<T as Trait>::Item>` (nested qualified path)
         );
         if !looks_like_generic {
             return None;
@@ -242,12 +269,171 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        // Handle >> (nested generics) — just consume for Stage 0
-        if *self.peek() == TokenKind::Shr {
-            self.bump();
-        } else {
+        // Stage 18.53 GATs Phase 2: Use `eat_gt_or_split` to handle `>>`
+        // in nested generics like `Vec<HashMap<K, V>>` or
+        // `Option<Self::Item<'a>>`. Per §1.0 原則 6 "通用 > 特例".
+        //
+        // Note: We do NOT report an error if `>` is missing — the original
+        // behavior was to silently `eat(Gt)` (no-op on failure), which lets
+        // the parser recover from cases like `let y: x<x;` where `<x` was
+        // ambiguously parsed as generic args. Reporting an error here would
+        // break 80+ conformance tests that rely on this graceful recovery.
+        // The GAT-specific error cases are caught by `try_parse_qself` which
+        // has its own error reporting for missing `>`.
+        if !self.eat_gt_or_split() {
             self.eat(&TokenKind::Gt);
         }
         Some(GenericArgs::AngleBracketed(args))
+    }
+
+    /// Stage 18.53 GATs Phase 2: Parse a qualified path `<T as Trait>::Name`.
+    ///
+    /// Returns `Some((QSelf, Path))` on success, where `QSelf.ty = Some(T)`
+    /// and `QSelf.position` is the number of trait segments. Returns `None`
+    /// if the input doesn't look like a qualified path (e.g., no `as`
+    /// keyword after the inner type).
+    ///
+    /// ## Grammar
+    ///
+    /// ```text
+    /// qualified_path := "<" ty "as" path ">" "::" path_segment ("::" path_segment)*
+    /// ```
+    ///
+    /// ## Algorithm
+    ///
+    /// 1. Consume `<`
+    /// 2. Parse inner type `T`
+    /// 3. Expect `as` keyword (if missing, return None — caller falls back)
+    /// 4. Parse trait path (segments until `>`)
+    /// 5. Consume `>` (using `eat_gt_or_split` to support nested generics)
+    /// 6. Expect `::`
+    /// 7. Parse remaining segments (the assoc item and any further path)
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one parser handles all qualified path
+    /// forms, no per-use-site special cases.
+    /// Per §10 naming: `try_parse_qself` follows `<verb>_<noun>` pattern.
+    pub(super) fn try_parse_qself(
+        &mut self,
+        ctx: PathContext,
+        span: crate::session::Span,
+    ) -> Option<(QSelf, Path)> {
+        // Only attempt if the current token is `<`.
+        if *self.peek() != TokenKind::Lt {
+            return None;
+        }
+
+        // Save position for rollback if this isn't actually a qself.
+        let saved_pos = self.pos;
+        let saved_errors_len = self.errors.len();
+
+        self.bump(); // <
+
+        // Parse the inner type T.
+        let inner_ty = self.parse_ty();
+
+        // Expect `as` keyword. If not present, this isn't a qself — rollback.
+        if *self.peek() != TokenKind::KwAs {
+            self.pos = saved_pos;
+            self.errors.truncate(saved_errors_len);
+            return None;
+        }
+        self.bump(); // as
+
+        // Parse the trait path segments until `>`.
+        let mut segments: Vec<PathSegment> = Vec::new();
+        // The first segment must be an identifier.
+        // Per §1.0 原則 4 "报错 > 静默": use `expect_ident` instead of
+        // `ident_from_token` so non-identifier tokens (e.g., `@`) produce
+        // a parse error instead of silently becoming default Idents.
+        let ident = self.expect_ident("trait name in qualified path");
+        let args = match ctx {
+            PathContext::Type | PathContext::Pattern => self.try_parse_generic_args(),
+            PathContext::Expr => self.try_parse_turbofish_or_generic_args(),
+        };
+        segments.push(PathSegment { ident, args });
+
+        // Continue trait path: `Trait::SubTrait::...`
+        while *self.peek() == TokenKind::PathSep {
+            // Stop if next is `>` (end of qself) — `::>` is invalid.
+            if matches!(self.peek_at(1), TokenKind::Gt | TokenKind::Shr) {
+                break;
+            }
+            self.bump(); // ::
+            let ident = self.expect_ident("trait name in qualified path");
+            let args = match ctx {
+                PathContext::Type | PathContext::Pattern => self.try_parse_generic_args(),
+                PathContext::Expr => self.try_parse_turbofish_or_generic_args(),
+            };
+            segments.push(PathSegment { ident, args });
+        }
+
+        // Record where the trait path ends (qself.position).
+        let trait_position = segments.len();
+
+        // Consume `>` (with `>>` split support for nested generics).
+        if !self.eat_gt_or_split() {
+            // Missing `>` — record parse error but continue to extract what we can.
+            self.errors.push(crate::parser::ParseError::new(
+                format!("expected `>` in qualified path, found {}", self.peek()),
+                self.current_span(),
+            ));
+        }
+
+        // Expect `::` after `>`.
+        if *self.peek() != TokenKind::PathSep {
+            self.errors.push(crate::parser::ParseError::new(
+                format!(
+                    "expected `::` after `>` in qualified path, found {}",
+                    self.peek()
+                ),
+                self.current_span(),
+            ));
+            // Build a path with just the trait segments — best-effort recovery.
+            return Some((
+                QSelf {
+                    ty: Some(Box::new(inner_ty)),
+                    position: trait_position,
+                },
+                Path {
+                    segments,
+                    leading: PathLeading::None,
+                    span: Span::new(span.lo, self.current_span().hi),
+                },
+            ));
+        }
+        self.bump(); // ::
+
+        // Parse the remaining segments (the assoc item name and any further path).
+        let ident = self.expect_ident("associated item name in qualified path");
+        let args = match ctx {
+            PathContext::Type | PathContext::Pattern => self.try_parse_generic_args(),
+            PathContext::Expr => self.try_parse_turbofish_or_generic_args(),
+        };
+        segments.push(PathSegment { ident, args });
+
+        while *self.peek() == TokenKind::PathSep {
+            if matches!(self.peek_at(1), TokenKind::LBrace | TokenKind::Star) {
+                break;
+            }
+            self.bump();
+            let ident = self.expect_ident("path segment in qualified path");
+            let args = match ctx {
+                PathContext::Type | PathContext::Pattern => self.try_parse_generic_args(),
+                PathContext::Expr => self.try_parse_turbofish_or_generic_args(),
+            };
+            segments.push(PathSegment { ident, args });
+        }
+
+        Some((
+            QSelf {
+                ty: Some(Box::new(inner_ty)),
+                position: trait_position,
+            },
+            Path {
+                segments,
+                leading: PathLeading::None,
+                span: Span::new(span.lo, self.current_span().hi),
+            },
+        ))
     }
 }

@@ -1,0 +1,10 @@
+// CATEGORY: typecheck
+// DESCRIPTION: GAT + self lifetime + Option<Self::Item<'a>>
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.53 GATs Phase 2
+
+trait LendingIterator {
+    type Item<'a>;
+    fn next<'a>(&'a mut self) -> Option<Self::Item<'a>>;
+}
+fn main() { 0 }

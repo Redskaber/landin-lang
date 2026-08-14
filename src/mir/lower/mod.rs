@@ -1950,16 +1950,34 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
             )
         }
         HirTyKind::Infer => Ty::new(TyKind::Infer(InferVar::TyVar(TyVid(u32::MAX))), span),
-        HirTyKind::Path(_, path) => match path.res {
-            Res::Def(def_id, _) => {
-                // Stage 16.56: Pass HIR to lower_path_generic_args so
-                // nested generic paths can be resolved.
-                let substs = lower_path_generic_args(path, region_counter, hir);
-                Ty::new(TyKind::Adt(def_id, substs), span)
+        HirTyKind::Path(qself, path) => {
+            // Stage 18.53 GATs Phase 2: If `qself.ty` is `Some`, this is a
+            // qualified path `<T as Trait>::Item` — lower to `TyKind::Projection`
+            // so `projection_resolver` can resolve it to the concrete type
+            // from the impl block.
+            //
+            // Per §1.0 原則 3 "显式 > 隐式": projection is explicitly
+            // represented as `TyKind::Projection(assoc_def_id, substs)`,
+            // not implicitly folded into `TyKind::Adt`.
+            // Per §1.0 原則 5 "去除兼容思维": the old code ignored qself
+            // via `_` — that path is removed; qualified paths now produce
+            // projections, plain paths produce Adt.
+            if let Some(inner_ty) = &qself.ty {
+                lower_qualified_path_to_projection(inner_ty, path, region_counter, hir, span)
+            } else {
+                // Plain path: existing behavior.
+                match path.res {
+                    Res::Def(def_id, _) => {
+                        // Stage 16.56: Pass HIR to lower_path_generic_args so
+                        // nested generic paths can be resolved.
+                        let substs = lower_path_generic_args(path, region_counter, hir);
+                        Ty::new(TyKind::Adt(def_id, substs), span)
+                    }
+                    Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),
+                    _ => Ty::new(TyKind::Error, span),
+                }
             }
-            Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),
-            _ => Ty::new(TyKind::Error, span),
-        },
+        }
         HirTyKind::FnPtr {
             inputs,
             output,
@@ -1987,6 +2005,103 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
         }
         _ => Ty::new(TyKind::Error, span),
     }
+}
+
+/// Stage 18.53 GATs Phase 2: Lower a qualified path `<T as Trait>::Item` to
+/// `TyKind::Projection(assoc_def_id, substs)`.
+///
+/// ## Algorithm
+///
+/// 1. Lower the inner type `T` to MIR `Ty` — this becomes `substs[0]` (self type).
+/// 2. Extract the trait path from `path.segments[..qself.position]` and the
+///    assoc item name from `path.segments[qself.position]` (the segment after
+///    the trait).
+/// 3. Look up the assoc type's `DefId` by searching traits for a matching
+///    `HirAssocType`. If not found, return `TyKind::Error` (graceful
+///    degradation — Phase 3 will improve this).
+/// 4. Lower the path's generic args (if any) to `substs[1..]`.
+/// 5. Return `TyKind::Projection(assoc_def_id, substs)`.
+///
+/// Per §1.0 原則 3 "显式 > 隐式": projection is explicit.
+/// Per §1.0 原則 4 "报错 > 静默": if assoc type not found, return `TyKind::Error`
+/// (which surfaces in typeck as an error), not a silent fallback.
+/// Per §10 naming: `lower_qualified_path_to_projection` follows
+/// `<verb>_<noun>_<prep>_<noun>` pattern.
+pub(crate) fn lower_qualified_path_to_projection(
+    inner_ty: &HirTy,
+    path: &crate::hir::HirPath,
+    region_counter: &mut u32,
+    hir: Option<&HirCrate>,
+    span: Span,
+) -> Ty {
+    // Step 1: Lower the inner self type T.
+    let self_ty = lower_hir_ty_to_mir_ty_with_regions_and_hir(inner_ty, region_counter, hir);
+
+    // Step 2: The last segment of the path is the assoc item name.
+    // (qself.position tells us where the trait ends; everything after is
+    // the assoc item, but for Stage 18.53 we only support single-segment
+    // assoc paths like `::Item`, not `::Item::SubItem`.)
+    let assoc_segment = path.segments.last().expect(
+        "qualified path must have at least one segment after `>::` — \
+         parser guarantees this",
+    );
+    let assoc_name = assoc_segment.ident.name;
+
+    // Step 3: Look up the assoc type's DefId by searching all traits for
+    // a matching assoc type name. We need HIR access for this.
+    let assoc_def_id = hir.and_then(|h| find_assoc_type_def_id(h, assoc_name));
+
+    // Step 4: Lower generic args from the assoc segment (e.g., `Item<'a, T>`).
+    // Per §1.0 原則 6 "通用 > 特例": reuse `lower_ast_ty_to_mir_ty` rather
+    // than duplicating AST→MIR lowering.
+    let mut substs: Vec<Ty> = Vec::new();
+    substs.push(self_ty);
+    if let Some(crate::ast::GenericArgs::AngleBracketed(arg_list)) = &assoc_segment.args {
+        for arg in arg_list {
+            if let crate::ast::GenericArg::Type(ty) = arg {
+                substs.push(lower_ast_ty_to_mir_ty(ty, hir));
+            }
+            // Lifetimes in GAT projections are erased for Stage 18.53.
+            // Phase 3 will handle region-aware monomorphization.
+        }
+    }
+
+    match assoc_def_id {
+        Some(def_id) => Ty::new(TyKind::Projection(def_id, substs.into()), span),
+        None => {
+            // Graceful degradation: assoc type not found. Return Error so
+            // typeck reports it. Per §1.0 原則 4 "报错 > 静默".
+            Ty::new(TyKind::Error, span)
+        }
+    }
+}
+
+/// Stage 18.53 GATs Phase 2: Find the `DefId` of an associated type by name.
+///
+/// Searches all traits in the HIR for an associated type whose ident matches
+/// `assoc_name`. Returns the first match (Phase 2 limitation: doesn't
+/// disambiguate by trait — Phase 3 will add trait-scoped lookup).
+///
+/// Per §10 naming: `find_assoc_type_def_id` follows `<verb>_<noun>_<noun>` pattern.
+fn find_assoc_type_def_id(
+    hir: &HirCrate,
+    assoc_name: crate::lexer::Symbol,
+) -> Option<crate::hir::DefId> {
+    for (trait_def_id, owner) in &hir.owners {
+        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
+            for item in &t.items {
+                if let crate::hir::HirTraitItem::Type(assoc) = item {
+                    if assoc.ident.name == assoc_name {
+                        // Return the assoc type's owner DefId.
+                        // (The assoc type's HirId.owner is the trait's DefId
+                        // for now — Phase 3 will give assoc types their own DefId.)
+                        return Some(*trait_def_id);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Stage 16.53 (Task 11 Phase 2): Lower a HIR type to MIR type with generic

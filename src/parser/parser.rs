@@ -64,6 +64,36 @@ pub struct Parser<'a> {
     /// condition of `if` / `while` / `for` / `match` so that the `{` belongs
     /// to the block, not a struct literal in the condition.
     pub(super) no_struct_literal: bool,
+    /// Stage 18.53 GATs Phase 2: `>>` splitting state.
+    ///
+    /// When the parser encounters a `>>` (Shr) token while inside nested
+    /// generics (e.g., `Option<Vec<T>>` or `Option<Self::Item<'a>>`), it
+    /// must "split" the `>>` into two `>` tokens: one to close the inner
+    /// generics, and one to be consumed by the outer generics.
+    ///
+    /// When `Some(())`, the next call to `eat_gt_or_split` (or any consumer
+    /// of `>`) will treat the current `>>` as a single `>` and decrement
+    /// the split count instead of advancing past the whole token.
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one mechanism handles all nested
+    /// generics closing, no special-case branches per use site.
+    pub(super) shr_split: u32,
+    /// Stage 18.53 GATs Phase 2: Last-parsed `QSelf` from `try_parse_qself`.
+    ///
+    /// When `parse_path_with_ctx` detects a qualified path `<T as Trait>::Name`,
+    /// it calls `try_parse_qself` which returns `(QSelf, Path)`. The `Path`
+    /// alone is returned; the `QSelf` is stored here for the immediate next
+    /// caller (`parse_ty`) to pick up via `take_last_qself()` and wrap in
+    /// `Ty::Path(QSelf, Path, Span)`.
+    ///
+    /// This field is set ONLY by `try_parse_qself` and consumed ONLY by
+    /// `take_last_qself` — a single-use handoff. If `parse_ty` does not
+    /// call `take_last_qself`, the value is silently overwritten on the
+    /// next qself parse (no leak).
+    ///
+    /// Per §1.0 原則 3 "显式 > 隐式": qself info is explicit via this field,
+    /// not encoded in Path segments as a marker.
+    pub(super) last_qself: Option<crate::ast::QSelf>,
 }
 
 impl<'a> Parser<'a> {
@@ -74,6 +104,8 @@ impl<'a> Parser<'a> {
             interner,
             errors: Vec::new(),
             no_struct_literal: false,
+            shr_split: 0,
+            last_qself: None,
         }
     }
 
@@ -120,6 +152,64 @@ impl<'a> Parser<'a> {
         } else {
             false
         }
+    }
+
+    /// Stage 18.53 GATs Phase 2: Try to consume a `>` token, splitting a `>>`
+    /// if necessary.
+    ///
+    /// When the parser is inside nested generics (e.g., `Option<Vec<T>>` or
+    /// `Option<Self::Item<'a>>`), the lexer produces a single `>>` (Shr) token
+    /// where two `>` are needed. This method handles that split transparently:
+    ///
+    /// - If the next token is `>`, consume it and return true.
+    /// - If the next token is `>>` and we have an outstanding split
+    ///   (`shr_split > 0`), decrement the split count and return true
+    ///   (the `>>` token remains in the stream for the next consumer).
+    /// - If the next token is `>>` and `shr_split == 0`, set `shr_split = 1`
+    ///   (consuming one of the two `>`s in the `>>`) and return true. The
+    ///   remaining `>` will be visible to the next `eat_gt_or_split` call
+    ///   via the same `>>` token.
+    /// - Otherwise return false.
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one mechanism for all nested-generic
+    /// closing, replacing the prior ad-hoc `bump()` of `Shr` in
+    /// `parse_generics`.
+    pub(super) fn eat_gt_or_split(&mut self) -> bool {
+        match self.peek() {
+            TokenKind::Gt => {
+                self.bump();
+                true
+            }
+            TokenKind::Shr => {
+                if self.shr_split > 0 {
+                    // We already split this `>>` once — consume one more `>`
+                    // by decrementing the split count. The token advances
+                    // only when split count reaches 0.
+                    self.shr_split -= 1;
+                    if self.shr_split == 0 {
+                        self.bump();
+                    }
+                    true
+                } else {
+                    // First split of this `>>`: consume one `>`, leave the
+                    // other for the next caller.
+                    self.shr_split = 1;
+                    true
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Stage 18.53 GATs Phase 2: Take the last-parsed `QSelf` from
+    /// `try_parse_qself`, if any.
+    ///
+    /// This is a single-use handoff: once taken, the field is cleared.
+    /// Returns `None` if no qself was parsed since the last call.
+    ///
+    /// Per §10 naming: `take_last_qself` follows `<verb>_<adj>_<noun>` pattern.
+    pub(super) fn take_last_qself(&mut self) -> Option<crate::ast::QSelf> {
+        self.last_qself.take()
     }
 
     pub(super) fn expect(&mut self, expected: &TokenKind, what: &str) -> Span {

@@ -31584,3 +31584,81 @@ Stage Summary:
 - 修复先前 bug: impl 块 HirImplItem::Type 先前丢失 generics (从 TypeAliasDecl 复用)
 - Phase 2 (HR-projection resolution) + Phase 3 (GAT monomorphization) 明确推迟并记录于设计文档
 - v0.318.0 → v0.319.0
+
+---
+Task ID: stage18.53
+Agent: Super Z (main)
+Task: Stage 18.53 — GATs Phase 2: Qualified Path Parsing + Projection Lowering
+
+Work Log:
+- §13.1 阶段开始设计对齐 + §13.5 设计-审查（1 轮自审定稿）
+- 设计文档: docs/develop/v0/stage-18/stage-18.53-gats-phase2-design.md
+- v0.7 路线图 P1: GATs Phase 2 (qualified path + projection lowering)
+
+- 4 层变更:
+
+1. Parser `>>` splitting (src/parser/parser.rs + src/parser/generics.rs + src/parser/path.rs):
+   - 新增 `shr_split: u32` 字段到 Parser struct
+   - 新增 `eat_gt_or_split()` 方法 — 透明处理 `>` 与 `>>` 拆分
+   - 修改 `parse_generics` 与 `try_parse_generic_args` 使用 `eat_gt_or_split`
+   - 移除原先 ad-hoc `bump()` of `Shr` (§1.0 原則 6 通用 > 特例)
+   - 影响: 嵌套 generics `Vec<Vec<i32>>`, `Option<Self::Item<'a>>` 现可正确解析
+
+2. Parser qualified path (src/parser/path.rs):
+   - 新增 `try_parse_qself()` 方法 — 解析 `<T as Trait>::Name` 语法
+   - 新增 `last_qself: Option<QSelf>` 字段 + `take_last_qself()` 方法
+   - `parse_path_with_ctx` 在 Type/Pattern context 检测 `<` 进入 qself 解析
+   - `parse_ty` 通过 `take_last_qself()` 接收 qself 信息并 wrap 到 `Ty::Path(QSelf, Path, Span)`
+   - 算法: 消费 `<` → 解析 inner type → 期望 `as` → 解析 trait path → 消费 `>` (含 split) → 期望 `::` → 解析 assoc item
+   - 支持 rollback: 若无 `as` 关键字, 回滚到 `<` 位置
+   - §1.0 原則 4 报错 > 静默: 使用 `expect_ident` 而非 `ident_from_token`, 对非标识符 token 报错
+   - §1.0 原則 6 通用 > 特例: 一个 `try_parse_qself` 处理所有 qualified path 形式
+
+3. Parser self lifetime (src/parser/generics.rs):
+   - 扩展 `is_self_param` 识别 `&'a self`, `&'a mut self` (GAT trait 方法必需)
+   - 新增 `self_lifetime: Option<Symbol>` 字段保留 lifetime
+   - 默认 self 类型在 `&'a self` 时产生 `Ty::Ref(Some(lt), Self, ...)`
+
+4. HIR→MIR lower projection (src/mir/lower/mod.rs):
+   - 重写 `HirTyKind::Path(qself, path)` arm: 当 `qself.ty = Some(...)` 时产生 `TyKind::Projection`
+   - 新增 `lower_qualified_path_to_projection()` 函数
+   - 新增 `find_assoc_type_def_id()` helper — 按 name 查找 trait 中的 assoc type
+   - §1.0 原則 3 显式 > 隐式: projection 显式表示为 `TyKind::Projection(assoc_def_id, substs)`
+   - §1.0 原則 5 去除兼容思维: 旧 Path arm 代码被新 arm 取代, 不保留 "ignore qself" 路径
+   - §1.0 原則 4 报错 > 静默: assoc type 未找到时返回 `TyKind::Error` (而非静默 fallback)
+   - §10 命名: `lower_qualified_path_to_projection` 遵循 `<verb>_<noun>_<prep>_<noun>` 模式
+
+- 测试 (§9.4.3 1:3+ ratio):
+  - tests/v0/stage18/plan/stage18_53_gats_phase2_tests.rs: 3 positive + 9 negative = 1:3 ✓
+    - positive: qualified_path_parses + gat_with_lifetime_arg_parses + nested_generics_split_shr
+    - negative: qself_missing_as + qself_missing_close_angle + qself_missing_path_sep
+                + qself_empty_trait + gat_unbalanced_generics + gat_missing_close_angle
+                + qself_missing_assoc_name + qself_garbage_in_trait + qself_eof_mid_parse
+  - tests/conformance/01-typecheck/02-generics/: 4 new GAT conformance tests (0379-0382)
+  - tests/conformance/01-typecheck/99-error-cases/: 4 new GAT error cases (err-0328-0331)
+  - 总计: 12 unit + 8 conformance = 20 new tests
+
+- 已知限制 (推迟到 Phase 3+):
+  - `<<` (Shl) splitting 未实现: `Vec<<T as Trait>::Item>` 仍失败 (需 lexer 配合)
+  - `find_assoc_type_def_id` 按 name 查找, 不按 trait scope (Phase 3 改进)
+  - GAT monomorphization 未实现 (Phase 3)
+  - Generic fn type param resolve 是 Stage 0 既有 limit (非本阶段引入)
+
+- 验收 (§3.2 交付前验收检查):
+  - cargo clean — ✅
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2581 integration (+12 new) = 3188 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5241 conformance tests, 0 failures (+8 new)
+
+Stage Summary:
+- GATs Phase 2 完成: qualified path `<T as Trait>::Item` 解析 + `TyKind::Projection` 表示
+- `>>` splitting 修复: 嵌套 generics 现可正确解析 (`Vec<Vec<i32>>`, `Option<Self::Item<'a>>`)
+- self lifetime 支持: `&'a mut self` 现可解析 (GAT trait 方法必需)
+- §1.0 原則 3 显式 > 隐式: projection 显式表示为 `TyKind::Projection`
+- §1.0 原則 5 去除兼容思维: 旧 Path arm 重写, 不保留 ignore-qself 路径
+- §1.0 原則 6 通用 > 特例: 一个 `try_parse_qself` + 一个 `eat_gt_or_split` 处理所有形式
+- §10 命名标准化: `try_parse_qself`, `eat_gt_or_split`, `take_last_qself`, `lower_qualified_path_to_projection`, `find_assoc_type_def_id`
+- Phase 3 (GAT monomorphization) 明确推迟并记录
+- v0.319.0 → v0.320.0

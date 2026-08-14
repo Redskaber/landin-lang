@@ -1,0 +1,8 @@
+// CATEGORY: typecheck
+// DESCRIPTION: GAT missing close angle after comma (parse error)
+// EXPECTED: compile_error
+// ERROR_PATTERN: expected
+// SOURCE: Stage 18.53 GATs Phase 2
+
+trait C { type Item<'a>; fn f(&self) -> Self::Item<'a, T }
+fn main() { 0 }

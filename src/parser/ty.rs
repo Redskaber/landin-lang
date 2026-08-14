@@ -245,7 +245,12 @@ impl<'a> Parser<'a> {
             _ => {
                 // Path type (including KwSelf_ / KwSelfType as the type itself)
                 let path = self.parse_path();
-                Ty::Path(QSelf::default(), path, span)
+                // Stage 18.53 GATs Phase 2: If `parse_path` detected a
+                // qualified path `<T as Trait>::Name`, it stored the QSelf
+                // in `last_qself`. Pick it up here to wrap in Ty::Path.
+                // Per §1.0 原則 3 "显式 > 隐式": qself info is explicit.
+                let qself = self.take_last_qself().unwrap_or_default();
+                Ty::Path(qself, path, span)
             }
         }
     }
