@@ -31731,3 +31731,68 @@ Stage Summary:
 - 修复 43 个 conformance tests (Stage 0 limitation → 现可编译)
 - GAT Phase 3 (monomorphization) 现可推进 (generic param 已正确解析)
 - v0.320.0 → v0.321.0
+
+---
+Task ID: stage18.55
+Agent: Super Z (main)
+Task: Stage 18.55 — GATs Phase 3: `<<` Splitting + E2E Tests
+
+Work Log:
+- §13.1 阶段开始设计对齐 + §13.5 设计-审查（1 轮自审定稿）
+- 设计文档: docs/develop/v0/stage-18/stage-18.55-shl-splitting-design.md
+- v0.7 路线图 P1: GATs Phase 3 (`<<` splitting + e2e tests, 完成 GATs 任务)
+
+- 问题根因: `Vec<<T as Trait>::Item>` 解析失败, 因 lexer 产生 `<<` (Shl) 单 token
+- 修复方案: mirror `>>` splitting 设计, 新增 `eat_lt_or_split` 方法
+
+- 4 层变更:
+
+1. Parser 新增 `shl_split` 字段 (src/parser/parser.rs):
+   - `pub(super) shl_split: u32` — mirror of `shr_split`
+   - §1.0 原則 6 通用 > 特例: mirror 设计降低风险
+   - §1.0 原則 7 API 命名标准化: `shl_split` 对称 `shr_split`
+
+2. Parser 新增 `eat_lt_or_split()` 方法 (src/parser/parser.rs):
+   - mirror of `eat_gt_or_split`
+   - 处理 `<` 和 `<<` (Shl) 的 split
+   - §10 命名: `eat_lt_or_split` 对称 `eat_gt_or_split`
+
+3. try_parse_generic_args 更新 (src/parser/path.rs):
+   - lookahead 识别 `Shl` 作为 generic args 开始
+   - 内部使用 `eat_lt_or_split` 替代 `self.bump()`
+
+4. try_parse_qself 更新 (src/parser/path.rs):
+   - 接受 `<` 或 `<<` (with shl_split > 0) 作为 qself 开始
+   - 使用 `eat_lt_or_split` 替代 `self.bump()` 处理 `<`
+   - rollback 时恢复 `shl_split` 状态
+
+5. parse_path_with_ctx 更新 (src/parser/path.rs):
+   - qself 起始检测扩展: `<` 或 `<<` with `shl_split > 0`
+
+- 测试 (§9.4.3 1:3+ ratio):
+  - tests/v0/stage18/plan/stage18_55_gats_phase3_e2e_tests.rs: 3 positive + 9 negative = 1:3 ✓
+    - positive: nested_qualified_path_in_generic + gat_e2e_declare_impl_use + nested_gat_with_generics
+    - negative: shl_unbalanced_extra_lt + shl_eof_mid_parse + shl_garbage_after_lt
+                + shl_qself_missing_as + shl_empty_qself + shl_qself_missing_path_sep
+                + shl_qself_missing_assoc_name + undefined_type_with_shl_context + shl_gat_garbage_in_generics
+  - tests/conformance/01-typecheck/02-generics/: 3 new GAT conformance tests (0386-0388)
+  - tests/conformance/01-typecheck/99-error-cases/: 2 new GAT error cases (err-0332-0333)
+  - 总计: 12 unit + 5 conformance = 17 new tests
+
+- 验收 (§3.2 交付前验收检查):
+  - cargo clean — ✅
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2605 integration (+12 new) = 3212 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5249 conformance tests, 0 failures (+5 new)
+
+Stage Summary:
+- GATs Phase 3 完成: `<<` splitting 让 `Vec<<T as Trait>::Item>` 可解析
+- §1.0 原則 6 通用 > 特例: `eat_lt_or_split` mirror `eat_gt_or_split`
+- §1.0 原則 7 API 命名标准化: `shl_split` / `eat_lt_or_split` 对称命名
+- GATs v0.7 P1 任务完成: Phase 1 (AST/Parser/HIR) + Phase 2 (qualified path) + Phase 3 (`<<` splitting + e2e)
+- 17 个新测试, 全部 1:3+ ratio
+- 3212 unit + 5249 conformance = 8461 total tests, 0 failures
+- v0.321.0 → v0.322.0
+- 下一步: 增量编译 (v0.7 P1 下一任务)

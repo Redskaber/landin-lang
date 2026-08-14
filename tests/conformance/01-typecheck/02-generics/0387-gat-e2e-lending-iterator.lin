@@ -1,0 +1,15 @@
+// CATEGORY: typecheck
+// DESCRIPTION: GAT e2e LendingIterator pattern (Stage 18.55)
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.55 GATs Phase 3 e2e
+
+trait LendingIterator {
+    type Item<'a>;
+    fn next<'a>(&'a mut self) -> Self::Item<'a>;
+}
+struct Counter { count: i32 }
+impl LendingIterator for Counter {
+    type Item<'a> = i32;
+    fn next<'a>(&'a mut self) -> i32 { self.count += 1; self.count }
+}
+fn main() { 0 }

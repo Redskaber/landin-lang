@@ -78,6 +78,16 @@ pub struct Parser<'a> {
     /// Per §1.0 原則 6 "通用 > 特例": one mechanism handles all nested
     /// generics closing, no special-case branches per use site.
     pub(super) shr_split: u32,
+    /// Stage 18.55 GATs Phase 3: `<<` splitting state.
+    ///
+    /// Mirror of `shr_split` for `<<` (Shl) tokens. When the parser is
+    /// inside nested generics and encounters `<<` (e.g.,
+    /// `Vec<<T as Trait>::Item>`), the lexer produces a single `<<` token
+    /// where two `<` are needed. This field tracks the split state.
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": mirror of `shr_split` for symmetry.
+    /// Per §1.0 原則 7 "API 命名标准化": `shl_split` mirrors `shr_split`.
+    pub(super) shl_split: u32,
     /// Stage 18.53 GATs Phase 2: Last-parsed `QSelf` from `try_parse_qself`.
     ///
     /// When `parse_path_with_ctx` detects a qualified path `<T as Trait>::Name`,
@@ -105,6 +115,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             no_struct_literal: false,
             shr_split: 0,
+            shl_split: 0,
             last_qself: None,
         }
     }
@@ -210,6 +221,51 @@ impl<'a> Parser<'a> {
     /// Per §10 naming: `take_last_qself` follows `<verb>_<adj>_<noun>` pattern.
     pub(super) fn take_last_qself(&mut self) -> Option<crate::ast::QSelf> {
         self.last_qself.take()
+    }
+
+    /// Stage 18.55 GATs Phase 3: Try to consume a `<` token, splitting a `<<`
+    /// if necessary.
+    ///
+    /// Mirror of `eat_gt_or_split`. When the parser is inside nested generics
+    /// (e.g., `Vec<<T as Trait>::Item>`), the lexer produces a single `<<`
+    /// (Shl) token where two `<` are needed. This method handles that split
+    /// transparently:
+    ///
+    /// - If the next token is `<`, consume it and return true.
+    /// - If the next token is `<<` and `shl_split > 0`, decrement the split
+    ///   count and return true (the `<<` token remains for the next consumer).
+    /// - If the next token is `<<` and `shl_split == 0`, set `shl_split = 1`
+    ///   (consuming one of the two `<`s) and return true. The remaining `<`
+    ///   will be visible to the next `eat_lt_or_split` call.
+    /// - Otherwise return false.
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": mirror of `eat_gt_or_split` for symmetry.
+    /// Per §10 naming: `eat_lt_or_split` mirrors `eat_gt_or_split`.
+    pub(super) fn eat_lt_or_split(&mut self) -> bool {
+        match self.peek() {
+            TokenKind::Lt => {
+                self.bump();
+                true
+            }
+            TokenKind::Shl => {
+                if self.shl_split > 0 {
+                    // We already split this `<<` once — consume one more `<`
+                    // by decrementing the split count. The token advances
+                    // only when split count reaches 0.
+                    self.shl_split -= 1;
+                    if self.shl_split == 0 {
+                        self.bump();
+                    }
+                    true
+                } else {
+                    // First split of this `<<`: consume one `<`, leave the
+                    // other for the next caller.
+                    self.shl_split = 1;
+                    true
+                }
+            }
+            _ => false,
+        }
     }
 
     pub(super) fn expect(&mut self, expected: &TokenKind, what: &str) -> Span {

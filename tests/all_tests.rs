@@ -426,3 +426,5 @@ mod stage18_52_gats_tests;
 mod stage18_53_gats_phase2_tests;
 #[path = "v0/stage18/plan/stage18_54_generic_param_tests.rs"]
 mod stage18_54_generic_param_tests;
+#[path = "v0/stage18/plan/stage18_55_gats_phase3_e2e_tests.rs"]
+mod stage18_55_gats_phase3_e2e_tests;

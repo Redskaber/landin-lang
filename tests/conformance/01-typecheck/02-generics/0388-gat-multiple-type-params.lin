@@ -1,0 +1,9 @@
+// CATEGORY: typecheck
+// DESCRIPTION: GAT with multiple type params (Stage 18.55)
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.55 GATs Phase 3
+
+trait C { type Item<T, U>; }
+struct S;
+impl C for S { type Item<T, U> = (T, U); }
+fn main() { 0 }

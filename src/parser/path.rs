@@ -58,14 +58,22 @@ impl<'a> Parser<'a> {
         // qualified path forms. Only attempted in Type / Pattern context —
         // in Expr context, `<` is comparison.
         //
+        // Stage 18.55 GATs Phase 3: Also handle `<<` (Shl) when inside a
+        // `<<` split. When `shl_split > 0`, the current token is `<<` but
+        // we've already "consumed" one `<` — the next `eat_lt_or_split`
+        // will consume the other. So `try_parse_qself` should be attempted
+        // when peek is `<` OR when peek is `<<` with `shl_split > 0`.
+        //
         // Note: qself info (inner type + position) is stored on the wrapping
         // `Ty::Path(QSelf, Path, Span)`, NOT on `Path` itself. When called
         // from `parse_ty`, the caller checks for qself and wraps accordingly.
         // When called from non-type contexts (Expr, Pattern), qself info is
         // discarded (qualified paths in expression position require different
         // handling — turbofish + UFCS — which is out of scope for Phase 2).
-        if matches!(ctx, PathContext::Type | PathContext::Pattern) && *self.peek() == TokenKind::Lt
-        {
+        let is_qself_start = matches!(ctx, PathContext::Type | PathContext::Pattern)
+            && (*self.peek() == TokenKind::Lt
+                || (*self.peek() == TokenKind::Shl && self.shl_split > 0));
+        if is_qself_start {
             if let Some((_qself, path)) = self.try_parse_qself(ctx, span) {
                 // QSelf info is preserved via thread-local storage for
                 // parse_ty to pick up. See `take_last_qself` below.
@@ -214,10 +222,14 @@ impl<'a> Parser<'a> {
     /// `?` (Sized/`?Sized`), or a type keyword. If it's a numeric literal,
     /// string literal, or anything else, we treat `<` as comparison.
     pub(super) fn try_parse_generic_args(&mut self) -> Option<GenericArgs> {
-        if *self.peek() != TokenKind::Lt {
+        // Stage 18.55: Accept both `<` and `<<` (Shl) as generic args start.
+        // `<<` occurs in nested qualified paths like `Vec<<T as Trait>::Item>`.
+        if !matches!(self.peek(), TokenKind::Lt | TokenKind::Shl) {
             return None;
         }
         // Lookahead: only proceed if this looks like generic args, not comparison.
+        // When the current token is `<<`, peek_at(1) is the token after `<<`,
+        // which should be the start of the inner type (e.g., `T` in `<<T as C>::Item>`).
         let next = self.peek_at(1);
         let looks_like_generic = matches!(
             next,
@@ -237,11 +249,16 @@ impl<'a> Parser<'a> {
             | TokenKind::Gt       // `<>` (rare, e.g. `PhantomData<>`)
             | TokenKind::Shr // `>>`
             | TokenKind::Lt // `<<T as Trait>::Item>` (nested qualified path)
+            | TokenKind::Shl // `<<T as Trait>::Item>` (Stage 18.55: `<<` splitting)
         );
         if !looks_like_generic {
             return None;
         }
-        self.bump(); // <
+        // Stage 18.55: Use `eat_lt_or_split` to handle `<<` in nested generics
+        // like `Vec<<T as Trait>::Item>`. Per §1.0 原則 6 "通用 > 特例".
+        if !self.eat_lt_or_split() {
+            return None; // shouldn't happen (lookahead already verified `<` or `<<`)
+        }
         let mut args = Vec::new();
         while !matches!(self.peek(), TokenKind::Gt | TokenKind::Shr | TokenKind::Eof) {
             if let TokenKind::Lifetime(_) = self.peek() {
@@ -317,16 +334,29 @@ impl<'a> Parser<'a> {
         ctx: PathContext,
         span: crate::session::Span,
     ) -> Option<(QSelf, Path)> {
-        // Only attempt if the current token is `<`.
-        if *self.peek() != TokenKind::Lt {
+        // Stage 18.55: Accept both `<` and `<<` (with shl_split > 0) as qself start.
+        // When `shl_split > 0`, the current token is `<<` but we've already
+        // "consumed" one `<` — `eat_lt_or_split` will consume the other.
+        if !matches!(self.peek(), TokenKind::Lt | TokenKind::Shl) {
+            return None;
+        }
+        // If it's `<<` but shl_split == 0, this is a fresh `<<` — we should
+        // NOT attempt qself here (the caller `try_parse_generic_args` handles
+        // the initial `<<` split; qself is only attempted after the first `<`
+        // is consumed). So only proceed if `<` or `<<` with split > 0.
+        if *self.peek() == TokenKind::Shl && self.shl_split == 0 {
             return None;
         }
 
         // Save position for rollback if this isn't actually a qself.
         let saved_pos = self.pos;
         let saved_errors_len = self.errors.len();
+        let saved_shl_split = self.shl_split;
 
-        self.bump(); // <
+        // Stage 18.55: Use `eat_lt_or_split` to handle `<<` (when shl_split > 0,
+        // this consumes the second `<` of a `<<` split; otherwise it consumes
+        // a plain `<`).
+        self.eat_lt_or_split();
 
         // Parse the inner type T.
         let inner_ty = self.parse_ty();
@@ -335,6 +365,7 @@ impl<'a> Parser<'a> {
         if *self.peek() != TokenKind::KwAs {
             self.pos = saved_pos;
             self.errors.truncate(saved_errors_len);
+            self.shl_split = saved_shl_split;
             return None;
         }
         self.bump(); // as

@@ -1,0 +1,11 @@
+// CATEGORY: typecheck
+// DESCRIPTION: Nested qualified path with << splitting (Stage 18.55)
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.55 GATs Phase 3 << splitting
+
+trait C { type Item; }
+struct S;
+impl C for S { type Item = i32; }
+struct W<T> { v: T }
+fn f<T: C>() -> W<<T as C>::Item> { W { v: 0 } }
+fn main() { 0 }
