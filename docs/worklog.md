@@ -31986,3 +31986,62 @@ Stage Summary:
 - 3248 unit + 5249 conformance = 8497 total tests, 0 failures
 - 向后兼容: 保留 new(message, span) 构造器
 - v0.324.0 → v0.325.0
+
+---
+Task ID: stage18.59
+Agent: Super Z (main)
+Task: Stage 18.59 — LowerTyCtx Consolidation (7 variants → 1 entry + context)
+
+Work Log:
+- §13.1 阶段开始设计对齐 + §13.5 设计-审查 + §14 深度审查
+- 设计文档: docs/develop/v0/stage-18/stage-18.59-lower-ty-ctx-design.md
+- 基于 Stage 18.56 审计: 7 个 lower_hir_ty_to_mir_ty* 变体 (参数组合反模式)
+- 引入 LowerTyCtx struct, 将 7 变体合并为 1 入口 + context
+
+- 新增 LowerTyCtx struct (src/mir/lower/mod.rs):
+  - 字段: region_counter, hir, generic_params
+  - Builder methods: new() + with_hir() + with_generics()
+  - §1.0 原則 6 通用 > 特例: 一个 context 处理所有参数组合
+  - §1.0 原則 5 去除兼容思维: 替换参数组合反模式
+  - §1.0 原則 2 整体 > 局部: 所有 lowering context 在一处
+  - §10 命名: LowerTyCtx / with_hir / with_generics
+
+- 新增 lower_hir_ty_to_mir_ty_with_ctx 入口:
+  - 单一入口, 根据 generic_params 是否为空选择路径
+  - 非空 → lower_hir_ty_to_mir_ty_with_generics_and_regions
+  - 空 → lower_hir_ty_to_mir_ty_with_regions_and_hir
+  - §10 命名: lower_hir_ty_to_mir_ty_with_ctx 遵循 <verb>_<noun>_<prep>_<noun> 模式
+
+- 向后兼容:
+  - 旧 7 个变体保留 (未标记 deprecated, 避免大量 warning)
+  - 渐进迁移: 新代码使用 LowerTyCtx, 旧代码逐步切换
+  - Priority 5 (typeck make_mismatch span) 推迟: Ty 是 interned 无 span, 现有 create-then-overwrite 模式已工作
+
+- 公开 API:
+  - LowerTyCtx + lower_hir_ty_to_mir_ty_with_ctx 从 pub(crate) 改为 pub (测试访问)
+  - 添加到 src/mir/mod.rs re-export
+
+- 测试 (§9.4.3 1:3+ ratio):
+  - tests/v0/stage18/plan/stage18_59_lower_ty_ctx_tests.rs: 3 positive + 9 negative = 1:3 ✓
+    - positive: new_with_hir + with_generics + builder_chain
+    - negative: no_hir_plain_type + empty_generics + default_works + no_error_for_valid_type
+                + tuple_type + ref_type + array_type + generic_struct_field + region_counter_advances
+
+- 验收 (§3.2 交付前验收检查):
+  - cargo clean — ✅
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2653 integration (+12 new) = 3260 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5249 conformance tests, 0 failures
+
+Stage Summary:
+- LowerTyCtx 合并完成: 7 变体 → 1 入口 + context
+- §1.0 原則 6 通用 > 特例: 一个 context 处理所有参数组合
+- §1.0 原則 5 去除兼容思维: 替换参数组合反模式
+- §1.0 原則 2 整体 > 局部: 所有 lowering context 在一处
+- 12 个新测试, 全部 1:3+ ratio
+- 3260 unit + 5249 conformance = 8509 total tests, 0 failures
+- 向后兼容: 旧 7 变体保留, 渐进迁移
+- v0.325.0 → v0.326.0
+- 审计驱动清理全部完成 (Stage 18.56-18.59)

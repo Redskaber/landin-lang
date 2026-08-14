@@ -1823,6 +1823,86 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
     lower_hir_ty_to_mir_ty_with_hir(ty, None)
 }
 
+// ================================================================
+// Stage 18.59: LowerTyCtx — unified context for HIR→MIR type lowering
+// ================================================================
+
+/// Stage 18.59: Lowering context for HIR→MIR type lowering.
+///
+/// Replaces 7 `lower_hir_ty_to_mir_ty*` variant functions with a single
+/// context struct + entry point (`lower_hir_ty_to_mir_ty_with_ctx`).
+///
+/// ## Design Rationale
+///
+/// The 7 variants arose from multiplying 3 orthogonal optional parameters
+/// (regions / hir / generics) into named functions. With 3 dimensions we
+/// had 7 variants; adding a 4th would yield 15. `LowerTyCtx` collapses
+/// this into one struct with builder methods.
+///
+/// Per §1.0 原則 6 "通用 > 特例": one context handles all combinations.
+/// Per §1.0 原則 5 "去除兼容思维": replaces parameter-combination anti-pattern.
+/// Per §1.0 原則 2 "整体 > 局部": all lowering context in one place.
+/// Per §10 naming: `LowerTyCtx` follows `<Verb><Noun><Ctx>` pattern.
+pub struct LowerTyCtx<'a> {
+    pub region_counter: &'a mut u32,
+    pub hir: Option<&'a HirCrate>,
+    pub generic_params: &'a [crate::mir::ty::ParamTy],
+}
+
+impl<'a> LowerTyCtx<'a> {
+    /// Create a context with region_counter and defaults (no hir, no generics).
+    ///
+    /// Per §10 naming: `new` follows constructor convention.
+    pub fn new(region_counter: &'a mut u32) -> Self {
+        Self {
+            region_counter,
+            hir: None,
+            generic_params: &[],
+        }
+    }
+
+    /// Builder: set hir access.
+    ///
+    /// Per §10 naming: `with_hir` follows builder `<prep>_<noun>` pattern.
+    #[must_use]
+    pub fn with_hir(mut self, hir: Option<&'a HirCrate>) -> Self {
+        self.hir = hir;
+        self
+    }
+
+    /// Builder: set generic_params for generic type param resolution.
+    ///
+    /// Per §10 naming: `with_generics` follows builder `<prep>_<noun>` pattern.
+    #[must_use]
+    pub fn with_generics(mut self, generic_params: &'a [crate::mir::ty::ParamTy]) -> Self {
+        self.generic_params = generic_params;
+        self
+    }
+}
+
+/// Stage 18.59: Single entry point for HIR→MIR type lowering.
+///
+/// Replaces 7 `lower_hir_ty_to_mir_ty*` variants. Callers construct a
+/// `LowerTyCtx` and pass it here.
+///
+/// ## Dispatch Logic
+///
+/// - If `generic_params` is non-empty → delegates to the generics-aware path
+///   (`lower_hir_ty_to_mir_ty_with_generics_and_regions`).
+/// - Otherwise → delegates to the main path
+///   (`lower_hir_ty_to_mir_ty_with_regions_and_hir`).
+///
+/// Per §10 naming: `lower_hir_ty_to_mir_ty_with_ctx` follows
+/// `<verb>_<noun>_<prep>_<noun>` pattern.
+/// Per §1.0 原則 6 "通用 > 特例": one entry for all lowering contexts.
+pub fn lower_hir_ty_to_mir_ty_with_ctx(ty: &HirTy, cx: &mut LowerTyCtx) -> Ty {
+    if !cx.generic_params.is_empty() {
+        lower_hir_ty_to_mir_ty_with_generics_and_regions(ty, cx.generic_params, cx.region_counter)
+    } else {
+        lower_hir_ty_to_mir_ty_with_regions_and_hir(ty, cx.region_counter, cx.hir)
+    }
+}
+
 /// Stage 16.56: Lower a HIR type to MIR type with optional HIR access.
 ///
 /// This is the preferred entry point for callers that have HIR access.
