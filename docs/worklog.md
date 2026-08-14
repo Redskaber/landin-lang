@@ -12919,3 +12919,42 @@ Stage Summary:
 - v0.358.0: minor bump (cross-compilation Phase 3)
 - v0.7 路线图 P0/P1/P2 全部完成 (P3 自举远期)
 - 下一步: v0.2 规划 (单态化, 完整标准库)
+
+---
+Task ID: stage18.91
+Agent: Super Z (main)
+Task: Stage 18.91 — Incremental Compilation Timing Assessment. v0.358.0 → v0.359.0 (doc-only).
+
+Work Log:
+- §13.1 设计对齐: 用户要求评估增量编译时机
+- §14 深度审查: 分析项目现状 + 增量编译前置条件
+- 评估结论: ❌ 当前不适合实现增量编译
+  - 根本限制: 单文件编译 (compile(src: &str)), 无项目系统
+  - Param unify 不安全 → MIR hash 不稳定
+  - MIR 不可序列化 → 无磁盘缓存
+  - 用户此前要求移除 (Stage 18.83)
+  - ROI 低 (单文件 <1s, 4-6 stages 投入)
+- 纳入 v0.2 规划:
+  - Phase 1: 依赖图 (2 stages) — 前置: 项目系统
+  - Phase 2: MIR hash (2 stages) — 前置: 单态化
+  - Phase 3: 缓存存储 (2 stages) — 前置: MIR 序列化
+  - Phase 4: 增量重建 (2 stages) — 前置: Phase 1-3
+  - Phase 5: 测试 (1 stage) — 前置: Phase 4
+  - 总计: ~9 stages, v0.2 前置条件满足后
+- 推荐: 代替增量编译, 推进 v0.2 核心基础
+  1. 5 个错误类型 Kind enum (可独立完成)
+  2. criterion 基准测试 (性能基线)
+  3. v0.2 路线图文档
+- §3.2 验收: 文档 only, 无代码变更
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.91-incremental-compilation-assessment.md (新建)
+  - Cargo.toml: v0.358.0 → v0.359.0 (doc-only bump)
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.91 PASSED — 增量编译时机评估
+- 结论: 当前不适合, 纳入 v0.2 规划
+- 理由: 单文件限制 + Param unify + 无序列化 + ROI 低
+- v0.2 增量编译路线图: 5 Phases, ~9 stages
+- v0.359.0: doc-only bump (assessment report)
+- 下一步: v0.2 核心基础 (Kind enums / criterion / 路线图)
