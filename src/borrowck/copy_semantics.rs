@@ -10,7 +10,6 @@
 //! - `ty_is_copy_with_resolver` (precise Copy detection via TraitResolver)
 //! - `ty_is_copy_unified` (unified entry point, delegates to _with_resolver)
 
-
 /// Determine whether a type implements `Copy`.
 ///
 /// Per Landin semantics (mirroring Rust), the following types are Copy:
