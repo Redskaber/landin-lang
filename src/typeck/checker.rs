@@ -444,7 +444,7 @@ impl TypeChecker {
                     if let ProjectionElem::Field(field_id, field_ty) = elem {
                         let base_ty = resolve_place_type_with_table(base, mir);
                         if let TyKind::Adt(def_id, _) = &base_ty.kind {
-                            if let Some(fields) = table.get_struct_fields(def_id) {
+                            if let Some(fields) = table.struct_fields(def_id) {
                                 if let Some(resolved) = fields.get(field_id.0 as usize) {
                                     let current = unify.resolve(field_ty);
                                     match &current.kind {
@@ -539,7 +539,7 @@ impl TypeChecker {
                             {
                                 let base_ty = self.resolve_place_for_writeback(mir, base);
                                 if let TyKind::Adt(def_id, _) = &base_ty.kind {
-                                    if let Some(fields) = table.get_struct_fields(def_id) {
+                                    if let Some(fields) = table.struct_fields(def_id) {
                                         if let Some(field_ty) = fields.get(field_id.0 as usize) {
                                             if let Some(dest_local) =
                                                 mir.local_decls.get_mut(dest_id.0 as usize)

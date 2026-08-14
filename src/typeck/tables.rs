@@ -58,7 +58,7 @@ pub struct FieldTyTable {
 
 impl FieldTyTable {
     /// Look up the field types for a struct by DefId.
-    pub fn get_struct_fields(&self, def_id: &crate::hir::DefId) -> Option<&[Ty]> {
+    pub fn struct_fields(&self, def_id: &crate::hir::DefId) -> Option<&[Ty]> {
         self.struct_fields.get(def_id).map(|v| v.as_slice())
     }
 }

@@ -1902,13 +1902,12 @@ pub fn compile(src: &str) -> CompileResult {
     // Per §10 naming: `validate_pattern_arity` follows `validate_<noun>_<noun>`.
     validate_pattern_arity(&hir, &interner, &mut errors.typeck);
 
-    // Stage 18.73 P1-G: Validate that a `fn main()` exists.
-    // Per §1.0 原则 4 "报错 > 静默": missing main must be reported.
-    // Per §10 naming: `validate_main_exists` follows `validate_<noun>_<verb>`.
-    // NOTE: Only called from `compile_binary` (CLI path), not from `compile`
-    // (test/library path). This avoids false positives in test contexts where
-    // individual functions are compiled without a `main`.
-    // validate_main_exists(&hir, &interner, &mut errors.typeck);
+    // Stage 18.73 P1-G: Missing main check is inlined in `compile_binary`
+    // (CLI path), not here in `compile` (test/library path). This avoids
+    // false positives in test contexts where individual functions are
+    // compiled without a `main`. See `compile_binary` at line ~1961.
+    // Stage 18.78 P1-N7: `validate_main_exists` function was removed;
+    // the check is now inlined in `compile_binary`.
 
     // Stage 18.73 P1-E: Validate assignment targets.
     // Per §1.0 原则 4 "报错 > 静默": invalid assignment target must be reported.

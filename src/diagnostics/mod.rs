@@ -802,6 +802,9 @@ mod tests {
         assert_eq!(ErrorCode::Type.code(), "E400");
         assert_eq!(ErrorCode::Borrow.code(), "E500");
         assert_eq!(ErrorCode::Trait.code(), "E600");
+        // Stage 18.83: Added Codegen (E700) and Macro (E800) assertions.
+        assert_eq!(ErrorCode::Codegen.code(), "E700");
+        assert_eq!(ErrorCode::Macro.code(), "E800");
         assert_eq!(ErrorCode::Internal.code(), "E900");
     }
 

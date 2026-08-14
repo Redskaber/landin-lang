@@ -50,7 +50,9 @@ impl std::error::Error for CodegenError {
 /// Per §23: `CodegenResult` follows `<Noun>_<Noun>` pattern.
 pub type CodegenResult<T> = Result<T, CodegenError>;
 
-#[cfg(test)]
+// Stage 18.83: Tests use cstr_result from llvm::helpers, which requires
+// the llvm-backend feature. Gate the entire test module.
+#[cfg(all(test, feature = "llvm-backend"))]
 mod tests {
     use super::*;
 
