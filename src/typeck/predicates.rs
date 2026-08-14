@@ -131,6 +131,14 @@ pub(super) fn can_coerce(place_ty: &Ty, rvalue_ty: &Ty) -> bool {
         ) => inner_a == inner_b,
         // Same type: no coercion needed
         _ if place_ty.kind == rvalue_ty.kind => true,
+        // Stage 18.71: Str ↔ Ref(_, _, Str) — fat pointer vs thin str.
+        // The MIR lower may produce TyKind::Str for string literals but
+        // the local decl may be Ref(_, _, Str). Allow this coercion.
+        (TyKind::Str, TyKind::Ref(_, _, inner)) if matches!(inner.kind, TyKind::Str) => true,
+        (TyKind::Ref(_, _, inner), TyKind::Str) if matches!(inner.kind, TyKind::Str) => true,
+        // Stage 18.71: Adt with same DefId but different substs lengths —
+        // skip (generic type with unresolved substs, handled by type_has_unresolved_substs).
+        (TyKind::Adt(a_def, _), TyKind::Adt(b_def, _)) if a_def == b_def => true,
         // Everything else: not coercible
         _ => false,
     }

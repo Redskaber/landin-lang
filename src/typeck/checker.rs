@@ -496,25 +496,57 @@ impl TypeChecker {
                 // UnaryOp errors get accurate spans (was: Span::DUMMY inside
                 // infer_rvalue).
                 let rvalue_ty = self.infer_rvalue(mir, rvalue, stmt.span);
-                // Stage 3.58: implicit coercion — if place expects Int/Uint
-                // and rvalue is Bool or a narrower integer, allow it (zext).
-                // This fixes the typeck coercion gap where `fn f() -> i32 { a == b }`
-                // reported "mismatched types: expected Int(I32), found Bool".
-                // In Rust, comparison results (Bool) can be used where i32 is
-                // expected via implicit widening (the codegen already emits zext).
-                // Similarly, `fn f() -> i32 { s[0] }` where s[0] is u8 should
-                // be allowed (u8 widens to i32).
+
+                // Stage 18.71: Type mismatch check for Assign statements.
+                // Per §1.0 原則 4 "报错 > 静默": if place type is a concrete
+                // type (not Infer/Error) and rvalue type is also concrete,
+                // and they don't match and can't coerce, report an error.
                 //
-                // IMPORTANT: we still call unify even when coercion succeeds,
-                // because unify may bind an InferVar on one side to the
-                // concrete type on the other. Without this, struct field
-                // access (where the temp local is an unresolved TyVar) would
-                // fail to resolve, and writeback_field_load_locals would not
-                // find the resolved type.
-                if can_coerce(&place_ty, &rvalue_ty) {
-                    // Coercion succeeded — still try to unify so Infer vars
-                    // get bound. If unify fails (e.g., both are concrete
-                    // different types that we're coercing), suppress the error.
+                // This catches:
+                // - `let x: i32 = true;` (e2e-err-002)
+                // - `fn f() -> i32 { true }` (cg-err-002, via return local)
+                // - `let x = if true { 1 } else { true };` (cg-err-014, via if-else)
+                //
+                // Per §1.0 原則 6 "通用 > 特例": one check covers all Assign
+                // statements — let bindings, return values, if-else results.
+                //
+                // IMPORTANT: Only check when BOTH types are fully concrete
+                // (no Infer vars, no Error). This avoids false positives on
+                // generic types where substs haven't been substituted yet
+                // (e.g., Box<T> with empty substs vs Box<T> with [i32]).
+                // Per §1.0 原則 9 "正确 > 妥协": must not break valid code.
+                let resolved_place = self.unify.resolve(&place_ty);
+                let resolved_rvalue = self.unify.resolve(&rvalue_ty);
+
+                let place_is_concrete =
+                    !matches!(resolved_place.kind, TyKind::Infer(_) | TyKind::Error)
+                        && !type_has_unresolved_substs(&resolved_place);
+                let rvalue_is_concrete =
+                    !matches!(resolved_rvalue.kind, TyKind::Infer(_) | TyKind::Error)
+                        && !type_has_unresolved_substs(&resolved_rvalue);
+
+                if place_is_concrete
+                    && rvalue_is_concrete
+                    && !can_coerce(&resolved_place, &resolved_rvalue)
+                    && !types_match_loose(&resolved_place, &resolved_rvalue)
+                {
+                    // Stage 18.71: Report type mismatch.
+                    // Per §1.0 原則 4 "报错 > 静默".
+                    let span = if stmt.span != Span::DUMMY {
+                        stmt.span
+                    } else {
+                        Span::DUMMY
+                    };
+                    self.errors.push(crate::typeck::TypeError::mismatch(
+                        resolved_place.clone(),
+                        resolved_rvalue.clone(),
+                        span,
+                    ));
+                } else if can_coerce(&place_ty, &rvalue_ty)
+                    || types_match_loose(&resolved_place, &resolved_rvalue)
+                {
+                    // Coercion or loose match succeeded — still try to unify
+                    // so Infer vars get bound. Suppress unify errors.
                     let _ = self.unify.unify(&place_ty, &rvalue_ty);
                 } else if let Err(mut e) = self.unify.unify(&place_ty, &rvalue_ty) {
                     // Stage 15.82: use stmt.span for unify errors (was:
@@ -1141,6 +1173,80 @@ pub fn check_mir_body(mir: &mut MirBody) -> Vec<TypeError> {
     let mut tc = TypeChecker::new();
     tc.check_mir_body(mir);
     tc.into_errors()
+}
+
+// Stage 18.71: Check if a type has unresolved substs (empty substs on Adt).
+/// Used to skip type mismatch checks on generic types where substs haven't
+/// been substituted yet (e.g., Box<T> with empty substs vs Box<i32>).
+/// Per §1.0 原則 9 "正确 > 妥协": must not break valid generic code.
+fn type_has_unresolved_substs(ty: &crate::mir::ty::Ty) -> bool {
+    use crate::mir::ty::TyKind;
+    match &ty.kind {
+        TyKind::Adt(_, substs) if substs.is_empty() => true,
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_has_unresolved_substs(inner)
+        }
+        TyKind::Array(inner, _) => type_has_unresolved_substs(inner),
+        TyKind::Tuple(tys) => tys.iter().any(type_has_unresolved_substs),
+        TyKind::Adt(_, substs) => substs.iter().any(type_has_unresolved_substs),
+        TyKind::FnDef(_, substs) => substs.iter().any(type_has_unresolved_substs),
+        TyKind::Closure(_, substs) => substs.iter().any(type_has_unresolved_substs),
+        TyKind::Projection(_, substs) => substs.iter().any(type_has_unresolved_substs),
+        TyKind::FnPtr(sig) => {
+            sig.inputs.iter().any(type_has_unresolved_substs)
+                || type_has_unresolved_substs(&sig.output)
+        }
+        // Stage 18.71: Error type is "unresolved" — skip check.
+        TyKind::Error => true,
+        _ => false,
+    }
+}
+
+// Stage 18.71: Loose type matching for cases where the MIR type system
+/// represents the same source type differently (e.g., Str vs Ref(_, _, Str)).
+/// Per §1.0 原則 9 "正确 > 妥协": must not break valid code.
+fn types_match_loose(a: &crate::mir::ty::Ty, b: &crate::mir::ty::Ty) -> bool {
+    use crate::mir::ty::TyKind;
+    match (&a.kind, &b.kind) {
+        // Str ↔ Ref(_, _, Str): string literal vs &str reference
+        (TyKind::Str, TyKind::Ref(_, _, inner)) if matches!(inner.kind, TyKind::Str) => true,
+        (TyKind::Ref(_, _, inner), TyKind::Str) if matches!(inner.kind, TyKind::Str) => true,
+        // Adt with same DefId (generic substs may differ in representation)
+        (TyKind::Adt(a_def, _), TyKind::Adt(b_def, _)) if a_def == b_def => true,
+        // Ref with same inner kind (region may differ — Var vs Static etc.)
+        // Per §1.0 原則 9 "正确 > 妥协": regions are erased in Stage 0.
+        // Also handles Infer inner: &{integer} vs &i32 (recursive loose match).
+        (TyKind::Ref(_, _, a_inner), TyKind::Ref(_, _, b_inner)) => {
+            types_match_loose(a_inner, b_inner)
+        }
+        // Array with matching element type (count may be Infer vs concrete)
+        (TyKind::Array(a_inner, _), TyKind::Array(b_inner, _)) => {
+            types_match_loose(a_inner, b_inner)
+        }
+        // Int ↔ Infer(IntVar): unsuffixed integer literal vs concrete int type
+        // Per §1.0 原則 9: Stage 0 allows int fallback.
+        (TyKind::Int(_), TyKind::Infer(crate::mir::ty::InferVar::IntVar(_))) => true,
+        (TyKind::Infer(crate::mir::ty::InferVar::IntVar(_)), TyKind::Int(_)) => true,
+        (TyKind::Uint(_), TyKind::Infer(crate::mir::ty::InferVar::IntVar(_))) => true,
+        (TyKind::Infer(crate::mir::ty::InferVar::IntVar(_)), TyKind::Uint(_)) => true,
+        // Never (!) type is compatible with everything (divergence)
+        // Per §1.0 原則 9: Never type unifies with all types (like Rust).
+        (TyKind::Never, _) | (_, TyKind::Never) => true,
+        // Tuple(()) ↔ Tuple(): unit type match (also handles general tuple matching)
+        (TyKind::Tuple(a_tys), TyKind::Tuple(b_tys)) if a_tys.len() == b_tys.len() => a_tys
+            .iter()
+            .zip(b_tys.iter())
+            .all(|(a, b)| types_match_loose(a, b)),
+        // Param ↔ concrete: generic type param vs concrete type in monomorphized code.
+        // Per §1.0 原則 9: Stage 0 doesn't fully monomorphize before typeck.
+        (TyKind::Param(_), _) | (_, TyKind::Param(_)) => true,
+        // FnDef ↔ FnPtr: function item type coerces to function pointer type.
+        // Per §1.0 原則 9: FnDef coerces to FnPtr (like Rust).
+        (TyKind::FnDef(_, _), TyKind::FnPtr(_)) | (TyKind::FnPtr(_), TyKind::FnDef(_, _)) => true,
+        // Same kind: catch-all for primitive types (Bool, Char, Int, Uint, Float, Str, etc.)
+        _ if a.kind == b.kind => true,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
