@@ -1,9 +1,9 @@
 [package]
 name = "landin-compiler"
-version = "0.364.0"
+version = "0.365.0"
 edition = "2021"
 license = "MIT"
-description = "Landin programming language compiler — a Rust-inspired systems language with LLVM 19 backend"
+description = "Landin compiler — Rust-inspired systems language (LLVM 19 backend)"
 repository = "https://github.com/redskaber/landin-lang"
 authors = ["redskaber"]
 keywords = ["compiler", "language", "systems-programming"]

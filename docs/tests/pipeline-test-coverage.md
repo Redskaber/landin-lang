@@ -1,9 +1,9 @@
 # Landin Compiler — Pipeline Test Path Coverage Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-07-28
-> **Version**: v0.44.0
-> **Process**: stage-committee-process.md v3.21 §17.5
+> **Date**: 2026-08-11 (last updated Stage 18.96)
+> **Version**: v0.364.0
+> **Process**: stage-committee-process.md v5.0 §8 (doc sync) + §9 (test standards)
 > **Scope**: Full compiler pipeline — per-stage, inter-stage, and end-to-end path coverage
 
 ## 1. Compiler Pipeline Overview
@@ -13,21 +13,27 @@ Source Text
     │
     ▼ [Stage 0] Lexer ──→ Vec<Token> + Vec<LexError>
     │
+    ▼ [Stage 18.04] macro_expand ──→ Vec<Token> (expanded)
+    │
     ▼ [Stage 0] Parser ──→ Crate<ast::Item> + Vec<ParseError>
     │
     ▼ [Stage 1] HIR Lower ──→ HirCrate (owners, bodies, interner)
     │
-    ▼ [Stage 1] Resolve ──→ mutates HIR (Res on paths)
+    ▼ [Stage 1] Resolve ──→ mutates HIR (Res on paths, module tree, use imports)
     │
     ▼ [Stage 2] MIR Lower ──→ MirBody + UnificationTable
     │
     ▼ [Stage 2] TypeCheck ──→ mutates MIR (resolved types in local_decls)
     │
-    ▼ [Stage 2] BorrowCheck ──→ borrow errors
+    ▼ [Stage 2] BorrowCheck ──→ borrow errors (NLL + region inference + drop elaboration)
+    │
+    ▼ [Stage 15.7] Writeback ──→ type propagation + closure substitution
+    │
+    ▼ [Stage 18.96] MIR Optimization ──→ DCE → const_prop → DCE
     │
     ▼ [Stage 3] Codegen ──→ LLVM IR (TextEmitter or LLVMSysEmitter)
     │
-    ▼ [Stage 13] Link ──→ Object file → Executable
+    ▼ [Stage 13] Link ──→ Object file → Executable (via `cc`)
     │
     ▼ [Runtime] Execute ──→ stdout/stderr/exit code
 ```

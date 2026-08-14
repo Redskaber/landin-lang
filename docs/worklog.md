@@ -13220,3 +13220,84 @@ Stage Summary:
 - 640 lib + 2613 integration = 3253 unit tests, 0 failures
 - v0.364.0: minor bump (MIR optimization wiring)
 - 下一步: v0.2 P0 (单态化 / 项目系统)
+
+---
+Task ID: stage18.97
+Agent: Super Z (main)
+Task: Stage 18.97 — Documentation Sync Round 2 + Old Version Cleanup. v0.364.0 → v0.365.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 §8 文档同步规则 + §8.1 强制同步项 + §8.4.4 文档格式规范
+  → 发现 Stage 18.94-18.96 期间文档同步不完整:
+    - docs/tests/matrix.md 停留在 Stage 12.2 (v0.44.0)
+    - docs/tests/pipeline-test-coverage.md 停留在 v0.44.0
+    - docs/develop/v0/v0.1-capability-boundaries.md 停留在 v0.361.0
+    - Stage 18.94/18.95 缺少 design doc (违反 §8.1)
+    - v0.4/v0.5 roadmap headers 版本过时
+    - Cargo.toml description 仍可进一步简化
+- 清理旧版本 (用户要求):
+  → 创建 backup/landin-stage0-archive/ 长期备份路径
+  → 移动 upload/ 和 download/ 中的 landin-stage0-v0.* 包到 backup (237 files)
+  → upload/ 和 download/ 现在清洁 (无 landin-stage0 包)
+- 文档同步修复:
+  1. Cargo.toml description 进一步简化:
+     "Landin programming language compiler — a Rust-inspired systems language with LLVM 19 backend"
+     → "Landin compiler — Rust-inspired systems language (LLVM 19 backend)"
+     → 详细描述通过 README 等文档承载 (per 用户要求)
+  2. README.md 完全重写:
+     - v0.364.0 → v0.365.0
+     - 结构: Quick Start + CLI + Features + Testing + Architecture + Project Structure + Limitations + Roadmap + Documentation + Process
+     - 添加 Stage 18.96 MIR opt 到 supported features
+     - 添加 Stage 18.95/18.96 到 recent stage history
+     - 测试数量更新: 640 lib + 2613 integration + 2935 conformance = 6195
+  3. docs/tests/matrix.md 完全重写:
+     - 从 Stage 12.2 (v0.44.0) → v0.364.0
+     - 当前测试: 640 lib + 2613 integration + 2935 conformance + 7 fuzz = 6195
+     - Stage 0-17 历史保留 (per §8 — 历史记录不修改)
+     - Stage 18.1-18.96 完整列出
+     - 测试目录结构 + 运行命令 + §9 质量标准
+  4. docs/tests/pipeline-test-coverage.md 头部更新:
+     - v0.44.0 → v0.364.0
+     - 流水线图添加: macro_expand (Stage 18.04) + Writeback (Stage 15.7) + MIR Optimization (Stage 18.96)
+  5. docs/develop/v0/v0.1-capability-boundaries.md 更新:
+     - v0.361.0 → v0.364.0
+     - 添加 MIR optimization 到 supported features
+     - 测试数量更新: 638→640 lib, 2648→2613 integration (OOM-skipped runtime)
+  6. docs/develop/v0/v0.4-roadmap.md 头部更新:
+     - 添加 "last reviewed 2026-08-11, Stage 18.96"
+     - Version: v0.364.0 (current), v0.252.0 (when written)
+  7. docs/develop/v0/v0.5-roadmap.md 头部更新: 同上
+  8. 新建 docs/develop/v0/stage-18/stage-18.94-doc-sync-and-readme-rewrite-design.md:
+     - Stage 18.94 design doc (之前缺失, 违反 §8.1)
+     - 包含 §13.1 设计对齐 + MUV 拆分 + 验收
+  9. 新建 docs/develop/v0/stage-18/stage-18.95-traiterror-migration-design.md:
+     - Stage 18.95 design doc (之前缺失)
+     - 包含 §13.1 + §11 接口隔离 + §10 命名合规 + 验收
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2613 passed, 0 failed
+- §8 文档同步:
+  - Cargo.toml: v0.364.0 → v0.365.0 + description 简化
+  - README.md: v0.364.0 → v0.365.0
+  - RELEASE_NOTES.md: 添加 v0.365.0 条目 + doc-sync audit 表
+  - docs/tests/matrix.md: 完全重写
+  - docs/tests/pipeline-test-coverage.md: 头部 + 流水线图更新
+  - docs/develop/v0/v0.1-capability-boundaries.md: 版本 + features + 测试数量更新
+  - docs/develop/v0/v0.4-roadmap.md + v0.5-roadmap.md: 头部更新
+  - docs/develop/v0/stage-18/stage-18.94-*.md: 新建
+  - docs/develop/v0/stage-18/stage-18.95-*.md: 新建
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.97 PASSED — 文档同步第二轮 + 旧版本清理
+- 清理: 237 个旧版本包移至 backup/landin-stage0-archive/
+- 文档同步: 9 个文档更新/新建 (matrix, pipeline-coverage, boundaries, roadmaps, stage-18.94/95 design docs)
+- Cargo.toml description: ~120 字符 → ~70 字符
+- README.md: v0.364.0 → v0.365.0 完整重写
+- 640 lib + 2613 integration = 3253 unit tests, 0 failures
+- v0.365.0: minor bump (documentation sync round 2)
+- 文档同步审计完成, §8.1 全部强制同步项已对齐
+- 下一步: v0.2 P0 (单态化 / 项目系统)

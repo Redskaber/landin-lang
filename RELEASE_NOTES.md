@@ -1,9 +1,61 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.364.0
+**Current version**: v0.365.0
 **Date**: 2026-08-11
 **Test count**: 640 rust lib tests + 2613 integration tests + 2935 conformance tests + 7 fuzz tests = 6195 total (100% pass rate, 35 runtime tests skipped due to OOM)
+
+---
+## v0.365.0 — Stage 18.97 (Documentation Sync Round 2)
+
+### Overview
+
+Second-round documentation sync after Stage 18.96 (MIR opt wiring). The first
+sync round (Stage 18.94) was done at v0.361.0; many docs still referenced
+stale versions or missed the Stage 18.95/18.96 changes. This stage closes all
+remaining doc-sync gaps per §8.1.
+
+### Changes
+
+| Change | Details |
+|--------|---------|
+| Cargo.toml description simplified | "Landin compiler — Rust-inspired systems language (LLVM 19 backend)" (was ~120 chars) |
+| README.md rewritten | v0.364.0 → v0.365.0; full structure: Quick Start + CLI + Features + Testing + Architecture + Project Structure + Limitations + Roadmap + Documentation + Process |
+| docs/tests/matrix.md rewritten | Was Stage 12.2 (v0.44.0); now v0.364.0 with current 6195 test count |
+| docs/tests/pipeline-test-coverage.md updated | Header v0.44.0 → v0.364.0; pipeline diagram adds macro_expand + writeback + MIR opt stages |
+| docs/develop/v0/v0.1-capability-boundaries.md updated | v0.361.0 → v0.364.0; added MIR opt to supported features; test count updated |
+| docs/develop/v0/v0.4-roadmap.md header updated | Added "last reviewed 2026-08-11" + current version note |
+| docs/develop/v0/v0.5-roadmap.md header updated | Same as v0.4-roadmap |
+| Stage 18.94 design doc created | `stage-18.94-doc-sync-and-readme-rewrite-design.md` (was missing per §8.1) |
+| Stage 18.95 design doc created | `stage-18.95-traiterror-migration-design.md` (was missing per §8.1) |
+| Old versions cleaned | v0.1.0-v0.67.0 + upload/ moved to backup/landin-stage0-archive/ (237 files) |
+
+### Verification (§3.2)
+
+| Check | Result |
+|-------|--------|
+| `cargo build --features llvm-backend` | ✅ |
+| `cargo fmt --check` | ✅ exit 0 |
+| `cargo clippy --all-targets --features llvm-backend -- -D warnings` | ✅ 0 warnings |
+| `cargo test --features llvm-backend --lib` | ✅ 640 passed, 0 failed |
+| `cargo test --features llvm-backend --tests` (skip runtime) | ✅ 2613 passed, 0 failed |
+
+### Doc-Sync Audit (§8.1)
+
+| Document | Status |
+|----------|--------|
+| Cargo.toml version + description | ✅ v0.365.0, simplified |
+| README.md | ✅ Rewritten v0.365.0 |
+| RELEASE_NOTES.md | ✅ v0.365.0 (this entry) |
+| docs/tests/matrix.md | ✅ Rewritten v0.364.0 |
+| docs/tests/pipeline-test-coverage.md | ✅ Header updated v0.364.0 |
+| docs/develop/v0/v0.1-capability-boundaries.md | ✅ v0.364.0 |
+| docs/develop/v0/v0.4-roadmap.md | ✅ Header updated |
+| docs/develop/v0/v0.5-roadmap.md | ✅ Header updated |
+| docs/develop/v0/stage-18/stage-18.94-* | ✅ Created (was missing) |
+| docs/develop/v0/stage-18/stage-18.95-* | ✅ Created (was missing) |
+| docs/develop/v0/stage-18/stage-18.96-* | ✅ Exists (Stage 18.96) |
+| worklog.md | ✅ Stage 18.97 entry appended |
 
 ---
 ## v0.364.0 — Stage 18.96 (MIR Optimization Wiring)
