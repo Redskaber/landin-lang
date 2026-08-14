@@ -1,0 +1,7 @@
+// CATEGORY: 06-stdlib
+// DESCRIPTION: call to undefined Vec method push
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 18.69 negative test expansion
+
+fn main() { let v = [1, 2, 3]; v.push(4); }

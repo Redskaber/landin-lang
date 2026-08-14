@@ -1,0 +1,7 @@
+// CATEGORY: 06-stdlib
+// DESCRIPTION: use of undefined stdlib type Option
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 18.69 negative test expansion
+
+fn main() { let x: Option<i32> = Some(42); }

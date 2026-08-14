@@ -1,0 +1,7 @@
+// CATEGORY: 04-e2e
+// DESCRIPTION: access to non-existent struct field
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 18.69 negative test expansion
+
+struct S { x: i32 } fn main() { let s = S { x: 1 }; s.y; }

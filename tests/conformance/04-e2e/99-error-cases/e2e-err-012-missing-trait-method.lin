@@ -1,0 +1,7 @@
+// CATEGORY: 04-e2e
+// DESCRIPTION: trait impl missing required method
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 18.69 negative test expansion
+
+trait T { fn f(&self); } struct S; impl T for S { } fn main() { }

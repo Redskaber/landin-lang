@@ -1,0 +1,7 @@
+// CATEGORY: 03-codegen
+// DESCRIPTION: array element type mismatch
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 18.69 negative test expansion
+
+fn main() { let a: [i32; 3] = [1, true, 3]; }

@@ -1,0 +1,7 @@
+// CATEGORY: 07-integration
+// DESCRIPTION: call to undefined cross-module function
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 18.69 negative test expansion
+
+fn main() { helper::do_thing(); }

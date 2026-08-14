@@ -1,0 +1,7 @@
+// CATEGORY: 06-stdlib
+// DESCRIPTION: use of undefined HashMap
+// EXPECTED: compile_error
+// ERROR_PATTERN: error
+// SOURCE: Stage 18.69 negative test expansion
+
+fn main() { let m: HashMap<i32, i32> = HashMap::new(); }
