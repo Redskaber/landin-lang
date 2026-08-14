@@ -1,7 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: landin abi fn with ref
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.3 codegen expansion
-
-fn f(r:&i32)->i32{*r}
-fn main(){ let _ref_0 = 0; let _ = f(&_ref_0); }

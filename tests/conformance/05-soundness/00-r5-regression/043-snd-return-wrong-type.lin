@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: return wrong type
-// EXPECTED: compile_error
-// ERROR_PATTERN: mismatched types
-// SOURCE: Stage 11.8 batch expansion (Stage 18.71 fix (was Stage 0 limitation, now correctly rejected))
-
-fn main()->bool{42}

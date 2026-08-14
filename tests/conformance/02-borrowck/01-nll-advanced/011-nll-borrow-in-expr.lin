@@ -1,6 +1,0 @@
-// CATEGORY: borrowck
-// DESCRIPTION: NLL borrow in expression
-// EXPECTED: compile_ok
-// SOURCE: Stage 10.2 conformance expansion
-
-fn main() { let x = 1; let y = *(&x) + 1; }

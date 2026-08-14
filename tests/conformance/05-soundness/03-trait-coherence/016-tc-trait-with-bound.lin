@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: trait with bound
-// EXPECTED: compile_error
-// SOURCE: Stage 11.5 soundness expansion
-
-trait T{fn f(&self)->i32;} fn g<X:T>(x:X)->i32{x.f()}
-fn main(){ 0 }

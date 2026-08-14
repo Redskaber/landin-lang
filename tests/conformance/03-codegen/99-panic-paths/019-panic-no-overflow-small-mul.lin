@@ -1,6 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: no overflow small mul
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.3 codegen expansion
-
-fn main(){let x=3*4;}

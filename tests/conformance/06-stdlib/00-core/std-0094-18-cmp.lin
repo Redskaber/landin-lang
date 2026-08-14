@@ -1,6 +1,0 @@
-// CATEGORY: stdlib
-// DESCRIPTION: cmp variant 18
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn main(){let a=1;let _=a<2;}

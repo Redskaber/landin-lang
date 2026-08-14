@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: trait impl variant 1
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
-
-trait T{fn f(&self)->i32;} struct S; impl T for S{fn f(&self)->i32{1}}
-fn main(){ let _ = S; }

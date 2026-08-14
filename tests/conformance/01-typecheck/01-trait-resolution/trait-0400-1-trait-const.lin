@@ -1,7 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: trait const variant 1
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-trait T{const C:i32;}
-fn main(){ 0 }

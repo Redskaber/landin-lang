@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: closure basic variant 1
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
-
-fn main(){let f=|x:i32|x+1;}

@@ -1,7 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: trait lifetime variant 4
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-trait T<'a>{fn f(&self,x:&'a i32);}
-fn main(){ 0 }

@@ -1,8 +1,0 @@
-// CATEGORY: e2e
-// DESCRIPTION: linked list node
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.4 e2e expansion
-
-struct Node{val:i32,next:i32} fn new(v:i32)->Node{Node{val:v,next:-1}}
-impl Copy for Node {}
-fn main(){ let _ = Node{val: 0,next: 0}; let _ = new(0); }

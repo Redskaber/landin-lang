@@ -1,8 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: landin abi fn with struct
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.3 codegen expansion
-
-struct S{x:i32} fn f(s:S)->i32{s.x}
-impl Copy for S {}
-fn main(){ let _ = S{x: 0}; let _ = f(S{x: 0}); }

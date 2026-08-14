@@ -1,7 +1,0 @@
-// CATEGORY: borrowck
-// DESCRIPTION: assign immutable variant 1
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
-// SOURCE: Stage 11.9 batch expansion
-
-fn main(){let x=0;x=1;}

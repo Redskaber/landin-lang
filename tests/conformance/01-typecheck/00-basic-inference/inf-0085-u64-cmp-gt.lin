@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: u64 cmp gt inference
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn main(){let x:u64=1;let y:x<x;}

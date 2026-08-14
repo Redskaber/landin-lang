@@ -1,8 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: struct variant 14
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-struct S{x:i32}
-impl Copy for S {}
-fn main(){ let _ = S{x: 0}; }

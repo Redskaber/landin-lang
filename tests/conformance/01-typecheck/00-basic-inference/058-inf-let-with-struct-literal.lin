@@ -1,7 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: let with struct literal
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.1 typecheck expansion
-
-struct S { x: i32 } fn main() { let s = S { x: 42 }; }
-impl Copy for S {}

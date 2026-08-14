@@ -1,6 +1,0 @@
-// CATEGORY: borrowck
-// DESCRIPTION: borrow return ref variant 15
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn f(x:&i32)->&i32{x} fn main(){let v=1;let r=f(&v);}

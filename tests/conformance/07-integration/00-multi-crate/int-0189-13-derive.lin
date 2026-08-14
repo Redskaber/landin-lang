@@ -1,7 +1,0 @@
-// CATEGORY: integration
-// DESCRIPTION: derive variant 13
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-#[derive(Clone)] struct S;
-fn main(){ let _ = S; }

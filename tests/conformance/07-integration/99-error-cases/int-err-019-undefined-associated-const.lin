@@ -1,7 +1,0 @@
-// CATEGORY: integration
-// DESCRIPTION: missing associated const in impl
-// EXPECTED: compile_error
-// ERROR_PATTERN: associated const
-// SOURCE: Stage 18.69 — Stage 18.73 fix (was Stage 0 limitation, now correctly rejected): associated const completeness not checked
-
-trait T { const X: i32; } struct S; impl T for S { } fn main() {}

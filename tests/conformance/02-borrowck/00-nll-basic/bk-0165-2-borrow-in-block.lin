@@ -1,6 +1,0 @@
-// CATEGORY: borrowck
-// DESCRIPTION: borrow in block variant 2
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn main(){let x=1;{let r=&x;}}

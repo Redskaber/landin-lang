@@ -1,6 +1,0 @@
-// CATEGORY: borrowck
-// DESCRIPTION: NLL with break in loop
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.2 borrowck expansion
-
-fn main() { let x=1; loop { let r=&x; if *r>0 { break; } } }

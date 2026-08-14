@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: type mismatch variant 22
-// EXPECTED: compile_error
-// ERROR_PATTERN: mismatched types
-// SOURCE: Stage 11.9 batch expansion (Stage 18.71 fix (was Stage 0 limitation, now correctly rejected))
-
-fn main(){let x:i32=true;}

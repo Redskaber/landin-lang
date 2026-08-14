@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: struct without Drop
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.5 soundness expansion
-
-struct S{x:i32} fn main(){let s=S{x:1};}
-impl Copy for S {}

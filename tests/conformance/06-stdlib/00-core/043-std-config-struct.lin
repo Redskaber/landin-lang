@@ -1,7 +1,0 @@
-// CATEGORY: stdlib
-// DESCRIPTION: config struct
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.8 batch expansion
-
-struct Config{w:i32,h:i32,fs:bool} fn main()->Config{Config{w:800,h:600,fs:false}}
-impl Copy for Config {}

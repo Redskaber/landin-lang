@@ -1,6 +1,0 @@
-// CATEGORY: stdlib
-// DESCRIPTION: ends with
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.6+11.7 expansion
-
-fn main(){let s="hello";let _=s;}

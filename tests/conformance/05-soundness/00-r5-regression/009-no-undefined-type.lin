@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: undefined type should be caught
-// EXPECTED: compile_error
-// ERROR_PATTERN: cannot find
-// SOURCE: Stage 10.5 conformance expansion
-
-fn main() { let x: UndefinedType = 0; }

@@ -1,7 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: generic struct layout
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.3 codegen expansion
-
-struct S<T>{x:T}
-fn main(){ 0 }

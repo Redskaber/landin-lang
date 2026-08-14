@@ -1,6 +1,0 @@
-// CATEGORY: stdlib
-// DESCRIPTION: cell pattern
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.6+11.7 expansion
-
-struct Cell<T>{val:T} fn main(){let c=Cell{val:42};}

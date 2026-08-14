@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: trait with lifetime
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.5 soundness expansion
-
-trait T<'a>{fn f(&self,x:&'a i32);}
-fn main(){ 0 }

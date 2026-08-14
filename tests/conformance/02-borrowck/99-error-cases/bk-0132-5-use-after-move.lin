@@ -1,8 +1,0 @@
-// CATEGORY: borrowck
-// DESCRIPTION: use after move variant 5
-// EXPECTED: compile_ok
-// STAGE_13.17: Flipped from compile_error (self binding fix)
-// SOURCE: Stage 11.9 batch expansion
-
-struct S{x:i32} fn main(){let s=S{x:1};let s2=s;let s3=s;}
-impl Copy for S {}

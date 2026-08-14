@@ -1,7 +1,0 @@
-// CATEGORY: stdlib
-// DESCRIPTION: from into
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.6+11.7 expansion
-
-trait From<T>{fn from(v:T)->Self;} struct S{x:i32} impl From<i32> for S{fn from(v:i32)->Self{S{x:v}}}
-fn main(){ let _ = S{x: 0}; }

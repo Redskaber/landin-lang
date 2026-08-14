@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: generic enum variant construction
-// EXPECTED: compile_ok
-// SOURCE: Stage 10.8 typecheck expansion
-
-enum Opt<T> { Some(T), None } fn main() { let x = Opt::Some(42); }

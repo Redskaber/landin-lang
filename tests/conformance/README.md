@@ -1,56 +1,71 @@
-# Conformance Suite — Stage 0 Parse Tests
+# Conformance Suite
 
-Per blueprint `17-conformance-suite.md`, Stage 0 must ship with 600 parse
-conformance tests in `.lin` file format. Each test file has a header
-specifying the expected outcome (pass/fail) and optional metadata.
+The Landin compiler conformance suite contains **2,935 `.lin` test files**
+(Stage 18.79: deduplicated from 5,348). Each test file has a header specifying
+the expected outcome and optional metadata.
 
-## Directory structure
+## Test Header Format
+
+Each `.lin` file starts with comment lines specifying:
+
+```text
+// CATEGORY: <category>
+// DESCRIPTION: <short description>
+// EXPECTED: <compile_ok | compile_error | run_ok | run_panic>
+// ERROR_PATTERN: <substring>     (optional, for compile_error)
+// EXPECTED_STDOUT: <output>      (optional, for run_ok)
+// EXPECTED_EXIT_CODE: <code>     (optional, for run_ok/run_panic)
+// SOURCE: <stage and notes>      (optional)
+```
+
+## Directory Structure
 
 ```
 tests/conformance/
-├── 00-parse/                    # Stage 0 parse tests (target: 600)
-│   ├── 00-literals/             # Integer, float, char, string, byte literals
-│   ├── 01-operators/            # All operator forms + Pratt precedence
-│   ├── 02-control-flow/         # if/while/for/loop/match/break/continue
-│   ├── 03-patterns/             # Wild, ident, lit, struct, tuple, or, range
-│   ├── 04-types/                # Primitives, refs, ptrs, arrays, generics
-│   ├── 05-attributes/           # #[derive], #![inner], meta forms
-│   ├── 06-generics/             # Type params, bounds, where clauses
-│   ├── 07-closures/             # ||, |args|, move ||
-│   ├── 08-modules/              # mod, use (group/glob/alias), visibility
-│   ├── 09-error-recovery/       # Malformed programs that should error
-│   └── 10-realistic/            # Full programs (fib, iterators, traits)
-└── run_all.py                   # Test runner
+├── 00-parse/           # Lexer + parser tests
+├── 01-typecheck/       # Type checking + inference
+├── 02-borrowck/        # Borrow checker + NLL
+├── 03-codegen/         # LLVM IR + ABI + vtable
+├── 04-e2e/             # End-to-end compile + run
+├── 05-soundness/       # Regression + edge cases
+├── 06-stdlib/          # Standard library facade
+├── 07-integration/     # Multi-crate + feature gates
+└── run_all.py          # Test runner (Python)
 ```
 
-## Test file format
+## Running Tests
 
-Each `.lin` file starts with a header comment block:
+```bash
+# Build release binary first
+cargo build --release --features llvm-backend
 
-```landin
-//! PASS
-//! category: literals
-//! description: decimal integer literal
-//! source: lexer regression
-42
+# Run all conformance tests
+python3 tests/conformance/run_all.py
+
+# Verbose output
+python3 tests/conformance/run_all.py --verbose
 ```
 
-Or for expected-failure tests:
+## EXPECTED Values
 
-```landin
-//! FAIL
-//! category: error-recovery
-//! description: empty hex literal must error
-//! error_pattern: hexadecimal literal has no digits
-0x
-```
+| Value | Behavior |
+|-------|----------|
+| `compile_ok` | `--compile` must succeed (exit 0, no errors) |
+| `compile_error` | `--compile` must fail (exit != 0, error in stderr) |
+| `run_ok` | `--run` must succeed + stdout matches `EXPECTED_STDOUT` |
+| `run_panic` | `--run` must crash (non-zero exit, SIGSEGV/SIGABRT) |
 
-The runner (`run_all.py`) parses the header, runs the lexer+parser via the
-`landin-stage0` CLI, and verifies the expected outcome.
+## ERROR_PATTERN
 
-## Status
+For `compile_error` tests, `ERROR_PATTERN` specifies a substring that must
+appear in stderr. If omitted, any compile error is accepted (less precise).
 
-This is a **skeleton** — only a few representative tests have been ported.
-The remaining ~590 tests will be added incrementally during Stage 1 HIR work,
-since the conformance suite is also the natural regression-test bed for HIR
-lowering.
+## Test Count History
+
+| Stage | Count | Notes |
+|-------|-------|-------|
+| Stage 9 | ~600 | Initial parse tests |
+| Stage 10-11 | ~2,000 | Typeck + borrowck expansion |
+| Stage 14 | ~5,000 | Full pipeline coverage |
+| Stage 18.71-18.73 | 5,348 | P0/P1 typeck fixes |
+| **Stage 18.79** | **2,935** | **Deduplicated (removed 2,413 pure duplicates)** |

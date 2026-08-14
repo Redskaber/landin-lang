@@ -1,6 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: fn define variant 12
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn main()->i32{0}

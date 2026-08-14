@@ -1,5 +1,0 @@
-//! PASS
-//! category: closures
-//! description: closure returning int (block body)
-//! source: Stage 9.8 conformance expansion
-fn main() { let _ = || { 1 }; }

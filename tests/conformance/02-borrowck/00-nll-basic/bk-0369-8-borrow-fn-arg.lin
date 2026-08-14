@@ -1,6 +1,0 @@
-// CATEGORY: borrowck
-// DESCRIPTION: borrow fn arg variant 8
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn g(x:&i32){} fn main(){let v=1;g(&v);}

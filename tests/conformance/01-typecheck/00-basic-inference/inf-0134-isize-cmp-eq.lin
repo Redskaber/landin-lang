@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: isize cmp eq inference
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn main(){let x:isize=1;let y:x<x;}

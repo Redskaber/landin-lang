@@ -12937,3 +12937,54 @@ Stage Summary:
 - 3279 unit + 5348 conformance = 8627 total tests, 0 failures
 - v0.346.0: minor bump (P0 correctness patch)
 - 下一步: Stage 18.79 P2 测试体系 (CI 修复 + 去重 + fuzz + opt 语义)
+
+---
+Task ID: stage18.79
+Agent: Super Z (main)
+Task: Stage 18.79 — P2 Test System Cleanup. v0.346.0 → v0.347.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 Stage 18.78 gate-review + P2 测试体系计划
+- §13.5 设计-审查循环: 编写 stage-18.79-p2-test-system-cleanup-design.md
+- 3 个 P2 修复:
+  1. P2-A: CI trigger 语法验证
+     - .github/workflows/ci.yml: 审计报告称 `branches: ain, master]` 缺 `[`
+     - 实际验证: 字节是正确的 `[main, master]` (终端显示 artifact)
+     - YAML 解析成功: push/PR branches = ['main', 'master']
+     - 结论: CI trigger 实际是正确的, 审计误报
+  2. P2-B: conformance 测试去重
+     - scripts/stage18_79_dedup_conformance.py: 自动检测纯重复 (相同 body + 相同 EXPECTED)
+     - 删除 2413 个纯重复文件 (5348 → 2935)
+     - 保留每组 1 个规范测试 (按路径排序取最早)
+     - 所有 2935 个测试通过 (0 failures)
+  3. P2-D: 更新 tests/conformance/README.md
+     - 从 "~590 remaining" 更新为 "2,935 tests (Stage 18.79 deduplicated)"
+     - 添加 EXPECTED/ERROR_PATTERN/EXPECTED_STDOUT 协议文档
+     - 添加测试数量历史表
+- 不修复项 (需更大投入):
+  - P2-C: 替换 273 泛化 error 模式 — 需要逐个分析测试内容, 延后
+  - Fuzz 基础设施 — 需要独立 stage
+  - MIR opt 语义测试 — opt 未接线
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2641 integration = 3279 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.79-p2-test-system-cleanup-design.md (新建)
+  - docs/develop/v0/stage-18/stage-18.79-gate-review-round1.md (新建)
+  - tests/conformance/README.md (更新)
+  - Cargo.toml: v0.346.0 → v0.347.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.79 PASSED — P2 测试体系清理
+- 关键成果: conformance 测试去重 5348 → 2935 (删除 2413 纯重复, 45% 减少)
+  → 测试套件更精简, 维护成本大幅降低
+  → 有效覆盖率不变 (所有唯一测试场景保留)
+- CI trigger 验证: 实际正确 (审计误报, 终端显示 artifact)
+- README 更新: 反映 2935-test 现实 + 协议文档
+- 3279 unit + 2935 conformance = 6214 total tests, 0 failures
+- v0.347.0: minor bump (P2 test system cleanup)
+- 下一步: Stage 18.80 P2 API 命名 + Span::DUMMY 清理

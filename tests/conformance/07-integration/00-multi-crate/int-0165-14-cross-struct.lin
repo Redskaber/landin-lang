@@ -1,6 +1,0 @@
-// CATEGORY: integration
-// DESCRIPTION: cross struct variant 14
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-mod a{pub struct S{x:i32}} mod b{pub fn main()->a::S{a::S{x:42}}}

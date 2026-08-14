@@ -1,6 +1,0 @@
-// CATEGORY: stdlib
-// DESCRIPTION: cast ops
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.8 batch expansion
-
-fn main(){let x:i32=42;let y=x as i64;}

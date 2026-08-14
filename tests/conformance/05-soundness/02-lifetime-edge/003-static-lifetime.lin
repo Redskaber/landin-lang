@@ -1,6 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: static lifetime
-// EXPECTED: compile_ok
-// SOURCE: Stage 10.5 conformance expansion
-
-fn main() { let x: &'static str = "hello"; }

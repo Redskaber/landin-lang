@@ -1,6 +1,0 @@
-//! PASS
-//! category: modules
-//! description: pub use
-//! source: Stage 9.9 conformance expansion
-mod foo { pub struct bar; } pub use foo::bar;
-fn main(){ 0 }

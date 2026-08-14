@@ -1,6 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: primitive char no drop
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.5 soundness expansion
-
-fn main(){let x:char='a';}

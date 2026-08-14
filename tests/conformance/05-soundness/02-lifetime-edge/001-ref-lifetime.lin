@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: function with lifetime parameter
-// EXPECTED: compile_ok
-// SOURCE: Stage 10.5 conformance expansion
-
-fn f<'a>(x: &'a i32) -> &'a i32 { x }
-fn main(){ 0 }

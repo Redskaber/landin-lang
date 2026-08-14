@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: lifetime in closure capture
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.1 typecheck expansion
-
-fn main() { let x = 1; let r = &x; let f = || *r; }

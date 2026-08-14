@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: closure move variant 4
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
-
-fn main(){let x=1;let f=move||x;}

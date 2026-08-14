@@ -1,6 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: raw ptr null
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.5 soundness expansion
-
-fn main(){let p:*const i32=0 as *const i32;}

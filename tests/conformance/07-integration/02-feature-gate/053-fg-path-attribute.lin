@@ -1,6 +1,0 @@
-// CATEGORY: integration
-// DESCRIPTION: path attribute
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.6+11.7 expansion
-
-#[foo::bar] fn main(){ 0 }

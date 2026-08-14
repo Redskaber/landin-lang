@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: function returning reference
-// EXPECTED: compile_ok
-// SOURCE: Stage 10.5 conformance expansion
-
-fn f(x: &i32) -> &i32 { x }
-fn main(){ let _ref_0 = 0; let _ = f(&_ref_0); }

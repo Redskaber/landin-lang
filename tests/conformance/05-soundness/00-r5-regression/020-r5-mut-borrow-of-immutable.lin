@@ -1,6 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: mut borrow of immutable
-// EXPECTED: compile_error
-// SOURCE: Stage 11.5 soundness expansion
-
-fn main(){let x=0;let r=&mut x;}

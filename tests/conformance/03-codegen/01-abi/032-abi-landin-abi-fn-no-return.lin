@@ -1,6 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: landin abi fn no return
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.3 codegen expansion
-
-fn main(){ 0 }

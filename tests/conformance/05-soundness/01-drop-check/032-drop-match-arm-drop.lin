@@ -1,6 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: match arm drop
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.5 soundness expansion
-
-fn main(){match 1{0=>{let x=1;}_=>{}}}

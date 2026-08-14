@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: closure with explicit return type
-// EXPECTED: compile_error
-// SOURCE: Stage 11.1 typecheck expansion
-
-fn main() { let f = || -> i32 { 42 }; }

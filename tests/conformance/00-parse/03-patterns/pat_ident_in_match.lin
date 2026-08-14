@@ -1,6 +1,0 @@
-//! PASS
-//! category: patterns
-//! description: identifier in match arm
-//! source: Stage 9.4 conformance expansion
-fn f(x: i32) -> i32 { match x { y => y } }
-fn main(){ let _ = f(0); }

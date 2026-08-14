@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: generic struct with default type
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.1 typecheck expansion
-
-struct S<T = i32> { x: T } fn main() { let s = S { x: 42 }; }

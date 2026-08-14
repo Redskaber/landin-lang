@@ -1,6 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: div zero variant 22
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn main(){let x=1;let y=0;let _=x/y;}

@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: lifetime variant 24
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn f<'a>(x:&'a i32)->&'a i32{x}
-fn main(){ 0 }

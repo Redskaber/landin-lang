@@ -1,8 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: generic struct constructor
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
-// SOURCE: Stage 10.8 typecheck expansion (Stage 0 limitation)
-
-struct S<T> { x: T } impl<T> S<T> { fn new(x: T) -> Self { S { x } } }
-fn main(){ 0 }

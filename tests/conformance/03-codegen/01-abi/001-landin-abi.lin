@@ -1,6 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: default Landin ABI
-// EXPECTED: compile_ok
-// SOURCE: Stage 10.3 conformance expansion
-
-fn main() {}

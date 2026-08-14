@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: generic trait impl
-// EXPECTED: compile_ok
-// SOURCE: Stage 10.5 conformance expansion (Stage 0 limitation — compiler does not catch this)
-
-trait T { fn f(&self) -> i32; } struct S<A> { x: A } impl<A> T for S<A> { fn f(&self) -> i32 { 0 } }
-fn main(){ 0 }

@@ -1,6 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: shift overflow
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.5 soundness expansion
-
-fn main(){let x:i32=1;let y=x<<31;}

@@ -1,7 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: fn params variant 10
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn f(a:i32,b:i32)->i32{a+b}
-fn main(){ let _ = f(0,0); }

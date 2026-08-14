@@ -1,6 +1,0 @@
-//! FAIL
-//! category: error-recovery
-//! description: missing pattern in let must error
-//! error_pattern: expected
-//! source: Stage 9.10 conformance expansion
-fn main() { let = 1; }

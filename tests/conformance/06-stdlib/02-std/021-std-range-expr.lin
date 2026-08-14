@@ -1,6 +1,0 @@
-// CATEGORY: stdlib
-// DESCRIPTION: range expr
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.6+11.7 expansion
-
-fn main(){let r=0..10;}

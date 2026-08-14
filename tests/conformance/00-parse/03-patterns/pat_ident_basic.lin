@@ -1,5 +1,0 @@
-//! PASS
-//! category: patterns
-//! description: basic identifier pattern
-//! source: Stage 9.4 conformance expansion
-fn main() { let x = 1; }

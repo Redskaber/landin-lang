@@ -1,5 +1,0 @@
-//! PASS
-//! category: control-flow
-//! description: loop with break
-//! source: Stage 9.3 conformance expansion
-fn main() { loop { break; } }

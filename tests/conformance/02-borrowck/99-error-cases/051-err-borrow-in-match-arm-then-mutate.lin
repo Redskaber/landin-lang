@@ -1,9 +1,0 @@
-// CATEGORY: borrowck
-// DESCRIPTION: borrow in match arm then mutate
-// EXPECTED: compile_ok
-// ERROR_PATTERN: cannot
-// STAGE_13.17: Flipped from compile_error (self binding fix)
-// STAGE_14.81: Flipped BACK to compile_error (GAP-1 NLL soundness fix — transfer_borrow_ref for Operand::Copy)
-// SOURCE: Stage 11.2 borrowck expansion (Stage 0 limitation)
-
-fn main() { let mut x=1; match x { 1 => { let r=&x; } _ => { x=2; } } }

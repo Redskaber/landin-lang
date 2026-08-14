@@ -1,6 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: array variant 13
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn main(){let arr=[1,2,3];let x=arr[0];}

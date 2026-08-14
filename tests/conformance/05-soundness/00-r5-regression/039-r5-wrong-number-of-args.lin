@@ -1,6 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: wrong number of args
-// EXPECTED: compile_error
-// SOURCE: Stage 11.5 soundness expansion
-
-fn f(a:i32,b:i32){} fn main(){f(1);}

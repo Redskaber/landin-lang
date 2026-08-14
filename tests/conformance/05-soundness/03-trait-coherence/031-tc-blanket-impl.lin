@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: blanket impl
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation)
-
-trait T{fn f(&self)->i32;} impl<X> T for X{fn f(&self)->i32{0}}
-fn main(){ 0 }

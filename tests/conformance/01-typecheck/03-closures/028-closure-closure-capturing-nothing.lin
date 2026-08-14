@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: closure capturing nothing
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
-
-fn main() { let f = || 42; }

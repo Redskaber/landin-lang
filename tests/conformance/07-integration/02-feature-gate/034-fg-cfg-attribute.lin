@@ -1,6 +1,0 @@
-// CATEGORY: integration
-// DESCRIPTION: cfg attribute
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.6+11.7 expansion
-
-#[cfg(test)] fn main(){ 0 }

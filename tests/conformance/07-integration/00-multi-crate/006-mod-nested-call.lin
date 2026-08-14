@@ -1,6 +1,0 @@
-// CATEGORY: integration
-// DESCRIPTION: call function in nested module
-// EXPECTED: compile_ok
-// SOURCE: Stage 10.7 conformance expansion (Stage 0 limitation — compiler does not catch this)
-
-mod a { pub mod b { pub fn f() -> i32 { 42 } } } fn main() { a::b::f(); }

@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: let with if expr
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.1 typecheck expansion
-
-fn main() { let x = if true { 1 } else { 2 }; }

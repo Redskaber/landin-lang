@@ -1,7 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: enum variant 14
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-enum E{A,B}
-fn main(){ let _ = E::A; }

@@ -1,6 +1,0 @@
-// CATEGORY: stdlib
-// DESCRIPTION: bit variant 15
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn main(){let a=0xff;let _=a&0x0f;}

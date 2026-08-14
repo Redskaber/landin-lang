@@ -1,6 +1,0 @@
-// CATEGORY: e2e
-// DESCRIPTION: compound assign
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.8 batch expansion
-
-fn main(){let mut x=10;x+=5;}

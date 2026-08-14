@@ -1,6 +1,0 @@
-// CATEGORY: e2e
-// DESCRIPTION: loop variant 4
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn main(){loop{break;}}

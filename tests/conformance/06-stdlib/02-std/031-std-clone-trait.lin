@@ -1,8 +1,0 @@
-// CATEGORY: stdlib
-// DESCRIPTION: clone trait
-// EXPECTED: compile_ok
-// STAGE_13.17: Flipped from compile_error (self binding fix)
-// SOURCE: Stage 11.6+11.7 expansion
-
-trait Clone{fn clone(&self)->Self;} struct S{x:i32} impl Clone for S{fn clone(&self)->Self{S{x:self.x}}}
-fn main(){ let _ = S{x: 0}; }

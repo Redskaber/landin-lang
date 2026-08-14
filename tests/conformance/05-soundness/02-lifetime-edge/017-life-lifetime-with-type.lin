@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: lifetime with type
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.5 soundness expansion (Stage 0 limitation); Stage 18.54 fixed generic type param resolution
-
-fn f<'a,T>(x:&'a T)->&'a T{x}
-fn main(){ 0 }

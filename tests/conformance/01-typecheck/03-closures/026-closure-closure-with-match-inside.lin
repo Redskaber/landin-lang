@@ -1,6 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: closure with match inside
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
-
-fn main() { let f = |x: i32| match x { 0 => 1, _ => 0 }; }

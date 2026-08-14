@@ -1,7 +1,0 @@
-// CATEGORY: soundness
-// DESCRIPTION: struct with lifetime
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.5 soundness expansion
-
-struct S<'a>{x:&'a i32}
-fn main(){ let _ref_0 = 0; let _ = S{x:&_ref_0}; }

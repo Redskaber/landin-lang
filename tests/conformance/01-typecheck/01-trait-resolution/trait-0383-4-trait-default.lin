@@ -1,8 +1,0 @@
-// CATEGORY: typecheck
-// DESCRIPTION: trait default variant 4
-// EXPECTED: compile_ok
-
-// SOURCE: Stage 11.9 batch expansion
-
-trait T{fn f(&self)->i32{0}} struct S; impl T for S{}
-fn main(){ let _ = S; }

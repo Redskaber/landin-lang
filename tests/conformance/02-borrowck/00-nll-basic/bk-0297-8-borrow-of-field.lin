@@ -1,7 +1,0 @@
-// CATEGORY: borrowck
-// DESCRIPTION: borrow of field variant 8
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-struct S{x:i32} fn main(){let s=S{x:1};let r=&s.x;}
-impl Copy for S {}

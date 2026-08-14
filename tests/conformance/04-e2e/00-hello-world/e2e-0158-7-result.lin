@@ -1,7 +1,0 @@
-// CATEGORY: e2e
-// DESCRIPTION: result variant 7
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-enum Res{Ok(i32),Err(i32)} fn f(r:Res)->i32{match r{Res::Ok(v)=>v,Res::Err(e)=>e}}
-fn main(){ let _ = Res::Ok(0); }

@@ -1,6 +1,0 @@
-//! PASS
-//! category: patterns
-//! description: range with at-binding
-//! source: Stage 9.4 conformance expansion
-fn f(x: i32) -> i32 { match x { n @ 1..=10 => n, _ => 0 } }
-fn main(){ let _ = f(0); }

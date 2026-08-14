@@ -1,6 +1,0 @@
-// CATEGORY: codegen
-// DESCRIPTION: store load variant 10
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion
-
-fn main(){let x=1;let y=x;}
