@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: invalid cast str to int (Stage 18.73 P1-F)
+// EXPECTED: compile_error
+// ERROR_PATTERN: invalid cast
+// SOURCE: Stage 18.73 — P1-F: cast type check
+
+fn main() { let x = "hello" as i32; }

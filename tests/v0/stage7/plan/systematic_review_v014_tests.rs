@@ -71,6 +71,7 @@ fn stage7_9_td018_user_trait_dyn_active() {
             is_unsafe: false,
             supertraits: vec![],
             default_methods: vec![],
+            associated_consts: vec![],
         },
     );
     resolver.trait_by_name.insert(tn, DefId(100));
@@ -83,6 +84,7 @@ fn stage7_9_td018_user_trait_dyn_active() {
             methods: vec![mn],
             is_unsafe: false,
             span: Span::DUMMY,
+            associated_consts: Vec::new(),
         },
     );
     resolver.impl_by_trait_and_type.insert((tn, ty), DefId(101));

@@ -1,6 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: array index type mismatch
-// EXPECTED: compile_ok
-// SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — typeck does not catch this error)
+// EXPECTED: compile_error
+// ERROR_PATTERN: array index must be an integer
+// SOURCE: Stage 10.1 conformance expansion (Stage 18.73 fix (was Stage 0 limitation, now correctly rejected) — typeck does not catch this error)
 
 fn main() { let arr = [1, 2, 3]; let _ = arr[true]; }

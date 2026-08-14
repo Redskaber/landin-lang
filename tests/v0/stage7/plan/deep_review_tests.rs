@@ -122,6 +122,7 @@ fn stage7_deep_review_td018_user_trait_dyn_active() {
             is_unsafe: false,
             supertraits: Vec::new(),
             default_methods: Vec::new(),
+            associated_consts: Vec::new(),
         },
     );
     resolver.trait_by_name.insert(trait_name, DefId(999));
@@ -134,6 +135,7 @@ fn stage7_deep_review_td018_user_trait_dyn_active() {
             methods: vec![method_name],
             is_unsafe: false,
             span: Span::DUMMY,
+            associated_consts: Vec::new(),
         },
     );
     resolver
@@ -239,6 +241,7 @@ fn stage7_deep_review_design_alignment_dyn_trait() {
             is_unsafe: false,
             supertraits: Vec::new(),
             default_methods: Vec::new(),
+            associated_consts: Vec::new(),
         },
     );
     resolver.trait_by_name.insert(trait_name, DefId(500));
@@ -251,6 +254,7 @@ fn stage7_deep_review_design_alignment_dyn_trait() {
             methods: vec![],
             is_unsafe: false,
             span: Span::DUMMY,
+            associated_consts: Vec::new(),
         },
     );
     resolver

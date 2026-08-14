@@ -1,6 +1,7 @@
 // CATEGORY: codegen
 // DESCRIPTION: array index with non-integer type
-// EXPECTED: compile_ok
-// SOURCE: Stage 18.69 — Stage 0 limitation: typeck does not validate array index type
+// EXPECTED: compile_error
+// ERROR_PATTERN: array index must be an integer
+// SOURCE: Stage 18.69 — Stage 18.73 fix (was Stage 0 limitation, now correctly rejected): typeck does not validate array index type
 
 fn main() { let a: [i32; 3] = [1, 2, 3]; let b = a[true]; }

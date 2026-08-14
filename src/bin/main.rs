@@ -105,7 +105,8 @@ fn main() {
 
     // If --compile, --emit-llvm-ir, --emit-obj, --emit-bin, or --run, run full pipeline
     if cli.compile || cli.emit_llvm_ir || cli.emit_obj || cli.emit_bin || cli.run {
-        let result = driver::compile(&source_file.src);
+        // Stage 18.73 P1-G: Use compile_binary to validate main exists.
+        let result = driver::compile_binary(&source_file.src);
 
         if result.has_errors() {
             // Stage 15.19: Color output with --color flag (auto/always/never).

@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: assign to call result (Stage 18.73 P1-E)
+// EXPECTED: compile_error
+// ERROR_PATTERN: invalid assignment target
+// SOURCE: Stage 18.73 — P1-E: assignment target check
+
+fn f() -> i32 { 0 } fn main() { f() = 1; }

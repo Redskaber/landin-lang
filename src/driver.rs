@@ -98,11 +98,27 @@ impl TraitError {
                     .iter()
                     .map(|s| interner.try_resolve(s).unwrap_or("?"))
                     .collect();
+                // Stage 18.73 P1-H: Also format missing associated consts.
+                let missing_consts: Vec<&str> = inc
+                    .missing_associated_consts
+                    .iter()
+                    .map(|s| interner.try_resolve(s).unwrap_or("?"))
+                    .collect();
+                let mut parts: Vec<String> = Vec::new();
+                if !missing.is_empty() {
+                    parts.push(format!("method(s): {}", missing.join(", ")));
+                }
+                if !missing_consts.is_empty() {
+                    parts.push(format!(
+                        "associated const(s): {}",
+                        missing_consts.join(", ")
+                    ));
+                }
                 format!(
-                    "impl `{}` for `{}` is missing method(s): {}",
+                    "impl `{}` for `{}` is missing {}",
                     trait_str,
                     type_str,
-                    missing.join(", ")
+                    parts.join("; ")
                 )
             }
         }
@@ -131,8 +147,9 @@ impl TraitError {
             }
             TraitError::Incomplete(inc) => {
                 format!(
-                    "impl `<unknown>` for `<unknown>` is missing method(s): <{} method(s)>",
-                    inc.missing_methods.len()
+                    "impl `<unknown>` for `<unknown>` is missing <{} method(s), {} associated const(s)>",
+                    inc.missing_methods.len(),
+                    inc.missing_associated_consts.len()
                 )
             }
         }
@@ -1836,6 +1853,24 @@ pub fn compile(src: &str) -> CompileResult {
     // Per §10 naming: `validate_pattern_arity` follows `validate_<noun>_<noun>`.
     validate_pattern_arity(&hir, &interner, &mut errors.typeck);
 
+    // Stage 18.73 P1-G: Validate that a `fn main()` exists.
+    // Per §1.0 原则 4 "报错 > 静默": missing main must be reported.
+    // Per §10 naming: `validate_main_exists` follows `validate_<noun>_<verb>`.
+    // NOTE: Only called from `compile_binary` (CLI path), not from `compile`
+    // (test/library path). This avoids false positives in test contexts where
+    // individual functions are compiled without a `main`.
+    // validate_main_exists(&hir, &interner, &mut errors.typeck);
+
+    // Stage 18.73 P1-E: Validate assignment targets.
+    // Per §1.0 原则 4 "报错 > 静默": invalid assignment target must be reported.
+    // Per §10 naming: `validate_assignment_targets` follows `validate_<noun>_<noun>`.
+    validate_assignment_targets(&hir, &interner, &mut errors.typeck);
+
+    // Stage 18.73 P1-F: Validate cast types.
+    // Per §1.0 原则 4 "报错 > 静默": invalid cast must be reported.
+    // Per §10 naming: `validate_cast_types` follows `validate_<noun>_<noun>`.
+    validate_cast_types(&hir, &interner, &mut errors.typeck);
+
     // Stage 18.21: Register __landin_println etc. in fn_name_by_def_id
     // so codegen can resolve the function name. The resolver returns a
     // synthetic DefId for __landin_ functions; we map each to its name.
@@ -1864,6 +1899,43 @@ pub fn compile(src: &str) -> CompileResult {
         type_interner: crate::mir::ty_interner::TypeInterner::new(),
         synthesized_closure_mir_bodies,
     }
+}
+
+/// Stage 18.73 P1-G: Compile a source file as a binary (entry point required).
+///
+/// Like `compile`, but additionally validates that a `fn main()` exists.
+/// Used by the CLI (`--compile`/`--run`/`--emit-bin`) where an entry point
+/// is mandatory. Test contexts use `compile` (no main requirement).
+///
+/// Per §1.0 原則 4 "报错 > 静默": missing main must be reported explicitly.
+/// Per §10 naming: `compile_binary` follows `<verb>_<noun>` pattern.
+pub fn compile_binary(src: &str) -> CompileResult {
+    let mut result = compile(src);
+    // Stage 18.73 P1-G: Validate main exists.
+    let main_spur_opt = result.interner.get("main");
+    let has_main = main_spur_opt
+        .map(|main_spur| {
+            if let Some(hir) = &result.hir {
+                hir.owners.iter().any(|(_, owner)| {
+                    if let crate::hir::OwnerNode::Item(HirItem::Fn(f)) = owner {
+                        f.ident.name == main_spur
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                false
+            }
+        })
+        .unwrap_or(false);
+    if !has_main {
+        result.errors.typeck.push(TypeError::new(
+            "missing `main` function — every program must have a `fn main()` entry point"
+                .to_string(),
+            crate::session::Span::DUMMY,
+        ));
+    }
+    result
 }
 
 /// Extract the return type from an owner node, if it's a fn/const/static.
@@ -2412,6 +2484,377 @@ fn validate_pattern_arity(hir: &HirCrate, _interner: &lasso::Rodeo, errors: &mut
                 }
             }
         }
+    }
+}
+
+/// Stage 18.73 P1-G: Validate that a `fn main()` function exists in the crate.
+///
+/// Per §1.0 原则 4 "报错 > 静默": missing main must be reported explicitly,
+/// not silently produce a confusing codegen error.
+/// Per §10 naming: `validate_main_exists` follows `validate_<noun>_<verb>`.
+///
+/// NOTE: This function is kept for documentation purposes. The actual
+/// missing-main check is inlined in `compile_binary` (which has access
+/// to the CompileResult after compilation). This avoids borrow issues
+/// with the interner.
+#[allow(dead_code)]
+fn validate_main_exists(hir: &HirCrate, interner: &lasso::Rodeo, errors: &mut Vec<TypeError>) {
+    // "main" should be interned by the parser if any fn main() exists.
+    // We use try_resolve to check if "main" is interned, then compare Spurs.
+    // If "main" is NOT interned at all, then no fn main() exists.
+    let main_spur_opt = interner.get("main");
+    let has_main = main_spur_opt
+        .map(|main_spur| {
+            hir.owners.iter().any(|(_, owner)| {
+                if let crate::hir::OwnerNode::Item(HirItem::Fn(f)) = owner {
+                    f.ident.name == main_spur
+                } else {
+                    false
+                }
+            })
+        })
+        .unwrap_or(false);
+    if !has_main {
+        errors.push(TypeError::new(
+            "missing `main` function — every program must have a `fn main()` entry point"
+                .to_string(),
+            crate::session::Span::DUMMY,
+        ));
+    }
+}
+
+/// Stage 18.73 P1-E: Validate assignment targets.
+///
+/// For each `lhs = rhs` expression, check that `lhs` is a valid place
+/// expression (local, field access, deref, index). Non-place targets
+/// like `42 = 99` or `f() = 1` are rejected.
+///
+/// Per §1.0 原则 4 "报错 > 静默": invalid assignment target must be reported.
+/// Per §1.0 原则 6 "通用 > 特例": one validator walks all bodies.
+/// Per §10 naming: `validate_assignment_targets` follows `validate_<noun>_<noun>`.
+fn validate_assignment_targets(
+    hir: &HirCrate,
+    _interner: &lasso::Rodeo,
+    errors: &mut Vec<TypeError>,
+) {
+    use crate::hir::{HirExprKind, HirStmt, HirUnaryOp};
+
+    for (_, owner) in &hir.owners {
+        let body_id = match owner {
+            crate::hir::OwnerNode::Item(HirItem::Fn(f)) if f.body.is_some() => f.body.unwrap(),
+            _ => continue,
+        };
+        let body = match hir.body(body_id) {
+            Some(b) => b,
+            None => continue,
+        };
+        // Walk the body's expression tree to find Assign nodes.
+        let mut to_check: Vec<&crate::hir::HirExpr> = vec![&body.value];
+        while let Some(expr) = to_check.pop() {
+            match &expr.kind {
+                HirExprKind::Assign { lhs, rhs, .. } => {
+                    // Check if lhs is a valid place expression.
+                    let is_valid_place = match &lhs.kind {
+                        HirExprKind::Path(_) => true,      // local or static
+                        HirExprKind::Field { .. } => true, // struct/tuple field
+                        HirExprKind::Index { .. } => true, // array index
+                        HirExprKind::Unary {
+                            op: HirUnaryOp::Deref,
+                            ..
+                        } => true, // *ptr
+                        _ => false,
+                    };
+                    if !is_valid_place {
+                        errors.push(TypeError::new(
+                            "invalid assignment target — left-hand side must be a place expression (variable, field, dereference, or index)"
+                                .to_string(),
+                            lhs.span,
+                        ));
+                    }
+                    // Recurse into lhs and rhs for nested assignments.
+                    to_check.push(lhs);
+                    to_check.push(rhs);
+                }
+                // Recurse into other expression kinds.
+                HirExprKind::Call { func, args, .. } => {
+                    to_check.push(func);
+                    for arg in args {
+                        to_check.push(arg);
+                    }
+                }
+                HirExprKind::MethodCall { receiver, args, .. } => {
+                    to_check.push(receiver);
+                    for arg in args {
+                        to_check.push(arg);
+                    }
+                }
+                HirExprKind::Field { receiver, .. } => {
+                    to_check.push(receiver);
+                }
+                HirExprKind::Unary { expr: inner, .. } => {
+                    to_check.push(inner);
+                }
+                HirExprKind::Binary { lhs, rhs, .. } => {
+                    to_check.push(lhs);
+                    to_check.push(rhs);
+                }
+                HirExprKind::If {
+                    cond, then, else_, ..
+                } => {
+                    to_check.push(cond);
+                    for stmt in &then.stmts {
+                        if let HirStmt::Expr(e, _) = stmt {
+                            to_check.push(e);
+                        }
+                    }
+                    if let Some(trailing) = &then.expr {
+                        to_check.push(trailing);
+                    }
+                    if let Some(e) = else_ {
+                        to_check.push(e);
+                    }
+                }
+                HirExprKind::Match {
+                    expr: scrutinee,
+                    arms,
+                    ..
+                } => {
+                    to_check.push(scrutinee);
+                    for arm in arms {
+                        if let Some(e) = &arm.guard {
+                            to_check.push(e);
+                        }
+                        to_check.push(&arm.body);
+                    }
+                }
+                HirExprKind::Block(block) => {
+                    for stmt in &block.stmts {
+                        if let HirStmt::Expr(e, _) = stmt {
+                            to_check.push(e);
+                        }
+                    }
+                    if let Some(trailing) = &block.expr {
+                        to_check.push(trailing);
+                    }
+                }
+                HirExprKind::Return { expr: Some(e), .. } => {
+                    to_check.push(e);
+                }
+                HirExprKind::Tuple { elems } => {
+                    for e in elems {
+                        to_check.push(e);
+                    }
+                }
+                HirExprKind::Array { elems } => {
+                    for e in elems {
+                        to_check.push(e);
+                    }
+                }
+                HirExprKind::Struct { fields, .. } => {
+                    for f in fields {
+                        if let Some(e) = &f.expr {
+                            to_check.push(e);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Stage 18.73 P1-F: Validate cast types.
+///
+/// For each `expr as Ty` expression, check that the cast is valid:
+///   - Int/Uint → Int/Uint/Bool/Char: OK (numeric casts)
+///   - Float → Float: OK
+///   - Bool → Int/Uint: OK
+///   - Other casts: rejected
+///
+/// Per §1.0 原则 4 "报错 > 静默": invalid cast must be reported.
+/// Per §10 naming: `validate_cast_types` follows `validate_<noun>_<noun>`.
+fn validate_cast_types(hir: &HirCrate, _interner: &lasso::Rodeo, errors: &mut Vec<TypeError>) {
+    use crate::hir::{HirExprKind, HirLitKind, HirStmt};
+
+    for (_, owner) in &hir.owners {
+        let body_id = match owner {
+            crate::hir::OwnerNode::Item(HirItem::Fn(f)) if f.body.is_some() => f.body.unwrap(),
+            _ => continue,
+        };
+        let body = match hir.body(body_id) {
+            Some(b) => b,
+            None => continue,
+        };
+        let mut to_check: Vec<&crate::hir::HirExpr> = vec![&body.value];
+        // Also walk statements — including Local (let bindings) which may
+        // contain cast expressions in their init.
+        if let HirExprKind::Block(block) = &body.value.kind {
+            for stmt in &block.stmts {
+                match stmt {
+                    HirStmt::Expr(e, _) => to_check.push(e),
+                    HirStmt::Local(local) => {
+                        if let Some(init) = &local.init {
+                            to_check.push(init);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        while let Some(expr) = to_check.pop() {
+            if let HirExprKind::Cast { expr: inner, ty } = &expr.kind {
+                // Conservative HIR-level check: if inner is a literal,
+                // determine its type kind and check against target type.
+                let src_kind = literal_type_kind(&inner.kind);
+                let dst_kind = hir_ty_kind(&ty.kind);
+                if let (Some(src), Some(dst)) = (src_kind, dst_kind) {
+                    if !is_valid_cast(src, dst) {
+                        errors.push(TypeError::new(
+                            format!("invalid cast: cannot cast `{}` to `{}`", src, dst),
+                            expr.span,
+                        ));
+                    }
+                }
+                to_check.push(inner);
+            }
+            // Recurse into common expression kinds.
+            match &expr.kind {
+                HirExprKind::Call { func, args, .. } => {
+                    to_check.push(func);
+                    for arg in args {
+                        to_check.push(arg);
+                    }
+                }
+                HirExprKind::MethodCall { receiver, args, .. } => {
+                    to_check.push(receiver);
+                    for arg in args {
+                        to_check.push(arg);
+                    }
+                }
+                HirExprKind::Field { receiver, .. } => {
+                    to_check.push(receiver);
+                }
+                HirExprKind::Unary { expr: inner, .. } => {
+                    to_check.push(inner);
+                }
+                HirExprKind::Binary { lhs, rhs, .. } => {
+                    to_check.push(lhs);
+                    to_check.push(rhs);
+                }
+                HirExprKind::Assign { lhs, rhs, .. } => {
+                    to_check.push(lhs);
+                    to_check.push(rhs);
+                }
+                HirExprKind::If {
+                    cond, then, else_, ..
+                } => {
+                    to_check.push(cond);
+                    for stmt in &then.stmts {
+                        match stmt {
+                            HirStmt::Expr(e, _) => to_check.push(e),
+                            HirStmt::Local(local) => {
+                                if let Some(init) = &local.init {
+                                    to_check.push(init);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    if let Some(trailing) = &then.expr {
+                        to_check.push(trailing);
+                    }
+                    if let Some(e) = else_ {
+                        to_check.push(e);
+                    }
+                }
+                HirExprKind::Block(block) => {
+                    for stmt in &block.stmts {
+                        match stmt {
+                            HirStmt::Expr(e, _) => to_check.push(e),
+                            HirStmt::Local(local) => {
+                                if let Some(init) = &local.init {
+                                    to_check.push(init);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    if let Some(trailing) = &block.expr {
+                        to_check.push(trailing);
+                    }
+                }
+                HirExprKind::Return { expr: Some(e), .. } => {
+                    to_check.push(e);
+                }
+                HirExprKind::Tuple { elems } => {
+                    for e in elems {
+                        to_check.push(e);
+                    }
+                }
+                HirExprKind::Array { elems } => {
+                    for e in elems {
+                        to_check.push(e);
+                    }
+                }
+                HirExprKind::Struct { fields, .. } => {
+                    for f in fields {
+                        if let Some(e) = &f.expr {
+                            to_check.push(e);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Determine the type kind of a literal expression.
+    fn literal_type_kind(kind: &HirExprKind) -> Option<&'static str> {
+        match kind {
+            HirExprKind::Lit(HirLitKind::Bool(_)) => Some("bool"),
+            HirExprKind::Lit(HirLitKind::Int(_, _)) => Some("integer"),
+            HirExprKind::Lit(HirLitKind::Uint(_, _)) => Some("integer"),
+            HirExprKind::Lit(HirLitKind::Float(_, _)) => Some("float"),
+            HirExprKind::Lit(HirLitKind::Char(_)) => Some("char"),
+            HirExprKind::Lit(HirLitKind::Str(_)) => Some("str"),
+            _ => None,
+        }
+    }
+
+    /// Determine the type kind from a HIR type.
+    fn hir_ty_kind(ty_kind: &crate::hir::HirTyKind) -> Option<&'static str> {
+        use crate::hir::HirTyKind;
+        match ty_kind {
+            HirTyKind::Bool => Some("bool"),
+            HirTyKind::Int(_) => Some("integer"),
+            HirTyKind::Uint(_) => Some("integer"),
+            HirTyKind::Float(_) => Some("float"),
+            HirTyKind::Char => Some("char"),
+            _ => None,
+        }
+    }
+
+    /// Check if a cast from src to dst is valid (Rust semantics, simplified).
+    /// Per §1.0 原则 9 "正确 > 妥协": match Rust's cast rules.
+    /// Rust allows: numeric→numeric, numeric→char, char→numeric, bool→numeric,
+    /// numeric→bool (via `as`). Does NOT allow: str→anything, float→bool,
+    /// bool→float, bool→char, char→bool.
+    fn is_valid_cast(src: &str, dst: &str) -> bool {
+        matches!(
+            (src, dst),
+            // Numeric casts (int/uint/float are all numeric)
+            ("integer", "integer")
+                | ("integer", "float")
+                | ("float", "integer")
+                | ("float", "float")
+                | ("integer", "char")
+                | ("char", "integer")
+                | ("char", "char")
+                // Bool → integer (widening)
+                | ("bool", "integer")
+                // Integer → bool (Rust allows `x as bool`)
+                | ("integer", "bool")
+        )
     }
 }
 

@@ -1,6 +1,7 @@
 // CATEGORY: e2e
 // DESCRIPTION: assignment to non-place expression
-// EXPECTED: compile_ok
-// SOURCE: Stage 18.69 — Stage 0 limitation: assignment target not validated
+// EXPECTED: compile_error
+// ERROR_PATTERN: invalid assignment target
+// SOURCE: Stage 18.69 — Stage 18.73 fix (was Stage 0 limitation, now correctly rejected): assignment target not validated
 
 fn main() { 42 = 99; }

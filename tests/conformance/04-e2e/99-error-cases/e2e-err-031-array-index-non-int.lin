@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: array index with string type (Stage 18.73 P1-D)
+// EXPECTED: compile_error
+// ERROR_PATTERN: array index must be an integer
+// SOURCE: Stage 18.73 — P1-D: array index type check
+
+fn main() { let a: [i32; 3] = [1, 2, 3]; let s = "x"; let b = a[s]; }

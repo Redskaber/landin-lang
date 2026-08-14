@@ -1,9 +1,74 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.340.0
+**Current version**: v0.341.0
 **Date**: 2026-08-09
-**Test count**: 626 rust lib tests + 2641 integration tests + 5343 conformance tests (5343 — **100% pass rate!**) + 4 examples
+**Test count**: 634 rust lib tests + 2641 integration tests + 5348 conformance tests (5348 — **100% pass rate!**) + 4 examples
+
+---
+## v0.341.0 — Stage 18.73 (P1 Validation Enhancement 2 — Array Index + Cast + Assignment + Main + Assoc Const)
+
+### Overview
+
+Fixes 5 remaining P1 validation deficiencies. All 8 P1 items from Stage
+18.70's gap analysis are now complete.
+
+### P1 Fixes
+
+| P1 # | Description | Fix |
+|------|-------------|-----|
+| P1-D | array index type check | `infer_projection` Index type validation |
+| P1-E | assignment target check | New `validate_assignment_targets` |
+| P1-F | cast type check | New `validate_cast_types` |
+| P1-G | missing main detection | New `compile_binary` (CLI entry) |
+| P1-H | associated const completeness | `TraitInfo`/`ImplInfo` + `missing_impl_associated_consts` |
+
+### Implementation
+
+**`src/typeck/checker.rs`** — `infer_projection` enhanced:
+- `Index(idx_local)` branch now validates index type is Int/Uint
+- `infer_projection` signature adds `mir: &MirBody` parameter
+
+**`src/driver.rs`** — Three new validators + `compile_binary`:
+- `validate_assignment_targets`: walks HIR, checks Assign lhs is valid place
+- `validate_cast_types`: walks HIR, checks Cast validity (literal→type)
+- `compile_binary`: CLI entry point, validates `fn main()` exists
+- `validate_main_exists`: kept for documentation (inlined in `compile_binary`)
+
+**`src/traits/resolver.rs`** — Associated const completeness:
+- `TraitInfo.associated_consts`: Vec<Spur> (trait declared consts)
+- `ImplInfo.associated_consts`: Vec<Spur> (impl provided consts)
+- `missing_impl_associated_consts`: new query function
+- `validate_impls`: checks missing_associated_consts
+- `IncompleteImpl.missing_associated_consts`: new field
+- `TraitError::format_for_user`: supports associated const error messages
+
+**`src/bin/main.rs`** — CLI now uses `compile_binary` instead of `compile`.
+
+### Tests (§9.4.3 1:3+ ratio)
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Stage 0 limitation tests flipped | 5 | compile_ok → compile_error |
+| New e2e-err tests | 5 | e2e-err-031 to 035 |
+| New Rust unit tests | 8 | stage18_73_* (4 positive + 4 negative) |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 634 lib + 2641 integration = **3275** unit tests, 0 failures
+- `python3 tests/conformance/run_all.py` — ✅ **5348** conformance tests, 0 failures
+
+### P1 Completion Summary
+
+All 8 P1 items from Stage 18.70's gap analysis are complete:
+
+| Stage | P1 Items |
+|-------|----------|
+| 18.72 | P1-A (struct field count), P1-B (tuple index), P1-C (pattern arity) |
+| 18.73 | P1-D (array index type), P1-E (assignment target), P1-F (cast type), P1-G (missing main), P1-H (assoc const) |
 
 ---
 ## v0.340.0 — Stage 18.72 (P1 Validation Enhancement — Struct Field + Tuple Index + Pattern Arity)

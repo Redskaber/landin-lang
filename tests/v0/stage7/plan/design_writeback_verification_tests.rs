@@ -144,6 +144,7 @@ fn stage7_td018_user_defined_trait_resolved() {
             is_unsafe: false,
             supertraits: Vec::new(),
             default_methods: Vec::new(),
+            associated_consts: Vec::new(),
         },
     );
     resolver.trait_by_name.insert(trait_name, DefId(100));
@@ -158,6 +159,7 @@ fn stage7_td018_user_defined_trait_resolved() {
             methods: vec![method_name],
             is_unsafe: false,
             span: Span::DUMMY,
+            associated_consts: Vec::new(),
         },
     );
     resolver
@@ -218,6 +220,7 @@ fn stage7_td018_stdlib_and_user_traits_coexist() {
             is_unsafe: false,
             supertraits: Vec::new(),
             default_methods: Vec::new(),
+            associated_consts: Vec::new(),
         },
     );
     resolver.trait_by_name.insert(trait_name, DefId(200));
@@ -230,6 +233,7 @@ fn stage7_td018_stdlib_and_user_traits_coexist() {
             methods: vec![method_name],
             is_unsafe: false,
             span: Span::DUMMY,
+            associated_consts: Vec::new(),
         },
     );
     resolver

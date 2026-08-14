@@ -1035,7 +1035,7 @@ impl TypeChecker {
             }
             PlaceKind::Projection(base, elem) => {
                 let base_ty = self.infer_place(mir, base);
-                self.infer_projection(&base_ty, elem, lv.span)
+                self.infer_projection(mir, &base_ty, elem, lv.span)
             }
         }
     }
@@ -1055,7 +1055,13 @@ impl TypeChecker {
     /// `field_id.0 < tys.len()`. If out of bounds, push a TypeError and
     /// return Error type.
     /// Per §1.0 原則 4 "报错 > 静默": tuple index OOB must be reported.
-    fn infer_projection(&mut self, base_ty: &Ty, elem: &ProjectionElem, place_span: Span) -> Ty {
+    fn infer_projection(
+        &mut self,
+        mir: &MirBody,
+        base_ty: &Ty,
+        elem: &ProjectionElem,
+        place_span: Span,
+    ) -> Ty {
         match elem {
             ProjectionElem::Deref => {
                 if let TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) = &base_ty.kind {
@@ -1084,8 +1090,32 @@ impl TypeChecker {
                 }
                 field_ty.clone()
             }
-            ProjectionElem::Index(_) => {
+            ProjectionElem::Index(idx_local) => {
                 if let TyKind::Array(inner, _) | TyKind::Slice(inner) = &base_ty.kind {
+                    // Stage 18.73 P1-D: Validate array index type.
+                    // The index must be an integer type (Int/Uint).
+                    // Per §1.0 原則 4 "报错 > 静默": non-integer index must
+                    // be reported, not silently produce garbage.
+                    if let Some(idx_local_decl) = mir.local_decls.get(idx_local.0 as usize) {
+                        let idx_ty = self.unify.resolve(&idx_local_decl.ty);
+                        match &idx_ty.kind {
+                            TyKind::Int(_)
+                            | TyKind::Uint(_)
+                            | TyKind::Infer(InferVar::IntVar(_))
+                            | TyKind::Error => {
+                                // OK — integer type, Infer (deferred), or Error.
+                            }
+                            _ => {
+                                self.errors.push(TypeError::new(
+                                    format!(
+                                        "array index must be an integer type, found {}",
+                                        self.format_ty(&idx_ty)
+                                    ),
+                                    place_span,
+                                ));
+                            }
+                        }
+                    }
                     (**inner).clone()
                 } else {
                     // Stage 0 limitation: silent Error (no TypeError pushed).
@@ -2270,6 +2300,147 @@ mod tests {
             result.errors.typeck.is_empty(),
             "expected no typeck errors, got: {:?}",
             result.errors.typeck
+        );
+    }
+
+    // ========================================================================
+    // Stage 18.73 P1 tests — array index + cast + assignment + assoc const.
+    // ========================================================================
+
+    /// Stage 18.73 P1-D positive: valid integer array index compiles OK.
+    #[test]
+    fn stage18_73_array_valid_index_ok() {
+        use crate::compile;
+        let src = "fn main() { let a = [1, 2, 3]; let b = a[0]; let c = a[1]; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .all(|e| !e.message.contains("array index must be an integer")),
+            "expected no array index errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.73 P1-D negative: bool array index is rejected.
+    #[test]
+    fn stage18_73_array_bool_index_rejected() {
+        use crate::compile;
+        let src = "fn main() { let a = [1, 2, 3]; let b = a[true]; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .any(|e| e.message.contains("array index must be an integer")),
+            "expected 'array index must be an integer' error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.73 P1-F negative: invalid cast str→int is rejected.
+    #[test]
+    fn stage18_73_cast_str_to_int_rejected() {
+        use crate::compile;
+        let src = "fn main() { let x = \"hello\" as i32; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .any(|e| e.message.contains("invalid cast")),
+            "expected 'invalid cast' error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.73 P1-F positive: valid cast int→float compiles OK.
+    #[test]
+    fn stage18_73_cast_int_to_float_ok() {
+        use crate::compile;
+        let src = "fn main() { let x = 42 as f64; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .all(|e| !e.message.contains("invalid cast")),
+            "expected no cast errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.73 P1-E negative: assign to literal is rejected.
+    #[test]
+    fn stage18_73_assign_to_literal_rejected() {
+        use crate::compile;
+        let src = "fn main() { 42 = 99; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .any(|e| e.message.contains("invalid assignment target")),
+            "expected 'invalid assignment target' error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.73 P1-E positive: assign to variable compiles OK.
+    #[test]
+    fn stage18_73_assign_to_variable_ok() {
+        use crate::compile;
+        let src = "fn main() { let mut x = 0; x = 42; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .all(|e| !e.message.contains("invalid assignment target")),
+            "expected no assignment target errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.73 P1-H negative: missing associated const is rejected.
+    #[test]
+    fn stage18_73_missing_assoc_const_rejected() {
+        use crate::compile;
+        let src = "trait T { const X: i32; } struct S; impl T for S { } fn main() {}";
+        let result = compile(src);
+        // The error is a TraitError::Incomplete with missing_associated_consts.
+        let has_assoc_const_error = result.errors.trait_errors.iter().any(|e| {
+            if let crate::driver::TraitError::Incomplete(inc) = e {
+                !inc.missing_associated_consts.is_empty()
+            } else {
+                false
+            }
+        });
+        assert!(
+            has_assoc_const_error,
+            "expected missing associated const error, got: {:?}",
+            result.errors.trait_errors
+        );
+    }
+
+    /// Stage 18.73 P1-H positive: impl with all associated consts compiles OK.
+    #[test]
+    fn stage18_73_assoc_const_provided_ok() {
+        use crate::compile;
+        let src =
+            "trait T { const X: i32; } struct S; impl T for S { const X: i32 = 42; } fn main() {}";
+        let result = compile(src);
+        assert!(
+            result.errors.trait_errors.is_empty(),
+            "expected no trait errors, got: {:?}",
+            result.errors.trait_errors
         );
     }
 }

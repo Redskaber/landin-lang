@@ -29,6 +29,9 @@ pub struct TraitInfo {
     /// (body: Some(BodyId) in the trait declaration). These don't need
     /// to be overridden in impl blocks.
     pub default_methods: Vec<Spur>,
+    /// Stage 18.73 P1-H: Associated const names declared in the trait.
+    /// Used to validate that impls provide all required associated consts.
+    pub associated_consts: Vec<Spur>,
 }
 
 /// An impl block collected by TraitResolver.
@@ -47,6 +50,9 @@ pub struct ImplInfo {
     /// Stage 15.89: Source span of the impl block (from HirImpl.span).
     /// Used to attach accurate spans to trait coherence/incomplete errors.
     pub span: crate::session::Span,
+    /// Stage 18.73 P1-H: Associated const names implemented in this impl.
+    /// Used to validate that all trait associated consts are provided.
+    pub associated_consts: Vec<Spur>,
 }
 
 #[derive(Debug, Default)]
@@ -152,6 +158,9 @@ pub struct IncompleteImpl {
     /// Used to attach accurate spans to incomplete impl error messages
     /// (was: Span::DUMMY, producing "1:1").
     pub span: crate::session::Span,
+    /// Stage 18.73 P1-H: Associated const names (interned symbols) declared
+    /// in the trait but not implemented in the impl block.
+    pub missing_associated_consts: Vec<Spur>,
 }
 
 /// Stage 5.20: A comprehensive validation report for all trait impls.
@@ -266,6 +275,18 @@ impl TraitResolver {
                                 }
                             })
                             .collect();
+                        // Stage 18.73 P1-H: Collect associated const names.
+                        let associated_consts: Vec<Spur> = t
+                            .items
+                            .iter()
+                            .filter_map(|item| {
+                                if let HirTraitItem::Const(c) = item {
+                                    Some(c.ident.name)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
                         let info = TraitInfo {
                             def_id: *def_id,
                             name: t.ident.name,
@@ -273,6 +294,7 @@ impl TraitResolver {
                             is_unsafe: t.is_unsafe,
                             supertraits,
                             default_methods,
+                            associated_consts,
                         };
                         self.trait_by_name.insert(t.ident.name, *def_id);
                         self.type_by_def_id.insert(*def_id, t.ident.name);
@@ -308,19 +330,28 @@ impl TraitResolver {
                         // Stage 5.5: Build vtable entries from impl methods.
                         let mut vtable_entries = Vec::new();
                         let mut method_names = Vec::new();
+                        // Stage 18.73 P1-H: Collect associated const names from impl.
+                        let mut impl_assoc_consts: Vec<Spur> = Vec::new();
                         for impl_item in &i.items {
-                            if let HirImplItem::Fn(f) = impl_item {
-                                let method_str =
-                                    interner.try_resolve(&f.ident.name).unwrap_or("fn");
-                                method_names.push(f.ident.name);
-                                // Stage 15.9: Intern the resolved symbol name
-                                // instead of allocating a String. Closes HP-B16.
-                                let fn_name_str = format!("landin_{}_{}", self_ty_str, method_str);
-                                let fn_name_spur = interner.get_or_intern(fn_name_str);
-                                vtable_entries.push(VtableEntry {
-                                    method_name: f.ident.name,
-                                    fn_name: fn_name_spur,
-                                });
+                            match impl_item {
+                                HirImplItem::Fn(f) => {
+                                    let method_str =
+                                        interner.try_resolve(&f.ident.name).unwrap_or("fn");
+                                    method_names.push(f.ident.name);
+                                    // Stage 15.9: Intern the resolved symbol name
+                                    // instead of allocating a String. Closes HP-B16.
+                                    let fn_name_str =
+                                        format!("landin_{}_{}", self_ty_str, method_str);
+                                    let fn_name_spur = interner.get_or_intern(fn_name_str);
+                                    vtable_entries.push(VtableEntry {
+                                        method_name: f.ident.name,
+                                        fn_name: fn_name_spur,
+                                    });
+                                }
+                                HirImplItem::Const(c) => {
+                                    impl_assoc_consts.push(c.ident.name);
+                                }
+                                _ => {}
                             }
                         }
 
@@ -333,6 +364,7 @@ impl TraitResolver {
                             // Stage 15.89: store the impl block's source span
                             // for accurate trait error reporting.
                             span: i.span,
+                            associated_consts: impl_assoc_consts,
                         };
 
                         // Stage 5.5: Build and store vtable if this is a trait impl.
@@ -1354,7 +1386,9 @@ impl TraitResolver {
                 (impl_info.trait_name, impl_info.self_ty_name)
             {
                 let missing = self.missing_impl_methods(trait_name, self_ty_name);
-                if !missing.is_empty() {
+                // Stage 18.73 P1-H: Check for missing associated consts.
+                let missing_consts = self.missing_impl_associated_consts(trait_name, self_ty_name);
+                if !missing.is_empty() || !missing_consts.is_empty() {
                     incomplete_impls.push(IncompleteImpl {
                         trait_name,
                         self_ty_name,
@@ -1362,6 +1396,7 @@ impl TraitResolver {
                         // Stage 15.89: store the impl block's source span
                         // for accurate error reporting.
                         span: impl_info.span,
+                        missing_associated_consts: missing_consts,
                     });
                 }
             }
@@ -1374,6 +1409,40 @@ impl TraitResolver {
             incomplete_impls,
             is_valid,
         }
+    }
+
+    /// Stage 18.73 P1-H: Get the associated consts missing from an impl.
+    ///
+    /// Returns a Vec of const name Spurs that are declared in the trait
+    /// but not implemented in the impl block.
+    ///
+    /// Per §1.0 原則 4 "报错 > 静默": missing associated consts must be reported.
+    /// Per §10 naming: `missing_impl_associated_consts` follows
+    ///   `<adjective>_<noun>_<noun>_<noun>` pattern.
+    pub fn missing_impl_associated_consts(
+        &self,
+        trait_name: Spur,
+        self_ty_name: Spur,
+    ) -> Vec<Spur> {
+        let trait_info = match self.find_trait(trait_name) {
+            Some(info) => info,
+            None => return Vec::new(),
+        };
+        let trait_consts = &trait_info.associated_consts;
+        // Stage 18.64: Inline deprecated impl_methods pattern.
+        let impl_consts = match self
+            .impl_by_trait_and_type
+            .get(&(trait_name, self_ty_name))
+            .and_then(|id| self.impls.get(id))
+        {
+            Some(i) => &i.associated_consts,
+            None => return Vec::new(),
+        };
+        trait_consts
+            .iter()
+            .filter(|c| !impl_consts.contains(c))
+            .copied()
+            .collect()
     }
 
     /// Stage 5.20: Quick boolean check — are all impls valid (no coherence

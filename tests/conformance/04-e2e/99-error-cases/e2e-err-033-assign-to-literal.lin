@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: assign to literal (Stage 18.73 P1-E)
+// EXPECTED: compile_error
+// ERROR_PATTERN: invalid assignment target
+// SOURCE: Stage 18.73 — P1-E: assignment target check
+
+fn main() { 1 = 2; }
