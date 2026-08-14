@@ -3,11 +3,11 @@
 //! Extracted from `llvm/mod.rs` per §13.4 J2 (single responsibility).
 //! Per `docs/lang-design/07-codegen.md` §4 (MIR → LLVM IR mapping).
 
+use super::helpers::cstr_owned;
 use crate::codegen::emitter::FunctionEmitter;
 use crate::codegen::emitter::*;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
-use std::ffi::CString;
 
 use super::LLVMSysEmitter;
 
@@ -24,7 +24,7 @@ impl FunctionEmitter for LLVMSysEmitter {
                 param_tys.len() as u32,
                 0,
             );
-            let name_c = CString::new(name).unwrap();
+            let name_c = cstr_owned(name);
             // Stage 14.63: Reuse existing forward declaration if present.
             //
             // When functions are mutually recursive, a forward declaration
@@ -87,7 +87,7 @@ impl FunctionEmitter for LLVMSysEmitter {
             self.next_val = params.len() as u32 + 1;
 
             // Create entry block and position builder there.
-            let entry_name = CString::new("entry").unwrap();
+            let entry_name = cstr_owned("entry");
             let entry_bb = LLVMAppendBasicBlockInContext(self.ctx, fn_val, entry_name.as_ptr());
             LLVMPositionBuilderAtEnd(self.builder, entry_bb);
 
@@ -154,7 +154,7 @@ impl FunctionEmitter for LLVMSysEmitter {
                 && LLVMGetIntTypeWidth(cond_ty) != 1
             {
                 // Truncate i32 → i1 (non-zero is true)
-                let name_c = CString::new("tobool").unwrap();
+                let name_c = cstr_owned("tobool");
                 LLVMBuildTrunc(self.builder, cond_v, i1_ty, name_c.as_ptr())
             } else if LLVMGetTypeKind(cond_ty) == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
                 && LLVMGetIntTypeWidth(cond_ty) == 1
@@ -163,7 +163,7 @@ impl FunctionEmitter for LLVMSysEmitter {
             } else {
                 // Other types — try ICMP ne 0 to convert to i1
                 let zero = LLVMConstInt(cond_ty, 0, 0);
-                let name_c = CString::new("tobool").unwrap();
+                let name_c = cstr_owned("tobool");
                 LLVMBuildICmp(
                     self.builder,
                     llvm_sys::LLVMIntPredicate::LLVMIntNE,

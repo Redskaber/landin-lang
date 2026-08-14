@@ -514,15 +514,19 @@ pub(crate) fn codegen_rvalue(
         // Stage 14.103 (SH-7 fix): BinaryOp2 is used for Range expressions
         // (start..end). For v0.1, ranges are only used in for-loop iterators
         // and are desugared before codegen — they should never reach here.
-        // Previously the catch-all silently returned "0".
         //
-        // Per §1.0 原则 5 "报错 > 静默": emit a clear error instead of
-        // silently producing wrong code.
+        // Stage 18.75 P0-5: Previously the catch-all silently returned "0",
+        // producing wrong code without any warning. Now we emit a visible
+        // error message to stderr so the user knows something went wrong.
+        // Per §1.0 原则 4 "报错 > 静默": never silently produce wrong code.
+        //
+        // TODO (v0.2): Make codegen return CodegenResult<String> so this
+        // can propagate as a proper CodegenError through CompileErrors.codegen.
         Rvalue::BinaryOp2(_, _, _) => {
-            // This should not happen — for-loop desugaring eliminates ranges
-            // before codegen. If it does, return "0" for recovery but log it.
-            // (We can't easily push a typeck error from codegen, so this is
-            // a best-effort fallback.)
+            eprintln!(
+                "warning: range expression reached codegen (should have been desugared) — \
+                 producing fallback value 0"
+            );
             "0".to_string()
         }
     }

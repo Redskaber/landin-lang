@@ -54,6 +54,10 @@ pub enum ErrorCode {
     Borrow,
     /// Trait coherence/completeness errors (E600-E699)
     Trait,
+    /// Stage 18.75: Codegen errors (E700-E799)
+    Codegen,
+    /// Stage 18.75: Macro expansion errors (E800-E899)
+    Macro,
     /// Internal compiler error (E900)
     Internal,
 }
@@ -72,6 +76,9 @@ impl ErrorCode {
             ErrorCode::Type => "E400",
             ErrorCode::Borrow => "E500",
             ErrorCode::Trait => "E600",
+            // Stage 18.75: Added Codegen (E700) and Macro (E800).
+            ErrorCode::Codegen => "E700",
+            ErrorCode::Macro => "E800",
             ErrorCode::Internal => "E900",
         }
     }
@@ -88,6 +95,9 @@ impl ErrorCode {
             ErrorCode::Type => "type",
             ErrorCode::Borrow => "borrow",
             ErrorCode::Trait => "trait",
+            // Stage 18.75: Added Codegen and Macro labels.
+            ErrorCode::Codegen => "codegen",
+            ErrorCode::Macro => "macro",
             ErrorCode::Internal => "internal",
         }
     }

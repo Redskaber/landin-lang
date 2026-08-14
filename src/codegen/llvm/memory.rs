@@ -3,10 +3,10 @@
 //! Extracted from `llvm/mod.rs` per §13.4 J2 (single responsibility).
 //! Per `docs/lang-design/07-codegen.md` §4 (MIR → LLVM IR mapping).
 
+use super::helpers::cstr_owned;
 use crate::codegen::emitter::MemoryEmitter;
 use crate::codegen::emitter::*;
 use llvm_sys::core::*;
-use std::ffi::CString;
 
 use super::LLVMSysEmitter;
 
@@ -14,7 +14,7 @@ impl MemoryEmitter for LLVMSysEmitter {
     fn emit_alloca(&mut self, ty: &EmitType, name: &str) -> EmitValue {
         unsafe {
             let llvm_ty = self.llvm_type(ty);
-            let name_c = CString::new(name).unwrap();
+            let name_c = cstr_owned(name);
             let ptr = LLVMBuildAlloca(self.builder, llvm_ty, name_c.as_ptr());
             self.named(ptr, name)
         }
@@ -57,7 +57,7 @@ impl MemoryEmitter for LLVMSysEmitter {
                 // Use signed extension (1) since Landin's integer literals
                 // default to i32 (signed). This matches the `emit_cast`
                 // behavior for (I32, I64) → SExt.
-                let name_c = CString::new("cast").unwrap();
+                let name_c = cstr_owned("cast");
                 LLVMBuildIntCast2(self.builder, v, target_llvm_ty, 1, name_c.as_ptr())
             } else {
                 // Non-integer types with mismatch — store directly and let
@@ -72,7 +72,7 @@ impl MemoryEmitter for LLVMSysEmitter {
         unsafe {
             let llvm_ty = self.llvm_type(ty);
             let p = self.lookup(ptr);
-            let name_c = CString::new("ld").unwrap();
+            let name_c = cstr_owned("ld");
             let v = LLVMBuildLoad2(self.builder, llvm_ty, p, name_c.as_ptr());
             self.fresh_named(v)
         }
@@ -91,7 +91,7 @@ impl MemoryEmitter for LLVMSysEmitter {
             let zero = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0, 0);
             let idx = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), field_index as u64, 0);
             let mut indices = [zero, idx];
-            let name_c = CString::new("gep").unwrap();
+            let name_c = cstr_owned("gep");
             let v = LLVMBuildInBoundsGEP2(
                 self.builder,
                 llvm_struct_ty,
@@ -116,7 +116,7 @@ impl MemoryEmitter for LLVMSysEmitter {
             let zero = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0, 0);
             let idx_v = self.lookup(index);
             let mut indices = [zero, idx_v];
-            let name_c = CString::new("gep").unwrap();
+            let name_c = cstr_owned("gep");
             let v = LLVMBuildInBoundsGEP2(
                 self.builder,
                 llvm_array_ty,
@@ -140,7 +140,7 @@ impl MemoryEmitter for LLVMSysEmitter {
             let llvm_elem_ty = self.llvm_type(elem_ty);
             let idx_v = self.lookup(index);
             let mut indices = [idx_v];
-            let name_c = CString::new("gep").unwrap();
+            let name_c = cstr_owned("gep");
             let v = LLVMBuildInBoundsGEP2(
                 self.builder,
                 llvm_elem_ty,

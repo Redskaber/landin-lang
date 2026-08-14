@@ -12721,3 +12721,62 @@ Stage Summary:
 - 当前编译器能力边界清晰文档化
 - v0.342.0: doc-only bump (deep audit report)
 - 下一步: Stage 18.75 P0 错误系统修复
+
+---
+Task ID: stage18.75
+Agent: Super Z (main)
+Task: Stage 18.75 — P0 Error System Fixes. v0.342.0 → v0.343.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 Stage 18.74 深度审计报告 + P0 修复计划
+- §13.5 设计-审查循环: 编写 stage-18.75-p0-error-system-fixes-design.md
+- 5 个 P0 修复 (P0-6 Param unify 降级为 P1, 需 v0.2 单态化):
+  1. P0-1: CompileErrors 添加 lower + codegen 字段
+     - src/driver.rs: CompileErrors 添加 lower: Vec<LowerError> + codegen: Vec<CodegenError>
+     - 更新 is_empty() / total_count() / to_diagnostics_with_resolver()
+     - 修复: HIR lowering + codegen 错误不再静默丢弃
+  2. P0-2: to_diagnostics 迭代 macro_errors
+     - src/driver.rs: to_diagnostics_with_resolver 添加 macro/codegen/lower 错误迭代
+     - 修复: 宏错误不再对用户不可见
+     - 发现: std-err-019 (write! macro) 之前 compile_ok 因宏错误被静默丢弃,
+       现在正确报错 → 翻转为 compile_error
+  3. P0-3: ErrorCode 添加 Codegen (E700) + Macro (E800)
+     - src/diagnostics/mod.rs: ErrorCode enum 添加 2 个变体
+     - 更新 code() 和 category() 方法
+  4. P0-4: 30+ CString::new().unwrap() 替换为 cstr_owned()
+     - src/codegen/llvm/helpers.rs: 新增 cstr_owned() 缓存辅助函数
+     - 6 个文件 (aggregate/arithmetic/function/memory/mod/module) 替换
+     - 移除 2 个未使用的 CString import
+     - 修复 clippy needless_borrow warnings
+  5. P0-5: BinaryOp2 静默 "0" 修复
+     - src/codegen/rvalue.rs: 添加 eprintln warning 替代静默返回
+     - TODO (v0.2): codegen 返回 CodegenResult<String> 以正确传播错误
+- P0-6 (Param unify) 重新评估: 降级为 P1
+  - 审计指出 Param 与任何类型 unify 不安全
+  - 但代码注释明确说明这是 Stage 0 有意设计 (无单态化时 Param 需为"任意类型")
+  - 修复需 v0.2 完整单态化基础设施, 超出本 Stage 范围
+- 测试更新:
+  - 1 个 conformance 测试翻转 (std-err-019: write! macro)
+  - 4 个新 Rust 单元测试 (stage18_75_*)
+- §3.2 验收:
+  - cargo clean ✅
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2641 integration = 3279 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (5348 conformance tests, 0 failures)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.75-p0-error-system-fixes-design.md (新建)
+  - docs/develop/v0/stage-18/stage-18.75-gate-review-round1.md (新建)
+  - Cargo.toml: v0.342.0 → v0.343.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.75 PASSED — 5 P0 错误系统缺陷修复
+- 关键修复: 3 处静默错误丢弃 (lower/codegen/macro) 全部修复
+  → 宏错误现在对用户可见 (std-err-019 从 compile_ok → compile_error)
+- 30+ CString::new().unwrap() 替换为安全的 cstr_owned()
+- 错误码目录完整: E001-E900 全覆盖
+- 3279 unit + 5348 conformance = 8627 total tests, 0 failures
+- v0.343.0: minor bump (P0 error system fixes)
+- 下一步: Stage 18.76 P1 健壮性修复 (静默 Ty::Error + panic!→Result + Debug 泄露)

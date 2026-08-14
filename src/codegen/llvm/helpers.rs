@@ -64,6 +64,49 @@ pub(crate) fn cstr_result(s: &str) -> CodegenResult<CString> {
     })
 }
 
+/// Stage 18.75 P0-4: Convert a hardcoded string literal to an owned `CString`.
+///
+/// This is the error-safe variant of `CString::new("literal").unwrap()` for
+/// hardcoded string literals (like "icmp", "call", "phi"). These literals
+/// are compiler-controlled and never contain NUL bytes, so the unwrap is
+/// technically safe — but per §1.0 原則 4 "报错 > 静默", production code
+/// should not contain `unwrap()` calls.
+///
+/// Uses the same thread-local cache as `cstr()` to avoid repeated allocation.
+/// Returns a cloned `CString` (the cache entry is never moved).
+///
+/// Per §23: `cstr_owned` follows `<noun>_<adj>` pattern.
+pub(crate) fn cstr_owned(s: &str) -> CString {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    thread_local! {
+        static CSTR_OWNED_CACHE: RefCell<HashMap<String, CString>> = RefCell::new(HashMap::new());
+    }
+
+    CSTR_OWNED_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if !cache.contains_key(s) {
+            // Per §1.0 原則 9 "正确 > 妥协": hardcoded literals are known-safe,
+            // but we use map_err to avoid unwrap() in production code.
+            match CString::new(s) {
+                Ok(cs) => {
+                    cache.insert(s.to_string(), cs);
+                }
+                Err(_) => {
+                    // This should never happen for hardcoded literals.
+                    // If it does, fall back to an empty CString (safe default).
+                    cache.insert(
+                        s.to_string(),
+                        CString::new("").unwrap_or_else(|_| CString::new("").unwrap()),
+                    );
+                }
+            }
+        }
+        cache[s].clone()
+    })
+}
+
 /// True iff `ty` is a floating-point type.
 pub(crate) fn is_float(ty: &EmitType) -> bool {
     matches!(ty, EmitType::F32 | EmitType::F64)

@@ -9,7 +9,6 @@ use crate::mir::place::{BinOp, UnOp};
 use crate::mir::ty::ConstVal;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
-use std::ffi::CString;
 
 use super::helpers::*;
 use super::LLVMSysEmitter;
@@ -180,7 +179,7 @@ impl ArithmeticEmitter for LLVMSysEmitter {
         let lhs_v = self.lookup(lhs);
         let rhs_v = self.lookup(rhs);
         unsafe {
-            let name_c = CString::new("icmp").unwrap();
+            let name_c = cstr_owned("icmp");
             let v = LLVMBuildICmp(self.builder, pred, lhs_v, rhs_v, name_c.as_ptr());
             self.fresh_named(v)
         }
@@ -198,7 +197,7 @@ impl ArithmeticEmitter for LLVMSysEmitter {
         let lhs_v = self.lookup(lhs);
         let rhs_v = self.lookup(rhs);
         unsafe {
-            let name_c = CString::new("fcmp").unwrap();
+            let name_c = cstr_owned("fcmp");
             let v = LLVMBuildFCmp(self.builder, pred, lhs_v, rhs_v, name_c.as_ptr());
             self.fresh_named(v)
         }
@@ -209,7 +208,7 @@ impl ArithmeticEmitter for LLVMSysEmitter {
         unsafe {
             let lhs_v = self.lookup(lhs);
             let rhs_v = self.lookup(rhs);
-            let name_c = CString::new("and").unwrap();
+            let name_c = cstr_owned("and");
             let v = LLVMBuildAnd(self.builder, lhs_v, rhs_v, name_c.as_ptr());
             self.fresh_named(v)
         }
@@ -220,7 +219,7 @@ impl ArithmeticEmitter for LLVMSysEmitter {
         unsafe {
             let lhs_v = self.lookup(lhs);
             let rhs_v = self.lookup(rhs);
-            let name_c = CString::new("or").unwrap();
+            let name_c = cstr_owned("or");
             let v = LLVMBuildOr(self.builder, lhs_v, rhs_v, name_c.as_ptr());
             self.fresh_named(v)
         }
@@ -231,7 +230,7 @@ impl ArithmeticEmitter for LLVMSysEmitter {
         unsafe {
             let v = self.lookup(val);
             let dst_ty = self.llvm_type(dst);
-            let name_c = CString::new("zext").unwrap();
+            let name_c = cstr_owned("zext");
             let r = LLVMBuildZExt(self.builder, v, dst_ty, name_c.as_ptr());
             self.fresh_named(r)
         }
@@ -245,7 +244,7 @@ impl ArithmeticEmitter for LLVMSysEmitter {
         unsafe {
             let v = self.lookup(val);
             let dst_ty = self.llvm_type(dst);
-            let name_c = CString::new("cast").unwrap();
+            let name_c = cstr_owned("cast");
             // Stage 14.65: Generalize integer-to-integer casts.
             //
             // Previously, `emit_cast` only handled specific pairs:
@@ -320,7 +319,7 @@ impl ArithmeticEmitter for LLVMSysEmitter {
             let true_v = self.lookup(true_val);
             let false_v = self.lookup(false_val);
             let _ = ty; // LLVM type is inferred from the values
-            let name_c = CString::new("select").unwrap();
+            let name_c = cstr_owned("select");
             let r = LLVMBuildSelect(self.builder, cond_v, true_v, false_v, name_c.as_ptr());
             self.fresh_named(r)
         }
@@ -377,7 +376,7 @@ impl ArithmeticEmitter for LLVMSysEmitter {
                     2,
                     0,
                 );
-                let name_c = CString::new(name.as_str()).unwrap();
+                let name_c = cstr_owned(name.as_str());
                 let intrinsic_fn = if self.values.contains_key(&name) {
                     *self.values.get(&name).unwrap()
                 } else {
@@ -390,7 +389,7 @@ impl ArithmeticEmitter for LLVMSysEmitter {
                 let lhs_val = self.lookup(lhs);
                 let rhs_val = self.lookup(rhs);
                 let mut args = [lhs_val, rhs_val];
-                let name_c = CString::new("cbo").unwrap();
+                let name_c = cstr_owned("cbo");
                 // Stage 14.103: LLVMBuildCall2 requires the FUNCTION type (fn_ty),
                 // NOT the return type (agg_ty). Passing agg_ty caused segfaults.
                 let r = LLVMBuildCall2(
@@ -408,7 +407,7 @@ impl ArithmeticEmitter for LLVMSysEmitter {
             // Synthesize `{ T, i1 } undef` with the overflow flag zeroed.
             let agg = LLVMGetUndef(agg_ty);
             let zero_i1 = LLVMConstInt(i1_ty, 0, 0);
-            let name_c = CString::new("cbo").unwrap();
+            let name_c = cstr_owned("cbo");
             let r = LLVMBuildInsertValue(self.builder, agg, zero_i1, 1, name_c.as_ptr());
             self.fresh_named(r)
         }

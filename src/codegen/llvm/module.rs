@@ -15,7 +15,7 @@ use super::LLVMSysEmitter;
 impl ModuleEmitter for LLVMSysEmitter {
     fn emit_header(&mut self) {
         unsafe {
-            let triple = CString::new("x86_64-unknown-linux-gnu").unwrap();
+            let triple = cstr_owned("x86_64-unknown-linux-gnu");
             LLVMSetTarget(self.module, triple.as_ptr());
             let dl = CString::new(
                 "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128",
@@ -51,7 +51,7 @@ impl ModuleEmitter for LLVMSysEmitter {
         self.next_str += 1;
         unsafe {
             let array_ty = LLVMArrayType2(LLVMInt8TypeInContext(self.ctx), bytes.len() as u64);
-            let name_c = CString::new(name.as_str()).unwrap();
+            let name_c = cstr_owned(name.as_str());
             let global = LLVMAddGlobal(self.module, array_ty, name_c.as_ptr());
             // Initialiser: LLVMConstString adds a null terminator by default;
             // we use the in-context variant with DontNullTerminate=1 to match
@@ -87,7 +87,7 @@ impl ModuleEmitter for LLVMSysEmitter {
         unsafe {
             let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
             let array_ty = LLVMArrayType2(ptr_ty, method_symbols.len() as u64);
-            let name_c = CString::new(global_name).unwrap();
+            let name_c = cstr_owned(global_name);
             let global = LLVMAddGlobal(self.module, array_ty, name_c.as_ptr());
             // Build a constant array — resolve each symbol to a function
             // pointer, or use null for "null" / unresolvable symbols.
@@ -98,7 +98,7 @@ impl ModuleEmitter for LLVMSysEmitter {
                         LLVMConstNull(ptr_ty)
                     } else {
                         // Try to look up the function in the module.
-                        let sym_c = CString::new(sym.as_str()).unwrap();
+                        let sym_c = cstr_owned(sym.as_str());
                         let func = LLVMGetNamedFunction(self.module, sym_c.as_ptr());
                         if func.is_null() {
                             // Stage 14.92 (Bug X3 complete fix): Function not
@@ -170,12 +170,12 @@ impl ModuleEmitter for LLVMSysEmitter {
             let fields = [ptr_ty, ptr_ty];
             let struct_ty =
                 LLVMStructTypeInContext(self.ctx, fields.as_ptr() as *mut LLVMTypeRef, 2, 0);
-            let name_c = CString::new(global_name).unwrap();
+            let name_c = cstr_owned(global_name);
             let global = LLVMAddGlobal(self.module, struct_ty, name_c.as_ptr());
 
             // Resolve vtable symbol — look up the existing vtable global.
             let vtable_ptr = {
-                let vtable_c = CString::new(vtable_symbol).unwrap();
+                let vtable_c = cstr_owned(vtable_symbol);
                 let vtable_global = LLVMGetNamedGlobal(self.module, vtable_c.as_ptr());
                 if vtable_global.is_null() {
                     // Vtable not yet emitted — declare as external global.
@@ -191,7 +191,7 @@ impl ModuleEmitter for LLVMSysEmitter {
             // it doesn't exist. This is a placeholder; real instance data
             // would come from the actual struct value (future work).
             let data_ptr = {
-                let data_c = CString::new(data_symbol).unwrap();
+                let data_c = cstr_owned(data_symbol);
                 let existing = LLVMGetNamedGlobal(self.module, data_c.as_ptr());
                 if existing.is_null() {
                     // Create a zero-initialized i8 global as placeholder.

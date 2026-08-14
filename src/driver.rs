@@ -163,6 +163,10 @@ pub struct CompileErrors {
     pub lex: Vec<crate::lexer::LexError>,
     /// Parser errors (always fatal).
     pub parse: Vec<crate::parser::ParseError>,
+    /// Stage 18.75 P0-1: HIR lowering errors (non-fatal — HIR is still
+    /// produced with placeholder nodes). Previously these were silently
+    /// dropped because CompileErrors had no `lower` field.
+    pub lower: Vec<crate::hir::lower::LowerError>,
     /// Name resolution errors (non-fatal — HIR is still produced).
     pub resolve: Vec<crate::resolve::ResolveError>,
     /// Type errors (non-fatal — MIR is still produced).
@@ -181,27 +185,35 @@ pub struct CompileErrors {
     /// Captures malformed macro_rules! definitions, no-matching-rule
     /// macro calls, and recursion-limit violations.
     pub macro_errors: Vec<crate::parser::macro_expand::MacroError>,
+    /// Stage 18.75 P0-1: Codegen errors (non-fatal — compilation
+    /// continues but object/binary emission may fail). Previously these
+    /// were silently dropped because CompileErrors had no `codegen` field.
+    pub codegen: Vec<crate::codegen::error::CodegenError>,
 }
 
 impl CompileErrors {
     pub fn is_empty(&self) -> bool {
         self.lex.is_empty()
             && self.parse.is_empty()
+            && self.lower.is_empty()
             && self.resolve.is_empty()
             && self.typeck.is_empty()
             && self.borrowck.is_empty()
             && self.trait_errors.is_empty()
             && self.macro_errors.is_empty()
+            && self.codegen.is_empty()
     }
 
     pub fn total_count(&self) -> usize {
         self.lex.len()
             + self.parse.len()
+            + self.lower.len()
             + self.resolve.len()
             + self.typeck.len()
             + self.borrowck.len()
             + self.trait_errors.len()
             + self.macro_errors.len()
+            + self.codegen.len()
     }
 
     pub fn has_fatal(&self) -> bool {
@@ -346,6 +358,39 @@ impl CompileErrors {
             diags.push(
                 DiagnosticBuilder::error(&msg, span)
                     .with_code(crate::diagnostics::ErrorCode::Trait.to_string())
+                    .build(),
+            );
+        }
+
+        // Stage 18.75 P0-2: Iterate macro_errors — previously collected
+        // but never rendered, making macro errors invisible to users.
+        // Per §1.0 原则 4 "报错 > 静默": macro errors must reach the user.
+        for e in &self.macro_errors {
+            diags.push(
+                DiagnosticBuilder::error(&e.message, e.span)
+                    .with_code(crate::diagnostics::ErrorCode::Macro.to_string())
+                    .build(),
+            );
+        }
+
+        // Stage 18.75 P0-1: Iterate codegen errors — previously had no
+        // field in CompileErrors, so codegen errors were silently dropped.
+        // Per §1.0 原则 4 "报错 > 静默": codegen errors must reach the user.
+        for e in &self.codegen {
+            diags.push(
+                DiagnosticBuilder::error(&e.message, e.span)
+                    .with_code(crate::diagnostics::ErrorCode::Codegen.to_string())
+                    .build(),
+            );
+        }
+
+        // Stage 18.75 P0-1: Iterate lower errors — previously had no
+        // field in CompileErrors, so HIR lowering errors were silently dropped.
+        // Per §1.0 原则 4 "报错 > 静默": lowering errors must reach the user.
+        for e in &self.lower {
+            diags.push(
+                DiagnosticBuilder::error(&e.message, e.span)
+                    .with_code(crate::diagnostics::ErrorCode::Lower.to_string())
                     .build(),
             );
         }

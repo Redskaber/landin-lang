@@ -41,7 +41,6 @@ use llvm_sys::core::*;
 use llvm_sys::prelude::*;
 use llvm_sys::target_machine::*;
 use std::collections::HashMap;
-use std::ffi::CString;
 
 // Stage 16.77 MUV-1: Import private helpers (cstr, is_float, parse_*, collect_cstring).
 use helpers::*;
@@ -110,7 +109,7 @@ impl LLVMSysEmitter {
     pub fn new() -> Self {
         unsafe {
             let ctx = LLVMContextCreate();
-            let name = CString::new("landin_module").unwrap();
+            let name = cstr_owned("landin_module");
             let module = LLVMModuleCreateWithNameInContext(name.as_ptr(), ctx);
             let builder = LLVMCreateBuilderInContext(ctx);
             Self {
@@ -300,7 +299,7 @@ impl LLVMSysEmitter {
     /// Set LLVM-side name for a value (debug aid; not strictly required).
     fn set_value_name(&self, val: LLVMValueRef, name: &str) {
         unsafe {
-            let c = CString::new(name).unwrap();
+            let c = cstr_owned(name);
             LLVMSetValueName2(val, c.as_ptr(), name.len());
         }
     }
@@ -377,7 +376,7 @@ impl LLVMSysEmitter {
                     return v;
                 }
                 // Try to get the function from the module
-                let name_c = CString::new(func_name.clone()).unwrap();
+                let name_c = cstr_owned(&func_name);
                 let func = LLVMGetNamedFunction(self.module, name_c.as_ptr());
                 if !func.is_null() {
                     return func;
@@ -504,7 +503,7 @@ impl LLVMSysEmitter {
             return *v;
         }
         unsafe {
-            let name_c = CString::new(name).unwrap();
+            let name_c = cstr_owned(name);
             // Look up an existing function with this name first.
             let existing = LLVMGetNamedFunction(self.module, name_c.as_ptr());
             if !existing.is_null() {
@@ -553,7 +552,7 @@ impl LLVMSysEmitter {
             return *bb;
         }
         unsafe {
-            let label_c = CString::new(key.as_str()).unwrap();
+            let label_c = cstr_owned(key.as_str());
             // Append to current function (or entry block if no function yet).
             let parent = self.cur_fn.expect("emit_block called outside function");
             let bb = LLVMAppendBasicBlockInContext(self.ctx, parent, label_c.as_ptr());

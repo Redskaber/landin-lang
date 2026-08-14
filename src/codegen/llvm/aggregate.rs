@@ -3,11 +3,11 @@
 //! Extracted from `llvm/mod.rs` per §13.4 J2 (single responsibility).
 //! Per `docs/lang-design/07-codegen.md` §4 (MIR → LLVM IR mapping).
 
+use super::helpers::cstr_owned;
 use crate::codegen::emitter::AggregateEmitter;
 use crate::codegen::emitter::*;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
-use std::ffi::CString;
 
 use super::LLVMSysEmitter;
 
@@ -60,9 +60,9 @@ impl AggregateEmitter for LLVMSysEmitter {
             // caused "Instruction has a name, but provides a void value" verifier
             // error for calls to void functions (e.g., __landin_panic_overflow).
             let name_c = if *ret_ty == EmitType::Void {
-                CString::new("").unwrap()
+                cstr_owned("")
             } else {
-                CString::new("call").unwrap()
+                cstr_owned("call")
             };
             let v = LLVMBuildCall2(
                 self.builder,
@@ -105,7 +105,7 @@ impl AggregateEmitter for LLVMSysEmitter {
         // already exist in the module (emitted by emit_dyn_trait_ptrs before
         // codegen_from_mir — see codegen_crate_to_module reorder).
         unsafe {
-            let dynptr_name_c = CString::new(dynptr_symbol).unwrap();
+            let dynptr_name_c = cstr_owned(dynptr_symbol);
             let dynptr = LLVMGetNamedGlobal(self.module, dynptr_name_c.as_ptr());
             if dynptr.is_null() {
                 // Graceful degradation: if the dynptr global doesn't exist
@@ -127,7 +127,7 @@ impl AggregateEmitter for LLVMSysEmitter {
             let zero = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 0, 0);
             let one = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), 1, 0);
             let mut vtable_indices = [zero, one];
-            let gep_name = CString::new("gep_vtable").unwrap();
+            let gep_name = cstr_owned("gep_vtable");
             let gep_vtable = LLVMBuildInBoundsGEP2(
                 self.builder,
                 fat_ptr_ty,
@@ -139,7 +139,7 @@ impl AggregateEmitter for LLVMSysEmitter {
 
             // 2. Load the vtable pointer.
             let opaque_ptr_ty = self.llvm_type(&EmitType::OpaquePtr);
-            let load_vtable_name = CString::new("vtable").unwrap();
+            let load_vtable_name = cstr_owned("vtable");
             let vtable = LLVMBuildLoad2(
                 self.builder,
                 opaque_ptr_ty,
@@ -161,7 +161,7 @@ impl AggregateEmitter for LLVMSysEmitter {
             // Per §1.0 原則 9 "正确 > 妥协": fix the GEP indices.
             let slot_idx = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), slot_index as u64, 0);
             let mut method_indices = [slot_idx]; // single index into [N x ptr]
-            let gep_method_name = CString::new("gep_method").unwrap();
+            let gep_method_name = cstr_owned("gep_method");
             let gep_method = LLVMBuildInBoundsGEP2(
                 self.builder,
                 opaque_ptr_ty, // element type is ptr (opaque pointer mode)
@@ -172,7 +172,7 @@ impl AggregateEmitter for LLVMSysEmitter {
             );
 
             // 4. Load the method function pointer.
-            let load_method_name = CString::new("method_fn").unwrap();
+            let load_method_name = cstr_owned("method_fn");
             let method_fn = LLVMBuildLoad2(
                 self.builder,
                 opaque_ptr_ty,
@@ -193,7 +193,7 @@ impl AggregateEmitter for LLVMSysEmitter {
             // 6. Call the loaded function pointer (indirect call).
             let mut arg_vals: Vec<LLVMValueRef> =
                 args.iter().map(|(_, v)| self.lookup(v)).collect();
-            let call_name = CString::new("dyncall").unwrap();
+            let call_name = cstr_owned("dyncall");
             let call_val = LLVMBuildCall2(
                 self.builder,
                 fty,
@@ -215,7 +215,7 @@ impl AggregateEmitter for LLVMSysEmitter {
     fn emit_phi(&mut self, ty: &EmitType, incoming: &[(EmitValue, String)]) -> EmitValue {
         unsafe {
             let llvm_ty = self.llvm_type(ty);
-            let name_c = CString::new("phi").unwrap();
+            let name_c = cstr_owned("phi");
             let phi = LLVMBuildPhi(self.builder, llvm_ty, name_c.as_ptr());
             let vals: Vec<LLVMValueRef> = incoming.iter().map(|(v, _)| self.lookup(v)).collect();
             let blocks: Vec<LLVMBasicBlockRef> = incoming
@@ -294,7 +294,7 @@ impl AggregateEmitter for LLVMSysEmitter {
                     let val_width = LLVMGetIntTypeWidth(LLVMTypeOf(val_v));
                     let field_width = LLVMGetIntTypeWidth(field_ty);
                     if val_width != field_width {
-                        let name_c = CString::new("icast").unwrap();
+                        let name_c = cstr_owned("icast");
                         val_v = LLVMBuildIntCast2(
                             self.builder,
                             val_v,
@@ -306,7 +306,7 @@ impl AggregateEmitter for LLVMSysEmitter {
                 }
             }
 
-            let name_c = CString::new("iv").unwrap();
+            let name_c = cstr_owned("iv");
             let r = LLVMBuildInsertValue(self.builder, agg_real, val_v, index, name_c.as_ptr());
             self.fresh_named(r)
         }
@@ -316,7 +316,7 @@ impl AggregateEmitter for LLVMSysEmitter {
         unsafe {
             let agg_v = self.lookup(agg);
             let _ = self.llvm_type(agg_ty); // for type-context (not used by API)
-            let name_c = CString::new("ev").unwrap();
+            let name_c = cstr_owned("ev");
             let r = LLVMBuildExtractValue(self.builder, agg_v, index, name_c.as_ptr());
             self.fresh_named(r)
         }

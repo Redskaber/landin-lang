@@ -2443,4 +2443,86 @@ mod tests {
             result.errors.trait_errors
         );
     }
+
+    // ========================================================================
+    // Stage 18.75 P0 tests — error system fixes.
+    // ========================================================================
+
+    /// Stage 18.75 P0-2: macro errors are now visible via to_diagnostics.
+    #[test]
+    fn stage18_75_macro_errors_visible() {
+        use crate::compile;
+        let src = "fn main() { write!(\"test\"); }";
+        let result = compile(src);
+        // Macro errors should be collected in macro_errors.
+        assert!(
+            !result.errors.macro_errors.is_empty(),
+            "expected macro error for undefined write! macro, got: {:?}",
+            result.errors.macro_errors
+        );
+        // Macro errors should appear in to_diagnostics output.
+        let diags = result.errors.to_diagnostics(None);
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("no matching rule for macro")),
+            "expected 'no matching rule for macro' in diagnostics, got: {:?}",
+            diags.iter().map(|d| &d.message).collect::<Vec<_>>()
+        );
+    }
+
+    /// Stage 18.75 P0-1: CompileErrors has lower + codegen fields.
+    #[test]
+    fn stage18_75_compile_errors_has_lower_codegen_fields() {
+        use crate::compile;
+        let src = "fn main() { 42 }";
+        let result = compile(src);
+        // The lower and codegen fields should exist and be accessible.
+        let lower_count = result.errors.lower.len();
+        let codegen_count = result.errors.codegen.len();
+        // For valid code, both should be 0 (no errors).
+        assert_eq!(
+            lower_count, 0,
+            "expected 0 lower errors for valid code, got {}",
+            lower_count
+        );
+        assert_eq!(
+            codegen_count, 0,
+            "expected 0 codegen errors for valid code, got {}",
+            codegen_count
+        );
+    }
+
+    /// Stage 18.75 P0-3: ErrorCode has Codegen (E700) and Macro (E800).
+    #[test]
+    fn stage18_75_error_code_codegen_and_macro_exist() {
+        use crate::diagnostics::ErrorCode;
+        assert_eq!(ErrorCode::Codegen.code(), "E700");
+        assert_eq!(ErrorCode::Macro.code(), "E800");
+        assert_eq!(ErrorCode::Codegen.category(), "codegen");
+        assert_eq!(ErrorCode::Macro.category(), "macro");
+    }
+
+    /// Stage 18.75 P0-1: total_count includes lower + codegen.
+    #[test]
+    fn stage18_75_total_count_includes_all_fields() {
+        use crate::compile;
+        let src = "fn main() { write!(\"test\"); }";
+        let result = compile(src);
+        let total = result.errors.total_count();
+        let sum = result.errors.lex.len()
+            + result.errors.parse.len()
+            + result.errors.lower.len()
+            + result.errors.resolve.len()
+            + result.errors.typeck.len()
+            + result.errors.borrowck.len()
+            + result.errors.trait_errors.len()
+            + result.errors.macro_errors.len()
+            + result.errors.codegen.len();
+        assert_eq!(
+            total, sum,
+            "total_count should equal sum of all field lengths"
+        );
+        assert!(total > 0, "expected at least 1 error (macro), got 0");
+    }
 }
