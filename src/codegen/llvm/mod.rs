@@ -199,16 +199,13 @@ impl LLVMSysEmitter {
             llvm_sys::target::LLVM_InitializeAllTargetMCs();
             llvm_sys::target::LLVM_InitializeAllAsmPrinters();
 
-            // 2. Get the host triple.
-            let triple_ptr = LLVMGetDefaultTargetTriple();
-            if triple_ptr.is_null() {
-                return Err(CodegenError::new(
-                    "LLVMGetDefaultTargetTriple returned null",
-                    Span::DUMMY,
-                ));
-            }
-            let triple = collect_cstring(triple_ptr);
-            LLVMDisposeMessage(triple_ptr);
+            // 2. Get the target triple.
+            // Stage 18.90: Use self.target (configured triple) instead of
+            // LLVMGetDefaultTargetTriple (host triple). This enables cross-
+            // compilation: --target aarch64-unknown-linux-gnu now produces
+            // an AArch64 object file even when running on x86_64.
+            // Per §1.0 原則 3 "显式 > 隐式": target is explicit, not host default.
+            let triple = self.target.triple().to_string();
 
             // 3. Look up the target.
             let triple_c = cstr_result(&triple, crate::session::Span::DUMMY)?;

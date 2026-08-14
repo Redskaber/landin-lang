@@ -12878,3 +12878,44 @@ Stage Summary:
 - 3286 unit + 2935 conformance = 6221 total tests, 0 failures
 - v0.357.0: minor bump (CLI --target parameter)
 - 下一步: v0.2 规划 或 交叉链接
+
+---
+Task ID: stage18.90
+Agent: Super Z (main)
+Task: Stage 18.90 — Cross-Compilation Phase 3: LLVM Target Init + Object Emission. v0.357.0 → v0.358.0.
+
+Work Log:
+- §13.1 设计对齐: Stage 18.89 完成 CLI --target, 下一步 Phase 3 交叉链接
+- 修复 to_object_file 使用配置的 target triple:
+  - src/codegen/llvm/mod.rs: to_object_file()
+  - Before: LLVMGetDefaultTargetTriple() (host triple)
+  - After: self.target.triple() (configured triple)
+  - 移除 LLVMGetDefaultTargetTriple 调用 + null check + DisposeMessage
+  - 直接使用 self.target.triple().to_string()
+- 验证交叉编译:
+  - `--emit-obj --target aarch64-unknown-linux-gnu` → ELF 64-bit ARM aarch64 ✅
+  - `--emit-obj` (默认) → ELF 64-bit x86-64 ✅
+  - 同一源码生成不同架构的 object file ✅
+- §3.2 验收:
+  - cargo clean (磁盘空间不足, 释放 6.7GB)
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2648 integration = 3286 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - Cargo.toml: v0.357.0 → v0.358.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.90 PASSED — 交叉编译 Phase 3 完成
+- 关键修复: to_object_file 使用 self.target 而非 host triple
+- 验证: 同一源码生成 aarch64 + x86-64 object files ✅
+- v0.7 路线图 P2 交叉编译全部完成:
+  - ✅ Phase 1: TargetTriple 配置基础设施 (18.88)
+  - ✅ Phase 2: CLI --target 参数 (18.89)
+  - ✅ Phase 3: LLVM target 初始化 + 交叉 object emission (18.90)
+- 3286 unit + 2935 conformance = 6221 total tests, 0 failures
+- v0.358.0: minor bump (cross-compilation Phase 3)
+- v0.7 路线图 P0/P1/P2 全部完成 (P3 自举远期)
+- 下一步: v0.2 规划 (单态化, 完整标准库)
