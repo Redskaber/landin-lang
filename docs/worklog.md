@@ -31344,3 +31344,136 @@ Stage Summary:
 - BUILTIN_MACRO_NAMES 扩展: 25 → 28
 - 内置宏总计: 4 print + 24 non-print = 28
 - v0.315.0 → v0.316.0
+
+---
+Task ID: stage18.44
+Agent: Super Z (main)
+Task: Stage 18.44 — v0.7 P2 Review
+
+Work Log:
+- §14.5 D1-D8 全 ✅
+- §6.3 5/5 GO
+- Macro:println = 15:10 (macro 系统大幅扩展)
+- 3144 tests, 0 failures
+- v0.316.0 (无代码变更，仅审查)
+- 内置宏系统总览: 28 macros (4 print + 24 non-print)
+- 后续规划:
+  - Phase 3.2: 完整移除 Println variant
+  - GATs / Incremental Compilation / Cross-compilation
+
+---
+Task ID: stage18.45
+Agent: Super Z (main)
+Task: Stage 18.45 — 自举 (Self-Hosting) 可行性评估
+
+Work Log:
+- §13.1 stage-start design alignment + §14.5 deep review
+- 用户反馈: "最终目的是编译器自举，请确认设计情况和选择（不要盲目编码）"
+- 全面评估当前 Landin 编译器状态与自举目标的差距
+- 评估文档: docs/develop/v0/stage-18/stage-18.45-self-hosting-assessment.md
+- 关键发现:
+  - 编译器规模: ~45,569 LOC Rust, 3,144 tests, 28 macros
+  - 语言特性: fn/struct/enum/trait/impl/generics/match/closures/refs ✅
+  - P0 阻断性差距:
+    1. 标准库实现 (Vec/String/HashMap 仅有类型名, 无实际实现)
+    2. 文件 I/O (无法读写文件)
+    3. 跨文件编译 (仅支持单文件)
+    4. 字符串操作 (无 split/join/parse 等方法)
+  - P1 重要差距:
+    5. Iterator trait
+    6. Result/Option + ? 运算符
+    7. 内存管理 (alloc/dealloc)
+- 自举路径选择:
+  - 路径 A: 完整自举 (50-100 stages, 风险极高)
+  - 路径 B: 渐进式自举 (推荐, 30-50 stages)
+    Phase 0: 标准库基础 (10-15 stages)
+    Phase 1: Lexer 自举
+    Phase 2: Parser 自举
+    Phase 3: HIR/MIR 自举
+    Phase 4: Codegen 自举
+  - 路径 C: 最小自举 (仅 Lexer+Parser, 15-20 stages)
+  - 路径 D: 不自举, 专注语言和工具链
+- 委员会建议: 选择路径 B (渐进式自举)
+  - 前置条件: Phase 0 (标准库基础实现)
+  - 理由: 正确 > 妥协, 通解 > 特解, 风险可控
+- 关键结论:
+  - 不应继续盲目添加更多宏 (28 个已足够)
+  - 现在需要让 Landin 能做实际工作的能力
+  - 优先级: 标准库 > 文件 I/O > 跨文件 > 自举前端
+
+Stage Summary:
+- 自举可行性评估完成
+- 建议路径 B (渐进式自举)
+- 下一步: 创建自举路线图设计文档
+- v0.316.0 (无代码变更，仅评估)
+
+---
+Task ID: stage18.46
+Agent: Super Z (main)
+Task: Stage 18.46 — 自举路线图设计 (Self-Hosting Roadmap)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 基于 Stage 18.45 评估，选择渐进式自举路径 (路径 B)
+- 设计文档: docs/develop/v0/stage-18/stage-18.46-self-hosting-roadmap.md
+- 路线图:
+  Phase 0: 标准库基础 (10-15 stages) — Vec/String/HashMap/Result/Option/Iterator/File I/O
+  Phase 1: Lexer 自举 (5-8 stages)
+  Phase 2: Parser 自举 (8-12 stages)
+  Phase 3: HIR/MIR 自举 (10-15 stages)
+  Phase 4: Codegen 自举 (5-10 stages)
+  Phase 5: 完整自举 (3-5 stages)
+- 关键设计决策:
+  - 内存管理: extern "C" malloc/realloc/free, 手动管理
+  - FFI: LLVM-C API + libc
+  - 编译策略: Stage 0 (Rust) → Stage 1 (Landin, Rust编译) → Stage 2 (自举)
+  - 测试: 每个 Phase 与 Rust 实现对比
+- v0.7 优先级调整:
+  P0: Phase 0 标准库基础 + 跨文件编译
+  P1: Phase 1 Lexer 自举
+  P2: GATs / 增量编译
+  P3: Println variant 移除
+- v0.316.0 (无代码变更，仅设计)
+
+---
+Task ID: stage18.47+18.48
+Agent: Super Z (main)
+Task: Stage 18.47 (v0.7 roadmap revision) + Stage 18.48 (Println variant 完整移除)
+
+Work Log:
+- 用户反馈: "你这些都还没做呢：Phase 完整移除 Println variant..."
+- Stage 18.47: v0.7 路线图修订
+  - 审查文档: docs/develop/v0/stage-18/stage-18.47-v0.7-roadmap-revision.md
+  - 优先级调整: Println移除 > 测试增强 > GATs > 增量编译 > 交叉编译 > 自举
+  - 5/5 GO
+
+- Stage 18.48: Println variant 完整移除 (Phase 3.2)
+  - AST: 移除 Expr::Println variant (src/ast/kinds.rs)
+  - Parser: 移除 println! 特解代码 (src/parser/expr.rs)
+  - HIR: 移除 HirExprKind::Println variant (src/hir/kinds.rs)
+  - HIR lower: 移除 Println lower arm (src/hir/lower/body.rs)
+  - MIR: 移除 StatementKind::Println variant (src/mir/body.rs)
+  - MIR lower: 移除 Println lower arm (src/mir/lower/expr_operand.rs)
+  - MIR optimization: 移除 Println arm + 更新测试 (src/mir/optimization.rs)
+  - MIR monomorphize: 移除 Println arm (src/mir/monomorphize/item.rs)
+  - Codegen: 移除 Println arm (src/codegen/statement.rs)
+  - Resolve: 移除 Println resolve arm (src/resolve/path_resolve.rs)
+  - Typeck: 移除 Println check arm (src/typeck/checker.rs)
+  - Driver: 移除 Println scan arm (src/driver.rs)
+  - Closure capture: 移除 Println arm (src/mir/lower/closure_capture.rs)
+  - 总计: ~20 处引用移除, 横跨 4 层 (AST/HIR/MIR/Codegen) + 6 个模块
+  - §1.0 原則 6 "通用 > 特解": Println 特解完全移除, 通解 (Call) 取代
+  - 避免死代码: 所有 Println 代码路径已删除
+  - 修复 clippy warning: match → if let (monomorphize)
+  - 验收:
+    - cargo build --features llvm-backend — ✅
+    - cargo fmt --check — ✅
+    - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+    - cargo test --features llvm-backend — ✅ 607 lib + 2537 integration = 3144 unit tests, 0 failures
+
+Stage Summary:
+- v0.7 路线图修订完成 (优先级调整)
+- Println variant 完整移除完成 (4 层 + 6 模块, ~20 处引用)
+- println! 完全走通解路径: macro_rules! → __landin_println → Call → codegen
+- 无任何 Println 特解代码残留
+- v0.316.0 → v0.317.0

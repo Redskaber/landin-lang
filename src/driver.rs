@@ -2239,14 +2239,7 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
             scan_expr_for_unresolved(elem, errors);
             scan_expr_for_unresolved(count, errors);
         }
-        // Stage 14.100 (Bug AA1 fix): Println args must be scanned.
-        // Previously the catch-all skipped Println, so
-        // `println!("{}", nonexistent_xyz)` silently printed 0.
-        HirExprKind::Println { args, .. } => {
-            for a in args {
-                scan_expr_for_unresolved(a, errors);
-            }
-        }
+        // Stage 18.48: HirExprKind::Println variant removed.
         HirExprKind::Closure { body, .. } => scan_expr_for_unresolved(body, errors),
         // Stage 14.101 (Phase 1 audit fix): Scan Try expr, Unsafe block,
         // MacroCall path, Await expr, Async block.

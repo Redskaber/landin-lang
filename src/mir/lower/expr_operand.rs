@@ -1931,55 +1931,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         // function called BEFORE landin_main() — this broke ordering for
         // loops and conditionals.
         //
-        // Stage 13.13 replaces the side-table approach with an inline
-        // StatementKind::Println variant, so codegen emits printf inline
-        // at the source position. (Stage 15.6: the legacy
-        // MirBody.println_messages side-table field was removed in 14.x.)
-        //
-        // Stage 18.38 (DEPRECATED): This arm is dead code. Stage 18.27
-        // activated __landin_println macro body, so println!(...) expands
-        // to __landin_println(...) BEFORE parsing. The parser never
-        // generates Expr::Println, so this MIR lowering arm is never
-        // reached. Kept for safety; will be removed in Phase 3.2.
-        HirExprKind::Println {
-            msg,
-            args,
-            newline,
-            stderr,
-        } => {
-            let full_msg = if *newline {
-                format!("{}\n", msg)
-            } else {
-                msg.clone()
-            };
-            // Stage 13.16: Lower each arg expression to a MIR operand.
-            // Each arg is lowered via lower_expr_to_operand (which produces
-            // a LocalId holding the arg's value). We then wrap it in
-            // Operand::Copy to produce a use operand for codegen.
-            let arg_operands: Vec<Operand> = args
-                .iter()
-                .map(|arg| {
-                    let local = lower_expr_to_operand(cx, arg);
-                    Operand::Copy(Place::local(local, expr.span))
-                })
-                .collect();
-            // Push the println statement to the current basic block —
-            // this is the §16-compliant way to express an ordered side effect.
-            cx.mir
-                .block_mut(cx.current_block)
-                .statements
-                .push(Statement {
-                    kind: StatementKind::Println {
-                        msg: full_msg,
-                        args: arg_operands,
-                        newline: *newline,
-                        stderr: *stderr,
-                    },
-                    span: expr.span,
-                });
-            let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
-            cx.mir.new_local(unit_ty, None, expr.span)
-        }
+        // Stage 18.48: HirExprKind::Println arm removed — println! now goes
+        // through the Call path via __landin_println macro expansion.
+        // The parser never generates Expr::Println, so HIR never contains
+        // HirExprKind::Println, so this arm is never reached.
 
         // Stage 4.10 + Stage 13.4a: MacroCall — expand known built-in macros.
         // Stage 4.10: 7 macros (println, print, eprintln, eprint, stringify, assert, debug_assert)

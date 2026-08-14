@@ -239,45 +239,9 @@ pub enum StatementKind {
     /// `drop(x)` calls (not for scope-end cleanup, which uses StorageDead).
     /// Distinct from TerminatorKind::Drop (which is for control-flow drops).
     Deinit(Place),
-    /// Stage 13.13 + Stage 13.16: Inline `println!` / `print!` / `eprintln!` / `eprint!`
-    /// statement with format args support.
-    ///
-    /// Stage 17.11 (通解 analysis): This is a 特解 that should be replaced with
-    /// a regular `Assign + TerminatorKind::Call` to `printf`/`__landin_println`
-    /// when `macro_rules!` lands. The current approach carries format string +
-    /// args through MIR as a special statement kind, requiring ~100 lines of
-    /// special-case codegen in `statement.rs`.
-    /// TODO(Stage 18): Remove — replace with regular Call terminator.
-    ///
-    /// Carries:
-    /// - `msg`: the format string template (e.g., `"x is {}"`), with a trailing
-    ///   `"\n"` appended if `newline == true`.
-    /// - `args`: the list of MIR operands (already-lowered argument values)
-    ///   to substitute into `{}` placeholders, in order. Empty for
-    ///   `println!("literal")` (no substitution).
-    /// - `newline`: whether to append `"\n"` (already encoded in `msg`).
-    /// - `stderr`: true for `eprintln!`/`eprint!` (routes to stderr at codegen).
-    ///
-    /// Per §16 (Interface Isolation): the basic-block statement list is the
-    /// **single source of truth** for execution order. Stage 13.12 violated
-    /// this by stashing println messages in a `Vec<String>` side-table;
-    /// Stage 13.13 fixed this by carrying the message inline. Stage 13.16
-    /// extends the variant to carry `args` for format-args support.
-    ///
-    /// Codegen translates this statement to:
-    /// - `printf(c_fmt, c_args...)` (stdout) or `__landin_eprint(c_msg)` (stderr)
-    /// - where `c_fmt` is built from `msg` by replacing `{}` with `%ld` (integers),
-    ///   `%s` (strings), or `%d` (bool), and `c_args` are the arg operands
-    ///   (cast to the appropriate C type).
-    ///
-    /// Forward-compatibility: this variant will be deprecated in v0.2 when
-    /// full `macro_rules!` expansion lands (per `08-bootstrap-strategy.md`).
-    Println {
-        msg: String,
-        args: Vec<crate::mir::place::Operand>,
-        newline: bool,
-        stderr: bool,
-    },
+    // Stage 18.48: Println variant removed — println! now goes through
+    // the Call path via __landin_println macro expansion.
+    // Per §1.0 原則 6 "通用 > 特解": the 通解 (Call) has replaced the 特解.
 }
 
 /// Stage 14.112 (HP-21 proper fix): Terminator is now a struct carrying

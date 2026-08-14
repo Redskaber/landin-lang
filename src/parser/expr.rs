@@ -858,77 +858,18 @@ impl<'a> Parser<'a> {
                         _ => unreachable!(),
                     };
 
-                    // Stage 13.11 + Stage 13.16: Special-case println!/print!/eprintln!/eprint!
-                    // with a format string and comma-separated arguments.
+                    // Stage 18.48 (REMOVED): The Println special-case code has been
+                    // removed. Stage 18.27 activated the __landin_println macro body,
+                    // which expands println!("hi") to __landin_println("hi") BEFORE
+                    // parsing. The parser therefore never encounters println!(...)
+                    // calls — they're already expanded to __landin_println(...)
+                    // function calls. Per §1.0 原則 6 "通用 > 特解": the 通解
+                    // (macro_rules! → Call) has replaced the 特解 (parser special case).
                     //
-                    // Stage 13.11: captured only the format string (single string literal).
-                    // Stage 13.16: now captures ALL comma-separated args after the format
-                    // string, enabling `println!("x is {}", x)` to actually substitute x.
-                    // The previous Stage 13.11 implementation silently dropped args after
-                    // the format string — a "special case" that violated the user feedback
-                    // "少用特例" (use fewer special cases).
-                    //
-                    // Stage 18.30 (DEPRECATED): This special-case code is now DEAD CODE.
-                    // Stage 18.27 activated the `__landin_println` macro body, which
-                    // expands `println!("hi")` to `__landin_println("hi")` BEFORE parsing.
-                    // The parser therefore never encounters `println!(...)` calls —
-                    // they're already expanded to `__landin_println(...)` function calls.
-                    // This code path is kept for safety (in case macro expansion is
-                    // disabled) but will be removed in Phase 3 (Stage 18.31+).
-                    // Per §1.0 原則 6 "通用 > 特解": the 通解 (macro_rules! → Call)
-                    // has replaced the 特解 (parser special case).
-                    let macro_name = path.segments.last().map(|s| s.ident.name);
-                    let macro_name_str = macro_name
-                        .and_then(|spur| self.interner.try_resolve(&spur))
-                        .map(|s| s.to_string());
-
-                    if delim == MacroDelim::Paren {
-                        if let Some(ref name) = macro_name_str {
-                            if matches!(name.as_str(), "println" | "print" | "eprintln" | "eprint")
-                            {
-                                // Parse `(fmt_string, arg1, arg2, ...)`
-                                self.bump(); // (
-                                if let TokenKind::StrLit(sym) = *self.peek() {
-                                    self.bump(); // string literal (format string)
-                                    let msg = self.interner.resolve(&sym).to_string();
-                                    // Stage 13.16: Parse comma-separated args until )
-                                    let mut args = Vec::new();
-                                    while *self.peek() != TokenKind::RParen
-                                        && *self.peek() != TokenKind::Eof
-                                    {
-                                        // Expect comma separator
-                                        if *self.peek() == TokenKind::Comma {
-                                            self.bump(); // ,
-                                        } else {
-                                            // Unexpected token — break to avoid infinite loop
-                                            break;
-                                        }
-                                        // Parse expression argument
-                                        let arg = self.parse_expr();
-                                        args.push(arg);
-                                    }
-                                    if *self.peek() == TokenKind::RParen {
-                                        self.bump(); // )
-                                    }
-                                    return Expr::Println {
-                                        msg,
-                                        args,
-                                        newline: name.ends_with("ln"),
-                                        stderr: name.starts_with('e'),
-                                        span: path_span,
-                                    };
-                                }
-                                // Not a string literal — fall through to skip_delim_group
-                                // Reset position: we already consumed `(`. Need to balance.
-                                self.skip_delim_group();
-                                return Expr::MacroCall {
-                                    path,
-                                    delim,
-                                    span: path_span,
-                                };
-                            }
-                        }
-                    }
+                    // Any println!/print!/eprintln!/eprint! that somehow reaches
+                    // the parser (e.g., if macro expansion is disabled) will be
+                    // parsed as a regular MacroCall and handled by the existing
+                    // MacroCall path.
 
                     // Skip the macro body tokens for Stage 0 — we just balance
                     // the delimiters. Stage 4 macro expansion will re-parse them.
@@ -1193,7 +1134,6 @@ impl ExprSpan for Expr {
             Expr::Repeat { span, .. } => *span,
             Expr::Struct { span, .. } => *span,
             Expr::MacroCall { span, .. } => *span,
-            Expr::Println { span, .. } => *span,
             Expr::Unsafe(_, s) => *s,
             Expr::Unit(s) => *s,
             Expr::Await { span, .. } => *span,

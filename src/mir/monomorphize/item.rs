@@ -116,19 +116,9 @@ fn collect_from_mir_body(mir: &MirBody, collected: &mut HashSet<MonoItem>) {
 
 /// Collect MonoItems from a statement.
 fn collect_from_statement(stmt: &StatementKind, collected: &mut HashSet<MonoItem>) {
-    match stmt {
-        StatementKind::Assign(boxed) => {
-            let (_, rvalue) = &**boxed;
-            collect_from_rvalue(rvalue, collected);
-        }
-        StatementKind::Println { args, .. } => {
-            // Println args are operands — collect from their types.
-            for arg in args {
-                collect_from_operand(arg, collected);
-            }
-        }
-        // Nop, StorageLive, StorageDead, Deinit — no types to collect.
-        _ => {}
+    if let StatementKind::Assign(boxed) = stmt {
+        let (_, rvalue) = &**boxed;
+        collect_from_rvalue(rvalue, collected);
     }
 }
 

@@ -802,22 +802,6 @@ pub enum HirExprKind {
         path: HirPath,
         delim: MacroDelim,
     },
-    /// Stage 13.12 + Stage 13.16: `println!(fmt, args...)` / `print!` / `eprintln!` / `eprint!`
-    /// Carries the format string AND arguments through HIR to MIR lowerer for
-    /// printf emission with the correct format specifiers.
-    ///
-    /// Stage 17.11 (通解 analysis): This is a 特解 that should be replaced with
-    /// `HirExprKind::Call` to `__landin_println` when `macro_rules!` lands.
-    /// TODO(Stage 18): Remove — replace with Call to extern `__landin_println`.
-    ///
-    /// Stage 13.12: introduced with `msg: String` only.
-    /// Stage 13.16: extended with `args: Vec<HirExpr>` to support format args.
-    Println {
-        msg: String,
-        args: Vec<HirExpr>,
-        newline: bool,
-        stderr: bool,
-    },
     Unsafe(HirBlock),
     Unit,
     /// Stage 8.5: `await expr` — async await expression.
@@ -1027,7 +1011,6 @@ pub fn hir_expr_kind_to_string(kind: &HirExprKind) -> &'static str {
         HirExprKind::Repeat { .. } => "repeat expression",
         HirExprKind::Struct { .. } => "struct literal",
         HirExprKind::MacroCall { .. } => "macro call",
-        HirExprKind::Println { .. } => "println! macro",
         HirExprKind::Unsafe(_) => "unsafe block",
         HirExprKind::Unit => "unit",
         HirExprKind::Await { .. } => "await expression",

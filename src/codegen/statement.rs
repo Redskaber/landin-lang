@@ -216,57 +216,27 @@ pub(crate) fn codegen_statement(
             let _ = id;
         }
         StatementKind::StorageDead(_) => {}
-        StatementKind::Nop | StatementKind::Deinit(_) => {}
-        // Stage 13.13 + 13.14 + 13.16: Inline println! / print! / eprintln! / eprint!
-        // statement with format args support.
-        //
-        // Stage 13.13: introduced the variant; routed both stdout and stderr
-        // to `printf` (stderr flag captured but ignored — explicit deferral).
-        // Stage 13.14: closed the deferral — stderr routes to __landin_eprint helper.
-        // Stage 13.16: format args support — builds a C printf format string from
-        // the Landin template (replacing `{}` with `%ld`/`%s`/`%d` based on arg
-        // type) and emits `printf(c_fmt, c_args...)` with the correct types.
-        //
-        // The `msg` field is the format string template (with trailing "\n"
-        // already appended if `newline == true`). The `args` field is the list
-        // of MIR operands to substitute into `{}` placeholders, in order.
-        //
-        // Stage 17.11 (通解 analysis): This ~100-line Println codegen is a 特解.
-        // The 通解 is to expand `println!` at parser level into a `Call` to
-        // `__landin_println(format_args)` — a regular function call that
-        // codegen handles via the existing `emit_call` path.
-        // Stage 18.38 (DEPRECATED): This arm is dead code. Stage 18.27
-        // activated __landin_println macro body, so println!(...) now
-        // goes through the Call path (codegen_print_call → emit_printf_call).
-        // The parser never generates StatementKind::Println anymore.
-        // Kept for safety; will be removed in Phase 3.2.
-        // Per `api-naming-standard.md` §8.1: helpers follow the
-        // `__landin_<verb>_<noun>` pattern (matches `__landin_panic_*` siblings).
-        StatementKind::Println {
-            msg,
-            args,
-            newline,
-            stderr,
-        } => {
-            // Stage 18.12: Refactored — the ~100-line printf codegen logic
-            // is now in `emit_printf_call` (below). This enables reuse by
-            // the future `Call(__landin_println)` codegen path (Phase 2 of
-            // the println! 通解化 migration).
-            // Per §13.4 (refactoring as architecture design): behavior
-            // unchanged, just code organization.
-            emit_printf_call(
-                emitter,
-                mir,
-                msg,
-                args,
-                *newline,
-                *stderr,
-                interner,
-                layouts,
-                mono_layouts,
-                fn_name_by_def_id,
-            );
-        }
+        StatementKind::Nop | StatementKind::Deinit(_) => {} // Stage 13.13 + 13.14 + 13.16: Inline println! / print! / eprintln! / eprint!
+                                                            // statement with format args support.
+                                                            //
+                                                            // Stage 13.13: introduced the variant; routed both stdout and stderr
+                                                            // to `printf` (stderr flag captured but ignored — explicit deferral).
+                                                            // Stage 13.14: closed the deferral — stderr routes to __landin_eprint helper.
+                                                            // Stage 13.16: format args support — builds a C printf format string from
+                                                            // the Landin template (replacing `{}` with `%ld`/`%s`/`%d` based on arg
+                                                            // type) and emits `printf(c_fmt, c_args...)` with the correct types.
+                                                            //
+                                                            // The `msg` field is the format string template (with trailing "\n"
+                                                            // already appended if `newline == true`). The `args` field is the list
+                                                            // of MIR operands to substitute into `{}` placeholders, in order.
+                                                            //
+                                                            // Stage 17.11 (通解 analysis): This ~100-line Println codegen is a 特解.
+                                                            // The 通解 is to expand `println!` at parser level into a `Call` to
+                                                            // `__landin_println(format_args)` — a regular function call that
+                                                            // codegen handles via the existing `emit_call` path.
+                                                            // Stage 18.48: StatementKind::Println variant removed — println! now
+                                                            // goes through the Call path via __landin_println macro expansion.
+                                                            // Per §1.0 原則 6 "通用 > 特解": the 通解 (Call) has replaced the 特解.
     }
 }
 

@@ -78,7 +78,6 @@ fn expr_span(expr: &ast::Expr) -> Span {
         Repeat { span, .. } => *span,
         Struct { span, .. } => *span,
         MacroCall { span, .. } => *span,
-        Println { span, .. } => *span,
         Unsafe(_, s) => *s,
         Unit(s) => *s,
         Await { span, .. } => *span,
@@ -376,24 +375,8 @@ pub fn lower_expr(cx: &mut HirLowerCtxt, expr: &Expr) -> HirExpr {
             path: crate::hir::lower::path::lower_path(cx, path),
             delim: *delim,
         },
-        // Stage 13.12 + Stage 13.16: Println → HirExprKind::Println
-        // (carries format string + args to MIR for printf emission)
-        Expr::Println {
-            msg,
-            args,
-            newline,
-            stderr,
-            ..
-        } => {
-            // Stage 13.16: Lower each arg expression to HIR
-            let hir_args: Vec<HirExpr> = args.iter().map(|arg| lower_expr(cx, arg)).collect();
-            HirExprKind::Println {
-                msg: msg.clone(),
-                args: hir_args,
-                newline: *newline,
-                stderr: *stderr,
-            }
-        }
+        // Stage 18.48: Expr::Println variant removed — println! now goes through
+        // the Call path via __landin_println macro expansion.
         Expr::Unsafe(block, _) => HirExprKind::Unsafe(lower_block(cx, block)),
         Expr::Unit(_) => HirExprKind::Unit,
         // Stage 8.5: async/await — MVP: evaluate synchronously (no real async runtime)
