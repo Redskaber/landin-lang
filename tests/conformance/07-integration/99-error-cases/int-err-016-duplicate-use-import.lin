@@ -1,7 +1,7 @@
 // CATEGORY: 07-integration
 // DESCRIPTION: duplicate use import
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: duplicate
 // SOURCE: Stage 18.69 negative test expansion
 
 use std::io; use std::io; fn main() {}

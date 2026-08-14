@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: bool comparison
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: mismatched types
 // SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
 
 fn main(){let x:bool=1;let y=x>0;}

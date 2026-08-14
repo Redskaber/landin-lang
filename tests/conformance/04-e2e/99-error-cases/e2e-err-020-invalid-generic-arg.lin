@@ -1,7 +1,7 @@
 // CATEGORY: 04-e2e
 // DESCRIPTION: generic function with undefined type annotation
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: cannot find
 // SOURCE: Stage 18.69 negative test expansion
 
 fn f<T>(x: T) -> T { x } fn main() { let x: Undefined = f(42); }

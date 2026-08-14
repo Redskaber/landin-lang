@@ -1,7 +1,7 @@
 // CATEGORY: integration
 // DESCRIPTION: cross const
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: mismatched types
 // SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
 
 mod a{pub const C:i32=42;} mod b{pub fn main()->i32{a::C}}

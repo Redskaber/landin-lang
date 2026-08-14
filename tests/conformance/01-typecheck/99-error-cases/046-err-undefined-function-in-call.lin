@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: undefined function in call
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: cannot find
 // SOURCE: Stage 11.1 typecheck expansion
 
 fn main() { let x = undefined_fn(1); }

@@ -1,7 +1,7 @@
 // CATEGORY: 07-integration
 // DESCRIPTION: type does not satisfy complex trait bound
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: no method
 // SOURCE: Stage 18.69 negative test expansion
 
 trait A { fn f(&self); } trait B { fn g(&self); } fn h<T: A + B>(x: T) { x.f(); x.g(); } fn main() { h(42); }

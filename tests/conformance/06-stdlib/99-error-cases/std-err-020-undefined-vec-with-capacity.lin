@@ -1,7 +1,7 @@
 // CATEGORY: 06-stdlib
 // DESCRIPTION: Vec::with_capacity not implemented
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: cannot find
 // SOURCE: Stage 18.69 negative test expansion
 
 fn main() { let v: Vec<i32> = Vec::with_capacity(10); }

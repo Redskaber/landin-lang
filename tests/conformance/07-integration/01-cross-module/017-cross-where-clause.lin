@@ -1,7 +1,7 @@
 // CATEGORY: integration
 // DESCRIPTION: where clause with cross-module trait
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: no method
 // SOURCE: Stage 10.7 conformance expansion
 
 mod a { pub trait T { fn f(&self) -> i32; } } mod b { pub fn g<X>(x: X) -> i32 where X: a::T { x.f() } } fn main() {}

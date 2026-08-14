@@ -12701,3 +12701,45 @@ Stage Summary:
 - 3286 unit + 2935 conformance = 6221 total tests, 0 failures
 - v0.353.0: minor bump (systematic test enhancement)
 - 下一步: v0.2 规划 或 继续测试增强 (criterion 基准, 诊断 span 精确性)
+
+---
+Task ID: stage18.86
+Agent: Super Z (main)
+Task: Stage 18.86 — Diagnostic Quality Enhancement (Specific ERROR_PATTERNs). v0.353.0 → v0.354.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 Stage 18.85 总结 + 157 个泛化 ERROR_PATTERN
+- 编写 scripts/stage18_86_fix_error_patterns.py:
+  - 自动编译每个 ERROR_PATTERN: error 的测试
+  - 从 stderr 提取最具体的错误子串
+  - 替换为具体 ERROR_PATTERN
+- 替换结果: 115/157 (73%) 成功替换
+  - cannot find: 38 (undefined var/fn/type/trait)
+  - mismatched types: 28 (类型不匹配)
+  - no method: 12 (方法未找到)
+  - trait: 10 (trait 相关错误)
+  - duplicate: 5 (重复定义)
+  - missing field: 4
+  - cannot borrow: 3
+  - main: 3
+  - 其他: 12
+- 42 个保留泛化模式 (stderr 中无可匹配的具体模式)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅ (无代码变更)
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
+  - cargo test --features llvm-backend ✅ (638 lib + 2648 integration = 3286 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.86-diagnostic-quality-design.md (新建)
+  - Cargo.toml: v0.353.0 → v0.354.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.86 PASSED — 诊断质量增强
+- 115 个泛化 ERROR_PATTERN 替换为具体模式 (73% 替换率)
+  → 现在这些测试可以检测诊断回归 (之前任何错误都通过)
+- 42 个保留 (stderr 中无可匹配的具体模式 — 保守不破坏)
+- 3286 unit + 2935 conformance = 6221 total tests, 0 failures
+- v0.354.0: minor bump (diagnostic quality enhancement)
+- 下一步: v0.2 规划 或继续测试增强

@@ -1,7 +1,7 @@
 // CATEGORY: integration
 // DESCRIPTION: cross enum
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: mismatched types
 // SOURCE: Stage 11.8 batch expansion (Stage 0 limitation)
 
 mod a{pub enum E{A}} mod b{pub fn main()->a::E{a::E::A}}

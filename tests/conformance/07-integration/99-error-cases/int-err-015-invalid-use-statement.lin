@@ -1,7 +1,7 @@
 // CATEGORY: 07-integration
 // DESCRIPTION: use statement for undefined path
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: main
 // SOURCE: Stage 18.69 negative test expansion
 
 use undefined::path; fn main() {}

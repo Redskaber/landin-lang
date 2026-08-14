@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: where clause with multiple bounds
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: no method
 // SOURCE: Stage 10.8 typecheck expansion (Stage 0 limitation)
 
 trait A { fn a(&self) -> i32; } trait B { fn b(&self) -> i32; } fn f<T>(x: T) where T: A + B { x.a(); x.b(); }

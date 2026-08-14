@@ -1,7 +1,7 @@
 // CATEGORY: stdlib
 // DESCRIPTION: Vec wrapper with methods
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: mismatched types
 // SOURCE: Stage 10.6 conformance expansion
 
 struct Vec<T> { data: [T; 10], len: i32 } impl<T> Vec<T> { fn new() -> Vec<T> { Vec { data: [], len: 0 } } fn push(&mut self, v: T) { self.len += 1; } } fn main() { let mut v = Vec::new(); v.push(1); }

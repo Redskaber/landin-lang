@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: generic where variant 0
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
+// ERROR_PATTERN: no method
 // SOURCE: Stage 11.9 batch expansion
 
 trait T{fn f(&self)->i32;} fn g<X>(x:X)->i32 where X:T{x.f()}
