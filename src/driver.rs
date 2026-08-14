@@ -482,17 +482,45 @@ impl CompileResult {
     }
 }
 
-/// Compile a source string through the full pipeline.
+/// Compile a source string through the full pipeline **with MIR optimization**.
 ///
-/// This is the main entry point. Returns a `CompileResult` containing
-/// the HIR crate, per-body MIR (with resolved types), and any errors
-/// collected along the way.
+/// This is the production entry point. MIR optimization (DCE + const_prop)
+/// runs automatically per `06-mir.md` §9.3. Use `compile_no_opt()` for
+/// tests that verify IR/MIR structure without optimization interference.
+///
+/// Returns a `CompileResult` containing the HIR crate, per-body MIR (with
+/// resolved types), and any errors collected along the way.
 ///
 /// Errors are non-fatal unless they're lex/parse errors (which prevent
 /// HIR/MIR from being produced). Even with type/borrow errors, the MIR
 /// is still produced — this lets later stages (codegen, error display)
 /// work with partial results.
 pub fn compile(src: &str) -> CompileResult {
+    compile_inner(src, true)
+}
+
+/// Stage 18.96: Compile WITHOUT MIR optimization. Used by tests that
+/// verify IR/MIR structure (e.g., codegen tests checking for specific
+/// LLVM instruction patterns, closure-capture tests checking for
+/// `AggregateKind::Closure` in the MIR).
+///
+/// Per §11 (interface isolation): tests should verify codegen in
+/// isolation — opt changes IR structure (folds constants, removes dead
+/// code), which would break structural assertions. This entry point
+/// gives tests a stable, unoptimized IR to assert against.
+///
+/// Per §2.0 原則 3 "显式 > 隐式": the opt flag is explicit, not inferred.
+/// Per §23: `compile_no_opt` follows `<verb>_<noun>` pattern.
+pub fn compile_no_opt(src: &str) -> CompileResult {
+    compile_inner(src, false)
+}
+
+/// Internal compile implementation. `optimize` controls whether MIR
+/// optimization passes (DCE + const_prop) run after writeback.
+///
+/// Stage 18.96: extracted from `compile()` to support `compile_no_opt()`
+/// without duplicating the 3000-line pipeline.
+fn compile_inner(src: &str, optimize: bool) -> CompileResult {
     // Stage 15.28: Clear the thread-local TypeInterner at the start of each
     // compilation to avoid cross-compilation pollution.
     crate::mir::ty::Ty::clear_interner();
@@ -1569,6 +1597,26 @@ pub fn compile(src: &str) -> CompileResult {
         // upfront, regardless of writeback results.
         crate::mir::lower::writeback_type_propagation(&mut mir, &fn_sig_table.sigs);
         crate::mir::lower::writeback_closures(&mut mir);
+
+        // Stage 18.96: Run MIR optimization passes (DCE → const_prop → DCE)
+        // per `06-mir.md` §9.3. Wired here — after writeback (types are
+        // final) and before `mirs.push` (so codegen consumes optimized MIR).
+        //
+        // Per §11: driver (orchestrator) is allowed to call opt entry.
+        // Per §2.0 原則 6 "通用 > 特例": single `run_mir_optimizations`
+        // entry point — future passes (jump threading, CSE) get added
+        // inside that function, not as additional driver calls.
+        // Per §2.0 原則 4 "报错 > 静默": opt preserves semantic correctness
+        // — DCE only removes provably dead assignments, const_prop only
+        // substitutes proven constants. Borrow check has already run, so
+        // borrow information is not invalidated.
+        //
+        // The `optimize` flag allows `compile_no_opt()` to skip opt for
+        // tests that verify IR/MIR structure (per §11 interface isolation).
+        if optimize {
+            crate::mir::optimization::run_mir_optimizations(&mut mir);
+        }
+
         mirs.push(mir);
     }
 

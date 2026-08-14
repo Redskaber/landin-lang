@@ -1,17 +1,29 @@
 //! Codegen tests (Stage 3.1).
 //!
 //! Verify that the LLVM IR output is correct for basic programs.
+//!
+//! Stage 18.96: Uses `compile_no_opt()` instead of `compile()` because
+//! these tests verify IR STRUCTURE (specific LLVM instruction patterns).
+//! MIR optimization (DCE + const_prop) would fold constants and remove
+//! dead code, changing the IR structure and breaking the assertions.
+//! Per §11 (interface isolation): tests verify codegen in isolation.
 
 #![allow(deprecated)] // Stage 15.15: tests use deprecated format_for_user
 use landin_compiler::codegen::codegen_crate;
-use landin_compiler::driver::compile;
+// Stage 18.96: `compile_no_opt` for IR-structure tests (gen_ll helper);
+// `compile` for error-checking tests (opt doesn't affect error detection).
+use landin_compiler::driver::{compile, compile_no_opt};
 
 /// Stage 3.57: Generate LLVM IR from valid source, asserting no compile errors.
 /// Was: `gen_ll` silently swallowed compile errors — if upstream produced a
 /// type/resolve/borrow error, the test still got IR back and might pass on
 /// substring matches. Now: fails loudly on any compile error.
+///
+/// Stage 18.96: Uses `compile_no_opt()` to get unoptimized IR for structural
+/// verification. Opt would fold constants and remove dead code, breaking
+/// the instruction-pattern assertions.
 fn gen_ll(src: &str) -> String {
-    let result = compile(src);
+    let result = compile_no_opt(src);
     assert!(
         !result.has_errors(),
         "unexpected compile errors:\n{}",

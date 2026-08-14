@@ -303,7 +303,9 @@ fn closure_lowers_to_aggregate() {
     use landin_compiler::mir::place::Rvalue;
 
     let src = "fn main() { let f = |x: i32| x + 1; }";
-    let result = landin_compiler::compile(src);
+    // Stage 18.96: Use compile_no_opt — DCE would remove the unused closure
+    // assignment, breaking the structural assertion.
+    let result = landin_compiler::compile_no_opt(src);
     // The closure should produce at least one Assign with Aggregate(Closure(...))
     let has_closure_aggregate = result.mirs.iter().any(|mir| {
         mir.basic_blocks.iter().any(|bb| {

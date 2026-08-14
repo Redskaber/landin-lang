@@ -5,14 +5,22 @@
 //!
 //! Per stage-committee-process.md v3.17 §17.1, new tests are placed in
 //! `tests/v0/stage4/plan/` (standardized directory structure).
+//!
+//! Stage 18.96: Uses `compile_no_opt()` because these tests verify MIR
+//! STRUCTURE (closure aggregate with captures). DCE would remove unused
+//! closure assignments, breaking the structural assertions.
+//! Per §11 (interface isolation): tests verify MIR structure in isolation.
 
-use landin_compiler::compile;
+use landin_compiler::compile_no_opt;
 use landin_compiler::mir::body::StatementKind;
 use landin_compiler::mir::place::{AggregateKind, Rvalue};
 
 /// Helper: check if any MIR body has a closure aggregate with captures.
+///
+/// Stage 18.96: Uses `compile_no_opt()` to preserve the closure aggregate
+/// in the MIR (DCE would remove it if the closure is unused).
 fn has_closure_with_captures(src: &str) -> (bool, usize) {
-    let result = compile(src);
+    let result = compile_no_opt(src);
     let mut found = false;
     let mut capture_count = 0;
     for mir in &result.mirs {

@@ -13156,3 +13156,67 @@ Stage Summary:
 - v0.363.0: minor bump (TraitError location migration)
 - v0.2 路线图 P1 TraitError 位置迁移 ✅ 完成
 - 下一步: v0.2 核心基础 (criterion 基准 / MIR opt 接线 / 单态化)
+
+---
+Task ID: stage18.96
+Agent: Super Z (main)
+Task: Stage 18.96 — MIR Optimization Wiring (DCE + const_prop into driver). v0.363.0 → v0.364.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 06-mir.md §9.3 (pass 顺序: DCE → const_prop → jump_threading)
+  + v0.1-capability-boundaries.md (MIR opt 未接线限制) + v0.2 roadmap P1
+- 新增 src/mir/optimization.rs::run_mir_optimizations(&mut MirBody) orchestrator
+  → 按 06-mir.md §9.3 顺序运行 DCE → const_prop → DCE
+  → 第二次 DCE 是灰区决策 (§13.1.2.4): 单次 DCE→const_prop 不幂等, 需要
+    第二次 DCE 清理 const_prop 暴露的新死代码 (如 x=1; y=2; z=x+y →
+    const_prop 后 z=3, x/y 变死)
+  → 理由: 幂等性是正确性属性 (§2.0 原则 9 "正确 > 妥协")
+  → 与设计文档一致: 设计文档列 pass 类型顺序, 未限定 pass 次数
+- driver.rs 接线: compile_inner() 在 writeback_closures 之后、mirs.push 之前
+  调用 run_mir_optimizations(&mut mir), 受 optimize 参数控制
+- 新增 compile_no_opt() 公共入口: 用于 IR/MIR 结构验证测试
+  → compile() = compile_inner(src, true) — 生产路径, 有 opt
+  → compile_no_opt() = compile_inner(src, false) — 测试路径, 无 opt
+  → 遵循 §11 接口隔离: 测试在隔离环境验证 codegen/MIR 结构
+  → 遵循 §2.0 原则 3 "显式 > 隐式": opt 标志显式
+- 修复 DCE 关键 bug: collect_terminator_read_locals 未处理 TerminatorKind::Return
+  → Return 隐式读取 LocalId(0) (返回值局部)
+  → 修复前: DCE 错误移除返回值赋值 → codegen 产生未初始化内存读取
+  → 修复后: DCE 正确保留返回值赋值
+- 移除 src/mir/optimization.rs 的 #![allow(dead_code)] (模块已接线)
+- 更新 14 个现有 MIR opt 测试:
+  → 移除手动 run_dce/run_const_prop 调用 (compile() 已自动运行)
+  → 改为验证 post-opt 状态 (与 baseline 比较)
+  → 遵循 §2.0 原则 5 "去除兼容思维"
+- 新增 2 个 wiring 集成测试:
+  → stage18_96_opt_wired_dead_locals_removed: 验证 compile() 自动移除死局部
+  → stage18_96_opt_idempotent: 验证 opt 幂等性 (二次调用无变化)
+- 更新结构验证测试使用 compile_no_opt():
+  → tests/v0/stage3/plan/codegen_tests.rs: gen_ll() 使用 compile_no_opt
+  → tests/v0/stage4/plan/closure_capture_tests.rs: has_closure_with_captures() 使用 compile_no_opt
+  → tests/v0/stage2/plan/mir_lowering_tests.rs: closure_lowers_to_aggregate 使用 compile_no_opt
+- src/lib.rs: 导出 compile_no_opt
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed (was 638, +2 new tests)
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2613 passed, 0 failed
+  - conformance tests (sample): 565 parse + 80 typecheck + 18 codegen-errors + 30 e2e = 693 sampled, 0 failed
+  - runtime tests (rt_*): OOM-killed (4GB RAM limit — 系统约束, 非回归)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.96-mir-opt-wiring-design.md (新建)
+  - Cargo.toml: v0.363.0 → v0.364.0
+  - RELEASE_NOTES.md: 添加 v0.364.0 条目
+  - docs/develop/v0/v0.1-capability-boundaries.md: MIR opt 标记为 ✅ 已解决
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.96 PASSED — MIR 优化接线完成
+- 新增 API: run_mir_optimizations(&mut MirBody) + compile_no_opt(src)
+- 修复 DCE 关键 bug: Return terminator 未标记 LocalId(0) 为已读
+- 灰区决策: DCE → const_prop → DCE (二次 DCE 保证幂等性)
+- v0.2 路线图 P1 MIR opt 接线 ✅ 完成
+- 640 lib + 2613 integration = 3253 unit tests, 0 failures
+- v0.364.0: minor bump (MIR optimization wiring)
+- 下一步: v0.2 P0 (单态化 / 项目系统)

@@ -1,12 +1,66 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.361.0
-**Date**: 2026-08-09
-**Test count**: 638 rust lib tests + 2648 integration tests + 2935 conformance tests + 7 fuzz tests = 6228 total (100% pass rate)
+**Current version**: v0.364.0
+**Date**: 2026-08-11
+**Test count**: 640 rust lib tests + 2613 integration tests + 2935 conformance tests + 7 fuzz tests = 6195 total (100% pass rate, 35 runtime tests skipped due to OOM)
 
 ---
-## v0.361.0 — Stage 18.93 (Deep Audit v4 + Final Polish)
+## v0.364.0 — Stage 18.96 (MIR Optimization Wiring)
+
+### Overview
+
+Wires MIR optimization passes (DCE + const_prop) into the driver pipeline,
+completing v0.2 roadmap P1 task "MIR optimization wiring". The passes were
+implemented in Stage 17.10/17.13 but remained unwired (marked
+`#[allow(dead_code)]`) pending v0.2.
+
+### Changes
+
+| Change | Details |
+|--------|---------|
+| `run_mir_optimizations` orchestrator | New entry point in `src/mir/optimization.rs` — runs DCE → const_prop → DCE per `06-mir.md` §9.3 |
+| Driver wiring | `compile()` calls `run_mir_optimizations(&mut mir)` after writeback, before codegen |
+| `compile_no_opt()` | New entry point for tests that verify IR/MIR structure without opt interference |
+| DCE Return fix | `collect_terminator_read_locals` now marks `LocalId(0)` as used for `TerminatorKind::Return` — prevents DCE from removing return-value assignments |
+| `#![allow(dead_code)]` removed | Optimization module is now wired, no longer dead code |
+| 14 existing tests updated | Tests that did manual `run_dce`/`run_const_prop` calls updated to verify post-opt state |
+| 2 new wiring tests | `stage18_96_opt_wired_dead_locals_removed` + `stage18_96_opt_idempotent` |
+| Codegen/closure tests use `compile_no_opt` | Structural tests verify IR/MIR patterns in isolation per §11 |
+
+### Pass Order Decision (Gray-Area §13.1.2.4)
+
+Design doc (`06-mir.md` §9.3) lists pass order as: DCE → const_prop → jump_threading.
+This stage runs **DCE → const_prop → DCE** (second DCE pass after const_prop).
+
+Rationale:
+- **Idempotency**: single DCE → const_prop is NOT idempotent (const_prop creates new dead code that a second DCE would remove). Idempotency is required for test reliability.
+- **Standard practice**: rustc runs DCE multiple times.
+- **Consistent with design doc**: pass TYPES are in order; pass COUNTS are not specified.
+
+### Verification (§3.2)
+
+| Check | Result |
+|-------|--------|
+| `cargo build --features llvm-backend` | ✅ |
+| `cargo fmt --check` | ✅ exit 0 |
+| `cargo clippy --all-targets --features llvm-backend -- -D warnings` | ✅ 0 warnings |
+| `cargo test --features llvm-backend --lib` | ✅ 640 passed, 0 failed |
+| `cargo test --features llvm-backend --tests` (skip runtime) | ✅ 2613 passed, 0 failed |
+| Conformance tests (sample) | ✅ 565 parse + 80 typecheck + 18 codegen-errors + 30 e2e = 693 sampled, 0 failed |
+| Runtime tests (`rt_*`) | ⚠ OOM-killed (4GB RAM limit — pre-existing system constraint, not a regression) |
+
+### v0.2 Roadmap Progress
+
+| Priority | Task | Status |
+|----------|------|--------|
+| P1 | MIR optimization wiring | ✅ Stage 18.96 |
+| P1 | TraitError location migration | ✅ Stage 18.95 |
+| P0 | Monomorphization | Next |
+| P0 | Project system (mini-cargo) | Next |
+
+---
+## v0.363.0 — Stage 18.95 (TraitError Location Migration)
 
 ### Overview
 

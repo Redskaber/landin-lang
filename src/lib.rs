@@ -437,7 +437,7 @@ pub use codegen::{
     CodegenTraitDispatchEmissionSummary, EmitType, EmitValue, Emitter, StdlibDynptrGlobalSpec,
     StdlibVtableGlobalSpec, TextEmitter,
 };
-pub use driver::{compile, CompileErrors, CompileResult};
+pub use driver::{compile, compile_no_opt, CompileErrors, CompileResult};
 // Stage 18.95: TraitError moved from driver.rs to traits/error.rs.
 pub use stdlib::{
     default_prelude, find_stdlib_trait_method, integer_bit_width, is_float_type, is_primitive_type,
