@@ -345,13 +345,31 @@ impl UnificationTable {
     ///
     /// Side effects: may bind inference variables. Errors are also
     /// recorded in the internal error list (non-fatal).
-    pub fn unify(&mut self, a: &Ty, b: &Ty) -> Result<(), Box<TypeError>> {
+    ///
+    /// Stage 18.81 P2-1: Added `span` parameter so that mismatch errors
+    /// carry the source span of the expression/statement that triggered
+    /// the unification. Previously, all mismatch errors used `Span::DUMMY`,
+    /// producing "1:1" in error messages.
+    ///
+    /// Per §1.0 原則 3 "显式 > 隐式": span is an explicit parameter.
+    /// Per §1.0 原則 4 "报错 > 静默": error span must be accurate.
+    pub fn unify(
+        &mut self,
+        a: &Ty,
+        b: &Ty,
+        span: crate::session::Span,
+    ) -> Result<(), Box<TypeError>> {
         let a = self.resolve(a);
         let b = self.resolve(b);
-        self.unify_resolved(&a, &b)
+        self.unify_resolved(&a, &b, span)
     }
 
-    fn unify_resolved(&mut self, a: &Ty, b: &Ty) -> Result<(), Box<TypeError>> {
+    fn unify_resolved(
+        &mut self,
+        a: &Ty,
+        b: &Ty,
+        span: crate::session::Span,
+    ) -> Result<(), Box<TypeError>> {
         // Error propagation: if either side is Error, succeed silently.
         if matches!(a.kind, TyKind::Error) || matches!(b.kind, TyKind::Error) {
             return Ok(());
@@ -466,9 +484,9 @@ impl UnificationTable {
                         if ai != bi =>
                     {
                         return Err(Box::new(self.make_mismatch(
-                            Ty::new(TyKind::Int(ai), Span::DUMMY),
-                            Ty::new(TyKind::Int(bi), Span::DUMMY),
-                            Span::DUMMY,
+                            Ty::new(TyKind::Int(ai), span),
+                            Ty::new(TyKind::Int(bi), span),
+                            span,
                         )));
                     }
                     // Linked cases shouldn't appear at roots (we already found roots),
@@ -506,9 +524,9 @@ impl UnificationTable {
                         if af != bf =>
                     {
                         return Err(Box::new(self.make_mismatch(
-                            Ty::new(TyKind::Float(af), Span::DUMMY),
-                            Ty::new(TyKind::Float(bf), Span::DUMMY),
-                            Span::DUMMY,
+                            Ty::new(TyKind::Float(af), span),
+                            Ty::new(TyKind::Float(bf), span),
+                            span,
                         )));
                     }
                     _ => {}
@@ -528,29 +546,21 @@ impl UnificationTable {
                     let one_immut = *a_m == crate::mir::ty::Mutability::Immutable
                         || *b_m == crate::mir::ty::Mutability::Immutable;
                     if !one_immut {
-                        return Err(Box::new(self.make_mismatch(
-                            a.clone(),
-                            b.clone(),
-                            Span::DUMMY,
-                        )));
+                        return Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span)));
                     }
                     // If one is Immut and the other is Mut, allow — just
                     // unify the inner types.
                 }
-                self.unify_resolved(a_t, b_t)
+                self.unify_resolved(a_t, b_t, span)
             }
 
             // Tuple with Tuple: unify element-wise
             (TyKind::Tuple(a_tys), TyKind::Tuple(b_tys)) => {
                 if a_tys.len() != b_tys.len() {
-                    return Err(Box::new(self.make_mismatch(
-                        a.clone(),
-                        b.clone(),
-                        Span::DUMMY,
-                    )));
+                    return Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span)));
                 }
                 for (at, bt) in a_tys.iter().zip(b_tys.iter()) {
-                    self.unify_resolved(at, bt)?;
+                    self.unify_resolved(at, bt, span)?;
                 }
                 Ok(())
             }
@@ -573,14 +583,10 @@ impl UnificationTable {
             // old lenient behavior (unify element types only) to avoid
             // false positives.
             (TyKind::Array(a_t, a_len), TyKind::Array(b_t, b_len)) => {
-                self.unify_resolved(a_t, b_t)?;
+                self.unify_resolved(a_t, b_t, span)?;
                 if let (ConstVal::Uint(a_n), ConstVal::Uint(b_n)) = (&a_len.val, &b_len.val) {
                     if a_n != b_n {
-                        return Err(Box::new(self.make_mismatch(
-                            a.clone(),
-                            b.clone(),
-                            Span::DUMMY,
-                        )));
+                        return Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span)));
                     }
                 }
                 // Unevaluated or non-uint lengths: fall back to lenient
@@ -592,7 +598,7 @@ impl UnificationTable {
             }
 
             // Slice with Slice
-            (TyKind::Slice(a_t), TyKind::Slice(b_t)) => self.unify_resolved(a_t, b_t),
+            (TyKind::Slice(a_t), TyKind::Slice(b_t)) => self.unify_resolved(a_t, b_t, span),
 
             // Never unifies with anything (bottom type)
             (TyKind::Never, _) | (_, TyKind::Never) => Ok(()),
@@ -600,28 +606,20 @@ impl UnificationTable {
             // RawPtr with RawPtr: unify mutability + inner
             (TyKind::RawPtr(a_m, a_t), TyKind::RawPtr(b_m, b_t)) => {
                 if a_m != b_m {
-                    return Err(Box::new(self.make_mismatch(
-                        a.clone(),
-                        b.clone(),
-                        Span::DUMMY,
-                    )));
+                    return Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span)));
                 }
-                self.unify_resolved(a_t, b_t)
+                self.unify_resolved(a_t, b_t, span)
             }
 
             // FnPtr with FnPtr: unify inputs + output
             (TyKind::FnPtr(a_sig), TyKind::FnPtr(b_sig)) => {
                 if a_sig.inputs.len() != b_sig.inputs.len() {
-                    return Err(Box::new(self.make_mismatch(
-                        a.clone(),
-                        b.clone(),
-                        Span::DUMMY,
-                    )));
+                    return Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span)));
                 }
                 for (at, bt) in a_sig.inputs.iter().zip(b_sig.inputs.iter()) {
-                    self.unify_resolved(at, bt)?;
+                    self.unify_resolved(at, bt, span)?;
                 }
-                self.unify_resolved(&a_sig.output, &b_sig.output)
+                self.unify_resolved(&a_sig.output, &b_sig.output, span)
             }
 
             // Adt with Adt: same DefId → unify substs.
@@ -646,11 +644,7 @@ impl UnificationTable {
             // Adt types, regardless of whether substs are present.
             (TyKind::Adt(a_def, a_substs), TyKind::Adt(b_def, b_substs)) => {
                 if a_def != b_def {
-                    return Err(Box::new(self.make_mismatch(
-                        a.clone(),
-                        b.clone(),
-                        Span::DUMMY,
-                    )));
+                    return Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span)));
                 }
                 // If either side has empty substs, treat as "unknown substs"
                 // and unify by DefId only. This handles the inference case.
@@ -660,14 +654,10 @@ impl UnificationTable {
                 // Both sides have substs — they must match in length and
                 // unify element-wise.
                 if a_substs.len() != b_substs.len() {
-                    return Err(Box::new(self.make_mismatch(
-                        a.clone(),
-                        b.clone(),
-                        Span::DUMMY,
-                    )));
+                    return Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span)));
                 }
                 for (at, bt) in a_substs.iter().zip(b_substs.iter()) {
-                    self.unify_resolved(at, bt)?;
+                    self.unify_resolved(at, bt, span)?;
                 }
                 Ok(())
             }
@@ -699,11 +689,7 @@ impl UnificationTable {
             (TyKind::Foreign, TyKind::Foreign) => Ok(()),
 
             // Mismatch
-            _ => Err(Box::new(self.make_mismatch(
-                a.clone(),
-                b.clone(),
-                Span::DUMMY,
-            ))),
+            _ => Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span))),
         }
     }
 
@@ -820,14 +806,20 @@ mod tests {
     fn unify_same_concrete() {
         let mut t = UnificationTable::new();
         assert!(t
-            .unify(&ty_int(ast::IntTy::I32), &ty_int(ast::IntTy::I32))
+            .unify(
+                &ty_int(ast::IntTy::I32),
+                &ty_int(ast::IntTy::I32),
+                Span::DUMMY
+            )
             .is_ok());
     }
 
     #[test]
     fn unify_mismatched_concrete() {
         let mut t = UnificationTable::new();
-        assert!(t.unify(&ty_int(ast::IntTy::I32), &ty_bool()).is_err());
+        assert!(t
+            .unify(&ty_int(ast::IntTy::I32), &ty_bool(), Span::DUMMY)
+            .is_err());
     }
 
     #[test]
@@ -835,7 +827,9 @@ mod tests {
         let mut t = UnificationTable::new();
         let vid = t.new_ty_var();
         let var_ty = ty_infer(vid.0);
-        assert!(t.unify(&var_ty, &ty_int(ast::IntTy::I32)).is_ok());
+        assert!(t
+            .unify(&var_ty, &ty_int(ast::IntTy::I32), Span::DUMMY)
+            .is_ok());
         let resolved = t.resolve(&var_ty);
         assert!(matches!(resolved.kind, TyKind::Int(ast::IntTy::I32)));
     }
@@ -848,9 +842,11 @@ mod tests {
         let var1 = ty_infer(vid1.0);
         let var2 = ty_infer(vid2.0);
         // Unify var1 with i32
-        assert!(t.unify(&var1, &ty_int(ast::IntTy::I32)).is_ok());
+        assert!(t
+            .unify(&var1, &ty_int(ast::IntTy::I32), Span::DUMMY)
+            .is_ok());
         // Unify var2 with var1 → var2 should resolve to i32
-        assert!(t.unify(&var2, &var1).is_ok());
+        assert!(t.unify(&var2, &var1, Span::DUMMY).is_ok());
         let resolved = t.resolve(&var2);
         assert!(matches!(resolved.kind, TyKind::Int(ast::IntTy::I32)));
     }
@@ -861,7 +857,7 @@ mod tests {
         let vid = t.new_int_var();
         let var_ty = Ty::new(TyKind::Infer(InferVar::IntVar(vid)), Span::DUMMY);
         let concrete = ty_int(ast::IntTy::I64);
-        assert!(t.unify(&var_ty, &concrete).is_ok());
+        assert!(t.unify(&var_ty, &concrete, Span::DUMMY).is_ok());
         let resolved = t.resolve(&var_ty);
         assert!(matches!(resolved.kind, TyKind::Int(ast::IntTy::I64)));
     }
@@ -895,7 +891,7 @@ mod tests {
             TyKind::Tuple(vec![ty_int(ast::IntTy::I32), ty_bool()]),
             Span::DUMMY,
         );
-        assert!(t.unify(&a, &b).is_ok());
+        assert!(t.unify(&a, &b, Span::DUMMY).is_ok());
     }
 
     #[test]
@@ -906,7 +902,7 @@ mod tests {
             TyKind::Tuple(vec![ty_int(ast::IntTy::I32), ty_bool()]),
             Span::DUMMY,
         );
-        assert!(t.unify(&a, &b).is_err());
+        assert!(t.unify(&a, &b, Span::DUMMY).is_err());
     }
 
     /// Stage 15.78: Array unify now compares length Const values.
@@ -926,7 +922,7 @@ mod tests {
             TyKind::Array(Box::new(ty_int(ast::IntTy::I32)), Box::new(len())),
             Span::DUMMY,
         );
-        assert!(t.unify(&a, &b).is_ok());
+        assert!(t.unify(&a, &b, Span::DUMMY).is_ok());
     }
 
     /// Stage 15.78: Array unify now compares length Const values.
@@ -950,7 +946,7 @@ mod tests {
             TyKind::Array(Box::new(ty_int(ast::IntTy::I32)), Box::new(len_b())),
             Span::DUMMY,
         );
-        assert!(t.unify(&a, &b).is_err());
+        assert!(t.unify(&a, &b, Span::DUMMY).is_err());
     }
 
     /// Stage 15.78: Array unify with `Unevaluated` length falls back to
@@ -977,23 +973,27 @@ mod tests {
             ),
             Span::DUMMY,
         );
-        assert!(t.unify(&a, &b).is_ok());
+        assert!(t.unify(&a, &b, Span::DUMMY).is_ok());
     }
 
     #[test]
     fn unify_never_with_anything() {
         let mut t = UnificationTable::new();
         let never = Ty::new(TyKind::Never, Span::DUMMY);
-        assert!(t.unify(&never, &ty_bool()).is_ok());
-        assert!(t.unify(&ty_int(ast::IntTy::I32), &never).is_ok());
+        assert!(t.unify(&never, &ty_bool(), Span::DUMMY).is_ok());
+        assert!(t
+            .unify(&ty_int(ast::IntTy::I32), &never, Span::DUMMY)
+            .is_ok());
     }
 
     #[test]
     fn unify_error_propagates() {
         let mut t = UnificationTable::new();
         let error = Ty::new(TyKind::Error, Span::DUMMY);
-        assert!(t.unify(&error, &ty_bool()).is_ok());
-        assert!(t.unify(&ty_int(ast::IntTy::I32), &error).is_ok());
+        assert!(t.unify(&error, &ty_bool(), Span::DUMMY).is_ok());
+        assert!(t
+            .unify(&ty_int(ast::IntTy::I32), &error, Span::DUMMY)
+            .is_ok());
     }
 
     #[test]
@@ -1035,7 +1035,7 @@ mod tests {
 
         let struct_ty = Ty::new(TyKind::Adt(def_id, Vec::new().into()), Span::DUMMY);
         let int_ty = ty_int(ast::IntTy::I32);
-        let err = t.unify(&struct_ty, &int_ty);
+        let err = t.unify(&struct_ty, &int_ty, Span::DUMMY);
         assert!(err.is_err());
         let err = err.unwrap_err();
         assert!(
@@ -1067,7 +1067,7 @@ mod tests {
         let mut t = UnificationTable::new();
         let struct_ty = Ty::new(TyKind::Adt(def_id, Vec::new().into()), Span::DUMMY);
         let int_ty = ty_int(ast::IntTy::I32);
-        let err = t.unify(&struct_ty, &int_ty);
+        let err = t.unify(&struct_ty, &int_ty, Span::DUMMY);
         assert!(err.is_err());
         let err = err.unwrap_err();
         // Legacy fallback shows "<adt>" not the actual name.

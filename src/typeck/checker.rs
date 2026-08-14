@@ -746,8 +746,8 @@ impl TypeChecker {
                 {
                     // Coercion or loose match succeeded — still try to unify
                     // so Infer vars get bound. Suppress unify errors.
-                    let _ = self.unify.unify(&place_ty, &rvalue_ty);
-                } else if let Err(mut e) = self.unify.unify(&place_ty, &rvalue_ty) {
+                    let _ = self.unify.unify(&place_ty, &rvalue_ty, stmt.span);
+                } else if let Err(mut e) = self.unify.unify(&place_ty, &rvalue_ty, stmt.span) {
                     // Stage 15.82: use stmt.span for unify errors (was:
                     // Span::DUMMY from mismatch(), producing "1:1").
                     if stmt.span != Span::DUMMY {
@@ -820,7 +820,7 @@ impl TypeChecker {
                             ));
                         } else {
                             for (arg_ty, input_ty) in arg_tys.iter().zip(sig.inputs.iter()) {
-                                if let Err(mut e) = self.unify.unify(arg_ty, input_ty) {
+                                if let Err(mut e) = self.unify.unify(arg_ty, input_ty, term.span) {
                                     // Stage 15.81: use term.span for unify errors
                                     // (was: Span::DUMMY from mismatch()).
                                     if term.span != Span::DUMMY {
@@ -830,7 +830,7 @@ impl TypeChecker {
                                 }
                             }
                         }
-                        if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output) {
+                        if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output, term.span) {
                             // Stage 15.81: use term.span for unify errors.
                             if term.span != Span::DUMMY {
                                 e.span = term.span;
@@ -846,7 +846,7 @@ impl TypeChecker {
                 if let TyKind::FnPtr(sig) = &func_ty.kind {
                     // Unify each arg with the corresponding input
                     for (arg_ty, input_ty) in arg_tys.iter().zip(sig.inputs.iter()) {
-                        if let Err(mut e) = self.unify.unify(arg_ty, input_ty) {
+                        if let Err(mut e) = self.unify.unify(arg_ty, input_ty, term.span) {
                             // Stage 15.81: use term.span for unify errors.
                             if term.span != Span::DUMMY {
                                 e.span = term.span;
@@ -855,7 +855,7 @@ impl TypeChecker {
                         }
                     }
                     // Unify destination with output
-                    if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output) {
+                    if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output, term.span) {
                         // Stage 15.81: use term.span for unify errors.
                         if term.span != Span::DUMMY {
                             e.span = term.span;
@@ -898,7 +898,7 @@ impl TypeChecker {
                             ));
                         } else {
                             for (arg_ty, input_ty) in arg_tys.iter().zip(sig_params.iter()) {
-                                if let Err(mut e) = self.unify.unify(arg_ty, input_ty) {
+                                if let Err(mut e) = self.unify.unify(arg_ty, input_ty, term.span) {
                                     if term.span != Span::DUMMY {
                                         e.span = term.span;
                                     }
@@ -906,7 +906,7 @@ impl TypeChecker {
                                 }
                             }
                         }
-                        if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output) {
+                        if let Err(mut e) = self.unify.unify(&dest_ty, &sig.output, term.span) {
                             if term.span != Span::DUMMY {
                                 e.span = term.span;
                             }
@@ -951,7 +951,7 @@ impl TypeChecker {
                     .any(|(val, _)| matches!(val, ConstVal::Bool(_)));
                 if requires_bool {
                     let bool_ty = Ty::new(TyKind::Bool, Span::DUMMY);
-                    if let Err(mut e) = self.unify.unify(&discr_ty, &bool_ty) {
+                    if let Err(mut e) = self.unify.unify(&discr_ty, &bool_ty, term.span) {
                         // Stage 15.81: override the dummy span with the
                         // actual discriminant span (was: Span::DUMMY).
                         if discr_span != Span::DUMMY {
@@ -967,7 +967,7 @@ impl TypeChecker {
                         TyKind::Infer(InferVar::TyVar(_)) => {
                             // Unbound variable — unify with i32 as default
                             let i32_ty = Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY);
-                            let _ = self.unify.unify(&discr_ty, &i32_ty);
+                            let _ = self.unify.unify(&discr_ty, &i32_ty, term.span);
                         }
                         TyKind::Error => {}
                         _ => {
@@ -1220,7 +1220,7 @@ impl TypeChecker {
                 match op {
                     BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
                         // Comparison: unify a and b, return bool
-                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty) {
+                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty, stmt_span) {
                             // Stage 15.82: use stmt_span for unify errors.
                             if stmt_span != Span::DUMMY {
                                 e.span = stmt_span;
@@ -1231,7 +1231,7 @@ impl TypeChecker {
                     }
                     // Bitwise ops: Bool or integer types only.
                     BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => {
-                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty) {
+                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty, stmt_span) {
                             // Stage 15.82: use stmt_span for unify errors.
                             if stmt_span != Span::DUMMY {
                                 e.span = stmt_span;
@@ -1281,7 +1281,7 @@ impl TypeChecker {
                                 stmt_span,
                             ));
                         }
-                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty) {
+                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty, stmt_span) {
                             // Stage 15.82: use stmt_span for unify errors.
                             if stmt_span != Span::DUMMY {
                                 e.span = stmt_span;
@@ -1380,7 +1380,7 @@ impl TypeChecker {
                     // Span::DUMMY from mismatch(), producing "1:1").
                     for op in operands {
                         let op_ty = self.infer_operand(mir, op);
-                        if let Err(mut e) = self.unify.unify(&op_ty, elem_ty) {
+                        if let Err(mut e) = self.unify.unify(&op_ty, elem_ty, stmt_span) {
                             if stmt_span != Span::DUMMY {
                                 e.span = stmt_span;
                             }
@@ -1408,7 +1408,7 @@ impl TypeChecker {
                     for (i, op) in operands.iter().enumerate() {
                         let op_ty = self.infer_operand(mir, op);
                         if let Some(field_ty) = field_tys.get(i) {
-                            if let Err(mut e) = self.unify.unify(&op_ty, field_ty) {
+                            if let Err(mut e) = self.unify.unify(&op_ty, field_ty, stmt_span) {
                                 if stmt_span != Span::DUMMY {
                                     e.span = stmt_span;
                                 }

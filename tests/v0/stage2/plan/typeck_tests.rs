@@ -28,27 +28,47 @@ fn ty_tuple(tys: Vec<Ty>) -> Ty {
 fn unify_i32_with_i32_ok() {
     let mut t = UnificationTable::new();
     assert!(t
-        .unify(&ty_int(ast::IntTy::I32), &ty_int(ast::IntTy::I32))
+        .unify(
+            &ty_int(ast::IntTy::I32),
+            &ty_int(ast::IntTy::I32),
+            landin_compiler::session::Span::DUMMY
+        )
         .is_ok());
 }
 
 #[test]
 fn unify_i32_with_bool_err() {
     let mut t = UnificationTable::new();
-    assert!(t.unify(&ty_int(ast::IntTy::I32), &ty_bool()).is_err());
+    assert!(t
+        .unify(
+            &ty_int(ast::IntTy::I32),
+            &ty_bool(),
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_err());
 }
 
 #[test]
 fn unify_bool_with_bool_ok() {
     let mut t = UnificationTable::new();
-    assert!(t.unify(&ty_bool(), &ty_bool()).is_ok());
+    assert!(t
+        .unify(
+            &ty_bool(),
+            &ty_bool(),
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_ok());
 }
 
 #[test]
 fn unify_f64_with_f64_ok() {
     let mut t = UnificationTable::new();
     assert!(t
-        .unify(&ty_float(ast::FloatTy::F64), &ty_float(ast::FloatTy::F64))
+        .unify(
+            &ty_float(ast::FloatTy::F64),
+            &ty_float(ast::FloatTy::F64),
+            landin_compiler::session::Span::DUMMY
+        )
         .is_ok());
 }
 
@@ -59,7 +79,13 @@ fn infer_var_binds_to_concrete() {
     let mut t = UnificationTable::new();
     let vid = t.new_ty_var();
     let var = Ty::new(TyKind::Infer(InferVar::TyVar(vid)), Span::DUMMY);
-    assert!(t.unify(&var, &ty_int(ast::IntTy::I64)).is_ok());
+    assert!(t
+        .unify(
+            &var,
+            &ty_int(ast::IntTy::I64),
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_ok());
     let resolved = t.resolve(&var);
     assert!(matches!(resolved.kind, TyKind::Int(ast::IntTy::I64)));
 }
@@ -69,7 +95,13 @@ fn infer_int_var_binds_to_concrete() {
     let mut t = UnificationTable::new();
     let vid = t.new_int_var();
     let var = Ty::new(TyKind::Infer(InferVar::IntVar(vid)), Span::DUMMY);
-    assert!(t.unify(&var, &ty_int(ast::IntTy::I32)).is_ok());
+    assert!(t
+        .unify(
+            &var,
+            &ty_int(ast::IntTy::I32),
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_ok());
     let resolved = t.resolve(&var);
     assert!(matches!(resolved.kind, TyKind::Int(ast::IntTy::I32)));
 }
@@ -79,7 +111,13 @@ fn infer_float_var_binds_to_f32() {
     let mut t = UnificationTable::new();
     let vid = t.new_float_var();
     let var = Ty::new(TyKind::Infer(InferVar::FloatVar(vid)), Span::DUMMY);
-    assert!(t.unify(&var, &ty_float(ast::FloatTy::F32)).is_ok());
+    assert!(t
+        .unify(
+            &var,
+            &ty_float(ast::FloatTy::F32),
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_ok());
     let resolved = t.resolve(&var);
     assert!(matches!(resolved.kind, TyKind::Float(ast::FloatTy::F32)));
 }
@@ -94,8 +132,16 @@ fn var_chain_resolves() {
     let var1 = Ty::new(TyKind::Infer(InferVar::TyVar(v1)), Span::DUMMY);
     let var2 = Ty::new(TyKind::Infer(InferVar::TyVar(v2)), Span::DUMMY);
     // var1 → var2 → i32
-    assert!(t.unify(&var1, &var2).is_ok());
-    assert!(t.unify(&var2, &ty_int(ast::IntTy::I32)).is_ok());
+    assert!(t
+        .unify(&var1, &var2, landin_compiler::session::Span::DUMMY)
+        .is_ok());
+    assert!(t
+        .unify(
+            &var2,
+            &ty_int(ast::IntTy::I32),
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_ok());
     let resolved = t.resolve(&var1);
     assert!(matches!(resolved.kind, TyKind::Int(ast::IntTy::I32)));
 }
@@ -123,7 +169,12 @@ fn default_does_not_override_resolved() {
     let mut t = UnificationTable::new();
     let vid = t.new_int_var();
     let var = Ty::new(TyKind::Infer(InferVar::IntVar(vid)), Span::DUMMY);
-    t.unify(&var, &ty_int(ast::IntTy::I64)).unwrap();
+    t.unify(
+        &var,
+        &ty_int(ast::IntTy::I64),
+        landin_compiler::session::Span::DUMMY,
+    )
+    .unwrap();
     t.default_unresolved();
     assert_eq!(t.resolve_int_var(vid), Some(ast::IntTy::I64));
 }
@@ -135,7 +186,9 @@ fn unify_tuples_same() {
     let mut t = UnificationTable::new();
     let a = ty_tuple(vec![ty_int(ast::IntTy::I32), ty_bool()]);
     let b = ty_tuple(vec![ty_int(ast::IntTy::I32), ty_bool()]);
-    assert!(t.unify(&a, &b).is_ok());
+    assert!(t
+        .unify(&a, &b, landin_compiler::session::Span::DUMMY)
+        .is_ok());
 }
 
 #[test]
@@ -143,7 +196,9 @@ fn unify_tuples_different_len_err() {
     let mut t = UnificationTable::new();
     let a = ty_tuple(vec![ty_int(ast::IntTy::I32)]);
     let b = ty_tuple(vec![ty_int(ast::IntTy::I32), ty_bool()]);
-    assert!(t.unify(&a, &b).is_err());
+    assert!(t
+        .unify(&a, &b, landin_compiler::session::Span::DUMMY)
+        .is_err());
 }
 
 #[test]
@@ -153,7 +208,9 @@ fn unify_tuples_with_infer() {
     let var = Ty::new(TyKind::Infer(InferVar::TyVar(vid)), Span::DUMMY);
     let a = ty_tuple(vec![var.clone(), ty_bool()]);
     let b = ty_tuple(vec![ty_int(ast::IntTy::I32), ty_bool()]);
-    assert!(t.unify(&a, &b).is_ok());
+    assert!(t
+        .unify(&a, &b, landin_compiler::session::Span::DUMMY)
+        .is_ok());
     let resolved = t.resolve(&var);
     assert!(matches!(resolved.kind, TyKind::Int(ast::IntTy::I32)));
 }
@@ -164,8 +221,16 @@ fn unify_tuples_with_infer() {
 fn never_unifies_with_anything() {
     let mut t = UnificationTable::new();
     let never = Ty::new(TyKind::Never, Span::DUMMY);
-    assert!(t.unify(&never, &ty_bool()).is_ok());
-    assert!(t.unify(&ty_int(ast::IntTy::I32), &never).is_ok());
+    assert!(t
+        .unify(&never, &ty_bool(), landin_compiler::session::Span::DUMMY)
+        .is_ok());
+    assert!(t
+        .unify(
+            &ty_int(ast::IntTy::I32),
+            &never,
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_ok());
 }
 
 // === Error propagation ===
@@ -174,8 +239,16 @@ fn never_unifies_with_anything() {
 fn error_type_does_not_propagate() {
     let mut t = UnificationTable::new();
     let err = Ty::new(TyKind::Error, Span::DUMMY);
-    assert!(t.unify(&err, &ty_bool()).is_ok());
-    assert!(t.unify(&ty_int(ast::IntTy::I32), &err).is_ok());
+    assert!(t
+        .unify(&err, &ty_bool(), landin_compiler::session::Span::DUMMY)
+        .is_ok());
+    assert!(t
+        .unify(
+            &ty_int(ast::IntTy::I32),
+            &err,
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_ok());
 }
 
 // === Ref unification ===
@@ -199,7 +272,9 @@ fn unify_refs_same_inner() {
         ),
         Span::DUMMY,
     );
-    assert!(t.unify(&a, &b).is_ok());
+    assert!(t
+        .unify(&a, &b, landin_compiler::session::Span::DUMMY)
+        .is_ok());
 }
 
 #[test]
@@ -225,7 +300,9 @@ fn unify_refs_different_mutability_err() {
         Span::DUMMY,
     );
     // Stage 14.74: This now succeeds (was: asserted is_err()).
-    assert!(t.unify(&a, &b).is_ok());
+    assert!(t
+        .unify(&a, &b, landin_compiler::session::Span::DUMMY)
+        .is_ok());
 }
 
 // === Resolve chain ===
@@ -266,9 +343,17 @@ fn unify_two_int_vars_propagates() {
     let ty1 = Ty::new(TyKind::Infer(InferVar::IntVar(v1)), Span::DUMMY);
     let ty2 = Ty::new(TyKind::Infer(InferVar::IntVar(v2)), Span::DUMMY);
     // Unify two unbound int vars — should create a link
-    assert!(t.unify(&ty1, &ty2).is_ok());
+    assert!(t
+        .unify(&ty1, &ty2, landin_compiler::session::Span::DUMMY)
+        .is_ok());
     // Bind one to i64
-    assert!(t.unify(&ty1, &ty_int(ast::IntTy::I64)).is_ok());
+    assert!(t
+        .unify(
+            &ty1,
+            &ty_int(ast::IntTy::I64),
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_ok());
     // The other should resolve to i64 via the link
     let resolved = t.resolve(&ty2);
     assert!(
@@ -285,8 +370,16 @@ fn unify_two_float_vars_propagates() {
     let v2 = t.new_float_var();
     let ty1 = Ty::new(TyKind::Infer(InferVar::FloatVar(v1)), Span::DUMMY);
     let ty2 = Ty::new(TyKind::Infer(InferVar::FloatVar(v2)), Span::DUMMY);
-    assert!(t.unify(&ty1, &ty2).is_ok());
-    assert!(t.unify(&ty1, &ty_float(ast::FloatTy::F32)).is_ok());
+    assert!(t
+        .unify(&ty1, &ty2, landin_compiler::session::Span::DUMMY)
+        .is_ok());
+    assert!(t
+        .unify(
+            &ty1,
+            &ty_float(ast::FloatTy::F32),
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_ok());
     let resolved = t.resolve(&ty2);
     assert!(
         matches!(resolved.kind, TyKind::Float(ast::FloatTy::F32)),
@@ -305,10 +398,20 @@ fn unify_int_var_chain_propagates() {
     let ty2 = Ty::new(TyKind::Infer(InferVar::IntVar(v2)), Span::DUMMY);
     let ty3 = Ty::new(TyKind::Infer(InferVar::IntVar(v3)), Span::DUMMY);
     // Chain: v1 ~ v2 ~ v3
-    assert!(t.unify(&ty1, &ty2).is_ok());
-    assert!(t.unify(&ty2, &ty3).is_ok());
+    assert!(t
+        .unify(&ty1, &ty2, landin_compiler::session::Span::DUMMY)
+        .is_ok());
+    assert!(t
+        .unify(&ty2, &ty3, landin_compiler::session::Span::DUMMY)
+        .is_ok());
     // Bind v3 to i32 — v1 and v2 should also resolve to i32
-    assert!(t.unify(&ty3, &ty_int(ast::IntTy::I32)).is_ok());
+    assert!(t
+        .unify(
+            &ty3,
+            &ty_int(ast::IntTy::I32),
+            landin_compiler::session::Span::DUMMY
+        )
+        .is_ok());
     assert!(matches!(t.resolve(&ty1).kind, TyKind::Int(ast::IntTy::I32)));
     assert!(matches!(t.resolve(&ty2).kind, TyKind::Int(ast::IntTy::I32)));
 }
@@ -323,10 +426,16 @@ fn unify_ty_var_chain_propagates() {
     let ty2 = Ty::new(TyKind::Infer(InferVar::TyVar(v2)), Span::DUMMY);
     let ty3 = Ty::new(TyKind::Infer(InferVar::TyVar(v3)), Span::DUMMY);
     // Chain: v1 ~ v2 ~ v3
-    assert!(t.unify(&ty1, &ty2).is_ok());
-    assert!(t.unify(&ty2, &ty3).is_ok());
+    assert!(t
+        .unify(&ty1, &ty2, landin_compiler::session::Span::DUMMY)
+        .is_ok());
+    assert!(t
+        .unify(&ty2, &ty3, landin_compiler::session::Span::DUMMY)
+        .is_ok());
     // Bind v3 to bool — v1 and v2 should also resolve to bool
-    assert!(t.unify(&ty3, &ty_bool()).is_ok());
+    assert!(t
+        .unify(&ty3, &ty_bool(), landin_compiler::session::Span::DUMMY)
+        .is_ok());
     assert!(matches!(t.resolve(&ty1).kind, TyKind::Bool));
     assert!(matches!(t.resolve(&ty2).kind, TyKind::Bool));
 }
