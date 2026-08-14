@@ -1988,6 +1988,12 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
                         };
                         Ty::new(TyKind::Param(param), span)
                     }
+                    // Stage 18.62: Res::Err/Res::Unknown/Res::Local/Res::SelfTy
+                    // reaching here means the resolver couldn't resolve the type path.
+                    // The resolver may have already pushed a ResolveError, but if not
+                    // (e.g. Res::Unknown for body-local types), we return Error.
+                    // Per §1.0 原則 4 "报错 > 静默": TyKind::Error is the fallback,
+                    // and the resolver's scan_for_unresolved_paths will report it.
                     _ => Ty::new(TyKind::Error, span),
                 }
             }
@@ -2017,6 +2023,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
                 span,
             )
         }
+        // Stage 18.62: Unsupported HirTyKind — return Error.
         _ => Ty::new(TyKind::Error, span),
     }
 }

@@ -254,18 +254,36 @@ pub(crate) fn find_receiver_struct_def_id(
 
 /// Stage 3.52: Resolve the element type of an index expression `base[idx]`
 /// by inspecting the base's MIR type.
-pub(crate) fn resolve_index_element_type(cx: &MirLowerCtxt, base_local: LocalId) -> Option<Ty> {
+pub(crate) fn resolve_index_element_type(cx: &mut MirLowerCtxt, base_local: LocalId) -> Option<Ty> {
     let base_ty = cx.mir.local_decls.get(base_local.0 as usize)?.ty.clone();
     match &base_ty.kind {
         TyKind::Ref(_, _, inner) => match &inner.kind {
             TyKind::Slice(elem) => Some((**elem).clone()),
             TyKind::Array(elem, _) => Some((**elem).clone()),
             TyKind::Str => Some(Ty::new(TyKind::Uint(ast::UintTy::U8), Span::DUMMY)),
-            _ => None,
+            // Stage 18.62: Infer/Error/Param are acceptable fallbacks (typeck
+            // will resolve them later). Per §1.0 原則 4: only push error for
+            // truly non-indexable concrete types.
+            TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
+            _ => {
+                cx.type_errors.push(crate::typeck::TypeError::new(
+                    format!("cannot index into type {:?}", inner.kind),
+                    Span::DUMMY,
+                ));
+                None
+            }
         },
         TyKind::Array(elem, _) => Some((**elem).clone()),
         TyKind::Slice(elem) => Some((**elem).clone()),
-        _ => None,
+        // Stage 18.62: Infer/Error/Param are acceptable fallbacks.
+        TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
+        _ => {
+            cx.type_errors.push(crate::typeck::TypeError::new(
+                format!("cannot index into type {:?}", base_ty.kind),
+                Span::DUMMY,
+            ));
+            None
+        }
     }
 }
 

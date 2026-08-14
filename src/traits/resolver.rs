@@ -744,8 +744,8 @@ impl TraitResolver {
         self_ty_name: Spur,
         method_name: Spur,
     ) -> Option<&VtableEntry> {
-        #[allow(deprecated)]
-        let vtable = self.find_vtable(trait_name, self_ty_name)?;
+        // Stage 18.62: Inline the vtable lookup instead of calling deprecated find_vtable.
+        let vtable = self.vtables.get(&(trait_name, self_ty_name))?;
         vtable.entries.iter().find(|e| e.method_name == method_name)
     }
 
@@ -796,8 +796,8 @@ impl TraitResolver {
         trait_name: Spur,
         self_ty_name: Spur,
     ) -> Vec<&'a str> {
-        #[allow(deprecated)]
-        if let Some(vtable) = self.find_vtable(trait_name, self_ty_name) {
+        // Stage 18.62: Inline vtable lookup instead of deprecated find_vtable.
+        if let Some(vtable) = self.vtables.get(&(trait_name, self_ty_name)) {
             vtable
                 .entries
                 .iter()
@@ -979,21 +979,16 @@ impl TraitResolver {
         }
     }
 
-    /// Stage 5.5: Look up a vtable by (trait_name, self_ty_name).
-    /// Returns the vtable containing method dispatch entries.
-    ///
-    /// Stage 16.11 (Task 3 Step 4): DEPRECATED for query-only callers.
-    /// Use `find_vtable_by_def_ids` instead — it's type-safe and doesn't
-    /// require an interner. This method is retained for callers that
-    /// need string-keyed access (e.g., `build_dyn_trait_fat_ptrs_from_resolver`
-    /// which iterates `vtables.keys()` for string names).
-    #[deprecated(
-        note = "Use find_vtable_by_def_ids (DefId-keyed, type-safe) instead. Retained for string-keyed iteration callers. (Stage 16.11)"
-    )]
+    /// Stage 18.62: Deprecated. Inline the vtable lookup at call sites.
+    /// Kept as thin wrapper for test backward compat.
+    #[deprecated(note = "Use vtables.get() directly or find_vtable_by_def_ids")]
     pub fn find_vtable(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&Vtable> {
         self.vtables.get(&(trait_name, self_ty_name))
     }
 
+    /// Stage 5.5: Look up a vtable by (trait_name, self_ty_name).
+    /// Returns the vtable containing method dispatch entries.
+    ///
     /// Stage 16.10 (Task 3 Step 3 continuation): Look up a vtable by DefIds.
     ///
     /// This is the **preferred vtable lookup method** for new code — it uses

@@ -1,6 +1,6 @@
 // CATEGORY: typecheck
 // DESCRIPTION: index non-array i8
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.9 batch expansion (Stage 0 limitation)
+// EXPECTED: compile_error
+// SOURCE: Stage 11.9 batch expansion; Stage 18.62: now correctly reports error
 
 fn main(){let x:i8=0;let y=x[0];}

@@ -595,7 +595,13 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                     }
                 }
             }
-            // Otherwise, create an error placeholder.
+            // Stage 18.62: Push TypeError for unresolved path expressions.
+            // Per §1.0 原則 4 "报错 > 静默": previously silently returned
+            // TyKind::Error without any diagnostic.
+            cx.type_errors.push(crate::typeck::TypeError::new(
+                "cannot find value in this scope",
+                expr.span,
+            ));
             cx.eval_rvalue_to_temp(
                 Rvalue::Use(Operand::Constant(Const {
                     ty: Ty::new(TyKind::Error, Span::DUMMY),
