@@ -32256,3 +32256,56 @@ Stage Summary:
 - §避免死代码: 4个 #[allow(deprecated)] 通过内联化移除
 - 3245 unit + 5249 conformance = 8494 total tests, 0 failures
 - v0.329.0 → v0.330.0
+
+---
+Task ID: stage18.64
+Agent: Super Z (main)
+Task: Stage 18.64 — Final Audit: Inline Remaining Deprecated Callers + Clean #[allow(deprecated)]
+
+Work Log:
+- §14 深度审查: 继续清理剩余 #[allow(deprecated)] 标注
+- 目标: 从 7 个 #[allow(deprecated)] 减少到 1 个 (仅保留 ty_is_copy re-export 供测试)
+
+- borrowck/copy_semantics.rs:
+  1. 提取 is_copy_recursive 内部函数 (pub(crate)):
+     - 旧: ty_is_copy 递归调用自身, 标记 #[deprecated] + #[allow(deprecated)]
+     - 新: ty_is_copy 委托给非 deprecated 的 is_copy_recursive, 递归调用 is_copy_recursive
+  2. Tuple/Array 的 #[allow(deprecated)] 移除:
+     - 旧: #[allow(deprecated)] Tuple(tys) => tys.iter().all(ty_is_copy)
+     - 新: Tuple(tys) => tys.iter().all(is_copy_recursive)
+
+- borrowck/mod.rs:
+  3. is_copy 方法 fallback (line 191):
+     - 旧: #[allow(deprecated)] copy_semantics::ty_is_copy(ty)
+     - 新: copy_semantics::is_copy_recursive(ty) (直接调用非 deprecated 内部函数)
+  4. re-export (line 55):
+     - 保留 #[allow(deprecated)] — ty_is_copy 仍被测试代码直接导入
+     - 拆分 re-export: ty_is_copy 单独标注, ty_is_copy_unified/with_resolver 不标注
+
+- traits/resolver.rs:
+  5. impl_covers_trait (line 1281):
+     - 旧: #[allow(deprecated)] self.impl_methods(...)
+     - 新: 直接 self.impl_by_trait_and_type.get(...).and_then(|id| self.impls.get(id))
+  6. missing_impl_methods (line 1313):
+     - 同上, 内联化
+
+- clippy fix: .iter().all(|t| is_copy_recursive(t)) → .iter().all(is_copy_recursive)
+
+- 验收 (§3.2):
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 604 lib + 2641 integration = 3245 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5249 conformance tests, 0 failures
+
+- 最终 #[allow(deprecated)] 统计:
+  - 从 7 个减少到 1 个 (仅 borrowck/mod.rs:55 ty_is_copy re-export)
+  - 该 1 个是故意的: 测试代码直接导入 ty_is_copy, 需要保持向后兼容
+
+Stage Summary:
+- 审计清理完成: #[allow(deprecated)] 从 7 → 1 (仅保留 ty_is_copy re-export)
+- §避免死代码: 6处 #[allow(deprecated)] 通过内联化移除
+- §高内聚低耦合: is_copy_recursive 提取为独立 pub(crate) 函数
+- 3245 unit + 5249 conformance = 8494 total tests, 0 failures
+- v0.330.0 → v0.331.0
+- 审计清理阶段完成, 可进入新功能开发

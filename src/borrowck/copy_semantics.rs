@@ -48,6 +48,13 @@
     note = "Unsound: returns true for ALL Adt types. Use ty_is_copy_with_resolver (via BorrowChecker::with_resolver_and_sigs) or ty_is_copy_unified instead. (Stage 16.06)"
 )]
 pub fn ty_is_copy(ty: &crate::mir::ty::Ty) -> bool {
+    is_copy_recursive(ty)
+}
+
+/// Stage 18.64: Internal recursive Copy check (extracted from ty_is_copy).
+/// This avoids self-deprecation by having the deprecated wrapper delegate
+/// to this non-deprecated inner function.
+pub(crate) fn is_copy_recursive(ty: &crate::mir::ty::Ty) -> bool {
     use crate::mir::ty::TyKind::*;
     match &ty.kind {
         Bool | Char | Int(_) | Uint(_) | Float(_) => true,
@@ -59,10 +66,11 @@ pub fn ty_is_copy(ty: &crate::mir::ty::Ty) -> bool {
         RawPtr(_, _) => true,
         FnDef(_, _) | FnPtr(_) => true,
         Never => true,
-        #[allow(deprecated)]
-        Tuple(tys) => tys.iter().all(ty_is_copy),
-        #[allow(deprecated)]
-        Array(inner, _) => ty_is_copy(inner),
+        // Stage 18.64: Inline ty_is_copy for Tuple/Array to remove self-deprecation.
+        // The function is #[deprecated] but calling itself is necessary for recursion.
+        // Inlining the match arms avoids the #[allow(deprecated)].
+        Tuple(tys) => tys.iter().all(is_copy_recursive),
+        Array(inner, _) => is_copy_recursive(inner),
         // Infer and Error: assume Copy to avoid spurious errors.
         Infer(_) | Error | Foreign => true,
         // Stage 5.3: Treat Adt (struct/enum) as Copy by default (fallback).

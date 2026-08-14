@@ -1278,9 +1278,13 @@ impl TraitResolver {
         };
         let trait_methods = &trait_info.methods;
         let default_methods = &trait_info.default_methods;
-        #[allow(deprecated)]
-        let impl_methods = match self.impl_methods(trait_name, self_ty_name) {
-            Some(m) => m,
+        // Stage 18.64: Inline deprecated impl_methods to remove #[allow(deprecated)].
+        let impl_methods = match self
+            .impl_by_trait_and_type
+            .get(&(trait_name, self_ty_name))
+            .and_then(|id| self.impls.get(id))
+        {
+            Some(i) => &i.methods,
             None => return false,
         };
         // Every trait method must be in the impl methods OR have a default body.
@@ -1306,9 +1310,13 @@ impl TraitResolver {
         };
         let trait_methods = &trait_info.methods;
         let default_methods = &trait_info.default_methods;
-        #[allow(deprecated)]
-        let impl_methods = match self.impl_methods(trait_name, self_ty_name) {
-            Some(m) => m,
+        // Stage 18.64: Inline deprecated impl_methods.
+        let impl_methods = match self
+            .impl_by_trait_and_type
+            .get(&(trait_name, self_ty_name))
+            .and_then(|id| self.impls.get(id))
+        {
+            Some(i) => &i.methods,
             None => return Vec::new(),
         };
         // Stage 14.97 (Bug Y1 fix): Skip methods that have default bodies.
