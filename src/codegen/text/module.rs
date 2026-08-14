@@ -11,8 +11,14 @@ impl ModuleEmitter for TextEmitter {
     fn emit_header(&mut self) {
         self.line("; Landin compiler v0.8.6 — LLVM IR output");
         self.line("; Stage 3.21 codegen (typed aggregates + typed call args)");
-        self.line("target triple = \"x86_64-unknown-linux-gnu\"");
-        self.line("target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"");
+        // Stage 18.88: Use configured target triple instead of hardcoded.
+        self.line(&format!("target triple = \"{}\"", self.target.triple()));
+        if !self.target.data_layout().is_empty() {
+            self.line(&format!(
+                "target datalayout = \"{}\"",
+                self.target.data_layout()
+            ));
+        }
         self.line("");
     }
 

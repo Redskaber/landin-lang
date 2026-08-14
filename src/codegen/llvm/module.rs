@@ -14,13 +14,14 @@ use super::LLVMSysEmitter;
 impl ModuleEmitter for LLVMSysEmitter {
     fn emit_header(&mut self) {
         unsafe {
-            let triple = cstr_owned("x86_64-unknown-linux-gnu");
+            // Stage 18.88: Use configured target triple.
+            let triple = cstr_owned(self.target.triple());
             LLVMSetTarget(self.module, triple.as_ptr());
-            // Stage 18.78 P1 (N6): Use cstr_owned instead of CString::new().unwrap().
-            let dl = cstr_owned(
-                "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128",
-            );
-            LLVMSetDataLayout(self.module, dl.as_ptr());
+            let dl_str = self.target.data_layout();
+            if !dl_str.is_empty() {
+                let dl = cstr_owned(dl_str);
+                LLVMSetDataLayout(self.module, dl.as_ptr());
+            }
         }
     }
 

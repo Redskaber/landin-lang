@@ -62,6 +62,8 @@ pub(crate) mod function_sigs;
 
 /// LLVM C-API emitter.
 pub struct LLVMSysEmitter {
+    /// Stage 18.88: Target triple for cross-compilation.
+    target: crate::codegen::TargetTriple,
     ctx: LLVMContextRef,
     module: LLVMModuleRef,
     builder: LLVMBuilderRef,
@@ -107,12 +109,18 @@ impl LLVMSysEmitter {
     /// Create a new emitter. Initializes the LLVM context, an empty module
     /// named "landin_module", and an IR builder.
     pub fn new() -> Self {
+        Self::with_target(crate::codegen::TargetTriple::default())
+    }
+
+    /// Stage 18.88: Create with a specific target triple.
+    pub fn with_target(target: crate::codegen::TargetTriple) -> Self {
         unsafe {
             let ctx = LLVMContextCreate();
             let name = cstr_owned("landin_module");
             let module = LLVMModuleCreateWithNameInContext(name.as_ptr(), ctx);
             let builder = LLVMCreateBuilderInContext(ctx);
             Self {
+                target,
                 ctx,
                 module,
                 builder,

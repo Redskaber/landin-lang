@@ -12789,3 +12789,51 @@ Stage Summary:
 - 3286 unit + 2935 conformance = 6221 total tests, 0 failures
 - v0.355.0: minor bump (GATs Phase 3)
 - 下一步: v0.2 规划 或继续 GATs Phase 4
+
+---
+Task ID: stage18.88
+Agent: Super Z (main)
+Task: Stage 18.88 — Cross-Compilation Foundation (Target Triple Configuration). v0.355.0 → v0.356.0.
+
+Work Log:
+- §13.1 设计对齐: v0.7 路线图 P2 交叉编译 + 项目现状
+- 新增 src/codegen/target.rs:
+  - TargetTriple struct: triple + data_layout
+  - x86_64_linux(): 默认 target (原有硬编码值)
+  - aarch64_linux(): AArch64 Linux target
+  - from_str(): 从字符串创建 (支持任意 triple)
+  - triple() / data_layout() 访问器
+- 更新 TextEmitter:
+  - 添加 target: TargetTriple 字段
+  - new() → with_target(TargetTriple::default())
+  - with_target(target): 新构造函数
+  - emit_header 使用 self.target.triple() / data_layout()
+- 更新 LLVMSysEmitter:
+  - 添加 target: TargetTriple 字段
+  - new() → with_target(TargetTriple::default())
+  - with_target(target): 新构造函数
+  - emit_header 使用 self.target.triple() / data_layout()
+- 更新 codegen/mod.rs: pub mod target + pub use TargetTriple
+- 移除硬编码 "x86_64-unknown-linux-gnu" (2 处: text/module.rs + llvm/module.rs)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2648 integration = 3286 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.88-cross-compilation-design.md (新建)
+  - Cargo.toml: v0.355.0 → v0.356.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.88 PASSED — 交叉编译基础 (TargetTriple 配置)
+- 新增 TargetTriple 类型 + with_target 构造函数
+- 移除 2 处硬编码 target triple
+- v0.7 路线图 P2 交叉编译 Phase 1 完成:
+  - ✅ TargetTriple 配置基础设施
+  - ⏳ CLI --target 参数 (Phase 2)
+  - ⏳ 交叉链接 (Phase 3)
+- 3286 unit + 2935 conformance = 6221 total tests, 0 failures
+- v0.356.0: minor bump (cross-compilation foundation)
+- 下一步: CLI --target 参数 或 v0.2 规划

@@ -119,6 +119,8 @@ pub(crate) mod memory;
 pub(crate) mod module;
 
 pub struct TextEmitter {
+    /// Stage 18.88: Target triple for cross-compilation.
+    target: crate::codegen::TargetTriple,
     output: String,
     /// Accumulated module-level global definitions (emitted at end of module).
     /// Stage 3.27: holds string-literal globals.
@@ -140,7 +142,13 @@ impl Default for TextEmitter {
 
 impl TextEmitter {
     pub fn new() -> Self {
+        Self::with_target(crate::codegen::TargetTriple::default())
+    }
+
+    /// Stage 18.88: Create with a specific target triple.
+    pub fn with_target(target: crate::codegen::TargetTriple) -> Self {
         Self {
+            target,
             output: String::new(),
             globals: Vec::new(),
             string_globals: HashMap::new(),
