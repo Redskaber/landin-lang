@@ -27,10 +27,10 @@ pub(crate) fn codegen_terminator(
             if *ret_ty == EmitType::Void {
                 emitter.emit_ret(ret_ty, None);
             } else {
-                let ret_val = if let Some(ptr) = emitter.get_local_ptr(0).cloned() {
+                let ret_val = if let Some(ptr) = emitter.local_ptr(0).cloned() {
                     Some(emitter.emit_load(ret_ty, &ptr))
                 } else {
-                    emitter.get_local(0).cloned()
+                    emitter.local(0).cloned()
                 };
                 // Stage 18.71 P0-5: When ret_ty is non-void but ret_val is
                 // None (e.g., `fn main()` where the return local is unit and
@@ -161,7 +161,7 @@ pub(crate) fn codegen_terminator(
                         })
                         .unwrap_or(EmitType::I32);
                     emitter.set_local(id.0, ret_val.clone());
-                    if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
+                    if let Some(ptr) = emitter.local_ptr(id.0).cloned() {
                         emitter.emit_store(&dest_ty, &ret_val, &ptr);
                     }
                 }
@@ -431,7 +431,7 @@ pub(crate) fn codegen_terminator(
                             .unwrap_or(EmitType::I32)
                     });
                 emitter.set_local(id.0, ret_val.clone());
-                if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
+                if let Some(ptr) = emitter.local_ptr(id.0).cloned() {
                     emitter.emit_store(&dest_ty, &ret_val, &ptr);
                 }
             }

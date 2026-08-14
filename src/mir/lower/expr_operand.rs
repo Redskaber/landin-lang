@@ -65,7 +65,7 @@ pub(crate) fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Plac
     match &expr.kind {
         HirExprKind::Path(path) => {
             if let Res::Local(hir_id) = path.res {
-                if let Some(local_id) = cx.local_of(hir_id) {
+                if let Some(local_id) = cx.find_local(hir_id) {
                     return Place::local(local_id, expr.span);
                 }
             }
@@ -395,7 +395,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         HirExprKind::Path(path) => {
             // If the path resolves to a local, return that local.
             if let Res::Local(hir_id) = path.res {
-                if let Some(local_id) = cx.local_of(hir_id) {
+                if let Some(local_id) = cx.find_local(hir_id) {
                     return local_id;
                 }
             }
@@ -489,12 +489,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                 // expression and produce a constant operand.
                                 if let Some(hir_crate) = cx.hir {
                                     if let Some(crate::hir::OwnerNode::Item(item)) =
-                                        hir_crate.owner(def_id)
+                                        hir_crate.find_owner(def_id)
                                     {
                                         match item {
                                             crate::hir::HirItem::Const(c) => {
                                                 // Lower the const's body expression to get its value.
-                                                if let Some(body) = hir_crate.body(c.body) {
+                                                if let Some(body) = hir_crate.find_body(c.body) {
                                                     let const_local =
                                                         lower_expr_to_operand(cx, &body.value);
                                                     let ld = cx
@@ -518,7 +518,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                             crate::hir::HirItem::Static(s) => {
                                                 // Statics are like consts but with a fixed memory location.
                                                 // For Stage 3.44, treat same as const.
-                                                if let Some(body) = hir_crate.body(s.body) {
+                                                if let Some(body) = hir_crate.find_body(s.body) {
                                                     let static_local =
                                                         lower_expr_to_operand(cx, &body.value);
                                                     let ld = cx
@@ -854,9 +854,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 // variant_idx = 0 and field_tys are the struct's fields.
                 let mut all_operands = Vec::new();
                 if variant_idx > 0
-                    || (cx.hir.and_then(|h| h.owner(adt_def_id)).is_some_and(|o| {
-                        matches!(o, crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_)))
-                    }))
+                    || (cx
+                        .hir
+                        .and_then(|h| h.find_owner(adt_def_id))
+                        .is_some_and(|o| {
+                            matches!(o, crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_)))
+                        }))
                 {
                     // Enum variant — prepend discriminant.
                     let discr = Operand::Constant(Const {
@@ -2485,7 +2488,7 @@ pub(crate) fn resolve_enum_variant(
     variant_name: &crate::lexer::Symbol,
 ) -> Option<(u32, Vec<Ty>)> {
     let hir = cx.hir?;
-    let owner = hir.owner(enum_def_id)?;
+    let owner = hir.find_owner(enum_def_id)?;
     let enum_def = match owner {
         crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => e,
         _ => return None,
@@ -2612,7 +2615,7 @@ fn resolve_inherent_method(
 
     // Get the ADT's name (for matching impl self_ty).
     // The impl's self_ty is a HirTy::Path with the type name as the single segment.
-    let adt_name = hir.owner(adt_def_id).and_then(|owner| match owner {
+    let adt_name = hir.find_owner(adt_def_id).and_then(|owner| match owner {
         crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) => Some(s.ident.name),
         crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => Some(e.ident.name),
         _ => None,
@@ -2852,7 +2855,7 @@ fn resolve_trait_method(
     };
 
     // Get the ADT's name.
-    let adt_name = hir.owner(adt_def_id).and_then(|owner| match owner {
+    let adt_name = hir.find_owner(adt_def_id).and_then(|owner| match owner {
         crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) => Some(s.ident.name),
         crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(e)) => Some(e.ident.name),
         _ => None,
@@ -3143,7 +3146,7 @@ fn resolve_inherent_method_from_hir_expr(
                         if let TyKind::Adt(struct_def_id, _) = &init_ty.kind {
                             if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(
                                 s,
-                            ))) = hir.owner(*struct_def_id)
+                            ))) = hir.find_owner(*struct_def_id)
                             {
                                 for f in &s.fields {
                                     if f.ident.map(|fi| fi.name) == Some(ident.name) {

@@ -217,7 +217,7 @@ pub(crate) fn codegen_rvalue(
         }
         Rvalue::Ref(_, _borrow_kind, lv) => {
             if let PlaceKind::Local(id) = &lv.kind {
-                if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
+                if let Some(ptr) = emitter.local_ptr(id.0).cloned() {
                     return ptr;
                 }
             }

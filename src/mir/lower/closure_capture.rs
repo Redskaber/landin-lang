@@ -23,7 +23,7 @@ pub(crate) fn collect_captured_locals(
         HirExprKind::Path(path) => {
             if let Res::Local(hir_id) = path.res {
                 if !param_hir_ids.contains(&hir_id) && !seen.contains(&hir_id) {
-                    if let Some(local_id) = cx.local_of(hir_id) {
+                    if let Some(local_id) = cx.find_local(hir_id) {
                         seen.insert(hir_id);
                         captured.push((hir_id, local_id));
                     }

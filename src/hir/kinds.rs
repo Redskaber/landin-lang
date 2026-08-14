@@ -114,7 +114,7 @@ impl HirCrate {
 
     /// Look up an owner node by DefId.
     /// Stage 14.110: O(1) via cached index (was O(n) linear scan).
-    pub fn owner(&self, def_id: DefId) -> Option<&OwnerNode> {
+    pub fn find_owner(&self, def_id: DefId) -> Option<&OwnerNode> {
         let index = self.owner_index.get_or_init(|| {
             self.owners
                 .iter()
@@ -127,7 +127,7 @@ impl HirCrate {
 
     /// Look up a body by BodyId.
     /// Stage 14.110: O(1) via cached index (was O(n) linear scan).
-    pub fn body(&self, body_id: BodyId) -> Option<&Body> {
+    pub fn find_body(&self, body_id: BodyId) -> Option<&Body> {
         let index = self.body_index.get_or_init(|| {
             self.bodies
                 .iter()

@@ -1185,7 +1185,7 @@ pub fn compile(src: &str) -> CompileResult {
         }
         lowered_body_owners.insert(owner_def_id);
 
-        let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
+        let return_ty = hir.find_owner(body_id.owner.0).and_then(owner_return_ty);
 
         let (mut mir, lower_unify, lower_type_errors, synthesized_closures) =
             lower_hir_body_to_mir_full_with_dyn_trait_plan(
@@ -1827,7 +1827,7 @@ pub fn compile(src: &str) -> CompileResult {
                     .unwrap_or_else(|| format!("fn_{}", body_id.owner.0.as_u32()))
             };
             // Check if void (no return type).
-            let return_ty = hir.owner(body_id.owner.0).and_then(owner_return_ty);
+            let return_ty = hir.find_owner(body_id.owner.0).and_then(owner_return_ty);
             let is_void = return_ty.is_none();
             // Stage 13.22: Force `main`/`landin_main` to return i32 (not void).
             // The C wrapper declares `extern int landin_main(void)` and reads
@@ -1837,7 +1837,7 @@ pub fn compile(src: &str) -> CompileResult {
             let is_void = is_void && fn_name != "landin_main";
             // Stage 8.3: Get the ABI from the function owner.
             let abi = hir
-                .owner(body_id.owner.0)
+                .find_owner(body_id.owner.0)
                 .and_then(|owner| match owner {
                     crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) => Some(f.sig.abi),
                     _ => None,
@@ -2294,7 +2294,7 @@ fn validate_struct_literal_fields(
             crate::hir::OwnerNode::Item(HirItem::Static(s)) => s.body,
             _ => continue,
         };
-        let body = match hir.body(body_id) {
+        let body = match hir.find_body(body_id) {
             Some(b) => b,
             None => continue,
         };
@@ -2505,7 +2505,7 @@ fn validate_pattern_arity(hir: &HirCrate, _interner: &lasso::Rodeo, errors: &mut
             crate::hir::OwnerNode::Item(HirItem::Static(s)) => s.body,
             _ => continue,
         };
-        let body = match hir.body(body_id) {
+        let body = match hir.find_body(body_id) {
             Some(b) => b,
             None => continue,
         };
@@ -2561,7 +2561,7 @@ fn validate_assignment_targets(
             crate::hir::OwnerNode::Item(HirItem::Fn(f)) if f.body.is_some() => f.body.unwrap(),
             _ => continue,
         };
-        let body = match hir.body(body_id) {
+        let body = match hir.find_body(body_id) {
             Some(b) => b,
             None => continue,
         };
@@ -2698,7 +2698,7 @@ fn validate_cast_types(hir: &HirCrate, _interner: &lasso::Rodeo, errors: &mut Ve
             crate::hir::OwnerNode::Item(HirItem::Fn(f)) if f.body.is_some() => f.body.unwrap(),
             _ => continue,
         };
-        let body = match hir.body(body_id) {
+        let body = match hir.find_body(body_id) {
             Some(b) => b,
             None => continue,
         };

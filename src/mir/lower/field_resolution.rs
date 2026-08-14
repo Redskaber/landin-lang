@@ -53,7 +53,7 @@ pub(crate) fn resolve_field_type(
     // substitute the field type's Param placeholders.
     let receiver_substs = find_receiver_substs(cx, receiver);
 
-    let owner = hir.owner(struct_def_id)?;
+    let owner = hir.find_owner(struct_def_id)?;
     if let OwnerNode::Item(HirItem::Struct(s)) = owner {
         let field = s.fields.get(field_index as usize)?;
         // Stage 16.53: If we have substs, lower with generics + substitute.
@@ -62,7 +62,7 @@ pub(crate) fn resolve_field_type(
         // through, so nested generic paths in field types are resolved.
         if let Some(substs) = receiver_substs {
             if !substs.is_empty() {
-                let generic_params = crate::hir::generics::generics_of(struct_def_id, hir);
+                let generic_params = crate::hir::generics::find_generics(struct_def_id, hir);
                 let field_ty = lower_hir_ty_to_mir_ty_with_generics(&field.ty, &generic_params);
                 return Some(crate::mir::substitute::substitute(&field_ty, &substs));
             }
@@ -139,7 +139,9 @@ pub(crate) fn resolve_field_index(
                 return idx;
             }
             if let Some(struct_def_id) = find_receiver_struct_def_id(cx, receiver) {
-                if let Some(OwnerNode::Item(HirItem::Struct(s))) = hir_crate.owner(struct_def_id) {
+                if let Some(OwnerNode::Item(HirItem::Struct(s))) =
+                    hir_crate.find_owner(struct_def_id)
+                {
                     for (i, f) in s.fields.iter().enumerate() {
                         if let Some(f_ident) = &f.ident {
                             if f_ident.name == *field_name {
@@ -317,7 +319,7 @@ pub(crate) fn resolve_adt_field_tys(cx: &MirLowerCtxt, def_id: crate::hir::DefId
         Some(h) => h,
         None => return Vec::new(),
     };
-    match hir.owner(def_id) {
+    match hir.find_owner(def_id) {
         Some(OwnerNode::Item(HirItem::Struct(s))) => s
             .fields
             .iter()
@@ -360,7 +362,7 @@ pub(crate) fn resolve_adt_field_tys_with_substs(
     };
 
     // Get the ADT's generic params (empty for non-generic ADTs).
-    let generic_params = crate::hir::generics::generics_of(def_id, hir);
+    let generic_params = crate::hir::generics::find_generics(def_id, hir);
 
     // If no generic params or no substs, fall back to plain resolution.
     // This is the non-generic fast path — no substitution needed.
@@ -370,7 +372,7 @@ pub(crate) fn resolve_adt_field_tys_with_substs(
 
     // Generic ADT with substs — lower fields with generic param resolution,
     // then apply substitution.
-    match hir.owner(def_id) {
+    match hir.find_owner(def_id) {
         Some(OwnerNode::Item(HirItem::Struct(s))) => s
             .fields
             .iter()

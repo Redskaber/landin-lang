@@ -19,11 +19,11 @@ pub trait LocalStateEmitter {
     fn set_local_ptr(&mut self, local_id: u32, ptr: EmitValue);
 
     /// Get a local's pointer handle.
-    fn get_local_ptr(&self, local_id: u32) -> Option<&EmitValue>;
+    fn local_ptr(&self, local_id: u32) -> Option<&EmitValue>;
 
     /// Store a local's value handle.
     fn set_local(&mut self, local_id: u32, val: EmitValue);
 
     /// Get a local's stored value handle.
-    fn get_local(&self, local_id: u32) -> Option<&EmitValue>;
+    fn local(&self, local_id: u32) -> Option<&EmitValue>;
 }

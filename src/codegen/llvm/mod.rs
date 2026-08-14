@@ -493,7 +493,7 @@ impl LLVMSysEmitter {
 
     /// Look up or create a function by name in the module.
     /// Used by `emit_call` to resolve the callee.
-    pub(crate) fn get_or_declare_function(
+    pub(crate) fn declare_function(
         &mut self,
         name: &str,
         ret_ty: &EmitType,

@@ -208,7 +208,7 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                     let mut map = std::collections::HashMap::new();
                     if let Some(hir) = cx.hir {
                         if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
-                            hir.owner(struct_def_id)
+                            hir.find_owner(struct_def_id)
                         {
                             for (i, f) in s.fields.iter().enumerate() {
                                 if let Some(name) = f.ident {
@@ -270,7 +270,7 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                         None => return,
                     };
                     if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(enum_def))) =
-                        hir.owner(enum_def_id)
+                        hir.find_owner(enum_def_id)
                     {
                         if let Some(variant) = enum_def.variants.get(variant_idx as usize) {
                             if let crate::hir::HirVariantData::Struct(var_fields, _) = &variant.data
@@ -424,7 +424,7 @@ pub(crate) fn compute_enum_payload_starting_idx(
         Some(h) => h,
         None => return 1,
     };
-    let owner = match hir.owner(enum_def_id) {
+    let owner = match hir.find_owner(enum_def_id) {
         Some(o) => o,
         None => return 1,
     };

@@ -179,7 +179,7 @@ fn collect_adt_def_ids(ty: &Ty, out: &mut Vec<DefId>) {
 /// Build an `AdtLayout` for the given DefId by reading HIR.
 /// Returns `None` if the DefId doesn't resolve to a struct or enum.
 fn build_adt_layout(def_id: DefId, hir: &HirCrate) -> Option<AdtLayout> {
-    let owner = hir.owner(def_id)?;
+    let owner = hir.find_owner(def_id)?;
     match owner {
         OwnerNode::Item(HirItem::Struct(s)) => {
             let field_tys = s

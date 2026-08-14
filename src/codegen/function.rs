@@ -243,12 +243,11 @@ pub(crate) fn codegen_function(
         // override its type with the callee's return type from fn_sigs. This
         // fixes struct-returning method calls where the local's type is
         // Infer→i32 after typeck writeback but the actual value is a struct.
-        let ty =
-            if let Some(override_ty) = get_call_dest_type(mir, i, fn_sigs, layouts, mono_layouts) {
-                override_ty
-            } else {
-                ty
-            };
+        let ty = if let Some(override_ty) = call_dest_type(mir, i, fn_sigs, layouts, mono_layouts) {
+            override_ty
+        } else {
+            ty
+        };
         let ptr_name = format!("%loc_{}", i);
         let ptr = emitter.emit_alloca(&ty, &ptr_name);
         emitter.set_local_ptr(i as u32, ptr);
@@ -256,7 +255,7 @@ pub(crate) fn codegen_function(
 
     for (i, (ty, arg_name)) in params.iter().enumerate() {
         let local_idx = (i + 1) as u32;
-        if let Some(ptr) = emitter.get_local_ptr(local_idx).cloned() {
+        if let Some(ptr) = emitter.local_ptr(local_idx).cloned() {
             emitter.emit_store(ty, arg_name, &ptr);
         }
     }
@@ -309,7 +308,7 @@ pub(crate) fn codegen_function(
 /// the local's declared type (which may be Infer→i32 after typeck writeback)
 /// with the actual return type (e.g. struct { i32, i32 }), ensuring the
 /// alloca has the correct size for struct-returning method calls.
-pub(crate) fn get_call_dest_type(
+pub(crate) fn call_dest_type(
     mir: &MirBody,
     local_idx: usize,
     fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,

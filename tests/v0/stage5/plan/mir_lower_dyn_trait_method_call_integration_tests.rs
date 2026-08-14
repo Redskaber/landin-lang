@@ -26,7 +26,7 @@ use landin_compiler::stdlib::StdlibTypeKind;
 use lasso::Rodeo;
 
 /// Helper: extract LocalId from an Operand::Copy(Place).
-fn local_of(op: &Operand) -> LocalId {
+fn find_local(op: &Operand) -> LocalId {
     match op {
         Operand::Copy(p) | Operand::Move(p) => match &p.kind {
             PlaceKind::Local(id) => *id,
@@ -211,11 +211,11 @@ fn test_build_dyn_trait_call_terminator_args_self_first() {
     if let TerminatorKind::Call { args, .. } = &terminator.kind {
         assert_eq!(args.len(), 3); // self + 2 args
                                    // self is at index 0
-        assert_eq!(local_of(&args[0]), LocalId(5));
+        assert_eq!(find_local(&args[0]), LocalId(5));
         // arg0 at index 1
-        assert_eq!(local_of(&args[1]), LocalId(6));
+        assert_eq!(find_local(&args[1]), LocalId(6));
         // arg1 at index 2
-        assert_eq!(local_of(&args[2]), LocalId(7));
+        assert_eq!(find_local(&args[2]), LocalId(7));
     } else {
         panic!("expected Call");
     }
@@ -229,7 +229,7 @@ fn test_build_dyn_trait_call_terminator_destination() {
     let terminator =
         build_dyn_trait_call_terminator(&mut cx, &call, LocalId(0), &[], LocalId(42), Span::DUMMY);
     if let TerminatorKind::Call { destination, .. } = &terminator.kind {
-        assert_eq!(local_of(&Operand::Copy(destination.clone())), LocalId(42));
+        assert_eq!(find_local(&Operand::Copy(destination.clone())), LocalId(42));
     } else {
         panic!("expected Call");
     }

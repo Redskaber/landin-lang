@@ -19,7 +19,7 @@ pub mod map;
 // Stage 16.62: build_generics_map gated behind #[cfg(test)] — test-only.
 #[cfg(test)]
 pub use generics::build_generics_map;
-pub use generics::generics_of;
+pub use generics::find_generics;
 
 // Re-export the most-used types at the module root for convenience.
 // Stage 3.57 (P0-3 fix): explicit list instead of `pub use kinds::*;`

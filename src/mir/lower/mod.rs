@@ -388,7 +388,7 @@ impl<'a> MirLowerCtxt<'a> {
     }
 
     /// Look up the MIR LocalId for a HirId.
-    pub fn local_of(&self, hir_id: HirId) -> Option<LocalId> {
+    pub fn find_local(&self, hir_id: HirId) -> Option<LocalId> {
         self.local_map.get(&hir_id).copied()
     }
 

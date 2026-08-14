@@ -280,7 +280,7 @@ fn struct_binary_expr_preserved() {
     let owner = hir.owners.first().expect("should have 1 owner");
     if let OwnerNode::Item(HirItem::Fn(f)) = &owner.1 {
         let body_id = f.body.expect("should have body");
-        let body = hir.body(body_id).expect("body should exist");
+        let body = hir.find_body(body_id).expect("body should exist");
         // body.value should be a Block containing a Local stmt with a Binary init
         match &body.value.kind {
             HirExprKind::Block(block) => {
@@ -310,7 +310,7 @@ fn struct_lit_kind_preserved() {
     let owner = hir.owners.first().expect("should have 1 owner");
     if let OwnerNode::Item(HirItem::Fn(f)) = &owner.1 {
         let body_id = f.body.expect("should have body");
-        let body = hir.body(body_id).expect("body should exist");
+        let body = hir.find_body(body_id).expect("body should exist");
         match &body.value.kind {
             HirExprKind::Block(block) => {
                 let expr = block.expr.as_ref().expect("should have trailing expr");
@@ -336,7 +336,7 @@ fn struct_path_res_unknown() {
     let owner = hir.owners.first().expect("should have 1 owner");
     if let OwnerNode::Item(HirItem::Fn(f)) = &owner.1 {
         let body_id = f.body.expect("should have body");
-        let body = hir.body(body_id).expect("body should exist");
+        let body = hir.find_body(body_id).expect("body should exist");
         match &body.value.kind {
             HirExprKind::Block(block) => {
                 let expr = block.expr.as_ref().expect("should have trailing expr");
@@ -424,7 +424,7 @@ fn struct_closure_is_move_preserved() {
     let owner = hir.owners.first().expect("should have 1 owner");
     if let OwnerNode::Item(HirItem::Fn(f)) = &owner.1 {
         let body_id = f.body.expect("should have body");
-        let body = hir.body(body_id).expect("body should exist");
+        let body = hir.find_body(body_id).expect("body should exist");
         match &body.value.kind {
             HirExprKind::Block(block) => {
                 if let HirStmt::Local(local) = &block.stmts[0] {
@@ -485,7 +485,7 @@ fn hir_id_uniqueness() {
     let owner = hir.owners.first().expect("should have 1 owner");
     if let OwnerNode::Item(HirItem::Fn(f)) = &owner.1 {
         let body_id = f.body.expect("should have body");
-        let body = hir.body(body_id).expect("body should exist");
+        let body = hir.find_body(body_id).expect("body should exist");
         // The body's HirId + the Block's HirId + 2 Local HirIds + 2 Lit HirIds
         // should all be unique.
         let mut ids = vec![body.hir_id];

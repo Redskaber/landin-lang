@@ -13090,3 +13090,47 @@ Stage Summary:
 - 3279 unit + 2935 conformance = 6214 total tests, 0 failures
 - v0.349.0: minor bump (P2 unify span refactoring)
 - 下一步: v0.2 规划或继续 API 重构
+
+---
+Task ID: stage18.82
+Agent: Super Z (main)
+Task: Stage 18.82 — P2 API Naming Standardization (get_ prefix + noun accessors). v0.349.0 → v0.350.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 Stage 18.81 gate-review + 延后 P2 API 重命名计划
+- P2 API 重命名 (85 处变更, 24 文件):
+  1. get_ 前缀移除 (Rust 惯例):
+     - get_local → local (LocalState trait + 2 impls + 6 callers)
+     - get_local_ptr → local_ptr (LocalState trait + 2 impls + 7 callers)
+     - get_or_declare_function → declare_function (llvm/mod.rs + 2 callers)
+     - get_call_dest_type → call_dest_type (function.rs)
+  2. 名词访问器重命名 (verb_noun 模式):
+     - HirCrate::owner() → find_owner() (定义 + 24 callers)
+     - HirCrate::body() → find_body() (定义 + 2 callers)
+     - MirLowerCtxt::local_of() → find_local() (定义 + 3 callers)
+     - generics_of() → find_generics() (定义 + 3 callers + re-export)
+  3. 修复 hir/mod.rs re-export (generics_of → find_generics)
+- 脚本驱动: Python regex 替换, 精确匹配避免误改
+  - get_local( 不匹配 get_local_ptr(
+  - .owner( 不匹配 .current_owner(
+  - .body( 不匹配 .body_count(
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2641 integration = 3279 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - Cargo.toml: v0.349.0 → v0.350.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.82 PASSED — P2 API 命名标准化完成
+- 85 处 API 重命名 across 24 files:
+  - 4 个 get_ 前缀函数 → 无前缀 (Rust 惯例)
+  - 4 个名词访问器 → find_ 前缀 (verb_noun 模式)
+- 所有 Stage 18.74 审计识别的 API 命名违规现已修复
+- 3279 unit + 2935 conformance = 6214 total tests, 0 failures
+- v0.350.0: minor bump (P2 API naming standardization)
+- P0/P1/P2 审计修复循环完全结束
+- 下一步: v0.2 规划 (单态化, 完整标准库, 交叉编译)

@@ -47,8 +47,8 @@ pub fn build_generics_map(
 ///
 /// Returns an empty slice if the item has no type parameters.
 /// Per §23: `generics_of` follows `<noun>_<prep>` pattern (query function).
-pub fn generics_of(def_id: crate::hir::DefId, hir: &HirCrate) -> Vec<ParamTy> {
-    hir.owner(def_id)
+pub fn find_generics(def_id: crate::hir::DefId, hir: &HirCrate) -> Vec<ParamTy> {
+    hir.find_owner(def_id)
         .and_then(extract_type_params)
         .unwrap_or_default()
 }
@@ -93,7 +93,7 @@ mod tests {
         let result = compile("fn main() -> i32 { 42 }");
         assert!(!result.has_errors());
         let hir = result.hir.as_ref().expect("HIR should be available");
-        let params = generics_of(crate::hir::DefId::new(0), hir);
+        let params = find_generics(crate::hir::DefId::new(0), hir);
         assert!(params.is_empty());
     }
 

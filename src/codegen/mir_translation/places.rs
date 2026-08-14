@@ -233,7 +233,7 @@ pub(crate) fn compute_place_address(
 ) -> String {
     match &lv.kind {
         PlaceKind::Local(id) => emitter
-            .get_local_ptr(id.0)
+            .local_ptr(id.0)
             .cloned()
             .unwrap_or_else(|| "0".to_string()),
         PlaceKind::Projection(base, elem) => match elem {
@@ -372,9 +372,9 @@ pub(crate) fn compute_place_address(
                         _ => raw_ty,
                     }
                 };
-                let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
+                let idx_val = if let Some(v) = emitter.local(idx.0).cloned() {
                     v
-                } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
+                } else if let Some(ptr) = emitter.local_ptr(idx.0).cloned() {
                     emitter.emit_load(&EmitType::I32, &ptr)
                 } else {
                     "0".to_string()
@@ -460,12 +460,12 @@ pub(crate) fn codegen_place_load_typed(
 ) -> EmitValue {
     match &lv.kind {
         PlaceKind::Local(id) => {
-            if let Some(val) = emitter.get_local(id.0).cloned() {
+            if let Some(val) = emitter.local(id.0).cloned() {
                 if !val.starts_with('%') {
                     return val;
                 }
             }
-            if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
+            if let Some(ptr) = emitter.local_ptr(id.0).cloned() {
                 emitter.emit_load(&ty, &ptr)
             } else {
                 "0".to_string()
@@ -553,13 +553,13 @@ pub(crate) fn codegen_place_load_typed(
                             codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
                         } else {
                             emitter
-                                .get_local_ptr(id.0)
+                                .local_ptr(id.0)
                                 .cloned()
                                 .unwrap_or_else(|| "0".to_string())
                         }
                     } else {
                         emitter
-                            .get_local_ptr(id.0)
+                            .local_ptr(id.0)
                             .cloned()
                             .unwrap_or_else(|| "0".to_string())
                     }
@@ -643,13 +643,13 @@ pub(crate) fn codegen_place_load_typed(
                             codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
                         } else {
                             emitter
-                                .get_local_ptr(id.0)
+                                .local_ptr(id.0)
                                 .cloned()
                                 .unwrap_or_else(|| "0".to_string())
                         }
                     } else {
                         emitter
-                            .get_local_ptr(id.0)
+                            .local_ptr(id.0)
                             .cloned()
                             .unwrap_or_else(|| "0".to_string())
                     }
@@ -686,9 +686,9 @@ pub(crate) fn codegen_place_load_typed(
                         _ => raw_ty,
                     }
                 };
-                let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
+                let idx_val = if let Some(v) = emitter.local(idx.0).cloned() {
                     v
-                } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
+                } else if let Some(ptr) = emitter.local_ptr(idx.0).cloned() {
                     emitter.emit_load(&EmitType::I32, &ptr)
                 } else {
                     "0".to_string()
@@ -709,7 +709,7 @@ pub(crate) fn codegen_place_load_typed(
             ProjectionElem::ConstantIndex { offset, .. } => {
                 let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                     emitter
-                        .get_local_ptr(id.0)
+                        .local_ptr(id.0)
                         .cloned()
                         .unwrap_or_else(|| "0".to_string())
                 } else {

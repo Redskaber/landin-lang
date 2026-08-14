@@ -151,7 +151,7 @@ fn lower_nested_pattern_destructure(cx: &mut MirLowerCtxt, src_local: LocalId, p
                     let mut map = std::collections::HashMap::new();
                     if let Some(hir) = cx.hir {
                         if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
-                            hir.owner(struct_def_id)
+                            hir.find_owner(struct_def_id)
                         {
                             for (i, f) in s.fields.iter().enumerate() {
                                 if let Some(name) = f.ident {
@@ -509,7 +509,7 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                                 if let Some(hir) = cx.hir {
                                     if let Some(crate::hir::OwnerNode::Item(
                                         crate::hir::HirItem::Struct(s),
-                                    )) = hir.owner(struct_def_id)
+                                    )) = hir.find_owner(struct_def_id)
                                     {
                                         for (i, f) in s.fields.iter().enumerate() {
                                             if let Some(name) = f.ident {
@@ -819,7 +819,7 @@ pub(crate) fn lower_match(
         .get(scrut_local.0 as usize)
         .map(|ld| ld.ty.clone())
         .unwrap_or_else(|| Ty::new(TyKind::Error, span));
-    let is_enum = matches!(&scrut_ty.kind, TyKind::Adt(def_id, _) if cx.hir.and_then(|h| h.owner(*def_id)).is_some_and(|o| {
+    let is_enum = matches!(&scrut_ty.kind, TyKind::Adt(def_id, _) if cx.hir.and_then(|h| h.find_owner(*def_id)).is_some_and(|o| {
         matches!(o, crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_)))
     }));
     // Also check: if any arm pattern is an enum variant path, treat as enum.
@@ -1498,7 +1498,7 @@ pub(crate) fn lower_match(
                             if let Some(hir) = cx.hir {
                                 if let Some(crate::hir::OwnerNode::Item(
                                     crate::hir::HirItem::Struct(s),
-                                )) = hir.owner(struct_def_id)
+                                )) = hir.find_owner(struct_def_id)
                                 {
                                     for (i, f) in s.fields.iter().enumerate() {
                                         if let Some(name) = f.ident {
@@ -2125,7 +2125,7 @@ fn build_pattern_equality_check(
                     let mut map = std::collections::HashMap::new();
                     if let Some(hir) = cx.hir {
                         if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
-                            hir.owner(struct_def_id)
+                            hir.find_owner(struct_def_id)
                         {
                             for (i, f) in s.fields.iter().enumerate() {
                                 if let Some(name) = f.ident {

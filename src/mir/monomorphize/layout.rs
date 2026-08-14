@@ -75,7 +75,7 @@ pub type MonoLayoutMap =
 /// Build per-mono layouts for all Type MonoItems.
 ///
 /// For each `MonoItem::Type { def_id, substs }`:
-/// 1. Get the generic params via `generics_of(def_id, hir)`
+/// 1. Get the generic params via `find_generics(def_id, hir)`
 /// 2. Lower each field type with `lower_hir_ty_to_mir_ty_with_generics`
 ///    (resolves type params to `Param`)
 /// 3. Apply `substitute(field_ty, substs)` to replace `Param` with actual types
@@ -119,13 +119,13 @@ pub fn build_mono_layouts(items: &[MonoItem], hir: &crate::hir::HirCrate) -> Mon
         }
 
         // Get the HIR owner for this DefId.
-        let owner = match hir.owner(def_id) {
+        let owner = match hir.find_owner(def_id) {
             Some(o) => o,
             None => continue,
         };
 
         // Get generic params for this type.
-        let generic_params = crate::hir::generics::generics_of(def_id, hir);
+        let generic_params = crate::hir::generics::find_generics(def_id, hir);
 
         let layout = match owner {
             OwnerNode::Item(HirItem::Struct(s)) => {

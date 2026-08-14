@@ -83,7 +83,7 @@ pub(crate) fn codegen_statement(
                     }
                     emitter.set_local(id.0, val.clone());
                     if ty != EmitType::Void {
-                        if let Some(ptr) = emitter.get_local_ptr(id.0).cloned() {
+                        if let Some(ptr) = emitter.local_ptr(id.0).cloned() {
                             emitter.emit_store(&ty, &val, &ptr);
                         }
                     }
@@ -120,7 +120,7 @@ pub(crate) fn codegen_statement(
                             // Fix: recursively compute the address via compute_place_address.
                             let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                                 emitter
-                                    .get_local_ptr(id.0)
+                                    .local_ptr(id.0)
                                     .cloned()
                                     .unwrap_or_else(|| "0".to_string())
                             } else if let PlaceKind::Projection(inner_base, ProjectionElem::Deref) =
@@ -188,9 +188,9 @@ pub(crate) fn codegen_statement(
                                     _ => raw_ty,
                                 }
                             };
-                            let idx_val = if let Some(v) = emitter.get_local(idx.0).cloned() {
+                            let idx_val = if let Some(v) = emitter.local(idx.0).cloned() {
                                 v
-                            } else if let Some(ptr) = emitter.get_local_ptr(idx.0).cloned() {
+                            } else if let Some(ptr) = emitter.local_ptr(idx.0).cloned() {
                                 emitter.emit_load(&EmitType::I32, &ptr)
                             } else {
                                 "0".to_string()

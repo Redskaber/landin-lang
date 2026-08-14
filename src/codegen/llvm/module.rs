@@ -39,7 +39,7 @@ impl ModuleEmitter for LLVMSysEmitter {
             } else {
                 EmitType::I32
             };
-            self.get_or_declare_function(&name, &ret_ty, &arg_tys);
+            self.declare_function(&name, &ret_ty, &arg_tys);
         }
     }
 

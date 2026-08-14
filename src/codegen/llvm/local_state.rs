@@ -13,7 +13,7 @@ impl LocalStateEmitter for LLVMSysEmitter {
         self.local_ptrs.insert(local_id, ptr);
     }
 
-    fn get_local_ptr(&self, local_id: u32) -> Option<&EmitValue> {
+    fn local_ptr(&self, local_id: u32) -> Option<&EmitValue> {
         self.local_ptrs.get(&local_id)
     }
 
@@ -21,7 +21,7 @@ impl LocalStateEmitter for LLVMSysEmitter {
         self.locals.insert(local_id, val);
     }
 
-    fn get_local(&self, local_id: u32) -> Option<&EmitValue> {
+    fn local(&self, local_id: u32) -> Option<&EmitValue> {
         self.locals.get(&local_id)
     }
 }

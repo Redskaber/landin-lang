@@ -25,7 +25,7 @@ impl AggregateEmitter for LLVMSysEmitter {
         let callee = if fn_name.starts_with('%') || fn_name.starts_with('@') {
             self.lookup(&fn_name.to_string())
         } else {
-            self.get_or_declare_function(fn_name, ret_ty, &arg_tys)
+            self.declare_function(fn_name, ret_ty, &arg_tys)
         };
         if crate::session::debug_codegen_enabled() {
             eprintln!(
