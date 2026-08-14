@@ -13051,3 +13051,66 @@ Stage Summary:
 - 3286 unit + 2935 conformance = 6221 total tests, 0 failures
 - v0.361.0: minor bump (deep audit v4 + polish)
 - 编译管道审计完全结束, v0.1 稳定版本就绪
+
+---
+Task ID: stage18.94
+Agent: Super Z (main)
+Task: Stage 18.94 — Documentation Sync + README Rewrite + v0.1 Boundaries. v0.361.0 → v0.362.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 §8 文档同步规则 + 当前文档状态审计
+- 发现文档同步问题:
+  1. Cargo.toml description 超长 (~2000 字符的 feature 列表)
+  2. README.md 版本过时 (v0.260.0), 结构不清晰
+  3. RELEASE_NOTES.md 版本过时 (v0.341.0), 包含大量旧内容
+  4. 无能力边界文档
+- 修复:
+  1. Cargo.toml description 简化: "Landin programming language compiler — a Rust-inspired systems language with LLVM 19 backend"
+  2. README.md 完全重写:
+     - Quick Start (构建+运行+交叉编译)
+     - Language Features (支持列表 + typeck 检查列表)
+     - Error System (8 Kind enums + ErrorCode 表)
+     - Testing (6221 tests + 类型矩阵)
+     - Architecture (编译管道 + 阶段隔离)
+     - Project Structure (目录树)
+     - Current Limitations (Stage 0 限制 + 不支持特性)
+     - v0.2 Roadmap (优先级表)
+     - Documentation 指引
+  3. RELEASE_NOTES.md 更新到 v0.361.0:
+     - 添加 v0.361.0 (Stage 18.93) 条目
+     - 添加 v0.360.0 (Stage 18.92) 条目
+     - 添加 v0.358.0 (Stage 18.90) 条目
+     - 添加 v0.356.0 (Stage 18.88) 条目
+     - 添加 v0.355.0 (Stage 18.87) 条目
+     - 添加 v0.353.0 (Stage 18.85) 条目
+     - 添加 v0.354.0 (Stage 18.86) 条目
+     - 添加 v0.346.0 (Stage 18.78) 条目
+     - 添加 v0.343.0 (Stage 18.75) 条目
+     - 添加 v0.339.0 (Stage 18.71) 条目
+     - 裁剪旧内容 (v0.260.0-v0.338.0 归入 git history)
+  4. 新建 docs/develop/v0/v0.1-capability-boundaries.md:
+     - 已支持特性 (语言 + typeck + 错误系统 + 测试)
+     - Stage 0 已知限制 (类型系统 + codegen + 平台 + stdlib)
+     - v0.2 路线图 (P0: 单态化 + 项目系统, P1: stdlib + MIR opt, P2: 增量 + 基准, P3: 自举)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - Cargo.toml: description 简化 + v0.361.0 → v0.362.0
+  - README.md: 完全重写
+  - RELEASE_NOTES.md: 更新到 v0.361.0 + 裁剪旧内容
+  - docs/develop/v0/v0.1-capability-boundaries.md: 新建
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.94 PASSED — 文档同步 + README 重写 + 能力边界文档
+- Cargo.toml description: ~2000 字符 → ~80 字符
+- README.md: 从 v0.260.0 过时版本 → v0.362.0 完整重写
+- RELEASE_NOTES.md: 从 v0.341.0 过时版本 → v0.361.0 + 裁剪
+- v0.1 能力边界文档: 已支持/限制/v0.2 路线图
+- v0.1 稳定版本文档完全就绪
+- 6221 tests, 0 failures
+- v0.362.0: minor bump (documentation sync)
