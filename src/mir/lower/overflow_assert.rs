@@ -92,3 +92,30 @@ pub(crate) fn emit_div_by_zero_assert(
     );
     let _ = result;
 }
+
+/// Stage 18.67: Emit an `Assert` terminator that checks for unary negation overflow.
+///
+/// This is emitted for `UnOp::Neg` on signed integers. The operand is stored
+/// in the `NegOverflow` message so codegen can emit `0 - x` with
+/// `llvm.ssub.with.overflow.*` and branch on the overflow flag.
+///
+/// Per §1.0 原則 4 "报错 > 静默": previously, unary negation used
+/// unchecked `LLVMBuildNeg`, silently wrapping `-i32::MIN` to `i32::MIN`.
+/// Per §1.0 原則 6 "通用 > 特例": reuses the Assert terminator infrastructure
+/// (same pattern as `emit_overflow_assert` / `emit_div_by_zero_assert`).
+/// Per §10 naming: `emit_neg_overflow_assert` follows `<verb>_<noun>_<noun>`.
+pub(crate) fn emit_neg_overflow_assert(cx: &mut MirLowerCtxt, operand: Operand, span: Span) {
+    let cont = cx.new_block();
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Assert {
+            cond: Operand::Constant(Const {
+                ty: Ty::new(TyKind::Bool, span),
+                val: ConstVal::Bool(true),
+            }),
+            expected: true,
+            target: cont,
+            msg: AssertMessage::NegOverflow(operand),
+        },
+        cont,
+    );
+}

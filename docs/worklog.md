@@ -32413,3 +32413,50 @@ Stage Summary:
 - 首次添加 GAT/generic fn/assoc type 的 run_ok 测试
 - 3245 unit + 5252 conformance = 8497 total tests, 0 failures
 - v0.332.0 → v0.333.0
+
+---
+Task ID: stage18.67
+Agent: Super Z (main)
+Task: Stage 18.67 — P0 Fix: UnOp::Neg Overflow Check
+
+Work Log:
+- §14 深度审查 R4 发现 P0 codegen bug: UnOp::Neg 无 overflow check
+  - `-i32::MIN` 静默 wrap 为 `i32::MIN` 而非 panic
+  - 根因: codegen 使用 unchecked `LLVMBuildNeg`, MIR lower 不发 assert
+
+- 修复方案 (3 层变更):
+
+1. MIR body (src/mir/body.rs):
+   - AssertMessage 新增 `NegOverflow(Operand)` variant
+   - §1.0 原則 6 通用 > 特例: 复用 Assert 终结器基础设施
+
+2. MIR lower (src/mir/lower/overflow_assert.rs + expr_operand.rs):
+   - 新增 `emit_neg_overflow_assert(cx, operand, span)` 函数
+   - expr_operand.rs Unary arm: 对 `HirUnaryOp::Neg` on signed int 发 emit_neg_overflow_assert
+   - §1.0 原則 4 报错 > 静默: 不再静默 wrap
+   - §1.0 原則 6 通用 > 特例: 复用 emit_overflow_assert 模式
+
+3. Codegen (src/codegen/terminator.rs):
+   - NegOverflow arm: 使用 `emit_checked_binop(BinOp::Sub, ty, 0, operand)` 计算 `0 - x`
+   - 提取 overflow flag (field 1), branch to panic on overflow
+   - panic block: 复用 `__landin_panic_overflow` (Sub op code = 1)
+   - §1.0 原則 6 通用 > 特例: 复用现有 emit_checked_binop + emit_extractvalue
+
+- 测试:
+  - 013-panic-neg-overflow.lin: compile_ok → run_panic (现在正确 panic)
+
+- 验收 (§3.2):
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 604 lib + 2641 integration = 3245 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5252 conformance tests, 0 failures
+
+Stage Summary:
+- P0 codegen bug 修复: UnOp::Neg 现在有 overflow check
+- `-i32::MIN` 正确 panic 而非静默 wrap
+- §1.0 原則 4 报错 > 静默: 修复
+- §1.0 原則 6 通用 > 特例: 复用 Assert + emit_checked_binop 基础设施
+- §10 命名: emit_neg_overflow_assert / NegOverflow
+- 3245 unit + 5252 conformance = 8497 total tests, 0 failures
+- v0.333.0 → v0.334.0

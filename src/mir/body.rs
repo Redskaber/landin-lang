@@ -350,10 +350,17 @@ impl Terminator {
 ///
 /// Stage 3.25: `DivisionByZero` now carries the divisor operand so codegen
 /// can emit `icmp eq divisor, 0` and branch to a panic block.
+///
+/// Stage 18.67: `NegOverflow` carries the original operand for unary negation
+/// overflow check (e.g., `-i32::MIN` overflows). Codegen emits
+/// `0 - x` with `SubOverflow` semantics.
 #[derive(Debug, Clone)]
 pub enum AssertMessage {
     Overflow(BinOp, Operand, Operand),
     DivisionByZero(Operand),
+    /// Stage 18.67: Unary negation overflow (e.g., `-i32::MIN`).
+    /// Carries the operand being negated.
+    NegOverflow(Operand),
     BoundsCheck,
 }
 

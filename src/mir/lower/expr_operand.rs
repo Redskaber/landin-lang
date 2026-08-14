@@ -679,11 +679,27 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Stage 15.76: Use inner operand's type for unary op result
             // (same as Rust: `-a` has type of `a`).
             let unary_ty = cx.mir.local(inner_local).ty.clone();
-            cx.eval_rvalue_to_temp(
+            let result = cx.eval_rvalue_to_temp(
                 Rvalue::UnaryOp(mir_op, Operand::Copy(Place::local(inner_local, inner.span))),
-                unary_ty,
+                unary_ty.clone(),
                 expr.span,
-            )
+            );
+            // Stage 18.67: Emit NegOverflow assert for signed integer negation.
+            // Per §1.0 原則 4 "报错 > 静默": `-i32::MIN` must panic, not wrap.
+            // Per §1.0 原則 6 "通用 > 特例": reuses the Assert terminator
+            // infrastructure (same as binary overflow / div-by-zero checks).
+            if *op == HirUnaryOp::Neg {
+                use crate::mir::ty::TyKind;
+                let is_signed_int = matches!(unary_ty.kind, TyKind::Int(_));
+                if is_signed_int {
+                    overflow_assert::emit_neg_overflow_assert(
+                        cx,
+                        Operand::Copy(Place::local(inner_local, inner.span)),
+                        expr.span,
+                    );
+                }
+            }
+            result
         }
         HirExprKind::Block(block) => control_flow::lower_block(cx, block),
         HirExprKind::Call { func, args, .. } => {

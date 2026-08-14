@@ -494,6 +494,28 @@ pub(crate) fn codegen_terminator(
                     let is_zero = emitter.emit_icmp("eq", &rhs_ty, &rhs_val, &"0".to_string());
                     emitter.emit_br_cond(&is_zero, &panic_label, &format!("bb{}", target.0));
                 }
+                // Stage 18.67: NegOverflow — check if operand is iN::MIN
+                // by computing `0 - operand` with ssub.with.overflow.
+                crate::mir::body::AssertMessage::NegOverflow(operand) => {
+                    let op_val = codegen_operand(
+                        emitter,
+                        mir,
+                        operand,
+                        interner,
+                        layouts,
+                        mono_layouts,
+                        fn_name_by_def_id,
+                    );
+                    let op_ty = detect_operand_type(mir, operand, layouts).unwrap_or(EmitType::I32);
+                    // Reuse emit_checked_binop with Sub to get {result, overflow}.
+                    // Per §1.0 原則 6 "通用 > 特例": reuse existing infrastructure.
+                    let zero_val = emitter.emit_const(&ConstVal::Int(0));
+                    let checked =
+                        emitter.emit_checked_binop(BinOp::Sub, &op_ty, &zero_val, &op_val);
+                    // Extract overflow flag (field 1 of {T, i1} struct).
+                    let overflow = emitter.emit_extractvalue(&op_ty, &checked, 1);
+                    emitter.emit_br_cond(&overflow, &panic_label, &format!("bb{}", target.0));
+                }
                 crate::mir::body::AssertMessage::BoundsCheck => {
                     let cond_val = codegen_operand(
                         emitter,
@@ -535,6 +557,21 @@ pub(crate) fn codegen_terminator(
                 }
                 crate::mir::body::AssertMessage::DivisionByZero(_) => {
                     let _ = emitter.emit_call("__landin_panic_div_by_zero", &[], &EmitType::Void);
+                }
+                // Stage 18.67: NegOverflow panic — reuse overflow panic with Sub op (code=1).
+                crate::mir::body::AssertMessage::NegOverflow(_) => {
+                    let op_str = "1".to_string(); // Sub op code
+                    let z1 = "0".to_string();
+                    let z2 = "0".to_string();
+                    let _ = emitter.emit_call(
+                        "__landin_panic_overflow",
+                        &[
+                            (EmitType::I32, &op_str),
+                            (EmitType::I32, &z1),
+                            (EmitType::I32, &z2),
+                        ],
+                        &EmitType::Void,
+                    );
                 }
                 crate::mir::body::AssertMessage::BoundsCheck => {
                     let z1 = "0".to_string();
