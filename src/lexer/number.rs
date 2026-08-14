@@ -10,6 +10,7 @@
 //! - `try_lex_number_suffix` (parse `i32`/`u64`/`f32`/... suffix)
 
 use crate::lexer::token::*;
+use crate::lexer::LexErrorKind;
 use crate::session::{BytePos, Span};
 
 use super::reader::{LexError, Lexer};
@@ -41,6 +42,7 @@ impl<'a> Lexer<'a> {
                 self.errors.push(LexError {
                     message: format!("invalid integer suffix: {s}"),
                     span: Span::new(suffix_start, self.pos),
+                    kind: LexErrorKind::Generic,
                 });
                 None
             }
@@ -65,6 +67,7 @@ impl<'a> Lexer<'a> {
             self.errors.push(LexError {
                 message: "leading zeros not allowed in decimal integer".into(),
                 span: Span::new(start, start + 1),
+                kind: LexErrorKind::Generic,
             });
         }
 
@@ -135,6 +138,7 @@ impl<'a> Lexer<'a> {
                             self.errors.push(LexError {
                                 message: format!("invalid float suffix: {s}"),
                                 span: Span::new(suffix_start, self.pos),
+                                kind: LexErrorKind::Generic,
                             });
                             FloatTy::F64
                         }
@@ -161,6 +165,7 @@ impl<'a> Lexer<'a> {
                     self.errors.push(LexError {
                         message: format!("invalid integer suffix: {s}"),
                         span: Span::new(suffix_start, self.pos),
+                        kind: LexErrorKind::Generic,
                     });
                     None
                 }
@@ -190,6 +195,7 @@ impl<'a> Lexer<'a> {
             self.errors.push(LexError {
                 message: "hexadecimal literal has no digits".into(),
                 span: Span::new(start, self.pos),
+                kind: LexErrorKind::Generic,
             });
             return Token {
                 kind: TokenKind::IntLit(0, None),
@@ -224,6 +230,7 @@ impl<'a> Lexer<'a> {
             self.errors.push(LexError {
                 message: "octal literal has no digits".into(),
                 span: Span::new(start, self.pos),
+                kind: LexErrorKind::Generic,
             });
             return Token {
                 kind: TokenKind::IntLit(0, None),
@@ -258,6 +265,7 @@ impl<'a> Lexer<'a> {
             self.errors.push(LexError {
                 message: "binary literal has no digits".into(),
                 span: Span::new(start, self.pos),
+                kind: LexErrorKind::Generic,
             });
             return Token {
                 kind: TokenKind::IntLit(0, None),

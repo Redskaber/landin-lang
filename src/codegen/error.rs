@@ -15,10 +15,20 @@ use crate::session::Span;
 ///
 /// Per §10.1.8: `{ message: String, span: Span }` minimal form.
 /// Per §23: `CodegenError` follows `<Noun>_<Noun>` pattern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodegenErrorKind {
+    Generic,
+    LlvmVerification,
+    LlvmTargetMachine,
+    LlvmEmission,
+    InvalidString,
+}
+
 #[derive(Debug, Clone)]
 pub struct CodegenError {
     pub message: String,
     pub span: Span,
+    pub kind: CodegenErrorKind,
 }
 
 impl CodegenError {
@@ -29,6 +39,7 @@ impl CodegenError {
         Self {
             message: message.into(),
             span,
+            kind: CodegenErrorKind::Generic,
         }
     }
 }

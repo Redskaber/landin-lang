@@ -918,6 +918,15 @@ pub type MacroTable = HashMap<crate::lexer::Symbol, MacroRulesDef>;
 ///
 /// Per §10: error type follows `<Stage>Error` suffix pattern
 /// (mirrors `LexError`, `ParseError`, `ResolveError`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MacroErrorKind {
+    Generic,
+    NoMatchingRule,
+    RecursionLimit,
+    InvalidDefinition,
+    InvalidFragment,
+}
+
 #[derive(Debug, Clone)]
 pub struct MacroError {
     /// Human-readable error message.
@@ -925,6 +934,7 @@ pub struct MacroError {
     /// Source span where the error occurred (best-effort; may be `DUMMY`
     /// when the error spans a synthetic range).
     pub span: crate::session::Span,
+    pub kind: MacroErrorKind,
 }
 
 impl MacroError {
@@ -935,6 +945,7 @@ impl MacroError {
         Self {
             message: message.into(),
             span,
+            kind: MacroErrorKind::Generic,
         }
     }
 }

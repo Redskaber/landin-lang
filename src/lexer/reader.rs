@@ -27,11 +27,34 @@ use lasso::Rodeo;
 // Stage 6.13: import ident helpers from the `ident` sub-module.
 use super::ident::is_ident_start_byte;
 
+/// Stage 18.92: Structured kind for lexer errors.
+/// Per §1.0 原則 3 "显式 > 隐式": error kind is explicit, not inferred from message.
+/// Per §1.0 原則 6 "通用 > 特例": mirrors ResolveErrorKind/TypeErrorKind pattern.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LexErrorKind {
+    /// Generic lexer error (backward compat for `new(message, span)`).
+    Generic,
+    /// Unterminated string literal.
+    UnterminatedString,
+    /// Unterminated char literal.
+    UnterminatedChar,
+    /// Unterminated block comment.
+    UnterminatedBlockComment,
+    /// Invalid escape sequence in string/char.
+    InvalidEscape,
+    /// Unexpected character that the lexer can't handle.
+    UnexpectedChar,
+    /// Invalid number literal.
+    InvalidNumber,
+}
+
 /// Lexing error.
 #[derive(Debug, Clone)]
 pub struct LexError {
     pub message: String,
     pub span: Span,
+    /// Stage 18.92: Structured error kind for machine-readable classification.
+    pub kind: LexErrorKind,
 }
 
 // Stage 3.64 (P2 fix): implement `Display` + `std::error::Error` for `LexError`
@@ -154,6 +177,7 @@ impl<'a> Lexer<'a> {
                                 self.errors.push(LexError {
                                     message: "unterminated block comment".into(),
                                     span: self.span_from(self.pos),
+                                    kind: LexErrorKind::Generic,
                                 });
                                 return;
                             }
@@ -342,6 +366,7 @@ impl<'a> Lexer<'a> {
                         // should show the character, not its Debug representation.
                         message: format!("unexpected character: {}", c),
                         span: self.span_from(start),
+                        kind: LexErrorKind::Generic,
                     });
                     self.pos += c.len_utf8() as u32;
                     // Return a special error marker token to avoid recursion
@@ -354,6 +379,7 @@ impl<'a> Lexer<'a> {
                 self.errors.push(LexError {
                     message: format!("unexpected byte: 0x{b:02x}"),
                     span: self.span_from(start),
+                    kind: LexErrorKind::Generic,
                 });
                 self.bump();
                 // Return Eof to let outer loop continue (avoid recursion)

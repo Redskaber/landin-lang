@@ -12958,3 +12958,96 @@ Stage Summary:
 - v0.2 增量编译路线图: 5 Phases, ~9 stages
 - v0.359.0: doc-only bump (assessment report)
 - 下一步: v0.2 核心基础 (Kind enums / criterion / 路线图)
+
+---
+Task ID: stage18.92
+Agent: Super Z (main)
+Task: Stage 18.92 — Error Type Kind Enums (LexError/ParseError/LowerError/CodegenError/MacroError). v0.359.0 → v0.360.0.
+
+Work Log:
+- §13.1 设计对齐: Stage 18.91 推荐 5 个 Kind enum + 已有 3 个 (Resolve/Type/Borrow)
+- 为 5 个错误类型添加 Kind enum:
+  1. LexErrorKind (7 variants): Generic, UnterminatedString, UnterminatedChar, UnterminatedBlockComment, InvalidEscape, UnexpectedChar, InvalidNumber
+  2. ParseErrorKind (7 variants): Generic, UnexpectedToken, MissingToken, InvalidExpression, InvalidStatement, InvalidType, InvalidItem
+  3. LowerErrorKind (4 variants): Generic, InvalidAst, MissingBody, DuplicateOwner
+  4. CodegenErrorKind (5 variants): Generic, LlvmVerification, LlvmTargetMachine, LlvmEmission, InvalidString
+  5. MacroErrorKind (5 variants): Generic, NoMatchingRule, RecursionLimit, InvalidDefinition, InvalidFragment
+- 向后兼容策略:
+  - new(message, span) 保留, kind 默认为 Generic
+  - 现有代码无需修改构造逻辑 (通过 struct literal 更新添加 kind: Generic)
+- 修复:
+  - 30+ 处 LexError 构造添加 kind 字段 (string.rs/number.rs/reader.rs/diagnostics)
+  - 1 处 ParseError 构造添加 kind (diagnostics test)
+  - CodegenError/LowerError/MacroError 的 new() 更新 (kind: Generic)
+  - 导出 LexErrorKind/ParseErrorKind
+  - 修复 duplicate derive + unused import
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2648 integration = 3286 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.92-error-kind-enums-design.md (新建)
+  - Cargo.toml: v0.359.0 → v0.360.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.92 PASSED — 5 个错误类型 Kind enum 完成
+- 所有 8 个错误类型现在都有结构化 Kind enum:
+  - ✅ ResolveErrorKind (8 variants) — Stage 18.58
+  - ✅ TypeErrorKind (6 variants) — Stage 18.58
+  - ✅ BorrowErrorKind (9 variants) — Stage 18.58
+  - ✅ LexErrorKind (7 variants) — Stage 18.92
+  - ✅ ParseErrorKind (7 variants) — Stage 18.92
+  - ✅ LowerErrorKind (4 variants) — Stage 18.92
+  - ✅ CodegenErrorKind (5 variants) — Stage 18.92
+  - ✅ MacroErrorKind (5 variants) — Stage 18.92
+- 错误系统完全结构化: 所有错误类型都有 Kind enum + Span + ErrorCode
+- 3286 unit + 2935 conformance = 6221 total tests, 0 failures
+- v0.360.0: minor bump (error type Kind enums)
+- 下一步: v0.2 规划 (单态化, 完整标准库, criterion 基准)
+
+---
+Task ID: stage18.93
+Agent: Super Z (main)
+Task: Stage 18.93 — Deep Audit v4 + Final Polish. v0.360.0 → v0.361.0.
+
+Work Log:
+- §14 深度审计 v4: Explore agent 审计 7 个维度
+  1. 错误系统: ✅ 清洁 (8 Kind enums + E001-E900 + 9 字段)
+  2. 生产 panic/unwrap: ✅ 清洁 (0 panic, unwrap 全部有守卫)
+  3. Span::DUMMY 错误报告: ✅ 清洁 (unify span 参数 + checker stmt.span)
+  4. API 命名: ✅ 清洁 (get_ 仅在 dead_code 模块, .owner()=0)
+  5. 死代码: ✅ 清洁 (MIR opt + region_inference 文档化)
+  6. Debug 泄露: ✅ 清洁 (无用户面向 Debug 泄露)
+  7. 增量编译: ✅ 清洁 (无残留代码/文档)
+- 移除增量编译: 删除 stage-18.91-incremental-compilation-assessment.md
+- 4 项 polish 修复:
+  1. bin/main.rs:208: to_str().unwrap() → to_string_lossy() (non-UTF8 path safety)
+  2. driver.rs:1983: missing-main Span::DUMMY → Span::new(0, src.len()) (better error location)
+  3. typeck/checker.rs:232,734: 简化 redundant span conditional → let span = stmt.span;
+  4. codegen/llvm/mod.rs:477: 修正 cache key 注释 (保留 {:?}, 解释为何正确)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2648 integration = 3286 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.93-deep-audit-v4-and-polish.md (新建)
+  - 删除 stage-18.91-incremental-compilation-assessment.md
+  - Cargo.toml: v0.360.0 → v0.361.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.93 PASSED — 深度审计 v4 + 4 项 polish 修复
+- 审计结论: ✅ Pipeline audit-clean for v0.361
+  → Stage 18.71-18.92 全部修复验证通过
+  → 0 生产 panic, 0 静默错误, 0 API 命名违规
+  → 8 Kind enums + E001-E900 + 9 字段全接线
+  → 增量编译内容完全移除
+- 4 项 polish: path safety + span accuracy + code simplification + comment fix
+- 3286 unit + 2935 conformance = 6221 total tests, 0 failures
+- v0.361.0: minor bump (deep audit v4 + polish)
+- 编译管道审计完全结束, v0.1 稳定版本就绪

@@ -827,9 +827,11 @@ mod tests {
     #[test]
     fn stage15_16_spanned_trait_lex_error() {
         use crate::lexer::LexError;
+        use crate::lexer::LexErrorKind;
         let err = LexError {
             message: "test".to_string(),
             span: Span::new(10, 20),
+            kind: LexErrorKind::Generic,
         };
         assert_eq!(err.span().lo, 10);
         assert_eq!(err.span().hi, 20);
@@ -870,6 +872,7 @@ mod tests {
         let err = ParseError {
             message: "test".to_string(),
             span: Span::new(100, 110),
+            kind: crate::parser::ParseErrorKind::Generic,
         };
         assert_eq!(err.span().lo, 100);
         assert_eq!(err.span().hi, 110);

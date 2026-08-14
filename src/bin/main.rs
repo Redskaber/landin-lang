@@ -205,7 +205,9 @@ fn main() {
             // Stage 18.78 P0-B: Codegen errors now populate CompileErrors.codegen
             // instead of being silently eprintln'd + exit. This allows the
             // diagnostic display path to show them properly.
-            match emitter.to_object_file(obj_path.to_str().unwrap()) {
+            // Stage 18.93: Use to_string_lossy to handle non-UTF8 paths safely.
+            let obj_path_str = obj_path.to_string_lossy();
+            match emitter.to_object_file(&obj_path_str) {
                 Ok(()) => {
                     eprintln!("info: object file written to {}", obj_path.display());
                 }

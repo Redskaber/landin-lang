@@ -7,10 +7,19 @@ use crate::session::Span;
 /// Non-fatal: lowering continues after an error, producing a best-effort
 /// HIR with placeholder nodes where needed. Stage 1.3+ will integrate
 /// with the `Diagnostic` system for proper error reporting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LowerErrorKind {
+    Generic,
+    InvalidAst,
+    MissingBody,
+    DuplicateOwner,
+}
+
 #[derive(Debug, Clone)]
 pub struct LowerError {
     pub message: String,
     pub span: Span,
+    pub kind: LowerErrorKind,
 }
 
 impl LowerError {
@@ -18,6 +27,7 @@ impl LowerError {
         Self {
             message: message.into(),
             span,
+            kind: LowerErrorKind::Generic,
         }
     }
 }

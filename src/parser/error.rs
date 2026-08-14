@@ -2,10 +2,22 @@
 
 use crate::session::Span;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParseErrorKind {
+    Generic,
+    UnexpectedToken,
+    MissingToken,
+    InvalidExpression,
+    InvalidStatement,
+    InvalidType,
+    InvalidItem,
+}
+
 #[derive(Debug, Clone)]
 pub struct ParseError {
     pub message: String,
     pub span: Span,
+    pub kind: ParseErrorKind,
 }
 
 impl ParseError {
@@ -13,6 +25,7 @@ impl ParseError {
         Self {
             message: message.into(),
             span,
+            kind: ParseErrorKind::Generic,
         }
     }
 }

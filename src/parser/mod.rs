@@ -32,7 +32,7 @@ mod path;
 mod stmt;
 mod ty;
 
-pub use error::ParseError;
+pub use error::{ParseError, ParseErrorKind};
 pub use parser::Parser;
 
 use crate::ast::Crate;

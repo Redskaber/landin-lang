@@ -1977,10 +1977,13 @@ pub fn compile_binary(src: &str) -> CompileResult {
         })
         .unwrap_or(false);
     if !has_main {
+        // Stage 18.93: Use Span(0, src.len()) instead of Span::DUMMY
+        // so the error points to the entire source, not "1:1".
+        let src_span = crate::session::Span::new(0, src.len() as u32);
         result.errors.typeck.push(TypeError::new(
             "missing `main` function — every program must have a `fn main()` entry point"
                 .to_string(),
-            crate::session::Span::DUMMY,
+            src_span,
         ));
     }
     result

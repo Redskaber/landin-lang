@@ -10,6 +10,7 @@
 //! - `lex_escape` / `lex_escape_from_str`
 
 use crate::lexer::token::*;
+use crate::lexer::LexErrorKind;
 use crate::session::{BytePos, Span};
 use lasso::Spur;
 
@@ -26,6 +27,7 @@ impl<'a> Lexer<'a> {
                     self.errors.push(LexError {
                         message: "unterminated string literal".into(),
                         span: self.span_from(start),
+                        kind: LexErrorKind::Generic,
                     });
                     break;
                 }
@@ -66,6 +68,7 @@ impl<'a> Lexer<'a> {
                     self.errors.push(LexError {
                         message: "unterminated raw string".into(),
                         span: self.span_from(start),
+                        kind: LexErrorKind::Generic,
                     });
                     break;
                 }
@@ -105,6 +108,7 @@ impl<'a> Lexer<'a> {
             self.errors.push(LexError {
                 message: "expected `\"` after `r#...`".into(),
                 span: self.span_from(start),
+                kind: LexErrorKind::Generic,
             });
             return Token {
                 kind: TokenKind::Eof,
@@ -120,6 +124,7 @@ impl<'a> Lexer<'a> {
                     self.errors.push(LexError {
                         message: "unterminated raw string".into(),
                         span: self.span_from(start),
+                        kind: LexErrorKind::Generic,
                     });
                     break;
                 }
@@ -163,6 +168,7 @@ impl<'a> Lexer<'a> {
                     self.errors.push(LexError {
                         message: "unterminated byte string".into(),
                         span: self.span_from(start),
+                        kind: LexErrorKind::Generic,
                     });
                     break;
                 }
@@ -184,6 +190,7 @@ impl<'a> Lexer<'a> {
                     self.errors.push(LexError {
                         message: "non-ASCII byte in byte string".into(),
                         span: Span::new(self.pos, self.pos + 1),
+                        kind: LexErrorKind::Generic,
                     });
                     self.bump();
                 }
@@ -206,6 +213,7 @@ impl<'a> Lexer<'a> {
                 self.errors.push(LexError {
                     message: "unterminated byte literal".into(),
                     span: self.span_from(start),
+                    kind: LexErrorKind::Generic,
                 });
                 0
             }
@@ -221,6 +229,7 @@ impl<'a> Lexer<'a> {
                 self.errors.push(LexError {
                     message: "non-ASCII byte in byte literal".into(),
                     span: Span::new(self.pos, self.pos + 1),
+                    kind: LexErrorKind::Generic,
                 });
                 self.bump();
                 0
@@ -257,6 +266,7 @@ impl<'a> Lexer<'a> {
                 self.errors.push(LexError {
                     message: "\\u{} escape not allowed in byte literal".into(),
                     span: Span::new(self.pos - 1, self.pos),
+                    kind: LexErrorKind::Generic,
                 });
                 return None;
             }
@@ -264,6 +274,7 @@ impl<'a> Lexer<'a> {
                 self.errors.push(LexError {
                     message: format!("invalid byte escape: \\{}", b as char),
                     span: Span::new(self.pos - 1, self.pos),
+                    kind: LexErrorKind::Generic,
                 });
                 return None;
             }
@@ -284,6 +295,7 @@ impl<'a> Lexer<'a> {
             self.errors.push(LexError {
                 message: "expected `\"` after `br#...`".into(),
                 span: self.span_from(start),
+                kind: LexErrorKind::Generic,
             });
             return Token {
                 kind: TokenKind::Eof,
@@ -298,6 +310,7 @@ impl<'a> Lexer<'a> {
                     self.errors.push(LexError {
                         message: "unterminated raw byte string".into(),
                         span: self.span_from(start),
+                        kind: LexErrorKind::Generic,
                     });
                     break;
                 }
@@ -325,6 +338,7 @@ impl<'a> Lexer<'a> {
                     self.errors.push(LexError {
                         message: "non-ASCII byte in raw byte string".into(),
                         span: Span::new(self.pos, self.pos + 1),
+                        kind: LexErrorKind::Generic,
                     });
                     self.bump();
                 }
@@ -372,6 +386,7 @@ impl<'a> Lexer<'a> {
                                 self.errors.push(LexError {
                                     message: format!("invalid character escape: `{}`", text),
                                     span: self.span_from(start),
+                                    kind: LexErrorKind::Generic,
                                 });
                                 Token {
                                     kind: TokenKind::CharLit('\0'),
@@ -425,6 +440,7 @@ impl<'a> Lexer<'a> {
                 self.errors.push(LexError {
                     message: "unterminated char literal".into(),
                     span: self.span_from(start),
+                    kind: LexErrorKind::Generic,
                 });
                 Token {
                     kind: TokenKind::CharLit('\0'),
@@ -475,6 +491,7 @@ impl<'a> Lexer<'a> {
                 self.errors.push(LexError {
                     message: format!("invalid escape: \\{}", b as char),
                     span: Span::new(self.pos - 1, self.pos),
+                    kind: LexErrorKind::Generic,
                 });
                 return None;
             }

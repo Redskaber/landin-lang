@@ -229,11 +229,7 @@ impl TypeChecker {
                 && !types_match_loose(&resolved_place, &resolved_rvalue)
             {
                 // Per §1.0 原則 4 "报错 > 静默".
-                let span = if stmt.span != Span::DUMMY {
-                    stmt.span
-                } else {
-                    Span::DUMMY
-                };
+                let span = stmt.span;
                 // Stage 18.71: Dedupe — skip if Phase 1 already reported
                 // the same mismatch (same span + expected + found). This
                 // happens when both Phase 1 and Phase 5.5 detect the same

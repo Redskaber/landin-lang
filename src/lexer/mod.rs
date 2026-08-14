@@ -16,7 +16,7 @@ mod number;
 mod operators;
 mod string;
 
-pub use reader::{LexError, Lexer};
+pub use reader::{LexError, LexErrorKind, Lexer};
 // Stage 3.63 (cross-stage naming standardization): explicit list instead of
 // `pub use token::*;` to prevent accidental leakage of internal types.
 // Matches the same pattern already established in src/hir/mod.rs and
