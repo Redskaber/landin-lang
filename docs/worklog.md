@@ -12609,3 +12609,43 @@ Stage Summary:
 - 3279 unit + 2935 conformance = 6214 total tests, 0 failures
 - v0.351.0: minor bump (deep audit v3 + minor fixes)
 - 下一步: v0.2 规划 (单态化, 完整标准库, 交叉编译)
+
+---
+Task ID: stage18.84
+Agent: Super Z (main)
+Task: Stage 18.84 — Debug Format Leak Cleanup. v0.351.0 → v0.352.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 Stage 18.83 审计报告 + 4 处 Debug 泄露残留
+- 修复 3 处 Debug 格式泄露 (1 处保留 — codegen cache key):
+  1. src/resolve/resolver.rs: name_to_string/path_to_string
+     - format!("symbol({:?})", name) → format!("<symbol#{}>", name.into_usize())
+     - 添加 use lasso::Key 导入
+  2. src/ast/kinds.rs: Ident Display impl
+     - write!(f, "{:?}", self.name) → write!(f, "<symbol#{}>", self.name.into_usize())
+     - 添加 use lasso::Key 导入
+  3. src/borrowck/copy_semantics.rs: ty_is_copy_with_resolver
+     - format!("{:?}", ty.kind) → is_primitive_copy_kind() → 直接 return true
+     - match arm 已经确认 variant, 不需要字符串检查
+  4. src/codegen/llvm/mod.rs: struct type cache key — 保留 {:?}
+     - 原因: {:p} pointer-based key 导致 22 个测试失败
+     - 不同 LLVMTypeRef 可以指向相同类型, pointer 比较不正确
+     - {:?} Debug format 是正确的 (比较结构化表示)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2641 integration = 3279 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - Cargo.toml: v0.351.0 → v0.352.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.84 PASSED — Debug 格式泄露清理
+- 3 处 Debug 泄露修复 (resolver + Ident + copy_semantics)
+- 1 处保留 (codegen cache key — {:?} 是正确的结构化比较)
+- 3279 unit + 2935 conformance = 6214 total tests, 0 failures
+- v0.352.0: minor bump (Debug format leak cleanup)
+- 编译管道审计修复循环完全结束
+- 下一步: v0.2 规划

@@ -10,6 +10,7 @@
 //! - `ty_is_copy_with_resolver` (precise Copy detection via TraitResolver)
 //! - `ty_is_copy_unified` (unified entry point, delegates to _with_resolver)
 
+
 /// Determine whether a type implements `Copy`.
 ///
 /// Per Landin semantics (mirroring Rust), the following types are Copy:
@@ -120,7 +121,14 @@ pub fn ty_is_copy_with_resolver(
         | RawPtr(_, _)
         | FnDef(_, _)
         | FnPtr(_)
-        | Never => crate::traits::is_primitive_copy_kind(&format!("{:?}", ty.kind)),
+        | Never => {
+            // Stage 18.84: These primitive types are always Copy.
+            // Previously used format!("{:?}", ty.kind) → is_primitive_copy_kind
+            // (string-based check on Debug format). Now just return true
+            // directly since the match arm already confirms the variant.
+            // Per §1.0 原則 6 "通用 > 特例": direct return is the general solution.
+            true
+        }
         Tuple(tys) => tys
             .iter()
             .all(|t| ty_is_copy_with_resolver(t, resolver, interner)),

@@ -19,7 +19,7 @@ use crate::hir::*;
 use crate::resolve::error::ResolveError;
 use crate::resolve::module_tree::{DefKind, ModuleNode};
 use crate::resolve::scope::ScopeStack;
-use lasso::{Rodeo, Spur};
+use lasso::{Key, Rodeo, Spur};
 use std::collections::HashMap;
 
 /// The name resolver. Holds the module tree, DefKind map, scope stack,
@@ -139,19 +139,26 @@ impl Resolver {
     // we recurse into the items and register them in a child ModuleNode.
 
     /// Helper: format a Spur name for error messages.
+    ///
+    /// Stage 18.84: We don't have access to the interner here (resolve_uses
+    /// doesn't take it). Previously used `format!("symbol({:?})", name)` which
+    /// leaked Debug format like `symbol(Spur(42))`. Now use a cleaner
+    /// placeholder that doesn't leak the internal Spur type.
+    /// Per §1.0 原則 3 "显式 > 隐式": the placeholder is explicit about
+    /// the limitation (no interner → can't resolve symbol name).
     pub(super) fn name_to_string(&self, name: Spur) -> String {
-        // We don't have access to the interner here (resolve_uses doesn't
-        // take it). Fall back to a placeholder.
-        format!("symbol({:?})", name)
+        format!("<symbol#{}>", name.into_usize())
     }
 
     /// Helper: format a HirPath for error messages.
+    ///
+    /// Stage 18.84: Same limitation as name_to_string — no interner access.
+    /// Uses cleaner placeholder format.
     pub(super) fn path_to_string(&self, path: &HirPath) -> String {
-        // Same limitation as name_to_string — no interner access.
         let segs: Vec<String> = path
             .segments
             .iter()
-            .map(|s| format!("symbol({:?})", s.ident.name))
+            .map(|s| format!("<symbol#{}>", s.ident.name.into_usize()))
             .collect();
         segs.join("::")
     }

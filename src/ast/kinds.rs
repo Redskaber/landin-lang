@@ -4,6 +4,7 @@
 
 use crate::lexer::token::Symbol;
 use crate::session::Span;
+use lasso::Key; // Stage 18.84: for Spur::into_usize() in Ident Display
 /// A crate: top-level collection of items.
 #[derive(Debug, Clone)]
 pub struct Crate {
@@ -843,8 +844,11 @@ impl Ident {
     }
 }
 
+// Stage 18.84: Ident Display — previously used {:?} which leaked Spur(N).
+// Now uses a clean placeholder format. Full fix requires threading interner
+// access, which is v0.2 work.
 impl std::fmt::Display for Ident {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.name)
+        write!(f, "<symbol#{}>", self.name.into_usize())
     }
 }

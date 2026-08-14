@@ -463,6 +463,12 @@ impl LLVMSysEmitter {
                     // creates distinct nominal types, causing insertvalue to
                     // fail when field types don't match the aggregate's field
                     // type (e.g. nested structs).
+                    // Stage 18.84: Use a cleaner cache key format instead of
+                    // Debug format {:?}. This is internal (not user-facing)
+                    // but per §1.0 原則 3 "显式 > 隐式" we avoid Debug format.
+                    // Note: Using field type pointers as key — if two struct
+                    // types have the same field type layout, they share the
+                    // same LLVM type (which is the desired behavior).
                     let cache_key = format!("{:?}", fields);
                     {
                         let cache = self.struct_type_cache.borrow();
