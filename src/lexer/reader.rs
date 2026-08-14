@@ -337,7 +337,10 @@ impl<'a> Lexer<'a> {
                     }
                     // Unknown character: report error and SKIP (don't recurse)
                     self.errors.push(LexError {
-                        message: format!("unexpected character: {:?}", c),
+                        // Stage 18.76 P1-D: Use Display instead of Debug format.
+                        // Per §1.0 原則 3 "显式 > 隐式": user-facing messages
+                        // should show the character, not its Debug representation.
+                        message: format!("unexpected character: {}", c),
                         span: self.span_from(start),
                     });
                     self.pos += c.len_utf8() as u32;

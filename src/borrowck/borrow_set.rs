@@ -94,9 +94,13 @@ impl BorrowSet {
                 // Overlapping non-raw borrows: at least one is Mut → conflict.
                 if kind == BorrowKind::Mut || b.kind == BorrowKind::Mut {
                     return Err(BorrowError::borrow_conflict(
+                        // Stage 18.76 P1-D: Use Display instead of Debug format.
+                        // Per §1.0 原則 3 "显式 > 隐式": show "mutable"/"immutable"
+                        // instead of "Mut"/"Shared" Debug variants.
                         &format!(
-                            "cannot borrow as {:?} because it is also borrowed as {:?} (overlapping place)",
-                            kind, b.kind
+                            "cannot borrow as {} because it is also borrowed as {} (overlapping place)",
+                            borrow_kind_str(kind),
+                            borrow_kind_str(b.kind)
                         ),
                         span,
                     ));
@@ -233,6 +237,19 @@ impl BorrowSet {
             .iter()
             .filter_map(move |b| b.ref_local)
             .filter(move |local| seen.insert(*local))
+    }
+}
+
+/// Stage 18.76 P1-D: Convert BorrowKind to human-readable string.
+///
+/// Per §1.0 原則 3 "显式 > 隐式": user-facing messages should show
+/// "mutable"/"shared" instead of Debug format "Mut"/"Shared".
+/// Per §23: `borrow_kind_str` follows `<noun>_<noun>_<noun>` pattern.
+fn borrow_kind_str(kind: BorrowKind) -> &'static str {
+    match kind {
+        BorrowKind::Shared => "shared",
+        BorrowKind::Mut => "mutable",
+        BorrowKind::Raw => "raw",
     }
 }
 

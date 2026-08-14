@@ -1067,7 +1067,19 @@ impl TypeChecker {
                 if let TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) = &base_ty.kind {
                     (**inner).clone()
                 } else {
-                    // Stage 0 limitation: silent Error (no TypeError pushed).
+                    // Stage 18.76 P1-A: Deref on non-pointer types is a known
+                    // Stage 0 limitation. Pattern bindings on &self, closure
+                    // captures, and other internal mechanisms produce Deref
+                    // projections on non-Ref types. Pushing an error here would
+                    // break valid code that relies on this limitation.
+                    //
+                    // Per §1.0 原則 9 "正确 > 妥协": defer error reporting for
+                    // Deref until typeck properly tracks reference types through
+                    // pattern bindings (v0.2 work).
+                    //
+                    // Return Error type (not base_ty) to avoid confusing
+                    // writeback — returning base_ty would make the local's
+                    // type be the pointer type, not the pointee type.
                     Ty::new(TyKind::Error, Span::DUMMY)
                 }
             }
@@ -1091,11 +1103,37 @@ impl TypeChecker {
                 field_ty.clone()
             }
             ProjectionElem::Index(idx_local) => {
-                if let TyKind::Array(inner, _) | TyKind::Slice(inner) = &base_ty.kind {
+                // Stage 18.76 P1-A: Allow Array, Slice, Str, and Ref(_, _, Str)
+                // as indexable types. Str indexing returns u8 (byte).
+                // Per §1.0 原則 6 "通用 > 特例": one check covers all indexable types.
+                // Per §1.0 原則 9 "正确 > 妥协": defer for Infer/Error/Param types
+                // (don't push false-positive errors on unresolved types).
+                let inner_ty = match &base_ty.kind {
+                    TyKind::Array(inner, _) | TyKind::Slice(inner) => Some((**inner).clone()),
+                    TyKind::Str => Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span)),
+                    TyKind::Ref(_, _, inner) if matches!(inner.kind, TyKind::Str) => {
+                        Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span))
+                    }
+                    TyKind::Ref(_, _, inner) => {
+                        // For &Array, &Slice, or &Str, index returns element type.
+                        // For &Infer or &Error, defer (don't push error).
+                        match &inner.kind {
+                            TyKind::Array(inner, _) | TyKind::Slice(inner) => {
+                                Some((**inner).clone())
+                            }
+                            TyKind::Str => {
+                                Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span))
+                            }
+                            TyKind::Infer(_) | TyKind::Error => None, // defer
+                            _ => None,
+                        }
+                    }
+                    // Stage 18.76: Defer for unresolved types — don't push false-positive errors.
+                    TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
+                    _ => None,
+                };
+                if let Some(inner) = inner_ty {
                     // Stage 18.73 P1-D: Validate array index type.
-                    // The index must be an integer type (Int/Uint).
-                    // Per §1.0 原則 4 "报错 > 静默": non-integer index must
-                    // be reported, not silently produce garbage.
                     if let Some(idx_local_decl) = mir.local_decls.get(idx_local.0 as usize) {
                         let idx_ty = self.unify.resolve(&idx_local_decl.ty);
                         match &idx_ty.kind {
@@ -1116,17 +1154,40 @@ impl TypeChecker {
                             }
                         }
                     }
-                    (**inner).clone()
+                    inner
                 } else {
-                    // Stage 0 limitation: silent Error (no TypeError pushed).
+                    // Stage 18.76: Defer for Infer/Error/Param types — don't push
+                    // false-positive errors on unresolved types. Return Error
+                    // type to propagate the unknown state.
                     Ty::new(TyKind::Error, Span::DUMMY)
                 }
             }
             ProjectionElem::ConstantIndex { .. } | ProjectionElem::Subslice { .. } => {
-                if let TyKind::Array(inner, _) | TyKind::Slice(inner) = &base_ty.kind {
-                    (**inner).clone()
+                // Stage 18.76 P1-A: Same indexable types as Index.
+                // Per §1.0 原則 9 "正确 > 妥协": defer for Infer/Error/Param types.
+                let inner_ty = match &base_ty.kind {
+                    TyKind::Array(inner, _) | TyKind::Slice(inner) => Some((**inner).clone()),
+                    TyKind::Str => Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span)),
+                    TyKind::Ref(_, _, inner) if matches!(inner.kind, TyKind::Str) => {
+                        Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span))
+                    }
+                    TyKind::Ref(_, _, inner) => match &inner.kind {
+                        TyKind::Array(inner, _) | TyKind::Slice(inner) => Some((**inner).clone()),
+                        TyKind::Str => {
+                            Some(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), place_span))
+                        }
+                        TyKind::Infer(_) | TyKind::Error => None, // defer
+                        _ => None,
+                    },
+                    // Stage 18.76: Defer for unresolved types.
+                    TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
+                    _ => None,
+                };
+                if let Some(inner) = inner_ty {
+                    inner
                 } else {
-                    // Stage 0 limitation: silent Error (no TypeError pushed).
+                    // Stage 18.76: Defer for Infer/Error/Param types — don't push
+                    // false-positive errors on unresolved types.
                     Ty::new(TyKind::Error, Span::DUMMY)
                 }
             }

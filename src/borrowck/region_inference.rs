@@ -713,8 +713,17 @@ impl RegionInferenceContext {
                                     ref_vid,
                                     ConstraintCause::Borrow {
                                         span: stmt.span,
+                                        // Stage 18.76 P1-C: LocalId(0) is a
+                                        // best-effort fallback for non-Local
+                                        // borrowed places (projections, statics).
+                                        // This is a known limitation — region
+                                        // inference for field projections is
+                                        // v0.2 work. Using LocalId(0) is safe
+                                        // because it only affects region
+                                        // constraints, not correctness.
                                         borrowed_local: match &borrowed_place.kind {
                                             PlaceKind::Local(id) => *id,
+                                            // Stage 18.76: documented fallback
                                             _ => crate::mir::place::LocalId(0),
                                         },
                                     },
@@ -745,6 +754,7 @@ impl RegionInferenceContext {
                                                     lhs_r,
                                                     ConstraintCause::Borrow {
                                                         span: stmt.span,
+                                                        // Stage 18.76 P1-C: documented fallback
                                                         borrowed_local: match &lv.kind {
                                                             PlaceKind::Local(id) => *id,
                                                             _ => crate::mir::place::LocalId(0),

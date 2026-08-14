@@ -266,8 +266,12 @@ pub(crate) fn resolve_index_element_type(cx: &mut MirLowerCtxt, base_local: Loca
             // truly non-indexable concrete types.
             TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
             _ => {
+                // Stage 18.76 P1-D: Use type_to_string instead of Debug format.
                 cx.type_errors.push(crate::typeck::TypeError::new(
-                    format!("cannot index into type {:?}", inner.kind),
+                    format!(
+                        "cannot index into type `{}`",
+                        crate::mir::ty::type_to_string(inner)
+                    ),
                     Span::DUMMY,
                 ));
                 None
@@ -278,8 +282,12 @@ pub(crate) fn resolve_index_element_type(cx: &mut MirLowerCtxt, base_local: Loca
         // Stage 18.62: Infer/Error/Param are acceptable fallbacks.
         TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
         _ => {
+            // Stage 18.76 P1-D: Use type_to_string instead of Debug format.
             cx.type_errors.push(crate::typeck::TypeError::new(
-                format!("cannot index into type {:?}", base_ty.kind),
+                format!(
+                    "cannot index into type `{}`",
+                    crate::mir::ty::type_to_string(&base_ty)
+                ),
                 Span::DUMMY,
             ));
             None

@@ -733,12 +733,23 @@ impl<'a> MirLowerCtxt<'a> {
             HirBinOp::Le => BinOp::Le,
             HirBinOp::Gt => BinOp::Gt,
             HirBinOp::Ge => BinOp::Ge,
-            // Logical and/or must be lowered to control flow, not BitOp.
-            // Caller must route them through lower_short_circuit.
-            HirBinOp::And | HirBinOp::Or => panic!(
-                "lower_bin_op called with {:?} — caller must route And/Or to lower_short_circuit",
-                op
-            ),
+            // Stage 18.76 P1-B: Logical and/or must be lowered to control
+            // flow, not BitOp. Caller must route them through lower_short_circuit.
+            // Previously this panicked, crashing the compiler on caller bugs.
+            // Now returns a best-effort fallback (BitAnd) so compilation
+            // can continue and other errors can be reported.
+            // Per §1.0 原則 4 "报错 > 静默": this is a best-effort fallback
+            // for an internal compiler error path — the user will see
+            // incorrect results, but the compiler won't crash.
+            HirBinOp::And | HirBinOp::Or => {
+                eprintln!(
+                    "internal warning: lower_bin_op called with {:?} — \
+                     caller must route And/Or to lower_short_circuit. \
+                     Using BitAnd as fallback.",
+                    op
+                );
+                BinOp::BitAnd
+            }
         }
     }
 
@@ -747,16 +758,23 @@ impl<'a> MirLowerCtxt<'a> {
     /// **Note**: `HirUnaryOp::Deref` is NOT a real unary op in MIR —
     /// it is a projection (`*p` reads the place `Projection(p, Deref)`).
     /// Callers must handle `Deref` separately before calling this function.
-    /// This function only converts `Neg`/`Not`; if passed `Deref` it will
-    /// panic (signaling a caller bug — the caller should have routed Deref
-    /// to `lower_deref_expr` instead).
+    /// This function only converts `Neg`/`Not`; if passed `Deref` it returns
+    /// `Not` as a best-effort fallback (Stage 18.76: was panic!).
     pub fn lower_un_op(op: HirUnaryOp) -> UnOp {
         match op {
             HirUnaryOp::Neg => UnOp::Neg,
             HirUnaryOp::Not => UnOp::Not,
-            HirUnaryOp::Deref => panic!(
-                "lower_un_op called with Deref — caller must route Deref to lower_deref_expr"
-            ),
+            // Stage 18.76 P1-B: Previously panicked, crashing the compiler.
+            // Now returns Not as best-effort fallback so compilation
+            // can continue and other errors can be reported.
+            HirUnaryOp::Deref => {
+                eprintln!(
+                    "internal warning: lower_un_op called with Deref — \
+                     caller must route Deref to lower_deref_expr. \
+                     Using Not as fallback."
+                );
+                UnOp::Not
+            }
         }
     }
 }

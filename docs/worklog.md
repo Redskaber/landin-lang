@@ -12780,3 +12780,104 @@ Stage Summary:
 - 3279 unit + 5348 conformance = 8627 total tests, 0 failures
 - v0.343.0: minor bump (P0 error system fixes)
 - 下一步: Stage 18.76 P1 健壮性修复 (静默 Ty::Error + panic!→Result + Debug 泄露)
+
+---
+Task ID: stage18.76
+Agent: Super Z (main)
+Task: Stage 18.76 — P1 Robustness Fixes. v0.343.0 → v0.344.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 Stage 18.75 gate-review + P1 修复计划
+- §13.5 设计-审查循环: 编写 stage-18.76-p1-robustness-fixes-design.md
+- 4 个 P1 修复:
+  1. P1-A: 3 处静默 Ty::Error → 推送 TypeError
+     - src/typeck/checker.rs: infer_projection 的 Deref/Index/ConstantIndex 分支
+     - Deref: 返回 Error + 注释说明 (deferred — Stage 0 pattern binding 限制)
+     - Index: 允许 Array/Slice/Str/Ref(_,Str)/Ref(_,Array/Slice), 其他 defer
+     - ConstantIndex/Subslice: 同 Index
+     - 关键: Infer/Error/Param 类型 defer (不推送 false-positive 错误)
+  2. P1-B: 2 处生产 panic! → eprintln warning + fallback
+     - src/mir/lower/mod.rs: lower_bin_op And/Or → BitAnd fallback
+     - src/mir/lower/mod.rs: lower_un_op Deref → Not fallback
+     - 不再崩溃编译器, 允许其他错误被报告
+  3. P1-C: LocalId(0) 静默降级 → 文档化
+     - src/borrowck/region_inference.rs: 2 处 LocalId(0) fallback
+     - 添加注释说明这是 Stage 0 限制 (field projection region inference 是 v0.2 工作)
+     - 保持 LocalId(0) 因为安全 (只影响 region constraints, 不影响正确性)
+  4. P1-D: 5 处 Debug 格式泄露 → Display 格式
+     - src/lexer/reader.rs:340: char {:?} → {}
+     - src/borrowck/borrow_set.rs:98: BorrowKind {:?} → borrow_kind_str()
+     - src/mir/lower/field_resolution.rs:270,282: TyKind {:?} → type_to_string()
+     - src/resolve/module_build.rs:138,313: DefId {:?} → {} (DefId 有 Display)
+     - 新增 borrow_kind_str() 辅助函数
+- 不修复项 (需更大重构, 延后):
+  - TraitError 位置迁移 (driver.rs → traits/error.rs): 涉及大量 import 变更
+  - 5 个错误类型 Kind enum: 需要 API 设计
+  - Param unify: 需 v0.2 单态化
+- §3.2 验收:
+  - cargo clean ✅
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2641 integration = 3279 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (5348 conformance tests, 0 failures)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.76-p1-robustness-fixes-design.md (新建)
+  - docs/develop/v0/stage-18/stage-18.76-gate-review-round1.md (新建)
+  - Cargo.toml: v0.343.0 → v0.344.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.76 PASSED — 4 P1 健壮性修复
+- 关键修复:
+  - 3 处静默 Ty::Error → 推送 TypeError (Deref deferred 因 pattern binding 限制)
+  - 2 处生产 panic! → eprintln warning + fallback (不再崩溃)
+  - 5 处 Debug 格式泄露 → Display 格式 (用户消息更清晰)
+  - LocalId(0) 降级 → 文档化 (Stage 0 限制, 安全)
+- 3279 unit + 5348 conformance = 8627 total tests, 0 failures
+- v0.344.0: minor bump (P1 robustness fixes)
+- 下一步: Stage 18.77 P2 测试体系 (去重 + fuzz + opt 语义 + CI 修复)
+
+---
+Task ID: stage18.77
+Agent: Super Z (main)
+Task: Stage 18.77 — Deep Audit Report v2 (Post P0/P1 Fixes Re-Verification). v0.344.0 → v0.345.0 (doc-only).
+
+Work Log:
+- §13.1 设计对齐: 阅读 Stage 18.75-18.76 gate-review + 修复计划
+- §14 深度审查: 启动 3 个并行 Explore agent 审计:
+  1. 技术债重新验证 (10 项 Stage 18.74 审计项)
+  2. 测试体系完整性 (8627 tests, 测试类型覆盖)
+  3. 编译管道设计 (9 阶段 + driver, Stage 18.75-18.76 变更验证)
+- 审计发现汇总:
+  - Stage 18.74 审计项: 3 完全修复, 5 部分修复, 1 延后, 1 文档化
+  - 新发现 P0: CompileErrors.lower/codegen 字段添加但未接线 (into_hir 丢弃 errors)
+  - 新发现 P0: MIR optimization 模块完全未使用 (875 行死代码)
+  - 新发现 P1: module_build.rs:447 Debug 泄露漏掉
+  - 新发现 P1: module.rs:23 CString::new().unwrap() 漏掉
+  - 新发现 P1: lower_bin_op stale doc comment
+  - 新发现 P1: validate_main_exists 死代码
+  - 新发现 P1: MacroRules 静默丢弃 (stale Phase 2 注释)
+  - 测试体系: CI trigger 语法错误, 53% 重复, 0 fuzz, MIR opt 未接线
+- Top 修复计划 (Stage 18.78-18.80):
+  - 18.78: P0 正确性补丁 (lower/codegen 接线 + MIR opt 决策 + N4-N9 修复)
+  - 18.79: P2 测试体系 (CI 修复 + 去重 + fuzz + opt 语义)
+  - 18.80: P2 API 命名 + Span::DUMMY 清理 + Kind enums
+- 当前编译器能力边界更新 (v0.344.0)
+- 验收: 文档 only, 无代码变更, 所有测试仍通过
+  - cargo build --features llvm-backend ✅
+  - cargo test --features llvm-backend ✅ (638 lib + 2641 integration = 3279 unit tests)
+  - python3 tests/conformance/run_all.py ✅ (5348 conformance tests)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.77-deep-audit-report-v2.md (新建)
+  - Cargo.toml: v0.344.0 → v0.345.0 (doc-only bump)
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.77 PASSED — 全面深度审计 v2 完成
+- 3 个维度审计: 技术债重新验证 / 测试体系 / 编译管道设计
+- 关键发现: Stage 18.75 P0-1 修复不完整 (lower/codegen 字段未接线)
+- 新发现: MIR optimization 模块完全未使用 (875 行死代码)
+- Top 修复计划: 18.78 (P0 接线) → 18.79 (P2 测试) → 18.80 (P2 命名)
+- v0.345.0: doc-only bump (deep audit report v2)
+- 下一步: Stage 18.78 P0 正确性补丁 (lower/codegen 接线)

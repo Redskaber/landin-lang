@@ -134,8 +134,11 @@ impl Resolver {
                         .unwrap_or(Span::DUMMY);
                     self.errors.push(ResolveError::with_kind(
                         crate::resolve::ResolveErrorKind::DuplicateDefinition,
+                        // Stage 18.76 P1-D: Use Display instead of Debug format.
+                        // Per §1.0 原則 3 "显式 > 隐式": show DefId as
+                        // "DefId(N)" instead of "DefId(N)" Debug format.
                         format!(
-                            "duplicate definition for `{}` (also defined at {:?})",
+                            "duplicate definition for `{}` (also defined at {})",
                             name_str, existing
                         ),
                         span,
@@ -309,8 +312,9 @@ impl Resolver {
                     .unwrap_or(Span::DUMMY);
                 self.errors.push(ResolveError::with_kind(
                     crate::resolve::ResolveErrorKind::DuplicateDefinition,
+                    // Stage 18.76 P1-D: Use Display instead of Debug format.
                     format!(
-                        "duplicate definition for `{}` (also defined at {:?})",
+                        "duplicate definition for `{}` (also defined at {})",
                         name_str, existing
                     ),
                     span,
