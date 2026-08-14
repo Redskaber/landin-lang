@@ -31224,3 +31224,63 @@ Stage Summary:
 - BUILTIN_MACRO_NAMES 扩展: 19 → 22
 - 内置宏总计: 4 print + 18 non-print = 22
 - v0.313.0 → v0.314.0
+
+---
+Task ID: stage18.40
+Agent: Super Z (main)
+Task: Stage 18.40 — v0.7 Roadmap Review
+
+Work Log:
+- §14.5 D1-D8 全 ✅
+- §6.3 5/5 GO
+- Macro:println = 13:10 (macro 系统大幅扩展)
+- 3144 tests, 0 failures
+- v0.314.0 (无代码变更，仅审查)
+- 内置宏系统总览: 22 macros (4 print + 18 non-print)
+  - Print: println/print/eprintln/eprint
+  - Control flow: assert/panic
+  - Data: vec/format
+  - Debug: dbg
+  - Error: todo/unimplemented
+  - I/O: write
+  - Compile-time: stringify/concat/env
+  - Source info: file/line/module_path
+  - File: include_str
+  - Pattern: matches
+  - Config: cfg/option_env
+- println! 通解化状态: Phase 2.5 完成, Phase 3 死代码标记完成
+- v0.7 规划:
+  - Phase 3.2: 完整移除 Println variant (AST/HIR/MIR/Codegen)
+  - GATs (Generic Associated Types)
+  - Incremental Compilation
+  - Cross-compilation
+
+---
+Task ID: stage18.41
+Agent: Super Z (main)
+Task: Stage 18.41 — Low-level + Diagnostic Macros (asm!/compile_error!/cfg_attr!)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 扩展 BUILTIN_MACRO_NAMES: 22 → 25 (添加 asm/compile_error/cfg_attr)
+- 新增 3 个 macro rule 构造函数:
+  - make_asm_macro_rule: asm! → __landin_asm($($args)*)
+  - make_compile_error_macro_rule: compile_error! → __landin_compile_error($msg)
+  - make_cfg_attr_macro_rule: cfg_attr! → __landin_cfg_attr($cfg, $($attr)*)
+- dispatcher 更新: make_builtin_macro_rule 新增 3 个 match arm
+- driver 预 intern 新符号 (attr/__landin_asm/__landin_compile_error/__landin_cfg_attr)
+- 更新所有测试中的 count 期望 (22 → 25)
+- §1.0 原則 6 "通用 > 特解": 所有内置宏走同一 expand_macros 通道
+- §10 命名: make_<name>_macro_rule 模式
+- §11 接口隔离: 所有 rule 构造函数在 macro_expand.rs 内部
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2537 integration = 3144 unit tests, 0 failures
+
+Stage Summary:
+- 低级 + 诊断宏完成 (asm!/compile_error!/cfg_attr!)
+- BUILTIN_MACRO_NAMES 扩展: 22 → 25
+- 内置宏总计: 4 print + 21 non-print = 25
+- v0.314.0 → v0.315.0

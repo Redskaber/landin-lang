@@ -1069,9 +1069,9 @@ fn apply_hygiene(
 // Stage 18.10: Built-in macro_rules! registration (println! 通解化 Phase 1)
 // =============================================================================
 
-/// Stage 18.10 + 18.29 + 18.32 + 18.34 + 18.36 + 18.39: Names of the built-in
-/// macros that are always available (registered into every `MacroTable` before
-/// user macros).
+/// Stage 18.10 + 18.29 + 18.32 + 18.34 + 18.36 + 18.39 + 18.41: Names of the
+/// built-in macros that are always available (registered into every `MacroTable`
+/// before user macros).
 ///
 /// Stage 18.10: println/print/eprintln/eprint (print macros)
 /// Stage 18.29: assert/panic/vec (non-print macros)
@@ -1079,6 +1079,7 @@ fn apply_hygiene(
 /// Stage 18.34: stringify/concat/env (compile-time utility macros)
 /// Stage 18.36: file/line/module_path/include_str (source info + file macros)
 /// Stage 18.39: matches/cfg/option_env (pattern + config macros)
+/// Stage 18.41: asm/compile_error/cfg_attr (low-level + diagnostic macros)
 ///
 /// Per §10: const naming follows `UPPER_SNAKE_CASE`.
 pub const BUILTIN_MACRO_NAMES: &[&str] = &[
@@ -1104,6 +1105,9 @@ pub const BUILTIN_MACRO_NAMES: &[&str] = &[
     "matches",
     "cfg",
     "option_env", // pattern + config macros (Stage 18.39)
+    "asm",
+    "compile_error",
+    "cfg_attr", // low-level + diagnostic macros (Stage 18.41)
 ];
 
 /// Stage 18.10: Build the table of built-in `macro_rules!` definitions.
@@ -1181,6 +1185,10 @@ fn make_builtin_macro_rule(
         "matches" => make_matches_macro_rule(interner),
         "cfg" => make_cfg_macro_rule(interner),
         "option_env" => make_option_env_macro_rule(interner),
+        // Stage 18.41: low-level + diagnostic macros
+        "asm" => make_asm_macro_rule(interner),
+        "compile_error" => make_compile_error_macro_rule(interner),
+        "cfg_attr" => make_cfg_attr_macro_rule(interner),
         _ => make_noop_macro_rule(name_sym, interner),
     }
 }
@@ -2526,6 +2534,293 @@ fn make_option_env_macro_rule(interner: &mut Rodeo) -> MacroRule {
         },
         Token {
             kind: TokenKind::Ident(name_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.41: Construct an `asm!` macro rule.
+///
+/// Pattern: `$($args:tt)*` — any token sequence (assembly template + operands)
+/// Body:    `__landin_asm($($args)*)` — function call to runtime asm stub
+///
+/// `asm!("nop")` → `__landin_asm("nop")`.
+/// For now, the runtime stub is a no-op (inline assembly not supported).
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_asm_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let args_sym = interner.get("args").unwrap_or_default();
+    let tt_sym = interner.get("tt").unwrap_or_default();
+    let asm_sym = interner.get_or_intern("__landin_asm");
+
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(tt_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(asm_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(args_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.41: Construct a `compile_error!` macro rule.
+///
+/// Pattern: `$msg:expr` — a single expression (the error message)
+/// Body:    `__landin_compile_error($msg)` — function call to runtime error
+///
+/// `compile_error!("custom error")` → `__landin_compile_error("custom error")`.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_compile_error_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let msg_sym = interner.get_or_intern("msg");
+    let expr_sym = interner.get_or_intern("expr");
+    let ce_sym = interner.get_or_intern("__landin_compile_error");
+
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(msg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(ce_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(msg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    MacroRule {
+        pattern,
+        body,
+        span: crate::session::Span::DUMMY,
+    }
+}
+
+/// Stage 18.41: Construct a `cfg_attr!` macro rule.
+///
+/// Pattern: `$cfg:expr, $($attr:tt)*` — cfg expression + attribute tokens
+/// Body:    `__landin_cfg_attr($cfg, $($attr)*)` — function call
+///
+/// `cfg_attr!(debug, derive(Debug))` → `__landin_cfg_attr(debug, derive(Debug))`.
+///
+/// Per §10: internal helper, named `<verb>_<noun>_<noun>`.
+fn make_cfg_attr_macro_rule(interner: &mut Rodeo) -> MacroRule {
+    let cfg_sym = interner.get_or_intern("cfg");
+    let expr_sym = interner.get_or_intern("expr");
+    let attr_sym = interner.get_or_intern("attr");
+    let tt_sym = interner.get_or_intern("tt");
+    let ca_sym = interner.get_or_intern("__landin_cfg_attr");
+
+    // Pattern: $ cfg : expr , $ ( $ attr : tt ) *
+    let pattern = vec![
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(cfg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(expr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(attr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Colon,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(tt_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
+            span: crate::session::Span::DUMMY,
+        },
+    ];
+
+    // Body: __landin_cfg_attr ( $ cfg , $ ( $ attr ) * )
+    let body = vec![
+        Token {
+            kind: TokenKind::Ident(ca_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(cfg_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Comma,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::LParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Dollar,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Ident(attr_sym),
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::RParen,
+            span: crate::session::Span::DUMMY,
+        },
+        Token {
+            kind: TokenKind::Star,
             span: crate::session::Span::DUMMY,
         },
         Token {
@@ -3971,8 +4266,8 @@ mod tests {
         let table = build_builtin_macro_table(&mut interner);
         assert_eq!(
             table.len(),
-            22,
-            "should register 22 built-in macros (4 print + 18 non-print)"
+            25,
+            "should register 25 built-in macros (4 print + 21 non-print)"
         );
         for name in BUILTIN_MACRO_NAMES {
             let sym = interner.get(name).expect("name was interned");
@@ -3995,7 +4290,7 @@ mod tests {
     /// exactly the 12 expected names (4 print + 8 non-print).
     #[test]
     fn stage18_10_builtin_macro_names_const() {
-        assert_eq!(BUILTIN_MACRO_NAMES.len(), 22);
+        assert_eq!(BUILTIN_MACRO_NAMES.len(), 25);
         assert!(BUILTIN_MACRO_NAMES.contains(&"println"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"print"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"eprintln"));
@@ -4023,6 +4318,10 @@ mod tests {
         assert!(BUILTIN_MACRO_NAMES.contains(&"matches"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"cfg"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"option_env"));
+        // Stage 18.41: low-level + diagnostic macros
+        assert!(BUILTIN_MACRO_NAMES.contains(&"asm"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"compile_error"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"cfg_attr"));
     }
 
     /// Stage 18.10 negative 2: build_builtin_macro_table returns an
@@ -5323,6 +5622,10 @@ mod tests {
         assert!(BUILTIN_MACRO_NAMES.contains(&"matches"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"cfg"));
         assert!(BUILTIN_MACRO_NAMES.contains(&"option_env"));
+        // Stage 18.41: low-level + diagnostic macros
+        assert!(BUILTIN_MACRO_NAMES.contains(&"asm"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"compile_error"));
+        assert!(BUILTIN_MACRO_NAMES.contains(&"cfg_attr"));
     }
 
     /// Stage 18.29 + 18.32 negative 3: build_builtin_macro_table registers 12 macros.
@@ -5357,12 +5660,16 @@ mod tests {
         interner.get_or_intern("__landin_matches");
         interner.get_or_intern("__landin_cfg");
         interner.get_or_intern("__landin_option_env");
+        interner.get_or_intern("attr");
+        interner.get_or_intern("__landin_asm");
+        interner.get_or_intern("__landin_compile_error");
+        interner.get_or_intern("__landin_cfg_attr");
         for name in BUILTIN_MACRO_NAMES {
             interner.get_or_intern(format!("__landin_{}", name));
         }
 
         let table = build_builtin_macro_table(&mut interner);
-        assert_eq!(table.len(), 22, "should have 22 built-in macros");
+        assert_eq!(table.len(), 25, "should have 25 built-in macros");
     }
 
     /// Stage 18.29 negative 4: vec! with empty args parses.

@@ -699,6 +699,11 @@ pub fn compile(src: &str) -> CompileResult {
     interner.get_or_intern("__landin_matches");
     interner.get_or_intern("__landin_cfg");
     interner.get_or_intern("__landin_option_env");
+    // Stage 18.41: Pre-intern symbols for low-level + diagnostic macros.
+    interner.get_or_intern("attr");
+    interner.get_or_intern("__landin_asm");
+    interner.get_or_intern("__landin_compile_error");
+    interner.get_or_intern("__landin_cfg_attr");
     let (tokens, macro_errs) =
         crate::parser::macro_expand::expand_macros_with_errors(tokens, &mut interner);
     errors.macro_errors = macro_errs;
