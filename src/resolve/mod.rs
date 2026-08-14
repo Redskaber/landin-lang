@@ -20,7 +20,7 @@ mod module_build;
 mod path_resolve;
 mod primitives;
 
-pub use error::ResolveError;
+pub use error::{ResolveError, ResolveErrorKind};
 pub use module_tree::{ModuleNode, UseDecl, UseImport};
 pub use resolver::{resolve_crate, Resolver};
 pub use scope::{Scope, ScopeKind, ScopeStack};

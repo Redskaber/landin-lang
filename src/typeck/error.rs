@@ -3,6 +3,30 @@
 use crate::mir::ty::Ty;
 use crate::session::Span;
 
+/// Stage 18.58: Structured kind for type errors.
+///
+/// Mirrors `BorrowErrorKind` design — enables machine-readable error
+/// classification instead of free-form string matching.
+///
+/// Per §1.0 原則 3 "显式 > 隐式": error kind is explicit, not inferred
+/// from message text.
+/// Per §1.0 原則 6 "通用 > 特例": one enum for all type error patterns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeErrorKind {
+    /// Generic type error (backward compat for `new(message, span)`).
+    Generic,
+    /// `mismatched types: expected X, found Y`.
+    MismatchedTypes,
+    /// Type contains unresolved inference variable.
+    UnresolvedType,
+    /// `cannot find type` propagated from resolve.
+    UnresolvedName,
+    /// Trait bound not satisfied.
+    TraitBoundNotSatisfied,
+    /// Function signature mismatch (arity, types).
+    SignatureMismatch,
+}
+
 /// A type error encountered during type checking.
 ///
 /// Non-fatal: type checking continues after an error, producing
@@ -14,15 +38,36 @@ pub struct TypeError {
     pub span: Span,
     pub expected: Option<Ty>,
     pub found: Option<Ty>,
+    /// Stage 18.58: Structured error kind for machine-readable classification.
+    pub kind: TypeErrorKind,
 }
 
 impl TypeError {
+    /// Construct a generic type error (backward compat).
+    ///
+    /// Kind defaults to `TypeErrorKind::Generic`. Callers that know the
+    /// specific error pattern should use `with_kind` instead.
     pub fn new(message: impl Into<String>, span: Span) -> Self {
         Self {
             message: message.into(),
             span,
             expected: None,
             found: None,
+            kind: TypeErrorKind::Generic,
+        }
+    }
+
+    /// Stage 18.58: Construct a type error with an explicit kind.
+    ///
+    /// Per §1.0 原則 3 "显式 > 隐式": the kind is explicit, not inferred.
+    /// Per §10 naming: `with_kind` follows `<prep>_<noun>` pattern.
+    pub fn with_kind(kind: TypeErrorKind, message: impl Into<String>, span: Span) -> Self {
+        Self {
+            message: message.into(),
+            span,
+            expected: None,
+            found: None,
+            kind,
         }
     }
 
@@ -46,6 +91,7 @@ impl TypeError {
             span,
             expected: Some(expected),
             found: Some(found),
+            kind: TypeErrorKind::MismatchedTypes,
         }
     }
 
@@ -76,6 +122,7 @@ impl TypeError {
             span,
             expected: Some(expected),
             found: Some(found),
+            kind: TypeErrorKind::MismatchedTypes,
         }
     }
 
@@ -85,6 +132,7 @@ impl TypeError {
             span,
             expected: None,
             found: None,
+            kind: TypeErrorKind::UnresolvedType,
         }
     }
 }

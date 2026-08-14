@@ -31926,3 +31926,63 @@ Stage Summary:
 - 3236 unit + 5249 conformance = 8485 total tests, 0 failures
 - Priority 5 (typeck make_mismatch) 推迟到 Stage 18.59
 - v0.323.0 → v0.324.0
+
+---
+Task ID: stage18.58
+Agent: Super Z (main)
+Task: Stage 18.58 — Error Code Catalog Refinement (ResolveErrorKind + TypeErrorKind)
+
+Work Log:
+- §13.1 阶段开始设计对齐 + §13.5 设计-审查 + §14 深度审查
+- 设计文档: docs/develop/v0/stage-18/stage-18.58-error-code-refinement-design.md
+- 基于 Stage 18.56 审计: BorrowError 有 kind enum, ResolveError/TypeError 无 (自由格式 String)
+- 镜像 BorrowErrorKind 设计, 为 ResolveError 和 TypeError 添加 kind enum
+
+- 新增 ResolveErrorKind enum (src/resolve/error.rs):
+  - 8 kinds: Generic, CannotFindType, CannotFindValue, CannotFindTrait, CannotFindMacro,
+    DuplicateDefinition, AssocTypeNotFound, UndefinedTraitInQualified
+  - ResolveError 新增 `kind: ResolveErrorKind` 字段
+  - 新增 `with_kind(kind, message, span)` 构造器
+  - 保留 `new(message, span)` 向后兼容 (kind = Generic)
+
+- 新增 TypeErrorKind enum (src/typeck/error.rs):
+  - 6 kinds: Generic, MismatchedTypes, UnresolvedType, UnresolvedName,
+    TraitBoundNotSatisfied, SignatureMismatch
+  - TypeError 新增 `kind: TypeErrorKind` 字段
+  - 新增 `with_kind(kind, message, span)` 构造器
+  - 保留 `new/mismatch/mismatch_with_resolver/unresolved` 向后兼容 (设置正确 kind)
+
+- 迁移主要调用点使用 with_kind:
+  - driver.rs scan_ty_for_unresolved: CannotFindType
+  - resolve/path_resolve.rs: AssocTypeNotFound + UndefinedTraitInQualified
+  - resolve/module_build.rs: DuplicateDefinition (duplicate def errors)
+  - resolve/module_build.rs: Generic (use declaration errors)
+
+- §1.0 原則 3 显式 > 隐式: error kind 显式分类, 不依赖字符串匹配
+- §1.0 原則 6 通用 > 特例: 一个 kind enum 处理所有错误模式
+- §1.0 原則 7 API 命名标准化: with_kind / ResolveErrorKind / TypeErrorKind
+- §10 命名: with_kind 遵循 <prep>_<noun> 模式
+
+- 测试 (§9.4.3 1:3+ ratio):
+  - tests/v0/stage18/plan/stage18_58_error_code_refinement_tests.rs: 3 positive + 9 negative = 1:3 ✓
+    - positive: undefined_type_has_cannot_find_type_kind + assoc_type_not_found_has_correct_kind + duplicate_def_has_correct_kind
+    - negative: undefined_value + undefined_trait_in_qualified + duplicate_struct + duplicate_trait
+                + wrong_trait_assoc + type_mismatch + multiple_errors + undefined_type_in_let
+                + undefined_type_in_param
+
+- 验收 (§3.2 交付前验收检查):
+  - cargo clean — ✅
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2641 integration (+12 new) = 3248 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5249 conformance tests, 0 failures
+
+Stage Summary:
+- 错误码目录细化完成: ResolveErrorKind (8 kinds) + TypeErrorKind (6 kinds)
+- §1.0 原則 3 显式 > 隐式: error kind 显式分类
+- §1.0 原則 6 通用 > 特例: 一个 kind enum 处理所有错误模式
+- 12 个新测试, 全部 1:3+ ratio
+- 3248 unit + 5249 conformance = 8497 total tests, 0 failures
+- 向后兼容: 保留 new(message, span) 构造器
+- v0.324.0 → v0.325.0

@@ -126,7 +126,8 @@ impl Resolver {
                     // Stage 18.57: Use the new definition's span instead of
                     // Span::DUMMY. Per §1.0 原則 4 "报错 > 静默".
                     let span = self.def_span.get(&def_id).copied().unwrap_or(Span::DUMMY);
-                    self.errors.push(ResolveError::new(
+                    self.errors.push(ResolveError::with_kind(
+                        crate::resolve::ResolveErrorKind::DuplicateDefinition,
                         format!(
                             "duplicate definition for `{}` (also defined at {:?})",
                             name_str, existing
@@ -295,7 +296,8 @@ impl Resolver {
                 let name_str = interner.resolve(&name).to_string();
                 // Stage 18.57: Use the new definition's span instead of Span::DUMMY.
                 let span = self.def_span.get(&def_id).copied().unwrap_or(Span::DUMMY);
-                self.errors.push(ResolveError::new(
+                self.errors.push(ResolveError::with_kind(
+                    crate::resolve::ResolveErrorKind::DuplicateDefinition,
                     format!(
                         "duplicate definition for `{}` (also defined at {:?})",
                         name_str, existing
@@ -395,7 +397,8 @@ impl Resolver {
     /// cross-module resolution which is Stage 4+ work.
     pub(super) fn resolve_use_leaf(&mut self, path: &HirPath, alias: Option<&crate::ast::Ident>) {
         if path.segments.is_empty() {
-            self.errors.push(ResolveError::new(
+            self.errors.push(ResolveError::with_kind(
+                crate::resolve::ResolveErrorKind::Generic,
                 "use declaration with empty path",
                 path.span,
             ));
@@ -423,7 +426,8 @@ impl Resolver {
                     is_glob: false,
                 };
                 if let Err(existing) = self.module_tree.insert_use_import(imported_name, import) {
-                    self.errors.push(ResolveError::new(
+                    self.errors.push(ResolveError::with_kind(
+                        crate::resolve::ResolveErrorKind::DuplicateDefinition,
                         format!(
                             "ambiguous import: `{}` is already imported (pointing to {:?})",
                             self.name_to_string(imported_name),
@@ -434,7 +438,8 @@ impl Resolver {
                 }
             }
             None => {
-                self.errors.push(ResolveError::new(
+                self.errors.push(ResolveError::with_kind(
+                    crate::resolve::ResolveErrorKind::Generic,
                     format!("unresolved import `{}`", self.path_to_string(path)),
                     path.span,
                 ));

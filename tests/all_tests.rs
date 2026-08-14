@@ -432,3 +432,5 @@ mod stage18_55_gats_phase3_e2e_tests;
 mod stage18_56_pipeline_audit_fixes_tests;
 #[path = "v0/stage18/plan/stage18_57_span_dummy_cleanup_tests.rs"]
 mod stage18_57_span_dummy_cleanup_tests;
+#[path = "v0/stage18/plan/stage18_58_error_code_refinement_tests.rs"]
+mod stage18_58_error_code_refinement_tests;

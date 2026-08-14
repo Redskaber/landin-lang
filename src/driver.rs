@@ -2687,7 +2687,8 @@ fn scan_ty_for_unresolved(ty: &crate::hir::HirTy, errors: &mut CompileErrors) {
     match &ty.kind {
         HirTyKind::Path(_, p) => {
             if matches!(p.res, Res::Unknown | Res::Err) {
-                errors.resolve.push(crate::resolve::ResolveError::new(
+                errors.resolve.push(crate::resolve::ResolveError::with_kind(
+                    crate::resolve::ResolveErrorKind::CannotFindType,
                     "cannot find type in this scope".to_string(),
                     // Stage 15.87: use the type path's span (was:
                     // Span::DUMMY, producing "1:1" for type resolution

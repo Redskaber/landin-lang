@@ -38,6 +38,6 @@ pub mod unify;
 #[allow(deprecated)]
 pub use checker::{check_crate, check_mir_body, TypeChecker};
 // Stage 6.15: re-export data tables from `tables` sub-module for backward compat.
-pub use error::TypeError;
+pub use error::{TypeError, TypeErrorKind};
 pub use tables::{FieldTyTable, FnSigTable, TypeckResults};
 pub use unify::UnificationTable;

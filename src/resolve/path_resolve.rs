@@ -412,7 +412,8 @@ impl Resolver {
                             // Assoc type not found in trait — report error.
                             // Per §1.0 原則 4 "报错 > 静默".
                             path.res = Res::Err;
-                            self.errors.push(crate::resolve::ResolveError::new(
+                            self.errors.push(crate::resolve::ResolveError::with_kind(
+                                crate::resolve::ResolveErrorKind::AssocTypeNotFound,
                                 format!(
                                     "associated type `{}` not found in trait",
                                     interner.resolve(&assoc_name)
@@ -423,7 +424,8 @@ impl Resolver {
                     } else if !matches!(trait_res, Res::Def(_, _)) && qself.position > 0 {
                         // Trait itself not found — report error.
                         path.res = Res::Err;
-                        self.errors.push(crate::resolve::ResolveError::new(
+                        self.errors.push(crate::resolve::ResolveError::with_kind(
+                            crate::resolve::ResolveErrorKind::UndefinedTraitInQualified,
                             "cannot find trait in qualified path".to_string(),
                             path.span,
                         ));
