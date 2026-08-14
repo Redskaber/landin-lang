@@ -1860,7 +1860,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
 ///
 /// Per §23: function name follows `<verb>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>`
 /// pattern with `_with_regions_and_hir` suffix.
-pub(crate) fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
+fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
     ty: &HirTy,
     region_counter: &mut u32,
     hir: Option<&HirCrate>,
@@ -2138,7 +2138,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_generics(
 ///
 /// Per §23: `lower_hir_ty_to_mir_ty_with_generics_and_regions` follows
 /// `<verb>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>` pattern.
-pub(crate) fn lower_hir_ty_to_mir_ty_with_generics_and_regions(
+fn lower_hir_ty_to_mir_ty_with_generics_and_regions(
     ty: &HirTy,
     generic_params: &[crate::mir::ty::ParamTy],
     region_counter: &mut u32,

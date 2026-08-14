@@ -799,12 +799,21 @@ impl TypeChecker {
     }
 
     /// Infer the type after applying a projection element.
+    ///
+    /// Stage 18.65: Three sites below (Deref on non-Ref, Index on non-Array,
+    /// ConstantIndex on non-Array) silently return `TyKind::Error` without
+    /// pushing a `TypeError`. These are known Stage 0 limitations — the
+    /// conformance tests `err-*-deref-non-ref-*` and `err-*-index-non-array-*`
+    /// document the current behavior. Adding errors here would change those
+    /// tests from `compile_error` to having specific error patterns.
+    /// Per §1.0 原則 4 "报错 > 静默": these should push errors in a future stage.
     fn infer_projection(&self, base_ty: &Ty, elem: &ProjectionElem) -> Ty {
         match elem {
             ProjectionElem::Deref => {
                 if let TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) = &base_ty.kind {
                     (**inner).clone()
                 } else {
+                    // Stage 0 limitation: silent Error (no TypeError pushed).
                     Ty::new(TyKind::Error, Span::DUMMY)
                 }
             }
@@ -813,6 +822,7 @@ impl TypeChecker {
                 if let TyKind::Array(inner, _) | TyKind::Slice(inner) = &base_ty.kind {
                     (**inner).clone()
                 } else {
+                    // Stage 0 limitation: silent Error (no TypeError pushed).
                     Ty::new(TyKind::Error, Span::DUMMY)
                 }
             }
@@ -820,6 +830,7 @@ impl TypeChecker {
                 if let TyKind::Array(inner, _) | TyKind::Slice(inner) = &base_ty.kind {
                     (**inner).clone()
                 } else {
+                    // Stage 0 limitation: silent Error (no TypeError pushed).
                     Ty::new(TyKind::Error, Span::DUMMY)
                 }
             }

@@ -16,7 +16,9 @@
 //!    re-assigned in a loop).
 //! 3. **Switched the driver**: `driver.rs` now calls
 //!    `check_mir_body_with_dataflow` instead of the legacy `check_mir_body`.
-//! 4. **Updated `check_crate`**: Now uses the dataflow path internally.
+//! 4. **Updated type checking**: Now uses the dataflow path internally.
+//!    (Note: `check_crate` was removed in Stage 18.60 — driver now calls
+//!    `TypeChecker::check_mir_body_with_tables` directly.)
 //!
 //! ## Test coverage
 //!

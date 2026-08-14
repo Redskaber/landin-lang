@@ -3722,8 +3722,8 @@ fn audit_codegen_no_upstream_calls() {
 
 #[test]
 fn audit_typeck_uses_tables_not_hir() {
-    // §21.3 D3: typeck active path must use check_mir_body_with_tables,
-    // not check_mir_body_with_hir.
+    // §21.3 D3: typeck active path must use check_mir_body_with_tables.
+    // (Note: check_mir_body_with_hir was removed in Stage 18.60.)
     // Verified by: compile() produces correct MIR with resolved types
     // (struct fields resolved correctly → typeck used FieldTyTable).
     let src = "struct S { x: i64, y: i32 } fn f(s: S) -> i64 { s.x }";
