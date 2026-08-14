@@ -412,3 +412,11 @@ mod stage16_60_design_writeback_tests;
 mod stage16_65_object_safety_driver_tests;
 #[path = "v0/stage16/plan/stage16_69_assoc_type_driver_tests.rs"]
 mod stage16_69_assoc_type_driver_tests;
+
+// === Stage 18: Systematic testing ===
+#[path = "v0/stage18/plan/stage18_49_stability_tests.rs"]
+mod stage18_49_stability_tests;
+#[path = "v0/stage18/plan/stage18_50_phase_integration_tests.rs"]
+mod stage18_50_phase_integration_tests;
+#[path = "v0/stage18/plan/stage18_51_fuzz_tests.rs"]
+mod stage18_51_fuzz_tests;
