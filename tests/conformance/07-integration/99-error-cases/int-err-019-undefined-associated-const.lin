@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: missing associated const in impl
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: associated const completeness not checked
+
+trait T { const X: i32; } struct S; impl T for S { } fn main() {}

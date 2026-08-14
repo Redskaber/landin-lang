@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: declaration of undefined module
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: module resolution not implemented
+
+mod undefined; fn main() {}

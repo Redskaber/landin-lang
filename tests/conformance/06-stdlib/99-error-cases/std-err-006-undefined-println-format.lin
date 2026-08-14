@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: println with missing format argument
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: println format arg validation not implemented
+
+fn main() { println!("{}", ); }

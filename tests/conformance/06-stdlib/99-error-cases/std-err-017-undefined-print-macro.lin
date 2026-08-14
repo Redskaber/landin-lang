@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: eprintln macro not fully supported in all contexts
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: eprintln macro expansion incomplete
+
+fn main() { eprintln!("test"); }

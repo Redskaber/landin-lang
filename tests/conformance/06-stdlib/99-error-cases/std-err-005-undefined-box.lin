@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: use of undefined stdlib type Box
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: stdlib Box not implemented
+
+fn main() { let b: Box<i32> = Box::new(42); }

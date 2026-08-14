@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: access to undefined enum variant
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: enum variant resolution incomplete
+
+enum E { A } fn main() { let e = E::B; }

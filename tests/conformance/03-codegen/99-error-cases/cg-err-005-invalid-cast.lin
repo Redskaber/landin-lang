@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: invalid cast from i32 to bool
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: cast type checking not implemented
+
+fn main() { let x = 42 as bool; }

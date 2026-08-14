@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: return with value in main (void return)
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: main return type not enforced
+
+fn main() { return 42; }

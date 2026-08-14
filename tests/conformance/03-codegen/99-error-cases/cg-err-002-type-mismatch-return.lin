@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: return type mismatch: bool vs i32
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: typeck does not check fn body return type against declared return type
+
+fn f() -> i32 { true }

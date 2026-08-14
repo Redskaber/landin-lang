@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: trait impl method return type mismatch
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: trait impl signature not validated against trait declaration
+
+trait T { fn f(&self) -> i32; } struct S; impl T for S { fn f(&self) -> bool { true } }

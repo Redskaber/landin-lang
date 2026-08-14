@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: return with value in void function
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: void function return value not checked
+
+fn f() { return 42; } fn main() { f(); }

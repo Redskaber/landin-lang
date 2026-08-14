@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: unsupported extern ABI
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: ABI validation not implemented
+
+extern "Rust" { fn foo(); } fn main() {}

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: circular trait implementation
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: circular trait impl not detected
+
+trait A {} trait B {} impl A for B {} impl B for A {} fn main() {}

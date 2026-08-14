@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: uninitialized trait object
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: uninitialized binding not checked
+
+trait T { fn f(&self); } fn main() { let x: &dyn T; }

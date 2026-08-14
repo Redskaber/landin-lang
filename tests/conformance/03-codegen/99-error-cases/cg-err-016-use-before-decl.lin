@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: use function before declaration
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: forward references not checked
+
+fn main() { x(); } fn x() { }

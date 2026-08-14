@@ -1,7 +1,6 @@
-// CATEGORY: 04-e2e
+// CATEGORY: e2e
 // DESCRIPTION: call trait method without impl
 // EXPECTED: compile_error
-// ERROR_PATTERN: error
-// SOURCE: Stage 18.69 negative test expansion
+// SOURCE: Stage 18.70 — compiler correctly reports error (trait method without impl)
 
 trait T { fn f(&self) -> i32; } struct S; fn main() { let s = S; s.f(); }

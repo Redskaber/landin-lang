@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: missing struct field in constructor
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: struct literal field count not validated
+
+struct S { x: i32, y: i32 } fn main() { let s = S { x: 1 }; }

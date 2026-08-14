@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: type does not satisfy trait bound
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: trait bound not enforced for primitive types
+
+trait Clone { fn clone(&self) -> Self; } fn f<T: Clone>(x: T) { } fn main() { f(42); }

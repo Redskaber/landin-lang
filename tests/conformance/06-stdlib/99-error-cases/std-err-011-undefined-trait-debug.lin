@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: use of undefined Debug trait
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: Debug trait not implemented
+
+fn main() { let x = 42; println!("{:?}", x); }

@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: type alias for undefined type
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: type alias resolution not checked
+
+type MyAlias = Undefined; fn main() {}

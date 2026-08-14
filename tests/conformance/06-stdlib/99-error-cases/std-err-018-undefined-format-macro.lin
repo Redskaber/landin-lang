@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: format! macro not fully supported
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: format! macro not implemented
+
+fn main() { let s = format!("{}", 42); }

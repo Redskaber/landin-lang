@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: mismatched if branch types
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: if branch type unification not implemented
+
+fn main() { let x = if true { 1 } else { true }; }

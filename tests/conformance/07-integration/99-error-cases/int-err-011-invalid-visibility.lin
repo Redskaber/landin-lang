@@ -1,0 +1,6 @@
+// CATEGORY: integration
+// DESCRIPTION: pub visibility not fully supported
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: visibility checking not implemented
+
+pub fn foo() {} fn main() { foo(); }

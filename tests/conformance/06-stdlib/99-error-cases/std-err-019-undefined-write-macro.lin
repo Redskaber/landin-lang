@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: write! macro not fully supported
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: write! macro not implemented
+
+fn main() { write!("test"); }

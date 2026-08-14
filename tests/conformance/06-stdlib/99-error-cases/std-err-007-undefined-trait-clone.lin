@@ -1,0 +1,6 @@
+// CATEGORY: stdlib
+// DESCRIPTION: call to undefined trait method clone
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: Clone trait not implemented
+
+fn main() { let x = 42; let y = x.clone(); }

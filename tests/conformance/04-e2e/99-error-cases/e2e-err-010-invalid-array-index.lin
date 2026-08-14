@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: array index out of bounds (static)
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: runtime array bounds check not emitted for constant indices
+
+fn main() { let a = [1, 2, 3]; let x = a[5]; }

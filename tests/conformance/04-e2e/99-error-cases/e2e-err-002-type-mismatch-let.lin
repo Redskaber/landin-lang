@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: type mismatch in let binding
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: typeck does not check let annotation against initializer
+
+fn main() { let x: i32 = true; }

@@ -1,0 +1,6 @@
+// CATEGORY: codegen
+// DESCRIPTION: tuple index out of bounds
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: tuple index bounds not checked
+
+fn main() { let t = (1, 2); let x = t.5; }

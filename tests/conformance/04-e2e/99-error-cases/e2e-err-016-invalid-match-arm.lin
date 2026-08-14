@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: match arm with undefined variant
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: match arm variant not validated
+
+enum E { A, B } fn main() { let e = E::A; match e { E::A => 1, E::C => 2 }; }

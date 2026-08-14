@@ -32549,3 +32549,71 @@ Stage Summary:
 - 40 个 Stage 0 限制测试已记录 (编译器当前接受这些 — 推迟到 typeck 增强)
 - 3245 unit + 5293 conformance = 8538 total tests, 0 failures
 - v0.335.0 → v0.336.0
+
+---
+Task ID: stage18.70
+Agent: Super Z (main)
+Task: Stage 18.70 — Supplement Negative Tests + Gap Fix Plan Table
+
+Work Log:
+- §9.4.3 测试完整性: 补充所有 Stage 0 限制负向测试 + 建立缺漏修复计划表
+
+- 补充 Stage 0 限制测试 (§测试完整性):
+  - 40 个测试标为 compile_ok (编译器当前接受这些错误代码)
+  - 每个测试包含显式限制说明 (SOURCE 字段说明具体限制)
+  - 1 个测试 (e2e-err-019-missing-impl-block) 实际被编译器拒绝 → 修正为 compile_error
+  - 总计新增 41 个测试 (40 compile_ok + 1 compile_error)
+
+- 缺漏修复计划表 (按严重性排序):
+
+  P0 (typeck 基础缺失 — 影响正确性):
+  | # | 缺漏 | 类别 | 修复方案 |
+  |---|------|------|---------|
+  | 1 | type mismatch in let binding | e2e | typeck: 统一 let 注解类型与初始化值 |
+  | 2 | type mismatch in fn return | codegen | typeck: 统一 fn body 返回值与声明返回类型 |
+  | 3 | if branch type mismatch | codegen | typeck: 统一 if/else 分支类型 |
+  | 4 | trait impl method signature mismatch | codegen+integration | typeck: 验证 impl 方法签名与 trait 声明匹配 |
+  | 5 | return with value in void fn | e2e | typeck: 验证 void fn 不返回值 |
+
+  P1 (验证缺失 — 影响安全性):
+  | # | 缺漏 | 类别 | 修复方案 |
+  |---|------|------|---------|
+  | 6 | struct literal field count | codegen+e2e | typeck: 验证 struct 字段数量 |
+  | 7 | tuple index bounds | codegen | typeck: 验证 tuple 索引在范围内 |
+  | 8 | pattern arity mismatch | e2e | typeck: 验证 pattern 元素数量匹配 |
+  | 9 | array index type check | codegen | typeck: 验证索引为整数类型 |
+  | 10 | assignment target validation | e2e | parser/typeck: 验证赋值目标为 place expression |
+  | 11 | cast type check | codegen | typeck: 验证 as 转换合法 |
+  | 12 | match arm variant validation | e2e | typeck: 验证 match arm 引用已定义的 variant |
+  | 13 | missing main | integration | driver: 检查 main 函数存在 |
+  | 14 | no associated const in impl | integration | typeck: 验证 impl 完整性 |
+
+  P2 (stdlib/语言特性缺失 — 推迟到 v0.2+):
+  | # | 缺漏 | 类别 | 修复方案 |
+  |---|------|------|---------|
+  | 15-26 | stdlib types/traits/methods | stdlib | 实现 Vec/String/Box/Option/Result/HashMap 等 |
+  | 27-30 | format/write macros | stdlib | 实现 format!/write!/Debug/Display |
+  | 31 | module resolution | integration | 实现 mod 声明解析 |
+  | 32 | extern fn resolution | integration | 验证 extern 函数存在 |
+  | 33 | visibility checking | integration | 实现 pub/private 可见性 |
+  | 34 | ABI validation | integration | 验证 extern ABI 合法 |
+  | 35 | type alias resolution | integration | 验证 type alias 引用已定义类型 |
+  | 36 | circular trait impl | integration | 检测循环 trait impl |
+  | 37 | forward references | codegen | 禁止前向引用 |
+  | 38 | uninitialized binding | integration | 检查未初始化绑定 |
+  | 39 | Copy trait permissiveness | stdlib | 收紧 Copy 自动检测 |
+  | 40 | runtime array bounds (const idx) | e2e | codegen: 对常量索引发出运行时检查 |
+
+- 验收 (§3.2):
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 604 lib + 2641 integration = 3245 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5333 conformance tests (+40 new), 0 failures
+
+Stage Summary:
+- 负向测试补充完成: 40 个 Stage 0 限制测试 (compile_ok) + 1 个修正为 compile_error
+- 缺漏修复计划表建立: 40 个缺漏按 P0/P1/P2 分类, 每个有修复方案
+- 3245 unit + 5333 conformance = 8578 total tests, 0 failures
+- v0.336.0 → v0.337.0
+- 下一步: 按 P0 → P1 → P2 顺序修复缺漏

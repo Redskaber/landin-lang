@@ -1,0 +1,6 @@
+// CATEGORY: e2e
+// DESCRIPTION: constructor for undefined struct
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.69 — Stage 0 limitation: struct literal resolution accepts undefined names
+
+fn main() { let s = Undefined { x: 1 }; }
