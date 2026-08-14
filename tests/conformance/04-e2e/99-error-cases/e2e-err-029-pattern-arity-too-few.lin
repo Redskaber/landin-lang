@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: pattern arity too few (Stage 18.72 P1-C)
+// EXPECTED: compile_error
+// ERROR_PATTERN: pattern arity
+// SOURCE: Stage 18.72 — P1-C: pattern arity check
+
+fn main() { let (a) = (1, 2); }

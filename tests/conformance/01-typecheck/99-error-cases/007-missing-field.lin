@@ -1,7 +1,8 @@
 // CATEGORY: typecheck
 // DESCRIPTION: missing struct field
-// EXPECTED: compile_ok
-// SOURCE: Stage 10.1 conformance expansion (Stage 0 limitation — typeck does not catch this error)
+// EXPECTED: compile_error
+// ERROR_PATTERN: missing field
+// SOURCE: Stage 10.1 conformance expansion (Stage 18.72 fix (was Stage 0 limitation, now correctly rejected) — typeck does not catch this error)
 
 struct S { x: i32, y: i32 } fn main() { let s = S { x: 1 }; }
 impl Copy for S {}

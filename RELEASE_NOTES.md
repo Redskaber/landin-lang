@@ -1,9 +1,80 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.339.0
+**Current version**: v0.340.0
 **Date**: 2026-08-09
-**Test count**: 617 rust lib tests + 2641 integration tests + 5338 conformance tests (5338 — **100% pass rate!**) + 4 examples
+**Test count**: 626 rust lib tests + 2641 integration tests + 5343 conformance tests (5343 — **100% pass rate!**) + 4 examples
+
+---
+## v0.340.0 — Stage 18.72 (P1 Validation Enhancement — Struct Field + Tuple Index + Pattern Arity)
+
+### Overview
+
+Fixes 3 P1 validation deficiencies from Stage 18.70's gap analysis.
+The compiler now correctly rejects invalid struct literals, out-of-bounds
+tuple indices, and pattern arity mismatches.
+
+### P1 Fixes
+
+| P1 # | Description | Fix |
+|------|-------------|-----|
+| P1-A | struct field count validation | New `validate_struct_literal_fields` |
+| P1-B | tuple index bounds check | `infer_projection` Tuple bounds check |
+| P1-C | pattern arity check | New `validate_pattern_arity` |
+
+### Implementation
+
+**`src/driver.rs`** — Two new validation functions:
+- `validate_struct_literal_fields`: walks all HIR bodies, finds struct
+  literals, and checks for missing/extra/unknown/duplicate fields
+- `validate_pattern_arity`: walks all `let` bindings with tuple patterns,
+  checks pattern count vs tuple literal element count
+- Helper `check_struct_literal_in_expr`: recursively walks expression
+  trees to find nested struct literals
+
+**`src/typeck/checker.rs`** — `infer_projection` enhanced:
+- When `Field(field_id, _)` is applied to `Tuple(tys)`, checks
+  `field_id.0 < tys.len()`
+- Pushes `TypeError` on out-of-bounds access
+- `infer_place`/`infer_projection`/`infer_operand` changed from `&self`
+  to `&mut self` to support pushing errors
+- 7 borrow conflicts fixed by splitting `self.unify.resolve(&self.infer_operand(...))`
+  into two statements
+
+### Design Compliance
+
+- **§1.0 原則 4 "报错 > 静默"**: validation errors must be reported
+- **§1.0 原則 6 "通用 > 特例"**: one validator covers all struct literals
+- **§1.0 原則 9 "正确 > 妥协"**: match Rust's validation semantics
+- **§10 naming**: `validate_struct_literal_fields`, `validate_pattern_arity`
+- **§11 isolation**: new functions are private to driver module
+
+### Tests (§9.4.3 1:3+ ratio)
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Stage 0 limitation tests flipped | 10 | compile_ok → compile_error |
+| New e2e-err tests | 5 | e2e-err-026 to 030 |
+| New Rust unit tests | 9 | stage18_72_* (4 positive + 5 negative) |
+
+### Verification
+
+- `cargo build --features llvm-backend` — ✅ clean
+- `cargo fmt --check` — ✅ clean
+- `cargo clippy --all-targets --features llvm-backend -- -D warnings` — ✅ 0 warnings
+- `cargo test --features llvm-backend` — ✅ 626 lib + 2641 integration = **3267** unit tests, 0 failures
+- `python3 tests/conformance/run_all.py` — ✅ **5343** conformance tests, 0 failures
+
+### Stage 0 Limitation Tests Flipped
+
+10 tests converted from `EXPECTED: compile_ok` to `EXPECTED: compile_error`:
+
+| Category | Count | Pattern |
+|----------|-------|---------|
+| 01-typecheck/99-error-cases | 4 | missing/extra struct field |
+| 03-codegen/99-error-cases | 3 | missing/extra field, tuple OOB |
+| 04-e2e/99-error-cases | 1 | pattern arity mismatch |
+| 05-soundness/00-r5-regression | 2 | missing/extra struct field |
 
 ---
 ## v0.339.0 — Stage 18.71 (P0 Typeck Enhancement — Type Mismatch Checks)

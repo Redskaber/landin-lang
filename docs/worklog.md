@@ -12564,85 +12564,52 @@ Stage Summary:
 - v0.67.0: minor bump (process doc upgrade)
 
 ---
-Task ID: stage18.60
+Task ID: stage18.72
 Agent: Super Z (main)
-Task: Stage 18.60 — Incremental Compilation Phase 1: Dependency Graph Infrastructure
+Task: Stage 18.72 — P1 Typeck Enhancement (Struct Field Count + Tuple Index Bounds + Pattern Arity). v0.339.0 → v0.340.0.
 
 Work Log:
-- §13.1 阶段开始设计对齐 + §13.5 设计-审查 + §14 深度审查
-- v0.7 路线图 P1: 增量编译 Phase 1 (依赖图基础设施)
-- 新增 src/incremental/ 模块 (mod.rs + dep_graph.rs)
-- DependencyGraph struct: forward_edges + reverse_edges + add_edge + queries
-- build_dependency_graph: 分析 6 种依赖类型 (fn call, type ref, struct field, impl trait, impl self, supertrait)
-- compute_affected_items: BFS on reverse edges, visited set 防循环
-- §1.0 原則 3 显式 > 隐式: 依赖关系显式为 edge
-- §1.0 原則 6 通用 > 特例: 一个 graph 处理所有依赖类型
-- §10 命名: build_dependency_graph / compute_affected_items
-- §11 接口隔离: incremental 模块独立
-- 测试: 12 unit (3 pos + 9 neg = 1:3+)
-- 验收:
-  - cargo build --features llvm-backend — ✅
-  - cargo fmt --check — ✅
-  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
-  - cargo test --features llvm-backend — ✅ 607 lib + 2665 integration = 3272 unit tests, 0 failures
-  - python3 tests/conformance/run_all.py — ✅ 5249 conformance tests, 0 failures
-
-Stage Summary:
-- 增量编译 Phase 1 完成: 依赖图基础设施
-- 3272 unit + 5249 conformance = 8521 total tests, 0 failures
-- v0.326.0 → v0.327.0
-- 下一步: 增量编译 Phase 2 (缓存键 + MIR hash)
-
----
-Task ID: stage18.71
-Agent: Super Z (main)
-Task: Stage 18.71 — P0 Typeck Enhancement (Type Mismatch Checks). v0.338.0 → v0.339.0.
-
-Work Log:
-- §13.1 设计对齐: 阅读 docs/stage-committee-process.md + Stage 18.70 缺漏修复计划表
-- §13.5 设计-审查循环: 编写 stage-18.71-p0-typeck-enhancement-design.md
-- 5 个 P0 修复:
-  1. P0-1/2/3 (let/return/if-branch type mismatch):
-     - 移除 src/typeck/predicates.rs::can_coerce 中的 (Int/Uint, Bool) 规则
-     - 新增 src/typeck/checker.rs::post_check_statement (Phase 5.5)
-     - 新增 infer_rvalue_type_only (无副作用版本，避免重复 unify)
-     - 新增 infer_operand_type_only
-     - 添加 dedupe 逻辑 (Phase 1 vs Phase 5.5 重复错误)
-     - types_match_loose 添加 Int↔Uint 同宽度规则 (unify 表丢失 Uint-ness 的 workaround)
-     - type_has_unresolved_substs 添加 Projection 永远视为未解析
-  2. P0-5 (void fn return value):
-     - src/mir/lower/mod.rs: void fn return local 从 fresh_infer_ty 改为 Tuple([])
-     - src/mir/lower/mod.rs: void fn 不再赋值 trailing expression (匹配 Rust 语义)
-     - src/codegen/terminator.rs: ret_ty=I32 但 ret_val=None 时 emit `ret i32 0`
-  3. P0-4 (trait impl signature mismatch):
-     - src/driver.rs: 新增 validate_impl_method_signatures 函数
-     - 比较 trait 与 impl 的: arg count, arg types, return type
-     - 新增 mir_ty_kinds_compatible 辅助函数 (保守类型比较)
+- §13.1 设计对齐: 阅读 Stage 18.71 gate-review + Stage 18.70 缺漏修复计划表
+- §13.5 设计-审查循环: 编写 stage-18.72-p1-validation-enhancement-design.md
+- 3 个 P1 修复:
+  1. P1-A (struct field count validation):
+     - src/driver.rs: 新增 validate_struct_literal_fields 函数
+     - 校验: missing field, extra/unknown field, duplicate field
+     - 新增 check_struct_literal_in_expr (递归遍历表达式树)
+     - 新增 validate_one_struct_literal (单个 struct literal 校验)
+  2. P1-B (tuple index bounds check):
+     - src/typeck/checker.rs: infer_projection 添加 Tuple(tys) index bounds check
+     - infer_place/infer_projection/infer_operand/infer_operand_type_only/infer_rvalue_type_only
+       从 &self 改为 &mut self (支持 push errors)
+     - 修复 7 处 borrow conflict (split into two statements)
+  3. P1-C (pattern arity check):
+     - src/driver.rs: 新增 validate_pattern_arity 函数
+     - HIR 层面保守检查: 当 init 是 tuple literal 时比较 pattern count vs tuple len
+     - 额外捕获: tuple index OOB (因为 (a,b,c)=(1,2) 会 lower 为 t.2 access)
 - 测试更新:
-  - 106 个 Stage 0 limitation 测试从 compile_ok 翻转为 compile_error
-    (使用 scripts/stage18_71_flip_targeted.py + stage18_71_flip_int_literal_tests.py)
-  - 5 个新 e2e-err 测试 (e2e-err-021 到 025)
-  - 13 个新 Rust 单元测试 (stage18_71_*)
+  - 10 个 Stage 0 limitation 测试从 compile_ok 翻转为 compile_error
+    (使用 scripts/stage18_72_flip_p1_tests.py)
+  - 5 个新 e2e-err 测试 (e2e-err-026 到 030)
+  - 9 个新 Rust 单元测试 (stage18_72_*)
 - §3.2 验收:
   - cargo clean ✅
   - cargo build --features llvm-backend ✅
   - cargo fmt --check ✅
   - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
-  - cargo test --features llvm-backend ✅ (617 lib + 2641 integration = 3258 unit tests, 0 failures)
-  - python3 tests/conformance/run_all.py ✅ (5338 conformance tests, 0 failures)
+  - cargo test --features llvm-backend ✅ (626 lib + 2641 integration = 3267 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (5343 conformance tests, 0 failures)
 - §8 文档同步:
-  - docs/develop/v0/stage-18/stage-18.71-p0-typeck-enhancement-design.md (新建)
-  - docs/develop/v0/stage-18/stage-18.71-gate-review-round1.md (新建)
-  - Cargo.toml: v0.338.0 → v0.339.0
+  - docs/develop/v0/stage-18/stage-18.72-p1-validation-enhancement-design.md (新建)
+  - docs/develop/v0/stage-18/stage-18.72-gate-review-round1.md (新建)
+  - Cargo.toml: v0.339.0 → v0.340.0
   - worklog.md (本条目)
 
 Stage Summary:
-- Stage 18.71 PASSED — 5 P0 typeck 缺漏全部修复
+- Stage 18.72 PASSED — 3 P1 typeck 缺漏全部修复
 - 修复方式严格遵循 §1.0 原则:
-  - 原则 3 显式 > 隐式: void fn return local 显式为 unit
-  - 原则 4 报错 > 静默: 类型不匹配必须报错
-  - 原则 6 通用 > 特例: 一个 post_check_statement 覆盖所有 Assign
-  - 原则 9 正确 > 妥协: 严格按 Rust 语义 (Bool≠Int, Int≠Float)
-- 3258 unit + 5338 conformance = 8596 total tests, 0 failures
-- v0.339.0: minor bump (P0 typeck enhancement — major correctness improvement)
-- 下一步: Stage 18.72+ P1 修复 (struct field count, tuple index, pattern arity, etc.)
+  - 原则 4 报错 > 静默: field count/tuple index/pattern arity 不匹配必须报错
+  - 原则 6 通用 > 特例: 一个 validator 覆盖所有 struct literals
+  - 原则 9 正确 > 妥协: 严格按 Rust 语义校验
+- 3267 unit + 5343 conformance = 8610 total tests, 0 failures
+- v0.340.0: minor bump (P1 validation enhancement)
+- 下一步: Stage 18.73+ P1 修复 (assignment target, cast type check, missing main, etc.)

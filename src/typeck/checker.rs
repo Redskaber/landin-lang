@@ -266,7 +266,12 @@ impl TypeChecker {
     /// types (which would produce spurious errors).
     ///
     /// Per §1.0 原則 3 "显式 > 隐式": the no-side-effect contract is explicit.
-    fn infer_rvalue_type_only(&self, mir: &MirBody, rv: &Rvalue) -> Ty {
+    ///
+    /// Stage 18.72: Now `&mut self` because `infer_operand_type_only` →
+    /// `infer_place` → `infer_projection` may push tuple index OOB errors.
+    /// The "no side effects" contract is relaxed: tuple index OOB is a
+    /// real error that should be reported even in post_check_statement.
+    fn infer_rvalue_type_only(&mut self, mir: &MirBody, rv: &Rvalue) -> Ty {
         use crate::mir::place::Rvalue;
         match rv {
             Rvalue::Use(op) => self.infer_operand_type_only(mir, op),
@@ -331,7 +336,14 @@ impl TypeChecker {
     }
 
     /// Stage 18.71: Infer an operand's type WITHOUT side effects.
-    fn infer_operand_type_only(&self, mir: &MirBody, op: &crate::mir::place::Operand) -> Ty {
+    /// Stage 18.72: This is now `&mut self` because `infer_place` is
+    /// `&mut self` (tuple index bounds check pushes errors). The
+    /// "no side effects" contract of `post_check_statement` is preserved
+    /// because `infer_rvalue_type_only` (the caller) doesn't use
+    /// `infer_operand` — it uses this function directly. The tuple index
+    /// OOB error from `infer_place` is acceptable here because it's a
+    /// real error that should be reported.
+    fn infer_operand_type_only(&mut self, mir: &MirBody, op: &crate::mir::place::Operand) -> Ty {
         match op {
             crate::mir::place::Operand::Copy(lv) | crate::mir::place::Operand::Move(lv) => {
                 self.infer_place(mir, lv)
@@ -644,7 +656,10 @@ impl TypeChecker {
     /// defaulting (e.g., `let x = 1; x();` where x defaults to i32).
     fn post_check_terminator(&mut self, mir: &MirBody, term: &Terminator) {
         if let TerminatorKind::Call { func, .. } = &term.kind {
-            let func_ty = self.unify.resolve(&self.infer_operand(mir, func));
+            // Stage 18.72: Split into two statements to avoid borrow conflict
+            // (infer_operand is now &mut self, unify.resolve is &self).
+            let func_ty_raw = self.infer_operand(mir, func);
+            let func_ty = self.unify.resolve(&func_ty_raw);
             // G7 fix: if func is neither FnDef nor FnPtr (after defaulting),
             // emit an error. Infer should be resolved by now; if it's still
             // Infer, it means no constraint was applied (rare).
@@ -769,14 +784,21 @@ impl TypeChecker {
                 ..
             } => {
                 // Infer func type
-                let func_ty = self.unify.resolve(&self.infer_operand(mir, func));
+                // Stage 18.72: Split into two statements to avoid borrow conflict.
+                let func_ty_raw = self.infer_operand(mir, func);
+                let func_ty = self.unify.resolve(&func_ty_raw);
                 // Infer arg types and collect them
-                let arg_tys: Vec<Ty> = args
+                let arg_tys_raw: Vec<Ty> = args
                     .iter()
-                    .map(|arg| self.unify.resolve(&self.infer_operand(mir, arg)))
+                    .map(|arg| self.infer_operand(mir, arg))
+                    .collect();
+                let arg_tys: Vec<Ty> = arg_tys_raw
+                    .iter()
+                    .map(|ty| self.unify.resolve(ty))
                     .collect();
                 // Infer destination type
-                let dest_ty = self.unify.resolve(&self.infer_place(mir, destination));
+                let dest_ty_raw = self.infer_place(mir, destination);
+                let dest_ty = self.unify.resolve(&dest_ty_raw);
 
                 // G3 fix (Stage 2.4e): If func is a FnDef(def_id, _),
                 // look up the fn signature from fn_sigs and verify:
@@ -994,7 +1016,11 @@ impl TypeChecker {
     }
 
     /// Infer the type of a place (place expression).
-    fn infer_place(&self, mir: &MirBody, lv: &Place) -> Ty {
+    ///
+    /// Stage 18.72: Changed from `&self` to `&mut self` so that
+    /// `infer_projection` can push TypeErrors (e.g., tuple index out
+    /// of bounds). All callers already have `&mut self`.
+    fn infer_place(&mut self, mir: &MirBody, lv: &Place) -> Ty {
         match &lv.kind {
             PlaceKind::Local(id) => {
                 if (id.0 as usize) < mir.local_decls.len() {
@@ -1009,7 +1035,7 @@ impl TypeChecker {
             }
             PlaceKind::Projection(base, elem) => {
                 let base_ty = self.infer_place(mir, base);
-                self.infer_projection(&base_ty, elem)
+                self.infer_projection(&base_ty, elem, lv.span)
             }
         }
     }
@@ -1023,7 +1049,13 @@ impl TypeChecker {
     /// document the current behavior. Adding errors here would change those
     /// tests from `compile_error` to having specific error patterns.
     /// Per §1.0 原則 4 "报错 > 静默": these should push errors in a future stage.
-    fn infer_projection(&self, base_ty: &Ty, elem: &ProjectionElem) -> Ty {
+    ///
+    /// Stage 18.72 P1-B: Added tuple index bounds check. When base type is
+    /// `Tuple(tys)` and `Field(field_id, _)` is applied, verify
+    /// `field_id.0 < tys.len()`. If out of bounds, push a TypeError and
+    /// return Error type.
+    /// Per §1.0 原則 4 "报错 > 静默": tuple index OOB must be reported.
+    fn infer_projection(&mut self, base_ty: &Ty, elem: &ProjectionElem, place_span: Span) -> Ty {
         match elem {
             ProjectionElem::Deref => {
                 if let TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) = &base_ty.kind {
@@ -1033,7 +1065,25 @@ impl TypeChecker {
                     Ty::new(TyKind::Error, Span::DUMMY)
                 }
             }
-            ProjectionElem::Field(_, field_ty) => field_ty.clone(),
+            ProjectionElem::Field(field_id, field_ty) => {
+                // Stage 18.72 P1-B: Tuple index bounds check.
+                // Per §1.0 原則 4 "报错 > 静默": out-of-bounds tuple index
+                // must be reported, not silently return Error.
+                if let TyKind::Tuple(tys) = &base_ty.kind {
+                    if (field_id.0 as usize) >= tys.len() {
+                        self.errors.push(TypeError::new(
+                            format!(
+                                "tuple index out of bounds: index {} but tuple has {} element(s)",
+                                field_id.0,
+                                tys.len()
+                            ),
+                            place_span,
+                        ));
+                        return Ty::new(TyKind::Error, Span::DUMMY);
+                    }
+                }
+                field_ty.clone()
+            }
             ProjectionElem::Index(_) => {
                 if let TyKind::Array(inner, _) | TyKind::Slice(inner) = &base_ty.kind {
                     (**inner).clone()
@@ -1070,8 +1120,11 @@ impl TypeChecker {
                 // G8 fix (Stage 2.4g): resolve operands before type checking,
                 // so TyVar bound to concrete types (Bool, Str, Tuple) is
                 // correctly rejected by is_arithmetic_ty etc.
-                let a_ty = self.unify.resolve(&self.infer_operand(mir, a));
-                let b_ty = self.unify.resolve(&self.infer_operand(mir, b));
+                // Stage 18.72: Split into two statements to avoid borrow conflict.
+                let a_ty_raw = self.infer_operand(mir, a);
+                let a_ty = self.unify.resolve(&a_ty_raw);
+                let b_ty_raw = self.infer_operand(mir, b);
+                let b_ty = self.unify.resolve(&b_ty_raw);
                 // Unify lhs and rhs types (they must match for arithmetic)
                 match op {
                     BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
@@ -1166,7 +1219,9 @@ impl TypeChecker {
                 Ty::new(TyKind::Error, Span::DUMMY)
             }
             Rvalue::UnaryOp(op, operand) => {
-                let inner_ty = self.unify.resolve(&self.infer_operand(mir, operand));
+                // Stage 18.72: Split into two statements to avoid borrow conflict.
+                let inner_ty_raw = self.infer_operand(mir, operand);
+                let inner_ty = self.unify.resolve(&inner_ty_raw);
                 match op {
                     UnOp::Not => {
                         // !bool → bool, !int → int
@@ -1298,7 +1353,11 @@ impl TypeChecker {
     }
 
     /// Infer the type of an operand.
-    fn infer_operand(&self, mir: &MirBody, op: &Operand) -> Ty {
+    ///
+    /// Stage 18.72: Changed from `&self` to `&mut self` because
+    /// `infer_place` is now `&mut self` (to support tuple index bounds
+    /// check in `infer_projection`).
+    fn infer_operand(&mut self, mir: &MirBody, op: &Operand) -> Ty {
         match op {
             Operand::Copy(lv) | Operand::Move(lv) => self.infer_place(mir, lv),
             Operand::Constant(c) => c.ty.clone(),
@@ -2061,6 +2120,151 @@ mod tests {
     fn stage18_71_void_fn_no_return_ok() {
         use crate::compile;
         let src = "fn f() { let x = 42; } fn main() { f(); }";
+        let result = compile(src);
+        assert!(
+            result.errors.typeck.is_empty(),
+            "expected no typeck errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    // ========================================================================
+    // Stage 18.72 P1 tests — struct field count + tuple index + pattern arity.
+    // Per §9.4.3: 1:3+ ratio (positive : negative).
+    // ========================================================================
+
+    /// Stage 18.72 P1-A positive: `S { x: 1, y: 2 }` compiles OK.
+    #[test]
+    fn stage18_72_struct_all_fields_ok() {
+        use crate::compile;
+        let src = "struct S { x: i32, y: i32 } fn main() { let s = S { x: 1, y: 2 }; }";
+        let result = compile(src);
+        assert!(
+            result.errors.typeck.is_empty(),
+            "expected no typeck errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.72 P1-A negative: missing field is rejected.
+    #[test]
+    fn stage18_72_struct_missing_field_rejected() {
+        use crate::compile;
+        let src = "struct S { x: i32, y: i32 } fn main() { let s = S { x: 1 }; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .any(|e| e.message.contains("missing field")),
+            "expected 'missing field' error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.72 P1-A negative: extra field is rejected.
+    #[test]
+    fn stage18_72_struct_extra_field_rejected() {
+        use crate::compile;
+        let src = "struct S { x: i32 } fn main() { let s = S { x: 1, y: 2 }; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .any(|e| e.message.contains("no field")),
+            "expected 'no field' error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.72 P1-A negative: unknown field is rejected.
+    #[test]
+    fn stage18_72_struct_unknown_field_rejected() {
+        use crate::compile;
+        let src = "struct S { x: i32 } fn main() { let s = S { z: 1 }; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .any(|e| e.message.contains("no field")),
+            "expected 'no field' error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.72 P1-A negative: duplicate field is rejected.
+    #[test]
+    fn stage18_72_struct_duplicate_field_rejected() {
+        use crate::compile;
+        let src = "struct S { x: i32, y: i32 } fn main() { let s = S { x: 1, x: 2 }; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .any(|e| e.message.contains("specified more than once")),
+            "expected 'specified more than once' error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.72 P1-B positive: valid tuple index compiles OK.
+    #[test]
+    fn stage18_72_tuple_valid_index_ok() {
+        use crate::compile;
+        let src = "fn main() { let t = (1, 2, 3); let x = t.0; let y = t.1; let z = t.2; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .all(|e| !e.message.contains("tuple index out of bounds")),
+            "expected no tuple index OOB errors, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.72 P1-B negative: tuple index out of bounds is rejected.
+    #[test]
+    fn stage18_72_tuple_index_oob_rejected() {
+        use crate::compile;
+        let src = "fn main() { let t = (1, 2); let x = t.5; }";
+        let result = compile(src);
+        assert!(
+            result
+                .errors
+                .typeck
+                .iter()
+                .any(|e| e.message.contains("tuple index out of bounds")),
+            "expected 'tuple index out of bounds' error, got: {:?}",
+            result.errors.typeck
+        );
+    }
+
+    /// Stage 18.72 P1-C negative: pattern arity too many is rejected.
+    #[test]
+    fn stage18_72_pattern_arity_too_many_rejected() {
+        use crate::compile;
+        let src = "fn main() { let (a, b, c) = (1, 2); }";
+        let result = compile(src);
+        assert!(
+            !result.errors.typeck.is_empty(),
+            "expected typeck error for pattern arity mismatch"
+        );
+    }
+
+    /// Stage 18.72 P1-C positive: matching pattern arity compiles OK.
+    #[test]
+    fn stage18_72_pattern_arity_match_ok() {
+        use crate::compile;
+        let src = "fn main() { let (a, b) = (1, 2); }";
         let result = compile(src);
         assert!(
             result.errors.typeck.is_empty(),

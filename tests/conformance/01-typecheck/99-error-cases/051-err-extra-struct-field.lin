@@ -1,7 +1,8 @@
 // CATEGORY: typecheck
 // DESCRIPTION: extra struct field
-// EXPECTED: compile_ok
-// SOURCE: Stage 11.1 typecheck expansion (Stage 0 limitation)
+// EXPECTED: compile_error
+// ERROR_PATTERN: no field
+// SOURCE: Stage 11.1 typecheck expansion (Stage 18.72 fix (was Stage 0 limitation, now correctly rejected))
 
 struct S { x: i32 } fn main() { let s = S { x: 1, y: 2 }; }
 impl Copy for S {}

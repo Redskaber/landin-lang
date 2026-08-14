@@ -1,0 +1,7 @@
+// CATEGORY: e2e
+// DESCRIPTION: struct unknown field in constructor (Stage 18.72 P1-A)
+// EXPECTED: compile_error
+// ERROR_PATTERN: no field
+// SOURCE: Stage 18.72 — P1-A: struct literal field count validation
+
+struct S { x: i32 } fn main() { let s = S { z: 1 }; }

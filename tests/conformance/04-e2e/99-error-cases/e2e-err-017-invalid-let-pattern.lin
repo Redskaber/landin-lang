@@ -1,6 +1,7 @@
 // CATEGORY: e2e
 // DESCRIPTION: pattern arity mismatch in let
-// EXPECTED: compile_ok
-// SOURCE: Stage 18.69 — Stage 0 limitation: pattern arity not checked
+// EXPECTED: compile_error
+// ERROR_PATTERN: tuple index out of bounds
+// SOURCE: Stage 18.69 — Stage 18.72 fix (was Stage 0 limitation, now correctly rejected): pattern arity not checked
 
 fn main() { let (a, b, c) = (1, 2); }
