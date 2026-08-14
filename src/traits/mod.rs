@@ -11,6 +11,8 @@
 //! then provides data to typeck/borrowck/codegen.
 
 pub mod builtin;
+// Stage 18.95: TraitError moved from driver.rs to traits/error.rs.
+pub mod error;
 // Stage 16.64 (Task 14 Phase 1): Object safety checking re-implemented.
 // Checks whether a trait is object-safe (whether `dyn Trait` can be used).
 pub mod object_safety;
@@ -20,6 +22,7 @@ pub mod vtable;
 pub use builtin::{
     is_primitive_copy_kind, BUILTIN_DEF_ID_BASE, BUILTIN_PRIMITIVE_COPY_KINDS, BUILTIN_TRAIT_NAMES,
 };
+pub use error::TraitError;
 pub use object_safety::{check_trait_object_safety, ObjectSafetyViolation};
 pub use resolver::{
     extract_impl_self_ty_name, CoherenceError, ImplInfo, ImplValidationReport, IncompleteImpl,

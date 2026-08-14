@@ -194,7 +194,7 @@ fn stage17_09_compile_trait_errors_contain_coherence() {
         .errors
         .trait_errors
         .iter()
-        .any(|e| matches!(e, landin_compiler::driver::TraitError::Coherence(_)));
+        .any(|e| matches!(e, landin_compiler::TraitError::Coherence(_)));
     assert!(
         has_coherence,
         "should have Coherence variant in trait_errors"

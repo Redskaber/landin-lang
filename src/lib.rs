@@ -437,7 +437,8 @@ pub use codegen::{
     CodegenTraitDispatchEmissionSummary, EmitType, EmitValue, Emitter, StdlibDynptrGlobalSpec,
     StdlibVtableGlobalSpec, TextEmitter,
 };
-pub use driver::{compile, CompileErrors, CompileResult, TraitError};
+pub use driver::{compile, CompileErrors, CompileResult};
+// Stage 18.95: TraitError moved from driver.rs to traits/error.rs.
 pub use stdlib::{
     default_prelude, find_stdlib_trait_method, integer_bit_width, is_float_type, is_primitive_type,
     is_signed_integer, is_stdlib_marker_trait, is_stdlib_trait, is_stdlib_trait_method,
@@ -459,6 +460,7 @@ pub use stdlib::{
     StdlibPrelude, StdlibSelfKind, StdlibTraitMethod, StdlibTypeKind, StdlibVtableEmission,
     StdlibVtableEmissionSummary, StdlibVtablePlan, StdlibVtablePlanEntry, StdlibVtableSlot,
 };
+pub use traits::TraitError;
 pub use traits::{
     extract_impl_self_ty_name, is_primitive_copy_kind, CoherenceError, ImplValidationReport,
     IncompleteImpl, TraitResolver, BUILTIN_DEF_ID_BASE, BUILTIN_PRIMITIVE_COPY_KINDS,

@@ -13114,3 +13114,45 @@ Stage Summary:
 - v0.1 稳定版本文档完全就绪
 - 6221 tests, 0 failures
 - v0.362.0: minor bump (documentation sync)
+
+---
+Task ID: stage18.95
+Agent: Super Z (main)
+Task: Stage 18.95 — TraitError Location Migration (driver.rs → traits/error.rs). v0.362.0 → v0.363.0.
+
+Work Log:
+- §13.1 设计对齐: v0.2 路线图 P1 "TraitError 位置迁移" — 可独立完成
+- 新建 src/traits/error.rs:
+  - 移动 TraitError enum + format_with_interner + format_without_interner
+  - 从 driver.rs 迁移 ~100 行代码
+- 更新 src/traits/mod.rs:
+  - 添加 pub mod error + pub use error::TraitError
+- 更新 src/driver.rs:
+  - 移除 TraitError 定义 (enum + impl, ~100 行)
+  - 改为 use crate::traits::TraitError (从 traits 导入)
+  - 移除未使用的 CoherenceError/IncompleteImpl 导入
+- 更新 src/lib.rs:
+  - pub use driver::TraitError → pub use traits::TraitError
+- 修复引用:
+  - src/typeck/checker.rs: crate::driver::TraitError → crate::traits::TraitError
+  - tests/v0/stage5/plan/trait_coherence_tests.rs: landin_compiler::driver::TraitError → landin_compiler::TraitError
+  - tests/v0/stage15/plan/error_system_cleanup_tests.rs: 同上
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2648 integration = 3286 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - Cargo.toml: v0.362.0 → v0.363.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.95 PASSED — TraitError 位置迁移完成
+- TraitError 从 driver.rs 迁移到 traits/error.rs
+  → 遵循 §6 单一数据源原则 (error 类型在拥有模块定义)
+  → 与 TypeError (typeck/error.rs), BorrowError (borrowck/error.rs) 一致
+- 3286 unit + 2935 conformance = 6221 total tests, 0 failures
+- v0.363.0: minor bump (TraitError location migration)
+- v0.2 路线图 P1 TraitError 位置迁移 ✅ 完成
+- 下一步: v0.2 核心基础 (criterion 基准 / MIR opt 接线 / 单态化)

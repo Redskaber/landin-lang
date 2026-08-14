@@ -2474,7 +2474,7 @@ mod tests {
         let result = compile(src);
         // The error is a TraitError::Incomplete with missing_associated_consts.
         let has_assoc_const_error = result.errors.trait_errors.iter().any(|e| {
-            if let crate::driver::TraitError::Incomplete(inc) = e {
+            if let crate::traits::TraitError::Incomplete(inc) = e {
                 !inc.missing_associated_consts.is_empty()
             } else {
                 false

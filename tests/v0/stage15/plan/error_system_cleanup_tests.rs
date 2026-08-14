@@ -536,7 +536,7 @@ fn stage15_89_coherence_error_span_points_to_impl() {
     // The span should NOT be Span::DUMMY.
     use landin_compiler::traits::resolver::CoherenceError;
     let span = match ce {
-        landin_compiler::driver::TraitError::Coherence(CoherenceError { span, .. }) => *span,
+        landin_compiler::TraitError::Coherence(CoherenceError { span, .. }) => *span,
         _ => panic!("expected Coherence error"),
     };
     assert_ne!(
@@ -573,7 +573,7 @@ fn stage15_89_incomplete_impl_error_span_points_to_impl() {
     // The span should NOT be Span::DUMMY.
     use landin_compiler::traits::resolver::IncompleteImpl;
     let span = match inc {
-        landin_compiler::driver::TraitError::Incomplete(IncompleteImpl { span, .. }) => *span,
+        landin_compiler::TraitError::Incomplete(IncompleteImpl { span, .. }) => *span,
         _ => panic!("expected Incomplete error"),
     };
     assert_ne!(
