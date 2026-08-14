@@ -2173,38 +2173,6 @@ pub(crate) fn lower_qualified_path_to_projection(
     }
 }
 
-/// Stage 18.56: Find the trait DefId that declares an associated type, matching
-/// by trait path (not just assoc name).
-///
-/// This function is retained for backward compatibility but is now deprecated —
-/// the resolver (`resolve_ty_paths`) sets `path.res` to the trait DefId during
-/// resolution, and `lower_qualified_path_to_projection` uses `path.res` directly.
-///
-/// Per §1.0 原則 5 "去除兼容思维": this function will be removed once all
-/// callers migrate to using `path.res`.
-///
-/// Per §10 naming: `find_assoc_type_def_id` follows `<verb>_<noun>_<noun>` pattern.
-#[deprecated(note = "Stage 18.56: use path.res from resolver instead")]
-#[allow(dead_code)]
-fn find_assoc_type_def_id(
-    hir: &HirCrate,
-    _trait_res: &crate::hir::Res,
-    assoc_name: crate::lexer::Symbol,
-) -> Option<crate::hir::DefId> {
-    for (trait_def_id, owner) in &hir.owners {
-        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
-            for item in &t.items {
-                if let crate::hir::HirTraitItem::Type(assoc) = item {
-                    if assoc.ident.name == assoc_name {
-                        return Some(*trait_def_id);
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
 /// Stage 16.53 (Task 11 Phase 2): Lower a HIR type to MIR type with generic
 /// type parameter resolution.
 ///

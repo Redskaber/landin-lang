@@ -31,12 +31,10 @@ pub mod where_clause;
 // Lifetime elision will be re-implemented in v0.2 when real lifetimes are added.
 pub mod unify;
 
-// Stage 3.63 (cross-stage naming standardization): `check_crate` and
-// `check_mir_body_with_hir` are kept as deprecated legacy entry points
-// for backwards compatibility; new code should use
-// `TypeChecker::check_mir_body_with_tables` (§16-compliant).
-#[allow(deprecated)]
-pub use checker::{check_crate, check_mir_body, TypeChecker};
+// Stage 18.60: Removed deprecated `check_crate` and `check_mir_body_with_hir`
+// dead code. The driver now uses `TypeChecker::check_mir_body_with_tables`
+// directly (§16-compliant). `check_mir_body` is kept as a convenience wrapper.
+pub use checker::{check_mir_body, TypeChecker};
 // Stage 6.15: re-export data tables from `tables` sub-module for backward compat.
 pub use error::{TypeError, TypeErrorKind};
 pub use tables::{FieldTyTable, FnSigTable, TypeckResults};

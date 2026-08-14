@@ -20,7 +20,6 @@
 //! points (`check_mir_body` / `check_crate`) + tests.
 
 use crate::ast;
-use crate::hir::HirCrate;
 use crate::mir::body::TerminatorKind;
 use crate::mir::body::*;
 use crate::mir::place::*;
@@ -28,7 +27,6 @@ use crate::mir::ty::*;
 use crate::session::Span;
 use crate::typeck::error::TypeError;
 use crate::typeck::unify::UnificationTable;
-use lasso::Rodeo;
 
 // Stage 6.15: import data tables + predicates from sub-modules.
 use super::predicates::{
@@ -80,10 +78,6 @@ impl TypeChecker {
             fn_sigs: std::collections::HashMap::new(),
         }
     }
-
-    /// Stage 3.62: Deprecated. Set `tc.fn_sigs` directly from FnSigTable.
-    #[deprecated(note = "Set fn_sigs directly from FnSigTable instead")]
-    pub fn populate_fn_sigs(&mut self, _hir: &HirCrate) {}
 
     /// Stage 16.84: Format a `Ty` for error messages, using resolver if available.
     ///
@@ -425,12 +419,6 @@ impl TypeChecker {
     /// `mir.local_decls[i].ty` so that downstream consumers (borrowck,
     /// codegen) see concrete types instead of inference variables.
     pub fn check_mir_body(&mut self, mir: &mut MirBody) {
-        self.check_mir_body_with_tables(mir, None);
-    }
-
-    /// Stage 3.62: Deprecated. Use `check_mir_body_with_tables` instead.
-    #[deprecated(note = "Use check_mir_body_with_tables instead")]
-    pub fn check_mir_body_with_hir(&mut self, mir: &mut MirBody, _hir: Option<&HirCrate>) {
         self.check_mir_body_with_tables(mir, None);
     }
 
@@ -1142,28 +1130,6 @@ pub fn check_mir_body(mir: &mut MirBody) -> Vec<TypeError> {
     let mut tc = TypeChecker::new();
     tc.check_mir_body(mir);
     tc.into_errors()
-}
-
-/// Stage 3.63: Deprecated legacy entry point. The driver now uses
-/// `TypeChecker::check_mir_body_with_tables` directly (§16-compliant).
-///
-/// This free function is retained for backwards compatibility with older
-/// callers that pass a `HirCrate`. It internally re-lowers HIR to MIR and
-/// runs typeck without `FieldTyTable` — the §16-violating pattern that
-/// Stage 3.60 eliminated. New code should use the driver or
-/// `TypeChecker::check_mir_body_with_tables` directly.
-#[deprecated(
-    note = "Use TypeChecker::check_mir_body_with_tables (§16-compliant) or driver::compile instead"
-)]
-pub fn check_crate(hir: &HirCrate, interner: &Rodeo) -> Vec<TypeError> {
-    let mut all_errors = Vec::new();
-    for (_, body) in &hir.bodies {
-        let mut mir = crate::mir::lower::lower_hir_body_to_mir(body, interner, hir);
-        let mut tc = TypeChecker::new();
-        tc.check_mir_body(&mut mir);
-        all_errors.extend(tc.into_errors());
-    }
-    all_errors
 }
 
 #[cfg(test)]

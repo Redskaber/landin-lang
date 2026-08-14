@@ -32045,3 +32045,59 @@ Stage Summary:
 - 向后兼容: 旧 7 变体保留, 渐进迁移
 - v0.325.0 → v0.326.0
 - 审计驱动清理全部完成 (Stage 18.56-18.59)
+
+---
+Task ID: stage18.60
+Agent: Super Z (main)
+Task: Stage 18.60 — 审计遗留清理: 移除死代码 + 文档化 catch-all + 清理 deprecated
+
+Work Log:
+- §13.1 阶段开始设计对齐 + §13.5 设计-审查 + §14 深度审查
+- 用户明确要求: "没清理处理干净审查留下的'烂摊子'不能添加新内容"
+- 继续清理 Stage 18.56 审计遗留的死代码和未文档化的 catch-all
+
+- 移除死代码 (§避免死代码):
+  1. find_assoc_type_def_id (src/mir/lower/mod.rs):
+     - deprecated + #[allow(dead_code)] + 无调用者
+     - 完全移除函数定义和关联文档注释
+  2. populate_fn_sigs (src/typeck/checker.rs):
+     - deprecated 空函数体 {} + 无调用者
+     - 完全移除
+  3. check_mir_body_with_hir (src/typeck/checker.rs):
+     - deprecated + 无调用者
+     - 完全移除
+  4. check_crate 自由函数 (src/typeck/checker.rs):
+     - deprecated + 无调用者 (仅 re-export 但无人调用)
+     - 完全移除 + 更新 typeck/mod.rs re-export
+  5. 清理因移除 check_crate 导致的 unused imports:
+     - use crate::hir::HirCrate (checker.rs)
+     - use lasso::Rodeo (checker.rs)
+
+- 文档化 _ => {} catch-all (§报错 > 静默):
+  - driver.rs 11处 _ => {} 添加显式注释
+  - 标注: "Stage 18.60: skip unhandled variant (no Res::Def to check)"
+  - 区分: HirExprKind / HirStmt / 无路径可扫描 的不同 catch-all
+
+- 更新 typeck/mod.rs re-export:
+  - 移除 check_crate
+  - 移除 #[allow(deprecated)] (不再需要)
+  - 更新注释说明移除原因
+
+- 保留的 deprecated (有调用者, 不可移除):
+  - ty_is_copy (borrowck/copy_semantics.rs): 仍在 borrowck/mod.rs:192 调用
+  - format_errors (driver.rs): 测试可能引用 (保留向后兼容)
+
+- 验收 (§3.2 交付前验收检查):
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2653 integration = 3260 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5249 conformance tests, 0 failures
+
+Stage Summary:
+- 审计遗留清理完成: 移除 4 个死代码函数 + 清理 2 个 unused imports + 文档化 11 处 catch-all
+- §避免死代码: find_assoc_type_def_id / populate_fn_sigs / check_mir_body_with_hir / check_crate 全部移除
+- §报错 > 静默: 11处 _ => {} 全部添加显式注释
+- §高内聚低耦合: typeck/mod.rs re-export 更新, 移除 #[allow(deprecated)]
+- 3260 unit + 5249 conformance = 8509 total tests, 0 failures
+- v0.326.0 → v0.327.0

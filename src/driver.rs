@@ -2079,7 +2079,7 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
                         }
                     }
                     HirStmt::Expr(e, _) => scan_expr_for_unresolved(e, errors),
-                    _ => {}
+                    _ => {} // Stage 18.60: skip unhandled HirExprKind variant (no Res::Def to check)
                 }
             }
             if let Some(e) = &b.expr {
@@ -2190,7 +2190,7 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
                         }
                     }
                     HirStmt::Expr(e, _) => scan_expr_for_unresolved(e, errors),
-                    _ => {}
+                    _ => {} // Stage 18.60: skip unhandled HirExprKind variant (no Res::Def to check)
                 }
             }
             if let Some(e) = &body.expr {
@@ -2214,7 +2214,7 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
                         }
                     }
                     HirStmt::Expr(e, _) => scan_expr_for_unresolved(e, errors),
-                    _ => {}
+                    _ => {} // Stage 18.60: skip unhandled HirExprKind variant (no Res::Def to check)
                 }
             }
             if let Some(e) = &body.expr {
@@ -2259,7 +2259,7 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
                         }
                     }
                     HirStmt::Expr(e, _) => scan_expr_for_unresolved(e, errors),
-                    _ => {}
+                    _ => {} // Stage 18.60: skip unhandled HirExprKind variant (no Res::Def to check)
                 }
             }
             if let Some(e) = &block.expr {
@@ -2296,7 +2296,7 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
                         }
                     }
                     HirStmt::Expr(e, _) => scan_expr_for_unresolved(e, errors),
-                    _ => {}
+                    _ => {} // Stage 18.60: skip unhandled HirExprKind variant (no Res::Def to check)
                 }
             }
             if let Some(e) = &block.expr {
@@ -2512,11 +2512,11 @@ fn check_object_safety_for_dyn_trait_usage(
                                 });
                             }
                         }
-                        _ => {}
+                        _ => {} // Stage 18.60: skip unhandled variant (no Res::Def to check)
                     }
                 }
             }
-            _ => {}
+            _ => {} // Stage 18.60: skip unhandled HirStmt variant
         }
     }
 }
@@ -2582,7 +2582,7 @@ where
             }
             walk_hir_ty(output, f);
         }
-        _ => {}
+        _ => {} // Stage 18.60: skip unhandled variant (no paths to scan)
     }
 }
 
@@ -2644,7 +2644,7 @@ where
         HirExprKind::Block(block) => {
             walk_hir_block(block, f);
         }
-        _ => {}
+        _ => {} // Stage 18.60: skip unhandled variant (no paths to scan)
     }
 }
 
@@ -2678,7 +2678,7 @@ where
         crate::hir::HirStmt::Expr(expr, _) => {
             walk_hir_ty_in_body(expr, f);
         }
-        _ => {}
+        _ => {} // Stage 18.60: skip unhandled variant (no paths to scan)
     }
 }
 
