@@ -576,3 +576,83 @@ fn main() {
     let result = compile(src);
     assert!(!result.has_errors(), "empty-substs inference should work");
 }
+
+// =================================================================
+// Stage 18.99: Deep Review P1 Fixes — Soundness Tests
+// =================================================================
+
+/// Stage 18.99 positive: nested Adt substs mismatch must be rejected.
+/// Exercises the recursive `types_match_loose` call in the Adt arm
+/// (checker.rs:1573-1576). `Vec<Vec<i32>>` vs `Vec<Vec<bool>>` should
+/// fail because the inner substs differ ([i32] vs [bool]).
+#[test]
+fn stage18_99_nested_adt_substs_mismatch_rejected() {
+    use landin_compiler::compile;
+    let src = r#"
+struct Vec<T> { data: T, len: i32 }
+fn main() {
+    let v1: Vec<Vec<i32>> = Vec { data: Vec { data: 42, len: 1 }, len: 1 };
+    let v2: Vec<Vec<bool>> = Vec { data: Vec { data: true, len: 1 }, len: 1 };
+    let v3: Vec<Vec<i32>> = v2;
+}
+"#;
+    let result = compile(src);
+    assert!(
+        result.has_errors(),
+        "Vec<Vec<i32>> = Vec<Vec<bool>> must be rejected (nested substs soundness)"
+    );
+}
+
+/// Stage 18.99 negative: nested Adt substs match accepted.
+#[test]
+fn stage18_99_nested_adt_substs_match_accepted() {
+    use landin_compiler::compile;
+    let src = r#"
+struct Vec<T> { data: T, len: i32 }
+fn main() {
+    let v1: Vec<Vec<i32>> = Vec { data: Vec { data: 42, len: 1 }, len: 1 };
+    let v2: Vec<Vec<i32>> = v1;
+}
+"#;
+    let result = compile(src);
+    assert!(
+        !result.has_errors(),
+        "Vec<Vec<i32>> = Vec<Vec<i32>> should be accepted"
+    );
+}
+
+/// Stage 18.99 positive: FnDef↔FnPtr with incompatible sigs must be rejected.
+/// `fn(i32) -> i32` function assigned to `fn(bool) -> i32` variable —
+/// param types differ, must fail (TD-13 soundness fix).
+#[test]
+fn stage18_99_fndef_fnptr_sig_mismatch_rejected() {
+    use landin_compiler::compile;
+    let src = r#"
+fn add_one(x: i32) -> i32 { x + 1 }
+fn main() {
+    let f: fn(bool) -> i32 = add_one;
+}
+"#;
+    let result = compile(src);
+    assert!(
+        result.has_errors(),
+        "fn(i32)->i32 assigned to fn(bool)->i32 must be rejected (TD-13)"
+    );
+}
+
+/// Stage 18.99 negative: FnDef↔FnPtr with compatible sigs accepted.
+#[test]
+fn stage18_99_fndef_fnptr_sig_match_accepted() {
+    use landin_compiler::compile;
+    let src = r#"
+fn add_one(x: i32) -> i32 { x + 1 }
+fn main() {
+    let f: fn(i32) -> i32 = add_one;
+}
+"#;
+    let result = compile(src);
+    assert!(
+        !result.has_errors(),
+        "fn(i32)->i32 assigned to fn(i32)->i32 should be accepted"
+    );
+}

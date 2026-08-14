@@ -1,9 +1,66 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.366.0
+**Current version**: v0.367.0
 **Date**: 2026-08-11
-**Test count**: 640 rust lib tests + 2616 integration tests + 2935 conformance tests + 7 fuzz tests = 6198 total (100% pass rate, 35 runtime tests skipped due to OOM)
+**Test count**: 640 rust lib tests + 2620 integration tests + 2935 conformance tests + 7 fuzz tests = 6202 total (100% pass rate, 35 runtime tests skipped due to OOM)
+
+---
+## v0.367.0 — Stage 18.99 (Deep Review Fixes — TD-13 FnDef↔FnPtr Soundness)
+
+### Overview
+
+Implements the P1 fixes identified by the §14.5 D1-D8 deep review (Round 1).
+The main fix closes TD-13: `FnDef↔FnPtr` unification now checks signature
+compatibility instead of unconditionally returning `Ok`. Also adds nested
+Adt soundness tests and syncs stale docs.
+
+### Deep Review (§14.5)
+
+Full D1-D8 audit report at `docs/develop/v0/stage-18/deep-review-round1.md`.
+Key findings:
+- D1: 1 cross-stage coupling violation (`projection_resolver` → `mir::lower`) — P2 for v0.2
+- D2: 27 tech debt markers, 13 targeting v0.2; TD-13 (FnDef↔FnPtr soundness) is P1
+- D3: Test count 6,360 actual vs 6,195 claimed (docs stale); nested Adt branch untested
+- D7: `matrix.md` + `pipeline-test-coverage.md` stale; `06-mir.md` missing Stage 18.96 MIR opt
+- Verdict: GO-WITH-CONDITIONS — fix 4 P1 items, then enter v0.2
+
+### Changes (P1 Fixes)
+
+| ID | Change | Details |
+|----|--------|---------|
+| 18.99.1 | TD-13 fix: FnDef↔FnPtr sig check | `UnificationTable::set_fn_sigs()` + `unify_fndef_with_fnptr()` — checks param count/types + return type |
+| 18.99.2 | TD-13 fix: types_match_loose FnDef↔FnPtr | `else-if` branch in `check_statement` no longer suppresses unify errors for FnDef↔FnPtr (other coercions still suppressed) |
+| 18.99.3 | Nested Adt soundness tests | `Vec<Vec<i32>>` vs `Vec<Vec<bool>>` rejected (exercises recursive `types_match_loose`) |
+| 18.99.4 | FnDef↔FnPtr soundness tests | `fn(i32)->i32` assigned to `fn(bool)->i32` rejected; matching sigs accepted |
+| 18.99.5 | Doc sync: matrix.md | Version v0.364.0 → v0.366.0; counts updated (640 lib + 2620 integration = 6202 total) |
+| 18.99.6 | Doc sync: pipeline-test-coverage.md | Header version updated to v0.366.0 |
+| 18.99.7 | Doc sync: 06-mir.md | Added §9.4 "实现状态 (Stage 18.96 接线)" documenting MIR opt wiring |
+| 18.99.8 | Deep review report | `docs/develop/v0/stage-18/deep-review-round1.md` (D1-D8 + action plan) |
+
+### Verification (§3.2)
+
+| Check | Result |
+|-------|--------|
+| `cargo build --features llvm-backend` | ✅ |
+| `cargo fmt --check` | ✅ exit 0 |
+| `cargo clippy --all-targets --features llvm-backend -- -D warnings` | ✅ 0 warnings |
+| `cargo test --features llvm-backend --lib` | ✅ 640 passed, 0 failed |
+| `cargo test --features llvm-backend --tests` (skip runtime) | ✅ 2620 passed, 0 failed (+4 new) |
+| `Vec<Vec<i32>> = Vec<Vec<bool>>` rejected | ✅ (nested substs soundness) |
+| `fn(i32)->i32 = fn(bool)->i32` rejected | ✅ (TD-13 fixed) |
+| `fn(i32)->i32 = fn(i32)->i32` accepted | ✅ (no regression) |
+
+### v0.2 Roadmap Progress
+
+| Priority | Task | Status |
+|----------|------|--------|
+| ~~P0~~ | ~~Adt substs soundness (Param unify)~~ | ✅ Stage 18.98 |
+| ~~P0~~ | ~~FnDef↔FnPtr soundness (TD-13)~~ | ✅ Stage 18.99 |
+| ~~P1~~ | ~~MIR optimization wiring~~ | ✅ Stage 18.96 |
+| ~~P1~~ | ~~TraitError location migration~~ | ✅ Stage 18.95 |
+| **P0** | Monomorphization (full GAT Phase 4) | Next (infra complete) |
+| **P0** | Project system (mini-cargo) | Next |
 
 ---
 ## v0.366.0 — Stage 18.98 (Adt Substs Soundness Fix)

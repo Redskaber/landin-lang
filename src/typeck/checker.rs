@@ -741,8 +741,28 @@ impl TypeChecker {
                     || types_match_loose(&resolved_place, &resolved_rvalue)
                 {
                     // Coercion or loose match succeeded — still try to unify
-                    // so Infer vars get bound. Suppress unify errors.
-                    let _ = self.unify.unify(&place_ty, &rvalue_ty, stmt.span);
+                    // so Infer vars get bound.
+                    //
+                    // Stage 18.99 (TD-13 fix): For FnDef↔FnPtr, do NOT suppress
+                    // unify errors — the unify_fndef_with_fnptr now checks sig
+                    // compatibility, and incompatible sigs must be reported.
+                    // For other coercions (Int widening, &mut→&), errors are
+                    // still suppressed (the coercion is intentional).
+                    let is_fndef_fnptr = matches!(
+                        (&resolved_place.kind, &resolved_rvalue.kind),
+                        (TyKind::FnDef(_, _), TyKind::FnPtr(_))
+                            | (TyKind::FnPtr(_), TyKind::FnDef(_, _))
+                    );
+                    if is_fndef_fnptr {
+                        if let Err(mut e) = self.unify.unify(&place_ty, &rvalue_ty, stmt.span) {
+                            if stmt.span != Span::DUMMY {
+                                e.span = stmt.span;
+                            }
+                            self.errors.push(*e);
+                        }
+                    } else {
+                        let _ = self.unify.unify(&place_ty, &rvalue_ty, stmt.span);
+                    }
                 } else if let Err(mut e) = self.unify.unify(&place_ty, &rvalue_ty, stmt.span) {
                     // Stage 15.82: use stmt.span for unify errors (was:
                     // Span::DUMMY from mismatch(), producing "1:1").
@@ -1629,8 +1649,14 @@ fn types_match_loose(a: &crate::mir::ty::Ty, b: &crate::mir::ty::Ty) -> bool {
         // Param ↔ concrete: generic type param vs concrete type in monomorphized code.
         // Per §1.0 原則 9: Stage 0 doesn't fully monomorphize before typeck.
         (TyKind::Param(_), _) | (_, TyKind::Param(_)) => true,
-        // FnDef ↔ FnPtr: function item type coerces to function pointer type.
-        // Per §1.0 原則 9: FnDef coerces to FnPtr (like Rust).
+        // Stage 18.99 (TD-13 fix): FnDef ↔ FnPtr loose-matches to route
+        // through unify (which now checks sig compatibility via
+        // unify_fndef_with_fnptr when fn_sigs is set). Previously this
+        // returned true AND the else-if branch suppressed unify errors,
+        // which accepted incompatible sigs. Now the else-if branch still
+        // calls unify but does NOT suppress errors for FnDef↔FnPtr —
+        // see check_statement's else-if branch for the conditional.
+        // Per §2.0 原则 9 "正确 > 妥协": soundness.
         (TyKind::FnDef(_, _), TyKind::FnPtr(_)) | (TyKind::FnPtr(_), TyKind::FnDef(_, _)) => true,
         // Same kind: catch-all for primitive types (Bool, Char, Int, Uint, Float, Str, etc.)
         _ if a.kind == b.kind => true,

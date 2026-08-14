@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.366.0 (Stage 18.98 — Adt substs soundness fix)  
+> **Version**: v0.367.0 (Stage 18.99 — Deep review fixes: TD-13 FnDef↔FnPtr soundness)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 in progress (P1 complete, P0 soundness fix done)
+> **Status**: v0.1 stable, v0.2 in progress (P1 complete, P0 soundness fixes done)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets

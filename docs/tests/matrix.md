@@ -1,19 +1,19 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-08-11 (last updated Stage 18.96)
-> **Version**: v0.364.0
+> **Date**: 2026-08-11 (last updated Stage 18.99)
+> **Version**: v0.366.0
 > **Process**: stage-committee-process.md v5.0 (§8 doc sync + §9 test standards)
 
-## Current Status (v0.364.0)
+## Current Status (v0.366.0)
 
 | Category | Count | Status |
 |----------|-------|--------|
 | Rust lib tests | 640 | ✅ 0 failures |
-| Rust integration tests | 2,613 | ✅ 0 failures (35 runtime tests OOM-skipped) |
+| Rust integration tests | 2,620 | ✅ 0 failures (35 runtime tests OOM-skipped) |
 | Conformance tests | 2,935 | ✅ 0 failures (sampled verification) |
 | Fuzz/stress tests | 7 | ✅ 0 failures |
-| **Total** | **6,195** | **100% pass rate** |
+| **Total** | **6,202** | **100% pass rate** |
 
 > **Note**: 35 runtime tests (`stage13_18_runtime_tests::rt_*`) are skipped due to
 > 4GB RAM OOM-killer on the development machine. These tests require linking +

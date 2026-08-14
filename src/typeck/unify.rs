@@ -77,6 +77,12 @@ pub struct UnificationTable {
     resolver: Option<*const crate::traits::TraitResolver>,
     /// Stage 16.81: Optional interner paired with `resolver`.
     interner: Option<*const lasso::Rodeo>,
+    /// Stage 18.99: Optional fn_sigs for FnDef↔FnPtr signature checking (TD-13 fix).
+    /// When set, `unify` on FnDef↔FnPtr checks signature compatibility
+    /// instead of unconditionally returning Ok (soundness fix).
+    /// None = legacy behavior (accept any FnDef↔FnPtr — UNSOUND, kept for
+    /// backward compat with tests that construct UnificationTable directly).
+    fn_sigs: Option<*const std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>>,
 }
 
 impl UnificationTable {
@@ -104,6 +110,23 @@ impl UnificationTable {
     ) {
         self.resolver = Some(resolver as *const _);
         self.interner = Some(interner as *const _);
+    }
+
+    /// Stage 18.99: Set the fn_sigs map for FnDef↔FnPtr signature checking.
+    ///
+    /// After calling this, `unify` on `FnDef(def_id, _) ↔ FnPtr(sig)` will
+    /// look up `def_id` in `fn_sigs` and verify the signatures match (param
+    /// count, param types, return type). This closes the TD-13 soundness
+    /// hole where any FnDef unified with any FnPtr.
+    ///
+    /// Per §2.0 原则 9 "正确 > 妥协": soundness — incompatible sigs must not unify.
+    /// Per §2.0 原则 4 "报错 > 静默": mismatch is reported as a unify error.
+    /// Per §23: `set_fn_sigs` follows `<verb>_<noun>` pattern.
+    pub fn set_fn_sigs(
+        &mut self,
+        fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
+    ) {
+        self.fn_sigs = Some(fn_sigs as *const _);
     }
 
     /// Stage 16.84: Get the resolver reference (if set).
@@ -668,18 +691,20 @@ impl UnificationTable {
             // FnDef with FnDef: same DefId → OK (substs checked at call site)
             (TyKind::FnDef(a_def, _), TyKind::FnDef(b_def, _)) if a_def == b_def => Ok(()),
 
-            // Stage 14.57: FnDef coerces to FnPtr (function item → function pointer).
-            // This enables passing function names as `fn(i32) -> i32` parameters.
-            // We check that the signatures are compatible (same param/return types).
-            (TyKind::FnDef(_, _), TyKind::FnPtr(b_sig)) => {
-                // FnDef is compatible with any FnPtr — the actual sig is checked
-                // at the call site. For now, accept the coercion.
-                let _ = b_sig;
-                Ok(())
+            // Stage 14.57 + 18.99: FnDef coerces to FnPtr (function item → function pointer).
+            // Stage 18.99 (TD-13 fix): Now checks signature compatibility instead of
+            // unconditionally returning Ok. If `fn_sigs` is set (production typeck),
+            // looks up the FnDef's sig and verifies param count/types + return type
+            // match the FnPtr's sig. If `fn_sigs` is None (test/standalone usage),
+            // falls back to legacy lenient behavior (accept any — UNSOUND but backward-compat).
+            //
+            // Per §2.0 原则 9 "正确 > 妥协": soundness — incompatible sigs must not unify.
+            // Per §2.0 原则 4 "报错 > 静默": mismatch is reported as a unify error.
+            (TyKind::FnDef(a_def, _), TyKind::FnPtr(b_sig)) => {
+                self.unify_fndef_with_fnptr(*a_def, b_sig, a.clone(), b.clone(), span)
             }
-            (TyKind::FnPtr(a_sig), TyKind::FnDef(_, _)) => {
-                let _ = a_sig;
-                Ok(())
+            (TyKind::FnPtr(a_sig), TyKind::FnDef(b_def, _)) => {
+                self.unify_fndef_with_fnptr(*b_def, a_sig, a.clone(), b.clone(), span)
             }
 
             // Closure with Closure: same DefId → OK
@@ -691,6 +716,67 @@ impl UnificationTable {
             // Mismatch
             _ => Err(Box::new(self.make_mismatch(a.clone(), b.clone(), span))),
         }
+    }
+
+    /// Stage 18.99: Unify a FnDef with a FnPtr by checking signature compatibility.
+    ///
+    /// If `fn_sigs` is set (production typeck), looks up `def_id` in `fn_sigs`
+    /// and verifies:
+    /// 1. Param count matches
+    /// 2. Each param type unifies (recursively)
+    /// 3. Return type unifies (recursively)
+    ///
+    /// If `fn_sigs` is None (test/standalone), falls back to legacy lenient
+    /// behavior (accept any FnDef↔FnPtr — UNSOUND but backward-compat for
+    /// tests that construct UnificationTable without fn_sigs).
+    ///
+    /// Per §2.0 原则 9 "正确 > 妥协": soundness fix for TD-13.
+    /// Per §1.0 原則 6 "通用 > 特例": one path for both FnDef↔FnPtr directions.
+    fn unify_fndef_with_fnptr(
+        &mut self,
+        def_id: crate::hir::DefId,
+        fnptr_sig: &crate::mir::ty::Sig,
+        a: Ty,
+        b: Ty,
+        span: Span,
+    ) -> Result<(), Box<TypeError>> {
+        // If fn_sigs not set, fall back to legacy lenient behavior.
+        // This maintains backward compat with tests that construct
+        // UnificationTable directly without calling set_fn_sigs.
+        let fn_sigs_ref = match self.fn_sigs {
+            Some(ptr) => {
+                // SAFETY: fn_sigs is set once before typeck and remains valid
+                // for the lifetime of the UnificationTable.
+                unsafe { &*ptr }
+            }
+            None => return Ok(()),
+        };
+
+        // Look up the FnDef's signature.
+        let fndef_sig = match fn_sigs_ref.get(&def_id) {
+            Some(sig) => sig,
+            None => {
+                // FnDef not in fn_sigs — could be an external fn or a bug.
+                // Per §1.0 原則 4 "报错 > 静默": report as mismatch rather than
+                // silently accepting. This is safer than the old behavior.
+                return Err(Box::new(self.make_mismatch(a, b, span)));
+            }
+        };
+
+        // Check param count.
+        if fndef_sig.inputs.len() != fnptr_sig.inputs.len() {
+            return Err(Box::new(self.make_mismatch(a, b, span)));
+        }
+
+        // Check each param type (recursive unify).
+        for (fndef_param, fnptr_param) in fndef_sig.inputs.iter().zip(fnptr_sig.inputs.iter()) {
+            self.unify_resolved(fndef_param, fnptr_param, span)?;
+        }
+
+        // Check return type (recursive unify).
+        self.unify_resolved(&fndef_sig.output, &fnptr_sig.output, span)?;
+
+        Ok(())
     }
 
     // ================================================================

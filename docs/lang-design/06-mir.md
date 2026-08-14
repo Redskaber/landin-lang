@@ -610,6 +610,24 @@ LLVM IR codegen
 
 每个 pass 输入输出都是 `Body`，纯函数式转换。
 
+### 9.4 实现状态（Stage 18.96 接线）
+
+**Stage 18.96**: MIR 优化正式接入 driver 流水线。
+
+| Pass | 实现阶段 | 接线状态 |
+|------|---------|---------|
+| Dead store elimination (DCE) | Stage 17.10 | ✅ Stage 18.96 wired |
+| Constant propagation + folding | Stage 17.13 | ✅ Stage 18.96 wired |
+| Jump threading | — | ❌ 推迟到 v0.3 |
+
+**接线位置**: `src/driver.rs::compile_inner()` 在 `writeback_closures` 之后、`mirs.push` 之前调用 `crate::mir::optimization::run_mir_optimizations(&mut mir)`。
+
+**Orchestrator API**: `src/mir/optimization.rs::run_mir_optimizations(&mut MirBody)` 按 §9.3 顺序运行 DCE → const_prop → DCE（第二次 DCE 保证幂等性，清理 const_prop 暴露的新死代码）。
+
+**测试入口**: `src/driver.rs::compile_no_opt(src)` 跳过 MIR opt，用于 IR/MIR 结构验证测试（per §11 接口隔离）。
+
+**Stage 18.99 DCE 修复**: `collect_terminator_read_locals` 现在标记 `TerminatorKind::Return` 读取 `LocalId(0)`（返回值局部），防止 DCE 错误移除返回值赋值。
+
 ---
 
 ## 10. MIR 文本表示（debug 用）

@@ -1347,6 +1347,10 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
             tc.fn_sigs = fn_sig_table.sigs.clone();
             // Stage 16.81: Set resolver for rich error messages (Adt type names).
             tc.unify.set_resolver(resolver, interner);
+            // Stage 18.99 (TD-13 fix): Set fn_sigs on unify table so
+            // FnDef↔FnPtr unification checks signature compatibility
+            // (soundness — was unconditionally Ok before).
+            tc.unify.set_fn_sigs(&fn_sig_table.sigs);
             tc.check_mir_body_with_tables(mir, Some(field_ty_table));
             let (errors, results, returned_unify) = tc.into_results_with_unify();
             *shared_unify = returned_unify;

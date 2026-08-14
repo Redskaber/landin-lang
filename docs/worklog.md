@@ -13362,3 +13362,64 @@ Stage Summary:
 - 640 lib + 2616 integration = 3256 unit tests, 0 failures
 - v0.366.0: minor bump (Adt substs soundness fix)
 - 下一步: v0.2 P0 (完整单态化 GAT Phase 4 / 项目系统 mini-cargo)
+
+---
+Task ID: stage18.99
+Agent: Super Z (main)
+Task: Stage 18.99 — Deep Review Round 1 Fixes (TD-13 FnDef↔FnPtr soundness + nested Adt tests + docs sync). v0.366.0 → v0.367.0.
+
+Work Log:
+- §14.5 深度审查 D1-D8 (Round 1):
+  → D1 架构健康: 1 个跨阶段耦合违规 (projection_resolver → mir::lower), 0 back-edit
+  → D2 技术债: 27 个标记, 13 指向 v0.2, TD-13 (FnDef↔FnPtr) 为 P1
+  → D3 测试覆盖: 实际 6360 vs 声称 6195 (docs 过时); 嵌套 Adt 分支零测试
+  → D5 设计: 1 个零生产调用模块 (dyn_trait_emit), 1 个 dead infra (region_inference)
+  → D6 性能: fn_sig_table.sigs.clone() 每函数 O(F×S) — P2
+  → D7 文档: matrix.md/pipeline-coverage 过时, 06-mir.md 缺 Stage 18.96
+  → D8 流水线: Tier 2 矩阵未反映 Stage 18.96 后 3 个新过渡
+  → 结论: GO-WITH-CONDITIONS — 修复 4 项 P1 后进入 v0.2
+- 输出 deep-review-round1.md (D1-D8 + 行动计划 + 委员会投票)
+- P1 修复 18.99.1: TD-13 FnDef↔FnPtr soundness
+  → UnificationTable 新增 fn_sigs 字段 + set_fn_sigs() 方法
+  → 新增 unify_fndef_with_fnptr() 辅助方法: 检查参数数/类型 + 返回类型
+  → driver.rs 调用 set_fn_sigs() 接线生产 typeck
+  → fn_sigs=None 时回退到 legacy lenient (测试向后兼容)
+- P1 修复 18.99.2: types_match_loose FnDef↔FnPtr 路由
+  → check_statement else-if 分支: FnDef↔FnPtr 不再抑制 unify 错误
+  → 其他强制转换 (Int 宽化, &mut→&) 仍抑制 (intentional)
+- P1 修复 18.99.3: 嵌套 Adt 递归测试
+  → stage18_99_nested_adt_substs_mismatch_rejected: Vec<Vec<i32>> = Vec<Vec<bool>> 被拒
+  → stage18_99_nested_adt_substs_match_accepted: Vec<Vec<i32>> = Vec<Vec<i32>> 接受
+- P1 修复 18.99.4: FnDef↔FnPtr soundness 测试
+  → stage18_99_fndef_fnptr_sig_mismatch_rejected: fn(i32)->i32 = fn(bool)->i32 被拒
+  → stage18_99_fndef_fnptr_sig_match_accepted: fn(i32)->i32 = fn(i32)->i32 接受
+- P1 修复 18.99.5-7: 文档同步
+  → matrix.md: v0.364.0 → v0.366.0, 计数 6195 → 6202
+  → pipeline-test-coverage.md: 头部版本更新
+  → 06-mir.md: 新增 §9.4 实现状态 (Stage 18.96 接线说明)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2620 passed, 0 failed (+4 new)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/deep-review-round1.md (新建, D1-D8 报告)
+  - Cargo.toml: v0.366.0 → v0.367.0
+  - README.md: v0.366.0 → v0.367.0
+  - RELEASE_NOTES.md: 添加 v0.367.0 条目 + deep review 摘要
+  - docs/tests/matrix.md: 版本 + 计数更新
+  - docs/tests/pipeline-test-coverage.md: 头部版本更新
+  - docs/lang-design/06-mir.md: 新增 §9.4 MIR opt 接线说明
+  - docs/develop/v0/v0.1-capability-boundaries.md: 版本 + 测试数量更新
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.99 PASSED — Deep Review Round 1 P1 修复完成
+- TD-13 FnDef↔FnPtr soundness 修复: 现在检查签名兼容性
+- 嵌套 Adt 递归分支测试覆盖: Vec<Vec<i32>> vs Vec<Vec<bool>>
+- 文档同步: matrix.md + pipeline-coverage + 06-mir.md 全部对齐 v0.366.0
+- 640 lib + 2620 integration = 3260 unit tests, 0 failures
+- v0.367.0: minor bump (deep review fixes)
+- v0.2 P0 soundness 修复全部完成 (Adt substs + FnDef↔FnPtr)
+- 下一步: v0.2 P0 (完整单态化 GAT Phase 4 / 项目系统 mini-cargo)
