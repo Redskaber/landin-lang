@@ -49,6 +49,12 @@ struct Cli {
     /// Default: auto (colors when stderr is a terminal).
     #[arg(long, value_name = "WHEN", default_value = "auto")]
     color: String,
+
+    /// Stage 18.89: Target triple for cross-compilation.
+    /// Default: x86_64-unknown-linux-gnu
+    /// Examples: aarch64-unknown-linux-gnu, x86_64-pc-windows-gnu
+    #[arg(long, value_name = "TRIPLE")]
+    target: Option<String>,
 }
 
 fn main() {
@@ -139,7 +145,13 @@ fn main() {
 
         // Stage 13.5: Emit LLVM IR (text)
         if cli.emit_llvm_ir {
-            let llvm_ir = landin_compiler::codegen::codegen_crate(&result);
+            // Stage 18.89: Use --target if specified.
+            let target = cli
+                .target
+                .as_ref()
+                .map(|t| landin_compiler::codegen::TargetTriple::from_str(t))
+                .unwrap_or_default();
+            let llvm_ir = landin_compiler::codegen::codegen_crate_with_target(&result, target);
             println!("{}", llvm_ir);
             return;
         }
@@ -147,7 +159,14 @@ fn main() {
         // Stage 13.6-13.8: Emit object file, executable, or run via LLVMSysEmitter
         #[cfg(feature = "llvm-backend")]
         if cli.emit_obj || cli.emit_bin || cli.run {
-            use landin_compiler::codegen::codegen_crate_to_module;
+            use landin_compiler::codegen::codegen_crate_to_module_with_target;
+
+            // Stage 18.89: Use --target if specified.
+            let target = cli
+                .target
+                .as_ref()
+                .map(|t| landin_compiler::codegen::TargetTriple::from_str(t))
+                .unwrap_or_default();
 
             // Stage 13.27: Check if the source contains `fn main()` before
             // attempting to link. Without `fn main()`, there's no `landin_main`
@@ -162,7 +181,7 @@ fn main() {
                 }
             }
 
-            let emitter = codegen_crate_to_module(&result);
+            let emitter = codegen_crate_to_module_with_target(&result, target);
 
             // Stage 13.23: Determine object file path.
             // For --run: always use a temp directory to avoid polluting the

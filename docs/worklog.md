@@ -12837,3 +12837,44 @@ Stage Summary:
 - 3286 unit + 2935 conformance = 6221 total tests, 0 failures
 - v0.356.0: minor bump (cross-compilation foundation)
 - 下一步: CLI --target 参数 或 v0.2 规划
+
+---
+Task ID: stage18.89
+Agent: Super Z (main)
+Task: Stage 18.89 — CLI --target Parameter + codegen_with_target. v0.356.0 → v0.357.0.
+
+Work Log:
+- §13.1 设计对齐: Stage 18.88 完成 TargetTriple 配置, 下一步 CLI 参数
+- 新增 CLI --target 参数:
+  - src/bin/main.rs: 添加 `target: Option<String>` 到 Cli struct
+  - 支持 --target aarch64-unknown-linux-gnu 等
+  - 默认: x86_64-unknown-linux-gnu (不指定时)
+- 新增 codegen 入口函数:
+  - codegen_crate_with_target(result, target) — 文本 LLVM IR
+  - codegen_crate_to_module_with_target(result, target) — LLVM 模块
+  - 原有 codegen_crate/codegen_crate_to_module 保留 (委托到 _with_target)
+- 更新 CLI 代码路径:
+  - --emit-llvm-ir: 使用 codegen_crate_with_target
+  - --emit-obj/--emit-bin/--run: 使用 codegen_crate_to_module_with_target
+- 验证: --target aarch64-unknown-linux-gnu 正确输出 aarch64 triple + data_layout
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2648 integration = 3286 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - Cargo.toml: v0.356.0 → v0.357.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.89 PASSED — CLI --target 参数
+- 用户现在可以通过 --target 指定目标平台:
+  `landin-stage0 --emit-llvm-ir --target aarch64-unknown-linux-gnu hello.lin`
+- v0.7 路线图 P2 交叉编译进度:
+  - ✅ Phase 1: TargetTriple 配置基础设施 (18.88)
+  - ✅ Phase 2: CLI --target 参数 (18.89)
+  - ⏳ Phase 3: 交叉链接 (需要 LLVM target 初始化)
+- 3286 unit + 2935 conformance = 6221 total tests, 0 failures
+- v0.357.0: minor bump (CLI --target parameter)
+- 下一步: v0.2 规划 或 交叉链接

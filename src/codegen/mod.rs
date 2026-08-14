@@ -165,7 +165,12 @@ pub use trait_dispatch::{
 /// This mod.rs now contains only the two public entry points + module
 /// declarations + re-exports.
 pub fn codegen_crate(result: &CompileResult) -> String {
-    let mut emitter = TextEmitter::new();
+    codegen_crate_with_target(result, TargetTriple::default())
+}
+
+/// Stage 18.89: Generate LLVM IR text with a specific target triple.
+pub fn codegen_crate_with_target(result: &CompileResult, target: TargetTriple) -> String {
+    let mut emitter = TextEmitter::with_target(target);
     run_codegen_pipeline(result, &mut emitter);
     emitter.output_with_globals()
 }
@@ -190,7 +195,16 @@ pub fn codegen_crate(result: &CompileResult) -> String {
 /// Stage 16.76 MUV-2: `build_fn_sigs_map` moved to `llvm/function_sigs.rs`.
 #[cfg(feature = "llvm-backend")]
 pub fn codegen_crate_to_module(result: &CompileResult) -> LLVMSysEmitter {
-    let mut emitter = LLVMSysEmitter::new();
+    codegen_crate_to_module_with_target(result, TargetTriple::default())
+}
+
+/// Stage 18.89: Generate LLVM module with a specific target triple.
+#[cfg(feature = "llvm-backend")]
+pub fn codegen_crate_to_module_with_target(
+    result: &CompileResult,
+    target: TargetTriple,
+) -> LLVMSysEmitter {
+    let mut emitter = LLVMSysEmitter::with_target(target);
     // Stage 14.91 (Bug X3 fix): Populate fn_sigs BEFORE vtable emission.
     let fn_sigs_map = crate::codegen::llvm::function_sigs::build_fn_sigs_map(
         &result.fn_name_by_def_id,
