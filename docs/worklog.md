@@ -31796,3 +31796,68 @@ Stage Summary:
 - 3212 unit + 5249 conformance = 8461 total tests, 0 failures
 - v0.321.0 → v0.322.0
 - 下一步: 增量编译 (v0.7 P1 下一任务)
+
+---
+Task ID: stage18.56
+Agent: Super Z (main)
+Task: Stage 18.56 — Pipeline Audit Fixes: Soundness + Error Reporting + Consolidation
+
+Work Log:
+- §13.1 阶段开始设计对齐 + §13.5 设计-审查（1 轮自审定稿）+ §14 深度审查
+- 用户要求: 全面审查编译管道 (阶段内/阶段间设计实现, 缺漏/简化/特解/分支覆盖/健壮性/Span::DUMMY/测试)
+- 通过两个 Explore agent 并行审计:
+  1. Span::DUMMY 审计: 1301 总命中, 548 生产代码, 471 合法, 71 技术债, 6 错误报告
+  2. 管道完整性审计: 0 todo/unimplemented, 2 生产 panic (防御性), ~140 `_ =>` 通配符, 8 粗粒度错误码, 7 个 `lower_hir_ty_to_mir_ty*` 变体
+- 设计文档: docs/develop/v0/stage-18/stage-18.56-pipeline-audit-fixes-design.md
+
+- 修复 3 个高优先级审计问题:
+
+1. find_assoc_type_def_id 健全性 bug 修复 (src/mir/lower/mod.rs):
+  - 旧: 忽略 trait 限定符 (两个 trait 都有 Item 时随机返回), 返回 trait DefId 而非 assoc type 标识
+  - 新: resolver 在 resolve_ty_paths 中设置 path.res 为 trait DefId (匹配 trait path), lower_qualified_path_to_projection 使用 path.res
+  - 旧 find_assoc_type_def_id 标记 #[deprecated] + #[allow(dead_code)]
+  - §1.0 原則 9 正确 > 妥协: trait qualifier 现被尊重
+
+2. lower_qualified_path_to_projection 报错 > 静默 修复 (src/mir/lower/mod.rs + src/resolve/path_resolve.rs):
+  - 旧: 找不到 assoc type 时静默返回 TyKind::Error 无诊断
+  - 新: resolver 在 resolve_ty_paths 中验证 assoc type 存在性, 不存在时发 ResolveError
+  - 新增 trait_assoc_types: HashMap<DefId, HashSet<Spur>> 字段到 Resolver
+  - 新增 assoc_type_exists_in_trait 方法
+  - §1.0 原則 4 报错 > 静默: 缺失 assoc type 现产生诊断
+
+3. 高内聚低耦合: resolve_ty_paths 递归处理 path segment args (src/resolve/path_resolve.rs):
+  - 旧: resolve_ty_paths 不递归进入 path.segments[i].args (嵌套类型未解析)
+  - 新: 新增 resolve_segment_args + resolve_ast_ty_paths 递归处理
+  - §1.0 原則 2 整体 > 局部: 解析完整类型树
+
+- 已知限制 (推迟到后续 stage):
+  - path segment args 内的 qualified path 仍是 AST (非 HIR), resolve_ast_ty_paths 无法设置 res
+  - 7 个 lower_hir_ty_to_mir_ty* 变体未合并为 LowerTyCtx (推迟, 避免大范围破坏)
+  - Span::DUMMY 技术债 71 处未清理 (Stage 18.57)
+  - 错误码目录太粗 (8 codes vs rustc 600+) 未细化 (Stage 18.58)
+
+- 测试 (§9.4.3 1:3+ ratio):
+  - tests/v0/stage18/plan/stage18_56_pipeline_audit_fixes_tests.rs: 3 positive + 9 negative = 1:3 ✓
+    - positive: trait_scoped_assoc_lookup + assoc_type_found_no_error + gat_trait_scoped_lookup
+    - negative: assoc_type_not_found_emits_error + undefined_trait_in_qualified + assoc_type_wrong_trait
+                + qualified_path_no_trait + two_traits_ambiguous + qualified_both_undefined
+                + qualified_undefined_in_let + qualified_gat_undefined_assoc + qualified_gat_both_undefined
+
+- 验收 (§3.2 交付前验收检查):
+  - cargo clean — ✅
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2617 integration (+12 new) = 3224 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5249 conformance tests, 0 failures
+
+Stage Summary:
+- 管道审计修复完成: 3 个高优先级问题 (健全性 + 报错 > 静默 + 高内聚低耦合)
+- §1.0 原則 9 正确 > 妥协: trait qualifier 现被尊重 (健全性 bug 修复)
+- §1.0 原則 4 报错 > 静默: 缺失 assoc type 现产生诊断
+- §1.0 原則 2 整体 > 局部: resolve_ty_paths 递归处理嵌套类型
+- §10 命名标准化: assoc_type_exists_in_trait / resolve_segment_args / resolve_ast_ty_paths
+- 12 个新测试, 全部 1:3+ ratio
+- 3224 unit + 5249 conformance = 8473 total tests, 0 failures
+- 审计发现的剩余问题 (Span::DUMMY, 错误码, LowerTyCtx) 已记录, 推迟到后续 stage
+- v0.322.0 → v0.323.0

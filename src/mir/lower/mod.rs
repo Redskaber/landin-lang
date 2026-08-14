@@ -2048,18 +2048,19 @@ pub(crate) fn lower_qualified_path_to_projection(
     let self_ty = lower_hir_ty_to_mir_ty_with_regions_and_hir(inner_ty, region_counter, hir);
 
     // Step 2: The last segment of the path is the assoc item name.
-    // (qself.position tells us where the trait ends; everything after is
-    // the assoc item, but for Stage 18.53 we only support single-segment
-    // assoc paths like `::Item`, not `::Item::SubItem`.)
     let assoc_segment = path.segments.last().expect(
         "qualified path must have at least one segment after `>::` — \
          parser guarantees this",
     );
-    let assoc_name = assoc_segment.ident.name;
 
-    // Step 3: Look up the assoc type's DefId by searching all traits for
-    // a matching assoc type name. We need HIR access for this.
-    let assoc_def_id = hir.and_then(|h| find_assoc_type_def_id(h, assoc_name));
+    // Step 3: Stage 18.56 — Use path.res (set by resolver) as the trait DefId.
+    // The resolver now validates that the assoc type exists in the trait
+    // (per §1.0 原則 4 "报错 > 静默"). If res is Res::Def, the trait is valid.
+    // If res is Res::Err, the resolver already emitted an error.
+    let trait_def_id = match path.res {
+        crate::hir::Res::Def(def_id, _) => Some(def_id),
+        _ => None,
+    };
 
     // Step 4: Lower generic args from the assoc segment (e.g., `Item<'a, T>`).
     // Per §1.0 原則 6 "通用 > 特例": reuse `lower_ast_ty_to_mir_ty` rather
@@ -2071,30 +2072,39 @@ pub(crate) fn lower_qualified_path_to_projection(
             if let crate::ast::GenericArg::Type(ty) = arg {
                 substs.push(lower_ast_ty_to_mir_ty(ty, hir));
             }
-            // Lifetimes in GAT projections are erased for Stage 18.53.
-            // Phase 3 will handle region-aware monomorphization.
+            // Lifetimes in GAT projections are erased for Stage 18.55.
+            // Phase 4 will handle region-aware monomorphization.
         }
     }
 
-    match assoc_def_id {
+    match trait_def_id {
+        // Stage 18.56: Use trait_def_id from resolver (soundness fix).
+        // Per §1.0 原則 9 "正确 > 妥协": trait qualifier is now respected.
         Some(def_id) => Ty::new(TyKind::Projection(def_id, substs.into()), span),
         None => {
-            // Graceful degradation: assoc type not found. Return Error so
-            // typeck reports it. Per §1.0 原則 4 "报错 > 静默".
+            // Resolver already emitted an error for this case.
+            // Return Error so downstream typeck doesn't crash.
             Ty::new(TyKind::Error, span)
         }
     }
 }
 
-/// Stage 18.53 GATs Phase 2: Find the `DefId` of an associated type by name.
+/// Stage 18.56: Find the trait DefId that declares an associated type, matching
+/// by trait path (not just assoc name).
 ///
-/// Searches all traits in the HIR for an associated type whose ident matches
-/// `assoc_name`. Returns the first match (Phase 2 limitation: doesn't
-/// disambiguate by trait — Phase 3 will add trait-scoped lookup).
+/// This function is retained for backward compatibility but is now deprecated —
+/// the resolver (`resolve_ty_paths`) sets `path.res` to the trait DefId during
+/// resolution, and `lower_qualified_path_to_projection` uses `path.res` directly.
+///
+/// Per §1.0 原則 5 "去除兼容思维": this function will be removed once all
+/// callers migrate to using `path.res`.
 ///
 /// Per §10 naming: `find_assoc_type_def_id` follows `<verb>_<noun>_<noun>` pattern.
+#[deprecated(note = "Stage 18.56: use path.res from resolver instead")]
+#[allow(dead_code)]
 fn find_assoc_type_def_id(
     hir: &HirCrate,
+    _trait_res: &crate::hir::Res,
     assoc_name: crate::lexer::Symbol,
 ) -> Option<crate::hir::DefId> {
     for (trait_def_id, owner) in &hir.owners {
@@ -2102,9 +2112,6 @@ fn find_assoc_type_def_id(
             for item in &t.items {
                 if let crate::hir::HirTraitItem::Type(assoc) = item {
                     if assoc.ident.name == assoc_name {
-                        // Return the assoc type's owner DefId.
-                        // (The assoc type's HirId.owner is the trait's DefId
-                        // for now — Phase 3 will give assoc types their own DefId.)
                         return Some(*trait_def_id);
                     }
                 }

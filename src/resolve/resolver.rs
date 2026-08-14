@@ -82,6 +82,15 @@ pub struct Resolver {
     /// Per §1.0 原則 3 "显式 > 隐式": generic params are explicitly tracked,
     /// not implicitly folded into module_tree or scopes.
     pub(super) generic_param_scope: Vec<Vec<(Spur, usize)>>,
+    /// Stage 18.56: Map from trait DefId → set of associated type names.
+    ///
+    /// Built during `resolve_all_paths` by scanning all trait owners.
+    /// Used by `resolve_ty_paths` to validate that `<T as Trait>::Item`
+    /// references an existing assoc type — if not, emit a resolve error
+    /// (per §1.0 原則 4 "报错 > 静默").
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one map for all traits.
+    pub(super) trait_assoc_types: HashMap<DefId, std::collections::HashSet<Spur>>,
     /// Errors encountered (non-fatal).
     pub(super) errors: Vec<ResolveError>,
 }
@@ -98,6 +107,7 @@ impl Resolver {
             impl_method_index: HashMap::new(),
             impl_method_def_ids: std::collections::HashSet::new(),
             generic_param_scope: Vec::new(),
+            trait_assoc_types: HashMap::new(),
             errors: Vec::new(),
         }
     }
@@ -186,6 +196,23 @@ impl Resolver {
             }
         }
         None
+    }
+
+    /// Stage 18.56: Check if a trait declares an associated type with the
+    /// given name.
+    ///
+    /// Used by `resolve_ty_paths` to validate qualified paths like
+    /// `<T as Trait>::Item` — if `Item` is not declared in `Trait`, emit
+    /// a resolve error.
+    ///
+    /// Per §10 naming: `assoc_type_exists_in_trait` follows
+    /// `<noun>_<noun>_<verb>_<prep>_<noun>` pattern.
+    /// Per §1.0 原則 4 "报错 > 静默": validates assoc type existence.
+    pub(super) fn assoc_type_exists_in_trait(&self, trait_def_id: DefId, assoc_name: Spur) -> bool {
+        self.trait_assoc_types
+            .get(&trait_def_id)
+            .map(|names| names.contains(&assoc_name))
+            .unwrap_or(false)
     }
 
     pub fn into_errors(self) -> Vec<ResolveError> {
