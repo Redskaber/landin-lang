@@ -254,25 +254,33 @@ pub(crate) fn find_receiver_struct_def_id(
 
 /// Stage 3.52: Resolve the element type of an index expression `base[idx]`
 /// by inspecting the base's MIR type.
-pub(crate) fn resolve_index_element_type(cx: &mut MirLowerCtxt, base_local: LocalId) -> Option<Ty> {
+///
+/// Stage 18.80 P2-D: Added `expr_span` parameter for accurate error spans
+/// (was Span::DUMMY, producing "1:1" in error messages).
+pub(crate) fn resolve_index_element_type(
+    cx: &mut MirLowerCtxt,
+    base_local: LocalId,
+    expr_span: Span,
+) -> Option<Ty> {
     let base_ty = cx.mir.local_decls.get(base_local.0 as usize)?.ty.clone();
     match &base_ty.kind {
         TyKind::Ref(_, _, inner) => match &inner.kind {
             TyKind::Slice(elem) => Some((**elem).clone()),
             TyKind::Array(elem, _) => Some((**elem).clone()),
-            TyKind::Str => Some(Ty::new(TyKind::Uint(ast::UintTy::U8), Span::DUMMY)),
+            TyKind::Str => Some(Ty::new(TyKind::Uint(ast::UintTy::U8), expr_span)),
             // Stage 18.62: Infer/Error/Param are acceptable fallbacks (typeck
             // will resolve them later). Per §1.0 原則 4: only push error for
             // truly non-indexable concrete types.
             TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
             _ => {
                 // Stage 18.76 P1-D: Use type_to_string instead of Debug format.
+                // Stage 18.80 P2-D: Use expr_span instead of Span::DUMMY.
                 cx.type_errors.push(crate::typeck::TypeError::new(
                     format!(
                         "cannot index into type `{}`",
                         crate::mir::ty::type_to_string(inner)
                     ),
-                    Span::DUMMY,
+                    expr_span,
                 ));
                 None
             }
@@ -283,12 +291,13 @@ pub(crate) fn resolve_index_element_type(cx: &mut MirLowerCtxt, base_local: Loca
         TyKind::Infer(_) | TyKind::Error | TyKind::Param(_) => None,
         _ => {
             // Stage 18.76 P1-D: Use type_to_string instead of Debug format.
+            // Stage 18.80 P2-D: Use expr_span instead of Span::DUMMY.
             cx.type_errors.push(crate::typeck::TypeError::new(
                 format!(
                     "cannot index into type `{}`",
                     crate::mir::ty::type_to_string(&base_ty)
                 ),
-                Span::DUMMY,
+                expr_span,
             ));
             None
         }

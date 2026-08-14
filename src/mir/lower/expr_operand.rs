@@ -1083,7 +1083,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // elem_ty = T. Falls back to fresh infer var if the receiver's
             // type can't be resolved (preserves old behavior for test
             // contexts).
-            let elem_ty = field_resolution::resolve_index_element_type(cx, base_local)
+            let elem_ty = field_resolution::resolve_index_element_type(cx, base_local, expr.span)
                 .unwrap_or_else(|| cx.fresh_infer_ty(expr.span));
             let result = cx.mir.new_local(elem_ty, None, expr.span);
             cx.push_assign(

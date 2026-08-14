@@ -55,11 +55,15 @@ pub(crate) fn cstr(s: &str) -> *const std::os::raw::c_char {
 ///
 /// Per §1.0 原則 4 "报错 > 静默": NUL bytes produce a hard error, not a panic.
 /// Per §23: `cstr_result` follows `<noun>_<noun>` pattern.
-pub(crate) fn cstr_result(s: &str) -> CodegenResult<CString> {
+///
+/// Stage 18.80 P2-D: Added `span` parameter for accurate error location
+/// (was Span::DUMMY). Callers should pass the source span of the string.
+pub(crate) fn cstr_result(s: &str, span: Span) -> CodegenResult<CString> {
     CString::new(s).map_err(|_| {
         CodegenError::new(
-            format!("invalid string containing NUL byte: {:?}", s),
-            Span::DUMMY,
+            // Stage 18.80 P2-D: Use Display instead of Debug format.
+            format!("invalid string containing NUL byte: {}", s),
+            span,
         )
     })
 }

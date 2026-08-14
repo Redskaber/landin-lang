@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn stage17_01_cstr_valid_string_returns_ok() {
         use crate::codegen::llvm::helpers::cstr_result;
-        let result = cstr_result("hello");
+        let result = cstr_result("hello", Span::DUMMY);
         assert!(result.is_ok());
         let c_string = result.expect("should be Ok");
         assert_eq!(c_string.to_str().expect("valid UTF-8"), "hello");
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn stage17_01_cstr_nul_byte_returns_error() {
         use crate::codegen::llvm::helpers::cstr_result;
-        let result = cstr_result("hello\0world");
+        let result = cstr_result("hello\0world", Span::DUMMY);
         let error = match result {
             Err(e) => e,
             Ok(_) => panic!("expected Err for NUL byte"),
@@ -127,7 +127,7 @@ mod tests {
     #[test]
     fn stage17_01_cstr_empty_string_returns_ok() {
         use crate::codegen::llvm::helpers::cstr_result;
-        let result = cstr_result("");
+        let result = cstr_result("", Span::DUMMY);
         let c_string = result.expect("empty string should be Ok");
         assert_eq!(c_string.to_str().expect("valid UTF-8"), "");
     }

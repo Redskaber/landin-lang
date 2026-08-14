@@ -3573,11 +3573,17 @@ pub fn expand_macros_with_errors(
         current = next;
         // Stage 18.08: if this was the last round, emit a recursion error.
         if round + 1 == MAX_EXPANSION_ROUNDS {
+            // Stage 18.80 P2-D: Use first token's span instead of Span::DUMMY
+            // for better error location. If no tokens, fall back to DUMMY.
+            let err_span = current
+                .first()
+                .map(|t| t.span)
+                .unwrap_or(crate::session::Span::DUMMY);
             errors.push(MacroError::new(
                 format!(
                     "macro expansion exceeded {MAX_EXPANSION_ROUNDS} rounds (possible infinite recursion)"
                 ),
-                crate::session::Span::DUMMY,
+                err_span,
             ));
         }
     }

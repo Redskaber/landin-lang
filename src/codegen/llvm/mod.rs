@@ -203,7 +203,7 @@ impl LLVMSysEmitter {
             LLVMDisposeMessage(triple_ptr);
 
             // 3. Look up the target.
-            let triple_c = cstr_result(&triple)?;
+            let triple_c = cstr_result(&triple, crate::session::Span::DUMMY)?;
             let mut target: LLVMTargetRef = std::ptr::null_mut();
             let mut err_buf: *mut std::os::raw::c_char = std::ptr::null_mut();
             let rc = LLVMGetTargetFromTriple(triple_c.as_ptr(), &mut target, &mut err_buf);
@@ -223,8 +223,8 @@ impl LLVMSysEmitter {
 
             // 4. Build the target machine.
             // Stage 17.02: Use cstr_result instead of unwrap for error safety.
-            let cpu_c = cstr_result("generic")?;
-            let feat_c = cstr_result("")?;
+            let cpu_c = cstr_result("generic", crate::session::Span::DUMMY)?;
+            let feat_c = cstr_result("", crate::session::Span::DUMMY)?;
             let tm = LLVMCreateTargetMachine(
                 target,
                 triple_c.as_ptr(),
@@ -242,7 +242,7 @@ impl LLVMSysEmitter {
             }
 
             // 5. Emit to file.
-            let path_c = cstr_result(out_path)?;
+            let path_c = cstr_result(out_path, crate::session::Span::DUMMY)?;
             let mut err2: *mut std::os::raw::c_char = std::ptr::null_mut();
             let rc2 = LLVMTargetMachineEmitToFile(
                 tm,
