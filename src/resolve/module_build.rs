@@ -123,9 +123,15 @@ impl Resolver {
                     self.def_kinds.insert(def_id, kind);
                 } else {
                     let name_str = interner.resolve(&name).to_string();
-                    // Stage 18.57: Use the new definition's span instead of
-                    // Span::DUMMY. Per §1.0 原則 4 "报错 > 静默".
-                    let span = self.def_span.get(&def_id).copied().unwrap_or(Span::DUMMY);
+                    // Stage 18.63: Use the existing definition's span as fallback
+                    // when the new def_id's span is not in def_span map.
+                    // Per §1.0 原則 4 "报错 > 静默": avoid Span::DUMMY in diagnostics.
+                    let span = self
+                        .def_span
+                        .get(&def_id)
+                        .copied()
+                        .or_else(|| self.def_span.get(&existing).copied())
+                        .unwrap_or(Span::DUMMY);
                     self.errors.push(ResolveError::with_kind(
                         crate::resolve::ResolveErrorKind::DuplicateDefinition,
                         format!(
@@ -294,8 +300,13 @@ impl Resolver {
         for (def_id, kind, name) in child_registrations {
             if let Err(existing) = child.insert(name, def_id, kind) {
                 let name_str = interner.resolve(&name).to_string();
-                // Stage 18.57: Use the new definition's span instead of Span::DUMMY.
-                let span = self.def_span.get(&def_id).copied().unwrap_or(Span::DUMMY);
+                // Stage 18.63: Use existing def's span as fallback.
+                let span = self
+                    .def_span
+                    .get(&def_id)
+                    .copied()
+                    .or_else(|| self.def_span.get(&existing).copied())
+                    .unwrap_or(Span::DUMMY);
                 self.errors.push(ResolveError::with_kind(
                     crate::resolve::ResolveErrorKind::DuplicateDefinition,
                     format!(

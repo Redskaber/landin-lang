@@ -32209,3 +32209,50 @@ Stage Summary:
 - 13 个 conformance 测试从 compile_ok → compile_error (限制已修复)
 - 3245 unit + 5249 conformance = 8494 total tests, 0 failures
 - v0.328.0 → v0.329.0
+
+---
+Task ID: stage18.63
+Agent: Super Z (main)
+Task: Stage 18.63 — Audit Cleanup: Span::DUMMY Fallback + Deprecated Resolver Inlining
+
+Work Log:
+- §14 深度审查: 继续清理 Stage 18.62 审计发现的 P1 剩余项
+
+- P1: 修复 Span::DUMMY fallback (§报错 > 静默):
+  1. module_build.rs:128 — duplicate-definition error span:
+     - 旧: unwrap_or(Span::DUMMY) — 如果新 def_id 不在 def_span 中, span 为 DUMMY
+     - 新: or_else(|| self.def_span.get(&existing).copied()) — 回退到已有定义的 span
+  2. module_build.rs:298 — 同上, child registrations 的 duplicate-definition
+
+- P1: 内联 deprecated 调用, 移除 #[allow(deprecated)] (§避免死代码):
+  3. resolver.rs:638 — impl_methods 内联 find_impl:
+     - 旧: #[allow(deprecated)] self.find_impl(...)
+     - 新: 直接 self.impl_by_trait_and_type.get(...).and_then(...)
+  4. resolver.rs:842 — implements 内联 find_impl:
+     - 旧: #[allow(deprecated)] self.find_impl(...).is_some()
+     - 新: self.impl_by_trait_and_type.contains_key(...)
+  5. resolver.rs:856 — implements_by_def_id 内联 implements:
+     - 旧: #[allow(deprecated)] self.implements(...)
+     - 新: 直接 self.impl_by_trait_and_type.contains_key(...)
+  6. resolver.rs:868 — is_copy 内联 implements_by_def_id:
+     - 旧: #[allow(deprecated)] self.implements_by_def_id(...)
+     - 新: 直接 self.type_by_def_id.get(...).map(|t| self.impl_by_trait_and_type.contains_key(...))
+  7. resolver.rs:1284,1312 — impl_covers_trait/missing_impl_methods:
+     - 保留 #[allow(deprecated)] (impl_methods 仍被标记 deprecated, 但已有 _by_def_ids 替代)
+
+- P1: clippy fix (§避免死代码):
+  - .get(...).is_some() → .contains_key(...) (3处, clippy::unnecessary_get_then_check)
+
+- 验收 (§3.2):
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 604 lib + 2641 integration = 3245 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5249 conformance tests, 0 failures
+
+Stage Summary:
+- 审计清理: Span::DUMMY fallback 修复 (2处) + deprecated 内联化 (4处) + clippy fix (3处)
+- §报错 > 静默: duplicate-definition 错误 span 不再回退到 DUMMY
+- §避免死代码: 4个 #[allow(deprecated)] 通过内联化移除
+- 3245 unit + 5249 conformance = 8494 total tests, 0 failures
+- v0.329.0 → v0.330.0

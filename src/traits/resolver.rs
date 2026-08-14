@@ -635,8 +635,12 @@ impl TraitResolver {
         note = "Use impl_methods_by_def_ids (DefId-keyed, type-safe) instead. (Stage 16.11)"
     )]
     pub fn impl_methods(&self, trait_name: Spur, self_ty_name: Spur) -> Option<&Vec<Spur>> {
-        #[allow(deprecated)]
-        self.find_impl(trait_name, self_ty_name).map(|i| &i.methods)
+        // Stage 18.63: Inline deprecated find_impl to remove #[allow(deprecated)].
+        let impl_info = self
+            .impl_by_trait_and_type
+            .get(&(trait_name, self_ty_name))
+            .and_then(|id| self.impls.get(id));
+        impl_info.map(|i| &i.methods)
     }
 
     /// Stage 16.11 (Task 3 Step 4): Get the method names implemented in an
@@ -836,8 +840,9 @@ impl TraitResolver {
         note = "Use implements_by_def_ids (DefId-keyed, type-safe, no interner needed) instead. (Stage 16.11)"
     )]
     pub fn implements(&self, trait_name: Spur, self_ty_name: Spur) -> bool {
-        #[allow(deprecated)]
-        self.find_impl(trait_name, self_ty_name).is_some()
+        // Stage 18.63: Inline deprecated find_impl.
+        self.impl_by_trait_and_type
+            .contains_key(&(trait_name, self_ty_name))
     }
 
     /// Stage 5.4: Check if a type (by DefId) implements a trait (by name).
@@ -849,8 +854,9 @@ impl TraitResolver {
     )]
     pub fn implements_by_def_id(&self, trait_name: Spur, def_id: DefId) -> bool {
         if let Some(type_name) = self.type_by_def_id.get(&def_id) {
-            #[allow(deprecated)]
-            self.implements(trait_name, *type_name)
+            // Stage 18.63: Inline deprecated implements.
+            self.impl_by_trait_and_type
+                .contains_key(&(trait_name, *type_name))
         } else {
             false
         }
@@ -858,8 +864,13 @@ impl TraitResolver {
 
     /// Stage 5.4: Check if a type (by DefId) implements Copy.
     pub fn is_copy(&self, def_id: DefId, copy_name: Spur) -> bool {
-        #[allow(deprecated)]
-        self.implements_by_def_id(copy_name, def_id)
+        // Stage 18.63: Inline deprecated implements_by_def_id.
+        if let Some(type_name) = self.type_by_def_id.get(&def_id) {
+            self.impl_by_trait_and_type
+                .contains_key(&(copy_name, *type_name))
+        } else {
+            false
+        }
     }
 
     /// Stage 5.9: Check if a type (by DefId) implements the builtin Copy
