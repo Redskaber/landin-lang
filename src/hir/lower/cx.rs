@@ -119,9 +119,16 @@ impl<'a> HirLowerCtxt<'a> {
         self.errors.push(LowerError::new(message, span));
     }
 
-    /// Consume the context and return the completed HIR crate.
-    pub fn into_hir(self) -> HirCrate {
-        self.hir
+    /// Consume the context and return the completed HIR crate + any errors.
+    ///
+    /// Stage 18.78 P0-A: Changed from returning just `HirCrate` to returning
+    /// `(HirCrate, Vec<LowerError>)` so the driver can populate
+    /// `CompileErrors.lower`. Previously, `into_hir()` silently discarded
+    /// `self.errors`, making `CompileErrors.lower` always empty.
+    ///
+    /// Per §1.0 原則 4 "报错 > 静默": lowering errors must reach the user.
+    pub fn into_hir(self) -> (HirCrate, Vec<LowerError>) {
+        (self.hir, self.errors)
     }
 
     /// The current owner's DefId, if any.
@@ -213,7 +220,7 @@ mod tests {
 
         cx.exit_owner();
 
-        let hir = cx.into_hir();
+        let (hir, _errors) = cx.into_hir();
         assert_eq!(hir.owner_count(), 1);
         assert_eq!(hir.body_count(), 1);
     }

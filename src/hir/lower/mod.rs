@@ -32,10 +32,12 @@ use lasso::Rodeo;
 /// Stage 1.3 name resolver will fill them in.
 /// `InferTy` fields on all `HirTy` nodes are set to `None`; the Stage 2
 /// type checker will fill them in.
-pub fn lower_crate(ast: &ast::Crate, interner: &Rodeo) -> HirCrate {
+pub fn lower_crate(ast: &ast::Crate, interner: &Rodeo) -> (HirCrate, Vec<LowerError>) {
     let mut cx = HirLowerCtxt::new(interner);
     for item in &ast.items {
         cx.lower_item(item);
     }
+    // Stage 18.78 P0-A: Return errors alongside HIR so driver can populate
+    // CompileErrors.lower. Previously errors were silently discarded.
     cx.into_hir()
 }

@@ -712,9 +712,10 @@ impl<'a> MirLowerCtxt<'a> {
     ///
     /// **Note**: `HirBinOp::And` and `HirBinOp::Or` (logical `&&`/`||`)
     /// are NOT real binary ops in MIR — they must be lowered to control
-    /// flow (short-circuit evaluation) via `lower_short_circuit`. This
-    /// function panics if called with `And` or `Or` to force callers to
-    /// route them correctly.
+    /// flow (short-circuit evaluation) via `lower_short_circuit`. If this
+    /// function is called with `And` or `Or`, it emits an internal warning
+    /// and returns `BinOp::BitAnd` as a best-effort fallback (Stage 18.76 P1-B:
+    /// was panic!, now graceful fallback).
     pub fn lower_bin_op(op: HirBinOp) -> BinOp {
         match op {
             HirBinOp::Add => BinOp::Add,
@@ -742,11 +743,11 @@ impl<'a> MirLowerCtxt<'a> {
             // for an internal compiler error path — the user will see
             // incorrect results, but the compiler won't crash.
             HirBinOp::And | HirBinOp::Or => {
+                // Stage 18.78 P1 (N9): Use Display instead of Debug format.
                 eprintln!(
-                    "internal warning: lower_bin_op called with {:?} — \
+                    "internal warning: lower_bin_op called with And/Or — \
                      caller must route And/Or to lower_short_circuit. \
-                     Using BitAnd as fallback.",
-                    op
+                     Using BitAnd as fallback."
                 );
                 BinOp::BitAnd
             }

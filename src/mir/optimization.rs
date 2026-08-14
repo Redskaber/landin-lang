@@ -1,6 +1,12 @@
 //! Stage 17.10: MIR Optimization Passes — dead code elimination.
 //! Stage 17.13: MIR Optimization Passes — constant propagation + folding.
 //!
+//! Stage 18.78 P0-D: This module is currently NOT wired into the driver
+//! pipeline. `run_dce` and `run_const_prop` are tested structurally but
+//! never called from production code. Decision: keep as `#[allow(dead_code)]`
+//! with TODO for v0.2 — wiring requires opt pass ordering design + semantic
+//! preservation verification.
+//!
 //! This module implements:
 //! - `run_dce`: Dead code elimination — removes assignments to never-read locals.
 //! - `run_const_prop`: Constant propagation — replaces `Copy(local)` with
@@ -11,6 +17,13 @@
 //! Per §16: reads/writes MIR Body (allowed during optimization).
 //! Per §1.0 原則 6 "通用 > 特例": one pass handles all cases.
 //! Per §13.4 J2: single responsibility — each pass is independent.
+
+#![allow(dead_code)]
+// TODO (v0.2): Wire MIR optimization into the driver pipeline between
+// borrowck and codegen. Requires:
+// 1. Opt pass ordering design (DCE before or after const_prop?)
+// 2. Semantic preservation verification (e2e tests: opt on vs off, same output)
+// 3. Performance benchmarking (does opt actually improve codegen?)
 
 use crate::mir::body::{MirBody, StatementKind, TerminatorKind};
 use crate::mir::place::{BinOp, Operand, Place, PlaceKind, Rvalue, UnOp};

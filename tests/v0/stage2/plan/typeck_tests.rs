@@ -357,7 +357,7 @@ fn type_writeback_resolves_infer_var() {
     let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
-    let mut hir = lower_crate(&krate, &interner);
+    let mut hir = lower_crate(&krate, &interner).0;
     let _ = resolve_crate(&mut hir, &mut interner);
 
     let (mut mir, lower_unify, _, _) =

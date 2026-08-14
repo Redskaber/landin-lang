@@ -7,7 +7,6 @@ use crate::codegen::emitter::ModuleEmitter;
 use crate::codegen::emitter::*;
 use llvm_sys::core::*;
 use llvm_sys::prelude::*;
-use std::ffi::CString;
 
 use super::helpers::*;
 use super::LLVMSysEmitter;
@@ -17,10 +16,10 @@ impl ModuleEmitter for LLVMSysEmitter {
         unsafe {
             let triple = cstr_owned("x86_64-unknown-linux-gnu");
             LLVMSetTarget(self.module, triple.as_ptr());
-            let dl = CString::new(
+            // Stage 18.78 P1 (N6): Use cstr_owned instead of CString::new().unwrap().
+            let dl = cstr_owned(
                 "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128",
-            )
-            .unwrap();
+            );
             LLVMSetDataLayout(self.module, dl.as_ptr());
         }
     }

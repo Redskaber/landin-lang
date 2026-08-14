@@ -106,7 +106,7 @@ fn main() {
     // If --compile, --emit-llvm-ir, --emit-obj, --emit-bin, or --run, run full pipeline
     if cli.compile || cli.emit_llvm_ir || cli.emit_obj || cli.emit_bin || cli.run {
         // Stage 18.73 P1-G: Use compile_binary to validate main exists.
-        let result = driver::compile_binary(&source_file.src);
+        let mut result = driver::compile_binary(&source_file.src);
 
         if result.has_errors() {
             // Stage 15.19: Color output with --color flag (auto/always/never).
@@ -183,14 +183,44 @@ fn main() {
             };
 
             // Emit object file
+            // Stage 18.78 P0-B: Codegen errors now populate CompileErrors.codegen
+            // instead of being silently eprintln'd + exit. This allows the
+            // diagnostic display path to show them properly.
             match emitter.to_object_file(obj_path.to_str().unwrap()) {
                 Ok(()) => {
                     eprintln!("info: object file written to {}", obj_path.display());
                 }
                 Err(e) => {
-                    eprintln!("error: object file generation failed: {e}");
-                    std::process::exit(1);
+                    // Stage 18.78 P0-B: Push to codegen errors for proper display.
+                    result.errors.codegen.push(e);
                 }
+            }
+
+            // Stage 18.78 P0-B: If codegen errors occurred, display them and exit.
+            if !result.errors.codegen.is_empty() {
+                use landin_compiler::diagnostics::ColorConfig;
+                use std::io::IsTerminal;
+                let color = match cli.color.as_str() {
+                    "always" => ColorConfig::Always,
+                    "never" => ColorConfig::Never,
+                    _ => {
+                        if std::io::stderr().is_terminal() {
+                            ColorConfig::Auto
+                        } else {
+                            ColorConfig::Never
+                        }
+                    }
+                };
+                let source_map = landin_compiler::session::SourceMap::new(&source_file.src);
+                let error_str = result.errors.format_via_diagnostics_colored(
+                    &source_file.src,
+                    &source_file.name,
+                    &source_map,
+                    Some(&result.interner),
+                    color,
+                );
+                eprintln!("{}", error_str);
+                std::process::exit(1);
             }
 
             // If --emit-bin or --run, link via cc/clang

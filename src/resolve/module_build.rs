@@ -443,8 +443,9 @@ impl Resolver {
                 if let Err(existing) = self.module_tree.insert_use_import(imported_name, import) {
                     self.errors.push(ResolveError::with_kind(
                         crate::resolve::ResolveErrorKind::DuplicateDefinition,
+                        // Stage 18.78 P1 (N4): Use Display instead of Debug format.
                         format!(
-                            "ambiguous import: `{}` is already imported (pointing to {:?})",
+                            "ambiguous import: `{}` is already imported (pointing to {})",
                             self.name_to_string(imported_name),
                             existing.target
                         ),

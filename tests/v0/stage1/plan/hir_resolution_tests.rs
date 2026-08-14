@@ -24,7 +24,7 @@ fn parse_lower_resolve(src: &str) -> HirCrate {
     let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
-    let mut hir = lower_crate(&krate, &interner);
+    let mut hir = lower_crate(&krate, &interner).0;
     let _ = resolve_crate(&mut hir, &mut interner);
     hir
 }
@@ -381,7 +381,7 @@ fn parse_lower_resolve_with_errors(
     let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
-    let mut hir = lower_crate(&krate, &interner);
+    let mut hir = lower_crate(&krate, &interner).0;
     let errors = resolve_crate(&mut hir, &mut interner);
     (hir, errors)
 }
@@ -480,7 +480,7 @@ fn visibility_metadata_collected_for_fn() {
     let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty(), "parse errors");
-    let mut hir = lower_crate(&krate, &interner);
+    let mut hir = lower_crate(&krate, &interner).0;
 
     let mut resolver = Resolver::new();
     resolver.resolve(&mut hir, &mut interner);

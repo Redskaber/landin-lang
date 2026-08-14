@@ -689,7 +689,11 @@ pub fn compile(src: &str) -> CompileResult {
     }
 
     // === Stage 1: HIR lowering ===
-    let mut hir = lower_crate(&krate, &interner);
+    // Stage 18.78 P0-A: lower_crate now returns (HirCrate, Vec<LowerError>).
+    // Previously errors were silently discarded, making CompileErrors.lower
+    // always empty. Now they're properly collected.
+    let (mut hir, lower_errors) = lower_crate(&krate, &interner);
+    errors.lower = lower_errors;
 
     // === Stage 1: Name resolution ===
     errors.resolve = resolve_crate(&mut hir, &mut interner);
@@ -2532,42 +2536,10 @@ fn validate_pattern_arity(hir: &HirCrate, _interner: &lasso::Rodeo, errors: &mut
     }
 }
 
-/// Stage 18.73 P1-G: Validate that a `fn main()` function exists in the crate.
-///
-/// Per §1.0 原则 4 "报错 > 静默": missing main must be reported explicitly,
-/// not silently produce a confusing codegen error.
-/// Per §10 naming: `validate_main_exists` follows `validate_<noun>_<verb>`.
-///
-/// NOTE: This function is kept for documentation purposes. The actual
-/// missing-main check is inlined in `compile_binary` (which has access
-/// to the CompileResult after compilation). This avoids borrow issues
-/// with the interner.
-#[allow(dead_code)]
-fn validate_main_exists(hir: &HirCrate, interner: &lasso::Rodeo, errors: &mut Vec<TypeError>) {
-    // "main" should be interned by the parser if any fn main() exists.
-    // We use try_resolve to check if "main" is interned, then compare Spurs.
-    // If "main" is NOT interned at all, then no fn main() exists.
-    let main_spur_opt = interner.get("main");
-    let has_main = main_spur_opt
-        .map(|main_spur| {
-            hir.owners.iter().any(|(_, owner)| {
-                if let crate::hir::OwnerNode::Item(HirItem::Fn(f)) = owner {
-                    f.ident.name == main_spur
-                } else {
-                    false
-                }
-            })
-        })
-        .unwrap_or(false);
-    if !has_main {
-        errors.push(TypeError::new(
-            "missing `main` function — every program must have a `fn main()` entry point"
-                .to_string(),
-            crate::session::Span::DUMMY,
-        ));
-    }
-}
-
+// Stage 18.78 P1 (N7): Removed dead `validate_main_exists` function.
+// The actual missing-main check is inlined in `compile_binary` (which has
+// access to the CompileResult after compilation). This avoids borrow issues
+// with the interner.
 /// Stage 18.73 P1-E: Validate assignment targets.
 ///
 /// For each `lhs = rhs` expression, check that `lhs` is a valid place

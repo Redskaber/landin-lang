@@ -17,7 +17,7 @@ fn parse_lower_resolve(src: &str) -> (HirCrate, Rodeo) {
     let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
     assert!(parser.into_errors().is_empty());
-    let mut hir = lower_crate(&krate, &interner);
+    let mut hir = lower_crate(&krate, &interner).0;
     let _ = resolve_crate(&mut hir, &mut interner);
     (hir, interner)
 }

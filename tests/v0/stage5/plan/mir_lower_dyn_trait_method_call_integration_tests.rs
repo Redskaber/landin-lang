@@ -284,7 +284,7 @@ fn test_method_call_without_plan_uses_legacy_path() {
     let (tokens, _) = tokenize(src, &mut interner);
     let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
-    let mut hir = lower_crate(&krate, &interner);
+    let mut hir = lower_crate(&krate, &interner).0;
     let _ = resolve_crate(&mut hir, &mut interner);
 
     let (mir, _unify, _, _) = lower_hir_body_to_mir_full(&hir.bodies[0].1, &interner, &hir, None);

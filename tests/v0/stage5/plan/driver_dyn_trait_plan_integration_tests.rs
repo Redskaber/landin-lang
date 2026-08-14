@@ -70,7 +70,7 @@ fn parse_lower(src: &str) -> (landin_compiler::hir::HirCrate, Rodeo) {
     let (tokens, _) = tokenize(src, &mut interner);
     let mut parser = Parser::new(tokens, &mut interner);
     let krate = parser.parse_crate();
-    let mut hir = lower_crate(&krate, &interner);
+    let mut hir = lower_crate(&krate, &interner).0;
     let _ = resolve_crate(&mut hir, &mut interner);
     (hir, interner)
 }

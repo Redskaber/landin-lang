@@ -22,7 +22,7 @@ fn parse_and_lower(src: &str) -> HirCrate {
         src,
         errors
     );
-    lower_crate(&krate, &interner)
+    lower_crate(&krate, &interner).0
 }
 
 // =====================================================================
