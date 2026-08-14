@@ -704,6 +704,11 @@ pub fn compile(src: &str) -> CompileResult {
     interner.get_or_intern("__landin_asm");
     interner.get_or_intern("__landin_compile_error");
     interner.get_or_intern("__landin_cfg_attr");
+    // Stage 18.43: Pre-intern symbols for control-flow + debug macros.
+    interner.get_or_intern("mode");
+    interner.get_or_intern("__landin_unreachable");
+    interner.get_or_intern("__landin_trace_macros");
+    interner.get_or_intern("__landin_format_args");
     let (tokens, macro_errs) =
         crate::parser::macro_expand::expand_macros_with_errors(tokens, &mut interner);
     errors.macro_errors = macro_errs;

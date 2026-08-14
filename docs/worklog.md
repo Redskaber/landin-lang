@@ -31284,3 +31284,63 @@ Stage Summary:
 - BUILTIN_MACRO_NAMES 扩展: 22 → 25
 - 内置宏总计: 4 print + 21 non-print = 25
 - v0.314.0 → v0.315.0
+
+---
+Task ID: stage18.42
+Agent: Super Z (main)
+Task: Stage 18.42 — v0.7 P1 Review (Balance Assessment)
+
+Work Log:
+- §14.5 D1-D8 全 ✅
+- §6.3 5/5 GO
+- Macro:println = 14:10 (macro 系统大幅扩展)
+- 3144 tests, 0 failures
+- v0.315.0 (无代码变更，仅审查)
+- 内置宏系统总览: 25 macros (4 print + 21 non-print)
+  - Print: println/print/eprintln/eprint
+  - Control flow: assert/panic
+  - Data: vec/format
+  - Debug: dbg
+  - Error: todo/unimplemented
+  - I/O: write
+  - Compile-time: stringify/concat/env
+  - Source info: file/line/module_path
+  - File: include_str
+  - Pattern: matches
+  - Config: cfg/option_env
+  - Low-level: asm
+  - Diagnostic: compile_error/cfg_attr
+- println! 通解化状态: Phase 2.5 完成, Phase 3 死代码标记完成
+- 后续规划:
+  - Phase 3.2: 完整移除 Println variant
+  - GATs / Incremental Compilation / Cross-compilation
+
+---
+Task ID: stage18.43
+Agent: Super Z (main)
+Task: Stage 18.43 — Control-flow + Debug Macros (unreachable!/trace_macros!/format_args!)
+
+Work Log:
+- §13.5 设计-审查（1 轮自审定稿）
+- 扩展 BUILTIN_MACRO_NAMES: 25 → 28 (添加 unreachable/trace_macros/format_args)
+- 新增 3 个 macro rule 构造函数:
+  - make_unreachable_macro_rule: unreachable! → __landin_unreachable($msg)
+  - make_trace_macros_macro_rule: trace_macros! → __landin_trace_macros($mode)
+  - make_format_args_macro_rule: format_args! → __landin_format_args($($args)*)
+- dispatcher 更新: make_builtin_macro_rule 新增 3 个 match arm
+- driver 预 intern 新符号 (mode/__landin_unreachable/__landin_trace_macros/__landin_format_args)
+- 更新所有测试中的 count 期望 (25 → 28)
+- §1.0 原則 6 "通用 > 特解": 所有内置宏走同一 expand_macros 通道
+- §10 命名: make_<name>_macro_rule 模式
+- §11 接口隔离: 所有 rule 构造函数在 macro_expand.rs 内部
+- 验收:
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2537 integration = 3144 unit tests, 0 failures
+
+Stage Summary:
+- 控制流 + 调试宏完成 (unreachable!/trace_macros!/format_args!)
+- BUILTIN_MACRO_NAMES 扩展: 25 → 28
+- 内置宏总计: 4 print + 24 non-print = 28
+- v0.315.0 → v0.316.0
