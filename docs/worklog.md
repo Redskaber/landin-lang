@@ -31521,3 +31521,66 @@ Stage Summary:
 - 24 个新测试, 全部 1:3+ ratio
 - 3168 total tests, 0 failures
 - v0.317.0 → v0.318.0
+
+---
+Task ID: stage18.52
+Agent: Super Z (main)
+Task: Stage 18.52 — GATs (Generic Associated Types) Phase 1: AST/Parser/HIR Infrastructure
+
+Work Log:
+- §13.1 阶段开始设计对齐 + §13.5 设计-审查（1 轮自审定稿）
+- 用户反馈: "继续通过 docs/stage-committee-process.md 团队协作，按照计划继续推进并严格API命名标准化和接口设计"
+- 设计文档: docs/develop/v0/stage-18/stage-18.52-gats-phase1-design.md
+- v0.7 路线图 P1: GATs 实现开启 (Phase 1: AST/Parser/HIR 基础设施)
+
+- AST 变更 (src/ast/kinds.rs):
+  - TraitItem::Type(Ident, Vec<TypeBound>, Option<Ty>) →
+    TraitItem::Type(Ident, Generics, Vec<TypeBound>, Option<Ty>)
+  - §10 命名标准: 字段顺序 (Ident, Generics, Bounds, Default) 与 Fn variant 一致
+
+- Parser 变更 (src/parser/items.rs):
+  - KwType arm 新增 parse_generics() + parse_where_clause() 调用
+  - §1.0 原則 6 "通用 > 特例": 复用现有 parse_generics, 不为 GAT 写特殊 parser
+
+- HIR 变更 (src/hir/kinds.rs):
+  - HirAssocType 新增 pub generics: HirGenerics 字段
+  - 向后兼容: 非 GAT 关联类型用 HirGenerics::default() (空 params + 空 where_clause)
+
+- HIR lower 变更 (src/hir/lower/item.rs):
+  - Trait item Type arm: lower generics 字段
+  - Impl item Type arm: 修复先前丢失 generics 的 bug (从 hir_t.generics 复用)
+
+- Resolve 变更 (src/resolve/path_resolve.rs):
+  - HirTraitItem::Type 与 HirImplItem::Type 增加 resolve_generics_paths 调用
+  - 让 GAT 中 where clause 与 type param bounds 内的路径正确解析
+
+- 下游消费者 (graceful degradation, §1.0 原則 9 "正确 > 妥协"):
+  - typeck/projection_resolver.rs: 无需变更 (现 lookup 仍按 name 匹配, GAT 暂返回 None)
+  - mir/lower, mir/monomorphize, codegen: 无需变更 (GAT 在 Phase 1 不会被实际处理)
+  - 这些消费者在 Phase 2+ 才需要 GAT-aware 修改, 本阶段明确推迟并记录
+
+- 测试 (§9.4.3 1:3+ ratio):
+  - tests/v0/stage18/plan/stage18_52_gats_tests.rs: 2 positive + 6 negative = 1:3 ✓
+    - positive: simple_lifetime_with_default + type_param_where_and_impl
+    - negative: missing_semicolon + missing_ident + eof_no_semicolon
+                + garbage_in_generics + number_as_param + missing_name_entirely
+  - tests/conformance/01-typecheck/02-generics/: 5 new GAT conformance tests (0374-0378)
+  - tests/conformance/01-typecheck/99-error-cases/: 4 new GAT error cases (err-0324-0327)
+  - 总计: 8 unit + 9 conformance = 17 new tests
+
+- 验收 (§3.2 交付前验收检查):
+  - cargo clean — ✅
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2569 integration (+8 new) = 3176 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5233 conformance tests, 0 failures (+8 new)
+
+Stage Summary:
+- GATs Phase 1 完成: AST/Parser/HIR 基础设施支持 `type Item<'a, T> where Self: 'a;`
+- §1.0 原則 6 "通用 > 特例": 复用 Generics + parse_generics + lower_generics + resolve_generics_paths
+- §10 命名标准: TraitItem::Type 字段顺序与 Fn variant 一致
+- §11 接口隔离: AST → HIR → MIR 单向流动, generics 字段不外泄
+- 修复先前 bug: impl 块 HirImplItem::Type 先前丢失 generics (从 TypeAliasDecl 复用)
+- Phase 2 (HR-projection resolution) + Phase 3 (GAT monomorphization) 明确推迟并记录于设计文档
+- v0.318.0 → v0.319.0

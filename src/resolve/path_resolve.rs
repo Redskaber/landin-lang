@@ -183,6 +183,10 @@ impl Resolver {
                 self.resolve_ty_paths(&mut c.ty, interner);
             }
             crate::hir::HirTraitItem::Type(t) => {
+                // Stage 18.52 GATs Phase 1: resolve paths in generics (where clause,
+                // type param bounds) so that GAT declarations like
+                // `type Item<'a> where Self: 'a;` get their paths resolved.
+                self.resolve_generics_paths(&mut t.generics, interner);
                 for bound in &mut t.bounds {
                     if let HirTypeBound::Trait(tb) = bound {
                         self.resolve_hir_path(&mut tb.path, interner);
@@ -214,6 +218,9 @@ impl Resolver {
                 self.resolve_ty_paths(&mut c.ty, interner);
             }
             crate::hir::HirImplItem::Type(t) => {
+                // Stage 18.52 GATs Phase 1: resolve generics paths in impl-side
+                // GAT bindings (`impl Trait { type Item<'a> = &'a T; }`).
+                self.resolve_generics_paths(&mut t.generics, interner);
                 for bound in &mut t.bounds {
                     if let HirTypeBound::Trait(tb) = bound {
                         self.resolve_hir_path(&mut tb.path, interner);

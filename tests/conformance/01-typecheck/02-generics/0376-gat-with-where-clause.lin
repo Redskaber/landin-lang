@@ -1,0 +1,9 @@
+// CATEGORY: typecheck
+// DESCRIPTION: GAT with where clause
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.52 GATs Phase 1
+
+trait LendingIterator {
+    type Item<'a> where Self: 'a;
+}
+fn main() { 0 }

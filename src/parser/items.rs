@@ -475,8 +475,14 @@ impl<'a> Parser<'a> {
                     ))
                 }
                 TokenKind::KwType => {
+                    // Stage 18.52 GATs Phase 1: parse `type Item<'a, T> where Self: 'a;`
+                    // Per §1.0 原则 6 "通用 > 特例": reuse existing `parse_generics`
+                    // and `parse_where_clause` rather than writing GAT-specific parsers.
+                    let kw_span = self.current_span();
                     self.bump();
                     let name = self.expect_ident("associated type name");
+                    let generics = self.parse_generics();
+                    let where_clause = self.parse_where_clause();
                     let mut bounds = Vec::new();
                     if *self.peek() == TokenKind::Colon {
                         self.bump();
@@ -489,7 +495,16 @@ impl<'a> Parser<'a> {
                         None
                     };
                     self.expect(&TokenKind::Semicolon, "`;`");
-                    Some(TraitItem::Type(name, bounds, default))
+                    Some(TraitItem::Type(
+                        name,
+                        Generics {
+                            params: generics,
+                            where_clause,
+                            span: kw_span,
+                        },
+                        bounds,
+                        default,
+                    ))
                 }
                 TokenKind::KwConst => {
                     self.bump();

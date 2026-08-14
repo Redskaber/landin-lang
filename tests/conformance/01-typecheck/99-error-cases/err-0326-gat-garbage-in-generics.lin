@@ -1,0 +1,10 @@
+// CATEGORY: typecheck
+// DESCRIPTION: GAT garbage character in generics (parse error)
+// EXPECTED: compile_error
+// ERROR_PATTERN: expected
+// SOURCE: Stage 18.52 GATs Phase 1
+
+trait Foo {
+    type Item<@>;
+}
+fn main() { 0 }

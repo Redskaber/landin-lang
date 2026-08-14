@@ -763,8 +763,11 @@ pub enum TraitItem {
     /// Carries the method name (Ident), per-method generics, signature, and
     /// optional default body.
     Fn(Ident, Generics, FnSig, Option<Block>),
-    /// An associated type: `type Item;`, `type Item: Bound;`, `type Item = T;`.
-    Type(Ident, Vec<TypeBound>, Option<Ty>),
+    /// An associated type: `type Item;`, `type Item: Bound;`, `type Item = T;`,
+    /// or with Stage 18.52 GATs Phase 1: `type Item<'a, T> where Self: 'a;`.
+    /// Field order: (Ident, Generics, Bounds, Default) — mirrors `Fn` variant
+    /// (Ident, Generics, FnSig, Body) per §10 naming standard.
+    Type(Ident, Generics, Vec<TypeBound>, Option<Ty>),
     /// An associated constant: `const X: i32;` or `const X: i32 = 42;`.
     Const(Ident, Ty, Option<Expr>),
 }

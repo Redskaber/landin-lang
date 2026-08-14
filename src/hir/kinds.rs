@@ -333,10 +333,16 @@ pub struct HirTrait {
 }
 
 /// Associated type item in a trait: `type Item: Bound = Default;`
+///
+/// Stage 18.52 GATs Phase 1: `generics` field added to support
+/// `type Item<'a, T> where Self: 'a;`. For non-GAT associated types,
+/// `generics` is `HirGenerics::default()` (empty params + empty where_clause),
+/// preserving 100% backward compatibility.
 #[derive(Debug, Clone)]
 pub struct HirAssocType {
     pub hir_id: HirId,
     pub ident: Ident,
+    pub generics: HirGenerics,
     pub bounds: Vec<HirTypeBound>,
     pub default: Option<HirTy>,
     pub span: Span,

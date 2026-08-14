@@ -399,12 +399,16 @@ impl<'a> HirLowerCtxt<'a> {
                     HirTraitItem::Fn(hir_fn)
                 }
             }
-            ast::TraitItem::Type(ident, bounds, default) => {
+            ast::TraitItem::Type(ident, generics, bounds, default) => {
+                // Stage 18.52 GATs Phase 1: lower generics field for GAT support.
+                // Per §1.0 原則 6 "通用 > 特例": reuse existing `lower_generics`.
+                let hir_generics = generics::lower_generics(self, generics);
                 let hir_bounds = generics::lower_type_bounds(self, bounds);
                 let hir_default = default.as_ref().map(|t| ty::lower_ty(self, t));
                 HirTraitItem::Type(HirAssocType {
                     hir_id: self.fresh_hir_id(),
                     ident: *ident,
+                    generics: hir_generics,
                     bounds: hir_bounds,
                     default: hir_default,
                     span: Span::DUMMY,
@@ -485,6 +489,11 @@ impl<'a> HirLowerCtxt<'a> {
                     Some(HirImplItem::Type(HirAssocType {
                         hir_id: hir_t.hir_id,
                         ident: hir_t.ident,
+                        // Stage 18.52 GATs Phase 1: preserve generics from TypeAliasDecl.
+                        // Previously this branch silently discarded `hir_t.generics`,
+                        // making `impl Trait { type Item<'a> = &'a T; }` lose the
+                        // lifetime parameter. Now we propagate it for GAT support.
+                        generics: hir_t.generics.clone(),
                         bounds: vec![],
                         default: Some(hir_t.ty),
                         span: hir_t.span,

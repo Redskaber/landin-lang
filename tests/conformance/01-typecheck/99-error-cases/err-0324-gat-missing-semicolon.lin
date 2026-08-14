@@ -1,0 +1,11 @@
+// CATEGORY: typecheck
+// DESCRIPTION: GAT missing semicolon (parse error)
+// EXPECTED: compile_error
+// ERROR_PATTERN: expected
+// SOURCE: Stage 18.52 GATs Phase 1
+
+trait Foo {
+    type Item<'a>
+    fn next(&self) -> i32;
+}
+fn main() { 0 }
