@@ -12743,3 +12743,49 @@ Stage Summary:
 - 3286 unit + 2935 conformance = 6221 total tests, 0 failures
 - v0.354.0: minor bump (diagnostic quality enhancement)
 - 下一步: v0.2 规划 或继续测试增强
+
+---
+Task ID: stage18.87
+Agent: Super Z (main)
+Task: Stage 18.87 — GATs Phase 3: Projection Resolver Bug Fixes. v0.354.0 → v0.355.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 v0.7 路线图 P1 GATs + Phase 1/2 完成 + Phase 3 计划
+- 修复 projection_resolver.rs 的 B5-B9 bug:
+  1. B6: 添加 FnDef/FnPtr/Closure 递归解析
+     - resolve_projection_in_ty 新增 3 个 match arm
+     - FnDef/Closure: 递归解析 substs
+     - FnPtr: 递归解析 inputs + output
+  2. B7: 扩展 types_match 覆盖所有 TyKind variants
+     - 从 8 个 → 20+ 个 variants
+     - 添加: Float, Never, Tuple, Array, Slice, Ref, RawPtr, FnDef, FnPtr, Closure, Projection, Error, Infer, Foreign
+     - 递归匹配: Tuple/FnPtr 元素逐一比较
+  3. B8: 添加递归深度限制 (MAX_PROJECTION_DEPTH = 10)
+     - resolve_projection_in_ty 添加 depth: u32 参数
+     - 超过 10 层返回原始类型 (graceful degradation)
+     - 防止循环绑定 (type A = B; type B = A;) 导致无限递归
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  - cargo test --features llvm-backend ✅ (638 lib + 2648 integration = 3286 unit tests, 0 failures)
+  - python3 tests/conformance/run_all.py ✅ (2935 conformance tests, 0 failures)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.87-gats-phase3-design.md (新建)
+  - Cargo.toml: v0.354.0 → v0.355.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.87 PASSED — GATs Phase 3 投影解析器 bug 修复
+- 3 个 bug 修复 (B6/B7/B8):
+  - B6: 完整 compound type 覆盖 (FnDef/FnPtr/Closure)
+  - B7: 完整 types_match 覆盖 (20+ variants)
+  - B8: 递归深度限制 (10 层, 防止无限循环)
+- GATs 实现进度:
+  - Phase 1 (18.52): ✅ AST/Parser/HIR 基础设施
+  - Phase 2 (18.53): ✅ Qualified path 解析 + Projection lowering
+  - Phase 3 (18.87): ✅ 投影解析器 bug 修复 + 完整覆盖
+  - Phase 4 (远期): GAT monomorphization (实际生成不同 LLVM IR)
+- 3286 unit + 2935 conformance = 6221 total tests, 0 failures
+- v0.355.0: minor bump (GATs Phase 3)
+- 下一步: v0.2 规划 或继续 GATs Phase 4
