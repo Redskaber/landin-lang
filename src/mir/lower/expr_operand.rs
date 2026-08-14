@@ -563,10 +563,16 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                     }
                                 }
                                 // Fallback: treat as FnDef (error recovery).
-                                let fndef_ty = Ty::new(
-                                    TyKind::FnDef(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
-                                    expr.span,
-                                );
+                                // Stage 18.101: Propagate generic args from path
+                                // into FnDef substs. For paths without turbofish
+                                // (e.g., `id(42)` without `::<i32>`), substs may
+                                // be empty — type inference back-propagation is
+                                // needed to fill them (v0.2 work, tracked as
+                                // TD-MONO-INFER). The substs are populated by
+                                // lower_path_generic_args which reads explicit
+                                // turbofish args from the path.
+                                let substs = lower_path_generic_args(path, &mut 0, cx.hir);
+                                let fndef_ty = Ty::new(TyKind::FnDef(def_id, substs), expr.span);
                                 return cx.eval_rvalue_to_temp(
                                     Rvalue::Use(Operand::Constant(Const {
                                         ty: fndef_ty.clone(),
@@ -578,10 +584,11 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                             }
                             _ => {
                                 // Default: treat as FnDef (covers Fn, etc.).
-                                let fndef_ty = Ty::new(
-                                    TyKind::FnDef(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
-                                    expr.span,
-                                );
+                                // Stage 18.101: Propagate generic args from path
+                                // into FnDef substs. For paths without turbofish,
+                                // substs may be empty — see TD-MONO-INFER note above.
+                                let substs = lower_path_generic_args(path, &mut 0, cx.hir);
+                                let fndef_ty = Ty::new(TyKind::FnDef(def_id, substs), expr.span);
                                 return cx.eval_rvalue_to_temp(
                                     Rvalue::Use(Operand::Constant(Const {
                                         ty: fndef_ty.clone(),

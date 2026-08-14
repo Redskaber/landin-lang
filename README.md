@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.368.0 (Stage 18.100 — P2 tech debt fixes: format_ty DRY + unwrap cleanup)  
+> **Version**: v0.369.0 (Stage 18.101 — Turbofish monomorphization: FnDef substs propagation)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 in progress (P1 complete, P0 soundness fixes done, P2 in progress)
+> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization turbofish done, implicit inference pending)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets

@@ -13479,3 +13479,53 @@ Stage Summary:
 - v0.368.0: minor bump (P2 tech debt fixes)
 - 剩余 P2 技术债 (7 项) 均需 v0.2 较大重构, 留待 v0.2 batch 处理
 - 下一步: v0.2 P0 (完整单态化 GAT Phase 4 / 项目系统 mini-cargo)
+
+---
+Task ID: stage18.101
+Agent: Super Z (main)
+Task: Stage 18.101 — Turbofish Monomorphization (FnDef Substs Propagation). v0.368.0 → v0.369.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 task-11-monomorphization-design.md §3.4 Phase 4
+  → 发现单态化基础设施已完成 (Phases 1-4c), 但 FnDef substs 传播断裂
+- 根因分析:
+  → 测试 `id::<i32>(42)` + `id::<bool>(true)` → collect_mono_items 返回 0
+  → MIR 检查: local 1 = FnDef(DefId(0), []) — substs 为空
+  → 定位: src/mir/lower/expr_operand.rs 第 565, 582 行
+    FnDef(def_id, Vec::new().into()) — 总是用空 substs
+  → collect_mono_items 检查 !substs.is_empty(), 所以空 substs 的 FnDef 不被收集
+- 修复 (Stage 18.101):
+  → 2 个 FnDef 创建点改为调用 lower_path_generic_args(path, &mut 0, cx.hir)
+  → lower_path_generic_args 从 path 读取显式 turbofish 参数 (e.g., ::<i32> → [i32])
+  → 对无 turbofish 的 path, substs 仍为空 (TD-MONO-INFER — v0.2 隐式推理)
+- 验证修复:
+  → id::<i32>(42) + id::<bool>(true) → 2 MonoItems (Fn{i32}, Fn{bool}) ✅
+  → add(1,2) (非泛型) → 0 MonoItems ✅
+  → id(42) (无 turbofish) → 0 MonoItems (TD-MONO-INFER 待 v0.2)
+- 新增 2 个测试 (tests/v0/stage2/plan/typeck_tests.rs):
+  → stage18_101_turbofish_produces_mono_item: turbofish 产生 2 MonoItems
+  → stage18_101_non_generic_no_mono_items: 非泛型产生 0 MonoItems
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2622 passed, 0 failed (+2 new)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.101-turbofish-monomorphization-design.md (新建)
+  - Cargo.toml: v0.368.0 → v0.369.0
+  - README.md: v0.368.0 → v0.369.0
+  - RELEASE_NOTES.md: 添加 v0.369.0 条目 + 单态化进度表
+  - docs/develop/v0/v0.1-capability-boundaries.md: 版本 + 测试数量更新
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.101 PASSED — Turbofish 单态化 FnDef substs 传播修复
+- 根因: FnDef 创建点用 Vec::new() (空 substs), 断裂了单态化收集
+- 修复: 2 处改为 lower_path_generic_args(path) 提取 turbofish substs
+- turbofish 调用现在产生正确 MonoItems (id<i32> + id<bool> → 2 items)
+- 残留: TD-MONO-INFER (隐式推理 id(42) 无 turbofish) — v0.2 writeback-style pass
+- 640 lib + 2622 integration = 3262 unit tests, 0 failures
+- v0.369.0: minor bump (turbofish monomorphization)
+- v0.2 P0 单态化: turbofish ✅, 隐式推理 ❌ (TD-MONO-INFER), per-mono codegen ❌ (TD-MONO-CODEGEN)
+- 下一步: TD-MONO-INFER (隐式泛型推理回写) 或 TD-MONO-CODEGEN (per-mono 代码生成)

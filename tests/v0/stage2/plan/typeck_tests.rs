@@ -656,3 +656,64 @@ fn main() {
         "fn(i32)->i32 assigned to fn(i32)->i32 should be accepted"
     );
 }
+
+// =================================================================
+// Stage 18.101: Turbofish Monomorphization Tests
+// =================================================================
+
+/// Stage 18.101 positive: turbofish generic call produces MonoItem.
+/// `id::<i32>(42)` should produce MonoItem::Fn { def_id: id, substs: [i32] }.
+/// This verifies that FnDef substs are propagated from path turbofish args.
+#[test]
+fn stage18_101_turbofish_produces_mono_item() {
+    use landin_compiler::compile;
+    use landin_compiler::mir::collect_mono_items;
+    let src = r#"
+fn id<T>(x: T) -> T { x }
+fn main() {
+    let a: i32 = id::<i32>(42);
+    let b: bool = id::<bool>(true);
+}
+"#;
+    let result = compile(src);
+    assert!(!result.has_errors());
+    let items = collect_mono_items(&result.mirs);
+    // Should collect 2 MonoItems: id<i32> and id<bool>
+    let fn_items: Vec<_> = items
+        .iter()
+        .filter(|i| matches!(i, landin_compiler::mir::MonoItem::Fn { .. }))
+        .collect();
+    assert_eq!(
+        fn_items.len(),
+        2,
+        "turbofish calls should produce 2 MonoItems, got {}: {:?}",
+        fn_items.len(),
+        fn_items
+    );
+}
+
+/// Stage 18.101 negative: non-generic call produces no Fn MonoItems.
+#[test]
+fn stage18_101_non_generic_no_mono_items() {
+    use landin_compiler::compile;
+    use landin_compiler::mir::collect_mono_items;
+    let src = r#"
+fn add(x: i32, y: i32) -> i32 { x + y }
+fn main() {
+    let a = add(1, 2);
+}
+"#;
+    let result = compile(src);
+    assert!(!result.has_errors());
+    let items = collect_mono_items(&result.mirs);
+    let fn_items: Vec<_> = items
+        .iter()
+        .filter(|i| matches!(i, landin_compiler::mir::MonoItem::Fn { .. }))
+        .collect();
+    assert_eq!(
+        fn_items.len(),
+        0,
+        "non-generic call should produce 0 Fn MonoItems, got {}",
+        fn_items.len()
+    );
+}

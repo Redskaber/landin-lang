@@ -1,9 +1,85 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.368.0
+**Current version**: v0.369.0
 **Date**: 2026-08-11
-**Test count**: 640 rust lib tests + 2620 integration tests + 2935 conformance tests + 7 fuzz tests = 6202 total (100% pass rate, 35 runtime tests skipped due to OOM)
+**Test count**: 640 rust lib tests + 2622 integration tests + 2935 conformance tests + 7 fuzz tests = 6204 total (100% pass rate, 35 runtime tests skipped due to OOM)
+
+---
+## v0.369.0 — Stage 18.101 (Turbofish Monomorphization — FnDef Substs Propagation)
+
+### Overview
+
+Advances v0.2 P0 monomorphization by fixing the FnDef substs propagation gap.
+Generic function calls with explicit turbofish (`id::<i32>(42)`) now produce
+proper `MonoItem`s, enabling the monomorphization collection pass to find them.
+
+### Root Cause
+
+`src/mir/lower/expr_operand.rs` Path lowering created `FnDef` types with
+`Vec::new().into()` (empty substs) at 2 sites (lines 565, 582). This meant
+`collect_mono_items` (which checks `!substs.is_empty()`) found 0 MonoItems
+for generic function calls, even with explicit turbofish — the monomorphization
+infrastructure was complete but disconnected from the lowering.
+
+### Fix
+
+Both FnDef creation sites now call `lower_path_generic_args(path, ...)` to
+extract explicit turbofish args from the path:
+
+```rust
+// BEFORE: FnDef(def_id, Vec::new())  — always empty substs
+// AFTER:  FnDef(def_id, lower_path_generic_args(path))  — turbofish substs
+```
+
+### Verification
+
+| Scenario | Before | After |
+|----------|--------|-------|
+| `id::<i32>(42)` + `id::<bool>(true)` | 0 MonoItems | ✅ 2 MonoItems (Fn{i32}, Fn{bool}) |
+| `add(1, 2)` (non-generic) | 0 MonoItems | ✅ 0 MonoItems (correct) |
+| Implicit `id(42)` (no turbofish) | 0 MonoItems | 0 MonoItems (TD-MONO-INFER — v0.2 work) |
+
+### Remaining Gap: TD-MONO-INFER
+
+Implicit generic calls (`id(42)` without `::<i32>`) still produce empty substs
+because MIR lowering happens before type inference back-propagates the concrete
+type from the argument. Fix requires a writeback-style pass after typeck that
+fills FnDef substs from the unify table's inferred types. Tracked as TD-MONO-INFER
+for v0.2.
+
+### Changes
+
+| ID | Change | Details |
+|----|--------|---------|
+| 18.101.1 | FnDef substs propagation | 2 sites in `mir/lower/expr_operand.rs` now call `lower_path_generic_args` |
+| 18.101.2 | Turbofish MonoItem test | `id::<i32>` + `id::<bool>` → 2 Fn MonoItems |
+| 18.101.3 | Non-generic no-MonoItem test | `add(1,2)` → 0 Fn MonoItems |
+| 18.101.4 | Design doc | `stage-18.101-turbofish-monomorphization-design.md` (root cause + fix + TD-MONO-INFER) |
+
+### Verification (§3.2)
+
+| Check | Result |
+|-------|--------|
+| `cargo build --features llvm-backend` | ✅ |
+| `cargo fmt --check` | ✅ exit 0 |
+| `cargo clippy --all-targets --features llvm-backend -- -D warnings` | ✅ 0 warnings |
+| `cargo test --features llvm-backend --lib` | ✅ 640 passed, 0 failed |
+| `cargo test --features llvm-backend --tests` (skip runtime) | ✅ 2622 passed, 0 failed (+2 new) |
+
+### v0.2 Monomorphization Progress
+
+| Phase | Status |
+|-------|--------|
+| Phase 1: Substs propagation (Adt) | ✅ Stage 16.52 |
+| Phase 2: Substitution | ✅ Stage 16.53 |
+| Phase 3: Monomorphization collection | ✅ Stage 16.54 |
+| Phase 4a: Specialized naming | ✅ Stage 16.55 |
+| Phase 4b: Per-mono layouts | ✅ Stage 16.59 |
+| Phase 4c: Codegen integration | ✅ Stage 16.59 |
+| **Turbofish FnDef substs** | ✅ Stage 18.101 |
+| **Implicit inference FnDef substs (TD-MONO-INFER)** | ❌ v0.2 |
+| **Per-mono codegen (emit specialized fns)** | ❌ v0.2 (TD-MONO-CODEGEN) |
 
 ---
 ## v0.368.0 — Stage 18.100 (P2 Tech Debt Fixes — format_ty DRY + unwrap cleanup)
