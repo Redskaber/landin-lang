@@ -1,0 +1,27 @@
+// CATEGORY: e2e
+// DESCRIPTION: Qualified path in generic fn return type — resolves correctly at runtime
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 42\n
+// SOURCE: Stage 18.68 P1 fix: GEP vtable index fix
+
+trait Container {
+    type Item;
+    fn get(&self) -> Self::Item;
+}
+
+struct Store { val: i32 }
+
+impl Container for Store {
+    type Item = i32;
+    fn get(&self) -> i32 { self.val }
+}
+
+fn extract<C: Container>(c: &C) -> <C as Container>::Item {
+    c.get()
+}
+
+fn main() {
+    let s = Store { val: 42 };
+    let v = extract(&s);
+    println!("{}", v);
+}

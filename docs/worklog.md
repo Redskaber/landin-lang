@@ -32460,3 +32460,46 @@ Stage Summary:
 - §10 命名: emit_neg_overflow_assert / NegOverflow
 - 3245 unit + 5252 conformance = 8497 total tests, 0 failures
 - v0.333.0 → v0.334.0
+
+---
+Task ID: stage18.68
+Agent: Super Z (main)
+Task: Stage 18.68 — P1 Fix: Qualified Path in Generic Fn Return (GEP Vtable Index)
+
+Work Log:
+- §14 深度审查 R4 发现 P1 codegen bug: `<T as Trait>::Item` 在 generic fn 返回类型中
+  导致 LLVM "Invalid indices for GEP pointer type" 错误
+
+- 根因分析:
+  - emit_dyn_trait_method_call (src/codegen/llvm/aggregate.rs:154)
+  - GEP 使用 `[zero, slot_idx]` 两个索引访问 `[N x ptr]` vtable
+  - 在 LLVM 19 opaque pointer 模式下, `getelementptr ptr, ptr %vtable, i32 0, i32 0`
+    验证失败 — 对于 `ptr` 元素类型, 应使用单索引 `[slot_idx]` 而非 `[0, slot_idx]`
+  - `[0, slot_idx]` 是 typed-pointer 时代的写法 (第一个 0 索引数组, 第二个索引元素)
+
+- 修复 (src/codegen/llvm/aggregate.rs):
+  - method_indices 从 `[zero, slot_idx]` 改为 `[slot_idx]` (单索引)
+  - §1.0 原則 9 正确 > 妥协: 正确的 GEP 语义
+  - §1.0 原則 6 通用 > 特例: 复用现有 emit_dyn_trait_method_call 基础设施
+
+- 验证:
+  - 修复前: `--run /tmp/qp_test.lin` → "Invalid indices for GEP pointer type!" + exit=0 (失败)
+  - 修复后: `--run /tmp/qp_test.lin` → "42" + exit=0 (成功)
+
+- 新增 conformance 测试:
+  - e2e-runok-203-qualified-path-generic-return.lin:
+    - `<C as Container>::Item` 在 generic fn 返回类型中使用
+    - 验证运行时输出 "42"
+
+- 验收 (§3.2):
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 604 lib + 2641 integration = 3245 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5253 conformance tests (+1 new), 0 failures
+
+Stage Summary:
+- P1 codegen bug 修复: qualified path in generic fn return 现在正确运行
+- §1.0 原則 9 正确 > 妥协: GEP 索引修正
+- 3245 unit + 5253 conformance = 8498 total tests, 0 failures
+- v0.334.0 → v0.335.0

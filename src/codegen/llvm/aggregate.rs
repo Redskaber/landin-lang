@@ -148,12 +148,23 @@ impl AggregateEmitter for LLVMSysEmitter {
             );
 
             // 3. GEP to get the method function pointer slot (slot_index of [N x ptr]).
+            // Stage 18.68: Use the vtable's actual element type (ptr) for the GEP.
+            // Previously used `opaque_ptr_ty` as the element type, which is correct
+            // for opaque pointers in LLVM 15+, but LLVM verification fails when
+            // the GEP's element type doesn't match the pointer's pointee type in
+            // typed pointer mode (LLVM < 15 compatibility). Using `opaque_ptr_ty`
+            // (which is `ptr` in LLVM 19) is actually correct for opaque pointers,
+            // but the indices `[0, slot_index]` are wrong — for a `[N x ptr]` array
+            // accessed via `ptr`, the correct GEP is `getelementptr ptr, ptr %vtable, i32 slot_index`
+            // (single index, not `[0, slot_index]`).
+            //
+            // Per §1.0 原則 9 "正确 > 妥协": fix the GEP indices.
             let slot_idx = LLVMConstInt(LLVMInt32TypeInContext(self.ctx), slot_index as u64, 0);
-            let mut method_indices = [zero, slot_idx];
+            let mut method_indices = [slot_idx]; // single index into [N x ptr]
             let gep_method_name = CString::new("gep_method").unwrap();
             let gep_method = LLVMBuildInBoundsGEP2(
                 self.builder,
-                opaque_ptr_ty, // vtable is [N x ptr], element type is ptr (opaque)
+                opaque_ptr_ty, // element type is ptr (opaque pointer mode)
                 vtable,
                 method_indices.as_mut_ptr(),
                 method_indices.len() as u32,
