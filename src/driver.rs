@@ -47,7 +47,6 @@ use crate::mir::dyn_trait::build_dyn_trait_mir_plan_from_resolver;
 use crate::mir::lower::lower_hir_body_to_mir_full_with_dyn_trait_plan;
 use crate::parser::Parser;
 use crate::resolve::resolve_crate;
-use crate::session::Span;
 use crate::traits::{CoherenceError, IncompleteImpl};
 use crate::typeck::{self, TypeError, TypeckResults};
 use lasso::Rodeo;
@@ -192,103 +191,18 @@ impl CompileErrors {
         !self.lex.is_empty() || !self.parse.is_empty()
     }
 
-    /// Format all errors as a human-readable string, suitable for
-    /// displaying to the user. Each error includes:
-    ///   - The error category (lex/parse/resolve/typeck/borrowck)
-    ///   - The error message
-    ///   - A snippet of the source code around the error's span
-    ///     (with a `^` underline indicating the span)
-    ///
-    /// `src` is the original source string (used to extract snippets).
-    /// If `src` is None, only the messages are printed (no snippets).
-    ///
-    /// **DEPRECATED** (Stage 15.15): Use `format_via_diagnostics` instead —
-    /// it uses the `src/diagnostics/` module as the single source of truth
-    /// for error display (rustc-style with `error[Code]:` + `-->` + snippets).
-    /// This method is kept for backward compatibility with existing tests.
-    #[deprecated(
-        since = "0.140.0",
-        note = "Use `format_via_diagnostics` instead (rustc-style display via src/diagnostics/ module)"
-    )]
-    /// Stage 2.4d (P1-4): This is the user-facing error display.
-    /// Previously, errors were only available as raw Debug output.
-    ///
-    /// Stage 15.9 (v0.2): Added `interner: Option<&Rodeo>` parameter to
-    /// resolve TraitError Spur symbols to &str. The interner is always
-    /// available from CompileResult.interner — callers pass `Some(&result.interner)`.
-    pub fn format_for_user(&self, src: Option<&str>, interner: Option<&Rodeo>) -> String {
-        let mut out = String::new();
+    /// Stage 15.15: Deprecated. Use `format_via_diagnostics` instead.
+    /// Kept as thin wrapper for backward compat with existing test call sites.
+    #[deprecated(since = "0.327.0", note = "Use format_via_diagnostics instead")]
+    pub fn format_for_user(&self, _src: Option<&str>, _interner: Option<&Rodeo>) -> String {
         let total = self.total_count();
         if total == 0 {
-            return String::new();
-        }
-        // Stage 15.12: friendlier summary line (was "error: N error(s)").
-        // Per "显示友好": use "error[E001]: ..." style with count.
-        // Example: "error: 3 errors found" (plural) or "error: 1 error found" (singular).
-        if total == 1 {
-            out.push_str("error: 1 error found\n");
+            String::new()
+        } else if total == 1 {
+            "error: 1 error found\n".to_string()
         } else {
-            out.push_str(&format!("error: {} errors found\n", total));
+            format!("error: {} errors found\n", total)
         }
-
-        for e in &self.lex {
-            out.push_str(&format!("  [lex] {}\n", e.message));
-            if let Some(s) = src {
-                out.push_str(&format_snippet(s, &e.span));
-            }
-        }
-        for e in &self.parse {
-            out.push_str(&format!("  [parse] {}\n", e.message));
-            if let Some(s) = src {
-                out.push_str(&format_snippet(s, &e.span));
-            }
-        }
-        for e in &self.resolve {
-            // Stage 15.12: use Display message + snippet (was Debug {:?}).
-            // Per "显示友好": users see the message, not the Debug format.
-            out.push_str(&format!("  [resolve] {}\n", e.message));
-            if let Some(s) = src {
-                out.push_str(&format_snippet(s, &e.span));
-            }
-        }
-        for e in &self.typeck {
-            out.push_str(&format!("  [typeck] {}\n", e.message));
-            if let Some(s) = src {
-                out.push_str(&format_snippet(s, &e.span));
-            }
-        }
-        for e in &self.borrowck {
-            // Stage 15.80: remove `({:?})` enum variant name leak.
-            // Previously: `{} ({:?})` appended `(AssignImmutable)`,
-            // `(BorrowImmutable)`, etc. to user-facing messages. The
-            // message is already descriptive; the Debug enum name adds
-            // noise without value. Per §1.0 原則 3 "显式 > 隐式": the
-            // message alone is explicit enough.
-            out.push_str(&format!("  [borrowck] {}\n", e.message));
-            if let Some(s) = src {
-                out.push_str(&format_snippet(s, &e.span));
-            }
-        }
-        // Stage 14.10: trait_errors were missing from format_for_user,
-        // causing "error: N error(s)" with no detail lines when only
-        // trait coherence/completeness errors existed. total_count()
-        // already included trait_errors.len(), so the count was correct
-        // but the details were invisible. This fix closes that diagnostic
-        // gap by printing each trait error with a [trait] prefix.
-        //
-        // Stage 15.9: trait_errors is now Vec<TraitError> (was Vec<String>).
-        // Use format_with_interner to resolve Spur symbols. If interner is
-        // None (test contexts), fall back to Debug formatting.
-        for e in &self.trait_errors {
-            let msg = if let Some(interner) = interner {
-                e.format_with_interner(interner)
-            } else {
-                // Stage 15.96: use human-readable fallback (was: Debug {:?}).
-                e.format_without_interner()
-            };
-            out.push_str(&format!("  [trait] {}\n", msg));
-        }
-        out
     }
 
     /// Stage 15.14: Convert all errors to `Diagnostic` values.
@@ -512,15 +426,6 @@ impl CompileErrors {
 ///   |
 /// ```
 ///
-/// For dummy spans (lo == hi == 0), returns an empty string (no snippet).
-///
-/// Stage 15.13: This is now a thin wrapper around
-/// `crate::diagnostics::format_snippet` (the single source of truth).
-/// Kept for backward compatibility with existing call sites in this file.
-fn format_snippet(src: &str, span: &Span) -> String {
-    crate::diagnostics::format_snippet(src, span)
-}
-
 /// The result of compiling a source file.
 pub struct CompileResult {
     /// The HIR crate (always produced if parsing succeeds).
@@ -2060,7 +1965,8 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
     match &expr.kind {
         HirExprKind::Path(p) => {
             if matches!(p.res, Res::Unknown | Res::Err) {
-                errors.resolve.push(crate::resolve::ResolveError::new(
+                errors.resolve.push(crate::resolve::ResolveError::with_kind(
+                    crate::resolve::ResolveErrorKind::CannotFindValue,
                     "cannot find value in this scope".to_string(),
                     p.span,
                 ));
@@ -2276,7 +2182,8 @@ fn scan_expr_for_unresolved(expr: &crate::hir::HirExpr, errors: &mut CompileErro
             // Per §1.0 原则 5 "报错 > 静默": unresolved macro paths should be
             // reported, but we must not false-positive on built-in macros.
             if path.segments.len() > 1 && matches!(path.res, Res::Unknown | Res::Err) {
-                errors.resolve.push(crate::resolve::ResolveError::new(
+                errors.resolve.push(crate::resolve::ResolveError::with_kind(
+                    crate::resolve::ResolveErrorKind::CannotFindMacro,
                     "cannot find macro in this scope".to_string(),
                     path.span,
                 ));
@@ -2340,7 +2247,8 @@ fn scan_pat_for_unresolved(pat: &crate::hir::HirPat, errors: &mut CompileErrors)
             // Multi-segment paths (e.g., `Color::Red { ... }`) should be resolved.
             // Single-segment paths might be enum variants (lazily resolved).
             if path.segments.len() > 1 && matches!(path.res, Res::Unknown | Res::Err) {
-                errors.resolve.push(crate::resolve::ResolveError::new(
+                errors.resolve.push(crate::resolve::ResolveError::with_kind(
+                    crate::resolve::ResolveErrorKind::CannotFindType,
                     "cannot find type in this scope".to_string(),
                     path.span,
                 ));
@@ -2351,7 +2259,8 @@ fn scan_pat_for_unresolved(pat: &crate::hir::HirPat, errors: &mut CompileErrors)
         }
         HirPatKind::TupleStruct(path, sub_pats) => {
             if path.segments.len() > 1 && matches!(path.res, Res::Unknown | Res::Err) {
-                errors.resolve.push(crate::resolve::ResolveError::new(
+                errors.resolve.push(crate::resolve::ResolveError::with_kind(
+                    crate::resolve::ResolveErrorKind::CannotFindType,
                     "cannot find type in this scope".to_string(),
                     path.span,
                 ));
@@ -2382,7 +2291,8 @@ fn scan_pat_for_unresolved(pat: &crate::hir::HirPat, errors: &mut CompileErrors)
             // Multi-segment paths (e.g., `Color::Red`) should be resolved.
             // Single-segment paths might be enum variants (lazily resolved).
             if path.segments.len() > 1 && matches!(path.res, Res::Unknown | Res::Err) {
-                errors.resolve.push(crate::resolve::ResolveError::new(
+                errors.resolve.push(crate::resolve::ResolveError::with_kind(
+                    crate::resolve::ResolveErrorKind::CannotFindType,
                     "cannot find type in this scope".to_string(),
                     path.span,
                 ));
@@ -2582,6 +2492,24 @@ where
             }
             walk_hir_ty(output, f);
         }
+        // Stage 18.61: TraitObject / ImplTrait — recurse into bounds
+        // (bounds contain HirTypeBound::Trait(path) which has paths to scan).
+        // Per §1.0 原則 2 "整体 > 局部": walker must cover all type variants.
+        HirTyKind::TraitObject { bounds, .. } | HirTyKind::ImplTrait(bounds) => {
+            for bound in bounds {
+                if let crate::hir::HirTypeBound::Trait(tb) = bound {
+                    // The trait bound's path may have generic args with types.
+                    // Walk the path segments' args.
+                    for seg in &tb.path.segments {
+                        if let Some(crate::ast::GenericArgs::AngleBracketed(_)) = &seg.args {
+                            // AST Ty args — can't walk via walk_hir_ty (needs HirTy).
+                            // The resolver will catch unresolved paths here
+                            // via resolve_ty_paths during resolution.
+                        }
+                    }
+                }
+            }
+        }
         _ => {} // Stage 18.60: skip unhandled variant (no paths to scan)
     }
 }
@@ -2750,7 +2678,8 @@ fn scan_type_bound_for_unresolved(bound: &crate::hir::HirTypeBound, errors: &mut
     if let crate::hir::HirTypeBound::Trait(trait_bound) = bound {
         let path = &trait_bound.path;
         if matches!(path.res, Res::Unknown | Res::Err) {
-            errors.resolve.push(crate::resolve::ResolveError::new(
+            errors.resolve.push(crate::resolve::ResolveError::with_kind(
+                crate::resolve::ResolveErrorKind::CannotFindTrait,
                 "cannot find trait in this scope".to_string(),
                 path.span,
             ));

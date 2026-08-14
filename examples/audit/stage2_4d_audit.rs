@@ -209,7 +209,7 @@ fn main() {
             total_errors += error_count;
             println!("  FAIL {} error(s):", error_count);
             // Use the new format_for_user method to print pretty errors.
-            println!("{}", result.errors.format_for_user(Some(src)));
+            println!("{}", result.errors.format_via_diagnostics(src, None));
         }
     }
 

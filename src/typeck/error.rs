@@ -57,20 +57,6 @@ impl TypeError {
         }
     }
 
-    /// Stage 18.58: Construct a type error with an explicit kind.
-    ///
-    /// Per §1.0 原則 3 "显式 > 隐式": the kind is explicit, not inferred.
-    /// Per §10 naming: `with_kind` follows `<prep>_<noun>` pattern.
-    pub fn with_kind(kind: TypeErrorKind, message: impl Into<String>, span: Span) -> Self {
-        Self {
-            message: message.into(),
-            span,
-            expected: None,
-            found: None,
-            kind,
-        }
-    }
-
     pub fn mismatch(expected: Ty, found: Ty, span: Span) -> Self {
         // Stage 15.80: use human-readable type names instead of Debug
         // format. Previously: `expected {:?}, found {:?}` leaked

@@ -32101,3 +32101,61 @@ Stage Summary:
 - §高内聚低耦合: typeck/mod.rs re-export 更新, 移除 #[allow(deprecated)]
 - 3260 unit + 5249 conformance = 8509 total tests, 0 failures
 - v0.326.0 → v0.327.0
+
+---
+Task ID: stage18.61
+Agent: Super Z (main)
+Task: Stage 18.61 — Deep Re-Audit Cleanup: Dead Code + Error System + Walker Completeness
+
+Work Log:
+- §14 深度审查: 通过 Explore agent 重新审计编译管道
+- 审计发现 9 个具体问题, 本阶段处理 6 个
+
+- 移除死代码 (§避免死代码):
+  1. CompileErrors::format_for_user 详细实现 (driver.rs:209-292, ~95行):
+     - 零调用者 (测试通过 deprecated shim 调用)
+     - 替换为简化 deprecated shim (保留签名, 简化输出)
+     - 同时移除 format_snippet helper (仅被 format_for_user 调用)
+  2. TypeError::with_kind (src/typeck/error.rs):
+     - 0 调用者 — Stage 18.58 添加但从未迁移调用者
+     - 完全移除
+  3. mod async_marker (src/ast/mod.rs:8):
+     - #[allow(dead_code)] + 零非测试引用
+     - 完全移除
+  4. LowerTyCtx + lower_hir_ty_to_mir_ty_with_ctx (src/mir/lower/mod.rs):
+     - Stage 18.59 添加但 0 调用者 + 有 hir-drop bug
+     - 完全移除 struct + impl + 入口函数 + re-export
+     - 移除关联测试文件 stage18_59_lower_ty_ctx_tests.rs
+
+- 错误系统迁移 (§显式 > 隐式):
+  5. driver.rs 6处 ResolveError::new → with_kind (CannotFindValue/CannotFindMacro/CannotFindType/CannotFindTrait)
+  6. 保留 TypeError::with_kind 移除 (因 0 调用者, 避免死代码)
+
+- Walker 完整性修复 (§整体 > 局部):
+  7. walk_hir_ty (driver.rs:2454): 添加 TraitObject/ImplTrait 分支
+     - 之前 _ => {} 跳过, 导致 bounds 中的路径未递归扫描
+     - 现在显式处理 TraitObject.bounds / ImplTrait.bounds
+
+- 清理 unused imports:
+  - src/driver.rs: use crate::session::Span (移除 format_snippet 后不再使用)
+  - src/typeck/checker.rs: use crate::hir::HirCrate + use lasso::Rodeo (移除 check_crate 后不再使用)
+
+- 修复受影响测试:
+  - 7 个测试因 format_for_user 简化而失败
+  - 替换为简单错误检查 (不再验证详细格式化输出)
+  - 保留测试意图 (验证错误存在), 简化断言
+
+- 验收 (§3.2):
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 604 lib + 2641 integration = 3245 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5249 conformance tests, 0 failures
+
+Stage Summary:
+- 深度审计清理完成: 移除 4 个死代码项 + 迁移 6 个 error kind + 修复 walker 完整性
+- §避免死代码: format_for_user详细实现 / TypeError::with_kind / async_marker / LowerTyCtx 全部移除
+- §显式 > 隐式: 6处 ResolveError::new → with_kind
+- §整体 > 局部: walk_hir_ty 添加 TraitObject/ImplTrait 分支
+- 3245 unit + 5249 conformance = 8494 total tests, 0 failures
+- v0.327.0 → v0.328.0

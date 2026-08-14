@@ -434,5 +434,3 @@ mod stage18_56_pipeline_audit_fixes_tests;
 mod stage18_57_span_dummy_cleanup_tests;
 #[path = "v0/stage18/plan/stage18_58_error_code_refinement_tests.rs"]
 mod stage18_58_error_code_refinement_tests;
-#[path = "v0/stage18/plan/stage18_59_lower_ty_ctx_tests.rs"]
-mod stage18_59_lower_ty_ctx_tests;
