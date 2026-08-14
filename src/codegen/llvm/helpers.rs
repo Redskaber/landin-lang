@@ -38,7 +38,19 @@ pub(crate) fn cstr(s: &str) -> *const std::os::raw::c_char {
     CSTR_CACHE.with(|cache| {
         let mut cache = cache.borrow_mut();
         if !cache.contains_key(s) {
-            cache.insert(s.to_string(), CString::new(s).unwrap());
+            // Stage 18.100 (TD-UNWRAP2): Use `expect` with rationale instead
+            // of bare `unwrap()`. Landin identifiers/symbols never contain NUL
+            // bytes (lexer rejects them), so `CString::new` succeeds. If a NUL
+            // byte somehow reaches here (e.g., a future string-literal feature),
+            // the panic message will clearly identify the cause.
+            // Per §1.0 原則 4 "报错 > 静默": panics should have clear messages.
+            let cstring = CString::new(s).unwrap_or_else(|_| {
+                panic!(
+                    "cstr: string contains NUL byte (should be impossible for Landin symbols): {:?}",
+                    s
+                )
+            });
+            cache.insert(s.to_string(), cstring);
         }
         // Safe: the CString is stored in the HashMap and won't be moved
         // or dropped until the thread exits. HashMap doesn't move values

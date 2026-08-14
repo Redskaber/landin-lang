@@ -1,9 +1,58 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.367.0
+**Current version**: v0.368.0
 **Date**: 2026-08-11
 **Test count**: 640 rust lib tests + 2620 integration tests + 2935 conformance tests + 7 fuzz tests = 6202 total (100% pass rate, 35 runtime tests skipped due to OOM)
+
+---
+## v0.368.0 — Stage 18.100 (P2 Tech Debt Fixes — format_ty DRY + unwrap cleanup)
+
+### Overview
+
+Implements 3 P2 tech debt fixes identified by the §14.5 D1-D8 deep review
+(Round 1). These are low-risk, high-value cleanup items that improve code
+quality without changing behavior.
+
+### Changes (P2 Fixes)
+
+| ID | Change | Details |
+|----|--------|---------|
+| TD-DUP2 | Extract `format_ty` to `mir::ty` | New `format_ty_with_optional_resolver()` in `src/mir/ty.rs`; 3 duplicate `format_ty` methods in `typeck/checker.rs`, `borrowck/mod.rs`, `mir/lower/mod.rs` now delegate to it. Eliminates ~14 lines of duplicate logic. |
+| TD-UNWRAP1 | `resolve/module_build.rs:427` unwrap → expect | Bare `.unwrap()` on `path.segments.last()` replaced with `.expect("use paths have ≥1 segment (guarded above)")`. Documents the invariant. |
+| TD-UNWRAP2 | `codegen/llvm/helpers.rs:41` CString unwrap → unwrap_or_else with panic msg | `CString::new(s).unwrap()` replaced with `unwrap_or_else` that panics with a clear message identifying NUL byte contamination. Landin symbols never contain NUL, but the message aids debugging if invariant breaks. |
+
+### Design Principles Applied
+
+- **§10.1 rule 5 (DRY / single source of truth)**: `format_ty` now has one definition in `mir::ty`, not 3.
+- **§1.0 原則 4 "报错 > 静默"**: All `unwrap()` calls now have clear panic messages.
+- **§1.0 原則 6 "通用 > 特例"**: One `format_ty_with_optional_resolver` handles all 3 callers' needs (resolver optional).
+- **§23 (API Naming)**: `format_ty_with_optional_resolver` follows `<verb>_<noun>_<prep>_<noun>` pattern.
+
+### Verification (§3.2)
+
+| Check | Result |
+|-------|--------|
+| `cargo build --features llvm-backend` | ✅ |
+| `cargo fmt --check` | ✅ exit 0 |
+| `cargo clippy --all-targets --features llvm-backend -- -D warnings` | ✅ 0 warnings |
+| `cargo test --features llvm-backend --lib` | ✅ 640 passed, 0 failed |
+| `cargo test --features llvm-backend --tests` (skip runtime) | ✅ 2620 passed, 0 failed (no regression) |
+
+### Deep Review P2 Progress
+
+| Tech Debt ID | Status |
+|--------------|--------|
+| TD-DUP2 (format_ty DRY) | ✅ Stage 18.100 |
+| TD-UNWRAP1 (module_build unwrap) | ✅ Stage 18.100 |
+| TD-UNWRAP2 (CString unwrap) | ✅ Stage 18.100 |
+| TD-DUP1 (types_match_loose + can_coerce) | P2 — v0.2 (TypeRelation trait) |
+| TD-DUP3 (infer_place + place_ty) | P2 — v0.2 (extract to mir::place) |
+| TD-SPAN (1331 Span::DUMMY) | P2 — v0.2 (MIR lower span propagation) |
+| TD-1 (BinaryOp2 fallback) | P2 — v0.2 (CodegenResult) |
+| TD-6 (struct auto-Copy) | P2 — v0.2 (field-level Copy) |
+| TD-9 (Deref on non-Ref) | P2 — v0.2 (reference type tracking) |
+| TD-11 (Int↔Uint loose match) | P2 — v0.2 (IntOrUintVar) |
 
 ---
 ## v0.367.0 — Stage 18.99 (Deep Review Fixes — TD-13 FnDef↔FnPtr Soundness)

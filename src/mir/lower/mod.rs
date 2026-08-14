@@ -249,12 +249,10 @@ impl<'a> MirLowerCtxt<'a> {
     ///
     /// Per §1.0 原則 3 "显式 > 隐式": user-facing type names are explicit.
     /// Per §23: `format_ty` follows `<verb>_<noun>` pattern.
+    /// Stage 18.100 (TD-DUP2): delegates to `mir::ty::format_ty_with_optional_resolver`
+    /// (single source of truth — was duplicated in 3 modules).
     pub fn format_ty(&self, ty: &Ty) -> String {
-        if let Some(resolver) = self.resolver {
-            crate::mir::ty::type_to_string_with_resolver(ty, resolver, self.interner)
-        } else {
-            crate::mir::ty::type_to_string(ty)
-        }
+        crate::mir::ty::format_ty_with_optional_resolver(ty, self.resolver, Some(self.interner))
     }
 
     /// Stage 16.29 (通解): Construct a MirLowerCtxt with an EXISTING

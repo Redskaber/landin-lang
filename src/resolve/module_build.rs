@@ -421,10 +421,18 @@ impl Resolver {
         }
 
         // Determine the imported name (alias takes precedence).
+        // Stage 18.100 (TD-UNWRAP1): Use `expect` with rationale instead of bare
+        // `unwrap()` — the empty-path case is guarded above (line 415), so this
+        // is safe, but `expect` documents the invariant for future readers.
+        // Per §1.0 原則 4 "报错 > 静默": panics should have clear messages.
         let imported_name = if let Some(alias) = alias {
             alias.name
         } else {
-            path.segments.last().unwrap().ident.name
+            path.segments
+                .last()
+                .expect("use paths have ≥1 segment (guarded above)")
+                .ident
+                .name
         };
 
         // Try to resolve the path to find the target DefId.

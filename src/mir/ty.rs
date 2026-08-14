@@ -562,6 +562,31 @@ pub fn type_to_string_with_resolver(
     type_kind_to_string_with_resolver(&ty.kind, resolver, interner)
 }
 
+/// Stage 18.100 (TD-DUP2 fix): Format a `Ty` for error messages, using the
+/// resolver/interner if available (for rich type names like "MyStruct"), or
+/// falling back to the non-resolver version (placeholder names like "<adt>").
+///
+/// This is the single source of truth for type formatting — previously
+/// duplicated as `format_ty` methods in `typeck::TypeChecker`,
+/// `borrowck::BorrowChecker`, and `mir::lower::MirLowerCtxt` (3 identical
+/// ~7-line implementations). Per §10.1 rule 5 (DRY / single source of truth),
+/// all three now delegate to this function.
+///
+/// Per §23: `format_ty_with_optional_resolver` follows
+/// `<verb>_<noun>_<prep>_<noun>` pattern.
+/// Per §1.0 原則 3 "显式 > 隐式": user-facing type names are explicit.
+pub fn format_ty_with_optional_resolver(
+    ty: &Ty,
+    resolver: Option<&crate::traits::TraitResolver>,
+    interner: Option<&lasso::Rodeo>,
+) -> String {
+    if let (Some(resolver), Some(interner)) = (resolver, interner) {
+        type_to_string_with_resolver(ty, resolver, interner)
+    } else {
+        type_to_string(ty)
+    }
+}
+
 /// Format an `IntTy` as a lowercase string.
 fn int_ty_to_string(i: IntTy) -> &'static str {
     match i {

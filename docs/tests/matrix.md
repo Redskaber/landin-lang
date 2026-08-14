@@ -1,11 +1,11 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-08-11 (last updated Stage 18.99)
-> **Version**: v0.366.0
+> **Date**: 2026-08-11 (last updated Stage 18.100)
+> **Version**: v0.368.0
 > **Process**: stage-committee-process.md v5.0 (§8 doc sync + §9 test standards)
 
-## Current Status (v0.366.0)
+## Current Status (v0.368.0)
 
 | Category | Count | Status |
 |----------|-------|--------|

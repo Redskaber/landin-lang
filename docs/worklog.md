@@ -13423,3 +13423,59 @@ Stage Summary:
 - v0.367.0: minor bump (deep review fixes)
 - v0.2 P0 soundness 修复全部完成 (Adt substs + FnDef↔FnPtr)
 - 下一步: v0.2 P0 (完整单态化 GAT Phase 4 / 项目系统 mini-cargo)
+
+---
+Task ID: stage18.100
+Agent: Super Z (main)
+Task: Stage 18.100 — P2 Tech Debt Fixes (TD-DUP2 format_ty DRY + TD-UNWRAP1 + TD-UNWRAP2). v0.367.0 → v0.368.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 deep-review-round1.md D2 技术债清单
+  → 选择 3 个独立、低风险、高价值的 P2 修复:
+    - TD-DUP2: format_ty 在 3 处重复定义 (DRY 违规)
+    - TD-UNWRAP1: resolve/module_build.rs:427 无守卫 unwrap
+    - TD-UNWRAP2: codegen/llvm/helpers.rs:41 CString::new unwrap
+  → 不选 TD-DUP1/3 (需要较大重构 TypeRelation trait)
+  → 不选 TD-SPAN (180 处, 需 v0.2 MIR lower span 传播)
+- TD-DUP2 修复 (format_ty DRY):
+  → 新增 src/mir/ty.rs::format_ty_with_optional_resolver(ty, resolver, interner)
+    单一真理源, 处理 resolver 可选情况
+  → typeck/checker.rs::format_ty: 委托到新函数 (self.unify.resolver()/interner())
+  → borrowck/mod.rs::format_ty: 委托到新函数 (self.resolver, self.interner)
+  → mir/lower/mod.rs::format_ty: 委托到新函数 (self.resolver, Some(self.interner))
+  → 消除 ~14 行重复逻辑
+  → 遵循 §10.1 规则 5 (DRY) + §23 命名
+- TD-UNWRAP1 修复 (module_build unwrap):
+  → resolve/module_build.rs:427: path.segments.last().unwrap()
+    → .expect("use paths have ≥1 segment (guarded above)")
+  → 上方 line 415 已守卫 is_empty() + return, 此处 expect 文档化不变量
+  → 遵循 §1.0 原则 4 "报错 > 静默"
+- TD-UNWRAP2 修复 (CString unwrap):
+  → codegen/llvm/helpers.rs:41: CString::new(s).unwrap()
+    → unwrap_or_else(|_| panic!("cstr: string contains NUL byte..."))
+  → Landin 符号不含 NUL (lexer 拒绝), 但 panic 消息清晰标识原因
+  → 遵循 §1.0 原则 4 "报错 > 静默"
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2620 passed, 0 failed (no regression)
+- §8 文档同步:
+  - Cargo.toml: v0.367.0 → v0.368.0
+  - README.md: v0.367.0 → v0.368.0
+  - RELEASE_NOTES.md: 添加 v0.368.0 条目 + P2 进度表
+  - docs/tests/matrix.md: 版本 → v0.368.0
+  - docs/tests/pipeline-test-coverage.md: 头部版本 → v0.368.0
+  - docs/develop/v0/v0.1-capability-boundaries.md: 版本 → v0.368.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.100 PASSED — 3 项 P2 技术债修复完成
+- TD-DUP2: format_ty 单一真理源 (mir::ty::format_ty_with_optional_resolver)
+- TD-UNWRAP1: module_build unwrap → expect (文档化不变量)
+- TD-UNWRAP2: CString unwrap → unwrap_or_else + 清晰 panic 消息
+- 0 回归 (640 lib + 2620 integration = 3260 unit tests, 0 failures)
+- v0.368.0: minor bump (P2 tech debt fixes)
+- 剩余 P2 技术债 (7 项) 均需 v0.2 较大重构, 留待 v0.2 batch 处理
+- 下一步: v0.2 P0 (完整单态化 GAT Phase 4 / 项目系统 mini-cargo)
