@@ -140,9 +140,32 @@ pub(super) fn can_coerce(place_ty: &Ty, rvalue_ty: &Ty) -> bool {
         // the local decl may be Ref(_, _, Str). Allow this coercion.
         (TyKind::Str, TyKind::Ref(_, _, inner)) if matches!(inner.kind, TyKind::Str) => true,
         (TyKind::Ref(_, _, inner), TyKind::Str) if matches!(inner.kind, TyKind::Str) => true,
-        // Stage 18.71: Adt with same DefId but different substs lengths —
-        // skip (generic type with unresolved substs, handled by type_has_unresolved_substs).
-        (TyKind::Adt(a_def, _), TyKind::Adt(b_def, _)) if a_def == b_def => true,
+        // Stage 18.98: Adt with same DefId — only coercible if substs match
+        // (recursively) OR one side has empty substs (inference case).
+        // Per §2.0 原则 9 "正确 > 妥协": Vec<i32> != Vec<bool> (soundness).
+        // The old code (`if a_def == b_def => true`) ignored substs entirely,
+        // which made `can_coerce` return true for `Vec<i32> ↔ Vec<bool>`,
+        // short-circuiting the `types_match_loose` check in check_statement.
+        //
+        // Empty substs (inference case) still coerce — they represent
+        // "unknown, to be inferred" per unify.rs's empty-substs fallback.
+        (TyKind::Adt(a_def, a_substs), TyKind::Adt(b_def, b_substs)) => {
+            if a_def != b_def {
+                return false;
+            }
+            // Empty substs = inference case → coercible
+            if a_substs.is_empty() || b_substs.is_empty() {
+                return true;
+            }
+            // Both have substs — must match in length and element-wise
+            if a_substs.len() != b_substs.len() {
+                return false;
+            }
+            a_substs
+                .iter()
+                .zip(b_substs.iter())
+                .all(|(at, bt)| at.kind == bt.kind)
+        }
         // Everything else: not coercible
         _ => false,
     }

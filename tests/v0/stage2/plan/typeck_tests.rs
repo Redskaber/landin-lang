@@ -516,3 +516,63 @@ fn type_writeback_defaults_unresolved_int_to_i32() {
         resolved.kind
     );
 }
+
+// =================================================================
+// Stage 18.98: Adt Substs Soundness Tests
+// Per §9.4.3: 1 positive + 2 negative (1:2 ratio)
+// =================================================================
+
+/// Stage 18.98 positive: `Vec<i32> = Vec<bool>` must be rejected.
+/// Per §2.0 原则 9 "正确 > 妥协": soundness — different substs = different types.
+#[test]
+fn stage18_98_adt_substs_mismatch_rejected() {
+    use landin_compiler::compile;
+    let src = r#"
+struct Vec<T> { data: T, len: i32 }
+fn main() {
+    let v1: Vec<i32> = Vec { data: 42, len: 1 };
+    let v2: Vec<bool> = Vec { data: true, len: 1 };
+    let v3: Vec<i32> = v2;
+}
+"#;
+    let result = compile(src);
+    assert!(
+        result.has_errors(),
+        "Vec<i32> = Vec<bool> must be rejected (soundness)"
+    );
+}
+
+/// Stage 18.98 negative 1: `Vec<i32> = Vec<i32>` still accepted.
+#[test]
+fn stage18_98_adt_substs_match_accepted() {
+    use landin_compiler::compile;
+    let src = r#"
+struct Vec<T> { data: T, len: i32 }
+fn main() {
+    let v1: Vec<i32> = Vec { data: 42, len: 1 };
+    let v2: Vec<i32> = v1;
+}
+"#;
+    let result = compile(src);
+    assert!(
+        !result.has_errors(),
+        "Vec<i32> = Vec<i32> should be accepted"
+    );
+}
+
+/// Stage 18.98 negative 2: empty-substs inference still works.
+/// `let w: Wrapper<i32> = make(42);` where make<T> returns Wrapper<T>.
+/// The rvalue's substs may be empty until inference back-propagates.
+#[test]
+fn stage18_98_adt_empty_substs_inference() {
+    use landin_compiler::compile;
+    let src = r#"
+struct Wrapper<T> { inner: T }
+fn make<T>(x: T) -> Wrapper<T> { Wrapper { inner: x } }
+fn main() {
+    let w: Wrapper<i32> = make(42);
+}
+"#;
+    let result = compile(src);
+    assert!(!result.has_errors(), "empty-substs inference should work");
+}

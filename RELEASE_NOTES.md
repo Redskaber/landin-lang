@@ -1,9 +1,87 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.365.0
+**Current version**: v0.366.0
 **Date**: 2026-08-11
-**Test count**: 640 rust lib tests + 2613 integration tests + 2935 conformance tests + 7 fuzz tests = 6195 total (100% pass rate, 35 runtime tests skipped due to OOM)
+**Test count**: 640 rust lib tests + 2616 integration tests + 2935 conformance tests + 7 fuzz tests = 6198 total (100% pass rate, 35 runtime tests skipped due to OOM)
+
+---
+## v0.366.0 — Stage 18.98 (Adt Substs Soundness Fix)
+
+### Overview
+
+Fixes the "Param unify unsound" limitation from v0.1 capability boundaries.
+`Vec<i32> = Vec<bool>` (different generic substs) is now correctly rejected
+as a type mismatch. This was the core v0.2 P0 soundness issue.
+
+### Root Cause
+
+Two functions had the same bug — both accepted any two `Adt` types with the
+same `DefId`, **ignoring substs entirely**:
+
+1. `src/typeck/predicates.rs::can_coerce` line 146:
+   `(TyKind::Adt(a_def, _), TyKind::Adt(b_def, _)) if a_def == b_def => true`
+2. `src/typeck/checker.rs::types_match_loose` line 1549:
+   `(TyKind::Adt(a_def, _), TyKind::Adt(b_def, _)) if a_def == b_def => true`
+
+In `check_statement`'s Assign handling, the condition was:
+```rust
+if place_is_concrete && rvalue_is_concrete
+    && !can_coerce(...)        // ← short-circuits here, returns true for Adt
+    && !types_match_loose(...) // ← never reached for Adt
+```
+So `can_coerce` returning `true` for `Vec<i32> ↔ Vec<bool>` short-circuited
+the `types_match_loose` check, allowing the unsound assignment.
+
+### Fix
+
+Both `can_coerce` and `types_match_loose` now recursively compare substs:
+
+```rust
+(TyKind::Adt(a_def, a_substs), TyKind::Adt(b_def, b_substs)) => {
+    if a_def != b_def { return false; }
+    // Empty substs = inference case (unknown instantiation) → loose match
+    if a_substs.is_empty() || b_substs.is_empty() { return true; }
+    if a_substs.len() != b_substs.len() { return false; }
+    a_substs.iter().zip(b_substs.iter()).all(|(at, bt)| /* recursive check */)
+}
+```
+
+Empty substs still loose-match — they represent "unknown, to be inferred"
+per `unify.rs`'s empty-substs fallback. This preserves valid generic
+inference code like `let w: Wrapper<i32> = make(42);`.
+
+### Changes
+
+| Change | Details |
+|--------|---------|
+| `can_coerce` Adt case fixed | Now recursively checks substs (was: `if a_def == b_def => true`) |
+| `types_match_loose` Adt case fixed | Same recursive substs check |
+| 3 new soundness tests | 1 positive (mismatch rejected) + 2 negative (match accepted + inference works) |
+| Design doc created | `stage-18.98-adt-substs-soundness-fix-design.md` |
+
+### Verification (§3.2)
+
+| Check | Result |
+|-------|--------|
+| `cargo build --features llvm-backend` | ✅ |
+| `cargo fmt --check` | ✅ exit 0 |
+| `cargo clippy --all-targets --features llvm-backend -- -D warnings` | ✅ 0 warnings |
+| `cargo test --features llvm-backend --lib` | ✅ 640 passed, 0 failed |
+| `cargo test --features llvm-backend --tests` (skip runtime) | ✅ 2616 passed, 0 failed (+3 new) |
+| `Vec<i32> = Vec<bool>` rejected | ✅ (was accepted before fix) |
+| `Vec<i32> = Vec<i32>` accepted | ✅ (no regression) |
+| Generic inference still works | ✅ (empty-substs fallback preserved) |
+
+### v0.2 Roadmap Progress
+
+| Priority | Task | Status |
+|----------|------|--------|
+| ~~P0~~ | ~~Adt substs soundness (Param unify)~~ | ✅ Stage 18.98 |
+| **P0** | Monomorphization (full) | Next (infra complete, GAT Phase 4 pending) |
+| **P0** | Project system (mini-cargo) | Next |
+| ~~P1~~ | ~~MIR optimization wiring~~ | ✅ Stage 18.96 |
+| ~~P1~~ | ~~TraitError location migration~~ | ✅ Stage 18.95 |
 
 ---
 ## v0.365.0 — Stage 18.97 (Documentation Sync Round 2)

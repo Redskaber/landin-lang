@@ -13301,3 +13301,64 @@ Stage Summary:
 - v0.365.0: minor bump (documentation sync round 2)
 - 文档同步审计完成, §8.1 全部强制同步项已对齐
 - 下一步: v0.2 P0 (单态化 / 项目系统)
+
+---
+Task ID: stage18.98
+Agent: Super Z (main)
+Task: Stage 18.98 — Adt Substs Soundness Fix (can_coerce + types_match_loose). v0.365.0 → v0.366.0.
+
+Work Log:
+- §13.1 设计对齐: 阅读 v0.1-capability-boundaries.md "Param unify unsound" 限制
+  + task-11-monomorphization-design.md (单态化 infra 已完成)
+  → 发现单态化基础设施已完成 (Stage 16.59), 真正的 soundness 漏洞更窄更可修
+- 根因分析:
+  → 测试 `let v3: Vec<i32> = v2;` (v2: Vec<bool>) 被接受 (unsound)
+  → MIR 检查: v2 类型 = Adt(DefId(0), [Bool]), v3 类型 = Adt(DefId(0), [Int(I32)])
+  → 两个函数有相同 bug:
+    1. src/typeck/predicates.rs::can_coerce 第 146 行:
+       (TyKind::Adt(a_def, _), TyKind::Adt(b_def, _)) if a_def == b_def => true
+    2. src/typeck/checker.rs::types_match_loose 第 1549 行:
+       (TyKind::Adt(a_def, _), TyKind::Adt(b_def, _)) if a_def == b_def => true
+  → 两者都忽略 substs, 接受任何相同 DefId 的 Adt
+  → check_statement 的条件: !can_coerce(...) && !types_match_loose(...)
+  → can_coerce 返回 true → 短路 → types_match_loose 从未被调用 → unsound 接受
+- 修复 can_coerce (src/typeck/predicates.rs):
+  → Adt 情况改为递归检查 substs
+  → 空子sts 仍 loose-match (推理情况, per unify.rs 空-substs 回退)
+  → 非空 substs 必须长度相同 + 元素逐一 kind 相等
+- 修复 types_match_loose (src/typeck/checker.rs):
+  → Adt 情况改为递归检查 substs (与 can_coerce 一致)
+  → 空子sts 仍 loose-match
+  → 非空 substs 递归调用 types_match_loose
+- 调试过程:
+  → 添加临时 eprintln 验证 typeck 运行
+  → 发现 types_match_loose 从未被调用 (短路)
+  → 定位到 can_coerce Adt 情况返回 true
+  → 修复后验证: Vec<i32> = Vec<bool> 被拒绝 ✅
+- 新增 3 个 soundness 测试 (tests/v0/stage2/plan/typeck_tests.rs):
+  → stage18_98_adt_substs_mismatch_rejected (positive): Vec<i32> = Vec<bool> 被拒绝
+  → stage18_98_adt_substs_match_accepted (negative 1): Vec<i32> = Vec<i32> 接受
+  → stage18_98_adt_empty_substs_inference (negative 2): 空子sts 推理仍工作
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2616 passed, 0 failed (+3 new)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.98-adt-substs-soundness-fix-design.md (新建)
+  - Cargo.toml: v0.365.0 → v0.366.0
+  - README.md: v0.365.0 → v0.366.0
+  - RELEASE_NOTES.md: 添加 v0.366.0 条目 + 根因分析 + 修复说明 + roadmap 进度
+  - docs/develop/v0/v0.1-capability-boundaries.md: "Param unify unsound" 标记为 ✅ 已解决 + 测试数量更新
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.98 PASSED — Adt substs soundness 修复
+- 修复 2 个函数: can_coerce + types_match_loose (Adt 情况递归检查 substs)
+- 核心修复: Vec<i32> = Vec<bool> 现在被正确拒绝 (soundness)
+- 空子sts 推理保持工作 (无回归)
+- v0.2 路线图 P0 "Param unify unsound" ✅ 完成
+- 640 lib + 2616 integration = 3256 unit tests, 0 failures
+- v0.366.0: minor bump (Adt substs soundness fix)
+- 下一步: v0.2 P0 (完整单态化 GAT Phase 4 / 项目系统 mini-cargo)

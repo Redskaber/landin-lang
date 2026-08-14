@@ -1546,8 +1546,35 @@ fn types_match_loose(a: &crate::mir::ty::Ty, b: &crate::mir::ty::Ty) -> bool {
         // Str ↔ Ref(_, _, Str): string literal vs &str reference
         (TyKind::Str, TyKind::Ref(_, _, inner)) if matches!(inner.kind, TyKind::Str) => true,
         (TyKind::Ref(_, _, inner), TyKind::Str) if matches!(inner.kind, TyKind::Str) => true,
-        // Adt with same DefId (generic substs may differ in representation)
-        (TyKind::Adt(a_def, _), TyKind::Adt(b_def, _)) if a_def == b_def => true,
+        // Stage 18.98: Adt with same DefId — check substs recursively.
+        // Per §2.0 原则 9 "正确 > 妥协": Vec<i32> != Vec<bool> (soundness).
+        // The old code (`if a_def == b_def => true`) ignored substs entirely,
+        // which accepted unsound assignments like `let v: Vec<i32> = vec_bool;`.
+        //
+        // Empty substs (inference case) still loose-match — they represent
+        // "unknown, to be inferred" and unify with anything per unify.rs
+        // (the empty-substs fallback in `unify_adt`). This preserves valid
+        // generic inference code like `let w: Wrapper<i32> = make(42);`
+        // where the rvalue's substs may not yet be back-propagated.
+        //
+        // Per §1.0 原則 6 "通用 > 特例": one recursive path for all Adt types.
+        (TyKind::Adt(a_def, a_substs), TyKind::Adt(b_def, b_substs)) => {
+            if a_def != b_def {
+                return false;
+            }
+            // Empty substs = inference case (unknown instantiation) → loose match
+            if a_substs.is_empty() || b_substs.is_empty() {
+                return true;
+            }
+            // Both have substs — must match in length and element-wise (loose)
+            if a_substs.len() != b_substs.len() {
+                return false;
+            }
+            a_substs
+                .iter()
+                .zip(b_substs.iter())
+                .all(|(at, bt)| types_match_loose(at, bt))
+        }
         // Ref with same inner kind (region may differ — Var vs Static etc.)
         // Per §1.0 原則 9 "正确 > 妥协": regions are erased in Stage 0.
         // Also handles Infer inner: &{integer} vs &i32 (recursive loose match).
