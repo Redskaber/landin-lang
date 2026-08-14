@@ -1,6 +1,6 @@
 // CATEGORY: codegen
 // DESCRIPTION: rem by zero
-// EXPECTED: compile_ok
+// EXPECTED: run_panic
 // SOURCE: Stage 11.3 codegen expansion
 
 fn main(){let x=10;let y=0;let z=x%y;}

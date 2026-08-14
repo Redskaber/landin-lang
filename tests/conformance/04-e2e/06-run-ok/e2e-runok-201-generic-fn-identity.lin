@@ -1,0 +1,14 @@
+// CATEGORY: e2e
+// DESCRIPTION: Generic function run_ok — id<T>(x) returns correct value
+// EXPECTED: run_ok
+// EXPECTED_STDOUT: 42\n99\n
+// SOURCE: Stage 18.66 test coverage audit
+
+fn id<T>(x: T) -> T { x }
+
+fn main() {
+    let a = id(42);
+    let b = id(99);
+    println!("{}", a);
+    println!("{}", b);
+}

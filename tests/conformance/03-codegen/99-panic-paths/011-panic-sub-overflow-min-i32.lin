@@ -1,6 +1,6 @@
 // CATEGORY: codegen
 // DESCRIPTION: sub overflow min i32
-// EXPECTED: compile_ok
+// EXPECTED: run_panic
 // SOURCE: Stage 11.3 codegen expansion
 
 fn main(){let x:i32=-2147483648;let y=x-1;}
