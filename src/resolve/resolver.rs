@@ -36,6 +36,14 @@ pub struct Resolver {
     /// flat (all items at crate root). Once nested modules are supported
     /// (Stage 4), `check_visibility` will enforce access rules.
     pub(super) def_visibility: HashMap<DefId, crate::ast::Visibility>,
+    /// Stage 18.57: Map from DefId → Span (for accurate diagnostic spans).
+    ///
+    /// Populated during `build_module_tree`. Used by `module_build.rs` to
+    /// report "duplicate definition" errors with the new definition's span
+    /// instead of Span::DUMMY.
+    ///
+    /// Per §1.0 原則 4 "报错 > 静默": accurate spans improve diagnostics.
+    pub(super) def_span: HashMap<DefId, crate::session::Span>,
     /// Scope stack for local variable resolution (Stage 1.4).
     /// `None` when not inside a body (e.g., during module tree construction).
     pub(super) scopes: Option<ScopeStack>,
@@ -101,6 +109,7 @@ impl Resolver {
             module_tree: ModuleNode::new(),
             def_kinds: HashMap::new(),
             def_visibility: HashMap::new(),
+            def_span: HashMap::new(),
             scopes: None,
             current_self_kind: None,
             current_module: None,

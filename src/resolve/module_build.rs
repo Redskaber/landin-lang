@@ -123,12 +123,15 @@ impl Resolver {
                     self.def_kinds.insert(def_id, kind);
                 } else {
                     let name_str = interner.resolve(&name).to_string();
+                    // Stage 18.57: Use the new definition's span instead of
+                    // Span::DUMMY. Per §1.0 原則 4 "报错 > 静默".
+                    let span = self.def_span.get(&def_id).copied().unwrap_or(Span::DUMMY);
                     self.errors.push(ResolveError::new(
                         format!(
                             "duplicate definition for `{}` (also defined at {:?})",
                             name_str, existing
                         ),
-                        Span::DUMMY,
+                        span,
                     ));
                 }
             }
@@ -155,6 +158,10 @@ impl Resolver {
         nested_children: &mut Vec<(Spur, ModuleNode)>,
         interner: &Rodeo,
     ) {
+        // Stage 18.57: Record the item's span for accurate diagnostics.
+        // Per §1.0 原則 4 "报错 > 静默": used by duplicate-definition errors.
+        let item_span = item_span(item);
+        self.def_span.insert(def_id, item_span);
         match item {
             HirItem::Fn(f) => {
                 registrations.push((def_id, DefKind::Fn, f.ident.name));
@@ -286,12 +293,14 @@ impl Resolver {
         for (def_id, kind, name) in child_registrations {
             if let Err(existing) = child.insert(name, def_id, kind) {
                 let name_str = interner.resolve(&name).to_string();
+                // Stage 18.57: Use the new definition's span instead of Span::DUMMY.
+                let span = self.def_span.get(&def_id).copied().unwrap_or(Span::DUMMY);
                 self.errors.push(ResolveError::new(
                     format!(
                         "duplicate definition for `{}` (also defined at {:?})",
                         name_str, existing
                     ),
-                    Span::DUMMY,
+                    span,
                 ));
             }
         }
@@ -577,5 +586,25 @@ impl Resolver {
                 Ok(())
             }
         }
+    }
+}
+
+/// Stage 18.57: Extract the span from a HirItem for diagnostic purposes.
+///
+/// Per §1.0 原則 6 "通用 > 特例": one helper for all HirItem variants.
+/// Per §10 naming: `item_span` follows `<noun>_<noun>` pattern.
+fn item_span(item: &HirItem) -> crate::session::Span {
+    match item {
+        HirItem::Fn(f) => f.span,
+        HirItem::Const(c) => c.span,
+        HirItem::Static(s) => s.span,
+        HirItem::Struct(s) => s.span,
+        HirItem::Enum(e) => e.span,
+        HirItem::Trait(t) => t.span,
+        HirItem::Impl(i) => i.span,
+        HirItem::TypeAlias(t) => t.span,
+        HirItem::ExternBlock(e) => e.span,
+        HirItem::Mod(m) => m.span,
+        HirItem::Use(u) => u.span,
     }
 }

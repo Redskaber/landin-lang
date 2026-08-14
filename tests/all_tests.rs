@@ -430,3 +430,5 @@ mod stage18_54_generic_param_tests;
 mod stage18_55_gats_phase3_e2e_tests;
 #[path = "v0/stage18/plan/stage18_56_pipeline_audit_fixes_tests.rs"]
 mod stage18_56_pipeline_audit_fixes_tests;
+#[path = "v0/stage18/plan/stage18_57_span_dummy_cleanup_tests.rs"]
+mod stage18_57_span_dummy_cleanup_tests;

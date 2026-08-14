@@ -411,7 +411,8 @@ impl<'a> HirLowerCtxt<'a> {
                     generics: hir_generics,
                     bounds: hir_bounds,
                     default: hir_default,
-                    span: Span::DUMMY,
+                    // Stage 18.57: Use ident.span instead of Span::DUMMY.
+                    span: ident.span,
                 })
             }
             ast::TraitItem::Const(ident, ty, default) => {
@@ -424,7 +425,8 @@ impl<'a> HirLowerCtxt<'a> {
                     ident: *ident,
                     ty: hir_ty,
                     default: hir_default,
-                    span: Span::DUMMY,
+                    // Stage 18.57: Use ident.span instead of Span::DUMMY.
+                    span: ident.span,
                 })
             }
         }

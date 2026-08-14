@@ -64,16 +64,31 @@ fn pat_span(pat: &ast::Pat) -> Span {
     use ast::Pat::*;
     match pat {
         Wild(s) => *s,
-        Ident(_, _, _) => Span::DUMMY, // ident.span would be needed
+        // Stage 18.57: Use ident.span instead of Span::DUMMY.
+        // Per §1.0 原則 3 "显式 > 隐式": span is explicitly sourced from AST.
+        Ident(_, ident, _) => ident.span,
         Struct(_, _, _, s) => *s,
         TupleStruct(_, _, s) => *s,
         Tuple(_, s) => *s,
         Slice(_, _, s) => *s,
         Or(_, s) => *s,
         Path(_, s) => *s,
-        Lit(_) => Span::DUMMY,
+        // Stage 18.57: Use the literal expression's span instead of Span::DUMMY.
+        Lit(expr) => expr_span(expr),
         Range(_, _, _, s) => *s,
         Ref(_, _, s) => *s,
         Rest(s) => *s,
+    }
+}
+
+/// Stage 18.57: Extract span from an AST expression for pattern literals.
+///
+/// Per §1.0 原則 6 "通用 > 特例": one helper for all expr variants.
+fn expr_span(expr: &ast::Expr) -> Span {
+    use ast::Expr::*;
+    match expr {
+        Lit(_, s) => *s,
+        Path(_, _, s) => *s,
+        _ => Span::DUMMY, // fallback for non-literal expr patterns (rare)
     }
 }

@@ -31861,3 +31861,68 @@ Stage Summary:
 - 3224 unit + 5249 conformance = 8473 total tests, 0 failures
 - 审计发现的剩余问题 (Span::DUMMY, 错误码, LowerTyCtx) 已记录, 推迟到后续 stage
 - v0.322.0 → v0.323.0
+
+---
+Task ID: stage18.57
+Agent: Super Z (main)
+Task: Stage 18.57 — Span::DUMMY Technical Debt Cleanup (Priority 1-5)
+
+Work Log:
+- §13.1 阶段开始设计对齐 + §13.5 设计-审查 + §14 深度审查
+- 设计文档: docs/develop/v0/stage-18/stage-18.57-span-dummy-cleanup-design.md
+- 基于 Stage 18.56 Span::DUMMY 审计 (71 技术债 + 6 错误报告), 修复 Priority 1-4
+
+- Priority 1: lower_hir_ty_to_mir_ty* (src/mir/lower/mod.rs):
+  - 3 个函数 `let span = Span::DUMMY` → `let span = ty.span`
+  - lower_hir_ty_to_mir_ty_with_regions_and_hir (line 1867)
+  - lower_hir_ty_to_mir_ty_with_lifetimes (line 1577)
+  - lower_hir_ty_to_mir_ty_with_generics_and_regions (line 2170)
+  - §1.0 原則 3 显式 > 隐式: span 从 HIR 显式传递到 MIR
+  - 影响: ~30 处 Ty::new 调用现使用准确 span
+
+- Priority 2: pat_span() (src/hir/lower/pat.rs):
+  - Ident(_, ident, _) => Span::DUMMY → ident.span
+  - Lit(expr) => Span::DUMMY → expr_span(expr) (新增 helper)
+  - 新增 expr_span helper 提取 AST Expr span
+  - §1.0 原則 6 通用 > 特例: 一个 helper 处理所有 expr variants
+
+- Priority 3: HirAssocType/HirAssocConst (src/hir/lower/item.rs):
+  - TraitItem::Type: span: Span::DUMMY → ident.span
+  - TraitItem::Const: span: Span::DUMMY → ident.span
+  - §1.0 原則 4 报错 > 静默: assoc type/const 诊断 span 准确
+
+- Priority 4: duplicate-definition errors (src/resolve/module_build.rs + resolver.rs):
+  - Resolver 新增 `def_span: HashMap<DefId, Span>` 字段
+  - collect_item_registration 填充 def_span (新增 item_span helper)
+  - 2 处 duplicate-definition 错误使用 def_span 替代 Span::DUMMY
+  - §1.0 原則 4 报错 > 静默: duplicate def 诊断 span 准确
+
+- Priority 5: typeck/unify.rs make_mismatch (推迟):
+  - make_mismatch 已接受 span 参数, 但 unify_resolved 内部无 span 可用 (Ty 是 interned, 无 span 字段)
+  - 现有 create-then-overwrite 模式 (checker.rs: e.span = stmt.span) 已工作
+  - 推迟到 Stage 18.59 (LowerTyCtx 合并时一并处理)
+
+- 测试 (§9.4.3 1:3+ ratio):
+  - tests/v0/stage18/plan/stage18_57_span_dummy_cleanup_tests.rs: 3 positive + 9 negative = 1:3 ✓
+    - positive: duplicate_def_span_accurate + resolve_error_span_accurate + assoc_type_not_found_span_accurate
+    - negative: undefined_type_let + undefined_fn + duplicate_struct + duplicate_trait
+                + undefined_trait_qualified + wrong_trait_assoc + undefined_type_let_with_span
+                + undefined_type_param_with_span + multiple_errors_all_have_spans
+
+- 验收 (§3.2 交付前验收检查):
+  - cargo clean — ✅
+  - cargo build --features llvm-backend — ✅
+  - cargo fmt --check — ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend — ✅ 0 warnings
+  - cargo test --features llvm-backend — ✅ 607 lib + 2629 integration (+12 new) = 3236 unit tests, 0 failures
+  - python3 tests/conformance/run_all.py — ✅ 5249 conformance tests, 0 failures
+
+Stage Summary:
+- Span::DUMMY 技术债清理完成 (Priority 1-4, ~50 处修复)
+- §1.0 原則 3 显式 > 隐式: span 从 HIR/AST 显式传递
+- §1.0 原則 4 报错 > 静默: 诊断 span 准确 (duplicate def, assoc type, undefined type)
+- §1.0 原則 6 通用 > 特例: item_span / expr_span 一个 helper 处理所有 variants
+- 12 个新测试, 全部 1:3+ ratio
+- 3236 unit + 5249 conformance = 8485 total tests, 0 failures
+- Priority 5 (typeck make_mismatch) 推迟到 Stage 18.59
+- v0.323.0 → v0.324.0

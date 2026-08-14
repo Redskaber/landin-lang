@@ -1574,7 +1574,8 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
     region_counter: &mut u32,
     lifetime_map: &mut std::collections::HashMap<crate::lexer::Symbol, crate::mir::ty::RegionVid>,
 ) -> Ty {
-    let span = Span::DUMMY;
+    // Stage 18.57: Use the HIR Ty's span instead of Span::DUMMY.
+    let span = ty.span;
     match &ty.kind {
         HirTyKind::Ref(region, mutability, inner) => {
             let mir_region = match region {
@@ -1864,7 +1865,10 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
     region_counter: &mut u32,
     hir: Option<&HirCrate>,
 ) -> Ty {
-    let span = Span::DUMMY;
+    // Stage 18.57: Use the HIR Ty's span instead of Span::DUMMY.
+    // Per §1.0 原則 3 "显式 > 隐式": span is explicitly propagated from HIR.
+    // Per §1.0 原則 4 "报错 > 静默": accurate spans improve diagnostics.
+    let span = ty.span;
     match &ty.kind {
         HirTyKind::Bool => Ty::new(TyKind::Bool, span),
         HirTyKind::Char => Ty::new(TyKind::Char, span),
@@ -2164,7 +2168,8 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_generics_and_regions(
     generic_params: &[crate::mir::ty::ParamTy],
     region_counter: &mut u32,
 ) -> Ty {
-    let span = Span::DUMMY;
+    // Stage 18.57: Use the HIR Ty's span instead of Span::DUMMY.
+    let span = ty.span;
     match &ty.kind {
         // For Path types, check if it's a generic type param first.
         HirTyKind::Path(_, path) => {
