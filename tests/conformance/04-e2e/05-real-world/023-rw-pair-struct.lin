@@ -1,7 +1,7 @@
 // CATEGORY: e2e
 // DESCRIPTION: pair struct
-// EXPECTED: compile_error
-// SOURCE: Stage 11.4 e2e expansion
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.4 e2e expansion; Stage 18.54 fixed generic type param resolution
 
 struct Pair<A,B>{first:A,second:B} fn new<A,B>(a:A,b:B)->Pair<A,B>{Pair{first:a,second:b}}
 fn main(){ 0 }

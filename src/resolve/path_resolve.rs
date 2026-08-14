@@ -19,6 +19,7 @@ use crate::ast::PathLeading;
 use crate::hir::*;
 use crate::resolve::scope::{ScopeKind, ScopeStack};
 use lasso::Rodeo;
+use lasso::Spur;
 use std::collections::HashMap;
 
 use super::primitives::lookup_prim_ty;
@@ -37,14 +38,43 @@ impl Resolver {
         // Impl. Now we thread the owner context into body resolution too.
         let mut owner_self_kind: HashMap<crate::hir::DefId, crate::hir::HirSelfKind> =
             HashMap::new();
+        // Stage 18.54: Build a map from owner DefId → generic type params,
+        // so body resolution can enter the owner's generic scope when
+        // resolving param types and body type annotations.
+        let mut owner_generic_params: HashMap<crate::hir::DefId, Vec<(Spur, usize)>> =
+            HashMap::new();
         for (_, node) in &hir.owners {
             if let OwnerNode::Item(item) = node {
-                let (owner_def_id, kind) = match item {
-                    HirItem::Trait(t) => (t.hir_id.owner, crate::hir::HirSelfKind::Trait),
-                    HirItem::Impl(i) => (i.hir_id.owner, crate::hir::HirSelfKind::Impl),
-                    _ => continue,
+                // Collect owner_self_kind for Trait/Impl owners only.
+                if let Some((owner_def_id, kind)) = match item {
+                    HirItem::Trait(t) => Some((t.hir_id.owner, crate::hir::HirSelfKind::Trait)),
+                    HirItem::Impl(i) => Some((i.hir_id.owner, crate::hir::HirSelfKind::Impl)),
+                    _ => None,
+                } {
+                    owner_self_kind.insert(owner_def_id, kind);
+                }
+
+                // Stage 18.54: Collect generic type params for fn/struct/enum/trait/impl owners.
+                // Per §1.0 原則 6 "通用 > 特例": one match handles all five owner kinds.
+                let generic_params = match item {
+                    HirItem::Fn(f) => Some(collect_generic_type_params(&f.generics)),
+                    HirItem::Struct(s) => Some(collect_generic_type_params(&s.generics)),
+                    HirItem::Enum(e) => Some(collect_generic_type_params(&e.generics)),
+                    HirItem::Trait(t) => Some(collect_generic_type_params(&t.generics)),
+                    HirItem::Impl(i) => Some(collect_generic_type_params(&i.generics)),
+                    _ => None,
                 };
-                owner_self_kind.insert(owner_def_id, kind);
+                if let Some(params) = generic_params {
+                    let owner_def_id = match item {
+                        HirItem::Fn(f) => f.hir_id.owner,
+                        HirItem::Struct(s) => s.hir_id.owner,
+                        HirItem::Enum(e) => e.hir_id.owner,
+                        HirItem::Trait(t) => t.hir_id.owner,
+                        HirItem::Impl(i) => i.hir_id.owner,
+                        _ => unreachable!(), // guarded by generic_params being Some
+                    };
+                    owner_generic_params.insert(owner_def_id, params);
+                }
             }
         }
 
@@ -55,7 +85,16 @@ impl Resolver {
         // Walk all bodies — set owner context from the map.
         for (_, body) in hir.bodies.iter_mut() {
             self.current_self_kind = owner_self_kind.get(&body.hir_id.owner).copied();
+            // Stage 18.54: Enter the owner's generic scope so type params
+            // in param types and body annotations resolve correctly.
+            if let Some(params) = owner_generic_params.get(&body.hir_id.owner) {
+                self.generic_param_scope.push(params.clone());
+            }
             self.resolve_body(body, interner);
+            // Stage 18.54: Exit the owner's generic scope.
+            if owner_generic_params.contains_key(&body.hir_id.owner) {
+                self.generic_param_scope.pop();
+            }
         }
         // Reset after all bodies.
         self.current_self_kind = None;
@@ -73,7 +112,11 @@ impl Resolver {
                 // Stage 14.40: extracted to `resolve_fn_sig_paths` for reuse
                 // by `resolve_trait_item_paths` / `resolve_impl_item_paths`
                 // (the inline clones inside Trait/Impl blocks).
+                // Stage 18.54: enter generic scope so type params (T, U, ...)
+                // in the signature resolve to Res::GenericParam.
+                self.enter_generic_scope(&f.generics);
                 self.resolve_fn_sig_paths(&mut f.sig, &mut f.generics, interner);
+                self.exit_generic_scope();
             }
             HirItem::Const(c) => {
                 self.resolve_ty_paths(&mut c.ty, interner);
@@ -82,12 +125,18 @@ impl Resolver {
                 self.resolve_ty_paths(&mut s.ty, interner);
             }
             HirItem::Struct(s) => {
+                // Stage 18.54: enter generic scope so field types like `T`
+                // in `struct S<T> { x: T }` resolve correctly.
+                self.enter_generic_scope(&s.generics);
                 self.resolve_generics_paths(&mut s.generics, interner);
                 for field in &mut s.fields {
                     self.resolve_ty_paths(&mut field.ty, interner);
                 }
+                self.exit_generic_scope();
             }
             HirItem::Enum(e) => {
+                // Stage 18.54: enter generic scope for enum variant field types.
+                self.enter_generic_scope(&e.generics);
                 self.resolve_generics_paths(&mut e.generics, interner);
                 for variant in &mut e.variants {
                     match &mut variant.data {
@@ -99,6 +148,7 @@ impl Resolver {
                         _ => {}
                     }
                 }
+                self.exit_generic_scope();
             }
             HirItem::Trait(t) => {
                 // Stage 3.66: set owner context so `Self` in supertrait bounds
@@ -108,7 +158,11 @@ impl Resolver {
                 // `HirSelfKind::Trait` (previously only supertraits got the
                 // context — items were left unresolved because the owner
                 // copy was resolved but `trait.items` held an unresolved clone).
+                // Stage 18.54: enter generic scope so trait's own type params
+                // (e.g., `trait Foo<T>`) are visible in supertrait bounds and
+                // item signatures.
                 self.current_self_kind = Some(crate::hir::HirSelfKind::Trait);
+                self.enter_generic_scope(&t.generics);
                 self.resolve_generics_paths(&mut t.generics, interner);
                 for bound in &mut t.supertraits {
                     if let HirTypeBound::Trait(tb) = bound {
@@ -122,6 +176,7 @@ impl Resolver {
                 for trait_item in &mut t.items {
                     self.resolve_trait_item_paths(trait_item, interner);
                 }
+                self.exit_generic_scope();
                 self.current_self_kind = None;
             }
             HirItem::Impl(i) => {
@@ -132,7 +187,11 @@ impl Resolver {
                 // `HirSelfKind::Impl` (previously: only self_ty/of_trait got
                 // the context; items were left unresolved because the owner
                 // copy was resolved but `i.items` held an unresolved clone).
+                // Stage 18.54: enter generic scope so impl's own type params
+                // (e.g., `impl<T> Trait for T`) are visible in self_ty and
+                // item signatures.
                 self.current_self_kind = Some(crate::hir::HirSelfKind::Impl);
+                self.enter_generic_scope(&i.generics);
                 self.resolve_generics_paths(&mut i.generics, interner);
                 self.resolve_ty_paths(&mut i.self_ty, interner);
                 if let Some(trait_path) = &mut i.of_trait {
@@ -148,11 +207,15 @@ impl Resolver {
                 for impl_item in &mut i.items {
                     self.resolve_impl_item_paths(impl_item, interner);
                 }
+                self.exit_generic_scope();
                 self.current_self_kind = None;
             }
             HirItem::TypeAlias(t) => {
+                // Stage 18.54: enter generic scope for type alias's own params.
+                self.enter_generic_scope(&t.generics);
                 self.resolve_generics_paths(&mut t.generics, interner);
                 self.resolve_ty_paths(&mut t.ty, interner);
+                self.exit_generic_scope();
             }
             _ => {}
         }
@@ -313,7 +376,14 @@ impl Resolver {
     }
 
     pub(super) fn resolve_hir_path(&mut self, path: &mut HirPath, interner: &Rodeo) {
-        if path.res != Res::Unknown {
+        // Stage 18.54: Re-resolve Err paths too. Previously, once a path was
+        // marked Err (e.g., during body param resolution before generic scope
+        // was entered), it would never be re-tried. Now we re-resolve Err
+        // paths so they can benefit from generic scope information that may
+        // have been added since the first failed attempt.
+        // Per §1.0 原則 4 "报错 > 静默": but also per §1.0 原則 9 "正确 > 妥协" —
+        // we don't silently accept; we re-try with better info.
+        if !matches!(path.res, Res::Unknown | Res::Err) {
             return;
         }
         path.res = self.resolve_path(path, interner);
@@ -370,6 +440,15 @@ impl Resolver {
                 if let Some(hir_id) = scopes.lookup(seg.ident.name) {
                     return Res::Local(hir_id);
                 }
+            }
+
+            // Stage 18.54: Check generic type parameter scope before primitives.
+            // A user-named `T` in `fn f<T>(x: T)` should resolve to the generic
+            // param, not fall through to Res::Err.
+            // Per §1.0 原則 6 "通用 > 特例": one lookup for all owner kinds.
+            // Per §1.0 原則 3 "显式 > 隐式": explicit Res::GenericParam variant.
+            if let Some(idx) = self.lookup_generic_param(seg.ident.name) {
+                return Res::GenericParam(seg.ident.name, idx);
             }
 
             // Primitive types.
@@ -768,4 +847,23 @@ impl Resolver {
             scopes.pop();
         }
     }
+}
+
+/// Stage 18.54: Collect generic type parameters from a `HirGenerics` as
+/// `(name, index)` pairs.
+///
+/// Used by `resolve_all_paths` to build the `owner_generic_params` map so
+/// body resolution can enter the owner's generic scope.
+///
+/// Per §10 naming: `collect_generic_type_params` follows
+/// `<verb>_<adj>_<noun>_<noun>` pattern.
+/// Per §1.0 原則 6 "通用 > 特例": one function for all owner kinds.
+fn collect_generic_type_params(generics: &crate::hir::HirGenerics) -> Vec<(Spur, usize)> {
+    let mut params = Vec::new();
+    for (idx, param) in generics.params.iter().enumerate() {
+        if let crate::hir::HirGenericParam::Type(tp) = param {
+            params.push((tp.ident.name, idx));
+        }
+    }
+    params
 }

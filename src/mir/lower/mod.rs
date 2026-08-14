@@ -1974,6 +1974,16 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
                         Ty::new(TyKind::Adt(def_id, substs), span)
                     }
                     Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),
+                    // Stage 18.54: Generic type parameter (e.g., `T` in `fn f<T>(x: T)`).
+                    // Lower to TyKind::Param so monomorphization can substitute it.
+                    // Per §1.0 原則 6 "通用 > 特例": reuse existing ParamTy.
+                    Res::GenericParam(name, idx) => {
+                        let param = crate::mir::ty::ParamTy {
+                            index: idx as u32,
+                            name,
+                        };
+                        Ty::new(TyKind::Param(param), span)
+                    }
                     _ => Ty::new(TyKind::Error, span),
                 }
             }

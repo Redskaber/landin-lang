@@ -169,6 +169,11 @@ fn stage15_7_struct_return_writeback_integration() {
 /// so this should produce a compile error — NOT hang.
 ///
 /// Per §1.0 原则 5 "报错 > 静默": errors are better than silent hangs.
+///
+/// Stage 18.54 update: generic method now compiles successfully (no longer
+/// a v0.1 limitation). The fixpoint converges and the method's return type
+/// (generic Param) is correctly handled. Test now verifies no hang + no
+/// errors (previously asserted errors were present).
 #[test]
 fn stage15_7_generic_method_no_hang_regression() {
     let src = r#"
@@ -177,10 +182,11 @@ fn stage15_7_generic_method_no_hang_regression() {
         fn main() -> i32 { let s = S; s.f(42) }
     "#;
     let result = compile(src);
-    // Must produce errors (not hang) — the fixpoint must converge even
-    // when the method's return type is a generic Param.
+    // Stage 18.54: Generic method now resolves correctly (T → Param → unify with i32).
+    // Must NOT hang and must NOT produce errors.
     assert!(
-        !result.errors.is_empty(),
-        "generic method must produce a compile error (v0.1 limitation), not hang"
+        result.errors.is_empty(),
+        "generic method should compile without errors (Stage 18.54 fix), got: {:?}",
+        result.errors
     );
 }

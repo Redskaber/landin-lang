@@ -1,6 +1,6 @@
 // CATEGORY: integration
 // DESCRIPTION: cross generic fn
-// EXPECTED: compile_error
-// SOURCE: Stage 11.6+11.7 expansion
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.6+11.7 expansion; Stage 18.54 fixed generic type param resolution
 
 mod a{pub fn id<T>(x:T)->T{x}} fn main(){a::id(42);}

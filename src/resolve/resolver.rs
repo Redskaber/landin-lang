@@ -71,6 +71,17 @@ pub struct Resolver {
     /// Impl methods are accessed via `Type::method` paths (impl_method_index),
     /// NOT as free functions.
     pub(super) impl_method_def_ids: std::collections::HashSet<DefId>,
+    /// Stage 18.54: Stack of generic type parameter scopes.
+    ///
+    /// Each entry is a list of `(name, index)` pairs for the current owner's
+    /// generic type parameters. Pushed when entering fn/struct/enum/trait/impl
+    /// signature resolution; popped on exit.
+    ///
+    /// Per §1.0 原則 6 "通用 > 特例": one stack handles all owner kinds —
+    /// fn/struct/enum/trait/impl all use the same enter/exit/lookup API.
+    /// Per §1.0 原則 3 "显式 > 隐式": generic params are explicitly tracked,
+    /// not implicitly folded into module_tree or scopes.
+    pub(super) generic_param_scope: Vec<Vec<(Spur, usize)>>,
     /// Errors encountered (non-fatal).
     pub(super) errors: Vec<ResolveError>,
 }
@@ -86,6 +97,7 @@ impl Resolver {
             current_module: None,
             impl_method_index: HashMap::new(),
             impl_method_def_ids: std::collections::HashSet::new(),
+            generic_param_scope: Vec::new(),
             errors: Vec::new(),
         }
     }
@@ -123,6 +135,57 @@ impl Resolver {
             .map(|s| format!("symbol({:?})", s.ident.name))
             .collect();
         segs.join("::")
+    }
+
+    // ================================================================
+    // Stage 18.54: Generic type parameter scope management
+    // ================================================================
+
+    /// Stage 18.54: Enter a generic type parameter scope.
+    ///
+    /// Pushes a new scope frame containing all type parameters from the
+    /// given `HirGenerics`. Called when entering fn/struct/enum/trait/impl
+    /// signature resolution.
+    ///
+    /// Per §10 naming: `enter_generic_scope` follows `<verb>_<adj>_<noun>` pattern.
+    /// Per §1.0 原則 6 "通用 > 特例": one method for all owner kinds.
+    pub(super) fn enter_generic_scope(&mut self, generics: &crate::hir::HirGenerics) {
+        let mut params: Vec<(Spur, usize)> = Vec::new();
+        for (idx, param) in generics.params.iter().enumerate() {
+            if let crate::hir::HirGenericParam::Type(tp) = param {
+                params.push((tp.ident.name, idx));
+            }
+            // Lifetime params are not tracked here — they're erased in MIR
+            // and don't participate in type resolution as values.
+        }
+        self.generic_param_scope.push(params);
+    }
+
+    /// Stage 18.54: Exit the current generic type parameter scope.
+    ///
+    /// Pops the top scope frame. Called after signature resolution completes.
+    ///
+    /// Per §10 naming: `exit_generic_scope` follows `<verb>_<adj>_<noun>` pattern.
+    pub(super) fn exit_generic_scope(&mut self) {
+        self.generic_param_scope.pop();
+    }
+
+    /// Stage 18.54: Look up a generic type parameter by name in the scope stack.
+    ///
+    /// Searches from innermost scope (top of stack) outward. Returns the
+    /// parameter's index if found, `None` otherwise.
+    ///
+    /// Per §10 naming: `lookup_generic_param` follows `<verb>_<noun>_<noun>` pattern.
+    pub(super) fn lookup_generic_param(&self, name: Spur) -> Option<usize> {
+        // Search from innermost (top) to outermost (bottom).
+        for scope in self.generic_param_scope.iter().rev() {
+            for (param_name, idx) in scope.iter() {
+                if *param_name == name {
+                    return Some(*idx);
+                }
+            }
+        }
+        None
     }
 
     pub fn into_errors(self) -> Vec<ResolveError> {

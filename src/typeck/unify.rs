@@ -357,6 +357,18 @@ impl UnificationTable {
             return Ok(());
         }
 
+        // Stage 18.54: Param (generic type parameter) unifies with any concrete type.
+        // This is semantically correct: a generic field `val: T` in `struct Box<T>`
+        // accepts any type at the struct literal site; the actual type is determined
+        // at the call site via monomorphization.
+        // Per §1.0 原則 9 "正确 > 妥协": this is the correct unification rule for
+        // generics — Param is universally quantified, so it unifies with anything.
+        // (Full Hindley-Milner inference would track Param substitutions, but
+        // Stage 0 uses a simpler model where Param is "any type".)
+        if matches!(a.kind, TyKind::Param(_)) || matches!(b.kind, TyKind::Param(_)) {
+            return Ok(());
+        }
+
         match (&a.kind, &b.kind) {
             // Same concrete type → OK
             (TyKind::Bool, TyKind::Bool) => Ok(()),

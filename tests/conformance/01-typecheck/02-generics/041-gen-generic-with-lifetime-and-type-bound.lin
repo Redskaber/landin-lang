@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: generic with lifetime and type bound
-// EXPECTED: compile_error
-// SOURCE: Stage 11.1 typecheck expansion
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion; Stage 18.54 fixed generic type param resolution
 
 trait T { fn f(&self) -> i32; } fn g<'a, X: T>(x: &'a X) -> i32 { x.f() }
 fn main(){ 0 }

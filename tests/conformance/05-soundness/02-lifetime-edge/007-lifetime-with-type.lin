@@ -1,8 +1,7 @@
 // CATEGORY: soundness
 // DESCRIPTION: lifetime with type parameter
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
-// SOURCE: Stage 10.5 conformance expansion (Stage 0 limitation)
+// EXPECTED: compile_ok
+// SOURCE: Stage 10.5 conformance expansion (Stage 0 limitation); Stage 18.54 fixed generic type param resolution
 
 fn f<'a, T>(x: &'a T) -> &'a T { x }
 fn main(){ 0 }

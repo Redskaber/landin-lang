@@ -1,7 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: generic with const generic-like usage
-// EXPECTED: compile_error
-// SOURCE: Stage 11.1 typecheck expansion
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.1 typecheck expansion; Stage 18.54 fixed generic type param resolution
 
 fn f<T>(x: T, y: T) -> T { x }
 fn main(){ 0 }

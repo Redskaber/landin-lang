@@ -1,8 +1,7 @@
 // CATEGORY: typecheck
 // DESCRIPTION: generic fn id variant 2
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
-// SOURCE: Stage 11.9 batch expansion
+// EXPECTED: compile_ok
+// SOURCE: Stage 11.9 batch expansion; Stage 18.54 fixed generic type param resolution
 
 fn id<T>(x:T)->T{x}
 fn main(){ 0 }

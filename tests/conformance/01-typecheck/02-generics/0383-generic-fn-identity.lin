@@ -1,0 +1,7 @@
+// CATEGORY: typecheck
+// DESCRIPTION: Generic fn identity function compiles (Stage 18.54)
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.54 generic type param resolution
+
+fn id<T>(x: T) -> T { x }
+fn main() { let _x = id(42); }

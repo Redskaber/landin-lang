@@ -1,8 +1,7 @@
 // CATEGORY: typecheck
-// DESCRIPTION: Qualified path <T as Trait>::Item in return type (Stage 0 limitation: generic fn type param not resolved)
-// EXPECTED: compile_error
-// ERROR_PATTERN: error
-// SOURCE: Stage 18.53 GATs Phase 2
+// DESCRIPTION: Qualified path <T as Trait>::Item in return type (Stage 18.54: generic fn type param now resolved)
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.53 GATs Phase 2 + Stage 18.54 generic param resolution
 
 trait Container { type Item; }
 struct S;

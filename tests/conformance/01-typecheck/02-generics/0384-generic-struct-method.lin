@@ -1,0 +1,8 @@
+// CATEGORY: typecheck
+// DESCRIPTION: Generic struct with generic method compiles (Stage 18.54)
+// EXPECTED: compile_ok
+// SOURCE: Stage 18.54 generic type param resolution
+
+struct Box<T> { val: T }
+impl<T> Box<T> { fn get(&self) -> T { self.val } }
+fn main() { let b = Box { val: 42 }; let _x = b.get(); }

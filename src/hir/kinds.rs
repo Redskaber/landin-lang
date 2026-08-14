@@ -611,6 +611,18 @@ pub enum Res {
     SelfCtor,
     /// A lifetime.
     Lifetime,
+    /// Stage 18.54: A generic type parameter in scope (e.g., `T` in `fn f<T>(x: T)`).
+    ///
+    /// Carries `(name, index)` where:
+    /// - `name` is the parameter's identifier symbol (e.g., the `Spur` for "T")
+    /// - `index` is the 0-based position in the owner's generic params list
+    ///   (e.g., `fn f<T, U>` → T=0, U=1)
+    ///
+    /// Per §1.0 原則 3 "显式 > 隐式": distinct from `Res::Local` (which is a
+    /// value binding, not a type) and `Res::Def` (which is a top-level item).
+    /// Per §1.0 原則 6 "通用 > 特例": one variant for all generic type params
+    /// regardless of owner kind (fn/struct/enum/trait/impl).
+    GenericParam(crate::lexer::Symbol, usize),
     /// An error recovery — name resolution failed.
     Err,
 }
