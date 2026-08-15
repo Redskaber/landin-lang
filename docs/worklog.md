@@ -13529,3 +13529,73 @@ Stage Summary:
 - v0.369.0: minor bump (turbofish monomorphization)
 - v0.2 P0 单态化: turbofish ✅, 隐式推理 ❌ (TD-MONO-INFER), per-mono codegen ❌ (TD-MONO-CODEGEN)
 - 下一步: TD-MONO-INFER (隐式泛型推理回写) 或 TD-MONO-CODEGEN (per-mono 代码生成)
+
+---
+Task ID: stage18.102
+Agent: Super Z (main)
+Task: Stage 18.102 — Implicit Generic Inference Back-Write (TD-MONO-INFER). v0.369.0 → v0.370.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.101-turbofish-monomorphization-design.md TD-MONO-INFER gap
+  → Stage 18.101 修复 turbofish, 但隐式调用 id(42) 仍产生空 substs
+  → 根因: MIR lowering 在 type inference 之前, substs 未回写
+- 实现方案: writeback-style pass (类似 writeback_type_propagation + writeback_closures)
+  → 在 typeck 后, 遍历所有 Call terminator
+  → 对 FnDef(def_id, []) 空子sts 的, 从 arg 类型匹配 sig.inputs 中的 Param(N)
+  → 也从 destination 类型匹配 sig.output 中的 Param(N)
+  → 构建 substs 向量, 回写 FnDef(def_id, substs)
+- 实现 (src/mir/lower/writeback.rs):
+  → 新增 writeback_fndef_substs(mir, fn_sigs, generics_map) ~160 行
+  → 新增 collect_param_bindings(param_ty, concrete_ty, bindings) 辅助函数
+  → 算法:
+    1. 遍历 basic_blocks, 对每个 Call terminator
+    2. 从 func operand 获取 local_id (Copy/Move 路径, S2 简化)
+    3. 读取 local_decls[local].ty, 若为 FnDef(def_id, []) 空子sts:
+    4. 从 generics_map 查 def_id 是否泛型 (跳过非泛型)
+    5. 从 fn_sigs 查 sig
+    6. 匹配 args 与 sig.inputs: 若 input 是 Param(N), bindings[N] = arg_ty
+    7. 匹配 destination 与 sig.output: 若 output 是 Param(N), bindings[N] = dest_ty
+    8. 构建 substs (按 param index 排序)
+    9. 回写 FnDef(def_id, substs)
+- driver.rs 接线:
+  → 新增 generics_map: 从 HIR 预计算 DefId → Vec<ParamTy>
+    (per §16: 数据下沉, writeback 无 HIR 访问)
+  → 在 writeback_closures 后、MIR opt 前调用 writeback_fndef_substs
+- 设计简化 (S1/S2, 已在设计文档记录):
+  → S1: 仅顶层 Param 匹配 (不递归嵌套类型, 如 Vec<T>)
+    影响: fn wrap<T>(x: Vec<T>) 不获得 substs
+    修复计划: v0.2 Phase 2 — 递归 param 提取
+  → S2: 仅 Copy/Move func operand 处理 (不处理 Constant func)
+    影响: 泛型方法调用不处理
+    修复计划: v0.2 Phase 2 — 处理 Constant func operand
+- 验证:
+  → id(42) + id(true) → 2 MonoItems (Fn{i32}, Fn{bool}) ✅
+  → add(1,2) 非泛型 → 0 MonoItems ✅
+  → 混合 turbofish + implicit → 2 MonoItems ✅
+- 新增 3 个测试 (tests/v0/stage2/plan/typeck_tests.rs):
+  → stage18_102_implicit_inference_produces_mono_item
+  → stage18_102_non_generic_implicit_no_mono_items
+  → stage18_102_mixed_turbofish_and_implicit
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2622 passed, 0 failed (+3 new)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.102-implicit-inference-backwrite-design.md (新建, 含 S1/S2 简化记录)
+  - Cargo.toml: v0.369.0 → v0.370.0
+  - README.md: v0.369.0 → v0.370.0
+  - RELEASE_NOTES.md: 添加 v0.370.0 条目 + 单态化进度表
+  - docs/develop/v0/v0.1-capability-boundaries.md: 版本 + 测试数量更新
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.102 PASSED — 隐式泛型推理回写 (TD-MONO-INFER) 修复
+- 新增 writeback_fndef_substs pass: 从 arg/return 类型推断 FnDef substs
+- id(42) 无 turbofish 现在正确产生 MonoItem::Fn{i32}
+- 设计简化 S1 (嵌套 param) + S2 (Constant func) 已记录, v0.2 Phase 2 修复
+- 640 lib + 2622 integration = 3262 unit tests, 0 failures (+3 new)
+- v0.370.0: minor bump (implicit generic inference back-write)
+- v0.2 P0 单态化: turbofish ✅, 隐式推理 ✅, per-mono codegen ❌ (TD-MONO-CODEGEN)
+- 下一步: TD-MONO-CODEGEN (per-mono 代码生成 — 为每个 MonoItem 发出特化函数)

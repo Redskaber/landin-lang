@@ -644,6 +644,22 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
 
     let mut fn_sig_table = typeck::FnSigTable::default();
 
+    // Stage 18.102 (TD-MONO-INFER): Build generics_map from HIR for
+    // writeback_fndef_substs. This maps DefId → Vec<ParamTy> for all
+    // generic items (fns, structs, enums, etc.).
+    // Per §16: pre-computed from HIR (data flows downstream, no HIR access
+    // during writeback). Per §23: `find_generics` follows `<verb>_<noun>`.
+    let generics_map: std::collections::HashMap<crate::hir::DefId, Vec<crate::mir::ty::ParamTy>> = {
+        let mut map = std::collections::HashMap::new();
+        for (def_id, _) in &hir.owners {
+            let params = crate::hir::generics::find_generics(*def_id, &hir);
+            if !params.is_empty() {
+                map.insert(*def_id, params);
+            }
+        }
+        map
+    };
+
     // Stage 16.16: Declare fn_name_by_def_id early so the per-body loop
     // can register synthesized closure function names.
     let mut fn_name_by_def_id: std::collections::HashMap<crate::hir::DefId, String> =
@@ -1601,6 +1617,17 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
         // upfront, regardless of writeback results.
         crate::mir::lower::writeback_type_propagation(&mut mir, &fn_sig_table.sigs);
         crate::mir::lower::writeback_closures(&mut mir);
+
+        // Stage 18.102 (TD-MONO-INFER): Writeback inferred substs into FnDef
+        // types. For implicit generic calls like `id(42)` (no turbofish),
+        // the FnDef type has empty substs after MIR lowering. This pass
+        // matches arg types against the function's param types (which
+        // contain Param(N)) and writes back the inferred substs.
+        //
+        // Per §16: takes pre-computed fn_sigs + generics_map (data, not HIR).
+        // Per §2.0 原則 9 "正确 > 妥协": implicit inference now works.
+        // Per §1.0 原則 6 "通用 > 特例": one pass for all generic calls.
+        crate::mir::lower::writeback_fndef_substs(&mut mir, &fn_sig_table.sigs, &generics_map);
 
         // Stage 18.96: Run MIR optimization passes (DCE → const_prop → DCE)
         // per `06-mir.md` §9.3. Wired here — after writeback (types are

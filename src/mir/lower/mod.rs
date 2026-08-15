@@ -51,7 +51,7 @@ pub use expr_operand::query_method_return_type_uncached;
 // (no glob). Per §16: driver is orchestrator-only — these functions
 // contain the writeback logic, driver just calls them in order.
 pub(crate) use expr_operand::{lower_expr_to_operand, resolve_enum_variant};
-pub use writeback::{writeback_closures, writeback_type_propagation};
+pub use writeback::{writeback_closures, writeback_fndef_substs, writeback_type_propagation};
 // Stage 14.41: populate_adt_layouts was re-exported here so the driver
 // could re-run it after writeback. Stage 15.8: the driver no longer calls
 // it (uses build_crate_adt_layouts instead). The function is still called

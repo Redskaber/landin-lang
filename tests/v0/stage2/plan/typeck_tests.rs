@@ -717,3 +717,92 @@ fn main() {
         fn_items.len()
     );
 }
+
+// =================================================================
+// Stage 18.102: Implicit Generic Inference Tests (TD-MONO-INFER)
+// =================================================================
+
+/// Stage 18.102 positive: implicit generic call (no turbofish) produces MonoItem.
+/// `id(42)` without `::<i32>` should infer T=i32 from the argument type and
+/// produce MonoItem::Fn { def_id: id, substs: [i32] }.
+/// This verifies the writeback_fndef_substs pass.
+#[test]
+fn stage18_102_implicit_inference_produces_mono_item() {
+    use landin_compiler::compile;
+    use landin_compiler::mir::collect_mono_items;
+    let src = r#"
+fn id<T>(x: T) -> T { x }
+fn main() {
+    let a: i32 = id(42);
+    let b: bool = id(true);
+}
+"#;
+    let result = compile(src);
+    assert!(!result.has_errors());
+    let items = collect_mono_items(&result.mirs);
+    let fn_items: Vec<_> = items
+        .iter()
+        .filter(|i| matches!(i, landin_compiler::mir::MonoItem::Fn { .. }))
+        .collect();
+    assert_eq!(
+        fn_items.len(),
+        2,
+        "implicit calls should produce 2 MonoItems (id<i32> + id<bool>), got {}: {:?}",
+        fn_items.len(),
+        fn_items
+    );
+}
+
+/// Stage 18.102 negative 1: non-generic implicit call produces no Fn MonoItems.
+#[test]
+fn stage18_102_non_generic_implicit_no_mono_items() {
+    use landin_compiler::compile;
+    use landin_compiler::mir::collect_mono_items;
+    let src = r#"
+fn add(x: i32, y: i32) -> i32 { x + y }
+fn main() {
+    let a = add(1, 2);
+}
+"#;
+    let result = compile(src);
+    assert!(!result.has_errors());
+    let items = collect_mono_items(&result.mirs);
+    let fn_items: Vec<_> = items
+        .iter()
+        .filter(|i| matches!(i, landin_compiler::mir::MonoItem::Fn { .. }))
+        .collect();
+    assert_eq!(
+        fn_items.len(),
+        0,
+        "non-generic call should produce 0 Fn MonoItems, got {}",
+        fn_items.len()
+    );
+}
+
+/// Stage 18.102 negative 2: mixed turbofish + implicit both work.
+#[test]
+fn stage18_102_mixed_turbofish_and_implicit() {
+    use landin_compiler::compile;
+    use landin_compiler::mir::collect_mono_items;
+    let src = r#"
+fn id<T>(x: T) -> T { x }
+fn main() {
+    let a: i32 = id::<i32>(42);     // turbofish
+    let b: bool = id(true);          // implicit
+}
+"#;
+    let result = compile(src);
+    assert!(!result.has_errors());
+    let items = collect_mono_items(&result.mirs);
+    let fn_items: Vec<_> = items
+        .iter()
+        .filter(|i| matches!(i, landin_compiler::mir::MonoItem::Fn { .. }))
+        .collect();
+    assert_eq!(
+        fn_items.len(),
+        2,
+        "mixed turbofish + implicit should produce 2 MonoItems, got {}: {:?}",
+        fn_items.len(),
+        fn_items
+    );
+}

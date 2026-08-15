@@ -1,9 +1,90 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.369.0
+**Current version**: v0.370.0
 **Date**: 2026-08-11
-**Test count**: 640 rust lib tests + 2622 integration tests + 2935 conformance tests + 7 fuzz tests = 6204 total (100% pass rate, 35 runtime tests skipped due to OOM)
+**Test count**: 640 rust lib tests + 2625 integration tests + 2935 conformance tests + 7 fuzz tests = 6207 total (100% pass rate, 35 runtime tests skipped due to OOM)
+
+---
+## v0.370.0 — Stage 18.102 (Implicit Generic Inference Back-Write — TD-MONO-INFER)
+
+### Overview
+
+Closes the TD-MONO-INFER gap from Stage 18.101. Implicit generic calls
+(`id(42)` without turbofish) now produce proper MonoItems via a new
+`writeback_fndef_substs` pass that infers substs from arg/return types
+after typeck.
+
+### Root Cause
+
+Stage 18.101 fixed turbofish substs propagation, but implicit calls still
+produced `FnDef(def_id, [])` (empty substs) because MIR lowering happens
+before type inference back-propagates the concrete type from the argument.
+
+### Fix
+
+New `writeback_fndef_substs` pass in `src/mir/lower/writeback.rs`:
+- Walks all `Call` terminators
+- For each `FnDef(def_id, [])` with empty substs:
+  - Matches arg types against sig input types (which contain `Param(N)`)
+  - Records `bindings[N] = arg_ty`
+  - Also matches destination type with sig output type
+  - Builds substs vector from bindings
+  - Writes back `FnDef(def_id, substs)`
+
+Driver pre-computes `generics_map` from HIR (DefId → Vec<ParamTy>) so the
+writeback pass has no HIR access (per §11 interface isolation).
+
+### Verification
+
+| Scenario | Before | After |
+|----------|--------|-------|
+| `id(42)` + `id(true)` (implicit) | 0 MonoItems | ✅ 2 MonoItems (Fn{i32}, Fn{bool}) |
+| `add(1, 2)` (non-generic) | 0 MonoItems | ✅ 0 MonoItems (correct) |
+| Mixed turbofish + implicit | 1 MonoItem | ✅ 2 MonoItems |
+| `id::<i32>(42)` (turbofish) | 1 MonoItem | ✅ 1 MonoItem (no regression) |
+
+### Design Simplifications (Documented)
+
+| ID | Simplification | Impact | Fix Plan |
+|----|----------------|--------|----------|
+| S1 | Only top-level Param types matched | `fn wrap<T>(x: Vec<T>)` won't get substs | v0.2 Phase 2: recursive param extraction |
+| S2 | Only Copy/Move func operands handled | Generic method calls not handled | v0.2 Phase 2: handle Constant func operands |
+
+### Changes
+
+| ID | Change | Details |
+|----|--------|---------|
+| 18.102.1 | `writeback_fndef_substs` | New pass in `src/mir/lower/writeback.rs` (~160 lines) |
+| 18.102.2 | `collect_param_bindings` | Helper: matches `Param(N)` → `bindings[N] = concrete_ty` |
+| 18.102.3 | `generics_map` pre-compute | Driver builds DefId → Vec<ParamTy> from HIR |
+| 18.102.4 | Driver wiring | Called after `writeback_closures`, before MIR opt |
+| 18.102.5 | 3 new tests | Implicit inference + non-generic + mixed turbofish/implicit |
+| 18.102.6 | Design doc | `stage-18.102-implicit-inference-backwrite-design.md` (S1/S2 documented) |
+
+### Verification (§3.2)
+
+| Check | Result |
+|-------|--------|
+| `cargo build --features llvm-backend` | ✅ |
+| `cargo fmt --check` | ✅ exit 0 |
+| `cargo clippy --all-targets --features llvm-backend -- -D warnings` | ✅ 0 warnings |
+| `cargo test --features llvm-backend --lib` | ✅ 640 passed, 0 failed |
+| `cargo test --features llvm-backend --tests` (skip runtime) | ✅ 2622 passed, 0 failed (+3 new) |
+
+### v0.2 Monomorphization Progress
+
+| Phase | Status |
+|-------|--------|
+| Phase 1: Substs propagation (Adt) | ✅ Stage 16.52 |
+| Phase 2: Substitution | ✅ Stage 16.53 |
+| Phase 3: Monomorphization collection | ✅ Stage 16.54 |
+| Phase 4a: Specialized naming | ✅ Stage 16.55 |
+| Phase 4b: Per-mono layouts | ✅ Stage 16.59 |
+| Phase 4c: Codegen integration | ✅ Stage 16.59 |
+| Turbofish FnDef substs | ✅ Stage 18.101 |
+| **Implicit inference FnDef substs (TD-MONO-INFER)** | ✅ Stage 18.102 |
+| Per-mono codegen (emit specialized fns) | ❌ v0.2 (TD-MONO-CODEGEN) |
 
 ---
 ## v0.369.0 — Stage 18.101 (Turbofish Monomorphization — FnDef Substs Propagation)

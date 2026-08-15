@@ -494,6 +494,174 @@ pub fn writeback_closures(mir: &mut MirBody) {
     }
 }
 
+/// Stage 18.102 (TD-MONO-INFER fix): Writeback inferred substs into FnDef types.
+///
+/// After typeck, generic function calls like `id(42)` (without turbofish) have
+/// `FnDef(def_id, [])` in MIR — the substs are empty because MIR lowering
+/// happens before type inference. This pass walks all `Call` terminators,
+/// matches the arg types against the function's param types (which contain
+/// `Param(N)`), and writes back the inferred substs.
+///
+/// # Algorithm
+///
+/// For each `Call { func: Copy(local), args, .. }`:
+/// 1. Read `local_decls[local].ty` — if `FnDef(def_id, [])` (empty substs):
+/// 2. Look up `fn_sigs[def_id]` to get the sig (inputs contain `Param(N)`)
+/// 3. For each `(arg, input_ty)` pair:
+///    - Resolve the arg's type from local_decls
+///    - If `input_ty` is `Param(N)`, record `bindings[N] = arg_ty`
+/// 4. Also check the return type: if `sig.output` is `Param(N)`, use the
+///    destination local's type as `bindings[N]`
+/// 5. Build the substs vector from bindings (ordered by param index)
+/// 6. Write back `FnDef(def_id, substs)` to `local_decls[local].ty`
+///
+/// # Limitations (documented as design simplifications)
+///
+/// - **S1**: Only top-level `Param` types in sig inputs/output are matched.
+///   Nested Params (e.g., `fn foo<T>(x: Vec<T>)` where the input is
+///   `Adt(Vec, [Param(0)])`) are NOT extracted. This is a simplification —
+///   full nested param extraction requires recursive type matching.
+///   **Impact**: Generic functions with nested param types in their sig
+///   (e.g., `fn wrap<T>(x: Vec<T>)`) won't get substs for `T`.
+///   **Fix plan**: v0.2 Phase 2 — recursive param extraction in `collect_param_bindings`.
+///
+/// - **S2**: Only `Operand::Copy(Place::local(id))` func operands are handled.
+///   `Operand::Constant(Const { ty: FnDef(...), .. })` func operands (used in
+///   some method call paths) are NOT handled. This is a simplification —
+///   the constant case requires mutating the Const's type, which is more
+///   complex. **Fix plan**: v0.2 Phase 2 — handle Constant func operands.
+///
+/// Per §23: `writeback_fndef_substs` follows `<verb>_<noun>_<noun>` pattern.
+/// Per §16: takes pre-computed `fn_sigs` (data, not HIR) + `generics_map`.
+/// Per §1.0 原則 6 "通用 > 特例": one pass handles all generic function calls.
+/// Per §2.0 原則 9 "正确 > 妥协": implicit inference now works (was empty substs).
+pub fn writeback_fndef_substs(
+    mir: &mut MirBody,
+    fn_sigs: &HashMap<DefId, crate::mir::ty::Sig>,
+    generics_map: &HashMap<DefId, Vec<crate::mir::ty::ParamTy>>,
+) {
+    // Collect changes first, then apply (avoid borrow conflicts).
+    let mut changes: Vec<(usize, Ty)> = Vec::new();
+
+    for bb in &mir.basic_blocks {
+        let term = &bb.terminator;
+        if let TerminatorKind::Call {
+            func,
+            args,
+            destination,
+            ..
+        } = &term.kind
+        {
+            // Get the func's local_id from the operand.
+            let func_local_idx = match func {
+                Operand::Copy(place) | Operand::Move(place) => {
+                    if let PlaceKind::Local(id) = &place.kind {
+                        Some(id.0 as usize)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+
+            let func_local_idx = match func_local_idx {
+                Some(idx) => idx,
+                None => continue, // S2: Constant func operand not handled yet
+            };
+
+            // Read the current FnDef type.
+            let current_ty = match mir.local_decls.get(func_local_idx) {
+                Some(ld) => ld.ty.clone(),
+                None => continue,
+            };
+
+            let (def_id, existing_substs) = match &current_ty.kind {
+                TyKind::FnDef(def_id, substs) => (*def_id, substs.clone()),
+                _ => continue, // Not a FnDef — skip
+            };
+
+            // Skip if substs are already populated (turbofish case).
+            if !existing_substs.is_empty() {
+                continue;
+            }
+
+            // Skip if the function is not generic.
+            let generic_params = match generics_map.get(&def_id) {
+                Some(params) if !params.is_empty() => params,
+                _ => continue, // Non-generic function
+            };
+
+            // Look up the function's sig.
+            let sig = match fn_sigs.get(&def_id) {
+                Some(sig) => sig.clone(),
+                None => continue,
+            };
+
+            // Build param bindings from arg types.
+            let mut bindings: HashMap<u32, Ty> = HashMap::new();
+
+            // Match arg types with sig input types.
+            for (arg, input_ty) in args.iter().zip(sig.inputs.iter()) {
+                let arg_ty = match arg {
+                    Operand::Copy(place) | Operand::Move(place) => {
+                        if let PlaceKind::Local(id) = &place.kind {
+                            mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone())
+                        } else {
+                            None
+                        }
+                    }
+                    Operand::Constant(c) => Some(c.ty.clone()),
+                };
+
+                if let Some(arg_ty) = arg_ty {
+                    collect_param_bindings(input_ty, &arg_ty, &mut bindings);
+                }
+            }
+
+            // Match destination type with sig output type.
+            if let PlaceKind::Local(id) = &destination.kind {
+                if let Some(dest_ld) = mir.local_decls.get(id.0 as usize) {
+                    collect_param_bindings(&sig.output, &dest_ld.ty, &mut bindings);
+                }
+            }
+
+            // Build the substs vector (ordered by param index).
+            let substs: Vec<Ty> = generic_params
+                .iter()
+                .map(|param| {
+                    bindings
+                        .get(&param.index)
+                        .cloned()
+                        .unwrap_or_else(|| Ty::new(TyKind::Error, Span::DUMMY))
+                })
+                .collect();
+
+            // Only write back if we found at least one binding.
+            if !substs.is_empty() && substs.iter().any(|ty| !matches!(ty.kind, TyKind::Error)) {
+                let new_ty = Ty::new(TyKind::FnDef(def_id, substs.into()), Span::DUMMY);
+                changes.push((func_local_idx, new_ty));
+            }
+        }
+    }
+
+    // Apply changes.
+    for (idx, new_ty) in changes {
+        if let Some(ld) = mir.local_decls.get_mut(idx) {
+            ld.ty = new_ty;
+        }
+    }
+}
+
+/// Helper: collect Param → Ty bindings from matching two types.
+///
+/// If `param_ty` is `Param(N)`, records `bindings[N] = concrete_ty`.
+/// S1 limitation: does NOT recurse into nested types (e.g., `Vec<T>`).
+fn collect_param_bindings(param_ty: &Ty, concrete_ty: &Ty, bindings: &mut HashMap<u32, Ty>) {
+    if let TyKind::Param(param) = &param_ty.kind {
+        bindings.insert(param.index, concrete_ty.clone());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
