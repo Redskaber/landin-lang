@@ -14389,3 +14389,38 @@ Stage Summary:
 - 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
 - v0.387.0: minor bump (D1-R2 BinaryOp2 panic fix)
 - 下一步: v0.2 P0 (mini-cargo 项目系统)
+
+---
+Task ID: stage18.120
+Agent: Super Z (main)
+Task: Stage 18.120 — Comprehensive Tech Debt Register + Doc Sync. v0.387.0 → v0.388.0.
+
+Work Log:
+- §13.1 设计对齐: 所有深度审查行动项已完成, 创建完整技术债登记册
+- 创建 docs/develop/v0/tech-debt-register.md:
+  → 已解决: 12 项 (S2-S11, TD-13, TD-DUP2, TD-UNWRAP1/2)
+  → 剩余: 15 项 (全部 v0.2 Phase 2+, 无阻塞 v0.2 P0 的项)
+  → Span::DUMMY: 所有 Category B (可修复) 已解决; ~584 剩余为 Category A (合法)
+  → 枚举分支覆盖: 所有关键 enum 显式覆盖 (无静默 catch-all)
+  → 错误系统: 8 Kind enums + E001-E900 + 9-field CompileErrors 全部接线
+  → 架构摘要: 流水线图 + 测试计数 + Span::DUMMY 状态 + 枚举覆盖 + 错误系统
+- 文档同步:
+  → RELEASE_NOTES.md: 添加 v0.388.0 条目 + 更新头部
+  → docs/tests/matrix.md: 版本 → v0.388.0, 计数更新
+  → docs/tests/pipeline-test-coverage.md: 版本 → v0.388.0
+  → docs/develop/v0/v0.1-capability-boundaries.md: 版本 → v0.388.0, 计数更新
+  → Cargo.toml: v0.387.0 → v0.388.0
+  → README.md: v0.387.0 → v0.388.0
+  → worklog.md (本条目)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+
+Stage Summary:
+- Stage 18.120 PASSED — 综合技术债登记册 + 文档同步
+- 新建 tech-debt-register.md: 12 已解决 + 15 剩余 (v0.2 Phase 2+)
+- 所有文档同步到 v0.388.0
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.388.0: doc-sync bump (tech debt register)
+- 所有深度审查行动项 + 技术债登记完成
+- 下一步: v0.2 P0 (mini-cargo 项目系统)

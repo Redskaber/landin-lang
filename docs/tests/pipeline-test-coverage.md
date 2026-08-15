@@ -1,8 +1,8 @@
 # Landin Compiler — Pipeline Test Path Coverage Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-08-15 (last updated Stage 18.112)
-> **Version**: v0.380.0
+> **Date**: 2026-08-15 (last updated Stage 18.120)
+> **Version**: v0.388.0
 > **Process**: stage-committee-process.md v5.0 §8 (doc sync) + §9 (test standards)
 > **Scope**: Full compiler pipeline — per-stage, inter-stage, and end-to-end path coverage
 

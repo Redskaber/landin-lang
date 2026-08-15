@@ -1,19 +1,19 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-08-15 (last updated Stage 18.112)
-> **Version**: v0.380.0
+> **Date**: 2026-08-15 (last updated Stage 18.120)
+> **Version**: v0.388.0
 > **Process**: stage-committee-process.md v5.0 (§8 doc sync + §9 test standards)
 
-## Current Status (v0.380.0)
+## Current Status (v0.388.0)
 
 | Category | Count | Status |
 |----------|-------|--------|
-| Rust lib tests | 643 | ✅ 0 failures |
-| Rust integration tests | 2,787 | ✅ 0 failures |
+| Rust lib tests | 640 | ✅ 0 failures |
+| Rust integration tests | 2,663 | ✅ 0 failures |
 | Conformance tests | 2,935 | ✅ 0 failures |
 | Fuzz/stress tests | 7 | ✅ 0 failures |
-| **Total** | **6,372** | **100% pass rate, 0 skipped** |
+| **Total** | **6,245** | **100% pass rate, 0 skipped** |
 
 > **Note**: As of Stage 18.110 (S11 fix), ALL 35 runtime tests pass —
 > no more OOM skips or infinite loop hangs. The const-prop loop safety

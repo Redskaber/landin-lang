@@ -1,12 +1,47 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.380.0
+**Current version**: v0.388.0
 **Date**: 2026-08-15
-**Test count**: 643 rust lib tests + 2787 integration tests + 2935 conformance tests + 7 fuzz tests = 6372 total (100% pass rate, 0 skipped)
+**Test count**: 640 rust lib tests + 2663 integration tests + 2935 conformance tests + 7 fuzz tests = 6245 total (100% pass rate, 0 skipped)
 
 ---
-## v0.380.0 — Stage 18.112 (S2 Fix: Method Monomorphization — ALL Tech Debt Resolved)
+## v0.388.0 — Stage 18.120 (Comprehensive Tech Debt Register)
+
+### Overview
+
+Created comprehensive tech debt register documenting all resolved and remaining
+tech debt. All deep review action items (D1-D8 Round 2/3) are complete.
+
+### Tech Debt Register
+
+New document: `docs/develop/v0/tech-debt-register.md`
+
+- **Resolved**: 12 items (S2-S11, TD-13, TD-DUP2, TD-UNWRAP1/2)
+- **Remaining**: 15 items (all v0.2 Phase 2+ — no blocking items for v0.2 P0)
+- **Span::DUMMY**: All Category B (fixable) resolved; ~584 remaining are Category A (legitimate)
+- **Enum branch coverage**: All key enums have explicit arms (no silent catch-all for known variants)
+- **Error system**: 8 Kind enums + E001-E900 + 9-field CompileErrors — all wired
+
+### All Deep Review Action Items Status
+
+| Action Item | Stage | Status |
+|-------------|-------|--------|
+| D3-R1: Test relocation | 18.114 | ✅ |
+| D2-R2: Span::DUMMY (driver.rs) | 18.115 | ✅ |
+| D2-R2: Span::DUMMY (projection_resolver) | 18.116 | ✅ |
+| D1-R1: TerminatorKind explicit arms | 18.116 | ✅ |
+| D2-R2: Span::DUMMY (checker.rs) | 18.117 | ✅ |
+| D1-R2: Enum branch (bit_width + fat-ptr + AggregateKind) | 18.118 | ✅ |
+| D1-R2: BinaryOp2 panic | 18.119 | ✅ |
+| **D-REGISTER: Comprehensive tech debt register** | **18.120** | **✅** |
+
+### Verification
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- cargo build ✅ / cargo check ✅ 0 warnings / cargo fmt ✅ / cargo clippy ✅
+
+---
+## v0.387.0 — Stage 18.119 (D1-R2 Fix: BinaryOp2 Panic)
 
 ### Overview
 

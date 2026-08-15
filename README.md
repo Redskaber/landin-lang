@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.387.0 (Stage 18.119 — D1-R2 fix: BinaryOp2 panic instead of silent wrong codegen)  
+> **Version**: v0.388.0 (Stage 18.120 — Comprehensive tech debt register + all audit action items complete)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE (S2-S11 all fixed)
+> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, all deep review action items resolved
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets
