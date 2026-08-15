@@ -14514,3 +14514,45 @@ Stage Summary:
 - 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
 - v0.390.0: doc-fix bump (process doc v6.1)
 - 下一步: v0.2 P0 (mini-cargo 项目系统), 使用 §17 任务规划排版图
+
+---
+Task ID: stage18.123
+Agent: Super Z (main)
+Task: Stage 18.123 — Process Doc v6.2: MEDIUM Fixes from Deep Audit. v0.390.0 → v0.391.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.122-process-doc-v6-audit-report.md MEDIUM 修复计划
+- MEDIUM 修复 (6 项):
+  1. §14.7 D1-D6 → C1-C6 重编号:
+     → 避免与 §14.5 D1-D8 冲突 (跨阶段审查维度用 C 前缀)
+     → C1-C6: 阶段内路径/阶段间路径/高内聚低耦合/可插拔/数据流校验/路径缺漏
+  2. §17.8 max-retry 守卫:
+     → "最多重试 3 次; 3 次不通过则升级到 PM-A + ARCH-A 仲裁"
+  3. §14.5 NO-GO max-retry 守卫:
+     → mermaid 节点添加 "max 2 次重试, 超过则升级技术委员会"
+  4. §17.4 "权重"定义:
+     → 高=阻塞型/核心路径; 中=重要但可并行; 低=辅助/文档类
+  5. §8.6 worklog 路径相对化:
+     → /home/z/my-project/worklog.md → <repo-root>/worklog.md (4 处替换)
+  6. §1.2.1 新增 L1/L2/L3 流程分层应用:
+     → L1 (≤50 LOC): §3.2+§8+§10, 跳过 §17/§14.5/§14.6/§7.3
+     → L2 (50-500 LOC): §3.2+§8+§10+§7.3+§13.1, 跳过 §14.5/§14.6
+     → L3 (500+ LOC): 全部章节
+  7. §3.1 ASCII-art → mermaid:
+     → 工具检查流程从 text block 改为 mermaid flowchart
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+- §8 文档同步:
+  - docs/stage-committee-process.md: v6.1 → v6.2 (2816→2833 行)
+  - Cargo.toml: v0.390.0 → v0.391.0
+  - README.md: v0.390.0 → v0.391.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.123 PASSED — Process doc v6.2 MEDIUM 修复
+- 6 项 MEDIUM 修复: D→C 重编号 + max-retry + 权重定义 + worklog 路径 + L1/L2/L3 分层 + ASCII→mermaid
+- 流程文档 v6.1 → v6.2 (2833 行)
+- 所有深度审查 MEDIUM 修复完成
+- v0.391.0: doc-fix bump (process doc v6.2)
+- 下一步: v0.2 P0 (mini-cargo 项目系统), 使用 §17 任务规划排版图

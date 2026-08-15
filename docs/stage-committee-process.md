@@ -1,7 +1,7 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 6.1（深度审查修复：8 个 HIGH + MEDIUM 问题修复）
+> **Version**: 6.2（MEDIUM 修复：D→C 重编号 + max-retry 守卫 + 权重定义 + worklog 路径 + L1/L2/L3 分层 + ASCII→mermaid）
 > **Purpose**: 为 Agent Group 提供清晰、严格、高效、可协调的阶段推进与质量管控 SOP。
 > 任何 Agent 拿到本文档即可：**清晰**知道每个阶段/轮次/角色的输入输出与验收标准；**严格**知道哪些是硬性阻断、哪些可酌情；**高效**知道哪些可并行、哪些必须串行、何时可提前收敛；**可协调**知道跨 Agent 协作协议（Task ID / worklog / 升级路径）。
 
@@ -55,6 +55,18 @@
 | 环境准备 | §3 | 工具缺失时先查 `scripts/`+`tools/` 再安装 |
 | 交付前验收 | §3.2, §8.3 | cargo clean+test+fmt+clippy 全绿 |
 | 设计-审查循环 | §13.5 | review agent ↔ design agent 迭代校准 |
+
+### 1.2.1 流程分层应用（L1/L2/L3）
+
+> **目的**：避免小任务承受大流程开销。按任务复杂度（§4.2）分层应用流程协议。
+
+| 复杂度 | 必须执行 | 可跳过 | 典型场景 |
+|--------|---------|--------|---------|
+| **L1** (≤50 LOC, 1 文件) | §3.2 验收 + §8 文档同步 + §10 命名 | §17 规划图, §14.5 深度审查, §14.6 阶段间验证, §7.3 门审查 | 修 typo, 加测试, 改注释 |
+| **L2** (50-500 LOC, 2-5 文件) | §3.2 + §8 + §10 + §7.3 门审查 + §13.1 设计对齐 | §14.5 深度审查 (用 §7.3 替代), §14.6 阶段间验证 | 新功能, 重构模块 |
+| **L3** (500+ LOC, 跨模块) | **全部章节** (§1-§17) | 无 | 核心架构变更, 新阶段, 大重构 |
+
+**判定规则**：由 PM-A 在任务开始时判定复杂度。如果执行中发现实际复杂度高于预估，必须升级到对应层级的完整流程。
 
 ### 1.3 整体阶段工作流
 
@@ -195,19 +207,24 @@ flowchart TD
 
 **检查时机**：(1) 会话开始时；(2) 执行命令报 "command not found" 时；(3) 用户明确要求验证（`cargo test` 等）时。
 
-**操作流程**：
-```text
-1. which <tool>  →  检查是否已安装
-2. 若缺失：
-   a. 优先查 scripts/<sub_dirname>/  →  本项目自定义脚本
-   b. 优先查 tools/<sub_dirname>/    →  本项目自带工具
-   c. 查 docs/tools/<sub_dirname>/    →  工具使用文档
-   d. 仍缺失：apt/brew/包管理器查找  →  apt list 2>/dev/null | grep <tool>
-   e. 官方安装脚本  →  curl -sSf https://sh.rustup.rs | sh -s -- -y
-   f. rustup component add <component>  →  rustfmt/clippy
-3. 安装后 source 环境变量  →  . "$HOME/.cargo/env"
-4. 验证  →  <tool> --version
-5. 安装脚本归档到 scripts/<sub_dirname>/，文档归档到 docs/tools/<sub_dirname>/
+**操作流程**（Stage 18.123: ASCII-art → mermaid）：
+
+```mermaid
+flowchart TD
+    A["1. which <tool>"] -->|已安装| F["✅ 可用"]
+    A -->|缺失| B["2a. 查 scripts/"]
+    B -->|找到| G["source + 验证"]
+    B -->|未找到| C["2b. 查 tools/"]
+    C -->|找到| G
+    C -->|未找到| D["2c. 查 docs/tools/"]
+    D -->|找到| G
+    D -->|未找到| E["2d. apt/brew 安装"]
+    E -->|成功| G
+    E -->|失败| H["2e. 官方安装脚本"]
+    H --> G
+    G --> I["3. source 环境变量"]
+    I --> J["4. <tool> --version 验证"]
+    J --> K["5. 归档到 scripts/ + docs/tools/"]
 ```
 
 **Landin 项目必需工具**：
@@ -837,10 +854,10 @@ docs/lang-design/
 
 ### 8.6 Worklog 协议（多 Agent 协作）
 
-所有 Agent（主 + 子）共享单一 worklog 文件：`/home/z/my-project/worklog.md`，并同步镜像到 `docs/worklog.md`。
+所有 Agent（主 + 子）共享单一 worklog 文件：`<repo-root>/worklog.md`，并同步镜像到 `docs/worklog.md`。
 
-**同步规则**：每轮完成时，执行 `cp /home/z/my-project/worklog.md docs/worklog.md`。
-- `docs/worklog.md` 是 `/home/z/my-project/worklog.md` 在项目目录树内的**完整镜像备份**，始终是最新完整版本。
+**同步规则**：每轮完成时，执行 `cp <repo-root>/worklog.md docs/worklog.md`。
+- `docs/worklog.md` 是 `<repo-root>/worklog.md` 在项目目录树内的**完整镜像备份**，始终是最新完整版本。
 
 **读协议**：
 - 每个 Agent 启动前**必须**读 worklog 了解前序 Agent 工作。
@@ -983,7 +1000,7 @@ docs/tests/
 | **测试计划** | `docs/tests/v0/stage-N/plan/<功能点>.md` | 测试目标、覆盖场景、预期测试数 |
 | **测试代码** | `tests/v0/stage-N/plan/<功能点>_tests.rs` | 实际测试代码 |
 | **测试矩阵** | `docs/tests/matrix.md` | 更新测试数、覆盖率 |
-| **worklog** | `/home/z/my-project/worklog.md` + `docs/worklog.md` | 追加本轮 Task ID / Work Log / Stage Summary |
+| **worklog** | `<repo-root>/worklog.md` + `docs/worklog.md` | 追加本轮 Task ID / Work Log / Stage Summary |
 
 **命名约定**：
 - 开发计划：`plan-4.1.md`（子阶段号）、`plan-4.2.md`、...
@@ -1002,7 +1019,7 @@ docs/tests/
 | **审查测试报告** | `docs/tests/v0/stage-N/gate/gate-review-round<N>.md` | 审计 case 覆盖、测试结果、覆盖率验证 |
 | **审计脚本** | `examples/audit/stageN_gate_audit_r<N>.rs` | ≥30 case 审计脚本（可重运行） |
 | **测试矩阵** | `docs/tests/matrix.md` | 更新累计审计 case 数 |
-| **worklog** | `/home/z/my-project/worklog.md` + `docs/worklog.md` | 追加本轮审查记录 |
+| **worklog** | `<repo-root>/worklog.md` + `docs/worklog.md` | 追加本轮审查记录 |
 
 #### 9.3.3 时期 3：阶段完成（深度审查轮 — 完成 review/gate 之后）
 
@@ -1016,7 +1033,7 @@ docs/tests/
 | **深度审查测试** | `docs/tests/v0/stage-N/gate/deep-review-round<N>.md` | 跨阶段测试覆盖验证 + 回归验证 + 下一阶段就绪度测试 |
 | **dev-log 总结** | `docs/develop/v0/stage-N/dev-log.md` | 阶段总结条目 |
 | **测试矩阵** | `docs/tests/matrix.md` | 最终覆盖率确认 |
-| **worklog** | `/home/z/my-project/worklog.md` + `docs/worklog.md` | 追加深度审查记录 |
+| **worklog** | `<repo-root>/worklog.md` + `docs/worklog.md` | 追加深度审查记录 |
 
 ### 9.4 设计-开发-测试互相锚定原则
 
@@ -1760,7 +1777,7 @@ flowchart TD
     E --> F[5. 委员会联合评审<br/>5 角色 + PM-A]
     F --> G{6. 投票}
     G -->|GO| H[7. 输出 deep-review-roundN.md]
-    G -->|NO-GO| I[制定本阶段追加任务清单]
+    G -->|NO-GO| I["制定本阶段追加任务清单<br/>(max 2 次重试, 超过则升级技术委员会)"]
     I --> B
     H --> J[§14.8 设计回写]
     J --> K[§14.6 阶段间深度验证]
@@ -2030,16 +2047,16 @@ GO / GO-WITH-CONDITIONS / NO-GO
 
 #### 14.7.1 审查维度
 
-跨阶段深度审查覆盖以下 6 个维度：
+跨阶段深度审查覆盖以下 6 个维度（Stage 18.123: 重编号 D→C 以避免与 §14.5 D1-D8 冲突）：
 
 | # | 维度 | 审查内容 | 验证方法 |
 |---|------|---------|---------|
-| D1 | 阶段内路径覆盖 | 每个阶段内部的所有代码路径是否完整覆盖 | 检查测试矩阵 §9，确认每个功能点都有测试 |
-| D2 | 阶段间路径覆盖 | 阶段之间的数据流路径是否完整 | 检查 driver.rs 中每个阶段交接点，确认数据正确传递 |
-| D3 | 高内聚低耦合 | 每个阶段是否高内聚（职责单一）、低耦合（通过数据契约交互） | grep 检查跨阶段函数调用，确认零违规 |
-| D4 | 可插拔可替换 | 每个阶段是否可被等价实现替换 | 检查是否有 trait 接口，是否有数据驱动的元数据传递 |
-| D5 | 数据流校验 | 所有数据流路径是否正确传递，无丢失或损坏 | 检查 CompileResult 的字段是否被正确填充和消费 |
-| D6 | 路径缺漏补充 | 是否存在未覆盖的代码路径或数据流 | 检查错误处理路径、边界条件、特殊类型 |
+| C1 | 阶段内路径覆盖 | 每个阶段内部的所有代码路径是否完整覆盖 | 检查测试矩阵 §9，确认每个功能点都有测试 |
+| C2 | 阶段间路径覆盖 | 阶段之间的数据流路径是否完整 | 检查 driver.rs 中每个阶段交接点，确认数据正确传递 |
+| C3 | 高内聚低耦合 | 每个阶段是否高内聚（职责单一）、低耦合（通过数据契约交互） | grep 检查跨阶段函数调用，确认零违规 |
+| C4 | 可插拔可替换 | 每个阶段是否可被等价实现替换 | 检查是否有 trait 接口，是否有数据驱动的元数据传递 |
+| C5 | 数据流校验 | 所有数据流路径是否正确传递，无丢失或损坏 | 检查 CompileResult 的字段是否被正确填充和消费 |
+| C6 | 路径缺漏补充 | 是否存在未覆盖的代码路径或数据流 | 检查错误处理路径、边界条件、特殊类型 |
 
 #### 14.7.2 §11 合规验证清单
 
@@ -2503,6 +2520,7 @@ flowchart TD
 | **v5.0** | **Stage 16.75** | **重构 v4.0：100% 覆盖原版意图，精简表达。** 合并冗余 changelog、移除历史覆盖矩阵与"v4.0 新增"标记、合并类似 mermaid 图、用表格替代段落、补充开发期不引入简写语法（§13.3.6）、明确 §3.2 验收命令需 `--features llvm-backend`、强化 §5.3 退出标准对 llvm-backend 的要求 |
 | **v6.0** | **Stage 18.120** | **优化重构 v5.0 + 新增 §17 任务规划排版图。** 100% 保留 v5.0 全部规则。新增 §17：七步任务规划流程（扫描→依赖图→节点流→递归→设计-开发-测试节点→缺陷纳入→优化补充）。§17 将阶段任务规划从线性列表升级为依赖图+节点流模型。更新 §2.1 总体原则 + §1.2 路由表添加 §17 引用。 |
 | **v6.1** | **Stage 18.122** | **深度审查修复：8 个 HIGH+MEDIUM 问题。** 修正 §8.4.3 lang-design 文件名（与实际磁盘一致）、修正 P3 误分类数量矛盾（12 vs 17 → 统一表述）、修复 4 个断裂交叉引用（§2.0/§8.6.4/§13.3.6/§A-§F）、§3.2 验收命令补全 cargo check、§4 头部添加 §17 前置条件标记、§3.1 工具表添加 LLVM 工具链、§17.2 扫描表添加路线图+Agent 技能。 |
+| **v6.2** | **Stage 18.123** | **MEDIUM 修复：6 项。** §14.7 D1-D6 → C1-C6 重编号（避免与 §14.5 D1-D8 冲突）、§17.8 + §14.5 添加 max-retry 守卫、§17.4 "权重"定义、§8.6 worklog 路径相对化（`<repo-root>/worklog.md`）、§1.2.1 新增 L1/L2/L3 流程分层应用、§3.1 ASCII-art → mermaid。 |
 
 ### 16.2 v5.0 关键改进
 
@@ -2631,7 +2649,7 @@ flowchart TD
 
 | 规则 | 说明 |
 |------|------|
-| 任务权重 | 权重仅作用于节点内任务排序（高→低），不影响跨节点执行顺序 |
+| 任务权重 | 权重仅作用于节点内任务排序（高→低），不影响跨节点执行顺序。权重含义：**高**=阻塞型/核心路径任务；**中**=重要但可并行；**低**=辅助/文档类 |
 | 节点完成条件 | 节点内所有任务 + 子任务全部完成，才能根据执行流边进入下一任务节点 |
 | 任务层级 | 节点内任务可有父子关系（子任务是父任务的细化） |
 | MUV 对齐 | 每个叶子任务对应一个 MUV（§4），有明确的输入条件、输出物、验收标准 |
@@ -2749,7 +2767,7 @@ flowchart LR
 | 能力边界 | 规划是否超出了当前编译器能力边界？超出的部分是否有前置任务？ |
 | 递归合理性 | 子图递归深度是否合理（≤3 层）？是否有过度规划？ |
 
-**不通过时**：回到 Step 2 重新构建依赖图。
+**不通过时**：回到 Step 2 重新构建依赖图。**最多重试 3 次**；3 次不通过则升级到 PM-A + ARCH-A 仲裁，由 PM-A 决定是否缩减范围或调整设计意图。
 
 ### 17.9 任务规划排版图输出格式
 
@@ -2811,5 +2829,5 @@ graph LR
 ---
 
 **This document is the single source of truth for the Landin development
-process. All agents (main + subagents) must follow it. v6.1 effective
-from Stage 18.122+.**
+process. All agents (main + subagents) must follow it. v6.2 effective
+from Stage 18.123+.**
