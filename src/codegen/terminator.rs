@@ -328,28 +328,39 @@ pub(crate) fn codegen_terminator(
             //
             // Stage 16.30: Also extract from Closure-typed func (the
             // closure's def_id is the callee def_id).
-            let callee_def_id: Option<crate::hir::DefId> = if let Operand::Constant(c) = func {
+            //
+            // Stage 18.107 (S8 fix): Also extract callee substs so we can
+            // substitute the generic sig's output with the call-site substs.
+            // This fixes `make_box::<i32>()` return type: was `Box<Param(0)>`,
+            // now correctly `Box<i32>`.
+            let (callee_def_id, callee_substs): (
+                Option<crate::hir::DefId>,
+                crate::mir::ty::SubstsRef,
+            ) = if let Operand::Constant(c) = func {
                 match &c.val {
-                    ConstVal::Uint(n) => Some(crate::hir::DefId(*n as u32)),
-                    ConstVal::Int(n) => Some(crate::hir::DefId(*n as u32)),
-                    _ => None,
+                    ConstVal::Uint(n) => (Some(crate::hir::DefId(*n as u32)), Vec::new().into()),
+                    ConstVal::Int(n) => (Some(crate::hir::DefId(*n as u32)), Vec::new().into()),
+                    _ => (None, Vec::new().into()),
                 }
             } else if let Operand::Copy(lv) | Operand::Move(lv) = func {
                 if let PlaceKind::Local(id) = &lv.kind {
-                    mir.local_decls.get(id.0 as usize).and_then(|ld| {
-                        match &ld.ty.kind {
-                            crate::mir::ty::TyKind::FnDef(did, _) => Some(*did),
-                            // Stage 16.30: Closure-typed func → callee def_id
-                            // is the closure's def_id.
-                            crate::mir::ty::TyKind::Closure(did, _) => Some(*did),
+                    mir.local_decls
+                        .get(id.0 as usize)
+                        .and_then(|ld| match &ld.ty.kind {
+                            crate::mir::ty::TyKind::FnDef(did, substs) => {
+                                Some((Some(*did), substs.clone()))
+                            }
+                            crate::mir::ty::TyKind::Closure(did, substs) => {
+                                Some((Some(*did), substs.clone()))
+                            }
                             _ => None,
-                        }
-                    })
+                        })
+                        .unwrap_or((None, Vec::new().into()))
                 } else {
-                    None
+                    (None, Vec::new().into())
                 }
             } else {
-                None
+                (None, Vec::new().into())
             };
 
             let ret_val = if let Some(ref name) = fn_name {
@@ -379,11 +390,18 @@ pub(crate) fn codegen_terminator(
                     return;
                 }
                 // Stage 14.35: Use the callee's actual return type from fn_sigs
+                // Stage 18.107 (S8 fix): Substitute sig.output with callee_substs
+                // so generic functions return the correct concrete type.
                 let call_ret_ty = callee_def_id
                     .and_then(|did| fn_sigs.get(&did))
                     .map(|sig| {
+                        let substituted_output = if callee_substs.is_empty() {
+                            (*sig.output).clone()
+                        } else {
+                            crate::mir::substitute(&sig.output, &callee_substs)
+                        };
                         mir_type_to_emit_type_with_layouts_and_mono(
-                            &sig.output,
+                            &substituted_output,
                             layouts,
                             mono_layouts,
                         )
@@ -439,11 +457,17 @@ pub(crate) fn codegen_terminator(
 
             if let PlaceKind::Local(id) = &destination.kind {
                 // Stage 14.35: Use the callee's return type for the store too
+                // Stage 18.107 (S8 fix): Substitute sig.output with callee_substs
                 let dest_ty = callee_def_id
                     .and_then(|did| fn_sigs.get(&did))
                     .map(|sig| {
+                        let substituted_output = if callee_substs.is_empty() {
+                            (*sig.output).clone()
+                        } else {
+                            crate::mir::substitute(&sig.output, &callee_substs)
+                        };
                         mir_type_to_emit_type_with_layouts_and_mono(
-                            &sig.output,
+                            &substituted_output,
                             layouts,
                             mono_layouts,
                         )

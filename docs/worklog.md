@@ -13811,3 +13811,55 @@ Stage Summary:
 - v0.374.0: minor bump (S7 fix)
 - v0.2 P0 单态化: S5 ✅, S6 ✅, S7 ✅
 - 残留: S8 (调用点 sig 替换) + S2 (method mono) — v0.2 Phase 2
+
+---
+Task ID: stage18.107
+Agent: Super Z (main)
+Task: Stage 18.107 — S8 Fix: Call-Site Sig Substitution. v0.374.0 → v0.375.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.106-s7-fix-monoitem-skip-param.md S8 根因
+  → 调用点返回类型使用泛型 sig (含 Param(0)), 未用调用 substs 替换
+- S8 修复 (codegen Call handler, src/codegen/terminator.rs):
+  → callee_def_id 提取改为同时提取 callee_substs (从 FnDef(def_id, substs))
+  → call_ret_ty: 若 callee_substs 非空, substitute(sig.output, callee_substs)
+  → dest_ty: 同样 substitute
+  → 修复前: id::<bool> 调用返回 i32 (错误)
+  → 修复后: id::<bool> 调用返回 i1 (正确) ✅
+- S8 修复 (MIR lower 返回类型, src/mir/lower/mod.rs):
+  → lower_hir_ty_to_mir_ty_with_lifetimes 新增 generic_params 参数
+  → 所有递归调用传递 generic_params
+  → fallback 使用 lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics
+  → MIR lower param/return type lowering 传递 &cx.generic_params
+  → 修复前: make_box generic MIR local 0 = Adt(Box, [Error]) ❌
+  → 修复后: make_box generic MIR local 0 = Adt(Box, [Param(0)]) ✅
+  → 特化 make_box<i32> MIR local 0 = Adt(Box, [Int(I32)]) ✅
+- 更新测试: stage18_103_calls_use_specialized_names
+  → id::<bool> 返回类型从 i32 改为 i1 (S8 修复正确行为)
+- 发现新问题 S9:
+  → MonoItem::Type 未收集调用点具体类型 (Box<i32>, Box<bool>)
+  → 原因: 调用点 destination local 仍为 Adt(Box, [Param(0)]) (泛型)
+  → 修复计划: v0.2 Phase 2 — 添加 writeback pass 替换调用点 dest local 类型
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2628 passed, 0 failed
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.107-s8-fix-call-site-sig-substitution.md (新建, 含 S9 记录)
+  - Cargo.toml: v0.374.0 → v0.375.0
+  - README.md: v0.374.0 → v0.375.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.107 PASSED — S8 修复 (调用点 sig 替换)
+- codegen Call handler: substitute(sig.output, callee_substs)
+- MIR lower: lower_hir_ty_to_mir_ty_with_lifetimes 传递 generic_params
+- id::<bool> 调用现在返回 i1 (正确) ✅
+- 特化 make_box<i32> MIR local 0 = Adt(Box, [Int(I32)]) ✅
+- 新发现 S9: 调用点 dest local 类型未替换 — v0.2 Phase 2
+- 640 lib + 2628 integration = 3268 unit tests, 0 failures
+- v0.375.0: minor bump (S8 fix)
+- v0.2 P0 单态化: S5 ✅, S6 ✅, S7 ✅, S8 ✅
+- 残留: S9 (dest local writeback) + S2 (method mono) — v0.2 Phase 2

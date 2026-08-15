@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.374.0 (Stage 18.106 — S7 fix: MonoItem collection skips Param/Error substs)  
+> **Version**: v0.375.0 (Stage 18.107 — S8 fix: call-site sig substitution)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization: S5-S7 done, S8/S2 deferred)
+> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization: S5-S8 done, S9/S2 deferred)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets

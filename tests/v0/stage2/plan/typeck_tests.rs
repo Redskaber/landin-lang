@@ -863,7 +863,7 @@ fn main() {
         ir
     );
     assert!(
-        ir.contains("call i32 @landin_id_bool("),
+        ir.contains("call i1 @landin_id_bool("),
         "expected call to landin_id_bool in IR:\n{}",
         ir
     );

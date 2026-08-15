@@ -1008,6 +1008,7 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
                         t,
                         &mut region_counter,
                         &mut lifetime_map,
+                        &cx.generic_params,
                     );
                     // Collect region vids from this param type.
                     collect_region_vids(&mir_ty, &mut param_region_vids_collected);
@@ -1024,6 +1025,7 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
                     t,
                     &mut region_counter,
                     &mut lifetime_map,
+                    &cx.generic_params,
                 );
                 // Stage 15.90/15.91: Apply elision rules 2 and 3.
                 apply_elision_rules(
@@ -1641,6 +1643,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
     ty: &HirTy,
     region_counter: &mut u32,
     lifetime_map: &mut std::collections::HashMap<crate::lexer::Symbol, crate::mir::ty::RegionVid>,
+    generic_params: &[crate::mir::ty::ParamTy],
 ) -> Ty {
     // Stage 18.57: Use the HIR Ty's span instead of Span::DUMMY.
     let span = ty.span;
@@ -1678,6 +1681,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
                         inner,
                         region_counter,
                         lifetime_map,
+                        generic_params,
                     )),
                 ),
                 span,
@@ -1686,7 +1690,14 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
         HirTyKind::Tuple(tys) => Ty::new(
             TyKind::Tuple(
                 tys.iter()
-                    .map(|t| lower_hir_ty_to_mir_ty_with_lifetimes(t, region_counter, lifetime_map))
+                    .map(|t| {
+                        lower_hir_ty_to_mir_ty_with_lifetimes(
+                            t,
+                            region_counter,
+                            lifetime_map,
+                            generic_params,
+                        )
+                    })
                     .collect(),
             ),
             span,
@@ -1696,6 +1707,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
                 inner,
                 region_counter,
                 lifetime_map,
+                generic_params,
             ))),
             span,
         ),
@@ -1707,6 +1719,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
                         inner,
                         region_counter,
                         lifetime_map,
+                        generic_params,
                     )),
                     Box::new(len_const),
                 ),
@@ -1714,7 +1727,13 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
             )
         }
         // Delegate to the non-lifetime variant for types without Ref.
-        _ => lower_hir_ty_to_mir_ty_with_regions(ty, region_counter),
+        // Stage 18.105: Pass generic_params so bare type params resolve.
+        _ => lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
+            ty,
+            region_counter,
+            None,
+            generic_params,
+        ),
     }
 }
 
@@ -2749,8 +2768,12 @@ mod stage15_92_tests {
         let mut lifetime_map = std::collections::HashMap::new();
 
         // Lower the first reference — should get vid 0.
-        let ty1 =
-            lower_hir_ty_to_mir_ty_with_lifetimes(&ref_ty, &mut region_counter, &mut lifetime_map);
+        let ty1 = lower_hir_ty_to_mir_ty_with_lifetimes(
+            &ref_ty,
+            &mut region_counter,
+            &mut lifetime_map,
+            &[],
+        );
         let vid1 = match &ty1.kind {
             TyKind::Ref(Region::Var(vid), _, _) => *vid,
             _ => panic!("expected Ref with Region::Var"),
@@ -2763,8 +2786,12 @@ mod stage15_92_tests {
             inferred: None,
             span: Span::DUMMY,
         };
-        let ty2 =
-            lower_hir_ty_to_mir_ty_with_lifetimes(&ref_ty2, &mut region_counter, &mut lifetime_map);
+        let ty2 = lower_hir_ty_to_mir_ty_with_lifetimes(
+            &ref_ty2,
+            &mut region_counter,
+            &mut lifetime_map,
+            &[],
+        );
         let vid2 = match &ty2.kind {
             TyKind::Ref(Region::Var(vid), _, _) => *vid,
             _ => panic!("expected Ref with Region::Var"),
@@ -2796,8 +2823,12 @@ mod stage15_92_tests {
         let mut region_counter = 0u32;
         let mut lifetime_map = std::collections::HashMap::new();
 
-        let ty1 =
-            lower_hir_ty_to_mir_ty_with_lifetimes(&ref_ty, &mut region_counter, &mut lifetime_map);
+        let ty1 = lower_hir_ty_to_mir_ty_with_lifetimes(
+            &ref_ty,
+            &mut region_counter,
+            &mut lifetime_map,
+            &[],
+        );
         let vid1 = match &ty1.kind {
             TyKind::Ref(Region::Var(vid), _, _) => *vid,
             _ => panic!("expected Ref with Region::Var"),
@@ -2809,8 +2840,12 @@ mod stage15_92_tests {
             inferred: None,
             span: Span::DUMMY,
         };
-        let ty2 =
-            lower_hir_ty_to_mir_ty_with_lifetimes(&ref_ty2, &mut region_counter, &mut lifetime_map);
+        let ty2 = lower_hir_ty_to_mir_ty_with_lifetimes(
+            &ref_ty2,
+            &mut region_counter,
+            &mut lifetime_map,
+            &[],
+        );
         let vid2 = match &ty2.kind {
             TyKind::Ref(Region::Var(vid), _, _) => *vid,
             _ => panic!("expected Ref with Region::Var"),
