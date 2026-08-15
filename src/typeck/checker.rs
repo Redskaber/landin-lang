@@ -281,7 +281,7 @@ impl TypeChecker {
                     | crate::mir::place::BinOp::Lt
                     | crate::mir::place::BinOp::Le
                     | crate::mir::place::BinOp::Gt
-                    | crate::mir::place::BinOp::Ge => Ty::new(TyKind::Bool, Span::DUMMY),
+                    | crate::mir::place::BinOp::Ge => Ty::from_kind(TyKind::Bool),
                     _ => self.infer_operand_type_only(mir, a),
                 }
             }
@@ -297,38 +297,32 @@ impl TypeChecker {
                         .iter()
                         .map(|op| self.infer_operand_type_only(mir, op))
                         .collect();
-                    Ty::new(TyKind::Tuple(tys), Span::DUMMY)
+                    Ty::from_kind(TyKind::Tuple(tys))
                 }
                 crate::mir::place::AggregateKind::Array(elem_ty) => {
                     let len = operands.len() as u128;
-                    Ty::new(
-                        TyKind::Array(
-                            Box::new(elem_ty.clone()),
-                            Box::new(crate::mir::ty::Const {
-                                ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
-                                val: crate::mir::ty::ConstVal::Uint(len),
-                            }),
-                        ),
-                        Span::DUMMY,
-                    )
+                    Ty::from_kind(TyKind::Array(
+                        Box::new(elem_ty.clone()),
+                        Box::new(crate::mir::ty::Const {
+                            ty: Ty::from_kind(TyKind::Uint(ast::UintTy::Usize)),
+                            val: crate::mir::ty::ConstVal::Uint(len),
+                        }),
+                    ))
                 }
                 crate::mir::place::AggregateKind::Adt(def_id, _variant, substs, _field_tys) => {
-                    Ty::new(TyKind::Adt(*def_id, substs.clone()), Span::DUMMY)
+                    Ty::from_kind(TyKind::Adt(*def_id, substs.clone()))
                 }
                 crate::mir::place::AggregateKind::Closure(def_id, substs) => {
-                    Ty::new(TyKind::Closure(*def_id, substs.clone()), Span::DUMMY)
+                    Ty::from_kind(TyKind::Closure(*def_id, substs.clone()))
                 }
             },
             Rvalue::Ref(_, _, lv) => {
                 let inner_ty = self.infer_place(mir, lv);
-                Ty::new(
-                    TyKind::Ref(
-                        crate::mir::ty::Region::Erased,
-                        crate::mir::ty::Mutability::Immutable,
-                        Box::new(inner_ty),
-                    ),
-                    Span::DUMMY,
-                )
+                Ty::from_kind(TyKind::Ref(
+                    crate::mir::ty::Region::Erased,
+                    crate::mir::ty::Mutability::Immutable,
+                    Box::new(inner_ty),
+                ))
             }
         }
     }
@@ -968,7 +962,7 @@ impl TypeChecker {
                     .iter()
                     .any(|(val, _)| matches!(val, ConstVal::Bool(_)));
                 if requires_bool {
-                    let bool_ty = Ty::new(TyKind::Bool, Span::DUMMY);
+                    let bool_ty = Ty::from_kind(TyKind::Bool);
                     if let Err(mut e) = self.unify.unify(&discr_ty, &bool_ty, term.span) {
                         // Stage 15.81: override the dummy span with the
                         // actual discriminant span (was: Span::DUMMY).
@@ -984,7 +978,7 @@ impl TypeChecker {
                         TyKind::Infer(InferVar::IntVar(_)) => {}
                         TyKind::Infer(InferVar::TyVar(_)) => {
                             // Unbound variable — unify with i32 as default
-                            let i32_ty = Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY);
+                            let i32_ty = Ty::from_kind(TyKind::Int(ast::IntTy::I32));
                             let _ = self.unify.unify(&discr_ty, &i32_ty, term.span);
                         }
                         TyKind::Error => {}
@@ -1101,7 +1095,7 @@ impl TypeChecker {
                     // Return Error type (not base_ty) to avoid confusing
                     // writeback — returning base_ty would make the local's
                     // type be the pointer type, not the pointee type.
-                    Ty::new(TyKind::Error, Span::DUMMY)
+                    Ty::from_kind(TyKind::Error)
                 }
             }
             ProjectionElem::Field(field_id, field_ty) => {
@@ -1118,7 +1112,7 @@ impl TypeChecker {
                             ),
                             place_span,
                         ));
-                        return Ty::new(TyKind::Error, Span::DUMMY);
+                        return Ty::from_kind(TyKind::Error);
                     }
                 }
                 field_ty.clone()
@@ -1180,7 +1174,7 @@ impl TypeChecker {
                     // Stage 18.76: Defer for Infer/Error/Param types — don't push
                     // false-positive errors on unresolved types. Return Error
                     // type to propagate the unknown state.
-                    Ty::new(TyKind::Error, Span::DUMMY)
+                    Ty::from_kind(TyKind::Error)
                 }
             }
             ProjectionElem::ConstantIndex { .. } | ProjectionElem::Subslice { .. } => {
@@ -1209,7 +1203,7 @@ impl TypeChecker {
                 } else {
                     // Stage 18.76: Defer for Infer/Error/Param types — don't push
                     // false-positive errors on unresolved types.
-                    Ty::new(TyKind::Error, Span::DUMMY)
+                    Ty::from_kind(TyKind::Error)
                 }
             }
         }
@@ -1248,7 +1242,7 @@ impl TypeChecker {
                             }
                             self.errors.push(*e);
                         }
-                        Ty::new(TyKind::Bool, Span::DUMMY)
+                        Ty::from_kind(TyKind::Bool)
                     }
                     // Bitwise ops: Bool or integer types only.
                     BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor => {
@@ -1328,7 +1322,7 @@ impl TypeChecker {
                     "range expressions (start..end) are not supported in type position in v0.1 — use them only in for-loop iterators".to_string(),
                     stmt_span,
                 ));
-                Ty::new(TyKind::Error, Span::DUMMY)
+                Ty::from_kind(TyKind::Error)
             }
             Rvalue::UnaryOp(op, operand) => {
                 // Stage 18.72: Split into two statements to avoid borrow conflict.
@@ -1379,10 +1373,7 @@ impl TypeChecker {
                     BorrowKind::Mut => Mutability::Mutable,
                     BorrowKind::Raw => Mutability::Immutable,
                 };
-                Ty::new(
-                    TyKind::Ref(Region::Erased, mutability, Box::new(inner_ty)),
-                    Span::DUMMY,
-                )
+                Ty::from_kind(TyKind::Ref(Region::Erased, mutability, Box::new(inner_ty)))
             }
             Rvalue::Cast(_, _, target_ty) => target_ty.clone(),
             Rvalue::Aggregate(kind, operands) => match kind {
@@ -1391,7 +1382,7 @@ impl TypeChecker {
                         .iter()
                         .map(|o| self.infer_operand(mir, o))
                         .collect();
-                    Ty::new(TyKind::Tuple(elem_tys), Span::DUMMY)
+                    Ty::from_kind(TyKind::Tuple(elem_tys))
                 }
                 AggregateKind::Array(elem_ty) => {
                     // G7 fix (Stage 2.4f): unify each element's type with
@@ -1408,16 +1399,13 @@ impl TypeChecker {
                             self.errors.push(*e);
                         }
                     }
-                    Ty::new(
-                        TyKind::Array(
-                            Box::new(elem_ty.clone()),
-                            Box::new(Const {
-                                ty: Ty::new(TyKind::Uint(ast::UintTy::Usize), Span::DUMMY),
-                                val: ConstVal::Uint(operands.len() as u128),
-                            }),
-                        ),
-                        Span::DUMMY,
-                    )
+                    Ty::from_kind(TyKind::Array(
+                        Box::new(elem_ty.clone()),
+                        Box::new(Const {
+                            ty: Ty::from_kind(TyKind::Uint(ast::UintTy::Usize)),
+                            val: ConstVal::Uint(operands.len() as u128),
+                        }),
+                    ))
                 }
                 // Stage 3.32 (L-DEBT-2 fix): AggregateKind::Adt now carries
                 // field_tys (per §16 data sink from Stage 3.30). Use them
@@ -1437,7 +1425,7 @@ impl TypeChecker {
                             }
                         }
                     }
-                    Ty::new(TyKind::Adt(*def_id, _substs.clone()), Span::DUMMY)
+                    Ty::from_kind(TyKind::Adt(*def_id, _substs.clone()))
                 }
                 // Stage 16.29 (通解 — fix closure type inference):
                 // Previously, AggregateKind::Closure returned a fresh Infer
@@ -1458,7 +1446,7 @@ impl TypeChecker {
                     for op in operands {
                         let _ = self.infer_operand(mir, op);
                     }
-                    Ty::new(TyKind::Closure(*def_id, substs.clone()), Span::DUMMY)
+                    Ty::from_kind(TyKind::Closure(*def_id, substs.clone()))
                 }
             },
         }
@@ -1678,12 +1666,12 @@ mod tests {
         let mut mir = MirBody::new(Span::DUMMY);
         let _bb0 = mir.new_block(); // create entry block
         let return_local = mir.new_local(
-            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            Ty::from_kind(TyKind::Int(ast::IntTy::I32)),
             None,
             Span::DUMMY,
         );
         let temp = mir.new_local(
-            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            Ty::from_kind(TyKind::Int(ast::IntTy::I32)),
             None,
             Span::DUMMY,
         );
@@ -1691,7 +1679,7 @@ mod tests {
             kind: StatementKind::Assign(Box::new((
                 Place::local(temp, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+                    ty: Ty::from_kind(TyKind::Int(ast::IntTy::I32)),
                     val: ConstVal::Int(42),
                 })),
             ))),
@@ -1724,12 +1712,12 @@ mod tests {
     fn check_type_mismatch_detected() {
         let mut mir = MirBody::new(Span::DUMMY);
         let _ = mir.new_block(); // entry block
-        let dest = mir.new_local(Ty::new(TyKind::Bool, Span::DUMMY), None, Span::DUMMY);
+        let dest = mir.new_local(Ty::from_kind(TyKind::Bool), None, Span::DUMMY);
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
                 Place::local(dest, Span::DUMMY),
                 Rvalue::Use(Operand::Constant(Const {
-                    ty: Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+                    ty: Ty::from_kind(TyKind::Int(ast::IntTy::I32)),
                     val: ConstVal::Int(42),
                 })),
             ))),
@@ -1745,14 +1733,14 @@ mod tests {
     fn check_comparison_returns_bool() {
         let mut mir = MirBody::new(Span::DUMMY);
         let _ = mir.new_block(); // entry block
-        let result = mir.new_local(Ty::new(TyKind::Bool, Span::DUMMY), None, Span::DUMMY);
+        let result = mir.new_local(Ty::from_kind(TyKind::Bool), None, Span::DUMMY);
         let a = mir.new_local(
-            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            Ty::from_kind(TyKind::Int(ast::IntTy::I32)),
             None,
             Span::DUMMY,
         );
         let b = mir.new_local(
-            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            Ty::from_kind(TyKind::Int(ast::IntTy::I32)),
             None,
             Span::DUMMY,
         );
@@ -1786,7 +1774,7 @@ mod tests {
                 TyKind::Ref(
                     Region::Erased,
                     Mutability::Immutable,
-                    Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    Box::new(Ty::from_kind(TyKind::Int(ast::IntTy::I32))),
                 ),
                 Span::DUMMY,
             ),
@@ -1794,7 +1782,7 @@ mod tests {
             Span::DUMMY,
         );
         let src = mir.new_local(
-            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            Ty::from_kind(TyKind::Int(ast::IntTy::I32)),
             None,
             Span::DUMMY,
         );
@@ -1826,8 +1814,8 @@ mod tests {
         let dest = mir.new_local(
             Ty::new(
                 TyKind::Tuple(vec![
-                    Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
-                    Ty::new(TyKind::Bool, Span::DUMMY),
+                    Ty::from_kind(TyKind::Int(ast::IntTy::I32)),
+                    Ty::from_kind(TyKind::Bool),
                 ]),
                 Span::DUMMY,
             ),
@@ -1835,11 +1823,11 @@ mod tests {
             Span::DUMMY,
         );
         let a = mir.new_local(
-            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            Ty::from_kind(TyKind::Int(ast::IntTy::I32)),
             None,
             Span::DUMMY,
         );
-        let b = mir.new_local(Ty::new(TyKind::Bool, Span::DUMMY), None, Span::DUMMY);
+        let b = mir.new_local(Ty::from_kind(TyKind::Bool), None, Span::DUMMY);
         mir.block_mut(BasicBlockId(0)).statements.push(Statement {
             kind: StatementKind::Assign(Box::new((
                 Place::local(dest, Span::DUMMY),
@@ -1868,7 +1856,7 @@ mod tests {
         let mut mir = MirBody::new(Span::DUMMY);
         let _ = mir.new_block(); // entry block
         let discr = mir.new_local(
-            Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY),
+            Ty::from_kind(TyKind::Int(ast::IntTy::I32)),
             None,
             Span::DUMMY,
         );
@@ -1901,7 +1889,7 @@ mod tests {
                 TyKind::Ref(
                     Region::Erased,
                     Mutability::Immutable,
-                    Box::new(Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY)),
+                    Box::new(Ty::from_kind(TyKind::Int(ast::IntTy::I32))),
                 ),
                 Span::DUMMY,
             ),
@@ -1961,7 +1949,7 @@ mod tests {
     #[test]
     fn stage16_84_format_ty_without_resolver_falls_back() {
         let tc = TypeChecker::new();
-        let ty = Ty::new(TyKind::Int(ast::IntTy::I32), Span::DUMMY);
+        let ty = Ty::from_kind(TyKind::Int(ast::IntTy::I32));
         let formatted = tc.format_ty(&ty);
         assert_eq!(formatted, "i32");
     }

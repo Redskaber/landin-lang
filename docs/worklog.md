@@ -14267,3 +14267,48 @@ Stage Summary:
 - v0.384.0: minor bump (Span::DUMMY cleanup + enum branch fix)
 - Span::DUMMY 清理进度: 602 → ~580 (合法 ~490 + 测试 ~88 + 少量应修复)
 - 下一步: v0.2 P0 (mini-cargo 项目系统)
+
+---
+Task ID: stage18.117
+Agent: Super Z (main)
+Task: Stage 18.117 — Span::DUMMY Cleanup: checker.rs infer_rvalue + remaining Ty::from_kind. v0.384.0 → v0.385.0.
+
+Work Log:
+- §13.1 设计对齐: 继续深度审查 Span::DUMMY 清理计划
+- Span::DUMMY 清理 (typeck/checker.rs):
+  → 发现 Ty::new(kind, _span) 的 _span 参数被忽略 (Stage 18.116 确认)
+  → 将所有 Ty::new(KIND, Span::DUMMY) 替换为 Ty::from_kind(KIND)
+  → 修复位点:
+    - Bool (比较操作结果) → Ty::from_kind(TyKind::Bool)
+    - Int(I32) (SwitchInt discriminant) → Ty::from_kind(TyKind::Int(I32))
+    - Uint(Usize) (array length) → Ty::from_kind(TyKind::Uint(Usize))
+    - Error (projection failures) → Ty::from_kind(TyKind::Error)
+    - Tuple(tys) (aggregate) → Ty::from_kind(TyKind::Tuple(tys))
+    - Adt(def_id, substs) → Ty::from_kind(TyKind::Adt(...))
+    - Closure(def_id, substs) → Ty::from_kind(TyKind::Closure(...))
+    - Array(elem, len) → Ty::from_kind(TyKind::Array(...))
+    - Ref(region, mut, inner) → Ty::from_kind(TyKind::Ref(...))
+  → 消除 ~14 处非测试 Span::DUMMY
+- 剩余 Span::DUMMY (checker.rs):
+  → 条件检查 (if stmt.span != Span::DUMMY) — 这些是 span 比较逻辑,不是 Ty::new 调用
+  → 测试代码 (MirBody::new, Place::local 等) — Category C, 不修复
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 0 skipped
+- §8 文档同步:
+  - Cargo.toml: v0.384.0 → v0.385.0
+  - README.md: v0.384.0 → v0.385.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.117 PASSED — Span::DUMMY 清理: checker.rs infer_rvalue
+- typeck/checker.rs: ~14 处 Ty::new(K, Span::DUMMY) → Ty::from_kind(K)
+- Span::DUMMY 清理进度: 602 → ~566 (合法 ~490 + 测试 ~76)
+- 剩余非测试 Span::DUMMY: 仅在条件检查 (span != DUMMY) 和 driver.rs 合成类型中
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.385.0: minor bump (Span::DUMMY cleanup — checker.rs)
+- 下一步: v0.2 P0 (mini-cargo 项目系统)

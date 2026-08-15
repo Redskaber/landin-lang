@@ -1,7 +1,7 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.384.0 (Stage 18.116 — Span::DUMMY cleanup: projection_resolver + where_clause + TerminatorKind explicit arms)  
+> **Version**: v0.385.0 (Stage 18.117 — Span::DUMMY cleanup: checker.rs infer_rvalue + remaining Ty::from_kind conversions)  
 > **License**: MIT  
 > **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE (S2-S11 all fixed)
 
