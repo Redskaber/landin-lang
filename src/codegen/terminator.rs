@@ -215,8 +215,38 @@ pub(crate) fn codegen_terminator(
                     if let Some(ty) = local_ty {
                         match &ty.kind {
                             // Direct function call (FnDef-typed func local).
-                            crate::mir::ty::TyKind::FnDef(def_id, _) => {
-                                fn_name_by_def_id.get(def_id).cloned()
+                            // Stage 18.103 (TD-MONO-CODEGEN): If the FnDef has
+                            // non-empty substs, use the specialized (mangled)
+                            // function name instead of the generic name.
+                            crate::mir::ty::TyKind::FnDef(def_id, substs) => {
+                                if substs.is_empty() {
+                                    // Non-generic or unresolved substs — use base name.
+                                    fn_name_by_def_id.get(def_id).cloned()
+                                } else {
+                                    // Generic instantiation — use specialized name.
+                                    // The specialized functions are emitted by
+                                    // codegen_mono_functions with names like
+                                    // "landin_id_i32" (base + mangled substs).
+                                    use crate::mir::monomorphize::mono_item_name;
+                                    use crate::mir::MonoItem;
+                                    let base = fn_name_by_def_id
+                                        .get(def_id)
+                                        .cloned()
+                                        .unwrap_or_else(|| format!("fn_{}", def_id.as_u32()));
+                                    let item = MonoItem::Fn {
+                                        def_id: *def_id,
+                                        substs: substs.clone(),
+                                    };
+                                    // Build empty type_name_by_def_id (we don't have
+                                    // HIR access here; mono_item_name falls back to
+                                    // Adt_N for unknown types, which is acceptable
+                                    // for primitive substs like i32/bool).
+                                    let type_names: std::collections::HashMap<
+                                        crate::hir::DefId,
+                                        crate::lexer::Symbol,
+                                    > = std::collections::HashMap::new();
+                                    Some(mono_item_name(&item, &base, &type_names, interner))
+                                }
                             }
                             // Stage 16.30: Closure-typed func local → resolve
                             // to synthesized function name. The closure struct

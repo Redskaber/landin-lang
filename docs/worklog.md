@@ -13599,3 +13599,69 @@ Stage Summary:
 - v0.370.0: minor bump (implicit generic inference back-write)
 - v0.2 P0 单态化: turbofish ✅, 隐式推理 ✅, per-mono codegen ❌ (TD-MONO-CODEGEN)
 - 下一步: TD-MONO-CODEGEN (per-mono 代码生成 — 为每个 MonoItem 发出特化函数)
+
+---
+Task ID: stage18.103
+Agent: Super Z (main)
+Task: Stage 18.103 — Per-Mono Codegen (TD-MONO-CODEGEN). v0.370.0 → v0.371.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.102-implicit-inference-backwrite-design.md TD-MONO-CODEGEN gap
+  → Stage 18.101+18.102 修复 substs 传播, 但 codegen 仍发出单个泛型函数
+  → 需要: 为每个 MonoItem::Fn 发出特化函数 + 更新调用点
+- 实现 substitute_mir_body (src/mir/substitute.rs):
+  → 克隆 MirBody, 替换所有 Param 类型
+  → local_decl.ty → substitute(ty, substs)
+  → Operand::Constant(c).ty → substitute(c.ty, substs)
+  → S3 简化: Rvalue/Place 类型不替换 (codegen 从 local_decls 读取)
+- 实现 codegen_mono_functions (src/codegen/function.rs):
+  → 遍历 collect_mono_items 结果
+  → 对每个 MonoItem::Fn { def_id, substs }:
+    1. 通过 mir.def_id 查找泛型 MIR body
+    2. substitute_mir_body(generic_mir, substs) → 特化 MIR
+    3. mono_item_name(item, base, ...) → 特化名 (e.g., id_i32)
+    4. codegen_function(emitter, &specialized_name, &specialized_mir, ...)
+  → S4 简化: 仅处理 MonoItem::Fn (Type/Closure 已有其他路径)
+- 修复 mir.def_id 设置 (src/driver.rs):
+  → lower_hir_body_to_mir_full_with_dyn_trait_plan 后设置 mir.def_id = Some(owner_def_id)
+  → 之前 MirBody.def_id 为 None, codegen_mono_functions 无法找到泛型 body
+- 更新 Call codegen (src/codegen/terminator.rs):
+  → FnDef(def_id, substs) 若 substs 非空:
+    → 用 mono_item_name 计算特化名 (e.g., landin_id_i32)
+  → 否则: 用 fn_name_by_def_id 基础名
+  → S5 简化: type_names map 为空 (codegen 无 HIR), Adt substs 回退到 Adt_N
+- 验证:
+  → id::<i32>(42) → 发出 id_i32 函数 + 调用 landin_id_i32 ✅
+  → id::<bool>(true) → 发出 id_bool 函数 + 调用 landin_id_bool ✅
+  → add(1,2) 非泛型 → 仍用 landin_add (无特化) ✅
+- 新增 3 个测试 (tests/v0/stage2/plan/typeck_tests.rs):
+  → stage18_103_turbofish_produces_specialized_functions
+  → stage18_103_calls_use_specialized_names
+  → stage18_103_non_generic_uses_base_name
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2625 passed, 0 failed (+3 new)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.103-per-mono-codegen-design.md (新建, 含 S3/S4/S5 简化记录)
+  - Cargo.toml: v0.370.0 → v0.371.0
+  - README.md: v0.370.0 → v0.371.0
+  - RELEASE_NOTES.md: 添加 v0.371.0 条目 + 单态化进度表
+  - docs/develop/v0/v0.1-capability-boundaries.md: 版本 + 测试数量更新
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.103 PASSED — Per-mono codegen (TD-MONO-CODEGEN) 完成
+- 新增 substitute_mir_body: 替换 MirBody 中所有 Param 类型
+- 新增 codegen_mono_functions: 为每个 MonoItem::Fn 发出特化函数
+- 修复 mir.def_id 设置: 让 codegen 能按 DefId 查找泛型 body
+- 更新 Call codegen: FnDef 有 substs 时用特化名
+- id::<i32>(42) 现在发出并调用 landin_id_i32 (特化函数)
+- 设计简化 S3 (Rvalue/Place 不替换) + S4 (仅 Fn) + S5 (type_names 空) 已记录
+- 640 lib + 2625 integration = 3265 unit tests, 0 failures (+3 new)
+- v0.371.0: minor bump (per-mono codegen)
+- v0.2 P0 单态化: turbofish ✅, 隐式推理 ✅, per-mono codegen ✅ — 核心完成!
+- 残留: 方法单态化 (S2), Adt subst 命名 (S5) — v0.2 Phase 2
+- 下一步: v0.2 P0 (项目系统 mini-cargo) 或 v0.2 Phase 2 (方法单态化)

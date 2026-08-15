@@ -185,6 +185,124 @@ pub fn substitute_substs(inner_substs: &crate::mir::ty::SubstsRef, outer_substs:
         .collect()
 }
 
+/// Stage 18.103 (TD-MONO-CODEGEN): Substitute all `Param` types in a MirBody.
+///
+/// Clones the MirBody and replaces every `Param(N)` in local_decls, statement
+/// rvalues, and terminator operands with the corresponding concrete type from
+/// `substs`. This produces a specialized MIR body for monomorphization.
+///
+/// # Algorithm
+///
+/// 1. Clone the MirBody (basic_blocks, local_decls, span, adt_layouts, def_id)
+/// 2. For each `local_decl.ty`: `substitute(ty, substs)`
+/// 3. For each statement's rvalue: recursively substitute types in operands,
+///    places, and rvalues
+/// 4. For each terminator: substitute types in operands (Call func/args,
+///    SwitchInt discr, etc.)
+///
+/// # Design Simplification (S3)
+///
+/// **S3**: Only `local_decl.ty` and `Operand::Constant(c).ty` are substituted.
+/// Rvalue/Place types are NOT substituted because they derive their types from
+/// local_decls at codegen time (codegen reads local_decl.ty, not rvalue-embedded
+/// types). This is a simplification — if a future codegen change reads types
+/// from rvalues directly, S3 would need extension.
+///
+/// **Impact**: None for current codegen (which reads local_decl.ty).
+/// **Fix plan**: v0.2 Phase 2 — extend to substitute types in Rvalue/Place if
+/// needed.
+///
+/// Per §23: `substitute_mir_body` follows `<verb>_<noun>_<noun>` pattern.
+/// Per §1.0 原則 6 "通用 > 特例": one function for all MirBody substitution.
+/// Per §16: pure MIR-to-MIR transform, no HIR access.
+pub fn substitute_mir_body(
+    mir: &crate::mir::body::MirBody,
+    substs: &[Ty],
+) -> crate::mir::body::MirBody {
+    use crate::mir::body::{MirBody, StatementKind};
+
+    // Clone the body — basic_blocks and local_decls are Vec (deep clone).
+    let mut new_mir = MirBody {
+        basic_blocks: mir.basic_blocks.clone(),
+        local_decls: mir.local_decls.clone(),
+        span: mir.span,
+        adt_layouts: mir.adt_layouts.clone(),
+        def_id: mir.def_id,
+    };
+
+    // Substitute local_decl types.
+    for local_decl in &mut new_mir.local_decls {
+        local_decl.ty = substitute(&local_decl.ty, substs);
+    }
+
+    // S3: Substitute types in Operand::Constant inside statements + terminators.
+    // Rvalue/Place types are NOT substituted (they derive from local_decls).
+    for bb in &mut new_mir.basic_blocks {
+        // Statements
+        for stmt in &mut bb.statements {
+            if let StatementKind::Assign(boxed) = &mut stmt.kind {
+                let (_place, rvalue) = &mut **boxed;
+                substitute_rvalue_types(rvalue, substs);
+            }
+        }
+        // Terminator (BasicBlock.terminator is always present, not Option)
+        substitute_terminator_types(&mut bb.terminator.kind, substs);
+    }
+
+    new_mir
+}
+
+/// Helper: substitute types in an Rvalue's operands.
+/// S3: Only substitutes Operand::Constant types (not Place types).
+fn substitute_rvalue_types(rvalue: &mut crate::mir::place::Rvalue, substs: &[Ty]) {
+    use crate::mir::place::Rvalue;
+    match rvalue {
+        Rvalue::Use(op) | Rvalue::Cast(_, op, _) => {
+            substitute_operand_type(op, substs);
+        }
+        Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
+            substitute_operand_type(a, substs);
+            substitute_operand_type(b, substs);
+        }
+        Rvalue::UnaryOp(_, op) => {
+            substitute_operand_type(op, substs);
+        }
+        Rvalue::Ref(_, _, _) | Rvalue::Aggregate(_, _) => {
+            // S3: Ref and Aggregate don't carry standalone types that need
+            // substitution (their types derive from operands/local_decls).
+        }
+    }
+}
+
+/// Helper: substitute types in a Terminator's operands.
+/// S3: Only substitutes Operand::Constant types.
+fn substitute_terminator_types(kind: &mut crate::mir::body::TerminatorKind, substs: &[Ty]) {
+    use crate::mir::body::TerminatorKind;
+    match kind {
+        TerminatorKind::Call { func, args, .. } => {
+            substitute_operand_type(func, substs);
+            for arg in args {
+                substitute_operand_type(arg, substs);
+            }
+        }
+        TerminatorKind::SwitchInt { discr, .. } => {
+            substitute_operand_type(discr, substs);
+        }
+        TerminatorKind::Assert { cond, .. } => {
+            substitute_operand_type(cond, substs);
+        }
+        _ => {}
+    }
+}
+
+/// Helper: substitute the type of an Operand::Constant.
+fn substitute_operand_type(op: &mut crate::mir::place::Operand, substs: &[Ty]) {
+    use crate::mir::place::Operand;
+    if let Operand::Constant(c) = op {
+        c.ty = substitute(&c.ty, substs);
+    }
+}
+
 // =====================================================================
 // Unit Tests
 // =====================================================================

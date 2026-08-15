@@ -16,6 +16,123 @@ use crate::codegen::terminator::codegen_terminator;
 use crate::mir::body::MirBody;
 use lasso::Rodeo;
 
+/// Stage 18.103 (TD-MONO-CODEGEN): Emit specialized functions for MonoItem::Fn.
+///
+/// For each generic function instantiation collected by `collect_mono_items`,
+/// this function:
+/// 1. Finds the generic MIR body (by DefId)
+/// 2. Substitutes Param types with concrete substs via `substitute_mir_body`
+/// 3. Computes a specialized name via `mono_item_name` (e.g., `landin_id_i32`)
+/// 4. Emits the specialized function via `codegen_function`
+///
+/// # Design Simplification (S4)
+///
+/// **S4**: Only `MonoItem::Fn` is handled. `MonoItem::Type` (generic struct/enum
+/// layouts) are already handled by `build_mono_layouts` + `mono_layouts` map.
+/// `MonoItem::Closure` is handled by `codegen_synthesized_closure_functions`.
+///
+/// **Impact**: Generic closure monomorphization is not handled here (closures
+/// use the synthesized call function path).
+/// **Fix plan**: v0.2 Phase 2 — if closure monomorphization is needed, add
+/// MonoItem::Closure handling.
+///
+/// Per §23: `codegen_mono_functions` follows `<verb>_<adj>_<noun>` pattern.
+/// Per §16: reads MIR + fn_sigs + fn_name_by_def_id (data, no HIR).
+/// Per §1.0 原則 6 "通用 > 特例": one pass for all MonoItem::Fn.
+pub fn codegen_mono_functions(
+    mirs: &[MirBody],
+    hir: &crate::hir::HirCrate,
+    fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
+    fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
+    interner: &Rodeo,
+    mono_layouts: &crate::mir::MonoLayoutMap,
+    emitter: &mut dyn Emitter,
+) {
+    use crate::mir::collect_mono_items;
+    use crate::mir::monomorphize::{build_mono_item_names, mono_item_name, MonoItem};
+    use crate::mir::substitute_mir_body;
+
+    // Collect all MonoItems from MIR bodies.
+    let mono_items = collect_mono_items(mirs);
+
+    // Build type_name_by_def_id for mono_item_name (maps DefId → Symbol).
+    let type_name_by_def_id: std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol> = {
+        let mut map = std::collections::HashMap::new();
+        for (def_id, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(item) = owner {
+                let name = match item {
+                    crate::hir::HirItem::Struct(s) => s.ident.name,
+                    crate::hir::HirItem::Enum(e) => e.ident.name,
+                    _ => continue,
+                };
+                map.insert(*def_id, name);
+            }
+        }
+        map
+    };
+
+    // Build MonoItem → specialized name map.
+    let mono_names = build_mono_item_names(
+        &mono_items,
+        fn_name_by_def_id,
+        &type_name_by_def_id,
+        interner,
+    );
+
+    // For each MonoItem::Fn, emit a specialized function.
+    for item in &mono_items {
+        if let MonoItem::Fn { def_id, substs } = item {
+            // Skip if substs are empty (non-generic or already handled).
+            if substs.is_empty() {
+                continue;
+            }
+
+            // Find the generic MIR body by DefId.
+            let generic_mir = mirs.iter().find(|mir| mir.def_id == Some(*def_id));
+            let generic_mir = match generic_mir {
+                Some(mir) => mir,
+                None => continue, // MIR body not found (shouldn't happen)
+            };
+
+            // Substitute Param types with concrete substs.
+            let specialized_mir = substitute_mir_body(generic_mir, substs);
+
+            // Get the specialized function name.
+            let specialized_name = mono_names.get(item).cloned().unwrap_or_else(|| {
+                // Fallback: use mono_item_name directly.
+                let base = fn_name_by_def_id
+                    .get(def_id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("fn_{}", def_id.as_u32()));
+                mono_item_name(item, &base, &type_name_by_def_id, interner)
+            });
+
+            // Get the sig for param_count + is_void + abi.
+            let sig = match fn_sigs.get(def_id) {
+                Some(sig) => sig.clone(),
+                None => continue, // No sig (shouldn't happen)
+            };
+
+            // Emit the specialized function.
+            // Per §1.0 原則 6 "通用 > 特例": reuse codegen_function (same path
+            // as non-generic functions, just with substituted MIR + mangled name).
+            crate::codegen::function::codegen_function(
+                emitter,
+                &specialized_name,
+                &specialized_mir,
+                fn_name_by_def_id,
+                fn_sigs,
+                sig.inputs.len(),
+                interner,
+                &specialized_mir.adt_layouts,
+                Some(mono_layouts),
+                matches!(sig.output.kind, crate::mir::ty::TyKind::Tuple(ref tys) if tys.is_empty()),
+                crate::ast::Abi::Landin,
+            );
+        }
+    }
+}
+
 /// (no HIR, no re-lowering, no re-typeck).
 pub fn codegen_from_mir(
     mirs: &[MirBody],

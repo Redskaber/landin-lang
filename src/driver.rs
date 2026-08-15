@@ -1136,6 +1136,11 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
                 Some(&trait_resolver),
             );
 
+        // Stage 18.103 (TD-MONO-CODEGEN): Set def_id on MirBody so codegen
+        // can find the generic MIR body by DefId for monomorphization.
+        // Per §16: data carried on the IR, not looked up from HIR.
+        mir.def_id = Some(owner_def_id);
+
         // Stage 16.14 (Task 10 Step 2): Build MIR bodies for synthesized
         // closure `call` functions.
         //

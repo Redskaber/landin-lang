@@ -1,9 +1,59 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.370.0
+**Current version**: v0.371.0
 **Date**: 2026-08-11
-**Test count**: 640 rust lib tests + 2625 integration tests + 2935 conformance tests + 7 fuzz tests = 6207 total (100% pass rate, 35 runtime tests skipped due to OOM)
+**Test count**: 640 rust lib tests + 2628 integration tests + 2935 conformance tests + 7 fuzz tests = 6210 total (100% pass rate, 35 runtime tests skipped due to OOM)
+
+---
+## v0.371.0 — Stage 18.103 (Per-Mono Codegen — TD-MONO-CODEGEN)
+
+### Overview
+
+Completes the v0.2 P0 monomorphization by emitting specialized functions for
+each MonoItem::Fn and updating call sites to use specialized names. Generic
+function calls like `id::<i32>(42)` now produce and call a specialized
+function `id_i32` instead of the generic `landin_id`.
+
+### Changes
+
+| ID | Change | Details |
+|----|--------|---------|
+| 18.103.1 | `substitute_mir_body` | New function in `src/mir/substitute.rs` — clones MirBody, substitutes all Param types |
+| 18.103.2 | `codegen_mono_functions` | New function in `src/codegen/function.rs` — emits specialized function per MonoItem::Fn |
+| 18.103.3 | `mir.def_id` set in driver | After MIR lowering, `mir.def_id = Some(owner_def_id)` so codegen can find generic body |
+| 18.103.4 | Call site specialized name | `src/codegen/terminator.rs` — uses `mono_item_name` when FnDef has substs |
+| 18.103.5 | 3 new tests | Specialized functions emitted + call sites use them + non-generic uses base name |
+| 18.103.6 | Design doc | `stage-18.103-per-mono-codegen-design.md` (S3/S4/S5 simplifications documented) |
+
+### Verification
+
+| Scenario | Before (v0.370.0) | After (v0.371.0) |
+|----------|-------------------|------------------|
+| `id::<i32>(42)` | calls `landin_id` (generic) | ✅ calls `landin_id_i32` (specialized) |
+| `id::<bool>(true)` | calls `landin_id` (wrong: i1 arg to i32 fn) | ✅ calls `landin_id_bool` (specialized) |
+| Specialized functions emitted | 0 | ✅ `id_i32` + `id_bool` |
+| Non-generic `add(1,2)` | `landin_add` | ✅ `landin_add` (no specialization) |
+
+### Design Simplifications (Documented)
+
+| ID | Simplification | Impact | Fix Plan |
+|----|----------------|--------|----------|
+| S3 | Only local_decl.ty + Constant.ty substituted | Rvalue/Place types not substituted (codegen reads local_decls) | v0.2 Phase 2: extend if needed |
+| S4 | Only MonoItem::Fn handled | MonoItem::Closure not handled here | v0.2 Phase 2: add closure if needed |
+| S5 | Call site type_names map empty | Adt substs use `Adt_N` instead of type name | v0.2 Phase 2: pre-compute type_names |
+
+### v0.2 Monomorphization Progress
+
+| Phase | Status |
+|-------|--------|
+| Phase 1-4c (infrastructure) | ✅ Stage 16.52-16.59 |
+| Turbofish FnDef substs | ✅ Stage 18.101 |
+| Implicit inference FnDef substs | ✅ Stage 18.102 |
+| **Per-mono codegen (emit specialized fns)** | ✅ Stage 18.103 |
+| **Call sites use specialized names** | ✅ Stage 18.103 |
+| Method monomorphization | ❌ S2 (v0.2 Phase 2) |
+| Adt subst name in specialized fn names | ❌ S5 (v0.2 Phase 2) |
 
 ---
 ## v0.370.0 — Stage 18.102 (Implicit Generic Inference Back-Write — TD-MONO-INFER)

@@ -8,7 +8,9 @@
 
 use crate::codegen::drop_glue::emit_drop_glue_functions;
 use crate::codegen::emitter::Emitter;
-use crate::codegen::function::{codegen_from_mir, codegen_synthesized_closure_functions};
+use crate::codegen::function::{
+    codegen_from_mir, codegen_mono_functions, codegen_synthesized_closure_functions,
+};
 use crate::codegen::trait_dispatch::{emit_dyn_trait_ptrs, emit_vtables};
 
 /// Stage 16.37: Unified codegen pipeline — shared by both text and LLVM backends.
@@ -107,6 +109,26 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
         &mono_layouts,
         emitter,
     );
+
+    // Stage 18.103 (TD-MONO-CODEGEN): Emit specialized functions for each
+    // MonoItem::Fn. For each generic function instantiation (e.g., id<i32>,
+    // id<bool>), substitute the Param types in the generic MIR body and emit
+    // a specialized function with a mangled name (e.g., landin_id_i32).
+    //
+    // Per §16: reads MIR + fn_sigs + fn_name_by_def_id (data, no HIR).
+    // Per §1.0 原則 6 "通用 > 特例": one pass for all MonoItem::Fn.
+    // Per §2.0 原則 9 "正确 > 妥协": generic calls now emit specialized fns.
+    if let Some(hir) = &result.hir {
+        codegen_mono_functions(
+            &result.mirs,
+            hir,
+            &result.fn_name_by_def_id,
+            &result.fn_sigs,
+            &result.interner,
+            &mono_layouts,
+            emitter,
+        );
+    }
 
     // 6. Synthesized closure function bodies
     codegen_synthesized_closure_functions(

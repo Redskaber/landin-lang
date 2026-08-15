@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.370.0 (Stage 18.102 — Implicit generic inference back-write: TD-MONO-INFER)  
+> **Version**: v0.371.0 (Stage 18.103 — Per-mono codegen: TD-MONO-CODEGEN complete)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization: turbofish + implicit inference done)
+> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization: turbofish + implicit + per-mono codegen done)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets

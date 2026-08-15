@@ -52,7 +52,9 @@ pub use ty::{
 
 // Stage 16.53 (Task 11 Phase 2): Type substitution re-exports.
 // Stage 16.62: substitute_substs marked #[doc(hidden)] — test-only.
+// Stage 18.103: substitute_mir_body added for per-mono codegen.
 pub use substitute::substitute;
+pub use substitute::substitute_mir_body;
 #[doc(hidden)]
 pub use substitute::substitute_substs;
 

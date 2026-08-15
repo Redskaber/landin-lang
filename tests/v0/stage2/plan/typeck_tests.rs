@@ -806,3 +806,93 @@ fn main() {
         fn_items
     );
 }
+
+// =================================================================
+// Stage 18.103: Per-Mono Codegen Tests (TD-MONO-CODEGEN)
+// =================================================================
+
+/// Stage 18.103 positive: turbofish generic calls produce specialized functions.
+/// `id::<i32>(42)` + `id::<bool>(true)` should produce 2 specialized functions
+/// (id_i32, id_bool) in the LLVM IR, not just one generic landin_id.
+#[test]
+fn stage18_103_turbofish_produces_specialized_functions() {
+    use landin_compiler::codegen::codegen_crate;
+    use landin_compiler::compile;
+    let src = r#"
+fn id<T>(x: T) -> T { x }
+fn main() {
+    let a: i32 = id::<i32>(42);
+    let b: bool = id::<bool>(true);
+}
+"#;
+    let result = compile(src);
+    assert!(!result.has_errors());
+    let ir = codegen_crate(&result);
+    // Should contain specialized function definitions
+    assert!(
+        ir.contains("define i32 @id_i32("),
+        "expected specialized function id_i32 in IR:\n{}",
+        ir
+    );
+    assert!(
+        ir.contains("define i1 @id_bool("),
+        "expected specialized function id_bool in IR:\n{}",
+        ir
+    );
+}
+
+/// Stage 18.103 positive: call sites use specialized function names.
+#[test]
+fn stage18_103_calls_use_specialized_names() {
+    use landin_compiler::codegen::codegen_crate;
+    use landin_compiler::compile;
+    let src = r#"
+fn id<T>(x: T) -> T { x }
+fn main() {
+    let a: i32 = id::<i32>(42);
+    let b: bool = id::<bool>(true);
+}
+"#;
+    let result = compile(src);
+    assert!(!result.has_errors());
+    let ir = codegen_crate(&result);
+    // Call sites should use specialized names, not generic landin_id
+    assert!(
+        ir.contains("call i32 @landin_id_i32("),
+        "expected call to landin_id_i32 in IR:\n{}",
+        ir
+    );
+    assert!(
+        ir.contains("call i32 @landin_id_bool("),
+        "expected call to landin_id_bool in IR:\n{}",
+        ir
+    );
+}
+
+/// Stage 18.103 negative: non-generic function still uses base name.
+#[test]
+fn stage18_103_non_generic_uses_base_name() {
+    use landin_compiler::codegen::codegen_crate;
+    use landin_compiler::compile;
+    let src = r#"
+fn add(x: i32, y: i32) -> i32 { x + y }
+fn main() {
+    let a = add(1, 2);
+}
+"#;
+    let result = compile(src);
+    assert!(!result.has_errors());
+    let ir = codegen_crate(&result);
+    // Non-generic function should use base name, no specialization
+    assert!(
+        ir.contains("define i32 @landin_add("),
+        "expected base function landin_add in IR:\n{}",
+        ir
+    );
+    // Should NOT have specialized variants
+    assert!(
+        !ir.contains("landin_add_"),
+        "non-generic function should not have specialized variants in IR:\n{}",
+        ir
+    );
+}
