@@ -13961,3 +13961,51 @@ Stage Summary:
 - 640 lib + 2659 integration = 3299 unit tests, 0 failures (4 S11 loop tests skipped)
 - v0.377.0: minor bump (S10 fix)
 - 残留: S9 (dest local writeback) + S11 (loop ctrl) + S2 (method mono)
+
+---
+Task ID: stage18.110
+Agent: Super Z (main)
+Task: Stage 18.110 — S11 Fix: Const-Prop Loop Safety. v0.377.0 → v0.378.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.108-terminal-log-fixes-cargo-check.md S11 根因
+- S11 根因定位:
+  → run_const_prop 按 BB 顺序处理 (bb0→bb1→bb2→...)
+  → 到 bb1 (循环条件) 时, i=0 在 const_map 中
+  → 折叠 0 < 3 → true, 但 i 在循环体 (bb4) 被修改
+  → bb4 尚未处理, const_map 中 i 仍为 0
+  → 折叠的 true 成为永久循环条件 → 无限循环
+- S11 修复 (src/mir/optimization.rs run_const_prop):
+  1. 检测 back-edges: 扫描所有 BB 的 Goto(target), 若 target <= current 则有循环
+  2. 循环头清空 const_map: 进入 back-edge 目标 BB 时, 清空 const_map
+     (循环变量可能在循环体中被修改)
+  3. 有 back-edges 时不折叠 BinaryOp: 仅传播常量到 Use/Move 操作数
+     (安全), 不折叠 BinaryOp 结果 (避免错误折叠循环条件)
+  → 遵循 §1.0 原则 9 "正确 > 妥协": 正确循环行为 > 激进折叠
+  → 遵循 §1.0 原则 6 "通用 > 特例": 一个检查适用所有循环类型
+- 验证:
+  → while i < 3: 3× "hello" ✅ (修复前: 无限循环)
+  → loop { break; }: 正确 break ✅ (修复前: 无限循环)
+  → while { continue; }: 正确 continue ✅ (修复前: 无限循环)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests ✅ **2663 passed, 0 failed, 0 skipped!**
+    (ALL 35 runtime tests now pass — no more skips!)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.110-s11-fix-const-prop-loop-safety.md (新建)
+  - Cargo.toml: v0.377.0 → v0.378.0
+  - README.md: v0.377.0 → v0.378.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.110 PASSED — S11 修复 (const_prop 循环安全)
+- 根因: const_prop 按顺序处理 BB, 循环回边导致循环条件被错误折叠
+- 修复: 检测 back-edges + 循环头清空 const_map + 有循环时不折叠 BinaryOp
+- 所有运行时测试现在通过 ✅ (首次! 2663 passed, 0 skipped)
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures
+- v0.378.0: minor bump (S11 fix — all runtime tests pass)
+- 残留: S9 (dest local writeback) + S2 (method mono) — v0.2 Phase 2

@@ -186,7 +186,38 @@ pub fn run_const_prop(mir: &mut MirBody) {
     // Map: LocalId → Const (the constant value assigned to this local).
     let mut const_map: HashMap<crate::mir::place::LocalId, Const> = HashMap::new();
 
-    for bb in &mut mir.basic_blocks {
+    // Stage 18.110 (S11 fix): Detect back-edges (Goto to a lower-indexed BB).
+    // If back-edges exist (loops), don't fold BinaryOp comparisons in the
+    // loop header — the loop variable changes between iterations, so the
+    // first-iteration value is wrong.
+    //
+    // Per §1.0 原則 9 "正确 > 妥协": correct loop behavior > aggressive folding.
+    // Per §1.0 原則 6 "通用 > 特例": one check for all loop types.
+    let has_back_edges = mir.basic_blocks.iter().enumerate().any(|(i, bb)| {
+        if let crate::mir::body::TerminatorKind::Goto(target) = &bb.terminator.kind {
+            (target.0 as usize) <= i
+        } else {
+            false
+        }
+    });
+
+    for bb_idx in 0..mir.basic_blocks.len() {
+        // Stage 18.110 (S11 fix): If this BB is a loop header (target of a
+        // back-edge), clear the const_map before processing — loop variables
+        // may have been modified in the loop body.
+        let is_loop_header = has_back_edges
+            && mir.basic_blocks.iter().any(|bb| {
+                if let crate::mir::body::TerminatorKind::Goto(target) = &bb.terminator.kind {
+                    (target.0 as usize) == bb_idx
+                } else {
+                    false
+                }
+            });
+        if is_loop_header {
+            const_map.clear();
+        }
+
+        let bb = &mut mir.basic_blocks[bb_idx];
         for stmt in &mut bb.statements {
             if let StatementKind::Assign(pair) = &mut stmt.kind {
                 let (place, rvalue) = &mut **pair;
@@ -195,11 +226,19 @@ pub fn run_const_prop(mir: &mut MirBody) {
                 let propagated = propagate_rvalue(rvalue, &const_map);
 
                 // Try to fold constant operations.
-                if let Some(folded) = fold_rvalue(&propagated) {
-                    // The rvalue folded to a constant — update it.
-                    *rvalue = Rvalue::Use(Operand::Constant(folded));
-                } else {
+                // Stage 18.110 (S11 fix): Only fold if no back-edges (loops),
+                // OR if the rvalue doesn't involve loop-modified variables.
+                // Safe simplification: skip BinaryOp folding when back-edges exist.
+                if has_back_edges {
+                    // Don't fold BinaryOps in loops — just propagate constants
+                    // into Use/Move operands (safe), but don't fold the op itself.
                     *rvalue = propagated;
+                } else {
+                    if let Some(folded) = fold_rvalue(&propagated) {
+                        *rvalue = Rvalue::Use(Operand::Constant(folded));
+                    } else {
+                        *rvalue = propagated;
+                    }
                 }
 
                 // If the rvalue is now a constant Use, record it in the map.
