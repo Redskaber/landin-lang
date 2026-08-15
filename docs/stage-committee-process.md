@@ -1,7 +1,7 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 6.0（优化重构自 v5.0，100% 覆盖原版意图 + 新增 §17 任务规划排版图）
+> **Version**: 6.1（深度审查修复：8 个 HIGH + MEDIUM 问题修复）
 > **Purpose**: 为 Agent Group 提供清晰、严格、高效、可协调的阶段推进与质量管控 SOP。
 > 任何 Agent 拿到本文档即可：**清晰**知道每个阶段/轮次/角色的输入输出与验收标准；**严格**知道哪些是硬性阻断、哪些可酌情；**高效**知道哪些可并行、哪些必须串行、何时可提前收敛；**可协调**知道跨 Agent 协作协议（Task ID / worklog / 升级路径）。
 
@@ -148,7 +148,7 @@ flowchart TD
 - **设计-开发-测试互相锚定**（§9.4）：设计、开发、测试三者互相锚定、互相依赖；测试极其重要——严格按测试理论设计，不只是正向测试，更要重点覆盖负向/错误测试。
 - **任务规划排版图**（§17）：每个阶段开始前必须构建任务依赖图，按"扫描→依赖图→节点流→递归→设计-开发-测试节点→缺陷纳入"流程规划，确保任务无遗漏、依赖清晰、缺陷有修复计划。
 
-### 2.2 核心设计决策原则（§2.0）
+### 2.2 核心设计决策原则
 
 > **来源**：用户在 Stage 14 持续审查中反复强调的决策原则，贯穿所有代码、重构、测试、文档决策。这些原则不是建议而是硬性约束——任何 Agent 在面临设计选择时必须以此为准绳。
 
@@ -217,6 +217,8 @@ flowchart TD
 | `rustc` + `cargo` | 编译+测试 | `curl https://sh.rustup.rs \| sh -s -- -y` | `docs/tools/rust/` |
 | `rustfmt` | 格式检查 | `rustup component add rustfmt` | `docs/tools/rust/` |
 | `clippy` | lint 检查 | `rustup component add clippy` | `docs/tools/rust/` |
+| `llvm-config` + `llvm-sys` | LLVM 19 后端 | `source scripts/setup-llvm-env.sh` | `docs/llvm/` |
+| `llc` / `opt` / `lld` | LLVM IR 验证+链接 | 随 LLVM 19 安装 | `docs/llvm/` |
 | `zip` / `tar` | 打包 | `apt install zip` / `apt install tar` | `docs/tools/zip/` |
 
 **规则**：
@@ -230,7 +232,7 @@ flowchart TD
 
 **验收命令**（Landin 项目）：
 ```bash
-cargo clean && cargo build --features llvm-backend && cargo fmt && cargo clippy --all-targets && cargo test
+cargo clean && cargo build --features llvm-backend && cargo check --features llvm-backend && cargo fmt && cargo clippy --all-targets --features llvm-backend && cargo test --features llvm-backend
 ```
 
 **验收标准**：
@@ -364,6 +366,8 @@ cargo clean && cargo build --features llvm-backend && cargo fmt && cargo clippy 
 
 ## 4. 阶段任务拆分（MUV）
 
+> **前置条件**：§17 任务规划排版图必须在本节之前完成。§17 的叶子任务 = MUV。
+
 将阶段目标拆解为可独立验证的最小工作单元（MUV，Minimum Verifiable Unit），保证每个子任务可单独审查、修正和追溯。
 
 ### 4.1 MUV 必备字段
@@ -436,7 +440,7 @@ cargo clean && cargo build --features llvm-backend && cargo fmt && cargo clippy 
 
 ### 6.2 技术债分类审查规则
 
-> **根因教训**（来自 Stage 2.x 门审查）：Stage 2.x 的 12 个 P3 技术债中有 12 个实际上是 P0/P1。根因是每个子阶段的委员会投票基于"该子阶段内部测试通过"，但从未验证子阶段之间的集成。每个子阶段都是"孤立正确"但"集成失败"。
+> **根因教训**（来自 Stage 2.x 门审查）：Stage 2.x 的多个 P3 技术债实际为 P0/P1。根因是每个子阶段的委员会投票基于"该子阶段内部测试通过"，但从未验证子阶段之间的集成。每个子阶段都是"孤立正确"但"集成失败"。
 
 **规则**：
 1. 每个被标记为 P3 的技术债，在退出内循环前必须由**架构师角色**确认其真实等级。如果该 P3 会影响下一阶段的正确性，则**升级为 P0/P1**，强制在本阶段修复。
@@ -501,7 +505,7 @@ cargo clean && cargo build --features llvm-backend && cargo fmt && cargo clippy 
 **校准结论**（来自历史阶段数据）：
 - L2 基准轮次区间维持 4~9 轮
 - L3 基准轮次区间调整为 8~15 轮（Stage 0 v0.1.4 验证了 9 轮的必要性；Stage 3.1-3.45 用满 12 轮）
-- **P3 误分类率**：Stage 2.x 中 17 个 P3 中有 17 个实际为 P0/P1（100% 误分类率）
+- **P3 误分类率**：Stage 2.x 中多个 P3 实际为 P0/P1（高误分类率）
 - **根因**：子阶段间无集成测试，"孤立正确"但"集成失败"
 - **修复**：新增 §7 集成验证协议 + §6.2 技术债分类审查规则
 
@@ -509,7 +513,7 @@ cargo clean && cargo build --features llvm-backend && cargo fmt && cargo clippy 
 
 ## 7. 集成验证协议
 
-> **根因教训**（来自 Stage 2.x 门审查）：每个子阶段的委员会投票基于"该子阶段内部测试通过"，但从未验证子阶段之间的集成。每个子阶段都是"孤立正确"但"集成失败"。Stage 2.x 的 17 个 P0 全部来自子阶段间的衔接缺失。
+> **根因教训**（来自 Stage 2.x 门审查）：每个子阶段的委员会投票基于"该子阶段内部测试通过"，但从未验证子阶段之间的集成。每个子阶段都是"孤立正确"但"集成失败"。Stage 2.x 的多个 P0 全部来自子阶段间的衔接缺失。
 
 ### 7.1 集成测试要求
 
@@ -745,22 +749,26 @@ docs/develop/v0/
 
 #### 8.4.3 语言设计文档
 
-语言设计文档按编号组织，反映设计顺序：
+语言设计文档按编号组织，反映设计顺序（Stage 18.122 修正：文件名与实际磁盘一致）：
 
 ```text
 docs/lang-design/
-├── 00-overview.md       # 语言概览
-├── 01-lexer.md          # 词法分析
-├── 02-parser.md         # 语法分析
-├── 03-ast.md            # AST 结构
-├── 04-type-system.md    # 类型系统
-├── 05-ownership.md      # 所有权与借用
-├── 06-hir.md            # HIR 设计
-├── 07-mir.md            # MIR 设计
-├── 08-codegen.md        # LLVM codegen
-├── 09-stdlib.md         # 标准库
-├── 10-toolchain.md      # 工具链
-└── 11-bootstrap.md      # 自举策略
+├── 00-overview.md               # 语言概览
+├── 01-language-specification.md # 语言规范
+├── 02-grammar.md                # 语法
+├── 03-type-system.md            # 类型系统
+├── 04-ownership-borrowing.md    # 所有权与借用
+├── 05-ast.md                    # AST 结构
+├── 06-mir.md                    # MIR 设计
+├── 07-codegen.md                # LLVM codegen
+├── 08-codegen.md                # codegen 补充
+├── 08-bootstrap-strategy.md     # 自举策略
+├── 09-stdlib.md                 # 标准库
+├── 10-toolchain.md              # 工具链
+├── 11-testing.md                # 测试
+├── 12-roadmap.md                # 路线图
+├── 13-stage1-feature-whitelist.md # Stage 1 特性白名单
+└── ... (14+ 扩展设计文档)
 ```
 
 #### 8.4.4 文档格式规范
@@ -2494,6 +2502,7 @@ flowchart TD
 | v4.0 | Stage 14.114+ | 结构重构 + 新增 §A-§F：项目图管理（§15）+ 工具/脚本目录（§3.4）+ 自动化工具链（§3.5）+ 设计-开发-测试锚定（§9.4）+ 1:3+ 正负比（§9.4.3）+ 阶段切换期重构（§13.2）+ 设计-审查循环（§13.5） |
 | **v5.0** | **Stage 16.75** | **重构 v4.0：100% 覆盖原版意图，精简表达。** 合并冗余 changelog、移除历史覆盖矩阵与"v4.0 新增"标记、合并类似 mermaid 图、用表格替代段落、补充开发期不引入简写语法（§13.3.6）、明确 §3.2 验收命令需 `--features llvm-backend`、强化 §5.3 退出标准对 llvm-backend 的要求 |
 | **v6.0** | **Stage 18.120** | **优化重构 v5.0 + 新增 §17 任务规划排版图。** 100% 保留 v5.0 全部规则。新增 §17：七步任务规划流程（扫描→依赖图→节点流→递归→设计-开发-测试节点→缺陷纳入→优化补充）。§17 将阶段任务规划从线性列表升级为依赖图+节点流模型。更新 §2.1 总体原则 + §1.2 路由表添加 §17 引用。 |
+| **v6.1** | **Stage 18.122** | **深度审查修复：8 个 HIGH+MEDIUM 问题。** 修正 §8.4.3 lang-design 文件名（与实际磁盘一致）、修正 P3 误分类数量矛盾（12 vs 17 → 统一表述）、修复 4 个断裂交叉引用（§2.0/§8.6.4/§13.3.6/§A-§F）、§3.2 验收命令补全 cargo check、§4 头部添加 §17 前置条件标记、§3.1 工具表添加 LLVM 工具链、§17.2 扫描表添加路线图+Agent 技能。 |
 
 ### 16.2 v5.0 关键改进
 
@@ -2564,6 +2573,8 @@ flowchart TD
 | `docs/lang-design/` 对应阶段设计文档 | 确认设计意图 | 设计意图摘要 (3-5 句) |
 | `docs/develop/v0/tech-debt-register.md` | 确认当前技术债状态 | 已解决项 + 剩余项清单 |
 | `docs/develop/v0/v0.1-capability-boundaries.md` | 确认当前能力边界 | 已支持/限制/不支持列表 |
+| `docs/develop/v0/v0.5-roadmap.md` (或当前路线图) | 确认长期路线图对齐 | 当前版本在路线图中的位置 |
+| `docs/agent-team/04-agent-skills.md` | 确认 Agent 团队能力 | 可用技能清单 |
 | `docs/tests/matrix.md` | 确认当前测试覆盖 | 测试计数 + 覆盖率 |
 | `docs/worklog.md` (尾部) | 确认上一阶段输出 | 上一阶段 Stage Summary |
 | `docs/develop/v0/stage-N/` (最新 gate-review) | 确认审查结论 | GO / GO-WITH-CONDITIONS / NO-GO |
@@ -2800,5 +2811,5 @@ graph LR
 ---
 
 **This document is the single source of truth for the Landin development
-process. All agents (main + subagents) must follow it. v6.0 effective
-from Stage 18.120+.**
+process. All agents (main + subagents) must follow it. v6.1 effective
+from Stage 18.122+.**

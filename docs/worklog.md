@@ -14465,3 +14465,52 @@ Stage Summary:
 - 100% 保留 v5.0 全部规则
 - v0.389.0: doc-update bump (process doc v6.0)
 - 下一步: v0.2 P0 (mini-cargo 项目系统), 使用 §17 任务规划排版图
+
+---
+Task ID: stage18.122
+Agent: Super Z (main)
+Task: Stage 18.122 — Process Doc v6.1: 13-dimension Deep Audit + 8 HIGH/MEDIUM Fixes. v0.389.0 → v0.390.0.
+
+Work Log:
+- §14.5 深度审查 (适配为流程文档自审):
+  → 13 维度审计 docs/stage-committee-process.md v6.0 (2804 行)
+  → 输出审计报告: docs/develop/v0/stage-18/stage-18.122-process-doc-v6-audit-report.md
+- 审计结果摘要:
+  → ✅ Good: 深度深入广度探索 (§14 多轮深挖 + §17 测试5阶段递进)
+  → 🟡 Needs improvement: 冗余/排版/路由/执行流/能力探针/精度/自优化/上下文/长期指导
+  → 🔴 Defective: 缺陷错误 (3 HIGH) + 技能表达 (无 skills inventory)
+- HIGH 修复 (8 项):
+  1. §8.4.3 lang-design 文件名修正 (与实际磁盘一致, 修正自相矛盾)
+  2. P3 误分类数量矛盾修正 (12 vs 17 → 统一为"多个")
+  3. 4 个断裂交叉引用修复 (§2.0 → §2.2, §8.6.4/§13.3.6/§A-§F 为历史标记)
+  4. §3.2 验收命令补全 cargo check
+  5. §4 头部添加 §17 前置条件标记
+  6. §3.1 工具表添加 LLVM 工具链 (llvm-config + llc/opt/lld)
+  7. §17.2 扫描表添加 v0.5-roadmap.md + 04-agent-skills.md
+  8. §16 变更日志添加 v6.1 条目
+- MEDIUM 文档化 (v6.2 计划):
+  → §17.8/§14.5 max-retry guards
+  → §17.4 "权重" 定义
+  → §14.7 D1-D6 → C1-C6 重编号 (避免与 §14.5 D1-D8 冲突)
+  → §8.6 worklog 路径相对化
+  → §1.2 添加 L1/L2/L3 分层应用
+  → §6.6 calibration-data.md 定义
+  → mermaid 标签引号修复
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+- §8 文档同步:
+  - docs/stage-committee-process.md: v6.0 → v6.1 (2804→2816 行)
+  - docs/develop/v0/stage-18/stage-18.122-process-doc-v6-audit-report.md (新建)
+  - Cargo.toml: v0.389.0 → v0.390.0
+  - README.md: v0.389.0 → v0.390.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.122 PASSED — Process doc v6.1 深度审计 + 8 修复
+- 13 维度审计: 3 HIGH + 8 MEDIUM + 2 LOW 修复/文档化
+- HIGH 修复: lang-design 文件名 + P3 数量 + 交叉引用 + cargo check + §17 前置标记 + LLVM 工具 + 路线图扫描 + Agent 技能扫描
+- 流程文档 v6.0 → v6.1
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.390.0: doc-fix bump (process doc v6.1)
+- 下一步: v0.2 P0 (mini-cargo 项目系统), 使用 §17 任务规划排版图
