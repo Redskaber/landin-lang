@@ -542,6 +542,9 @@ pub fn writeback_fndef_substs(
 ) {
     // Collect changes first, then apply (avoid borrow conflicts).
     let mut changes: Vec<(usize, Ty)> = Vec::new();
+    // Stage 18.111 (S9 fix): Destination local type changes (substituted
+    // with callee substs so generic return types become concrete).
+    let mut dest_changes: Vec<(usize, Ty)> = Vec::new();
 
     for bb in &mir.basic_blocks {
         let term = &bb.terminator;
@@ -580,72 +583,106 @@ pub fn writeback_fndef_substs(
                 _ => continue, // Not a FnDef — skip
             };
 
-            // Skip if substs are already populated (turbofish case).
-            if !existing_substs.is_empty() {
-                continue;
-            }
-
-            // Skip if the function is not generic.
-            let generic_params = match generics_map.get(&def_id) {
-                Some(params) if !params.is_empty() => params,
-                _ => continue, // Non-generic function
-            };
-
-            // Look up the function's sig.
-            let sig = match fn_sigs.get(&def_id) {
-                Some(sig) => sig.clone(),
-                None => continue,
-            };
-
-            // Build param bindings from arg types.
-            let mut bindings: HashMap<u32, Ty> = HashMap::new();
-
-            // Match arg types with sig input types.
-            for (arg, input_ty) in args.iter().zip(sig.inputs.iter()) {
-                let arg_ty = match arg {
-                    Operand::Copy(place) | Operand::Move(place) => {
-                        if let PlaceKind::Local(id) = &place.kind {
-                            mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone())
-                        } else {
-                            None
-                        }
-                    }
-                    Operand::Constant(c) => Some(c.ty.clone()),
+            // Stage 18.111 (S9 fix): Even if substs are already populated
+            // (turbofish case), we still need to substitute the destination
+            // local's type. So don't `continue` — use existing substs.
+            let (substs, is_inferred): (Vec<Ty>, bool) = if !existing_substs.is_empty() {
+                (existing_substs.iter().cloned().collect::<Vec<_>>(), false)
+            } else {
+                // Empty substs — try to infer from args (implicit case).
+                // Skip if the function is not generic.
+                let generic_params = match generics_map.get(&def_id) {
+                    Some(params) if !params.is_empty() => params,
+                    _ => continue, // Non-generic function
                 };
 
-                if let Some(arg_ty) = arg_ty {
-                    collect_param_bindings(input_ty, &arg_ty, &mut bindings);
+                // Look up the function's sig.
+                let sig = match fn_sigs.get(&def_id) {
+                    Some(sig) => sig.clone(),
+                    None => continue,
+                };
+
+                // Build param bindings from arg types.
+                let mut bindings: HashMap<u32, Ty> = HashMap::new();
+
+                for (arg, input_ty) in args.iter().zip(sig.inputs.iter()) {
+                    let arg_ty = match arg {
+                        Operand::Copy(place) | Operand::Move(place) => {
+                            if let PlaceKind::Local(id) = &place.kind {
+                                mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone())
+                            } else {
+                                None
+                            }
+                        }
+                        Operand::Constant(c) => Some(c.ty.clone()),
+                    };
+                    if let Some(arg_ty) = arg_ty {
+                        collect_param_bindings(input_ty, &arg_ty, &mut bindings);
+                    }
+                }
+
+                if let PlaceKind::Local(id) = &destination.kind {
+                    if let Some(dest_ld) = mir.local_decls.get(id.0 as usize) {
+                        collect_param_bindings(&sig.output, &dest_ld.ty, &mut bindings);
+                    }
+                }
+
+                let inferred: Vec<Ty> = generic_params
+                    .iter()
+                    .map(|param| {
+                        bindings
+                            .get(&param.index)
+                            .cloned()
+                            .unwrap_or_else(|| Ty::new(TyKind::Error, Span::DUMMY))
+                    })
+                    .collect();
+
+                if !inferred.is_empty()
+                    && inferred.iter().any(|ty| !matches!(ty.kind, TyKind::Error))
+                {
+                    let new_ty =
+                        Ty::new(TyKind::FnDef(def_id, inferred.clone().into()), Span::DUMMY);
+                    changes.push((func_local_idx, new_ty));
+                }
+                (inferred, true)
+            };
+
+            // Stage 18.111 (S9 fix): Substitute the destination local's type
+            // with the callee's substs (whether from turbofish or inferred).
+            if !substs.is_empty()
+                && substs
+                    .iter()
+                    .any(|ty| !matches!(ty.kind, TyKind::Error | TyKind::Param(_)))
+            {
+                let sig = match fn_sigs.get(&def_id) {
+                    Some(sig) => sig.clone(),
+                    None => continue,
+                };
+                let substituted_output = crate::mir::substitute(&sig.output, &substs);
+                if let PlaceKind::Local(dest_id) = &destination.kind {
+                    let dest_idx = dest_id.0 as usize;
+                    let current_dest_ty = mir.local_decls.get(dest_idx).map(|ld| ld.ty.clone());
+                    if let Some(current) = current_dest_ty {
+                        if current.kind != substituted_output.kind {
+                            dest_changes.push((dest_idx, substituted_output));
+                        }
+                    }
                 }
             }
 
-            // Match destination type with sig output type.
-            if let PlaceKind::Local(id) = &destination.kind {
-                if let Some(dest_ld) = mir.local_decls.get(id.0 as usize) {
-                    collect_param_bindings(&sig.output, &dest_ld.ty, &mut bindings);
-                }
-            }
-
-            // Build the substs vector (ordered by param index).
-            let substs: Vec<Ty> = generic_params
-                .iter()
-                .map(|param| {
-                    bindings
-                        .get(&param.index)
-                        .cloned()
-                        .unwrap_or_else(|| Ty::new(TyKind::Error, Span::DUMMY))
-                })
-                .collect();
-
-            // Only write back if we found at least one binding.
-            if !substs.is_empty() && substs.iter().any(|ty| !matches!(ty.kind, TyKind::Error)) {
-                let new_ty = Ty::new(TyKind::FnDef(def_id, substs.into()), Span::DUMMY);
-                changes.push((func_local_idx, new_ty));
-            }
+            let _ = is_inferred;
         }
     }
 
-    // Apply changes.
+    // Apply FnDef type changes.
     for (idx, new_ty) in changes {
+        if let Some(ld) = mir.local_decls.get_mut(idx) {
+            ld.ty = new_ty;
+        }
+    }
+
+    // Apply destination local type changes (S9 fix).
+    for (idx, new_ty) in dest_changes {
         if let Some(ld) = mir.local_decls.get_mut(idx) {
             ld.ty = new_ty;
         }

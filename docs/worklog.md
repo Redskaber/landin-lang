@@ -14009,3 +14009,45 @@ Stage Summary:
 - 640 lib + 2663 integration = 3303 unit tests, 0 failures
 - v0.378.0: minor bump (S11 fix — all runtime tests pass)
 - 残留: S9 (dest local writeback) + S2 (method mono) — v0.2 Phase 2
+
+---
+Task ID: stage18.111
+Agent: Super Z (main)
+Task: Stage 18.111 — S9 Fix: Dest Local Type Writeback for Generic Calls. v0.378.0 → v0.379.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.107-s8-fix-call-site-sig-substitution.md S9 根因
+- S9 根因定位:
+  → writeback_fndef_substs 设置 FnDef substs 后, 若 substs 已存在 (turbofish) 则 continue
+  → 跳过了 destination local 类型替换
+  → dest local 仍为 Adt(Box, [Param(0)]) 而非 Adt(Box, [i32])
+- S9 修复 (src/mir/lower/writeback.rs writeback_fndef_substs):
+  → 重构: 若 substs 已存在 (turbofish), 直接使用 (不 continue)
+  → 若 substs 为空 (implicit), 从 args 推断 (现有逻辑)
+  → 无论哪种方式获得 substs 后, substitute(sig.output, substs) 写入 dest local
+  → 遵循 §1.0 原則 6 "通用 > 特例": 一个路径处理 turbofish + implicit
+- 验证:
+  → make_box::<bool>(true) 返回类型: { i1 } ✅ (修复前: { i32 })
+  → make_box::<i32>(42) 返回类型: { i32 } ✅ (无回归)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 0 skipped
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.111-s9-fix-dest-local-writeback.md (新建)
+  - Cargo.toml: v0.378.0 → v0.379.0
+  - README.md: v0.378.0 → v0.379.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.111 PASSED — S9 修复 (dest local 类型 writeback)
+- 根因: writeback_fndef_substs 在 turbofish 时 continue 跳过 dest 替换
+- 修复: 重构为无论 turbofish 还是 implicit, 都执行 substitute(sig.output, substs)
+- make_box::<bool> 现在返回正确的 { i1 } (Box<bool>)
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.379.0: minor bump (S9 fix)
+- v0.2 P0 单态化: S5 ✅, S6 ✅, S7 ✅, S8 ✅, S9 ✅, S10 ✅, S11 ✅
+- 残留: S2 (method mono) — v0.2 Phase 2
