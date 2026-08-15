@@ -678,6 +678,11 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
     for (def_id, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
             use crate::hir::HirFnRetTy;
+            // Stage 18.105 (S6 fix): Build generic_params from f.generics so
+            // bare type parameters (e.g., `T` in `Box<T>`) resolve to Param(N)
+            // instead of Error in fn_sig_table.
+            let generic_params: Vec<crate::mir::ty::ParamTy> =
+                crate::hir::generics::find_generics(*def_id, &hir);
             let inputs: Vec<crate::mir::ty::Ty> = f
                 .sig
                 .inputs
@@ -716,14 +721,24 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
                             }
                         })
                     } else if let Some(ty) = &p.ty {
-                        crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
+                        crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                            ty,
+                            Some(&hir),
+                            &generic_params,
+                        )
                     } else {
                         crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
                     }
                 })
                 .collect();
             let output = match &f.sig.output {
-                HirFnRetTy::Ty(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
+                HirFnRetTy::Ty(t) => {
+                    crate::mir::lower::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                        t,
+                        Some(&hir),
+                        &generic_params,
+                    )
+                }
                 HirFnRetTy::Default(_) => {
                     crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Tuple(vec![]), f.span)
                 }

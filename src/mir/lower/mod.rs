@@ -161,6 +161,12 @@ pub struct MirLowerCtxt<'a> {
     /// Stage 16.13: Counter for allocating unique closure DefIds.
     /// Uses the reserved range `CLOSURE_DEF_ID_BASE` downward.
     pub closure_def_id_counter: u32,
+    /// Stage 18.105 (S6 fix): Generic type parameters of the function being
+    /// lowered. Used by `lower_path_generic_args` to resolve bare type
+    /// parameters (e.g., `T` in `Box<T>`) to `Param(N)`.
+    /// Empty for non-generic functions.
+    /// Per §16: pre-computed from HIR generics, sunk as data.
+    pub generic_params: Vec<crate::mir::ty::ParamTy>,
 }
 
 /// Stage 16.13 (Task 10 Step 1): A synthesized `call` function for a closure.
@@ -232,6 +238,7 @@ impl<'a> MirLowerCtxt<'a> {
             method_return_type_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             synthesized_closure_functions: std::collections::HashMap::new(),
             closure_def_id_counter: 0,
+            generic_params: Vec::new(),
         }
     }
 
@@ -298,6 +305,7 @@ impl<'a> MirLowerCtxt<'a> {
             method_return_type_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             synthesized_closure_functions: std::collections::HashMap::new(),
             closure_def_id_counter,
+            generic_params: Vec::new(),
         }
     }
 
@@ -904,6 +912,12 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
 ) {
     let mut cx = MirLowerCtxt::new(interner, body.span);
     cx.hir = Some(hir);
+
+    // Stage 18.105 (S6 fix): Set generic_params from the function's HIR generics.
+    // This allows lower_path_generic_args to resolve bare type parameters (e.g., `T`
+    // in `Box<T>`) to Param(N) instead of Error.
+    let owner_def_id: crate::hir::DefId = body.hir_id.owner;
+    cx.generic_params = crate::hir::generics::find_generics(owner_def_id, hir);
 
     // Stage 16.85: Set resolver for rich error messages (Adt type names).
     if let Some(resolver) = resolver {
@@ -1723,10 +1737,30 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_lifetimes(
 /// Per §23: `lower_path_generic_args` follows `<verb>_<noun>_<adj>_<noun>`
 /// pattern.
 /// Per §16: reads HIR (path.args) during MIR lowering.
+/// Stage 18.105 (S6 fix): Lower a HIR path's generic args to MIR substs,
+/// with generics context for resolving bare type parameters.
+///
+/// When lowering a generic arg like `T` (a bare type parameter), this function
+/// checks if `T` matches one of the `generic_params` (the type parameters of
+/// the item being lowered). If so, it produces `Param(N)` instead of `Error`.
+///
+/// # Parameters
+///
+/// - `path`: the HIR path (e.g., `Box<T>` — path is `Box`, args contain `T`)
+/// - `_region_counter`: unused (kept for API compat)
+/// - `hir`: optional HIR crate for nested type resolution
+/// - `generic_params`: the type parameters of the item being lowered
+///   (e.g., for `fn make_box<T>(x: T) -> Box<T>`, this is `[ParamTy{T, index:0}]`)
+///
+/// Per §23: `lower_path_generic_args` follows `<verb>_<noun>_<adj>_<noun>`
+/// pattern.
+/// Per §1.0 原則 6 "通用 > 特例": one function for all generic arg lowering.
+/// Per §2.0 原則 9 "正确 > 妥协": bare type params now resolve correctly (S6 fix).
 pub(crate) fn lower_path_generic_args(
     path: &crate::hir::HirPath,
     _region_counter: &mut u32,
     hir: Option<&HirCrate>,
+    generic_params: &[crate::mir::ty::ParamTy],
 ) -> crate::mir::ty::SubstsRef {
     use crate::ast::GenericArg;
 
@@ -1746,10 +1780,16 @@ pub(crate) fn lower_path_generic_args(
     // Lower each Type arg to MIR Ty, skip Lifetime and Assoc args.
     // Stage 16.56: Pass HIR to lower_ast_ty_to_mir_ty so nested generic
     // paths can be resolved (e.g., Box<Box<i32>> → inner Box resolved).
+    // Stage 18.105 (S6 fix): Pass generic_params so bare type parameters
+    // (e.g., `T` in `Box<T>`) resolve to Param(N) instead of Error.
     let substs: Vec<crate::mir::ty::Ty> = arg_list
         .iter()
         .filter_map(|arg| match arg {
-            GenericArg::Type(ty) => Some(lower_ast_ty_to_mir_ty(ty, hir)),
+            GenericArg::Type(ty) => Some(lower_ast_ty_to_mir_ty_with_generics(
+                ty,
+                hir,
+                generic_params,
+            )),
             _ => None, // Skip Lifetime and Assoc args
         })
         .collect();
@@ -1803,6 +1843,26 @@ pub(crate) fn lower_ast_ty_to_mir_ty(
     ty: &crate::ast::Ty,
     hir: Option<&HirCrate>,
 ) -> crate::mir::ty::Ty {
+    lower_ast_ty_to_mir_ty_with_generics(ty, hir, &[])
+}
+
+/// Stage 18.105 (S6 fix): Lower an AST type to MIR type with generics context.
+///
+/// This is the same as `lower_ast_ty_to_mir_ty` but additionally checks if
+/// a bare path name matches one of the `generic_params`. If so, it produces
+/// `Param(N)` instead of `Error`.
+///
+/// This fixes S6: generic function return types like `Box<T>` now correctly
+/// produce `Adt(Box, [Param(0)])` instead of `Adt(Box, [Error])`.
+///
+/// Per §23: `lower_ast_ty_to_mir_ty_with_generics` follows
+/// `<verb>_<noun>_<noun>_<prep>_<noun>` pattern.
+/// Per §1.0 原則 6 "通用 > 特例": one function for all AST type lowering.
+pub(crate) fn lower_ast_ty_to_mir_ty_with_generics(
+    ty: &crate::ast::Ty,
+    hir: Option<&HirCrate>,
+    generic_params: &[crate::mir::ty::ParamTy],
+) -> crate::mir::ty::Ty {
     use crate::ast::Ty as ATy;
     let span = crate::session::Span::DUMMY;
     match ty {
@@ -1816,25 +1876,40 @@ pub(crate) fn lower_ast_ty_to_mir_ty(
             crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Float(*float_ty), span)
         }
         ATy::Tuple(tys, _) => {
-            let mir_tys: Vec<_> = tys.iter().map(|t| lower_ast_ty_to_mir_ty(t, hir)).collect();
+            let mir_tys: Vec<_> = tys
+                .iter()
+                .map(|t| lower_ast_ty_to_mir_ty_with_generics(t, hir, generic_params))
+                .collect();
             crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Tuple(mir_tys), span)
         }
         ATy::Path(_, path, _) => {
+            // Stage 18.105 (S6 fix): First, check if the path is a bare type
+            // parameter (single-segment, name matches a generic param).
+            // Per §1.0 原則 6 "通用 > 特例": check generic params before
+            // falling back to struct/enum lookup.
+            if path.segments.len() == 1 {
+                if let Some(last_seg) = path.segments.last() {
+                    let name = last_seg.ident.name;
+                    // Check if this name matches a generic type parameter.
+                    for param in generic_params {
+                        if param.name == name {
+                            return crate::mir::ty::Ty::new(
+                                crate::mir::ty::TyKind::Param(*param),
+                                span,
+                            );
+                        }
+                    }
+                }
+            }
+
             // Stage 16.56: When HIR is available, try to resolve the AST path
             // to a DefId by looking up the type name in HIR owners.
-            //
-            // This enables nested generic types like `Box<Box<i32>>` where
-            // the inner `Box<i32>` is an AST path in a generic arg. Without
-            // HIR access, the path can't be resolved and produces `Error`.
-            //
-            // Per §1.0 原則 6 "通用 > 特例": one path resolution strategy
-            // for all AST paths in generic args.
             if let Some(hir_crate) = hir {
-                // Get the last segment's name (e.g., "Box" in `mod::Box`)
                 if let Some(last_seg) = path.segments.last() {
                     if let Some(def_id) = lookup_type_def_id_by_name(hir_crate, last_seg.ident.name)
                     {
                         // Resolve the path's generic args recursively.
+                        // Stage 18.105: Pass generic_params for nested bare params.
                         let inner_substs: Vec<_> = last_seg
                             .args
                             .as_ref()
@@ -1843,7 +1918,11 @@ pub(crate) fn lower_ast_ty_to_mir_ty(
                                     .iter()
                                     .filter_map(|a| match a {
                                         crate::ast::GenericArg::Type(t) => {
-                                            Some(lower_ast_ty_to_mir_ty(t, hir))
+                                            Some(lower_ast_ty_to_mir_ty_with_generics(
+                                                t,
+                                                hir,
+                                                generic_params,
+                                            ))
                                         }
                                         _ => None,
                                     })
@@ -1859,8 +1938,6 @@ pub(crate) fn lower_ast_ty_to_mir_ty(
                 }
             }
             // HIR not available or name not found → Error.
-            // Per §1.0 原則 5 "报错 > 静默": Error is preferred over a
-            // dummy Adt(DefId(0)) that could cause confusion.
             crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, span)
         }
         // For unsupported types, return Infer (will be resolved by typeck)
@@ -1877,6 +1954,28 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
     lower_hir_ty_to_mir_ty_with_hir(ty, None)
 }
 
+/// Stage 18.105 (S6 fix): Lower a HIR type to MIR type with generics context + HIR.
+///
+/// This is the same as `lower_hir_ty_to_mir_ty` but additionally passes
+/// `generic_params` to `lower_path_generic_args` so bare type parameters
+/// (e.g., `T` in `Box<T>`) resolve to `Param(N)` instead of `Error`.
+///
+/// Per §23: `lower_hir_ty_to_mir_ty_with_hir_and_generics` follows
+/// `<verb>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>` pattern.
+pub(crate) fn lower_hir_ty_to_mir_ty_with_hir_and_generics(
+    ty: &HirTy,
+    hir: Option<&HirCrate>,
+    generic_params: &[crate::mir::ty::ParamTy],
+) -> Ty {
+    let mut region_counter = 0u32;
+    lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
+        ty,
+        &mut region_counter,
+        hir,
+        generic_params,
+    )
+}
+
 /// Stage 16.56: Lower a HIR type to MIR type with optional HIR access.
 ///
 /// This is the preferred entry point for callers that have HIR access.
@@ -1887,7 +1986,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty(ty: &HirTy) -> Ty {
 /// `<verb>_<noun>_<noun>_<prep>_<noun>` pattern.
 pub(crate) fn lower_hir_ty_to_mir_ty_with_hir(ty: &HirTy, hir: Option<&HirCrate>) -> Ty {
     let mut region_counter = 0u32;
-    lower_hir_ty_to_mir_ty_with_regions_and_hir(ty, &mut region_counter, hir)
+    lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(ty, &mut region_counter, hir, &[])
 }
 
 /// Stage 15.49 (HP-5 step 2): Lower a HIR type to MIR type with proper
@@ -1903,7 +2002,7 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_hir(ty: &HirTy, hir: Option<&HirCrate>
 /// pattern with `_with_regions` suffix.
 /// Per §1.0 原則 3 "显式 > 隐式": regions are explicit in the MIR.
 pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &mut u32) -> Ty {
-    lower_hir_ty_to_mir_ty_with_regions_and_hir(ty, region_counter, None)
+    lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(ty, region_counter, None, &[])
 }
 
 /// Stage 16.56: Region-aware HIR→MIR type lowering with optional HIR access.
@@ -1912,12 +2011,16 @@ pub(crate) fn lower_hir_ty_to_mir_ty_with_regions(ty: &HirTy, region_counter: &m
 /// type paths are resolved correctly (e.g., `Box<Box<i32>>` → inner `Box`
 /// resolved to its DefId).
 ///
+/// Stage 18.105 (S6 fix): Added `generic_params` parameter so bare type
+/// parameters (e.g., `T` in `Box<T>`) resolve to `Param(N)`.
+///
 /// Per §23: function name follows `<verb>_<noun>_<noun>_<prep>_<noun>_<prep>_<noun>`
-/// pattern with `_with_regions_and_hir` suffix.
-fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
+/// pattern with `_with_regions_and_hir_and_generics` suffix.
+fn lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
     ty: &HirTy,
     region_counter: &mut u32,
     hir: Option<&HirCrate>,
+    generic_params: &[crate::mir::ty::ParamTy],
 ) -> Ty {
     // Stage 18.57: Use the HIR Ty's span instead of Span::DUMMY.
     // Per §1.0 原則 3 "显式 > 隐式": span is explicitly propagated from HIR.
@@ -1933,7 +2036,14 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
         HirTyKind::Tuple(tys) => Ty::new(
             TyKind::Tuple(
                 tys.iter()
-                    .map(|t| lower_hir_ty_to_mir_ty_with_regions_and_hir(t, region_counter, hir))
+                    .map(|t| {
+                        lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
+                            t,
+                            region_counter,
+                            hir,
+                            generic_params,
+                        )
+                    })
                     .collect(),
             ),
             span,
@@ -1959,10 +2069,11 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
                 TyKind::Ref(
                     mir_region,
                     mir_mut,
-                    Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir(
+                    Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                         inner,
                         region_counter,
                         hir,
+                        generic_params,
                     )),
                 ),
                 span,
@@ -1976,31 +2087,36 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
             Ty::new(
                 TyKind::RawPtr(
                     mir_mut,
-                    Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir(
+                    Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                         inner,
                         region_counter,
                         hir,
+                        generic_params,
                     )),
                 ),
                 span,
             )
         }
         HirTyKind::Slice(inner) => Ty::new(
-            TyKind::Slice(Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir(
-                inner,
-                region_counter,
-                hir,
-            ))),
+            TyKind::Slice(Box::new(
+                lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
+                    inner,
+                    region_counter,
+                    hir,
+                    generic_params,
+                ),
+            )),
             span,
         ),
         HirTyKind::Array(inner, count_expr) => {
             let len_const = const_eval_array_len(count_expr, span);
             Ty::new(
                 TyKind::Array(
-                    Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir(
+                    Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                         inner,
                         region_counter,
                         hir,
+                        generic_params,
                     )),
                     Box::new(len_const),
                 ),
@@ -2028,7 +2144,9 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
                     Res::Def(def_id, _) => {
                         // Stage 16.56: Pass HIR to lower_path_generic_args so
                         // nested generic paths can be resolved.
-                        let substs = lower_path_generic_args(path, region_counter, hir);
+                        // Stage 18.105 (S6 fix): Pass generic_params for bare type params.
+                        let substs =
+                            lower_path_generic_args(path, region_counter, hir, generic_params);
                         Ty::new(TyKind::Adt(def_id, substs), span)
                     }
                     Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),
@@ -2060,12 +2178,20 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir(
         } => {
             let mir_inputs: Vec<Ty> = inputs
                 .iter()
-                .map(|t| lower_hir_ty_to_mir_ty_with_regions_and_hir(t, region_counter, hir))
+                .map(|t| {
+                    lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
+                        t,
+                        region_counter,
+                        hir,
+                        generic_params,
+                    )
+                })
                 .collect();
-            let mir_output = Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir(
+            let mir_output = Box::new(lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                 output,
                 region_counter,
                 hir,
+                generic_params,
             ));
             Ty::new(
                 TyKind::FnPtr(crate::mir::ty::Sig {
@@ -2110,7 +2236,12 @@ pub(crate) fn lower_qualified_path_to_projection(
     span: Span,
 ) -> Ty {
     // Step 1: Lower the inner self type T.
-    let self_ty = lower_hir_ty_to_mir_ty_with_regions_and_hir(inner_ty, region_counter, hir);
+    let self_ty = lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
+        inner_ty,
+        region_counter,
+        hir,
+        &[],
+    );
 
     // Step 2: The last segment of the path is the assoc item name.
     let assoc_segment = path.segments.last().expect(

@@ -435,7 +435,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                     // generic args from path into Adt substs.
                                     // Per §1.0 原則 6 "通用 > 特例": one path
                                     // for all generic enum variants.
-                                    let substs = lower_path_generic_args(path, &mut 0, cx.hir);
+                                    let substs = lower_path_generic_args(
+                                        path,
+                                        &mut 0,
+                                        cx.hir,
+                                        &cx.generic_params,
+                                    );
                                     let adt_ty =
                                         Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
                                     let discr = Operand::Constant(Const {
@@ -467,7 +472,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         // Stage 16.52 (Task 11 Phase 1c): propagate generic
                         // args from path into Adt substs (consistent with
                         // lower_hir_ty_to_mir_ty_with_regions).
-                        let substs = lower_path_generic_args(path, &mut 0, cx.hir);
+                        let substs =
+                            lower_path_generic_args(path, &mut 0, cx.hir, &cx.generic_params);
                         let adt_ty = Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
                         return cx.eval_rvalue_to_temp(
                             Rvalue::Use(Operand::Constant(Const {
@@ -571,7 +577,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                 // TD-MONO-INFER). The substs are populated by
                                 // lower_path_generic_args which reads explicit
                                 // turbofish args from the path.
-                                let substs = lower_path_generic_args(path, &mut 0, cx.hir);
+                                let substs = lower_path_generic_args(
+                                    path,
+                                    &mut 0,
+                                    cx.hir,
+                                    &cx.generic_params,
+                                );
                                 let fndef_ty = Ty::new(TyKind::FnDef(def_id, substs), expr.span);
                                 return cx.eval_rvalue_to_temp(
                                     Rvalue::Use(Operand::Constant(Const {
@@ -587,7 +598,12 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                                 // Stage 18.101: Propagate generic args from path
                                 // into FnDef substs. For paths without turbofish,
                                 // substs may be empty — see TD-MONO-INFER note above.
-                                let substs = lower_path_generic_args(path, &mut 0, cx.hir);
+                                let substs = lower_path_generic_args(
+                                    path,
+                                    &mut 0,
+                                    cx.hir,
+                                    &cx.generic_params,
+                                );
                                 let fndef_ty = Ty::new(TyKind::FnDef(def_id, substs), expr.span);
                                 return cx.eval_rvalue_to_temp(
                                     Rvalue::Use(Operand::Constant(Const {
@@ -1904,7 +1920,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Stage 16.53 (Task 11 Phase 2): use resolve_adt_field_tys_with_substs
             // so generic struct fields get substituted with the Adt's substs.
             if let Res::Def(def_id, DefKind::Struct) = path.res {
-                let substs = lower_path_generic_args(path, &mut 0, cx.hir);
+                let substs = lower_path_generic_args(path, &mut 0, cx.hir, &cx.generic_params);
                 let field_tys = if substs.is_empty() {
                     field_resolution::resolve_adt_field_tys(cx, def_id)
                 } else {
@@ -1931,7 +1947,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                         });
                         let mut all_operands = vec![discr];
                         all_operands.extend(operands);
-                        let substs = lower_path_generic_args(path, &mut 0, cx.hir);
+                        let substs =
+                            lower_path_generic_args(path, &mut 0, cx.hir, &cx.generic_params);
                         let enum_ty = Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
                         return cx.eval_rvalue_to_temp(
                             Rvalue::Aggregate(

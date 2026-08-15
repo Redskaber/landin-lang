@@ -13714,3 +13714,58 @@ Stage Summary:
 - v0.2 P0 单态化: turbofish ✅, 隐式推理 ✅, per-mono codegen ✅, S5 ✅
 - 残留: S6 (nested Param return) + S2 (method mono) — v0.2 Phase 2
 - 下一步: v0.2 Phase 2 (S6 修复) 或 v0.2 P0 (mini-cargo 项目系统)
+
+---
+Task ID: stage18.105
+Agent: Super Z (main)
+Task: Stage 18.105 — S6 Fix: Nested Param Return Type Resolution. v0.372.0 → v0.373.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.104-mono-return-type-s6-investigation.md S6 根因
+  → lower_ast_ty_to_mir_ty 无法解析裸类型参数 T (只扫描 struct/enum)
+- S6 修复实现:
+  1. 新增 lower_ast_ty_to_mir_ty_with_generics(ty, hir, generic_params):
+     → 检查 ATy::Path 单段路径是否匹配 generic_params 中的 ParamTy
+     → 若匹配, 返回 Param(N) 而非 Error
+  2. 更新 lower_path_generic_args: 新增 generic_params 参数
+     → 传递给 lower_ast_ty_to_mir_ty_with_generics
+  3. 新增 lower_hir_ty_to_mir_ty_with_hir_and_generics: HIR 层变体
+     → 线程 generic_params 通过递归类型 lowering
+  4. 重命名内部函数: lower_hir_ty_to_mir_ty_with_regions_and_hir → ..._and_generics
+     → 所有递归调用传递 generic_params
+  5. MirLowerCtxt 新增 generic_params 字段
+     → 在 lower_hir_body_to_mir_full_with_dyn_trait_plan 中从 HIR generics 设置
+  6. driver fn_sig_table 构建: 使用 lower_hir_ty_to_mir_ty_with_hir_and_generics
+     → 传递 generic_params = find_generics(def_id, hir)
+- 验证 S6 修复:
+  → 修复前: fn_sigs[make_box].output = Adt(Box, [Error]) ❌
+  → 修复后: fn_sigs[make_box].output = Adt(Box, [Param(0)]) ✅
+- 发现新问题 S7:
+  → collect_mono_items 收集了泛型定义类型 (Box<T> with [Param(0)])
+    而非具体调用点实例化 (Box<i32>, Box<bool>)
+  → 影响: build_mono_layouts 产生 [Param(0)] 和 [Error] 键的布局,
+    而非 [i32] 和 [bool]
+  → 特化函数 make_box<bool> 返回 { i32 } 而非 { i1 }
+  → 修复计划: v0.2 Phase 2 — collect_mono_items 跳过含 Param 的 substs
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2628 passed, 0 failed
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.105-s6-fix-nested-param-resolution.md (新建, 含 S7 记录)
+  - Cargo.toml: v0.372.0 → v0.373.0
+  - README.md: v0.372.0 → v0.373.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.105 PASSED — S6 修复 (嵌套 Param 返回类型解析)
+- 根因: lower_ast_ty_to_mir_ty 无法解析裸类型参数 T
+- 修复: 传递 generic_params 上下文通过类型 lowering 链
+- fn_sigs[make_box].output 现在正确产生 Adt(Box, [Param(0)])
+- 新发现 S7: MonoItem 收集泛型定义类型 (需跳过 Param substs) — v0.2 Phase 2
+- 640 lib + 2628 integration = 3268 unit tests, 0 failures
+- v0.373.0: minor bump (S6 fix)
+- v0.2 P0 单态化: turbofish ✅, 隐式推理 ✅, per-mono codegen ✅, S5 ✅, S6 ✅
+- 残留: S7 (MonoItem 收集) + S2 (method mono) — v0.2 Phase 2

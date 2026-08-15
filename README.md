@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.372.0 (Stage 18.104 — S5 fix: type_names pre-computed; S6 documented)  
+> **Version**: v0.373.0 (Stage 18.105 — S6 fix: nested Param return type resolution)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization: core done, S2/S6 deferred)
+> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization: core + S5 + S6 done, S7/S2 deferred)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets
