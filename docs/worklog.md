@@ -14424,3 +14424,44 @@ Stage Summary:
 - v0.388.0: doc-sync bump (tech debt register)
 - 所有深度审查行动项 + 技术债登记完成
 - 下一步: v0.2 P0 (mini-cargo 项目系统)
+
+---
+Task ID: stage18.121
+Agent: Super Z (main)
+Task: Stage 18.121 — Process Doc v6.0: §17 任务规划排版图. v0.388.0 → v0.389.0.
+
+Work Log:
+- §13.1 设计对齐: 用户要求优化重构 docs/stage-committee-process.md + 添加任务规划排版图条例
+- 优化重构 docs/stage-committee-process.md v5.0 → v6.0:
+  → 版本号更新: v5.0 → v6.0
+  → 100% 保留 v5.0 全部规则 (§1-§16)
+  → 新增 §17: 任务规划排版图 (270 行)
+- §17 内容 (七步流程):
+  Step 1: 扫描文档 — 确认任务 + 能力边界 (扫描 lang-design/tech-debt-register/capability-boundaries/tests/matrix/worklog/gate-review)
+  Step 2: 依赖图构建 — DAG + 拓扑排序 + 并行执行
+  Step 3: 节点流定义 — 任务节点内细化任务层级, 权重仅作用于节点内排序, 节点完成才能进入下一节点
+  Step 4: 递归支持 — 任务节点可嵌套子图 (≤3 层)
+  Step 5: 设计-开发-测试节点流 — 三节点递进 (设计→开发→测试), 测试↔设计相互印证, 测试5阶段递进 (局部→集成→E2E→负向→健壮性)
+  Step 6: 缺陷纳入 — 简化/缺陷 → 修复任务节点 (并行于正常流), 适用所有流程 (设计/开发/测试/审查/修复/重构/文档)
+  Step 7: 优化补充 — 审查规划图缺陷 (任务遗漏/依赖完整性/缺陷纳入/测试覆盖/能力边界/递归合理性)
+- §17 输出格式: docs/develop/v0/stage-N/plan.md
+- §17 与现有章节关系: §4 MUV (叶子任务=MUV), §13.1 (Step1包含设计查询), §5 (Step7=规划层内循环), §9.4 (Step5=锚定实例化), §6 (Step6=分级标准), §14 (首尾呼应)
+- 更新引用:
+  → §1.2 路由表: "进入新阶段" 行添加 §17
+  → §2.1 总体原则: 添加 "任务规划排版图 (§17)" 原则
+  → §16 变更日志: 添加 v6.0 条目
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+- §8 文档同步:
+  - docs/stage-committee-process.md: v5.0 → v6.0 (2533→2804 行, +271 行 §17)
+  - Cargo.toml: v0.388.0 → v0.389.0
+  - README.md: v0.388.0 → v0.389.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.121 PASSED — Process doc v6.0 + §17 任务规划排版图
+- 新增 §17 (270 行): 七步任务规划流程
+- 100% 保留 v5.0 全部规则
+- v0.389.0: doc-update bump (process doc v6.0)
+- 下一步: v0.2 P0 (mini-cargo 项目系统), 使用 §17 任务规划排版图
