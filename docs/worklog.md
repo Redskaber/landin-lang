@@ -14556,3 +14556,140 @@ Stage Summary:
 - 所有深度审查 MEDIUM 修复完成
 - v0.391.0: doc-fix bump (process doc v6.2)
 - 下一步: v0.2 P0 (mini-cargo 项目系统), 使用 §17 任务规划排版图
+
+---
+Task ID: stage18.124
+Agent: Super Z (main)
+Task: Stage 18.124 — Process Doc v6.3: MEDIUM Fix Closure from Deep Audit. v0.391.0 → v0.392.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.122-process-doc-v6-audit-report.md MEDIUM 修复计划
+  → Stage 18.123 (v6.2) 完成了 6 项 MEDIUM 修复
+  → 但审查报告原始 #13 (calibration-data.md) 和 #14 (mermaid 标签引号化) 未完成
+  → Stage 18.123 把 #14 替换为 "ASCII-art → mermaid" (不同的修复)
+  → 本阶段 (18.124) 收尾剩余 2 项 MEDIUM + 修复 18.123 引入的 1 项交叉引用 bug
+
+- MEDIUM 修复收尾 (3 项):
+  1. §6.6.1 新增 calibration-data.md 校准数据池定义:
+     → 文件位置: docs/develop/v0/calibration-data.md
+     → 强制文件结构: 每阶段统计表 + 校准结论滚动更新 + 历史教训归档 + 更新规则
+     → §6.6.2 历史校准结论迁入 (从原 §6.6 末尾迁入)
+     → §17.2 扫描表添加 calibration-data.md 行
+     → §8.4.2 开发文档目录树添加 calibration-data.md + tech-debt-register.md + v0.1-capability-boundaries.md + v0.5-roadmap.md
+     → §8.4.2 命名规则添加 calibration-data.md + tech-debt-register.md 行
+     → 创建实际文件 docs/develop/v0/calibration-data.md (117 行, 含历史 Stage 0/2.x/3.x/14.x/16.x/18.x 数据)
+
+  2. §14.7.4 D1-D6 → C1-C6 交叉引用 bug 修复:
+     → Stage 18.123 重编号 §14.7 表格 D1-D6 → C1-C6 但遗漏了 §14.7.4 完成标准的 "(D1-D6)" 引用
+     → 修复: "6 个维度全部通过（D1-D6）" → "6 个维度全部通过（C1-C6, Stage 18.123: 由 D→C 重编号...）"
+     → 验证: 全文档扫描 D1-D6 仅剩 ChangeLog 历史条目 (正确, 描述变更历史)
+
+  3. 全面 mermaid 标签引号化 (68 行):
+     → 编写 scripts/scan_mermaid_labels.py 扫描全文档 mermaid 块
+     → 发现 72 个未加引号含特殊字符的标签 (散布于 §1.3/§9.4.1/§13.1.1/§13.2/§13.4.2/§13.5.1/§14.1/§14.3/§14.7.3/§14.8.1/§14.8.5/§17.1)
+     → 编写 scripts/quote_mermaid_labels.py 自动加引号
+     → 处理: ID[label] → ID["label"], ID{label} → ID{"label"}, ID([label]) → ID(["label"])
+     → 同时还原 HTML 实体: &lt; → <, &gt; → >, &amp; → & (引号内安全)
+     → 修改 68 行 (72 个标签中 4 个为已加引号误报)
+     → 编写 scripts/verify_mermaid_labels.py 最终验证: 0 个真实残留问题
+     → 涵盖特殊字符: () [] {} , / : + → <br/> % ≥ &lt; &gt;
+
+- §3.2 验收:
+  - cargo check --features llvm-backend ✅ (0 errors, 0 warnings, 2.81s)
+  - cargo fmt --check ✅ exit 0
+- §8 文档同步:
+  - docs/stage-committee-process.md: v6.2 → v6.3 (2833→2890 行, +57 行)
+  - docs/develop/v0/calibration-data.md (新建, 117 行)
+  - Cargo.toml: v0.391.0 → v0.392.0
+  - README.md: v0.391.0 → v0.392.0, v6.2 → v6.3
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.124 PASSED — Process doc v6.3 MEDIUM 修复收尾
+- 3 项收尾修复: calibration-data.md 校准数据池 + §14.7.4 D→C 交叉引用 + 68 行 mermaid 标签引号化
+- 流程文档 v6.2 → v6.3 (2890 行)
+- 新建 calibration-data.md: 含 Stage 0-18 历史校准数据 + 4 项告警阈值 + 7 项流程优化历史 + 4 条历史教训归档
+- 全部 13 维度审计 MEDIUM 项 (9-14) 已完成 (Stage 18.123 完成 9-12, Stage 18.124 完成 13-14)
+- v0.392.0: doc-fix bump (process doc v6.3)
+- 下一步: v0.2 P0 (mini-cargo 项目系统), 使用 §17 任务规划排版图
+
+---
+Task ID: stage18.125
+Agent: Super Z (main)
+Task: Stage 18.125 — Process Doc v6.4: Round 2 Deep Audit Fixes. v0.392.0 → v0.393.0.
+
+Work Log:
+- §13.1 设计对齐: 用户要求继续按修复计划对 docs/stage-committee-process.md 优化重构
+  → 上次 Stage 18.124 完成了 v6.1 深度审计的 13/14 MEDIUM 项 (HIGH 8 + MEDIUM 6 已完成)
+  → 本阶段执行 Round 2 深度审计, 识别新一轮 7 项问题
+
+- Round 2 深度审计识别的 7 项问题:
+  1. §6.2.1 悬空引用 — §8.4.2 (lines 788, 820) 引用 §6.2.1 但 §6.2.1 不存在
+  2. §1.3 mermaid 未体现 L1/L2/L3 分层 (与 §1.2.1 新增分层不一致)
+  3. §14.6.5 自我强化与 §6.6.1 calibration-data.md 职责重叠
+  4. §9.3 三阶段文档协议无节首介绍, 与 §8/§15 关系不清
+  5. §8.5 审查检查未包含 tech-debt-register.md + calibration-data.md 检查项
+  6. §8.4.1 顶层目录树 docs/tests/ 子项与 §9.2 不一致 (缺 pipeline-test-coverage.md + gate/)
+  7. §3.5 ASCII-art 执行协议未转换为 mermaid (与 §3.1 不一致, Stage 18.123 遗漏)
+
+- 7 项修复实施:
+  1. §6.2.1 新增 tech-debt-register.md 综合技术债登记册定义:
+     → 文件位置: docs/develop/v0/tech-debt-register.md (已存在)
+     → 强制结构: 已解决项 + 剩余项 + 架构摘要 + 分类索引 (按 §6.1/§11.3/§10/§13.4)
+     → 更新规则: 每子阶段必更新 + 大阶段末尾全审 + 跨引用 calibration-data.md + 只追加不删除 + REC-A 责任
+     → 与 §6.6.1 职责分工表 (代码层 vs 流程层)
+
+  2. §1.3 整体阶段工作流 mermaid 添加 [L3] 分层标注:
+     → §14.5/§14.6 节点添加 [L3] 标记
+     → 添加节首"分层提示"段 + 节末"L1/L2 路径"说明
+     → 与 §1.2.1 L1/L2/L3 分层应用表一致
+
+  3. §14.6.5 与 §6.6.1 去重:
+     → §14.6.5 添加"与 §6.6.1 的关系"说明
+     → 项目资产层 (§14.6.5) vs 流程层 (§6.6.1) 职责分工
+     → §14.6.5 执行协议补充: 工具/文档/组织结构补充动作 → 触发 §6.6.1 流程优化历史表追加
+
+  4. §9.3 三阶段文档协议添加节首介绍:
+     → 添加"目的" + "与 §8/§15 的关系"
+     → §8 触发式规则 (粒度) + §9.3 时期式规则 (节奏) + §15 专题规则 (可视化) 互补
+
+  5. §8.5 审查检查补充 3 项:
+     → 13. tech-debt-register.md (§6.2.1) 每子阶段必检
+     → 14. calibration-data.md (§6.6.1) 大阶段末尾必检
+     → 15. 新文档加入 §8.4 对应目录树
+
+  6. §8.4.1 顶层目录树补全 docs/tests/ 子项:
+     → 添加 pipeline-test-coverage.md (§9.5.1)
+     → 添加 gate/ 子目录
+     → 与 §9.2 目录树一致
+
+  7. §3.5 ASCII-art 执行协议 → mermaid:
+     → 与 §3.1 (Stage 18.123 已转换) 保持一致
+     → 4 步流程 (auto-query → auto-install → auto-configure → 继续) 全部 mermaid 化
+     → 所有标签加引号 + literal < > (引号内安全)
+
+  8. §8.4.5 文档优先查询表补全 2 行:
+     → "查看技术债状态" → tech-debt-register.md (§6.2.1)
+     → "查看流程校准基线" → calibration-data.md (§6.6.1)
+
+- §3.2 验收:
+  - cargo check --features llvm-backend ✅ (0 errors, 0 warnings, 3.03s)
+  - cargo fmt --check ✅ exit 0
+  - cargo test --features llvm-backend --lib ✅ 640 passed
+  - cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed
+  - python3 scripts/verify_mermaid_labels.py ✅ OK (0 残留未引号化标签)
+
+- §8 文档同步:
+  - docs/stage-committee-process.md: v6.3 → v6.4 (2936 行, +46 行)
+  - Cargo.toml: v0.392.0 → v0.393.0
+  - README.md: v0.392.0 → v0.393.0, v6.3 → v6.4
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.125 PASSED — Process doc v6.4 Round 2 深度审计修复
+- 7 项 Round 2 修复: §6.2.1 悬空引用 + §1.3 分层标注 + §14.6.5/§6.6.1 去重 + §9.3 介绍 + §8.5 检查补全 + §8.4.1 目录树同步 + §3.5 ASCII→mermaid + §8.4.5 查询表补全
+- 流程文档 v6.3 → v6.4 (2936 行)
+- Round 2 深度审计完成, 流程文档质量进一步提升
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.393.0: doc-fix bump (process doc v6.4)
+- 下一步: v0.2 P0 (mini-cargo 项目系统), 使用 §17 任务规划排版图

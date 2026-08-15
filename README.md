@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.391.0 (Stage 18.123 — Process doc v6.2: MEDIUM fixes — D→C renumber + max-retry + 权重 + worklog path + L1/L2/L3 + ASCII→mermaid)  
+> **Version**: v0.393.0 (Stage 18.125 — Process doc v6.4: Round 2 deep audit fixes — §6.2.1 tech-debt-register + §1.3 L1/L2/L3 tiering + §14.6.5/§6.6.1 dedup + §9.3 intro + §8.5 checks + §8.4.1 tree sync + §3.5 mermaid)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.2
+> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets

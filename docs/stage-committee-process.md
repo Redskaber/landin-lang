@@ -1,7 +1,7 @@
 # 项目阶段推进与质量管控流程（Agent Groups）
 
 > **Author**: redskaber
-> **Version**: 6.2（MEDIUM 修复：D→C 重编号 + max-retry 守卫 + 权重定义 + worklog 路径 + L1/L2/L3 分层 + ASCII→mermaid）
+> **Version**: 6.4（Round 2 深度审计修复：§6.2.1 悬空引用补全 + §1.3 L1/L2/L3 分层标注 + §14.6.5 与 §6.6.1 去重 + §9.3 节首介绍 + §8.5 审查检查补全 + §8.4.1 目录树同步 + §3.5 ASCII→mermaid）
 > **Purpose**: 为 Agent Group 提供清晰、严格、高效、可协调的阶段推进与质量管控 SOP。
 > 任何 Agent 拿到本文档即可：**清晰**知道每个阶段/轮次/角色的输入输出与验收标准；**严格**知道哪些是硬性阻断、哪些可酌情；**高效**知道哪些可并行、哪些必须串行、何时可提前收敛；**可协调**知道跨 Agent 协作协议（Task ID / worklog / 升级路径）。
 
@@ -70,24 +70,28 @@
 
 ### 1.3 整体阶段工作流
 
+> **分层提示**：以下流程图展示**完整 L3 流程**。L1/L2 任务可按 §1.2.1 跳过部分环节——L1 仅执行 §3.2 + §8 + §10；L2 跳过 §14.5/§14.6 深度审查（用 §7.3 替代）。流程图中标注 `[L3]` 的环节表示 L1/L2 可跳过。
+
 ```mermaid
 flowchart TD
-    Start([新阶段启动]) --> Design[§13.1 阶段开始设计对齐<br/>查阅 docs/lang-design/]
+    Start([新阶段启动]) --> Design["§13.1 阶段开始设计对齐<br/>查阅 docs/lang-design/"]
     Design --> Plan[§4 MUV 拆分 → plan-N.M.md]
-    Plan --> Inner{§5 内循环<br/>动态轮次}
+    Plan --> Inner{"§5 内循环<br/>动态轮次"}
     Inner -->|P0/P1 清零| Q6[§7.2 防崩检查 Q1-Q6]
-    Q6 --> Gate{§7.3 阶段门审查<br/>≥30 case 审计}
+    Q6 --> Gate{"§7.3 阶段门审查<br/>≥30 case 审计"}
     Gate -->|NEEDS REVISION| Inner
-    Gate -->|收敛| Outer[§6.3 外循环投票<br/>5 角色 ≥95%]
+    Gate -->|收敛| Outer["§6.3 外循环投票<br/>5 角色 ≥95%"]
     Outer -->|未通过| Inner
     Outer -->|通过| Commit[Git Commit]
-    Commit --> Deep[§14.5 阶段末尾深度审查 D1-D8]
+    Commit --> Deep["§14.5 阶段末尾深度审查 D1-D8<br/>[L3]"]
     Deep --> Writeback[§14.8 设计回写 B1-B4]
-    Writeback --> CrossStage[§14.6 阶段间深度验证<br/>4 项 + 多轮深挖]
+    Writeback --> CrossStage["§14.6 阶段间深度验证<br/>4 项 + 多轮深挖 [L3]"]
     CrossStage -->|GO| Next([下一阶段])
     CrossStage -->|NO-GO| Refactor[§13.4 重构治理六大判据]
     Refactor --> Inner
 ```
+
+> **L1/L2 路径**：L1 任务只需 `Design → Plan → Inner → Q6 → Gate → Outer → Commit`（跳过 §14.5/§14.6/§14.8）；L2 任务执行到 `Writeback` 即可（跳过 §14.6）。
 
 ### 1.4 Stage Committee 角色映射
 
@@ -347,31 +351,31 @@ cargo clean && cargo build --features llvm-backend && cargo check --features llv
 | `auto-install` | 根据 `auto-query` 结果自动选择最佳安装路径（项目自带 → 包管理器 → 官方脚本），记录到 worklog | `tools/dev/auto-install.sh <tool>` | `docs/tools/dev/auto-install.md` |
 | `auto-configure` | 安装后自动配置环境变量、生成 source 脚本、验证版本 | `tools/dev/auto-configure.sh <tool>` | `docs/tools/dev/auto-configure.md` |
 
-**执行协议**：
-```text
-工具缺失检测
-    │
-    ▼
-1. auto-query <tool>
-    │  ├─ 查 PATH / which <tool>
-    │  ├─ 查 tools/<sub_dirname>/
-    │  ├─ 查 scripts/<sub_dirname>/
-    │  └─ 查包管理器（apt/brew/cargo install）
-    │
-    ▼
-2. auto-install <tool>
-    │  ├─ 若项目自带 → 直接使用
-    │  ├─ 若包管理器有 → 包管理器安装
-    │  └─ 否则 → 官方脚本安装
-    │
-    ▼
-3. auto-configure <tool>
-    │  ├─ source 环境变量
-    │  ├─ 验证 <tool> --version
-    │  └─ 记录到 worklog
-    │
-    ▼
-4. 继续推进任务（不等用户确认）
+**执行协议**（Stage 18.125: ASCII-art → mermaid，与 §3.1 保持一致）：
+
+```mermaid
+flowchart TD
+    Start([工具缺失检测]) --> Q1["1. auto-query <tool>"]
+    Q1 --> Q1a["查 PATH / which <tool>"]
+    Q1 --> Q1b["查 tools/<sub_dirname>/"]
+    Q1 --> Q1c["查 scripts/<sub_dirname>/"]
+    Q1 --> Q1d["查包管理器 (apt/brew/cargo install)"]
+    Q1a --> I1["2. auto-install <tool>"]
+    Q1b --> I1
+    Q1c --> I1
+    Q1d --> I1
+    I1 --> I1a["若项目自带 → 直接使用"]
+    I1 --> I1b["若包管理器有 → 包管理器安装"]
+    I1 --> I1c["否则 → 官方脚本安装"]
+    I1a --> C1["3. auto-configure <tool>"]
+    I1b --> C1
+    I1c --> C1
+    C1 --> C1a["source 环境变量"]
+    C1 --> C1b["验证 <tool> --version"]
+    C1 --> C1c["记录到 worklog"]
+    C1a --> End([4. 继续推进任务 (不等用户确认)])
+    C1b --> End
+    C1c --> End
 ```
 
 **规则**：
@@ -464,6 +468,32 @@ cargo clean && cargo build --features llvm-backend && cargo check --features llv
 2. 判定标准：**如果下一阶段（或下游消费者）的输入依赖该项的输出，且该项的"简化实现"会产出错误结果，则该 P3 必须升级。**
 3. 不得以"后续阶段处理"为由推迟会影响集成正确性的 P3。
 
+#### 6.2.1 综合技术债登记册（tech-debt-register.md）
+
+> **目的**（Stage 18.125 新增，Round 2 深度审计）：把全项目的技术债从分散的 dev-log / gate-review 收敛到**单一持久化文件**，与 §6.6.1 calibration-data.md（流程校准数据池）形成"技术债 + 流程校准"双视图。
+
+**文件位置**：`docs/develop/v0/tech-debt-register.md`
+
+**强制结构**（参见实际文件）：
+1. **已解决项**（Resolved）：每项含 ID、描述、解决阶段、验证方式
+2. **剩余项**（Open）：每项含 ID、描述、当前等级（P0/P1/P2/P3）、目标解决版本、阻塞条件
+3. **架构摘要**：流水线图 + 测试计数 + Span::DUMMY 状态 + 枚举分支覆盖 + 错误系统状态
+4. **分类索引**：按 §6.1 缺陷等级 + 按 §11.3 接口隔离违规（L-PIPE-N）+ 按 §10 命名违规（L-NAMING-N）+ 按 §13.4 重构判据（J1-J6）
+
+**更新规则**：
+1. **每子阶段必更新**：每个子阶段（如 Stage 18.107）完成后，REC-A 必须更新 tech-debt-register.md 的对应分类索引（新增已解决项 + 调整剩余项优先级）。
+2. **大阶段末尾全审**：每个大阶段末尾的 §14.5 深度审查时，**必须**对 tech-debt-register.md 做全量审计——确认所有"已解决"项确实在代码中消失、所有"剩余"项的优先级仍准确。
+3. **跨引用 calibration-data.md**：tech-debt-register.md 中"已解决项"的数量趋势必须与 calibration-data.md §1 表中"P0/P1/P2/P3 发现密度"列相互印证（双向追溯）。
+4. **只追加不删除**：本文件为追加型日志，已解决项不删除（保留作为历史决策记录），仅标注 `[Resolved at Stage N.M]`。
+5. **REC-A 责任**：本文件由 REC-A 在阶段归档时同步更新（per §8 文档同步规则）。
+
+**与 §6.6.1 的职责分工**：
+
+| 文件 | 关注点 | 时间维度 | 更新频率 |
+|------|--------|---------|---------|
+| `tech-debt-register.md`（§6.2.1） | **代码层**技术债（接口违规、命名违规、Span::DUMMY 等） | 单阶段 + 跨阶段累积 | 每子阶段 |
+| `calibration-data.md`（§6.6.1） | **流程层**校准数据（轮次偏差、误分类率、集成覆盖率） | 跨阶段滚动 | 每大阶段 + 显著偏差子阶段 |
+
 ### 6.3 团队准入讨论（外循环与二次内循环联动）
 
 **角色与权重**：
@@ -519,7 +549,56 @@ cargo clean && cargo build --features llvm-backend && cargo check --features llv
 
 以上数据作为**下一阶段复杂度预评估（三项指标）的校准依据**，实现流程的持续优化。
 
-**校准结论**（来自历史阶段数据）：
+#### 6.6.1 校准数据池（calibration-data.md）
+
+> **目的**（Stage 18.124 新增，来自 v6.1 深度审计 MEDIUM #13）：把"校准依据"从概念性描述固化为**单一持久化文件**，避免每个阶段的统计数据散落在不同 worklog/dev-log 里、跨阶段比对困难。
+
+**文件位置**：`docs/develop/v0/calibration-data.md`
+
+**文件结构**（强制）：
+
+```markdown
+# 流程校准数据池
+
+> **Author**: redskaber
+> **Version**: vX.Y
+> **Status**: Active
+> **最后更新**: Stage N.M / YYYY-MM-DD
+
+## 1. 每阶段统计表
+
+| Stage | 预估等级 | 实际轮次 | P0 | P1 | P2 | P3 | P3→P0/P1 误分类 | 紧急通道 | 集成覆盖率 | 备注 |
+|-------|---------|---------|----|----|----|----|----------------|---------|-----------|------|
+| 0 | L3 | 9 | ... | ... | ... | ... | N/A | 0 | 60% | v0.1.4 基线 |
+| 2.x | L3 | 12 | 5 | 8 | 14 | 7 | 5/7 (高) | 0 | 30% | 触发 §7 引入 |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... | ... | ... |
+
+## 2. 校准结论（滚动更新）
+
+- L2 基准轮次区间：4~9 轮（Stage 0 v0.1.4 验证）
+- L3 基准轮次区间：8~15 轮（Stage 3.1-3.45 用满 12 轮）
+- P3 误分类率告警阈值：≥30%（Stage 2.x 教训）
+- 集成覆盖率告警阈值：<50%（触发 §7 复查）
+
+## 3. 历史教训归档
+
+### Stage 2.x: 孤立正确但集成失败
+- 现象：5/7 个 P3 实际为 P0/P1
+- 根因：子阶段间无集成测试
+- 修复：新增 §7 集成验证协议 + §6.2 技术债分类审查规则
+
+### Stage N.M: ...
+- ...
+```
+
+**更新规则**：
+1. 每个大阶段（Stage 0/1/2/3/4/5）末尾的 §14.5 深度审查时，**必须**向本文件追加一行阶段统计 + 一条校准结论。
+2. 子阶段（如 Stage 3.47）的统计只在出现显著偏差（实际轮次 > 预估 × 1.5，或 P3 误分类率 ≥ 30%）时才追加。
+3. 紧急通道（§6.5）触发后，事后审计日志必须同步写入本文件的"历史教训归档"小节。
+4. 本文件由 REC-A 在阶段归档时同步更新（per §8 文档同步规则）。
+
+#### 6.6.2 历史校准结论（迁入）
+
 - L2 基准轮次区间维持 4~9 轮
 - L3 基准轮次区间调整为 8~15 轮（Stage 0 v0.1.4 验证了 9 轮的必要性；Stage 3.1-3.45 用满 12 轮）
 - **P3 误分类率**：Stage 2.x 中多个 P3 实际为 P0/P1（高误分类率）
@@ -713,10 +792,12 @@ docs/
 ├── lang-design/         # 语言设计文档（00-19 编号）
 ├── tests/               # 测试文档（与 develop 相互印证）
 │   ├── README.md
-│   ├── matrix.md
+│   ├── matrix.md                    # 全局测试矩阵
+│   ├── pipeline-test-coverage.md    # 流水线路径覆盖（§9.5.1）
 │   └── v0/
 │       └── stage-N/
-│           └── plan/
+│           ├── plan/
+│           └── gate/
 ├── llvm/                # LLVM 相关文档
 ├── graph/               # 项目图（mermaid 数据流图，§15）
 │   └── <sub_dirname>/
@@ -735,6 +816,10 @@ docs/
 
 ```text
 docs/develop/v0/
+├── calibration-data.md   # 流程校准数据池（§6.6.1，跨阶段统计 + 校准结论）
+├── tech-debt-register.md # 综合技术债登记册（§6.2.1）
+├── v0.1-capability-boundaries.md  # 能力边界文档
+├── v0.5-roadmap.md       # 长期路线图
 ├── stage-0/
 │   ├── plan.md          # 阶段计划（MUV 拆分、验收标准）
 │   ├── status.md        # 阶段状态报告
@@ -763,6 +848,8 @@ docs/develop/v0/
 - `gate-review.md` — 门审查报告（单轮）
 - `gate-review-roundN.md` — 门审查报告（多轮，N=1,2,3...）
 - `task-{name}.md` — 具体任务文档（如果阶段复杂，按 MUV 拆分）
+- `calibration-data.md` — 流程校准数据池（§6.6.1，跨阶段汇总，**禁止删除历史行**，只追加）
+- `tech-debt-register.md` — 综合技术债登记册（§6.2.1）
 
 #### 8.4.3 语言设计文档
 
@@ -820,6 +907,8 @@ docs/lang-design/
 | 修改借用检查 | `docs/lang-design/05-ownership-borrowing.md` | 所有权设计 |
 | 修改 codegen | `docs/lang-design/07-codegen.md` | codegen 设计 |
 | 修改流程 | `docs/stage-committee-process.md` | 当前流程版本 |
+| 查看技术债状态 | `docs/develop/v0/tech-debt-register.md`（§6.2.1） | 已解决/剩余项 + 分类索引 |
+| 查看流程校准基线 | `docs/develop/v0/calibration-data.md`（§6.6.1） | L2/L3 轮次区间 + 误分类率告警阈值 |
 | Agent 协作 | `docs/agent-team/` | 角色定义、协作规范 |
 | 回顾历史决策 | `docs/agent-team/05-meeting-and-decision-log.md` | 历史决策记录 |
 | 查看项目风险 | `docs/agent-team/06-risk-register.md` | 已知风险 |
@@ -849,6 +938,9 @@ docs/lang-design/
 10. 新文档是否有元数据头（Author/Date/Version/Status）
 11. 代码块是否标注了语言
 12. 文档在 GitHub/编辑器中是否正确渲染（无断裂的 Markdown）
+13. **`docs/develop/v0/tech-debt-register.md`（§6.2.1）是否同步更新**——新增已解决项 / 调整剩余项优先级（每子阶段必检）
+14. **`docs/develop/v0/calibration-data.md`（§6.6.1）是否同步更新**——大阶段末尾必检；子阶段仅在显著偏差时检查
+15. **新文档是否已加入 §8.4 对应目录树**——避免文档孤立
 
 **未通过则触发 NEEDS REVISION。**
 
@@ -985,6 +1077,10 @@ docs/tests/
 
 ### 9.3 三阶段文档协议
 
+> **目的**：把"阶段生命周期"对应的文档要求从隐式约定固化为流程协议。每个阶段的完整生命周期分为三个时期，每个时期有不同的文档要求。
+>
+> **与 §8 / §15 的关系**：§8 是"代码变更触发文档同步"的**触发式规则**（任何变更都同步），§9.3 是"阶段生命周期触发文档创建"的**时期式规则**（按时期批量创建/更新），§15 是"图同步"的**专题规则**（图与文档同源）。三者互补：§8 管粒度、§9.3 管节奏、§15 管可视化。
+
 每个阶段的完整生命周期分为三个时期，每个时期有不同的文档要求：
 
 #### 9.3.1 时期 1：阶段开始→末尾（开发轮）
@@ -1043,9 +1139,9 @@ docs/tests/
 
 ```mermaid
 flowchart LR
-    Design[设计<br/>docs/lang-design/]
-    Dev[开发<br/>src/]
-    Test[测试<br/>tests/ + docs/tests/]
+    Design["设计<br/>docs/lang-design/"]
+    Dev["开发<br/>src/"]
+    Test["测试<br/>tests/ + docs/tests/"]
     Design -->|设计驱动开发| Dev
     Dev -->|实现反映设计| Design
     Dev -->|实现驱动测试| Test
@@ -1141,7 +1237,7 @@ flowchart LR
     IR --> OBJ[Object]
     OBJ --> LNK[Link]
     LNK --> EXE[Execute]
-    EXE --> OUT[stdout/exit]
+    EXE --> OUT["stdout/exit"]
 ```
 
 每个箭头代表一个阶段间集成点，必须有对应的测试路径覆盖。
@@ -1515,14 +1611,14 @@ REV-A 在代码审查时必须验证以下项目：
 
 ```mermaid
 flowchart TD
-    Start([新阶段启动]) --> A[1. 定位设计文档 PM-A<br/>docs/lang-design/]
-    A --> B[2. 解读设计意图 ARCH-A<br/>列出核心数据结构/算法/接口契约<br/>列出必须做/禁止项/灰区]
-    B --> C[3. 对照项目现状 PM-A + ARCH-A<br/>已实现? 偏离? 未实现?]
-    C --> D[4. 制定阶段规划 PM-A<br/>MUV 拆分 + 验收标准<br/>偏差处理 + 灰区决策]
-    D --> E[5. 输出 plan-N.M.md<br/>含设计文档对齐小节]
+    Start([新阶段启动]) --> A["1. 定位设计文档 PM-A<br/>docs/lang-design/"]
+    A --> B["2. 解读设计意图 ARCH-A<br/>列出核心数据结构/算法/接口契约<br/>列出必须做/禁止项/灰区"]
+    B --> C["3. 对照项目现状 PM-A + ARCH-A<br/>已实现? 偏离? 未实现?"]
+    C --> D["4. 制定阶段规划 PM-A<br/>MUV 拆分 + 验收标准<br/>偏差处理 + 灰区决策"]
+    D --> E["5. 输出 plan-N.M.md<br/>含设计文档对齐小节"]
     E --> F{6. REV-A 审查一致性}
     F -->|通过| G([进入阶段执行])
-    F -->|不通过| H[NEEDS REVISION<br/>重新规划]
+    F -->|不通过| H["NEEDS REVISION<br/>重新规划"]
     H --> D
 ```
 
@@ -1565,15 +1661,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[阶段完全结束<br/>gate review 全部通过] --> B[切换期开始]
-    B --> C[1. 收集 §14.5 深度审查的 D1-D8 结论<br/>+ §14.8 设计偏差清单]
-    C --> D[2. ARCH-A 识别 6 维度重构候选<br/>按风险/收益排序]
+    A["阶段完全结束<br/>gate review 全部通过"] --> B[切换期开始]
+    B --> C["1. 收集 §14.5 深度审查的 D1-D8 结论<br/>+ §14.8 设计偏差清单"]
+    C --> D["2. ARCH-A 识别 6 维度重构候选<br/>按风险/收益排序"]
     D --> E[3. 每个 candidate 走 §13.4 六大判据 J1-J6]
     E --> F{4. 是否最优且可重构?}
-    F -->|是| G[5. 制定重构 plan<br/>含回滚策略]
-    F -->|否| H[记录为永久偏差<br/>纳入 risk-register]
-    G --> I[6. 执行重构<br/>REV-A 持续校准]
-    I --> J[7. §14.6 阶段间深度验证<br/>4 项 + 多轮深挖]
+    F -->|是| G["5. 制定重构 plan<br/>含回滚策略"]
+    F -->|否| H["记录为永久偏差<br/>纳入 risk-register"]
+    G --> I["6. 执行重构<br/>REV-A 持续校准"]
+    I --> J["7. §14.6 阶段间深度验证<br/>4 项 + 多轮深挖"]
     J --> K{8. GO?}
     K -->|是| L([进入新阶段])
     K -->|NO-GO| I
@@ -1642,15 +1738,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[重构触发] --> B[1. 架构现状分析 ARCH-A<br/>职责清单 / 依赖图 / LOC / 重构候选]
-    B --> C[2. 设计文档对齐 ARCH-A<br/>查 docs/lang-design/]
-    C --> D[3. 拟定重构方案 ARCH-A + PM-A<br/>候选 A/B/C + 6 大判据检查]
-    D --> E[4. 输出 plan-N.M.md<br/>含架构现状/设计对齐/判据检查/新结构图/接口契约]
+    A[重构触发] --> B["1. 架构现状分析 ARCH-A<br/>职责清单 / 依赖图 / LOC / 重构候选"]
+    B --> C["2. 设计文档对齐 ARCH-A<br/>查 docs/lang-design/"]
+    C --> D["3. 拟定重构方案 ARCH-A + PM-A<br/>候选 A/B/C + 6 大判据检查"]
+    D --> E["4. 输出 plan-N.M.md<br/>含架构现状/设计对齐/判据检查/新结构图/接口契约"]
     E --> F{5. REV-A 审查}
-    F -->|通过| G[6. 执行重构<br/>先创建新模块 → 移动符号 → re-export → 调用点更新]
+    F -->|通过| G["6. 执行重构<br/>先创建新模块 → 移动符号 → re-export → 调用点更新"]
     F -->|不通过| D
-    G --> H[7. 验收 §3.2<br/>cargo clean+test+fmt+clippy 全绿]
-    H --> I[8. 文档同步 §8 + §14.8 + §15<br/>dev-log / gate-review / api-naming / lang-design / graph]
+    G --> H["7. 验收 §3.2<br/>cargo clean+test+fmt+clippy 全绿"]
+    H --> I["8. 文档同步 §8 + §14.8 + §15<br/>dev-log / gate-review / api-naming / lang-design / graph"]
 ```
 
 #### 13.4.3 反模式（禁止）
@@ -1691,16 +1787,16 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[需求输入] --> B[Design Agent<br/>ARCH-A 产出设计方案 v1]
-    B --> C[Review Agent<br/>REV-A 审查设计]
+    A[需求输入] --> B["Design Agent<br/>ARCH-A 产出设计方案 v1"]
+    B --> C["Review Agent<br/>REV-A 审查设计"]
     C --> D{设计是否有缺陷?}
-    D -->|是| E[Review Agent 输出<br/>缺陷清单 + 校准建议]
-    E --> F[Design Agent 修订设计<br/>ARCH-A 产出 v2/v3/...]
+    D -->|是| E["Review Agent 输出<br/>缺陷清单 + 校准建议"]
+    E --> F["Design Agent 修订设计<br/>ARCH-A 产出 v2/v3/..."]
     F --> C
     D -->|否| G{设计是否最优?}
-    G -->|否| H[Review Agent 输出<br/>优化建议]
+    G -->|否| H["Review Agent 输出<br/>优化建议"]
     H --> F
-    G -->|是| I([设计定稿<br/>进入实现阶段])
+    G -->|是| I(["设计定稿<br/>进入实现阶段"])
 ```
 
 #### 13.5.2 强制规则
@@ -1735,9 +1831,9 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A[阶段内审查] --> B[§14.5 阶段末尾深度审查<br/>D1-D8 八维度]
-    B --> C[§14.8 阶段末尾设计回写<br/>B1-B4 偏差分类]
-    C --> D[§14.6 阶段间深度验证<br/>4 项强制审查 + 多轮深挖]
+    A[阶段内审查] --> B["§14.5 阶段末尾深度审查<br/>D1-D8 八维度"]
+    B --> C["§14.8 阶段末尾设计回写<br/>B1-B4 偏差分类"]
+    C --> D["§14.6 阶段间深度验证<br/>4 项强制审查 + 多轮深挖"]
     D --> E{GO?}
     E -->|是| F([进入下一阶段])
     E -->|NO-GO| G[修复或 §13.2 切换期重构]
@@ -1770,11 +1866,11 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[阶段末尾深度审查触发] --> B[1. ARCH-A 主导架构审查<br/>D1, D5]
-    B --> C[2. QA-A 验证测试与性能<br/>D3, D6, D8]
-    C --> D[3. REV-A 审查技术债与文档<br/>D2, D7]
-    D --> E[4. PM-A 评估下一阶段就绪度<br/>D4]
-    E --> F[5. 委员会联合评审<br/>5 角色 + PM-A]
+    A[阶段末尾深度审查触发] --> B["1. ARCH-A 主导架构审查<br/>D1, D5"]
+    B --> C["2. QA-A 验证测试与性能<br/>D3, D6, D8"]
+    C --> D["3. REV-A 审查技术债与文档<br/>D2, D7"]
+    D --> E["4. PM-A 评估下一阶段就绪度<br/>D4"]
+    E --> F["5. 委员会联合评审<br/>5 角色 + PM-A"]
     F --> G{6. 投票}
     G -->|GO| H[7. 输出 deep-review-roundN.md]
     G -->|NO-GO| I["制定本阶段追加任务清单<br/>(max 2 次重试, 超过则升级技术委员会)"]
@@ -2015,12 +2111,15 @@ GO / GO-WITH-CONDITIONS / NO-GO
 #### 14.6.5 自我强化与迭代
 
 > **要求**：如果在开发和设计中需要什么工具或者其他内容，Agent 都可以根据相关标准流程和结构组织去组织并补充相关文档和组织结构。
+>
+> **与 §6.6.1 的关系**（Stage 18.125 澄清，Round 2 深度审计去重）：本节关注"**项目资产层**"的自我强化（工具/文档/组织结构补充），§6.6.1 关注"**流程层**"的校准数据池（轮次偏差/误分类率/集成覆盖率统计）。两者职责互补，不重叠——本节的"补充新文档"动作本身应作为 §6.6.1 校准数据池中的一条记录。
 
 执行协议：
-1. **工具补充**：Agent 发现需要新工具时，可直接创建并补充文档（如 `tools/debug/` 下的新命令），归档按 §3.4
-2. **文档补充**：Agent 发现需要新文档时，可直接创建并补充到 `docs/` 对应目录
-3. **组织结构**：Agent 发现需要新的目录或组织结构时，可直接创建并补充说明文档
-4. **标准遵循**：所有补充必须遵循 §10 API 命名标准化 + §13.4 重构六大判据 + §11 接口隔离
+1. **工具补充**：Agent 发现需要新工具时，可直接创建并补充文档（如 `tools/debug/` 下的新命令），归档按 §3.4；同时在 §6.6.1 calibration-data.md §3 历史教训归档追加一条"工具补充"记录。
+2. **文档补充**：Agent 发现需要新文档时，可直接创建并补充到 `docs/` 对应目录；同时更新 §8.4 对应目录树。
+3. **组织结构**：Agent 发现需要新的目录或组织结构时，可直接创建并补充说明文档；同时更新 §8.4.1 顶层目录结构图。
+4. **标准遵循**：所有补充必须遵循 §10 API 命名标准化 + §13.4 重构六大判据 + §11 接口隔离。
+5. **流程校准同步**：每次自我强化动作（1-3）都应触发 §6.6.1 calibration-data.md 的"流程优化历史"表追加一行（Stage N.M + 优化项 + 触发依据 + 效果）。
 
 #### 14.6.6 输出文档集合
 
@@ -2079,20 +2178,20 @@ GO / GO-WITH-CONDITIONS / NO-GO
 
 ```mermaid
 flowchart TD
-    SRC[source text] --> D1[tokenize → Vec&lt;Token&gt;<br/>数据：tokens, interner<br/>校验：tokens 非空，interner 已 intern 所有标识符]
-    D1 --> D2[parse_crate → Crate&lt;ast::Item&gt;<br/>数据：AST<br/>校验：AST 结构完整，无解析错误]
-    D2 --> D3[lower_crate → HirCrate<br/>数据：HIR owners, bodies, interner<br/>校验：每个 fn owner 有对应 body]
-    D3 --> D4[resolve_crate → mutates HIR<br/>数据：HIR with resolved paths<br/>校验：无 Res::Unknown]
-    D4 --> D5[lower_hir_body_to_mir_full<br/>数据：MIR basic_blocks, local_decls, adt_layouts<br/>校验：local_decls 0 是返回值，params 在 1..N]
-    D5 --> D6[TypeChecker::check_mir_body_with_tables<br/>数据：MIR with resolved types, FieldTyTable, FnSigTable<br/>校验：所有 Infer 变量已解析]
-    D6 --> D7[BorrowChecker::check_mir_body<br/>数据：MIR unchanged, borrow errors<br/>校验：borrow errors 已收集到 CompileErrors]
-    D7 --> D8[codegen_crate → LLVM IR String<br/>数据：CompileResult mirs, body_metas, fn_name_by_def_id, interner<br/>校验：IR 输出包含所有函数定义，无 undef 值]
+    SRC[source text] --> D1["tokenize → Vec<Token><br/>数据：tokens, interner<br/>校验：tokens 非空，interner 已 intern 所有标识符"]
+    D1 --> D2["parse_crate → Crate<ast::Item><br/>数据：AST<br/>校验：AST 结构完整，无解析错误"]
+    D2 --> D3["lower_crate → HirCrate<br/>数据：HIR owners, bodies, interner<br/>校验：每个 fn owner 有对应 body"]
+    D3 --> D4["resolve_crate → mutates HIR<br/>数据：HIR with resolved paths<br/>校验：无 Res::Unknown"]
+    D4 --> D5["lower_hir_body_to_mir_full<br/>数据：MIR basic_blocks, local_decls, adt_layouts<br/>校验：local_decls 0 是返回值，params 在 1..N"]
+    D5 --> D6["TypeChecker::check_mir_body_with_tables<br/>数据：MIR with resolved types, FieldTyTable, FnSigTable<br/>校验：所有 Infer 变量已解析"]
+    D6 --> D7["BorrowChecker::check_mir_body<br/>数据：MIR unchanged, borrow errors<br/>校验：borrow errors 已收集到 CompileErrors"]
+    D7 --> D8["codegen_crate → LLVM IR String<br/>数据：CompileResult mirs, body_metas, fn_name_by_def_id, interner<br/>校验：IR 输出包含所有函数定义，无 undef 值"]
 ```
 
 #### 14.7.4 审查完成标准
 
 跨阶段审查完成需满足：
-1. 6 个维度全部通过（D1-D6）
+1. 6 个维度全部通过（C1-C6，Stage 18.123: 由 D→C 重编号以避免与 §14.5 D1-D8 冲突）
 2. §11 合规验证清单全部 ✅
 3. 数据流完整性校验全部通过
 4. 发现的问题全部修复（P0/P1 必须修复，P2 可记录为技术债）
@@ -2134,13 +2233,13 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[阶段末尾<br/>§14.5 深度审查完成] --> B[1. 定位对应设计文档 ARCH-A<br/>docs/lang-design/]
-    B --> C[2. 逐章节对照 ARCH-A + REV-A<br/>设计说了什么? 实现做了什么? 偏差类型?]
-    C --> D[3. 判断哪种最优 ARCH-A<br/>参考 rustc/Zig/Swift/Roslyn]
-    D --> E[4. 判断是否可重构 ARCH-A + PM-A<br/>评估成本/测试影响/阶段切换风险]
-    E --> F[5. 同步回写设计文档 ARCH-A<br/>B1/B2/B3/B4 各自回写动作]
-    F --> G[6. 输出偏差清单<br/>含于 deep-review-roundN.md]
-    G --> H[7. 纳入下一阶段计划 PM-A<br/>可重构者列为任务<br/>不可重构者记 risk-register]
+    A["阶段末尾<br/>§14.5 深度审查完成"] --> B["1. 定位对应设计文档 ARCH-A<br/>docs/lang-design/"]
+    B --> C["2. 逐章节对照 ARCH-A + REV-A<br/>设计说了什么? 实现做了什么? 偏差类型?"]
+    C --> D["3. 判断哪种最优 ARCH-A<br/>参考 rustc/Zig/Swift/Roslyn"]
+    D --> E["4. 判断是否可重构 ARCH-A + PM-A<br/>评估成本/测试影响/阶段切换风险"]
+    E --> F["5. 同步回写设计文档 ARCH-A<br/>B1/B2/B3/B4 各自回写动作"]
+    F --> G["6. 输出偏差清单<br/>含于 deep-review-roundN.md"]
+    G --> H["7. 纳入下一阶段计划 PM-A<br/>可重构者列为任务<br/>不可重构者记 risk-register"]
 ```
 
 #### 14.8.3 强制要求
@@ -2167,10 +2266,10 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A[§13.1 阶段开始设计对齐<br/>读设计文档 → 制定 plan] --> B[阶段执行<br/>按 plan 实现]
-    B --> C[§14.5 深度审查<br/>D1-D8 八维度]
-    C --> D[§14.8 阶段末尾设计回写<br/>识别偏差 → 回写设计文档<br/>→ 纳入下一阶段计划]
-    D --> E[§13.2 切换期重构<br/>+ §13.4 重构即架构设计<br/>下一阶段执行重构]
+    A["§13.1 阶段开始设计对齐<br/>读设计文档 → 制定 plan"] --> B["阶段执行<br/>按 plan 实现"]
+    B --> C["§14.5 深度审查<br/>D1-D8 八维度"]
+    C --> D["§14.8 阶段末尾设计回写<br/>识别偏差 → 回写设计文档<br/>→ 纳入下一阶段计划"]
+    D --> E["§13.2 切换期重构<br/>+ §13.4 重构即架构设计<br/>下一阶段执行重构"]
     E --> A
 ```
 
@@ -2521,6 +2620,8 @@ flowchart TD
 | **v6.0** | **Stage 18.120** | **优化重构 v5.0 + 新增 §17 任务规划排版图。** 100% 保留 v5.0 全部规则。新增 §17：七步任务规划流程（扫描→依赖图→节点流→递归→设计-开发-测试节点→缺陷纳入→优化补充）。§17 将阶段任务规划从线性列表升级为依赖图+节点流模型。更新 §2.1 总体原则 + §1.2 路由表添加 §17 引用。 |
 | **v6.1** | **Stage 18.122** | **深度审查修复：8 个 HIGH+MEDIUM 问题。** 修正 §8.4.3 lang-design 文件名（与实际磁盘一致）、修正 P3 误分类数量矛盾（12 vs 17 → 统一表述）、修复 4 个断裂交叉引用（§2.0/§8.6.4/§13.3.6/§A-§F）、§3.2 验收命令补全 cargo check、§4 头部添加 §17 前置条件标记、§3.1 工具表添加 LLVM 工具链、§17.2 扫描表添加路线图+Agent 技能。 |
 | **v6.2** | **Stage 18.123** | **MEDIUM 修复：6 项。** §14.7 D1-D6 → C1-C6 重编号（避免与 §14.5 D1-D8 冲突）、§17.8 + §14.5 添加 max-retry 守卫、§17.4 "权重"定义、§8.6 worklog 路径相对化（`<repo-root>/worklog.md`）、§1.2.1 新增 L1/L2/L3 流程分层应用、§3.1 ASCII-art → mermaid。 |
+| **v6.3** | **Stage 18.124** | **MEDIUM 修复收尾：3 项。** §6.6.1 新增 calibration-data.md 校准数据池定义（含文件结构 + 更新规则 + §17.2 扫描表添加 + §8.4.2 目录树添加）；§14.7.4 修复 D1-D6 → C1-C6 残留交叉引用（Stage 18.123 重编号遗漏）；全面 mermaid 标签引号修复（68 行——含 `()`/`,`/`/`/`:`/`+`/`→`/`<br/>` 等特殊字符的未加引号标签全部加引号，§14.7.3 数据流图的 `&lt;`/`&gt;` HTML 实体还原为字面量）。 |
+| **v6.4** | **Stage 18.125** | **Round 2 深度审计修复：7 项。** §6.2.1 新增 tech-debt-register.md 综合技术债登记册定义（修复 §8.4.2 悬空引用）；§1.3 整体阶段工作流 mermaid 添加 [L3] 分层标注 + L1/L2 路径说明；§14.6.5 自我强化与 §6.6.1 calibration-data 职责分工澄清（项目资产层 vs 流程层去重）；§9.3 三阶段文档协议添加节首介绍 + 与 §8/§15 关系说明；§8.5 审查检查补充 3 项（tech-debt-register.md + calibration-data.md + 新文档目录树同步）；§8.4.1 顶层目录树补全 docs/tests/ 子项（pipeline-test-coverage.md + gate/）；§3.5 ASCII-art 执行协议 → mermaid（与 §3.1 一致）；§8.4.5 文档优先查询表补全 2 行（tech-debt-register.md + calibration-data.md）。 |
 
 ### 16.2 v5.0 关键改进
 
@@ -2570,12 +2671,12 @@ v5.0 完整保留 v4.0 的全部规则内容，100% 覆盖。差异仅在表达�
 
 ```mermaid
 flowchart TD
-    S1[Step 1: 扫描文档<br/>确认任务 + 能力边界] --> S2[Step 2: 依赖图构建<br/>任务依赖关系 + 排期]
-    S2 --> S3[Step 3: 节点流定义<br/>任务节点内细化任务层级]
-    S3 --> S4[Step 4: 递归支持<br/>任务节点可嵌套子图]
-    S4 --> S5[Step 5: 设计-开发-测试节点流<br/>三节点递进 + 测试↔设计锚定]
-    S5 --> S6[Step 6: 缺陷纳入<br/>简化/缺陷 → 修复任务节点]
-    S6 --> S7[Step 7: 优化补充<br/>审查规划图缺陷 + 补充]
+    S1["Step 1: 扫描文档<br/>确认任务 + 能力边界"] --> S2["Step 2: 依赖图构建<br/>任务依赖关系 + 排期"]
+    S2 --> S3["Step 3: 节点流定义<br/>任务节点内细化任务层级"]
+    S3 --> S4["Step 4: 递归支持<br/>任务节点可嵌套子图"]
+    S4 --> S5["Step 5: 设计-开发-测试节点流<br/>三节点递进 + 测试↔设计锚定"]
+    S5 --> S6["Step 6: 缺陷纳入<br/>简化/缺陷 → 修复任务节点"]
+    S6 --> S7["Step 7: 优化补充<br/>审查规划图缺陷 + 补充"]
     S7 -->|通过| G([进入阶段执行])
     S7 -->|不通过| S2
 ```
@@ -2590,6 +2691,7 @@ flowchart TD
 |---------|------|------|
 | `docs/lang-design/` 对应阶段设计文档 | 确认设计意图 | 设计意图摘要 (3-5 句) |
 | `docs/develop/v0/tech-debt-register.md` | 确认当前技术债状态 | 已解决项 + 剩余项清单 |
+| `docs/develop/v0/calibration-data.md` | 确认历史校准基线（§6.6.1） | L2/L3 轮次区间 + 误分类率告警阈值 |
 | `docs/develop/v0/v0.1-capability-boundaries.md` | 确认当前能力边界 | 已支持/限制/不支持列表 |
 | `docs/develop/v0/v0.5-roadmap.md` (或当前路线图) | 确认长期路线图对齐 | 当前版本在路线图中的位置 |
 | `docs/agent-team/04-agent-skills.md` | 确认 Agent 团队能力 | 可用技能清单 |
@@ -2829,5 +2931,5 @@ graph LR
 ---
 
 **This document is the single source of truth for the Landin development
-process. All agents (main + subagents) must follow it. v6.2 effective
-from Stage 18.123+.**
+process. All agents (main + subagents) must follow it. v6.4 effective
+from Stage 18.125+.**
