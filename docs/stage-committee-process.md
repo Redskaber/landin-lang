@@ -237,6 +237,7 @@ cargo clean && cargo build --features llvm-backend && cargo fmt && cargo clippy 
 |------|------|---------|
 | `cargo clean` | 成功（无 exit code 要求） | — |
 | `cargo build --features llvm-backend` | 编译成功 | 修复编译错误，不交付 |
+| `cargo check` | 0 errors, 0 warnings (快速类型检查) | 修复类型错误/unused 警告，不交付 |
 | `cargo test` | `0 failed`（ignored 可接受） | 修复代码或更新测试，不交付 |
 | `cargo fmt` + `cargo fmt --check` | exit 0（零 diff） | 运行 `cargo fmt` 修复 |
 | `cargo clippy --all-targets` | `0 warnings` | 修复 lint，不交付 |
@@ -245,16 +246,24 @@ cargo clean && cargo build --features llvm-backend && cargo fmt && cargo clippy 
 1. 完成代码+文档改动
 2. 运行 `cargo clean`
 3. 运行 `cargo build --features llvm-backend` — 必须成功
-4. 运行 `cargo test` — 必须全绿
-5. 运行 `cargo fmt`（apply）+ `cargo fmt --check`（验证）
-6. 运行 `cargo clippy --all-targets` — 必须 0 warnings
-7. 全绿后打包 tar.gz 并返回
-8. worklog 记录验收结果（actual test count + fmt/clippy exit codes）
+4. 运行 `cargo check` — 必须 0 errors + 0 warnings（快速类型检查，捕获 unused_mut 等）
+5. 运行 `cargo test` — 必须全绿
+6. 运行 `cargo fmt`（apply）+ `cargo fmt --check`（验证）
+7. 运行 `cargo clippy --all-targets` — 必须 0 warnings
+8. 全绿后打包 tar.gz 并返回
+9. worklog 记录验收结果（actual test count + fmt/clippy exit codes）
+
+**`cargo check` 的作用**：
+- 比 `cargo build` 更快的类型检查（不生成代码）
+- 捕获 `unused_mut`、`unused_variables`、`dead_code` 等警告
+- 在 `cargo build` 之后、`cargo test` 之前运行，提供早期反馈
+- 不替代 `cargo clippy`（clippy 有更多 lint 规则）
 
 **禁止**：
 - ❌ 跳过验收直接交付（即使"语法看起来对"）
 - ❌ 标记 "pending env verification" 然后交付（应先装环境再验证）
 - ❌ clippy 有 warning 但交付（除非用户明确豁免）
+- ❌ `cargo check` 有 warning 但忽略（即使 clippy 通过）
 
 ### 3.3 Spec 持续演进原则
 

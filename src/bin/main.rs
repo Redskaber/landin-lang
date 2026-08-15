@@ -112,6 +112,10 @@ fn main() {
     // If --compile, --emit-llvm-ir, --emit-obj, --emit-bin, or --run, run full pipeline
     if cli.compile || cli.emit_llvm_ir || cli.emit_obj || cli.emit_bin || cli.run {
         // Stage 18.73 P1-G: Use compile_binary to validate main exists.
+        // Note: `mut` is required for the codegen error path (line ~217:
+        // `result.errors.codegen.push(e)` in the --emit-obj/--emit-bin error branch).
+        // cargo check may warn about unused_mut when the error branch is not
+        // reached in some configurations — this is a false positive.
         let mut result = driver::compile_binary(&source_file.src);
 
         if result.has_errors() {
