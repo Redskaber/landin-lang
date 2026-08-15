@@ -435,6 +435,10 @@ mod stage18_57_span_dummy_cleanup_tests;
 #[path = "v0/stage18/plan/stage18_58_error_code_refinement_tests.rs"]
 mod stage18_58_error_code_refinement_tests;
 
+// === Stage 18.98-18.103: Monomorphization Tests (relocated from stage2) ===
+#[path = "v0/stage18/plan/stage18_98_103_monomorphization_tests.rs"]
+mod stage18_98_103_monomorphization_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

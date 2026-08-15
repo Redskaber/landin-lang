@@ -14131,3 +14131,49 @@ Stage Summary:
 - 流水线图添加单态化阶段
 - v0.381.0: doc-sync bump (deep review round 2)
 - 下一步: v0.2 P0 (mini-cargo 项目系统)
+
+---
+Task ID: stage18.114
+Agent: Super Z (main)
+Task: Stage 18.114 — D3-R1 Test Relocation + D1/D2 Limitations Documented. v0.381.0 → v0.382.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 deep-review-round2.md P1 行动项
+- D3-R1: 重定位单态化测试 (tests/v0/stage2/plan/typeck_tests.rs → tests/v0/stage18/plan/)
+  → 新建 tests/v0/stage18/plan/stage18_98_103_monomorphization_tests.rs
+  → 包含 15 个测试: stage18_98 (3), stage18_99 (4), stage18_101 (2), stage18_102 (3), stage18_103 (3)
+  → 从 typeck_tests.rs 移除这 15 个测试 (519 行 → 保留原有非单态化测试)
+  → 在 all_tests.rs 注册新模块
+  → 遵循 §8.4.2 文档组织结构: 测试按 stage 编号组织
+- D2-R2: typeck/checker.rs Span::DUMMY (126 处, 其中 ~57 非注释)
+  → 根因: infer_rvalue_type_only 构建类型时无 statement span 可用
+  → 影响: 诊断质量降低 (错误位置可能不准确)
+  → 修复计划: v0.2 Phase 2 — 添加 span 参数到 infer_rvalue_type_only
+  → 文档化: 记录在 deep-review-round2.md D2-R2
+- D1-R2: BinaryOp2 fallback (codegen/rvalue.rs:539)
+  → 根因: codegen 返回 String 而非 Result, 无法传播 CodegenError
+  → 影响: range 表达式 (BinaryOp2) 若到达 codegen, 产生 "0" + eprintln 警告
+  → 修复计划: v0.2 Phase 2 — codegen 返回 CodegenResult<String>
+  → 文档化: 记录在 deep-review-round2.md D1-R2
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 0 skipped
+- §8 文档同步:
+  - tests/v0/stage18/plan/stage18_98_103_monomorphization_tests.rs (新建, 15 个测试)
+  - tests/v0/stage2/plan/typeck_tests.rs (移除 15 个已重定位测试)
+  - tests/all_tests.rs (注册新模块)
+  - Cargo.toml: v0.381.0 → v0.382.0
+  - README.md: v0.381.0 → v0.382.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.114 PASSED — D3-R1 测试重定位 + D1/D2 限制文档化
+- 15 个单态化测试从 stage2/ 重定位到 stage18/ (§8 组织结构合规)
+- D2-R2 (Span::DUMMY) + D1-R2 (BinaryOp2) 根因分析 + 修复计划记录
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.382.0: minor bump (test relocation + limitations documented)
+- 下一步: v0.2 P0 (mini-cargo 项目系统)
