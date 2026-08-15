@@ -14312,3 +14312,44 @@ Stage Summary:
 - 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
 - v0.385.0: minor bump (Span::DUMMY cleanup — checker.rs)
 - 下一步: v0.2 P0 (mini-cargo 项目系统)
+
+---
+Task ID: stage18.118
+Agent: Super Z (main)
+Task: Stage 18.118 — Enum Branch Coverage: bit_width + fat-pointer + AggregateKind. v0.385.0 → v0.386.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 deep-review-round2.md MEDIUM 行动项 (4 个 _ => catch-all)
+- 修复 1: codegen/terminator.rs bit_width match
+  → 原始: I8→8, I16→16, I32→32, I64→64, I128→128, _ → 32
+  → 修复: 添加 I1 (Bool) 显式臂, 添加注释说明 EmitType 无 U8/U16 (unsigned 用 signed 表示)
+  → _ => 32 保留 (Float/Struct/Ptr 等非整数类型的保守 fallback, 已文档化)
+- 修复 2: codegen/rvalue.rs fat-pointer detection
+  → 原始: Struct(fields.len()==2) → 检测, _ → (false, I32)
+  → 修复: 添加注释文档化 _ => 是有意的 (非 struct 类型不可能是 fat pointer)
+  → ptr_field_ty 的 I32 默认值在 is_fat_ptr=false 时不会被使用
+- 修复 3: typeck/checker.rs ProjectionElem _ => Error
+  → 原始: _ => Ty::new(TyKind::Error, lv.span)
+  → 修复: _ => Ty::from_kind(TyKind::Error) + 文档化 (Deref/Index 等在不支持的类型上返回 Error)
+  → 同时修复 PlaceKind::Static(_) => Ty::from_kind(TyKind::Error)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 0 skipped
+- §8 文档同步:
+  - Cargo.toml: v0.385.0 → v0.386.0
+  - README.md: v0.385.0 → v0.386.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.118 PASSED — Enum branch coverage 修复
+- codegen/terminator.rs: bit_width 添加 I1 显式臂 + 文档化 fallback
+- codegen/rvalue.rs: fat-pointer detection 文档化 _ => 为有意设计
+- typeck/checker.rs: ProjectionElem _ => Ty::from_kind(Error) + 文档化
+- 所有 4 个 MEDIUM _ => catch-all 已审计 + 文档化
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.386.0: minor bump (enum branch coverage)
+- 下一步: v0.2 P0 (mini-cargo 项目系统)

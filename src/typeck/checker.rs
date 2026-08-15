@@ -415,10 +415,14 @@ impl TypeChecker {
                         crate::mir::place::ProjectionElem::Field(_field_id, field_ty) => {
                             field_ty.clone()
                         }
-                        _ => Ty::new(TyKind::Error, lv.span),
+                        // Stage 18.118: Deref/Index/ConstantIndex/Subslice
+                        // projections on non-supported types return Error.
+                        // This is intentional — the place type cannot be
+                        // resolved, and the Error type surfaces in typeck.
+                        _ => Ty::from_kind(TyKind::Error),
                     }
                 }
-                PlaceKind::Static(_) => Ty::new(TyKind::Error, lv.span),
+                PlaceKind::Static(_) => Ty::from_kind(TyKind::Error),
             }
         }
 

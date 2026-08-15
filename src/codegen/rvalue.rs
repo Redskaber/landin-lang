@@ -85,11 +85,17 @@ pub(crate) fn codegen_rvalue(
             //
             // Per §1.0 原则 5 "报错 > 静默": string equality now correctly
             // compares content, not just pointers.
+            // Stage 18.118: Only Struct{ptr, i64} is a fat pointer.
+            // All other types (I32, Bool, Ptr, etc.) are not fat pointers.
+            // The _ => catch-all is intentional — non-struct types cannot
+            // be fat pointers. Per §1.0 原則 6 "通用 > 特例": one check.
             let (is_fat_ptr, ptr_field_ty) = match &ty {
                 EmitType::Struct(fields) if fields.len() == 2 => {
                     let is_fp = fields[0].is_ptr() && fields[1] == EmitType::I64;
                     (is_fp, fields[0].clone())
                 }
+                // Non-struct types are never fat pointers. The I32 default
+                // for ptr_field_ty is unused when is_fat_ptr is false.
                 _ => (false, EmitType::I32),
             };
             // Stage 14.69: Check if this is a &str (fat pointer to i8).

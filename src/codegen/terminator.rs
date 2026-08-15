@@ -522,13 +522,17 @@ pub(crate) fn codegen_terminator(
                     );
                     match op {
                         crate::mir::place::BinOp::Shl | crate::mir::place::BinOp::Shr => {
+                            // Stage 18.118: Explicit arms for all integer types.
+                            // EmitType uses I1 (not Bool), and has no U8/U16/etc
+                            // (unsigned types are emitted as signed I8/I16/etc).
+                            // Non-integer types default to 32 bits (conservative).
                             let bit_width: u32 = match op_ty {
                                 EmitType::I8 => 8,
                                 EmitType::I16 => 16,
-                                EmitType::I32 => 32,
+                                EmitType::I32 | EmitType::I1 => 32,
                                 EmitType::I64 => 64,
                                 EmitType::I128 => 128,
-                                _ => 32,
+                                _ => 32, // Fallback for Float/Struct/Ptr/etc.
                             };
                             let width_str = bit_width.to_string();
                             let is_overflow =

@@ -1,7 +1,7 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.385.0 (Stage 18.117 — Span::DUMMY cleanup: checker.rs infer_rvalue + remaining Ty::from_kind conversions)  
+> **Version**: v0.386.0 (Stage 18.118 — Enum branch coverage: bit_width explicit arms + fat-pointer doc + AggregateKind doc)  
 > **License**: MIT  
 > **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE (S2-S11 all fixed)
 
