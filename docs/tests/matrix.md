@@ -1,24 +1,23 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-08-11 (last updated Stage 18.100)
-> **Version**: v0.368.0
+> **Date**: 2026-08-15 (last updated Stage 18.112)
+> **Version**: v0.380.0
 > **Process**: stage-committee-process.md v5.0 (§8 doc sync + §9 test standards)
 
-## Current Status (v0.368.0)
+## Current Status (v0.380.0)
 
 | Category | Count | Status |
 |----------|-------|--------|
-| Rust lib tests | 640 | ✅ 0 failures |
-| Rust integration tests | 2,620 | ✅ 0 failures (35 runtime tests OOM-skipped) |
-| Conformance tests | 2,935 | ✅ 0 failures (sampled verification) |
+| Rust lib tests | 643 | ✅ 0 failures |
+| Rust integration tests | 2,787 | ✅ 0 failures |
+| Conformance tests | 2,935 | ✅ 0 failures |
 | Fuzz/stress tests | 7 | ✅ 0 failures |
-| **Total** | **6,202** | **100% pass rate** |
+| **Total** | **6,372** | **100% pass rate, 0 skipped** |
 
-> **Note**: 35 runtime tests (`stage13_18_runtime_tests::rt_*`) are skipped due to
-> 4GB RAM OOM-killer on the development machine. These tests require linking +
-> executing compiled binaries, which exceeds available memory. They pass on
-> higher-RAM environments. This is a system constraint, not a code regression.
+> **Note**: As of Stage 18.110 (S11 fix), ALL 35 runtime tests pass —
+> no more OOM skips or infinite loop hangs. The const-prop loop safety
+> fix resolved the last hanging tests (rt_break, rt_while, etc.).
 
 ---
 

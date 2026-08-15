@@ -14089,3 +14089,45 @@ Stage Summary:
 - v0.380.0: minor bump (S2 fix — ALL monomorphization tech debt resolved)
 - v0.2 P0 单态化: COMPLETE ✅ (S2-S11 all fixed)
 - 下一步: v0.2 P0 (mini-cargo 项目系统) 或 v0.2 P1 (完整 stdlib)
+
+---
+Task ID: stage18.113
+Agent: Super Z (main)
+Task: Stage 18.113 — Deep Review Round 2 + Doc Sync. v0.380.0 → v0.381.0.
+
+Work Log:
+- §14.5 深度审查 Round 2 (D1-D8, post-monomorphization):
+  → D1 架构: 🟡 Good — codegen 完全隔离, 1 active TODO (BinaryOp2), projection_resolver 位置
+  → D2 技术债: 🟡 Acceptable — 602 non-test Span::DUMMY, 3 fragile unwraps
+  → D3 测试: 🟢 Strong — 6372 总测试, 单态化测试存在但位置不对
+  → D7 文档: 🔴 Poor — 8 RELEASE_NOTES 缺失, 3 顶层文档版本过时 12 stage
+  → D8 流水线: 🟡 Needs update — 单态化阶段缺失
+  → 结论: GO-WITH-CONDITIONS — 修复文档同步
+- 输出 deep-review-round2.md (D1-D8 + 行动计划)
+- P0 文档同步修复:
+  1. RELEASE_NOTES.md: 添加 8 个缺失条目 (v0.373.0-v0.380.0) + 更新头部
+  2. docs/tests/matrix.md: 版本 v0.368.0 → v0.380.0, 计数 6202 → 6372, 移除 OOM-skip 说明
+  3. docs/tests/pipeline-test-coverage.md: 版本 → v0.380.0, 添加单态化阶段到流水线图
+  4. docs/develop/v0/v0.1-capability-boundaries.md: 版本 → v0.380.0, 测试计数更新, v0.2 roadmap 标记单态化完成
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+- §8 文档同步:
+  - docs/develop/v0/stage-18/deep-review-round2.md (新建)
+  - RELEASE_NOTES.md: 8 个缺失条目 + 头部更新
+  - docs/tests/matrix.md: 版本 + 计数 + OOM-skip 说明
+  - docs/tests/pipeline-test-coverage.md: 版本 + 单态化阶段
+  - docs/develop/v0/v0.1-capability-boundaries.md: 版本 + 测试计数 + roadmap
+  - Cargo.toml: v0.380.0 → v0.381.0
+  - README.md: v0.380.0 → v0.381.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.113 PASSED — Deep Review Round 2 + Doc Sync
+- D1-D8 审计完成, 输出 deep-review-round2.md
+- 8 个 RELEASE_NOTES 条目补全 (v0.373.0-v0.380.0)
+- 3 个顶层文档版本同步 (matrix + pipeline + boundaries)
+- 流水线图添加单态化阶段
+- v0.381.0: doc-sync bump (deep review round 2)
+- 下一步: v0.2 P0 (mini-cargo 项目系统)

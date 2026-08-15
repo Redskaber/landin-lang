@@ -1,9 +1,79 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.372.0
-**Date**: 2026-08-11
-**Test count**: 640 rust lib tests + 2628 integration tests + 2935 conformance tests + 7 fuzz tests = 6210 total (100% pass rate, 35 runtime tests skipped due to OOM)
+**Current version**: v0.380.0
+**Date**: 2026-08-15
+**Test count**: 643 rust lib tests + 2787 integration tests + 2935 conformance tests + 7 fuzz tests = 6372 total (100% pass rate, 0 skipped)
+
+---
+## v0.380.0 — Stage 18.112 (S2 Fix: Method Monomorphization — ALL Tech Debt Resolved)
+
+### Overview
+
+Fixes the last monomorphization tech debt (S2): generic method calls now
+propagate substs through `Constant` func operands. **ALL monomorphization
+tech debt (S2-S11) is now resolved.**
+
+### All Monomorphization Tech Debt Status
+
+| ID | Description | Stage | Status |
+|----|-------------|-------|--------|
+| S2 | Method monomorphization (Constant func operand) | 18.112 | ✅ |
+| S5 | type_names pre-computed | 18.104 | ✅ |
+| S6 | Nested Param return type resolution | 18.105 | ✅ |
+| S7 | MonoItem collection skips Param/Error substs | 18.106 | ✅ |
+| S8 | Call-site sig substitution | 18.107 | ✅ |
+| S9 | Dest local type writeback | 18.111 | ✅ |
+| S10 | DivisionByZero assert skip for const_prop | 18.109 | ✅ |
+| S11 | Const-prop loop safety | 18.110 | ✅ |
+
+### Verification
+- 643 lib + 2787 integration = 3430 unit tests, 0 failures, 0 skipped
+- All 35 runtime tests pass (rt_div, rt_mod, rt_break, rt_while, etc.)
+
+---
+## v0.379.0 — Stage 18.111 (S9 Fix: Dest Local Type Writeback)
+
+Generic function call destination local types now substituted with callee
+substs. `make_box::<bool>` returns `{ i1 }` instead of `{ i32 }`.
+
+---
+## v0.378.0 — Stage 18.110 (S11 Fix: Const-Prop Loop Safety)
+
+Const-prop no longer folds loop conditions (back-edge detection + skip
+BinaryOp folding in loops). All runtime loop tests now pass (rt_break,
+rt_continue, rt_loop_break, rt_while).
+
+---
+## v0.377.0 — Stage 18.109 (S10 Fix: DivisionByZero Assert Skip)
+
+DivisionByZero assert now skips when the rhs local has no cached value
+(const_prop folded the BinaryOp). `rt_div` and `rt_mod` runtime tests pass.
+
+---
+## v0.376.0 — Stage 18.108 (Terminal Log Fixes + cargo check Integration)
+
+Fixed unused_mut false positive, documented S10/S11 runtime issues, added
+`cargo check` to §3.2 verification flow.
+
+---
+## v0.375.0 — Stage 18.107 (S8 Fix: Call-Site Sig Substitution)
+
+Call-site return types now use `substitute(sig.output, callee_substs)`.
+`id::<bool>` returns `i1` instead of `i32`.
+
+---
+## v0.374.0 — Stage 18.106 (S7 Fix: MonoItem Collection Skips Param/Error)
+
+`collect_mono_items` no longer collects generic definitions (substs
+containing Param or Error). Only concrete instantiations are collected.
+
+---
+## v0.373.0 — Stage 18.105 (S6 Fix: Nested Param Return Type Resolution)
+
+Generic function return types with nested Param (e.g., `Box<T>`) now
+correctly produce `Adt(Box, [Param(0)])` instead of `Adt(Box, [Error])`.
+Added `generic_params` context through the type lowering chain.
 
 ---
 ## v0.372.0 — Stage 18.104 (S5 Fix + S6 Investigation)

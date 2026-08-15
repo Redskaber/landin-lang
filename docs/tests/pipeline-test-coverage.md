@@ -1,8 +1,8 @@
 # Landin Compiler — Pipeline Test Path Coverage Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-08-11 (last updated Stage 18.100)
-> **Version**: v0.368.0
+> **Date**: 2026-08-15 (last updated Stage 18.112)
+> **Version**: v0.380.0
 > **Process**: stage-committee-process.md v5.0 §8 (doc sync) + §9 (test standards)
 > **Scope**: Full compiler pipeline — per-stage, inter-stage, and end-to-end path coverage
 
@@ -30,6 +30,8 @@ Source Text
     ▼ [Stage 15.7] Writeback ──→ type propagation + closure substitution
     │
     ▼ [Stage 18.96] MIR Optimization ──→ DCE → const_prop → DCE
+    │
+    ▼ [Stage 18.103] Monomorphization ──→ collect MonoItems + emit specialized fns
     │
     ▼ [Stage 3] Codegen ──→ LLVM IR (TextEmitter or LLVMSysEmitter)
     │
