@@ -440,6 +440,12 @@ pub struct CompileResult {
     /// Per §23: `synthesized_closure_mir_bodies` follows `<adj>_<noun>_<noun>`
     /// pattern.
     pub synthesized_closure_mir_bodies: Vec<crate::mir::body::MirBody>,
+    /// Stage 18.104 (S5 fix): Pre-computed type name map for monomorphization.
+    /// Maps DefId → Symbol (type name) for all struct/enum items.
+    /// Used by codegen to produce correct specialized function names
+    /// (e.g., `make_box_Box_i32` instead of `make_box_Adt_0_i32`).
+    /// Per §16: pre-computed from HIR (data flows downstream, no HIR in codegen).
+    pub type_name_by_def_id: std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
 }
 
 /// Stage 3.56: Per-body metadata for codegen.
@@ -478,6 +484,7 @@ impl CompileResult {
             stdlib_facade: crate::stdlib::StdlibFacade::default(),
             type_interner: crate::mir::ty_interner::TypeInterner::new(),
             synthesized_closure_mir_bodies: Vec::new(),
+            type_name_by_def_id: std::collections::HashMap::new(),
         }
     }
 }
@@ -1911,6 +1918,25 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
         fn_name_by_def_id.insert(synthetic_def_id, landin_name);
     }
 
+    // Stage 18.104 (S5 fix): Build type name map from HIR for codegen.
+    // Maps DefId → Symbol for all struct/enum items.
+    // Per §16: pre-computed from HIR (data flows downstream, no HIR in codegen).
+    // Built BEFORE hir is moved into CompileResult.
+    let type_name_by_def_id: std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol> = {
+        let mut map = std::collections::HashMap::new();
+        for (def_id, owner) in &hir.owners {
+            if let crate::hir::OwnerNode::Item(item) = owner {
+                let name = match item {
+                    crate::hir::HirItem::Struct(s) => s.ident.name,
+                    crate::hir::HirItem::Enum(e) => e.ident.name,
+                    _ => continue,
+                };
+                map.insert(*def_id, name);
+            }
+        }
+        map
+    };
+
     CompileResult {
         hir: Some(hir),
         mirs,
@@ -1925,6 +1951,7 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
         stdlib_facade: crate::stdlib::StdlibFacade::default(),
         type_interner: crate::mir::ty_interner::TypeInterner::new(),
         synthesized_closure_mir_bodies,
+        type_name_by_def_id,
     }
 }
 

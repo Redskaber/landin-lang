@@ -13665,3 +13665,52 @@ Stage Summary:
 - v0.2 P0 单态化: turbofish ✅, 隐式推理 ✅, per-mono codegen ✅ — 核心完成!
 - 残留: 方法单态化 (S2), Adt subst 命名 (S5) — v0.2 Phase 2
 - 下一步: v0.2 P0 (项目系统 mini-cargo) 或 v0.2 Phase 2 (方法单态化)
+
+---
+Task ID: stage18.104
+Agent: Super Z (main)
+Task: Stage 18.104 — S5 Fix (type_names pre-computed) + S6 Investigation. v0.371.0 → v0.372.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.103-per-mono-codegen-design.md S3/S4/S5 简化
+  → S5: Call site type_names map 为空, Adt substs 用 Adt_N
+  → 决定修复 S5 (低风险, 独立)
+- S5 修复 (type_names 预计算):
+  → CompileResult 新增 type_name_by_def_id 字段 (DefId → Symbol)
+  → driver.rs 在 CompileResult 构建前预计算 (从 HIR owners 扫描 struct/enum)
+  → codegen_mono_functions 改为接收 &type_name_by_def_id (不再接收 &hir)
+  → run_codegen_pipeline 传递 result.type_name_by_def_id
+  → 遵循 §16 (codegen 无 HIR 访问) + §10.1 规则 5 (DRY)
+- S6 调查 (nested Param return type):
+  → 测试 make_box<T>(x: T) -> Box<T> 发现返回类型 Adt(Box, [Error])
+  → 根因: lower_ast_ty_to_mir_ty 无法解析裸类型参数 T
+    (只扫描 struct/enum 名称, T 不是 HIR owner)
+  → 影响: 泛型函数返回类型含嵌套 Param (如 Box<T>) 时特化函数返回类型错误
+  → 范围: 仅影响嵌套 Param 返回类型; 直接 Param 返回 (fn id<T>(x: T) -> T) 正常
+  → 修复计划: v0.2 Phase 2 — 传递 generics 上下文到 lower_path_generic_args
+  → 输出设计文档: stage-18.104-mono-return-type-s6-investigation.md
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2628 passed, 0 failed
+  - make_box::<i32> → make_box_i32 ✅ (正确特化名)
+  - make_box::<bool> → make_box_bool ✅ (正确特化名)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.104-mono-return-type-s6-investigation.md (新建)
+  - Cargo.toml: v0.371.0 → v0.372.0
+  - README.md: v0.371.0 → v0.372.0
+  - RELEASE_NOTES.md: 添加 v0.372.0 条目 + S5/S6 进度
+  - docs/develop/v0/v0.1-capability-boundaries.md: 版本更新
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.104 PASSED — S5 修复 + S6 调查文档化
+- S5: type_name_by_def_id 预计算, codegen 无 HIR 访问 (§16 合规)
+- S6: nested Param return type 根因定位 + 修复计划 (v0.2 Phase 2)
+- 640 lib + 2628 integration = 3268 unit tests, 0 failures
+- v0.372.0: minor bump (S5 fix + S6 investigation)
+- v0.2 P0 单态化: turbofish ✅, 隐式推理 ✅, per-mono codegen ✅, S5 ✅
+- 残留: S6 (nested Param return) + S2 (method mono) — v0.2 Phase 2
+- 下一步: v0.2 Phase 2 (S6 修复) 或 v0.2 P0 (mini-cargo 项目系统)

@@ -1,9 +1,73 @@
 # Landin Compiler — Release Notes
 
 **Author**: redskaber
-**Current version**: v0.371.0
+**Current version**: v0.372.0
 **Date**: 2026-08-11
 **Test count**: 640 rust lib tests + 2628 integration tests + 2935 conformance tests + 7 fuzz tests = 6210 total (100% pass rate, 35 runtime tests skipped due to OOM)
+
+---
+## v0.372.0 — Stage 18.104 (S5 Fix + S6 Investigation)
+
+### Overview
+
+Fixes S5 (Adt subst naming in codegen) by pre-computing `type_name_by_def_id`
+in the driver and passing it to codegen (was rebuilt from HIR in codegen,
+violating §16 no-HIR-in-codegen). Also documents S6 (nested Param return type)
+as a known limitation with fix plan.
+
+### S5 Fix: type_names pre-computed
+
+| Change | Details |
+|--------|---------|
+| `CompileResult.type_name_by_def_id` | New field: DefId → Symbol for all struct/enum items |
+| Driver pre-computes map | Built from HIR before `CompileResult` construction |
+| `codegen_mono_functions` | Now takes `&type_name_by_def_id` instead of `&hir` |
+| `run_codegen_pipeline` | Passes `result.type_name_by_def_id` (no HIR access) |
+
+Per §16: codegen now has zero HIR access for monomorphization naming.
+Per §10.1 rule 5 (DRY): type_names built once in driver, not rebuilt in codegen.
+
+### S6: Nested Param return type (documented)
+
+**Symptom**: `fn make_box<T>(x: T) -> Box<T>` produces `Adt(Box, [Error])`
+in fn_sig_table instead of `Adt(Box, [Param(0)])`, causing specialized
+functions to have wrong return types.
+
+**Root cause**: `lower_ast_ty_to_mir_ty` (used by `lower_path_generic_args`
+to lower generic args) cannot resolve bare type parameter `T` — it only
+looks up struct/enum names by scanning HIR owners.
+
+**Scope**: Only affects generic functions whose return type contains a type
+parameter nested inside an Adt (e.g., `Box<T>`, `Vec<T>`). Direct Param
+return (e.g., `fn id<T>(x: T) -> T`) works correctly.
+
+**Fix plan**: v0.2 Phase 2 — pass generics context to `lower_path_generic_args`
+so bare type parameters resolve to `Param(N)`.
+
+### Verification (§3.2)
+
+| Check | Result |
+|-------|--------|
+| `cargo build --features llvm-backend` | ✅ |
+| `cargo fmt --check` | ✅ exit 0 |
+| `cargo clippy --all-targets --features llvm-backend -- -D warnings` | ✅ 0 warnings |
+| `cargo test --features llvm-backend --lib` | ✅ 640 passed, 0 failed |
+| `cargo test --features llvm-backend --tests` (skip runtime) | ✅ 2628 passed, 0 failed |
+| `make_box::<i32>` → `make_box_i32` | ✅ (correct specialized name) |
+| `make_box::<bool>` → `make_box_bool` | ✅ (correct specialized name) |
+
+### v0.2 Monomorphization Progress
+
+| Phase | Status |
+|-------|--------|
+| Phase 1-4c (infrastructure) | ✅ Stage 16.52-16.59 |
+| Turbofish FnDef substs | ✅ Stage 18.101 |
+| Implicit inference FnDef substs | ✅ Stage 18.102 |
+| Per-mono codegen (emit specialized fns) | ✅ Stage 18.103 |
+| Call sites use specialized names | ✅ Stage 18.103 |
+| **S5: type_names pre-computed** | ✅ Stage 18.104 |
+| S6: nested Param return type | ❌ Documented (v0.2 Phase 2) |
+| S2: method monomorphization | ❌ v0.2 Phase 2 |
 
 ---
 ## v0.371.0 — Stage 18.103 (Per-Mono Codegen — TD-MONO-CODEGEN)

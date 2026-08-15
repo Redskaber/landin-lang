@@ -41,7 +41,7 @@ use lasso::Rodeo;
 /// Per §1.0 原則 6 "通用 > 特例": one pass for all MonoItem::Fn.
 pub fn codegen_mono_functions(
     mirs: &[MirBody],
-    hir: &crate::hir::HirCrate,
+    type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
     fn_sigs: &std::collections::HashMap<crate::hir::DefId, crate::mir::ty::Sig>,
     interner: &Rodeo,
@@ -55,27 +55,15 @@ pub fn codegen_mono_functions(
     // Collect all MonoItems from MIR bodies.
     let mono_items = collect_mono_items(mirs);
 
-    // Build type_name_by_def_id for mono_item_name (maps DefId → Symbol).
-    let type_name_by_def_id: std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol> = {
-        let mut map = std::collections::HashMap::new();
-        for (def_id, owner) in &hir.owners {
-            if let crate::hir::OwnerNode::Item(item) = owner {
-                let name = match item {
-                    crate::hir::HirItem::Struct(s) => s.ident.name,
-                    crate::hir::HirItem::Enum(e) => e.ident.name,
-                    _ => continue,
-                };
-                map.insert(*def_id, name);
-            }
-        }
-        map
-    };
+    // Stage 18.104 (S5 fix): type_name_by_def_id is now pre-computed in the
+    // driver and passed in (was rebuilt from HIR here — violated §16 no-HIR-in-codegen).
+    // Per §16: codegen reads pre-computed data, no HIR access.
 
     // Build MonoItem → specialized name map.
     let mono_names = build_mono_item_names(
         &mono_items,
         fn_name_by_def_id,
-        &type_name_by_def_id,
+        type_name_by_def_id,
         interner,
     );
 
@@ -104,7 +92,7 @@ pub fn codegen_mono_functions(
                     .get(def_id)
                     .cloned()
                     .unwrap_or_else(|| format!("fn_{}", def_id.as_u32()));
-                mono_item_name(item, &base, &type_name_by_def_id, interner)
+                mono_item_name(item, &base, type_name_by_def_id, interner)
             });
 
             // Get the sig for param_count + is_void + abi.

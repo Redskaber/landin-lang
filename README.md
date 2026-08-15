@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.371.0 (Stage 18.103 — Per-mono codegen: TD-MONO-CODEGEN complete)  
+> **Version**: v0.372.0 (Stage 18.104 — S5 fix: type_names pre-computed; S6 documented)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization: turbofish + implicit + per-mono codegen done)
+> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization: core done, S2/S6 deferred)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets

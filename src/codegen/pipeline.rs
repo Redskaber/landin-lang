@@ -115,20 +115,19 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
     // id<bool>), substitute the Param types in the generic MIR body and emit
     // a specialized function with a mangled name (e.g., landin_id_i32).
     //
-    // Per §16: reads MIR + fn_sigs + fn_name_by_def_id (data, no HIR).
+    // Per §16: reads MIR + fn_sigs + fn_name_by_def_id + type_name_by_def_id
+    // (data, no HIR). Stage 18.104 (S5 fix): type_name_by_def_id pre-computed.
     // Per §1.0 原則 6 "通用 > 特例": one pass for all MonoItem::Fn.
     // Per §2.0 原則 9 "正确 > 妥协": generic calls now emit specialized fns.
-    if let Some(hir) = &result.hir {
-        codegen_mono_functions(
-            &result.mirs,
-            hir,
-            &result.fn_name_by_def_id,
-            &result.fn_sigs,
-            &result.interner,
-            &mono_layouts,
-            emitter,
-        );
-    }
+    codegen_mono_functions(
+        &result.mirs,
+        &result.type_name_by_def_id,
+        &result.fn_name_by_def_id,
+        &result.fn_sigs,
+        &result.interner,
+        &mono_layouts,
+        emitter,
+    );
 
     // 6. Synthesized closure function bodies
     codegen_synthesized_closure_functions(
