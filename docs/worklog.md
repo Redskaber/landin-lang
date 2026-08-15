@@ -14051,3 +14051,41 @@ Stage Summary:
 - v0.379.0: minor bump (S9 fix)
 - v0.2 P0 单态化: S5 ✅, S6 ✅, S7 ✅, S8 ✅, S9 ✅, S10 ✅, S11 ✅
 - 残留: S2 (method mono) — v0.2 Phase 2
+
+---
+Task ID: stage18.112
+Agent: Super Z (main)
+Task: Stage 18.112 — S2 Fix: Method Monomorphization (Constant Func Operand). v0.379.0 → v0.380.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.108 S2 根因 (Constant func operand 未处理)
+- S2 根因:
+  → writeback_fndef_substs 仅处理 Copy/Move func operands
+  → 方法调用使用 Operand::Constant(Const { ty: FnDef(def_id, []), val: Uint(def_id) })
+  → Constant path 被 continue 跳过, 泛型方法 substs 未传播
+- S2 修复 (src/mir/lower/writeback.rs writeback_fndef_substs):
+  → 重构 func operand 提取: 同时处理 Copy/Move 和 Constant
+  → Constant 路径: 从 Const.ty 直接读取 FnDef(def_id, substs)
+  → 推断 substs 后, 写入 terminator_changes (修改 Constant 的 ty)
+  → 新增 terminator_changes 列表 + 后置应用
+  → 遵循 §1.0 原則 6 "通用 > 特例": 一个函数处理两种 operand 类型
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 0 skipped
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.112-s2-fix-method-monomorphization.md (新建)
+  - Cargo.toml: v0.379.0 → v0.380.0
+  - README.md: v0.379.0 → v0.380.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.112 PASSED — S2 修复 (方法单态化 — Constant func operand)
+- 所有单态化技术债 (S2-S11) 全部修复!
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.380.0: minor bump (S2 fix — ALL monomorphization tech debt resolved)
+- v0.2 P0 单态化: COMPLETE ✅ (S2-S11 all fixed)
+- 下一步: v0.2 P0 (mini-cargo 项目系统) 或 v0.2 P1 (完整 stdlib)

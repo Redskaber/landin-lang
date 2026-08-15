@@ -545,8 +545,11 @@ pub fn writeback_fndef_substs(
     // Stage 18.111 (S9 fix): Destination local type changes (substituted
     // with callee substs so generic return types become concrete).
     let mut dest_changes: Vec<(usize, Ty)> = Vec::new();
+    // Stage 18.112 (S2 fix): Terminator Constant func type changes
+    // (for method calls where func is Operand::Constant).
+    let mut terminator_changes: Vec<(usize, Ty)> = Vec::new();
 
-    for bb in &mir.basic_blocks {
+    for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
         let term = &bb.terminator;
         if let TerminatorKind::Call {
             func,
@@ -556,31 +559,42 @@ pub fn writeback_fndef_substs(
         } = &term.kind
         {
             // Get the func's local_id from the operand.
-            let func_local_idx = match func {
+            // Stage 18.112 (S2 fix): Handle both Copy/Move (regular calls)
+            // and Constant (method calls) func operands.
+            let (func_local_idx, constant_func_def_id, constant_func_substs) = match func {
                 Operand::Copy(place) | Operand::Move(place) => {
                     if let PlaceKind::Local(id) = &place.kind {
-                        Some(id.0 as usize)
+                        (Some(id.0 as usize), None, None)
                     } else {
-                        None
+                        (None, None, None)
                     }
                 }
-                _ => None,
+                Operand::Constant(c) => {
+                    // Method call: func is Constant(Const { ty: FnDef(def_id, substs), val: Uint(def_id) })
+                    if let TyKind::FnDef(def_id, substs) = &c.ty.kind {
+                        (None, Some(*def_id), Some(substs.clone()))
+                    } else {
+                        (None, None, None)
+                    }
+                }
             };
 
-            let func_local_idx = match func_local_idx {
-                Some(idx) => idx,
-                None => continue, // S2: Constant func operand not handled yet
-            };
-
-            // Read the current FnDef type.
-            let current_ty = match mir.local_decls.get(func_local_idx) {
-                Some(ld) => ld.ty.clone(),
-                None => continue,
-            };
-
-            let (def_id, existing_substs) = match &current_ty.kind {
-                TyKind::FnDef(def_id, substs) => (*def_id, substs.clone()),
-                _ => continue, // Not a FnDef — skip
+            // Extract def_id and existing_substs based on operand type.
+            let (def_id, existing_substs, func_local_idx_opt) = if let Some(idx) = func_local_idx {
+                // Copy/Move path: read from local_decls
+                let current_ty = match mir.local_decls.get(idx) {
+                    Some(ld) => ld.ty.clone(),
+                    None => continue,
+                };
+                match &current_ty.kind {
+                    TyKind::FnDef(def_id, substs) => (*def_id, substs.clone(), Some(idx)),
+                    _ => continue,
+                }
+            } else if let (Some(did), Some(substs)) = (constant_func_def_id, constant_func_substs) {
+                // Constant path: from the Const's type directly
+                (did, substs, None)
+            } else {
+                continue;
             };
 
             // Stage 18.111 (S9 fix): Even if substs are already populated
@@ -640,9 +654,20 @@ pub fn writeback_fndef_substs(
                 if !inferred.is_empty()
                     && inferred.iter().any(|ty| !matches!(ty.kind, TyKind::Error))
                 {
-                    let new_ty =
-                        Ty::new(TyKind::FnDef(def_id, inferred.clone().into()), Span::DUMMY);
-                    changes.push((func_local_idx, new_ty));
+                    // Stage 18.112 (S2 fix): For Copy/Move func operands,
+                    // write back the FnDef type to local_decls. For Constant
+                    // func operands (method calls), write to terminator_changes.
+                    if let Some(idx) = func_local_idx_opt {
+                        let new_ty =
+                            Ty::new(TyKind::FnDef(def_id, inferred.clone().into()), Span::DUMMY);
+                        changes.push((idx, new_ty));
+                    } else {
+                        // Constant func operand: record terminator change
+                        // to update the Const's type with inferred substs.
+                        let new_ty =
+                            Ty::new(TyKind::FnDef(def_id, inferred.clone().into()), Span::DUMMY);
+                        terminator_changes.push((bb_idx, new_ty));
+                    }
                 }
                 (inferred, true)
             };
@@ -685,6 +710,19 @@ pub fn writeback_fndef_substs(
     for (idx, new_ty) in dest_changes {
         if let Some(ld) = mir.local_decls.get_mut(idx) {
             ld.ty = new_ty;
+        }
+    }
+
+    // Apply terminator Constant func type changes (S2 fix).
+    for (bb_idx, new_ty) in terminator_changes {
+        if let Some(bb) = mir.basic_blocks.get_mut(bb_idx) {
+            if let TerminatorKind::Call {
+                func: Operand::Constant(c),
+                ..
+            } = &mut bb.terminator.kind
+            {
+                c.ty = new_ty;
+            }
         }
     }
 }

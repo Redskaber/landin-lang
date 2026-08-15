@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.379.0 (Stage 18.111 — S9 fix: dest local type writeback for generic calls)  
+> **Version**: v0.380.0 (Stage 18.112 — S2 fix: method monomorphization + ALL monomorphization tech debt resolved)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization: S5-S11 fixed; S2 deferred)
+> **Status**: v0.1 stable, v0.2 in progress (P0 monomorphization COMPLETE — S2-S11 all fixed)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets
