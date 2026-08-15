@@ -14353,3 +14353,39 @@ Stage Summary:
 - 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
 - v0.386.0: minor bump (enum branch coverage)
 - 下一步: v0.2 P0 (mini-cargo 项目系统)
+
+---
+Task ID: stage18.119
+Agent: Super Z (main)
+Task: Stage 18.119 — D1-R2 Fix: BinaryOp2 Panic Instead of Silent Wrong Codegen. v0.386.0 → v0.387.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 deep-review-round2.md D1-R2 (BinaryOp2 fallback)
+- 根因: Rvalue::BinaryOp2 (range 表达式) 应在 MIR lowering 时被 desugar, 不应到达 codegen
+  → 旧实现: eprintln! + 返回 "0" → 静默产生错误代码
+  → 违反 §1.0 原則 4 "报错 > 静默"
+- 修复: 替换 eprintln! + "0" 为 panic!()
+  → 如果 BinaryOp2 到达 codegen, 是编译器 bug (MIR lower 应已 desugar)
+  → panic 立即暴露 bug, 而非产生错误运行时输出
+  → 遵循 §1.0 原則 4 "报错 > 静默" + §2.0 原則 9 "正确 > 妥协"
+  → 正确修复 (codegen 返回 CodegenResult<String>) 推迟到 v0.2 Phase 2
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 0 skipped
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.119-d1-r2-binaryop2-panic.md (新建)
+  - Cargo.toml: v0.386.0 → v0.387.0
+  - README.md: v0.386.0 → v0.387.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.119 PASSED — D1-R2 修复 (BinaryOp2 panic)
+- eprintln! + "0" → panic!() (不再静默产生错误代码)
+- 所有深度审查 Round 2/3 行动项全部完成!
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.387.0: minor bump (D1-R2 BinaryOp2 panic fix)
+- 下一步: v0.2 P0 (mini-cargo 项目系统)

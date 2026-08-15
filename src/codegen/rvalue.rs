@@ -537,19 +537,24 @@ pub(crate) fn codegen_rvalue(
         // (start..end). For v0.1, ranges are only used in for-loop iterators
         // and are desugared before codegen — they should never reach here.
         //
-        // Stage 18.75 P0-5: Previously the catch-all silently returned "0",
-        // producing wrong code without any warning. Now we emit a visible
-        // error message to stderr so the user knows something went wrong.
-        // Per §1.0 原则 4 "报错 > 静默": never silently produce wrong code.
+        // Stage 18.119 (D1-R2 fix): Previously emitted eprintln! + returned "0",
+        // silently producing wrong code. Now panics with a clear message to
+        // surface the bug immediately rather than producing incorrect output.
         //
-        // TODO (v0.2): Make codegen return CodegenResult<String> so this
-        // can propagate as a proper CodegenError through CompileErrors.codegen.
+        // Per §1.0 原則 4 "报错 > 静默": never silently produce wrong code.
+        // Per §2.0 原則 9 "正确 > 妥协": panic is better than wrong codegen.
+        //
+        // The proper fix (codegen returning CodegenResult<String>) is deferred
+        // to v0.2 Phase 2 — it requires changing all codegen function signatures.
+        // For now, panicking is the safest option: if BinaryOp2 reaches codegen,
+        // it's a compiler bug (MIR lower should have desugared it), and the
+        // user should see a clear error rather than wrong runtime output.
         Rvalue::BinaryOp2(_, _, _) => {
-            eprintln!(
-                "warning: range expression reached codegen (should have been desugared) — \
-                 producing fallback value 0"
+            panic!(
+                "codegen: BinaryOp2 (range expression) reached codegen — \
+                 this should have been desugared during MIR lowering. \
+                 This is a compiler bug."
             );
-            "0".to_string()
         }
     }
 }
