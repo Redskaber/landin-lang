@@ -1029,7 +1029,10 @@ impl TypeChecker {
                     }
                 }
             }
-            _ => {}
+            // Stage 18.116: Goto/Return/Unreachable have no type constraints.
+            // All 7 TerminatorKind variants are now explicitly covered:
+            // Call, SwitchInt, Drop, Assert (above) + Goto, Return, Unreachable (here).
+            TerminatorKind::Goto(_) | TerminatorKind::Return | TerminatorKind::Unreachable => {}
         }
     }
 

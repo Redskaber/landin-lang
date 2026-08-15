@@ -139,10 +139,11 @@ fn check_where_clause_for_generics(
                     Res::Def(trait_def_id, DefKind::Trait) => {
                         // Phase 3: Use TraitSolverCtxt for evaluation.
                         if let Some(type_def_id) = bounded_type_def_id {
-                            let ty = crate::mir::ty::Ty::new(
-                                crate::mir::ty::TyKind::Adt(type_def_id, Vec::new().into()),
-                                crate::session::Span::DUMMY,
-                            );
+                            // Stage 18.116: Use Ty::from_kind (no span needed).
+                            let ty = crate::mir::ty::Ty::from_kind(crate::mir::ty::TyKind::Adt(
+                                type_def_id,
+                                Vec::new().into(),
+                            ));
                             let solver_pred =
                                 crate::typeck::solver::TraitPredicate::new(ty, trait_def_id);
                             let goal = crate::typeck::solver::Goal::Implies(solver_pred);

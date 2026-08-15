@@ -14225,3 +14225,45 @@ Stage Summary:
 - 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
 - v0.383.0: minor bump (Span::DUMMY cleanup + audit)
 - 下一步: v0.2 P0 (mini-cargo 项目系统) 或继续 Span::DUMMY 清理
+
+---
+Task ID: stage18.116
+Agent: Super Z (main)
+Task: Stage 18.116 — Span::DUMMY Cleanup (projection_resolver + where_clause) + TerminatorKind Explicit Arms. v0.383.0 → v0.384.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.115 审计报告, 按优先级修复
+- Span::DUMMY 清理 (projection_resolver.rs):
+  → 发现 Ty::new(kind, _span) 的 _span 参数被忽略 (Ty 不存储 span)
+  → 将所有 Ty::new(KIND, Span::DUMMY) 替换为 Ty::from_kind(KIND)
+  → 消除 9 处 Span::DUMMY + 移除 unused import `Span`
+  → 遵循 §10.1 规则 5 (DRY): 使用不需要 span 的 API
+- Span::DUMMY 清理 (where_clause.rs):
+  → 1 处 Ty::new(Adt(...), Span::DUMMY) → Ty::from_kind(Adt(...))
+- 枚举分支覆盖修复 (TerminatorKind):
+  → typeck/checker.rs: 移除 _ => {} catch-all, 添加显式 Goto|Return|Unreachable 臂
+  → borrowck/mod.rs: 同样移除 catch-all, 添加显式臂
+  → 所有 7 个 TerminatorKind 变体现已显式覆盖 (Call, SwitchInt, Drop, Assert, Goto, Return, Unreachable)
+  → 遵循 §1.0 原則 4 "报错 > 静默": 新变体不会被静默跳过 (编译器会报 non-exhaustive match)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 0 skipped
+- §8 文档同步:
+  - Cargo.toml: v0.383.0 → v0.384.0
+  - README.md: v0.383.0 → v0.384.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.116 PASSED — Span::DUMMY 清理 + TerminatorKind 显式分支
+- projection_resolver.rs: 9 处 Span::DUMMY → Ty::from_kind (消除误导性 span 参数)
+- where_clause.rs: 1 处 Span::DUMMY → Ty::from_kind
+- typeck/checker.rs + borrowck/mod.rs: TerminatorKind _ => {} → 显式 Goto|Return|Unreachable
+- 所有 7 个 TerminatorKind 变体显式覆盖 (non-exhaustive match 保护)
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.384.0: minor bump (Span::DUMMY cleanup + enum branch fix)
+- Span::DUMMY 清理进度: 602 → ~580 (合法 ~490 + 测试 ~88 + 少量应修复)
+- 下一步: v0.2 P0 (mini-cargo 项目系统)

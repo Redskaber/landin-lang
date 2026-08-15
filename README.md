@@ -1,7 +1,7 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.383.0 (Stage 18.115 — Span::DUMMY cleanup + enum branch audit + test robustness audit)  
+> **Version**: v0.384.0 (Stage 18.116 — Span::DUMMY cleanup: projection_resolver + where_clause + TerminatorKind explicit arms)  
 > **License**: MIT  
 > **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE (S2-S11 all fixed)
 

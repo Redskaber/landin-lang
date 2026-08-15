@@ -679,7 +679,9 @@ impl<'a> BorrowChecker<'a> {
                 // Stage 15.85: use operand span (was: Span::DUMMY).
                 self.check_operand(mir, cond, crate::mir::place::operand_span(cond));
             }
-            _ => {}
+            // Stage 18.116: Goto/Return/Unreachable have no borrow constraints.
+            // All 7 TerminatorKind variants are now explicitly covered.
+            TerminatorKind::Goto(_) | TerminatorKind::Return | TerminatorKind::Unreachable => {}
         }
     }
 

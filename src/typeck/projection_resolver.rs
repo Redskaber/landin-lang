@@ -17,7 +17,8 @@
 
 use crate::hir::{HirCrate, HirImpl, HirImplItem, HirItem, HirTraitItem, OwnerNode, Res};
 use crate::mir::ty::{Ty, TyKind};
-use crate::session::Span;
+// Stage 18.116: Removed unused `use crate::session::Span` — all Ty::new
+// calls replaced with Ty::from_kind (no span parameter needed).
 
 /// Maximum recursion depth for projection resolution.
 /// Per §1.0 原則 9 "正确 > 妥协": prevents infinite loops on cyclic bindings.
@@ -65,46 +66,35 @@ fn resolve_projection_in_ty(ty: &Ty, hir: &HirCrate, depth: u32) -> Ty {
             }
         }
         // Recursively resolve in compound types.
-        TyKind::Ref(r, m, inner) => Ty::new(
-            TyKind::Ref(
-                *r,
-                *m,
-                Box::new(resolve_projection_in_ty(inner, hir, depth + 1)),
-            ),
-            Span::DUMMY,
-        ),
-        TyKind::RawPtr(m, inner) => Ty::new(
-            TyKind::RawPtr(
-                *m,
-                Box::new(resolve_projection_in_ty(inner, hir, depth + 1)),
-            ),
-            Span::DUMMY,
-        ),
-        TyKind::Array(inner, c) => Ty::new(
-            TyKind::Array(
-                Box::new(resolve_projection_in_ty(inner, hir, depth + 1)),
-                c.clone(),
-            ),
-            Span::DUMMY,
-        ),
-        TyKind::Slice(inner) => Ty::new(
-            TyKind::Slice(Box::new(resolve_projection_in_ty(inner, hir, depth + 1))),
-            Span::DUMMY,
-        ),
-        TyKind::Tuple(tys) => Ty::new(
-            TyKind::Tuple(
-                tys.iter()
-                    .map(|t| resolve_projection_in_ty(t, hir, depth + 1))
-                    .collect(),
-            ),
-            Span::DUMMY,
-        ),
+        TyKind::Ref(r, m, inner) => Ty::from_kind(TyKind::Ref(
+            *r,
+            *m,
+            Box::new(resolve_projection_in_ty(inner, hir, depth + 1)),
+        )),
+        TyKind::RawPtr(m, inner) => Ty::from_kind(TyKind::RawPtr(
+            *m,
+            Box::new(resolve_projection_in_ty(inner, hir, depth + 1)),
+        )),
+        TyKind::Array(inner, c) => Ty::from_kind(TyKind::Array(
+            Box::new(resolve_projection_in_ty(inner, hir, depth + 1)),
+            c.clone(),
+        )),
+        TyKind::Slice(inner) => Ty::from_kind(TyKind::Slice(Box::new(resolve_projection_in_ty(
+            inner,
+            hir,
+            depth + 1,
+        )))),
+        TyKind::Tuple(tys) => Ty::from_kind(TyKind::Tuple(
+            tys.iter()
+                .map(|t| resolve_projection_in_ty(t, hir, depth + 1))
+                .collect(),
+        )),
         TyKind::Adt(def_id, substs) => {
             let new_substs: Vec<Ty> = substs
                 .iter()
                 .map(|t| resolve_projection_in_ty(t, hir, depth + 1))
                 .collect();
-            Ty::new(TyKind::Adt(*def_id, new_substs.into()), Span::DUMMY)
+            Ty::from_kind(TyKind::Adt(*def_id, new_substs.into()))
         }
         // Stage 18.87 B6: Added FnDef/FnPtr/Closure recursive resolution.
         TyKind::FnDef(def_id, substs) => {
@@ -112,14 +102,14 @@ fn resolve_projection_in_ty(ty: &Ty, hir: &HirCrate, depth: u32) -> Ty {
                 .iter()
                 .map(|t| resolve_projection_in_ty(t, hir, depth + 1))
                 .collect();
-            Ty::new(TyKind::FnDef(*def_id, new_substs.into()), Span::DUMMY)
+            Ty::from_kind(TyKind::FnDef(*def_id, new_substs.into()))
         }
         TyKind::Closure(def_id, substs) => {
             let new_substs: Vec<Ty> = substs
                 .iter()
                 .map(|t| resolve_projection_in_ty(t, hir, depth + 1))
                 .collect();
-            Ty::new(TyKind::Closure(*def_id, new_substs.into()), Span::DUMMY)
+            Ty::from_kind(TyKind::Closure(*def_id, new_substs.into()))
         }
         TyKind::FnPtr(sig) => {
             let new_inputs: Vec<Ty> = sig
@@ -128,15 +118,12 @@ fn resolve_projection_in_ty(ty: &Ty, hir: &HirCrate, depth: u32) -> Ty {
                 .map(|t| resolve_projection_in_ty(t, hir, depth + 1))
                 .collect();
             let new_output = resolve_projection_in_ty(&sig.output, hir, depth + 1);
-            Ty::new(
-                TyKind::FnPtr(crate::mir::ty::Sig {
-                    inputs: new_inputs,
-                    output: Box::new(new_output),
-                    abi: sig.abi,
-                    is_unsafe: sig.is_unsafe,
-                }),
-                Span::DUMMY,
-            )
+            Ty::from_kind(TyKind::FnPtr(crate::mir::ty::Sig {
+                inputs: new_inputs,
+                output: Box::new(new_output),
+                abi: sig.abi,
+                is_unsafe: sig.is_unsafe,
+            }))
         }
         // Stage 18.87 B6: Also resolve substs in nested Projection.
         // (Already handled by the Projection arm above, but if we get
