@@ -254,9 +254,15 @@ fn collect_from_terminator(term: &TerminatorKind, collected: &mut HashSet<MonoIt
 /// Per §1.0 原則 6 "通用 > 特例": one function for all type kinds.
 pub(crate) fn collect_from_ty(ty: &Ty, collected: &mut HashSet<MonoItem>) {
     match &ty.kind {
-        // Generic-capable types — collect if substs are non-empty.
+        // Generic-capable types — collect if substs are non-empty AND concrete.
+        // Stage 18.106 (S7 fix): Skip substs containing Param — those are
+        // generic definitions (e.g., `Box<T>` in `fn make_box<T>() -> Box<T>`),
+        // not concrete instantiations. Only collect fully-concrete substs
+        // (e.g., `Box<i32>` from a call site).
+        // Per §1.0 原則 6 "通用 > 特例": one check for all generic-capable types.
+        // Per §2.0 原則 9 "正确 > 妥协": don't collect generic definitions.
         TyKind::Adt(def_id, substs) => {
-            if !substs.is_empty() {
+            if !substs.is_empty() && substs_are_concrete(substs) {
                 collected.insert(MonoItem::Type {
                     def_id: *def_id,
                     substs: substs.clone(),
@@ -274,7 +280,7 @@ pub(crate) fn collect_from_ty(ty: &Ty, collected: &mut HashSet<MonoItem>) {
             }
         }
         TyKind::FnDef(def_id, substs) => {
-            if !substs.is_empty() {
+            if !substs.is_empty() && substs_are_concrete(substs) {
                 collected.insert(MonoItem::Fn {
                     def_id: *def_id,
                     substs: substs.clone(),
@@ -285,7 +291,7 @@ pub(crate) fn collect_from_ty(ty: &Ty, collected: &mut HashSet<MonoItem>) {
             }
         }
         TyKind::Closure(def_id, substs) => {
-            if !substs.is_empty() {
+            if !substs.is_empty() && substs_are_concrete(substs) {
                 collected.insert(MonoItem::Closure {
                     def_id: *def_id,
                     substs: substs.clone(),
@@ -325,6 +331,45 @@ pub(crate) fn collect_from_ty(ty: &Ty, collected: &mut HashSet<MonoItem>) {
         | TyKind::Error
         | TyKind::Param(_)
         | TyKind::Infer(_) => {}
+    }
+}
+
+/// Stage 18.106 (S7 fix): Check if substs are fully concrete (no Param, no Error).
+///
+/// Returns `true` if no subst contains `TyKind::Param` or `TyKind::Error` —
+/// i.e., all substs are concrete types (Int, Bool, Adt with concrete substs, etc.).
+/// Returns `false` if any subst contains `Param` (generic definition) or
+/// `Error` (unresolved type).
+///
+/// This prevents collecting generic definitions like `Box<T>` (where substs
+/// = `[Param(0)]`) or unresolved types like `Box<Error>` as MonoItems — only
+/// concrete instantiations like `Box<i32>` should be collected.
+///
+/// Per §23: `substs_are_concrete` follows `<noun>_<verb>_<adj>` pattern.
+/// Per §1.0 原則 6 "通用 > 特例": one check for all generic-capable types.
+fn substs_are_concrete(substs: &SubstsRef) -> bool {
+    substs.iter().all(|ty| !type_contains_param_or_error(ty))
+}
+
+/// Helper: check if a type contains any `TyKind::Param` or `TyKind::Error` (recursively).
+fn type_contains_param_or_error(ty: &Ty) -> bool {
+    match &ty.kind {
+        TyKind::Param(_) | TyKind::Error => true,
+        TyKind::Adt(_, substs) => substs.iter().any(type_contains_param_or_error),
+        TyKind::Ref(_, _, inner) | TyKind::RawPtr(_, inner) | TyKind::Slice(inner) => {
+            type_contains_param_or_error(inner)
+        }
+        TyKind::Array(inner, _) => type_contains_param_or_error(inner),
+        TyKind::Tuple(tys) => tys.iter().any(type_contains_param_or_error),
+        TyKind::FnDef(_, substs) | TyKind::Closure(_, substs) => {
+            substs.iter().any(type_contains_param_or_error)
+        }
+        TyKind::FnPtr(sig) => {
+            sig.inputs.iter().any(type_contains_param_or_error)
+                || type_contains_param_or_error(&sig.output)
+        }
+        TyKind::Projection(_, substs) => substs.iter().any(type_contains_param_or_error),
+        _ => false,
     }
 }
 

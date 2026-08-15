@@ -13769,3 +13769,45 @@ Stage Summary:
 - v0.373.0: minor bump (S6 fix)
 - v0.2 P0 单态化: turbofish ✅, 隐式推理 ✅, per-mono codegen ✅, S5 ✅, S6 ✅
 - 残留: S7 (MonoItem 收集) + S2 (method mono) — v0.2 Phase 2
+
+---
+Task ID: stage18.106
+Agent: Super Z (main)
+Task: Stage 18.106 — S7 Fix: MonoItem Collection Skips Param/Error Substs. v0.373.0 → v0.374.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.105-s6-fix-nested-param-resolution.md S7 根因
+  → collect_from_ty 收集了含 Param 的 substs (泛型定义, 非具体实例化)
+- S7 修复实现 (src/mir/monomorphize/item.rs):
+  → 新增 substs_are_concrete(substs): 检查 substs 不含 Param 或 Error
+  → 新增 type_contains_param_or_error(ty): 递归检查类型含 Param/Error
+  → collect_from_ty: Adt/FnDef/Closure 三处加 substs_are_concrete 检查
+  → 遵循 §1.0 原则 6 "通用 > 特例": 一个检查适用所有泛型类型
+- 验证 S7 修复:
+  → 修复前: MonoItems = [Fn{i32}, Fn{bool}, Type{Box,[Param(0)]}, Type{Box,[Error]}] ❌
+  → 修复后: MonoItems = [Fn{i32}, Fn{bool}] ✅ (仅具体实例化)
+- 发现新问题 S8:
+  → 调用点返回类型使用泛型 sig (含 Param(0)), 未用调用 substs 替换
+  → 影响: make_box::<i32> 调用点看到返回类型 Adt(Box, [Param(0)]) 而非 Adt(Box, [i32])
+  → 修复计划: v0.2 Phase 2 — codegen Call 处理中 substitute(sig.output, substs)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests (skip runtime) ✅ 2628 passed, 0 failed
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.106-s7-fix-monoitem-skip-param.md (新建, 含 S8 记录)
+  - Cargo.toml: v0.373.0 → v0.374.0
+  - README.md: v0.373.0 → v0.374.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.106 PASSED — S7 修复 (MonoItem 收集跳过 Param/Error substs)
+- 新增 substs_are_concrete + type_contains_param_or_error 辅助函数
+- MonoItems 不再包含泛型定义类型 (Box<T> with [Param(0)])
+- 新发现 S8: 调用点 sig 未替换 — v0.2 Phase 2
+- 640 lib + 2628 integration = 3268 unit tests, 0 failures
+- v0.374.0: minor bump (S7 fix)
+- v0.2 P0 单态化: S5 ✅, S6 ✅, S7 ✅
+- 残留: S8 (调用点 sig 替换) + S2 (method mono) — v0.2 Phase 2
