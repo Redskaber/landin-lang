@@ -13917,3 +13917,47 @@ Stage Summary:
 - 640 lib + 2628 integration = 3268 unit tests, 0 failures
 - v0.376.0: minor bump (terminal log fixes + cargo check integration)
 - 残留: S9 (dest local writeback) + S10 (BinaryOp store) + S11 (loop ctrl) + S2 (method mono)
+
+---
+Task ID: stage18.109
+Agent: Super Z (main)
+Task: Stage 18.109 — S10 Fix: DivisionByZero Assert Skip for Const-Prop Folded Div/Rem. v0.376.0 → v0.377.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 stage-18.108-terminal-log-fixes-cargo-check.md S10 根因
+- S10 根因定位:
+  → const_prop 折叠 20/4 → Constant(5), 移除 BinaryOp 赋值
+  → DivisionByZero(rhs) assert 仍引用 local 4 (rhs local)
+  → DCE 移除 local 4 = Use(Constant(4)) (const_prop 后死代码)
+  → assert 的 load %loc_4 读到未初始化内存 (常为0) → false panic
+- S10 修复 (src/codegen/terminator.rs DivisionByZero handler):
+  → 检查 rhs 是否为 Copy(local) 且 emitter.local(id) 为 None
+  → 若是: const_prop 折叠了 BinaryOp, assert 是 stale — skip (emit_br to target)
+  → 若否: 正常 emit icmp eq 检查
+  → 安全性: const_prop 只在 rhs 是已知非零常量时折叠, skip 安全
+  → 遵循 §1.0 原则 4 "报错 > 静默" + §1.0 原则 6 "通用 > 特例"
+- 验证:
+  → 20 / 4 = 5 ✅ (修复前: panic divide by zero)
+  → 17 % 5 = 2 ✅ (修复前: panic divide by zero)
+  → codegen_div_zero_check_* 测试仍通过 (非常量情况仍 emit icmp)
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests ✅ 2659 passed, 0 failed (4 loop tests skipped: S11)
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.109-s10-fix-div-zero-assert-skip.md (新建)
+  - Cargo.toml: v0.376.0 → v0.377.0
+  - README.md: v0.376.0 → v0.377.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.109 PASSED — S10 修复 (DivisionByZero assert skip for const_prop)
+- 根因: const_prop 折叠 BinaryOp 后, stale assert 从未初始化 local 读取
+- 修复: 检查 emitter.local 为 None 时 skip assert (const_prop 安全)
+- rt_div + rt_mod 运行时测试现在通过 ✅
+- 640 lib + 2659 integration = 3299 unit tests, 0 failures (4 S11 loop tests skipped)
+- v0.377.0: minor bump (S10 fix)
+- 残留: S9 (dest local writeback) + S11 (loop ctrl) + S2 (method mono)

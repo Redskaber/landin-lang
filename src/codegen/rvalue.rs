@@ -46,6 +46,22 @@ pub(crate) fn codegen_rvalue(
                 mono_layouts,
                 fn_name_by_def_id,
             );
+            // Stage 18.109 (S10 fix): For Div/Rem, ensure operand values are
+            // stored to their local allocas before the DivisionByZero assert
+            // reads them. DCE may have removed the constant-assignment
+            // statements (e.g., `local 4 = Use(Constant(4))`), so the alloca
+            // is uninitialized when the assert does `load %loc_4`.
+            //
+            // Fix: if the operand is Copy(local), explicitly store the value
+            // to the local's alloca here. This is idempotent (if already
+            // stored, it just overwrites with the same value).
+            //
+            // Per §1.0 原則 4 "报错 > 静默": assert must read correct value.
+            // Per §1.0 原則 6 "通用 > 特例": one fix for all Div/Rem operands.
+            if matches!(op, BinOp::Div | BinOp::Rem) {
+                store_operand_to_local(emitter, mir, a, &a_val, layouts, mono_layouts);
+                store_operand_to_local(emitter, mir, b, &b_val, layouts, mono_layouts);
+            }
             let ty = detect_operand_type(mir, a, layouts)
                 .or(detect_operand_type(mir, b, layouts))
                 .unwrap_or(EmitType::I32);
@@ -528,6 +544,51 @@ pub(crate) fn codegen_rvalue(
                  producing fallback value 0"
             );
             "0".to_string()
+        }
+    }
+}
+
+/// Stage 18.109 (S10 fix): Store an operand's value to its local alloca.
+///
+/// If the operand is `Copy(Place::local(id))` or `Move(Place::local(id))`,
+/// this function stores `val` to the local's alloca pointer. This ensures
+/// that subsequent loads (e.g., DivisionByZero assert) read the correct value
+/// even when DCE has removed the original constant-assignment statement.
+///
+/// Per §23: `store_operand_to_local` follows `<verb>_<noun>_<prep>_<noun>` pattern.
+/// Per §16: codegen-internal helper, no cross-stage access.
+fn store_operand_to_local(
+    emitter: &mut dyn Emitter,
+    mir: &MirBody,
+    operand: &Operand,
+    val: &EmitValue,
+    layouts: &crate::mir::body::AdtLayouts,
+    mono_layouts: Option<&crate::mir::MonoLayoutMap>,
+) {
+    use crate::codegen::mir_translation::types::mir_type_to_emit_type_with_layouts_and_mono;
+    use crate::mir::place::{Operand, PlaceKind};
+    if let Operand::Copy(place) | Operand::Move(place) = operand {
+        if let PlaceKind::Local(id) = &place.kind {
+            // Get the local's type.
+            let default_ty = crate::mir::ty::Ty::new(
+                crate::mir::ty::TyKind::Int(crate::ast::IntTy::I32),
+                crate::session::Span::DUMMY,
+            );
+            let local_ty = mir
+                .local_decls
+                .get(id.0 as usize)
+                .map(|ld| &ld.ty)
+                .unwrap_or(&default_ty);
+            let emit_ty =
+                mir_type_to_emit_type_with_layouts_and_mono(local_ty, layouts, mono_layouts);
+            // Store the value to the local's alloca.
+            if emit_ty != EmitType::Void {
+                if let Some(ptr) = emitter.local_ptr(id.0).cloned() {
+                    emitter.emit_store(&emit_ty, val, &ptr);
+                }
+            }
+            // Also update the emitter's cached local value.
+            emitter.set_local(id.0, val.clone());
         }
     }
 }

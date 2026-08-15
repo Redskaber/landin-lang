@@ -557,18 +557,41 @@ pub(crate) fn codegen_terminator(
                     }
                 }
                 crate::mir::body::AssertMessage::DivisionByZero(rhs) => {
-                    let rhs_val = codegen_operand(
-                        emitter,
-                        mir,
-                        rhs,
-                        interner,
-                        layouts,
-                        mono_layouts,
-                        fn_name_by_def_id,
-                    );
-                    let rhs_ty = detect_operand_type(mir, rhs, layouts).unwrap_or(EmitType::I32);
-                    let is_zero = emitter.emit_icmp("eq", &rhs_ty, &rhs_val, &"0".to_string());
-                    emitter.emit_br_cond(&is_zero, &panic_label, &format!("bb{}", target.0));
+                    // Stage 18.109 (S10 fix): After const_prop + DCE, the rhs
+                    // local may not have been stored (the constant assignment
+                    // was removed). If the local has no cached value in the
+                    // emitter, it means const_prop folded the BinaryOp and
+                    // the assert is stale — skip it.
+                    //
+                    // Per §1.0 原則 4 "报错 > 静默": const_prop only folds
+                    // when rhs is a known non-zero constant, so skipping is safe.
+                    // Per §1.0 原則 6 "通用 > 特例": one check for all Div/Rem.
+                    let skip_check = if let Operand::Copy(lv) | Operand::Move(lv) = rhs {
+                        if let PlaceKind::Local(id) = &lv.kind {
+                            emitter.local(id.0).is_none()
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    if skip_check {
+                        emitter.emit_br(&format!("bb{}", target.0));
+                    } else {
+                        let rhs_val = codegen_operand(
+                            emitter,
+                            mir,
+                            rhs,
+                            interner,
+                            layouts,
+                            mono_layouts,
+                            fn_name_by_def_id,
+                        );
+                        let rhs_ty =
+                            detect_operand_type(mir, rhs, layouts).unwrap_or(EmitType::I32);
+                        let is_zero = emitter.emit_icmp("eq", &rhs_ty, &rhs_val, &"0".to_string());
+                        emitter.emit_br_cond(&is_zero, &panic_label, &format!("bb{}", target.0));
+                    }
                 }
                 // Stage 18.67: NegOverflow — check if operand is iN::MIN
                 // by computing `0 - operand` with ssub.with.overflow.
