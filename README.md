@@ -1,7 +1,7 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.382.0 (Stage 18.114 — D3-R1 test relocation + D1/D2 limitations documented)  
+> **Version**: v0.383.0 (Stage 18.115 — Span::DUMMY cleanup + enum branch audit + test robustness audit)  
 > **License**: MIT  
 > **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE (S2-S11 all fixed)
 

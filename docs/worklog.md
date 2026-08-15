@@ -14177,3 +14177,51 @@ Stage Summary:
 - 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
 - v0.382.0: minor bump (test relocation + limitations documented)
 - 下一步: v0.2 P0 (mini-cargo 项目系统)
+
+---
+Task ID: stage18.115
+Agent: Super Z (main)
+Task: Stage 18.115 — Span::DUMMY Cleanup + Enum Branch Audit + Test Robustness Audit. v0.382.0 → v0.383.0.
+
+Work Log:
+- §14.5 深度审查 Round 3 (Span::DUMMY + 错误系统 + 测试健壮性):
+  → Span::DUMMY 分类: 602 处非测试 → (A) 合法 ~490 (macro_expand 合成) + (B) 应修复 ~24 + (C) 测试 ~88
+  → 错误系统: 枚举分支覆盖审计 — 4 个 _ => 可能掩盖未来变体 (MEDIUM)
+  → 测试健壮性: 6365 总测试, 513 个破坏性测试, 2 个 #[ignore] (纪律弱)
+- HIGH 修复 (driver.rs Span::DUMMY → p.span / f.span):
+  → 修复 trait method sig block: 3 处 Span::DUMMY → p.span (param error fallback)
+  → 修复 trait default method sig block: 4 处 Span::DUMMY → p.span + f.span
+  → 修复 &self wrapping: 文档化为 Category A (Ty 不携带 span)
+  → 剩余 driver.rs Span::DUMMY: 5 处 (合成 Infer/Error — Category A)
+- MEDIUM 审计 (enum branch coverage):
+  → typeck/checker.rs:424 AggregateKind _ => Error — 可能缺失 Adt/Array/Closure 推断
+  → typeck/checker.rs:1032 + borrowck/mod.rs:682 TerminatorKind _ => {} — 新变体会被跳过
+  → codegen/terminator.rs:531 _ => 32 bit_width — 非整数类型默认 32 位
+  → codegen/rvalue.rs:93 _ => (false, I32) fat-pointer 检测 — 非 struct 类型被错误跳过
+  → 修复计划: v0.2 Phase 2 — 添加显式分支或 unreachable!() 守卫
+- MEDIUM 审计 (test robustness):
+  → 513 个破坏性测试 (fuzz + panic + overflow) — 良好覆盖
+  → 2 个 #[ignore] vs 大量 "known limitation" 注释 — 建议转换
+  → conformance 测试带 "Stage 0 limitation" 头 — 能力边界清晰
+- §3.2 验收:
+  - cargo build --features llvm-backend ✅
+  - cargo check ✅ 0 warnings
+  - cargo fmt --check ✅ exit 0
+  - cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  - cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed
+  - cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 0 skipped
+- §8 文档同步:
+  - docs/develop/v0/stage-18/stage-18.115-span-dummy-cleanup-enum-audit.md (新建)
+  - Cargo.toml: v0.382.0 → v0.383.0
+  - README.md: v0.382.0 → v0.383.0
+  - worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.115 PASSED — Span::DUMMY cleanup + enum branch audit + test robustness audit
+- driver.rs: 7 处 Span::DUMMY → p.span/f.span (HIGH 修复)
+- Span::DUMMY 清理计划: 602 处 → (A) 合法 ~490 + (B) 应修复 ~24 (本次修 7, 剩 17) + (C) 测试 ~88
+- 枚举分支: 4 个 _ => 记录为 MEDIUM, 修复计划 v0.2 Phase 2
+- 测试: 6365 总测试, 513 破坏性, 能力边界清晰
+- 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
+- v0.383.0: minor bump (Span::DUMMY cleanup + audit)
+- 下一步: v0.2 P0 (mini-cargo 项目系统) 或继续 Span::DUMMY 清理

@@ -804,24 +804,21 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
                                     } else {
                                         crate::mir::ty::Ty::new(
                                             crate::mir::ty::TyKind::Error,
-                                            crate::session::Span::DUMMY,
+                                            p.span,
                                         )
                                     }
                                 })
                             } else if let Some(ty) = &p.ty {
                                 crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
                             } else {
-                                crate::mir::ty::Ty::new(
-                                    crate::mir::ty::TyKind::Error,
-                                    crate::session::Span::DUMMY,
-                                )
+                                crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
                             }
                         })
                         .collect();
                     let output = match &f.sig.output {
                         HirFnRetTy::Default(_) => crate::mir::ty::Ty::new(
                             crate::mir::ty::TyKind::Tuple(Vec::new()),
-                            crate::session::Span::DUMMY,
+                            f.span,
                         ),
                         HirFnRetTy::Ty(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
                     };
@@ -961,31 +958,25 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
                                                     mir_mut,
                                                     Box::new(self_ty.clone()),
                                                 ),
-                                                crate::session::Span::DUMMY,
+                                                p.span,
                                             )
                                         }
                                         _ => self_ty.clone(),
                                     }
                                 } else {
-                                    crate::mir::ty::Ty::new(
-                                        crate::mir::ty::TyKind::Error,
-                                        crate::session::Span::DUMMY,
-                                    )
+                                    crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
                                 }
                             } else if let Some(ty) = &p.ty {
                                 crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
                             } else {
-                                crate::mir::ty::Ty::new(
-                                    crate::mir::ty::TyKind::Error,
-                                    crate::session::Span::DUMMY,
-                                )
+                                crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
                             }
                         })
                         .collect();
                     let output = match &f.sig.output {
                         HirFnRetTy::Default(_) => crate::mir::ty::Ty::new(
                             crate::mir::ty::TyKind::Tuple(Vec::new()),
-                            crate::session::Span::DUMMY,
+                            f.span,
                         ),
                         HirFnRetTy::Ty(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
                     };
@@ -2954,6 +2945,9 @@ fn resolve_self_param_type_for_sig(
                         mir_mut,
                         Box::new(adt_ty),
                     ),
+                    // Stage 18.115: Ty doesn't carry span (only kind).
+                    // Span::DUMMY is acceptable here — this is a synthetic
+                    // Ref-wrapping for &self, not a user-visible type.
                     crate::session::Span::DUMMY,
                 ))
             }
