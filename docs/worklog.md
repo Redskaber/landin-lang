@@ -16662,3 +16662,48 @@ Stage Summary:
 - §3.2 全套验收: cargo check/fmt/clippy/test 全绿
 - v0.430.0: minor bump
 - 下一步: v0.2 P1 stdlib facade 或补充剩余 ~40 个负面测试达标
+
+---
+Task ID: stage18.163
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A (任务审查)
+Task: Stage 18.163 — 任务审查 + 任务排版图重排. v0.430.0 → v0.431.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 638 ✅
+- 用户要求: 开始任务前先做任务审查 (项目能力是否具备, 是否最佳时机)
+
+- 任务审查 (8 个候选任务):
+  → TD-STDLIB-FACADE: ❌ 不具备 (codegen 无 malloc/free, String/Vec 依赖 heap)
+  → TD-NO-FORMAT-MACRO: ❌ 不具备 (依赖 String 实现)
+  → TD-LINUX-ONLY: ✅ 具备但无法验证 (无 CI 环境)
+  → TD-NO-INCREMENTAL: ❌ 不具备 (无文件哈希/缓存/依赖图)
+  → TD-INT-UINT-VAR: ✅ 具备 (影响面中等)
+  → TD-DEREF-NON-REF: ✅ 具备 (影响面中等)
+  → 负面测试达标: ✅ 具备 (可立即处理)
+  → TD-SPAN-DUMMY-CLEANUP: 🟡 部分具备 (大部分合法, 剩余少)
+
+- 重排任务排版图:
+  → Stage 18.164: 补充负面测试达标 25% (可立即处理, 低风险)
+  → Stage 18.165: Option/Result 实现 (不依赖 heap, enum 栈分配)
+  → Stage 18.166-18.168: heap allocation 基础设施 (malloc/free + Box::new + deref/drop)
+  → Stage 18.169-18.171: String/Vec 实现 (依赖 heap) + format! 宏
+  → v0.2 P2: TD-LINUX-ONLY, TD-NO-INCREMENTAL, TD-INT-UINT-VAR, TD-DEREF-NON-REF
+
+- 能力缺口记录:
+  → heap allocation (malloc/free): 影响 String/Vec/Box
+  → Iterator trait codegen: 影响 for loop on Vec
+  → Display trait: 影响 format! 宏
+  → 文件哈希/缓存: 影响增量编译
+  → CI 环境: 影响跨平台验证
+
+- 输出: docs/develop/v0/stage-18/stage-18.163-task-review.md
+- v0.431.0: patch bump (任务审查, 无代码修改)
+
+Stage Summary:
+- Stage 18.163 PASSED — 任务审查 + 任务排版图重排
+- 审查: 8 个候选任务, 发现 TD-STDLIB-FACADE 不具备整体处理能力
+- 重排: TD-STDLIB-FACADE 拆分为 Option/Result (18.165) + heap alloc (18.166-18.168) + String/Vec (18.169-18.171)
+- 能力缺口: heap allocation, Iterator codegen, Display trait, 文件哈希/缓存, CI 环境
+- v0.431.0: patch bump
+- 下一步: Stage 18.164 补充负面测试达标 25%

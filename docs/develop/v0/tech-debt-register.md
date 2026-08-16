@@ -89,8 +89,8 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 
 | ID | Description | Impact | Fix Plan |
 |----|-------------|--------|----------|
-| TD-STDLIB-FACADE | String/Vec/Option/Result are type stubs, not real implementations | No heap allocation, no collections | v0.2 P1: full standard library |
-| TD-NO-FORMAT-MACRO | No `format!`/`write!` macros | Only `println!`/`print!`/`eprintln!`/`eprint!` | v0.2 P1: format macros |
+| TD-STDLIB-FACADE | String/Vec/Option/Result are type stubs, not real implementations | No heap allocation, no collections | 🟡 Split Stage 18.163: Option/Result (不依赖 heap, 18.165) + heap alloc 基础设施 (18.166-18.168) + String/Vec (18.169-18.171). 审查发现 codegen 无 malloc/free 支持 |
+| TD-NO-FORMAT-MACRO | No `format!`/`write!` macros | Only `println!`/`print!`/`eprintln!`/`eprint!` | v0.2 P1 (Stage 18.171): format macros — 依赖 String 实现 (TD-STDLIB-FACADE) |
 
 ### 2.7 Test Infrastructure
 
@@ -243,6 +243,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | 🟡 Partial in 18.160 | 1 | TD-NEGATIVE-TEST-COVERAGE (新增 71 个负面测试, 7.9% → 12.9%; 仍低于 25%) |
 | 🟡 Partial in 18.161 | 1 | TD-NEGATIVE-TEST-COVERAGE (新增 80 个负面测试, 12.9% → 18.2%; 接近 25%) |
 | 🟡 Partial in 18.162 | 1 | TD-NEGATIVE-TEST-COVERAGE (新增 75 个负面测试, 18.2% → 22.9%; 接近 25%) |
+| 📋 Task Review in 18.163 | 1 | TD-STDLIB-FACADE (拆分为 Option/Result + heap alloc + String/Vec; 发现 codegen 无 malloc/free 支持) |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 
