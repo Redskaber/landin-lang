@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-15 (last updated Stage 18.119)
-> **Version**: v0.387.0
-> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+
+> **Date**: 2026-08-16 (last updated Stage 18.126)
+> **Version**: v0.393.0
+> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + 5 new structural TDs
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -90,9 +90,53 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-NO-JUMP-THREADING | Jump threading not implemented | Unnecessary goto chains in optimized MIR | v0.3: jump threading pass |
 | TD-CONST-PROP-LOOPS | const_prop skips all BinaryOp folding when back-edges exist (Stage 18.110) | Misses some optimization opportunities in loops | v0.2 Phase 2: fixpoint iteration for const_prop in loops |
 
+### 2.9 Structural — LOC Threshold Violations (§13.4 J6) — Stage 18.126 新增
+
+> **背景**：Stage 18.126 §17 任务规划排版图扫描发现 9 个文件超过 §13.4 J6 阈值（mod.rs < 1500 LOC；子模块 100-1500 LOC）。这些是"上帝模块"，违反单一职责原则 (J2)。
+
+| ID | File | LOC | 阈值倍数 | Root Cause | Fix Plan |
+|----|------|-----|---------|------------|----------|
+| TD-LOC-MACRO-EXPAND | `src/parser/macro_expand.rs` | 5962 | 4.0× | macro_rules! 全功能集中（fragment specifiers + repetition + hygiene） | v0.2 P2: 按 `hygiene.rs`/`repetition.rs`/`fragment.rs` 三层拆分 |
+| TD-LOC-DRIVER | `src/driver.rs` | 4018 | 2.7× | 编排层全功能集中（编译入口 + CompileResult 装配 + post_typeck hooks + CLI） | v0.2 P2: 按 `driver/compile.rs`/`driver/compile_result.rs`/`driver/post_typeck.rs`/`driver/cli.rs` 四层拆分 |
+| TD-LOC-MIR-LOWER-EXPR | `src/mir/lower/expr_operand.rs` | 3596 | 2.4× | MIR 表达式 lowering 全集中（binary/unary/cast/aggregate/closure） | v0.2 P2: 按 `expr_binary.rs`/`expr_unary.rs`/`expr_cast.rs`/`expr_aggregate.rs`/`expr_closure.rs` 拆分 |
+| TD-LOC-MIR-LOWER-MOD | `src/mir/lower/mod.rs` | 2857 | 1.9× | MIR lower 顶层 + body lowering + local decls | v0.2 P2: 按 `mod.rs`/`body.rs`/`local_decls.rs` 拆分 |
+| TD-LOC-TYPECK-CHECKER | `src/typeck/checker.rs` | 2635 | 1.8× | typeck 主入口全集中（unify + infer + coerce + check） | v0.2 P2: 按 `checker/mod.rs`/`unify.rs`/`infer.rs`/`coerce.rs` 拆分 |
+
+> 其余 4 个文件（`mir/lower/control_flow.rs` 2228 LOC、`borrowck/mod.rs` 1857 LOC、`borrowck/region_inference.rs` 1776 LOC、`traits/resolver.rs` 1558 LOC）阈值倍数 < 2.0×，归入 v0.3 P3 优化。
+
+### 2.10 Structural — Span::DUMMY 待审计 (§6.2.1 分类索引) — Stage 18.126 新增
+
+> **背景**：tech-debt-register.md §2.2 已声明"所有 Category B Span::DUMMY 已修复"，但 Stage 18.126 扫描发现 8 个文件共 ~491 个 Span::DUMMY **未做 Category A/B 分类审计**。这些可能是漏网的 Category B（可修复）。
+
+| ID | File | Count | Status | Action |
+|----|------|-------|--------|--------|
+| TD-DUMMY-BORROWCK-MOD | `src/borrowck/mod.rs` | 162 | 待审计 | v0.2 P2: 逐个审计, Category B 改 `Ty::from_kind()` 或 `p.span` |
+| TD-DUMMY-TYPECK-CHECKER | `src/typeck/checker.rs` | 91 | 待审计 | v0.2 P2: 逐个审计 |
+| TD-DUMMY-MIR-LOWER-MOD | `src/mir/lower/mod.rs` | 54 | 待审计 | v0.2 P2: 逐个审计 |
+| TD-DUMMY-TYPECK-UNIFY | `src/typeck/unify.rs` | 48 | 待审计 | v0.2 P2: 逐个审计 |
+| TD-DUMMY-BORROWCK-LIVENESS | `src/borrowck/liveness.rs` | 40 | 待审计 | v0.2 P2: 逐个审计 |
+| TD-DUMMY-BORROWCK-REGION | `src/borrowck/region_inference.rs` | 33 | 待审计 | v0.2 P2: 逐个审计 |
+| TD-DUMMY-MIR-LOWER-EXPR | `src/mir/lower/expr_operand.rs` | 30 | 待审计 | v0.2 P2: 逐个审计 |
+| TD-DUMMY-BORROWCK-BORROWSET | `src/borrowck/borrow_set.rs` | 23 | 待审计 | v0.2 P2: 逐个审计 |
+
+**预估**: ~491 待审计, 预计 ~50 是 Category B (可修复), 其余 ~441 是 Category A (legitimate)。
+
+### 2.11 Structural — unwrap/expect 静默吞错 (§2 原则 4) — Stage 18.126 新增
+
+> **背景**：Stage 18.126 扫描发现 borrowck/typeck/parser 共 162 个 unwrap/expect 调用, 部分缺少 message 或使用 unwrap() 静默吞错, 违反 §2 原则 4 "报错 > 静默"。
+
+| ID | File | unwrap | expect | Risk | Action |
+|----|------|--------|--------|------|--------|
+| TD-UNWRAP-BORROWCK-REGION | `src/borrowck/region_inference.rs` | 13 | 0 | 🔴 HIGH — borrowck 静默吞错 | v0.2 P2: 改 `expect("...")` 或 `?` 传播 |
+| TD-EXPECT-TYPECK-SOLVER | `src/typeck/solver.rs` | 0 | 37 | 🟡 MEDIUM — typeck 静默吞错 | v0.2 P2: 审计每个 expect 的 message |
+| TD-EXPECT-PARSER-ITEMS | `src/parser/items.rs` | 0 | 36 | 🟡 MEDIUM — parser 静默吞错 | v0.2 P2: 审计每个 expect 的 message |
+| TD-UNWRAP-BORROWCK-BORROWSET | `src/borrowck/borrow_set.rs` | 9 | 0 | 🟡 MEDIUM — borrowck 静默吞错 | v0.2 P2: 改 `expect("...")` |
+| TD-UNWRAP-DRIVER | `src/driver.rs` | 4 | 0 | 🟡 MEDIUM — 编排层静默 | v0.2 P2: 改 `expect("...")` |
+| TD-UNWRAP-CODEGEN-LLVM-HELPERS | `src/codegen/llvm/helpers.rs` | 3 | 0 | 🟡 MEDIUM — codegen 静默 | v0.2 P2: 改 `?` 传播 (需 TD-CODEGEN-RESULT 先完成) |
+
 ## 3. Architecture Summary
 
-### 3.1 Pipeline (v0.387.0)
+### 3.1 Pipeline (v0.393.0)
 
 ```
 Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
@@ -133,3 +177,45 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 - **ErrorCode E001-E900**: All wired
 - **9-field CompileErrors**: All wired
 - **Diagnostic display**: Source snippets + color output (auto/always/never)
+
+---
+
+## 4. Classification Index (§6.2.1 强制结构) — Stage 18.126 新增
+
+### 4.1 By Severity (§6.1)
+
+| Severity | Count | IDs |
+|----------|-------|-----|
+| P0 (致命) | 0 | — (all resolved) |
+| P1 (严重) | 0 | — (all resolved) |
+| P2 (一般) | 26 | TD-CODEGEN-RESULT, TD-PROJECTION-RESOLVER, TD-INT-UINT-VAR, TD-DEREF-NON-REF, TD-LOCALID0-FALLBACK, TD-SINGLE-FILE, TD-NO-INCREMENTAL, TD-BINARYOP2-PANIC, TD-LINUX-ONLY, TD-ABI-DIVERSITY, TD-STDLIB-FACADE, TD-NO-FORMAT-MACRO, TD-IGNORE-DISCIPLINE, TD-CODEGEN-NEGATIVE, TD-NO-JUMP-THREADING, TD-CONST-PROP-LOOPS, TD-LOC-MACRO-EXPAND, TD-LOC-DRIVER, TD-LOC-MIR-LOWER-EXPR, TD-LOC-MIR-LOWER-MOD, TD-LOC-TYPECK-CHECKER, TD-DUMMY-* (8), TD-UNWRAP-* (6) |
+| P3 (优化) | 4 | 4 文件 LOC < 2.0× 阈值（control_flow/mod.rs/region_inference/resolver.rs） |
+
+### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
+
+| ID | Description | Status |
+|----|-------------|--------|
+| TD-PROJECTION-RESOLVER | `projection_resolver.rs` 位置错（在 typeck/ 下，应在 driver/mir::lower::post_typeck） | Open — v0.2 Phase 2 |
+
+### 4.3 By §10 Naming Violations (L-NAMING-N)
+
+无 open 项 (Stage 3.63 已全量修复)
+
+### 4.4 By §13.4 Refactoring Judgments (J1-J6)
+
+| ID | J# Violated | Description |
+|----|-------------|-------------|
+| TD-LOC-MACRO-EXPAND | J2 (单一职责) + J6 (LOC) | macro_expand.rs 5962 LOC |
+| TD-LOC-DRIVER | J2 + J6 | driver.rs 4018 LOC |
+| TD-LOC-MIR-LOWER-EXPR | J2 + J6 | mir/lower/expr_operand.rs 3596 LOC |
+| TD-LOC-MIR-LOWER-MOD | J2 + J6 | mir/lower/mod.rs 2857 LOC |
+| TD-LOC-TYPECK-CHECKER | J2 + J6 | typeck/checker.rs 2635 LOC |
+
+### 4.5 By §2 Principle Violations
+
+| ID | Principle | Description |
+|----|-----------|-------------|
+| TD-UNWRAP-BORROWCK-REGION | §2 原则 4 (报错 > 静默) | 13 个 unwrap 静默吞错 |
+| TD-EXPECT-TYPECK-SOLVER | §2 原则 4 | 37 个 expect 部分缺 message |
+| TD-EXPECT-PARSER-ITEMS | §2 原则 4 | 36 个 expect 部分缺 message |
+| TD-BINARYOP2-PANIC | §2 原则 4 | panic 替代 CodegenError 传播 |

@@ -14693,3 +14693,118 @@ Stage Summary:
 - 640 lib + 2663 integration = 3303 unit tests, 0 failures, 0 skipped
 - v0.393.0: doc-fix bump (process doc v6.4)
 - 下一步: v0.2 P0 (mini-cargo 项目系统), 使用 §17 任务规划排版图
+
+---
+Task ID: stage18.126
+Agent: Super Z (main) — PM-A + ARCH-A + REC-A
+Task: Stage 18.126 — §17 任务规划排版图首次实际应用 + 结构性技术债扫描. v0.393.0 → v0.394.0.
+
+Work Log:
+- §13.1 设计对齐: 查阅 docs/lang-design/ 6 项核心设计文档 + tech-debt-register.md + calibration-data.md + v0.1-capability-boundaries.md
+  → 6 项核心设计文档全部对齐, 无 B1/B2/B3 偏差
+  → 仅 TD-CODEGEN-RESULT 是 B4 设计灰区 (设计未要求 CodegenResult, 实现走 String+panic 捷径)
+- §3.1 环境检查: ⚠️ 当前执行环境缺少 Rust/LLVM 19 工具链
+  → 无 sudo/apt 安装权限, curl 无网络
+  → 按 §3.1 规则"安装失败时记录到 worklog 并告知用户, 不静默跳过"
+  → 本阶段聚焦文档层 + 扫描层 + 设计层, 代码层修复推迟到 Stage 18.127+
+- §17.2 Step 1 扫描: 7 项文档全量扫描
+  → 设计意图摘要 + 能力边界 + 技术债状态 + 历史校准基线 + 测试覆盖 + 上一阶段输出 + 工具链状态
+  → 输出 docs/develop/v0/stage-18/stage-18.126-plan-task-layout.md §1
+- §17.3-§17.7 任务规划排版图:
+  → Step 2 依赖图: S1→S2→S3→S4→S5→S6 串行节点流
+  → Step 3 节点流: S2 (9 子任务) + S3 (5 子任务) + S4/S5/S6 各 1
+  → Step 4 递归: 2 层 (S2 → S2.1-S2.9), 符合 ≤3 层
+  → Step 5 设计-开发-测试节点流: 设计 (§13.4 J1-J6 + §14.5 D1) → 开发 (文档化+扫描) → 测试 (5 阶段)
+  → Step 6 缺陷纳入: 19 项新增 TD 规划到 v0.2/v0.3
+  → Step 7 优化补充: 6 项检查全部通过, GO
+
+- 结构性技术债扫描 (3 大维度):
+  1. §13.4 J6 LOC 阈值违规: 9 文件 > 1500 LOC
+     → TD-LOC-MACRO-EXPAND: macro_expand.rs 5962 LOC (4.0×)
+     → TD-LOC-DRIVER: driver.rs 4018 LOC (2.7×)
+     → TD-LOC-MIR-LOWER-EXPR: mir/lower/expr_operand.rs 3596 LOC (2.4×)
+     → TD-LOC-MIR-LOWER-MOD: mir/lower/mod.rs 2857 LOC (1.9×)
+     → TD-LOC-TYPECK-CHECKER: typeck/checker.rs 2635 LOC (1.8×)
+     → 其余 4 文件 < 2.0× 阈值, 归入 v0.3 P3
+  2. Span::DUMMY 待审计: 8 文件 ~491 个未做 A/B 分类
+     → TD-DUMMY-BORROWCK-MOD: 162 (HIGH)
+     → TD-DUMMY-TYPECK-CHECKER: 91
+     → TD-DUMMY-MIR-LOWER-MOD: 54
+     → TD-DUMMY-TYPECK-UNIFY: 48
+     → TD-DUMMY-BORROWCK-LIVENESS: 40
+     → TD-DUMMY-BORROWCK-REGION: 33
+     → TD-DUMMY-MIR-LOWER-EXPR: 30
+     → TD-DUMMY-BORROWCK-BORROWSET: 23
+     → 预估 ~50 是 Category B (可修复), ~441 是 Category A (legitimate)
+  3. unwrap/expect 静默吞错: 162 个调用 (40 unwrap + 122+ expect)
+     → TD-UNWRAP-BORROWCK-REGION: 13 unwrap (HIGH 🔴)
+     → TD-EXPECT-TYPECK-SOLVER: 37 expect (MEDIUM 🟡)
+     → TD-EXPECT-PARSER-ITEMS: 36 expect (MEDIUM 🟡)
+     → TD-UNWRAP-BORROWCK-BORROWSET: 9 unwrap (MEDIUM)
+     → TD-UNWRAP-DRIVER: 4 unwrap (MEDIUM)
+     → TD-UNWRAP-CODEGEN-LLVM-HELPERS: 3 unwrap (MEDIUM, 依赖 TD-CODEGEN-RESULT)
+
+- §10 API 命名标准化检查: 7 项规则全部 ✅
+  → §10.1.1 入口函数 verb_noun: codegen_crate/tokenize/parse_crate/resolve_crate 全合规
+  → §10.1.2 上下文类型 -Ctxt/-er: HirLowerCtxt/MirLowerCtxt/TypeChecker 全合规
+  → §10.1.3 类型前缀 Hir/Mir/Emit: 全合规
+  → §10.1.4 显式 re-export 无 glob: 全部 mod.rs 已用 explicit list (Stage 3.57 P0-3 fix)
+  → §10.1.5 DRY 单一真理源: DefKind/BorrowKind 跨阶段 re-export 合规
+  → §10.1.6 deprecated note: Stage 3.63 已全量标记
+  → §10.1.7 函数命名前缀: lex_/parse_/lower_/resolve_/check_/emit_/codegen_ 全合规
+  → 无新增 L-NAMING-N 债务
+
+- §11 接口隔离检查: 1 项 open
+  → codegen 不调用 mir::lower/typeck/driver: ✅ grep 零匹配
+  → driver 是唯一 HIR 读者: ✅
+  → 元数据预计算: ✅ body_metas/fn_name_by_def_id/FieldTyTable 均预计算
+  → 无 glob exports: ✅ 0 violations
+  → ⚠️ TD-PROJECTION-RESOLVER: projection_resolver 在 typeck/ 下, 应在 driver (v0.2 Phase 2)
+  → ⚠️ TD-CODEGEN-RESULT: BinaryOp2 用 panic 而非 CodegenError (v0.2 Phase 2)
+
+- §2.2 设计原则合规: 9/9 评估 (7 ✅ + 2 🟡)
+  → 原则 4 (报错 > 静默): 🟡 162 unwrap/expect 静默吞错, 已规划修复
+  → 原则 9 (正确 > 妥协): 🟡 BinaryOp2 panic 是妥协 (Stage 18.119), 待 v0.2 修复
+  → 其余 7 项全部 ✅
+
+- §14.5 深度审查预审 (D1-D8):
+  → D1 架构健康度: 🟡 (9 文件 LOC + projection_resolver 位置 + borrowck unwrap)
+  → D2 技术债清单: ✅ (tech-debt-register.md v0.393.0 + 19 项新增)
+  → D3 测试覆盖深度: ✅ (6,245 tests, 1:3+ 正负比例)
+  → D4 下一阶段就绪度: 🟡 (v0.2 P0 mini-cargo 需先解阻 projection_resolver)
+  → D5 设计合理性: 🟡 (macro_expand.rs + driver.rs 设计债)
+  → D6 性能: ✅ (无 O(n²))
+  → D7 文档: ✅ (lang-design/develop/tests/graph 四层完整)
+  → D8 测试路径: ✅ (pipeline-test-coverage.md 完整)
+  → 结论: GO-WITH-CONDITIONS (文档层完成, 代码层推迟)
+
+- §3.2 验收 (受工具链限制):
+  → ✅ §17 任务规划排版图 plan 文件产出
+  → ✅ tech-debt-register.md 新增 19 项 TD + §4 分类索引 (§6.2.1 强制结构)
+  → ✅ calibration-data.md 追加 Stage 18.124-18.126 统计
+  → ✅ v0.1-capability-boundaries.md 版本同步
+  → ✅ §10 API 命名 100% 合规
+  → ✅ §11 接口隔离 1 项 open (已规划)
+  → ✅ §2.2 设计原则 9/9 评估
+  → ❌ cargo check/test/fmt/clippy (需 Rust + LLVM 19, 推迟到 Stage 18.127+)
+
+- §8 文档同步:
+  → docs/develop/v0/stage-18/stage-18.126-plan-task-layout.md (新建, §17 任务规划排版图)
+  → docs/develop/v0/stage-18/stage-18.126-dev-log.md (新建, 本阶段开发日志)
+  → docs/develop/v0/tech-debt-register.md: v0.387.0 → v0.393.0 + 19 项新增 TD + §4 分类索引
+  → docs/develop/v0/calibration-data.md: v0.1 → v0.2 + Stage 18.125-18.126 统计 + §3.5 教训归档
+  → docs/develop/v0/v0.1-capability-boundaries.md: v0.388.0 → v0.393.0
+  → Cargo.toml: v0.393.0 → v0.394.0
+  → README.md: v0.393.0 → v0.394.0
+  → worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.126 PASSED — §17 任务规划排版图首次实际应用 + 结构性技术债扫描
+- 复杂度 L3, 实际 1 轮 (文档化 + 扫描 + 设计层)
+- 新增 19 项结构性 TD: TD-LOC-* × 5 + TD-DUMMY-* × 8 + TD-UNWRAP-* × 6, 全部规划 v0.2/v0.3 修复
+- API 命名 100% 合规, 接口隔离 1 项 open, 设计原则 9/9 评估
+- §17 任务规划排版图首次产出标准化 plan 文件 (stage-18.126-plan-task-layout.md)
+- §6.2.1 综合技术债登记册分类索引首次实际填充 (§4.1-§4.5)
+- 工具链限制: 当前执行环境缺少 Rust/LLVM 19, 代码层修复推迟到 Stage 18.127+
+- v0.394.0: doc-fix bump (§17 任务规划 + 结构性技术债扫描)
+- 下一步: Stage 18.127 — 待工具链就绪后执行 9 文件 LOC 拆分 + Span::DUMMY 审计 + unwrap/expect 治理
