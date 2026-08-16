@@ -197,6 +197,11 @@ impl Resolver {
                 registrations.push((def_id, DefKind::Enum, e.ident.name));
                 self.def_kinds.insert(def_id, DefKind::Enum);
                 self.def_visibility.insert(def_id, e.vis.clone());
+                // Stage 18.166: Variant constructor registration deferred.
+                // Requires HIR variant DefId infrastructure (Stage 18.167)
+                // and MIR lower single-segment path support (Stage 18.168).
+                // Without these, registering variants causes MIR lower panic
+                // because it can't determine which variant `Some(42)` refers to.
             }
             HirItem::Trait(t) => {
                 registrations.push((def_id, DefKind::Trait, t.ident.name));

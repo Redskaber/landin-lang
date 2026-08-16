@@ -16791,3 +16791,50 @@ Stage Summary:
 - §3.2 全套验收: cargo check/fmt/clippy/test 全绿
 - v0.433.0: patch bump
 - 下一步: Stage 18.166 实现 variant constructor + 基本方法
+
+---
+Task ID: stage18.166
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A (任务审查)
+Task: Stage 18.166 — 任务审查: variant constructor 阻塞 + 重排. v0.433.0 → v0.434.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 638 ✅
+- §5.1 任务审查: variant constructor (不带前缀 Some/None/Ok/Err)
+
+- 实现尝试:
+  → module_build.rs: 注册 enum variant 到 value namespace
+  → 编译通过, 但测试 Some(42) panic
+  → 根因: MIR lower 要求 2 段 path (Option::Some), 单段 Some 无法确定 variant
+
+- 能力缺口:
+  → HIR variant 无独立 DefId (复用 enum DefId)
+  → MIR lower 不支持单段 path variant 解析
+  → 无 variant name → enum DefId 索引
+
+- 复杂度重评: L2 → L3 (核心架构, 需要 HIR variant DefId + MIR lower 重构)
+
+- 重排任务排版图:
+  → Stage 18.167: HIR variant 独立 DefId (基础设施)
+  → Stage 18.168: variant name 索引 + resolver + MIR lower 单段 path
+  → Stage 18.169: Option/Result 基本方法
+
+- 回退: module_build.rs variant 注册 (避免 panic)
+- 保留: prelude.rs Option/Result 注入 (带前缀仍工作)
+
+- §3.2 验收 (回退后):
+  → cargo check --features llvm-backend: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo test --features llvm-backend: 656 lib + 2967 integration, 0 failed
+
+- v0.434.0: patch bump (任务审查, 无功能修改)
+
+Stage Summary:
+- Stage 18.166 PASSED — 任务审查: variant constructor 阻塞 + 重排
+- 发现: variant constructor 需要 HIR variant DefId (L3), 非 L2
+- 回退: module_build.rs variant 注册 (避免 panic)
+- 重排: variant constructor 拆分为 18.167 (DefId) + 18.168 (resolver+MIR)
+- 保留: prelude.rs Option/Result 注入 (带前缀仍工作)
+- 测试: 656 lib + 2967 integration, 0 failures
+- v0.434.0: patch bump
+- 下一步: Stage 18.167 实现 HIR variant 独立 DefId
