@@ -16415,3 +16415,61 @@ Stage Summary:
 - §3.2 全套验收: cargo clean/build/check/fmt/clippy/test 全绿
 - v0.425.0: patch bump
 - 下一步: v0.2 P1 — stdlib facade 或 format macros
+
+---
+Task ID: stage18.158
+Agent: Super Z (main) — ARCH-A + QA-A + REV-A + PM-A (联合审查)
+Task: Stage 18.158 — 跨阶段深度审查 §14.7 (C1-C6 + §11 合规 + 数据流 + Span::DUMMY + 错误系统 + 测试覆盖). v0.425.0 → v0.426.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 656 ✅ + tests 2696 ✅
+- 用户要求: 审查编译管道所有阶段内/阶段间设计实现 + Span::DUMMY + 错误系统 + 测试覆盖
+
+- §14.7 跨阶段深度审查 (C1-C6):
+  → C1 阶段内路径覆盖: ✅ 核心路径全覆盖
+  → C2 阶段间路径覆盖: ✅ 数据流完整 (compile_project 路径较新, 测试尚浅)
+  → C3 高内聚低耦合 (§11 合规): ✅ 8 项检查全通过 (codegen 不调 mir::lower/typeck/driver)
+  → C4 可插拔可替换: ✅ Emitter trait + CompileResult 数据契约
+  → C5 数据流校验: ⚠️ ModuleLoadError 强转 LowerError, 丢失 path 字段
+  → C6 路径缺漏: ⚠️ 9 处非测试 unwrap + ModuleLoadError 未独立
+
+- Span::DUMMY 审计:
+  → 总计 1286 处 (446 real + 840 test)
+  → 合成 token/类型 (~400): 合法 (无源码位置)
+  → 错误路径 (~6): 需清理 (TD-SPAN-DUMMY-CLEANUP)
+  → 设计主干可接受, 纳入长期清理计划
+
+- 错误系统精度审查:
+  → 10 个错误类型, 9 个完整 (message + span + kind)
+  → ModuleLoadError 未纳入 CompileErrors (强转 LowerError)
+  → 新 TD: TD-MODULELOAD-ERROR-FIELD
+
+- 测试覆盖审查:
+  → 3352 total tests (656 lib + 2696 integration), 0 failures
+  → 负面测试 182/2820 = 6.5% (低于 §9.4.3 建议 25%)
+  → 新 TD: TD-NEGATIVE-TEST-COVERAGE
+  → 测试能力边界已记录 (✅ 单文件/多文件/CLI/基础类型/复合类型/控制流/Trait; ❌ stdlib/format!/跨平台/增量)
+
+- 非测试 unwrap 审计:
+  → 9 处, 大部分有 invariant guard
+  → codegen/llvm/arithmetic.rs:381 无明显 guard
+  → 新 TD: TD-UNWRAP-NONGUARDED
+
+- 新增 4 项技术债 (P2):
+  → TD-SPAN-DUMMY-CLEANUP: 错误路径 Span::DUMMY 清理
+  → TD-MODULELOAD-ERROR-FIELD: CompileErrors.module_load 字段
+  → TD-NEGATIVE-TEST-COVERAGE: 负面测试补充至 25%
+  → TD-UNWRAP-NONGUARDED: 无 guard unwrap 评估
+
+- 输出: docs/develop/v0/stage-18/stage-18.158-deep-review.md
+- 结论: GO-WITH-CONDITIONS (0 P0, 0 P1, 4 P2 记录为技术债)
+- v0.426.0: patch bump (审查报告, 无代码修改)
+
+Stage Summary:
+- Stage 18.158 PASSED — 跨阶段深度审查 §14.7
+- 审查范围: C1-C6 + §11 合规 + 数据流 + Span::DUMMY + 错误系统 + 测试覆盖
+- 结论: GO-WITH-CONDITIONS (架构健康, 4 项 P2 技术债已记录)
+- 新增 4 项 TD: TD-SPAN-DUMMY-CLEANUP, TD-MODULELOAD-ERROR-FIELD, TD-NEGATIVE-TEST-COVERAGE, TD-UNWRAP-NONGUARDED
+- v0.426.0: patch bump
+- 下一步: Stage 18.159 修复 TD-MODULELOAD-ERROR-FIELD (添加 CompileErrors.module_load)
