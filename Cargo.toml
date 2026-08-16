@@ -1,6 +1,6 @@
 [package]
 name = "landin-compiler"
-version = "0.421.0"
+version = "0.422.0"
 edition = "2021"
 license = "MIT"
 description = "Landin compiler — Rust-inspired systems language (LLVM 19 backend)"
@@ -16,6 +16,13 @@ autotests = false
 [[bin]]
 name = "landin-stage0"
 path = "src/bin/main.rs"
+
+# Stage 18.154 (TD-SINGLE-FILE Phase 3): landinc build tool.
+# Per docs/lang-design/10-toolchain.md §3: landinc is the package manager +
+# build tool. Uses compile_project() for multi-file compilation.
+[[bin]]
+name = "landinc"
+path = "src/bin/landinc.rs"
 
 [lib]
 name = "landin_compiler"

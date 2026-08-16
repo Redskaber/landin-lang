@@ -447,6 +447,10 @@ mod stage18_152_module_loader_tests;
 #[path = "v0/stage18/plan/stage18_153_cross_file_resolution_tests.rs"]
 mod stage18_153_cross_file_resolution_tests;
 
+// === Stage 18.154: landinc CLI Logic Tests (TD-SINGLE-FILE Phase 3) ===
+#[path = "v0/stage18/plan/stage18_154_landinc_cli_tests.rs"]
+mod stage18_154_landinc_cli_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

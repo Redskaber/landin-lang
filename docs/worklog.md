@@ -16182,3 +16182,65 @@ Stage Summary:
 - 测试: 629 lib + 2681 integration (新增 8), 0 failures
 - v0.421.0: patch bump
 - 下一步: Phase 3 — landinc CLI subcommands
+
+---
+Task ID: stage18.154
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.154 — v0.2 P0 mini-cargo Phase 3: landinc CLI. v0.421.0 → v0.422.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 629 ✅ + tests 2681 ✅
+- §13.1 设计对齐: docs/lang-design/10-toolchain.md §3 (landinc CLI)
+- §13.4 J1-J6 评估: 全部通过 (单一职责: landin-stage0=编译器, landinc=构建工具)
+
+- 实现:
+  → 新增 src/bin/landinc.rs (300 LOC): clap Subcommand enum
+  → 5 subcommands: build, run, new, check, clean
+  → landinc new <name>: 创建 landin.toml + src/main.lin + .gitignore
+  → landinc new --lib <name>: 创建 src/lib.lin
+  → landinc build [--release] [--emit-llvm]: compile_project + 可选 codegen_crate
+  → landinc run [-- args]: compile_project + LLVM object + cc link + 执行
+  → landinc check: compile_project (类型检查, 无 codegen)
+  → landinc clean: 删除 target/
+  → Cargo.toml 注册 [[bin]] landinc
+
+- 修复 ProjectManifest::load_manifest (§2 原則 9 正确>妥协):
+  → Before: entry_point 存储为相对路径 (相对 CWD)
+  → After: 解析 entry_point/src_dir/target_dir 相对于 manifest 文件目录
+  → 匹配 Cargo 语义: landinc build 可在任何目录运行
+
+- 手动验证:
+  → landinc new myapp: ✅ 创建有效项目骨架
+  → landinc check: ✅ Check passed (1 MIR bodies)
+  → landinc build --emit-llvm: ✅ LLVM IR written to target/myapp.ll
+  → landinc clean: ✅ Removed target
+  → landinc new --lib mylib: ✅ 创建库项目
+
+- 测试 (7 个: 5 positive + 2 negative):
+  → new_creates_valid_skeleton: landinc new 创建有效 manifest ✅
+  → build_compiles_new_project: landinc build 编译新项目 ✅
+  → build_multi_file_project: 多文件项目编译 ✅
+  → check_type_checks: landinc check 类型检查 ✅
+  → new_lib_creates_valid_skeleton: landinc new --lib 库项目 ✅
+  → build_missing_manifest: 缺少 manifest 报错 ✅
+  → build_missing_entry_point: 缺少入口文件报错 ✅
+
+- §3.2 验收: 全套通过
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-features --all-targets: 0 warnings
+  → cargo test --lib: 629 passed, 0 failed
+  → cargo test --tests --all-features: 2688 passed (2681 + 7 new), 0 failed
+  → 0 TODO/FIXME/HACK
+
+- TD-SINGLE-FILE: 🟡 Phase 1-3 Resolved (phase 4 remains)
+- v0.422.0: minor bump (新二进制 landinc)
+
+Stage Summary:
+- Stage 18.154 PASSED — v0.2 P0 mini-cargo Phase 3: landinc CLI
+- 新增: src/bin/landinc.rs (300 LOC) — 5 subcommands (build/run/new/check/clean)
+- 修复: ProjectManifest::load_manifest 路径解析 (相对 manifest 目录)
+- 测试: 629 lib + 2688 integration (新增 7), 0 failures
+- v0.422.0: minor bump
+- 下一步: Phase 4 — landin.toml manifest 完整集成 (dependencies, profiles)

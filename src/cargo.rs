@@ -88,11 +88,33 @@ impl ProjectManifest {
 
     /// Stage 5.24: Load a `landin.toml` manifest from a file path.
     ///
-    /// Per API-naming-standard §3: `load_manifest` follows
-    /// `load_<noun>` pattern.
+    /// Stage 18.154 (TD-SINGLE-FILE Phase 3): Resolves `entry_point`,
+    /// `src_dir`, and `target_dir` relative to the manifest's directory
+    /// (not the current working directory). This matches Cargo's behavior
+    /// — `landinc build` works regardless of where it's invoked from.
+    ///
+    /// Per §2 原則 9 (正确>妥协): paths in the manifest are relative to
+    /// the manifest file, not the CWD. This is the correct semantics.
+    /// Per §10: `load_manifest` follows `load_<noun>` pattern.
     pub fn load_manifest(path: &Path) -> std::io::Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        Ok(Self::parse_manifest(&content))
+        let mut manifest = Self::parse_manifest(&content);
+
+        // Resolve relative paths relative to the manifest's parent directory.
+        if let Some(manifest_dir) = path.parent() {
+            // Only resolve if the path is relative (don't touch absolute paths).
+            if manifest.entry_point.is_relative() {
+                manifest.entry_point = manifest_dir.join(&manifest.entry_point);
+            }
+            if manifest.src_dir.is_relative() {
+                manifest.src_dir = manifest_dir.join(&manifest.src_dir);
+            }
+            if manifest.target_dir.is_relative() {
+                manifest.target_dir = manifest_dir.join(&manifest.target_dir);
+            }
+        }
+
+        Ok(manifest)
     }
 }
 

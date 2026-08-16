@@ -68,7 +68,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 
 | ID | Description | Impact | Fix Plan |
 |----|-------------|--------|----------|
-| TD-SINGLE-FILE | No project/crate system — only single-file compilation | Cannot compile multi-file programs | 🟡 Phase 1-2 Resolved Stage 18.152-18.153: `ModuleLoader` + `compile_project` + cross-file `use`/path resolution. Phases 3-4 (CLI, manifest) remain |
+| TD-SINGLE-FILE | No project/crate system — only single-file compilation | Cannot compile multi-file programs | 🟡 Phase 1-3 Resolved Stage 18.152-18.154: `ModuleLoader` + `compile_project` + cross-file resolution + `landinc` CLI. Phase 4 (manifest integration) remains |
 | TD-NO-INCREMENTAL | Full recompile every time | Slow iteration cycle | v0.2 P2: incremental compilation (requires project system) |
 | TD-BINARYOP2-PANIC | BinaryOp2 panics if it reaches codegen (should be desugared) | Range expressions that aren't desugared will crash the compiler | ✅ Resolved Stage 18.151: BinaryOp2 arm now returns `Err(CodegenError)` instead of `panic!()`, propagated via `CodegenResult` (depends on TD-CODEGEN-RESULT) |
 | TD-RVALUE-NO-SPAN | `Rvalue` enum doesn't carry `Span` info; BinaryOp2 error uses `Span::DUMMY` | Codegen errors for BinaryOp2 lack source location | v0.2 P2: add `span: Span` field to `Rvalue` (or wrap in spanned container); populate during MIR lowering |
@@ -231,6 +231,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Resolved in 18.151 | 3 | TD-CODEGEN-RESULT, TD-BINARYOP2-PANIC, TD-UNWRAP-CODEGEN-LLVM-MOD |
 | 🟡 Phase 1 Resolved in 18.152 | 1 | TD-SINGLE-FILE (ModuleLoader + compile_project; phases 2-4 remain) |
 | 🟡 Phase 2 Resolved in 18.153 | 1 | TD-SINGLE-FILE (cross-file use/path resolution; phases 3-4 remain) |
+| 🟡 Phase 3 Resolved in 18.154 | 1 | TD-SINGLE-FILE (landinc CLI build/run/new/check/clean; phase 4 remains) |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 
