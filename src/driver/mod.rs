@@ -55,6 +55,8 @@ use lasso::Rodeo;
 // Stage 18.134 §13.4 J1-J6: extract sub-responsibilities from driver.rs
 mod driver_object_safety;
 mod driver_scan;
+// Stage 18.138 §13.4 J1-J6: extract codegen prep from mod.rs
+mod driver_codegen_prep;
 mod driver_validations;
 
 // Stage 18.134: import extracted functions for use in compile_inner
@@ -1714,73 +1716,8 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
     // so codegen becomes a pure MIR consumer (no re-lowering, no re-typeck).
     // Per §16.2.1: this is "data flows downstream" — the driver (orchestrator)
     // builds the metadata and passes it as data, not as HIR references.
-    // Stage 16.16: fn_name_by_def_id declared early (before per-body loop).
-    for (def_id, owner) in &hir.owners {
-        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
-            let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-            // Stage 13.15: Strip a leading "landin_" prefix to avoid doubling it
-            // (e.g., `fn landin_main()` should produce symbol `landin_main`, not
-            // `landin_landin_main`). This supports both `fn main()` (Rust
-            // convention) and `fn landin_main()` (Landin convention) as entry
-            // points, matching the C wrapper's `extern int landin_main(void);`.
-            let stripped = name.strip_prefix("landin_").unwrap_or(name);
-            fn_name_by_def_id.insert(*def_id, format!("landin_{}", stripped));
-        }
-        // Stage 14.72: Also register impl method names in fn_name_by_def_id.
-        //
-        // Previously, only top-level fns were registered. Impl methods
-        // (e.g., `Inner::new`, `Outer::new`) were only in body_metas but
-        // NOT in fn_name_by_def_id. This caused method name collisions:
-        // `Inner::new` and `Outer::new` both resolved to `landin_new`
-        // (the fallback name from codegen), producing duplicate function
-        // definitions in the LLVM module → segfault at runtime.
-        //
-        // Fix: iterate impl blocks and register each method with its
-        // fully-qualified name: `landin_<SelfType>_<method>`.
-        //
-        // Per §1.0 原则 5 "报错 > 静默": name collisions now produce
-        // distinct symbols instead of silently overwriting.
-        // Stage 14.97 (Bug Y1 fix): Also register trait default method names.
-        // Trait default methods (with body: Some) need proper function names
-        // so they can be called when not overridden in impl blocks.
-        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
-            for trait_item in &t.items {
-                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
-                    if f.body.is_some() {
-                        let method = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-                        let trait_name = interner.try_resolve(&t.ident.name).unwrap_or("Trait");
-                        let trait_stripped =
-                            trait_name.strip_prefix("landin_").unwrap_or(trait_name);
-                        let method_stripped = method.strip_prefix("landin_").unwrap_or(method);
-                        let method_def_id = f.hir_id.owner;
-                        fn_name_by_def_id.insert(
-                            method_def_id,
-                            format!("landin_{}_default_{}", trait_stripped, method_stripped),
-                        );
-                    }
-                }
-            }
-        }
-        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(i)) = owner {
-            for impl_item in &i.items {
-                if let crate::hir::HirImplItem::Fn(f) = impl_item {
-                    let method = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-                    let self_ty_name = crate::traits::extract_impl_self_ty_name(&i.self_ty);
-                    let type_str = self_ty_name
-                        .and_then(|s| interner.try_resolve(&s))
-                        .unwrap_or("Type");
-                    let type_stripped = type_str.strip_prefix("landin_").unwrap_or(type_str);
-                    let method_stripped = method.strip_prefix("landin_").unwrap_or(method);
-                    // Use the method's DefId (from its HirId)
-                    let method_def_id = f.hir_id.owner;
-                    fn_name_by_def_id.insert(
-                        method_def_id,
-                        format!("landin_{}_{}", type_stripped, method_stripped),
-                    );
-                }
-            }
-        }
-    }
+    // Stage 18.138 §13.4 J2: extracted to driver_codegen_prep.rs
+    driver_codegen_prep::populate_fn_name_by_def_id(&hir, &interner, &mut fn_name_by_def_id);
 
     // Build per-body metadata (parallel to mirs).
     //
@@ -1941,20 +1878,8 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
     // Maps DefId → Symbol for all struct/enum items.
     // Per §16: pre-computed from HIR (data flows downstream, no HIR in codegen).
     // Built BEFORE hir is moved into CompileResult.
-    let type_name_by_def_id: std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol> = {
-        let mut map = std::collections::HashMap::new();
-        for (def_id, owner) in &hir.owners {
-            if let crate::hir::OwnerNode::Item(item) = owner {
-                let name = match item {
-                    crate::hir::HirItem::Struct(s) => s.ident.name,
-                    crate::hir::HirItem::Enum(e) => e.ident.name,
-                    _ => continue,
-                };
-                map.insert(*def_id, name);
-            }
-        }
-        map
-    };
+    // Stage 18.138 §13.4 J2: extracted to driver_codegen_prep.rs
+    let type_name_by_def_id = driver_codegen_prep::build_type_name_by_def_id(&hir);
 
     CompileResult {
         hir: Some(hir),

@@ -15699,3 +15699,27 @@ Stage Summary:
 - 拆分结果: mod.rs 2351 → 2082 LOC + driver_tests.rs 279 LOC
 - v0.405.0: patch bump
 - 下一步: Stage 18.138 — compile_inner 拆分 (1433 LOC)
+
+---
+Task ID: stage18.138
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.138 — TD-LOC-DRIVER 继续修复 (提取 driver_codegen_prep.rs). v0.405.0 → v0.406.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §17 任务规划: 提取 codegen prep (fn_name_by_def_id + type_name_by_def_id) 到 driver_codegen_prep.rs
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (mod.rs 2007 仍超 1500)
+- 重构执行:
+  → 提取 populate_fn_name_by_def_id (fn name + impl method + trait default) — pub(super)
+  → 提取 build_type_name_by_def_id (struct/enum name) — pub(super)
+  → 修复 HirTyKind::Path 模式匹配 (需要 2 个字段: HirQSelf + HirPath)
+  → 修复 CompileResult 构造 (替换后需要添加 CompileResult { 前缀)
+  → mod.rs 添加 mod driver_codegen_prep;
+- §3.2 验收: 全套通过 (640 lib + 2663 integration, 0 failures)
+- v0.406.0: patch bump
+
+Stage Summary:
+- Stage 18.138 PASSED — TD-LOC-DRIVER 继续修复 (提取 driver_codegen_prep.rs)
+- 拆分结果: mod.rs 2082 → 2007 LOC + driver_codegen_prep.rs 86 LOC
+- v0.406.0: patch bump
