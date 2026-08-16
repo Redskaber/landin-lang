@@ -443,6 +443,10 @@ mod stage18_98_103_monomorphization_tests;
 #[path = "v0/stage18/plan/stage18_152_module_loader_tests.rs"]
 mod stage18_152_module_loader_tests;
 
+// === Stage 18.153: Cross-file Name Resolution Tests (TD-SINGLE-FILE Phase 2) ===
+#[path = "v0/stage18/plan/stage18_153_cross_file_resolution_tests.rs"]
+mod stage18_153_cross_file_resolution_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

@@ -17,6 +17,7 @@
 
 use crate::ast::PathLeading;
 use crate::hir::*;
+use crate::resolve::module_tree::ModuleNode;
 use crate::resolve::scope::{ScopeKind, ScopeStack};
 use lasso::Rodeo;
 use lasso::Spur;
@@ -716,11 +717,50 @@ impl Resolver {
                 }
             }
 
-            // For multi-segment paths where the first segment is a module,
-            // we would walk into the child module. For Stage 1.3, we resolve
-            // the first segment and return — full multi-level resolution
-            // (e.g., `std::io::Read`) requires cross-crate resolution which
-            // is Stage 5+ work.
+            // Stage 18.153 (TD-SINGLE-FILE Phase 2): For multi-segment paths
+            // where the first segment is a module, walk into the child module
+            // and resolve the remaining segments.
+            //
+            // Previously (Stage 1.3-18.152): returned `Res::Def(mod_def_id, Mod)`
+            // for any multi-segment path starting with a module — which meant
+            // `foo::bar()` resolved to the module `foo`, not the function `bar`.
+            // This blocked cross-file function calls.
+            //
+            // Now: if the first segment is a module (DefKind::Mod), walk into
+            // its child module and look up the next segment. For 3+ segment
+            // paths, recurse through nested modules.
+            //
+            // Per §1.0 原則 6 (通解>特例): one loop handles all multi-segment
+            // module paths (2-segment, 3-segment, etc.).
+            // Per §2 原則 9 (正确>妥协): full module tree walk, not a stub.
+            // Per §2 原則 4 (报错>静默): if the path can't be fully resolved
+            // within the child module, return `Res::Err` — do NOT fall back
+            // to returning the module's DefId (that silently produces wrong
+            // resolution, masking user errors like typos in function names).
+            let first_kind = self.def_kinds.get(&def_id).copied().unwrap_or(DefKind::Mod);
+            if first_kind == DefKind::Mod && path.segments.len() >= 2 {
+                let first_name = first.ident.name;
+                if let Some(child_mod) = self.module_tree.child(first_name) {
+                    // Walk through the child module to find the target.
+                    // For `foo::bar` → look up `bar` in `foo`.
+                    // For `foo::sub::bar` → look up `sub` in `foo`, then `bar` in `sub`.
+                    if let Some(res) = Self::resolve_path_in_module(
+                        child_mod,
+                        &path.segments[1..],
+                        &self.def_kinds,
+                        interner,
+                    ) {
+                        return res;
+                    }
+                    // Not found in child module — this is an error (e.g.,
+                    // `helper::nonexistent()` where `nonexistent` doesn't exist).
+                    // Per §2 原則 4 (报错>静默): return Res::Err, not the module's DefId.
+                    return Res::Err;
+                }
+                // Module declared but child tree not built — fall through to
+                // return the module's DefId (defensive, shouldn't happen).
+            }
+
             // Stage 3.30: include DefKind (per §15).
             let kind = self.def_kinds.get(&def_id).copied().unwrap_or(DefKind::Mod);
             return Res::Def(def_id, kind);
@@ -733,6 +773,61 @@ impl Resolver {
         }
 
         Res::Err
+    }
+
+    /// Stage 18.153 (TD-SINGLE-FILE Phase 2): Resolve a path within a child
+    /// module.
+    ///
+    /// Walks `segments` through the module tree starting from `module`.
+    /// For each segment:
+    /// - If it's the last segment, look it up in value/type/use_import namespace
+    /// - If it's not the last segment and resolves to a child module, recurse
+    ///
+    /// Returns `None` if the path cannot be resolved within this module.
+    ///
+    /// Per §10: `resolve_path_in_module` follows `<verb>_<noun>_<prep>_<noun>`.
+    /// Per §1.0 原則 6 (通解>特例): one function handles all segment counts.
+    fn resolve_path_in_module(
+        module: &ModuleNode,
+        segments: &[HirPathSegment],
+        def_kinds: &HashMap<DefId, DefKind>,
+        _interner: &Rodeo,
+    ) -> Option<Res> {
+        if segments.is_empty() {
+            return None;
+        }
+
+        // If only one segment left, look it up in the module's namespaces.
+        if segments.len() == 1 {
+            let name = segments[0].ident.name;
+
+            // Value namespace (fn, const, static).
+            if let Some(def_id) = module.lookup_value(name) {
+                let kind = def_kinds.get(&def_id).copied().unwrap_or(DefKind::Fn);
+                return Some(Res::Def(def_id, kind));
+            }
+
+            // Type namespace (struct, enum, trait, type alias).
+            if let Some(def_id) = module.lookup_type(name) {
+                let kind = def_kinds.get(&def_id).copied().unwrap_or(DefKind::Struct);
+                return Some(Res::Def(def_id, kind));
+            }
+
+            // Use imports.
+            if let Some(import) = module.lookup_use_import(name) {
+                return Some(Res::Def(import.target, import.kind));
+            }
+
+            return None;
+        }
+
+        // Multiple segments remaining: the first must be a child module.
+        let first_name = segments[0].ident.name;
+        if let Some(child) = module.child(first_name) {
+            return Self::resolve_path_in_module(child, &segments[1..], def_kinds, _interner);
+        }
+
+        None
     }
 
     // ================================================================

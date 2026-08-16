@@ -16122,3 +16122,63 @@ Stage Summary:
 - 测试: 629 lib + 2673 integration, 0 failures (新增 17 个测试)
 - v0.420.0: minor bump
 - 下一步: Phase 2 — use 跨文件 name resolution
+
+---
+Task ID: stage18.153
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.153 — v0.2 P0 mini-cargo Phase 2: 跨文件 name resolution. v0.420.0 → v0.421.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 629 ✅ + tests 2673 ✅
+- §13.4 J1-J6 评估: 全部通过
+
+- 问题分析:
+  → Phase 1 (Stage 18.152) 实现了模块加载, 但 name resolution 不工作
+  → resolve_path 多段路径返回模块 DefId, 而非目标 item DefId
+  → `foo::bar()` 解析到模块 `foo`, 不是函数 `bar` → 阻断跨文件调用
+
+- 修复方案 (§1.0 原則 6 通解>特解):
+  → 新增 resolve_path_in_module 递归 helper (55 LOC)
+  → resolve_path: 首段是 Mod + ≥2 段 → 走子模块树
+  → 2-segment: 查 value_ns → type_ns → use_imports
+  → 3+-segment: 首段必须是子模块, 递归
+
+- 关键修复 (§2 原則 4 报错>静默):
+  → 路径无法在子模块内解析时返回 Res::Err
+  → 不回退到返回模块 DefId (旧 "legacy compatibility" 行为)
+  → 用户拼写错误 (如 helper::nonexistent()) 现在正确报错
+
+- use 解析:
+  → lookup_use_path_target 已支持 2-segment 走 child module
+  → build_module_tree 已正确构建子模块树 (包括 Loaded 模块 items)
+  → use foo::bar; 无需额外修改, 通过现有路径工作
+
+- 测试 (8 个: 6 positive + 2 negative):
+  → cross_file_fn_call: helper::answer() 跨文件函数调用 ✅
+  → use_import_from_module: use helper::answer; ✅
+  → cross_file_struct: types::Point { x: 1, y: 2 } ✅
+  → use_import_struct: use types::Point; ✅
+  → nested_module_fn_call: outer::inner::deep() 嵌套模块 ✅
+  → inline_mod_cross_file: 内联模块内调用跨文件函数 ✅
+  → call_nonexistent_fn: helper::nonexistent() 报错 ✅
+  → use_nonexistent_item: use helper::nonexistent; 报错 ✅
+
+- §3.2 验收: 全套通过
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-features --all-targets: 0 warnings
+  → cargo test --lib: 629 passed, 0 failed
+  → cargo test --tests --all-features: 2681 passed (2673 + 8 new), 0 failed
+  → 0 TODO/FIXME/HACK
+
+- TD-SINGLE-FILE: 🟡 Phase 1-2 Resolved (phases 3-4 remain)
+- v0.421.0: patch bump
+
+Stage Summary:
+- Stage 18.153 PASSED — v0.2 P0 mini-cargo Phase 2: 跨文件 name resolution
+- 修改: resolve_path 多段路径走子模块树 + 新增 resolve_path_in_module 递归 helper
+- 关键修复: foo::bar() 现在正确解析到函数 bar, 而非模块 foo
+- 测试: 629 lib + 2681 integration (新增 8), 0 failures
+- v0.421.0: patch bump
+- 下一步: Phase 3 — landinc CLI subcommands
