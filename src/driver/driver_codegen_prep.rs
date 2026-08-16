@@ -260,3 +260,47 @@ pub(super) fn run_post_typeck_validations(
         fn_name_by_def_id.insert(synthetic_def_id, landin_name);
     }
 }
+
+/// Pre-intern built-in macro names and runtime function symbols.
+///
+/// Per §13.4 J1-J6 (Stage 18.141): extracted from compile_inner.
+pub(super) fn pre_intern_macro_symbols(interner: &mut lasso::Rodeo) {
+    for name in crate::parser::macro_expand::BUILTIN_MACRO_NAMES {
+        interner.get_or_intern(name);
+    }
+    for name in crate::parser::macro_expand::BUILTIN_MACRO_NAMES {
+        interner.get_or_intern(format!("__landin_{}", name));
+    }
+    interner.get_or_intern("args");
+    interner.get_or_intern("tt");
+    interner.get_or_intern("cond");
+    interner.get_or_intern("msg");
+    interner.get_or_intern("x");
+    interner.get_or_intern("dst");
+    interner.get_or_intern("__landin_assert");
+    interner.get_or_intern("__landin_panic_msg");
+    interner.get_or_intern("__landin_format");
+    interner.get_or_intern("__landin_dbg");
+    interner.get_or_intern("__landin_write");
+    interner.get_or_intern("__landin_stringify");
+    interner.get_or_intern("__landin_concat");
+    interner.get_or_intern("__landin_env");
+    interner.get_or_intern("path");
+    interner.get_or_intern("__landin_file");
+    interner.get_or_intern("__landin_line");
+    interner.get_or_intern("__landin_module_path");
+    interner.get_or_intern("__landin_include_str");
+    interner.get_or_intern("pat");
+    interner.get_or_intern("cfg");
+    interner.get_or_intern("__landin_matches");
+    interner.get_or_intern("__landin_cfg");
+    interner.get_or_intern("__landin_option_env");
+    interner.get_or_intern("attr");
+    interner.get_or_intern("__landin_asm");
+    interner.get_or_intern("__landin_compile_error");
+    interner.get_or_intern("__landin_cfg_attr");
+    interner.get_or_intern("mode");
+    interner.get_or_intern("__landin_unreachable");
+    interner.get_or_intern("__landin_trace_macros");
+    interner.get_or_intern("__landin_format_args");
+}

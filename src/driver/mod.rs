@@ -554,70 +554,8 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
         return CompileResult::empty(interner, errors);
     }
 
-    // === Stage 18.04: Macro expansion ===
-    // Expand `macro_rules!`-defined macro calls in the token stream
-    // before parsing. Built-in macros (println!) are left for the parser
-    // to handle via its existing special cases.
-    // Per §11: this is a parser-stage sub-module; driver only sees the
-    // free-function entry `parser::macro_expand::expand_macros_with_errors`.
-    //
-    // Stage 18.08: collect macro expansion errors into `errors.macro_errors`.
-    //
-    // Stage 18.10: pre-intern built-in macro names so the macro_expand
-    // module can register them into the MacroTable (println/print/
-    // eprintln/eprint). Phase 1 uses no-op rule bodies so the parser's
-    // existing special-case path still handles them.
-    for name in crate::parser::macro_expand::BUILTIN_MACRO_NAMES {
-        interner.get_or_intern(name);
-    }
-    // Stage 18.21: pre-intern `__landin_<name>` runtime function names
-    // so the built-in macro body can reference them. The body expands
-    // `println!(...)` to `__landin_println(...)`, which the parser
-    // parses as `Expr::Call` and the codegen detects via
-    // `is_landin_print_macro`.
-    for name in crate::parser::macro_expand::BUILTIN_MACRO_NAMES {
-        interner.get_or_intern(format!("__landin_{}", name));
-    }
-    // Pre-intern symbols used in built-in macro rule patterns/bodies.
-    interner.get_or_intern("args");
-    interner.get_or_intern("tt");
-    // Stage 18.29: Pre-intern symbols for non-print built-in macros.
-    interner.get_or_intern("cond");
-    interner.get_or_intern("msg");
-    interner.get_or_intern("x");
-    interner.get_or_intern("dst");
-    interner.get_or_intern("__landin_assert");
-    interner.get_or_intern("__landin_panic_msg");
-    // Stage 18.32: Pre-intern symbols for more built-in macros.
-    interner.get_or_intern("__landin_format");
-    interner.get_or_intern("__landin_dbg");
-    interner.get_or_intern("__landin_write");
-    // Stage 18.34: Pre-intern symbols for compile-time utility macros.
-    interner.get_or_intern("__landin_stringify");
-    interner.get_or_intern("__landin_concat");
-    interner.get_or_intern("__landin_env");
-    // Stage 18.36: Pre-intern symbols for source info + file macros.
-    interner.get_or_intern("path");
-    interner.get_or_intern("__landin_file");
-    interner.get_or_intern("__landin_line");
-    interner.get_or_intern("__landin_module_path");
-    interner.get_or_intern("__landin_include_str");
-    // Stage 18.39: Pre-intern symbols for pattern + config macros.
-    interner.get_or_intern("pat");
-    interner.get_or_intern("cfg");
-    interner.get_or_intern("__landin_matches");
-    interner.get_or_intern("__landin_cfg");
-    interner.get_or_intern("__landin_option_env");
-    // Stage 18.41: Pre-intern symbols for low-level + diagnostic macros.
-    interner.get_or_intern("attr");
-    interner.get_or_intern("__landin_asm");
-    interner.get_or_intern("__landin_compile_error");
-    interner.get_or_intern("__landin_cfg_attr");
-    // Stage 18.43: Pre-intern symbols for control-flow + debug macros.
-    interner.get_or_intern("mode");
-    interner.get_or_intern("__landin_unreachable");
-    interner.get_or_intern("__landin_trace_macros");
-    interner.get_or_intern("__landin_format_args");
+    // Stage 18.141 §13.4 J2: extracted to driver_codegen_prep.rs
+    driver_codegen_prep::pre_intern_macro_symbols(&mut interner);
     let (tokens, macro_errs) =
         crate::parser::macro_expand::expand_macros_with_errors(tokens, &mut interner);
     errors.macro_errors = macro_errs;

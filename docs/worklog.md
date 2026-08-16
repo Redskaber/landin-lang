@@ -15768,3 +15768,25 @@ Stage Summary:
 - Stage 18.140 PASSED — TD-LOC-DRIVER 继续修复 (提取 post-typeck validations)
 - 拆分结果: mod.rs 1946 → 1872 LOC + driver_codegen_prep.rs 166 → 262 LOC
 - v0.408.0: patch bump
+
+---
+Task ID: stage18.141
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.141 — TD-LOC-DRIVER 继续修复 (提取 macro pre-interning). v0.408.0 → v0.409.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §17 任务规划: 提取 macro pre-interning (34 个 interner.get_or_intern 调用) 到 driver_codegen_prep.rs
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (mod.rs 1810 仍超 1500)
+- 重构执行:
+  → 提取 pre_intern_macro_symbols (BUILTIN_MACRO_NAMES 循环 + 34 个 get_or_intern 调用)
+  → 修复: 首次提取时函数体为空 (只提取了注释未提取代码), 手动填充所有 interner 调用
+  → 函数 pub(super) + 接收 &mut Rodeo
+- §3.2 验收: 全套通过 (640 lib + 2663 integration, 0 failures)
+- v0.409.0: patch bump
+
+Stage Summary:
+- Stage 18.141 PASSED — TD-LOC-DRIVER 继续修复 (提取 macro pre-interning)
+- 拆分结果: mod.rs 1872 → 1810 LOC + driver_codegen_prep.rs 262 → 306 LOC
+- v0.409.0: patch bump
