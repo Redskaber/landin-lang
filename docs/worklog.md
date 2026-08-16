@@ -15631,3 +15631,48 @@ Stage Summary:
 - §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
 - v0.403.0: patch bump (TD-LOC-MACRO-EXPAND 部分修复)
 - 下一步: Stage 18.136 — TD-LOC-MACRO-EXPAND 剩余 (core matching + substitution + repetition + hygiene 提取) 或 Stage 18.137 — TD-LOC-DRIVER 剩余 (compile_inner 拆分)
+
+---
+Task ID: stage18.136
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.136 — TD-LOC-MACRO-EXPAND 结构改进 (目录模块转换). v0.403.0 → v0.404.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage 状态): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §13.1 设计对齐: 查阅 docs/lang-design/ 02-grammar.md (宏语法)
+
+- §17 任务规划:
+  → 选定 TD-LOC-MACRO-EXPAND 继续修复 (macro_expand.rs 3904 LOC, 非测试 1562 LOC)
+  → §13.4 J1-J6 判据检查: J1-J5 全部通过; J6 部分通过 (非测试代码 1562, 接近 1500)
+  → §12 最优 > 最小: 目录模块转换为后续提取奠定基础
+
+- 重构执行:
+  → macro_expand.rs → macro_expand/mod.rs (目录模块转换)
+  → 尝试提取 4 子模块 (macro_matching + macro_substitute + macro_repetition + macro_hygiene)
+  → 脚本提取时遗留孤立函数体 (match_pattern 签名+体分离), 导致编译失败
+  → 从 Stage 18.135 包恢复 mod.rs, 保留目录模块转换
+
+- §10 API 命名: 100% 合规 (未改变任何 API)
+- §11 接口隔离: 无新增 L-PIPE-N
+- §2.2 设计原则: 9/9 ✅ (原则 9: 4 子模块提取失败时回退)
+
+- §3.2 验收 (全套通过):
+  → cargo check ✅ + fmt ✅ + clippy ✅ + lib 640 ✅ + tests 2663 ✅
+
+- §8 文档同步:
+  → docs/develop/v0/stage-18/stage-18.136-dev-log.md (新建)
+  → Cargo.toml: v0.403.0 → v0.404.0
+  → README.md: v0.403.0 → v0.404.0
+  → worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.136 PASSED — TD-LOC-MACRO-EXPAND 结构改进 (目录模块转换)
+- 复杂度 L3, 实际 1 轮 (目录模块转换 + 4 子模块提取尝试+回退)
+- 结果: macro_expand.rs → macro_expand/mod.rs (目录模块转换成功)
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (非测试代码 1562 LOC, 接近 1500)
+- §12 最优 > 最小: 目录模块转换为后续提取奠定基础
+- §2.2 设计原则: 9/9 ✅
+- §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
+- v0.404.0: patch bump (目录模块转换)
+- 下一步: Stage 18.137 — 逐个函数提取 (非脚本批量)
