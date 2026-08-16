@@ -15442,3 +15442,86 @@ Stage Summary:
 - TD-LOC-MIR-LOWER-EXPR: ✅ Resolved (Stage 18.131-18.133 三阶段完成)
 - v0.401.0: patch bump (TD-LOC-MIR-LOWER-EXPR 完成修复)
 - 下一步: Stage 18.134 — TD-LOC-MACRO-EXPAND (5962 LOC, 4.0× 阈值) 或 TD-LOC-DRIVER (4018 LOC, 2.7× 阈值)
+
+---
+Task ID: stage18.134
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.134 — TD-LOC-DRIVER 部分修复 (提取 3 个子模块). v0.401.0 → v0.402.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (Stage 18.127 已部署)
+- §3.2 验收 (上个 stage 状态): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §13.1 设计对齐: 查阅 docs/lang-design/ 01-language-specification.md (编译流水线); driver 内部结构属于设计灰区
+
+- §17 任务规划:
+  → 选定 TD-LOC-DRIVER (4038 LOC, 2.7× 阈值) — 2 项剩余 TD-LOC-* 中阈值倍数较低
+  → §13.4 J1-J6 判据检查:
+    - J1 架构设计对齐 ✅ (灰区决策按子职责划分)
+    - J2 单一职责 ✅ (3 子模块各自单一职责: validation / scan / object safety)
+    - J3 单向流动 ✅ (3 子模块被 mod.rs 调用; driver_object_safety 调用 driver_scan)
+    - J4 编译相关表达完整 ✅ (每个子职责完整)
+    - J5 阶段划分清晰 ✅ (全部在 driver 阶段)
+    - J6 科学合理粒度 ⚠️ (3 子模块 ✅; mod.rs 2351 仍超 1500, compile_inner 1442 LOC)
+  → §12 最优 > 最小: 选择最清晰子职责 (validation + scan + object safety) 提取
+
+- 重构执行:
+  → 拆分前: src/driver.rs 4038 LOC (compile_inner 1442 + validation 917 + scan 780 + object safety 210 + struct/impl + tests)
+  → 拆分后: driver/ 目录模块 (4 文件)
+    - driver/mod.rs (2351 LOC): compile_inner + compile_binary + compile_expect_ok + struct/impl + tests + helpers
+    - driver/driver_validations.rs (936 LOC): 9 validation functions
+    - driver/driver_scan.rs (618 LOC): 9 scan + walk functions
+    - driver/driver_object_safety.rs (164 LOC): 2 object safety functions
+  → 关键变更:
+    1. driver.rs → driver/mod.rs (目录模块转换, §13.4 J5)
+    2. 3 子模块声明: mod driver_validations; mod driver_scan; mod driver_object_safety;
+    3. mod.rs 导入: use driver_validations::{...}; use driver_scan::{...}; use driver_object_safety::...;
+    4. driver_object_safety.rs 导入: use super::driver_scan::{walk_hir_ty, walk_hir_ty_in_body};
+    5. 所有函数 pub(super): 仅 driver 模块内部可见
+    6. 恢复丢失的函数: build_method_to_impl_index + resolve_self_param_type_for_sig + compile_expect_ok (脚本意外删除, 从 git 恢复)
+
+- 脚本意外删除函数的教训:
+  → build_method_to_impl_index + resolve_self_param_type_for_sig: 脚本提取范围错误 (包含但未识别)
+  → compile_expect_ok: 脚本提取范围错误
+  → 修订: 从 git 恢复, 保留在 mod.rs
+
+- §10 API 命名标准化: 7 项规则全部 ✅
+  → 未改变任何入口函数 / 上下文类型 / 类型前缀
+  → validate_* / scan_* / check_* / walk_* 前缀不变
+  → 显式 use + pub(super)
+  → 无新增 L-NAMING-N
+
+- §11 接口隔离: 无新增 L-PIPE-N
+  → 全部在 driver 阶段内部, 无跨阶段拆分
+
+- §2.2 设计原则: 9/9 ✅
+  → 原则 3 显式 > 隐式: 显式 use + pub(super)
+  → 原则 5 去除兼容思维: 不保留旧结构
+  → 原则 6 通用 > 特例: 通用子职责划分
+
+- §3.2 验收 (全套通过):
+  → cargo check --features llvm-backend ✅ (0 errors, 0 warnings, 1.05s)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings, 12.79s)
+  → cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed (0.15s)
+  → cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 2 ignored (4.75s)
+
+- §8 文档同步:
+  → docs/develop/v0/stage-18/stage-18.134-dev-log.md (新建)
+  → docs/develop/v0/tech-debt-register.md: v0.401.0 → v0.402.0 + TD-LOC-DRIVER 标记 Partial
+  → docs/develop/v0/calibration-data.md: v0.9 → v1.0 + Stage 18.134 统计 + §2.3 流程优化历史
+  → Cargo.toml: v0.401.0 → v0.402.0
+  → README.md: v0.401.0 → v0.402.0
+  → worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.134 PASSED — TD-LOC-DRIVER 部分修复 (提取 3 个子模块)
+- 复杂度 L3, 实际 1 轮 (driver.rs → driver/ 目录模块 + 3 子模块提取 + 函数恢复)
+- 拆分结果: driver.rs 4038 LOC → driver/mod.rs 2351 + driver_validations.rs 936 + driver_scan.rs 618 + driver_object_safety.rs 164 (LOC 降 42%)
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (3 子模块 ✅, mod.rs 仍超 1500)
+- §12 最优 > 最小: 选择最清晰子职责 (validation + scan + object safety) 提取
+- §2.2 设计原则: 9/9 ✅
+- §10 API 命名: 100% 合规
+- §11 接口隔离: 无新增 L-PIPE-N
+- §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
+- v0.402.0: patch bump (TD-LOC-DRIVER 部分修复)
+- 下一步: Stage 18.135 — TD-LOC-MACRO-EXPAND (5962 LOC, 4.0× 阈值) 或 Stage 18.136 — TD-LOC-DRIVER 剩余 (compile_inner 拆分)

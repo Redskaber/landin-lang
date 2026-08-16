@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.401.0 (Stage 18.133 — TD-LOC-MIR-LOWER-EXPR complete: mir/lower/expr_operand.rs 2171→1156 LOC + expr_variants.rs 1016 LOC extracted per §13.4 J1-J6; 4 largest match arms (Path + Call + For + MethodCall) extracted as functions; all 4 mir/lower/ files < 1500 LOC)  
+> **Version**: v0.402.0 (Stage 18.134 — TD-LOC-DRIVER partial: driver.rs 4038→2351 LOC + driver_validations.rs 936 + driver_scan.rs 618 + driver_object_safety.rs 164 extracted per §13.4 J1-J6; driver.rs → driver/ directory module; 20 functions migrated; mod.rs still > 1500, needs Stage 18.136)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4, structural debt scan + 5 resolved (18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131-18.133 × 1)
+> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4, structural debt scan + 5 resolved + 1 partial (18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131-18.133 × 1, 18.134 × 1 partial)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets
