@@ -52,7 +52,6 @@ use lasso::Rodeo;
 
 /// Errors collected from one or more passes.
 // Stage 18.134 §13.4 J1-J6: extract sub-responsibilities from driver.rs
-mod driver_object_safety;
 mod driver_scan;
 mod projection_resolver;
 // Stage 18.138 §13.4 J1-J6: extract codegen prep from mod.rs

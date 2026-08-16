@@ -239,14 +239,17 @@ pub(super) fn build_trait_resolver_and_plan(
     crate::traits::TraitResolver,
     crate::mir::dyn_trait::DynTraitMIRPlan,
 ) {
-    use super::driver_object_safety::check_object_safety_for_dyn_trait_usage;
-
     let mut trait_resolver = crate::traits::TraitResolver::new();
     trait_resolver.register_builtin_traits(interner);
     crate::stdlib::register_stdlib(interner);
     trait_resolver.collect(hir, interner);
 
-    check_object_safety_for_dyn_trait_usage(hir, &trait_resolver, interner, errors);
+    super::driver_validations::check_object_safety_for_dyn_trait_usage(
+        hir,
+        &trait_resolver,
+        interner,
+        errors,
+    );
 
     let where_errors =
         crate::typeck::where_clause::check_where_clauses(hir, &trait_resolver, interner);
