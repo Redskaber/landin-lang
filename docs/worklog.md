@@ -15790,3 +15790,25 @@ Stage Summary:
 - Stage 18.141 PASSED — TD-LOC-DRIVER 继续修复 (提取 macro pre-interning)
 - 拆分结果: mod.rs 1872 → 1810 LOC + driver_codegen_prep.rs 262 → 306 LOC
 - v0.409.0: patch bump
+
+---
+Task ID: stage18.142
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.142 — TD-LOC-DRIVER 继续修复 (提取 generics_map building). v0.409.0 → v0.410.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §17 任务规划: 提取 generics_map building + AdtLayouts building 到 driver_codegen_prep.rs
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (mod.rs 1801 仍超 1500)
+- 重构执行:
+  → 成功提取 build_generics_map (10 LOC, maps DefId → Vec<ParamTy>)
+  → AdtLayouts 提取尝试: 提取后导致 compile_inner 大括号不匹配 (stray }), 回退保留原位
+  → 修复 clippy: find_generics 参数 &hir → hir (已为引用)
+- §3.2 验收: 全套通过 (640 lib + 2663 integration, 0 failures)
+- v0.410.0: patch bump
+
+Stage Summary:
+- Stage 18.142 PASSED — TD-LOC-DRIVER 继续修复 (提取 generics_map building)
+- 拆分结果: mod.rs 1810 → 1801 LOC + driver_codegen_prep.rs 306 → 322 LOC
+- v0.410.0: patch bump

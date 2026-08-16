@@ -606,16 +606,8 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
     // generic items (fns, structs, enums, etc.).
     // Per §16: pre-computed from HIR (data flows downstream, no HIR access
     // during writeback). Per §23: `find_generics` follows `<verb>_<noun>`.
-    let generics_map: std::collections::HashMap<crate::hir::DefId, Vec<crate::mir::ty::ParamTy>> = {
-        let mut map = std::collections::HashMap::new();
-        for (def_id, _) in &hir.owners {
-            let params = crate::hir::generics::find_generics(*def_id, &hir);
-            if !params.is_empty() {
-                map.insert(*def_id, params);
-            }
-        }
-        map
-    };
+    // Stage 18.142 §13.4 J2: extracted to driver_codegen_prep.rs
+    let generics_map = driver_codegen_prep::build_generics_map(&hir);
 
     // Stage 16.16: Declare fn_name_by_def_id early so the per-body loop
     // can register synthesized closure function names.
@@ -1647,7 +1639,6 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
         mir.adt_layouts = crate_adt_layouts.clone();
     }
 
-    // Stage 3.56 (Phase A §16 refactoring): pre-compute codegen metadata
     // so codegen becomes a pure MIR consumer (no re-lowering, no re-typeck).
     // Per §16.2.1: this is "data flows downstream" — the driver (orchestrator)
     // builds the metadata and passes it as data, not as HIR references.

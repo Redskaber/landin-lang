@@ -304,3 +304,19 @@ pub(super) fn pre_intern_macro_symbols(interner: &mut lasso::Rodeo) {
     interner.get_or_intern("__landin_trace_macros");
     interner.get_or_intern("__landin_format_args");
 }
+
+/// Build generics_map from HIR: maps DefId to Vec<ParamTy>.
+///
+/// Per §13.4 J1-J6 (Stage 18.142): extracted from compile_inner.
+pub(super) fn build_generics_map(
+    hir: &HirCrate,
+) -> std::collections::HashMap<crate::hir::DefId, Vec<crate::mir::ty::ParamTy>> {
+    let mut map = std::collections::HashMap::new();
+    for (def_id, _) in &hir.owners {
+        let params = crate::hir::generics::find_generics(*def_id, hir);
+        if !params.is_empty() {
+            map.insert(*def_id, params);
+        }
+    }
+    map
+}
