@@ -10,6 +10,11 @@ use super::mir_translation::detect_operand_type;
 use super::*;
 use crate::mir::place::*;
 use crate::mir::ty::ConstVal;
+/// Stage 18.151 (TD-CODEGEN-RESULT): `codegen_terminator` now returns
+/// `CodegenResult<()>` to propagate codegen errors (e.g., from nested
+/// `emit_printf_call` calls that may fail in future).
+///
+/// Per §2 原则 9 (正确>妥协): full Result propagation.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn codegen_terminator(
     emitter: &mut dyn Emitter,
@@ -21,7 +26,7 @@ pub(crate) fn codegen_terminator(
     interner: &Rodeo,
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
-) {
+) -> CodegenResult<()> {
     match &term.kind {
         TerminatorKind::Return => {
             if *ret_ty == EmitType::Void {
@@ -168,7 +173,7 @@ pub(crate) fn codegen_terminator(
                 if let Some(cont) = target {
                     emitter.emit_br(&format!("bb{}", cont.0));
                 }
-                return;
+                return Ok(());
             }
 
             // Stage 15.65 (HP-22 cleanup): Removed the legacy dyn Trait
@@ -379,7 +384,7 @@ pub(crate) fn codegen_terminator(
                         layouts,
                         mono_layouts,
                         fn_name_by_def_id,
-                    );
+                    )?;
                     // The print macros return void/unit — no return value
                     // to store. Branch to the target block if present.
                     if let Some(target) = target {
@@ -387,7 +392,7 @@ pub(crate) fn codegen_terminator(
                     } else {
                         emitter.emit_unreachable();
                     }
-                    return;
+                    return Ok(());
                 }
                 // Stage 14.35: Use the callee's actual return type from fn_sigs
                 // Stage 18.107 (S8 fix): Substitute sig.output with callee_substs
@@ -755,6 +760,7 @@ pub(crate) fn codegen_terminator(
             emitter.emit_br(&format!("bb{}", target.0));
         }
     }
+    Ok(())
 }
 
 // =============================================================================
@@ -855,6 +861,10 @@ fn extract_format_string(arg: &Operand, mir: &MirBody, interner: &Rodeo) -> Stri
 /// Per §10: `<verb>_<noun>_<noun>` pattern.
 /// Stage 18.18: Now called from Call terminator — `#[allow(dead_code)]`
 /// removed (Phase 2.2 activation).
+/// Stage 18.151 (TD-CODEGEN-RESULT): `codegen_print_call` now returns
+/// `CodegenResult<()>` to propagate codegen errors from `emit_printf_call`.
+///
+/// Per §2 原则 9 (正确>妥协): full Result propagation.
 #[allow(clippy::too_many_arguments)] // codegen context requires many params
 fn codegen_print_call(
     name: &str,
@@ -865,14 +875,14 @@ fn codegen_print_call(
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
-) {
+) -> CodegenResult<()> {
     // Derive newline/stderr from the function name.
     let (newline, stderr) = match name {
         "__landin_println" => (true, false),
         "__landin_print" => (false, false),
         "__landin_eprintln" => (true, true),
         "__landin_eprint" => (false, true),
-        _ => return, // Not a print macro — no-op.
+        _ => return Ok(()), // Not a print macro — no-op.
     };
 
     // Stage 18.23: Extract the format string from the first argument.
@@ -908,7 +918,7 @@ fn codegen_print_call(
         layouts,
         mono_layouts,
         fn_name_by_def_id,
-    );
+    )
 }
 
 #[cfg(test)]

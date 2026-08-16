@@ -16023,3 +16023,47 @@ Stage Summary:
 - 尝试 rvalue.rs + statement.rs 修改, 但完整修复需要 3 个 phase
 - 回退到工作状态, 记录完整计划
 - v0.418.0: patch bump
+
+---
+Task ID: stage18.151
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.151 — TD-CODEGEN-RESULT 完整修复 (root-cause). v0.418.0 → v0.419.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 622 ✅ + tests 2524 ✅
+- §17 任务规划: 推进 TD-CODEGEN-RESULT 根因修复 (单 Stage 全链路, 纠正 18.150 的 3-phase 计划)
+- §12 (最优>最小): 全链路 CodegenResult 传播 (而非局部 unwrap)
+- §2.2 原则 9 (正确>妥协): 完整修复, 不留半成品
+
+- 修改 6 核心源文件:
+  → rvalue.rs: codegen_rvalue → CodegenResult<EmitValue>, BinaryOp2 panic!() → Err(CodegenError), 7 early return → Ok(...)
+  → statement.rs: codegen_statement + emit_printf_call → CodegenResult<()>, codegen_rvalue 调用添加 ?
+  → terminator.rs: codegen_terminator + codegen_print_call → CodegenResult<()>, 2 return; → Ok(()), codegen_print_call 调用添加 ?
+  → function.rs: 4 函数 → CodegenResult<()>, 4 codegen_function 调用 + statement/terminator 调用添加 ?
+  → pipeline.rs: run_codegen_pipeline → CodegenResult<()>, 3 调用添加 ?
+  → mod.rs: 4 个 codegen_crate* 函数 → CodegenResult<T>
+
+- 修改 2 调用方文件:
+  → cargo.rs: match codegen_crate(result) → Ok(Some(ir)) / Err(push to errors)
+  → bin/main.rs: 2 处 codegen 调用 → match ... { Ok(em) => em, Err(e) => exit(1) }
+
+- 批量更新 31 测试/示例文件 (55 调用点):
+  → 使用 scripts/stage18_151_update_test_codegen_calls.py
+  → codegen_crate(&result) → .expect("codegen should succeed for valid test input")
+
+- 修复 TD-UNWRAP-CODEGEN-LLVM-MOD:
+  → codegen/llvm/mod.rs:378: name.strip_prefix('@').unwrap() → if let Some(stripped) = name.strip_prefix('@')
+
+- §13.4 J1-J6: 全部通过 (单一职责, 接口稳定, 测试覆盖, 文档同步)
+- §3.2 验收: 全套通过 (622 lib + 2524/2663 integration, 0 failures, 0 TODO/FIXME)
+- 关闭 3 项技术债: TD-CODEGEN-RESULT, TD-BINARYOP2-PANIC, TD-UNWRAP-CODEGEN-LLVM-MOD
+- v0.419.0: patch bump (root-cause codegen Result 修复)
+
+Stage Summary:
+- Stage 18.151 PASSED — TD-CODEGEN-RESULT 完整修复 (root-cause)
+- 3 项技术债关闭: TD-CODEGEN-RESULT, TD-BINARYOP2-PANIC, TD-UNWRAP-CODEGEN-LLVM-MOD
+- 修改: 6 source + 2 caller + 31 test/example = 39 files
+- 测试: 622 lib + 2524 (default) / 2663 (all-features) integration, 0 failures
+- v0.419.0: patch bump
+- 下一步: v0.2 P0 mini-cargo 项目系统 (TD-SINGLE-FILE)

@@ -125,7 +125,8 @@ fn test_landin_program_to_object_file() {
         );
     }
 
-    let emitter = codegen_crate_to_module(&result);
+    let emitter =
+        codegen_crate_to_module(&result).expect("codegen should succeed for valid test input");
     let out_path = "/tmp/test_landin_e2e.o";
     let _ = std::fs::remove_file(out_path);
 
@@ -155,7 +156,8 @@ fn test_landin_add_program_to_object_file() {
         eprintln!("⚠️ Compile errors: {}", result.errors.total_count());
     }
 
-    let emitter = codegen_crate_to_module(&result);
+    let emitter =
+        codegen_crate_to_module(&result).expect("codegen should succeed for valid test input");
     let out_path = "/tmp/test_landin_add.o";
     let _ = std::fs::remove_file(out_path);
 

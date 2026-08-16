@@ -255,7 +255,7 @@ fn main() {
 "#;
     let result = compile(src);
     assert!(!result.has_errors());
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ir.contains("define i32 @id_i32("),
         "expected specialized function id_i32 in IR"
@@ -278,7 +278,7 @@ fn main() {
 "#;
     let result = compile(src);
     assert!(!result.has_errors());
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ir.contains("call i32 @landin_id_i32("),
         "expected call to landin_id_i32 in IR"
@@ -300,7 +300,7 @@ fn main() {
 "#;
     let result = compile(src);
     assert!(!result.has_errors());
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ir.contains("define i32 @landin_add("),
         "expected base function landin_add in IR"

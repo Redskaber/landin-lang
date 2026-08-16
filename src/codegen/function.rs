@@ -10,6 +10,7 @@
 //! Per `docs/lang-design/07-codegen.md` §4 (MIR → LLVM IR mapping).
 
 use crate::codegen::emitter::{EmitType, Emitter};
+use crate::codegen::error::CodegenResult;
 use crate::codegen::mir_translation::types::mir_type_to_emit_type_with_layouts_and_mono;
 use crate::codegen::statement::codegen_statement;
 use crate::codegen::terminator::codegen_terminator;
@@ -39,6 +40,10 @@ use lasso::Rodeo;
 /// Per §23: `codegen_mono_functions` follows `<verb>_<adj>_<noun>` pattern.
 /// Per §16: reads MIR + fn_sigs + fn_name_by_def_id (data, no HIR).
 /// Per §1.0 原則 6 "通用 > 特例": one pass for all MonoItem::Fn.
+/// Stage 18.151 (TD-CODEGEN-RESULT): Returns `CodegenResult<()>` to
+/// propagate codegen errors from `codegen_function`.
+///
+/// Per §2 原则 9 (正确>妥协): full Result propagation.
 pub fn codegen_mono_functions(
     mirs: &[MirBody],
     type_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, crate::lexer::Symbol>,
@@ -47,7 +52,7 @@ pub fn codegen_mono_functions(
     interner: &Rodeo,
     mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
-) {
+) -> CodegenResult<()> {
     use crate::mir::collect_mono_items;
     use crate::mir::monomorphize::{build_mono_item_names, mono_item_name, MonoItem};
     use crate::mir::substitute_mir_body;
@@ -116,12 +121,14 @@ pub fn codegen_mono_functions(
                 Some(mono_layouts),
                 matches!(sig.output.kind, crate::mir::ty::TyKind::Tuple(ref tys) if tys.is_empty()),
                 crate::ast::Abi::Landin,
-            );
+            )?;
         }
     }
+    Ok(())
 }
 
 /// (no HIR, no re-lowering, no re-typeck).
+/// Stage 18.151 (TD-CODEGEN-RESULT): Returns `CodegenResult<()>`.
 pub fn codegen_from_mir(
     mirs: &[MirBody],
     body_metas: &[crate::driver::BodyMeta],
@@ -130,7 +137,7 @@ pub fn codegen_from_mir(
     interner: &Rodeo,
     mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
-) {
+) -> CodegenResult<()> {
     for (mir, meta) in mirs.iter().zip(body_metas.iter()) {
         codegen_function(
             emitter,
@@ -146,8 +153,9 @@ pub fn codegen_from_mir(
             Some(mono_layouts),
             meta.is_void,
             meta.abi,
-        );
+        )?;
     }
+    Ok(())
 }
 
 /// Stage 16.16 (Task 10 Steps 3+4): Emit LLVM functions for synthesized
@@ -170,6 +178,7 @@ pub fn codegen_from_mir(
 /// This function is fully backend-agnostic (operates on `&mut dyn Emitter`),
 /// so it must be available for the text-only build too. The gate was a bug
 /// that broke `cargo check` without `--features llvm-backend`.
+/// Stage 18.151 (TD-CODEGEN-RESULT): Returns `CodegenResult<()>`.
 pub(crate) fn codegen_synthesized_closure_functions(
     synthesized_mirs: &[MirBody],
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
@@ -177,7 +186,7 @@ pub(crate) fn codegen_synthesized_closure_functions(
     interner: &Rodeo,
     mono_layouts: &crate::mir::MonoLayoutMap,
     emitter: &mut dyn Emitter,
-) {
+) -> CodegenResult<()> {
     for mir in synthesized_mirs {
         // Stage 16.17: Use the DefId stored on MirBody (set during
         // build_synthesized_closure_mir_body) to resolve the function name.
@@ -229,10 +238,16 @@ pub(crate) fn codegen_synthesized_closure_functions(
             Some(mono_layouts),
             meta.is_void,
             meta.abi,
-        );
+        )?;
     }
+    Ok(())
 }
 
+/// Stage 18.151 (TD-CODEGEN-RESULT): `codegen_function` now returns
+/// `CodegenResult<()>` to propagate errors from `codegen_statement` and
+/// `codegen_terminator`.
+///
+/// Per §2 原则 9 (正确>妥协): full Result propagation, no `unwrap()` stubs.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn codegen_function(
     emitter: &mut dyn Emitter,
@@ -246,7 +261,7 @@ pub(crate) fn codegen_function(
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     is_void: bool,
     abi: crate::ast::Abi,
-) {
+) -> CodegenResult<()> {
     // The entry point `fn main()` is codegen'd as `landin_main` and is called
     // by the C wrapper which declares `extern int landin_main(void)`.
     // Per Rust convention: `fn main()` without explicit return type returns `()`.
@@ -377,7 +392,7 @@ pub(crate) fn codegen_function(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
-            );
+            )?;
         }
         codegen_terminator(
             emitter,
@@ -389,7 +404,7 @@ pub(crate) fn codegen_function(
             interner,
             layouts,
             mono_layouts,
-        );
+        )?;
     }
 
     // Stage 13.12 + Stage 13.13: println! output is now emitted INLINE
@@ -406,6 +421,7 @@ pub(crate) fn codegen_function(
     // comment retained as historical context for the inline-emission
     // design decision.
     emitter.emit_function_end();
+    Ok(())
 }
 
 /// Stage 14.36: Check if a local is the destination of a Call terminator,

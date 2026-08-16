@@ -374,8 +374,14 @@ impl LLVMSysEmitter {
             // Stage 14.58: Handle function reference values like "@landin_double".
             // These are produced by codegen_operand for FnDef constants.
             // We look up the function value from the values map or declare it.
-            if name.starts_with('@') {
-                let func_name: String = name.strip_prefix('@').unwrap().to_string();
+            //
+            // Stage 18.151 (TD-UNWRAP-CODEGEN-LLVM-MOD): Replaced
+            // `name.strip_prefix('@').unwrap()` with a safe `if let`
+            // pattern. The `unwrap()` was safe (guarded by `starts_with`)
+            // but per §1.0 原则 5 (去除兼容思维) and §2 原则 9
+            // (正确>妥协), we eliminate all `unwrap()` calls in codegen.
+            if let Some(stripped) = name.strip_prefix('@') {
+                let func_name: String = stripped.to_string();
                 // Check if already in values map
                 if let Some(&v) = self.values.get(name) {
                     return v;

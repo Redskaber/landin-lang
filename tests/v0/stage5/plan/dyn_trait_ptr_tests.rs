@@ -20,7 +20,7 @@ use landin_compiler::compile;
 fn test_dyn_trait_ptr_emitted_for_impl() {
     let result =
         compile("trait Foo { fn bar(); } struct S; impl Foo for S { fn bar() {} } fn main() {}");
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
 
     // The dyn fat-pointer global should be present.
     assert!(
@@ -41,7 +41,7 @@ fn test_dyn_trait_ptr_emitted_for_impl() {
 #[test]
 fn test_no_dyn_trait_ptr_without_impl() {
     let result = compile("trait Foo { fn bar(); } struct S; fn main() {}");
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
 
     assert!(
         !ir.contains("@.dynptr."),
@@ -60,7 +60,7 @@ fn test_multiple_dyn_trait_ptrs_emitted() {
          impl Baz for S { fn qux() {} } \
          fn main() {}",
     );
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
 
     // Both dyn fat pointers should be present.
     assert!(

@@ -151,36 +151,52 @@ pub fn build_project(manifest: &ProjectManifest, config: &BuildConfig) -> BuildR
     let result = crate::compile(&src);
     let error_count = result.errors.total_count();
 
+    // Stage 18.151 (TD-CODEGEN-RESULT): `codegen_crate` now returns
+    // `CodegenResult<String>`. On error, append the codegen error message
+    // to the build errors list and emit no LLVM IR.
+    //
+    // Per §2 原则 4 (报错>静默): codegen errors are surfaced to the user.
+    // Per §2 原则 9 (正确>妥协): propagate the Result, don't unwrap.
+    let mut errors: Vec<String> = Vec::new();
     let llvm_ir = if config.emit_llvm && error_count == 0 {
-        Some(crate::codegen::codegen_crate(&result))
+        match crate::codegen::codegen_crate(&result) {
+            Ok(ir) => Some(ir),
+            Err(e) => {
+                errors.push(format!("codegen error: {}", e));
+                None
+            }
+        }
     } else {
         None
     };
 
+    // Merge any codegen errors with compile errors (if any).
+    if error_count > 0 {
+        // Stage 15.18: Use format_via_diagnostics_colored with TTY auto-detection.
+        use crate::diagnostics::ColorConfig;
+        use std::io::IsTerminal;
+        let color = if std::io::stderr().is_terminal() {
+            ColorConfig::Always
+        } else {
+            ColorConfig::Never
+        };
+        let source_map = crate::session::SourceMap::new(&src);
+        errors.push(result.errors.format_via_diagnostics_colored(
+            &src,
+            "cargo",
+            &source_map,
+            Some(&result.interner),
+            color,
+        ));
+    }
+
+    let success = errors.is_empty() && error_count == 0;
+
     BuildResult {
-        success: error_count == 0,
-        error_count,
+        success,
+        error_count: errors.len(),
         files_compiled: 1,
         llvm_ir,
-        errors: if error_count > 0 {
-            // Stage 15.18: Use format_via_diagnostics_colored with TTY auto-detection.
-            use crate::diagnostics::ColorConfig;
-            use std::io::IsTerminal;
-            let color = if std::io::stderr().is_terminal() {
-                ColorConfig::Always
-            } else {
-                ColorConfig::Never
-            };
-            let source_map = crate::session::SourceMap::new(&src);
-            vec![result.errors.format_via_diagnostics_colored(
-                &src,
-                "cargo",
-                &source_map,
-                Some(&result.interner),
-                color,
-            )]
-        } else {
-            Vec::new()
-        },
+        errors,
     }
 }

@@ -31,7 +31,7 @@ fn gen_ll(src: &str) -> String {
             .errors
             .format_for_user(Some(src), Some(&result.interner))
     );
-    codegen_crate(&result)
+    codegen_crate(&result).expect("codegen should succeed for valid test input")
 }
 
 #[test]
@@ -3493,7 +3493,7 @@ fn codegen_consumes_prebuilt_mir_not_hir() {
     // end-to-end: compile() builds MIR once, codegen reads it once.
     // Was: codegen re-lowered HIR→MIR + re-ran typeck (§16 violation).
     let result = compile("fn f(x: i32) -> i32 { x + 1 }");
-    let ll = codegen_crate(&result);
+    let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ll.contains("define i32 @landin_f(i32 %arg0)"),
         "expected codegen from pre-built MIR in:\n{}",
@@ -3515,7 +3515,7 @@ fn codegen_no_double_lowering() {
         "compile() should produce body metas"
     );
     // The fn_name in body_metas should match the codegen output.
-    let ll = codegen_crate(&result);
+    let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
     let meta = &result.body_metas[0];
     assert!(
         ll.contains(&meta.fn_name),
@@ -3530,7 +3530,7 @@ fn codegen_void_fn_from_prebuilt_mir() {
     // Stage 3.56: void function metadata (is_void) is pre-computed
     // by compile() and consumed by codegen — no re-typeck needed.
     let result = compile("fn id(s: &str) -> &str { s } fn f() { id(\"hello\") }");
-    let ll = codegen_crate(&result);
+    let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ll.contains("define void @landin_f()"),
         "expected void fn from pre-built MIR + metadata in:\n{}",
@@ -3550,7 +3550,7 @@ fn codegen_fn_name_by_def_id_precomputed() {
             .any(|n| n == "landin_helper"),
         "fn_name_by_def_id should contain 'landin_helper'"
     );
-    let ll = codegen_crate(&result);
+    let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ll.contains("call i32 @landin_helper()"),
         "expected call to pre-computed fn name in:\n{}",
@@ -3583,7 +3583,7 @@ fn codegen_pipeline_no_regressions() {
     // pipeline produces correct IR for a complex program.
     let src = "struct Point { x: i32, y: i32 } fn make() -> Point { Point { x: 1, y: 2 } } fn f() -> i32 { let p = Point { x: 1, y: 2 }; p.x + p.y }";
     let result = compile(src);
-    let ll = codegen_crate(&result);
+    let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ll.contains("define { i32, i32 } @landin_make()"),
         "make() sig"
@@ -3737,7 +3737,7 @@ fn audit_codegen_no_upstream_calls() {
     let result = compile("fn f() -> i32 { 42 }");
     // If codegen tried to re-lower or re-typeck, it would need &HirCrate.
     // The fact that this compiles with &CompileResult proves §16 compliance.
-    let ll = codegen_crate(&result);
+    let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ll.contains("define i32 @landin_f()"),
         "codegen from CompileResult works"
@@ -3756,7 +3756,7 @@ fn audit_typeck_uses_tables_not_hir() {
         !result.has_errors(),
         "typeck with tables should produce no errors"
     );
-    let ll = codegen_crate(&result);
+    let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ll.contains("load i64"),
         "field type i64 resolved correctly via FieldTyTable"
@@ -3797,7 +3797,7 @@ fn audit_pipeline_data_flow_complete() {
     );
 
     // D8: codegen produces valid IR
-    let ll = codegen_crate(&result);
+    let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ll.contains("define { i32, i32 } @landin_make()"),
         "codegen: make() signature"

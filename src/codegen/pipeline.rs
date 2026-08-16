@@ -8,6 +8,7 @@
 
 use crate::codegen::drop_glue::emit_drop_glue_functions;
 use crate::codegen::emitter::Emitter;
+use crate::codegen::error::CodegenResult;
 use crate::codegen::function::{
     codegen_from_mir, codegen_mono_functions, codegen_synthesized_closure_functions,
 };
@@ -29,7 +30,15 @@ use crate::codegen::trait_dispatch::{emit_dyn_trait_ptrs, emit_vtables};
 ///
 /// Per §1.0 原則 6 "通用 > 特例": one pipeline for all backends.
 /// Per §23: clear single entry point for the codegen pipeline.
-pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut dyn Emitter) {
+/// Stage 18.151 (TD-CODEGEN-RESULT): `run_codegen_pipeline` now returns
+/// `CodegenResult<()>` to propagate codegen errors from `codegen_from_mir`,
+/// `codegen_mono_functions`, and `codegen_synthesized_closure_functions`.
+///
+/// Per §2 原则 9 (正确>妥协): full Result propagation.
+pub fn run_codegen_pipeline(
+    result: &crate::driver::CompileResult,
+    emitter: &mut dyn Emitter,
+) -> CodegenResult<()> {
     // 1. Module header + panic declarations
     emitter.emit_header();
     emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
@@ -108,7 +117,7 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
         &result.interner,
         &mono_layouts,
         emitter,
-    );
+    )?;
 
     // Stage 18.103 (TD-MONO-CODEGEN): Emit specialized functions for each
     // MonoItem::Fn. For each generic function instantiation (e.g., id<i32>,
@@ -127,7 +136,7 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
         &result.interner,
         &mono_layouts,
         emitter,
-    );
+    )?;
 
     // 6. Synthesized closure function bodies
     codegen_synthesized_closure_functions(
@@ -137,5 +146,6 @@ pub fn run_codegen_pipeline(result: &crate::driver::CompileResult, emitter: &mut
         &result.interner,
         &mono_layouts,
         emitter,
-    );
+    )?;
+    Ok(())
 }

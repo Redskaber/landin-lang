@@ -94,7 +94,7 @@ fn test_e2e_stdlib_method_call_populates_dyn_calls() {
 #[test]
 fn test_e2e_empty_source_no_vtable_globals() {
     let result = compile("fn main() {}");
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(!ir.contains("@.vtable."));
     assert!(!ir.contains("@.dynptr."));
 }
@@ -104,7 +104,7 @@ fn test_e2e_empty_source_no_vtable_globals() {
 fn test_e2e_impl_emits_vtable_global() {
     let src = "trait Foo { fn bar(); } struct S; impl Foo for S { fn bar() {} } fn main() {}";
     let result = compile(src);
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ir.contains("@.vtable.Foo.S"),
         "expected vtable global, got: {}",
@@ -122,7 +122,7 @@ fn test_e2e_impl_emits_vtable_global() {
 fn test_e2e_impl_emits_dynptr_global() {
     let src = "trait Foo { fn bar(); } struct S; impl Foo for S { fn bar() {} } fn main() {}";
     let result = compile(src);
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(
         ir.contains("@.dynptr.Foo.S"),
         "expected dynptr global, got: {}",
@@ -135,7 +135,7 @@ fn test_e2e_impl_emits_dynptr_global() {
 fn test_e2e_vtable_references_method_symbol() {
     let src = "trait Foo { fn bar(); fn baz(); } struct S; impl Foo for S { fn bar() {} fn baz() {} } fn main() {}";
     let result = compile(src);
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(ir.contains("@.vtable.Foo.S"));
     assert!(ir.contains("@landin_S_bar"));
     assert!(ir.contains("@landin_S_baz"));
@@ -157,7 +157,7 @@ fn test_e2e_dyn_call_produces_indirect_call_ir() {
         fn f() { let x = S; x.drop(); }
     "#;
     let result = compile(src);
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
 
     // If the dyn Trait path activated, we should see vtable indirect call
     // instructions: getelementptr + load + load + call.
@@ -177,7 +177,7 @@ fn test_e2e_drop_call_void_return() {
         fn f() { let x = S; x.drop(); }
     "#;
     let result = compile(src);
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
 
     // If dyn Trait path activated, the indirect call should be `call void`
     // (because Drop::drop returns Unit → Void via stdlib_type_kind_to_emit_type).
@@ -201,7 +201,7 @@ fn test_e2e_multiple_impls_multiple_vtables() {
         fn main() {}
     "#;
     let result = compile(src);
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     assert!(ir.contains("@.vtable.Foo.S"));
     assert!(ir.contains("@.vtable.Bar.S"));
     assert!(ir.contains("@.dynptr.Foo.S"));
@@ -285,7 +285,7 @@ fn test_e2e_return_kind_to_llvm_ir_mapping() {
 fn test_e2e_unknown_method_no_panic() {
     let src = "fn f() { let x = 1; x.unknown_method(); }";
     let result = compile(src);
-    let _ir = codegen_crate(&result);
+    let _ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     // Should not panic; unknown method falls through to legacy placeholder.
 }
 
@@ -294,7 +294,7 @@ fn test_e2e_unknown_method_no_panic() {
 fn test_e2e_nested_method_calls_no_panic() {
     let src = "fn f() { let x = 1; x.foo(); x.bar(); x.baz(); }";
     let result = compile(src);
-    let _ir = codegen_crate(&result);
+    let _ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
 }
 
 /// Compile with trait + impl + multiple bodies doesn't panic.
@@ -309,6 +309,6 @@ fn test_e2e_multiple_bodies_no_panic() {
         fn h() {}
     "#;
     let result = compile(src);
-    let _ir = codegen_crate(&result);
+    let _ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
     // Each body gets its own plan clone; should not panic.
 }

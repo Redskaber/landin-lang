@@ -26,7 +26,7 @@ struct Case {
 fn run_case(c: &Case) -> (bool, String) {
     let result = compile(c.src);
     if let Some(_hir) = result.hir.as_ref() {
-        let ll = codegen_crate(&result);
+        let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
         let mut missing = Vec::new();
         for s in c.expect_all {
             if !ll.contains(s) {

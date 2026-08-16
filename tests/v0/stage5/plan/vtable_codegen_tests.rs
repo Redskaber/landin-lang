@@ -19,7 +19,7 @@ use landin_compiler::compile;
 fn test_vtable_global_emitted_for_impl() {
     let result =
         compile("trait Foo { fn bar(); } struct S; impl Foo for S { fn bar() {} } fn main() {}");
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
 
     // The vtable global should be present and named after (trait, type).
     assert!(
@@ -40,7 +40,7 @@ fn test_vtable_global_emitted_for_impl() {
 #[test]
 fn test_no_vtable_global_without_impl() {
     let result = compile("trait Foo { fn bar(); } struct S; fn main() {}");
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
 
     assert!(
         !ir.contains("@.vtable."),
@@ -59,7 +59,7 @@ fn test_multiple_vtable_globals_emitted() {
          impl Baz for S { fn qux() {} } \
          fn main() {}",
     );
-    let ir = codegen_crate(&result);
+    let ir = codegen_crate(&result).expect("codegen should succeed for valid test input");
 
     // Both vtables should be present.
     assert!(

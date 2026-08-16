@@ -12,6 +12,11 @@ use super::mir_translation::{
 };
 use super::*;
 use crate::mir::place::*;
+/// Stage 18.151 (TD-CODEGEN-RESULT): `codegen_statement` now returns
+/// `CodegenResult<()>` to propagate codegen errors from `codegen_rvalue`
+/// (e.g., BinaryOp2 reaching codegen).
+///
+/// Per §2 原则 9 (正确>妥协): full Result propagation, no `unwrap()` stubs.
 pub(crate) fn codegen_statement(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
@@ -20,7 +25,7 @@ pub(crate) fn codegen_statement(
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
-) {
+) -> CodegenResult<()> {
     match &stmt.kind {
         StatementKind::Assign(boxed) => {
             let (place, rvalue) = &**boxed;
@@ -32,7 +37,7 @@ pub(crate) fn codegen_statement(
                 layouts,
                 mono_layouts,
                 fn_name_by_def_id,
-            );
+            )?;
             match &place.kind {
                 PlaceKind::Local(id) => {
                     let default_ty = crate::mir::ty::Ty::new(
@@ -238,6 +243,7 @@ pub(crate) fn codegen_statement(
                                                             // goes through the Call path via __landin_println macro expansion.
                                                             // Per §1.0 原則 6 "通用 > 特解": the 通解 (Call) has replaced the 特解.
     }
+    Ok(())
 }
 
 /// Stage 18.12: Emit a printf-style call for `print!`/`println!`/`eprint!`/`eprintln!`.
@@ -258,6 +264,10 @@ pub(crate) fn codegen_statement(
 /// Per §13.4: pure refactoring — no behavior change.
 /// Stage 18.15: made `pub(crate)` so `codegen::terminator` can call it
 /// for `Call(__landin_println)` detection.
+/// Stage 18.151 (TD-CODEGEN-RESULT): `emit_printf_call` now returns
+/// `CodegenResult<()>` for consistency with the codegen pipeline.
+///
+/// Per §2 原则 9 (正确>妥协): full Result propagation.
 #[allow(clippy::too_many_arguments)] // codegen context requires many params
 pub(crate) fn emit_printf_call(
     emitter: &mut dyn Emitter,
@@ -270,7 +280,7 @@ pub(crate) fn emit_printf_call(
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
-) {
+) -> CodegenResult<()> {
     let _ = newline; // already encoded in `msg` (trailing "\n")
 
     // Stage 13.16: Build the C printf format string by replacing
@@ -471,6 +481,7 @@ pub(crate) fn emit_printf_call(
         // printf returns i32 (number of chars printed); we discard it.
         emitter.emit_call("printf", &call_args, &EmitType::I32);
     }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -155,7 +155,16 @@ fn main() {
                 .as_ref()
                 .map(|t| landin_compiler::codegen::TargetTriple::from_str(t))
                 .unwrap_or_default();
-            let llvm_ir = landin_compiler::codegen::codegen_crate_with_target(&result, target);
+            // Stage 18.151 (TD-CODEGEN-RESULT): codegen_crate_with_target
+            // now returns `CodegenResult<String>`. Surface errors to user.
+            let llvm_ir = match landin_compiler::codegen::codegen_crate_with_target(&result, target)
+            {
+                Ok(ir) => ir,
+                Err(e) => {
+                    eprintln!("error: codegen failed: {}", e);
+                    std::process::exit(1);
+                }
+            };
             println!("{}", llvm_ir);
             return;
         }
@@ -185,7 +194,13 @@ fn main() {
                 }
             }
 
-            let emitter = codegen_crate_to_module_with_target(&result, target);
+            let emitter = match codegen_crate_to_module_with_target(&result, target) {
+                Ok(em) => em,
+                Err(e) => {
+                    eprintln!("error: codegen failed: {}", e);
+                    std::process::exit(1);
+                }
+            };
 
             // Stage 13.23: Determine object file path.
             // For --run: always use a temp directory to avoid polluting the

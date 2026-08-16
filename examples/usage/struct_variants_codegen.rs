@@ -25,7 +25,7 @@ fn main() {
     for (src, desc) in cases {
         println!("========== {} ==========", desc);
         let result = compile(src);
-        let ll = codegen_crate(&result);
+        let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
         println!("{}", ll);
     }
 }

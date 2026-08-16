@@ -18,6 +18,6 @@ fn main() {
                fn get_x(p: Point) -> i32 { p.x } \
                fn f() -> i32 { get_x(Point { x: 1, y: 2 }) }";
     let result = compile(src);
-    let ll = codegen_crate(&result);
+    let ll = codegen_crate(&result).expect("codegen should succeed for valid test input");
     println!("{}", ll);
 }

@@ -40,7 +40,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 
 | ID | Description | Root Cause | Fix Plan |
 |----|-------------|------------|----------|
-| TD-CODEGEN-RESULT | codegen returns `String` not `Result`, forcing `panic!()` for BinaryOp2 | All codegen functions return `EmitValue` (String), not `Result<EmitValue, CodegenError>` | v0.2 Phase 2: change `codegen_rvalue` → `Result<EmitValue, CodegenError>`, propagate through `codegen_statement` → `codegen_function` → `run_codegen_pipeline` |
+| TD-CODEGEN-RESULT | codegen returns `String` not `Result`, forcing `panic!()` for BinaryOp2 | All codegen functions return `EmitValue` (String), not `Result<EmitValue, CodegenError>` | ✅ Resolved Stage 18.151: `codegen_rvalue` → `CodegenResult<EmitValue>`, propagated through `codegen_statement` → `codegen_function` → `run_codegen_pipeline` → `codegen_crate` → driver |
 | TD-PROJECTION-RESOLVER | `projection_resolver.rs` lives under `typeck/` but is a driver-stage operation | Module was created during Stage 18.87 GATs Phase 3; location mirrors the original typeck integration point | v0.2 Phase 2: move to `driver::post_typeck` or `mir::lower::post_typeck` |
 
 ### 2.2 Span::DUMMY
@@ -70,7 +70,9 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 |----|-------------|--------|----------|
 | TD-SINGLE-FILE | No project/crate system — only single-file compilation | Cannot compile multi-file programs | v0.2 P0: mini-cargo project system |
 | TD-NO-INCREMENTAL | Full recompile every time | Slow iteration cycle | v0.2 P2: incremental compilation (requires project system) |
-| TD-BINARYOP2-PANIC | BinaryOp2 panics if it reaches codegen (should be desugared) | Range expressions that aren't desugared will crash the compiler | v0.2 Phase 2: codegen returns Result (TD-CODEGEN-RESULT) |
+| TD-BINARYOP2-PANIC | BinaryOp2 panics if it reaches codegen (should be desugared) | Range expressions that aren't desugared will crash the compiler | ✅ Resolved Stage 18.151: BinaryOp2 arm now returns `Err(CodegenError)` instead of `panic!()`, propagated via `CodegenResult` (depends on TD-CODEGEN-RESULT) |
+| TD-RVALUE-NO-SPAN | `Rvalue` enum doesn't carry `Span` info; BinaryOp2 error uses `Span::DUMMY` | Codegen errors for BinaryOp2 lack source location | v0.2 P2: add `span: Span` field to `Rvalue` (or wrap in spanned container); populate during MIR lowering |
+| TD-EMITTER-PANIC | `src/codegen/emitter/mod.rs` has 2 `panic!()` in `fat_ptr_type` (line 321) and `array_of` (line 357) for unreachable match arms | Type-conversion utility panics on misuse (not on codegen pipeline path) | v0.2 P2: convert to `Result<EmitType, CodegenError>` or use `unreachable!()` with clear message |
 
 ### 2.5 Platform Support
 
@@ -150,7 +152,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 > - borrowck/region_inference.rs: 3 unwrap (SCC 算法不变量, 已修复 → TD-UNWRAP-BORROWCK-REGION ✅)
 > - borrowck/borrow_set.rs: 9 unwrap 全部在 test code (合法, 不修复)
 > - codegen/llvm/helpers.rs: 3 unwrap 全部在 test code 或防御性 fallback (合法, 不修复)
-> - codegen/llvm/mod.rs: 1 unwrap (`name.strip_prefix('@').unwrap()`) — codegen 内部约定, 待 TD-CODEGEN-RESULT 修复时一并处理
+> - codegen/llvm/mod.rs: 0 unwraps (Stage 18.151 fixed `name.strip_prefix('@').unwrap()` → safe `if let Some` pattern)
 
 | ID | File | unwrap (real) | unwrap (test) | expect | Risk | Action | Status |
 |----|------|---------------|---------------|--------|------|--------|--------|
@@ -160,7 +162,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-EXPECT-PARSER-ITEMS | `src/parser/items.rs` | 0 | 0 | 36 | 🟡 MEDIUM | 审计每个 expect 的 message | Open — v0.2 P2 |
 | TD-UNWRAP-BORROWCK-BORROWSET | `src/borrowck/borrow_set.rs` | 0 | 9 | 0 | 🟢 LOW (test only) | N/A — test code 合法 | Closed 18.127 (reclassified) |
 | TD-UNWRAP-CODEGEN-LLVM-HELPERS | `src/codegen/llvm/helpers.rs` | 0 | 3 | 0 | 🟢 LOW (test/fallback) | N/A — test code 合法 | Closed 18.127 (reclassified) |
-| TD-UNWRAP-CODEGEN-LLVM-MOD | `src/codegen/llvm/mod.rs` | 1 | 0 | 0 | 🟡 MEDIUM | 改 `?` 传播 (需 TD-CODEGEN-RESULT) | Open — v0.2 P2 |
+| TD-UNWRAP-CODEGEN-LLVM-MOD | `src/codegen/llvm/mod.rs` | 0 | 0 | 0 | ✅ CLOSED | ✅ Resolved Stage 18.151: `name.strip_prefix('@').unwrap()` replaced with safe `if let Some(stripped) = name.strip_prefix('@')` pattern |
 
 ## 3. Architecture Summary
 
@@ -216,7 +218,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 |----------|-------|-----|
 | P0 (致命) | 0 | — (all resolved) |
 | P1 (严重) | 0 | — (all resolved) |
-| P2 (一般) | 21 | TD-CODEGEN-RESULT, TD-PROJECTION-RESOLVER, TD-INT-UINT-VAR, TD-DEREF-NON-REF, TD-LOCALID0-FALLBACK, TD-SINGLE-FILE, TD-NO-INCREMENTAL, TD-BINARYOP2-PANIC, TD-LINUX-ONLY, TD-ABI-DIVERSITY, TD-STDLIB-FACADE, TD-NO-FORMAT-MACRO, TD-IGNORE-DISCIPLINE, TD-CODEGEN-NEGATIVE, TD-NO-JUMP-THREADING, TD-CONST-PROP-LOOPS, TD-LOC-MACRO-EXPAND, TD-LOC-DRIVER, TD-LOC-MIR-LOWER-EXPR, TD-LOC-MIR-LOWER-MOD, TD-DUMMY-* (8), TD-EXPECT-TYPECK-SOLVER, TD-EXPECT-PARSER-ITEMS, TD-UNWRAP-CODEGEN-LLVM-MOD |
+| P2 (一般) | 19 | TD-INT-UINT-VAR, TD-DEREF-NON-REF, TD-LOCALID0-FALLBACK, TD-SINGLE-FILE, TD-NO-INCREMENTAL, TD-RVALUE-NO-SPAN, TD-EMITTER-PANIC, TD-LINUX-ONLY, TD-ABI-DIVERSITY, TD-STDLIB-FACADE, TD-NO-FORMAT-MACRO, TD-IGNORE-DISCIPLINE, TD-CODEGEN-NEGATIVE, TD-NO-JUMP-THREADING, TD-CONST-PROP-LOOPS, TD-LOC-MACRO-EXPAND, TD-LOC-DRIVER, TD-LOC-MIR-LOWER-EXPR, TD-LOC-MIR-LOWER-MOD, TD-DUMMY-* (8), TD-EXPECT-TYPECK-SOLVER, TD-EXPECT-PARSER-ITEMS |
 | P3 (优化) | 4 | 4 文件 LOC < 2.0× 阈值（control_flow/mod.rs/region_inference/resolver.rs） |
 | ✅ Resolved in 18.127 | 2 | TD-UNWRAP-DRIVER, TD-UNWRAP-BORROWCK-REGION |
 | ✅ Resolved in 18.128 | 1 | TD-LOC-TYPECK-CHECKER (拆分为 4 文件, 全部 < 1500 LOC) |
@@ -225,6 +227,8 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | 🟡 Partial in 18.134 | 1 | TD-LOC-DRIVER (提取 driver_validations.rs 936 + driver_scan.rs 618 + driver_object_safety.rs 164, driver.rs 4038→2351, 仍超 1500) |
 | 🟡 Partial in 18.135 | 1 | TD-LOC-MACRO-EXPAND (提取 builtin_macros.rs 2069, macro_expand.rs 5962→3904, 仍超 1500) |
 | ✅ Reclassified in 18.127 | 2 | TD-UNWRAP-BORROWCK-BORROWSET (test only), TD-UNWRAP-CODEGEN-LLVM-HELPERS (test/fallback) |
+| ✅ Resolved in 18.148 | 1 | TD-PROJECTION-RESOLVER (moved typeck → driver) |
+| ✅ Resolved in 18.151 | 3 | TD-CODEGEN-RESULT, TD-BINARYOP2-PANIC, TD-UNWRAP-CODEGEN-LLVM-MOD |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 
@@ -254,5 +258,5 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | TD-UNWRAP-DRIVER | §2 原则 3 (显式 > 隐式) + §2 原则 4 | 4 `f.body.unwrap()` after `is_some()` → `if let Some(b)` | ✅ Resolved 18.127 |
 | TD-EXPECT-TYPECK-SOLVER | §2 原则 4 | 37 个 expect 部分缺 message | Open — v0.2 P2 |
 | TD-EXPECT-PARSER-ITEMS | §2 原则 4 | 36 个 expect 部分缺 message | Open — v0.2 P2 |
-| TD-UNWRAP-CODEGEN-LLVM-MOD | §2 原则 4 | 1 unwrap (`strip_prefix('@').unwrap()`) | Open — v0.2 P2 (需 TD-CODEGEN-RESULT) |
-| TD-BINARYOP2-PANIC | §2 原则 4 + §2 原则 9 (正确 > 妥协) | panic 替代 CodegenError 传播 | Open — v0.2 P2 |
+| TD-UNWRAP-CODEGEN-LLVM-MOD | §2 原则 4 | 1 unwrap (`strip_prefix('@').unwrap()`) | ✅ Resolved Stage 18.151 (replaced with `if let Some` pattern) |
+| TD-BINARYOP2-PANIC | §2 原则 4 + §2 原则 9 (正确 > 妥协) | panic 替代 CodegenError 传播 | ✅ Resolved Stage 18.151 (returns `Err(CodegenError)` via `CodegenResult`) |

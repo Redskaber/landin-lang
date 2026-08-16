@@ -8,6 +8,15 @@
 use super::mir_translation::detect_operand_type;
 use super::*;
 use crate::mir::place::*;
+
+/// Stage 18.151 (TD-CODEGEN-RESULT): `codegen_rvalue` now returns
+/// `CodegenResult<EmitValue>` instead of `EmitValue`. This allows the
+/// `BinaryOp2` arm (range expression that should have been desugared) to
+/// return a proper `CodegenError` instead of panicking.
+///
+/// Per §2 原则 4 (报错>静默): codegen errors are reported, not panicked.
+/// Per §2 原则 9 (正确>妥协): full Result propagation, no `unwrap()` stubs.
+/// Per §12 (最优>最小): root-cause fix, not a workaround.
 pub(crate) fn codegen_rvalue(
     emitter: &mut dyn Emitter,
     mir: &MirBody,
@@ -16,8 +25,8 @@ pub(crate) fn codegen_rvalue(
     layouts: &crate::mir::body::AdtLayouts,
     mono_layouts: Option<&crate::mir::MonoLayoutMap>,
     fn_name_by_def_id: &std::collections::HashMap<crate::hir::DefId, String>,
-) -> EmitValue {
-    match rv {
+) -> CodegenResult<EmitValue> {
+    Ok(match rv {
         Rvalue::Use(op) => codegen_operand(
             emitter,
             mir,
@@ -121,7 +130,7 @@ pub(crate) fn codegen_rvalue(
                         // __landin_str_eq returns i32 (0 or 1) — already the
                         // correct type for the comparison result (zext'd i1 → i32).
                         // Skip the emit_zext below by returning early.
-                        return emitter.emit_call("__landin_str_eq", &args, &EmitType::I32);
+                        return Ok(emitter.emit_call("__landin_str_eq", &args, &EmitType::I32));
                     }
                     let cmp = if is_fat_ptr {
                         // Extract ptr (field 0) and len (field 1) from both,
@@ -159,7 +168,7 @@ pub(crate) fn codegen_rvalue(
                         // Use icmp eq with 0, then zext to i32.
                         let zero = "0".to_string();
                         let ne_i1 = emitter.emit_icmp("eq", &EmitType::I32, &eq_result, &zero);
-                        return emitter.emit_zext(&EmitType::I1, &EmitType::I32, &ne_i1);
+                        return Ok(emitter.emit_zext(&EmitType::I1, &EmitType::I32, &ne_i1));
                     }
                     let cmp = if is_fat_ptr {
                         let a_ptr = emitter.emit_extractvalue(&ty, &a_val, 0);
@@ -240,7 +249,7 @@ pub(crate) fn codegen_rvalue(
         Rvalue::Ref(_, _borrow_kind, lv) => {
             if let PlaceKind::Local(id) = &lv.kind {
                 if let Some(ptr) = emitter.local_ptr(id.0).cloned() {
-                    return ptr;
+                    return Ok(ptr);
                 }
             }
             "0".to_string()
@@ -283,7 +292,7 @@ pub(crate) fn codegen_rvalue(
         }
         Rvalue::Aggregate(AggregateKind::Array(elem_ty), operands) => {
             if operands.is_empty() {
-                return "0".to_string();
+                return Ok("0".to_string());
             }
             // Stage 14.44: Use mir_type_to_emit_type_WITH_LAYOUTS (not the
             // legacy mir_type_to_emit_type which doesn't know about AdtLayouts).
@@ -330,7 +339,7 @@ pub(crate) fn codegen_rvalue(
         }
         Rvalue::Aggregate(AggregateKind::Adt(def_id, variant, _substs, field_tys), operands) => {
             if operands.is_empty() {
-                return "0".to_string();
+                return Ok("0".to_string());
             }
             // Stage 3.48 (L-ENUM-UNION): for enum variants, compute the
             // correct starting field_idx in the flat storage layout.
@@ -481,7 +490,7 @@ pub(crate) fn codegen_rvalue(
         Rvalue::Aggregate(AggregateKind::Closure(_def_id, substs), operands) => {
             if operands.is_empty() {
                 // Empty closure (no captures) — emit an empty struct value.
-                return "0".to_string();
+                return Ok("0".to_string());
             }
             // Build the closure struct type from the capture field types.
             //
@@ -538,25 +547,25 @@ pub(crate) fn codegen_rvalue(
         // and are desugared before codegen — they should never reach here.
         //
         // Stage 18.119 (D1-R2 fix): Previously emitted eprintln! + returned "0",
-        // silently producing wrong code. Now panics with a clear message to
-        // surface the bug immediately rather than producing incorrect output.
+        // silently producing wrong code. Then (Stage 18.150 plan) panicked.
         //
-        // Per §1.0 原則 4 "报错 > 静默": never silently produce wrong code.
-        // Per §2.0 原則 9 "正确 > 妥协": panic is better than wrong codegen.
+        // Stage 18.151 (TD-CODEGEN-RESULT + TD-BINARYOP2-PANIC root-cause fix):
+        // Now returns `CodegenError` instead of panicking. The error propagates
+        // through `codegen_statement` → `codegen_function` → `run_codegen_pipeline`
+        // → `codegen_crate` → driver, surfacing as a user-visible diagnostic.
         //
-        // The proper fix (codegen returning CodegenResult<String>) is deferred
-        // to v0.2 Phase 2 — it requires changing all codegen function signatures.
-        // For now, panicking is the safest option: if BinaryOp2 reaches codegen,
-        // it's a compiler bug (MIR lower should have desugared it), and the
-        // user should see a clear error rather than wrong runtime output.
+        // Per §2 原则 4 (报错>静默): codegen errors are reported, not panicked.
+        // Per §2 原则 9 (正确>妥协): proper Result propagation, not panic.
+        // Per §12 (最优>最小): root-cause fix, not a workaround.
         Rvalue::BinaryOp2(_, _, _) => {
-            panic!(
-                "codegen: BinaryOp2 (range expression) reached codegen — \
+            return Err(CodegenError::new(
+                "BinaryOp2 (range expression) reached codegen — \
                  this should have been desugared during MIR lowering. \
-                 This is a compiler bug."
-            );
+                 This is a compiler bug.",
+                crate::session::Span::DUMMY,
+            ));
         }
-    }
+    })
 }
 
 /// Stage 18.109 (S10 fix): Store an operand's value to its local alloca.

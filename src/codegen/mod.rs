@@ -164,15 +164,24 @@ pub use trait_dispatch::{
 /// moved to `function.rs`; `emit_drop_glue_functions` moved to `drop_glue.rs`.
 /// This mod.rs now contains only the two public entry points + module
 /// declarations + re-exports.
-pub fn codegen_crate(result: &CompileResult) -> String {
+/// Stage 18.151 (TD-CODEGEN-RESULT): `codegen_crate` now returns
+/// `CodegenResult<String>` to propagate codegen errors from the pipeline.
+///
+/// Per §2 原则 9 (正确>妥协): full Result propagation, no panic stubs.
+/// Per §12 (最优>最小): root-cause fix.
+pub fn codegen_crate(result: &CompileResult) -> CodegenResult<String> {
     codegen_crate_with_target(result, TargetTriple::default())
 }
 
 /// Stage 18.89: Generate LLVM IR text with a specific target triple.
-pub fn codegen_crate_with_target(result: &CompileResult, target: TargetTriple) -> String {
+/// Stage 18.151 (TD-CODEGEN-RESULT): Returns `CodegenResult<String>`.
+pub fn codegen_crate_with_target(
+    result: &CompileResult,
+    target: TargetTriple,
+) -> CodegenResult<String> {
     let mut emitter = TextEmitter::with_target(target);
-    run_codegen_pipeline(result, &mut emitter);
-    emitter.output_with_globals()
+    run_codegen_pipeline(result, &mut emitter)?;
+    Ok(emitter.output_with_globals())
 }
 
 /// Stage 13.5 MUV-2: Generate LLVM IR via the LLVM C API (`llvm-sys`).
@@ -193,17 +202,19 @@ pub fn codegen_crate_with_target(result: &CompileResult, target: TargetTriple) -
 /// remains backend-agnostic via `&mut dyn Emitter`.
 ///
 /// Stage 16.76 MUV-2: `build_fn_sigs_map` moved to `llvm/function_sigs.rs`.
+/// Stage 18.151 (TD-CODEGEN-RESULT): Returns `CodegenResult<LLVMSysEmitter>`.
 #[cfg(feature = "llvm-backend")]
-pub fn codegen_crate_to_module(result: &CompileResult) -> LLVMSysEmitter {
+pub fn codegen_crate_to_module(result: &CompileResult) -> CodegenResult<LLVMSysEmitter> {
     codegen_crate_to_module_with_target(result, TargetTriple::default())
 }
 
 /// Stage 18.89: Generate LLVM module with a specific target triple.
+/// Stage 18.151 (TD-CODEGEN-RESULT): Returns `CodegenResult<LLVMSysEmitter>`.
 #[cfg(feature = "llvm-backend")]
 pub fn codegen_crate_to_module_with_target(
     result: &CompileResult,
     target: TargetTriple,
-) -> LLVMSysEmitter {
+) -> CodegenResult<LLVMSysEmitter> {
     let mut emitter = LLVMSysEmitter::with_target(target);
     // Stage 14.91 (Bug X3 fix): Populate fn_sigs BEFORE vtable emission.
     let fn_sigs_map = crate::codegen::llvm::function_sigs::build_fn_sigs_map(
@@ -211,6 +222,6 @@ pub fn codegen_crate_to_module_with_target(
         &result.fn_sigs,
     );
     emitter.set_fn_sigs(fn_sigs_map);
-    run_codegen_pipeline(result, &mut emitter);
-    emitter
+    run_codegen_pipeline(result, &mut emitter)?;
+    Ok(emitter)
 }
