@@ -44,7 +44,10 @@ use crate::mir::ty::*;
 use crate::session::Span;
 
 // Re-exports from the parent module — see §16 (interface isolation).
-use super::{lower_hir_ty_to_mir_ty, lower_path_generic_args, MirLowerCtxt};
+// Stage 18.130: import lower_path_generic_args directly from ty_lower (per §13.4 J3)
+// since mod.rs no longer re-exports it (only used by body_lower + expr_operand).
+use super::ty_lower::lower_path_generic_args;
+use super::{lower_hir_ty_to_mir_ty, MirLowerCtxt};
 // Sibling helper modules — each owns a specialized sub-algorithm.
 // (`adt_layout` is not used here: it runs from mod.rs's body entry points,
 //  not from expression lowering.)

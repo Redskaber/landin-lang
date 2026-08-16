@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-16
-> **Version**: v0.5
+> **Version**: v0.6
 > **Status**: Active
-> **最后更新**: Stage 18.129 / 2026-08-16
+> **最后更新**: Stage 18.130 / 2026-08-16
 > **关联流程**: docs/stage-committee-process.md §6.6.1
 
 > **目的**：把"校准依据"从概念性描述固化为单一持久化文件，避免每个阶段的统计数据散落在不同 worklog/dev-log 里、跨阶段比对困难。所有阶段结束的 §14.5 深度审查必须向本文件追加一行阶段统计 + 一条校准结论。
@@ -30,6 +30,7 @@
 | 18.127 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-UNWRAP-DRIVER (4 unwrap → if let Some) + TD-UNWRAP-BORROWCK-REGION (3 unwrap → expect+invariant) 修复; 2 项 reclassified (test-code unwrap 合法); §3.2 全套验收通过 (640 lib + 2663 integration) |
 | 18.128 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-TYPECK-CHECKER 拆分 (§13.4 J1-J6): checker.rs 2635 LOC → 4 文件 (checker 1371 + infer 544 + check 476 + writeback 339), 全部 < 1500 LOC; 22 方法迁移 + 17 pub(super) 可见性调整; §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
 | 18.129 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-MIR-LOWER-MOD 部分修复 (§13.4 J1-J6): 提取 ty_lower.rs (863 LOC, 14 函数 + const_eval_array_len), mod.rs 2857→2016 (降 29%, 仍超 1500); J1-J5 全部通过, J6 部分通过; §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
+| 18.130 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-MIR-LOWER-MOD 完成修复 (§13.4 J1-J6): 提取 body_lower.rs (1110 LOC, 10 函数 + stage15_90_tests 迁移), mod.rs 2016→960; J1-J6 全部通过 (3 文件全部 < 1500); §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
 
 ---
 
@@ -71,6 +72,7 @@
 | Stage 18.127 | TD-UNWRAP-* 修复 + test-code 重新分类 | §13.4 J1-J6 + §12 最优>最小 + §2 原则 3/4 | 7 real unwrap 修复 + 12 test unwrap 重新分类为合法; 验证 §17 任务规划 → 代码层修复闭环 |
 | Stage 18.128 | TD-LOC-TYPECK-CHECKER 拆分 (首次 §13.4 J1-J6 全量判据实践) | TD-LOC-* 中最低阈值倍数 (1.8×) + 最清晰子职责边界 | checker.rs 2635 → 4 文件 (全部 < 1500 LOC); 22 方法迁移 + 17 pub(super); 验证 §13.4 J1-J6 可操作 |
 | Stage 18.129 | TD-LOC-MIR-LOWER-MOD 部分修复 (提取 ty_lower.rs) | TD-LOC-* 中次低阈值倍数 (1.9×) + type lowering 子职责清晰 | mod.rs 2857→2016 (降 29%) + ty_lower.rs 863; J6 部分通过 (mod.rs 仍超 1500); 验证 §13.4 J1-J5 可操作 |
+| Stage 18.130 | TD-LOC-MIR-LOWER-MOD 完成修复 (提取 body_lower.rs + 测试迁移) | Stage 18.129 部分修复后 mod.rs 仍超 1500 | mod.rs 2016→960 + body_lower.rs 1110; J1-J6 全部通过 (3 文件 < 1500); 验证 §13.3.5 测试随代码变 + §13.4 J4 完整性 |
 
 ---
 

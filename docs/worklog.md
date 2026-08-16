@@ -15067,3 +15067,96 @@ Stage Summary:
 - §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
 - v0.397.0: patch bump (TD-LOC-MIR-LOWER-MOD 部分修复)
 - 下一步: Stage 18.130 — TD-LOC-MIR-LOWER-MOD 剩余 (body lowering 入口拆分, 目标 mod.rs < 1500 LOC)
+
+---
+Task ID: stage18.130
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.130 — TD-LOC-MIR-LOWER-MOD 完成修复 (提取 body_lower.rs + 测试迁移). v0.397.0 → v0.398.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (Stage 18.127 已部署)
+- §3.2 验收 (上个 stage 状态): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §13.1 设计对齐: 查阅 docs/lang-design/ 06-mir.md (MIR body/place/ty 三层); body lowering 是 MIR 设计文档中的明确概念
+
+- §17 任务规划:
+  → 选定 TD-LOC-MIR-LOWER-MOD 剩余部分 (mod.rs 2016 LOC, 仍超 1500)
+  → §13.4 J1-J6 判据检查:
+    - J1 架构设计对齐 ✅ (灰区决策按子职责划分)
+    - J2 单一职责 ✅ (body_lower.rs = body lowering 单一职责)
+    - J3 单向流动 ✅ (body_lower 调用 ty_lower + siblings; mod.rs 调用 body_lower)
+    - J4 编译相关表达完整 ✅ (body lowering + elision + resolve_self + tests 完整)
+    - J5 阶段划分清晰 ✅ (全部在 mir::lower 阶段)
+    - J6 科学合理粒度 ✅ (mod.rs 960 + body_lower 1110 + ty_lower 863, 全部 < 1500)
+  → §12 最优 > 最小: 选择完整提取 (body lowering + elision + resolve_self + tests), 非 partial
+
+- 重构执行:
+  → 拆分前: src/mir/lower/mod.rs 2016 LOC (body lowering + elision + resolve_self + struct/impl + tests 混合)
+  → 拆分后:
+    - mod.rs (960 LOC): imports + struct + impl + re-exports + stage15_92_tests
+    - body_lower.rs (1110 LOC): body lowering (7) + elision (2) + resolve_self (1) + stage15_90_tests
+    - ty_lower.rs (863 LOC): type lowering (13) + const_eval_array_len (Stage 18.129)
+  → 10 函数迁移到 body_lower.rs:
+    - lower_hir_body_to_mir (pub)
+    - lower_hir_body_to_mir_with_return_ty (pub)
+    - lower_hir_body_to_mir_full (pub)
+    - lower_hir_body_to_mir_full_with_dyn_trait_plan (pub)
+    - build_synthesized_closure_mir_body (pub)
+    - lower_body (pub)
+    - lower_body_full (pub)
+    - collect_region_vids (private)
+    - apply_elision_rules (private)
+    - resolve_self_param_type (private)
+  → stage15_90_tests 模块迁移到 body_lower.rs (§13.3.5 测试随代码变 — 测试 collect_region_vids + apply_elision_rules)
+  → mod.rs re-export (§10.1.4 显式列表, 无 glob):
+    pub use body_lower::{
+        build_synthesized_closure_mir_body, lower_body, lower_body_full, lower_hir_body_to_mir,
+        lower_hir_body_to_mir_full, lower_hir_body_to_mir_full_with_dyn_trait_plan,
+        lower_hir_body_to_mir_with_return_ty,
+    };
+  → ty_lower re-export 调整 (§13.4.3 反模式 5: 不留无用 re-export):
+    - 移除 lower_hir_ty_to_mir_ty_with_regions + lower_path_generic_args (仅 body_lower + expr_operand 内部)
+    - lower_hir_ty_to_mir_ty_with_lifetimes 标记 #[cfg(test)] (仅 mod.rs tests 使用)
+  → expr_operand.rs 导入调整 (§13.4 J3 直接导入):
+    use super::ty_lower::lower_path_generic_args; (不再通过 mod.rs re-export)
+
+- §10 API 命名标准化: 7 项规则全部 ✅
+  → 未改变任何入口函数 / 上下文类型 / 类型前缀
+  → 显式 re-export 7 body_lower + 4 ty_lower + 1 test-only
+  → 无新增 L-NAMING-N
+
+- §11 接口隔离: 无新增 L-PIPE-N
+  → 全部在 mir::lower 阶段内部, 无跨阶段拆分
+
+- §2.2 设计原则: 9/9 ✅
+  → 原则 3 显式 > 隐式: 显式 re-export 列表 + #[cfg(test)] 标注
+  → 原则 5 去除兼容思维: 不保留旧结构
+  → 原则 6 通用 > 特例: 通用子职责划分 (body lowering)
+
+- §3.2 验收 (全套通过):
+  → cargo check --features llvm-backend ✅ (0 errors, 0 warnings, 0.92s)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings, 7.96s)
+  → cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed (0.11s)
+  → cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 2 ignored (4.77s)
+
+- §8 文档同步:
+  → docs/develop/v0/stage-18/stage-18.130-dev-log.md (新建)
+  → docs/develop/v0/tech-debt-register.md: v0.397.0 → v0.398.0 + TD-LOC-MIR-LOWER-MOD 标记 ✅ Resolved
+  → docs/develop/v0/calibration-data.md: v0.5 → v0.6 + Stage 18.130 统计 + §2.3 流程优化历史
+  → Cargo.toml: v0.397.0 → v0.398.0
+  → README.md: v0.397.0 → v0.398.0
+  → worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.130 PASSED — TD-LOC-MIR-LOWER-MOD 完成修复 (提取 body_lower.rs + 测试迁移)
+- 复杂度 L3, 实际 1 轮 (跨文件重构 + 10 函数迁移 + 测试模块迁移 + re-export 调整)
+- 拆分结果: mod.rs 2016 LOC → mod.rs 960 + body_lower.rs 1110 (全部 < 1500 LOC)
+- §13.4 J1-J6: 全部通过 (mod.rs 960 ✅ + body_lower 1110 ✅ + ty_lower 863 ✅)
+- §12 最优 > 最小: 选择完整提取 (body lowering + elision + resolve_self + tests)
+- §2.2 设计原则: 9/9 ✅
+- §10 API 命名: 100% 合规 (显式 re-export 7 body_lower + 4 ty_lower + 1 test-only)
+- §11 接口隔离: 无新增 L-PIPE-N
+- §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
+- TD-LOC-MIR-LOWER-MOD: ✅ Resolved (Stage 18.129 部分修复 → 18.130 完成修复)
+- v0.398.0: patch bump (TD-LOC-MIR-LOWER-MOD 完成修复)
+- 下一步: Stage 18.131 — TD-LOC-MACRO-EXPAND (5962 LOC, 4.0× 阈值, 需 hygiene/repetition/fragment 三层拆分)
