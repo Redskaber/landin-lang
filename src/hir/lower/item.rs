@@ -616,120 +616,129 @@ impl<'a> HirLowerCtxt<'a> {
         attrs: Vec<ast::Attr>,
         _span: Span,
     ) -> HirMod {
-        let (ident, mod_kind, mod_span) = match m {
-            ast::ModDecl::Inline { ident, items, span } => {
-                let hir_items: Vec<HirItem> = items
-                    .iter()
-                    .map(|item| {
-                        let def_id = self.enter_owner();
-                        let item_hir_id = self.owner_hir_id();
-                        let hir_item = match &item.kind {
-                            ast::ItemKind::Fn(fn_decl) => HirItem::Fn(self.lower_fn(
-                                fn_decl,
-                                item_hir_id,
-                                item.vis.clone(),
-                                item.attrs.clone(),
-                                item.span,
-                            )),
-                            ast::ItemKind::Const(c) => HirItem::Const(self.lower_const(
-                                c,
-                                item_hir_id,
-                                item.vis.clone(),
-                                item.attrs.clone(),
-                                item.span,
-                            )),
-                            ast::ItemKind::Static(s) => HirItem::Static(self.lower_static(
-                                s,
-                                item_hir_id,
-                                item.vis.clone(),
-                                item.attrs.clone(),
-                                item.span,
-                            )),
-                            ast::ItemKind::Struct(s) => HirItem::Struct(self.lower_struct(
-                                s,
-                                item_hir_id,
-                                item.vis.clone(),
-                                item.attrs.clone(),
-                                item.span,
-                            )),
-                            ast::ItemKind::Enum(e) => HirItem::Enum(self.lower_enum(
-                                e,
-                                item_hir_id,
-                                item.vis.clone(),
-                                item.attrs.clone(),
-                                item.span,
-                            )),
-                            ast::ItemKind::Trait(t) => HirItem::Trait(self.lower_trait(
-                                t,
-                                item_hir_id,
-                                item.vis.clone(),
-                                item.attrs.clone(),
-                                item.span,
-                            )),
-                            ast::ItemKind::Impl(i) => HirItem::Impl(self.lower_impl(
-                                i,
-                                item_hir_id,
-                                item.attrs.clone(),
-                                item.span,
-                            )),
-                            ast::ItemKind::TypeAlias(t) => {
-                                HirItem::TypeAlias(self.lower_type_alias(
-                                    t,
-                                    item_hir_id,
-                                    item.vis.clone(),
-                                    item.attrs.clone(),
-                                    item.span,
-                                ))
-                            }
-                            ast::ItemKind::ExternBlock(eb) => {
-                                HirItem::ExternBlock(self.lower_extern_block(
-                                    eb,
-                                    item_hir_id,
-                                    item.attrs.clone(),
-                                    item.span,
-                                ))
-                            }
-                            ast::ItemKind::Mod(m) => HirItem::Mod(self.lower_mod(
-                                m,
-                                item_hir_id,
-                                item.vis.clone(),
-                                item.attrs.clone(),
-                                item.span,
-                            )),
-                            ast::ItemKind::Use(u) => HirItem::Use(self.lower_use(
-                                u,
-                                item_hir_id,
-                                item.vis.clone(),
-                                item.attrs.clone(),
-                                item.span,
-                            )),
-                            // Stage 18.02: macro_rules! — skip (no HIR lowering).
-                            // Return a dummy Use item (will be filtered out).
-                            ast::ItemKind::MacroRules(_) => {
-                                self.exit_owner();
-                                HirItem::Use(crate::hir::HirUse {
+        // Stage 18.152 (TD-SINGLE-FILE Phase 1): Both `Inline` and `Loaded`
+        // now carry `items`. For `Loaded`, items are populated by
+        // `ModuleLoader::load_module_tree` before HIR lowering; if empty,
+        // the module was declared but never loaded (e.g., single-file
+        // `compile(src)` path without ModuleLoader).
+        //
+        // Per §1.0 原則 6 (通解>特例): unified lowering path — both variants
+        // lower their items the same way. `HirModKind::Loaded` is retained
+        // only for the "declared but not loaded" case (empty items).
+        let (ident, items, span) = match m {
+            ast::ModDecl::Inline { ident, items, span } => (*ident, items, *span),
+            ast::ModDecl::Loaded { ident, items, span } => (*ident, items, *span),
+        };
+
+        let (mod_kind, mod_span) = if items.is_empty() && matches!(m, ast::ModDecl::Loaded { .. }) {
+            // `mod foo;` declared but ModuleLoader didn't run (single-file path).
+            // Keep as `HirModKind::Loaded` placeholder.
+            (HirModKind::Loaded, span)
+        } else {
+            // Stage 18.152: lower items (works for both Inline and Loaded-with-items).
+            let hir_items: Vec<HirItem> = items
+                .iter()
+                .map(|item| {
+                    let def_id = self.enter_owner();
+                    let item_hir_id = self.owner_hir_id();
+                    let hir_item = match &item.kind {
+                        ast::ItemKind::Fn(fn_decl) => HirItem::Fn(self.lower_fn(
+                            fn_decl,
+                            item_hir_id,
+                            item.vis.clone(),
+                            item.attrs.clone(),
+                            item.span,
+                        )),
+                        ast::ItemKind::Const(c) => HirItem::Const(self.lower_const(
+                            c,
+                            item_hir_id,
+                            item.vis.clone(),
+                            item.attrs.clone(),
+                            item.span,
+                        )),
+                        ast::ItemKind::Static(s) => HirItem::Static(self.lower_static(
+                            s,
+                            item_hir_id,
+                            item.vis.clone(),
+                            item.attrs.clone(),
+                            item.span,
+                        )),
+                        ast::ItemKind::Struct(s) => HirItem::Struct(self.lower_struct(
+                            s,
+                            item_hir_id,
+                            item.vis.clone(),
+                            item.attrs.clone(),
+                            item.span,
+                        )),
+                        ast::ItemKind::Enum(e) => HirItem::Enum(self.lower_enum(
+                            e,
+                            item_hir_id,
+                            item.vis.clone(),
+                            item.attrs.clone(),
+                            item.span,
+                        )),
+                        ast::ItemKind::Trait(t) => HirItem::Trait(self.lower_trait(
+                            t,
+                            item_hir_id,
+                            item.vis.clone(),
+                            item.attrs.clone(),
+                            item.span,
+                        )),
+                        ast::ItemKind::Impl(i) => HirItem::Impl(self.lower_impl(
+                            i,
+                            item_hir_id,
+                            item.attrs.clone(),
+                            item.span,
+                        )),
+                        ast::ItemKind::Mod(mod_decl) => HirItem::Mod(self.lower_mod(
+                            mod_decl,
+                            item_hir_id,
+                            item.vis.clone(),
+                            item.attrs.clone(),
+                            item.span,
+                        )),
+                        ast::ItemKind::Use(u) => HirItem::Use(self.lower_use(
+                            u,
+                            item_hir_id,
+                            item.vis.clone(),
+                            item.attrs.clone(),
+                            item.span,
+                        )),
+                        ast::ItemKind::TypeAlias(ta) => HirItem::TypeAlias(self.lower_type_alias(
+                            ta,
+                            item_hir_id,
+                            item.vis.clone(),
+                            item.attrs.clone(),
+                            item.span,
+                        )),
+                        ast::ItemKind::ExternBlock(eb) => HirItem::ExternBlock(
+                            self.lower_extern_block(eb, item_hir_id, item.attrs.clone(), item.span),
+                        ),
+                        // Stage 18.02: macro_rules! — skip (no HIR lowering).
+                        // Return a dummy Use item (will be filtered out).
+                        ast::ItemKind::MacroRules(_) => {
+                            self.exit_owner();
+                            HirItem::Use(crate::hir::HirUse {
+                                hir_id: item_hir_id,
+                                tree: crate::hir::HirUseTree::Glob(crate::hir::HirPath {
                                     hir_id: item_hir_id,
-                                    tree: crate::hir::HirUseTree::Glob(crate::hir::HirPath {
-                                        hir_id: item_hir_id,
-                                        segments: vec![],
-                                        leading: crate::ast::PathLeading::None,
-                                        res: crate::hir::Res::Unknown,
-                                        span: item.span,
-                                    }),
-                                    vis: item.vis.clone(),
-                                    attrs: item.attrs.clone(),
+                                    segments: vec![],
+                                    leading: crate::ast::PathLeading::None,
+                                    res: crate::hir::Res::Unknown,
                                     span: item.span,
-                                })
-                            }
-                        };
-                        self.store_owner(def_id, OwnerNode::Item(hir_item.clone()));
-                        self.exit_owner();
-                        hir_item
-                    })
-                    .collect();
-                (*ident, HirModKind::Inline(hir_items), *span)
-            }
-            ast::ModDecl::Loaded { ident, span } => (*ident, HirModKind::Loaded, *span),
+                                }),
+                                vis: item.vis.clone(),
+                                attrs: item.attrs.clone(),
+                                span: item.span,
+                            })
+                        }
+                    };
+                    self.store_owner(def_id, OwnerNode::Item(hir_item.clone()));
+                    self.exit_owner();
+                    hir_item
+                })
+                .collect();
+            (HirModKind::Inline(hir_items), span)
         };
         HirMod {
             hir_id,

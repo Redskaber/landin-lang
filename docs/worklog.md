@@ -16067,3 +16067,58 @@ Stage Summary:
 - 测试: 622 lib + 2524 (default) / 2663 (all-features) integration, 0 failures
 - v0.419.0: patch bump
 - 下一步: v0.2 P0 mini-cargo 项目系统 (TD-SINGLE-FILE)
+
+---
+Task ID: stage18.152
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.152 — v0.2 P0 mini-cargo Phase 1: 多文件模块加载器. v0.419.0 → v0.420.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 622 ✅ + tests 2663 ✅
+- §13.1 设计对齐: docs/lang-design/10-toolchain.md §3.3 项目布局
+- §13.4 J1-J6 评估: 全部通过 (单一职责, 单向流动, 设计对齐)
+- §12 (最优>最小): 根因修复 TD-SINGLE-FILE — ModuleLoader + compile_project
+
+- 实现:
+  → AST: ModDecl::Loaded 新增 items 字段 (向后兼容)
+  → HIR: lower_mod 统一 Inline/Loaded 路径 (通解>特解)
+  → 新增 src/driver/module_loader.rs (340 LOC): ModuleLoader + load_module_tree + ModuleLoadError
+  → compile_inner 重构: 新增 entry_path: Option<&Path> 参数
+  → 新增 compile_project(entry_path: &Path) -> CompileResult 公共 API
+  → lib.rs re-export: compile_project, ModuleLoader, ModuleLoadError
+
+- 模块路径解析:
+  → mod foo; → foo.lin (优先) 或 foo/mod.lin
+  → 嵌套: mod a::b; → a/b.lin 或 a/b/mod.lin
+  → 循环依赖检测: visited HashSet + canonicalize
+
+- 错误处理 (§2 原则 4 报错>静默):
+  → 文件不存在 → ModuleLoadError "module file not found"
+  → 循环依赖 → ModuleLoadError "circular module dependency"
+  → 解析错误 → ModuleLoadError "parse error in <file>"
+  → 错误通过 LowerError 传递 (Future: 专用 ModuleLoadError 字段)
+
+- 测试 (§9.4.3 1:3+ 正负比例):
+  → 7 lib 测试 (module_loader.rs #[cfg(test)])
+  → 10 集成测试 (stage18_152_module_loader_tests.rs): 7 positive + 3 negative
+  → 使用临时目录 (std::env::temp_dir) 避免污染源码树
+
+- §3.2 验收: 全套通过
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-features --all-targets: 0 warnings
+  → cargo test --lib: 629 passed (622 + 7 new), 0 failed
+  → cargo test --tests --all-features: 2673 passed (2663 + 10 new), 0 failed
+  → 0 TODO/FIXME/HACK
+
+- TD-SINGLE-FILE: 🟡 Phase 1 Resolved (phases 2-4 remain)
+- v0.420.0: minor bump (新公共 API compile_project + ModuleLoader)
+
+Stage Summary:
+- Stage 18.152 PASSED — v0.2 P0 mini-cargo Phase 1: 多文件模块加载器
+- 新增: src/driver/module_loader.rs (340 LOC) + compile_project() 公共 API
+- 修改: AST ModDecl::Loaded 携带 items + HIR lowering 统一路径 + compile_inner 重构
+- 测试: 629 lib + 2673 integration, 0 failures (新增 17 个测试)
+- v0.420.0: minor bump
+- 下一步: Phase 2 — use 跨文件 name resolution

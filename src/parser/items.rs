@@ -710,7 +710,14 @@ impl<'a> Parser<'a> {
             ModDecl::Inline { ident, items, span }
         } else {
             self.expect(&TokenKind::Semicolon, "`;`");
-            ModDecl::Loaded { ident, span }
+            // Stage 18.152 (TD-SINGLE-FILE Phase 1): `items` starts empty;
+            // `ModuleLoader::load_module_tree` populates it after parsing
+            // the external file. Per §11: parser doesn't do file IO.
+            ModDecl::Loaded {
+                ident,
+                items: Vec::new(),
+                span,
+            }
         }
     }
 

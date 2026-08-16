@@ -68,7 +68,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 
 | ID | Description | Impact | Fix Plan |
 |----|-------------|--------|----------|
-| TD-SINGLE-FILE | No project/crate system — only single-file compilation | Cannot compile multi-file programs | v0.2 P0: mini-cargo project system |
+| TD-SINGLE-FILE | No project/crate system — only single-file compilation | Cannot compile multi-file programs | 🟡 Phase 1 Resolved Stage 18.152: `ModuleLoader` + `compile_project(path)` API. `mod foo;` loads `foo.lin` or `foo/mod.lin`. Phases 2-4 (use resolution, CLI, manifest) remain |
 | TD-NO-INCREMENTAL | Full recompile every time | Slow iteration cycle | v0.2 P2: incremental compilation (requires project system) |
 | TD-BINARYOP2-PANIC | BinaryOp2 panics if it reaches codegen (should be desugared) | Range expressions that aren't desugared will crash the compiler | ✅ Resolved Stage 18.151: BinaryOp2 arm now returns `Err(CodegenError)` instead of `panic!()`, propagated via `CodegenResult` (depends on TD-CODEGEN-RESULT) |
 | TD-RVALUE-NO-SPAN | `Rvalue` enum doesn't carry `Span` info; BinaryOp2 error uses `Span::DUMMY` | Codegen errors for BinaryOp2 lack source location | v0.2 P2: add `span: Span` field to `Rvalue` (or wrap in spanned container); populate during MIR lowering |
@@ -229,6 +229,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Reclassified in 18.127 | 2 | TD-UNWRAP-BORROWCK-BORROWSET (test only), TD-UNWRAP-CODEGEN-LLVM-HELPERS (test/fallback) |
 | ✅ Resolved in 18.148 | 1 | TD-PROJECTION-RESOLVER (moved typeck → driver) |
 | ✅ Resolved in 18.151 | 3 | TD-CODEGEN-RESULT, TD-BINARYOP2-PANIC, TD-UNWRAP-CODEGEN-LLVM-MOD |
+| 🟡 Phase 1 Resolved in 18.152 | 1 | TD-SINGLE-FILE (ModuleLoader + compile_project; phases 2-4 remain) |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 

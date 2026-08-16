@@ -808,8 +808,18 @@ pub enum ModDecl {
         items: Vec<Item>,
         span: Span,
     },
+    /// `mod foo;` — loaded from external file.
+    ///
+    /// Stage 18.152 (TD-SINGLE-FILE Phase 1): `items` is populated by
+    /// `ModuleLoader::load_module_tree` after parsing the external file
+    /// (`foo.lin` or `foo/mod.lin`). Initially empty (when only parsed,
+    /// before ModuleLoader runs).
+    ///
+    /// Per §2 原则 9 (正确>妥协): carrying items directly avoids a separate
+    /// "loaded modules" side table — the AST is the single source of truth.
     Loaded {
         ident: Ident,
+        items: Vec<Item>,
         span: Span,
     },
 }

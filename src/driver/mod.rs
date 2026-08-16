@@ -57,6 +57,10 @@ mod projection_resolver;
 // Stage 18.138 §13.4 J1-J6: extract codegen prep from mod.rs
 mod driver_codegen_prep;
 mod driver_validations;
+// Stage 18.152 (TD-SINGLE-FILE Phase 1): multi-file module loader.
+// Per §11: driver-level concern (runs after parse, before HIR lower).
+pub mod module_loader;
+pub use module_loader::{ModuleLoadError, ModuleLoader};
 
 // Stage 18.134: import extracted functions for use in compile_inner
 use driver_scan::scan_for_unresolved_paths;
@@ -513,7 +517,7 @@ impl CompileResult {
 /// is still produced — this lets later stages (codegen, error display)
 /// work with partial results.
 pub fn compile(src: &str) -> CompileResult {
-    compile_inner(src, true)
+    compile_inner(src, true, None)
 }
 
 /// Stage 18.96: Compile WITHOUT MIR optimization. Used by tests that
@@ -529,15 +533,80 @@ pub fn compile(src: &str) -> CompileResult {
 /// Per §2.0 原則 3 "显式 > 隐式": the opt flag is explicit, not inferred.
 /// Per §23: `compile_no_opt` follows `<verb>_<noun>` pattern.
 pub fn compile_no_opt(src: &str) -> CompileResult {
-    compile_inner(src, false)
+    compile_inner(src, false, None)
+}
+
+/// Stage 18.152 (TD-SINGLE-FILE Phase 1): Compile a multi-file project.
+///
+/// Reads `entry_path` (e.g., `src/main.lin`), parses it, then runs
+/// `ModuleLoader::load_module_tree` to recursively load all `mod foo;`
+/// declarations from disk (`foo.lin` or `foo/mod.lin`).
+///
+/// After loading, the merged AST is lowered to HIR + MIR via the standard
+/// `compile_inner` pipeline.
+///
+/// # Module resolution
+///
+/// For `mod foo;` declared in `entry_path`:
+/// 1. Try `<entry_dir>/foo.lin` (single-file module)
+/// 2. Else try `<entry_dir>/foo/mod.lin` (directory module)
+/// 3. Else report a module-load error
+///
+/// `entry_dir` is the parent directory of `entry_path`.
+///
+/// # Errors
+///
+/// Module-load errors (file not found, parse error in submodule, circular
+/// dependency) are surfaced in `CompileResult.errors` as `LowerError`
+/// entries (the closest existing error category). Future: add a dedicated
+/// `ModuleLoadError` variant to `CompileErrors`.
+///
+/// Per §10: `compile_project` follows `<verb>_<noun>` pattern (entry function).
+/// Per §11: driver-level orchestrator (no cross-stage leakage).
+/// Per §12 (最优>最小): root-cause fix for TD-SINGLE-FILE — multi-file
+/// compilation is a first-class API, not a workaround.
+pub fn compile_project(entry_path: &std::path::Path) -> CompileResult {
+    // Stage 18.152 (TD-SINGLE-FILE Phase 1): Multi-file project compilation.
+    //
+    // Reads `entry_path`, parses it, runs `ModuleLoader::load_module_tree`
+    // to populate `mod foo;` declarations from disk, then continues the
+    // standard pipeline via `compile_inner`.
+    //
+    // Per §10: `compile_project` follows `<verb>_<noun>` pattern (entry function).
+    // Per §11: driver-level orchestrator (no cross-stage leakage).
+    // Per §12 (最优>最小): root-cause fix — `compile_inner` accepts an
+    // optional `entry_path` so ModuleLoader can run between parse and HIR lower.
+    let src = match std::fs::read_to_string(entry_path) {
+        Ok(s) => s,
+        Err(e) => {
+            // File not readable — return an empty CompileResult with a lex error.
+            let interner = Rodeo::new();
+            let mut errors = CompileErrors::default();
+            errors.lex.push(crate::lexer::reader::LexError {
+                message: format!("cannot read entry file {}: {}", entry_path.display(), e),
+                span: crate::session::Span::DUMMY,
+                kind: crate::lexer::reader::LexErrorKind::Generic,
+            });
+            return CompileResult::empty(interner, errors);
+        }
+    };
+    compile_inner(&src, true, Some(entry_path))
 }
 
 /// Internal compile implementation. `optimize` controls whether MIR
 /// optimization passes (DCE + const_prop) run after writeback.
 ///
-/// Stage 18.96: extracted from `compile()` to support `compile_no_opt()`
-/// without duplicating the 3000-line pipeline.
-fn compile_inner(src: &str, optimize: bool) -> CompileResult {
+/// Stage 18.152: `entry_path` controls multi-file module loading.
+/// - `None`: single-file mode (legacy `compile(src)` path). `mod foo;`
+///   declarations are NOT loaded from disk (HIRModKind::Loaded stays empty).
+/// - `Some(path)`: multi-file mode (`compile_project` path). After parsing,
+///   `ModuleLoader::load_module_tree` runs to populate `mod foo;` items
+///   from disk (`foo.lin` or `foo/mod.lin`), relative to `path.parent()`.
+///
+/// Per §1.0 原則 6 (通解>特例): one `compile_inner` handles both modes,
+/// parameterized by `entry_path`. No separate multi-file pipeline.
+/// Per §2.0 原則 3 (显式>隐式): the `entry_path` parameter is explicit.
+fn compile_inner(src: &str, optimize: bool, entry_path: Option<&std::path::Path>) -> CompileResult {
     // Stage 15.28: Clear the thread-local TypeInterner at the start of each
     // compilation to avoid cross-compilation pollution.
     crate::mir::ty::Ty::clear_interner();
@@ -560,10 +629,31 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
 
     // === Stage 0: Parse ===
     let mut parser = Parser::new(tokens, &mut interner);
-    let krate = parser.parse_crate();
+    let mut krate = parser.parse_crate();
     errors.parse = parser.into_errors();
     if !errors.parse.is_empty() {
         return CompileResult::empty(interner, errors);
+    }
+
+    // === Stage 18.152: Multi-file module loading (only in project mode) ===
+    // Per §11: ModuleLoader runs after parse, before HIR lower.
+    // Per §2 原则 4 (报错>静默): load errors are collected, not silently ignored.
+    if let Some(entry) = entry_path {
+        let base_dir = entry.parent().unwrap_or_else(|| std::path::Path::new("."));
+        let mut loader = ModuleLoader::new();
+        let load_errors = loader.load_module_tree(&mut krate, base_dir, &mut interner);
+        if !load_errors.is_empty() {
+            // Surface module-load errors as LowerError (closest existing category).
+            // Future: add a dedicated ModuleLoadError variant to CompileErrors.
+            for le in load_errors {
+                errors
+                    .lower
+                    .push(crate::hir::lower::LowerError::new(le.message, le.span));
+            }
+            // Don't return early — let HIR lower run on the partial AST so
+            // downstream errors are also surfaced (better UX: user sees all
+            // errors at once, not one at a time).
+        }
     }
 
     // === Stage 1: HIR lowering ===
@@ -571,7 +661,7 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
     // Previously errors were silently discarded, making CompileErrors.lower
     // always empty. Now they're properly collected.
     let (mut hir, lower_errors) = lower_crate(&krate, &interner);
-    errors.lower = lower_errors;
+    errors.lower.extend(lower_errors);
 
     // === Stage 1: Name resolution ===
     errors.resolve = resolve_crate(&mut hir, &mut interner);
