@@ -15346,3 +15346,99 @@ Stage Summary:
 - MethodCall arm 提取回退: 记录教训, 推迟到 Stage 18.133 逐个 arm 重构
 - v0.400.0: minor bump (TD-LOC-MIR-LOWER-EXPR 部分修复 + 里程碑 v0.400)
 - 下一步: Stage 18.133 — TD-LOC-MIR-LOWER-EXPR 剩余 (逐个 arm 提取, 目标 expr_operand < 1500)
+
+---
+Task ID: stage18.133
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.133 — TD-LOC-MIR-LOWER-EXPR 完成修复 (提取 expr_variants.rs). v0.400.0 → v0.401.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (Stage 18.127 已部署)
+- §3.2 验收 (上个 stage 状态): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §13.1 设计对齐: 查阅 docs/lang-design/ 06-mir.md (MIR body/place/ty 三层); expression variant lowering 是 MIR lowering 中的明确概念
+
+- §17 任务规划:
+  → 选定 TD-LOC-MIR-LOWER-EXPR 剩余部分 (expr_operand.rs 2171 LOC, 仍超 1500)
+  → §13.4 J1-J6 判据检查:
+    - J1 架构设计对齐 ✅ (灰区决策按子职责划分)
+    - J2 单一职责 ✅ (expr_variants.rs = expression variant lowering 单一职责)
+    - J3 单向流动 ✅ (expr_variants 被 expr_operand 调用; 递归调用 lower_expr_to_operand via super)
+    - J4 编译相关表达完整 ✅ (4 个 variant 各自完整)
+    - J5 阶段划分清晰 ✅ (全部在 mir::lower 阶段)
+    - J6 科学合理粒度 ✅ (expr_operand 1156 + expr_variants 1016 + call_lower 362 + method_resolution 1132, 全部 < 1500)
+  → §12 最优 > 最小: 选择完整提取 (4 个最大 arm), 消除 lower_expr_to_operand 巨型函数
+
+- Stage 18.132 MethodCall arm 提取失败的教训应用:
+  → ✅ 正确识别 method: &Ident (不是 HirPathSegment)
+  → ✅ 正确识别 body: &HirBlock (For variant, 不是 &HirExpr)
+  → ✅ 导入 Ident from crate::ast
+  → ✅ 导入 DynTraitMethodCall + find_dyn_trait_method_call_in_plan_by_method
+  → ✅ 递归调用 lower_expr_to_operand via super::lower_expr_to_operand
+
+- 重构执行:
+  → 拆分前: src/mir/lower/expr_operand.rs 2171 LOC (lower_expr_to_operand 2106 LOC, 32 match arms)
+  → 拆分后:
+    - expr_operand.rs (1156 LOC): lower_expr_to_operand (dispatch 表, 28 arms) + imports
+    - expr_variants.rs (1016 LOC): 4 largest arms extracted as functions
+  → 4 match arms 迁移到 expr_variants.rs:
+    - lower_path_expr (242 LOC) — path: &HirPath
+    - lower_call_expr (213 LOC) — func: &HirExpr, args: &[HirExpr]
+    - lower_for_expr (239 LOC) — pat: &HirPat, iter: &HirExpr, body: &HirBlock (body 是 HirBlock!)
+    - lower_method_call_expr (338 LOC) — receiver: &HirExpr, method: &Ident (method 是 Ident!), args: &[HirExpr]
+  → mod.rs 更新: 添加 mod expr_variants;
+  → expr_operand.rs 导入调整 (§13.4 J3 直接导入):
+    use super::expr_variants::{lower_call_expr, lower_for_expr, lower_method_call_expr, lower_path_expr};
+  → expr_variants.rs 导入 (§13.4 J3 递归调用 + 类型):
+    use crate::ast::Ident;  // method: &Ident
+    use crate::mir::dyn_trait::{find_dyn_trait_method_call_in_plan_by_method, DynTraitMethodCall};
+    use super::lower_expr_to_operand;  // 递归调用
+    use super::call_lower::{build_dyn_trait_call_terminator, lower_closure_call_to_synthesized, lower_expr_to_place};
+  → 替换后的 arm 模式 (dispatch 表):
+    HirExprKind::Path(path) => super::expr_variants::lower_path_expr(cx, expr, path)
+    HirExprKind::Call { func, args, .. } => super::expr_variants::lower_call_expr(cx, expr, func, args)
+    HirExprKind::For { pat, iter, body, .. } => super::expr_variants::lower_for_expr(cx, expr, pat, iter, body)
+    HirExprKind::MethodCall { receiver, method, args, .. } => super::expr_variants::lower_method_call_expr(cx, expr, receiver, method, args)
+
+- §10 API 命名标准化: 7 项规则全部 ✅
+  → 未改变任何入口函数 / 上下文类型 / 类型前缀
+  → lower_<variant>_expr 命名遵循 lower_ 前缀
+  → 显式 re-export + pub(super)
+  → 无新增 L-NAMING-N
+
+- §11 接口隔离: 无新增 L-PIPE-N
+  → 全部在 mir::lower 阶段内部, 无跨阶段拆分
+
+- §2.2 设计原则: 9/9 ✅
+  → 原则 3 显式 > 隐式: 显式 dispatch 调用 + pub(super) 标注
+  → 原则 5 去除兼容思维: 不保留旧结构
+  → 原则 6 通用 > 特例: 通用子职责划分 (expression variant lowering)
+  → 原则 9 正确 > 妥协: 选择正确方案 (逐个 arm 提取, 非 LOC 切片)
+
+- §3.2 验收 (全套通过):
+  → cargo check --features llvm-backend ✅ (0 errors, 0 warnings, 2.77s)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings, 13.62s)
+  → cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed (0.11s)
+  → cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 2 ignored (4.93s)
+
+- §8 文档同步:
+  → docs/develop/v0/stage-18/stage-18.133-dev-log.md (新建)
+  → docs/develop/v0/tech-debt-register.md: v0.400.0 → v0.401.0 + TD-LOC-MIR-LOWER-EXPR 标记 ✅ Resolved
+  → docs/develop/v0/calibration-data.md: v0.8 → v0.9 + Stage 18.133 统计 + §2.3 流程优化历史
+  → Cargo.toml: v0.400.0 → v0.401.0
+  → README.md: v0.400.0 → v0.401.0
+  → worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.133 PASSED — TD-LOC-MIR-LOWER-EXPR 完成修复 (提取 expr_variants.rs)
+- 复杂度 L3, 实际 1 轮 (跨文件重构 + 4 match arm 提取为函数 + 类型签名验证)
+- 拆分结果: expr_operand.rs 2171 LOC → expr_operand.rs 1156 + expr_variants.rs 1016 (全部 < 1500 LOC)
+- §13.4 J1-J6: 全部通过 (4 文件全部 < 1500 LOC)
+- §12 最优 > 最小: 选择完整提取 (4 个最大 arm), 消除 lower_expr_to_operand 巨型函数
+- §2.2 设计原则: 9/9 ✅
+- §10 API 命名: 100% 合规 (lower_<variant>_expr 命名)
+- §11 接口隔离: 无新增 L-PIPE-N
+- §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
+- TD-LOC-MIR-LOWER-EXPR: ✅ Resolved (Stage 18.131-18.133 三阶段完成)
+- v0.401.0: patch bump (TD-LOC-MIR-LOWER-EXPR 完成修复)
+- 下一步: Stage 18.134 — TD-LOC-MACRO-EXPAND (5962 LOC, 4.0× 阈值) 或 TD-LOC-DRIVER (4018 LOC, 2.7× 阈值)

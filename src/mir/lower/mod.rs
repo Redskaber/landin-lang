@@ -22,7 +22,9 @@ mod body_lower;
 mod call_lower;
 mod closure_capture;
 mod control_flow;
+// Stage 18.133 §13.4 J1-J6: extract expression variants from expr_operand.rs
 mod expr_operand;
+mod expr_variants;
 mod field_resolution;
 // Stage 18.131 §13.4 J1-J6: extract method resolution from expr_operand.rs
 mod method_resolution;
