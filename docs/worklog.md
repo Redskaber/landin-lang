@@ -16303,3 +16303,115 @@ Stage Summary:
 - 测试: 635 lib + 2693 integration (新增 11), 0 failures
 - v0.423.0: patch bump
 - 下一步: v0.2 P1 — stdlib facade 或 format macros
+
+---
+Task ID: stage18.156
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.156 — mini-cargo 缺陷1 修复: landinc build --bin. v0.423.0 → v0.424.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (重新部署: source scripts/setup-llvm-env.sh + switch-llvm-version.sh)
+- §3.2 验收 (上 stage): 用户上传 v0.423.0 包, 解压并验证全套通过
+- 用户要求: 修复 Stage 18.154 缺陷1 (landinc build 不链接可执行文件)
+
+- 修复方案 (§13.4 J2 单一职责 + §1.0 原則 6 通解>特例):
+  → 新增 --bin flag: landinc build --bin 链接可执行文件到 target/<name>
+  → 提取 link_object_to_executable helper (从 cmd_run 提取, 共用)
+  → 提取 LANDIN_C_WRAPPER 常量 (从 main.rs 提取 C wrapper 源码)
+  → C wrapper 提供 main() + 所有 __landin_* 运行时 stubs
+  → 链接参数: cc -fno-pie -no-pie <wrapper.c> <obj.o> -o <exe> -lm
+
+- 链接问题修复:
+  → 初次尝试: 仅 -no-pie → 失败 (undefined reference to main + __landin_println)
+  → 根因: Landin 生成 landin_main (非 main), 运行时 stubs 未定义
+  → 修复: 添加 C wrapper 提供 main() + 运行时 stubs
+  → 二次尝试: cc -fno-pie -no-pie wrapper.c obj.o -o exe -lm → 成功
+
+- 手动验证:
+  → landinc new myapp: ✅ 创建项目
+  → landinc build --bin: ✅ Executable written to target/myapp
+  → ./target/myapp: ✅ "Hello, Landin!" (exit 0)
+
+- §3.2 全套验收 (严格按流程文档):
+  → cargo clean: ✅ Removed 1733 files
+  → cargo build --features llvm-backend: ✅ Finished 16.97s
+  → cargo check --features llvm-backend: ✅ 0 errors, 0 warnings
+  → cargo fmt + cargo fmt --check: ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend: ✅ 0 warnings
+  → cargo test --features llvm-backend: ✅ 653 lib + 2696 integration, 0 failed
+
+- 测试 (3 个: 2 positive + 1 negative):
+  → build_bin_produces_main: 编译产生 landin_main ✅
+  → build_bin_multi_file: 多文件项目编译 ✅
+  → build_bin_without_main: 库项目无 main ✅
+
+- v0.424.0: patch bump
+
+Stage Summary:
+- Stage 18.156 PASSED — mini-cargo 缺陷1 修复: landinc build --bin
+- 新增: --bin flag + link_object_to_executable + LANDIN_C_WRAPPER
+- 修复: landinc build 现在可链接可执行文件
+- 手动验证: landinc new → build --bin → ./target/myapp → "Hello, Landin!"
+- 测试: 653 lib + 2696 integration (新增 3), 0 failures
+- §3.2 全套验收: cargo clean/build/check/fmt/clippy/test 全绿
+- v0.424.0: patch bump
+- 下一步: v0.2 P1 — stdlib facade 或 format macros
+
+---
+Task ID: stage18.157
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.157 — 修复 Stage 18.156 简写1: 提取 C wrapper 到 library (DRY). v0.424.0 → v0.425.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 635 ✅
+- §13.4 J1-J6 评估: 全部通过
+
+- 问题分析:
+  → Stage 18.156 简写1: LANDIN_C_WRAPPER 在 landinc.rs + main.rs 重复定义
+  → ~120 行 C 代码重复, 违反 DRY (§1.0 原則 6 通解>特例)
+  → 维护时需同步更新两份, 风险不一致
+
+- 修复方案 (§13.4 J2 单一职责):
+  → 新增 src/codegen/runtime.rs (公共模块)
+  → 提取 LANDIN_C_WRAPPER 常量 (pub const)
+  → 使用 main.rs 的完整版本 (含历史注释) 作为 canonical source
+  → landinc.rs: 移除本地定义, use landin_compiler::codegen::runtime::LANDIN_C_WRAPPER
+  → main.rs: 移除内联 C wrapper 字符串, 改用共享常量
+  → codegen/mod.rs: 注册 pub mod runtime
+
+- API 命名 (§10):
+  → 模块: codegen::runtime (<stage>::<noun>) ✅
+  → 常量: LANDIN_C_WRAPPER (<NOUN>_<NOUN>) ✅
+
+- 测试 (3 个 lib test):
+  → c_wrapper_contains_all_stubs: 11 个 __landin_* stub 全部存在 ✅
+  → c_wrapper_has_main_entry: main() 调用 landin_main() ✅
+  → c_wrapper_includes_headers: stdio/stdlib/stdarg 头文件 ✅
+
+- 手动验证:
+  → landinc build --bin: ✅ Executable written, "Hello, Landin!"
+  → landin-stage0 --emit-bin: ✅ executable written, "from stage0!"
+  → 两个 binary 均使用共享 wrapper 正常工作
+
+- §3.2 全套验收 (严格按流程文档):
+  → cargo clean: ✅ Removed 2110 files
+  → cargo build --features llvm-backend: ✅ Finished 18.77s
+  → cargo check --features llvm-backend: ✅ 0 errors, 0 warnings
+  → cargo fmt + cargo fmt --check: ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend: ✅ 0 warnings
+  → cargo test --features llvm-backend: ✅ 656 lib + 2696 integration, 0 failed
+
+- 消除重复: ~120 行 C 代码从 2 份 → 1 份 (DRY)
+- v0.425.0: patch bump
+
+Stage Summary:
+- Stage 18.157 PASSED — 修复 Stage 18.156 简写1: 提取 C wrapper 到 library
+- 新增: src/codegen/runtime.rs (公共模块 + LANDIN_C_WRAPPER 常量 + 3 tests)
+- 修改: landinc.rs + main.rs 移除重复 C wrapper, 改用共享常量
+- 消除重复: ~120 行 C 代码从 2 份 → 1 份 (DRY)
+- 手动验证: landinc build --bin + landin-stage0 --emit-bin 均通过
+- 测试: 656 lib + 2696 integration (新增 3), 0 failures
+- §3.2 全套验收: cargo clean/build/check/fmt/clippy/test 全绿
+- v0.425.0: patch bump
+- 下一步: v0.2 P1 — stdlib facade 或 format macros

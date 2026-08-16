@@ -455,6 +455,10 @@ mod stage18_154_landinc_cli_tests;
 #[path = "v0/stage18/plan/stage18_155_deficiency_fix_tests.rs"]
 mod stage18_155_deficiency_fix_tests;
 
+// === Stage 18.156: landinc build --bin Tests (缺陷1 fix) ===
+#[path = "v0/stage18/plan/stage18_156_build_bin_tests.rs"]
+mod stage18_156_build_bin_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

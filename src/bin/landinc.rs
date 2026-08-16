@@ -26,6 +26,7 @@
 
 use clap::{Parser, Subcommand};
 use landin_compiler::cargo::ProjectManifest;
+use landin_compiler::codegen::runtime::LANDIN_C_WRAPPER;
 use landin_compiler::diagnostics::ColorConfig;
 use landin_compiler::driver::CompileResult;
 use std::io::IsTerminal;
@@ -59,6 +60,13 @@ enum Command {
         /// Emit LLVM IR alongside compilation
         #[arg(long)]
         emit_llvm: bool,
+
+        /// Stage 18.156 (缺陷1 fix): Also link an executable (requires llvm-backend).
+        /// Without this flag, `build` only compiles to MIR (+ optional LLVM IR).
+        /// With `--bin`, it emits an object file and links it into an executable
+        /// in the target directory (matching `cargo build` behavior).
+        #[arg(long)]
+        bin: bool,
 
         /// Output directory (default: ./target)
         #[arg(long, value_name = "DIR")]
@@ -100,9 +108,10 @@ fn main() {
         Command::Build {
             release,
             emit_llvm,
+            bin,
             target_dir,
         } => {
-            cmd_build(&cli.manifest_path, release, emit_llvm, target_dir);
+            cmd_build(&cli.manifest_path, release, emit_llvm, bin, target_dir);
         }
         Command::Run { release, args } => {
             cmd_run(&cli.manifest_path, release, &args);
@@ -188,11 +197,16 @@ fn load_manifest(manifest_path: &Option<PathBuf>) -> ProjectManifest {
 /// project. Stage 18.155: `--release` now controls the `optimize` flag
 /// (MIR DCE + const_prop).
 ///
+/// Stage 18.156 (缺陷1 fix): `--bin` flag now links an executable into the
+/// target directory (previously only `landinc run` could link). This matches
+/// `cargo build` behavior where `cargo build` produces an executable.
+///
 /// If `emit_llvm` is set, also generates LLVM IR text via `codegen_crate`.
 fn cmd_build(
     manifest_path: &Option<PathBuf>,
     release: bool,
     emit_llvm: bool,
+    bin: bool,
     target_dir: Option<PathBuf>,
 ) {
     let manifest = load_manifest(manifest_path);
@@ -256,6 +270,145 @@ fn cmd_build(
             }
         }
     }
+
+    // Stage 18.156 (缺陷1 fix): Link executable if `--bin` is set.
+    if bin {
+        link_and_emit_executable(&result, &manifest, &target_dir);
+    }
+}
+
+// Stage 18.157: C wrapper source is now shared from
+// `landin_compiler::codegen::runtime::LANDIN_C_WRAPPER`.
+// See that module for the full C source + documentation.
+
+/// Stage 18.156 (缺陷1 fix): Link an object file into an executable via `cc`.
+///
+/// Extracted from `cmd_run` to share between `landinc build --bin` and
+/// `landinc run`. Both need: object emission → cc link → executable path.
+///
+/// Stage 18.156: Now uses a C wrapper (`LANDIN_C_WRAPPER`) that provides
+/// `main()` + runtime stubs, matching `landin-stage0` behavior. Also adds
+/// `-fno-pie -no-pie -lm` flags (Landin's LLVM module is non-PIC).
+///
+/// Per §13.4 J2 (单一职责): this function only does "object → executable".
+/// Per §1.0 原則 6 (通解>特例): one linker for both build --bin and run.
+/// Per §2 原則 4 (报错>静默): link failures are reported with clear messages.
+#[cfg(feature = "llvm-backend")]
+fn link_object_to_executable(
+    emitter: &landin_compiler::codegen::LLVMSysEmitter,
+    obj_path: &std::path::Path,
+    exe_path: &std::path::Path,
+) {
+    // Emit object file.
+    let obj_path_str = obj_path.to_string_lossy().to_string();
+    if let Err(e) = emitter.to_object_file(&obj_path_str) {
+        eprintln!("error: object emission failed: {}", e);
+        std::process::exit(1);
+    }
+
+    // Write C wrapper to temp file.
+    let wrapper_c = std::env::temp_dir().join(format!("landin_wrapper_{}.c", std::process::id()));
+    if let Err(e) = std::fs::write(&wrapper_c, LANDIN_C_WRAPPER) {
+        eprintln!("error: cannot write C wrapper: {}", e);
+        std::process::exit(1);
+    }
+
+    // Link via cc/clang with C wrapper + non-PIC flags + math lib.
+    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
+    let link_status = std::process::Command::new(&cc)
+        .arg("-fno-pie")
+        .arg("-no-pie")
+        .arg(&wrapper_c)
+        .arg(obj_path)
+        .arg("-o")
+        .arg(exe_path)
+        .arg("-lm")
+        .status();
+
+    // Clean up wrapper.
+    let _ = std::fs::remove_file(&wrapper_c);
+
+    match link_status {
+        Ok(s) if s.success() => {}
+        Ok(s) => {
+            eprintln!("error: linking failed (exit code {:?})", s.code());
+            let _ = std::fs::remove_file(obj_path);
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("error: cannot invoke {}: {}", cc, e);
+            let _ = std::fs::remove_file(obj_path);
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Stage 18.156 (缺陷1 fix): Link an executable into the target directory.
+///
+/// Used by `landinc build --bin`. Emits an object file from the LLVM module,
+/// links it via `cc`, and writes the executable to `<target_dir>/<name>`.
+///
+/// Per §10: `link_and_emit_executable` follows `<verb>_<conj>_<verb>_<noun>`.
+#[cfg(feature = "llvm-backend")]
+fn link_and_emit_executable(
+    result: &landin_compiler::CompileResult,
+    manifest: &ProjectManifest,
+    target_dir: &Option<PathBuf>,
+) {
+    use landin_compiler::codegen::codegen_crate_to_module_with_target;
+
+    // Check for fn main() — binary crates need it.
+    let has_main = result.body_metas.iter().any(|m| m.fn_name == "landin_main");
+    if !has_main {
+        eprintln!("error: no `fn main()` found — cannot build executable");
+        eprintln!("hint: add `fn main() {{ }}` to your entry point");
+        std::process::exit(1);
+    }
+
+    // Generate LLVM module.
+    let emitter = match codegen_crate_to_module_with_target(result, Default::default()) {
+        Ok(em) => em,
+        Err(e) => {
+            eprintln!("error: codegen failed: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Determine output paths.
+    let target = target_dir
+        .clone()
+        .unwrap_or_else(|| manifest.target_dir.clone());
+    if let Err(e) = std::fs::create_dir_all(&target) {
+        eprintln!(
+            "error: cannot create target directory {}: {}",
+            target.display(),
+            e
+        );
+        std::process::exit(1);
+    }
+
+    // Use a unique temp object file, then move the final executable.
+    let obj_path = target.join(format!("{}.o", manifest.name));
+    let exe_path = target.join(&manifest.name);
+
+    link_object_to_executable(&emitter, &obj_path, &exe_path);
+
+    // Clean up the intermediate object file.
+    let _ = std::fs::remove_file(&obj_path);
+
+    eprintln!("Executable written to {}", exe_path.display());
+}
+
+/// Stage 18.156 (缺陷1 fix): `landinc build --bin` without llvm-backend.
+#[cfg(not(feature = "llvm-backend"))]
+fn link_and_emit_executable(
+    _result: &landin_compiler::CompileResult,
+    _manifest: &ProjectManifest,
+    _target_dir: &Option<PathBuf>,
+) {
+    eprintln!("error: `landinc build --bin` requires the llvm-backend feature");
+    eprintln!("hint: rebuild with: cargo build --features llvm-backend");
+    std::process::exit(1);
 }
 
 /// Stage 18.154: `landinc run` — compile and run the project.
@@ -304,35 +457,10 @@ fn cmd_run(manifest_path: &Option<PathBuf>, _release: bool, args: &[String]) {
         }
     };
 
-    // Emit object file.
+    // Stage 18.156: Use shared linker helper (was inline before).
     let obj_path = std::env::temp_dir().join(format!("landinc_run_{}.o", std::process::id()));
-    let obj_path_str = obj_path.to_string_lossy().to_string();
-    match emitter.to_object_file(&obj_path_str) {
-        Ok(_) => {}
-        Err(e) => {
-            eprintln!("error: object emission failed: {}", e);
-            std::process::exit(1);
-        }
-    }
-
-    // Link via cc/clang.
     let exe_path = std::env::temp_dir().join(format!("landinc_run_{}", std::process::id()));
-    let link_status = std::process::Command::new("cc")
-        .arg(&obj_path)
-        .arg("-o")
-        .arg(&exe_path)
-        .status();
-    match link_status {
-        Ok(s) if s.success() => {}
-        Ok(s) => {
-            eprintln!("error: linking failed (exit code {:?})", s.code());
-            std::process::exit(1);
-        }
-        Err(e) => {
-            eprintln!("error: cannot invoke cc: {}", e);
-            std::process::exit(1);
-        }
-    }
+    link_object_to_executable(&emitter, &obj_path, &exe_path);
 
     // Run.
     let run_status = std::process::Command::new(&exe_path).args(args).status();

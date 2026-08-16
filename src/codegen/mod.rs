@@ -99,6 +99,9 @@ mod statement;
 mod terminator;
 mod trait_dispatch;
 
+// Stage 18.157: Shared C runtime wrapper (used by landin-stage0 + landinc).
+pub mod runtime;
+
 // Stage 16.76 MUV-2: Pipeline orchestrator + per-function codegen + drop glue.
 mod drop_glue;
 mod function;
