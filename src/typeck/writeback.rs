@@ -1,0 +1,339 @@
+//! Type checker — writeback sub-responsibility.
+//!
+//! Per `docs/stage-committee-process.md` v6.4 §13.4 J1-J6 (Stage 18.128):
+//! Split from `checker.rs` to satisfy J6 (科学合理粒度) + J2 (单一职责).
+//! This file contains all `writeback_*` and `resolve_*_for_writeback` methods.
+//!
+//! ## Sub-responsibility
+//! Type writeback: after typeck + borrowck complete, write resolved field
+//! types back into MIR LocalDecls and FieldTyTable for downstream codegen.
+//!
+//! ## J1-J6 compliance
+//! - J1: typeck design unchanged
+//! - J2: this file has one clear responsibility (writeback)
+//! - J3: no circular deps (methods operate on `&mut self`)
+//! - J4: writeback sub-responsibility is complete
+//! - J5: stays within typeck stage
+//! - J6: LOC driven by responsibility
+
+use crate::mir::body::*;
+use crate::mir::place::*;
+use crate::mir::ty::*;
+
+use super::checker::TypeChecker;
+use super::predicates::is_concrete_int_or_float;
+use super::tables::FieldTyTable;
+
+impl TypeChecker {
+    pub(super) fn writeback_field_types_with_table(
+        &mut self,
+        mir: &mut MirBody,
+        table: &FieldTyTable,
+    ) {
+        let mut updates: Vec<(
+            usize,
+            usize,
+            Option<crate::mir::place::Place>,
+            Option<crate::mir::place::Rvalue>,
+        )> = Vec::new();
+        for (bb_idx, bb) in mir.basic_blocks.iter().enumerate() {
+            for (stmt_idx, stmt) in bb.statements.iter().enumerate() {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    let mut new_place = place.clone();
+                    let mut new_rvalue = rvalue.clone();
+                    let place_changed = writeback_field_types_in_place_with_table(
+                        &mut new_place,
+                        mir,
+                        table,
+                        &mut self.unify,
+                    );
+                    let rvalue_changed = writeback_field_types_in_rvalue_with_table(
+                        &mut new_rvalue,
+                        mir,
+                        table,
+                        &mut self.unify,
+                    );
+                    if place_changed || rvalue_changed {
+                        updates.push((
+                            bb_idx,
+                            stmt_idx,
+                            if place_changed { Some(new_place) } else { None },
+                            if rvalue_changed {
+                                Some(new_rvalue)
+                            } else {
+                                None
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+        for (bb_idx, stmt_idx, new_place, new_rvalue) in updates {
+            if let Some(bb) = mir.basic_blocks.get_mut(bb_idx) {
+                if let Some(stmt) = bb.statements.get_mut(stmt_idx) {
+                    if let StatementKind::Assign(boxed) = &mut stmt.kind {
+                        let (place, rvalue) = &mut **boxed;
+                        if let Some(np) = new_place {
+                            *place = np;
+                        }
+                        if let Some(nr) = new_rvalue {
+                            *rvalue = nr;
+                        }
+                    }
+                }
+            }
+        }
+
+        fn resolve_place_type_with_table(lv: &crate::mir::place::Place, mir: &MirBody) -> Ty {
+            use crate::mir::place::PlaceKind;
+            match &lv.kind {
+                PlaceKind::Local(id) => mir
+                    .local_decls
+                    .get(id.0 as usize)
+                    .map(|ld| ld.ty.clone())
+                    .unwrap_or_else(|| Ty::new(TyKind::Error, lv.span)),
+                PlaceKind::Projection(base, elem) => {
+                    let _base_ty = resolve_place_type_with_table(base, mir);
+                    match elem {
+                        crate::mir::place::ProjectionElem::Field(_field_id, field_ty) => {
+                            field_ty.clone()
+                        }
+                        // Stage 18.118: Deref/Index/ConstantIndex/Subslice
+                        // projections on non-supported types return Error.
+                        // This is intentional — the place type cannot be
+                        // resolved, and the Error type surfaces in typeck.
+                        _ => Ty::from_kind(TyKind::Error),
+                    }
+                }
+                PlaceKind::Static(_) => Ty::from_kind(TyKind::Error),
+            }
+        }
+
+        fn writeback_field_types_in_place_with_table(
+            lv: &mut crate::mir::place::Place,
+            mir: &MirBody,
+            table: &FieldTyTable,
+            unify: &mut crate::typeck::unify::UnificationTable,
+        ) -> bool {
+            use crate::mir::place::{PlaceKind, ProjectionElem};
+            match &mut lv.kind {
+                PlaceKind::Projection(base, elem) => {
+                    let mut changed =
+                        writeback_field_types_in_place_with_table(base, mir, table, unify);
+                    if let ProjectionElem::Field(field_id, field_ty) = elem {
+                        let base_ty = resolve_place_type_with_table(base, mir);
+                        if let TyKind::Adt(def_id, _) = &base_ty.kind {
+                            if let Some(fields) = table.struct_fields(def_id) {
+                                if let Some(resolved) = fields.get(field_id.0 as usize) {
+                                    let current = unify.resolve(field_ty);
+                                    match &current.kind {
+                                        TyKind::Infer(InferVar::TyVar(vid)) => {
+                                            unify.bind_ty_var(*vid, resolved.clone());
+                                        }
+                                        TyKind::Infer(InferVar::IntVar(vid)) => {
+                                            if let TyKind::Int(int_ty) = &resolved.kind {
+                                                unify.bind_int_var(*vid, *int_ty);
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                    *field_ty = resolved.clone();
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                    changed
+                }
+                _ => false,
+            }
+        }
+
+        fn writeback_field_types_in_rvalue_with_table(
+            rv: &mut crate::mir::place::Rvalue,
+            mir: &MirBody,
+            table: &FieldTyTable,
+            unify: &mut crate::typeck::unify::UnificationTable,
+        ) -> bool {
+            use crate::mir::place::Rvalue;
+            match rv {
+                Rvalue::Use(op) => {
+                    writeback_field_types_in_operand_with_table(op, mir, table, unify)
+                }
+                Rvalue::BinaryOp(_, a, b) | Rvalue::BinaryOp2(_, a, b) => {
+                    writeback_field_types_in_operand_with_table(a, mir, table, unify)
+                        | writeback_field_types_in_operand_with_table(b, mir, table, unify)
+                }
+                Rvalue::UnaryOp(_, op) => {
+                    writeback_field_types_in_operand_with_table(op, mir, table, unify)
+                }
+                Rvalue::Cast(_, op, _) => {
+                    writeback_field_types_in_operand_with_table(op, mir, table, unify)
+                }
+                Rvalue::Aggregate(_, operands) => {
+                    let mut changed = false;
+                    for op in operands {
+                        changed |=
+                            writeback_field_types_in_operand_with_table(op, mir, table, unify);
+                    }
+                    changed
+                }
+                Rvalue::Ref(_, _, lv) => {
+                    writeback_field_types_in_place_with_table(lv, mir, table, unify)
+                }
+            }
+        }
+
+        fn writeback_field_types_in_operand_with_table(
+            op: &mut crate::mir::place::Operand,
+            mir: &MirBody,
+            table: &FieldTyTable,
+            unify: &mut crate::typeck::unify::UnificationTable,
+        ) -> bool {
+            use crate::mir::place::Operand;
+            match op {
+                Operand::Copy(lv) | Operand::Move(lv) => {
+                    writeback_field_types_in_place_with_table(lv, mir, table, unify)
+                }
+                _ => false,
+            }
+        }
+    }
+
+    /// Stage 3.60: Writeback field-load locals using FieldTyTable instead of HIR.
+    pub(super) fn writeback_field_load_locals_with_table(
+        &mut self,
+        mir: &mut MirBody,
+        table: &FieldTyTable,
+    ) {
+        use crate::mir::place::{Operand, PlaceKind, ProjectionElem, Rvalue};
+        for bb in &mir.basic_blocks {
+            for stmt in &bb.statements {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let PlaceKind::Local(dest_id) = &place.kind {
+                        if let Rvalue::Use(op) = rvalue {
+                            let lv = match op {
+                                Operand::Copy(lv) | Operand::Move(lv) => lv,
+                                _ => continue,
+                            };
+                            if let PlaceKind::Projection(base, ProjectionElem::Field(field_id, _)) =
+                                &lv.kind
+                            {
+                                let base_ty = self.resolve_place_for_writeback(mir, base);
+                                if let TyKind::Adt(def_id, _) = &base_ty.kind {
+                                    if let Some(fields) = table.struct_fields(def_id) {
+                                        if let Some(field_ty) = fields.get(field_id.0 as usize) {
+                                            if let Some(dest_local) =
+                                                mir.local_decls.get_mut(dest_id.0 as usize)
+                                            {
+                                                dest_local.ty = field_ty.clone();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Second pass: fix BinaryOp results.
+        for bb in &mir.basic_blocks {
+            for stmt in &bb.statements {
+                if let StatementKind::Assign(boxed) = &stmt.kind {
+                    let (place, rvalue) = &**boxed;
+                    if let PlaceKind::Local(dest_id) = &place.kind {
+                        if let Rvalue::BinaryOp(op, a, b) = rvalue {
+                            // Stage 14.65: Comparison ops (Eq/Ne/Lt/Le/Gt/Ge)
+                            // ALWAYS return Bool, regardless of operand types.
+                            // Skip the operand-type propagation for these ops,
+                            // otherwise `x > 0.0` (where 0.0 is f64) would
+                            // overwrite the result type with f64, causing
+                            // `store double %cmp_result, %bool_alloca` — a
+                            // type mismatch that silently miscompiles at runtime
+                            // (segfault when loading as i1).
+                            //
+                            // Per §1.0 原则 5 "报错 > 静默": comparison results
+                            // are always Bool, never the operand type.
+                            let is_comparison = matches!(
+                                op,
+                                BinOp::Eq
+                                    | BinOp::Ne
+                                    | BinOp::Lt
+                                    | BinOp::Le
+                                    | BinOp::Gt
+                                    | BinOp::Ge
+                            );
+                            if is_comparison {
+                                continue;
+                            }
+                            let a_ty = self.resolve_operand_for_writeback(mir, a);
+                            let b_ty = self.resolve_operand_for_writeback(mir, b);
+                            let result_ty = if is_concrete_int_or_float(&a_ty) {
+                                Some(a_ty)
+                            } else if is_concrete_int_or_float(&b_ty) {
+                                Some(b_ty)
+                            } else {
+                                None
+                            };
+                            if let Some(ty) = result_ty {
+                                if let Some(dest_local) =
+                                    mir.local_decls.get_mut(dest_id.0 as usize)
+                                {
+                                    dest_local.ty = ty;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check a single MIR body. Walks all basic blocks, infers types
+    /// for rvalues, and unifies with place types.
+    ///
+    /// After inference, writes the resolved types back into
+    /// `mir.local_decls[i].ty` so that downstream consumers (borrowck,
+    /// codegen) see concrete types instead of inference variables.
+    pub(super) fn resolve_operand_for_writeback(
+        &self,
+        mir: &MirBody,
+        op: &crate::mir::place::Operand,
+    ) -> Ty {
+        use crate::mir::place::Operand;
+        match op {
+            Operand::Copy(lv) | Operand::Move(lv) => self.resolve_place_for_writeback(mir, lv),
+            Operand::Constant(c) => c.ty.clone(),
+        }
+    }
+
+    /// Resolve a place's type for the writeback pass (post-Phase 3, so
+    /// local_decls have resolved types).
+    pub(super) fn resolve_place_for_writeback(
+        &self,
+        mir: &MirBody,
+        lv: &crate::mir::place::Place,
+    ) -> Ty {
+        use crate::mir::place::PlaceKind;
+        match &lv.kind {
+            PlaceKind::Local(id) => mir
+                .local_decls
+                .get(id.0 as usize)
+                .map(|ld| ld.ty.clone())
+                .unwrap_or_else(|| Ty::new(TyKind::Error, lv.span)),
+            PlaceKind::Projection(base, elem) => {
+                let base_ty = self.resolve_place_for_writeback(mir, base);
+                match elem {
+                    crate::mir::place::ProjectionElem::Field(_field_id, field_ty) => {
+                        field_ty.clone()
+                    }
+                    _ => base_ty,
+                }
+            }
+            PlaceKind::Static(_) => Ty::new(TyKind::Error, lv.span),
+        }
+    }
+}

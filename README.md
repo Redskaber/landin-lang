@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.395.0 (Stage 18.127 — TD-UNWRAP-DRIVER + TD-UNWRAP-BORROWCK-REGION resolved: 7 real-code unwrap → if-let-Some / expect+invariant; 12 test-code unwrap reclassified as legitimate)  
+> **Version**: v0.396.0 (Stage 18.128 — TD-LOC-TYPECK-CHECKER resolved: typeck/checker.rs 2635 LOC → 4 files per §13.4 J1-J6 [checker 1371 + infer 544 + check 476 + writeback 339], all < 1500 LOC; 22 methods migrated + 17 pub(super))  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4, structural debt scan + first code-layer fixes
+> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4, structural debt scan + 3 code-layer fixes (18.127 × 2, 18.128 × 1)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets

@@ -16,7 +16,12 @@
 //! - [`check_mir_body`] — delegates to `check_mir_body_with_tables(None)`.
 
 pub mod checker;
+
+// Stage 18.128 §13.4 J1-J6: split checker.rs into sub-responsibilities
+mod check;
 pub mod error;
+mod infer;
+mod writeback;
 // Stage 6.15 (TD-025) sub-modules.
 mod predicates;
 // Stage 16.68 (Task 17 Phase 3): Associated type projection resolution.

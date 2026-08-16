@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-16
-> **Version**: v0.3
+> **Version**: v0.4
 > **Status**: Active
-> **最后更新**: Stage 18.127 / 2026-08-16
+> **最后更新**: Stage 18.128 / 2026-08-16
 > **关联流程**: docs/stage-committee-process.md §6.6.1
 
 > **目的**：把"校准依据"从概念性描述固化为单一持久化文件，避免每个阶段的统计数据散落在不同 worklog/dev-log 里、跨阶段比对困难。所有阶段结束的 §14.5 深度审查必须向本文件追加一行阶段统计 + 一条校准结论。
@@ -28,6 +28,7 @@
 | 18.125 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | 流程文档 v6.4 Round 2 深度审计（§6.2.1 + §1.3 + §14.6.5 + §9.3 + §8.5 + §8.4.1 + §3.5） |
 | 18.126 | L3 | 1 | 0 | 0 | 26 | 4 | N/A | 0 | 97% | §17 任务规划首次实际应用 + 结构性技术债扫描（9 文件 LOC + 491 DUMMY + 162 unwrap/expect）；新增 19 项 TD (TD-LOC-* × 5 + TD-DUMMY-* × 8 + TD-UNWRAP-* × 6) |
 | 18.127 | L2 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-UNWRAP-DRIVER (4 unwrap → if let Some) + TD-UNWRAP-BORROWCK-REGION (3 unwrap → expect+invariant) 修复; 2 项 reclassified (test-code unwrap 合法); §3.2 全套验收通过 (640 lib + 2663 integration) |
+| 18.128 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-TYPECK-CHECKER 拆分 (§13.4 J1-J6): checker.rs 2635 LOC → 4 文件 (checker 1371 + infer 544 + check 476 + writeback 339), 全部 < 1500 LOC; 22 方法迁移 + 17 pub(super) 可见性调整; §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
 
 ---
 
@@ -67,6 +68,7 @@
 | Stage 18.125 | Round 2 深度审计 | v6.3 收尾后再次发现 7 项问题 | 流程文档 v6.3 → v6.4 + §6.2.1 悬空引用修复 |
 | Stage 18.126 | §17 任务规划排版图首次应用 + 结构性技术债扫描 | §17 引入后首次实际执行 + §14.5 D1 预审 | 发现 9 文件 LOC 超阈值 + 491 Span::DUMMY 待审计 + 162 unwrap/expect 静默吞错 |
 | Stage 18.127 | TD-UNWRAP-* 修复 + test-code 重新分类 | §13.4 J1-J6 + §12 最优>最小 + §2 原则 3/4 | 7 real unwrap 修复 + 12 test unwrap 重新分类为合法; 验证 §17 任务规划 → 代码层修复闭环 |
+| Stage 18.128 | TD-LOC-TYPECK-CHECKER 拆分 (首次 §13.4 J1-J6 全量判据实践) | TD-LOC-* 中最低阈值倍数 (1.8×) + 最清晰子职责边界 | checker.rs 2635 → 4 文件 (全部 < 1500 LOC); 22 方法迁移 + 17 pub(super); 验证 §13.4 J1-J6 可操作 |
 
 ---
 

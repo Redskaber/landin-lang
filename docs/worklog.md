@@ -14892,3 +14892,81 @@ Stage Summary:
 - §3.2 全套验收通过: 640 lib + 2663 integration tests, 0 failures
 - v0.395.0: patch bump (2 项 TD 修复 + 2 项 reclassified)
 - 下一步: Stage 18.128 — Span::DUMMY 待审计 (TD-DUMMY-* × 8) 或 typeck/parser expect 审计 (TD-EXPECT-* × 2)
+
+---
+Task ID: stage18.128
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.128 — TD-LOC-TYPECK-CHECKER 拆分 (§13.4 J1-J6 重构判据). v0.395.0 → v0.396.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (Stage 18.127 已部署)
+- §3.2 验收 (上个 stage 状态): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+
+- §13.1 设计对齐:
+  → 查阅 docs/lang-design/ 03-type-system.md (typeck 架构)
+  → 设计文档未要求 typeck 内部文件结构, 属于设计灰区 (§13.1.2 灰区决策)
+  → 重组方向与 §13.4 J2 (单一职责) + J6 (科学合理粒度) 一致
+
+- §17 任务规划:
+  → 选定 TD-LOC-TYPECK-CHECKER (2635 LOC, 1.8× 阈值) — 5 项 TD-LOC-* 中最低阈值倍数
+  → 理由: 风险最低 + 最清晰子职责边界 (infer/check/writeback) + 无跨阶段依赖 + 测试覆盖完整
+  → §13.4 J1-J6 全量判据检查: 全部通过
+    - J1 架构设计对齐 ✅ (灰区决策)
+    - J2 单一职责 ✅ (4 文件各自单一子职责)
+    - J3 单向流动 ✅ (所有方法操作 &mut self, 无循环依赖)
+    - J4 编译相关表达完整 ✅ (每个文件子职责闭合)
+    - J5 阶段划分清晰 ✅ (全部在 typeck 阶段)
+    - J6 科学合理粒度 ✅ (checker 1371 + infer 544 + check 476 + writeback 339, 全部 < 1500)
+  → §12 最优 > 最小: 选择子职责拆分 (消除根因), 非 LOC 切片 (反模式)
+
+- 重构执行:
+  → 拆分前: src/typeck/checker.rs 2635 LOC (22 方法混合 4 子职责)
+  → 拆分后: 4 文件
+    - checker.rs (1371 LOC): struct + entry/lifecycle (9 方法) + free fns + impl Default + tests
+    - infer.rs (544 LOC): impl TypeChecker { infer_* } (6 方法)
+    - check.rs (476 LOC): impl TypeChecker { check_*/post_check_* } (4 方法)
+    - writeback.rs (339 LOC): impl TypeChecker { writeback_*/resolve_*_for_writeback } (4 方法)
+  → 22 方法迁移 + 17 pub(super) 可见性调整 (跨文件调用)
+  → 导入调整: 每个新文件只导入其子职责需要的类型
+  → mod.rs 更新: 添加 mod check; mod infer; mod writeback;
+
+- §10 API 命名标准化: 7 项规则全部 ✅
+  → 未改变任何入口函数 / 上下文类型 / 类型前缀
+  → pub(super) 不影响外部 API (仅在 typeck 模块内部暴露)
+  → 无新增 L-NAMING-N
+
+- §11 接口隔离: 无新增 L-PIPE-N
+  → 全部在 typeck 阶段内部, 无跨阶段拆分
+
+- §2.2 设计原则: 9/9 ✅
+  → 原则 3 显式 > 隐式: pub(super) 显式标注可见性
+  → 原则 5 去除兼容思维: 一步到位 (§13.3.5), 不保留旧结构
+  → 原则 6 通用 > 特例: 通用子职责划分 (infer/check/writeback)
+
+- §3.2 验收 (全套通过):
+  → cargo check --features llvm-backend ✅ (0 errors, 0 warnings)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings, 12.92s)
+  → cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed (0.17s)
+  → cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 2 ignored (5.22s)
+
+- §8 文档同步:
+  → docs/develop/v0/stage-18/stage-18.128-dev-log.md (新建)
+  → docs/develop/v0/tech-debt-register.md: v0.395.0 → v0.396.0 + TD-LOC-TYPECK-CHECKER resolved + §4 分类索引更新
+  → docs/develop/v0/calibration-data.md: v0.3 → v0.4 + Stage 18.128 统计 + §2.3 流程优化历史
+  → Cargo.toml: v0.395.0 → v0.396.0
+  → README.md: v0.395.0 → v0.396.0
+  → worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.128 PASSED — TD-LOC-TYPECK-CHECKER 拆分 (首次 §13.4 J1-J6 全量判据实践)
+- 复杂度 L3, 实际 1 轮 (跨文件重构 + 22 方法迁移 + 可见性调整)
+- 拆分结果: checker.rs 2635 LOC → 4 文件 (1371 + 544 + 476 + 339), 全部 < 1500 LOC
+- §13.4 J1-J6: 全部通过 (架构对齐 + 单一职责 + 单向流动 + 编译相关表达完整 + 阶段划分清晰 + 科学合理粒度)
+- §12 最优 > 最小: 选择消除根因的方案 (子职责拆分), 非 LOC 切片
+- §2.2 设计原则: 9/9 ✅
+- §10 API 命名: 100% 合规 (pub(super) 不影响外部 API)
+- §11 接口隔离: 无新增 L-PIPE-N
+- §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
+- v0.396.0: minor bump (TD-LOC-TYPECK-CHECKER 拆分)
+- 下一步: Stage 18.129 — TD-LOC-MACRO-EXPAND (5962 LOC, 4.0× 阈值, 需 hygiene/repetition/fragment 三层拆分)
