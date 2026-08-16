@@ -459,6 +459,34 @@ mod stage18_155_deficiency_fix_tests;
 #[path = "v0/stage18/plan/stage18_156_build_bin_tests.rs"]
 mod stage18_156_build_bin_tests;
 
+// === Stage 18.160: Negative Test Coverage (TD-NEGATIVE-TEST-COVERAGE) ===
+#[path = "v0/stage18/plan/stage18_160_codegen_negative_tests.rs"]
+mod stage18_160_codegen_negative_tests;
+#[path = "v0/stage18/plan/stage18_160_module_loader_negative_tests.rs"]
+mod stage18_160_module_loader_negative_tests;
+#[path = "v0/stage18/plan/stage18_160_parser_lexer_negative_tests.rs"]
+mod stage18_160_parser_lexer_negative_tests;
+#[path = "v0/stage18/plan/stage18_160_typeck_negative_tests.rs"]
+mod stage18_160_typeck_negative_tests;
+
+// === Stage 18.161: Extended Negative Test Coverage ===
+#[path = "v0/stage18/plan/stage18_161_borrowck_negative_tests.rs"]
+mod stage18_161_borrowck_negative_tests;
+#[path = "v0/stage18/plan/stage18_161_hir_lower_negative_tests.rs"]
+mod stage18_161_hir_lower_negative_tests;
+#[path = "v0/stage18/plan/stage18_161_mir_lower_negative_tests.rs"]
+mod stage18_161_mir_lower_negative_tests;
+#[path = "v0/stage18/plan/stage18_161_trait_resolve_negative_tests.rs"]
+mod stage18_161_trait_resolve_negative_tests;
+
+// === Stage 18.162: Stdlib + Codegen + Attribute/Macro Negative Tests ===
+#[path = "v0/stage18/plan/stage18_162_attribute_macro_negative_tests.rs"]
+mod stage18_162_attribute_macro_negative_tests;
+#[path = "v0/stage18/plan/stage18_162_codegen_llvm_negative_tests.rs"]
+mod stage18_162_codegen_llvm_negative_tests;
+#[path = "v0/stage18/plan/stage18_162_stdlib_negative_tests.rs"]
+mod stage18_162_stdlib_negative_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
