@@ -131,10 +131,19 @@ mod tests {
         assert!(!result.has_errors());
         let hir = result.hir.as_ref().expect("HIR should be available");
         let map = build_generics_map(hir);
-        // Non-generic struct should NOT be in the map (empty params are excluded)
+        // Stage 18.165: Prelude injects Option<T> and Result<T, E> (both
+        // generic), so the map is no longer empty. We check that the
+        // user-defined non-generic struct "Point" is NOT in the map.
+        // Per §2 原則 9 (正确>妥协): adapt test to new prelude behavior.
         assert!(
-            map.is_empty(),
-            "Non-generic items should not be in generics map"
+            !map.values().any(|params| params.is_empty()),
+            "Non-generic items should not have empty params in generics map"
+        );
+        // Verify Option and Result are in the map (prelude injection works).
+        assert!(
+            map.len() >= 2,
+            "Prelude should inject at least 2 generic types (Option, Result), got {}",
+            map.len()
         );
     }
 

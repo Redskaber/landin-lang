@@ -16745,3 +16745,49 @@ Stage Summary:
 - TD-NEGATIVE-TEST-COVERAGE: ✅ Resolved
 - v0.432.0: patch bump
 - 下一步: Stage 18.165 实现 Option/Result (不依赖 heap, stdlib 第一步)
+
+---
+Task ID: stage18.165
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.165 — Option/Result 内置类型实现 (stdlib 第一步). v0.432.0 → v0.433.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 638 ✅
+- §13.1 设计对齐: docs/lang-design/09-stdlib.md §2.4 (Option 与 Result)
+- §5.1 任务审查: Option/Result 不依赖 heap (enum 栈分配), 可直接实现
+
+- 实现:
+  → 新增 src/stdlib/prelude.rs (150 LOC): inject_prelude + make_option_enum + make_result_enum
+  → 修改 compile_inner: parse 后调用 inject_prelude 注入 Option/Result
+  → 修改 src/stdlib/mod.rs: 注册 pub mod prelude
+  → 修复测试: stage16_50_generics_of_non_generic_struct 适配 prelude 注入
+
+- 验证结果:
+  → Option::Some(42) + Option::None: ✅ 编译成功
+  → Result::Ok(42) + Result::Err(e): ✅ 编译成功
+  → match x { Option::Some(v) => v, Option::None => 0 }: ✅ 模式匹配工作
+  → Some(42) 不带前缀: ❌ 解析器不支持 variant constructor
+
+- 新技术债:
+  → TD-VARIANT-CONSTRUCTOR: 解析器不支持不带前缀的 variant constructor
+  → TD-OPTION-ADVANCED-METHODS: Option/Result 方法未实现
+
+- §3.2 全套验收:
+  → cargo check --features llvm-backend: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 warnings
+  → cargo test --features llvm-backend: 656 lib + 2967 integration = 3623 total, 0 failed
+
+- v0.433.0: patch bump
+
+Stage Summary:
+- Stage 18.165 PASSED — Option/Result 内置类型实现 (部分)
+- 新增: src/stdlib/prelude.rs (150 LOC) — prelude 注入系统
+- 结果: Option::Some/None + Result::Ok/Err 可用 (带前缀)
+- 限制: 不带前缀 Some(42) 不支持 (TD-VARIANT-CONSTRUCTOR)
+- 限制: 方法未实现 (TD-OPTION-ADVANCED-METHODS)
+- 测试: 656 lib + 2967 integration = 3623 total, 0 failures
+- §3.2 全套验收: cargo check/fmt/clippy/test 全绿
+- v0.433.0: patch bump
+- 下一步: Stage 18.166 实现 variant constructor + 基本方法

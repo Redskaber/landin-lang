@@ -4,6 +4,7 @@
 //! stdlib subsystem, organized into 3 sub-modules by responsibility:
 //! - `trait_methods` — trait method signatures + query API (domain B)
 //! - `vtable_layout` — vtable layout + symbols + emission (domain C)
+//! - `prelude` — Stage 18.165: built-in type injection (Option/Result)
 //! - (this file) — type system + prelude + registration (domain A)
 //!
 //! Per §16: stdlib is self-contained — no mir/codegen/traits references.
@@ -29,6 +30,8 @@ use lasso::Rodeo;
 
 mod trait_methods;
 mod vtable_layout;
+// Stage 18.165: Built-in prelude type injection (Option/Result).
+pub mod prelude;
 
 // Stage 14.4 §23 compliance: explicit re-export lists (no glob `pub use X::*;`).
 // Each name below is a public symbol from a sub-module that callers may use

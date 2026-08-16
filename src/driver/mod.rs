@@ -688,6 +688,12 @@ fn compile_inner(src: &str, optimize: bool, entry_path: Option<&std::path::Path>
         return CompileResult::empty(interner, errors);
     }
 
+    // === Stage 18.165: Inject built-in prelude types (Option, Result) ===
+    // Per §11: prelude injection is a driver-level concern (after parse,
+    // before HIR lower). Per §1.0 原則 6 (通解>特例): one injection
+    // mechanism for all built-in types.
+    crate::stdlib::prelude::inject_prelude(&mut krate, &mut interner);
+
     // === Stage 18.152: Multi-file module loading (only in project mode) ===
     // Per §11: ModuleLoader runs after parse, before HIR lower.
     // Per §2 原则 4 (报错>静默): load errors are collected, not silently ignored.
