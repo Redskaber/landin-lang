@@ -120,3 +120,89 @@ impl<'a> Lexer<'a> {
 pub(super) fn is_ident_start_byte(b: Option<u8>) -> bool {
     matches!(b, Some(c) if c.is_ascii_alphabetic() || c == b'_')
 }
+
+/// Stage 18.155: Check if a string is a valid Landin identifier.
+///
+/// A valid identifier:
+/// - Is non-empty
+/// - Starts with an ASCII letter or `_`
+/// - Continues with ASCII letters, digits, or `_`
+/// - Is NOT a reserved keyword
+///
+/// Per §2 原则 4 (报错>静默): invalid names are reported, not silently accepted.
+/// Per §1.0 原則 6 (通解>特例): one validation function for all name inputs
+/// (project names, module names, etc.).
+/// Per §10: `is_valid_ident` follows `<verb>_<adj>_<noun>` pattern.
+pub fn is_valid_ident(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    // First char must be a letter or underscore.
+    let first = s.as_bytes()[0];
+    if !first.is_ascii_alphabetic() && first != b'_' {
+        return false;
+    }
+    // Remaining chars must be letters, digits, or underscores.
+    for &b in &s.as_bytes()[1..] {
+        if !b.is_ascii_alphanumeric() && b != b'_' {
+            return false;
+        }
+    }
+    // Must not be a keyword.
+    if crate::lexer::token::keyword_from_str(s).is_some() {
+        return false;
+    }
+    true
+}
+
+/// Stage 18.155: Tests for `is_valid_ident`.
+#[cfg(test)]
+mod tests {
+    use super::is_valid_ident;
+
+    /// Stage 18.155 positive 1: simple lowercase name.
+    #[test]
+    fn stage18_155_valid_ident_simple() {
+        assert!(is_valid_ident("myapp"));
+        assert!(is_valid_ident("my_app"));
+        assert!(is_valid_ident("app2"));
+    }
+
+    /// Stage 18.155 positive 2: underscore-prefixed name.
+    #[test]
+    fn stage18_155_valid_ident_underscore() {
+        assert!(is_valid_ident("_internal"));
+        assert!(is_valid_ident("_"));
+    }
+
+    /// Stage 18.155 negative 1: empty string.
+    #[test]
+    fn stage18_155_invalid_ident_empty() {
+        assert!(!is_valid_ident(""));
+    }
+
+    /// Stage 18.155 negative 2: starts with digit.
+    #[test]
+    fn stage18_155_invalid_ident_digit_start() {
+        assert!(!is_valid_ident("2app"));
+        assert!(!is_valid_ident("123"));
+    }
+
+    /// Stage 18.155 negative 3: contains invalid characters.
+    #[test]
+    fn stage18_155_invalid_ident_special_chars() {
+        assert!(!is_valid_ident("my-app")); // hyphen
+        assert!(!is_valid_ident("my.app")); // dot
+        assert!(!is_valid_ident("my app")); // space
+        assert!(!is_valid_ident("my$app")); // dollar
+    }
+
+    /// Stage 18.155 negative 4: keyword as name.
+    #[test]
+    fn stage18_155_invalid_ident_keyword() {
+        assert!(!is_valid_ident("fn"));
+        assert!(!is_valid_ident("mod"));
+        assert!(!is_valid_ident("struct"));
+        assert!(!is_valid_ident("use"));
+    }
+}

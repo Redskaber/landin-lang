@@ -576,6 +576,31 @@ pub fn compile_project(entry_path: &std::path::Path) -> CompileResult {
     // Per §11: driver-level orchestrator (no cross-stage leakage).
     // Per §12 (最优>最小): root-cause fix — `compile_inner` accepts an
     // optional `entry_path` so ModuleLoader can run between parse and HIR lower.
+    //
+    // Stage 18.155: delegates to `compile_project_opt` with `optimize=true`
+    // (default debug build runs MIR optimization). Use `compile_project_opt`
+    // directly to control optimization (e.g., `--release` → `optimize=false`
+    // is WRONG; `--release` should enable MORE optimization, but currently
+    // `compile_inner(optimize=true)` is the only optimization level —
+    // `optimize=false` disables DCE+const_prop entirely).
+    //
+    // Per §2 原則 3 (显式>隐式): `compile_project` is the simple default;
+    // `compile_project_opt` is the explicit control variant.
+    compile_project_opt(entry_path, true)
+}
+
+/// Stage 18.155 (TD-SINGLE-FILE Phase 4): Compile a multi-file project with
+/// explicit optimization control.
+///
+/// `optimize=true` runs MIR optimization passes (DCE + const_prop) after
+/// writeback. `optimize=false` skips them (useful for tests that verify
+/// unoptimized IR structure, or for `--release` builds that defer optimization
+/// to LLVM).
+///
+/// Per §10: `compile_project_opt` follows `<verb>_<noun>_<adj>` pattern.
+/// Per §2 原則 3 (显式>隐式): the optimize flag is explicit, not inferred.
+/// Per §1.0 原則 6 (通解>特例): one function handles both debug and release.
+pub fn compile_project_opt(entry_path: &std::path::Path, optimize: bool) -> CompileResult {
     let src = match std::fs::read_to_string(entry_path) {
         Ok(s) => s,
         Err(e) => {
@@ -590,7 +615,7 @@ pub fn compile_project(entry_path: &std::path::Path) -> CompileResult {
             return CompileResult::empty(interner, errors);
         }
     };
-    compile_inner(&src, true, Some(entry_path))
+    compile_inner(&src, optimize, Some(entry_path))
 }
 
 /// Internal compile implementation. `optimize` controls whether MIR

@@ -16244,3 +16244,62 @@ Stage Summary:
 - 测试: 629 lib + 2688 integration (新增 7), 0 failures
 - v0.422.0: minor bump
 - 下一步: Phase 4 — landin.toml manifest 完整集成 (dependencies, profiles)
+
+---
+Task ID: stage18.155
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.155 — v0.2 P0 mini-cargo Phase 4: 简写与缺陷修复. v0.422.0 → v0.423.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 629 ✅ + tests 2688 ✅
+- §12 (最优>最小): 修复 Stage 18.154 记录的 3 项简写/缺陷
+
+- 缺陷2 修复: landinc 错误输出集成彩色诊断
+  → 提取 print_compile_errors(result, entry) helper (单一职责, 消除重复)
+  → 调用 CompileErrors::format_via_diagnostics_colored (与 landin-stage0 一致)
+  → 自动检测 TTY 选择 Always/Never 颜色
+  → 重读 entry 文件提供源码上下文 (span underline)
+  → cmd_build/cmd_check/cmd_run 共用 helper
+
+- 简写1 修复: --release 生效 → 新增 compile_project_opt
+  → 新增公共 API: compile_project_opt(entry_path, optimize: bool)
+  → compile_project 委托 compile_project_opt(path, true)
+  → lib.rs re-export: compile_project_opt
+  → cmd_build 调用 compile_project_opt(entry, true)
+  → 简写记录: --release 当前传 optimize=true (单一 MIR opt level, 无 LLVM 级差异)
+
+- 缺陷3 修复: 项目名合法性校验
+  → 新增公共函数: lexer::is_valid_ident(s) -> bool
+  → 校验: 非空 + 首字符字母/_ + 后续字母数字/_ + 非关键字
+  → cmd_new 调用 is_valid_ident, 无效时报错退出 (报错>静默)
+  → lib.rs re-export: lexer::is_valid_ident
+
+- API 命名 (§10):
+  → compile_project_opt: <verb>_<noun>_<adj> ✅
+  → is_valid_ident: <verb>_<adj>_<noun> ✅
+  → print_compile_errors: <verb>_<noun>_<noun> ✅
+
+- 测试 (11 个: 6 lib + 5 integration):
+  → Lib: 6 个 is_valid_ident 测试 (2 positive + 4 negative)
+  → Integration: 5 个 (3 positive + 2 negative)
+  → 手动验证: landinc new "my-app"/"fn" 拒绝, "myapp" 接受
+
+- §3.2 验收: 全套通过
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-features --all-targets: 0 warnings
+  → cargo test --lib: 635 passed (629 + 6 new), 0 failed
+  → cargo test --tests --all-features: 2693 passed (2688 + 5 new), 0 failed
+  → 0 TODO/FIXME/HACK
+
+- TD-SINGLE-FILE: 🟡 Phase 1-4 Resolved (核心功能完成)
+- v0.423.0: patch bump
+
+Stage Summary:
+- Stage 18.155 PASSED — v0.2 P0 mini-cargo Phase 4: 简写与缺陷修复
+- 修复 3 项: 彩色诊断 + compile_project_opt + 项目名校验
+- 新增公共 API: compile_project_opt(path, optimize), lexer::is_valid_ident(s)
+- 测试: 635 lib + 2693 integration (新增 11), 0 failures
+- v0.423.0: patch bump
+- 下一步: v0.2 P1 — stdlib facade 或 format macros

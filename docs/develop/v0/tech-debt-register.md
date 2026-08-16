@@ -232,6 +232,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | 🟡 Phase 1 Resolved in 18.152 | 1 | TD-SINGLE-FILE (ModuleLoader + compile_project; phases 2-4 remain) |
 | 🟡 Phase 2 Resolved in 18.153 | 1 | TD-SINGLE-FILE (cross-file use/path resolution; phases 3-4 remain) |
 | 🟡 Phase 3 Resolved in 18.154 | 1 | TD-SINGLE-FILE (landinc CLI build/run/new/check/clean; phase 4 remains) |
+| 🟡 Phase 4 Resolved in 18.155 | 1 | TD-SINGLE-FILE (mini-cargo deficiency fixes: colored diagnostics + compile_project_opt + project name validation) |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 

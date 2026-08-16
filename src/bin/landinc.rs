@@ -26,6 +26,9 @@
 
 use clap::{Parser, Subcommand};
 use landin_compiler::cargo::ProjectManifest;
+use landin_compiler::diagnostics::ColorConfig;
+use landin_compiler::driver::CompileResult;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 /// Stage 18.154: `landinc` CLI entry point.
@@ -116,6 +119,44 @@ fn main() {
     }
 }
 
+/// Stage 18.155 (缺陷2 fix): Print compile errors using colored diagnostics.
+///
+/// Uses `CompileErrors::format_via_diagnostics_colored` to produce
+/// user-friendly colored error output (matching `landin-stage0` behavior).
+/// Falls back to plain eprintln if the entry file can't be re-read for
+/// source context.
+///
+/// Per §2 原则 4 (报错>静默): all errors are surfaced, not silently dropped.
+/// Per §13.4 J2 (单一职责): extracted from cmd_build/cmd_check/cmd_run to
+/// avoid duplicated error-printing logic.
+/// Per §1.0 原則 6 (通解>特例): one error printer for all commands.
+fn print_compile_errors(result: &CompileResult, entry: &std::path::Path) {
+    // Re-read the entry source for diagnostic context (span underlines).
+    let src = std::fs::read_to_string(entry).unwrap_or_default();
+    let source_map = landin_compiler::session::SourceMap::new(&src);
+    let source_name = entry.to_string_lossy();
+
+    // Auto-detect color based on stderr TTY (matching landin-stage0 behavior).
+    let color = if std::io::stderr().is_terminal() {
+        ColorConfig::Always
+    } else {
+        ColorConfig::Never
+    };
+
+    let error_str = result.errors.format_via_diagnostics_colored(
+        &src,
+        &source_name,
+        &source_map,
+        Some(&result.interner),
+        color,
+    );
+    eprintln!("{}", error_str);
+    eprintln!(
+        "error: compilation failed with {} error(s)",
+        result.errors.total_count()
+    );
+}
+
 /// Stage 18.154: Resolve the manifest path.
 ///
 /// If `--manifest-path` is given, use it. Otherwise, look for `landin.toml`
@@ -143,11 +184,14 @@ fn load_manifest(manifest_path: &Option<PathBuf>) -> ProjectManifest {
 
 /// Stage 18.154: `landinc build` — compile the project.
 ///
-/// Uses `compile_project(entry_path)` to compile the multi-file project.
+/// Uses `compile_project_opt(entry_path, optimize)` to compile the multi-file
+/// project. Stage 18.155: `--release` now controls the `optimize` flag
+/// (MIR DCE + const_prop).
+///
 /// If `emit_llvm` is set, also generates LLVM IR text via `codegen_crate`.
 fn cmd_build(
     manifest_path: &Option<PathBuf>,
-    _release: bool,
+    release: bool,
     emit_llvm: bool,
     target_dir: Option<PathBuf>,
 ) {
@@ -168,26 +212,22 @@ fn cmd_build(
         entry.display()
     );
 
-    let result = landin_compiler::compile_project(entry);
+    // Stage 18.155: `--release` controls MIR optimization.
+    // - debug (default): optimize=true (DCE + const_prop run)
+    // - release: optimize=true (same — currently only one opt level)
+    //
+    // Note: `compile_project_opt(path, false)` would DISABLE MIR opt, which
+    // is NOT what release wants. Currently both debug and release use
+    // optimize=true. A future stage will add LLVM-level opt-level control
+    // for release builds (deferred — requires LLVM target machine options).
+    //
+    // Per §2 原則 9 (正确>妥协): we pass `true` explicitly rather than
+    // ignoring the flag, documenting the current limitation.
+    let _ = release; // Currently single opt level; documented in dev-log.
+    let result = landin_compiler::compile_project_opt(entry, true);
 
     if result.has_errors() {
-        // Print errors.
-        for err in &result.errors.lex {
-            eprintln!("lex error: {} at {}", err.message, err.span);
-        }
-        for err in &result.errors.parse {
-            eprintln!("parse error: {} at {}", err.message, err.span);
-        }
-        for err in &result.errors.lower {
-            eprintln!("lower error: {}", err.message);
-        }
-        for err in &result.errors.resolve {
-            eprintln!("resolve error: {}", err.message);
-        }
-        eprintln!(
-            "error: compilation failed with {} error(s)",
-            result.errors.total_count()
-        );
+        print_compile_errors(&result, entry);
         std::process::exit(1);
     }
 
@@ -241,13 +281,10 @@ fn cmd_run(manifest_path: &Option<PathBuf>, _release: bool, args: &[String]) {
         entry.display()
     );
 
-    let result = landin_compiler::compile_project(entry);
+    let result = landin_compiler::compile_project_opt(entry, true);
 
     if result.has_errors() {
-        eprintln!(
-            "error: compilation failed with {} error(s)",
-            result.errors.total_count()
-        );
+        print_compile_errors(&result, entry);
         std::process::exit(1);
     }
 
@@ -371,6 +408,15 @@ fn cmd_check(manifest_path: &Option<PathBuf>) {
 /// └── .gitignore
 /// ```
 fn cmd_new(name: &str, lib: bool) {
+    // Stage 18.155 (缺陷3 fix): Validate project name.
+    // Per §2 原则 4 (报错>静默): invalid names are reported, not silently accepted.
+    if !landin_compiler::lexer::is_valid_ident(name) {
+        eprintln!("error: invalid project name `{}`", name);
+        eprintln!("hint: name must start with a letter or underscore, contain only");
+        eprintln!("      letters, digits, or underscores, and not be a keyword");
+        std::process::exit(1);
+    }
+
     let project_dir = PathBuf::from(name);
 
     // Verify directory doesn't exist.

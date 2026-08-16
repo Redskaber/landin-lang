@@ -438,8 +438,8 @@ pub use codegen::{
     StdlibVtableGlobalSpec, TextEmitter,
 };
 pub use driver::{
-    compile, compile_no_opt, compile_project, CompileErrors, CompileResult, ModuleLoadError,
-    ModuleLoader,
+    compile, compile_no_opt, compile_project, compile_project_opt, CompileErrors, CompileResult,
+    ModuleLoadError, ModuleLoader,
 };
 // Stage 18.95: TraitError moved from driver.rs to traits/error.rs.
 pub use stdlib::{

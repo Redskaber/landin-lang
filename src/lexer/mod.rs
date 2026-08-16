@@ -22,6 +22,9 @@ pub use reader::{LexError, LexErrorKind, Lexer};
 // Matches the same pattern already established in src/hir/mod.rs and
 // src/mir/mod.rs (Stage 3.57 P0-3 fix).
 pub use token::{keyword_from_str, FloatTy, IntTy, Symbol, Token, TokenKind};
+// Stage 18.155: public ident validation helper (used by landinc for project
+// name validation).
+pub use ident::is_valid_ident;
 
 /// Collect all tokens from source.
 pub fn tokenize(src: &str, interner: &mut lasso::Rodeo) -> (Vec<Token>, Vec<LexError>) {

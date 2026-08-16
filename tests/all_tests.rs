@@ -451,6 +451,10 @@ mod stage18_153_cross_file_resolution_tests;
 #[path = "v0/stage18/plan/stage18_154_landinc_cli_tests.rs"]
 mod stage18_154_landinc_cli_tests;
 
+// === Stage 18.155: mini-cargo Deficiency Fix Tests (TD-SINGLE-FILE Phase 4) ===
+#[path = "v0/stage18/plan/stage18_155_deficiency_fix_tests.rs"]
+mod stage18_155_deficiency_fix_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
