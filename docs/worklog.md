@@ -14970,3 +14970,100 @@ Stage Summary:
 - §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
 - v0.396.0: minor bump (TD-LOC-TYPECK-CHECKER 拆分)
 - 下一步: Stage 18.129 — TD-LOC-MACRO-EXPAND (5962 LOC, 4.0× 阈值, 需 hygiene/repetition/fragment 三层拆分)
+
+---
+Task ID: stage18.129
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.129 — TD-LOC-MIR-LOWER-MOD 部分修复 (提取 ty_lower.rs). v0.396.0 → v0.397.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (Stage 18.127 已部署)
+- §3.2 验收 (上个 stage 状态): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §13.1 设计对齐: 查阅 docs/lang-design/ 06-mir.md (MIR body/place/ty 三层); type lowering 是 MIR 设计文档中的明确概念
+
+- §17 任务规划:
+  → 选定 TD-LOC-MIR-LOWER-MOD (2857 LOC, 1.9× 阈值) — 4 项剩余 TD-LOC-* 中最低阈值倍数
+  → 理由: type lowering 子职责最清晰 (13 函数 + const_eval_array_len), 可独立提取
+  → §13.4 J1-J6 判据检查:
+    - J1 架构设计对齐 ✅ (灰区决策按子职责划分)
+    - J2 单一职责 ✅ (ty_lower.rs = type lowering 单一职责)
+    - J3 单向流动 ✅ (ty_lower 被 mod.rs + siblings 调用, 不回调)
+    - J4 编译相关表达完整 ✅ (type lowering 子职责完整)
+    - J5 阶段划分清晰 ✅ (全部在 mir::lower 阶段)
+    - J6 科学合理粒度 ⚠️ (ty_lower 863 ✅; mod.rs 2016 仍超 1500, 需 Stage 18.130)
+  → §12 最优 > 最小: 选择最清晰子职责 (type lowering) 提取, 非 LOC 切片
+
+- 重构执行:
+  → 拆分前: src/mir/lower/mod.rs 2857 LOC (type lowering + body lowering + helpers 混合)
+  → 拆分后:
+    - mod.rs (2016 LOC): struct + impl + body entry + helpers + resolve_self + tests
+    - ty_lower.rs (863 LOC): type lowering functions (13) + const_eval_array_len
+  → 14 函数迁移到 ty_lower.rs:
+    - lower_hir_ty_to_mir_ty_with_lifetimes (pub(crate))
+    - lower_path_generic_args (pub(crate))
+    - lookup_type_def_id_by_name (private)
+    - lower_ast_ty_to_mir_ty (pub(crate))
+    - lower_ast_ty_to_mir_ty_with_generics (pub(crate))
+    - lower_hir_ty_to_mir_ty (pub(crate))
+    - lower_hir_ty_to_mir_ty_with_hir_and_generics (pub(crate))
+    - lower_hir_ty_to_mir_ty_with_hir (pub(crate))
+    - lower_hir_ty_to_mir_ty_with_regions (pub(crate))
+    - lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics (private)
+    - lower_qualified_path_to_projection (pub(crate))
+    - lower_hir_ty_to_mir_ty_with_generics (pub(crate))
+    - lower_hir_ty_to_mir_ty_with_generics_and_regions (private)
+    - const_eval_array_len (private, §13.4 J4: 移到使用处)
+  → mod.rs re-export (§10.1.4 显式列表, 无 glob):
+    pub(crate) use ty_lower::{
+        lower_hir_ty_to_mir_ty, lower_hir_ty_to_mir_ty_with_generics,
+        lower_hir_ty_to_mir_ty_with_hir, lower_hir_ty_to_mir_ty_with_hir_and_generics,
+        lower_hir_ty_to_mir_ty_with_lifetimes, lower_hir_ty_to_mir_ty_with_regions,
+        lower_path_generic_args,
+    };
+  → 未 re-export 的函数 (§13.4.3 反模式 5: 不留无用 re-export):
+    - lower_ast_ty_to_mir_ty / lower_ast_ty_to_mir_ty_with_generics (仅 ty_lower 内部)
+    - lower_qualified_path_to_projection (仅 ty_lower 内部)
+    - lookup_type_def_id_by_name / lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics /
+      lower_hir_ty_to_mir_ty_with_generics_and_regions / const_eval_array_len (private)
+
+- §10 API 命名标准化: 7 项规则全部 ✅
+  → 未改变任何入口函数 / 上下文类型 / 类型前缀
+  → pub(crate) 不影响外部 API
+  → 显式 re-export 7 函数 (无 glob)
+  → 无新增 L-NAMING-N
+
+- §11 接口隔离: 无新增 L-PIPE-N
+  → 全部在 mir::lower 阶段内部, 无跨阶段拆分
+
+- §2.2 设计原则: 9/9 ✅
+  → 原则 3 显式 > 隐式: 显式 re-export 列表 + 移除未使用的 Rodeo 导入
+  → 原则 5 去除兼容思维: 不保留旧结构
+  → 原则 6 通用 > 特例: 通用子职责划分 (type lowering)
+
+- §3.2 验收 (全套通过):
+  → cargo check --features llvm-backend ✅ (0 errors, 0 warnings, 1.02s)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings, 13.58s)
+  → cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed (0.16s)
+  → cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 2 ignored (4.85s)
+
+- §8 文档同步:
+  → docs/develop/v0/stage-18/stage-18.129-dev-log.md (新建)
+  → docs/develop/v0/tech-debt-register.md: v0.396.0 → v0.397.0 + TD-LOC-MIR-LOWER-MOD 标记 Partial
+  → docs/develop/v0/calibration-data.md: v0.4 → v0.5 + Stage 18.129 统计 + §2.3 流程优化历史
+  → Cargo.toml: v0.396.0 → v0.397.0
+  → README.md: v0.396.0 → v0.397.0
+  → worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.129 PASSED — TD-LOC-MIR-LOWER-MOD 部分修复 (提取 ty_lower.rs)
+- 复杂度 L3, 实际 1 轮 (跨文件重构 + 14 函数迁移 + re-export 调整)
+- 拆分结果: mod.rs 2857 LOC → mod.rs 2016 + ty_lower.rs 863 (LOC 降 29%)
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (ty_lower ✅, mod.rs 仍超 1500)
+- §12 最优 > 最小: 选择最清晰子职责 (type lowering) 提取, 非 LOC 切片
+- §2.2 设计原则: 9/9 ✅
+- §10 API 命名: 100% 合规 (显式 re-export 7 函数, 无 glob)
+- §11 接口隔离: 无新增 L-PIPE-N
+- §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
+- v0.397.0: patch bump (TD-LOC-MIR-LOWER-MOD 部分修复)
+- 下一步: Stage 18.130 — TD-LOC-MIR-LOWER-MOD 剩余 (body lowering 入口拆分, 目标 mod.rs < 1500 LOC)

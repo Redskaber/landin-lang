@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.396.0 (Stage 18.128 — TD-LOC-TYPECK-CHECKER resolved: typeck/checker.rs 2635 LOC → 4 files per §13.4 J1-J6 [checker 1371 + infer 544 + check 476 + writeback 339], all < 1500 LOC; 22 methods migrated + 17 pub(super))  
+> **Version**: v0.397.0 (Stage 18.129 — TD-LOC-MIR-LOWER-MOD partial: mir/lower/mod.rs 2857→2016 LOC + ty_lower.rs 863 LOC extracted per §13.4 J1-J6; 14 functions + const_eval_array_len migrated; mod.rs still > 1500, needs Stage 18.130)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4, structural debt scan + 3 code-layer fixes (18.127 × 2, 18.128 × 1)
+> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4, structural debt scan + 3 resolved + 1 partial (18.127 × 2, 18.128 × 1, 18.129 × 1 partial)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets
