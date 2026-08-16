@@ -15723,3 +15723,26 @@ Stage Summary:
 - Stage 18.138 PASSED — TD-LOC-DRIVER 继续修复 (提取 driver_codegen_prep.rs)
 - 拆分结果: mod.rs 2082 → 2007 LOC + driver_codegen_prep.rs 86 LOC
 - v0.406.0: patch bump
+
+---
+Task ID: stage18.139
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.139 — TD-LOC-DRIVER 继续修复 (提取 body_metas building). v0.406.0 → v0.407.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §17 任务规划: 提取 body_metas building (68 LOC) 到 driver_codegen_prep.rs
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (mod.rs 1946 仍超 1500)
+- 重构执行:
+  → 提取 build_body_metas (per-body metadata: fn name + return type + locals)
+  → 添加 owner_return_ty import from driver_validations
+  → 添加 interner parameter + BodyMeta import
+  → 修复函数签名参数顺序
+- §3.2 验收: 全套通过 (640 lib + 2663 integration, 0 failures)
+- v0.407.0: patch bump
+
+Stage Summary:
+- Stage 18.139 PASSED — TD-LOC-DRIVER 继续修复 (提取 body_metas building)
+- 拆分结果: mod.rs 2007 → 1946 LOC + driver_codegen_prep.rs 86 → 166 LOC
+- v0.407.0: patch bump
