@@ -73,10 +73,10 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-BINARYOP2-PANIC | BinaryOp2 panics if it reaches codegen (should be desugared) | Range expressions that aren't desugared will crash the compiler | ✅ Resolved Stage 18.151: BinaryOp2 arm now returns `Err(CodegenError)` instead of `panic!()`, propagated via `CodegenResult` (depends on TD-CODEGEN-RESULT) |
 | TD-RVALUE-NO-SPAN | `Rvalue` enum doesn't carry `Span` info; BinaryOp2 error uses `Span::DUMMY` | Codegen errors for BinaryOp2 lack source location | v0.2 P2: add `span: Span` field to `Rvalue` (or wrap in spanned container); populate during MIR lowering |
 | TD-EMITTER-PANIC | `src/codegen/emitter/mod.rs` has 2 `panic!()` in `fat_ptr_type` (line 321) and `array_of` (line 357) for unreachable match arms | Type-conversion utility panics on misuse (not on codegen pipeline path) | v0.2 P2: convert to `Result<EmitType, CodegenError>` or use `unreachable!()` with clear message |
-| TD-SPAN-DUMMY-CLEANUP | 错误路径中 ~6 处 `Span::DUMMY` 可用真实 span 替换 (typeck/check, mir/lower/expr_variants 等) | 错误诊断丢失源码位置 | v0.2 P2: 逐个评估并替换为真实 span (合成 token/类型保留 DUMMY) |
-| TD-MODULELOAD-ERROR-FIELD | `ModuleLoadError` 强转为 `LowerError`, 丢失 `path` 字段 | 用户看到的模块加载错误丢失文件路径上下文 | v0.2 P2: 添加 `CompileErrors.module_load: Vec<ModuleLoadError>` 字段 |
+| TD-SPAN-DUMMY-CLEANUP | 错误路径中 ~6 处 `Span::DUMMY` 可用真实 span 替换 (typeck/check, mir/lower/expr_variants 等) | 错误诊断丢失源码位置 | 🟡 Partial Stage 18.159: 修复 `expr_variants.rs` 2 处 discriminant span (改用 `expr.span`); 其余经评估为合法合成用法 (合成 token/类型无源码位置), 保留 |
+| TD-MODULELOAD-ERROR-FIELD | `ModuleLoadError` 强转为 `LowerError`, 丢失 `path` 字段 | 用户看到的模块加载错误丢失文件路径上下文 | ✅ Resolved Stage 18.159: 添加 `CompileErrors.module_load` 字段 + `ErrorCode::ModuleLoad` (E850) + 诊断渲染含 path note |
 | TD-NEGATIVE-TEST-COVERAGE | 负面测试比例 6.5% (低于 §9.4.3 建议的 25%) | 错误路径覆盖不足 | v0.2 P2: 补充负面测试至 25% 比例 (重点: codegen/ModuleLoader/typeck) |
-| TD-UNWRAP-NONGUARDED | 9 处非测试 `unwrap()`, 其中 `codegen/llvm/arithmetic.rs:381` 无明显 guard | 潜在 panic 风险 | v0.2 P2: 评估并改 `?`/`expect` 或添加 guard |
+| TD-UNWRAP-NONGUARDED | 9 处非测试 `unwrap()`, 其中 `codegen/llvm/arithmetic.rs:381` 无明显 guard | 潜在 panic 风险 | ✅ Resolved Stage 18.159: `codegen/llvm/arithmetic.rs:381` 改为 `if let Some(&v)` 模式 (显式>隐式); 其余 8 处有 invariant guard, 保留 |
 
 ### 2.5 Platform Support
 
@@ -238,6 +238,8 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | 🟡 Phase 3 Resolved in 18.154 | 1 | TD-SINGLE-FILE (landinc CLI build/run/new/check/clean; phase 4 remains) |
 | 🟡 Phase 4 Resolved in 18.155 | 1 | TD-SINGLE-FILE (mini-cargo deficiency fixes: colored diagnostics + compile_project_opt + project name validation) |
 | 📋 Deep Review in 18.158 | 4 | TD-SPAN-DUMMY-CLEANUP, TD-MODULELOAD-ERROR-FIELD, TD-NEGATIVE-TEST-COVERAGE, TD-UNWRAP-NONGUARDED (跨阶段审查 §14.7 发现) |
+| ✅ Resolved in 18.159 | 2 | TD-MODULELOAD-ERROR-FIELD (CompileErrors.module_load + ErrorCode::ModuleLoad), TD-UNWRAP-NONGUARDED (codegen/llvm/arithmetic.rs if-let pattern) |
+| 🟡 Partial in 18.159 | 1 | TD-SPAN-DUMMY-CLEANUP (2 处 discriminant span 修复; 其余为合法合成用法) |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 

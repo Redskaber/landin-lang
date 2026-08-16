@@ -58,6 +58,8 @@ pub enum ErrorCode {
     Codegen,
     /// Stage 18.75: Macro expansion errors (E800-E899)
     Macro,
+    /// Stage 18.159 (TD-MODULELOAD-ERROR-FIELD): Module loading errors (E850-E899)
+    ModuleLoad,
     /// Internal compiler error (E900)
     Internal,
 }
@@ -79,6 +81,8 @@ impl ErrorCode {
             // Stage 18.75: Added Codegen (E700) and Macro (E800).
             ErrorCode::Codegen => "E700",
             ErrorCode::Macro => "E800",
+            // Stage 18.159: Module load errors (E850).
+            ErrorCode::ModuleLoad => "E850",
             ErrorCode::Internal => "E900",
         }
     }
@@ -98,6 +102,8 @@ impl ErrorCode {
             // Stage 18.75: Added Codegen and Macro labels.
             ErrorCode::Codegen => "codegen",
             ErrorCode::Macro => "macro",
+            // Stage 18.159: Module load category.
+            ErrorCode::ModuleLoad => "module_load",
             ErrorCode::Internal => "internal",
         }
     }

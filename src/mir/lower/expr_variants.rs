@@ -80,8 +80,11 @@ pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirP
                             let substs =
                                 lower_path_generic_args(path, &mut 0, cx.hir, &cx.generic_params);
                             let adt_ty = Ty::new(TyKind::Adt(def_id, substs.clone()), expr.span);
+                            // Stage 18.159 (TD-SPAN-DUMMY-CLEANUP): use expr.span
+                            // for the discriminant constant (was: Span::DUMMY).
+                            // Per §2 原则 4 (报错>静默): better error location.
                             let discr = Operand::Constant(Const {
-                                ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
+                                ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span),
                                 val: ConstVal::Uint(variant_idx as u128),
                             });
                             return cx.eval_rvalue_to_temp(
@@ -407,8 +410,9 @@ pub(super) fn lower_call_expr(
                 }))
         {
             // Enum variant — prepend discriminant.
+            // Stage 18.159 (TD-SPAN-DUMMY-CLEANUP): use expr.span (was: Span::DUMMY).
             let discr = Operand::Constant(Const {
-                ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
+                ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span),
                 val: ConstVal::Uint(variant_idx as u128),
             });
             all_operands.push(discr);

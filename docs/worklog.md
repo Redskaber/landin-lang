@@ -16473,3 +16473,58 @@ Stage Summary:
 - 新增 4 项 TD: TD-SPAN-DUMMY-CLEANUP, TD-MODULELOAD-ERROR-FIELD, TD-NEGATIVE-TEST-COVERAGE, TD-UNWRAP-NONGUARDED
 - v0.426.0: patch bump
 - 下一步: Stage 18.159 修复 TD-MODULELOAD-ERROR-FIELD (添加 CompileErrors.module_load)
+
+---
+Task ID: stage18.159
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.159 — 整体修复错误系统 (TD-MODULELOAD-ERROR-FIELD + TD-UNWRAP-NONGUARDED + TD-SPAN-DUMMY-CLEANUP). v0.426.0 → v0.427.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 638 ✅
+- 用户要求: 同类型错误或存在依赖关系的应该整体性完整修复
+- §12 (最优>最小): 整体修复 3 项关联错误系统 TD
+
+- TD-MODULELOAD-ERROR-FIELD 修复 (核心结构):
+  → CompileErrors 新增 module_load: Vec<ModuleLoadError> 字段
+  → ErrorCode 新增 ModuleLoad variant (E850)
+  → compile_inner 改为 errors.module_load.extend(load_errors) (保留 path)
+  → to_diagnostics_with_resolver 渲染 module_load 错误, path 作为 note
+  → is_empty/total_count 更新含 module_load
+
+- TD-UNWRAP-NONGUARDED 修复:
+  → codegen/llvm/arithmetic.rs:381: contains_key+unwrap → if let Some(&v) 模式
+  → 其余 8 处非测试 unwrap 经评估有 invariant guard, 保留
+
+- TD-SPAN-DUMMY-CLEANUP 修复 (Partial):
+  → expr_variants.rs:84 (generic enum discriminant): Span::DUMMY → expr.span
+  → expr_variants.rs:414 (enum variant discriminant): Span::DUMMY → expr.span
+  → 其余 Span::DUMMY 经评估为合法合成用法 (合成 token/类型), 保留
+
+- 测试修复 (8 个 stage18_152 测试):
+  → 3 个 negative: errors.lower → errors.module_load (检查 "not found"/"circular")
+  → 5 个 positive: errors.lower.iter().all → errors.module_load.is_empty()
+
+- API 命名 (§10):
+  → CompileErrors.module_load (<noun>_<noun>) ✅
+  → ErrorCode::ModuleLoad (<Noun><Noun>) ✅
+  → E850 (数字编码) ✅
+
+- §3.2 全套验收:
+  → cargo check --features llvm-backend: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 warnings
+  → cargo test --features llvm-backend: 656 lib + 2696 integration, 0 failed
+
+- 关闭 2 项 TD: TD-MODULELOAD-ERROR-FIELD ✅, TD-UNWRAP-NONGUARDED ✅
+- 部分修复 1 项 TD: TD-SPAN-DUMMY-CLEANUP 🟡 (2 处修复, 其余合法)
+- v0.427.0: patch bump
+
+Stage Summary:
+- Stage 18.159 PASSED — 整体修复错误系统 (3 项关联 TD)
+- 修复: TD-MODULELOAD-ERROR-FIELD ✅ + TD-UNWRAP-NONGUARDED ✅ + TD-SPAN-DUMMY-CLEANUP 🟡
+- 新增: CompileErrors.module_load 字段 + ErrorCode::ModuleLoad (E850)
+- 测试: 8 个测试更新, 656 lib + 2696 integration, 0 failures
+- §3.2 全套验收: cargo check/fmt/clippy/test 全绿
+- v0.427.0: patch bump
+- 下一步: Stage 18.160 补充负面测试 (TD-NEGATIVE-TEST-COVERAGE)

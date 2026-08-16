@@ -377,8 +377,13 @@ impl ArithmeticEmitter for LLVMSysEmitter {
                     0,
                 );
                 let name_c = cstr_owned(name.as_str());
-                let intrinsic_fn = if self.values.contains_key(&name) {
-                    *self.values.get(&name).unwrap()
+                // Stage 18.159 (TD-UNWRAP-NONGUARDED): Replaced `unwrap()`
+                // with `if let Some(&v)` pattern for clarity. The original
+                // `contains_key` + `unwrap()` was safe but obscured the
+                // invariant. Per §2 原則 3 (显式>隐式): explicit pattern match
+                // is clearer than contains_key + unwrap.
+                let intrinsic_fn = if let Some(&v) = self.values.get(&name) {
+                    v
                 } else {
                     let f = LLVMAddFunction(self.module, name_c.as_ptr(), fn_ty);
                     self.values.insert(name, f);

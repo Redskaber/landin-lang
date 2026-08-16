@@ -98,6 +98,17 @@ pub struct CompileErrors {
     /// continues but object/binary emission may fail). Previously these
     /// were silently dropped because CompileErrors had no `codegen` field.
     pub codegen: Vec<crate::codegen::error::CodegenError>,
+    /// Stage 18.159 (TD-MODULELOAD-ERROR-FIELD): Module loading errors
+    /// (non-fatal — compilation continues with whatever modules were
+    /// successfully loaded). Previously these were force-cast to
+    /// `LowerError`, losing the `path` field that identifies which file
+    /// failed to load.
+    ///
+    /// Per §2 原則 4 (报错>静默): module load errors preserve structured
+    /// `path` info for better diagnostics (shows which file was missing).
+    /// Per §1.0 原則 6 (通解>特例): dedicated field instead of overloading
+    /// `lower` errors.
+    pub module_load: Vec<crate::driver::module_loader::ModuleLoadError>,
 }
 
 impl CompileErrors {
@@ -111,6 +122,7 @@ impl CompileErrors {
             && self.trait_errors.is_empty()
             && self.macro_errors.is_empty()
             && self.codegen.is_empty()
+            && self.module_load.is_empty()
     }
 
     pub fn total_count(&self) -> usize {
@@ -123,6 +135,7 @@ impl CompileErrors {
             + self.trait_errors.len()
             + self.macro_errors.len()
             + self.codegen.len()
+            + self.module_load.len()
     }
 
     pub fn has_fatal(&self) -> bool {
@@ -302,6 +315,21 @@ impl CompileErrors {
                     .with_code(crate::diagnostics::ErrorCode::Lower.to_string())
                     .build(),
             );
+        }
+
+        // Stage 18.159 (TD-MODULELOAD-ERROR-FIELD): Iterate module load
+        // errors — previously force-cast to LowerError, losing the `path`
+        // field. Now they have a dedicated field and ErrorCode (E850).
+        // Per §1.0 原则 4 "报错 > 静默": module load errors must reach the user.
+        // Per §2 原则 9 (正确>妥协): preserve structured `path` info as a note.
+        for e in &self.module_load {
+            let mut builder = DiagnosticBuilder::error(&e.message, e.span)
+                .with_code(crate::diagnostics::ErrorCode::ModuleLoad.to_string());
+            // Stage 18.159: Add the file path as a note for better UX.
+            if let Some(path) = &e.path {
+                builder = builder.with_note(format!("module file: {}", path.display()), e.span);
+            }
+            diags.push(builder.build());
         }
 
         diags
@@ -668,13 +696,13 @@ fn compile_inner(src: &str, optimize: bool, entry_path: Option<&std::path::Path>
         let mut loader = ModuleLoader::new();
         let load_errors = loader.load_module_tree(&mut krate, base_dir, &mut interner);
         if !load_errors.is_empty() {
-            // Surface module-load errors as LowerError (closest existing category).
-            // Future: add a dedicated ModuleLoadError variant to CompileErrors.
-            for le in load_errors {
-                errors
-                    .lower
-                    .push(crate::hir::lower::LowerError::new(le.message, le.span));
-            }
+            // Stage 18.159 (TD-MODULELOAD-ERROR-FIELD): Module load errors
+            // now go to the dedicated `module_load` field (was: force-cast
+            // to LowerError, losing the `path` field).
+            //
+            // Per §2 原則 4 (报错>静默): errors are collected, not silently ignored.
+            // Per §1.0 原則 6 (通解>特例): dedicated field preserves structured info.
+            errors.module_load.extend(load_errors);
             // Don't return early — let HIR lower run on the partial AST so
             // downstream errors are also surfaced (better UX: user sees all
             // errors at once, not one at a time).

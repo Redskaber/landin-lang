@@ -61,13 +61,9 @@ fn stage18_152_compile_project_loads_mod_file() {
     // Type/name resolution errors for `helper::answer` may exist (Stage 18.153),
     // but module loading itself should succeed.
     assert!(
-        result
-            .errors
-            .lower
-            .iter()
-            .all(|e| !e.message.contains("module")),
+        result.errors.module_load.is_empty(),
         "should have no module-load errors, got: {:?}",
-        result.errors.lower
+        result.errors.module_load
     );
     cleanup(&dir);
 }
@@ -83,13 +79,9 @@ fn stage18_152_compile_project_loads_mod_dir() {
 
     let result = compile_project(&entry);
     assert!(
-        result
-            .errors
-            .lower
-            .iter()
-            .all(|e| !e.message.contains("module")),
+        result.errors.module_load.is_empty(),
         "should have no module-load errors, got: {:?}",
-        result.errors.lower
+        result.errors.module_load
     );
     cleanup(&dir);
 }
@@ -110,13 +102,9 @@ fn stage18_152_compile_project_nested_modules() {
 
     let result = compile_project(&entry);
     assert!(
-        result
-            .errors
-            .lower
-            .iter()
-            .all(|e| !e.message.contains("module")),
+        result.errors.module_load.is_empty(),
         "should have no module-load errors, got: {:?}",
-        result.errors.lower
+        result.errors.module_load
     );
     cleanup(&dir);
 }
@@ -131,13 +119,9 @@ fn stage18_152_compile_project_inline_mod() {
     let result = compile_project(&entry);
     // Inline mod doesn't trigger file loading — should work as before.
     assert!(
-        result
-            .errors
-            .lower
-            .iter()
-            .all(|e| !e.message.contains("module")),
+        result.errors.module_load.is_empty(),
         "inline mod should not trigger load errors, got: {:?}",
-        result.errors.lower
+        result.errors.module_load
     );
     cleanup(&dir);
 }
@@ -154,13 +138,9 @@ fn stage18_152_compile_project_multiple_siblings() {
 
     let result = compile_project(&entry);
     assert!(
-        result
-            .errors
-            .lower
-            .iter()
-            .all(|e| !e.message.contains("module")),
+        result.errors.module_load.is_empty(),
         "should have no module-load errors, got: {:?}",
-        result.errors.lower
+        result.errors.module_load
     );
     cleanup(&dir);
 }
@@ -182,13 +162,9 @@ fn stage18_152_compile_project_file_precedence() {
 
     let result = compile_project(&entry);
     assert!(
-        result
-            .errors
-            .lower
-            .iter()
-            .all(|e| !e.message.contains("module")),
+        result.errors.module_load.is_empty(),
         "should have no module-load errors, got: {:?}",
-        result.errors.lower
+        result.errors.module_load
     );
     // We can't easily verify which file was loaded from CompileResult alone,
     // but the absence of load errors confirms one was found.
@@ -208,11 +184,11 @@ fn stage18_152_compile_project_missing_module() {
     assert!(
         result
             .errors
-            .lower
+            .module_load
             .iter()
             .any(|e| e.message.contains("not found")),
         "should report module not found error, got: {:?}",
-        result.errors.lower
+        result.errors.module_load
     );
     cleanup(&dir);
 }
@@ -232,11 +208,11 @@ fn stage18_152_compile_project_circular_dep() {
     assert!(
         result
             .errors
-            .lower
+            .module_load
             .iter()
             .any(|e| e.message.contains("circular")),
         "should detect circular dependency, got: {:?}",
-        result.errors.lower
+        result.errors.module_load
     );
     cleanup(&dir);
 }
@@ -252,9 +228,9 @@ fn stage18_152_compile_project_parse_error_in_submodule() {
 
     let result = compile_project(&entry);
     assert!(
-        !result.errors.lower.is_empty() || !result.errors.parse.is_empty(),
-        "should report parse error in submodule, got lower: {:?}, parse: {:?}",
-        result.errors.lower,
+        !result.errors.module_load.is_empty() || !result.errors.parse.is_empty(),
+        "should report parse error in submodule, got module_load: {:?}, parse: {:?}",
+        result.errors.module_load,
         result.errors.parse
     );
     cleanup(&dir);
