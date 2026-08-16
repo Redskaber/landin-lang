@@ -27,6 +27,8 @@ mod generics;
 mod items;
 // Stage 18.03: macro_rules! expansion engine.
 pub mod macro_expand;
+// Stage 18.135 §13.4 J1-J6: extract builtin macros from macro_expand.rs
+mod builtin_macros;
 mod pat;
 mod path;
 mod stmt;

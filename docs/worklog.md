@@ -15525,3 +15525,109 @@ Stage Summary:
 - §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
 - v0.402.0: patch bump (TD-LOC-DRIVER 部分修复)
 - 下一步: Stage 18.135 — TD-LOC-MACRO-EXPAND (5962 LOC, 4.0× 阈值) 或 Stage 18.136 — TD-LOC-DRIVER 剩余 (compile_inner 拆分)
+
+---
+Task ID: stage18.135
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.135 — TD-LOC-MACRO-EXPAND 部分修复 (提取 builtin_macros.rs). v0.402.0 → v0.403.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (重新部署 LLVM, 因磁盘清理删除 /tmp/llvm-19-*)
+- §3.2 验收 (上个 stage 状态): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §13.1 设计对齐: 查阅 docs/lang-design/ 02-grammar.md (宏语法); builtin macros 是 parser 中的明确概念
+
+- §17 任务规划:
+  → 选定 TD-LOC-MACRO-EXPAND (5962 LOC, 4.0× 阈值) — 最后一项 TD-LOC-*
+  → §13.4 J1-J6 判据检查:
+    - J1 架构设计对齐 ✅ (灰区决策按子职责划分)
+    - J2 单一职责 ✅ (builtin_macros.rs = builtin macro definitions 单一职责)
+    - J3 单向流动 ✅ (builtin_macros 被 macro_expand 调用, 不回调)
+    - J4 编译相关表达完整 ✅ (27 个 builtin macro 函数完整)
+    - J5 阶段划分清晰 ✅ (全部在 parser 阶段)
+    - J6 科学合理粒度 ⚠️ (builtin_macros 2069 仍超 1500; macro_expand 3904 仍超 1500)
+  → §12 最优 > 最小: 选择最清晰子职责 (builtin macros, 27 函数) 提取
+
+- 重构执行:
+  → 拆分前: src/parser/macro_expand.rs 5962 LOC (core matching + substitution + repetition + hygiene + builtin macros + collection + expansion + tests)
+  → 拆分后:
+    - macro_expand.rs (3904 LOC): core matching + substitution + repetition + hygiene + collection + expansion + tests
+    - builtin_macros.rs (2069 LOC): 27 builtin macro definitions
+  → 27 函数迁移到 builtin_macros.rs:
+    - build_builtin_macro_table (29 LOC) — 入口
+    - make_builtin_macro_rule (48 LOC) — 通用 helper
+    - make_print_macro_rule (103 LOC) — println!/print!
+    - make_assert_macro_rule (62 LOC) — assert!/assert_eq!
+    - make_panic_macro_rule (65 LOC) — panic!
+    - make_vec_macro_rule (100 LOC) — vec!
+    - make_format_macro_rule (96 LOC) — format!
+    - make_dbg_macro_rule (65 LOC) — dbg!
+    - make_panic_msg_macro_rule (69 LOC) — panic! with message
+    - make_write_macro_rule (130 LOC) — write!/writeln!
+    - make_stringify_macro_rule (96 LOC) — stringify!
+    - make_concat_macro_rule (104 LOC) — concat!
+    - make_env_macro_rule (62 LOC) — env!
+    - make_file_macro_rule (30 LOC) — file!
+    - make_line_macro_rule (30 LOC) — line!
+    - make_module_path_macro_rule (30 LOC) — module_path!
+    - make_include_str_macro_rule (59 LOC) — include_str!
+    - make_matches_macro_rule (129 LOC) — matches!
+    - make_cfg_macro_rule (64 LOC) — cfg!
+    - make_option_env_macro_rule (65 LOC) — option_env!
+    - make_asm_macro_rule (94 LOC) — asm!
+    - make_compile_error_macro_rule (62 LOC) — compile_error!
+    - make_cfg_attr_macro_rule (131 LOC) — cfg_attr!
+    - make_unreachable_macro_rule (63 LOC) — unreachable!
+    - make_trace_macros_macro_rule (63 LOC) — trace_macros!
+    - make_format_args_macro_rule (92 LOC) — format_args!
+    - make_noop_macro_rule (104 LOC) — noop macros
+  → parser/mod.rs 更新: 添加 mod builtin_macros;
+  → macro_expand.rs 导入调整 (§13.4 J3 直接导入):
+    use super::builtin_macros::build_builtin_macro_table;
+  → builtin_macros.rs 导入 (§13.4 J3):
+    use crate::ast::{MacroRule, MacroRulesDef};
+    use crate::lexer::{Token, TokenKind};
+    use crate::parser::macro_expand::MacroTable;
+    use super::macro_expand::BUILTIN_MACRO_NAMES;
+    use lasso::Rodeo;
+
+- §10 API 命名标准化: 7 项规则全部 ✅
+  → 未改变任何入口函数 / 上下文类型 / 类型前缀
+  → make_*_macro_rule 前缀不变
+  → 显式 use
+  → 无新增 L-NAMING-N
+
+- §11 接口隔离: 无新增 L-PIPE-N
+  → 全部在 parser 阶段内部, 无跨阶段拆分
+
+- §2.2 设计原则: 9/9 ✅
+  → 原则 3 显式 > 隐式: 显式 use
+  → 原则 5 去除兼容思维: 不保留旧结构
+  → 原则 6 通用 > 特例: 通用子职责划分 (builtin macros)
+
+- §3.2 验收 (全套通过):
+  → cargo check --features llvm-backend ✅ (0 errors, 0 warnings, 12.78s)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings, 13.82s)
+  → cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed (0.14s)
+  → cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 2 ignored (4.80s)
+
+- §8 文档同步:
+  → docs/develop/v0/stage-18/stage-18.135-dev-log.md (新建)
+  → docs/develop/v0/tech-debt-register.md: v0.402.0 → v0.403.0 + TD-LOC-MACRO-EXPAND 标记 Partial
+  → docs/develop/v0/calibration-data.md: v1.0 → v1.1 + Stage 18.135 统计 + §2.3 流程优化历史
+  → Cargo.toml: v0.402.0 → v0.403.0
+  → README.md: v0.402.0 → v0.403.0
+  → worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.135 PASSED — TD-LOC-MACRO-EXPAND 部分修复 (提取 builtin_macros.rs)
+- 复杂度 L3, 实际 1 轮 (跨文件重构 + 27 函数迁移 + 导入调整)
+- 拆分结果: macro_expand.rs 5962 LOC → macro_expand.rs 3904 + builtin_macros.rs 2069 (LOC 降 35%)
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (两个文件仍超 1500)
+- §12 最优 > 最小: 选择最清晰子职责 (builtin macros, 27 函数) 提取
+- §2.2 设计原则: 9/9 ✅
+- §10 API 命名: 100% 合规
+- §11 接口隔离: 无新增 L-PIPE-N
+- §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
+- v0.403.0: patch bump (TD-LOC-MACRO-EXPAND 部分修复)
+- 下一步: Stage 18.136 — TD-LOC-MACRO-EXPAND 剩余 (core matching + substitution + repetition + hygiene 提取) 或 Stage 18.137 — TD-LOC-DRIVER 剩余 (compile_inner 拆分)

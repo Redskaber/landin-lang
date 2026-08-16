@@ -2,9 +2,9 @@
 
 > **Author**: redskaber
 > **Date**: 2026-08-16
-> **Version**: v1.0
+> **Version**: v1.1
 > **Status**: Active
-> **最后更新**: Stage 18.134 / 2026-08-16
+> **最后更新**: Stage 18.135 / 2026-08-16
 > **关联流程**: docs/stage-committee-process.md §6.6.1
 
 > **目的**：把"校准依据"从概念性描述固化为单一持久化文件，避免每个阶段的统计数据散落在不同 worklog/dev-log 里、跨阶段比对困难。所有阶段结束的 §14.5 深度审查必须向本文件追加一行阶段统计 + 一条校准结论。
@@ -35,6 +35,7 @@
 | 18.132 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-MIR-LOWER-EXPR 继续部分修复 (§13.4 J1-J6): 提取 call_lower.rs (362 LOC, 3 函数), expr_operand.rs 2503→2171 (降 13%, 仍超 1500); MethodCall arm 提取尝试+回退 (类型签名问题); J1-J5 全部通过, J6 部分通过; §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
 | 18.133 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-MIR-LOWER-EXPR 完成修复 (§13.4 J1-J6): 提取 expr_variants.rs (1016 LOC, 4 个最大 match arm: Path + Call + For + MethodCall), expr_operand.rs 2171→1156; J1-J6 全部通过 (4 文件全部 < 1500); 修正 Stage 18.132 MethodCall arm 类型签名 (Ident + HirBlock); §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
 | 18.134 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-DRIVER 部分修复 (§13.4 J1-J6): driver.rs → driver/ 目录模块 + 提取 driver_validations.rs (936) + driver_scan.rs (618) + driver_object_safety.rs (164), driver/mod.rs 4038→2351 (降 42%, 仍超 1500); J1-J5 全部通过, J6 部分通过; §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
+| 18.135 | L3 | 1 | 0 | 0 | 0 | 0 | N/A | 0 | 97% | TD-LOC-MACRO-EXPAND 部分修复 (§13.4 J1-J6): 提取 builtin_macros.rs (2069 LOC, 27 builtin macro 函数), macro_expand.rs 5962→3904 (降 35%, 仍超 1500); J1-J5 全部通过, J6 部分通过; §3.2 全套验收通过 (640 lib + 2663 integration, 0 failures) |
 
 ---
 
@@ -81,6 +82,7 @@
 | Stage 18.132 | TD-LOC-MIR-LOWER-EXPR 继续部分修复 (提取 call_lower.rs + MethodCall arm 回退) | Stage 18.131 后 expr_operand 仍超 1500, call helpers 子职责清晰 | expr_operand 2503→2171 (降 13%) + call_lower 362; MethodCall arm 提取因类型签名问题回退; J6 部分通过; 验证 §12 原则 9 正确 > 妥协 (回退而非强行 patch) |
 | Stage 18.133 | TD-LOC-MIR-LOWER-EXPR 完成修复 (提取 expr_variants.rs + 4 个最大 arm) | Stage 18.132 后 expr_operand 仍超 1500, 4 个最大 arm 可安全提取 (无 arm-level early return) | expr_operand 2171→1156 + expr_variants 1016; J1-J6 全部通过 (4 文件 < 1500); 修正 Stage 18.132 类型签名 (Ident + HirBlock); 验证 §13.4 J2 逐个 arm 提取可操作 |
 | Stage 18.134 | TD-LOC-DRIVER 部分修复 (提取 3 子模块 + driver.rs → driver/ 目录模块) | 2 项剩余 TD-LOC-* 中阈值倍数较低 (2.7×) + validation/scan/object safety 子职责清晰 | driver.rs 4038→2351 (降 42%) + 3 子模块 (936+618+164); J6 部分通过 (mod.rs 仍超 1500, compile_inner 1442 LOC); 验证 §13.4 J5 目录模块转换 + §13.4 J3 子模块间依赖 |
+| Stage 18.135 | TD-LOC-MACRO-EXPAND 部分修复 (提取 builtin_macros.rs) | 最后一项 TD-LOC-* (4.0× 阈值) + builtin macros 子职责最清晰 (27 函数) | macro_expand.rs 5962→3904 (降 35%) + builtin_macros.rs 2069; J6 部分通过 (两个文件仍超 1500); 验证 §13.4 J2 大规模子职责提取可操作 |
 
 ---
 
