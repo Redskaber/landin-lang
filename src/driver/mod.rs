@@ -1439,7 +1439,7 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
     );
 
     // Stage 18.140 §13.4 J2: extracted to driver_codegen_prep.rs
-    driver_codegen_prep::run_post_typeck_validations(
+    driver_validations::run_post_typeck_validations(
         &hir,
         &interner,
         &mut errors,
