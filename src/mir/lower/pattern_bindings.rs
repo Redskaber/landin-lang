@@ -147,8 +147,14 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                     }
                 }
             } else if let Res::Def(enum_def_id, crate::resolve::DefKind::Enum) = path.res {
+                // Stage 18.167: Support 1-segment (Some) and 2-segment (Option::Some) paths.
+                let variant_name = if path.segments.len() >= 2 {
+                    &path.segments[1].ident.name
+                } else {
+                    &path.segments[0].ident.name
+                };
                 if let Some((variant_idx, field_tys)) =
-                    resolve_enum_variant(cx, enum_def_id, &path.segments[1].ident.name)
+                    resolve_enum_variant(cx, enum_def_id, variant_name)
                 {
                     let payload_tys = &field_tys[1..];
                     let starting_idx =
@@ -259,8 +265,14 @@ pub(crate) fn lower_enum_variant_pattern_bindings(
                     }
                 }
             } else if let Res::Def(enum_def_id, crate::resolve::DefKind::Enum) = path.res {
+                // Stage 18.167: Support 1-segment (Some) and 2-segment (Option::Some) paths.
+                let variant_name = if path.segments.len() >= 2 {
+                    &path.segments[1].ident.name
+                } else {
+                    &path.segments[0].ident.name
+                };
                 if let Some((variant_idx, field_tys)) =
-                    resolve_enum_variant(cx, enum_def_id, &path.segments[1].ident.name)
+                    resolve_enum_variant(cx, enum_def_id, variant_name)
                 {
                     let payload_tys = &field_tys[1..];
                     let starting_idx =

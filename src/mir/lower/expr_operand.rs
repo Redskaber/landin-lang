@@ -927,7 +927,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Stage 3.38 (L-ENUM): Enum struct variant (e.g., `Shape::Circle { r: 1.0 }`).
             if let Res::Def(def_id, DefKind::Enum) = path.res {
                 if path.segments.len() >= 2 {
-                    let variant_name = &path.segments[1].ident.name;
+                    let variant_name = super::method_resolution::variant_name_from_path(path);
                     if let Some((variant_idx, field_tys)) =
                         resolve_enum_variant(cx, def_id, variant_name)
                     {

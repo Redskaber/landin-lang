@@ -197,11 +197,18 @@ impl Resolver {
                 registrations.push((def_id, DefKind::Enum, e.ident.name));
                 self.def_kinds.insert(def_id, DefKind::Enum);
                 self.def_visibility.insert(def_id, e.vis.clone());
-                // Stage 18.166: Variant constructor registration deferred.
-                // Requires HIR variant DefId infrastructure (Stage 18.167)
-                // and MIR lower single-segment path support (Stage 18.168).
-                // Without these, registering variants causes MIR lower panic
-                // because it can't determine which variant `Some(42)` refers to.
+                // Stage 18.167 (TD-VARIANT-CONSTRUCTOR): Populate variant_index
+                // so resolver can resolve single-segment variant paths like
+                // `Some(42)` without the `Option::` prefix.
+                //
+                // Per §1.0 原則 6 (通解>特例): one loop for all variants.
+                // Per §2 原則 3 (显式>隐式): "last wins" semantics — user-defined
+                // variants override prelude variants (matching Rust behavior
+                // where `use` imports shadow prelude). Prelude is injected first,
+                // so user code naturally overrides it.
+                for (idx, variant) in e.variants.iter().enumerate() {
+                    self.variant_index.insert(variant.ident.name, (def_id, idx));
+                }
             }
             HirItem::Trait(t) => {
                 registrations.push((def_id, DefKind::Trait, t.ident.name));

@@ -16838,3 +16838,56 @@ Stage Summary:
 - 测试: 656 lib + 2967 integration, 0 failures
 - v0.434.0: patch bump
 - 下一步: Stage 18.167 实现 HIR variant 独立 DefId
+
+---
+Task ID: stage18.167
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.167 — variant constructor 基础设施 (variant_index + MIR lower 1-segment path). v0.434.0 → v0.435.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 638 ✅
+- §5.1 任务审查 (Stage 18.166): variant constructor 需要 variant_index + MIR lower 1-segment path
+
+- 实现 (3 文件修改):
+  → resolver.rs: 新增 variant_index: HashMap<Spur, (DefId, usize)> 字段
+  → module_build.rs: build_module_tree 填充 variant_index (last wins 语义)
+  → path_resolve.rs: resolve_path 检查 variant_index (单段 path fallback)
+  → method_resolution.rs: 新增 variant_name_from_path helper (通解>特例)
+  → expr_variants.rs: MIR lower 支持 1-segment path variant 构造
+  → pattern_bindings.rs: MIR lower 支持 1-segment path variant 模式匹配
+  → control_flow.rs + expr_operand.rs: 使用 variant_name_from_path helper
+
+- 设计原则:
+  → §1.0 原則 6 (通解>特例): variant_name_from_path 统一处理 1/2 段 path
+  → §2 原則 3 (显式>隐式): last wins 语义 (用户 variant 覆盖 prelude)
+  → §13.4 J2 (单一职责): variant_index 在 resolver, MIR lower 消费
+
+- 验证:
+  → Some(42): ✅ 编译成功
+  → None: ✅ 编译成功
+  → Ok(42) + Err(_) match: ✅ 编译成功
+  → 用户自定义 enum Red/Green/Blue + match: ✅ 编译成功
+  → 向后兼容 Option::Some(42): ✅ 仍工作
+  → match x on non-Copy Option: ❌ borrow checker 限制 (独立问题)
+
+- §3.2 全套验收:
+  → cargo check --features llvm-backend: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 warnings
+  → cargo test --features llvm-backend: 656 lib + 2967 integration = 3623 total, 0 failed
+
+- TD-VARIANT-CONSTRUCTOR: ✅ Resolved
+- v0.435.0: minor bump (variant constructor 功能完成)
+
+Stage Summary:
+- Stage 18.167 PASSED — variant constructor 基础设施
+- 新增: variant_index + variant_name_from_path helper
+- 修改: resolver (variant_index 查找) + MIR lower (1-segment path 支持)
+- 结果: Some(42)/None/Ok(42)/Err(e) 不带前缀可用 + 用户自定义 enum variant
+- 限制: match x on non-Copy (borrow checker 独立问题)
+- 测试: 656 lib + 2967 integration = 3623 total, 0 failures
+- §3.2 全套验收: cargo check/fmt/clippy/test 全绿
+- TD-VARIANT-CONSTRUCTOR: ✅ Resolved
+- v0.435.0: minor bump
+- 下一步: Stage 18.168 Option/Result 基本方法 (is_some/unwrap)

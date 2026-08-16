@@ -63,7 +63,7 @@ pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirP
                 // For unit variants (no args), we construct the
                 // Aggregate directly here.
                 if def_kind == crate::resolve::DefKind::Enum && path.segments.len() >= 2 {
-                    let variant_name = &path.segments[1].ident.name;
+                    let variant_name = super::method_resolution::variant_name_from_path(path);
                     if let Some((variant_idx, field_tys)) =
                         resolve_enum_variant(cx, def_id, variant_name)
                     {
@@ -361,8 +361,32 @@ pub(super) fn lower_call_expr(
         // non-empty, so generic struct fields get substituted.
         let (variant_idx, field_tys) = if let HirExprKind::Path(path) = &func.kind {
             if path.segments.len() >= 2 {
+                if let Some((idx, tys)) = resolve_enum_variant(
+                    cx,
+                    adt_def_id,
+                    super::method_resolution::variant_name_from_path(path),
+                ) {
+                    (idx, tys)
+                } else if adt_substs.is_empty() {
+                    (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
+                } else {
+                    (
+                        0,
+                        field_resolution::resolve_adt_field_tys_with_substs(
+                            cx,
+                            adt_def_id,
+                            &adt_substs,
+                        ),
+                    )
+                }
+            } else if path.segments.len() == 1 {
+                // Stage 18.167 (TD-VARIANT-CONSTRUCTOR): 1-segment path
+                // (e.g., `Some(42)` without `Option::` prefix). Use the
+                // first segment as the variant name.
+                // Per §1.0 原則 6 (通解>特例): same resolve_enum_variant call,
+                // just using segments[0] instead of segments[1].
                 if let Some((idx, tys)) =
-                    resolve_enum_variant(cx, adt_def_id, &path.segments[1].ident.name)
+                    resolve_enum_variant(cx, adt_def_id, &path.segments[0].ident.name)
                 {
                     (idx, tys)
                 } else if adt_substs.is_empty() {

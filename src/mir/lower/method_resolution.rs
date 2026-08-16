@@ -75,6 +75,20 @@ pub(crate) fn resolve_enum_variant(
     None
 }
 
+/// Stage 18.167 (TD-VARIANT-CONSTRUCTOR): Extract the variant name from a
+/// HIR path, supporting both 2-segment (`Option::Some`) and 1-segment
+/// (`Some`) paths.
+///
+/// Per §1.0 原則 6 (通解>特例): one function for all variant name extraction.
+/// Per §10: `variant_name_from_path` follows `<noun>_<noun>_<prep>_<noun>`.
+pub(crate) fn variant_name_from_path(path: &crate::hir::HirPath) -> &crate::lexer::Symbol {
+    if path.segments.len() >= 2 {
+        &path.segments[1].ident.name
+    } else {
+        &path.segments[0].ident.name
+    }
+}
+
 /// Stage 13.17: Resolve an inherent method call to a DefId.
 ///
 /// Searches HIR for an `impl` block on the receiver's type (must be

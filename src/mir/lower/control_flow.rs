@@ -1023,8 +1023,12 @@ pub(crate) fn lower_match(
                 HirPatKind::Path(path) => {
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
                         if path.segments.len() >= 2 {
-                            super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
-                                .map(|(idx, _)| idx)
+                            super::resolve_enum_variant(
+                                cx,
+                                def_id,
+                                super::method_resolution::variant_name_from_path(path),
+                            )
+                            .map(|(idx, _)| idx)
                         } else {
                             None
                         }
@@ -1035,8 +1039,12 @@ pub(crate) fn lower_match(
                 HirPatKind::TupleStruct(path, _) => {
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
                         if path.segments.len() >= 2 {
-                            super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
-                                .map(|(idx, _)| idx)
+                            super::resolve_enum_variant(
+                                cx,
+                                def_id,
+                                super::method_resolution::variant_name_from_path(path),
+                            )
+                            .map(|(idx, _)| idx)
                         } else {
                             None
                         }
@@ -1047,8 +1055,12 @@ pub(crate) fn lower_match(
                 HirPatKind::Struct(path, _, _) => {
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
                         if path.segments.len() >= 2 {
-                            super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
-                                .map(|(idx, _)| idx)
+                            super::resolve_enum_variant(
+                                cx,
+                                def_id,
+                                super::method_resolution::variant_name_from_path(path),
+                            )
+                            .map(|(idx, _)| idx)
                         } else {
                             None
                         }
@@ -1230,8 +1242,12 @@ pub(crate) fn lower_match(
                 | HirPatKind::Struct(path, _, _) => {
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
                         if path.segments.len() >= 2 {
-                            super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
-                                .map(|(idx, _)| idx)
+                            super::resolve_enum_variant(
+                                cx,
+                                def_id,
+                                super::method_resolution::variant_name_from_path(path),
+                            )
+                            .map(|(idx, _)| idx)
                         } else {
                             None
                         }
@@ -1263,8 +1279,12 @@ pub(crate) fn lower_match(
                 | HirPatKind::Struct(path, _, _) => {
                     if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
                         if path.segments.len() >= 2 {
-                            super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
-                                .map(|(idx, _)| idx)
+                            super::resolve_enum_variant(
+                                cx,
+                                def_id,
+                                super::method_resolution::variant_name_from_path(path),
+                            )
+                            .map(|(idx, _)| idx)
                         } else {
                             None
                         }
@@ -1800,9 +1820,11 @@ fn build_tuple_pattern_condition(
         {
             if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
                 if path.segments.len() >= 2 {
-                    if let Some((variant_idx, _)) =
-                        super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
-                    {
+                    if let Some((variant_idx, _)) = super::resolve_enum_variant(
+                        cx,
+                        def_id,
+                        super::method_resolution::variant_name_from_path(path),
+                    ) {
                         // Build the enum's Adt type for the field local
                         let enum_ty = Ty::new(
                             TyKind::Adt(def_id, Vec::<crate::mir::ty::Ty>::new().into()),
@@ -2051,9 +2073,11 @@ fn build_pattern_equality_check(
             // For enum variant, check discriminant (field 0 of scrut struct)
             if let Res::Def(def_id, crate::resolve::DefKind::Enum) = path.res {
                 if path.segments.len() >= 2 {
-                    if let Some((variant_idx, _)) =
-                        super::resolve_enum_variant(cx, def_id, &path.segments[1].ident.name)
-                    {
+                    if let Some((variant_idx, _)) = super::resolve_enum_variant(
+                        cx,
+                        def_id,
+                        super::method_resolution::variant_name_from_path(path),
+                    ) {
                         // Extract discriminant: discr = scrut.0
                         let discr_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), span);
                         let discr_local = cx.mir.new_local(discr_ty.clone(), None, span);

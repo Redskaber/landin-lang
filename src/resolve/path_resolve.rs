@@ -664,6 +664,18 @@ impl Resolver {
                 return Res::Def(import.target, import.kind);
             }
 
+            // Stage 18.167 (TD-VARIANT-CONSTRUCTOR): Check variant_index for
+            // single-segment variant constructor paths like `Some(42)`.
+            // If the name is a known enum variant, resolve to the enum's
+            // DefId with DefKind::Enum. The MIR lower will use the variant
+            // name to determine which variant to construct.
+            //
+            // Per §1.0 原則 6 (通解>特例): one lookup for all variants.
+            // Per §2 原則 4 (报错>静默): unknown names still return Res::Err.
+            if let Some((enum_def_id, _variant_idx)) = self.variant_index.get(&seg.ident.name) {
+                return Res::Def(*enum_def_id, DefKind::Enum);
+            }
+
             // Not found.
             return Res::Err;
         }

@@ -99,6 +99,17 @@ pub struct Resolver {
     ///
     /// Per §1.0 原則 6 "通用 > 特例": one map for all traits.
     pub(super) trait_assoc_types: HashMap<DefId, std::collections::HashSet<Spur>>,
+    /// Stage 18.167 (TD-VARIANT-CONSTRUCTOR): Index of enum variant names.
+    ///
+    /// Maps variant name → (enum_def_id, variant_index).
+    /// Populated during `build_module_tree`. Used by `resolve_path` to
+    /// resolve single-segment variant constructor paths like `Some(42)`
+    /// (without the `Option::` prefix).
+    ///
+    /// Per §1.0 原則 6 (通解>特例): one index for all enum variants
+    /// (user-defined + prelude Option/Result).
+    /// Per §13.4 J2: variant index belongs in resolver (pre-computed data).
+    pub(super) variant_index: HashMap<Spur, (DefId, usize)>,
     /// Errors encountered (non-fatal).
     pub(super) errors: Vec<ResolveError>,
 }
@@ -117,6 +128,7 @@ impl Resolver {
             impl_method_def_ids: std::collections::HashSet::new(),
             generic_param_scope: Vec::new(),
             trait_assoc_types: HashMap::new(),
+            variant_index: HashMap::new(),
             errors: Vec::new(),
         }
     }
