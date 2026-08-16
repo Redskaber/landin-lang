@@ -22,6 +22,8 @@ mod closure_capture;
 mod control_flow;
 mod expr_operand;
 mod field_resolution;
+// Stage 18.131 §13.4 J1-J6: extract method resolution from expr_operand.rs
+mod method_resolution;
 mod overflow_assert;
 mod pattern_bindings;
 mod ty_lower;
@@ -47,12 +49,15 @@ pub use expr_operand::build_dyn_trait_call_terminator;
 // verify cache semantics (cached result == uncached result). Per §29.1.3
 // (Design-Impl-Test coverage): tests need direct access to verify the
 // cache wrapper doesn't change behavior.
-pub use expr_operand::query_method_return_type_uncached;
+// Stage 18.131: moved to method_resolution.rs (extracted sub-responsibility).
+pub use method_resolution::query_method_return_type_uncached;
 // Stage 15.7 (v0.2): Expose consolidated writeback functions for the
 // driver to call. Per §23 (API Naming): `pub use` of named functions
 // (no glob). Per §16: driver is orchestrator-only — these functions
 // contain the writeback logic, driver just calls them in order.
-pub(crate) use expr_operand::{lower_expr_to_operand, resolve_enum_variant};
+// Stage 18.131: resolve_enum_variant moved to method_resolution.rs.
+pub(crate) use expr_operand::lower_expr_to_operand;
+pub(crate) use method_resolution::resolve_enum_variant;
 pub use writeback::{writeback_closures, writeback_fndef_substs, writeback_type_propagation};
 // Stage 14.41: populate_adt_layouts was re-exported here so the driver
 // could re-run it after writeback. Stage 15.8: the driver no longer calls
@@ -494,9 +499,9 @@ impl<'a> MirLowerCtxt<'a> {
             return cached.clone();
         }
         // Slow path: scan HIR, memoize result (including None).
-        let result = self
-            .hir
-            .and_then(|hir| expr_operand::query_method_return_type_uncached(hir, method_def_id));
+        let result = self.hir.and_then(|hir| {
+            method_resolution::query_method_return_type_uncached(hir, method_def_id)
+        });
         self.method_return_type_cache
             .borrow_mut()
             .insert(method_def_id, result.clone());

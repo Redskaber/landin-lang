@@ -15160,3 +15160,98 @@ Stage Summary:
 - TD-LOC-MIR-LOWER-MOD: ✅ Resolved (Stage 18.129 部分修复 → 18.130 完成修复)
 - v0.398.0: patch bump (TD-LOC-MIR-LOWER-MOD 完成修复)
 - 下一步: Stage 18.131 — TD-LOC-MACRO-EXPAND (5962 LOC, 4.0× 阈值, 需 hygiene/repetition/fragment 三层拆分)
+
+---
+Task ID: stage18.131
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.131 — TD-LOC-MIR-LOWER-EXPR 部分修复 (提取 method_resolution.rs). v0.398.0 → v0.399.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (Stage 18.127 已部署)
+- §3.2 验收 (上个 stage 状态): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §13.1 设计对齐: 查阅 docs/lang-design/ 06-mir.md (MIR body/place/ty 三层); method resolution 是 MIR lowering 中的明确概念
+
+- §17 任务规划:
+  → 选定 TD-LOC-MIR-LOWER-EXPR (3599 LOC, 2.4× 阈值) — 3 项剩余 TD-LOC-* 中阈值倍数最低
+  → 理由: method resolution 子职责最清晰 (14 函数可独立提取)
+  → §13.4 J1-J6 判据检查:
+    - J1 架构设计对齐 ✅ (灰区决策按子职责划分)
+    - J2 单一职责 ✅ (method_resolution.rs = 方法分派解析 单一职责)
+    - J3 单向流动 ✅ (method_resolution 被 expr_operand + control_flow 调用, 不回调)
+    - J4 编译相关表达完整 ✅ (方法解析子职责完整, 14 函数)
+    - J5 阶段划分清晰 ✅ (全部在 mir::lower 阶段)
+    - J6 科学合理粒度 ⚠️ (method_resolution 1132 ✅; expr_operand 2503 仍超 1500)
+  → §12 最优 > 最小: 选择最清晰子职责 (method resolution) 提取, 非 LOC 切片
+
+- 重构执行:
+  → 拆分前: src/mir/lower/expr_operand.rs 3599 LOC (expression lowering + method resolution 混合)
+  → 拆分后:
+    - expr_operand.rs (2503 LOC): expression lowering (含 lower_expr_to_operand 巨型函数 2106 LOC)
+    - method_resolution.rs (1132 LOC): method dispatch resolution (14 函数)
+  → 14 函数迁移到 method_resolution.rs:
+    - resolve_enum_variant (pub(crate)) — mod.rs + control_flow.rs 调用
+    - query_method_self_kind (pub(super)) — expr_operand 调用
+    - resolve_inherent_method (pub(super)) — expr_operand 调用
+    - auto_deref_if_ref (pub(super)) — expr_operand 调用
+    - query_method_return_type_uncached (pub) — mod.rs 调用
+    - resolve_trait_method (pub(super)) — expr_operand 调用
+    - resolve_inherent_method_from_hir_expr (pub(super)) — expr_operand 调用
+    - find_local_init_expr (pub(super)) — expr_operand 调用
+    - resolve_method_by_name (pub(super)) — 保留
+    - find_local_init_type (pub(super)) — expr_operand 调用
+    - search_expr_for_local_init (pub(super)) — 保留
+    - search_block_for_local_init (pub(super)) — 保留
+    - search_expr_for_local_init_expr (pub(super)) — 保留
+    - expr_to_adt_type (pub(super)) — 保留
+  → mod.rs re-export 调整:
+    - pub use method_resolution::query_method_return_type_uncached; (原从 expr_operand)
+    - pub(crate) use method_resolution::resolve_enum_variant; (原从 expr_operand)
+    - pub(crate) use expr_operand::lower_expr_to_operand; (保留)
+  → expr_operand.rs 导入调整 (§13.4 J3 直接导入):
+    use super::method_resolution::{
+        auto_deref_if_ref, find_local_init_expr, find_local_init_type, query_method_return_type_uncached,
+        query_method_self_kind, resolve_enum_variant, resolve_inherent_method,
+        resolve_inherent_method_from_hir_expr, resolve_trait_method,
+    };
+  → mod.rs 调用点调整: expr_operand::query_method_return_type_uncached → method_resolution::query_method_return_type_uncached
+
+- §10 API 命名标准化: 7 项规则全部 ✅
+  → 未改变任何入口函数 / 上下文类型 / 类型前缀
+  → 显式 re-export + pub(super)
+  → 无新增 L-NAMING-N
+
+- §11 接口隔离: 无新增 L-PIPE-N
+  → 全部在 mir::lower 阶段内部, 无跨阶段拆分
+
+- §2.2 设计原则: 9/9 ✅
+  → 原则 3 显式 > 隐式: 显式 re-export + pub(super) 标注
+  → 原则 5 去除兼容思维: 不保留旧结构
+  → 原则 6 通用 > 特例: 通用子职责划分 (method resolution)
+
+- §3.2 验收 (全套通过):
+  → cargo check --features llvm-backend ✅ (0 errors, 0 warnings, 3.21s)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings, 12.87s)
+  → cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed (0.14s)
+  → cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 2 ignored (5.17s)
+
+- §8 文档同步:
+  → docs/develop/v0/stage-18/stage-18.131-dev-log.md (新建)
+  → docs/develop/v0/tech-debt-register.md: v0.398.0 → v0.399.0 + TD-LOC-MIR-LOWER-EXPR 标记 Partial
+  → docs/develop/v0/calibration-data.md: v0.6 → v0.7 + Stage 18.131 统计 + §2.3 流程优化历史
+  → Cargo.toml: v0.398.0 → v0.399.0
+  → README.md: v0.398.0 → v0.399.0
+  → worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.131 PASSED — TD-LOC-MIR-LOWER-EXPR 部分修复 (提取 method_resolution.rs)
+- 复杂度 L3, 实际 1 轮 (跨文件重构 + 14 函数迁移 + re-export 调整)
+- 拆分结果: expr_operand.rs 3599 LOC → expr_operand.rs 2503 + method_resolution.rs 1132 (LOC 降 30%)
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (method_resolution ✅, expr_operand 仍超 1500)
+- §12 最优 > 最小: 选择最清晰子职责 (method resolution) 提取, 非 LOC 切片
+- §2.2 设计原则: 9/9 ✅
+- §10 API 命名: 100% 合规 (显式 re-export + pub(super))
+- §11 接口隔离: 无新增 L-PIPE-N
+- §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
+- v0.399.0: patch bump (TD-LOC-MIR-LOWER-EXPR 部分修复)
+- 下一步: Stage 18.132 — TD-LOC-MIR-LOWER-EXPR 剩余 (拆分 lower_expr_to_operand 函数 2106 LOC, 目标 expr_operand < 1500)
