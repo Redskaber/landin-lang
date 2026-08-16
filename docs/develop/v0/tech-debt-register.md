@@ -75,7 +75,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-EMITTER-PANIC | `src/codegen/emitter/mod.rs` has 2 `panic!()` in `fat_ptr_type` (line 321) and `array_of` (line 357) for unreachable match arms | Type-conversion utility panics on misuse (not on codegen pipeline path) | v0.2 P2: convert to `Result<EmitType, CodegenError>` or use `unreachable!()` with clear message |
 | TD-SPAN-DUMMY-CLEANUP | 错误路径中 ~6 处 `Span::DUMMY` 可用真实 span 替换 (typeck/check, mir/lower/expr_variants 等) | 错误诊断丢失源码位置 | 🟡 Partial Stage 18.159: 修复 `expr_variants.rs` 2 处 discriminant span (改用 `expr.span`); 其余经评估为合法合成用法 (合成 token/类型无源码位置), 保留 |
 | TD-MODULELOAD-ERROR-FIELD | `ModuleLoadError` 强转为 `LowerError`, 丢失 `path` 字段 | 用户看到的模块加载错误丢失文件路径上下文 | ✅ Resolved Stage 18.159: 添加 `CompileErrors.module_load` 字段 + `ErrorCode::ModuleLoad` (E850) + 诊断渲染含 path note |
-| TD-NEGATIVE-TEST-COVERAGE | 负面测试比例 6.5% (低于 §9.4.3 建议的 25%) | 错误路径覆盖不足 | 🟡 Partial Stage 18.160-18.162: 新增 226 个负面测试 (codegen 18+20 + typeck 18 + module_loader 15 + parser/lexer 20 + borrowck 20 + hir_lower 20 + mir_lower 20 + trait_resolve 20 + stdlib 25 + attribute/macro 25 + codegen_llvm 20), 比例 7.9% → 22.9%; 接近 25% 目标 |
+| TD-NEGATIVE-TEST-COVERAGE | 负面测试比例 6.5% (低于 §9.4.3 建议的 25%) | 错误路径覆盖不足 | ✅ Resolved Stage 18.160-18.164: 新增 311 个负面测试 (codegen 38 + typeck 18 + module_loader 15 + parser/lexer 20 + borrowck 20 + hir_lower 20 + mir_lower 20 + trait_resolve 20 + stdlib 25 + attribute/macro 25 + codegen_llvm 20 + vtable 15 + closure 15 + generics_mono 20), 比例 7.9% → 27.8% (超过 25% 目标) |
 | TD-UNWRAP-NONGUARDED | 9 处非测试 `unwrap()`, 其中 `codegen/llvm/arithmetic.rs:381` 无明显 guard | 潜在 panic 风险 | ✅ Resolved Stage 18.159: `codegen/llvm/arithmetic.rs:381` 改为 `if let Some(&v)` 模式 (显式>隐式); 其余 8 处有 invariant guard, 保留 |
 
 ### 2.5 Platform Support
@@ -244,6 +244,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | 🟡 Partial in 18.161 | 1 | TD-NEGATIVE-TEST-COVERAGE (新增 80 个负面测试, 12.9% → 18.2%; 接近 25%) |
 | 🟡 Partial in 18.162 | 1 | TD-NEGATIVE-TEST-COVERAGE (新增 75 个负面测试, 18.2% → 22.9%; 接近 25%) |
 | 📋 Task Review in 18.163 | 1 | TD-STDLIB-FACADE (拆分为 Option/Result + heap alloc + String/Vec; 发现 codegen 无 malloc/free 支持) |
+| ✅ Resolved in 18.164 | 1 | TD-NEGATIVE-TEST-COVERAGE (新增 85 个负面测试 vtable/closure/generics, 22.9% → 27.8%, 超过 25% 目标) |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 

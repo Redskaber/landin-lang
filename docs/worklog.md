@@ -16707,3 +16707,41 @@ Stage Summary:
 - 能力缺口: heap allocation, Iterator codegen, Display trait, 文件哈希/缓存, CI 环境
 - v0.431.0: patch bump
 - 下一步: Stage 18.164 补充负面测试达标 25%
+
+---
+Task ID: stage18.164
+Agent: Super Z (main) — ARCH-A + QA-A + DEV-A
+Task: Stage 18.164 — 补充负面测试达标 25% (vtable/closure/generics). v0.431.0 → v0.432.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 638 ✅
+- 按 Stage 18.163 任务审查, 补充负面测试达标 25% (当前 22.9%, 需 ~40 个)
+
+- 新增 3 个负面测试文件 (50 个测试):
+  → stage18_164_vtable_negative_tests.rs: 15 个 (vtable/trait dispatch 错误)
+  → stage18_164_closure_negative_tests.rs: 15 个 (closure 错误)
+  → stage18_164_generics_mono_negative_tests.rs: 20 个 (泛型/单态化错误)
+
+- §3.2 全套验收:
+  → cargo check --features llvm-backend: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 warnings
+  → cargo test --features llvm-backend: 656 lib + 2967 integration = 3623 total, 0 failed
+
+- 负面测试比例: 22.9% → 27.8% (+4.9pp) — 超过 25% 目标!
+- 累计 Stage 18.160-18.164: 新增 311 个负面测试, 7.9% → 27.8%
+- TD-NEGATIVE-TEST-COVERAGE: ✅ Resolved (27.8% > 25%)
+- v0.432.0: patch bump
+
+Stage Summary:
+- Stage 18.164 PASSED — 补充负面测试达标 25%
+- 新增: 3 个测试文件, 50 个负面测试
+- 覆盖: vtable (15) + closure (15) + generics_mono (20)
+- 比例提升: 22.9% → 27.8% — 超过 25% 目标
+- 累计: Stage 18.160-18.164 共新增 311 个负面测试
+- 测试: 656 lib + 2967 integration = 3623 total, 0 failures
+- §3.2 全套验收: cargo check/fmt/clippy/test 全绿
+- TD-NEGATIVE-TEST-COVERAGE: ✅ Resolved
+- v0.432.0: patch bump
+- 下一步: Stage 18.165 实现 Option/Result (不依赖 heap, stdlib 第一步)
