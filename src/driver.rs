@@ -2302,8 +2302,13 @@ fn validate_struct_literal_fields(
     // Walk all bodies and check struct literals.
     for (_, owner) in &hir.owners {
         // Extract BodyId from owner (Fn/Const/Static have bodies).
+        // Per §2.2 原則 3 "显式 > 隐式" + §12 最优>最小 (Stage 18.127):
+        // Use `if let Some(body)` pattern instead of `if f.body.is_some() => f.body.unwrap()`.
         let body_id = match owner {
-            crate::hir::OwnerNode::Item(HirItem::Fn(f)) if f.body.is_some() => f.body.unwrap(),
+            crate::hir::OwnerNode::Item(HirItem::Fn(f)) => match f.body {
+                Some(b) => b,
+                None => continue,
+            },
             crate::hir::OwnerNode::Item(HirItem::Const(c)) => c.body,
             crate::hir::OwnerNode::Item(HirItem::Static(s)) => s.body,
             _ => continue,
@@ -2513,8 +2518,13 @@ fn validate_pattern_arity(hir: &HirCrate, _interner: &lasso::Rodeo, errors: &mut
     // (would need full type info).
     for (_, owner) in &hir.owners {
         // Extract BodyId from owner (Fn/Const/Static have bodies).
+        // Per §2.2 原則 3 "显式 > 隐式" + §12 最优>最小 (Stage 18.127):
+        // Use `if let Some(body)` pattern instead of `if f.body.is_some() => f.body.unwrap()`.
         let body_id = match owner {
-            crate::hir::OwnerNode::Item(HirItem::Fn(f)) if f.body.is_some() => f.body.unwrap(),
+            crate::hir::OwnerNode::Item(HirItem::Fn(f)) => match f.body {
+                Some(b) => b,
+                None => continue,
+            },
             crate::hir::OwnerNode::Item(HirItem::Const(c)) => c.body,
             crate::hir::OwnerNode::Item(HirItem::Static(s)) => s.body,
             _ => continue,
@@ -2571,8 +2581,13 @@ fn validate_assignment_targets(
     use crate::hir::{HirExprKind, HirStmt, HirUnaryOp};
 
     for (_, owner) in &hir.owners {
+        // Per §2.2 原則 3 "显式 > 隐式" + §12 最优>最小 (Stage 18.127):
+        // Use `if let Some(body)` pattern instead of `if f.body.is_some() => f.body.unwrap()`.
         let body_id = match owner {
-            crate::hir::OwnerNode::Item(HirItem::Fn(f)) if f.body.is_some() => f.body.unwrap(),
+            crate::hir::OwnerNode::Item(HirItem::Fn(f)) => match f.body {
+                Some(b) => b,
+                None => continue,
+            },
             _ => continue,
         };
         let body = match hir.find_body(body_id) {
@@ -2708,8 +2723,13 @@ fn validate_cast_types(hir: &HirCrate, _interner: &lasso::Rodeo, errors: &mut Ve
     use crate::hir::{HirExprKind, HirLitKind, HirStmt};
 
     for (_, owner) in &hir.owners {
+        // Per §2.2 原則 3 "显式 > 隐式" + §12 最优>最小 (Stage 18.127):
+        // Use `if let Some(body)` pattern instead of `if f.body.is_some() => f.body.unwrap()`.
         let body_id = match owner {
-            crate::hir::OwnerNode::Item(HirItem::Fn(f)) if f.body.is_some() => f.body.unwrap(),
+            crate::hir::OwnerNode::Item(HirItem::Fn(f)) => match f.body {
+                Some(b) => b,
+                None => continue,
+            },
             _ => continue,
         };
         let body = match hir.find_body(body_id) {

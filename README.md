@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.394.0 (Stage 18.126 — §17 task layout first applied + structural tech debt scan: 9 files LOC > 1500, 491 Span::DUMMY pending audit, 162 unwrap/expect silent swallow; 19 new TDs added)  
+> **Version**: v0.395.0 (Stage 18.127 — TD-UNWRAP-DRIVER + TD-UNWRAP-BORROWCK-REGION resolved: 7 real-code unwrap → if-let-Some / expect+invariant; 12 test-code unwrap reclassified as legitimate)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4, structural debt scanned
+> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4, structural debt scan + first code-layer fixes
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets

@@ -14808,3 +14808,87 @@ Stage Summary:
 - 工具链限制: 当前执行环境缺少 Rust/LLVM 19, 代码层修复推迟到 Stage 18.127+
 - v0.394.0: doc-fix bump (§17 任务规划 + 结构性技术债扫描)
 - 下一步: Stage 18.127 — 待工具链就绪后执行 9 文件 LOC 拆分 + Span::DUMMY 审计 + unwrap/expect 治理
+
+---
+Task ID: stage18.127
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.127 — TD-UNWRAP-DRIVER + TD-UNWRAP-BORROWCK-REGION 修复 + 2 项重新分类. v0.394.0 → v0.395.0.
+
+Work Log:
+- §3.1 环境部署 (通过 scripts/):
+  → 用户指示: llvm 布署通过 scripts/ 下脚本进行
+  → source scripts/setup-llvm-env.sh: 自动下载 llvm-19 + llvm-19-dev (.deb) + 解压到 /tmp/llvm-19-prefix + patch llvm-config for shared linking + 设置 LLVM_SYS_191_PREFIX + LLVM_LINK_SHARED
+  → Rust 工具链: curl rustup.rs + sh -s -- -y (用户空间, 无 sudo), 安装 rustc 1.97.1 + cargo 1.97.1 + rustfmt + clippy
+  → §3.2 验收: cargo check ✅ + fmt ✅ + clippy ✅ + lib 640 ✅ + tests 2663 ✅
+
+- §13.1 设计对齐:
+  → 查阅 docs/lang-design/ 01/06/07/14 设计文档
+  → 修复方向与 §2.2 原则 3 (显式 > 隐式) + 原则 4 (报错 > 静默) + §12 (最优 > 最小) 一致
+  → 无 B1/B2/B3 偏差
+
+- §17 任务规划 (基于 Stage 18.126 plan):
+  → 节点 S3 子任务执行:
+    - S3.2 (高): borrowck 13 unwrap → 改 expect("...") 或 ? 传播 → 本阶段执行
+    - S3.5 (低): driver 4 unwrap → expect("...") → 本阶段执行 (升级为最优方案)
+    - S3.1/S3.3/S3.4: 推迟到 Stage 18.128+ (范围较大)
+  → §13.4 J1-J6 判据检查: 全部通过 (不改变模块结构, 只改内部模式)
+  → §12 最优 > 最小:
+    - TD-UNWRAP-DRIVER: 选 `if let Some(b)` 模式 (消除 is_some+unwrap 冗余), 非 expect patch
+    - TD-UNWRAP-BORROWCK-REGION: 选 `expect("...")` + 不变量文档, 非 unwrap 保留
+
+- §13.4 J1-J6 重构判据:
+  | 判据 | TD-UNWRAP-DRIVER | TD-UNWRAP-BORROWCK-REGION |
+  | J1 架构设计对齐 | ✅ 不改变模块结构 | ✅ 不改变模块结构 |
+  | J2 单一职责 | ✅ 维持单一职责 | ✅ 维持单一职责 |
+  | J3 单向流动 | ✅ 无新依赖 | ✅ 无新依赖 |
+  | J4 编译相关表达完整 | ✅ 文件内闭合 | ✅ 文件内闭合 |
+  | J5 阶段划分清晰 | ✅ 不跨阶段 | ✅ 不跨阶段 |
+  | J6 科学合理粒度 | ✅ LOC 不显著改变 | ✅ LOC 不显著改变 |
+
+- 修复执行:
+  1. TD-UNWRAP-DRIVER (src/driver.rs 4 处, 行 2306/2517/2575/2712):
+     → 修复前: `crate::hir::OwnerNode::Item(HirItem::Fn(f)) if f.body.is_some() => f.body.unwrap()`
+     → 修复后: `crate::hir::OwnerNode::Item(HirItem::Fn(f)) => match f.body { Some(b) => b, None => continue }`
+     → 理由: §2 原则 3 显式 > 隐式 + §12 最优 > 最小 (消除根因, 非 patch)
+     → 4 处全部修复 (2 处 Fn+Const+Static 模式, 2 处仅 Fn 模式)
+
+  2. TD-UNWRAP-BORROWCK-REGION (src/borrowck/region_inference.rs 3 处 real code, 行 1079/1086/1088):
+     → 修复前: `indices[w].unwrap()` / `indices[v].unwrap()` / `stack.pop().unwrap()` (Tarjan SCC 算法)
+     → 修复后: `indices[w].expect("SCC: indices[w] is Some (match arm guard)")` + 不变量注释
+     → 理由: §2 原则 4 报错 > 静默 (文档化算法不变量, 若破坏会立即暴露)
+     → 不改为 `?` 传播: 这是算法内部不变量, 不是错误恢复点
+
+  3. 重新分类 (Stage 18.126 误分类修正):
+     → TD-UNWRAP-BORROWCK-REGION: 13 unwrap → 3 real + 10 test (10 在 mod tests 内, 合法)
+     → TD-UNWRAP-BORROWCK-BORROWSET: 9 unwrap → 0 real + 9 test (全部在 mod tests 内, 合法, Closed)
+     → TD-UNWRAP-CODEGEN-LLVM-HELPERS: 3 unwrap → 0 real + 3 test/fallback (合法, Closed)
+     → TD-UNWRAP-CODEGEN-LLVM-MOD: 新增 1 real (name.strip_prefix('@').unwrap()), 待 TD-CODEGEN-RESULT
+
+- §10 API 命名标准化: 7 项规则全部 ✅ (未改变任何 API)
+- §11 接口隔离: 无新增 L-PIPE-N (未跨阶段)
+- §2.2 设计原则: 9/9 ✅ (本阶段修复原则 3 + 原则 4 违反)
+
+- §3.2 验收 (全套通过):
+  → cargo check --features llvm-backend ✅ (0 errors, 0 warnings, 2.23s)
+  → cargo fmt --check ✅ exit 0 (应用 fmt 后)
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings, 12.57s)
+  → cargo test --features llvm-backend --lib ✅ 640 passed, 0 failed (1.54s)
+  → cargo test --features llvm-backend --tests ✅ 2663 passed, 0 failed, 2 ignored (13.49s)
+
+- §8 文档同步:
+  → docs/develop/v0/stage-18/stage-18.127-dev-log.md (新建)
+  → docs/develop/v0/tech-debt-register.md: v0.393.0 → v0.395.0 + 2 项 resolved + 2 项 reclassified + §4 分类索引更新
+  → docs/develop/v0/calibration-data.md: v0.2 → v0.3 + Stage 18.127 统计 + §2.3 流程优化历史
+  → Cargo.toml: v0.394.0 → v0.395.0
+  → README.md: v0.394.0 → v0.395.0
+  → worklog.md (本条目)
+
+Stage Summary:
+- Stage 18.127 PASSED — TD-UNWRAP-DRIVER + TD-UNWRAP-BORROWCK-REGION 修复 + 2 项重新分类
+- 复杂度 L2, 实际 1 轮 (代码修改 + 验收)
+- 修复: 7 个 real-code unwrap → 4 改 if let Some(b) 模式 + 3 改 expect("...") + 算法不变量文档化
+- 重新分类: 12 个 test-code unwrap 从 MEDIUM 降为 LOW (合法, 不修复)
+- §13.4 J1-J6 全部通过; §12 最优 > 最小 (消除根因, 非 patch); §2.2 原则 9/9 ✅
+- §3.2 全套验收通过: 640 lib + 2663 integration tests, 0 failures
+- v0.395.0: patch bump (2 项 TD 修复 + 2 项 reclassified)
+- 下一步: Stage 18.128 — Span::DUMMY 待审计 (TD-DUMMY-* × 8) 或 typeck/parser expect 审计 (TD-EXPECT-* × 2)

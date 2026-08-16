@@ -1076,16 +1076,29 @@ impl RegionInferenceContext {
                         low_links[v] = low_links[v].min(low_links[w]);
                     }
                     Some(_) if on_stack[w] => {
-                        low_links[v] = low_links[v].min(indices[w].unwrap());
+                        // Per §2.2 原則 4 "报错 > 静默" (Stage 18.127):
+                        // Invariant: `indices[w]` is `Some` here because the match arm
+                        // requires it. Use `expect` to document the algorithm invariant
+                        // rather than silently unwrap()ing.
+                        let w_index =
+                            indices[w].expect("SCC: indices[w] is Some (match arm guard)");
+                        low_links[v] = low_links[v].min(w_index);
                     }
                     _ => {}
                 }
             }
 
-            // If v is a root node, pop the SCC
-            if low_links[v] == indices[v].unwrap() {
+            // If v is a root node, pop the SCC.
+            // Per §2.2 原則 4 "报错 > 静默" (Stage 18.127):
+            // Invariant: `indices[v]` is `Some` for every visited node v.
+            let v_index = indices[v].expect("SCC: indices[v] is Some (visited node)");
+            if low_links[v] == v_index {
                 loop {
-                    let w = stack.pop().unwrap();
+                    // Invariant: stack is non-empty because Tarjan's algorithm
+                    // guarantees we pop exactly the nodes in this SCC.
+                    let w = stack
+                        .pop()
+                        .expect("SCC: stack non-empty (Tarjan invariant)");
                     let w_idx = w.0 as usize;
                     on_stack[w_idx] = false;
                     sccs[w_idx] = SccId(*scc_id_counter);

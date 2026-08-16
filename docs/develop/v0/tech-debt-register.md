@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-16 (last updated Stage 18.126)
-> **Version**: v0.393.0
-> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + 5 new structural TDs
+> **Date**: 2026-08-16 (last updated Stage 18.127)
+> **Version**: v0.395.0
+> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + structural TDs (2 resolved in 18.127)
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -23,6 +23,8 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-DUP2 | format_ty DRY | 18.100 | ✅ |
 | TD-UNWRAP1 | module_build unwrap → expect | 18.100 | ✅ |
 | TD-UNWRAP2 | CString unwrap → unwrap_or_else | 18.100 |
+| TD-UNWRAP-DRIVER | driver.rs 4 unwrap (`f.body.unwrap()` after `is_some()`) → `if let Some(b)` pattern | 18.127 | ✅ |
+| TD-UNWRAP-BORROWCK-REGION | borrowck/region_inference.rs 3 SCC algorithm unwrap → `expect("...")` with invariant docs | 18.127 | ✅ |
 
 ## 2. Remaining Tech Debt (v0.2 Phase 2+)
 
@@ -121,18 +123,26 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 
 **预估**: ~491 待审计, 预计 ~50 是 Category B (可修复), 其余 ~441 是 Category A (legitimate)。
 
-### 2.11 Structural — unwrap/expect 静默吞错 (§2 原则 4) — Stage 18.126 新增
+### 2.11 Structural — unwrap/expect 静默吞错 (§2 原则 4) — Stage 18.126 新增, 18.127 修正
 
 > **背景**：Stage 18.126 扫描发现 borrowck/typeck/parser 共 162 个 unwrap/expect 调用, 部分缺少 message 或使用 unwrap() 静默吞错, 违反 §2 原则 4 "报错 > 静默"。
+>
+> **Stage 18.127 修正**：经详细审计, 大部分 unwrap 在 `#[cfg(test)] mod tests` 内 (合法), 仅 7 个在 real code 中:
+> - driver.rs: 4 unwrap (已修复 → TD-UNWRAP-DRIVER ✅)
+> - borrowck/region_inference.rs: 3 unwrap (SCC 算法不变量, 已修复 → TD-UNWRAP-BORROWCK-REGION ✅)
+> - borrowck/borrow_set.rs: 9 unwrap 全部在 test code (合法, 不修复)
+> - codegen/llvm/helpers.rs: 3 unwrap 全部在 test code 或防御性 fallback (合法, 不修复)
+> - codegen/llvm/mod.rs: 1 unwrap (`name.strip_prefix('@').unwrap()`) — codegen 内部约定, 待 TD-CODEGEN-RESULT 修复时一并处理
 
-| ID | File | unwrap | expect | Risk | Action |
-|----|------|--------|--------|------|--------|
-| TD-UNWRAP-BORROWCK-REGION | `src/borrowck/region_inference.rs` | 13 | 0 | 🔴 HIGH — borrowck 静默吞错 | v0.2 P2: 改 `expect("...")` 或 `?` 传播 |
-| TD-EXPECT-TYPECK-SOLVER | `src/typeck/solver.rs` | 0 | 37 | 🟡 MEDIUM — typeck 静默吞错 | v0.2 P2: 审计每个 expect 的 message |
-| TD-EXPECT-PARSER-ITEMS | `src/parser/items.rs` | 0 | 36 | 🟡 MEDIUM — parser 静默吞错 | v0.2 P2: 审计每个 expect 的 message |
-| TD-UNWRAP-BORROWCK-BORROWSET | `src/borrowck/borrow_set.rs` | 9 | 0 | 🟡 MEDIUM — borrowck 静默吞错 | v0.2 P2: 改 `expect("...")` |
-| TD-UNWRAP-DRIVER | `src/driver.rs` | 4 | 0 | 🟡 MEDIUM — 编排层静默 | v0.2 P2: 改 `expect("...")` |
-| TD-UNWRAP-CODEGEN-LLVM-HELPERS | `src/codegen/llvm/helpers.rs` | 3 | 0 | 🟡 MEDIUM — codegen 静默 | v0.2 P2: 改 `?` 传播 (需 TD-CODEGEN-RESULT 先完成) |
+| ID | File | unwrap (real) | unwrap (test) | expect | Risk | Action | Status |
+|----|------|---------------|---------------|--------|------|--------|--------|
+| TD-UNWRAP-DRIVER | `src/driver.rs` | 4 | 0 | 0 | 🟡 MEDIUM | `if let Some(b)` pattern | ✅ Resolved 18.127 |
+| TD-UNWRAP-BORROWCK-REGION | `src/borrowck/region_inference.rs` | 3 | 10 | 0 | 🔴 HIGH → 🟢 LOW | `expect("...")` + invariant docs | ✅ Resolved 18.127 |
+| TD-EXPECT-TYPECK-SOLVER | `src/typeck/solver.rs` | 0 | 0 | 37 | 🟡 MEDIUM | 审计每个 expect 的 message | Open — v0.2 P2 |
+| TD-EXPECT-PARSER-ITEMS | `src/parser/items.rs` | 0 | 0 | 36 | 🟡 MEDIUM | 审计每个 expect 的 message | Open — v0.2 P2 |
+| TD-UNWRAP-BORROWCK-BORROWSET | `src/borrowck/borrow_set.rs` | 0 | 9 | 0 | 🟢 LOW (test only) | N/A — test code 合法 | Closed 18.127 (reclassified) |
+| TD-UNWRAP-CODEGEN-LLVM-HELPERS | `src/codegen/llvm/helpers.rs` | 0 | 3 | 0 | 🟢 LOW (test/fallback) | N/A — test code 合法 | Closed 18.127 (reclassified) |
+| TD-UNWRAP-CODEGEN-LLVM-MOD | `src/codegen/llvm/mod.rs` | 1 | 0 | 0 | 🟡 MEDIUM | 改 `?` 传播 (需 TD-CODEGEN-RESULT) | Open — v0.2 P2 |
 
 ## 3. Architecture Summary
 
@@ -188,8 +198,10 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 |----------|-------|-----|
 | P0 (致命) | 0 | — (all resolved) |
 | P1 (严重) | 0 | — (all resolved) |
-| P2 (一般) | 26 | TD-CODEGEN-RESULT, TD-PROJECTION-RESOLVER, TD-INT-UINT-VAR, TD-DEREF-NON-REF, TD-LOCALID0-FALLBACK, TD-SINGLE-FILE, TD-NO-INCREMENTAL, TD-BINARYOP2-PANIC, TD-LINUX-ONLY, TD-ABI-DIVERSITY, TD-STDLIB-FACADE, TD-NO-FORMAT-MACRO, TD-IGNORE-DISCIPLINE, TD-CODEGEN-NEGATIVE, TD-NO-JUMP-THREADING, TD-CONST-PROP-LOOPS, TD-LOC-MACRO-EXPAND, TD-LOC-DRIVER, TD-LOC-MIR-LOWER-EXPR, TD-LOC-MIR-LOWER-MOD, TD-LOC-TYPECK-CHECKER, TD-DUMMY-* (8), TD-UNWRAP-* (6) |
+| P2 (一般) | 22 | TD-CODEGEN-RESULT, TD-PROJECTION-RESOLVER, TD-INT-UINT-VAR, TD-DEREF-NON-REF, TD-LOCALID0-FALLBACK, TD-SINGLE-FILE, TD-NO-INCREMENTAL, TD-BINARYOP2-PANIC, TD-LINUX-ONLY, TD-ABI-DIVERSITY, TD-STDLIB-FACADE, TD-NO-FORMAT-MACRO, TD-IGNORE-DISCIPLINE, TD-CODEGEN-NEGATIVE, TD-NO-JUMP-THREADING, TD-CONST-PROP-LOOPS, TD-LOC-MACRO-EXPAND, TD-LOC-DRIVER, TD-LOC-MIR-LOWER-EXPR, TD-LOC-MIR-LOWER-MOD, TD-LOC-TYPECK-CHECKER, TD-DUMMY-* (8), TD-EXPECT-TYPECK-SOLVER, TD-EXPECT-PARSER-ITEMS, TD-UNWRAP-CODEGEN-LLVM-MOD |
 | P3 (优化) | 4 | 4 文件 LOC < 2.0× 阈值（control_flow/mod.rs/region_inference/resolver.rs） |
+| ✅ Resolved in 18.127 | 2 | TD-UNWRAP-DRIVER, TD-UNWRAP-BORROWCK-REGION |
+| ✅ Reclassified in 18.127 | 2 | TD-UNWRAP-BORROWCK-BORROWSET (test only), TD-UNWRAP-CODEGEN-LLVM-HELPERS (test/fallback) |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
 
@@ -213,9 +225,11 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 
 ### 4.5 By §2 Principle Violations
 
-| ID | Principle | Description |
-|----|-----------|-------------|
-| TD-UNWRAP-BORROWCK-REGION | §2 原则 4 (报错 > 静默) | 13 个 unwrap 静默吞错 |
-| TD-EXPECT-TYPECK-SOLVER | §2 原则 4 | 37 个 expect 部分缺 message |
-| TD-EXPECT-PARSER-ITEMS | §2 原则 4 | 36 个 expect 部分缺 message |
-| TD-BINARYOP2-PANIC | §2 原则 4 | panic 替代 CodegenError 传播 |
+| ID | Principle | Description | Status |
+|----|-----------|-------------|--------|
+| TD-UNWRAP-BORROWCK-REGION | §2 原则 4 (报错 > 静默) | 3 SCC 算法 unwrap → `expect("...")` | ✅ Resolved 18.127 |
+| TD-UNWRAP-DRIVER | §2 原则 3 (显式 > 隐式) + §2 原则 4 | 4 `f.body.unwrap()` after `is_some()` → `if let Some(b)` | ✅ Resolved 18.127 |
+| TD-EXPECT-TYPECK-SOLVER | §2 原则 4 | 37 个 expect 部分缺 message | Open — v0.2 P2 |
+| TD-EXPECT-PARSER-ITEMS | §2 原则 4 | 36 个 expect 部分缺 message | Open — v0.2 P2 |
+| TD-UNWRAP-CODEGEN-LLVM-MOD | §2 原则 4 | 1 unwrap (`strip_prefix('@').unwrap()`) | Open — v0.2 P2 (需 TD-CODEGEN-RESULT) |
+| TD-BINARYOP2-PANIC | §2 原则 4 + §2 原则 9 (正确 > 妥协) | panic 替代 CodegenError 传播 | Open — v0.2 P2 |
