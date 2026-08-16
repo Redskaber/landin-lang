@@ -25,7 +25,6 @@ mod writeback;
 // Stage 6.15 (TD-025) sub-modules.
 mod predicates;
 // Stage 16.68 (Task 17 Phase 3): Associated type projection resolution.
-pub mod projection_resolver;
 // Stage 17.03: Trait solver (v0.5 Phase 1).
 pub mod solver;
 mod tables;

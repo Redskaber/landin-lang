@@ -15946,3 +15946,31 @@ Stage Summary:
 - Stage 18.147 PASSED — driver/ 模块重新审理 + J2 合规修复
 - 修复: run_post_typeck_validations 从 driver_codegen_prep.rs 移到 driver_validations.rs
 - v0.415.0: patch bump
+
+---
+Task ID: stage18.148
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.148 — 全模块重新审理 + TD-PROJECTION-RESOLVER 修复. v0.415.0 → v0.416.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- 用户要求: 重新审理所有已拆分模块是否合理划分
+- §13.4 J2 全模块审计:
+  → typeck/ (12 files): ✅ 良好, 唯一问题 projection_resolver 位置
+  → mir/lower/ (14 files): ✅ 良好, control_flow.rs 大但内聚
+  → borrowck/ (8 files): ✅ 良好, mod.rs 大但单一入口
+  → parser/macro_expand/ (2 files): ✅ 良好, 测试代码无法迁移
+  → driver/ (7 files): ✅ 良好 (Stage 18.147 修复后)
+- TD-PROJECTION-RESOLVER 修复:
+  → projection_resolver.rs 从 typeck/ 移到 driver/ (§11 接口隔离)
+  → typeck/ 不再包含 driver-stage 操作
+  → driver/ 包含所有 post-typeck 操作
+- §3.2 验收: 全套通过 (640 lib + 2663 integration, 0 failures)
+- v0.416.0: patch bump
+
+Stage Summary:
+- Stage 18.148 PASSED — 全模块重新审理 + TD-PROJECTION-RESOLVER 修复
+- 全模块审计完成: 所有模块 J2 合规
+- TD-PROJECTION-RESOLVER: ✅ Resolved
+- v0.416.0: patch bump
