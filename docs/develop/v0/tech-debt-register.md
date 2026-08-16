@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-16 (last updated Stage 18.131)
-> **Version**: v0.399.0
-> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + structural TDs (4 resolved + 1 partial: 18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131 × 1 partial)
+> **Date**: 2026-08-16 (last updated Stage 18.132)
+> **Version**: v0.400.0
+> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + structural TDs (4 resolved + 1 partial continued: 18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131-18.132 × 1 partial)
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -29,6 +29,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-LOC-MIR-LOWER-MOD (partial) | mir/lower/mod.rs 2857 LOC → mod.rs 2016 + ty_lower.rs 863 (type lowering extracted); mod.rs still > 1500, needs Stage 18.130 body lowering split | 18.129 | 🟡 Partial |
 | TD-LOC-MIR-LOWER-MOD (complete) | mir/lower/mod.rs 2016 LOC → mod.rs 960 + body_lower.rs 1110 (body lowering + elision + resolve_self + tests extracted); all 3 files < 1500 LOC | 18.130 | ✅ |
 | TD-LOC-MIR-LOWER-EXPR (partial) | mir/lower/expr_operand.rs 3599 LOC → expr_operand.rs 2503 + method_resolution.rs 1132 (method resolution extracted); expr_operand still > 1500 (lower_expr_to_operand 2106 LOC), needs Stage 18.132 | 18.131 | 🟡 Partial |
+| TD-LOC-MIR-LOWER-EXPR (partial continued) | mir/lower/expr_operand.rs 2503 LOC → expr_operand.rs 2171 + call_lower.rs 362 (call helpers extracted); MethodCall arm extraction attempted+reverted (type signature issues); expr_operand still > 1500, needs Stage 18.133 | 18.132 | 🟡 Partial |
 
 ## 2. Remaining Tech Debt (v0.2 Phase 2+)
 
@@ -96,7 +97,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-NO-JUMP-THREADING | Jump threading not implemented | Unnecessary goto chains in optimized MIR | v0.3: jump threading pass |
 | TD-CONST-PROP-LOOPS | const_prop skips all BinaryOp folding when back-edges exist (Stage 18.110) | Misses some optimization opportunities in loops | v0.2 Phase 2: fixpoint iteration for const_prop in loops |
 
-### 2.9 Structural — LOC Threshold Violations (§13.4 J6) — Stage 18.126 新增, 18.128-18.131 部分修复
+### 2.9 Structural — LOC Threshold Violations (§13.4 J6) — Stage 18.126 新增, 18.128-18.132 部分修复
 
 > **背景**：Stage 18.126 §17 任务规划排版图扫描发现 9 个文件超过 §13.4 J6 阈值（mod.rs < 1500 LOC；子模块 100-1500 LOC）。这些是"上帝模块"，违反单一职责原则 (J2)。
 >
@@ -104,13 +105,15 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 >
 > **Stage 18.129-18.130 进展**: TD-LOC-MIR-LOWER-MOD 已修复 ✅ — Stage 18.129 提取 ty_lower.rs (863 LOC), Stage 18.130 提取 body_lower.rs (1110 LOC), mod.rs 从 2857 降至 960, 全部 < 1500 LOC。
 >
-> **Stage 18.131 进展**: TD-LOC-MIR-LOWER-EXPR 部分修复 🟡 — 提取 method_resolution.rs (1132 LOC), expr_operand.rs 从 3599 降至 2503 (仍超 1500, lower_expr_to_operand 函数 2106 LOC 需 Stage 18.132 拆分)。
+> **Stage 18.131 进展**: TD-LOC-MIR-LOWER-EXPR 部分修复 🟡 — 提取 method_resolution.rs (1132 LOC), expr_operand.rs 从 3599 降至 2503。
+>
+> **Stage 18.132 进展**: TD-LOC-MIR-LOWER-EXPR 继续部分修复 🟡 — 提取 call_lower.rs (362 LOC), expr_operand.rs 从 2503 降至 2171。MethodCall arm 提取尝试+回退 (类型签名问题)。
 
 | ID | File | LOC | 阈值倍数 | Root Cause | Fix Plan | Status |
 |----|------|-----|---------|------------|----------|--------|
-| TD-LOC-MACRO-EXPAND | `src/parser/macro_expand.rs` | 5962 | 4.0× | macro_rules! 全功能集中（fragment specifiers + repetition + hygiene） | Stage 18.133: 按 `hygiene.rs`/`repetition.rs`/`fragment.rs` 三层拆分 | Open |
-| TD-LOC-DRIVER | `src/driver.rs` | 4018 | 2.7× | 编排层全功能集中（编译入口 + CompileResult 装配 + post_typeck hooks + CLI） | Stage 18.134: 按 `driver/compile.rs`/`driver/compile_result.rs`/`driver/post_typeck.rs`/`driver/cli.rs` 四层拆分 | Open |
-| TD-LOC-MIR-LOWER-EXPR | `src/mir/lower/expr_operand.rs` | ~~3599~~ → 2503 | 2.4× → 1.7× | MIR 表达式 lowering 全集中 + method resolution 混合 | 🟡 Stage 18.131: 提取 method_resolution.rs (1132); Stage 18.132: 拆分 lower_expr_to_operand 函数 | 🟡 Partial 18.131 |
+| TD-LOC-MACRO-EXPAND | `src/parser/macro_expand.rs` | 5962 | 4.0× | macro_rules! 全功能集中（fragment specifiers + repetition + hygiene） | Stage 18.134: 按 `hygiene.rs`/`repetition.rs`/`fragment.rs` 三层拆分 | Open |
+| TD-LOC-DRIVER | `src/driver.rs` | 4018 | 2.7× | 编排层全功能集中（编译入口 + CompileResult 装配 + post_typeck hooks + CLI） | Stage 18.135: 按 `driver/compile.rs`/`driver/compile_result.rs`/`driver/post_typeck.rs`/`driver/cli.rs` 四层拆分 | Open |
+| TD-LOC-MIR-LOWER-EXPR | `src/mir/lower/expr_operand.rs` | ~~3599~~ → 2171 | 2.4× → 1.4× | MIR 表达式 lowering 全集中 + method resolution + call helpers 混合 | 🟡 Stage 18.131: 提取 method_resolution.rs (1132); Stage 18.132: 提取 call_lower.rs (362); Stage 18.133: 逐个 arm 提取 | 🟡 Partial 18.131-18.132 |
 | TD-LOC-MIR-LOWER-MOD | `src/mir/lower/mod.rs` | ~~2857~~ → 960 | 1.9× → ✅ | MIR lower 顶层 + body lowering + local decls | ✅ Stage 18.129-18.130: 提取 ty_lower.rs (863) + body_lower.rs (1110), mod.rs 960 | ✅ Resolved 18.129-18.130 |
 | TD-LOC-TYPECK-CHECKER | `src/typeck/checker.rs` | ~~2635~~ → 1371 | 1.8× → ✅ | typeck 主入口全集中（unify + infer + coerce + check） | ✅ Stage 18.128: 拆分为 checker/infer/check/writeback 4 文件 | ✅ Resolved 18.128 |
 
@@ -213,7 +216,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 | ✅ Resolved in 18.127 | 2 | TD-UNWRAP-DRIVER, TD-UNWRAP-BORROWCK-REGION |
 | ✅ Resolved in 18.128 | 1 | TD-LOC-TYPECK-CHECKER (拆分为 4 文件, 全部 < 1500 LOC) |
 | ✅ Resolved in 18.129-18.130 | 1 | TD-LOC-MIR-LOWER-MOD (提取 ty_lower.rs 863 + body_lower.rs 1110, mod.rs 2857→960, 全部 < 1500) |
-| 🟡 Partial in 18.131 | 1 | TD-LOC-MIR-LOWER-EXPR (提取 method_resolution.rs 1132, expr_operand 3599→2503, 仍超 1500) |
+| 🟡 Partial in 18.131-18.132 | 1 | TD-LOC-MIR-LOWER-EXPR (提取 method_resolution.rs 1132 + call_lower.rs 362, expr_operand 3599→2171, 仍超 1500) |
 | ✅ Reclassified in 18.127 | 2 | TD-UNWRAP-BORROWCK-BORROWSET (test only), TD-UNWRAP-CODEGEN-LLVM-HELPERS (test/fallback) |
 
 ### 4.2 By §11.3 Pipeline Coupling (L-PIPE-N)
@@ -232,7 +235,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 |----|-------------|-------------|--------|
 | TD-LOC-MACRO-EXPAND | J2 (单一职责) + J6 (LOC) | macro_expand.rs 5962 LOC | Open — Stage 18.129 |
 | TD-LOC-DRIVER | J2 + J6 | driver.rs 4018 LOC | Open — Stage 18.130 |
-| TD-LOC-MIR-LOWER-EXPR | J2 + J6 | mir/lower/expr_operand.rs 3599 → 2503 LOC (method_resolution.rs 1132 提取) | 🟡 Partial 18.131 — Stage 18.132 lower_expr_to_operand |
+| TD-LOC-MIR-LOWER-EXPR | J2 + J6 | mir/lower/expr_operand.rs 3599 → 2171 LOC (method_resolution.rs 1132 + call_lower.rs 362 提取) | 🟡 Partial 18.131-18.132 — Stage 18.133 逐个 arm |
 | TD-LOC-MIR-LOWER-MOD | J2 + J6 | mir/lower/mod.rs 2857 → 960 LOC (ty_lower.rs 863 + body_lower.rs 1110 提取) | ✅ Resolved 18.129-18.130 |
 | TD-LOC-TYPECK-CHECKER | J2 + J6 | typeck/checker.rs 2635 LOC → 1371 LOC (4 文件) | ✅ Resolved 18.128 |
 

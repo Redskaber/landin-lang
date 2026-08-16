@@ -18,6 +18,8 @@ use lasso::Rodeo;
 
 mod adt_layout;
 mod body_lower;
+// Stage 18.132 §13.4 J1-J6: extract call lowering from expr_operand.rs
+mod call_lower;
 mod closure_capture;
 mod control_flow;
 mod expr_operand;
@@ -44,7 +46,8 @@ mod writeback;
 // mod.rs or sibling modules.
 //
 // Per §23 (API naming): no glob re-export — each name is listed explicitly.
-pub use expr_operand::build_dyn_trait_call_terminator;
+// Stage 18.132: build_dyn_trait_call_terminator moved to call_lower.rs.
+pub use call_lower::build_dyn_trait_call_terminator;
 // Stage 15.6 (v0.2): Expose the uncached inner function so tests can
 // verify cache semantics (cached result == uncached result). Per §29.1.3
 // (Design-Impl-Test coverage): tests need direct access to verify the

@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.399.0 (Stage 18.131 — TD-LOC-MIR-LOWER-EXPR partial: mir/lower/expr_operand.rs 3599→2503 LOC + method_resolution.rs 1132 LOC extracted per §13.4 J1-J6; 14 functions migrated; expr_operand still > 1500, needs Stage 18.132)  
+> **Version**: v0.400.0 (Stage 18.132 — TD-LOC-MIR-LOWER-EXPR partial continued: mir/lower/expr_operand.rs 2503→2171 LOC + call_lower.rs 362 LOC extracted per §13.4 J1-J6; 3 functions migrated; MethodCall arm extraction attempted+reverted; expr_operand still > 1500, needs Stage 18.133)  
 > **License**: MIT  
-> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4, structural debt scan + 4 resolved + 1 partial (18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131 × 1 partial)
+> **Status**: v0.1 stable, v0.2 P0 monomorphization COMPLETE, process doc v6.4, structural debt scan + 4 resolved + 1 partial continued (18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131-18.132 × 1 partial)
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets
