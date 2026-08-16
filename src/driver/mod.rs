@@ -43,7 +43,6 @@ use crate::hir::lower::lower_crate;
 use crate::hir::{HirCrate, HirFnRetTy, HirItem};
 use crate::lexer::tokenize;
 use crate::mir::body::MirBody;
-use crate::mir::dyn_trait::build_dyn_trait_mir_plan_from_resolver;
 use crate::mir::lower::lower_hir_body_to_mir_full_with_dyn_trait_plan;
 use crate::parser::Parser;
 use crate::resolve::resolve_crate;
@@ -60,7 +59,6 @@ mod driver_codegen_prep;
 mod driver_validations;
 
 // Stage 18.134: import extracted functions for use in compile_inner
-use driver_object_safety::check_object_safety_for_dyn_trait_usage;
 use driver_scan::scan_for_unresolved_paths;
 use driver_validations::owner_return_ty;
 
@@ -953,69 +951,9 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
     // Stage 16.14: Synthesized closure MIR bodies, built per-function.
     let mut synthesized_closure_mir_bodies: Vec<crate::mir::body::MirBody> = Vec::new();
 
-    // Stage 5.2: Build TraitResolver — collect trait definitions + impl blocks.
-    // Per §16: pre-computed by driver, passed as data to downstream stages.
-    //
-    // Stage 5.80 (refactor): moved BEFORE the per-body loop so the
-    // DynTraitMIRPlan can be built from it and passed to lowering.
-    // Previously this came after the loop — fine when lower didn't need
-    // trait info, but Stage 5.78+ requires the plan at lower time.
-    let mut trait_resolver = crate::traits::TraitResolver::new();
-    // Stage 5.8: Register builtin standard traits (Copy, Clone, Drop, etc.)
-    // before collect() so the compiler recognizes them without user
-    // definition. Needs &mut interner (collect() only takes &Rodeo).
-    // We clone the interner to get a mutable handle, register, then the
-    // original interner is used for collect() and stored in CompileResult.
-    // NOTE: interner is already &mut here (line 267: `let mut interner`),
-    // but by this point several borrows have happened. We use a direct
-    // mutable call since interner is still owned.
-    trait_resolver.register_builtin_traits(&mut interner);
-    // Stage 5.26: Register stdlib types + traits in the interner.
-    // This ensures all core types (i32, bool, str, etc.) and stdlib traits
-    // (Add, From, Iterator, etc.) are interned before compilation.
-    crate::stdlib::register_stdlib(&mut interner);
-    // Stage 15.9: trait_resolver.collect now takes &mut Rodeo to intern
-    // vtable symbol names (VtableEntry.fn_name is now Spur, was String).
-    trait_resolver.collect(&hir, &mut interner);
-
-    // Stage 16.65 (Task 14 Phase 2): Object safety check.
-    //
-    // Scan all HIR types for `dyn Trait` usage (HirTyKind::TraitObject).
-    // For each, look up the trait definition and check if it's object-safe.
-    // If not, emit a typeck error — the user must fix the trait or avoid
-    // using `dyn Trait`.
-    //
-    // Per §16: driver reads HIR + TraitResolver (allowed during pre-computation).
-    // Per §1.0 原則 5 "报错 > 静默": hard errors for non-object-safe traits.
-    // Per §1.0 原則 6 "通用 > 特例": one scan function handles all TraitObject uses.
-    check_object_safety_for_dyn_trait_usage(&hir, &trait_resolver, &interner, &mut errors);
-
-    // Stage 16.73: Where clause checking.
-    //
-    // Verify that all where clause bounds reference valid traits.
-    // Full semantic checking (does the type implement the trait?) is
-    // deferred to future work — for now we verify trait existence.
-    let where_errors =
-        crate::typeck::where_clause::check_where_clauses(&hir, &trait_resolver, &interner);
-    errors.typeck.extend(where_errors);
-
-    // Stage 5.80: build DynTraitMIRPlan once for the whole crate.
-    //
-    // Per §16: the driver is the sole orchestrator that connects
-    // TraitResolver (Stage 5.2) to mir::lower (Stage 2.1) via the plan
-    // data structure. `MirLowerCtxt` does not own a TraitResolver — it
-    // receives the plan as data via `set_dyn_trait_plan`.
-    //
-    // The plan is built once here (before the per-body loop) and passed
-    // by reference to each body's lowering. The lower clones the plan
-    // internally when attaching it to the cx (one clone per body —
-    // acceptable cost; the plan is small).
-    //
-    // This activates the dyn Trait MIR lowering path (Stage 5.78) and
-    // the codegen vtable indirect call path (Stage 5.79) end-to-end:
-    // HIR `receiver.method(args)` → MIR `TerminatorKind::Call` with Const
-    // marker → codegen `getelementptr + load + load + indirect call`.
-    let dyn_trait_plan = build_dyn_trait_mir_plan_from_resolver(&trait_resolver, &interner);
+    // Stage 18.143 §13.4 J2: extracted to driver_codegen_prep.rs
+    let (trait_resolver, dyn_trait_plan) =
+        driver_codegen_prep::build_trait_resolver_and_plan(&hir, &mut interner, &mut errors);
 
     // Stage 14.100 (Bug AA5 fix): Track which body_ids are lowered (i.e., not
     // skipped). This set is used to filter body_metas so codegen doesn't try

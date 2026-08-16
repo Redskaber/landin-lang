@@ -320,3 +320,36 @@ pub(super) fn build_generics_map(
     }
     map
 }
+
+/// Build TraitResolver, run trait validations, and build DynTraitMIRPlan.
+///
+/// Per §13.4 J1-J6 (Stage 18.143): extracted from compile_inner.
+/// This function:
+/// 1. Creates TraitResolver and registers builtin traits + stdlib types
+/// 2. Runs object safety check + where clause check (pushes errors)
+/// 3. Builds DynTraitMIRPlan from the resolver
+pub(super) fn build_trait_resolver_and_plan(
+    hir: &HirCrate,
+    interner: &mut lasso::Rodeo,
+    errors: &mut super::CompileErrors,
+) -> (
+    crate::traits::TraitResolver,
+    crate::mir::dyn_trait::DynTraitMIRPlan,
+) {
+    use super::driver_object_safety::check_object_safety_for_dyn_trait_usage;
+
+    let mut trait_resolver = crate::traits::TraitResolver::new();
+    trait_resolver.register_builtin_traits(interner);
+    crate::stdlib::register_stdlib(interner);
+    trait_resolver.collect(hir, interner);
+
+    check_object_safety_for_dyn_trait_usage(hir, &trait_resolver, interner, errors);
+
+    let where_errors =
+        crate::typeck::where_clause::check_where_clauses(hir, &trait_resolver, interner);
+    errors.typeck.extend(where_errors);
+
+    let dyn_trait_plan =
+        crate::mir::dyn_trait::build_dyn_trait_mir_plan_from_resolver(&trait_resolver, interner);
+    (trait_resolver, dyn_trait_plan)
+}
