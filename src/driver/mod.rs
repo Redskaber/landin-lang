@@ -40,7 +40,7 @@
 
 use crate::borrowck::{self, BorrowError};
 use crate::hir::lower::lower_crate;
-use crate::hir::{HirCrate, HirFnRetTy, HirItem};
+use crate::hir::{HirCrate, HirItem};
 use crate::lexer::tokenize;
 use crate::mir::body::MirBody;
 use crate::mir::lower::lower_hir_body_to_mir_full_with_dyn_trait_plan;
@@ -780,172 +780,13 @@ fn compile_inner(src: &str, optimize: bool) -> CompileResult {
             }
         }
     }
-    // Stage 14.97 (Bug Y1 fix): Also build fn_sig_table entries for trait
-    // DEFAULT BODY methods. A trait default body is a method declared inside
-    // a `trait T { fn f(&self) -> i32 { ... } }` block that has a body. When
-    // called via static dispatch (e.g., `p.f()` where p: Pair and Pair: T),
-    // codegen needs the function signature to emit the correct call.
-    //
-    // Strategy: For each trait method with a body, find the unique impl of
-    // that trait (if any). Use the impl's self_ty as the self parameter type.
-    // If multiple impls exist, use the first impl's self_ty (v0.1 limitation
-    // — full monomorphization is v0.2+ work).
-    //
-    // Stage 14.99 (Bug Z7 fix): Emit a warning when 2+ impls exist for a trait
-    // with default bodies. Per §1.0 原则 5 "报错 > 静默": the user should know
-    // that the default body will be specialized for only the first impl.
-    for (_, owner) in &hir.owners {
-        if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Trait(t)) = owner {
-            let trait_name = t.ident.name;
-            // Find all impls of this trait.
-            let impls: Vec<_> = hir
-                .owners
-                .iter()
-                .filter_map(|(_, o)| {
-                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = o {
-                        if impl_block
-                            .of_trait
-                            .as_ref()
-                            .and_then(|p| p.segments.last().map(|s| s.ident.name))
-                            == Some(trait_name)
-                        {
-                            return Some(impl_block);
-                        }
-                    }
-                    None
-                })
-                .collect();
-            // Stage 14.99 (Bug Z7 fix): Check if this trait has any default body methods.
-            // If so, and if there are 2+ impls, emit a warning per §1.0 原则 5.
-            //
-            // Stage 14.100 (Bug AA6 fix): Refine the check — only emit the error
-            // if at least one impl does NOT override the default body method.
-            // If all impls override the default body, the default is never used,
-            // so no specialization issue can occur.
-            if impls.len() >= 2 {
-                // For each trait method with a body, check if any impl doesn't override it.
-                let mut any_unoverridden_default = false;
-                for trait_item in &t.items {
-                    if let crate::hir::HirTraitItem::Fn(default_fn) = trait_item {
-                        if default_fn.body.is_none() {
-                            continue;
-                        }
-                        // Check if every impl overrides this method.
-                        let all_override = impls.iter().all(|impl_block| {
-                            impl_block.items.iter().any(|impl_item| {
-                                if let crate::hir::HirImplItem::Fn(impl_fn) = impl_item {
-                                    impl_fn.ident.name == default_fn.ident.name
-                                } else {
-                                    false
-                                }
-                            })
-                        });
-                        if !all_override {
-                            any_unoverridden_default = true;
-                            break;
-                        }
-                    }
-                }
-                if any_unoverridden_default {
-                    let trait_name_str = interner.try_resolve(&trait_name).unwrap_or("?");
-                    errors.typeck.push(crate::typeck::TypeError::new(
-                        format!(
-                            "trait `{}` has default body methods and {} impls — \
-                             v0.1 will specialize the default body using the first impl's \
-                             self_ty only. Other impls will use incorrect specialization. \
-                             This is a v0.1 limitation; full monomorphization is v0.2+ work. \
-                             Workaround: override the default body in each impl.",
-                            trait_name_str,
-                            impls.len()
-                        ),
-                        t.span,
-                    ));
-                }
-            }
-            for trait_item in &t.items {
-                if let crate::hir::HirTraitItem::Fn(f) = trait_item {
-                    if f.body.is_none() {
-                        continue; // No body — no fn_sig needed (it's just a declaration).
-                    }
-                    let method_def_id = f.hir_id.owner;
-                    if fn_sig_table.sigs.contains_key(&method_def_id) {
-                        continue; // Already registered (e.g., overridden in an impl).
-                    }
-                    // Use the first impl's self_ty as the specialization type.
-                    let self_ty_opt = impls.first().map(|impl_block| {
-                        crate::mir::lower::lower_hir_ty_to_mir_ty(&impl_block.self_ty)
-                    });
-                    let inputs: Vec<crate::mir::ty::Ty> = f
-                        .sig
-                        .inputs
-                        .iter()
-                        .map(|p| {
-                            if p.self_kind.is_some() {
-                                if let Some(ref self_ty) = self_ty_opt {
-                                    match p.self_kind {
-                                        Some(crate::ast::SelfKind::Ref(mutability)) => {
-                                            let mir_mut = match mutability {
-                                                crate::ast::Mutability::Mutable => {
-                                                    crate::mir::ty::Mutability::Mutable
-                                                }
-                                                crate::ast::Mutability::Immutable => {
-                                                    crate::mir::ty::Mutability::Immutable
-                                                }
-                                            };
-                                            crate::mir::ty::Ty::new(
-                                                crate::mir::ty::TyKind::Ref(
-                                                    crate::mir::ty::Region::Erased,
-                                                    mir_mut,
-                                                    Box::new(self_ty.clone()),
-                                                ),
-                                                p.span,
-                                            )
-                                        }
-                                        _ => self_ty.clone(),
-                                    }
-                                } else {
-                                    crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
-                                }
-                            } else if let Some(ty) = &p.ty {
-                                crate::mir::lower::lower_hir_ty_to_mir_ty(ty)
-                            } else {
-                                crate::mir::ty::Ty::new(crate::mir::ty::TyKind::Error, p.span)
-                            }
-                        })
-                        .collect();
-                    let output = match &f.sig.output {
-                        HirFnRetTy::Default(_) => crate::mir::ty::Ty::new(
-                            crate::mir::ty::TyKind::Tuple(Vec::new()),
-                            f.span,
-                        ),
-                        HirFnRetTy::Ty(t) => crate::mir::lower::lower_hir_ty_to_mir_ty(t),
-                    };
-                    fn_sig_table.sigs.insert(
-                        method_def_id,
-                        crate::mir::ty::Sig {
-                            inputs,
-                            output: Box::new(output),
-                            abi: f.sig.abi,
-                            is_unsafe: f.sig.is_unsafe,
-                        },
-                    );
-                    if crate::session::debug_codegen_enabled() {
-                        let name = interner.try_resolve(&f.ident.name).unwrap_or("?");
-                        eprintln!(
-                            "[DRIVER] fn_sig_table: inserted trait default method_def_id={:?} name={} inputs_len={}",
-                            method_def_id,
-                            name,
-                            fn_sig_table
-                                .sigs
-                                .get(&method_def_id)
-                                .map(|s| s.inputs.len())
-                                .unwrap_or(0)
-                        );
-                    }
-                }
-            }
-        }
-    }
+    // Stage 18.144: extracted to driver_codegen_prep.rs
+    driver_codegen_prep::populate_trait_default_fn_sigs(
+        &hir,
+        &interner,
+        &mut fn_sig_table,
+        &mut errors,
+    );
     let mut mirs = Vec::with_capacity(hir.bodies.len());
     let mut typeck_results = Vec::with_capacity(hir.bodies.len());
     // Stage 16.14: Synthesized closure MIR bodies, built per-function.

@@ -15834,3 +15834,25 @@ Stage Summary:
 - Stage 18.143 PASSED — TD-LOC-DRIVER 继续修复 (提取 TraitResolver + DynTraitMIRPlan building)
 - 拆分结果: mod.rs 1801 → 1739 LOC + driver_codegen_prep.rs 322 → 355 LOC
 - v0.411.0: patch bump
+
+---
+Task ID: stage18.144
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.144 — TD-LOC-DRIVER 继续修复 (提取 trait default fn_sig population). v0.411.0 → v0.412.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §17 任务规划: 提取 pre-computation loops 到 driver_codegen_prep.rs
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (mod.rs 1580 仍超 1500, 接近 1500)
+- 重构执行:
+  → 尝试提取 3 个 pre-computation loops (198 LOC): 因依赖 compile_inner 局部变量过多 (generics_map + fn_name_by_def_id + method_to_impl_index + resolve_self_param_type_for_sig) 而回退
+  → 改为单独提取 loop 4 (trait default fn_sig, 166 LOC): 只依赖 fn_sig_table + hir + interner + errors
+  → 添加 errors 参数 (函数内使用 errors.typeck.push)
+- §3.2 验收: 全套通过 (640 lib + 2663 integration, 0 failures)
+- v0.412.0: patch bump
+
+Stage Summary:
+- Stage 18.144 PASSED — TD-LOC-DRIVER 继续修复 (提取 trait default fn_sig population)
+- 拆分结果: mod.rs 1739 → 1580 LOC + driver_codegen_prep.rs 355 → 532 LOC
+- v0.412.0: patch bump
