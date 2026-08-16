@@ -15676,3 +15676,26 @@ Stage Summary:
 - §3.2 验收: 全套通过 (640 lib + 2663 integration tests, 0 failures)
 - v0.404.0: patch bump (目录模块转换)
 - 下一步: Stage 18.137 — 逐个函数提取 (非脚本批量)
+
+---
+Task ID: stage18.137
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.137 — TD-LOC-DRIVER 继续修复 (提取 driver_tests.rs). v0.404.0 → v0.405.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上个 stage 状态): cargo check ✅ + fmt ✅ + lib 640 ✅ + tests 2663 ✅
+- §17 任务规划: 提取 test module + compile_expect_ok 到 driver_tests.rs
+- §13.4 J1-J6: J1-J5 全部通过; J6 部分通过 (mod.rs 2082 仍超 1500)
+- 重构执行:
+  → 从 mod.rs 提取 #[cfg(test)] mod tests + compile_expect_ok 到 driver_tests.rs (279 LOC)
+  → mod.rs 添加 mod driver_tests + pub use driver_tests::compile_expect_ok
+  → 移除 #[cfg(test)] guard (integration tests 需要 compile_expect_ok)
+- §3.2 验收: 全套通过 (640 lib + 2663 integration, 0 failures)
+- §8 文档同步: dev-log + Cargo.toml + README.md + worklog.md
+
+Stage Summary:
+- Stage 18.137 PASSED — TD-LOC-DRIVER 继续修复 (提取 driver_tests.rs)
+- 拆分结果: mod.rs 2351 → 2082 LOC + driver_tests.rs 279 LOC
+- v0.405.0: patch bump
+- 下一步: Stage 18.138 — compile_inner 拆分 (1433 LOC)
