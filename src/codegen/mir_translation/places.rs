@@ -541,6 +541,27 @@ pub(crate) fn codegen_place_load_typed(
                     // Closure-typed local whose alloca stores a pointer
                     // (passed as OpaquePtr). We need to load the pointer
                     // value from the alloca before GEP-ing into it.
+                    //
+                    // Stage 18.174 (TD-FAT-PTR-FIELD-PROJ): For fat pointer
+                    // types (Str, Slice) stored in a local, the alloca IS
+                    // the struct address — use local_ptr directly for GEP.
+                    // The bug was that `emitter.local(id.0)` returned the
+                    // cached SSA value (e.g., `%v3` = loaded fat pointer),
+                    // not the alloca pointer (`%loc_2`). When local() returns
+                    // a value that starts with `%`, we skip it (line 464),
+                    // but that check was only for non-`%` constants. For
+                    // fat pointers, `set_local` caches the loaded value
+                    // (e.g., `%v3`), so `local()` returns `%v3` — which IS
+                    // a `%`-prefixed value, so it passes the check and gets
+                    // returned as the "value". But this is the LOADED VALUE,
+                    // not a pointer. We can't GEP into a value.
+                    //
+                    // Fix: For Field projections on Local, ALWAYS use
+                    // local_ptr (the alloca pointer) as the base for GEP,
+                    // UNLESS the local is a Ref or Closure (which need the
+                    // loaded pointer value).
+                    // Per §1.0 原則 6 (通解>特例): one rule for all
+                    // non-Ref, non-Closure locals.
                     let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone());
                     if let Some(ty) = local_ty {
                         if matches!(&ty.kind, crate::mir::ty::TyKind::Ref(_, _, _))
@@ -552,6 +573,11 @@ pub(crate) fn codegen_place_load_typed(
                             let ptr_ty = detect_place_type(mir, base, layouts);
                             codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
                         } else {
+                            // Stage 18.174: For all other types (including
+                            // fat pointers like Str), use the alloca pointer
+                            // directly as the GEP base. The alloca stores
+                            // the struct/fat-pointer value, so its address
+                            // is the base for field GEP.
                             emitter
                                 .local_ptr(id.0)
                                 .cloned()
@@ -620,7 +646,21 @@ pub(crate) fn codegen_place_load_typed(
                         }
                     }
                 }
-                let field_ptr = emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0);
+                let field_ptr = if let PlaceKind::Local(id) = &base.kind {
+                    // Stage 18.174 (TD-FAT-PTR-FIELD-PROJ): Use
+                    // compute_place_address which returns the alloca
+                    // pointer for Local, then GEP from there. This
+                    // avoids the bug where `base_ptr` was the loaded
+                    // SSA value instead of the alloca pointer.
+                    // Per §1.0 原則 6 (通解>特例): one path for all
+                    // Local-based Field projections.
+                    let addr = compute_place_address(emitter, mir, base, interner, layouts);
+                    let struct_ty = detect_place_storage_type(mir, base, layouts);
+                    emitter.emit_gep_field(&addr, &struct_ty, field_id.0)
+                } else {
+                    let field_ptr = emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0);
+                    field_ptr
+                };
                 emitter.emit_load(&ty, &field_ptr)
             }
             ProjectionElem::Index(idx) => {

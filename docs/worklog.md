@@ -17210,3 +17210,61 @@ Stage Summary:
 - 测试: 656 lib + 2967 integration = 3623 total, 0 failures
 - v0.441.0: patch bump
 - 下一步: 修复 codegen fat pointer Field projection 或转向其他任务
+
+---
+Task ID: stage18.174
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.174 — 修复 codegen fat pointer Field projection (TD-FAT-PTR-FIELD-PROJ). v0.441.0 → v0.442.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 638 ✅
+- §5.1 任务审查: Stage 18.173 发现 codegen 对 fat pointer Field projection 生成无效 GEP
+
+- 根因分析:
+  → MIR: `s.len()` 生成 `Operand::Copy(Place::Projection(Local(recv), Field(1, i64)))`
+  → codegen: `codegen_place_load_typed` 进入 Field 分支
+  → base_ptr 通过 local_ptr(id) 获取 (应该是 alloca 指针 %loc_2)
+  → 但 IR 显示 GEP base 是 %v3 (loaded value), 不是 %loc_2 (alloca pointer)
+  → 原因: `base_ptr` 从 local_ptr 获取后, 传给 `emit_gep_field`
+  → `emit_gep_field` 生成 `GEP {ptr,i64}, {ptr,i64}* base_ptr, 0, 1`
+  → 如果 base_ptr 是 %loc_2, GEP 正确: `GEP ..., {ptr,i64}* %loc_2, 0, 1`
+  → 如果 base_ptr 是 %v3 (loaded value), GEP 错误: `GEP ..., {ptr,i64}* %v3, 0, 1`
+  → 实际: IR 显示 `%v4 = GEP ..., {ptr,i64}* %v3` — 使用了 loaded value
+
+- 修复方案 (§12 最优>最小):
+  → 在 Field projection 的 `base_ptr` 计算后, 如果 base 是 Local,
+    使用 `compute_place_address` 而非 `base_ptr` 作为 GEP base
+  → `compute_place_address` 对 Local 返回 alloca 指针 (正确)
+  → 避免了 `base_ptr` 可能是 loaded value 的问题
+  → Per §1.0 原則 6 (通解>特例): 对所有 Local-based Field projection 统一使用 compute_place_address
+
+- 修复后 IR:
+  → Before: `%v4 = GEP ..., {ptr,i64}* %v3` (loaded value — invalid)
+  → After:  `%v4 = GEP ..., {ptr,i64}* %loc_2` (alloca pointer — correct)
+
+- 验证:
+  → str.len() 编译通过, IR 正确
+  → 运行: exit code 5 (len("hello") = 5) ✅
+  → 所有测试通过 (656 lib + 2967 integration = 3623 total, 0 failed)
+
+- §3.2 全套验收:
+  → cargo check --features llvm-backend: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend: 656 lib + 2967 integration = 3623 total, 0 failed
+
+- TD-FAT-PTR-FIELD-PROJ: ✅ Resolved
+- TD-STR-LEN-CODEGEN: ✅ Resolved (str.len() 可用, 返回正确值 5)
+- v0.442.0: minor bump (fat pointer Field projection 修复 + str.len() 可用)
+
+Stage Summary:
+- Stage 18.174 PASSED — 修复 codegen fat pointer Field projection
+- 修复: Field projection on Local 使用 compute_place_address (返回 alloca 指针)
+- 结果: str.len() 可用, 返回正确值 (exit code 5 for "hello")
+- 测试: 656 lib + 2967 integration = 3623 total, 0 failures
+- §3.2 全套验收: cargo check/fmt/clippy/test 全绿
+- TD-FAT-PTR-FIELD-PROJ: ✅ Resolved
+- TD-STR-LEN-CODEGEN: ✅ Resolved
+- v0.442.0: minor bump
+- 下一步: String 类型实现 或 其他 stdlib 功能
