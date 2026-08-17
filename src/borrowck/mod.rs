@@ -186,8 +186,6 @@ impl<'a> BorrowChecker<'a> {
         if let (Some(resolver), Some(interner)) = (self.resolver, self.interner) {
             copy_semantics::ty_is_copy_with_resolver(ty, resolver, interner)
         } else {
-            // Stage 18.64: Use the internal is_copy_recursive directly
-            // instead of deprecated ty_is_copy wrapper.
             copy_semantics::is_copy_recursive(ty)
         }
     }
@@ -636,7 +634,17 @@ impl<'a> BorrowChecker<'a> {
             }
             TerminatorKind::SwitchInt { discr, .. } => {
                 // Stage 15.85: use operand span (was: Span::DUMMY).
-                self.check_operand(mir, discr, crate::mir::place::operand_span(discr));
+                // Stage 18.169 (TD-OPTION-METHODS-BORROW): Use `check_operand_read`
+                // instead of `check_operand` for match discriminants. Match
+                // scrutinees are READ operations, not moves — they should NOT
+                // trigger the Copy-ness check. This fixes `match *self` on
+                // non-Copy types like `Option<T>`.
+                //
+                // Per §2 原則 9 (正确>妥协): match doesn't consume the scrutinee
+                // (patterns may bind by value, but the discriminant read itself
+                // is a borrow). Per §1.0 原則 6 (通解>特例): one fix for all
+                // match expressions (user + prelude).
+                self.check_operand_read(mir, discr, crate::mir::place::operand_span(discr));
             }
             // Stage 15.61 fix: `TerminatorKind::Drop` is a destructor, not a
             // read. Previously, `check_place_read` was called, which flagged
@@ -818,8 +826,16 @@ impl<'a> BorrowChecker<'a> {
                     &lv.kind,
                     PlaceKind::Projection(_, ProjectionElem::Field(_, _))
                 );
+                // Stage 18.169 (TD-OPTION-METHODS-BORROW): Also allow Deref
+                // projections. Reading through a reference (`*self` where
+                // `self: &T`) is always safe — the reference guarantees the
+                // value is valid and shared references allow reads.
+                // This fixes `match *self` in Option/Result methods.
+                // Per §2 原則 9 (正确>妥协): deref through &T is a read, not a move.
+                let is_deref_projection =
+                    matches!(&lv.kind, PlaceKind::Projection(_, ProjectionElem::Deref));
                 let ty = self.place_ty(mir, lv);
-                if !self.is_copy(&ty) && !is_field_projection {
+                if !self.is_copy(&ty) && !is_field_projection && !is_deref_projection {
                     self.errors.push(BorrowError::not_copy(
                         // Stage 15.84: use human-readable type name
                         // (was: {:?} Debug format leaking TyKind).
@@ -874,6 +890,35 @@ impl<'a> BorrowChecker<'a> {
                 if !is_field_projection && !is_copy {
                     self.moves.record_move(path);
                 }
+            }
+            Operand::Constant(_) => {}
+        }
+    }
+
+    /// Stage 18.169 (TD-OPTION-METHODS-BORROW): Check an operand for
+    /// use-after-move ONLY, without the Copy-ness check.
+    ///
+    /// Used for `SwitchInt` discriminants (match scrutinees) where the
+    /// operand is a READ, not a move. Match scrutinees should be allowed
+    /// on non-Copy types (e.g., `match *self` where `self: &Option<T>`).
+    ///
+    /// Per §2 原則 9 (正确>妥协): match doesn't consume the scrutinee —
+    /// only the patterns that bind by value do. The discriminant read
+    /// itself is always safe.
+    /// Per §1.0 原則 6 (通解>特例): one method for all read-only operands.
+    /// Per §10: `check_operand_read` follows `<verb>_<noun>_<noun>` pattern.
+    fn check_operand_read(&mut self, mir: &MirBody, op: &Operand, span: Span) {
+        match op {
+            Operand::Copy(lv) | Operand::Move(lv) => {
+                let path = self.place_path(mir, lv);
+                if self.moves.is_moved(&path) {
+                    self.errors.push(BorrowError::use_after_move(
+                        &format!("use of moved value: {}", self.format_place(lv)),
+                        span,
+                    ));
+                }
+                // NOTE: Intentionally NO Copy-ness check and NO move recording.
+                // Match discriminants are reads, not moves.
             }
             Operand::Constant(_) => {}
         }

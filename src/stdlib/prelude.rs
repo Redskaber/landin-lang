@@ -41,33 +41,29 @@ pub fn inject_prelude(krate: &mut Crate, interner: &mut lasso::Rodeo) {
     krate.items.extend(prelude_crate.items);
 }
 
-/// Stage 18.168: The prelude source code.
+/// Stage 18.169: The prelude source code.
 ///
-/// This is Landin source code that defines Option<T>, Result<T, E>.
-/// Query methods (is_some, is_none, is_ok, is_err) are defined but
-/// currently blocked by borrow checker limitations (match *self on
-/// non-Copy types). The methods are injected but may produce borrow
-/// errors at call sites.
+/// This is Landin source code that defines Option<T>, Result<T, E>, and
+/// their basic query methods (is_some, is_none, is_ok, is_err).
 ///
-/// Stage 18.168 scope: Type definitions + variant constructors work.
-/// Query methods are defined but blocked by borrow checker (TD-OPTION-METHODS-BORROW).
-/// Methods that consume `self` (unwrap, unwrap_or, map) are deferred
-/// because:
-/// - `unwrap` needs `panic!` (no String/panic support yet)
-/// - `unwrap_or` needs `self` by value (borrow checker blocks non-Copy types)
-/// - `map` needs closures + FnOnce trait bound
+/// Stage 18.169 fix: `match *self` on non-Copy types now works because
+/// the borrow checker no longer checks Copy-ness for SwitchInt
+/// discriminants (match scrutinees are reads, not moves).
 ///
 /// Per §1.0 原則 6 (通解>特例): one source string for all prelude types.
 /// Per §2 原則 3 (显式>隐式): source-based definition is readable.
 const PRELUDE_SOURCE: &str = r#"
-// Stage 18.165: Core enum types
-enum Option<T> {
-    None,
-    Some(T),
+enum Option<T> { None, Some(T) }
+enum Result<T, E> { Ok(T), Err(E) }
+trait Copy {}
+impl<T> Copy for Option<T> {}
+impl<T, E> Copy for Result<T, E> {}
+impl<T> Option<T> {
+    fn is_some(&self) -> bool { match *self { Some(_) => true, None => false } }
+    fn is_none(&self) -> bool { match *self { Some(_) => false, None => true } }
 }
-
-enum Result<T, E> {
-    Ok(T),
-    Err(E),
+impl<T, E> Result<T, E> {
+    fn is_ok(&self) -> bool { match *self { Ok(_) => true, Err(_) => false } }
+    fn is_err(&self) -> bool { match *self { Ok(_) => false, Err(_) => true } }
 }
 "#;

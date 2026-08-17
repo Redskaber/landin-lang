@@ -21,12 +21,12 @@ fn test_copy_detection_with_impl() {
     // Note: Landin doesn't have built-in Copy trait yet — this test verifies
     // the infrastructure works (no crash, correct fallback).
     let result = compile("trait Copy {} struct S; impl Copy for S {} fn main() {}");
-    assert_eq!(
-        result.trait_resolver.trait_count(),
-        1,
-        "should have Copy trait"
+    assert!(result.trait_resolver.trait_count() >= 2, "prelude + 1 user");
+    assert!(
+        result.trait_resolver.impl_count() >= 5,
+        "prelude adds 4 impls + 1 user impl, got {}",
+        result.trait_resolver.impl_count()
     );
-    assert_eq!(result.trait_resolver.impl_count(), 1, "should have 1 impl");
     assert!(
         result.trait_resolver.type_count() >= 2,
         "should have at least 2 type names (Copy + S)"
@@ -38,10 +38,13 @@ fn test_copy_detection_without_impl() {
     // Without `impl Copy for T`, the type should not be Copy.
     // (But currently falls back to true if "Copy" is not interned.)
     let result = compile("struct S; fn main() {}");
-    assert_eq!(
-        result.trait_resolver.trait_count(),
-        0,
-        "should have 0 traits"
+    assert!(
+        result.trait_resolver.trait_count() >= 1,
+        "prelude adds trait Copy"
     );
-    assert_eq!(result.trait_resolver.impl_count(), 0, "should have 0 impls");
+    assert!(
+        result.trait_resolver.impl_count() >= 4,
+        "prelude adds 4 impls (2 Copy + 2 inherent), got {}",
+        result.trait_resolver.impl_count()
+    );
 }
