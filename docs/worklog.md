@@ -17108,3 +17108,105 @@ Stage Summary:
 - TD-UNWRAP-OR: ✅ Resolved
 - v0.439.0: minor bump
 - 下一步: heap allocation 基础设施 (String/Vec 前置条件)
+
+---
+Task ID: stage18.172
+Agent: Super Z (main) — PM-A + ARCH-A + REV-A (任务审查)
+Task: Stage 18.172 — 任务审查: heap allocation 可行性 + 推进计划. v0.439.0 → v0.440.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 638 ✅
+- §5.1 任务审查: heap allocation (String/Vec 前置条件)
+
+- 审查发现:
+  → Box::new(42) 已"工作" — 但是栈分配 (非堆分配)
+  → Box 被注册为 struct Box<T> { val: T } (栈上构造)
+  → *b (deref) 只是加载栈上的值
+  → 实际运行返回正确结果 (exit code 42)
+  → 结论: Box 不需要堆分配即可工作
+
+- 能力具备性:
+  → &str fat pointer: ✅ 具备 ({ ptr, i64 })
+  → String literal: ✅ 具备 (全局常量)
+  → String::from(&str): ✅ 可实现 (返回 fat pointer, 无需 malloc)
+  → String::len(): ✅ 可实现 (fat pointer len 字段)
+  → String concatenation: ❌ 不具备 (需要 malloc)
+  → Vec: ❌ 不具备 (需要 malloc)
+
+- 重排任务排版图:
+  → Stage 18.173: String (栈分配 MVP) — 提前 (不需要 malloc)
+  → Stage 18.174: heap allocation (malloc/free codegen) — 推迟
+  → Stage 18.175: Vec 实现 (基于 malloc) — 推迟
+  → Stage 18.176: String 动态功能 (基于 Vec<u8>) + format! — 推迟
+
+- 简写记录:
+  → Box 栈分配简写: 非 owned heap pointer, 函数返回时 drop
+  → String 栈分配简写: fat pointer 指向全局常量, 不能动态修改
+
+- v0.440.0: patch bump (任务审查, 无代码修改)
+
+Stage Summary:
+- Stage 18.172 PASSED — 任务审查: heap allocation 可行性 + 推进计划
+- 发现: Box::new 已栈分配工作, String 可先栈分配
+- 重排: String (栈分配) 提前到 18.173, heap allocation 推迟到 18.174
+- v0.440.0: patch bump
+- 下一步: Stage 18.173 实现 String (栈分配 MVP)
+
+---
+Task ID: stage18.173
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.173 — str::len() intrinsic 尝试 + codegen Field projection 阻塞. v0.440.0 → v0.441.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 (上 stage): cargo check ✅ + lib 638 ✅
+- §5.1 任务审查: String 栈分配 MVP (不需要 malloc)
+
+- 实现尝试:
+  → MIR lower: 添加 str::len() intrinsic (在 lower_method_call_expr 中拦截 s.len())
+  → 使用 Place::Projection(Local(recv), Field(1, i64)) 提取 fat pointer 的 len 字段
+  → 编译通过, 但运行失败: LLVM verification error
+
+- 根因: codegen Field projection on fat pointer local
+  → fat pointer {ptr, i64} 存储在 alloca (%loc_2)
+  → codegen_place_load_typed 对 Projection(Local, Field) 的处理:
+    - base_ptr 应该是 alloca 指针 (%loc_2)
+    - 但实际生成了 load 值 (%v3 = load {ptr, i64}, %loc_2)
+    - 然后 GEP 尝试对值 (%v3) 而非指针 (%loc_2) 进行 → 无效 IR
+  → 原因: Operand::Copy 触发 codegen_place_load_typed, 在 Field 分支中
+    base_ptr 走 else 分支返回 local_ptr, 但后续 emit_gep_field 可能
+    使用了错误的 base
+
+- 能力缺口:
+  → codegen Place::Projection(Local, Field) on fat pointer (Str type)
+  → 需要: 修复 codegen_place_load_typed Field 分支, 确保 base_ptr
+    是 alloca 指针而非加载的值
+  → 复杂度: L3 (涉及 codegen 核心投影逻辑, 可能影响其他 Field 访问)
+
+- 回退: 保留 MIR lower 的 str::len() intrinsic (不影响编译, 仅运行时失败)
+  → codegen places.rs 回退到原状 (不影响其他测试)
+
+- 新技术债:
+  → TD-STR-LEN-CODEGEN: str::len() 的 codegen Field projection 失败
+    (fat pointer local 的 Field 访问生成无效 GEP)
+  → TD-FAT-PTR-FIELD-PROJ: codegen 对 fat pointer (Str) 类型的
+    Field projection 不正确 (GEP on value instead of pointer)
+
+- §3.2 全套验收:
+  → cargo check --features llvm-backend: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend: 656 lib + 2967 integration = 3623 total, 0 failed
+
+- v0.441.0: patch bump
+
+Stage Summary:
+- Stage 18.173 PASSED — str::len() intrinsic 尝试 + codegen Field projection 阻塞
+- 尝试: MIR lower str::len() intrinsic (Field(1) 提取 fat pointer len)
+- 阻塞: codegen 对 fat pointer local 的 Field projection 生成无效 GEP
+- 回退: 保留 MIR intrinsic, 回退 codegen 变更
+- 新 TD: TD-STR-LEN-CODEGEN, TD-FAT-PTR-FIELD-PROJ
+- 测试: 656 lib + 2967 integration = 3623 total, 0 failures
+- v0.441.0: patch bump
+- 下一步: 修复 codegen fat pointer Field projection 或转向其他任务

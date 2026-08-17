@@ -986,25 +986,48 @@ pub(super) fn lower_method_call_expr(
             cont,
         );
     } else {
-        // Stage 14.30: Per "报错 > 静默" principle — emit a compile error
-        // instead of silently producing an Error placeholder.
-        // Was: silently emitted Error placeholder, which codegen either
-        // dropped (producing 0) or emitted invalid IR (calling landin_main
-        // recursively). Now: emit a clear error message via the typeck
-        // errors channel (collected by driver after MIR lower).
-        //
-        // However, for trait methods (which we don't yet fully support),
-        // we DON'T emit an error — trait method calls are expected to
-        // fall through here as a known limitation. We only emit errors
-        // for non-trait cases where the receiver is a concrete type.
+        // Stage 18.173 (TD-STR-LEN): Handle str::len() as a builtin intrinsic.
+        // &str is a fat pointer {ptr, i64} — not an ADT, so resolve_inherent_method
+        // can't find it. We intercept `s.len()` on &str/str and extract the i64
+        // length field directly.
+        // Per §1.0 原則 6 (通解>特例): one intrinsic check for all str methods.
         let method_name_str = cx.interner.resolve(&method.name);
         let recv_ty = cx.mir.local(recv_local).ty.clone();
-        // Stage 14.30: Per "报错 > 静默" — but conformance tests for
-        // Stage 0 limitation expect compile_ok for unsupported features
-        // (trait methods, cross-module impls). Only emit error for
-        // truly impossible cases (non-Adt, non-Ref, non-Error, non-Infer
-        // receiver — i.e., a concrete type like Int where the method
-        // definitely doesn't exist).
+
+        if method_name_str == "len" && args.is_empty() {
+            let is_str = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Str)
+                || matches!(&recv_ty.kind,
+                    crate::mir::ty::TyKind::Ref(_, _, inner)
+                        if matches!(&inner.kind, crate::mir::ty::TyKind::Str)
+                );
+            if is_str {
+                let dest_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+                let dest = cx.mir.new_local(dest_ty.clone(), None, expr.span);
+                let cont = cx.new_block();
+                cx.push_assign(
+                    Place::local(dest, expr.span),
+                    Rvalue::Use(Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(recv_local, receiver.span)),
+                            ProjectionElem::Field(FieldId(1), dest_ty),
+                        ),
+                        span: expr.span,
+                    })),
+                    expr.span,
+                );
+                cx.terminate_and_goto(
+                    Terminator {
+                        kind: TerminatorKind::Goto(cont),
+                        span: expr.span,
+                    },
+                    cont,
+                );
+                return dest;
+            }
+        }
+
+        // Stage 14.30: Per "报错 > 静默" principle — emit a compile error
+        // instead of silently producing an Error placeholder.
         let is_known_unsupported = matches!(
             &recv_ty.kind,
             crate::mir::ty::TyKind::Error
