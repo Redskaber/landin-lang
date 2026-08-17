@@ -44,7 +44,8 @@ fn test_resolve_other_primitives() {
 fn test_resolve_alloc_types() {
     assert_eq!(resolve_stdlib_type("Box"), StdlibTypeKind::AllocType);
     assert_eq!(resolve_stdlib_type("Vec"), StdlibTypeKind::AllocType);
-    assert_eq!(resolve_stdlib_type("String"), StdlibTypeKind::AllocType);
+    // Stage 18.176: String is now Str (type alias for &str), not AllocType
+    assert_eq!(resolve_stdlib_type("String"), StdlibTypeKind::Str);
     assert_eq!(resolve_stdlib_type("HashMap"), StdlibTypeKind::AllocType);
 }
 

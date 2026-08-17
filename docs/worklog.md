@@ -17268,3 +17268,90 @@ Stage Summary:
 - TD-STR-LEN-CODEGEN: ✅ Resolved
 - v0.442.0: minor bump
 - 下一步: String 类型实现 或 其他 stdlib 功能
+
+---
+Task ID: stage18.175
+Agent: Super Z (main) — ARCH-A + QA-A + REV-A + PM-A (联合深度审查)
+Task: Stage 18.175 — 阶段末尾深度审查 §14.5 (D1-D8). v0.442.0 → v0.443.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (从 v0.442.0 包恢复)
+- §3.2 验收: cargo check ✅ + lib 638 ✅ + tests 2967 ✅
+
+- §14.5 深度审查 (D1-D8):
+  → D1 架构健康度: ✅ §11 接口隔离严格维护, prelude 注入系统清晰
+  → D2 技术债: 5 项 P2 (TD-COPY-TRAIT-AUTO, TD-OPTION-ADVANCED-METHODS, 12 unwrap, Span::DUMMY, format!)
+  → D3 测试覆盖: 3605 total, 860 negative (23.9%), 0 TODO/FIXME
+  → D4 下一阶段就绪度: 70% (String 可先实现, Vec/heap 推迟)
+  → D5 设计合理性: prelude 注入 + variant constructor + borrow checker 修复均合理
+  → D6 性能: ~5s 编译, 无瓶颈
+  → D7 文档: 每 stage 有 dev-log, worklog + tech-debt-register 完整
+  → D8 测试路径: 全管道 + 多文件 + Option/Result + str::len() + variant constructor 覆盖
+
+- §11 合规验证:
+  → codegen 不调用 mir::lower/typeck/driver: ✅ 零匹配
+  → 无 glob exports: ✅
+  → 元数据预计算: ✅
+
+- 结论: GO — 架构健康, 可继续推进 v0.2 P1
+- 输出: docs/develop/v0/stage-18/stage-18.175-deep-review.md
+- v0.443.0: patch bump (深度审查报告)
+
+Stage Summary:
+- Stage 18.175 PASSED — 阶段末尾深度审查 §14.5 (D1-D8)
+- 审查范围: Stage 18.125-18.174 (50 个 stage) 全部工作
+- 结论: GO (0 P0, 0 P1, 5 项 P2 技术债已记录)
+- 累计成果: 多文件项目 + Option/Result + variant constructor + str::len() + 泛型 impl 修复
+- v0.443.0: patch bump
+- 下一步: String 栈分配 MVP 或 heap allocation
+
+---
+Task ID: stage18.176
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A
+Task: Stage 18.176 — String 栈分配 MVP (type alias &str) + bare TyKind::Str codegen 修复. v0.443.0 → v0.444.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (从 v0.442.0 包恢复)
+- §3.2 验收: cargo check ✅ + lib 638 ✅ + tests 2967 ✅
+- §5.1 任务审查: String 可先栈分配 (不需要 malloc)
+
+- 修复 unused variable warning: places.rs:649 `id` → `_id`
+
+- 实现 String 类型:
+  → resolve/primitives.rs: "String" → PrimTy::Str (type alias for &str)
+  → stdlib/mod.rs: "String" 从 AllocType 改为 Str
+  → codegen/mir_translation/types.rs: 添加 bare TyKind::Str → fat pointer
+    (mir_type_to_emit_type_with_layouts + _and_mono)
+
+- 根因: bare TyKind::Str (不在 Ref 内) 在 codegen 中 fallthrough 到
+  mir_type_to_emit_type (legacy), 返回 thin pointer (Ptr(I8*))
+  而非 fat pointer ({ ptr, i64 })
+  → 修复: 在两个 layouts-aware 函数中添加独立的 TyKind::Str case
+
+- 验证:
+  → let s: String = "hello"; s.len() → exit code 5 ✅
+  → let s: &str = "hello"; s.len() → exit code 5 ✅ (无回归)
+  → println!("{}", "hello") → "hello" ✅ (无回归)
+
+- §3.2 全套验收:
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend: 656 lib + 2967 integration = 3623 total, 0 failed
+
+- 简写记录:
+  → String = &str alias (MVP): 真正的 String 需要 heap allocation (v0.2 P1+)
+  → bare TyKind::Str = fat pointer: str 是 unsized type, 但 MVP 中直接作为 fat pointer
+  → TD-STRING-AS-STR-ALIAS: String 是 &str 的 type alias, 非 owned heap String
+
+- v0.444.0: minor bump (String 类型可用 + bare Str codegen 修复)
+
+Stage Summary:
+- Stage 18.176 PASSED — String 栈分配 MVP + bare TyKind::Str codegen 修复
+- 新增: String 类型 (alias for &str, 无需 heap allocation)
+- 修复: bare TyKind::Str 在 codegen 中返回 fat pointer (was: thin pointer)
+- 结果: let s: String = "hello"; s.len() → 5 ✅
+- 测试: 656 lib + 2967 integration = 3623 total, 0 failures
+- §3.2 全套验收: cargo check/fmt/clippy/test 全绿
+- v0.444.0: minor bump
+- 下一步: heap allocation 基础设施 (malloc/free codegen) 或更多 stdlib 功能

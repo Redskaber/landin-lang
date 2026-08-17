@@ -111,6 +111,10 @@ pub fn mir_type_to_emit_type_with_layouts(
             }
         }
         TyKind::Slice(elem) => EmitType::ptr_to(mir_type_to_emit_type_with_layouts(elem, layouts)),
+        // Stage 18.176: Bare TyKind::Str (not inside Ref) — treat as fat pointer.
+        // This makes `let s: String = "hello"` work (String = Str alias).
+        // Per §1.0 原則 6 (通解>特例): same fat pointer as &str.
+        TyKind::Str => crate::codegen::emit_fat_ptr_type(EmitType::I8),
         // Stage 14.57: FnPtr and FnDef — emit as opaque pointer (function reference).
         TyKind::FnPtr(_) | TyKind::FnDef(_, _) => EmitType::OpaquePtr,
         // Stage 14.82 (GAP-7 partial fix): Closure type — emit as a struct
@@ -226,6 +230,8 @@ pub fn mir_type_to_emit_type_with_layouts_and_mono(
             layouts,
             mono_layouts,
         )),
+        // Stage 18.176: Bare TyKind::Str — fat pointer (same as with_layouts).
+        TyKind::Str => crate::codegen::emit_fat_ptr_type(EmitType::I8),
         TyKind::Closure(_, substs) => {
             let fields: Vec<EmitType> = substs
                 .iter()

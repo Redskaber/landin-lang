@@ -462,12 +462,12 @@ pub fn resolve_stdlib_type(name: &str) -> StdlibTypeKind {
         // Core other
         "bool" => StdlibTypeKind::Bool,
         "char" => StdlibTypeKind::Char,
-        "str" => StdlibTypeKind::Str,
+        "str" | "String" => StdlibTypeKind::Str,
         "()" => StdlibTypeKind::Unit,
         "Never" => StdlibTypeKind::Never,
         // Alloc types
-        "Box" | "Vec" | "String" | "HashMap" | "BTreeMap" | "HashSet" | "BTreeSet" | "Rc"
-        | "Arc" | "Cell" | "RefCell" | "LinkedList" | "VecDeque" => StdlibTypeKind::AllocType,
+        "Box" | "Vec" | "HashMap" | "BTreeMap" | "HashSet" | "BTreeSet" | "Rc" | "Arc" | "Cell"
+        | "RefCell" | "LinkedList" | "VecDeque" => StdlibTypeKind::AllocType,
         // Std types
         "File" | "Dir" | "Path" | "PathBuf" | "OpenOptions" | "TcpStream" | "TcpListener"
         | "UdpSocket" | "Thread" | "JoinHandle" | "Mutex" | "Condvar" | "Command"

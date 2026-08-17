@@ -646,7 +646,7 @@ pub(crate) fn codegen_place_load_typed(
                         }
                     }
                 }
-                let field_ptr = if let PlaceKind::Local(id) = &base.kind {
+                let field_ptr = if let PlaceKind::Local(_id) = &base.kind {
                     // Stage 18.174 (TD-FAT-PTR-FIELD-PROJ): Use
                     // compute_place_address which returns the alloca
                     // pointer for Local, then GEP from there. This
