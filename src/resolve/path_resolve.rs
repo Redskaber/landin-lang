@@ -34,9 +34,6 @@ impl Resolver {
     pub(super) fn resolve_all_paths(&mut self, hir: &mut HirCrate, interner: &Rodeo) {
         // Stage 3.67: Build a map from owner DefId → HirSelfKind so that
         // body resolution can know whether it's inside a trait or impl.
-        // Previously (Stage 3.66), only owner-level paths got the
-        // accurate HirSelfKind; body-level `Self` always defaulted to
-        // Impl. Now we thread the owner context into body resolution too.
         let mut owner_self_kind: HashMap<crate::hir::DefId, crate::hir::HirSelfKind> =
             HashMap::new();
         // Stage 18.54: Build a map from owner DefId → generic type params,
@@ -44,6 +41,22 @@ impl Resolver {
         // resolving param types and body type annotations.
         let mut owner_generic_params: HashMap<crate::hir::DefId, Vec<(Spur, usize)>> =
             HashMap::new();
+
+        // Stage 18.171 (TD-GENERIC-IMPL-METHOD-TY): Build a map from impl
+        // method DefId → impl block's generic params. This is needed because
+        // impl methods are stored as separate HirItem::Fn owners, but their
+        // type parameters (e.g., `T` in `impl<T> Option<T> { fn unwrap_or(self, default: T) -> T }`)
+        // come from the impl block, not the method itself.
+        //
+        // Without this map, the method's body resolution enters an empty
+        // generic scope (the method's own generics), so `T` in the return
+        // type resolves to Res::Unknown → E300 "cannot find type".
+        //
+        // Per §1.0 原則 6 (通解>特例): one map for all impl methods.
+        // Per §2 原則 9 (正确>妥协): propagate impl generics to method scope.
+        let mut impl_method_parent_generics: HashMap<crate::hir::DefId, Vec<(Spur, usize)>> =
+            HashMap::new();
+
         for (_, node) in &hir.owners {
             if let OwnerNode::Item(item) = node {
                 // Collect owner_self_kind for Trait/Impl owners only.
@@ -55,9 +68,7 @@ impl Resolver {
                     owner_self_kind.insert(owner_def_id, kind);
                 }
 
-                // Stage 18.56: Build trait_assoc_types map for qualified path
-                // validation. For each trait, collect the names of its assoc types.
-                // Per §1.0 原則 6 "通用 > 特例": one map for all traits.
+                // Stage 18.56: Build trait_assoc_types map.
                 if let HirItem::Trait(t) = item {
                     let mut assoc_names = std::collections::HashSet::new();
                     for trait_item in &t.items {
@@ -69,7 +80,6 @@ impl Resolver {
                 }
 
                 // Stage 18.54: Collect generic type params for fn/struct/enum/trait/impl owners.
-                // Per §1.0 原則 6 "通用 > 特例": one match handles all five owner kinds.
                 let generic_params = match item {
                     HirItem::Fn(f) => Some(collect_generic_type_params(&f.generics)),
                     HirItem::Struct(s) => Some(collect_generic_type_params(&s.generics)),
@@ -85,9 +95,19 @@ impl Resolver {
                         HirItem::Enum(e) => e.hir_id.owner,
                         HirItem::Trait(t) => t.hir_id.owner,
                         HirItem::Impl(i) => i.hir_id.owner,
-                        _ => unreachable!(), // guarded by generic_params being Some
+                        _ => unreachable!(),
                     };
-                    owner_generic_params.insert(owner_def_id, params);
+                    owner_generic_params.insert(owner_def_id, params.clone());
+
+                    // Stage 18.171: For impl blocks, propagate the impl's
+                    // generic params to all method fn owners inside it.
+                    if let HirItem::Impl(impl_block) = item {
+                        for impl_item in &impl_block.items {
+                            if let crate::hir::HirImplItem::Fn(f) = impl_item {
+                                impl_method_parent_generics.insert(f.hir_id.owner, params.clone());
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -104,9 +124,25 @@ impl Resolver {
             if let Some(params) = owner_generic_params.get(&body.hir_id.owner) {
                 self.generic_param_scope.push(params.clone());
             }
+            // Stage 18.171: For impl methods, also enter the impl block's
+            // generic scope. The method's own generics (usually empty for
+            // non-generic methods like `fn unwrap_or`) are already pushed
+            // above. The impl's generics (e.g., `T` in `impl<T> Option<T>`)
+            // must also be visible so `T` in `-> T` resolves.
+            //
+            // Per §1.0 原則 6 (通解>特例): push impl generics as a separate
+            // scope frame, so both method-level and impl-level type params
+            // are visible (method-level shadows impl-level if same name).
+            if let Some(impl_params) = impl_method_parent_generics.get(&body.hir_id.owner) {
+                self.generic_param_scope.push(impl_params.clone());
+            }
             self.resolve_body(body, interner);
             // Stage 18.54: Exit the owner's generic scope.
             if owner_generic_params.contains_key(&body.hir_id.owner) {
+                self.generic_param_scope.pop();
+            }
+            // Stage 18.171: Exit the impl's generic scope if we entered it.
+            if impl_method_parent_generics.contains_key(&body.hir_id.owner) {
                 self.generic_param_scope.pop();
             }
         }
@@ -128,7 +164,31 @@ impl Resolver {
                 // (the inline clones inside Trait/Impl blocks).
                 // Stage 18.54: enter generic scope so type params (T, U, ...)
                 // in the signature resolve to Res::GenericParam.
+                //
+                // Stage 18.171 (TD-GENERIC-IMPL-METHOD-TY): If this fn is an
+                // impl method (identified by impl_method_def_ids), also enter
+                // the impl block's generic scope so impl-level type params
+                // (e.g., T in `impl<T> Option<T>`) are visible in the method
+                // signature. Without this, `fn unwrap_or(self, default: T) -> T`
+                // fails with E300 because T is only in the impl block, not the
+                // method's own generics.
+                //
+                // Per §1.0 原則 6 (通解>特例): check impl_method_def_ids to
+                // determine if this fn needs impl-level generics.
+                let is_impl_method = self.impl_method_def_ids.contains(&f.hir_id.owner);
                 self.enter_generic_scope(&f.generics);
+                // Stage 18.171: The impl block's generics are NOT available here
+                // because we don't have a direct ref to the impl block. Instead,
+                // the resolve_all_paths body-walking loop pushes impl generics
+                // for body resolution. For signature resolution, the impl
+                // generics are already entered during resolve_item_paths(Impl)
+                // which resolves the inline clone. The standalone owner copy
+                // of the fn (resolved here) only needs its own generics —
+                // the inline clone inside the impl block already has the
+                // correct resolution.
+                //
+                // So the real fix is in the body-walking loop above, not here.
+                let _ = is_impl_method;
                 self.resolve_fn_sig_paths(&mut f.sig, &mut f.generics, interner);
                 self.exit_generic_scope();
             }

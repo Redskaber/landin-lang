@@ -61,9 +61,11 @@ impl<T, E> Copy for Result<T, E> {}
 impl<T> Option<T> {
     fn is_some(&self) -> bool { match *self { Some(_) => true, None => false } }
     fn is_none(&self) -> bool { match *self { Some(_) => false, None => true } }
+    fn unwrap_or(self, default: T) -> T { match self { Some(v) => v, None => default } }
 }
 impl<T, E> Result<T, E> {
     fn is_ok(&self) -> bool { match *self { Ok(_) => true, Err(_) => false } }
     fn is_err(&self) -> bool { match *self { Ok(_) => false, Err(_) => true } }
+    fn unwrap_or(self, default: T) -> T { match self { Ok(v) => v, Err(_) => default } }
 }
 "#;
