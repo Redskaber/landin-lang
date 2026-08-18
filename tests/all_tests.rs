@@ -559,6 +559,10 @@ mod stage18_200_vec_get_tests;
 #[path = "v0/stage18/plan/stage18_203_elem_size_tests.rs"]
 mod stage18_203_elem_size_tests;
 
+// === Stage 18.205: TD-FUNCTION-REDEFINE-PARAMS fix (format! method calls) ===
+#[path = "v0/stage18/plan/stage18_205_format_method_tests.rs"]
+mod stage18_205_format_method_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

@@ -18877,3 +18877,75 @@ Stage Summary:
   5. 零回归 (3745 tests, 0 failures)
 - 下一步: 进入 v0.2 Phase 2 (typeck generic instantiation + MIR intrinsic ops 设计)
 - v0.469.0: no bump (audit only)
+
+---
+Task ID: stage18.205
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.205 — Fix TD-FUNCTION-REDEFINE-PARAMS (format! method call segfault). v0.469.0 → v0.470.0.
+
+Work Log:
+- Baseline: v0.469.0 / 664 lib + 3081 integration (post-Stage 18.204)
+- 触发条例: Stage 18.204 deep review §5.2 action plan item #3 (TD-FUNCTION-REDEFINE-PARAMS)
+- §13.1 设计对齐: 07-codegen.md §4 (MIR → LLVM IR mapping), §12 (最优 > 最小)
+- 依赖审计 (per user directive "依赖与基础设施完整能力审查"):
+  → LLVM C API: ✅ (LLVMBuildStore, LLVMConstNull, LLVMBuildPtrToInt, etc.)
+  → EmitType::OpaquePtr → LLVM ptr: ✅
+  → ArithmeticEmitter trait: ✅ (emit_const, emit_cast)
+  → MemoryEmitter trait: ✅ (emit_store, emit_load)
+  → Stage 18.188 precedent (return type fix): ✅ (same-root-cause family)
+  → 结论: 依赖完整, 可立即实施
+- Root cause analysis (per §12 治根 > 治症):
+  → Symptom: format!("x={}", 42).len() segfaults, but .len field access works
+  → Root cause: 4-byte `movl $0` store for `ptr null` constant
+    - emit_const creates i32 0 (4 bytes) for ConstVal::Int(0)
+    - operand.rs returns i32 0 without casting (OpaquePtr not in int-cast list)
+    - emit_store stores via bitcast, LLVM -O2 collapses `store ptr null` → `store i32 0`
+    - load reads 8 bytes → upper 4 bytes = stack garbage
+    - C function `__landin_format_variadic` receives non-NULL arg_types → dereferences garbage → SEGFAULT
+  → Same-root-cause family: Stage 18.188 (return type) + Stage 18.205 (param/store) — both fixed
+- §17.6 同类型整体修复: integrated fix for "function redefine" family
+- Implementation (4 files changed):
+  1. src/codegen/emitter/arithmetic.rs: Added `emit_null_ptr` to ArithmeticEmitter trait
+  2. src/codegen/llvm/arithmetic.rs:
+     - Implemented `emit_null_ptr` (i64 0 + inttoptr → ptr null)
+     - Added int→ptr cast branch in `emit_cast` (LLVMBuildIntToPtr)
+  3. src/codegen/llvm/memory.rs:
+     - Added pointer-type branch in `emit_store`: forces 8-byte store via i64 cast
+     - Bitcasts dest ptr to i64*, casts value to i64 (PtrToInt or IntCast), stores 8 bytes
+     - Works around LLVM -O2 optimization that collapses `store ptr null` → `store i32 0`
+  4. src/codegen/operand.rs:
+     - Added is_ptr_target check: when target is OpaquePtr/Ptr, call emit_null_ptr directly
+  5. src/codegen/text/arithmetic.rs: Implemented `emit_null_ptr` for text backend
+- 验证:
+  → format!("x={}", 42).len() = 4 ✅ (was segfault)
+  → format!("{}+{}={}", 1, 2, 3).len() = 5 ✅ (was segfault)
+  → String::from_str("hello").len() = 5 ✅ (no regression)
+  → String::new().len() = 0 ✅ (no regression)
+  → Box::new(42) + *b.0 = 42 ✅ (no regression)
+- 8 new tests (tests/v0/stage18/plan/stage18_205_format_method_tests.rs):
+  → stage18_205_format_len_method_call (the canonical segfault case)
+  → stage18_205_format_len_via_binding
+  → stage18_205_format_field_then_method
+  → stage18_205_from_str_method_call (regression)
+  → stage18_205_string_new_method_call (regression)
+  → stage18_205_format_multi_args_len
+  → stage18_205_box_new_deref (regression)
+  → stage18_205_format_cap_field
+- 验收 (§3.2):
+  → cargo fmt --check: ✅
+  → cargo test --features llvm-backend --lib: 664 passed
+  → cargo test --features llvm-backend --tests: 3089 passed (was 3081, +8 new)
+  → cargo clippy: 5 warnings (all pre-existing, 0 new)
+  → Total: 3753 tests, 0 failures, zero regression
+- tech-debt-register.md updated: TD-FUNCTION-REDEFINE-PARAMS ✅ Resolved
+- 文档输出:
+  → docs/develop/v0/stage-18/stage-18.205-dev-log.md (full dev log with root cause analysis)
+- 版本: v0.469.0 → v0.470.0 (minor bump — fixes segfault, user-facing)
+
+Stage Summary:
+- Stage 18.205 PASSED — TD-FUNCTION-REDEFINE-PARAMS fix (format! method calls)
+- Root cause: 4-byte `movl` store for `ptr null` (LLVM -O2 optimization)
+- Fix: force 8-byte store via i64 cast in emit_store + emit_null_ptr for constants
+- 8 new tests, 0 regressions
+- Same-root-cause family (Stage 18.188 + 18.205) now fully resolved
+- v0.470.0: minor bump (fixes user-facing segfault)

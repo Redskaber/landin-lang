@@ -29,6 +29,54 @@ impl MemoryEmitter for LLVMSysEmitter {
             let target_llvm_ty = self.llvm_type(ty);
             let val_kind = LLVMGetTypeKind(val_ty);
             let target_kind = LLVMGetTypeKind(target_llvm_ty);
+
+            // Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix): When storing a
+            // POINTER-typed value (target_kind == PointerTypeKind), force an
+            // 8-byte store by casting through i64. This works around a LLVM
+            // backend optimization that collapses `store ptr null` to a 4-byte
+            // `store i32 0` (which leaves upper 4 bytes uninitialized, causing
+            // ABI mismatches when the value is later loaded as an 8-byte
+            // pointer and passed to C functions).
+            //
+            // The optimization is incorrect for our use case because Landin
+            // stores pointer constants (like null) to stack slots and later
+            // loads them as full 8-byte pointers. LLVM's `-O2` pass sees the
+            // null constant and uses a 32-bit store (since on x86-64, writing
+            // to the lower 32 bits of a register zero-extends, but this does
+            // NOT apply to memory writes).
+            //
+            // Fix: bitcast the pointer to `i64*` and store the pointer as an
+            // `i64` value (via PtrToInt). This forces an 8-byte store.
+            //
+            // Per §1.0 原則 9 (正确>妥协): fix root cause (force 8-byte store),
+            // not symptom (zero-initialize upper bytes separately).
+            // Per §1.0 原則 6 (通解>特例): one rule for all pointer stores.
+            if target_kind == llvm_sys::LLVMTypeKind::LLVMPointerTypeKind {
+                let i64_ty = LLVMInt64TypeInContext(self.ctx);
+                let i64_ptr_ty = LLVMPointerType(i64_ty, 0);
+                // Cast the pointer to i64* (bitcast is valid for ptr→ptr).
+                let name_c = cstr_owned("ptrstore_cast");
+                let i64_ptr = LLVMBuildBitCast(self.builder, p, i64_ptr_ty, name_c.as_ptr());
+                // Cast the value to i64 (PtrToInt handles ptr→i64).
+                let val_i64 = if val_kind == llvm_sys::LLVMTypeKind::LLVMPointerTypeKind {
+                    let name_c = cstr_owned("p2i");
+                    LLVMBuildPtrToInt(self.builder, v, i64_ty, name_c.as_ptr())
+                } else if val_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind {
+                    // Already integer — cast to i64 if needed.
+                    let val_width = LLVMGetIntTypeWidth(val_ty);
+                    if val_width == 64 {
+                        v
+                    } else {
+                        let name_c = cstr_owned("i2i64");
+                        LLVMBuildIntCast2(self.builder, v, i64_ty, 0, name_c.as_ptr())
+                    }
+                } else {
+                    v
+                };
+                LLVMBuildStore(self.builder, val_i64, i64_ptr);
+                return;
+            }
+
             let stored = if val_ty == target_llvm_ty {
                 v
             } else if val_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind

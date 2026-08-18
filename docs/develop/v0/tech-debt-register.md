@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-17 (last updated Stage 18.204 deep review)
-> **Version**: v0.469.0
-> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + structural TDs (5 resolved + 2 partial: 18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131-18.133 × 1, 18.134 × 1 partial, 18.135 × 1 partial, 18.203 × 2 resolved + 1 new TD-C-WRAPPER-OVERUSE). Stage 18.204 deep review (D1-D8) confirms GO.
+> **Date**: 2026-08-17 (last updated Stage 18.205)
+> **Version**: v0.470.0
+> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + structural TDs (5 resolved + 2 partial: 18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131-18.133 × 1, 18.134 × 1 partial, 18.135 × 1 partial, 18.203 × 2 resolved + 1 new TD-C-WRAPPER-OVERUSE, 18.205 × 1 resolved). Stage 18.204 deep review confirms GO.
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -205,7 +205,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-DROP-MOVED-LOCALS | drop elaboration 缺少 move tracking | No move-state tracking | 🟡 Active — v0.3+ work. Per Stage 18.201 task review. |
 | TD-INT-UINT-VAR | typeck Int/Uint 变量统一 | unify table 丢失 Int↔Uint 区别 | 🟡 Active — v0.2 P2+. Same "类型 3 (typeck 泛型)" group per Stage 18.201 task review. |
 | TD-TUPLE-CTOR-TYPECK | type checker 对 generic tuple struct ctor 宽松 | No generic instantiation validation | 🟡 Active — v0.2 P2+. Same "类型 3" group per Stage 18.201 task review. |
-| TD-FUNCTION-REDEFINE-PARAMS | forward declaration param type mismatch for prelude methods | `get_or_declare_function` fallback creates `i32 (...)` instead of correct param types | 🟡 Active — discovered Stage 18.202. Affects all prelude method calls on stack-allocated structs (s.len() on format! result segfaults). Same root cause as Stage 18.188 (return type) but for params. |
+| TD-FUNCTION-REDEFINE-PARAMS | forward declaration param type mismatch for prelude methods | `get_or_declare_function` fallback creates `i32 (...)` instead of correct param types | ✅ Resolved Stage 18.205 — root cause was 4-byte `movl` store for `ptr null` constant (LLVM -O2 optimization collapsed `store ptr null` → `store i32 0`). Fix: `emit_null_ptr` + `emit_store` pointer-type branch forces 8-byte store via `i64` cast. `format!("x={}", 42).len()` now returns 4 (was segfault). |
 | TD-C-WRAPPER-OVERUSE | Compound ops (Vec::push/get, String::push_str, format! variadic) implemented as C runtime helpers, bypassing MIR-level intrinsic expansion | C wrapper pattern pushes runtime logic into C; violates §11 interface isolation (codegen reaching into runtime); migration cost for v0.3 self-hosting | 🟡 Active — discovered Stage 18.203 design audit. Per docs/develop/v0/stage-18/stage-18.203-c-wrapper-audit.md. Migration plan: (1) v0.2 — add MIR-level intrinsic ops (Alloc, Copy, BinOp, Branch); (2) v0.3 — replace C helpers with MIR intrinsics for stage-1 self-hosting. Primitive runtime stubs (`__landin_alloc`, `__landin_panic_*`, `__landin_dealloc`) are EXPLICITLY ENDORSED by design docs (07-codegen.md §4-§5, §13.2) — these are NOT in scope. |
 
 ## 3. Architecture Summary

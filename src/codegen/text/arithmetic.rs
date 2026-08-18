@@ -214,6 +214,13 @@ impl ArithmeticEmitter for TextEmitter {
         format!("%v{}", r)
     }
 
+    /// Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix): Emit a null pointer
+    /// constant (`ptr null`) for the text backend.
+    fn emit_null_ptr(&mut self) -> EmitValue {
+        // ptr null — no instruction needed, just emit the constant directly.
+        "ptr null".to_string()
+    }
+
     /// Stage 14.12 (GAP-18): TextEmitter select instruction.
     /// Emits: `%vN = select i1 %cond, <ty> %true_val, <ty> %false_val`
     fn emit_select(

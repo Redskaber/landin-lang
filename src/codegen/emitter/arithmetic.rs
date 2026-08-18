@@ -52,6 +52,15 @@ pub trait ArithmeticEmitter {
     /// Emit a type cast.
     fn emit_cast(&mut self, src: &EmitType, dst: &EmitType, val: &EmitValue) -> EmitValue;
 
+    /// Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix): Emit a null pointer
+    /// constant (`ptr null`). Used for `ConstVal::Int(0)` in pointer-typed
+    /// contexts to avoid a LLVM backend optimization that collapses
+    /// `store ptr null` to a 4-byte `store i32 0`, leaving upper bytes
+    /// uninitialized and causing ABI mismatches on 8-byte loads.
+    ///
+    /// Per §12 (最优 > 最小): emit the right constant type upfront.
+    fn emit_null_ptr(&mut self) -> EmitValue;
+
     /// Emit a `select` instruction.
     fn emit_select(
         &mut self,

@@ -143,6 +143,40 @@ pub(crate) fn codegen_operand(
                     ConstVal::Float(_) => EmitType::F64,
                     _ => return raw,
                 };
+                // Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix): Handle
+                // integer → pointer constant casts. When a constant like
+                // `ConstVal::Int(0)` is used in a pointer-typed context
+                // (e.g., `null` for `*mut u8`), `emit_const` creates an
+                // `i32` constant (4 bytes), but the target slot is `ptr`
+                // (8 bytes). Without this cast, `emit_store` would store
+                // only 4 bytes, leaving the upper 4 bytes as stack garbage
+                // — which causes ABI mismatches when passing the "pointer"
+                // to C functions (e.g., `__landin_format_variadic` receives
+                // non-NULL `arg_types` due to garbage upper bits → segfault).
+                //
+                // Fix: when target is `OpaquePtr` (or `Ptr(_)`) and source
+                // is integer, cast via `IntToPtr`. This produces a proper
+                // 8-byte pointer constant (e.g., `inttoptr (i32 0 to ptr)`
+                // which LLVM folds to `ptr null`).
+                //
+                // Per §1.0 原則 4 (报错>静默): old code silently stored 4 bytes
+                // and produced garbage at runtime.
+                // Per §1.0 原則 9 (正确>妥协): fix root cause (cast to ptr),
+                // not symptom (zero-initialize upper bytes).
+                // Per §1.0 原則 6 (通解>特例): one rule for all int→ptr casts.
+                let is_ptr_target = matches!(target_ty, EmitType::OpaquePtr | EmitType::Ptr(_));
+                if is_ptr_target {
+                    // Stage 18.205 addendum: Instead of emitting `i32 0` then
+                    // casting via `inttoptr`, emit a null pointer constant
+                    // directly. This avoids a LLVM backend optimization that
+                    // collapses `store ptr null` to `store i32 0` (4 bytes),
+                    // which leaves upper bytes uninitialized and causes ABI
+                    // mismatches on 8-byte loads.
+                    //
+                    // Per §12 (最优 > 最小): emit the right constant type
+                    // upfront, rather than relying on cast + LLVM optimization.
+                    return emitter.emit_null_ptr();
+                }
                 // Only cast if BOTH src and target are integer types.
                 // Casting i32 to struct/enum/etc. would produce invalid IR.
                 let is_int_cast = matches!(

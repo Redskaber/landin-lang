@@ -281,6 +281,19 @@ impl ArithmeticEmitter for LLVMSysEmitter {
                 // Integer-to-integer: use IntCast2 (handles zext/sext/trunc).
                 // Sign=1 means signed (SExt for widening, Trunc for narrowing).
                 LLVMBuildIntCast2(self.builder, v, dst_ty, 1, name_c.as_ptr())
+            } else if src_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                && dst_kind == llvm_sys::LLVMTypeKind::LLVMPointerTypeKind
+            {
+                // Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix):
+                // Integer-to-pointer: use IntToPtr. This is required for
+                // constants like `ConstVal::Int(0)` used in pointer-typed
+                // contexts (e.g., `null` for `*mut u8`). Without this,
+                // `emit_store` would store only 4 bytes (i32) into an 8-byte
+                // pointer slot, leaving upper bytes as garbage → ABI mismatch
+                // → segfault when passed to C functions.
+                //
+                // Per §1.0 原則 6 (通解>特例): one rule for all int→ptr casts.
+                LLVMBuildIntToPtr(self.builder, v, dst_ty, name_c.as_ptr())
             } else {
                 match (src, dst) {
                     (EmitType::I32, EmitType::F64)
@@ -313,6 +326,27 @@ impl ArithmeticEmitter for LLVMSysEmitter {
                 }
             };
             self.fresh_named(r)
+        }
+    }
+
+    /// Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix): Emit a null pointer
+    /// constant (`ptr null`).
+    ///
+    /// This avoids a LLVM backend optimization that collapses
+    /// `store ptr null` to a 4-byte `store i32 0`, leaving upper bytes
+    /// uninitialized and causing ABI mismatches on 8-byte loads.
+    fn emit_null_ptr(&mut self) -> EmitValue {
+        unsafe {
+            // Stage 18.205: Use `i64 0` (8 bytes) and then `inttoptr` to
+            // produce a `ptr` constant. This forces LLVM to keep the full
+            // 8-byte zero, avoiding the 4-byte store optimization.
+            //
+            // Per §12 (最优 > 最小): emit the right constant type upfront.
+            let i64_ty = LLVMInt64TypeInContext(self.ctx);
+            let i64_zero = LLVMConstInt(i64_ty, 0, 0);
+            let ptr_ty = LLVMPointerTypeInContext(self.ctx, 0);
+            let null_val = LLVMConstIntToPtr(i64_zero, ptr_ty);
+            self.fresh_named(null_val)
         }
     }
 
