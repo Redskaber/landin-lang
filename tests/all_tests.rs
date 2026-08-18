@@ -555,6 +555,10 @@ mod stage18_198_push_str_tests;
 #[path = "v0/stage18/plan/stage18_200_vec_get_tests.rs"]
 mod stage18_200_vec_get_tests;
 
+// === Stage 18.203: unified elem_size inference ===
+#[path = "v0/stage18/plan/stage18_203_elem_size_tests.rs"]
+mod stage18_203_elem_size_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

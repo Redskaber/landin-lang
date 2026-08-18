@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-16 (last updated Stage 18.135)
-> **Version**: v0.403.0
-> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + structural TDs (5 resolved + 2 partial: 18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131-18.133 × 1, 18.134 × 1 partial, 18.135 × 1 partial)
+> **Date**: 2026-08-17 (last updated Stage 18.203)
+> **Version**: v0.469.0
+> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + structural TDs (5 resolved + 2 partial: 18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131-18.133 × 1, 18.134 × 1 partial, 18.135 × 1 partial, 18.203 × 2 resolved + 1 new TD-C-WRAPPER-OVERUSE)
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -179,6 +179,34 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-UNWRAP-BORROWCK-BORROWSET | `src/borrowck/borrow_set.rs` | 0 | 9 | 0 | 🟢 LOW (test only) | N/A — test code 合法 | Closed 18.127 (reclassified) |
 | TD-UNWRAP-CODEGEN-LLVM-HELPERS | `src/codegen/llvm/helpers.rs` | 0 | 3 | 0 | 🟢 LOW (test/fallback) | N/A — test code 合法 | Closed 18.127 (reclassified) |
 | TD-UNWRAP-CODEGEN-LLVM-MOD | `src/codegen/llvm/mod.rs` | 0 | 0 | 0 | ✅ CLOSED | ✅ Resolved Stage 18.151: `name.strip_prefix('@').unwrap()` replaced with safe `if let Some(stripped) = name.strip_prefix('@')` pattern |
+
+### 2.6 Stage 18.20x Heap/Vec/String Chain (Stage 18.177-18.202)
+
+> Per §17.6 缺陷纳入规则: all MVP simplifications from the heap/String/Vec chain
+> (Stages 18.177-18.202) tracked here. Integrated-fix policy per user directive
+> "同类型错误或存在依赖关系的应该考虑整体性完整修复" (Stage 18.201 task review).
+
+| ID | Description | Root Cause | Fix Plan |
+|----|-------------|------------|----------|
+| TD-HEAP-ALLOC | codegen 无 malloc/free 调用支持 | No `__landin_alloc` / `__landin_dealloc` runtime stubs | ✅ Resolved Stage 18.178 |
+| TD-STRING-AS-STR-ALIAS | String 实现为 &str 别名 (PrimTy::Str) | Type stub instead of owned Vec<u8> | ✅ Resolved Stage 18.180 |
+| TD-ARRAY-INDEX-CODEGEN | 数组索引 `arr[N]` codegen 偏移 bug | DCE removes idx_local | ✅ Resolved Stage 18.182 |
+| TD-FAT-PTR-INDEX-PROJ | fat pointer Index projection 错误 | GEP on value, not pointer | ✅ Resolved Stage 18.183 |
+| TD-STR-METHODS-RUNTIME | str methods segfault at runtime | No MIR intrinsic implementation | ✅ Resolved Stage 18.184 |
+| TD-STRING-INTRINSICS | String 缺 from_str/push_str/len/as_str | No MIR intrinsics | ✅ Resolved Stage 18.185 (from_str) + 18.189 (as_str) + 18.198 (push_str) |
+| TD-VEC-MVP | `Vec<T>` 无 new/push/len | No prelude injection + no MIR intrinsics | ✅ Resolved Stage 18.195 (new+len) + 18.197 (push) + 18.200 (get) |
+| TD-NO-FORMAT-MACRO | No `format!`/`write!` macros | Only `println!`/`print!` | ✅ Resolved Stage 18.186 (MVP) + 18.202 (variadic args) |
+| TD-FORMAT-VARIADIC | `format!("x={}", x)` 不支持 variadic args | No C runtime variadic helper | ✅ Resolved Stage 18.202 |
+| TD-BOX-SIZE-OF | Box::new sizeof(T) 硬编码 | No layouts-based size_of computation | ✅ Resolved Stage 18.203 — `compute_type_size` walks Adt HIR via `build_adt_layout` |
+| TD-VEC-ELEM-SIZE-INFERENCE | Vec elem_size 默认 4 (Infer/Param) | typeck 将 Vec<T> 的 T 解析为 Infer | ✅ Resolved Stage 18.203 — `compute_type_size_with_fallback` provides single source of truth; canonical Vec<i32> case preserved; full generic instantiation deferred (TD-TYPECK-GENERIC-INST) |
+| TD-TYPECK-GENERIC-INST | typeck 不解析 Vec<T>/Box<T> 的泛型实例 | typeck unify table 不支持 generic instantiation | 🟡 Active — v0.2 P2+. Tracked as "类型 3 (typeck 泛型)" in Stage 18.201 task review. Affects: TD-VEC-ELEM-SIZE-INFERENCE (full fix), TD-INT-UINT-VAR, TD-TUPLE-CTOR-TYPECK. |
+| TD-VEC-PUSH-SHARED-BORROW | Vec::push 用 Shared 而非 Mut borrow | borrow checker 要求 mut 声明 | 🟡 Active — v0.2 P2+. Same "类型 2 (borrow checker)" group as TD-BOX-AUTO-DROP per Stage 18.201 task review. |
+| TD-BOX-AUTO-DROP | Box 无自动释放 | drop elaboration 不跟踪 moved-from locals | 🟡 Active — v0.2 P2+. Blocked by TD-DROP-MOVED-LOCALS. Same "类型 2 (borrow checker)" group per Stage 18.201 task review. |
+| TD-DROP-MOVED-LOCALS | drop elaboration 缺少 move tracking | No move-state tracking | 🟡 Active — v0.3+ work. Per Stage 18.201 task review. |
+| TD-INT-UINT-VAR | typeck Int/Uint 变量统一 | unify table 丢失 Int↔Uint 区别 | 🟡 Active — v0.2 P2+. Same "类型 3 (typeck 泛型)" group per Stage 18.201 task review. |
+| TD-TUPLE-CTOR-TYPECK | type checker 对 generic tuple struct ctor 宽松 | No generic instantiation validation | 🟡 Active — v0.2 P2+. Same "类型 3" group per Stage 18.201 task review. |
+| TD-FUNCTION-REDEFINE-PARAMS | forward declaration param type mismatch for prelude methods | `get_or_declare_function` fallback creates `i32 (...)` instead of correct param types | 🟡 Active — discovered Stage 18.202. Affects all prelude method calls on stack-allocated structs (s.len() on format! result segfaults). Same root cause as Stage 18.188 (return type) but for params. |
+| TD-C-WRAPPER-OVERUSE | Compound ops (Vec::push/get, String::push_str, format! variadic) implemented as C runtime helpers, bypassing MIR-level intrinsic expansion | C wrapper pattern pushes runtime logic into C; violates §11 interface isolation (codegen reaching into runtime); migration cost for v0.3 self-hosting | 🟡 Active — discovered Stage 18.203 design audit. Per docs/develop/v0/stage-18/stage-18.203-c-wrapper-audit.md. Migration plan: (1) v0.2 — add MIR-level intrinsic ops (Alloc, Copy, BinOp, Branch); (2) v0.3 — replace C helpers with MIR intrinsics for stage-1 self-hosting. Primitive runtime stubs (`__landin_alloc`, `__landin_panic_*`, `__landin_dealloc`) are EXPLICITLY ENDORSED by design docs (07-codegen.md §4-§5, §13.2) — these are NOT in scope. |
 
 ## 3. Architecture Summary
 

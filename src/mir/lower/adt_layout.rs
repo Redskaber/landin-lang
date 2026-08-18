@@ -9,6 +9,11 @@
 //! layouts from HIR upfront (crate-level), eliminating the per-body
 //! `populate_adt_layouts` re-scans. The crate-level map is shared across
 //! all MirBodies via `Arc<AdtLayouts>`.
+//!
+//! Stage 18.203 (TD-BOX-SIZE-OF + TD-VEC-ELEM-SIZE-INFERENCE integrated fix):
+//! Added `compute_type_size` — single source of truth for type-size queries
+//! needed by runtime intrinsics (Box::new, Vec::push, Vec::get). Eliminates
+//! the 3× duplicated size tables that were hardcoded in expr_variants.rs.
 
 use crate::hir::{DefId, HirCrate, HirItem, OwnerNode};
 use crate::mir::body::{AdtLayout, AdtLayouts, MirBody, StatementKind};
@@ -240,5 +245,317 @@ impl AdtLayoutExt for AdtLayout {
             }
         }
         out
+    }
+}
+
+/// Stage 18.203 (TD-BOX-SIZE-OF + TD-VEC-ELEM-SIZE-INFERENCE integrated fix):
+/// Compute the byte size of a MIR type for runtime operations
+/// (Box::new allocation, Vec::push/get elem_size).
+///
+/// This is the **single source of truth** for type-size queries needed by
+/// runtime intrinsics — eliminates the 3× duplicated size tables that were
+/// previously hardcoded in:
+///   - `lower_box_new_intrinsic` (Box::new — TD-BOX-SIZE-OF)
+///   - `lower_vec_push_intrinsic` (Vec::push — TD-VEC-ELEM-SIZE-INFERENCE)
+///   - `lower_vec_get_intrinsic`  (Vec::get  — TD-VEC-ELEM-SIZE-INFERENCE)
+///
+/// Per §10 (DRY): one definition, consumed by all 3 intrinsics.
+/// Per §12 (最优 > 最小): walks Adt HIR for proper struct/enum size, not
+///   hardcoded "default 8".
+/// Per §1.0 原则 6 (通解>特例): one function handles all `TyKind` variants.
+///
+/// # Size rules
+///
+/// | TyKind variant | Size (bytes) | Notes |
+/// |----------------|-------------|-------|
+/// | Bool           | 1           | Fixed ABI |
+/// | Char           | 4           | Fixed ABI (Rust char = 4 bytes) |
+/// | Int/Uint       | 1/2/4/8/16  | Per bit-width |
+/// | Float          | 4 (f32) / 8 (f64) | Per precision |
+/// | Never          | 0           | Uninhabited ZST |
+/// | Tuple          | Σ field sizes | No padding (Landin MVP ≈ `repr(Rust)` natural alignment) |
+/// | Array          | elem_size × count | When count is literal const |
+/// | Adt (struct)   | Σ field sizes (recursive) | Walks HIR via `build_adt_layout` |
+/// | Adt (enum)     | disc(4) + max(payload)    | Walks HIR via `build_adt_layout` |
+/// | Ref/RawPtr/FnDef/FnPtr | 8   | Pointer-sized (64-bit target) |
+/// | Str/Slice      | 0           | Unsized — caller should reject |
+/// | Foreign/Closure/Projection | 8 | Opaque / fallback |
+/// | Param/Infer/Error | **caller-supplied fallback** | Use `compute_type_size_with_fallback` to specify. Default 8 (`compute_type_size`). Vec ops pass 4 (canonical Vec<i32>). |
+///
+/// # Arguments
+///
+/// * `ty` — the MIR type whose size to compute
+/// * `hir` — optional HIR crate reference, needed to walk struct/enum
+///   definitions. `None` in test contexts that build MIR without HIR.
+///
+/// # Returns
+///
+/// The size in bytes as `i64` (signed to match LLVM `i64` size operands).
+/// Returns `0` for unsized types (Str, Slice) and `8` (caller-supplied
+/// fallback) for opaque/unknown types.
+pub fn compute_type_size(ty: &Ty, hir: Option<&HirCrate>) -> i64 {
+    compute_type_size_with_fallback(ty, hir, 8)
+}
+
+/// Stage 18.203: Variant of `compute_type_size` with a caller-supplied
+/// fallback for `Infer`/`Param`/`Error` types.
+///
+/// **Why a fallback parameter?** At MIR-lower time, generic types (`Param`)
+/// and inference variables (`Infer`) may not yet be resolved to concrete
+/// types — typeck writeback runs *after* MIR lower. Different intrinsics
+/// need different fallback behavior:
+///
+/// | Caller | Fallback | Rationale |
+/// |--------|----------|-----------|
+/// | `Box::new` | 8 | Safe over-allocation (Box just stores + Deref-loads; extra bytes unused) |
+/// | `Vec::push` / `Vec::get` | 4 | Canonical `Vec<i32>` case; **must match** between push and get or Vec offsets corrupt |
+///
+/// Per §1.0 原则 6 (通解>特例): one function, parametric on fallback —
+/// callers specify their domain-specific default rather than each caller
+/// re-implementing the size table.
+/// Per §10 (DRY): the primitive/Adt/Tuple/Array rules are defined once.
+///
+/// # Arguments
+///
+/// * `ty` — the MIR type whose size to compute
+/// * `hir` — optional HIR crate reference (needed for Adt walks)
+/// * `fallback` — size returned for `Param`/`Infer`/`Error` (caller-specific)
+///
+/// # Returns
+///
+/// Size in bytes; `fallback` for unresolved generic/inference types.
+pub fn compute_type_size_with_fallback(ty: &Ty, hir: Option<&HirCrate>, fallback: i64) -> i64 {
+    match &ty.kind {
+        // Primitives — fixed ABI sizes.
+        TyKind::Bool => 1,
+        TyKind::Char => 4,
+        TyKind::Int(int_ty) => match int_ty {
+            crate::ast::IntTy::I8 => 1,
+            crate::ast::IntTy::I16 => 2,
+            crate::ast::IntTy::I32 => 4,
+            crate::ast::IntTy::I64 => 8,
+            crate::ast::IntTy::I128 => 16,
+            crate::ast::IntTy::Isize => 8,
+        },
+        TyKind::Uint(uint_ty) => match uint_ty {
+            crate::ast::UintTy::U8 => 1,
+            crate::ast::UintTy::U16 => 2,
+            crate::ast::UintTy::U32 => 4,
+            crate::ast::UintTy::U64 => 8,
+            crate::ast::UintTy::U128 => 16,
+            crate::ast::UintTy::Usize => 8,
+        },
+        TyKind::Float(float_ty) => match float_ty {
+            crate::ast::FloatTy::F32 => 4,
+            crate::ast::FloatTy::F64 => 8,
+        },
+        // Unit-like types.
+        TyKind::Never => 0,
+        TyKind::Tuple(tys) => {
+            // Sum of field sizes. Landin MVP uses natural alignment without
+            // explicit padding (matches `repr(Rust)`); the sum is an
+            // approximation that's correct when fields are naturally aligned.
+            // TODO: proper layout with alignment (TD-LAYOUT-ALIGNMENT, v0.3+).
+            tys.iter()
+                .map(|t| compute_type_size_with_fallback(t, hir, fallback))
+                .sum()
+        }
+        TyKind::Array(elem, count) => {
+            // count × elem_size when count is a literal const.
+            // TODO: const evaluation for non-literal counts (v0.2+).
+            let elem_size = compute_type_size_with_fallback(elem, hir, fallback);
+            let count_val: i64 = match &count.val {
+                crate::mir::ty::ConstVal::Int(n) => *n as i64,
+                crate::mir::ty::ConstVal::Uint(n) => *n as i64,
+                _ => 0, // Unevaluated const → 0 (caller should handle)
+            };
+            elem_size * count_val
+        }
+        TyKind::Adt(def_id, _) => {
+            // Walk HIR to compute struct/enum size. This is the proper
+            // root-cause fix for TD-BOX-SIZE-OF (Box::new of structs)
+            // and TD-VEC-ELEM-SIZE-INFERENCE (Vec<MyStruct>).
+            if let Some(hir_ref) = hir {
+                if let Some(layout) = build_adt_layout(*def_id, hir_ref) {
+                    return adt_layout_size(&layout, Some(hir_ref), fallback);
+                }
+            }
+            // HIR unavailable or DefId not a struct/enum (e.g., type alias).
+            // Fallback: caller-supplied (Box=8, Vec=4) — matches MVP behavior.
+            fallback
+        }
+        // Refs/Ptrs: pointer-sized (8 bytes on 64-bit).
+        TyKind::Ref(_, _, _) | TyKind::RawPtr(_, _) => 8,
+        TyKind::FnDef(_, _) | TyKind::FnPtr(_) => 8,
+        // Str is unsized; for sized contexts (Box<str> is unusual), return 0.
+        // The caller should usually reject this.
+        TyKind::Str => 0,
+        // Slices are unsized; same handling as Str.
+        TyKind::Slice(_) => 0,
+        // Foreign types: opaque, fallback.
+        TyKind::Foreign => fallback,
+        // Closure = { captures }; MVP approximation: pointer-sized
+        // (the closure struct's actual size needs capture analysis, v0.2+).
+        TyKind::Closure(_, _) => fallback,
+        // Unresolved associated type projection; fallback.
+        TyKind::Projection(_, _) => fallback,
+        // Generic param / Infer / Error: cannot compute statically.
+        // Returns caller-supplied fallback — proper fix requires typeck
+        // generic instantiation (TD-TYPECK-GENERIC-INST, v0.2 P2+).
+        TyKind::Param(_) | TyKind::Infer(_) | TyKind::Error => fallback,
+    }
+}
+
+/// Compute the byte size of an `AdtLayout` (struct or enum).
+///
+/// For struct: sum of field sizes (recursive, no padding — Landin MVP
+/// approximation matching `repr(Rust)` natural alignment).
+/// For enum: discriminant_size + max(variant_payload_size).
+///
+/// Per §1.0 原则 6 (通解>特例): one function handles both AdtLayout variants.
+fn adt_layout_size(layout: &AdtLayout, hir: Option<&HirCrate>, fallback: i64) -> i64 {
+    match layout {
+        AdtLayout::Struct { field_tys } => field_tys
+            .iter()
+            .map(|t| compute_type_size_with_fallback(t, hir, fallback))
+            .sum(),
+        AdtLayout::Enum {
+            discriminant_ty,
+            variant_payloads,
+        } => {
+            let disc_size = compute_type_size_with_fallback(discriminant_ty, hir, fallback);
+            let max_payload: i64 = variant_payloads
+                .iter()
+                .map(|payload| {
+                    payload
+                        .iter()
+                        .map(|t| compute_type_size_with_fallback(t, hir, fallback))
+                        .sum::<i64>()
+                })
+                .max()
+                .unwrap_or(0);
+            disc_size + max_payload
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::ty::{Const, ConstVal, InferVar, Ty, TyKind};
+
+    #[test]
+    fn stage18_203_primitive_sizes() {
+        let hir = None;
+        assert_eq!(
+            compute_type_size(&Ty::new(TyKind::Bool, Span::DUMMY), hir),
+            1
+        );
+        assert_eq!(
+            compute_type_size(&Ty::new(TyKind::Char, Span::DUMMY), hir),
+            4
+        );
+        assert_eq!(
+            compute_type_size(
+                &Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
+                hir
+            ),
+            4
+        );
+        assert_eq!(
+            compute_type_size(
+                &Ty::new(TyKind::Int(crate::ast::IntTy::I64), Span::DUMMY),
+                hir
+            ),
+            8
+        );
+        assert_eq!(
+            compute_type_size(
+                &Ty::new(TyKind::Int(crate::ast::IntTy::I128), Span::DUMMY),
+                hir
+            ),
+            16
+        );
+        assert_eq!(
+            compute_type_size(
+                &Ty::new(TyKind::Uint(crate::ast::UintTy::U8), Span::DUMMY),
+                hir
+            ),
+            1
+        );
+        assert_eq!(
+            compute_type_size(
+                &Ty::new(TyKind::Float(crate::ast::FloatTy::F64), Span::DUMMY),
+                hir
+            ),
+            8
+        );
+    }
+
+    #[test]
+    fn stage18_203_tuple_size_is_sum_of_fields() {
+        let hir = None;
+        let tuple_ty = Ty::new(
+            TyKind::Tuple(vec![
+                Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
+                Ty::new(TyKind::Int(crate::ast::IntTy::I64), Span::DUMMY),
+                Ty::new(TyKind::Bool, Span::DUMMY),
+            ]),
+            Span::DUMMY,
+        );
+        // 4 + 8 + 1 = 13
+        assert_eq!(compute_type_size(&tuple_ty, hir), 13);
+    }
+
+    #[test]
+    fn stage18_203_array_size_is_elem_times_count() {
+        let hir = None;
+        let array_ty = Ty::new(
+            TyKind::Array(
+                Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+                Box::new(Const {
+                    ty: Ty::new(TyKind::Int(crate::ast::IntTy::I64), Span::DUMMY),
+                    val: ConstVal::Int(10),
+                }),
+            ),
+            Span::DUMMY,
+        );
+        // 4 × 10 = 40
+        assert_eq!(compute_type_size(&array_ty, hir), 40);
+    }
+
+    #[test]
+    fn stage18_203_pointer_size_is_8() {
+        let hir = None;
+        let ref_ty = Ty::new(
+            TyKind::Ref(
+                crate::mir::ty::Region::Erased,
+                crate::mir::ty::Mutability::Immutable,
+                Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+            ),
+            Span::DUMMY,
+        );
+        assert_eq!(compute_type_size(&ref_ty, hir), 8);
+    }
+
+    #[test]
+    fn stage18_203_infer_param_fallback_is_8() {
+        let hir = None;
+        let infer_ty = Ty::new(
+            TyKind::Infer(InferVar::TyVar(crate::mir::ty::TyVid(0))),
+            Span::DUMMY,
+        );
+        assert_eq!(compute_type_size(&infer_ty, hir), 8);
+        // Param<T> uses the same fallback branch as Infer — verified via
+        // direct inspection of `compute_type_size`'s match arms (Param|Infer|Error => 8).
+        // ParamTy construction requires a Symbol (lasso::Spur) which is non-trivial
+        // in unit tests without an interner; the Infer test exercises the same code path.
+    }
+
+    #[test]
+    fn stage18_203_unit_tuple_is_zero() {
+        let hir = None;
+        let unit_ty = Ty::new(TyKind::Tuple(vec![]), Span::DUMMY);
+        assert_eq!(compute_type_size(&unit_ty, hir), 0);
     }
 }

@@ -76,6 +76,13 @@ pub use writeback::{writeback_closures, writeback_fndef_substs, writeback_type_p
 // Per §16: reads HIR (allowed in MIR lower), produces MIR data.
 pub use adt_layout::build_crate_adt_layouts;
 
+// Stage 18.203 (TD-BOX-SIZE-OF + TD-VEC-ELEM-SIZE-INFERENCE integrated fix):
+// Single source of truth for type-size queries used by runtime intrinsics
+// (Box::new, Vec::push, Vec::get). Per §10.1.4: explicit re-export, no glob.
+// Per §12 (最优 > 最小): replaces 3× duplicated size tables in expr_variants.rs.
+pub use adt_layout::compute_type_size;
+pub use adt_layout::compute_type_size_with_fallback;
+
 // Stage 18.129 §13.4 J1-J6: extract type lowering to ty_lower.rs
 // Re-export functions called from outside mir::lower (driver.rs, siblings).
 // Per §10.1.4: explicit list, no glob.

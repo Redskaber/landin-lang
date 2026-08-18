@@ -24,6 +24,7 @@ use crate::mir::ty::*;
 use crate::session::Span;
 
 use super::call_lower::{build_dyn_trait_call_terminator, lower_closure_call_to_synthesized};
+use super::compute_type_size_with_fallback;
 use super::lower_expr_to_operand;
 use super::method_resolution::{
     find_local_init_expr, find_local_init_type, query_method_self_kind, resolve_enum_variant,
@@ -1615,35 +1616,12 @@ fn lower_box_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr, val_local: Loc
     use crate::mir::ty::ConstVal;
 
     // Step 1: Determine sizeof(T) from the value's type.
-    // MVP: hardcoded sizes for primitive types. For unknown types, default to 8.
+    // Stage 18.203: delegates to compute_type_size (single source of truth)
+    // - handles primitives, Adt (struct/enum via HIR walk), Tuple, Array.
+    // Fallback 8 for Infer/Param/Error (TD-TYPECK-GENERIC-INST, v0.2 P2+).
     let val_ty = cx.mir.local(val_local).ty.clone();
-    let size: i64 = match &val_ty.kind {
-        TyKind::Int(int_ty) => match int_ty {
-            crate::ast::IntTy::I8 => 1,
-            crate::ast::IntTy::I16 => 2,
-            crate::ast::IntTy::I32 => 4,
-            crate::ast::IntTy::I64 => 8,
-            crate::ast::IntTy::I128 => 16,
-            crate::ast::IntTy::Isize => 8,
-        },
-        TyKind::Uint(uint_ty) => match uint_ty {
-            crate::ast::UintTy::U8 => 1,
-            crate::ast::UintTy::U16 => 2,
-            crate::ast::UintTy::U32 => 4,
-            crate::ast::UintTy::U64 => 8,
-            crate::ast::UintTy::U128 => 16,
-            crate::ast::UintTy::Usize => 8,
-        },
-        TyKind::Bool => 1,
-        TyKind::Float(float_ty) => match float_ty {
-            crate::ast::FloatTy::F32 => 4,
-            crate::ast::FloatTy::F64 => 8,
-        },
-        TyKind::Char => 4,
-        // For struct/enum/etc., default to 8 (MVP limitation).
-        // TODO: Use layouts for proper size calculation (TD-BOX-SIZE-OF).
-        _ => 8,
-    };
+    // Box::new: fallback 8 (safe over-allocation - extra bytes unused by Deref load).
+    let size: i64 = compute_type_size_with_fallback(&val_ty, cx.hir, 8);
 
     let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
     let u8_ptr_ty = Ty::new(
@@ -1972,35 +1950,14 @@ fn lower_vec_push_intrinsic(
         expr.span,
     );
 
-    // Step 4: Determine elem_size from val type
-    // Stage 18.200: If val_ty is Infer/Param (generic T not resolved), default to 4 (i32).
-    // This is a simplification — proper fix needs Vec<T> type parameter resolution
-    // (TD-VEC-ELEM-SIZE-INFERENCE).
-    let elem_size: i64 = match &val_ty.kind {
-        TyKind::Int(int_ty) => match int_ty {
-            crate::ast::IntTy::I8 => 1,
-            crate::ast::IntTy::I16 => 2,
-            crate::ast::IntTy::I32 => 4,
-            crate::ast::IntTy::I64 => 8,
-            crate::ast::IntTy::I128 => 16,
-            crate::ast::IntTy::Isize => 8,
-        },
-        TyKind::Uint(uint_ty) => match uint_ty {
-            crate::ast::UintTy::U8 => 1,
-            crate::ast::UintTy::U16 => 2,
-            crate::ast::UintTy::U32 => 4,
-            crate::ast::UintTy::U64 => 8,
-            crate::ast::UintTy::U128 => 16,
-            crate::ast::UintTy::Usize => 8,
-        },
-        TyKind::Bool => 1,
-        TyKind::Char => 4,
-        TyKind::Float(crate::ast::FloatTy::F32) => 4,
-        TyKind::Float(crate::ast::FloatTy::F64) => 8,
-        // Stage 18.200: Infer/Param types default to 4 (i32 size).
-        // This works for Vec<i32> which is the most common case.
-        _ => 4,
-    };
+    // Step 4: Determine elem_size from val type.
+    // Stage 18.203: delegates to compute_type_size_with_fallback (single source)
+    // - handles primitives, Adt (struct/enum via HIR walk), Tuple, Array.
+    // Vec::push fallback: 4 (canonical Vec<i32>). MUST match Vec::get fallback
+    // — mismatched elem_sizes between push and get corrupt Vec offsets.
+    // For non-canonical Vec<T> (e.g., Vec<i64>), typeck must resolve T before
+    // MIR lower (tracked by TD-TYPECK-GENERIC-INST, v0.2 P2+).
+    let elem_size: i64 = compute_type_size_with_fallback(&val_ty, cx.hir, 4);
     let elem_size_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
     cx.push_assign(
         Place::local(elem_size_local, expr.span),
@@ -2280,12 +2237,16 @@ fn lower_vec_get_intrinsic(
         expr.span,
     );
 
-    // elem_size: hardcoded to 4 (i32) for MVP
+    // elem_size: Stage 18.203 — derive from the out type via compute_type_size
+    // (single source of truth). Falls back to 8 for Infer/Param/Error types
+    // (TD-TYPECK-GENERIC-INST, v0.2 P2+).
+    // Vec::get: fallback 4 (canonical Vec<i32>). MUST match Vec::push fallback.
+    let elem_size: i64 = compute_type_size_with_fallback(&out_ty, cx.hir, 4);
     let elem_size_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
     cx.push_assign(
         Place::local(elem_size_local, expr.span),
         Rvalue::Use(Operand::Constant(Const {
-            val: ConstVal::Int(4),
+            val: ConstVal::Int(elem_size as u128),
             ty: i64_ty.clone(),
         })),
         expr.span,

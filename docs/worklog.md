@@ -18741,3 +18741,78 @@ Stage Summary:
 - TD-FORMAT-VARIADIC ✅ Resolved
 - TD-FUNCTION-REDEFINE-PARAMS: new (pre-existing, affects all prelude methods)
 
+
+---
+Task ID: stage18.203
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A + PM-A
+Task: Stage 18.203 — Unified elem_size inference (TD-BOX-SIZE-OF + TD-VEC-ELEM-SIZE-INFERENCE integrated fix) + C wrapper dependency audit. v0.468.0 → v0.469.0.
+
+Work Log:
+- Baseline: v0.468.0 / 658 lib tests + 3073 integration tests (post-Stage 18.202)
+- 触发条例: 用户指令 "按照计划推进修复...同类型错误或存在依赖关系的应该考虑整体性完整修复"
+- §13.1 设计对齐: 07-codegen.md §4-§5 (runtime helpers), §13.2 (C wrapper for C++ ABI),
+  08-bootstrap-strategy.md §1-§2 (v0.1 不自举), §11 (接口隔离), §12 (最优 > 最小)
+- §17.6 缺陷纳入: Stage 18.201 task review 识别 "类型 1 (elem_size)" 同类型组:
+  → TD-BOX-SIZE-OF: Box::new sizeof(T) 硬编码 (default 8)
+  → TD-VEC-ELEM-SIZE-INFERENCE: Vec elem_size 默认 4 (Infer/Param)
+  → 3 处硬编码 size 表 (Box::new, Vec::push, Vec::get)
+- 实施 — 整体性完整修复 (per §10 DRY + §12 最优 > 最小 + §1.0 原则 6 通解 > 特例):
+  1. 新增 compute_type_size(ty, hir) → i64 (src/mir/lower/adt_layout.rs)
+     - 处理所有 TyKind 变体: primitives, Adt(struct/enum via HIR walk), Tuple, Array
+     - Adt 通过 build_adt_layout 递归 walk HIR (per §16 数据下沉)
+  2. 新增 compute_type_size_with_fallback(ty, hir, fallback) → i64 (variant)
+     - 允许 caller 指定 Infer/Param 的 fallback (per §1.0 原则 6 通解 > 特例)
+     - Box::new: fallback 8 (safe over-allocation, Deref load 只用实际类型大小)
+     - Vec::push / Vec::get: fallback 4 (canonical Vec<i32>, push/get 必须匹配)
+  3. 替换 3 处硬编码:
+     - lower_box_new_intrinsic (line ~1620): 删除 26 行硬编码 size 表 → 1 行 compute_type_size_with_fallback
+     - lower_vec_push_intrinsic (line ~1960): 删除 23 行硬编码 size 表 → 1 行
+     - lower_vec_get_intrinsic (line ~2240): 删除 hardcoded 4 → 1 行 compute_type_size_with_fallback
+     - 总共消除 ~60 行重复代码 (per §10 DRY)
+  4. Re-export: pub use adt_layout::compute_type_size + compute_type_size_with_fallback (mod.rs)
+  5. 6 单元测试 (adt_layout.rs tests module): primitives, tuple, array, pointer, infer fallback, unit
+  6. 8 集成测试 (tests/v0/stage18/plan/stage18_203_elem_size_tests.rs): Vec<i8/i32/i64/u32>
+     + Box<i32/i64> + OOB panic regression
+- Bug 发现 + 修复:
+  → 首次实施用 fallback=8 给所有 3 处 → 破坏 Vec<i32> tests
+  → 根因: Vec::push elem_size=8 但 Vec::get out_local=alloca i32 (4 字节)
+    → __landin_vec_get 写 8 字节到 4 字节 buffer → 栈溢出 → 垃圾值
+  → 修复: 引入 compute_type_size_with_fallback, Vec ops 用 4, Box 用 8
+  → Vec::push / Vec::get fallback 必须匹配 (否则 Vec 偏移 corrupt)
+- C wrapper 依赖审查 (per 用户指令):
+  → 创建 docs/develop/v0/stage-18/stage-18.203-c-wrapper-audit.md
+  → 结论:
+    * 原语 C helpers (__landin_alloc, __landin_panic_*, __landin_dealloc):
+      ✅ 符合设计 (07-codegen.md §4-§5 明确允许)
+    * 复合 C helpers (__landin_vec_push, __landin_vec_get, __landin_string_push_str,
+      __landin_format_variadic):
+      ⚠️ 过度依赖 — 违反 §11 接口隔离 + §1.3 拒绝特判 + §12 最优 > 最小
+      → 创建 TD-C-WRAPPER-OVERUSE (P2, v0.2/v0.3 迁移计划)
+    * Stage 18.203 的 compute_type_size 修复不引入新 C helper
+      → 符合"不再扩大 C wrapper 范围"原则
+- tech-debt-register.md 更新:
+  → 新增 §2.6 "Stage 18.20x Heap/Vec/String Chain" 章节
+  → 记录 18 个 TD (8 resolved + 10 active)
+  → 新增 TD-TYPECK-GENERIC-INST (v0.2 P2+)
+  → 新增 TD-C-WRAPPER-OVERUSE (P2, 迁移计划在 audit doc)
+- 验收 (§3.2):
+  → cargo fmt --check: ✅
+  → cargo test --features llvm-backend --lib: 664 passed (was 658, +6 new unit tests)
+  → cargo test --features llvm-backend --tests: 3081 passed (was 3073, +8 new integration tests)
+  → cargo clippy: 5 warnings (all pre-existing, 0 new)
+  → Total: 3745 tests, 0 failures, zero regression
+- 版本: v0.468.0 → v0.469.0 (minor bump — integrated elem_size fix)
+
+Stage Summary:
+- Stage 18.203 PASSED — Unified elem_size inference (integrated fix for "类型 1" group)
+- 2 fixes:
+  1. compute_type_size + compute_type_size_with_fallback (single source of truth)
+  2. 3 hardcoded sites replaced in lower_box_new_intrinsic / lower_vec_push_intrinsic /
+     lower_vec_get_intrinsic (per §10 DRY)
+- 1 design audit: C wrapper dependency analysis (TD-C-WRAPPER-OVERUSE created)
+- 1 bug discovered + fixed: Vec fallback 8 → 4 (corruption from mismatched push/get sizes)
+- 14 new tests (6 unit + 8 integration), zero regression
+- TD-BOX-SIZE-OF ✅ Resolved
+- TD-VEC-ELEM-SIZE-INFERENCE ✅ Resolved (partial — full generic instantiation
+  deferred to v0.2 P2+ as TD-TYPECK-GENERIC-INST)
+- v0.469.0: minor bump (integrated elem_size fix + C wrapper audit)
