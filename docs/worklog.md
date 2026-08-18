@@ -18427,3 +18427,45 @@ Stage Summary:
 - 新增 TD: TD-DROP-MOVED-LOCALS (drop elaboration 不跟踪 moved-from locals)
 - 无代码变更, 无版本 bump
 
+
+---
+Task ID: stage18.194
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.194 — Realloc infrastructure. v0.460.0 → v0.461.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (从 v0.460.0 包恢复)
+- §3.2 验收 baseline: 658 lib + 3049 integration = 3707 total, 0 failed
+
+- 依赖审计: __landin_alloc ✅, dealloc ✅, memcpy ✅, stdlib.h ✅ → 完整
+
+- 实现 __landin_realloc C stub (src/codegen/runtime.rs):
+  → wraps libc realloc(ptr, new_size)
+  → OOM panics (exit 1) per §1.0 原則 4
+  → Per §1.0 原則 6: one realloc for all heap growth
+
+- 注册 synthetic DefId (src/driver/driver_validations.rs):
+  → __landin_realloc: DefId(u32::MAX - 102)
+
+- 验证:
+  → realloc(ptr, 4, 8) preserves data=42 ✅
+  → realloc(NULL, 0, 4) works like alloc ✅
+  → realloc chain: multiple reallocs preserve data ✅
+
+- 4 tests (tests/v0/stage18/plan/stage18_194_realloc_tests.rs)
+
+- §3.2 全套验收:
+  → cargo check: 0 errors / 1 warning
+  → cargo fmt --check: exit 0
+  → cargo test --lib: 658 passed
+  → cargo test --tests: 3053 passed (was 3049, +4)
+  → Total: 3711 tests, 0 failures
+
+- v0.461.0: minor bump (realloc infrastructure)
+
+Stage Summary:
+- Stage 18.194 PASSED — Realloc infrastructure
+- 新增: __landin_realloc runtime stub (wraps libc realloc)
+- 解锁: Vec<T> (Stage 18.195) + String::push_str (Stage 18.196)
+- 测试: 658 lib + 3053 integration = 3711 total, 0 failures
+

@@ -34,6 +34,7 @@
 /// - `__landin_panic_msg(msg)` — panic with message
 /// - `__landin_alloc(size)` — heap allocation (wraps malloc, panics on OOM)
 /// - `__landin_dealloc(ptr)` — heap deallocation (wraps free, NULL-safe)
+/// - `__landin_realloc(ptr, old, new)` — heap reallocation (wraps realloc, panics on OOM)
 ///
 /// Stage 18.157: Extracted from `src/bin/main.rs` (Stage 13.8/13.10/13.13)
 /// and `src/bin/landinc.rs` (Stage 18.156) to eliminate duplication.
@@ -176,6 +177,19 @@ void __landin_memcpy(void* dst, const void* src, long long n) {
         d[i] = s[i];
     }
 }
+/* Stage 18.194: Heap reallocation for Vec/String growth.
+   __landin_realloc(ptr, old_size, new_size) → realloc(ptr, new_size), panics on OOM.
+   Wraps libc realloc which handles in-place extension when possible.
+   Per §1.0 原則 6 (通解>特例): one realloc for all heap growth operations.
+   Per §1.0 原則 4 (报错>静默): OOM must panic, not return NULL. */
+void* __landin_realloc(void* ptr, long long old_size, long long new_size) {
+    void* new_ptr = realloc(ptr, (size_t)new_size);
+    if (new_ptr == 0) {
+        fprintf(stderr, "panic: memory reallocation failed (old=%lld new=%lld)\n", old_size, new_size);
+        exit(1);
+    }
+    return new_ptr;
+}
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).
@@ -218,6 +232,8 @@ mod tests {
             "__landin_dealloc",
             // Stage 18.185 (TD-STRING-INTRINSICS): memcpy stub.
             "__landin_memcpy",
+            // Stage 18.194: realloc stub for Vec/String growth.
+            "__landin_realloc",
         ];
         for sym in &required {
             assert!(
