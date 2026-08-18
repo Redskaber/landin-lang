@@ -533,7 +533,10 @@ impl LLVMSysEmitter {
             // Stage 13.16: printf and __landin_eprintf are variadic — declare
             // them with isVariadic=1 so the LLVM module declaration matches
             // the variadic call sites in emit_call.
-            let is_variadic: i32 = if name == "printf" || name == "__landin_eprintf" {
+            let is_variadic: i32 = if name == "printf"
+                || name == "__landin_eprintf"
+                || name == "__landin_format_variadic"
+            {
                 1
             } else {
                 0

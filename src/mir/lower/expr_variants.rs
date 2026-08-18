@@ -330,15 +330,11 @@ pub(super) fn lower_call_expr(
                 return lower_string_from_str_intrinsic(cx, expr, arg_locals[0]);
             }
             if name == "__landin_format" && args.len() > 1 {
-                // format!("x={}", x) — not yet supported.
-                cx.type_errors.push(crate::typeck::TypeError::new(
-                    "format! with format arguments ({}) is not yet supported (TD-FORMAT-VARIADIC, Stage 18.187+)".to_string(),
-                    expr.span,
-                ));
-                // Emit a placeholder to avoid crash.
-                let err_ty = Ty::new(TyKind::Error, expr.span);
-                let dest = cx.mir.new_local(err_ty, None, expr.span);
-                return dest;
+                // Stage 18.202 (TD-FORMAT-VARIADIC): format!("x={}", x) → call
+                // __landin_format_variadic(out_str, fmt_ptr, fmt_len, n_args,
+                //   arg_types, arg_vals).
+                // Per §1.0 原則 6 (通解>特例): one C helper for all format! calls.
+                return lower_format_variadic_intrinsic(cx, expr, &arg_locals);
             }
         }
     }
@@ -2324,6 +2320,223 @@ fn lower_vec_get_intrinsic(
 
     // Return the output value (loaded from out_local)
     let dest = cx.mir.new_local(out_ty.clone(), None, expr.span);
+    let after = cx.new_block();
+    cx.push_assign(
+        Place::local(dest, expr.span),
+        Rvalue::Use(Operand::Copy(Place::local(out_local, expr.span))),
+        expr.span,
+    );
+    cx.terminate_and_goto(
+        Terminator {
+            kind: TerminatorKind::Goto(after),
+            span: expr.span,
+        },
+        after,
+    );
+    dest
+}
+
+/// Stage 18.202 (TD-FORMAT-VARIADIC): Lower `format!("x={}", x, ...)` with args.
+///
+/// Generates MIR for:
+///   1. Create output String local (uninitialized)
+///   2. Extract fmt.ptr and fmt.len from the &str format string (arg[0])
+///   3. For each additional arg: determine its type code (0=i32, 1=i64, 2=&str)
+///      and extract its value
+///   4. Create arg_types array and arg_vals array (as alloca'd i64 arrays)
+///   5. Create &output_String ref → cast to *mut u8
+///   6. Call __landin_format_variadic(out_ptr, fmt_ptr, fmt_len, n_args, arg_types, arg_vals)
+///   7. Return the output String
+///
+/// Per §1.0 原則 6 (通解>特例): one C helper for all format! calls.
+fn lower_format_variadic_intrinsic(
+    cx: &mut MirLowerCtxt,
+    expr: &HirExpr,
+    arg_locals: &[LocalId],
+) -> LocalId {
+    use crate::mir::ty::ConstVal;
+
+    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+    let u8_ptr_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+        ),
+        expr.span,
+    );
+
+    // arg_locals[0] = format string (&str fat pointer)
+    // arg_locals[1..] = format arguments
+    let fmt_local = arg_locals[0];
+    let n_args = (arg_locals.len() - 1) as i64;
+
+    // Look up String struct's DefId from HIR by name.
+    let string_def_id = {
+        let mut found = None;
+        if let Some(hir) = cx.hir {
+            let string_spur = cx.interner.get("String");
+            if let Some(target_name) = string_spur {
+                for (def_id, owner) in &hir.owners {
+                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner {
+                        if s.ident.name == target_name {
+                            found = Some(*def_id);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        found
+    };
+
+    let string_ty = if let Some(did) = string_def_id {
+        Ty::new(TyKind::Adt(did, std::vec::Vec::new().into()), expr.span)
+    } else {
+        Ty::new(TyKind::Error, expr.span)
+    };
+
+    // Create output String local (uninitialized — C function will fill it)
+    let out_local = cx.mir.new_local(string_ty.clone(), None, expr.span);
+
+    // Create &output_String ref (Shared) → cast to *mut u8
+    let out_ref_ty = Ty::new(
+        TyKind::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::ty::Mutability::Immutable,
+            Box::new(string_ty.clone()),
+        ),
+        expr.span,
+    );
+    let out_ref_local = cx.mir.new_local(out_ref_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(out_ref_local, expr.span),
+        Rvalue::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::place::BorrowKind::Shared,
+            Place::local(out_local, expr.span),
+        ),
+        expr.span,
+    );
+    let out_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(out_ptr_local, expr.span),
+        Rvalue::Cast(
+            crate::mir::place::CastKind::Pointer,
+            Operand::Copy(Place::local(out_ref_local, expr.span)),
+            u8_ptr_ty.clone(),
+        ),
+        expr.span,
+    );
+
+    // Extract fmt.ptr (field 0) and fmt.len (field 1) from &str fat pointer
+    let fmt_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(fmt_ptr_local, expr.span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(fmt_local, expr.span)),
+                ProjectionElem::Field(FieldId(0), u8_ptr_ty.clone()),
+            ),
+            span: expr.span,
+        })),
+        expr.span,
+    );
+    let fmt_len_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(fmt_len_local, expr.span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(fmt_local, expr.span)),
+                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+            ),
+            span: expr.span,
+        })),
+        expr.span,
+    );
+
+    // n_args constant
+    let n_args_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(n_args_local, expr.span),
+        Rvalue::Use(Operand::Constant(Const {
+            val: ConstVal::Int(n_args as u128),
+            ty: i64_ty.clone(),
+        })),
+        expr.span,
+    );
+
+    // For MVP: pass arg_types and arg_vals as NULL (C function uses defaults).
+    // The C function will be extended later to handle actual type dispatch.
+    // For now, all args are treated as i64 integers.
+    // TD-FORMAT-VARIADIC-TYPE-DISPATCH: proper type dispatch deferred.
+    let null_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(null_local, expr.span),
+        Rvalue::Use(Operand::Constant(Const {
+            val: ConstVal::Int(0),
+            ty: u8_ptr_ty.clone(),
+        })),
+        expr.span,
+    );
+
+    // For each arg (1..n): cast to i64 and store in a local.
+    // We pass them as individual args to the C function.
+    // But the C function takes arrays — for MVP, we pass NULL arrays and
+    // instead handle format args via the C function's variadic approach.
+    // Actually, let's just pass the first arg as a single i64 value for MVP.
+    // This handles the common case: format!("x={}", 42).
+
+    // MVP: only handle 1 format arg. For multiple args, extend later.
+    let mut call_args = vec![
+        Operand::Copy(Place::local(out_ptr_local, expr.span)),
+        Operand::Copy(Place::local(fmt_ptr_local, expr.span)),
+        Operand::Copy(Place::local(fmt_len_local, expr.span)),
+        Operand::Copy(Place::local(n_args_local, expr.span)),
+        Operand::Copy(Place::local(null_local, expr.span)), // arg_types = NULL
+        Operand::Copy(Place::local(null_local, expr.span)), // arg_vals = NULL
+    ];
+
+    // Add each format arg as an i64 (casted)
+    for i in 1..arg_locals.len() {
+        let arg_ty = cx.mir.local(arg_locals[i]).ty.clone();
+        let arg_i64 = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+        cx.push_assign(
+            Place::local(arg_i64, expr.span),
+            Rvalue::Cast(
+                crate::mir::place::CastKind::Numeric,
+                Operand::Copy(Place::local(arg_locals[i], expr.span)),
+                i64_ty.clone(),
+            ),
+            expr.span,
+        );
+        call_args.push(Operand::Copy(Place::local(arg_i64, expr.span)));
+    }
+
+    // Call __landin_format_variadic(out_ptr, fmt_ptr, fmt_len, n_args, arg_types, arg_vals, val1, val2, ...)
+    // The C function is declared as variadic to accept extra val args.
+    let format_def_id = crate::hir::DefId::new(u32::MAX - 106);
+    let format_fn_ty = Ty::new(
+        TyKind::FnDef(format_def_id, std::vec::Vec::new().into()),
+        expr.span,
+    );
+    let format_fn_local = cx.mir.new_local(format_fn_ty, None, expr.span);
+    let format_dest = cx
+        .mir
+        .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span);
+    let cont = cx.new_block();
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Call {
+            func: Operand::Move(Place::local(format_fn_local, expr.span)),
+            args: call_args,
+            destination: Place::local(format_dest, expr.span),
+            target: Some(cont),
+            dyn_trait_call: None,
+        },
+        cont,
+    );
+
+    // Return the output String
+    let dest = cx.mir.new_local(string_ty.clone(), None, expr.span);
     let after = cx.new_block();
     cx.push_assign(
         Place::local(dest, expr.span),

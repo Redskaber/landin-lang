@@ -44,7 +44,10 @@ impl AggregateEmitter for LLVMSysEmitter {
             // mismatches when the call site has more args than the declaration.
             // (The actual libc printf is variadic; our auto-declaration with
             // fixed args would cause LLVM verifier errors for variadic calls.)
-            let is_variadic: i32 = if fn_name == "printf" || fn_name == "__landin_eprintf" {
+            let is_variadic: i32 = if fn_name == "printf"
+                || fn_name == "__landin_eprintf"
+                || fn_name == "__landin_format_variadic"
+            {
                 1
             } else {
                 0

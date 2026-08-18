@@ -63,5 +63,58 @@ pub(crate) fn build_fn_sigs_map(
             map.insert(name.clone(), (ret_ty, param_tys));
         }
     }
+    // Stage 18.202 (TD-FORMAT-VARIADIC fix): Add runtime helper signatures
+    // so get_or_declare_function creates correct forward declarations.
+    // Without this, the fallback creates i32 (...) which mismatches the
+    // actual void return type and fixed param count, causing ABI issues.
+    let runtime_sigs: &[(&str, EmitType, &[EmitType])] = &[
+        ("__landin_alloc", EmitType::OpaquePtr, &[EmitType::I64]),
+        ("__landin_dealloc", EmitType::Void, &[EmitType::OpaquePtr]),
+        (
+            "__landin_memcpy",
+            EmitType::Void,
+            &[EmitType::OpaquePtr, EmitType::OpaquePtr, EmitType::I64],
+        ),
+        (
+            "__landin_realloc",
+            EmitType::OpaquePtr,
+            &[EmitType::OpaquePtr, EmitType::I64, EmitType::I64],
+        ),
+        (
+            "__landin_vec_push",
+            EmitType::Void,
+            &[EmitType::OpaquePtr, EmitType::OpaquePtr, EmitType::I64],
+        ),
+        (
+            "__landin_string_push_str",
+            EmitType::Void,
+            &[EmitType::OpaquePtr, EmitType::OpaquePtr, EmitType::I64],
+        ),
+        (
+            "__landin_vec_get",
+            EmitType::Void,
+            &[
+                EmitType::OpaquePtr,
+                EmitType::I64,
+                EmitType::OpaquePtr,
+                EmitType::I64,
+            ],
+        ),
+        (
+            "__landin_format_variadic",
+            EmitType::Void,
+            &[
+                EmitType::OpaquePtr,
+                EmitType::OpaquePtr,
+                EmitType::I64,
+                EmitType::I64,
+                EmitType::OpaquePtr,
+                EmitType::OpaquePtr,
+            ],
+        ),
+    ];
+    for (name, ret, params) in runtime_sigs {
+        map.insert(name.to_string(), (ret.clone(), params.to_vec()));
+    }
     map
 }

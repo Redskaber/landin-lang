@@ -278,6 +278,124 @@ void __landin_vec_get(void* vec_ptr, long long index, void* out_ptr, long long e
         dst[i] = src[i];
     }
 }
+/* Stage 18.202 (TD-FORMAT-VARIADIC): format! with {} placeholders.
+   __landin_format_variadic(fmt_ptr, fmt_len, n_args, arg_types, arg_vals) → String.
+   fmt_ptr/fmt_len describe the format string with {} placeholders.
+   n_args is the number of format arguments.
+   arg_types is an array of type codes (0=i32, 1=i64, 2=&str, 3=bool).
+   arg_vals is an array of i64 values (or fat pointer for &str).
+   Returns a String { ptr, len, cap } by writing to out_ptr.
+   Per §1.0 原則 6 (通解>特例): one function for all format! calls. */
+/* We return the result via an output parameter (String*) to avoid struct-by-value. */
+void __landin_format_variadic(
+    void* out_str_ptr,
+    const char* fmt_ptr, long long fmt_len,
+    long long n_args,
+    const long long* arg_types,
+    const long long* arg_vals,
+    ...                        /* variadic: extra i64 values for each arg */
+) {
+    /* Collect variadic args */
+    va_list vargs;
+    va_start(vargs, arg_vals);
+    long long collected_vals[16];
+    for (long long i = 0; i < n_args && i < 16; i++) {
+        collected_vals[i] = va_arg(vargs, long long);
+    }
+    va_end(vargs);
+    /* Use collected_vals instead of arg_vals (which may be NULL) */
+    const long long* effective_vals = collected_vals;
+    /* Stage 18.202 fix: arg_types may be NULL (passed as ptr 0 from MIR).
+       If NULL, default all args to integer type (0). */
+    long long default_types[16];
+    const long long* effective_types;
+    if (arg_types == 0) {
+        for (long long i = 0; i < n_args && i < 16; i++) default_types[i] = 0;
+        effective_types = default_types;
+    } else {
+        effective_types = arg_types;
+    }
+    /* Build a C printf format string from the Landin format string.
+       Replace {} with %ld (for integers) or %s (for strings).
+       For MVP, we assume all {} are for integers (%ld). */
+    char c_fmt[256];
+    long long c_fmt_idx = 0;
+    long long arg_idx = 0;
+    for (long long i = 0; i < fmt_len && c_fmt_idx < 250; i++) {
+        if (fmt_ptr[i] == '{' && i + 1 < fmt_len && fmt_ptr[i + 1] == '}') {
+            /* Determine format specifier from arg type */
+            if (arg_idx < n_args) {
+                long long at = effective_types[arg_idx];
+                if (at == 2) {
+                    /* &str → %s (but we need the ptr, not i64) */
+                    c_fmt[c_fmt_idx++] = '%';
+                    c_fmt[c_fmt_idx++] = 's';
+                } else {
+                    /* integers → %ld */
+                    c_fmt[c_fmt_idx++] = '%';
+                    c_fmt[c_fmt_idx++] = 'l';
+                    c_fmt[c_fmt_idx++] = 'd';
+                }
+                arg_idx++;
+            }
+            i++; /* skip '}' */
+        } else {
+            c_fmt[c_fmt_idx++] = fmt_ptr[i];
+        }
+    }
+    c_fmt[c_fmt_idx] = '\0';
+
+    /* First pass: calculate length with vsnprintf(NULL, 0, ...) */
+    /* For MVP, we use a fixed-size buffer instead of vsnprintf (simpler). */
+    char buffer[4096];
+    long long result_len = 0;
+
+    /* Build the output string by walking c_fmt and substituting args */
+    long long val_idx = 0;
+    for (long long i = 0; i < c_fmt_idx && result_len < 4090; i++) {
+        if (c_fmt[i] == '%' && i + 1 < c_fmt_idx) {
+            if (c_fmt[i + 1] == 'l' && i + 2 < c_fmt_idx && c_fmt[i + 2] == 'd') {
+                /* %ld: print an integer */
+                long long val = effective_vals[val_idx++];
+                result_len += snprintf(buffer + result_len, 4096 - result_len, "%ld", (long)val);
+                i += 2; /* skip 'ld' */
+            } else if (c_fmt[i + 1] == 's') {
+                /* %s: print a string (arg_vals[val_idx] = ptr, arg_vals[val_idx+1] = len) */
+                const char* str_ptr = (const char*)arg_vals[val_idx];
+                long long str_len = arg_vals[val_idx + 1];
+                val_idx += 2;
+                for (long long j = 0; j < str_len && result_len < 4090; j++) {
+                    buffer[result_len++] = str_ptr[j];
+                }
+                i += 1; /* skip 's' */
+            } else {
+                buffer[result_len++] = c_fmt[i];
+            }
+        } else {
+            buffer[result_len++] = c_fmt[i];
+        }
+    }
+    buffer[result_len] = '\0';
+
+    /* Allocate String buffer and copy */
+    char* str_buf = (char*)malloc((size_t)(result_len + 1));
+    if (str_buf == 0) {
+        fprintf(stderr, "panic: format! alloc failed (len=%lld)\n", result_len);
+        exit(1);
+    }
+    for (long long i = 0; i < result_len; i++) {
+        str_buf[i] = buffer[i];
+    }
+    str_buf[result_len] = '\0';
+
+    /* Write to out String */
+    void** ptr_field = (void**)out_str_ptr;
+    long long* len_field = (long long*)((char*)out_str_ptr + 8);
+    long long* cap_field = (long long*)((char*)out_str_ptr + 16);
+    *ptr_field = str_buf;
+    *len_field = result_len;
+    *cap_field = result_len + 1;
+}
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).
@@ -328,6 +446,8 @@ mod tests {
             "__landin_string_push_str",
             // Stage 18.200: Vec::get helper.
             "__landin_vec_get",
+            // Stage 18.202: format! variadic helper.
+            "__landin_format_variadic",
         ];
         for sym in &required {
             assert!(

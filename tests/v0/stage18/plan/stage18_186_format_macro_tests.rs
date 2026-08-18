@@ -165,12 +165,10 @@ fn main() -> i32 {
 // NEGATIVE TESTS — format! with args produces clean error.
 // =========================================================================
 
-/// Negative 1: `format!("x={}", x)` must produce a clean error.
-///
-/// MVP only supports literal strings. Format args ({}) are deferred to
-/// Stage 18.187+ (TD-FORMAT-VARIADIC).
+/// Stage 18.202 (TD-FORMAT-VARIADIC resolved): `format!("x={}", x)` now works.
+/// These tests were previously expecting compile failure; now they expect success.
 #[test]
-fn stage18_186_format_with_args_fails() {
+fn stage18_186_format_with_args_now_works() {
     let code = r#"
 fn main() -> i32 {
     let x = 42;
@@ -179,16 +177,16 @@ fn main() -> i32 {
 }
 "#;
     let exit = compile_only(code);
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "expected compile failure for format! with args (TD-FORMAT-VARIADIC), got exit {}",
+        "expected compile success for format! with args (TD-FORMAT-VARIADIC resolved), got exit {}",
         exit
     );
 }
 
-/// Negative 2: `format!("{}", 42)` must produce a clean error.
+/// Stage 18.202: `format!("{}", 42)` now works.
 #[test]
-fn stage18_186_format_placeholder_only_fails() {
+fn stage18_186_format_placeholder_only_now_works() {
     let code = r#"
 fn main() -> i32 {
     let s = format!("{}", 42);
@@ -196,18 +194,16 @@ fn main() -> i32 {
 }
 "#;
     let exit = compile_only(code);
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "expected compile failure for format!({{}}) with arg (TD-FORMAT-VARIADIC), got exit {}",
+        "expected compile success for format!({{}}) with arg, got exit {}",
         exit
     );
 }
 
-/// Negative 3: `format!("a", "b")` with 2 literal args must fail.
-///
-/// Even though both are literals, multiple args aren't supported in MVP.
+/// Stage 18.202: `format!("a", "b")` with 2 args now works.
 #[test]
-fn stage18_186_format_multiple_literal_args_fails() {
+fn stage18_186_format_multiple_literal_args_now_works() {
     let code = r#"
 fn main() -> i32 {
     let s = format!("a", "b");
@@ -215,9 +211,9 @@ fn main() -> i32 {
 }
 "#;
     let exit = compile_only(code);
-    assert_ne!(
+    assert_eq!(
         exit, 0,
-        "expected compile failure for format! with 2 args (TD-FORMAT-VARIADIC), got exit {}",
+        "expected compile success for format! with 2 args, got exit {}",
         exit
     );
 }

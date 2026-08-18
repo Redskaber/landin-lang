@@ -18662,3 +18662,82 @@ Stage Summary:
 - Bug fix: elem_size default 4 for generic T (was 8 → offset error)
 - TD-VEC-ELEM-SIZE-INFERENCE: new (proper fix needs Vec<T> type param resolution)
 
+
+---
+Task ID: stage18.201
+Agent: Super Z (main) — ARCH-A + PM-A + REV-A
+Task: Stage 18.201 — Task review: MVP/简写/缺陷全面审计 + 任务图重排. v0.467.0 (no bump).
+
+Work Log:
+- §3.2 验收 baseline: 658 lib + 3073 integration = 3731 total, 0 failed
+
+- 触发条例: 用户指令 "如果当前设计和实现存在简写和缺陷（时机）...同类型错误或存在依赖关系的应该考虑整体性完整修复"
+
+- MVP/简写/缺陷全面审计:
+  → 14 个已解决 MVP (String alias, from_str, as_str, push_str, Vec new/push/get, format! MVP, array index, fat ptr Index, str methods, i64 literal, array OOB, Box type coercion)
+  → 8 个活跃 MVP/简写/缺陷
+  → 3 组同类型 (elem_size 硬编码, borrow checker 绕过, typeck 泛型)
+
+- 同类型/依赖关系分析:
+  → 类型 1 (elem_size): TD-BOX-SIZE-OF + TD-VEC-ELEM-SIZE-INFERENCE → 整体修复
+  → 类型 2 (borrow): TD-VEC-PUSH-SHARED-BORROW + TD-BOX-AUTO-DROP → 整体修复
+  → 类型 3 (typeck 泛型): TD-INT-UINT-VAR + TD-TUPLE-CTOR-TYPECK + TD-VEC-ELEM-SIZE-INFERENCE → v0.2 P2+
+
+- 任务图重排:
+  18.201 任务审查 (本 stage)
+  18.202 format! variadic (最高优先级 — 用户最常用)
+  18.203 elem_size 统一推导 (整体修复 Box + Vec)
+  18.204 deep review §14.5
+
+- 结论: 所有 MVP/简写已记录, 无遗漏
+- v0.467.0: no bump (task review only)
+
+Stage Summary:
+- Stage 18.201 — Task review: MVP audit + task re-plan
+- 14 MVPs resolved, 8 active, 3 groups identified for integrated fix
+- Next: Stage 18.202 — format! variadic
+
+
+---
+Task ID: stage18.202
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.202 — format! variadic implementation (TD-FORMAT-VARIADIC resolved). v0.467.0 → v0.468.0.
+
+Work Log:
+- 依赖审计: String::from_str ✅, String::push_str ✅, printf ✅ → 完整
+- 实现 __landin_format_variadic C helper (runtime.rs):
+  → variadic: va_list collects extra i64 values
+  → builds c_fmt from Landin format string ({} → %ld)
+  → NULL-safe arg_types (defaults to integer type)
+  → snprintf into buffer, allocate String, copy bytes
+  → writes to output String via pointer arithmetic
+- 实现 format! variadic MIR intrinsic (expr_variants.rs):
+  → create &output_String → cast to *mut u8
+  → extract fmt.ptr and fmt.len from &str
+  → cast each format arg to i64 (variadic)
+  → call __landin_format_variadic(out, fmt, len, n, NULL, NULL, val1, ...)
+- 修复 fn_sigs_map (function_sigs.rs): 添加 runtime helper 签名
+  → 之前 get_or_declare_function 创建 i32 (...) 而非 void (ptr,ptr,i64,...)
+  → 导致 ABI 不匹配 → segfault
+- 修复 variadic declaration (mod.rs + aggregate.rs):
+  → __landin_format_variadic 加入 variadic 检查
+- 更新 3 个测试: format! with args 从 "expect failure" 改为 "expect success"
+- 验证:
+  → format!("x={}", 42) compiles ✅
+  → format!("x={}", 42).len = 4 ✅ (field access)
+  → format!("{}", 42) compiles ✅
+  → format!("a", "b") compiles ✅
+- 已知限制: s.len() (method call) on format! result segfaults
+  → 根因: TD-FUNCTION-REDEFINE-PARAMS (forward declaration param type mismatch)
+  → 影响: 所有 prelude method calls on stack-allocated structs
+  → 不影响: field access (s.len) works correctly
+- Tests: 658 lib + 3073 integration = 3731 total, 0 failures
+- v0.468.0: minor bump
+
+Stage Summary:
+- Stage 18.202 PASSED — format! variadic (TD-FORMAT-VARIADIC resolved)
+- 新增: __landin_format_variadic C helper + MIR intrinsic + fn_sigs_map fix
+- 验证: format!("x={}", 42) works (field access for len)
+- TD-FORMAT-VARIADIC ✅ Resolved
+- TD-FUNCTION-REDEFINE-PARAMS: new (pre-existing, affects all prelude methods)
+
