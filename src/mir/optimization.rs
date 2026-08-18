@@ -60,11 +60,50 @@ pub fn run_dce(mir: &mut MirBody) {
 
 /// Collect all locals that are read in a statement (i.e., appear as
 /// operands or in rvalues, not just as assignment destinations).
+///
+/// Stage 18.178 (TD-HEAP-ALLOC bug fix): For `Assign(Projection(base, Deref), _)`,
+/// the `base` local IS read (codegen loads it to get the pointer to store
+/// through). Previously, only the rvalue's locals were collected, so DCE
+/// incorrectly removed `let p = call_result;` when the only use of `p` was
+/// `*p = 42` — causing `p` to be uninitialized at runtime → segfault.
+///
+/// Per §1.0 原則 4 (报错>静默): DCE must not silently remove assignments
+/// that are actually used by projection stores.
+/// Per §1.0 原則 6 (通解>特例): one rule for all projection kinds — Deref
+/// reads the base, Field/Index don't read the base (they use its address).
+/// Per §2 原則 9 (正确>妥协): fix the root cause (DCE's read analysis),
+/// not the symptom (disable DCE for raw pointer programs).
 fn collect_read_locals(kind: &StatementKind, used: &mut HashSet<crate::mir::place::LocalId>) {
     match kind {
         StatementKind::Assign(pair) => {
-            let (_, rvalue) = &**pair;
+            let (place, rvalue) = &**pair;
+            // Collect rvalue reads (the normal path).
             collect_rvalue_locals(rvalue, used);
+            // Stage 18.178: Collect LHS reads from Deref projections.
+            // `*p = val` reads `p` (to get the pointer), so `p` must be
+            // marked as used. Field/Index projections don't read the base
+            // (they only use its address for GEP).
+            if let PlaceKind::Projection(base, elem) = &place.kind {
+                match elem {
+                    crate::mir::place::ProjectionElem::Deref => {
+                        collect_place_locals(base, used);
+                    }
+                    crate::mir::place::ProjectionElem::Index(idx_local) => {
+                        // `arr[i] = val` reads `i` (the index), but not `arr`
+                        // (only its address is used for GEP).
+                        used.insert(*idx_local);
+                    }
+                    crate::mir::place::ProjectionElem::Field(_, _) => {
+                        // `s.f = val` writes to s.f — doesn't read s.
+                    }
+                    crate::mir::place::ProjectionElem::ConstantIndex { .. } => {
+                        // `arr[const] = val` — doesn't read arr (address only).
+                    }
+                    crate::mir::place::ProjectionElem::Subslice { .. } => {
+                        // `arr[a..b] = val` — doesn't read arr (address only).
+                    }
+                }
+            }
         }
         StatementKind::Deinit(place) => {
             collect_place_locals(place, used);

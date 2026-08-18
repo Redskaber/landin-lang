@@ -610,36 +610,60 @@ impl Resolver {
             return Res::Err;
         }
 
-        // Stage 18.21: Recognize `__landin_<name>` as known runtime functions.
-        // These are emitted by the built-in macro_rules! definitions
-        // (e.g., `println!(...)` expands to `__landin_println(...)`).
-        // Without this, the resolver would report "cannot find value" for
-        // every println!/print!/eprintln!/eprint! call.
-        // Per §1.0 原則 6 "通用 > 特解": one check for all __landin_ functions.
+        // Stage 18.178 (TD-HEAP-ALLOC bug fix): For `__landin_<name>` paths,
+        // FIRST check if the user declared it as `extern "C" { fn ... }` in
+        // the module tree. If yes, use the real DefId (preserves exact name,
+        // proper extern linkage). If no, fall back to the synthetic DefId
+        // scheme (for built-in macros like println! that expand to
+        // `__landin_println(...)` without a user-visible declaration).
+        //
+        // Previously, ANY `__landin_*` name was intercepted and given a
+        // synthetic DefId — `u32::MAX` for unknown names. But `u32::MAX`
+        // collides with `__landin_println`'s `DefId(u32::MAX - 0)` (since
+        // `u32::MAX - 0 == u32::MAX`). This caused `__landin_dealloc` and
+        // `__landin_alloc` calls to be silently misresolved to
+        // `__landin_println`, producing garbage IR.
+        //
+        // The fix has two parts:
+        //   1. Try real resolution FIRST (via the normal module tree path).
+        //   2. Use `u32::MAX - 1 - i` (offset by 1) for synthetic DefIds to
+        //      avoid the `u32::MAX` collision.
+        //
+        // Per §1.0 原則 4 (报错>静默): unknown __landin_* names should produce
+        // a clean "cannot find value" error, not silently misresolve.
+        // Per §1.0 原則 6 (通解>特解): one path for all __landin_* names —
+        // try real resolution first, fall back to synthetic only if not found.
+        // Per §2 原則 9 (正确>妥协): fix the root cause (colliding DefIds),
+        // not the symptom (special-case more names).
         if path.segments.len() == 1 && path.leading == PathLeading::None {
             let name = interner.resolve(&path.segments[0].ident.name);
             if name.starts_with("__landin_") {
-                // Return a synthetic Def for the runtime function.
-                // The driver registers each __landin_<name> in
-                // fn_name_by_def_id with a synthetic DefId(u32::MAX - i).
-                // We use the same scheme here so codegen can resolve the name.
-                // For __landin_println → DefId(u32::MAX - 0)
-                // For __landin_print   → DefId(u32::MAX - 1)
-                // For __landin_eprintln→ DefId(u32::MAX - 2)
-                // For __landin_eprint  → DefId(u32::MAX - 3)
-                // For other __landin_  → DefId(u32::MAX) (fallback)
-                let builtin_names = [
-                    "__landin_println",
-                    "__landin_print",
-                    "__landin_eprintln",
-                    "__landin_eprint",
-                ];
-                let idx = builtin_names.iter().position(|n| *n == name);
-                let def_id = match idx {
-                    Some(i) => crate::hir::DefId::new(u32::MAX - i as u32),
-                    None => crate::hir::DefId::new(u32::MAX),
-                };
-                return Res::Def(def_id, crate::hir::DefKind::Fn);
+                // Try real resolution FIRST: look up the name in the module
+                // tree's value namespace. If the user declared it as extern,
+                // this finds the real DefId.
+                if let Some(res) = self.lookup_landin_runtime_name(name, interner) {
+                    return res;
+                }
+                // Fall back to synthetic DefId for built-in macro expansions
+                // (println/print/eprintln/eprint/assert/panic_msg/format/dbg/
+                // write/etc.). These have no user-visible declaration.
+                let builtin_names = crate::parser::macro_expand::BUILTIN_MACRO_NAMES;
+                let landin_name = format!(
+                    "__landin_{}",
+                    name.strip_prefix("__landin_").unwrap_or(name)
+                );
+                if let Some(idx) = builtin_names
+                    .iter()
+                    .position(|n| format!("__landin_{}", n) == landin_name)
+                {
+                    // Use u32::MAX - 1 - idx to avoid collision with u32::MAX
+                    // (which would collide with the first entry u32::MAX - 0).
+                    let def_id = crate::hir::DefId::new(u32::MAX - 1 - idx as u32);
+                    return Res::Def(def_id, crate::hir::DefKind::Fn);
+                }
+                // Unknown __landin_* name with no extern declaration and no
+                // built-in macro match — fall through to normal resolution,
+                // which will produce Res::Err.
             }
         }
 
@@ -859,6 +883,27 @@ impl Resolver {
     ///
     /// Per §10: `resolve_path_in_module` follows `<verb>_<noun>_<prep>_<noun>`.
     /// Per §1.0 原則 6 (通解>特例): one function handles all segment counts.
+
+    /// Stage 18.178 (TD-HEAP-ALLOC bug fix): Look up a `__landin_<name>`
+    /// runtime function in the module tree's value namespace.
+    ///
+    /// Returns `Some(Res::Def(...))` if the user declared it as
+    /// `extern "C" { fn __landin_alloc(...); }` (or similar). Returns
+    /// `None` if not found, so the caller can fall back to the synthetic
+    /// DefId scheme for built-in macro expansions.
+    ///
+    /// Per §10: `lookup_landin_runtime_name` follows `<verb>_<noun>_<noun>_<prep>_<noun>`.
+    /// Per §1.0 原則 6 (通解>特例): one lookup for all __landin_* names.
+    fn lookup_landin_runtime_name(&self, name: &str, interner: &Rodeo) -> Option<crate::hir::Res> {
+        let spur = interner.get(name)?;
+        let def_id = self.module_tree.lookup_value(spur)?;
+        let kind = self
+            .def_kinds
+            .get(&def_id)
+            .copied()
+            .unwrap_or(crate::hir::DefKind::Fn);
+        Some(crate::hir::Res::Def(def_id, kind))
+    }
     fn resolve_path_in_module(
         module: &ModuleNode,
         segments: &[HirPathSegment],

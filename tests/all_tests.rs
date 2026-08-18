@@ -495,6 +495,10 @@ mod stage18_164_generics_mono_negative_tests;
 #[path = "v0/stage18/plan/stage18_164_vtable_negative_tests.rs"]
 mod stage18_164_vtable_negative_tests;
 
+// === Stage 18.178: Heap Allocation Infrastructure (TD-HEAP-ALLOC) ===
+#[path = "v0/stage18/plan/stage18_178_heap_alloc_tests.rs"]
+mod stage18_178_heap_alloc_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

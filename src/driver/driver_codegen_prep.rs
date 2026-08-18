@@ -20,8 +20,33 @@ pub(super) fn populate_fn_name_by_def_id(
     for (def_id, owner) in &hir.owners {
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Fn(f)) = owner {
             let name = interner.try_resolve(&f.ident.name).unwrap_or("fn");
-            let stripped = name.strip_prefix("landin_").unwrap_or(name);
-            fn_name_by_def_id.insert(*def_id, format!("landin_{}", stripped));
+            // Stage 18.178 (TD-HEAP-ALLOC bug fix): Preserve extern fn names
+            // AS-IS (no `landin_` prefix mangling). Extern fns are linked
+            // against external C symbols (e.g., `__landin_alloc`, `printf`,
+            // `malloc`) whose names must match exactly. Mangling them to
+            // `landin___landin_alloc` would break the linker.
+            //
+            // Root cause: latent bug since Stage 10.3 (extern block support).
+            // Extern fns were registered in the resolver (via the HirItem::Fn
+            // owner path) but the codegen prep applied Landin-style name
+            // mangling, producing symbols that don't exist in the C runtime.
+            // Existing tests only verified compilation, not linking/calling.
+            //
+            // Per §1.0 原則 3 (显式>隐式): extern fn names are explicit
+            // contracts with external code — preserve them literally.
+            // Per §1.0 原則 6 (通解>特例): one rule for ALL extern fns (any
+            // non-Landin ABI), not a special-case list of known names.
+            // Per §2 原則 9 (正确>妥协): fix the root cause (preserve name
+            // based on ABI), not the symptom (register __landin_* names in
+            // the synthetic list).
+            if f.sig.abi != crate::ast::Abi::Landin {
+                // Extern fn (C ABI, System ABI, etc.) — preserve name as-is.
+                fn_name_by_def_id.insert(*def_id, name.to_string());
+            } else {
+                // Landin ABI fn — apply standard `landin_<name>` mangling.
+                let stripped = name.strip_prefix("landin_").unwrap_or(name);
+                fn_name_by_def_id.insert(*def_id, format!("landin_{}", stripped));
+            }
         }
         if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Impl(impl_block)) = owner {
             for impl_item in &impl_block.items {

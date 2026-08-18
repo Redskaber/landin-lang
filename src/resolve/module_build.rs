@@ -174,8 +174,26 @@ impl Resolver {
         self.def_span.insert(def_id, item_span);
         match item {
             HirItem::Fn(f) => {
-                registrations.push((def_id, DefKind::Fn, f.ident.name));
-                self.def_kinds.insert(def_id, DefKind::Fn);
+                // Stage 18.178 (TD-HEAP-ALLOC bug fix): Distinguish extern
+                // fns (C ABI, etc.) from Landin ABI fns. Both are stored as
+                // `HirItem::Fn` by the HIR lower (foreign fns inside `extern
+                // "C" { ... }` blocks are stored as `HirItem::Fn` owners).
+                //
+                // Marking extern fns as `DefKind::ExternFn` (instead of
+                // `DefKind::Fn`) tells codegen to:
+                //   - Preserve the fn name AS-IS (no `landin_` mangling)
+                //   - Skip emitting a function body (extern fns have no body)
+                //   - Emit a `declare` statement when called
+                //
+                // Per §1.0 原則 6 (通解>特例): one rule based on ABI, not a
+                // special-case list of known names.
+                let kind = if f.sig.abi != crate::ast::Abi::Landin {
+                    DefKind::ExternFn
+                } else {
+                    DefKind::Fn
+                };
+                registrations.push((def_id, kind, f.ident.name));
+                self.def_kinds.insert(def_id, kind);
                 self.def_visibility.insert(def_id, f.vis.clone());
             }
             HirItem::Const(c) => {
@@ -262,6 +280,18 @@ impl Resolver {
                 self.def_visibility.insert(def_id, t.vis.clone());
             }
             HirItem::ExternBlock(_) => {
+                // Stage 18.178 (TD-HEAP-ALLOC bug fix): Only register the
+                // block itself; the individual foreign fns are stored as
+                // separate `HirItem::Fn` owners by the HIR lower, so they're
+                // picked up by the `HirItem::Fn` arm above (marked as
+                // `DefKind::ExternFn` based on ABI).
+                //
+                // Previously this arm tried to register the inner items too,
+                // causing duplicate-definition errors. The root fix is in the
+                // `HirItem::Fn` arm — it now distinguishes extern fns by ABI.
+                //
+                // Per §1.0 原則 6 (通解>特例): one registration path per item
+                // kind (Fn for all fns including extern), not separate paths.
                 self.def_kinds.insert(def_id, DefKind::ExternFn);
             }
             HirItem::Mod(m) => {

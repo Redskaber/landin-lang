@@ -1020,16 +1020,29 @@ pub(super) fn run_post_typeck_validations(
     // Per §10 naming: `validate_cast_types` follows `validate_<noun>_<noun>`.
     validate_cast_types(hir, interner, &mut errors.typeck);
 
-    // Stage 18.21: Register __landin_println etc. in fn_name_by_def_id
-    // so codegen can resolve the function name. The resolver returns a
-    // synthetic DefId for __landin_ functions; we map each to its name.
-    // Use DefId(u32::MAX - i) to avoid collisions with real DefIds.
+    // Stage 18.21 + 18.178 (TD-HEAP-ALLOC bug fix): Register __landin_println
+    // etc. in fn_name_by_def_id so codegen can resolve the function name.
+    //
+    // The resolver returns a synthetic DefId for __landin_ functions that
+    // come from built-in macro expansions (println! → __landin_println, etc.).
+    // We map each to its name.
+    //
+    // Stage 18.178 fix: Use DefId(u32::MAX - 1 - i) to avoid collision with
+    // u32::MAX. Previously used DefId(u32::MAX - i), but `u32::MAX - 0 ==
+    // u32::MAX` collided with the resolver's fallback DefId(u32::MAX) for
+    // unknown __landin_* names — causing __landin_alloc/__landin_dealloc
+    // to be silently misresolved to __landin_println.
+    //
+    // Per §1.0 原則 6 (通解>特例): one registration loop for all built-in
+    // macro names.
+    // Per §2 原則 9 (正确>妥协): fix the root cause (DefId collision), not
+    // the symptom (special-case more names).
     for (i, name) in crate::parser::macro_expand::BUILTIN_MACRO_NAMES
         .iter()
         .enumerate()
     {
         let landin_name = format!("__landin_{}", name);
-        let synthetic_def_id = crate::hir::DefId::new(u32::MAX - i as u32);
+        let synthetic_def_id = crate::hir::DefId::new(u32::MAX - 1 - i as u32);
         fn_name_by_def_id.insert(synthetic_def_id, landin_name);
     }
 }

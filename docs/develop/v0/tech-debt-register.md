@@ -90,7 +90,10 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | ID | Description | Impact | Fix Plan |
 |----|-------------|--------|----------|
 | TD-STDLIB-FACADE | String/Vec/Option/Result are type stubs, not real implementations | No heap allocation, no collections | 🟡 Split Stage 18.163: Option/Result (不依赖 heap, 18.165) + heap alloc 基础设施 (18.166-18.168) + String/Vec (18.169-18.171). 审查发现 codegen 无 malloc/free 支持 |
-| TD-NO-FORMAT-MACRO | No `format!`/`write!` macros | Only `println!`/`print!`/`eprintln!`/`eprint!` | v0.2 P1 (Stage 18.171): format macros — 依赖 String 实现 (TD-STDLIB-FACADE) |
+| TD-NO-FORMAT-MACRO | No `format!`/`write!` macros | Only `println!`/`print!`/`eprintln!`/`eprint!` | v0.2 P1 (Stage 18.182): format macros — 依赖真实 String 实现 (TD-STRING-AS-STR-ALIAS Stage 18.181) |
+| TD-STRING-AS-STR-ALIAS | Stage 18.176 实现 String 为 &str 别名 (PrimTy::Str)，违反设计文档 §3.4 "String = owned Vec<u8>" | (1) String 不是 owned 类型，无法 push_str (2) 与 Rust 语义不一致 (3) 用户预期落空 | Stage 18.181: prelude 注入真实 `struct String { vec: Vec<u8> }` + new/from_str/push_str/push/len/as_str 方法，移除 PrimTy::Str 对 "String" 的别名映射。依赖 TD-HEAP-ALLOC (18.178) + TD-VEC-MVP (18.180) |
+| TD-HEAP-ALLOC | codegen 无 malloc/free 调用支持，阻碍所有 heap-allocated 类型 (Box/Vec/String/Rc/Arc) | 无法实现任何 owned heap 类型 | Stage 18.178: (1) 验证 codegen `emit_call("malloc", ...)` 可调用 libc malloc (2) prelude 注入 `struct Box<T>(*mut T)` (3) MIR lower 拦截 `Box::new(x)` → malloc + store (4) drop glue 自动调用 `free` |
+| TD-VEC-MVP | `Vec<T>` 在 stdlib 注册表中作为名字存在 (STDLIB_ALLOC_TYPES)，但无实际类型 + 方法实现 | 无法使用 Vec 类型 | Stage 18.180: prelude 注入 `struct Vec<T> { ptr: *mut T, len: usize, cap: usize }` + new/push/len/pop 方法。依赖 TD-HEAP-ALLOC (18.178) |
 
 ### 2.7 Test Infrastructure
 
@@ -222,7 +225,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 |----------|-------|-----|
 | P0 (致命) | 0 | — (all resolved) |
 | P1 (严重) | 0 | — (all resolved) |
-| P2 (一般) | 23 | TD-INT-UINT-VAR, TD-DEREF-NON-REF, TD-LOCALID0-FALLBACK, TD-SINGLE-FILE, TD-NO-INCREMENTAL, TD-RVALUE-NO-SPAN, TD-EMITTER-PANIC, TD-SPAN-DUMMY-CLEANUP, TD-MODULELOAD-ERROR-FIELD, TD-NEGATIVE-TEST-COVERAGE, TD-UNWRAP-NONGUARDED, TD-LINUX-ONLY, TD-ABI-DIVERSITY, TD-STDLIB-FACADE, TD-NO-FORMAT-MACRO, TD-IGNORE-DISCIPLINE, TD-CODEGEN-NEGATIVE, TD-NO-JUMP-THREADING, TD-CONST-PROP-LOOPS, TD-LOC-MACRO-EXPAND, TD-LOC-DRIVER, TD-LOC-MIR-LOWER-EXPR, TD-LOC-MIR-LOWER-MOD, TD-DUMMY-* (8), TD-EXPECT-TYPECK-SOLVER, TD-EXPECT-PARSER-ITEMS |
+| P2 (一般) | 26 | TD-INT-UINT-VAR, TD-DEREF-NON-REF, TD-LOCALID0-FALLBACK, TD-SINGLE-FILE, TD-NO-INCREMENTAL, TD-RVALUE-NO-SPAN, TD-EMITTER-PANIC, TD-SPAN-DUMMY-CLEANUP, TD-MODULELOAD-ERROR-FIELD, TD-NEGATIVE-TEST-COVERAGE, TD-UNWRAP-NONGUARDED, TD-LINUX-ONLY, TD-ABI-DIVERSITY, TD-STDLIB-FACADE, TD-NO-FORMAT-MACRO, TD-STRING-AS-STR-ALIAS, TD-HEAP-ALLOC, TD-VEC-MVP, TD-IGNORE-DISCIPLINE, TD-CODEGEN-NEGATIVE, TD-NO-JUMP-THREADING, TD-CONST-PROP-LOOPS, TD-LOC-MACRO-EXPAND, TD-LOC-DRIVER, TD-LOC-MIR-LOWER-EXPR, TD-LOC-MIR-LOWER-MOD, TD-DUMMY-* (8), TD-EXPECT-TYPECK-SOLVER, TD-EXPECT-PARSER-ITEMS |
 | P3 (优化) | 4 | 4 文件 LOC < 2.0× 阈值（control_flow/mod.rs/region_inference/resolver.rs） |
 | ✅ Resolved in 18.127 | 2 | TD-UNWRAP-DRIVER, TD-UNWRAP-BORROWCK-REGION |
 | ✅ Resolved in 18.128 | 1 | TD-LOC-TYPECK-CHECKER (拆分为 4 文件, 全部 < 1500 LOC) |

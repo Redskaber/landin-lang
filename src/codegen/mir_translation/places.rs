@@ -484,22 +484,37 @@ pub(crate) fn codegen_place_load_typed(
                 // Ref (i.e., it's already a value), return the value directly
                 // without loading (treat `*v` as `v` for non-reference types).
                 //
-                // Per §1.0 原则 5 "报错 > 静默": silently treating `*value`
-                // as `value` is a workaround, but it matches the semantic
-                // intent (the user wants the value, and `*` on a non-reference
-                // is a no-op in this context).
-                let base_is_ref = if let PlaceKind::Local(id) = &base.kind {
+                // Stage 18.178 (TD-HEAP-ALLOC bug fix): Also treat RawPtr as
+                // a pointer type that should be dereferenced. Previously, only
+                // Ref was checked, so `*p` where `p: *mut u8` (RawPtr) was
+                // treated as a no-op — returning the pointer value instead of
+                // loading the value at the address. This caused heap-allocated
+                // memory to be unreadable: `let v: u8 = *p` stored the pointer
+                // bits as a u8 instead of loading the byte at *p.
+                //
+                // Per §1.0 原則 6 (通解>特例): one check for both Ref and
+                // RawPtr — both are pointer types that Deref should load through.
+                // Per §2 原則 9 (正确>妥协): fix the root cause (include RawPtr
+                // in the check), not the symptom (special-case raw pointer
+                // loads in codegen_operand).
+                let base_is_ptr = if let PlaceKind::Local(id) = &base.kind {
                     mir.local_decls
                         .get(id.0 as usize)
-                        .map(|ld| matches!(&ld.ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)))
+                        .map(|ld| {
+                            matches!(
+                                &ld.ty.kind,
+                                crate::mir::ty::TyKind::Ref(_, _, _)
+                                    | crate::mir::ty::TyKind::RawPtr(_, _)
+                            )
+                        })
                         .unwrap_or(false)
                 } else {
                     // For projections, check the place type
                     let base_ty = detect_place_type(mir, base, layouts);
                     base_ty.is_ptr()
                 };
-                if !base_is_ref {
-                    // Base is not a reference — `*v` on a value is a no-op.
+                if !base_is_ptr {
+                    // Base is not a pointer — `*v` on a value is a no-op.
                     // Return the value directly.
                     let val_ty = detect_place_type(mir, base, layouts);
                     codegen_place_load_typed(emitter, mir, base, val_ty, interner, layouts)

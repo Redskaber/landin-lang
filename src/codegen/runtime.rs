@@ -32,6 +32,8 @@
 /// - `__landin_eprint(fmt, ...)` — stderr print
 /// - `__landin_assert(cond)` — assertion check
 /// - `__landin_panic_msg(msg)` — panic with message
+/// - `__landin_alloc(size)` — heap allocation (wraps malloc, panics on OOM)
+/// - `__landin_dealloc(ptr)` — heap deallocation (wraps free, NULL-safe)
 ///
 /// Stage 18.157: Extracted from `src/bin/main.rs` (Stage 13.8/13.10/13.13)
 /// and `src/bin/landinc.rs` (Stage 18.156) to eliminate duplication.
@@ -140,6 +142,29 @@ void __landin_panic_msg(const char* msg) {
     fprintf(stderr, "panic: %s\n", msg);
     exit(1);
 }
+/* Stage 18.178 (TD-HEAP-ALLOC): Heap allocation runtime stubs.
+   __landin_alloc(size) → malloc(size), panics on OOM
+   __landin_dealloc(ptr) → free(ptr)
+   These wrap libc malloc/free with OOM safety. Codegen declares them
+   as extern and emits `call ... @__landin_alloc(...)` for Box::new(x)
+   and `call void @__landin_dealloc(...)` for Box drop glue.
+
+   Per §1.0 原則 6 (通解>特例): one allocation interface for all heap types
+     (Box/Vec/String/Rc/Arc will all funnel through __landin_alloc).
+   Per §1.0 原則 4 (报错>静默): OOM must panic, not return NULL.
+   Per api-naming-standard.md §8.1: __landin_<verb>_<noun> pattern. */
+void* __landin_alloc(long long size) {
+    void* ptr = malloc((size_t)size);
+    if (ptr == 0) {
+        fprintf(stderr, "panic: memory allocation failed (size=%lld)\n", size);
+        exit(1);
+    }
+    return ptr;
+}
+void __landin_dealloc(void* ptr) {
+    if (ptr == 0) return;  /* free(NULL) is a no-op per C standard */
+    free(ptr);
+}
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).
@@ -177,6 +202,9 @@ mod tests {
             "__landin_eprint",
             "__landin_assert",
             "__landin_panic_msg",
+            // Stage 18.178 (TD-HEAP-ALLOC): heap allocation stubs.
+            "__landin_alloc",
+            "__landin_dealloc",
         ];
         for sym in &required {
             assert!(
@@ -210,5 +238,49 @@ mod tests {
         assert!(LANDIN_C_WRAPPER.contains("#include <stdio.h>"));
         assert!(LANDIN_C_WRAPPER.contains("#include <stdlib.h>"));
         assert!(LANDIN_C_WRAPPER.contains("#include <stdarg.h>"));
+    }
+
+    /// Stage 18.178 positive 1: C wrapper defines __landin_alloc with OOM
+    /// panic safety. Per §2 原則 4 (报错>静默): OOM must panic, not return NULL.
+    #[test]
+    fn stage18_178_c_wrapper_has_alloc_with_oom_panic() {
+        // Must call malloc with size_t cast (Landin passes i64).
+        assert!(
+            LANDIN_C_WRAPPER.contains("void* __landin_alloc(long long size)"),
+            "must declare __landin_alloc with i64 size param"
+        );
+        assert!(
+            LANDIN_C_WRAPPER.contains("malloc((size_t)size)"),
+            "must call malloc with size_t cast"
+        );
+        // Per §2 原則 4: OOM must panic, not silently return NULL.
+        assert!(
+            LANDIN_C_WRAPPER.contains("if (ptr == 0)"),
+            "must check for NULL (OOM) and panic"
+        );
+        assert!(
+            LANDIN_C_WRAPPER.contains("memory allocation failed"),
+            "must print panic message on OOM"
+        );
+    }
+
+    /// Stage 18.178 positive 2: C wrapper defines __landin_dealloc as NULL-safe
+    /// free wrapper. free(NULL) is a no-op per C standard — we follow that.
+    #[test]
+    fn stage18_178_c_wrapper_has_dealloc_null_safe() {
+        assert!(
+            LANDIN_C_WRAPPER.contains("void __landin_dealloc(void* ptr)"),
+            "must declare __landin_dealloc with void* param"
+        );
+        assert!(
+            LANDIN_C_WRAPPER.contains("free(ptr)"),
+            "must call free on the pointer"
+        );
+        // NULL safety: free(NULL) is well-defined no-op in C, but we make it
+        // explicit for clarity and to match Rust's Box::from_raw(NULL) safety.
+        assert!(
+            LANDIN_C_WRAPPER.contains("if (ptr == 0) return;"),
+            "must be NULL-safe (early return on NULL)"
+        );
     }
 }

@@ -679,6 +679,20 @@ impl<T> DerefMut for Vec<T> {
 
 ### 3.4 String
 
+> **MVP 偏差说明（Stage 18.176-18.181）**:
+>
+> 当前编译器实现 (v0.444.0) 中 `String` 是 `&str` 的别名（栈分配 fat pointer），
+> 而非此处定义的 owned `Vec<u8>` 堆分配类型。这是 Stage 18.176 为快速提供
+> String 可用性的临时过渡，记录为 TD-STRING-AS-STR-ALIAS。
+>
+> 真实 `String { vec: Vec<u8> }` 实现计划在 Stage 18.181 完成（依赖
+> Stage 18.178 heap allocation 基础设施 + Stage 18.180 Vec MVP）。
+> 详见 `docs/develop/v0/stage-18/stage-18.177-task-review.md`。
+>
+> 此偏差违反 §2 原则 9 "正确 > 妥协" — 当时的妥协理由是 heap allocation
+> 基础设施尚未就绪，跳过它直接做 MVP 可提供基础 String 可用性。任务审查
+> (Stage 18.177) 已确认此妥协不能延续，必须按完整路径修复。
+
 ```landin
 pub struct String {
     vec: Vec<u8>,

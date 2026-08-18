@@ -17355,3 +17355,143 @@ Stage Summary:
 - §3.2 全套验收: cargo check/fmt/clippy/test 全绿
 - v0.444.0: minor bump
 - 下一步: heap allocation 基础设施 (malloc/free codegen) 或更多 stdlib 功能
+
+---
+Task ID: stage18.177
+Agent: Super Z (main) — ARCH-A + PM-A + REV-A
+Task: Stage 18.177 — 任务审查 (TD-STRING-AS-STR-ALIAS + heap allocation 任务图重排). v0.444.0 → v0.445.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪 (从 v0.444.0 baseline)
+- §3.2 验收 baseline: 656 lib + 2967 integration = 3623 total, 0 failed
+
+- 触发条例: 用户指出 "当前的 String 明显是不符合 设计要求的（如果临时过渡，
+  那么可以忍受），rust 中 String 是用于分配在 heap 上的内存，而 str 才是 stack 上"
+  + "如果在开始选择处理的任务时遇到任务依赖缺陷及环境等任务阻塞问题时
+  （时机：此条例触发时机），应当先做任务审查"
+
+- §17 任务审查执行:
+  → 当前能力盘点: emit_call + declare_function 已就绪 (codegen/llvm/aggregate.rs:15,
+    codegen/llvm/mod.rs:513); C wrapper 已 #include <stdlib.h> (malloc/free 可用);
+    MIR intrinsic 拦截模式有 str::len 先例 (mir/lower/expr_variants.rs:989);
+    drop glue 生成器就绪 (codegen/drop_glue.rs)
+  → 能力结论: heap allocation 基础设施可立即实现, 无环境阻塞
+
+- 简写与缺陷记录 (TD):
+  → TD-STRING-AS-STR-ALIAS (新增): Stage 18.176 String=&str 别名, 违反设计文档
+    09-stdlib.md §3.4 "String = owned Vec<u8>"
+  → TD-HEAP-ALLOC (新增): codegen 无 malloc/free 支持
+  → TD-VEC-MVP (新增): Vec<T> 仅名字存在, 无类型 + 方法实现
+
+- 任务图重排 (§17):
+  旧图: 18.176 String MVP → 18.177 heap alloc → 18.178 Vec → 18.179 String dyn
+  新图: 18.177 任务审查 → 18.178 heap alloc + Box MVP → 18.179 Box trait 接入
+        → 18.180 Vec MVP → 18.181 真实 String (修复 TD-STRING-AS-STR-ALIAS)
+        → 18.182 format! 宏 → 18.183 阶段末深度审查
+  理由: 不接受局部修复, heap alloc 链路必须完整实现
+
+- 设计文档同步:
+  → docs/lang-design/09-stdlib.md §3.4 添加 MVP 偏差说明 (引用 TD-STRING-AS-STR-ALIAS)
+  → docs/develop/v0/tech-debt-register.md §2.6 新增 3 个 TD 条目
+  → docs/develop/v0/tech-debt-register.md §4.1 P2 计数 23 → 26
+
+- 输出:
+  → docs/develop/v0/stage-18/stage-18.177-task-review.md (291 LOC)
+  → docs/lang-design/09-stdlib.md (§3.4 更新)
+  → docs/develop/v0/tech-debt-register.md (§2.6 + §4.1 更新)
+
+- §3.2 全套验收 (本 stage 无代码变更):
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend: 656 lib + 2967 integration = 3623 total, 0 failed
+
+- v0.445.0: patch bump (任务审查文档同步)
+
+Stage Summary:
+- Stage 18.177 PASSED — 任务审查 + 设计文档同步
+- 关键决策: 不接受局部修复, 完整路径 heap alloc → Box → Vec → String (real) → format!
+- 新增 TD: TD-STRING-AS-STR-ALIAS, TD-HEAP-ALLOC, TD-VEC-MVP (3 项 P2)
+- 任务图重排: 4 stage → 7 stage (避免再次简写累积偏差)
+- §3.2 全套验收: 全绿
+- v0.445.0: patch bump
+- 下一步: Stage 18.178 — heap allocation 基础设施 + Box MVP
+
+
+---
+Task ID: stage18.178
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.178 — Heap Allocation Infrastructure (TD-HEAP-ALLOC). v0.445.0 → v0.446.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 656 lib + 2967 integration = 3623 total, 0 failed
+
+- 5.1 任务审查 (Stage 18.177): heap allocation 基础设施可立即实现
+  → emit_call + declare_function 已就绪
+  → C wrapper 已 #include <stdlib.h> (malloc/free 可用)
+  → 无环境阻塞
+
+- 实现 heap allocation runtime stubs (src/codegen/runtime.rs):
+  → __landin_alloc(size: i64) -> *mut u8: malloc + OOM panic
+  → __landin_dealloc(ptr: *mut u8): free + NULL-safe
+  → 2 new unit tests verify stub structure
+
+- 实现 10 个集成测试 (tests/v0/stage18/plan/stage18_178_heap_alloc_tests.rs):
+  → 5 正向: alloc+dealloc smoke, store/load cycle, i32 store/load,
+    multiple distinct allocations, dealloc(NULL) no-op
+  → 5 负向: undeclared alloc fails, wrong arg count fails, wrong arg
+    type fails, store through *const fails, OOM panics not returns NULL
+
+- 修复 4 个 HIR/resolver/codegenprep 潜在 bug (本 stage 测试首次暴露):
+  → Bug 1 (hir/lower/item.rs): extern block ABI not propagated to inner fns
+    → 修复: lower_extern_block 中 hir_fn.sig.abi = block_abi
+  → Bug 2 (resolve/module_build.rs): extern fns registered as DefKind::Fn
+    → 修复: 按 f.sig.abi 区分 DefKind::Fn vs DefKind::ExternFn
+  → Bug 3 (driver/driver_codegen_prep.rs): extern fn names mangled with landin_ prefix
+    → 修复: 非 Landin ABI fn 保留原名 (no mangling)
+  → Bug 4 (resolve/path_resolve.rs): __landin_* resolver fallback DefId collision
+    → 修复: u32::MAX - 0 == u32::MAX 与 fallback 冲突
+    → 改用 u32::MAX - 1 - i 偏移, 未知 __landin_* 名字走正常解析
+
+- 修复 2 个 runtime 测试发现的 bug (segfault):
+  → Bug 5 (mir/optimization.rs): DCE 移除 let p = call_result
+    → 根因: collect_read_locals 未收集 Projection(Deref) 的 base local
+    → 修复: collect_read_locals 现在处理 LHS place 的 Deref/Index projection
+  → Bug 6 (codegen/mir_translation/places.rs): *raw_ptr 视为 no-op
+    → 根因: Deref codegen 只检查 Ref, 未检查 RawPtr
+    → 修复: base_is_ptr 检查 Ref + RawPtr
+
+- §3.2 全套验收:
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors (22 pre-existing test warnings)
+  → cargo test --features llvm-backend --lib: 658 passed (was 656, +2)
+  → cargo test --features llvm-backend --tests: 2977 passed (was 2967, +10)
+  → Total: 3635 tests, 0 failures
+
+- 输出:
+  → docs/develop/v0/stage-18/stage-18.178-dev-log.md
+  → src/codegen/runtime.rs (+25 LOC stubs + 47 LOC tests)
+  → src/hir/lower/item.rs (ABI propagation)
+  → src/resolve/module_build.rs (DefKind::ExternFn)
+  → src/resolve/path_resolve.rs (DefId collision fix + lookup_landin_runtime_name)
+  → src/driver/driver_codegen_prep.rs (name preservation)
+  → src/driver/driver_validations.rs (DefId offset)
+  → src/mir/optimization.rs (DCE LHS read analysis)
+  → src/codegen/mir_translation/places.rs (RawPtr Deref)
+  → tests/v0/stage18/plan/stage18_178_heap_alloc_tests.rs (10 tests)
+  → tests/all_tests.rs (register new test module)
+
+- v0.446.0: minor bump (heap allocation infrastructure + 6 latent bug fixes)
+
+Stage Summary:
+- Stage 18.178 PASSED — Heap Allocation Infrastructure (TD-HEAP-ALLOC)
+- 新增: __landin_alloc / __landin_dealloc runtime stubs (C wrapper)
+- 修复: 6 个 latent bugs (4 compile-time + 2 runtime) 首次被本 stage 测试暴露
+  - extern ABI propagation, DefKind, name mangling, DefId collision, DCE LHS, RawPtr Deref
+- 测试: 658 lib + 2977 integration = 3635 total, 0 failures
+- §3.2 全套验收: 全绿
+- v0.446.0: minor bump
+- 下一步: Stage 18.179 — Box<T> MVP (prelude inject + Box::new intrinsic + drop glue)
+

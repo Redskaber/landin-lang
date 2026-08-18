@@ -545,6 +545,7 @@ impl<'a> HirLowerCtxt<'a> {
         attrs: Vec<ast::Attr>,
         span: Span,
     ) -> HirExternBlock {
+        let block_abi = eb.abi;
         let items: Vec<HirForeignItem> = eb
             .items
             .iter()
@@ -553,13 +554,27 @@ impl<'a> HirLowerCtxt<'a> {
                 let item_hir_id = self.owner_hir_id();
                 let hir_item = match &item.kind {
                     ast::ItemKind::Fn(fn_decl) => {
-                        let hir_fn = self.lower_fn(
+                        let mut hir_fn = self.lower_fn(
                             fn_decl,
                             item_hir_id,
                             item.vis.clone(),
                             item.attrs.clone(),
                             item.span,
                         );
+                        // Stage 18.178 (TD-HEAP-ALLOC bug fix): Propagate the
+                        // extern block's ABI to the inner fn's sig.abi. The
+                        // parser doesn't push the ABI into each fn_decl (it's
+                        // implicit from the enclosing `extern "C" { ... }`),
+                        // so without this override, each foreign fn keeps the
+                        // default `Abi::Landin` — causing the resolver and
+                        // codegen to treat them as Landin fns (wrong name
+                        // mangling, wrong calling convention).
+                        //
+                        // Per §1.0 原則 3 (显式>隐式): the ABI is explicit on
+                        // the block, so we propagate it explicitly to each fn.
+                        // Per §1.0 原則 6 (通解>特例): one propagation rule for
+                        // all extern blocks, regardless of which ABI.
+                        hir_fn.sig.abi = block_abi;
                         HirForeignItem::Fn(hir_fn)
                     }
                     ast::ItemKind::Static(s) => {
@@ -601,7 +616,7 @@ impl<'a> HirLowerCtxt<'a> {
             .collect();
         HirExternBlock {
             hir_id,
-            abi: eb.abi,
+            abi: block_abi,
             items,
             attrs,
             span,
