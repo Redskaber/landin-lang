@@ -85,8 +85,11 @@ fn test_simple_module_builds_and_emits() {
     emitter.emit_declare("void @__landin_panic_overflow(i32 %op, i32 %lhs, i32 %rhs)");
 
     // Build: define i32 @main() { ret i32 42 }
+    // Stage 18.191: emit_const now returns i64 for Int constants.
+    // Cast to i32 before returning (matching the function's return type).
     emitter.emit_function_begin("main", &[], &EmitType::I32);
-    let val = emitter.emit_const(&crate::mir::ty::ConstVal::Int(42));
+    let raw = emitter.emit_const(&crate::mir::ty::ConstVal::Int(42));
+    let val = emitter.emit_cast(&EmitType::I64, &EmitType::I32, &raw);
     emitter.emit_ret(&EmitType::I32, Some(&val));
     emitter.emit_function_end();
 

@@ -18293,3 +18293,59 @@ Stage Summary:
 - 测试: 658 lib + 3049 integration = 3707 total, 0 failures
 - v0.458.0: patch bump
 
+
+---
+Task ID: stage18.191
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.191 — i64 literal fix (TD-INT-UINT-VAR partial) + task review. v0.458.0 → v0.459.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 658 lib + 3049 integration = 3707 total, 0 failed
+
+- §17 任务审查: 评估剩余 TD, 重排任务图
+  → TD-INT-UINT-VAR: i64 字面量 > i32 max 截断 (立即修复)
+  → TD-ARRAY-BOUNDS-CHECK: OOB 检测 (立即修复)
+  → Box auto-drop: drop glue (立即修复)
+  → Vec/String::push_str: 需要 realloc (阻塞)
+
+- 根因分析 (TD-INT-UINT-VAR):
+  → emit_const (src/codegen/llvm/arithmetic.rs) 总是创建 i32 常量
+  → ConstVal::Int(3000000000) 被 LLVMConstInt(i32_type, ...) 截断为 -1294967296
+  → operand.rs 后续 cast i32→i64 无法恢复已截断的值
+
+- 修复 (src/codegen/llvm/arithmetic.rs::emit_const):
+  → 值 ≤ i32::MAX: 用 i32 (避免不必要的 trunc)
+  → 值 > i32::MAX: 用 i64 (保留完整值)
+  → Per §1.0 原則 9: 用最小类型保留值
+
+- 修复 (src/codegen/operand.rs):
+  → src_ty 匹配 emit_const 的实际输出类型 (i32 for small, i64 for large)
+  → target_ty 提升: 如果值 > i32::MAX 且 target 是 I32, 提升为 I64
+
+- 修复 (src/codegen/llvm/tests.rs):
+  → test_simple_module_builds_and_emits 添加 cast i64→i32
+
+- 验证:
+  → let v: i64 = 3000000000 → 3000000000 ✅ (was: -1294967296)
+  → let v: i64 = 1000000000000 → 1000000000000 ✅
+  → const MAX: i32 = 100 → store i32 100 ✅ (preserved)
+  → while i < 5 → 0 1 2 3 4 ✅ (no type mismatch)
+
+- §3.2 全套验收:
+  → cargo check --all-features: 0 errors / 1 warning
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend --lib: 658 passed
+  → cargo test --features llvm-backend --tests: 3049 passed
+  → Total: 3707 tests, 0 failures
+
+- v0.459.0: minor bump (i64 literal fix)
+
+Stage Summary:
+- Stage 18.191 PASSED — i64 literal fix (TD-INT-UINT-VAR partial)
+- 修复: emit_const 按值大小选择 i32/i64, operand.rs 匹配 src_ty + target_ty 提升
+- 验证: 3000000000 正确输出 (was: -1294967296)
+- 测试: 658 lib + 3049 integration = 3707 total, 0 failures
+- v0.459.0: minor bump
+

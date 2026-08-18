@@ -18,12 +18,29 @@ impl ArithmeticEmitter for LLVMSysEmitter {
         unsafe {
             let v = match val {
                 ConstVal::Int(n) => {
-                    let ty = LLVMInt32TypeInContext(self.ctx);
-                    LLVMConstInt(ty, *n as u64, 1)
+                    // Stage 18.191 (TD-INT-UINT-VAR fix): Use i64 for values
+                    // that don't fit in i32, i32 otherwise. This preserves
+                    // large values while keeping small values as i32 (avoiding
+                    // unnecessary trunc instructions in IR).
+                    let n_val = *n as u64;
+                    if n_val <= i32::MAX as u64 {
+                        let ty = LLVMInt32TypeInContext(self.ctx);
+                        LLVMConstInt(ty, n_val, 1)
+                    } else {
+                        let ty = LLVMInt64TypeInContext(self.ctx);
+                        LLVMConstInt(ty, n_val, 1)
+                    }
                 }
                 ConstVal::Uint(n) => {
-                    let ty = LLVMInt32TypeInContext(self.ctx);
-                    LLVMConstInt(ty, *n as u64, 0)
+                    // Stage 18.191: Same approach for unsigned.
+                    let n_val = *n as u64;
+                    if n_val <= u32::MAX as u64 {
+                        let ty = LLVMInt32TypeInContext(self.ctx);
+                        LLVMConstInt(ty, n_val, 0)
+                    } else {
+                        let ty = LLVMInt64TypeInContext(self.ctx);
+                        LLVMConstInt(ty, n_val, 0)
+                    }
                 }
                 ConstVal::Bool(b) => {
                     let ty = LLVMInt1TypeInContext(self.ctx);
@@ -37,17 +54,12 @@ impl ArithmeticEmitter for LLVMSysEmitter {
                     let ty = LLVMDoubleTypeInContext(self.ctx);
                     LLVMConstReal(ty, f64::from_bits(*bits))
                 }
-                ConstVal::Str(_) => {
-                    // Stage 3.27 (TextEmitter) intercepts Str before reaching
-                    // emit_const. Here we just return a null pointer.
-                    LLVMConstNull(LLVMPointerTypeInContext(self.ctx, 0))
-                }
+                ConstVal::Str(_) => LLVMConstNull(LLVMPointerTypeInContext(self.ctx, 0)),
                 ConstVal::Unevaluated => {
                     let ty = LLVMInt32TypeInContext(self.ctx);
                     LLVMConstInt(ty, 0, 0)
                 }
             };
-            // Constants don't need a unique SSA name — return a synthetic one.
             self.fresh_named(v)
         }
     }

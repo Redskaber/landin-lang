@@ -113,10 +113,32 @@ pub(crate) fn codegen_operand(
                 let raw = emitter.emit_const(&c.val);
                 let target_ty =
                     mir_type_to_emit_type_with_layouts_and_mono(&c.ty, layouts, mono_layouts);
+                // Stage 18.191 (TD-INT-UINT-VAR fix): If the constant value
+                // doesn't fit in the target type (e.g., 3000000000 doesn't fit
+                // in i32), promote the target to i64.
+                let target_ty = match (&c.val, &target_ty) {
+                    (ConstVal::Int(n), EmitType::I32) if *n > i32::MAX as u128 => EmitType::I64,
+                    (ConstVal::Uint(n), EmitType::I32) if *n > u32::MAX as u128 => EmitType::I64,
+                    _ => target_ty,
+                };
                 // Determine the source type based on the ConstVal variant.
-                // This must match what `emit_const` creates internally.
+                // Stage 18.191: emit_const uses i32 for small values, i64 for large.
                 let src_ty = match &c.val {
-                    ConstVal::Int(_) | ConstVal::Uint(_) | ConstVal::Char(_) => EmitType::I32,
+                    ConstVal::Int(n) => {
+                        if *n as u64 <= i32::MAX as u64 {
+                            EmitType::I32
+                        } else {
+                            EmitType::I64
+                        }
+                    }
+                    ConstVal::Uint(n) => {
+                        if *n as u64 <= u32::MAX as u64 {
+                            EmitType::I32
+                        } else {
+                            EmitType::I64
+                        }
+                    }
+                    ConstVal::Char(_) => EmitType::I32,
                     ConstVal::Bool(_) => EmitType::I1,
                     ConstVal::Float(_) => EmitType::F64,
                     _ => return raw,
