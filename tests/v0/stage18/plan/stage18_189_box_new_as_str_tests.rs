@@ -86,12 +86,15 @@ fn main() -> i32 {
     );
 }
 
-/// Stage 18.189 SOFT: Box<i64> — may not work due to alloc ptr being *mut u8.
-/// The store through *mut u8 truncates i64 to i8. This is a known limitation
-/// (TD-BOX-NEW-TYPE-COERCE) — proper fix needs type-aware pointer cast.
+/// Stage 18.190 (TD-BOX-NEW-TYPE-COERCE fix): Box<i64> now works correctly
+/// for values that fit in i32 (the pointer bitcast fix in emit_store handles
+/// the *mut u8 → *mut i64 cast). Large i64 values (> i32 max) are a separate
+/// pre-existing issue (TD-INT-UINT-VAR: literals default to i32).
 #[test]
-fn stage18_189_box_new_i64_soft() {
-    let code = r#"
+fn stage18_189_box_new_i64() {
+    assert_runtime(
+        "box-new-i64",
+        r#"
 extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
     let b: Box<i64> = Box::new(42);
@@ -100,16 +103,9 @@ fn main() -> i32 {
     __landin_dealloc(b.0 as *mut u8);
     0
 }
-"#;
-    let (stdout, exit) = run_program(code);
-    if stdout != "42\n" || exit != 0 {
-        eprintln!(
-            "warn: Box<i64> store through *mut u8 truncated value (TD-BOX-NEW-TYPE-COERCE) \
-             — got stdout={:?} exit={}",
-            stdout, exit
-        );
-    }
-    // Soft test: always passes, warns if type coercion is wrong.
+"#,
+        "42\n",
+    );
 }
 
 #[test]

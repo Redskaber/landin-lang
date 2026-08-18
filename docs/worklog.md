@@ -18245,3 +18245,51 @@ Stage Summary:
 - v0.457.0: minor bump
 - 下一步: TD-BOX-NEW-TYPE-COERCE (Box<i64> store fix) 或 deep review
 
+
+---
+Task ID: stage18.190
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.190 — Box::new type coercion fix (TD-BOX-NEW-TYPE-COERCE). v0.457.0 → v0.458.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 658 lib + 3049 integration = 3707 total, 0 failed
+
+- 根因分析:
+  → Box::new(x) 调用 __landin_alloc(size) 返回 *mut u8
+  → store *alloc_dest = x 通过 *mut u8 (i8*) 指针存储
+  → emit_store 只 cast value, 不 cast pointer → LLVM 存 i64 到 i8*, 只写 1 byte
+  → Box<i64>(42) 返回 0 (被截断)
+
+- 修复 (src/codegen/llvm/memory.rs::emit_store):
+  → 添加 pointer bitcast: 如果 ptr 类型 != target_llvm_ty*, bitcast
+  → LLVMBuildBitCast(builder, p, expected_ptr_ty, "pcast")
+  → 然后用 cast 后的 pointer store
+
+- 验证:
+  → Box::new(42).0 = 42 (i32) ✅
+  → Box::new(255).0 = 255 (u8) ✅
+  → Box::new(42).0 = 42 (i64) ✅ (was: 0, truncated)
+
+- 注意: 大 i64 值 (> i32 max) 仍失败, 但这是 pre-existing TD-INT-UINT-VAR
+  (字面量默认 i32, 在 Box::new 之前就被截断), 非 Box::new 问题
+
+- 将 Stage 18.189 的 Box<i64> soft test 改为 strict test (现在通过)
+
+- §3.2 全套验收:
+  → cargo check --all-features: 0 errors / 1 warning
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend --lib: 658 passed
+  → cargo test --features llvm-backend --tests: 3049 passed
+  → Total: 3707 tests, 0 failures
+
+- v0.458.0: patch bump (Box::new type coercion fix)
+
+Stage Summary:
+- Stage 18.190 PASSED — Box::new type coercion fix (TD-BOX-NEW-TYPE-COERCE)
+- 修复: emit_store 添加 pointer bitcast (*mut u8 → *mut T)
+- 验证: Box<i64>(42) = 42 (was: 0)
+- 测试: 658 lib + 3049 integration = 3707 total, 0 failures
+- v0.458.0: patch bump
+

@@ -25,25 +25,6 @@ impl MemoryEmitter for LLVMSysEmitter {
             let v = self.lookup(val);
             let p = self.lookup(ptr);
             // Stage 14.64: Coerce INTEGER values to the target type before storing.
-            //
-            // Previously, this function ignored the `ty` parameter and just
-            // called `LLVMBuildStore(builder, v, p)`, which uses the value's
-            // actual LLVM type. This caused silent miscompilation when the
-            // value's type didn't match the alloca's type:
-            //
-            //   - i32 constant stored to i64 alloca: only 4 bytes written,
-            //     upper 4 bytes are garbage. Loading as i64 produces wrong
-            //     values (e.g., `180228417674752` instead of `3000000000`).
-            //   - i32 comparison result stored to i1 alloca: type mismatch.
-            //
-            // Fix: for INTEGER types only, check the value's actual LLVM type
-            // (via LLVMTypeOf). If it doesn't match `ty`, cast the value first
-            // (zext/sext/trunc). For non-integer types (struct, array, etc.),
-            // we assume the types match and store directly — a mismatch there
-            // is a codegen bug that should surface as an LLVM verification error.
-            //
-            // Per §1.0 原则 5 "报错 > 静默": integer mismatches are fixed by
-            // explicit casts; non-integer mismatches surface as errors.
             let val_ty = LLVMTypeOf(v);
             let target_llvm_ty = self.llvm_type(ty);
             let val_kind = LLVMGetTypeKind(val_ty);
@@ -53,18 +34,34 @@ impl MemoryEmitter for LLVMSysEmitter {
             } else if val_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
                 && target_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
             {
-                // Integer-to-integer cast (zext/sext/trunc).
-                // Use signed extension (1) since Landin's integer literals
-                // default to i32 (signed). This matches the `emit_cast`
-                // behavior for (I32, I64) → SExt.
                 let name_c = cstr_owned("cast");
                 LLVMBuildIntCast2(self.builder, v, target_llvm_ty, 1, name_c.as_ptr())
             } else {
-                // Non-integer types with mismatch — store directly and let
-                // LLVM module verification catch it (surfaces the bug).
                 v
             };
-            LLVMBuildStore(self.builder, stored, p);
+
+            // Stage 18.190 (TD-BOX-NEW-TYPE-COERCE fix): Cast the pointer to
+            // the correct element type before storing. Previously, if the
+            // pointer was `*mut u8` (i8*) but the value was i64, LLVM would
+            // store only 1 byte (truncating the i64). Now we bitcast the
+            // pointer to `target_llvm_ty*` before storing.
+            //
+            // Root cause: Box::new(x) allocates via __landin_alloc which
+            // returns *mut u8. Storing an i64 through *mut u8 truncated it.
+            //
+            // Per §1.0 原則 9 (正确>妥协): fix root cause (cast pointer type),
+            // not symptom (skip store).
+            // Per §1.0 原則 6 (通解>特例): one bitcast for all type mismatches.
+            let ptr_ty = LLVMTypeOf(p);
+            let expected_ptr_ty = LLVMPointerType(target_llvm_ty, 0);
+            let final_ptr = if ptr_ty == expected_ptr_ty {
+                p
+            } else {
+                let name_c = cstr_owned("pcast");
+                LLVMBuildBitCast(self.builder, p, expected_ptr_ty, name_c.as_ptr())
+            };
+
+            LLVMBuildStore(self.builder, stored, final_ptr);
         }
     }
 
