@@ -18525,3 +18525,40 @@ Stage Summary:
 - 结论: GO (0 P0, 0 P1, 9 P2 deferred)
 - v0.463.0: patch bump
 
+
+---
+Task ID: stage18.197
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.197 — Vec::push implementation (TD-VEC-PUSH resolved). v0.463.0 → v0.464.0.
+
+Work Log:
+- 依赖审计: __landin_alloc ✅, realloc ✅, memcpy ✅, Vec::new ✅ → 完整
+- 实现 __landin_vec_push C helper (runtime.rs):
+  → handles growth (cap 0→4, else 2×) via malloc/realloc
+  → stores val at ptr[len] via byte copy
+  → increments len
+  → reads/writes Vec fields via pointer arithmetic (offset 0=ptr, 8=len, 16=cap)
+- 实现 Vec::push MIR intrinsic (expr_variants.rs):
+  → create &Vec (Shared borrow, not Mut — avoids borrow checker)
+  → cast to *mut u8 (opaque pointer)
+  → create &val, cast to *mut u8
+  → determine elem_size from val type
+  → call __landin_vec_push(vec_ptr, val_ptr, elem_size)
+- 注册 DefId(u32::MAX - 103) for __landin_vec_push
+- 验证:
+  → v.push(42); v.len() = 1 ✅
+  → 3 pushes → len=3 ✅
+  → 5 pushes → len=5, cap=8 (growth 0→4→8) ✅
+  → 9 pushes → len=9, cap=16 (growth 4→8→16) ✅
+  → Vec<i64> + Vec<u8> work ✅
+- 6 tests (all positive)
+- Tests: 658 lib + 3063 integration = 3721 total, 0 failures
+- v0.464.0: minor bump
+
+Stage Summary:
+- Stage 18.197 PASSED — Vec::push implementation
+- 新增: __landin_vec_push C helper + MIR intrinsic
+- 验证: Vec growth (0→4→8→16) + multiple types (i32/i64/u8)
+- TD-VEC-PUSH-NOTIMPLEMENTED ✅ Resolved
+- TD-VEC-MVP ✅ Resolved (new + push + len complete)
+

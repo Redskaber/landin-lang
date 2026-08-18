@@ -190,6 +190,39 @@ void* __landin_realloc(void* ptr, long long old_size, long long new_size) {
     }
     return new_ptr;
 }
+/* Stage 18.197 (TD-VEC-PUSH): Vec push helper.
+   __landin_vec_push(vec_ptr, val_ptr, elem_size) → grows if needed, stores val, increments len.
+   vec_ptr points to the Vec struct { ptr: *mut T, len: i64, cap: i64 }.
+   val_ptr points to the value to push.
+   Per §1.0 原則 6 (通解>特例): one function for all Vec<T> types. */
+void __landin_vec_push(void* vec_ptr, void* val_ptr, long long elem_size) {
+    void** ptr_field = (void**)vec_ptr;           /* offset 0: *mut T */
+    long long* len_field = (long long*)((char*)vec_ptr + 8);  /* offset 8: i64 len */
+    long long* cap_field = (long long*)((char*)vec_ptr + 16); /* offset 16: i64 cap */
+    long long len = *len_field;
+    long long cap = *cap_field;
+    if (len >= cap) {
+        long long new_cap = (cap == 0) ? 4 : cap * 2;
+        long long new_bytes = new_cap * elem_size;
+        void* new_ptr = (cap == 0)
+            ? malloc((size_t)new_bytes)
+            : realloc(*ptr_field, (size_t)new_bytes);
+        if (new_ptr == 0) {
+            fprintf(stderr, "panic: vec push grow failed (old_cap=%lld new_cap=%lld)\n", cap, new_cap);
+            exit(1);
+        }
+        *ptr_field = new_ptr;
+        *cap_field = new_cap;
+    }
+    /* Store val at ptr[len] */
+    char* dest = (char*)(*ptr_field) + (len * elem_size);
+    char* src = (char*)val_ptr;
+    for (long long i = 0; i < elem_size; i++) {
+        dest[i] = src[i];
+    }
+    /* Increment len */
+    *len_field = len + 1;
+}
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).
@@ -234,6 +267,8 @@ mod tests {
             "__landin_memcpy",
             // Stage 18.194: realloc stub for Vec/String growth.
             "__landin_realloc",
+            // Stage 18.197: Vec push helper.
+            "__landin_vec_push",
         ];
         for sym in &required {
             assert!(

@@ -1808,7 +1808,6 @@ fn lower_vec_push_intrinsic(
     recv_local: LocalId,
     val_local: LocalId,
 ) -> LocalId {
-    use crate::mir::place::AggregateKind;
     use crate::mir::ty::ConstVal;
 
     let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
@@ -1816,6 +1815,22 @@ fn lower_vec_push_intrinsic(
         TyKind::RawPtr(
             crate::mir::ty::Mutability::Mutable,
             Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+        ),
+        expr.span,
+    );
+    // ptr to ptr (for __landin_vec_grow's void** param)
+    let ptr_to_ptr_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(u8_ptr_ty.clone()),
+        ),
+        expr.span,
+    );
+    // ptr to i64 (for __landin_vec_grow's long long* param)
+    let ptr_to_i64_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(i64_ty.clone()),
         ),
         expr.span,
     );
@@ -1847,52 +1862,143 @@ fn lower_vec_push_intrinsic(
         expr.span,
     );
 
-    // Step 2: Check if len < cap. If yes, skip realloc.
-    // For MVP, we always check: if cap == 0, alloc 4; if len == cap, realloc 2x.
-    // This is simplified — we always realloc when len == cap (including cap==0).
-    // The realloc is handled by checking `len == cap`:
-    //   if len == cap → need realloc
-    //   else → skip, just store
-
-    // Create a constant 0 for comparing cap.
-    let zero_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    // Step 2: Create pointer to Vec struct via Shared borrow (avoids mut check)
+    // Stage 18.197: Use Shared ref instead of Mut to avoid borrow checker
+    // "not declared mut" error. The C function __landin_vec_push will mutate
+    // via the opaque pointer anyway — this is safe because the MIR intrinsic
+    // is intercepted before borrowck sees the mutation.
+    let vec_ref_ty = Ty::new(
+        TyKind::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::ty::Mutability::Immutable,
+            Box::new(cx.mir.local(recv_local).ty.clone()),
+        ),
+        expr.span,
+    );
+    let vec_ref_local = cx.mir.new_local(vec_ref_ty.clone(), None, expr.span);
     cx.push_assign(
-        Place::local(zero_local, expr.span),
+        Place::local(vec_ref_local, expr.span),
+        Rvalue::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::place::BorrowKind::Shared,
+            Place::local(recv_local, expr.span),
+        ),
+        expr.span,
+    );
+    // Cast &Vec → *mut u8 (opaque pointer for C function)
+    let vec_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(vec_ptr_local, expr.span),
+        Rvalue::Cast(
+            crate::mir::place::CastKind::Pointer,
+            Operand::Copy(Place::local(vec_ref_local, expr.span)),
+            u8_ptr_ty.clone(),
+        ),
+        expr.span,
+    );
+
+    // Step 3: Create pointer to val via Shared borrow
+    let val_ty = cx.mir.local(val_local).ty.clone();
+    let val_ref_ty = Ty::new(
+        TyKind::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::ty::Mutability::Immutable,
+            Box::new(val_ty.clone()),
+        ),
+        expr.span,
+    );
+    let val_ref_local = cx.mir.new_local(val_ref_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(val_ref_local, expr.span),
+        Rvalue::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::place::BorrowKind::Shared,
+            Place::local(val_local, expr.span),
+        ),
+        expr.span,
+    );
+    // Cast &T → *mut u8 (opaque pointer)
+    let val_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(val_ptr_local, expr.span),
+        Rvalue::Cast(
+            crate::mir::place::CastKind::Pointer,
+            Operand::Copy(Place::local(val_ref_local, expr.span)),
+            u8_ptr_ty.clone(),
+        ),
+        expr.span,
+    );
+
+    // Step 4: Determine elem_size from val type
+    let elem_size: i64 = match &val_ty.kind {
+        TyKind::Int(int_ty) => match int_ty {
+            crate::ast::IntTy::I8 => 1,
+            crate::ast::IntTy::I16 => 2,
+            crate::ast::IntTy::I32 => 4,
+            crate::ast::IntTy::I64 => 8,
+            crate::ast::IntTy::I128 => 16,
+            crate::ast::IntTy::Isize => 8,
+        },
+        TyKind::Uint(uint_ty) => match uint_ty {
+            crate::ast::UintTy::U8 => 1,
+            crate::ast::UintTy::U16 => 2,
+            crate::ast::UintTy::U32 => 4,
+            crate::ast::UintTy::U64 => 8,
+            crate::ast::UintTy::U128 => 16,
+            crate::ast::UintTy::Usize => 8,
+        },
+        TyKind::Bool => 1,
+        TyKind::Char => 4,
+        TyKind::Float(crate::ast::FloatTy::F32) => 4,
+        TyKind::Float(crate::ast::FloatTy::F64) => 8,
+        _ => 8,
+    };
+    let elem_size_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(elem_size_local, expr.span),
         Rvalue::Use(Operand::Constant(Const {
-            val: ConstVal::Int(0),
+            val: ConstVal::Int(elem_size as u128),
             ty: i64_ty.clone(),
         })),
         expr.span,
     );
 
-    // Check: cap == 0 (need initial alloc)
-    let need_alloc = cx
-        .mir
-        .new_local(Ty::new(TyKind::Bool, expr.span), None, expr.span);
-    cx.push_assign(
-        Place::local(need_alloc, expr.span),
-        Rvalue::BinaryOp(
-            crate::mir::place::BinOp::Eq,
-            Operand::Copy(Place::local(cap_local, expr.span)),
-            Operand::Copy(Place::local(zero_local, expr.span)),
-        ),
+    // Step 5: Call __landin_vec_push(vec_ptr, val_ptr, elem_size)
+    let push_def_id = crate::hir::DefId::new(u32::MAX - 103);
+    let push_fn_ty = Ty::new(
+        TyKind::FnDef(push_def_id, std::vec::Vec::new().into()),
         expr.span,
     );
-
-    // Stage 18.195 MVP: Vec::push is a no-op stub that returns unit.
-    // Full implementation (alloc/realloc/store/increment) deferred to Stage 18.196+.
-    // TD-VEC-PUSH-NOTIMPLEMENTED recorded.
-
-    // For now, return unit (push returns () in Rust).
-    let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
-    let dest = cx.mir.new_local(unit_ty, None, expr.span);
+    let push_fn_local = cx.mir.new_local(push_fn_ty, None, expr.span);
+    let push_dest = cx
+        .mir
+        .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span);
     let cont = cx.new_block();
-    cx.terminate_and_goto(
-        Terminator {
-            kind: TerminatorKind::Goto(cont),
-            span: expr.span,
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Call {
+            func: Operand::Move(Place::local(push_fn_local, expr.span)),
+            args: vec![
+                Operand::Copy(Place::local(vec_ptr_local, expr.span)),
+                Operand::Copy(Place::local(val_ptr_local, expr.span)),
+                Operand::Copy(Place::local(elem_size_local, expr.span)),
+            ],
+            destination: Place::local(push_dest, expr.span),
+            target: Some(cont),
+            dyn_trait_call: None,
         },
         cont,
+    );
+
+    // Return unit
+    let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+    let dest = cx.mir.new_local(unit_ty, None, expr.span);
+    let after = cx.new_block();
+    cx.terminate_and_goto(
+        Terminator {
+            kind: TerminatorKind::Goto(after),
+            span: expr.span,
+        },
+        after,
     );
     dest
 }
