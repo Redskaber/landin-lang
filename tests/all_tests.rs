@@ -527,6 +527,10 @@ mod stage18_185_string_intrinsics_tests;
 #[path = "v0/stage18/plan/stage18_186_format_macro_tests.rs"]
 mod stage18_186_format_macro_tests;
 
+// === Stage 18.188: String::new + function redefine bug fix ===
+#[path = "v0/stage18/plan/stage18_188_string_new_tests.rs"]
+mod stage18_188_string_new_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

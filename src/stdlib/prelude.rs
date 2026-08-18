@@ -112,5 +112,6 @@ struct String { ptr: *mut u8, len: i64, cap: i64 }
 // intrinsics — reuses existing field access + method resolution.
 impl String {
     fn len(&self) -> i64 { self.len }
+    fn new() -> String { String { ptr: 0 as *mut u8, len: 0, cap: 0 } }
 }
 "#;

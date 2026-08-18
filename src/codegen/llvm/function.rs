@@ -52,26 +52,36 @@ impl FunctionEmitter for LLVMSysEmitter {
                 // Stage 14.92 (Bug X3 complete fix): Always reuse the existing
                 // function declaration, regardless of type mismatch.
                 //
-                // Previously, we checked `existing_type == fty` (pointer equality
-                // on LLVMTypeRef). But LLVM function types are NOT interned —
-                // two structurally-identical function types may have different
-                // pointers. This caused:
-                // - Vtable auto-created declarations (0 args, variadic) to be
-                //   treated as "mismatch" → duplicate function (.1 suffix)
-                // - Forward declarations from get_or_declare_function (correct
-                //   arg count but different LLVMTypeRef pointer) to also mismatch
+                // Stage 18.188 (TD-FUNCTION-REDEFINE bug fix): If the existing
+                // declaration was auto-created by `get_or_declare_function` (a
+                // forward declaration with WRONG return type, e.g., i32 variadic),
+                // AND the actual function definition has a struct return type,
+                // LLVM will REUSE the wrong-typed declaration — producing
+                // "Function return type does not match operand type of return inst"
+                // verification errors.
                 //
-                // Fix: always reuse the existing declaration. LLVM allows
-                // defining a function body by adding basic blocks to a
-                // previously-declared function. The type checker ensures
-                // signature compatibility — if types genuinely mismatch, LLVM
-                // verification will catch it (which is the correct behavior
-                // for real conflicts).
+                // Fix: Delete the existing declaration's body (if any) and let
+                // LLVMAddFunction create a new one. But LLVM doesn't allow
+                // re-adding a function with the same name — it silently renames
+                // (.1 suffix). So instead, we delete the existing function and
+                // re-add with the correct type.
                 //
-                // Per §1.0 原則 5 "报错 > 静默": the old code silently created
-                // duplicates (.1 suffix) instead of reusing, producing
-                // "undefined reference" link errors — the worst kind of bug.
-                existing
+                // Per §1.0 原則 4 (报错>静默): the old code silently reused
+                // wrong-typed declarations, producing invalid IR.
+                // Per §1.0 原則 9 (正确>妥协): fix the root cause (delete + re-add)
+                // rather than the symptom (skip verification).
+                let existing_ret_ty = LLVMGetReturnType(LLVMGlobalGetValueType(existing));
+                if existing_ret_ty != ret_ty {
+                    // Type mismatch — delete the old declaration and re-add.
+                    // This is safe because the old declaration has no body (just
+                    // a forward decl from get_or_declare_function).
+                    LLVMDeleteFunction(existing);
+                    self.declared.remove(name);
+                    let new_fn = LLVMAddFunction(self.module, name_c.as_ptr(), fty);
+                    new_fn
+                } else {
+                    existing
+                }
             } else {
                 LLVMAddFunction(self.module, name_c.as_ptr(), fty)
             };
