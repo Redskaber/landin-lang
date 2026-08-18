@@ -523,6 +523,10 @@ mod stage18_184_str_methods_tests;
 #[path = "v0/stage18/plan/stage18_185_string_intrinsics_tests.rs"]
 mod stage18_185_string_intrinsics_tests;
 
+// === Stage 18.186: format! macro MVP (TD-FORMAT-MACRO) ===
+#[path = "v0/stage18/plan/stage18_186_format_macro_tests.rs"]
+mod stage18_186_format_macro_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

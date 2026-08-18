@@ -294,6 +294,39 @@ pub(super) fn lower_call_expr(
         }
     }
 
+    // Stage 18.186 (TD-FORMAT-MACRO): Intercept __landin_format(fmt, ...) calls.
+    //
+    // format!("hello") expands to __landin_format("hello"), which we
+    // intercept here and lower to String::from_str(fmt) — reusing the
+    // Stage 18.185 intrinsic (alloc + memcpy + construct).
+    //
+    // MVP limitation: only format! with a single literal string (no {})
+    // is supported. format!("x={}", x) requires variadic arg type handling
+    // (TD-FORMAT-VARIADIC, deferred to Stage 18.187+).
+    //
+    // Per §1.0 原則 6 (通解>特例): reuse String::from_str intrinsic.
+    // Per §2 原則 9 (正确>妥协): MVP is a temporary compromise for literals.
+    if let HirExprKind::Path(path) = &func.kind {
+        if path.segments.len() == 1 {
+            let name = cx.interner.resolve(&path.segments[0].ident.name);
+            if name == "__landin_format" && args.len() == 1 {
+                // format!("literal") → String::from_str(literal)
+                return lower_string_from_str_intrinsic(cx, expr, arg_locals[0]);
+            }
+            if name == "__landin_format" && args.len() > 1 {
+                // format!("x={}", x) — not yet supported.
+                cx.type_errors.push(crate::typeck::TypeError::new(
+                    "format! with format arguments ({}) is not yet supported (TD-FORMAT-VARIADIC, Stage 18.187+)".to_string(),
+                    expr.span,
+                ));
+                // Emit a placeholder to avoid crash.
+                let err_ty = Ty::new(TyKind::Error, expr.span);
+                let dest = cx.mir.new_local(err_ty, None, expr.span);
+                return dest;
+            }
+        }
+    }
+
     // Stage 13.3a (TD-030): Closure call dispatch.
     //
     // Before falling through to the existing FnDef / Adt / placeholder

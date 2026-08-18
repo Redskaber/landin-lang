@@ -17982,3 +17982,77 @@ Stage Summary:
 - v0.453.0: minor bump
 - 下一步: Stage 18.186 — format! macro (基于 String::from_str)
 
+
+---
+Task ID: stage18.186
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.186 — format! macro MVP (TD-FORMAT-MACRO). v0.453.0 → v0.454.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 658 lib + 3027 integration = 3685 total, 0 failed
+
+- 依赖审计 (per 用户指令):
+  → String::from_str intrinsic (Stage 18.185) ✅
+  → __landin_alloc + __landin_memcpy ✅
+  → format! macro expansion ✅ (已存在)
+  → String 类型 (Stage 18.180) ✅
+  → __landin_format runtime stub — 不需要 (MIR 拦截)
+  → 结论: 依赖完整, 选方案 B (MIR intrinsic)
+
+- 设计决策: 方案 B (MIR intrinsic) vs 方案 A (C runtime stub)
+  → 方案 A 缺点: C struct by value ABI 复杂, variadic 类型信息丢失
+  → 方案 B 优点: 复用 String::from_str intrinsic, 类型安全, 无新 C stub
+  → Per §1.0 原則 6 (通解>特例): 与 String::from_str 一致
+
+- 实现 MIR intrinsic (src/mir/lower/expr_variants.rs):
+  → 在 lower_call_expr 中拦截 __landin_format 调用
+  → args.len() == 1: format!("literal") → String::from_str(literal)
+  → args.len() > 1: format!("x={}", x) → 报错 (TD-FORMAT-VARIADIC)
+  → 报错信息清晰: "format! with format arguments ({}) is not yet supported"
+
+- 验证:
+  → format!("hello").len() = 5 ✅
+  → format!("").len() = 0 ✅
+  → format!("Hello, World!").len = 13 ✅
+  → format!("x={}", x) → 清晰错误 ✅
+
+- 实现 8 个测试 (tests/v0/stage18/plan/stage18_186_format_macro_tests.rs):
+  → 5 正向: 字面量长度, 空, 字段访问, 方法组合, 独立 owned
+  → 3 负向: format with args 失败, placeholder only 失败, 多参数失败
+
+- §3.2 全套验收:
+  → cargo check --all-features: 0 errors / 1 warning (unused)
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend --lib: 658 passed
+  → cargo test --features llvm-backend --tests: 3035 passed (was 3027, +8)
+  → Total: 3693 tests, 0 failures
+
+- 新增 TD:
+  → TD-FORMAT-VARIADIC: format! with {} args (Stage 18.187+)
+
+- 输出:
+  → docs/develop/v0/stage-18/stage-18.186-dep-audit.md (依赖审计)
+  → docs/develop/v0/stage-18/stage-18.186-dev-log.md (开发日志)
+  → src/mir/lower/expr_variants.rs (+30 LOC __landin_format 拦截)
+  → tests/v0/stage18/plan/stage18_186_format_macro_tests.rs (8 tests)
+  → tests/all_tests.rs (register new test module)
+
+- v0.454.0: minor bump (format! MVP + 8 tests)
+
+Stage Summary:
+- Stage 18.186 PASSED — format! macro MVP (TD-FORMAT-MACRO partial)
+- 实现: format!("literal") → String::from_str (复用 Stage 18.185 intrinsic)
+- 设计: 方案 B (MIR intrinsic) 避免 C struct ABI 复杂性
+- 验证: format!("hello").len() = 5
+- 测试: 658 lib + 3035 integration = 3693 total, 0 failures
+- §3.2 全套验收: 全绿
+- v0.454.0: minor bump
+- 下一步: Stage 18.187 — 阶段末深度审查 §14.5 D1-D8 (heap/String chain 完成)
+
+Heap/String chain 完成 (Stage 18.177-18.186, 10 stages):
+  18.177 任务审查 → 18.178 heap alloc → 18.179 Box → 18.180 real String
+  → 18.181 base types audit → 18.182 array index → 18.183 fat ptr Index
+  → 18.184 str methods → 18.185 String intrinsics → 18.186 format! MVP
+
