@@ -507,6 +507,10 @@ mod stage18_179_box_mvp_tests;
 #[path = "v0/stage18/plan/stage18_180_real_string_tests.rs"]
 mod stage18_180_real_string_tests;
 
+// === Stage 18.182: Array index codegen fix (TD-ARRAY-INDEX-CODEGEN P0) ===
+#[path = "v0/stage18/plan/stage18_182_array_index_tests.rs"]
+mod stage18_182_array_index_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

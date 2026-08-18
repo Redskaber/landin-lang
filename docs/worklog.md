@@ -17697,3 +17697,67 @@ Stage Summary:
 - v0.449.0: patch bump
 - 下一步: Stage 18.182 — 数组索引 codegen 修复 (P0)
 
+
+---
+Task ID: stage18.182
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.182 — Array index codegen fix (TD-ARRAY-INDEX-CODEGEN P0). v0.449.0 → v0.450.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 658 lib + 2996 integration = 3654 total, 0 failed
+
+- 5.1 任务审查 (Stage 18.181): 发现 P0 array index bug
+  → arr[1] 返回 arr[0], arr[2] 返回 0 (OOB 未检测), multi-index segfault
+
+- 根因分析 (src/mir/optimization.rs):
+  → collect_place_locals 处理 Projection(base, elem) 时只递归 base, 忽略 elem
+  → 对 arr[0] → Projection(Local(arr), Index(idx_local)):
+    - arr 标记为 used ✅
+    - idx_local 未标记为 used ❌
+  → DCE 移除 let idx_local = 0, alloca 未初始化
+  → GEP 用垃圾索引 (恰好是 0), 所以 arr[1]/arr[2] 都加载 arr[0]
+
+- 修复 (src/mir/optimization.rs::collect_place_locals):
+  → 扩展 Projection arm, 添加 match elem 分支
+  → Index(idx_local) → used.insert(*idx_local)
+  → Field/ConstantIndex/Subslice/Deref → 无附加 local
+
+- 验证:
+  → arr[0]=10, arr[1]=20, arr[2]=30 ✅ (was: 10 10 10)
+  → println!("{} {} {}", arr[0], arr[1], arr[2]) → "1 2 3" ✅ (was: segfault)
+  → arr[0] + arr[1] + arr[2] = 60 ✅
+
+- 实现 8 个测试 (tests/v0/stage18/plan/stage18_182_array_index_tests.rs):
+  → 7 正向: 每元素访问, 多索引一表达式, let 变量索引, 索引赋值, 各位置,
+    不同类型, 二元表达式
+  → 1 负向 SOFT: OOB 不 panic (TD-ARRAY-BOUNDS-CHECK, 未实现 bounds check)
+
+- §3.2 全套验收:
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend --lib: 658 passed
+  → cargo test --features llvm-backend --tests: 3004 passed (was 2996, +8)
+  → Total: 3662 tests, 0 failures
+
+- 新增 TD:
+  → TD-ARRAY-BOUNDS-CHECK: arr[N] 无 LLVM bounds check (OOB 不 panic)
+
+- 输出:
+  → docs/develop/v0/stage-18/stage-18.182-dev-log.md
+  → src/mir/optimization.rs (collect_place_constants 修复 + Index idx_local 收集)
+  → tests/v0/stage18/plan/stage18_182_array_index_tests.rs (8 tests)
+  → tests/all_tests.rs (register new test module)
+
+- v0.450.0: minor bump (P0 array index fix + 8 tests)
+
+Stage Summary:
+- Stage 18.182 PASSED — Array index codegen fix (TD-ARRAY-INDEX-CODEGEN P0)
+- 修复: collect_place_locals 现在正确收集 Index projection 的 idx_local
+- 验证: arr[0]=10, arr[1]=20, arr[2]=30 (was: 10 10 10)
+- 测试: 658 lib + 3004 integration = 3662 total, 0 failures
+- §3.2 全套验收: 全绿
+- v0.450.0: minor bump
+- 下一步: Stage 18.183 — fat pointer Index projection (s[0] for str/切片)
+

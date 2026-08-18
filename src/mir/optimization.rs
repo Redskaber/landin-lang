@@ -126,12 +126,36 @@ fn collect_operand_locals(
 }
 
 /// Collect locals from a place (recursively into projections).
+///
+/// Stage 18.182 (TD-ARRAY-INDEX-CODEGEN P0 fix): For `Projection(base, Index(idx_local))`,
+/// the `idx_local` IS read (codegen loads it to compute the GEP offset). Previously,
+/// `collect_place_locals` only recursed into `base`, ignoring `Index(idx_local)` —
+/// causing DCE to remove `let idx_local = 0`, leaving the alloca uninitialized.
+///
+/// Per §1.0 原則 4 (报错>静默): DCE must not remove used assignments.
+/// Per §1.0 原則 6 (通解>特例): one recursive rule for all projection elements.
 fn collect_place_locals(place: &Place, used: &mut HashSet<crate::mir::place::LocalId>) {
     match &place.kind {
         PlaceKind::Local(id) => {
             used.insert(*id);
         }
-        PlaceKind::Projection(base, _) => collect_place_locals(base, used),
+        PlaceKind::Projection(base, elem) => {
+            // Recurse into the base (e.g., `arr` in `arr[i]`).
+            collect_place_locals(base, used);
+            // Stage 18.182: Also collect locals from the projection element.
+            // `Index(idx_local)` reads `idx_local` — it must be marked as used.
+            match elem {
+                crate::mir::place::ProjectionElem::Index(idx_local) => {
+                    used.insert(*idx_local);
+                }
+                crate::mir::place::ProjectionElem::Field(_, _)
+                | crate::mir::place::ProjectionElem::ConstantIndex { .. }
+                | crate::mir::place::ProjectionElem::Subslice { .. }
+                | crate::mir::place::ProjectionElem::Deref => {
+                    // These don't carry additional locals to read.
+                }
+            }
+        }
         PlaceKind::Static(_) => {}
     }
 }
