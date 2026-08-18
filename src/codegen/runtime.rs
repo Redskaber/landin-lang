@@ -223,6 +223,42 @@ void __landin_vec_push(void* vec_ptr, void* val_ptr, long long elem_size) {
     /* Increment len */
     *len_field = len + 1;
 }
+/* Stage 18.198 (TD-STRING-INTRINSICS): String::push_str helper.
+   __landin_string_push_str(str_ptr, src_ptr, src_len) → appends src to String.
+   str_ptr points to String { ptr: *mut u8, len: i64, cap: i64 }.
+   src_ptr/src_len describe the &str to append.
+   Grows capacity if needed, copies bytes, increments len.
+   Per §1.0 原則 6 (通解>特例): one function for all String::push_str calls. */
+void __landin_string_push_str(void* str_ptr, const char* src_ptr, long long src_len) {
+    void** ptr_field = (void**)str_ptr;           /* offset 0: *mut u8 */
+    long long* len_field = (long long*)((char*)str_ptr + 8);  /* offset 8: i64 len */
+    long long* cap_field = (long long*)((char*)str_ptr + 16); /* offset 16: i64 cap */
+    long long len = *len_field;
+    long long cap = *cap_field;
+    long long new_len = len + src_len;
+    /* Grow if needed */
+    if (new_len > cap) {
+        long long new_cap = (cap == 0) ? 4 : cap;
+        while (new_cap < new_len) new_cap *= 2;
+        long long new_bytes = new_cap;
+        void* new_ptr = (cap == 0)
+            ? malloc((size_t)new_bytes)
+            : realloc(*ptr_field, (size_t)new_bytes);
+        if (new_ptr == 0) {
+            fprintf(stderr, "panic: string push_str grow failed (old_cap=%lld new_cap=%lld)\n", cap, new_cap);
+            exit(1);
+        }
+        *ptr_field = new_ptr;
+        *cap_field = new_cap;
+    }
+    /* Copy src bytes to ptr[len] */
+    char* dest = (char*)(*ptr_field) + len;
+    for (long long i = 0; i < src_len; i++) {
+        dest[i] = src_ptr[i];
+    }
+    /* Update len */
+    *len_field = new_len;
+}
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).
@@ -269,6 +305,8 @@ mod tests {
             "__landin_realloc",
             // Stage 18.197: Vec push helper.
             "__landin_vec_push",
+            // Stage 18.198: String::push_str helper.
+            "__landin_string_push_str",
         ];
         for sym in &required {
             assert!(

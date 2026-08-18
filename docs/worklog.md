@@ -18562,3 +18562,35 @@ Stage Summary:
 - TD-VEC-PUSH-NOTIMPLEMENTED ✅ Resolved
 - TD-VEC-MVP ✅ Resolved (new + push + len complete)
 
+
+---
+Task ID: stage18.198
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.198 — String::push_str implementation. v0.464.0 → v0.465.0.
+
+Work Log:
+- 依赖审计: __landin_alloc ✅, realloc ✅, memcpy ✅, String::from_str ✅ → 完整
+- 实现 __landin_string_push_str C helper (runtime.rs):
+  → reads String fields via pointer arithmetic (offset 0=ptr, 8=len, 16=cap)
+  → grows capacity if needed (cap 0→4, else 2× until >= new_len)
+  → copies src bytes to ptr[len]
+  → updates len
+- 实现 String::push_str MIR intrinsic (expr_variants.rs):
+  → create &String ref (Shared) → cast to *mut u8
+  → extract src.ptr (field 0) and src.len (field 1) from &str fat pointer
+  → call __landin_string_push_str(str_ptr, src_ptr, src_len)
+- 注册 DefId(u32::MAX - 104) for __landin_string_push_str
+- 验证:
+  → String::from_str("hello").push_str(" world").len() = 11 ✅
+  → String::new().push_str("hello").len() = 5 ✅
+  → 3 pushes → len=13, cap=16 (growth 0→4→8→16) ✅
+- 6 tests (all positive)
+- Tests: 658 lib + 3069 integration = 3727 total, 0 failures
+- v0.465.0: minor bump
+
+Stage Summary:
+- Stage 18.198 PASSED — String::push_str implementation
+- 新增: __landin_string_push_str C helper + MIR intrinsic
+- 验证: push_str growth (0→4→8→16) + accumulation + empty src
+- TD-STRING-INTRINSICS ✅ Resolved (from_str + new + len + as_str + push_str)
+

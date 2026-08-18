@@ -1061,6 +1061,7 @@ pub(super) fn run_post_typeck_validations(
         (u32::MAX - 101, "__landin_memcpy"),
         (u32::MAX - 102, "__landin_realloc"),
         (u32::MAX - 103, "__landin_vec_push"),
+        (u32::MAX - 104, "__landin_string_push_str"),
     ];
     for (offset, name) in &runtime_helpers {
         fn_name_by_def_id.insert(crate::hir::DefId::new(*offset), name.to_string());

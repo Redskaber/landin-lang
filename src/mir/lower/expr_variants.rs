@@ -1326,6 +1326,29 @@ pub(super) fn lower_method_call_expr(
             }
         }
 
+        // Stage 18.198 (TD-STRING-INTRINSICS): String::push_str(s) intrinsic.
+        // `s.push_str(src)` → call __landin_string_push_str(&s, src.ptr, src.len).
+        // Per §1.0 原則 6 (通解>特例): one intrinsic for all String::push_str calls.
+        if method_name_str == "push_str" && args.len() == 1 {
+            let is_string = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
+                && cx.hir.is_some_and(|hir| {
+                    if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
+                        if let Some(owner) = hir.find_owner(*did) {
+                            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) =
+                                owner
+                            {
+                                let name = cx.interner.resolve(&s.ident.name);
+                                return name == "String";
+                            }
+                        }
+                    }
+                    false
+                });
+            if is_string {
+                return lower_string_push_str_intrinsic(cx, expr, recv_local, arg_locals[0]);
+            }
+        }
+
         // Stage 18.195 (TD-VEC-MVP): Vec::push(x) intrinsic.
         // `v.push(x)` → check if len == cap, realloc if needed, store x at [len], len++.
         // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::push calls.
@@ -1981,6 +2004,130 @@ fn lower_vec_push_intrinsic(
                 Operand::Copy(Place::local(vec_ptr_local, expr.span)),
                 Operand::Copy(Place::local(val_ptr_local, expr.span)),
                 Operand::Copy(Place::local(elem_size_local, expr.span)),
+            ],
+            destination: Place::local(push_dest, expr.span),
+            target: Some(cont),
+            dyn_trait_call: None,
+        },
+        cont,
+    );
+
+    // Return unit
+    let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+    let dest = cx.mir.new_local(unit_ty, None, expr.span);
+    let after = cx.new_block();
+    cx.terminate_and_goto(
+        Terminator {
+            kind: TerminatorKind::Goto(after),
+            span: expr.span,
+        },
+        after,
+    );
+    dest
+}
+
+/// Stage 18.198 (TD-STRING-INTRINSICS): Lower `String::push_str(src: &str)`.
+///
+/// Generates MIR for:
+///   1. Create &String ref → cast to *mut u8 (opaque pointer)
+///   2. Extract src.ptr (field 0) and src.len (field 1) from &str fat pointer
+///   3. Call __landin_string_push_str(str_ptr, src_ptr, src_len)
+///
+/// Per §1.0 原則 6 (通解>特例): one intrinsic for all String::push_str calls.
+/// Per §2 原則 9 (正确>妥协): uses C helper for growth+copy (same as Vec::push).
+fn lower_string_push_str_intrinsic(
+    cx: &mut MirLowerCtxt,
+    expr: &HirExpr,
+    recv_local: LocalId,
+    src_local: LocalId,
+) -> LocalId {
+    use crate::mir::ty::ConstVal;
+
+    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+    let u8_ptr_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+        ),
+        expr.span,
+    );
+
+    // Step 1: Create &String ref (Shared) → cast to *mut u8
+    let str_ref_ty = Ty::new(
+        TyKind::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::ty::Mutability::Immutable,
+            Box::new(cx.mir.local(recv_local).ty.clone()),
+        ),
+        expr.span,
+    );
+    let str_ref_local = cx.mir.new_local(str_ref_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(str_ref_local, expr.span),
+        Rvalue::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::place::BorrowKind::Shared,
+            Place::local(recv_local, expr.span),
+        ),
+        expr.span,
+    );
+    let str_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(str_ptr_local, expr.span),
+        Rvalue::Cast(
+            crate::mir::place::CastKind::Pointer,
+            Operand::Copy(Place::local(str_ref_local, expr.span)),
+            u8_ptr_ty.clone(),
+        ),
+        expr.span,
+    );
+
+    // Step 2: Extract src.ptr (field 0) from &str fat pointer
+    let src_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(src_ptr_local, expr.span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(src_local, expr.span)),
+                ProjectionElem::Field(FieldId(0), u8_ptr_ty.clone()),
+            ),
+            span: expr.span,
+        })),
+        expr.span,
+    );
+
+    // Step 3: Extract src.len (field 1) from &str fat pointer
+    let src_len_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(src_len_local, expr.span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(src_local, expr.span)),
+                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+            ),
+            span: expr.span,
+        })),
+        expr.span,
+    );
+
+    // Step 4: Call __landin_string_push_str(str_ptr, src_ptr, src_len)
+    let push_def_id = crate::hir::DefId::new(u32::MAX - 104);
+    let push_fn_ty = Ty::new(
+        TyKind::FnDef(push_def_id, std::vec::Vec::new().into()),
+        expr.span,
+    );
+    let push_fn_local = cx.mir.new_local(push_fn_ty, None, expr.span);
+    let push_dest = cx
+        .mir
+        .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span);
+    let cont = cx.new_block();
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Call {
+            func: Operand::Move(Place::local(push_fn_local, expr.span)),
+            args: vec![
+                Operand::Copy(Place::local(str_ptr_local, expr.span)),
+                Operand::Copy(Place::local(src_ptr_local, expr.span)),
+                Operand::Copy(Place::local(src_len_local, expr.span)),
             ],
             destination: Place::local(push_dest, expr.span),
             target: Some(cont),
