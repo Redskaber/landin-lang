@@ -18816,3 +18816,64 @@ Stage Summary:
 - TD-VEC-ELEM-SIZE-INFERENCE ✅ Resolved (partial — full generic instantiation
   deferred to v0.2 P2+ as TD-TYPECK-GENERIC-INST)
 - v0.469.0: minor bump (integrated elem_size fix + C wrapper audit)
+
+---
+Task ID: stage18.204
+Agent: Super Z (main) — ARCH-A + QA-A + REV-A + PM-A + ALG-C + SKL-A (Stage Committee)
+Task: Stage 18.204 — 阶段末尾深度审查 §14.5 D1-D8 (chain close for Stage 18.195-18.203). v0.469.0 (no bump — audit only).
+
+Work Log:
+- Baseline: v0.469.0 / 664 lib tests + 3081 integration tests (post-Stage 18.203)
+- 触发条例: §14.5 阶段末尾深度审查 (chain close 第三轮 deep review per §14.5 触发时机)
+- §13.1 设计对齐: docs/stage-committee-process.md v6.4 §14.5 + §14.6 + §25 (D1-D8)
+- §14.5 D1-D8 八维度审查 (覆盖 Stage 18.195-18.203, 9 stages):
+  → D1 架构健康度: ✅ 健康 — compute_type_size 单一真理源；
+    C wrapper 债已识别 (TD-C-WRAPPER-OVERUSE)
+  → D2 技术债清单: ✅ 完整 — 10 resolved + 16 active (13 deferred + 3 新发现)
+    同类型 3 组识别: 类型 1 (elem_size) ✅ 整体完成 / 类型 2 (borrow) 🟡 v0.2 / 类型 3 (typeck) 🟡 v0.2
+  → D3 测试覆盖深度: ✅ 充分 — 3745 tests, 0 failures; 27.8% negative ratio (整体达标);
+    60 new tests in chain; 3 缺漏路径有阻塞原因 (TD-TUPLE-CTOR-TYPECK 等)
+  → D4 下一阶段就绪度: ✅ 就绪 — v0.2 Phase 2 主要差距: typeck generic instantiation
+    设计 + MIR intrinsic ops
+  → D5 设计合理性: ✅ 合理 — 无过度设计；3 处设计不足已记录 (Vec 字段偏移硬编码 +
+    复合 C helper + fallback 硬编码)
+  → D6 性能与可扩展性: ✅ 良好 — ~21s 编译；无 O(n²) 瓶颈；AdtLayout crate-level 共享
+  → D7 文档与知识传承: ⚠️ 部分 — pipeline-test-coverage.md 过期 (停在 14.105)；
+    2 项隐性知识待补档 (Vec 字段偏移 + C helper ABI 契约)
+  → D8 测试路径覆盖: ✅ 充分 — 20 条路径覆盖；3 缺漏路径有阻塞原因 + 补测计划
+- §14.8 设计偏差清单 (6 项):
+  → 2 项 B1 (设计未实现): typeck generic instantiation + MIR intrinsic ops
+  → 2 项 B2 (实现扩展): 复合 C helper + Vec/String 内部 alloc
+  → 1 项 B3 (实现偏离设计): Vec 字段偏移在 C runtime 和 MIR lower 两处隐式定义
+  → 1 项 ✅ (无偏差): v0.1 不自举原则符合设计
+- 委员会投票: 5/5 GO (ARCH-A + DEV-A + QA-A + ALG-C + SKL-A)
+- 行动计划:
+  → 本 stage 立即补 (18.205 候选): ABI contract tests + pipeline-test-coverage 更新
+  → v0.2 Phase 2 优先: 类型 3 组整体修复 (TD-TYPECK-GENERIC-INST) → 类型 2 组 →
+    TD-FUNCTION-REDEFINE-PARAMS → TD-C-WRAPPER-OVERUSE 迁移
+  → v0.3 自举前: 复合 C helpers → MIR intrinsics 完整迁移
+- 验收 (§3.2):
+  → cargo fmt --check: ✅
+  → cargo test --features llvm-backend --lib: 664 passed
+  → cargo test --features llvm-backend --tests: 3081 passed (single-threaded 验证)
+  → cargo clippy: 16 warnings (all pre-existing, 0 new)
+  → 0 conformance regressions
+  → Total: 3745 tests, 0 failures, zero regression
+- 文档输出:
+  → docs/develop/v0/stage-18/stage-18.204-deep-review.md (完整 D1-D8 审查报告)
+  → docs/develop/v0/stage-18/stage-18.204-dev-log.md (本 stage dev log)
+  → 更新 docs/develop/v0/tech-debt-register.md (header + §2.6 状态确认)
+- 版本: v0.469.0 (no bump — audit only)
+
+Stage Summary:
+- Stage 18.204 PASSED — Deep review §14.5 D1-D8 (chain close for 18.195-18.203)
+- 审查范围: 9 stages (18.195-18.203), v0.462.0 → v0.469.0
+- 结论: GO (5/5 委员会投票通过, 0 P0/P1, 16 P2 active 全部有偿还计划)
+- Chain 关键成就:
+  1. Heap alloc + Vec + String + Box + format! 完整功能链
+  2. elem_size 统一推导 (§10 DRY + §12 最优 > 最小)
+  3. C wrapper 过度依赖识别 + 迁移计划 (TD-C-WRAPPER-OVERUSE)
+  4. 任务图重排 (Stage 18.201) — 同类型整体修复
+  5. 零回归 (3745 tests, 0 failures)
+- 下一步: 进入 v0.2 Phase 2 (typeck generic instantiation + MIR intrinsic ops 设计)
+- v0.469.0: no bump (audit only)
