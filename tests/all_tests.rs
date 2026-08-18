@@ -551,6 +551,10 @@ mod stage18_197_vec_push_tests;
 #[path = "v0/stage18/plan/stage18_198_push_str_tests.rs"]
 mod stage18_198_push_str_tests;
 
+// === Stage 18.200: Vec::get ===
+#[path = "v0/stage18/plan/stage18_200_vec_get_tests.rs"]
+mod stage18_200_vec_get_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

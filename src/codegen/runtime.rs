@@ -259,6 +259,25 @@ void __landin_string_push_str(void* str_ptr, const char* src_ptr, long long src_
     /* Update len */
     *len_field = new_len;
 }
+/* Stage 18.200: Vec::get helper.
+   __landin_vec_get(vec_ptr, index, out_ptr, elem_size) → copies element at index to out_ptr.
+   Panics if index >= len.
+   Per §1.0 原則 6 (通解>特例): one function for all Vec<T> types.
+   Per §1.0 原則 4 (报错>静默): OOB panics. */
+void __landin_vec_get(void* vec_ptr, long long index, void* out_ptr, long long elem_size) {
+    void** ptr_field = (void**)vec_ptr;
+    long long* len_field = (long long*)((char*)vec_ptr + 8);
+    long long len = *len_field;
+    if (index < 0 || index >= len) {
+        fprintf(stderr, "panic: vec get index out of bounds (index=%lld len=%lld)\n", index, len);
+        exit(1);
+    }
+    char* src = (char*)(*ptr_field) + (index * elem_size);
+    char* dst = (char*)out_ptr;
+    for (long long i = 0; i < elem_size; i++) {
+        dst[i] = src[i];
+    }
+}
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).
@@ -307,6 +326,8 @@ mod tests {
             "__landin_vec_push",
             // Stage 18.198: String::push_str helper.
             "__landin_string_push_str",
+            // Stage 18.200: Vec::get helper.
+            "__landin_vec_get",
         ];
         for sym in &required {
             assert!(

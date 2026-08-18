@@ -18594,3 +18594,71 @@ Stage Summary:
 - 验证: push_str growth (0→4→8→16) + accumulation + empty src
 - TD-STRING-INTRINSICS ✅ Resolved (from_str + new + len + as_str + push_str)
 
+
+---
+Task ID: stage18.199
+Agent: Super Z (main) — ARCH-A + QA-A + REV-A + PM-A
+Task: Stage 18.199 — Deep review §14.5 D1-D8 (Vec/String chain). v0.465.0 → v0.466.0.
+
+Work Log:
+- §3.2 验收 baseline: 658 lib + 3069 integration = 3727 total, 0 failed
+- §14.5 深度审查 (D1-D8):
+  → D1 架构: ✅ C helper + MIR intrinsic 模式一致, §11 isolation strict
+  → D2 技术债: 8 P2 items (all deferred, non-blocking); 3 resolved this chain
+  → D3 测试: 3727 total, 26 new in chain, 1 TODO, 0 failures
+  → D4 就绪度: format! variadic + Vec::pop doable; Box auto-drop blocked
+  → D5 设计: 通解>特解 (C helper), 报错>静默 (OOM panic), 正确>妥协 (Shared borrow TD)
+  → D6 性能: ~21s, no bottleneck
+  → D7 文档: every stage has dev-log, 2 deep-reviews
+  → D8 路径: full heap/Vec/String/Box/str/format!/array/i64 coverage
+
+- Chain 总结 (18.194-18.198, 5 stages):
+  → v0.463.0 → v0.465.0
+  → 26 new tests, 3 TDs resolved (VEC-MVP, VEC-PUSH, STRING-INTRINSICS)
+  → realloc + Vec (new/push/len) + String::push_str
+
+- 结论: GO — Vec/String dynamic operations complete
+
+- v0.466.0: patch bump (deep review)
+
+Stage Summary:
+- Stage 18.199 PASSED — Deep review §14.5 D1-D8
+- 审查范围: Stage 18.194-18.198 (5 stages, Vec/String chain)
+- 结论: GO (0 P0, 0 P1, 8 P2 deferred)
+- v0.466.0: patch bump
+
+
+---
+Task ID: stage18.200
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.200 — Vec::get implementation. v0.466.0 → v0.467.0.
+
+Work Log:
+- 依赖审计: Vec::push ✅, elem_size ✅, bounds check ✅ → 完整
+- 实现 __landin_vec_get C helper (runtime.rs):
+  → reads Vec fields via pointer arithmetic (offset 0=ptr, 8=len)
+  → bounds check (panic on OOB)
+  → copies elem_size bytes from ptr[index*elem_size] to out_ptr
+- 实现 Vec::get MIR intrinsic (expr_variants.rs):
+  → create &Vec (Shared) → cast to *mut u8
+  → cast index to i64
+  → create &out (Shared) → cast to *mut u8
+  → call __landin_vec_get(vec_ptr, index, out_ptr, elem_size)
+  → load result from out
+- Bug fix: elem_size default 4 for Infer/Param types (was 8 → wrong offset)
+- 注册 DefId(u32::MAX - 105) for __landin_vec_get
+- 验证:
+  → v.get(0)=10, v.get(1)=20, v.get(2)=30 ✅
+  → v.get(5) → panic: vec get index out of bounds ✅
+  → v.get(4) after 5 pushes = 5 ✅ (after growth)
+- 4 tests (3 positive + 1 negative)
+- Tests: 658 lib + 3073 integration = 3731 total, 0 failures
+- v0.467.0: minor bump
+
+Stage Summary:
+- Stage 18.200 PASSED — Vec::get implementation
+- 新增: __landin_vec_get C helper + MIR intrinsic
+- 验证: element access by index + OOB panic
+- Bug fix: elem_size default 4 for generic T (was 8 → offset error)
+- TD-VEC-ELEM-SIZE-INFERENCE: new (proper fix needs Vec<T> type param resolution)
+

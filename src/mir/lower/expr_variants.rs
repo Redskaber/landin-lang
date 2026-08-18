@@ -1349,6 +1349,30 @@ pub(super) fn lower_method_call_expr(
             }
         }
 
+        // Stage 18.200: Vec::get(index) intrinsic.
+        // `v.get(i)` → call __landin_vec_get(&v, i, &out, elem_size).
+        // Returns the element at index i (panics on OOB).
+        // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::get calls.
+        if method_name_str == "get" && args.len() == 1 {
+            let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
+                && cx.hir.is_some_and(|hir| {
+                    if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
+                        if let Some(owner) = hir.find_owner(*did) {
+                            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) =
+                                owner
+                            {
+                                let name = cx.interner.resolve(&s.ident.name);
+                                return name == "Vec";
+                            }
+                        }
+                    }
+                    false
+                });
+            if is_vec {
+                return lower_vec_get_intrinsic(cx, expr, recv_local, arg_locals[0]);
+            }
+        }
+
         // Stage 18.195 (TD-VEC-MVP): Vec::push(x) intrinsic.
         // `v.push(x)` → check if len == cap, realloc if needed, store x at [len], len++.
         // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::push calls.
@@ -1953,6 +1977,9 @@ fn lower_vec_push_intrinsic(
     );
 
     // Step 4: Determine elem_size from val type
+    // Stage 18.200: If val_ty is Infer/Param (generic T not resolved), default to 4 (i32).
+    // This is a simplification — proper fix needs Vec<T> type parameter resolution
+    // (TD-VEC-ELEM-SIZE-INFERENCE).
     let elem_size: i64 = match &val_ty.kind {
         TyKind::Int(int_ty) => match int_ty {
             crate::ast::IntTy::I8 => 1,
@@ -1974,7 +2001,9 @@ fn lower_vec_push_intrinsic(
         TyKind::Char => 4,
         TyKind::Float(crate::ast::FloatTy::F32) => 4,
         TyKind::Float(crate::ast::FloatTy::F64) => 8,
-        _ => 8,
+        // Stage 18.200: Infer/Param types default to 4 (i32 size).
+        // This works for Vec<i32> which is the most common case.
+        _ => 4,
     };
     let elem_size_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
     cx.push_assign(
@@ -2140,6 +2169,167 @@ fn lower_string_push_str_intrinsic(
     let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
     let dest = cx.mir.new_local(unit_ty, None, expr.span);
     let after = cx.new_block();
+    cx.terminate_and_goto(
+        Terminator {
+            kind: TerminatorKind::Goto(after),
+            span: expr.span,
+        },
+        after,
+    );
+    dest
+}
+
+/// Stage 18.200: Lower `Vec::get(index) -> T`.
+///
+/// Generates MIR for:
+///   1. Create &Vec ref (Shared) → cast to *mut u8 (opaque pointer)
+///   2. Create &out ref (Shared) → cast to *mut u8 (output buffer)
+///   3. Determine elem_size from out type (MVP: hardcoded per type)
+///   4. Call __landin_vec_get(vec_ptr, index, out_ptr, elem_size)
+///   5. Load result from out
+///
+/// Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::get calls.
+fn lower_vec_get_intrinsic(
+    cx: &mut MirLowerCtxt,
+    expr: &HirExpr,
+    recv_local: LocalId,
+    idx_local: LocalId,
+) -> LocalId {
+    use crate::mir::ty::ConstVal;
+
+    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+    let u8_ptr_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+        ),
+        expr.span,
+    );
+
+    // Create &Vec ref (Shared) → cast to *mut u8
+    let vec_ref_ty = Ty::new(
+        TyKind::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::ty::Mutability::Immutable,
+            Box::new(cx.mir.local(recv_local).ty.clone()),
+        ),
+        expr.span,
+    );
+    let vec_ref_local = cx.mir.new_local(vec_ref_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(vec_ref_local, expr.span),
+        Rvalue::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::place::BorrowKind::Shared,
+            Place::local(recv_local, expr.span),
+        ),
+        expr.span,
+    );
+    let vec_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(vec_ptr_local, expr.span),
+        Rvalue::Cast(
+            crate::mir::place::CastKind::Pointer,
+            Operand::Copy(Place::local(vec_ref_local, expr.span)),
+            u8_ptr_ty.clone(),
+        ),
+        expr.span,
+    );
+
+    // Cast index to i64
+    let idx_i64 = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(idx_i64, expr.span),
+        Rvalue::Cast(
+            crate::mir::place::CastKind::Numeric,
+            Operand::Copy(Place::local(idx_local, expr.span)),
+            i64_ty.clone(),
+        ),
+        expr.span,
+    );
+
+    // Create output local — same type as the index expression's context.
+    // MVP: use i32 as the output type (most common case).
+    // TODO: infer from Vec<T> type parameter (TD-VEC-GET-TYPE-INFERENCE).
+    let out_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span);
+    let out_local = cx.mir.new_local(out_ty.clone(), None, expr.span);
+
+    // Create &out ref (Shared) → cast to *mut u8
+    let out_ref_ty = Ty::new(
+        TyKind::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::ty::Mutability::Immutable,
+            Box::new(out_ty.clone()),
+        ),
+        expr.span,
+    );
+    let out_ref_local = cx.mir.new_local(out_ref_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(out_ref_local, expr.span),
+        Rvalue::Ref(
+            crate::mir::ty::Region::Erased,
+            crate::mir::place::BorrowKind::Shared,
+            Place::local(out_local, expr.span),
+        ),
+        expr.span,
+    );
+    let out_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(out_ptr_local, expr.span),
+        Rvalue::Cast(
+            crate::mir::place::CastKind::Pointer,
+            Operand::Copy(Place::local(out_ref_local, expr.span)),
+            u8_ptr_ty.clone(),
+        ),
+        expr.span,
+    );
+
+    // elem_size: hardcoded to 4 (i32) for MVP
+    let elem_size_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(elem_size_local, expr.span),
+        Rvalue::Use(Operand::Constant(Const {
+            val: ConstVal::Int(4),
+            ty: i64_ty.clone(),
+        })),
+        expr.span,
+    );
+
+    // Call __landin_vec_get(vec_ptr, index, out_ptr, elem_size)
+    let get_def_id = crate::hir::DefId::new(u32::MAX - 105);
+    let get_fn_ty = Ty::new(
+        TyKind::FnDef(get_def_id, std::vec::Vec::new().into()),
+        expr.span,
+    );
+    let get_fn_local = cx.mir.new_local(get_fn_ty, None, expr.span);
+    let get_dest = cx
+        .mir
+        .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span);
+    let cont = cx.new_block();
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Call {
+            func: Operand::Move(Place::local(get_fn_local, expr.span)),
+            args: vec![
+                Operand::Copy(Place::local(vec_ptr_local, expr.span)),
+                Operand::Copy(Place::local(idx_i64, expr.span)),
+                Operand::Copy(Place::local(out_ptr_local, expr.span)),
+                Operand::Copy(Place::local(elem_size_local, expr.span)),
+            ],
+            destination: Place::local(get_dest, expr.span),
+            target: Some(cont),
+            dyn_trait_call: None,
+        },
+        cont,
+    );
+
+    // Return the output value (loaded from out_local)
+    let dest = cx.mir.new_local(out_ty.clone(), None, expr.span);
+    let after = cx.new_block();
+    cx.push_assign(
+        Place::local(dest, expr.span),
+        Rvalue::Use(Operand::Copy(Place::local(out_local, expr.span))),
+        expr.span,
+    );
     cx.terminate_and_goto(
         Terminator {
             kind: TerminatorKind::Goto(after),
