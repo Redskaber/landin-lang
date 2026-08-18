@@ -272,6 +272,28 @@ pub(super) fn lower_call_expr(
         .map(|l| Operand::Move(Place::local(*l, Span::DUMMY)))
         .collect();
 
+    // Stage 18.185 (TD-STRING-INTRINSICS): Intercept String::from_str(s)
+    // as a builtin intrinsic before falling through to ADT ctor / call paths.
+    //
+    // String::from_str(s: &str) -> String does:
+    //   1. len = s.len (extract from fat pointer field 1)
+    //   2. ptr = __landin_alloc(len) (allocate heap buffer)
+    //   3. __landin_memcpy(ptr, s.ptr, len) (copy bytes)
+    //   4. Construct String { ptr, len, cap: len }
+    //
+    // Per §1.0 原則 6 (通解>特例): one intrinsic for String::from_str,
+    // not a special-case per string literal.
+    // Per §2 原則 9 (正确>妥协): proper alloc+copy, not a stub.
+    if let HirExprKind::Path(path) = &func.kind {
+        if path.segments.len() == 2 {
+            let type_name = cx.interner.resolve(&path.segments[0].ident.name);
+            let method_name = cx.interner.resolve(&path.segments[1].ident.name);
+            if type_name == "String" && method_name == "from_str" && args.len() == 1 {
+                return lower_string_from_str_intrinsic(cx, expr, arg_locals[0]);
+            }
+        }
+    }
+
     // Stage 13.3a (TD-030): Closure call dispatch.
     //
     // Before falling through to the existing FnDef / Adt / placeholder
@@ -1139,5 +1161,172 @@ pub(super) fn lower_method_call_expr(
             cont,
         );
     }
+    dest
+}
+
+/// Stage 18.185 (TD-STRING-INTRINSICS): Lower `String::from_str(s: &str) -> String`.
+///
+/// Generates MIR for:
+///   1. len = s.len (extract from &str fat pointer field 1)
+///   2. ptr = __landin_alloc(len) (allocate heap buffer)
+///   3. data_ptr = s.ptr (extract from &str fat pointer field 0)
+///   4. __landin_memcpy(ptr, data_ptr, len) (copy bytes)
+///   5. Construct String { ptr, len, cap: len }
+///
+/// Per §1.0 原則 6 (通解>特例): one intrinsic for all String::from_str calls.
+/// Per §2 原則 9 (正确>妥协): proper alloc+memcpy, not a stub.
+/// Per §10: `lower_string_from_str_intrinsic` follows `<verb>_<noun>_<noun>_<noun>` pattern.
+fn lower_string_from_str_intrinsic(
+    cx: &mut MirLowerCtxt,
+    expr: &HirExpr,
+    src_local: LocalId,
+) -> LocalId {
+    use crate::mir::place::AggregateKind;
+    use crate::mir::ty::ConstVal;
+
+    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+    let u8_ptr_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+        ),
+        expr.span,
+    );
+
+    // Step 1: Extract len from &str fat pointer (field 1).
+    let len_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(len_local, expr.span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(src_local, expr.span)),
+                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+            ),
+            span: expr.span,
+        })),
+        expr.span,
+    );
+
+    // Step 2: Extract data ptr from &str fat pointer (field 0).
+    let data_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(data_ptr_local, expr.span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(src_local, expr.span)),
+                ProjectionElem::Field(FieldId(0), u8_ptr_ty.clone()),
+            ),
+            span: expr.span,
+        })),
+        expr.span,
+    );
+
+    // Step 3: Call __landin_alloc(len) to get heap buffer.
+    // Stage 18.185: Use synthetic DefIds (u32::MAX - 100, u32::MAX - 101)
+    // for __landin_alloc and __landin_memcpy. These are registered in
+    // driver_validations.rs::register_builtin_macros so codegen can resolve
+    // them. The offsets (100, 101) are well outside the BUILTIN_MACRO_NAMES
+    // range (max 28 entries) to avoid collision.
+    let alloc_def_id = crate::hir::DefId::new(u32::MAX - 100);
+    let alloc_fn_ty = Ty::new(
+        TyKind::FnDef(alloc_def_id, std::vec::Vec::new().into()),
+        expr.span,
+    );
+    let alloc_fn_local = cx.mir.new_local(alloc_fn_ty, None, expr.span);
+    let alloc_ret_ty = u8_ptr_ty.clone();
+    let alloc_dest = cx.mir.new_local(alloc_ret_ty.clone(), None, expr.span);
+    let alloc_cont = cx.new_block();
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Call {
+            func: Operand::Move(Place::local(alloc_fn_local, expr.span)),
+            args: vec![Operand::Copy(Place::local(len_local, expr.span))],
+            destination: Place::local(alloc_dest, expr.span),
+            target: Some(alloc_cont),
+            dyn_trait_call: None,
+        },
+        alloc_cont,
+    );
+
+    // Step 4: Call __landin_memcpy(alloc_dest, data_ptr, len).
+    let memcpy_def_id = crate::hir::DefId::new(u32::MAX - 101);
+    let memcpy_fn_ty = Ty::new(
+        TyKind::FnDef(memcpy_def_id, std::vec::Vec::new().into()),
+        expr.span,
+    );
+    let memcpy_fn_local = cx.mir.new_local(memcpy_fn_ty, None, expr.span);
+    let memcpy_dest = cx.mir.new_local(
+        Ty::new(TyKind::Tuple(std::vec![]), expr.span),
+        None,
+        expr.span,
+    );
+    let memcpy_cont = cx.new_block();
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Call {
+            func: Operand::Move(Place::local(memcpy_fn_local, expr.span)),
+            args: vec![
+                Operand::Copy(Place::local(alloc_dest, expr.span)),
+                Operand::Copy(Place::local(data_ptr_local, expr.span)),
+                Operand::Copy(Place::local(len_local, expr.span)),
+            ],
+            destination: Place::local(memcpy_dest, expr.span),
+            target: Some(memcpy_cont),
+            dyn_trait_call: None,
+        },
+        memcpy_cont,
+    );
+
+    // Step 5: Construct String { ptr: alloc_dest, len: len_local, cap: len_local }.
+    // Look up the String struct's DefId from HIR by name.
+    // Per §1.0 原則 6 (通解>特例): one lookup for all String::from_str calls.
+    let string_def_id = {
+        let mut found = None;
+        if let Some(hir) = cx.hir {
+            let string_spur = cx.interner.get("String");
+            if let Some(target_name) = string_spur {
+                for (def_id, owner) in &hir.owners {
+                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner {
+                        if s.ident.name == target_name {
+                            found = Some(*def_id);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        found
+    };
+
+    let string_ty = if let Some(did) = string_def_id {
+        Ty::new(TyKind::Adt(did, std::vec::Vec::new().into()), expr.span)
+    } else {
+        Ty::new(TyKind::Error, expr.span)
+    };
+
+    let dest = cx.mir.new_local(string_ty.clone(), None, expr.span);
+    let cont = cx.new_block();
+    cx.push_assign(
+        Place::local(dest, expr.span),
+        Rvalue::Aggregate(
+            AggregateKind::Adt(
+                string_def_id.unwrap_or(crate::hir::DefId::new(0)),
+                0,
+                std::vec::Vec::new().into(),
+                vec![u8_ptr_ty.clone(), i64_ty.clone(), i64_ty.clone()],
+            ),
+            vec![
+                Operand::Copy(Place::local(alloc_dest, expr.span)),
+                Operand::Copy(Place::local(len_local, expr.span)),
+                Operand::Copy(Place::local(len_local, expr.span)),
+            ],
+        ),
+        expr.span,
+    );
+    cx.terminate_and_goto(
+        Terminator {
+            kind: TerminatorKind::Goto(cont),
+            span: expr.span,
+        },
+        cont,
+    );
     dest
 }

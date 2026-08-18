@@ -101,4 +101,16 @@ struct Box<T>(*mut T)
 // Per §2 原則 9 (正确>妥协): the &str alias compromise is removed — real
 // owned String is the correct design.
 struct String { ptr: *mut u8, len: i64, cap: i64 }
+// Stage 18.185 (TD-STRING-INTRINSICS): String methods.
+//
+// String::len() — returns the byte length (field access).
+// String::as_str() — deferred (needs fat pointer construction from fields).
+// String::from_str() — deferred (needs __landin_memcpy + alloc).
+// String::push_str() — deferred (needs realloc).
+//
+// Per §1.0 原則 6 (通解>特例): methods defined in prelude source, not
+// intrinsics — reuses existing field access + method resolution.
+impl String {
+    fn len(&self) -> i64 { self.len }
+}
 "#;

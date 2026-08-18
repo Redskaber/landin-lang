@@ -165,6 +165,17 @@ void __landin_dealloc(void* ptr) {
     if (ptr == 0) return;  /* free(NULL) is a no-op per C standard */
     free(ptr);
 }
+/* Stage 18.185 (TD-STRING-INTRINSICS): Memory copy for String::from_str.
+   __landin_memcpy(dst, src, n) → copies n bytes from src to dst.
+   Used by String::from_str to copy &str bytes to heap-allocated buffer.
+   Per §1.0 原則 6 (通解>特例): one memcpy for all byte copy operations. */
+void __landin_memcpy(void* dst, const void* src, long long n) {
+    char* d = (char*)dst;
+    const char* s = (const char*)src;
+    for (long long i = 0; i < n; i++) {
+        d[i] = s[i];
+    }
+}
 int main(void) {
     /* Stage 13.13: println! output is emitted inline within landin_main()
        via StatementKind::Println → printf("%s", <msg_global>).
@@ -205,6 +216,8 @@ mod tests {
             // Stage 18.178 (TD-HEAP-ALLOC): heap allocation stubs.
             "__landin_alloc",
             "__landin_dealloc",
+            // Stage 18.185 (TD-STRING-INTRINSICS): memcpy stub.
+            "__landin_memcpy",
         ];
         for sym in &required {
             assert!(

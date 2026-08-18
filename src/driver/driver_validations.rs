@@ -1045,6 +1045,24 @@ pub(super) fn run_post_typeck_validations(
         let synthetic_def_id = crate::hir::DefId::new(u32::MAX - 1 - i as u32);
         fn_name_by_def_id.insert(synthetic_def_id, landin_name);
     }
+
+    // Stage 18.185 (TD-STRING-INTRINSICS): Register runtime helper functions
+    // used by String::from_str intrinsic. These are called from MIR lowered
+    // by `lower_string_from_str_intrinsic` and need to resolve to the
+    // correct C runtime symbols.
+    //
+    // Uses DefId offsets (100, 101) well outside the BUILTIN_MACRO_NAMES
+    // range (max 28) to avoid collision.
+    //
+    // Per §1.0 原則 6 (通解>特例): one registration path for all runtime
+    // helpers called by intrinsics.
+    let runtime_helpers = [
+        (u32::MAX - 100, "__landin_alloc"),
+        (u32::MAX - 101, "__landin_memcpy"),
+    ];
+    for (offset, name) in &runtime_helpers {
+        fn_name_by_def_id.insert(crate::hir::DefId::new(*offset), name.to_string());
+    }
 }
 
 /// Stage 16.65 (Task 14 Phase 2): Check object safety for all `dyn Trait` usages.
