@@ -291,6 +291,16 @@ pub(super) fn lower_call_expr(
             if type_name == "String" && method_name == "from_str" && args.len() == 1 {
                 return lower_string_from_str_intrinsic(cx, expr, arg_locals[0]);
             }
+            // Stage 18.189 (TD-BOX-AUTO-DROP partial): Intercept Box::new(x).
+            // Box::new(x) does:
+            //   1. size = sizeof(T) (from x's type, hardcoded per type for MVP)
+            //   2. ptr = __landin_alloc(size) (allocate heap buffer)
+            //   3. *ptr = x (store x into the heap buffer)
+            //   4. Construct Box { ptr }
+            // Per §1.0 原則 6 (通解>特例): one intrinsic for all Box::new calls.
+            if type_name == "Box" && method_name == "new" && args.len() == 1 {
+                return lower_box_new_intrinsic(cx, expr, arg_locals[0]);
+            }
         }
     }
 
@@ -1157,6 +1167,115 @@ pub(super) fn lower_method_call_expr(
             }
         }
 
+        // Stage 18.189 (TD-STRING-INTRINSICS): String::as_str() intrinsic.
+        // `s.as_str()` → construct &str fat pointer { ptr, len } from String fields.
+        // String.ptr (field 0) is the data pointer, String.len (field 1) is the length.
+        // Per §1.0 原則 6 (通解>特例): one intrinsic for all String::as_str calls.
+        if method_name_str == "as_str" && args.is_empty() {
+            let is_string = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
+                && cx.hir.is_some_and(|hir| {
+                    // Check if the Adt is the String struct by looking up its DefId.
+                    if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
+                        if let Some(owner) = hir.find_owner(*did) {
+                            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) =
+                                owner
+                            {
+                                let name = cx.interner.resolve(&s.ident.name);
+                                return name == "String";
+                            }
+                        }
+                    }
+                    false
+                });
+            if is_string {
+                use crate::mir::place::AggregateKind;
+                let u8_ptr_ty = Ty::new(
+                    TyKind::RawPtr(
+                        crate::mir::ty::Mutability::Mutable,
+                        Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+                    ),
+                    expr.span,
+                );
+                let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+
+                // Extract ptr (field 0) and len (field 1) from String.
+                let ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+                cx.push_assign(
+                    Place::local(ptr_local, expr.span),
+                    Rvalue::Use(Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(recv_local, receiver.span)),
+                            ProjectionElem::Field(FieldId(0), u8_ptr_ty.clone()),
+                        ),
+                        span: expr.span,
+                    })),
+                    expr.span,
+                );
+                let len_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+                cx.push_assign(
+                    Place::local(len_local, expr.span),
+                    Rvalue::Use(Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(recv_local, receiver.span)),
+                            ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                        ),
+                        span: expr.span,
+                    })),
+                    expr.span,
+                );
+
+                // Construct &str fat pointer { ptr, i64 }.
+                // Stage 18.189: We build a Tuple first, then Cast it to &str.
+                // The Tuple and &str have the same LLVM layout ({ ptr, i64 }),
+                // so the cast is a no-op at codegen level, but it makes the
+                // MIR type correct for typeck.
+                let str_ty = Ty::new(
+                    TyKind::Ref(
+                        crate::mir::ty::Region::Erased,
+                        crate::mir::ty::Mutability::Immutable,
+                        Box::new(Ty::new(TyKind::Str, expr.span)),
+                    ),
+                    expr.span,
+                );
+                let tuple_ty = Ty::new(
+                    TyKind::Tuple(vec![u8_ptr_ty.clone(), i64_ty.clone()]),
+                    expr.span,
+                );
+                let tuple_local = cx.mir.new_local(tuple_ty.clone(), None, expr.span);
+                cx.push_assign(
+                    Place::local(tuple_local, expr.span),
+                    Rvalue::Aggregate(
+                        AggregateKind::Tuple,
+                        vec![
+                            Operand::Copy(Place::local(ptr_local, expr.span)),
+                            Operand::Copy(Place::local(len_local, expr.span)),
+                        ],
+                    ),
+                    expr.span,
+                );
+                // Cast the Tuple to &str (same layout, different MIR type).
+                let dest = cx.mir.new_local(str_ty.clone(), None, expr.span);
+                let cont = cx.new_block();
+                cx.push_assign(
+                    Place::local(dest, expr.span),
+                    Rvalue::Cast(
+                        crate::mir::place::CastKind::Unsize,
+                        Operand::Copy(Place::local(tuple_local, expr.span)),
+                        str_ty.clone(),
+                    ),
+                    expr.span,
+                );
+                cx.terminate_and_goto(
+                    Terminator {
+                        kind: TerminatorKind::Goto(cont),
+                        span: expr.span,
+                    },
+                    cont,
+                );
+                return dest;
+            }
+        }
+
         // Stage 14.30: Per "报错 > 静默" principle — emit a compile error
         // instead of silently producing an Error placeholder.
         let is_known_unsupported = matches!(
@@ -1351,6 +1470,157 @@ fn lower_string_from_str_intrinsic(
                 Operand::Copy(Place::local(len_local, expr.span)),
                 Operand::Copy(Place::local(len_local, expr.span)),
             ],
+        ),
+        expr.span,
+    );
+    cx.terminate_and_goto(
+        Terminator {
+            kind: TerminatorKind::Goto(cont),
+            span: expr.span,
+        },
+        cont,
+    );
+    dest
+}
+
+/// Stage 18.189 (TD-BOX-AUTO-DROP partial): Lower `Box::new(x) -> Box<T>`.
+///
+/// Generates MIR for:
+///   1. size = sizeof(T) (hardcoded per primitive type for MVP)
+///   2. ptr = __landin_alloc(size) (allocate heap buffer)
+///   3. *ptr = x (store x into the heap buffer via Deref projection)
+///   4. Construct Box { ptr } via Aggregate
+///
+/// Per §1.0 原則 6 (通解>特例): one intrinsic for all Box::new calls.
+/// Per §2 原則 9 (正确>妥协): proper alloc+store, not a stub.
+/// Per §10: `lower_box_new_intrinsic` follows `<verb>_<noun>_<noun>_<noun>` pattern.
+fn lower_box_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr, val_local: LocalId) -> LocalId {
+    use crate::mir::place::AggregateKind;
+    use crate::mir::ty::ConstVal;
+
+    // Step 1: Determine sizeof(T) from the value's type.
+    // MVP: hardcoded sizes for primitive types. For unknown types, default to 8.
+    let val_ty = cx.mir.local(val_local).ty.clone();
+    let size: i64 = match &val_ty.kind {
+        TyKind::Int(int_ty) => match int_ty {
+            crate::ast::IntTy::I8 => 1,
+            crate::ast::IntTy::I16 => 2,
+            crate::ast::IntTy::I32 => 4,
+            crate::ast::IntTy::I64 => 8,
+            crate::ast::IntTy::I128 => 16,
+            crate::ast::IntTy::Isize => 8,
+        },
+        TyKind::Uint(uint_ty) => match uint_ty {
+            crate::ast::UintTy::U8 => 1,
+            crate::ast::UintTy::U16 => 2,
+            crate::ast::UintTy::U32 => 4,
+            crate::ast::UintTy::U64 => 8,
+            crate::ast::UintTy::U128 => 16,
+            crate::ast::UintTy::Usize => 8,
+        },
+        TyKind::Bool => 1,
+        TyKind::Float(float_ty) => match float_ty {
+            crate::ast::FloatTy::F32 => 4,
+            crate::ast::FloatTy::F64 => 8,
+        },
+        TyKind::Char => 4,
+        // For struct/enum/etc., default to 8 (MVP limitation).
+        // TODO: Use layouts for proper size calculation (TD-BOX-SIZE-OF).
+        _ => 8,
+    };
+
+    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+    let u8_ptr_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+        ),
+        expr.span,
+    );
+
+    // Step 2: Create size constant and call __landin_alloc(size).
+    let size_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(size_local, expr.span),
+        Rvalue::Use(Operand::Constant(Const {
+            val: ConstVal::Int(size as u128),
+            ty: i64_ty.clone(),
+        })),
+        expr.span,
+    );
+
+    let alloc_def_id = crate::hir::DefId::new(u32::MAX - 100);
+    let alloc_fn_ty = Ty::new(
+        TyKind::FnDef(alloc_def_id, std::vec::Vec::new().into()),
+        expr.span,
+    );
+    let alloc_fn_local = cx.mir.new_local(alloc_fn_ty, None, expr.span);
+    let alloc_dest = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    let alloc_cont = cx.new_block();
+    cx.terminate_kind_and_goto(
+        TerminatorKind::Call {
+            func: Operand::Move(Place::local(alloc_fn_local, expr.span)),
+            args: vec![Operand::Copy(Place::local(size_local, expr.span))],
+            destination: Place::local(alloc_dest, expr.span),
+            target: Some(alloc_cont),
+            dyn_trait_call: None,
+        },
+        alloc_cont,
+    );
+
+    // Step 3: Store x into the heap buffer (*alloc_dest = x).
+    // The alloc_dest is *mut u8, but we need *mut T. For MVP, we store
+    // directly (the codegen Deref projection handles the type cast).
+    cx.push_assign(
+        Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(alloc_dest, expr.span)),
+                ProjectionElem::Deref,
+            ),
+            span: expr.span,
+        },
+        Rvalue::Use(Operand::Move(Place::local(val_local, expr.span))),
+        expr.span,
+    );
+
+    // Step 4: Construct Box { ptr: alloc_dest }.
+    // Look up Box struct's DefId from HIR by name.
+    let box_def_id = {
+        let mut found = None;
+        if let Some(hir) = cx.hir {
+            let box_spur = cx.interner.get("Box");
+            if let Some(target_name) = box_spur {
+                for (def_id, owner) in &hir.owners {
+                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner {
+                        if s.ident.name == target_name {
+                            found = Some(*def_id);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        found
+    };
+
+    let box_ty = if let Some(did) = box_def_id {
+        Ty::new(TyKind::Adt(did, std::vec::Vec::new().into()), expr.span)
+    } else {
+        Ty::new(TyKind::Error, expr.span)
+    };
+
+    let dest = cx.mir.new_local(box_ty.clone(), None, expr.span);
+    let cont = cx.new_block();
+    cx.push_assign(
+        Place::local(dest, expr.span),
+        Rvalue::Aggregate(
+            AggregateKind::Adt(
+                box_def_id.unwrap_or(crate::hir::DefId::new(0)),
+                0,
+                std::vec::Vec::new().into(),
+                vec![u8_ptr_ty.clone()],
+            ),
+            vec![Operand::Copy(Place::local(alloc_dest, expr.span))],
         ),
         expr.span,
     );

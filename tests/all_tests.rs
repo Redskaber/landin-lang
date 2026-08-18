@@ -531,6 +531,10 @@ mod stage18_186_format_macro_tests;
 #[path = "v0/stage18/plan/stage18_188_string_new_tests.rs"]
 mod stage18_188_string_new_tests;
 
+// === Stage 18.189: Box::new + String::as_str ===
+#[path = "v0/stage18/plan/stage18_189_box_new_as_str_tests.rs"]
+mod stage18_189_box_new_as_str_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
