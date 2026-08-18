@@ -91,9 +91,18 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 |----|-------------|--------|----------|
 | TD-STDLIB-FACADE | String/Vec/Option/Result are type stubs, not real implementations | No heap allocation, no collections | 🟡 Split Stage 18.163: Option/Result (不依赖 heap, 18.165) + heap alloc 基础设施 (18.166-18.168) + String/Vec (18.169-18.171). 审查发现 codegen 无 malloc/free 支持 |
 | TD-NO-FORMAT-MACRO | No `format!`/`write!` macros | Only `println!`/`print!`/`eprintln!`/`eprint!` | v0.2 P1 (Stage 18.182): format macros — 依赖真实 String 实现 (TD-STRING-AS-STR-ALIAS Stage 18.181) |
-| TD-STRING-AS-STR-ALIAS | Stage 18.176 实现 String 为 &str 别名 (PrimTy::Str)，违反设计文档 §3.4 "String = owned Vec<u8>" | (1) String 不是 owned 类型，无法 push_str (2) 与 Rust 语义不一致 (3) 用户预期落空 | Stage 18.181: prelude 注入真实 `struct String { vec: Vec<u8> }` + new/from_str/push_str/push/len/as_str 方法，移除 PrimTy::Str 对 "String" 的别名映射。依赖 TD-HEAP-ALLOC (18.178) + TD-VEC-MVP (18.180) |
-| TD-HEAP-ALLOC | codegen 无 malloc/free 调用支持，阻碍所有 heap-allocated 类型 (Box/Vec/String/Rc/Arc) | 无法实现任何 owned heap 类型 | Stage 18.178: (1) 验证 codegen `emit_call("malloc", ...)` 可调用 libc malloc (2) prelude 注入 `struct Box<T>(*mut T)` (3) MIR lower 拦截 `Box::new(x)` → malloc + store (4) drop glue 自动调用 `free` |
-| TD-VEC-MVP | `Vec<T>` 在 stdlib 注册表中作为名字存在 (STDLIB_ALLOC_TYPES)，但无实际类型 + 方法实现 | 无法使用 Vec 类型 | Stage 18.180: prelude 注入 `struct Vec<T> { ptr: *mut T, len: usize, cap: usize }` + new/push/len/pop 方法。依赖 TD-HEAP-ALLOC (18.178) |
+| TD-STRING-AS-STR-ALIAS | Stage 18.176 实现 String 为 &str 别名 (PrimTy::Str)，违反设计文档 §3.4 "String = owned Vec<u8>" | (1) String 不是 owned 类型，无法 push_str (2) 与 Rust 语义不一致 (3) 用户预期落空 | ✅ Resolved Stage 18.180: prelude 注入 `struct String { ptr, len, cap }` + 移除 PrimTy::Str 别名. 剩余: String intrinsics (from_str/push_str/len/as_str) 延后到 Stage 18.185 (TD-STRING-INTRINSICS) |
+| TD-HEAP-ALLOC | codegen 无 malloc/free 调用支持，阻碍所有 heap-allocated 类型 (Box/Vec/String/Rc/Arc) | 无法实现任何 owned heap 类型 | ✅ Resolved Stage 18.178: __landin_alloc / __landin_dealloc runtime stubs + 6 latent bug fixes (extern ABI, DefKind, name mangling, DefId collision, DCE LHS, RawPtr Deref) |
+| TD-VEC-MVP | `Vec<T>` 在 stdlib 注册表中作为名字存在 (STDLIB_ALLOC_TYPES)，但无实际类型 + 方法实现 | 无法使用 Vec 类型 | 🟡 Active — Stage 18.186 (重排后): prelude 注入 `struct Vec<T> { ptr, len, cap }` + new/push/len/pop. 依赖 TD-ARRAY-INDEX-CODEGEN (18.182) + TD-FAT-PTR-INDEX-PROJ (18.183) |
+| TD-STRING-INTRINSICS | String 缺 from_str/push_str/len/as_str 等方法 | String 类型可用但操作不便 | 🟡 Active — Stage 18.185 (重排后): 实现 String intrinsics. 依赖 TD-STR-METHODS-RUNTIME (18.184) |
+| TD-ARRAY-INDEX-CODEGEN | 数组索引 `arr[N]` codegen 有偏移 bug: arr[1] 返回 arr[0], arr[2] 返回 0 (OOB 未检测) | 所有数组访问, 阻塞 String/Vec/format! | 🔴 P0 — Stage 18.182: 修复 codegen Index projection + 添加 OOB bounds check |
+| TD-FAT-PTR-INDEX-PROJ | fat pointer (str/切片) 的 Index projection `s[0]` 直接 codegen 错误 "GEP base pointer is not a vector" | str 字节索引, &[T] 切片索引, Vec 实现 | 🔴 P1 — Stage 18.183: codegen 添加 fat pointer Index projection 支持 |
+| TD-STR-METHODS-RUNTIME | str 的 is_empty/as_bytes/to_string 编译通过但运行时 segfault | String intrinsics 的前置依赖 | 🔴 P1 — Stage 18.184: 实现这些方法的 MIR intrinsic + codegen |
+| TD-BOX-AUTO-DROP | Box 缺 Box::new sugar + auto-drop | Box 使用不便, 内存泄漏风险 | 🟡 Active — Stage 18.187+: Box::new intrinsic + drop glue auto-call __landin_dealloc |
+| TD-TUPLE-CTOR-TYPECK | type checker 对 generic tuple struct ctor 宽松 (Box(*mut u8) 接受为 Box<i32>) | 类型安全漏洞 | 🟡 Active — v0.2 P2 |
+| TD-GENERIC-PARAM-CHECK | type checker 不强制 generic param 存在 (`let b: Box` 接受) | 类型安全漏洞 | 🟡 Active — v0.2 P2 |
+| TD-TUPLE-FIELD-CHECK | type checker 不验证 tuple struct field 索引 (`b.1` on Box 接受) | 类型安全漏洞 | 🟡 Active — v0.2 P2 |
+| TD-METHOD-RESOLVE-STRICT | resolver 对未知方法调用宽松 (String::new() 接受) | 错误信息不清晰 | 🟡 Active — v0.2 P2 |
 
 ### 2.7 Test Infrastructure
 

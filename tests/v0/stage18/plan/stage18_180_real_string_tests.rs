@@ -29,11 +29,8 @@ fn run_program(code: &str) -> (String, i32) {
     let bin = manifest.join("target/debug/landin-stage0");
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let lin_file = std::env::temp_dir().join(format!(
-        "landin_str_test_{}_{}.lin",
-        std::process::id(),
-        id
-    ));
+    let lin_file =
+        std::env::temp_dir().join(format!("landin_str_test_{}_{}.lin", std::process::id(), id));
     std::fs::write(&lin_file, code).expect("write .lin file");
 
     let output = Command::new(&bin)
@@ -52,11 +49,8 @@ fn compile_only(code: &str) -> i32 {
     let bin = manifest.join("target/debug/landin-stage0");
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let id = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let lin_file = std::env::temp_dir().join(format!(
-        "landin_str_neg_{}_{}.lin",
-        std::process::id(),
-        id
-    ));
+    let lin_file =
+        std::env::temp_dir().join(format!("landin_str_neg_{}_{}.lin", std::process::id(), id));
     std::fs::write(&lin_file, code).expect("write .lin file");
 
     let output = Command::new(&bin)

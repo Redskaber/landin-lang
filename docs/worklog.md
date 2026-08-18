@@ -17628,3 +17628,72 @@ Stage Summary:
 - v0.448.0: minor bump
 - 下一步: Stage 18.181 — 任务审查 (base types 完整性审计, per 用户新指令)
 
+
+---
+Task ID: stage18.181
+Agent: Super Z (main) — ARCH-A + PM-A + REV-A
+Task: Stage 18.181 — 任务审查 (基础类型完整性审计 + 任务图重排). v0.448.0 → v0.449.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 658 lib + 2996 integration = 3654 total, 0 failed
+
+- 触发条例: 用户指令 "在设计实现 heap 上的内容之前，检查当前的基础 types 是否已经完整"
+  + "你在计划 String 时，就应该考虑 str 设计支持得怎么样，是否完整，是否需要重排任务图"
+
+- §17 基础类型完整性审计:
+  → str 类型: ✅ len/==/!=/println OK; ❌ is_empty/as_bytes/to_string 编译过但运行时 segfault; ❌ s[0] codegen 错误
+  → 数组 [T; N]: 🔴 P0 bug — arr[1] 返回 arr[0], arr[2] 返回 0 (OOB 未检测)
+  → 原语类型: ✅ 基本完整 (i8-i128/u8-u128/f32-f64/bool/char/isize/usize)
+  → fat pointer: ✅ Field projection OK; ❌ Index projection `s[0]` 错误
+  → tuple: ✅ 完整
+  → struct: ✅ 完整
+  → enum: ✅ 完整 (含 Option/Result)
+
+- 简写与缺陷记录 (新增 TD):
+  → TD-ARRAY-INDEX-CODEGEN (P0): 数组索引偏移 bug + OOB 未检测
+  → TD-FAT-PTR-INDEX-PROJ (P1): fat pointer Index projection codegen 错误
+  → TD-STR-METHODS-RUNTIME (P1): str 方法运行时 segfault
+  → TD-STRING-INTRINSICS: String 缺 from_str/push_str/len/as_str (原 18.181)
+  → TD-BOX-AUTO-DROP: Box 缺 Box::new + auto-drop
+  → TD-TUPLE-CTOR-TYPECK / TD-GENERIC-PARAM-CHECK / TD-TUPLE-FIELD-CHECK / TD-METHOD-RESOLVE-STRICT:
+    type checker / resolver 宽松问题 (v0.2 P2)
+
+- 任务图重排 (§17):
+  旧图 (Stage 18.177): 18.181 String intrinsics → 18.182 format! → 18.183 deep review
+  新图: 18.181 任务审查 (本 stage)
+       → 18.182 数组索引 codegen 修复 (P0)
+       → 18.183 fat pointer Index projection (P1)
+       → 18.184 str 方法运行时修复 (P1)
+       → 18.185 String intrinsics (原 18.181)
+       → 18.186 format! 宏 (原 18.182)
+       → 18.187 阶段末深度审查
+
+- 重排理由:
+  1. 依赖正确性: String intrinsics 依赖 str 方法 (as_bytes/len) 工作正常
+  2. 基础先行: 数组索引是 str/Vec/format! 的共同基础
+  3. 避免累积偏差: 不在 broken base 上堆叠新功能 (Stage 18.177 教训)
+  4. 整体性完整修复: 数组 + fat pointer + str 方法是一组关联 bug
+
+- 设计文档同步:
+  → docs/develop/v0/tech-debt-register.md: §2.6 新增 7 个 TD 条目, 更新已有 TD 状态
+  → docs/develop/v0/stage-18/stage-18.181-task-review.md (新增, 282 LOC)
+
+- §3.2 全套验收 (本 stage 无代码变更):
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend --lib: 658 passed
+  → cargo test --features llvm-backend --tests: 2996 passed
+  → Total: 3654 tests, 0 failures
+
+- v0.449.0: patch bump (任务审查文档同步)
+
+Stage Summary:
+- Stage 18.181 PASSED — 任务审查 (基础类型完整性审计 + 任务图重排)
+- 关键发现: 数组索引 P0 bug + str 方法 P1 bug + fat pointer Index P1 bug
+- 任务图重排: 原 18.181 (String intrinsics) → 18.185, 新增 18.182-18.184 修基础
+- 新增 TD: TD-ARRAY-INDEX-CODEGEN (P0), TD-FAT-PTR-INDEX-PROJ (P1), TD-STR-METHODS-RUNTIME (P1)
+- v0.449.0: patch bump
+- 下一步: Stage 18.182 — 数组索引 codegen 修复 (P0)
+
