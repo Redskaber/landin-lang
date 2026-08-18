@@ -1,7 +1,9 @@
 // CATEGORY: 06-stdlib
-// DESCRIPTION: use of undefined stdlib type String
+// DESCRIPTION: String is now a real prelude struct (Stage 18.180); this
+//              test now verifies that String::new() (an unimplemented
+//              intrinsic) produces a compile error.
 // EXPECTED: compile_error
-// ERROR_PATTERN: cannot find
-// SOURCE: Stage 18.69 negative test expansion
+// ERROR_PATTERN: no method
+// SOURCE: Stage 18.180 — updated from "undefined String" to "undefined String::new"
 
 fn main() { let s: String = String::new(); }

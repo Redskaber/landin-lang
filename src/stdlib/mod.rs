@@ -462,11 +462,15 @@ pub fn resolve_stdlib_type(name: &str) -> StdlibTypeKind {
         // Core other
         "bool" => StdlibTypeKind::Bool,
         "char" => StdlibTypeKind::Char,
-        "str" | "String" => StdlibTypeKind::Str,
+        "str" => StdlibTypeKind::Str,
+        // Stage 18.180: "String" is no longer a Str alias — it's a real
+        // prelude struct (owned heap type). Falls through to AllocType.
         "()" => StdlibTypeKind::Unit,
         "Never" => StdlibTypeKind::Never,
         // Alloc types
-        "Box" | "Vec" | "HashMap" | "BTreeMap" | "HashSet" | "BTreeSet" | "Rc" | "Arc" | "Cell"
+        // Stage 18.180: String moved here from the Str alias (it's now a
+        // real heap-allocated struct in the prelude).
+        "String" | "Box" | "Vec" | "HashMap" | "BTreeMap" | "HashSet" | "BTreeSet" | "Rc" | "Arc" | "Cell"
         | "RefCell" | "LinkedList" | "VecDeque" => StdlibTypeKind::AllocType,
         // Std types
         "File" | "Dir" | "Path" | "PathBuf" | "OpenOptions" | "TcpStream" | "TcpListener"

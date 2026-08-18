@@ -9,13 +9,20 @@ use crate::hir::PrimTy;
 
 /// Look up a primitive type by name string.
 ///
-/// Stage 18.176: "String" is mapped to PrimTy::Str — it's a type alias
-/// for &str in the MVP. This makes `let s: String = "hello"` work
-/// identically to `let s: &str = "hello"`.
+/// Stage 18.180 (TD-STRING-AS-STR-ALIAS fix): "String" is NO LONGER mapped
+/// to PrimTy::Str. It's now a real struct type defined in the prelude
+/// (`struct String { ptr: *mut u8, len: i64, cap: i64 }`). The resolver
+/// finds it via the normal module tree lookup, not via this primitive table.
 ///
-/// Per §1.0 原則 6 (通解>特例): one lookup for all primitive + alias types.
-/// Per §2 原則 9 (正确>妥协): String as &str alias is MVP-acceptable
-/// (real String needs heap allocation, deferred to v0.2 P1+).
+/// Previously (Stage 18.176), String was an alias for &str — a stack-
+/// allocated fat pointer. This violated the design doc (09-stdlib.md §3.4)
+/// which defines String as an owned heap type backed by Vec<u8>. The alias
+/// was a temporary MVP compromise (TD-STRING-AS-STR-ALIAS), now removed.
+///
+/// Per §1.0 原則 6 (通解>特例): one lookup for all primitive types.
+/// Per §2 原則 9 (正确>妥协): the alias compromise is removed — real String
+/// is the correct design. Ergonomic intrinsics (from_str/push_str/len)
+/// are deferred to Stage 18.181 (TD-STRING-INTRINSICS).
 pub(super) fn lookup_prim_ty(name: &str) -> Option<PrimTy> {
     Some(match name {
         "bool" => PrimTy::Bool,
@@ -34,7 +41,8 @@ pub(super) fn lookup_prim_ty(name: &str) -> Option<PrimTy> {
         "usize" => PrimTy::Usize,
         "f32" => PrimTy::F32,
         "f64" => PrimTy::F64,
-        "str" | "String" => PrimTy::Str,
+        "str" => PrimTy::Str,
+        // Stage 18.180: "String" is NOT here — it's a prelude struct now.
         _ => return None,
     })
 }

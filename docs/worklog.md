@@ -17567,3 +17567,64 @@ Stage Summary:
 - v0.447.0: minor bump
 - 下一步: Stage 18.180 — Vec<T> MVP + Box::new + Box auto-drop
 
+
+---
+Task ID: stage18.180
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.180 — Real String type (TD-STRING-AS-STR-ALIAS fix). v0.447.0 → v0.448.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 658 lib + 2987 integration = 3645 total, 0 failed
+
+- 实现 real String type:
+  → src/resolve/primitives.rs: 移除 "String" => PrimTy::Str 别名
+    → String 不再是 primitive, 走正常 module tree 解析
+  → src/stdlib/prelude.rs: 添加 `struct String { ptr: *mut u8, len: i64, cap: i64 }`
+    → 匹配设计文档 09-stdlib.md §3.4 (owned heap type, 不是 &str 别名)
+  → src/stdlib/mod.rs: resolve_stdlib_type("String") 返回 AllocType (was Str)
+  → tests/conformance/.../std-err-002: 更新测试意图 (String 不再 undefined, 但 String::new 未实现)
+  → tests/v0/stage5/plan/stdlib_type_resolve_tests.rs: 更新断言 (String → AllocType)
+
+- 实现 9 个测试 (tests/v0/stage18/plan/stage18_180_real_string_tests.rs):
+  → 4 正向: struct literal 构造, field 访问, prelude 无需 import,
+    holds heap bytes (alloc→store→load 全周期)
+  → 5 负向: 字面量赋值失败 (18.176 接受, 18.180 拒绝), 重定义失败,
+    + 1 SOFT (String::new 未实现), 缺字段失败, 错误字段类型失败
+
+- 设计文档偏差 (剩余):
+  → 设计文档: `struct String { vec: Vec<u8> }` (依赖 Vec)
+  → 当前: `struct String { ptr: *mut u8, len: i64, cap: i64 }` (直接字段)
+  → 功能等价, 但不够 DRY — 等 Vec 实现后重构 (Stage 18.182+)
+
+- §3.2 全套验收:
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend --lib: 658 passed
+  → cargo test --features llvm-backend --tests: 2996 passed (was 2987, +9)
+  → Total: 3654 tests, 0 failures
+
+- 新增 TD:
+  → TD-STRING-INTRINSICS: String 缺 from_str/push_str/len/as_str 方法 (Stage 18.181)
+
+- 输出:
+  → docs/develop/v0/stage-18/stage-18.180-dev-log.md
+  → src/resolve/primitives.rs (-1 alias)
+  → src/stdlib/prelude.rs (+18 LOC String 定义)
+  → src/stdlib/mod.rs (String → AllocType)
+  → tests/v0/stage18/plan/stage18_180_real_string_tests.rs (9 tests)
+  → tests/conformance/06-stdlib/99-error-cases/std-err-002-undefined-string.lin (updated)
+  → tests/v0/stage5/plan/stdlib_type_resolve_tests.rs (updated assertion)
+  → tests/all_tests.rs (register new test module)
+
+- v0.448.0: minor bump (real String type + 9 tests)
+
+Stage Summary:
+- Stage 18.180 PASSED — Real String type (TD-STRING-AS-STR-ALIAS fix)
+- 修复: String 从 &str 别名改为真实 struct (ptr/len/cap)
+- 测试: 658 lib + 2996 integration = 3654 total, 0 failures
+- §3.2 全套验收: 全绿
+- v0.448.0: minor bump
+- 下一步: Stage 18.181 — 任务审查 (base types 完整性审计, per 用户新指令)
+

@@ -83,4 +83,22 @@ impl<T, E> Result<T, E> {
 // Per §2 原則 9 (正确>妥协): the MVP is a temporary compromise; real Box with
 // auto-drop is the correct design (recorded as TD-BOX-AUTO-DROP).
 struct Box<T>(*mut T)
+// Stage 18.180 (TD-STRING-AS-STR-ALIAS fix): String — owned heap string.
+//
+// String is now a REAL struct type (not a &str alias). It wraps a heap-
+// allocated buffer (ptr) with length (len) and capacity (cap) fields.
+//
+// This fixes the design violation from Stage 18.176 where String was
+// mapped to PrimTy::Str (a stack-allocated fat pointer). Per the design
+// doc (09-stdlib.md §3.4), String must be an owned heap type.
+//
+// MVP limitation: Users must construct String manually via struct literal:
+//   let s: String = String { ptr: ..., len: ..., cap: ... };
+// Ergonomic intrinsics (String::from_str, push_str, len, as_str) are
+// deferred to Stage 18.181 (TD-STRING-INTRINSICS).
+//
+// Per §1.0 原則 6 (通解>特例): one String type — no per-encoding special cases.
+// Per §2 原則 9 (正确>妥协): the &str alias compromise is removed — real
+// owned String is the correct design.
+struct String { ptr: *mut u8, len: i64, cap: i64 }
 "#;

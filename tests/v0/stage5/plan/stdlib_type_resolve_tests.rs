@@ -44,8 +44,9 @@ fn test_resolve_other_primitives() {
 fn test_resolve_alloc_types() {
     assert_eq!(resolve_stdlib_type("Box"), StdlibTypeKind::AllocType);
     assert_eq!(resolve_stdlib_type("Vec"), StdlibTypeKind::AllocType);
-    // Stage 18.176: String is now Str (type alias for &str), not AllocType
-    assert_eq!(resolve_stdlib_type("String"), StdlibTypeKind::Str);
+    // Stage 18.180: String is now a real prelude struct (owned heap type),
+    // not a Str alias. It resolves to AllocType per the stdlib facade.
+    assert_eq!(resolve_stdlib_type("String"), StdlibTypeKind::AllocType);
     assert_eq!(resolve_stdlib_type("HashMap"), StdlibTypeKind::AllocType);
 }
 

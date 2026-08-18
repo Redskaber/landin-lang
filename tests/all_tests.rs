@@ -503,6 +503,10 @@ mod stage18_178_heap_alloc_tests;
 #[path = "v0/stage18/plan/stage18_179_box_mvp_tests.rs"]
 mod stage18_179_box_mvp_tests;
 
+// === Stage 18.180: Real String type (TD-STRING-AS-STR-ALIAS fix) ===
+#[path = "v0/stage18/plan/stage18_180_real_string_tests.rs"]
+mod stage18_180_real_string_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;
