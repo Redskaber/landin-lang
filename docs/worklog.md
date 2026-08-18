@@ -18349,3 +18349,45 @@ Stage Summary:
 - 测试: 658 lib + 3049 integration = 3707 total, 0 failures
 - v0.459.0: minor bump
 
+
+---
+Task ID: stage18.192
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.192 — Array bounds check (TD-ARRAY-BOUNDS-CHECK). v0.459.0 → v0.460.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 658 lib + 3049 integration = 3707 total, 0 failed
+
+- 实现 OOB bounds check (src/codegen/mir_translation/places.rs):
+  → 在 ProjectionElem::Index codegen 路径中, GEP 之前插入 bounds check
+  → 从 TyKind::Array(_, n) 提取数组长度 N
+  → cast idx to i64, create i64 len constant
+  → icmp slt idx, len → conditional branch
+  → panic block: call __landin_panic_bounds_check(idx, len) + unreachable
+  → ok block: continue GEP + load
+  → 唯一块名 (atomic counter) 避免冲突
+
+- 验证:
+  → arr[0]=10, arr[1]=20, arr[2]=30 ✅ (in-bounds 正常)
+  → arr[5] → panic: index out of bounds (index=5 len=3) ✅ (was: garbage 20)
+
+- 将 Stage 18.182 的 array_oob_soft 改为 array_oob_panics (strict test)
+
+- §3.2 全套验收:
+  → cargo check --all-features: 0 errors / 1 warning
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend --lib: 658 passed
+  → cargo test --features llvm-backend --tests: 3049 passed
+  → Total: 3707 tests, 0 failures
+
+- v0.460.0: minor bump (array bounds check)
+
+Stage Summary:
+- Stage 18.192 PASSED — Array bounds check (TD-ARRAY-BOUNDS-CHECK)
+- 修复: OOB 数组访问现在 panic 而非返回垃圾值
+- 验证: arr[5] → panic (index=5 len=3) (was: garbage 20)
+- 测试: 658 lib + 3049 integration = 3707 total, 0 failures
+- v0.460.0: minor bump
+

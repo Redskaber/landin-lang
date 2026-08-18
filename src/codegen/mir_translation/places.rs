@@ -797,6 +797,52 @@ pub(crate) fn codegen_place_load_typed(
                 } else {
                     "0".to_string()
                 };
+                // Stage 18.192 (TD-ARRAY-BOUNDS-CHECK): Insert OOB bounds check
+                // for [T; N] arrays. If idx >= N, call __landin_panic_bounds_check.
+                // Per §1.0 原則 4 (报错>静默): OOB must panic, not return garbage.
+                // Per §1.0 原則 6 (通解>特例): one bounds check for all [T; N] arrays.
+                if let PlaceKind::Local(id) = &base.kind {
+                    if let Some(ld) = mir.local_decls.get(id.0 as usize) {
+                        if let crate::mir::ty::TyKind::Array(_, n) = &ld.ty.kind {
+                            let array_len = match &n.val {
+                                crate::mir::ty::ConstVal::Uint(v) => *v,
+                                crate::mir::ty::ConstVal::Int(v) => *v as u128,
+                                _ => 0,
+                            };
+                            if array_len > 0 {
+                                // Cast idx to i64 for comparison and panic call.
+                                let idx_i64 =
+                                    emitter.emit_cast(&EmitType::I32, &EmitType::I64, &idx_val);
+                                // Create len constant as i64 SSA value.
+                                let len_local = emitter.emit_alloca(&EmitType::I64, "%oob_len");
+                                emitter.emit_store(
+                                    &EmitType::I64,
+                                    &format!("{}", array_len),
+                                    &len_local,
+                                );
+                                let len_val = emitter.emit_load(&EmitType::I64, &len_local);
+                                let cond =
+                                    emitter.emit_icmp("slt", &EmitType::I64, &idx_i64, &len_val);
+                                // Use unique block names to avoid collisions.
+                                static OOB_COUNTER: std::sync::atomic::AtomicU64 =
+                                    std::sync::atomic::AtomicU64::new(0);
+                                let uid =
+                                    OOB_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                let panic_bb = format!("bb_oob_panic_{}", uid);
+                                let ok_bb = format!("bb_oob_ok_{}", uid);
+                                emitter.emit_br_cond(&cond, &ok_bb, &panic_bb);
+                                emitter.emit_block(&panic_bb);
+                                emitter.emit_call(
+                                    "__landin_panic_bounds_check",
+                                    &[(EmitType::I64, &idx_i64), (EmitType::I64, &len_val)],
+                                    &EmitType::Void,
+                                );
+                                emitter.emit_unreachable();
+                                emitter.emit_block(&ok_bb);
+                            }
+                        }
+                    }
+                }
                 // Stage 3.51: if the storage type is a fat pointer ({ ptr, len }),
                 // we need to load the data pointer from field 0 first, then GEP
                 // into the data pointer (not the fat pointer struct). Was: GEP

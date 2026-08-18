@@ -208,16 +208,11 @@ fn main() -> i32 {
 // NEGATIVE TESTS — Array index misuse.
 // =========================================================================
 
-/// Negative 1: Array index out of bounds should fail at runtime.
-///
-/// `arr[5]` on a 3-element array should panic (exit non-zero). Currently
-/// Landin doesn't insert bounds checks (TD-ARRAY-BOUNDS-CHECK), so this test
-/// verifies the runtime behavior — if OOB returns a value instead of
-/// panicking, we log a warning (soft test).
-///
-/// TODO: Insert LLVM bounds checks for array Index (TD-ARRAY-BOUNDS-CHECK).
+/// Stage 18.192 (TD-ARRAY-BOUNDS-CHECK fix): Array index out of bounds now
+/// panics at runtime with a clear message. Previously, OOB returned garbage
+/// silently. Now `__landin_panic_bounds_check` is called when idx >= len.
 #[test]
-fn stage18_182_array_oob_soft() {
+fn stage18_182_array_oob_panics() {
     let code = r#"
 fn main() -> i32 {
     let arr = [10, 20, 30];
@@ -226,16 +221,10 @@ fn main() -> i32 {
     0
 }
 "#;
-    let (stdout, exit) = run_program(code);
-    // Ideally, OOB should panic (exit != 0). If it returns a value (exit == 0),
-    // we log a warning but don't fail the test — bounds checking is a separate
-    // TD (TD-ARRAY-BOUNDS-CHECK).
-    if exit == 0 {
-        eprintln!(
-            "warn: arr[5] on 3-element array did not panic (got stdout={:?}) \
-             (TD-ARRAY-BOUNDS-CHECK: no LLVM bounds check inserted yet)",
-            stdout
-        );
-    }
-    // Soft test: always passes, but warns if bounds check is missing.
+    let (_stdout, exit) = run_program(code);
+    assert_ne!(
+        exit, 0,
+        "expected OOB panic (exit != 0), got exit {} — bounds check not inserted",
+        exit
+    );
 }
