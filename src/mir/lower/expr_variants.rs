@@ -1026,6 +1026,82 @@ pub(super) fn lower_method_call_expr(
             }
         }
 
+        // Stage 18.184 (TD-STR-METHODS-RUNTIME): str::is_empty() intrinsic.
+        // `s.is_empty()` → `s.len() == 0` (returns bool).
+        // Per §1.0 原則 6 (通解>特例): reuse the len() Field projection pattern,
+        // then compare to 0 via BinaryOp.
+        if method_name_str == "is_empty" && args.is_empty() {
+            let is_str = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Str)
+                || matches!(&recv_ty.kind,
+                    crate::mir::ty::TyKind::Ref(_, _, inner)
+                        if matches!(&inner.kind, crate::mir::ty::TyKind::Str)
+                );
+            if is_str {
+                // Step 1: Extract len field (same as len() intrinsic).
+                let len_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+                let len_local = cx.mir.new_local(len_ty.clone(), None, expr.span);
+                cx.push_assign(
+                    Place::local(len_local, expr.span),
+                    Rvalue::Use(Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(recv_local, receiver.span)),
+                            ProjectionElem::Field(FieldId(1), len_ty.clone()),
+                        ),
+                        span: expr.span,
+                    })),
+                    expr.span,
+                );
+                // Step 2: Compare len == 0 → bool.
+                let bool_ty = Ty::new(TyKind::Bool, expr.span);
+                let zero_local = cx.mir.new_local(len_ty.clone(), None, expr.span);
+                cx.push_assign(
+                    Place::local(zero_local, expr.span),
+                    Rvalue::Use(Operand::Constant(Const {
+                        val: crate::mir::ty::ConstVal::Int(0),
+                        ty: len_ty.clone(),
+                    })),
+                    expr.span,
+                );
+                let dest = cx.mir.new_local(bool_ty, None, expr.span);
+                let cont = cx.new_block();
+                cx.push_assign(
+                    Place::local(dest, expr.span),
+                    Rvalue::BinaryOp(
+                        crate::mir::place::BinOp::Eq,
+                        Operand::Copy(Place::local(len_local, expr.span)),
+                        Operand::Copy(Place::local(zero_local, expr.span)),
+                    ),
+                    expr.span,
+                );
+                cx.terminate_and_goto(
+                    Terminator {
+                        kind: TerminatorKind::Goto(cont),
+                        span: expr.span,
+                    },
+                    cont,
+                );
+                return dest;
+            }
+        }
+
+        // Stage 18.184: str::as_bytes() intrinsic.
+        // `s.as_bytes()` → return the same fat pointer as &[u8].
+        // &str and &[u8] have the SAME LLVM layout ({ ptr, i64 }), so this
+        // is a no-op at the MIR level — just return the receiver.
+        // Per §1.0 原則 6 (通解>特例): one fat pointer layout for all byte slices.
+        if method_name_str == "as_bytes" && args.is_empty() {
+            let is_str = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Str)
+                || matches!(&recv_ty.kind,
+                    crate::mir::ty::TyKind::Ref(_, _, inner)
+                        if matches!(&inner.kind, crate::mir::ty::TyKind::Str)
+                );
+            if is_str {
+                // &[u8] has the same fat pointer layout as &str.
+                // Return the receiver directly (no-op).
+                return recv_local;
+            }
+        }
+
         // Stage 14.30: Per "报错 > 静默" principle — emit a compile error
         // instead of silently producing an Error placeholder.
         let is_known_unsupported = matches!(

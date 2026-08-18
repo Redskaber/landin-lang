@@ -515,6 +515,10 @@ mod stage18_182_array_index_tests;
 #[path = "v0/stage18/plan/stage18_183_fat_ptr_index_tests.rs"]
 mod stage18_183_fat_ptr_index_tests;
 
+// === Stage 18.184: str methods runtime fix (TD-STR-METHODS-RUNTIME) ===
+#[path = "v0/stage18/plan/stage18_184_str_methods_tests.rs"]
+mod stage18_184_str_methods_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

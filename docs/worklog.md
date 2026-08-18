@@ -17827,3 +17827,68 @@ Stage Summary:
 - v0.451.0: minor bump
 - 下一步: Stage 18.184 — str methods runtime fix (is_empty/as_bytes/to_string)
 
+
+---
+Task ID: stage18.184
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.184 — str methods runtime fix (TD-STR-METHODS-RUNTIME). v0.451.0 → v0.452.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 658 lib + 3012 integration = 3670 total, 0 failed
+
+- 依赖审计 (per 用户指令):
+  → str::len() intrinsic 模式 (Stage 18.173) ✅ 可复用
+  → fat pointer Field projection (Stage 18.174) ✅ 可复用
+  → BinaryOp Eq ✅ 已支持
+  → fat pointer Index (Stage 18.183) ✅ 可用于 as_bytes()[N]
+  → 结论: 依赖完整, 无需重排
+
+- 根因分析:
+  → is_empty / as_bytes 不在 prelude 中
+  → resolver fallthrough 到错误的方法解析 → 递归调用 landin_main → segfault
+
+- 修复 (src/mir/lower/expr_variants.rs):
+  → 添加 str::is_empty() intrinsic: s.len() == 0 (返回 bool)
+    - Step 1: 提取 len 字段 (FieldId(1)) — 复用 str::len() 模式
+    - Step 2: BinaryOp::Eq 比较 len == 0
+  → 添加 str::as_bytes() intrinsic: 返回 receiver (no-op)
+    - &str 和 &[u8] 有相同的 LLVM 布局 ({ ptr, i64 })
+    - 直接返回 receiver local — fat pointer 即是 &[u8]
+
+- 验证:
+  → "hello".is_empty() → false ✅ (was: segfault)
+  → "".is_empty() → true ✅
+  → "hello".as_bytes().len() → 5 ✅
+  → "hello".as_bytes()[0] → 104 ('h') ✅
+
+- 实现 8 个测试 (tests/v0/stage18/plan/stage18_184_str_methods_tests.rs):
+  → 7 正向: is_empty 非空, is_empty 空, is_empty 多个, as_bytes 长度,
+    as_bytes 索引, len+is_empty 组合, 长字符串
+  → 1 负向 SOFT: is_empty 错误参数数量
+
+- §3.2 全套验收:
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend --lib: 658 passed
+  → cargo test --features llvm-backend --tests: 3020 passed (was 3012, +8)
+  → Total: 3678 tests, 0 failures
+
+- 输出:
+  → docs/develop/v0/stage-18/stage-18.184-dev-log.md
+  → src/mir/lower/expr_variants.rs (+80 LOC str::is_empty + str::as_bytes intrinsics)
+  → tests/v0/stage18/plan/stage18_184_str_methods_tests.rs (8 tests)
+  → tests/all_tests.rs (register new test module)
+
+- v0.452.0: minor bump (str methods is_empty/as_bytes + 8 tests)
+
+Stage Summary:
+- Stage 18.184 PASSED — str methods runtime fix (TD-STR-METHODS-RUNTIME)
+- 修复: is_empty + as_bytes 现在作为 MIR intrinsic 工作 (was: segfault)
+- 验证: "hello".is_empty()=false, "".is_empty()=true, as_bytes()[0]=104
+- 测试: 658 lib + 3020 integration = 3678 total, 0 failures
+- §3.2 全套验收: 全绿
+- v0.452.0: minor bump
+- 下一步: Stage 18.185 — String intrinsics (from_str/push_str/len/as_str)
+
