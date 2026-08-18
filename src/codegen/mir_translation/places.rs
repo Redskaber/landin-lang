@@ -436,9 +436,25 @@ pub(crate) fn unwrap_fat_ptr_for_index(
         EmitType::Struct(fields) if fields.len() == 2 => {
             let is_fat_ptr = fields[0].is_ptr() && fields[1] == EmitType::I64;
             if is_fat_ptr {
-                // Fat pointer: load the data pointer from field 0.
+                // Stage 18.183 (TD-FAT-PTR-INDEX-PROJ fix): For fat pointers
+                // ({ ptr, i64 }), `base_ptr` is the ADDRESS of the fat pointer
+                // storage (an alloca). We need to:
+                //   1. GEP to field 0 → address of the data pointer
+                //   2. LOAD the data pointer from that address
+                //   3. Return the loaded data pointer for subsequent GEP
+                //
+                // Previously, this function only GEP'd to field 0 and returned
+                // the ADDRESS — without loading. The caller then tried to GEP
+                // into the address (a pointer-to-pointer), producing invalid IR:
+                // "GEP base pointer is not a vector or a vector of pointers".
+                //
+                // Per §1.0 原則 4 (报错>静默): the missing load produced
+                // invalid IR instead of a clear error.
+                // Per §1.0 原則 6 (通解>特例): one GEP+load path for all fat
+                // pointer Index operations (&str, &[T], bare str, bare [T]).
                 let base_ptr_owned = base_ptr.to_string();
-                let data_ptr = emitter.emit_gep_field(&base_ptr_owned, storage_ty, 0);
+                let field_addr = emitter.emit_gep_field(&base_ptr_owned, storage_ty, 0);
+                let data_ptr = emitter.emit_load(&fields[0], &field_addr);
                 let pointee_ty = fields[0].pointee();
                 (data_ptr, Some(pointee_ty))
             } else {
@@ -692,11 +708,44 @@ pub(crate) fn codegen_place_load_typed(
                 let base_ptr = if let PlaceKind::Local(id) = &base.kind {
                     let local_ty = mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone());
                     if let Some(ty) = local_ty {
-                        if matches!(&ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
-                            // Ref to array — load the pointer value
+                        // Stage 18.183 (TD-FAT-PTR-INDEX-PROJ fix): For fat
+                        // pointer Refs (&str, &[T]), use the alloca pointer
+                        // (ADDRESS), not the loaded value. The
+                        // `unwrap_fat_ptr_for_index` function will GEP+load
+                        // the data pointer from the alloca.
+                        //
+                        // For thin pointer Refs (&[T; N], &i32, etc.), load
+                        // the pointer value (unchanged behavior).
+                        //
+                        // Previously, ALL Refs loaded the value, which broke
+                        // for fat pointers: the loaded value `{ ptr, i64 }`
+                        // was passed to `unwrap_fat_ptr_for_index` which tried
+                        // to GEP into a VALUE (not a pointer) → invalid IR.
+                        //
+                        // Per §1.0 原則 6 (通解>特例): one alloca-based path
+                        // for all fat pointer Index, matching [T; N] arrays.
+                        let is_fat_ref = matches!(&ty.kind,
+                            crate::mir::ty::TyKind::Ref(_, _, inner)
+                                if matches!(&inner.kind,
+                                    crate::mir::ty::TyKind::Str
+                                        | crate::mir::ty::TyKind::Slice(_)
+                                )
+                        ) || matches!(
+                            &ty.kind,
+                            crate::mir::ty::TyKind::Str | crate::mir::ty::TyKind::Slice(_)
+                        );
+                        if is_fat_ref {
+                            // Fat pointer: use alloca pointer (ADDRESS)
+                            emitter
+                                .local_ptr(id.0)
+                                .cloned()
+                                .unwrap_or_else(|| "0".to_string())
+                        } else if matches!(&ty.kind, crate::mir::ty::TyKind::Ref(_, _, _)) {
+                            // Thin pointer Ref: load the pointer value (unchanged)
                             let ptr_ty = detect_place_type(mir, base, layouts);
                             codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts)
                         } else {
+                            // Non-Ref: use alloca pointer (unchanged)
                             emitter
                                 .local_ptr(id.0)
                                 .cloned()

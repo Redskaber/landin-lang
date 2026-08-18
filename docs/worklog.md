@@ -17761,3 +17761,69 @@ Stage Summary:
 - v0.450.0: minor bump
 - 下一步: Stage 18.183 — fat pointer Index projection (s[0] for str/切片)
 
+
+---
+Task ID: stage18.183
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.183 — Fat pointer Index projection fix (TD-FAT-PTR-INDEX-PROJ). v0.450.0 → v0.451.0.
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 658 lib + 3004 integration = 3662 total, 0 failed
+
+- 触发新条例 (用户指令): "如果设计内容需要依赖底层实现和功能时, 应当先做依赖与基础设施完整能力审查"
+  → 执行依赖审计 (docs/develop/v0/stage-18/stage-18.183-dep-audit.md):
+    - MIR 层: ✅ Index projection + DCE + const_prop 完整 (Stage 18.182 fix)
+    - Codegen 层: ✅ emit_gep_field/extractvalue/load/gep_index_ptr 完整
+    - 类型系统: ✅ Ref/Str/Slice 完整
+    - 测试基础设施: ✅ str::len() + str Field projection 已就绪
+    - 2 个 codegen bug (非基础设施缺失): unwrap_fat_ptr_for_index + Index codegen
+  → 结论: 依赖完整, 无需重排任务图
+
+- 修复 Bug 1 (src/codegen/mir_translation/places.rs::unwrap_fat_ptr_for_index):
+  → 根因: GEP 到 field 0 后未 LOAD 数据指针, 后续 GEP 试图进指针地址 (pointer-to-pointer)
+  → 修复: 添加 emit_load(&fields[0], &field_addr) 加载数据指针
+
+- 修复 Bug 2 (src/codegen/mir_translation/places.rs::Index codegen):
+  → 根因: 所有 Ref 类型都加载 fat pointer VALUE, unwrap 期望 ADDRESS
+  → 修复: 区分 fat pointer Ref (&str/&[T]/bare str/[T]) vs thin Ref (&[T;N]/&i32)
+    - fat pointer: 用 alloca pointer (ADDRESS), 让 unwrap 处理 GEP+load
+    - thin pointer: 加载 value (不变)
+  → Per §1.0 原則 6 (通解>特例): 一个 alloca+GEP+load 路径处理所有 fat pointer Index
+
+- 验证:
+  → s[0]=104 ('h'), s[1]=101 ('e'), s[2]=108 ('l'), s[3]=108 ('l'), s[4]=111 ('o') ✅
+  → was: "GEP base pointer is not a vector" codegen error
+
+- 实现 8 个测试 (tests/v0/stage18/plan/stage18_183_fat_ptr_index_tests.rs):
+  → 7 正向: 首字节, 各位置, 多索引一表达式, let 变量索引, 返回 u8,
+    空字符串 SOFT, len+index 组合
+  → 1 负向: i32[0] 类型错误失败
+
+- §3.2 全套验收:
+  → cargo check --all-features: 0 errors / 0 warnings
+  → cargo fmt --check: exit 0
+  → cargo clippy --all-targets --features llvm-backend: 0 errors
+  → cargo test --features llvm-backend --lib: 658 passed
+  → cargo test --features llvm-backend --tests: 3012 passed (was 3004, +8)
+  → Total: 3670 tests, 0 failures
+
+- 输出:
+  → docs/develop/v0/stage-18/stage-18.183-dep-audit.md (依赖审计)
+  → docs/develop/v0/stage-18/stage-18.183-dev-log.md (开发日志)
+  → src/codegen/mir_translation/places.rs (unwrap_fat_ptr_for_index + Index codegen 修复)
+  → tests/v0/stage18/plan/stage18_183_fat_ptr_index_tests.rs (8 tests)
+  → tests/all_tests.rs (register new test module)
+
+- v0.451.0: minor bump (fat pointer Index fix + 8 tests)
+
+Stage Summary:
+- Stage 18.183 PASSED — Fat pointer Index projection fix (TD-FAT-PTR-INDEX-PROJ)
+- 依赖审计: 所有基础设施完整, 无需重排
+- 修复: 2 个 codegen bug (unwrap 缺 load + Index 加载 value 而非 address)
+- 验证: s[0]=104 'h' (was: codegen error)
+- 测试: 658 lib + 3012 integration = 3670 total, 0 failures
+- §3.2 全套验收: 全绿
+- v0.451.0: minor bump
+- 下一步: Stage 18.184 — str methods runtime fix (is_empty/as_bytes/to_string)
+
