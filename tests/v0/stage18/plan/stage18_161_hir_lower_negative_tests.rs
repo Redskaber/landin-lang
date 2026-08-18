@@ -88,7 +88,7 @@ fn stage18_161_hir_lower_generic_wrong_count() {
 /// Stage 18.161 negative 10: generic struct with no impl.
 #[test]
 fn stage18_161_hir_lower_generic_struct_no_impl() {
-    let src = "struct Box<T> { val: T } fn main() {}";
+    let src = "struct Wrapper<T> { val: T } fn main() {}";
     let result = compile(src);
     assert!(!result.mirs.is_empty());
 }

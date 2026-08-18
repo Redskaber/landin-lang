@@ -58,7 +58,7 @@ impl MonoLayoutKey {
 /// A map from DefId to a list of (substs, AdtLayout) pairs.
 ///
 /// Each entry represents one specialized layout for a generic type
-/// instantiation. For example, `Box<i32>` and `Box<bool>` have distinct
+/// instantiation. For example, `Wrapper<i32>` and `Wrapper<bool>` have distinct
 /// entries because their field types differ (i32 vs bool).
 ///
 /// Stage 16.86 (Performance): Changed from `HashMap<MonoLayoutKey, AdtLayout>`
@@ -376,13 +376,14 @@ mod tests {
 
     #[test]
     fn stage16_57_build_mono_layouts_generic_struct() {
-        let src = "struct Box<T> { val: T } fn main() { let b: Box<i32> = Box { val: 42 }; }";
+        let src =
+            "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<i32> = Wrapper { val: 42 }; }";
         let result = compile(src);
         assert!(!result.has_errors(), "errors: {:?}", result.errors);
         let hir = result.hir.as_ref().expect("HIR should be available");
         let items = collect_mono_items(&result.mirs);
         let layouts = build_mono_layouts(&items, hir);
-        // Should have at least 1 layout (Box<i32>)
+        // Should have at least 1 layout (Wrapper<i32>)
         assert!(
             !layouts.is_empty(),
             "Expected at least 1 mono layout, got: {:?}",
@@ -392,49 +393,49 @@ mod tests {
 
     #[test]
     fn stage16_57_build_mono_layouts_two_instantiations() {
-        let src = "struct Box<T> { val: T } fn main() { let b1: Box<i32> = Box { val: 42 }; let b2: Box<bool> = Box { val: true }; }";
+        let src = "struct Wrapper<T> { val: T } fn main() { let b1: Wrapper<i32> = Wrapper { val: 42 }; let b2: Wrapper<bool> = Wrapper { val: true }; }";
         let result = compile(src);
         assert!(!result.has_errors(), "errors: {:?}", result.errors);
         let hir = result.hir.as_ref().expect("HIR should be available");
         let items = collect_mono_items(&result.mirs);
         let layouts = build_mono_layouts(&items, hir);
-        // Stage 16.86: Map is now keyed by DefId, so Box<i32> + Box<bool>
+        // Stage 16.86: Map is now keyed by DefId, so Wrapper<i32> + Wrapper<bool>
         // share 1 DefId key with 2 entries in the Vec.
-        // Should have 2 total layouts (Box<i32> and Box<bool>).
+        // Should have 2 total layouts (Wrapper<i32> and Wrapper<bool>).
         let total_layouts: usize = layouts.values().map(|v| v.len()).sum();
         assert_eq!(
             total_layouts, 2,
-            "Expected exactly 2 mono layouts (Box<i32> + Box<bool>), got: {}",
+            "Expected exactly 2 mono layouts (Wrapper<i32> + Wrapper<bool>), got: {}",
             total_layouts
         );
     }
 
     #[test]
     fn stage16_57_build_mono_layouts_dedup() {
-        let src = "struct Box<T> { val: T } fn main() { let b1: Box<i32> = Box { val: 42 }; let b2: Box<i32> = Box { val: 43 }; }";
+        let src = "struct Wrapper<T> { val: T } fn main() { let b1: Wrapper<i32> = Wrapper { val: 42 }; let b2: Wrapper<i32> = Wrapper { val: 43 }; }";
         let result = compile(src);
         assert!(!result.has_errors(), "errors: {:?}", result.errors);
         let hir = result.hir.as_ref().expect("HIR should be available");
         let items = collect_mono_items(&result.mirs);
         let layouts = build_mono_layouts(&items, hir);
-        // Should have 1 layout (Box<i32> deduped)
+        // Should have 1 layout (Wrapper<i32> deduped)
         assert_eq!(
             layouts.len(),
             1,
-            "Expected exactly 1 mono layout (Box<i32> deduped), got: {}",
+            "Expected exactly 1 mono layout (Wrapper<i32> deduped), got: {}",
             layouts.len()
         );
     }
 
     #[test]
     fn stage16_57_build_mono_layouts_nested_generic() {
-        let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<i32>> = Box { val: Box { val: 42 } }; }";
+        let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<i32>> = Wrapper { val: Wrapper { val: 42 } }; }";
         let result = compile(src);
         assert!(!result.has_errors(), "errors: {:?}", result.errors);
         let hir = result.hir.as_ref().expect("HIR should be available");
         let items = collect_mono_items(&result.mirs);
         let layouts = build_mono_layouts(&items, hir);
-        // Stage 16.86: Map is now keyed by DefId, so Box<Box<i32>> and Box<i32>
+        // Stage 16.86: Map is now keyed by DefId, so Box<Wrapper<i32>> and Wrapper<i32>
         // share 1 DefId key with 2 entries in the Vec.
         // Should have at least 2 total layouts.
         let total_layouts: usize = layouts.values().map(|v| v.len()).sum();
@@ -447,14 +448,15 @@ mod tests {
 
     #[test]
     fn stage16_57_build_mono_layouts_correct_field_type() {
-        let src = "struct Box<T> { val: T } fn main() { let b: Box<i32> = Box { val: 42 }; }";
+        let src =
+            "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<i32> = Wrapper { val: 42 }; }";
         let result = compile(src);
         assert!(!result.has_errors(), "errors: {:?}", result.errors);
         let hir = result.hir.as_ref().expect("HIR should be available");
         let items = collect_mono_items(&result.mirs);
         let layouts = build_mono_layouts(&items, hir);
         // Stage 16.86: Map values are now Vec<(Vec<TyKind>, AdtLayout)>.
-        // Find the Box<i32> layout and verify its field type is i32 (not Param or Error)
+        // Find the Wrapper<i32> layout and verify its field type is i32 (not Param or Error)
         let has_i32_field = layouts.values().flatten().any(|(_, layout)| match layout {
             AdtLayout::Struct { field_tys } => {
                 field_tys.len() == 1 && matches!(field_tys[0].kind, TyKind::Int(IntTy::I32))

@@ -12,6 +12,37 @@ use super::mir_translation::{
 };
 use super::*;
 use crate::mir::place::*;
+
+/// Stage 18.179 (Box<u8> test bug fix): Check if an operand's MIR type is
+/// an UNSIGNED integer (u8/u16/u32/u64/u128).
+///
+/// Used by `emit_printf_call` to decide between `zext` (unsigned) and
+/// `sext` (signed) when casting to i64 for printf. Without this, u8 value
+/// 255 would print as -1 (sign-extended).
+///
+/// Per §1.0 原則 6 (通解>特例): one check for all UintTy variants.
+/// Per §10: `operand_is_unsigned_int` follows `<noun>_is_<adj>_<noun>` pattern.
+fn operand_is_unsigned_int(mir: &MirBody, operand: &Operand) -> bool {
+    let ty = match operand {
+        Operand::Copy(place) | Operand::Move(place) => detect_place_type_for_sign(mir, place),
+        Operand::Constant(c) => Some(c.ty.clone()),
+    };
+    matches!(ty.map(|t| t.kind), Some(crate::mir::ty::TyKind::Uint(_)))
+}
+
+/// Helper: detect the MIR type of a place (for signedness check).
+///
+/// This is a thin wrapper that reads the local's declared type from
+/// `local_decls`. We don't use `detect_place_type` (which returns EmitType)
+/// because EmitType doesn't carry signedness info.
+fn detect_place_type_for_sign(mir: &MirBody, place: &Place) -> Option<crate::mir::ty::Ty> {
+    match &place.kind {
+        PlaceKind::Local(id) => mir.local_decls.get(id.0 as usize).map(|ld| ld.ty.clone()),
+        PlaceKind::Projection(base, _) => detect_place_type_for_sign(mir, base),
+        PlaceKind::Static(_) => None,
+    }
+}
+
 /// Stage 18.151 (TD-CODEGEN-RESULT): `codegen_statement` now returns
 /// `CodegenResult<()>` to propagate codegen errors from `codegen_rvalue`
 /// (e.g., BinaryOp2 reaching codegen).
@@ -356,8 +387,26 @@ pub(crate) fn emit_printf_call(
                             c_fmt.push_str("%s");
                             c_arg_vals.push((EmitType::OpaquePtr, selected));
                         } else if arg_ty != EmitType::I64 {
-                            // Use emit_cast which does sext for signed integers
-                            let cast_val = emitter.emit_cast(&arg_ty, &EmitType::I64, &arg_val);
+                            // Stage 18.179 (Box<u8> test bug fix): Use
+                            // zext for UNSIGNED integers (u8/u16/u32/u64/u128)
+                            // and sext for SIGNED integers (i8/i16/i32/i64/i128).
+                            //
+                            // Previously, emit_cast (which does sext) was used
+                            // for ALL integers, causing u8 value 255 to print
+                            // as -1 (sign-extended to i64 as 0xFFFFFFFFFFFFFFFF).
+                            //
+                            // Per §1.0 原則 9 (正确>妥协): fix the root cause
+                            // (check signedness), not the symptom (use %u for
+                            // unsigned — wrong because the format string is
+                            // already %ld).
+                            // Per §1.0 原則 6 (通解>特例): one helper checks
+                            // all UintTy variants.
+                            let is_unsigned = operand_is_unsigned_int(mir, arg);
+                            let cast_val = if is_unsigned {
+                                emitter.emit_zext(&arg_ty, &EmitType::I64, &arg_val)
+                            } else {
+                                emitter.emit_cast(&arg_ty, &EmitType::I64, &arg_val)
+                            };
                             c_fmt.push_str("%ld");
                             c_arg_vals.push((EmitType::I64, cast_val));
                         } else {

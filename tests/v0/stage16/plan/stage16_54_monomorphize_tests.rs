@@ -33,11 +33,12 @@ fn stage16_54_non_generic_no_mono_items() {
 /// Stage 16.54 test 2: Generic struct instantiation produces a MonoItem.
 #[test]
 fn stage16_54_generic_struct_produces_mono_item() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<i32> = Box { val: 42 }; }";
+    let src =
+        "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<i32> = Wrapper { val: 42 }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let items = collect_mono_items(&result.mirs);
-    // Should have at least one Type MonoItem (Box<i32>)
+    // Should have at least one Type MonoItem (Wrapper<i32>)
     let has_box_i32 = items.iter().any(|item| {
         matches!(
             item,
@@ -46,7 +47,7 @@ fn stage16_54_generic_struct_produces_mono_item() {
     });
     assert!(
         has_box_i32,
-        "Expected a Type MonoItem with 1 subst (Box<i32>), got: {:?}",
+        "Expected a Type MonoItem with 1 subst (Wrapper<i32>), got: {:?}",
         items
     );
 }
@@ -54,11 +55,11 @@ fn stage16_54_generic_struct_produces_mono_item() {
 /// Stage 16.54 test 3: Two different instantiations produce two MonoItems.
 #[test]
 fn stage16_54_two_instantiations_two_mono_items() {
-    let src = "struct Box<T> { val: T } fn main() { let b1: Box<i32> = Box { val: 42 }; let b2: Box<bool> = Box { val: true }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b1: Wrapper<i32> = Wrapper { val: 42 }; let b2: Wrapper<bool> = Wrapper { val: true }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let items = collect_mono_items(&result.mirs);
-    // Should have 2 Type MonoItems (Box<i32> and Box<bool>)
+    // Should have 2 Type MonoItems (Wrapper<i32> and Wrapper<bool>)
     let type_items: Vec<_> = items
         .iter()
         .filter(|item| matches!(item, MonoItem::Type { .. }))
@@ -77,11 +78,11 @@ fn stage16_54_two_instantiations_two_mono_items() {
 /// Stage 16.54 test 4: Same instantiation used twice produces one MonoItem.
 #[test]
 fn stage16_54_dedup_same_instantiation() {
-    let src = "struct Box<T> { val: T } fn main() { let b1: Box<i32> = Box { val: 42 }; let b2: Box<i32> = Box { val: 43 }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b1: Wrapper<i32> = Wrapper { val: 42 }; let b2: Wrapper<i32> = Wrapper { val: 43 }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let items = collect_mono_items(&result.mirs);
-    // Should have exactly 1 Type MonoItem (Box<i32>) — dedup
+    // Should have exactly 1 Type MonoItem (Wrapper<i32>) — dedup
     let type_items: Vec<_> = items
         .iter()
         .filter(|item| matches!(item, MonoItem::Type { substs, .. } if substs.len() == 1))
@@ -89,7 +90,7 @@ fn stage16_54_dedup_same_instantiation() {
     assert_eq!(
         type_items.len(),
         1,
-        "Expected exactly 1 Type MonoItem (Box<i32> deduped), got: {}",
+        "Expected exactly 1 Type MonoItem (Wrapper<i32> deduped), got: {}",
         type_items.len()
     );
 }
@@ -100,16 +101,16 @@ fn stage16_54_dedup_same_instantiation() {
 
 /// Stage 16.54 test 5: Nested generic produces nested MonoItems.
 ///
-/// Stage 16.56 fix: The inner `Box<i32>` in `Box<Box<i32>>` is now
+/// Stage 16.56 fix: The inner `Wrapper<i32>` in `Wrapper<Wrapper<i32>>` is now
 /// correctly resolved via `lookup_type_def_id_by_name`. Both the outer
-/// `Box<Box<i32>>` and inner `Box<i32>` produce MonoItems.
+/// `Wrapper<Wrapper<i32>>` and inner `Wrapper<i32>` produce MonoItems.
 #[test]
 fn stage16_54_nested_generic_produces_nested_mono_items() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<i32>> = Box { val: Box { val: 42 } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<i32>> = Wrapper { val: Wrapper { val: 42 } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let items = collect_mono_items(&result.mirs);
-    // Should have 2 Type MonoItems: Box<Box<i32>> (outer) and Box<i32> (inner)
+    // Should have 2 Type MonoItems: Wrapper<Wrapper<i32>> (outer) and Wrapper<i32> (inner)
     let type_items: Vec<_> = items
         .iter()
         .filter(|item| matches!(item, MonoItem::Type { .. }))
@@ -173,16 +174,16 @@ fn stage16_54_generic_enum_multiple_variants() {
 /// Stage 16.54 test 8: Multiple generic structs produce multiple MonoItems.
 #[test]
 fn stage16_54_multiple_generic_structs() {
-    let src = r#"struct Box<T> { val: T }
+    let src = r#"struct Wrapper<T> { val: T }
         struct Pair<A, B> { a: A, b: B }
         fn main() {
-            let b: Box<i32> = Box { val: 42 };
+            let b: Wrapper<i32> = Wrapper { val: 42 };
             let p: Pair<i32, bool> = Pair { a: 1, b: true };
         }"#;
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let items = collect_mono_items(&result.mirs);
-    // Should have at least 2 Type MonoItems (Box<i32> and Pair<i32, bool>)
+    // Should have at least 2 Type MonoItems (Wrapper<i32> and Pair<i32, bool>)
     let type_items: Vec<_> = items
         .iter()
         .filter(|item| matches!(item, MonoItem::Type { .. }))

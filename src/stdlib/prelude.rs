@@ -68,4 +68,19 @@ impl<T, E> Result<T, E> {
     fn is_err(&self) -> bool { match *self { Ok(_) => false, Err(_) => true } }
     fn unwrap_or(self, default: T) -> T { match self { Ok(v) => v, Err(_) => default } }
 }
+// Stage 18.179 (TD-HEAP-ALLOC): Box<T> — owned heap pointer wrapper.
+//
+// MVP: Box<T> is a tuple struct wrapping a *mut T. Users construct it via
+// `Box(p)` where `p` is obtained from `__landin_alloc`. Access via `b.0`
+// (field 0 = the pointer), then `*b.0` to dereference. Manual cleanup via
+// `__landin_dealloc(b.0 as *mut u8)`.
+//
+// Deferred to Stage 18.180:
+//   - `Box::new(x)` sugar (intrinsic that calls alloc + store + construct)
+//   - Auto-drop (drop glue that calls `__landin_dealloc`)
+//
+// Per §1.0 原則 6 (通解>特例): one Box type for all T — no per-type special cases.
+// Per §2 原則 9 (正确>妥协): the MVP is a temporary compromise; real Box with
+// auto-drop is the correct design (recorded as TD-BOX-AUTO-DROP).
+struct Box<T>(*mut T)
 "#;

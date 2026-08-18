@@ -19,7 +19,7 @@ use landin_compiler::compile;
 #[test]
 fn stage16_60_generic_struct_field_access() {
     let src =
-        "struct Box<T> { val: T } fn main() -> i32 { let b: Box<i32> = Box { val: 42 }; b.val }";
+        "struct Wrapper<T> { val: T } fn main() -> i32 { let b: Wrapper<i32> = Wrapper { val: 42 }; b.val }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
@@ -67,7 +67,7 @@ fn stage16_60_generic_enum_unit_variant() {
 /// Stage 16.60 test 6: Nested generic struct.
 #[test]
 fn stage16_60_nested_generic() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<i32>> = Box { val: Box { val: 42 } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<i32>> = Wrapper { val: Wrapper { val: 42 } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
@@ -75,7 +75,7 @@ fn stage16_60_nested_generic() {
 /// Stage 16.60 test 7: Triple nested generic.
 #[test]
 fn stage16_60_triple_nested_generic() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<Box<i32>>> = Box { val: Box { val: Box { val: 42 } } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<Wrapper<i32>>> = Wrapper { val: Wrapper { val: Wrapper { val: 42 } } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
@@ -87,7 +87,7 @@ fn stage16_60_triple_nested_generic() {
 /// Stage 16.60 test 8: Two different instantiations of same generic.
 #[test]
 fn stage16_60_two_instantiations() {
-    let src = "struct Box<T> { val: T } fn main() { let b1: Box<i32> = Box { val: 42 }; let b2: Box<bool> = Box { val: true }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b1: Wrapper<i32> = Wrapper { val: 42 }; let b2: Wrapper<bool> = Wrapper { val: true }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }

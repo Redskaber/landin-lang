@@ -1,7 +1,7 @@
 //! Stage 16.56 — Task 11 Phase 4b prerequisite: Nested generic args resolution.
 //!
 //! Stage 16.56 fixes the limitation where nested generic type paths (e.g.,
-//! the inner `Box` in `Box<Box<i32>>`) were lowered as `Error` because
+//! the inner `Box` in `Wrapper<Wrapper<i32>>`) were lowered as `Error` because
 //! `lower_ast_ty_to_mir_ty` couldn't resolve AST paths without HIR context.
 //!
 //! The fix threads `hir: Option<&HirCrate>` through the type lowering
@@ -23,18 +23,18 @@ use landin_compiler::mir::{collect_mono_items, MonoItem};
 // §1. Nested generics — basic compilation
 // =====================================================================
 
-/// Stage 16.56 test 1: Box<Box<i32>> compiles without errors.
+/// Stage 16.56 test 1: Wrapper<Wrapper<i32>> compiles without errors.
 #[test]
 fn stage16_56_nested_generic_box_box_i32() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<i32>> = Box { val: Box { val: 42 } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<i32>> = Wrapper { val: Wrapper { val: 42 } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
 
-/// Stage 16.56 test 2: Box<Box<bool>> compiles without errors.
+/// Stage 16.56 test 2: Wrapper<Wrapper<bool>> compiles without errors.
 #[test]
 fn stage16_56_nested_generic_box_box_bool() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<bool>> = Box { val: Box { val: true } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<bool>> = Wrapper { val: Wrapper { val: true } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
@@ -42,7 +42,7 @@ fn stage16_56_nested_generic_box_box_bool() {
 /// Stage 16.56 test 3: Triple-nested generic compiles.
 #[test]
 fn stage16_56_triple_nested_generic() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<Box<i32>>> = Box { val: Box { val: Box { val: 42 } } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<Wrapper<i32>>> = Wrapper { val: Wrapper { val: Wrapper { val: 42 } } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
@@ -51,10 +51,10 @@ fn stage16_56_triple_nested_generic() {
 // §2. Nested generics — MonoItem collection
 // =====================================================================
 
-/// Stage 16.56 test 4: Box<Box<i32>> produces 2 MonoItems (outer + inner).
+/// Stage 16.56 test 4: Wrapper<Wrapper<i32>> produces 2 MonoItems (outer + inner).
 #[test]
 fn stage16_56_nested_generic_produces_two_mono_items() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<i32>> = Box { val: Box { val: 42 } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<i32>> = Wrapper { val: Wrapper { val: 42 } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let items = collect_mono_items(&result.mirs);
@@ -72,7 +72,7 @@ fn stage16_56_nested_generic_produces_two_mono_items() {
 /// Stage 16.56 test 5: Triple-nested generic produces 3 MonoItems.
 #[test]
 fn stage16_56_triple_nested_produces_three_mono_items() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<Box<i32>>> = Box { val: Box { val: Box { val: 42 } } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<Wrapper<i32>>> = Wrapper { val: Wrapper { val: Wrapper { val: 42 } } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let items = collect_mono_items(&result.mirs);
@@ -91,14 +91,14 @@ fn stage16_56_triple_nested_produces_three_mono_items() {
 // §3. Nested generics with different inner types
 // =====================================================================
 
-/// Stage 16.56 test 6: Box<Box<i32>> and Box<Box<bool>> produce 4 MonoItems.
+/// Stage 16.56 test 6: Wrapper<Wrapper<i32>> and Wrapper<Wrapper<bool>> produce 4 MonoItems.
 #[test]
 fn stage16_56_nested_different_inner_types() {
-    let src = "struct Box<T> { val: T } fn main() { let b1: Box<Box<i32>> = Box { val: Box { val: 42 } }; let b2: Box<Box<bool>> = Box { val: Box { val: true } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b1: Wrapper<Wrapper<i32>> = Wrapper { val: Wrapper { val: 42 } }; let b2: Wrapper<Wrapper<bool>> = Wrapper { val: Wrapper { val: true } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let items = collect_mono_items(&result.mirs);
-    // Should have: Box<Box<i32>>, Box<i32>, Box<Box<bool>>, Box<bool> = 4
+    // Should have: Wrapper<Wrapper<i32>>, Wrapper<i32>, Wrapper<Wrapper<bool>>, Wrapper<bool> = 4
     let type_items: Vec<_> = items
         .iter()
         .filter(|item| matches!(item, MonoItem::Type { .. }))
@@ -114,22 +114,22 @@ fn stage16_56_nested_different_inner_types() {
 // §4. Nested generics with Pair (two type params)
 // =====================================================================
 
-/// Stage 16.56 test 7: Pair<Box<i32>, bool> compiles.
+/// Stage 16.56 test 7: Pair<Wrapper<i32>, bool> compiles.
 #[test]
 fn stage16_56_nested_generic_with_pair() {
-    let src = "struct Box<T> { val: T } struct Pair<A, B> { a: A, b: B } fn main() { let p: Pair<Box<i32>, bool> = Pair { a: Box { val: 42 }, b: true }; }";
+    let src = "struct Wrapper<T> { val: T } struct Pair<A, B> { a: A, b: B } fn main() { let p: Pair<Wrapper<i32>, bool> = Pair { a: Wrapper { val: 42 }, b: true }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
 
-/// Stage 16.56 test 8: Pair<Box<i32>, Box<bool>> produces multiple MonoItems.
+/// Stage 16.56 test 8: Pair<Wrapper<i32>, Wrapper<bool>> produces multiple MonoItems.
 #[test]
 fn stage16_56_nested_generic_pair_of_boxes() {
-    let src = "struct Box<T> { val: T } struct Pair<A, B> { a: A, b: B } fn main() { let p: Pair<Box<i32>, Box<bool>> = Pair { a: Box { val: 42 }, b: Box { val: true } }; }";
+    let src = "struct Wrapper<T> { val: T } struct Pair<A, B> { a: A, b: B } fn main() { let p: Pair<Wrapper<i32>, Wrapper<bool>> = Pair { a: Wrapper { val: 42 }, b: Wrapper { val: true } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let items = collect_mono_items(&result.mirs);
-    // Should have: Pair<Box<i32>, Box<bool>>, Box<i32>, Box<bool> = 3
+    // Should have: Pair<Wrapper<i32>, Wrapper<bool>>, Wrapper<i32>, Wrapper<bool> = 3
     let type_items: Vec<_> = items
         .iter()
         .filter(|item| matches!(item, MonoItem::Type { .. }))
@@ -148,7 +148,8 @@ fn stage16_56_nested_generic_pair_of_boxes() {
 /// Stage 16.56 test 9: Non-nested generic still works.
 #[test]
 fn stage16_56_non_nested_generic_no_regression() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<i32> = Box { val: 42 }; }";
+    let src =
+        "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<i32> = Wrapper { val: 42 }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }

@@ -87,13 +87,13 @@ fn stage16_53_substitute_substs_slice() {
 
 /// Stage 16.53 test 4: Generic struct field access compiles.
 ///
-/// `let b: Box<i32> = Box { val: 42 }; b.val` should compile — the field
+/// `let b: Wrapper<i32> = Wrapper { val: 42 }; b.val` should compile — the field
 /// `val: T` is substituted to `i32` via the `resolve_adt_field_tys_with_substs`
 /// function, and `b.val` has type `i32`.
 #[test]
 fn stage16_53_generic_struct_field_access_compiles() {
     let src =
-        "struct Box<T> { val: T } fn main() -> i32 { let b: Box<i32> = Box { val: 42 }; b.val }";
+        "struct Wrapper<T> { val: T } fn main() -> i32 { let b: Wrapper<i32> = Wrapper { val: 42 }; b.val }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
@@ -188,12 +188,13 @@ fn stage16_53_non_generic_enum_no_regression() {
 
 /// Stage 16.53 test 13: Verify generic struct local has substs in MIR.
 ///
-/// `let b: Box<i32>` should produce a local decl with type
+/// `let b: Wrapper<i32>` should produce a local decl with type
 /// `Adt(Box_def_id, [i32])` — the substs are propagated from the type
 /// annotation.
 #[test]
 fn stage16_53_generic_struct_local_has_substs() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<i32> = Box { val: 42 }; }";
+    let src =
+        "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<i32> = Wrapper { val: 42 }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 
@@ -212,19 +213,19 @@ fn stage16_53_generic_struct_local_has_substs() {
         .any(|ld| matches!(&ld.ty.kind, TyKind::Adt(_, substs) if !substs.is_empty()));
     assert!(
         has_generic_adt,
-        "Expected a local with Adt type and non-empty substs (Box<i32>)"
+        "Expected a local with Adt type and non-empty substs (Wrapper<i32>)"
     );
 }
 
 /// Stage 16.53 test 14: Verify generic struct field access produces concrete type.
 ///
-/// `b.val` where `b: Box<i32>` should produce a local with type `i32`
+/// `b.val` where `b: Wrapper<i32>` should produce a local with type `i32`
 /// (not `Param` or `Error`). This verifies that substitution is working
 /// end-to-end: the field type `T` is substituted with `i32`.
 #[test]
 fn stage16_53_generic_field_access_produces_concrete_type() {
     let src =
-        "struct Box<T> { val: T } fn main() -> i32 { let b: Box<i32> = Box { val: 42 }; b.val }";
+        "struct Wrapper<T> { val: T } fn main() -> i32 { let b: Wrapper<i32> = Wrapper { val: 42 }; b.val }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 
@@ -255,7 +256,7 @@ fn stage16_53_generic_field_access_produces_concrete_type() {
 /// Stage 16.53 test 15: Nested generic struct.
 #[test]
 fn stage16_53_nested_generic_struct() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<i32>> = Box { val: Box { val: 42 } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<i32>> = Wrapper { val: Wrapper { val: 42 } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
@@ -272,7 +273,7 @@ fn stage16_53_generic_struct_tuple_field() {
 /// Stage 16.53 test 17: Generic struct with reference field.
 #[test]
 fn stage16_53_generic_struct_ref_field() {
-    let src = "struct RefBox<T> { val: &T } fn main() { let x = 42; let b: RefBox<i32> = RefBox { val: &x }; }";
+    let src = "struct RefWrapper<T> { val: &T } fn main() { let x = 42; let b: RefWrapper<i32> = RefWrapper { val: &x }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
@@ -280,10 +281,10 @@ fn stage16_53_generic_struct_ref_field() {
 /// Stage 16.53 test 18: Multiple generic structs in same program.
 #[test]
 fn stage16_53_multiple_generic_structs() {
-    let src = r#"struct Box<T> { val: T }
+    let src = r#"struct Wrapper<T> { val: T }
         struct Pair<A, B> { a: A, b: B }
         fn main() -> i32 {
-            let b: Box<i32> = Box { val: 42 };
+            let b: Wrapper<i32> = Wrapper { val: 42 };
             let p: Pair<i32, i32> = Pair { a: 1, b: 2 };
             b.val + p.a + p.b
         }"#;

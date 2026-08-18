@@ -46,7 +46,8 @@ fn stage16_52_generic_struct_literal_inferred() {
 /// Stage 16.52 test 3: Single-param generic struct.
 #[test]
 fn stage16_52_single_param_generic_struct() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<i32> = Box { val: 42 }; }";
+    let src =
+        "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<i32> = Wrapper { val: 42 }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }

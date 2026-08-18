@@ -29,7 +29,8 @@ use landin_compiler::mir::{
 /// Stage 16.58 test 1: lookup_mono_layout finds layout for generic type.
 #[test]
 fn stage16_58_lookup_mono_layout_finds_generic() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<i32> = Box { val: 42 }; }";
+    let src =
+        "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<i32> = Wrapper { val: 42 }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let hir = result.hir.as_ref().expect("HIR should be available");
@@ -97,17 +98,18 @@ fn stage16_58_lookup_mono_layout_empty_substs() {
 // §2. build_mono_layouts + lookup_mono_layout integration
 // =====================================================================
 
-/// Stage 16.58 test 5: Box<i32> produces a layout with i32 field type.
+/// Stage 16.58 test 5: Wrapper<i32> produces a layout with i32 field type.
 #[test]
 fn stage16_58_box_i32_layout_has_i32_field() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<i32> = Box { val: 42 }; }";
+    let src =
+        "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<i32> = Wrapper { val: 42 }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let hir = result.hir.as_ref().expect("HIR should be available");
     let items = collect_mono_items(&result.mirs);
     let layouts = build_mono_layouts(&items, hir);
 
-    // Find the Box<i32> layout.
+    // Find the Wrapper<i32> layout.
     let mut found_i32_field = false;
     for (_, layout) in layouts.values().flatten() {
         if let AdtLayout::Struct { field_tys } = layout {
@@ -119,21 +121,22 @@ fn stage16_58_box_i32_layout_has_i32_field() {
     }
     assert!(
         found_i32_field,
-        "Expected Box<i32> layout with i32 field type"
+        "Expected Wrapper<i32> layout with i32 field type"
     );
 }
 
-/// Stage 16.58 test 6: Box<bool> produces a layout with bool field type.
+/// Stage 16.58 test 6: Wrapper<bool> produces a layout with bool field type.
 #[test]
 fn stage16_58_box_bool_layout_has_bool_field() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<bool> = Box { val: true }; }";
+    let src =
+        "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<bool> = Wrapper { val: true }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let hir = result.hir.as_ref().expect("HIR should be available");
     let items = collect_mono_items(&result.mirs);
     let layouts = build_mono_layouts(&items, hir);
 
-    // Find the Box<bool> layout.
+    // Find the Wrapper<bool> layout.
     let mut found_bool_field = false;
     for (_, layout) in layouts.values().flatten() {
         if let AdtLayout::Struct { field_tys } = layout {
@@ -145,21 +148,21 @@ fn stage16_58_box_bool_layout_has_bool_field() {
     }
     assert!(
         found_bool_field,
-        "Expected Box<bool> layout with bool field type"
+        "Expected Wrapper<bool> layout with bool field type"
     );
 }
 
 /// Stage 16.58 test 7: Different instantiations produce different layouts.
 #[test]
 fn stage16_58_different_instantiations_different_layouts() {
-    let src = "struct Box<T> { val: T } fn main() { let b1: Box<i32> = Box { val: 42 }; let b2: Box<bool> = Box { val: true }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b1: Wrapper<i32> = Wrapper { val: 42 }; let b2: Wrapper<bool> = Wrapper { val: true }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let hir = result.hir.as_ref().expect("HIR should be available");
     let items = collect_mono_items(&result.mirs);
     let layouts = build_mono_layouts(&items, hir);
 
-    // Should have 2 layouts (Box<i32> and Box<bool>).
+    // Should have 2 layouts (Wrapper<i32> and Wrapper<bool>).
     assert_eq!(
         layouts.values().map(|v| v.len()).sum::<usize>(),
         2,
@@ -240,14 +243,14 @@ fn stage16_58_pair_layout_two_fields() {
 /// Stage 16.58 test 11: Nested generic produces nested layouts.
 #[test]
 fn stage16_58_nested_generic_layouts() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<Box<i32>> = Box { val: Box { val: 42 } }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<Wrapper<i32>> = Wrapper { val: Wrapper { val: 42 } }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
     let hir = result.hir.as_ref().expect("HIR should be available");
     let items = collect_mono_items(&result.mirs);
     let layouts = build_mono_layouts(&items, hir);
 
-    // Should have 2 layouts: Box<Box<i32>> (outer) and Box<i32> (inner).
+    // Should have 2 layouts: Wrapper<Wrapper<i32>> (outer) and Wrapper<i32> (inner).
     assert!(
         layouts.values().map(|v| v.len()).sum::<usize>() >= 2,
         "Expected at least 2 mono layouts (nested Box), got: {}",

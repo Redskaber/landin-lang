@@ -45,7 +45,8 @@ fn stage18_54_generic_fn_param_resolves() {
 /// `struct S<T> { x: T }` should resolve `T` without errors.
 #[test]
 fn stage18_54_generic_struct_field_resolves() {
-    let src = "struct Box<T> { val: T } fn main() { let b: Box<i32> = Box { val: 42 }; }";
+    let src =
+        "struct Wrapper<T> { val: T } fn main() { let b: Wrapper<i32> = Wrapper { val: 42 }; }";
     let result = compile(src);
     assert!(
         result.errors.resolve.is_empty(),

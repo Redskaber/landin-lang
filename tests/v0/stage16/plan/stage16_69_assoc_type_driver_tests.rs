@@ -21,7 +21,7 @@ fn stage16_69_trait_with_assoc_type_compiles() {
 /// Stage 16.69 test 2: Impl with associated type compiles.
 #[test]
 fn stage16_69_impl_with_assoc_type_compiles() {
-    let src = "trait Container { type Item; fn get(&self) -> i32; } struct MyBox; impl Container for MyBox { type Item = i32; fn get(&self) -> i32 { 42 } } fn main() -> i32 { let b = MyBox; b.get() }";
+    let src = "trait Container { type Item; fn get(&self) -> i32; } struct MyBox; impl Container for MyWrapper { type Item = i32; fn get(&self) -> i32 { 42 } } fn main() -> i32 { let b = MyBox; b.get() }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }
@@ -61,7 +61,7 @@ fn stage16_69_simple_program_no_regression() {
 /// Stage 16.69 test 7: Generic struct with associated type trait.
 #[test]
 fn stage16_69_generic_struct_with_assoc_type() {
-    let src = "trait Container { type Item; fn get(&self) -> i32; } struct Box<T> { val: T } impl<T> Container for Box<T> { type Item = T; fn get(&self) -> i32 { 42 } } fn main() { let b: Box<i32> = Box { val: 42 }; }";
+    let src = "trait Container { type Item; fn get(&self) -> i32; } struct Wrapper<T> { val: T } impl<T> Container for Wrapper<T> { type Item = T; fn get(&self) -> i32 { 42 } } fn main() { let b: Wrapper<i32> = Wrapper { val: 42 }; }";
     let result = compile(src);
     assert!(!result.has_errors(), "errors: {:?}", result.errors);
 }

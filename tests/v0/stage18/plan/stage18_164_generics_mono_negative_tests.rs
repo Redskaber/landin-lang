@@ -90,7 +90,7 @@ fn stage18_164_generic_multi_bounds() {
 /// Stage 18.164 negative 8: generic struct instantiation.
 #[test]
 fn stage18_164_generic_struct_instantiation() {
-    let src = "struct Box<T> { val: T } fn main() { let b = Box { val: 42 }; }";
+    let src = "struct Wrapper<T> { val: T } fn main() { let b = Wrapper { val: 42 }; }";
     let result = compile(src);
     assert!(!result.mirs.is_empty() || result.has_errors());
 }
@@ -99,8 +99,8 @@ fn stage18_164_generic_struct_instantiation() {
 #[test]
 fn stage18_164_generic_struct_wrong_arg() {
     let src = r#"
-        struct Box<T> { val: T }
-        fn main() { let b: Box<i32> = Box { val: true }; }
+        struct Wrapper<T> { val: T }
+        fn main() { let b: Wrapper<i32> = Wrapper { val: true }; }
     "#;
     let result = compile(src);
     assert!(!result.mirs.is_empty() || result.has_errors());
