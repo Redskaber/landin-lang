@@ -16,33 +16,33 @@ use landin_compiler::mir::collect_mono_items;
 #[test]
 fn stage18_98_adt_substs_mismatch_rejected() {
     let src = r#"
-struct Vec<T> { data: T, len: i32 }
+struct MyVec<T> { data: T, len: i32 }
 fn main() {
-    let v1: Vec<i32> = Vec { data: 42, len: 1 };
-    let v2: Vec<bool> = Vec { data: true, len: 1 };
-    let v3: Vec<i32> = v2;
+    let v1: MyVec<i32> = MyVec { data: 42, len: 1 };
+    let v2: MyVec<bool> = MyVec { data: true, len: 1 };
+    let v3: MyVec<i32> = v2;
 }
 "#;
     let result = compile(src);
     assert!(
         result.has_errors(),
-        "Vec<i32> = Vec<bool> must be rejected (soundness)"
+        "MyVec<i32> = MyVec<bool> must be rejected (soundness)"
     );
 }
 
 #[test]
 fn stage18_98_adt_substs_match_accepted() {
     let src = r#"
-struct Vec<T> { data: T, len: i32 }
+struct MyVec<T> { data: T, len: i32 }
 fn main() {
-    let v1: Vec<i32> = Vec { data: 42, len: 1 };
-    let v2: Vec<i32> = v1;
+    let v1: MyVec<i32> = MyVec { data: 42, len: 1 };
+    let v2: MyVec<i32> = v1;
 }
 "#;
     let result = compile(src);
     assert!(
         !result.has_errors(),
-        "Vec<i32> = Vec<i32> should be accepted"
+        "MyVec<i32> = MyVec<i32> should be accepted"
     );
 }
 
@@ -66,33 +66,33 @@ fn main() {
 #[test]
 fn stage18_99_nested_adt_substs_mismatch_rejected() {
     let src = r#"
-struct Vec<T> { data: T, len: i32 }
+struct MyVec<T> { data: T, len: i32 }
 fn main() {
-    let v1: Vec<Vec<i32>> = Vec { data: Vec { data: 42, len: 1 }, len: 1 };
-    let v2: Vec<Vec<bool>> = Vec { data: Vec { data: true, len: 1 }, len: 1 };
-    let v3: Vec<Vec<i32>> = v2;
+    let v1: MyVec<MyVec<i32>> = MyVec { data: MyVec { data: 42, len: 1 }, len: 1 };
+    let v2: MyVec<MyVec<bool>> = MyVec { data: MyVec { data: true, len: 1 }, len: 1 };
+    let v3: MyVec<MyVec<i32>> = v2;
 }
 "#;
     let result = compile(src);
     assert!(
         result.has_errors(),
-        "Vec<Vec<i32>> = Vec<Vec<bool>> must be rejected (nested substs soundness)"
+        "MyVec<MyVec<i32>> = MyVec<MyVec<bool>> must be rejected (nested substs soundness)"
     );
 }
 
 #[test]
 fn stage18_99_nested_adt_substs_match_accepted() {
     let src = r#"
-struct Vec<T> { data: T, len: i32 }
+struct MyVec<T> { data: T, len: i32 }
 fn main() {
-    let v1: Vec<Vec<i32>> = Vec { data: Vec { data: 42, len: 1 }, len: 1 };
-    let v2: Vec<Vec<i32>> = v1;
+    let v1: MyVec<MyVec<i32>> = MyVec { data: MyVec { data: 42, len: 1 }, len: 1 };
+    let v2: MyVec<MyVec<i32>> = v1;
 }
 "#;
     let result = compile(src);
     assert!(
         !result.has_errors(),
-        "Vec<Vec<i32>> = Vec<Vec<i32>> should be accepted"
+        "MyVec<MyVec<i32>> = MyVec<MyVec<i32>> should be accepted"
     );
 }
 

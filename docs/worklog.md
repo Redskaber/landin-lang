@@ -18469,3 +18469,26 @@ Stage Summary:
 - 解锁: Vec<T> (Stage 18.195) + String::push_str (Stage 18.196)
 - 测试: 658 lib + 3053 integration = 3711 total, 0 failures
 
+
+---
+Task ID: stage18.195
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.195 — Vec<T> MVP. v0.461.0 → v0.462.0.
+
+Work Log:
+- 依赖审计: __landin_alloc ✅, realloc ✅, memcpy ✅, array index ✅ → 完整
+- 实现 Vec struct (prelude): struct Vec<T> { ptr, len, cap }
+- 实现 Vec::new() intrinsic: Vec { null, 0, 0 } — no alloc (lazy)
+- 实现 Vec::len() intrinsic: field 1 extraction (same as str::len)
+- Vec::push() stub: compiles but no-op (TD-VEC-PUSH-NOTIMPLEMENTED)
+- 修复: stage18_98_103 测试中 struct Vec<T> → MyVec<T> (避免 prelude 冲突)
+- 4 tests (all positive)
+- Tests: 658 lib + 3057 integration = 3715 total, 0 failures
+- v0.462.0: minor bump
+
+Stage Summary:
+- Stage 18.195 PASSED — Vec<T> MVP (Vec::new + Vec::len)
+- 新增: Vec<T> prelude struct + Vec::new() + Vec::len() intrinsics
+- 延后: Vec::push (needs complex MIR control flow — TD-VEC-PUSH-NOTIMPLEMENTED)
+- 测试: 658 lib + 3057 integration = 3715 total, 0 failures
+

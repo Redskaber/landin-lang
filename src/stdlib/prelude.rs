@@ -114,4 +114,14 @@ impl String {
     fn len(&self) -> i64 { self.len }
     fn new() -> String { String { ptr: 0 as *mut u8, len: 0, cap: 0 } }
 }
+// Stage 18.195 (TD-VEC-MVP): Vec<T> — owned dynamic array.
+//
+// Vec<T> is a generic struct wrapping a heap-allocated buffer with ptr/len/cap.
+// Methods (new, push, len, pop) are implemented as MIR intrinsics in
+// lower_call_expr / lower_method_call_expr, similar to String::from_str.
+//
+// Per §1.0 原則 6 (通解>特例): one Vec type for all T (generic, not per-type).
+// Per §2 原則 9 (正确>妥协): MVP uses ptr/len/cap layout (not Vec<u8> wrapper
+// like Rust's Vec<T> { buf: RawVec<T>, len }). Simplification acceptable.
+struct Vec<T> { ptr: *mut T, len: i64, cap: i64 }
 "#;

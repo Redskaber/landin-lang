@@ -539,6 +539,10 @@ mod stage18_189_box_new_as_str_tests;
 #[path = "v0/stage18/plan/stage18_194_realloc_tests.rs"]
 mod stage18_194_realloc_tests;
 
+// === Stage 18.195: Vec<T> MVP ===
+#[path = "v0/stage18/plan/stage18_195_vec_mvp_tests.rs"]
+mod stage18_195_vec_mvp_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

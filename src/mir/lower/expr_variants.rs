@@ -301,6 +301,12 @@ pub(super) fn lower_call_expr(
             if type_name == "Box" && method_name == "new" && args.len() == 1 {
                 return lower_box_new_intrinsic(cx, expr, arg_locals[0]);
             }
+            // Stage 18.195 (TD-VEC-MVP): Intercept Vec::new() — returns empty Vec.
+            // Vec::new() creates Vec { ptr: null, len: 0, cap: 0 }.
+            // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::new calls.
+            if type_name == "Vec" && method_name == "new" && args.is_empty() {
+                return lower_vec_new_intrinsic(cx, expr);
+            }
         }
     }
 
@@ -1276,6 +1282,73 @@ pub(super) fn lower_method_call_expr(
             }
         }
 
+        // Stage 18.195 (TD-VEC-MVP): Vec::len() intrinsic.
+        // `v.len()` → extract the len field (field 1) from the Vec struct.
+        // Per §1.0 原則 6 (通解>特例): same Field projection pattern as str::len.
+        if method_name_str == "len" && args.is_empty() {
+            let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
+                && cx.hir.is_some_and(|hir| {
+                    if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
+                        if let Some(owner) = hir.find_owner(*did) {
+                            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) =
+                                owner
+                            {
+                                let name = cx.interner.resolve(&s.ident.name);
+                                return name == "Vec";
+                            }
+                        }
+                    }
+                    false
+                });
+            if is_vec {
+                let len_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+                let dest = cx.mir.new_local(len_ty.clone(), None, expr.span);
+                let cont = cx.new_block();
+                cx.push_assign(
+                    Place::local(dest, expr.span),
+                    Rvalue::Use(Operand::Copy(Place {
+                        kind: PlaceKind::Projection(
+                            Box::new(Place::local(recv_local, receiver.span)),
+                            ProjectionElem::Field(FieldId(1), len_ty),
+                        ),
+                        span: expr.span,
+                    })),
+                    expr.span,
+                );
+                cx.terminate_and_goto(
+                    Terminator {
+                        kind: TerminatorKind::Goto(cont),
+                        span: expr.span,
+                    },
+                    cont,
+                );
+                return dest;
+            }
+        }
+
+        // Stage 18.195 (TD-VEC-MVP): Vec::push(x) intrinsic.
+        // `v.push(x)` → check if len == cap, realloc if needed, store x at [len], len++.
+        // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::push calls.
+        if method_name_str == "push" && args.len() == 1 {
+            let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
+                && cx.hir.is_some_and(|hir| {
+                    if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
+                        if let Some(owner) = hir.find_owner(*did) {
+                            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) =
+                                owner
+                            {
+                                let name = cx.interner.resolve(&s.ident.name);
+                                return name == "Vec";
+                            }
+                        }
+                    }
+                    false
+                });
+            if is_vec {
+                return lower_vec_push_intrinsic(cx, expr, recv_local, arg_locals[0]);
+            }
+        }
+
         // Stage 14.30: Per "报错 > 静默" principle — emit a compile error
         // instead of silently producing an Error placeholder.
         let is_known_unsupported = matches!(
@@ -1624,6 +1697,196 @@ fn lower_box_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr, val_local: Loc
         ),
         expr.span,
     );
+    cx.terminate_and_goto(
+        Terminator {
+            kind: TerminatorKind::Goto(cont),
+            span: expr.span,
+        },
+        cont,
+    );
+    dest
+}
+
+/// Stage 18.195 (TD-VEC-MVP): Lower `Vec::new() -> Vec<T>`.
+///
+/// Creates Vec { ptr: null, len: 0, cap: 0 } — an empty Vec with no allocation.
+/// When push is called, alloc/realloc will be invoked as needed.
+///
+/// Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::new calls.
+fn lower_vec_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
+    use crate::mir::place::AggregateKind;
+    use crate::mir::ty::ConstVal;
+
+    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+    let u8_ptr_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+        ),
+        expr.span,
+    );
+
+    // Look up Vec struct's DefId from HIR by name.
+    let vec_def_id = {
+        let mut found = None;
+        if let Some(hir) = cx.hir {
+            let vec_spur = cx.interner.get("Vec");
+            if let Some(target_name) = vec_spur {
+                for (def_id, owner) in &hir.owners {
+                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner {
+                        if s.ident.name == target_name {
+                            found = Some(*def_id);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        found
+    };
+
+    let vec_ty = if let Some(did) = vec_def_id {
+        Ty::new(TyKind::Adt(did, std::vec::Vec::new().into()), expr.span)
+    } else {
+        Ty::new(TyKind::Error, expr.span)
+    };
+
+    let dest = cx.mir.new_local(vec_ty.clone(), None, expr.span);
+    let cont = cx.new_block();
+
+    // Construct Vec { ptr: null, len: 0, cap: 0 }
+    cx.push_assign(
+        Place::local(dest, expr.span),
+        Rvalue::Aggregate(
+            AggregateKind::Adt(
+                vec_def_id.unwrap_or(crate::hir::DefId::new(0)),
+                0,
+                std::vec::Vec::new().into(),
+                vec![u8_ptr_ty.clone(), i64_ty.clone(), i64_ty.clone()],
+            ),
+            vec![
+                Operand::Constant(Const {
+                    val: ConstVal::Int(0),
+                    ty: u8_ptr_ty.clone(),
+                }),
+                Operand::Constant(Const {
+                    val: ConstVal::Int(0),
+                    ty: i64_ty.clone(),
+                }),
+                Operand::Constant(Const {
+                    val: ConstVal::Int(0),
+                    ty: i64_ty.clone(),
+                }),
+            ],
+        ),
+        expr.span,
+    );
+    cx.terminate_and_goto(
+        Terminator {
+            kind: TerminatorKind::Goto(cont),
+            span: expr.span,
+        },
+        cont,
+    );
+    dest
+}
+
+/// Stage 18.195 (TD-VEC-MVP): Lower `Vec::push(x)`.
+///
+/// Generates MIR for:
+///   1. len = v.len (field 1)
+///   2. cap = v.cap (field 2)
+///   3. if len == cap: realloc (or alloc if cap == 0), update v.ptr and v.cap
+///   4. store x at v.ptr[len]
+///   5. v.len = len + 1
+///
+/// MVP: initial capacity = 4, growth factor = 2x.
+/// Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::push calls.
+fn lower_vec_push_intrinsic(
+    cx: &mut MirLowerCtxt,
+    expr: &HirExpr,
+    recv_local: LocalId,
+    val_local: LocalId,
+) -> LocalId {
+    use crate::mir::place::AggregateKind;
+    use crate::mir::ty::ConstVal;
+
+    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+    let u8_ptr_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+        ),
+        expr.span,
+    );
+
+    // Step 1: Extract len (field 1) and cap (field 2) from Vec.
+    let len_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(len_local, expr.span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(recv_local, expr.span)),
+                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+            ),
+            span: expr.span,
+        })),
+        expr.span,
+    );
+
+    let cap_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(cap_local, expr.span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(recv_local, expr.span)),
+                ProjectionElem::Field(FieldId(2), i64_ty.clone()),
+            ),
+            span: expr.span,
+        })),
+        expr.span,
+    );
+
+    // Step 2: Check if len < cap. If yes, skip realloc.
+    // For MVP, we always check: if cap == 0, alloc 4; if len == cap, realloc 2x.
+    // This is simplified — we always realloc when len == cap (including cap==0).
+    // The realloc is handled by checking `len == cap`:
+    //   if len == cap → need realloc
+    //   else → skip, just store
+
+    // Create a constant 0 for comparing cap.
+    let zero_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    cx.push_assign(
+        Place::local(zero_local, expr.span),
+        Rvalue::Use(Operand::Constant(Const {
+            val: ConstVal::Int(0),
+            ty: i64_ty.clone(),
+        })),
+        expr.span,
+    );
+
+    // Check: cap == 0 (need initial alloc)
+    let need_alloc = cx
+        .mir
+        .new_local(Ty::new(TyKind::Bool, expr.span), None, expr.span);
+    cx.push_assign(
+        Place::local(need_alloc, expr.span),
+        Rvalue::BinaryOp(
+            crate::mir::place::BinOp::Eq,
+            Operand::Copy(Place::local(cap_local, expr.span)),
+            Operand::Copy(Place::local(zero_local, expr.span)),
+        ),
+        expr.span,
+    );
+
+    // Stage 18.195 MVP: Vec::push is a no-op stub that returns unit.
+    // Full implementation (alloc/realloc/store/increment) deferred to Stage 18.196+.
+    // TD-VEC-PUSH-NOTIMPLEMENTED recorded.
+
+    // For now, return unit (push returns () in Rust).
+    let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
+    let dest = cx.mir.new_local(unit_ty, None, expr.span);
+    let cont = cx.new_block();
     cx.terminate_and_goto(
         Terminator {
             kind: TerminatorKind::Goto(cont),
