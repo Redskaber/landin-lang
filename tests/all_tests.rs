@@ -563,6 +563,10 @@ mod stage18_203_elem_size_tests;
 #[path = "v0/stage18/plan/stage18_205_format_method_tests.rs"]
 mod stage18_205_format_method_tests;
 
+// === Stage 18.206: ABI contract tests for C runtime helpers ===
+#[path = "v0/stage18/plan/stage18_206_abi_contract_tests.rs"]
+mod stage18_206_abi_contract_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

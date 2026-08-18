@@ -1,19 +1,19 @@
 # Global Test Matrix
 
 > **Author**: redskaber
-> **Date**: 2026-08-15 (last updated Stage 18.120)
-> **Version**: v0.388.0
-> **Process**: stage-committee-process.md v5.0 (§8 doc sync + §9 test standards)
+> **Date**: 2026-08-17 (last updated Stage 18.206)
+> **Version**: v0.470.0
+> **Process**: stage-committee-process.md v6.4 (§8 doc sync + §9 test standards)
 
-## Current Status (v0.388.0)
+## Current Status (v0.470.0)
 
 | Category | Count | Status |
 |----------|-------|--------|
-| Rust lib tests | 640 | ✅ 0 failures |
-| Rust integration tests | 2,663 | ✅ 0 failures |
+| Rust lib tests | 664 | ✅ 0 failures |
+| Rust integration tests | 3,098 | ✅ 0 failures |
 | Conformance tests | 2,935 | ✅ 0 failures |
 | Fuzz/stress tests | 7 | ✅ 0 failures |
-| **Total** | **6,245** | **100% pass rate, 0 skipped** |
+| **Total** | **6,704** | **100% pass rate, 0 skipped** |
 
 > **Note**: As of Stage 18.110 (S11 fix), ALL 35 runtime tests pass —
 > no more OOM skips or infinite loop hangs. The const-prop loop safety
@@ -64,6 +64,13 @@
 | Stage 18.94 (documentation sync + README rewrite + v0.1 boundaries) | 0 | ✅ | ✅ Complete |
 | Stage 18.95 (TraitError location migration) | 0 | ✅ | ✅ Complete |
 | Stage 18.96 (MIR optimization wiring — DCE + const_prop) | +2 rust | ✅ | ✅ Complete |
+| Stage 18.120-18.135 (deep audit + refactoring + LOC splits) | +N rust | ✅ | ✅ Complete |
+| Stage 18.151-18.164 (codegen Result + error system + negative tests) | +N rust | ✅ | ✅ Complete |
+| Stage 18.177-18.202 (heap alloc + Vec + String + format! chain) | +60 rust | ✅ | ✅ Complete |
+| Stage 18.203 (elem_size unified inference + C wrapper audit) | +14 rust | ✅ | ✅ Complete |
+| Stage 18.204 (deep review D1-D8 — chain close) | 0 (audit) | ✅ | ✅ Complete |
+| Stage 18.205 (TD-FUNCTION-REDEFINE-PARAMS fix) | +8 rust | ✅ | ✅ Complete |
+| Stage 18.206 (ABI contract tests + pipeline doc update) | +9 rust | ✅ | ✅ Complete |
 
 ---
 

@@ -1178,3 +1178,86 @@ No new paths — dead code removal only. All existing paths still covered.
 
 **Final Updated**: 2026-07-30 (Stage 14.105)
 **Process**: v3.22 §17.5
+
+---
+
+## Stage 18.206 Update — ABI Contract Tests + Path Coverage (2026-08-17)
+
+> Per Stage 18.204 deep review §5.1 action plan: 补 ABI contract tests +
+> update pipeline-test-coverage.md (D7+D8 补档).
+> Process: stage-committee-process.md v6.4 §8 (doc sync) + §9 (test standards)
+> + §17.6 (缺陷纳入).
+
+### Test count update
+
+- **Rust lib tests**: 664 (unchanged from Stage 18.205)
+- **Rust integration tests**: 3098 (was 3089, +9 ABI contract tests)
+- **Conformance tests**: 2935 (unchanged)
+- **Total**: 6,697 (was 6,688, +9)
+
+### Stage 18.206 changes
+
+1. **ABI contract tests** (tests/v0/stage18/plan/stage18_206_abi_contract_tests.rs):
+   - 9 tests verifying C runtime helper function signatures match the
+     expected ABI contract
+   - Covers 4 compound helpers (`__landin_vec_push`, `__landin_vec_get`,
+     `__landin_string_push_str`, `__landin_format_variadic`)
+   - Covers 4 primitive helpers (`__landin_alloc`, `__landin_dealloc`,
+     `__landin_memcpy`, `__landin_realloc`)
+   - Positive tests: signature matches, pointer params, elem_size consistency,
+     format_variadic 6+variadic, all helpers are C ABI
+   - Negative tests: unknown function returns None, mismatch detection works
+
+2. **Pipeline-test-coverage.md update** (this section):
+   - Adds Stage 18.177-18.205 chain coverage
+   - Closes D7 (文档与知识传承) and D8 (测试路径覆盖) gaps identified in
+     Stage 18.204 deep review
+
+### Pipeline path coverage — Stage 18.177-18.205 chain
+
+| Stage | Path | Tier | Test count | Status |
+|-------|------|------|-----------|--------|
+| 18.178 | heap alloc + dealloc | E2E | 6 | ✅ |
+| 18.180 | String struct type | E2E | 4 | ✅ |
+| 18.182 | array Index + OOB bounds check | E2E | 6 | ✅ |
+| 18.183 | fat pointer Index projection | E2E | 4 | ✅ |
+| 18.184 | str methods (len/is_empty/as_bytes) | E2E | 10 | ✅ |
+| 18.185 | String::from_str intrinsic | E2E | 6 | ✅ |
+| 18.186 | format! MVP (literal) | E2E | 3 | ✅ |
+| 18.188 | String::new + function redefine fix | E2E | 5 | ✅ |
+| 18.189 | String::as_str + Box::new | E2E | 8 | ✅ |
+| 18.190 | Box type coercion (*mut u8 store) | E2E | 4 | ✅ |
+| 18.191 | i64 literal (no truncation) | E2E | 4 | ✅ |
+| 18.192 | array OOB bounds check | E2E | 4 | ✅ |
+| 18.194 | heap realloc (growth) | E2E | 4 | ✅ |
+| 18.195 | Vec<T> MVP (new + len) | E2E | 4 | ✅ |
+| 18.197 | Vec::push (dynamic growth) | E2E | 6 | ✅ |
+| 18.198 | String::push_str + growth | E2E | 6 | ✅ |
+| 18.200 | Vec::get (with OOB panic) | E2E | 4 | ✅ |
+| 18.202 | format! variadic ({} args) | E2E | 3 | ✅ |
+| 18.203 | elem_size unified inference | Unit + E2E | 14 | ✅ |
+| 18.205 | format! method call (segfault fix) | E2E | 8 | ✅ |
+| 18.206 | ABI contract tests (C helpers) | Unit | 9 | ✅ NEW |
+| **Chain total** | **21 paths** | — | **+114 tests** | ✅ |
+
+### D7 (文档与知识传承) gap closure
+
+| Gap (from Stage 18.204 D7) | Status | Action |
+|---------------------------|--------|--------|
+| pipeline-test-coverage.md 过期 (停在 14.105) | ✅ Closed | This section adds Stage 18.177-18.206 coverage |
+| Vec 字段偏移 (0/8/16) 隐式定义 | 🟡 Documented | TD-C-WRAPPER-OVERUSE audit doc records this; v0.2 will sink to MIR Place::Projection |
+| Compound C helper ABI 契约 | ✅ Closed | Stage 18.206 ABI contract tests verify signatures |
+
+### D8 (测试路径覆盖) gap closure
+
+| Gap (from Stage 18.204 D8) | Status | Action |
+|----------------------------|--------|--------|
+| Box of struct / Vec of struct | 🟡 Blocked | TD-TUPLE-CTOR-TYPECK (v0.2 P2+) |
+| format! result method call | ✅ Closed | Stage 18.205 fix + 8 tests |
+| String + str method composition | 🟡 Blocked | TD-FUNCTION-REDEFINE-PARAMS (partially fixed in 18.205, full composition needs v0.2) |
+| Compound C helper ABI 契约测试 | ✅ Closed | Stage 18.206 ABI contract tests |
+
+### v0.1 release criteria — Still MET ✅
+
+**Final Updated**: 2026-08-17 (Stage 18.206)
+**Process**: v6.4 §8 + §9 + §17.6

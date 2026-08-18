@@ -18949,3 +18949,47 @@ Stage Summary:
 - 8 new tests, 0 regressions
 - Same-root-cause family (Stage 18.188 + 18.205) now fully resolved
 - v0.470.0: minor bump (fixes user-facing segfault)
+
+---
+Task ID: stage18.206
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.206 — ABI contract tests + pipeline-test-coverage.md update (D7+D8 补档). v0.470.0 (no bump — test + doc only).
+
+Work Log:
+- Baseline: v0.470.0 / 664 lib + 3089 integration (post-Stage 18.205)
+- 触发条例: Stage 18.204 deep review §5.1 action plan (补 ABI contract tests + pipeline doc update)
+- §13.1 设计对齐: docs/stage-committee-process.md v6.4 §8 (doc sync) + §9 (test standards) + §17.6 (缺陷纳入)
+- 实施:
+  1. ABI contract tests (tests/v0/stage18/plan/stage18_206_abi_contract_tests.rs):
+     - 9 tests verifying C runtime helper signatures match expected ABI contract
+     - 4 compound helpers (vec_push, vec_get, string_push_str, format_variadic)
+     - 4 primitive helpers (alloc, dealloc, memcpy, realloc)
+     - 7 positive + 2 negative = 1:3.5 ratio (meets §9.4.3 target)
+     - C source parser handles multi-line signatures + doc comments + nested parens
+  2. pipeline-test-coverage.md update:
+     - Added "Stage 18.206 Update" section
+     - 21 paths covered in Stage 18.177-18.206 chain
+     - D7 gap closure: pipeline doc updated; ABI contract documented
+     - D8 gap closure: format! method call tested; ABI contract tests added
+  3. matrix.md update:
+     - Header: v0.388.0 → v0.470.0
+     - Current status: 664 lib + 3098 integration + 2935 conformance = 6704 total
+     - Added Stage 18.120-18.206 entries to history
+- 验收 (§3.2):
+  → cargo fmt --check: ✅
+  → cargo test --features llvm-backend --lib: 664 passed
+  → cargo test --features llvm-backend --tests: 3098 passed (was 3089, +9 new)
+    - Single-threaded confirmation: 3098 passed, 0 failures
+  → cargo clippy: 5 warnings (all pre-existing, 0 new)
+  → Total: 3762 tests, 0 failures, zero regression
+- 文档输出:
+  → docs/develop/v0/stage-18/stage-18.206-dev-log.md (dev log)
+  → docs/tests/pipeline-test-coverage.md (Stage 18.206 update section)
+  → docs/tests/matrix.md (header + status + history updated)
+- 版本: v0.470.0 (no bump — test + doc only)
+
+Stage Summary:
+- Stage 18.206 PASSED — ABI contract tests + pipeline doc update
+- 9 new tests, 0 regressions
+- D7+D8 gaps from Stage 18.204 deep review closed
+- v0.470.0: no bump (test + doc only)
