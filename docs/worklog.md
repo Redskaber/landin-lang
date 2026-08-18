@@ -18993,3 +18993,70 @@ Stage Summary:
 - 9 new tests, 0 regressions
 - D7+D8 gaps from Stage 18.204 deep review closed
 - v0.470.0: no bump (test + doc only)
+
+---
+Task ID: stage18.207
+Agent: Super Z (main) — ARCH-A + PM-A + REV-A (Stage Committee)
+Task: Stage 18.207 — Task review + v0.2 Phase 2 task re-plan. v0.470.0 (no bump — audit only).
+
+Work Log:
+- Baseline: v0.470.0 / 664 lib + 3098 integration (post-Stage 18.206)
+- 触发条例: 用户指令 "如果在开始选择处理任务时遇到任务依赖缺陷及环境等任务阻塞问题时，
+  应当先做任务审查"
+- §13.1 设计对齐: 03-type-system.md §13 (monomorphization) + task-11-monomorphization-design.md
+- §17.7/§17.8 任务审查 (审查 Stage 18.204 deep review §5.2 action plan):
+  → 原计划: "类型 3 组整体修复: TD-TYPECK-GENERIC-INST + TD-INT-UINT-VAR + TD-TUPLE-CTOR-TYPECK"
+  → 审查发现: TD-TYPECK-GENERIC-INST 标签不准确
+- 依赖与基础设施完整能力审查 (per user directive):
+  → Task 11 monomorphization Phase 1-3: ✅ COMPLETE (substs propagation + substitution + collection)
+  → Task 11 Phase 4c per-mono codegen: ✅ COMPLETE (pipeline-integrated)
+  → compute_type_size_with_fallback: ✅ COMPLETE (Stage 18.203)
+  → generics_of query: ✅ COMPLETE (Task 11 Phase 1a)
+  → typeck tuple struct field substitution: ❌ MISSING (TD-TUPLE-CTOR-TYPECK)
+  → MIR lower Vec::get element type extraction: ❌ MISSING (TD-VEC-GET-TYPE-INFERENCE)
+- 实测验证:
+  → `Vec<Point>::push(p)`: ✅ works (elem_size=8, Point={i32,i32})
+    - 证明 typeck 已正确传播 substs (Vec<Point> 的 MIR 类型是 Adt(Vec_def_id, [Point]))
+  → `Vec<Point>::get(0).x`: ❌ LLVM GEP error
+    - 根因: lower_vec_get_intrinsic (expr_variants.rs:2207) 硬编码 out_ty=i32
+    - 不是 typeck generic instantiation 问题，是局部 MIR lower bug
+  → `Box<Point>`: ❌ typeck error "expected u8, found Point"
+    - 根因: typeck 不替换 tuple struct 字段类型 (Box<T>(*mut T) → Box<Point>(*mut Point))
+    - 这是 real typeck issue (TD-TUPLE-CTOR-TYPECK)
+- 任务图重排 (per §17.3 + §17.8):
+  → 原计划 "类型 3 组整体修复" 定位不准确，需要拆分
+  → 重排后:
+    18.208: TD-VEC-GET-TYPE-INFERENCE fix (localized MIR lower fix, doable NOW)
+      - 不依赖 typeck 改进
+      - 不依赖 v0.2 工作
+      - 只需修改 lower_vec_get_intrinsic 提取 Vec<T> substs[0] 作为 out_ty
+    18.209: deep review §14.5 (close 18.208 chain)
+    v0.2 Phase 2 (real typeck work):
+      v0.2.1: TD-TUPLE-CTOR-TYPECK (typeck tuple struct field substitution)
+      v0.2.2: TD-INT-UINT-VAR (typeck Int/Uint 变量统一)
+      v0.2.3: 类型 2 组 (drop elaboration 重构)
+      v0.2.4: TD-C-WRAPPER-OVERUSE 迁移
+      v0.2.5: typeck 加严
+- TD 标签修正 (per §6.2.1):
+  → TD-TYPECK-GENERIC-INST: 标记为 DUPLICATE
+    - 拆分为 TD-VEC-GET-TYPE-INFERENCE (MIR lower bug) + TD-TUPLE-CTOR-TYPECK (typeck issue)
+  → TD-VEC-GET-TYPE-INFERENCE: 新增独立 TD (Stage 18.208)
+  → TD-TUPLE-CTOR-TYPECK: 更新描述 (real typeck tuple struct field substitution)
+- §17.8 审查结论: NEEDS REVISION — 原计划任务定位不准确，已重排
+- 验收 (§3.2):
+  → cargo fmt --check: ✅ (no code changes)
+  → cargo test --features llvm-backend --lib: 664 passed (no code changes)
+  → cargo test --features llvm-backend --tests: 3098 passed (no code changes)
+  → Total: 3762 tests, 0 failures, zero regression (audit only stage)
+- 文档输出:
+  → docs/develop/v0/stage-18/stage-18.207-task-review.md (完整任务审查报告)
+  → 更新 docs/develop/v0/tech-debt-register.md (TD-TYPECK-GENERIC-INST 标签修正 + 新增 TD-VEC-GET-TYPE-INFERENCE)
+- 版本: v0.470.0 (no bump — audit only)
+
+Stage Summary:
+- Stage 18.207 PASSED — Task review + v0.2 Phase 2 task re-plan
+- 关键发现: TD-TYPECK-GENERIC-INST 标签不准确，已拆分为两个独立 TD
+- 任务图重排: 18.208 (doable NOW) + v0.2 Phase 2 (real typeck work)
+- 避免: 在不具备 typeck 重构能力时强行做 "类型 3 组整体修复" (per §17.8 能力边界审查)
+- 下一步: Stage 18.208 — TD-VEC-GET-TYPE-INFERENCE fix (localized MIR lower fix)
+- v0.470.0: no bump (audit only)

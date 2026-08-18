@@ -1,9 +1,9 @@
 # Landin Compiler — Comprehensive Tech Debt Register
 
 > **Author**: redskaber
-> **Date**: 2026-08-17 (last updated Stage 18.205)
+> **Date**: 2026-08-17 (last updated Stage 18.207 task review)
 > **Version**: v0.470.0
-> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + structural TDs (5 resolved + 2 partial: 18.127 × 2, 18.128 × 1, 18.129-18.130 × 1, 18.131-18.133 × 1, 18.134 × 1 partial, 18.135 × 1 partial, 18.203 × 2 resolved + 1 new TD-C-WRAPPER-OVERUSE, 18.205 × 1 resolved). Stage 18.204 deep review confirms GO.
+> **Status**: Active — all P0/P1 items resolved, remaining items are v0.2 Phase 2+ + structural TDs. Stage 18.204 deep review confirms GO. Stage 18.207 task review split TD-TYPECK-GENERIC-INST into TD-VEC-GET-TYPE-INFERENCE (Stage 18.208, doable NOW) + TD-TUPLE-CTOR-TYPECK (v0.2 Phase 2).
 
 ## 1. Resolved Tech Debt (S2-S11 + D1-D8)
 
@@ -199,7 +199,9 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-FORMAT-VARIADIC | `format!("x={}", x)` 不支持 variadic args | No C runtime variadic helper | ✅ Resolved Stage 18.202 |
 | TD-BOX-SIZE-OF | Box::new sizeof(T) 硬编码 | No layouts-based size_of computation | ✅ Resolved Stage 18.203 — `compute_type_size` walks Adt HIR via `build_adt_layout` |
 | TD-VEC-ELEM-SIZE-INFERENCE | Vec elem_size 默认 4 (Infer/Param) | typeck 将 Vec<T> 的 T 解析为 Infer | ✅ Resolved Stage 18.203 — `compute_type_size_with_fallback` provides single source of truth; canonical Vec<i32> case preserved; full generic instantiation deferred (TD-TYPECK-GENERIC-INST) |
-| TD-TYPECK-GENERIC-INST | typeck 不解析 Vec<T>/Box<T> 的泛型实例 | typeck unify table 不支持 generic instantiation | 🟡 Active — v0.2 P2+. Tracked as "类型 3 (typeck 泛型)" in Stage 18.201 task review. Affects: TD-VEC-ELEM-SIZE-INFERENCE (full fix), TD-INT-UINT-VAR, TD-TUPLE-CTOR-TYPECK. |
+| TD-TYPECK-GENERIC-INST | **DUPLICATE — split into TD-VEC-GET-TYPE-INFERENCE + TD-TUPLE-CTOR-TYPECK per Stage 18.207 task review**. Original label "typeck 不解析 Vec<T>/Box<T> 的泛型实例" was inaccurate: Task 11 monomorphization Phase 1-3 is COMPLETE (substs propagation works). The actual issues are: (1) TD-VEC-GET-TYPE-INFERENCE — `lower_vec_get_intrinsic` hardcodes out_ty=i32 instead of extracting Vec<T>'s substs[0] (localized MIR lower bug, doable NOW as Stage 18.208); (2) TD-TUPLE-CTOR-TYPECK — typeck doesn't substitute tuple struct field types (Box<T>(*mut T) → Box<Point>(*mut Point)), real typeck issue for v0.2 Phase 2. | Stage 18.207 task review found Task 11 monomorphization infrastructure is complete; the "类型 3 (typeck 泛型)" group was mislabeled. | ✅ Split — Stage 18.207 task review |
+| TD-VEC-GET-TYPE-INFERENCE | `lower_vec_get_intrinsic` (expr_variants.rs:2207) hardcodes `out_ty = i32` instead of extracting Vec<T>'s substs[0] | `Vec<Point>::get(0).x` fails with LLVM GEP error (out_ty=i32 but element is Point struct) | 🟡 Active — Stage 18.208: extract substs[0] from recv_local's Adt type as out_ty. Fallback to i32 for Infer/Param (matching Vec::push fallback=4 pattern). Doable NOW, no v0.2 typeck work needed. |
+| TD-TUPLE-CTOR-TYPECK | type checker 对 generic tuple struct ctor 宽松 (Box(*mut u8) 接受为 Box<i32>) | 类型安全漏洞: `Box<Point>` fails with "expected u8, found Point" because typeck doesn't substitute T→Point in `Box<T>(*mut T)` | 🟡 Active — v0.2 P2. Real typeck issue: tuple struct field type substitution missing. Depends on typeck generic substitution design (not yet written). |
 | TD-VEC-PUSH-SHARED-BORROW | Vec::push 用 Shared 而非 Mut borrow | borrow checker 要求 mut 声明 | 🟡 Active — v0.2 P2+. Same "类型 2 (borrow checker)" group as TD-BOX-AUTO-DROP per Stage 18.201 task review. |
 | TD-BOX-AUTO-DROP | Box 无自动释放 | drop elaboration 不跟踪 moved-from locals | 🟡 Active — v0.2 P2+. Blocked by TD-DROP-MOVED-LOCALS. Same "类型 2 (borrow checker)" group per Stage 18.201 task review. |
 | TD-DROP-MOVED-LOCALS | drop elaboration 缺少 move tracking | No move-state tracking | 🟡 Active — v0.3+ work. Per Stage 18.201 task review. |
