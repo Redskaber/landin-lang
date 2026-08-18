@@ -240,6 +240,13 @@ fn ty_needs_drop_impl(
                 return false;
             }
 
+            // Stage 18.193 (TD-BOX-AUTO-DROP): DEFERRED — Box auto-drop causes
+            // crashes because Box::new's FnDef local has the same LLVM layout
+            // as Box ({ ptr }), causing false-positive drop on invalid pointers.
+            // Proper fix needs drop elaboration to track moved-from locals
+            // (TD-DROP-MOVED-LOCALS). For now, Box users must manually call
+            // __landin_dealloc.
+
             // Check if the type implements Drop (user-defined destructor).
             if resolver.is_drop_builtin(*def_id, interner) {
                 return true;

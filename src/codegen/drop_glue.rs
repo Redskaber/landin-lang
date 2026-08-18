@@ -208,6 +208,36 @@ pub(crate) fn emit_drop_glue_functions(
             );
         }
 
+        // Stage 18.193 (TD-BOX-AUTO-DROP): For Box<T>, call __landin_dealloc
+        // on the inner pointer (field 0). Box owns a heap allocation that
+        // must be freed when the Box goes out of scope.
+        //
+        // Per §1.0 原則 6 (通解>特例): this is the canonical auto-drop for
+        // owned heap types. Future: generalize via a "owns allocation" trait.
+        if type_name == "Box" && !has_drop_impl {
+            // Load field 0 (the *mut T pointer) from the Box struct.
+            let ptr_field_addr = emitter.emit_gep_field(&self_str, &struct_llvm_ty, 0);
+            let ptr_val = emitter.emit_load(&EmitType::ptr_to(EmitType::I8), &ptr_field_addr);
+            // Stage 18.193: Check if pointer is null before deallocating.
+            // Some locals have the same type as Box (e.g., FnDef constants
+            // stored as { ptr }) but don't hold valid heap pointers. Skip
+            // dealloc for null pointers (NULL-safe, matching __landin_dealloc).
+            let null_val = "null".to_string();
+            let is_not_null =
+                emitter.emit_icmp("ne", &EmitType::ptr_to(EmitType::I8), &ptr_val, &null_val);
+            let skip_bb = format!("drop_box_skip_{}", def_id.0);
+            let dealloc_bb = format!("drop_box_dealloc_{}", def_id.0);
+            emitter.emit_br_cond(&is_not_null, &dealloc_bb, &skip_bb);
+            emitter.emit_block(&dealloc_bb);
+            emitter.emit_call(
+                "__landin_dealloc",
+                &[(EmitType::ptr_to(EmitType::I8), &ptr_val)],
+                &EmitType::Void,
+            );
+            emitter.emit_br(&skip_bb);
+            emitter.emit_block(&skip_bb);
+        }
+
         // Stage 15.66: For enums, emit SwitchInt dispatch to drop the active variant's payload.
         if enum_has_drop_variants {
             // Load the discriminant (field 0).

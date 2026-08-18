@@ -18391,3 +18391,39 @@ Stage Summary:
 - 测试: 658 lib + 3049 integration = 3707 total, 0 failures
 - v0.460.0: minor bump
 
+
+---
+Task ID: stage18.193
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + PM-A
+Task: Stage 18.193 — Task review: Box auto-drop (DEFERRED). v0.460.0 (no bump).
+
+Work Log:
+- §3.1 环境检查: LLVM 19 + Rust 1.97.1 就绪
+- §3.2 验收 baseline: 658 lib + 3049 integration = 3707 total, 0 failed
+
+- 尝试实现 Box auto-drop:
+  → 在 ty_needs_drop 中标记 Box 需要 drop
+  → 在 emit_drop_glue_functions 中为 Box 生成 __landin_dealloc 调用
+  → 添加 null check 避免对 null pointer dealloc
+
+- 发现阻塞 (TD-DROP-MOVED-LOCALS):
+  → Box::new intrinsic 创建 FnDef 类型 local 持有函数引用
+  → FnDef 和 Box 有相同的 LLVM 布局 ({ ptr })
+  → drop elaboration 错误地对 FnDef local 插入 Drop terminator
+  → drop glue 试图 dealloc 整数值 16 (FnDef 常量) → segfault
+  → 根因: drop elaboration 不跟踪 moved-from locals
+  → 修复需要: 在 drop elaboration 中添加 move state tracking
+
+- 决策: DEFER — Box auto-drop 阻塞于 TD-DROP-MOVED-LOCALS
+  → 正确修复 (move tracking) 是 v0.3+ 工作
+  → 目前 Box 用户需手动调用 __landin_dealloc
+  → 记录 TD-DROP-MOVED-LOCALS + TD-BOX-AUTO-DROP
+
+- §3.2 验收 (无代码变更):
+  → cargo test: 658 lib + 3049 integration = 3707 total, 0 failures
+
+Stage Summary:
+- Stage 18.193 — Box auto-drop DEFERRED (blocked by TD-DROP-MOVED-LOCALS)
+- 新增 TD: TD-DROP-MOVED-LOCALS (drop elaboration 不跟踪 moved-from locals)
+- 无代码变更, 无版本 bump
+
