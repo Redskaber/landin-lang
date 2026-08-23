@@ -19388,3 +19388,76 @@ Stage Summary:
 - 4 new tests, 0 regressions
 - Box<T> now works for all T (i32, i64, Point, etc.)
 - v0.472.0: minor bump (Box<T> typeck fix)
+
+---
+Task ID: stage18.213
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.213 — TD-INT-UINT-VAR partial fix (Vec<T> unsuffixed literal type inference). v0.472.0 → v0.473.0.
+
+Work Log:
+- Baseline: v0.472.0 / 664 lib + 3108 integration (post-Stage 18.212, LLVM 22)
+- 触发条例: Stage 18.209 deep review §5.2 action plan item #2 (TD-INT-UINT-VAR)
+- §13.1 设计对齐: 03-type-system.md §13 (monomorphization)
+
+- 依赖与基础设施完整能力审查 (per user directive):
+  → extract_vec_element_type (Stage 18.208): ✅ COMPLETE
+  → compute_type_size_with_fallback (Stage 18.203): ✅ COMPLETE
+  → find_generics query (Task 11 Phase 1a): ✅ COMPLETE
+  → substitute function (Task 11 Phase 2): ✅ COMPLETE
+  → 结论: 依赖完整, 可立即实施
+
+- Root cause analysis:
+  → `v.push(100)` where `v: Vec<i64>`:
+    - val_local's type is Infer(IntVar) (unsuffixed 100, deferred to inference)
+    - typeck's default_unresolved defaults all Unbound IntVars to i32
+    - So 100 is stored as i32 (4 bytes) → vec_push elem_size=4 (wrong, should be 8)
+    - vec_get reads 8 bytes from out_ty=i64 → upper 4 bytes are garbage
+  → Root cause: MIR lower doesn't propagate Vec<T>'s element type to the push argument
+
+- Fix (src/mir/lower/expr_variants.rs, lower_vec_push_intrinsic):
+  → When val_local's type is Infer(IntVar), extract the element type from
+    Vec<T>'s substs[0] via extract_vec_element_type (Stage 18.208 helper)
+  → Use this extracted type as val_ty for:
+    - elem_size computation (compute_type_size_with_fallback)
+    - val_ref_ty creation (*&T → *mut u8 cast)
+  → Per §1.0 原則 6 (通解>特例): one extraction path for all Vec<T> types
+  → Per §12 (最优 > 最小): root-cause fix — read substs[0] from Vec<T>
+  → Per §1.0 原則 3 (显式 > 隐式): the element type is explicit in Vec<T>
+
+- This is a PARTIAL fix for TD-INT-UINT-VAR:
+  → The full fix would separate IntOrUintVar in the unification table
+    (so `let x: u32 = 1` correctly infers u32, not i32)
+  → This fix only addresses the Vec<T>::push case where the element type
+    is known from the Vec's substs — it doesn't fix general unsuffixed
+    literal inference outside of Vec context
+  → Full TD-INT-UINT-VAR fix deferred to v0.2 Phase 2 (unify table refactor)
+
+- Verification:
+  → Vec<i64>::push(100) + push(200) + get(0) + get(1) = 100, 200 ✅
+    (was: 858993459300, 0 — garbage from 4-byte store + 8-byte load)
+  → Vec<i32>::push(10) + push(20) + get(0) + get(1) = 10, 20 ✅ (no regression)
+  → Vec<i8>::push(7) + push(8) + push(9) + get = 7, 8, 9 ✅ (was: needed 7i8 suffix)
+  → Mixed Vec<i64> + Vec<i32> in same function ✅
+
+- Updated 2 existing tests (stage18_203_elem_size_tests.rs):
+  → Vec<i64> test: 100i64 → 100 (unsuffixed, now works)
+  → Vec<i8> test: 7i8 → 7 (unsuffixed, now works)
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo clean ✅ (removed 2586 files, 1.6GiB)
+  → cargo build --release --features llvm-backend ✅ (45.89s)
+  → cargo check --features llvm-backend ✅ (11.49s)
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3772 tests, 0 failures)
+
+- 版本: v0.472.0 → v0.473.0 (minor bump — Vec<T> unsuffixed literal fix)
+
+Stage Summary:
+- Stage 18.213 PASSED — TD-INT-UINT-VAR partial fix (Vec<T> unsuffixed literal)
+- 1 fix: lower_vec_push_intrinsic extracts element type from Vec<T> substs[0]
+  when val type is Infer(IntVar)
+- Vec<i64>::push(100) now works with unsuffixed literals (was: needed 100i64 suffix)
+- 0 new tests (updated 2 existing tests to use unsuffixed literals)
+- 3772 tests, 0 failures, zero regression
+- v0.473.0: minor bump (Vec<T> unsuffixed literal fix)

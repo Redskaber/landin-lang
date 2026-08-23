@@ -1934,7 +1934,31 @@ fn lower_vec_push_intrinsic(
     );
 
     // Step 3: Create pointer to val via Shared borrow
-    let val_ty = cx.mir.local(val_local).ty.clone();
+    // Stage 18.213 (TD-INT-UINT-VAR partial fix): If the val's type is
+    // still Infer(IntVar) at MIR-lower time (unsuffixed integer literal),
+    // try to extract the expected element type from the Vec<T> receiver's
+    // substs[0]. This unifies the literal's IntVar with the Vec's element
+    // type, so typeck's default_unresolved won't blindly default it to i32.
+    //
+    // For example, `v.push(100)` where `v: Vec<i64>`:
+    //   - val_local's type is Infer(IntVar) (unsuffixed 100)
+    //   - recv_local's type is Adt(Vec_def_id, [i64])
+    //   - We extract substs[0] = i64 and use it as val_ty
+    //   - typeck sees the val as i64, not Infer → no default to i32
+    //
+    // Per §1.0 原則 6 (通解>特例): one extraction path for all Vec<T> types.
+    // Per §12 (最优 > 最小): root-cause fix — read substs[0] from Vec<T>.
+    // Per §1.0 原則 3 (显式 > 隐式): the element type is explicit in Vec<T>.
+    let recv_ty = cx.mir.local(recv_local).ty.clone();
+    let val_ty = {
+        let raw_val_ty = cx.mir.local(val_local).ty.clone();
+        // If val type is Infer, try to get the element type from Vec<T>
+        if matches!(raw_val_ty.kind, TyKind::Infer(_)) {
+            extract_vec_element_type(&recv_ty, expr.span)
+        } else {
+            raw_val_ty
+        }
+    };
     let val_ref_ty = Ty::new(
         TyKind::Ref(
             crate::mir::ty::Region::Erased,

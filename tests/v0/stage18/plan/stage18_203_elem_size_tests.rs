@@ -101,10 +101,9 @@ fn main() -> i32 {
 /// Stage 18.208: Now also tests that Vec::get correctly extracts the i64
 /// element type (was hardcoded to i32, causing LLVM GEP errors).
 ///
-/// Note: uses suffixed literals (100i64) because unsuffixed integer literals
-/// default to i32 via typeck's IntVar defaulting (TD-INT-UINT-VAR, v0.2 P2+).
-/// The Vec<i64> type annotation doesn't propagate to push args until typeck
-/// generic instantiation is implemented (TD-TYPECK-GENERIC-INST, v0.2 P2+).
+/// Stage 18.213: Now uses unsuffixed literals (100 instead of 100i64) because
+/// the MIR lower extracts the element type from Vec<T>'s substs[0] when the
+/// literal's type is still Infer(IntVar). This is the TD-INT-UINT-VAR partial fix.
 #[test]
 fn stage18_203_vec_i64_roundtrip() {
     assert_runtime(
@@ -112,9 +111,9 @@ fn stage18_203_vec_i64_roundtrip() {
         r#"
 fn main() -> i32 {
     let mut v: Vec<i64> = Vec::new();
-    v.push(100i64);
-    v.push(200i64);
-    v.push(300i64);
+    v.push(100);
+    v.push(200);
+    v.push(300);
     println!("{}", v.get(0));
     println!("{}", v.get(1));
     println!("{}", v.get(2));
@@ -129,7 +128,9 @@ fn main() -> i32 {
 /// correctly handles i8 → 1 byte.
 ///
 /// Stage 18.208: Now also tests that Vec::get correctly extracts the i8
-/// element type. Uses suffixed literals (7i8) because unsuffixed defaults to i32.
+/// element type.
+/// Stage 18.213: Now uses unsuffixed literals (7 instead of 7i8) — the MIR
+/// lower extracts the element type from Vec<T>'s substs[0].
 #[test]
 fn stage18_203_vec_i8_roundtrip() {
     assert_runtime(
@@ -137,9 +138,9 @@ fn stage18_203_vec_i8_roundtrip() {
         r#"
 fn main() -> i32 {
     let mut v: Vec<i8> = Vec::new();
-    v.push(7i8);
-    v.push(8i8);
-    v.push(9i8);
+    v.push(7);
+    v.push(8);
+    v.push(9);
     println!("{}", v.get(0));
     println!("{}", v.get(1));
     println!("{}", v.get(2));
