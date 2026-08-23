@@ -19611,3 +19611,66 @@ Stage Summary:
 - `b.1` on Box<i32> now correctly reports "field index out of bounds"
 - 3772 tests, 0 failures, zero regression
 - v0.474.0: minor bump (typeck field index validation)
+
+---
+Task ID: stage18.218
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.218 — TD-METHOD-RESOLVE-STRICT audit (unknown method resolution). v0.474.0 (no bump — audit).
+
+Work Log:
+- Baseline: v0.474.0 / 664 lib + 3108 integration (LLVM 22.1.8)
+- 触发条例: Stage 18.216 deep review → v0.2 Phase 2 prep → typeck 加严
+
+- 依赖与基础设施审查:
+  → MIR lower lower_method_call_expr: ✅ (has is_known_unsupported check)
+  → MIR lower type_errors: ✅ (pushed to driver, checked before codegen)
+  → typeck post_check_terminator: ✅ (runs after defaulting, Phase 5.5)
+  → 结论: 依赖完整, 但 fix approach needs care
+
+- Root cause analysis:
+  → `s.nonexistent_method()` where `s` has known type (e.g., String):
+    - MIR lower's is_known_unsupported check: type is NOT Infer → pushes
+      "no method found for type String" error → compilation aborts ✅
+  → `s.nonexistent_method()` where `s` has Infer type (e.g., from String::new()):
+    - MIR lower's is_known_unsupported check: type IS Infer → skips error push
+    - Error placeholder (Const{ty: Error, val: Int(0)}) is emitted as func
+    - typeck post_check_terminator: func type is Error → currently accepted
+    - Codegen: null function pointer → segfault at runtime ❌
+
+- Fix attempt 1: Added Error func check in post_check_terminator
+  → Failed: stage16_53_generic_struct_trait_impl_method_call broke
+  - The test has `self.x.f()` where x: X (Param type)
+  - MIR lower pushes "no method found" for Param type (not in is_known_unsupported)
+  - post_check_terminator also reported → duplicate error
+
+- Fix attempt 2: Narrowed to Const{ty: Error, val: Int(0)} only
+  → Still failed: same test — the MIR lower's Error placeholder IS Const{Error, Int(0)}
+  - The issue is that Param types are NOT in is_known_unsupported, so MIR lower
+    reports AND produces Error placeholder — and post_check would duplicate
+
+- Final approach: Documentation + deferred fix
+  → The MIR lower already handles the non-Infer case correctly (reports error)
+  → For Infer types, the full fix requires the resolver to track method
+    resolution failures through typeck defaulting (v0.2 work)
+  → Per §17.6 (缺陷纳入): recorded as TD-METHOD-RESOLVE-STRICT partial
+  → Per §1.0 原則 9 (正确>妥协): don't break valid generic code for this fix
+
+- Verification:
+  → `s.nonexistent_method()` with known type (String) → error reported ✅
+  → `s.nonexistent_method()` with Infer type (from String::new()) → segfault ❌ (deferred)
+  → Valid generic trait method calls → no false positive ✅
+  → 3772 tests, 0 failures
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
+  → cargo test --release --features llvm-backend ✅ (3772 tests, 0 failures)
+
+- 版本: v0.474.0 (no bump — audit)
+
+Stage Summary:
+- Stage 18.218 PASSED — TD-METHOD-RESOLVE-STRICT audit
+- MIR lower already handles non-Infer receiver types correctly
+- Infer receiver types need resolver tracking through typeck defaulting (v0.2)
+- 3772 tests, 0 failures
+- v0.474.0: no bump (audit)

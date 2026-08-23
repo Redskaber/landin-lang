@@ -102,7 +102,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-TUPLE-CTOR-TYPECK | type checker 对 generic tuple struct ctor 宽松 (Box(*mut u8) 接受为 Box<i32>) | 类型安全漏洞 | 🟡 Active — v0.2 P2 |
 | TD-GENERIC-PARAM-CHECK | type checker 不强制 generic param 存在 (`let b: Box` 接受) | 类型安全漏洞 | 🟡 Partial Stage 18.215 — audit + comment added. Full check needs typeck to distinguish "missing" vs "inferred" (Vec<_>). Deferred to v0.2 P2. |
 | TD-TUPLE-FIELD-CHECK | type checker 不验证 tuple struct field 索引 (`b.1` on Box 接受) | 类型安全漏洞 | ✅ Resolved Stage 18.217 — infer_projection now validates Adt field index against AdtLayout::Struct field count. `b.1` on `Box<i32>` now reports "field index out of bounds". |
-| TD-METHOD-RESOLVE-STRICT | resolver 对未知方法调用宽松 (String::new() 接受) | 错误信息不清晰 | 🟡 Active — v0.2 P2 |
+| TD-METHOD-RESOLVE-STRICT | resolver 对未知方法调用宽松 (String::new() 接受) | 错误信息不清晰 | 🟡 Partial Stage 18.218 — audit + documentation. MIR lower already reports "no method found" for non-Infer types. For Infer types (e.g., `let s = String::new(); s.unknown()`), method resolution is deferred and the Error placeholder produces a segfault. Full fix requires resolver to track method resolution failures through typeck defaulting. Deferred to v0.2 P2. |
 
 ### 2.7 Test Infrastructure
 

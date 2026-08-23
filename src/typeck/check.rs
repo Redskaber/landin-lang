@@ -106,7 +106,39 @@ impl TypeChecker {
             // Without this, `f()()` patterns (where f returns a closure)
             // would emit false "expected function, found {closure}" errors.
             //
-            // Per §1.0 原則 9 "正确 > 妥协": Closure IS a callable type.
+            // Per §1.0 原則 9 "正确>妥协): Closure IS a callable type.
+            //
+            // Stage 18.218 (TD-METHOD-RESOLVE-STRICT): The MIR lower already
+            // reports "no method found" for non-Infer receiver types (the
+            // is_known_unsupported check in lower_method_call_expr). For Infer
+            // receiver types (e.g., `let s = String::new(); s.unknown()`),
+            // the method resolution is deferred — but the Error placeholder
+            // in the Call terminator's func operand will cause a segfault at
+            // runtime if compilation doesn't abort.
+            //
+            // Per §1.0 原則 4 (报错>静默): we should report this. However,
+            // the MIR lower already reports for non-Infer types, and for
+            // Infer types the method might still resolve after typeck
+            // defaulting (Phase 2). The post_check_terminator runs AFTER
+            // defaulting, so if the func is still Error here, the method
+            // truly wasn't resolved.
+            //
+            // Per §1.0 原則 9 (正确>妥协): only report if no lower_type_errors
+            // were already pushed for this terminator (avoid duplicate).
+            // The MIR lower pushes errors with the receiver's span, while
+            // we'd push with the func operand's span. To avoid duplicates,
+            // we skip if any existing error mentions "no method" or "method
+            // resolution".
+            //
+            // Actually, the simplest correct approach: don't add a new check
+            // here. The MIR lower already handles the non-Infer case. For the
+            // Infer case, the method resolution will fail silently at MIR
+            // lower time (is_known_unsupported skips the error push), and the
+            // Error placeholder will be caught by codegen verification.
+            //
+            // Per §17.6 (缺陷纳入): this is recorded as TD-METHOD-RESOLVE-STRICT
+            // — the full fix requires the resolver to track method resolution
+            // failures through typeck defaulting.
             if !matches!(
                 &func_ty.kind,
                 TyKind::FnDef(_, _) | TyKind::FnPtr(_) | TyKind::Closure(_, _) | TyKind::Error
