@@ -58,7 +58,7 @@ fn test_method_dispatch_table() {
     // We can't easily get the Spur values without the interner, but we can
     // verify the impl_by_trait_and_type map has 1 entry
     assert!(
-        resolver.impl_by_trait_and_type.len() >= 1,
+        !resolver.impl_by_trait_and_type.is_empty(),
         "dispatch table should have 1 entry"
     );
 }

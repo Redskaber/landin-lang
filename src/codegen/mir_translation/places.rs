@@ -689,8 +689,7 @@ pub(crate) fn codegen_place_load_typed(
                     let struct_ty = detect_place_storage_type(mir, base, layouts);
                     emitter.emit_gep_field(&addr, &struct_ty, field_id.0)
                 } else {
-                    let field_ptr = emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0);
-                    field_ptr
+                    emitter.emit_gep_field(&base_ptr, &struct_ty, field_id.0)
                 };
                 emitter.emit_load(&ty, &field_ptr)
             }
@@ -806,7 +805,7 @@ pub(crate) fn codegen_place_load_typed(
                         if let crate::mir::ty::TyKind::Array(_, n) = &ld.ty.kind {
                             let array_len = match &n.val {
                                 crate::mir::ty::ConstVal::Uint(v) => *v,
-                                crate::mir::ty::ConstVal::Int(v) => *v as u128,
+                                crate::mir::ty::ConstVal::Int(v) => *v,
                                 _ => 0,
                             };
                             if array_len > 0 {

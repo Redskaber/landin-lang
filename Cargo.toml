@@ -1,6 +1,6 @@
 [package]
 name = "landin-compiler"
-version = "0.470.0"
+version = "0.471.0"
 edition = "2021"
 license = "MIT"
 description = "Landin compiler — Rust-inspired systems language (LLVM 19 backend)"
@@ -69,7 +69,7 @@ clap = { version = "4", features = ["derive"] }
 # Supports LLVM 19 (build server) and LLVM 21 (user environment)
 # Set LLVM_SYS_191_PREFIX or LLVM_SYS_211_PREFIX + LLVM_LINK_SHARED=1
 [dependencies.llvm-sys]
-version = "191"
+version = "221"
 features = ["prefer-dynamic"]
 optional = true
 

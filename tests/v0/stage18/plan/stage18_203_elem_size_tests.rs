@@ -18,7 +18,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 fn run_program(code: &str) -> (String, i32) {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin = manifest.join("target/debug/landin-stage0");
+    let bin = if cfg!(debug_assertions) {
+        manifest.join("target/debug/landin-stage0")
+    } else {
+        manifest.join("target/release/landin-stage0")
+    };
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let id = COUNTER.fetch_add(1, Ordering::SeqCst);
     let lin_file =
@@ -93,6 +97,14 @@ fn main() -> i32 {
 
 /// Regression: Vec<i64> (8-byte elements) roundtrip. Tests that compute_type_size
 /// correctly handles i64 → 8 bytes (not 4 default fallback).
+///
+/// Stage 18.208: Now also tests that Vec::get correctly extracts the i64
+/// element type (was hardcoded to i32, causing LLVM GEP errors).
+///
+/// Note: uses suffixed literals (100i64) because unsuffixed integer literals
+/// default to i32 via typeck's IntVar defaulting (TD-INT-UINT-VAR, v0.2 P2+).
+/// The Vec<i64> type annotation doesn't propagate to push args until typeck
+/// generic instantiation is implemented (TD-TYPECK-GENERIC-INST, v0.2 P2+).
 #[test]
 fn stage18_203_vec_i64_roundtrip() {
     assert_runtime(
@@ -100,9 +112,9 @@ fn stage18_203_vec_i64_roundtrip() {
         r#"
 fn main() -> i32 {
     let mut v: Vec<i64> = Vec::new();
-    v.push(100);
-    v.push(200);
-    v.push(300);
+    v.push(100i64);
+    v.push(200i64);
+    v.push(300i64);
     println!("{}", v.get(0));
     println!("{}", v.get(1));
     println!("{}", v.get(2));
@@ -115,6 +127,9 @@ fn main() -> i32 {
 
 /// Regression: Vec<i8> (1-byte elements) roundtrip. Tests that compute_type_size
 /// correctly handles i8 → 1 byte.
+///
+/// Stage 18.208: Now also tests that Vec::get correctly extracts the i8
+/// element type. Uses suffixed literals (7i8) because unsuffixed defaults to i32.
 #[test]
 fn stage18_203_vec_i8_roundtrip() {
     assert_runtime(
@@ -122,9 +137,9 @@ fn stage18_203_vec_i8_roundtrip() {
         r#"
 fn main() -> i32 {
     let mut v: Vec<i8> = Vec::new();
-    v.push(7);
-    v.push(8);
-    v.push(9);
+    v.push(7i8);
+    v.push(8i8);
+    v.push(9i8);
     println!("{}", v.get(0));
     println!("{}", v.get(1));
     println!("{}", v.get(2));

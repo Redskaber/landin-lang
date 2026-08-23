@@ -21,7 +21,11 @@ use std::process::Command;
 /// Helper: compile + run a Landin program and return (stdout, exit_code).
 fn run_program(code: &str) -> (String, i32) {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin = manifest.join("target/debug/landin-stage0");
+    let bin = if cfg!(debug_assertions) {
+        manifest.join("target/debug/landin-stage0")
+    } else {
+        manifest.join("target/release/landin-stage0")
+    };
     // Use a unique file name per test invocation to avoid parallel conflicts.
     // Include a counter via atomic to ensure uniqueness.
     use std::sync::atomic::{AtomicU64, Ordering};

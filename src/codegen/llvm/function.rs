@@ -77,8 +77,7 @@ impl FunctionEmitter for LLVMSysEmitter {
                     // a forward decl from get_or_declare_function).
                     LLVMDeleteFunction(existing);
                     self.declared.remove(name);
-                    let new_fn = LLVMAddFunction(self.module, name_c.as_ptr(), fty);
-                    new_fn
+                    LLVMAddFunction(self.module, name_c.as_ptr(), fty)
                 } else {
                     existing
                 }

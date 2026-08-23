@@ -132,18 +132,12 @@ fn extract_c_signature(name: &str) -> Option<(String, Vec<String>)> {
     let mut search_start = 0;
     loop {
         let needle = format!("{}(", name);
-        let idx = match LANDIN_C_WRAPPER[search_start..].find(&needle) {
-            Some(i) => search_start + i,
-            None => return None,
-        };
+        let idx = search_start + LANDIN_C_WRAPPER[search_start..].find(&needle)?;
         search_start = idx + 1;
         // Check the char BEFORE `name(` — if it's a space and the token
         // before that is a return type, this is the definition.
         let before = &LANDIN_C_WRAPPER[..idx];
-        let ret_start = before
-            .rfind(|c: char| c == '\n' || c == ';')
-            .map(|p| p + 1)
-            .unwrap_or(0);
+        let ret_start = before.rfind(['\n', ';']).map(|p| p + 1).unwrap_or(0);
         let ret = before[ret_start..].trim();
         // Skip if ret is empty or doesn't look like a return type.
         let is_return_type = ret == "void"
@@ -211,7 +205,7 @@ fn extract_c_signature(name: &str) -> Option<(String, Vec<String>)> {
         let close = close_idx?;
         let params_str = &after[..close];
         // Remove /* ... */ comments and newlines from params.
-        let cleaned = params_str.replace(|c: char| c == '\n' || c == '\r', " ");
+        let cleaned = params_str.replace(['\n', '\r'], " ");
         let mut final_str = String::new();
         let mut chars = cleaned.chars().peekable();
         while let Some(c) = chars.next() {

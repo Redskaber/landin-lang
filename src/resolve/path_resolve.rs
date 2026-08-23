@@ -883,7 +883,6 @@ impl Resolver {
     ///
     /// Per §10: `resolve_path_in_module` follows `<verb>_<noun>_<prep>_<noun>`.
     /// Per §1.0 原則 6 (通解>特例): one function handles all segment counts.
-
     /// Stage 18.178 (TD-HEAP-ALLOC bug fix): Look up a `__landin_<name>`
     /// runtime function in the module tree's value namespace.
     ///

@@ -25,7 +25,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// Helper: compile + run a Landin program and return (stdout, exit_code).
 fn run_program(code: &str) -> (String, i32) {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin = manifest.join("target/debug/landin-stage0");
+    let bin = if cfg!(debug_assertions) {
+        manifest.join("target/debug/landin-stage0")
+    } else {
+        manifest.join("target/release/landin-stage0")
+    };
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let id = COUNTER.fetch_add(1, Ordering::SeqCst);
     let lin_file =
@@ -46,7 +50,11 @@ fn run_program(code: &str) -> (String, i32) {
 /// Helper: compile a Landin program (no run) and return exit code.
 fn compile_only(code: &str) -> i32 {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin = manifest.join("target/debug/landin-stage0");
+    let bin = if cfg!(debug_assertions) {
+        manifest.join("target/debug/landin-stage0")
+    } else {
+        manifest.join("target/release/landin-stage0")
+    };
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let id = COUNTER.fetch_add(1, Ordering::SeqCst);
     let lin_file =

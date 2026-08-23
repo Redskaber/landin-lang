@@ -181,15 +181,9 @@ impl UnificationTable {
     ///
     /// Per §1.0 原則 6 "通用 > 特例": one clear method for all variable kinds.
     pub fn clear_bindings(&mut self) {
-        for tv in &mut self.ty_vars {
-            *tv = None;
-        }
-        for iv in &mut self.int_vars {
-            *iv = IntVarBinding::Unbound;
-        }
-        for fv in &mut self.float_vars {
-            *fv = FloatVarBinding::Unbound;
-        }
+        self.ty_vars.fill(None);
+        self.int_vars.fill(IntVarBinding::Unbound);
+        self.float_vars.fill(FloatVarBinding::Unbound);
         self.errors.clear();
     }
 

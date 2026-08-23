@@ -31,7 +31,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// not depend on each other's private helpers).
 fn run_program(code: &str) -> (String, i32) {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin = manifest.join("target/debug/landin-stage0");
+    let bin = if cfg!(debug_assertions) {
+        manifest.join("target/debug/landin-stage0")
+    } else {
+        manifest.join("target/release/landin-stage0")
+    };
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let id = COUNTER.fetch_add(1, Ordering::SeqCst);
     let lin_file = std::env::temp_dir().join(format!(
@@ -57,7 +61,11 @@ fn run_program(code: &str) -> (String, i32) {
 /// Used by negative tests that expect compilation to fail.
 fn compile_only(code: &str) -> i32 {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin = manifest.join("target/debug/landin-stage0");
+    let bin = if cfg!(debug_assertions) {
+        manifest.join("target/debug/landin-stage0")
+    } else {
+        manifest.join("target/release/landin-stage0")
+    };
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let id = COUNTER.fetch_add(1, Ordering::SeqCst);
     let lin_file =
@@ -314,14 +322,25 @@ fn main() -> i32 {
 /// Per §2 原則 4 (报错>静默): allocating a huge buffer must exit non-zero
 /// with the "memory allocation failed" message on stderr, not silently
 /// return a NULL pointer that gets dereferenced.
+///
+/// Stage 18.210 fix: Use SIZE_MAX / 2 (i64::MAX) as the allocation size.
+/// This is guaranteed to fail even on overcommit-enabled systems because:
+/// - i64::MAX = 9223372036854775807 (8 EiB)
+/// - No system has 8 EiB of virtual address space
+/// - malloc will return NULL → __landin_alloc panics
+///
+/// Previously used 1 TiB (1024^4) which could succeed on overcommit systems
+/// (Linux with vm.overcommit_memory=1), causing the test to fail.
 #[test]
 fn stage18_178_oom_panics_not_returns_null() {
     let code = r#"
 extern "C" { fn __landin_alloc(size: i64) -> *mut u8; }
 extern "C" { fn __landin_dealloc(ptr: *mut u8); }
 fn main() -> i32 {
-    // Request an absurdly large allocation (1 TiB). libc malloc will fail.
-    let p: *mut u8 = __landin_alloc(1024 * 1024 * 1024 * 1024);
+    // Request an impossibly large allocation (i64::MAX ≈ 8 EiB).
+    // This is guaranteed to fail even on overcommit-enabled systems
+    // because no system has 8 EiB of virtual address space.
+    let p: *mut u8 = __landin_alloc(9223372036854775807);
     // If we reach here, OOM safety failed — write through NULL would crash.
     *p = 42;
     __landin_dealloc(p);

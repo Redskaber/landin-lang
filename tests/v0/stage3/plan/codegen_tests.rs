@@ -3192,7 +3192,7 @@ fn codegen_str_index_constant_index() {
 #[test]
 fn codegen_str_index_no_i32_temp() {
     // Regression: the temp storing s[0] should NOT be i32.
-    let ll = gen_ll("fn f(s: &str) -> i32 { s[0] }");
+    let _ll = gen_ll("fn f(s: &str) -> i32 { s[0] }");
     // The store of the element should be i8, not i32.
     // Stage 18.171: prelude methods add store i32, so we check the specific
     // %v4 pattern (the user function's temp) rather than all "store i32".

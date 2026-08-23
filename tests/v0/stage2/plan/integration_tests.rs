@@ -27,7 +27,7 @@ fn integration_recursive_fibonacci() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -50,7 +50,7 @@ fn integration_iterative_fibonacci() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -120,7 +120,7 @@ fn integration_while_loop() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -172,7 +172,7 @@ fn integration_arithmetic_chain() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -248,7 +248,7 @@ fn integration_tuple_construction() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -262,7 +262,7 @@ fn integration_array_literal() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -284,7 +284,7 @@ fn integration_match_on_int() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -347,7 +347,7 @@ fn integration_many_locals() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -373,7 +373,7 @@ fn integration_nested_if() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -389,7 +389,7 @@ fn integration_let_with_annotation() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -406,7 +406,7 @@ fn integration_explicit_return() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -420,7 +420,7 @@ fn integration_unit_function() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -434,7 +434,7 @@ fn integration_negative_literals() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -509,7 +509,7 @@ fn integration_short_circuit_and_returns_bool() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -523,7 +523,7 @@ fn integration_short_circuit_or_returns_bool() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -537,7 +537,7 @@ fn integration_short_circuit_chained_and() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -551,7 +551,7 @@ fn integration_short_circuit_chained_or() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -565,7 +565,7 @@ fn integration_short_circuit_mixed() {
     "#;
     let result = compile_expect_ok(src);
     assert!(
-        result.mirs.len() >= 1,
+        !result.mirs.is_empty(),
         "prelude adds 4 MIR bodies (is_some/is_none/is_ok/is_err)"
     );
 }
@@ -791,7 +791,7 @@ fn integration_typeck_results_populated() {
     let src = "fn f(x: i32) -> i32 { x + 1 }";
     let result = compile_expect_ok(src);
     assert!(
-        result.typeck_results.len() >= 1,
+        !result.typeck_results.is_empty(),
         "prelude adds typeck results for methods"
     );
     // Stage 18.169: prelude adds methods, find user fn by Int return type

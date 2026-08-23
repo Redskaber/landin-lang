@@ -1179,13 +1179,11 @@ pub(super) fn lower_method_call_expr(
                 && cx.hir.is_some_and(|hir| {
                     // Check if the Adt is the String struct by looking up its DefId.
                     if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
-                        if let Some(owner) = hir.find_owner(*did) {
-                            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) =
-                                owner
-                            {
-                                let name = cx.interner.resolve(&s.ident.name);
-                                return name == "String";
-                            }
+                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                            hir.find_owner(*did)
+                        {
+                            let name = cx.interner.resolve(&s.ident.name);
+                            return name == "String";
                         }
                     }
                     false
@@ -1286,13 +1284,11 @@ pub(super) fn lower_method_call_expr(
             let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
                 && cx.hir.is_some_and(|hir| {
                     if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
-                        if let Some(owner) = hir.find_owner(*did) {
-                            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) =
-                                owner
-                            {
-                                let name = cx.interner.resolve(&s.ident.name);
-                                return name == "Vec";
-                            }
+                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                            hir.find_owner(*did)
+                        {
+                            let name = cx.interner.resolve(&s.ident.name);
+                            return name == "Vec";
                         }
                     }
                     false
@@ -1330,13 +1326,11 @@ pub(super) fn lower_method_call_expr(
             let is_string = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
                 && cx.hir.is_some_and(|hir| {
                     if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
-                        if let Some(owner) = hir.find_owner(*did) {
-                            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) =
-                                owner
-                            {
-                                let name = cx.interner.resolve(&s.ident.name);
-                                return name == "String";
-                            }
+                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                            hir.find_owner(*did)
+                        {
+                            let name = cx.interner.resolve(&s.ident.name);
+                            return name == "String";
                         }
                     }
                     false
@@ -1354,13 +1348,11 @@ pub(super) fn lower_method_call_expr(
             let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
                 && cx.hir.is_some_and(|hir| {
                     if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
-                        if let Some(owner) = hir.find_owner(*did) {
-                            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) =
-                                owner
-                            {
-                                let name = cx.interner.resolve(&s.ident.name);
-                                return name == "Vec";
-                            }
+                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                            hir.find_owner(*did)
+                        {
+                            let name = cx.interner.resolve(&s.ident.name);
+                            return name == "Vec";
                         }
                     }
                     false
@@ -1377,13 +1369,11 @@ pub(super) fn lower_method_call_expr(
             let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
                 && cx.hir.is_some_and(|hir| {
                     if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
-                        if let Some(owner) = hir.find_owner(*did) {
-                            if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) =
-                                owner
-                            {
-                                let name = cx.interner.resolve(&s.ident.name);
-                                return name == "Vec";
-                            }
+                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
+                            hir.find_owner(*did)
+                        {
+                            let name = cx.interner.resolve(&s.ident.name);
+                            return name == "Vec";
                         }
                     }
                     false
@@ -1451,7 +1441,6 @@ fn lower_string_from_str_intrinsic(
     src_local: LocalId,
 ) -> LocalId {
     use crate::mir::place::AggregateKind;
-    use crate::mir::ty::ConstVal;
 
     let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
     let u8_ptr_ty = Ty::new(
@@ -1736,7 +1725,6 @@ fn lower_box_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr, val_local: Loc
 /// Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::new calls.
 fn lower_vec_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
     use crate::mir::place::AggregateKind;
-    use crate::mir::ty::ConstVal;
 
     let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
     let u8_ptr_ty = Ty::new(
@@ -1840,7 +1828,7 @@ fn lower_vec_push_intrinsic(
         expr.span,
     );
     // ptr to ptr (for __landin_vec_grow's void** param)
-    let ptr_to_ptr_ty = Ty::new(
+    let _ptr_to_ptr_ty = Ty::new(
         TyKind::RawPtr(
             crate::mir::ty::Mutability::Mutable,
             Box::new(u8_ptr_ty.clone()),
@@ -1848,7 +1836,7 @@ fn lower_vec_push_intrinsic(
         expr.span,
     );
     // ptr to i64 (for __landin_vec_grow's long long* param)
-    let ptr_to_i64_ty = Ty::new(
+    let _ptr_to_i64_ty = Ty::new(
         TyKind::RawPtr(
             crate::mir::ty::Mutability::Mutable,
             Box::new(i64_ty.clone()),
@@ -2023,8 +2011,6 @@ fn lower_string_push_str_intrinsic(
     recv_local: LocalId,
     src_local: LocalId,
 ) -> LocalId {
-    use crate::mir::ty::ConstVal;
-
     let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
     let u8_ptr_ty = Ty::new(
         TyKind::RawPtr(
@@ -2132,6 +2118,39 @@ fn lower_string_push_str_intrinsic(
     dest
 }
 
+/// Stage 18.208 (TD-VEC-GET-TYPE-INFERENCE fix): Extract the element type
+/// from a `Vec<T>` receiver type.
+///
+/// Given the receiver's type (e.g., `Adt(Vec_def_id, [Point])`), returns
+/// `substs[0]` (the element type `T`). If the receiver type is not a
+/// generic Adt with at least one substitution, falls back to `i32`
+/// (the canonical `Vec<i32>` case).
+///
+/// Per §1.0 原則 6 (通解>特例): one extraction path for all Vec<T> types.
+/// Per §12 (最优 > 最小): root-cause fix — read substs[0] from the type.
+/// Per §10 (DRY): single helper, used by `lower_vec_get_intrinsic`.
+///
+/// Stage 18.208 addendum: The receiver type may be wrapped in a `Ref`
+/// (e.g., `&Vec<T>` for by-ref method calls). We unwrap one level of Ref.
+fn extract_vec_element_type(recv_ty: &Ty, span: Span) -> Ty {
+    // Unwrap one level of Ref (&Vec<T> → Vec<T>).
+    let inner_ty = match &recv_ty.kind {
+        TyKind::Ref(_, _, inner) => inner.as_ref(),
+        _ => recv_ty,
+    };
+    match &inner_ty.kind {
+        TyKind::Adt(_def_id, substs) => {
+            if let Some(elem_ty) = substs.first() {
+                elem_ty.clone()
+            } else {
+                // substs is empty — fallback to i32 (canonical Vec<i32> case).
+                Ty::new(TyKind::Int(crate::ast::IntTy::I32), span)
+            }
+        }
+        _ => Ty::new(TyKind::Int(crate::ast::IntTy::I32), span),
+    }
+}
+
 /// Stage 18.200: Lower `Vec::get(index) -> T`.
 ///
 /// Generates MIR for:
@@ -2201,10 +2220,23 @@ fn lower_vec_get_intrinsic(
         expr.span,
     );
 
-    // Create output local — same type as the index expression's context.
-    // MVP: use i32 as the output type (most common case).
-    // TODO: infer from Vec<T> type parameter (TD-VEC-GET-TYPE-INFERENCE).
-    let out_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), expr.span);
+    // Stage 18.208 (TD-VEC-GET-TYPE-INFERENCE fix): Extract the element type
+    // from the receiver's `Vec<T>` type. The receiver (recv_local) has type
+    // `Adt(Vec_def_id, substs)` where `substs[0]` is the element type `T`.
+    //
+    // Previously hardcoded as `i32`, which:
+    //   - Worked for `Vec<i32>` (canonical case)
+    //   - Failed for `Vec<i64>` (LLVM GEP on wrong-sized out buffer)
+    //   - Failed for `Vec<Point>` (LLVM "Invalid indices for GEP pointer type"
+    //     because out buffer was `alloca i32` but element was `{i32, i32}`)
+    //
+    // Per §1.0 原則 6 (通解>特例): one extraction path for all Vec<T> types.
+    // Per §12 (最优 > 最小): root-cause fix — read substs[0] from the type
+    // instead of hardcoding i32.
+    // Per §1.0 原則 3 (显式 > 隐式): the element type is explicitly carried
+    // in the Vec<T> type's substs, not implicit in the call site.
+    let recv_ty = cx.mir.local(recv_local).ty.clone();
+    let out_ty = extract_vec_element_type(&recv_ty, expr.span);
     let out_local = cx.mir.new_local(out_ty.clone(), None, expr.span);
 
     // Create &out ref (Shared) → cast to *mut u8
@@ -2458,14 +2490,13 @@ fn lower_format_variadic_intrinsic(
     ];
 
     // Add each format arg as an i64 (casted)
-    for i in 1..arg_locals.len() {
-        let arg_ty = cx.mir.local(arg_locals[i]).ty.clone();
+    for &arg_local in arg_locals.iter().skip(1) {
         let arg_i64 = cx.mir.new_local(i64_ty.clone(), None, expr.span);
         cx.push_assign(
             Place::local(arg_i64, expr.span),
             Rvalue::Cast(
                 crate::mir::place::CastKind::Numeric,
-                Operand::Copy(Place::local(arg_locals[i], expr.span)),
+                Operand::Copy(Place::local(arg_local, expr.span)),
                 i64_ty.clone(),
             ),
             expr.span,
