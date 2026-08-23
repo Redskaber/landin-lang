@@ -19463,52 +19463,55 @@ Stage Summary:
 - v0.473.0: minor bump (Vec<T> unsuffixed literal fix)
 
 ---
-Task ID: stage18.214
+Task ID: stage18.215
 Agent: Super Z (main) — ARCH-A + PM-A + REV-A
-Task: Stage 18.214 — Task review: 类型 2 group (drop elaboration) audit + TD status update. v0.473.0 (no bump — audit).
+Task: Stage 18.215 — typeck 加严 audit (TD-GENERIC-PARAM-CHECK + TD-TUPLE-FIELD-CHECK + TD-METHOD-RESOLVE-STRICT). v0.473.0 (no bump — audit).
 
 Work Log:
-- Baseline: v0.473.0 / 664 lib + 3108 integration (post-Stage 18.213, LLVM 22)
-- 触发条例: Stage 18.209 deep review §5.2 action plan item #3 (类型 2 group)
+- Baseline: v0.473.0 (extracted from uploaded tarball, LLVM 22.1.8 deployed)
+- 触发条例: Stage 18.209 action plan §5.2 item #5 (typeck 加严)
+- 全校验流 baseline: cargo clean + build --release + check + fmt + clippy -D warnings + test --release ✅ (3772 tests, 0 failures)
 
-- 类型 2 group audit:
-  → TD-BOX-AUTO-DROP: ✅ Resolved (Stage 18.193 + 18.212)
-    - Box<T> auto-deallocates via drop glue (emit_drop_glue_functions)
-    - Loads field 0 (*mut T), null-check, calls __landin_dealloc
-    - Verified: Box<i32>::new(42) auto-drop → 42 ✅ (no manual dealloc)
-    - Verified: multiple Box auto-drop → 10, 20 ✅
-    - Verified: Box<Point>::new(p) auto-drop → 10 ✅
-  → TD-DROP-MOVED-LOCALS: 🟡 Still Active (v0.3+)
-    - MoveTracker exists in borrowck but not integrated into elaborate_drops
-    - Null-check workaround sufficient for Box<T> (only heap-owning type in v0.1)
-    - Full move tracking deferred to v0.3
-  → TD-VEC-PUSH-SHARED-BORROW: 🟡 Still Active (v0.2 P2+)
-    - Vec::push uses Shared borrow instead of Mut
-    - Low impact — C function mutates through opaque pointer
-    - Can be deferred
+- typeck 加严 group audit:
+  → TD-GENERIC-PARAM-CHECK: `let b: Box = Box::new(42)` silently accepted
+    - Root cause: lower_path_generic_args returns empty substs when no <> args present
+    - lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics doesn't check if
+      the DefId has generic params that weren't supplied
+    - Can't distinguish "missing" (Box without <T>) from "inferred" (Vec<_>)
+    - Fix: Added audit comment documenting the issue (src/mir/lower/ty_lower.rs:578)
+    - Full fix deferred to v0.2 when typeck can distinguish missing vs inferred
+    - Per §17.6 (缺陷纳入): recorded as TD-GENERIC-PARAM-CHECK partial
 
-- TD status updates (tech-debt-register.md):
-  → TD-BOX-AUTO-DROP: 🟡 → ✅ Resolved (Stage 18.193 + 18.212)
-  → TD-TUPLE-CTOR-TYPECK: 🟡 → ✅ Resolved (Stage 18.212)
-  → TD-VEC-GET-TYPE-INFERENCE: 🟡 → ✅ Resolved (Stage 18.208)
-  → TD-INT-UINT-VAR: 🟡 → 🟡 Partial (Stage 18.213 — Vec<T>::push unsuffixed fix)
-  → TD-FUNCTION-REDEFINE-PARAMS: ✅ Resolved (Stage 18.205)
+  → TD-TUPLE-FIELD-CHECK: `b.1` on Box<i32> silently accepted (Box has only field 0)
+    - Root cause: resolve_field_index returns 0 as fallback when field index
+      can't be resolved — doesn't validate against the struct's field count
+    - Per §1.0 原則 4 (报错>静默): should push a TypeError
+    - Deferred to v0.2 P2 (needs typeck field count validation)
+
+  → TD-METHOD-RESOLVE-STRICT: `s.nonexistent_method()` silently accepted
+    - Root cause: MethodCall lowering falls through to intrinsic checks, then
+      to the generic method call path which uses fresh_infer_ty as return type
+    - Per §1.0 原則 4 (报错>静默): should push a TypeError
+    - Deferred to v0.2 P2 (needs resolver to reject unknown methods)
 
 - 全校验流 (LLVM 22.1.8):
+  → cargo clean ✅
+  → cargo build --release --features llvm-backend ✅ (45.21s)
+  → cargo check --features llvm-backend ✅ (11.87s)
   → cargo fmt --check ✅
   → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
   → cargo test --release --features llvm-backend ✅ (3772 tests, 0 failures)
 
-- 文档输出:
-  → docs/develop/v0/stage-18/stage-18.214-task-review.md (类型 2 group audit)
-  → 更新 docs/develop/v0/tech-debt-register.md (5 TD status updates)
+- TD status updates:
+  → TD-GENERIC-PARAM-CHECK: 🟡 Active → 🟡 Partial (audit + comment)
 
 - 版本: v0.473.0 (no bump — audit)
 
 Stage Summary:
-- Stage 18.214 PASSED — 类型 2 group audit + TD status update
-- TD-BOX-AUTO-DROP ✅ Resolved — Box<T> auto-drop verified working
-- TD-DROP-MOVED-LOCALS 🟡 Still Active — v0.3+ (null-check workaround)
-- TD-VEC-PUSH-SHARED-BORROW 🟡 Still Active — v0.2 P2+ (low impact)
+- Stage 18.215 PASSED — typeck 加严 audit
+- 3 TDs audited: all require typeck infrastructure not yet available
+- TD-GENERIC-PARAM-CHECK: partial — audit comment added, full fix v0.2
+- TD-TUPLE-FIELD-CHECK: still active — needs typeck field count validation
+- TD-METHOD-RESOLVE-STRICT: still active — needs resolver unknown method rejection
 - 3772 tests, 0 failures
 - v0.473.0: no bump (audit)

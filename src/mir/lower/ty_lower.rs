@@ -575,6 +575,15 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                         // Stage 18.105 (S6 fix): Pass generic_params for bare type params.
                         let substs =
                             lower_path_generic_args(path, region_counter, hir, generic_params);
+                        // Stage 18.215 (TD-GENERIC-PARAM-CHECK partial):
+                        // If the type has generic params but substs is empty,
+                        // this is a missing type argument (e.g., `let b: Box`).
+                        // Per §1.0 原則 4 (报错>静默): this should be an error.
+                        // However, `Vec<_>` and type inference also produce
+                        // empty substs legitimately. Full check deferred to v0.2
+                        // when typeck can distinguish "missing" vs "inferred".
+                        // For now, silently accept (preserves existing behavior).
+                        // Per §17.6 (缺陷纳入): recorded as TD-GENERIC-PARAM-CHECK.
                         Ty::new(TyKind::Adt(def_id, substs), span)
                     }
                     Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),
