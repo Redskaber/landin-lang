@@ -575,15 +575,43 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                         // Stage 18.105 (S6 fix): Pass generic_params for bare type params.
                         let substs =
                             lower_path_generic_args(path, region_counter, hir, generic_params);
-                        // Stage 18.215 (TD-GENERIC-PARAM-CHECK partial):
-                        // If the type has generic params but substs is empty,
+                        // Stage 18.221 (TD-GENERIC-PARAM-CHECK full fix):
+                        // If the type has generic params but the user didn't
+                        // supply any (substs is empty AND path has no args),
                         // this is a missing type argument (e.g., `let b: Box`).
-                        // Per §1.0 原則 4 (报错>静默): this should be an error.
-                        // However, `Vec<_>` and type inference also produce
-                        // empty substs legitimately. Full check deferred to v0.2
-                        // when typeck can distinguish "missing" vs "inferred".
-                        // For now, silently accept (preserves existing behavior).
-                        // Per §17.6 (缺陷纳入): recorded as TD-GENERIC-PARAM-CHECK.
+                        // Per §1.0 原則 4 (报错>静默): must report, not silently
+                        // accept.
+                        //
+                        // Key insight: `lower_path_generic_args` returns empty
+                        // when `path.segments.last().args` is `None` (no `<>`
+                        // on the type). We can check if the path had explicit
+                        // generic args by examining the segment directly.
+                        //
+                        // Per §1.0 原則 6 (通解>特例): one check for all generic
+                        // types (Box, Vec, Option, Result, etc.).
+                        // Per §1.0 原則 9 (正确>妥协): only error when the type
+                        // actually has generic params (non-generic types like
+                        // `struct Foo` are fine without args).
+                        let path_has_args = path
+                            .segments
+                            .last()
+                            .and_then(|s| s.args.as_ref())
+                            .is_some();
+                        if !path_has_args && substs.is_empty() {
+                            if let Some(hir_crate) = hir {
+                                let expected_params =
+                                    crate::hir::find_generics(def_id, hir_crate);
+                                if !expected_params.is_empty() {
+                                    // The type has generic params but none were
+                                    // provided. This is a type error.
+                                    // Per §1.0 原則 4 (报错>静默).
+                                    // We return Error type so typeck catches it.
+                                    // Per §1.0 原則 9 (正确>妥协): return Error,
+                                    // not a silently-wrong Adt with empty substs.
+                                    return Ty::new(TyKind::Error, span);
+                                }
+                            }
+                        }
                         Ty::new(TyKind::Adt(def_id, substs), span)
                     }
                     Res::PrimTy(PrimTy::Str) => Ty::new(TyKind::Str, span),

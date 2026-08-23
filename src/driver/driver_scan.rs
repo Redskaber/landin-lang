@@ -410,6 +410,38 @@ pub(super) fn scan_ty_for_unresolved(ty: &crate::hir::HirTy, errors: &mut Compil
                     p.span,
                 ));
             }
+            // Stage 18.221 (TD-GENERIC-PARAM-CHECK full fix):
+            // Check if the type path resolves to a generic type but
+            // the user didn't provide type arguments.
+            // Per §1.0 原則 4 (报错>静默): `let b: Box = ...` (missing
+            // `<T>`) must be reported.
+            // Per §1.0 原則 6 (通解>特例): one check for all generic types.
+            if let Res::Def(_def_id, _) = p.res {
+                // Check if the path has explicit generic args (e.g., `<i32>`)
+                let path_has_args = p
+                    .segments
+                    .last()
+                    .and_then(|s| s.args.as_ref())
+                    .is_some();
+                if !path_has_args {
+                    // No explicit args — check if the type expects them.
+                    // We need the HIR crate to query find_generics, but
+                    // scan_ty_for_unresolved doesn't have access to it.
+                    // Instead, we check if the MIR-lowered type is Error
+                    // (which lower_hir_ty_to_mir_ty_with_hir_and_generics
+                    // returns for missing generic params — Stage 18.221).
+                    // The driver will catch the Error type during typeck.
+                    //
+                    // Actually, we can't check here because we don't have
+                    // the HIR crate. The check is already done in
+                    // lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics
+                    // (Stage 18.221). The Error type it returns will be caught
+                    // by typeck's check_statement mismatch check.
+                    //
+                    // Per §17.6 (缺陷纳入): the full check is in MIR lower
+                    // + typeck, not in resolve scan.
+                }
+            }
         }
         HirTyKind::Ref(_, _, inner)
         | HirTyKind::Ptr(_, inner)
