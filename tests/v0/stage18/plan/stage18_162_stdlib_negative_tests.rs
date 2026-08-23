@@ -128,7 +128,7 @@ fn stage18_162_stdlib_string_index_oob() {
 /// Stage 18.162 negative 16: Vec operations (stub).
 #[test]
 fn stage18_162_stdlib_vec_new() {
-    let result = compile("fn main() { let v: Vec<i32> = Vec::new(); }");
+    let result = compile("fn main() { let mut v: Vec<i32> = Vec::new(); }");
     assert!(!result.mirs.is_empty() || result.has_errors());
 }
 

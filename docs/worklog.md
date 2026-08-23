@@ -19837,3 +19837,46 @@ Stage Summary:
 - Known limitation: Error type not yet caught as compile error for all paths
 - 3772 tests, 0 failures, zero regression
 - v0.475.0: no bump (typeck fix)
+
+---
+Task ID: stage18.222
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.222 — TD-VEC-PUSH-SHARED-BORROW fix (Mut borrow for Vec::push). v0.475.0 (no bump — borrowck fix).
+
+Work Log:
+- Baseline: v0.475.0 / 664 lib + 3108 integration (LLVM 22.1.8)
+- 触发条例: Stage 18.219 v0.2 Phase 2 task re-plan → v0.2.4: TD-VEC-PUSH-SHARED-BORROW
+
+- Root cause: lower_vec_push_intrinsic used Shared borrow (BorrowKind::Shared +
+  Mutability::Immutable) instead of Mut borrow to bypass the borrow checker's
+  "not declared mut" error. `v.push(x)` on non-mut v silently worked.
+
+- Fix (src/mir/lower/expr_variants.rs, lower_vec_push_intrinsic):
+  → Changed BorrowKind::Shared → BorrowKind::Mut
+  → Changed Mutability::Immutable → Mutability::Mutable
+  → Per §1.0 原則 4 (报错>静默): `v.push(x)` on non-mut v should error
+  → Per §1.0 原則 6 (通解>特例): one Mut borrow for all Vec::push calls
+  → Per §1.0 原則 9 (正确>妥协): correct borrow semantics, not workaround
+
+- Test fixes: Updated all test files to use `let mut v: Vec` instead of `let v: Vec`
+  for Vec::push tests (5 tests in stage18_208 + 3 tests in stage18_195 + 1 test in stage18_162)
+
+- Verification:
+  → `let v: Vec<i32> = Vec::new(); v.push(42);` → error "cannot borrow as mutable: variable is not declared `mut`" ✅
+  → `let mut v: Vec<i32> = Vec::new(); v.push(42);` → 42 ✅ (no regression)
+  → 3772 tests, 0 failures
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3772 tests, 0 failures)
+
+- 版本: v0.475.0 (no bump — borrowck fix)
+
+Stage Summary:
+- Stage 18.222 PASSED — TD-VEC-PUSH-SHARED-BORROW fix
+- 1 fix: lower_vec_push_intrinsic uses Mut borrow instead of Shared
+- `v.push(x)` on non-mut v now correctly reports "cannot borrow as mutable"
+- 9 tests updated to use `let mut v: Vec`
+- 3772 tests, 0 failures, zero regression
+- v0.475.0: no bump (borrowck fix)

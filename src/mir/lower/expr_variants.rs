@@ -1898,15 +1898,19 @@ fn lower_vec_push_intrinsic(
         expr.span,
     );
 
-    // Step 2: Create pointer to Vec struct via Shared borrow (avoids mut check)
-    // Stage 18.197: Use Shared ref instead of Mut to avoid borrow checker
-    // "not declared mut" error. The C function __landin_vec_push will mutate
-    // via the opaque pointer anyway — this is safe because the MIR intrinsic
-    // is intercepted before borrowck sees the mutation.
+    // Step 2: Create pointer to Vec struct via Mut borrow.
+    // Stage 18.222 (TD-VEC-PUSH-SHARED-BORROW fix): Use Mut borrow
+    // instead of Shared. Previously used Shared to bypass the borrow
+    // checker's "not declared mut" error. Now the borrow checker
+    // correctly handles Vec::push as an intrinsic that mutates the Vec.
+    // Per §1.0 原則 4 (报错>静默): `v.push(x)` on non-mut v should
+    // produce a borrow checker error, not silently work.
+    // Per §1.0 原則 6 (通解>特例): one Mut borrow for all Vec::push calls.
+    // Per §1.0 原則 9 (正确>妥协): correct borrow semantics, not workaround.
     let vec_ref_ty = Ty::new(
         TyKind::Ref(
             crate::mir::ty::Region::Erased,
-            crate::mir::ty::Mutability::Immutable,
+            crate::mir::ty::Mutability::Mutable,
             Box::new(cx.mir.local(recv_local).ty.clone()),
         ),
         expr.span,
@@ -1916,7 +1920,7 @@ fn lower_vec_push_intrinsic(
         Place::local(vec_ref_local, expr.span),
         Rvalue::Ref(
             crate::mir::ty::Region::Erased,
-            crate::mir::place::BorrowKind::Shared,
+            crate::mir::place::BorrowKind::Mut,
             Place::local(recv_local, expr.span),
         ),
         expr.span,

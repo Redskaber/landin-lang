@@ -50,7 +50,7 @@ fn stage18_195_vec_new_empty() {
         "vec-new-empty",
         r#"
 fn main() -> i32 {
-    let v: Vec<i32> = Vec::new();
+    let mut v: Vec<i32> = Vec::new();
     println!("{}", v.len());
     0
 }
@@ -65,7 +65,7 @@ fn stage18_195_vec_new_field_access() {
         "vec-new-field-access",
         r#"
 fn main() -> i32 {
-    let v: Vec<i32> = Vec::new();
+    let mut v: Vec<i32> = Vec::new();
     println!("{} {}", v.len, v.cap);
     0
 }
@@ -80,7 +80,7 @@ fn stage18_195_vec_new_no_import() {
         "vec-new-no-import",
         r#"
 fn main() -> i32 {
-    let v: Vec<i64> = Vec::new();
+    let mut v: Vec<i64> = Vec::new();
     println!("{}", v.len());
     0
 }

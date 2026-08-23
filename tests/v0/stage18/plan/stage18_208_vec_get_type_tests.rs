@@ -63,7 +63,7 @@ fn stage18_208_vec_struct_get_field() {
         r#"
 struct Point { x: i32, y: i32 }
 fn main() -> i32 {
-    let v: Vec<Point> = Vec::new();
+    let mut v: Vec<Point> = Vec::new();
     let p = Point { x: 10, y: 20 };
     v.push(p);
     println!("{}", v.get(0).x);
@@ -83,7 +83,7 @@ fn stage18_208_vec_struct_get_binding() {
         r#"
 struct Point { x: i32, y: i32 }
 fn main() -> i32 {
-    let v: Vec<Point> = Vec::new();
+    let mut v: Vec<Point> = Vec::new();
     let p = Point { x: 30, y: 40 };
     v.push(p);
     let q = v.get(0);
@@ -103,7 +103,7 @@ fn stage18_208_vec_i32_get() {
         "vec-i32-get",
         r#"
 fn main() -> i32 {
-    let v: Vec<i32> = Vec::new();
+    let mut v: Vec<i32> = Vec::new();
     v.push(10);
     v.push(20);
     v.push(30);
@@ -124,7 +124,7 @@ fn stage18_208_vec_i64_get() {
         "vec-i64-get",
         r#"
 fn main() -> i32 {
-    let v: Vec<i64> = Vec::new();
+    let mut v: Vec<i64> = Vec::new();
     v.push(100i64);
     v.push(200i64);
     v.push(300i64);
@@ -146,7 +146,7 @@ fn stage18_208_vec_struct_multiple() {
         r#"
 struct Point { x: i32, y: i32 }
 fn main() -> i32 {
-    let v: Vec<Point> = Vec::new();
+    let mut v: Vec<Point> = Vec::new();
     v.push(Point { x: 1, y: 2 });
     v.push(Point { x: 3, y: 4 });
     println!("{}", v.get(0).x);
@@ -166,7 +166,7 @@ fn stage18_208_vec_oob_panics() {
     let code = r#"
 struct Point { x: i32, y: i32 }
 fn main() -> i32 {
-    let v: Vec<Point> = Vec::new();
+    let mut v: Vec<Point> = Vec::new();
     v.push(Point { x: 10, y: 20 });
     let q = v.get(5);
     println!("{}", q.x);
