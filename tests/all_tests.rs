@@ -571,6 +571,10 @@ mod stage18_206_abi_contract_tests;
 #[path = "v0/stage18/plan/stage18_208_vec_get_type_tests.rs"]
 mod stage18_208_vec_get_type_tests;
 
+// === Stage 18.212: TD-TUPLE-CTOR-TYPECK fix (Box<T> element type) ===
+#[path = "v0/stage18/plan/stage18_212_box_typeck_tests.rs"]
+mod stage18_212_box_typeck_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

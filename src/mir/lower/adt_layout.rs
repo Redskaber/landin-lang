@@ -187,10 +187,26 @@ fn build_adt_layout(def_id: DefId, hir: &HirCrate) -> Option<AdtLayout> {
     let owner = hir.find_owner(def_id)?;
     match owner {
         OwnerNode::Item(HirItem::Struct(s)) => {
+            // Stage 18.212 (TD-TUPLE-CTOR-TYPECK fix): For tuple structs
+            // like `struct Box<T>(*mut T)`, the field type contains `Param(T)`.
+            // We need to use `_with_hir_and_generics` so the generic param
+            // `T` resolves to `Param(0)` instead of `Error`.
+            //
+            // Per §1.0 原則 6 (通解>特例): one path for all structs, both
+            // generic and non-generic. The `generics_of` query returns
+            // empty for non-generic structs (no-op).
+            // Per §16: reads HIR (allowed in MIR lower), produces MIR data.
+            let generic_params = crate::hir::find_generics(def_id, hir);
             let field_tys = s
                 .fields
                 .iter()
-                .map(|f| lower_hir_ty_to_mir_ty(&f.ty))
+                .map(|f| {
+                    super::lower_hir_ty_to_mir_ty_with_hir_and_generics(
+                        &f.ty,
+                        Some(hir),
+                        &generic_params,
+                    )
+                })
                 .collect();
             Some(AdtLayout::Struct { field_tys })
         }

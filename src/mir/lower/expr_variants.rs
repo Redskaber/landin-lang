@@ -1613,13 +1613,6 @@ fn lower_box_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr, val_local: Loc
     let size: i64 = compute_type_size_with_fallback(&val_ty, cx.hir, 8);
 
     let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
-    let u8_ptr_ty = Ty::new(
-        TyKind::RawPtr(
-            crate::mir::ty::Mutability::Mutable,
-            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
-        ),
-        expr.span,
-    );
 
     // Step 2: Create size constant and call __landin_alloc(size).
     let size_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
@@ -1638,7 +1631,19 @@ fn lower_box_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr, val_local: Loc
         expr.span,
     );
     let alloc_fn_local = cx.mir.new_local(alloc_fn_ty, None, expr.span);
-    let alloc_dest = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
+    // Stage 18.212: alloc_dest receives the return from __landin_alloc
+    // (which is *mut u8), but for typeck purposes we want it to be *mut T
+    // so that the store `*alloc_dest = x` type-checks correctly.
+    // The actual LLVM codegen handles the bitcast from *mut u8 to *mut T
+    // via emit_store (Stage 18.190 TD-BOX-NEW-TYPE-COERCE fix).
+    let val_ptr_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(val_ty.clone()),
+        ),
+        expr.span,
+    );
+    let alloc_dest = cx.mir.new_local(val_ptr_ty, None, expr.span);
     let alloc_cont = cx.new_block();
     cx.terminate_kind_and_goto(
         TerminatorKind::Call {
@@ -1652,8 +1657,10 @@ fn lower_box_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr, val_local: Loc
     );
 
     // Step 3: Store x into the heap buffer (*alloc_dest = x).
-    // The alloc_dest is *mut u8, but we need *mut T. For MVP, we store
-    // directly (the codegen Deref projection handles the type cast).
+    // Stage 18.212: alloc_dest is *mut u8 (from __landin_alloc return type),
+    // but we store val_ty through it. The codegen emit_store handles the
+    // pointer bitcast (Stage 18.190 TD-BOX-NEW-TYPE-COERCE fix).
+    // Per §1.0 原則 9 (正确>妥协): store the actual value type, not u8.
     cx.push_assign(
         Place {
             kind: PlaceKind::Projection(
@@ -1686,11 +1693,31 @@ fn lower_box_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr, val_local: Loc
         found
     };
 
+    // Stage 18.212 (TD-TUPLE-CTOR-TYPECK fix): Construct Box<T> with the
+    // correct element type substs. Previously hardcoded `Vec::new().into()`
+    // (empty substs) and `u8_ptr_ty` as the field type — causing typeck to
+    // see Box<u8> regardless of the actual T.
+    //
+    // Now we extract the element type from the value's type and:
+    // 1. Set substs = [val_ty] so Box<Point> has substs [Point]
+    // 2. Set field_ty = *mut T (matching the prelude `struct Box<T>(*mut T)`)
+    //
+    // Per §1.0 原則 6 (通解>特例): one path for all Box<T> types.
+    // Per §12 (最优 > 最小): root-cause fix — use actual substs, not empty.
     let box_ty = if let Some(did) = box_def_id {
-        Ty::new(TyKind::Adt(did, std::vec::Vec::new().into()), expr.span)
+        Ty::new(TyKind::Adt(did, vec![val_ty.clone()].into()), expr.span)
     } else {
         Ty::new(TyKind::Error, expr.span)
     };
+
+    // The field type is *mut T (matching `struct Box<T>(*mut T)`).
+    let box_field_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
+            Box::new(val_ty.clone()),
+        ),
+        expr.span,
+    );
 
     let dest = cx.mir.new_local(box_ty.clone(), None, expr.span);
     let cont = cx.new_block();
@@ -1700,8 +1727,8 @@ fn lower_box_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr, val_local: Loc
             AggregateKind::Adt(
                 box_def_id.unwrap_or(crate::hir::DefId::new(0)),
                 0,
-                std::vec::Vec::new().into(),
-                vec![u8_ptr_ty.clone()],
+                vec![val_ty.clone()].into(),
+                vec![box_field_ty.clone()],
             ),
             vec![Operand::Copy(Place::local(alloc_dest, expr.span))],
         ),

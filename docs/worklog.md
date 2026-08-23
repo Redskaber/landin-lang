@@ -19312,3 +19312,79 @@ Stage Summary:
 - Zero regressions vs LLVM 19
 - Per §3.2 (验收): 全绿 ✅
 - v0.471.0: no bump (infra)
+
+---
+Task ID: stage18.212
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.212 — TD-TUPLE-CTOR-TYPECK fix (Box<T> element type substitution). v0.471.0 → v0.472.0.
+
+Work Log:
+- Baseline: v0.471.0 / 664 lib + 3104 integration (post-Stage 18.211, LLVM 22)
+- 触发条例: Stage 18.209 deep review §5.2 action plan item #1 (TD-TUPLE-CTOR-TYPECK)
+- §13.1 设计对齐: 03-type-system.md §13 (monomorphization) + task-11-monomorphization-design.md
+
+- 依赖与基础设施完整能力审查 (per user directive):
+  → Task 11 monomorphization Phase 1-3: ✅ COMPLETE (substs propagation + substitution + collection)
+  → Task 11 Phase 4c per-mono codegen: ✅ COMPLETE (pipeline-integrated)
+  → find_generics query: ✅ COMPLETE (Task 11 Phase 1a, src/hir/generics.rs)
+  → lower_hir_ty_to_mir_ty_with_hir_and_generics: ✅ COMPLETE (src/mir/lower/ty_lower.rs)
+  → substitute function: ✅ COMPLETE (src/mir/substitute.rs, Task 11 Phase 2)
+  → compute_type_size_with_fallback: ✅ COMPLETE (Stage 18.203)
+  → 结论: 依赖完整, typeck 基础设施已就绪
+
+- Root cause analysis:
+  → Box<T>(*mut T) field type lowered via `lower_hir_ty_to_mir_ty` (no generics context)
+    → Param(T) resolves to Error (not Param(0))
+    → AdtLayout field_tys = [Error] → codegen uses u8 as field type
+  → lower_box_new_intrinsic hardcoded:
+    → substs = empty (not [val_ty])
+    → field_ty = *mut u8 (not *mut T)
+    → alloc_dest type = *mut u8 (not *mut T)
+  → typeck sees Box<u8> regardless of actual T → "expected u8, found Point/i64"
+
+- Fix (3 files changed):
+  1. src/mir/lower/adt_layout.rs (build_adt_layout):
+     → Use find_generics + lower_hir_ty_to_mir_ty_with_hir_and_generics
+     → Param(T) resolves to Param(0) instead of Error
+     → Per §1.0 原則 6 (通解>特例): one path for all structs (generic + non-generic)
+     → Per §16: reads HIR (allowed in MIR lower), produces MIR data
+
+  2. src/mir/lower/expr_variants.rs (lower_box_new_intrinsic):
+     → box_ty: Adt(did, [val_ty]) instead of Adt(did, empty)
+     → box_field_ty: *mut T instead of *mut u8
+     → alloc_dest local type: *mut T instead of *mut u8
+     → AggregateKind::Adt substs: [val_ty] instead of empty
+     → AggregateKind::Adt field_tys: [*mut T] instead of [*mut u8]
+     → Per §1.0 原則 6 (通解>特例): one path for all Box<T> types
+     → Per §12 (最优 > 最小): root-cause fix — use actual substs
+     → Removed unused u8_ptr_ty (dead code, per §1.0 原則 5 去除兼容思维)
+
+- Verification:
+  → Box<i32>::new(42) → 42 ✅ (no regression, canonical case)
+  → Box<i64>::new(42i64) → 42 ✅ (was: "expected u8, found i64")
+  → Box<Point>::new(p) + *b.0 → Point{10,20} ✅ (was: "expected u8, found Point")
+  → Box<Point> + (*b.0).x → 10 ✅ (field access via deref)
+
+- 4 new tests (tests/v0/stage18/plan/stage18_212_box_typeck_tests.rs):
+  → stage18_212_box_i64_new (was failing)
+  → stage18_212_box_i32_new (regression)
+  → stage18_212_box_struct_new (was failing)
+  → stage18_212_box_multiple (multiple independent allocations)
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3772 tests, 0 failures)
+    - 664 lib + 3108 integration = 3772 total
+
+- 版本: v0.471.0 → v0.472.0 (minor bump — Box<T> typeck fix)
+
+Stage Summary:
+- Stage 18.212 PASSED — TD-TUPLE-CTOR-TYPECK fix (Box<T> element type substitution)
+- 3 fixes:
+  1. build_adt_layout: use find_generics + _with_hir_and_generics for field types
+  2. lower_box_new_intrinsic: use [val_ty] substs + *mut T field type
+  3. alloc_dest: use *mut T type for typeck correctness
+- 4 new tests, 0 regressions
+- Box<T> now works for all T (i32, i64, Point, etc.)
+- v0.472.0: minor bump (Box<T> typeck fix)
