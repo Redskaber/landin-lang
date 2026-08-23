@@ -187,6 +187,29 @@ impl TypeChecker {
                         return Ty::from_kind(TyKind::Error);
                     }
                 }
+                // Stage 18.217 (TD-TUPLE-FIELD-CHECK): Validate tuple struct
+                // field index for Adt types. For `struct Box<T>(*mut T)` (1 field),
+                // `b.1` should be reported as out-of-bounds.
+                // Per §1.0 原則 4 (报错>静默): must report, not silently accept.
+                // Per §1.0 原則 9 (正确>妥协): only check when Adt has known
+                // layout (not Infer/Error/Param — those defer).
+                if let TyKind::Adt(def_id, _) = &base_ty.kind {
+                    if let Some(crate::mir::body::AdtLayout::Struct { field_tys }) =
+                        mir.adt_layouts.get(def_id)
+                    {
+                        if (field_id.0 as usize) >= field_tys.len() {
+                            self.errors.push(TypeError::new(
+                                format!(
+                                    "field index out of bounds: index {} but struct has {} field(s)",
+                                    field_id.0,
+                                    field_tys.len()
+                                ),
+                                place_span,
+                            ));
+                            return Ty::from_kind(TyKind::Error);
+                        }
+                    }
+                }
                 field_ty.clone()
             }
             ProjectionElem::Index(idx_local) => {

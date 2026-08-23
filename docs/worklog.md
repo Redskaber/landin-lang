@@ -19561,3 +19561,53 @@ Stage Summary:
 - 结论: GO (5/5, 0 P0/P1, 7 P2 active 全部有计划)
 - v0.1 核心功能完整确认
 - 下一步: 进入 v0.2 Phase 2 (typeck generic instantiation + MIR intrinsic ops)
+
+---
+Task ID: stage18.217
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.217 — TD-TUPLE-FIELD-CHECK fix (tuple struct field index validation). v0.473.0 → v0.474.0.
+
+Work Log:
+- Baseline: v0.473.0 / 664 lib + 3108 integration (LLVM 22.1.8)
+- 触发条例: Stage 18.216 deep review → v0.2 Phase 2 prep → typeck 加严
+- §13.1 设计对齐: §1.0 原則 4 (报错>静默) + §1.0 原則 9 (正确>妥协)
+
+- 依赖与基础设施审查:
+  → AdtLayouts: ✅ (crate-level shared, Stage 15.8)
+  → infer_projection in typeck: ✅ (src/typeck/infer.rs:145)
+  → Tuple index bounds check already exists for Tuple types: ✅ (Stage 18.72)
+  → Missing: Adt (struct) field index bounds check
+  → 结论: 依赖完整, 可立即实施
+
+- Root cause: `infer_projection` (src/typeck/infer.rs) only validated
+  tuple field indices (TyKind::Tuple), not Adt struct field indices.
+  For `struct Box<T>(*mut T)` (1 field), `b.1` was silently accepted
+  (returned field_ty which was *mut T, not an error).
+
+- Fix (src/typeck/infer.rs, infer_projection, Field arm):
+  → Added Adt field index validation: when base_ty is Adt(def_id, _)
+    and the AdtLayout is Struct{field_tys}, check that field_id.0 < field_tys.len()
+  → If out of bounds: push TypeError "field index out of bounds" + return Error
+  → Per §1.0 原則 4 (报错>静默): must report, not silently accept
+  → Per §1.0 原則 9 (正确>妥协): only check when layout is known
+    (Infer/Error/Param types defer — don't push false-positive errors)
+  → Per §1.0 原則 6 (通解>特例): one check covers all Adt struct types
+
+- Verification:
+  → `b.1` on `Box<i32>` → "field index out of bounds: index 1 but struct has 1 field(s)" ✅
+  → `b.0` on `Box<i32>` → 42 ✅ (no regression)
+  → All 3772 tests pass, 0 failures
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3772 tests, 0 failures)
+
+- 版本: v0.473.0 → v0.474.0 (minor bump — typeck field index validation)
+
+Stage Summary:
+- Stage 18.217 PASSED — TD-TUPLE-FIELD-CHECK fix
+- 1 fix: infer_projection validates Adt struct field index against AdtLayout
+- `b.1` on Box<i32> now correctly reports "field index out of bounds"
+- 3772 tests, 0 failures, zero regression
+- v0.474.0: minor bump (typeck field index validation)
