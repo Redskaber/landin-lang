@@ -15,6 +15,41 @@ use crate::session::Span;
 use crate::typeck::error::TypeError;
 // Stage 14.111: HashMap import removed — UnificationTable now uses Vec.
 
+/// Stage 18.220 (TD-INT-UINT-VAR): Result of resolving an IntVar —
+/// preserves signedness (Int vs Uint).
+/// Per §1.0 原則 3 (显式>隐式): explicit about signed vs unsigned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntOrUint {
+    Int(IntTy),
+    Uint(UintTy),
+}
+
+/// Convert a UintTy to the corresponding IntTy with the same bit width.
+/// Per §1.0 原則 6 (通解>特例): one mapping for all widths.
+fn uint_to_int(u: UintTy) -> IntTy {
+    match u {
+        UintTy::U8 => IntTy::I8,
+        UintTy::U16 => IntTy::I16,
+        UintTy::U32 => IntTy::I32,
+        UintTy::U64 => IntTy::I64,
+        UintTy::U128 => IntTy::I128,
+        UintTy::Usize => IntTy::Isize,
+    }
+}
+
+/// Convert an IntTy to the corresponding UintTy with the same bit width.
+#[allow(dead_code)]
+fn int_to_uint(i: IntTy) -> UintTy {
+    match i {
+        IntTy::I8 => UintTy::U8,
+        IntTy::I16 => UintTy::U16,
+        IntTy::I32 => UintTy::U32,
+        IntTy::I64 => UintTy::U64,
+        IntTy::I128 => UintTy::U128,
+        IntTy::Isize => UintTy::Usize,
+    }
+}
+
 /// Binding state for an integer inference variable.
 ///
 /// Uses union-find with explicit `Linked` pointers so that
@@ -25,10 +60,19 @@ use crate::typeck::error::TypeError;
 enum IntVarBinding {
     /// No constraints yet — can unify with any integer type.
     Unbound,
-    /// Bound to a concrete integer type.
+    /// Bound to a concrete signed integer type.
     Bound(IntTy),
+    /// Stage 18.220 (TD-INT-UINT-VAR full fix): Bound to a concrete
+    /// unsigned integer type. Previously, Uint was converted to Int
+    /// (losing unsignedness) via `bind_int_var_to_uint`. Now we
+    /// preserve the signedness so `let x: u32 = 1;` correctly
+    /// typeck-checks as Uint(U32), not Int(I32).
+    /// Per §1.0 原則 4 (报错>静默): the old lossy conversion silently
+    /// accepted `let x: u32 = -1;` (should be an error).
+    /// Per §1.0 原則 6 (通解>特例): one IntVarBinding handles both
+    /// signed and unsigned, distinguished by the variant.
+    BoundUint(UintTy),
     /// Linked to another IntVid (union-find parent pointer).
-    /// `resolve_int_var` follows these links to find the root.
     Linked(IntVid),
 }
 
@@ -298,6 +342,23 @@ impl UnificationTable {
         let root = self.int_var_root(vid);
         match self.int_vars.get(root.0 as usize) {
             Some(IntVarBinding::Bound(i)) => Some(*i),
+            // Stage 18.220: BoundUint converts to corresponding IntTy
+            // for backward compat (callers expect IntTy). The key fix
+            // is in `resolve_int_or_uint_var` which preserves signedness.
+            Some(IntVarBinding::BoundUint(u)) => Some(uint_to_int(*u)),
+            _ => None,
+        }
+    }
+
+    /// Stage 18.220 (TD-INT-UINT-VAR): Resolve an int variable to either
+    /// a signed IntTy or unsigned UintTy, preserving signedness.
+    /// Per §1.0 原則 3 (显式>隐式): the return type is explicit about
+    /// whether the variable is signed or unsigned.
+    pub fn resolve_int_or_uint_var(&self, vid: IntVid) -> Option<IntOrUint> {
+        let root = self.int_var_root(vid);
+        match self.int_vars.get(root.0 as usize) {
+            Some(IntVarBinding::Bound(i)) => Some(IntOrUint::Int(*i)),
+            Some(IntVarBinding::BoundUint(u)) => Some(IntOrUint::Uint(*u)),
             _ => None,
         }
     }
@@ -323,8 +384,11 @@ impl UnificationTable {
                 None => ty.clone(),
             },
             TyKind::Infer(InferVar::IntVar(vid)) => self
-                .resolve_int_var(*vid)
-                .map(|i| Ty::new(TyKind::Int(i), Span::DUMMY))
+                .resolve_int_or_uint_var(*vid)
+                .map(|iou| match iou {
+                    IntOrUint::Int(i) => Ty::new(TyKind::Int(i), Span::DUMMY),
+                    IntOrUint::Uint(u) => Ty::new(TyKind::Uint(u), Span::DUMMY),
+                })
                 .unwrap_or_else(|| ty.clone()),
             TyKind::Infer(InferVar::FloatVar(vid)) => self
                 .resolve_float_var(*vid)
@@ -491,10 +555,20 @@ impl UnificationTable {
                         self.int_vars[ra.0 as usize] = IntVarBinding::Linked(rb);
                         self.int_vars[rb.0 as usize] = IntVarBinding::Bound(i);
                     }
+                    // Stage 18.220: a BoundUint, b unbound — propagate
+                    (Some(IntVarBinding::BoundUint(u)), Some(IntVarBinding::Unbound)) => {
+                        self.int_vars[ra.0 as usize] = IntVarBinding::Linked(rb);
+                        self.int_vars[rb.0 as usize] = IntVarBinding::BoundUint(u);
+                    }
                     // a unbound, b bound — propagate b's value to a's root
                     (Some(IntVarBinding::Unbound), Some(IntVarBinding::Bound(i))) => {
                         self.int_vars[rb.0 as usize] = IntVarBinding::Linked(ra);
                         self.int_vars[ra.0 as usize] = IntVarBinding::Bound(i);
+                    }
+                    // Stage 18.220: a unbound, b BoundUint — propagate
+                    (Some(IntVarBinding::Unbound), Some(IntVarBinding::BoundUint(u))) => {
+                        self.int_vars[rb.0 as usize] = IntVarBinding::Linked(ra);
+                        self.int_vars[ra.0 as usize] = IntVarBinding::BoundUint(u);
                     }
                     // Both bound — must match, else type error
                     (Some(IntVarBinding::Bound(ai)), Some(IntVarBinding::Bound(bi)))
@@ -786,23 +860,12 @@ impl UnificationTable {
         self.int_vars[root.0 as usize] = IntVarBinding::Bound(i);
     }
 
-    /// Bind an int variable to a UintTy.
-    ///
-    /// Since our IntVid only stores `IntTy` (signed), we need to convert
-    /// the UintTy to the corresponding IntTy with the same bit width.
-    /// This is not ideal — a proper implementation would use a separate
-    /// `IntOrUintVar` — but for Stage 2.4b this preserves the bit width
-    /// instead of hardcoding i32.
+    /// Stage 18.220 (TD-INT-UINT-VAR): Bind an int variable to a UintTy.
+    /// Now preserves unsignedness by using `BoundUint` instead of converting
+    /// to IntTy. Per §1.0 原則 6 (通解>特例): one function handles all Uint widths.
     fn bind_int_var_to_uint(&mut self, vid: IntVid, u: UintTy) {
-        let corresponding_int = match u {
-            UintTy::U8 => IntTy::I8,
-            UintTy::U16 => IntTy::I16,
-            UintTy::U32 => IntTy::I32,
-            UintTy::U64 => IntTy::I64,
-            UintTy::U128 => IntTy::I128,
-            UintTy::Usize => IntTy::Isize,
-        };
-        self.bind_int_var(vid, corresponding_int);
+        let root = self.int_var_root(vid);
+        self.int_vars[root.0 as usize] = IntVarBinding::BoundUint(u);
     }
 
     fn bind_float_var(&mut self, vid: FloatVid, f: FloatTy) {

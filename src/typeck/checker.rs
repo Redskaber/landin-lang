@@ -350,22 +350,14 @@ pub(super) fn types_match_loose(a: &crate::mir::ty::Ty, b: &crate::mir::ty::Ty) 
         // means `let x: usize = 1;` ends up with place=usize, rvalue=isize
         // (the IntVar was bound to isize, the corresponding Int for usize).
         // Without this loose match, valid code like `let x: u32 = 1;` would
-        // spuriously fail typeck.
-        // Per §1.0 原則 9 "正确 > 妥协": workaround for the unify table's
-        // lossy Uint→Int conversion. The proper fix is a separate
-        // IntOrUintVar (v0.2 work).
-        (TyKind::Int(crate::ast::IntTy::I8), TyKind::Uint(crate::ast::UintTy::U8)) => true,
-        (TyKind::Uint(crate::ast::UintTy::U8), TyKind::Int(crate::ast::IntTy::I8)) => true,
-        (TyKind::Int(crate::ast::IntTy::I16), TyKind::Uint(crate::ast::UintTy::U16)) => true,
-        (TyKind::Uint(crate::ast::UintTy::U16), TyKind::Int(crate::ast::IntTy::I16)) => true,
-        (TyKind::Int(crate::ast::IntTy::I32), TyKind::Uint(crate::ast::UintTy::U32)) => true,
-        (TyKind::Uint(crate::ast::UintTy::U32), TyKind::Int(crate::ast::IntTy::I32)) => true,
-        (TyKind::Int(crate::ast::IntTy::I64), TyKind::Uint(crate::ast::UintTy::U64)) => true,
-        (TyKind::Uint(crate::ast::UintTy::U64), TyKind::Int(crate::ast::IntTy::I64)) => true,
-        (TyKind::Int(crate::ast::IntTy::I128), TyKind::Uint(crate::ast::UintTy::U128)) => true,
-        (TyKind::Uint(crate::ast::UintTy::U128), TyKind::Int(crate::ast::IntTy::I128)) => true,
-        (TyKind::Int(crate::ast::IntTy::Isize), TyKind::Uint(crate::ast::UintTy::Usize)) => true,
-        (TyKind::Uint(crate::ast::UintTy::Usize), TyKind::Int(crate::ast::IntTy::Isize)) => true,
+        // Stage 18.220 (TD-INT-UINT-VAR full fix): Removed the Int↔Uint
+        // same-width loose match pairs. The unify table now preserves
+        // signedness via `BoundUint`, so `let x: u32 = 1;` correctly
+        // resolves the IntVar to Uint(U32), not Int(I32). The loose
+        // match is no longer needed.
+        // Per §1.0 原則 4 (报错>静默): Int and Uint of same width are
+        // now distinct types (matching Rust semantics).
+        // Per §1.0 原則 5 (去除兼容思维): removed the workaround.
         // Stage 18.71: Bool literal in let binding — when the literal `true`
         // is assigned to a bool local, the IntVar (from the literal's Infer)
         // is bound to... hmm, actually Bool literals have type Bool directly,

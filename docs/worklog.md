@@ -19728,3 +19728,58 @@ Stage Summary:
 - v0.1 核心功能完整确认
 - v0.2 Phase 2 task re-plan 已制定
 - v0.474.0: no bump (audit)
+
+---
+Task ID: stage18.220
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.220 — TD-INT-UINT-VAR full fix (IntOrUintVar separation in unify table). v0.474.0 → v0.475.0.
+
+Work Log:
+- Baseline: v0.474.0 / 664 lib + 3108 integration (LLVM 22.1.8)
+- 触发条例: Stage 18.219 v0.2 Phase 2 task re-plan → v0.2.1: TD-INT-UINT-VAR (full)
+- §13.1 设计对齐: §1.0 原則 4 (报错>静默) + §1.0 原則 5 (去除兼容思维) + §1.0 原則 6 (通解>特例)
+
+- Root cause:
+  → IntVarBinding only stored IntTy (signed) → bind_int_var_to_uint converted
+    Uint to Int (losing unsignedness)
+  → `let x: u32 = 1;` resolved IntVar to Int(I32) instead of Uint(U32)
+  → types_match_loose had 12 hardcoded Int↔Uint same-width pairs as workaround
+
+- Fix (3 files changed):
+  1. src/typeck/unify.rs:
+     → Added IntVarBinding::BoundUint(UintTy) variant
+     → Added IntOrUint enum (Int(IntTy) | Uint(UintTy))
+     → Added resolve_int_or_uint_var() — preserves signedness
+     → Updated resolve() to use resolve_int_or_uint_var → produces TyKind::Uint for Uint
+     → Updated bind_int_var_to_uint to use BoundUint (not lossy conversion)
+     → Updated IntVar×IntVar merge to handle BoundUint propagation
+     → Per §1.0 原則 4 (报错>静默): Int and Uint are now distinct types
+     → Per §1.0 原則 6 (通解>特例): one IntVarBinding handles both signed/unsigned
+
+  2. src/typeck/checker.rs (types_match_loose):
+     → Removed 12 hardcoded Int↔Uint same-width loose match pairs
+     → Per §1.0 原則 5 (去除兼容思维): removed the workaround
+     → Int and Uint of same width are now distinct (matching Rust semantics)
+
+  3. uint_to_int / int_to_uint helper functions added (for backward compat in resolve_int_var)
+
+- Verification:
+  → `let x: u32 = 42;` → 42 ✅ (correctly resolves to Uint(U32))
+  → `let y: u64 = 100;` → 100 ✅
+  → `let z: i32 = 10;` → 10 ✅ (no regression for signed)
+  → Vec<i64>::push(100) → 100 ✅ (unsuffixed literal, no regression)
+  → 3772 tests, 0 failures
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3772 tests, 0 failures)
+
+- 版本: v0.474.0 → v0.475.0 (minor bump — IntOrUintVar separation)
+
+Stage Summary:
+- Stage 18.220 PASSED — TD-INT-UINT-VAR full fix (IntOrUintVar separation)
+- 3 files changed: unify.rs (BoundUint + IntOrUint), checker.rs (removed loose match)
+- `let x: u32 = 1;` now correctly resolves to Uint(U32), not Int(I32)
+- 3772 tests, 0 failures, zero regression
+- v0.475.0: minor bump (typeck Int/Uint separation)
