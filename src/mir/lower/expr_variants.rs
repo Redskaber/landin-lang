@@ -302,12 +302,9 @@ pub(super) fn lower_call_expr(
             if type_name == "Box" && method_name == "new" && args.len() == 1 {
                 return lower_box_new_intrinsic(cx, expr, arg_locals[0]);
             }
-            // Stage 18.195 (TD-VEC-MVP): Intercept Vec::new() — returns empty Vec.
-            // Vec::new() creates Vec { ptr: null, len: 0, cap: 0 }.
-            // Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::new calls.
-            if type_name == "Vec" && method_name == "new" && args.is_empty() {
-                return lower_vec_new_intrinsic(cx, expr);
-            }
+            // Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec::new() removed.
+            // Now handled by prelude impl: `impl<T> Vec<T> { fn new() -> Vec<T> { ... } }`
+            // Per §1.0 原則 6 (通解 > 特解): standard method resolution, not hardcoded.
         }
     }
 
@@ -1277,47 +1274,10 @@ pub(super) fn lower_method_call_expr(
             }
         }
 
-        // Stage 18.195 (TD-VEC-MVP): Vec::len() intrinsic.
-        // `v.len()` → extract the len field (field 1) from the Vec struct.
-        // Per §1.0 原則 6 (通解>特例): same Field projection pattern as str::len.
-        if method_name_str == "len" && args.is_empty() {
-            let is_vec = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Adt(_, _))
-                && cx.hir.is_some_and(|hir| {
-                    if let crate::mir::ty::TyKind::Adt(did, _) = &recv_ty.kind {
-                        if let Some(crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s))) =
-                            hir.find_owner(*did)
-                        {
-                            let name = cx.interner.resolve(&s.ident.name);
-                            return name == "Vec";
-                        }
-                    }
-                    false
-                });
-            if is_vec {
-                let len_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
-                let dest = cx.mir.new_local(len_ty.clone(), None, expr.span);
-                let cont = cx.new_block();
-                cx.push_assign(
-                    Place::local(dest, expr.span),
-                    Rvalue::Use(Operand::Copy(Place {
-                        kind: PlaceKind::Projection(
-                            Box::new(Place::local(recv_local, receiver.span)),
-                            ProjectionElem::Field(FieldId(1), len_ty),
-                        ),
-                        span: expr.span,
-                    })),
-                    expr.span,
-                );
-                cx.terminate_and_goto(
-                    Terminator {
-                        kind: TerminatorKind::Goto(cont),
-                        span: expr.span,
-                    },
-                    cont,
-                );
-                return dest;
-            }
-        }
+        // Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec::len() removed.
+        // Now handled by prelude impl: `impl<T> Vec<T> { fn len(&self) -> i64 { self.len } }`
+        // Per §1.0 原則 6 (通解 > 特解): standard method resolution, not hardcoded.
+        // Per §1.0 原則 5 (去除兼容思维): dead code removed.
 
         // Stage 18.198 (TD-STRING-INTRINSICS): String::push_str(s) intrinsic.
         // `s.push_str(src)` → call __landin_string_push_str(&s, src.ptr, src.len).
@@ -1759,88 +1719,11 @@ fn lower_box_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr, val_local: Loc
     dest
 }
 
-/// Stage 18.195 (TD-VEC-MVP): Lower `Vec::new() -> Vec<T>`.
-///
-/// Creates Vec { ptr: null, len: 0, cap: 0 } — an empty Vec with no allocation.
-/// When push is called, alloc/realloc will be invoked as needed.
-///
-/// Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::new calls.
-fn lower_vec_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
-    use crate::mir::place::AggregateKind;
-
-    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
-    let u8_ptr_ty = Ty::new(
-        TyKind::RawPtr(
-            crate::mir::ty::Mutability::Mutable,
-            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
-        ),
-        expr.span,
-    );
-
-    // Look up Vec struct's DefId from HIR by name.
-    let vec_def_id = {
-        let mut found = None;
-        if let Some(hir) = cx.hir {
-            let vec_spur = cx.interner.get("Vec");
-            if let Some(target_name) = vec_spur {
-                for (def_id, owner) in &hir.owners {
-                    if let crate::hir::OwnerNode::Item(crate::hir::HirItem::Struct(s)) = owner {
-                        if s.ident.name == target_name {
-                            found = Some(*def_id);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        found
-    };
-
-    let vec_ty = if let Some(did) = vec_def_id {
-        Ty::new(TyKind::Adt(did, std::vec::Vec::new().into()), expr.span)
-    } else {
-        Ty::new(TyKind::Error, expr.span)
-    };
-
-    let dest = cx.mir.new_local(vec_ty.clone(), None, expr.span);
-    let cont = cx.new_block();
-
-    // Construct Vec { ptr: null, len: 0, cap: 0 }
-    cx.push_assign(
-        Place::local(dest, expr.span),
-        Rvalue::Aggregate(
-            AggregateKind::Adt(
-                vec_def_id.unwrap_or(crate::hir::DefId::new(0)),
-                0,
-                std::vec::Vec::new().into(),
-                vec![u8_ptr_ty.clone(), i64_ty.clone(), i64_ty.clone()],
-            ),
-            vec![
-                Operand::Constant(Const {
-                    val: ConstVal::Int(0),
-                    ty: u8_ptr_ty.clone(),
-                }),
-                Operand::Constant(Const {
-                    val: ConstVal::Int(0),
-                    ty: i64_ty.clone(),
-                }),
-                Operand::Constant(Const {
-                    val: ConstVal::Int(0),
-                    ty: i64_ty.clone(),
-                }),
-            ],
-        ),
-        expr.span,
-    );
-    cx.terminate_and_goto(
-        Terminator {
-            kind: TerminatorKind::Goto(cont),
-            span: expr.span,
-        },
-        cont,
-    );
-    dest
-}
+// Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): lower_vec_new_intrinsic REMOVED.
+// Vec::new() is now handled by the prelude impl block:
+//   impl<T> Vec<T> { fn new() -> Vec<T> { Vec { ptr: 0 as *mut T, len: 0, cap: 0 } } }
+// Per §1.0 原則 5 (去除兼容思维): dead code removed.
+// Per §1.0 原則 6 (通解 > 特解): standard method resolution, not hardcoded.
 
 /// Stage 18.229 (v0.2.5e): Lower `Vec::push(x)` via MIR intrinsics.
 ///

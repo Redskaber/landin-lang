@@ -124,4 +124,11 @@ impl String {
 // Per §2 原則 9 (正确>妥协): MVP uses ptr/len/cap layout (not Vec<u8> wrapper
 // like Rust's Vec<T> { buf: RawVec<T>, len }). Simplification acceptable.
 struct Vec<T> { ptr: *mut T, len: i64, cap: i64 }
+// Stage 18.238 (TD-INTRINSIC-OVERUSE Phase 1): Vec methods via prelude impl.
+// Per §1.0 原則 6 (通解 > 特解): methods defined in prelude source, not
+// hardcoded MIR lower intrinsics. Standard method resolution handles these.
+impl<T> Vec<T> {
+    fn new() -> Vec<T> { Vec { ptr: 0 as *mut T, len: 0, cap: 0 } }
+    fn len(&self) -> i64 { self.len }
+}
 "#;

@@ -20747,3 +20747,45 @@ Stage Summary:
 - 3 new runtime tests, 3794 total, 0 failures
 - Pointer arithmetic fully working (compile + runtime)
 - Unblocks: TD-INTRINSIC-OVERUSE migration (pointer arithmetic now complete)
+
+---
+Task ID: stage18.238
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.238 — TD-INTRINSIC-OVERUSE Phase 1: Remove redundant Vec::len/new hardcodes. v0.484.0 → v0.485.0.
+
+Work Log:
+- Baseline: v0.484.0 / 3794 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.237 completed pointer arithmetic — TD-INTRINSIC-OVERUSE unblocked
+- §17.8 task review: all prerequisites satisfied (pointer arith, Store-through-Deref, prelude impl)
+
+- Phase 1: Remove redundant Vec::len() and Vec::new() hardcoded intrinsics:
+  1. src/stdlib/prelude.rs: Added `impl<T> Vec<T> { fn new() -> Vec<T> { ... } fn len(&self) -> i64 { self.len } }`
+  2. src/mir/lower/expr_variants.rs: Removed `Vec::len()` hardcoded check (30 LOC of 特解)
+  3. src/mir/lower/expr_variants.rs: Removed `Vec::new()` interception (10 LOC of 特解)
+  4. src/mir/lower/expr_variants.rs: Removed `lower_vec_new_intrinsic` function (70 LOC of 特解)
+  5. Total: ~110 LOC of 特解 removed, replaced by prelude impl (通解)
+
+- Per §1.0 原則 6 (通解 > 特解): Vec::len and Vec::new now use standard method
+  resolution via prelude impl blocks, not hardcoded MIR lower interception.
+- Per §1.0 原則 5 (去除兼容思维): dead code removed.
+- Per §10 (DRY): one prelude impl for all Vec types (generic, not per-type).
+
+- Verification:
+  → `Vec::new().len()` → returns 0 ✅ (via prelude impl, not hardcoded)
+  → All Vec tests pass (197_vec_push, 200_vec_get, 203_elem_size, 208_vec_get_type)
+  → Zero regression
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --release --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3794 tests, 0 failures)
+
+- 版本: v0.485.0 (bump — Phase 1 intrinsic removal)
+
+Stage Summary:
+- Stage 18.238 PASSED — TD-INTRINSIC-OVERUSE Phase 1: Remove Vec::len/new hardcodes
+- 110 LOC of 特解 removed (Vec::len hardcoded check + Vec::new interception + function)
+- Replaced by prelude impl: `impl<T> Vec<T> { fn new() -> Vec<T> {...} fn len(&self) -> i64 {...} }`
+- 3794 tests, 0 failures, zero regression
+- Next: Phase 2 — migrate String::from_str, Box::new, format! to prelude impl (needs extern C in prelude)
