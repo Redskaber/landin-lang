@@ -1064,6 +1064,8 @@ pub(super) fn run_post_typeck_validations(
         (u32::MAX - 104, "__landin_string_push_str"),
         (u32::MAX - 105, "__landin_vec_get"),
         (u32::MAX - 106, "__landin_format_variadic"),
+        // Stage 18.231 (v0.2.5g): __landin_i64_to_str primitive (§16.5).
+        (u32::MAX - 107, "__landin_i64_to_str"),
     ];
     for (offset, name) in &runtime_helpers {
         fn_name_by_def_id.insert(crate::hir::DefId::new(*offset), name.to_string());

@@ -190,6 +190,16 @@ void* __landin_realloc(void* ptr, long long old_size, long long new_size) {
     }
     return new_ptr;
 }
+/* Stage 18.231 (v0.2.5g): Integer-to-string conversion primitive.
+   __landin_i64_to_str(buf, buf_cap, val) → writes decimal repr of val to buf.
+   Returns the number of bytes written (excl. null terminator).
+   If buf is NULL, returns the number of bytes that WOULD be written.
+   Wraps snprintf — same pattern as __landin_alloc (wraps malloc).
+   Per §16.5: This is a primitive C helper (not migrated to MIR).
+   Per §1.0 原則 6 (通解>特例): one i64_to_str for all integer formatting. */
+long long __landin_i64_to_str(char* buf, long long buf_cap, long long val) {
+    return (long long)snprintf(buf, (size_t)buf_cap, "%ld", (long)val);
+}
 /* Stage 18.197 (TD-VEC-PUSH): Vec push helper.
    __landin_vec_push(vec_ptr, val_ptr, elem_size) → grows if needed, stores val, increments len.
    vec_ptr points to the Vec struct { ptr: *mut T, len: i64, cap: i64 }.

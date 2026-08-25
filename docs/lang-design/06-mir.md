@@ -1132,6 +1132,7 @@ pub enum StatementKind {
 - `__landin_dealloc(ptr)` — libc free wrapper (07-codegen.md §5.2)
 - `__landin_realloc(ptr, old, new)` — libc realloc wrapper (07-codegen.md §5)
 - `__landin_memcpy(dst, src, n)` — libc memcpy wrapper
+- `__landin_i64_to_str(buf, cap, val)` — snprintf wrapper (Stage 18.231 新增)
 - `__landin_panic_*()` — abort runtime (07-codegen.md §4)
 - `__landin_oom_abort()` — OOM abort (07-codegen.md §5.2)
 
@@ -1146,8 +1147,54 @@ v0.2.5c: codegen 支持 (LLVMBuildLoad2, LLVMBuildGEP2, LLVMBuildStore) ← Stag
 v0.2.5d: 迁移 __landin_vec_get → MIR intrinsic (最简单, 验证设计) ← Stage 18.228 done
 v0.2.5e: 迁移 __landin_vec_push → MIR intrinsic ← Stage 18.229 done
 v0.2.5f: 迁移 __landin_string_push_str → MIR intrinsic ← Stage 18.230 done
-v0.2.5g: 迁移 __landin_format_variadic → MIR intrinsic (最复杂) ← Stage 18.231 (next)
+v0.2.5g: 迁移 __landin_format_variadic → MIR intrinsic (最复杂) ← Stage 18.231 done (ALL 4 C HELPERS MIGRATED)
 ```
+
+#### 16.6.5 Stage 18.231 实现详情 (v0.2.5g `__landin_format_variadic` migration — FINAL)
+
+**Migration**: `lower_format_variadic_intrinsic` rewritten from C helper Call → MIR intrinsic sequence
+with **format string walker loop** (most complex migration — first MIR loop over a string).
+
+**Dependency Gap Identified & Resolved** (per §17.8 task review):
+- **Missing primitive**: `__landin_i64_to_str` (snprintf wrapper) — needed for integer→string conversion.
+  Added to §16.5 + runtime.rs + function_sigs.rs + driver_validations.rs as a new primitive.
+  Pattern: same as `__landin_alloc` (wraps malloc), `__landin_memcpy` (wraps memcpy).
+
+**MIR Sequence** (format string walker loop):
+1. Allocate 4096-byte output buffer via `__landin_alloc` (primitive)
+2. Extract fmt.ptr + fmt.len from &str fat pointer
+3. Initialize: out_len=0, fmt_idx=0, arg_idx=1
+4. fmt_loop_bb (BACK-EDGE TARGET): while (fmt_idx < fmt_len)
+   - GEP + Load byte at fmt_ptr[fmt_idx]
+   - If byte == '{': SwitchInt on arg_idx → per-arg block
+     - Each arg block: Cast arg to i64, GEP dest, Call __landin_i64_to_str, advance
+   - Else (literal_bb): Store byte, out_len++, fmt_idx++
+   - Back-edge to fmt_loop_bb
+5. loop_exit_bb: cap = out_len + 1 (matches C helper convention)
+6. Construct String { ptr, len, cap } via Aggregate
+
+**Key Decisions**:
+- **Per-arg SwitchInt dispatch**: Since MIR can't dynamically index `arg_locals`, emit one
+  block per known arg (at lower time). Handles arbitrary arg count.
+- **Fixed 4096-byte buffer**: matches C helper MVP (runtime.rs:351). Dynamic growth deferred.
+- **i64 args only**: All format args cast to i64. &str arg support deferred to v0.3.
+- **cap = out_len + 1**: matches C helper's `result_len + 1` convention (null terminator).
+
+**Test verification**:
+- 8 regression tests pass: `stage18_186_format_*` (literal, empty, args, placeholder, multi-args)
+- 8 regression tests pass: `stage18_205_format_*` (method calls, multi-args, cap field)
+- Full suite: 3783 tests, 0 failures
+
+**TD-C-WRAPPER-OVERUSE Migration COMPLETE**: All 4 compound C helpers migrated to MIR intrinsics.
+- ✅ `__landin_vec_get` → MIR (Stage 18.228)
+- ✅ `__landin_vec_push` → MIR (Stage 18.229)
+- ✅ `__landin_string_push_str` → MIR (Stage 18.230)
+- ✅ `__landin_format_variadic` → MIR (Stage 18.231)
+
+**New primitive added**: `__landin_i64_to_str` (§16.5) — snprintf wrapper for integer formatting.
+
+**v0.2 Phase 2 COMPLETE**. Next: v0.3 self-hosting preparation (remove C helpers from runtime.rs
+once Landin stdlib can declare `extern "C"` functions).
 
 #### 16.6.4 Stage 18.230 实现详情 (v0.2.5f `__landin_string_push_str` migration)
 

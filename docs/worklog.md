@@ -20331,3 +20331,64 @@ Stage Summary:
 - 3783 tests, 0 failures, zero regression
 - MVP: always realloc, no OOM check, PHI avoidance, memcpy via C helper (§17.6 record)
 - Next: Stage 18.231 (v0.2.5g) — migrate __landin_format_variadic → MIR intrinsic (most complex)
+
+---
+Task ID: stage18.231
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.231 — v0.2.5g: Migrate __landin_format_variadic → MIR intrinsic (FINAL). v0.479.0 → v0.480.0.
+
+Work Log:
+- Baseline: v0.479.0 / 3783 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.230 (v0.2.5f string_push_str migration) complete → v0.2.5g: migrate format_variadic
+- §17.8 task review: identified dependency gap — missing __landin_i64_to_str primitive
+- §17.6 (缺陷纳入): TD-C-WRAPPER-OVERUSE migration — 4th (FINAL) of 4 C helpers
+
+- Task review doc: docs/develop/v0/stage-18/stage-18.231-task-review.md
+- Dev log doc: docs/develop/v0/stage-18/stage-18.231-dev-log.md
+
+- Dependency gap resolution (per §17.8):
+  → Identified: __landin_format_variadic uses snprintf (runtime.rs:360) — NOT a §16.5 primitive
+  → Resolution: Added __landin_i64_to_str as new primitive (snprintf wrapper)
+  → Files: runtime.rs + function_sigs.rs + driver_validations.rs + 06-mir.md §16.5
+  → Pattern: same as __landin_alloc (wraps malloc), __landin_memcpy (wraps memcpy)
+
+- Migration implementation (src/mir/lower/expr_variants.rs):
+  → Rewrote lower_format_variadic_intrinsic: C helper Call → MIR format string walker loop
+  → MIR back-edge loop: fmt_loop_bb ↔ loop_body_bb/literal_bb ↔ fmt_loop_bb
+  → Per-arg SwitchInt dispatch: one block per known arg (handles arbitrary arg count)
+  → Uses __landin_alloc (primitive, §16.5) for buffer allocation
+  → Uses __landin_i64_to_str (NEW primitive, §16.5) for integer→string conversion
+  → cap = out_len + 1 (matches C helper convention)
+  → MVP: fixed 4096-byte buffer, i64 args only, &str args deferred to v0.3
+
+- New primitive added: __landin_i64_to_str (§16.5)
+  → snprintf wrapper for integer formatting
+  → DefId: u32::MAX - 107
+  → Signature: (OpaquePtr, I64, I64) → I64
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo clean ✅ (removed 994 files, 537.1MiB)
+  → cargo build --release --features llvm-backend ✅ (46.94s)
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3783 tests, 0 failures)
+    - 675 lib (unchanged)
+    - 3108 integration (unchanged)
+
+- Design doc updated: docs/lang-design/06-mir.md §16.5 + §16.6 + §16.6.5
+  → §16.5: Added __landin_i64_to_str to primitive list
+  → §16.6: Marked v0.2.5g done (ALL 4 C HELPERS MIGRATED)
+  → §16.6.5: Added migration details + dependency gap resolution
+
+- 版本: v0.480.0 (bump — final C helper migration + new primitive)
+
+Stage Summary:
+- Stage 18.231 PASSED — v0.2.5g: __landin_format_variadic → MIR intrinsic migration (FINAL)
+- 4th (FINAL) of 4 C helpers migrated (TD-C-WRAPPER-OVERUSE COMPLETE)
+- Dependency gap identified & resolved: added __landin_i64_to_str primitive
+- MIR format string walker loop (back-edge) — most complex MIR intrinsic to date
+- 3783 tests, 0 failures, zero regression
+- MVP: fixed 4096-byte buffer, i64 args only, &str args deferred to v0.3 (§17.6 record)
+- v0.2 Phase 2 COMPLETE
+- Next: v0.3 self-hosting preparation (remove C helpers from runtime.rs)

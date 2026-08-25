@@ -80,6 +80,12 @@ pub(crate) fn build_fn_sigs_map(
             EmitType::OpaquePtr,
             &[EmitType::OpaquePtr, EmitType::I64, EmitType::I64],
         ),
+        // Stage 18.231: __landin_i64_to_str primitive (§16.5).
+        (
+            "__landin_i64_to_str",
+            EmitType::I64,
+            &[EmitType::OpaquePtr, EmitType::I64, EmitType::I64],
+        ),
         (
             "__landin_vec_push",
             EmitType::Void,
