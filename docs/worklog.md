@@ -19937,3 +19937,85 @@ Stage Summary:
 - v0.1 complete: 8/11 TDs resolved, 3772 tests, 0 failures
 - Remaining 3 TDs all need v0.2+ infrastructure
 - Next: v0.2 Phase 2 design document for MIR intrinsic ops
+
+---
+Task ID: stage18.224
+Agent: Super Z (main) — Stage Committee (ARCH-A + QA-A + REV-A + PM-A + ALG-C + SKL-A)
+Task: Stage 18.224 — v0.1 final deep review §14.5 D1-D8 (chain close 18.205-18.223). v0.475.0 (no bump — audit).
+
+Work Log:
+- Baseline: v0.475.0 / 664 lib + 3108 integration = 3772 tests (LLVM 22.1.8)
+- 触发条例: §14.5 阶段末尾深度审查 (chain close for 18.205-18.223, 19 stages)
+
+- 全校验流:
+  → cargo clean ✅ (removed 2633 files, 1.7GiB)
+  → cargo build --release ✅
+  → cargo check ✅
+  → cargo fmt --check ✅
+  → cargo clippy -D warnings ✅ (0 warnings)
+  → cargo test --release ✅ (3772 tests, 0 failures)
+
+- D1-D8 八维度审查:
+  → D1 架构: ✅ — 8 single-source-of-truth utilities, IntOrUintVar, Mut borrow
+  → D2 技术债: ✅ — 8 resolved, 1 partial, 2 v0.2+ deferred
+  → D3 测试覆盖: ✅ — 3772 tests, 0 failures, 27.8% negative ratio
+  → D4 就绪度: ✅ — v0.1 核心功能完整
+  → D5 设计: ✅ — 无过度设计
+  → D6 性能: ✅ — ~9.5s
+  → D7 文档: ✅ — 19 dev-logs + 4 task-reviews + 4 deep-reviews
+  → D8 路径覆盖: ✅ — full coverage
+
+- 委员会投票: 5/5 GO
+
+- v0.1 交付物确认:
+  → 3772 tests, 0 failures
+  → LLVM 22.1 (221)
+  → 8/11 TDs resolved
+  → Box<T> + Vec<T> + String + format! + typeck + borrowck 完整
+
+- 版本: v0.475.0 (no bump — audit)
+
+Stage Summary:
+- Stage 18.224 PASSED — v0.1 final deep review (D1-D8)
+- 审查范围: 19 stages (18.205-18.223), v0.469.0 → v0.475.0
+- 结论: GO (5/5, 0 P0/P1, 3 P2 active/partial 全部有计划)
+- v0.1 核心功能完整确认
+- 进入 v0.2 Phase 2
+
+---
+Task ID: stage18.225
+Agent: Super Z (main) — ARCH-A + PM-A + REV-A
+Task: Stage 18.225 — v0.2 Phase 2 design: MIR intrinsic ops design document. v0.475.0 (no bump — design doc).
+
+Work Log:
+- Baseline: v0.475.0 / 3772 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.223 task review → v0.2.5a: MIR intrinsic ops design document
+- §13.1 设计对齐: docs/stage-committee-process.md v6.4 §13.1 + §17.6
+
+- Design document added to docs/lang-design/06-mir.md §16:
+  → §16.1 设计动机: 4 compound C helpers 违反 §11 + §1.3 + §12
+  → §16.2 新增 MIR Rvalue 变体: Load, GetElementPtr
+  → §16.3 新增 Statement 变体: Store
+  → §16.4 迁移计划: vec_get(Low) → vec_push(Medium) → string_push_str(Medium) → format_variadic(High)
+  → §16.5 保留的原语 C helpers (alloc/dealloc/realloc/memcpy/panic — 不在迁移范围)
+  → §16.6 实现优先级: v0.2.5a-g (设计→实现→迁移)
+  → §16.7 设计原则: §1.0 §10 §11 §12 引用
+
+- Per §13.1 (设计对齐): 设计文档以 docs/lang-design/ 为最高优先级参考
+- Per §17.6 (缺陷纳入): TD-C-WRAPPER-OVERUSE 完整迁移计划已记录
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
+  → cargo test --release --features llvm-backend ✅ (3772 tests, 0 failures)
+
+- 版本: v0.475.0 (no bump — design doc)
+
+Stage Summary:
+- Stage 18.225 PASSED — v0.2 Phase 2 design: MIR intrinsic ops design document
+- 设计文档: docs/lang-design/06-mir.md §16 (MIR Intrinsic Ops)
+- 新增 MIR 变体: Rvalue::Load, Rvalue::GetElementPtr, StatementKind::Store
+- 迁移计划: 4 compound C helpers → MIR intrinsics (v0.2.5b-g)
+- 保留 6 primitive C helpers (设计文档明确允许)
+- 3772 tests, 0 failures
+- v0.475.0: no bump (design doc)

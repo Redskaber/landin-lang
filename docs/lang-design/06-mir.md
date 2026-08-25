@@ -1053,3 +1053,106 @@ MIR 结构（无 Call 上的扩展字段）。
 ---
 
 **下一文档**: [`07-codegen.md`](./07-codegen.md) — LLVM IR 生成
+
+---
+
+## 16. MIR Intrinsic Ops 设计 (v0.2 Phase 2, Stage 18.225 新增)
+
+> 本节由 Stage 18.225 依据流程 v6.4 §13.1 (设计对齐) + §17.6 (缺陷纳入) 生成。
+> 设计目标: 替换 4 个复合 C runtime helpers 为 MIR-level intrinsic ops,
+> 为 v0.3 自举做准备 (TD-C-WRAPPER-OVERUSE)。
+
+### 16.1 设计动机
+
+当前 4 个复合操作通过 C runtime helpers 实现:
+- `__landin_vec_push(vec_ptr, val_ptr, elem_size)` — Vec 增长 + 存储 + len++
+- `__landin_vec_get(vec_ptr, index, out_ptr, elem_size)` — 边界检查 + 元素加载
+- `__landin_string_push_str(str_ptr, src_ptr, src_len)` — String 增长 + 字节拷贝
+- `__landin_format_variadic(...)` — 格式化字符串构造 (va_list)
+
+这些 C helpers 违反:
+- §11 接口隔离: codegen 直接依赖 C runtime 内部细节
+- §1.3 拒绝特判: Vec::push 变成编译器特判类型
+- §12 最优 > 最小: C helper 是 MVP 简化, 最优方案是 MIR-level intrinsic
+
+### 16.2 新增 MIR Rvalue 变体
+
+```rust
+pub enum Rvalue {
+    // ... existing variants ...
+
+    /// Stage 18.225: Load value from raw pointer.
+    /// `*ptr` → load the value pointed to by `ptr`.
+    /// Codegen: `LLVMBuildLoad2`.
+    /// Per §1.0 原則 6 (通解>特例): one Load for all pointer types.
+    Load(Operand /* ptr */, Ty /* pointee type */),
+
+    /// Stage 18.225: Get element pointer (GEP).
+    /// `&base[offset]` → compute address of element at offset.
+    /// Codegen: `LLVMBuildGEP2` / `LLVMBuildStructGEP2`.
+    /// Per §1.0 原則 6 (通解>特例): one GEP for all indexing.
+    GetElementPtr {
+        base: Operand,       // pointer to struct/array
+        indices: Vec<Operand>, // field index or array index
+        result_ty: Ty,      // pointer type
+    },
+}
+```
+
+### 16.3 新增 Statement 变体
+
+```rust
+pub enum StatementKind {
+    // ... existing variants ...
+
+    /// Stage 18.225: Store value to raw pointer.
+    /// `*ptr = val` → store value at pointer address.
+    /// Per §1.0 原則 6 (通解>特例): one Store for all pointer types.
+    Store {
+        ptr: Place,     // pointer to store to
+        val: Operand,   // value to store
+        val_ty: Ty,     // value type (for codegen)
+    },
+}
+```
+
+### 16.4 迁移计划
+
+| C Helper | MIR Intrinsic 替换 | 复杂度 |
+|----------|-------------------|--------|
+| `__landin_vec_get` | Load + GetElementPtr + BinaryOp(icmp) + SwitchInt(bounds) | Low |
+| `__landin_vec_push` | Load(len) + BinaryOp(icmp len>=cap) + Alloc(realloc) + Store(val) + Store(len+1) | Medium |
+| `__landin_string_push_str` | Load(len/cap) + BinaryOp(icmp) + Alloc(realloc) + memcpy loop + Store(new_len) | Medium |
+| `__landin_format_variadic` | MIR-level format string walker + per-arg type dispatch | High |
+
+### 16.5 保留的原语 C Helpers
+
+以下 C helpers 是设计文档明确允许的, **不在迁移范围内**:
+- `__landin_alloc(size)` — libc malloc wrapper (07-codegen.md §5.2)
+- `__landin_dealloc(ptr)` — libc free wrapper (07-codegen.md §5.2)
+- `__landin_realloc(ptr, old, new)` — libc realloc wrapper (07-codegen.md §5)
+- `__landin_memcpy(dst, src, n)` — libc memcpy wrapper
+- `__landin_panic_*()` — abort runtime (07-codegen.md §4)
+- `__landin_oom_abort()` — OOM abort (07-codegen.md §5.2)
+
+Per §13.2: 这些原语在 v0.3 自举后将变成 Landin stdlib 的 `extern "C"` 声明。
+
+### 16.6 实现优先级
+
+```
+v0.2.5a: 设计文档 (本节) ← 当前
+v0.2.5b: 添加 Rvalue::Load, Rvalue::GetElementPtr, StatementKind::Store
+v0.2.5c: codegen 支持 (LLVMBuildLoad2, LLVMBuildGEP2, LLVMBuildStore)
+v0.2.5d: 迁移 __landin_vec_get → MIR intrinsic (最简单, 验证设计)
+v0.2.5e: 迁移 __landin_vec_push → MIR intrinsic
+v0.2.5f: 迁移 __landin_string_push_str → MIR intrinsic
+v0.2.5g: 迁移 __landin_format_variadic → MIR intrinsic (最复杂)
+```
+
+### 16.7 设计原则
+
+- §1.0 原則 6 (通解>特例): Load/Store/GEP 是通用操作, 不针对特定类型
+- §11 接口隔离: MIR intrinsic 在 MIR 层定义, codegen 只翻译 MIR
+- §12 最优 > 最小: 用 MIR ops 替换 C helpers, 不是 hack
+- §10 DRY: Load/Store/GEP 复用现有 codegen 基础设施 (emit_load/emit_store/emit_gep_field)
+- §1.0 原則 4 (报错>静默): 边界检查在 MIR 层通过 SwitchInt 实现, 不在 C 层
