@@ -1827,17 +1827,44 @@ fn lower_vec_new_intrinsic(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
     dest
 }
 
-/// Stage 18.195 (TD-VEC-MVP): Lower `Vec::push(x)`.
+/// Stage 18.229 (v0.2.5e): Lower `Vec::push(x)` via MIR intrinsics.
+///
+/// Replaces the previous `__landin_vec_push` C helper Call with a pure MIR
+/// sequence using the MIR intrinsic ops (Load + GetElementPtr + Store) added
+/// in Stage 18.226 and codegen-enabled in Stage 18.227. The growth logic
+/// (conditional realloc) is expressed via `SwitchInt` + `Call(__landin_realloc)`.
 ///
 /// Generates MIR for:
-///   1. len = v.len (field 1)
-///   2. cap = v.cap (field 2)
-///   3. if len == cap: realloc (or alloc if cap == 0), update v.ptr and v.cap
-///   4. store x at v.ptr[len]
-///   5. v.len = len + 1
+///   1. Extract `vec.ptr` (field 0), `vec.len` (field 1), `vec.cap` (field 2)
+///   2. `need_grow = BinaryOp(Ge, len, cap)` — len >= cap → must grow
+///   3. `SwitchInt(need_grow, [(0, store_bb)], otherwise=grow_bb)` — branch
+///   4. grow_bb: `is_zero = BinaryOp(Eq, cap, 0)`; `SwitchInt(is_zero, [(1, zero_cap_bb)], otherwise=nonzero_cap_bb)`
+///   5. zero_cap_bb: `new_cap = 4` (initial capacity); goto alloc_bb
+///   6. nonzero_cap_bb: `new_cap = cap + cap` (2x growth); goto alloc_bb
+///   7. alloc_bb: `new_bytes = new_cap * elem_size`; `old_bytes = cap * elem_size`;
+///      `new_ptr = Call(__landin_realloc, [data_ptr, old_bytes, new_bytes])`;
+///      `Store(vec.ptr, new_ptr)`; `Store(vec.cap, new_cap)`; goto store_bb
+///   8. store_bb: `current_ptr = Use(Projection(recv, Field(0)))` (reload — handles growth);
+///      `elem_ptr = GetElementPtr(current_ptr, [len], *mut T)`;
+///      `Store(Projection(elem_ptr, Deref), val)` — `*elem_ptr = val`;
+///      `new_len = BinaryOp(Add, len, 1)`; `Store(vec.len, new_len)`; goto after
 ///
-/// MVP: initial capacity = 4, growth factor = 2x.
-/// Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::push calls.
+/// Per §1.0 原則 6 (通解>特解): one MIR sequence for all Vec<T> types —
+/// the element type T flows through `extract_vec_element_type` (Stage 18.208).
+/// Per §1.0 原則 4 (报错>静默): OOM panics via `__landin_realloc` (visible).
+/// Per §10 DRY: reuses `extract_vec_element_type`, `compute_type_size_with_fallback`,
+/// `MemoryEmitter` methods, `Place::Projection(Deref)` pattern (Stage 14.66).
+/// Per §11 接口隔离: MIR lowering emits MIR intrinsics; codegen only translates MIR.
+/// Per §12 (最优 > 最小): typed Load + Store replaces byte-by-byte memcpy loop.
+///
+/// **MVP scope (§17.6 record)**:
+/// - **Always realloc**: libc `realloc(NULL, size) == malloc(size)` per C standard.
+///   When `cap == 0`, `vec.ptr` is NULL, so `__landin_realloc(NULL, 0, new_bytes)`
+///   is equivalent to `malloc(new_bytes)`. One Call path instead of two.
+/// - **No OOM check**: `__landin_realloc` itself panics on OOM (runtime.rs:185).
+/// - **PHI avoidance**: Reload `vec.ptr` in store_bb via `Projection(recv, Field(0))`.
+///   Handles both growth (field updated) and no-growth (field unchanged) cases.
+///   Simpler MIR — no PHI support needed.
 fn lower_vec_push_intrinsic(
     cx: &mut MirLowerCtxt,
     expr: &HirExpr,
@@ -1846,205 +1873,367 @@ fn lower_vec_push_intrinsic(
 ) -> LocalId {
     use crate::mir::ty::ConstVal;
 
-    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
-    let u8_ptr_ty = Ty::new(
-        TyKind::RawPtr(
-            crate::mir::ty::Mutability::Mutable,
-            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
-        ),
-        expr.span,
-    );
-    // ptr to ptr (for __landin_vec_grow's void** param)
-    let _ptr_to_ptr_ty = Ty::new(
-        TyKind::RawPtr(
-            crate::mir::ty::Mutability::Mutable,
-            Box::new(u8_ptr_ty.clone()),
-        ),
-        expr.span,
-    );
-    // ptr to i64 (for __landin_vec_grow's long long* param)
-    let _ptr_to_i64_ty = Ty::new(
-        TyKind::RawPtr(
-            crate::mir::ty::Mutability::Mutable,
-            Box::new(i64_ty.clone()),
-        ),
-        expr.span,
-    );
+    let span = expr.span;
+    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), span);
+    let bool_ty = Ty::new(TyKind::Bool, span);
 
-    // Step 1: Extract len (field 1) and cap (field 2) from Vec.
-    let len_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
-    cx.push_assign(
-        Place::local(len_local, expr.span),
-        Rvalue::Use(Operand::Copy(Place {
-            kind: PlaceKind::Projection(
-                Box::new(Place::local(recv_local, expr.span)),
-                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
-            ),
-            span: expr.span,
-        })),
-        expr.span,
-    );
-
-    let cap_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
-    cx.push_assign(
-        Place::local(cap_local, expr.span),
-        Rvalue::Use(Operand::Copy(Place {
-            kind: PlaceKind::Projection(
-                Box::new(Place::local(recv_local, expr.span)),
-                ProjectionElem::Field(FieldId(2), i64_ty.clone()),
-            ),
-            span: expr.span,
-        })),
-        expr.span,
-    );
-
-    // Step 2: Create pointer to Vec struct via Mut borrow.
-    // Stage 18.222 (TD-VEC-PUSH-SHARED-BORROW fix): Use Mut borrow
-    // instead of Shared. Previously used Shared to bypass the borrow
-    // checker's "not declared mut" error. Now the borrow checker
-    // correctly handles Vec::push as an intrinsic that mutates the Vec.
-    // Per §1.0 原則 4 (报错>静默): `v.push(x)` on non-mut v should
-    // produce a borrow checker error, not silently work.
-    // Per §1.0 原則 6 (通解>特例): one Mut borrow for all Vec::push calls.
-    // Per §1.0 原則 9 (正确>妥协): correct borrow semantics, not workaround.
-    let vec_ref_ty = Ty::new(
-        TyKind::Ref(
-            crate::mir::ty::Region::Erased,
-            crate::mir::ty::Mutability::Mutable,
-            Box::new(cx.mir.local(recv_local).ty.clone()),
-        ),
-        expr.span,
-    );
-    let vec_ref_local = cx.mir.new_local(vec_ref_ty.clone(), None, expr.span);
-    cx.push_assign(
-        Place::local(vec_ref_local, expr.span),
-        Rvalue::Ref(
-            crate::mir::ty::Region::Erased,
-            crate::mir::place::BorrowKind::Mut,
-            Place::local(recv_local, expr.span),
-        ),
-        expr.span,
-    );
-    // Cast &Vec → *mut u8 (opaque pointer for C function)
-    let vec_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
-    cx.push_assign(
-        Place::local(vec_ptr_local, expr.span),
-        Rvalue::Cast(
-            crate::mir::place::CastKind::Pointer,
-            Operand::Copy(Place::local(vec_ref_local, expr.span)),
-            u8_ptr_ty.clone(),
-        ),
-        expr.span,
-    );
-
-    // Step 3: Create pointer to val via Shared borrow
-    // Stage 18.213 (TD-INT-UINT-VAR partial fix): If the val's type is
-    // still Infer(IntVar) at MIR-lower time (unsuffixed integer literal),
-    // try to extract the expected element type from the Vec<T> receiver's
-    // substs[0]. This unifies the literal's IntVar with the Vec's element
-    // type, so typeck's default_unresolved won't blindly default it to i32.
-    //
-    // For example, `v.push(100)` where `v: Vec<i64>`:
-    //   - val_local's type is Infer(IntVar) (unsuffixed 100)
-    //   - recv_local's type is Adt(Vec_def_id, [i64])
-    //   - We extract substs[0] = i64 and use it as val_ty
-    //   - typeck sees the val as i64, not Infer → no default to i32
-    //
-    // Per §1.0 原則 6 (通解>特例): one extraction path for all Vec<T> types.
-    // Per §12 (最优 > 最小): root-cause fix — read substs[0] from Vec<T>.
-    // Per §1.0 原則 3 (显式 > 隐式): the element type is explicit in Vec<T>.
+    // Stage 18.208: Extract the element type T from `Vec<T>` (or `&Vec<T>`).
     let recv_ty = cx.mir.local(recv_local).ty.clone();
     let val_ty = {
         let raw_val_ty = cx.mir.local(val_local).ty.clone();
-        // If val type is Infer, try to get the element type from Vec<T>
         if matches!(raw_val_ty.kind, TyKind::Infer(_)) {
-            extract_vec_element_type(&recv_ty, expr.span)
+            extract_vec_element_type(&recv_ty, span)
         } else {
             raw_val_ty
         }
     };
-    let val_ref_ty = Ty::new(
-        TyKind::Ref(
-            crate::mir::ty::Region::Erased,
-            crate::mir::ty::Mutability::Immutable,
+
+    // The Vec.ptr field has type `*mut T`. Construct it explicitly so the
+    // Projection carries the right field type (per §1.0 原則 3 显式 > 隐式).
+    let elem_ptr_ty = Ty::new(
+        TyKind::RawPtr(
+            crate::mir::ty::Mutability::Mutable,
             Box::new(val_ty.clone()),
         ),
-        expr.span,
-    );
-    let val_ref_local = cx.mir.new_local(val_ref_ty.clone(), None, expr.span);
-    cx.push_assign(
-        Place::local(val_ref_local, expr.span),
-        Rvalue::Ref(
-            crate::mir::ty::Region::Erased,
-            crate::mir::place::BorrowKind::Shared,
-            Place::local(val_local, expr.span),
-        ),
-        expr.span,
-    );
-    // Cast &T → *mut u8 (opaque pointer)
-    let val_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
-    cx.push_assign(
-        Place::local(val_ptr_local, expr.span),
-        Rvalue::Cast(
-            crate::mir::place::CastKind::Pointer,
-            Operand::Copy(Place::local(val_ref_local, expr.span)),
-            u8_ptr_ty.clone(),
-        ),
-        expr.span,
+        span,
     );
 
-    // Step 4: Determine elem_size from val type.
-    // Stage 18.203: delegates to compute_type_size_with_fallback (single source)
-    // - handles primitives, Adt (struct/enum via HIR walk), Tuple, Array.
-    // Vec::push fallback: 4 (canonical Vec<i32>). MUST match Vec::get fallback
-    // — mismatched elem_sizes between push and get corrupt Vec offsets.
-    // For non-canonical Vec<T> (e.g., Vec<i64>), typeck must resolve T before
-    // MIR lower (tracked by TD-TYPECK-GENERIC-INST, v0.2 P2+).
-    let elem_size: i64 = compute_type_size_with_fallback(&val_ty, cx.hir, 4);
-    let elem_size_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    // Step 1: Extract vec.ptr (field 0, *mut T) via Place::Projection.
+    let data_ptr_local = cx.mir.new_local(elem_ptr_ty.clone(), None, span);
     cx.push_assign(
-        Place::local(elem_size_local, expr.span),
+        Place::local(data_ptr_local, span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(recv_local, span)),
+                ProjectionElem::Field(FieldId(0), elem_ptr_ty.clone()),
+            ),
+            span,
+        })),
+        span,
+    );
+
+    // Step 2: Extract vec.len (field 1, i64).
+    let len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(len_local, span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(recv_local, span)),
+                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+            ),
+            span,
+        })),
+        span,
+    );
+
+    // Step 3: Extract vec.cap (field 2, i64).
+    let cap_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(cap_local, span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(recv_local, span)),
+                ProjectionElem::Field(FieldId(2), i64_ty.clone()),
+            ),
+            span,
+        })),
+        span,
+    );
+
+    // Step 4: Compute elem_size from val type (single source of truth).
+    let elem_size: i64 = compute_type_size_with_fallback(&val_ty, cx.hir, 4);
+    let elem_size_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(elem_size_local, span),
         Rvalue::Use(Operand::Constant(Const {
             val: ConstVal::Int(elem_size as u128),
             ty: i64_ty.clone(),
         })),
-        expr.span,
+        span,
     );
 
-    // Step 5: Call __landin_vec_push(vec_ptr, val_ptr, elem_size)
-    let push_def_id = crate::hir::DefId::new(u32::MAX - 103);
-    let push_fn_ty = Ty::new(
-        TyKind::FnDef(push_def_id, std::vec::Vec::new().into()),
-        expr.span,
+    // Step 5: need_grow = BinaryOp(Ge, len, cap) — len >= cap → must grow.
+    let need_grow_local = cx.mir.new_local(bool_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(need_grow_local, span),
+        Rvalue::BinaryOp(
+            crate::mir::place::BinOp::Ge,
+            Operand::Copy(Place::local(len_local, span)),
+            Operand::Copy(Place::local(cap_local, span)),
+        ),
+        span,
     );
-    let push_fn_local = cx.mir.new_local(push_fn_ty, None, expr.span);
-    let push_dest = cx
-        .mir
-        .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span);
-    let cont = cx.new_block();
+
+    // Step 6: SwitchInt(need_grow, [(0, store_bb)], otherwise=grow_bb).
+    // need_grow is bool: 1 (true) → grow_bb; 0 (false) → store_bb.
+    let grow_bb = cx.new_block();
+    let store_bb = cx.new_block();
+    cx.terminate_kind_span(
+        TerminatorKind::SwitchInt {
+            discr: Operand::Copy(Place::local(need_grow_local, span)),
+            targets: vec![(ConstVal::Bool(false), store_bb)],
+            otherwise: grow_bb,
+        },
+        span,
+    );
+
+    // === grow_bb: compute new_cap (4 if cap==0, else cap*2) ===
+    cx.current_block = grow_bb;
+
+    // Step 7: is_zero = BinaryOp(Eq, cap, 0).
+    let is_zero_local = cx.mir.new_local(bool_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(is_zero_local, span),
+        Rvalue::BinaryOp(
+            crate::mir::place::BinOp::Eq,
+            Operand::Copy(Place::local(cap_local, span)),
+            Operand::Constant(Const {
+                val: ConstVal::Int(0),
+                ty: i64_ty.clone(),
+            }),
+        ),
+        span,
+    );
+
+    // Step 8: SwitchInt(is_zero, [(1, zero_cap_bb)], otherwise=nonzero_cap_bb).
+    let zero_cap_bb = cx.new_block();
+    let nonzero_cap_bb = cx.new_block();
+    let alloc_bb = cx.new_block();
+    cx.terminate_kind_span(
+        TerminatorKind::SwitchInt {
+            discr: Operand::Copy(Place::local(is_zero_local, span)),
+            targets: vec![(ConstVal::Bool(true), zero_cap_bb)],
+            otherwise: nonzero_cap_bb,
+        },
+        span,
+    );
+
+    // === zero_cap_bb: new_cap = 4 (initial capacity) ===
+    cx.current_block = zero_cap_bb;
+    // Stage 18.229: new_cap_local is Mutable because it's assigned in both
+    // zero_cap_bb (= 4) and nonzero_cap_bb (= cap * 2). Without Mutable,
+    // the borrowck flags the second assignment as "assign twice to immutable".
+    // Per §1.0 原則 6 (通解>特例): same pattern as if/else result locals
+    // (control_flow.rs:31 uses new_local_with_mut for PHI-like assignments).
+    let new_cap_local = cx.mir.new_local_with_mut(
+        i64_ty.clone(),
+        None,
+        span,
+        crate::mir::ty::Mutability::Mutable,
+    );
+    cx.push_assign(
+        Place::local(new_cap_local, span),
+        Rvalue::Use(Operand::Constant(Const {
+            val: ConstVal::Int(4),
+            ty: i64_ty.clone(),
+        })),
+        span,
+    );
+    cx.terminate_kind_span(TerminatorKind::Goto(alloc_bb), span);
+
+    // === nonzero_cap_bb: new_cap = cap + cap (2x growth) ===
+    cx.current_block = nonzero_cap_bb;
+    let doubled_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(doubled_local, span),
+        Rvalue::BinaryOp(
+            crate::mir::place::BinOp::Add,
+            Operand::Copy(Place::local(cap_local, span)),
+            Operand::Copy(Place::local(cap_local, span)),
+        ),
+        span,
+    );
+    cx.push_assign(
+        Place::local(new_cap_local, span),
+        Rvalue::Use(Operand::Copy(Place::local(doubled_local, span))),
+        span,
+    );
+    cx.terminate_kind_span(TerminatorKind::Goto(alloc_bb), span);
+
+    // === alloc_bb: realloc + update vec.ptr + vec.cap ===
+    cx.current_block = alloc_bb;
+
+    // new_bytes = new_cap * elem_size
+    let new_bytes_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(new_bytes_local, span),
+        Rvalue::BinaryOp(
+            crate::mir::place::BinOp::Mul,
+            Operand::Copy(Place::local(new_cap_local, span)),
+            Operand::Copy(Place::local(elem_size_local, span)),
+        ),
+        span,
+    );
+
+    // old_bytes = cap * elem_size (passed to __landin_realloc for diagnostics)
+    let old_bytes_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(old_bytes_local, span),
+        Rvalue::BinaryOp(
+            crate::mir::place::BinOp::Mul,
+            Operand::Copy(Place::local(cap_local, span)),
+            Operand::Copy(Place::local(elem_size_local, span)),
+        ),
+        span,
+    );
+
+    // Call __landin_realloc(data_ptr, old_bytes, new_bytes) → new_ptr.
+    // libc realloc(NULL, size) == malloc(size), so this handles cap==0 case.
+    // Per §16.5 (06-mir.md): __landin_realloc is a primitive C helper (not migrated).
+    let realloc_def_id = crate::hir::DefId::new(u32::MAX - 102);
+    let realloc_fn_ty = Ty::new(
+        TyKind::FnDef(realloc_def_id, std::vec::Vec::new().into()),
+        span,
+    );
+    let realloc_fn_local = cx.mir.new_local(realloc_fn_ty, None, span);
+    let new_ptr_local = cx.mir.new_local(elem_ptr_ty.clone(), None, span);
+    let realloc_cont = cx.new_block();
     cx.terminate_kind_and_goto(
         TerminatorKind::Call {
-            func: Operand::Move(Place::local(push_fn_local, expr.span)),
+            func: Operand::Move(Place::local(realloc_fn_local, span)),
             args: vec![
-                Operand::Copy(Place::local(vec_ptr_local, expr.span)),
-                Operand::Copy(Place::local(val_ptr_local, expr.span)),
-                Operand::Copy(Place::local(elem_size_local, expr.span)),
+                Operand::Copy(Place::local(data_ptr_local, span)),
+                Operand::Copy(Place::local(old_bytes_local, span)),
+                Operand::Copy(Place::local(new_bytes_local, span)),
             ],
-            destination: Place::local(push_dest, expr.span),
-            target: Some(cont),
+            destination: Place::local(new_ptr_local, span),
+            target: Some(realloc_cont),
             dyn_trait_call: None,
         },
-        cont,
+        realloc_cont,
     );
 
-    // Return unit
-    let unit_ty = Ty::new(TyKind::Tuple(vec![]), expr.span);
-    let dest = cx.mir.new_local(unit_ty, None, expr.span);
+    // Store new_ptr to vec.ptr (field 0).
+    // Per §10 DRY: reuses StatementKind::Store + Field projection pattern.
+    cx.push_statement(
+        Statement {
+            kind: StatementKind::Store {
+                ptr: Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(recv_local, span)),
+                        ProjectionElem::Field(FieldId(0), elem_ptr_ty.clone()),
+                    ),
+                    span,
+                },
+                val: Operand::Copy(Place::local(new_ptr_local, span)),
+                val_ty: elem_ptr_ty.clone(),
+            },
+            span,
+        },
+        span,
+    );
+
+    // Store new_cap to vec.cap (field 2).
+    cx.push_statement(
+        Statement {
+            kind: StatementKind::Store {
+                ptr: Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(recv_local, span)),
+                        ProjectionElem::Field(FieldId(2), i64_ty.clone()),
+                    ),
+                    span,
+                },
+                val: Operand::Copy(Place::local(new_cap_local, span)),
+                val_ty: i64_ty.clone(),
+            },
+            span,
+        },
+        span,
+    );
+    cx.terminate_kind_span(TerminatorKind::Goto(store_bb), span);
+
+    // === store_bb: store val + increment len ===
+    cx.current_block = store_bb;
+
+    // Reload vec.ptr (handles both growth and no-growth cases via Field projection).
+    let current_ptr_local = cx.mir.new_local(elem_ptr_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(current_ptr_local, span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(recv_local, span)),
+                ProjectionElem::Field(FieldId(0), elem_ptr_ty.clone()),
+            ),
+            span,
+        })),
+        span,
+    );
+
+    // elem_ptr = GetElementPtr(current_ptr, [len], *mut T)
+    let elem_ptr_local = cx.mir.new_local(elem_ptr_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(elem_ptr_local, span),
+        Rvalue::GetElementPtr {
+            base: Operand::Copy(Place::local(current_ptr_local, span)),
+            indices: vec![Operand::Copy(Place::local(len_local, span))],
+            result_ty: elem_ptr_ty.clone(),
+        },
+        span,
+    );
+
+    // *elem_ptr = val — Store through the pointer via Projection(Deref).
+    // Reuses the Box::new pattern (Stage 14.66 Deref + RawPtr handling).
+    cx.push_statement(
+        Statement {
+            kind: StatementKind::Store {
+                ptr: Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(elem_ptr_local, span)),
+                        ProjectionElem::Deref,
+                    ),
+                    span,
+                },
+                val: Operand::Copy(Place::local(val_local, span)),
+                val_ty: val_ty.clone(),
+            },
+            span,
+        },
+        span,
+    );
+
+    // new_len = BinaryOp(Add, len, 1)
+    let new_len_local = cx.mir.new_local(i64_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(new_len_local, span),
+        Rvalue::BinaryOp(
+            crate::mir::place::BinOp::Add,
+            Operand::Copy(Place::local(len_local, span)),
+            Operand::Constant(Const {
+                val: ConstVal::Int(1),
+                ty: i64_ty.clone(),
+            }),
+        ),
+        span,
+    );
+
+    // Store new_len to vec.len (field 1).
+    cx.push_statement(
+        Statement {
+            kind: StatementKind::Store {
+                ptr: Place {
+                    kind: PlaceKind::Projection(
+                        Box::new(Place::local(recv_local, span)),
+                        ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+                    ),
+                    span,
+                },
+                val: Operand::Copy(Place::local(new_len_local, span)),
+                val_ty: i64_ty.clone(),
+            },
+            span,
+        },
+        span,
+    );
+
+    // Return unit.
+    let unit_ty = Ty::new(TyKind::Tuple(vec![]), span);
+    let dest = cx.mir.new_local(unit_ty, None, span);
     let after = cx.new_block();
     cx.terminate_and_goto(
         Terminator {
             kind: TerminatorKind::Goto(after),
-            span: expr.span,
+            span,
         },
         after,
     );

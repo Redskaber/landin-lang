@@ -592,6 +592,16 @@ impl<'a> MirLowerCtxt<'a> {
             });
     }
 
+    /// Stage 18.229 (v0.2.5e): Push an arbitrary `StatementKind` onto the
+    /// current block. Used by `lower_vec_push_intrinsic` to emit
+    /// `StatementKind::Store` (MIR intrinsic ops, Stage 18.226).
+    ///
+    /// Per §1.0 原則 6 (通解>特例): one method for all non-Assign statements.
+    /// Per §10 DRY: reuses the same block_mut pattern as push_assign.
+    pub fn push_statement(&mut self, stmt: Statement, _span: crate::session::Span) {
+        self.mir.block_mut(self.current_block).statements.push(stmt);
+    }
+
     /// Allocate a temporary local and assign the given rvalue to it.
     pub fn eval_rvalue_to_temp(&mut self, rvalue: Rvalue, ty: Ty, span: Span) -> LocalId {
         let temp = self.mir.new_local(ty, None, span);

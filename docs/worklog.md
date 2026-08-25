@@ -20205,3 +20205,70 @@ Stage Summary:
 - 3783 tests, 0 failures, zero regression
 - MVP: upper-bound check only (idx < 0 deferred, §17.6 record)
 - Next: Stage 18.229 (v0.2.5e) — migrate __landin_vec_push → MIR intrinsic
+
+---
+Task ID: stage18.229
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.229 — v0.2.5e: Migrate __landin_vec_push → MIR intrinsic. v0.477.0 → v0.478.0.
+
+Work Log:
+- Baseline: v0.477.0 / 3783 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.228 (v0.2.5d vec_get migration) complete → v0.2.5e: migrate vec_push
+- §17.8 task review: all dependencies ready (Load/GEP/Store codegen, SwitchInt, realloc primitive)
+- §17.6 (缺陷纳入): TD-C-WRAPPER-OVERUSE migration — 2nd of 4 C helpers
+
+- Task review doc: docs/develop/v0/stage-18/stage-18.229-task-review.md
+- Dev log doc: docs/develop/v0/stage-18/stage-18.229-dev-log.md
+
+- Migration implementation (src/mir/lower/expr_variants.rs):
+  → Rewrote lower_vec_push_intrinsic: C helper Call → MIR intrinsic sequence
+  → 8 basic blocks: bb0 (extract+need_grow), grow_bb (is_zero check),
+    zero_cap_bb (new_cap=4), nonzero_cap_bb (new_cap=cap*2), alloc_bb (realloc+update),
+    store_bb (GEP+Store val+increment len)
+  → Uses SwitchInt for conditional growth dispatch
+  → Uses StatementKind::Store for writing to vec.ptr/vec.cap/vec.len fields
+  → Uses Projection(elem_ptr, Deref) for storing through pointer
+  → MVP: always realloc (libc realloc(NULL,size)==malloc), no OOM check, PHI avoidance
+
+- Critical bugs discovered & fixed (per §17.6 同类型整体修复):
+  1. Borrowck StatementKind::Store (src/borrowck/mod.rs):
+     → check_statement only handled StatementKind::Assign — Store bypassed borrowck
+     → Fix: Store now calls check_place_write + check_operand (same as Assign)
+  2. Borrowck PHI-like mutability (src/mir/lower/expr_variants.rs):
+     → new_cap_local assigned in both zero_cap_bb and nonzero_cap_bb
+     → Borrowck's initialized set is cumulative → flags 2nd assignment as "assign twice"
+     → Fix: use new_local_with_mut(..., Mutable) for PHI-like locals
+     → Pattern: same as if/else result locals (control_flow.rs:31)
+  3. StatementKind::Store Deref codegen (src/codegen/statement.rs):
+     → compute_place_address doesn't have a Deref arm → falls through to
+       codegen_place_load_typed which loads VALUE (not address)
+     → "Invalid bitcast i32 to ptr" when storing through *elem_ptr = val
+     → Fix: StatementKind::Store handles Projection(base, Deref) specially —
+       loads POINTER from base, stores through it (mirrors Assign's Deref handling)
+  4. MirLowerCtxt.push_statement (src/mir/lower/mod.rs):
+     → New API to push arbitrary StatementKind onto current block
+     → Used by lower_vec_push_intrinsic to emit StatementKind::Store
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo clean ✅ (removed 994 files, 536.5MiB)
+  → cargo build --release --features llvm-backend ✅ (45.19s)
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3783 tests, 0 failures)
+    - 675 lib (unchanged)
+    - 3108 integration (unchanged)
+
+- Design doc updated: docs/lang-design/06-mir.md §16.6 + §16.6.3
+  → Marked v0.2.5e done
+  → Added migration details + 4 critical fixes documented
+
+- 版本: v0.478.0 (bump — C helper migration + 4 critical bug fixes)
+
+Stage Summary:
+- Stage 18.229 PASSED — v0.2.5e: __landin_vec_push → MIR intrinsic migration
+- 2nd of 4 C helpers migrated (TD-C-WRAPPER-OVERUSE)
+- 4 critical bugs discovered & fixed (borrowck Store, PHI mutability, Store Deref codegen, push_statement API)
+- 3783 tests, 0 failures, zero regression
+- MVP: always realloc, no OOM check, PHI avoidance (§17.6 record)
+- Next: Stage 18.230 (v0.2.5f) — migrate __landin_string_push_str → MIR intrinsic

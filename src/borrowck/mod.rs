@@ -575,17 +575,37 @@ impl<'a> BorrowChecker<'a> {
         _bb_id: BasicBlockId,
         _stmt_idx: usize,
     ) {
-        if let StatementKind::Assign(boxed) = &stmt.kind {
-            let (place, rvalue) = &**boxed;
-            // Determine the LHS local (if any) — this is the local that
-            // holds the result of the rvalue. For `r = &x`, this is `r`,
-            // and we associate it with the borrow for NLL expiry.
-            let lhs_local = match &place.kind {
-                PlaceKind::Local(id) => Some(*id),
-                _ => None,
-            };
-            self.check_rvalue(mir, rvalue, lhs_local, stmt.span);
-            self.check_place_write(mir, place, stmt.span);
+        match &stmt.kind {
+            StatementKind::Assign(boxed) => {
+                let (place, rvalue) = &**boxed;
+                // Determine the LHS local (if any) — this is the local that
+                // holds the result of the rvalue. For `r = &x`, this is `r`,
+                // and we associate it with the borrow for NLL expiry.
+                let lhs_local = match &place.kind {
+                    PlaceKind::Local(id) => Some(*id),
+                    _ => None,
+                };
+                self.check_rvalue(mir, rvalue, lhs_local, stmt.span);
+                self.check_place_write(mir, place, stmt.span);
+            }
+            // Stage 18.229 (v0.2.5e): StatementKind::Store writes to `ptr`
+            // (a Place). Check the write for mutability/borrow violations,
+            // just like Assign. Without this, the Store to vec.ptr/vec.cap/
+            // vec.len in lower_vec_push_intrinsic would bypass borrowck.
+            //
+            // Per §1.0 原則 4 (报错>静默): borrowck must check ALL writes.
+            // Per §1.0 原則 6 (通解>特例): one check_place_write for all writes.
+            // Per §17.6 (同类型整体修复): same class as Assign.
+            StatementKind::Store {
+                ptr,
+                val,
+                val_ty: _,
+            } => {
+                self.check_place_write(mir, ptr, stmt.span);
+                // Also check the val operand for use-after-move.
+                self.check_operand(mir, val, stmt.span);
+            }
+            _ => {}
         }
     }
 

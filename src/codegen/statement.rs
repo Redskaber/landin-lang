@@ -290,8 +290,17 @@ pub(crate) fn codegen_statement(
         // pointer derivation and `MemoryEmitter::emit_store` for the
         // actual store — no new helper.
         // Per §16.3 (06-mir.md): MIR intrinsic ops design.
+        //
+        // Stage 18.229 (v0.2.5e): Handle `Projection(base, Deref)` specially
+        // — `compute_place_address` doesn't have a Deref arm, so it falls
+        // through to `codegen_place_load_typed` which loads the VALUE (not
+        // the address). This caused "Invalid bitcast" errors when storing
+        // through `*elem_ptr = val` in `lower_vec_push_intrinsic`.
+        // Fix: mirror the Assign codegen's Deref handling (Stage 14.27) —
+        // load the POINTER from the base, then store to that pointer.
+        // Per §1.0 原則 6 (通解>特例): one Deref path for all Store-through-pointer.
+        // Per §17.6 (同类型整体修复): same pattern as Assign's Deref arm.
         StatementKind::Store { ptr, val, val_ty } => {
-            let ptr_addr = compute_place_address(emitter, mir, ptr, interner, layouts);
             let val_emit = codegen_operand(
                 emitter,
                 mir,
@@ -303,8 +312,23 @@ pub(crate) fn codegen_statement(
             );
             let val_emit_ty =
                 mir_type_to_emit_type_with_layouts_and_mono(val_ty, layouts, mono_layouts);
+            // Per §1.0 原則 4 (报错>静默): void stores are silently skipped
+            // (matches Assign behavior for ZST struct returns).
             if val_emit_ty != EmitType::Void {
-                emitter.emit_store(&val_emit_ty, &val_emit, &ptr_addr);
+                match &ptr.kind {
+                    PlaceKind::Projection(base, ProjectionElem::Deref) => {
+                        // Load the POINTER from base, then store through it.
+                        // Mirrors Assign's Deref handling (Stage 14.27).
+                        let ptr_ty = detect_place_type(mir, base, layouts);
+                        let ptr_val =
+                            codegen_place_load_typed(emitter, mir, base, ptr_ty, interner, layouts);
+                        emitter.emit_store(&val_emit_ty, &val_emit, &ptr_val);
+                    }
+                    _ => {
+                        let ptr_addr = compute_place_address(emitter, mir, ptr, interner, layouts);
+                        emitter.emit_store(&val_emit_ty, &val_emit, &ptr_addr);
+                    }
+                }
             }
         }
     }

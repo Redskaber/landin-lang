@@ -1144,10 +1144,54 @@ v0.2.5a: 设计文档 (本节) ← Stage 18.225 done
 v0.2.5b: 添加 Rvalue::Load, Rvalue::GetElementPtr, StatementKind::Store ← Stage 18.226 done
 v0.2.5c: codegen 支持 (LLVMBuildLoad2, LLVMBuildGEP2, LLVMBuildStore) ← Stage 18.227 done
 v0.2.5d: 迁移 __landin_vec_get → MIR intrinsic (最简单, 验证设计) ← Stage 18.228 done
-v0.2.5e: 迁移 __landin_vec_push → MIR intrinsic ← Stage 18.229 (next)
-v0.2.5f: 迁移 __landin_string_push_str → MIR intrinsic
+v0.2.5e: 迁移 __landin_vec_push → MIR intrinsic ← Stage 18.229 done
+v0.2.5f: 迁移 __landin_string_push_str → MIR intrinsic ← Stage 18.230 (next)
 v0.2.5g: 迁移 __landin_format_variadic → MIR intrinsic (最复杂)
 ```
+
+#### 16.6.3 Stage 18.229 实现详情 (v0.2.5e `__landin_vec_push` migration)
+
+**Migration**: `lower_vec_push_intrinsic` rewritten from C helper Call → MIR intrinsic sequence
+with conditional growth logic.
+
+**MIR Sequence** (8 basic blocks):
+1. bb0: Extract `vec.ptr` (Field 0), `vec.len` (Field 1), `vec.cap` (Field 2); compute `need_grow = len >= cap`; SwitchInt
+2. grow_bb: Compute `is_zero = (cap == 0)`; SwitchInt
+3. zero_cap_bb: `new_cap = 4` (initial capacity); goto alloc_bb
+4. nonzero_cap_bb: `new_cap = cap + cap` (2x growth); goto alloc_bb
+5. alloc_bb: `new_bytes = new_cap * elem_size`; Call `__landin_realloc`; Store to `vec.ptr` + `vec.cap`; goto store_bb
+6. store_bb: Reload `vec.ptr`; `elem_ptr = GetElementPtr(current_ptr, [len])`; Store val through `*elem_ptr`; `new_len = len + 1`; Store to `vec.len`
+
+**Critical Fixes Discovered During Migration** (per §17.6 同类型整体修复):
+- **Borrowck StatementKind::Store**: `check_statement` didn't handle `StatementKind::Store` —
+  Store writes to `ptr` (a Place) bypassed borrowck's mutability/borrow checks. Fixed: Store
+  now calls `check_place_write` + `check_operand` (same as Assign).
+- **Borrowck mutability for PHI-like locals**: `new_cap_local` is assigned in both
+  `zero_cap_bb` (= 4) and `nonzero_cap_bb` (= cap * 2). The borrowck's `initialized` set
+  is cumulative across blocks — without `Mutability::Mutable`, it flags the second assignment
+  as "assign twice to immutable". Fixed: use `new_local_with_mut(..., Mutable)` for PHI-like
+  locals (same pattern as if/else result locals in control_flow.rs:31).
+- **StatementKind::Store Deref codegen**: `compute_place_address` doesn't have a `Deref` arm —
+  it falls through to `codegen_place_load_typed` which loads the VALUE (not the address).
+  This caused "Invalid bitcast i32 to ptr" errors when storing through `*elem_ptr = val`.
+  Fixed: StatementKind::Store codegen now handles `Projection(base, Deref)` specially —
+  loads the POINTER from base, then stores through it (mirrors Assign's Deref handling,
+  Stage 14.27).
+- **MirLowerCtxt.push_statement**: Added a new API to push arbitrary `StatementKind` onto
+  the current block (used by `lower_vec_push_intrinsic` to emit `StatementKind::Store`).
+
+**MVP scope (§17.6 record)**:
+- **Always realloc**: libc `realloc(NULL, size) == malloc(size)` per C standard.
+  When `cap == 0`, `vec.ptr` is NULL, so `__landin_realloc(NULL, 0, new_bytes)` is
+  equivalent to `malloc(new_bytes)`. One Call path instead of two.
+- **No OOM check**: `__landin_realloc` itself panics on OOM (runtime.rs:185).
+- **PHI avoidance**: Reload `vec.ptr` in store_bb via `Projection(recv, Field(0))`.
+  Handles both growth (field updated) and no-growth (field unchanged) cases.
+
+**Test verification**:
+- 6 regression tests pass: `stage18_197_vec_push_single/multiple/growth/i64/u8/large_growth`
+- 4 roundtrip tests pass: `stage18_203_vec_i32/i64/i8/u32_roundtrip`
+- Full suite: 3783 tests, 0 failures
 
 #### 16.6.2 Stage 18.228 实现详情 (v0.2.5d `__landin_vec_get` migration)
 
