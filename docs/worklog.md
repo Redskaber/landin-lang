@@ -20272,3 +20272,62 @@ Stage Summary:
 - 3783 tests, 0 failures, zero regression
 - MVP: always realloc, no OOM check, PHI avoidance (§17.6 record)
 - Next: Stage 18.230 (v0.2.5f) — migrate __landin_string_push_str → MIR intrinsic
+
+---
+Task ID: stage18.230
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.230 — v0.2.5f: Migrate __landin_string_push_str → MIR intrinsic. v0.478.0 → v0.479.0.
+
+Work Log:
+- Baseline: v0.478.0 / 3783 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.229 (v0.2.5e vec_push migration) complete → v0.2.5f: migrate string_push_str
+- §17.8 task review: all dependencies ready (Load/GEP/Store codegen, SwitchInt, realloc+memcpy primitives)
+- §17.6 (缺陷纳入): TD-C-WRAPPER-OVERUSE migration — 3rd of 4 C helpers
+
+- Task review doc: docs/develop/v0/stage-18/stage-18.230-task-review.md
+- Dev log doc: docs/develop/v0/stage-18/stage-18.230-dev-log.md
+
+- Migration implementation (src/mir/lower/expr_variants.rs):
+  → Rewrote lower_string_push_str_intrinsic: C helper Call → MIR intrinsic sequence
+  → 10 basic blocks: bb0 (extract+need_grow), grow_init_bb (is_zero check),
+    zero_cap_bb (new_cap=4), nonzero_cap_bb (new_cap=cap),
+    grow_loop_bb (while cond ← BACK-EDGE TARGET), grow_body_bb (new_cap*=2 ← BACK-EDGE),
+    alloc_bb (realloc+update), copy_bb (GEP+memcpy+update len)
+  → First MIR intrinsic with a loop (back-edge: grow_loop_bb ↔ grow_body_bb)
+  → Uses __landin_realloc (primitive, §16.5) for growth
+  → Uses __landin_memcpy (primitive, §16.5) for byte copy
+  → Growth while loop: while (new_cap < new_len) new_cap *= 2
+    — handles cases where src_len >> cap (e.g., 43-byte string on empty → cap goes 4→8→16→32→64)
+
+- No new bugs discovered:
+  → All infrastructure fixes from Stages 18.228-18.229 applied directly:
+    - DCE handles Load/GEP/Store/Assert reads (Stage 18.228)
+    - Borrowck handles StatementKind::Store (Stage 18.229)
+    - Codegen handles Store Deref projection (Stage 18.229)
+    - push_statement API for arbitrary StatementKind (Stage 18.229)
+    - new_local_with_mut for PHI-like Mutable locals (Stage 18.229)
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo clean ✅ (removed 963 files, 502.0MiB)
+  → cargo build --release --features llvm-backend ✅ (44.77s)
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3783 tests, 0 failures)
+    - 675 lib (unchanged)
+    - 3108 integration (unchanged)
+
+- Design doc updated: docs/lang-design/06-mir.md §16.6 + §16.6.4
+  → Marked v0.2.5f done
+  → Added migration details + while loop documentation
+
+- 版本: v0.479.0 (bump — C helper migration, no new bugs)
+
+Stage Summary:
+- Stage 18.230 PASSED — v0.2.5f: __landin_string_push_str → MIR intrinsic migration
+- 3rd of 4 C helpers migrated (TD-C-WRAPPER-OVERUSE)
+- First MIR intrinsic with a loop (back-edge for growth while loop)
+- No new bugs — all infrastructure from 18.228-18.229 applied cleanly
+- 3783 tests, 0 failures, zero regression
+- MVP: always realloc, no OOM check, PHI avoidance, memcpy via C helper (§17.6 record)
+- Next: Stage 18.231 (v0.2.5g) — migrate __landin_format_variadic → MIR intrinsic (most complex)

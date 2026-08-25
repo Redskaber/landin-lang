@@ -1145,9 +1145,49 @@ v0.2.5b: 添加 Rvalue::Load, Rvalue::GetElementPtr, StatementKind::Store ← St
 v0.2.5c: codegen 支持 (LLVMBuildLoad2, LLVMBuildGEP2, LLVMBuildStore) ← Stage 18.227 done
 v0.2.5d: 迁移 __landin_vec_get → MIR intrinsic (最简单, 验证设计) ← Stage 18.228 done
 v0.2.5e: 迁移 __landin_vec_push → MIR intrinsic ← Stage 18.229 done
-v0.2.5f: 迁移 __landin_string_push_str → MIR intrinsic ← Stage 18.230 (next)
-v0.2.5g: 迁移 __landin_format_variadic → MIR intrinsic (最复杂)
+v0.2.5f: 迁移 __landin_string_push_str → MIR intrinsic ← Stage 18.230 done
+v0.2.5g: 迁移 __landin_format_variadic → MIR intrinsic (最复杂) ← Stage 18.231 (next)
 ```
+
+#### 16.6.4 Stage 18.230 实现详情 (v0.2.5f `__landin_string_push_str` migration)
+
+**Migration**: `lower_string_push_str_intrinsic` rewritten from C helper Call → MIR intrinsic sequence
+with **while loop** for growth calculation (first MIR loop in an intrinsic).
+
+**MIR Sequence** (10 basic blocks):
+1. bb0: Extract str fields + src fields; compute new_len; need_grow = (new_len > cap); SwitchInt
+2. grow_init_bb: is_zero = (cap == 0); SwitchInt
+3. zero_cap_bb: new_cap = 4; goto grow_loop_bb
+4. nonzero_cap_bb: new_cap = cap; goto grow_loop_bb
+5. grow_loop_bb: cond = (new_cap < new_len); SwitchInt ← **BACK-EDGE TARGET**
+6. grow_body_bb: new_cap = new_cap + new_cap (2x); goto grow_loop_bb ← **BACK-EDGE**
+7. alloc_bb: Call `__landin_realloc`; Store to str.ptr + str.cap; goto copy_bb
+8. copy_bb: reload str.ptr; GEP(dest, len); Call `__landin_memcpy`; Store str.len
+
+**Key difference from vec_push (Stage 18.229)**:
+- **While loop for growth**: vec_push uses `new_cap = cap * 2` (single doubling).
+  string_push_str uses `while (new_cap < new_len) new_cap *= 2` — grows new_cap until
+  it exceeds new_len. This handles cases where src_len >> cap (e.g., appending a 43-byte
+  string to an empty String → new_cap goes 4 → 8 → 16 → 32 → 64).
+- **MIR back-edge**: First intrinsic to generate a loop (grow_loop_bb ↔ grow_body_bb).
+  All previous intrinsics used straight-line code or simple if/else branching.
+- **`__landin_memcpy` for byte copy**: Reuses the primitive C helper (per §16.5, not
+  in migration scope). The C helper's byte-by-byte loop is replaced by a single Call.
+
+**No new bugs discovered**: All infrastructure fixes from Stages 18.228-18.229 (DCE,
+borrowck Store, Store Deref codegen, push_statement API, Mutable PHI-like locals)
+applied directly without modification.
+
+**MVP scope (§17.6 record)**:
+- **Always realloc**: libc `realloc(NULL, size) == malloc(size)` per C standard.
+- **No OOM check**: `__landin_realloc` itself panics on OOM (runtime.rs:185).
+- **PHI avoidance**: Reload `str.ptr` in copy_bb via `Projection(recv, Field(0))`.
+- **memcpy via C helper**: `__landin_memcpy` is a primitive C helper (per §16.5).
+
+**Test verification**:
+- 6 regression tests pass: `stage18_198_push_str_append/from_empty/multiple/growth/empty_src/long`
+- Growth test verifies cap=16 (correct while-loop growth: 4→8→16)
+- Full suite: 3783 tests, 0 failures
 
 #### 16.6.3 Stage 18.229 实现详情 (v0.2.5e `__landin_vec_push` migration)
 
