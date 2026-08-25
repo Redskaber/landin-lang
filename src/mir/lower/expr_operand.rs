@@ -75,6 +75,73 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             }
             let lhs_local = lower_expr_to_operand(cx, lhs);
             let rhs_local = lower_expr_to_operand(cx, rhs);
+
+            // Stage 18.236 (Pointer Arithmetic): When op is Add/Sub and one
+            // operand is a RawPtr and the other is an integer, lower to
+            // GetElementPtr instead of BinaryOp. This reuses the existing
+            // GEP infrastructure (Stage 18.226-18.227) — no new MIR variant.
+            //
+            // Per §1.0 原則 6 (通解 > 特解): one GEP path for all pointer
+            // arithmetic, not a special BinaryOp pointer case.
+            // Per §10 (DRY): reuses existing GetElementPtr codegen.
+            if *op == HirBinOp::Add || *op == HirBinOp::Sub {
+                let lhs_ty = cx.mir.local(lhs_local).ty.clone();
+                let rhs_ty = cx.mir.local(rhs_local).ty.clone();
+                let lhs_is_ptr = matches!(&lhs_ty.kind, crate::mir::ty::TyKind::RawPtr(_, _));
+                let rhs_is_ptr = matches!(&rhs_ty.kind, crate::mir::ty::TyKind::RawPtr(_, _));
+
+                if lhs_is_ptr != rhs_is_ptr {
+                    // Exactly one is a pointer — valid pointer arithmetic.
+                    // Determine which operand is the pointer and which is the index.
+                    let (ptr_local, idx_local, ptr_ty) = if lhs_is_ptr {
+                        (lhs_local, rhs_local, lhs_ty)
+                    } else {
+                        (rhs_local, lhs_local, rhs_ty)
+                    };
+
+                    // For Sub, negate the index (ptr - n → ptr + (-n)).
+                    // We emit: idx_neg = 0 - idx; then GEP(ptr, [idx_neg]).
+                    // For Add, just use idx directly.
+                    let gep_idx_local = if *op == HirBinOp::Sub {
+                        let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
+                        let zero_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+                        cx.push_assign(
+                            Place::local(zero_local, expr.span),
+                            Rvalue::Use(Operand::Constant(crate::mir::ty::Const {
+                                ty: i64_ty.clone(),
+                                val: crate::mir::ty::ConstVal::Int(0),
+                            })),
+                            expr.span,
+                        );
+                        let neg_idx_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+                        cx.push_assign(
+                            Place::local(neg_idx_local, expr.span),
+                            Rvalue::BinaryOp(
+                                MirLowerCtxt::lower_bin_op(crate::hir::HirBinOp::Sub),
+                                Operand::Copy(Place::local(zero_local, expr.span)),
+                                Operand::Copy(Place::local(idx_local, expr.span)),
+                            ),
+                            expr.span,
+                        );
+                        neg_idx_local
+                    } else {
+                        idx_local
+                    };
+
+                    // Lower to GetElementPtr: ptr + idx → GEP(ptr, [idx])
+                    let result = cx.eval_rvalue_to_temp(
+                        Rvalue::GetElementPtr {
+                            base: Operand::Copy(Place::local(ptr_local, expr.span)),
+                            indices: vec![Operand::Copy(Place::local(gep_idx_local, expr.span))],
+                            result_ty: ptr_ty.clone(),
+                        },
+                        ptr_ty,
+                        expr.span,
+                    );
+                    return result;
+                }
+            }
+
             let mir_op = MirLowerCtxt::lower_bin_op(*op);
             // Stage 15.76: For comparison ops (==, !=, <, >, <=, >=),
             // the result type is bool. For arithmetic ops (+, -, *, /, %,

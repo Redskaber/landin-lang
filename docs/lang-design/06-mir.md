@@ -1349,3 +1349,105 @@ the existing test `stage18_200_vec_get_oob_panics` only tests upper-bound OOB.
 - §12 最优 > 最小: 用 MIR ops 替换 C helpers, 不是 hack
 - §10 DRY: Load/Store/GEP 复用现有 codegen 基础设施 (emit_load/emit_store/emit_gep_field)
 - §1.0 原則 4 (报错>静默): 边界检查在 MIR 层通过 SwitchInt 实现, 不在 C 层
+
+### 16.8 Intrinsic → Stdlib Impl Migration Plan (v0.3, Stage 18.235 新增)
+
+> 本节由 Stage 18.235 依据 §1.0 原則 6 (通解 > 特解) + §17.7 (缺陷纳入) 生成。
+> 设计目标: 将所有 MIR lower 中的 hardcoded intrinsic 方法替换为 prelude
+> `impl` 块中的常规方法, 实现通解。
+
+#### 16.8.1 问题: Intrinsic = 特解
+
+当前 Landin 编译器通过 **hardcoded 拦截** 模式处理 stdlib 方法:
+- 8 个 `method_name_str == "X"` 检查 (MIR lower)
+- 7 个 specialized lowering functions
+- 11 个 `KNOWN_INTRINSIC_METHODS` whitelist 条目 (typeck)
+- 8 个 `name == "String"` / `name == "Vec"` 类型名比较
+
+这是 **特解**, 因为:
+- 每新增一个 stdlib 方法需要修改 4+ 个文件
+- 方法解析绕过标准的 `resolve_inherent_method` / `resolve_trait_method`
+- 与 TD-C-WRAPPER-OVERUSE 是同一模式类 (特解绕过标准管线)
+
+#### 16.8.2 通解: Stdlib Impl Migration
+
+将所有方法实现为 prelude 源码中的常规 `impl` 块, 底层操作通过
+`extern "C"` 声明在方法体中调用:
+
+```landin
+// 通解: prelude 源码
+extern "C" { fn __landin_alloc(size: i64) -> *mut u8; }
+extern "C" { fn __landin_realloc(ptr: *mut u8, old: i64, new: i64) -> *mut u8; }
+extern "C" { fn __landin_memcpy(dst: *mut u8, src: *mut u8, n: i64); }
+extern "C" { fn __landin_i64_to_str(buf: *mut u8, cap: i64, val: i64) -> i64; }
+
+impl String {
+    fn from_str(s: &str) -> String {
+        let len = s.len;
+        let ptr = __landin_alloc(len);
+        __landin_memcpy(ptr, s.ptr, len);
+        String { ptr, len, cap: len + 1 }
+    }
+    fn push_str(&mut self, src: &str) {
+        // 增长逻辑 + memcpy — 用 Landin 表达, 不是 MIR lower
+        let new_len = self.len + src.len;
+        if new_len > self.cap {
+            let mut new_cap = if self.cap == 0 { 4 } else { self.cap };
+            while new_cap < new_len { new_cap = new_cap + new_cap; }
+            self.ptr = __landin_realloc(self.ptr, self.cap, new_cap);
+            self.cap = new_cap;
+        }
+        let dest = self.ptr + self.len;  // 指针运算
+        __landin_memcpy(dest, src.ptr, src.len);
+        self.len = new_len;
+    }
+}
+```
+
+#### 16.8.3 迁移计划
+
+| Phase | Task | Target | LOC Impact |
+|-------|------|--------|------------|
+| 1 | 添加 `extern "C"` 声明到 prelude | v0.3 Phase 1 | +20 prelude |
+| 2 | 迁移 String::from_str → prelude impl | v0.3 Phase 2 | -100 MIR lower |
+| 3 | 迁移 String::push_str → prelude impl | v0.3 Phase 2 | -370 MIR lower |
+| 4 | 迁移 Vec::push → prelude impl | v0.3 Phase 2 | -370 MIR lower |
+| 5 | 迁移 Vec::get → prelude impl | v0.3 Phase 2 | -150 MIR lower |
+| 6 | 迁移 Box::new → prelude impl | v0.3 Phase 2 | -150 MIR lower |
+| 7 | 迁移 format! → prelude impl | v0.3 Phase 3 | -400 MIR lower |
+| 8 | 移除所有 `method_name_str == "X"` 检查 | v0.3 Phase 3 | -200 MIR lower |
+| 9 | 移除 `KNOWN_INTRINSIC_METHODS` whitelist | v0.3 Phase 3 | -30 typeck |
+| 10 | 移除 `deferred_method_calls` side-table | v0.3 Phase 3 | -50 typeck/body |
+
+**总计**: MIR lower + typeck 减少 ~1500 LOC, prelude 增加 ~200 LOC。
+净减少: ~1300 LOC 特解代码。
+
+#### 16.8.4 阻塞依赖
+
+| Prerequisite | Status | Notes |
+|-------------|--------|-------|
+| 指针运算 (`ptr + offset` 或 `ptr[offset]`) | ❌ Missing | 需要 Landin 语言支持 |
+| `extern "C"` 声明 in prelude | ✅ Exists | 已用于 `__landin_alloc` 等 |
+| While 循环 in Landin source | ✅ Exists | 已用于 prelude impl |
+| `&mut self` in prelude methods | ✅ Exists | 已使用 |
+| 字段赋值 (`self.ptr = ...`) | ✅ Exists | 已使用 |
+
+**阻塞依赖**: 指针运算。当前 MIR lower 使用 `GetElementPtr` 进行指针偏移。
+通解中需要在 Landin 源码中表达指针偏移 (如 `ptr + offset` 或 `ptr[offset]`)。
+这是一个 **语言特性**, 需要在迁移前添加。
+
+Per user directive "依赖与基础设施完整能力审查": 指针运算是阻塞依赖。
+没有它, stdlib impl 迁移无法进行。记录为 v0.3 Phase 2 的前置条件。
+
+#### 16.8.5 与现有 TD 的关系
+
+| TD | 关系 | 状态 |
+|----|------|------|
+| TD-C-WRAPPER-OVERUSE | 同模式类 (特解绕过标准管线), Phase 1 → Phase 2 | ✅ Resolved (18.232) |
+| TD-INTRINSIC-OVERUSE | 同模式类 — intrinsics 绕过标准方法解析 | 🟡 NEW — deferred to v0.3 |
+| TD-TUPLE-CTOR-TYPECK | 由 intrinsic 模式引起 (temp locals 丢失 expected type) | 🟡 Deferred to v0.3 |
+| TD-METHOD-RESOLVE-STRICT | 部分由 intrinsic 模式引起 (需要 whitelist) | ✅ Partially resolved (18.234) |
+
+**模式**: TD-C-WRAPPER-OVERUSE (C helpers → MIR intrinsics) 是 Phase 1。
+TD-INTRINSIC-OVERUSE (MIR intrinsics → stdlib impl blocks) 是 Phase 2。
+两者遵循相同原则: 用通解替换特解。

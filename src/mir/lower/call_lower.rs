@@ -89,6 +89,21 @@ pub(super) fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Plac
                 span: expr.span,
             }
         }
+        // Stage 18.237 (Store-through-Deref on GEP result fix): When the
+        // expression is a Binary (e.g., `p + 0` pointer arithmetic), lower
+        // it via `lower_expr_to_operand` which correctly generates a
+        // GetElementPtr, then return the result local as the Place.
+        //
+        // Previously, Binary expressions fell through to the `_` arm which
+        // created a fresh Infer local — losing the GEP result and causing
+        // codegen to load from the wrong local.
+        //
+        // Per §1.0 原則 6 (通解 > 特解): one path for all Binary expressions.
+        // Per §10 (DRY): reuses lower_expr_to_operand (which handles GEP).
+        HirExprKind::Binary { .. } => {
+            let local = super::lower_expr_to_operand(cx, expr);
+            Place::local(local, expr.span)
+        }
         // Other expression kinds can't be assigned to — return a fresh
         // local as error recovery. typeck should catch this.
         _ => {

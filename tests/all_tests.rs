@@ -579,6 +579,10 @@ mod stage18_212_box_typeck_tests;
 #[path = "v0/stage18/plan/stage18_234_method_resolve_tests.rs"]
 mod stage18_234_method_resolve_tests;
 
+// === Stage 18.236: Pointer arithmetic language feature ===
+#[path = "v0/stage18/plan/stage18_236_ptr_arith_tests.rs"]
+mod stage18_236_ptr_arith_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

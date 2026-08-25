@@ -374,37 +374,78 @@ impl TypeChecker {
                     }
                     // Arithmetic: lhs and rhs must be Int/Uint/Float.
                     // G7 fix (Stage 2.4f): reject Bool, Str, Tuple, etc.
+                    //
+                    // Stage 18.236 (Pointer Arithmetic): Allow `ptr + int` and
+                    // `ptr - int` when one operand is RawPtr and the other is
+                    // integer. Result type = the RawPtr type. This reuses the
+                    // existing GetElementPtr MIR lowering (§1.0 原則 6 通解).
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
-                        if !is_arithmetic_ty(&a_ty) {
-                            self.errors.push(TypeError::new(
-                                // Stage 15.80: use human-readable type name.
-                                // Stage 15.82: use stmt_span (was: Span::DUMMY).
-                                format!(
-                                    "cannot apply arithmetic to {} (expected integer or float)",
-                                    self.format_ty(&a_ty)
-                                ),
-                                stmt_span,
-                            ));
-                        }
-                        if !is_arithmetic_ty(&b_ty) {
-                            self.errors.push(TypeError::new(
-                                // Stage 15.80: use human-readable type name.
-                                // Stage 15.82: use stmt_span (was: Span::DUMMY).
-                                format!(
-                                    "cannot apply arithmetic to {} (expected integer or float)",
-                                    self.format_ty(&b_ty)
-                                ),
-                                stmt_span,
-                            ));
-                        }
-                        if let Err(mut e) = self.unify.unify(&a_ty, &b_ty, stmt_span) {
-                            // Stage 15.82: use stmt_span for unify errors.
-                            if stmt_span != Span::DUMMY {
-                                e.span = stmt_span;
+                        // Stage 18.236: Check for pointer arithmetic (ptr + int).
+                        let a_is_ptr = matches!(&a_ty.kind, crate::mir::ty::TyKind::RawPtr(_, _));
+                        let b_is_ptr = matches!(&b_ty.kind, crate::mir::ty::TyKind::RawPtr(_, _));
+                        let a_is_int = matches!(
+                            &a_ty.kind,
+                            crate::mir::ty::TyKind::Int(_)
+                                | crate::mir::ty::TyKind::Uint(_)
+                                | crate::mir::ty::TyKind::Infer(_)
+                                | crate::mir::ty::TyKind::Error
+                        );
+                        let b_is_int = matches!(
+                            &b_ty.kind,
+                            crate::mir::ty::TyKind::Int(_)
+                                | crate::mir::ty::TyKind::Uint(_)
+                                | crate::mir::ty::TyKind::Infer(_)
+                                | crate::mir::ty::TyKind::Error
+                        );
+                        // ptr + int or int + ptr → result = ptr type (Add only)
+                        // ptr - int → result = ptr type (Sub only)
+                        // ptr + ptr, ptr - ptr, ptr * int etc. → error
+                        if (a_is_ptr && b_is_int) || (a_is_int && b_is_ptr) {
+                            if matches!(op, BinOp::Add | BinOp::Sub) {
+                                // Result is the pointer type.
+                                if a_is_ptr {
+                                    a_ty
+                                } else {
+                                    b_ty
+                                }
+                            } else {
+                                self.errors.push(TypeError::new(
+                                    format!(
+                                        "cannot apply {} to pointer (only + and - are supported)",
+                                        format!("{:?}", op).to_lowercase()
+                                    ),
+                                    stmt_span,
+                                ));
+                                a_ty
                             }
-                            self.errors.push(*e);
+                        } else {
+                            // Standard arithmetic: both must be Int/Uint/Float.
+                            if !is_arithmetic_ty(&a_ty) {
+                                self.errors.push(TypeError::new(
+                                    format!(
+                                        "cannot apply arithmetic to {} (expected integer or float)",
+                                        self.format_ty(&a_ty)
+                                    ),
+                                    stmt_span,
+                                ));
+                            }
+                            if !is_arithmetic_ty(&b_ty) {
+                                self.errors.push(TypeError::new(
+                                    format!(
+                                        "cannot apply arithmetic to {} (expected integer or float)",
+                                        self.format_ty(&b_ty)
+                                    ),
+                                    stmt_span,
+                                ));
+                            }
+                            if let Err(mut e) = self.unify.unify(&a_ty, &b_ty, stmt_span) {
+                                if stmt_span != Span::DUMMY {
+                                    e.span = stmt_span;
+                                }
+                                self.errors.push(*e);
+                            }
+                            a_ty
                         }
-                        a_ty
                     }
                 }
             }
