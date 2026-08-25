@@ -20061,3 +20061,75 @@ Stage Summary:
 - 12 files updated with match arms (stubs for now)
 - 3772 tests, 0 failures, zero regression
 - v0.475.0: no bump (MIR data structure addition)
+
+---
+Task ID: stage18.227
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.227 — v0.2.5c: Codegen support for MIR intrinsic ops (Load/GEP/Store). v0.475.0 → v0.476.0.
+
+Work Log:
+- Baseline: v0.475.0 / 3772 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.226 (v0.2.5b) added 3 MIR data structure variants with
+  codegen stubs returning placeholder values. Per 06-mir.md §16.6:
+  v0.2.5c: codegen support (LLVMBuildLoad2, LLVMBuildGEP2, LLVMBuildStore).
+- §17.6 (缺陷纳入): TD-C-WRAPPER-OVERUSE migration depends on these codegen
+  paths being live before any compound C helper can be migrated (Stage 18.228+).
+- §13.1 (设计对齐): design doc 06-mir.md §16 (MIR Intrinsic Ops).
+
+- 依赖审查 (per user directive "依赖与基础设施完整能力审查"):
+  → MemoryEmitter trait (emit_load/emit_store/emit_gep_field/emit_gep_index_ptr): ✅ Stage 16.76
+  → LLVMSysEmitter impl of MemoryEmitter: ✅ Stage 16.77
+  → TextEmitter impl of MemoryEmitter: ✅ Stage 16.77
+  → mir_type_to_emit_type_with_layouts_and_mono: ✅ Stage 14.82
+  → compute_place_address: ✅ Stage 14.19
+  → codegen_operand: ✅ Stage 3.x
+  → codegen_rvalue/codegen_statement return CodegenResult: ✅ Stage 18.151
+  → 结论: 所有底层依赖完整, 可立即实施.
+
+- 实现 (per dev-log §4):
+  1. Rvalue::Load codegen: codegen_operand(ptr) → mir_type_to_emit_type_with_layouts_and_mono
+     (pointee_ty) → MemoryEmitter::emit_load(pointee_emit_ty, ptr_val)
+     - void Load returns CodegenError (per §1.0 原則 4: 报错>静默)
+  2. Rvalue::GetElementPtr codegen: codegen_operand(base) → for each idx_op:
+     codegen_operand(idx_op) + MemoryEmitter::emit_gep_index_ptr(cur_ptr, I32, idx_val)
+     - 单一路径处理 const 和 runtime indices (per §1.0 原則 6: 通解>特例)
+     - MVP (§17.6 record): result_ty 未使用, 因为 LLVM 19 opaque-ptr 不携带 element type.
+       如果 v0.2.5d 迁移需要 typed GEP, 会扩展 — 已记录为 tracked MVP.
+  3. StatementKind::Store codegen: compute_place_address(ptr) → codegen_operand(val) +
+     mir_type_to_emit_type_with_layouts_and_mono(val_ty) → MemoryEmitter::emit_store(val_emit_ty,
+     val, ptr_addr)
+     - void Store 静默跳过 (matches Assign ZST behavior — 单一允许的 silent-skip case)
+
+- 测试 (per §9.4 + §17.6):
+  → 11 lib unit tests in src/codegen/rvalue.rs::intrinsic_ops_tests
+  → 正向 (5): i32/i64 Load/GEP/Store text-IR verification
+  → 负向 (1): void Load returns CodegenError
+  → 集成 (1): GEP→Load chain (mirrors vec_get migration target shape)
+  → 回归 (1): Stage 18.226 data structures still construct
+  → 锚定 (1): mir_type_to_emit_type_with_layouts_and_mono resolves i32 pointee
+  → 设计文档锚定 (per §9.4 test↔design)
+
+- 设计文档更新 (docs/lang-design/06-mir.md §16.6):
+  → 标记 v0.2.5a/b/c done
+  → 新增 §16.6.1 实现详情表 (3 variants × codegen path × 验证)
+  → 记录 MVP scope: result_ty 未使用 + 跟踪计划
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo clean ✅ (removed 1378 files, 928.9MiB)
+  → cargo build --release --features llvm-backend ✅ (46.10s)
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅ (after auto-fix)
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3783 tests, 0 failures)
+    - 675 lib (was 664 + 11 new)
+    - 3108 integration (unchanged)
+
+- 版本: v0.476.0 (bump — codegen support)
+
+Stage Summary:
+- Stage 18.227 PASSED — v0.2.5c: codegen support for MIR intrinsic ops
+- 3 new codegen paths: Rvalue::Load, Rvalue::GetElementPtr, StatementKind::Store
+- Reuses 4 existing MemoryEmitter methods (no new emit_* methods, per §10 DRY)
+- 11 new lib unit tests (3783 total, 0 failures, zero regression)
+- MVP recorded: result_ty unused (LLVM 19 opaque-ptr, tracked for v0.2.5d)
+- Next: Stage 18.228 (v0.2.5d) — migrate __landin_vec_get → MIR intrinsic

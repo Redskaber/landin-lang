@@ -273,8 +273,39 @@ pub(crate) fn codegen_statement(
         // Stage 18.48: StatementKind::Println variant removed — println! now
         // goes through the Call path via __landin_println macro expansion.
         // Per §1.0 原則 6 "通用 > 特解": the 通解 (Call) has replaced the 特解.
-        StatementKind::Store { .. } => {
-            // Stage 18.226: MIR intrinsic Store — not yet codegen-enabled
+        // Stage 18.227 (v0.2.5c): MIR intrinsic Store — store value to
+        // raw pointer. Used by v0.2.5d-g migration to replace compound C
+        // helpers (e.g. `__landin_vec_push` element store, `__landin_string_push_str`
+        // byte copy loop, `__landin_format_variadic` output store).
+        //
+        // Per §1.0 原則 6 (通解>特例): one Store arm for all pointer
+        // destinations — the codegen path is uniform; the MIR producer
+        // (Stage 18.228+) supplies the right pointer place and value.
+        // Per §1.0 原則 4 (报错>静默): void stores are silently skipped
+        // (matches `Assign` behavior for ZST struct returns — void has
+        // no value, so there is nothing to store). This is the SINGLE
+        // allowed silent-skip case; all other type mismatches return
+        // CodegenError.
+        // Per §10 DRY: reuses `compute_place_address` (Stage 14.19) for
+        // pointer derivation and `MemoryEmitter::emit_store` for the
+        // actual store — no new helper.
+        // Per §16.3 (06-mir.md): MIR intrinsic ops design.
+        StatementKind::Store { ptr, val, val_ty } => {
+            let ptr_addr = compute_place_address(emitter, mir, ptr, interner, layouts);
+            let val_emit = codegen_operand(
+                emitter,
+                mir,
+                val,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
+            let val_emit_ty =
+                mir_type_to_emit_type_with_layouts_and_mono(val_ty, layouts, mono_layouts);
+            if val_emit_ty != EmitType::Void {
+                emitter.emit_store(&val_emit_ty, &val_emit, &ptr_addr);
+            }
         }
     }
     Ok(())

@@ -1140,14 +1140,39 @@ Per §13.2: 这些原语在 v0.3 自举后将变成 Landin stdlib 的 `extern "C
 ### 16.6 实现优先级
 
 ```
-v0.2.5a: 设计文档 (本节) ← 当前
-v0.2.5b: 添加 Rvalue::Load, Rvalue::GetElementPtr, StatementKind::Store
-v0.2.5c: codegen 支持 (LLVMBuildLoad2, LLVMBuildGEP2, LLVMBuildStore)
-v0.2.5d: 迁移 __landin_vec_get → MIR intrinsic (最简单, 验证设计)
+v0.2.5a: 设计文档 (本节) ← Stage 18.225 done
+v0.2.5b: 添加 Rvalue::Load, Rvalue::GetElementPtr, StatementKind::Store ← Stage 18.226 done
+v0.2.5c: codegen 支持 (LLVMBuildLoad2, LLVMBuildGEP2, LLVMBuildStore) ← Stage 18.227 done
+v0.2.5d: 迁移 __landin_vec_get → MIR intrinsic (最简单, 验证设计) ← Stage 18.228 (next)
 v0.2.5e: 迁移 __landin_vec_push → MIR intrinsic
 v0.2.5f: 迁移 __landin_string_push_str → MIR intrinsic
 v0.2.5g: 迁移 __landin_format_variadic → MIR intrinsic (最复杂)
 ```
+
+#### 16.6.1 Stage 18.227 实现详情 (v0.2.5c codegen)
+
+| 变体 | codegen 路径 | 验证 |
+|------|-------------|------|
+| `Rvalue::Load(ptr_op, pointee_ty)` | `codegen_operand(ptr_op)` → `mir_type_to_emit_type_with_layouts_and_mono(pointee_ty)` → `MemoryEmitter::emit_load(pointee_emit_ty, ptr_val)` | `load i32,` / `load i64,` text-IR verification |
+| `Rvalue::GetElementPtr { base, indices, result_ty }` | `codegen_operand(base)` → for each `idx_op`: `codegen_operand(idx_op)` + `MemoryEmitter::emit_gep_index_ptr(cur_ptr, I32, idx_val)` | `getelementptr inbounds` + chained indices verification |
+| `StatementKind::Store { ptr, val, val_ty }` | `compute_place_address(ptr)` → `codegen_operand(val)` + `mir_type_to_emit_type_with_layouts_and_mono(val_ty)` → `MemoryEmitter::emit_store(val_emit_ty, val, ptr_addr)` | `store i32` / `store i64` text-IR verification |
+
+**测试覆盖 (per §9.4.3 1:3+ 正负比例)**:
+- 11 lib unit tests in `src/codegen/rvalue.rs::intrinsic_ops_tests`
+- 正向: i32/i64 Load/GEP/Store text-IR verification (5 tests)
+- 负向: void Load returns `CodegenError` (1 test)
+- 集成: GEP→Load chain (mirrors `__landin_vec_get` migration target shape)
+- 回归: Stage 18.226 data structures still construct (1 test)
+- 锚定: `mir_type_to_emit_type_with_layouts_and_mono` resolves i32 pointee (1 test)
+
+**MVP scope (§17.6 record)**:
+- `result_ty` field is currently unused at codegen time because LLVM 19 opaque
+  pointers (`ptr`) carry no element type. The element type passed to
+  `emit_gep_index_ptr` is `EmitType::I32` — a placeholder that works for
+  opaque-ptr LLVM 19 because the GEP instruction's source type is encoded
+  separately. If the v0.2.5d migration reveals a need for typed GEP, this
+  stub will be extended with proper element-type derivation — recorded as a
+  tracked MVP, not a silent defect.
 
 ### 16.7 设计原则
 

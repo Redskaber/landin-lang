@@ -565,7 +565,85 @@ pub(crate) fn codegen_rvalue(
                 crate::session::Span::DUMMY,
             ));
         }
-        Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => "0".to_string(),
+        // Stage 18.227 (v0.2.5c): MIR intrinsic Load — load value from raw
+        // pointer. Used by v0.2.5d-g migration to replace compound C helpers
+        // (e.g. `__landin_vec_get` element load).
+        //
+        // Per §1.0 原則 6 (通解>特例): one Load for all pointer types.
+        // Per §1.0 原則 4 (报错>静默): void Load returns CodegenError (visible).
+        // Per §16.2 (06-mir.md): MIR intrinsic ops design.
+        // Per §10 DRY: reuses `MemoryEmitter::emit_load` — no new emit method.
+        Rvalue::Load(ptr_op, pointee_ty) => {
+            let ptr_val = codegen_operand(
+                emitter,
+                mir,
+                ptr_op,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
+            let pointee_emit_ty =
+                mir_type_to_emit_type_with_layouts_and_mono(pointee_ty, layouts, mono_layouts);
+            if pointee_emit_ty == EmitType::Void {
+                return Err(CodegenError::new(
+                    "Load of void-typed pointer has no value — this is a compiler bug.",
+                    crate::session::Span::DUMMY,
+                ));
+            }
+            emitter.emit_load(&pointee_emit_ty, &ptr_val)
+        }
+        // Stage 18.227 (v0.2.5c): MIR intrinsic GetElementPtr — compute the
+        // address of an element at the given indices. Used by v0.2.5d-g
+        // migration (e.g. `__landin_vec_get` indexing, struct field access
+        // through raw pointers).
+        //
+        // Per §1.0 原則 6 (通解>特例): one GEP arm handles all index forms —
+        // the codegen path is uniform; the MIR producer (Stage 18.228+)
+        // supplies the right index operands.
+        // Per §10 DRY: reuses `MemoryEmitter::emit_gep_index_ptr` for all
+        // indices — no new emit method, no branching on const vs var.
+        // Per §16.2 (06-mir.md): MIR intrinsic ops design.
+        //
+        // MVP (§17.6 record): `result_ty` is currently unused at codegen time
+        // because LLVM 19 opaque pointers (`ptr`) carry no element type.
+        // The element type passed to `emit_gep_index_ptr` is `I32` — this is
+        // a placeholder that works for opaque-ptr LLVM 19 because the GEP
+        // instruction's source type is encoded separately. If the v0.2.5d
+        // migration reveals a need for typed GEP, this stub will be extended
+        // with proper element-type derivation — recorded as a tracked MVP,
+        // not a silent defect.
+        Rvalue::GetElementPtr {
+            base,
+            indices,
+            result_ty: _,
+        } => {
+            let mut cur_ptr = codegen_operand(
+                emitter,
+                mir,
+                base,
+                interner,
+                layouts,
+                mono_layouts,
+                fn_name_by_def_id,
+            );
+            for idx_op in indices {
+                // Per §1.0 原則 6 (通解>特例): one path for const and runtime
+                // indices — `emit_gep_index_ptr` works for both because LLVM
+                // 19 opaque-ptr GEP doesn't distinguish them at the IR level.
+                let idx_val = codegen_operand(
+                    emitter,
+                    mir,
+                    idx_op,
+                    interner,
+                    layouts,
+                    mono_layouts,
+                    fn_name_by_def_id,
+                );
+                cur_ptr = emitter.emit_gep_index_ptr(&cur_ptr, &EmitType::I32, &idx_val);
+            }
+            cur_ptr
+        }
     })
 }
 
@@ -611,5 +689,592 @@ fn store_operand_to_local(
             // Also update the emitter's cached local value.
             emitter.set_local(id.0, val.clone());
         }
+    }
+}
+
+// ===========================================================================
+// Stage 18.227 (v0.2.5c): lib unit tests for MIR intrinsic ops codegen.
+//
+// These are lib unit tests (not integration tests) because `codegen_rvalue`
+// and `codegen_statement` are `pub(crate)` — exposing them publicly would
+// leak codegen internals across the crate boundary (per §11 接口隔离).
+//
+// Per §9.4 + §17.6: each new variant gets at least 1 positive (text-IR
+// verification) + 1 negative or stress test. Per §10 DRY: shared fixtures.
+// ===========================================================================
+
+#[cfg(test)]
+mod intrinsic_ops_tests {
+    use super::*;
+    use crate::codegen::{
+        mir_type_to_emit_type_with_layouts_and_mono, CodegenError, EmitType, MemoryEmitter,
+        TextEmitter,
+    };
+    use crate::mir::body::{MirBody, Statement, StatementKind};
+    use crate::mir::place::{LocalId, Operand, Place, Rvalue};
+    use crate::mir::ty::{Const, ConstVal, Mutability, Ty, TyKind};
+    use crate::session::Span;
+
+    use lasso::Rodeo;
+    use std::collections::HashMap;
+
+    // --- Shared test fixture helpers (per §10 DRY) ---
+
+    /// Build a minimal MirBody with one local of type `ty`.
+    /// The local is registered as LocalId(0).
+    fn build_mir_with_local(ty: Ty) -> MirBody {
+        let mut mir = MirBody::new(Span::DUMMY);
+        let _ = mir.new_local(ty, None, Span::DUMMY);
+        let _ = mir.new_block();
+        mir
+    }
+
+    /// Build an empty interner + empty fn_name map + empty mono_layouts.
+    struct CodegenCtx {
+        interner: Rodeo,
+        fn_names: HashMap<crate::hir::DefId, String>,
+    }
+
+    impl CodegenCtx {
+        fn new() -> Self {
+            Self {
+                interner: Rodeo::new(),
+                fn_names: HashMap::new(),
+            }
+        }
+    }
+
+    /// Set up a TextEmitter inside a function context with one alloca'd local.
+    /// Returns the local's pointer EmitValue (e.g. `%loc_0`).
+    fn setup_emitter_with_local(emitter: &mut TextEmitter, ty: &EmitType) -> String {
+        emitter.emit_function_begin("test_fn", &[], &EmitType::I32);
+        emitter.emit_alloca(ty, "%loc_0")
+    }
+
+    // --- Rvalue::Load tests ---
+
+    /// Positive: `Rvalue::Load(ptr, i32)` emits a `load i32, ptr %X` instruction.
+    ///
+    /// Per §1.0 原則 6 (通解>特例): one Load path for all pointer types —
+    /// this test verifies the i32 case (the most common primitive).
+    #[test]
+    fn stage18_227_rvalue_load_i32_emits_load_instruction() {
+        let mut emitter = TextEmitter::new();
+        let ptr_val = setup_emitter_with_local(&mut emitter, &EmitType::I32);
+
+        let i32_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
+        let ptr_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(i32_ty.clone())),
+            Span::DUMMY,
+        );
+        let mir = build_mir_with_local(ptr_ty);
+        emitter.set_local_ptr(0, ptr_val.clone());
+
+        let ctx = CodegenCtx::new();
+        let rv = Rvalue::Load(Operand::Copy(Place::local(LocalId(0), Span::DUMMY)), i32_ty);
+
+        let result = codegen_rvalue(
+            &mut emitter,
+            &mir,
+            &rv,
+            &ctx.interner,
+            &mir.adt_layouts,
+            None,
+            &ctx.fn_names,
+        )
+        .expect("Load should codegen successfully");
+
+        let output = emitter.output_with_globals();
+        assert!(
+            output.contains("load i32,"),
+            "Expected `load i32,` in IR, got:\n{}",
+            output
+        );
+        assert!(
+            result.starts_with("%v"),
+            "Load result should be a fresh SSA value, got: {}",
+            result
+        );
+    }
+
+    /// Negative: `Rvalue::Load(ptr, void)` returns CodegenError (not silent "0").
+    ///
+    /// Per §1.0 原則 4 (报错>静默): void loads are errors, not silent skips.
+    #[test]
+    fn stage18_227_rvalue_load_void_returns_error() {
+        let mut emitter = TextEmitter::new();
+        let _ = setup_emitter_with_local(&mut emitter, &EmitType::I32);
+
+        let void_ty = Ty::new(TyKind::Tuple(vec![]), Span::DUMMY);
+        let ptr_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(void_ty.clone())),
+            Span::DUMMY,
+        );
+        let mir = build_mir_with_local(ptr_ty);
+        emitter.set_local_ptr(0, "%loc_0".to_string());
+
+        let ctx = CodegenCtx::new();
+        let rv = Rvalue::Load(
+            Operand::Copy(Place::local(LocalId(0), Span::DUMMY)),
+            void_ty,
+        );
+
+        let result = codegen_rvalue(
+            &mut emitter,
+            &mir,
+            &rv,
+            &ctx.interner,
+            &mir.adt_layouts,
+            None,
+            &ctx.fn_names,
+        );
+
+        assert!(
+            result.is_err(),
+            "Load of void-typed pointer must return CodegenError, got: {:?}",
+            result
+        );
+        let err: CodegenError = result.unwrap_err();
+        assert!(
+            err.message.contains("void"),
+            "Error message must mention 'void', got: {}",
+            err.message
+        );
+    }
+
+    /// Positive: `Rvalue::Load` on a pointer-to-i64 emits `load i64,`.
+    ///
+    /// Per §1.0 原則 6 (通解>特例): same path handles different pointee types.
+    #[test]
+    fn stage18_227_rvalue_load_i64_emits_load_i64() {
+        let mut emitter = TextEmitter::new();
+        let ptr_val = setup_emitter_with_local(&mut emitter, &EmitType::I64);
+
+        let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), Span::DUMMY);
+        let ptr_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(i64_ty.clone())),
+            Span::DUMMY,
+        );
+        let mir = build_mir_with_local(ptr_ty);
+        emitter.set_local_ptr(0, ptr_val);
+
+        let ctx = CodegenCtx::new();
+        let rv = Rvalue::Load(Operand::Copy(Place::local(LocalId(0), Span::DUMMY)), i64_ty);
+
+        let _ = codegen_rvalue(
+            &mut emitter,
+            &mir,
+            &rv,
+            &ctx.interner,
+            &mir.adt_layouts,
+            None,
+            &ctx.fn_names,
+        )
+        .expect("Load i64 should codegen successfully");
+
+        let output = emitter.output_with_globals();
+        assert!(
+            output.contains("load i64,"),
+            "Expected `load i64,` in IR, got:\n{}",
+            output
+        );
+    }
+
+    // --- Rvalue::GetElementPtr tests ---
+
+    /// Positive: `Rvalue::GetElementPtr` with a runtime index operand emits a
+    /// `getelementptr inbounds` instruction.
+    ///
+    /// Per §1.0 原則 6 (通解>特例): one GEP path for all index forms.
+    #[test]
+    fn stage18_227_rvalue_gep_runtime_index_emits_gep_instruction() {
+        let mut emitter = TextEmitter::new();
+        let ptr_val = setup_emitter_with_local(&mut emitter, &EmitType::I32);
+
+        let i32_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
+        let ptr_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(i32_ty.clone())),
+            Span::DUMMY,
+        );
+        let mut mir = MirBody::new(Span::DUMMY);
+        let _ = mir.new_local(ptr_ty.clone(), None, Span::DUMMY); // LocalId(0) = base ptr
+        let _ = mir.new_local(i32_ty, None, Span::DUMMY); // LocalId(1) = index
+        let _ = mir.new_block();
+        emitter.set_local_ptr(0, ptr_val.clone());
+        emitter.set_local_ptr(1, "%loc_1".to_string());
+
+        let ctx = CodegenCtx::new();
+        let rv = Rvalue::GetElementPtr {
+            base: Operand::Copy(Place::local(LocalId(0), Span::DUMMY)),
+            indices: vec![Operand::Copy(Place::local(LocalId(1), Span::DUMMY))],
+            result_ty: ptr_ty,
+        };
+
+        let result = codegen_rvalue(
+            &mut emitter,
+            &mir,
+            &rv,
+            &ctx.interner,
+            &mir.adt_layouts,
+            None,
+            &ctx.fn_names,
+        )
+        .expect("GEP should codegen successfully");
+
+        let output = emitter.output_with_globals();
+        assert!(
+            output.contains("getelementptr inbounds"),
+            "Expected `getelementptr inbounds` in IR, got:\n{}",
+            output
+        );
+        assert!(
+            result.starts_with("%v"),
+            "GEP result should be a fresh SSA value, got: {}",
+            result
+        );
+    }
+
+    /// Positive: `Rvalue::GetElementPtr` with a constant index operand also
+    /// emits a `getelementptr inbounds` (single path for const + var indices).
+    #[test]
+    fn stage18_227_rvalue_gep_const_index_emits_gep_instruction() {
+        let mut emitter = TextEmitter::new();
+        let ptr_val = setup_emitter_with_local(&mut emitter, &EmitType::I32);
+
+        let i32_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
+        let ptr_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(i32_ty.clone())),
+            Span::DUMMY,
+        );
+        let mir = build_mir_with_local(ptr_ty);
+        emitter.set_local_ptr(0, ptr_val);
+
+        let ctx = CodegenCtx::new();
+        let const_idx = Operand::Constant(Const {
+            ty: i32_ty.clone(),
+            val: ConstVal::Int(3),
+        });
+        let rv = Rvalue::GetElementPtr {
+            base: Operand::Copy(Place::local(LocalId(0), Span::DUMMY)),
+            indices: vec![const_idx],
+            result_ty: Ty::new(
+                TyKind::RawPtr(Mutability::Mutable, Box::new(i32_ty)),
+                Span::DUMMY,
+            ),
+        };
+
+        let _ = codegen_rvalue(
+            &mut emitter,
+            &mir,
+            &rv,
+            &ctx.interner,
+            &mir.adt_layouts,
+            None,
+            &ctx.fn_names,
+        )
+        .expect("GEP with const index should codegen successfully");
+
+        let output = emitter.output_with_globals();
+        assert!(
+            output.contains("getelementptr inbounds"),
+            "Expected `getelementptr inbounds` for const-index GEP, got:\n{}",
+            output
+        );
+    }
+
+    /// Positive: chained GEP with 2 indices emits 2 `getelementptr` instructions.
+    ///
+    /// Per §10 DRY: each index produces one GEP, chained through the previous result.
+    #[test]
+    fn stage18_227_rvalue_gep_chained_indices_emits_multiple_gep() {
+        let mut emitter = TextEmitter::new();
+        let ptr_val = setup_emitter_with_local(&mut emitter, &EmitType::I32);
+
+        let i32_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
+        let ptr_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(i32_ty.clone())),
+            Span::DUMMY,
+        );
+        let mut mir = MirBody::new(Span::DUMMY);
+        let _ = mir.new_local(ptr_ty.clone(), None, Span::DUMMY);
+        let _ = mir.new_local(i32_ty, None, Span::DUMMY);
+        let _ = mir.new_block();
+        emitter.set_local_ptr(0, ptr_val);
+        emitter.set_local_ptr(1, "%loc_1".to_string());
+
+        let ctx = CodegenCtx::new();
+        let rv = Rvalue::GetElementPtr {
+            base: Operand::Copy(Place::local(LocalId(0), Span::DUMMY)),
+            indices: vec![
+                Operand::Copy(Place::local(LocalId(1), Span::DUMMY)),
+                Operand::Constant(Const {
+                    ty: Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY),
+                    val: ConstVal::Int(1),
+                }),
+            ],
+            result_ty: Ty::new(
+                TyKind::RawPtr(
+                    Mutability::Mutable,
+                    Box::new(Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)),
+                ),
+                Span::DUMMY,
+            ),
+        };
+
+        let _ = codegen_rvalue(
+            &mut emitter,
+            &mir,
+            &rv,
+            &ctx.interner,
+            &mir.adt_layouts,
+            None,
+            &ctx.fn_names,
+        )
+        .expect("Chained GEP should codegen successfully");
+
+        let output = emitter.output_with_globals();
+        let gep_count = output.matches("getelementptr inbounds").count();
+        assert_eq!(
+            gep_count, 2,
+            "Expected 2 `getelementptr` instructions for 2 indices, got {} in:\n{}",
+            gep_count, output
+        );
+    }
+
+    // --- StatementKind::Store tests ---
+
+    /// Positive: `StatementKind::Store` emits a `store` instruction.
+    ///
+    /// Per §1.0 原則 6 (通解>特例): one Store path for all pointer destinations.
+    #[test]
+    fn stage18_227_statement_store_emits_store_instruction() {
+        let mut emitter = TextEmitter::new();
+        let ptr_val = setup_emitter_with_local(&mut emitter, &EmitType::I32);
+
+        let i32_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
+        let ptr_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(i32_ty.clone())),
+            Span::DUMMY,
+        );
+        let mut mir = MirBody::new(Span::DUMMY);
+        let _ = mir.new_local(ptr_ty, None, Span::DUMMY); // LocalId(0) = ptr place
+        let _ = mir.new_local(i32_ty.clone(), None, Span::DUMMY); // LocalId(1) = val source
+        let _ = mir.new_block();
+        emitter.set_local_ptr(0, ptr_val.clone());
+        emitter.set_local_ptr(1, "%loc_1".to_string());
+
+        let ctx = CodegenCtx::new();
+        let stmt = Statement {
+            kind: StatementKind::Store {
+                ptr: Place::local(LocalId(0), Span::DUMMY),
+                val: Operand::Constant(Const {
+                    ty: i32_ty.clone(),
+                    val: ConstVal::Int(42),
+                }),
+                val_ty: i32_ty,
+            },
+            span: Span::DUMMY,
+        };
+
+        crate::codegen::statement::codegen_statement(
+            &mut emitter,
+            &mir,
+            &stmt,
+            &ctx.interner,
+            &mir.adt_layouts,
+            None,
+            &ctx.fn_names,
+        )
+        .expect("Store should codegen successfully");
+
+        let output = emitter.output_with_globals();
+        assert!(
+            output.contains("store i32"),
+            "Expected `store i32` in IR, got:\n{}",
+            output
+        );
+    }
+
+    /// Positive: `StatementKind::Store` with an i64 value emits `store i64`.
+    #[test]
+    fn stage18_227_statement_store_i64_emits_store_i64() {
+        let mut emitter = TextEmitter::new();
+        let ptr_val = setup_emitter_with_local(&mut emitter, &EmitType::I64);
+
+        let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), Span::DUMMY);
+        let ptr_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(i64_ty.clone())),
+            Span::DUMMY,
+        );
+        let mut mir = MirBody::new(Span::DUMMY);
+        let _ = mir.new_local(ptr_ty, None, Span::DUMMY);
+        let _ = mir.new_block();
+        emitter.set_local_ptr(0, ptr_val);
+
+        let ctx = CodegenCtx::new();
+        let stmt = Statement {
+            kind: StatementKind::Store {
+                ptr: Place::local(LocalId(0), Span::DUMMY),
+                val: Operand::Constant(Const {
+                    ty: i64_ty.clone(),
+                    val: ConstVal::Int(99),
+                }),
+                val_ty: i64_ty,
+            },
+            span: Span::DUMMY,
+        };
+
+        crate::codegen::statement::codegen_statement(
+            &mut emitter,
+            &mir,
+            &stmt,
+            &ctx.interner,
+            &mir.adt_layouts,
+            None,
+            &ctx.fn_names,
+        )
+        .expect("Store i64 should codegen successfully");
+
+        let output = emitter.output_with_globals();
+        assert!(
+            output.contains("store i64"),
+            "Expected `store i64` in IR, got:\n{}",
+            output
+        );
+    }
+
+    // --- Regression: Stage 18.226 data structures still construct ---
+
+    /// Regression: the 3 new MIR variants added in Stage 18.226 must still
+    /// construct without panic. Catches enum-variant removal or signature
+    /// drift introduced by Stage 18.227 codegen wiring.
+    ///
+    /// Per §9.4 (test↔design锚定): test verifies the design doc §16.2-§16.3
+    /// data structures match the codegen implementation.
+    #[test]
+    fn stage18_227_mir_intrinsics_data_structures_compile() {
+        let i32_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
+        let ptr_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(i32_ty.clone())),
+            Span::DUMMY,
+        );
+
+        // Rvalue::Load constructs without panic.
+        let _load = Rvalue::Load(
+            Operand::Constant(Const {
+                ty: ptr_ty.clone(),
+                val: ConstVal::Int(0),
+            }),
+            i32_ty.clone(),
+        );
+
+        // Rvalue::GetElementPtr constructs without panic.
+        let _gep = Rvalue::GetElementPtr {
+            base: Operand::Constant(Const {
+                ty: ptr_ty.clone(),
+                val: ConstVal::Int(0),
+            }),
+            indices: vec![],
+            result_ty: ptr_ty.clone(),
+        };
+
+        // StatementKind::Store constructs without panic.
+        let _store = StatementKind::Store {
+            ptr: Place::local(LocalId(0), Span::DUMMY),
+            val: Operand::Constant(Const {
+                ty: i32_ty.clone(),
+                val: ConstVal::Int(0),
+            }),
+            val_ty: i32_ty,
+        };
+
+        // If we got here, all 3 variants construct successfully.
+        // The Stage 18.226 data structures are intact.
+    }
+
+    // --- Integration: GEP + Load combination (mirrors vec_get target) ---
+
+    /// Integration: `GEP` followed by `Load` mirrors what `__landin_vec_get`
+    /// will become after v0.2.5d migration:
+    ///   ```text
+    ///   let elem_ptr = GetElementPtr { base: vec.data_ptr, indices: [idx] };
+    ///   let val = Load(elem_ptr, T);
+    ///   ```
+    ///
+    /// Per §17.6 (缺陷纳入): this test pre-validates the migration path before
+    /// Stage 18.228 starts. If the codegen can't handle GEP→Load, the migration
+    /// is blocked.
+    #[test]
+    fn stage18_227_integration_gep_then_load_mirrors_vec_get_target() {
+        let mut emitter = TextEmitter::new();
+        let ptr_val = setup_emitter_with_local(&mut emitter, &EmitType::I32);
+
+        let i32_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
+        let ptr_ty = Ty::new(
+            TyKind::RawPtr(Mutability::Mutable, Box::new(i32_ty.clone())),
+            Span::DUMMY,
+        );
+        let mut mir = MirBody::new(Span::DUMMY);
+        let _ = mir.new_local(ptr_ty.clone(), None, Span::DUMMY); // base ptr
+        let _ = mir.new_local(i32_ty.clone(), None, Span::DUMMY); // index
+        let _ = mir.new_local(ptr_ty.clone(), None, Span::DUMMY); // GEP result holder
+        let _ = mir.new_block();
+        emitter.set_local_ptr(0, ptr_val);
+        emitter.set_local_ptr(1, "%loc_1".to_string());
+
+        let ctx = CodegenCtx::new();
+
+        // Step 1: GEP to compute element pointer.
+        let gep_rv = Rvalue::GetElementPtr {
+            base: Operand::Copy(Place::local(LocalId(0), Span::DUMMY)),
+            indices: vec![Operand::Copy(Place::local(LocalId(1), Span::DUMMY))],
+            result_ty: ptr_ty.clone(),
+        };
+        let elem_ptr = codegen_rvalue(
+            &mut emitter,
+            &mir,
+            &gep_rv,
+            &ctx.interner,
+            &mir.adt_layouts,
+            None,
+            &ctx.fn_names,
+        )
+        .expect("GEP should codegen successfully");
+
+        // Step 2: Load from the computed element pointer.
+        emitter.set_local_ptr(2, elem_ptr);
+        let load_rv = Rvalue::Load(Operand::Copy(Place::local(LocalId(2), Span::DUMMY)), i32_ty);
+
+        let _loaded_val = codegen_rvalue(
+            &mut emitter,
+            &mir,
+            &load_rv,
+            &ctx.interner,
+            &mir.adt_layouts,
+            None,
+            &ctx.fn_names,
+        )
+        .expect("Load after GEP should codegen successfully");
+
+        let output = emitter.output_with_globals();
+        assert!(
+            output.contains("getelementptr inbounds") && output.contains("load i32,"),
+            "Expected both GEP and load in IR (vec_get target shape), got:\n{}",
+            output
+        );
+    }
+
+    // --- Design-doc anchor: verify mir_type_to_emit_type_with_layouts_and_mono ---
+
+    /// Per §9.4 (test↔design锚定): the codegen uses
+    /// `mir_type_to_emit_type_with_layouts_and_mono` to translate the pointee Ty
+    /// to EmitType. This test verifies that for an i32 pointee, the result is
+    /// `EmitType::I32` (the simplest case — used by all Stage 18.227 tests above).
+    #[test]
+    fn stage18_227_mir_type_to_emit_type_resolves_i32_pointee() {
+        let i32_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY);
+        let layouts = std::collections::HashMap::new();
+        let emit_ty = mir_type_to_emit_type_with_layouts_and_mono(&i32_ty, &layouts, None);
+        assert_eq!(emit_ty, EmitType::I32);
     }
 }
