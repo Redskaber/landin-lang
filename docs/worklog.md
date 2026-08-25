@@ -19880,3 +19880,60 @@ Stage Summary:
 - 9 tests updated to use `let mut v: Vec`
 - 3772 tests, 0 failures, zero regression
 - v0.475.0: no bump (borrowck fix)
+
+---
+Task ID: stage18.223
+Agent: Super Z (main) — ARCH-A + PM-A + REV-A
+Task: Stage 18.223 — Task review: TD-C-WRAPPER-OVERUSE dependency audit + MIR intrinsic ops design plan. v0.475.0 (no bump — audit).
+
+Work Log:
+- Baseline: v0.475.0 / 664 lib + 3108 integration = 3772 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.219 v0.2 Phase 2 task re-plan → v0.2.5: TD-C-WRAPPER-OVERUSE
+- §17.7/§17.8 任务审查
+
+- 依赖与基础设施审查 (per user directive):
+  → MIR Rvalue variants: Use, BinaryOp, UnaryOp, Ref, Cast, Aggregate, BinaryOp2 ✅
+  → Missing: Load, Store, Alloc, GetElementPtr (MIR-level intrinsic ops)
+  → Codegen infrastructure: ✅ (LLVMSysEmitter, emit_load, emit_store, emit_gep_field)
+  → compute_type_size: ✅ Stage 18.203
+  → extract_vec_element_type: ✅ Stage 18.208
+  → build_adt_layout with generics: ✅ Stage 18.212
+  → Design document for MIR intrinsic ops: ❌ Missing
+
+- Migration complexity:
+  → __landin_vec_get: Low (~30 MIR ops)
+  → __landin_vec_push: Medium (~80 MIR ops)
+  → __landin_string_push_str: Medium (~60 MIR ops)
+  → __landin_format_variadic: High (~150+ MIR ops, va_list semantics)
+
+- 任务审查结论 (per §17.8):
+  → Is this the best time? No — TD-C-WRAPPER-OVERUSE is a v0.2/v0.3 architectural task
+  → Should we re-plan? Yes — defer to v0.2 Phase 2 design stage
+  → v0.2.5a: MIR intrinsic ops design document
+  → v0.2.5b-g: Implementation + migration of 4 compound C helpers
+  → v0.3: Remove compound C helpers from runtime.rs
+
+- v0.1 status: complete and stable
+  → 8/11 TDs resolved
+  → 3772 tests, 0 failures
+  → Full validation flow (LLVM 22.1)
+  → All v0.1 features working
+
+- Remaining TDs (all need v0.2+ infrastructure):
+  → TD-C-WRAPPER-OVERUSE: MIR intrinsic ops design (v0.2.5a-g)
+  → TD-DROP-MOVED-LOCALS: Move tracking (v0.3+)
+  → TD-METHOD-RESOLVE-STRICT: Resolver tracking (v0.2.3, needs design)
+
+- 全校验流:
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
+  → cargo test --release --features llvm-backend ✅ (3772 tests, 0 failures)
+
+- 版本: v0.475.0 (no bump — audit)
+
+Stage Summary:
+- Stage 18.223 PASSED — TD-C-WRAPPER-OVERUSE task review
+- 结论: NEEDS REVISION — defer to v0.2 Phase 2 design stage
+- v0.1 complete: 8/11 TDs resolved, 3772 tests, 0 failures
+- Remaining 3 TDs all need v0.2+ infrastructure
+- Next: v0.2 Phase 2 design document for MIR intrinsic ops
