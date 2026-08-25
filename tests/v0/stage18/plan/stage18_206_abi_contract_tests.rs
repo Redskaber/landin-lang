@@ -44,47 +44,14 @@ struct AbiContract {
     c_params: &'static [&'static str],
 }
 
-/// The canonical ABI contract for all compound C runtime helpers.
-/// Per §1.0 原則 6 (通解>特例): one table for all helpers.
-const COMPOUND_ABI_CONTRACTS: &[AbiContract] = &[
-    AbiContract {
-        name: "__landin_vec_push",
-        c_return: "void",
-        c_params: &["void* vec_ptr", "void* val_ptr", "long long elem_size"],
-    },
-    AbiContract {
-        name: "__landin_string_push_str",
-        c_return: "void",
-        c_params: &["void* str_ptr", "const char* src_ptr", "long long src_len"],
-    },
-    AbiContract {
-        name: "__landin_vec_get",
-        c_return: "void",
-        c_params: &[
-            "void* vec_ptr",
-            "long long index",
-            "void* out_ptr",
-            "long long elem_size",
-        ],
-    },
-    AbiContract {
-        name: "__landin_format_variadic",
-        c_return: "void",
-        c_params: &[
-            "void* out_str_ptr",
-            "const char* fmt_ptr",
-            "long long fmt_len",
-            "long long n_args",
-            "const long long* arg_types",
-            "const long long* arg_vals",
-            "...",
-        ],
-    },
-];
-
-/// The primitive ABI contracts (alloc/dealloc/memcpy/realloc) — these are
-/// explicitly endorsed by 07-codegen.md §4-§5 and are NOT in scope for
-/// TD-C-WRAPPER-OVERUSE migration.
+/// The primitive ABI contracts (alloc/dealloc/memcpy/realloc/i64_to_str) — these are
+/// explicitly endorsed by 07-codegen.md §4-§5 and §16.5, and are NOT in scope
+/// for TD-C-WRAPPER-OVERUSE migration (they wrap libc primitives).
+///
+/// Stage 18.232: The 4 compound C helpers (vec_push, string_push_str, vec_get,
+/// format_variadic) have been migrated to MIR intrinsics (Stages 18.228-18.231)
+/// and removed from runtime.rs. Their ABI contract tests are removed.
+/// Per §1.0 原則 5 (去除兼容思维): dead test code removed.
 const PRIMITIVE_ABI_CONTRACTS: &[AbiContract] = &[
     AbiContract {
         name: "__landin_alloc",
@@ -105,6 +72,12 @@ const PRIMITIVE_ABI_CONTRACTS: &[AbiContract] = &[
         name: "__landin_realloc",
         c_return: "void*",
         c_params: &["void* ptr", "long long old_size", "long long new_size"],
+    },
+    // Stage 18.231 (v0.2.5g): __landin_i64_to_str primitive (snprintf wrapper).
+    AbiContract {
+        name: "__landin_i64_to_str",
+        c_return: "long long",
+        c_params: &["char* buf", "long long buf_cap", "long long val"],
     },
 ];
 
@@ -242,38 +215,9 @@ fn extract_c_signature(name: &str) -> Option<(String, Vec<String>)> {
 // POSITIVE TESTS — ABI contract matches C source
 // ============================================================
 
-/// Stage 18.206 positive 1: all compound C helpers have the expected ABI.
-/// Per §1.0 原則 6 (通解>特例): one test for all compound helpers.
-#[test]
-fn stage18_206_compound_abis_match_c_source() {
-    for contract in COMPOUND_ABI_CONTRACTS {
-        let (ret, params) = extract_c_signature(contract.name).unwrap_or_else(|| {
-            panic!("C function {} not found in LANDIN_C_WRAPPER", contract.name)
-        });
-        assert_eq!(
-            ret, contract.c_return,
-            "C function {} return type mismatch: expected {:?}, got {:?}",
-            contract.name, contract.c_return, ret
-        );
-        assert_eq!(
-            params.len(),
-            contract.c_params.len(),
-            "C function {} param count mismatch: expected {}, got {}: expected {:?}, got {:?}",
-            contract.name,
-            contract.c_params.len(),
-            params.len(),
-            contract.c_params,
-            params
-        );
-        for (i, (expected, actual)) in contract.c_params.iter().zip(params.iter()).enumerate() {
-            assert_eq!(
-                actual, expected,
-                "C function {} param {} mismatch: expected {:?}, got {:?}",
-                contract.name, i, expected, actual
-            );
-        }
-    }
-}
+// Stage 18.232: The compound_abis_match_c_source test has been REMOVED
+// (C helpers migrated to MIR). The primitive_abis_match_c_source test
+// below covers all remaining primitive C helpers.
 
 /// Stage 18.206 positive 2: all primitive C helpers have the expected ABI.
 #[test]
@@ -303,22 +247,21 @@ fn stage18_206_primitive_abis_match_c_source() {
     }
 }
 
-/// Stage 18.206 positive 3: compound helpers use pointer-typed params
-/// (void*, const char*, const long long*), not raw integers.
+/// Stage 18.206 positive 3: primitive helpers use pointer-typed params
+/// (void*, const void*) or long long integers.
 /// Per §11 (interface isolation): pointer params are opaque — the C function
 /// doesn't care about the pointee type, only that it's a pointer.
 #[test]
-fn stage18_206_compound_abis_use_pointer_params() {
-    for contract in COMPOUND_ABI_CONTRACTS {
+fn stage18_206_primitive_abis_use_pointer_params() {
+    for contract in PRIMITIVE_ABI_CONTRACTS {
         let (_, params) = extract_c_signature(contract.name).unwrap();
         for (i, p) in params.iter().enumerate() {
             let is_pointer = p.contains('*');
             let is_integer = p.contains("long long") && !p.contains('*');
-            let is_variadic = p == "...";
-            // At least one of pointer, integer, or variadic marker.
+            // At least one of pointer or integer.
             assert!(
-                is_pointer || is_integer || is_variadic,
-                "C function {} param {} has unexpected type {:?} — expected pointer, long long, or `...`",
+                is_pointer || is_integer,
+                "C function {} param {} has unexpected type {:?} — expected pointer or long long",
                 contract.name,
                 i,
                 p
@@ -327,57 +270,11 @@ fn stage18_206_compound_abis_use_pointer_params() {
     }
 }
 
-/// Stage 18.206 positive 4: vec_push and vec_get have matching elem_size
-/// semantics (both take `long long elem_size` as the LAST param).
-/// Per §1.0 原則 6 (通解>特例): matching param positions for related ops.
-#[test]
-fn stage18_206_vec_push_get_elem_size_consistency() {
-    let (_, push_params) = extract_c_signature("__landin_vec_push").unwrap();
-    let (_, get_params) = extract_c_signature("__landin_vec_get").unwrap();
-    let push_last = push_params.last().expect("vec_push has params");
-    let get_last = get_params.last().expect("vec_get has params");
-    assert_eq!(
-        push_last, get_last,
-        "vec_push and vec_get must have matching elem_size (last param) type: push={}, get={}",
-        push_last, get_last
-    );
-    // The last param should be "long long elem_size" (type + name).
-    assert_eq!(
-        push_last, "long long elem_size",
-        "elem_size param must be 'long long elem_size', got {:?}",
-        push_last
-    );
-}
-
-/// Stage 18.206 positive 5: format_variadic has 6 fixed params + variadic `...`.
-/// Per §1.0 原則 3 (显式 > 隐式): the fixed param count + variadic marker is explicit.
-#[test]
-fn stage18_206_format_variadic_has_6_fixed_params_plus_variadic() {
-    let (ret, params) = extract_c_signature("__landin_format_variadic").unwrap();
-    assert_eq!(ret, "void", "format_variadic return must be void");
-    // 6 fixed params + 1 variadic marker `...` = 7 entries in the C signature.
-    assert_eq!(
-        params.len(),
-        7,
-        "format_variadic must have 6 fixed params + 1 variadic `...` = 7 entries, got {}: {:?}",
-        params.len(),
-        params
-    );
-    // The last entry must be `...` (variadic marker).
-    assert_eq!(
-        params.last().unwrap(),
-        "...",
-        "format_variadic must end with variadic `...`, got {:?}",
-        params.last()
-    );
-    // The first 6 must be the fixed params (verify by name suffix).
-    let fixed = &params[..6];
-    assert!(
-        fixed.iter().all(|p| p != "..."),
-        "fixed params must not contain `...`: {:?}",
-        fixed
-    );
-}
+// Stage 18.232: The following tests have been REMOVED because the C helpers
+// they tested have been migrated to MIR intrinsics (Stages 18.228-18.231):
+// - stage18_206_vec_push_get_elem_size_consistency (vec_push/vec_get removed)
+// - stage18_206_format_variadic_has_6_fixed_params_plus_variadic (format_variadic removed)
+// Per §1.0 原則 5 (去除兼容思维): dead test code removed.
 
 // ============================================================
 // NEGATIVE TESTS — ABI mismatch detection
@@ -400,14 +297,14 @@ fn stage18_206_extract_signature_returns_none_for_unknown_function() {
 /// verifies that the test framework catches mismatches (not just passes).
 #[test]
 fn stage18_206_mismatch_detection_works() {
-    let (actual_ret, _) = extract_c_signature("__landin_vec_push").unwrap();
-    // vec_push returns void, not int. If we assert int, the test SHOULD fail.
+    let (actual_ret, _) = extract_c_signature("__landin_alloc").unwrap();
+    // alloc returns void*, not int. If we assert int, the test SHOULD fail.
     assert_ne!(
         actual_ret, "int",
-        "sanity check: __landin_vec_push returns {:?}, not int — mismatch detection works",
+        "sanity check: __landin_alloc returns {:?}, not int — mismatch detection works",
         actual_ret
     );
-    assert_eq!(actual_ret, "void", "__landin_vec_push must return void");
+    assert_eq!(actual_ret, "void*", "__landin_alloc must return void*");
 }
 
 // ============================================================
@@ -427,10 +324,7 @@ fn stage18_206_mismatch_detection_works() {
 #[test]
 fn stage18_206_runtime_sigs_param_count_matches_c_source() {
     // Build a map of (name, expected_param_count) from our contracts.
-    let all_contracts: Vec<&AbiContract> = COMPOUND_ABI_CONTRACTS
-        .iter()
-        .chain(PRIMITIVE_ABI_CONTRACTS.iter())
-        .collect();
+    let all_contracts: Vec<&AbiContract> = PRIMITIVE_ABI_CONTRACTS.iter().collect();
     for contract in &all_contracts {
         let (_, params) = extract_c_signature(contract.name)
             .unwrap_or_else(|| panic!("{} not found in C source", contract.name));
@@ -455,10 +349,7 @@ fn stage18_206_all_runtime_helpers_are_c_abi() {
     // All functions in LANDIN_C_WRAPPER are C functions by definition
     // (no `extern "Rust"` or `extern "C++"` markers). This test verifies
     // the C source is syntactically valid C (each function has a body).
-    for contract in COMPOUND_ABI_CONTRACTS
-        .iter()
-        .chain(PRIMITIVE_ABI_CONTRACTS.iter())
-    {
+    for contract in PRIMITIVE_ABI_CONTRACTS.iter() {
         let needle = format!(" {}(", contract.name);
         let idx = LANDIN_C_WRAPPER
             .find(&needle)

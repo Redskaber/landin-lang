@@ -20392,3 +20392,68 @@ Stage Summary:
 - MVP: fixed 4096-byte buffer, i64 args only, &str args deferred to v0.3 (§17.6 record)
 - v0.2 Phase 2 COMPLETE
 - Next: v0.3 self-hosting preparation (remove C helpers from runtime.rs)
+
+---
+Task ID: stage18.232
+Agent: Super Z (main) — Stage Committee (ARCH-A + QA-A + REV-A + PM-A + ALG-C + SKL-A)
+Task: Stage 18.232 — v0.2 Phase 2 Final Deep Review §14.5 (D1-D8) + Dead Code Cleanup. v0.480.0 → v0.481.0.
+
+Work Log:
+- Baseline: v0.480.0 / 3783 tests (LLVM 22.1.8)
+- 触发条例: §14.5 阶段末尾深度审查 (v0.2 Phase 2 COMPLETE — all 4 C helpers migrated)
+- §14.5 trigger condition #1: 大阶段最末轮 gate review
+
+- Deep review doc: docs/develop/v0/stage-18/stage-18.232-deep-review.md
+
+- D1-D8 八维度审查:
+  → D1 架构: ✅ — MIR intrinsic ops complete, 4 C helpers migrated
+  → D2 技术债: ✅ — TD-C-WRAPPER-OVERUSE RESOLVED; 8 critical bugs fixed
+  → D3 测试覆盖: ✅ — 3780 tests (3 dead compound tests removed), 0 failures
+  → D4 就绪度: ✅ — v0.2 Phase 2 complete
+  → D5 设计: ✅ — no over-engineering; MVP scope recorded per stage
+  → D6 性能: ✅ — ~9.5s
+  → D7 文档: ✅ — 7 task-reviews + 7 dev-logs + 2 deep-reviews
+  → D8 路径覆盖: ✅ — full coverage
+
+- 委员会投票: 5/5 GO (with dead code cleanup condition)
+
+- Dead code cleanup (per §1.0 原則 5 去除兼容思维 + §1.0 原則 6 避免死代码):
+  1. src/codegen/runtime.rs:
+     → Removed 4 dead C helper definitions (vec_push, string_push_str, vec_get, format_variadic)
+     → Removed 200 lines of dead C code
+     → Added cleanup comment documenting the migration
+  2. src/codegen/llvm/function_sigs.rs:
+     → Removed 4 dead sig entries from runtime_sigs table
+  3. src/driver/driver_validations.rs:
+     → Removed 4 dead DefId registrations (u32::MAX - 103/104/105/106)
+  4. tests/v0/stage18/plan/stage18_206_abi_contract_tests.rs:
+     → Removed COMPOUND_ABI_CONTRACTS table (4 entries)
+     → Removed 3 dead tests: compound_abis_match_c_source, vec_push_get_elem_size_consistency,
+       format_variadic_has_6_fixed_params_plus_variadic
+     → Added __landin_i64_to_str to PRIMITIVE_ABI_CONTRACTS
+     → Renamed compound_abis_use_pointer_params → primitive_abis_use_pointer_params
+     → Updated mismatch_detection_works to use __landin_alloc instead of __landin_vec_push
+  5. src/codegen/llvm/mod.rs + src/codegen/llvm/aggregate.rs:
+     → Removed __landin_format_variadic from variadic check lists
+
+- Tech debt register updated:
+  → TD-C-WRAPPER-OVERUSE: ✅ Resolved Stage 18.225-18.232
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --release --features llvm-backend ✅
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3780 tests, 0 failures)
+    - 675 lib (unchanged)
+    - 3105 integration (was 3108 — 3 dead compound tests removed)
+
+- 版本: v0.481.0 (bump — deep review + dead code cleanup)
+
+Stage Summary:
+- Stage 18.232 PASSED — v0.2 Phase 2 Final Deep Review + Dead Code Cleanup
+- D1-D8 八维度审查: all ✅, 5/5 GO
+- TD-C-WRAPPER-OVERUSE: ✅ RESOLVED (all 4 C helpers migrated + dead code removed)
+- 3780 tests, 0 failures, 3 dead tests removed
+- v0.2 Phase 2 truly COMPLETE (no dead code remaining)
+- Next: v0.3 self-hosting preparation

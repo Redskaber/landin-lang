@@ -1060,11 +1060,11 @@ pub(super) fn run_post_typeck_validations(
         (u32::MAX - 100, "__landin_alloc"),
         (u32::MAX - 101, "__landin_memcpy"),
         (u32::MAX - 102, "__landin_realloc"),
-        (u32::MAX - 103, "__landin_vec_push"),
-        (u32::MAX - 104, "__landin_string_push_str"),
-        (u32::MAX - 105, "__landin_vec_get"),
-        (u32::MAX - 106, "__landin_format_variadic"),
-        // Stage 18.231 (v0.2.5g): __landin_i64_to_str primitive (§16.5).
+        // Stage 18.232: The 4 compound C helpers (vec_push, string_push_str,
+        // vec_get, format_variadic) have been migrated to MIR intrinsics
+        // (Stages 18.228-18.231) and are NO LONGER called. Their DefId
+        // registrations (u32::MAX - 103/104/105/106) are removed.
+        // Per §1.0 原則 5 (去除兼容思维): dead code removed.
         (u32::MAX - 107, "__landin_i64_to_str"),
     ];
     for (offset, name) in &runtime_helpers {

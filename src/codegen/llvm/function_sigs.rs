@@ -86,38 +86,10 @@ pub(crate) fn build_fn_sigs_map(
             EmitType::I64,
             &[EmitType::OpaquePtr, EmitType::I64, EmitType::I64],
         ),
-        (
-            "__landin_vec_push",
-            EmitType::Void,
-            &[EmitType::OpaquePtr, EmitType::OpaquePtr, EmitType::I64],
-        ),
-        (
-            "__landin_string_push_str",
-            EmitType::Void,
-            &[EmitType::OpaquePtr, EmitType::OpaquePtr, EmitType::I64],
-        ),
-        (
-            "__landin_vec_get",
-            EmitType::Void,
-            &[
-                EmitType::OpaquePtr,
-                EmitType::I64,
-                EmitType::OpaquePtr,
-                EmitType::I64,
-            ],
-        ),
-        (
-            "__landin_format_variadic",
-            EmitType::Void,
-            &[
-                EmitType::OpaquePtr,
-                EmitType::OpaquePtr,
-                EmitType::I64,
-                EmitType::I64,
-                EmitType::OpaquePtr,
-                EmitType::OpaquePtr,
-            ],
-        ),
+        // Stage 18.232: The 4 compound C helpers (vec_push, string_push_str,
+        // vec_get, format_variadic) have been migrated to MIR intrinsics
+        // (Stages 18.228-18.231) and are NO LONGER called. Their sigs are
+        // removed. Per §1.0 原則 5 (去除兼容思维): dead code removed.
     ];
     for (name, ret, params) in runtime_sigs {
         map.insert(name.to_string(), (ret.clone(), params.to_vec()));
