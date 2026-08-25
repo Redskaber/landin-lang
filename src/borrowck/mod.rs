@@ -787,6 +787,13 @@ impl<'a> BorrowChecker<'a> {
                 self.check_operand(mir, a, span);
                 self.check_operand(mir, b, span);
             }
+            Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
+
+                // Stage 18.226: MIR intrinsic ops — not yet codegen-enabled
+
+                // Will be implemented in Stage 18.226c (codegen support)
+            }
+
             Rvalue::UnaryOp(_, op) => {
                 self.check_operand(mir, op, span);
             }

@@ -565,6 +565,7 @@ pub(crate) fn codegen_rvalue(
                 crate::session::Span::DUMMY,
             ));
         }
+        Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => "0".to_string(),
     })
 }
 

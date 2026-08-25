@@ -592,15 +592,11 @@ fn lower_hir_ty_to_mir_ty_with_regions_and_hir_and_generics(
                         // Per §1.0 原則 9 (正确>妥协): only error when the type
                         // actually has generic params (non-generic types like
                         // `struct Foo` are fine without args).
-                        let path_has_args = path
-                            .segments
-                            .last()
-                            .and_then(|s| s.args.as_ref())
-                            .is_some();
+                        let path_has_args =
+                            path.segments.last().and_then(|s| s.args.as_ref()).is_some();
                         if !path_has_args && substs.is_empty() {
                             if let Some(hir_crate) = hir {
-                                let expected_params =
-                                    crate::hir::find_generics(def_id, hir_crate);
+                                let expected_params = crate::hir::find_generics(def_id, hir_crate);
                                 if !expected_params.is_empty() {
                                     // The type has generic params but none were
                                     // provided. This is a type error.

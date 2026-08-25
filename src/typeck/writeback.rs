@@ -165,6 +165,8 @@ impl TypeChecker {
                     writeback_field_types_in_operand_with_table(a, mir, table, unify)
                         | writeback_field_types_in_operand_with_table(b, mir, table, unify)
                 }
+                Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => false,
+
                 Rvalue::UnaryOp(_, op) => {
                     writeback_field_types_in_operand_with_table(op, mir, table, unify)
                 }

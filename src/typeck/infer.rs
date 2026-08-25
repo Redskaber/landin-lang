@@ -47,6 +47,12 @@ impl TypeChecker {
                 // Range ops — return the first operand's type (best effort).
                 self.infer_operand_type_only(mir, a)
             }
+            Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
+                // Stage 18.226: MIR intrinsic ops — return Infer for now
+
+                Ty::from_kind(TyKind::Error)
+            }
+
             Rvalue::UnaryOp(_, op) => self.infer_operand_type_only(mir, op),
             Rvalue::Cast(_, _, ty) => ty.clone(),
             Rvalue::Aggregate(kind, operands) => match kind {
@@ -419,6 +425,12 @@ impl TypeChecker {
                 ));
                 Ty::from_kind(TyKind::Error)
             }
+            Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
+                // Stage 18.226: MIR intrinsic ops — return Infer for now
+
+                Ty::from_kind(TyKind::Error)
+            }
+
             Rvalue::UnaryOp(op, operand) => {
                 // Stage 18.72: Split into two statements to avoid borrow conflict.
                 let inner_ty_raw = self.infer_operand(mir, operand);

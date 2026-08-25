@@ -253,12 +253,15 @@ impl TypeChecker {
             | StatementKind::StorageLive(_)
             | StatementKind::StorageDead(_)
             | StatementKind::Deinit(_) => {} // Stage 13.13 + Stage 13.16: Inline println! statement — no type
-                                             // constraints to check on the format string (opaque String).
-                                             // Stage 13.16: args are already lowered to MIR operands and
-                                             // their types were checked during operand lowering (each arg
-                                             // is lowered via lower_expr_to_operand which goes through the
-                                             // normal type-checking path).
-                                             // Stage 18.48: StatementKind::Println variant removed.
+            // constraints to check on the format string (opaque String).
+            // Stage 13.16: args are already lowered to MIR operands and
+            // their types were checked during operand lowering (each arg
+            // is lowered via lower_expr_to_operand which goes through the
+            // normal type-checking path).
+            // Stage 18.48: StatementKind::Println variant removed.
+            StatementKind::Store { .. } => {
+                // Stage 18.226: MIR intrinsic Store — no typeck needed yet
+            }
         }
     }
 

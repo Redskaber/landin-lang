@@ -239,6 +239,18 @@ pub enum StatementKind {
     /// `drop(x)` calls (not for scope-end cleanup, which uses StorageDead).
     /// Distinct from TerminatorKind::Drop (which is for control-flow drops).
     Deinit(Place),
+    /// Stage 18.226 (v0.2 Phase 2): Store value to raw pointer.
+    /// `*ptr = val` → store value at pointer address.
+    /// Per §1.0 原則 6 (通解>特例): one Store for all pointer types.
+    /// Per §16.3 (06-mir.md): MIR intrinsic ops design.
+    Store {
+        /// Pointer (place) to store to.
+        ptr: Place,
+        /// Value to store.
+        val: Operand,
+        /// Value type (for codegen).
+        val_ty: Ty,
+    },
     // Stage 18.48: Println variant removed — println! now goes through
     // the Call path via __landin_println macro expansion.
     // Per §1.0 原則 6 "通用 > 特解": the 通解 (Call) has replaced the 特解.

@@ -253,26 +253,29 @@ pub(crate) fn codegen_statement(
         }
         StatementKind::StorageDead(_) => {}
         StatementKind::Nop | StatementKind::Deinit(_) => {} // Stage 13.13 + 13.14 + 13.16: Inline println! / print! / eprintln! / eprint!
-                                                            // statement with format args support.
-                                                            //
-                                                            // Stage 13.13: introduced the variant; routed both stdout and stderr
-                                                            // to `printf` (stderr flag captured but ignored — explicit deferral).
-                                                            // Stage 13.14: closed the deferral — stderr routes to __landin_eprint helper.
-                                                            // Stage 13.16: format args support — builds a C printf format string from
-                                                            // the Landin template (replacing `{}` with `%ld`/`%s`/`%d` based on arg
-                                                            // type) and emits `printf(c_fmt, c_args...)` with the correct types.
-                                                            //
-                                                            // The `msg` field is the format string template (with trailing "\n"
-                                                            // already appended if `newline == true`). The `args` field is the list
-                                                            // of MIR operands to substitute into `{}` placeholders, in order.
-                                                            //
-                                                            // Stage 17.11 (通解 analysis): This ~100-line Println codegen is a 特解.
-                                                            // The 通解 is to expand `println!` at parser level into a `Call` to
-                                                            // `__landin_println(format_args)` — a regular function call that
-                                                            // codegen handles via the existing `emit_call` path.
-                                                            // Stage 18.48: StatementKind::Println variant removed — println! now
-                                                            // goes through the Call path via __landin_println macro expansion.
-                                                            // Per §1.0 原則 6 "通用 > 特解": the 通解 (Call) has replaced the 特解.
+        // statement with format args support.
+        //
+        // Stage 13.13: introduced the variant; routed both stdout and stderr
+        // to `printf` (stderr flag captured but ignored — explicit deferral).
+        // Stage 13.14: closed the deferral — stderr routes to __landin_eprint helper.
+        // Stage 13.16: format args support — builds a C printf format string from
+        // the Landin template (replacing `{}` with `%ld`/`%s`/`%d` based on arg
+        // type) and emits `printf(c_fmt, c_args...)` with the correct types.
+        //
+        // The `msg` field is the format string template (with trailing "\n"
+        // already appended if `newline == true`). The `args` field is the list
+        // of MIR operands to substitute into `{}` placeholders, in order.
+        //
+        // Stage 17.11 (通解 analysis): This ~100-line Println codegen is a 特解.
+        // The 通解 is to expand `println!` at parser level into a `Call` to
+        // `__landin_println(format_args)` — a regular function call that
+        // codegen handles via the existing `emit_call` path.
+        // Stage 18.48: StatementKind::Println variant removed — println! now
+        // goes through the Call path via __landin_println macro expansion.
+        // Per §1.0 原則 6 "通用 > 特解": the 通解 (Call) has replaced the 特解.
+        StatementKind::Store { .. } => {
+            // Stage 18.226: MIR intrinsic Store — not yet codegen-enabled
+        }
     }
     Ok(())
 }

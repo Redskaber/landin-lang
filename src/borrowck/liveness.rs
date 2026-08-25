@@ -304,6 +304,13 @@ pub fn rvalue_reads(rv: &Rvalue, out: &mut Vec<crate::mir::place::LocalId>) {
             operand_reads(a, out);
             operand_reads(b, out);
         }
+        Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
+
+            // Stage 18.226: MIR intrinsic ops — not yet codegen-enabled
+
+            // Will be implemented in Stage 18.226c (codegen support)
+        }
+
         Rvalue::UnaryOp(_, op) => operand_reads(op, out),
         Rvalue::Ref(_, _, lv) => place_root_reads(lv, out),
         Rvalue::Aggregate(_, operands) => {

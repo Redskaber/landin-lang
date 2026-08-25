@@ -418,11 +418,7 @@ pub(super) fn scan_ty_for_unresolved(ty: &crate::hir::HirTy, errors: &mut Compil
             // Per §1.0 原則 6 (通解>特例): one check for all generic types.
             if let Res::Def(_def_id, _) = p.res {
                 // Check if the path has explicit generic args (e.g., `<i32>`)
-                let path_has_args = p
-                    .segments
-                    .last()
-                    .and_then(|s| s.args.as_ref())
-                    .is_some();
+                let path_has_args = p.segments.last().and_then(|s| s.args.as_ref()).is_some();
                 if !path_has_args {
                     // No explicit args — check if the type expects them.
                     // We need the HIR crate to query find_generics, but

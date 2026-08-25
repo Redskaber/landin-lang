@@ -103,6 +103,13 @@ fn collect_moved_locals_from_rvalue(rv: &Rvalue, moved: &mut HashSet<LocalId>) {
             collect_from_operand(a, moved);
             collect_from_operand(b, moved);
         }
+        Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
+
+            // Stage 18.226: MIR intrinsic ops — not yet codegen-enabled
+
+            // Will be implemented in Stage 18.226c (codegen support)
+        }
+
         Rvalue::Aggregate(_, operands) => {
             for op in operands {
                 collect_from_operand(op, moved);

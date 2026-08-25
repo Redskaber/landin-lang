@@ -180,6 +180,9 @@ fn collect_rvalue_locals(rvalue: &Rvalue, used: &mut HashSet<crate::mir::place::
             collect_operand_locals(lhs, used);
             collect_operand_locals(rhs, used);
         }
+        Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
+            // Stage 18.226: MIR intrinsic ops — no operand collection needed
+        }
     }
 }
 

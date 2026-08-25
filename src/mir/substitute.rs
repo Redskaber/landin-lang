@@ -264,6 +264,13 @@ fn substitute_rvalue_types(rvalue: &mut crate::mir::place::Rvalue, substs: &[Ty]
             substitute_operand_type(a, substs);
             substitute_operand_type(b, substs);
         }
+        Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
+
+            // Stage 18.226: MIR intrinsic ops — not yet codegen-enabled
+
+            // Will be implemented in Stage 18.226c (codegen support)
+        }
+
         Rvalue::UnaryOp(_, op) => {
             substitute_operand_type(op, substs);
         }

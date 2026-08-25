@@ -93,6 +93,23 @@ pub enum Rvalue {
     Aggregate(AggregateKind, Vec<Operand>),
     /// `x = a .. b`
     BinaryOp2(RangeOp, Operand, Operand),
+    /// Stage 18.226 (v0.2 Phase 2): Load value from raw pointer.
+    /// `x = *ptr` → load the value pointed to by `ptr`.
+    /// Per §1.0 原則 6 (通解>特例): one Load for all pointer types.
+    /// Per §16.2 (06-mir.md): MIR intrinsic ops design.
+    Load(Operand /* ptr */, Ty /* pointee type */),
+    /// Stage 18.226 (v0.2 Phase 2): Get element pointer (GEP).
+    /// `x = &base[offset]` → compute address of element at offset.
+    /// Per §1.0 原則 6 (通解>特例): one GEP for all indexing.
+    /// Per §16.2 (06-mir.md): MIR intrinsic ops design.
+    GetElementPtr {
+        /// Pointer to the base (struct, array, or slice).
+        base: Operand,
+        /// Indices for the GEP (field index, array index, etc.).
+        indices: Vec<Operand>,
+        /// Result pointer type (for codegen).
+        result_ty: Ty,
+    },
 }
 
 /// Binary operator in MIR.
