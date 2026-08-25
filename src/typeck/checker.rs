@@ -181,6 +181,103 @@ impl TypeChecker {
                 self.post_check_statement(mir, stmt);
             }
         }
+
+        // Stage 18.234 (TD-METHOD-RESOLVE-STRICT fix): Phase 6 — Re-check
+        // deferred method calls. For each deferred call (where the receiver
+        // was Infer at MIR lower time), resolve the receiver's type now
+        // (after defaulting) and attempt method resolution. If the method
+        // is still not found, report an error.
+        //
+        // Per §1.0 原則 4 (报错>静默): unresolved methods must be reported.
+        // Per §1.0 原則 6 (通解>特例): one re-check for all deferred calls.
+        // Per §17.6 (同类型整体修复): tracks method resolution through typeck.
+        self.check_deferred_method_calls(mir);
+    }
+
+    /// Stage 18.234: Re-check deferred method calls after type defaulting.
+    ///
+    /// For each `DeferredMethodCall` recorded during MIR lowering (when the
+    /// receiver type was Infer), resolve the receiver's type now and check
+    /// if the method is a known intrinsic or a user-defined method. If not,
+    /// report "no method found".
+    ///
+    /// **MVP scope (§17.6 record)**: This check uses a whitelist of known
+    /// intrinsic method names to avoid false positives. A full fix would
+    /// re-attempt method resolution with HIR access (requires TypeChecker
+    /// to hold a HIR reference — deferred to v0.3). The whitelist approach
+    /// is conservative: it only reports methods that are clearly not
+    /// intrinsics AND not resolvable. Known limitation: if a user defines
+    /// a method with the same name as an intrinsic (e.g., `impl String {
+    /// fn len(&self) -> i32 {...} }`), the check would skip it. This is
+    /// acceptable because the MIR lower already handles user-defined
+    /// methods when the receiver type is concrete.
+    ///
+    /// Per §1.0 原則 4 (报错>静默): unresolved methods must be reported.
+    /// Per §1.0 原則 6 (通解>特例): one re-check for all deferred calls.
+    /// Per §17.6 (同类型整体修复): tracks method resolution through typeck.
+    fn check_deferred_method_calls(&mut self, mir: &MirBody) {
+        // Stage 18.234: Known intrinsic method names. These are handled
+        // by MIR lower's intrinsic paths when the receiver type is resolved
+        // to a concrete Adt. If the receiver is still Infer at lower time,
+        // the intrinsic check fails, and the call falls through to the
+        // deferred path. Here, we skip reporting for these method names
+        // because they ARE valid methods.
+        //
+        // Per §1.0 原則 9 (正确>妥协): conservative whitelist avoids false
+        // positives. Full fix (re-attempt resolution with HIR) deferred to v0.3.
+        const KNOWN_INTRINSIC_METHODS: &[&str] = &[
+            "len", "is_empty", "as_bytes", "as_str", "push_str", "get", "push", "new", "from_str",
+            "cap", "ptr",
+        ];
+        for deferred in &mir.deferred_method_calls {
+            // Get the receiver's resolved type.
+            let recv_ty = if let Some(ld) = mir.local_decls.get(deferred.recv_local.0 as usize) {
+                self.unify.resolve(&ld.ty)
+            } else {
+                continue;
+            };
+            // Skip if still Infer or Error (can't check).
+            if matches!(
+                recv_ty.kind,
+                crate::mir::ty::TyKind::Infer(_) | crate::mir::ty::TyKind::Error
+            ) {
+                continue;
+            }
+            // Resolve method name string.
+            let method_name_str = self.format_method_name(&deferred.method_name);
+            // Skip known intrinsic methods (they're handled by MIR lower
+            // when the type is concrete; the deferred call is a false alarm).
+            if KNOWN_INTRINSIC_METHODS.contains(&method_name_str.as_str()) {
+                continue;
+            }
+            // Check if an error was already reported for this span (dedup).
+            let already_reported = self
+                .errors
+                .iter()
+                .any(|e| e.span == deferred.span && e.message.contains("no method"));
+            if !already_reported {
+                // The method wasn't found at MIR lower time (Infer receiver),
+                // and the receiver is now concrete. Report the error.
+                self.errors.push(crate::typeck::TypeError::new(
+                    format!(
+                        "no method `{}` found for type `{}`",
+                        method_name_str,
+                        self.format_ty(&recv_ty)
+                    ),
+                    deferred.span,
+                ));
+            }
+        }
+    }
+
+    /// Stage 18.234: Format a method name Symbol for error messages.
+    /// Uses the interner to resolve the symbol to a string.
+    fn format_method_name(&self, sym: &crate::lexer::Symbol) -> String {
+        if let Some(interner) = self.unify.interner() {
+            interner.resolve(sym).to_string()
+        } else {
+            format!("{:?}", sym)
+        }
     }
 
     /// Stage 18.71: Post-defaulting statement check. Runs after Phase 3

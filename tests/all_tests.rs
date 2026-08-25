@@ -575,6 +575,10 @@ mod stage18_208_vec_get_type_tests;
 #[path = "v0/stage18/plan/stage18_212_box_typeck_tests.rs"]
 mod stage18_212_box_typeck_tests;
 
+// === Stage 18.234: TD-METHOD-RESOLVE-STRICT fix (deferred method resolution) ===
+#[path = "v0/stage18/plan/stage18_234_method_resolve_tests.rs"]
+mod stage18_234_method_resolve_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

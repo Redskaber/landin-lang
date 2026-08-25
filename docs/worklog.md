@@ -20457,3 +20457,118 @@ Stage Summary:
 - 3780 tests, 0 failures, 3 dead tests removed
 - v0.2 Phase 2 truly COMPLETE (no dead code remaining)
 - Next: v0.3 self-hosting preparation
+
+---
+Task ID: stage18.233
+Agent: Super Z (main) — ARCH-A + PM-A + REV-A + DEV-A + QA-A
+Task: Stage 18.233 — TD-TUPLE-CTOR-TYPECK audit (root cause analysis + deferral). v0.481.0 (no bump — audit).
+
+Work Log:
+- Baseline: v0.481.0 / 3780 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.232 deep review → next TD: TD-TUPLE-CTOR-TYPECK (v0.2 P2+)
+- §17.8 task review: investigated root cause, found architectural issue
+
+- Root cause analysis (deep):
+  → Bug: `Wrapper<i32>(true)` silently accepts bool≠i32 mismatch
+  → Chain: lower_path_expr(Wrapper) → adt_substs=[] (path has no <i32>)
+  → resolve_adt_field_tys returns [Param(T)] (unsubstituted)
+  → typeck unifies bool with Param → Param unifies with anything → no error
+  → Aggregate assigned to temp local (empty substs), not w ([i32] substs)
+  → w=Use(temp) → Adt unify with empty substs → Ok (empty = "unknown")
+
+- Attempted fixes (both failed):
+  1. infer_rvalue substitution with expected_dest_ty:
+     → Problem: Aggregate is assigned to temp (empty substs), not w
+  2. Infer vars for generic params in lower_path_expr:
+     → Problem: Infer binds to operand type (bool), not expected (i32)
+     → Spurious mismatch on correct code like Wrapper<i32>(42)
+
+- Decision: DEFER to v0.3 (per §17.8)
+  → Root cause: MIR lowering creates temp local, losing expected type context
+  → Fix requires expected-type propagation through all lower_expr_* functions
+  → v0.3 will have proper expected-type infrastructure (trait solver + GATs)
+  → Current behavior: silently accepts mismatches in WRONG code; valid code works
+  → Per §17.6 documented as deferred MVP with full plan
+
+- Documentation updates:
+  → docs/develop/v0/stage-18/stage-18.233-task-review.md: full root cause + plan
+  → docs/develop/v0/tech-debt-register.md: TD-TUPLE-CTOR-TYPECK updated with deferral
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3780 tests, 0 failures)
+
+- 版本: v0.481.0 (no bump — audit only, no code changes)
+
+Stage Summary:
+- Stage 18.233 COMPLETED — TD-TUPLE-CTOR-TYPECK audit (no code changes)
+- Root cause identified: MIR lowering temp-local loses expected type context
+- Deferred to v0.3 (requires expected-type propagation architecture)
+- 3780 tests, 0 failures, zero regression
+- Next: TD-METHOD-RESOLVE-STRICT (v0.2.3) — independent, no lowering changes needed
+
+---
+Task ID: stage18.234
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + DEV-A + QA-A
+Task: Stage 18.234 — TD-METHOD-RESOLVE-STRICT fix (deferred method resolution). v0.481.0 → v0.482.0.
+
+Work Log:
+- Baseline: v0.481.0 / 3780 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.233 deferred TD-TUPLE-CTOR-TYPECK → next: TD-METHOD-RESOLVE-STRICT (v0.2.3)
+- §17.8 task review: all dependencies ready (MirBody extensible, typeck post_check exists)
+
+- Task review doc: docs/develop/v0/stage-18/stage-18.234-task-review.md
+
+- Root cause (from Stage 18.218 audit):
+  → `let s = String::new(); s.nonexistent_method()` silently accepts
+  → MIR lower's is_known_unsupported skips error for Infer receivers
+  → Error placeholder passes typeck (listed in matches! check)
+  → Codegen: null function pointer → segfault at runtime
+
+- Fix implementation (3 files):
+  1. src/mir/body.rs: Added `deferred_method_calls: Vec<DeferredMethodCall>` field
+     + DeferredMethodCall struct (recv_local, method_name, span)
+  2. src/mir/lower/expr_variants.rs: When is_known_unsupported is TRUE and
+     recv is Infer, record deferred call (recv_local, method_name, span)
+  3. src/typeck/checker.rs: Added check_deferred_method_calls (Phase 6)
+     - Runs after defaulting (Phase 5.5)
+     - Resolves receiver type
+     - Skips known intrinsic methods (whitelist: len, push_str, get, push, etc.)
+     - Reports "no method found" for unknown methods
+  4. src/mir/substitute.rs: Updated MirBody construction to clone deferred_method_calls
+
+- MVP scope (§17.6 record):
+  → Whitelist of intrinsic method names avoids false positives
+  → Full fix (re-attempt resolution with HIR) deferred to v0.3
+  → Known limitation: if user defines method with same name as intrinsic,
+    check would skip it (acceptable — MIR lower handles user methods for
+    concrete types)
+
+- Tests: 7 new regression tests (3 positive + 4 negative)
+  → stage18_234_infer_recv_valid_len/push_str/push (positive)
+  → stage18_234_infer_recv_unknown_method/foobar/xyz (negative)
+  → stage18_234_explicit_recv_unknown_method (regression)
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --release --features llvm-backend ✅
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3787 tests, 0 failures)
+    - 675 lib (unchanged)
+    - 3112 integration (was 3105 + 7 new)
+
+- Tech debt register updated:
+  → TD-METHOD-RESOLVE-STRICT: ✅ Resolved Stage 18.234
+
+- 版本: v0.482.0 (bump — TD fix + 7 regression tests)
+
+Stage Summary:
+- Stage 18.234 PASSED — TD-METHOD-RESOLVE-STRICT fix
+- Added deferred_method_calls side-table to MirBody
+- typeck Phase 6 re-checks deferred calls after defaulting
+- 7 regression tests, 3787 total, 0 failures
+- MVP: whitelist of intrinsic method names; full fix deferred to v0.3
+- Next: v0.3 self-hosting preparation (TD-DROP-MOVED-LOCALS, TD-BOX-AUTO-DROP)

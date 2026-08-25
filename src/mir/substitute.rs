@@ -228,6 +228,7 @@ pub fn substitute_mir_body(
         span: mir.span,
         adt_layouts: mir.adt_layouts.clone(),
         def_id: mir.def_id,
+        deferred_method_calls: mir.deferred_method_calls.clone(),
     };
 
     // Substitute local_decl types.

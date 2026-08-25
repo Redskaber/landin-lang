@@ -1403,6 +1403,21 @@ pub(super) fn lower_method_call_expr(
                 ),
                 expr.span,
             ));
+        } else if matches!(&recv_ty.kind, crate::mir::ty::TyKind::Infer(_)) {
+            // Stage 18.234 (TD-METHOD-RESOLVE-STRICT fix): For Infer receiver
+            // types, defer method resolution to typeck. Record the call info
+            // so typeck can re-check after type defaulting (Phase 5.5).
+            //
+            // Per §1.0 原則 4 (报错>静默): unresolved methods must be reported.
+            // Per §1.0 原則 6 (通解>特例): one deferred path for all Infer receivers.
+            // Per §17.6 (同类型整体修复): tracks method resolution through typeck.
+            cx.mir
+                .deferred_method_calls
+                .push(crate::mir::body::DeferredMethodCall {
+                    recv_local,
+                    method_name: method.name,
+                    span: expr.span,
+                });
         }
         // Still emit the Error placeholder for codegen to not crash,
         // but the error will abort compilation before codegen runs.

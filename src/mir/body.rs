@@ -106,6 +106,29 @@ pub struct MirBody {
     ///
     /// Per §16: data carried on the IR, not looked up from HIR.
     pub def_id: Option<crate::hir::DefId>,
+
+    /// Stage 18.234 (TD-METHOD-RESOLVE-STRICT fix): Deferred method calls
+    /// that couldn't be resolved at MIR lower time because the receiver
+    /// type was Infer. typeck re-checks these after defaulting (Phase 5.5)
+    /// when the receiver type is resolved to a concrete type.
+    ///
+    /// Per §1.0 原則 4 (报错>静默): unresolved methods must be reported.
+    /// Per §1.0 原則 6 (通解>特例): one side-table for all deferred calls.
+    /// Per §16: data carried on the IR, re-checked by typeck.
+    pub deferred_method_calls: Vec<DeferredMethodCall>,
+}
+
+/// Stage 18.234: A method call that was deferred at MIR lower time
+/// because the receiver type was Infer. typeck re-checks these after
+/// type defaulting to report "no method found" errors.
+#[derive(Debug, Clone)]
+pub struct DeferredMethodCall {
+    /// The receiver local (whose type was Infer at lower time).
+    pub recv_local: crate::mir::place::LocalId,
+    /// The method name that was called.
+    pub method_name: crate::lexer::Symbol,
+    /// Source span for error reporting.
+    pub span: Span,
 }
 
 impl MirBody {
@@ -120,6 +143,7 @@ impl MirBody {
             #[allow(clippy::arc_with_non_send_sync)]
             adt_layouts: Arc::new(AdtLayouts::new()),
             def_id: None,
+            deferred_method_calls: Vec::new(),
         }
     }
 
