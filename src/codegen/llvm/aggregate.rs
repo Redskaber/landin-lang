@@ -34,11 +34,52 @@ impl AggregateEmitter for LLVMSysEmitter {
             );
         }
         unsafe {
-            let mut arg_vals: Vec<LLVMValueRef> =
-                args.iter().map(|(_, v)| self.lookup(v)).collect();
+            // Stage 18.228 (v0.2.5d): Coerce argument values to match the
+            // declared arg types. Previously, `lookup(v)` for literal values
+            // like "0" created i32 constants (via `interpret_adhoc`), but
+            // functions like `__landin_panic_bounds_check` expect i64 args.
+            // This caused "Call parameter type does not match function
+            // signature!" LLVM verifier errors.
+            //
+            // Fix: after looking up each arg value, coerce it to the
+            // declared arg type via LLVMBuildIntCast2 (for integer args).
+            //
+            // Per §1.0 原則 9 (正确>妥协): fix root cause (coerce in emit_call),
+            // not symptom (change function signatures or use i32 everywhere).
+            // Per §1.0 原則 6 (通解>特例): one coercion path for all integer
+            // arg type mismatches.
+            let param_tys: Vec<LLVMTypeRef> = args.iter().map(|(t, _)| self.llvm_type(t)).collect();
+            let mut arg_vals: Vec<LLVMValueRef> = Vec::with_capacity(args.len());
+            for (i, (_, v)) in args.iter().enumerate() {
+                let raw = self.lookup(v);
+                let target_ty = param_tys[i];
+                let raw_ty = LLVMTypeOf(raw);
+                if raw_ty == target_ty {
+                    arg_vals.push(raw);
+                } else {
+                    let raw_kind = LLVMGetTypeKind(raw_ty);
+                    let target_kind = LLVMGetTypeKind(target_ty);
+                    if raw_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                        && target_kind == llvm_sys::LLVMTypeKind::LLVMIntegerTypeKind
+                    {
+                        let name_c = cstr_owned("argcast");
+                        let coerced = LLVMBuildIntCast2(
+                            self.builder,
+                            raw,
+                            target_ty,
+                            1, // signed
+                            name_c.as_ptr(),
+                        );
+                        arg_vals.push(coerced);
+                    } else {
+                        // Non-integer type mismatch — pass as-is (LLVM will
+                        // catch the error if it's truly invalid).
+                        arg_vals.push(raw);
+                    }
+                }
+            }
             // Build function type — assume same signature.
             let ret_llvm_ty = self.llvm_type(ret_ty);
-            let param_tys: Vec<LLVMTypeRef> = args.iter().map(|(t, _)| self.llvm_type(t)).collect();
             // Stage 13.16: printf and __landin_eprintf are variadic — declare
             // them with isVariadic=1 so LLVM doesn't complain about arg count
             // mismatches when the call site has more args than the declaration.

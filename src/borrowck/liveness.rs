@@ -304,11 +304,16 @@ pub fn rvalue_reads(rv: &Rvalue, out: &mut Vec<crate::mir::place::LocalId>) {
             operand_reads(a, out);
             operand_reads(b, out);
         }
-        Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
-
-            // Stage 18.226: MIR intrinsic ops — not yet codegen-enabled
-
-            // Will be implemented in Stage 18.226c (codegen support)
+        Rvalue::Load(ptr_op, _) => {
+            // Stage 18.228: Load reads its ptr operand.
+            operand_reads(ptr_op, out);
+        }
+        Rvalue::GetElementPtr { base, indices, .. } => {
+            // Stage 18.228: GEP reads its base + all index operands.
+            operand_reads(base, out);
+            for idx_op in indices {
+                operand_reads(idx_op, out);
+            }
         }
 
         Rvalue::UnaryOp(_, op) => operand_reads(op, out),

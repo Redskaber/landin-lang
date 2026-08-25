@@ -605,19 +605,27 @@ pub(crate) fn codegen_rvalue(
         // indices — no new emit method, no branching on const vs var.
         // Per §16.2 (06-mir.md): MIR intrinsic ops design.
         //
-        // MVP (§17.6 record): `result_ty` is currently unused at codegen time
-        // because LLVM 19 opaque pointers (`ptr`) carry no element type.
-        // The element type passed to `emit_gep_index_ptr` is `I32` — this is
-        // a placeholder that works for opaque-ptr LLVM 19 because the GEP
-        // instruction's source type is encoded separately. If the v0.2.5d
-        // migration reveals a need for typed GEP, this stub will be extended
-        // with proper element-type derivation — recorded as a tracked MVP,
-        // not a silent defect.
+        // Stage 18.228 fix: Derive the element type from `result_ty` (which
+        // is `*mut T`). The pointee type T determines the GEP stride —
+        // passing I32 for all types caused `Vec<i64>::get(1)` to compute
+        // offset 4 instead of 8, reading garbage. Now we extract the
+        // pointee from `result_ty` and pass it to `emit_gep_index_ptr`.
+        //
+        // Per §1.0 原則 9 (正确>妥协): use the actual element type from
+        // the result_ty, not a placeholder.
         Rvalue::GetElementPtr {
             base,
             indices,
-            result_ty: _,
+            result_ty,
         } => {
+            // Extract the pointee type from result_ty (*mut T → T).
+            let elem_emit_ty = match &result_ty.kind {
+                crate::mir::ty::TyKind::RawPtr(_, inner)
+                | crate::mir::ty::TyKind::Ref(_, _, inner) => {
+                    mir_type_to_emit_type_with_layouts_and_mono(inner, layouts, mono_layouts)
+                }
+                _ => EmitType::I32, // Fallback for unexpected types.
+            };
             let mut cur_ptr = codegen_operand(
                 emitter,
                 mir,
@@ -640,7 +648,7 @@ pub(crate) fn codegen_rvalue(
                     mono_layouts,
                     fn_name_by_def_id,
                 );
-                cur_ptr = emitter.emit_gep_index_ptr(&cur_ptr, &EmitType::I32, &idx_val);
+                cur_ptr = emitter.emit_gep_index_ptr(&cur_ptr, &elem_emit_ty, &idx_val);
             }
             cur_ptr
         }

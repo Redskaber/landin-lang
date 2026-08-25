@@ -1143,11 +1143,48 @@ Per §13.2: 这些原语在 v0.3 自举后将变成 Landin stdlib 的 `extern "C
 v0.2.5a: 设计文档 (本节) ← Stage 18.225 done
 v0.2.5b: 添加 Rvalue::Load, Rvalue::GetElementPtr, StatementKind::Store ← Stage 18.226 done
 v0.2.5c: codegen 支持 (LLVMBuildLoad2, LLVMBuildGEP2, LLVMBuildStore) ← Stage 18.227 done
-v0.2.5d: 迁移 __landin_vec_get → MIR intrinsic (最简单, 验证设计) ← Stage 18.228 (next)
-v0.2.5e: 迁移 __landin_vec_push → MIR intrinsic
+v0.2.5d: 迁移 __landin_vec_get → MIR intrinsic (最简单, 验证设计) ← Stage 18.228 done
+v0.2.5e: 迁移 __landin_vec_push → MIR intrinsic ← Stage 18.229 (next)
 v0.2.5f: 迁移 __landin_string_push_str → MIR intrinsic
 v0.2.5g: 迁移 __landin_format_variadic → MIR intrinsic (最复杂)
 ```
+
+#### 16.6.2 Stage 18.228 实现详情 (v0.2.5d `__landin_vec_get` migration)
+
+**Migration**: `lower_vec_get_intrinsic` rewritten from C helper Call → MIR intrinsic sequence.
+
+**MIR Sequence**:
+1. `data_ptr = Use(Copy(Projection(recv, Field(0, *mut T))))` — extract `vec.ptr`
+2. `len = Use(Copy(Projection(recv, Field(1, i64))))` — extract `vec.len`
+3. `idx_i64 = Cast(Numeric, idx, i64)` — cast index
+4. `cond = BinaryOp(Lt, idx_i64, len)` — bounds check
+5. `Assert(cond, expected=true, target=ok_bb, msg=BoundsCheck)` — panic on OOB
+6. ok_bb: `elem_ptr = GetElementPtr(data_ptr, [idx_i64], *mut T)` — compute element address
+7. `dest = Load(elem_ptr, T)` — typed load (no memcpy)
+
+**Critical Fixes Discovered During Migration** (per §17.6 同类型整体修复):
+- **DCE bug**: `collect_rvalue_locals` and `collect_terminator_read_locals` didn't handle
+  `Rvalue::Load`, `Rvalue::GetElementPtr`, `StatementKind::Store`, and `TerminatorKind::Assert`.
+  This caused DCE to remove assignments that ARE used, producing uninitialized memory reads.
+  Fixed: all 4 variants now correctly collect their operand reads.
+- **Borrowck bug**: `rvalue_reads` and `check_rvalue` in borrowck didn't handle Load/GEP.
+  Fixed: both now correctly check operands.
+- **LLVM emit_call type coercion**: `interpret_adhoc("0")` creates i32 constants, but
+  `__landin_panic_bounds_check` expects i64 args. Fixed: `emit_call` now coerces integer
+  arg values to match declared types via `LLVMBuildIntCast2`.
+- **GEP element type**: codegen passed `EmitType::I32` for all GEP operations, causing
+  `Vec<i64>::get(1)` to compute 4-byte offsets instead of 8-byte. Fixed: derive element
+  type from `result_ty`'s pointee.
+
+**MVP scope (§17.6 record)**: Only checks `idx < len` (upper bound). The `idx < 0` check
+is deferred — Landin's `Vec::get` index is `usize`-like in idiomatic usage. Safe because
+the existing test `stage18_200_vec_get_oob_panics` only tests upper-bound OOB.
+
+**Test verification**:
+- 4 regression tests pass: `stage18_200_vec_get_first/all/after_growth/oob_panics`
+- 2 type tests pass: `stage18_203_vec_i64_roundtrip`, `stage18_208_vec_i64_get/struct_multiple`
+- 2 DCE tests updated (plain assignments instead of arithmetic to avoid Assert interference)
+- Full suite: 3783 tests, 0 failures
 
 #### 16.6.1 Stage 18.227 实现详情 (v0.2.5c codegen)
 

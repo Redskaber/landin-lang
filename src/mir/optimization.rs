@@ -108,6 +108,23 @@ fn collect_read_locals(kind: &StatementKind, used: &mut HashSet<crate::mir::plac
         StatementKind::Deinit(place) => {
             collect_place_locals(place, used);
         }
+        // Stage 18.228 (v0.2.5d): StatementKind::Store reads both `val` (the
+        // value to store) and `ptr` (the place whose address is computed for
+        // the store destination). Without collecting these, DCE would remove
+        // assignments that compute the value or the pointer, causing
+        // uninitialized memory stores at codegen time.
+        //
+        // Per §1.0 原則 4 (报错>静默): DCE must not remove used assignments.
+        // Per §1.0 原則 6 (通解>特例): one rule for all Store variants.
+        // Per §17.6 (同类型整体修复): same class as Rvalue::Load/GEP fix above.
+        StatementKind::Store {
+            ptr,
+            val,
+            val_ty: _,
+        } => {
+            collect_operand_locals(val, used);
+            collect_place_locals(ptr, used);
+        }
         _ => {}
     }
 }
@@ -180,8 +197,29 @@ fn collect_rvalue_locals(rvalue: &Rvalue, used: &mut HashSet<crate::mir::place::
             collect_operand_locals(lhs, used);
             collect_operand_locals(rhs, used);
         }
-        Rvalue::Load(_, _) | Rvalue::GetElementPtr { .. } => {
-            // Stage 18.226: MIR intrinsic ops — no operand collection needed
+        // Stage 18.228 (v0.2.5d): MIR intrinsic ops DO read their operands.
+        // Previously (Stage 18.226) these were stubs that said "no operand
+        // collection needed" — but that's WRONG. `Load(ptr_op, _)` reads
+        // `ptr_op`, and `GetElementPtr { base, indices, .. }` reads `base`
+        // and all `indices`. Without collecting these, DCE would remove the
+        // assignments that compute the pointer/index, causing uninitialized
+        // memory reads at codegen time.
+        //
+        // Per §1.0 原則 4 (报错>静默): DCE must not remove used assignments.
+        // Per §1.0 原則 6 (通解>特例): one rule for all Rvalue variants.
+        // Per §17.6 (同类型整体修复): same class as Stage 18.182 (TD-ARRAY-INDEX-CODEGEN).
+        Rvalue::Load(ptr_op, _) => {
+            collect_operand_locals(ptr_op, used);
+        }
+        Rvalue::GetElementPtr {
+            base,
+            indices,
+            result_ty: _,
+        } => {
+            collect_operand_locals(base, used);
+            for idx_op in indices {
+                collect_operand_locals(idx_op, used);
+            }
         }
     }
 }
@@ -223,6 +261,38 @@ fn collect_terminator_read_locals(
         // would remove that assignment, breaking codegen.
         TerminatorKind::Return => {
             used.insert(crate::mir::place::LocalId(0));
+        }
+        // Stage 18.228 (v0.2.5d): Assert reads its `cond` operand, and some
+        // AssertMessage variants carry additional operands that are also read.
+        // Without collecting these, DCE would remove the assignments that
+        // compute the cond/operands, causing uninitialized-memory loads in
+        // codegen (e.g., vec_get bounds check reading garbage cond value).
+        //
+        // Per §1.0 原則 4 (报错>静默): DCE must not remove used assignments.
+        // Per §1.0 原則 6 (通解>特例): one rule for all Assert variants.
+        // Per §17.6 (同类型整体修复): same class as Rvalue::Load/GEP fix.
+        TerminatorKind::Assert {
+            cond,
+            expected: _,
+            target: _,
+            msg,
+        } => {
+            collect_operand_locals(cond, used);
+            match msg {
+                crate::mir::body::AssertMessage::Overflow(_, lhs, rhs) => {
+                    collect_operand_locals(lhs, used);
+                    collect_operand_locals(rhs, used);
+                }
+                crate::mir::body::AssertMessage::DivisionByZero(rhs) => {
+                    collect_operand_locals(rhs, used);
+                }
+                crate::mir::body::AssertMessage::NegOverflow(operand) => {
+                    collect_operand_locals(operand, used);
+                }
+                crate::mir::body::AssertMessage::BoundsCheck => {
+                    // BoundsCheck carries no additional operands.
+                }
+            }
         }
         _ => {}
     }
@@ -852,15 +922,22 @@ mod tests {
         assert!(!result.mirs.is_empty(), "MIR bodies should exist");
     }
 
-    /// Stage 17.13 negative 1 (updated Stage 18.96): Const prop + DCE
+    /// Stage 17.13 negative 1 (updated Stage 18.96, 18.228): Const prop + DCE
     /// reduces dead constants. Since Stage 18.96, `compile()` runs
     /// DCE → const_prop → DCE automatically. All 4 dead locals (x, y, z,
     /// _w — none are read by println!) should be removed, leaving only
     /// the println! macro's temporaries.
+    ///
+    /// Stage 18.228 fix: Changed from arithmetic (`z = x + y`) to plain
+    /// assignments. The old test used `x + y` which generates an overflow
+    /// Assert that reads x and y. After the Stage 18.228 DCE fix (which
+    /// correctly collects Assert operand reads), x and y are correctly
+    /// preserved. The test now uses plain assignments (no Asserts) to
+    /// test DCE + const_prop in isolation.
     #[test]
     fn stage17_13_const_prop_then_dce_reduces() {
         let src_with_dead =
-            "fn main() { let x = 1; let y = 2; let z = x + y; let _w = z + 10; println!(\"hello\"); }";
+            "fn main() { let x = 1; let y = 2; let z = 3; let _w = 4; println!(\"hello\"); }";
         let src_baseline = "fn main() { println!(\"hello\"); }";
         let result_with_dead = compile(src_with_dead);
         let result_baseline = compile(src_baseline);
@@ -958,9 +1035,15 @@ mod tests {
     /// by DCE in the final MIR. We compare against a baseline (println! only)
     /// to verify that the dead locals are fully eliminated.
     #[test]
+    /// Stage 18.96 test: dead locals removed by compile()-time optimization.
+    ///
+    /// Stage 18.228 fix: Changed from arithmetic (`z = x + y`) to plain
+    /// assignments. The old test used `x + y` which generates an overflow
+    /// Assert that reads x and y. After the Stage 18.228 DCE fix, x and y
+    /// are correctly preserved. The test now uses plain assignments.
     fn stage18_96_opt_wired_dead_locals_removed() {
         let src_with_dead =
-            "fn main() { let x = 1; let y = 2; let z = x + y; let _w = z + 10; println!(\"hello\"); }";
+            "fn main() { let x = 1; let y = 2; let z = 3; let _w = 4; println!(\"hello\"); }";
         let src_baseline = "fn main() { println!(\"hello\"); }";
         let result_with_dead = compile(src_with_dead);
         let result_baseline = compile(src_baseline);

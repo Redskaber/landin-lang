@@ -20133,3 +20133,75 @@ Stage Summary:
 - 11 new lib unit tests (3783 total, 0 failures, zero regression)
 - MVP recorded: result_ty unused (LLVM 19 opaque-ptr, tracked for v0.2.5d)
 - Next: Stage 18.228 (v0.2.5d) — migrate __landin_vec_get → MIR intrinsic
+
+---
+Task ID: stage18.228
+Agent: Super Z (main) — ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.228 — v0.2.5d: Migrate __landin_vec_get → MIR intrinsic. v0.476.0 → v0.477.0.
+
+Work Log:
+- Baseline: v0.476.0 / 3783 tests (LLVM 22.1.8)
+- 触发条例: Stage 18.227 (v0.2.5c codegen) complete → v0.2.5d: migrate first C helper
+- §17.8 task review: all dependencies ready (Load/GEP/Store codegen, Assert/BoundsCheck infra)
+- §17.6 (缺陷纳入): TD-C-WRAPPER-OVERUSE migration — first of 4 C helpers
+
+- Task review doc: docs/develop/v0/stage-18/stage-18.228-task-review.md
+- Dev log doc: docs/develop/v0/stage-18/stage-18.228-dev-log.md
+
+- Migration implementation (src/mir/lower/expr_variants.rs):
+  → Rewrote lower_vec_get_intrinsic: C helper Call → MIR intrinsic sequence
+  → 7-step MIR: extract vec.ptr (Field 0) + vec.len (Field 1) + cast idx + BinaryOp(Lt) +
+    Assert(BoundsCheck) + GetElementPtr + Load
+  → Uses extract_vec_element_type (Stage 18.208) for typed *mut T
+  → MVP: only upper-bound check (idx < len), idx < 0 deferred (§17.6 record)
+
+- Critical bugs discovered & fixed (per §17.6 同类型整体修复):
+  1. DCE bug (src/mir/optimization.rs):
+     → collect_rvalue_locals: Rvalue::Load/GEP didn't collect operand reads → DCE removed
+       used assignments → uninitialized memory reads
+     → collect_terminator_read_locals: TerminatorKind::Assert didn't collect cond/operand
+       reads → DCE removed cond assignment → garbage bounds check
+     → StatementKind::Store: didn't collect val/ptr reads → DCE removed store operands
+     → Fix: all 4 variants now correctly collect reads
+  2. Borrowck bug (src/borrowck/liveness.rs + mod.rs):
+     → rvalue_reads + check_rvalue: Load/GEP stubs didn't check operands
+     → Fix: both now correctly check ptr/base/index operands
+  3. LLVM emit_call type coercion (src/codegen/llvm/aggregate.rs):
+     → interpret_adhoc("0") creates i32 constants, but __landin_panic_bounds_check
+       expects i64 → "Call parameter type does not match function signature!" verifier error
+     → Fix: emit_call now coerces integer args to declared types via LLVMBuildIntCast2
+  4. GEP element type (src/codegen/rvalue.rs):
+     → Codegen passed EmitType::I32 for all GEP ops → Vec<i64>::get(1) computed 4-byte
+       offset instead of 8-byte → read garbage (858993459200 = 200 << 32)
+     → Fix: derive element type from result_ty's pointee (*mut T → T)
+
+- Test updates:
+  → 2 DCE tests (stage17_13_const_prop_then_dce_reduces, stage18_96_opt_wired_dead_locals_removed):
+    changed from arithmetic (z = x + y) to plain assignments (z = 3) to avoid overflow
+    Assert interference. The old tests expected DCE to remove x and y, but the Stage 18.228
+    DCE fix correctly preserves them (Assert reads them). Tests now use plain assignments
+    to test DCE + const_prop in isolation.
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo clean ✅ (removed 909 files, 482.4MiB)
+  → cargo build --release --features llvm-backend ✅ (45.18s)
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ (0 warnings)
+  → cargo test --release --features llvm-backend ✅ (3783 tests, 0 failures)
+    - 675 lib (unchanged from v0.476.0)
+    - 3108 integration (unchanged)
+
+- Design doc updated: docs/lang-design/06-mir.md §16.6 + §16.6.2
+  → Marked v0.2.5d done
+  → Added migration details + 4 critical fixes documented
+
+- 版本: v0.477.0 (bump — C helper migration + 4 critical bug fixes)
+
+Stage Summary:
+- Stage 18.228 PASSED — v0.2.5d: __landin_vec_get → MIR intrinsic migration
+- First of 4 C helpers migrated (TD-C-WRAPPER-OVERUSE)
+- 4 critical bugs discovered & fixed (DCE, borrowck, emit_call coercion, GEP element type)
+- 3783 tests, 0 failures, zero regression
+- MVP: upper-bound check only (idx < 0 deferred, §17.6 record)
+- Next: Stage 18.229 (v0.2.5e) — migrate __landin_vec_push → MIR intrinsic

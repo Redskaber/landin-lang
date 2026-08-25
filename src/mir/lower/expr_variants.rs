@@ -2206,178 +2206,172 @@ fn extract_vec_element_type(recv_ty: &Ty, span: Span) -> Ty {
     }
 }
 
-/// Stage 18.200: Lower `Vec::get(index) -> T`.
+/// Stage 18.228 (v0.2.5d): Lower `Vec::get(index) -> T` via MIR intrinsics.
+///
+/// Replaces the previous `__landin_vec_get` C helper Call with a pure MIR
+/// sequence using the new MIR intrinsic ops (Load + GetElementPtr) added
+/// in Stage 18.226 and codegen-enabled in Stage 18.227.
 ///
 /// Generates MIR for:
-///   1. Create &Vec ref (Shared) → cast to *mut u8 (opaque pointer)
-///   2. Create &out ref (Shared) → cast to *mut u8 (output buffer)
-///   3. Determine elem_size from out type (MVP: hardcoded per type)
-///   4. Call __landin_vec_get(vec_ptr, index, out_ptr, elem_size)
-///   5. Load result from out
+///   1. Extract `vec.ptr` (field 0, `*mut T`) via `Place::Projection(Field(0))`
+///   2. Extract `vec.len` (field 1, `i64`) via `Place::Projection(Field(1))`
+///   3. Cast `index` to `i64` (if needed)
+///   4. Compute `cond = (idx < len)` via `BinaryOp(Lt)`
+///   5. `Assert(cond, expected=true, target=ok_bb, msg=BoundsCheck)` —
+///      branches to panic block (calls `__landin_panic_bounds_check`) on
+///      OOB. Reuses existing Assert infra (Stage 3.24).
+///   6. ok_bb: `elem_ptr = GetElementPtr(data_ptr, [idx])` (Stage 18.226)
+///   7. `dest = Load(elem_ptr, T)` (Stage 18.226) — typed load, no memcpy
 ///
-/// Per §1.0 原則 6 (通解>特例): one intrinsic for all Vec::get calls.
+/// Per §1.0 原則 6 (通解>特解): one MIR sequence for all Vec<T> types —
+/// the element type T flows through `extract_vec_element_type` (Stage 18.208).
+/// Per §1.0 原則 4 (报错>静默): bounds check via `Assert(BoundsCheck)` —
+/// OOB panics with `__landin_panic_bounds_check` (visible, not silent).
+/// Per §10 DRY: reuses `extract_vec_element_type`, `MemoryEmitter` methods,
+/// `AssertMessage::BoundsCheck` — no new infrastructure.
+/// Per §11 接口隔离: MIR lowering emits MIR intrinsics; codegen only
+/// translates MIR (no C helper Call).
+/// Per §12 (最优 > 最小): typed `Load` replaces byte-by-byte `memcpy` loop.
+///
+/// **MVP scope (§17.6 record)**: only checks `idx < len` (upper bound).
+/// The `idx < 0` check is deferred — Landin's `Vec::get` index is `usize`-like
+/// in idiomatic usage (negative indices impossible in Rust convention).
+/// Recorded in task-review §2.5; will be revisited if a test exercises
+/// negative index behavior.
 fn lower_vec_get_intrinsic(
     cx: &mut MirLowerCtxt,
     expr: &HirExpr,
     recv_local: LocalId,
     idx_local: LocalId,
 ) -> LocalId {
-    use crate::mir::ty::ConstVal;
+    let span = expr.span;
+    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), span);
 
-    let i64_ty = Ty::new(TyKind::Int(crate::ast::IntTy::I64), expr.span);
-    let u8_ptr_ty = Ty::new(
+    // Stage 18.208: Extract the element type T from `Vec<T>` (or `&Vec<T>`).
+    // Per §10 DRY: single source of truth for element-type extraction.
+    let recv_ty = cx.mir.local(recv_local).ty.clone();
+    let elem_ty = extract_vec_element_type(&recv_ty, span);
+
+    // The Vec.ptr field has type `*mut T`. Construct it explicitly so the
+    // Projection carries the right field type (per §1.0 原則 3 显式 > 隐式).
+    let elem_ptr_ty = Ty::new(
         TyKind::RawPtr(
             crate::mir::ty::Mutability::Mutable,
-            Box::new(Ty::new(TyKind::Uint(crate::ast::UintTy::U8), expr.span)),
+            Box::new(elem_ty.clone()),
         ),
-        expr.span,
+        span,
     );
 
-    // Create &Vec ref (Shared) → cast to *mut u8
-    let vec_ref_ty = Ty::new(
-        TyKind::Ref(
-            crate::mir::ty::Region::Erased,
-            crate::mir::ty::Mutability::Immutable,
-            Box::new(cx.mir.local(recv_local).ty.clone()),
-        ),
-        expr.span,
-    );
-    let vec_ref_local = cx.mir.new_local(vec_ref_ty.clone(), None, expr.span);
+    // Step 1: Extract `vec.ptr` (field 0, `*mut T`) via Place::Projection.
+    // Reuses the AdtLayout system (Stage 18.200 lower_vec_push_intrinsic pattern).
+    let data_ptr_local = cx.mir.new_local(elem_ptr_ty.clone(), None, span);
     cx.push_assign(
-        Place::local(vec_ref_local, expr.span),
-        Rvalue::Ref(
-            crate::mir::ty::Region::Erased,
-            crate::mir::place::BorrowKind::Shared,
-            Place::local(recv_local, expr.span),
-        ),
-        expr.span,
-    );
-    let vec_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
-    cx.push_assign(
-        Place::local(vec_ptr_local, expr.span),
-        Rvalue::Cast(
-            crate::mir::place::CastKind::Pointer,
-            Operand::Copy(Place::local(vec_ref_local, expr.span)),
-            u8_ptr_ty.clone(),
-        ),
-        expr.span,
+        Place::local(data_ptr_local, span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(recv_local, span)),
+                ProjectionElem::Field(FieldId(0), elem_ptr_ty.clone()),
+            ),
+            span,
+        })),
+        span,
     );
 
-    // Cast index to i64
-    let idx_i64 = cx.mir.new_local(i64_ty.clone(), None, expr.span);
+    // Step 2: Extract `vec.len` (field 1, `i64`) via Place::Projection.
+    let len_local = cx.mir.new_local(i64_ty.clone(), None, span);
     cx.push_assign(
-        Place::local(idx_i64, expr.span),
+        Place::local(len_local, span),
+        Rvalue::Use(Operand::Copy(Place {
+            kind: PlaceKind::Projection(
+                Box::new(Place::local(recv_local, span)),
+                ProjectionElem::Field(FieldId(1), i64_ty.clone()),
+            ),
+            span,
+        })),
+        span,
+    );
+
+    // Step 3: Cast `index` to `i64` (if needed). Numeric cast handles
+    // i32→i64, u32→i64, etc. Per §1.0 原則 6 (通解>特例): one cast path
+    // for all integer index types.
+    let idx_i64 = cx.mir.new_local(i64_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(idx_i64, span),
         Rvalue::Cast(
             crate::mir::place::CastKind::Numeric,
-            Operand::Copy(Place::local(idx_local, expr.span)),
+            Operand::Copy(Place::local(idx_local, span)),
             i64_ty.clone(),
         ),
-        expr.span,
+        span,
     );
 
-    // Stage 18.208 (TD-VEC-GET-TYPE-INFERENCE fix): Extract the element type
-    // from the receiver's `Vec<T>` type. The receiver (recv_local) has type
-    // `Adt(Vec_def_id, substs)` where `substs[0]` is the element type `T`.
+    // Step 4: Compute `cond = (idx < len)` via BinaryOp(Lt).
+    // Per §1.0 原則 6 (通解>特例): one BinaryOp for all bounds checks.
+    let cond_local = cx.mir.new_local(Ty::new(TyKind::Bool, span), None, span);
+    cx.push_assign(
+        Place::local(cond_local, span),
+        Rvalue::BinaryOp(
+            crate::mir::place::BinOp::Lt,
+            Operand::Copy(Place::local(idx_i64, span)),
+            Operand::Copy(Place::local(len_local, span)),
+        ),
+        span,
+    );
+
+    // Step 5: `Assert(cond, expected=true, target=ok_bb, msg=BoundsCheck)`.
+    // Reuses existing Assert infra (Stage 3.24) + `__landin_panic_bounds_check`
+    // C helper. On OOB, codegen emits a panic block that calls the helper
+    // and emits `unreachable`.
     //
-    // Previously hardcoded as `i32`, which:
-    //   - Worked for `Vec<i32>` (canonical case)
-    //   - Failed for `Vec<i64>` (LLVM GEP on wrong-sized out buffer)
-    //   - Failed for `Vec<Point>` (LLVM "Invalid indices for GEP pointer type"
-    //     because out buffer was `alloca i32` but element was `{i32, i32}`)
-    //
-    // Per §1.0 原則 6 (通解>特例): one extraction path for all Vec<T> types.
-    // Per §12 (最优 > 最小): root-cause fix — read substs[0] from the type
-    // instead of hardcoding i32.
-    // Per §1.0 原則 3 (显式 > 隐式): the element type is explicitly carried
-    // in the Vec<T> type's substs, not implicit in the call site.
-    let recv_ty = cx.mir.local(recv_local).ty.clone();
-    let out_ty = extract_vec_element_type(&recv_ty, expr.span);
-    let out_local = cx.mir.new_local(out_ty.clone(), None, expr.span);
-
-    // Create &out ref (Shared) → cast to *mut u8
-    let out_ref_ty = Ty::new(
-        TyKind::Ref(
-            crate::mir::ty::Region::Erased,
-            crate::mir::ty::Mutability::Immutable,
-            Box::new(out_ty.clone()),
-        ),
-        expr.span,
-    );
-    let out_ref_local = cx.mir.new_local(out_ref_ty.clone(), None, expr.span);
-    cx.push_assign(
-        Place::local(out_ref_local, expr.span),
-        Rvalue::Ref(
-            crate::mir::ty::Region::Erased,
-            crate::mir::place::BorrowKind::Shared,
-            Place::local(out_local, expr.span),
-        ),
-        expr.span,
-    );
-    let out_ptr_local = cx.mir.new_local(u8_ptr_ty.clone(), None, expr.span);
-    cx.push_assign(
-        Place::local(out_ptr_local, expr.span),
-        Rvalue::Cast(
-            crate::mir::place::CastKind::Pointer,
-            Operand::Copy(Place::local(out_ref_local, expr.span)),
-            u8_ptr_ty.clone(),
-        ),
-        expr.span,
-    );
-
-    // elem_size: Stage 18.203 — derive from the out type via compute_type_size
-    // (single source of truth). Falls back to 8 for Infer/Param/Error types
-    // (TD-TYPECK-GENERIC-INST, v0.2 P2+).
-    // Vec::get: fallback 4 (canonical Vec<i32>). MUST match Vec::push fallback.
-    let elem_size: i64 = compute_type_size_with_fallback(&out_ty, cx.hir, 4);
-    let elem_size_local = cx.mir.new_local(i64_ty.clone(), None, expr.span);
-    cx.push_assign(
-        Place::local(elem_size_local, expr.span),
-        Rvalue::Use(Operand::Constant(Const {
-            val: ConstVal::Int(elem_size as u128),
-            ty: i64_ty.clone(),
-        })),
-        expr.span,
-    );
-
-    // Call __landin_vec_get(vec_ptr, index, out_ptr, elem_size)
-    let get_def_id = crate::hir::DefId::new(u32::MAX - 105);
-    let get_fn_ty = Ty::new(
-        TyKind::FnDef(get_def_id, std::vec::Vec::new().into()),
-        expr.span,
-    );
-    let get_fn_local = cx.mir.new_local(get_fn_ty, None, expr.span);
-    let get_dest = cx
-        .mir
-        .new_local(Ty::new(TyKind::Tuple(vec![]), expr.span), None, expr.span);
-    let cont = cx.new_block();
-    cx.terminate_kind_and_goto(
-        TerminatorKind::Call {
-            func: Operand::Move(Place::local(get_fn_local, expr.span)),
-            args: vec![
-                Operand::Copy(Place::local(vec_ptr_local, expr.span)),
-                Operand::Copy(Place::local(idx_i64, expr.span)),
-                Operand::Copy(Place::local(out_ptr_local, expr.span)),
-                Operand::Copy(Place::local(elem_size_local, expr.span)),
-            ],
-            destination: Place::local(get_dest, expr.span),
-            target: Some(cont),
-            dyn_trait_call: None,
+    // Per §1.0 原則 4 (报错>静默): OOB panics visibly, not silent skip.
+    // Per §10 DRY: reuses AssertMessage::BoundsCheck (no new panic path).
+    let ok_bb = cx.new_block();
+    cx.terminate_kind_span(
+        TerminatorKind::Assert {
+            cond: Operand::Copy(Place::local(cond_local, span)),
+            expected: true,
+            target: ok_bb,
+            msg: crate::mir::body::AssertMessage::BoundsCheck,
         },
-        cont,
+        span,
+    );
+    cx.current_block = ok_bb;
+
+    // Step 6: `elem_ptr = GetElementPtr(data_ptr, [idx])` (Stage 18.226).
+    // Computes `&data_ptr[idx]` as `*mut T`. Codegen (Stage 18.227) emits
+    // `getelementptr inbounds` via `MemoryEmitter::emit_gep_index_ptr`.
+    //
+    // Per §1.0 原則 6 (通解>特例): one GEP for all element types — the
+    // element type is encoded in the LLVM IR GEP instruction's source type.
+    // Per §16.2 (06-mir.md): MIR intrinsic ops design.
+    let elem_ptr_local = cx.mir.new_local(elem_ptr_ty.clone(), None, span);
+    cx.push_assign(
+        Place::local(elem_ptr_local, span),
+        Rvalue::GetElementPtr {
+            base: Operand::Copy(Place::local(data_ptr_local, span)),
+            indices: vec![Operand::Copy(Place::local(idx_i64, span))],
+            result_ty: elem_ptr_ty.clone(),
+        },
+        span,
     );
 
-    // Return the output value (loaded from out_local)
-    let dest = cx.mir.new_local(out_ty.clone(), None, expr.span);
+    // Step 7: `dest = Load(elem_ptr, T)` (Stage 18.226). Typed load — no
+    // byte-by-byte memcpy needed (unlike the C helper). Codegen (Stage
+    // 18.227) emits `load T, ptr %elem_ptr` via `MemoryEmitter::emit_load`.
+    //
+    // Per §1.0 原則 6 (通解>特例): one Load for all element types.
+    // Per §12 (最优 > 最小): typed load, not memcpy loop.
+    let dest = cx.mir.new_local(elem_ty.clone(), None, span);
     let after = cx.new_block();
     cx.push_assign(
-        Place::local(dest, expr.span),
-        Rvalue::Use(Operand::Copy(Place::local(out_local, expr.span))),
-        expr.span,
+        Place::local(dest, span),
+        Rvalue::Load(Operand::Copy(Place::local(elem_ptr_local, span)), elem_ty),
+        span,
     );
     cx.terminate_and_goto(
         Terminator {
             kind: TerminatorKind::Goto(after),
-            span: expr.span,
+            span,
         },
         after,
     );
