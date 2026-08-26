@@ -22039,3 +22039,62 @@ Stage Summary:
 - §11.4 interface isolation check: §11.2 compliant (data contract)
 - §1.0 原則 9 (正确 > 妥协): full soundness fix, not MVP
 - §1.0 原則 6 (通解 > 特解): one fn_sigs-based path for all call args
+
+---
+Task ID: stage18.263
+Agent: Super Z (main) — Stage Committee (ARCH-A + REV-A + QA-A + PM-A + ALG-C)
+Task: Stage 18.263 — §14.5 阶段末尾深度审查 (D1-D8) for TD-TUPLE-CTOR-TYPECK complete batch (Stages 18.255-18.262). v0.492.0 (no bump — deep review only).
+
+Work Log:
+- Baseline: v0.492.0 / 3846 tests (LLVM 22.1.8)
+- 触发条例: §14.5 触发条件 #2 (连续收敛后进入下一大阶段前) + #1 (大阶段最末轮)
+  → TD-TUPLE-CTOR-TYPECK batch complete (8 stages: 18.255-18.262)
+  → Soundness hole FULLY CLOSED (all 5 cases)
+
+- D1-D8 八维度审查:
+  → D1 架构健康度: ✅ — expected_ty + fn_sigs threading respects §11.2; one-way flow; no circular deps
+  → D2 技术债清单: ✅ — all P0/P1 resolved; 3 open P3 TDs (all with clear plans + target versions)
+  → D3 测试覆盖深度: ✅ — 3846 tests, 0 failures; +44 tests this batch; 21:23 ratio (positive:negative)
+  → D4 下一阶段就绪度: ✅ — v0.3 release-ready; all v0.3 capabilities complete; soundness fully addressed
+  → D5 设计合理性: ✅ — all design decisions sound; expected_ty + fn_sigs mirror existing patterns
+  → D6 性能与可扩展性: ✅ — no regression; ~10s test runtime; O(1) per call site
+  → D7 文档与知识传承: ✅ — 9 plan docs + tech-debt-register + 2 Python scripts archived
+  → D8 测试路径覆盖与流水线印证: ✅ — all pipeline stages covered
+
+- 委员会投票: 5/5 GO (weighted 5.5/5.5, 100%)
+
+- TD-TUPLE-CTOR-TYPECK Batch Summary (Stages 18.255-18.262):
+  → 18.255: Phase 1 (unify arg order swap) + Phase 2 design plan
+  → 18.256: Phase 2a (expected_ty param scaffolding, 51 call sites)
+  → 18.257: Phase 2b (thread from let:T=expr annotation)
+  → 18.258: Phase 2c (use expected_ty in lower_call_expr Adt ctor path)
+  → 18.259: TD-UNIFY-ARG-ORDER batch fix (5 sites in typeck/check.rs)
+  → 18.260: Phase 2d-2f gap analysis (identified Phase 2e needed)
+  → 18.261: §14.5 D1-D8 deep review (mid-batch)
+  → 18.262: Phase 2e (fn_sigs in MIR lower, soundness hole fully closed)
+
+- Soundness hole FULLY CLOSED — all 5 cases:
+  → let binding: ✅ Phase 2c (Stage 18.258)
+  → return expr: ✅ typeck return type unify
+  → if branches: ✅ typeck if-branch unify
+  → match arms: ✅ typeck match-arm unify
+  → array elements: ✅ typeck Array elem unify
+  → fn call args: ✅ Phase 2e (Stage 18.262)
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --release --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --release --features llvm-backend ✅ 3846 tests, 0 failures
+
+- 版本: v0.492.0 (no bump — deep review only)
+
+Stage Summary:
+- Stage 18.263 PASSED — §14.5 D1-D8 deep review complete
+- D1-D8: all ✅
+- 委员会投票: 5/5 GO (weighted 5.5/5.5, 100%)
+- TD-TUPLE-CTOR-TYPECK batch (Stages 18.255-18.262) complete
+- Soundness hole FULLY CLOSED (all 5 cases)
+- v0.3 release-ready
+- Next: v0.3 release sign-off or v0.4+ architectural work
