@@ -7,9 +7,14 @@
 
 ---
 
-## v0.493.0 — Stage 18.312 (runtime.rs/prelude.rs 过时内容清理 + P3 LOC 重构完全清零 + P3 field access fix + 类 Rust 架构修正)
+## v0.493.0 — Stage 18.315 (全项目门面文件审查 + lib.rs 精简 + stdlib placeholder 注释 + README 完全重构 + runtime/prelude cleanup + P3 LOC 完全清零 + 类 Rust 架构修正)
 
 ### Overview
+
+**Stage 18.313-18.315: 全项目门面文件审查 + 文档重构**
+- `src/lib.rs`: 471 → 115 行 (移除 405 行 stage 历史 log, 替换为简洁 crate-level doc)
+- `src/stdlib/mod.rs`: STDLIB_ALLOC_TYPES + STDLIB_STD_TYPES 添加 placeholder 注释 (显式标记 3/13 alloc 类型有实现, 0/20 std 类型有实现)
+- `README.md`: 完全重构重排 (版本号更新 + 移除已完成 limitations + 更新 Roadmap + Recent Stage History 到 18.312)
 
 **Stage 18.311-18.312: codegen/runtime.rs + stdlib/prelude.rs 过时内容清理**
 - 修正 runtime.rs 中 `__landin_eprintf` 的错误注释 (误标为 "backward compat", 实际是活跃实现路径)
@@ -63,6 +68,35 @@
 - 0 warnings, 0 clippy issues, fmt clean
 - Stage 18.311: +1 new test (`stage18_311_migrated_intrinsics_absent`) — lib 从 675 → 676
 - Stage 18.296: 40 new tests (10 positive + 30 negative, ratio 1:3)
+
+### Stage 18.315 — README.md 完全重构重排
+
+- `README.md`: 307 → 305 行 (完全重写)
+- 版本号: v0.364.0 → v0.493.0 (Stage 18.312)
+- Quick Start: 添加 `landinc new/build/run` 示例 + `scripts/env.sh` helper 引用
+- Language Features: 重排为 "Supported" + "Class Rust Architecture" 两类
+- Current Limitations: 移除已完成项 (Single-file compilation / BinaryOp2 / MIR optimization), 更新版本号到 v0.493.0
+- v0.5+ Language Features (BLOCKED): 新增 sizeof(T) / fat pointer ops / core::fmt / orphan rule 路线图
+- Roadmap: v0.4 已完成项标 ✅, v0.5+ next major items
+- Recent Stage History: 从 18.96 扩展到 18.312 (12 个 stage entries)
+- LLVM Version: 添加 LLVM 22 (llvm-sys 221) 说明 + fallback to LLVM 19
+
+### Stage 18.314 — stdlib/mod.rs placeholder 注释
+
+- `src/stdlib/mod.rs`: STDLIB_ALLOC_TYPES + STDLIB_STD_TYPES 添加 placeholder 注释
+- STDLIB_ALLOC_TYPES (13 types): 显式标记 3 个有实现 (Box/Vec/String) + 10 个 placeholder (HashMap/BTreeMap/Rc/Arc/Cell/RefCell/LinkedList/VecDeque/HashSet/BTreeSet)
+- STDLIB_STD_TYPES (20 types): 显式标记全部为 placeholder (File/Path/TcpStream/Mutex/...)
+- 决策依据: 删除会破坏现有 typeck 测试 (is_stdlib_name 等); 加注释显式标记状态
+- §1.0 原則 3 (显式>隐式): placeholder 状态显式化; §1.0 原則 9 (正确>妥协): 真实实现 v0.5+
+
+### Stage 18.313 — src/lib.rs doc comment 精简
+
+- `src/lib.rs`: 471 → 115 行 (精简 356 行)
+- 移除: 405 行 stage-by-stage 历史 log (Stage 0-5.x sub-stage 描述)
+- 新增: 简洁 crate-level doc (~50 行) — Crate Layout 表 + Public Entry Points + Versioning + Design Documents 引用
+- 决策依据: §1.0 原則 5 (去除兼容思维) — stage 历史应在 RELEASE_NOTES.md + worklog.md, 不在 crate root
+- §1.0 原則 3 (显式>隐式): 引用 `RELEASE_NOTES.md` + `docs/worklog.md` 查历史, 而非内联
+- 类 Rust `libcore/lib.rs` 模式: crate root doc 简洁, 引用 book/nomicon
 
 ### Stage 18.312 — prelude.rs 过时注释清理
 

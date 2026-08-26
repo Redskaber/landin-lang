@@ -72,6 +72,28 @@ pub const STDLIB_CORE_TYPES: &[&str] = &[
 ];
 
 /// Stage 5.28: Alloc-layer type names — heap-allocated collection types.
+///
+/// **Stage 18.314 (P3 doc accuracy):** Of these 13 types, only **3 have
+/// real implementations**:
+/// - `Box<T>` — `struct Box<T>(*mut T)` + `Box::new(x)` intrinsic + auto-drop
+///   (see `src/stdlib/prelude.rs` + `src/mir/lower/box_intrinsics.rs`)
+/// - `Vec<T>` — `struct Vec<T> { ptr, len, cap }` + `Vec::new/len/push/get`
+///   intrinsics (see `src/stdlib/prelude.rs` + `src/mir/lower/vec_intrinsics.rs`)
+/// - `String` — `struct String { ptr, len, cap }` + `String::new/len/from_str/
+///   as_str/push_str` intrinsics (see `src/stdlib/prelude.rs` +
+///   `src/mir/lower/string_intrinsics.rs` + `src/mir/lower/method_call_lower.rs`)
+///
+/// The remaining **10 types are name-only placeholders** — they are interned
+/// into the type name table so typeck doesn't reject `let x: HashMap<i32, i32>`
+/// at name resolution, but they have **no struct definition, no methods, and
+/// no layout**. Users who try to actually use them will hit downstream errors
+/// (no constructor, no field access, no vtable).
+///
+/// Per §1.0 原則 3 (显式 > 隐式): this comment makes the placeholder status
+/// explicit. Per §1.0 原則 9 (正确 > 妥协): real implementations land in
+/// v0.5+ (need generics + sizeof(T) + fat pointer ops for proper HashMap/etc).
+/// Per §20 (直到审查不出问题为止): do NOT delete these names — existing
+/// tests rely on them being interned (e.g. `is_stdlib_name("HashMap")`).
 pub const STDLIB_ALLOC_TYPES: &[&str] = &[
     "Box",
     "Vec",
@@ -101,6 +123,19 @@ pub const STDLIB_ALLOC_TRAITS: &[&str] = &[
 ];
 
 /// Stage 5.30: Std-layer type names — OS-dependent I/O + threading types.
+///
+/// **Stage 18.314 (P3 doc accuracy):** ALL 20 types in this list are
+/// **name-only placeholders** — none have struct definitions, methods,
+/// or layout. They are interned into the type name table so typeck
+/// doesn't reject `let f: File` at name resolution, but users cannot
+/// construct, access fields of, or call methods on any of them.
+///
+/// Per §1.0 原則 3 (显式 > 隐式): this comment makes the placeholder status
+/// explicit. Per §1.0 原則 9 (正确 > 妥协): real I/O + threading types
+/// require v0.5+ (need `extern "Rust"` ABI + trait objects + runtime I/O
+/// integration). Per §20: do NOT delete — `is_stdlib_name("File")` etc.
+/// are used by typeck to skip "unknown type" errors for these reserved
+/// names.
 pub const STDLIB_STD_TYPES: &[&str] = &[
     "File",
     "Dir",

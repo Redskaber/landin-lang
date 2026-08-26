@@ -1,14 +1,13 @@
 # Landin
 
-> **Author**: redskaber  
-> **Version**: v0.493.0 (Stage 18.312 — runtime.rs/prelude.rs 过时内容清理 + P3 LOC 重构完全清零: 6 个文件全部 < 1500 + P3 field access fix + 类 Rust 架构修正)  
-> **License**: MIT  
-> **Status**: v0.4 stable. 类 Rust 原始类型扩展模型完成. 深度架构审查完成 — 所有"特解"根因已定位为 language feature gaps (v0.5+). 4203 tests, 0 failures.
+> **Author**: redskaber
+> **Version**: v0.493.0 (Stage 18.312 — runtime/prelude cleanup + full tech-debt clear)
+> **License**: MIT
+> **Status**: v0.4 stable. 4203 tests, 0 failures. 类 Rust 原始类型扩展模型完成.
 
-A work-in-progress systems programming language inspired by Rust, using LLVM 22
-for code generation (llvm-sys 221; was LLVM 19/llvm-sys 191 before Stage 18.210).
-The compiler is written in Rust (~50,000 LOC) and targets
-x86_64 and AArch64 Linux.
+A work-in-progress systems programming language inspired by Rust, using
+LLVM 22 (llvm-sys 221) for code generation. The compiler is written in
+Rust (~50,000 LOC) and targets x86_64 + AArch64 Linux.
 
 ---
 
@@ -29,233 +28,253 @@ echo 'fn main() { println!("hello world"); 0 }' > hello.lin
 
 # 4. Cross-compile to AArch64
 ./target/debug/landin-stage0 --emit-obj --target aarch64-unknown-linux-gnu hello.lin
+
+# 5. Multi-file project (mini-cargo)
+landinc new my_project && cd my_project
+landinc build --release
+landinc run
 ```
 
-### CLI Flags
+### CLI Flags (`landin-stage0` — single-file compiler)
 
 | Flag | Description |
 |------|-------------|
 | `--compile` | Full pipeline (lex → parse → typeck → borrowck → codegen) |
-| `--emit-ast` | Stop after parse, print AST |
-| `--emit-llvm-ir` | Emit LLVM IR text (.ll) |
-| `--emit-obj` | Emit object file (.o) via LLVM TargetMachine |
-| `--emit-bin` | Emit executable (link with `cc`) |
-| `--run` | Compile, link, execute, print exit code |
-| `--target <triple>` | Cross-compile target (x86_64/aarch64-unknown-linux-gnu) |
-| `--color <auto\|always\|never>` | Diagnostic color output mode |
+| `--emit-llvm-ir` | Emit LLVM IR text (implies --compile) |
+| `--emit-obj` | Emit object file `.o` (requires `llvm-backend` feature) |
+| `--emit-bin` | Emit executable (requires `llvm-backend`) |
+| `--run` | Compile, link, and run (requires `llvm-backend`) |
+| `--emit-tokens` | Emit token stream only (debug) |
+| `--emit-ast` | Emit AST only (debug) |
+| `--color WHEN` | Color output: `auto` / `always` / `never` (default: auto) |
+| `--target TRIPLE` | Cross-compile target (e.g. `aarch64-unknown-linux-gnu`) |
+
+### `landinc` Subcommands (multi-file project tool)
+
+| Subcommand | Description |
+|------------|-------------|
+| `landinc build [--release]` | Compile project (debug or optimized) |
+| `landinc run` | Compile + execute (requires `llvm-backend`) |
+| `landinc check` | Type-check without codegen |
+| `landinc new <name> [--lib]` | Create new project skeleton |
+| `landinc clean` | Remove `target/` |
 
 ---
 
 ## Language Features
 
-### Supported (v0.364)
+### Supported (v0.4)
 
-| Category | Features |
-|----------|----------|
-| **Primitive types** | i8/i16/i32/i64/i128/isize, u8/u16/u32/u64/u128/usize, f32/f64, bool, char, str |
-| **Composite types** | Tuples (all arities), arrays `[T; N]`, slices `&[T]`, references `&T`/`&mut T`, raw pointers `*const T`/`*mut T` |
-| **ADTs** | Struct (named/tuple/unit), Enum (with data, match, discriminant) |
-| **Functions** | Generic functions, `extern "C"`, `unsafe`, variadic |
-| **Closures** | `\|...\|`, `move \|...\|`, capture by ref/mut |
-| **Traits** | Definition, impl, supertraits, default methods, `dyn Trait` (fat pointer dispatch), associated types, GATs (Phase 1-3) |
-| **Pattern matching** | `let`, `match`, nested, struct, tuple, or-patterns, destructuring |
-| **Ownership** | Move semantics, use-after-move detection, `&`/`&mut` borrows, NLL (non-lexical lifetimes), double-mut detection |
-| **Macros** | `macro_rules!` with 9 fragment specifiers, repetition, hygiene; built-in `println!`/`print!`/`eprintln!`/`eprint!` |
-| **Cross-compilation** | `--target x86_64-unknown-linux-gnu` / `aarch64-unknown-linux-gnu` |
-| **MIR optimization** | DCE (dead code elimination) + const_prop (constant propagation + folding) — wired at Stage 18.96 |
+- **Primitive types**: `i8`–`i128`, `u8`–`u128`, `f32`/`f64`, `bool`, `char`, `str`, `()`, `Never`
+- **Composite types**: struct (named/tuple/unit), enum, array `[T; N]`, tuple
+- **Ownership & borrowing**: `&T`, `&mut T`, moves, NLL (non-lexical lifetimes)
+- **Generics**: `fn foo<T>(x: T)`, `struct Vec<T>`, `impl<T> Vec<T>`
+- **Traits**: declaration, `impl Trait for Type`, `dyn Trait` (object-safe only), supertraits
+- **Where clauses**: `fn foo<T>() where T: Copy + Clone`
+- **Pattern matching**: `match`, `if let`, `let else`, destructuring
+- **Closures**: `|x| x + 1`, capturing by ref/move
+- **Macros**: `macro_rules!`, built-in `println!`/`print!`/`eprintln!`/`eprint!`/`assert!`/`panic!`/`vec!`/`format!`/`dbg!`/`write!`
+- **Stdlib MVP**: `Option<T>`, `Result<T, E>`, `Box<T>`, `Vec<T>`, `String` (with intrinsic methods)
+- **FFI**: `extern "C" { fn foo(...); }`, `#[no_mangle]`, `#[link(name = "c")]`
+- **Unsafe**: `unsafe fn`, `unsafe impl`, `unsafe block`, raw pointers `*const T` / `*mut T`
+- **Codegen**: LLVM 22 backend (text IR + native object via `llvm-sys`)
+- **Cross-compile**: `--target aarch64-unknown-linux-gnu`, `--target x86_64-pc-windows-gnu`
+- **Diagnostics**: colored error output with source context + error codes (E1xx–E8xx)
 
-### Type Checking
+### Class Rust Architecture (Stage 18.284-18.297)
 
-- Type mismatch in `let` bindings, function returns, if-branches, match arms
-- Trait impl signature validation (arg count, types, return type)
-- Struct field count validation (missing/extra/unknown/duplicate)
-- Tuple index bounds, pattern arity, array index type, assignment target, cast type
-- Missing `fn main()` detection, associated const completeness
-
-### Error System
-
-All 8 error types have structured `Kind` enums + `Span` + `ErrorCode`:
-
-| Error Type | Code | Kind Variants |
-|-----------|------|---------------|
-| LexError | E001 | 7 |
-| ParseError | E100 | 7 |
-| LowerError | E200 | 4 |
-| ResolveError | E300 | 8 |
-| TypeError | E400 | 6 |
-| BorrowError | E500 | 9 |
-| TraitError | E600 | — |
-| CodegenError | E700 | 5 |
-| MacroError | E800 | 5 |
-
-All errors carry a 9-field `CompileErrors` struct with diagnostic display (source snippets + color).
+- **Primitive type extension**: `impl MyTrait for i32` works (trait impl on primitives)
+- **Inherent impl forbidden on primitives**: `impl i32 { fn method {} }` → error E0117-like
+- **Inherent impl conflict detection**: duplicate `impl Type { fn same {} }` → error
+- **Intrinsic dispatch**: marker body `loop {}` + post-resolution dispatch (类 Rust `#[rustc_intrinsic]`)
+- **Coherence checking**: trait + inherent impl conflict detection
 
 ---
 
 ## Testing
 
-| Category | Count | Description |
-|----------|-------|-------------|
-| Rust lib tests | 640 | Unit tests in `src/` |
-| Integration tests | 2,613 | Tests in `tests/v0/` (excl. 35 OOM-killed runtime tests) |
-| Conformance tests | 2,935 | `.lin` files in `tests/conformance/` |
-| Fuzz/stress tests | 7 | Random + malformed input, large programs |
-| **Total** | **6,195** | **0 failures** (runtime tests skipped due to 4GB RAM OOM) |
-
 ```bash
-# Run all Rust tests
-cargo test --features llvm-backend --lib
-cargo test --features llvm-backend --tests -- --test-threads=2
+# Run all Rust unit + integration tests (4203 tests)
+cargo test --release --features llvm-backend
 
-# Run conformance suite (2935 .lin files)
-python3 tests/conformance/run_all.py
+# Run lib tests only (676 tests, includes borrowck/typeck/codegen internals)
+cargo test --release --lib --features llvm-backend
+
+# Run integration tests only (3527 tests, end-to-end .lin file compilation)
+cargo test --release --test all_tests --features llvm-backend
+
+# Run conformance suite (2935 .lin test files)
+./tests/conformance/run.sh
 ```
+
+**Test stats**: 676 lib + 3527 integration = **4203 tests, 0 failures, 0 warnings, 0 clippy issues**.
 
 ---
 
 ## Architecture
 
-### Compilation Pipeline
-
+```text
+source text
+    │
+    ▼
+1. lexer::tokenize           → tokens + lex errors
+    │
+    ▼
+2. parser::Parser::parse_crate → AST crate + parse errors
+    │                        (+ macro_rules! expansion)
+    ▼
+3. hir::lower::lower_crate   → HIR crate
+    │
+    ▼
+4. resolve::resolve_crate    → mutates HIR (sets Res on paths)
+    │
+    ▼
+5. mir::lower::lower_hir_body_to_mir  (per body)
+    │
+    ▼
+6. typeck::check_mir_body    → mutates MIR (writes resolved types)
+    │
+    ▼
+6.5. mir::drop_elaboration::elaborate_drops  → insert Drop terminators
+    │
+    ▼
+7. borrowck::check_mir_body_with_dataflow  → borrow/move errors (NLL)
+    │
+    ▼
+8. codegen::codegen_crate    → LLVM IR text / LLVM module
+    │
+    ▼
+9. (optional) cc linker      → executable
 ```
-Source
-  │
-  ▼  Lexer ──→ Vec<Token> + Vec<LexError>
-  │
-  ▼  macro_expand ──→ Vec<Token> (expanded)
-  │
-  ▼  Parser ──→ Crate<ast::Item> + Vec<ParseError>
-  │
-  ▼  HIR Lower ──→ HirCrate (DefId-keyed owners + bodies)
-  │
-  ▼  Resolve ──→ mutates HIR (Res on paths, module tree, use imports)
-  │
-  ▼  MIR Lower ──→ MirBody (basic blocks + statements + terminator)
-  │
-  ▼  TypeCheck ──→ mutates MIR (resolved types in local_decls)
-  │
-  ▼  BorrowCheck ──→ mutates MIR (NLL + region inference + drop elaboration)
-  │
-  ▼  Writeback ──→ type propagation + closure substitution
-  │
-  ▼  MIR Optimization ──→ DCE → const_prop → DCE (Stage 18.96)
-  │
-  ▼  Codegen ──→ LLVM IR (TextEmitter text or LLVMSysEmitter C API)
-  │
-  ▼  Link ──→ Object file → Executable (via `cc`)
-```
 
-### Stage Isolation (§11)
+### Module Responsibilities
 
-Each stage receives **data** (not HIR references) from upstream:
-- Typeck receives `FieldTyTable` + `FnSigTable` (pre-computed by driver)
-- Codegen receives `CompileResult` (MIR + metadata, zero HIR access)
-- MIR opt receives `&mut MirBody` (after borrowck, before codegen)
-
-### Module Organization
-
-| Module | Sub-modules | Responsibility |
-|--------|-------------|----------------|
-| `lexer/` | 4 (ident, number, string, reader) | Tokenization |
-| `parser/` | 7 (expr, items, pat, ty, path, stmt, macro_expand) | AST construction |
-| `hir/` | 8 (lower sub-modules) | AST → HIR lowering |
-| `resolve/` | — | Name resolution + module tree |
-| `mir/` | 9 (lower sub-modules + optimization + monomorphize) | HIR → MIR + opt |
-| `typeck/` | — (checker, unify, predicates, projection_resolver) | Type inference |
-| `borrowck/` | — (NLL + region_inference + drop_elaboration) | Ownership/borrow check |
-| `traits/` | — (resolver, coherence, vtable, error) | Trait resolution |
-| `codegen/` | — (text + llvm backends + dyn_trait_emit) | LLVM IR generation |
-| `driver.rs` | — | Pipeline orchestration |
+| Module | Responsibility | Key Files |
+|--------|---------------|-----------|
+| `lexer` | Tokenization | `lexer/mod.rs` |
+| `parser` | AST + macro expansion | `parser/mod.rs`, `parser/macro_expand/`, `parser/builtin_macros/` |
+| `hir` | HIR lowering + name resolution | `hir/lower/`, `hir/mod.rs` |
+| `resolve` | Path/use resolution | `resolve/mod.rs` |
+| `mir` | MIR + drop elaboration + dyn trait | `mir/lower/`, `mir/drop_elaboration.rs`, `mir/dyn_trait.rs` |
+| `typeck` | Type checking + unification | `typeck/checker.rs`, `typeck/unify.rs` |
+| `borrowck` | Ownership + NLL liveness | `borrowck/mod.rs`, `borrowck/region_inference.rs`, `borrowck/liveness.rs` |
+| `codegen` | LLVM IR emission | `codegen/mod.rs`, `codegen/pipeline.rs`, `codegen/runtime.rs`, `codegen/llvm/` |
+| `driver` | Pipeline orchestration | `driver/mod.rs`, `driver/compile_inner.rs` |
+| `stdlib` | Core/alloc/std type registry + vtable layout | `stdlib/mod.rs`, `stdlib/prelude.rs`, `stdlib/trait_methods.rs`, `stdlib/vtable_layout.rs` |
+| `traits` | TraitResolver + coherence + vtable dispatch | `traits/resolver.rs`, `traits/resolver_queries.rs`, `traits/error.rs` |
+| `diagnostics` | Error rendering (color, source context) | `diagnostics/mod.rs` |
+| `cargo` | Mini-cargo manifest + build orchestration | `cargo.rs` |
 
 ---
 
 ## Project Structure
 
-```
+```text
 landin-stage0/
 ├── src/
-│   ├── ast/           # AST node definitions
-│   ├── lexer/         # Lexer (4 sub-modules)
-│   ├── parser/        # Parser (7 sub-modules + macro_expand)
-│   ├── hir/           # HIR lowering (8 sub-modules)
-│   ├── resolve/       # Name resolution
-│   ├── mir/           # MIR lowering (9 sub-modules) + optimization
-│   ├── typeck/        # Type checker
-│   ├── borrowck/      # Borrow checker (NLL, region inference)
-│   ├── traits/        # Trait resolver (coherence, vtable, dyn Trait)
-│   ├── codegen/       # Code generation (text + LLVM backends)
-│   ├── diagnostics/   # Error display (DiagnosticBuilder, DiagnosticBuffer)
-│   ├── session/       # Session (Span, SourceMap)
-│   ├── stdlib/        # Standard library facade
-│   └── driver.rs      # Compilation pipeline orchestration
+│   ├── ast/              # AST data structures
+│   ├── lexer/            # Tokenizer
+│   ├── parser/           # Parser + macro_expand/ + builtin_macros/
+│   ├── hir/              # HIR + lower/ (AST → HIR)
+│   ├── resolve/          # Name resolution
+│   ├── mir/              # MIR + lower/ (HIR → MIR) + drop_elaboration + dyn_trait
+│   ├── typeck/           # Type checker + unify + where_clause
+│   ├── borrowck/          # Borrow checker + region_inference + liveness
+│   ├── codegen/          # LLVM IR emission + runtime + llvm/ (llvm-sys wrappers)
+│   ├── driver/           # Pipeline orchestration + module_loader
+│   ├── stdlib/           # Type registry + prelude + vtable layout
+│   ├── traits/           # TraitResolver + coherence + error
+│   ├── diagnostics/      # Error rendering
+│   ├── session/          # SourceFile + SourceMap + Span
+│   ├── bin/
+│   │   ├── main.rs       # landin-stage0 (single-file compiler)
+│   │   └── landinc.rs    # landinc (multi-file project tool)
+│   ├── lib.rs            # Crate root + public API re-exports
+│   └── cargo.rs          # Mini-cargo (ProjectManifest + build_project)
 ├── tests/
-│   ├── v0/            # Integration tests (by stage)
-│   ├── conformance/   # .lin conformance suite (2935 files)
-│   └── fuzz/          # Fuzz/stress tests
-├── docs/              # Design docs, stage plans, gate reviews
-│   ├── stage-committee-process.md  # Development process SOP
-│   ├── lang-design/   # Language design (00-19)
-│   ├── develop/v0/    # Stage dev logs + plans + gate reviews
-│   ├── tests/         # Test matrix + coverage
-│   ├── llvm/          # LLVM integration docs
-│   └── agent-team/    # Agent roles + collaboration
-├── scripts/           # LLVM setup, version switching
-├── tools/             # Auxiliary tools
-├── benchmark/         # Benchmark programs
-├── examples/          # Example .lin programs
-├── Cargo.toml
-├── RELEASE_NOTES.md
-└── README.md
+│   ├── v0/stage-N/       # Stage-organized test files (3527 integration tests)
+│   └── conformance/      # Conformance suite (2935 .lin files)
+├── docs/
+│   ├── lang-design/      # Language spec (00-18)
+│   ├── graph/            # Pipeline + data-flow diagrams
+│   ├── develop/v0/       # Stage dev logs + tech-debt-register
+│   ├── stage-committee-process.md  # Dev process SOP
+│   └── worklog.md        # Stage-by-stage work log
+├── scripts/
+│   ├── setup-llvm-env.sh # LLVM 22 (or 19 fallback) environment setup
+│   ├── switch-llvm-version.sh
+│   └── env.sh            # LLVM 22 env helper (PATH + LD_LIBRARY_PATH)
+├── examples/             # Example .lin programs
+├── Cargo.toml            # llvm-sys 221, optional llvm-backend feature
+└── README.md             # This file
 ```
 
 ---
 
-## Current Limitations (v0.364)
+## Current Limitations (v0.493.0, Stage 18.312)
 
 ### Type System
 
-- **Param unify unsound**: Generic type parameters unify with any type (requires v0.2 monomorphization)
-- **Deref on non-Ref**: Pattern bindings on `&self` don't propagate reference types (v0.2)
-- **`LocalId(0)` fallback**: Non-Local borrowed places in region constraints (v0.2 field projection)
+- **`LocalId(0)` fallback**: Non-Local borrowed places in region constraints (v0.2+ field projection)
+- **Deref on non-Ref**: Pattern bindings on `&self` don't propagate reference types (v0.2+)
 
 ### Code Generation
 
+- ~~Single-file compilation~~ ✅ Stage 18.152-18.155 (`landinc` + `compile_project`)
+- ~~BinaryOp2 fallback~~ ✅ Stage 18.151 (returns `Err(CodegenError)`)
 - ~~MIR optimization not wired~~ ✅ Stage 18.96 (DCE → const_prop → DCE)
-- **Single-file compilation**: No project/crate system (v0.2 mini-cargo)
-- **No incremental compilation**: Full recompile every time (v0.2 — requires project system)
-- **BinaryOp2 fallback**: Range expressions in codegen produce "0" with warning (v0.2 CodegenResult)
-
-### Platform Support
-
-- **Linux only**: No Windows/macOS target triples (v0.2 cross-compile expansion)
-- **No ABI diversity**: Only `extern "C"` tested (v0.2 `extern "system"`, `extern "Rust"`)
+- **No incremental compilation**: Full recompile every time (v0.2+ requires project system)
 
 ### Standard Library
 
-- **Facade only**: String/Vec/Option/Result are type stubs, not real implementations (v0.2 full stdlib)
-- **No `format!`/`write!`**: Only `println!`/`print!`/`eprintln!`/`eprint!` (v0.2 format macros)
+- **Box/Vec/String**: ✅ Implemented via intrinsics (Stage 18.178-18.231)
+- **HashMap/BTreeMap/Rc/Arc/Cell/RefCell**: Name-only placeholders, no implementation (v0.5+)
+- **File/Path/TcpStream/Mutex**: Name-only placeholders, no implementation (v0.5+)
+- **format!**: ✅ Stage 18.202 (variadic intrinsic, no `core::fmt` infrastructure)
+- **Drop trait**: ✅ Stage 18.193 (Box auto-drop via `__landin_dealloc`)
 
-### Unsupported Features
+### Platform Support
 
-- Process macros, async/await runtime (syntax supported, no runtime)
-- Self-hosting (far future)
+- **Linux only**: No Windows/macOS target triples (v0.2+ cross-compile expansion)
+- **No ABI diversity**: Only `extern "C"` tested (v0.2+ `extern "system"`, `extern "Rust"`)
+
+### v0.5+ Language Features (BLOCKED)
+
+These are required to migrate remaining intrinsics to real prelude impls:
+
+1. **`sizeof(T)`** — generic type size calculation (unlocks `Box::new` + `Vec::push` real body)
+2. **Fat pointer ops** — deconstruct + construct (unlocks `String::as_str` real body)
+3. **`core::fmt` infrastructure** — Display/Debug/Formatter/Write (unlocks `format!` real body)
+4. **Orphan rule** — multi-crate coherence (v0.2+ deferred)
 
 ---
 
-## v0.2 Roadmap
+## Roadmap
 
-| Priority | Task | Status | Description |
-|----------|------|--------|-------------|
-| **P0** | Monomorphization | Next | Fix Param unify, enable GAT Phase 4, type-specific codegen |
-| **P0** | Project system (mini-cargo) | Next | Multi-file compilation, crate graph, dependencies |
-| **P1** | Full standard library | Pending | String, Vec, Option, Result, HashMap, Iterator |
-| ~~P1~~ | ~~MIR optimization wiring~~ | ✅ Stage 18.96 | DCE + const_prop in driver |
-| ~~P1~~ | ~~TraitError location migration~~ | ✅ Stage 18.95 | Moved to `traits/error.rs` |
-| **P2** | Incremental compilation | Pending | Dependency graph + MIR hash + cache (requires P0) |
-| **P2** | Criterion benchmarks | Pending | Statistical performance baselines |
-| **P2** | Windows/macOS targets | Pending | Cross-compilation expansion |
-| **P3** | Self-hosting Phase 0 | Future | Standard library in Landin |
-| **P3** | Self-hosting Phase 1-5 | Future | Full bootstrap |
+### v0.4 (Current — Stable Release)
+
+| Priority | Task | Status |
+|----------|------|--------|
+| ✅ | Monomorphization (per-mono codegen) | ✅ Stage 18.103 |
+| ✅ | Project system (mini-cargo) | ✅ Stage 18.152-18.155 |
+| ✅ | MIR optimization (DCE + const_prop) | ✅ Stage 18.96 |
+| ✅ | Box/Vec/String intrinsics | ✅ Stage 18.178-18.231 |
+| ✅ | Class Rust primitive impl model | ✅ Stage 18.284-18.297 |
+| ✅ | LOC < 1500 for all source files | ✅ Stage 18.305-18.310 |
+| ✅ | runtime.rs/prelude.rs cleanup | ✅ Stage 18.311-18.312 |
+
+### v0.5+ (Next Major)
+
+| Priority | Task | Description |
+|----------|------|-------------|
+| **P0** | `sizeof(T)` | Generic type size calculation |
+| **P0** | Fat pointer ops | Deconstruct + construct syntax |
+| **P1** | `core::fmt` | Display/Debug/Formatter/Write infrastructure |
+| **P1** | HashMap/BTreeMap | Real implementations |
+| **P2** | Incremental compilation | Dependency graph + MIR hash + cache |
+| **P2** | Windows/macOS targets | Cross-compilation expansion |
+| **P3** | Orphan rule | Multi-crate coherence |
+| **P3** | Self-hosting Phase 0 | Standard library in Landin |
 
 ---
 
@@ -263,44 +282,58 @@ landin-stage0/
 
 | Document | Description |
 |----------|-------------|
-| [`docs/stage-committee-process.md`](docs/stage-committee-process.md) | Development process + quality standards SOP (v5.0) |
-| [`docs/lang-design/`](docs/lang-design/) | Language design documents (00-19) |
+| [`docs/stage-committee-process.md`](docs/stage-committee-process.md) | Development process SOP (v5.0) |
+| [`docs/lang-design/`](docs/lang-design/) | Language design documents (00-18) |
+| [`docs/graph/`](docs/graph/) | Pipeline + data-flow diagrams |
 | [`docs/develop/v0/stage-18/`](docs/develop/v0/stage-18/) | Stage 18 design docs + gate reviews |
-| [`docs/develop/v0/v0.1-capability-boundaries.md`](docs/develop/v0/v0.1-capability-boundaries.md) | v0.1 capability boundaries + limitations |
+| [`docs/develop/v0/tech-debt-register.md`](docs/develop/v0/tech-debt-register.md) | Tech debt tracking (all P0/P1/P2 resolved) |
 | [`docs/develop/v0/v0.4-roadmap.md`](docs/develop/v0/v0.4-roadmap.md) | v0.4 roadmap design |
 | [`docs/develop/v0/v0.5-roadmap.md`](docs/develop/v0/v0.5-roadmap.md) | v0.5 roadmap design |
 | [`docs/tests/matrix.md`](docs/tests/matrix.md) | Global test matrix |
-| [`docs/tests/pipeline-test-coverage.md`](docs/tests/pipeline-test-coverage.md) | Pipeline test path coverage |
 | [`docs/llvm/`](docs/llvm/) | LLVM integration docs |
-| [`docs/build-guide.md`](docs/build-guide.md) | Build instructions |
-| [`docs/testing-guide.md`](docs/testing-guide.md) | Testing guide |
-| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.364.0) |
+| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.312) |
+| [`docs/worklog.md`](docs/worklog.md) | Stage-by-stage work log |
 
 ### Recent Stage History
 
 | Stage | Version | Summary |
 |-------|---------|---------|
-| 18.96 | v0.364.0 | MIR optimization wiring (DCE + const_prop) |
-| 18.95 | v0.363.0 | TraitError location migration (driver → traits/error) |
-| 18.94 | v0.362.0 | Documentation sync + README rewrite + v0.1 boundaries |
-| 18.93 | v0.361.0 | Deep audit v4 + final polish (audit-clean) |
-| 18.92 | v0.360.0 | Error type Kind enums (all 8 error types) |
+| 18.312 | v0.493.0 | runtime.rs/prelude.rs 过时内容清理 |
+| 18.310 | v0.493.0 | LOC 重构完全清零 (6 个文件 < 1500) |
+| 18.304 | v0.493.0 | P3 field access on primitive 报错 |
+| 18.297 | v0.493.0 | typeck gap: trait not implemented for type X |
+| 18.295 | v0.493.0 | trait impl for primitive types (`impl MyTrait for i32`) |
+| 18.293 | v0.493.0 | 禁止用户 inherent impl 原始类型 (类 Rust E0117) |
+| 18.292 | v0.493.0 | inherent impl 冲突检测 (类 Rust "duplicate definitions") |
+| 18.284 | v0.493.0 | TD-INTRINSIC-OVERUSE Phase 2-A (str::len/is_empty/as_bytes migrated to prelude) |
+| 18.232 | v0.493.0 | 4 compound C helpers migrated to MIR intrinsics |
+| 18.155 | v0.493.0 | landinc CLI build/run/new/check/clean |
+| 18.151 | v0.493.0 | TD-CODEGEN-RESULT (CodegenResult propagation) |
+| 18.103 | v0.371.0 | Per-Mono Codegen (TD-MONO-CODEGEN) |
+| 18.96  | v0.364.0 | MIR optimization wiring (DCE + const_prop) |
 
 ---
 
 ## Development Process
 
-This project follows `docs/stage-committee-process.md` (v5.0) — a strict stage-committee SOP with:
+Per `docs/stage-committee-process.md` (v5.0):
 
-- **§3.2 Delivery acceptance**: cargo clean + build + fmt + clippy + test (all must pass)
-- **§8 Documentation sync**: Every code change syncs docs (Cargo.toml, README, dev-log, etc.)
-- **§10 API naming**: Standardized `<verb>_<noun>` function names, no glob re-exports
-- **§11 Interface isolation**: Stages communicate via data contracts, not internal function calls
-- **§13.1 Stage start design alignment**: Each stage starts by consulting `docs/lang-design/`
-- **§14 Deep review**: 8-dimension audit at stage end (D1-D8)
+- **MUV (Minimum Verifiable Unit)**: each stage is atomic + independently testable
+- **§3.2 acceptance gate**: `cargo build --release && fmt --check && clippy -- -D warnings && test --release` all green
+- **§9.4.3 negative test ratio**: ≥ 25% negative tests (currently 27.8%)
+- **§13.4 J1-J6 refactoring**: design unchanged / single responsibility / no circular deps / complete / same pipeline stage / LOC < 1500
+- **§14.5 deep review**: mandatory at stage end
+- **§19 packaging**: `landin-stage0-v<ver>-stage<N>-<desc>-r<rev>.tar.gz`
+
+### LLVM Version
+
+- **Default**: LLVM 22.1 (llvm-sys 221) — Stage 18.210 upgrade
+- **Fallback**: LLVM 19.x (llvm-sys 191) — for environments without LLVM 22
+- **Setup**: `source scripts/setup-llvm-env.sh` (auto-detects + installs)
+- **Switch**: `bash scripts/switch-llvm-version.sh 22` (or 19)
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT License — see [`LICENSE`](LICENSE) for details.

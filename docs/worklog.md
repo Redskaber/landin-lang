@@ -24933,3 +24933,102 @@ Work Log:
   → core::fmt 基础设施 — Display/Debug/Formatter/Write (解锁 format! macro real body)
   → 孤儿规则 — 多 crate coherence (v0.2+ deferred)
 - v0.4 可交付: 4203 tests, 0 failures, 所有 P3 已清零, 类 Rust 架构修正完成.
+
+---
+Task ID: stage18.313+18.314+18.315
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.313-18.315 — 全项目门面文件审查 + lib.rs 精简 + stdlib placeholder 注释 + README 完全重构. L3. v0.493.0.
+
+3秒启动自检:
+- 定位: L3 (跨多文件 + README 完全重构, §13.4 J1-J6)
+- 对齐: docs/lang-design/07-codegen.md §10 + 09-stdlib.md §2.2 + tech-debt-register.md
+- 阻断: 无 P0/P1 (4203 tests 全绿基线)
+
+决策点 (为何选此路):
+- 为什么审查 src/lib.rs 而不是其他文件?
+  → 用户明确指令: "严格按照 docs/stage-committee-process.md 审查当前项目是否存在过时内容"
+  → lib.rs 是 crate root, 顶部 doc comment 是项目"门面". 405 行 stage 历史 log 违反 §1.0 原則 5 (去除兼容思维).
+- 为什么不删除 STDLIB_ALLOC_TYPES/STDLIB_STD_TYPES 中的 placeholder 名字?
+  → 引用 §20 (直到审查不出问题为止): 删除会破坏现有 typeck 测试 (is_stdlib_name 等).
+  → 引用 §1.0 原則 3 (显式>隐式): 加注释显式标记 placeholder 状态, 而非删除.
+  → 引用 §1.0 原則 9 (正确>妥协): 真实实现 v0.5+ (需要 generics + sizeof(T) + fat pointer ops).
+- 为什么完全重构 README.md 而不是局部更新?
+  → 引用 §12 (最优>最小): README 有 7 处过时 (版本号 + limitations + roadmap + history), 局部更新会留下不一致. 完全重构是根因修复.
+  → 引用 §1.0 原則 5 (去除兼容思维): 移除已完成项的 "Next" 标记, 改为 ✅.
+
+裁剪点 (为何跳流程):
+- L3 执行 §13.4 J1-J6 + §3.2 全校验流 + §14.5 深度审查. 跳过 §14.6 跨阶段验证 (无跨阶段变更).
+
+5W2H:
+- WHAT: 审查全项目门面文件 (lib.rs / stdlib/mod.rs / README.md / bin/ / driver/), 清理过时内容
+- WHY: 阶段性推进留下的"考古层" — Stage 5.x 写了详细 stage log 到 lib.rs, Stage 6.9 拆分 stdlib 后未清理; Stage 18.x 完成多个里程碑后 README 未更新
+- WHO: ARCH-A 决策 (placeholder 处理) + DEV-A 实施 + REV-A 深度审查 + QA-A 测试验证
+- WHEN: §3.2 全绿后停止
+- WHERE: src/lib.rs + src/stdlib/mod.rs + README.md + RELEASE_NOTES.md + docs/worklog.md
+- HOW:
+  (1) 5W2H 剖析: lib.rs 405 行 stage log + stdlib 23 个 placeholder types + README 7 处过时
+  (2) Rust 设计: Rust lib.rs/libcore/lib.rs 顶部 doc 简洁 (~50 行), 引用 book/nomicon. Rust std::collections::HashMap 是真实实现, 不是 placeholder.
+  (3) Rust 哲学: 显式>隐式 — placeholder 状态显式标记; 让非法状态不可表示 — 但 placeholder 名字已注册, 不删除以保持兼容
+  (4) 实施: lib.rs 替换为 ~50 行 crate-level doc; stdlib/mod.rs 添加 placeholder 注释; README.md 完全重构
+- HOW MUCH: §3.2 全绿 — 676 lib + 3527 integration = 4203 tests, 0 failures, 0 warnings, 0 clippy, fmt clean.
+
+Work Log:
+- 审查范围:
+  → src/lib.rs (471 LOC) — crate root doc comment
+  → src/cargo.rs (224 LOC) — mini-cargo
+  → src/bin/main.rs (373 LOC) — single-file compiler entry
+  → src/bin/landinc.rs (641 LOC) — multi-file project tool entry
+  → src/driver/*.rs (8 files, 5277 LOC) — pipeline orchestration
+  → src/stdlib/*.rs (4 files, 2701 LOC) — type registry + prelude + vtable
+  → README.md (307 LOC) — project documentation
+- 发现的问题:
+  → P3-1: lib.rs 405 行 stage 历史 log (考古层, 违反 §1.0 原則 5)
+  → P3-2: stdlib/mod.rs 23 个 placeholder types 未标记状态 (违反 §1.0 原則 3 显式>隐式)
+  → P3-3: README.md 7 处过时 (版本号 v0.364 + 已完成项标 "Next" + history 只到 18.96)
+  → 通过审查: src/bin/*, src/driver/*, src/stdlib/{trait_methods,vtable_layout,prelude}.rs 均无过时/越界内容
+- Stage 18.313 实施 (lib.rs 精简):
+  → 移除: 405 行 stage-by-stage 历史 log (Stage 0-5.x sub-stage 描述)
+  → 新增: ~50 行简洁 crate-level doc — Crate Layout 表 + Public Entry Points + Versioning + Design Documents 引用
+  → 保留: 所有 pub mod + pub use 声明 (无变更)
+  → 结果: 471 → 115 行 ✅
+- Stage 18.314 实施 (stdlib placeholder 注释):
+  → STDLIB_ALLOC_TYPES: 添加 24 行注释, 显式标记 3 个有实现 (Box/Vec/String) + 10 个 placeholder
+  → STDLIB_STD_TYPES: 添加 13 行注释, 显式标记全部 20 个为 placeholder
+  → 决策: 不删除 placeholder 名字 — 现有测试依赖 (is_stdlib_name 等), 删除会破坏
+  → 引用: §1.0 原則 3 (显式>隐式) + §1.0 原則 9 (正确>妥协) + §20 (不破坏现有行为)
+- Stage 18.315 实施 (README.md 完全重构):
+  → 版本号: v0.364.0 → v0.493.0 (Stage 18.312)
+  → Quick Start: 添加 landinc new/build/run 示例 + scripts/env.sh helper
+  → Language Features: 重排为 "Supported (v0.4)" + "Class Rust Architecture (Stage 18.284-18.297)"
+  → Current Limitations: 移除 3 个已完成项 (Single-file compilation / BinaryOp2 / MIR optimization), 更新版本号
+  → v0.5+ Language Features (BLOCKED): 新增 sizeof(T) / fat pointer ops / core::fmt / orphan rule
+  → Roadmap: v0.4 已完成项标 ✅, v0.5+ next major items
+  → Recent Stage History: 从 5 个扩展到 13 个 entries (18.96 → 18.312)
+  → LLVM Version: 添加 LLVM 22 (llvm-sys 221) 说明 + fallback to LLVM 19
+  → Development Process: 添加 §3.2 / §9.4.3 / §13.4 J1-J6 / §14.5 / §19 引用
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 676 passed, 0 failed
+  → cargo test --release --test all_tests ✅ 3527 passed, 0 failed (--test-threads=2 防止偶发并发竞争)
+  → 总计 4203 tests, 0 failures ✅
+- §14.5 深度审查 (REV-A):
+  → lib.rs 精简: ✅ 根因修复 (405 行考古层 → 简洁 doc, 类 Rust libcore/lib.rs)
+  → stdlib placeholder 注释: ✅ 根因修复 (placeholder 状态显式化, 不删除保持兼容)
+  → README.md 重构: ✅ 根因修复 (7 处过时全部修正, 不是局部 patch)
+  → 终极检验: "针对根因的最优架构解, 不是最小补丁" ✅ 通过
+
+下一步:
+- v0.4 全部 tech-debt 已解决:
+  → P0/P1/P2: ✅ 之前已解决
+  → P3 (field access on primitive): ✅ Stage 18.304
+  → P3 (LOC > 1500, 6 个文件): ✅ Stage 18.305-18.310
+  → P3 (runtime.rs/prelude.rs 过时内容): ✅ Stage 18.311-18.312
+  → P3 (lib.rs/stdlib/README 过时内容): ✅ Stage 18.313-18.315
+- v0.5+ 路线图 (BLOCKED, 需要 language features):
+  → sizeof(T) — 泛型类型大小计算
+  → fat pointer 操作语法 — 拆解 + 构造
+  → core::fmt 基础设施 — Display/Debug/Formatter/Write
+  → 孤儿规则 — 多 crate coherence
+- v0.4 可交付: 4203 tests, 0 failures, 所有 P3 已清零, 类 Rust 架构修正完成, 文档完全同步.
