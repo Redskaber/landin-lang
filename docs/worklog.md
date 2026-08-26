@@ -21330,3 +21330,47 @@ Stage Summary:
 - TD-LOC-DRIVER: 🟡 Partial → ✅ Complete
 - 3798 tests, 0 failures, zero regression
 - ALL LOC TDs now resolved: TD-LOC-MIR-LOWER-MOD ✅, TD-LOC-MIR-LOWER-EXPR ✅, TD-LOC-DRIVER ✅, TD-LOC-MACRO-EXPAND ✅
+
+---
+Task ID: stage18.251
+Agent: Super Z (main) — ARCH-A + REV-A + QA-A
+Task: Stage 18.251 — TD-EXPECT audit: Close false-positive TDs. v0.492.0 (no bump — audit + documentation).
+
+Work Log:
+- Baseline: v0.492.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: TD-EXPECT-TYPECK-SOLVER + TD-EXPECT-PARSER-ITEMS were 🟡 MEDIUM "Open"
+
+- Audit results:
+  1. TD-EXPECT-TYPECK-SOLVER (src/typeck/solver.rs, 37 expect calls):
+     → ALL 37 `.expect()` calls are inside `#[cfg(test)] mod tests` (line 262+)
+     → Each has descriptive messages ("Foo should be interned", etc.)
+     → No production code has bare expect()
+     → Status: ✅ False positive — test-code expects are standard practice
+
+  2. TD-EXPECT-PARSER-ITEMS (src/parser/items.rs, 36 expect calls):
+     → ALL 36 calls are to `self.expect(&TokenKind, &str)` — a CUSTOM parser method
+     → NOT `Option::expect()` or `Result::expect()` — it pushes ParseError (non-panicking)
+     → `what` parameter already has descriptive messages ("`]`", "`)`", "`:`", etc.)
+     → Status: ✅ False positive — custom parser method, not Option::expect()
+
+- Per §1.0 原則 4 (报错>静默): parser's expect() correctly reports errors (doesn't silently fail)
+- Per §1.0 原則 9 (正确>妥协): test expects with descriptive messages are correct practice
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- Tech debt register updated:
+  → TD-EXPECT-TYPECK-SOLVER: ✅ Resolved (false positive — test code only)
+  → TD-EXPECT-PARSER-ITEMS: ✅ Resolved (false positive — custom parser method)
+
+- 版本: v0.492.0 (no bump — audit only)
+
+Stage Summary:
+- Stage 18.251 PASSED — TD-EXPECT audit: both TDs closed as false positives
+- TD-EXPECT-TYPECK-SOLVER: ✅ (all expects in test code)
+- TD-EXPECT-PARSER-ITEMS: ✅ (custom parser method, not Option::expect)
+- 3798 tests, 0 failures, zero regression
+- Remaining active TDs: TD-TUPLE-CTOR-TYPECK, TD-INTRINSIC-OVERUSE Phase 2, TD-DROP-MOVED-LOCALS (partial)

@@ -174,8 +174,8 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 |----|------|---------------|---------------|--------|------|--------|--------|
 | TD-UNWRAP-DRIVER | `src/driver.rs` | 4 | 0 | 0 | 🟡 MEDIUM | `if let Some(b)` pattern | ✅ Resolved 18.127 |
 | TD-UNWRAP-BORROWCK-REGION | `src/borrowck/region_inference.rs` | 3 | 10 | 0 | 🔴 HIGH → 🟢 LOW | `expect("...")` + invariant docs | ✅ Resolved 18.127 |
-| TD-EXPECT-TYPECK-SOLVER | `src/typeck/solver.rs` | 0 | 0 | 37 | 🟡 MEDIUM | 审计每个 expect 的 message | Open — v0.2 P2 |
-| TD-EXPECT-PARSER-ITEMS | `src/parser/items.rs` | 0 | 0 | 36 | 🟡 MEDIUM | 审计每个 expect 的 message | Open — v0.2 P2 |
+| TD-EXPECT-TYPECK-SOLVER | `src/typeck/solver.rs` | 0 | 0 | 37 | 🟡 MEDIUM | 审计每个 expect 的 message | ✅ Resolved Stage 18.251 — audit: ALL 37 `.expect()` calls are inside `#[cfg(test)] mod tests` with descriptive messages. No production code has bare expect(). No action needed. |
+| TD-EXPECT-PARSER-ITEMS | `src/parser/items.rs` | 0 | 0 | 36 | 🟡 MEDIUM | 审计每个 expect 的 message | ✅ Resolved Stage 18.251 — audit: ALL 36 calls are to `self.expect(&TokenKind, &str)` — a custom parser method that pushes ParseError (non-panicking). Not `Option::expect()`. `what` parameter already has descriptive messages. No action needed. |
 | TD-UNWRAP-BORROWCK-BORROWSET | `src/borrowck/borrow_set.rs` | 0 | 9 | 0 | 🟢 LOW (test only) | N/A — test code 合法 | Closed 18.127 (reclassified) |
 | TD-UNWRAP-CODEGEN-LLVM-HELPERS | `src/codegen/llvm/helpers.rs` | 0 | 3 | 0 | 🟢 LOW (test/fallback) | N/A — test code 合法 | Closed 18.127 (reclassified) |
 | TD-UNWRAP-CODEGEN-LLVM-MOD | `src/codegen/llvm/mod.rs` | 0 | 0 | 0 | ✅ CLOSED | ✅ Resolved Stage 18.151: `name.strip_prefix('@').unwrap()` replaced with safe `if let Some(stripped) = name.strip_prefix('@')` pattern |
