@@ -385,6 +385,10 @@ pub(crate) fn resolve_adt_field_tys_with_substs(
             .collect(),
         Some(OwnerNode::Item(HirItem::Enum(_))) => {
             // Enum variants have a discriminant field (i32) — no substitution needed.
+            // NOTE: This function is called when no specific variant is resolved.
+            // For specific variant field types with substitution, use
+            // `resolve_enum_variant` (in method_resolution.rs) + apply substitution
+            // separately (see lower_call_expr's pre_adt_field_tys computation).
             vec![Ty::new(TyKind::Int(crate::ast::IntTy::I32), Span::DUMMY)]
         }
         _ => Vec::new(),

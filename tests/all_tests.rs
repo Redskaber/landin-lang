@@ -615,6 +615,18 @@ mod stage18_264_holistic_soundness_audit_tests;
 #[path = "v0/stage18/plan/stage18_264_struct_literal_and_box_new_regression_tests.rs"]
 mod stage18_264_struct_literal_and_box_new_regression_tests;
 
+// === Stage 18.267: Continued holistic audit per §17.6 (直到审查不出问题为止) ===
+#[path = "v0/stage18/plan/stage18_267_continued_holistic_audit_tests.rs"]
+mod stage18_267_continued_holistic_audit_tests;
+
+// === Stage 18.267: Extended holistic audit — generic enum variants (Option/Result) ===
+#[path = "v0/stage18/plan/stage18_267_generic_enum_audit_tests.rs"]
+mod stage18_267_generic_enum_audit_tests;
+
+// === Stage 18.267: TD-ENUM-VARIANT-CTOR-EXPECTED-TY regression tests ===
+#[path = "v0/stage18/plan/stage18_267_enum_variant_ctor_regression_tests.rs"]
+mod stage18_267_enum_variant_ctor_regression_tests;
+
 // === Stage 18.85: Fuzz/Stress Tests ===
 #[path = "fuzz/fuzz_harness.rs"]
 mod fuzz_harness;

@@ -304,6 +304,162 @@ pub(super) fn lower_call_expr(
         }
     };
 
+    // Stage 18.267 (TD-ENUM-VARIANT-CTOR-EXPECTED-TY): Pre-resolve
+    // field_tys for Adt ctor path BEFORE lowering args, so we can
+    // thread field_tys[i] as expected_ty into each arg's
+    // lower_expr_to_operand. This closes the soundness hole where
+    // `Some(Holder(true))` (where `let x: Option<Holder<i32>>`)
+    // silently accepted type mismatches because args were lowered
+    // before field_tys were resolved.
+    //
+    // Per §17.6 (缺陷纳入 — same class as TD-STRUCT-LITERAL-FIELD-EXPECTED-TY
+    // + TD-TUPLE-CTOR-CALL-ARG): when one expected-ty propagation bug
+    // is found, audit ALL similar paths until no more found.
+    // Per §1.0 原則 6 (通解 > 特解): one Adt-ctor pre-resolution path
+    // for all enum variant + tuple struct ctors.
+    //
+    // Stage 3.30 (per §15): inspect the func operand's type to decide
+    //   - TyKind::Adt(def_id, _)  → Aggregate(Adt(def_id, ...)) —
+    //     this is a struct/enum ctor call like `Pair(1, 2)`.
+    //   - TyKind::FnDef(..)       → real TerminatorKind::Call.
+    // This dispatch eliminates the root cause of "tuple struct ctor
+    // was being lowered as Call" — the type info flows naturally
+    // from Path resolution through to Call lowering.
+    let is_adt_ctor = {
+        let func_local_decl = cx.mir.local_decls.get(func_local.0 as usize);
+        func_local_decl
+            .map(|ld| matches!(&ld.ty.kind, TyKind::Adt(_, _)))
+            .unwrap_or(false)
+    };
+
+    // Pre-resolve field_tys (PAYLOAD ONLY — discriminant excluded for
+    // enum variants). For struct tuple ctors, field_tys are the struct's
+    // fields directly. For enum variants, field_tys are the variant's
+    // payload fields (discriminant is prepended later in the Aggregate
+    // construction).
+    let pre_adt_field_tys: Option<Vec<Ty>> = if is_adt_ctor {
+        let func_local_decl = cx
+            .mir
+            .local_decls
+            .get(func_local.0 as usize)
+            .expect("func local must exist");
+        let (adt_def_id, adt_substs_from_func) = match &func_local_decl.ty.kind {
+            TyKind::Adt(def_id, substs) => (*def_id, substs.clone()),
+            _ => unreachable!("checked is_adt_ctor above"),
+        };
+        // Compute adt_substs using same logic as below (extract from
+        // expected_ty if func substs are empty).
+        let adt_substs = if adt_substs_from_func.is_empty() {
+            if let Some(expected) = expected_ty {
+                if let TyKind::Adt(exp_def_id, exp_substs) = &expected.kind {
+                    if *exp_def_id == adt_def_id && !exp_substs.is_empty() {
+                        exp_substs.clone()
+                    } else {
+                        adt_substs_from_func.clone()
+                    }
+                } else {
+                    adt_substs_from_func.clone()
+                }
+            } else {
+                adt_substs_from_func.clone()
+            }
+        } else {
+            adt_substs_from_func.clone()
+        };
+        // Resolve variant_idx + field_tys (with discriminant) using same
+        // logic as below, then strip discriminant to get payload-only
+        // field_tys for arg expected_ty.
+        let (variant_idx, field_tys_with_discr) = if let HirExprKind::Path(path) = &func.kind {
+            if path.segments.len() >= 2 {
+                if let Some((idx, tys)) = resolve_enum_variant(
+                    cx,
+                    adt_def_id,
+                    super::method_resolution::variant_name_from_path(path),
+                ) {
+                    (idx, tys)
+                } else if adt_substs.is_empty() {
+                    (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
+                } else {
+                    (
+                        0,
+                        field_resolution::resolve_adt_field_tys_with_substs(
+                            cx,
+                            adt_def_id,
+                            &adt_substs,
+                        ),
+                    )
+                }
+            } else if path.segments.len() == 1 {
+                if let Some((idx, tys)) =
+                    resolve_enum_variant(cx, adt_def_id, &path.segments[0].ident.name)
+                {
+                    (idx, tys)
+                } else if adt_substs.is_empty() {
+                    (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
+                } else {
+                    (
+                        0,
+                        field_resolution::resolve_adt_field_tys_with_substs(
+                            cx,
+                            adt_def_id,
+                            &adt_substs,
+                        ),
+                    )
+                }
+            } else if adt_substs.is_empty() {
+                (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
+            } else {
+                (
+                    0,
+                    field_resolution::resolve_adt_field_tys_with_substs(
+                        cx,
+                        adt_def_id,
+                        &adt_substs,
+                    ),
+                )
+            }
+        } else if adt_substs.is_empty() {
+            (0, field_resolution::resolve_adt_field_tys(cx, adt_def_id))
+        } else {
+            (
+                0,
+                field_resolution::resolve_adt_field_tys_with_substs(cx, adt_def_id, &adt_substs),
+            )
+        };
+        // Stage 18.267 (TD-ENUM-VARIANT-CTOR-EXPECTED-TY): Apply
+        // substitution to enum variant field_tys. resolve_enum_variant
+        // returns field_tys with Param (not substituted), so we need to
+        // apply substitution manually to get concrete types. Without this,
+        // `Some(Holder(true))` (with `let x: Option<Holder<i32>>`) would
+        // get field_tys = [i32, Param(T)] instead of [i32, Holder<i32>].
+        let is_enum = variant_idx > 0
+            || cx.hir.is_some_and(|h| {
+                h.find_owner(adt_def_id).is_some_and(|o| {
+                    matches!(o, crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_)))
+                })
+            });
+        let field_tys_with_discr: Vec<Ty> = if is_enum && !adt_substs.is_empty() {
+            // Apply substitution to each field type.
+            field_tys_with_discr
+                .iter()
+                .map(|ty| crate::mir::substitute::substitute(ty, &adt_substs))
+                .collect()
+        } else {
+            field_tys_with_discr
+        };
+        // Strip discriminant for enum variants: if variant_idx > 0 OR
+        // the Adt is an enum, field_tys[0] is the discriminant (i32).
+        // For structs, field_tys[0] is the first real field.
+        let payload_tys = if is_enum && !field_tys_with_discr.is_empty() {
+            field_tys_with_discr[1..].to_vec()
+        } else {
+            field_tys_with_discr
+        };
+        Some(payload_tys)
+    } else {
+        None
+    };
+
     let arg_locals: Vec<LocalId> = args
         .iter()
         .enumerate()
@@ -346,9 +502,19 @@ pub(super) fn lower_call_expr(
                     } else {
                         None
                     }
+                } else if let Some(field_tys) = pre_adt_field_tys.as_ref() {
+                    // Stage 18.267 (TD-ENUM-VARIANT-CTOR-EXPECTED-TY):
+                    // For Adt ctor path, use field_tys[i] as expected_ty
+                    // (payload only — discriminant already stripped in
+                    // pre_adt_field_tys computation above).
+                    field_tys.get(i)
                 } else {
                     callee_sig_inputs.as_ref().and_then(|inputs| inputs.get(i))
                 }
+            } else if let Some(field_tys) = pre_adt_field_tys.as_ref() {
+                // Stage 18.267: Adt ctor with multiple args — use
+                // field_tys[i] for non-first args too.
+                field_tys.get(i)
             } else {
                 callee_sig_inputs.as_ref().and_then(|inputs| inputs.get(i))
             };
@@ -491,13 +657,8 @@ pub(super) fn lower_call_expr(
     // This dispatch eliminates the root cause of "tuple struct ctor
     // was being lowered as Call" — the type info flows naturally
     // from Path resolution through to Call lowering.
-    let is_adt_ctor = {
-        let func_local_decl = cx.mir.local_decls.get(func_local.0 as usize);
-        func_local_decl
-            .map(|ld| matches!(&ld.ty.kind, TyKind::Adt(_, _)))
-            .unwrap_or(false)
-    };
-
+    // Stage 18.267: `is_adt_ctor` moved earlier (above pre_adt_field_tys)
+    // so we can pre-resolve field_tys before lowering args.
     if is_adt_ctor {
         // Struct/enum ctor: lower as Aggregate(Adt, operands).
         let func_local_decl = cx
@@ -611,6 +772,26 @@ pub(super) fn lower_call_expr(
                 0,
                 field_resolution::resolve_adt_field_tys_with_substs(cx, adt_def_id, &adt_substs),
             )
+        };
+        // Stage 18.267 (TD-ENUM-VARIANT-CTOR-EXPECTED-TY): Apply
+        // substitution to enum variant field_tys. resolve_enum_variant
+        // returns field_tys with Param (not substituted), so we need to
+        // apply substitution manually. Without this, the Aggregate's
+        // field_tys would be [i32, Param(T)] instead of [i32, T_substituted],
+        // and typeck's unify would silently accept Param(T) with anything.
+        let is_enum_for_subst = variant_idx > 0
+            || cx.hir.is_some_and(|h| {
+                h.find_owner(adt_def_id).is_some_and(|o| {
+                    matches!(o, crate::hir::OwnerNode::Item(crate::hir::HirItem::Enum(_)))
+                })
+            });
+        let field_tys: Vec<Ty> = if is_enum_for_subst && !adt_substs.is_empty() {
+            field_tys
+                .iter()
+                .map(|ty| crate::mir::substitute::substitute(ty, &adt_substs))
+                .collect()
+        } else {
+            field_tys
         };
         // For enum variants, the Aggregate operands need to include
         // the discriminant as the first element. For structs,
