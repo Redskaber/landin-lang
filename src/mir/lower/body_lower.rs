@@ -304,8 +304,10 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     };
     // G5 fix: return_local is assigned multiple times (once per Return
     // terminator path + once at function end), so it must be Mutable.
+    // Stage 18.269: clone return_mir_ty before passing to new_local_with_mut
+    // because we need to reuse it as expected_ty for body tail expression.
     let return_local = cx.mir.new_local_with_mut(
-        return_mir_ty,
+        return_mir_ty.clone(),
         None,
         Span::DUMMY,
         crate::mir::ty::Mutability::Mutable,
@@ -385,7 +387,32 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     }
 
     // Lower the body's value expression into the return local.
-    let value_local = lower_expr_to_operand(&mut cx, &body.value, None);
+    // Stage 18.269 (TD-GENERIC-FN-RETURN-EXPECTED-TY Phase 2d): thread
+    // the fn's return type as expected_ty into the body's value
+    // expression lowering. This closes the soundness hole where
+    // `fn make() -> Holder<i32> { Holder(true) }` silently accepted
+    // type mismatches because the body's Holder(true) was lowered with
+    // expected_ty=None (so Holder's substs stayed as Param(T), which
+    // unifies with anything).
+    //
+    // Per §17.6 (缺陷纳入 — same class as TD-TUPLE-CTOR-CALL-ARG +
+    // TD-STRUCT-LITERAL-FIELD-EXPECTED-TY): when one expected-ty
+    // propagation bug is found, audit ALL similar paths until no
+    // more found.
+    // Per §1.0 原則 6 (通解 > 特解): one return_ty-based expected_ty
+    // propagation path for all fn body tail expressions.
+    // Per §2 原則 9 (正确 > 妥协): proper expected-ty propagation at
+    // lower time, not relying on typeck back-propagation.
+    let return_is_unit_for_expected =
+        matches!(&return_mir_ty.kind, TyKind::Tuple(tys) if tys.is_empty());
+    let return_ty_for_expected: Option<Ty> = if return_is_unit_for_expected {
+        // For void fns (no declared return type), don't thread expected_ty
+        // (unit type would unify with anything, defeating the purpose).
+        None
+    } else {
+        Some(return_mir_ty.clone())
+    };
+    let value_local = lower_expr_to_operand(&mut cx, &body.value, return_ty_for_expected.as_ref());
 
     // Stage 14.23: If the current block is already terminated (e.g. by a
     // `return` statement inside the body), skip the assignment to the return

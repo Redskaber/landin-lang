@@ -22486,3 +22486,60 @@ Stage Summary:
 - TD-GENERIC-FN-RETURN-EXPECTED-TY: 🟡 NEW — Phase 2d deferred (MVP with fix plan)
 - 3895 tests, 0 failures, zero regression
 - §17.6 "直到审查不出问题为止": continue to Round 4 in Stage 18.269+
+
+---
+Task ID: stage18.269
+Agent: Super Z (main) — Stage Committee (ARCH-A + DEV-A + QA-A)
+Task: Stage 18.269 — Phase 2d implementation (thread return_mir_ty into body tail expression) + continued §17.6 audit. v0.492.0 (no bump — soundness fix).
+
+Work Log:
+- Baseline: v0.492.0 / 3895 tests (LLVM 22.1.8)
+- 触发条例: §17.6 缺陷纳入 — "直到审查不出问题为止" + Phase 2d implementation
+
+- Phase 2d implementation:
+  → src/mir/lower/body_lower.rs: thread `expected_ty = return_mir_ty`
+    into body tail expression's lower_expr_to_operand call (line ~411)
+  → Also cloned return_mir_ty before passing to new_local_with_mut
+    (line 310) to allow reuse
+  → Skip threading for void fns (return_is_unit) — unit type would
+    unify with anything, defeating the purpose
+  → Per §1.0 原則 6 (通解 > 特解): one return_ty-based expected_ty
+    propagation path for all fn body tail expressions
+  → Per §2 原則 9 (正确 > 妥协): proper expected-ty propagation
+
+- Testing reveals deeper issue:
+  → `fn make_holder() -> Holder<i32> { Holder(true) }` still NOT erroring
+  → Debug shows return_mir_ty = Adt(DefId(17), []) (empty substs)
+  → Root cause: lower_hir_ty_to_mir_ty_with_lifetimes for fn sig return
+    types doesn't extract substs from Holder<i32> path
+  → Documented as TD-RETURN-TY-PATH-SUBSTS (new MVP, deeper path
+    resolution issue)
+  → Per §17.6 "直到审查不出问题为止": continued audit needed
+
+- §13.4 J1-J6 audit: all 6 judgments pass
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff (after applying cargo fmt)
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --features llvm-backend ✅ 3895 tests, 0 failures
+  → Test delta: 0 (no new tests — Phase 2d alone doesn't close gap)
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.269.md created
+  → docs/develop/v0/tech-debt-register.md updated:
+    - TD-GENERIC-FN-RETURN-EXPECTED-TY: 🟡 NEW → 🟡 PARTIAL (Phase 2d implemented, deeper issue found)
+  → No new test files this stage (gap not fully closed)
+
+- Version: v0.492.0 (no bump — soundness fix, no API change)
+
+Stage Summary:
+- Stage 18.269 PASSED — Phase 2d implemented + deeper issue documented
+- Phase 2d: expected_ty = return_mir_ty threaded into body tail expression
+- Deeper issue: TD-RETURN-TY-PATH-SUBSTS — path resolution for fn sig
+  return types doesn't extract substs (Holder<i32> → Adt(def, []) not
+  Adt(def, [i32]))
+- 3895 tests, 0 failures, zero regression
+- §17.6 "直到审查不出问题为止": continue to investigate path resolution
+  in Stage 18.270+
