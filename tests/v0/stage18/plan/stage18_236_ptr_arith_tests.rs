@@ -179,7 +179,8 @@ fn run_program(code: &str) -> (String, i32) {
 /// Stage 18.237: Store and load through `*(p + 0)`.
 #[test]
 fn stage18_237_store_load_through_offset_zero() {
-    let (stdout, exit) = run_program(r#"
+    let (stdout, exit) = run_program(
+        r#"
 extern "C" { fn __landin_alloc(size: i64) -> *mut u8; }
 fn main() -> i32 {
     let p: *mut i32 = __landin_alloc(16) as *mut i32;
@@ -187,7 +188,8 @@ fn main() -> i32 {
     println!("{}", *(p + 0));
     0
 }
-"#);
+"#,
+    );
     assert_eq!(stdout, "42\n");
     assert_eq!(exit, 0);
 }
@@ -195,7 +197,8 @@ fn main() -> i32 {
 /// Stage 18.237: Store and load through multiple offsets.
 #[test]
 fn stage18_237_store_load_multiple_offsets() {
-    let (stdout, exit) = run_program(r#"
+    let (stdout, exit) = run_program(
+        r#"
 extern "C" { fn __landin_alloc(size: i64) -> *mut u8; }
 fn main() -> i32 {
     let p: *mut i32 = __landin_alloc(16) as *mut i32;
@@ -207,7 +210,8 @@ fn main() -> i32 {
     println!("{}", *(p + 2));
     0
 }
-"#);
+"#,
+    );
     assert_eq!(stdout, "10\n20\n30\n");
     assert_eq!(exit, 0);
 }
@@ -215,7 +219,8 @@ fn main() -> i32 {
 /// Stage 18.237: Store through variable offset.
 #[test]
 fn stage18_237_store_through_variable_offset() {
-    let (stdout, exit) = run_program(r#"
+    let (stdout, exit) = run_program(
+        r#"
 extern "C" { fn __landin_alloc(size: i64) -> *mut u8; }
 fn main() -> i32 {
     let p: *mut i32 = __landin_alloc(16) as *mut i32;
@@ -226,7 +231,8 @@ fn main() -> i32 {
     println!("{}", *(p + 1));
     0
 }
-"#);
+"#,
+    );
     assert_eq!(stdout, "99\n100\n");
     assert_eq!(exit, 0);
 }

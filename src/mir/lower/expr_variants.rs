@@ -1351,7 +1351,27 @@ pub(super) fn lower_method_call_expr(
                 | crate::mir::ty::TyKind::Ref(_, _, _)
                 | crate::mir::ty::TyKind::Infer(_)
         );
-        if !is_known_unsupported {
+        // Stage 18.241 (v0.3 Phase 1): For str (built-in primitive type),
+        // check if the method name is a known str method. If not, report
+        // "no method found" — this catches `s.nonexistent()` on &str.
+        //
+        // Per §1.0 原則 4 (报错>静默): unknown str methods must be reported.
+        // Per §17.6 (缺陷纳入): this is a MVP — the 通解 is `impl str` (v0.4+).
+        // The hardcoded str method list is a 特解 that will be removed when
+        // impl str syntax is available.
+        let is_str = matches!(&recv_ty.kind, crate::mir::ty::TyKind::Str)
+            || matches!(&recv_ty.kind,
+                crate::mir::ty::TyKind::Ref(_, _, inner)
+                    if matches!(&inner.kind, crate::mir::ty::TyKind::Str)
+            );
+        let known_str_methods = ["len", "is_empty", "as_bytes"];
+        let is_known_str_method = is_str && known_str_methods.contains(&method_name_str);
+        if is_str && !is_known_str_method {
+            cx.type_errors.push(crate::typeck::TypeError::new(
+                format!("no method `{}` found for type `str`", method_name_str),
+                expr.span,
+            ));
+        } else if !is_known_unsupported {
             cx.type_errors.push(crate::typeck::TypeError::new(
                 // Stage 15.88: use human-readable type name
                 // (was: {:?} Debug format leaking Adt(DefId(N), [])).
