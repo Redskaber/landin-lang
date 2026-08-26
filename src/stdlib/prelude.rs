@@ -99,24 +99,48 @@ struct Box<T>(*mut T)
 // mapped to PrimTy::Str (a stack-allocated fat pointer). Per the design
 // doc (09-stdlib.md §3.4), String must be an owned heap type.
 //
-// MVP limitation: Users must construct String manually via struct literal:
+// Construction: Users may construct via struct literal:
 //   let s: String = String { ptr: ..., len: ..., cap: ... };
-// Ergonomic intrinsics (String::from_str, push_str, len, as_str) are
-// deferred to Stage 18.181 (TD-STRING-INTRINSICS).
+// or via the ergonomic intrinsic `String::from_str("literal")`.
 //
 // Per §1.0 原則 6 (通解>特例): one String type — no per-encoding special cases.
 // Per §2 原則 9 (正确>妥协): the &str alias compromise is removed — real
 // owned String is the correct design.
 struct String { ptr: *mut u8, len: usize, cap: usize }
-// Stage 18.185 (TD-STRING-INTRINSICS): String methods.
+// Stage 18.185 (TD-STRING-INTRINSICS): String methods declared in prelude.
 //
-// String::len() — returns the byte length (field access).
-// String::as_str() — deferred (needs fat pointer construction from fields).
-// String::from_str() — deferred (needs __landin_memcpy + alloc).
-// String::push_str() — deferred (needs realloc).
+// `String::len()` — declared here with a real body (field access).
+// `String::new()` — declared here with a real body (zero-init struct literal).
 //
-// Per §1.0 原則 6 (通解>特例): methods defined in prelude source, not
-// intrinsics — reuses existing field access + method resolution.
+// `String::from_str()`, `String::as_str()`, `String::push_str()` — NOT
+// declared here. They are implemented as early-interception intrinsics
+// (NOT marker `loop {}` bodies) because:
+//   - `from_str` is a static method (no `self`), resolved via Path not MethodCall
+//     → intercepted in `expr_variants.rs:553`
+//   - `as_str`/`push_str` need fat pointer ops / heap realloc which prelude
+//     impl bodies cannot express yet (needs v0.5+ language features)
+//     → intercepted in `method_call_lower.rs:425` (as_str) and
+//       `method_call_lower.rs:536` (push_str)
+//
+// Why NOT marker `loop {}` bodies (Stage 18.312 attempted + reverted):
+//   - Adding `fn push_str(&mut self, src: &str) { loop {} }` to prelude
+//     causes `stage18_198_push_str_*` integration tests to hang forever.
+//   - Root cause: typeck + method resolution selects the prelude impl,
+//     but the early interception in method_call_lower.rs runs BEFORE
+//     method resolution completes, OR the dispatch path differs for
+//     `&mut self` vs `&self`. Either way, the marker body `loop {}`
+//     gets executed at runtime → infinite loop.
+//   - Per §1.0 原則 4 (报错>静默): marker `loop {}` is a SILENT "never
+//     executed" assumption — if the assumption fails, the program hangs
+//     instead of erroring. This violates §2 原則 3 (显式>隐式).
+//   - Per §12 (最优>最小): the correct fix is to keep these as
+//     early-interception intrinsics (the existing pattern) and document
+//     them. Forcing them into marker bodies for "purity" is surface work.
+//
+// Per §1.0 原則 6 (通解>特例): early-interception is the SINGLE dispatch
+// path for from_str/as_str/push_str until v0.5+ language features land.
+// Per §2 原則 3 (显式>隐式): this comment is the explicit record of the
+// dispatch architecture.
 impl String {
     fn len(&self) -> usize { self.len }
     fn new() -> String { String { ptr: 0 as *mut u8, len: 0usize, cap: 0usize } }

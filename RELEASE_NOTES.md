@@ -3,25 +3,24 @@
 **Author**: redskaber
 **Current version**: v0.493.0
 **Date**: 2026-08-26
-**Test count**: 675 lib tests + 3527 integration tests = 4202 total (100% pass rate, 0 skipped)
+**Test count**: 676 lib tests + 3527 integration tests = 4203 total (100% pass rate, 0 skipped)
 
 ---
 
-## v0.493.0 — Stage 18.310 (P3 LOC 重构完全清零: 6 个文件全部 < 1500 + P3 field access fix + 类 Rust 架构修正)
+## v0.493.0 — Stage 18.312 (runtime.rs/prelude.rs 过时内容清理 + P3 LOC 重构完全清零 + P3 field access fix + 类 Rust 架构修正)
 
 ### Overview
 
-P3 LOC 重构完成 — **6 个 > 1500 LOC 文件全部清零**:
-- `parser/macro_expand/expansion_tests.rs` (2345 → 1302 LOC) → 拆出 `expansion_tests_advanced.rs` (1055 LOC)
-- `mir/lower/expr_variants.rs` (1725 → 1089 LOC) → 拆出 `method_call_lower.rs` (672 LOC)
-- `traits/resolver.rs` (1747 → 1274 LOC) → 拆出 `resolver_queries.rs` (484 LOC)
-- `borrowck/region_inference.rs` (1789 → 1213 LOC) → 拆出 `region_inference_tests.rs` (577 LOC)
-- `borrowck/mod.rs` (1934 → 1121 LOC) → 拆出 `tests.rs` (812 LOC)
-- `mir/lower/intrinsic_lower.rs` (1957 LOC) → 拆分为 4 个子模块 (string/box/vec/format)
+**Stage 18.311-18.312: codegen/runtime.rs + stdlib/prelude.rs 过时内容清理**
+- 修正 runtime.rs 中 `__landin_eprintf` 的错误注释 (误标为 "backward compat", 实际是活跃实现路径)
+- 修正 runtime.rs 测试断言: 4 个已迁移到 MIR 的符号 (vec_push/string_push_str/vec_get/format_variadic) 从"要求存在"改为"要求不存在"
+- 新增 `stage18_311_migrated_intrinsics_absent` 测试 (防止意外重新引入已迁移符号)
+- 修正 prelude.rs 中 String::from_str/as_str/push_str 的"deferred"注释 (实际已实现)
+- 更新 runtime.rs module doc-comment 的 stubs 列表 (反映实际 17 个 stub + 4 个迁移符号)
+- 回退 prelude.rs 中尝试添加的 `from_str`/`push_str` marker bodies (导致 push_str 测试死循环, 违反 §1.0 原則 4 报错>静默)
 
-**当前最大文件: `mir/lower/pattern_lower.rs` (1478 LOC)** — 全部源文件均 < 1500 LOC ✅
-
-P3 修复: field access on primitive types 报错 (不再静默返回 field 0)。
+**P3 LOC 重构完全清零** (Stage 18.305-18.310): 6 个 > 1500 LOC 文件全部 < 1500
+**P3 修复**: field access on primitive types 报错 (不再静默返回 field 0)
 
 1. **禁止用户 inherent impl 原始类型** (Stage 18.293, 类 Rust E0117)
    - `impl i32 { fn method {} }` → 编译报错 "cannot define inherent impl for primitive type"
@@ -60,9 +59,27 @@ P3 修复: field access on primitive types 报错 (不再静默返回 field 0)�
 
 ### Test Summary
 
-- 675 lib tests + 3527 integration tests = **4202 tests, 0 failures**
+- 676 lib tests + 3527 integration tests = **4203 tests, 0 failures**
 - 0 warnings, 0 clippy issues, fmt clean
+- Stage 18.311: +1 new test (`stage18_311_migrated_intrinsics_absent`) — lib 从 675 → 676
 - Stage 18.296: 40 new tests (10 positive + 30 negative, ratio 1:3)
+
+### Stage 18.312 — prelude.rs 过时注释清理
+
+- `src/stdlib/prelude.rs`: 注释修正 (无代码逻辑变更,除回退 marker bodies)
+- 修正: `String::from_str/as_str/push_str` 注释从"deferred"改为"已实现 (early-interception intrinsics)"
+- 添加: 显式记录 `from_str`/`push_str` marker bodies 尝试 + 回退决策 (违反 §1.0 原則 4 报错>静默)
+- 决策依据: marker `loop {}` body 是"永不执行"的隐式假设,early interception 失败时程序死循环而非报错
+- §1.0 原則 6 (通解>特例): early-interception 是 from_str/as_str/push_str 的唯一调度路径,直到 v0.5+ 语言特性落地
+
+### Stage 18.311 — runtime.rs 过时注释 + 测试断言修正
+
+- `src/codegen/runtime.rs`: 注释修正 + 测试断言修正
+- 修正: `__landin_eprintf` 注释从"backward compat, will be removed in Phase 3"改为"active impl for eprint!/eprintln!" (实际被 statement.rs:585 emit_call 调用)
+- 修正: 测试 `stage18_157_c_wrapper_contains_all_stubs` 从要求 4 个已迁移符号存在,改为要求 17 个实际 stub 存在
+- 新增: 测试 `stage18_311_migrated_intrinsics_absent` (断言 vec_push/string_push_str/vec_get/format_variadic 不作为函数定义出现)
+- 更新: module doc-comment stubs 列表 (17 个 stub + 4 个迁移符号明确标注)
+- §1.0 原則 5 (去除兼容思维): dead code removed; §1.0 原則 3 (显式>隐式): 测试显式断言迁移符号不存在
 
 ### Stage 18.310 — expansion_tests.rs LOC 拆分 (bonus)
 

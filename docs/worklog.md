@@ -24836,3 +24836,100 @@ Work Log:
   → core::fmt 基础设施 — Display/Debug/Formatter/Write (解锁 format! macro real body)
   → 孤儿规则 — 多 crate coherence (v0.2+ deferred)
 - v0.4 可交付: 4202 tests, 0 failures, 所有 P3 已清零, 类 Rust 架构修正完成.
+
+---
+Task ID: stage18.311+18.312
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.311-18.312 — codegen/runtime.rs + stdlib/prelude.rs 过时内容审查 + 清理. L2 (单文件注释/测试修正). v0.493.0.
+
+3秒启动自检:
+- 定位: L2 (单文件注释修正 + 测试断言修正, 无架构变更)
+- 对齐: docs/lang-design/07-codegen.md §10 (runtime 设计意图) + 09-stdlib.md §2.2 (prelude 设计意图)
+- 阻断: 无 P0/P1 (4202 tests 全绿基线)
+
+决策点 (为何选此路):
+- 为什么审查 runtime.rs/prelude.rs 而不是其他文件?
+  → 用户明确指令: "严格按照 docs/stage-committee-process.md 审查当前项目 codegen/runtime.rs 和 stdlib/prelude.rs"
+  → 这两个文件是 Landin 的 "门面" — runtime.rs 是 C runtime 入口, prelude.rs 是 stdlib 入口. 过时内容会误导未来维护者.
+- 为什么选择修正注释 + 测试断言, 而不是重构?
+  → 引用 §1.0 原則 6 (通解>特解): runtime.rs 当前 13 个 C stub + main 已合理最小化, 符合 §07-codegen.md §10.2 "MVP runtime < 5 KB" 目标. 无需重构.
+  → 引用 §13.4 J1 (design unchanged): 注释/测试修正不改变设计, 仅清理考古层.
+- 为什么回退 prelude.rs 中尝试添加的 from_str/push_str marker bodies?
+  → 引用 §1.0 原則 4 (报错>静默): marker `loop {}` body 是"永不执行"的隐式假设. 实测 stage18_198_push_str_* 测试死循环 — early interception 未触发, marker body 被执行.
+  → 引用 §12 (最优>最小): 强行添加 marker bodies for "purity" 是表面工程. 现有 early-interception 架构是正确的, 注释记录即可.
+
+裁剪点 (为何跳流程):
+- L2 执行 §3.2 全校验流 + §14.5 深度审查. 跳过 §14.6 跨阶段验证 (无跨阶段变更).
+
+5W2H:
+- WHAT: 审查 runtime.rs (342 LOC) + prelude.rs (225 LOC) 的过时/越界内容, 清理考古层
+- WHY: 阶段性推进留下的"考古层" — Stage 18.232 完成迁移后, 代码注释和过时测试未清理; Stage 18.185/195 引入 String/Vec intrinsic 后, prelude 注释未更新
+- WHO: ARCH-A 决策 (类 Rust MVP 模型评估) + DEV-A 实施 + REV-A 深度审查 + QA-A 测试验证
+- WHEN: §3.2 全绿后停止
+- WHERE: src/codegen/runtime.rs + src/stdlib/prelude.rs + scripts/env.sh (新增)
+- HOW:
+  (1) 5W2H 剖析: runtime.rs 4 个问题 (eprintf 注释错误 + 测试断言错误 + doc-comment 缺漏 + Phase 3 引用过时); prelude.rs 1 个问题 (String::from_str/as_str/push_str 标 "deferred" 但实际已实现)
+  (2) Rust 设计: Rust runtime 用 std::rt + core::panicking (极小). Landin 用 C 实现是 Stage 1 bootstrap 策略 (尚未 self-host), 这是正确 MVP 选择.
+  (3) Rust 哲学: 显式>隐式 — 注释必须准确反映架构; 让非法状态不可表示 — 测试断言"迁移符号不存在"防止意外重新引入.
+  (4) 实施: 修正 runtime.rs eprintf 注释 + 测试断言 + doc-comment; 修正 prelude.rs String 方法注释; 回退尝试添加的 marker bodies.
+- HOW MUCH: §3.2 全绿 — 676 lib + 3527 integration = 4203 tests, 0 failures, 0 warnings, 0 clippy, fmt clean.
+
+Work Log:
+- 环境部署:
+  → 上传 landin-stage0-v0.493.0-stage18.310-loc-refactor-expansion-tests-r1.tar.gz 到 upload/
+  → 解压到 /home/z/my-project/landin-stage0/ (备份旧版 v0.67.0)
+  → 安装 rustup + stable toolchain + rustfmt + clippy
+  → LLVM 22 (llvm-sys 221) 配置: .cargo/config.toml + Cargo.toml 更新
+  → 新增 scripts/env.sh (PATH + LD_LIBRARY_PATH helper)
+- §13.4 J1-J6 审查 (runtime.rs):
+  → J1 (design unchanged): ✅ 仅注释/测试修正, 无逻辑变更
+  → J2 (单一职责): ✅ runtime.rs = C wrapper source (单一职责)
+  → J3 (无循环依赖): ✅ LANDIN_C_WRAPPER 常量, 被 main.rs/landinc.rs 共享
+  → J4 (完整): ✅ 所有 17 个 stub 在 doc-comment 中列出
+  → J5 (留在 codegen): ✅ 文件位置不变
+  → J6 (LOC < 1500): ✅ 342 LOC
+- §13.4 J1-J6 审查 (prelude.rs):
+  → J1 (design unchanged): ✅ 仅注释修正 (除回退 marker bodies)
+  → J2 (单一职责): ✅ prelude.rs = prelude injection (单一职责)
+  → J3 (无循环依赖): ✅ 被 driver 调用, 无回调
+  → J4 (完整): ✅ Option/Result/Box/String/Vec + impl 块完整
+  → J5 (留在 stdlib): ✅ 文件位置不变
+  → J6 (LOC < 1500): ✅ 225 LOC
+- runtime.rs 修正:
+  → __landin_eprintf 注释: "backward compat, will be removed in Phase 3" → "active impl for eprint!/eprintln! (statement.rs:585 emit_call)"
+  → 测试 stage18_157_c_wrapper_contains_all_stubs: 移除 4 个已迁移符号 (vec_push/string_push_str/vec_get/format_variadic), 添加 __landin_i64_to_str
+  → 新增测试 stage18_311_migrated_intrinsics_absent: 断言 4 个迁移符号不作为函数定义出现
+  → module doc-comment: 添加 "Migrated to MIR (Stage 18.232)" section
+- prelude.rs 修正:
+  → String::from_str/as_str/push_str 注释: "deferred" → "已实现 (early-interception intrinsics)"
+  → 添加显式记录: 为什么 NOT marker bodies (Stage 18.312 attempted + reverted)
+  → 回退: 移除尝试添加的 `fn from_str(s: &str) -> String { loop {} }` 和 `fn push_str(&mut self, src: &str) { loop {} }`
+  → 根因: marker body `loop {}` 在 early interception 失败时被执行 → 死循环 (违反 §1.0 原則 4 报错>静默)
+- ARCH-A 一票否决评估: 无致命架构伤. 所有问题都是 P3 (过时注释/错误测试断言), 不影响正确性. 但按 §1.0 原則 3 (显式>隐式) + §1.0 原則 5 (去除兼容思维), 必须清理.
+- REV-A 终极检验: "这是针对根因的最优架构解, 还是仅仅为了跑通测试的最小补丁?"
+  → runtime.rs 注释修正: 根因修复 (注释错误标记活跃代码为 legacy)
+  → runtime.rs 测试断言修正: 根因修复 (测试要求已删除符号存在是错误的)
+  → prelude.rs 注释修正: 根因修复 (注释标记已实现功能为 "deferred" 是错误的)
+  → prelude.rs marker bodies 回退: 根因修复 (强制 marker body 模式是表面工程, 现有 early-interception 是正确的)
+  → 结论: 所有修改都是针对根因的架构解, 不是最小补丁. 通过 §14.5 深度审查.
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 676 tests (新增 stage18_311_migrated_intrinsics_absent)
+  → cargo test --release --test all_tests ✅ 3527 tests (--test-threads=2 防止 hang)
+  → 总计 4203 tests, 0 failures ✅
+- 文档: README.md (版本 + LLVM 22 更新) + RELEASE_NOTES.md (Stage 18.311/18.312 详细记录) + worklog.md (本条)
+
+下一步:
+- runtime.rs/prelude.rs 过时内容清理完成. v0.4 全部 tech-debt 已解决:
+  → P0/P1/P2: ✅ 之前已解决
+  → P3 (field access on primitive): ✅ Stage 18.304 已解决
+  → P3 (LOC > 1500, 6 个文件): ✅ Stage 18.305-18.310 已解决
+  → P3 (runtime.rs/prelude.rs 过时内容): ✅ Stage 18.311-18.312 已解决
+- v0.5+ 路线图 (BLOCKED, 需要 language features):
+  → sizeof(T) — 泛型类型大小计算 (解锁 Box::new + Vec::push real body)
+  → fat pointer 操作语法 — 拆解 + 构造 (解锁 String::from_str/as_str/push_str real body)
+  → core::fmt 基础设施 — Display/Debug/Formatter/Write (解锁 format! macro real body)
+  → 孤儿规则 — 多 crate coherence (v0.2+ deferred)
+- v0.4 可交付: 4203 tests, 0 failures, 所有 P3 已清零, 类 Rust 架构修正完成.

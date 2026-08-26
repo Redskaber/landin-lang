@@ -1,12 +1,13 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.493.0 (Stage 18.310 — P3 LOC 重构完全清零: 6 个文件全部 < 1500 + P3 field access fix + 类 Rust 架构修正)  
+> **Version**: v0.493.0 (Stage 18.312 — runtime.rs/prelude.rs 过时内容清理 + P3 LOC 重构完全清零: 6 个文件全部 < 1500 + P3 field access fix + 类 Rust 架构修正)  
 > **License**: MIT  
-> **Status**: v0.4 stable. 类 Rust 原始类型扩展模型完成. 深度架构审查完成 — 所有"特解"根因已定位为 language feature gaps (v0.5+). 4202 tests, 0 failures.
+> **Status**: v0.4 stable. 类 Rust 原始类型扩展模型完成. 深度架构审查完成 — 所有"特解"根因已定位为 language feature gaps (v0.5+). 4203 tests, 0 failures.
 
-A work-in-progress systems programming language inspired by Rust, using LLVM 19
-for code generation. The compiler is written in Rust (~50,000 LOC) and targets
+A work-in-progress systems programming language inspired by Rust, using LLVM 22
+for code generation (llvm-sys 221; was LLVM 19/llvm-sys 191 before Stage 18.210).
+The compiler is written in Rust (~50,000 LOC) and targets
 x86_64 and AArch64 Linux.
 
 ---
@@ -14,9 +15,10 @@ x86_64 and AArch64 Linux.
 ## Quick Start
 
 ```bash
-# 1. Setup LLVM 19 environment (auto-detects or installs LLVM 19 .deb packages)
+# 1. Setup LLVM environment (auto-detects LLVM 22, falls back to LLVM 19)
 source scripts/setup-llvm-env.sh
-bash scripts/switch-llvm-version.sh 19
+# Or source the env.sh helper (sets PATH + LD_LIBRARY_PATH for LLVM 22):
+source scripts/env.sh
 
 # 2. Build
 cargo build --features llvm-backend

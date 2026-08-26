@@ -24,21 +24,33 @@
 /// - `__landin_panic_overflow(op, lhs, rhs)` — arithmetic overflow panic
 /// - `__landin_panic_bounds_check(index, len)` — bounds check panic
 /// - `__landin_panic_div_by_zero()` — division by zero panic
-/// - `__landin_eprintf(fmt, ...)` — variadic stderr print (legacy)
+/// - `__landin_eprintf(fmt, ...)` — variadic stderr print (active impl for eprint!/eprintln!)
 /// - `__landin_str_eq(a, a_len, b, b_len)` — string content comparison
-/// - `__landin_println(fmt, ...)` — stdout print + newline
-/// - `__landin_print(fmt, ...)` — stdout print
-/// - `__landin_eprintln(fmt, ...)` — stderr print + newline
-/// - `__landin_eprint(fmt, ...)` — stderr print
+/// - `__landin_println(fmt, ...)` — linker stub only (codegen intercepts to `printf`)
+/// - `__landin_print(fmt, ...)` — linker stub only (codegen intercepts to `printf`)
+/// - `__landin_eprintln(fmt, ...)` — linker stub only (codegen intercepts to `__landin_eprintf`)
+/// - `__landin_eprint(fmt, ...)` — linker stub only (codegen intercepts to `__landin_eprintf`)
 /// - `__landin_assert(cond)` — assertion check
 /// - `__landin_panic_msg(msg)` — panic with message
 /// - `__landin_alloc(size)` — heap allocation (wraps malloc, panics on OOM)
 /// - `__landin_dealloc(ptr)` — heap deallocation (wraps free, NULL-safe)
 /// - `__landin_realloc(ptr, old, new)` — heap reallocation (wraps realloc, panics on OOM)
+/// - `__landin_memcpy(dst, src, n)` — byte copy (used by String::from_str intrinsic)
+/// - `__landin_i64_to_str(buf, cap, val)` — integer formatting (used by format! intrinsic)
+///
+/// # Migrated to MIR (Stage 18.232)
+///
+/// The following were C helpers in earlier stages but have been migrated to
+/// pure MIR intrinsics and are NO LONGER defined here:
+/// - `__landin_vec_push` → MIR (Stage 18.229, src/mir/lower/vec_intrinsics.rs)
+/// - `__landin_string_push_str` → MIR (Stage 18.230, src/mir/lower/string_intrinsics.rs)
+/// - `__landin_vec_get` → MIR (Stage 18.228, src/mir/lower/vec_intrinsics.rs)
+/// - `__landin_format_variadic` → MIR (Stage 18.231, src/mir/lower/format_intrinsics.rs)
 ///
 /// Stage 18.157: Extracted from `src/bin/main.rs` (Stage 13.8/13.10/13.13)
 /// and `src/bin/landinc.rs` (Stage 18.156) to eliminate duplication.
-pub const LANDIN_C_WRAPPER: &str = r#"#include <stdio.h>
+pub const LANDIN_C_WRAPPER: &str = r#"
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 extern int landin_main(void);
@@ -56,19 +68,24 @@ void __landin_panic_div_by_zero(void) {
     exit(1);
 }
 /* Stage 13.14/18.27: eprint!/eprintln! helpers.
-   Stage 18.27: Replaced the old single-arg __landin_eprint and the
-   variadic __landin_eprintf with unified variadic __landin_eprint and
-   __landin_eprintln stubs (defined below, before main()).
-   The old helpers were:
-     void __landin_eprint(const char* s)  — single-arg, hardcoded "%s"
-     void __landin_eprintf(const char* fmt, ...) — variadic, to stderr
-   The new stubs are:
-     int __landin_eprint(const char* fmt, ...) — variadic, to stderr
-     int __landin_eprintln(const char* fmt, ...) — variadic + newline, to stderr
-   Per §1.0 原則 6 "通用 > 特解": unified variadic interface. */
-/* Stage 18.27: Keep __landin_eprintf for backward compat — emit_printf_call
-   still references it for the stderr=true path. Will be removed in Phase 3
-   when Println variant is removed. */
+   Stage 18.27 unified the legacy single-arg `__landin_eprint(const char* s)`
+   with the variadic `__landin_eprintf(const char* fmt, ...)` into the new
+   unified variadic `__landin_eprint` and `__landin_eprintln` stubs (defined
+   below, before main()). Those unified stubs exist only as linker symbols —
+   they are NEVER actually called (codegen intercepts println!/print!/
+   eprintln!/eprint! in `is_landin_print_macro` and routes to `printf` or
+   `__landin_eprintf` directly).
+
+   However, `__landin_eprintf` (this function) IS still actively called from
+   `statement.rs:585` as the variadic stderr implementation for eprint!/
+   eprintln! macro expansions. It is NOT legacy — it is the active
+   implementation path for variadic stderr output.
+
+   Per §1.0 原則 6 (通解>特解): one variadic stderr helper for all eprint*
+   expansions. Per §1.0 原則 3 (显式>隐式): comment accurately reflects
+   current usage (was previously mislabeled "backward compat, will be
+   removed in Phase 3" — but Phase 3 was completed by Stage 18.232
+   migration to MIR, and this function survived because it's still used). */
 void __landin_eprintf(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -253,14 +270,8 @@ mod tests {
             "__landin_memcpy",
             // Stage 18.194: realloc stub for Vec/String growth.
             "__landin_realloc",
-            // Stage 18.197: Vec push helper.
-            "__landin_vec_push",
-            // Stage 18.198: String::push_str helper.
-            "__landin_string_push_str",
-            // Stage 18.200: Vec::get helper.
-            "__landin_vec_get",
-            // Stage 18.202: format! variadic helper.
-            "__landin_format_variadic",
+            // Stage 18.231: i64_to_str primitive (used by format! intrinsic).
+            "__landin_i64_to_str",
         ];
         for sym in &required {
             assert!(
@@ -268,6 +279,44 @@ mod tests {
                 "C wrapper missing runtime stub: {}",
                 sym
             );
+        }
+    }
+
+    /// Stage 18.311: The 4 compound C helpers were MIGRATED to MIR intrinsics
+    /// (Stages 18.228-18.231) and REMOVED from this C wrapper in Stage 18.232.
+    /// Per §1.0 原則 5 (去除兼容思维): dead code removed.
+    /// Per §1.0 原則 3 (显式>隐式): test explicitly asserts the absence of
+    /// the migrated symbols — guards against accidental reintroduction.
+    #[test]
+    fn stage18_311_migrated_intrinsics_absent() {
+        // These were previously defined in the C wrapper but are now MIR
+        // intrinsics (see src/mir/lower/{vec,string,format}_intrinsics.rs).
+        let migrated = [
+            "__landin_vec_push",
+            "__landin_string_push_str",
+            "__landin_vec_get",
+            "__landin_format_variadic",
+        ];
+        // The only place these names may still appear in LANDIN_C_WRAPPER is
+        // inside the migration comment (lines 203-211). They must NOT appear
+        // as function definitions (i.e., NOT preceded by a return type like
+        // "void " or "int " or "long long ").
+        for sym in &migrated {
+            // Reject any function-definition pattern.
+            let patterns = [
+                format!("void {sym}("),
+                format!("int {sym}("),
+                format!("long long {sym}("),
+                format!("void* {sym}("),
+            ];
+            for pat in &patterns {
+                assert!(
+                    !LANDIN_C_WRAPPER.contains(pat),
+                    "C wrapper must NOT define migrated intrinsic `{sym}` \
+                     (found pattern `{pat}`). Stage 18.232 removed it — see \
+                     src/mir/lower/{{vec,string,format}}_intrinsics.rs."
+                );
+            }
         }
     }
 
