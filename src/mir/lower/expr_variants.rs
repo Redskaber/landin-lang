@@ -134,7 +134,7 @@ pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirP
                                         // Lower the const's body expression to get its value.
                                         if let Some(body) = hir_crate.find_body(c.body) {
                                             let const_local =
-                                                lower_expr_to_operand(cx, &body.value);
+                                                lower_expr_to_operand(cx, &body.value, None);
                                             let ld = cx.mir.local_decls.get(const_local.0 as usize);
                                             if let Some(ld) = ld {
                                                 return cx.eval_rvalue_to_temp(
@@ -153,7 +153,7 @@ pub(super) fn lower_path_expr(cx: &mut MirLowerCtxt, expr: &HirExpr, path: &HirP
                                         // For Stage 3.44, treat same as const.
                                         if let Some(body) = hir_crate.find_body(s.body) {
                                             let static_local =
-                                                lower_expr_to_operand(cx, &body.value);
+                                                lower_expr_to_operand(cx, &body.value, None);
                                             let ld =
                                                 cx.mir.local_decls.get(static_local.0 as usize);
                                             if let Some(ld) = ld {
@@ -259,8 +259,11 @@ pub(super) fn lower_call_expr(
 ) -> LocalId {
     // Lower func first — this determines whether the call is a real
     // function call or an ADT construction (struct/enum ctor).
-    let func_local = lower_expr_to_operand(cx, func);
-    let arg_locals: Vec<LocalId> = args.iter().map(|a| lower_expr_to_operand(cx, a)).collect();
+    let func_local = lower_expr_to_operand(cx, func, None);
+    let arg_locals: Vec<LocalId> = args
+        .iter()
+        .map(|a| lower_expr_to_operand(cx, a, None))
+        .collect();
     // Stage 16.06: Use Operand::Move for call arguments.
     // Previously always used Operand::Copy, which failed the
     // borrow checker's Copy-ness check for non-Copy types (e.g.,
@@ -613,8 +616,8 @@ pub(super) fn lower_for_expr(
     };
 
     // Lower start and end expressions to locals.
-    let start_local = lower_expr_to_operand(cx, start_expr);
-    let end_local = lower_expr_to_operand(cx, end_expr);
+    let start_local = lower_expr_to_operand(cx, start_expr, None);
+    let end_local = lower_expr_to_operand(cx, end_expr, None);
 
     // Stage 14.99 (Bug Z5/Z6 fix): Use a HIDDEN counter local that's
     // always Mutable, separate from the user-visible pattern binding.
@@ -780,8 +783,11 @@ pub(super) fn lower_method_call_expr(
     method: &Ident,
     args: &[HirExpr],
 ) -> LocalId {
-    let recv_local = lower_expr_to_operand(cx, receiver);
-    let arg_locals: Vec<LocalId> = args.iter().map(|a| lower_expr_to_operand(cx, a)).collect();
+    let recv_local = lower_expr_to_operand(cx, receiver, None);
+    let arg_locals: Vec<LocalId> = args
+        .iter()
+        .map(|a| lower_expr_to_operand(cx, a, None))
+        .collect();
 
     // Stage 5.78: dyn Trait path.
     //

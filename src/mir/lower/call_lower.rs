@@ -40,7 +40,17 @@ use super::lower_expr_to_operand;
 ///
 /// For other expression kinds (which can't be assigned to), falls back to
 /// a fresh local — typeck should catch the "assignment to non-place" error.
-pub(super) fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Place {
+pub(super) fn lower_expr_to_place(
+    cx: &mut MirLowerCtxt,
+    expr: &HirExpr,
+    expected_ty: Option<&crate::mir::ty::Ty>,
+) -> Place {
+    // Stage 18.256 (TD-TUPLE-CTOR-TYPECK Phase 2a): expected_ty param added
+    // for future use in Phase 2b-2e (threading expected type through MIR
+    // lower pipeline). Currently unused — all call sites pass `None`,
+    // preserving existing behavior. Per §13.4 J4: expected_ty is a single
+    // coherent concept threaded through all lower_expr_* functions.
+    let _ = expected_ty;
     match &expr.kind {
         HirExprKind::Path(path) => {
             if let Res::Local(hir_id) = path.res {
@@ -54,7 +64,7 @@ pub(super) fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Plac
             Place::local(local, expr.span)
         }
         HirExprKind::Field { receiver, ident } => {
-            let base = lower_expr_to_place(cx, receiver);
+            let base = lower_expr_to_place(cx, receiver, None);
             let field_index = field_resolution::resolve_field_index(cx, receiver, &ident.name);
             // Stage 3.32: resolve the field's actual type from the struct def.
             let field_ty = field_resolution::resolve_field_type(cx, receiver, field_index)
@@ -73,8 +83,8 @@ pub(super) fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Plac
         HirExprKind::Index {
             receiver, index, ..
         } => {
-            let base = lower_expr_to_place(cx, receiver);
-            let idx_local = lower_expr_to_operand(cx, index);
+            let base = lower_expr_to_place(cx, receiver, None);
+            let idx_local = lower_expr_to_operand(cx, index, None);
             Place {
                 kind: PlaceKind::Projection(Box::new(base), ProjectionElem::Index(idx_local)),
                 span: expr.span,
@@ -83,7 +93,7 @@ pub(super) fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Plac
         HirExprKind::Unary {
             op, expr: inner, ..
         } if *op == HirUnaryOp::Deref => {
-            let base = lower_expr_to_place(cx, inner);
+            let base = lower_expr_to_place(cx, inner, None);
             Place {
                 kind: PlaceKind::Projection(Box::new(base), ProjectionElem::Deref),
                 span: expr.span,
@@ -101,7 +111,7 @@ pub(super) fn lower_expr_to_place(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Plac
         // Per §1.0 原則 6 (通解 > 特解): one path for all Binary expressions.
         // Per §10 (DRY): reuses lower_expr_to_operand (which handles GEP).
         HirExprKind::Binary { .. } => {
-            let local = super::lower_expr_to_operand(cx, expr);
+            let local = super::lower_expr_to_operand(cx, expr, None);
             Place::local(local, expr.span)
         }
         // Other expression kinds can't be assigned to — return a fresh

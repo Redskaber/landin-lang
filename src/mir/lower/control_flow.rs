@@ -22,7 +22,7 @@ pub(crate) fn lower_short_circuit(
     rhs: &HirExpr,
     span: Span,
 ) -> LocalId {
-    let lhs_local = lower_expr_to_operand(cx, lhs);
+    let lhs_local = lower_expr_to_operand(cx, lhs, None);
     let eval_rhs_block = cx.new_block();
     let short_circuit_block = cx.new_block();
     let result_true_block = cx.new_block();
@@ -66,7 +66,7 @@ pub(crate) fn lower_short_circuit(
 
     // eval_rhs_block: evaluate rhs, switchInt(rhs) → {true: result_true, _: result_false}
     cx.current_block = eval_rhs_block;
-    let rhs_local = lower_expr_to_operand(cx, rhs);
+    let rhs_local = lower_expr_to_operand(cx, rhs, None);
     cx.terminate_kind(TerminatorKind::SwitchInt {
         discr: Operand::Copy(Place::local(rhs_local, rhs.span)),
         targets: vec![(ConstVal::Bool(true), result_true_block)],
@@ -112,7 +112,7 @@ pub(crate) fn lower_short_circuit(
 /// The temp's type is left as a fresh inference variable — typeck will
 /// unify it with the pointee type via `infer_projection(Deref)`.
 pub(crate) fn lower_deref_expr(cx: &mut MirLowerCtxt, inner: &HirExpr, span: Span) -> LocalId {
-    let inner_local = lower_expr_to_operand(cx, inner);
+    let inner_local = lower_expr_to_operand(cx, inner, None);
     let proj = Place {
         kind: PlaceKind::Projection(
             Box::new(Place::local(inner_local, inner.span)),
@@ -288,7 +288,7 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
             HirStmt::Local(local) => {
                 // Lower the init expression first (if present)
                 if let Some(init) = &local.init {
-                    let init_local = lower_expr_to_operand(cx, init);
+                    let init_local = lower_expr_to_operand(cx, init, None);
 
                     // Stage 14.46: Handle tuple destructuring patterns.
                     // `let (a, b, c) = (10, 20, 30)` should:
@@ -687,14 +687,14 @@ pub(crate) fn lower_block(cx: &mut MirLowerCtxt, block: &HirBlock) -> LocalId {
                 }
             }
             HirStmt::Expr(e, _) => {
-                lower_expr_to_operand(cx, e);
+                lower_expr_to_operand(cx, e, None);
             }
             _ => {}
         }
     }
     // Trailing expression
     if let Some(expr) = &block.expr {
-        lower_expr_to_operand(cx, expr)
+        lower_expr_to_operand(cx, expr, None)
     } else {
         // Stage 14.22: Check if the last statement diverges (return with value,
         // break, continue). If so, the block type is Never (control flow
@@ -738,7 +738,7 @@ pub(crate) fn lower_if(
     else_: Option<&HirExpr>,
     span: Span,
 ) -> LocalId {
-    let cond_local = lower_expr_to_operand(cx, cond);
+    let cond_local = lower_expr_to_operand(cx, cond, None);
     let then_block = cx.new_block();
     let else_block = cx.new_block();
     let cont_block = cx.new_block();
@@ -770,7 +770,7 @@ pub(crate) fn lower_if(
     // Else block
     cx.current_block = else_block;
     if let Some(else_expr) = else_ {
-        let else_result = lower_expr_to_operand(cx, else_expr);
+        let else_result = lower_expr_to_operand(cx, else_expr, None);
         if !cx.is_terminated() {
             cx.push_assign(
                 Place::local(result_local, span),
@@ -799,7 +799,7 @@ pub(crate) fn lower_match(
     arms: &[HirArm],
     span: Span,
 ) -> LocalId {
-    let scrut_local = lower_expr_to_operand(cx, scrutinee);
+    let scrut_local = lower_expr_to_operand(cx, scrutinee, None);
     let cont_block = cx.new_block();
     let result_ty = cx.fresh_infer_ty(span);
     let result_local =
@@ -1144,7 +1144,7 @@ pub(crate) fn lower_match(
         lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
 
         // Lower the arm body
-        let arm_result = lower_expr_to_operand(cx, &arm.body);
+        let arm_result = lower_expr_to_operand(cx, &arm.body, None);
         // Stage 14.34: If the arm body diverged (e.g. `return` inside match arm),
         // the current block is already terminated. Skip the assignment + Goto.
         if !cx.is_terminated() {
@@ -1432,7 +1432,7 @@ pub(crate) fn lower_match(
             let body_block = if has_guard {
                 cx.current_block = after_pattern_check_block;
                 let guard_expr = arm.guard.as_ref().unwrap();
-                let guard_local = lower_expr_to_operand(cx, guard_expr);
+                let guard_local = lower_expr_to_operand(cx, guard_expr, None);
                 cx.terminate_kind(TerminatorKind::SwitchInt {
                     discr: Operand::Copy(Place::local(guard_local, guard_expr.span)),
                     targets: vec![(ConstVal::Bool(true), match_block)],
@@ -1447,7 +1447,7 @@ pub(crate) fn lower_match(
             // body_block: pattern + guard both passed — execute arm body
             cx.current_block = body_block;
             // Note: pattern bindings already done above (before guard eval)
-            let arm_result = lower_expr_to_operand(cx, &arm.body);
+            let arm_result = lower_expr_to_operand(cx, &arm.body, None);
             if !cx.is_terminated() {
                 cx.push_assign(
                     Place::local(result_local, span),
@@ -1627,7 +1627,7 @@ pub(crate) fn lower_match(
             cx.current_block = match_block;
             collect_pat_bindings_for_mir(cx, &arm.pat);
             lower_enum_variant_pattern_bindings(cx, scrut_local, &arm.pat);
-            let arm_result = lower_expr_to_operand(cx, &arm.body);
+            let arm_result = lower_expr_to_operand(cx, &arm.body, None);
             cx.push_assign(
                 Place::local(result_local, span),
                 Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),
@@ -1685,7 +1685,7 @@ pub(crate) fn lower_match(
             }
         }
 
-        let arm_result = lower_expr_to_operand(cx, &arm.body);
+        let arm_result = lower_expr_to_operand(cx, &arm.body, None);
         cx.push_assign(
             Place::local(result_local, span),
             Rvalue::Use(Operand::Copy(Place::local(arm_result, arm.body.span))),

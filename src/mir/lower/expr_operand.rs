@@ -57,7 +57,19 @@ use super::method_resolution::{auto_deref_if_ref, resolve_enum_variant};
 use super::call_lower::lower_expr_to_place;
 // Stage 18.133: expression variant functions extracted to expr_variants.rs
 
-pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> LocalId {
+pub(crate) fn lower_expr_to_operand(
+    cx: &mut MirLowerCtxt,
+    expr: &HirExpr,
+    expected_ty: Option<&Ty>,
+) -> LocalId {
+    // Stage 18.256 (TD-TUPLE-CTOR-TYPECK Phase 2a): expected_ty param added
+    // for future use in Phase 2b-2e (threading expected type through MIR
+    // lower pipeline). Currently unused — all call sites pass `None`,
+    // preserving existing behavior. Per §13.4 J4: expected_ty is a single
+    // coherent concept threaded through all lower_expr_* functions.
+    // Per §1.0 原則 3 (显式 > 隐式): the param is explicit even when None,
+    // documenting intent at the call site.
+    let _ = expected_ty;
     match &expr.kind {
         HirExprKind::Lit(lit) => {
             let (const_val, ty) = cx.lit_to_const(lit);
@@ -73,8 +85,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             if *op == HirBinOp::And || *op == HirBinOp::Or {
                 return control_flow::lower_short_circuit(cx, *op, lhs, rhs, expr.span);
             }
-            let lhs_local = lower_expr_to_operand(cx, lhs);
-            let rhs_local = lower_expr_to_operand(cx, rhs);
+            let lhs_local = lower_expr_to_operand(cx, lhs, None);
+            let rhs_local = lower_expr_to_operand(cx, rhs, None);
 
             // Stage 18.236 (Pointer Arithmetic): When op is Add/Sub and one
             // operand is a RawPtr and the other is an integer, lower to
@@ -197,7 +209,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             if *op == HirUnaryOp::Deref {
                 return control_flow::lower_deref_expr(cx, inner, expr.span);
             }
-            let inner_local = lower_expr_to_operand(cx, inner);
+            let inner_local = lower_expr_to_operand(cx, inner, None);
             let mir_op = MirLowerCtxt::lower_un_op(*op);
             // Stage 15.76: Use inner operand's type for unary op result
             // (same as Rust: `-a` has type of `a`).
@@ -239,7 +251,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         } => control_flow::lower_match(cx, scrutinee, arms, expr.span),
         HirExprKind::Return { expr: ret_expr, .. } => {
             if let Some(ret) = ret_expr {
-                let ret_local = lower_expr_to_operand(cx, ret);
+                let ret_local = lower_expr_to_operand(cx, ret, None);
                 // Stage 16.06: Use Operand::Move for return values.
                 // Return semantically moves the value into the caller's
                 // return slot. Using Operand::Copy was unsound for non-Copy
@@ -276,13 +288,13 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // When `op` is Some, the assignment is `lhs op= rhs`, which desugars
             // to `lhs = lhs op rhs`. Before Stage 13.25, the `op` field was
             // ignored (via `..`), so `x += 5` was lowered as `x = 5` (P0 bug).
-            let lhs_place = lower_expr_to_place(cx, lhs);
+            let lhs_place = lower_expr_to_place(cx, lhs, None);
 
             let rhs_local = if let Some(bin_op) = op {
                 // Compound assignment: `lhs op= rhs` → `lhs = lhs op rhs`
                 // Lower the RHS first, then read the LHS, apply the binop,
                 // and store the result back.
-                let rhs_val = lower_expr_to_operand(cx, rhs);
+                let rhs_val = lower_expr_to_operand(cx, rhs, None);
                 // Read the current value of lhs into a temp
                 let lhs_copy = lhs_place.clone();
                 let lhs_ty = cx.fresh_infer_ty(expr.span);
@@ -300,7 +312,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
                 )
             } else {
                 // Simple assignment: `lhs = rhs`
-                lower_expr_to_operand(cx, rhs)
+                lower_expr_to_operand(cx, rhs, None)
             };
 
             // Stage 3.34 (L-MUT-1 fix): handle assignment LHS that are
@@ -313,8 +325,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             rhs_local
         }
         HirExprKind::Tuple { elems, .. } => {
-            let elem_locals: Vec<LocalId> =
-                elems.iter().map(|e| lower_expr_to_operand(cx, e)).collect();
+            let elem_locals: Vec<LocalId> = elems
+                .iter()
+                .map(|e| lower_expr_to_operand(cx, e, None))
+                .collect();
             let operands: Vec<Operand> = elem_locals
                 .iter()
                 .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
@@ -362,7 +376,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         // fresh_infer_ty — typeck never resolved it, so codegen loaded
         // i32 even for i64 fields).
         HirExprKind::Field { receiver, ident } => {
-            let base_local = lower_expr_to_operand(cx, receiver);
+            let base_local = lower_expr_to_operand(cx, receiver, None);
             // Resolve the field index from the ident name.
             let field_index = field_resolution::resolve_field_index(cx, receiver, &ident.name);
             // Stage 3.32: resolve the field's actual type from the struct def.
@@ -392,8 +406,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         HirExprKind::Index {
             receiver, index, ..
         } => {
-            let base_local = lower_expr_to_operand(cx, receiver);
-            let index_local = lower_expr_to_operand(cx, index);
+            let base_local = lower_expr_to_operand(cx, receiver, None);
+            let index_local = lower_expr_to_operand(cx, index, None);
             // Stage 3.52: compute the element type from the receiver's type,
             // instead of using a fresh infer var (which typeck defaults to
             // i32). For `&[T]` (fat pointer), elem_ty = T. For `[T; N]`,
@@ -423,7 +437,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             expr: inner,
             ..
         } => {
-            let inner_local = lower_expr_to_operand(cx, inner);
+            let inner_local = lower_expr_to_operand(cx, inner, None);
             let bk = match mutability {
                 crate::ast::Mutability::Mutable => crate::mir::place::BorrowKind::Mut,
                 crate::ast::Mutability::Immutable => crate::mir::place::BorrowKind::Shared,
@@ -463,7 +477,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         HirExprKind::Cast {
             expr: inner, ty, ..
         } => {
-            let inner_local = lower_expr_to_operand(cx, inner);
+            let inner_local = lower_expr_to_operand(cx, inner, None);
             let target_ty = lower_hir_ty_to_mir_ty(ty);
             cx.eval_rvalue_to_temp(
                 Rvalue::Cast(
@@ -477,7 +491,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         }
 
         // Try: `expr?` → just lower inner (error propagation is Stage 3+)
-        HirExprKind::Try { expr: inner, .. } => lower_expr_to_operand(cx, inner),
+        HirExprKind::Try { expr: inner, .. } => lower_expr_to_operand(cx, inner, None),
 
         // Loop: `loop { body }` → basic block loop
         HirExprKind::Loop { body, .. } => {
@@ -543,7 +557,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
 
             // cond_block: evaluate cond, switchInt
             cx.current_block = cond_block;
-            let cond_local = lower_expr_to_operand(cx, cond);
+            let cond_local = lower_expr_to_operand(cx, cond, None);
             cx.terminate_kind(TerminatorKind::SwitchInt {
                 discr: Operand::Copy(Place::local(cond_local, cond.span)),
                 targets: vec![(ConstVal::Bool(true), body_block)],
@@ -763,7 +777,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // lowered but discarded (let _ = ...), so `loop { break 42; }`
             // returned an uninitialized local instead of 42.
             if let Some(e) = br_expr {
-                let br_local = lower_expr_to_operand(cx, e);
+                let br_local = lower_expr_to_operand(cx, e, None);
                 // Find the loop's result local and assign the break value to it.
                 // The loop_stack entry is (continue_target, break_target).
                 // We need the result local — it's stored in the Loop context.
@@ -808,8 +822,8 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
 
         // Range: `start..end` → Aggregate (simplified)
         HirExprKind::Range { start, end, .. } => {
-            let start_local = start.as_ref().map(|s| lower_expr_to_operand(cx, s));
-            let end_local = end.as_ref().map(|e| lower_expr_to_operand(cx, e));
+            let start_local = start.as_ref().map(|s| lower_expr_to_operand(cx, s, None));
+            let end_local = end.as_ref().map(|e| lower_expr_to_operand(cx, e, None));
             let range_ty = cx.fresh_infer_ty(expr.span);
             // For Stage 2.4b, ranges are represented as a tuple (start, end)
             let mut operands = Vec::new();
@@ -828,8 +842,10 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
 
         // Array: `[a, b, c]` → Aggregate(Array, operands)
         HirExprKind::Array { elems, .. } => {
-            let elem_locals: Vec<LocalId> =
-                elems.iter().map(|e| lower_expr_to_operand(cx, e)).collect();
+            let elem_locals: Vec<LocalId> = elems
+                .iter()
+                .map(|e| lower_expr_to_operand(cx, e, None))
+                .collect();
             let operands: Vec<Operand> = elem_locals
                 .iter()
                 .map(|l| Operand::Copy(Place::local(*l, Span::DUMMY)))
@@ -855,7 +871,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
 
         // Repeat: `[val; N]` → Aggregate(Array, [val, val, ...]) with N copies
         HirExprKind::Repeat { elem, count, .. } => {
-            let elem_local = lower_expr_to_operand(cx, elem);
+            let elem_local = lower_expr_to_operand(cx, elem, None);
             // Stage 14.20: Evaluate the count expression to get N.
             // If count is a literal integer, extract its value directly.
             // Stage 14.103 (ME-3 fix): If count is NOT a literal, emit a
@@ -941,7 +957,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
             // Lower each field value
             let field_locals: Vec<LocalId> = fields
                 .iter()
-                .filter_map(|f| f.expr.as_ref().map(|e| lower_expr_to_operand(cx, e)))
+                .filter_map(|f| f.expr.as_ref().map(|e| lower_expr_to_operand(cx, e, None)))
                 .collect();
             // Stage 15.64: Choose Copy or Move based on the field value's type.
             // For Copy types (primitives, refs, etc.), use Copy (source remains
@@ -1206,7 +1222,7 @@ pub(crate) fn lower_expr_to_operand(cx: &mut MirLowerCtxt, expr: &HirExpr) -> Lo
         HirExprKind::Unsafe(block) => control_flow::lower_block(cx, block),
 
         // Stage 8.5: async/await — MVP: evaluate synchronously
-        HirExprKind::Await { expr } => lower_expr_to_operand(cx, expr),
+        HirExprKind::Await { expr } => lower_expr_to_operand(cx, expr, None),
         HirExprKind::Async { block } => control_flow::lower_block(cx, block),
 
         // MethodCall: `receiver.method(args)` → simplified to Call

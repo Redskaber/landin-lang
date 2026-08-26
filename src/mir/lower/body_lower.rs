@@ -367,7 +367,7 @@ pub fn lower_hir_body_to_mir_full_with_dyn_trait_plan(
     }
 
     // Lower the body's value expression into the return local.
-    let value_local = lower_expr_to_operand(&mut cx, &body.value);
+    let value_local = lower_expr_to_operand(&mut cx, &body.value, None);
 
     // Stage 14.23: If the current block is already terminated (e.g. by a
     // `return` statement inside the body), skip the assignment to the return
@@ -625,7 +625,7 @@ pub fn build_synthesized_closure_mir_body(
     }
 
     // Lower the closure body expression into a local.
-    let body_result_local = lower_expr_to_operand(&mut cx, &func.body);
+    let body_result_local = lower_expr_to_operand(&mut cx, &func.body, None);
 
     // Assign the body result to the return local (LocalId(0)).
     if !cx.is_terminated() {

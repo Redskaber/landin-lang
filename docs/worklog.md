@@ -21593,3 +21593,63 @@ Stage Summary:
 - §17.6 holistic defect integration: same-class unify arg order issues batched
 - §13.5 design-review cycle: 5/5 APPROVED, 1 iteration
 - §14.8 design writeback: B2 (impl > design) — design doc needs §3.3 "expected_ty propagation" in Stage 18.256
+
+---
+Task ID: stage18.256
+Agent: Super Z (main) — Stage Committee (ARCH-A + DEV-A + QA-A)
+Task: Stage 18.256 — TD-TUPLE-CTOR-TYPECK Phase 2a scaffolding. Add expected_ty: Option<&Ty> param to lower_expr_to_operand + lower_expr_to_place. Update all 51 call sites to pass None (additive, no behavior change). v0.492.0 (no bump — scaffolding only).
+
+Work Log:
+- Baseline: v0.492.0 / 3811 tests (LLVM 22.1.8)
+- 触发条例: §17.6 缺陷纳入 + §13.4 重构六大判据 — Phase 2a of plan-18.255.md §4.2.3
+
+- §13.4 J1-J6 audit for Phase 2a:
+  → J1 Architecture: ✅ aligns with 06-mir.md §3.2
+  → J2 Single responsibility: ✅ expected_ty is single coherent concept
+  → J3 One-way flow: ✅ all call sites pass None (no flow yet)
+  → J4 Compile-concept completeness: ✅ both lower_expr_* take it consistently
+  → J5 Stage division: ✅ only touches src/mir/lower/
+  → J6 Reasonable size: ✅ ~80 LOC across 6 files, each < 1500 LOC
+
+- Implementation:
+  → Updated lower_expr_to_operand signature (expr_operand.rs line 60)
+  → Updated lower_expr_to_place signature (call_lower.rs line 43)
+  → Wrote Python script: scripts/stage18_256_phase2a_thread_expected_ty.py
+    (line-by-line approach, respects nested parens/strings/comments)
+  → Bulk-updated 51 call sites across 5 files:
+    - body_lower.rs: 2 (1 missed initially due to &mut cx pattern)
+    - call_lower.rs: 5 (2 operand + 3 place)
+    - control_flow.rs: 14
+    - expr_operand.rs: 22
+    - expr_variants.rs: 8
+    - mod.rs: 0 (only re-export, no calls)
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.256.md created
+  → tests/v0/stage18/plan/stage18_256_phase2a_scaffolding_tests.rs (8 tests)
+  → tests/all_tests.rs entry added
+  → docs/develop/v0/tech-debt-register.md updated (TD-TUPLE-CTOR-TYPECK Phase 2a status)
+
+- Test coverage (8 new tests):
+  → 6 smoke tests (simple program, struct ctor, arithmetic, closure, if-else, loop)
+  → 1 regression test (Phase 1 fix from Stage 18.255 still works)
+  → 1 deferred-MVP marker (soundness hole still exists)
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo build --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff (after applying cargo fmt)
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --features llvm-backend ✅ 3819 tests (675 lib + 3144 integration), 0 failures
+  → Test delta: +8 (Phase 2a scaffolding tests)
+
+- 版本: v0.492.0 (no bump — scaffolding only, no behavior change)
+
+Stage Summary:
+- Stage 18.256 PASSED — Phase 2a scaffolding complete
+- 2 function signatures updated (lower_expr_to_operand + lower_expr_to_place)
+- 51 call sites updated to pass None
+- 8 new scaffolding tests verify no regression
+- 3819 tests, 0 failures, zero regression
+- §13.4 J1-J6 audit: all 6 judgments pass post-implementation
+- Phase 2b (thread from let:T=expr binding) next: Stage 18.257
