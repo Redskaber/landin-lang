@@ -17,7 +17,8 @@
 //! - `predicates.rs` — type classification predicates + coercion rules
 //!
 //! This file (`checker.rs`) retains: TypeChecker struct + impl + entry
-//! points (`check_mir_body` / `check_crate`) + tests.
+//! points (`check_mir_body_with_tables` canonical, `check_mir_body`
+//! convenience wrapper) + tests.
 
 #[cfg(test)]
 use crate::mir::body::TerminatorKind;

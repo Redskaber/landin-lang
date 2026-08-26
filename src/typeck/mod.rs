@@ -10,10 +10,18 @@
 //! a pre-computed [`FieldTyTable`] built by the driver. This is the entry
 //! point used by `driver::compile`.
 //!
-//! ## Legacy entry points (deprecated, Stage 3.63)
+//! ## Convenience wrapper
 //!
-//! - [`check_crate`] — re-lowers HIR to MIR internally (§16 violation).
-//! - [`check_mir_body`] — delegates to `check_mir_body_with_tables(None)`.
+//! - [`check_mir_body`] — free function that constructs a `TypeChecker`
+//!   with default state and delegates to `check_mir_body_with_tables(None)`.
+//!   Used by tests + simple callers that don't need pre-computed tables.
+//!
+//! ## Stage 18.60 cleanup
+//!
+//! The deprecated `check_crate` and `check_mir_body_with_hir` free functions
+//! were REMOVED in Stage 18.60 — they re-lowered HIR to MIR internally
+//! (§16 violation). The driver now uses `check_mir_body_with_tables`
+//! directly. See `docs/worklog.md` Stage 18.60 for details.
 
 pub mod checker;
 

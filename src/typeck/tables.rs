@@ -48,8 +48,10 @@ impl TypeckResults {
 
 /// Stage 3.60: Pre-computed ADT field type table.
 /// Built by the driver from HIR (data flows downstream per section 16.2.1).
-/// Replaces `check_mir_body_with_hir`'s HIR reference with a pure data
-/// structure — typeck no longer reads HIR directly.
+/// Replaces the deleted `check_mir_body_with_hir`'s HIR reference with a
+/// pure data structure — typeck no longer reads HIR directly.
+/// (Stage 18.60 removed `check_mir_body_with_hir` entirely; this table
+/// is the §16-compliant replacement.)
 #[derive(Debug, Clone, Default)]
 pub struct FieldTyTable {
     /// Maps struct DefId to ordered field types (as MIR Ty).

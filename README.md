@@ -1,7 +1,7 @@
 # Landin
 
 > **Author**: redskaber
-> **Version**: v0.493.0 (Stage 18.312 — runtime/prelude cleanup + full tech-debt clear)
+> **Version**: v0.493.0 (Stage 18.316 — typeck/borrowck doc-comment cleanup + facade review + full tech-debt clear)
 > **License**: MIT
 > **Status**: v0.4 stable. 4203 tests, 0 failures. 类 Rust 原始类型扩展模型完成.
 
@@ -291,13 +291,15 @@ These are required to migrate remaining intrinsics to real prelude impls:
 | [`docs/develop/v0/v0.5-roadmap.md`](docs/develop/v0/v0.5-roadmap.md) | v0.5 roadmap design |
 | [`docs/tests/matrix.md`](docs/tests/matrix.md) | Global test matrix |
 | [`docs/llvm/`](docs/llvm/) | LLVM integration docs |
-| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.312) |
+| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | Version history (latest: v0.493.0, Stage 18.316) |
 | [`docs/worklog.md`](docs/worklog.md) | Stage-by-stage work log |
 
 ### Recent Stage History
 
 | Stage | Version | Summary |
 |-------|---------|---------|
+| 18.316 | v0.493.0 | typeck/borrowck doc-comment cleanup (4 处过时引用) |
+| 18.315 | v0.493.0 | 全项目门面文件审查 + lib.rs 精简 + stdlib placeholder 注释 + README 完全重构 |
 | 18.312 | v0.493.0 | runtime.rs/prelude.rs 过时内容清理 |
 | 18.310 | v0.493.0 | LOC 重构完全清零 (6 个文件 < 1500) |
 | 18.304 | v0.493.0 | P3 field access on primitive 报错 |

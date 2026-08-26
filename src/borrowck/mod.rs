@@ -20,7 +20,8 @@
 //! - `place_path.rs`     — PlacePath data structure (§4 data structures)
 //!
 //! This file (`mod.rs`) retains: BorrowChecker struct + impl + entry
-//! points (`check_mir_body` / `check_crate`) + tests.
+//! points (`check_mir_body_with_dataflow` canonical, `check_mir_body`
+//! free-function convenience wrapper) + tests.
 
 pub mod borrow_set;
 pub mod error;

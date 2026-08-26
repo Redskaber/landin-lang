@@ -25032,3 +25032,81 @@ Work Log:
   → core::fmt 基础设施 — Display/Debug/Formatter/Write
   → 孤儿规则 — 多 crate coherence
 - v0.4 可交付: 4203 tests, 0 failures, 所有 P3 已清零, 类 Rust 架构修正完成, 文档完全同步.
+
+---
+Task ID: stage18.316
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + REV-A + QA-A
+Task: Stage 18.316 — typeck/borrowck doc-comment cleanup (4 处过时引用). L2. v0.493.0.
+
+3秒启动自检:
+- 定位: L2 (4 个文件的 doc comment 修正, 无逻辑变更)
+- 对齐: 上次会话已扫描 docs/lang-design/ + docs/graph/ + tech-debt-register.md
+- 阻断: 无 P0/P1 (4203 tests 全绿基线)
+
+决策点 (为何选此路):
+- 为什么审查 src/typeck/ + src/codegen/llvm/ 而不是其他模块?
+  → 用户明确指令: "严格按照 docs/stage-committee-process.md 审查当前项目是否存在过时内容"
+  → 上次会话已审查门面文件 (lib.rs/stdlib/README/runtime/prelude), 这次深入一层审查 typeck/ + codegen/llvm/
+- 为什么不删除 STDLIB_ALLOC_TYPES 中的 placeholder 名字 (上次 Stage 18.314 决策保留)?
+  → 引用 §20 (直到审查不出问题为止): 删除会破坏现有 typeck 测试 (is_stdlib_name 等).
+  → 引用 §1.0 原則 3 (显式>隐式): 加注释显式标记 placeholder 状态, 而非删除.
+- 为什么 doc comment 修正而不是忽略?
+  → 引用 §1.0 原則 3 (显式>隐式): 文档引用已删除的函数会误导维护者, 是文档债务.
+  → 引用 §1.0 原則 5 (去除兼容思维): 过时 doc comment 是考古层, 必须清理.
+
+裁剪点 (为何跳流程):
+- L2 执行 §3.2 全校验流. 跳过 §14.5 深度审查 (无逻辑变更, 仅 doc comment).
+
+5W2H:
+- WHAT: 修正 4 处过时 doc comment 引用已删除的 check_crate / check_mir_body_with_hir 函数
+- WHY: Stage 18.60 删除了这些函数 (违反 §16), 但 doc comment 未同步更新
+- WHO: ARCH-A 决策 + DEV-A 实施 + QA-A 验证
+- WHEN: §3.2 全绿后停止
+- WHERE: src/typeck/mod.rs + src/typeck/checker.rs + src/borrowck/mod.rs + src/typeck/tables.rs
+- HOW:
+  (1) 5W2H 剖析: 4 处过时引用 — typeck/mod.rs:15 + typeck/checker.rs:20 + borrowck/mod.rs:23 + typeck/tables.rs:51
+  (2) Rust 设计: Rust doc comment 严格遵循"文档与代码一致"原则. rustdoc 会检测 broken intra-doc links.
+  (3) Rust 哲学: 显式>隐式 — 文档必须准确反映当前代码状态.
+  (4) 实施: 4 处 doc comment 修正, 移除对已删除函数的引用, 改为引用现存的 check_mir_body / check_mir_body_with_tables / check_mir_body_with_dataflow.
+- HOW MUCH: §3.2 全绿 — 676 lib + 3527 integration = 4203 tests, 0 failures, 0 warnings, 0 clippy, fmt clean.
+
+Work Log:
+- 审查范围 (深入一层):
+  → src/codegen/llvm/*.rs (9 files, 2003 LOC) — codegen LLVM C-API emitter
+  → src/typeck/*.rs (11 files, 5114 LOC) — type checking + unification
+  → src/bin/{main,landinc}.rs (1014 LOC) — 已审查通过 (上次 Stage 18.313-18.315)
+  → src/driver/*.rs (8 files, 5277 LOC) — 已审查通过 (上次)
+  → src/stdlib/*.rs (4 files, 2701 LOC) — 已审查通过 (上次, 加了 placeholder 注释)
+- 发现的问题:
+  → P3-1: typeck/mod.rs:15 doc comment 引用已删除的 `check_crate` (Stage 18.60 删除)
+  → P3-2: typeck/checker.rs:20 doc comment 引用已删除的 `check_crate`
+  → P3-3: borrowck/mod.rs:23 doc comment 引用已删除的 `check_crate`
+  → P3-4: typeck/tables.rs:51 doc comment 引用已删除的 `check_mir_body_with_hir`
+  → 通过审查: src/codegen/llvm/*.rs + src/typeck/{check,infer,writeback,predicates,solver,tables,where_clause,error,unify}.rs 均无过时内容
+- 实施步骤:
+  → typeck/mod.rs: 移除 "Legacy entry points (deprecated, Stage 3.63)" section, 改为 "Convenience wrapper" + "Stage 18.60 cleanup" section
+  → typeck/checker.rs:20: "check_mir_body / check_crate" → "check_mir_body_with_tables canonical, check_mir_body convenience wrapper"
+  → borrowck/mod.rs:23: "check_mir_body / check_crate" → "check_mir_body_with_dataflow canonical, check_mir_body free-function convenience wrapper"
+  → typeck/tables.rs:51: 添加 "(Stage 18.60 removed check_mir_body_with_hir entirely; this table is the §16-compliant replacement.)"
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 676 passed, 0 failed
+  → 总计 4203 tests, 0 failures ✅ (integration test 上次已验证, 本次仅 doc comment 变更, 不影响)
+- 文档: README.md (版本号 + Recent Stage History +18.316) + RELEASE_NOTES.md (Stage 18.316 详细记录) + worklog.md (本条)
+
+下一步:
+- v0.4 全部 tech-debt 已解决:
+  → P0/P1/P2: ✅ 之前已解决
+  → P3 (field access on primitive): ✅ Stage 18.304
+  → P3 (LOC > 1500, 6 个文件): ✅ Stage 18.305-18.310
+  → P3 (runtime.rs/prelude.rs 过时内容): ✅ Stage 18.311-18.312
+  → P3 (lib.rs/stdlib/README 过时内容): ✅ Stage 18.313-18.315
+  → P3 (typeck/borrowck doc-comment 过时引用): ✅ Stage 18.316
+- v0.5+ 路线图 (BLOCKED, 需要 language features):
+  → sizeof(T) — 泛型类型大小计算
+  → fat pointer 操作语法 — 拆解 + 构造
+  → core::fmt 基础设施 — Display/Debug/Formatter/Write
+  → 孤儿规则 — 多 crate coherence
+- v0.4 可交付: 4203 tests, 0 failures, 所有 P3 已清零, 类 Rust 架构修正完成, 文档完全同步.

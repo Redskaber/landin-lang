@@ -7,9 +7,16 @@
 
 ---
 
-## v0.493.0 — Stage 18.315 (全项目门面文件审查 + lib.rs 精简 + stdlib placeholder 注释 + README 完全重构 + runtime/prelude cleanup + P3 LOC 完全清零 + 类 Rust 架构修正)
+## v0.493.0 — Stage 18.316 (typeck/borrowck doc-comment cleanup + 全项目门面文件审查 + lib.rs 精简 + stdlib placeholder 注释 + README 完全重构 + runtime/prelude cleanup + P3 LOC 完全清零 + 类 Rust 架构修正)
 
 ### Overview
+
+**Stage 18.316: typeck/borrowck doc-comment cleanup**
+- 修正 4 处过时 doc comment 引用已删除的 `check_crate` / `check_mir_body_with_hir` 函数
+- `typeck/mod.rs`: "Legacy entry points (deprecated)" → "Convenience wrapper" + "Stage 18.60 cleanup" section
+- `typeck/checker.rs:20`: "check_mir_body / check_crate" → "check_mir_body_with_tables canonical, check_mir_body convenience wrapper"
+- `borrowck/mod.rs:23`: "check_mir_body / check_crate" → "check_mir_body_with_dataflow canonical, check_mir_body free-function convenience wrapper"
+- `typeck/tables.rs:51`: 添加 "(Stage 18.60 removed `check_mir_body_with_hir` entirely; this table is the §16-compliant replacement.)"
 
 **Stage 18.313-18.315: 全项目门面文件审查 + 文档重构**
 - `src/lib.rs`: 471 → 115 行 (移除 405 行 stage 历史 log, 替换为简洁 crate-level doc)
@@ -68,6 +75,18 @@
 - 0 warnings, 0 clippy issues, fmt clean
 - Stage 18.311: +1 new test (`stage18_311_migrated_intrinsics_absent`) — lib 从 675 → 676
 - Stage 18.296: 40 new tests (10 positive + 30 negative, ratio 1:3)
+
+### Stage 18.316 — typeck/borrowck doc-comment cleanup
+
+- 4 个文件 doc comment 修正 (无代码逻辑变更)
+- **问题**: Stage 18.60 删除了 `check_crate` + `check_mir_body_with_hir` (违反 §16: re-lowered HIR to MIR inside typeck),但 doc comment 未同步更新,仍引用已删除的函数
+- **修复**:
+  - `src/typeck/mod.rs`: 移除 "Legacy entry points (deprecated, Stage 3.63)" section,改为 "Convenience wrapper" + "Stage 18.60 cleanup" section
+  - `src/typeck/checker.rs:20`: "check_mir_body / check_crate" → "check_mir_body_with_tables canonical, check_mir_body convenience wrapper"
+  - `src/borrowck/mod.rs:23`: "check_mir_body / check_crate" → "check_mir_body_with_dataflow canonical, check_mir_body free-function convenience wrapper"
+  - `src/typeck/tables.rs:51`: 添加 "(Stage 18.60 removed `check_mir_body_with_hir` entirely; this table is the §16-compliant replacement.)"
+- **决策依据**: §1.0 原則 3 (显式>隐式) — 文档引用已删除的函数会误导维护者; §1.0 原則 5 (去除兼容思维) — 过时 doc comment 是考古层
+- **审查范围**: 同时审查了 src/codegen/llvm/ + src/typeck/ + src/bin/ + src/driver/ + src/stdlib/ — 仅 4 处过时, 其余文件合理
 
 ### Stage 18.315 — README.md 完全重构重排
 
