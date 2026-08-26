@@ -21374,3 +21374,45 @@ Stage Summary:
 - TD-EXPECT-PARSER-ITEMS: ✅ (custom parser method, not Option::expect)
 - 3798 tests, 0 failures, zero regression
 - Remaining active TDs: TD-TUPLE-CTOR-TYPECK, TD-INTRINSIC-OVERUSE Phase 2, TD-DROP-MOVED-LOCALS (partial)
+
+---
+Task ID: stage18.252
+Agent: Super Z (main) — ARCH-A + REV-A + QA-A
+Task: Stage 18.252 — TD-SPAN-DUMMY-CLEANUP + TD-STDLIB-FACADE audit: close stale TDs. v0.492.0 (no bump — audit).
+
+Work Log:
+- Baseline: v0.492.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: §8 文档同步 — stale TD entries need status update
+
+- Audit results:
+  1. TD-SPAN-DUMMY-CLEANUP (🟡 Partial → ✅ Resolved):
+     → Remaining Span::DUMMY in typeck/check.rs: span-presence checks (`if span != DUMMY`)
+     → Remaining Span::DUMMY in expr_variants.rs: Error type, fresh infer vars, synthesized places
+     → ALL are legitimate synthesized values with no source span
+     → Per §1.0 原則 3 (显式>隐式): these are explicit synthesized values
+
+  2. TD-STDLIB-FACADE (🟡 Split → ✅ Resolved):
+     → Option/Result: real enums with methods (is_some/is_none/is_ok/is_err/unwrap_or)
+     → String: real struct { ptr, len, cap } with new/len/from_str/push_str/as_str
+     → Vec<T>: real struct { ptr, len, cap } with new/len/push/get
+     → Box<T>: real struct (*mut T) with new + auto-drop (Stage 18.244)
+     → All have heap alloc, typeck, borrowck — no longer stubs
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- Tech debt register updated:
+  → TD-SPAN-DUMMY-CLEANUP: ✅ Resolved (legitimate synthesized values)
+  → TD-STDLIB-FACADE: ✅ Resolved (all types are real implementations)
+
+- 版本: v0.492.0 (no bump — audit only)
+
+Stage Summary:
+- Stage 18.252 PASSED — TD-SPAN-DUMMY-CLEANUP + TD-STDLIB-FACADE closed
+- TD-SPAN-DUMMY-CLEANUP: ✅ (all DUMMY are legitimate)
+- TD-STDLIB-FACADE: ✅ (all types are real implementations)
+- 3798 tests, 0 failures, zero regression
+- Remaining active TDs: TD-TUPLE-CTOR-TYPECK (v0.3+), TD-INTRINSIC-OVERUSE Phase 2 (v0.3+), TD-DROP-MOVED-LOCALS (partial, v0.3+)
