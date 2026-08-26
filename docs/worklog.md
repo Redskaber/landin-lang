@@ -24225,3 +24225,64 @@ Work Log:
 - Phase B-2 需要 language features (sizeof + fat pointer ops) — v0.5+
 - Phase C (format! macro) 可以独立推进.
 - 建议: Phase C 先行 (format! 不依赖 sizeof/fat pointer ops), Phase B-2 deferred to v0.5+.
+
+---
+Task ID: stage18.302
+Agent: Super Z (main) — PM-A + ARCH-A
+Task: Stage 18.302 — Phase C 分析: format! macro 需要 core::fmt 基础设施. L1 (设计审查). v0.493.0.
+
+3秒启动自检:
+- 定位: L1 (设计审查, 无代码变更)
+- 对齐: plan-18.301.md + Rust core::fmt 设计
+- 阻断: 无 P0/P1
+
+决策点:
+- 为什么 Phase C (format! macro) 不能在当前阶段实施?
+  → 引用 §2.2 根因思维: format! 的根因是 Landin 缺少 core::fmt 基础设施 (Display/Debug trait, Formatter, Write trait, Arguments struct). 这是 v0.5+ 语言特性, 不是简单的宏改造.
+  → 引用 §12 (最优>最小): 在当前语言能力下, `lower_format_variadic_intrinsic` 是最优实现 — 它使用 C runtime 函数, 在 MIR lower 层生成调用代码. 不存在更简单的通解.
+  → 引用 §2.2 原則 9 (正确>妥协): 这不是"治症不治根" — 根因是语言能力不足, 不是架构设计错误.
+
+裁剪点:
+- L1 仅执行设计审查. 跳过 §3.2 (无代码变更).
+
+5W2H:
+- WHAT: format! macro 的根因分析
+- WHY: 当前 format! 使用 535 LOC intrinsic function — 是特解还是合理 MVP?
+- WHO: ARCH-A 审查
+- WHEN: 审查完成后停止
+- WHERE: docs/develop/v0/stage-18/plan-18.302.md
+- HOW: (1) 5W2H 剖析: format! 需要 core::fmt 基础设施; (2) Rust 设计: println! 展开为 Display::fmt + Formatter + Write trait; (3) Rust 哲学: 零成本抽象 (编译时格式字符串解析); (4) 结论: v0.5+ 语言特性, 当前 MVP 是合理的.
+- HOW MUCH: 0 代码变更 (纯设计审查)
+
+Work Log:
+- Rust format! 架构分析:
+  → println!("x={}", x) 展开为 Display::fmt(arg0, &mut formatter)
+  → 需要: Display/Debug trait + Formatter + Write trait + Arguments struct
+  → Landin 不支持: trait objects (dyn Display), associated types, core::fmt module
+- 当前 Landin format! 架构:
+  → println!("x={}", x) → 宏展开为 __landin_println("x={}", x)
+  → __landin_format 被 MIR lower 拦截 → lower_format_variadic_intrinsic (535 LOC)
+  → 生成 C runtime 调用 __landin_format_variadic
+- 结论: 535 LOC intrinsic 是 **合理的 MVP**, 不是特解 — 根因是语言能力不足 (无 core::fmt)
+
+- 最终 Phase 路径:
+  → Phase A (usize 统一): ✅ 已完成
+  → Phase B-1 (extern C 声明): ✅ 已验证可用
+  → Phase B-2 (sizeof + fat pointer ops): ⏸ v0.5+ 需要新语言特性
+  → Phase C (format! macro): ⏸ v0.5+ 需要 core::fmt 基础设施
+  → 原 Phase B (移除 marker body): ✅ 跳过 — marker body 是正确架构
+
+- 架构评估: 在当前语言能力下, Landin 的 intrinsic 调度架构是最优的:
+  1. str::len/is_empty/as_bytes → marker body + intrinsic dispatch (Rust 也是 intrinsic)
+  2. String/Vec/Box 方法 → early interception (需要 sizeof + fat pointer ops, v0.5+)
+  3. format!/println! → variadic intrinsic (需要 core::fmt, v0.5+)
+  4. 所有"特解"的根因都是 language feature gaps, 不是架构设计错误
+
+下一步:
+- 深度架构审查完成. 当前架构在给定语言能力下是最优的.
+- v0.5+ 路线图:
+  → sizeof(T) — 泛型类型大小计算
+  → fat pointer 操作语法 — 拆解 + 构造
+  → core::fmt 基础设施 — Display/Debug/Formatter/Write
+  → 这些语言特性将解锁: 移除 early interception + intrinsic_lower.rs + format variadic
+- 当前 v0.4 可交付: 4202 tests, 0 failures, 类 Rust 架构修正完成.
