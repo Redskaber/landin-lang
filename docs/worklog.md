@@ -21463,3 +21463,48 @@ Stage Summary:
 - v0.3 all feasible TDs resolved — 3 remaining need architecture changes
 - 3798 tests, 0 failures, zero regression
 - Project at natural plateau: next step is v0.3+ architecture work
+
+---
+Task ID: stage18.254
+Agent: Super Z (main) — ARCH-A + REV-A + QA-A
+Task: Stage 18.254 — TD-EMITTER-PANIC + stale TD cleanup (PROJECTION-RESOLVER, NO-FORMAT-MACRO). v0.492.0 (no bump — audit + doc cleanup).
+
+Work Log:
+- Baseline: v0.492.0 / 3798 tests (LLVM 22.1.8)
+- 触发条例: §8 文档同步 — stale TD entries need status update
+
+- Audit results:
+  1. TD-EMITTER-PANIC (🟡 → ✅ Resolved):
+     → Both `panic!()` calls (lines 321, 357) are inside `#[cfg(test)] mod tests` (line 295+)
+     → They are test assertions (`match` arms for correct type verification)
+     → Not production code — no codegen pipeline risk
+     → Per §1.0 原則 4 (报错>静默): test assertions are correct practice
+
+  2. TD-PROJECTION-RESOLVER (Open → ✅ Resolved):
+     → Already moved to `src/driver/projection_resolver.rs` in Stage 18.148
+     → Stale entry at line 296 updated
+
+  3. TD-NO-FORMAT-MACRO (line 93, stale → ✅ Resolved):
+     → format! macro already implemented in Stage 18.186 + 18.202 + 18.231
+     → Line 93 still had old "v0.2 P1" status — updated to ✅ Resolved
+
+- 全校验流 (LLVM 22.1.8):
+  → cargo check --features llvm-backend ✅
+  → cargo fmt --check ✅
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅
+  → cargo test --release --features llvm-backend ✅ (3798 tests, 0 failures)
+
+- Tech debt register updated:
+  → TD-EMITTER-PANIC: ✅ Resolved (false positive — test code)
+  → TD-PROJECTION-RESOLVER: ✅ Resolved (already moved in 18.148)
+  → TD-NO-FORMAT-MACRO: ✅ Resolved (already implemented in 18.186+)
+
+- 版本: v0.492.0 (no bump — audit only)
+
+Stage Summary:
+- Stage 18.254 PASSED — 3 more stale TDs closed
+- TD-EMITTER-PANIC: ✅ (test code, not production)
+- TD-PROJECTION-RESOLVER: ✅ (already moved)
+- TD-NO-FORMAT-MACRO: ✅ (already implemented)
+- 3798 tests, 0 failures, zero regression
+- Tech-debt-register now fully cleaned — only 3 architecture-level TDs remain

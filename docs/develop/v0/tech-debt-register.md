@@ -41,7 +41,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | ID | Description | Root Cause | Fix Plan |
 |----|-------------|------------|----------|
 | TD-CODEGEN-RESULT | codegen returns `String` not `Result`, forcing `panic!()` for BinaryOp2 | All codegen functions return `EmitValue` (String), not `Result<EmitValue, CodegenError>` | ✅ Resolved Stage 18.151: `codegen_rvalue` → `CodegenResult<EmitValue>`, propagated through `codegen_statement` → `codegen_function` → `run_codegen_pipeline` → `codegen_crate` → driver |
-| TD-PROJECTION-RESOLVER | `projection_resolver.rs` lives under `typeck/` but is a driver-stage operation | Module was created during Stage 18.87 GATs Phase 3; location mirrors the original typeck integration point | v0.2 Phase 2: move to `driver::post_typeck` or `mir::lower::post_typeck` |
+| TD-PROJECTION-RESOLVER | `projection_resolver.rs` lives under `typeck/` but is a driver-stage operation | Module was created during Stage 18.87 GATs Phase 3; location mirrors the original typeck integration point | ✅ Resolved Stage 18.148 — moved to `src/driver/projection_resolver.rs`. |
 
 ### 2.2 Span::DUMMY
 
@@ -72,7 +72,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | TD-NO-INCREMENTAL | Full recompile every time | Slow iteration cycle | v0.2 P2: incremental compilation (requires project system) |
 | TD-BINARYOP2-PANIC | BinaryOp2 panics if it reaches codegen (should be desugared) | Range expressions that aren't desugared will crash the compiler | ✅ Resolved Stage 18.151: BinaryOp2 arm now returns `Err(CodegenError)` instead of `panic!()`, propagated via `CodegenResult` (depends on TD-CODEGEN-RESULT) |
 | TD-RVALUE-NO-SPAN | `Rvalue` enum doesn't carry `Span` info; BinaryOp2 error uses `Span::DUMMY` | Codegen errors for BinaryOp2 lack source location | v0.2 P2: add `span: Span` field to `Rvalue` (or wrap in spanned container); populate during MIR lowering |
-| TD-EMITTER-PANIC | `src/codegen/emitter/mod.rs` has 2 `panic!()` in `fat_ptr_type` (line 321) and `array_of` (line 357) for unreachable match arms | Type-conversion utility panics on misuse (not on codegen pipeline path) | v0.2 P2: convert to `Result<EmitType, CodegenError>` or use `unreachable!()` with clear message |
+| TD-EMITTER-PANIC | `src/codegen/emitter/mod.rs` has 2 `panic!()` in `fat_ptr_type` (line 321) and `array_of` (line 357) for unreachable match arms | Type-conversion utility panics on misuse (not on codegen pipeline path) | ✅ Resolved Stage 18.254 — audit: both panic!() are inside `#[cfg(test)] mod tests` (line 295+). They are test assertions for correct types, not production code. No action needed. |
 | TD-SPAN-DUMMY-CLEANUP | 错误路径中 `Span::DUMMY` 可用真实 span 替换 | 错误诊断丢失源码位置 | ✅ Resolved Stage 18.252 — audit: all remaining Span::DUMMY in production code are legitimate synthesized values (Error type, fresh infer vars, synthesized MIR places). typeck/check.rs uses DUMMY for span-presence checks (`if span != DUMMY`). No actionable replacements remain. |
 | TD-MODULELOAD-ERROR-FIELD | `ModuleLoadError` 强转为 `LowerError`, 丢失 `path` 字段 | 用户看到的模块加载错误丢失文件路径上下文 | ✅ Resolved Stage 18.159: 添加 `CompileErrors.module_load` 字段 + `ErrorCode::ModuleLoad` (E850) + 诊断渲染含 path note |
 | TD-NEGATIVE-TEST-COVERAGE | 负面测试比例 6.5% (低于 §9.4.3 建议的 25%) | 错误路径覆盖不足 | ✅ Resolved Stage 18.160-18.164: 新增 311 个负面测试 (codegen 38 + typeck 18 + module_loader 15 + parser/lexer 20 + borrowck 20 + hir_lower 20 + mir_lower 20 + trait_resolve 20 + stdlib 25 + attribute/macro 25 + codegen_llvm 20 + vtable 15 + closure 15 + generics_mono 20), 比例 7.9% → 27.8% (超过 25% 目标) |
@@ -90,7 +90,7 @@ All monomorphization tech debt (S2-S11) and deep review action items (D1-D8) are
 | ID | Description | Impact | Fix Plan |
 |----|-------------|--------|----------|
 | TD-STDLIB-FACADE | String/Vec/Option/Result are type stubs, not real implementations | No heap allocation, no collections | ✅ Resolved Stage 18.252 — audit: all types are real implementations. Option/Result (prelude enum + methods), String/Vec/Box (prelude struct + MIR intrinsics + heap alloc + auto-drop). No longer stubs. |
-| TD-NO-FORMAT-MACRO | No `format!`/`write!` macros | Only `println!`/`print!`/`eprintln!`/`eprint!` | v0.2 P1 (Stage 18.182): format macros — 依赖真实 String 实现 (TD-STRING-AS-STR-ALIAS Stage 18.181) |
+| TD-NO-FORMAT-MACRO | No `format!`/`write!` macros | Only `println!`/`print!`/`eprintln!`/`eprint!` | ✅ Resolved Stage 18.186 (MVP) + 18.202 (variadic args) + 18.231 (MIR intrinsic migration) |
 | TD-STRING-AS-STR-ALIAS | Stage 18.176 实现 String 为 &str 别名 (PrimTy::Str)，违反设计文档 §3.4 "String = owned Vec<u8>" | (1) String 不是 owned 类型，无法 push_str (2) 与 Rust 语义不一致 (3) 用户预期落空 | ✅ Resolved Stage 18.180: prelude 注入 `struct String { ptr, len, cap }` + 移除 PrimTy::Str 别名. 剩余: String intrinsics (from_str/push_str/len/as_str) 延后到 Stage 18.185 (TD-STRING-INTRINSICS) |
 | TD-HEAP-ALLOC | codegen 无 malloc/free 调用支持，阻碍所有 heap-allocated 类型 (Box/Vec/String/Rc/Arc) | 无法实现任何 owned heap 类型 | ✅ Resolved Stage 18.178: __landin_alloc / __landin_dealloc runtime stubs + 6 latent bug fixes (extern ABI, DefKind, name mangling, DefId collision, DCE LHS, RawPtr Deref) |
 | TD-VEC-MVP | `Vec<T>` 在 stdlib 注册表中作为名字存在 (STDLIB_ALLOC_TYPES)，但无实际类型 + 方法实现 | 无法使用 Vec 类型 | ✅ Resolved Stage 18.195+: prelude 注入 `struct Vec<T> { ptr, len, cap }` + new/push/get/len intrinsics. Vec::new/len migrated to prelude impl in Stage 18.238. Vec::push/get migrated to MIR intrinsics in Stage 18.229/18.228. |
@@ -293,7 +293,7 @@ Source → Lexer → macro_expand → Parser → HIR Lower → Resolve
 
 | ID | Description | Status |
 |----|-------------|--------|
-| TD-PROJECTION-RESOLVER | `projection_resolver.rs` 位置错（在 typeck/ 下，应在 driver/mir::lower::post_typeck） | Open — v0.2 Phase 2 |
+| TD-PROJECTION-RESOLVER | `projection_resolver.rs` 位置错（在 typeck/ 下，应在 driver/mir::lower::post_typeck） | ✅ Resolved Stage 18.148 — moved to `src/driver/projection_resolver.rs` |
 
 ### 4.3 By §10 Naming Violations (L-NAMING-N)
 
