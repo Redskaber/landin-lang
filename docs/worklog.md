@@ -23067,3 +23067,54 @@ Stage Summary:
 - 100% backward-compatible with v7.2
 - 3914 tests, 0 failures
 - Process doc now at 3068 LOC — clean, consistent, all rules have clear reasons
+
+---
+Task ID: stage18.279
+Agent: Super Z (main) — Stage Committee (ARCH-A + PM-A + REV-A + QA-A)
+Task: Stage 18.279 — TD-LOC-CONTROL-FLOW refactoring per §13.4. Split control_flow.rs (2301 LOC) by responsibility. v0.492.0.
+
+Work Log:
+- Baseline: v0.492.0 / 3914 tests (LLVM 22.1.8)
+- 触发条例: §13.4 重构触发条件 #2 (LOC 超阈值 — 2301 > 1500)
+
+- §13.4.1 J1-J6 audit:
+  → J1 Architecture: ✅ aligns with mir/lower/ module pattern
+  → J2 Single responsibility: ✅ control flow (block/if/short-circuit) vs match/pattern lowering
+  → J3 One-way flow: ✅ lower_if → lower_match (no back-calls)
+  → J4 Compile-concept completeness: ✅ all pattern functions self-contained
+  → J5 Stage division: ✅ both in mir/lower/
+  → J6 Reasonable size: ✅ control_flow.rs → 847 LOC, pattern_lower.rs → 1478 LOC
+
+- Execution:
+  → Created src/mir/lower/pattern_lower.rs (1478 LOC) with 3 functions:
+    1. lower_match (922 LOC)
+    2. build_tuple_pattern_condition (189 LOC)
+    3. build_pattern_equality_check (313 LOC)
+  → Changed helper functions to pub(super) for cross-module access
+  → Added pub(crate) use re-export in control_flow.rs for lower_match
+  → Added mod pattern_lower; in mod.rs
+  → Cleaned up unused imports via cargo fix
+
+- LOC verification:
+  → control_flow.rs: 2301 → 847 LOC (reduced by 1454 LOC = 63%)
+  → pattern_lower.rs: 1478 LOC (new module)
+
+- §13.4.2 Step 7 验收:
+  → cargo build --release --features llvm-backend ✅ 0 warnings
+  → cargo check --features llvm-backend ✅ 0 errors, 0 warnings
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets --features llvm-backend -- -D warnings ✅ 0 warnings
+  → cargo test --release --features llvm-backend ✅ 3914 tests, 0 failures
+
+- Documentation:
+  → docs/develop/v0/stage-18/plan-18.279.md created
+  → docs/develop/v0/tech-debt-register.md updated (TD-LOC-CONTROL-FLOW → ✅ Resolved)
+
+- Version: v0.492.0 (no bump — refactoring, no API change)
+
+Stage Summary:
+- Stage 18.279 PASSED — TD-LOC-CONTROL-FLOW resolved
+- control_flow.rs: 2301 → 847 LOC
+- New module: pattern_lower.rs (1478 LOC)
+- §13.4 J1-J6 all pass
+- 3914 tests, 0 failures, zero regression

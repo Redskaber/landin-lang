@@ -31,7 +31,9 @@ mod intrinsic_lower;
 // Stage 18.131 §13.4 J1-J6: extract method resolution from expr_operand.rs
 mod method_resolution;
 mod overflow_assert;
+// Stage 18.279 §13.4 J1-J6: extract pattern/match lowering from control_flow.rs
 mod pattern_bindings;
+mod pattern_lower;
 mod ty_lower;
 mod writeback;
 
