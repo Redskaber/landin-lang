@@ -24744,3 +24744,95 @@ Work Log:
 - 仅剩 `src/parser/macro_expand/expansion_tests.rs` (2345 LOC, 测试文件) 超阈值 — 不在原 tech-debt 列表
 - v0.4 P3 tech-debt 完成度: 5/5 (原计划) + 可选推进 expansion_tests.rs
 - v0.5+ 路线图: sizeof(T) + fat pointer ops + core::fmt (BLOCKED Phase 2-B/C 解锁)
+
+---
+Task ID: stage18.310
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + QA-A
+Task: Stage 18.310 — P3 LOC 重构 (bonus): expansion_tests.rs (2345 LOC) → 拆出 advanced 子模块. L3. v0.493.0.
+
+3秒启动自检:
+- 定位: L3 (跨多文件重构, §13.4 J1-J6)
+- 对齐: 用户要求 "按计划推进修复 tech-debt" — 原 tech-debt 5 个文件已清零, 但发现 expansion_tests.rs (2345 LOC) 同样违反阈值 (不在原列表, 但应一并清理)
+- 阻断: 无 P0/P1 (4202 tests 全绿)
+
+决策点:
+- 为什么作为 bonus 处理这个文件?
+  → 引用 §1.0 原則 5 (去除兼容思维): 不应留"半破窗", 既然阈值是 1500, 应一视同仁.
+  → 引用 §13.4 J6 (LOC): 2345 LOC 严重违反, 是当前最大单一文件.
+  → 引用 §20 (直到审查不出问题为止): 既然在审查中发现, 必须深挖到底.
+- 为什么按 section 边界拆分而不按 test 数量拆分?
+  → 引用 §13.4 J2 (单一职责): section 是逻辑分组 (Stage 18.03-18.13 basic vs 18.14+ advanced).
+  → 引用 §13.4 J4 (完整): 不切割单个 test fn, 保持完整性.
+  → 选 line 1304 (Stage 18.14 nested repetition 起点) 作为天然分界点.
+
+裁剪点:
+- L3 执行 §13.4 J1-J6 + §3.2 全校验流. 跳过 §14.5 (无新功能, 纯重构).
+
+5W2H:
+- WHAT: expansion_tests.rs (2345 LOC, 120 tests) → 拆出 expansion_tests_advanced.rs (1055 LOC), 主文件降至 1302 LOC
+- WHY: §13.4 J6 要求文件 < 1500 LOC. expansion_tests.rs 2345 LOC 严重违反.
+- WHO: ARCH-A 设计 + DEV-A 实现 + QA-A 验证
+- WHEN: §3.2 全绿后停止
+- WHERE: src/parser/macro_expand/expansion_tests.rs + expansion_tests_advanced.rs (新) + expansion.rs (新增 mod 声明) + scripts/stage18_310_split_expansion_tests.py
+- HOW:
+  (1) 5W2H: 文件结构 — 14 sections, 120 test fns. 找最大 section 边界作天然分界点.
+  (2) Rust 设计: `#[cfg(test)] #[path = "..."] mod tests_advanced;` 委托外部文件是标准模式.
+  (3) Rust 哲学: 显式>隐式 — 新文件保留 `#![cfg(test)]` + use super::* 显式声明.
+  (4) 实施: Python 脚本切分 line 1304, 复制 imports 到新文件, 在 expansion.rs 添加 mod 声明.
+  (5) 修复: 新文件初次有 unused imports (MacroRule, MacroRulesDef) → 删除 (advanced section 不使用这些类型)
+- HOW MUCH: §3.2 全绿 — 675 lib + 3527 integration = 4202 tests, 0 failures, 0 warnings, 0 clippy, fmt clean.
+
+Work Log:
+- §13.4 J1-J6 审查:
+  → J1 (design unchanged): ✅ 测试原样移动
+  → J2 (单一职责): ✅ advanced = Stage 18.14+ features (nested repetition, hygiene, edge cases)
+  → J3 (无循环依赖): ✅ tests 用 super::* + 1 个 crate import
+  → J4 (完整): ✅ 120 个 test 全部保留 (76 + 44 split)
+  → J5 (留在 macro_expand): ✅ 文件同级
+  → J6 (LOC < 1500): ✅ expansion_tests.rs 1302 + expansion_tests_advanced.rs 1055
+- 实施步骤:
+  → 脚本 scripts/stage18_310_split_expansion_tests.py
+  → 切分 line 1304 (Stage 18.14 section 起点)
+  → 新文件: HEADER_TEMPLATE (doc + `#![cfg(test)]` + imports) + 提取的 lines 1304-end
+  → 原 expansion_tests.rs: 截断为 lines 1-1303
+  → expansion.rs: 在原 `mod tests;` 后追加 `#[cfg(test)] #[path="..."] mod tests_advanced;`
+- 修复历程:
+  → clippy 报错: unused imports `MacroRule`, `MacroRulesDef` (新文件不使用这些)
+  → 删除 `use crate::ast::{MacroRule, MacroRulesDef};` 行 (新文件只保留 `use super::*;` + `use crate::compile;`)
+  → fmt: 1 处 trailing blank line 修复 (cargo fmt 自动应用)
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt ✅ (1 处 blank line fix)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 675 lib tests
+  → cargo test --release --test all_tests ✅ 3527 integration tests
+  → 总计 4202 tests, 0 failures ✅
+- §19 打包: download/landin-stage0-v0.493.0-stage18.310-loc-refactor-expansion-tests-r1.tar.gz
+- 文档: README.md + RELEASE_NOTES.md 同步更新到 Stage 18.310
+
+**Stage 18.306 - 18.310 总结 (LOC 重构周期)**:
+- 总共 5 个 stage 完成 (Stage 18.305 之前已完成 intrinsic_lower 拆分, 这次又完成 5 个)
+- 6 个 > 1500 LOC 文件 → 全部清零 ✅
+- 最大文件: `pattern_lower.rs` (1478 LOC) — 仍在 1500 阈值下, 但接近
+- 所有重构均通过 §3.2 全校验流: 4202 tests, 0 failures, fmt clean, clippy clean
+- 重构模式总结:
+  → Stage 18.305: 4 子模块拆分 (按类型: string/box/vec/format)
+  → Stage 18.306: tests 提取 (mod.rs 文件, `mod tests;` 委托)
+  → Stage 18.307: tests 提取 (非 mod.rs 文件, `#[path]` 属性)
+  → Stage 18.308: impl 块拆分 (跨文件多 impl, 字段 pub 即可)
+  → Stage 18.309: 大函数提取 (单函数 634 LOC → 独立文件)
+  → Stage 18.310: 测试文件 section 边界拆分 (按 stage 编号)
+
+下一步:
+- **P3 LOC tech-debt 完全清零** ✅ 所有源文件均 < 1500 LOC
+- v0.4 全部 tech-debt 已解决:
+  → P0/P1/P2: ✅ 之前已解决
+  → P3 (field access on primitive): ✅ Stage 18.304 已解决
+  → P3 (LOC > 1500, 6 个文件): ✅ Stage 18.305-18.310 已解决
+- v0.5+ 路线图 (BLOCKED, 需要 language features):
+  → sizeof(T) — 泛型类型大小计算 (解锁 Box::new + Vec::push real body)
+  → fat pointer 操作语法 — 拆解 + 构造 (解锁 String::from_str/as_str/push_str real body)
+  → core::fmt 基础设施 — Display/Debug/Formatter/Write (解锁 format! macro real body)
+  → 孤儿规则 — 多 crate coherence (v0.2+ deferred)
+- v0.4 可交付: 4202 tests, 0 failures, 所有 P3 已清零, 类 Rust 架构修正完成.

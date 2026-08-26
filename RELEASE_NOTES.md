@@ -7,16 +7,19 @@
 
 ---
 
-## v0.493.0 — Stage 18.309 (P3 LOC 重构: 5 个原 tech-debt 文件全部清零 + P3 field access fix + 类 Rust 架构修正)
+## v0.493.0 — Stage 18.310 (P3 LOC 重构完全清零: 6 个文件全部 < 1500 + P3 field access fix + 类 Rust 架构修正)
 
 ### Overview
 
-P3 LOC 重构完成 — 原 tech-debt 5 个 > 1500 LOC 文件全部清零:
+P3 LOC 重构完成 — **6 个 > 1500 LOC 文件全部清零**:
+- `parser/macro_expand/expansion_tests.rs` (2345 → 1302 LOC) → 拆出 `expansion_tests_advanced.rs` (1055 LOC)
 - `mir/lower/expr_variants.rs` (1725 → 1089 LOC) → 拆出 `method_call_lower.rs` (672 LOC)
 - `traits/resolver.rs` (1747 → 1274 LOC) → 拆出 `resolver_queries.rs` (484 LOC)
 - `borrowck/region_inference.rs` (1789 → 1213 LOC) → 拆出 `region_inference_tests.rs` (577 LOC)
 - `borrowck/mod.rs` (1934 → 1121 LOC) → 拆出 `tests.rs` (812 LOC)
 - `mir/lower/intrinsic_lower.rs` (1957 LOC) → 拆分为 4 个子模块 (string/box/vec/format)
+
+**当前最大文件: `mir/lower/pattern_lower.rs` (1478 LOC)** — 全部源文件均 < 1500 LOC ✅
 
 P3 修复: field access on primitive types 报错 (不再静默返回 field 0)。
 
@@ -60,6 +63,16 @@ P3 修复: field access on primitive types 报错 (不再静默返回 field 0)�
 - 675 lib tests + 3527 integration tests = **4202 tests, 0 failures**
 - 0 warnings, 0 clippy issues, fmt clean
 - Stage 18.296: 40 new tests (10 positive + 30 negative, ratio 1:3)
+
+### Stage 18.310 — expansion_tests.rs LOC 拆分 (bonus)
+
+- `src/parser/macro_expand/expansion_tests.rs`: 2345 → 1302 LOC ✅ < 1500
+- `src/parser/macro_expand/expansion_tests_advanced.rs`: 新建, 1055 LOC ✅ < 1500
+- 此文件不在原 tech-debt 列表, 但同样违反阈值. Stage 18.310 作为 bonus 清理.
+- 拆分点: line 1304 (Stage 18.14 nested repetition section 起点)
+- 文件结构: 14 sections, 120 test fns → 前 6 sections (76 tests) + 后 8 sections (44 tests)
+- `expansion.rs` 中添加 `#[cfg(test)] #[path = "..."] mod tests_advanced;` 声明
+- **至此所有源文件均 < 1500 LOC ✅** 最大文件 `pattern_lower.rs` 仅 1478 LOC
 
 ### Stage 18.309 — mir/lower/expr_variants.rs LOC 拆分
 

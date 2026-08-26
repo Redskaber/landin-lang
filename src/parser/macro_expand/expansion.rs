@@ -199,3 +199,6 @@ fn tokens_eq(a: &[Token], b: &[Token]) -> bool {
 #[cfg(test)]
 #[path = "expansion_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "expansion_tests_advanced.rs"]
+mod tests_advanced;
