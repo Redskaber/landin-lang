@@ -385,6 +385,42 @@ pub(crate) fn lower_expr_to_operand(
         // i32 even for i64 fields).
         HirExprKind::Field { receiver, ident } => {
             let base_local = lower_expr_to_operand(cx, receiver, None);
+            // Stage 18.304 (P3 fix): Check if receiver is a primitive type.
+            // Per §2 原則 4 (报错>静默): field access on primitive types
+            // (i32, bool, etc.) must report error, not silently return field 0.
+            // Per §12 (最优>最小): root cause fix — check type before resolving field.
+            {
+                let base_ty = cx.mir.local(base_local).ty.clone();
+                let inner_ty = match &base_ty.kind {
+                    // Auto-deref Ref to check inner type.
+                    crate::mir::ty::TyKind::Ref(_, _, inner) => inner.as_ref(),
+                    _ => &base_ty,
+                };
+                let is_primitive = matches!(
+                    &inner_ty.kind,
+                    crate::mir::ty::TyKind::Int(_)
+                        | crate::mir::ty::TyKind::Uint(_)
+                        | crate::mir::ty::TyKind::Bool
+                        | crate::mir::ty::TyKind::Char
+                        | crate::mir::ty::TyKind::Float(_)
+                        | crate::mir::ty::TyKind::Str
+                );
+                if is_primitive {
+                    let field_name_str =
+                        cx.interner.try_resolve(&ident.name).unwrap_or("<unknown>");
+                    let type_str = cx.format_ty(&base_ty);
+                    cx.type_errors.push(crate::typeck::TypeError::new(
+                        format!(
+                            "no field `{}` on type `{}` — primitive types have no fields",
+                            field_name_str, type_str
+                        ),
+                        expr.span,
+                    ));
+                    // Return Error placeholder local — compilation will abort.
+                    let err_ty = Ty::new(crate::mir::ty::TyKind::Error, expr.span);
+                    return cx.mir.new_local(err_ty, None, expr.span);
+                }
+            }
             // Resolve the field index from the ident name.
             let field_index = field_resolution::resolve_field_index(cx, receiver, &ident.name);
             // Stage 3.32: resolve the field's actual type from the struct def.
@@ -1328,8 +1364,8 @@ pub(crate) fn lower_expr_to_operand(
             args,
             ..
         } => {
-            // Stage 18.133 §13.4 J2: extracted to expr_variants.rs
-            super::expr_variants::lower_method_call_expr(cx, expr, receiver, method, args)
+            // Stage 18.309 §13.4 J2: moved to method_call_lower.rs (split from expr_variants.rs)
+            super::method_call_lower::lower_method_call_expr(cx, expr, receiver, method, args)
         }
     }
 }

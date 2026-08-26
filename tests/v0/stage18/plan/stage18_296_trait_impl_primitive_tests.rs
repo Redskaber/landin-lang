@@ -408,8 +408,8 @@ fn stage18_296_neg_trait_method_field_nonexistent() {
            impl T for i32 { fn m(self) -> i32 { self.nonexistent } }
            fn main() -> i32 { 0 }"#,
     );
-    // Pre-existing gap: field access on primitive type not caught by typeck.
-    assert_eq!(exit, 0); // TODO: fix field access on primitive types
+    // Stage 18.304: field access on primitive types now reports error.
+    assert_ne!(exit, 0, "field access on primitive type should error")
 }
 
 // Category 6: Method on wrong primitive (4 cases)

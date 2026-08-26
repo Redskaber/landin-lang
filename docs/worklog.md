@@ -24286,3 +24286,461 @@ Work Log:
   → core::fmt 基础设施 — Display/Debug/Formatter/Write
   → 这些语言特性将解锁: 移除 early interception + intrinsic_lower.rs + format variadic
 - 当前 v0.4 可交付: 4202 tests, 0 failures, 类 Rust 架构修正完成.
+
+---
+Task ID: stage18.303
+Agent: Super Z (main) — PM-A
+Task: Stage 18.303 — 文档同步 + 最终打包. L1. v0.493.0.
+
+3秒启动自检:
+- 定位: L1 (文档同步 + 打包)
+- 对齐: 用户要求 "严格完整执行" — 需确保 README/RELEASE_NOTES/worklog 全部同步到最新 Stage 18.302
+- 阻断: 无 P0/P1 (4202 tests 全绿)
+
+决策点:
+- 为什么重新打包?
+  → 引用 §19 (打包规范): 必须按 `landin-stage0-v<主>.<次>.<补>-stage<当前编号>-<简述>-r<修订号>.tar.gz` 格式输出. 上次打包 (r1) 的 README/RELEASE_NOTES 未同步到 Stage 18.302.
+
+裁剪点:
+- L1 仅执行 §3.2 验收 + §19 打包 + §8 文档同步. 跳过 §14.5/§14.6/§7.3 (L1).
+
+5W2H:
+- WHAT: README.md + RELEASE_NOTES.md 同步到 Stage 18.302 + 重新打包 (r2)
+- WHY: 上次打包 (r1) 文档未同步到最新阶段
+- WHO: PM-A 文档同步
+- WHEN: 文档同步 + 打包完成后停止
+- WHERE: README.md + RELEASE_NOTES.md + download/
+- HOW: 更新版本号 + 状态描述 + 打包 r2
+- HOW MUCH: §3.2 全绿 (4202 tests, 0 failures, 0 warnings, 0 clippy, fmt clean). Package: 4.4MB.
+
+Work Log:
+- §3.2 验收: 675 lib + 3527 integration = 4202 tests, 0 failures ✅
+- fmt: 0 diff ✅
+- clippy: 0 warnings ✅
+- README.md: 版本更新到 Stage 18.302 ✅
+- RELEASE_NOTES.md: 更新到 Stage 18.302 ✅
+- §19 打包: download/landin-stage0-v0.493.0-stage18.302-final-r2.tar.gz (4.4MB) ✅
+
+下一步:
+- v0.493.0 完整交付: 4202 tests, 文档同步, 打包完成
+- v0.5+ 路线图已规划: sizeof(T) + fat pointer ops + core::fmt
+- 等待用户指定下一 MUV 方向
+
+---
+Task ID: stage18.304
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + QA-A
+Task: Stage 18.304 — P3 fix: field access on primitive types 报错 + tech-debt 推进. L2. v0.493.0.
+
+3秒启动自检:
+- 定位: L2 (单文件 expr_operand.rs + 测试更新)
+- 对齐: §18 依赖审查确认 P0/P1/P2 全部已解决, P3: field access on primitive + LOC > 1500
+- 阻断: 无 P0/P1 (4202 tests 全绿)
+
+决策点:
+- 为什么先修复 field access on primitive 而不选 LOC 重构?
+  → 引用 §2.2 原則 4 (报错>静默): field access on primitive 静默返回 field 0 是 soundness bug — 应该报错. 按 §6 缺陷分级, 这是 P3 (不影响正确程序, 但错误程序不报错).
+  → 引用 §12 (最优>最小): 在 field access 路径检查 primitive type 是根因修复 — 不在 resolve_field_index 中 hack.
+  → LOC 重构是 P3 (不影响正确性), 优先级低于 soundness bug.
+
+裁剪点:
+- L2 执行 §3.2 全校验流 + §10 命名 + §11 接口隔离. 跳过 §14.5 (L2 用 §7.3 替代).
+
+5W2H:
+- WHAT: field access on primitive types (i32/bool/str/etc.) 报错 "no field X on type Y — primitive types have no fields"
+- WHY: `self.nonexistent` on i32 静默返回 field 0 (self 本身) — soundness bug (§2 原則 4 报错>静默)
+- WHO: ARCH-A 设计 + DEV-A 实现 + QA-A 验证
+- WHEN: §3.2 全绿后停止
+- WHERE: src/mir/lower/expr_operand.rs (HirExprKind::Field arm)
+- HOW: 在 lower_expr_to_operand 的 Field arm 中, 检查 receiver type 是否 primitive (Int/Uint/Bool/Char/Float/Str). 如果是, 报错 + 返回 Error placeholder. 不在 resolve_field_index 中 hack.
+- HOW MUCH: §3.2 全绿 — 675 lib + 3527 integration = 4202 tests, 0 failures, 0 warnings, 0 clippy, fmt clean. Package: 4.4MB.
+
+Work Log:
+- §18 依赖审查:
+  → P0/P1/P2: ✅ 全部已解决
+  → BLOCKED: TD-INTRINSIC-OVERUSE Phase 2-B/C (需要 language features: sizeof + fat pointer ops + core::fmt)
+  → P3 可推进: (1) field access on primitive (2) LOC > 1500 (5 文件)
+- Step 1 (5W2H): What=self.nonexistent on i32 不报错, Why=resolve_field_index 静默返回 0, Where=expr_operand.rs Field arm
+- Step 2 (Rust 设计): Rust 中 field access on primitive type 报 E0609 "no field on type"
+- Step 3 (Rust 哲学): 显式>隐式 — 错误必须显式化; 让非法状态不可表示 — primitive type 不应有 field access
+- Step 4 (实施): 在 HirExprKind::Field arm 中, lower_expr_to_operand 后检查 base_ty. 如果 primitive (auto-deref Ref), 报错 + 返回 Error placeholder.
+- 验证: `self.nonexistent` on i32 → "no field `nonexistent` on type `i32` — primitive types have no fields" ✅
+- 验证: struct field access 正常工作 (f.x returns 42) ✅
+- TODO 测试改回 assert_ne ✅ (Stage 18.296: stage18_296_neg_trait_method_field_nonexistent)
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release ✅ 4202 tests (675 lib + 3527 integration), 0 failures, 0 ignored
+- §19 打包: download/landin-stage0-v0.493.0-stage18.304-p3-field-access-fix-r1.tar.gz (4.4MB)
+- 文档: README.md + RELEASE_NOTES.md 更新
+
+下一步:
+- P3 field access on primitive 修复完成. 剩余 P3: LOC > 1500 (5 文件).
+- 可选下一步:
+  → (A) P3 LOC 重构: intrinsic_lower.rs 1957 LOC → 拆分
+  → (B) P3 LOC 重构: borrowck/mod.rs 1934 LOC → 拆分
+  → (C) P3 LOC 重构: region_inference.rs 1789 LOC → 拆分
+  → (D) v0.5+ language features: sizeof(T) / fat pointer ops / core::fmt
+
+---
+Task ID: stage18.305
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + QA-A
+Task: Stage 18.305 — P3 LOC 重构: intrinsic_lower.rs 1957 LOC → 拆分为 4 子模块. L3 (跨模块重构). v0.493.0.
+
+3秒启动自检:
+- 定位: L3 (跨多文件重构, §13.4 J1-J6)
+- 对齐: tech-debt-register.md — 5 个文件 > 1500 LOC, intrinsic_lower.rs 最大 (1957)
+- 阻断: 无 P0/P1 (4202 tests 全绿)
+
+决策点:
+- 为什么按类型 (string/box/vec/format) 拆分而不按功能 (alloc/memcpy/store) 拆分?
+  → 引用 §13.4 J2 (单一职责): 每个子模块负责一种类型的 intrinsic — string_intrinsics 负责 String 相关, vec_intrinsics 负责 Vec 相关. 这是自然的职责划分.
+  → 引用 §13.4 J6 (LOC 由职责驱动): 每个文件 189-615 LOC, 全部 < 1500.
+  → 引用 §1.0 原則 6 (通解>特解): 按类型拆分是通解 — 新增类型 intrinsic 时添加新文件, 不修改现有文件.
+
+裁剪点:
+- L3 执行 §13.4 J1-J6 + §3.2 全校验流. 跳过 §14.5 (重构, 非新功能).
+
+5W2H:
+- WHAT: intrinsic_lower.rs (1957 LOC) → string_intrinsics.rs (604) + box_intrinsics.rs (189) + vec_intrinsics.rs (615) + format_intrinsics.rs (600)
+- WHY: §13.4 J6 要求文件 < 1500 LOC. 1957 > 1500 违反.
+- WHO: ARCH-A 设计 + DEV-A 实现
+- WHEN: §3.2 全绿后停止
+- WHERE: src/mir/lower/ (4 新文件 + mod.rs 更新 + expr_variants.rs 导入更新)
+- HOW: (1) 分析 6 个函数的职责; (2) 按类型分组; (3) Python 脚本提取; (4) 恢复 extract_vec_element_type; (5) cargo fix 清理 unused imports; (6) 验证
+- HOW MUCH: §3.2 全绿 — 675 lib + 3527 integration = 4202 tests, 0 failures, 0 warnings, 0 clippy, fmt clean.
+
+Work Log:
+- §13.4 J1-J6 审查:
+  → J1 (mir::lower design unchanged): ✅ 拆分不改变设计
+  → J2 (单一职责): ✅ 每个子模块负责一种类型
+  → J3 (无循环依赖): ✅ 被 expr_variants 调用, 无回调
+  → J4 (完整): ✅ 所有 6 个函数 + 1 helper 都在新文件中
+  → J5 (留在 mir::lower): ✅
+  → J6 (LOC < 1500): ✅ 604 + 189 + 615 + 600, 全部 < 1500
+- 拆分实施:
+  → string_intrinsics.rs: lower_string_from_str_intrinsic + lower_string_push_str_intrinsic (604 LOC)
+  → box_intrinsics.rs: lower_box_new_intrinsic (189 LOC)
+  → vec_intrinsics.rs: lower_vec_push_intrinsic + lower_vec_get_intrinsic + extract_vec_element_type (615 LOC)
+  → format_intrinsics.rs: lower_format_variadic_intrinsic (600 LOC)
+  → mod.rs: 移除 `mod intrinsic_lower`, 添加 4 个新 mod
+  → expr_variants.rs: 更新 use 导入
+  → 删除 intrinsic_lower.rs
+- 修复: extract_vec_element_type 未被脚本提取 → 手动从 git 恢复 + 添加到 vec_intrinsics.rs
+- 修复: cargo fix 清理 5 个 unused imports
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ 0 diff
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release ✅ 4202 tests (675 lib + 3527 integration), 0 failures, 0 ignored
+- §19 打包: download/landin-stage0-v0.493.0-stage18.305-loc-refactor-r1.tar.gz (4.4MB)
+- 文档: README.md + RELEASE_NOTES.md 更新
+
+下一步:
+- intrinsic_lower.rs (1957 LOC) → 已拆分. 剩余 4 个文件 > 1500 LOC:
+  → borrowck/mod.rs (1934 LOC)
+  → region_inference.rs (1789 LOC)
+  → traits/resolver.rs (1747 LOC)
+  → expr_variants.rs (1725 LOC)
+- 按 §13.4 J1-J6 继续拆分.
+
+---
+Task ID: stage18.306
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + QA-A
+Task: Stage 18.306 — P3 LOC 重构: borrowck/mod.rs (1934 LOC) → 拆出 tests.rs. L3 (跨模块重构, §13.4 J1-J6). v0.493.0.
+
+3秒启动自检:
+- 定位: L3 (跨多文件重构, 但纯文件移动 — 无逻辑变更)
+- 对齐: tech-debt-register.md — 4 个文件 > 1500 LOC, borrowck/mod.rs 1934 LOC 是最大
+- 阻断: 无 P0/P1 (4202 tests 全绿)
+
+决策点:
+- 为什么选择"提取 mod tests 到独立文件"而不是"拆分 impl 块到多个文件"?
+  → 引用 §13.4 J2 (单一职责): tests 模块本身就是独立职责 (单元测试), 与 BorrowChecker 业务逻辑分离.
+  → 引用 §1.0 原則 6 (通解>特解): Rust 标准模式 `#[cfg(test)] mod tests;` 委托文件, 不是 hack.
+  → 引用 §1.0 原則 5 (去除兼容思维): 一次性提取全部 23 个测试函数, 不留尾巴.
+  → 风险对比: 拆分 impl 块需暴露私有字段 (`borrows/moves/errors/...`) 为 `pub(super)`, 破坏封装性 — 不值得.
+  → 收益对比: tests 提取 (815 LOC 出) 已使 mod.rs 降至 1121 LOC < 1500, 无需进一步拆分 impl.
+
+裁剪点:
+- L3 执行 §13.4 J1-J6 + §3.2 全校验流. 跳过 §14.5 (无新功能, 纯重构).
+
+5W2H:
+- WHAT: borrowck/mod.rs (1934 LOC) → 拆出 borrowck/tests.rs (812 LOC), mod.rs 降至 1121 LOC
+- WHY: §13.4 J6 要求文件 < 1500 LOC. tests 块单独 815 LOC 是最大单一消费者, 提取后即可达标.
+- WHO: ARCH-A 设计 + DEV-A 实现 + QA-A 验证
+- WHEN: §3.2 全绿后停止
+- WHERE: src/borrowck/mod.rs + src/borrowck/tests.rs (新文件) + scripts/stage18_306_split_borrowck_tests.py
+- HOW:
+  (1) 5W2H: 4 种拆分策略对比 (tests 提出 / impl 拆分 / 按功能拆分 / 不拆分). tests 提取风险最低收益最高.
+  (2) Rust 设计: `#[cfg(test)] mod tests;` 委托外部文件是标准模式 (Rust 标准库 + 大型项目均使用).
+  (3) Rust 哲学: 显式>隐式 — `mod tests;` 显式声明测试文件位置.
+  (4) 实施: Python 脚本提取 1120-1934 行 → textwrap.dedent 去除 4 空格缩进 → tests.rs 独立文件 + mod.rs 替换为 stub.
+- HOW MUCH: §3.2 全绿 — 675 lib + 3527 integration = 4202 tests, 0 failures, 0 warnings, 0 clippy, fmt clean.
+
+Work Log:
+- §13.4 J1-J6 审查:
+  → J1 (mir::lower design unchanged): ✅ 纯文件移动
+  → J2 (单一职责): ✅ tests.rs = borrowck 单元测试
+  → J3 (无循环依赖): ✅ tests 用 super::* + 3 个外部 import, 无回调
+  → J4 (完整): ✅ 23 个测试函数全部移到 tests.rs
+  → J5 (留在 borrowck): ✅ tests.rs 是 borrowck/tests.rs 同级
+  → J6 (LOC < 1500): ✅ mod.rs 1121 + tests.rs 812
+- 实施步骤:
+  → 脚本 scripts/stage18_306_split_borrowck_tests.py 持久化
+  → 提取 lines 1120-1934 (含 `#[cfg(test)]` 属性行)
+  → textwrap.dedent 去除 4 空格缩进 (因为之前是 `mod tests { ... }` 内嵌)
+  → 验证首行 `#![allow(deprecated)]` 在 column 0
+  → mod.rs 替换为 `#[cfg(test)] mod tests;` stub
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 675 lib tests (含新 tests.rs 的 23 个 borrowck 测试)
+  → cargo test --release --test all_tests ✅ 3527 integration tests
+  → 总计 4202 tests, 0 failures ✅
+- §19 打包: download/landin-stage0-v0.493.0-stage18.306-loc-refactor-borrowck-r1.tar.gz
+- 文档: README.md + RELEASE_NOTES.md 同步更新到 Stage 18.306
+
+下一步:
+- borrowck/mod.rs (1934 → 1121 LOC) 重构完成. 剩余 3 个文件 > 1500 LOC:
+  → borrowck/region_inference.rs (1789 LOC)
+  → traits/resolver.rs (1747 LOC)
+  → mir/lower/expr_variants.rs (1725 LOC)
+- 此外发现 src/parser/macro_expand/expansion_tests.rs (2345 LOC) — 不在原 tech-debt 列表中, 但同样违反 < 1500 阈值. 待评估.
+- 按 §13.4 J1-J6 继续推进.
+
+---
+Task ID: stage18.307
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + QA-A
+Task: Stage 18.307 — P3 LOC 重构: borrowck/region_inference.rs (1789 LOC) → 拆出 tests.rs. L3. v0.493.0.
+
+3秒启动自检:
+- 定位: L3 (跨多文件重构, §13.4 J1-J6)
+- 对齐: tech-debt-register.md — 3 个文件 > 1500 LOC, region_inference.rs 1789 LOC 是最大
+- 阻断: 无 P0/P1 (4202 tests 全绿)
+
+决策点:
+- 为什么用 `#[path]` 属性而不是将 `region_inference.rs` 转为 `region_inference/mod.rs`?
+  → 引用 §1.0 原則 6 (通解>特解): `#[path]` 是 Rust 官方推荐的非 mod.rs 文件声明子模块的标准方式.
+  → 引用 §1.0 原則 9 (正确>妥协): 保留 `region_inference.rs` 文件结构, 不破坏现有 import 路径 (`use crate::borrowck::region_inference::*`).
+  → 风险对比: 转为目录结构 (`region_inference/mod.rs`) 需更新所有 import 路径, 风险更高.
+  → 收益对比: `#[path]` 是 1 行属性, 零破坏性, 立即生效.
+
+裁剪点:
+- L3 执行 §13.4 J1-J6 + §3.2 全校验流. 跳过 §14.5 (无新功能, 纯重构).
+
+5W2H:
+- WHAT: region_inference.rs (1789 LOC) → 拆出 region_inference_tests.rs (577 LOC), 主文件降至 1213 LOC
+- WHY: §13.4 J6 要求文件 < 1500 LOC. region_inference.rs 1789 LOC 违反.
+- WHO: ARCH-A 设计 + DEV-A 实现 + QA-A 验证
+- WHEN: §3.2 全绿后停止
+- WHERE: src/borrowck/region_inference.rs + src/borrowck/region_inference_tests.rs (新文件) + scripts/stage18_307_split_region_inference_tests.py
+- HOW:
+  (1) 5W2H 剖析: 文件结构发现 — `mod tests { ... }` 块 (135 行) + 顶层 `#[test]` 函数 (443 行). 两类测试代码共存.
+  (2) Rust 设计: 顶层 `#[test]` 函数在文件模块中合法 — Rust 不要求测试在 `mod tests` 内.
+  (3) Rust 哲学: 显式>隐式 — `#[path]` 显式声明子模块位置, 不依赖 mod.rs 隐式查找规则.
+  (4) 实施: Python 脚本 — Part A (mod tests body, dedent 4 spaces) + Part B (top-level tests, 无 dedent) + use super::*; 头部.
+  (5) 修复: 初次失败 — Rust 默认查找 `region_inference/region_inference_tests.rs` 子目录. 加 `#[path = "..."]` 修复.
+- HOW MUCH: §3.2 全绿 — 675 lib + 3527 integration = 4202 tests, 0 failures, 0 warnings, 0 clippy, fmt clean.
+
+Work Log:
+- §13.4 J1-J6 审查:
+  → J1 (design unchanged): ✅ 纯文件移动
+  → J2 (单一职责): ✅ region_inference_tests.rs = region_inference 单元测试
+  → J3 (无循环依赖): ✅ tests 用 super::*, 无回调
+  → J4 (完整): ✅ 25 个测试函数 (mod tests 内 6 + 顶层 19) 全部移到 tests.rs
+  → J5 (留在 borrowck): ✅ 文件同级
+  → J6 (LOC < 1500): ✅ region_inference.rs 1213 + region_inference_tests.rs 577
+- 文件结构发现:
+  → Lines 1-1209: 生产代码 (impl + free fn collect_regions_recursive)
+  → Lines 1211-1346: `#[cfg(test)] mod tests { ... }` (6 个测试, 4-space 缩进)
+  → Lines 1347-1789: 顶层 `#[test] fn ...` (19 个测试, column 0, 含分隔注释)
+  → 总计 25 个测试函数
+- 实施步骤:
+  → 脚本 scripts/stage18_307_split_region_inference_tests.py
+  → Part A: lines 1213-1345 (mod tests body) → textwrap.dedent(-4 spaces)
+  → Part B: lines 1347-1789 (top-level tests) → 保留原样
+  → 合并: Part A + 空行 + Part B
+  → region_inference.rs: 替换 lines 1211-1789 为 `#[cfg(test)] #[path = "..."] mod region_inference_tests;`
+- 修复路径查找:
+  → 第一次失败: `mod region_inference_tests;` 默认查找 `region_inference/region_inference_tests.rs`
+  → 解决: 添加 `#[path = "region_inference_tests.rs"]` 属性, 显式指向同级目录文件
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt ✅ (首次需应用 1 处 blank line fix)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 675 lib tests (含 25 个 region_inference 测试)
+  → cargo test --release --test all_tests ✅ 3527 integration tests
+  → 总计 4202 tests, 0 failures ✅
+- §19 打包: download/landin-stage0-v0.493.0-stage18.307-loc-refactor-region-inference-r1.tar.gz
+- 文档: README.md + RELEASE_NOTES.md 同步更新到 Stage 18.307
+
+下一步:
+- region_inference.rs (1789 → 1213 LOC) 重构完成. 剩余 3 个文件 > 1500 LOC:
+  → traits/resolver.rs (1747 LOC) — 生产代码, 需分析结构
+  → mir/lower/expr_variants.rs (1725 LOC) — 生产代码, 需分析结构
+  → parser/macro_expand/expansion_tests.rs (2345 LOC) — 测试文件, 不在原 tech-debt 列表中, 但同样违反阈值
+- 按 §13.4 J1-J6 继续推进.
+
+---
+Task ID: stage18.308
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + QA-A
+Task: Stage 18.308 — P3 LOC 重构: traits/resolver.rs (1747 LOC) → 拆出 queries 子模块. L3. v0.493.0.
+
+3秒启动自检:
+- 定位: L3 (跨多文件重构, §13.4 J1-J6)
+- 对齐: tech-debt-register.md — 2 个文件 > 1500 LOC, resolver.rs 1747 LOC 是最大
+- 阻断: 无 P0/P1 (4202 tests 全绿)
+
+决策点:
+- 为什么按"查询/诊断/验证"职责拆分而不按"数据流"拆分?
+  → 引用 §13.4 J2 (单一职责): 查询方法是纯读操作 (no mutation), 与 collection/registration 逻辑分离.
+  → 引用 §1.0 原則 6 (通解>特解): Rust 允许跨文件多 impl 块, 标准模式.
+  → 引用 §13.4 J6 (LOC): 提取 20 个查询方法 (~478 LOC) 后, resolver.rs 1274 LOC < 1500.
+- 为什么选择这 20 个方法 (而不是其他)?
+  → 自包含: 这 20 个方法只依赖 self (TraitResolver pub fields + pub methods), 不依赖私有 helper.
+  → 内聚性高: 全是 read-only 查询, 形成自然分组 (counting + summary + coherence + validation).
+  → 无副作用: 不修改 self 状态, 易于跨模块迁移.
+
+裁剪点:
+- L3 执行 §13.4 J1-J6 + §3.2 全校验流. 跳过 §14.5 (无新功能, 纯重构).
+
+5W2H:
+- WHAT: resolver.rs (1747 LOC) → 拆出 resolver_queries.rs (484 LOC), 主文件降至 1274 LOC
+- WHY: §13.4 J6 要求文件 < 1500 LOC. resolver.rs 1747 LOC, 无内联 tests 可提取.
+- WHO: ARCH-A 设计 + DEV-A 实现 + QA-A 验证
+- WHEN: §3.2 全绿后停止
+- WHERE: src/traits/resolver.rs + src/traits/resolver_queries.rs (新文件) + src/traits/mod.rs + scripts/stage18_308_split_resolver_queries.py
+- HOW:
+  (1) 5W2H 剖析: 文件结构 — 8 structs (15-220) + impl TraitResolver (222-1626) + 4 free fns (1627-1747). 无内联 tests.
+  (2) Rust 设计: Rust 允许跨文件多 impl 块, 字段 pub 即可跨模块访问.
+  (3) Rust 哲学: 显式>隐式 — 新文件需显式 import (因 `use super::*;` 不重新导出父模块 use 语句).
+  (4) 实施: Python 脚本提取 lines 1154-1625 (20 个方法), 包装在新 `impl TraitResolver { ... }` 块中.
+  (5) 修复: 初次失败 — `Spur`/`Rodeo`/`DefId` not found. 添加显式 imports 修复.
+- HOW MUCH: §3.2 全绿 — 675 lib + 3527 integration = 4202 tests, 0 failures, 0 warnings, 0 clippy, fmt clean.
+
+Work Log:
+- §13.4 J1-J6 审查:
+  → J1 (design unchanged): ✅ 方法原样移动, visibility 保留
+  → J2 (单一职责): ✅ resolver_queries.rs = 纯查询 + 诊断
+  → J3 (无循环依赖): ✅ 仅依赖 self + super::* 公共项
+  → J4 (完整): ✅ 20 个查询方法全部移到新文件
+  → J5 (留在 traits): ✅ 文件同级 src/traits/
+  → J6 (LOC < 1500): ✅ resolver.rs 1274 + resolver_queries.rs 484
+- 文件结构分析:
+  → Lines 1-14: imports + module doc
+  → Lines 15-220: 8 struct 定义 (TraitInfo/ImplInfo/TraitResolver/CoherenceError/...)
+  → Lines 222-1626: impl TraitResolver (1411 LOC, 单一巨型 impl 块)
+  → Lines 1627-1747: 4 free functions (extract_impl_self_ty_name 等)
+  → TraitResolver 所有字段已 `pub` — 跨模块访问零成本
+- 实施步骤:
+  → 脚本 scripts/stage18_308_split_resolver_queries.py 持久化
+  → 提取 lines 1154-1625 (20 个方法 + doc comments)
+  → 新文件: header (doc + imports + `use super::*;`) + `impl TraitResolver { ... }` 包装
+  → resolver.rs: 删除 lines 1154-1625, 保留 closing `}` 在 line 1626
+  → src/traits/mod.rs: 添加 `pub mod resolver_queries;` 声明
+- 修复导入缺失:
+  → 第一次失败: 23 个 errors (Spur/Rodeo/DefId not found)
+  → 原因: `use super::*;` 不重新导出父模块的 use 语句
+  → 解决: 添加 `use crate::hir::*; use lasso::{Rodeo, Spur};` 显式导入
+  → cargo fix 自动清理 unused imports (Vtable/HashMap)
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt ✅ (首次需应用 1 处 blank line fix)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 675 lib tests
+  → cargo test --release --test all_tests ✅ 3527 integration tests
+  → 总计 4202 tests, 0 failures ✅
+- §19 打包: download/landin-stage0-v0.493.0-stage18.308-loc-refactor-resolver-queries-r1.tar.gz
+- 文档: README.md + RELEASE_NOTES.md 同步更新到 Stage 18.308
+
+下一步:
+- resolver.rs (1747 → 1274 LOC) 重构完成. 剩余 2 个文件 > 1500 LOC:
+  → mir/lower/expr_variants.rs (1725 LOC) — 生产代码, 需分析结构
+  → parser/macro_expand/expansion_tests.rs (2345 LOC) — 测试文件, 不在原 tech-debt 列表
+- v0.4 P3 tech-debt 接近清零 (5/5 → 2/5 完成, 其中 1 个是测试文件)
+- 按 §13.4 J1-J6 继续推进.
+
+---
+Task ID: stage18.309
+Agent: Super Z (main) — PM-A + ARCH-A + DEV-A + QA-A
+Task: Stage 18.309 — P3 LOC 重构: mir/lower/expr_variants.rs (1725 LOC) → 拆出 method_call_lower.rs. L3. v0.493.0.
+
+3秒启动自检:
+- 定位: L3 (跨多文件重构, §13.4 J1-J6)
+- 对齐: tech-debt-register.md — 2 个文件 > 1500 LOC, expr_variants.rs 1725 LOC
+- 阻断: 无 P0/P1 (4202 tests 全绿)
+
+决策点:
+- 为什么提取 `lower_method_call_expr` (634 LOC) 而不是 `lower_call_expr` (600 LOC)?
+  → 引用 §13.4 J2 (单一职责): method_call 是独立表达式变体, 与 call 分离.
+  → 引用 §13.4 J6 (LOC): 提取 634 LOC 后, expr_variants.rs 1089 LOC < 1500. 已达标.
+  → 风险对比: 提取两个函数 (1091 LOC) 会让 expr_variants.rs 过小 (< 1100). 一个足够.
+- 为什么不再拆分 `lower_method_call_expr` 内部?
+  → 单一函数内拆分会破坏代码连贯性. 函数本身 634 LOC 是合理的 (一个大 match 分发 + 多个分支处理).
+  → 引用 §13.4 J4 (完整): 函数作为一个完整 sub-responsibility 单元移动, 不内部切割.
+
+裁剪点:
+- L3 执行 §13.4 J1-J6 + §3.2 全校验流. 跳过 §14.5 (无新功能, 纯重构).
+
+5W2H:
+- WHAT: expr_variants.rs (1725 LOC) → 拆出 method_call_lower.rs (672 LOC), 主文件降至 1089 LOC
+- WHY: §13.4 J6 要求文件 < 1500 LOC. expr_variants.rs 1725 LOC, 无内联 tests.
+- WHO: ARCH-A 设计 + DEV-A 实现 + QA-A 验证
+- WHEN: §3.2 全绿后停止
+- WHERE: src/mir/lower/expr_variants.rs + src/mir/lower/method_call_lower.rs (新) + src/mir/lower/mod.rs + src/mir/lower/expr_operand.rs + scripts/stage18_309_split_method_call_lower.py
+- HOW:
+  (1) 5W2H: 文件结构 — 4 个顶层函数, 无 tests. lower_method_call_expr (634 LOC) 最大.
+  (2) Rust 设计: pub(super) 函数可跨模块调用, super::* 导入提供完整依赖.
+  (3) Rust 哲学: 显式>隐式 — 新文件保留原 imports + doc comment, 不依赖隐式查找.
+  (4) 实施: Python 脚本提取 lines 1090-1725 (含 doc comment), 复制 imports 块, 包装到新文件.
+  (5) 修复: 初次失败 — doc comment 在 line 1090, fn 在 1091. 起始行改为 1090.
+  (6) 修复: 14 个 unused imports warnings → cargo fix 自动清理 (lower_string_from_str_intrinsic 等)
+- HOW MUCH: §3.2 全绿 — 675 lib + 3527 integration = 4202 tests, 0 failures, 0 warnings, 0 clippy, fmt clean.
+
+Work Log:
+- §13.4 J1-J6 审查:
+  → J1 (design unchanged): ✅ 函数原样移动, visibility 保留 (pub(super))
+  → J2 (单一职责): ✅ method_call_lower.rs = MethodCall 表达式 lowering
+  → J3 (无循环依赖): ✅ 通过 super::* + 4 个 intrinsic 子模块导入
+  → J4 (完整): ✅ 整个函数 + doc comment 一起移动
+  → J5 (留在 mir::lower): ✅ 文件同级
+  → J6 (LOC < 1500): ✅ expr_variants.rs 1089 + method_call_lower.rs 672
+- 文件结构:
+  → Lines 1-44: imports + module doc
+  → Lines 46-272: lower_path_expr (226 LOC)
+  → Lines 273-872: lower_call_expr (600 LOC)
+  → Lines 873-1090: lower_for_expr (217 LOC) + 注释
+  → Lines 1090-1725: lower_method_call_expr (634 LOC, 含 doc comment)
+- 实施步骤:
+  → 脚本 scripts/stage18_309_split_method_call_lower.py
+  → 提取 lines 1090-1725 (函数 + doc comment)
+  → 新文件: header (新 doc) + 原 imports 块 (lines 17-44) + 提取的函数
+  → expr_variants.rs: 保留 lines 1-1089 (其他 3 个函数 + imports)
+  → mod.rs: 添加 `mod method_call_lower;` 声明
+  → expr_operand.rs:1368: 更新调用路径 `super::expr_variants::` → `super::method_call_lower::`
+- 修复历程:
+  → 第一次失败: doc comment (line 1090) 孤立 → "expected item after doc comment"
+  → 修复: 起始行从 1091 改为 1090 (含 doc comment)
+  → 第二次: 14 个 unused imports warnings (因为 method_call_lower 不需要所有 imports)
+  → 修复: cargo fix --lib --allow-dirty 自动清理
+  → expr_variants.rs 也清理了 7 个 unused imports (因为 lower_method_call_expr 移走后某些 import 不再需要)
+- §3.2 全校验流:
+  → cargo build --release ✅
+  → cargo fmt ✅ (首次需应用 4 处 blank line + import 重排 fix)
+  → cargo fmt --check ✅ exit 0
+  → cargo clippy --all-targets -- -D warnings ✅ 0 warnings
+  → cargo test --release --lib ✅ 675 lib tests
+  → cargo test --release --test all_tests ✅ 3527 integration tests
+  → 总计 4202 tests, 0 failures ✅
+- §19 打包: download/landin-stage0-v0.493.0-stage18.309-loc-refactor-method-call-lower-r1.tar.gz
+- 文档: README.md + RELEASE_NOTES.md 同步更新到 Stage 18.309
+
+下一步:
+- **原 tech-debt 5 个 > 1500 LOC 文件全部清零** ✅
+- 仅剩 `src/parser/macro_expand/expansion_tests.rs` (2345 LOC, 测试文件) 超阈值 — 不在原 tech-debt 列表
+- v0.4 P3 tech-debt 完成度: 5/5 (原计划) + 可选推进 expansion_tests.rs
+- v0.5+ 路线图: sizeof(T) + fat pointer ops + core::fmt (BLOCKED Phase 2-B/C 解锁)

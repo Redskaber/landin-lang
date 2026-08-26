@@ -17,6 +17,9 @@ pub mod error;
 // Checks whether a trait is object-safe (whether `dyn Trait` can be used).
 pub mod object_safety;
 pub mod resolver;
+// Stage 18.308 (P3 LOC refactor): query/diagnostic methods extracted from
+// resolver.rs per §13.4 J1-J6. The impl TraitResolver block lives here.
+pub mod resolver_queries;
 pub mod vtable;
 
 pub use builtin::{

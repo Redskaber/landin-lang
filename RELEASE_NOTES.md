@@ -7,13 +7,18 @@
 
 ---
 
-## v0.493.0 — Stage 18.299 (Phase A: i64→usize 类型统一 + 类 Rust 架构修正)
+## v0.493.0 — Stage 18.309 (P3 LOC 重构: 5 个原 tech-debt 文件全部清零 + P3 field access fix + 类 Rust 架构修正)
 
 ### Overview
 
-Phase A 完成: i64 → usize 类型统一。消除 Rust 模型偏差 #3 (设计文档说 usize, 实现用 i64)。
+P3 LOC 重构完成 — 原 tech-debt 5 个 > 1500 LOC 文件全部清零:
+- `mir/lower/expr_variants.rs` (1725 → 1089 LOC) → 拆出 `method_call_lower.rs` (672 LOC)
+- `traits/resolver.rs` (1747 → 1274 LOC) → 拆出 `resolver_queries.rs` (484 LOC)
+- `borrowck/region_inference.rs` (1789 → 1213 LOC) → 拆出 `region_inference_tests.rs` (577 LOC)
+- `borrowck/mod.rs` (1934 → 1121 LOC) → 拆出 `tests.rs` (812 LOC)
+- `mir/lower/intrinsic_lower.rs` (1957 LOC) → 拆分为 4 个子模块 (string/box/vec/format)
 
-类 Rust 架构修正完成。Landin 现在对齐 Rust 的原始类型扩展模型:
+P3 修复: field access on primitive types 报错 (不再静默返回 field 0)。
 
 1. **禁止用户 inherent impl 原始类型** (Stage 18.293, 类 Rust E0117)
    - `impl i32 { fn method {} }` → 编译报错 "cannot define inherent impl for primitive type"
@@ -55,6 +60,54 @@ Phase A 完成: i64 → usize 类型统一。消除 Rust 模型偏差 #3 (设计
 - 675 lib tests + 3527 integration tests = **4202 tests, 0 failures**
 - 0 warnings, 0 clippy issues, fmt clean
 - Stage 18.296: 40 new tests (10 positive + 30 negative, ratio 1:3)
+
+### Stage 18.309 — mir/lower/expr_variants.rs LOC 拆分
+
+- `src/mir/lower/expr_variants.rs`: 1725 → 1089 LOC ✅ < 1500
+- `src/mir/lower/method_call_lower.rs`: 新建, 672 LOC ✅ < 1500
+- 拆分策略: 提取最大单一函数 `lower_method_call_expr` (634 LOC) 到独立文件
+- 函数签名: `pub(super) fn lower_method_call_expr(cx, expr, receiver, method, args) -> LocalId`
+- 函数依赖: 通过 `super::*` 导入 + 4 个 intrinsic helpers (string/box/vec/format)
+- 调用方更新: `expr_operand.rs:1368` 改为 `super::method_call_lower::lower_method_call_expr(...)`
+- 原 tech-debt 5 个 > 1500 LOC 文件 **全部清零** ✅
+
+### Stage 18.308 — traits/resolver.rs LOC 拆分
+
+- `src/traits/resolver.rs`: 1747 → 1274 LOC ✅ < 1500
+- `src/traits/resolver_queries.rs`: 新建, 484 LOC ✅ < 1500
+- 拆分策略: 提取 20 个查询/诊断/验证方法到独立 `impl TraitResolver` 块
+  - 计数方法: vtable_count/trait_count/impl_count/type_count/impl_count_for_type/impl_count_for_trait/builtin_trait_count
+  - 诊断方法: traits_for_type/summary
+  - Coherence 检查: check_coherence/has_coherence_error/check_inherent_impl_conflicts/coherence_error_count
+  - Validation: impl_covers_trait/missing_impl_methods/missing_method_count/validate_impls/missing_impl_associated_consts/impls_are_valid/all_impls_complete
+- TraitResolver 字段已 `pub`, 无需 visibility 变更
+- 新文件显式导入 `crate::hir::*`, `lasso::{Rodeo, Spur}` (父模块的 `use` 不会被 `use super::*;` 重新导出)
+
+### Stage 18.307 — region_inference.rs LOC 拆分
+
+- `src/borrowck/region_inference.rs`: 1789 → 1213 LOC ✅ < 1500
+- `src/borrowck/region_inference_tests.rs`: 新建, 577 LOC ✅ < 1500
+- 拆分策略: 处理文件中混合测试代码 — `mod tests { }` 块 + 顶层 `#[test]` 函数
+  - 使用 `textwrap.dedent` 去除 `mod tests` 内部 4 空格缩进, 顶层 `#[test]` 保持原样
+  - 合并为单一平坦 `region_inference_tests` 模块
+- `#[path = "region_inference_tests.rs"]` 属性: 必需, 因为 `region_inference.rs` 不是 `mod.rs`, 子模块默认查找 `region_inference/` 子目录
+- §13.4 J1-J6 全部满足
+
+### Stage 18.306 — borrowck/mod.rs LOC 拆分
+
+- `src/borrowck/mod.rs`: 1934 → 1121 LOC ✅ < 1500
+- `src/borrowck/tests.rs`: 新建, 812 LOC ✅ < 1500
+- 拆分策略: 纯文件移动, 无逻辑变更. `mod tests { ... }` → `#[cfg(test)] mod tests;` 委托文件
+- §13.4 J1-J6 全部满足: 设计不变 / 单一职责 / 无循环依赖 / 完整 / 留在 borrowck / LOC < 1500
+
+### Stage 18.305 — intrinsic_lower.rs LOC 拆分
+
+- `src/mir/lower/intrinsic_lower.rs`: 1957 LOC → 拆分为 4 个子模块
+- `string_intrinsics.rs` (604 LOC): lower_string_from_str_intrinsic + lower_string_push_str_intrinsic
+- `box_intrinsics.rs` (189 LOC): lower_box_new_intrinsic
+- `vec_intrinsics.rs` (615 LOC): lower_vec_push_intrinsic + lower_vec_get_intrinsic + extract_vec_element_type
+- `format_intrinsics.rs` (600 LOC): lower_format_variadic_intrinsic
+- 全部 < 1500 LOC ✅
 
 ---
 ## v0.388.0 — Stage 18.120 (Comprehensive Tech Debt Register)

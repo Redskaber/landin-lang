@@ -1,9 +1,9 @@
 # Landin
 
 > **Author**: redskaber  
-> **Version**: v0.493.0 (Stage 18.299 — Phase A: i64→usize 类型统一 + 类 Rust 架构修正 + trait impl for primitive types + typeck gap fix)  
+> **Version**: v0.493.0 (Stage 18.309 — P3 LOC 重构: 5 个原 tech-debt 文件全部清零 + P3 field access fix + 类 Rust 架构修正)  
 > **License**: MIT  
-> **Status**: v0.4 stable. 类 Rust 原始类型扩展模型完成 — 用户通过 `impl MyTrait for i32` 扩展原始类型, 不能 inherent impl. intrinsic 调度对齐 Rust `extern "rust-intrinsic"`. 4202 tests, 0 failures.  
+> **Status**: v0.4 stable. 类 Rust 原始类型扩展模型完成. 深度架构审查完成 — 所有"特解"根因已定位为 language feature gaps (v0.5+). 4202 tests, 0 failures.
 
 A work-in-progress systems programming language inspired by Rust, using LLVM 19
 for code generation. The compiler is written in Rust (~50,000 LOC) and targets

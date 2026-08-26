@@ -27,9 +27,18 @@ mod expr_operand;
 mod expr_variants;
 mod field_resolution;
 // Stage 18.273 §13.4 J1-J6: extract intrinsic lowering from expr_variants.rs
-mod intrinsic_lower;
+// Stage 18.305 §13.4 J1-J6: split intrinsic_lower.rs into 4 sub-modules
+// per type (string/box/vec/format). Per §13.4 J2 (单一职责).
+mod box_intrinsics;
+mod format_intrinsics;
+mod string_intrinsics;
+mod vec_intrinsics;
 // Stage 18.131 §13.4 J1-J6: extract method resolution from expr_operand.rs
 mod method_resolution;
+// Stage 18.309 §13.4 J1-J6: extract `lower_method_call_expr` from
+// expr_variants.rs (largest single function, 634 LOC). Sibling of
+// expr_variants.rs / call_lower.rs.
+mod method_call_lower;
 mod overflow_assert;
 // Stage 18.284 §13.4 J1-J6: primitive intrinsic dispatch (post-resolution)
 mod primitive_intrinsics;
